@@ -1,0 +1,37 @@
+<?xml version="1.0"?>
+<!--
+  losos — machine-config plugin for the losos appliance.
+
+  Admin settings app that flips this box between "Local only" (private
+  Nextcloud, losos.sharingMyStorage = false) and "On the mesh" (contributing
+  storage to the Tahoe-LAFS grid, sharing = true), then triggers a NixOS
+  rebuild via the Haskell `losos-ctl` backend (invoked through sudo). Rebuild
+  progress is shown as a Nextcloud notification.
+
+  The PHP side only talks to the backend; the backend (Haskell) owns the
+  actual config rewrite + nixos-rebuild. See docs/superpowers/specs/.
+-->
+<info>
+	<!-- ocsid is optional for self-built apps; leave the App Store id empty -->
+	<id>losos</id>
+	<name>losos</name>
+	<summary>Configure this box: Local only vs On the mesh</summary>
+	<description><![CDATA[Toggle whether this losos box keeps its storage private (Local only) or contributes it to the Tahoe-LAFS mesh (On the mesh). A change triggers an automatic NixOS rebuild; progress is shown as a notification.]]></description>
+	<version>0.1.0</version>
+	<licence>agpl</licence>
+	<author>matus</author>
+	<namespace>Losos</namespace>
+	<category>integration</category>
+	<dependencies>
+		<nextcloud min-version="29" max-version="34"/>
+	</dependencies>
+	<!-- Admin-only settings panel. <types><site_admin/> keeps the routes out
+	     of the public namespace; the controller re-checks admin membership. -->
+	<types>
+		<site_admin/>
+	</types>
+	<settings>
+		<admin-section>OCA\Losos\Settings\Section</admin-section>
+		<admin>OCA\Losos\Settings\AdminSettings</admin>
+	</settings>
+</info>

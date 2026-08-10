@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://losos.local/schemas/losos-ctl.json",
+  "title": "losos-ctl wire format",
+  "description": "JSON schemas for the losos-ctl backend, as invoked by the losos Nextcloud app over `sudo -n losos-ctl <subcommand>`. Every subcommand prints exactly one JSON object on stdout, terminated by a newline.",
+  "$defs": {
+    "mode": {
+      "type": "string",
+      "enum": ["local", "mesh"],
+      "description": "local = private Nextcloud (sharingMyStorage=false); mesh = contributes storage to the Tahoe grid (sharingMyStorage=true)."
+    },
+    "rebuildState": {
+      "type": "string",
+      "enum": ["idle", "building", "done", "failed"],
+      "description": "Lifecycle of the last/current nixos-rebuild triggered by `change`."
+    },
+    "rebuild": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["job", "state"],
+      "properties": {
+        "job": { "type": "string", "description": "Opaque id returned by `change`; referenced by the detached rebuild watcher." },
+        "state": { "$ref": "#/$defs/rebuildState" },
+        "progress": { "type": "integer", "minimum": 0, "maximum": 100, "description": "0 while building (coarse); 100 on success. Optional on the persisted state file (defaults to 0); always present in the status wire response." },
+        "message": { "type": "string", "description": "Human-readable status; on failure includes the last nixos-rebuild log line. Optional on the persisted state file (defaults to empty); always present in the status wire response." }
+      }
+    },
+    "stateResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "sharing"],
+      "properties": {
+        "mode": { "$ref": "#/$defs/mode" },
+        "sharing": { "type": "boolean", "description": "True iff mode==mesh (mirrors losos.sharingMyStorage)." }
+      }
+    },
+    "changeResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["job"],
+      "properties": {
+        "job": { "type": "string" }
+      }
+    },
+    "statusResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "progress", "message"],
+      "properties": {
+        "state": { "$ref": "#/$defs/rebuildState" },
+        "progress": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "message": { "type": "string" }
+      }
+    },
+    "stateFile": {
+      "type": "object",
+      "description": "The persisted state at $LOSOS_STATE_DIR/state.json. Internal to the backend; not a wire response.",
+      "additionalProperties": false,
+      "required": ["mode", "sharing"],
+      "properties": {
+        "mode": { "$ref": "#/$defs/mode" },
+        "sharing": { "type": "boolean" },
+        "rebuild": { "oneOf": [ { "$ref": "#/$defs/rebuild" }, { "type": "null" } ] }
+      }
+    }
+  },
+
+  "commands": {
+    "state": {
+      "description": "`losos-ctl state --json` — current mode + sharing flag. stdout: stateResponse.",
+      "stdout": { "$ref": "#/$defs/stateResponse" }
+    },
+    "change": {
+      "description": "`losos-ctl change --mode <local|mesh>` — rewrite the flake's sharingMyStorage line, mark a rebuild as building, spawn a detached nixos-rebuild. Returns immediately. stdout: changeResponse. Non-zero exit + stderr on invalid mode.",
+      "stdout": { "$ref": "#/$defs/changeResponse" }
+    },
+    "status": {
+      "description": "`losos-ctl status --json` — rebuild progress, polled by the PHP app ~every 2s. stdout: statusResponse.",
+      "stdout": { "$ref": "#/$defs/statusResponse" }
+    },
+    "rebuild-done": {
+      "description": "`losos-ctl rebuild-done <exitcode> <job>` — internal, invoked by the detached rebuild shell after nixos-rebuild. Updates stateFile.rebuild to done/failed only if <job> matches the currently-tracked rebuild's id (a stale completion from an older, superseded rebuild is ignored). No stdout contract.",
+      "args": {
+        "exitcode": { "type": "integer" },
+        "job": { "type": "string", "description": "The job id returned by the `change` that started this rebuild." }
+      }
+    }
+  }
+}
