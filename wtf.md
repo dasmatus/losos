@@ -1,4 +1,0 @@
-- Backend for enabling/disabling file distribution across the mesh (ai: ignore)
-  - Schema: `change rebuild`
-- Automatic rebuilds after a enabling/disabling shared storage (progress shown in a notification)
-- Facilitates whether to use shared or notshared user (shown as "Local only" and "On the mesh" in the UI)
