@@ -13,7 +13,10 @@
 { self, ... }:
 
 {
-  losos.sharingMyStorage = true;
+  # Non-tunable defaults: the losos-ctl backend (the admin app's privileged
+  # bridge) and the native-Forgejo enable flag (only consulted in native mode).
+  # The user-tunable losos.* options (sharing, modes, hostname, https, gpu,
+  # AIO ports) live in modules/overrides.nix so the admin app can rewrite them.
   losos.forgejo.enable = true;
   losos.backend.package = self.packages.x86_64-linux.losos-ctl;
 }

@@ -24,10 +24,12 @@
   # without a reboot.
   services.userborn.enable = true;
 
-  # Hostname + mDNS: the appliance is reachable on the LAN as `mattbox.local`
-  # via Avahi/mDNS. (`networking.hostName` is the bare label — Avahi publishes
-  # the `<hostname>.local` form. Keep it ≤15 chars for NetBIOS/mDNS safety.)
-  networking.hostName = "mattbox";
+  # Hostname + mDNS: the appliance is reachable on the LAN as `<hostName>.local`
+  # via Avahi/mDNS. (`networking.hostName` is the bare label, routed through the
+  # losos.hostName option so the admin app can change it — see modules/overrides.nix;
+  # Avahi publishes the `<hostname>.local` form. Keep it ≤15 chars for NetBIOS/mDNS
+  # safety.)
+  networking.hostName = config.losos.hostName;
   networking.networkmanager.enable = true;
 
   # Publish `mattbox.local` and resolve other `.local` names on the LAN via

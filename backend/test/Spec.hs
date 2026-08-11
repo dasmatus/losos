@@ -16,8 +16,10 @@ import Lib
     RebuildState (..),
     State (..),
     TestState (..),
+    cmdApply,
     cmdChange,
     cmdRebuildDone,
+    cmdSettings,
     cmdStatus,
     initTest,
     runTest,
@@ -94,7 +96,50 @@ tests =
         ],
       -- sanity: the IO-instance command names still resolve (compile-time check)
       testCase "state command is reachable in IO" $
-        assertBool "config present" (any (T.isInfixOf "losos.sharingMyStorage") (tsConfig initTest))
+        assertBool "config present" (any (T.isInfixOf "losos.sharingMyStorage") (tsConfig initTest)),
+      testGroup
+        "settings"
+        [ testCase "reports defaults from a fresh overrides file" $ do
+            let out = tsOutput (step initTest cmdSettings)
+            assertBool "sharing true" (any (T.isInfixOf "\"sharingMyStorage\":true") out)
+            assertBool "nextcloudMode aio" (any (T.isInfixOf "\"nextcloudMode\":\"aio\"") out)
+            assertBool "forgejoMode container" (any (T.isInfixOf "\"forgejoMode\":\"container\"") out)
+            assertBool "hostName mattbox" (any (T.isInfixOf "\"hostName\":\"mattbox\"") out)
+            assertBool "aioApachePort 11000" (any (T.isInfixOf "\"aioApachePort\":11000") out)
+        ],
+      testGroup
+        "apply"
+        [ testCase "writes the nix code, marks building, spawns, emits job" $ do
+            let code =
+                  T.unlines
+                    [ "{ ... }:",
+                      "",
+                      "{",
+                      "  losos.sharingMyStorage = false;",
+                      "  losos.hostName = \"box2\";",
+                      "}"
+                    ]
+                st = step initTest (cmdApply code)
+            assertBool "config rewritten to the applied lines" (any (T.isInfixOf "losos.hostName = \"box2\";") (tsConfig st))
+            assertBool "old sharing line gone" (not (any (T.isInfixOf "losos.sharingMyStorage = true;") (tsConfig st)))
+            assertBool "rebuild spawned" (tsSpawned st)
+            assertBool "emits job" (any (T.isInfixOf "\"job\":\"job-0\"") (tsOutput st)),
+          testCase "settings reflects applied values after apply" $ do
+            let code =
+                  T.unlines
+                    [ "{ ... }:",
+                      "{",
+                      "  losos.sharingMyStorage = false;",
+                      "  losos.hostName = \"box2\";",
+                      "  losos.nextcloud.mode = \"native\";",
+                      "  losos.aio.apachePort = 12345;",
+                      "}"
+                    ]
+                st = step (step initTest (cmdApply code)) cmdSettings
+            assertBool "hostName box2" (any (T.isInfixOf "\"hostName\":\"box2\"") (tsOutput st))
+            assertBool "nextcloudMode native" (any (T.isInfixOf "\"nextcloudMode\":\"native\"") (tsOutput st))
+            assertBool "aioApachePort 12345" (any (T.isInfixOf "\"aioApachePort\":12345") (tsOutput st))
+        ]
     ]
 
 main :: IO ()

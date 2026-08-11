@@ -34,6 +34,22 @@
         "sharing": { "type": "boolean", "description": "True iff mode==mesh (mirrors losos.sharingMyStorage)." }
       }
     },
+    "settingsResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The user-tunable losos.* options parsed out of modules/overrides.nix (line-based). Returned by `settings`; consumed by the admin app for first paint.",
+      "required": ["sharingMyStorage", "nextcloudMode", "forgejoMode", "hostName", "https", "gpuEnable", "aioApachePort", "aioInterfacePort"],
+      "properties": {
+        "sharingMyStorage": { "type": "boolean" },
+        "nextcloudMode": { "type": "string", "enum": ["native", "aio"] },
+        "forgejoMode": { "type": "string", "enum": ["native", "container"] },
+        "hostName": { "type": "string", "description": "System hostname; Avahi publishes <hostName>.local." },
+        "https": { "type": "boolean" },
+        "gpuEnable": { "type": "boolean" },
+        "aioApachePort": { "type": "integer", "minimum": 1024, "maximum": 65535 },
+        "aioInterfacePort": { "type": "integer", "minimum": 1024, "maximum": 65535 }
+      }
+    },
     "changeResponse": {
       "type": "object",
       "additionalProperties": false,
@@ -77,6 +93,15 @@
     "status": {
       "description": "`losos-ctl status --json` — rebuild progress, polled by the PHP app ~every 2s. stdout: statusResponse.",
       "stdout": { "$ref": "#/$defs/statusResponse" }
+    },
+    "settings": {
+      "description": "`losos-ctl settings --json` — the user-tunable losos.* options parsed from modules/overrides.nix. stdout: settingsResponse.",
+      "stdout": { "$ref": "#/$defs/settingsResponse" }
+    },
+    "apply": {
+      "description": "`losos-ctl apply` — read Nix code (a full modules/overrides.nix body) from stdin, validate it references losos.* and is a module body, atomically overwrite modules/overrides.nix, mark a rebuild as building, spawn a detached nixos-rebuild switch, and emit the job id on stdout. The PHP admin app generates the Nix code from the form and pipes it in. Non-zero exit + stderr on validation failure (so the PHP layer raises BackendException).",
+      "stdin": { "type": "string", "description": "The full overrides.nix body the admin app generated." },
+      "stdout": { "$ref": "#/$defs/changeResponse" }
     },
     "rebuild-done": {
       "description": "`losos-ctl rebuild-done <exitcode> <job>` — internal, invoked by the detached rebuild shell after nixos-rebuild. Updates stateFile.rebuild to done/failed only if <job> matches the currently-tracked rebuild's id (a stale completion from an older, superseded rebuild is ignored). No stdout contract.",

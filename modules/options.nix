@@ -27,6 +27,15 @@
       '';
     };
 
+    # System hostname (the bare label; Avahi publishes <hostName>.local on the
+    # LAN). Routed through an option so the losos admin app can set it via the
+    # override file; networking.hostName reads from here.
+    hostName = lib.mkOption {
+      type = lib.types.str;
+      default = "mattbox";
+      description = "System hostname. Avahi publishes <hostName>.local via mDNS.";
+    };
+
     # Original "share my storage" flag from defaults.nix, now a real option.
     sharingMyStorage = lib.mkOption {
       type = lib.types.bool;

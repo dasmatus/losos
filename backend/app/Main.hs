@@ -20,11 +20,15 @@ module Main (main) where
 
 import Lib
   ( Mode (..),
+    cmdApply,
     cmdChange,
     cmdRebuildDone,
+    cmdSettings,
     cmdState,
     cmdStatus,
+    validateApply,
   )
+import qualified Data.Text.IO as TIO
 import Data.Text (Text)
 import Options.Applicative
   ( Parser,
@@ -46,12 +50,16 @@ import Options.Applicative
     subparser,
     (<**>),
     )
+import System.Exit (exitFailure)
+import System.IO (hPutStrLn, stderr)
 
 data Command
   = CmdState
   | CmdChange Mode
   | CmdStatus
   | CmdRebuildDone Int Text
+  | CmdSettings
+  | CmdApply
 
 -- | A no-op `--json` switch accepted for contract parity (output is always JSON).
 jsonFlag :: Parser ()
@@ -62,6 +70,15 @@ stateP = const CmdState <$> jsonFlag
 
 statusP :: Parser Command
 statusP = const CmdStatus <$> jsonFlag
+
+-- | `settings` — current losos.* options parsed from overrides.nix.
+settingsP :: Parser Command
+settingsP = const CmdSettings <$> jsonFlag
+
+-- | `apply` — read Nix code from stdin, validate, write overrides.nix, rebuild.
+-- No options; the payload is the whole stdin.
+applyP :: Parser Command
+applyP = pure CmdApply
 
 -- | Parse `--mode local|mesh` at parse time, so 'cmdChange' gets a validated
 -- 'Mode' and never has to handle an invalid one.
@@ -92,6 +109,8 @@ commands =
       [ command "state" (info stateP (progDesc "print current mode + sharing flag")),
         command "change" (info changeP (progDesc "apply a new mode and trigger a rebuild")),
         command "status" (info statusP (progDesc "print rebuild progress")),
+        command "settings" (info settingsP (progDesc "print the current losos.* settings from overrides.nix")),
+        command "apply" (info applyP (progDesc "apply Nix config from stdin (rewrites overrides.nix + rebuilds)")),
         command "rebuild-done" (info rebuildDoneP (progDesc "record terminal rebuild status (internal)"))
       ]
 
@@ -103,6 +122,14 @@ main = do
     CmdChange m -> cmdChange m
     CmdStatus -> cmdStatus
     CmdRebuildDone c j -> cmdRebuildDone c j
+    CmdSettings -> cmdSettings
+    CmdApply -> do
+      input <- TIO.getContents
+      case validateApply input of
+        Left err -> do
+          hPutStrLn stderr ("losos-ctl apply: " <> T.unpack err)
+          exitFailure
+        Right code -> cmdApply code
 
 parserInfo :: ParserInfo Command
 parserInfo = info (commands <**> helper) (progDesc "losos appliance control backend")

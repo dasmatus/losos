@@ -4,6 +4,7 @@
 {-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
@@ -36,6 +37,9 @@ module Lib
     cmdChange,
     cmdStatus,
     cmdRebuildDone,
+    cmdSettings,
+    cmdApply,
+    validateApply,
     -- * Types
     Mode (..),
     modeText,
@@ -43,11 +47,15 @@ module Lib
     RebuildState (..),
     Rebuild (..),
     State (..),
+    Settings (..),
+    defaultSettings,
+    parseSettings,
+    defaultOverridesNix,
   )
 where
 
 import Control.Exception (SomeException, try)
-import Control.Monad (void)
+import Control.Monad (guard, void)
 import Control.Monad.State.Strict
   ( MonadState,
     StateT,
@@ -59,8 +67,10 @@ import Data.Aeson (FromJSON (..), ToJSON (..), object, (.:), (.:?), (.!=), (.=))
 import qualified Data.Aeson as A
 import qualified Data.ByteString.Lazy as BL
 import Data.Functor.Identity (Identity, runIdentity)
+import Data.List (find)
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
+import Text.Read (readMaybe)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 import qualified Data.Text.IO as TIO
@@ -73,7 +83,6 @@ import System.Directory
     renamePath,
   )
 import System.Environment (lookupEnv)
-import System.Exit (exitFailure)
 import System.FilePath ((</>))
 import qualified System.Process as P
 import System.Posix.Process (getProcessID)
@@ -175,6 +184,135 @@ jsonLn :: A.Value -> BL.ByteString
 jsonLn v = A.encode v <> BL.singleton 10
 
 -- ──────────────────────────────────────────────────────────────────────────
+-- Settings — the user-tunable losos.* options, as written to overrides.nix
+-- ──────────────────────────────────────────────────────────────────────────
+
+-- | The set of losos.* options the admin app can tune. Stored as Nix
+-- assignments in modules/overrides.nix; `settings` parses them back out
+-- line-based (the same technique `change` uses for sharingMyStorage) so the UI
+-- can show current values without evaluating Nix.
+data Settings = Settings
+  { setSharingMyStorage :: Bool
+  , setNextcloudMode :: Text -- "native" | "aio"
+  , setForgejoMode :: Text   -- "native" | "container"
+  , setHostName :: Text
+  , setHttps :: Bool
+  , setGpuEnable :: Bool
+  , setAioApachePort :: Int
+  , setAioInterfacePort :: Int
+  }
+  deriving (Eq, Show)
+
+-- | Mirrors the option defaults in modules/options.nix + the committed
+-- modules/overrides.nix, so a missing/corrupt override file still reports the
+-- out-of-box values.
+defaultSettings :: Settings
+defaultSettings =
+  Settings
+    { setSharingMyStorage = True,
+      setNextcloudMode = "aio",
+      setForgejoMode = "container",
+      setHostName = "mattbox",
+      setHttps = False,
+      setGpuEnable = True,
+      setAioApachePort = 11000,
+      setAioInterfacePort = 8000
+    }
+
+instance ToJSON Settings where
+  toJSON s =
+    object
+      [ "sharingMyStorage" .= setSharingMyStorage s,
+        "nextcloudMode" .= setNextcloudMode s,
+        "forgejoMode" .= setForgejoMode s,
+        "hostName" .= setHostName s,
+        "https" .= setHttps s,
+        "gpuEnable" .= setGpuEnable s,
+        "aioApachePort" .= setAioApachePort s,
+        "aioInterfacePort" .= setAioInterfacePort s
+      ]
+
+-- | The default overrides.nix body, returned by the IO reader when the file is
+-- missing so `settings` always reports sensible values. Mirrors
+-- modules/overrides.nix exactly.
+defaultOverridesNix :: Text
+defaultOverridesNix =
+  T.unlines
+    [ "{ ... }:",
+      "",
+      "{",
+      "  losos.sharingMyStorage = true;",
+      "  losos.nextcloud.mode = \"aio\";",
+      "  losos.forgejo.mode = \"container\";",
+      "  losos.hostName = \"mattbox\";",
+      "  losos.nextcloud.https = false;",
+      "  losos.gpu.enable = true;",
+      "  losos.aio.apachePort = 11000;",
+      "  losos.aio.interfacePort = 8000;",
+      "}"
+    ]
+
+-- | Extract the raw value text of `losos.<key> = <value>;` from a Nix module
+-- body (line-based). Nothing if no such assignment line exists. The first
+-- non-comment line containing both `losos.<key>` and `=` wins.
+lookupNix :: Text -> Text -> Maybe Text
+lookupNix key content = do
+  let needle = "losos." <> key
+  line <-
+    find
+      ( \l ->
+          needle `T.isInfixOf` l
+            && "=" `T.isInfixOf` l
+            && not (T.isPrefixOf "#" (T.strip l))
+      )
+      (T.lines content)
+  let afterEq = T.drop 1 (snd (T.breakOn "=" line))
+      val = T.strip (T.dropWhileEnd (== ';') (T.strip afterEq))
+  pure val
+
+-- | Parse the full Settings from an overrides.nix body, falling back to
+-- `defaultSettings` field-by-field when an assignment is absent.
+parseSettings :: Text -> Settings
+parseSettings content =
+  Settings
+    { setSharingMyStorage = readBoolDef (setSharingMyStorage defaultSettings) (lookupNix "sharingMyStorage" content),
+      setNextcloudMode = readStrDef (setNextcloudMode defaultSettings) (lookupNix "nextcloud.mode" content),
+      setForgejoMode = readStrDef (setForgejoMode defaultSettings) (lookupNix "forgejo.mode" content),
+      setHostName = readStrDef (setHostName defaultSettings) (lookupNix "hostName" content),
+      setHttps = readBoolDef (setHttps defaultSettings) (lookupNix "nextcloud.https" content),
+      setGpuEnable = readBoolDef (setGpuEnable defaultSettings) (lookupNix "gpu.enable" content),
+      setAioApachePort = readIntDef (setAioApachePort defaultSettings) (lookupNix "aio.apachePort" content),
+      setAioInterfacePort = readIntDef (setAioInterfacePort defaultSettings) (lookupNix "aio.interfacePort" content)
+    }
+
+readBoolDef :: Bool -> Maybe Text -> Bool
+readBoolDef d = \case
+  Nothing -> d
+  Just v -> case T.strip v of
+    "true" -> True
+    "false" -> False
+    _ -> d
+
+readStrDef :: Text -> Maybe Text -> Text
+readStrDef d = \case
+  Nothing -> d
+  Just v -> stripQuotes (T.strip v)
+
+readIntDef :: Int -> Maybe Text -> Int
+readIntDef d = \case
+  Nothing -> d
+  Just v -> case readMaybe (T.unpack (T.strip v)) of
+    Just n -> n
+    Nothing -> d
+
+stripQuotes :: Text -> Text
+stripQuotes s =
+  let s' = T.strip s
+   in if T.length s' >= 2 && T.head s' == '"' && T.last s' == '"'
+        then T.init (T.tail s')
+        else s'
+
+-- ──────────────────────────────────────────────────────────────────────────
 -- The 'Losos' effect type class
 -- ──────────────────────────────────────────────────────────────────────────
 
@@ -187,6 +325,12 @@ class Monad m => Losos m where
   saveState :: State -> m ()
   -- | Rewrite the `losos.sharingMyStorage = <bool>;` line in the flake config.
   rewriteConfig :: Bool -> m ()
+  -- | Overwrite the whole overrides.nix body with the Nix code received from
+  -- the admin app (the `apply` command). Atomic on POSIX (temp + rename).
+  writeOverrides :: Text -> m ()
+  -- | Read the overrides.nix body (defaults to 'defaultOverridesNix' if the
+  -- file is missing), so `settings` can parse current values.
+  readOverrides :: m Text
   -- | Spawn the detached nixos-rebuild + watcher for the given job id. The job
   -- id is threaded into the watcher's `rebuild-done <ec> <job>` call so a stale
   -- completion (from an older, superseded rebuild) can be detected and ignored
@@ -214,6 +358,49 @@ cmdState = do
         [ "mode" .= modeText (stMode s),
           "sharing" .= stSharing s
         ]
+
+-- | `settings --json`: the user-tunable losos.* options parsed out of
+-- overrides.nix, for the admin app's first paint. (Rebuild status is fetched
+-- separately via `status`; this is just the config snapshot.)
+cmdSettings :: Losos m => m ()
+cmdSettings = do
+  content <- readOverrides
+  let s = parseSettings content
+  emit $ jsonLn $ A.toJSON s
+
+-- | Validate the Nix code the admin app wants to apply. Returns Left errmsg
+-- on rejection. Kept minimal on purpose — losos-ctl is invoked through a
+-- sudoers rule pinned to this binary, and nixos-rebuild itself will reject a
+-- syntactically broken file — so here we only guard against the obviously
+-- empty / off-target cases that would otherwise silently rewrite the config
+-- with garbage.
+validateApply :: Text -> Either Text Text
+validateApply t
+  | T.null (T.strip t) = Left "empty nix config"
+  | not (T.isInfixOf "losos." t) = Left "nix config must reference losos.* options"
+  | not (T.isInfixOf "{" t) = Left "nix config must be a module body (missing '{')"
+  | otherwise = Right t
+
+-- | `apply` (stdin = Nix code from the admin app): validate, overwrite
+-- overrides.nix, mark a rebuild as building, spawn a detached nixos-rebuild,
+-- emit the job id. The CLI (Main) validates and exits non-zero on Left so the
+-- PHP layer raises BackendException; this command receives already-validated
+-- code.
+cmdApply :: Losos m => Text -> m ()
+cmdApply nixCode = do
+  writeOverrides nixCode
+  job <- nextJobId
+  s0 <- loadState
+  let rb =
+        Rebuild
+          { rbJob = job,
+            rbState = Building,
+            rbProgress = 0,
+            rbMessage = "rebuild started"
+          }
+  saveState s0 {stRebuild = Just rb}
+  spawnRebuild job
+  emit $ jsonLn $ object ["job" .= job]
 
 -- | `change --mode <local|mesh>`: rewrite the flake's sharingMyStorage line,
 -- mark a rebuild as building, spawn a detached nixos-rebuild, emit the job id.
@@ -305,6 +492,8 @@ instance Losos IO where
   loadState = ioReadState
   saveState = ioWriteState
   rewriteConfig = ioRewriteConfig
+  writeOverrides = ioWriteOverrides
+  readOverrides = ioReadOverrides
   spawnRebuild = ioSpawnRebuild
   rebuildLogTail = ioLogTail
   nextJobId = ioNewJobId
@@ -322,6 +511,12 @@ rebuildLogPath = (</> "rebuild.log") <$> stateDir
 
 configFilePath :: IO FilePath
 configFilePath = fromMaybe "/etc/nixos/defaults.nix" <$> lookupEnv "LOSOS_CONFIG"
+
+-- | The overrides.nix the admin app rewrites via `apply` (and `settings`
+-- parses). Defaults to the committed module under the persisted flake; override
+-- with LOSOS_OVERRIDES for testing off-box.
+overridesFilePath :: IO FilePath
+overridesFilePath = fromMaybe "/etc/nixos/modules/overrides.nix" <$> lookupEnv "LOSOS_OVERRIDES"
 
 flakeRef :: IO String
 flakeRef = fromMaybe "/etc/nixos#install" <$> lookupEnv "LOSOS_FLAKE"
@@ -386,6 +581,25 @@ injectLine sharing ls =
   where
     boolText True = "true"
     boolText False = "false"
+
+-- | Overwrite overrides.nix atomically (temp sibling + rename), like
+-- ioWriteState. A bare truncate-then-write could leave the file half-written
+-- on power loss, and the next eval would fail mid-rebuild.
+ioWriteOverrides :: Text -> IO ()
+ioWriteOverrides nixCode = do
+  path <- overridesFilePath
+  let tmp = path <> ".tmp"
+  TIO.writeFile tmp nixCode
+  renamePath tmp path
+
+-- | Read overrides.nix. A missing file (fresh box, or LOSOS_OVERRIDES pointing
+-- nowhere) yields the default body so `settings` still reports out-of-box
+-- values instead of crashing the admin UI.
+ioReadOverrides :: IO Text
+ioReadOverrides = do
+  path <- overridesFilePath
+  exists <- doesFileExist path
+  if not exists then pure defaultOverridesNix else TIO.readFile path
 
 ioNewJobId :: IO Text
 ioNewJobId = do
@@ -488,16 +702,12 @@ data TestState = TestState
     tsOutput :: [Text]
   }
 
--- | A convenient starting world: a minimal config block + default state.
+-- | A convenient starting world: the default overrides.nix body + default state.
 initTest :: TestState
 initTest =
   TestState
     { tsState = defaultState,
-      tsConfig =
-        [ "{ ... }",
-          "  losos.sharingMyStorage = true;",
-          "}"
-        ],
+      tsConfig = T.lines defaultOverridesNix,
       tsLog = [],
       tsJobCounter = 0,
       tsSpawned = False,
@@ -511,6 +721,8 @@ instance Losos TestM where
   loadState = gets tsState
   saveState s = modify' (\st -> st {tsState = s})
   rewriteConfig sharing = modify' (\st -> st {tsConfig = injectLine sharing (tsConfig st)})
+  writeOverrides t = modify' (\st -> st {tsConfig = T.lines t})
+  readOverrides = gets (T.unlines . tsConfig)
   spawnRebuild _ = modify' (\st -> st {tsSpawned = True})
   rebuildLogTail = gets (\st -> case filter (not . T.null) (map T.strip (tsLog st)) of
       [] -> ""

@@ -68,6 +68,7 @@
             ./modules/boot.nix
             ./modules/services.nix
             ./modules/containers.nix
+            ./modules/overrides.nix
             ./modules/updates.nix
             ./modules/defaults.nix
           ];
