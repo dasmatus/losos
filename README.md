@@ -14,7 +14,10 @@ TPM2 when the machine has one, or a random keyfile when it does not.
 | `flake/devshell.nix` | `mkShell` dev environment: full Haskell stdlib + PHP tooling + `occ`, host fish config minus Zellij |
 | `modules/options.nix` | `losos.*` option declarations (incl. `losos.backend.package`) |
 | `modules/configuration.nix` | Networking, locale, packages, users |
-| `modules/disko.nix` | Disk layout: ESP + LUKS/btrfs `/persist`, tmpfs `/` |
+| `modules/disko.nix` | Disk layout: every drive → LVM PV → `persist-vg` → LUKS/btrfs `/persist`; tmpfs `/` |
+| `modules/installer.nix` | Packages `losos-install` and bakes the flake source into the ISO |
+| `install/losos-install.sh` | The minimal auto-installer: detect drives → LVM via disko → nixos-install |
+| `tests/install.nix` | nixos-test-vms config that runs the installer against 3 VM disks |
 | `modules/boot.nix` | systemd-boot, systemd initrd, TPM2, keyfile secret |
 | `modules/impermanence.nix` | What survives reboot (bind-mounted from `/persist`) |
 | `modules/services.nix` | Nextcloud (`notshared`) + Tahoe-LAFS (`shared`) + the losos app + sudoers grant |
@@ -30,26 +33,59 @@ nix build .#nixosConfigurations.iso.config.system.build.isoImage
 # write the result ISO to a USB stick, boot it on the target machine
 ```
 
-## First install
+The ISO bakes the flake source at `/etc/losos/flake-source` and ships a
+`losos-install` command that does the whole first install unattended (see
+"First install" below).
+
+## First install (auto-installer)
 
 1. Boot the `iso` on the target machine.
-2. If the machine has **no TPM2**, set `losos.tpm.enable = false` (edit
-   `modules/options.nix` default or override in `modules/configuration.nix`) and generate the
-   keyfile **before** formatting. **Back it up** (e.g. to a USB stick) — you'll
-   need the exact bytes again after first boot:
+2. Run the installer — it finds every fixed, non-removable disk that isn't
+   already mounted, merges them all into one LVM volume group via the disko
+   layout in `modules/disko.nix`, formats it, installs the `install` system,
+   and lays the flake down at `/persist/etc/nixos` as a git repo so the box
+   can auto-upgrade:
+   ```sh
+   sudo losos-install
+   ```
+   By default this uses a random keyfile (unattended). Add `--tpm` to use
+   TPM2 instead (you'll be prompted for a passphrase at format time, then
+   enroll TPM2 after first boot — see below). Override drive auto-detection
+   with `--drives /dev/sdb,/dev/sdc`, or stop after disko with `--no-install`.
+3. Reboot into the installed system.
+
+The installer writes the detected drive list to `modules/install-target.nix`
+(a file `flake.nix` imports only when it exists — *not* to `modules/overrides.nix`,
+which `losos-ctl apply` rewrites wholesale from the admin form) and commits
+it into the local `/persist/etc/nixos` git repo, so the default
+`git+file:///etc/nixos` auto-upgrade keeps seeing it.
+
+### Manual install (fallback)
+
+If you'd rather drive disko by hand:
+
+1. Set `losos.targetDrives` (in `modules/install-target.nix` or a host
+   override) if the disks aren't `/dev/sda` — list several to merge their
+   capacity into one LVM pool.
+2. If the machine has **no TPM2**, generate the keyfile **before** formatting
+   and **back it up** (you'll need the exact bytes again after first boot):
    ```sh
    sudo install -d /etc/keys
    sudo dd if=/dev/urandom of=/etc/keys/persist-keyfile bs=512 count=8
    sudo chmod 600 /etc/keys/persist-keyfile
    cp /etc/keys/persist-keyfile /run/media/$USER/usb-stick/persist-keyfile  # backup
    ```
-   If the machine **has** TPM2, leave `losos.tpm.enable = true` (default); you'll
-   be prompted for a passphrase during format and enroll TPM2 afterwards.
-3. Set `losos.targetDrive` if the disk is not `/dev/sda` (e.g. `/dev/nvme0n1`).
-4. Format and install using disko:
+3. Format and install using disko:
    ```sh
    sudo disko --mode destroy,format,mount --flake .#install
    sudo nixos-install --flake .#install --no-root-passwd
+   ```
+4. Lay the flake at `/persist/etc/nixos` as a git repo (so auto-upgrade works):
+   ```sh
+   sudo cp -a /etc/losos/flake-source /mnt/persist/etc/nixos
+   sudo cp /etc/keys/persist-keyfile /mnt/persist/etc/keys/persist-keyfile   # non-TPM only
+   cd /mnt/persist/etc/nixos && sudo git init && sudo git add -A \
+     && sudo git -c user.email=losos@local -c user.name=losos commit -m "losos install"
    ```
 5. Create the Nextcloud admin password file (persisted via `/var`):
    ```sh
@@ -58,13 +94,25 @@ nix build .#nixosConfigurations.iso.config.system.build.isoImage
    sudo chmod 600 /mnt/persist/var/secrets/nextcloud-admin-pass
    ```
 
+## Test the installer in VMs
+
+```sh
+nix build .#checks.x86_64-linux.losos-install
+```
+
+`tests/install.nix` boots a VM with three empty disks (`/dev/vdb`, `/dev/vdc`,
+`/dev/vdd`) plus its own root on `/dev/vda`, runs `losos-install`, and asserts
+detection skips the VM root, disko merges all three disks into one LVM volume
+group `persist-vg`, the `persist` LV opens as LUKS and mounts as btrfs, and
+the ESP lands on the first target drive only.
+
 ## Enroll the TPM2 unlock (TPM machines only)
 
 After first boot into the installed system:
 
 ```sh
-sudo systemd-cryptenroll --tpm2-device=auto --tpm2-pcrs=0+7 /dev/sda2
-# adjust the device to your persist partition (the one holding the LUKS header)
+sudo systemd-cryptenroll --tpm2-device=auto --tpm2-pcrs=0+7 /dev/persist-vg/persist
+# /dev/persist-vg/persist is the logical volume holding the LUKS header
 ```
 
 The initrd then unlocks `/persist` via TPM2 (`crypttabExtraOpts =

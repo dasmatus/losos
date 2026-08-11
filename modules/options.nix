@@ -8,12 +8,21 @@
 
 {
   options.losos = {
-    # Block device disko should partition. Override per host if the install
-    # target is not /dev/sda (e.g. /dev/nvme0n1).
-    targetDrive = lib.mkOption {
-      type = lib.types.str;
-      default = "/dev/sda";
-      description = "Block device to partition with the disko layout.";
+    # Block devices disko should pool into the LVM volume group. The installer
+    # (install/losos-install.sh) auto-detects every fixed disk and writes the
+    # list here via modules/install-target.nix; override per host when the
+    # install targets are not /dev/sda (e.g. [ "/dev/nvme0n1" ]), or list
+    # several drives to merge them into one logical pool. disko.nix turns each
+    # entry into a PV feeding the single `persist-vg`.
+    targetDrives = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ "/dev/sda" ];
+      defaultText = lib.literalExpression ''[ "/dev/sda" ]'';
+      description = ''
+        Block devices to pool into the LVM volume group with disko. The first
+        entry also carries the ESP. One drive is fine (a VG with a single PV);
+        list several to merge their capacity into one logical volume.
+      '';
     };
 
     # TPM-vs-keyfile switch for unlocking the encrypted /persist partition.
