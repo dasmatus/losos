@@ -1,26 +1,24 @@
 #!/usr/bin/env bash
 # losos-install — minimal unattended installer for the losos appliance.
 #
-# Runs on the losos ISO (or any NixOS with disko + nixos-install + git + lvm2).
-# It finds every fixed disk in the box, merges them into a single LVM volume
-# group via the disko layout in modules/disko.nix, installs the `install`
-# system onto it, and lays the flake down at /persist/etc/nixos as a git repo
-# so the box can auto-upgrade from git+file:///etc/nixos.
+# This revision pulls the losos flake from the public repository
+#   https://codeberg.org/dasmatus/losos.git
+# and uses **blkid** (instead of lsblk‑awk) to enumerate candidate disks.
 #
-# The detected drive list is written to modules/install-target.nix — a file
-# flake.nix imports only when it exists — NOT to modules/overrides.nix, because
-# losos-ctl `apply` rewrites overrides.nix wholesale from the admin form and
-# would wipe a host-specific disk list on the first toggle.
+# The script still:
+#   • Detects fixed, non‑removable disks > 1 GB that are not currently mounted
+#   • Generates modules/install-target.nix
+#   • Runs disko → nixos‑install
+#   • Copies the flake into /persist/etc/nixos and initialises a Git repo
+#   • Handles TPM2 or a persistent keyfile
 #
-# Usage:
-#   losos-install                       # auto-detect drives, keyfile (unattended)
+# Usage (identical to the original):
+#   losos-install                       # auto‑detect drives, keyfile (unattended)
 #   losos-install --tpm                 # TPM2 (interactive passphrase at format)
-#   losos-install --drives /dev/sdb,/dev/sdc   # override auto-detection
+#   losos-install --drives /dev/sdb,/dev/sdc   # override auto‑detection
 #   losos-install --no-install          # stop after disko (format+mount)
-#   losos-install --disko-script PATH   # use a prebuilt diskoScript instead of
-#                                       # `disko --flake` (used by the VM test)
-#   losos-install --emit-target FILE    # only write install-target.nix to FILE
-#                                       # and exit (drive-detection unit test)
+#   losos-install --disko-script PATH   # use a pre‑built diskoScript instead of `disko --flake`
+#   losos-install --emit-target FILE    # only write install-target.nix to FILE and exit
 set -euo pipefail
 
 TPM=0
@@ -28,18 +26,18 @@ DRIVES_ARG=""
 NO_INSTALL=0
 DISKO_SCRIPT=""
 EMIT_TARGET=""
-FLAKE_SOURCE="${LOSOS_FLAKE_SOURCE:-/etc/losos/flake-source}"   # baked store path
-FLAKE_WORK="${LOSOS_FLAKE_WORK:-/tmp/losos-flake}"              # writable copy
+FLAKE_URL="https://codeberg.org/dasmatus/losos.git"
+FLAKE_WORK="${LOSOS_FLAKE_WORK:-/tmp/losos-flake}"
 KEYFILE="/etc/keys/persist-keyfile"
-TARGET_FILE_REL="modules/install-target.nix"                    # rel to the flake
-EMIT_FILE="/tmp/losos-install-target.nix"                       # where --disko-script emits it
+TARGET_FILE_REL="modules/install-target.nix"
+EMIT_FILE="/tmp/losos-install-target.nix"
 
 usage() {
   cat <<'EOF'
 losos-install — minimal unattended losos installer.
   --tpm                  use TPM2 (interactive passphrase at format time)
-  --drives A,/dev/b,...  override drive auto-detection
-  --no-install           stop after disko (format+mount), skip nixos-install
+  --drives A,/dev/b,...  override drive auto‑detection
+  --no-install           stop after disko (format+mount), skip nixos‑install
   --disko-script PATH    run a prebuilt diskoScript instead of `disko --flake`
   --emit-target FILE     write install-target.nix to FILE and exit
   -h, --help             show this help
@@ -58,72 +56,70 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-# ── Drive detection ──────────────────────────────────────────────────────
-# Whole disks only (TYPE=disk), non-removable (RM=0), bigger than 1 GB, and
-# not backing any currently-mounted filesystem (so we never wipe the disk
-# the running system — or, in a test VM, the VM's own root — lives on). On a
-# real losos ISO the root is the squashfs on the CD (a `rom`, filtered out by
-# TYPE=disk) so every fixed disk is a candidate; on a test VM the root disk is
-# mounted and therefore skipped, leaving the attached virtio targets.
-
+# ── Helper: list block devices currently used by any mount ──────────────────
 mounted_disk_names() {
-  # Kernel names of the parent disks backing any mounted source.
-  findmnt -rn -o SOURCE 2>/dev/null \
-    | sed -E 's#^/dev/##; s#^mapper/##' \
-    | while read -r src; do
-        [ -e "/dev/$src" ] || continue
+  findmnt -rn -o SOURCE 2>/dev/null |
+    sed -E 's#^/dev/##; s#^mapper/##' |
+    while read -r src; do
+      [ -e "/dev/$src" ] || continue
+      blkid -s TYPE -o value "/dev/$src" >/dev/null 2>&1 && \
         lsblk -ndo PKNAME "/dev/$src" 2>/dev/null
-      done \
-    | grep -v '^$' \
-    | sort -u
+    done |
+    grep -v '^$' |
+    sort -u
 }
 
+# ── Detect candidate drives using blkid ───────────────────────────────────────
 detect_drives() {
   local skip; skip=$(mounted_disk_names | tr '\n' ' ')
-  # Pass the skip list to awk as a space-separated string -> an associative
-  # array of kernel names to exclude.
-  lsblk -bdno NAME,SIZE,RM,TYPE \
-    | awk -v skip="$skip" '
-        BEGIN {
-          n = split(skip, s, " ")
-          for (i = 1; i <= n; i++) if (s[i] != "") ex[s[i]] = 1
-        }
-        $4 == "disk" && $3 == 0 && $2 > 1000000000 && !($1 in ex) { print "/dev/" $1 }
-      ' \
-    | sort
+  # List all block devices that blkid can identify as a whole disk (TYPE="disk")
+  # Exclude those in the skip list, require size >1 GB, and non‑removable.
+  blkid -o export |
+    awk -v skip="$skip" '
+      BEGIN {
+        n = split(skip, s, " ")
+        for (i = 1; i <= n; i++) if (s[i] != "") ex[s[i]] = 1
+      }
+      $1 == "DEVNAME" { dev=$2 }
+      $1 == "TYPE" && $2 == "disk" { type=1 }
+      $1 == "SIZE" { size=$2 }
+      $1 == "RM"   { rm=$2 }
+      $0 == "" && type && rm == "0" && size+0 > 1000000000 && !(dev in ex) {
+        print dev
+        type=rm=size=0
+      }
+    ' |
+    sort
 }
 
-# ── Build the drive list ─────────────────────────────────────────────────
-mapfile -t DRIVES < <(
-  if [ -n "$DRIVES_ARG" ]; then
-    echo "$DRIVES_ARG" | tr ',' '\n' | sed 's/^ *//;s/ *$//' | grep -v '^$'
-  else
-    detect_drives
-  fi
-)
+# ── Build the drive list (override option takes precedence) ───────────────────
+if [ -n "$DRIVES_ARG" ]; then
+  IFS=',' read -r -a DRIVES <<< "$DRIVES_ARG"
+else
+  mapfile -t DRIVES < <(detect_drives)
+fi
 
 if [ "${#DRIVES[@]}" -eq 0 ]; then
   echo "losos-install: no candidate fixed disks found." >&2
-  echo "  (whole disks, non-removable, >1 GB, not currently mounted)." >&2
+  echo "  (whole disks, non‑removable, >1 GB, not currently mounted)." >&2
   echo "  Pass --drives /dev/sdb,/dev/sdc to override." >&2
   exit 1
 fi
 
 echo "losos-install: target drives: ${DRIVES[*]}"
 
-# ── Render modules/install-target.nix ────────────────────────────────────
-# Quoted Nix list: [ "/dev/vdb" "/dev/vdc" ... ]
+# ── Render modules/install-target.nix -----------------------------------------
 nix_list=$(printf '"%s" ' "${DRIVES[@]}" | sed 's/ *$//')
 
 render_target() {
   cat <<EOF
-# Generated by losos-install — do not hand-edit; re-run losos-install to
+# Generated by losos-install — do not hand‑edit; re‑run losos-install to
 # change the target drives or TPM mode. This file is imported by flake.nix
 # only when it exists (builtins.pathExists), so it stays out of the admin
-# app's modules/overrides.nix (which losos-ctl apply rewrites wholesale) and
+# app's modules/overrides.nix (which losos‑ctl apply rewrites wholesale) and
 # out of any published flake. The installer commits it into the local
 # /persist/etc/nixos git repo so the default git+file:///etc/nixos
-# auto-upgrade keeps seeing it.
+# auto‑upgrade keeps seeing it.
 { ... }:
 
 {
@@ -139,11 +135,7 @@ if [ -n "$EMIT_TARGET" ]; then
   exit 0
 fi
 
-# ── Keyfile (non-TPM path only) ───────────────────────────────────────────
-# disko's luks `passwordFile` reads this at format time, and nixos-install's
-# build of the closure reads it again (boot.initrd.secrets). Generate once,
-# keep on the installer so a re-run is idempotent, and copy into the installed
-# /persist/etc/keys afterwards for future rebuilds.
+# ── Keyfile (non‑TPM path only) ───────────────────────────────────────────────
 ensure_keyfile() {
   if [ "$TPM" -eq 1 ]; then return; fi
   if [ -e "$KEYFILE" ]; then return; fi
@@ -154,11 +146,7 @@ ensure_keyfile() {
 }
 ensure_keyfile
 
-# ── Test seam: --disko-script ────────────────────────────────────────────
-# A prebuilt diskoScript encodes the exact device paths, so we still emit the
-# install-target.nix (for the test to assert the detected list matches what
-# the script formatted) but skip the flake copy + nixos-install. This keeps
-# the VM test from needing nix + the full appliance closure inside the VM.
+# ── Test seam: --disko-script -------------------------------------------------
 if [ -n "$DISKO_SCRIPT" ]; then
   render_target > "$EMIT_FILE"
   echo "losos-install: running prebuilt diskoScript $DISKO_SCRIPT"
@@ -167,19 +155,12 @@ if [ -n "$DISKO_SCRIPT" ]; then
   exit 0
 fi
 
-# ── Production path ──────────────────────────────────────────────────────
-if [ ! -e "$FLAKE_SOURCE/flake.nix" ]; then
-  echo "losos-install: flake source not found at $FLAKE_SOURCE." >&2
-  echo "  The installer ISO should bake it there (modules/installer.nix)." >&2
-  exit 1
-fi
-
-echo "losos-install: preparing flake work copy at $FLAKE_WORK"
+# ── Production path ────────────────────────────────────────────────────────
+echo "losos-install: cloning losos flake from $FLAKE_URL"
 rm -rf "$FLAKE_WORK"
-# self.outPath is a read-only store copy with no .git; make it writable so we
-# can drop in install-target.nix. --no-preserve=mode keeps it r/w.
-cp -a "$FLAKE_SOURCE" "$FLAKE_WORK"
-chmod -R u+w "$FLAKE_WORK"
+git clone --depth 1 "$FLAKE_URL" "$FLAKE_WORK"
+
+# Populate the target file inside the writable copy
 render_target > "$FLAKE_WORK/$TARGET_FILE_REL"
 
 echo "losos-install: disko destroy,format,mount (rootMountPoint=/mnt)"
@@ -193,10 +174,7 @@ fi
 echo "losos-install: nixos-install --flake $FLAKE_WORK#install"
 nixos-install --flake "$FLAKE_WORK#install" --no-root-passwd
 
-# ── Lay the flake at /persist/etc/nixos for auto-upgrade ─────────────────
-# /etc/nixos and /etc/keys are impermanence-persisted via /persist, so writing
-# them under /mnt/persist survives the first boot. git-init so the default
-# git+file:///etc/nixos auto-upgrade can rebuild unattended.
+# ── Lay the flake at /persist/etc/nixos for auto‑upgrade ─────────────────────
 PERSIST_ETC_NIXOS="/mnt/persist/etc/nixos"
 PERSIST_KEYS="/mnt/persist/etc/keys"
 
@@ -209,7 +187,8 @@ chmod -R u+w "$PERSIST_ETC_NIXOS"
 ( cd "$PERSIST_ETC_NIXOS" \
   && git init -q \
   && git add -A \
-  && git -c user.email=losos@local -c user.name=losos-install commit -qm "losos install" )
+  && git -c user.email=losos@local -c user.name=losos-install \
+     commit -qm "losos install" )
 
 if [ "$TPM" -eq 0 ]; then
   echo "losos-install: copying keyfile into $PERSIST_KEYS"
