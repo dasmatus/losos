@@ -47,6 +47,7 @@ final class InMemoryConfig implements IConfig
 final class StubRunner implements CommandRunner
 {
     public array $lastArgv = [];
+    public ?string $lastStdin = null;
     public array $next = ['', '', 0];
 
     public function __construct(array $next = ['', '', 0])
@@ -54,9 +55,10 @@ final class StubRunner implements CommandRunner
         $this->next = $next;
     }
 
-    public function run(array $argv): array
+    public function run(array $argv, ?string $stdin = null): array
     {
         $this->lastArgv = $argv;
+        $this->lastStdin = $stdin;
         return $this->next;
     }
 }
@@ -129,6 +131,38 @@ class BackendServiceTest extends TestCase
             ['state' => 'building', 'progress' => 42, 'message' => 'evaluating'],
             $svc->getRebuildStatus(),
         );
+    }
+
+    public function testGetSettingsCallsSettingsSubcommand(): void
+    {
+        $payload = '{"sharingMyStorage":true,"nextcloudMode":"aio","forgejoMode":"container","hostName":"mattbox","https":false,"gpuEnable":true,"aioApachePort":11000,"aioInterfacePort":8000}';
+        $runner = new StubRunner([$payload, '', 0]);
+        $svc = new BackendService($this->cfg(), $runner);
+
+        $settings = $svc->getSettings();
+
+        $this->assertSame('aio', $settings['nextcloudMode']);
+        $this->assertSame('mattbox', $settings['hostName']);
+        $this->assertSame(
+            ['/run/wrappers/bin/sudo', '-n', $this->bin, 'settings', '--json'],
+            $runner->lastArgv,
+        );
+    }
+
+    public function testApplyPipesNixCodeToApplySubcommand(): void
+    {
+        $nix = "{ ... }:\n{\n  losos.hostName = \"box2\";\n}\n";
+        $runner = new StubRunner(['{"job":"abc-9"}', '', 0]);
+        $svc = new BackendService($this->cfg(), $runner);
+
+        $result = $svc->apply($nix);
+
+        $this->assertSame(['job' => 'abc-9'], $result);
+        $this->assertSame(
+            ['/run/wrappers/bin/sudo', '-n', $this->bin, 'apply'],
+            $runner->lastArgv,
+        );
+        $this->assertSame($nix, $runner->lastStdin);
     }
 
     public function testNonZeroExitRaisesBackendException(): void

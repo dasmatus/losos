@@ -1,23 +1,25 @@
 <?xml version="1.0"?>
 <!--
-  losos — machine-config plugin for the losos appliance.
+  losos — appliance-config admin app with its own dedicated settings page.
 
-  Admin settings app that flips this box between "Local only" (private
-  Nextcloud, losos.sharingMyStorage = false) and "On the mesh" (contributing
-  storage to the Tahoe-LAFS grid, sharing = true), then triggers a NixOS
-  rebuild via the Haskell `losos-ctl` backend (invoked through sudo). Rebuild
-  progress is shown as a Nextcloud notification.
+  The app renders a macOS-System-Settings-style page (templates/main.php) where
+  the admin edits losos.* knobs (hostname, Nextcloud/Forgejo mode, sharing,
+  HTTPS, GPU, AIO ports). On "Apply" the page JS generates the overrides.nix
+  body and POSTs it to /apply, which pipes it to the Haskell `losos-ctl apply`
+  backend (via a locked-down sudoers rule). The backend validates, atomically
+  rewrites modules/overrides.nix, and spawns nixos-rebuild; progress is polled
+  from /status.
 
-  The PHP side only talks to the backend; the backend (Haskell) owns the
-  actual config rewrite + nixos-rebuild. See docs/superpowers/specs/.
+  <types><site_admin/> restricts the app's routes to admins at the AppFramework
+  layer (a security property). The top-nav entry is registered dynamically in
+  Application::boot() only for admins, so non-admins neither see nor reach it.
 -->
 <info>
-	<!-- ocsid is optional for self-built apps; leave the App Store id empty -->
 	<id>losos</id>
 	<name>losos</name>
-	<summary>Configure this box: Local only vs On the mesh</summary>
-	<description><![CDATA[Toggle whether this losos box keeps its storage private (Local only) or contributes it to the Tahoe-LAFS mesh (On the mesh). A change triggers an automatic NixOS rebuild; progress is shown as a notification.]]></description>
-	<version>0.1.0</version>
+	<summary>Configure this box: hostname, Nextcloud/Forgejo mode, storage, GPU</summary>
+	<description><![CDATA[A dedicated settings page for this losos appliance. Edit the hostname, Nextcloud and Forgejo deployment mode, storage sharing, HTTPS, GPU acceleration, and AIO ports. Applying changes rewrites the NixOS config and triggers an automatic rebuild; progress is shown on the page.]]></description>
+	<version>0.2.0</version>
 	<licence>agpl</licence>
 	<author>matus</author>
 	<namespace>Losos</namespace>
@@ -25,13 +27,10 @@
 	<dependencies>
 		<nextcloud min-version="29" max-version="34"/>
 	</dependencies>
-	<!-- Admin-only settings panel. <types><site_admin/> keeps the routes out
-	     of the public namespace; the controller re-checks admin membership. -->
+	<!-- Admin-only: AppFramework rejects non-admin route access server-side.
+	     The top-nav entry is added dynamically in Application::boot() for admins
+	     only, so we intentionally do NOT declare a static <navigations> block. -->
 	<types>
 		<site_admin/>
 	</types>
-	<settings>
-		<admin-section>OCA\Losos\Settings\Section</admin-section>
-		<admin>OCA\Losos\Settings\AdminSettings</admin>
-	</settings>
 </info>

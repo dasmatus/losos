@@ -24,7 +24,7 @@ final class ProcCommandRunner implements CommandRunner
         $this->timeoutSec = $timeoutSec;
     }
 
-    public function run(array $argv): array
+    public function run(array $argv, ?string $stdin = null): array
     {
         $cmd = implode(' ', array_map('escapeshellarg', $argv));
         $descriptors = [
@@ -35,6 +35,13 @@ final class ProcCommandRunner implements CommandRunner
         $proc = @proc_open($cmd, $descriptors, $pipes);
         if (!is_resource($proc)) {
             return ['', 'failed to start subprocess', 127];
+        }
+        // Pipe the supplied stdin (the generated Nix config for `apply`), then
+        // close so the subprocess sees EOF. Write synchronously before the
+        // non-blocking stdout/stderr read loop — losos-ctl reads all of stdin
+        // up front, so there's no risk of a pipe deadlock from a large config.
+        if ($stdin !== null) {
+            fwrite($pipes[0], $stdin);
         }
         fclose($pipes[0]);
         unset($pipes[0]);

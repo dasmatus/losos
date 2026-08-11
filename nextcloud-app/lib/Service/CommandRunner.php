@@ -11,6 +11,11 @@ namespace OCA\Losos\Service;
  */
 interface CommandRunner
 {
-    /** @return array{0:string,1:string,2:int} [stdout, stderr, exitCode] */
-    public function run(array $argv): array;
+    /**
+     * @param array<string> $argv
+     * @param string|null $stdin optional bytes piped to the subprocess (used by
+     *   `apply`, which receives the generated Nix config from the admin app)
+     * @return array{0:string,1:string,2:int} [stdout, stderr, exitCode]
+     */
+    public function run(array $argv, ?string $stdin = null): array;
 }

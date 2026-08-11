@@ -3,18 +3,21 @@
 declare(strict_types=1);
 
 /**
- * Admin AJAX controller for the losos settings panel.
+ * Controller for the losos admin app — a *dedicated* settings page (its own
+ * navigation entry, no longer a panel buried under Admin → Settings).
  *
- * Three endpoints (registered in appinfo/routes.php):
- *   GET  /state   — current mode + sharing flag + rebuild state (first paint)
- *   POST /mode    — apply a new mode and trigger a rebuild (returns job id)
- *   GET  /status   — rebuild progress (polled by the settings JS)
+ * Four endpoints (registered in appinfo/routes.php):
+ *   GET  /         — render the macOS-style settings page (markup + assets)
+ *   GET  /settings — current losos.* values parsed from overrides.nix (first paint)
+ *   POST /apply    — apply the Nix code the page generated + trigger a rebuild
+ *   GET  /status   — rebuild progress (polled by the page JS)
  *
- * All methods are admin-only: every call re-checks that the current user is a
- * member of the admin group, regardless of the <types><site_admin/> tag in
- * info.xml (defense in depth). POST is CSRF-protected by AppFramework's
- * default SecurityMiddleware (state-changing verbs require a request token
- * unless a @NoCSRFRequired annotation opts out, which none here do).
+ * The page JS renders the form from /settings, builds the overrides.nix body
+ * from the form values, and POSTs it to /apply — "PHP sends the Nix code to
+ * the Haskell server". All endpoints are admin-only: every call re-checks
+ * admin membership (defense in depth on top of <types><site_admin/>). POST is
+ * CSRF-protected by AppFramework's SecurityMiddleware (no @NoCSRFRequired on
+ * apply, so the request token is required).
  */
 
 namespace OCA\Losos\Controller;
@@ -25,6 +28,7 @@ use OCA\Losos\Service\BackendService;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\DataResponse;
+use OCP\AppFramework\Http\TemplateResponse;
 use OCP\IGroupManager;
 use OCP\IRequest;
 use OCP\IUser;
@@ -42,50 +46,25 @@ class SettingsController extends Controller
         parent::__construct($appName, $request);
     }
 
-    /** GET /state — current mode + sharing flag, plus install status. */
-    public function getState(): DataResponse
+    /**
+     * The dedicated losos settings page. Renders templates/main.php (the
+     * macOS-style UI); the live values + actions are handled by the JS via the
+     * other endpoints, so the template only carries markup + assets.
+     *
+     * @NoCSRFRequired
+     */
+    public function index(): TemplateResponse
     {
         if (!$this->isAdmin()) {
-            return $this->forbidden();
+            // Non-admins shouldn't reach here (the nav is site_admin), but if
+            // they do, refuse rather than render the privileged form.
+            return new TemplateResponse('losos', 'denied', [], TemplateResponse::RENDER_AS_USER);
         }
-        if (!$this->backend->isInstalled()) {
-            return new DataResponse([
-                'installed' => false,
-                'mode' => null,
-                'sharing' => null,
-            ], Http::STATUS_OK);
-        }
-        try {
-            $state = $this->backend->getState();
-            return new DataResponse(array_merge(['installed' => true], $state), Http::STATUS_OK);
-        } catch (BackendException $e) {
-            return $this->backendError($e);
-        }
+        return new TemplateResponse('losos', 'main', [], TemplateResponse::RENDER_AS_USER);
     }
 
-    /** POST /mode — apply mode (local|mesh) and trigger a rebuild. */
-    public function setMode(string $mode): DataResponse
-    {
-        if (!$this->isAdmin()) {
-            return $this->forbidden();
-        }
-        if (!in_array($mode, ['local', 'mesh'], true)) {
-            return new DataResponse(['error' => 'invalid mode'], Http::STATUS_BAD_REQUEST);
-        }
-        try {
-            $result = $this->backend->setMode($mode);
-            return new DataResponse($result, Http::STATUS_ACCEPTED);
-        } catch (BackendNotInstalledException $e) {
-            return new DataResponse(['error' => 'backend not installed', 'detail' => $e->getMessage()], Http::STATUS_CONFLICT);
-        } catch (BackendException $e) {
-            return $this->backendError($e);
-        } catch (\InvalidArgumentException $e) {
-            return new DataResponse(['error' => $e->getMessage()], Http::STATUS_BAD_REQUEST);
-        }
-    }
-
-    /** GET /status — rebuild progress, polled every ~2s by the settings JS. */
-    public function rebuildStatus(): DataResponse
+    /** GET /settings — current losos.* values, for the page's first paint. */
+    public function settings(): DataResponse
     {
         if (!$this->isAdmin()) {
             return $this->forbidden();
@@ -94,9 +73,56 @@ class SettingsController extends Controller
             return new DataResponse(['installed' => false], Http::STATUS_OK);
         }
         try {
-            // Mirror getState(): merge `installed` so the JS poller's
-            // `if (!data.installed)` guard doesn't abort polling on the happy
-            // path (the raw backend object has no `installed` key).
+            return new DataResponse(
+                array_merge(['installed' => true], $this->backend->getSettings()),
+                Http::STATUS_OK,
+            );
+        } catch (BackendException $e) {
+            return $this->backendError($e);
+        }
+    }
+
+    /**
+     * POST /apply — apply the generated overrides.nix body + trigger a rebuild.
+     * The Nix code is the `nix` form field; the backend owns validation + the
+     * atomic file rewrite + spawning nixos-rebuild. We re-check the obvious
+     * "references losos.*" guard here too so a malformed request never reaches
+     * sudo.
+     */
+    public function apply(string $nix = ''): DataResponse
+    {
+        if (!$this->isAdmin()) {
+            return $this->forbidden();
+        }
+        if (trim($nix) === '' || stripos($nix, 'losos.') === false) {
+            return new DataResponse(
+                ['error' => 'invalid nix config: must reference losos.* options'],
+                Http::STATUS_BAD_REQUEST,
+            );
+        }
+        try {
+            $result = $this->backend->apply($nix);
+            return new DataResponse($result, Http::STATUS_ACCEPTED);
+        } catch (BackendNotInstalledException $e) {
+            return new DataResponse(
+                ['error' => 'backend not installed', 'detail' => $e->getMessage()],
+                Http::STATUS_CONFLICT,
+            );
+        } catch (BackendException $e) {
+            return $this->backendError($e);
+        }
+    }
+
+    /** GET /status — rebuild progress, polled every ~2s by the page JS. */
+    public function status(): DataResponse
+    {
+        if (!$this->isAdmin()) {
+            return $this->forbidden();
+        }
+        if (!$this->backend->isInstalled()) {
+            return new DataResponse(['installed' => false], Http::STATUS_OK);
+        }
+        try {
             return new DataResponse(
                 array_merge(['installed' => true], $this->backend->getRebuildStatus()),
                 Http::STATUS_OK,
@@ -119,6 +145,9 @@ class SettingsController extends Controller
 
     private function backendError(BackendException $e): DataResponse
     {
-        return new DataResponse(['error' => 'backend', 'detail' => $e->getMessage()], Http::STATUS_INTERNAL_SERVER_ERROR);
+        return new DataResponse(
+            ['error' => 'backend', 'detail' => $e->getMessage()],
+            Http::STATUS_INTERNAL_SERVER_ERROR,
+        );
     }
 }

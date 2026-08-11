@@ -21,7 +21,10 @@ use OCP\AppFramework\Bootstrap\IBootstrap;
 use OCP\AppFramework\Bootstrap\IRegistrationContext;
 use OCP\IConfig;
 use OCP\IGroupManager;
+use OCP\INavigationManager;
 use OCP\IRequest;
+use OCP\IURLGenerator;
+use OCP\IUser;
 use OCP\IUserSession;
 
 class Application extends App implements IBootstrap
@@ -56,7 +59,30 @@ class Application extends App implements IBootstrap
 
     public function boot(IBootContext $context): void
     {
-        // Nothing to boot: the backend runs as a separate root service, and
-        // rebuild progress is polled on demand from the settings UI.
+        // The dedicated settings page is reached via a top-navigation entry.
+        // We register it dynamically (not via <navigations> in info.xml) so it
+        // is hidden from non-admins entirely — static <navigations> shows for
+        // everyone, and <types><site_admin/> only guards route access, not nav
+        // visibility. Gating on isAdmin here is what keeps the icon admin-only.
+        $server = $context->getServerContainer();
+        $userSession = $server->get(IUserSession::class);
+        $user = $userSession->getUser();
+        if (!$user instanceof IUser) {
+            return;
+        }
+        $groupManager = $server->get(IGroupManager::class);
+        if (!$groupManager->isAdmin($user->getUID())) {
+            return;
+        }
+        $urlGen = $server->get(IURLGenerator::class);
+        $server->get(INavigationManager::class)->add([
+            'id' => self::APP_ID,
+            'name' => 'losos',
+            'href' => $urlGen->linkToRoute('losos.settings.index'),
+            'icon' => $urlGen->imagePath(self::APP_ID, 'app.svg'),
+            // order 0 places it at the top of the app list; the appliance config
+            // is the primary thing this box is for.
+            'order' => 0,
+        ]);
     }
 }
