@@ -15,6 +15,16 @@
 }:
 
 {
+  # Forgejo
+  services.forgejo = {
+    enable = config.losos.forgejo.enable;
+    lfs.enable = true;
+    database.type = "postgres";
+    settings = {
+      server.HTTP_PORT = 8888;
+      actions.ENABLED = true;
+    };
+  };
   # ── Nextcloud (for the notshared user) ─────────────────────────────────
   services.nextcloud = {
     enable = true;
@@ -42,20 +52,41 @@
     # demand by the admin. Setting extraApps disables the App Store by
     # default; appstoreEnable = true forces it back on.
     extraAppsEnable = true;
-    extraApps =
-      with pkgs.nextcloud34Packages.apps;
-      {
-        # curated self-contained defaults
-        inherit
-          deck tasks notes bookmarks calendar contacts maps polls forms tables
-          collectives news mail music memories groupfolders
-          files_automatedtagging files_linkeditor files_retention previewgenerator
-          checksum notify_push dav_push twofactor_webauthn twofactor_admin
-          guests impersonate unroundedcorners
-          ;
-        # our machine-config plugin (built from this flake's ./nextcloud-app)
-        losos = self.packages.x86_64-linux.losos-app;
-      };
+    extraApps = with pkgs.nextcloud34Packages.apps; {
+      # curated self-contained defaults
+      inherit
+        deck
+        tasks
+        notes
+        bookmarks
+        calendar
+        contacts
+        maps
+        polls
+        forms
+        tables
+        collectives
+        news
+        mail
+        music
+        memories
+        groupfolders
+        files_automatedtagging
+        files_linkeditor
+        files_retention
+        previewgenerator
+        checksum
+        notify_push
+        dav_push
+        twofactor_webauthn
+        twofactor_admin
+        guests
+        impersonate
+        unroundedcorners
+        ;
+      # our machine-config plugin (built from this flake's ./nextcloud-app)
+      losos = self.packages.x86_64-linux.losos-app;
+    };
     appstoreEnable = true;
   };
 
@@ -80,8 +111,14 @@
         # store path (sudo may resolve the symlink before matching). No args
         # restriction: `losos-ctl` validates its own subcommands.
         commands = [
-          { command = "/run/current-system/sw/bin/losos-ctl"; options = [ "NOPASSWD" ]; }
-          { command = lib.getExe' config.losos.backend.package "losos-ctl"; options = [ "NOPASSWD" ]; }
+          {
+            command = "/run/current-system/sw/bin/losos-ctl";
+            options = [ "NOPASSWD" ];
+          }
+          {
+            command = lib.getExe' config.losos.backend.package "losos-ctl";
+            options = [ "NOPASSWD" ];
+          }
         ];
       }
     ];
@@ -119,12 +156,15 @@
   # can drive the local node from the shell. Also install the losos-ctl backend
   # system-wide when set, so the Nextcloud app reaches it at
   # /run/current-system/sw/bin/losos-ctl.
-  environment.systemPackages = [ pkgs.tahoe-lafs ]
-    ++ lib.optional (config.losos.backend.package != null) (
-      lib.getBin config.losos.backend.package
-    );
+  environment.systemPackages = [
+    pkgs.tahoe-lafs
+  ]
+  ++ lib.optional (config.losos.backend.package != null) (lib.getBin config.losos.backend.package);
 
   # Open the Tahoe web UI only to the local network by default; tighten or
   # widen via firewall rules as needed.
-  networking.firewall.allowedTCPPorts = [ 3456 ];
+  networking.firewall.allowedTCPPorts = [
+    3456
+    8888
+  ];
 }

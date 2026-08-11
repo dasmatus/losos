@@ -33,7 +33,11 @@
       default = false;
       description = "Expose local storage to the Tahoe-LAFS grid as a storage server.";
     };
-
+    # Whether to enable or disable the local Forgejo instance
+    forgejo.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+    };
     nextcloud.hostName = lib.mkOption {
       type = lib.types.str;
       default = "localhost";

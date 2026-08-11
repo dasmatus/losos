@@ -14,5 +14,6 @@
 
 {
   losos.sharingMyStorage = true;
+  losos.forgejo.enable = true;
   losos.backend.package = self.packages.x86_64-linux.losos-ctl;
 }
