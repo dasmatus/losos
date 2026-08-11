@@ -3,6 +3,7 @@
 {
   pkgs,
   lib,
+  config,
   ...
 }:
 
@@ -23,8 +24,24 @@
   # without a reboot.
   services.userborn.enable = true;
 
-  networking.hostName = "losos";
+  # Hostname + mDNS: the appliance is reachable on the LAN as `mattbox.local`
+  # via Avahi/mDNS. (`networking.hostName` is the bare label — Avahi publishes
+  # the `<hostname>.local` form. Keep it ≤15 chars for NetBIOS/mDNS safety.)
+  networking.hostName = "mattbox";
   networking.networkmanager.enable = true;
+
+  # Publish `mattbox.local` and resolve other `.local` names on the LAN via
+  # mDNS, so the appliance is reachable by name without a local DNS server.
+  services.avahi = {
+    enable = true;
+    nssmdns4 = true;
+    publish = {
+      enable = true;
+      addresses = true;
+      workstation = true;
+    };
+    allowInterfaces = lib.mkDefault [ "wlp3s0" "enp2s0" "eth0" "wlan0" ];
+  };
 
   time.timeZone = "Europe/Berlin";
 
@@ -73,6 +90,54 @@
     description = "Shared — Tahoe-LAFS grid storage contributor";
     isNormalUser = true;
     homeMode = "750"; # private home: notshared can't read shared's data
+  };
+
+  # `containers` — the unprivileged owner of the rootless Podman runtime. Its
+  # home holds all image + volume storage (~/.local/share/containers) and is
+  # persisted via impermanence. No password (so no login, consistent with the
+  # no-SSH appliance model); its user-managed systemd runs at boot via the
+  # linger marker in modules/containers.nix, bringing the podman socket and the
+  # container services up unattended. subuid/subgid ranges are required for
+  # rootless container user-namespacing.
+  users.users."${config.losos.containers.user}" = {
+    uid = config.losos.containers.uid;
+    description = "Rootless Podman runtime owner";
+    isNormalUser = true;
+    homeMode = "750";
+    # GPU acceleration (rootless): membership in `render` lets the user reach
+    # /dev/dri/renderD128, `video` the display devices. `--group-add=keep-groups`
+    # on the container then keeps these supplementary groups inside the container.
+    extraGroups = lib.optionals config.losos.gpu.enable [ "render" "video" ];
+    subUidRanges = [
+      {
+        startUid = 100000;
+        count = 65536;
+      }
+    ];
+    subGidRanges = [
+      {
+        startGid = 100000;
+        count = 65536;
+      }
+    ];
+  };
+  users.groups."${config.losos.containers.user}" = { };
+
+  # ── GPU / graphics (host side of container GPU acceleration) ─────────────
+  # Enables /dev/dri + Mesa and the VA-API drivers the Nextcloud container uses
+  # for hardware video decode/encode (recognize, Talk transcoding, previews).
+  # intel-media-driver covers Intel iGPUs (typical mini-PC), mesa-va-drivers
+  # covers AMD/Radeon — both coexist; drop the one that doesn't match the box.
+  hardware.graphics = lib.mkIf config.losos.gpu.enable {
+    enable = true;
+    enable32Bit = true;
+    # VA-API drivers. intel-media-driver covers modern Intel iGPUs (typical
+    # mini-PC), intel-vaapi-driver the older Intel gens; both coexist. For an
+    # AMD/Radeon box swap in `mesa`/`rocmPackages` as appropriate.
+    extraPackages = with pkgs; [
+      intel-media-driver
+      intel-vaapi-driver
+    ];
   };
 
   # System account reserved for future restricted deploy triggers.

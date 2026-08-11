@@ -15,9 +15,10 @@
 }:
 
 {
-  # Forgejo
-  services.forgejo = {
-    enable = config.losos.forgejo.enable;
+  # Forgejo (native). Only active in native mode; in container mode the git
+  # host runs as a rootless Podman container behind Nginx (see containers.nix).
+  services.forgejo = lib.mkIf (config.losos.forgejo.mode == "native" && config.losos.forgejo.enable) {
+    enable = true;
     lfs.enable = true;
     database.type = "postgres";
     settings = {
@@ -25,8 +26,12 @@
       actions.ENABLED = true;
     };
   };
-  # ── Nextcloud (for the notshared user) ─────────────────────────────────
-  services.nextcloud = {
+  # ── Nextcloud (for the notshared user) — native path ──────────────────
+  # Only active when losos.nextcloud.mode == "native". In "aio" mode Nextcloud
+  # runs as Nextcloud All-in-One in a rootless Podman container (containers.nix)
+  # and the losos admin plugin + losos-ctl sudoers bridge below are dormant
+  # (they depend on a native `nextcloud` system user that AIO doesn't create).
+  services.nextcloud = lib.mkIf (config.losos.nextcloud.mode == "native") {
     enable = true;
     hostName = config.losos.nextcloud.hostName;
     https = config.losos.nextcloud.https;
@@ -91,17 +96,18 @@
   };
 
   # ── Backend bridge (losos-ctl, user-authored Haskell) ───────────────────
-  # When the backend package is set, grant the `nextcloud` user NOPASSWD sudo
-  # for exactly that binary. No shell, no broader root — only this one command,
-  # run as root. The binary itself is installed system-wide via the combined
-  # environment.systemPackages line below (so it lands at
-  # /run/current-system/sw/bin/losos-ctl, which the PHP app calls).
+  # When the backend package is set AND Nextcloud is native, grant the
+  # `nextcloud` user NOPASSWD sudo for exactly that binary. No shell, no
+  # broader root — only this one command, run as root. The binary itself is
+  # installed system-wide via the combined environment.systemPackages line
+  # below (so it lands at /run/current-system/sw/bin/losos-ctl, which the PHP
+  # app calls).
   #
   # NOTE: each command MUST be an attrset with `options = [ "NOPASSWD" ]`. A
   # bare path string is coerced by the sudo module to `{ options = []; }`,
   # which would require a password — and `nextcloud` is a passwordless system
   # user invoked via `sudo -n`, so the whole bridge would silently fail.
-  security.sudo = lib.mkIf (config.losos.backend.package != null) {
+  security.sudo = lib.mkIf (config.losos.nextcloud.mode == "native" && config.losos.backend.package != null) {
     enable = true; # off by default on this appliance (SSH is off); turn on only so the rule below is effective
     extraRules = [
       {
@@ -154,17 +160,21 @@
 
   # Make the `tahoe` CLI available to the shared user (and everyone) so they
   # can drive the local node from the shell. Also install the losos-ctl backend
-  # system-wide when set, so the Nextcloud app reaches it at
+  # system-wide when set (native Nextcloud mode only — in AIO mode there is no
+  # native `nextcloud` user to call it), so the Nextcloud app reaches it at
   # /run/current-system/sw/bin/losos-ctl.
   environment.systemPackages = [
     pkgs.tahoe-lafs
   ]
-  ++ lib.optional (config.losos.backend.package != null) (lib.getBin config.losos.backend.package);
+  ++ lib.optional (config.losos.nextcloud.mode == "native" && config.losos.backend.package != null) (
+    lib.getBin config.losos.backend.package
+  );
 
   # Open the Tahoe web UI only to the local network by default; tighten or
-  # widen via firewall rules as needed.
-  networking.firewall.allowedTCPPorts = [
-    3456
-    8888
-  ];
+  # widen via firewall rules as needed. The native Forgejo port (8888) is
+  # opened only in native mode; in container mode the git host is behind Nginx,
+  # whose ports are opened in modules/containers.nix.
+  networking.firewall.allowedTCPPorts =
+    [ 3456 ]
+    ++ lib.optional (config.losos.forgejo.mode == "native" && config.losos.forgejo.enable) 8888;
 }

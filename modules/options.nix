@@ -33,11 +33,42 @@
       default = false;
       description = "Expose local storage to the Tahoe-LAFS grid as a storage server.";
     };
-    # Whether to enable or disable the local Forgejo instance
+
+    # ── Deployment mode switches ──────────────────────────────────────────
+    # The appliance can run its Nextcloud and Forgejo either as native NixOS
+    # services (the original losos design — the losos web-UI toggle + losos-ctl
+    # sudoers bridge depend on native Nextcloud) or as rootless Podman
+    # containers fronted by Nginx (the AIO path). The two never collide: each
+    # module gates itself on its mode flag, so flipping one option switches the
+    # whole deployment back and forth. Defaults reflect the AIO/container
+    # pivot; set back to "native" to restore the original appliance behaviour.
+    nextcloud.mode = lib.mkOption {
+      type = lib.types.enum [ "native" "aio" ];
+      default = "aio";
+      description = ''
+        "native" — run Nextcloud as a native NixOS service (services.nextcloud),
+        with the losos admin plugin + losos-ctl sudoers bridge.
+        "aio" — run Nextcloud as Nextcloud All-in-One in a rootless Podman
+        container (nextcloud/all-in-one master container), fronted by Nginx.
+        See modules/containers.nix.
+      '';
+    };
+
+    forgejo.mode = lib.mkOption {
+      type = lib.types.enum [ "native" "container" ];
+      default = "container";
+      description = ''
+        "native" — run Forgejo as a native NixOS service (services.forgejo).
+        "container" — run Forgejo as a rootless Podman container behind Nginx.
+      '';
+    };
+    # Whether to enable or disable the local native Forgejo instance (only
+    # consulted when losos.forgejo.mode == "native").
     forgejo.enable = lib.mkOption {
       type = lib.types.bool;
       default = false;
     };
+
     nextcloud.hostName = lib.mkOption {
       type = lib.types.str;
       default = "localhost";
@@ -54,6 +85,51 @@
       type = lib.types.bool;
       default = false;
       description = "Serve Nextcloud over HTTPS (requires a certificate / domain in production).";
+    };
+
+    # ── Rootless Podman container runtime ──────────────────────────────────
+    containers.user = lib.mkOption {
+      type = lib.types.str;
+      default = "containers";
+      description = "The unprivileged user that owns the rootless Podman runtime and its containers.";
+    };
+
+    containers.uid = lib.mkOption {
+      type = lib.types.ints.u16;
+      default = 1002;
+      description = "uid of the rootless Podman user. Its home holds all image/volume storage and is persisted.";
+    };
+
+    # ── Nextcloud All-in-One (active when losos.nextcloud.mode == "aio") ───
+    aio.apachePort = lib.mkOption {
+      type = lib.types.port;
+      default = 11000;
+      description = "Host port the AIO Apache (the actual Nextcloud) publishes. Nginx proxies here. Must be >1024 for rootless.";
+    };
+
+    aio.interfacePort = lib.mkOption {
+      type = lib.types.port;
+      default = 8000;
+      description = "Host port the AIO management interface listens on (used for the one-time initial setup: domain, TLS, master password). LAN-only.";
+    };
+
+    aio.datadir = lib.mkOption {
+      type = lib.types.path;
+      default = "/var/lib/nextcloud-aio/data";
+      description = "Host path for AIO Nextcloud user data. Persisted via /var.";
+    };
+
+    # ── GPU hardware acceleration for the Nextcloud (AIO) container ────────
+    # Enables host VA-API/Mesa graphics + the render/video group memberships the
+    # rootless `containers` user needs to reach /dev/dri, and passes /dev/dri
+    # into the AIO master container. NOTE: AIO's master spawns the actual
+    # Nextcloud container itself; whether the GPU reaches it depends on AIO
+    # propagating the device to its sibling containers — verify on first
+    # deploy and adjust the AIO master run args (containers.nix) if needed.
+    gpu.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = "Enable host graphics (VA-API/Mesa) and pass /dev/dri into the AIO container for GPU acceleration.";
     };
 
     tahoe.introducerFurl = lib.mkOption {

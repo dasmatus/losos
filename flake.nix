@@ -67,6 +67,7 @@
             ./modules/disko.nix
             ./modules/boot.nix
             ./modules/services.nix
+            ./modules/containers.nix
             ./modules/updates.nix
             ./modules/defaults.nix
           ];
