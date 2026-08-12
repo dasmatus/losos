@@ -14,6 +14,7 @@ jobs:
     container:
       image: docker.io/nixos/nix:latest
     steps:
+      - run: nix --experimental-features 'nix-command flakes' profile install nixpkgs#nodejs
       - uses: actions/checkout@v4
       # Evaluates every output incl. both VM test derivations; builds nothing.
       - run: nix --experimental-features 'nix-command flakes' flake check --no-build -L
