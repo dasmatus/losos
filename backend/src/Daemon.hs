@@ -63,14 +63,19 @@ import DBus.Client
     requestName,
   )
 import Lib
-  ( cmdApply,
+  ( Rebuild (..),
+    RebuildState (..),
+    State (..),
+    cmdApply,
     cmdChange,
     cmdFactoryReset,
     cmdSettings,
     cmdState,
     cmdStatus,
+    ioReadState,
     parseMode,
     validateApply,
+    watchUnit,
   )
 import System.Environment (lookupEnv)
 import System.Exit (die)
@@ -162,10 +167,18 @@ startBus = do
   hPutStrLn stderr "lososd: org.losos1 exported on the system bus"
 
 -- | Rebuild supervision: re-attach the completion watcher to an in-flight
--- rebuild recorded in state.json. Implemented in Task 3 alongside the
--- systemd-run spawn; stubbed until then.
+-- rebuild recorded in state.json. lososd is itself restarted by
+-- `nixos-rebuild switch` mid-rebuild (the activation restarts changed
+-- services); without this, the rebuild the daemon started would dangle at
+-- "building" after the new daemon process comes up.
 startSupervisor :: IO ()
-startSupervisor = pure ()
+startSupervisor = do
+  s <- ioReadState
+  case stRebuild s of
+    Just rb
+      | rbState rb == Building -> void (forkIO (watchUnit (rbJob rb)))
+      | otherwise -> pure ()
+    Nothing -> pure ()
 
 -- | The loopback HTTP admin API. Implemented in Task 4; stubbed until then.
 startHttp :: IO ()

@@ -63,12 +63,15 @@ module Lib
     ioWriteState,
     ioLogTail,
     ioSpawnRebuild,
+    watchUnit,
     rebuildLogPath,
   )
 where
 
 import Control.Applicative ((<|>))
+import Control.Concurrent (forkIO, threadDelay)
 import Control.Exception (SomeException, try)
+import Control.Monad (void)
 import Control.Monad.State.Strict
   ( MonadState,
     StateT,
@@ -98,7 +101,7 @@ import System.Environment (lookupEnv)
 import System.FilePath ((</>))
 import qualified System.Process as P
 import System.Posix.Process (getProcessID)
-import System.IO (Handle, stderr)
+import System.IO (stderr)
 
 -- ──────────────────────────────────────────────────────────────────────────
 -- Domain types
@@ -478,6 +481,10 @@ cmdFactoryReset = do
   pure $ A.encode $ object ["job" .= job, "reset" .= (True :: Bool)]
 
 -- | `status --json`: rebuild progress, polled by the admin UI every ~2s.
+-- While a rebuild is Building the message is the *live* last line of the
+-- rebuild log (the facade monitors systemd's journal-flushed output), falling
+-- back to the static "rebuild started" line before nixos-rebuild writes
+-- anything.
 cmdStatus :: Losos m => m BL.ByteString
 cmdStatus = do
   s <- loadState
@@ -490,14 +497,25 @@ cmdStatus = do
               "progress" .= (0 :: Int),
               "message" .= ("" :: Text)
             ]
-    Just rb ->
-      pure $
-        A.encode $
-          object
-            [ "state" .= rbState rb,
-              "progress" .= rbProgress rb,
-              "message" .= rbMessage rb
-            ]
+    Just rb
+      | rbState rb == Building -> do
+          tl <- rebuildLogTail
+          let msg = if T.null tl then rbMessage rb else tl
+          pure $
+            A.encode $
+              object
+                [ "state" .= Building,
+                  "progress" .= rbProgress rb,
+                  "message" .= msg
+                ]
+      | otherwise ->
+          pure $
+            A.encode $
+              object
+                [ "state" .= rbState rb,
+                  "progress" .= rbProgress rb,
+                  "message" .= rbMessage rb
+                ]
 
 -- ──────────────────────────────────────────────────────────────────────────
 -- IO interpreter — the real backend (used by lososd)
@@ -535,9 +553,6 @@ overridesFilePath = fromMaybe "/etc/nixos/modules/overrides.nix" <$> lookupEnv "
 
 flakeRef :: IO String
 flakeRef = fromMaybe "/etc/nixos#install" <$> lookupEnv "LOSOS_FLAKE"
-
-ctlBin :: IO String
-ctlBin = fromMaybe "/run/current-system/sw/bin/losos-ctl" <$> lookupEnv "LOSOS_CTL_BIN"
 
 ioReadState :: IO State
 ioReadState = do
@@ -623,49 +638,40 @@ ioNewJobId = do
   let stamp = T.pack $ formatTime defaultTimeLocale "%Y%m%d%H%M%S" now
   pure $ stamp <> "-" <> T.pack (show pid)
 
--- | Spawn the rebuild detached: `setsid -f sh -c 'nixos-rebuild … > log 2>&1;
--- ec=$?; <ctl> rebuild-done $ec <job>'`. setsid gives the child a new session
--- so it survives the sudo/PHP process tree ending; -f forks so setsid returns
--- immediately. NOTE: transitional — Task 3 of the lososd split replaces this
--- with a systemd-run transient unit + watcher thread.
+-- | The systemd unit name for a rebuild job. Unit names allow digits, '-'
+-- and alphanumerics, which the timestamp-pid job ids satisfy.
+rebuildUnit :: Text -> String
+rebuildUnit job = "losos-rebuild-" <> T.unpack job
+
+-- | Start the rebuild as a transient systemd unit and fork the watcher thread
+-- that records its terminal state. Compared to the old setsid+sh hack: the
+-- rebuild is a real unit (journal, cgroup, `systemctl status`), and lososd is
+-- the sole writer of state.json. No `--collect`: we must be able to read
+-- ExecMainStatus after the unit exits; dead units vanish at reboot anyway
+-- (the appliance root is tmpfs).
 ioSpawnRebuild :: Text -> IO ()
 ioSpawnRebuild job = do
   flake <- flakeRef
   log' <- rebuildLogPath
-  bin <- ctlBin
-  let cmd =
-        unwords
-          [ "nixos-rebuild",
+  res <-
+    try
+      ( P.callProcess
+          "systemd-run"
+          [ "--unit=" <> rebuildUnit job,
+            "--description=losos rebuild " <> T.unpack job,
+            "--property=StandardOutput=append:" <> log',
+            "--property=StandardError=append:" <> log',
+            "nixos-rebuild",
             "switch",
             "--flake",
-            shellQuote flake,
-            ">",
-            shellQuote log',
-            "2>&1",
-            ";",
-            "ec=$?",
-            ";",
-            shellQuote bin,
-            "rebuild-done",
-            "$ec",
-            shellQuote (T.unpack job)
+            flake
           ]
-  -- create_group detaches the child process group from ours; setsid -f makes
-  -- it a session leader so it outlives us. We don't wait for it.
-  let cp =
-        (P.proc "setsid" ["-f", "sh", "-c", cmd])
-          { P.create_group = True,
-            P.std_in = P.NoStream,
-            P.std_out = P.NoStream,
-            P.std_err = P.NoStream
-          }
-  res <-
-    try (P.createProcess cp) ::
-      IO (Either SomeException (Maybe Handle, Maybe Handle, Maybe Handle, P.ProcessHandle))
+      ) ::
+      IO (Either SomeException ())
   case res of
-    -- Spawn failed (e.g. setsid missing): don't leave state.json stuck in
-    -- Building forever — flip the tracked rebuild to Failed so the UI shows
-    -- it instead of spinning on "building" with no watcher ever arriving.
+    -- Spawn failed (e.g. systemd-run unavailable): don't leave state.json
+    -- stuck in Building forever — flip the tracked rebuild to Failed so the
+    -- UI shows it instead of spinning on "building" with no watcher arriving.
     Left e -> do
       s <- ioReadState
       case stRebuild s of
@@ -681,11 +687,73 @@ ioSpawnRebuild job = do
                       }
               }
         Nothing -> pure ()
-    Right _ -> pure ()
+    Right () -> void (forkIO (watchUnit job))
 
--- | Minimal POSIX shell quoting: wrap in single quotes, escape embedded ones.
-shellQuote :: String -> String
-shellQuote s = "'" ++ concatMap (\c -> if c == '\'' then "'\\''" else [c]) s ++ "'"
+-- | One poll of the rebuild unit.
+data PollResult = PollWait | PollUnknown | PollDone Int
+
+-- | Ask systemd for the unit's state. `PollUnknown` covers "unit missing or
+-- not started yet" (a brief race right after systemd-run returns) and
+-- "vanished entirely" (reboot mid-rebuild) — the watcher waits through a
+-- grace window for the former and gives up on the latter.
+pollUnit :: Text -> IO PollResult
+pollUnit job = do
+  res <-
+    try
+      ( P.readProcess
+          "systemctl"
+          [ "show",
+            rebuildUnit job,
+            "--value",
+            "-p",
+            "ActiveState",
+            "-p",
+            "ExecMainStatus"
+          ]
+          ""
+      ) ::
+      IO (Either SomeException String)
+  pure $ case res of
+    Left _ -> PollWait -- systemctl hiccup: keep waiting
+    Right o -> case lines o of
+      (st' : ec : _)
+        | st' `elem` ["active", "activating", "deactivating", "reloading"] -> PollWait
+        | st' == "failed" -> PollDone (fromMaybe 1 (readMaybe ec))
+        | st' == "inactive" ->
+            case readMaybe ec of
+              Just c -> PollDone c
+              Nothing -> PollUnknown
+      _ -> PollUnknown
+
+-- | Poll the unit until it finishes, then write the terminal rebuild record —
+-- but only if @job@ is still the currently-tracked rebuild (a completion for
+-- an older, superseded job is ignored, same rule as the old rebuild-done).
+watchUnit :: Text -> IO ()
+watchUnit job = go (0 :: Int)
+  where
+    go unknowns = do
+      r <- pollUnit job
+      case r of
+        PollWait -> threadDelay 2000000 >> go 0
+        PollUnknown
+          | unknowns < 15 -> threadDelay 2000000 >> go (unknowns + 1)
+          | otherwise ->
+              finish Failed 0 "rebuild unit vanished (reboot or manual stop mid-rebuild) — system state unknown; apply again to retry"
+        PollDone c -> do
+          tl <- ioLogTail
+          let (st, pct, msg) = unitOutcome c tl
+          finish st pct msg
+    finish st pct msg = do
+      s <- ioReadState
+      case stRebuild s of
+        Just rb
+          | rbJob rb == job ->
+              ioWriteState
+                s
+                  { stRebuild =
+                      Just rb {rbState = st, rbProgress = pct, rbMessage = msg}
+                  }
+        _ -> pure ()
 
 ioLogTail :: IO Text
 ioLogTail = do

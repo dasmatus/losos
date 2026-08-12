@@ -146,7 +146,11 @@ tests =
             assertBool "idle" ("\"state\":\"idle\"" `T.isInfixOf` out initTest cmdStatus),
           testCase "after change reports building" $ do
             let s = out (step initTest (cmdChange Mesh)) cmdStatus
-            assertBool "building" ("\"state\":\"building\"" `T.isInfixOf` s)
+            assertBool "building" ("\"state\":\"building\"" `T.isInfixOf` s),
+          testCase "while building, message is the live rebuild log tail" $ do
+            let withLog = initTest {tsLog = ["copying path '/nix/store/abc-bash'"]}
+                s = out (step withLog (cmdChange Mesh)) cmdStatus
+            assertBool "live tail in message" ("copying path" `T.isInfixOf` s)
         ],
       testGroup
         "unitOutcome"
