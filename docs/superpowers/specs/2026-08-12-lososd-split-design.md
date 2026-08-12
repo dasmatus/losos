@@ -161,22 +161,29 @@ is deleted.
 
 ### Nginx as the single front door
 
-Every user-facing service answers **only** on host loopback; Nginx owns the
-public ports. In the container deployment (the default) this means:
+Every user-facing service answers **only** on host loopback or its private
+container IP; Nginx owns the public surface. Routing is **path-based** on the
+appliance's mDNS name (user requirement: "`/nextcloud` or `/forgejo`"):
 
-| public endpoint                    | backend                                   |
-|------------------------------------|-------------------------------------------|
-| `<hostName>.local:80` →            | nspawn nextcloud (`127.0.0.1:apachePort`) |
-| `:8888` (Forgejo) →                | nspawn forgejo (`127.0.0.1:3000`)         |
-| `:8081` (admin endpoint) →         | static SPA + `127.0.0.1:apiPort` (`/api`) |
+| public endpoint                       | backend                        |
+|---------------------------------------|--------------------------------|
+| `<hostName>.local:80/`                | tiny static landing page       |
+| `<hostName>.local:80/nextcloud/…` →   | nspawn nextcloud container     |
+| `<hostName>.local:80/forgejo/…` →     | nspawn forgejo container       |
+| `<hostName>.local:8081` →             | admin SPA + `/api` → lososd    |
 
-Plus, per user request ("move the two services behind the Nginx proxy"), the
-**Tahoe-LAFS web UI** loses its direct `:3456` firewall exposure: the tahoe
-node binds `127.0.0.1:3456` and Nginx serves it on `:3456` (vhost with
-`listen`), so the firewall opens Nginx ports only and no service binds a
-non-loopback address except Nginx. The native-mode Nextcloud (`:80` vhost) and
-native Forgejo (`:8888`) keep their current direct exposure only when those
-legacy modes are selected; the documented/default deployment is fully
+Path details: the inner Nextcloud gets `overwritewebroot = "/nextcloud"`,
+`htaccess.RewriteBase = "/nextcloud"`, `overwrite.cli.url = "http://<host>.local/nextcloud"`
+in config.php (via `services.nextcloud.config`) and the host proxies
+`location /nextcloud` **without** a URI part (path preserved). Forgejo gets
+`ROOT_URL = http://<host>.local/forgejo/` and the host proxies
+`location /forgejo/` → `http://10.231.2.2:3000/` (prefix stripped).
+
+The **Tahoe-LAFS web UI** is proxied by Nginx on `:3456` (vhost with `listen`,
+backend `127.0.0.1:3457`) — port-based, not path-based, because the Tahoe WUI
+generates absolute links and has no prefix support. The native-mode Nextcloud
+(`:80` vhost) and native Forgejo (`:8888`) keep their current direct exposure
+only in those legacy modes; the documented/default deployment is fully
 Nginx-fronted.
 
 ### `containers.nextcloud` (when `losos.nextcloud.mode == "container"`)

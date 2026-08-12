@@ -600,12 +600,17 @@ in
     serviceConfig.DeviceAllow = [ "char-drm rw" ];
   };
 
-  # ── Nginx vhosts for the containers (proxy to container IPs; no host port
-  # mappings, so nothing but Nginx binds a public port).
-  services.nginx.virtualHosts = lib.mkMerge [
-    (lib.mkIf nextcloudContainer {
-      "mattbox.local" = {
-        locations."/" = {
+  # ── Path-based Nginx routing on the appliance mDNS name (user requirement:
+  # /nextcloud, /forgejo — NOT per-port vhosts). Proxy to container IPs; no
+  # host port mappings, so nothing but Nginx binds a public port.
+  services.nginx.virtualHosts."${config.losos.hostName}.local" = lib.mkIf containerActive {
+    # Static landing page linking to /nextcloud, /forgejo, :8081 admin, :3456 tahoe
+    root = config.losos.admin.landing;  # new: tiny runCommand package (Task 5 step adds it: one index.html)
+    locations = lib.mkMerge [
+      (lib.mkIf nextcloudContainer {
+        # No URI part in proxyPass → path preserved; the in-container Nextcloud
+        # is configured with overwritewebroot=/nextcloud (see nextcloudStack).
+        "/nextcloud" = {
           proxyPass = "http://10.231.1.2";
           proxyWebsockets = true;
           extraConfig = ''
@@ -615,22 +620,40 @@ in
             proxy_send_timeout 86400s;
           '';
         };
-      };
-    })
-    (lib.mkIf forgejoContainer {
-      "forgejo" = {
-        listen = [ { addr = "0.0.0.0"; port = 8888; } ];
-        locations."/" = { proxyPass = "http://10.231.2.2:3000"; proxyWebsockets = true; };
-      };
-    })
-  ];
+      })
+      (lib.mkIf forgejoContainer {
+        # Trailing slash on proxyPass → /forgejo prefix stripped; forgejo's
+        # ROOT_URL is http://<host>.local/forgejo/ so it generates prefixed links.
+        "/forgejo/" = {
+          proxyPass = "http://10.231.2.2:3000/";
+          proxyWebsockets = true;
+        };
+      })
+    ];
+  };
 
-  networking.firewall.allowedTCPPorts =
-    lib.optional nextcloudContainer 80 ++ lib.optional forgejoContainer 8888;
+  networking.firewall.allowedTCPPorts = lib.optional containerActive 80;
 }
 ```
 
-(Delete: podman options, containers user refs, linger tmpfiles, user units, aioPort binding. Note the old `mattbox.local` host literal — existing vhost hardcodes it; keep parity for now, it's the committed behaviour.)
+(Delete: podman options, containers user refs, linger tmpfiles, user units, the :8888 forgejo vhost. Path routing notes: verify nixpkgs `services.nextcloud` config.php merging honours `config.config."overwrite.cli.url"` over its own `mkDefault` — read the module source under the pinned nixpkgs if the build disagrees.)
+
+`nextcloud-common.nix` stack gains the subpath keys:
+
+```nix
+    config = {
+      dbtype = "pgsql";
+      adminuser = "notshared";
+      adminpassFile = config.losos.nextcloud.adminpassFile;
+      overwritewebroot = "/nextcloud";
+      "htaccess.RewriteBase" = "/nextcloud";
+      "overwrite.cli.url" = "http://${config.losos.nextcloud.hostName}/nextcloud";
+    };
+```
+
+(These apply in container mode; in native mode the same stack runs on :80 root, where overwritewebroot would be wrong — so put the subpath keys in the **container's** `config` in containers.nix (`services.nextcloud.config = config.lososInternal.nextcloudStack.config // { overwritewebroot = …; }`) rather than the common stack. Keep common stack path-clean.)
+
+Forgejo container config: `settings.server.ROOT_URL = "http://${config.losos.hostName}.local/forgejo/"`.
 
 **services.nix** edits:
 - native nextcloud: `services.nextcloud = lib.mkIf (config.losos.nextcloud.mode == "native") config.lososInternal.nextcloudStack;`
