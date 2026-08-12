@@ -39,6 +39,7 @@ module Lib
     cmdRebuildDone,
     cmdSettings,
     cmdApply,
+    cmdFactoryReset,
     validateApply,
     -- * Types
     Mode (..),
@@ -421,6 +422,33 @@ cmdChange mode = do
   saveState s0 {stMode = mode, stSharing = sharing, stRebuild = Just rb}
   spawnRebuild job
   emit $ jsonLn $ object ["job" .= job]
+
+-- | `factory-reset`: restore the appliance to its out-of-box configuration.
+-- Writes the committed 'defaultOverridesNix' back into modules/overrides.nix
+-- (undoing any `apply` the admin app made), resets the persisted state to
+-- 'defaultState' (Local, sharing off, idle), and spawns a rebuild so the box
+-- reverts to the committed defaults. The destructive variant — wiping the
+-- disks and reinstalling from scratch — is the installer ISO, which now
+-- auto-runs `losos-install` as root's login shell; booting that medium is the
+-- full factory reset. This command is the soft, non-destructive tier: it only
+-- touches losos-ctl's own state + overrides.nix and rebuilds.
+cmdFactoryReset :: Losos m => m ()
+cmdFactoryReset = do
+  writeOverrides defaultOverridesNix
+  job <- nextJobId
+  saveState
+    defaultState
+      { stRebuild =
+          Just
+            Rebuild
+              { rbJob = job,
+                rbState = Building,
+                rbProgress = 0,
+                rbMessage = "factory reset: rebuild started"
+              }
+      }
+  spawnRebuild job
+  emit $ jsonLn $ object ["job" .= job, "reset" .= (True :: Bool)]
 
 -- | `status --json`: rebuild progress, polled by the PHP app every ~2s.
 cmdStatus :: Losos m => m ()

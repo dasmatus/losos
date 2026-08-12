@@ -21,6 +21,7 @@ library
     import:           warnings
     hs-source-dirs:   src
     exposed-modules:  Lib
+                    , Installer
     build-depends:
         base            >=4.17 && <5,
         aeson           >=2.0,

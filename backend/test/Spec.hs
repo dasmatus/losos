@@ -9,6 +9,28 @@ module Main (main) where
 
 import Data.Text (Text)
 import qualified Data.Text as T
+import Installer
+  ( BlockDev (..),
+    InstallAction (..),
+    Options (..),
+    defaultEmitFile,
+    defaultFlakeUrl,
+    defaultFlakeWork,
+    defaultKeyfile,
+    defaultTargetRel,
+    detectCandidates,
+    execute,
+    initTestState,
+    planInstall,
+    renderTarget,
+    runTestM,
+    tsFiles,
+    tsDiskoRan,
+    tsDiskoScriptRan,
+    tsLayFlakeRan,
+    tsNixosInstallRan,
+    writtenFile,
+  )
 import Lib
   ( Losos,
     Mode (..),
@@ -18,6 +40,7 @@ import Lib
     TestState (..),
     cmdApply,
     cmdChange,
+    cmdFactoryReset,
     cmdRebuildDone,
     cmdSettings,
     cmdStatus,
@@ -36,6 +59,60 @@ stateAfterChange mode = tsState (step initTest (cmdChange mode))
 
 outputAfterChange :: Mode -> [Text]
 outputAfterChange mode = tsOutput (step initTest (cmdChange mode))
+
+-- ── Installer test helpers ────────────────────────────────────────────────
+-- A canonical Options record matching the production defaults; individual
+-- cases override the field they exercise.
+baseOpts :: Options
+baseOpts =
+  Options
+    { optTpm = False,
+      optDrives = Nothing,
+      optNoInstall = False,
+      optDiskoScript = Nothing,
+      optEmitTarget = Nothing,
+      optFlakeUrl = defaultFlakeUrl,
+      optFlakeWork = defaultFlakeWork,
+      optKeyfile = defaultKeyfile,
+      optTargetRel = defaultTargetRel,
+      optEmitFile = defaultEmitFile
+    }
+
+isLog :: InstallAction -> Bool
+isLog (ALog _) = True
+isLog _ = False
+
+isWrite :: InstallAction -> Bool
+isWrite (AWriteTarget _ _) = True
+isWrite _ = False
+
+isEnsureKeyfile :: InstallAction -> Bool
+isEnsureKeyfile (AEnsureKeyfile _) = True
+isEnsureKeyfile _ = False
+
+isDiskoScript :: InstallAction -> Bool
+isDiskoScript (ARunDiskoScript _) = True
+isDiskoScript _ = False
+
+isClone :: InstallAction -> Bool
+isClone (ACloneFlake _ _) = True
+isClone _ = False
+
+isDisko :: InstallAction -> Bool
+isDisko (ARunDisko _) = True
+isDisko _ = False
+
+isNixosInstall :: InstallAction -> Bool
+isNixosInstall (ARunNixosInstall _) = True
+isNixosInstall _ = False
+
+isLay :: InstallAction -> Bool
+isLay (ALayFlake _ _) = True
+isLay _ = False
+
+isCopyKeyfile :: InstallAction -> Bool
+isCopyKeyfile (ACopyKeyfile _ _) = True
+isCopyKeyfile _ = False
 
 tests :: TestTree
 tests =
@@ -139,6 +216,158 @@ tests =
             assertBool "hostName box2" (any (T.isInfixOf "\"hostName\":\"box2\"") (tsOutput st))
             assertBool "nextcloudMode native" (any (T.isInfixOf "\"nextcloudMode\":\"native\"") (tsOutput st))
             assertBool "aioApachePort 12345" (any (T.isInfixOf "\"aioApachePort\":12345") (tsOutput st))
+        ],
+      testGroup
+        "factory-reset"
+        [ testCase "restores overrides, resets state, spawns, acks reset" $ do
+            -- apply a non-default overrides first so reset has something to undo
+            let code =
+                  T.unlines
+                    [ "{ ... }:",
+                      "{",
+                      "  losos.sharingMyStorage = false;",
+                      "  losos.hostName = \"box2\";",
+                      "}"
+                    ]
+                st = step (step initTest (cmdApply code)) cmdFactoryReset
+            -- overrides restored to the committed default body (hostName mattbox
+            -- reappears; the applied box2 line is gone)
+            assertBool "overrides restored to defaults" $
+              any (T.isInfixOf "losos.hostName = \"mattbox\";") (tsConfig st)
+            assertBool "applied hostName gone" $
+              not (any (T.isInfixOf "losos.hostName = \"box2\";") (tsConfig st))
+            -- state reset to defaultState (Local, sharing off)
+            assertEqual "mode reset to Local" Local (stMode (tsState st))
+            assertBool "sharing off" (not (stSharing (tsState st)))
+            -- a rebuild was spawned
+            assertBool "rebuild spawned" (tsSpawned st)
+            -- the ack carries reset:true and a job id
+            assertBool "acks reset:true" $
+              any (T.isInfixOf "\"reset\":true") (tsOutput st)
+            assertBool "emits job id" $
+              any (T.isInfixOf "\"job\":\"job-1\"") (tsOutput st)
+        ],
+      testGroup
+        "installer"
+        [ -- ── detectCandidates (pure drive filter) ──────────────────────────
+          let vda = disk "vda" (8 * gi) [part "vda1" ["/"]]
+              vdb = disk "vdb" (2 * gi) []
+              vdc = disk "vdc" (2 * gi) []
+              vdd = disk "vdd" (2 * gi) []
+              -- distractors: removable, sub-1GB, and a loop device (not a disk)
+              sdaRemovable = (disk "sda" (2 * gi) []) {bdRm = 1}
+              sdbTiny = (disk "sdb" (500 * mi) []) {bdSize = 500 * mi}
+              loop0 = (disk "loop0" (4 * gi) []) {bdType = "loop"}
+              gi = 1024 * 1024 * 1024 :: Integer
+              mi = 1024 * 1024 :: Integer
+              disk n s kids = BlockDev n s 0 "disk" [] kids
+              part n mps = BlockDev n (1 * gi) 0 "part" mps []
+           in testGroup
+                "detectCandidates"
+                [ testCase "finds the three empty target disks" $ do
+                    let cs = detectCandidates [vda, vdb, vdc, vdd]
+                    assertEqual "three candidates" ["/dev/vdb", "/dev/vdc", "/dev/vdd"] cs,
+                  testCase "excludes the mounted VM root (vda)" $
+                    assertBool "vda excluded" (not ("/dev/vda" `elem` detectCandidates [vda, vdb, vdc, vdd])),
+                  testCase "excludes removable, tiny, and non-disk devices" $
+                    assertBool "only the three fixed disks" $
+                      detectCandidates [vda, vdb, vdc, vdd, sdaRemovable, sdbTiny, loop0]
+                        == ["/dev/vdb", "/dev/vdc", "/dev/vdd"]
+                ],
+          -- ── renderTarget (pure Nix rendering) ──────────────────────────────
+          testGroup
+            "renderTarget"
+            [ testCase "emits targetDrives + tpm.enable=false (keyfile path)" $ do
+                let t = renderTarget ["/dev/vdb", "/dev/vdc", "/dev/vdd"] False
+                assertBool "has targetDrives assignment" (T.isInfixOf "losos.targetDrives" t)
+                assertBool "lists drives" (T.isInfixOf "[ \"/dev/vdb\" \"/dev/vdc\" \"/dev/vdd\" ]" t)
+                assertBool "tpm false" (T.isInfixOf "losos.tpm.enable = false;" t)
+                assertBool "module body" (T.isInfixOf "{ ... }:" t),
+              testCase "emits tpm.enable=true (TPM path)" $
+                let t = renderTarget ["/dev/nvme0n1"] True
+                 in assertBool "tpm true" (T.isInfixOf "losos.tpm.enable = true;" t)
+            ],
+          -- ── planInstall (the flow / action list) ───────────────────────────
+          let bds = [disk "vda" (8 * gi) [part "vda1" ["/"]], disk "vdb" (2 * gi) [], disk "vdc" (2 * gi) [], disk "vdd" (2 * gi) []]
+              gi = 1024 * 1024 * 1024 :: Integer
+              disk n s kids = BlockDev n s 0 "disk" [] kids
+              part n mps = BlockDev n (1 * gi) 0 "part" mps []
+              opts = baseOpts
+           in testGroup
+                "planInstall"
+                [ testCase "--emit-target writes the target and stops before disko" $ do
+                    let o = opts {optEmitTarget = Just "/tmp/detected.nix"}
+                        Right acts = planInstall o bds
+                    assertBool "writes exactly the emit file" (any isWrite acts)
+                    assertBool "writes no disko" (not (any isDisko acts))
+                    assertBool "writes no disko-script" (not (any isDiskoScript acts))
+                    assertBool "writes no clone" (not (any isClone acts))
+                    assertBool "writes no nixos-install" (not (any isNixosInstall acts)),
+                  testCase "--disko-script (keyfile path) ensures keyfile + runs script" $ do
+                    let o = opts {optDiskoScript = Just "/etc/losos/disko-script"}
+                        Right acts = planInstall o bds
+                    assertBool "ensures keyfile" (any isEnsureKeyfile acts)
+                    assertBool "runs disko-script" (any isDiskoScript acts)
+                    assertBool "no clone" (not (any isClone acts))
+                    assertBool "no nixos-install" (not (any isNixosInstall acts)),
+                  testCase "--disko-script --tpm skips the keyfile" $ do
+                    let o = (opts {optDiskoScript = Just "/etc/losos/disko-script"}) {optTpm = True}
+                        Right acts = planInstall o bds
+                    assertBool "no ensure-keyfile under TPM" (not (any isEnsureKeyfile acts)),
+                  testCase "full path (keyfile): clone, disko, install, lay, copy keyfile" $ do
+                    let Right acts = planInstall opts bds
+                    assertBool "logs target drives" (any isLog acts)
+                    assertBool "ensures keyfile" (any isEnsureKeyfile acts)
+                    assertBool "clones flake" (any isClone acts)
+                    assertBool "runs disko" (any isDisko acts)
+                    assertBool "runs nixos-install" (any isNixosInstall acts)
+                    assertBool "lays flake" (any isLay acts)
+                    assertBool "copies keyfile" (any isCopyKeyfile acts),
+                  testCase "full path --no-install stops after disko" $ do
+                    let o = opts {optNoInstall = True}
+                        Right acts = planInstall o bds
+                    assertBool "runs disko" (any isDisko acts)
+                    assertBool "no nixos-install" (not (any isNixosInstall acts))
+                    assertBool "no lay" (not (any isLay acts))
+                    assertBool "no copy keyfile" (not (any isCopyKeyfile acts)),
+                  testCase "full path --tpm: no keyfile ensure, no keyfile copy" $ do
+                    let o = opts {optTpm = True}
+                        Right acts = planInstall o bds
+                    assertBool "no ensure-keyfile" (not (any isEnsureKeyfile acts))
+                    assertBool "no copy keyfile" (not (any isCopyKeyfile acts)),
+                  testCase "no candidate disks is a Left (error)" $ do
+                    let mounted = [disk "vda" (8 * gi) [part "vda1" ["/"]]]
+                     in assertBool "no disks -> Left" (null (detectCandidates mounted))
+                    let r = planInstall opts [disk "vda" (8 * gi) [part "vda1" ["/"]]]
+                     in case r of
+                          Left _ -> assertBool "Left" True
+                          Right _ -> assertBool "expected Left" False,
+                  testCase "--drives override bypasses detection" $ do
+                    let o = opts {optDrives = Just ["/dev/nvme0n1"]}
+                        Right acts = planInstall o bds
+                        t = case [t' | AWriteTarget _ t' <- acts] of
+                          (x : _) -> x
+                          _ -> ""
+                    assertBool "override drive in rendered target" (T.isInfixOf "/dev/nvme0n1" t),
+                  testCase "execute (TestM) --emit-target writes the file, runs no disko" $ do
+                    let o = opts {optEmitTarget = Just "/tmp/detected.nix"}
+                        Right acts = planInstall o bds
+                        st = runTestM initTestState (execute acts)
+                    assertBool "wrote the emit file" (writtenFile st "/tmp/detected.nix" /= Nothing)
+                    assertBool "no disko ran" (not (tsDiskoRan st)),
+                  testCase "execute (TestM) --disko-script runs the script, no install" $ do
+                    let o = opts {optDiskoScript = Just "/etc/losos/disko-script"}
+                        Right acts = planInstall o bds
+                        st = runTestM initTestState (execute acts)
+                    assertEqual "ran the script" (Just "/etc/losos/disko-script") (tsDiskoScriptRan st)
+                    assertBool "no nixos-install" (not (tsNixosInstallRan st)),
+                  testCase "execute (TestM) full path runs every stage" $ do
+                    let Right acts = planInstall opts bds
+                        st = runTestM initTestState (execute acts)
+                    assertBool "disko ran" (tsDiskoRan st)
+                    assertBool "nixos-install ran" (tsNixosInstallRan st)
+                    assertBool "lay ran" (tsLayFlakeRan st)
+                ]
         ]
     ]
 

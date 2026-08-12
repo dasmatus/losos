@@ -35,6 +35,11 @@ pkgs.testers.nixosTest {
         "/dev/vdc"
         "/dev/vdd"
       ];
+      # The losos-ctl derivation the `losos-install` wrapper is drawn from.
+      # Reusing flake/packages.nix keeps the VM test free of `self` (the
+      # installer module must not depend on it) without rebuilding the cabal
+      # project a second way.
+      lososPkgs = import ../flake/packages.nix { inherit pkgs; };
     in
     {
       imports = [
@@ -43,6 +48,10 @@ pkgs.testers.nixosTest {
         ../modules/disko.nix
         ../modules/installer.nix
       ];
+
+      # Supply the installer binary; leave autorun false (the test drives
+      # losos-install manually through its --emit-target / --disko-script seams).
+      losos.installer.package = lososPkgs.losos-ctl;
 
       # Drive list the disko layout pools into `persist-vg`, plus TPM mode.
       # The test uses the keyfile path (unattended); the keyfile is created

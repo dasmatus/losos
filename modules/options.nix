@@ -183,5 +183,40 @@
         installed").
       '';
     };
+
+    # ── Installer (the `losos-ctl install` subcommand) ──────────────────────
+    # The auto-installer is folded into losos-ctl as the `install` subcommand.
+    # modules/installer.nix packages it as the `losos-install` wrapper (which
+    # just execs `losos-ctl install`), preserving the old command name the VM
+    # test and the README rely on. The option is null by default so a module
+    # that imports installer.nix without `self` (the VM test) must opt in —
+    # keeping installer.nix free of flake coupling.
+    installer.package = lib.mkOption {
+      type = lib.types.nullOr lib.types.package;
+      default = null;
+      description = ''
+        The losos-ctl derivation to draw the `losos-install` wrapper from. The
+        cabal project builds one `losos-ctl` binary containing both the control
+        backend and the `install` subcommand, so this is usually
+        `self.packages.<system>.losos-ctl`. Set to null to ship no installer
+        binary.
+      '';
+    };
+
+    # When true, the installer medium auto-runs `losos-install` as root's login
+    # shell (autologin on tty1) — booting the ISO = running the installer, the
+    # destructive factory-reset / reinstall path. Only set on the installer ISO,
+    # never on a running target or the VM test (which drives losos-install
+    # manually via its --emit-target / --disko-script seams).
+    installer.autorun = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Auto-run `losos-install` as root's login shell on tty1 at boot. This is
+        what turns the installer ISO into a set-and-forget reinstall / factory-
+        reset medium: insert it, boot, and the installer runs unattended. Leave
+        false on a normal target system.
+      '';
+    };
   };
 }

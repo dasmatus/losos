@@ -58,6 +58,15 @@
         "job": { "type": "string" }
       }
     },
+    "factoryResetResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["job", "reset"],
+      "properties": {
+        "job": { "type": "string", "description": "Opaque id of the rebuild triggered to apply the reset." },
+        "reset": { "type": "boolean", "description": "Always true; distinguishes the factory-reset ack from a change ack." }
+      }
+    },
     "statusResponse": {
       "type": "object",
       "additionalProperties": false,
@@ -102,6 +111,16 @@
       "description": "`losos-ctl apply` — read Nix code (a full modules/overrides.nix body) from stdin, validate it references losos.* and is a module body, atomically overwrite modules/overrides.nix, mark a rebuild as building, spawn a detached nixos-rebuild switch, and emit the job id on stdout. The PHP admin app generates the Nix code from the form and pipes it in. Non-zero exit + stderr on validation failure (so the PHP layer raises BackendException).",
       "stdin": { "type": "string", "description": "The full overrides.nix body the admin app generated." },
       "stdout": { "$ref": "#/$defs/changeResponse" }
+    },
+    "factory-reset": {
+      "description": "`losos-ctl factory-reset` — soft factory reset: atomically restore modules/overrides.nix to the committed default body, reset the persisted state to defaultState (Local, sharing off), mark a rebuild as building, spawn a detached nixos-rebuild, and emit the job id. Non-destructive: it only touches losos-ctl's own state + overrides.nix. The destructive tier (wipe disks + reinstall) is the installer ISO, which auto-runs `losos-install` as root's login shell.",
+      "stdout": { "$ref": "#/$defs/factoryResetResponse" }
+    },
+    "install": {
+      "description": "`losos-ctl install [flags]` — the losos auto-installer (was losos-install.sh). Detects fixed disks, merges them into one LVM volume group via disko, runs nixos-install, and lays the flake at /persist/etc/nixos. Flags: --tpm, --drives A,/dev/b,..., --no-install, --disko-script PATH, --emit-target FILE. Drives auto-detection uses `lsblk --json`. Non-zero exit + stderr on failure (no candidate disks, disko/nixos-install failure).",
+      "args": {
+        "flags": { "type": "string", "description": "--tpm | --drives LIST | --no-install | --disko-script PATH | --emit-target FILE" }
+      }
     },
     "rebuild-done": {
       "description": "`losos-ctl rebuild-done <exitcode> <job>` — internal, invoked by the detached rebuild shell after nixos-rebuild. Updates stateFile.rebuild to done/failed only if <job> matches the currently-tracked rebuild's id (a stale completion from an older, superseded rebuild is ignored). No stdout contract.",

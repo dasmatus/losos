@@ -50,6 +50,14 @@
                   pkgs.disko
                   pkgs.cryptsetup
                 ];
+                # The installer binary (losos-install wraps `losos-ctl install`,
+                # both built from the same cabal project). installer.nix packages
+                # it; self.packages is in scope via specialArgs.
+                losos.installer.package = self.packages.${system}.losos-ctl;
+                # Booting the ISO auto-runs losos-install as root's login shell:
+                # insert the medium, boot, and the box reinstalls unattended —
+                # the destructive factory-reset / reinstall path.
+                losos.installer.autorun = true;
                 # Bake the flake source (git-tracked tree self.outPath resolves
                 # to) into the ISO so losos-install can copy it to a writable
                 # work dir, drop in modules/install-target.nix, and run disko +

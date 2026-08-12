@@ -15,8 +15,8 @@ TPM2 when the machine has one, or a random keyfile when it does not.
 | `modules/options.nix` | `losos.*` option declarations (incl. `losos.backend.package`) |
 | `modules/configuration.nix` | Networking, locale, packages, users |
 | `modules/disko.nix` | Disk layout: every drive → LVM PV → `persist-vg` → LUKS/btrfs `/persist`; tmpfs `/` |
-| `modules/installer.nix` | Packages `losos-install` and bakes the flake source into the ISO |
-| `install/losos-install.sh` | The minimal auto-installer: detect drives → LVM via disko → nixos-install |
+| `modules/installer.nix` | Packages the `losos-install` wrapper (`losos-ctl install`); on the ISO, auto-runs it as root's login shell |
+| `backend/src/Installer.hs` | The auto-installer logic (was `install/losos-install.sh`), as a `losos-ctl install` subcommand; `Install` effect class + pure `TestM` interpreter |
 | `tests/install.nix` | nixos-test-vms config that runs the installer against 3 VM disks |
 | `modules/boot.nix` | systemd-boot, systemd initrd, TPM2, keyfile secret |
 | `modules/impermanence.nix` | What survives reboot (bind-mounted from `/persist`) |
@@ -34,25 +34,53 @@ nix build .#nixosConfigurations.iso.config.system.build.isoImage
 ```
 
 The ISO bakes the flake source at `/etc/losos/flake-source` and ships a
-`losos-install` command that does the whole first install unattended (see
-"First install" below).
+`losos-install` command (a wrapper around the `losos-ctl install` subcommand;
+the logic lives in `backend/src/Installer.hs`) that does the whole first
+install unattended. The ISO also **auto-runs `losos-install` as root's login
+shell** — boot the medium and the installer runs on its own, then drops you
+to a bash shell on Ctrl-C or completion. This is the destructive
+factory-reset / reinstall path: boot the ISO and the box reinstalls from
+scratch.
 
 ## First install (auto-installer)
 
-1. Boot the `iso` on the target machine.
-2. Run the installer — it finds every fixed, non-removable disk that isn't
-   already mounted, merges them all into one LVM volume group via the disko
-   layout in `modules/disko.nix`, formats it, installs the `install` system,
-   and lays the flake down at `/persist/etc/nixos` as a git repo so the box
-   can auto-upgrade:
+1. Boot the `iso` on the target machine — the installer auto-runs as root's
+   login shell. (To drive it manually, Ctrl-C the auto-run and invoke
+   `losos-install` yourself; `--help` lists the flags.)
+2. The installer finds every fixed, non-removable disk that isn't already
+   mounted, merges them all into one LVM volume group via the disko layout in
+   `modules/disko.nix`, formats it, installs the `install` system, and lays
+   the flake down at `/persist/etc/nixos` as a git repo so the box can
+   auto-upgrade. Drive detection uses `lsblk --json` (parsed in Haskell, not
+   the old awk pipeline). By default it uses a random keyfile (unattended).
+   Add `--tpm` to use TPM2 (you'll be prompted for a passphrase at format
+   time, then enroll TPM2 after first boot — see below). Override drive
+   auto-detection with `--drives /dev/sdb,/dev/sdc`, or stop after disko with
+   `--no-install`.
    ```sh
-   sudo losos-install
+   sudo losos-install                       # auto-detect drives, keyfile (unattended)
+   sudo losos-install --tpm                 # TPM2 (passphrase at format)
+   sudo losos-install --drives /dev/sdb,/dev/sdc   # override auto-detection
+   sudo losos-install --no-install         # stop after disko (format+mount)
+   sudo losos-install --emit-target FILE    # write install-target.nix and exit
+   sudo losos-install --disko-script PATH   # run a prebuilt diskoScript instead of disko
    ```
-   By default this uses a random keyfile (unattended). Add `--tpm` to use
-   TPM2 instead (you'll be prompted for a passphrase at format time, then
-   enroll TPM2 after first boot — see below). Override drive auto-detection
-   with `--drives /dev/sdb,/dev/sdc`, or stop after disko with `--no-install`.
+   (Every flag also works as `losos-ctl install <flags>`.)
 3. Reboot into the installed system.
+
+### Factory reset
+
+Two tiers:
+
+- **Soft reset (non-destructive)** — from the running box, restore losos-ctl's
+  persisted state and `modules/overrides.nix` to their committed defaults and
+  rebuild. Does not touch your data:
+  ```sh
+  sudo losos-ctl factory-reset
+  ```
+- **Destructive reset / reinstall** — boot the installer ISO. It auto-runs
+  `losos-install` as the login shell, which repartitions the target disks via
+  disko and reinstalls. This wipes `/persist` (all user data); back up first.
 
 The installer writes the detected drive list to `modules/install-target.nix`
 (a file `flake.nix` imports only when it exists — *not* to `modules/overrides.nix`,
