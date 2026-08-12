@@ -9,11 +9,13 @@ on:
 
 jobs:
   nix-eval:
-    name: "nix: flake check + cheap checks"
+    name: "nix: flake check + ISO build"
     runs-on: codeberg-medium
     steps:
       - uses: actions/checkout@v4
       - uses: https://github.com/DeterminateSystems/nix-installer-action@v22
       # Evaluates every output incl. both VM test derivations; builds nothing.
       - run: nix flake check --no-build -L
-      - run: nix build .#checks.x86_64-linux.losos-install
+      # Build the installer ISO (the reinstall medium); skip the slow
+      # losos-install VM test (`nix build .#checks.x86_64-linux.losos-install`).
+      - run: nix build .#nixosConfigurations.iso.config.system.build.isoImage -L

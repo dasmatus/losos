@@ -54,6 +54,10 @@ let
       {
         nativeBuildInputs = [ pkgs.makeWrapper ];
         meta.mainProgram = "losos-install";
+        # Required by lib.types.shellPackage so it can be root's login shell on
+        # the autorun ISO (users.users.root.shell); without it nixpkgs' users
+        # module throws "losos-install is not a shell package".
+        passthru.shellPath = "/bin/losos-install";
       }
       ''
         install -Dm755 ${lib.getExe losos-install} $out/bin/losos-install
