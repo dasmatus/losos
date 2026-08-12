@@ -11,11 +11,15 @@ jobs:
   nix-eval:
     name: "nix: flake check + ISO build"
     runs-on: codeberg-medium
+    container:
+      image: docker.io/nixos/nix:latest
     steps:
       - uses: actions/checkout@v4
-      - uses: https://github.com/DeterminateSystems/nix-installer-action@v22
       # Evaluates every output incl. both VM test derivations; builds nothing.
-      - run: nix flake check --no-build -L
+      - run: nix --experimental-features 'nix-command flakes' flake check --no-build -L
       # Build the installer ISO (the reinstall medium); skip the slow
       # losos-install VM test (`nix build .#checks.x86_64-linux.losos-install`).
-      - run: nix build .#nixosConfigurations.iso.config.system.build.isoImage -L
+      - run: nix --experimental-features 'nix-command flakes' build .#nixosConfigurations.iso.config.system.build.isoImage -L
+      - name: Release
+        uses: https://github.com/softprops/action-gh-release@v3
+        if: forgejo.ref_type == 'rel'
