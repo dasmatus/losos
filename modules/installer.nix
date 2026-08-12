@@ -67,7 +67,7 @@ in
     # Destructive reinstall medium: boot ISO → autologin root → losos-install
     # runs as the login shell. Gated so the VM test (which drives the installer
     # manually) and normal targets never auto-wipe.
-    services.getty.autologinUser = lib.mkForce autorun "root";
+    services.getty.autologinUser = lib.mkIf autorun (lib.mkForce "root");
     users.users.root.shell = lib.mkIf autorun losos-install-wrapped;
   };
 }

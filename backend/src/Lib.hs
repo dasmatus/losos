@@ -56,7 +56,6 @@ module Lib
 where
 
 import Control.Exception (SomeException, try)
-import Control.Monad (guard, void)
 import Control.Monad.State.Strict
   ( MonadState,
     StateT,

@@ -52,6 +52,7 @@ module Installer
     initTestState,
     runTestM,
     runInstallIO,
+    writtenFile,
     -- * Planning (pure)
     BlockDev (..),
     Options (..),
@@ -138,7 +139,7 @@ instance FromJSON BlockDev where
       -- string; we fall back to it if the plural column is absent. Nulls in
       -- the array mean "no mountpoint here" and are dropped.
       parseMountpoints o = do
-        m <- o .:? "mountpoints" :: A.Parser (Maybe [Maybe Text])
+        m <- o .:? "mountpoints"
         case m of
           Just xs -> pure (catMaybes xs)
           Nothing -> maybe [] (: []) <$> (o .:? "mountpoint")
@@ -466,7 +467,7 @@ readBlockDevices = do
     ExitFailure n -> throwIO (InstallError (T.pack ("lsblk failed (exit " ++ show n ++ "): " ++ err)))
     ExitSuccess -> case A.eitherDecode (BL.fromStrict (TE.encodeUtf8 (T.pack out))) of
       Left e -> throwIO (InstallError (T.pack ("lsblk parse error: " ++ e ++ " (output: " ++ take 200 out ++ ")")))
-      Right (LsblkOutput bds) -> pure bds
+      Right parsed -> pure (lsBlockdevices parsed)
 
 -- | The CLI entry: read devices (only when auto-detecting), plan, execute,
 -- surface errors as stderr + non-zero exit. Drives the @losos-ctl install@
