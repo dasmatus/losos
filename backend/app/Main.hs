@@ -1,8 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 {- |
-Module      : Main
-Description : losos-ctl CLI entrypoint (optparse-applicative).
+Module      : Main (losos-ctl)
+Description : losos-ctl facade CLI entrypoint (optparse-applicative).
 
 Subcommands (see backend/schema.json for the wire formats):
 
@@ -17,27 +17,25 @@ Subcommands (see backend/schema.json for the wire formats):
 `--json` is accepted as a no-op switch on state/status; output is always JSON
 regardless, since that's the only consumer.
 
-The command logic lives in "Lib" (the runtime control backend) and "Installer"
-(the auto-installer), both polymorphic over an effect type class; this entry
-point runs them in 'IO' (the production interpreter). NOTE: transitional —
-the facade/D-Bus rewrite (Task 2) moves the privileged commands behind
-lososd; this interim version still runs them locally.
+Every privileged subcommand is relayed to the lososd daemon over the system
+D-Bus ("Facade") and the daemon's JSON reply is printed verbatim — this binary
+needs nothing beyond D-Bus send rights (root or group `losos`). In particular
+there is no sudo anymore. Only `install` runs locally: it is the installer
+ISO's root login shell, where no daemon or bus is involved.
 -}
 module Main (main) where
 
+import Control.Exception (handle)
 import qualified Data.ByteString.Lazy as BL
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
+import DBus (toVariant)
+import Facade (BackendFailure (..), callBackend)
 import Installer (Options (..), defaultEmitFile, defaultFlakeUrl, defaultFlakeWork, defaultKeyfile, defaultTargetRel, runInstallIO)
 import Lib (
     Mode (..),
-    cmdApply,
-    cmdChange,
-    cmdFactoryReset,
-    cmdSettings,
-    cmdState,
-    cmdStatus,
+    modeText,
     validateApply,
  )
 import Options.Applicative (
@@ -74,10 +72,6 @@ data Command
     | CmdFactoryReset
     | CmdInstall InstallFlags
 
--- | Print one JSON document (the wire format is one object per line).
-putJsonLn :: BL.ByteString -> IO ()
-putJsonLn bs = BL.putStr bs >> BL.putStr "\n"
-
 -- | The subset of installer flags parsed by optparse. The env-overridable
 -- path/url defaults (flake url, work dir, keyfile) are filled in from the
 -- environment in 'main', so the CLI surface matches the old @losos-install@
@@ -110,14 +104,14 @@ settingsP = const CmdSettings <$> jsonFlag
 applyP :: Parser Command
 applyP = pure CmdApply
 
--- | `factory-reset` — soft factory reset. No options; the danger is gated by
--- the locked-down sudoers rule that pins this binary (the PHP admin app
--- confirms in the UI before invoking).
+-- | `factory-reset` — soft factory reset. The danger is gated by D-Bus policy
+-- (root / group `losos` only) plus the admin UI's Bearer token; the UI also
+-- confirms before invoking.
 factoryResetP :: Parser Command
 factoryResetP = pure CmdFactoryReset
 
-{- | Parse `--mode local|mesh` at parse time, so 'cmdChange' gets a validated
-'Mode' and never has to handle an invalid one.
+{- | Parse `--mode local|mesh` at parse time, so callers never deal with an
+invalid one.
 -}
 changeP :: Parser Command
 changeP =
@@ -213,24 +207,33 @@ mkInstallOptions flags = do
             }
 
 main :: IO ()
-main = do
+main = handle backendFail $ do
     cmd <- execParser parserInfo
     case cmd of
-        CmdState -> cmdState >>= putJsonLn
-        CmdChange m -> cmdChange m >>= putJsonLn
-        CmdStatus -> cmdStatus >>= putJsonLn
-        CmdSettings -> cmdSettings >>= putJsonLn
+        CmdState -> callAndPrint "State" []
+        CmdChange m -> callAndPrint "Change" [toVariant (modeText m)]
+        CmdStatus -> callAndPrint "Status" []
+        CmdSettings -> callAndPrint "Settings" []
         CmdApply -> do
             input <- TIO.getContents
+            -- Pre-validate locally so a rejected payload fails fast without a
+            -- daemon round-trip; lososd validates again on the server side.
             case validateApply input of
                 Left err -> do
                     hPutStrLn stderr ("losos-ctl apply: " <> T.unpack err)
                     exitFailure
-                Right code -> cmdApply code >>= putJsonLn
-        CmdFactoryReset -> cmdFactoryReset >>= putJsonLn
+                Right code -> callAndPrint "Apply" [toVariant code]
+        CmdFactoryReset -> callAndPrint "FactoryReset" []
         CmdInstall flags -> do
             opts <- mkInstallOptions flags
             runInstallIO opts
+  where
+    callAndPrint member args = do
+        bs <- callBackend member args
+        BL.putStr bs >> BL.putStr "\n"
+    backendFail (BackendFailure msg) = do
+        hPutStrLn stderr msg
+        exitFailure
 
 parserInfo :: ParserInfo Command
-parserInfo = info (commands <**> helper) (progDesc "losos appliance control backend + auto-installer")
+parserInfo = info (commands <**> helper) (progDesc "losos appliance control facade (D-Bus client for lososd) + auto-installer")

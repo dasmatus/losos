@@ -121,5 +121,20 @@
         "flags": { "type": "string", "description": "--tpm | --drives LIST | --no-install | --disko-script PATH | --emit-target FILE" }
       }
     }
+  },
+
+  "dbus": {
+    "name": "org.losos1",
+    "path": "/org/losos1",
+    "interface": "org.losos.Control1",
+    "note": "lososd (systemd system service, root) owns the well-known name. Authorization: shipped system-bus policy — root always, group 'losos' otherwise. Every method returns a single string 's' carrying the JSON document of the same-named facade subcommand; Change/Apply additionally take their payload as the single input string. Error replies use error name org.losos1.Error.Failed with the message as the first body string.",
+    "methods": {
+      "State":        { "in": [], "out": "s (stateResponse)" },
+      "Settings":     { "in": [], "out": "s (settingsResponse)" },
+      "Change":       { "in": ["s (mode)"], "out": "s (changeResponse)" },
+      "Apply":        { "in": ["s (overrides.nix body)"], "out": "s (changeResponse)" },
+      "FactoryReset": { "in": [], "out": "s (factoryResetResponse)" },
+      "Status":       { "in": [], "out": "s (statusResponse)" }
+    }
   }
 }

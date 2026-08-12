@@ -1,15 +1,21 @@
 cabal-version:      3.0
 name:              losos-ctl
 version:           0.1.0
-synopsis:          losos appliance control backend — toggle Local/Mesh and trigger NixOS rebuilds
+synopsis:          losos appliance control — lososd daemon + losos-ctl facade
 description:
-  losos-ctl is the privileged backend the losos Nextcloud app talks to (via a
-  locked-down sudoers rule). It reads/writes the appliance's sharing mode
-  (Local only vs On the mesh), rewrites the losos.sharingMyStorage line in the
-  persisted flake, kicks off a detached nixos-rebuild, and records rebuild
-  progress in a state file the PHP app polls.
+  The losos control plane, split in two:
   .
-  Subcommands: state, change, status, rebuild-done (internal).
+  * lososd — a root systemd service owning the privileged operations: it
+    reads/writes the appliance's sharing mode (Local vs mesh), rewrites the
+    losos.* lines in the persisted flake, runs supervised nixos-rebuild
+    transient units, and serves its state over the system D-Bus
+    (org.losos1 / org.losos.Control1) plus a Bearer-authed loopback JSON API
+    for the admin UI.
+  .
+  * losos-ctl — the facade: same subcommands as before (state, change,
+    status, settings, apply, factory-reset), relayed over D-Bus; plus the
+    local `install` subcommand (the installer ISO's auto-installer).
+
 license:           AGPL-3.0-or-later
 build-type:        Simple
 
@@ -22,6 +28,8 @@ library
     hs-source-dirs:   src
     exposed-modules:  Lib
                     , Installer
+                    , Daemon
+                    , Facade
     build-depends:
         base            >=4.17 && <5,
         aeson           >=2.0,
@@ -33,7 +41,8 @@ library
         bytestring,
         unix,
         time,
-        mtl
+        mtl,
+        dbus            >=1.4 && <2
     default-language: Haskell2010
 
 executable losos-ctl
@@ -46,7 +55,17 @@ executable losos-ctl
         aeson,
         optparse-applicative,
         text,
-        bytestring
+        bytestring,
+        dbus            >=1.4 && <2
+    default-language: Haskell2010
+
+executable lososd
+    import:           warnings
+    main-is:          DaemonMain.hs
+    hs-source-dirs:   app
+    build-depends:
+        base            >=4.17 && <5,
+        losos-ctl
     default-language: Haskell2010
 
 test-suite spec
