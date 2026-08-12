@@ -12,18 +12,20 @@ Subcommands (see backend/schema.json for the wire formats):
   losos-ctl settings        --json   current losos.* options from overrides.nix
   losos-ctl apply                    apply Nix code from stdin (rewrites overrides.nix + rebuilds)
   losos-ctl factory-reset             soft factory reset (restore defaults + rebuild)
-  losos-ctl rebuild-done <exitcode> <job>  internal: record terminal rebuild status
   losos-ctl install [flags]           the losos auto-installer (was losos-install.sh)
 
-`--json` is accepted as a no-op switch on state/status (the PHP app passes
-it); output is always JSON regardless, since that's the only consumer.
+`--json` is accepted as a no-op switch on state/status; output is always JSON
+regardless, since that's the only consumer.
 
 The command logic lives in "Lib" (the runtime control backend) and "Installer"
 (the auto-installer), both polymorphic over an effect type class; this entry
-point runs them in 'IO' (the production interpreter).
+point runs them in 'IO' (the production interpreter). NOTE: transitional —
+the facade/D-Bus rewrite (Task 2) moves the privileged commands behind
+lososd; this interim version still runs them locally.
 -}
 module Main (main) where
 
+import qualified Data.ByteString.Lazy as BL
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
@@ -33,7 +35,6 @@ import Lib (
     cmdApply,
     cmdChange,
     cmdFactoryReset,
-    cmdRebuildDone,
     cmdSettings,
     cmdState,
     cmdStatus,
@@ -43,8 +44,6 @@ import Options.Applicative (
     Parser,
     ParserInfo,
     ReadM,
-    argument,
-    auto,
     command,
     eitherReader,
     execParser,
@@ -70,11 +69,14 @@ data Command
     = CmdState
     | CmdChange Mode
     | CmdStatus
-    | CmdRebuildDone Int Text
     | CmdSettings
     | CmdApply
     | CmdFactoryReset
     | CmdInstall InstallFlags
+
+-- | Print one JSON document (the wire format is one object per line).
+putJsonLn :: BL.ByteString -> IO ()
+putJsonLn bs = BL.putStr bs >> BL.putStr "\n"
 
 -- | The subset of installer flags parsed by optparse. The env-overridable
 -- path/url defaults (flake url, work dir, keyfile) are filled in from the
@@ -131,12 +133,6 @@ changeP =
                 <> help "sharing mode: local (private) or mesh (contribute storage)"
             )
 
-rebuildDoneP :: Parser Command
-rebuildDoneP =
-    CmdRebuildDone
-        <$> argument auto (metavar "EXITCODE" <> help "nixos-rebuild exit code")
-        <*> argument str (metavar "JOB" <> help "job id returned by `change`")
-
 -- | Comma-separated drive list: @--drives /dev/sdb,/dev/sdc@.
 drivesReader :: ReadM [Text]
 drivesReader = eitherReader $ \s ->
@@ -185,7 +181,6 @@ commands =
             , command "settings" (info settingsP (progDesc "print the current losos.* settings from overrides.nix"))
             , command "apply" (info applyP (progDesc "apply Nix config from stdin (rewrites overrides.nix + rebuilds)"))
             , command "factory-reset" (info factoryResetP (progDesc "soft factory reset: restore defaults + rebuild (destructive reset = boot the installer ISO)"))
-            , command "rebuild-done" (info rebuildDoneP (progDesc "record terminal rebuild status (internal)"))
             , command "install" (info installP (progDesc "the losos auto-installer (was losos-install.sh)"))
             ]
 
@@ -221,19 +216,18 @@ main :: IO ()
 main = do
     cmd <- execParser parserInfo
     case cmd of
-        CmdState -> cmdState
-        CmdChange m -> cmdChange m
-        CmdStatus -> cmdStatus
-        CmdRebuildDone c j -> cmdRebuildDone c j
-        CmdSettings -> cmdSettings
+        CmdState -> cmdState >>= putJsonLn
+        CmdChange m -> cmdChange m >>= putJsonLn
+        CmdStatus -> cmdStatus >>= putJsonLn
+        CmdSettings -> cmdSettings >>= putJsonLn
         CmdApply -> do
             input <- TIO.getContents
             case validateApply input of
                 Left err -> do
                     hPutStrLn stderr ("losos-ctl apply: " <> T.unpack err)
                     exitFailure
-                Right code -> cmdApply code
-        CmdFactoryReset -> cmdFactoryReset
+                Right code -> cmdApply code >>= putJsonLn
+        CmdFactoryReset -> cmdFactoryReset >>= putJsonLn
         CmdInstall flags -> do
             opts <- mkInstallOptions flags
             runInstallIO opts

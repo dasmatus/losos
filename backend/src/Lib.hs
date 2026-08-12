@@ -11,23 +11,29 @@
 
 -- |
 -- Module      : Lib
--- Description : losos-ctl backend logic, abstracted over a 'Losos' effect class.
+-- Description : losos appliance control core, abstracted over a 'Losos' effect class.
 --
 -- The interesting design choice is the 'Losos' type class: every command
--- ('cmdState', 'cmdChange', 'cmdStatus', 'cmdRebuildDone') is polymorphic in
--- the interpreter. Production runs in 'IO' (real files, setsid-spawned
--- nixos-rebuild); the test suite runs in 'TestM', a pure 'StateT' over a
+-- ('cmdState', 'cmdChange', 'cmdStatus', …) is polymorphic in the
+-- interpreter. Production runs in 'IO' (real files, systemd-run rebuilds) from
+-- the lososd daemon; the test suite runs in 'TestM', a pure 'StateT' over a
 -- record of fake state, so the state-machine logic can be exercised without a
 -- real install or a real rebuild.
 --
--- State lives at $LOSOS_STATE_DIR/state.json. The PHP app's BackendService
--- shells out to the three public subcommands (state, change, status); the
--- fourth (rebuild-done) is invoked by the detached rebuild shell once it
--- finishes, to record the terminal rebuild status.
+-- Commands /return/ their JSON response (one object, no trailing newline —
+-- the caller adds framing). Two call sites consume them:
+--
+--   * lososd ("Daemon"), exposing them over the system D-Bus and a loopback
+--     HTTP JSON API;
+--   * the losos-ctl facade ("Facade"), which calls the daemon and prints.
+--
+-- State lives at $LOSOS_STATE_DIR/state.json. The daemon is the sole writer;
+-- rebuild completion is recorded by a watcher thread polling the transient
+-- systemd unit (see 'ioSpawnRebuild'), so there is no rebuild-done subcommand
+-- and no second writer.
 module Lib
   ( -- * Effect type class
     Losos (..),
-    jsonLn,
     -- * Interpreters
     TestState (..),
     initTest,
@@ -36,7 +42,6 @@ module Lib
     cmdState,
     cmdChange,
     cmdStatus,
-    cmdRebuildDone,
     cmdSettings,
     cmdApply,
     cmdFactoryReset,
@@ -52,9 +57,17 @@ module Lib
     defaultSettings,
     parseSettings,
     defaultOverridesNix,
+    unitOutcome,
+    -- * IO helpers (used by the daemon's supervisor)
+    ioReadState,
+    ioWriteState,
+    ioLogTail,
+    ioSpawnRebuild,
+    rebuildLogPath,
   )
 where
 
+import Control.Applicative ((<|>))
 import Control.Exception (SomeException, try)
 import Control.Monad.State.Strict
   ( MonadState,
@@ -72,7 +85,6 @@ import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Text.Read (readMaybe)
 import qualified Data.Text as T
-import qualified Data.Text.Encoding as TE
 import qualified Data.Text.IO as TIO
 import Data.Time.Clock (getCurrentTime)
 import Data.Time.Format (defaultTimeLocale, formatTime)
@@ -178,28 +190,34 @@ instance FromJSON State where
 defaultState :: State
 defaultState = State Local False Nothing
 
--- | Encode a JSON value with a trailing newline (the wire format is one JSON
--- object per line).
-jsonLn :: A.Value -> BL.ByteString
-jsonLn v = A.encode v <> BL.singleton 10
+-- | Map a finished rebuild unit's exit code + log tail to the terminal
+-- rebuild record fields. Pure so the watcher thread's policy is testable.
+unitOutcome :: Int -> Text -> (RebuildState, Int, Text)
+unitOutcome code logTail
+  | code == 0 = (Done, 100, "rebuild complete")
+  | otherwise =
+      ( Failed,
+        0,
+        let base = "rebuild failed (exit " <> T.pack (show code) <> ")"
+         in if T.null logTail then base else base <> ": " <> logTail
+      )
 
 -- ──────────────────────────────────────────────────────────────────────────
 -- Settings — the user-tunable losos.* options, as written to overrides.nix
 -- ──────────────────────────────────────────────────────────────────────────
 
--- | The set of losos.* options the admin app can tune. Stored as Nix
+-- | The set of losos.* options the admin UI can tune. Stored as Nix
 -- assignments in modules/overrides.nix; `settings` parses them back out
 -- line-based (the same technique `change` uses for sharingMyStorage) so the UI
 -- can show current values without evaluating Nix.
 data Settings = Settings
   { setSharingMyStorage :: Bool
-  , setNextcloudMode :: Text -- "native" | "aio"
+  , setNextcloudMode :: Text -- "native" | "container"
   , setForgejoMode :: Text   -- "native" | "container"
   , setHostName :: Text
   , setHttps :: Bool
   , setGpuEnable :: Bool
-  , setAioApachePort :: Int
-  , setAioInterfacePort :: Int
+  , setApachePort :: Int
   }
   deriving (Eq, Show)
 
@@ -210,13 +228,12 @@ defaultSettings :: Settings
 defaultSettings =
   Settings
     { setSharingMyStorage = True,
-      setNextcloudMode = "aio",
+      setNextcloudMode = "container",
       setForgejoMode = "container",
       setHostName = "mattbox",
       setHttps = False,
       setGpuEnable = True,
-      setAioApachePort = 11000,
-      setAioInterfacePort = 8000
+      setApachePort = 11000
     }
 
 instance ToJSON Settings where
@@ -228,8 +245,7 @@ instance ToJSON Settings where
         "hostName" .= setHostName s,
         "https" .= setHttps s,
         "gpuEnable" .= setGpuEnable s,
-        "aioApachePort" .= setAioApachePort s,
-        "aioInterfacePort" .= setAioInterfacePort s
+        "apachePort" .= setApachePort s
       ]
 
 -- | The default overrides.nix body, returned by the IO reader when the file is
@@ -242,13 +258,12 @@ defaultOverridesNix =
       "",
       "{",
       "  losos.sharingMyStorage = true;",
-      "  losos.nextcloud.mode = \"aio\";",
+      "  losos.nextcloud.mode = \"container\";",
       "  losos.forgejo.mode = \"container\";",
       "  losos.hostName = \"mattbox\";",
       "  losos.nextcloud.https = false;",
       "  losos.gpu.enable = true;",
-      "  losos.aio.apachePort = 11000;",
-      "  losos.aio.interfacePort = 8000;",
+      "  losos.nextcloud.apachePort = 11000;",
       "}"
     ]
 
@@ -271,18 +286,25 @@ lookupNix key content = do
   pure val
 
 -- | Parse the full Settings from an overrides.nix body, falling back to
--- `defaultSettings` field-by-field when an assignment is absent.
+-- `defaultSettings` field-by-field when an assignment is absent. Legacy
+-- overrides written by the pre-nspawn admin app are honoured on the read
+-- side: `losos.aio.apachePort` feeds the port when `nextcloud.apachePort` is
+-- absent, and `nextcloud.mode = "aio"` reads back as "container".
 parseSettings :: Text -> Settings
 parseSettings content =
   Settings
     { setSharingMyStorage = readBoolDef (setSharingMyStorage defaultSettings) (lookupNix "sharingMyStorage" content),
-      setNextcloudMode = readStrDef (setNextcloudMode defaultSettings) (lookupNix "nextcloud.mode" content),
+      setNextcloudMode = readModeDef (setNextcloudMode defaultSettings) (lookupNix "nextcloud.mode" content),
       setForgejoMode = readStrDef (setForgejoMode defaultSettings) (lookupNix "forgejo.mode" content),
       setHostName = readStrDef (setHostName defaultSettings) (lookupNix "hostName" content),
       setHttps = readBoolDef (setHttps defaultSettings) (lookupNix "nextcloud.https" content),
       setGpuEnable = readBoolDef (setGpuEnable defaultSettings) (lookupNix "gpu.enable" content),
-      setAioApachePort = readIntDef (setAioApachePort defaultSettings) (lookupNix "aio.apachePort" content),
-      setAioInterfacePort = readIntDef (setAioInterfacePort defaultSettings) (lookupNix "aio.interfacePort" content)
+      setApachePort =
+        readIntDef
+          (setApachePort defaultSettings)
+          ( lookupNix "nextcloud.apachePort" content
+              <|> lookupNix "aio.apachePort" content
+          )
     }
 
 readBoolDef :: Bool -> Maybe Text -> Bool
@@ -297,6 +319,14 @@ readStrDef :: Text -> Maybe Text -> Text
 readStrDef d = \case
   Nothing -> d
   Just v -> stripQuotes (T.strip v)
+
+-- | Like 'readStrDef', but maps the retired "aio" mode value to "container".
+readModeDef :: Text -> Maybe Text -> Text
+readModeDef d = \case
+  Nothing -> d
+  Just v ->
+    let s = stripQuotes (T.strip v)
+     in if s == "aio" then "container" else s
 
 readIntDef :: Int -> Maybe Text -> Int
 readIntDef d = \case
@@ -316,8 +346,9 @@ stripQuotes s =
 -- The 'Losos' effect type class
 -- ──────────────────────────────────────────────────────────────────────────
 
--- | The effects a losos-ctl command needs. Splitting these out is what makes
--- the commands testable: 'IO' does the real thing, 'TestM' stubs everything.
+-- | The effects a losos command needs. Splitting these out is what makes
+-- the commands testable: 'IO' does the real thing (inside lososd), 'TestM'
+-- stubs everything.
 class Monad m => Losos m where
   -- | Read the persisted state (defaults to 'defaultState' if absent/corrupt).
   loadState :: m State
@@ -326,22 +357,21 @@ class Monad m => Losos m where
   -- | Rewrite the `losos.sharingMyStorage = <bool>;` line in the flake config.
   rewriteConfig :: Bool -> m ()
   -- | Overwrite the whole overrides.nix body with the Nix code received from
-  -- the admin app (the `apply` command). Atomic on POSIX (temp + rename).
+  -- the admin UI (the `apply` command). Atomic on POSIX (temp + rename).
   writeOverrides :: Text -> m ()
   -- | Read the overrides.nix body (defaults to 'defaultOverridesNix' if the
   -- file is missing), so `settings` can parse current values.
   readOverrides :: m Text
-  -- | Spawn the detached nixos-rebuild + watcher for the given job id. The job
-  -- id is threaded into the watcher's `rebuild-done <ec> <job>` call so a stale
-  -- completion (from an older, superseded rebuild) can be detected and ignored
-  -- rather than clobbering a newer change's state.
+  -- | Start the nixos-rebuild for the given job id and arrange for its
+  -- completion to be recorded (the IO implementation launches a transient
+  -- systemd unit and spawns the watcher thread). The job id lets the watcher
+  -- ignore a stale completion from an older, superseded rebuild.
   spawnRebuild :: Text -> m ()
-  -- | Last non-empty line of the rebuild log (for failure messages).
+  -- | Last non-empty line of the rebuild log (for failure messages; also the
+  -- live progress line while a rebuild is building).
   rebuildLogTail :: m Text
   -- | A fresh, unique job id.
   nextJobId :: m Text
-  -- | Emit one JSON object (already newline-terminated) to the caller.
-  emit :: BL.ByteString -> m ()
 
 -- ──────────────────────────────────────────────────────────────────────────
 -- Commands — generic over 'Losos'
@@ -349,31 +379,30 @@ class Monad m => Losos m where
 
 -- | `state --json`: current mode + sharing flag. Rebuild is intentionally
 -- omitted from this response per the contract (use `status` for that).
-cmdState :: Losos m => m ()
+cmdState :: Losos m => m BL.ByteString
 cmdState = do
   s <- loadState
-  emit $
-    jsonLn $
+  pure $
+    A.encode $
       object
         [ "mode" .= modeText (stMode s),
           "sharing" .= stSharing s
         ]
 
 -- | `settings --json`: the user-tunable losos.* options parsed out of
--- overrides.nix, for the admin app's first paint. (Rebuild status is fetched
+-- overrides.nix, for the admin UI's first paint. (Rebuild status is fetched
 -- separately via `status`; this is just the config snapshot.)
-cmdSettings :: Losos m => m ()
+cmdSettings :: Losos m => m BL.ByteString
 cmdSettings = do
   content <- readOverrides
-  let s = parseSettings content
-  emit $ jsonLn $ A.toJSON s
+  pure $ A.encode $ A.toJSON $ parseSettings content
 
--- | Validate the Nix code the admin app wants to apply. Returns Left errmsg
--- on rejection. Kept minimal on purpose — losos-ctl is invoked through a
--- sudoers rule pinned to this binary, and nixos-rebuild itself will reject a
--- syntactically broken file — so here we only guard against the obviously
--- empty / off-target cases that would otherwise silently rewrite the config
--- with garbage.
+-- | Validate the Nix code the admin UI wants to apply. Returns Left errmsg
+-- on rejection. Kept minimal on purpose — callers reach the daemon only
+-- through D-Bus group ACL or the Bearer-authed loopback API, and
+-- nixos-rebuild itself rejects a syntactically broken file — so here we only
+-- guard against the obviously empty / off-target cases that would otherwise
+-- silently rewrite the config with garbage.
 validateApply :: Text -> Either Text Text
 validateApply t
   | T.null (T.strip t) = Left "empty nix config"
@@ -381,12 +410,11 @@ validateApply t
   | not (T.isInfixOf "{" t) = Left "nix config must be a module body (missing '{')"
   | otherwise = Right t
 
--- | `apply` (stdin = Nix code from the admin app): validate, overwrite
--- overrides.nix, mark a rebuild as building, spawn a detached nixos-rebuild,
--- emit the job id. The CLI (Main) validates and exits non-zero on Left so the
--- PHP layer raises BackendException; this command receives already-validated
--- code.
-cmdApply :: Losos m => Text -> m ()
+-- | `apply` (payload = Nix code from the admin UI): validate (the daemon/CLI
+-- layer), overwrite overrides.nix, mark a rebuild as building, start a
+-- supervised nixos-rebuild, return the job document. This command receives
+-- already-validated code.
+cmdApply :: Losos m => Text -> m BL.ByteString
 cmdApply nixCode = do
   writeOverrides nixCode
   job <- nextJobId
@@ -400,13 +428,13 @@ cmdApply nixCode = do
           }
   saveState s0 {stRebuild = Just rb}
   spawnRebuild job
-  emit $ jsonLn $ object ["job" .= job]
+  pure $ A.encode $ object ["job" .= job]
 
 -- | `change --mode <local|mesh>`: rewrite the flake's sharingMyStorage line,
--- mark a rebuild as building, spawn a detached nixos-rebuild, emit the job id.
--- The mode is pre-validated by the CLI (optparse) so this never sees an
+-- mark a rebuild as building, start a supervised nixos-rebuild, return the
+-- job document. The mode is pre-validated by the caller so this never sees an
 -- invalid one.
-cmdChange :: Losos m => Mode -> m ()
+cmdChange :: Losos m => Mode -> m BL.ByteString
 cmdChange mode = do
   let sharing = mode == Mesh
   rewriteConfig sharing
@@ -420,18 +448,18 @@ cmdChange mode = do
         }
   saveState s0 {stMode = mode, stSharing = sharing, stRebuild = Just rb}
   spawnRebuild job
-  emit $ jsonLn $ object ["job" .= job]
+  pure $ A.encode $ object ["job" .= job]
 
 -- | `factory-reset`: restore the appliance to its out-of-box configuration.
 -- Writes the committed 'defaultOverridesNix' back into modules/overrides.nix
--- (undoing any `apply` the admin app made), resets the persisted state to
--- 'defaultState' (Local, sharing off, idle), and spawns a rebuild so the box
+-- (undoing any `apply` the admin UI made), resets the persisted state to
+-- 'defaultState' (Local, sharing off, idle), and starts a rebuild so the box
 -- reverts to the committed defaults. The destructive variant — wiping the
--- disks and reinstalling from scratch — is the installer ISO, which now
--- auto-runs `losos-install` as root's login shell; booting that medium is the
--- full factory reset. This command is the soft, non-destructive tier: it only
--- touches losos-ctl's own state + overrides.nix and rebuilds.
-cmdFactoryReset :: Losos m => m ()
+-- disks and reinstalling from scratch — is the installer ISO, which auto-runs
+-- `losos-install` as root's login shell; booting that medium is the full
+-- factory reset. This command is the soft, non-destructive tier: it only
+-- touches lososd's own state + overrides.nix and rebuilds.
+cmdFactoryReset :: Losos m => m BL.ByteString
 cmdFactoryReset = do
   writeOverrides defaultOverridesNix
   job <- nextJobId
@@ -447,74 +475,35 @@ cmdFactoryReset = do
               }
       }
   spawnRebuild job
-  emit $ jsonLn $ object ["job" .= job, "reset" .= (True :: Bool)]
+  pure $ A.encode $ object ["job" .= job, "reset" .= (True :: Bool)]
 
--- | `status --json`: rebuild progress, polled by the PHP app every ~2s.
-cmdStatus :: Losos m => m ()
+-- | `status --json`: rebuild progress, polled by the admin UI every ~2s.
+cmdStatus :: Losos m => m BL.ByteString
 cmdStatus = do
   s <- loadState
   case stRebuild s of
     Nothing ->
-      emit $
-        jsonLn $
+      pure $
+        A.encode $
           object
             [ "state" .= Idle,
               "progress" .= (0 :: Int),
               "message" .= ("" :: Text)
             ]
     Just rb ->
-      emit $
-        jsonLn $
+      pure $
+        A.encode $
           object
             [ "state" .= rbState rb,
               "progress" .= rbProgress rb,
               "message" .= rbMessage rb
             ]
 
--- | `rebuild-done <exitcode> <job>`: invoked by the detached rebuild shell
--- when nixos-rebuild finishes, to record success/failure. Internal; not part
--- of the public contract. The `job` argument is the id `change` returned; it
--- must match the currently-tracked rebuild's id, so a stale completion from an
--- older, superseded rebuild is ignored instead of clobbering a newer change's
--- state with the wrong terminal status + log tail.
-cmdRebuildDone :: Losos m => Int -> Text -> m ()
-cmdRebuildDone code job = do
-  s <- loadState
-  case stRebuild s of
-    -- No rebuild tracked: a late rebuild-done for state that was reset/lost.
-    -- Don't fabricate a rebuild record.
-    Nothing -> pure ()
-    Just rb
-      -- Stale completion: the rebuild that finished is not the one currently
-      -- tracked (a newer `change` superseded it). Ignore it.
-      | rbJob rb /= job -> pure ()
-      | otherwise -> do
-          let (st, baseMsg) =
-                if code == 0
-                  then (Done, "rebuild complete")
-                  else (Failed, "rebuild failed (exit " <> T.pack (show code) <> ")")
-          msg <-
-            if code == 0
-              then pure baseMsg
-              else do
-                t <- rebuildLogTail
-                pure $ if T.null t then baseMsg else baseMsg <> ": " <> t
-          saveState
-            s
-              { stRebuild =
-                  Just
-                    rb
-                      { rbState = st,
-                        rbProgress = if code == 0 then 100 else rbProgress rb,
-                        rbMessage = msg
-                      }
-              }
-
 -- ──────────────────────────────────────────────────────────────────────────
--- IO interpreter — the real backend
+-- IO interpreter — the real backend (used by lososd)
 -- ──────────────────────────────────────────────────────────────────────────
 
--- | Run a losos-ctl command in 'IO' (the production interpreter).
+-- | Run a losos command in 'IO' (the production interpreter).
 instance Losos IO where
   loadState = ioReadState
   saveState = ioWriteState
@@ -524,7 +513,6 @@ instance Losos IO where
   spawnRebuild = ioSpawnRebuild
   rebuildLogTail = ioLogTail
   nextJobId = ioNewJobId
-  emit = BL.putStr
 
 -- All paths env-overridable so the binary is testable without a real install:
 stateDir :: IO FilePath
@@ -539,7 +527,7 @@ rebuildLogPath = (</> "rebuild.log") <$> stateDir
 configFilePath :: IO FilePath
 configFilePath = fromMaybe "/etc/nixos/defaults.nix" <$> lookupEnv "LOSOS_CONFIG"
 
--- | The overrides.nix the admin app rewrites via `apply` (and `settings`
+-- | The overrides.nix the admin UI rewrites via `apply` (and `settings`
 -- parses). Defaults to the committed module under the persisted flake; override
 -- with LOSOS_OVERRIDES for testing off-box.
 overridesFilePath :: IO FilePath
@@ -561,7 +549,7 @@ ioReadState = do
       bytes <- BL.readFile path
       case A.decode bytes :: Maybe State of
         Just s -> pure s
-        -- corrupt state -> treat as fresh rather than crashing the web UI
+        -- corrupt state -> treat as fresh rather than crashing the admin UI
         Nothing -> pure defaultState
 
 ioWriteState :: State -> IO ()
@@ -638,9 +626,8 @@ ioNewJobId = do
 -- | Spawn the rebuild detached: `setsid -f sh -c 'nixos-rebuild … > log 2>&1;
 -- ec=$?; <ctl> rebuild-done $ec <job>'`. setsid gives the child a new session
 -- so it survives the sudo/PHP process tree ending; -f forks so setsid returns
--- immediately. The shell runs nixos-rebuild, then re-enters this binary with
--- the exit code AND the job id to record the terminal status — no second daemon
--- needed. The job id lets `cmdRebuildDone` ignore stale completions.
+-- immediately. NOTE: transitional — Task 3 of the lososd split replaces this
+-- with a systemd-run transient unit + watcher thread.
 ioSpawnRebuild :: Text -> IO ()
 ioSpawnRebuild job = do
   flake <- flakeRef
@@ -718,15 +705,13 @@ ioLogTail = do
 -- ──────────────────────────────────────────────────────────────────────────
 
 -- | Fake world for tests: the current state, the simulated config lines, the
--- simulated rebuild log, a job counter, whether a rebuild was spawned, and the
--- JSON the commands emitted.
+-- simulated rebuild log, a job counter, and whether a rebuild was spawned.
 data TestState = TestState
   { tsState :: State,
     tsConfig :: [Text],
     tsLog :: [Text],
     tsJobCounter :: Int,
-    tsSpawned :: Bool,
-    tsOutput :: [Text]
+    tsSpawned :: Bool
   }
 
 -- | A convenient starting world: the default overrides.nix body + default state.
@@ -737,8 +722,7 @@ initTest =
       tsConfig = T.lines defaultOverridesNix,
       tsLog = [],
       tsJobCounter = 0,
-      tsSpawned = False,
-      tsOutput = []
+      tsSpawned = False
     }
 
 newtype TestM a = TestM {unTestM :: StateT TestState Identity a}
@@ -758,8 +742,8 @@ instance Losos TestM where
     n <- gets tsJobCounter
     modify' (\st -> st {tsJobCounter = n + 1})
     pure $ "job-" <> T.pack (show n)
-  emit bs = modify' (\st -> st {tsOutput = tsOutput st <> [TE.decodeUtf8 (BL.toStrict bs)]})
 
--- | Run a command in the pure interpreter, returning the final fake world.
-runTest :: TestState -> (forall m. Losos m => m a) -> TestState
-runTest initSt m = runIdentity (snd <$> runStateT (unTestM m) initSt)
+-- | Run a command in the pure interpreter, returning its JSON response and
+-- the final fake world.
+runTest :: TestState -> (forall m. Losos m => m a) -> (a, TestState)
+runTest initSt m = runIdentity (runStateT (unTestM m) initSt)

@@ -1,14 +1,17 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 
--- | Pure tests for the losos-ctl state machine, run against the 'TestM'
+-- | Pure tests for the losos state machine, run against the 'TestM'
 -- interpreter (no filesystem, no nixos-rebuild). This is the payoff of the
--- 'Losos' type class: the exact same 'cmdChange'/'cmdStatus'/'cmdRebuildDone'
--- that production runs in 'IO' are exercised here deterministically.
+-- 'Losos' type class: the exact same commands the daemon runs in 'IO' are
+-- exercised here deterministically. Commands return their JSON response;
+-- helpers below decode/assert on the returned bytes.
 module Main (main) where
 
+import qualified Data.ByteString.Lazy as BL
 import Data.Text (Text)
 import qualified Data.Text as T
+import qualified Data.Text.Encoding as TE
 import Installer
   ( BlockDev (..),
     InstallAction (..),
@@ -41,24 +44,25 @@ import Lib
     cmdApply,
     cmdChange,
     cmdFactoryReset,
-    cmdRebuildDone,
     cmdSettings,
     cmdStatus,
     initTest,
     runTest,
+    unitOutcome,
   )
 import Test.Tasty (TestTree, defaultMain, testGroup)
 import Test.Tasty.HUnit (assertBool, assertEqual, testCase)
 
--- | Run one command from a given fake world, returning the next world.
+-- │ Run one command from a given fake world, returning the next world.
 step :: TestState -> (forall m. Losos m => m a) -> TestState
-step = runTest
+step st m = snd (runTest st m)
+
+-- │ The JSON a command returned, as Text.
+out :: TestState -> (forall m. Losos m => m BL.ByteString) -> Text
+out st m = TE.decodeUtf8 (BL.toStrict (fst (runTest st m)))
 
 stateAfterChange :: Mode -> State
 stateAfterChange mode = tsState (step initTest (cmdChange mode))
-
-outputAfterChange :: Mode -> [Text]
-outputAfterChange mode = tsOutput (step initTest (cmdChange mode))
 
 -- ── Installer test helpers ────────────────────────────────────────────────
 -- A canonical Options record matching the production defaults; individual
@@ -120,7 +124,7 @@ tests =
     "losos-ctl"
     [ testGroup
         "change"
-        [ testCase "mesh flips sharing on, marks building, spawns, emits job" $ do
+        [ testCase "mesh flips sharing on, marks building, spawns, returns job" $ do
             let s = stateAfterChange Mesh
             assertEqual "mode" Mesh (stMode s)
             assertBool "sharing on" (stSharing s)
@@ -129,8 +133,8 @@ tests =
                 Just rb -> rbState rb == Building && rbProgress rb == 0
                 Nothing -> False
             assertBool "rebuild spawned" (tsSpawned (step initTest (cmdChange Mesh)))
-            assertBool "emits job id" $
-              any (T.isInfixOf "\"job\":\"job-0\"") (outputAfterChange Mesh),
+            assertBool "returns job id" $
+              "\"job\":\"job-0\"" `T.isInfixOf` out initTest (cmdChange Mesh),
           testCase "local rewrites the config line to false" $ do
             let cfg = tsConfig (step initTest (cmdChange Local))
             assertBool "config has sharingMyStorage = false" $
@@ -139,54 +143,66 @@ tests =
       testGroup
         "status"
         [ testCase "fresh state reports idle" $ do
-            let out = tsOutput (step initTest cmdStatus)
-            assertBool "idle" (any (T.isInfixOf "\"state\":\"idle\"") out),
+            assertBool "idle" ("\"state\":\"idle\"" `T.isInfixOf` out initTest cmdStatus),
           testCase "after change reports building" $ do
-            let out = tsOutput (step (step initTest (cmdChange Mesh)) cmdStatus)
-            assertBool "building" (any (T.isInfixOf "\"state\":\"building\"") out)
+            let s = out (step initTest (cmdChange Mesh)) cmdStatus
+            assertBool "building" ("\"state\":\"building\"" `T.isInfixOf` s)
         ],
       testGroup
-        "rebuild-done"
+        "unitOutcome"
         [ testCase "success -> done/100/complete" $ do
-            let s = tsState (step (step initTest (cmdChange Mesh)) (cmdRebuildDone 0 "job-0"))
-            case stRebuild s of
-              Just rb -> do
-                assertEqual "state" Done (rbState rb)
-                assertEqual "progress" 100 (rbProgress rb)
-                assertBool "message complete" ("rebuild complete" `T.isInfixOf` rbMessage rb)
-              Nothing -> assertBool "has rebuild" False,
+            let (st, pct, msg) = unitOutcome 0 ""
+            assertEqual "state" Done st
+            assertEqual "progress" 100 pct
+            assertBool "message complete" ("rebuild complete" `T.isInfixOf` msg),
           testCase "failure appends log tail" $ do
-            let withLog = initTest {tsLog = ["building... ", "error: evaluation failed"]}
-                s = tsState (step (step withLog (cmdChange Mesh)) (cmdRebuildDone 1 "job-0"))
-            case stRebuild s of
-              Just rb -> assertBool "message includes log tail" ("evaluation failed" `T.isInfixOf` rbMessage rb)
-              Nothing -> assertBool "has rebuild" False,
-          testCase "stale job id is ignored (no clobber)" $ do
-            -- change Mesh starts job-0 (building); a rebuild-done for a
-            -- different (older) job must NOT flip it to done/failed.
-            let s = tsState (step (step initTest (cmdChange Mesh)) (cmdRebuildDone 0 "stale-job"))
-            case stRebuild s of
-              Just rb -> do
-                assertEqual "still building" Building (rbState rb)
-                assertEqual "progress untouched" 0 (rbProgress rb)
-              Nothing -> assertBool "has rebuild" False
+            let (st, pct, msg) = unitOutcome 1 "error: evaluation failed"
+            assertEqual "state" Failed st
+            assertEqual "progress reset" 0 pct
+            assertBool "message includes log tail" ("evaluation failed" `T.isInfixOf` msg),
+          testCase "failure without log keeps bare message" $ do
+            let (st, _, msg) = unitOutcome 2 ""
+            assertEqual "state" Failed st
+            assertEqual "message" "rebuild failed (exit 2)" msg
         ],
-      -- sanity: the IO-instance command names still resolve (compile-time check)
-      testCase "state command is reachable in IO" $
+      -- sanity: the default config the tests start from has the sharing line
+      testCase "default overrides include the sharing line" $
         assertBool "config present" (any (T.isInfixOf "losos.sharingMyStorage") (tsConfig initTest)),
       testGroup
         "settings"
         [ testCase "reports defaults from a fresh overrides file" $ do
-            let out = tsOutput (step initTest cmdSettings)
-            assertBool "sharing true" (any (T.isInfixOf "\"sharingMyStorage\":true") out)
-            assertBool "nextcloudMode aio" (any (T.isInfixOf "\"nextcloudMode\":\"aio\"") out)
-            assertBool "forgejoMode container" (any (T.isInfixOf "\"forgejoMode\":\"container\"") out)
-            assertBool "hostName mattbox" (any (T.isInfixOf "\"hostName\":\"mattbox\"") out)
-            assertBool "aioApachePort 11000" (any (T.isInfixOf "\"aioApachePort\":11000") out)
+            let s = out initTest cmdSettings
+            assertBool "sharing true" ("\"sharingMyStorage\":true" `T.isInfixOf` s)
+            assertBool "nextcloudMode container" ("\"nextcloudMode\":\"container\"" `T.isInfixOf` s)
+            assertBool "forgejoMode container" ("\"forgejoMode\":\"container\"" `T.isInfixOf` s)
+            assertBool "hostName mattbox" ("\"hostName\":\"mattbox\"" `T.isInfixOf` s)
+            assertBool "apachePort 11000" ("\"apachePort\":11000" `T.isInfixOf` s)
+            assertBool "no legacy keys leak" $
+              not ("aioApachePort" `T.isInfixOf` s || "aioInterfacePort" `T.isInfixOf` s),
+          testCase "legacy aio.apachePort feeds apachePort" $ do
+            let code =
+                  T.unlines
+                    [ "{ ... }:",
+                      "{",
+                      "  losos.aio.apachePort = 12345;",
+                      "}"
+                    ]
+                s = out (step initTest (cmdApply code)) cmdSettings
+            assertBool "apachePort 12345" ("\"apachePort\":12345" `T.isInfixOf` s),
+          testCase "legacy mode \"aio\" reads back as container" $ do
+            let code =
+                  T.unlines
+                    [ "{ ... }:",
+                      "{",
+                      "  losos.nextcloud.mode = \"aio\";",
+                      "}"
+                    ]
+                s = out (step initTest (cmdApply code)) cmdSettings
+            assertBool "nextcloudMode container" ("\"nextcloudMode\":\"container\"" `T.isInfixOf` s)
         ],
       testGroup
         "apply"
-        [ testCase "writes the nix code, marks building, spawns, emits job" $ do
+        [ testCase "writes the nix code, marks building, spawns, returns job" $ do
             let code =
                   T.unlines
                     [ "{ ... }:",
@@ -200,7 +216,7 @@ tests =
             assertBool "config rewritten to the applied lines" (any (T.isInfixOf "losos.hostName = \"box2\";") (tsConfig st))
             assertBool "old sharing line gone" (not (any (T.isInfixOf "losos.sharingMyStorage = true;") (tsConfig st)))
             assertBool "rebuild spawned" (tsSpawned st)
-            assertBool "emits job" (any (T.isInfixOf "\"job\":\"job-0\"") (tsOutput st)),
+            assertBool "returns job" ("\"job\":\"job-0\"" `T.isInfixOf` out initTest (cmdApply code)),
           testCase "settings reflects applied values after apply" $ do
             let code =
                   T.unlines
@@ -209,13 +225,13 @@ tests =
                       "  losos.sharingMyStorage = false;",
                       "  losos.hostName = \"box2\";",
                       "  losos.nextcloud.mode = \"native\";",
-                      "  losos.aio.apachePort = 12345;",
+                      "  losos.nextcloud.apachePort = 12345;",
                       "}"
                     ]
-                st = step (step initTest (cmdApply code)) cmdSettings
-            assertBool "hostName box2" (any (T.isInfixOf "\"hostName\":\"box2\"") (tsOutput st))
-            assertBool "nextcloudMode native" (any (T.isInfixOf "\"nextcloudMode\":\"native\"") (tsOutput st))
-            assertBool "aioApachePort 12345" (any (T.isInfixOf "\"aioApachePort\":12345") (tsOutput st))
+                s = out (step initTest (cmdApply code)) cmdSettings
+            assertBool "hostName box2" ("\"hostName\":\"box2\"" `T.isInfixOf` s)
+            assertBool "nextcloudMode native" ("\"nextcloudMode\":\"native\"" `T.isInfixOf` s)
+            assertBool "apachePort 12345" ("\"apachePort\":12345" `T.isInfixOf` s)
         ],
       testGroup
         "factory-reset"
@@ -229,7 +245,8 @@ tests =
                       "  losos.hostName = \"box2\";",
                       "}"
                     ]
-                st = step (step initTest (cmdApply code)) cmdFactoryReset
+                afterApply = step initTest (cmdApply code)
+                st = step afterApply cmdFactoryReset
             -- overrides restored to the committed default body (hostName mattbox
             -- reappears; the applied box2 line is gone)
             assertBool "overrides restored to defaults" $
@@ -242,10 +259,9 @@ tests =
             -- a rebuild was spawned
             assertBool "rebuild spawned" (tsSpawned st)
             -- the ack carries reset:true and a job id
-            assertBool "acks reset:true" $
-              any (T.isInfixOf "\"reset\":true") (tsOutput st)
-            assertBool "emits job id" $
-              any (T.isInfixOf "\"job\":\"job-1\"") (tsOutput st)
+            let r = out afterApply cmdFactoryReset
+            assertBool "acks reset:true" ("\"reset\":true" `T.isInfixOf` r)
+            assertBool "returns job id" ("\"job\":\"job-1\"" `T.isInfixOf` r)
         ],
       testGroup
         "installer"

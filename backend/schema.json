@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://losos.local/schemas/losos-ctl.json",
   "title": "losos-ctl wire format",
-  "description": "JSON schemas for the losos-ctl backend, as invoked by the losos Nextcloud app over `sudo -n losos-ctl <subcommand>`. Every subcommand prints exactly one JSON object on stdout, terminated by a newline.",
+  "description": "JSON schemas for the losos backend (lososd daemon + losos-ctl facade). The facade relays every subcommand to lososd over the system D-Bus and prints exactly one JSON object on stdout, terminated by a newline; the standalone admin UI consumes the same documents from lososd's loopback HTTP API.",
   "$defs": {
     "mode": {
       "type": "string",
@@ -37,17 +37,16 @@
     "settingsResponse": {
       "type": "object",
       "additionalProperties": false,
-      "description": "The user-tunable losos.* options parsed out of modules/overrides.nix (line-based). Returned by `settings`; consumed by the admin app for first paint.",
-      "required": ["sharingMyStorage", "nextcloudMode", "forgejoMode", "hostName", "https", "gpuEnable", "aioApachePort", "aioInterfacePort"],
+      "description": "The user-tunable losos.* options parsed out of modules/overrides.nix (line-based). Returned by `settings`; consumed by the admin UI for first paint. Legacy overrides using `losos.aio.apachePort` or mode \"aio\" are accepted on the read side and reported back in the new spelling.",
+      "required": ["sharingMyStorage", "nextcloudMode", "forgejoMode", "hostName", "https", "gpuEnable", "apachePort"],
       "properties": {
         "sharingMyStorage": { "type": "boolean" },
-        "nextcloudMode": { "type": "string", "enum": ["native", "aio"] },
+        "nextcloudMode": { "type": "string", "enum": ["native", "container"] },
         "forgejoMode": { "type": "string", "enum": ["native", "container"] },
-        "hostName": { "type": "string", "description": "System hostname; Avahi publishes <hostName>.local." },
+        "hostName": { "type": "string", "description": "System hostname; Avahi publishes <hostName>.local, and Nginx routes /<service> paths on it." },
         "https": { "type": "boolean" },
         "gpuEnable": { "type": "boolean" },
-        "aioApachePort": { "type": "integer", "minimum": 1024, "maximum": 65535 },
-        "aioInterfacePort": { "type": "integer", "minimum": 1024, "maximum": 65535 }
+        "apachePort": { "type": "integer", "minimum": 1024, "maximum": 65535, "description": "losos.nextcloud.apachePort." }
       }
     },
     "changeResponse": {
@@ -100,7 +99,7 @@
       "stdout": { "$ref": "#/$defs/changeResponse" }
     },
     "status": {
-      "description": "`losos-ctl status --json` — rebuild progress, polled by the PHP app ~every 2s. stdout: statusResponse.",
+      "description": "`losos-ctl status --json` — rebuild progress, polled by the admin UI ~every 2s. stdout: statusResponse.",
       "stdout": { "$ref": "#/$defs/statusResponse" }
     },
     "settings": {
@@ -108,25 +107,18 @@
       "stdout": { "$ref": "#/$defs/settingsResponse" }
     },
     "apply": {
-      "description": "`losos-ctl apply` — read Nix code (a full modules/overrides.nix body) from stdin, validate it references losos.* and is a module body, atomically overwrite modules/overrides.nix, mark a rebuild as building, spawn a detached nixos-rebuild switch, and emit the job id on stdout. The PHP admin app generates the Nix code from the form and pipes it in. Non-zero exit + stderr on validation failure (so the PHP layer raises BackendException).",
+      "description": "`losos-ctl apply` — read Nix code (a full modules/overrides.nix body) from stdin, validate it references losos.* and is a module body, atomically overwrite modules/overrides.nix, mark a rebuild as building, start a supervised nixos-rebuild switch (systemd transient unit), and emit the job id on stdout. The admin UI generates the Nix code from the form and posts it. Non-zero exit + stderr on validation failure.",
       "stdin": { "type": "string", "description": "The full overrides.nix body the admin app generated." },
       "stdout": { "$ref": "#/$defs/changeResponse" }
     },
     "factory-reset": {
-      "description": "`losos-ctl factory-reset` — soft factory reset: atomically restore modules/overrides.nix to the committed default body, reset the persisted state to defaultState (Local, sharing off), mark a rebuild as building, spawn a detached nixos-rebuild, and emit the job id. Non-destructive: it only touches losos-ctl's own state + overrides.nix. The destructive tier (wipe disks + reinstall) is the installer ISO, which auto-runs `losos-install` as root's login shell.",
+      "description": "`losos-ctl factory-reset` — soft factory reset: atomically restore modules/overrides.nix to the committed default body, reset the persisted state to defaultState (Local, sharing off), mark a rebuild as building, start a supervised nixos-rebuild, and emit the job id. Non-destructive: it only touches lososd's own state + overrides.nix. The destructive tier (wipe disks + reinstall) is the installer ISO, which auto-runs `losos-install` as root's login shell.",
       "stdout": { "$ref": "#/$defs/factoryResetResponse" }
     },
     "install": {
       "description": "`losos-ctl install [flags]` — the losos auto-installer (was losos-install.sh). Detects fixed disks, merges them into one LVM volume group via disko, runs nixos-install, and lays the flake at /persist/etc/nixos. Flags: --tpm, --drives A,/dev/b,..., --no-install, --disko-script PATH, --emit-target FILE. Drives auto-detection uses `lsblk --json`. Non-zero exit + stderr on failure (no candidate disks, disko/nixos-install failure).",
       "args": {
         "flags": { "type": "string", "description": "--tpm | --drives LIST | --no-install | --disko-script PATH | --emit-target FILE" }
-      }
-    },
-    "rebuild-done": {
-      "description": "`losos-ctl rebuild-done <exitcode> <job>` — internal, invoked by the detached rebuild shell after nixos-rebuild. Updates stateFile.rebuild to done/failed only if <job> matches the currently-tracked rebuild's id (a stale completion from an older, superseded rebuild is ignored). No stdout contract.",
-      "args": {
-        "exitcode": { "type": "integer" },
-        "job": { "type": "string", "description": "The job id returned by the `change` that started this rebuild." }
       }
     }
   }
