@@ -43,8 +43,13 @@ in
       chmod -R u+rwX $out
     '';
 
-  # The Haskell backend. callCabal2nix reads backend/losos-ctl.cabal and builds
-  # the library + executable; haskellPackages' default doCheck=true runs the
-  # tasty/hunit spec in backend/test during the build.
-  losos-ctl = pkgs.haskellPackages.callCabal2nix "losos-ctl" ./../backend { };
+  # The Haskell backend. backend/losos-ctl.nix is the cabal2nix-generated
+  # package expression, committed so evaluation needs NO import-from-derivation
+  # (`nix flake check --no-build` can't realize IFDs — CI on codeberg died on
+  # the callCabal2nix IFD with "path …-cabal2nix-losos-ctl.drv is not valid").
+  # After editing backend/losos-ctl.cabal, regenerate with:
+  #   cd backend && nix run nixpkgs#cabal2nix -- . > losos-ctl.nix
+  # haskellPackages' default doCheck=true runs the tasty/hunit spec in
+  # backend/test during the build.
+  losos-ctl = pkgs.haskellPackages.callPackage ./../backend/losos-ctl.nix { };
 }
