@@ -1,19 +1,8 @@
 # Project-wide option declarations for losos.
-#
-# `tgt_drive.nix` previously tried to declare an option by writing
-# `config.drive = lib.mkOption { ... }` *inside* a `config` block, which is
-# invalid — options must live under `options`, not `config`. This file replaces
-# it with a proper `losos.*` option namespace used by the other modules.
 { lib, ... }:
 
 {
   options.losos = {
-    # Block devices disko should pool into the LVM volume group. The installer
-    # (install/losos-install.sh) auto-detects every fixed disk and writes the
-    # list here via modules/install-target.nix; override per host when the
-    # install targets are not /dev/sda (e.g. [ "/dev/nvme0n1" ]), or list
-    # several drives to merge them into one logical pool. disko.nix turns each
-    # entry into a PV feeding the single `persist-vg`.
     targetDrives = lib.mkOption {
       type = lib.types.listOf lib.types.str;
       default = [ "/dev/sda" ];
@@ -25,8 +14,6 @@
       '';
     };
 
-    # TPM-vs-keyfile switch for unlocking the encrypted /persist partition.
-    # Set false on hardware without a TPM2 chip; a keyfile is used instead.
     tpm.enable = lib.mkOption {
       type = lib.types.bool;
       default = true;
@@ -36,16 +23,19 @@
       '';
     };
 
-    # System hostname (the bare label; Avahi publishes <hostName>.local on the
-    # LAN). Routed through an option so the losos admin app can set it via the
-    # override file; networking.hostName reads from here.
+    cfd.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = "Enables Cloudflared (CF tunnels). "; # TODO: Route this through my account and secure details both in GNOME keyring and in agenix.
+    };
+
     hostName = lib.mkOption {
       type = lib.types.str;
       default = "mattbox";
       description = "System hostname. Avahi publishes <hostName>.local via mDNS.";
     };
 
-    # Original "share my storage" flag from defaults.nix, now a real option.
+    # sharing's caring btw
     sharingMyStorage = lib.mkOption {
       type = lib.types.bool;
       default = false;
@@ -53,15 +43,11 @@
     };
 
     # ── Deployment mode switches ──────────────────────────────────────────
-    # The appliance can run its Nextcloud and Forgejo either as native NixOS
-    # services (the original losos design — the losos web-UI toggle + losos-ctl
-    # sudoers bridge depend on native Nextcloud) or as rootless Podman
-    # containers fronted by Nginx (the AIO path). The two never collide: each
-    # module gates itself on its mode flag, so flipping one option switches the
-    # whole deployment back and forth. Defaults reflect the AIO/container
-    # pivot; set back to "native" to restore the original appliance behaviour.
     nextcloud.mode = lib.mkOption {
-      type = lib.types.enum [ "native" "aio" ];
+      type = lib.types.enum [
+        "native"
+        "aio"
+      ];
       default = "aio";
       description = ''
         "native" — run Nextcloud as a native NixOS service (services.nextcloud),
@@ -73,15 +59,17 @@
     };
 
     forgejo.mode = lib.mkOption {
-      type = lib.types.enum [ "native" "container" ];
+      type = lib.types.enum [
+        "native"
+        "container"
+      ];
       default = "container";
       description = ''
         "native" — run Forgejo as a native NixOS service (services.forgejo).
         "container" — run Forgejo as a rootless Podman container behind Nginx.
       '';
     };
-    # Whether to enable or disable the local native Forgejo instance (only
-    # consulted when losos.forgejo.mode == "native").
+
     forgejo.enable = lib.mkOption {
       type = lib.types.bool;
       default = false;
@@ -138,12 +126,6 @@
     };
 
     # ── GPU hardware acceleration for the Nextcloud (AIO) container ────────
-    # Enables host VA-API/Mesa graphics + the render/video group memberships the
-    # rootless `containers` user needs to reach /dev/dri, and passes /dev/dri
-    # into the AIO master container. NOTE: AIO's master spawns the actual
-    # Nextcloud container itself; whether the GPU reaches it depends on AIO
-    # propagating the device to its sibling containers — verify on first
-    # deploy and adjust the AIO master run args (containers.nix) if needed.
     gpu.enable = lib.mkOption {
       type = lib.types.bool;
       default = true;
@@ -167,10 +149,6 @@
     };
 
     # The Haskell `losos-ctl` backend the Nextcloud app talks to (via sudo).
-    # The user writes/implements it; leave null until then. When set, services.nix
-    # installs it system-wide and grants the `nextcloud` user NOPASSWD sudo for
-    # exactly that binary, so the PHP app can trigger privileged rebuilds with
-    # no shell login and no broader root.
     backend.package = lib.mkOption {
       type = lib.types.nullOr lib.types.package;
       default = null;
@@ -185,12 +163,6 @@
     };
 
     # ── Installer (the `losos-ctl install` subcommand) ──────────────────────
-    # The auto-installer is folded into losos-ctl as the `install` subcommand.
-    # modules/installer.nix packages it as the `losos-install` wrapper (which
-    # just execs `losos-ctl install`), preserving the old command name the VM
-    # test and the README rely on. The option is null by default so a module
-    # that imports installer.nix without `self` (the VM test) must opt in —
-    # keeping installer.nix free of flake coupling.
     installer.package = lib.mkOption {
       type = lib.types.nullOr lib.types.package;
       default = null;
@@ -203,11 +175,6 @@
       '';
     };
 
-    # When true, the installer medium auto-runs `losos-install` as root's login
-    # shell (autologin on tty1) — booting the ISO = running the installer, the
-    # destructive factory-reset / reinstall path. Only set on the installer ISO,
-    # never on a running target or the VM test (which drives losos-install
-    # manually via its --emit-target / --disko-script seams).
     installer.autorun = lib.mkOption {
       type = lib.types.bool;
       default = false;
@@ -217,6 +184,147 @@
         reset medium: insert it, boot, and the installer runs unattended. Leave
         false on a normal target system.
       '';
+    };
+
+    # ── Cloudflared (CF tunnels) ───────────────────────────────────────────
+    #
+    # Mirrors the common shape of:
+    #   services.cloudflared.tunnels.<name>.<option>
+    cfd.tunnels = lib.mkOption {
+      type = lib.types.attrsOf (
+        lib.types.submodule (
+          { name, ... }: {
+            options = {
+              certificateFile = lib.mkOption {
+                type = lib.types.nullOr lib.types.path;
+                default = null;
+              };
+
+              credentialsFile = lib.mkOption {
+                type = lib.types.nullOr lib.types.path;
+                default = null;
+              };
+
+              default = lib.mkOption {
+                type = lib.types.nullOr lib.types.bool;
+                default = null;
+              };
+
+              edgeIPVersion = lib.mkOption {
+                type = lib.types.nullOr (
+                  lib.types.enum [
+                    "4"
+                    "6"
+                  ]
+                );
+                default = null;
+              };
+
+              ingress = lib.mkOption {
+                type = lib.types.nullOr (lib.types.listOf lib.types.attrs);
+                default = null;
+              };
+
+              originRequest = lib.mkOption {
+                type = lib.types.nullOr (
+                  lib.types.submodule {
+                    options = {
+                      caPool = lib.mkOption {
+                        type = lib.types.nullOr lib.types.path;
+                        default = null;
+                      };
+
+                      connectTimeout = lib.mkOption {
+                        type = lib.types.nullOr lib.types.str;
+                        default = null;
+                      };
+
+                      disableChunkedEncoding = lib.mkOption {
+                        type = lib.types.nullOr lib.types.bool;
+                        default = null;
+                      };
+
+                      httpHostHeader = lib.mkOption {
+                        type = lib.types.nullOr lib.types.str;
+                        default = null;
+                      };
+
+                      keepAliveConnections = lib.mkOption {
+                        type = lib.types.nullOr lib.types.int;
+                        default = null;
+                      };
+
+                      keepAliveTimeout = lib.mkOption {
+                        type = lib.types.nullOr lib.types.str;
+                        default = null;
+                      };
+
+                      noHappyEyeballs = lib.mkOption {
+                        type = lib.types.nullOr lib.types.bool;
+                        default = null;
+                      };
+
+                      noTLSVerify = lib.mkOption {
+                        type = lib.types.nullOr lib.types.bool;
+                        default = null;
+                      };
+
+                      originServerName = lib.mkOption {
+                        type = lib.types.nullOr lib.types.str;
+                        default = null;
+                      };
+
+                      proxyAddress = lib.mkOption {
+                        type = lib.types.nullOr lib.types.str;
+                        default = null;
+                      };
+
+                      proxyPort = lib.mkOption {
+                        type = lib.types.nullOr lib.types.int;
+                        default = null;
+                      };
+
+                      proxyType = lib.mkOption {
+                        type = lib.types.nullOr lib.types.str;
+                        default = null;
+                      };
+
+                      tcpKeepAlive = lib.mkOption {
+                        type = lib.types.nullOr lib.types.str;
+                        default = null;
+                      };
+
+                      tlsTimeout = lib.mkOption {
+                        type = lib.types.nullOr lib.types.str;
+                        default = null;
+                      };
+                    };
+                  }
+                );
+                default = null;
+              };
+
+              protocol = lib.mkOption {
+                type = lib.types.nullOr (
+                  lib.types.enum [
+                    "http2"
+                    "http"
+                    "tcp"
+                    "udp"
+                  ]
+                );
+                default = null;
+              };
+
+              warp-routing.enabled = lib.mkOption {
+                type = lib.types.nullOr lib.types.bool;
+                default = null;
+              };
+            };
+          }
+        )
+      );
+      default = { };
     };
   };
 }

@@ -47,6 +47,10 @@ let
   containerActive = nextcloudAio || forgejoContainer;
 in
 {
+  services.cloudflared = {
+    enable = config.losos.cfd.enable;
+    tunnels = { };
+  };
   # ── Rootless Podman runtime ──────────────────────────────────────────────
   # System podman is enabled only so the package, the subuid/subgid plumbing,
   # and the storage helpers are available; the containers themselves run
