@@ -42,7 +42,10 @@ library
         unix,
         time,
         mtl,
-        dbus            >=1.4 && <2
+        dbus            >=1.4 && <2,
+        wai,
+        warp,
+        http-types
     default-language: Haskell2010
 
 executable losos-ctl

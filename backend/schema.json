@@ -123,6 +123,19 @@
     }
   },
 
+  "http": {
+    "note": "lososd also serves a Bearer-authed JSON API on 127.0.0.1:$LOSOS_ADMIN_PORT (default 8082); Nginx proxies /api/* to it for the admin UI. Auth header: `Authorization: Bearer <token>` where the token lives at $LOSOS_ADMIN_TOKEN_FILE (default /var/secrets/losos-admin-token, auto-generated 0600 on first start). Responses are the same documents as the facade wire; errors are `{\"error\": \"...\"}` with the matching HTTP status.",
+    "routes": {
+      "GET /api/health":        { "auth": false, "out": "{\"ok\":true}" },
+      "GET /api/state":         { "auth": true, "out": "stateResponse" },
+      "GET /api/settings":      { "auth": true, "out": "settingsResponse" },
+      "GET /api/status":        { "auth": true, "out": "statusResponse" },
+      "POST /api/change":       { "auth": true, "in": "{\"mode\":\"local|mesh\"}", "out": "changeResponse" },
+      "POST /api/apply":        { "auth": true, "in": "raw UTF-8 overrides.nix body", "out": "changeResponse" },
+      "POST /api/factory-reset":{ "auth": true, "out": "factoryResetResponse" }
+    }
+  },
+
   "dbus": {
     "name": "org.losos1",
     "path": "/org/losos1",

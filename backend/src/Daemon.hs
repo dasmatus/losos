@@ -32,11 +32,18 @@ module Daemon
 where
 
 import Control.Concurrent (forkIO, threadDelay)
+import Control.Exception (SomeException, try)
 import Control.Monad (forever, unless, void, when)
+import qualified Data.Aeson as A
+import qualified Data.Aeson.Key as K
+import qualified Data.Aeson.KeyMap as KM
+import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as BL
-import Data.Maybe (isJust)
+import Data.Maybe (fromMaybe, isJust)
 import Data.Text (Text)
+import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
+import qualified Data.Text.IO as TIO
 import DBus
   ( BusName,
     ErrorName,
@@ -77,9 +84,17 @@ import Lib
     validateApply,
     watchUnit,
   )
+import Network.HTTP.Types (Status, status200, status400, status401, status404)
+import qualified Network.Wai as Wai
+import qualified Network.Wai.Handler.Warp as Warp
+import Numeric (showHex)
+import System.Directory (createDirectoryIfMissing, doesFileExist)
 import System.Environment (lookupEnv)
 import System.Exit (die)
-import System.IO (hPutStrLn, stderr)
+import System.FilePath (takeDirectory)
+import System.IO (IOMode (ReadMode), hPutStrLn, stderr, withFile)
+import System.Posix.Files (setFileMode)
+import Text.Read (readMaybe)
 
 -- ──────────────────────────────────────────────────────────────────────────
 -- Bus constants (shared with Facade)
@@ -180,9 +195,91 @@ startSupervisor = do
       | otherwise -> pure ()
     Nothing -> pure ()
 
--- | The loopback HTTP admin API. Implemented in Task 4; stubbed until then.
+-- | The loopback HTTP admin API, Bearer-authed. Routes mirror the facade
+-- subcommands (/api/<subcommand>); /api/health is deliberately UNAUTHENTICATED
+-- so the public dashboard can show daemon reachability without a token.
+-- Listens on 127.0.0.1 only (LOSOS_ADMIN_PORT, default 8082); Nginx proxies
+-- /api/* here. The token lives at LOSOS_ADMIN_TOKEN_FILE (default
+-- /var/secrets/losos-admin-token) and is generated randomly on first start.
 startHttp :: IO ()
-startHttp = pure ()
+startHttp = do
+  port <- maybe 8082 id . (readMaybe =<<) <$> lookupEnv "LOSOS_ADMIN_PORT"
+  tokFile <-
+    fromMaybe "/var/secrets/losos-admin-token"
+      <$> lookupEnv "LOSOS_ADMIN_TOKEN_FILE"
+  ensureToken tokFile
+  hPutStrLn stderr ("lososd: admin API on 127.0.0.1:" ++ show port)
+  void $
+    forkIO $
+      Warp.runSettings
+        (Warp.setHost "127.0.0.1" (Warp.setPort port Warp.defaultSettings))
+        (httpApp tokFile)
+
+-- | Create the admin token file if absent: 32 bytes of /dev/urandom as hex,
+-- mode 0600. lososd runs as root; the file lives under persisted /var.
+ensureToken :: FilePath -> IO ()
+ensureToken path = do
+  exists <- doesFileExist path
+  unless exists $ do
+    createDirectoryIfMissing True (takeDirectory path)
+    tok <- newToken
+    TIO.writeFile path tok
+    setFileMode path 0o600
+
+newToken :: IO Text
+newToken = do
+  bytes <- withFile "/dev/urandom" ReadMode (`BS.hGet` 32)
+  pure (T.concat (map hexByte (BS.unpack bytes)))
+  where
+    hexByte b =
+      let h = showHex b ""
+       in T.pack (if length h == 1 then '0' : h else h)
+
+authorized :: FilePath -> Wai.Request -> IO Bool
+authorized tokFile req = do
+  res <- try (TIO.readFile tokFile) :: IO (Either SomeException Text)
+  pure $ case (res, lookup "Authorization" (Wai.requestHeaders req)) of
+    (Right tok, Just hdr) -> hdr == "Bearer " <> TE.encodeUtf8 (T.strip tok)
+    _ -> False
+
+jsonResp :: Status -> BL.ByteString -> Wai.Response
+jsonResp st = Wai.responseLBS st [("Content-Type", "application/json")]
+
+errJson :: Status -> Text -> Wai.Response
+errJson st msg = jsonResp st (A.encode (A.object ["error" A..= msg]))
+
+httpApp :: FilePath -> Wai.Application
+httpApp tokFile req respond = do
+  authed <- authorized tokFile req
+  case (Wai.requestMethod req, Wai.pathInfo req) of
+    ("GET", ["api", "health"]) ->
+      respond (jsonResp status200 (A.encode (A.object ["ok" A..= True])))
+    _ | not authed ->
+      respond (errJson status401 "unauthorized")
+    ("GET", ["api", "state"]) -> okJson cmdState
+    ("GET", ["api", "settings"]) -> okJson cmdSettings
+    ("GET", ["api", "status"]) -> okJson cmdStatus
+    ("POST", ["api", "change"]) -> do
+      body <- Wai.strictRequestBody req
+      case A.decode body :: Maybe A.Value of
+        Just (A.Object o)
+          | Just (A.String m) <- KM.lookup (K.fromText "mode") o ->
+              case parseMode m of
+                Nothing -> badReq "mode must be 'local' or 'mesh'"
+                Just mode -> okJson (cmdChange mode)
+        _ -> badReq "body must be JSON: {\"mode\": \"local|mesh\"}"
+    ("POST", ["api", "apply"]) -> do
+      body <- Wai.strictRequestBody req
+      case TE.decodeUtf8' (BL.toStrict body) of
+        Left _ -> badReq "body must be UTF-8 Nix code"
+        Right txt -> case validateApply txt of
+          Left err -> badReq err
+          Right code -> okJson (cmdApply code)
+    ("POST", ["api", "factory-reset"]) -> okJson cmdFactoryReset
+    _ -> respond (errJson status404 "not found")
+  where
+    okJson io = io >>= respond . jsonResp status200
+    badReq = respond . errJson status400
 
 runDaemon :: IO ()
 runDaemon = do
@@ -193,5 +290,4 @@ runDaemon = do
   startHttp
   -- The dbus package's dispatcher threads and warp carry the load; the main
   -- thread just parks.
-  void (forkIO (pure ()))
   forever (threadDelay maxBound)

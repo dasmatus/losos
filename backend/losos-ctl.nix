@@ -1,6 +1,6 @@
 { mkDerivation, aeson, base, bytestring, dbus, directory, filepath
-, lib, mtl, optparse-applicative, process, tasty, tasty-hunit, text
-, time, unix
+, http-types, lib, mtl, optparse-applicative, process, tasty
+, tasty-hunit, text, time, unix, wai, warp
 }:
 mkDerivation {
   pname = "losos-ctl";
@@ -9,8 +9,8 @@ mkDerivation {
   isLibrary = true;
   isExecutable = true;
   libraryHaskellDepends = [
-    aeson base bytestring dbus directory filepath mtl
-    optparse-applicative process text time unix
+    aeson base bytestring dbus directory filepath http-types mtl
+    optparse-applicative process text time unix wai warp
   ];
   executableHaskellDepends = [
     aeson base bytestring dbus optparse-applicative text
