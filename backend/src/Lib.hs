@@ -221,6 +221,7 @@ data Settings = Settings
   , setHttps :: Bool
   , setGpuEnable :: Bool
   , setApachePort :: Int
+  , setCfdEnable :: Bool
   }
   deriving (Eq, Show)
 
@@ -236,7 +237,8 @@ defaultSettings =
       setHostName = "mattbox",
       setHttps = False,
       setGpuEnable = True,
-      setApachePort = 11000
+      setApachePort = 11000,
+      setCfdEnable = False
     }
 
 instance ToJSON Settings where
@@ -248,7 +250,8 @@ instance ToJSON Settings where
         "hostName" .= setHostName s,
         "https" .= setHttps s,
         "gpuEnable" .= setGpuEnable s,
-        "apachePort" .= setApachePort s
+        "apachePort" .= setApachePort s,
+        "cfdEnable" .= setCfdEnable s
       ]
 
 -- | The default overrides.nix body, returned by the IO reader when the file is
@@ -267,6 +270,7 @@ defaultOverridesNix =
       "  losos.nextcloud.https = false;",
       "  losos.gpu.enable = true;",
       "  losos.nextcloud.apachePort = 11000;",
+      "  losos.cfd.enable = false;",
       "}"
     ]
 
@@ -307,7 +311,8 @@ parseSettings content =
           (setApachePort defaultSettings)
           ( lookupNix "nextcloud.apachePort" content
               <|> lookupNix "aio.apachePort" content
-          )
+          ),
+      setCfdEnable = readBoolDef (setCfdEnable defaultSettings) (lookupNix "cfd.enable" content)
     }
 
 readBoolDef :: Bool -> Maybe Text -> Bool

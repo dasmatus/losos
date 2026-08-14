@@ -38,7 +38,7 @@
       "type": "object",
       "additionalProperties": false,
       "description": "The user-tunable losos.* options parsed out of modules/overrides.nix (line-based). Returned by `settings`; consumed by the admin UI for first paint. Legacy overrides using `losos.aio.apachePort` or mode \"aio\" are accepted on the read side and reported back in the new spelling.",
-      "required": ["sharingMyStorage", "nextcloudMode", "forgejoMode", "hostName", "https", "gpuEnable", "apachePort"],
+      "required": ["sharingMyStorage", "nextcloudMode", "forgejoMode", "hostName", "https", "gpuEnable", "apachePort", "cfdEnable"],
       "properties": {
         "sharingMyStorage": { "type": "boolean" },
         "nextcloudMode": { "type": "string", "enum": ["native", "container"] },
@@ -46,7 +46,8 @@
         "hostName": { "type": "string", "description": "System hostname; Avahi publishes <hostName>.local, and Nginx routes /<service> paths on it." },
         "https": { "type": "boolean" },
         "gpuEnable": { "type": "boolean" },
-        "apachePort": { "type": "integer", "minimum": 1024, "maximum": 65535, "description": "losos.nextcloud.apachePort." }
+        "apachePort": { "type": "integer", "minimum": 1024, "maximum": 65535, "description": "losos.nextcloud.apachePort." },
+        "cfdEnable": { "type": "boolean", "description": "losos.cfd.enable — run cloudflared (Cloudflare Tunnels) for remote access." }
       }
     },
     "changeResponse": {

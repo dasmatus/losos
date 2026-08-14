@@ -181,6 +181,7 @@ tests =
             assertBool "forgejoMode container" ("\"forgejoMode\":\"container\"" `T.isInfixOf` s)
             assertBool "hostName mattbox" ("\"hostName\":\"mattbox\"" `T.isInfixOf` s)
             assertBool "apachePort 11000" ("\"apachePort\":11000" `T.isInfixOf` s)
+            assertBool "cfdEnable false" ("\"cfdEnable\":false" `T.isInfixOf` s)
             assertBool "no legacy keys leak" $
               not ("aioApachePort" `T.isInfixOf` s || "aioInterfacePort" `T.isInfixOf` s),
           testCase "legacy aio.apachePort feeds apachePort" $ do
@@ -230,12 +231,14 @@ tests =
                       "  losos.hostName = \"box2\";",
                       "  losos.nextcloud.mode = \"native\";",
                       "  losos.nextcloud.apachePort = 12345;",
+                      "  losos.cfd.enable = true;",
                       "}"
                     ]
                 s = out (step initTest (cmdApply code)) cmdSettings
             assertBool "hostName box2" ("\"hostName\":\"box2\"" `T.isInfixOf` s)
             assertBool "nextcloudMode native" ("\"nextcloudMode\":\"native\"" `T.isInfixOf` s)
             assertBool "apachePort 12345" ("\"apachePort\":12345" `T.isInfixOf` s)
+            assertBool "cfdEnable true" ("\"cfdEnable\":true" `T.isInfixOf` s)
         ],
       testGroup
         "factory-reset"
