@@ -51,5 +51,15 @@ in
   #   cd backend && nix run nixpkgs#cabal2nix -- . > losos-ctl.nix
   # haskellPackages' default doCheck=true runs the tasty/hunit spec in
   # backend/test during the build.
+  # The standalone static admin UI (no build step, no frameworks): a
+  # dashboard/ + settings/ pair of self-contained plain-JS pages. Served by
+  # the front Nginx vhost — dashboard at / (root), settings aliased at
+  # /settings/ — with lososd's loopback API proxied at /api/*. See admin-ui/
+  # and modules/containers.nix.
+  losos-admin-ui = pkgs.runCommand "losos-admin-ui-0.1.0" { } ''
+    cp -rT ${lib.cleanSource ./../admin-ui} $out
+    chmod -R u+rwX $out
+  '';
+
   losos-ctl = pkgs.haskellPackages.callPackage ./../backend/losos-ctl.nix { };
 }

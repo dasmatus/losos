@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>losos &mdash; settings</title>
+	<link rel="stylesheet" href="./style.css">
+</head>
+
+<body>
+
+	<header class="topbar">
+		<a class="brand" href="/">losos</a>
+		<nav class="topnav" aria-label="Services">
+			<a href="/nextcloud">Cloud</a>
+			<a href="/forgejo/">Git</a>
+			<a href="/settings">Settings</a>
+			<a id="nav-tahoe" href="#tahoe">Tahoe</a>
+		</nav>
+	</header>
+
+	<div class="layout">
+
+		<aside class="sidebar">
+			<nav class="side-list" aria-label="Settings sections">
+				<a href="#sharing" class="side-item is-active" data-section="sharing"
+					id="side-sharing">Sharing</a>
+				<a href="#services" class="side-item" data-section="services">Services</a>
+				<a href="#network" class="side-item" data-section="network">Network</a>
+				<a href="#hardware" class="side-item" data-section="hardware">Hardware</a>
+				<a href="#danger" class="side-item side-item--danger" data-section="danger">Danger
+					zone</a>
+			</nav>
+		</aside>
+
+		<main class="content">
+
+			<div class="content-header">
+				<h1 id="section-title">Sharing</h1>
+				<button type="button" id="apply-btn" class="btn-primary" disabled>Apply changes</button>
+			</div>
+
+			<div id="error-banner" class="error-banner" role="alert" hidden>
+				<span id="error-text"></span>
+				<button type="button" id="error-close" class="banner-close"
+					aria-label="Dismiss error">&times;</button>
+			</div>
+
+			<div id="progress" class="progress-card" data-kind="building" aria-live="polite" hidden>
+				<div class="progress-head">
+					<span class="progress-icon spinner" id="progress-icon"
+						aria-hidden="true"></span>
+					<strong id="progress-title">Applying&hellip;</strong>
+				</div>
+				<code class="progress-log" id="progress-log"></code>
+				<div class="indbar" id="progress-bar" role="progressbar"
+					aria-label="Rebuild in progress"><span></span></div>
+			</div>
+
+			<!-- Sharing -->
+			<section class="section is-active" id="section-sharing" aria-labelledby="side-sharing">
+				<div class="group">
+					<div class="row">
+						<label class="switch-row">
+							<span class="row-label">Contribute storage to the mesh</span>
+							<span class="switch">
+								<input type="checkbox" id="in-sharing">
+								<span class="switch-track" aria-hidden="true"></span>
+							</span>
+						</label>
+					</div>
+				</div>
+				<p class="group-hint">
+					When on, the appliance&rsquo;s Tahoe-LAFS node offers storage to the shared grid
+					(mesh mode). When off, the box stays a private local appliance. Changing this
+					triggers a full system rebuild.
+				</p>
+			</section>
+
+			<!-- Services -->
+			<section class="section" id="section-services">
+				<div class="group">
+					<div class="row">
+						<label class="row-label" for="in-nextcloud-mode">Nextcloud</label>
+						<select id="in-nextcloud-mode">
+							<option value="container">Container (recommended)</option>
+							<option value="native">Native (on host)</option>
+						</select>
+					</div>
+					<div class="row">
+						<label class="row-label" for="in-forgejo-mode">Forgejo</label>
+						<select id="in-forgejo-mode">
+							<option value="container">Container (recommended)</option>
+							<option value="native">Native (on host)</option>
+						</select>
+					</div>
+				</div>
+				<p class="group-hint">
+					Container mode runs each service in an isolated system container; native mode
+					runs it directly on the host. Switching modes triggers a full system rebuild.
+				</p>
+			</section>
+
+			<!-- Network -->
+			<section class="section" id="section-network">
+				<div class="group">
+					<div class="row">
+						<label class="row-label" for="in-hostname">Hostname</label>
+						<input type="text" id="in-hostname" autocomplete="off"
+							spellcheck="false" placeholder="mattbox" maxlength="63">
+					</div>
+					<div class="row">
+						<label class="switch-row">
+							<span class="row-label">Serve Nextcloud over HTTPS</span>
+							<span class="switch">
+								<input type="checkbox" id="in-https">
+								<span class="switch-track" aria-hidden="true"></span>
+							</span>
+						</label>
+					</div>
+					<div class="row">
+						<label class="switch-row">
+							<span class="row-label">Remote access via Cloudflare
+								Tunnel</span>
+							<span class="switch">
+								<input type="checkbox" id="in-cfd">
+								<span class="switch-track" aria-hidden="true"></span>
+							</span>
+						</label>
+					</div>
+				</div>
+				<p class="group-hint">
+					The appliance is reachable as <code>&lt;hostname&gt;.local</code> on the LAN.
+					The hostname is also used in the URLs handed to Nextcloud and Forgejo.
+					Cloudflare Tunnel publishes the dashboard on a public hostname through
+					<code>cloudflared</code> — leave it off for LAN-only access.
+				</p>
+			</section>
+
+			<!-- Hardware -->
+			<section class="section" id="section-hardware">
+				<div class="group">
+					<div class="row">
+						<label class="switch-row">
+							<span class="row-label">Enable GPU passthrough (/dev/dri)</span>
+							<span class="switch">
+								<input type="checkbox" id="in-gpu">
+								<span class="switch-track" aria-hidden="true"></span>
+							</span>
+						</label>
+					</div>
+					<div class="row">
+						<label class="row-label" for="in-apache-port">Nextcloud Apache
+							port</label>
+						<input type="number" id="in-apache-port" min="1024" max="65535" step="1"
+							inputmode="numeric" placeholder="11000">
+					</div>
+				</div>
+				<p class="group-hint">
+					The Apache port is the host loopback port Nginx proxies to the Nextcloud
+					container (valid range 1024&ndash;65535).
+				</p>
+			</section>
+
+			<!-- Danger zone -->
+			<section class="section" id="section-danger">
+				<div class="group group--danger">
+					<div class="row">
+						<div class="danger-text">
+							<span class="row-label">Factory reset</span>
+							<span class="danger-sub">Restore all appliance settings to
+								factory defaults and rebuild.</span>
+						</div>
+						<button type="button" id="factory-reset-btn" class="btn-danger">Factory
+							reset&hellip;</button>
+					</div>
+				</div>
+				<p class="group-hint">
+					Only <code>losos.*</code> settings are reset; your data on <code>/persist</code>
+					is not touched. The rebuild starts immediately after confirmation.
+				</p>
+			</section>
+
+		</main>
+	</div>
+
+	<!-- Token unlock overlay -->
+	<div id="auth-overlay" class="auth-overlay" hidden>
+		<form id="auth-form" class="auth-card">
+			<h2>Admin token</h2>
+			<p class="auth-hint">
+				Paste the admin token from <code>/var/secrets/losos-admin-token</code> on the appliance.
+			</p>
+			<label for="auth-token">Token</label>
+			<input type="password" id="auth-token" autocomplete="current-password" required>
+			<p id="auth-error" class="auth-error" role="alert" hidden></p>
+			<button type="submit" class="btn-primary btn-block">Unlock</button>
+		</form>
+	</div>
+
+	<script src="/settings/app.js"></script>
+</body>
+
+</html>

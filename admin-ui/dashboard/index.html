@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>losos &mdash; dashboard</title>
+	<link rel="stylesheet" href="./style.css">
+</head>
+
+<body>
+
+	<header class="topbar">
+		<a class="brand" href="/">losos</a>
+		<nav class="topnav" aria-label="Services">
+			<a href="/nextcloud">Cloud</a>
+			<a href="/forgejo/">Git</a>
+			<a href="/settings">Settings</a>
+			<a id="nav-tahoe" href="#tahoe">Tahoe</a>
+		</nav>
+	</header>
+
+	<main class="container">
+
+		<div id="error-banner" class="error-banner" role="alert" hidden>
+			<span id="error-text"></span>
+			<button type="button" id="error-close" class="banner-close"
+				aria-label="Dismiss error">&times;</button>
+		</div>
+
+		<section id="rebuild-banner" class="banner" data-kind="building" aria-live="polite" hidden>
+			<div class="banner-row">
+				<strong id="banner-title">Rebuilding system&hellip;</strong>
+				<code id="banner-msg" class="banner-msg"></code>
+			</div>
+			<div class="indbar" id="banner-bar" role="progressbar" aria-label="Rebuild in progress">
+				<span></span>
+			</div>
+		</section>
+
+		<div id="signin-hint" class="hint-card" hidden>
+			<p>Sign in on the <a href="/settings">settings page</a> to see rebuild progress.</p>
+		</div>
+
+		<div class="grid" role="list">
+
+			<article class="card" role="listitem" aria-labelledby="h-nextcloud">
+				<div class="card-head">
+					<h2 id="h-nextcloud">Nextcloud</h2>
+					<span class="status">
+						<span class="dot" id="dot-nextcloud" data-state="checking" role="img"
+							aria-label="status"></span>
+						<span class="status-text" id="st-nextcloud">Checking&hellip;</span>
+					</span>
+				</div>
+				<p class="desc">Private cloud &mdash; files, calendar and contacts.</p>
+				<p class="chip-row"><code class="chip">/nextcloud</code></p>
+				<a class="open" href="/nextcloud">Open</a>
+			</article>
+
+			<article class="card" role="listitem" aria-labelledby="h-forgejo">
+				<div class="card-head">
+					<h2 id="h-forgejo">Forgejo</h2>
+					<span class="status">
+						<span class="dot" id="dot-forgejo" data-state="checking" role="img"
+							aria-label="status"></span>
+						<span class="status-text" id="st-forgejo">Checking&hellip;</span>
+					</span>
+				</div>
+				<p class="desc">Git hosting and code collaboration.</p>
+				<p class="chip-row"><code class="chip">/forgejo/</code></p>
+				<a class="open" href="/forgejo/">Open</a>
+			</article>
+
+			<article class="card" role="listitem" aria-labelledby="h-lososd">
+				<div class="card-head">
+					<h2 id="h-lososd">Appliance daemon</h2>
+					<span class="status">
+						<span class="dot" id="dot-lososd" data-state="checking" role="img"
+							aria-label="status"></span>
+						<span class="status-text" id="st-lososd">Checking&hellip;</span>
+					</span>
+				</div>
+				<p class="desc">lososd &mdash; the privileged control daemon behind the admin API.</p>
+				<p class="chip-row"><code class="chip">GET /api/health</code></p>
+				<a class="open" href="/settings">Settings</a>
+			</article>
+
+			<article class="card" role="listitem" aria-labelledby="h-tahoe">
+				<div class="card-head">
+					<h2 id="h-tahoe">Tahoe-LAFS</h2>
+					<span class="status">
+						<span class="dot" id="dot-tahoe" data-state="checking" role="img"
+							aria-label="status"></span>
+						<span class="status-text" id="st-tahoe">Checking&hellip;</span>
+					</span>
+				</div>
+				<p class="desc">Distributed, encrypted storage grid web interface.</p>
+				<p class="chip-row"><code class="chip" id="chip-tahoe">:3456</code></p>
+				<a class="open" id="link-tahoe" href="#tahoe">Open</a>
+			</article>
+
+			<article class="card" role="listitem" aria-labelledby="h-system">
+				<div class="card-head">
+					<h2 id="h-system">System</h2>
+				</div>
+				<dl class="syslist">
+					<div class="sysrow">
+						<dt>Hostname</dt>
+						<dd><code class="chip" id="sys-hostname">&mdash;</code></dd>
+					</div>
+					<div class="sysrow">
+						<dt>Sharing mode</dt>
+						<dd id="sys-mode">&mdash;</dd>
+					</div>
+				</dl>
+			</article>
+
+		</div>
+	</main>
+
+	<script src="/app.js"></script>
+</body>
+
+</html>

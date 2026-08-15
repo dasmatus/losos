@@ -73,8 +73,8 @@
         # The target system installed onto the machine.
         install = nixpkgs.lib.nixosSystem {
           inherit system;
-          # Make the flake `self` available to modules (services.nix references
-          # self.packages.${system}.losos-app to install our plugin app).
+          # Make the flake `self` available to modules so defaults.nix can
+          # reach self.packages.${system}.{losos-ctl,losos-admin-ui}.
           specialArgs.self = self;
           modules = [
             impermanence.nixosModules.impermanence
@@ -85,7 +85,9 @@
             ./modules/disko.nix
             ./modules/boot.nix
             ./modules/services.nix
+            ./modules/nextcloud-common.nix
             ./modules/containers.nix
+            ./modules/daemon.nix
             ./modules/overrides.nix
             ./modules/updates.nix
             ./modules/defaults.nix

@@ -1,0 +1,261 @@
+/* losos dashboard — Forgejo-flavoured light UI, no external assets. */
+
+* { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: #f5f7fa;
+  color: #1c2128;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+a { color: #1f6feb; text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+:focus-visible {
+  outline: 2px solid #1f6feb;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ── Top navigation bar ─────────────────────────────────────────── */
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  height: 48px;
+  padding: 0 20px;
+  background: #1c2128;
+  color: #ffffff;
+}
+.topbar .brand {
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 17px;
+  letter-spacing: 0.2px;
+  text-decoration: none;
+}
+.topnav {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.topnav a {
+  color: #d0d5dd;
+  text-decoration: none;
+  font-size: 14px;
+  padding: 6px 10px;
+  border-radius: 6px;
+}
+.topnav a:hover { color: #ffffff; background: rgba(255, 255, 255, 0.08); text-decoration: none; }
+.topbar a:focus-visible { outline-color: #ffffff; }
+
+/* ── Layout ─────────────────────────────────────────────────────── */
+.container {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 20px 16px 48px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+
+/* ── Service cards ──────────────────────────────────────────────── */
+.card {
+  background: #ffffff;
+  border: 1px solid #d0d5dd;
+  border-radius: 8px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: box-shadow 0.15s ease;
+}
+.card:hover { box-shadow: 0 4px 14px rgba(27, 33, 40, 0.10); }
+
+.card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.card-head h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #57606a;
+}
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #8b949e; /* checking */
+  flex: none;
+}
+.dot[data-state="up"] { background: #2ecc71; }
+.dot[data-state="down"] { background: #e5534b; }
+.dot[data-state="checking"] { background: #8b949e; }
+
+.desc {
+  margin: 0;
+  color: #57606a;
+  font-size: 13.5px;
+  flex: 1;
+}
+
+.chip-row { margin: 0; }
+.chip {
+  display: inline-block;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 12.5px;
+  background: #f0f2f5;
+  border: 1px solid #d0d5dd;
+  border-radius: 6px;
+  padding: 2px 8px;
+  color: #1c2128;
+}
+
+.open {
+  display: block;
+  text-align: center;
+  margin-top: 4px;
+  padding: 9px 14px;
+  border: 1px solid #1c2128;
+  border-radius: 6px;
+  color: #1c2128;
+  font-weight: 600;
+  font-size: 14px;
+  text-decoration: none;
+  background: #ffffff;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.open:hover { background: #1c2128; color: #ffffff; text-decoration: none; }
+
+/* ── System card ────────────────────────────────────────────────── */
+.syslist { margin: 0; }
+.sysrow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 0;
+  border-top: 1px solid #eef1f4;
+}
+.sysrow:first-child { border-top: 0; }
+.sysrow dt {
+  color: #57606a;
+  font-size: 13.5px;
+}
+.sysrow dd { margin: 0; }
+
+/* ── Rebuild banner ─────────────────────────────────────────────── */
+.banner {
+  background: #ffffff;
+  border: 1px solid #d0d5dd;
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-bottom: 4px;
+}
+.banner[data-kind="building"] { border-color: #d4a012; background: #fff8e6; }
+.banner[data-kind="done"] { border-color: #2ecc71; background: #e9f9ef; }
+.banner[data-kind="failed"] { border-color: #e5534b; background: #fdeceb; }
+
+.banner-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.banner-msg {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 12px;
+  color: #57606a;
+  overflow-wrap: anywhere;
+}
+
+/* indeterminate progress bar (only visible while building) */
+.indbar {
+  margin-top: 10px;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(0, 0, 0, 0.08);
+  overflow: hidden;
+  display: none;
+}
+.banner[data-kind="building"] .indbar { display: block; }
+.indbar span {
+  display: block;
+  width: 30%;
+  height: 100%;
+  border-radius: 2px;
+  background: #d4a012;
+  animation: indslide 1.2s ease-in-out infinite;
+}
+@keyframes indslide {
+  0% { transform: translateX(-100%); }
+  50% { transform: translateX(180%); }
+  100% { transform: translateX(360%); }
+}
+
+/* ── Sign-in hint card ──────────────────────────────────────────── */
+.hint-card {
+  background: #ffffff;
+  border: 1px solid #d0d5dd;
+  border-radius: 8px;
+  padding: 10px 16px;
+  margin-bottom: 4px;
+  color: #57606a;
+  font-size: 13.5px;
+}
+.hint-card p { margin: 0; }
+
+/* ── Error banner ───────────────────────────────────────────────── */
+.error-banner {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  background: #fdeceb;
+  border: 1px solid #e5534b;
+  color: #8a2b25;
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  font-size: 14px;
+}
+.banner-close {
+  background: none;
+  border: 0;
+  color: inherit;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+}
+
+/* ── Narrow screens ─────────────────────────────────────────────── */
+@media (max-width: 560px) {
+  .topbar { padding: 0 12px; gap: 8px; }
+  .topnav a { padding: 6px 7px; font-size: 13px; }
+  .container { padding: 14px 10px 40px; }
+  .grid { grid-template-columns: 1fr 1fr; gap: 10px; }
+}
+@media (max-width: 380px) {
+  .grid { grid-template-columns: 1fr; }
+}

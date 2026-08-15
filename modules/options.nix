@@ -46,15 +46,15 @@
     nextcloud.mode = lib.mkOption {
       type = lib.types.enum [
         "native"
-        "aio"
+        "container"
       ];
-      default = "aio";
+      default = "container";
       description = ''
-        "native" — run Nextcloud as a native NixOS service (services.nextcloud),
-        with the losos admin plugin + losos-ctl sudoers bridge.
-        "aio" — run Nextcloud as Nextcloud All-in-One in a rootless Podman
-        container (nextcloud/all-in-one master container), fronted by Nginx.
-        See modules/containers.nix.
+        "native" — run Nextcloud as a native NixOS service (services.nextcloud)
+        on the host.
+        "container" — run the same native stack inside a declarative
+        systemd-nspawn container (containers.nextcloud, modules/containers.nix),
+        fronted by Nginx path routing. This is the default deployment.
       '';
     };
 
@@ -66,7 +66,8 @@
       default = "container";
       description = ''
         "native" — run Forgejo as a native NixOS service (services.forgejo).
-        "container" — run Forgejo as a rootless Podman container behind Nginx.
+        "container" — run Forgejo inside a systemd-nspawn container
+        (containers.forgejo) behind Nginx path routing.
       '';
     };
 
@@ -93,43 +94,27 @@
       description = "Serve Nextcloud over HTTPS (requires a certificate / domain in production).";
     };
 
-    # ── Rootless Podman container runtime ──────────────────────────────────
-    containers.user = lib.mkOption {
-      type = lib.types.str;
-      default = "containers";
-      description = "The unprivileged user that owns the rootless Podman runtime and its containers.";
-    };
-
-    containers.uid = lib.mkOption {
-      type = lib.types.ints.u16;
-      default = 1002;
-      description = "uid of the rootless Podman user. Its home holds all image/volume storage and is persisted.";
-    };
-
-    # ── Nextcloud All-in-One (active when losos.nextcloud.mode == "aio") ───
-    aio.apachePort = lib.mkOption {
+    # Host loopback port the in-container Nextcloud publishes (port 80) on,
+    # via containers.nextcloud.forwardPorts. Nginx proxies /nextcloud to the
+    # container IP directly; this port is retained for direct local access.
+    nextcloud.apachePort = lib.mkOption {
       type = lib.types.port;
       default = 11000;
-      description = "Host port the AIO Apache (the actual Nextcloud) publishes. Nginx proxies here. Must be >1024 for rootless.";
+      description = ''
+        Host loopback port forwarded to the Nextcloud container's port 80
+        (losos.nextcloud.mode == "container"). Nginx proxies to the container's
+        private IP; this forward is a convenience for local debugging.
+      '';
     };
 
-    aio.interfacePort = lib.mkOption {
-      type = lib.types.port;
-      default = 8000;
-      description = "Host port the AIO management interface listens on (used for the one-time initial setup: domain, TLS, master password). LAN-only.";
-    };
-
-    aio.datadir = lib.mkOption {
-      type = lib.types.path;
-      default = "/var/lib/nextcloud-aio/data";
-      description = "Host path for AIO Nextcloud user data. Persisted via /var.";
-    };
-
-    # ── GPU hardware acceleration for the Nextcloud (AIO) container ────────
+    # ── GPU hardware acceleration for the Nextcloud container ──────────────
     gpu.enable = lib.mkOption {
       type = lib.types.bool;
       default = true;
-      description = "Enable host graphics (VA-API/Mesa) and pass /dev/dri into the AIO container for GPU acceleration.";
+      description = ''
+        Enable host graphics (VA-API/Mesa) and pass /dev/dri into the Nextcloud
+        nspawn container for GPU acceleration.
+      '';
     };
 
     tahoe.introducerFurl = lib.mkOption {
@@ -148,18 +133,53 @@
       description = "Flake URI system.autoUpgrade rebuilds from. Use a github: URI for remote auto-updates.";
     };
 
-    # The Haskell `losos-ctl` backend the Nextcloud app talks to (via sudo).
+    # The Haskell control-plane package holding BOTH executables: the `lososd`
+    # root daemon (D-Bus org.losos1 on the system bus + loopback Bearer-authed
+    # admin HTTP API) and the `losos-ctl` facade CLI relaying to it. When
+    # non-null the daemon runs system-wide (see modules/daemon.nix); set to
+    # null to run without the control plane.
     backend.package = lib.mkOption {
       type = lib.types.nullOr lib.types.package;
       default = null;
       description = ''
-        The losos-ctl backend derivation (Haskell). When non-null it is added to
-        environment.systemPackages and a sudoers rule lets the `nextcloud` user
-        run it as root with no password. The Nextcloud app's BackendService
-        invokes it at /run/current-system/sw/bin/losos-ctl.
-        Leave null to run without a backend (the app then reports "backend not
-        installed").
+        The losos-ctl/lososd derivation (Haskell). When non-null, lososd is
+        enabled as a systemd daemon and losos-ctl is installed for root.
+        Leave null to run without a backend.
       '';
+    };
+
+    # ── Standalone admin endpoint (lososd HTTP API + static admin UI) ──────
+    admin.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Serve the standalone losos admin UI (dashboard + settings SPA) on the
+        front Nginx vhost and run lososd's loopback JSON API (/api/*).
+      '';
+    };
+
+    admin.apiPort = lib.mkOption {
+      type = lib.types.port;
+      default = 8082;
+      description = "Loopback port lososd serves the Bearer-authed JSON API on. Nginx proxies /api/ here.";
+    };
+
+    admin.tokenFile = lib.mkOption {
+      type = lib.types.path;
+      default = "/var/secrets/losos-admin-token";
+      description = ''
+        Bearer token for the admin API; created randomly with mode 0600 by
+        lososd on first start if absent. Persisted via /var.
+      '';
+    };
+
+    # Path of the packaged static admin UI (built from this flake's ./admin-ui
+    # by flake/packages.nix; wired in via modules/defaults.nix). Internal.
+    admin.ui = lib.mkOption {
+      type = lib.types.nullOr lib.types.path;
+      default = null;
+      internal = true;
+      description = "Store path of the static admin UI (dashboard/ + settings/ subdirectories).";
     };
 
     # ── Installer (the `losos-ctl install` subcommand) ──────────────────────
