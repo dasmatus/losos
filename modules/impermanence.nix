@@ -15,10 +15,9 @@
       "/etc/nixos" # the flake source, so auto-upgrade can rebuild without a remote
       "/home/notshared/data"
       "/home/shared/data"
-      # Rootless Podman runtime: all container images + named volumes live under
-      # the `containers` user's home (~/.local/share/containers). Persist it so a
-      # reboot doesn't lose the AIO master config / Forgejo repos.
-      "/home/${config.losos.containers.user}"
+      # The nspawn containers' state is all under /var/lib/{nextcloud,forgejo},
+      # covered by the whole-/var bind mount above; lososd's
+      # /var/lib/losos/state.json and the admin token at /var/secrets likewise.
     ];
 
     files = [

@@ -1,8 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 {- |
-Module      : Main
-Description : losos-ctl CLI entrypoint (optparse-applicative).
+Module      : Main (losos-ctl)
+Description : losos-ctl facade CLI entrypoint (optparse-applicative).
 
 Subcommands (see backend/schema.json for the wire formats):
 
@@ -12,39 +12,36 @@ Subcommands (see backend/schema.json for the wire formats):
   losos-ctl settings        --json   current losos.* options from overrides.nix
   losos-ctl apply                    apply Nix code from stdin (rewrites overrides.nix + rebuilds)
   losos-ctl factory-reset             soft factory reset (restore defaults + rebuild)
-  losos-ctl rebuild-done <exitcode> <job>  internal: record terminal rebuild status
   losos-ctl install [flags]           the losos auto-installer (was losos-install.sh)
 
-`--json` is accepted as a no-op switch on state/status (the PHP app passes
-it); output is always JSON regardless, since that's the only consumer.
+`--json` is accepted as a no-op switch on state/status; output is always JSON
+regardless, since that's the only consumer.
 
-The command logic lives in "Lib" (the runtime control backend) and "Installer"
-(the auto-installer), both polymorphic over an effect type class; this entry
-point runs them in 'IO' (the production interpreter).
+Every privileged subcommand is relayed to the lososd daemon over the system
+D-Bus ("Facade") and the daemon's JSON reply is printed verbatim — this binary
+needs nothing beyond D-Bus send rights (root or group `losos`). In particular
+there is no sudo anymore. Only `install` runs locally: it is the installer
+ISO's root login shell, where no daemon or bus is involved.
 -}
 module Main (main) where
 
+import Control.Exception (handle)
+import qualified Data.ByteString.Lazy as BL
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
+import DBus (toVariant)
+import Facade (BackendFailure (..), callBackend)
 import Installer (Options (..), defaultEmitFile, defaultFlakeUrl, defaultFlakeWork, defaultKeyfile, defaultTargetRel, runInstallIO)
 import Lib (
     Mode (..),
-    cmdApply,
-    cmdChange,
-    cmdFactoryReset,
-    cmdRebuildDone,
-    cmdSettings,
-    cmdState,
-    cmdStatus,
+    modeText,
     validateApply,
  )
 import Options.Applicative (
     Parser,
     ParserInfo,
     ReadM,
-    argument,
-    auto,
     command,
     eitherReader,
     execParser,
@@ -70,7 +67,6 @@ data Command
     = CmdState
     | CmdChange Mode
     | CmdStatus
-    | CmdRebuildDone Int Text
     | CmdSettings
     | CmdApply
     | CmdFactoryReset
@@ -108,14 +104,14 @@ settingsP = const CmdSettings <$> jsonFlag
 applyP :: Parser Command
 applyP = pure CmdApply
 
--- | `factory-reset` — soft factory reset. No options; the danger is gated by
--- the locked-down sudoers rule that pins this binary (the PHP admin app
--- confirms in the UI before invoking).
+-- | `factory-reset` — soft factory reset. The danger is gated by D-Bus policy
+-- (root / group `losos` only) plus the admin UI's Bearer token; the UI also
+-- confirms before invoking.
 factoryResetP :: Parser Command
 factoryResetP = pure CmdFactoryReset
 
-{- | Parse `--mode local|mesh` at parse time, so 'cmdChange' gets a validated
-'Mode' and never has to handle an invalid one.
+{- | Parse `--mode local|mesh` at parse time, so callers never deal with an
+invalid one.
 -}
 changeP :: Parser Command
 changeP =
@@ -130,12 +126,6 @@ changeP =
                 <> metavar "local|mesh"
                 <> help "sharing mode: local (private) or mesh (contribute storage)"
             )
-
-rebuildDoneP :: Parser Command
-rebuildDoneP =
-    CmdRebuildDone
-        <$> argument auto (metavar "EXITCODE" <> help "nixos-rebuild exit code")
-        <*> argument str (metavar "JOB" <> help "job id returned by `change`")
 
 -- | Comma-separated drive list: @--drives /dev/sdb,/dev/sdc@.
 drivesReader :: ReadM [Text]
@@ -185,7 +175,6 @@ commands =
             , command "settings" (info settingsP (progDesc "print the current losos.* settings from overrides.nix"))
             , command "apply" (info applyP (progDesc "apply Nix config from stdin (rewrites overrides.nix + rebuilds)"))
             , command "factory-reset" (info factoryResetP (progDesc "soft factory reset: restore defaults + rebuild (destructive reset = boot the installer ISO)"))
-            , command "rebuild-done" (info rebuildDoneP (progDesc "record terminal rebuild status (internal)"))
             , command "install" (info installP (progDesc "the losos auto-installer (was losos-install.sh)"))
             ]
 
@@ -218,25 +207,33 @@ mkInstallOptions flags = do
             }
 
 main :: IO ()
-main = do
+main = handle backendFail $ do
     cmd <- execParser parserInfo
     case cmd of
-        CmdState -> cmdState
-        CmdChange m -> cmdChange m
-        CmdStatus -> cmdStatus
-        CmdRebuildDone c j -> cmdRebuildDone c j
-        CmdSettings -> cmdSettings
+        CmdState -> callAndPrint "State" []
+        CmdChange m -> callAndPrint "Change" [toVariant (modeText m)]
+        CmdStatus -> callAndPrint "Status" []
+        CmdSettings -> callAndPrint "Settings" []
         CmdApply -> do
             input <- TIO.getContents
+            -- Pre-validate locally so a rejected payload fails fast without a
+            -- daemon round-trip; lososd validates again on the server side.
             case validateApply input of
                 Left err -> do
                     hPutStrLn stderr ("losos-ctl apply: " <> T.unpack err)
                     exitFailure
-                Right code -> cmdApply code
-        CmdFactoryReset -> cmdFactoryReset
+                Right code -> callAndPrint "Apply" [toVariant code]
+        CmdFactoryReset -> callAndPrint "FactoryReset" []
         CmdInstall flags -> do
             opts <- mkInstallOptions flags
             runInstallIO opts
+  where
+    callAndPrint member args = do
+        bs <- callBackend member args
+        BL.putStr bs >> BL.putStr "\n"
+    backendFail (BackendFailure msg) = do
+        hPutStrLn stderr msg
+        exitFailure
 
 parserInfo :: ParserInfo Command
-parserInfo = info (commands <**> helper) (progDesc "losos appliance control backend + auto-installer")
+parserInfo = info (commands <**> helper) (progDesc "losos appliance control facade (D-Bus client for lososd) + auto-installer")

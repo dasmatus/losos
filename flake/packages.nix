@@ -1,55 +1,24 @@
 # Per-output package definitions.
-#   losos-app  — the Nextcloud app (PHP) packaged as a store path NixOS'
-#                nextcloud module symlinks into extraApps (read-only store).
 #   losos-ctl  — the Haskell backend (cabal project under backend/), built via
 #                callCabal2nix with doCheck so the HUnit spec runs on build.
-#                NixOS installs it system-wide and grants the nextcloud user
-#                sudo for it (see services.nix + losos.backend.package).
+#                Provides both the `lososd` system daemon and the `losos-ctl`
+#                facade CLI; modules/daemon.nix runs lososd system-wide and
+#                installs the facade for root (see losos.backend.package).
+#   losos-admin-ui — the standalone admin UI (no build step, no frameworks):
+#                a dashboard/ + settings/ pair of self-contained plain-JS pages,
+#                served by the front Nginx vhost (dashboard at /, settings at
+#                /settings/) with lososd's loopback API proxied at /api/*. See
+#                admin-ui/ and modules/containers.nix.
 { pkgs, ... }:
 
 let
   lib = pkgs.lib;
-  appRoot = ./../nextcloud-app;
-  # cleanSource only strips .git; also drop dev-only/vendor cruft so the
-  # deployed app store path isn't bloated with composer's vendor/, node_modules,
-  # build caches, etc. The app has no runtime composer deps (only require-dev),
-  # so vendor/ is purely a dev artifact and Nextcloud resolves its own deps.
-  appSrc = lib.cleanSourceWith {
-    src = appRoot;
-    filter = path: _type:
-      let
-        under = sub: lib.hasPrefix "${toString appRoot}/${sub}" (toString path);
-        base = baseNameOf path;
-      in
-      !(under "vendor"
-        || under "node_modules"
-        || under ".php-cs-fixer.cache"
-        || under "tests"
-        || lib.elem base [ "composer.lock" "phpunit.xml.dist" ".php-cs-fixer.php" ]);
-  };
 in
 {
-  # A Nextcloud app is just a directory with `appinfo/` at its root. We copy
-  # the filtered source tree into a store path and make sure the bits are
-  # readable. The NixOS nextcloud module's `extraApps` symlinks this under the
-  # webroot's `nix-apps/losos`.
-  losos-app = pkgs.runCommand "losos-app-0.1.0"
-    {
-      # Keep the source derivation name predictable for `nix path-info`.
-      passthru.appId = "losos";
-    }
-    ''
-      cp -rT ${appSrc} $out
-      chmod -R u+rwX $out
-    '';
+  losos-admin-ui = pkgs.runCommand "losos-admin-ui-0.1.0" { } ''
+    cp -rT ${lib.cleanSource ./../admin-ui} $out
+    chmod -R u+rwX $out
+  '';
 
-  # The Haskell backend. backend/losos-ctl.nix is the cabal2nix-generated
-  # package expression, committed so evaluation needs NO import-from-derivation
-  # (`nix flake check --no-build` can't realize IFDs — CI on codeberg died on
-  # the callCabal2nix IFD with "path …-cabal2nix-losos-ctl.drv is not valid").
-  # After editing backend/losos-ctl.cabal, regenerate with:
-  #   cd backend && nix run nixpkgs#cabal2nix -- . > losos-ctl.nix
-  # haskellPackages' default doCheck=true runs the tasty/hunit spec in
-  # backend/test during the build.
   losos-ctl = pkgs.haskellPackages.callPackage ./../backend/losos-ctl.nix { };
 }

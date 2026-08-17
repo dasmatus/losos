@@ -1,8 +1,13 @@
 # Application services:
 #   * Nextcloud — the notshared user's personal cloud (admin account =
-#     notshared). Runs as the system `nextcloud` user; state in /var.
+#     notshared). Native-mode config only; the same stack runs inside the
+#     nspawn container in container mode (see modules/nextcloud-common.nix and
+#     modules/containers.nix). State in /var.
+#   * Forgejo — native-mode git host (container mode lives in
+#     modules/containers.nix).
 #   * Tahoe-LAFS — the shared user's storage grid (a local introducer + a
-#     `shared` storage/client node). Web UI on :3456; state in /var.
+#     `shared` storage/client node). Its web UI binds 127.0.0.1:3457; Nginx
+#     fronts it publicly on :3456.
 #
 # Both are persisted via impermanence's /var bind-mount (see impermanence.nix),
 # so nothing is lost across the tmpfs-root reboot.
@@ -15,8 +20,16 @@
 }:
 
 {
+  # Nginx front door (front vhost in modules/containers.nix, Tahoe vhost
+  # below; native Nextcloud/Forgejo use it too). Enabled unconditionally:
+  # the admin endpoint, Tahoe proxy and every routed service live behind it.
+  services.nginx = {
+    enable = true;
+    recommendedProxySettings = true;
+  };
+
   # Forgejo (native). Only active in native mode; in container mode the git
-  # host runs as a rootless Podman container behind Nginx (see containers.nix).
+  # host runs inside containers.forgejo behind Nginx (see containers.nix).
   services.forgejo = lib.mkIf (config.losos.forgejo.mode == "native" && config.losos.forgejo.enable) {
     enable = true;
     lfs.enable = true;
@@ -26,109 +39,15 @@
       actions.ENABLED = true;
     };
   };
+
   # ── Nextcloud (for the notshared user) — native path ──────────────────
-  # Only active when losos.nextcloud.mode == "native". In "aio" mode Nextcloud
-  # runs as Nextcloud All-in-One in a rootless Podman container (containers.nix)
-  # and the losos admin plugin + losos-ctl sudoers bridge below are dormant
-  # (they depend on a native `nextcloud` system user that AIO doesn't create).
-  services.nextcloud = lib.mkIf (config.losos.nextcloud.mode == "native") {
-    enable = true;
-    hostName = config.losos.nextcloud.hostName;
-    https = config.losos.nextcloud.https;
-    configureRedis = true; # recommended caching/locking, default true in newer nixpkgs
-    package = pkgs.nextcloud34;
-
-    datadir = "/var/lib/nextcloud/data";
-
-    database.createLocally = true; # auto-provision Postgres with socket auth
-
-    config = {
-      dbtype = "pgsql"; # mandatory since nixpkgs 25.05
-      adminuser = "notshared"; # the notshared user owns this instance
-      adminpassFile = config.losos.nextcloud.adminpassFile;
-    };
-
-    # ── Apps ────────────────────────────────────────────────────────────
-    # Enable a curated set of self-contained apps from nixpkgs (no external
-    # servers / IdPs / API keys required), auto-enable them on every start,
-    # and keep the App Store open so the heavier ones (onlyoffice,
-    # richdocuments/Collabora, spreed/Talk, recognize, the integration_* /
-    # user_saml / user_oidc / sociallogin connectors…) can be installed on
-    # demand by the admin. Setting extraApps disables the App Store by
-    # default; appstoreEnable = true forces it back on.
-    extraAppsEnable = true;
-    extraApps = with pkgs.nextcloud34Packages.apps; {
-      # curated self-contained defaults
-      inherit
-        deck
-        tasks
-        notes
-        bookmarks
-        calendar
-        contacts
-        maps
-        polls
-        forms
-        tables
-        collectives
-        news
-        mail
-        music
-        memories
-        groupfolders
-        files_automatedtagging
-        files_linkeditor
-        files_retention
-        previewgenerator
-        checksum
-        notify_push
-        dav_push
-        twofactor_webauthn
-        twofactor_admin
-        guests
-        impersonate
-        unroundedcorners
-        ;
-      # our machine-config plugin (built from this flake's ./nextcloud-app)
-      losos = self.packages.x86_64-linux.losos-app;
-    };
-    appstoreEnable = true;
-  };
-
-  # ── Backend bridge (losos-ctl, user-authored Haskell) ───────────────────
-  # When the backend package is set AND Nextcloud is native, grant the
-  # `nextcloud` user NOPASSWD sudo for exactly that binary. No shell, no
-  # broader root — only this one command, run as root. The binary itself is
-  # installed system-wide via the combined environment.systemPackages line
-  # below (so it lands at /run/current-system/sw/bin/losos-ctl, which the PHP
-  # app calls).
-  #
-  # NOTE: each command MUST be an attrset with `options = [ "NOPASSWD" ]`. A
-  # bare path string is coerced by the sudo module to `{ options = []; }`,
-  # which would require a password — and `nextcloud` is a passwordless system
-  # user invoked via `sudo -n`, so the whole bridge would silently fail.
-  security.sudo = lib.mkIf (config.losos.nextcloud.mode == "native" && config.losos.backend.package != null) {
-    enable = true; # off by default on this appliance (SSH is off); turn on only so the rule below is effective
-    extraRules = [
-      {
-        users = [ "nextcloud" ];
-        runAs = "root";
-        # Allow both the system symlink path (what PHP execs) and the canonical
-        # store path (sudo may resolve the symlink before matching). No args
-        # restriction: `losos-ctl` validates its own subcommands.
-        commands = [
-          {
-            command = "/run/current-system/sw/bin/losos-ctl";
-            options = [ "NOPASSWD" ];
-          }
-          {
-            command = lib.getExe' config.losos.backend.package "losos-ctl";
-            options = [ "NOPASSWD" ];
-          }
-        ];
-      }
-    ];
-  };
+  # Only active when losos.nextcloud.mode == "native". In "container" mode
+  # the same stack runs inside containers.nextcloud and is reached through
+  # the front vhost's /nextcloud route (modules/containers.nix). The lone
+  # source of truth for the stack is modules/nextcloud-common.nix.
+  services.nextcloud =
+    lib.mkIf (config.losos.nextcloud.mode == "native")
+      config.lososInternal.nextcloudStack;
 
   # ── Tahoe-LAFS (for the shared user) ───────────────────────────────────
   services.tahoe = {
@@ -145,7 +64,10 @@
     # The shared user's node: client + storage server for the local grid.
     nodes.shared = {
       nickname = "shared";
-      web.port = 3456; # shared user's web UI / CLI gateway
+      # The Tahoe WUI generates absolute links and has no prefix support, so
+      # it gets its own port-based vhost instead of a path route: loopback
+      # :3457 behind the public Nginx vhost on :3456 below.
+      web.port = 3457;
       package = pkgs.tahoe-lafs;
       storage.enable = config.losos.sharingMyStorage;
       storage.reservedSpace = "1G";
@@ -158,22 +80,31 @@
     };
   };
 
-  # Make the `tahoe` CLI available to the shared user (and everyone) so they
-  # can drive the local node from the shell. Also install the losos-ctl backend
-  # system-wide when set (native Nextcloud mode only — in AIO mode there is no
-  # native `nextcloud` user to call it), so the Nextcloud app reaches it at
-  # /run/current-system/sw/bin/losos-ctl.
-  environment.systemPackages = [
-    pkgs.tahoe-lafs
-  ]
-  ++ lib.optional (config.losos.nextcloud.mode == "native" && config.losos.backend.package != null) (
-    lib.getBin config.losos.backend.package
-  );
+  # Tahoe web UI proxy: the only port-based public route. The WUI binds
+  # loopback :3457; Nginx owns the public :3456.
+  services.nginx.virtualHosts."tahoe" = {
+    listen = [
+      {
+        addr = "0.0.0.0";
+        port = 3456;
+      }
+    ];
+    locations."/" = {
+      proxyPass = "http://127.0.0.1:3457";
+      proxyWebsockets = true;
+    };
+  };
 
-  # Open the Tahoe web UI only to the local network by default; tighten or
-  # widen via firewall rules as needed. The native Forgejo port (8888) is
-  # opened only in native mode; in container mode the git host is behind Nginx,
-  # whose ports are opened in modules/containers.nix.
+  # Make the `tahoe` CLI available to the shared user (and everyone) so they
+  # can drive the local node from the shell. The losos-ctl facade is
+  # installed by modules/daemon.nix (the sudoers bridge is gone: the facade
+  # relays to lososd over the system D-Bus).
+  environment.systemPackages = [ pkgs.tahoe-lafs ];
+
+  # Open the public Nginx ports. The Tahoe web UI is reachable on the LAN at
+  # :3456 (backend is loopback-only); :80 (dashboard/api/nextcloud/forgejo)
+  # is opened in modules/containers.nix. The native Forgejo port (8888) is
+  # opened only in native mode.
   networking.firewall.allowedTCPPorts =
     [ 3456 ]
     ++ lib.optional (config.losos.forgejo.mode == "native" && config.losos.forgejo.enable) 8888;
