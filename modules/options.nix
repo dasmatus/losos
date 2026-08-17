@@ -26,7 +26,19 @@
     cfd.enable = lib.mkOption {
       type = lib.types.bool;
       default = false;
-      description = "Enables Cloudflared (CF tunnels). "; # TODO: Route this through my account and secure details both in GNOME keyring and in agenix.
+      description = ''
+        Enable Cloudflare Tunnel (cloudflared) on the host so the appliance's
+        web services are reachable without opening public ports.
+
+        Off by default. Turning it on is incomplete until you also populate
+        `losos.cfd.tunnels.<name>` with real tunnel credentials — see that
+        option's note on agenix — and `modules/containers.nix` actually passes
+        the tunnel attrset to `services.cloudflared.tunnels` (currently a
+        stub: `tunnels = {}`). The origin certificate from
+        `cloudflared tunnel login` and your account routing are local-dev
+        concerns on your workstation (GNOME keyring / `~/.cloudflared/`), not
+        part of this appliance repo.
+      '';
     };
 
     hostName = lib.mkOption {
@@ -218,11 +230,23 @@
               certificateFile = lib.mkOption {
                 type = lib.types.nullOr lib.types.path;
                 default = null;
+                description = ''
+                  Path to the Cloudflare tunnel origin certificate
+                  (`cert.pem`). Pass an agenix secret's runtime path
+                  (`config.age.secrets.<name>.path`) so the credential is not
+                  copied world-readable into the Nix store.
+                '';
               };
 
               credentialsFile = lib.mkOption {
                 type = lib.types.nullOr lib.types.path;
                 default = null;
+                description = ''
+                  Path to the tunnel credentials JSON
+                  (`<tunnel-id>.json`). Use an agenix secret's runtime path
+                  (`config.age.secrets.<name>.path`), not a store path, so the
+                  tunnel ID + secret stay out of the world-readable store.
+                '';
               };
 
               default = lib.mkOption {

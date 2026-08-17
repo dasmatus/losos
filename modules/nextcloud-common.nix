@@ -77,9 +77,9 @@
         impersonate
         unroundedcorners
         ;
-      # The old `losos` Nextcloud plugin (nextcloud-app/) is retired — OS
-      # settings moved to the standalone admin endpoint (see modules/daemon.nix
-      # + admin-ui/).
+      # The old in-tree `losos` Nextcloud plugin is retired — OS settings
+      # moved to the standalone admin endpoint (see modules/daemon.nix +
+      # admin-ui/).
     };
     appstoreEnable = true;
   };

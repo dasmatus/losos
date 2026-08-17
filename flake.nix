@@ -19,18 +19,18 @@
       pkgs = nixpkgs.legacyPackages.${system};
     in
     {
-      # The losos Nextcloud app packaged as a store path (see flake/packages.nix).
-      # NixOS' nextcloud module symlinks this into extraApps.
+      # Flake packages: losos-ctl (Haskell daemon + facade) and losos-admin-ui
+      # (static admin SPA). See flake/packages.nix.
       packages.${system} = import ./flake/packages.nix { inherit pkgs; };
 
-      # Dev shell for the PHP app + Haskell backend: fish (host config minus
-      # Zellij) + full Haskell stdlib + PHP + Nextcloud occ. See flake/devshell.nix.
+      # Dev shell for the Haskell backend: fish (host config minus Zellij) +
+      # full Haskell stdlib. See flake/devshell.nix.
       devShells.${system} = import ./flake/devshell.nix { inherit pkgs; };
 
       # The installer module needs the flake's own source (`self.outPath`) to
       # bake it into the ISO; pass `self` through to the iso system. The
-      # install system gets `self` so services.nix can reach
-      # self.packages.${system}.losos-app.
+      # install system gets `self` so defaults.nix can reach
+      # self.packages.${system}.{losos-ctl,losos-admin-ui}.
       nixosConfigurations = {
         # Installer medium: a minimal NixOS live ISO that carries the disko
         # layout and the losos auto-installer (losos-install). Boot it on the
@@ -98,10 +98,16 @@
         };
       };
 
-      # nixos-test-vms: boots a VM with three empty disks and runs the
-      # installer end-to-end through the disko format/mount path. See
-      # tests/install.nix. Run with:
-      #   nix build .#checks.x86_64-linux.losos-install
-      checks.${system}.losos-install = import ./tests/install.nix { inherit pkgs disko; };
+      # nixos-test-vms. Run with `nix build .#checks.x86_64-linux.<name>`:
+      #   losos-install       — boots a VM with three empty disks and runs the
+      #                         installer end-to-end through the disko format/mount
+      #                         path (tests/install.nix).
+      #   losos-admin-daemon  — boots a minimal losos appliance and exercises the
+      #                         lososd daemon + losos-ctl facade + the Bearer-
+      #                         authed admin HTTP API (tests/admin-vm.nix).
+      checks.${system} = {
+        losos-install = import ./tests/install.nix { inherit pkgs disko; };
+        losos-admin-daemon = import ./tests/admin-vm.nix { inherit pkgs; };
+      };
     };
 }
