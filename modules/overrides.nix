@@ -24,5 +24,5 @@
   losos.nextcloud.https = false;
   losos.gpu.enable = true;
   losos.nextcloud.apachePort = 11000;
-  losos.cfd.enable = false;
+  losos.proxy.enable = false;
 }

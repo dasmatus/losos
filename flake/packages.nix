@@ -9,6 +9,14 @@
 #                served by the front Nginx vhost (dashboard at /, settings at
 #                /settings/) with lososd's loopback API proxied at /api/*. See
 #                admin-ui/ and modules/containers.nix.
+#   losos-registrar — the Rust edge registration + Traefik/rathole config
+#                reconciler (`serve`) and appliance registration client
+#                (`announce`). Built via rustPlatform.buildRustPackage from
+#                backend-registrar/. See modules/edge-registrar.nix (edge) and
+#                modules/proxy.nix (appliance). cargoHash is the SHA256 of the
+#                vendored crate tarball; `lib.fakeHash` is a placeholder — the
+#                first `nix build .#losos-registrar` will print the real hash
+#                to paste here.
 { pkgs, ... }:
 
 let
@@ -21,4 +29,15 @@ in
   '';
 
   losos-ctl = pkgs.haskellPackages.callPackage ./../backend/losos-ctl.nix { };
+
+  losos-registrar = pkgs.rustPlatform.buildRustPackage {
+    pname = "losos-registrar";
+    version = "0.1.0";
+    src = lib.cleanSource ./../backend-registrar;
+    # SHA256 of the vendored crate tarball. If deps change, `nix build
+    # .#losos-registrar` will print the new hash to paste here.
+    cargoHash = "sha256-xb0N7PFM7Ur9YVmAgikgcMT7POCX8VSmJGhGjF/nhwA=";
+    # No system deps; pure Rust with rustls (no openssl).
+    doCheck = true;
+  };
 }

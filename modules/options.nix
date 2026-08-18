@@ -1,5 +1,10 @@
 # Project-wide option declarations for losos.
-{ lib, ... }:
+{
+  lib,
+  pkgs,
+  config,
+  ...
+}:
 
 {
   options.losos = {
@@ -23,21 +28,93 @@
       '';
     };
 
-    cfd.enable = lib.mkOption {
+    # ── Master proxy (appliance side) ───────────────────────────────────────
+    # Replaces the retired losos.cfd (Cloudflare Tunnel). The appliance dials
+    # out to the edge over rathole (no inbound public port) and announces
+    # itself to the edge's losos-registrar, which rewrites Traefik + rathole
+    # config there. See docs/superpowers/specs/2026-08-17-master-proxy-design.md
+    # and modules/proxy.nix. The edge side of the contract is losos.edge.*
+    # (below). The on-box Nginx stays the slave proxy on :80.
+    proxy.enable = lib.mkOption {
       type = lib.types.bool;
       default = false;
       description = ''
-        Enable Cloudflare Tunnel (cloudflared) on the host so the appliance's
-        web services are reachable without opening public ports.
+        Enable the master-proxy appliance side: a rathole client that dials
+        out to the edge (losos.proxy.edgeRatholeEndpoint) and a
+        losos-registrar announce service that registers/heartbeats this
+        appliance with the edge. The on-box Nginx stays the slave proxy on
+        :80; rathole forwards the tunnel to it. No inbound public port is
+        opened — the no-SSH/no-public-ports invariant is preserved.
+      '';
+    };
 
-        Off by default. Turning it on is incomplete until you also populate
-        `losos.cfd.tunnels.<name>` with real tunnel credentials — see that
-        option's note on agenix — and `modules/containers.nix` actually passes
-        the tunnel attrset to `services.cloudflared.tunnels` (currently a
-        stub: `tunnels = {}`). The origin certificate from
-        `cloudflared tunnel login` and your account routing are local-dev
-        concerns on your workstation (GNOME keyring / `~/.cloudflared/`), not
-        part of this appliance repo.
+    proxy.edgeRatholeEndpoint = lib.mkOption {
+      type = lib.types.str;
+      default = "edge.losos.cfd:2333";
+      description = "host:port the rathole client dials (the edge rathole server's [server] bind).";
+    };
+
+    proxy.registrarUrl = lib.mkOption {
+      type = lib.types.str;
+      default = "https://register.losos.cfd";
+      description = "Base URL of the edge losos-registrar HTTP API (fronted by Traefik at a static hostname).";
+    };
+
+    proxy.hostname = lib.mkOption {
+      type = lib.types.str;
+      default = "${config.losos.hostName}.losos.cfd";
+      defaultText = lib.literalExpression "\${config.losos.hostName}.losos.cfd";
+      description = "Public hostname this appliance registers; Traefik routes Host(<hostname>) through the tunnel to this box's Nginx.";
+    };
+
+    proxy.applianceId = lib.mkOption {
+      type = lib.types.str;
+      default = config.losos.hostName;
+      defaultText = lib.literalExpression "config.losos.hostName";
+      description = "Stable appliance id; the registry key and the rathole service name.";
+    };
+
+    proxy.tokenFile = lib.mkOption {
+      type = lib.types.path;
+      default = "/var/secrets/losos-proxy-token";
+      description = ''
+        Per-appliance shared secret (0600, persisted via /var). Used both to
+        authenticate /register and as the rathole service token. Must match
+        losos.edge.tenants.<applianceId>.tokenFile on the edge. Provision out
+        of band (agenix or a manual write), not via the nix store.
+      '';
+    };
+
+    proxy.bootstrapTokenFile = lib.mkOption {
+      type = lib.types.path;
+      default = "/var/secrets/losos-rathole-bootstrap";
+      description = ''
+        The rathole default_token (0600, persisted via /var) — the shared
+        transport secret. Must match losos.edge.bootstrapTokenFile on the
+        edge. Provision out of band, not via the nix store.
+      '';
+    };
+
+    proxy.heartbeatInterval = lib.mkOption {
+      type = lib.types.str;
+      default = "30s";
+      description = "Cadence losos-registrar announce POSTs /heartbeat. Must be well under losos.edge.heartbeatTtl.";
+    };
+
+    proxy.rathole.package = lib.mkOption {
+      type = lib.types.package;
+      default = pkgs.rathole;
+      defaultText = lib.literalExpression "pkgs.rathole";
+      description = "rathole derivation for the appliance-side client.";
+    };
+
+    proxy.registrar.package = lib.mkOption {
+      type = lib.types.nullOr lib.types.package;
+      default = null;
+      description = ''
+        The losos-registrar derivation (Rust). When non-null, the announce
+        service runs; wired by modules/defaults.nix to
+        self.packages.<system>.losos-registrar. Leave null to run without.
       '';
     };
 
@@ -218,157 +295,115 @@
       '';
     };
 
-    # ── Cloudflared (CF tunnels) ───────────────────────────────────────────
-    #
-    # Mirrors the common shape of:
-    #   services.cloudflared.tunnels.<name>.<option>
-    cfd.tunnels = lib.mkOption {
-      type = lib.types.attrsOf (
-        lib.types.submodule (
-          { name, ... }: {
-            options = {
-              certificateFile = lib.mkOption {
-                type = lib.types.nullOr lib.types.path;
-                default = null;
-                description = ''
-                  Path to the Cloudflare tunnel origin certificate
-                  (`cert.pem`). Pass an agenix secret's runtime path
-                  (`config.age.secrets.<name>.path`) so the credential is not
-                  copied world-readable into the Nix store.
-                '';
-              };
+    # ── Master proxy (edge side) ───────────────────────────────────────────
+    # Options for the edge NixOS system (nixosConfigurations.edge), which runs
+    # Traefik (master proxy), a rathole server, and losos-registrar (serve).
+    # Only imported by the edge system; the appliance uses losos.proxy.* above.
+    edge.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = "Configure this system as the losos master-proxy edge (Traefik + rathole server + losos-registrar).";
+    };
 
-              credentialsFile = lib.mkOption {
-                type = lib.types.nullOr lib.types.path;
-                default = null;
-                description = ''
-                  Path to the tunnel credentials JSON
-                  (`<tunnel-id>.json`). Use an agenix secret's runtime path
-                  (`config.age.secrets.<name>.path`), not a store path, so the
-                  tunnel ID + secret stay out of the world-readable store.
-                '';
-              };
+    edge.publicDomain = lib.mkOption {
+      type = lib.types.str;
+      default = "losos.cfd";
+      description = "Apex domain. The static registration router is register.<publicDomain>; per-appliance hostnames live under it.";
+    };
 
-              default = lib.mkOption {
-                type = lib.types.nullOr lib.types.bool;
-                default = null;
-              };
+    edge.ratholeBindAddr = lib.mkOption {
+      type = lib.types.str;
+      default = "0.0.0.0";
+      description = "Address the rathole server listens on for appliance clients to dial.";
+    };
 
-              edgeIPVersion = lib.mkOption {
-                type = lib.types.nullOr (
-                  lib.types.enum [
-                    "4"
-                    "6"
-                  ]
-                );
-                default = null;
-              };
+    edge.ratholeBindPort = lib.mkOption {
+      type = lib.types.port;
+      default = 2333;
+      description = "Port appliance rathole clients dial (rathole [server] bind).";
+    };
 
-              ingress = lib.mkOption {
-                type = lib.types.nullOr (lib.types.listOf lib.types.attrs);
-                default = null;
-              };
+    edge.ratholePortRange = lib.mkOption {
+      type = lib.types.str;
+      default = "50000-50100";
+      description = "lo-hi range the registrar allocates per-appliance rathole edge ports from.";
+    };
 
-              originRequest = lib.mkOption {
-                type = lib.types.nullOr (
-                  lib.types.submodule {
-                    options = {
-                      caPool = lib.mkOption {
-                        type = lib.types.nullOr lib.types.path;
-                        default = null;
-                      };
+    edge.heartbeatTtl = lib.mkOption {
+      type = lib.types.str;
+      default = "120s";
+      description = "Tenants with no heartbeat within this TTL are pruned (their Traefik router + rathole service removed).";
+    };
 
-                      connectTimeout = lib.mkOption {
-                        type = lib.types.nullOr lib.types.str;
-                        default = null;
-                      };
+    edge.reconcileInterval = lib.mkOption {
+      type = lib.types.str;
+      default = "15s";
+      description = "How often the registrar reconciler re-derives Traefik + rathole config from the registry.";
+    };
 
-                      disableChunkedEncoding = lib.mkOption {
-                        type = lib.types.nullOr lib.types.bool;
-                        default = null;
-                      };
+    edge.registrarApiPort = lib.mkOption {
+      type = lib.types.port;
+      default = 8443;
+      description = "Loopback port the losos-registrar HTTP API listens on; Traefik forwards register.<publicDomain> here.";
+    };
 
-                      httpHostHeader = lib.mkOption {
-                        type = lib.types.nullOr lib.types.str;
-                        default = null;
-                      };
+    edge.registrarApiBind = lib.mkOption {
+      type = lib.types.str;
+      default = "127.0.0.1";
+      description = ''
+        Address the losos-registrar HTTP API binds. Defaults to loopback — in
+        production only Traefik (fronting register.<publicDomain>) reaches it.
+        Set to `0.0.0.0` ONLY in tests where there is no Traefik/TLS path and
+        the appliance VM must dial the registrar directly; never expose it
+        publicly in deployment.
+      '';
+    };
 
-                      keepAliveConnections = lib.mkOption {
-                        type = lib.types.nullOr lib.types.int;
-                        default = null;
-                      };
+    edge.acmeEmail = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      description = "Let's Encrypt account email for the on-demand cert resolver. Required when losos.edge.enable.";
+    };
 
-                      keepAliveTimeout = lib.mkOption {
-                        type = lib.types.nullOr lib.types.str;
-                        default = null;
-                      };
+    edge.bootstrapTokenFile = lib.mkOption {
+      type = lib.types.path;
+      default = "/var/secrets/losos-rathole-bootstrap";
+      description = "rathole default_token (0600). Shared by all appliance tunnels as the transport Noise bootstrap.";
+    };
 
-                      noHappyEyeballs = lib.mkOption {
-                        type = lib.types.nullOr lib.types.bool;
-                        default = null;
-                      };
+    edge.tenants = lib.mkOption {
+      type = lib.types.attrsOf (lib.types.submodule {
+        options = {
+          hostname = lib.mkOption {
+            type = lib.types.str;
+            description = "Public hostname Traefik routes to this appliance.";
+          };
+          tokenFile = lib.mkOption {
+            type = lib.types.path;
+            description = ''
+              Path to this appliance's token (0600); must match the
+              appliance's losos.proxy.tokenFile. Use an agenix/runtime secret
+              path, not a store path, so the token stays out of the
+              world-readable nix store.
+            '';
+          };
+        };
+      });
+      default = {};
+      description = "Closed-enrollment whitelist of appliances permitted to register. The registrar only ever writes Traefik routers for ids listed here.";
+    };
 
-                      noTLSVerify = lib.mkOption {
-                        type = lib.types.nullOr lib.types.bool;
-                        default = null;
-                      };
+    edge.rathole.package = lib.mkOption {
+      type = lib.types.package;
+      default = pkgs.rathole;
+      defaultText = lib.literalExpression "pkgs.rathole";
+      description = "rathole derivation for the edge-side server.";
+    };
 
-                      originServerName = lib.mkOption {
-                        type = lib.types.nullOr lib.types.str;
-                        default = null;
-                      };
-
-                      proxyAddress = lib.mkOption {
-                        type = lib.types.nullOr lib.types.str;
-                        default = null;
-                      };
-
-                      proxyPort = lib.mkOption {
-                        type = lib.types.nullOr lib.types.int;
-                        default = null;
-                      };
-
-                      proxyType = lib.mkOption {
-                        type = lib.types.nullOr lib.types.str;
-                        default = null;
-                      };
-
-                      tcpKeepAlive = lib.mkOption {
-                        type = lib.types.nullOr lib.types.str;
-                        default = null;
-                      };
-
-                      tlsTimeout = lib.mkOption {
-                        type = lib.types.nullOr lib.types.str;
-                        default = null;
-                      };
-                    };
-                  }
-                );
-                default = null;
-              };
-
-              protocol = lib.mkOption {
-                type = lib.types.nullOr (
-                  lib.types.enum [
-                    "http2"
-                    "http"
-                    "tcp"
-                    "udp"
-                  ]
-                );
-                default = null;
-              };
-
-              warp-routing.enabled = lib.mkOption {
-                type = lib.types.nullOr lib.types.bool;
-                default = null;
-              };
-            };
-          }
-        )
-      );
-      default = { };
+    edge.registrar.package = lib.mkOption {
+      type = lib.types.nullOr lib.types.package;
+      default = null;
+      description = "The losos-registrar derivation (Rust). Wired by the edge module to self.packages.<system>.losos-registrar.";
     };
   };
 }

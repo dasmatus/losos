@@ -91,10 +91,25 @@
             ./modules/overrides.nix
             ./modules/updates.nix
             ./modules/defaults.nix
+            ./modules/proxy.nix
             # Host-specific drive list + TPM mode, written by losos-install at
             # install time. Only imported when it exists so the published
             # flake (without it) still evaluates against the default drive.
           ] ++ nixpkgs.lib.optional (builtins.pathExists ./modules/install-target.nix) ./modules/install-target.nix;
+        };
+
+        # The master-proxy edge: a second NixOS system on a public VPS running
+        # Traefik (master), a rathole server, and losos-registrar (serve).
+        # Disjoint module set from `install` — only options.nix + edge.nix.
+        # `self` is in scope so edge.nix can wire losos.edge.registrar.package
+        # to self.packages.${system}.losos-registrar.
+        edge = nixpkgs.lib.nixosSystem {
+          inherit system;
+          specialArgs.self = self;
+          modules = [
+            ./modules/options.nix
+            ./modules/edge.nix
+          ];
         };
       };
 
@@ -105,9 +120,14 @@
       #   losos-admin-daemon  — boots a minimal losos appliance and exercises the
       #                         lososd daemon + losos-ctl facade + the Bearer-
       #                         authed admin HTTP API (tests/admin-vm.nix).
+      #   losos-edge-proxy    — boots an edge VM (Traefik + rathole server +
+      #                         registrar) + an appliance VM (rathole client +
+      #                         announce + Nginx) and asserts the master-proxy
+      #                         register/reconcile/forward path (tests/edge-vm.nix).
       checks.${system} = {
         losos-install = import ./tests/install.nix { inherit pkgs disko; };
         losos-admin-daemon = import ./tests/admin-vm.nix { inherit pkgs; };
+        losos-edge-proxy = import ./tests/edge-vm.nix { inherit pkgs; };
       };
     };
 }

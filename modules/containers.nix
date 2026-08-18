@@ -16,7 +16,7 @@
 # Nginx is the single front door: one default_server vhost on :80 with
 # path-based routing — / (dashboard), /settings (settings SPA), /api/* (lososd),
 # /nextcloud (container), /forgejo/ (container). default_server because
-# Cloudflare Tunnel traffic arrives with a public hostname, not
+# master-proxy (Traefik+rathole) traffic arrives with a public hostname, not
 # <hostName>.local. Nothing but Nginx binds a public port.
 {
   pkgs,
@@ -40,12 +40,6 @@ let
   adminApiPort = config.losos.admin.apiPort;
 in
 {
-  # ── Cloudflared (CF tunnels) — PRESERVED stub ────────────────────────────
-  services.cloudflared = {
-    enable = config.losos.cfd.enable;
-    tunnels = { };
-  };
-
   # ── Nextcloud (nspawn) ─────────────────────────────────────────────────────
   containers.nextcloud = lib.mkIf nextcloudContainer {
     autoStart = true;
