@@ -36,7 +36,7 @@ in
     src = lib.cleanSource ./../backend-registrar;
     # SHA256 of the vendored crate tarball. If deps change, `nix build
     # .#losos-registrar` will print the new hash to paste here.
-    cargoHash = "sha256-xb0N7PFM7Ur9YVmAgikgcMT7POCX8VSmJGhGjF/nhwA=";
+    cargoHash = "sha256-eFIod0WRyTE+QespzQqQpiMaT0cX9yM8h0XtMNr7jSs=";
     # No system deps; pure Rust with rustls (no openssl).
     doCheck = true;
   };

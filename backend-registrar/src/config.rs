@@ -17,7 +17,7 @@
 
 use std::collections::BTreeMap;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// A live tenant, from the registry's point of view, reduced to what the
 /// config needs. `last_seen` is deliberately absent here — it is a runtime
@@ -71,13 +71,13 @@ pub struct Files {
 // runtime "unknown field" from Traefik.
 
 /// Root of a Traefik dynamic config file (`losos.yml`).
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 struct TraefikConfig {
     http: TraefikHttp,
 }
 
 /// The `http:` top-level section: one router and one service per appliance.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct TraefikHttp {
     routers: BTreeMap<String, TraefikRouter>,
@@ -86,7 +86,7 @@ struct TraefikHttp {
 
 /// A per-appliance router: match `Host(<hostname>)`, forward to the service of
 /// the same id, terminate TLS with the on-demand Let's Encrypt resolver.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct TraefikRouter {
     rule: String,
@@ -98,7 +98,7 @@ struct TraefikRouter {
 /// Per-router TLS: the `le` cert resolver and the hostname to obtain a cert
 /// for. The registrar is the gatekeeper of which hostnames ever get certs —
 /// Traefik obtains lazily on first hit for a router that exists.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct TraefikTls {
     cert_resolver: String,
@@ -106,7 +106,7 @@ struct TraefikTls {
 }
 
 /// A `domains:` entry — `main` is the cert's primary SAN.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 struct TraefikDomain {
     main: String,
 }
@@ -114,19 +114,19 @@ struct TraefikDomain {
 /// A per-appliance service: a load balancer with one server — the rathole
 /// edge port for this appliance (`http://127.0.0.1:<rathole_port>`), which
 /// rathole forwards over the tunnel to the appliance's Nginx.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct TraefikService {
     load_balancer: TraefikLoadBalancer,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct TraefikLoadBalancer {
     servers: Vec<TraefikServer>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 struct TraefikServer {
     url: String,
 }
@@ -158,9 +158,8 @@ pub fn desired_config(tenants: &[TenantView], opts: &EdgeOpts) -> Files {
     // This base is byte-identical to the declarative seed in modules/edge.nix
     // (pinned by `server_block_matches_nix_seed_byte_for_byte`).
     let mut toml = format!(
-        "[server]\nbind_addr = \"{addr}:{port}\"\ndefault_token = \"{tok}\"\n",
-        addr = opts.rathole_bind_addr,
-        port = opts.rathole_bind_port,
+        "[server]\nbind_addr = \"{bind}\"\ndefault_token = \"{tok}\"\n",
+        bind = format_bind(&opts.rathole_bind_addr, opts.rathole_bind_port),
         tok = toml_escape(&opts.bootstrap_token),
     );
 
@@ -186,6 +185,17 @@ pub fn desired_config(tenants: &[TenantView], opts: &EdgeOpts) -> Files {
         };
     }
 
+    // Sort by id so the rathole per-service blocks (emitted in iteration
+    // order) match the Traefik BTreeMap (key order) — the output is then
+    // deterministic regardless of the order callers pass tenants in. The
+    // registry already sorts `views()`, but `desired_config` must not lean on
+    // that: a caller that passed the same tenants in a different order would
+    // otherwise produce byte-identical Traefik config (BTreeMap) but a
+    // different rathole block order, byte-compare as "changed", and trigger a
+    // spurious rathole SIGHUP + reload.
+    let mut sorted: Vec<&TenantView> = tenants.iter().collect();
+    sorted.sort_by(|a, b| a.id.cmp(&b.id));
+
     // BTreeMap gives deterministic ordering by id so byte-compare is stable
     // across runs regardless of input iteration order. serde_yaml quotes the
     // map keys only when the id needs it (it handles YAML key escaping; the
@@ -193,7 +203,7 @@ pub fn desired_config(tenants: &[TenantView], opts: &EdgeOpts) -> Files {
     let mut routers: BTreeMap<String, TraefikRouter> = BTreeMap::new();
     let mut services: BTreeMap<String, TraefikService> = BTreeMap::new();
 
-    for t in tenants {
+    for t in sorted {
         let id = t.id.clone();
         let host = t.hostname.clone();
         routers.insert(
@@ -239,6 +249,22 @@ pub fn desired_config(tenants: &[TenantView], opts: &EdgeOpts) -> Files {
     Files {
         traefik_yaml: Some(traefik_yaml),
         rathole_toml: toml,
+    }
+}
+
+/// Format a `host:port` socket string for rathole's `bind_addr`, bracketing
+/// IPv6 literals: `::` → `[::]:2333`, `0.0.0.0` → `0.0.0.0:2333`. rathole
+/// parses `bind_addr` as a `SocketAddr`, so an unbracketed IPv6 literal
+/// (`::2333`) is rejected. The default `rathole_bind_addr` is `::` (dual-stack
+/// — Linux accepts IPv4-mapped connections on an `::` bind), so an appliance
+/// that resolves the edge over IPv6 reaches the tunnel. Must stay in lockstep
+/// with the `fmtBind` helper in `modules/edge.nix` so the declarative seed
+/// and the registrar's output stay byte-identical.
+fn format_bind(addr: &str, port: u16) -> String {
+    if addr.contains(':') {
+        format!("[{addr}]:{port}")
+    } else {
+        format!("{addr}:{port}")
     }
 }
 
@@ -295,14 +321,49 @@ mod tests {
         };
         let f = desired_config(&[t], &opts());
         let yaml = f.traefik_yaml.expect("one tenant yields a traefik config");
+        // Substring checks are deliberately quote-agnostic — serde_yaml picks
+        // the quoting style, which we don't pin (Traefik accepts either).
         assert!(yaml.contains("Host(`mattbox.losos.cfd`)"));
         assert!(yaml.contains("certResolver: le"));
-        assert!(yaml.contains("main: \"mattbox.losos.cfd\""));
-        assert!(yaml.contains("url: \"http://127.0.0.1:50000\""));
+        assert!(yaml.contains("mattbox.losos.cfd"));
+        assert!(yaml.contains("http://127.0.0.1:50000"));
         assert!(f.rathole_toml.contains("[server.services.mattbox]"));
         assert!(f.rathole_toml.contains("bind_addr = \"127.0.0.1:50000\""));
         assert!(f.rathole_toml.contains("default_token = \"BOOT\""));
         assert!(f.rathole_toml.contains("token = \"TOK\""));
+    }
+
+    /// The serialized `losos.yml` must deserialize back into the typed model —
+    /// the payoff for modeling Traefik's config as structs. This round-trip
+    /// pins that the shape the registrar emits is exactly the shape the
+    /// (compile-time-checked) schema describes: routers and services nested
+    /// under `http`, the `tls` block with `certResolver` + `domains`, and the
+    /// load-balancer server URL. If a field is misnamed or misplaced, this
+    /// fails instead of Traefik rejecting the file at runtime.
+    #[test]
+    fn traefik_config_round_trips_through_yaml() {
+        let t = TenantView {
+            id: "mattbox".into(),
+            hostname: "mattbox.losos.cfd".into(),
+            rathole_port: 50000,
+            token: "TOK".into(),
+        };
+        let f = desired_config(&[t], &opts());
+        let yaml = f.traefik_yaml.expect("one tenant yields a traefik config");
+        let parsed: TraefikConfig =
+            serde_yaml::from_str(&yaml).expect("losos.yml round-trips into TraefikConfig");
+
+        let router = parsed.http.routers.get("mattbox").expect("router present");
+        assert_eq!(router.rule, "Host(`mattbox.losos.cfd`)");
+        assert_eq!(router.service, "mattbox");
+        assert_eq!(router.entry_points, ["websecure"]);
+        assert_eq!(router.tls.cert_resolver, "le");
+        assert_eq!(router.tls.domains.len(), 1);
+        assert_eq!(router.tls.domains[0].main, "mattbox.losos.cfd");
+
+        let svc = parsed.http.services.get("mattbox").expect("service present");
+        assert_eq!(svc.load_balancer.servers.len(), 1);
+        assert_eq!(svc.load_balancer.servers[0].url, "http://127.0.0.1:50000");
     }
 
     /// The `[server]` block (+ empty `[server.services]` table) the registrar
@@ -317,6 +378,26 @@ mod tests {
             f.rathole_toml,
             "[server]\nbind_addr = \"0.0.0.0:2333\"\ndefault_token = \"BOOT\"\n\n[server.services]\n"
         );
+    }
+
+    /// An IPv6 `bind_addr` (the production default `::`, dual-stack) must be
+    /// bracketed so rathole parses it as a `SocketAddr` — `::2333` is an IPv6
+    /// address literal, not a socket. This pins the bracketing the Nix seed
+    /// (modules/edge.nix `fmtBind`) must also produce.
+    #[test]
+    fn ipv6_bind_addr_is_bracketed() {
+        let o = EdgeOpts {
+            rathole_bind_addr: "::".into(),
+            rathole_bind_port: 2333,
+            bootstrap_token: "BOOT".into(),
+        };
+        let f = desired_config(&[], &o);
+        assert!(
+            f.rathole_toml.contains("bind_addr = \"[::]:2333\""),
+            "expected bracketed IPv6 bind_addr, got: {}",
+            f.rathole_toml,
+        );
+        assert!(f.traefik_yaml.is_none());
     }
 
     #[test]

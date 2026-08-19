@@ -9,10 +9,11 @@
 
 use std::time::Duration;
 
-use anyhow::{Context, Result};
+use miette::{Context, IntoDiagnostic, Result};
 use serde::Serialize;
 use tracing::{error, info, warn};
 
+use crate::action::Action;
 use crate::opts::AnnounceOpts;
 
 #[derive(Serialize)]
@@ -32,10 +33,12 @@ pub async fn run(opts: AnnounceOpts) -> Result<()> {
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(10))
         .build()
+        .into_diagnostic()
         .context("build HTTP client")?;
 
     let token = tokio::fs::read_to_string(&opts.token_file)
         .await
+        .into_diagnostic()
         .with_context(|| format!("read token file {}", opts.token_file))?;
     let token = token.trim().to_string();
 
@@ -56,13 +59,22 @@ pub async fn run(opts: AnnounceOpts) -> Result<()> {
                 Ok(r) if r.status().is_success() => {
                     registered = true;
                     backoff = Duration::from_secs(2);
-                    info!("[announce] registered {} -> {}", opts.appliance_id, opts.hostname);
+                    info!(
+                        target: Action::Register.target(),
+                        "registered {} -> {}",
+                        opts.appliance_id,
+                        opts.hostname,
+                    );
                 }
                 Ok(r) => {
-                    error!("[announce] register rejected: {}", r.status());
+                    error!(
+                        target: Action::Register.target(),
+                        "register rejected: {}",
+                        r.status(),
+                    );
                 }
                 Err(e) => {
-                    error!("[announce] register error: {e}");
+                    error!(target: Action::Register.target(), "register error: {e}");
                 }
             }
         }
@@ -78,14 +90,21 @@ pub async fn run(opts: AnnounceOpts) -> Result<()> {
                 }
                 Ok(r) if r.status().as_u16() == 404 => {
                     // Edge forgot us (e.g. registry wiped) — re-enroll next loop.
-                    warn!("[announce] edge reports unknown; re-registering");
+                    warn!(
+                        target: Action::Heartbeat.target(),
+                        "edge reports unknown; re-registering",
+                    );
                     registered = false;
                 }
                 Ok(r) => {
-                    warn!("[announce] heartbeat rejected: {}", r.status());
+                    warn!(
+                        target: Action::Heartbeat.target(),
+                        "heartbeat rejected: {}",
+                        r.status(),
+                    );
                 }
                 Err(e) => {
-                    error!("[announce] heartbeat error: {e}");
+                    error!(target: Action::Heartbeat.target(), "heartbeat error: {e}");
                 }
             }
         }

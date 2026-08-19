@@ -39,6 +39,19 @@ let
 
   registerDomain = "register.${cfg.publicDomain}";
 
+  # Format a `host:port` socket string for rathole's `bind_addr`, bracketing
+  # IPv6 literals: `::` → `[::]:2333`, `0.0.0.0` → `0.0.0.0:2333`. rathole parses
+  # `bind_addr` as a `SocketAddr`, so an unbracketed IPv6 literal (`::2333`)
+  # is rejected. The default `ratholeBindAddr` is `::` (dual-stack — Linux
+  # accepts IPv4-mapped connections on an `::` bind), so an appliance that
+  # resolves the edge over IPv6 reaches the tunnel. MUST stay byte-identical
+  # to the `format_bind` helper in backend-registrar/src/config.rs — the
+  # declarative seed this writes and the registrar's runtime output must
+  # compare equal for the zero-tenant steady state (pinned by
+  # config.rs::server_block_matches_nix_seed_byte_for_byte).
+  fmtBind = addr: port:
+    if lib.hasInfix ":" addr then "[${addr}]:${toString port}" else "${addr}:${toString port}";
+
   # Static Traefik config. We bypass services.traefik.staticConfigOptions
   # because the NixOS module force-merges `providers.file.filename` (a single
   # file); we need `providers.file.directory` so Traefik watches the dir the
@@ -107,7 +120,7 @@ let
     bootstrap="$(cat ${toString cfg.bootstrapTokenFile})"
     cat > /etc/rathole/server.toml <<EOF
 [server]
-bind_addr = "${cfg.ratholeBindAddr}:${toString cfg.ratholeBindPort}"
+bind_addr = "${fmtBind cfg.ratholeBindAddr cfg.ratholeBindPort}"
 default_token = "$bootstrap"
 
 [server.services]
@@ -118,15 +131,13 @@ EOF
     "${registrar}/bin/losos-registrar"
     "serve"
     "--listen"
-    "${cfg.registrarApiBind}:${toString cfg.registrarApiPort}"
+    "${fmtBind cfg.registrarApiBind cfg.registrarApiPort}"
     "--registry"
     "/var/lib/losos-registrar/registry.json"
     "--traefik-dir"
     "/etc/traefik/dynamic"
     "--rathole-config"
     "/etc/rathole/server.toml"
-    "--rathole-service"
-    "losos-rathole.service"
     "--rathole-bind-addr"
     cfg.ratholeBindAddr
     "--rathole-bind-port"
@@ -225,7 +236,10 @@ in
     # ── rathole server (tunnel endpoint) ─────────────────────────────────
     # Starts from the seeded [server] base (losos-rathole-seed), independent
     # of the registrar. The registrar rewrites server.toml to add
-    # [server.services.*] and SIGHUPs this unit; rathole hot-reloads.
+    # [server.services.*]; rathole's `notify` file-watcher hot-reloads the
+    # config the instant it's rewritten (atomic temp+rename) — no signal
+    # needed. SIGHUP would kill rathole 0.5 (no handler) and Restart=always
+    # would resurrect it ~5s later, so the registrar sends nothing.
     systemd.services.losos-rathole = {
       description = "losos rathole server — master-proxy tunnel endpoint";
       wantedBy = [ "multi-user.target" ];

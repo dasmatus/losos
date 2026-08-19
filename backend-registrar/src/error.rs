@@ -1,10 +1,12 @@
 //! Crate error types.
 //!
 //! One `thiserror` enum per subsystem, connected with `#[from]` so `?`
-//! crosses boundaries without manual `map_err`. `anyhow` is reserved for the
-//! binary's `main` and the thin reconciler orchestration (see `server::run`
-//! / `reconcile_once`); library code and the HTTP boundary use the concrete
-//! enums defined here.
+//! crosses boundaries without manual `map_err`. The binary's `main` and the
+//! thin reconciler orchestration (see `server::run` / `reconcile_once`)
+//! aggregate errors via `miette::Report` — these enums implement
+//! `miette::Diagnostic` (empty impls, below) so `?` converts them into a
+//! `Report` and `.context()`/`.with_context()` can wrap them. Library code and
+//! the HTTP boundary use the concrete enums defined here.
 //!
 //! At the HTTP handler boundary we never `?`-propagate a raw error into a 500:
 //! [`ApiError`] maps each variant to a status code via [`ApiError::status`].
@@ -61,6 +63,15 @@ pub enum ApiError {
     #[error(transparent)]
     Registry(#[from] RegistryError),
 }
+
+// `miette::Diagnostic` has no required methods (every method is
+// default-implemented), so an empty impl is all it takes to let these enums
+// flow through `?` and `.context()` into a `miette::Report` (which only has
+// `From<E: Diagnostic>` — there is no blanket `impl Diagnostic for E: Error`).
+// Without these impls the reconciler orchestration, which returns
+// `miette::Result`, could not convert `ApiError`/`RegistryError` via `?`.
+impl miette::Diagnostic for ApiError {}
+impl miette::Diagnostic for RegistryError {}
 
 impl ApiError {
     /// Map this error to the HTTP status the handler should return.

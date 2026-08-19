@@ -14,15 +14,19 @@
 //!
 //! Handler errors use the concrete [`ApiError`] enum (thiserror), mapped to
 //! HTTP status codes at the boundary — `?` converts io/serde/registry via
-//! `#[from]`. `anyhow` is used only in the reconciler orchestration
-//! (`reconcile_once`), which logs and continues rather than killing the server.
+//! `#[from]`. The reconciler orchestration (`reconcile_once`) returns
+//! `miette::Result`: `ApiError`/`RegistryError` implement `miette::Diagnostic`
+//! so `?` converts them, and io/serde errors are lifted via `.into_diagnostic()`
+//! before `.context()`/`.with_context()` (miette's `Context` is only impl'd for
+//! `Result<T, E: Diagnostic>`, not for plain `std::error::Error`). It logs and
+//! continues rather than killing the server.
 
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
-use anyhow::{anyhow, Context, Result};
+use miette::{Context, IntoDiagnostic, Result};
 use axum::body::Bytes;
 use axum::extract::{DefaultBodyLimit, State};
 use axum::http::{HeaderMap, StatusCode};
@@ -31,6 +35,7 @@ use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
 use tokio::sync::Notify;
 
+use crate::action::Action;
 use crate::config::{desired_config, EdgeOpts, TenantView};
 use crate::error::ApiError;
 use crate::opts::ServeOpts;
@@ -87,6 +92,7 @@ pub async fn run(opts: ServeOpts) -> Result<()> {
     // Re-attach before the API opens: restore routes for tenants the edge
     // already knew about so a rebooting edge doesn't drop every appliance.
     reg.load().await.context("load registry")?;
+    tracing::info!(target: Action::LoadRegistry.target(), "registry loaded");
 
     let state = AppState {
         reg,
@@ -121,10 +127,11 @@ pub async fn run(opts: ServeOpts) -> Result<()> {
 
     let listener = tokio::net::TcpListener::bind(&opts.listen)
         .await
+        .into_diagnostic()
         .with_context(|| format!("bind {}", opts.listen))?;
-    log("edge-registrar", &format!("listening on {}", opts.listen));
+    tracing::info!(target: Action::Bind.target(), "listening on {}", opts.listen);
     // axum::serve returns when the listener errors or the runtime stops.
-    axum::serve(listener, app).await?;
+    axum::serve(listener, app).await.into_diagnostic()?;
 
     // Structured shutdown: stop the reconciler and await its result so a
     // panic inside it surfaces instead of being silently detached.
@@ -339,7 +346,7 @@ async fn reconciler(st: AppState) {
         if let Err(e) = reconcile_once(&st).await {
             // Log and continue — the reconciler must not kill the server on a
             // single failed pass; the next tick retries.
-            log("edge-registrar", &format!("reconcile failed: {e:#}"));
+            tracing::error!(target: Action::Reconcile.target(), "reconcile failed: {e}");
         }
     }
 }
@@ -347,11 +354,12 @@ async fn reconciler(st: AppState) {
 async fn reconcile_once(st: &AppState) -> Result<()> {
     let changed = st.reg.prune(st.opts.heartbeat_ttl).await;
     let views = st.reg.views().await;
-    let tenants = load_tenants_anyhow(&st.opts.tenants_file)
+    let tenants = load_tenants(&st.opts.tenants_file)
         .await
         .context("load tenants whitelist")?;
     let bootstrap = tokio::fs::read_to_string(&st.opts.bootstrap_token_file)
         .await
+        .into_diagnostic()
         .context("read bootstrap token file")?;
 
     // Enrich each live tenant with its token (read from the whitelist's
@@ -365,6 +373,7 @@ async fn reconcile_once(st: &AppState) -> Result<()> {
             Some(entry) => {
                 let token = tokio::fs::read_to_string(&entry.token_file)
                     .await
+                    .into_diagnostic()
                     .with_context(|| format!("read token file for {}", v.id))?;
                 enriched.push(TenantView {
                     id: v.id.clone(),
@@ -406,42 +415,23 @@ async fn reconcile_once(st: &AppState) -> Result<()> {
             .await
             .with_context(|| format!("write {}", st.opts.rathole_config))?;
 
-    if changed_rathole {
-        // Hot-reload rathole without dropping its systemd unit. systemd
-        // forwards HUP to the main process; rathole re-reads its config.
-        let r = tokio::process::Command::new("systemctl")
-            .args(["kill", "--signal=HUP", &st.opts.rathole_service])
-            .output()
-            .await
-            .context("systemctl kill HUP")?;
-        if !r.status.success() {
-            return Err(anyhow!(
-                "systemctl kill --signal=HUP {} failed: {}",
-                st.opts.rathole_service,
-                String::from_utf8_lossy(&r.stderr)
-            ));
-        }
-    }
+    // No explicit reload signal: rathole 0.5 hot-reloads via its `notify`
+    // file-watcher, which re-applies the config the instant server.toml is
+    // rewritten above. SIGHUP has no handler in rathole 0.5 (default action
+    // terminate) — sending it would kill the process and systemd's
+    // Restart=always would resurrect it ~5s later, a needless tunnel outage
+    // on every tenant change. The atomic temp+rename above is the only
+    // signal rathole needs.
     if changed || changed_traefik || changed_rathole {
-        log(
-            "edge-registrar",
-            &format!(
-                "reconciled {} tenant(s); traefik={} rathole={}",
-                enriched.len(),
-                changed_traefik,
-                changed_rathole
-            ),
+        tracing::info!(
+            target: Action::Reconcile.target(),
+            "reconciled {} tenant(s); traefik={} rathole={}",
+            enriched.len(),
+            changed_traefik,
+            changed_rathole,
         );
     }
     Ok(())
-}
-
-/// `load_tenants` returning the concrete [`ApiError`], remapped to anyhow for
-/// the reconciler orchestration path.
-async fn load_tenants_anyhow(path: &str) -> anyhow::Result<HashMap<String, TenantEntry>> {
-    load_tenants(path)
-        .await
-        .map_err(anyhow::Error::from)
 }
 
 /// Write `content` to `path` only if it differs from the current content.
@@ -451,7 +441,11 @@ async fn write_if_changed(path: &Path, content: &str, mode: u32) -> Result<bool>
     let existing = match tokio::fs::read(path).await {
         Ok(b) => b,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
-        Err(e) => return Err(e).context(format!("read {}", path.display())),
+        Err(e) => {
+            return Err(e)
+                .into_diagnostic()
+                .with_context(|| format!("read {}", path.display()))
+        }
     };
     if existing == content.as_bytes() {
         return Ok(false);
@@ -461,6 +455,7 @@ async fn write_if_changed(path: &Path, content: &str, mode: u32) -> Result<bool>
     }
     crate::fsutil::atomic_write(path, content.as_bytes(), mode)
         .await
+        .into_diagnostic()
         .with_context(|| format!("atomic write {}", path.display()))?;
     Ok(true)
 }
@@ -472,12 +467,10 @@ async fn remove_if_exists(path: &Path) -> Result<bool> {
     match tokio::fs::remove_file(path).await {
         Ok(()) => Ok(true),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
-        Err(e) => Err(e).context(format!("remove {}", path.display())),
+        Err(e) => Err(e)
+            .into_diagnostic()
+            .with_context(|| format!("remove {}", path.display())),
     }
-}
-
-fn log(tag: &str, msg: &str) {
-    eprintln!("[{tag}] {msg}");
 }
 
 /// Monotonic counter for unique tmpfs upload filenames. (Cheap, lock-free; a

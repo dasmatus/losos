@@ -15,6 +15,15 @@ in
   boot.loader.systemd-boot.enable = true;
   boot.loader.efi.canTouchEfiVariables = true;
 
+  # Latest upstream kernel. The losos appliance runs on repurposed mini-PCs
+  # whose NVMe/Wi-Fi/sleep hardware quirks are fixed fastest in mainline, so
+  # track linuxPackages_latest rather than the nixpkgs default LTS. The
+  # auto-upgrade flake (updates.nix) advances the system — and nixpkgs with
+  # it — so this stays current without manual bumps. Scoped to the appliance
+  # (boot.nix is only imported by the `install` system); the installer ISO
+  # and the edge VPS keep the nixpkgs default kernel.
+  boot.kernelPackages = pkgs.linuxPackages_latest;
+
   # systemd stage 1 is a hard prerequisite for TPM2-based LUKS unlock, and
   # also gives us clean crypttab handling for the keyfile path.
   boot.initrd.systemd.enable = true;

@@ -313,8 +313,17 @@
 
     edge.ratholeBindAddr = lib.mkOption {
       type = lib.types.str;
-      default = "0.0.0.0";
-      description = "Address the rathole server listens on for appliance clients to dial.";
+      default = "::";
+      description = ''
+        Address the rathole server listens on for appliance clients to dial.
+        Defaults to `::` (IPv6 any), which on Linux with the default
+        `net.ipv6.bindv6only=0` binds dual-stack — so appliances that resolve
+        the edge over IPv6 (the common case, and the nixosTest inter-VM path)
+        AND over IPv4 both reach the tunnel. Serialised bracketed for IPv6
+        (`[::]:<port>`) by the `fmtBind` helper in modules/edge.nix and the
+        `format_bind` helper in backend-registrar/src/config.rs, which must
+        agree byte-for-byte.
+      '';
     };
 
     edge.ratholeBindPort = lib.mkOption {

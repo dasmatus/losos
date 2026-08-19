@@ -5,7 +5,7 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
-use anyhow::{anyhow, bail, Result};
+use miette::{IntoDiagnostic, Result, miette};
 
 fn arg<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
     args.iter()
@@ -14,7 +14,7 @@ fn arg<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
 }
 
 fn req<'a>(args: &'a [String], flag: &str) -> Result<&'a str> {
-    arg(args, flag).ok_or_else(|| anyhow!("missing required flag {flag}"))
+    arg(args, flag).ok_or_else(|| miette!("missing required flag {flag}"))
 }
 
 fn parse_dur(s: &str) -> Result<Duration> {
@@ -30,7 +30,7 @@ fn parse_dur(s: &str) -> Result<Duration> {
     } else {
         (s, "s")
     };
-    let n: u64 = n.parse().map_err(|_| anyhow!("bad duration {s:?}"))?;
+    let n: u64 = n.parse().map_err(|_| miette!("bad duration {s:?}"))?;
     let d = match unit {
         "ms" => Duration::from_millis(n),
         "s" => Duration::from_secs(n),
@@ -41,16 +41,16 @@ fn parse_dur(s: &str) -> Result<Duration> {
     Ok(d)
 }
 
-/// `serve` options. The registrar is the sole writer of `traefik_yaml_path`
-/// and `rathole_config_path`; it sends SIGHUP to `rathole_service` when
-/// rathole config changes (the systemd unit hot-reloads rathole).
+/// `serve` options. The registrar is the sole writer of `traefik_dir`'s
+/// `losos.yml` and `rathole_config`; rathole hot-reloads the latter via its
+/// `notify` file-watcher (no signal needed), so there is no rathole-service
+/// handle here.
 #[derive(Debug, Clone)]
 pub struct ServeOpts {
     pub listen: String,
     pub registry_path: String,
     pub traefik_dir: String,
     pub rathole_config: String,
-    pub rathole_service: String,
     pub rathole_bind_addr: String,
     pub rathole_bind_port: u16,
     pub port_range: (u16, u16),
@@ -82,7 +82,7 @@ pub enum Mode {
 
 pub fn parse(args: Vec<String>) -> Result<Mode> {
     if args.is_empty() {
-        bail!("usage: losos-registrar serve|announce ...");
+        return Err(miette!("usage: losos-registrar serve|announce ..."));
     }
     let mode = &args[0];
     let rest = &args[1..];
@@ -91,23 +91,20 @@ pub fn parse(args: Vec<String>) -> Result<Mode> {
     match mode.as_str() {
         "serve" => {
             let range = arg(&rest, "--port-range")
-                .ok_or_else(|| anyhow!("missing --port-range"))?;
+                .ok_or_else(|| miette!("missing --port-range"))?;
             let (lo, hi) = parse_range(range)?;
             Ok(Mode::Serve(ServeOpts {
                 listen: arg(&rest, "--listen").unwrap_or("127.0.0.1:8443").to_string(),
                 registry_path: req(&rest, "--registry")?.to_string(),
                 traefik_dir: req(&rest, "--traefik-dir")?.to_string(),
                 rathole_config: req(&rest, "--rathole-config")?.to_string(),
-                rathole_service: arg(&rest, "--rathole-service")
-                    .unwrap_or("rathole.service")
-                    .to_string(),
                 rathole_bind_addr: arg(&rest, "--rathole-bind-addr")
                     .unwrap_or("0.0.0.0")
                     .to_string(),
                 rathole_bind_port: arg(&rest, "--rathole-bind-port")
                     .unwrap_or("2333")
                     .parse()
-                    .map_err(|_| anyhow!("bad --rathole-bind-port"))?,
+                    .map_err(|_| miette!("bad --rathole-bind-port"))?,
                 port_range: (lo, hi),
                 bootstrap_token_file: req(&rest, "--bootstrap-token-file")?.to_string(),
                 tenants_file: req(&rest, "--tenants-file")?.to_string(),
@@ -129,13 +126,13 @@ pub fn parse(args: Vec<String>) -> Result<Mode> {
                 arg(&rest, "--heartbeat-interval").unwrap_or("30s"),
             )?,
         })),
-        other => bail!("unknown subcommand {other:?}; expected serve|announce"),
+        other => return Err(miette!("unknown subcommand {other:?}; expected serve|announce")),
     }
 }
 
 fn parse_range(s: &str) -> Result<(u16, u16)> {
     let (lo, hi) = s
         .split_once('-')
-        .ok_or_else(|| anyhow!("bad port range {s:?}; expected lo-hi"))?;
-    Ok((lo.parse()?, hi.parse()?))
+        .ok_or_else(|| miette!("bad port range {s:?}; expected lo-hi"))?;
+    Ok((lo.parse().into_diagnostic()?, hi.parse().into_diagnostic()?))
 }
