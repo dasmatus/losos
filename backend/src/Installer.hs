@@ -57,6 +57,7 @@ module Installer
     BlockDev (..),
     Options (..),
     InstallAction (..),
+    LsblkOutput (..),
     detectCandidates,
     renderTarget,
     planInstall,
@@ -81,6 +82,7 @@ import Control.Monad.State.Strict
   )
 import Data.Aeson (FromJSON (..), ToJSON (..), object, (.:), (.:?), (.!=), (.=))
 import qualified Data.Aeson as A
+import Data.Aeson.Types (typeMismatch)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as BL
 import Data.Functor.Identity (Identity, runIdentity)
@@ -129,7 +131,7 @@ instance FromJSON BlockDev where
     BlockDev
       <$> o .: "name"
       <*> o .: "size"
-      <*> o .:? "rm" .!= 0
+      <*> (o .:? "rm" >>= parseRm)
       <*> o .:? "type" .!= ""
       <*> parseMountpoints o
       <*> (maybe [] id <$> (o .:? "children"))
@@ -143,6 +145,15 @@ instance FromJSON BlockDev where
         case m of
           Just xs -> pure (catMaybes xs)
           Nothing -> maybe [] (: []) <$> (o .:? "mountpoint")
+      -- The @rm@ (removable) column is emitted as a JSON boolean (@true@ /
+      -- @false@) by util-linux >= 2.39, and as an integer (@0@ / @1@) by
+      -- older lsblk. The internal model keeps an Int (0 = fixed, 1 =
+      -- removable, matching the bash script's @RM==0@ test), so accept
+      -- both shapes and normalize. Field absent -> 0 (non-removable).
+      parseRm Nothing = pure 0
+      parseRm (Just (A.Bool b)) = pure (if b then 1 else 0)
+      parseRm (Just (A.Number n)) = pure (if n == 0 then 0 else 1)
+      parseRm (Just v) = typeMismatch "rm (Bool or Number)" v
 
 instance ToJSON BlockDev where
   toJSON b =

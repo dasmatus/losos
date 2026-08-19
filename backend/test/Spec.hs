@@ -8,6 +8,7 @@
 -- helpers below decode/assert on the returned bytes.
 module Main (main) where
 
+import qualified Data.Aeson as A
 import qualified Data.ByteString.Lazy as BL
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -15,6 +16,7 @@ import qualified Data.Text.Encoding as TE
 import Installer
   ( BlockDev (..),
     InstallAction (..),
+    LsblkOutput (..),
     Options (..),
     defaultEmitFile,
     defaultFlakeUrl,
@@ -81,6 +83,30 @@ baseOpts =
       optTargetRel = defaultTargetRel,
       optEmitFile = defaultEmitFile
     }
+
+-- │ Realistic @lsblk --json --bytes -o NAME,SIZE,RM,TYPE,MOUNTPOINTS,PKNAME@
+-- output, in both the modern (boolean @rm@) and legacy (integer @rm@) shapes.
+-- loop0 is not a disk; nvme0n1 has a partition mounted at @/@; sdc is marked
+-- removable; only sdb should survive 'detectCandidates'.
+fixtureBool, fixtureInt :: BL.ByteString
+fixtureBool =
+  "{\"blockdevices\":[\
+  \{\"name\":\"loop0\",\"size\":1876725760,\"rm\":false,\"type\":\"loop\",\"mountpoints\":[\"/nix/.ro-store\"]},\
+  \{\"name\":\"nvme0n1\",\"size\":512110190592,\"rm\":false,\"type\":\"disk\",\"mountpoints\":[],\"children\":[\
+  \{\"name\":\"nvme0n1p1\",\"size\":512110190592,\"rm\":false,\"type\":\"part\",\"mountpoints\":[\"/\"]}\
+  \]},\
+  \{\"name\":\"sdb\",\"size\":2000398934016,\"rm\":false,\"type\":\"disk\",\"mountpoints\":[]},\
+  \{\"name\":\"sdc\",\"size\":2000398934016,\"rm\":true,\"type\":\"disk\",\"mountpoints\":[]}\
+  \]}"
+fixtureInt =
+  "{\"blockdevices\":[\
+  \{\"name\":\"loop0\",\"size\":1876725760,\"rm\":0,\"type\":\"loop\",\"mountpoints\":[\"/nix/.ro-store\"]},\
+  \{\"name\":\"nvme0n1\",\"size\":512110190592,\"rm\":0,\"type\":\"disk\",\"mountpoints\":[],\"children\":[\
+  \{\"name\":\"nvme0n1p1\",\"size\":512110190592,\"rm\":0,\"type\":\"part\",\"mountpoints\":[\"/\"]}\
+  \]},\
+  \{\"name\":\"sdb\",\"size\":2000398934016,\"rm\":0,\"type\":\"disk\",\"mountpoints\":[]},\
+  \{\"name\":\"sdc\",\"size\":2000398934016,\"rm\":1,\"type\":\"disk\",\"mountpoints\":[]}\
+  \]}"
 
 isLog :: InstallAction -> Bool
 isLog (ALog _) = True
@@ -297,6 +323,31 @@ tests =
                       detectCandidates [vda, vdb, vdc, vdd, sdaRemovable, sdbTiny, loop0]
                         == ["/dev/vdb", "/dev/vdc", "/dev/vdd"]
                 ],
+          -- ── lsblk JSON decode (the real lsblk --json shape) ────────────────
+          -- util-linux >= 2.39 emits the RM column as a JSON boolean; older
+          -- lsblk emits 0/1. The codec must accept both (regression for the
+          -- "parsing Int failed, but encountered Boolean" install failure).
+          testGroup
+            "lsblk decode"
+            [ testCase "accepts boolean rm (util-linux >= 2.39)" $ do
+                let out = A.eitherDecode fixtureBool :: Either String LsblkOutput
+                case out of
+                  Left e -> assertBool ("decode failed: " ++ e) False
+                  Right (LsblkOutput bds) -> do
+                    assertEqual "four top-level devices" 4 (length bds)
+                    assertEqual "loop0 rm is false" 0 (bdRm (bds !! 0))
+                    assertEqual "nvme rm is false" 0 (bdRm (bds !! 1))
+                    assertEqual "sdc rm is true" 1 (bdRm (bds !! 3))
+                    -- loop0 (not a disk), nvme0n1 (mounted at /), sdc
+                    -- (removable) are filtered; only sdb survives.
+                    assertEqual "only sdb is a candidate" ["/dev/sdb"] (detectCandidates bds),
+              testCase "accepts legacy integer rm (util-linux < 2.39)" $ do
+                let out = A.eitherDecode fixtureInt :: Either String LsblkOutput
+                case out of
+                  Left e -> assertBool ("decode failed: " ++ e) False
+                  Right (LsblkOutput bds) ->
+                    assertEqual "only sdb is a candidate" ["/dev/sdb"] (detectCandidates bds)
+            ],
           -- ── renderTarget (pure Nix rendering) ──────────────────────────────
           testGroup
             "renderTarget"
