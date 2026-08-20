@@ -222,7 +222,7 @@
       description = "Flake URI system.autoUpgrade rebuilds from. Use a github: URI for remote auto-updates.";
     };
 
-    # The Haskell control-plane package holding BOTH executables: the `lososd`
+    # The Haskell control-plane package holding both executables: the `lososd`
     # root daemon (D-Bus org.losos1 on the system bus + loopback Bearer-authed
     # admin HTTP API) and the `losos-ctl` facade CLI relaying to it. When
     # non-null the daemon runs system-wide (see modules/daemon.nix); set to
@@ -296,9 +296,9 @@
     };
 
     # ── Master proxy (edge side) ───────────────────────────────────────────
-    # Options for the edge NixOS system (nixosConfigurations.edge), which runs
-    # Traefik (master proxy), a rathole server, and losos-registrar (serve).
-    # Only imported by the edge system; the appliance uses losos.proxy.* above.
+    # Options for the edge system (flake output `nixosModules.edge`), which
+    # runs Traefik (master proxy), a rathole server, and losos-registrar
+    # (serve). Only used by that module; the appliance uses losos.proxy.* above.
     edge.enable = lib.mkOption {
       type = lib.types.bool;
       default = false;
@@ -319,7 +319,7 @@
         Defaults to `::` (IPv6 any), which on Linux with the default
         `net.ipv6.bindv6only=0` binds dual-stack — so appliances that resolve
         the edge over IPv6 (the common case, and the nixosTest inter-VM path)
-        AND over IPv4 both reach the tunnel. Serialised bracketed for IPv6
+        and over IPv4 both reach the tunnel. Serialised bracketed for IPv6
         (`[::]:<port>`) by the `fmtBind` helper in modules/edge.nix and the
         `format_bind` helper in backend-registrar/src/config.rs, which must
         agree byte-for-byte.
@@ -362,7 +362,7 @@
       description = ''
         Address the losos-registrar HTTP API binds. Defaults to loopback — in
         production only Traefik (fronting register.<publicDomain>) reaches it.
-        Set to `0.0.0.0` ONLY in tests where there is no Traefik/TLS path and
+        Set to `0.0.0.0` only in tests where there is no Traefik/TLS path and
         the appliance VM must dial the registrar directly; never expose it
         publicly in deployment.
       '';

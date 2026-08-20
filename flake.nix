@@ -58,6 +58,12 @@
                 # insert the medium, boot, and the box reinstalls unattended —
                 # the destructive factory-reset / reinstall path.
                 losos.installer.autorun = true;
+                # The default (zstd level 19, cache sized off host RAM) gets
+                # OOM-killed on codeberg-medium CI runners (exit 137): the
+                # container sees the host's RAM but runs under a smaller
+                # cgroup limit. Level 6 + a 1 GiB cap trades a slightly
+                # larger ISO for a build that fits; boot speed is unaffected.
+                isoImage.squashfsCompression = "zstd -Xcompression-level 6 -mem 1G";
                 # Bake the flake source (git-tracked tree self.outPath resolves
                 # to) into the ISO so losos-install can copy it to a writable
                 # work dir, drop in modules/install-target.nix, and run disko +
@@ -98,19 +104,21 @@
           ] ++ nixpkgs.lib.optional (builtins.pathExists ./modules/install-target.nix) ./modules/install-target.nix;
         };
 
-        # The master-proxy edge: a second NixOS system on a public VPS running
-        # Traefik (master), a rathole server, and losos-registrar (serve).
-        # Disjoint module set from `install` — only options.nix + edge.nix.
-        # `self` is in scope so edge.nix can wire losos.edge.registrar.package
-        # to self.packages.${system}.losos-registrar.
-        edge = nixpkgs.lib.nixosSystem {
-          inherit system;
-          specialArgs.self = self;
-          modules = [
-            ./modules/options.nix
-            ./modules/edge.nix
-          ];
-        };
+      };
+
+      # The master-proxy edge: Traefik (master), a rathole server, and
+      # losos-registrar (serve) on a public VPS. Exported as a module, not a
+      # nixosConfiguration: the VPS flake imports this next to its own
+      # hardware/bootloader config and sets losos.edge.* (a bare
+      # nixosConfiguration would fail the root-fs/bootloader assertions and
+      # could not be configured from outside anyway). `self` is baked in so
+      # losos.edge.registrar.package resolves to this flake's registrar.
+      nixosModules.edge = {
+        imports = [
+          ./modules/options.nix
+          ./modules/edge.nix
+        ];
+        _module.args.self = self;
       };
 
       # nixos-test-vms. Run with `nix build .#checks.x86_64-linux.<name>`:

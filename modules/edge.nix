@@ -1,13 +1,14 @@
 # Master proxy — edge side.
 #
-# The edge is a second NixOS system (nixosConfigurations.edge) living on a
-# public VPS. It runs the MASTER proxy: Traefik (public TLS on :443), a
+# The edge lives on a public VPS; a VPS flake imports it via the
+# `nixosModules.edge` flake output next to its own hardware config. It runs
+# the MASTER proxy: Traefik (public TLS on :443), a
 # rathole server (appliance clients dial :2333), and losos-registrar (serve)
 # — the stub Rust HTTP server that *constantly updates* Traefik's dynamic
 # file-provider config and rathole's server config from a tenant registry.
 #
-# Traefik's file provider watches /etc/traefik/dynamic as a DIRECTORY:
-#   * register.yml  — the ONE static route (register.<domain> → the
+# Traefik's file provider watches /etc/traefik/dynamic as a directory:
+#   * register.yml  — the one static route (register.<domain> → the
 #     registrar's loopback API). NixOS-managed (this module), symlinked in.
 #   * losos.yml      — per-appliance routers, written at runtime by the
 #     registrar. Traefik auto-reloads on change.
@@ -39,16 +40,12 @@ let
 
   registerDomain = "register.${cfg.publicDomain}";
 
-  # Format a `host:port` socket string for rathole's `bind_addr`, bracketing
-  # IPv6 literals: `::` → `[::]:2333`, `0.0.0.0` → `0.0.0.0:2333`. rathole parses
-  # `bind_addr` as a `SocketAddr`, so an unbracketed IPv6 literal (`::2333`)
-  # is rejected. The default `ratholeBindAddr` is `::` (dual-stack — Linux
-  # accepts IPv4-mapped connections on an `::` bind), so an appliance that
-  # resolves the edge over IPv6 reaches the tunnel. MUST stay byte-identical
-  # to the `format_bind` helper in backend-registrar/src/config.rs — the
-  # declarative seed this writes and the registrar's runtime output must
-  # compare equal for the zero-tenant steady state (pinned by
-  # config.rs::server_block_matches_nix_seed_byte_for_byte).
+  # Format a `host:port` socket string for the registrar's `--listen`,
+  # bracketing IPv6 literals: `::` → `[::]:8443`, `0.0.0.0` → `0.0.0.0:8443`
+  # (parsed as a `SocketAddr`, which rejects an unbracketed IPv6 literal).
+  # Only used for the API listen address — the rathole server.toml, seed
+  # included, is rendered by the registrar itself (`losos-registrar seed`),
+  # so its formatting has a single implementation in config.rs.
   fmtBind = addr: port:
     if lib.hasInfix ":" addr then "[${addr}]:${toString port}" else "${addr}:${toString port}";
 
@@ -101,31 +98,25 @@ let
     }) cfg.tenants)
   );
 
-  # Seed the rathole server config to the node: a declarative [server] base
-  # (bind_addr + default_token) + an empty [server.services] table, written at
-  # boot so rathole can start INDEPENDENTLY of the registrar. rathole's server
-  # config REQUIRES a `services` field, so the empty table is mandatory —
-  # without it rathole refuses to start ("missing field `services`"). The
-  # registrar later rewrites the whole file (same [server] base from the same
-  # options + [server.services.*] as appliances register) and the file watcher
-  # hot-reloads; with no tenants the registrar's output is byte-identical to
-  # this seed (pinned by config.rs::server_block_matches_nix_seed_byte_for_byte),
-  # so steady-state is zero churn. Idempotent: only seeds when the file is
-  # absent (first boot) — after that the registrar is the writer.
-  ratholeSeed = pkgs.writeShellScript "losos-rathole-seed" ''
-    set -eu
-    if [ -f /etc/rathole/server.toml ]; then exit 0; fi
-    install -d -m 0700 /etc/rathole
-    umask 077
-    bootstrap="$(cat ${toString cfg.bootstrapTokenFile})"
-    cat > /etc/rathole/server.toml <<EOF
-[server]
-bind_addr = "${fmtBind cfg.ratholeBindAddr cfg.ratholeBindPort}"
-default_token = "$bootstrap"
-
-[server.services]
-EOF
-  '';
+  # Seed the rathole server config at first boot so rathole can start
+  # independently of the registrar. `losos-registrar seed` renders the
+  # zero-tenant config through the same desired_config the reconciler uses,
+  # so the seed and the registrar's steady-state rewrite are identical by
+  # construction (zero churn, no hand-maintained byte-identity). Idempotent:
+  # exits untouched when the file already exists — after first boot the
+  # running registrar is the writer.
+  seedArgs = lib.concatStringsSep " " [
+    "${registrar}/bin/losos-registrar"
+    "seed"
+    "--rathole-config"
+    "/etc/rathole/server.toml"
+    "--rathole-bind-addr"
+    cfg.ratholeBindAddr
+    "--rathole-bind-port"
+    (toString cfg.ratholeBindPort)
+    "--bootstrap-token-file"
+    (toString cfg.bootstrapTokenFile)
+  ];
 
   serveArgs = lib.concatStringsSep " " [
     "${registrar}/bin/losos-registrar"
@@ -215,18 +206,18 @@ in
     };
 
     # ── rathole server config seed ───────────────────────────────────────
-    # Writes the declarative [server] base so rathole can start before the
-    # registrar. Idempotent (only when server.toml is absent). The registrar
+    # Writes the zero-tenant server.toml so rathole can start before the
+    # registrar. Idempotent (only when server.toml is absent); the registrar
     # rewrites the file afterward, so this is a first-boot seed only.
     systemd.services.losos-rathole-seed = {
-      description = "losos rathole server config seed (declarative [server] base)";
+      description = "losos rathole server config seed (zero-tenant server.toml)";
       wantedBy = [ "multi-user.target" ];
       before = [
         "losos-rathole.service"
         "losos-registrar.service"
       ];
       serviceConfig = {
-        ExecStart = ratholeSeed;
+        ExecStart = seedArgs;
         Type = "oneshot";
         RemainAfterExit = true;
         PrivateTmp = true;

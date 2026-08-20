@@ -17,16 +17,7 @@ const STATUS_MS = 2000;
 const DONE_HIDE_MS = 20000;
 
 // ── Tiny helpers ──────────────────────────────────────────────────
-
-function $(id) { return document.getElementById(id); }
-
-function getToken() { return sessionStorage.getItem('losos-token'); }
-function dropToken() { sessionStorage.removeItem('losos-token'); }
-
-function authHeaders() {
-  const t = getToken();
-  return t ? { 'Authorization': 'Bearer ' + t } : {};
-}
+// ($, getToken, dropToken, authHeaders, tahoeUrl live in common.js)
 
 const errBanner = $('error-banner');
 const errText = $('error-text');
@@ -73,10 +64,6 @@ async function probeLososd() {
   } catch (e) {
     return 'down';
   }
-}
-
-function tahoeUrl() {
-  return location.protocol + '//' + location.hostname + ':3456/';
 }
 
 // Tahoe WUI is cross-origin on :3456: a resolved (opaque) no-cors fetch

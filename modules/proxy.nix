@@ -1,7 +1,7 @@
 # Master proxy — appliance side.
 #
-# The appliance keeps its no-SSH/no-public-ports invariant: it opens ZERO
-# inbound ports. A rathole CLIENT dials out to the edge (losos.proxy.edge
+# The appliance keeps its no-SSH/no-public-ports invariant: it opens zero
+# inbound ports. A rathole client dials out to the edge (losos.proxy.edge
 # .edgeRatholeEndpoint); the edge rathole server forwards public traffic
 # back over that tunnel to this box's Nginx on :80 (the slave proxy). A
 # losos-registrar `announce` service registers this appliance with the edge
@@ -11,8 +11,8 @@
 # side in modules/edge.nix. Replaces the retired losos.cfd (Cloudflare).
 #
 # Secrets: the rathole client config contains tokens (bootstrap + per-
-# appliance). It is generated at SERVICE START from the secret files into a
-# 0600 runtime file (/run/losos-rathole/client.toml) — NEVER baked into the
+# appliance). It is generated at service start from the secret files into a
+# 0600 runtime file (/run/losos-rathole/client.toml) — never baked into the
 # world-readable nix store.
 {
   config,
@@ -51,7 +51,7 @@ local_addr = "127.0.0.1:80"
 EOF
   '';
 
-  # announce flags. --token-file is a PATH (read at runtime), not the secret,
+  # announce flags. --token-file is a path (read at runtime), not the secret,
   # so it's safe to put on the command line / in the store.
   announceArgs = lib.concatStringsSep " " [
     "announce"

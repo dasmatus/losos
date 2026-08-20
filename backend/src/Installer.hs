@@ -92,6 +92,7 @@ import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 import qualified Data.Text.IO as TIO
 import GHC.Generics (Generic)
+import Lib (atomicWriteWith)
 import System.Directory
   ( Permissions (..),
     copyFile,
@@ -100,7 +101,6 @@ import System.Directory
     doesFileExist,
     emptyPermissions,
     removeDirectoryRecursive,
-    renamePath,
     setPermissions,
     withCurrentDirectory,
   )
@@ -421,15 +421,19 @@ ioLayFlake work dest = do
     ioRunProc "git" ["add", "-A"]
     ioRunProc "git" ["-c", "user.email=losos@local", "-c", "user.name=losos-install", "commit", "-qm", "losos install"]
 
--- | Atomic file write: temp sibling + rename, matching Lib.ioWriteOverrides.
--- A bare truncate-then-write could leave install-target.nix half-written on
--- power loss mid-install; rename is atomic on POSIX.
+-- | Atomic file write for install-target.nix: ensure the parent dir, then
+-- Lib.atomicWriteWith (temp sibling + rename).
 ioWriteFileAtomic :: FilePath -> Text -> IO ()
 ioWriteFileAtomic path text = do
   createDirectoryIfMissing True (takeDirectory path)
-  let tmp = path <> ".tmp"
-  TIO.writeFile tmp text
-  renamePath tmp path
+  atomicWriteWith TIO.writeFile path text
+
+-- | Owner-only permission sets shared by the keyfile generate and copy paths
+-- (0700 dir / 0600 file in spirit; System.Directory has no group/other bits
+-- to grant, so empty + owner flags is exactly that).
+ownerOnlyDir, ownerOnlyFile :: Permissions
+ownerOnlyDir = emptyPermissions {readable = True, writable = True, executable = True}
+ownerOnlyFile = emptyPermissions {readable = True, writable = True}
 
 -- | Generate a fresh LUKS keyfile at @path@ unless one already exists (the VM
 -- test pre-creates one, so this is a no-op there). 4096 random bytes from
@@ -448,9 +452,6 @@ ioEnsureKeyfile path = do
     hClose h
     BS.writeFile path bytes
     setPermissions path ownerOnlyFile
-  where
-    ownerOnlyDir = emptyPermissions {readable = True, writable = True, executable = True}
-    ownerOnlyFile = emptyPermissions {readable = True, writable = True}
 
 -- | Copy the generated keyfile into the mounted \/mnt\/persist so the installed
 -- system can unlock \/persist at boot.
@@ -461,9 +462,6 @@ ioCopyKeyfile src dest = do
   setPermissions dir ownerOnlyDir
   copyFile src dest
   setPermissions dest ownerOnlyFile
-  where
-    ownerOnlyDir = emptyPermissions {readable = True, writable = True, executable = True}
-    ownerOnlyFile = emptyPermissions {readable = True, writable = True}
 
 -- | Enumerate block devices via @lsblk --json --bytes@. Fails with
 -- 'InstallError' if lsblk is missing or its output is unparseable.

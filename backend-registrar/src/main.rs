@@ -68,6 +68,13 @@ async fn async_main() -> ExitCode {
                 ExitCode::FAILURE
             }
         },
+        Ok(Mode::Seed(opts)) => match losos_registrar::seed::run(opts).await {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(e) => {
+                eprintln!("{:?}", e);
+                ExitCode::FAILURE
+            }
+        },
         Err(e) => {
             eprintln!("{:?}", e);
             ExitCode::FAILURE

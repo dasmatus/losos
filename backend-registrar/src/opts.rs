@@ -59,9 +59,21 @@ pub struct ServeOpts {
     pub reconcile_interval: Duration,
     pub heartbeat_ttl: Duration,
     /// tmpfs directory the `POST /config` upload endpoint spills received
-    /// files into. Must be tmpfs (a `RuntimeDirectory`, NOT under `/persist`)
+    /// files into. Must be tmpfs (a `RuntimeDirectory`, not under `/persist`)
     /// so an upload that survives a missed unlink still vanishes on reboot.
     pub upload_dir: PathBuf,
+}
+
+/// `seed` options. Writes the declarative rathole `[server]` base (for zero
+/// tenants) so rathole can start before `serve`'s reconciler has run once.
+/// Reuses [`crate::desired_config`] — the same function `serve`'s reconciler
+/// calls — so the seed and the steady-state output can never drift.
+#[derive(Debug, Clone)]
+pub struct SeedOpts {
+    pub rathole_config: String,
+    pub rathole_bind_addr: String,
+    pub rathole_bind_port: u16,
+    pub bootstrap_token_file: String,
 }
 
 /// `announce` options. The appliance reads its token from `token_file`
@@ -78,11 +90,12 @@ pub struct AnnounceOpts {
 pub enum Mode {
     Serve(ServeOpts),
     Announce(AnnounceOpts),
+    Seed(SeedOpts),
 }
 
 pub fn parse(args: Vec<String>) -> Result<Mode> {
     if args.is_empty() {
-        return Err(miette!("usage: losos-registrar serve|announce ..."));
+        return Err(miette!("usage: losos-registrar serve|announce|seed ..."));
     }
     let mode = &args[0];
     let rest = &args[1..];
@@ -126,7 +139,22 @@ pub fn parse(args: Vec<String>) -> Result<Mode> {
                 arg(&rest, "--heartbeat-interval").unwrap_or("30s"),
             )?,
         })),
-        other => return Err(miette!("unknown subcommand {other:?}; expected serve|announce")),
+        "seed" => Ok(Mode::Seed(SeedOpts {
+            rathole_config: req(&rest, "--rathole-config")?.to_string(),
+            rathole_bind_addr: arg(&rest, "--rathole-bind-addr")
+                .unwrap_or("0.0.0.0")
+                .to_string(),
+            rathole_bind_port: arg(&rest, "--rathole-bind-port")
+                .unwrap_or("2333")
+                .parse()
+                .map_err(|_| miette!("bad --rathole-bind-port"))?,
+            bootstrap_token_file: req(&rest, "--bootstrap-token-file")?.to_string(),
+        })),
+        other => {
+            return Err(miette!(
+                "unknown subcommand {other:?}; expected serve|announce|seed"
+            ))
+        }
     }
 }
 

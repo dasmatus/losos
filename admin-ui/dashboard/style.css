@@ -22,38 +22,7 @@ a:hover { text-decoration: underline; }
   border-radius: 4px;
 }
 
-/* ── Top navigation bar ─────────────────────────────────────────── */
-.topbar {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  height: 48px;
-  padding: 0 20px;
-  background: #1c2128;
-  color: #ffffff;
-}
-.topbar .brand {
-  color: #ffffff;
-  font-weight: 700;
-  font-size: 17px;
-  letter-spacing: 0.2px;
-  text-decoration: none;
-}
-.topnav {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-.topnav a {
-  color: #d0d5dd;
-  text-decoration: none;
-  font-size: 14px;
-  padding: 6px 10px;
-  border-radius: 6px;
-}
-.topnav a:hover { color: #ffffff; background: rgba(255, 255, 255, 0.08); text-decoration: none; }
-.topbar a:focus-visible { outline-color: #ffffff; }
+/* ── Top navigation bar: shared in ../common.css ──────────────────── */
 
 /* ── Layout ─────────────────────────────────────────────────────── */
 .container {
@@ -189,29 +158,7 @@ a:hover { text-decoration: underline; }
   overflow-wrap: anywhere;
 }
 
-/* indeterminate progress bar (only visible while building) */
-.indbar {
-  margin-top: 10px;
-  height: 4px;
-  border-radius: 2px;
-  background: rgba(0, 0, 0, 0.08);
-  overflow: hidden;
-  display: none;
-}
-.banner[data-kind="building"] .indbar { display: block; }
-.indbar span {
-  display: block;
-  width: 30%;
-  height: 100%;
-  border-radius: 2px;
-  background: #d4a012;
-  animation: indslide 1.2s ease-in-out infinite;
-}
-@keyframes indslide {
-  0% { transform: translateX(-100%); }
-  50% { transform: translateX(180%); }
-  100% { transform: translateX(360%); }
-}
+/* indeterminate progress bar: shared in ../common.css */
 
 /* ── Sign-in hint card ──────────────────────────────────────────── */
 .hint-card {

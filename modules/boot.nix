@@ -43,27 +43,16 @@ in
   # is pulled in by disko's lvm_vg config but we list it explicitly to be safe.
   # tpm_tis must be in the initrd for the TPM2 token to be readable early.
   boot.initrd.availableKernelModules =
-    if useTpm then
-      [
-        "dm_mod"
-        "dm-snapshot"
-        "tpm_tis"
-        "xhci_pci"
-        "ahci"
-        "nvme"
-        "usb_storage"
-        "sd_mod"
-      ]
-    else
-      [
-        "dm_mod"
-        "dm-snapshot"
-        "xhci_pci"
-        "ahci"
-        "nvme"
-        "usb_storage"
-        "sd_mod"
-      ];
+    lib.optional useTpm "tpm_tis"
+    ++ [
+      "dm_mod"
+      "dm-snapshot"
+      "xhci_pci"
+      "ahci"
+      "nvme"
+      "usb_storage"
+      "sd_mod"
+    ];
 
   # Keyfile path: inject the keyfile from the host into the initrd. The TPM
   # path needs no secret — the key lives in the LUKS2 header, sealed by TPM2.

@@ -100,7 +100,7 @@
     homeMode = "750"; # private home: notshared can't read shared's data
   };
 
-  # The rootless-Podman `containers` user is GONE: services run in declarative
+  # The rootless-Podman `containers` user is gone: services run in declarative
   # systemd-nspawn containers now (modules/containers.nix), which need no
   # unprivileged runtime owner, subuid ranges, or linger.
 

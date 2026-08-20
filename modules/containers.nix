@@ -9,7 +9,7 @@
 # The native service configs shared by both modes live in
 # modules/nextcloud-common.nix (Nextcloud) and modules/services.nix (Forgejo),
 # gated on the *other* mode value, so you flip the whole deployment back and
-# forth by changing one option. (Rootless Podman is GONE — the containers run
+# forth by changing one option. (Rootless Podman is gone — the containers run
 # the pinned nixpkgs stacks, so the closure is fully flake-pinned and nothing
 # is pulled from a registry at runtime.)
 #
@@ -28,7 +28,6 @@
 let
   nextcloudContainer = config.losos.nextcloud.mode == "container";
   forgejoContainer = config.losos.forgejo.mode == "container";
-  containerActive = nextcloudContainer || forgejoContainer;
 
   # Host values captured for the in-container configs (container modules are a
   # separate NixOS evaluation that cannot see losos.* options).
@@ -74,15 +73,18 @@ in
         services.nextcloud = nextcloudStack // {
           # Subpath deployment keys: the front vhost proxies /nextcloud with
           # the path preserved, so the in-container Nextcloud must generate
-          # /nextcloud-prefixed URLs. (Kept OUT of nextcloudStack — in native
+          # /nextcloud-prefixed URLs. (Kept out of nextcloudStack — in native
           # mode the same stack serves at the vhost root.)
           settings = {
             overwritewebroot = "/nextcloud";
             "htaccess.RewriteBase" = "/nextcloud";
             "overwrite.cli.url" = "http://${hostName}.local/nextcloud";
-            # Requests arrive with the appliance's mDNS name (direct) or a
-            # public hostname (Cloudflare Tunnel) — both must be trusted.
-            trusted_domains = [ "${hostName}.local" ];
+            # Requests arrive with the appliance's mDNS name (direct) or the
+            # master-proxy public hostname (tunnel) — both must be trusted,
+            # or Nextcloud rejects tunnel traffic with "Untrusted domain".
+            trusted_domains =
+              [ "${hostName}.local" ]
+              ++ lib.optional config.losos.proxy.enable config.losos.proxy.hostname;
           };
         };
       };
@@ -130,17 +132,19 @@ in
       };
 
   # ── Nginx front router ────────────────────────────────────────────────────
-  # ONE default_server vhost on :80: dashboard at /, settings SPA at
+  # One default_server vhost on :80: dashboard at /, settings SPA at
   # /settings, lososd JSON API at /api/*, and the container routes. The pages
   # reference their assets by absolute path (/style.css, /settings/app.js), so
-  # dashboard/ is the vhost root and settings/ is aliased alongside it.
+  # dashboard/ is the vhost root, settings/ is aliased alongside it, and the
+  # shared common.js/common.css (admin-ui root, used by both pages) get
+  # explicit aliases.
   services.nginx =
     lib.mkIf (config.losos.admin.enable && adminUi != null)
       {
         enable = true;
         recommendedProxySettings = true;
         virtualHosts."losos-front" = {
-          default = true; # default_server — Cloudflare Tunnel arrives with a public hostname
+          default = true; # default_server — master-proxy traffic arrives with a public hostname
           listen = [
             {
               addr = "0.0.0.0";
@@ -165,6 +169,10 @@ in
                 index = "index.html";
                 tryFiles = "$uri $uri/ =404";
               };
+              # Shared page chrome: both SPAs load these by absolute path,
+              # but they live at the admin-ui root, not under dashboard/.
+              "= /common.js".alias = "${adminUi}/common.js";
+              "= /common.css".alias = "${adminUi}/common.css";
               "/api/" = {
                 proxyPass = "http://127.0.0.1:${toString adminApiPort}";
                 proxyWebsockets = true;

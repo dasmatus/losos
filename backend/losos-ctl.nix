@@ -8,6 +8,9 @@ mkDerivation {
   src = ./.;
   isLibrary = true;
   isExecutable = true;
+  # No profiling consumer exists, and the profiling pass doubles GHC's work —
+  # it OOM-killed the ISO build on codeberg-medium CI runners (exit 137).
+  enableLibraryProfiling = false;
   libraryHaskellDepends = [
     aeson base bytestring dbus directory filepath http-types mtl
     optparse-applicative process text time unix wai warp

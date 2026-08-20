@@ -32,7 +32,6 @@ module Daemon
 where
 
 import Control.Concurrent (forkIO, threadDelay)
-import Control.Exception (SomeException, try)
 import Control.Monad (forever, unless, void, when)
 import qualified Data.Aeson as A
 import qualified Data.Aeson.Key as K
@@ -196,11 +195,13 @@ startSupervisor = do
     Nothing -> pure ()
 
 -- | The loopback HTTP admin API, Bearer-authed. Routes mirror the facade
--- subcommands (/api/<subcommand>); /api/health is deliberately UNAUTHENTICATED
+-- subcommands (/api/<subcommand>); /api/health is deliberately unauthenticated
 -- so the public dashboard can show daemon reachability without a token.
 -- Listens on 127.0.0.1 only (LOSOS_ADMIN_PORT, default 8082); Nginx proxies
 -- /api/* here. The token lives at LOSOS_ADMIN_TOKEN_FILE (default
--- /var/secrets/losos-admin-token) and is generated randomly on first start.
+-- /var/secrets/losos-admin-token), is generated randomly on first start, and
+-- is read once here — rotating it means restarting lososd (there is no
+-- rotation mechanism; the alternative was a disk read per request).
 startHttp :: IO ()
 startHttp = do
   port <- maybe 8082 id . (readMaybe =<<) <$> lookupEnv "LOSOS_ADMIN_PORT"
@@ -208,12 +209,13 @@ startHttp = do
     fromMaybe "/var/secrets/losos-admin-token"
       <$> lookupEnv "LOSOS_ADMIN_TOKEN_FILE"
   ensureToken tokFile
+  tok <- T.strip <$> TIO.readFile tokFile
   hPutStrLn stderr ("lososd: admin API on 127.0.0.1:" ++ show port)
   void $
     forkIO $
       Warp.runSettings
         (Warp.setHost "127.0.0.1" (Warp.setPort port Warp.defaultSettings))
-        (httpApp tokFile)
+        (httpApp tok)
 
 -- | Create the admin token file if absent: 32 bytes of /dev/urandom as hex,
 -- mode 0600. lososd runs as root; the file lives under persisted /var.
@@ -235,12 +237,11 @@ newToken = do
       let h = showHex b ""
        in T.pack (if length h == 1 then '0' : h else h)
 
-authorized :: FilePath -> Wai.Request -> IO Bool
-authorized tokFile req = do
-  res <- try (TIO.readFile tokFile) :: IO (Either SomeException Text)
-  pure $ case (res, lookup "Authorization" (Wai.requestHeaders req)) of
-    (Right tok, Just hdr) -> hdr == "Bearer " <> TE.encodeUtf8 (T.strip tok)
-    _ -> False
+authorized :: Text -> Wai.Request -> Bool
+authorized tok req =
+  case lookup "Authorization" (Wai.requestHeaders req) of
+    Just hdr -> hdr == "Bearer " <> TE.encodeUtf8 tok
+    Nothing -> False
 
 jsonResp :: Status -> BL.ByteString -> Wai.Response
 jsonResp st = Wai.responseLBS st [("Content-Type", "application/json")]
@@ -248,9 +249,9 @@ jsonResp st = Wai.responseLBS st [("Content-Type", "application/json")]
 errJson :: Status -> Text -> Wai.Response
 errJson st msg = jsonResp st (A.encode (A.object ["error" A..= msg]))
 
-httpApp :: FilePath -> Wai.Application
-httpApp tokFile req respond = do
-  authed <- authorized tokFile req
+httpApp :: Text -> Wai.Application
+httpApp tok req respond = do
+  let authed = authorized tok req
   case (Wai.requestMethod req, Wai.pathInfo req) of
     ("GET", ["api", "health"]) ->
       respond (jsonResp status200 (A.encode (A.object ["ok" A..= True])))

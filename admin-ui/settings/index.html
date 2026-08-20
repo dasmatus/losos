@@ -5,6 +5,7 @@
 	<meta charset="utf-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1">
 	<title>losos &mdash; settings</title>
+	<link rel="stylesheet" href="/common.css">
 	<link rel="stylesheet" href="./style.css">
 </head>
 
@@ -121,10 +122,10 @@
 					</div>
 					<div class="row">
 						<label class="switch-row">
-							<span class="row-label">Remote access via Cloudflare
-								Tunnel</span>
+							<span class="row-label">Remote access via the master
+								proxy</span>
 							<span class="switch">
-								<input type="checkbox" id="in-cfd">
+								<input type="checkbox" id="in-proxy">
 								<span class="switch-track" aria-hidden="true"></span>
 							</span>
 						</label>
@@ -133,8 +134,8 @@
 				<p class="group-hint">
 					The appliance is reachable as <code>&lt;hostname&gt;.local</code> on the LAN.
 					The hostname is also used in the URLs handed to Nextcloud and Forgejo.
-					Cloudflare Tunnel publishes the dashboard on a public hostname through
-					<code>cloudflared</code> — leave it off for LAN-only access.
+					The master proxy publishes the dashboard on a public hostname through
+					a Traefik/rathole relay — leave it off for LAN-only access.
 				</p>
 			</section>
 
@@ -199,6 +200,7 @@
 		</form>
 	</div>
 
+	<script src="/common.js"></script>
 	<script src="/settings/app.js"></script>
 </body>
 

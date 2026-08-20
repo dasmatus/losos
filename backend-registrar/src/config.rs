@@ -28,7 +28,7 @@ pub struct TenantView {
     pub hostname: String,
     pub rathole_port: u16,
     /// The per-appliance rathole service token. Populated by the reconciler
-    /// (NOT the registry) by reading the tenant's token file, so the on-disk
+    /// (not the registry) by reading the tenant's token file, so the on-disk
     /// token file stays the single source of truth and tokens auto-rotate.
     pub token: String,
 }
@@ -147,16 +147,19 @@ struct TraefikServer {
 /// the service and forwards `127.0.0.1:<rathole_port>` traffic over the tunnel
 /// to the appliance's local Nginx.
 ///
-/// Note: rathole's server config keys are `bind_addr` (a SCALAR string), not
-/// `bind` (a list). The `[server]` block emitted here is byte-identical to the
-/// declarative seed `modules/edge.nix` writes on first boot, so steady-state
-/// (no tenants) is zero churn — the reconciler's first compare sees no change.
+/// Note: rathole's server config keys are `bind_addr` (a scalar string), not
+/// `bind` (a list). The `[server]` block emitted here for zero tenants is
+/// exactly what `seed` (see [`crate::seed::run`]) writes to disk on first
+/// boot, before `serve`'s reconciler has run — both call this same function
+/// — so steady-state (no tenants) is zero churn: the reconciler's first
+/// compare sees no change.
 #[must_use]
 pub fn desired_config(tenants: &[TenantView], opts: &EdgeOpts) -> Files {
     // rathole [server] base. The [server.services] table is appended below —
     // either empty (zero tenants) or one [server.services.<id>] per tenant.
-    // This base is byte-identical to the declarative seed in modules/edge.nix
-    // (pinned by `server_block_matches_nix_seed_byte_for_byte`).
+    // For zero tenants this is exactly what `seed::run` writes to disk on
+    // first boot — it calls this same function, so there is nothing else to
+    // keep in sync.
     let mut toml = format!(
         "[server]\nbind_addr = \"{bind}\"\ndefault_token = \"{tok}\"\n",
         bind = format_bind(&opts.rathole_bind_addr, opts.rathole_bind_port),
@@ -164,16 +167,15 @@ pub fn desired_config(tenants: &[TenantView], opts: &EdgeOpts) -> Files {
     );
 
     if tenants.is_empty() {
-        // rathole's server config REQUIRES a `services` field (serde rejects a
+        // rathole's server config requires a `services` field (serde rejects a
         // `[server]` block with no services table: "missing field `services`"),
         // so emit an empty `[server.services]` table: rathole starts, listens
         // on `bind_addr`, and watches the file for hot-reload — the registrar
         // later rewrites it with real `[server.services.<id>]` blocks as
-        // appliances register. This empty rathole form is byte-identical to
-        // the declarative seed `modules/edge.nix` writes on first boot (pinned
-        // by `server_block_matches_nix_seed_byte_for_byte`), so a freshly-
-        // booted edge with no tenants produces zero rathole churn on its first
-        // reconcile.
+        // appliances register. This empty rathole form is exactly what `seed`
+        // writes to disk on first boot (it calls this same function with no
+        // tenants), so a freshly-booted edge produces zero rathole churn on
+        // its first reconcile.
         //
         // Traefik, by contrast, rejects an empty dynamic config (see `Files`),
         // so the zero-tenant Traefik state is `None` — no losos.yml — not an
@@ -257,9 +259,9 @@ pub fn desired_config(tenants: &[TenantView], opts: &EdgeOpts) -> Files {
 /// parses `bind_addr` as a `SocketAddr`, so an unbracketed IPv6 literal
 /// (`::2333`) is rejected. The default `rathole_bind_addr` is `::` (dual-stack
 /// — Linux accepts IPv4-mapped connections on an `::` bind), so an appliance
-/// that resolves the edge over IPv6 reaches the tunnel. Must stay in lockstep
-/// with the `fmtBind` helper in `modules/edge.nix` so the declarative seed
-/// and the registrar's output stay byte-identical.
+/// that resolves the edge over IPv6 reaches the tunnel. Both `seed` and
+/// `serve`'s reconciler render through this same helper, so there is no
+/// second implementation that could drift out of bracketing-lockstep.
 fn format_bind(addr: &str, port: u16) -> String {
     if addr.contains(':') {
         format!("[{addr}]:{port}")
@@ -303,8 +305,8 @@ mod tests {
         let f = desired_config(&[], &opts());
         // Zero tenants → no losos.yml (Traefik rejects an empty dynamic config).
         assert!(f.traefik_yaml.is_none());
-        // rathole still gets an (empty-services) config, byte-identical to the
-        // Nix seed.
+        // rathole still gets an (empty-services) config, byte-identical to
+        // what the `seed` subcommand writes on first boot.
         assert_eq!(
             f.rathole_toml,
             "[server]\nbind_addr = \"0.0.0.0:2333\"\ndefault_token = \"BOOT\"\n\n[server.services]\n"
@@ -366,24 +368,10 @@ mod tests {
         assert_eq!(svc.load_balancer.servers[0].url, "http://127.0.0.1:50000");
     }
 
-    /// The `[server]` block (+ empty `[server.services]` table) the registrar
-    /// emits must be byte-identical to the declarative seed `modules/edge.nix`
-    /// writes on first boot, so a freshly-booted edge with no tenants produces
-    /// zero config churn on its first reconcile. This test pins that contract.
-    /// Keep in sync with the `ratholeSeed` heredoc in `modules/edge.nix`.
-    #[test]
-    fn server_block_matches_nix_seed_byte_for_byte() {
-        let f = desired_config(&[], &opts());
-        assert_eq!(
-            f.rathole_toml,
-            "[server]\nbind_addr = \"0.0.0.0:2333\"\ndefault_token = \"BOOT\"\n\n[server.services]\n"
-        );
-    }
-
     /// An IPv6 `bind_addr` (the production default `::`, dual-stack) must be
     /// bracketed so rathole parses it as a `SocketAddr` — `::2333` is an IPv6
-    /// address literal, not a socket. This pins the bracketing the Nix seed
-    /// (modules/edge.nix `fmtBind`) must also produce.
+    /// address literal, not a socket. This pins the bracketing `format_bind`
+    /// must produce for both `seed` and `serve`'s reconciler.
     #[test]
     fn ipv6_bind_addr_is_bracketed() {
         let o = EdgeOpts {

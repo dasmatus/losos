@@ -1,9 +1,9 @@
 # nixos-test-vms config for the master-proxy edge + appliance.
 #
-# Boots TWO VMs:
+# Boots two VMs:
 #   * `edge`      — losos.edge.enable: Traefik (master) + rathole server +
 #                   losos-registrar (serve). The registrar API is bound to
-#                   `::` (losos.edge.registrarApiBind, dual-stack) ONLY because
+#                   `::` (losos.edge.registrarApiBind, dual-stack) only because
 #                   there is no Traefik/TLS path in the VM (no LE, no DNS) —
 #                   the appliance dials it directly over HTTP.
 #   * `appliance` — losos.proxy.enable: rathole client (dials edge:2333) +
@@ -23,7 +23,7 @@
 #      (primary_key "http"), /tahoe parses a tahoe.cfg INI (primary_key "node"),
 #      and the spilled tmpfs file is gone after.
 #
-# Traefik's on-demand TLS (certResolver le) is NOT exercised — LE can't issue
+# Traefik's on-demand TLS (certResolver le) is not exercised — LE can't issue
 # in a VM — so we test the L4 rathole tunnel + registrar directly. Traefik is
 # left running (its ACME failures are logged, not fatal).
 { pkgs }:
@@ -144,7 +144,7 @@ pkgs.testers.nixosTest {
     appliance.start()
 
     # 1. The rathole-seed wrote a declarative [server] base with the scalar
-    #    bind_addr (NOT a `bind` list) before rathole started.
+    #    bind_addr (not a `bind` list) before rathole started.
     edge.wait_for_unit("losos-rathole-seed.service")
     seed = edge.succeed("cat /etc/rathole/server.toml")
     assert "bind_addr = " in seed, f"seed missing bind_addr scalar: {seed!r}"
@@ -170,7 +170,7 @@ pkgs.testers.nixosTest {
     appliance.wait_for_unit("losos-rathole-client.service")
 
     # grep -F (fixed-string) is load-bearing: `[server.services.mattbox]` is a
-    # TOML section header, and without -F the `[...]` is a regex CHARACTER CLASS
+    # TOML section header, and without -F the `[...]` is a regex character class
     # that matches any line containing the letters s/e/r/v/m/a/t/b/o/x — i.e.
     # almost every line in server.toml. That makes the positive grep a tautology
     # and `! grep` (step 5's teardown assertion) always-false → 900s timeout.
@@ -193,7 +193,7 @@ pkgs.testers.nixosTest {
     edge.wait_until_succeeds("curl -fsS http://127.0.0.1:50000/ | grep -q hello-losos")
 
     # 5. /unregister tears the route down: the rathole service disappears and
-    #    the forward stops. Stop the appliance's announce loop FIRST: it
+    #    the forward stops. Stop the appliance's announce loop first: it
     #    re-registers every heartbeatInterval (3s here — a 404 heartbeat
     #    triggers re-enroll), so without stopping it mattbox would reappear
     #    before the reconciler prunes it and the [server.services.mattbox]

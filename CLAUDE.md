@@ -106,7 +106,9 @@ only on its private IP or loopback.
 **The `losos.*` option namespace** (`options.nix`): all project-specific
 knobs (`targetDrive`, `tpm.enable`, `sharingMyStorage`, `forgejo.enable`,
 `nextcloud.*`, `tahoe.introducerFurl`, `upgradeFlakeUri`, `backend.package`,
-`admin.{enable,port,apiPort,tokenFile,ui}`, `cfd.{enable,tunnels}`) live
+`admin.{enable,port,apiPort,tokenFile,ui}`, `proxy.*` (appliance side of the
+master proxy), `edge.*` (VPS side, consumed via the `nixosModules.edge` flake
+output)) live
 under `options.losos`, with defaults applied in `defaults.nix`. **Modules
 never read bare `config.X`; they read `config.losos.X`.** This is the only
 sanctioned place to add new options — earlier code wrongly declared options

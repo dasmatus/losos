@@ -14,6 +14,9 @@ jobs:
     container:
       image: docker.io/nixos/nix:latest
     steps:
+      # The runner execs JS actions (actions/checkout below) with `node`
+      # inside this container, and the nix image ships none — without this
+      # install, checkout itself fails. Not used by the repo's own code.
       - run: nix --experimental-features 'nix-command flakes' profile install nixpkgs#nodejs
       - uses: actions/checkout@v4
       # Evaluates every output incl. both VM test derivations; builds nothing.
@@ -21,6 +24,3 @@ jobs:
       # Build the installer ISO (the reinstall medium); skip the slow
       # losos-install VM test (`nix build .#checks.x86_64-linux.losos-install`).
       - run: nix --experimental-features 'nix-command flakes' build .#nixosConfigurations.iso.config.system.build.isoImage -L
-      - name: Release
-        uses: https://github.com/softprops/action-gh-release@v3
-        if: forgejo.ref_type == 'rel'

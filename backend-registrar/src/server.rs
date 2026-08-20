@@ -44,8 +44,9 @@ use crate::registry::{Registry, Shared};
 /// Per-tenant Traefik router config is public (hostnames only, no secrets) →
 /// world-readable so the `traefik` user can read it.
 const TRAEFIK_FILE_MODE: u32 = 0o644;
-/// rathole server config carries service tokens → owner-only.
-const RATHOLE_FILE_MODE: u32 = 0o600;
+/// rathole server config carries service tokens → owner-only. Shared with
+/// the `seed` subcommand, which writes the same file at first boot.
+pub(crate) const RATHOLE_FILE_MODE: u32 = 0o600;
 /// Hard cap on an uploaded config body (1 MiB). Enforced at the router layer
 /// so the body is never materialised beyond this.
 const MAX_UPLOAD_BYTES: usize = 1024 * 1024;

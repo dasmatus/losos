@@ -8,7 +8,7 @@
 #   4. the admin API answers 401 without a Bearer token and 200 with it,
 #   5. lososd mints the admin token (64 hex chars, mode 0600) on first start.
 #
-# This is the "disko-free variant" the plan calls for: it imports ONLY
+# This is the "disko-free variant" the plan calls for: it imports only
 # options.nix + daemon.nix — no disko, impermanence, boot, services, or
 # containers — so the VM closure stays small (Haskell daemon + base NixOS;
 # no Nextcloud/Forgejo/Tahoe). The container + nginx front-door path is

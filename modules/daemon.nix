@@ -9,7 +9,7 @@
 #
 # The `losos-ctl` facade CLI (same package) relays subcommands over D-Bus, so
 # nothing but the daemon ever rewrites the flake or triggers a rebuild. This
-# module REPLACES the old sudoers bridge (nextcloud user -> sudo losos-ctl).
+# module replaces the old sudoers bridge (nextcloud user -> sudo losos-ctl).
 {
   pkgs,
   lib,
@@ -70,7 +70,7 @@ in
         # impermanence's whole-/var bind mount.
         StateDirectory = "losos";
         # The daemon runs supervised nixos-rebuild transient units and tails
-        # the rebuild log; full root is the intent (it IS the appliance's
+        # the rebuild log; full root is the intent (it is the appliance's
         # privileged core).
       };
     };

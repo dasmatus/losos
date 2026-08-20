@@ -58,7 +58,9 @@ module Lib
     parseSettings,
     defaultOverridesNix,
     unitOutcome,
-    -- * IO helpers (used by the daemon's supervisor)
+    -- * IO helpers (used by the daemon's supervisor; atomicWriteWith is
+    -- shared with Installer)
+    atomicWriteWith,
     ioReadState,
     ioWriteState,
     ioLogTail,
@@ -71,7 +73,7 @@ where
 import Control.Applicative ((<|>))
 import Control.Concurrent (forkIO, threadDelay)
 import Control.Exception (SomeException, try)
-import Control.Monad (void)
+import Control.Monad (void, when)
 import Control.Monad.State.Strict
   ( MonadState,
     StateT,
@@ -81,6 +83,7 @@ import Control.Monad.State.Strict
   )
 import Data.Aeson (FromJSON (..), ToJSON (..), object, (.:), (.:?), (.!=), (.=))
 import qualified Data.Aeson as A
+import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as BL
 import Data.Functor.Identity (Identity, runIdentity)
 import Data.List (find)
@@ -88,6 +91,8 @@ import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Text.Read (readMaybe)
 import qualified Data.Text as T
+import qualified Data.Text.Encoding as TE
+import qualified Data.Text.Encoding.Error as TEE
 import qualified Data.Text.IO as TIO
 import Data.Time.Clock (getCurrentTime)
 import Data.Time.Format (defaultTimeLocale, formatTime)
@@ -101,7 +106,7 @@ import System.Environment (lookupEnv)
 import System.FilePath ((</>))
 import qualified System.Process as P
 import System.Posix.Process (getProcessID)
-import System.IO (stderr)
+import System.IO (IOMode (ReadMode), SeekMode (AbsoluteSeek), hFileSize, hSeek, stderr, withFile)
 
 -- ──────────────────────────────────────────────────────────────────────────
 -- Domain types
@@ -221,7 +226,7 @@ data Settings = Settings
   , setHttps :: Bool
   , setGpuEnable :: Bool
   , setApachePort :: Int
-  , setCfdEnable :: Bool
+  , setProxyEnable :: Bool
   }
   deriving (Eq, Show)
 
@@ -238,7 +243,7 @@ defaultSettings =
       setHttps = False,
       setGpuEnable = True,
       setApachePort = 11000,
-      setCfdEnable = False
+      setProxyEnable = False
     }
 
 instance ToJSON Settings where
@@ -251,7 +256,7 @@ instance ToJSON Settings where
         "https" .= setHttps s,
         "gpuEnable" .= setGpuEnable s,
         "apachePort" .= setApachePort s,
-        "cfdEnable" .= setCfdEnable s
+        "proxyEnable" .= setProxyEnable s
       ]
 
 -- | The default overrides.nix body, returned by the IO reader when the file is
@@ -270,7 +275,7 @@ defaultOverridesNix =
       "  losos.nextcloud.https = false;",
       "  losos.gpu.enable = true;",
       "  losos.nextcloud.apachePort = 11000;",
-      "  losos.cfd.enable = false;",
+      "  losos.proxy.enable = false;",
       "}"
     ]
 
@@ -312,7 +317,15 @@ parseSettings content =
           ( lookupNix "nextcloud.apachePort" content
               <|> lookupNix "aio.apachePort" content
           ),
-      setCfdEnable = readBoolDef (setCfdEnable defaultSettings) (lookupNix "cfd.enable" content)
+      setProxyEnable =
+        readBoolDef
+          (setProxyEnable defaultSettings)
+          -- Legacy read: overrides written before the cfd → master-proxy
+          -- migration still carry `losos.cfd.enable`; honour it like the
+          -- aio.apachePort fallback above.
+          ( lookupNix "proxy.enable" content
+              <|> lookupNix "cfd.enable" content
+          )
     }
 
 readBoolDef :: Bool -> Maybe Text -> Bool
@@ -572,19 +585,25 @@ ioReadState = do
         -- corrupt state -> treat as fresh rather than crashing the admin UI
         Nothing -> pure defaultState
 
+-- | Atomic write via any writer: write a temp sibling, then rename() over the
+-- target — atomic on POSIX. A bare truncate-then-write could leave the file
+-- half-written on power loss or SIGKILL mid-save; for state.json that would
+-- make ioReadState decode the partial JSON as Nothing and silently fall back
+-- to defaultState (Local, sharing off) — a mode mismatch vs. the real flake
+-- config. Shared by state.json, overrides.nix, and the installer's
+-- install-target.nix writes.
+atomicWriteWith :: (FilePath -> a -> IO ()) -> FilePath -> a -> IO ()
+atomicWriteWith writeFn path content = do
+  let tmp = path <> ".tmp"
+  writeFn tmp content
+  renamePath tmp path
+
 ioWriteState :: State -> IO ()
 ioWriteState s = do
   dir <- stateDir
   createDirectoryIfMissing True dir
   path <- stateFile
-  -- Atomic on POSIX: write a temp sibling then rename. A bare truncate-then-
-  -- write (BL.writeFile) could leave state.json half-written on power loss or
-  -- SIGKILL mid-save; ioReadState would then decode the partial JSON as
-  -- Nothing and silently fall back to defaultState (Local, sharing off) — a
-  -- mode mismatch vs. the real flake config. rename() is atomic.
-  let tmp = path <> ".tmp"
-  BL.writeFile tmp (A.encode s)
-  renamePath tmp path
+  atomicWriteWith BL.writeFile path (A.encode s)
 
 -- | Replace the `losos.sharingMyStorage = <bool>;` line in the config file.
 -- Line-based (no regex dep): the first line containing `losos.sharingMyStorage`
@@ -617,15 +636,12 @@ injectLine sharing ls =
     boolText True = "true"
     boolText False = "false"
 
--- | Overwrite overrides.nix atomically (temp sibling + rename), like
--- ioWriteState. A bare truncate-then-write could leave the file half-written
--- on power loss, and the next eval would fail mid-rebuild.
+-- | Overwrite overrides.nix atomically; a half-written file would fail the
+-- next eval mid-rebuild.
 ioWriteOverrides :: Text -> IO ()
 ioWriteOverrides nixCode = do
   path <- overridesFilePath
-  let tmp = path <> ".tmp"
-  TIO.writeFile tmp nixCode
-  renamePath tmp path
+  atomicWriteWith TIO.writeFile path nixCode
 
 -- | Read overrides.nix. A missing file (fresh box, or LOSOS_OVERRIDES pointing
 -- nowhere) yields the default body so `settings` still reports out-of-box
@@ -760,15 +776,24 @@ watchUnit job = go (0 :: Int)
                   }
         _ -> pure ()
 
+-- | Last non-empty line of the rebuild log, capped at 240 chars. Called every
+-- 2s by the status poll while a rebuild runs, so only a 4 KiB window at the
+-- end of the (multi-MB) log is read — not the whole file. A UTF-8 sequence
+-- split at the window start decodes to replacement chars, but only the last
+-- line is reported, so that never surfaces.
 ioLogTail :: IO Text
 ioLogTail = do
   path <- rebuildLogPath
   exists <- doesFileExist path
   if not exists
     then pure ""
-    else do
-      contents <- TIO.readFile path
-      let nonEmpty = filter (not . T.null) (map T.strip (T.lines contents))
+    else withFile path ReadMode $ \h -> do
+      size <- hFileSize h
+      let window = 4096
+      when (size > window) $ hSeek h AbsoluteSeek (size - window)
+      bytes <- BS.hGetContents h
+      let contents = TE.decodeUtf8With TEE.lenientDecode bytes
+          nonEmpty = filter (not . T.null) (map T.strip (T.lines contents))
       pure $ case nonEmpty of
         [] -> ""
         ls -> T.take 240 (last ls)

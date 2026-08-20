@@ -8,10 +8,10 @@
  *      card; a successful retry stores the token and continues.
  *   2. The form is populated from the settingsResponse keys
  *      {sharingMyStorage, nextcloudMode, forgejoMode, hostName, https,
- *      gpuEnable, apachePort, cfdEnable}. "Apply changes" stays disabled until dirty.
+ *      gpuEnable, apachePort, proxyEnable}. "Apply changes" stays disabled until dirty.
  *   3. Apply builds the overrides.nix body in JS (one `losos.<key> = <value>;`
  *      per line — booleans/ints bare, strings quoted) and POSTs it raw
- *      (text/plain) to /api/apply. This is the ONLY write path; /api/change
+ *      (text/plain) to /api/apply. This is the only write path; /api/change
  *      is never called from the UI.
  *   4. The {"job": ...} ack starts a 2s poll of /api/status driving the
  *      progress block ("Applying…" spinner + live log line, done / failed).
@@ -21,8 +21,6 @@
 const POLL_MS = 2000;
 const DEFAULT_HOSTNAME = 'mattbox';
 const DEFAULT_APACHE_PORT = 11000;
-
-function $(id) { return document.getElementById(id); }
 
 const els = {
   applyBtn: $('apply-btn'),
@@ -39,7 +37,7 @@ const els = {
   forgejoMode: $('in-forgejo-mode'),
   hostName: $('in-hostname'),
   https: $('in-https'),
-  cfd: $('in-cfd'),
+  proxy: $('in-proxy'),
   gpu: $('in-gpu'),
   apachePort: $('in-apache-port'),
   factoryResetBtn: $('factory-reset-btn'),
@@ -49,17 +47,6 @@ const els = {
   authToken: $('auth-token'),
   authError: $('auth-error'),
 };
-
-// ── Token ─────────────────────────────────────────────────────────
-
-function getToken() { return sessionStorage.getItem('losos-token'); }
-function saveToken(t) { sessionStorage.setItem('losos-token', t); }
-function dropToken() { sessionStorage.removeItem('losos-token'); }
-
-function authHeaders() {
-  const t = getToken();
-  return t ? { 'Authorization': 'Bearer ' + t } : {};
-}
 
 // ── Banners ───────────────────────────────────────────────────────
 
@@ -89,7 +76,7 @@ function readForm() {
     https: els.https.checked,
     gpuEnable: els.gpu.checked,
     apachePort: Number.isInteger(port) ? port : NaN,
-    cfdEnable: els.cfd.checked,
+    proxyEnable: els.proxy.checked,
   };
 }
 
@@ -101,7 +88,7 @@ function populate(s) {
   els.https.checked = !!s.https;
   els.gpu.checked = !!s.gpuEnable;
   els.apachePort.value = Number.isInteger(s.apachePort) ? s.apachePort : DEFAULT_APACHE_PORT;
-  els.cfd.checked = !!s.cfdEnable;
+  els.proxy.checked = !!s.proxyEnable;
   original = readForm();
   updateDirty();
 }
@@ -116,7 +103,7 @@ function sameSettings(a, b) {
     a.https === b.https &&
     a.gpuEnable === b.gpuEnable &&
     ((Number.isNaN(a.apachePort) && Number.isNaN(b.apachePort)) || a.apachePort === b.apachePort) &&
-    a.cfdEnable === b.cfdEnable;
+    a.proxyEnable === b.proxyEnable;
 }
 
 function updateDirty() {
@@ -146,7 +133,7 @@ function generateNix() {
     '  losos.nextcloud.https = ' + (v.https ? 'true' : 'false') + ';\n' +
     '  losos.gpu.enable = ' + (v.gpuEnable ? 'true' : 'false') + ';\n' +
     '  losos.nextcloud.apachePort = ' + port + ';\n' +
-    '  losos.cfd.enable = ' + (v.cfdEnable ? 'true' : 'false') + ';\n' +
+    '  losos.proxy.enable = ' + (v.proxyEnable ? 'true' : 'false') + ';\n' +
     '}\n';
 }
 
@@ -341,7 +328,7 @@ document.querySelectorAll('.side-item').forEach(function (item) {
 (function init() {
   const navTahoe = $('nav-tahoe');
   if (navTahoe) {
-    navTahoe.href = location.protocol + '//' + location.hostname + ':3456/';
+    navTahoe.href = tahoeUrl();
   }
 
   document.querySelectorAll('.content input, .content select').forEach(function (el) {
