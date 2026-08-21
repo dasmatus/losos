@@ -169,6 +169,9 @@ in
                 index = "index.html";
                 tryFiles = "$uri $uri/ =404";
               };
+              "/ds/" = {
+                alias = "${adminUi}/ds/";
+              };
               # Shared page chrome: both SPAs load these by absolute path,
               # but they live at the admin-ui root, not under dashboard/.
               "= /common.js".alias = "${adminUi}/common.js";
