@@ -175,7 +175,6 @@ in
               # Shared page chrome: both SPAs load these by absolute path,
               # but they live at the admin-ui root, not under dashboard/.
               "= /common.js".alias = "${adminUi}/common.js";
-              "= /common.css".alias = "${adminUi}/common.css";
               "/api/" = {
                 proxyPass = "http://127.0.0.1:${toString adminApiPort}";
                 proxyWebsockets = true;
