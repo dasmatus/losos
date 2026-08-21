@@ -1,0 +1,62 @@
+[package]
+name = "losos-ctl"
+version = "0.1.0"
+edition = "2021"
+publish = false
+authors = ["Matus Mastena <shadiness9530+ou1rlygj@pm.me>"]
+description = "losos appliance control plane: the lososd daemon (D-Bus + admin HTTP API) and the losos-ctl facade CLI + auto-installer"
+license = "AGPL-3.0-or-later"
+
+# The whole dependency set is declared up front, even for modules that land in
+# later phases, so Cargo.lock — and therefore the `cargoHash` in
+# flake/packages.nix — settles once instead of churning every phase.
+[dependencies]
+# CLI. The surface is user-facing (losos-ctl is root's login shell on the
+# installer ISO), so it earns real --help and parse-time validation.
+clap = { version = "4", features = ["derive"] }
+
+# Wire formats. Every response is JSON with a field order fixed by schema.json.
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+
+# Errors: thiserror for typed library errors, anyhow for context chains at the
+# binary edge (the CLI book's split).
+thiserror = "1"
+anyhow = "1"
+
+# Daemon transports.
+actix-web = { version = "4", default-features = false, features = ["macros"] }
+# "blocking-api" is what the facade CLI uses: a one-shot D-Bus call needs no
+# runtime. The daemon uses the async side on tokio.
+zbus = { version = "5", default-features = false, features = ["tokio", "blocking-api"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "signal"] }
+
+# Job ids are "%Y%m%d%H%M%S-<pid>".
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[dev-dependencies]
+# The CLI book's integration-testing trio: run the real binary, assert on its
+# output, and give it a throwaway filesystem.
+assert_cmd = "2"
+predicates = "3"
+assert_fs = "1"
+
+# Crate-wide lint policy, matching backend-registrar/Cargo.toml.
+[lints.rust]
+unsafe_code = "forbid"
+unreachable_pub = "warn"
+
+[lib]
+name = "losos_ctl"
+path = "src/lib.rs"
+
+[[bin]]
+name = "losos-ctl"
+path = "src/bin/losos-ctl.rs"
+
+[[bin]]
+name = "lososd"
+path = "src/bin/lososd.rs"

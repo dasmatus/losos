@@ -1,6 +1,19 @@
+# Nix build output symlinks. `nix build` emits `result` for a single
+# output, and `result-1`, `result-2`, ... when a build has multiple
+# outputs (e.g. `nix build .#losos-ctl .#losos-admin-ui`) — match all of
+# them, not just the bare `result` (a stray tracked `result-1` has bitten
+# us before).
 result
-backend/dist-newstyle
+result-*
+
+# (backend/ is Rust now; **/target below covers its build dir)
 **/target
+
 .superpowers/
+
+# design-system/react/ is a dev-machine-only npm package (TypeScript +
+# esbuild, see design-system/react/package.json) — never part of the Nix
+# closure, but its local install and build/test output still need to stay
+# untracked. `npm run build` and `npm test` both write into dist/.
 design-system/react/node_modules
 design-system/react/dist
