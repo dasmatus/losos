@@ -27,9 +27,9 @@
       # full Haskell stdlib. See flake/devshell.nix.
       devShells.${system} = import ./flake/devshell.nix { inherit pkgs; };
 
-      # The installer module needs the flake's own source (`self.outPath`) to
-      # bake it into the ISO; pass `self` through to the iso system. The
-      # install system gets `self` so defaults.nix can reach
+      # Both systems get `self` via specialArgs: the iso system reaches
+      # self.packages.${system}.losos-ctl to wire the installer binary, the
+      # install system so defaults.nix can reach
       # self.packages.${system}.{losos-ctl,losos-admin-ui}.
       nixosConfigurations = {
         # Installer medium: a minimal NixOS live ISO that carries the disko
@@ -64,11 +64,12 @@
                 # cgroup limit. Level 6 + a 1 GiB cap trades a slightly
                 # larger ISO for a build that fits; boot speed is unaffected.
                 isoImage.squashfsCompression = "zstd -Xcompression-level 6 -mem 1G";
-                # Bake the flake source (git-tracked tree self.outPath resolves
-                # to) into the ISO so losos-install can copy it to a writable
-                # work dir, drop in modules/install-target.nix, and run disko +
-                # nixos-install against it. self is in scope via specialArgs.
-                environment.etc."losos/flake-source".source = self.outPath;
+                # No flake source is baked into the ISO: losos-install clones
+                # LOSOS_FLAKE_URL (default: the public codeberg repo) into a
+                # writable work dir at run time, drops in
+                # modules/install-target.nix, and runs disko + nixos-install
+                # against the clone. The ISO needs network for that clone —
+                # and would anyway, since flake evaluation fetches nixpkgs.
               }
             )
             ./modules/options.nix

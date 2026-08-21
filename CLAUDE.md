@@ -16,27 +16,43 @@ the cross-file architecture.
 ## Build & develop
 
 ```sh
-# Build the flake outputs (Haskell daemon+facade, static admin UI) and the target system closure
+# Build the flake outputs (Rust daemon+facade, static admin UI) and the target system closure
 nix build .#losos-ctl .#losos-admin-ui
 nix build .#nixosConfigurations.install.config.system.build.toplevel
 
 # Build the installer ISO (write to USB, boot on the target machine)
 nix build .#nixosConfigurations.iso.config.system.build.isoImage
 
-# Dev shell: full Haskell stdlib (ghcWithPackages). Switches to fish on
-# interactive entry; honors `nix develop -c <cmd>` for bash.
+# Dev shell: Rust toolchain (cargo/rustc/clippy/rustfmt/rust-analyzer) plus
+# Node.js, needed only for design-system/react (dev-machine-only, never part
+# of the Nix closure). Switches to fish on interactive entry; honors
+# `nix develop -c <cmd>` for bash.
 nix develop .#
 ```
 
-The backend's HUnit spec runs automatically inside `nix build .#losos-ctl`
-via `callCabal2nix`'s `doCheck = true`. There is no PHP suite anymore — the
-old Nextcloud plugin is retired (see architecture).
+Both Rust crates' test suites run automatically inside their `nix build`
+(`rustPlatform.buildRustPackage`'s `doCheck = true`). There is no PHP suite
+anymore — the old Nextcloud plugin is retired (see architecture) — and no
+Haskell: the backend was a cabal project until it was ported to Rust.
 
 ```sh
-cd backend && cabal test        # Haskell suite (or `nix build .#losos-ctl`)
+# `nix develop -c` does not change directory, hence --manifest-path
+cargo test --manifest-path backend/Cargo.toml
+cargo clippy --manifest-path backend/Cargo.toml --all-targets -- -D warnings
 ```
 
-Inside the dev shell, `bcd` → `cd backend`.
+The VM tests are the real acceptance gate for the control plane and are *not*
+run by CI, so run them locally when touching either:
+
+```sh
+nix build .#checks.x86_64-linux.losos-admin-daemon   # lososd: D-Bus + HTTP + token
+nix build .#checks.x86_64-linux.losos-install        # installer: detect + disko + LVM
+```
+
+Inside the dev shell, `bcd` → `cd backend`, `rcd` → `cd backend-registrar`.
+`design-system/react` has its own `npm run typecheck` / `npm test` (esbuild +
+tsc, no nix, no CI) — dev-machine-only, run manually from `design-system/react/`
+when touching the React wrapper.
 
 ## Architecture (cross-file big picture)
 
@@ -70,8 +86,11 @@ running box is the **Local ↔ Mesh toggle** in the standalone admin UI.
 
 **The lososd daemon, losos-ctl facade, and admin endpoint**
 (`modules/daemon.nix` + `backend/` + `admin-ui/`): the privileged logic lives
-in a root systemd daemon `lososd` (Haskell, `backend/`, one cabal package
-with two executables). It owns `/var/lib/losos/state.json` (sole writer,
+in a root systemd daemon `lososd` (Rust, `backend/`, one crate with two
+binaries; zbus for D-Bus, actix-web for HTTP, clap for the CLI). It runs the
+bus listener and the rebuild supervisor on a tokio runtime and the HTTP server
+on its own thread under an actix `System` — the two runtimes are deliberately
+not shared. It owns `/var/lib/losos/state.json` (sole writer,
 atomic temp+rename), exports a method per subcommand on the **system D-Bus**
 (bus `org.losos1`, path `/org/losos1`, interface `org.losos.Control1`), and
 serves a **Bearer-authed loopback JSON HTTP API** on `127.0.0.1:${losos.admin.apiPort}`
@@ -87,9 +106,12 @@ no bus needed). The standalone admin UI (`admin-ui/`, packaged as
 `losos-admin-ui`) is a dependency-free static SPA — `dashboard/` + `settings/`
 plain-JS pages — served by the front Nginx vhost, which proxies `/api/*` to
 lososd's loopback API. The command layer is written against a `Losos` effect
-type class with an `IO` and a pure `TestM` interpreter, so the state machine
-is unit-tested with no filesystem. Wire contract: `backend/schema.json`.
-Set `losos.backend.package = null` to run without it.
+**trait** with a real (`io_backend`) and an in-memory (`fake`) implementation,
+so the state machine is unit-tested with no filesystem; the installer repeats
+the pattern with `Install` + `plan_install`, whose plan is data, so the
+ordering of destructive steps is asserted without formatting anything. Wire
+contract: `backend/schema.json`. Set `losos.backend.package = null` to run
+without it.
 
 **Containers and the single front door** (`modules/containers.nix` +
 `modules/services.nix` + `modules/nextcloud-common.nix`): rootless Podman is
