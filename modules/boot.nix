@@ -59,6 +59,13 @@ in
   boot.initrd.secrets =
     if useTpm then { } else { "/crypto_keyfile.bin" = "/etc/keys/persist-keyfile"; };
 
+  # Point the initrd unlock of `persist` (whose device entry disko generates
+  # from the layout) at that baked-in secret. Deliberately NOT expressed as
+  # disko's settings.keyFile: disko reuses that value at *format* time with
+  # precedence over passwordFile, and /crypto_keyfile.bin only ever exists
+  # inside the initrd — formatting on the installer would fail.
+  boot.initrd.luks.devices.persist.keyFile = lib.mkIf (!useTpm) "/crypto_keyfile.bin";
+
   # impermanence bind-mounts from /persist, so /persist must be mounted before
   # the sysroot is populated.
   fileSystems."/persist".neededForBoot = true;

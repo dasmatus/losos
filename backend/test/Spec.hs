@@ -29,6 +29,7 @@ import Installer
     planInstall,
     renderTarget,
     runTestM,
+    tsBindMounts,
     tsFiles,
     tsDiskoRan,
     tsDiskoScriptRan,
@@ -143,6 +144,16 @@ isLay _ = False
 isCopyKeyfile :: InstallAction -> Bool
 isCopyKeyfile (ACopyKeyfile _ _) = True
 isCopyKeyfile _ = False
+
+isBind :: InstallAction -> Bool
+isBind (ABindMount _ _) = True
+isBind _ = False
+
+-- │ Index of the first action matching the predicate (length if none) — for
+-- ordering assertions: staging steps must precede the action that consumes
+-- their output.
+idxOf :: (InstallAction -> Bool) -> [InstallAction] -> Int
+idxOf p = length . takeWhile (not . p)
 
 tests :: TestTree
 tests =
@@ -397,18 +408,51 @@ tests =
                     assertBool "runs nixos-install" (any isNixosInstall acts)
                     assertBool "lays flake" (any isLay acts)
                     assertBool "copies keyfile" (any isCopyKeyfile acts),
-                  testCase "full path --no-install stops after disko" $ do
+                  -- The installed system bind-mounts /nix from /persist/nix
+                  -- (impermanence), but disko only mounts its own devices —
+                  -- without an explicit bind before nixos-install the store
+                  -- lands on the /mnt tmpfs and the box boots with an empty
+                  -- /nix. Likewise the chrooted bootloader install reads the
+                  -- initrd secret from /etc/keys inside /mnt, so the keyfile
+                  -- must be staged before nixos-install, not after it.
+                  testCase "full path (keyfile): binds /persist/nix and stages the keyfile before nixos-install" $ do
+                    let Right acts = planInstall opts bds
+                        install = idxOf isNixosInstall acts
+                    assertBool "bind /mnt/persist/nix -> /mnt/nix present" $
+                      ABindMount "/mnt/persist/nix" "/mnt/nix" `elem` acts
+                    assertBool "bind precedes nixos-install" (idxOf isBind acts < install)
+                    assertBool "chroot keyfile copy precedes nixos-install" $
+                      idxOf (== ACopyKeyfile defaultKeyfile "/mnt/etc/keys/persist-keyfile") acts < install
+                    assertBool "persist keyfile copy precedes nixos-install" $
+                      idxOf (== ACopyKeyfile defaultKeyfile "/mnt/persist/etc/keys/persist-keyfile") acts < install
+                    assertBool "disko precedes the bind" (idxOf isDisko acts < idxOf isBind acts)
+                    assertBool "lay-flake follows nixos-install" (install < idxOf isLay acts),
+                  testCase "full path --no-install stops after disko with /mnt ready" $ do
                     let o = opts {optNoInstall = True}
                         Right acts = planInstall o bds
                     assertBool "runs disko" (any isDisko acts)
+                    assertBool "binds /persist/nix so /mnt really is install-ready" (any isBind acts)
                     assertBool "no nixos-install" (not (any isNixosInstall acts))
                     assertBool "no lay" (not (any isLay acts))
                     assertBool "no copy keyfile" (not (any isCopyKeyfile acts)),
-                  testCase "full path --tpm: no keyfile ensure, no keyfile copy" $ do
+                  testCase "full path --tpm: no keyfile ensure, no keyfile copy, still binds /nix" $ do
                     let o = opts {optTpm = True}
                         Right acts = planInstall o bds
                     assertBool "no ensure-keyfile" (not (any isEnsureKeyfile acts))
-                    assertBool "no copy keyfile" (not (any isCopyKeyfile acts)),
+                    assertBool "no copy keyfile" (not (any isCopyKeyfile acts))
+                    assertBool "binds /persist/nix" (any isBind acts),
+                  -- The done/enroll guidance is the only place the TPM
+                  -- enrollment command is surfaced to the user at all.
+                  testCase "full path ends with done guidance; TPM adds the cryptenroll hint" $ do
+                    let Right acts = planInstall opts bds
+                        logsOf as = [t | ALog t <- as]
+                    assertBool "keyfile path announces done" $
+                      any ("done" `T.isInfixOf`) (logsOf acts)
+                    let Right tpmActs = planInstall (opts {optTpm = True}) bds
+                    assertBool "tpm path hints systemd-cryptenroll" $
+                      any ("systemd-cryptenroll" `T.isInfixOf`) (logsOf tpmActs)
+                    assertBool "keyfile path has no cryptenroll hint" $
+                      not (any ("systemd-cryptenroll" `T.isInfixOf`) (logsOf acts)),
                   testCase "no candidate disks is a Left (error)" $ do
                     let mounted = [disk "vda" (8 * gi) [part "vda1" ["/"]]]
                      in assertBool "no disks -> Left" (null (detectCandidates mounted))
@@ -441,6 +485,7 @@ tests =
                     assertBool "disko ran" (tsDiskoRan st)
                     assertBool "nixos-install ran" (tsNixosInstallRan st)
                     assertBool "lay ran" (tsLayFlakeRan st)
+                    assertEqual "bound /persist/nix over /mnt/nix" [("/mnt/persist/nix", "/mnt/nix")] (tsBindMounts st)
                 ]
         ]
     ]

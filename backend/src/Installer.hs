@@ -101,12 +101,13 @@ import System.Directory
     doesFileExist,
     emptyPermissions,
     removeDirectoryRecursive,
+    removePathForcibly,
     setPermissions,
     withCurrentDirectory,
   )
 import System.Exit (ExitCode (..), exitFailure)
 import System.FilePath ((</>), takeDirectory)
-import System.IO (hClose, hPutStrLn, openBinaryFile, stderr, IOMode (ReadMode))
+import System.IO (BufferMode (..), hClose, hPutStrLn, hSetBuffering, openBinaryFile, stderr, stdout, IOMode (ReadMode))
 import qualified System.Process as P
 
 -- ──────────────────────────────────────────────────────────────────────────
@@ -254,6 +255,7 @@ data InstallAction
   | ARunDiskoScript FilePath
   | ACloneFlake Text FilePath
   | ARunDisko FilePath
+  | ABindMount FilePath FilePath
   | ARunNixosInstall FilePath
   | ALayFlake FilePath FilePath
   | ACopyKeyfile FilePath FilePath
@@ -267,9 +269,16 @@ data InstallAction
 --   3. @--emit-target@: write the rendered target to FILE and stop
 --   4. (@--tpm@? skip keyfile) ensure the keyfile exists (non-TPM only)
 --   5. @--disko-script@: write target to the emit file, run the script, stop
---   6. otherwise: clone flake, drop in the target, run disko;
---      @--no-install@ stops here, else nixos-install + lay the flake +
---      (non-TPM) copy the keyfile into \/mnt\/persist
+--   6. otherwise: clone flake, drop in the target, run disko, bind
+--      \/mnt\/persist\/nix over \/mnt\/nix (the installed system's \/nix is an
+--      impermanence bind from \/persist\/nix, so the store must be written
+--      through the same bind — otherwise nixos-install fills the \/mnt tmpfs
+--      and the first boot finds an empty store); @--no-install@ stops here,
+--      else (non-TPM) stage the keyfile at \/mnt\/etc\/keys — the chrooted
+--      bootloader install resolves the boot.initrd.secrets source inside
+--      \/mnt when it appends the initrd secret — and at \/mnt\/persist\/etc\/keys
+--      (the path later rebuilds on the running box read), then nixos-install
+--      + lay the flake
 planInstall :: Options -> [BlockDev] -> Either Text [InstallAction]
 planInstall opts bds = do
   drives <- resolveDrives
@@ -318,12 +327,40 @@ ensureKeyfileIf keyfile tpm
 
 installTail :: FilePath -> Bool -> Bool -> FilePath -> [InstallAction]
 installTail keyfile tpm noInstall work
-  | noInstall = [ALog "losos-install: --no-install set; stopping after disko. /mnt is ready."]
+  | noInstall =
+      bindNix
+        ++ [ALog "losos-install: --no-install set; stopping after disko. /mnt is ready."]
   | otherwise =
-      [ ARunNixosInstall work,
-        ALayFlake work "/mnt/persist/etc/nixos"
-      ]
-        ++ (if tpm then [] else [ACopyKeyfile keyfile "/mnt/persist/etc/keys/persist-keyfile"])
+      bindNix
+        ++ ( if tpm
+               then []
+               else
+                 [ ACopyKeyfile keyfile "/mnt/etc/keys/persist-keyfile",
+                   ACopyKeyfile keyfile "/mnt/persist/etc/keys/persist-keyfile"
+                 ]
+           )
+        ++ [ ARunNixosInstall work,
+             ALayFlake work "/mnt/persist/etc/nixos"
+           ]
+        ++ doneLogs
+  where
+    -- The installed system's /nix is an impermanence bind from /persist/nix;
+    -- disko mounts only its own devices, so without this bind the store
+    -- would land on the throwaway /mnt tmpfs.
+    bindNix = [ABindMount "/mnt/persist/nix" "/mnt/nix"]
+    -- Post-install guidance, carried over from the bash installer. The TPM
+    -- hint is load-bearing: nothing else (README included) tells the user to
+    -- enroll the TPM, and until they do, every boot of the headless box
+    -- stops at a LUKS passphrase prompt.
+    doneLogs =
+      ALog "losos-install: done. Remove the install medium and reboot into the installed system."
+        : ( if tpm
+              then
+                [ ALog "losos-install: TPM mode: the passphrase typed at format time is asked on every boot until TPM2 is enrolled. Boot the installed system, then run:",
+                  ALog "losos-install:   systemd-cryptenroll --tpm2-device=auto --tpm2-pcrs=0+7 /dev/persist-vg/persist"
+                ]
+              else []
+          )
 
 -- ──────────────────────────────────────────────────────────────────────────
 -- The 'Install' effect type class
@@ -339,6 +376,7 @@ class Monad m => Install m where
   runDiskoScript :: FilePath -> m ()
   cloneFlake :: Text -> FilePath -> m ()
   runDisko :: FilePath -> m ()
+  bindMount :: FilePath -> FilePath -> m ()
   runNixosInstall :: FilePath -> m ()
   layFlake :: FilePath -> FilePath -> m ()
   copyKeyfile :: FilePath -> FilePath -> m ()
@@ -355,6 +393,7 @@ execute = mapM_ step
       ARunDiskoScript p -> runDiskoScript p
       ACloneFlake u d -> cloneFlake u d
       ARunDisko d -> runDisko d
+      ABindMount s d -> bindMount s d
       ARunNixosInstall d -> runNixosInstall d
       ALayFlake s d -> layFlake s d
       ACopyKeyfile s d -> copyKeyfile s d
@@ -377,6 +416,7 @@ instance Install IO where
   runDiskoScript = ioRunProcPath
   cloneFlake = ioCloneFlake
   runDisko = ioRunDisko
+  bindMount = ioBindMount
   runNixosInstall = ioRunNixosInstall
   layFlake = ioLayFlake
   copyKeyfile = ioCopyKeyfile
@@ -393,21 +433,63 @@ ioRunProc exe args = do
     ExitFailure n ->
       throwIO (InstallError (T.pack (exe ++ " " ++ unwords args ++ " failed (exit " ++ show n ++ "):\n" <> err)))
 
+-- | Run a long-lived external command with inherited stdio. disko and
+-- nixos-install stream progress for many minutes (and cryptsetup prompts on
+-- the terminal in TPM mode) — capturing their output would leave the console
+-- frozen for the whole install. On failure only the exit code goes into the
+-- error; the process output already went to the terminal.
+ioRunProcInherit :: String -> [String] -> IO ()
+ioRunProcInherit exe args = do
+  (_, _, _, ph) <- P.createProcess (P.proc exe args)
+  ec <- P.waitForProcess ph
+  case ec of
+    ExitSuccess -> pure ()
+    ExitFailure n ->
+      throwIO (InstallError (T.pack (exe ++ " " ++ unwords args ++ " failed (exit " ++ show n ++ "); see the output above")))
+
 -- | Run a prebuilt diskoScript by path (it is an executable nix-built script).
 ioRunProcPath :: FilePath -> IO ()
-ioRunProcPath = (`ioRunProc` [])
+ioRunProcPath p = ioRunProcInherit p []
 
+-- | disko's combined destroy mode asks "Type 'yes' to continue" on stdin
+-- unless --yes-wipe-all-disks is passed. This is the by-design unattended
+-- destructive installer, so pass it — without the flag every unattended run
+-- reads EOF at the prompt and aborts.
 ioRunDisko :: FilePath -> IO ()
-ioRunDisko work = ioRunProc "disko" ["--mode", "destroy,format,mount", "--flake", work ++ "#install"]
+ioRunDisko work =
+  ioRunProcInherit
+    "disko"
+    ["--mode", "destroy,format,mount", "--yes-wipe-all-disks", "--flake", work ++ "#install"]
 
 ioRunNixosInstall :: FilePath -> IO ()
-ioRunNixosInstall work = ioRunProc "nixos-install" ["--flake", work ++ "#install", "--no-root-passwd"]
+ioRunNixosInstall work = ioRunProcInherit "nixos-install" ["--flake", work ++ "#install", "--no-root-passwd"]
 
+-- | Clone the flake into a fresh work dir, then drop the clone's @.git@:
+-- nix's git fetcher exposes only *tracked* files to flake evaluation, so the
+-- install-target.nix written into the clone afterwards would be invisible to
+-- @disko --flake@ \/ @nixos-install --flake@ (flake.nix's builtins.pathExists
+-- guard reads false in the store copy) and the build would silently fall
+-- back to the default targetDrives \/ TPM mode — i.e. format the wrong disk.
+-- Without @.git@ the work dir is a plain path flake and every file in it is
+-- visible. ('ioLayFlake' git-inits the \/persist\/etc\/nixos copy from
+-- scratch, so nothing downstream needs the clone's git metadata.)
 ioCloneFlake :: Text -> FilePath -> IO ()
 ioCloneFlake url work = do
   exists <- doesDirectoryExist work
-  when exists $ removeDirectoryRecursive work
+  when exists $ removePathForcibly work
   ioRunProc "git" ["clone", "--depth", "1", T.unpack url, work]
+  removePathForcibly (work </> ".git")
+
+-- | Bind-mount @src@ (under the mounted \/mnt\/persist) onto @dst@ (under
+-- the \/mnt tmpfs), creating both directories first. Used for \/mnt\/nix:
+-- the running system's \/nix is an impermanence bind from \/persist\/nix, so
+-- nixos-install must write the store through the same bind or it lands on
+-- the throwaway tmpfs and the first boot finds an empty store.
+ioBindMount :: FilePath -> FilePath -> IO ()
+ioBindMount src dst = do
+  createDirectoryIfMissing True src
+  createDirectoryIfMissing True dst
+  ioRunProc "mount" ["--bind", src, dst]
 
 ioLayFlake :: FilePath -> FilePath -> IO ()
 ioLayFlake work dest = do
@@ -453,8 +535,12 @@ ioEnsureKeyfile path = do
     BS.writeFile path bytes
     setPermissions path ownerOnlyFile
 
--- | Copy the generated keyfile into the mounted \/mnt\/persist so the installed
--- system can unlock \/persist at boot.
+-- | Copy the generated keyfile to an install-time destination. Two copies are
+-- staged before nixos-install runs: \/mnt\/etc\/keys\/persist-keyfile — the
+-- chrooted bootloader install resolves the boot.initrd.secrets source inside
+-- \/mnt when append-initrd-secrets bakes the key into the ESP initrd, and
+-- fails hard if it is missing — and \/mnt\/persist\/etc\/keys\/persist-keyfile,
+-- the bind source every later rebuild on the running box reads.
 ioCopyKeyfile :: FilePath -> FilePath -> IO ()
 ioCopyKeyfile src dest = do
   let dir = takeDirectory dest
@@ -483,6 +569,11 @@ readBlockDevices = do
 -- subcommand.
 runInstallIO :: Options -> IO ()
 runInstallIO opts = do
+  -- Line-buffer our own stdout: when it is a pipe (the VM test backdoor, any
+  -- scripted caller) GHC block-buffers it, and the installer's progress lines
+  -- would otherwise surface only at exit — after the output of the child
+  -- processes they announce.
+  hSetBuffering stdout LineBuffering
   bds <- case optDrives opts of
     Just _ -> pure []
     Nothing -> readBlockDevices
@@ -529,6 +620,7 @@ data TestState = TestState
   { tsFiles :: [(FilePath, Text)],
     tsDiskoRan :: Bool,
     tsDiskoScriptRan :: Maybe FilePath,
+    tsBindMounts :: [(FilePath, FilePath)],
     tsNixosInstallRan :: Bool,
     tsCloneRan :: Bool,
     tsLayFlakeRan :: Bool,
@@ -545,6 +637,7 @@ initTestState =
     { tsFiles = [],
       tsDiskoRan = False,
       tsDiskoScriptRan = Nothing,
+      tsBindMounts = [],
       tsNixosInstallRan = False,
       tsCloneRan = False,
       tsLayFlakeRan = False,
@@ -563,6 +656,7 @@ instance Install TestM where
   runDiskoScript p = modify' (\s -> s {tsDiskoScriptRan = Just p, tsDiskoRan = True})
   cloneFlake _ _ = modify' (\s -> s {tsCloneRan = True})
   runDisko _ = modify' (\s -> s {tsDiskoRan = True})
+  bindMount src dst = modify' (\s -> s {tsBindMounts = tsBindMounts s ++ [(src, dst)]})
   runNixosInstall _ = modify' (\s -> s {tsNixosInstallRan = True})
   layFlake _ _ = modify' (\s -> s {tsLayFlakeRan = True})
   copyKeyfile src d = modify' (\s -> s {tsKeyfileCopied = True, tsKeyfileCopyDest = Just d, tsFiles = (d, "key:" <> T.pack src) : tsFiles s})
