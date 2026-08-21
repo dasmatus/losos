@@ -26,6 +26,11 @@ in
   losos-admin-ui = pkgs.runCommand "losos-admin-ui-0.1.0" { } ''
     cp -rT ${lib.cleanSource ./../admin-ui} $out
     chmod -R u+rwX $out
+    # Design-system stylesheets, copied by explicit path — never
+    # cleanSource of design-system/ (react/ must not enter the closure).
+    mkdir -p $out/ds
+    cp ${./../design-system/tokens.css} $out/ds/tokens.css
+    cp ${./../design-system/losos.css} $out/ds/losos.css
   '';
 
   losos-ctl = pkgs.haskellPackages.callPackage ./../backend/losos-ctl.nix { };
