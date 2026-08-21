@@ -100,10 +100,15 @@ in
           passwordFile = if useTpm then null else "/etc/keys/persist-keyfile";
           settings = {
             allowDiscards = true;
-            # initrd keyfile (only for the keyfile path); TPM2 path relies
-            # on the enrolled LUKS2 token via tpm2-device=auto. The
+            # NOTE: no `keyFile` here. disko reuses settings.keyFile at
+            # *format* time with precedence over passwordFile, and the
+            # initrd-only /crypto_keyfile.bin never exists on the installer
+            # — luksFormat would die with "Failed to open key file". The
+            # boot-side unlock key is declared in boot.nix
+            # (boot.initrd.luks.devices.persist.keyFile), next to the
+            # boot.initrd.secrets entry that materializes it. TPM2 path
+            # relies on the enrolled LUKS2 token via tpm2-device=auto; the
             # password fallback is implied by systemd stage 1.
-            keyFile = if useTpm then null else "/crypto_keyfile.bin";
             crypttabExtraOpts =
               if useTpm then [ "tpm2-device=auto" ] else [ ];
           };
