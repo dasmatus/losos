@@ -1,3 +1,4 @@
 result
 backend/dist-newstyle
 **/target
+.superpowers/
