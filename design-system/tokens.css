@@ -1,0 +1,48 @@
+/* losos design tokens — the single source of the visual vocabulary.
+ * Every color literal in the design system lives here; losos.css and
+ * consumers reference only var(--ls-*). Forgejo-flavored (see
+ * docs/superpowers/specs/2026-08-21-design-system-design.md). */
+:root {
+  /* ── Color ─────────────────────────────────────────────────────── */
+  --ls-bg: #f5f7fa;              /* page background */
+  --ls-surface: #ffffff;         /* cards, groups, inputs */
+  --ls-surface-muted: #f0f2f5;   /* chip bg, hover fills */
+  --ls-ink: #1c2128;             /* text; also the topbar background */
+  --ls-ink-muted: #57606a;       /* secondary text */
+  --ls-border: #d0d5dd;
+  --ls-border-faint: #eef1f4;    /* hairline row separators */
+  --ls-accent: #1f6feb;          /* links, focus, primary actions */
+  --ls-accent-strong: #1a5fd0;   /* primary hover */
+  --ls-success: #2ecc71;
+  --ls-success-tint: #e9f9ef;
+  --ls-danger: #e5534b;
+  --ls-danger-tint: #fdeceb;
+  --ls-danger-deep: #8a2b25;     /* error banner text */
+  --ls-warning: #d4a012;         /* building state */
+  --ls-warning-tint: #fff8e6;
+  --ls-topbar-link: #d0d5dd;     /* idle topnav links */
+  --ls-neutral: #8b949e;         /* status dot "checking"/unknown */
+  --ls-control-off: #e9e9eb;     /* switch track when off */
+
+  /* ── Shape ─────────────────────────────────────────────────────── */
+  --ls-radius-sm: 6px;           /* chips, inputs, small controls */
+  --ls-radius-md: 8px;           /* cards, banners, buttons */
+  --ls-radius-lg: 12px;          /* auth modal only */
+  --ls-radius-pill: 999px;
+
+  /* ── Type ──────────────────────────────────────────────────────── */
+  --ls-font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --ls-font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  --ls-fs-xs: 12px;
+  --ls-fs-sm: 13.5px;
+  --ls-fs-md: 14px;
+  --ls-fs-base: 15px;
+  --ls-fs-lg: 16px;
+  --ls-fs-xl: 17px;
+  --ls-fs-2xl: 20px;
+
+  /* ── Depth ─────────────────────────────────────────────────────── */
+  --ls-shadow-sm: 0 4px 14px rgba(27, 33, 40, 0.10);
+  --ls-shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.22);
+  --ls-shadow-knob: 0 2px 4px rgba(0, 0, 0, 0.22);
+}
