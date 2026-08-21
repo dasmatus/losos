@@ -360,7 +360,7 @@ select {
   appearance: none;
   -webkit-appearance: none;
   padding-right: 28px;
-  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%2357606a' stroke-width='1.5'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%2357606a' stroke-width='1.5'/%3E%3C/svg%3E"); /* stroke = --ls-ink-muted; var() cannot reach inside a data URI */
   background-repeat: no-repeat;
   background-position: right 9px center;
 }
@@ -563,7 +563,7 @@ select {
 }
 @media (max-width: 560px) {
   .topbar { padding: 0 12px; gap: 8px; }
-  .topnav a { padding: 6px 7px; font-size: var(--ls-fs-sm); }
+  .topnav a { padding: 6px 7px; font-size: 13px; /* dashboard pixel-identity; mobile nav sizing, not on the scale */ }
   .container { padding: 14px 10px 40px; }
   .grid { grid-template-columns: 1fr 1fr; gap: 10px; }
 }
