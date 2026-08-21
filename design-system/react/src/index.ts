@@ -3,3 +3,4 @@
 export * from './components/chrome';
 export * from './components/display';
 export * from './components/feedback';
+export * from './components/forms';

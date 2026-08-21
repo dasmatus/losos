@@ -59,4 +59,25 @@ expectMarkup(<ProgressCard kind="failed" title="Rebuild failed" log="exit 1" />,
   'progress-icon spinner', 'class="progress-log"');
 expectMarkup(<Spinner />, 'progress-icon spinner');
 
+// Task 13: Form, group & overlay components
+import {
+  Button, Group, Row, GroupHint, Switch, Input, Select, AuthOverlay, AuthCard,
+} from '../src/index';
+
+expectMarkup(<Button>Apply</Button>, 'class="btn-primary"');
+expectMarkup(<Button variant="danger">Reset…</Button>, 'class="btn-danger"');
+expectMarkup(<Button variant="outline" href="/nextcloud">Open</Button>,
+  'class="btn-outline"', '<a ');
+expectMarkup(<Button block>Unlock</Button>, 'btn-primary btn-block');
+expectMarkup(
+  <Group danger><Row><Switch checked label="Share my storage" /></Row><GroupHint>hint</GroupHint></Group>,
+  'group group--danger', 'class="row"', 'class="switch-row"', 'class="row-label"',
+  'class="switch"', 'checked', 'class="switch-track"', 'class="group-hint"');
+expectMarkup(<Row><Input type="text" defaultValue="losos" /><Select><option>local</option></Select></Row>,
+  '<input type="text"', '<select');
+expectMarkup(
+  <AuthOverlay><AuthCard title="Unlock" hint="Paste the admin token." error="Wrong token."><Input type="password" /></AuthCard></AuthOverlay>,
+  'class="auth-overlay"', 'class="auth-card"', '<h2>Unlock</h2>',
+  'class="auth-hint"', 'class="auth-error"');
+
 console.log('render tests: OK');
