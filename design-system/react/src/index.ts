@@ -2,3 +2,4 @@
 // Styling comes entirely from the CSS; components render markup only.
 export * from './components/chrome';
 export * from './components/display';
+export * from './components/feedback';
