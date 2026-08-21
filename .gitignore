@@ -1,4 +1,4 @@
 result
-backend/dist-newstyle
+# (backend/ is Rust now; **/target below covers its build dir)
 **/target
 .superpowers/
