@@ -2,3 +2,5 @@ result
 backend/dist-newstyle
 **/target
 .superpowers/
+design-system/react/node_modules
+design-system/react/dist

@@ -99,8 +99,10 @@ gone. Nextcloud and Forgejo run as declarative **NixOS Containers**
 `nextcloud-common.nix` (`lososInternal.nextcloudStack`) so host-native and
 container mode can't drift. Nginx is the only thing holding public ports:
 path-based routing on the appliance's mDNS name (`<hostName>.local:80/nextcloud`,
-`:80/forgejo`), the admin SPA on `:8081`, the Tahoe web UI proxied on `:3456`
-(port-based — Tahoe generates absolute links). Each container backend answers
+`:80/forgejo`). Shared stylesheets live in `design-system/` (`tokens.css` + `losos.css`,
+served at `/ds/`); `design-system/react` is a dev-machine-only React wrapper package for
+claude.ai/design — never part of the Nix closure. The admin SPA on the same `:80` vhost,
+the Tahoe web UI proxied on `:3456` (port-based — Tahoe generates absolute links). Each container backend answers
 only on its private IP or loopback.
 
 **The `losos.*` option namespace** (`options.nix`): all project-specific
