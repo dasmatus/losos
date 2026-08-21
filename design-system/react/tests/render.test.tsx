@@ -46,4 +46,17 @@ expectMarkup(<HintCard>Sign in first.</HintCard>, 'class="hint-card"');
 expectMarkup(<SysList><SysRow label="Hostname"><Chip>losos</Chip></SysRow></SysList>,
   'class="syslist"', 'class="sysrow"', '<dt>Hostname</dt>', '<dd>');
 
+// Task 12: Feedback components
+import { Banner, ErrorBanner, ProgressCard, Spinner } from '../src/index';
+
+expectMarkup(<Banner kind="building" title="Rebuilding…" message="step 3/7" />,
+  'class="banner"', 'data-kind="building"', 'class="banner-row"',
+  'class="banner-msg"', 'class="indbar"');
+expectMarkup(<ErrorBanner onClose={() => {}}>Request failed</ErrorBanner>,
+  'class="error-banner"', 'class="banner-close"');
+expectMarkup(<ProgressCard kind="failed" title="Rebuild failed" log="exit 1" />,
+  'class="progress-card"', 'data-kind="failed"', 'class="progress-head"',
+  'progress-icon spinner', 'class="progress-log"');
+expectMarkup(<Spinner />, 'progress-icon spinner');
+
 console.log('render tests: OK');
