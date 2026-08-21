@@ -77,6 +77,7 @@ in
       pkgs.haskellPackages.cabal-install
       pkgs.haskellPackages.haskell-language-server
       pkgs.haskellPackages.hpack
+      pkgs.nodejs
       # ── Shell UX (host config, minus Zellij) ─────────────────────────────
       pkgs.fish
       pkgs.bat
