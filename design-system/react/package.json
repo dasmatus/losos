@@ -10,7 +10,7 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "esbuild tests/render.test.tsx --bundle --format=esm --platform=node --jsx=automatic --external:react-dom --outfile=dist/.render-test.mjs && node dist/.render-test.mjs",
+    "test": "esbuild tests/render.test.tsx --bundle --format=esm --platform=node --jsx=automatic --external:react --external:react-dom --outfile=dist/.render-test.mjs && node dist/.render-test.mjs",
     "build": "esbuild src/index.ts --bundle --format=esm --jsx=automatic --external:react --external:react-dom --outfile=dist/index.js && tsc --emitDeclarationOnly && cp ../tokens.css ../losos.css dist/"
   },
   "peerDependencies": {
