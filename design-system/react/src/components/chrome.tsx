@@ -5,7 +5,7 @@ export function Topbar({ brand = 'losos', href = '/', children }:
   return (
     <header className="topbar">
       <a className="brand" href={href}>{brand}</a>
-      <nav className="topnav">{children}</nav>
+      <nav className="topnav" aria-label="Services">{children}</nav>
     </header>
   );
 }
