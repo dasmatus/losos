@@ -134,7 +134,7 @@ in
   # ── Nginx front router ────────────────────────────────────────────────────
   # One default_server vhost on :80: dashboard at /, settings SPA at
   # /settings, lososd JSON API at /api/*, and the container routes. The pages
-  # reference their assets by absolute path (/style.css, /settings/app.js), so
+  # reference their assets by absolute path (/ds/losos.css, /settings/app.js), so
   # dashboard/ is the vhost root, settings/ is aliased alongside it, and the
   # shared common.js (admin-ui root, used by both pages) gets an explicit
   # alias.

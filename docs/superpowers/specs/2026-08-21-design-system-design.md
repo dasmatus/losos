@@ -68,7 +68,7 @@ Shape, type, depth:
   Consolas, monospace`.
 - Type scale: `--ls-fs-xs: 12px`, `--ls-fs-sm: 13.5px` (settings' 12.5px
   and 13px stragglers collapse here; dashboard's `.chip` keeps its 12.5px
-  literal to honor pixel-identity, like the 18px glyph below),
+  literal and its mobile topnav keeps its 13px literal to honor pixel-identity, like the 18px glyph below),
   `--ls-fs-md: 14px`, `--ls-fs-base: 15px`
   (body; settings moves 14px → 15px), `--ls-fs-lg: 16px`,
   `--ls-fs-xl: 17px`, `--ls-fs-2xl: 20px`. The 18px `.banner-close`
