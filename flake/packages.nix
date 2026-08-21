@@ -1,9 +1,13 @@
 # Per-output package definitions.
-#   losos-ctl  — the Haskell backend (cabal project under backend/), built via
-#                callCabal2nix with doCheck so the HUnit spec runs on build.
-#                Provides both the `lososd` system daemon and the `losos-ctl`
-#                facade CLI; modules/daemon.nix runs lososd system-wide and
-#                installs the facade for root (see losos.backend.package).
+#   losos-ctl  — the control plane (Rust crate under backend/), built via
+#                rustPlatform.buildRustPackage with doCheck so `cargo test`
+#                runs on build. Provides both the `lososd` system daemon and
+#                the `losos-ctl` facade CLI (which also carries the
+#                `install` subcommand the installer ISO runs);
+#                modules/daemon.nix runs lososd system-wide and installs the
+#                facade for root (see losos.backend.package), and
+#                modules/installer.nix draws the installer wrapper from the
+#                same derivation (losos.installer.package).
 #   losos-admin-ui — the standalone admin UI (no build step, no frameworks):
 #                a dashboard/ + settings/ pair of self-contained plain-JS pages,
 #                served by the front Nginx vhost (dashboard at /, settings at
@@ -33,7 +37,17 @@ in
     cp ${./../design-system/losos.css} $out/ds/losos.css
   '';
 
-  losos-ctl = pkgs.haskellPackages.callPackage ./../backend/losos-ctl.nix { };
+  losos-ctl = pkgs.rustPlatform.buildRustPackage {
+    pname = "losos-ctl";
+    version = "0.1.0";
+    src = lib.cleanSource ./../backend;
+    # SHA256 of the vendored crate tarball. If deps change, `nix build
+    # .#losos-ctl-rs` will print the new hash to paste here.
+    cargoHash = "sha256-vwDnOequ7M/lBVfkrgT2uLMC8shQxnbPQsssEeigeE8=";
+    # No system deps: zbus speaks the D-Bus wire protocol natively, so there is
+    # no libdbus to link against.
+    doCheck = true;
+  };
 
   losos-registrar = pkgs.rustPlatform.buildRustPackage {
     pname = "losos-registrar";

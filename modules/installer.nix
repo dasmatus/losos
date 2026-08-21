@@ -9,8 +9,10 @@
 # It stays free of any flake coupling (no `self`) so the VM test can import it:
 # the losos-ctl derivation is supplied via the `losos.installer.package` option
 # (the flake's iso system sets it to self.packages.<system>.losos-ctl; the test
-# sets it via flake/packages.nix). The flake source the installer clones at run
-# time is baked separately in flake.nix's iso module, where `self` is in scope.
+# sets it via flake/packages.nix). The flake the installer builds from is
+# cloned over the network at run time (LOSOS_FLAKE_URL, default the public
+# codeberg repo) — the ISO needs working network either way, since evaluating
+# the flake fetches its nixpkgs input.
 #
 # When `losos.installer.autorun` is true (installer ISO only), root's login
 # shell becomes `losos-install` and tty1 autologs in as root — so booting the ISO
@@ -40,29 +42,60 @@ let
     pkgs.lvm2
   ];
 
-  # `losos-install` is a thin wrapper that execs `losos-ctl install`. On the
-  # autorun ISO it is also root's login shell: after the install completes (or
-  # is Ctrl-C'd) it drops to bash instead of exiting, so getty's autologin does
-  # not re-loop the installer.
+  # Two wrapper variants, because the command and the login shell need
+  # opposite exit behavior:
+  #
+  #   * the CLI command (systemPackages, the VM test, scripts) must exec
+  #     losos-ctl so the installer's real exit code reaches the caller — a
+  #     trailing `exec bash` here would make machine.succeed (and any `$?`
+  #     check) read success out of a failed install;
+  #   * the autorun login shell must NOT exit when the installer stops:
+  #     getty would respawn the login shell and re-run the destructive
+  #     installer in a loop. It traps INT (Ctrl-C kills the foreground
+  #     losos-ctl, not the wrapper — a caught trap reverts to default across
+  #     the final exec, so the bash it lands in keeps normal Ctrl-C) and
+  #     drops to bash. The wrapped copy is only ever root's shell on the
+  #     autorun ISO.
+  # The two variants MUST ship differently-named binaries. nixpkgs'
+  # users-groups module auto-adds every shellPackage used as a user's shell
+  # into environment.systemPackages, so both packages land in system.path's
+  # buildEnv (built with ignoreCollisions = true): were both named
+  # bin/losos-install, one would silently win the collision and serve BOTH
+  # roles — concretely the plain-exec CLI won, root's login shell resolved
+  # to it through /run/current-system/sw/bin/losos-install, and any exit
+  # re-looped the destructive installer via getty again.
   losos-install = pkgs.writeShellScriptBin "losos-install" ''
+    exec ${ctl}/bin/losos-ctl install "$@"
+  '';
+
+  losos-install-login = pkgs.writeShellScriptBin "losos-install-login" ''
+    trap : INT
     ${ctl}/bin/losos-ctl install "$@"
     exec ${lib.getExe pkgs.bash}
   '';
 
-  losos-install-wrapped =
-    pkgs.runCommand "losos-install"
-      {
-        nativeBuildInputs = [ pkgs.makeWrapper ];
-        meta.mainProgram = "losos-install";
-        # Required by lib.types.shellPackage so it can be root's login shell on
-        # the autorun ISO (users.users.root.shell); without it nixpkgs' users
-        # module throws "losos-install is not a shell package".
-        passthru.shellPath = "/bin/losos-install";
-      }
+  wrapWithTools =
+    binName: inner: extraAttrs:
+    pkgs.runCommand binName
+      (
+        {
+          nativeBuildInputs = [ pkgs.makeWrapper ];
+          meta.mainProgram = binName;
+        }
+        // extraAttrs
+      )
       ''
-        install -Dm755 ${lib.getExe losos-install} $out/bin/losos-install
-        wrapProgram $out/bin/losos-install --prefix PATH : ${tools}
+        install -Dm755 ${lib.getExe inner} $out/bin/${binName}
+        wrapProgram $out/bin/${binName} --prefix PATH : ${tools}
       '';
+
+  losos-install-wrapped = wrapWithTools "losos-install" losos-install { };
+  losos-install-shell = wrapWithTools "losos-install-login" losos-install-login {
+    # Required by lib.types.shellPackage so it can be root's login shell on
+    # the autorun ISO (users.users.root.shell); without it nixpkgs' users
+    # module throws "losos-install-login is not a shell package".
+    passthru.shellPath = "/bin/losos-install-login";
+  };
 in
 {
   config = lib.mkIf (ctl != null) {
@@ -72,6 +105,6 @@ in
     # runs as the login shell. Gated so the VM test (which drives the installer
     # manually) and normal targets never auto-wipe.
     services.getty.autologinUser = lib.mkIf autorun (lib.mkForce "root");
-    users.users.root.shell = lib.mkIf autorun losos-install-wrapped;
+    users.users.root.shell = lib.mkIf autorun losos-install-shell;
   };
 }
