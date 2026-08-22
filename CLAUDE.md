@@ -24,7 +24,7 @@ nix build .#nixosConfigurations.install.config.system.build.toplevel
 nix build .#nixosConfigurations.iso.config.system.build.isoImage
 
 # Dev shell: Rust toolchain (cargo/rustc/clippy/rustfmt/rust-analyzer) plus
-# Node.js, needed only for design-system/react (dev-machine-only, never part
+# Node.js, needed only for admin-ui/design-system/react (dev-machine-only, never part
 # of the Nix closure). Switches to fish on interactive entry; honors
 # `nix develop -c <cmd>` for bash.
 nix develop .#
@@ -50,9 +50,9 @@ nix build .#checks.x86_64-linux.losos-install        # installer: detect + disko
 ```
 
 Inside the dev shell, `bcd` → `cd backend`, `rcd` → `cd backend-registrar`.
-`design-system/react` has its own `npm run typecheck` / `npm test` (esbuild +
-tsc, no nix, no CI) — dev-machine-only, run manually from `design-system/react/`
-when touching the React wrapper.
+`admin-ui/design-system/react` has its own `npm run typecheck` / `npm test`
+(esbuild + tsc, no nix, no CI) — dev-machine-only, run manually from
+`admin-ui/design-system/react/` when touching the React wrapper.
 
 ## Architecture (cross-file big picture)
 
@@ -122,9 +122,12 @@ gone. Nextcloud and Forgejo run as declarative **NixOS Containers**
 container mode can't drift. Nginx is the only thing holding public ports:
 path-based routing on the appliance's mDNS name (`<hostName>.local:80/nextcloud`,
 `:80/forgejo`), the admin SPA on the same `:80` vhost, the Tahoe web UI proxied on `:3456`
-(port-based — Tahoe generates absolute links). Shared stylesheets live in `design-system/`
-(`tokens.css` + `losos.css`, served at `/ds/`); `design-system/react` is a dev-machine-only
-React wrapper package for claude.ai/design — never part of the Nix closure. Each container
+(port-based — Tahoe generates absolute links). Shared stylesheets live in
+`admin-ui/design-system/` (`tokens.css` + `losos.css`, served at `/ds/`);
+`admin-ui/design-system/react` is a dev-machine-only React wrapper package for
+claude.ai/design — never part of the Nix closure (the `losos-admin-ui` package
+filters `design-system/` out of its `admin-ui/` copy and ships only the two
+stylesheets under `/ds/`). Each container
 backend answers only on its private IP or loopback.
 
 **The `losos.*` option namespace** (`options.nix`): all project-specific

@@ -9,7 +9,7 @@
 - Playwright browsers: the npm-downloaded chromium does not run on NixOS.
   Use nixpkgs `playwright-driver.browsers` from the flake's pinned nixpkgs
   (playwright 1.61.1 as of 2026-08-22). Keep the npm `playwright` version in
-  `.ds-sync` AND in design-system/react's devDependencies in lockstep with
+  `.ds-sync` AND in admin-ui/design-system/react's devDependencies in lockstep with
   `nix eval github:NixOS/nixpkgs/<rev>#playwright-driver.version`. The
   `losos-ds-render` flake check asserts the devDependency side.
   Run validate/capture with
@@ -28,7 +28,7 @@
   undefined.
 - No Storybook anywhere in the repo (shape: package). Real usage examples
   live in `admin-ui/dashboard/` and `admin-ui/settings/` (plain-JS pages
-  using the same class names) and `design-system/react/tests/render.test.tsx`.
+  using the same class names) and `admin-ui/design-system/react/tests/render.test.tsx`.
 - Composition gotcha from wave 1: a labeled `Switch` inside `Group` MUST be
   wrapped in `Row`. `.switch-row` has no padding or min-height of its own,
   only `.row` does, so bare Switch siblings in a Group visually overlap.
@@ -41,15 +41,15 @@
   translateZ(0)` div, a miniature viewport. Don't fork lib/emit.mjs for
   this.
 - The `losos-ds-render` flake check (tests/design-system.nix) pins
-  `npmDepsHash` over design-system/react/package-lock.json. Bump the hash
+  `npmDepsHash` over admin-ui/design-system/react/package-lock.json. Bump the hash
   whenever the lockfile changes:
-  `nix run <nixpkgs>#prefetch-npm-deps -- design-system/react/package-lock.json`.
+  `nix run <nixpkgs>#prefetch-npm-deps -- admin-ui/design-system/react/package-lock.json`.
 
 ## Re-sync risks (watch-list for the next run)
 
 - Playwright lockstep is three-sided. A nixpkgs bump moves
   `playwright-driver`, which must move (a) the `.ds-sync` npm playwright,
-  (b) design-system/react's `playwright` devDependency, and (c)
+  (b) admin-ui/design-system/react's `playwright` devDependency, and (c)
   `npmDepsHash` in tests/design-system.nix. The flake check asserts (b);
   nothing asserts (a), and a stale `.ds-sync` fails at capture time with
   "Executable doesn't exist".
@@ -57,7 +57,7 @@
   rev-specific. Recompute from the current flake.lock (`nixpkgs_3`!) rather
   than reusing a path from an old NOTES revision.
 - Component groups and `.prompt.md` content come from
-  `design-system/react/docs/<Name>.md` (frontmatter `category`). A new
+  `admin-ui/design-system/react/docs/<Name>.md` (frontmatter `category`). A new
   component without a doc lands in group "general" with a synthesized
   prompt. Write its doc as part of adding it.
 - `cfg.cssEntry` points at `dist/styles.css`, produced by the package

@@ -28,13 +28,21 @@ let
 in
 {
   losos-admin-ui = pkgs.runCommand "losos-admin-ui-0.1.0" { } ''
-    cp -rT ${lib.cleanSource ./../admin-ui} $out
+    cp -rT ${
+      # admin-ui/ minus design-system/: the stylesheets ride in below by
+      # explicit path, and react/ must never enter the closure (nor be
+      # served by nginx).
+      lib.cleanSourceWith {
+        src = ./../admin-ui;
+        filter = name: type:
+          lib.cleanSourceFilter name type
+          && baseNameOf name != "design-system";
+      }
+    } $out
     chmod -R u+rwX $out
-    # Design-system stylesheets, copied by explicit path — never
-    # cleanSource of design-system/ (react/ must not enter the closure).
     mkdir -p $out/ds
-    cp ${./../design-system/tokens.css} $out/ds/tokens.css
-    cp ${./../design-system/losos.css} $out/ds/losos.css
+    cp ${./../admin-ui/design-system/tokens.css} $out/ds/tokens.css
+    cp ${./../admin-ui/design-system/losos.css} $out/ds/losos.css
   '';
 
   losos-ctl = pkgs.rustPlatform.buildRustPackage {
