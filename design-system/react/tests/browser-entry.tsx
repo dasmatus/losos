@@ -70,7 +70,7 @@ function Showcase() {
       <AuthCard title="Admin access" hint="Paper sticker, underside of the box.">
         <label>Admin token</label>
         <Input type="password" />
-        <Button block>Unlock</Button>
+        <Button block type="submit">Unlock</Button>
       </AuthCard>
     </>
   );
