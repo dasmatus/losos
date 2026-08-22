@@ -8,6 +8,6 @@ Token-unlock modal card (`form.auth-card`, 340px, large radius + shadow): `title
 <AuthCard title="Admin access" hint="Paper sticker, underside of the box." error="Wrong token." onSubmit={unlock}>
   <label>Admin token</label>
   <Input type="password" autoFocus />
-  <Button block>Unlock</Button>
+  <Button block type="submit">Unlock</Button>
 </AuthCard>
 ```
