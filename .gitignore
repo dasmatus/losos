@@ -11,12 +11,12 @@ result-*
 
 .superpowers/
 
-# design-system/react/ is a dev-machine-only npm package (TypeScript +
-# esbuild, see design-system/react/package.json) — never part of the Nix
-# closure, but its local install and build/test output still need to stay
-# untracked. `npm run build` and `npm test` both write into dist/.
-design-system/react/node_modules
-design-system/react/dist
+# admin-ui/design-system/react/ is a dev-machine-only npm package (TypeScript
+# + esbuild, see admin-ui/design-system/react/package.json) — never part of
+# the Nix closure, but its local install and build/test output still need to
+# stay untracked. `npm run build` and `npm test` both write into dist/.
+admin-ui/design-system/react/node_modules
+admin-ui/design-system/react/dist
 
 # design-sync (claude.ai/design importer): machine state, staged scripts,
 # and regenerated build output. The durable set under .design-sync/

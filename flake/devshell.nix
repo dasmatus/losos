@@ -15,11 +15,12 @@
 #            time via doCheck. No rust-toolchain.toml is shipped: the nix
 #            builders use nixpkgs' rustc, so a channel pin here would be
 #            silently ignored by the build that actually ships.
-#   Node:    pkgs.nodejs, for design-system/react/ only — a dev-machine-only
-#            TypeScript/React wrapper (npm install/build/typecheck/test) around
-#            the shipped tokens.css/losos.css. It is deliberately outside the
-#            Nix closure for every losos system: the design system that
-#            actually ships is the plain CSS under design-system/, served at
+#   Node:    pkgs.nodejs, for admin-ui/design-system/react/ only — a
+#            dev-machine-only TypeScript/React wrapper (npm
+#            install/build/typecheck/test) around the shipped
+#            tokens.css/losos.css. It is deliberately outside the Nix closure
+#            for every losos system: the design system that actually ships is
+#            the plain CSS under admin-ui/design-system/, served at
 #            /ds/ by the front nginx vhost. Node exists in this shell purely
 #            so the npm scripts have somewhere to run.
 #
@@ -60,7 +61,7 @@ in
       pkgs.clippy
       pkgs.rustfmt
       pkgs.rust-analyzer
-      # ── Node (design-system/react/ only, dev-machine-only) ──────────────
+      # ── Node (admin-ui/design-system/react/ only, dev-machine-only) ──────
       pkgs.nodejs
       # ── Shell UX (host config, minus Zellij) ─────────────────────────────
       pkgs.fish

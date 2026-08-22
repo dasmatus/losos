@@ -1,5 +1,6 @@
 # Browser render check for the losos design system. Builds the losos-ds npm
-# package (design-system/react) in the sandbox and runs both its test suites:
+# package (admin-ui/design-system/react) in the sandbox and runs both its
+# test suites:
 # the node markup test, and the playwright browser test that mounts every
 # component in headless chromium and asserts computed styles straight from
 # tokens.css. Browsers come from nixpkgs' playwright-driver.browsers; the
@@ -7,13 +8,13 @@
 # pkgs.playwright-driver. The assertion below fails the eval when the flake's
 # nixpkgs moves playwright and the npm pin wasn't bumped to match.
 #
-# This is a flake check only; design-system/react stays dev-machine-only and
-# never enters the appliance closure (see CLAUDE.md).
+# This is a flake check only; admin-ui/design-system/react stays
+# dev-machine-only and never enters the appliance closure (see CLAUDE.md).
 { pkgs }:
 let
   inherit (pkgs) lib;
   pinnedPlaywright =
-    (builtins.fromJSON (builtins.readFile ../design-system/react/package.json))
+    (builtins.fromJSON (builtins.readFile ../admin-ui/design-system/react/package.json))
       .devDependencies.playwright;
 in
 assert lib.assertMsg (pinnedPlaywright == pkgs.playwright-driver.version)
@@ -22,9 +23,10 @@ pkgs.buildNpmPackage {
   pname = "losos-ds-render";
   version = "0.1.0";
 
-  # src is the whole design-system/ dir: the package build script reaches
-  # ../tokens.css and ../losos.css.
-  src = ../design-system;
+  # src is the whole admin-ui/design-system/ dir: the package build script
+  # reaches ../tokens.css and ../losos.css. sourceRoot stays relative to the
+  # unpacked store copy, whose name is the path's basename ("design-system").
+  src = ../admin-ui/design-system;
   sourceRoot = "design-system/react";
   npmDepsHash = "sha256-Bbc5jJ/Shk117iQDik4I60ClOxegWf897ELoXfF9D/U=";
 
