@@ -1,0 +1,13 @@
+# REUSE compliance metadata (https://reuse.software, spec 3.3).
+# The entire tree is AGPL-3.0-or-later; the license text lives in
+# LICENSES/AGPL-3.0-or-later.txt. `precedence = "closest"` means any
+# per-file SPDX header added later wins over this blanket annotation.
+version = 1
+SPDX-PackageName = "losos"
+SPDX-PackageDownloadLocation = "https://codeberg.org/dasmatus/losos"
+
+[[annotations]]
+path = "**"
+precedence = "closest"
+SPDX-FileCopyrightText = "2026 Matus Mastena"
+SPDX-License-Identifier = "AGPL-3.0-or-later"
