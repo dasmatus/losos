@@ -5,7 +5,7 @@ export const Normal = () => (
     <AuthCard title="Admin access" hint="Enter the token printed on the sticker inside the case.">
       <label>Admin token</label>
       <Input type="password" placeholder="Admin token" />
-      <Button block>Unlock</Button>
+      <Button block type="submit">Unlock</Button>
     </AuthCard>
   </div>
 );
@@ -19,7 +19,7 @@ export const Error = () => (
     >
       <label>Admin token</label>
       <Input type="password" placeholder="Admin token" />
-      <Button block>Unlock</Button>
+      <Button block type="submit">Unlock</Button>
     </AuthCard>
   </div>
 );
