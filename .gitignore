@@ -17,3 +17,12 @@ result-*
 # untracked. `npm run build` and `npm test` both write into dist/.
 design-system/react/node_modules
 design-system/react/dist
+
+# design-sync (claude.ai/design importer): machine state, staged scripts,
+# and regenerated build output. The durable set under .design-sync/
+# (config.json, NOTES.md, conventions.md, previews/, overrides/) IS committed.
+.ds-sync/
+ds-bundle/
+.design-sync/.cache/
+.design-sync/learnings/
+.design-sync/node_modules
