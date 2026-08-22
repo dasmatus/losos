@@ -7,20 +7,61 @@ on:
     - cron: "57 3 * * 1"
   workflow_dispatch:
 
+# Codeberg's hosted runners hard-cap every job at 10 minutes of wall clock
+# (codeberg-medium: 4 CPU / 8 GB RAM, and the RAM quota *includes filesystem
+# writes* — https://codeberg.org/actions/meta; the -lazy variants share the
+# same caps). The installer ISO build (~300 derivations, 1.9 GiB fetched,
+# >4 GiB written to the store, then squashfs + ISO assembly) cannot fit that
+# envelope on time or on disk-as-RAM, so it is a local gate like the VM
+# tests (see CLAUDE.md):
+#   nix build .#nixosConfigurations.iso.config.system.build.isoImage
+# Each job below fits the cap on its own runner.
+# Every job repeats the nodejs install because each gets a fresh container:
+# the runner execs JS actions (actions/checkout) with `node` from inside the
+# container, and the nix image ships none — without it, checkout itself
+# fails. Not used by the repo's own code.
+
 jobs:
-  nix-eval:
-    name: "nix: flake check + ISO build"
+  flake-check:
+    name: "nix: flake check (eval only)"
     runs-on: codeberg-medium
     container:
       image: docker.io/nixos/nix:latest
     steps:
-      # The runner execs JS actions (actions/checkout below) with `node`
-      # inside this container, and the nix image ships none — without this
-      # install, checkout itself fails. Not used by the repo's own code.
       - run: nix --experimental-features 'nix-command flakes' profile install nixpkgs#nodejs
       - uses: actions/checkout@v4
-      # Evaluates every output incl. both VM test derivations; builds nothing.
+      # Evaluates every output incl. all four VM test derivations and both
+      # nixosConfigurations; builds nothing. ~90 s of eval.
       - run: nix --experimental-features 'nix-command flakes' flake check --no-build -L
-      # Build the installer ISO (the reinstall medium); skip the slow
-      # losos-install VM test (`nix build .#checks.x86_64-linux.losos-install`).
-      - run: nix --experimental-features 'nix-command flakes' build .#nixosConfigurations.iso.config.system.build.isoImage -L
+      # flake check only forces each nixosConfiguration's *toplevel*; force
+      # the ISO image derivation too so eval-reachable regressions in the
+      # iso block / isoImage.* settings still fail CI. Build-time-only ISO
+      # failures stay local-only (see the note above).
+      - run: nix --experimental-features 'nix-command flakes' path-info --derivation .#nixosConfigurations.iso.config.system.build.isoImage
+
+  losos-ctl:
+    name: "rust: lososd + losos-ctl build & tests"
+    runs-on: codeberg-medium
+    container:
+      image: docker.io/nixos/nix:latest
+    steps:
+      - run: nix --experimental-features 'nix-command flakes' profile install nixpkgs#nodejs
+      - uses: actions/checkout@v4
+      # buildRustPackage with doCheck = true: the crate's full `cargo test`
+      # suite runs inside this build. Estimated ~8 of the 10 minutes from
+      # run 22's log (the compile ran uncontended there; cold store every
+      # run) — keep this job lean; add nothing else here, and re-time it
+      # before adding any heavy dependency to backend/Cargo.toml.
+      - run: nix --experimental-features 'nix-command flakes' build .#losos-ctl -L
+
+  registrar-and-ui:
+    name: "rust: losos-registrar + admin UI"
+    runs-on: codeberg-medium
+    container:
+      image: docker.io/nixos/nix:latest
+    steps:
+      - run: nix --experimental-features 'nix-command flakes' profile install nixpkgs#nodejs
+      - uses: actions/checkout@v4
+      # The registrar crate's tests run inside its build too (doCheck);
+      # losos-admin-ui is a trivial runCommand copy.
+      - run: nix --experimental-features 'nix-command flakes' build .#losos-registrar .#losos-admin-ui -L

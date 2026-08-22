@@ -41,6 +41,14 @@ cargo test --manifest-path backend/Cargo.toml
 cargo clippy --manifest-path backend/Cargo.toml --all-targets -- -D warnings
 ```
 
+CI (Codeberg Actions, `.forgejo/workflows/ci.yml`) runs on hosted runners
+capped at **10 minutes / 8 GB per job** (and the RAM quota counts filesystem
+writes), so it only evaluates the flake (plus an eval-only instantiation of
+the ISO image derivation) and builds the three packages. The two system
+closures above — the install toplevel and the installer ISO — are **local-only
+gates**: build the ISO before merging anything that touches `installer.nix`,
+the `iso` block in `flake.nix`, or `isoImage.*` settings.
+
 The VM tests are the real acceptance gate for the control plane and are *not*
 run by CI, so run them locally when touching either:
 
