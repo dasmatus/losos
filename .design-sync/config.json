@@ -1,0 +1,27 @@
+{
+  "projectId": "14a8eded-06f5-4633-bd97-91a1ee3096b4",
+  "shape": "package",
+  "pkg": "losos-ds",
+  "globalName": "LososDS",
+  "entry": "design-system/react/dist/index.js",
+  "buildCmd": "nix develop .# --command bash -c \"cd design-system/react && npm ci && npm run build\"",
+  "cssEntry": "dist/styles.css",
+  "readmeHeader": ".design-sync/conventions.md",
+  "guidelinesGlob": [],
+  "overrides": {
+    "AuthOverlay": { "cardMode": "single", "viewport": "560x420" },
+    "Topbar": { "cardMode": "column" },
+    "Grid": { "cardMode": "column" },
+    "Layout": { "cardMode": "column" },
+    "Content": { "cardMode": "column" },
+    "ContentHeader": { "cardMode": "column" },
+    "Section": { "cardMode": "column" },
+    "HintCard": { "cardMode": "column" },
+    "SysRow": { "cardMode": "column" },
+    "Banner": { "cardMode": "column" },
+    "ErrorBanner": { "cardMode": "column" },
+    "ProgressCard": { "cardMode": "column" },
+    "AuthCard": { "cardMode": "column" },
+    "Group": { "cardMode": "column" }
+  }
+}

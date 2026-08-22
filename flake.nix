@@ -133,10 +133,15 @@
       #                         registrar) + an appliance VM (rathole client +
       #                         announce + Nginx) and asserts the master-proxy
       #                         register/reconcile/forward path (tests/edge-vm.nix).
+      #   losos-ds-render     — builds the losos-ds npm package and renders every
+      #                         design-system component in headless chromium
+      #                         (playwright-driver.browsers), asserting computed
+      #                         styles from tokens.css (tests/design-system.nix).
       checks.${system} = {
         losos-install = import ./tests/install.nix { inherit pkgs disko; };
         losos-admin-daemon = import ./tests/admin-vm.nix { inherit pkgs; };
         losos-edge-proxy = import ./tests/edge-vm.nix { inherit pkgs; };
+        losos-ds-render = import ./tests/design-system.nix { inherit pkgs; };
       };
     };
 }
