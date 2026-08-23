@@ -5,6 +5,11 @@
 /* ── Base ─────────────────────────────────────────────────────────── */
 * { box-sizing: border-box; }
 
+/* The UA's [hidden] { display: none } is a normal-origin rule, so any
+ * class that sets display (.error-banner, .auth-overlay are flex) would
+ * silently defeat the hidden attribute without this guard. */
+[hidden] { display: none !important; }
+
 html { -webkit-text-size-adjust: 100%; }
 
 body {

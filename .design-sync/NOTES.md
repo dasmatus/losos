@@ -45,6 +45,23 @@
   whenever the lockfile changes:
   `nix run <nixpkgs>#prefetch-npm-deps -- admin-ui/design-system/react/package-lock.json`.
 
+## Pull direction (designs → repo)
+
+- Designs saved from Claude Design land in the project as
+  `templates/<slug>/<Name>.dc.html` plus harness files (`ds-base.js`,
+  `image-slot.js`, `support.js`). `templates/app-icon` is the source the
+  2026-08-23 homepage sync was built from: its "In place" section carries
+  the homepage design (drifting gradient, glass overrides, condensing
+  float bar, launcher tiles, right-click address menu) even though the
+  template is titled as an AppIcon component proposal.
+- That template's AppIcon component proposal (`AppIconProps`, `.app-icon*`
+  markup, sizes 20/28/40, five tones) is NOT implemented — the homepage
+  tiles use their own 56px monograms. Still open as a losos-ds candidate.
+- losos.css gained a `[hidden] { display: none !important }` guard
+  (2026-08-23): the flex displays on `.error-banner`/`.auth-overlay` were
+  overriding the UA's [hidden] rule. The uploaded styles.css is stale
+  until the next re-sync; the driver will flag it via styleSha.
+
 ## Re-sync risks (watch-list for the next run)
 
 - Playwright lockstep is three-sided. A nixpkgs bump moves

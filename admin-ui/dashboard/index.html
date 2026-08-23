@@ -4,22 +4,24 @@
 <head>
 	<meta charset="utf-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1">
-	<title>losos &mdash; dashboard</title>
+	<title>LosOS &mdash; home</title>
 	<link rel="stylesheet" href="/ds/tokens.css">
 	<link rel="stylesheet" href="/ds/losos.css">
+	<link rel="stylesheet" href="/home.css">
 </head>
 
 <body>
 
-	<header class="topbar">
-		<a class="brand" href="/">losos</a>
-		<nav class="topnav" aria-label="Services">
-			<a href="/nextcloud">Cloud</a>
-			<a href="/forgejo/">Git</a>
-			<a href="/settings">Settings</a>
-			<a id="nav-tahoe" href="#tahoe">Tahoe</a>
-		</nav>
-	</header>
+	<div class="float-bar" id="float-bar">
+		<div class="float-clip">
+			<header class="topbar">
+				<a class="brand" href="/">LosOS</a>
+				<nav class="topnav" aria-label="Admin">
+					<a class="gear" href="/settings" aria-label="Settings" title="Settings">&#9881;</a>
+				</nav>
+			</header>
+		</div>
+	</div>
 
 	<main class="container">
 
@@ -45,80 +47,92 @@
 
 		<div class="grid" role="list">
 
-			<article class="card" role="listitem" aria-labelledby="h-nextcloud">
-				<div class="card-head">
-					<h2 id="h-nextcloud">Nextcloud</h2>
-					<span class="status">
-						<span class="dot" id="dot-nextcloud" data-state="checking" role="img"
-							aria-label="status"></span>
-						<span class="status-text" id="st-nextcloud">Checking&hellip;</span>
-					</span>
-				</div>
-				<p class="desc">Private cloud &mdash; files, calendar and contacts.</p>
-				<p class="chip-row"><code class="chip">/nextcloud</code></p>
-				<a class="btn-outline" href="/nextcloud">Open</a>
-			</article>
-
-			<article class="card" role="listitem" aria-labelledby="h-forgejo">
-				<div class="card-head">
-					<h2 id="h-forgejo">Forgejo</h2>
-					<span class="status">
-						<span class="dot" id="dot-forgejo" data-state="checking" role="img"
-							aria-label="status"></span>
-						<span class="status-text" id="st-forgejo">Checking&hellip;</span>
-					</span>
-				</div>
-				<p class="desc">Git hosting and code collaboration.</p>
-				<p class="chip-row"><code class="chip">/forgejo/</code></p>
-				<a class="btn-outline" href="/forgejo/">Open</a>
-			</article>
-
-			<article class="card" role="listitem" aria-labelledby="h-lososd">
-				<div class="card-head">
-					<h2 id="h-lososd">Appliance daemon</h2>
-					<span class="status">
-						<span class="dot" id="dot-lososd" data-state="checking" role="img"
-							aria-label="status"></span>
-						<span class="status-text" id="st-lososd">Checking&hellip;</span>
-					</span>
-				</div>
-				<p class="desc">lososd &mdash; the privileged control daemon behind the admin API.</p>
-				<p class="chip-row"><code class="chip">GET /api/health</code></p>
-				<a class="btn-outline" href="/settings">Settings</a>
-			</article>
-
-			<article class="card" role="listitem" aria-labelledby="h-tahoe">
-				<div class="card-head">
-					<h2 id="h-tahoe">Tahoe-LAFS</h2>
-					<span class="status">
-						<span class="dot" id="dot-tahoe" data-state="checking" role="img"
-							aria-label="status"></span>
-						<span class="status-text" id="st-tahoe">Checking&hellip;</span>
-					</span>
-				</div>
-				<p class="desc">Distributed, encrypted storage grid web interface.</p>
-				<p class="chip-row"><code class="chip" id="chip-tahoe">:3456</code></p>
-				<a class="btn-outline" id="link-tahoe" href="#tahoe">Open</a>
-			</article>
-
-			<article class="card" role="listitem" aria-labelledby="h-system">
-				<div class="card-head">
-					<h2 id="h-system">System</h2>
-				</div>
-				<dl class="syslist">
-					<div class="sysrow">
-						<dt>Hostname</dt>
-						<dd><code class="chip" id="sys-hostname">&mdash;</code></dd>
+			<a class="tile-link" role="listitem" href="/nextcloud" id="tile-nextcloud"
+				aria-labelledby="h-nextcloud">
+				<article class="card">
+					<div class="tile">
+						<span class="tile-icon tile-icon--nextcloud" aria-hidden="true">N<span
+								class="dot" id="dot-nextcloud" data-state="checking" role="img"
+								aria-label="status"></span></span>
+						<span class="tile-row">
+							<span class="tile-name" id="h-nextcloud">Nextcloud<span class="vh"
+									id="st-nextcloud"></span></span>
+							<span class="tile-tip" aria-hidden="true">Files, calendar, and contacts.</span>
+						</span>
 					</div>
-					<div class="sysrow">
-						<dt>Sharing mode</dt>
-						<dd id="sys-mode">&mdash;</dd>
+				</article>
+			</a>
+
+			<a class="tile-link" role="listitem" href="/forgejo/" id="tile-forgejo"
+				aria-labelledby="h-forgejo">
+				<article class="card">
+					<div class="tile">
+						<span class="tile-icon tile-icon--forgejo" aria-hidden="true">F<span
+								class="dot" id="dot-forgejo" data-state="checking" role="img"
+								aria-label="status"></span></span>
+						<span class="tile-row">
+							<span class="tile-name" id="h-forgejo">Forgejo<span class="vh"
+									id="st-forgejo"></span></span>
+							<span class="tile-tip" aria-hidden="true">Git hosting and code collaboration.</span>
+						</span>
 					</div>
-				</dl>
-			</article>
+				</article>
+			</a>
+
+			<a class="tile-link" role="listitem" href="#tahoe" id="tile-tahoe"
+				aria-labelledby="h-tahoe">
+				<article class="card">
+					<div class="tile">
+						<span class="tile-icon tile-icon--tahoe" aria-hidden="true">T<span
+								class="dot" id="dot-tahoe" data-state="checking" role="img"
+								aria-label="status"></span></span>
+						<span class="tile-row">
+							<span class="tile-name" id="h-tahoe">Tahoe-LAFS<span class="vh"
+									id="st-tahoe"></span></span>
+							<span class="tile-tip" aria-hidden="true">Distributed, encrypted storage grid.</span>
+						</span>
+					</div>
+				</article>
+			</a>
 
 		</div>
+
+		<p class="tile-help">Hover a tile for its description; right-click for its address.</p>
+
+		<article class="card syscard" aria-labelledby="h-system">
+			<div class="card-head">
+				<h2 id="h-system">System</h2>
+				<span class="status">
+					<span class="dot" id="dot-lososd" data-state="checking" role="img"
+						aria-label="status"></span>
+					<span class="status-text" id="st-lososd">Checking&hellip;</span>
+				</span>
+			</div>
+			<dl class="syslist">
+				<div class="sysrow">
+					<dt>Hostname</dt>
+					<dd><code class="chip" id="sys-hostname">&mdash;</code></dd>
+				</div>
+				<div class="sysrow">
+					<dt>Sharing mode</dt>
+					<dd id="sys-mode">&mdash;</dd>
+				</div>
+				<div class="sysrow">
+					<dt>Daemon</dt>
+					<dd><a href="/settings">Settings</a></dd>
+				</div>
+			</dl>
+		</article>
+
 	</main>
+
+	<div id="ctx-overlay" class="ctx-overlay" hidden>
+		<div id="ctx-menu" class="ctx-menu" role="menu" aria-label="Service address">
+			<div class="ctx-addr" id="ctx-addr"></div>
+			<button type="button" id="ctx-copy" role="menuitem">Copy address</button>
+			<button type="button" id="ctx-open" role="menuitem">Open in new tab</button>
+		</div>
+	</div>
 
 	<script src="/common.js"></script>
 	<script src="/app.js"></script>
