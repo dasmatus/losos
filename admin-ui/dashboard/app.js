@@ -1,6 +1,6 @@
 'use strict';
 
-/* losos dashboard — live service probes + rebuild status banner.
+/* losos homepage — launcher tiles + live service probes + rebuild banner.
  *
  * Talks to the same-origin Nginx routes:
  *   /nextcloud, /forgejo/            (service probes)
@@ -8,8 +8,12 @@
  * plus the Tahoe WUI on :3456 (cross-origin, probed with mode:no-cors).
  *
  * The admin token lives in sessionStorage ('losos-token'); it is entered on
- * the settings page. Without a token the dashboard still probes the public
+ * the settings page. Without a token the homepage still probes the public
  * services and shows a sign-in hint instead of rebuild progress.
+ *
+ * Page chrome (floating topbar that condenses on scroll, right-click
+ * address menu on the tiles) is synced from the Claude Design template in
+ * the "Losos Admin UI" project; the styling lives in home.css.
  */
 
 const PROBE_MS = 15000;
@@ -34,11 +38,11 @@ const DOT_LABEL = { up: 'Up', down: 'Down', checking: 'Checking…' };
 
 function setDot(name, state) {
   const dot = $('dot-' + name);
-  const text = $('st-' + name);
-  if (!dot || !text) { return; }
+  if (!dot) { return; }
   dot.dataset.state = state;
   dot.setAttribute('aria-label', name + ' status: ' + state);
-  text.textContent = DOT_LABEL[state] || state;
+  const text = $('st-' + name);
+  if (text) { text.textContent = DOT_LABEL[state] || state; }
 }
 
 // ── Service probes ────────────────────────────────────────────────
@@ -191,14 +195,76 @@ function stopStatusPolling() {
   if (statusTimer !== null) { clearInterval(statusTimer); statusTimer = null; }
 }
 
+// ── Floating topbar: condense to a corner pill on scroll ─────────
+
+const floatBar = $('float-bar');
+
+function onScroll() {
+  if (floatBar) { floatBar.classList.toggle('cond', window.scrollY > 80); }
+}
+
+// ── Tile context menu: address + copy / open in new tab ──────────
+
+const ctxOverlay = $('ctx-overlay');
+const ctxMenu = $('ctx-menu');
+const ctxAddrEl = $('ctx-addr');
+let ctxUrl = '';
+
+function openMenu(e, addr, url) {
+  e.preventDefault();
+  ctxAddrEl.textContent = addr;
+  ctxUrl = url;
+  ctxOverlay.hidden = false;
+  ctxMenu.style.left = Math.min(e.clientX, window.innerWidth - 190) + 'px';
+  ctxMenu.style.top = Math.min(e.clientY, window.innerHeight - 110) + 'px';
+}
+function closeMenu() { ctxOverlay.hidden = true; }
+
+function wireTile(id, addr, url) {
+  const tile = $(id);
+  if (!tile) { return; }
+  tile.addEventListener('contextmenu', function (e) { openMenu(e, addr, url); });
+}
+
+function wireContextMenu() {
+  if (!ctxOverlay) { return; }
+  // The overlay eats the click that closes the menu; a second right-click
+  // closes it too instead of stacking the browser menu on top.
+  ctxOverlay.addEventListener('click', function (e) {
+    if (e.target === ctxOverlay) { closeMenu(); }
+  });
+  ctxOverlay.addEventListener('contextmenu', function (e) {
+    e.preventDefault();
+    closeMenu();
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && !ctxOverlay.hidden) { closeMenu(); }
+  });
+  $('ctx-copy').addEventListener('click', function () {
+    if (navigator.clipboard) { navigator.clipboard.writeText(ctxAddrEl.textContent); }
+    closeMenu();
+  });
+  $('ctx-open').addEventListener('click', function () {
+    window.open(ctxUrl, '_blank', 'noopener');
+    closeMenu();
+  });
+
+  wireTile('tile-nextcloud', location.host + '/nextcloud',
+    location.origin + '/nextcloud');
+  wireTile('tile-forgejo', location.host + '/forgejo/',
+    location.origin + '/forgejo/');
+  wireTile('tile-tahoe', location.hostname + ':3456/', tahoeUrl());
+}
+
 // ── Wiring ────────────────────────────────────────────────────────
 
 (function init() {
-  const tahoe = tahoeUrl();
-  const navTahoe = $('nav-tahoe');
-  const linkTahoe = $('link-tahoe');
-  if (navTahoe) { navTahoe.href = tahoe; }
-  if (linkTahoe) { linkTahoe.href = tahoe; }
+  const tileTahoe = $('tile-tahoe');
+  if (tileTahoe) { tileTahoe.href = tahoeUrl(); }
+
+  window.addEventListener('scroll', onScroll, { passive: true });
+  onScroll();
+  wireContextMenu();
 
   if (getToken()) {
     hideHint();
