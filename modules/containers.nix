@@ -17,7 +17,9 @@
 # path-based routing — / (dashboard), /settings (settings SPA), /api/* (lososd),
 # /nextcloud (container), /forgejo/ (container). default_server because
 # master-proxy (Traefik+rathole) traffic arrives with a public hostname, not
-# <hostName>.local. Nothing but Nginx binds a public port.
+# <hostName>.local. Nothing but Nginx binds a public port. The admin surface
+# (/, /settings, /ds, /common.js, /api) is LAN-only (see `lanOnly` below);
+# only /nextcloud and /forgejo are reachable through the master-proxy tunnel.
 {
   pkgs,
   lib,
@@ -37,6 +39,22 @@ let
   adminpassFile = config.losos.nextcloud.adminpassFile;
   adminUi = config.losos.admin.ui;
   adminApiPort = config.losos.admin.apiPort;
+
+  # Access guard for the admin surface (dashboard, settings SPA, their assets,
+  # the lososd API): local network only. Master-proxy traffic must never reach
+  # these routes — and it arrives from *loopback* (proxy.nix points rathole at
+  # 127.0.0.1:80), so loopback is deliberately not allowed. That costs nothing:
+  # the box has no shell logins, so no legitimate client browses from
+  # localhost. The vhost only listens on 0.0.0.0, so the IPv4 ranges below are
+  # exhaustive; if an IPv6 listener is ever added, these rules fail closed
+  # (LAN IPv6 clients get 403) rather than open.
+  lanOnly = ''
+    allow 10.0.0.0/8;
+    allow 172.16.0.0/12;
+    allow 192.168.0.0/16;
+    allow 169.254.0.0/16;
+    deny all;
+  '';
 in
 {
   # ── Nextcloud (nspawn) ─────────────────────────────────────────────────────
@@ -154,13 +172,18 @@ in
           root = "${adminUi}/dashboard";
           locations = lib.mkMerge [
             {
-              # Static dashboard (index.html at the root).
+              # Static dashboard (index.html at the root). LAN-only, like every
+              # admin location below.
               "/" = {
                 index = "index.html";
                 tryFiles = "$uri $uri/ =404";
+                extraConfig = lanOnly;
               };
               # SPA deep link: /settings -> /settings/ so relative-looking
-              # absolute asset paths resolve.
+              # absolute asset paths resolve. Unguarded on purpose: `return`
+              # runs in the rewrite phase, before allow/deny are consulted, so
+              # a guard here would be dead config — and the redirect target is
+              # guarded.
               "= /settings" = {
                 extraConfig = "return 301 /settings/;";
               };
@@ -168,16 +191,22 @@ in
                 alias = "${adminUi}/settings/";
                 index = "index.html";
                 tryFiles = "$uri $uri/ =404";
+                extraConfig = lanOnly;
               };
               "/ds/" = {
                 alias = "${adminUi}/ds/";
+                extraConfig = lanOnly;
               };
               # Shared page chrome: both SPAs load these by absolute path,
               # but they live at the admin-ui root, not under dashboard/.
-              "= /common.js".alias = "${adminUi}/common.js";
+              "= /common.js" = {
+                alias = "${adminUi}/common.js";
+                extraConfig = lanOnly;
+              };
               "/api/" = {
                 proxyPass = "http://127.0.0.1:${toString adminApiPort}";
                 proxyWebsockets = true;
+                extraConfig = lanOnly;
               };
             }
             (lib.mkIf nextcloudContainer {

@@ -163,6 +163,14 @@ unconditionally at 00:07 with `Persistent=true` to catch up if the box was off.
   `state.json` says `Building`, it spawns a fresh watcher for
   `losos-rebuild-<job>`. Without this the rebuild records `building`
   forever. Don't drop the re-attach.
+- **The admin routes deny loopback on purpose** (`lanOnly` in
+  `containers.nix`): master-proxy tunnel traffic reaches the front vhost *from
+  127.0.0.1* (rathole's `local_addr`), so the LAN-only guard on `/`,
+  `/settings`, `/ds`, `/common.js` and `/api` must not allow loopback — a
+  `curl localhost/` on the box (or in a VM test) gets 403 by design. "Fixing"
+  it with `allow 127.0.0.1` exposes the whole admin surface to the internet
+  whenever `losos.proxy.enable` is on. Test against lososd's :8082 directly,
+  or curl with a LAN source address.
 - **The admin token is created by lososd, not by NixOS.** `losos.admin.tokenFile`
   (default `/var/secrets/losos-admin-token`, persisted via `/var`) is written
   with a 64-hex-char random value (mode 0600) by lososd on first start if
