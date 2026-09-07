@@ -3,10 +3,14 @@ name = "losos-registrar"
 version = "0.1.0"
 edition = "2021"
 publish = false
+authors = ["Matus Mastena <shadiness9530+ou1rlygj@pm.me>"]
 description = "losos edge registration + Traefik/rathole config reconciler (serve) and appliance registration client (announce)"
+license = "AGPL-3.0-or-later"
 
 [dependencies]
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync", "time", "fs", "io-util", "process"] }
+# "signal" (not "process"): the serve loop installs a SIGTERM/SIGINT handler
+# for graceful shutdown; nothing in this crate spawns a child process.
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync", "time", "fs", "io-util", "signal"] }
 axum = "0.7"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -16,6 +20,11 @@ thiserror = "1"
 serde_yaml = "0.9"
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+# Token comparison. `subtle` is the audited primitive; the previous
+# hand-rolled byte loop was correct but is not the thing to hand-roll on a
+# route the public internet can reach. Already in the lock tree (rustls pulls
+# it), so making it direct adds no vendored crate.
+subtle = "2"
 
 # Crate-wide lint policy: forbid unsafe, surface stray pub items and stale
 # extern crates. Per-contributor clippy config is intentionally NOT used.

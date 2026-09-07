@@ -9,11 +9,18 @@
 //! the HTTP boundary use the concrete enums defined here.
 //!
 //! At the HTTP handler boundary we never `?`-propagate a raw error into a 500:
-//! [`ApiError`] maps each variant to a status code via [`ApiError::status`].
+//! [`ApiError`] maps each variant to a status code via [`ApiError::status`],
+//! and — because every route is reachable from the public internet through
+//! Traefik's `register.<domain>` router — the *body* is a fixed string per
+//! status. Server-side detail (paths, parse positions, port ranges) goes to
+//! the log via [`ApiError::into_response`], never to the caller.
 
+use std::borrow::Cow;
 use std::io;
 
 use axum::http::StatusCode;
+
+use crate::action::Action;
 
 /// Registry-layer failures: persistence IO, JSON parse, or the rathole port
 /// range being exhausted (no free port for a new tenant).
@@ -49,10 +56,6 @@ pub enum ApiError {
     /// re-register.
     #[error("unknown appliance; re-register")]
     UnknownAppliance,
-    /// The client sent a malformed/unsupported request body (e.g. an uploaded
-    /// config that failed to parse). A client mistake, not a server fault.
-    #[error("bad request: {0}")]
-    BadRequest(&'static str),
     /// A filesystem operation backing a request failed (token/tenants read).
     #[error(transparent)]
     Io(#[from] io::Error),
@@ -86,18 +89,42 @@ impl ApiError {
             ApiError::Unauthorized => StatusCode::UNAUTHORIZED,
             ApiError::HostnameForbidden => StatusCode::FORBIDDEN,
             ApiError::UnknownAppliance => StatusCode::NOT_FOUND,
-            ApiError::BadRequest(_) => StatusCode::BAD_REQUEST,
             ApiError::Io(_) | ApiError::Serde(_) => StatusCode::INTERNAL_SERVER_ERROR,
             ApiError::Registry(_) => StatusCode::SERVICE_UNAVAILABLE,
+        }
+    }
+
+    /// The response body for this error — a fixed string, never the rendered
+    /// error.
+    ///
+    /// The client-fault variants carry no server state, so their own
+    /// `#[error(...)]` text is safe and useful. The server-fault variants wrap
+    /// an `io::Error`/`serde_json::Error` whose message names the path that
+    /// failed or the byte offset that would not parse; on an
+    /// internet-reachable route that is free reconnaissance, so the caller
+    /// gets a constant and the operator gets the detail in the log.
+    #[must_use]
+    fn public_body(&self) -> Cow<'static, str> {
+        match self {
+            ApiError::Unauthorized | ApiError::HostnameForbidden | ApiError::UnknownAppliance => {
+                Cow::Owned(self.to_string())
+            }
+            ApiError::Io(_) | ApiError::Serde(_) => Cow::Borrowed("internal error"),
+            ApiError::Registry(_) => Cow::Borrowed("registry unavailable; retry later"),
         }
     }
 }
 
 impl axum::response::IntoResponse for ApiError {
     fn into_response(self) -> axum::response::Response {
-        // The rendered message is the registrar's own diagnostic text (an
-        // #[error("...")] string), never request data, so returning it in the
-        // body is safe.
-        (self.status(), self.to_string()).into_response()
+        match &self {
+            ApiError::Io(_) | ApiError::Serde(_) | ApiError::Registry(_) => {
+                tracing::error!(target: Action::Serve.target(), "request failed: {self}");
+            }
+            ApiError::Unauthorized | ApiError::HostnameForbidden | ApiError::UnknownAppliance => {
+                tracing::debug!(target: Action::Serve.target(), "request rejected: {self}");
+            }
+        }
+        (self.status(), self.public_body().into_owned()).into_response()
     }
 }

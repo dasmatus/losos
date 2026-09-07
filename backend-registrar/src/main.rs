@@ -10,10 +10,14 @@
 //!
 //! Structured runtime logging goes through `tracing` (initialised here with
 //! an env-filter subscriber) so `RUST_LOG=losos::reconcile=debug` etc. filter
-//! per phase — see [`losos_registrar::action::Action::target`].
+//! per phase — see [`losos_registrar::action::Action::target`]. Fatals go to
+//! `tracing::error!` too, not `eprintln!`: the subscriber is already up by
+//! then, and under systemd a bare stderr write lands in the journal without
+//! the level, target or timestamp every other line of this binary carries.
 
 use std::process::ExitCode;
 
+use losos_registrar::action::Action;
 use losos_registrar::opts::{parse, Mode};
 use miette::miette;
 
@@ -36,9 +40,10 @@ fn main() -> ExitCode {
         Err(e) => {
             // `e` is a bare io::Error, not Diagnostic — wrap it in a Report so
             // it prints with the same fancy handler as the paths below.
-            eprintln!(
+            tracing::error!(
+                target: Action::BuildRuntime.target(),
                 "{:?}",
-                miette!("{}: {e}", losos_registrar::action::Action::BuildRuntime),
+                miette!("{}: {e}", Action::BuildRuntime),
             );
             return ExitCode::FAILURE;
         }
@@ -55,7 +60,7 @@ async fn async_main() -> ExitCode {
             // `{:?}` on a miette::Report renders the full diagnostic + cause
             // chain via the `fancy` handler.
             Err(e) => {
-                eprintln!("{:?}", e);
+                tracing::error!(target: Action::Serve.target(), "{:?}", e);
                 ExitCode::FAILURE
             }
         },
@@ -63,20 +68,20 @@ async fn async_main() -> ExitCode {
             // announce runs forever; reaching here is an unexpected return
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => {
-                eprintln!("{} fatal", losos_registrar::action::Action::Announce);
-                eprintln!("{:?}", e);
+                tracing::error!(target: Action::Announce.target(), "fatal: {:?}", e);
                 ExitCode::FAILURE
             }
         },
         Ok(Mode::Seed(opts)) => match losos_registrar::seed::run(opts).await {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => {
-                eprintln!("{:?}", e);
+                tracing::error!(target: Action::Seed.target(), "{:?}", e);
                 ExitCode::FAILURE
             }
         },
         Err(e) => {
-            eprintln!("{:?}", e);
+            // Usage errors: no phase has begun yet.
+            tracing::error!("{:?}", e);
             ExitCode::FAILURE
         }
     }

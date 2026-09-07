@@ -2,7 +2,6 @@
 //! surface is small and fixed; every flag has a NixOS-module default so the
 //! binary is only ever invoked with the values the module generates.
 
-use std::path::PathBuf;
 use std::time::Duration;
 
 use miette::{miette, IntoDiagnostic, Result};
@@ -17,28 +16,41 @@ fn req<'a>(args: &'a [String], flag: &str) -> Result<&'a str> {
     arg(args, flag).ok_or_else(|| miette!("missing required flag {flag}"))
 }
 
+/// Parse a `<n><unit>` duration (`ms`/`s`/`m`/`h`, bare number = seconds).
+///
+/// Zero is rejected: every duration this crate parses is a loop period or a
+/// TTL, and `0` turns the reconciler into a busy-loop, the heartbeat into a
+/// flood, or the TTL into "prune every tenant on the next tick". The
+/// multiplication is checked — `parse_dur("5124095576030432h")` used to
+/// overflow `u64` seconds (a debug-build panic, a silently tiny interval in
+/// release) instead of being rejected as the nonsense it is.
 fn parse_dur(s: &str) -> Result<Duration> {
     let s = s.trim();
-    let (n, unit) = if let Some(stripped) = s.strip_suffix("ms") {
-        (stripped, "ms")
+    let (n, secs_per) = if let Some(stripped) = s.strip_suffix("ms") {
+        (stripped, None)
     } else if let Some(stripped) = s.strip_suffix('s') {
-        (stripped, "s")
+        (stripped, Some(1))
     } else if let Some(stripped) = s.strip_suffix('m') {
-        (stripped, "m")
+        (stripped, Some(60))
     } else if let Some(stripped) = s.strip_suffix('h') {
-        (stripped, "h")
+        (stripped, Some(3600))
     } else {
-        (s, "s")
+        (s, Some(1))
     };
-    let n: u64 = n.parse().map_err(|_| miette!("bad duration {s:?}"))?;
-    let d = match unit {
-        "ms" => Duration::from_millis(n),
-        "s" => Duration::from_secs(n),
-        "m" => Duration::from_secs(n * 60),
-        "h" => Duration::from_secs(n * 3600),
-        _ => unreachable!(),
-    };
-    Ok(d)
+    let n: u64 = n
+        .trim()
+        .parse()
+        .map_err(|_| miette!("bad duration {s:?}; expected <n>[ms|s|m|h]"))?;
+    if n == 0 {
+        return Err(miette!("duration {s:?} must be greater than zero"));
+    }
+    match secs_per {
+        None => Ok(Duration::from_millis(n)),
+        Some(mul) => n
+            .checked_mul(mul)
+            .map(Duration::from_secs)
+            .ok_or_else(|| miette!("duration {s:?} overflows")),
+    }
 }
 
 /// `serve` options. The registrar is the sole writer of `traefik_dir`'s
@@ -58,10 +70,6 @@ pub struct ServeOpts {
     pub tenants_file: String,
     pub reconcile_interval: Duration,
     pub heartbeat_ttl: Duration,
-    /// tmpfs directory the `POST /config` upload endpoint spills received
-    /// files into. Must be tmpfs (a `RuntimeDirectory`, not under `/persist`)
-    /// so an upload that survives a missed unlink still vanishes on reboot.
-    pub upload_dir: PathBuf,
 }
 
 /// `seed` options. Writes the declarative rathole `[server]` base (for zero
@@ -125,9 +133,6 @@ pub fn parse(args: Vec<String>) -> Result<Mode> {
                 tenants_file: req(&rest, "--tenants-file")?.to_string(),
                 reconcile_interval: parse_dur(arg(&rest, "--reconcile-interval").unwrap_or("15s"))?,
                 heartbeat_ttl: parse_dur(arg(&rest, "--heartbeat-ttl").unwrap_or("120s"))?,
-                upload_dir: PathBuf::from(
-                    arg(&rest, "--upload-dir").unwrap_or("/run/losos-registrar"),
-                ),
             }))
         }
         "announce" => Ok(Mode::Announce(AnnounceOpts {
@@ -154,9 +159,26 @@ pub fn parse(args: Vec<String>) -> Result<Mode> {
     }
 }
 
+/// Parse a `lo-hi` rathole port range, inclusive on both ends.
+///
+/// `lo` of 0 and an inverted range are rejected here rather than surfacing
+/// later: port 0 is not bindable, and `hi < lo` makes `alloc_port`'s
+/// `(lo..=hi)` sweep empty, so the first appliance to register would be told
+/// the range is exhausted with no hint that the *range itself* is malformed.
 fn parse_range(s: &str) -> Result<(u16, u16)> {
     let (lo, hi) = s
+        .trim()
         .split_once('-')
         .ok_or_else(|| miette!("bad port range {s:?}; expected lo-hi"))?;
-    Ok((lo.parse().into_diagnostic()?, hi.parse().into_diagnostic()?))
+    let lo: u16 = lo.trim().parse().into_diagnostic()?;
+    let hi: u16 = hi.trim().parse().into_diagnostic()?;
+    if lo == 0 {
+        return Err(miette!("bad port range {s:?}; port 0 is not bindable"));
+    }
+    if hi < lo {
+        return Err(miette!(
+            "bad port range {s:?}; high end is below the low end"
+        ));
+    }
+    Ok((lo, hi))
 }
