@@ -26,12 +26,12 @@ use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
-use miette::{Context, IntoDiagnostic, Result};
 use axum::body::Bytes;
 use axum::extract::{DefaultBodyLimit, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::routing::{get, post};
 use axum::{Json, Router};
+use miette::{Context, IntoDiagnostic, Result};
 use serde::{Deserialize, Serialize};
 use tokio::sync::Notify;
 
@@ -155,10 +155,7 @@ async fn register(
     if req.hostname != tenant.hostname {
         return Err(ApiError::HostnameForbidden);
     }
-    let port = st
-        .reg
-        .register(&req.appliance_id, &req.hostname)
-        .await?;
+    let port = st.reg.register(&req.appliance_id, &req.hostname).await?;
     st.notify.notify_one();
     Ok(Json(RegisterResp { rathole_port: port }))
 }
@@ -281,7 +278,11 @@ async fn authed_spill(
 /// returns regardless of whether the read succeeded.
 fn spill_and_delete(dir: &Path, body: &[u8], suffix: &str) -> std::io::Result<String> {
     std::fs::create_dir_all(dir)?;
-    let path = dir.join(format!("upload-{N}.{suffix}", N = next_upload_id(), suffix = suffix));
+    let path = dir.join(format!(
+        "upload-{N}.{suffix}",
+        N = next_upload_id(),
+        suffix = suffix
+    ));
     std::fs::write(&path, body)?;
     // Read back so the summary reflects exactly what hit tmpfs.
     let content = std::fs::read_to_string(&path);
@@ -411,10 +412,13 @@ async fn reconcile_once(st: &AppState) -> Result<()> {
             .await
             .with_context(|| format!("remove {}", traefik_path.display()))?,
     };
-    let changed_rathole =
-        write_if_changed(Path::new(&st.opts.rathole_config), &files.rathole_toml, RATHOLE_FILE_MODE)
-            .await
-            .with_context(|| format!("write {}", st.opts.rathole_config))?;
+    let changed_rathole = write_if_changed(
+        Path::new(&st.opts.rathole_config),
+        &files.rathole_toml,
+        RATHOLE_FILE_MODE,
+    )
+    .await
+    .with_context(|| format!("write {}", st.opts.rathole_config))?;
 
     // No explicit reload signal: rathole 0.5 hot-reloads via its `notify`
     // file-watcher, which re-applies the config the instant server.toml is

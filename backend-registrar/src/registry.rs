@@ -91,11 +91,7 @@ impl Registry {
     /// the existing port on re-register so Traefik/rathole don't churn.
     /// Returns the assigned port, or [`RegistryError::PortRangeExhausted`]
     /// if no port is free.
-    pub async fn register(
-        &self,
-        id: &str,
-        hostname: &str,
-    ) -> Result<u16, RegistryError> {
+    pub async fn register(&self, id: &str, hostname: &str) -> Result<u16, RegistryError> {
         let mut map = self.inner.lock().await;
         if let Some(t) = map.get_mut(id) {
             t.hostname = hostname.to_string();
