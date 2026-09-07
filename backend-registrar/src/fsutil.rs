@@ -16,11 +16,7 @@ use std::path::{Path, PathBuf};
 /// same filesystem), flushes + fsyncs it, sets the mode explicitly (beats
 /// umask), then renames over the target. The temp file uses `with_extension`
 /// so it lives next to the target — never on a different mount.
-pub(crate) async fn atomic_write(
-    path: &Path,
-    bytes: &[u8],
-    mode: u32,
-) -> std::io::Result<()> {
+pub(crate) async fn atomic_write(path: &Path, bytes: &[u8], mode: u32) -> std::io::Result<()> {
     let path: PathBuf = path.to_path_buf();
     let bytes = bytes.to_vec();
     // Ownership moves into the blocking task; no async guard crosses the await.
