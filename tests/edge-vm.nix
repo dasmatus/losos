@@ -19,26 +19,43 @@
 #   4. rathole forwards: `curl edge:127.0.0.1:<port>` reaches the appliance
 #      Nginx over the tunnel (the L4 path Traefik would use);
 #   5. POST /unregister tears the route down (curl then fails);
-#   6. the upload endpoints validate-and-discard: /config parses a Traefik YAML
-#      (primary_key "http"), /tahoe parses a tahoe.cfg INI (primary_key "node"),
-#      and the spilled tmpfs file is gone after.
+#   6. enrollment is actually closed: an unknown appliance id, a known id with
+#      the wrong token, and a blank token are each rejected.
+#
+# Step 6 replaces the old /config and /tahoe upload assertions. Those
+# endpoints were removed: they accepted an arbitrary body, wrote it to disk as
+# root, parsed it and threw it away, reporting back only what the caller had
+# just sent. They appear nowhere in the master-proxy design, and they put an
+# untrusted serde_yaml parse on the public edge for no functionality. What
+# went untested all along is the thing options.nix calls the security
+# boundary — that the registrar only ever serves whitelisted tenants — so the
+# coverage moves there.
 #
 # Traefik's on-demand TLS (certResolver le) is not exercised — LE can't issue
 # in a VM — so we test the L4 rathole tunnel + registrar directly. Traefik is
 # left running (its ACME failures are logged, not fatal).
 { pkgs }:
 
+let
+  # Shared test fixtures (store paths are identical across both nodes'
+  # evaluations, so the appliance and edge see the same token bytes).
+  #
+  # Bound once and interpolated everywhere, including into testScript. The
+  # token used to appear as a literal here and again in four Python
+  # assertions, so changing it in one place left the others silently testing
+  # the wrong value. These live in the top-level `let` rather than inside
+  # `nodes` because testScript is a sibling of `nodes`, not a child, and could
+  # not otherwise see them.
+  proxyTokenValue = "test-proxy-token-0123456789abcdef";
+  proxyToken = pkgs.writeText "losos-proxy-token" proxyTokenValue;
+  bootstrapToken = pkgs.writeText "losos-rathole-bootstrap" "test-bootstrap-789";
+  lososPkgs = import ../flake/packages.nix { inherit pkgs; };
+in
+
 pkgs.testers.nixosTest {
   name = "losos-edge-proxy";
 
   nodes =
-    let
-      # Shared test fixtures (store paths are identical across both nodes'
-      # evaluations, so the appliance and edge see the same token bytes).
-      proxyToken = pkgs.writeText "losos-proxy-token" "test-proxy-token-0123456789abcdef";
-      bootstrapToken = pkgs.writeText "losos-rathole-bootstrap" "test-bootstrap-789";
-      lososPkgs = import ../flake/packages.nix { inherit pkgs; };
-    in
     {
       edge =
         { pkgs, ... }:
@@ -201,7 +218,7 @@ pkgs.testers.nixosTest {
     #    as announce.)
     appliance.succeed("systemctl stop losos-registrar-announce.service")
     hdr_id = "Content-Type: application/json"
-    body = '{"appliance_id":"mattbox","token":"test-proxy-token-0123456789abcdef"}'
+    body = '{"appliance_id":"mattbox","token":"${proxyTokenValue}"}'
     edge.succeed(f"curl -fsS -X POST -H '{hdr_id}' -d '{body}' http://127.0.0.1:8443/unregister")
     # The reconciler prunes mattbox and rewrites server.toml without the
     # [server.services.mattbox] block; rathole's `notify` file-watcher
@@ -210,27 +227,37 @@ pkgs.testers.nixosTest {
     edge.wait_until_succeeds("! grep -F -q '[server.services.mattbox]' /etc/rathole/server.toml")
     edge.wait_until_fails("curl -fsS http://127.0.0.1:50000/")
 
-    # 6. Upload endpoints validate-and-discard. Re-register first so auth has a
-    #    known tenant, then POST a Traefik YAML and a Tahoe INI.
-    regbody = '{"appliance_id":"mattbox","token":"test-proxy-token-0123456789abcdef","hostname":"mattbox.losos.cfd"}'
-    edge.succeed(f"curl -fsS -X POST -H '{hdr_id}' -d '{regbody}' http://127.0.0.1:8443/register")
+    # 6. Enrollment is closed. options.nix calls losos.edge.tenants the
+    #    security boundary — "the registrar only ever writes Traefik routers
+    #    for ids listed here" — but every assertion above registers `mattbox`,
+    #    which IS whitelisted. These are the negative cases.
+    #
+    #    `curl -o /dev/null -w %{http_code}` rather than `-f`, so a wrong
+    #    status is reported as a status instead of a bare non-zero exit.
+    def status(body):
+        return edge.succeed(
+            "curl -s -o /dev/null -w '%{http_code}' -X POST "
+            f"-H '{hdr_id}' -d '{body}' http://127.0.0.1:8443/register"
+        ).strip()
 
-    traefik_yaml = "http:\n  routers:\n    r:\n      rule: \"Host(`x.losos.cfd`)\"\n      service: r\n"
-    out = edge.succeed(
-      f"curl -fsS -X POST --data-binary '{traefik_yaml}' -H 'x-appliance-id: mattbox' -H 'x-appliance-token: test-proxy-token-0123456789abcdef' http://127.0.0.1:8443/config"
-    )
-    print("config:", out)
-    assert '"http"' in out, f"/config did not report http primary key: {out!r}"
+    # An id that is not in tenants.json, with a well-formed token.
+    unknown = '{"appliance_id":"attacker","token":"${proxyTokenValue}","hostname":"evil.losos.cfd"}'
+    assert status(unknown) == "401", f"unknown appliance id was not rejected: {status(unknown)}"
 
-    tahoe_ini = "[node]\nnickname = mattbox\n[client]\nintroducer.furl = pb://x\n"
-    out2 = edge.succeed(
-      f"curl -fsS -X POST --data-binary '{tahoe_ini}' -H 'x-appliance-id: mattbox' -H 'x-appliance-token: test-proxy-token-0123456789abcdef' http://127.0.0.1:8443/tahoe"
-    )
-    print("tahoe:", out2)
-    assert '"node"' in out2, f"/tahoe did not report node section: {out2!r}"
+    # A whitelisted id with the wrong token.
+    wrongtok = '{"appliance_id":"mattbox","token":"wrong-token-0000000000000000000","hostname":"mattbox.losos.cfd"}'
+    assert status(wrongtok) == "401", f"wrong token was not rejected: {status(wrongtok)}"
 
-    # The spilled tmpfs upload dir is empty after each parse-and-discard.
-    leftover = edge.succeed("ls -A /run/losos-registrar/ 2>/dev/null || true").strip()
-    assert leftover == "", f"tmpfs upload dir not emptied: {leftover!r}"
+    # A blank token. This is the one that mattered: authenticate() used to
+    # compare the supplied token against the trimmed contents of the tenant's
+    # token file with no validation, so a zero-byte or whitespace-only token
+    # file authenticated anybody sending "".
+    blank = '{"appliance_id":"mattbox","token":"","hostname":"mattbox.losos.cfd"}'
+    assert status(blank) == "401", f"blank token was not rejected: {status(blank)}"
+
+    # And the whitelisted tenant still works, so the guards above are not
+    # rejecting everything indiscriminately.
+    good = '{"appliance_id":"mattbox","token":"${proxyTokenValue}","hostname":"mattbox.losos.cfd"}'
+    assert status(good) == "200", f"legitimate registration broke: {status(good)}"
   '';
 }

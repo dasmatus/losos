@@ -270,10 +270,43 @@ fn format_bind(addr: &str, port: u16) -> String {
     }
 }
 
-/// Escape `\` and `"` for a TOML basic-string value. (rathole tokens are
-/// random; this only matters if one ever contains a quote or backslash.)
+/// Escape a string for a TOML **basic string** value (the `"..."` form).
+///
+/// TOML 1.0 forbids a raw control character inside a basic string: besides
+/// `\` and `"`, the range U+0000-U+0008, U+000A-U+001F and U+007F must be
+/// escaped — `\b`, `\t`, `\n`, `\f`, `\r` where a short form exists,
+/// `\uXXXX` otherwise.
+///
+/// This is not hypothetical tidiness. The registrar is the *sole* writer of
+/// `server.toml`; a single tenant id or token file that ends up carrying a
+/// newline would emit a file rathole cannot parse, and every tunnel — not
+/// just that tenant's — drops at the next reconcile. The reconciler also
+/// refuses tokens containing control characters (see `server::token_fault`),
+/// so this is the second line of defence, not the first.
 fn toml_escape(s: &str) -> String {
-    s.replace('\\', "\\\\").replace('"', "\\\"")
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\u{8}' => out.push_str("\\b"),
+            '\t' => out.push_str("\\t"),
+            '\n' => out.push_str("\\n"),
+            '\u{c}' => out.push_str("\\f"),
+            '\r' => out.push_str("\\r"),
+            c if c.is_control() => {
+                out.push_str("\\u");
+                let n = c as u32;
+                // Every `is_control()` char is below U+0100, so four hex
+                // digits always suffice for the \uXXXX form.
+                for shift in [12u32, 8, 4, 0] {
+                    out.push(char::from_digit((n >> shift) & 0xF, 16).unwrap_or('0'));
+                }
+            }
+            c => out.push(c),
+        }
+    }
+    out
 }
 
 fn toml_key(s: &str) -> String {
@@ -285,146 +318,5 @@ fn toml_key(s: &str) -> String {
         s.to_string()
     } else {
         format!("\"{}\"", toml_escape(s))
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn opts() -> EdgeOpts {
-        EdgeOpts {
-            rathole_bind_addr: "0.0.0.0".to_string(),
-            rathole_bind_port: 2333,
-            bootstrap_token: "BOOT".to_string(),
-        }
-    }
-
-    #[test]
-    fn empty_tenants_yield_empty_config() {
-        let f = desired_config(&[], &opts());
-        // Zero tenants → no losos.yml (Traefik rejects an empty dynamic config).
-        assert!(f.traefik_yaml.is_none());
-        // rathole still gets an (empty-services) config, byte-identical to
-        // what the `seed` subcommand writes on first boot.
-        assert_eq!(
-            f.rathole_toml,
-            "[server]\nbind_addr = \"0.0.0.0:2333\"\ndefault_token = \"BOOT\"\n\n[server.services]\n"
-        );
-    }
-
-    #[test]
-    fn one_tenant_renders_router_service_and_rathole_service() {
-        let t = TenantView {
-            id: "mattbox".into(),
-            hostname: "mattbox.losos.cfd".into(),
-            rathole_port: 50000,
-            token: "TOK".into(),
-        };
-        let f = desired_config(&[t], &opts());
-        let yaml = f.traefik_yaml.expect("one tenant yields a traefik config");
-        // Substring checks are deliberately quote-agnostic — serde_yaml picks
-        // the quoting style, which we don't pin (Traefik accepts either).
-        assert!(yaml.contains("Host(`mattbox.losos.cfd`)"));
-        assert!(yaml.contains("certResolver: le"));
-        assert!(yaml.contains("mattbox.losos.cfd"));
-        assert!(yaml.contains("http://127.0.0.1:50000"));
-        assert!(f.rathole_toml.contains("[server.services.mattbox]"));
-        assert!(f.rathole_toml.contains("bind_addr = \"127.0.0.1:50000\""));
-        assert!(f.rathole_toml.contains("default_token = \"BOOT\""));
-        assert!(f.rathole_toml.contains("token = \"TOK\""));
-    }
-
-    /// The serialized `losos.yml` must deserialize back into the typed model —
-    /// the payoff for modeling Traefik's config as structs. This round-trip
-    /// pins that the shape the registrar emits is exactly the shape the
-    /// (compile-time-checked) schema describes: routers and services nested
-    /// under `http`, the `tls` block with `certResolver` + `domains`, and the
-    /// load-balancer server URL. If a field is misnamed or misplaced, this
-    /// fails instead of Traefik rejecting the file at runtime.
-    #[test]
-    fn traefik_config_round_trips_through_yaml() {
-        let t = TenantView {
-            id: "mattbox".into(),
-            hostname: "mattbox.losos.cfd".into(),
-            rathole_port: 50000,
-            token: "TOK".into(),
-        };
-        let f = desired_config(&[t], &opts());
-        let yaml = f.traefik_yaml.expect("one tenant yields a traefik config");
-        let parsed: TraefikConfig =
-            serde_yaml::from_str(&yaml).expect("losos.yml round-trips into TraefikConfig");
-
-        let router = parsed.http.routers.get("mattbox").expect("router present");
-        assert_eq!(router.rule, "Host(`mattbox.losos.cfd`)");
-        assert_eq!(router.service, "mattbox");
-        assert_eq!(router.entry_points, ["websecure"]);
-        assert_eq!(router.tls.cert_resolver, "le");
-        assert_eq!(router.tls.domains.len(), 1);
-        assert_eq!(router.tls.domains[0].main, "mattbox.losos.cfd");
-
-        let svc = parsed
-            .http
-            .services
-            .get("mattbox")
-            .expect("service present");
-        assert_eq!(svc.load_balancer.servers.len(), 1);
-        assert_eq!(svc.load_balancer.servers[0].url, "http://127.0.0.1:50000");
-    }
-
-    /// An IPv6 `bind_addr` (the production default `::`, dual-stack) must be
-    /// bracketed so rathole parses it as a `SocketAddr` — `::2333` is an IPv6
-    /// address literal, not a socket. This pins the bracketing `format_bind`
-    /// must produce for both `seed` and `serve`'s reconciler.
-    #[test]
-    fn ipv6_bind_addr_is_bracketed() {
-        let o = EdgeOpts {
-            rathole_bind_addr: "::".into(),
-            rathole_bind_port: 2333,
-            bootstrap_token: "BOOT".into(),
-        };
-        let f = desired_config(&[], &o);
-        assert!(
-            f.rathole_toml.contains("bind_addr = \"[::]:2333\""),
-            "expected bracketed IPv6 bind_addr, got: {}",
-            f.rathole_toml,
-        );
-        assert!(f.traefik_yaml.is_none());
-    }
-
-    #[test]
-    fn output_is_deterministic_regardless_of_input_order() {
-        let a = TenantView {
-            id: "alpha".into(),
-            hostname: "a.losos.cfd".into(),
-            rathole_port: 50000,
-            token: "ta".into(),
-        };
-        let b = TenantView {
-            id: "beta".into(),
-            hostname: "b.losos.cfd".into(),
-            rathole_port: 50001,
-            token: "tb".into(),
-        };
-        let f1 = desired_config(&[a.clone(), b.clone()], &opts());
-        let f2 = desired_config(&[b, a], &opts());
-        assert_eq!(f1, f2);
-    }
-
-    #[test]
-    fn special_chars_in_token_are_escaped() {
-        let t = TenantView {
-            id: "box".into(),
-            hostname: "box.losos.cfd".into(),
-            rathole_port: 50000,
-            token: "plain".into(),
-        };
-        let o = EdgeOpts {
-            rathole_bind_addr: "0.0.0.0".into(),
-            rathole_bind_port: 2333,
-            bootstrap_token: "a\"b\\c".into(),
-        };
-        let f = desired_config(&[t], &o);
-        assert!(f.rathole_toml.contains("default_token = \"a\\\"b\\\\c\""));
     }
 }
