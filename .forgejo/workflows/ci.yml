@@ -3,85 +3,93 @@ on:
     branches: [main]
   pull_request:
   schedule:
-    # ~03:57 UTC Mondays (off the :00 mark; see Justfile ethos)
+    # ~03:57 UTC Mondays (off the :00 mark).
     - cron: "57 3 * * 1"
   workflow_dispatch:
 
 # Codeberg's hosted runners hard-cap every job at 10 minutes of wall clock
 # (codeberg-medium: 4 CPU / 8 GB RAM, and the RAM quota *includes filesystem
-# writes* — https://codeberg.org/actions/meta; the -lazy variants share the
-# same caps). The installer ISO build (~300 derivations, 1.9 GiB fetched,
-# >4 GiB written to the store, then squashfs + ISO assembly) cannot fit that
-# envelope on time or on disk-as-RAM, so it is a local gate like the VM
-# tests (see CLAUDE.md):
-#   nix build .#nixosConfigurations.iso.config.system.build.isoImage
-# Each job below fits the cap on its own runner.
+# writes* — https://codeberg.org/actions/meta). The installer ISO build
+# (~300 derivations, 1.9 GiB fetched, >4 GiB written) cannot fit that
+# envelope on time or on disk-as-RAM, so it stays a local gate alongside the
+# four VM tests, which need /dev/kvm the runners do not provide:
+#   devenv shell build-iso
+#   devenv shell vm-tests
+#
+# Every job runs through devenv (devenv.nix), so CI and a developer's shell
+# execute byte-identical commands — the `lint`, `test-rust`, `check-flake`,
+# `check-eval` and `build-pkgs` scripts are defined once and invoked from
+# both. devenv is wired through the flake, so there is a single flake.lock
+# and no separate devenv.lock pinning its own nixpkgs.
+#
 # Every job repeats the nodejs install because each gets a fresh container:
 # the runner execs JS actions (actions/checkout) with `node` from inside the
 # container, and the nix image ships none — without it, checkout itself
 # fails. Not used by the repo's own code.
+#
+# NOTE ON COST: routing the build jobs through the devenv shell means each
+# one realises the dev toolchain (rustc, cargo, clippy, rustfmt,
+# rust-analyzer, nodejs, bun, the three Nix linters) before it does any
+# work. That is a real addition to jobs that previously fetched only what
+# `nix build` needed. If a job starts timing out at 10 minutes, the fix is to
+# split the dev toolchain out of the CI path rather than to raise the cap —
+# the cap is not raisable.
+
+env:
+  NIX_CONFIG: "experimental-features = nix-command flakes"
 
 jobs:
-  flake-check:
-    name: "nix: flake check (eval only)"
+  devenv-test:
+    name: "devenv test: lint + unit tests + eval gates"
     runs-on: codeberg-medium
     container:
       image: docker.io/nixos/nix:latest
     steps:
-      - run: nix --experimental-features 'nix-command flakes' profile install nixpkgs#nodejs
+      - run: nix profile install nixpkgs#nodejs
       - uses: actions/checkout@v4
-      # Evaluates every output incl. all four VM test derivations and both
-      # nixosConfigurations; builds nothing. ~90 s of eval.
-      - run: nix --experimental-features 'nix-command flakes' flake check --no-build -L
-      # flake check only forces each nixosConfiguration's *toplevel*; force
-      # the ISO image derivation too so eval-reachable regressions in the
-      # iso block / isoImage.* settings still fail CI. Build-time-only ISO
-      # failures stay local-only (see the note above).
-      - run: nix --experimental-features 'nix-command flakes' path-info --derivation .#nixosConfigurations.iso.config.system.build.isoImage
+      - run: nix profile install nixpkgs#devenv
+      # Runs enterTest from devenv.nix: rustfmt --check and clippy
+      # -D warnings on both crates, both unit-test suites, `nix flake check`,
+      # and a forced module merge of both nixosConfigurations.
+      #
+      # That last one is the gate this repo lacked entirely: `flake check`
+      # only forces each nixosConfiguration's toplevel *derivation*, so an
+      # option conflict, a type error or a failed assertion inside the module
+      # merge passed CI unnoticed.
+      #
+      # The lint half is also new. Until it existed nothing anywhere ran the
+      # two commands CLAUDE.md documents as gates — buildRustPackage's
+      # doCheck runs the test suite, not the linters — and backend-registrar
+      # had drifted to 17 rustfmt hunks plus a clippy error as a result.
+      - run: devenv test
 
-  losos-ctl:
-    name: "rust: lososd + losos-ctl build & tests"
+  packages:
+    name: "devenv: build all three flake packages"
     runs-on: codeberg-medium
     container:
       image: docker.io/nixos/nix:latest
     steps:
-      - run: nix --experimental-features 'nix-command flakes' profile install nixpkgs#nodejs
+      - run: nix profile install nixpkgs#nodejs
       - uses: actions/checkout@v4
-      # buildRustPackage with doCheck = true: the crate's full `cargo test`
-      # suite runs inside this build. Estimated ~8 of the 10 minutes from
-      # run 22's log (the compile ran uncontended there; cold store every
-      # run) — keep this job lean; add nothing else here, and re-time it
-      # before adding any heavy dependency to backend/Cargo.toml.
-      - run: nix --experimental-features 'nix-command flakes' build .#losos-ctl -L
+      - run: nix profile install nixpkgs#devenv
+      # `build-pkgs` builds losos-ctl, losos-registrar and losos-admin-ui.
+      # Both Rust crates run their full `cargo test` suite inside the build
+      # (buildRustPackage doCheck), which is the slow part: losos-ctl alone
+      # was ~8 of the 10 minutes with a cold store. Keep this job lean, and
+      # re-time it before adding any heavy dependency to either Cargo.toml.
+      - run: devenv shell build-pkgs
 
-  registrar-and-ui:
-    name: "rust: losos-registrar + admin UI"
+  iso-eval:
+    name: "nix: ISO derivation evaluates"
     runs-on: codeberg-medium
     container:
       image: docker.io/nixos/nix:latest
     steps:
-      - run: nix --experimental-features 'nix-command flakes' profile install nixpkgs#nodejs
+      - run: nix profile install nixpkgs#nodejs
       - uses: actions/checkout@v4
-      # The registrar crate's tests run inside its build too (doCheck);
-      # losos-admin-ui is a trivial runCommand copy.
-      - run: nix --experimental-features 'nix-command flakes' build .#losos-registrar .#losos-admin-ui -L
-
-  lint:
-    name: "rust: clippy + rustfmt (both crates)"
-    runs-on: codeberg-medium
-    # Deliberately NOT the nix image. buildRustPackage's doCheck runs the test
-    # suite, not the linters, so until this job existed nothing enforced the
-    # two commands CLAUDE.md documents as gates — and backend-registrar had
-    # silently drifted to 17 rustfmt hunks and a clippy error. Linting through
-    # `nix develop` would build the whole devshell (node, fish, starship) to
-    # run two cargo commands; the upstream rust image already carries clippy
-    # and rustfmt, and fits the 10-minute cap with room to spare.
-    container:
-      image: docker.io/rust:latest
-    steps:
-      - uses: actions/checkout@v4
-      - run: rustup component add clippy rustfmt
-      - run: cargo fmt --manifest-path backend/Cargo.toml --check
-      - run: cargo fmt --manifest-path backend-registrar/Cargo.toml --check
-      - run: cargo clippy --manifest-path backend/Cargo.toml --all-targets -- -D warnings
-      - run: cargo clippy --manifest-path backend-registrar/Cargo.toml --all-targets -- -D warnings
+      # Deliberately NOT through devenv: this forces one derivation and needs
+      # no toolchain, so paying for the dev shell here would buy nothing.
+      # `flake check` does not reach the ISO image derivation, so without
+      # this an eval-reachable regression in the iso block or isoImage.*
+      # would only surface in the local-only ISO build.
+      - run: nix path-info --derivation .#nixosConfigurations.iso.config.system.build.isoImage

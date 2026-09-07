@@ -26,3 +26,9 @@ ds-bundle/
 .design-sync/.cache/
 .design-sync/learnings/
 .design-sync/node_modules
+
+# direnv + devenv machine state. devenv.nix IS committed (it is the dev
+# environment definition); everything it generates at runtime is not.
+.direnv/
+.devenv/
+.devenv.flake.nix
