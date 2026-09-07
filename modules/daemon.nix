@@ -5,7 +5,8 @@
 # org.losos1 name on the system D-Bus (org.losos.Control1 interface: State /
 # Settings / Change / Apply / FactoryReset / Status), and serves a
 # Bearer-authed loopback JSON API on 127.0.0.1:<losos.admin.apiPort> —
-# the same contract as backend/schema.json (see backend/src/Daemon.hs).
+# the same contract as backend/schema.json (see backend/src/dbus.rs for the
+# bus interface and backend/src/http.rs for the HTTP surface).
 #
 # The `losos-ctl` facade CLI (same package) relays subcommands over D-Bus, so
 # nothing but the daemon ever rewrites the flake or triggers a rebuild. This
@@ -64,14 +65,34 @@ in
       };
       serviceConfig = {
         ExecStart = "${pkg}/bin/lososd";
-        Restart = "on-failure";
+        # `always`, not `on-failure`: a clean exit(0) — an unhandled shutdown
+        # path, a bus disconnect the daemon treats as terminal — would
+        # otherwise leave the box with no control plane and no way in (no SSH,
+        # no shell logins). The rathole/registrar units use `always` for the
+        # same reason.
+        Restart = "always";
         RestartSec = "2";
         # /var/lib/losos (state.json + rebuild.log) — persisted via
-        # impermanence's whole-/var bind mount.
+        # impermanence's whole-/var bind mount. 0700: state.json records the
+        # appliance's mode/settings and the rebuild log quotes the flake, and
+        # systemd's default 0755 makes both world-readable.
         StateDirectory = "losos";
-        # The daemon runs supervised nixos-rebuild transient units and tails
-        # the rebuild log; full root is the intent (it is the appliance's
-        # privileged core).
+        StateDirectoryMode = "0700";
+
+        # The daemon needs real root: it rewrites /etc/nixos and drives
+        # `nixos-rebuild`. So this is not a sandbox, it is damage limitation on
+        # the one process that terminates untrusted HTTP. The rebuild itself
+        # runs in a `systemd-run` transient unit, which PID 1 starts outside
+        # every namespace below — so none of these restrict it.
+        #
+        # ProtectHome is the load-bearing one: /home/notshared/data and
+        # /home/shared/data are the two isolated data domains, and a compromised
+        # request handler has no business reading either.
+        ProtectHome = true;
+        NoNewPrivileges = true;
+        PrivateTmp = true;
+        ProtectKernelTunables = true;
+        LockPersonality = true;
       };
     };
   };

@@ -47,8 +47,25 @@ let
   # `nodes` because testScript is a sibling of `nodes`, not a child, and could
   # not otherwise see them.
   proxyTokenValue = "test-proxy-token-0123456789abcdef";
-  proxyToken = pkgs.writeText "losos-proxy-token" proxyTokenValue;
-  bootstrapToken = pkgs.writeText "losos-rathole-bootstrap" "test-bootstrap-789";
+  bootstrapTokenValue = "test-bootstrap-789";
+
+  # Runtime paths, NOT pkgs.writeText store paths. options.nix now warns when
+  # a secret option points into /nix/store, because the store is world-
+  # readable and a token there is published to every process on the box. This
+  # test used to demonstrate exactly that anti-pattern, which both fired four
+  # warnings on every eval — training the reader to ignore them — and modelled
+  # the wrong thing for anyone copying it. tmpfiles writes the fixtures during
+  # early boot, before any unit that reads them, which is how a real appliance
+  # provisions them out of band.
+  proxyToken = "/var/secrets/losos-proxy-token";
+  bootstrapToken = "/var/secrets/losos-rathole-bootstrap";
+  secretFiles = {
+    systemd.tmpfiles.rules = [
+      "d /var/secrets 0700 root root - -"
+      "f ${proxyToken} 0600 root root - ${proxyTokenValue}"
+      "f ${bootstrapToken} 0600 root root - ${bootstrapTokenValue}"
+    ];
+  };
   lososPkgs = import ../flake/packages.nix { inherit pkgs; };
 in
 
@@ -63,6 +80,7 @@ pkgs.testers.nixosTest {
           imports = [
             ../modules/options.nix
             ../modules/edge.nix
+            secretFiles
           ];
 
           # edge.nix wires losos.edge.registrar.package = self.packages...;
@@ -109,6 +127,7 @@ pkgs.testers.nixosTest {
           imports = [
             ../modules/options.nix
             ../modules/proxy.nix
+            secretFiles
           ];
 
           losos = {

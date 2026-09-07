@@ -6,6 +6,26 @@
   ...
 }:
 
+let
+  # Type for a *runtime* path to a secret file (token, admin password).
+  #
+  # Deliberately not lib.types.path: that check is `isStringLike`, so it
+  # silently accepts a derivation — `pkgs.writeText "tok" "hunter2"` type-checks
+  # and lands the secret world-readable in /nix/store. `secretPath` still
+  # coerces a derivation to its store path (the VM tests build fixtures that
+  # way) but the final type is a plain string, and the check at the bottom of
+  # this file warns about anything under builtins.storeDir. Type plus check,
+  # because a type alone cannot see where the string points.
+  storePathLike = lib.mkOptionType {
+    name = "storePathLike";
+    description = "derivation or store path";
+    check = x: !(builtins.isString x) && lib.isStringLike x;
+    merge = lib.options.mergeEqualOption;
+  };
+  secretPath = lib.types.coercedTo storePathLike toString lib.types.str;
+
+  inNixStore = p: lib.hasPrefix builtins.storeDir (toString p);
+in
 {
   options.losos = {
     targetDrives = lib.mkOption {
@@ -75,7 +95,7 @@
     };
 
     proxy.tokenFile = lib.mkOption {
-      type = lib.types.path;
+      type = secretPath;
       default = "/var/secrets/losos-proxy-token";
       description = ''
         Per-appliance shared secret (0600, persisted via /var). Used both to
@@ -86,7 +106,7 @@
     };
 
     proxy.bootstrapTokenFile = lib.mkOption {
-      type = lib.types.path;
+      type = secretPath;
       default = "/var/secrets/losos-rathole-bootstrap";
       description = ''
         The rathole default_token (0600, persisted via /var) — the shared
@@ -163,6 +183,12 @@
     forgejo.enable = lib.mkOption {
       type = lib.types.bool;
       default = false;
+      description = ''
+        Run the Forgejo git host. Consulted in *both* deployment modes: native
+        (modules/services.nix) and container (modules/containers.nix gates the
+        container, its /forgejo/ route and its firewall entry on this). Set to
+        true by modules/defaults.nix.
+      '';
     };
 
     nextcloud.hostName = lib.mkOption {
@@ -172,9 +198,14 @@
     };
 
     nextcloud.adminpassFile = lib.mkOption {
-      type = lib.types.path;
+      type = secretPath;
       default = "/var/secrets/nextcloud-admin-pass";
-      description = "Path to the file holding the Nextcloud admin password (created on first install). Persisted via /var.";
+      description = ''
+        Path to the file holding the Nextcloud admin password. Generated with
+        mode 0600 on first boot by the losos-nextcloud-adminpass oneshot in
+        modules/nextcloud-common.nix if absent; persisted via /var. Must be a
+        runtime path: a store path is world-readable and gets warned about.
+      '';
     };
 
     nextcloud.https = lib.mkOption {
@@ -184,8 +215,10 @@
     };
 
     # Host loopback port the in-container Nextcloud publishes (port 80) on,
-    # via containers.nextcloud.forwardPorts. Nginx proxies /nextcloud to the
-    # container IP directly; this port is retained for direct local access.
+    # via containers.nextcloud.extraFlags = [ "--port=127.0.0.1:<port>:80" ]
+    # (nspawn's own publish flag, not the NixOS forwardPorts option). Nginx
+    # proxies /nextcloud to the container IP directly; this port is retained
+    # for direct local access.
     nextcloud.apachePort = lib.mkOption {
       type = lib.types.port;
       default = 11000;
@@ -218,11 +251,18 @@
 
     upgradeFlakeUri = lib.mkOption {
       type = lib.types.str;
-      default = "git+file:///etc/nixos";
-      description = "Flake URI system.autoUpgrade rebuilds from. Use a github: URI for remote auto-updates.";
+      default = "git+file:///etc/nixos#install";
+      description = ''
+        Flake URI system.autoUpgrade rebuilds from. The fragment is mandatory:
+        without one `nixos-rebuild --flake` looks for
+        nixosConfigurations.<hostname>, and this flake only exports `iso` and
+        `install` — so every unfragmented run dies with "flake does not provide
+        attribute". lososd uses the same `#install` ref (backend/src/io_backend.rs).
+        Use a github: URI (still with `#install`) for remote auto-updates.
+      '';
     };
 
-    # The Haskell control-plane package holding both executables: the `lososd`
+    # The Rust control-plane package holding both executables: the `lososd`
     # root daemon (D-Bus org.losos1 on the system bus + loopback Bearer-authed
     # admin HTTP API) and the `losos-ctl` facade CLI relaying to it. When
     # non-null the daemon runs system-wide (see modules/daemon.nix); set to
@@ -231,7 +271,7 @@
       type = lib.types.nullOr lib.types.package;
       default = null;
       description = ''
-        The losos-ctl/lososd derivation (Haskell). When non-null, lososd is
+        The losos-ctl/lososd derivation (Rust). When non-null, lososd is
         enabled as a systemd daemon and losos-ctl is installed for root.
         Leave null to run without a backend.
       '';
@@ -254,7 +294,7 @@
     };
 
     admin.tokenFile = lib.mkOption {
-      type = lib.types.path;
+      type = secretPath;
       default = "/var/secrets/losos-admin-token";
       description = ''
         Bearer token for the admin API; created randomly with mode 0600 by
@@ -277,8 +317,8 @@
       default = null;
       description = ''
         The losos-ctl derivation to draw the `losos-install` wrapper from. The
-        cabal project builds one `losos-ctl` binary containing both the control
-        backend and the `install` subcommand, so this is usually
+        Rust crate builds one `losos-ctl` binary containing both the control
+        facade and the `install` subcommand, so this is usually
         `self.packages.<system>.losos-ctl`. Set to null to ship no installer
         binary.
       '';
@@ -375,7 +415,7 @@
     };
 
     edge.bootstrapTokenFile = lib.mkOption {
-      type = lib.types.path;
+      type = secretPath;
       default = "/var/secrets/losos-rathole-bootstrap";
       description = "rathole default_token (0600). Shared by all appliance tunnels as the transport Noise bootstrap.";
     };
@@ -388,7 +428,7 @@
             description = "Public hostname Traefik routes to this appliance.";
           };
           tokenFile = lib.mkOption {
-            type = lib.types.path;
+            type = secretPath;
             description = ''
               Path to this appliance's token (0600); must match the
               appliance's losos.proxy.tokenFile. Use an agenix/runtime secret
@@ -415,4 +455,35 @@
       description = "The losos-registrar derivation (Rust). Wired by the edge module to self.packages.<system>.losos-registrar.";
     };
   };
+
+  # /nix/store is world-readable, so a secret path that resolves into it is a
+  # disclosure, not a configuration style. The `secretPath` type cannot catch
+  # this on its own (a derivation coerces to a perfectly valid string — that is
+  # exactly how `pkgs.writeText "tok" "hunter2"` used to slip through
+  # types.path), so the check lives here.
+  #
+  # A warning rather than an assertion, and deliberately with no opt-out knob:
+  # an escape hatch is a switch someone eventually sets for the wrong reason,
+  # and the point is to make the mistake visible on every rebuild, not to
+  # invent a supported way of doing it.
+  config.warnings =
+    let
+      secrets =
+        {
+          "losos.nextcloud.adminpassFile" = config.losos.nextcloud.adminpassFile;
+          "losos.admin.tokenFile" = config.losos.admin.tokenFile;
+          "losos.proxy.tokenFile" = config.losos.proxy.tokenFile;
+          "losos.proxy.bootstrapTokenFile" = config.losos.proxy.bootstrapTokenFile;
+          "losos.edge.bootstrapTokenFile" = config.losos.edge.bootstrapTokenFile;
+        }
+        // lib.mapAttrs' (
+          id: tenant: lib.nameValuePair "losos.edge.tenants.${id}.tokenFile" tenant.tokenFile
+        ) config.losos.edge.tenants;
+    in
+    lib.mapAttrsToList (name: value: ''
+      ${name} = "${value}" points into ${builtins.storeDir}, which is
+      world-readable — the secret is published to every process on the box.
+      Secrets must not enter the nix store: use a runtime path, provisioned out
+      of band or generated on first boot.
+    '') (lib.filterAttrs (_: inNixStore) secrets);
 }

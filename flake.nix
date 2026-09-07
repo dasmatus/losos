@@ -3,8 +3,30 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+
+    # Both follow nixpkgs. They are pure Nix libraries — a module set and a
+    # partitioner — so they build nothing of their own and gain nothing from a
+    # separate cache, while an unfollowed input drags a second nixpkgs (and,
+    # via impermanence, a whole home-manager) into flake.lock to be fetched
+    # and evaluated for no benefit.
     impermanence.url = "github:nix-community/impermanence";
+    impermanence.inputs.nixpkgs.follows = "nixpkgs";
     disko.url = "github:nix-community/disko";
+    disko.inputs.nixpkgs.follows = "nixpkgs";
+
+    # devenv is deliberately NOT a flake input. The dev environment lives in
+    # devenv.nix, driven by the devenv CLI against devenv.yaml (standalone
+    # mode). Wiring it through the flake instead — devenv.lib.mkShell — fails
+    # under pure evaluation: devenv needs an absolute path to the project root
+    # for its .devenv state directory, cannot derive one during a pure eval,
+    # and asserts "devenv was not able to determine the current directory".
+    # The documented escape is a devenv-root input pointing at /dev/null plus
+    # a direnv hook writing $PWD into a file, which needs --impure and would
+    # make CI impure too. Standalone mode has neither problem.
+    #
+    # The cost is a second lock: devenv.lock pins its own nixpkgs. devenv.yaml
+    # pins it to the same revision as flake.lock's nixpkgs, and the two must
+    # be bumped together — see the header of devenv.yaml.
   };
 
   outputs =
@@ -19,23 +41,49 @@
       pkgs = nixpkgs.legacyPackages.${system};
     in
     {
-      # Flake packages: losos-ctl (Haskell daemon + facade) and losos-admin-ui
-      # (static admin SPA). See flake/packages.nix.
+      # Flake packages: losos-ctl (the Rust lososd daemon + losos-ctl facade),
+      # losos-registrar (the master-proxy edge) and losos-admin-ui (the static
+      # admin SPA). See flake/packages.nix.
       packages.${system} = import ./flake/packages.nix { inherit pkgs; };
 
-      # Dev shell for the Haskell backend: fish (host config minus Zellij) +
-      # full Haskell stdlib. See flake/devshell.nix.
-      devShells.${system} = import ./flake/devshell.nix { inherit pkgs; };
+      # The dev environment is devenv.nix, entered with `devenv shell` (see
+      # devenv.yaml). This devShell exists so a bare `nix develop` still
+      # resolves for anyone without the devenv CLI, and so `nix develop -c`
+      # keeps working in scripts.
+      #
+      # It carries the toolchain ONLY — no scripts, no hooks, no shell UX.
+      # That is the point: it cannot drift from devenv.nix in any way that
+      # matters, because the things worth drifting (the lint/test/build
+      # commands, which must be byte-identical between CI and a developer)
+      # live in exactly one place, devenv.nix, and are not duplicated here.
+      devShells.${system}.default = pkgs.mkShell {
+        nativeBuildInputs = [
+          pkgs.cargo
+          pkgs.rustc
+          pkgs.clippy
+          pkgs.rustfmt
+          pkgs.rust-analyzer
+          pkgs.nodejs
+        ];
+        shellHook = ''
+          echo "Toolchain-only shell. For the scripts and pre-commit hooks:"
+          echo "  devenv shell      (or: direnv allow)"
+        '';
+      };
 
       # Both systems get `self` via specialArgs: the iso system reaches
       # self.packages.${system}.losos-ctl to wire the installer binary, the
       # install system so defaults.nix can reach
       # self.packages.${system}.{losos-ctl,losos-admin-ui}.
       nixosConfigurations = {
-        # Installer medium: a minimal NixOS live ISO that carries the disko
-        # layout and the losos auto-installer (losos-install). Boot it on the
-        # target machine and run `losos-install` — it finds every fixed disk,
-        # merges them into one LVM volume group via disko, and installs.
+        # Installer medium: a minimal NixOS live ISO carrying the losos
+        # auto-installer (losos-install). Boot it on the target machine and run
+        # `losos-install` — it finds every fixed disk, merges them into one LVM
+        # volume group via disko, and installs. The ISO imports ./modules/disko.nix
+        # only so the layout evaluates alongside losos.targetDrives; the format
+        # actually run against the target disk comes from the flake clone the
+        # installer makes at run time, not from this evaluation (see
+        # disko.enableConfig below).
         iso = nixpkgs.lib.nixosSystem {
           inherit system;
           specialArgs.self = self;
@@ -51,7 +99,7 @@
                   pkgs.cryptsetup
                 ];
                 # The installer binary (losos-install wraps `losos-ctl install`,
-                # both built from the same cabal project). installer.nix packages
+                # both built from the same Rust crate). installer.nix packages
                 # it; self.packages is in scope via specialArgs.
                 losos.installer.package = self.packages.${system}.losos-ctl;
                 # Booting the ISO auto-runs losos-install as root's login shell:
@@ -64,6 +112,14 @@
                 # cgroup limit. Level 6 + a 1 GiB cap trades a slightly
                 # larger ISO for a build that fits; boot speed is unaffected.
                 isoImage.squashfsCompression = "zstd -Xcompression-level 6 -mem 1G";
+                # The live medium must not inherit the *target's* disk layout.
+                # Left on, disko turns ./modules/disko.nix's `disko.devices`
+                # into real fileSystems."/persist", boot.initrd.luks.devices
+                # .persist and swapDevices entries in this ISO's own config —
+                # so stage 1 waits forever for a LUKS volume that exists only
+                # on the machine being installed. tests/install.nix sets the
+                # same guard for the same reason.
+                disko.enableConfig = false;
                 # No flake source is baked into the ISO: losos-install clones
                 # LOSOS_FLAKE_URL (default: the public codeberg repo) into a
                 # writable work dir at run time, drops in
