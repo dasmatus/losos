@@ -199,11 +199,21 @@
       #                         design-system component in headless chromium
       #                         (playwright-driver.browsers), asserting computed
       #                         styles from tokens.css (tests/design-system.nix).
+      #   losos-front-vhost   — boots two appliance VMs and asserts the Nginx
+      #                         front door: the admin surface is LAN-only (403
+      #                         from loopback and from the container subnet),
+      #                         /nextcloud + /forgejo/ are not, and the security
+      #                         headers land (tests/front-vhost.nix).
+      #   losos-impermanence  — boots a tmpfs-root VM with a real /persist,
+      #                         reboots it, and asserts that exactly the
+      #                         persisted set survives (tests/impermanence.nix).
       checks.${system} = {
         losos-install = import ./tests/install.nix { inherit pkgs disko; };
         losos-admin-daemon = import ./tests/admin-vm.nix { inherit pkgs; };
         losos-edge-proxy = import ./tests/edge-vm.nix { inherit pkgs; };
         losos-ds-render = import ./tests/design-system.nix { inherit pkgs; };
+        losos-front-vhost = import ./tests/front-vhost.nix { inherit pkgs; };
+        losos-impermanence = import ./tests/impermanence.nix { inherit pkgs impermanence; };
       };
     };
 }
