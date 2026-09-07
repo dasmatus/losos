@@ -13,3 +13,14 @@
 inputs:
   nixpkgs:
     url: github:NixOS/nixpkgs/f13ff45afd1bb73e640eaa08a7066dbed07e3238
+
+  # Required explicitly by devenv for the git-hooks.hooks options in
+  # devenv.nix. Follows nixpkgs so the hooks lint with the same rustc and the
+  # same nixfmt/deadnix/statix that everything else in this repo uses — an
+  # unfollowed git-hooks would pull a second nixpkgs and could, for instance,
+  # format Nix to a different nixfmt version than `devenv shell fmt` does.
+  git-hooks:
+    url: github:cachix/git-hooks.nix
+    inputs:
+      nixpkgs:
+        follows: nixpkgs
