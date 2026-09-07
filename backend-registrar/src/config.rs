@@ -363,7 +363,11 @@ mod tests {
         assert_eq!(router.tls.domains.len(), 1);
         assert_eq!(router.tls.domains[0].main, "mattbox.losos.cfd");
 
-        let svc = parsed.http.services.get("mattbox").expect("service present");
+        let svc = parsed
+            .http
+            .services
+            .get("mattbox")
+            .expect("service present");
         assert_eq!(svc.load_balancer.servers.len(), 1);
         assert_eq!(svc.load_balancer.servers[0].url, "http://127.0.0.1:50000");
     }
@@ -390,8 +394,18 @@ mod tests {
 
     #[test]
     fn output_is_deterministic_regardless_of_input_order() {
-        let a = TenantView { id: "alpha".into(), hostname: "a.losos.cfd".into(), rathole_port: 50000, token: "ta".into() };
-        let b = TenantView { id: "beta".into(), hostname: "b.losos.cfd".into(), rathole_port: 50001, token: "tb".into() };
+        let a = TenantView {
+            id: "alpha".into(),
+            hostname: "a.losos.cfd".into(),
+            rathole_port: 50000,
+            token: "ta".into(),
+        };
+        let b = TenantView {
+            id: "beta".into(),
+            hostname: "b.losos.cfd".into(),
+            rathole_port: 50001,
+            token: "tb".into(),
+        };
         let f1 = desired_config(&[a.clone(), b.clone()], &opts());
         let f2 = desired_config(&[b, a], &opts());
         assert_eq!(f1, f2);

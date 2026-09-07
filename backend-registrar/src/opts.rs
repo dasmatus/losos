@@ -5,7 +5,7 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
-use miette::{IntoDiagnostic, Result, miette};
+use miette::{miette, IntoDiagnostic, Result};
 
 fn arg<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
     args.iter()
@@ -103,11 +103,13 @@ pub fn parse(args: Vec<String>) -> Result<Mode> {
     let rest: Vec<String> = rest.to_vec();
     match mode.as_str() {
         "serve" => {
-            let range = arg(&rest, "--port-range")
-                .ok_or_else(|| miette!("missing --port-range"))?;
+            let range =
+                arg(&rest, "--port-range").ok_or_else(|| miette!("missing --port-range"))?;
             let (lo, hi) = parse_range(range)?;
             Ok(Mode::Serve(ServeOpts {
-                listen: arg(&rest, "--listen").unwrap_or("127.0.0.1:8443").to_string(),
+                listen: arg(&rest, "--listen")
+                    .unwrap_or("127.0.0.1:8443")
+                    .to_string(),
                 registry_path: req(&rest, "--registry")?.to_string(),
                 traefik_dir: req(&rest, "--traefik-dir")?.to_string(),
                 rathole_config: req(&rest, "--rathole-config")?.to_string(),
@@ -121,9 +123,7 @@ pub fn parse(args: Vec<String>) -> Result<Mode> {
                 port_range: (lo, hi),
                 bootstrap_token_file: req(&rest, "--bootstrap-token-file")?.to_string(),
                 tenants_file: req(&rest, "--tenants-file")?.to_string(),
-                reconcile_interval: parse_dur(
-                    arg(&rest, "--reconcile-interval").unwrap_or("15s"),
-                )?,
+                reconcile_interval: parse_dur(arg(&rest, "--reconcile-interval").unwrap_or("15s"))?,
                 heartbeat_ttl: parse_dur(arg(&rest, "--heartbeat-ttl").unwrap_or("120s"))?,
                 upload_dir: PathBuf::from(
                     arg(&rest, "--upload-dir").unwrap_or("/run/losos-registrar"),
@@ -135,9 +135,7 @@ pub fn parse(args: Vec<String>) -> Result<Mode> {
             appliance_id: req(&rest, "--appliance-id")?.to_string(),
             hostname: req(&rest, "--hostname")?.to_string(),
             token_file: req(&rest, "--token-file")?.to_string(),
-            heartbeat_interval: parse_dur(
-                arg(&rest, "--heartbeat-interval").unwrap_or("30s"),
-            )?,
+            heartbeat_interval: parse_dur(arg(&rest, "--heartbeat-interval").unwrap_or("30s"))?,
         })),
         "seed" => Ok(Mode::Seed(SeedOpts {
             rathole_config: req(&rest, "--rathole-config")?.to_string(),
@@ -150,11 +148,9 @@ pub fn parse(args: Vec<String>) -> Result<Mode> {
                 .map_err(|_| miette!("bad --rathole-bind-port"))?,
             bootstrap_token_file: req(&rest, "--bootstrap-token-file")?.to_string(),
         })),
-        other => {
-            return Err(miette!(
-                "unknown subcommand {other:?}; expected serve|announce|seed"
-            ))
-        }
+        other => Err(miette!(
+            "unknown subcommand {other:?}; expected serve|announce|seed"
+        )),
     }
 }
 

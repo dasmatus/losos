@@ -109,7 +109,11 @@ pub async fn run(opts: AnnounceOpts) -> Result<()> {
             }
         }
 
-        let sleep = if registered { opts.heartbeat_interval } else { backoff };
+        let sleep = if registered {
+            opts.heartbeat_interval
+        } else {
+            backoff
+        };
         tokio::time::sleep(sleep).await;
         if !registered {
             // capped exponential backoff for the register retry

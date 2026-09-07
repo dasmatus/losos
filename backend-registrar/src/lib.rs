@@ -22,6 +22,7 @@
 
 #![warn(unreachable_pub)]
 
+pub mod action;
 pub mod announce;
 pub mod config;
 pub mod error;
@@ -30,7 +31,6 @@ pub mod opts;
 pub mod registry;
 pub mod seed;
 pub mod server;
-pub mod action;
 pub use config::{desired_config, EdgeOpts, Files, TenantView};
 pub use error::{ApiError, RegistryError};
 pub use registry::{Registry, Tenant};
