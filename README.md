@@ -44,7 +44,7 @@ taking the machine — see [docs/security-model.md](docs/security-model.md).
 devenv shell        # or: direnv allow
 ```
 
-Everything is a named script, so CI and your shell run identical commands:
+Everything is a named script:
 
 | | |
 |---|---|
@@ -56,6 +56,13 @@ Everything is a named script, so CI and your shell run identical commands:
 
 `nix develop` still works and gives a toolchain-only shell for anyone without
 the devenv CLI.
+
+CI does **not** go through devenv, and spells the same commands out directly.
+It was tried: every job first realises the whole dev toolchain, and both
+devenv jobs hit Codeberg's 10-minute cap (9m31s and 10m05s) while the one
+non-devenv job took 1m32s. The duplication between `devenv.nix` and
+`.forgejo/workflows/ci.yml` is the price of that cap, and the two have to be
+kept in step by hand.
 
 Two lock files exist: `flake.lock` pins the nixpkgs that *builds* the
 appliance, `devenv.lock` the one that *lints and tests* it. They must be
