@@ -11,7 +11,7 @@
 
 <body>
 
-	<header class="topbar">
+	<header class="topbar" id="topbar">
 		<a class="brand" href="/">losos</a>
 		<nav class="topnav" aria-label="Services">
 			<a href="/nextcloud">Cloud</a>
@@ -21,7 +21,7 @@
 		</nav>
 	</header>
 
-	<div class="layout">
+	<div class="layout" id="layout">
 
 		<aside class="sidebar">
 			<nav class="side-list" aria-label="Settings sections">
@@ -36,6 +36,17 @@
 		</aside>
 
 		<main class="content">
+
+			<noscript>
+				<div class="hint-card">
+					<p>
+						This page needs JavaScript. It reads the settings from the
+						appliance daemon over the admin API and writes them back the
+						same way. Without JavaScript the form stays empty and Apply
+						does nothing.
+					</p>
+				</div>
+			</noscript>
 
 			<div class="content-header">
 				<h1 id="section-title">Sharing</h1>
@@ -108,9 +119,16 @@
 				<div class="group">
 					<div class="row">
 						<label class="row-label" for="in-hostname">Hostname</label>
+						<!-- RFC 1123 label: letters, digits and inner hyphens, 1-63
+						     characters. This becomes networking.hostName, the mDNS
+						     name and the URLs handed to Nextcloud and Forgejo, and
+						     the box has no SSH to fix a bad one from. -->
 						<input type="text" id="in-hostname" autocomplete="off"
-							spellcheck="false" placeholder="mattbox" maxlength="63">
+							spellcheck="false" placeholder="mattbox" maxlength="63"
+							pattern="[A-Za-z0-9]([A-Za-z0-9\-]{0,61}[A-Za-z0-9])?"
+							required aria-describedby="hostname-error">
 					</div>
+					<p class="field-error" id="hostname-error" role="alert" hidden></p>
 					<div class="row">
 						<label class="switch-row">
 							<span class="row-label">Serve Nextcloud over HTTPS</span>
@@ -173,8 +191,11 @@
 							<span class="danger-sub">Restore all appliance settings to
 								factory defaults and rebuild.</span>
 						</div>
-						<button type="button" id="factory-reset-btn" class="btn-danger">Factory
-							reset&hellip;</button>
+						<!-- Starts disabled: it must not be reachable before the
+						     settings load, which is also what keeps it out of reach
+						     behind the token overlay. -->
+						<button type="button" id="factory-reset-btn" class="btn-danger"
+							disabled>Factory reset&hellip;</button>
 					</div>
 				</div>
 				<p class="group-hint">
@@ -186,10 +207,13 @@
 		</main>
 	</div>
 
-	<!-- Token unlock overlay -->
-	<div id="auth-overlay" class="auth-overlay" hidden>
+	<!-- Token unlock overlay. role="dialog" + aria-modal, with the page behind
+	     it marked inert by app.js: the scrim alone is only a visual barrier,
+	     and one Tab used to land straight in the form behind it. -->
+	<div id="auth-overlay" class="auth-overlay" role="dialog" aria-modal="true"
+		aria-labelledby="auth-title" hidden>
 		<form id="auth-form" class="auth-card">
-			<h2>Admin token</h2>
+			<h2 id="auth-title">Admin token</h2>
 			<p class="auth-hint">
 				Paste the admin token from <code>/var/secrets/losos-admin-token</code> on the appliance.
 			</p>

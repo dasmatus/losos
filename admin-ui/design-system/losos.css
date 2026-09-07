@@ -139,10 +139,13 @@ code {
   color: var(--ls-accent);
   font-weight: 600;
 }
-.side-item--danger { color: var(--ls-danger); }
+/* --ls-danger-deep, not --ls-danger, wherever the red is *text*: #e5534b is
+ * 3.7:1 on --ls-surface, under the 4.5:1 WCAG AA needs for body text.
+ * --ls-danger keeps the borders and fills, where 3:1 is the right bar. */
+.side-item--danger { color: var(--ls-danger-deep); }
 .side-item--danger.is-active {
   background: color-mix(in srgb, var(--ls-danger) 10%, transparent);
-  color: var(--ls-danger);
+  color: var(--ls-danger-deep);
 }
 
 .content {
@@ -293,6 +296,16 @@ code {
   font-size: var(--ls-fs-sm);
 }
 
+/* Validation message for the field in the row above it, inside the same
+ * .group. Sits on --ls-surface, so it takes the deep red like every other
+ * red that is text. */
+.field-error {
+  margin: 0;
+  padding: 0 14px 10px;
+  color: var(--ls-danger-deep);
+  font-size: var(--ls-fs-sm);
+}
+
 .danger-text { display: flex; flex-direction: column; gap: 2px; }
 .danger-sub { color: var(--ls-ink-muted); font-size: var(--ls-fs-sm); }
 
@@ -355,6 +368,11 @@ select {
 }
 input[type="text"] { width: 180px; }
 input[type="number"] { width: 100px; }
+/* Must follow the input block above to win on source order. The border is
+ * the redundant half of the signal — .field-error carries the words, and
+ * aria-invalid carries it to a screen reader. */
+input[aria-invalid="true"] { border-color: var(--ls-danger); }
+
 input:focus, select:focus {
   outline: 2px solid var(--ls-accent);
   outline-offset: 0;
@@ -388,7 +406,7 @@ select {
 .btn-danger {
   font: inherit;
   font-weight: 600;
-  color: var(--ls-danger);
+  color: var(--ls-danger-deep);   /* text: needs 4.5:1, --ls-danger is 3.7:1 */
   background: var(--ls-surface);
   border: 1px solid color-mix(in srgb, var(--ls-danger) 60%, transparent);
   border-radius: var(--ls-radius-md);
@@ -549,7 +567,7 @@ select {
   margin-bottom: 4px;
 }
 .auth-card input { width: 100%; }
-.auth-error { color: var(--ls-danger); font-size: var(--ls-fs-sm); margin: 8px 0 0; }
+.auth-error { color: var(--ls-danger-deep); font-size: var(--ls-fs-sm); margin: 8px 0 0; }
 
 /* ── Narrow screens ───────────────────────────────────────────────── */
 @media (max-width: 720px) {
