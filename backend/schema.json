@@ -6,149 +6,324 @@
   "$defs": {
     "mode": {
       "type": "string",
-      "enum": ["local", "mesh"],
+      "enum": [
+        "local",
+        "mesh"
+      ],
       "description": "local = private Nextcloud (sharingMyStorage=false); mesh = contributes storage to the Tahoe grid (sharingMyStorage=true)."
     },
     "rebuildState": {
       "type": "string",
-      "enum": ["idle", "building", "done", "failed"],
+      "enum": [
+        "idle",
+        "building",
+        "done",
+        "failed"
+      ],
       "description": "Lifecycle of the last/current nixos-rebuild triggered by `change`."
     },
     "rebuild": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["job", "state"],
+      "required": [
+        "job",
+        "state"
+      ],
       "properties": {
-        "job": { "type": "string", "description": "Opaque id returned by `change`; referenced by the detached rebuild watcher." },
-        "state": { "$ref": "#/$defs/rebuildState" },
-        "progress": { "type": "integer", "minimum": 0, "maximum": 100, "description": "0 while building (coarse); 100 on success. Optional on the persisted state file (defaults to 0); always present in the status wire response." },
-        "message": { "type": "string", "description": "Human-readable status; on failure includes the last nixos-rebuild log line. Optional on the persisted state file (defaults to empty); always present in the status wire response." }
+        "job": {
+          "type": "string",
+          "description": "Opaque id returned by `change`; referenced by the detached rebuild watcher."
+        },
+        "state": {
+          "$ref": "#/$defs/rebuildState"
+        },
+        "progress": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "0 while building (coarse); 100 on success. Optional on the persisted state file (defaults to 0); always present in the status wire response."
+        },
+        "message": {
+          "type": "string",
+          "description": "Human-readable status; on failure includes the last nixos-rebuild log line. Optional on the persisted state file (defaults to empty); always present in the status wire response."
+        }
       }
     },
     "stateResponse": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["mode", "sharing"],
+      "required": [
+        "mode",
+        "sharing"
+      ],
       "properties": {
-        "mode": { "$ref": "#/$defs/mode" },
-        "sharing": { "type": "boolean", "description": "True iff mode==mesh (mirrors losos.sharingMyStorage)." }
+        "mode": {
+          "$ref": "#/$defs/mode"
+        },
+        "sharing": {
+          "type": "boolean",
+          "description": "True iff mode==mesh (mirrors losos.sharingMyStorage)."
+        }
       }
     },
     "settingsResponse": {
       "type": "object",
       "additionalProperties": false,
       "description": "The user-tunable losos.* options parsed out of modules/overrides.nix (line-based). Returned by `settings`; consumed by the admin UI for first paint. Legacy overrides using `losos.aio.apachePort` or mode \"aio\" are accepted on the read side and reported back in the new spelling.",
-      "required": ["sharingMyStorage", "nextcloudMode", "forgejoMode", "hostName", "https", "gpuEnable", "apachePort", "proxyEnable"],
+      "required": [
+        "sharingMyStorage",
+        "nextcloudMode",
+        "forgejoMode",
+        "hostName",
+        "https",
+        "gpuEnable",
+        "apachePort",
+        "proxyEnable"
+      ],
       "properties": {
-        "sharingMyStorage": { "type": "boolean" },
-        "nextcloudMode": { "type": "string", "enum": ["native", "container"] },
-        "forgejoMode": { "type": "string", "enum": ["native", "container"] },
-        "hostName": { "type": "string", "description": "System hostname; Avahi publishes <hostName>.local, and Nginx routes /<service> paths on it." },
-        "https": { "type": "boolean" },
-        "gpuEnable": { "type": "boolean" },
-        "apachePort": { "type": "integer", "minimum": 1024, "maximum": 65535, "description": "losos.nextcloud.apachePort." },
-        "proxyEnable": { "type": "boolean", "description": "losos.proxy.enable — expose this appliance through the master proxy (rathole tunnel to the edge Traefik)." }
+        "sharingMyStorage": {
+          "type": "boolean"
+        },
+        "nextcloudMode": {
+          "type": "string",
+          "enum": [
+            "native",
+            "container"
+          ]
+        },
+        "forgejoMode": {
+          "type": "string",
+          "enum": [
+            "native",
+            "container"
+          ]
+        },
+        "hostName": {
+          "type": "string",
+          "description": "System hostname; Avahi publishes <hostName>.local, and Nginx routes /<service> paths on it."
+        },
+        "https": {
+          "type": "boolean"
+        },
+        "gpuEnable": {
+          "type": "boolean"
+        },
+        "apachePort": {
+          "type": "integer",
+          "minimum": 1024,
+          "maximum": 65535,
+          "description": "losos.nextcloud.apachePort."
+        },
+        "proxyEnable": {
+          "type": "boolean",
+          "description": "losos.proxy.enable \u2014 expose this appliance through the master proxy (rathole tunnel to the edge Traefik)."
+        }
       }
     },
     "changeResponse": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["job"],
+      "required": [
+        "job"
+      ],
       "properties": {
-        "job": { "type": "string" }
+        "job": {
+          "type": "string"
+        }
       }
     },
     "factoryResetResponse": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["job", "reset"],
+      "required": [
+        "job",
+        "reset"
+      ],
       "properties": {
-        "job": { "type": "string", "description": "Opaque id of the rebuild triggered to apply the reset." },
-        "reset": { "type": "boolean", "description": "Always true; distinguishes the factory-reset ack from a change ack." }
+        "job": {
+          "type": "string",
+          "description": "Opaque id of the rebuild triggered to apply the reset."
+        },
+        "reset": {
+          "type": "boolean",
+          "description": "Always true; distinguishes the factory-reset ack from a change ack."
+        }
       }
     },
     "statusResponse": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["state", "progress", "message"],
+      "required": [
+        "state",
+        "progress",
+        "message"
+      ],
       "properties": {
-        "state": { "$ref": "#/$defs/rebuildState" },
-        "progress": { "type": "integer", "minimum": 0, "maximum": 100 },
-        "message": { "type": "string" }
+        "state": {
+          "$ref": "#/$defs/rebuildState"
+        },
+        "progress": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "message": {
+          "type": "string"
+        },
+        "job": {
+          "type": "string",
+          "description": "Identifies which rebuild this document describes, so a client can tell its own rebuild's outcome from a previous one's. Absent only when state is \"idle\", where there is no job."
+        }
       }
     },
     "stateFile": {
       "type": "object",
       "description": "The persisted state at $LOSOS_STATE_DIR/state.json. Internal to the backend; not a wire response.",
       "additionalProperties": false,
-      "required": ["mode", "sharing"],
+      "required": [
+        "mode",
+        "sharing"
+      ],
       "properties": {
-        "mode": { "$ref": "#/$defs/mode" },
-        "sharing": { "type": "boolean" },
-        "rebuild": { "oneOf": [ { "$ref": "#/$defs/rebuild" }, { "type": "null" } ] }
+        "mode": {
+          "$ref": "#/$defs/mode"
+        },
+        "sharing": {
+          "type": "boolean"
+        },
+        "rebuild": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/rebuild"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
       }
     }
   },
-
   "commands": {
     "state": {
-      "description": "`losos-ctl state --json` — current mode + sharing flag. stdout: stateResponse.",
-      "stdout": { "$ref": "#/$defs/stateResponse" }
+      "description": "`losos-ctl state --json` \u2014 current mode + sharing flag. stdout: stateResponse.",
+      "stdout": {
+        "$ref": "#/$defs/stateResponse"
+      }
     },
     "change": {
-      "description": "`losos-ctl change --mode <local|mesh>` — rewrite the flake's sharingMyStorage line, mark a rebuild as building, spawn a detached nixos-rebuild. Returns immediately. stdout: changeResponse. Non-zero exit + stderr on invalid mode.",
-      "stdout": { "$ref": "#/$defs/changeResponse" }
+      "description": "`losos-ctl change --mode <local|mesh>` \u2014 rewrite the flake's sharingMyStorage line, mark a rebuild as building, spawn a detached nixos-rebuild. Returns immediately. stdout: changeResponse. Non-zero exit + stderr on invalid mode.",
+      "stdout": {
+        "$ref": "#/$defs/changeResponse"
+      }
     },
     "status": {
-      "description": "`losos-ctl status --json` — rebuild progress, polled by the admin UI ~every 2s. stdout: statusResponse.",
-      "stdout": { "$ref": "#/$defs/statusResponse" }
+      "description": "`losos-ctl status --json` \u2014 rebuild progress, polled by the admin UI ~every 2s. stdout: statusResponse.",
+      "stdout": {
+        "$ref": "#/$defs/statusResponse"
+      }
     },
     "settings": {
-      "description": "`losos-ctl settings --json` — the user-tunable losos.* options parsed from modules/overrides.nix. stdout: settingsResponse.",
-      "stdout": { "$ref": "#/$defs/settingsResponse" }
+      "description": "`losos-ctl settings --json` \u2014 the user-tunable losos.* options parsed from modules/overrides.nix. stdout: settingsResponse.",
+      "stdout": {
+        "$ref": "#/$defs/settingsResponse"
+      }
     },
     "apply": {
-      "description": "`losos-ctl apply` — read Nix code (a full modules/overrides.nix body) from stdin, validate it references losos.* and is a module body, atomically overwrite modules/overrides.nix, mark a rebuild as building, start a supervised nixos-rebuild switch (systemd transient unit), and emit the job id on stdout. The admin UI generates the Nix code from the form and posts it. Non-zero exit + stderr on validation failure.",
-      "stdin": { "type": "string", "description": "The full overrides.nix body the admin app generated." },
-      "stdout": { "$ref": "#/$defs/changeResponse" }
+      "description": "`losos-ctl apply` \u2014 read Nix code (a full modules/overrides.nix body) from stdin, validate it references losos.* and is a module body, atomically overwrite modules/overrides.nix, mark a rebuild as building, start a supervised nixos-rebuild switch (systemd transient unit), and emit the job id on stdout. The admin UI generates the Nix code from the form and posts it. Non-zero exit + stderr on validation failure.",
+      "stdin": {
+        "type": "string",
+        "description": "The full overrides.nix body the admin app generated."
+      },
+      "stdout": {
+        "$ref": "#/$defs/changeResponse"
+      }
     },
     "factory-reset": {
-      "description": "`losos-ctl factory-reset` — soft factory reset: atomically restore modules/overrides.nix to the committed default body, reset the persisted state to defaultState (Local, sharing off), mark a rebuild as building, start a supervised nixos-rebuild, and emit the job id. Non-destructive: it only touches lososd's own state + overrides.nix. The destructive tier (wipe disks + reinstall) is the installer ISO, which auto-runs `losos-install` as root's login shell.",
-      "stdout": { "$ref": "#/$defs/factoryResetResponse" }
+      "description": "`losos-ctl factory-reset` \u2014 soft factory reset: atomically restore modules/overrides.nix to the committed default body, reset the persisted state to defaultState (Local, sharing off), mark a rebuild as building, start a supervised nixos-rebuild, and emit the job id. Non-destructive: it only touches lososd's own state + overrides.nix. The destructive tier (wipe disks + reinstall) is the installer ISO, which auto-runs `losos-install` as root's login shell.",
+      "stdout": {
+        "$ref": "#/$defs/factoryResetResponse"
+      }
     },
     "install": {
-      "description": "`losos-ctl install [flags]` — the losos auto-installer (was losos-install.sh). Detects fixed disks, merges them into one LVM volume group via disko, runs nixos-install, and lays the flake at /persist/etc/nixos. Flags: --tpm, --drives A,/dev/b,..., --no-install, --disko-script PATH, --emit-target FILE. Drives auto-detection uses `lsblk --json`. Non-zero exit + stderr on failure (no candidate disks, disko/nixos-install failure).",
+      "description": "`losos-ctl install [flags]` \u2014 the losos auto-installer (was losos-install.sh). Detects fixed disks, merges them into one LVM volume group via disko, runs nixos-install, and lays the flake at /persist/etc/nixos. Flags: --tpm, --drives A,/dev/b,..., --no-install, --disko-script PATH, --emit-target FILE. Drives auto-detection uses `lsblk --json`. Non-zero exit + stderr on failure (no candidate disks, disko/nixos-install failure).",
       "args": {
-        "flags": { "type": "string", "description": "--tpm | --drives LIST | --no-install | --disko-script PATH | --emit-target FILE" }
+        "flags": {
+          "type": "string",
+          "description": "--tpm | --drives LIST | --no-install | --disko-script PATH | --emit-target FILE"
+        }
       }
     }
   },
-
   "http": {
     "note": "lososd also serves a Bearer-authed JSON API on 127.0.0.1:$LOSOS_ADMIN_PORT (default 8082); Nginx proxies /api/* to it for the admin UI. Auth header: `Authorization: Bearer <token>`. The scheme is case-insensitive per RFC 7235, and lososd compares the token in constant time. The token lives at $LOSOS_ADMIN_TOKEN_FILE (default /var/secrets/losos-admin-token), minted on first start as 64 lowercase hex characters, mode 0600. lososd discards and re-mints any file that does not hold exactly that, so a truncated or hand-edited token never becomes the shared secret. Responses are the same documents as the facade wire; errors are `{\"error\": \"...\"}` with the matching HTTP status. A 500 carries a fixed message and lososd logs the detail to the journal, because the context chain names filesystem paths.",
     "routes": {
-      "GET /api/health":        { "auth": false, "out": "{\"ok\":true}" },
-      "GET /api/state":         { "auth": true, "out": "stateResponse" },
-      "GET /api/settings":      { "auth": true, "out": "settingsResponse" },
-      "GET /api/status":        { "auth": true, "out": "statusResponse" },
-      "POST /api/change":       { "auth": true, "in": "{\"mode\":\"local|mesh\"}", "out": "changeResponse" },
-      "POST /api/apply":        { "auth": true, "in": "raw UTF-8 overrides.nix body", "out": "changeResponse" },
-      "POST /api/factory-reset":{ "auth": true, "out": "factoryResetResponse" }
+      "GET /api/health": {
+        "auth": false,
+        "out": "{\"ok\":true}"
+      },
+      "GET /api/state": {
+        "auth": true,
+        "out": "stateResponse"
+      },
+      "GET /api/settings": {
+        "auth": true,
+        "out": "settingsResponse"
+      },
+      "GET /api/status": {
+        "auth": true,
+        "out": "statusResponse"
+      },
+      "POST /api/change": {
+        "auth": true,
+        "in": "{\"mode\":\"local|mesh\"}",
+        "out": "changeResponse"
+      },
+      "POST /api/apply": {
+        "auth": true,
+        "in": "raw UTF-8 overrides.nix body",
+        "out": "changeResponse"
+      },
+      "POST /api/factory-reset": {
+        "auth": true,
+        "out": "factoryResetResponse"
+      }
     }
   },
-
   "dbus": {
     "name": "org.losos1",
     "path": "/org/losos1",
     "interface": "org.losos.Control1",
-    "note": "lososd (systemd system service, root) owns the well-known name. Authorization: shipped system-bus policy — root always, group 'losos' otherwise. Every method returns a single string 's' carrying the JSON document of the same-named facade subcommand; Change/Apply additionally take their payload as the single input string. Error replies use error name org.losos1.Error.Failed with the message as the first body string.",
+    "note": "lososd (systemd system service, root) owns the well-known name. Authorization: shipped system-bus policy \u2014 root always, group 'losos' otherwise. Every method returns a single string 's' carrying the JSON document of the same-named facade subcommand; Change/Apply additionally take their payload as the single input string. Error replies use error name org.losos1.Error.Failed with the message as the first body string.",
     "methods": {
-      "State":        { "in": [], "out": "s (stateResponse)" },
-      "Settings":     { "in": [], "out": "s (settingsResponse)" },
-      "Change":       { "in": ["s (mode)"], "out": "s (changeResponse)" },
-      "Apply":        { "in": ["s (overrides.nix body)"], "out": "s (changeResponse)" },
-      "FactoryReset": { "in": [], "out": "s (factoryResetResponse)" },
-      "Status":       { "in": [], "out": "s (statusResponse)" }
+      "State": {
+        "in": [],
+        "out": "s (stateResponse)"
+      },
+      "Settings": {
+        "in": [],
+        "out": "s (settingsResponse)"
+      },
+      "Change": {
+        "in": [
+          "s (mode)"
+        ],
+        "out": "s (changeResponse)"
+      },
+      "Apply": {
+        "in": [
+          "s (overrides.nix body)"
+        ],
+        "out": "s (changeResponse)"
+      },
+      "FactoryReset": {
+        "in": [],
+        "out": "s (factoryResetResponse)"
+      },
+      "Status": {
+        "in": [],
+        "out": "s (statusResponse)"
+      }
     }
   }
 }

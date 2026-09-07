@@ -117,6 +117,14 @@ pub fn cmd_factory_reset<L: Losos>(l: &mut L) -> anyhow::Result<Value> {
 /// tail when there is one, which is what makes the UI's progress line move.
 /// `progress` is never derived from the log — it stays 0 until the unit
 /// reaches a terminal state.
+/// `job` identifies which rebuild the document describes, so a client can tell
+/// its own rebuild's outcome from a previous one's. Without it, a status poll
+/// that lands before the daemon has recorded the new job reads the *previous*
+/// job's terminal state and the UI declares "complete" on a rebuild that is
+/// still starting. `cmd_apply` happens to persist `building` before it returns
+/// the ack, which closes that window today — but that ordering is an
+/// implementation detail of one call path, not a promise, and the admin UI
+/// should not have to depend on it. Absent when idle: there is no job.
 pub fn cmd_status<L: Losos>(l: &mut L) -> anyhow::Result<Value> {
     let s = l.load_state()?;
     let Some(rb) = s.rebuild else {
@@ -129,12 +137,14 @@ pub fn cmd_status<L: Losos>(l: &mut L) -> anyhow::Result<Value> {
             "state": RebuildState::Building.as_str(),
             "progress": rb.progress,
             "message": message,
+            "job": rb.job,
         }));
     }
     Ok(json!({
         "state": rb.state.as_str(),
         "progress": rb.progress,
         "message": rb.message,
+        "job": rb.job,
     }))
 }
 
@@ -203,6 +213,31 @@ mod tests {
         assert_eq!(out["message"], "copying path '/nix/store/abc-bash'");
         // the log tail must not fabricate progress
         assert_eq!(out["progress"], 0);
+    }
+
+    #[test]
+    fn status_carries_the_job_id_so_a_client_can_tell_rebuilds_apart() {
+        let mut f = FakeLosos::new();
+        // Idle: no job to report.
+        assert!(cmd_status(&mut f).unwrap().get("job").is_none());
+
+        let ack = cmd_change(&mut f, Mode::Mesh).unwrap();
+        let job = ack["job"].as_str().expect("change acks with a job id");
+        let building = cmd_status(&mut f).unwrap();
+        assert_eq!(building["job"], job, "status must name the running job");
+
+        // And after it settles, so a client polling late still learns which
+        // rebuild the terminal state belongs to.
+        let (state, progress, message) = unit_outcome(0, "");
+        let mut s = f.load_state().unwrap();
+        s.rebuild = Some(Rebuild {
+            job: job.to_string(),
+            state,
+            progress,
+            message,
+        });
+        f.save_state(&s).unwrap();
+        assert_eq!(cmd_status(&mut f).unwrap()["job"], job);
     }
 
     #[test]

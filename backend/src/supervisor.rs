@@ -16,19 +16,21 @@ use crate::model::RebuildState;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
 use std::process::Command;
+use std::thread::JoinHandle;
 use std::time::Duration;
 
 /// How long a log line may be before the UI gets an unreadable wall of text.
-const LOG_LINE_CAP: usize = 240;
+pub const LOG_LINE_CAP: usize = 240;
 /// Bytes of the tail of the rebuild log to consider. The log grows to many
 /// megabytes; only the last line is ever used.
-const LOG_WINDOW: u64 = 4096;
+pub const LOG_WINDOW: u64 = 4096;
 /// Gap between unit polls.
 const POLL_INTERVAL: Duration = Duration::from_secs(2);
 /// How many consecutive unreadable polls to tolerate before declaring the unit
 /// gone. At [`POLL_INTERVAL`] this is a 30-second grace window, which covers
-/// the race where `systemd-run` has returned but the unit is not yet visible.
-const MAX_UNKNOWN_POLLS: u32 = 15;
+/// the race where `systemd-run` has returned but the unit is not yet visible,
+/// and equally a `systemctl` that has stopped executing at all.
+pub const MAX_UNKNOWN_POLLS: u32 = 15;
 
 /// The transient unit name for a job.
 pub fn unit_name(job: &str) -> String {
@@ -101,9 +103,28 @@ pub fn classify_poll(active_state: &str, exec_main_status: &str) -> Poll {
     }
 }
 
-/// Poll the unit once.
+/// Interpret one `systemctl show --value -p ActiveState -p ExecMainStatus`
+/// invocation. `None` is an invocation that could not be run at all.
+///
+/// A `systemctl` that will not execute is [`Poll::Unknown`], not
+/// [`Poll::Wait`]: `Wait` resets the grace counter in [`watch_unit`], so an
+/// exec failure classed as a wait would hold a permanently broken box at
+/// "building" for ever, never reaching [`MAX_UNKNOWN_POLLS`]. `Unknown` is
+/// bounded, and ends in a recorded failure the operator can act on.
+pub fn classify_show(stdout: Option<&str>) -> Poll {
+    let Some(stdout) = stdout else {
+        return Poll::Unknown;
+    };
+    let mut lines = stdout.lines();
+    match (lines.next(), lines.next()) {
+        (Some(active), Some(status)) => classify_poll(active, status),
+        _ => Poll::Unknown,
+    }
+}
+
+/// Ask `systemctl` what the unit is doing.
 fn poll_unit(job: &str) -> Poll {
-    let out = Command::new("systemctl")
+    let stdout = Command::new("systemctl")
         .args([
             "show",
             &unit_name(job),
@@ -113,16 +134,58 @@ fn poll_unit(job: &str) -> Poll {
             "-p",
             "ExecMainStatus",
         ])
-        .output();
-    let Ok(out) = out else {
-        // systemctl itself failed to run; treat as a transient hiccup.
-        return Poll::Wait;
-    };
-    let stdout = String::from_utf8_lossy(&out.stdout);
-    let mut lines = stdout.lines();
-    match (lines.next(), lines.next()) {
-        (Some(active), Some(status)) => classify_poll(active, status),
-        _ => Poll::Unknown,
+        .output()
+        .ok()
+        .map(|out| String::from_utf8_lossy(&out.stdout).into_owned());
+    classify_show(stdout.as_deref())
+}
+
+/// Start the transient unit for `job`. `Err` carries the detail that goes into
+/// the message the admin UI shows.
+fn launch_unit(paths: &Paths, job: &str) -> Result<(), String> {
+    let log_str = paths.rebuild_log().to_string_lossy().into_owned();
+    let status = Command::new("systemd-run")
+        .arg(format!("--unit={}", unit_name(job)))
+        .arg(format!("--description=losos rebuild {job}"))
+        .arg(format!("--property=StandardOutput=append:{log_str}"))
+        .arg(format!("--property=StandardError=append:{log_str}"))
+        .args(["nixos-rebuild", "switch", "--flake", &paths.flake_ref])
+        .status();
+    match status {
+        Ok(s) if s.success() => Ok(()),
+        Ok(s) => Err(format!("systemd-run exited {s}")),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+/// Everything a rebuild needs from systemd, behind one seam.
+///
+/// [`Systemd`] is the shipped implementation and the only one the daemon ever
+/// builds. Tests script this trait instead, which is what lets the watcher loop
+/// be exercised whole — no subprocess, no systemd, and no waiting on a clock.
+pub trait Units: Send + 'static {
+    /// Launch the transient unit for `job`.
+    fn launch(&mut self, paths: &Paths, job: &str) -> Result<(), String>;
+    /// Ask what `job`'s unit is doing.
+    fn poll(&mut self, job: &str) -> Poll;
+    /// Sit out the gap between two polls.
+    fn pause(&mut self);
+}
+
+/// The shipped [`Units`]: `systemd-run`, `systemctl show`, and a real sleep.
+pub struct Systemd;
+
+impl Units for Systemd {
+    fn launch(&mut self, paths: &Paths, job: &str) -> Result<(), String> {
+        launch_unit(paths, job)
+    }
+
+    fn poll(&mut self, job: &str) -> Poll {
+        poll_unit(job)
+    }
+
+    fn pause(&mut self) {
+        std::thread::sleep(POLL_INTERVAL);
     }
 }
 
@@ -143,8 +206,15 @@ fn finish_locked(paths: &Paths, job: &str, st: RebuildState, progress: i64, mess
             rb.progress = progress;
             rb.message = message;
         }
-        _ => return,
+        _ => {
+            tracing::debug!(
+                job,
+                "outcome dropped: a newer rebuild has replaced this one"
+            );
+            return;
+        }
     }
+    tracing::info!(job, state = st.as_str(), "rebuild outcome recorded");
     if let Err(e) = write_state(&paths.state_file(), &state) {
         tracing::warn!(job, error = %e, "could not record rebuild outcome");
     }
@@ -158,17 +228,17 @@ fn finish(backend: &IoLosos, job: &str, st: RebuildState, progress: i64, message
 
 /// Watch a transient unit to completion and record the result. Blocking: call
 /// it on its own thread.
-pub fn watch_unit(backend: &IoLosos, job: &str) {
+pub fn watch_unit(backend: &IoLosos, job: &str, units: &mut dyn Units) {
     let mut unknowns = 0u32;
     loop {
-        match poll_unit(job) {
+        match units.poll(job) {
             Poll::Wait => {
                 unknowns = 0;
-                std::thread::sleep(POLL_INTERVAL);
+                units.pause();
             }
             Poll::Unknown if unknowns < MAX_UNKNOWN_POLLS => {
                 unknowns += 1;
-                std::thread::sleep(POLL_INTERVAL);
+                units.pause();
             }
             Poll::Unknown => {
                 finish(
@@ -196,41 +266,38 @@ pub fn watch_unit(backend: &IoLosos, job: &str) {
 /// straight to failed — otherwise the UI would sit at "building" forever with
 /// no watcher on the way.
 pub fn spawn_rebuild(backend: &IoLosos, job: &str) -> anyhow::Result<()> {
-    let paths = &backend.paths;
-    let log = paths.rebuild_log();
-    let log_str = log.to_string_lossy().to_string();
-    let status = Command::new("systemd-run")
-        .arg(format!("--unit={}", unit_name(job)))
-        .arg(format!("--description=losos rebuild {job}"))
-        .arg(format!("--property=StandardOutput=append:{log_str}"))
-        .arg(format!("--property=StandardError=append:{log_str}"))
-        .args(["nixos-rebuild", "switch", "--flake", &paths.flake_ref])
-        .status();
+    // The handle is dropped, which detaches the watcher: it outlives the
+    // command that queued the rebuild by design.
+    spawn_rebuild_with(backend, job, Systemd).map(|_| ())
+}
 
-    match status {
-        Ok(s) if s.success() => {
-            let backend = backend.clone();
-            let job = job.to_string();
-            std::thread::spawn(move || watch_unit(&backend, &job));
-            Ok(())
-        }
-        other => {
-            let detail = match other {
-                Ok(s) => format!("systemd-run exited {s}"),
-                Err(e) => e.to_string(),
-            };
-            // `finish_locked`, not `finish`: this runs inside the command that
-            // is already holding the state lock, and the lock is not reentrant.
-            finish_locked(
-                paths,
-                job,
-                RebuildState::Failed,
-                0,
-                format!("failed to start rebuild: {detail}"),
-            );
-            anyhow::bail!("failed to start rebuild: {detail}")
-        }
+/// [`spawn_rebuild`] over an explicit [`Units`].
+///
+/// Returns the watcher's handle, so a caller that wants the outcome can join it
+/// rather than wait on a clock.
+///
+/// Runs inside the state lock in production, hence `finish_locked` on the
+/// failure path: the lock is not reentrant.
+pub fn spawn_rebuild_with<U: Units>(
+    backend: &IoLosos,
+    job: &str,
+    mut units: U,
+) -> anyhow::Result<JoinHandle<()>> {
+    if let Err(detail) = units.launch(&backend.paths, job) {
+        finish_locked(
+            &backend.paths,
+            job,
+            RebuildState::Failed,
+            0,
+            format!("failed to start rebuild: {detail}"),
+        );
+        anyhow::bail!("failed to start rebuild: {detail}")
     }
+    let backend = backend.clone();
+    let job = job.to_string();
+    Ok(std::thread::spawn(move || {
+        watch_unit(&backend, &job, &mut units)
+    }))
 }
 
 /// Re-attach a watcher to an in-flight rebuild at daemon startup.
@@ -240,14 +307,25 @@ pub fn spawn_rebuild(backend: &IoLosos, job: &str) -> anyhow::Result<()> {
 /// file that says `building` would stay that way forever and the admin UI
 /// would spin indefinitely.
 pub fn start_supervisor(backend: &IoLosos) {
-    let state = read_state(&backend.paths.state_file());
-    if let Some(rb) = state.rebuild {
-        if rb.state == RebuildState::Building {
-            tracing::info!(job = %rb.job, "re-attaching to in-flight rebuild");
-            let backend = backend.clone();
-            std::thread::spawn(move || watch_unit(&backend, &rb.job));
-        }
+    // Detached on purpose: the daemon's job here is to get a watcher running,
+    // not to wait for the rebuild.
+    let _ = start_supervisor_with(backend, Systemd);
+}
+
+/// [`start_supervisor`] over an explicit [`Units`].
+///
+/// `Some` carries the re-attached watcher's handle; `None` means the state file
+/// recorded no rebuild in flight, so nothing was spawned.
+pub fn start_supervisor_with<U: Units>(backend: &IoLosos, mut units: U) -> Option<JoinHandle<()>> {
+    let rb = read_state(&backend.paths.state_file()).rebuild?;
+    if rb.state != RebuildState::Building {
+        return None;
     }
+    tracing::info!(job = %rb.job, "re-attaching to in-flight rebuild");
+    let backend = backend.clone();
+    Some(std::thread::spawn(move || {
+        watch_unit(&backend, &rb.job, &mut units)
+    }))
 }
 
 #[cfg(test)]
