@@ -25,8 +25,10 @@ nix build .#nixosConfigurations.iso.config.system.build.isoImage
 
 # Dev environment: devenv (devenv.nix + devenv.yaml), NOT the flake devShell.
 # Every gate is a named script there — fmt, lint, test-rust, check-flake,
-# check-eval, check-pins, build-pkgs, build-iso, vm-tests — and CI invokes the
-# same scripts, so a job cannot run a different command from a developer.
+# check-eval, check-pins, build-pkgs, build-iso, vm-tests. CI does NOT invoke
+# them — it spells the same commands out directly, because routing jobs
+# through `devenv shell` blew Codeberg's 10-minute cap (9m31s and 10m05s
+# against 1m32s for the one non-devenv job). Keep the two in step by hand.
 # Switches to fish on interactive entry; the `case $- in *i*)` guard keeps
 # `devenv shell <script>` and CI running under bash.
 devenv shell        # or: direnv allow
