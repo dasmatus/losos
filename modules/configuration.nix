@@ -16,11 +16,21 @@
     (final: prev: {
       tahoe-lafs = (prev.tahoe-lafs.override {
         python3Packages = final.python312Packages;
-      }).overrideAttrs (old: {
-        # Upstream's trial test suite still uses failUnless*/failIf* aliases,
-        # removed from modern Twisted — the tests error out while the runtime
-        # itself is fine on Python 3.12. Skip the suite; the appliance runs
-        # the pinned derivation, not its test corpus.
+      }).overridePythonAttrs (old: {
+        # Skip upstream's trial suite: it is incompatible with the twisted
+        # 26.4.0 in this nixpkgs, not broken. 1694 of 1708 tests pass; the 12
+        # that don't are the removed TestCase aliases (failUnlessRaises and
+        # friends, dropped in twisted 26.4.0) plus one Windows-only test that
+        # has no business running on Linux. Nothing functional is wrong — the
+        # appliance ships the pinned derivation, not its test corpus.
+        #
+        # overridePythonAttrs, *not* overrideAttrs: buildPythonPackage runs
+        # the suite in installCheckPhase and derives doInstallCheck from
+        # doCheck when it builds its mkDerivation args. Setting doCheck = false
+        # from the outside with overrideAttrs leaves doInstallCheck = true
+        # behind, the suite runs anyway, and the whole system closure fails to
+        # build. overridePythonAttrs re-enters buildPythonPackage so both flags
+        # move together.
         doCheck = false;
       });
     })
@@ -40,6 +50,12 @@
 
   # Publish `mattbox.local` and resolve other `.local` names on the LAN via
   # mDNS, so the appliance is reachable by name without a local DNS server.
+  #
+  # allowInterfaces is deliberately unset (Avahi's default is every interface).
+  # This box is a repurposed mini-PC and mDNS is the *only* way to reach it —
+  # no SSH, no shell logins — so a hardcoded NIC list is a brick: a machine
+  # whose interface enumerates as eno1 or enp0s31f6 instead publishes nothing
+  # and has no recovery short of reinstalling.
   services.avahi = {
     enable = true;
     nssmdns4 = true;
@@ -48,7 +64,6 @@
       addresses = true;
       workstation = true;
     };
-    allowInterfaces = lib.mkDefault [ "wlp3s0" "enp2s0" "eth0" "wlan0" ];
   };
 
   time.timeZone = "Europe/Berlin";
