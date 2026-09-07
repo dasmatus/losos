@@ -23,17 +23,37 @@ nix build .#nixosConfigurations.install.config.system.build.toplevel
 # Build the installer ISO (write to USB, boot on the target machine)
 nix build .#nixosConfigurations.iso.config.system.build.isoImage
 
-# Dev shell: Rust toolchain (cargo/rustc/clippy/rustfmt/rust-analyzer) plus
-# Node.js, needed only for admin-ui/design-system/react (dev-machine-only, never part
-# of the Nix closure). Switches to fish on interactive entry; honors
-# `nix develop -c <cmd>` for bash.
-nix develop .#
+# Dev environment: devenv (devenv.nix + devenv.yaml), NOT the flake devShell.
+# Every gate is a named script there — fmt, lint, test-rust, check-flake,
+# check-eval, check-pins, build-pkgs, build-iso, vm-tests — and CI invokes the
+# same scripts, so a job cannot run a different command from a developer.
+# Switches to fish on interactive entry; the `case $- in *i*)` guard keeps
+# `devenv shell <script>` and CI running under bash.
+devenv shell        # or: direnv allow
+devenv test         # everything except the VM tests and the ISO
 ```
+
+`nix develop` still resolves, but it is a **toolchain-only** shell for anyone
+without the devenv CLI — deliberately no scripts and no hooks, so it cannot
+drift from devenv.nix.
+
+devenv runs standalone rather than through the flake: `devenv.lib.mkShell`
+cannot evaluate purely (it needs an absolute project root for `.devenv/`), and
+the documented workaround needs `--impure`, which would spread to CI. The cost
+is two lock files — `flake.lock` pins the nixpkgs that *builds* the appliance,
+`devenv.lock` the one that *lints and tests* it. **Bump them together**;
+`check-pins` fails the build if they disagree.
 
 Both Rust crates' test suites run automatically inside their `nix build`
 (`rustPlatform.buildRustPackage`'s `doCheck = true`). There is no PHP suite
 anymore — the old Nextcloud plugin is retired (see architecture) — and no
 Haskell: the backend was a cabal project until it was ported to Rust.
+
+Both crates must stay clippy-clean (`-D warnings`) and rustfmt-clean. That is
+enforced in three places now: the devenv pre-commit hooks, the `lint` script,
+and CI. Until those existed nothing ran the linters at all — `doCheck` runs
+the test suite, not clippy — and backend-registrar had drifted to 17 rustfmt
+hunks plus a clippy error without CI noticing.
 
 ```sh
 # `nix develop -c` does not change directory, hence --manifest-path
@@ -88,7 +108,10 @@ at `/etc/keys/persist-keyfile` (no-TPM path, injected into the initrd as
 
 **Two isolated data domains, no shell** (`configuration.nix`): `notshared`
 (uid 1000) owns Nextcloud, `shared` (uid 1001) owns Tahoe-LAFS; both homes are
-mode `750` so neither can read the other, neither has a password, and
+mode `700`, each with its own primary group, so neither can read the other —
+`isNormalUser` without an explicit `group` puts both in `users`, and a `750`
+home then grants that group r-x, which silently defeated the isolation until
+`tests/impermanence.nix` caught it. Neither has a password, and
 `services.openssh.enable = false`. The only config change reachable from the
 running box is the **Local ↔ Mesh toggle** in the standalone admin UI.
 
@@ -150,10 +173,19 @@ sanctioned place to add new options — earlier code wrongly declared options
 inside `config` blocks.
 
 **Auto-upgrade + nightly reboot** (`updates.nix`): `system.autoUpgrade`
-rebuilds from `losos.upgradeFlakeUri` at 03:00 (default `git+file:///etc/nixos`
-— only advances the system consistently, doesn't pull new nixpkgs; set a
-`github:` URI to actually upgrade). A separate `midnight-reboot.timer` reboots
-unconditionally at 00:07 with `Persistent=true` to catch up if the box was off.
+rebuilds from `losos.upgradeFlakeUri` at 03:00. The default,
+`git+file:///etc/nixos#install`, only advances the system consistently and
+does not pull new nixpkgs; set a `github:` URI to actually upgrade.
+
+**The `#install` fragment is load-bearing.** Without it `nixos-rebuild`
+resolves `nixosConfigurations.$(hostname)`, which this flake does not export
+— it exports `iso` and `install` — so every nightly run died with "flake does
+not provide attribute", silently, on a box with no shell to notice it from.
+The daemon had it right all along (`io_backend.rs`, `/etc/nixos#install`);
+only the NixOS-side default was wrong.
+
+A separate `midnight-reboot.timer` reboots unconditionally at 00:07 with
+`Persistent=true` to catch up if the box was off.
 
 ## Gotchas that bite silently
 

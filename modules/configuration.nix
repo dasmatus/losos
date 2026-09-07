@@ -99,13 +99,34 @@
   # refuses to log them in. The two data domains are therefore isolated.
   services.openssh.enable = false;
 
+  # Each data account gets its OWN primary group, and this is load-bearing.
+  #
+  # `isNormalUser` defaults the primary group to `users`, and the homes were
+  # mode 750 — which grants r-x to the primary group. Both accounts therefore
+  # sat in `users` and each could read the other's data. The 750 kept out
+  # accounts *outside* `users` and nothing else, which is not what "the two
+  # users are mutually unreadable" means, and is the opposite of what the
+  # comments here used to claim.
+  #
+  # The homes are 700 now, so group access is moot for reading; the per-account
+  # groups stay because files created inside inherit the directory's group, and
+  # `users` is the wrong owner for either data domain. tests/impermanence.nix
+  # asserts both halves in a booted VM.
+  users.groups.notshared = {
+    gid = 1000;
+  };
+  users.groups.shared = {
+    gid = 1001;
+  };
+
   # `notshared` — owns this box's private Nextcloud instance. Reached via the
   # Nextcloud web UI only; no Linux login (no password, no SSH).
   users.users."notshared" = {
     uid = 1000;
     description = "Internal (default) — private Nextcloud on this box";
     isNormalUser = true;
-    homeMode = "750"; # private home: shared can't read notshared's data
+    group = "notshared";
+    homeMode = "700"; # owner only; shared cannot enter, let alone read
   };
 
   # `shared` — contributes this box's storage to the Tahoe-LAFS grid. Reached
@@ -114,7 +135,8 @@
     uid = 1001;
     description = "Shared — Tahoe-LAFS grid storage contributor";
     isNormalUser = true;
-    homeMode = "750"; # private home: notshared can't read shared's data
+    group = "shared";
+    homeMode = "700"; # owner only; notshared cannot enter, let alone read
   };
 
   # The rootless-Podman `containers` user is gone: services run in declarative
