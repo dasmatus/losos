@@ -65,3 +65,23 @@ jobs:
       # The registrar crate's tests run inside its build too (doCheck);
       # losos-admin-ui is a trivial runCommand copy.
       - run: nix --experimental-features 'nix-command flakes' build .#losos-registrar .#losos-admin-ui -L
+
+  lint:
+    name: "rust: clippy + rustfmt (both crates)"
+    runs-on: codeberg-medium
+    # Deliberately NOT the nix image. buildRustPackage's doCheck runs the test
+    # suite, not the linters, so until this job existed nothing enforced the
+    # two commands CLAUDE.md documents as gates — and backend-registrar had
+    # silently drifted to 17 rustfmt hunks and a clippy error. Linting through
+    # `nix develop` would build the whole devshell (node, fish, starship) to
+    # run two cargo commands; the upstream rust image already carries clippy
+    # and rustfmt, and fits the 10-minute cap with room to spare.
+    container:
+      image: docker.io/rust:latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup component add clippy rustfmt
+      - run: cargo fmt --manifest-path backend/Cargo.toml --check
+      - run: cargo fmt --manifest-path backend-registrar/Cargo.toml --check
+      - run: cargo clippy --manifest-path backend/Cargo.toml --all-targets -- -D warnings
+      - run: cargo clippy --manifest-path backend-registrar/Cargo.toml --all-targets -- -D warnings
