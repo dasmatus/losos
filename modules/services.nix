@@ -6,8 +6,8 @@
 #   * Forgejo — native-mode git host (container mode lives in
 #     modules/containers.nix).
 #   * Tahoe-LAFS — the shared user's storage grid (a local introducer + a
-#     `shared` storage/client node). Its web UI binds 127.0.0.1:3457; Nginx
-#     fronts it publicly on :3456.
+#     `shared` storage/client node). Nginx fronts its web UI on :3456. The WUI
+#     itself listens on *:3457, not loopback — see the note at the vhost below.
 #
 # Both are persisted via impermanence's /var bind-mount (see impermanence.nix),
 # so nothing is lost across the tmpfs-root reboot.
@@ -15,7 +15,6 @@
   pkgs,
   lib,
   config,
-  self,
   ...
 }:
 
@@ -36,6 +35,16 @@
     database.type = "postgres";
     settings = {
       server.HTTP_PORT = 8888;
+      # Forgejo's default is open sign-up. Native mode is LAN-only (:8888 is
+      # not routed through the master-proxy tunnel), but "anyone on the LAN"
+      # is still not who should be creating accounts on the appliance.
+      service.DISABLE_REGISTRATION = true;
+      # A declarative deployment never runs the first-run wizard, so the
+      # installer page stays unlocked unless this is set — and that page
+      # rewrites the database and the admin credentials.
+      security.INSTALL_LOCK = true;
+      # Kept on here, unlike the container path (modules/containers.nix),
+      # because native mode is not published through the tunnel.
       actions.ENABLED = true;
     };
   };
@@ -65,8 +74,12 @@
     nodes.shared = {
       nickname = "shared";
       # The Tahoe WUI generates absolute links and has no prefix support, so
-      # it gets its own port-based vhost instead of a path route: loopback
-      # :3457 behind the public Nginx vhost on :3456 below.
+      # it gets its own port-based vhost instead of a path route: :3457 behind
+      # the public Nginx vhost on :3456 below. Note that this is *not* a
+      # loopback bind — services.tahoe.nodes.<n>.web.port is a types.port int
+      # and the module renders it as the bare Twisted endpoint `tcp:3457`,
+      # which listens on 0.0.0.0. The only thing keeping the raw WUI off the
+      # LAN is that 3457 is absent from networking.firewall.allowedTCPPorts.
       web.port = 3457;
       package = pkgs.tahoe-lafs;
       storage.enable = config.losos.sharingMyStorage;
@@ -80,8 +93,9 @@
     };
   };
 
-  # Tahoe web UI proxy: the only port-based public route. The WUI binds
-  # loopback :3457; Nginx owns the public :3456.
+  # Tahoe web UI proxy: the only port-based public route. Nginx owns the
+  # public :3456 and forwards to the WUI on :3457, which is firewalled off
+  # rather than loopback-bound (see the web.port note above).
   services.nginx.virtualHosts."tahoe" = {
     listen = [
       {
@@ -95,16 +109,20 @@
     };
   };
 
-  # Make the `tahoe` CLI available to the shared user (and everyone) so they
-  # can drive the local node from the shell. The losos-ctl facade is
-  # installed by modules/daemon.nix (the sudoers bridge is gone: the facade
-  # relays to lososd over the system D-Bus).
+  # The `tahoe` CLI, system-wide. Not for the `shared` user — nobody can get a
+  # shell on this box (no SSH, and neither data account has a password) — but
+  # for the physical console and for `systemd-run`/recovery paths that need to
+  # inspect the node. It costs nothing: services.tahoe already pulls the same
+  # derivation into the closure. The losos-ctl facade is installed by
+  # modules/daemon.nix (the sudoers bridge is gone: the facade relays to lososd
+  # over the system D-Bus).
   environment.systemPackages = [ pkgs.tahoe-lafs ];
 
   # Open the public Nginx ports. The Tahoe web UI is reachable on the LAN at
-  # :3456 (backend is loopback-only); :80 (dashboard/api/nextcloud/forgejo)
-  # is opened in modules/containers.nix. The native Forgejo port (8888) is
-  # opened only in native mode.
+  # :3456; the WUI's own :3457 is deliberately left closed, which is the only
+  # thing keeping it off the LAN. :80 (dashboard/api/nextcloud/forgejo) is
+  # opened in modules/containers.nix. The native Forgejo port (8888) is opened
+  # only in native mode.
   networking.firewall.allowedTCPPorts =
     [ 3456 ]
     ++ lib.optional (config.losos.forgejo.mode == "native" && config.losos.forgejo.enable) 8888;

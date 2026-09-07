@@ -11,6 +11,9 @@
   config,
   ...
 }:
+let
+  inherit (lib) dirOf;
+in
 {
   options.lososInternal.nextcloudStack = lib.mkOption {
     type = lib.types.attrs;
@@ -82,5 +85,44 @@
       # admin-ui/).
     };
     appstoreEnable = true;
+  };
+
+  # ── The admin password file ───────────────────────────────────────────────
+  # losos.nextcloud.adminpassFile is consumed in both modes — as a systemd
+  # LoadCredential natively, and as an nspawn bind *source* in container mode —
+  # and nothing created it. nspawn does not create bind sources, so on a fresh
+  # /persist container@nextcloud could not start at all, and the native path
+  # failed on the missing credential.
+  #
+  # Same shape as the admin token lososd mints for itself: generate once, 0600,
+  # and never touch it again (ConditionPathExists=! makes the unit a no-op on
+  # every later boot). Read it out of band if you need it — there is no shell,
+  # so the practical path is `occ user:resetpassword` from inside the
+  # container.
+  config.systemd.tmpfiles.rules = [
+    "d ${dirOf (toString config.losos.nextcloud.adminpassFile)} 0700 root root -"
+  ];
+
+  config.systemd.services.losos-nextcloud-adminpass = {
+    description = "Generate the Nextcloud admin password on first boot";
+    wantedBy = [ "multi-user.target" ];
+    before = [
+      "nextcloud-setup.service"
+      "phpfpm-nextcloud.service"
+    ];
+    unitConfig.ConditionPathExists = "!${toString config.losos.nextcloud.adminpassFile}";
+    serviceConfig = {
+      Type = "oneshot";
+      RemainAfterExit = true;
+      UMask = "0077";
+    };
+    path = [ pkgs.coreutils ];
+    script = ''
+      set -eu
+      install -d -m 0700 "$(dirname ${toString config.losos.nextcloud.adminpassFile})"
+      umask 077
+      head -c 24 /dev/urandom | base64 > ${toString config.losos.nextcloud.adminpassFile}
+      chmod 0600 ${toString config.losos.nextcloud.adminpassFile}
+    '';
   };
 }

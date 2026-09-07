@@ -10,6 +10,11 @@
 {
   system.autoUpgrade = {
     enable = true;
+    # Must carry a fragment. `nixos-rebuild --flake <uri>` with no `#attr`
+    # resolves nixosConfigurations.$(hostname), and this flake exports only
+    # `iso` and `install` — so an unfragmented URI makes every nightly run die
+    # with "flake does not provide attribute". losos.upgradeFlakeUri defaults
+    # to git+file:///etc/nixos#install.
     flake = config.losos.upgradeFlakeUri;
     dates = "03:00"; # build/upgrade well away from the midnight reboot
     allowReboot = true; # reboot if the upgrade changed kernel/initrd
