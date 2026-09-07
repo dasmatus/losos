@@ -31,7 +31,8 @@ actix-web = { version = "4", default-features = false, features = ["macros"] }
 zbus = { version = "5", default-features = false, features = ["tokio", "blocking-api"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "signal"] }
 
-# Job ids are "%Y%m%d%H%M%S-<pid>".
+# Job ids are "%Y%m%d%H%M%S-<pid>-<counter>"; the counter is what keeps two
+# jobs queued in the same second apart.
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 
 tracing = "0.1"
