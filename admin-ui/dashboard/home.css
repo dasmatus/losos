@@ -1,10 +1,9 @@
-/* losos homepage theme — synced from the "Losos Admin UI" Claude Design
- * project (templates/app-icon). Loads after /ds/tokens.css + /ds/losos.css
+/* losos homepage theme. Loads after /ds/tokens.css + /ds/losos.css
  * and restyles only this page: drifting pastel gradient, glass surfaces
  * over the DS classes, a floating topbar that condenses to a corner pill
- * on scroll, launcher tiles with hover descriptions, and a right-click
- * address menu. The rgba()/hex literals are the design's glass and tone
- * values; they have no DS token yet. */
+ * on scroll, launcher tiles, and the address popover. The rgba()/hex
+ * literals are the design's glass and tone values; they have no DS token
+ * yet. */
 
 /* ── Page background ──────────────────────────────────────────────── */
 body {
@@ -71,19 +70,14 @@ body {
   transition: box-shadow 0.15s ease, transform 0.15s ease,
     border-color 0.15s ease;
 }
-.chip,
-.btn-outline,
-input,
-select {
+/* The chip on the system card is the only DS control this page renders —
+ * it has no inputs, selects or buttons outside the tiles, so the glass
+ * overrides for those matched nothing and are gone. */
+.chip {
   backdrop-filter: blur(10px) saturate(1.2);
   -webkit-backdrop-filter: blur(10px) saturate(1.2);
   background: rgba(255, 255, 255, 0.5);
   border-color: rgba(255, 255, 255, 0.75);
-}
-.btn-primary {
-  background: rgba(31, 111, 235, 0.85);
-  border-color: rgba(31, 111, 235, 0.4);
-  color: #fff;
 }
 
 /* ── Content column ───────────────────────────────────────────────── */
@@ -93,6 +87,15 @@ select {
 }
 
 /* ── Launcher tiles ───────────────────────────────────────────────── */
+/* The grid is a real <ul>: the tiles are a list of links, and that is the
+ * one thing a screen reader must be able to say about them. */
+ul.grid {
+  list-style: none;
+  margin: 16px 0 0;
+  padding: 0;
+}
+.tile-item { position: relative; }
+
 .grid .card {
   background: transparent;
   border-color: transparent;
@@ -159,44 +162,60 @@ select {
   box-shadow: 0 1px 3px rgba(27, 33, 40, 0.2);
 }
 
-/* Name ↔ description swap on hover. */
+/* Name and description are both permanent. The description used to swap in
+ * over the name on hover, which meant it did not exist at all on a touch
+ * screen — and it is the only sentence on the page that says what each
+ * service actually does. */
 .tile-row {
-  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
   width: 100%;
-  height: 21px;
+  text-align: center;
 }
 .tile-name {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   font-size: var(--ls-fs-base);
   font-weight: 600;
   color: var(--ls-ink);
-  white-space: nowrap;
-  transition: opacity 0.15s ease;
 }
 .tile-tip {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   padding: 0 6px;
   font-size: var(--ls-fs-sm);
   color: var(--ls-ink-muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.15s ease;
+  text-wrap: balance;
 }
-.tile-link:hover .tile-tip,
-.tile-link:focus-visible .tile-tip { opacity: 1; }
-.tile-link:hover .tile-name,
-.tile-link:focus-visible .tile-name { opacity: 0; }
+
+/* Address button: the touch and keyboard route to what a right-click on the
+ * tile gives a mouse. Always visible — a hover-only affordance would repeat
+ * the mistake above. */
+.tile-menu-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.75);
+  border-radius: var(--ls-radius-sm);
+  background: rgba(255, 255, 255, 0.5);
+  backdrop-filter: blur(10px) saturate(1.2);
+  -webkit-backdrop-filter: blur(10px) saturate(1.2);
+  color: var(--ls-ink-muted);
+  font: inherit;
+  font-size: var(--ls-fs-lg);
+  line-height: 1;
+  cursor: pointer;
+}
+.tile-menu-btn:hover,
+.tile-menu-btn:focus-visible {
+  background: rgba(255, 255, 255, 0.85);
+  border-color: #fff;
+  color: var(--ls-ink);
+}
 
 .tile-help {
   margin: 12px 0 0;
@@ -244,7 +263,8 @@ select {
   color: var(--ls-ink);
   cursor: pointer;
 }
-.ctx-menu button:hover { background: var(--ls-surface-muted); }
+.ctx-menu button:hover,
+.ctx-menu button:focus-visible { background: var(--ls-surface-muted); }
 
 /* ── Screen-reader-only status text ───────────────────────────────── */
 .vh {
