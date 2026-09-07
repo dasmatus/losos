@@ -1,0 +1,16 @@
+# statix lint configuration.
+#
+# repeated_keys (W20) is disabled on purpose. It accounted for 51 of the 56
+# findings on this tree, and every one of them is idiomatic NixOS: a module
+# that writes
+#
+#   services.nginx    = { ... };
+#   services.forgejo  = { ... };
+#   services.nextcloud = { ... };
+#
+# is clearer than the same thing collapsed into a single `services = { ... }`
+# attrset, because each block is independently readable and independently
+# `mkIf`-able. The lint is aimed at hand-written attrsets, not at the module
+# system's conventional style. The other five findings (empty_pattern,
+# manual_inherit_from) are real and are fixed rather than suppressed.
+disabled = ["repeated_keys"]

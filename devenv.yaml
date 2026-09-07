@@ -1,0 +1,15 @@
+# devenv inputs. See devenv.nix for the environment itself.
+#
+# nixpkgs is pinned to the SAME revision as flake.lock's nixpkgs, so the rustc
+# that lints and tests here is the rustc that `nix build .#losos-ctl` compiles
+# with. They are two lock files and nothing enforces agreement between them, so
+# **bump both together**: after `nix flake update nixpkgs`, copy the new rev
+# here and run `devenv update`. If they drift, the symptom is a tree that is
+# clippy-clean locally and fails in the package build, or vice versa.
+#
+# devenv is used standalone rather than through the flake because
+# devenv.lib.mkShell cannot run under pure evaluation — it needs an absolute
+# project root for its .devenv directory. See the inputs block in flake.nix.
+inputs:
+  nixpkgs:
+    url: github:NixOS/nixpkgs/f13ff45afd1bb73e640eaa08a7066dbed07e3238
