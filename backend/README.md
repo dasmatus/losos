@@ -93,6 +93,17 @@ directory in tests.
   present it would be invisible and the install would target the default disk.
 - **The keyfile is copied into `/mnt/etc/keys` before `nixos-install` runs.**
   The chrooted bootloader install resolves `boot.initrd.secrets` inside `/mnt`.
+- **`ensure_token` discards a token file that is not 64 lowercase hex
+  characters** and mints a replacement. The old code returned the file
+  verbatim, so a file holding `x` authenticated `Authorization: Bearer x`. A
+  write cut short by the nightly reboot leaves exactly that kind of file.
+  Hand-editing the token does not work. Delete the file and restart `lososd`.
+- **The whole daemon shares one `IoLosos`.** `bin/lososd.rs` builds it once and
+  hands clones to `dbus::serve`, `http::serve` and every rebuild watcher. The
+  lock inside stops a bus `Change` and a `POST /api/change` interleaving their
+  read-modify-write of `state.json`. It also stops a finishing rebuild
+  overwriting the record of the one that replaced it. Two backends built
+  separately do not serialise each other.
 - **`lososd` re-attaches a watcher at startup** to any rebuild recorded as
   `building`. `nixos-rebuild switch` restarts the daemon mid-rebuild, so the
   original watcher thread dies partway through; without the re-attach the state

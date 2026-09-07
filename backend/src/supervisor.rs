@@ -10,7 +10,7 @@
 //! after it exits, which is how the exit code is recovered. Dead units are
 //! cleaned up by the reboot anyway — the appliance root is a tmpfs.
 
-use crate::io_backend::{read_state, write_state, Paths};
+use crate::io_backend::{read_state, write_state, IoLosos, Paths};
 use crate::losos::unit_outcome;
 use crate::model::RebuildState;
 use std::io::{Read, Seek, SeekFrom};
@@ -131,7 +131,11 @@ fn poll_unit(job: &str) -> Poll {
 /// A completion event for a job that a newer `change`/`apply`/`factory-reset`
 /// has already superseded is dropped: otherwise a slow watcher could overwrite
 /// the state of the rebuild that replaced it.
-fn finish(paths: &Paths, job: &str, st: RebuildState, progress: i64, message: String) {
+///
+/// **The caller must hold the state lock.** This is a read-modify-write of
+/// `state.json`, and running it unlocked is how a finishing rebuild used to
+/// clobber the record of the one queued a moment earlier.
+fn finish_locked(paths: &Paths, job: &str, st: RebuildState, progress: i64, message: String) {
     let mut state = read_state(&paths.state_file());
     match state.rebuild.as_mut() {
         Some(rb) if rb.job == job => {
@@ -146,9 +150,15 @@ fn finish(paths: &Paths, job: &str, st: RebuildState, progress: i64, message: St
     }
 }
 
+/// [`finish_locked`] for a watcher thread, which owns no lock yet.
+fn finish(backend: &IoLosos, job: &str, st: RebuildState, progress: i64, message: String) {
+    let _guard = backend.lock_state();
+    finish_locked(&backend.paths, job, st, progress, message);
+}
+
 /// Watch a transient unit to completion and record the result. Blocking: call
 /// it on its own thread.
-pub fn watch_unit(paths: &Paths, job: &str) {
+pub fn watch_unit(backend: &IoLosos, job: &str) {
     let mut unknowns = 0u32;
     loop {
         match poll_unit(job) {
@@ -162,7 +172,7 @@ pub fn watch_unit(paths: &Paths, job: &str) {
             }
             Poll::Unknown => {
                 finish(
-                    paths,
+                    backend,
                     job,
                     RebuildState::Failed,
                     0,
@@ -171,9 +181,9 @@ pub fn watch_unit(paths: &Paths, job: &str) {
                 return;
             }
             Poll::Done(code) => {
-                let tail = log_tail(&paths.rebuild_log());
+                let tail = log_tail(&backend.paths.rebuild_log());
                 let (st, progress, message) = unit_outcome(code, &tail);
-                finish(paths, job, st, progress, message);
+                finish(backend, job, st, progress, message);
                 return;
             }
         }
@@ -185,7 +195,8 @@ pub fn watch_unit(paths: &Paths, job: &str) {
 /// If `systemd-run` cannot be started at all, the tracked rebuild is flipped
 /// straight to failed — otherwise the UI would sit at "building" forever with
 /// no watcher on the way.
-pub fn spawn_rebuild(paths: &Paths, job: &str) -> anyhow::Result<()> {
+pub fn spawn_rebuild(backend: &IoLosos, job: &str) -> anyhow::Result<()> {
+    let paths = &backend.paths;
     let log = paths.rebuild_log();
     let log_str = log.to_string_lossy().to_string();
     let status = Command::new("systemd-run")
@@ -198,9 +209,9 @@ pub fn spawn_rebuild(paths: &Paths, job: &str) -> anyhow::Result<()> {
 
     match status {
         Ok(s) if s.success() => {
-            let paths = paths.clone();
+            let backend = backend.clone();
             let job = job.to_string();
-            std::thread::spawn(move || watch_unit(&paths, &job));
+            std::thread::spawn(move || watch_unit(&backend, &job));
             Ok(())
         }
         other => {
@@ -208,7 +219,9 @@ pub fn spawn_rebuild(paths: &Paths, job: &str) -> anyhow::Result<()> {
                 Ok(s) => format!("systemd-run exited {s}"),
                 Err(e) => e.to_string(),
             };
-            finish(
+            // `finish_locked`, not `finish`: this runs inside the command that
+            // is already holding the state lock, and the lock is not reentrant.
+            finish_locked(
                 paths,
                 job,
                 RebuildState::Failed,
@@ -226,13 +239,13 @@ pub fn spawn_rebuild(paths: &Paths, job: &str) -> anyhow::Result<()> {
 /// killing the watcher thread that started the rebuild. Without this, a state
 /// file that says `building` would stay that way forever and the admin UI
 /// would spin indefinitely.
-pub fn start_supervisor(paths: &Paths) {
-    let state = read_state(&paths.state_file());
+pub fn start_supervisor(backend: &IoLosos) {
+    let state = read_state(&backend.paths.state_file());
     if let Some(rb) = state.rebuild {
         if rb.state == RebuildState::Building {
             tracing::info!(job = %rb.job, "re-attaching to in-flight rebuild");
-            let paths = paths.clone();
-            std::thread::spawn(move || watch_unit(&paths, &rb.job));
+            let backend = backend.clone();
+            std::thread::spawn(move || watch_unit(&backend, &rb.job));
         }
     }
 }
