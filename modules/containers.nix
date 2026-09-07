@@ -27,7 +27,6 @@
 # along with the dashboard. Only the admin locations, the document root and the
 # admin-only firewall entry follow losos.admin.enable.
 {
-  pkgs,
   lib,
   config,
   ...
@@ -202,47 +201,43 @@ in
     # Convenience loopback forward (Nginx talks to 10.231.1.2 directly);
     # bound to 127.0.0.1 only, so nothing but Nginx holds a public port.
     extraFlags = [ "--port=127.0.0.1:${toString apachePort}:80" ];
-    config =
-      { ... }:
-      {
-        system.stateVersion = "26.11";
-        networking.firewall.allowedTCPPorts = [ 80 ];
-        services.nextcloud = nextcloudStack // {
-          # Subpath deployment keys: the front vhost proxies /nextcloud with
-          # the path preserved, so the in-container Nextcloud must generate
-          # /nextcloud-prefixed URLs. (Kept out of nextcloudStack — in native
-          # mode the same stack serves at the vhost root.)
-          settings = {
-            overwritewebroot = "/nextcloud";
-            "htaccess.RewriteBase" = "/nextcloud";
-            "overwrite.cli.url" =
-              if proxied then
-                "https://${config.losos.proxy.hostname}/nextcloud"
-              else
-                "http://${hostName}.local/nextcloud";
-            # Requests arrive with the appliance's mDNS name (direct) or the
-            # master-proxy public hostname (tunnel) — both must be trusted,
-            # or Nextcloud rejects tunnel traffic with "Untrusted domain".
-            trusted_domains =
-              [ "${hostName}.local" ]
-              ++ lib.optional proxied config.losos.proxy.hostname;
-            # Every request is proxied by the host's Nginx, which reaches the
-            # container from the host end of the veth. Without this Nextcloud
-            # sees that one address as the client for *all* traffic, so the
-            # brute-force throttle and per-IP blocking protect nothing and the
-            # audit log records a single source.
-            trusted_proxies = [ nextcloudHostAddress ];
-          }
-          # Behind the master proxy, Traefik terminates TLS and the container
-          # is reached over plain HTTP. Without these Nextcloud derives http://
-          # absolute URLs and embeds them in an https:// page — mixed content,
-          # blocked by browsers, and clients redirected back to http.
-          // lib.optionalAttrs proxied {
-            overwriteprotocol = "https";
-            overwritehost = config.losos.proxy.hostname;
-          };
+    config = _: {
+      system.stateVersion = "26.11";
+      networking.firewall.allowedTCPPorts = [ 80 ];
+      services.nextcloud = nextcloudStack // {
+        # Subpath deployment keys: the front vhost proxies /nextcloud with
+        # the path preserved, so the in-container Nextcloud must generate
+        # /nextcloud-prefixed URLs. (Kept out of nextcloudStack — in native
+        # mode the same stack serves at the vhost root.)
+        settings = {
+          overwritewebroot = "/nextcloud";
+          "htaccess.RewriteBase" = "/nextcloud";
+          "overwrite.cli.url" =
+            if proxied then
+              "https://${config.losos.proxy.hostname}/nextcloud"
+            else
+              "http://${hostName}.local/nextcloud";
+          # Requests arrive with the appliance's mDNS name (direct) or the
+          # master-proxy public hostname (tunnel) — both must be trusted,
+          # or Nextcloud rejects tunnel traffic with "Untrusted domain".
+          trusted_domains = [ "${hostName}.local" ] ++ lib.optional proxied config.losos.proxy.hostname;
+          # Every request is proxied by the host's Nginx, which reaches the
+          # container from the host end of the veth. Without this Nextcloud
+          # sees that one address as the client for *all* traffic, so the
+          # brute-force throttle and per-IP blocking protect nothing and the
+          # audit log records a single source.
+          trusted_proxies = [ nextcloudHostAddress ];
+        }
+        # Behind the master proxy, Traefik terminates TLS and the container
+        # is reached over plain HTTP. Without these Nextcloud derives http://
+        # absolute URLs and embeds them in an https:// page — mixed content,
+        # blocked by browsers, and clients redirected back to http.
+        // lib.optionalAttrs proxied {
+          overwriteprotocol = "https";
+          overwritehost = config.losos.proxy.hostname;
         };
       };
+    };
   };
 
   # ── Forgejo (nspawn) ───────────────────────────────────────────────────────
@@ -255,52 +250,50 @@ in
       hostPath = "/var/lib/forgejo";
       isReadOnly = false;
     };
-    config =
-      { ... }:
-      {
-        system.stateVersion = "26.11";
-        networking.firewall.allowedTCPPorts = [ 3000 ];
-        services.forgejo = {
-          enable = true;
-          lfs.enable = true;
-          database.type = "postgres";
-          stateDir = "/var/lib/forgejo";
-          settings = {
-            server = {
-              HTTP_PORT = 3000;
-              # The front vhost strips the /forgejo prefix; Forgejo must know
-              # it is served under a subpath so it generates prefixed links.
-              ROOT_URL =
-                if proxied then
-                  "https://${config.losos.proxy.hostname}/forgejo/"
-                else
-                  "http://${hostName}.local/forgejo/";
-            };
-            service = {
-              # /forgejo/ is the one admin-free route published through the
-              # master-proxy tunnel, and Forgejo's default is open sign-up.
-              # Without this anyone on the internet could create an account and
-              # push to this box. Accounts are made by the operator with
-              # `forgejo admin user create` inside the container.
-              DISABLE_REGISTRATION = true;
-            };
-            security = {
-              # Close the first-run installer page. It is normally locked by
-              # completing the wizard, but a declarative deployment never runs
-              # it — leaving /forgejo/install reachable, and that page rewrites
-              # the database and admin credentials.
-              INSTALL_LOCK = true;
-            };
-            # Actions is remote code execution by design and this appliance
-            # registers no runner (there is no shell and no runner unit), so
-            # enabling it on an internet-reachable route buys nothing and
-            # exposes the runner-registration API. Flip to true together with
-            # an actual runner. (Native mode, which is LAN-only, keeps it on —
-            # see modules/services.nix.)
-            actions.ENABLED = false;
+    config = _: {
+      system.stateVersion = "26.11";
+      networking.firewall.allowedTCPPorts = [ 3000 ];
+      services.forgejo = {
+        enable = true;
+        lfs.enable = true;
+        database.type = "postgres";
+        stateDir = "/var/lib/forgejo";
+        settings = {
+          server = {
+            HTTP_PORT = 3000;
+            # The front vhost strips the /forgejo prefix; Forgejo must know
+            # it is served under a subpath so it generates prefixed links.
+            ROOT_URL =
+              if proxied then
+                "https://${config.losos.proxy.hostname}/forgejo/"
+              else
+                "http://${hostName}.local/forgejo/";
           };
+          service = {
+            # /forgejo/ is the one admin-free route published through the
+            # master-proxy tunnel, and Forgejo's default is open sign-up.
+            # Without this anyone on the internet could create an account and
+            # push to this box. Accounts are made by the operator with
+            # `forgejo admin user create` inside the container.
+            DISABLE_REGISTRATION = true;
+          };
+          security = {
+            # Close the first-run installer page. It is normally locked by
+            # completing the wizard, but a declarative deployment never runs
+            # it — leaving /forgejo/install reachable, and that page rewrites
+            # the database and admin credentials.
+            INSTALL_LOCK = true;
+          };
+          # Actions is remote code execution by design and this appliance
+          # registers no runner (there is no shell and no runner unit), so
+          # enabling it on an internet-reachable route buys nothing and
+          # exposes the runner-registration API. Flip to true together with
+          # an actual runner. (Native mode, which is LAN-only, keeps it on —
+          # see modules/services.nix.)
+          actions.ENABLED = false;
         };
       };
+    };
   };
 
   # ── Container egress ──────────────────────────────────────────────────────

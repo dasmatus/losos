@@ -1,7 +1,7 @@
 # Impermanence: /persist (encrypted, see disko.nix) holds all durable state;
 # the root is tmpfs and is rebuilt every boot. Directories listed here are
 # bind-mounted from /persist back onto the volatile root.
-{ config, ... }:
+_:
 
 {
   environment.persistence."/persist" = {
