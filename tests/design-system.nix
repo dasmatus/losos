@@ -15,7 +15,7 @@ let
   inherit (pkgs) lib;
   pinnedPlaywright =
     (builtins.fromJSON (builtins.readFile ../admin-ui/design-system/react/package.json))
-      .devDependencies.playwright;
+    .devDependencies.playwright;
 in
 assert lib.assertMsg (pinnedPlaywright == pkgs.playwright-driver.version)
   "losos-ds-render: package.json pins playwright ${pinnedPlaywright} but nixpkgs ships playwright-driver ${pkgs.playwright-driver.version}; bump the devDependency (npm install --save-dev --save-exact playwright@${pkgs.playwright-driver.version}) and refresh npmDepsHash";

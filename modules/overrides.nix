@@ -14,7 +14,7 @@
 #
 # Values here mirror the option defaults in options.nix so the box behaves
 # unchanged until an admin changes something.
-{ ... }:
+_:
 
 {
   losos.sharingMyStorage = true;

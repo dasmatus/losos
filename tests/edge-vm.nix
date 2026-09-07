@@ -72,108 +72,107 @@ in
 pkgs.testers.nixosTest {
   name = "losos-edge-proxy";
 
-  nodes =
-    {
-      edge =
-        { pkgs, ... }:
-        {
-          imports = [
-            ../modules/options.nix
-            ../modules/edge.nix
-            secretFiles
-          ];
+  nodes = {
+    edge =
+      { ... }:
+      {
+        imports = [
+          ../modules/options.nix
+          ../modules/edge.nix
+          secretFiles
+        ];
 
-          # edge.nix wires losos.edge.registrar.package = self.packages...;
-          # testers.nixosTest has no flake `self`, so supply a shim pointing at
-          # the same package the flake would build.
-          _module.args.self = {
-            packages.x86_64-linux.losos-registrar = lososPkgs.losos-registrar;
+        # edge.nix wires losos.edge.registrar.package = self.packages...;
+        # testers.nixosTest has no flake `self`, so supply a shim pointing at
+        # the same package the flake would build.
+        _module.args.self = {
+          packages.x86_64-linux.losos-registrar = lososPkgs.losos-registrar;
+        };
+
+        losos.edge = {
+          enable = true;
+          acmeEmail = "test@losos.cfd"; # satisfies the assertion; LE won't run usefully in-VM
+          # test-only: appliance dials the API directly over the inter-VM
+          # link. The nixosTest framework maps `edge` to an IPv6 address
+          # (2001:db8::/64), so bind `::` (dual-stack) — the appliance's
+          # native `getent hosts edge` resolution reaches it without any
+          # IPv4 fallback. Production fronts the API behind Traefik/TLS.
+          registrarApiBind = "::";
+          registrarApiPort = 8443;
+          ratholeBindPort = 2333;
+          ratholePortRange = "50000-50010";
+          heartbeatTtl = "120s";
+          reconcileInterval = "2s"; # fast for the test
+          bootstrapTokenFile = bootstrapToken;
+          tenants.mattbox = {
+            hostname = "mattbox.losos.cfd";
+            tokenFile = proxyToken;
           };
+        };
 
-          losos.edge = {
+        # ratholeBindAddr defaults to `::` (dual-stack), so the IPv6
+        # resolution the framework gives `edge` reaches rathole — no IPv4
+        # override on eth1 is needed.
+
+        virtualisation = {
+          memorySize = 1024;
+          cores = 2;
+        };
+      };
+
+    appliance =
+      { ... }:
+      {
+        imports = [
+          ../modules/options.nix
+          ../modules/proxy.nix
+          secretFiles
+        ];
+
+        losos = {
+          hostName = "mattbox";
+          proxy = {
             enable = true;
-            acmeEmail = "test@losos.cfd"; # satisfies the assertion; LE won't run usefully in-VM
-            # test-only: appliance dials the API directly over the inter-VM
-            # link. The nixosTest framework maps `edge` to an IPv6 address
-            # (2001:db8::/64), so bind `::` (dual-stack) — the appliance's
-            # native `getent hosts edge` resolution reaches it without any
-            # IPv4 fallback. Production fronts the API behind Traefik/TLS.
-            registrarApiBind = "::";
-            registrarApiPort = 8443;
-            ratholeBindPort = 2333;
-            ratholePortRange = "50000-50010";
-            heartbeatTtl = "120s";
-            reconcileInterval = "2s"; # fast for the test
+            # Dial the edge by its node name. The nixosTest framework's
+            # /etc/hosts maps `edge` to an IPv6 2001:db8::/64 address, and
+            # rathole binds `::` (dual-stack) by default, so the appliance's
+            # native resolution reaches the tunnel + registrar API directly.
+            edgeRatholeEndpoint = "edge:2333";
+            registrarUrl = "http://edge:8443"; # direct, no Traefik/TLS in-VM
+            hostname = "mattbox.losos.cfd";
+            applianceId = "mattbox";
+            tokenFile = proxyToken;
             bootstrapTokenFile = bootstrapToken;
-            tenants.mattbox = {
-              hostname = "mattbox.losos.cfd";
-              tokenFile = proxyToken;
-            };
-          };
-
-          # ratholeBindAddr defaults to `::` (dual-stack), so the IPv6
-          # resolution the framework gives `edge` reaches rathole — no IPv4
-          # override on eth1 is needed.
-
-          virtualisation = {
-            memorySize = 1024;
-            cores = 2;
+            heartbeatInterval = "3s";
+            registrar.package = lososPkgs.losos-registrar;
           };
         };
 
-      appliance =
-        { pkgs, ... }:
-        {
-          imports = [
-            ../modules/options.nix
-            ../modules/proxy.nix
-            secretFiles
-          ];
-
-          losos = {
-            hostName = "mattbox";
-            proxy = {
-              enable = true;
-              # Dial the edge by its node name. The nixosTest framework's
-              # /etc/hosts maps `edge` to an IPv6 2001:db8::/64 address, and
-              # rathole binds `::` (dual-stack) by default, so the appliance's
-              # native resolution reaches the tunnel + registrar API directly.
-              edgeRatholeEndpoint = "edge:2333";
-              registrarUrl = "http://edge:8443"; # direct, no Traefik/TLS in-VM
-              hostname = "mattbox.losos.cfd";
-              applianceId = "mattbox";
-              tokenFile = proxyToken;
-              bootstrapTokenFile = bootstrapToken;
-              heartbeatInterval = "3s";
-              registrar.package = lososPkgs.losos-registrar;
-            };
-          };
-
-          # The slave proxy: a minimal Nginx on :80 that rathole forwards to.
-          # Serves a fixed page so the end-to-end curl through the tunnel has a
-          # recognisable body to assert on.
-          services.nginx = {
-            enable = true;
-            virtualHosts."losos-front" = {
-              default = true;
-              listen = [
-                {
-                  addr = "0.0.0.0";
-                  port = 80;
-                }
-              ];
-              locations."/".extraConfig = ''
-                return 200 'hello-losos\n';
-              '';
-            };
-          };
-
-          virtualisation = {
-            memorySize = 1024;
-            cores = 2;
+        # The slave proxy: a minimal Nginx on :80 that rathole forwards to.
+        # Serves a fixed page so the end-to-end curl through the tunnel has a
+        # recognisable body to assert on.
+        services.nginx = {
+          enable = true;
+          virtualHosts."losos-front" = {
+            default = true;
+            listen = [
+              {
+                addr = "0.0.0.0";
+                port = 80;
+              }
+            ];
+            locations."/".extraConfig = ''
+              return 200 'hello-losos\n';
+            '';
           };
         };
-    };
+
+        virtualisation = {
+          memorySize = 1024;
+          cores = 2;
+        };
+      };
+  };
 
   testScript = ''
     edge.start()

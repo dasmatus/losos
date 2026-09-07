@@ -24,7 +24,7 @@
 { pkgs, ... }:
 
 let
-  lib = pkgs.lib;
+  inherit (pkgs) lib;
 in
 {
   losos-admin-ui = pkgs.runCommand "losos-admin-ui-0.1.0" { } ''
@@ -34,9 +34,7 @@ in
       # served by nginx).
       lib.cleanSourceWith {
         src = ./../admin-ui;
-        filter = name: type:
-          lib.cleanSourceFilter name type
-          && baseNameOf name != "design-system";
+        filter = name: type: lib.cleanSourceFilter name type && baseNameOf name != "design-system";
       }
     } $out
     chmod -R u+rwX $out
@@ -63,7 +61,7 @@ in
     src = lib.cleanSource ./../backend-registrar;
     # SHA256 of the vendored crate tarball. If deps change, `nix build
     # .#losos-registrar` will print the new hash to paste here.
-    cargoHash = "sha256-eFIod0WRyTE+QespzQqQpiMaT0cX9yM8h0XtMNr7jSs=";
+    cargoHash = "sha256-uPQ/ftWa+GMR5EIMg3oXotjTi+dFBPubIR9qyFBsjA4=";
     # No system deps; pure Rust with rustls (no openssl).
     doCheck = true;
   };

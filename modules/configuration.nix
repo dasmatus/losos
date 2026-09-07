@@ -14,25 +14,27 @@
   # via services.tahoe.*.package = pkgs.tahoe-lafs.
   nixpkgs.overlays = [
     (final: prev: {
-      tahoe-lafs = (prev.tahoe-lafs.override {
-        python3Packages = final.python312Packages;
-      }).overridePythonAttrs (old: {
-        # Skip upstream's trial suite: it is incompatible with the twisted
-        # 26.4.0 in this nixpkgs, not broken. 1694 of 1708 tests pass; the 12
-        # that don't are the removed TestCase aliases (failUnlessRaises and
-        # friends, dropped in twisted 26.4.0) plus one Windows-only test that
-        # has no business running on Linux. Nothing functional is wrong — the
-        # appliance ships the pinned derivation, not its test corpus.
-        #
-        # overridePythonAttrs, *not* overrideAttrs: buildPythonPackage runs
-        # the suite in installCheckPhase and derives doInstallCheck from
-        # doCheck when it builds its mkDerivation args. Setting doCheck = false
-        # from the outside with overrideAttrs leaves doInstallCheck = true
-        # behind, the suite runs anyway, and the whole system closure fails to
-        # build. overridePythonAttrs re-enters buildPythonPackage so both flags
-        # move together.
-        doCheck = false;
-      });
+      tahoe-lafs =
+        (prev.tahoe-lafs.override {
+          python3Packages = final.python312Packages;
+        }).overridePythonAttrs
+          (_old: {
+            # Skip upstream's trial suite: it is incompatible with the twisted
+            # 26.4.0 in this nixpkgs, not broken. 1694 of 1708 tests pass; the 12
+            # that don't are the removed TestCase aliases (failUnlessRaises and
+            # friends, dropped in twisted 26.4.0) plus one Windows-only test that
+            # has no business running on Linux. Nothing functional is wrong — the
+            # appliance ships the pinned derivation, not its test corpus.
+            #
+            # overridePythonAttrs, *not* overrideAttrs: buildPythonPackage runs
+            # the suite in installCheckPhase and derives doInstallCheck from
+            # doCheck when it builds its mkDerivation args. Setting doCheck = false
+            # from the outside with overrideAttrs leaves doInstallCheck = true
+            # behind, the suite runs anyway, and the whole system closure fails to
+            # build. overridePythonAttrs re-enters buildPythonPackage so both flags
+            # move together.
+            doCheck = false;
+          });
     })
   ];
 
