@@ -47,7 +47,11 @@ let
   # `nodes` because testScript is a sibling of `nodes`, not a child, and could
   # not otherwise see them.
   proxyTokenValue = "test-proxy-token-0123456789abcdef";
-  bootstrapTokenValue = "test-bootstrap-789";
+  # 32 chars minimum: the registrar refuses to start on a bootstrap token
+  # shorter than that, because a short or truncated token file is a
+  # guessable secret rather than a credential. The old fixture was 18
+  # characters and crash-looped the service the moment that check landed.
+  bootstrapTokenValue = "test-bootstrap-0123456789abcdef0123";
 
   # Runtime paths, NOT pkgs.writeText store paths. options.nix now warns when
   # a secret option points into /nix/store, because the store is world-
