@@ -23,7 +23,19 @@
 		</div>
 	</div>
 
-	<main class="container">
+	<main class="container" id="main">
+
+		<noscript>
+			<div class="hint-card">
+				<p>
+					This page needs JavaScript. The Nextcloud and Forgejo tiles still
+					work as plain links. Nothing else works. No tile shows whether its
+					service is up, rebuild progress never appears, and the Tahoe-LAFS
+					tile has no address to point at. Tahoe answers on port 3456 of this
+					appliance.
+				</p>
+			</div>
+		</noscript>
 
 		<div id="error-banner" class="error-banner" role="alert" hidden>
 			<span id="error-text"></span>
@@ -45,67 +57,86 @@
 			<p>Sign in on the <a href="/settings">settings page</a> to see rebuild progress.</p>
 		</div>
 
-		<div class="grid" role="list">
+		<ul class="grid">
 
-			<a class="tile-link" role="listitem" href="/nextcloud" id="tile-nextcloud"
-				aria-labelledby="h-nextcloud">
-				<article class="card">
-					<div class="tile">
-						<span class="tile-icon tile-icon--nextcloud" aria-hidden="true">N<span
-								class="dot" id="dot-nextcloud" data-state="checking" role="img"
-								aria-label="status"></span></span>
-						<span class="tile-row">
-							<span class="tile-name" id="h-nextcloud">Nextcloud<span class="vh"
-									id="st-nextcloud"></span></span>
-							<span class="tile-tip" aria-hidden="true">Files, calendar, and contacts.</span>
-						</span>
-					</div>
-				</article>
-			</a>
+			<li class="tile-item">
+				<a class="tile-link" href="/nextcloud" id="tile-nextcloud"
+					aria-labelledby="h-nextcloud" aria-describedby="d-nextcloud">
+					<article class="card">
+						<div class="tile">
+							<span class="tile-icon tile-icon--nextcloud" aria-hidden="true">N<span
+									class="dot" id="dot-nextcloud" data-state="checking"
+									aria-hidden="true"></span></span>
+							<span class="tile-row">
+								<span class="tile-name" id="h-nextcloud">Nextcloud</span>
+								<span class="tile-tip" id="d-nextcloud">Files, calendar, and
+									contacts.</span>
+							</span>
+						</div>
+					</article>
+				</a>
+				<button type="button" class="tile-menu-btn" id="menu-nextcloud"
+					aria-label="Nextcloud address">&#8942;</button>
+				<span class="vh" id="st-nextcloud" data-status-prefix="Nextcloud"
+					aria-live="polite"></span>
+			</li>
 
-			<a class="tile-link" role="listitem" href="/forgejo/" id="tile-forgejo"
-				aria-labelledby="h-forgejo">
-				<article class="card">
-					<div class="tile">
-						<span class="tile-icon tile-icon--forgejo" aria-hidden="true">F<span
-								class="dot" id="dot-forgejo" data-state="checking" role="img"
-								aria-label="status"></span></span>
-						<span class="tile-row">
-							<span class="tile-name" id="h-forgejo">Forgejo<span class="vh"
-									id="st-forgejo"></span></span>
-							<span class="tile-tip" aria-hidden="true">Git hosting and code collaboration.</span>
-						</span>
-					</div>
-				</article>
-			</a>
+			<li class="tile-item">
+				<a class="tile-link" href="/forgejo/" id="tile-forgejo"
+					aria-labelledby="h-forgejo" aria-describedby="d-forgejo">
+					<article class="card">
+						<div class="tile">
+							<span class="tile-icon tile-icon--forgejo" aria-hidden="true">F<span
+									class="dot" id="dot-forgejo" data-state="checking"
+									aria-hidden="true"></span></span>
+							<span class="tile-row">
+								<span class="tile-name" id="h-forgejo">Forgejo</span>
+								<span class="tile-tip" id="d-forgejo">Git hosting and code
+									collaboration.</span>
+							</span>
+						</div>
+					</article>
+				</a>
+				<button type="button" class="tile-menu-btn" id="menu-forgejo"
+					aria-label="Forgejo address">&#8942;</button>
+				<span class="vh" id="st-forgejo" data-status-prefix="Forgejo"
+					aria-live="polite"></span>
+			</li>
 
-			<a class="tile-link" role="listitem" href="#tahoe" id="tile-tahoe"
-				aria-labelledby="h-tahoe">
-				<article class="card">
-					<div class="tile">
-						<span class="tile-icon tile-icon--tahoe" aria-hidden="true">T<span
-								class="dot" id="dot-tahoe" data-state="checking" role="img"
-								aria-label="status"></span></span>
-						<span class="tile-row">
-							<span class="tile-name" id="h-tahoe">Tahoe-LAFS<span class="vh"
-									id="st-tahoe"></span></span>
-							<span class="tile-tip" aria-hidden="true">Distributed, encrypted storage grid.</span>
-						</span>
-					</div>
-				</article>
-			</a>
+			<li class="tile-item">
+				<a class="tile-link" href="#tahoe" id="tile-tahoe" aria-labelledby="h-tahoe"
+					aria-describedby="d-tahoe">
+					<article class="card">
+						<div class="tile">
+							<span class="tile-icon tile-icon--tahoe" aria-hidden="true">T<span
+									class="dot" id="dot-tahoe" data-state="checking"
+									aria-hidden="true"></span></span>
+							<span class="tile-row">
+								<span class="tile-name" id="h-tahoe">Tahoe-LAFS</span>
+								<span class="tile-tip" id="d-tahoe">Distributed, encrypted storage
+									grid.</span>
+							</span>
+						</div>
+					</article>
+				</a>
+				<button type="button" class="tile-menu-btn" id="menu-tahoe"
+					aria-label="Tahoe-LAFS address">&#8942;</button>
+				<span class="vh" id="st-tahoe" data-status-prefix="Tahoe-LAFS"
+					aria-live="polite"></span>
+			</li>
 
-		</div>
+		</ul>
 
-		<p class="tile-help">Hover a tile for its description; right-click for its address.</p>
+		<p class="tile-help">Each tile has an address button in its corner. Right-clicking the
+			tile opens it too.</p>
 
 		<article class="card syscard" aria-labelledby="h-system">
 			<div class="card-head">
 				<h2 id="h-system">System</h2>
 				<span class="status">
-					<span class="dot" id="dot-lososd" data-state="checking" role="img"
-						aria-label="status"></span>
-					<span class="status-text" id="st-lososd">Checking&hellip;</span>
+					<span class="dot" id="dot-lososd" data-state="checking" aria-hidden="true"></span>
+					<span class="vh">Daemon status:</span>
+					<span class="status-text" id="st-lososd" aria-live="polite">Checking&hellip;</span>
 				</span>
 			</div>
 			<dl class="syslist">
@@ -127,10 +158,11 @@
 	</main>
 
 	<div id="ctx-overlay" class="ctx-overlay" hidden>
-		<div id="ctx-menu" class="ctx-menu" role="menu" aria-label="Service address">
+		<div id="ctx-menu" class="ctx-menu" role="dialog" aria-modal="true"
+			aria-labelledby="ctx-addr">
 			<div class="ctx-addr" id="ctx-addr"></div>
-			<button type="button" id="ctx-copy" role="menuitem">Copy address</button>
-			<button type="button" id="ctx-open" role="menuitem">Open in new tab</button>
+			<button type="button" id="ctx-copy">Copy address</button>
+			<button type="button" id="ctx-open">Open in new tab</button>
 		</div>
 	</div>
 
