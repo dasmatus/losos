@@ -1,4 +1,9 @@
-//! `losos-registrar serve` — the edge loopback HTTP API + the reconciler.
+//! `losos-registrar serve` — the edge registration HTTP API + the reconciler.
+//!
+//! **This API is on the public internet.** `modules/edge.nix` gives Traefik a
+//! `Host(register.<domain>)` router with no path rule and no middleware in
+//! front of it, so every route below answers anyone who can resolve that name,
+//! and the unit runs as root. Treat everything here as hostile input.
 //!
 //! The API is the only thing that mutates the registry; the reconciler is the
 //! only thing that writes config files. A `tokio::sync::Notify` lets the API
@@ -10,7 +15,20 @@
 //! Auth is closed-enrollment: a request is honoured only if its `appliance_id`
 //! is in the tenants whitelist AND its `token` constant-time-matches the
 //! content of that tenant's `tokenFile`. The whitelist + token paths come from
-//! a `tenants.json` the NixOS module generates from `losos.edge.tenants`.
+//! a `tenants.json` the NixOS module generates from `losos.edge.tenants`. The
+//! whitelist is also the *hostname* authority: [`reconcile_once`] builds every
+//! Traefik router from `tenants.json`, never from the registry's stored copy,
+//! so an operator hostname change lands on the next tick and a tampered
+//! `registry.json` cannot mint a router (or an ACME request) for a hostname
+//! the operator never listed.
+//!
+//! Token files are hand-placed `/var/secrets/*` — nothing in the flake creates
+//! them — so [`token_fault`] treats a missing, empty, short or
+//! control-character-bearing token file as an operator fault and refuses that
+//! tenant loudly. Without that check a zero-byte token file authenticates a
+//! request carrying `"token": ""`, which is a complete tenant takeover: the
+//! caller gets the victim's Traefik router, its Let's Encrypt cert, and a
+//! rathole service provisioned with an empty token.
 //!
 //! Handler errors use the concrete [`ApiError`] enum (thiserror), mapped to
 //! HTTP status codes at the boundary — `?` converts io/serde/registry via
@@ -22,18 +40,22 @@
 //! continues rather than killing the server.
 
 use std::collections::HashMap;
+use std::future::Future;
 use std::path::Path;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::time::{Duration, SystemTime};
 
-use axum::body::Bytes;
-use axum::extract::{DefaultBodyLimit, State};
-use axum::http::{HeaderMap, StatusCode};
+use axum::extract::{DefaultBodyLimit, Request, State};
+use axum::http::StatusCode;
+use axum::middleware::{self, Next};
+use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use miette::{Context, IntoDiagnostic, Result};
+use miette::{miette, Context, IntoDiagnostic, Result};
 use serde::{Deserialize, Serialize};
-use tokio::sync::Notify;
+use subtle::ConstantTimeEq;
+use tokio::net::TcpListener;
+use tokio::sync::{Mutex, Notify, Semaphore};
 
 use crate::action::Action;
 use crate::config::{desired_config, EdgeOpts, TenantView};
@@ -47,15 +69,40 @@ const TRAEFIK_FILE_MODE: u32 = 0o644;
 /// rathole server config carries service tokens → owner-only. Shared with
 /// the `seed` subcommand, which writes the same file at first boot.
 pub(crate) const RATHOLE_FILE_MODE: u32 = 0o600;
-/// Hard cap on an uploaded config body (1 MiB). Enforced at the router layer
-/// so the body is never materialised beyond this.
-const MAX_UPLOAD_BYTES: usize = 1024 * 1024;
+
+/// Hard cap on a request body. Every route takes a three-field JSON object;
+/// 16 KiB is orders of magnitude more than any of them needs. Enforced at the
+/// router layer so an oversized body is never materialised.
+const MAX_BODY_BYTES: usize = 16 * 1024;
+
+/// Shortest on-disk token the registrar will honour. The appliance token the
+/// docs describe is 64 hex characters; anything under 32 is either a
+/// truncated write, a placeholder, or an empty file — none of which should be
+/// able to authenticate a tenant on an internet-facing route.
+const MIN_TOKEN_LEN: usize = 32;
+
+/// Wall-clock budget for one request, end to end. Without it a slow-loris
+/// client holds a connection (and a concurrency permit) indefinitely.
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// Requests allowed in flight at once. Every authenticated *and*
+/// unauthenticated request costs a `tenants.json` stat and (for a known id) a
+/// token-file read, so an unbounded arrival rate is an unbounded IO rate on
+/// the edge's root filesystem. Excess is shed with 503 rather than queued —
+/// queueing under a flood just converts a CPU problem into a memory one.
+const MAX_INFLIGHT: usize = 64;
+
+/// A value no real token can equal, used to make the unknown-id branch do the
+/// same compare the known-id branch does. See [`decoy_probe`].
+const DECOY_TOKEN: &str = "\0decoy\0";
 
 #[derive(Clone)]
 struct AppState {
     reg: Shared,
     opts: Arc<ServeOpts>,
     notify: Arc<Notify>,
+    tenants: Arc<TenantCache>,
+    limiter: Arc<Semaphore>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -76,19 +123,28 @@ struct RegisterResp {
     rathole_port: u16,
 }
 
-/// Summary returned by the upload endpoints after parsing the spilled file.
-#[derive(Debug, Serialize)]
-struct UploadResp {
-    bytes: usize,
-    /// Top-level keys of the parsed config (Traefik YAML top-level keys, or
-    /// Tahoe INI `[section]` headers), sorted and deduplicated.
-    top_level_keys: Vec<String>,
-    /// The canonical root key for the format, if present:
-    /// `"http"` for a Traefik dynamic config, `"node"` for a Tahoe `tahoe.cfg`.
-    primary_key: Option<String>,
+/// Bind `opts.listen` and serve until SIGTERM/SIGINT.
+pub async fn run(opts: ServeOpts) -> Result<()> {
+    let listener = TcpListener::bind(&opts.listen)
+        .await
+        .into_diagnostic()
+        .with_context(|| format!("bind {}", opts.listen))?;
+    tracing::info!(target: Action::Bind.target(), "listening on {}", opts.listen);
+    serve(listener, opts, shutdown_signal()).await
 }
 
-pub async fn run(opts: ServeOpts) -> Result<()> {
+/// Serve on an already-bound listener until `shutdown` resolves.
+///
+/// Split out from [`run`] so the caller owns both the socket and the stop
+/// condition: production passes a signal future, tests pass an ephemeral
+/// listener (port 0) and a oneshot. In-flight requests finish before the
+/// listener closes — a registrar killed mid-`/register` would otherwise leave
+/// the appliance to time out and retry against a `registry.json` that may or
+/// may not have been written.
+pub async fn serve<F>(listener: TcpListener, opts: ServeOpts, shutdown: F) -> Result<()>
+where
+    F: Future<Output = ()> + Send + 'static,
+{
     let reg = Arc::new(Registry::new(opts.registry_path.clone(), opts.port_range));
     // Re-attach before the API opens: restore routes for tenants the edge
     // already knew about so a rebooting edge doesn't drop every appliance.
@@ -97,8 +153,10 @@ pub async fn run(opts: ServeOpts) -> Result<()> {
 
     let state = AppState {
         reg,
-        opts: Arc::new(opts.clone()),
+        opts: Arc::new(opts),
         notify: Arc::new(Notify::new()),
+        tenants: Arc::new(TenantCache::default()),
+        limiter: Arc::new(Semaphore::new(MAX_INFLIGHT)),
     };
 
     // Generate config from whatever we just loaded, so the box is serving
@@ -115,30 +173,65 @@ pub async fn run(opts: ServeOpts) -> Result<()> {
         // Same operation under a clearer name; the announce client never
         // calls either, so there is no wire-compat constraint to honour.
         .route("/unregister", post(deregister))
-        // Upload endpoints: validate-and-discard. The appliance submits a
-        // config; the edge parses it on tmpfs and unlinks it before
-        // returning — the file is never retained. Both are reachable through
-        // Traefik at register.<publicDomain> (the static register route
-        // proxies this whole loopback API).
-        .route("/config", post(upload_config))
-        .route("/tahoe", post(upload_tahoe))
-        // Bound at the router so an oversized upload never materialises.
-        .layer(DefaultBodyLimit::max(MAX_UPLOAD_BYTES))
+        // Bound at the router so an oversized body never materialises.
+        .layer(DefaultBodyLimit::max(MAX_BODY_BYTES))
+        // Added last, so outermost: the timeout and the concurrency cap cover
+        // body reading, routing and 404s, not just handler bodies.
+        .layer(middleware::from_fn_with_state(state.clone(), guard))
         .with_state(state.clone());
 
-    let listener = tokio::net::TcpListener::bind(&opts.listen)
+    // axum::serve returns when the listener errors or `shutdown` resolves.
+    axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown)
         .await
-        .into_diagnostic()
-        .with_context(|| format!("bind {}", opts.listen))?;
-    tracing::info!(target: Action::Bind.target(), "listening on {}", opts.listen);
-    // axum::serve returns when the listener errors or the runtime stops.
-    axum::serve(listener, app).await.into_diagnostic()?;
+        .into_diagnostic()?;
+    tracing::info!(target: Action::Serve.target(), "http server stopped");
 
     // Structured shutdown: stop the reconciler and await its result so a
     // panic inside it surfaces instead of being silently detached.
     recon.abort();
     let _ = recon.await;
     Ok(())
+}
+
+/// Resolve on SIGTERM (systemd's stop signal) or SIGINT.
+async fn shutdown_signal() {
+    let interrupt = async {
+        let _ = tokio::signal::ctrl_c().await;
+    };
+    let terminate = async {
+        match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+            Ok(mut sig) => {
+                sig.recv().await;
+            }
+            Err(e) => {
+                tracing::warn!(target: Action::Serve.target(), "no SIGTERM handler: {e}");
+                // Never resolve, so the ctrl_c arm stays the live one.
+                std::future::pending::<()>().await;
+            }
+        }
+    };
+    tokio::select! {
+        () = interrupt => {}
+        () = terminate => {}
+    }
+    tracing::info!(target: Action::Serve.target(), "shutdown signal received");
+}
+
+/// Outermost middleware: shed load past [`MAX_INFLIGHT`], then bound whatever
+/// runs inside by [`REQUEST_TIMEOUT`].
+async fn guard(State(st): State<AppState>, req: Request, next: Next) -> Response {
+    let Ok(_permit) = Arc::clone(&st.limiter).try_acquire_owned() else {
+        tracing::warn!(target: Action::Serve.target(), "shedding request: {MAX_INFLIGHT} in flight");
+        return (StatusCode::SERVICE_UNAVAILABLE, "busy; retry later").into_response();
+    };
+    match tokio::time::timeout(REQUEST_TIMEOUT, next.run(req)).await {
+        Ok(response) => response,
+        Err(_) => {
+            tracing::warn!(target: Action::Serve.target(), "request exceeded {REQUEST_TIMEOUT:?}");
+            (StatusCode::GATEWAY_TIMEOUT, "request timed out").into_response()
+        }
+    }
 }
 
 async fn health() -> &'static str {
@@ -155,7 +248,13 @@ async fn register(
     if req.hostname != tenant.hostname {
         return Err(ApiError::HostnameForbidden);
     }
-    let port = st.reg.register(&req.appliance_id, &req.hostname).await?;
+    let port = st.reg.register(&req.appliance_id, &tenant.hostname).await?;
+    tracing::info!(
+        target: Action::Register.target(),
+        "registered {} -> {} on port {port}",
+        req.appliance_id,
+        tenant.hostname,
+    );
     st.notify.notify_one();
     Ok(Json(RegisterResp { rathole_port: port }))
 }
@@ -180,160 +279,170 @@ async fn deregister(
 ) -> Result<StatusCode, ApiError> {
     authenticate(&st, &req.appliance_id, &req.token).await?;
     st.reg.deregister(&req.appliance_id).await?;
+    tracing::info!(target: Action::Deregister.target(), "deregistered {}", req.appliance_id);
     st.notify.notify_one();
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// `POST /config` — receive an uploaded **Traefik** dynamic config (YAML),
-/// persist it to tmpfs, parse it, return a summary, then delete the tmpfs file.
-///
-/// Auth is via headers (`x-appliance-id` / `x-appliance-token`) because the
-/// body is a raw file, not JSON. The file is written to `opts.upload_dir`
-/// (tmpfs — a `RuntimeDirectory`, deliberately not under `/persist`), read
-/// back, and unlinked before the handler returns — including on parse failure
-/// — so retention is minimised. Even a missed unlink is safe: tmpfs is wiped
-/// on reboot. The file is never copied into Traefik's dynamic dir; this is a
-/// validate-and-discard endpoint, not a config-deployment one.
-async fn upload_config(
-    State(st): State<AppState>,
-    headers: HeaderMap,
-    body: Bytes,
-) -> Result<Json<UploadResp>, ApiError> {
-    let (bytes, content) = authed_spill(&st, &headers, body, "yml").await?;
-    let value: serde_yaml::Value =
-        serde_yaml::from_str(&content).map_err(|_| ApiError::BadRequest("invalid yaml"))?;
-    let mut keys: Vec<String> = value
-        .as_mapping()
-        .map(|m| {
-            m.iter()
-                .filter_map(|(k, _)| k.as_str().map(String::from))
-                .collect()
-        })
-        .unwrap_or_default();
-    keys.sort();
-    keys.dedup();
-    let primary_key = keys.iter().find(|k| *k == "http").cloned();
-    Ok(Json(UploadResp {
-        bytes,
-        top_level_keys: keys,
-        primary_key,
-    }))
-}
-
-/// `POST /tahoe` — receive an uploaded **Tahoe** `tahoe.cfg` (INI), persist
-/// it to tmpfs, parse the `[section]` headers, return a summary, then delete
-/// the tmpfs file. Same validate-and-discard contract as [`upload_config`];
-/// the INI section scan is hand-rolled (no INI dependency) since the summary
-/// only needs section names.
-async fn upload_tahoe(
-    State(st): State<AppState>,
-    headers: HeaderMap,
-    body: Bytes,
-) -> Result<Json<UploadResp>, ApiError> {
-    let (bytes, content) = authed_spill(&st, &headers, body, "cfg").await?;
-    let mut sections: Vec<String> = content
-        .lines()
-        .filter_map(|l| {
-            let l = l.trim();
-            l.strip_prefix('[')?.strip_suffix(']').map(String::from)
-        })
-        .collect();
-    sections.sort();
-    sections.dedup();
-    let primary_key = sections.iter().find(|s| *s == "node").cloned();
-    Ok(Json(UploadResp {
-        bytes,
-        top_level_keys: sections,
-        primary_key,
-    }))
-}
-
-/// Authenticate via headers, then spill `body` to a unique tmpfs file, read it
-/// back, and unlink it — all on `spawn_blocking` so the tmpfs file's lifetime
-/// is a single synchronous span with no async window to orphan it. Deletion is
-/// unconditional (runs even if the read fails). Returns `(byte count, file
-/// content)`. A missing auth header is `Unauthorized`; an IO failure is a 500.
-async fn authed_spill(
-    st: &AppState,
-    headers: &HeaderMap,
-    body: Bytes,
-    suffix: &str,
-) -> Result<(usize, String), ApiError> {
-    let id = header_str(headers, "x-appliance-id").ok_or(ApiError::Unauthorized)?;
-    let token = header_str(headers, "x-appliance-token").ok_or(ApiError::Unauthorized)?;
-    authenticate(st, id, token).await?;
-
-    let dir = st.opts.upload_dir.clone();
-    let suffix = suffix.to_string();
-    let body_vec = body.to_vec();
-    let bytes_len = body_vec.len();
-    let content = tokio::task::spawn_blocking(move || spill_and_delete(&dir, &body_vec, &suffix))
-        .await
-        .map_err(|e| ApiError::from(std::io::Error::other(e)))??;
-    Ok((bytes_len, content))
-}
-
-/// Write `body` to `<dir>/upload-<N>.<suffix>` on tmpfs, read it back as UTF-8,
-/// then unlink it unconditionally. The unlink runs before the function
-/// returns regardless of whether the read succeeded.
-fn spill_and_delete(dir: &Path, body: &[u8], suffix: &str) -> std::io::Result<String> {
-    std::fs::create_dir_all(dir)?;
-    let path = dir.join(format!(
-        "upload-{N}.{suffix}",
-        N = next_upload_id(),
-        suffix = suffix
-    ));
-    std::fs::write(&path, body)?;
-    // Read back so the summary reflects exactly what hit tmpfs.
-    let content = std::fs::read_to_string(&path);
-    // Minimise retention: unlink now, regardless of read outcome. A failure
-    // here is non-fatal (tmpfs is wiped on reboot) but we surface it.
-    let _ = std::fs::remove_file(&path);
-    content
-}
-
-/// Read a header value as a `&str` (returns `None` on missing or non-UTF-8).
-fn header_str<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str> {
-    headers.get(name)?.to_str().ok()
-}
-
-/// Read tenants.json (id → {hostname, `token_file`}) and validate the request.
-/// Re-reads the file each call so the NixOS module can rotate tenants with a
-/// reload the registrar picks up without a restart.
-async fn load_tenants(path: &str) -> Result<HashMap<String, TenantEntry>, ApiError> {
-    let bytes = tokio::fs::read(path).await?;
-    let map = serde_json::from_slice(&bytes)?;
-    Ok(map)
-}
-
+/// One tenant of the operator whitelist (`tenants.json`): the hostname it is
+/// allowed to claim and the path of the file holding its token. The path is
+/// public (it lives in the nix store); the *contents* are the secret.
 #[derive(Debug, Clone, Deserialize)]
 struct TenantEntry {
     hostname: String,
     token_file: String,
 }
 
+/// `tenants.json` memoised behind an mtime+size check.
+///
+/// The file is regenerated by a NixOS switch, not per request, but it was
+/// being read and JSON-parsed on *every* request — including every
+/// unauthenticated one, which made an unauthenticated flood a filesystem
+/// amplifier. Stat-and-reuse keeps the "operator can rotate tenants without a
+/// restart" property while making the steady-state cost one `statx`.
+#[derive(Debug, Default)]
+struct TenantCache {
+    cached: Mutex<Option<Cached>>,
+}
+
+#[derive(Debug)]
+struct Cached {
+    stamp: Stamp,
+    tenants: Arc<HashMap<String, TenantEntry>>,
+}
+
+/// The cheap identity of a file: modification time and length. A nix store
+/// path swap changes both; an in-place edit changes at least one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Stamp {
+    mtime: Option<SystemTime>,
+    len: u64,
+}
+
+impl TenantCache {
+    async fn load(&self, path: &str) -> Result<Arc<HashMap<String, TenantEntry>>, ApiError> {
+        let meta = tokio::fs::metadata(path).await?;
+        let stamp = Stamp {
+            mtime: meta.modified().ok(),
+            len: meta.len(),
+        };
+        let mut slot = self.cached.lock().await;
+        if let Some(hit) = slot.as_ref().filter(|c| c.stamp == stamp) {
+            return Ok(Arc::clone(&hit.tenants));
+        }
+        let bytes = tokio::fs::read(path).await?;
+        let tenants: Arc<HashMap<String, TenantEntry>> = Arc::new(serde_json::from_slice(&bytes)?);
+        tracing::info!(
+            target: Action::Authenticate.target(),
+            "loaded tenant whitelist: {} tenant(s)",
+            tenants.len(),
+        );
+        *slot = Some(Cached {
+            stamp,
+            tenants: Arc::clone(&tenants),
+        });
+        Ok(tenants)
+    }
+}
+
+/// Why an on-disk token is unusable, or `None` if it is fit to authenticate
+/// with. `token` must already be trimmed.
+///
+/// Nothing in the flake writes these files — they are placed by hand under
+/// `/var/secrets/` — so every failure mode here is an operator mistake that
+/// must be loud and must *not* fall through to a comparison:
+///   * empty (a zero-byte or whitespace-only file) would otherwise match a
+///     request that supplies `"token": ""`;
+///   * short means a truncated write or a placeholder;
+///   * a control character would additionally be written into `server.toml`,
+///     where it is only safe because [`crate::config`] escapes it.
+fn token_fault(token: &str) -> Option<&'static str> {
+    if token.is_empty() {
+        Some("empty or whitespace-only")
+    } else if token.chars().count() < MIN_TOKEN_LEN {
+        Some("shorter than the 32-character minimum")
+    } else if token.chars().any(char::is_control) {
+        Some("carrying a control character")
+    } else {
+        None
+    }
+}
+
+/// Validate a request's `(appliance_id, token)` against the whitelist.
+///
+/// Every rejection returns the same [`ApiError::Unauthorized`] and — as far
+/// as is practical — costs the same work: one whitelist load plus one
+/// token-file read plus one constant-time compare. The unknown-id branch used
+/// to return after the whitelist load alone, which is a far louder oracle
+/// than any byte-compare timing: it let an unauthenticated caller enumerate
+/// which appliance ids exist. [`decoy_probe`] pays the missing read.
 async fn authenticate(st: &AppState, id: &str, token: &str) -> Result<TenantEntry, ApiError> {
-    let tenants = load_tenants(&st.opts.tenants_file).await?;
-    let entry = tenants.get(id).ok_or(ApiError::Unauthorized)?;
-    let expected = tokio::fs::read_to_string(&entry.token_file).await?;
-    if !ct_eq(token.trim(), expected.trim()) {
+    let tenants = st.tenants.load(&st.opts.tenants_file).await?;
+
+    // Independent of the id, so this leaks nothing: no tenant may ever
+    // authenticate with a blank token, whatever its token file says.
+    let supplied = token.trim();
+    if supplied.is_empty() {
+        tracing::warn!(target: Action::Authenticate.target(), "rejected blank token for {id:?}");
+        return Err(ApiError::Unauthorized);
+    }
+
+    let Some(entry) = tenants.get(id) else {
+        decoy_probe(&tenants).await;
+        tracing::warn!(target: Action::Authenticate.target(), "unknown appliance id {id:?}");
+        return Err(ApiError::Unauthorized);
+    };
+
+    let expected = match tokio::fs::read_to_string(&entry.token_file).await {
+        Ok(content) => content,
+        Err(e) => {
+            // Not a 500: a caller must not be able to tell "your token is
+            // wrong" from "this tenant's secret is missing on the edge".
+            tracing::error!(
+                target: Action::Authenticate.target(),
+                "tenant {id}: cannot read token file {}: {e}",
+                entry.token_file,
+            );
+            return Err(ApiError::Unauthorized);
+        }
+    };
+    let expected = expected.trim();
+    if let Some(fault) = token_fault(expected) {
+        tracing::error!(
+            target: Action::Authenticate.target(),
+            "tenant {id}: token file {} is {fault} — refusing all requests for this tenant until an operator fixes it",
+            entry.token_file,
+        );
+        return Err(ApiError::Unauthorized);
+    }
+    if !ct_eq(supplied, expected) {
+        tracing::warn!(target: Action::Authenticate.target(), "token mismatch for {id:?}");
         return Err(ApiError::Unauthorized);
     }
     Ok(entry.clone())
 }
 
-/// Constant-time string compare so token checks don't leak via timing.
+/// Do the token read + compare the known-id path does, and throw the answer
+/// away, so an unknown id costs the same syscalls as a known one.
+///
+/// Any tenant's file will do — the point is the work, not the value.
+/// `black_box` stops the optimiser from noticing the result is unused.
+async fn decoy_probe(tenants: &HashMap<String, TenantEntry>) {
+    let Some(entry) = tenants.values().next() else {
+        return;
+    };
+    let expected = tokio::fs::read_to_string(&entry.token_file)
+        .await
+        .unwrap_or_default();
+    let _ = std::hint::black_box(ct_eq(DECOY_TOKEN, expected.trim()));
+}
+
+/// Constant-time string compare, so a token check leaks no byte-position
+/// information through timing. Delegates to `subtle`, which exists to stop
+/// the optimiser turning a hand-rolled XOR-accumulate loop back into an
+/// early-exit `memcmp`.
 fn ct_eq(a: &str, b: &str) -> bool {
-    if a.len() != b.len() {
-        // Length is not a side channel that matters for random tokens; the
-        // early return just avoids a panic on zip length mismatch.
-        return false;
-    }
-    let mut diff = 0u8;
-    for (x, y) in a.bytes().zip(b.bytes()) {
-        diff |= x ^ y;
-    }
-    diff == 0
+    bool::from(a.as_bytes().ct_eq(b.as_bytes()))
 }
 
 async fn reconciler(st: AppState) {
@@ -353,49 +462,126 @@ async fn reconciler(st: AppState) {
     }
 }
 
+/// One reconciliation pass: prune, resolve the live registry against the
+/// operator whitelist, and rewrite the two config files if anything changed.
+///
+/// Two properties this function is responsible for:
+///
+/// * **The whitelist is the hostname authority.** Each `TenantView` is built
+///   from `entry.hostname` (`tenants.json`), never from the registry's stored
+///   hostname, and a registry entry that disagrees is repaired. Otherwise an
+///   operator hostname change sat inert until the appliance happened to
+///   re-register, and any hostname that reached `registry.json` — a restored
+///   backup, a hand-edit, a torn write — became a live router and an ACME
+///   request for a name the operator never approved.
+///
+/// * **One bad tenant does not stop the pass.** A token file that cannot be
+///   read (or that [`token_fault`] rejects) drops *that* tenant and logs;
+///   it used to `?`-propagate, which aborted the pass before either file was
+///   written, and since the next tick hit the same file it aborted identically
+///   every `reconcile_interval` forever. One tenant's missing secret froze
+///   registration, hostname changes and pruning for every tenant on the edge.
+///   The bootstrap token stays fatal: it is not per-tenant, and rathole's
+///   `[server]` block cannot be rendered without it.
 async fn reconcile_once(st: &AppState) -> Result<()> {
-    let changed = st.reg.prune(st.opts.heartbeat_ttl).await;
+    let pruned = st.reg.prune(st.opts.heartbeat_ttl).await;
     let views = st.reg.views().await;
-    let tenants = load_tenants(&st.opts.tenants_file)
+    let tenants = st
+        .tenants
+        .load(&st.opts.tenants_file)
         .await
         .context("load tenants whitelist")?;
     let bootstrap = tokio::fs::read_to_string(&st.opts.bootstrap_token_file)
         .await
         .into_diagnostic()
         .context("read bootstrap token file")?;
+    let bootstrap = bootstrap.trim();
+    if let Some(fault) = token_fault(bootstrap) {
+        return Err(miette!(
+            "bootstrap token file {} is {fault}",
+            st.opts.bootstrap_token_file
+        ));
+    }
 
-    // Enrich each live tenant with its token (read from the whitelist's
-    // tokenFile — the on-disk secret is the single source of truth). Tenants
-    // removed from the whitelist are dropped here and pruned from the registry
-    // so their rathole service + Traefik router disappear.
     let mut enriched: Vec<TenantView> = Vec::with_capacity(views.len());
     let mut stale: Vec<String> = Vec::new();
+    let mut rehome: Vec<(String, String)> = Vec::new();
     for v in &views {
-        match tenants.get(&v.id) {
-            Some(entry) => {
-                let token = tokio::fs::read_to_string(&entry.token_file)
-                    .await
-                    .into_diagnostic()
-                    .with_context(|| format!("read token file for {}", v.id))?;
-                enriched.push(TenantView {
-                    id: v.id.clone(),
-                    hostname: v.hostname.clone(),
-                    rathole_port: v.rathole_port,
-                    token: token.trim().to_string(),
-                });
-            }
-            None => stale.push(v.id.clone()),
+        // Tenants removed from the whitelist are dropped here and pruned from
+        // the registry so their rathole service + Traefik router disappear.
+        let Some(entry) = tenants.get(&v.id) else {
+            stale.push(v.id.clone());
+            continue;
+        };
+        let hostname = entry.hostname.trim();
+        if hostname.is_empty() {
+            tracing::error!(
+                target: Action::Reconcile.target(),
+                "skipping tenant {}: whitelist hostname is empty",
+                v.id,
+            );
+            continue;
         }
+        if hostname != v.hostname {
+            tracing::warn!(
+                target: Action::Reconcile.target(),
+                "tenant {}: registry hostname {:?} disagrees with the whitelist's {hostname:?}; the whitelist wins",
+                v.id,
+                v.hostname,
+            );
+            rehome.push((v.id.clone(), hostname.to_string()));
+        }
+        // The on-disk secret is the single source of truth for the token, so
+        // it is read here rather than carried through the registry.
+        let token = match tokio::fs::read_to_string(&entry.token_file).await {
+            Ok(content) => content,
+            Err(e) => {
+                tracing::warn!(
+                    target: Action::Reconcile.target(),
+                    "skipping tenant {}: cannot read token file {}: {e}",
+                    v.id,
+                    entry.token_file,
+                );
+                continue;
+            }
+        };
+        let token = token.trim();
+        if let Some(fault) = token_fault(token) {
+            tracing::error!(
+                target: Action::Reconcile.target(),
+                "skipping tenant {}: token file {} is {fault}",
+                v.id,
+                entry.token_file,
+            );
+            continue;
+        }
+        enriched.push(TenantView {
+            id: v.id.clone(),
+            hostname: hostname.to_string(),
+            rathole_port: v.rathole_port,
+            token: token.to_string(),
+        });
     }
     for id in &stale {
         // best-effort; a failure just means it lingers until next prune
-        let _ = st.reg.deregister(id).await;
+        if let Err(e) = st.reg.deregister(id).await {
+            tracing::warn!(target: Action::Reconcile.target(), "dropping stale {id} failed: {e}");
+        }
+    }
+    let mut repaired = false;
+    for (id, hostname) in &rehome {
+        match st.reg.rehost(id, hostname).await {
+            Ok(changed) => repaired |= changed,
+            Err(e) => {
+                tracing::warn!(target: Action::Reconcile.target(), "rehosting {id} failed: {e}");
+            }
+        }
     }
 
     let opts = EdgeOpts {
         rathole_bind_addr: st.opts.rathole_bind_addr.clone(),
         rathole_bind_port: st.opts.rathole_bind_port,
-        bootstrap_token: bootstrap.trim().to_string(),
+        bootstrap_token: bootstrap.to_string(),
     };
     let files = desired_config(&enriched, &opts);
 
@@ -427,7 +613,7 @@ async fn reconcile_once(st: &AppState) -> Result<()> {
     // Restart=always would resurrect it ~5s later, a needless tunnel outage
     // on every tenant change. The atomic temp+rename above is the only
     // signal rathole needs.
-    if changed || changed_traefik || changed_rathole {
+    if pruned || repaired || changed_traefik || changed_rathole {
         tracing::info!(
             target: Action::Reconcile.target(),
             "reconciled {} tenant(s); traefik={} rathole={}",
@@ -475,26 +661,5 @@ async fn remove_if_exists(path: &Path) -> Result<bool> {
         Err(e) => Err(e)
             .into_diagnostic()
             .with_context(|| format!("remove {}", path.display())),
-    }
-}
-
-/// Monotonic counter for unique tmpfs upload filenames. (Cheap, lock-free; a
-/// real RNG is unnecessary — the file is unlinked within the same call.)
-static UPLOAD_CTR: AtomicU64 = AtomicU64::new(0);
-
-fn next_upload_id() -> u64 {
-    UPLOAD_CTR.fetch_add(1, Ordering::Relaxed)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::ct_eq;
-
-    #[test]
-    fn ct_eq_matches_and_mismatches() {
-        assert!(ct_eq("token", "token"));
-        assert!(!ct_eq("token", "toke"));
-        assert!(!ct_eq("token", "tokex"));
-        assert!(ct_eq("", ""));
     }
 }

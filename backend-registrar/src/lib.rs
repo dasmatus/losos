@@ -1,13 +1,13 @@
 //! losos-registrar — the stub Rust HTTP server that owns the edge's proxy config.
 //!
 //! Three subcommands share this crate:
-//!   * `serve`   — runs on the edge. A loopback HTTP API (`/register`,
-//!     `/heartbeat`, `/deregister`, `/health`, `/config`) + a reconciler task
-//!     that *constantly updates* Traefik dynamic config
-//!     (`/etc/traefik/dynamic/losos.yml`) and rathole server config
-//!     (`/etc/rathole/server.toml`) from a tenant registry. Sole writer of
-//!     both files; atomic temp+fsync+rename; SIGHUPs rathole only when the
-//!     rathole config content changed.
+//!   * `serve`   — runs on the edge. An HTTP API serving exactly the four
+//!     routes the approved design lists (`/register`, `/heartbeat`,
+//!     `/deregister`, `/health`), plus a reconciler task that *constantly
+//!     updates* Traefik dynamic config (`/etc/traefik/dynamic/losos.yml`) and
+//!     rathole server config (`/etc/rathole/server.toml`) from a tenant
+//!     registry. Sole writer of both files; atomic temp+fsync+rename. rathole
+//!     hot-reloads from its own file watcher, so no signal is sent.
 //!   * `announce` — runs on the appliance. Reads its token, POSTs `/register`
 //!     on start, then `/heartbeat` on a cadence. Stateless.
 //!   * `seed` — runs once on the edge at boot, before `serve`. Writes the
@@ -18,7 +18,15 @@
 //!
 //! The pure core ([`config::desired_config`]) is separated from IO so the
 //! state machine is unit-tested with no filesystem, mirroring the Haskell
-//! backend's `Losos`/`TestM` split.
+//! backend's `Losos`/`TestM` split. Everything with an IO or HTTP surface is
+//! exercised end to end from `tests/` instead — `serve` takes a bound
+//! listener and a shutdown future precisely so a test can drive the real
+//! router over a real socket.
+//!
+//! Nothing here is loopback-only in practice: `modules/edge.nix` fronts this
+//! API with a Traefik router on `register.<publicDomain>` that has no path
+//! rule and no middleware, and the unit runs as root. Every route is
+//! internet-reachable and is written that way.
 
 #![warn(unreachable_pub)]
 

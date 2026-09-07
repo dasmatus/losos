@@ -143,8 +143,6 @@ let
     cfg.reconcileInterval
     "--heartbeat-ttl"
     cfg.heartbeatTtl
-    "--upload-dir"
-    "/run/losos-registrar"
   ];
 in
 {
@@ -190,12 +188,6 @@ in
         ExecStart = serveArgs;
         StateDirectory = "losos-registrar";
         StateDirectoryMode = "0700";
-        # /run/losos-registrar: tmpfs spill dir for the POST /config upload
-        # endpoint. Deliberately a RuntimeDirectory (tmpfs, wiped on reboot)
-        # — NOT under /persist — so an uploaded config that survives a missed
-        # unlink still vanishes on reboot (data-retention minimisation).
-        RuntimeDirectory = "losos-registrar";
-        RuntimeDirectoryMode = "0700";
         Restart = "always";
         RestartSec = 5;
         # Writes /etc/traefik/dynamic + /etc/rathole; reads 0600 token files.

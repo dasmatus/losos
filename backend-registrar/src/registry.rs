@@ -8,18 +8,30 @@
 //! Traefik + rathole config *before* the API opens — mirrors lososd's
 //! rebuild re-attach.
 //!
-//! The [`tokio::sync::Mutex`] (not `std`) is deliberate: its guard is held
-//! across the `.await` on the atomic persist. The atomic write itself
-//! (temp + fsync + rename) runs on `spawn_blocking` — rename atomicity is a
-//! filesystem concern, not an async one.
+//! The [`tokio::sync::Mutex`] (not `std`) is deliberate: **the guard is held
+//! across the `.await` on the atomic persist**, which is the whole point — it
+//! serialises the snapshot and the write into one critical section, so two
+//! concurrent registrations cannot both snapshot and then race their
+//! `atomic_write`s at the same target (a torn `registry.json` fails
+//! [`Registry::load`] on the next boot, and the edge then refuses to start).
+//! The atomic write itself (temp + fsync + rename) runs on `spawn_blocking` —
+//! rename atomicity is a filesystem concern, not an async one.
+//!
+//! `registry.json` is operator-adjacent state that survives reboots, so
+//! [`Registry::load`] treats it as untrusted: ports outside the configured
+//! range, duplicate port claims and empty ids/hostnames are dropped with a
+//! warning rather than becoming live rathole binds. Hostnames are *not*
+//! authoritative here at all — the reconciler overrides them from the
+//! operator whitelist (`tenants.json`), which is the security boundary.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use tokio::sync::Mutex;
 
+use crate::action::Action;
 use crate::config::TenantView;
 use crate::error::RegistryError;
 use crate::fsutil;
@@ -65,6 +77,12 @@ impl Registry {
     /// Load persisted tenants and restore their port assignments. Call before
     /// the API opens so existing routes are re-provisioned without waiting for
     /// heartbeats.
+    ///
+    /// Entries are validated, not trusted: an empty id or hostname, a port
+    /// outside the configured range, or a port already claimed by a
+    /// lower-sorting id is dropped with a warning. Iterating in id order makes
+    /// which duplicate survives deterministic instead of `HashMap`-order
+    /// roulette.
     pub async fn load(&self) -> Result<(), RegistryError> {
         let file = match tokio::fs::read(&self.path).await {
             Ok(b) => b,
@@ -72,9 +90,35 @@ impl Registry {
             Err(e) => return Err(RegistryError::Io(e)),
         };
         let file: RegistryFile = serde_json::from_slice(&file)?;
+        let (lo, hi) = self.port_range;
         let now = Instant::now();
         let mut map = self.inner.lock().await;
-        for (id, t) in file.tenants {
+        let mut claimed: HashSet<u16> = map.values().map(|t| t.rathole_port).collect();
+        // BTreeMap: deterministic id order, so duplicate resolution is stable.
+        for (id, t) in file.tenants.into_iter().collect::<BTreeMap<_, _>>() {
+            if id.trim().is_empty() || t.hostname.trim().is_empty() {
+                tracing::warn!(
+                    target: Action::LoadRegistry.target(),
+                    "dropping registry entry with empty id or hostname",
+                );
+                continue;
+            }
+            if t.port < lo || t.port > hi {
+                tracing::warn!(
+                    target: Action::LoadRegistry.target(),
+                    "dropping tenant {id}: port {} outside range {lo}-{hi}",
+                    t.port,
+                );
+                continue;
+            }
+            if !claimed.insert(t.port) {
+                tracing::warn!(
+                    target: Action::LoadRegistry.target(),
+                    "dropping tenant {id}: port {} already claimed",
+                    t.port,
+                );
+                continue;
+            }
             map.insert(
                 id,
                 Tenant {
@@ -91,28 +135,46 @@ impl Registry {
     /// the existing port on re-register so Traefik/rathole don't churn.
     /// Returns the assigned port, or [`RegistryError::PortRangeExhausted`]
     /// if no port is free.
+    ///
+    /// The lock is held across the persist: concurrent registrations serialise
+    /// instead of racing two writes at `registry.json`.
     pub async fn register(&self, id: &str, hostname: &str) -> Result<u16, RegistryError> {
         let mut map = self.inner.lock().await;
-        if let Some(t) = map.get_mut(id) {
-            t.hostname = hostname.to_string();
-            t.last_seen = Instant::now();
-            let port = t.rathole_port;
-            drop(map);
-            self.persist().await?;
-            return Ok(port);
-        }
-        let port = alloc_port(&map, self.port_range)?;
-        map.insert(
-            id.to_string(),
-            Tenant {
-                hostname: hostname.to_string(),
-                rathole_port: port,
-                last_seen: Instant::now(),
-            },
-        );
-        drop(map);
-        self.persist().await?;
+        let port = match map.get_mut(id) {
+            Some(t) => {
+                t.hostname = hostname.to_string();
+                t.last_seen = Instant::now();
+                t.rathole_port
+            }
+            None => {
+                let port = alloc_port(&map, self.port_range)?;
+                map.insert(
+                    id.to_string(),
+                    Tenant {
+                        hostname: hostname.to_string(),
+                        rathole_port: port,
+                        last_seen: Instant::now(),
+                    },
+                );
+                port
+            }
+        };
+        self.persist_locked(&map).await?;
         Ok(port)
+    }
+
+    /// Point a known tenant at `hostname`, persisting the change. Used by the
+    /// reconciler to repair a registry entry that disagrees with the operator
+    /// whitelist. Returns `false` if the id is unknown or already correct (no
+    /// write happens in either case).
+    pub async fn rehost(&self, id: &str, hostname: &str) -> Result<bool, RegistryError> {
+        let mut map = self.inner.lock().await;
+        match map.get_mut(id) {
+            Some(t) if t.hostname != hostname => t.hostname = hostname.to_string(),
+            _ => return Ok(false),
+        }
+        self.persist_locked(&map).await?;
+        Ok(true)
     }
 
     /// Refresh `last_seen` for a known tenant. Returns `false` if the id is
@@ -128,32 +190,36 @@ impl Registry {
         }
     }
 
-    /// Remove a tenant and persist the change.
+    /// Remove a tenant and persist the change. A no-op for an unknown id —
+    /// including the persist, so a stray deregister costs no write.
     pub async fn deregister(&self, id: &str) -> Result<(), RegistryError> {
-        {
-            let mut map = self.inner.lock().await;
-            map.remove(id);
+        let mut map = self.inner.lock().await;
+        if map.remove(id).is_none() {
+            return Ok(());
         }
-        self.persist().await
+        self.persist_locked(&map).await
     }
 
     /// Remove tenants whose `last_seen` is older than `ttl`. Returns `true` if
     /// anything changed so the caller knows to reconcile.
     pub async fn prune(&self, ttl: Duration) -> bool {
         let now = Instant::now();
-        let changed = {
-            let mut map = self.inner.lock().await;
-            let before = map.len();
-            map.retain(|_, t| now.duration_since(t.last_seen) < ttl);
-            map.len() != before
-        };
-        if changed {
-            // best-effort persist: a prune-write failure is non-fatal — the
-            // next register/heartbeat retries, and the in-memory state stays
-            // authoritative for config generation.
-            let _ = self.persist().await;
+        let mut map = self.inner.lock().await;
+        let before = map.len();
+        map.retain(|_, t| now.duration_since(t.last_seen) < ttl);
+        if map.len() == before {
+            return false;
         }
-        changed
+        // best-effort persist: a prune-write failure is non-fatal — the next
+        // register/heartbeat retries, and the in-memory state stays
+        // authoritative for config generation.
+        if let Err(e) = self.persist_locked(&map).await {
+            tracing::warn!(
+                target: Action::LoadRegistry.target(),
+                "prune persist failed (in-memory state still authoritative): {e}",
+            );
+        }
+        true
     }
 
     /// Snapshot the live tenants (sorted by id for determinism) for config
@@ -177,48 +243,43 @@ impl Registry {
         v
     }
 
-    /// Serialize and persist the registry atomically. The temp + fsync + rename
-    /// sequence runs on `spawn_blocking` (rename atomicity is a filesystem
-    /// concern); the lock is released before the write so other reads aren't
-    /// blocked on disk.
-    async fn persist(&self) -> Result<(), RegistryError> {
-        let (bytes, path) = {
-            let map = self.inner.lock().await;
-            let file = RegistryFile {
-                tenants: map
-                    .iter()
-                    .map(|(id, t)| {
-                        (
-                            id.clone(),
-                            RegistryFileTenant {
-                                hostname: t.hostname.clone(),
-                                port: t.rathole_port,
-                            },
-                        )
-                    })
-                    .collect(),
-            };
-            (serde_json::to_vec_pretty(&file)?, self.path.clone())
+    /// Serialize and persist the registry atomically. Takes the live map by
+    /// reference so it can only be called by a holder of the lock — snapshot
+    /// and write are then one critical section and two writers cannot
+    /// interleave at `registry.json`. The temp + fsync + rename itself runs on
+    /// `spawn_blocking` (rename atomicity is a filesystem concern).
+    async fn persist_locked(&self, map: &HashMap<String, Tenant>) -> Result<(), RegistryError> {
+        let file = RegistryFile {
+            tenants: map
+                .iter()
+                .map(|(id, t)| {
+                    (
+                        id.clone(),
+                        RegistryFileTenant {
+                            hostname: t.hostname.clone(),
+                            port: t.rathole_port,
+                        },
+                    )
+                })
+                .collect(),
         };
-        if let Some(parent) = path.parent() {
+        let bytes = serde_json::to_vec_pretty(&file)?;
+        if let Some(parent) = self.path.parent() {
             // best-effort: the dir normally exists (StateDirectory).
             let _ = tokio::fs::create_dir_all(parent).await;
         }
-        fsutil::atomic_write(&path, &bytes, 0o600).await?;
+        fsutil::atomic_write(&self.path, &bytes, 0o600).await?;
         Ok(())
     }
 }
 
-/// Allocate the lowest free port in `(lo, hi]`. Returns
+/// Allocate the lowest free port in `[lo, hi]`. Returns
 /// [`RegistryError::PortRangeExhausted`] when none is free — never a sentinel.
 fn alloc_port(map: &HashMap<String, Tenant>, (lo, hi): (u16, u16)) -> Result<u16, RegistryError> {
     let used: HashSet<u16> = map.values().map(|t| t.rathole_port).collect();
-    for p in lo..=hi {
-        if !used.contains(&p) {
-            return Ok(p);
-        }
-    }
-    Err(RegistryError::PortRangeExhausted { lo, hi })
+    (lo..=hi)
+        .find(|p| !used.contains(p))
+        .ok_or(RegistryError::PortRangeExhausted { lo, hi })
 }
 
 /// Wrap in `Arc` so multiple axum handlers + the reconciler share one registry.
