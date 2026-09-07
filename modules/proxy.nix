@@ -35,20 +35,20 @@ let
   # secrets are read from their 0600 files so no token ever lands in the
   # store. rathole auto-detects [client] mode from the file.
   genClientConf = pkgs.writeShellScript "losos-rathole-client-conf" ''
-    set -eu
-    install -d -m 0700 ${confDir}
-    umask 077
-    bootstrap="$(cat ${cfg.bootstrapTokenFile})"
-    token="$(cat ${cfg.tokenFile})"
-    cat > ${confDir}/client.toml <<EOF
-[client]
-remote_addr = "${cfg.edgeRatholeEndpoint}"
-default_token = "$bootstrap"
+        set -eu
+        install -d -m 0700 ${confDir}
+        umask 077
+        bootstrap="$(cat ${cfg.bootstrapTokenFile})"
+        token="$(cat ${cfg.tokenFile})"
+        cat > ${confDir}/client.toml <<EOF
+    [client]
+    remote_addr = "${cfg.edgeRatholeEndpoint}"
+    default_token = "$bootstrap"
 
-[client.services.${cfg.applianceId}]
-token = "$token"
-local_addr = "127.0.0.1:80"
-EOF
+    [client.services.${cfg.applianceId}]
+    token = "$token"
+    local_addr = "127.0.0.1:80"
+    EOF
   '';
 
   # announce flags. --token-file is a path (read at runtime), not the secret,

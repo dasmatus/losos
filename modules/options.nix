@@ -421,24 +421,26 @@ in
     };
 
     edge.tenants = lib.mkOption {
-      type = lib.types.attrsOf (lib.types.submodule {
-        options = {
-          hostname = lib.mkOption {
-            type = lib.types.str;
-            description = "Public hostname Traefik routes to this appliance.";
+      type = lib.types.attrsOf (
+        lib.types.submodule {
+          options = {
+            hostname = lib.mkOption {
+              type = lib.types.str;
+              description = "Public hostname Traefik routes to this appliance.";
+            };
+            tokenFile = lib.mkOption {
+              type = secretPath;
+              description = ''
+                Path to this appliance's token (0600); must match the
+                appliance's losos.proxy.tokenFile. Use an agenix/runtime secret
+                path, not a store path, so the token stays out of the
+                world-readable nix store.
+              '';
+            };
           };
-          tokenFile = lib.mkOption {
-            type = secretPath;
-            description = ''
-              Path to this appliance's token (0600); must match the
-              appliance's losos.proxy.tokenFile. Use an agenix/runtime secret
-              path, not a store path, so the token stays out of the
-              world-readable nix store.
-            '';
-          };
-        };
-      });
-      default = {};
+        }
+      );
+      default = { };
       description = "Closed-enrollment whitelist of appliances permitted to register. The registrar only ever writes Traefik routers for ids listed here.";
     };
 
@@ -468,17 +470,16 @@ in
   # invent a supported way of doing it.
   config.warnings =
     let
-      secrets =
-        {
-          "losos.nextcloud.adminpassFile" = config.losos.nextcloud.adminpassFile;
-          "losos.admin.tokenFile" = config.losos.admin.tokenFile;
-          "losos.proxy.tokenFile" = config.losos.proxy.tokenFile;
-          "losos.proxy.bootstrapTokenFile" = config.losos.proxy.bootstrapTokenFile;
-          "losos.edge.bootstrapTokenFile" = config.losos.edge.bootstrapTokenFile;
-        }
-        // lib.mapAttrs' (
-          id: tenant: lib.nameValuePair "losos.edge.tenants.${id}.tokenFile" tenant.tokenFile
-        ) config.losos.edge.tenants;
+      secrets = {
+        "losos.nextcloud.adminpassFile" = config.losos.nextcloud.adminpassFile;
+        "losos.admin.tokenFile" = config.losos.admin.tokenFile;
+        "losos.proxy.tokenFile" = config.losos.proxy.tokenFile;
+        "losos.proxy.bootstrapTokenFile" = config.losos.proxy.bootstrapTokenFile;
+        "losos.edge.bootstrapTokenFile" = config.losos.edge.bootstrapTokenFile;
+      }
+      // lib.mapAttrs' (
+        id: tenant: lib.nameValuePair "losos.edge.tenants.${id}.tokenFile" tenant.tokenFile
+      ) config.losos.edge.tenants;
     in
     lib.mapAttrsToList (name: value: ''
       ${name} = "${value}" points into ${builtins.storeDir}, which is

@@ -18,8 +18,7 @@ let
     "backend"
     "backend-registrar"
   ];
-  forEachCrate =
-    cmd: lib.concatMapStringsSep "\n" (c: ''echo "── ${c}"; ${cmd c}'') crates;
+  forEachCrate = cmd: lib.concatMapStringsSep "\n" (c: ''echo "── ${c}"; ${cmd c}'') crates;
 
   # The host fish config minus Zellij, and minus the claude/codex aliases,
   # which call a host ollama wrapper that is neither reproducible nor relevant
@@ -120,9 +119,7 @@ in
       name = "clippy -D warnings (both crates)";
       entry = "${pkgs.writeShellScript "clippy-both" ''
         set -e
-        ${forEachCrate (
-          c: "cargo clippy --manifest-path ${c}/Cargo.toml --all-targets -- -D warnings"
-        )}
+        ${forEachCrate (c: "cargo clippy --manifest-path ${c}/Cargo.toml --all-targets -- -D warnings")}
       ''}";
       files = "\\.(rs|toml)$";
       pass_filenames = false;
@@ -163,9 +160,7 @@ in
   scripts.lint.exec = ''
     set -e
     ${forEachCrate (c: "cargo fmt --manifest-path ${c}/Cargo.toml --check")}
-    ${forEachCrate (
-      c: "cargo clippy --manifest-path ${c}/Cargo.toml --all-targets -- -D warnings"
-    )}
+    ${forEachCrate (c: "cargo clippy --manifest-path ${c}/Cargo.toml --all-targets -- -D warnings")}
   '';
   scripts.lint.description = "rustfmt --check + clippy -D warnings, both crates.";
 
@@ -212,8 +207,7 @@ in
   '';
   scripts.check-eval.description = "Force the full NixOS module merge for both systems.";
 
-  scripts.build-pkgs.exec =
-    "command nix build --no-link -L .#losos-ctl .#losos-registrar .#losos-admin-ui";
+  scripts.build-pkgs.exec = "command nix build --no-link -L .#losos-ctl .#losos-registrar .#losos-admin-ui";
   scripts.build-pkgs.description = "Build all three flake packages.";
 
   # The real acceptance gate for the control plane. CI cannot run these — the
@@ -228,8 +222,7 @@ in
   scripts.vm-tests.description = "Run all four nixos-test VMs (needs /dev/kvm).";
 
   # Local-only gate: too big for CI on time and on disk-as-RAM.
-  scripts.build-iso.exec =
-    "command nix build --no-link -L .#nixosConfigurations.iso.config.system.build.isoImage";
+  scripts.build-iso.exec = "command nix build --no-link -L .#nixosConfigurations.iso.config.system.build.isoImage";
   scripts.build-iso.description = "Build the installer ISO (local-only gate).";
 
   # ── devenv test ──────────────────────────────────────────────────────────

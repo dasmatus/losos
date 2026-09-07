@@ -46,7 +46,8 @@ let
   # Only used for the API listen address — the rathole server.toml, seed
   # included, is rendered by the registrar itself (`losos-registrar seed`),
   # so its formatting has a single implementation in config.rs.
-  fmtBind = addr: port:
+  fmtBind =
+    addr: port:
     if lib.hasInfix ":" addr then "[${addr}]:${toString port}" else "${addr}:${toString port}";
 
   # Static Traefik config. We bypass services.traefik.staticConfigOptions
@@ -92,10 +93,12 @@ let
   # secret), so this file can live in the world-readable store — the secret is
   # the file's *contents*, read by the registrar at reconcile time.
   tenantsJson = pkgs.writeText "losos-registrar-tenants.json" (
-    builtins.toJSON (lib.mapAttrs (_: v: {
-      hostname = v.hostname;
-      token_file = toString v.tokenFile;
-    }) cfg.tenants)
+    builtins.toJSON (
+      lib.mapAttrs (_: v: {
+        inherit (v) hostname;
+        token_file = toString v.tokenFile;
+      }) cfg.tenants
+    )
   );
 
   # Seed the rathole server config at first boot so rathole can start
@@ -245,12 +248,11 @@ in
     # register.<publicDomain>); only open it in the firewall when it is bound
     # off-loopback — which the option docs say is a test-only direct-dial
     # posture, never a deployment one.
-    networking.firewall.allowedTCPPorts =
-      [
-        80
-        443
-        cfg.ratholeBindPort
-      ]
-      ++ lib.optional (cfg.registrarApiBind != "127.0.0.1") cfg.registrarApiPort;
+    networking.firewall.allowedTCPPorts = [
+      80
+      443
+      cfg.ratholeBindPort
+    ]
+    ++ lib.optional (cfg.registrarApiBind != "127.0.0.1") cfg.registrarApiPort;
   };
 }

@@ -91,7 +91,12 @@
             impermanence.nixosModules.impermanence
             disko.nixosModules.disko
             (
-              { modulesPath, pkgs, self, ... }:
+              {
+                modulesPath,
+                pkgs,
+                self,
+                ...
+              }:
               {
                 imports = [ (modulesPath + "/installer/cd-dvd/installation-cd-minimal.nix") ];
                 environment.systemPackages = [
@@ -158,7 +163,8 @@
             # Host-specific drive list + TPM mode, written by losos-install at
             # install time. Only imported when it exists so the published
             # flake (without it) still evaluates against the default drive.
-          ] ++ nixpkgs.lib.optional (builtins.pathExists ./modules/install-target.nix) ./modules/install-target.nix;
+          ]
+          ++ nixpkgs.lib.optional (builtins.pathExists ./modules/install-target.nix) ./modules/install-target.nix;
         };
 
       };

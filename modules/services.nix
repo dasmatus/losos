@@ -54,9 +54,9 @@
   # the same stack runs inside containers.nextcloud and is reached through
   # the front vhost's /nextcloud route (modules/containers.nix). The lone
   # source of truth for the stack is modules/nextcloud-common.nix.
-  services.nextcloud =
-    lib.mkIf (config.losos.nextcloud.mode == "native")
-      config.lososInternal.nextcloudStack;
+  services.nextcloud = lib.mkIf (
+    config.losos.nextcloud.mode == "native"
+  ) config.lososInternal.nextcloudStack;
 
   # ── Tahoe-LAFS (for the shared user) ───────────────────────────────────
   services.tahoe = {
@@ -123,7 +123,8 @@
   # thing keeping it off the LAN. :80 (dashboard/api/nextcloud/forgejo) is
   # opened in modules/containers.nix. The native Forgejo port (8888) is opened
   # only in native mode.
-  networking.firewall.allowedTCPPorts =
-    [ 3456 ]
-    ++ lib.optional (config.losos.forgejo.mode == "native" && config.losos.forgejo.enable) 8888;
+  networking.firewall.allowedTCPPorts = [
+    3456
+  ]
+  ++ lib.optional (config.losos.forgejo.mode == "native" && config.losos.forgejo.enable) 8888;
 }

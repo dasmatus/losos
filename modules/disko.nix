@@ -30,7 +30,8 @@ let
   # typed `lvm_pv` feeding `persist-vg`; the first drive also carries the ESP
   # (EFI system partition) so systemd-boot has somewhere to live. disko merges
   # every disk's PV into the one VG declared below.
-  mkDisk = idx: dev:
+  mkDisk =
+    idx: dev:
     lib.nameValuePair "drive${toString idx}" {
       device = dev;
       type = "disk";
@@ -109,8 +110,7 @@ in
             # boot.initrd.secrets entry that materializes it. TPM2 path
             # relies on the enrolled LUKS2 token via tpm2-device=auto; the
             # password fallback is implied by systemd stage 1.
-            crypttabExtraOpts =
-              if useTpm then [ "tpm2-device=auto" ] else [ ];
+            crypttabExtraOpts = if useTpm then [ "tpm2-device=auto" ] else [ ];
           };
           content = {
             type = "filesystem";
