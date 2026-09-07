@@ -38,13 +38,28 @@ pub const DEFAULT_OVERRIDES_NIX: &str = r#"{ ... }:
 /// whitespace and one trailing `;`.
 pub fn lookup_nix(key: &str, content: &str) -> Option<String> {
     let needle = format!("losos.{key}");
-    content
-        .lines()
-        .find(|l| l.contains(&needle) && l.contains('=') && !l.trim_start().starts_with('#'))
-        .map(|l| {
-            let after = &l[l.find('=').expect("checked above") + 1..];
-            after.trim().trim_end_matches(';').trim().to_string()
-        })
+    content.lines().find_map(|l| {
+        if l.trim_start().starts_with('#') {
+            return None;
+        }
+        let (lhs, rhs) = l.split_once('=')?;
+        // The left side must BE the option, not merely contain it. Matching on
+        // `contains` made `losos.proxy.enable` also match `losos.proxy.enabled`,
+        // and `losos.gpu.enable = true; # see losos.hostName` match hostName.
+        // A compact one-line body (`{ losos.hostName = "x"; }`) puts a brace
+        // before the key, so strip that before comparing.
+        if lhs.trim().trim_start_matches('{').trim() != needle {
+            return None;
+        }
+        // Drop a trailing comment before anything else, or `= 11000; # default`
+        // reads back as `11000; # default`.
+        let v = rhs.split('#').next().unwrap_or(rhs);
+        // Then the statement terminator, then a closing brace from a one-line
+        // body, then the terminator again in case the brace hid it.
+        let v = v.trim().trim_end_matches(';').trim();
+        let v = v.trim_end_matches('}').trim().trim_end_matches(';').trim();
+        Some(v.to_string())
+    })
 }
 
 /// Strip one matching pair of surrounding double quotes, if present.
@@ -147,23 +162,64 @@ pub fn inject_line(sharing: bool, lines: &[String]) -> Vec<String> {
     out
 }
 
+/// Whether `h` is a valid single DNS label, per RFC 1123: 1-63 characters,
+/// alphanumeric at both ends, hyphens allowed in between.
+///
+/// `losos.hostName` becomes `networking.hostName`, the mDNS name the box is
+/// reached by, Nextcloud's `trusted_domains` and `overwrite.cli.url`, and
+/// Forgejo's `ROOT_URL`. A space, a slash, a leading hyphen or a 64th
+/// character produces either a config that will not evaluate or an appliance
+/// that boots unreachable — and there is no SSH and no login shell to repair
+/// it from. The admin UI checks this too, but a browser is not a trust
+/// boundary: `POST /api/apply` accepts a body from anything holding the token.
+pub fn valid_host_name(h: &str) -> bool {
+    let b = h.as_bytes();
+    !h.is_empty()
+        && h.len() <= 63
+        && b[0].is_ascii_alphanumeric()
+        && b[b.len() - 1].is_ascii_alphanumeric()
+        && b.iter().all(|c| c.is_ascii_alphanumeric() || *c == b'-')
+}
+
 /// Gate an `apply` payload before it overwrites `overrides.nix`.
 ///
-/// Intentionally shallow — no brace balancing, no Nix parsing. `nixos-rebuild`
-/// is the real syntax checker; this only blocks payloads that are obviously
-/// empty or aimed at the wrong file, which would otherwise silently blank the
-/// appliance's configuration. Rules are checked in order and the messages are
-/// part of the HTTP contract.
+/// Deliberately shallow on syntax — no brace balancing, no Nix parsing.
+/// `nixos-rebuild` is the real syntax checker; this only blocks payloads that
+/// are obviously empty or aimed at the wrong file, which would otherwise
+/// silently blank the appliance's configuration.
+///
+/// It is *not* shallow about `hostName`, because a bad one is the single value
+/// here that can leave the box unreachable with no way back in. Rules are
+/// checked in order and the messages are part of the HTTP contract.
 pub fn validate_apply(t: &str) -> Result<&str, &'static str> {
     if t.trim().is_empty() {
-        Err("empty nix config")
-    } else if !t.contains("losos.") {
-        Err("nix config must reference losos.* options")
-    } else if !t.contains('{') {
-        Err("nix config must be a module body (missing '{')")
-    } else {
-        Ok(t)
+        return Err("empty nix config");
     }
+    if !t.contains("losos.") {
+        return Err("nix config must reference losos.* options");
+    }
+    if !t.contains('{') {
+        return Err("nix config must be a module body (missing '{')");
+    }
+    // Only checked when the body actually sets it; an apply that leaves
+    // hostName alone is none of this function's business.
+    if let Some(raw) = lookup_nix("hostName", t) {
+        let h = strip_quotes(&raw);
+        // A `${...}` here is Nix interpolation, evaluated as root by the
+        // rebuild — `${builtins.readFile "/var/secrets/losos-admin-token"}`
+        // would splice the token into the config. The character class below
+        // already excludes `$`, `{` and `}`; this arm exists to give that
+        // case a message that says what is wrong rather than "invalid".
+        if h.contains("${") {
+            return Err("hostName must not contain Nix interpolation");
+        }
+        if !valid_host_name(h) {
+            return Err(
+                "hostName must be 1-63 chars, alphanumeric at both ends, hyphens allowed between",
+            );
+        }
+    }
+    Ok(t)
 }
 
 #[cfg(test)]
@@ -262,5 +318,85 @@ mod tests {
             Err("nix config must be a module body (missing '{')")
         );
         assert!(validate_apply("{ losos.hostName = \"x\"; }").is_ok());
+    }
+
+    #[test]
+    fn a_trailing_comment_does_not_poison_the_value() {
+        // Split on the first `=` and this read back as `11000; # default`,
+        // which parsed to the default by luck. `= 12345; # x` would have
+        // silently returned the wrong port.
+        let s = parse_settings("{\n  losos.nextcloud.apachePort = 12345; # default\n}\n");
+        assert_eq!(s.apache_port, 12345);
+    }
+
+    #[test]
+    fn a_key_is_not_matched_by_a_longer_key_that_contains_it() {
+        // `contains("losos.proxy.enable")` also matched `losos.proxy.enabled`.
+        let s = parse_settings("{\n  losos.proxy.enabled = true;\n}\n");
+        assert!(!s.proxy_enable, "a different option must not be read");
+    }
+
+    #[test]
+    fn a_mention_in_a_trailing_comment_is_not_an_assignment() {
+        // This line assigns gpu.enable; it merely *mentions* hostName.
+        let s = parse_settings("{\n  losos.gpu.enable = true; # see losos.hostName\n}\n");
+        assert_eq!(s.host_name, Settings::default().host_name);
+        assert!(s.gpu_enable);
+    }
+
+    #[test]
+    fn a_one_line_module_body_parses() {
+        // The closing brace used to end up inside the value.
+        let s = parse_settings("{ losos.hostName = \"box2\"; }");
+        assert_eq!(s.host_name, "box2");
+    }
+
+    #[test]
+    fn valid_host_names_are_accepted() {
+        for h in ["x", "mattbox", "box-2", "a-b-c", &"a".repeat(63)] {
+            assert!(valid_host_name(h), "{h:?} should be valid");
+        }
+    }
+
+    #[test]
+    fn invalid_host_names_are_rejected() {
+        for h in [
+            "",              // empty
+            "-box",          // leading hyphen
+            "box-",          // trailing hyphen
+            "my box",        // space
+            "a/b",           // slash
+            "box.local",     // dot: this is one label, not an FQDN
+            "box_2",         // underscore is not legal in a hostname
+            &"a".repeat(64), // 63 is the limit
+        ] {
+            assert!(!valid_host_name(h), "{h:?} should be rejected");
+        }
+    }
+
+    #[test]
+    fn apply_rejects_a_hostname_that_would_brick_the_box() {
+        // The browser checks these too, but a token holder can POST directly.
+        assert!(validate_apply("{ losos.hostName = \"my box\"; }").is_err());
+        assert!(validate_apply("{ losos.hostName = \"-box\"; }").is_err());
+        assert!(validate_apply("{ losos.hostName = \"\"; }").is_err());
+    }
+
+    #[test]
+    fn apply_rejects_nix_interpolation_in_the_hostname() {
+        // Evaluated as root by nixos-rebuild; this one splices the admin token
+        // into the generated config.
+        let body =
+            "{ losos.hostName = \"a${builtins.readFile \"/var/secrets/losos-admin-token\"}b\"; }";
+        assert_eq!(
+            validate_apply(body),
+            Err("hostName must not contain Nix interpolation")
+        );
+    }
+
+    #[test]
+    fn apply_without_a_hostname_is_left_alone() {
+        // Not every apply touches hostName; the check must not demand one.
+        assert!(validate_apply("{ losos.sharingMyStorage = true; }").is_ok());
     }
 }
