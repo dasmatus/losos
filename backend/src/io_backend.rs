@@ -3,18 +3,22 @@
 //! Every path is environment-overridable so the CLI can be driven against a
 //! throwaway directory in tests without touching `/etc` or `/var`.
 //!
-//! Note the deliberate asymmetry in how the two Nix files are written:
-//! `overrides.nix` and `state.json` go through [`atomic_write`] (temp file plus
-//! rename, so a crash can never leave a half-written config), while
-//! `defaults.nix` is rewritten in place by [`Losos::rewrite_config`]. That
-//! matches the behaviour that shipped and is left as-is.
+//! Every file this module owns is written through [`atomic_write`] — a unique
+//! temp file, fsynced, then renamed over the target. `state.json`,
+//! `overrides.nix` and `defaults.nix` all take that route: the appliance has no
+//! shell, so a config truncated by a crash or by two concurrent writers would
+//! fail every later rebuild with nobody able to log in and repair it.
 
 use crate::losos::Losos;
 use crate::model::State;
 use crate::overrides::{inject_line, DEFAULT_OVERRIDES_NIX};
 use crate::supervisor;
 use anyhow::Context;
+use std::io::Write;
+use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 /// Where everything lives. Resolved once from the environment.
 #[derive(Debug, Clone)]
@@ -56,24 +60,100 @@ impl Paths {
     }
 }
 
-/// Write `content` to `path` atomically: a sibling temp file, then a rename.
+/// Distinguishes the temp files of concurrent writers within one process.
+static TEMP_SEQ: AtomicU64 = AtomicU64::new(0);
+/// Distinguishes rebuild jobs queued within the same second. Process-lifetime,
+/// so it survives every clone of [`IoLosos`].
+static JOB_SEQ: AtomicU64 = AtomicU64::new(0);
+
+/// A temp path nobody else will pick: the pid separates processes, the counter
+/// separates threads within one.
+///
+/// The old fixed `<name>.tmp` was the bug — two writers truncated and filled
+/// the *same* temp file, then renamed it in turn, so the survivor could be a
+/// blend of both payloads.
+fn temp_path(path: &Path) -> PathBuf {
+    let seq = TEMP_SEQ.fetch_add(1, Ordering::Relaxed);
+    let name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "losos".to_string());
+    path.with_file_name(format!(".{name}.{}.{seq}.tmp", std::process::id()))
+}
+
+/// Fill a fresh temp file and flush it to the disk itself.
+///
+/// `create_new` is what keeps `mode` honest: the file carries its permissions
+/// from the moment it exists, instead of being created wide and narrowed after.
+fn fill_temp(tmp: &Path, content: &[u8], mode: u32) -> std::io::Result<()> {
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(mode)
+        .open(tmp)?;
+    file.write_all(content)?;
+    // Without this the rename can land before the bytes do, and a power cut
+    // between the two leaves a correctly named, empty config.
+    file.sync_all()
+}
+
+/// Write `content` to `path` atomically, with `mode` on the resulting file and
+/// `dir_mode` on any parent directory this call has to create.
+fn write_atomically(path: &Path, content: &[u8], mode: u32, dir_mode: u32) -> anyhow::Result<()> {
+    if let Some(dir) = path.parent().filter(|d| !d.as_os_str().is_empty()) {
+        std::fs::DirBuilder::new()
+            .recursive(true)
+            .mode(dir_mode)
+            .create(dir)
+            .with_context(|| format!("creating {}", dir.display()))?;
+    }
+
+    let tmp = temp_path(path);
+    if let Err(e) = fill_temp(&tmp, content, mode) {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(anyhow::Error::new(e).context(format!("writing {}", tmp.display())));
+    }
+    if let Err(e) = std::fs::rename(&tmp, path) {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(anyhow::Error::new(e).context(format!(
+            "renaming {} to {}",
+            tmp.display(),
+            path.display()
+        )));
+    }
+
+    // The rename is only durable once the directory entry is on disk too. A
+    // failure here means the new content is live but might not survive a power
+    // cut — worth a line in the journal, not worth failing a completed write.
+    if let Some(dir) = path.parent().filter(|d| !d.as_os_str().is_empty()) {
+        match std::fs::File::open(dir).and_then(|d| d.sync_all()) {
+            Ok(()) => {}
+            Err(e) => {
+                tracing::debug!(dir = %dir.display(), error = %e, "could not fsync directory")
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Write `content` to `path` atomically: a unique temp file, fsynced, then
+/// renamed over the target.
 ///
 /// The rename is atomic on POSIX, so a reader either sees the whole old file or
-/// the whole new one — never a truncated config.
+/// the whole new one — never a truncated config, and never a blend of two
+/// concurrent writers.
 pub fn atomic_write(path: &Path, content: &[u8]) -> anyhow::Result<()> {
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
-    }
-    let tmp = path.with_extension(format!(
-        "{}tmp",
-        path.extension()
-            .map(|e| format!("{}.", e.to_string_lossy()))
-            .unwrap_or_default()
-    ));
-    std::fs::write(&tmp, content).with_context(|| format!("writing {}", tmp.display()))?;
-    std::fs::rename(&tmp, path)
-        .with_context(|| format!("renaming {} to {}", tmp.display(), path.display()))?;
-    Ok(())
+    write_atomically(path, content, 0o644, 0o755)
+}
+
+/// [`atomic_write`] for a secret: mode 0600 from creation, in a 0700 directory.
+///
+/// Used for the admin token, which is equivalent to root on this appliance.
+/// Creating it world-readable and chmodding afterwards leaves a window in which
+/// any local process can read it, and a token that was ever readable is a token
+/// to rotate.
+pub fn atomic_write_secret(path: &Path, content: &[u8]) -> anyhow::Result<()> {
+    write_atomically(path, content, 0o600, 0o700)
 }
 
 /// Read the persisted state.
@@ -101,16 +181,64 @@ pub fn write_state(path: &Path, s: &State) -> anyhow::Result<()> {
 }
 
 /// The production backend.
+///
+/// Every clone shares one lock, and that lock is the whole serialisation story
+/// for `state.json`. There used to be two: `dbus` and `http` each built their
+/// own, so a D-Bus `Change` and a `POST /api/change` raced, and the rebuild
+/// watcher recorded outcomes under no lock at all — which could drop a
+/// finished rebuild, or clobber the record of the one that replaced it.
+///
+/// Cloning is cheap and carries no state: the paths are immutable and the lock
+/// is shared, so a clone is a second handle to the same appliance.
 #[derive(Debug, Clone)]
 pub struct IoLosos {
     pub paths: Paths,
+    state_lock: Arc<Mutex<()>>,
 }
 
 impl IoLosos {
-    pub fn from_env() -> Self {
+    /// A backend and a fresh lock. Call this **once** per process and clone the
+    /// result; two separately constructed backends do not serialise each other.
+    pub fn new(paths: Paths) -> Self {
         IoLosos {
-            paths: Paths::from_env(),
+            paths,
+            state_lock: Arc::new(Mutex::new(())),
         }
+    }
+
+    pub fn from_env() -> Self {
+        Self::new(Paths::from_env())
+    }
+
+    /// Take the state lock.
+    ///
+    /// Poisoning is recovered from on purpose. The mutex guards no in-memory
+    /// invariant — the state is a file, and a corrupt one already reads as the
+    /// default — so honouring the poison would turn one panicked command into a
+    /// permanently dead admin surface on a box with no shell to repair it.
+    pub(crate) fn lock_state(&self) -> MutexGuard<'_, ()> {
+        self.state_lock.lock().unwrap_or_else(|poisoned| {
+            tracing::warn!("state lock was poisoned by a panicking command; recovering");
+            poisoned.into_inner()
+        })
+    }
+
+    /// Run one command with the state lock held from the first effect to the
+    /// last.
+    ///
+    /// Per-effect locking would not do: a command is a read-modify-write spread
+    /// over several trait calls (`load_state`, mutate, `save_state`,
+    /// `spawn_rebuild`), and two of them interleaving is exactly the race this
+    /// prevents.
+    ///
+    /// Not reentrant — never call it from inside `f`.
+    pub fn serialized<T>(
+        &self,
+        f: impl FnOnce(&mut IoLosos) -> anyhow::Result<T>,
+    ) -> anyhow::Result<T> {
+        let _guard = self.lock_state();
+        let mut backend = self.clone();
+        f(&mut backend)
     }
 }
 
@@ -131,20 +259,28 @@ impl Losos for IoLosos {
 
     fn rewrite_config(&mut self, sharing: bool) -> anyhow::Result<()> {
         let path = &self.paths.config_file;
-        let Ok(contents) = std::fs::read_to_string(path) else {
+        let contents = match std::fs::read_to_string(path) {
+            Ok(c) => c,
             // Absent config is a warning, not a failure: the appliance may be
             // running from a flake laid out differently, and refusing to change
             // mode over it would be worse than carrying on.
-            eprintln!(
-                "losos-ctl: warning: config {} missing; not rewriting",
-                path.display()
-            );
-            return Ok(());
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                tracing::warn!(path = %path.display(), "config missing; not rewriting");
+                return Ok(());
+            }
+            // Anything else — a permission error, a bad sector — is a real
+            // failure. Carrying on would report a mode change that never
+            // reached the disk.
+            Err(e) => {
+                return Err(anyhow::Error::new(e).context(format!("reading {}", path.display())))
+            }
         };
         let lines: Vec<String> = contents.lines().map(str::to_string).collect();
         let mut out = inject_line(sharing, &lines).join("\n");
         out.push('\n');
-        std::fs::write(path, out).with_context(|| format!("rewriting {}", path.display()))
+        // Atomic, like every other file here: a truncated defaults.nix fails
+        // every future rebuild, including the nightly auto-upgrade.
+        atomic_write(path, out.as_bytes()).with_context(|| format!("rewriting {}", path.display()))
     }
 
     fn write_overrides(&mut self, body: &str) -> anyhow::Result<()> {
@@ -152,12 +288,22 @@ impl Losos for IoLosos {
     }
 
     fn read_overrides(&mut self) -> anyhow::Result<String> {
-        Ok(std::fs::read_to_string(&self.paths.overrides_file)
-            .unwrap_or_else(|_| DEFAULT_OVERRIDES_NIX.to_string()))
+        match std::fs::read_to_string(&self.paths.overrides_file) {
+            Ok(body) => Ok(body),
+            // Absent means a fresh appliance, and the committed defaults are
+            // the honest answer. A read *error* is not the same thing: reporting
+            // defaults would have the settings page paint values the box is not
+            // running, and the next Apply would write them over the real config.
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                Ok(DEFAULT_OVERRIDES_NIX.to_string())
+            }
+            Err(e) => Err(anyhow::Error::new(e)
+                .context(format!("reading {}", self.paths.overrides_file.display()))),
+        }
     }
 
     fn spawn_rebuild(&mut self, job: &str) -> anyhow::Result<()> {
-        supervisor::spawn_rebuild(&self.paths, job)
+        supervisor::spawn_rebuild(self, job)
     }
 
     fn rebuild_log_tail(&mut self) -> anyhow::Result<String> {
@@ -165,10 +311,17 @@ impl Losos for IoLosos {
     }
 
     fn next_job_id(&mut self) -> anyhow::Result<String> {
+        // The timestamp and the pid are both constant within one second of one
+        // long-lived daemon, so they alone let two jobs collide — and a
+        // collision means `systemd-run --unit=` fails with "Unit already
+        // exists" *after* the command has already rewritten overrides.nix,
+        // while `supervisor::finish` can no longer tell the two rebuilds apart.
+        let seq = JOB_SEQ.fetch_add(1, Ordering::Relaxed);
         Ok(format!(
-            "{}-{}",
+            "{}-{}-{}",
             chrono::Utc::now().format("%Y%m%d%H%M%S"),
-            std::process::id()
+            std::process::id(),
+            seq
         ))
     }
 }

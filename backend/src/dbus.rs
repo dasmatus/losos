@@ -10,34 +10,33 @@
 //! `losos` group). Adding a second check here would let the two drift.
 
 use crate::facade::{BUS_NAME, OBJECT_PATH};
-use crate::io_backend::{IoLosos, Paths};
+use crate::io_backend::IoLosos;
 use crate::losos::{cmd_apply, cmd_change, cmd_factory_reset, cmd_settings, cmd_state, cmd_status};
 use crate::model::Mode;
 use crate::overrides::validate_apply;
-use std::sync::{Arc, Mutex};
 use zbus::{connection::Connection, fdo, interface};
 
 /// The exported object.
 ///
-/// The mutex serializes commands against each other. Writes are already atomic
-/// at the filesystem level, but two concurrent `apply`s could otherwise
-/// interleave their read-modify-write of the state file.
+/// Its backend is a clone of the daemon's one [`IoLosos`], so the lock inside
+/// serializes bus calls against HTTP calls and against the rebuild watchers.
+/// Writes are already atomic at the filesystem level, but two concurrent
+/// `apply`s could otherwise interleave their read-modify-write of the state
+/// file.
 pub struct Control {
-    backend: Arc<Mutex<IoLosos>>,
+    backend: IoLosos,
 }
 
 /// Run a command and turn its result into a D-Bus reply.
 ///
 /// Any error becomes `org.losos1.Error.Failed`, which is what the facade
-/// renders to the user.
+/// renders to the user. Unlike the HTTP surface this keeps the full context
+/// chain: the bus is reachable only by root and the `losos` group.
 fn reply(
-    backend: &Arc<Mutex<IoLosos>>,
+    backend: &IoLosos,
     f: impl FnOnce(&mut IoLosos) -> anyhow::Result<serde_json::Value>,
 ) -> fdo::Result<String> {
-    let mut guard = backend
-        .lock()
-        .map_err(|_| fdo::Error::Failed("control state poisoned".into()))?;
-    match f(&mut guard) {
+    match backend.serialized(f) {
         Ok(v) => Ok(v.to_string()),
         Err(e) => Err(fdo::Error::Failed(format!("{e:#}"))),
     }
@@ -89,10 +88,8 @@ impl Control {
 /// The name is requested with replace-existing and do-not-queue: a restarted
 /// daemon must take the name over immediately rather than queue behind a stale
 /// owner, which would leave `losos-ctl` talking to a dead process.
-pub async fn serve(paths: Paths) -> anyhow::Result<Connection> {
-    let control = Control {
-        backend: Arc::new(Mutex::new(IoLosos { paths })),
-    };
+pub async fn serve(backend: IoLosos) -> anyhow::Result<Connection> {
+    let control = Control { backend };
 
     let conn = zbus::connection::Builder::system()
         .map_err(|e| anyhow::anyhow!("cannot connect to the system bus: {e}"))?

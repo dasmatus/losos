@@ -125,7 +125,7 @@
   },
 
   "http": {
-    "note": "lososd also serves a Bearer-authed JSON API on 127.0.0.1:$LOSOS_ADMIN_PORT (default 8082); Nginx proxies /api/* to it for the admin UI. Auth header: `Authorization: Bearer <token>` where the token lives at $LOSOS_ADMIN_TOKEN_FILE (default /var/secrets/losos-admin-token, auto-generated 0600 on first start). Responses are the same documents as the facade wire; errors are `{\"error\": \"...\"}` with the matching HTTP status.",
+    "note": "lososd also serves a Bearer-authed JSON API on 127.0.0.1:$LOSOS_ADMIN_PORT (default 8082); Nginx proxies /api/* to it for the admin UI. Auth header: `Authorization: Bearer <token>`. The scheme is case-insensitive per RFC 7235, and lososd compares the token in constant time. The token lives at $LOSOS_ADMIN_TOKEN_FILE (default /var/secrets/losos-admin-token), minted on first start as 64 lowercase hex characters, mode 0600. lososd discards and re-mints any file that does not hold exactly that, so a truncated or hand-edited token never becomes the shared secret. Responses are the same documents as the facade wire; errors are `{\"error\": \"...\"}` with the matching HTTP status. A 500 carries a fixed message and lososd logs the detail to the journal, because the context chain names filesystem paths.",
     "routes": {
       "GET /api/health":        { "auth": false, "out": "{\"ok\":true}" },
       "GET /api/state":         { "auth": true, "out": "stateResponse" },

@@ -7,12 +7,13 @@
 //! Health is deliberately open so the dashboard can show whether the daemon is
 //! reachable before anyone has pasted a token.
 
-use crate::io_backend::{IoLosos, Paths};
+use crate::io_backend::{atomic_write_secret, IoLosos};
 use crate::losos::{cmd_apply, cmd_change, cmd_factory_reset, cmd_settings, cmd_state, cmd_status};
 use crate::model::Mode;
 use crate::overrides::validate_apply;
 use actix_web::{web, App, HttpRequest, HttpResponse, HttpServer};
-use std::sync::{Arc, Mutex};
+use anyhow::Context;
+use std::path::Path;
 
 /// Default loopback port; overridden by `$LOSOS_ADMIN_PORT`.
 const DEFAULT_PORT: u16 = 8082;
@@ -21,10 +22,12 @@ const DEFAULT_TOKEN_FILE: &str = "/var/secrets/losos-admin-token";
 /// Bytes of entropy behind the admin token. Hex-encoded, this is the 64
 /// characters the VM test asserts on.
 const TOKEN_BYTES: usize = 32;
+/// Length of the hex-encoded token, and the only length this daemon accepts.
+const TOKEN_HEX_LEN: usize = TOKEN_BYTES * 2;
 
 /// Shared handler state.
 struct Api {
-    backend: Arc<Mutex<IoLosos>>,
+    backend: IoLosos,
     token: String,
 }
 
@@ -34,31 +37,52 @@ fn err(status: actix_web::http::StatusCode, msg: &str) -> HttpResponse {
 }
 
 /// Run a command, or report it as a 500.
+///
+/// The client is told only that the command failed. The context chain names
+/// filesystem paths and half the appliance's layout, and it goes to the journal
+/// instead — the operator can read that, an HTTP caller has no business with it.
 fn run(
     api: &Api,
     f: impl FnOnce(&mut IoLosos) -> anyhow::Result<serde_json::Value>,
 ) -> HttpResponse {
-    let Ok(mut guard) = api.backend.lock() else {
-        return err(
-            actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
-            "control state poisoned",
-        );
-    };
-    match f(&mut guard) {
+    match api.backend.serialized(f) {
         Ok(v) => HttpResponse::Ok().json(v),
-        Err(e) => err(
-            actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
-            &format!("{e:#}"),
-        ),
+        Err(e) => {
+            tracing::error!(error = ?e, "admin API command failed");
+            err(
+                actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
+                "command failed; see the lososd journal",
+            )
+        }
     }
+}
+
+/// Compare two secrets without an early exit on the first differing byte.
+///
+/// The length check does short-circuit, which leaks only the length of what was
+/// presented — the token's own length is fixed and public.
+fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    a.len() == b.len() && a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
+}
+
+/// The credentials out of an `Authorization: Bearer <token>` header.
+///
+/// RFC 7235 makes the scheme case-insensitive, so `bearer` is as valid as
+/// `Bearer`; the old exact match on `"Bearer {token}"` rejected it.
+fn bearer_credentials(header: &str) -> Option<&str> {
+    let (scheme, credentials) = header.split_once(' ')?;
+    scheme
+        .eq_ignore_ascii_case("bearer")
+        .then(|| credentials.trim_start_matches(' '))
 }
 
 /// Whether the request carries the admin token.
 fn authorized(api: &Api, req: &HttpRequest) -> bool {
     req.headers()
-        .get("Authorization")
+        .get(actix_web::http::header::AUTHORIZATION)
         .and_then(|v| v.to_str().ok())
-        .is_some_and(|v| v == format!("Bearer {}", api.token))
+        .and_then(bearer_credentials)
+        .is_some_and(|presented| constant_time_eq(presented.as_bytes(), api.token.as_bytes()))
 }
 
 /// Reject unauthenticated requests, with the body the SPA looks for.
@@ -138,50 +162,98 @@ async fn not_found() -> HttpResponse {
     err(actix_web::http::StatusCode::NOT_FOUND, "not found")
 }
 
-/// Read the admin token, creating it on first start.
+/// Whether `candidate` is a token this daemon would have minted: exactly
+/// [`TOKEN_HEX_LEN`] lowercase hex characters.
+fn is_well_formed(candidate: &str) -> bool {
+    candidate.len() == TOKEN_HEX_LEN
+        && candidate
+            .bytes()
+            .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+}
+
+/// Read the admin token, minting one when the file is missing or unusable.
 ///
-/// An existing file is left alone, so the token survives restarts; rotating it
-/// means deleting the file and restarting `lososd`. Mode 0600 matters — the
-/// token is equivalent to root on this box.
-pub fn ensure_token(path: &std::path::Path) -> anyhow::Result<String> {
-    if let Ok(existing) = std::fs::read_to_string(path) {
-        return Ok(existing.trim().to_string());
+/// A *well-formed* existing file is left alone, so the token survives restarts;
+/// rotating it means deleting the file and restarting `lososd`.
+///
+/// Anything else is replaced rather than trusted. The old code returned the
+/// file's contents verbatim, which made whatever happened to be there the
+/// shared secret: a one-character file authenticated `Bearer x`, and a write
+/// interrupted by the nightly reboot could leave exactly that. Validating costs
+/// nothing and the failure mode it removes is remote root — `POST /api/apply`
+/// writes Nix and runs `nixos-rebuild switch`.
+pub fn ensure_token(path: &Path) -> anyhow::Result<String> {
+    match std::fs::read_to_string(path) {
+        Ok(existing) => {
+            let candidate = existing.trim();
+            if is_well_formed(candidate) {
+                return Ok(candidate.to_string());
+            }
+            tracing::error!(
+                path = %path.display(),
+                bytes = existing.len(),
+                "admin token file is not {TOKEN_HEX_LEN} lowercase hex characters; \
+                 discarding it and minting a new token — any client holding the old \
+                 one must be re-pointed at the new file"
+            );
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(anyhow::Error::new(e).context(format!("reading {}", path.display()))),
     }
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir)?;
-    }
+    mint_token(path)
+}
+
+/// Generate a token and write it out at 0600, atomically.
+fn mint_token(path: &Path) -> anyhow::Result<String> {
     let mut buf = [0u8; TOKEN_BYTES];
     {
         use std::io::Read;
-        let mut urandom = std::fs::File::open("/dev/urandom")?;
-        urandom.read_exact(&mut buf)?;
+        std::fs::File::open("/dev/urandom")
+            .and_then(|mut urandom| urandom.read_exact(&mut buf))
+            .context("reading /dev/urandom")?;
     }
     let token: String = buf.iter().map(|b| format!("{b:02x}")).collect();
-    std::fs::write(path, &token)?;
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
-    }
+    atomic_write_secret(path, token.as_bytes())
+        .with_context(|| format!("writing {}", path.display()))?;
     tracing::info!(path = %path.display(), "minted admin token");
     Ok(token)
 }
 
+/// The port to bind, from `$LOSOS_ADMIN_PORT`.
+///
+/// A malformed value is fatal on purpose. Falling back to the default would
+/// bind a port Nginx is not proxying to and report nothing, leaving an admin UI
+/// that is simply dead with no clue anywhere as to why.
+fn admin_port() -> anyhow::Result<u16> {
+    let raw = match std::env::var("LOSOS_ADMIN_PORT") {
+        Ok(raw) => raw,
+        Err(std::env::VarError::NotPresent) => return Ok(DEFAULT_PORT),
+        Err(e) => return Err(anyhow::Error::new(e).context("LOSOS_ADMIN_PORT")),
+    };
+    let port: u16 = raw
+        .trim()
+        .parse()
+        .with_context(|| format!("LOSOS_ADMIN_PORT is not a TCP port number: {raw:?}"))?;
+    if port == 0 {
+        anyhow::bail!("LOSOS_ADMIN_PORT is 0; nothing could reach an ephemeral port");
+    }
+    Ok(port)
+}
+
 /// Serve the API. Blocking: runs its own actix `System` on the calling thread.
-pub fn serve(paths: Paths) -> anyhow::Result<()> {
-    let port: u16 = std::env::var("LOSOS_ADMIN_PORT")
-        .ok()
-        .and_then(|p| p.parse().ok())
-        .unwrap_or(DEFAULT_PORT);
+///
+/// Returns only on failure or on the server stopping, and the caller is
+/// expected to treat either as fatal: an admin API that failed to bind while
+/// the daemon stays up is invisible to systemd.
+pub fn serve(backend: IoLosos) -> anyhow::Result<()> {
+    let port = admin_port()?;
     let token_file =
         std::env::var("LOSOS_ADMIN_TOKEN_FILE").unwrap_or_else(|_| DEFAULT_TOKEN_FILE.to_string());
-    let token = ensure_token(std::path::Path::new(&token_file))?;
-
-    let backend = Arc::new(Mutex::new(IoLosos { paths }));
+    let token = ensure_token(Path::new(&token_file))?;
 
     actix_web::rt::System::new().block_on(async move {
         let api = web::Data::new(Api { backend, token });
-        tracing::info!(port, "admin API listening on loopback");
-        HttpServer::new(move || {
+        let server = HttpServer::new(move || {
             App::new()
                 .app_data(api.clone())
                 .route("/api/health", web::get().to(health))
@@ -193,11 +265,11 @@ pub fn serve(paths: Paths) -> anyhow::Result<()> {
                 .route("/api/factory-reset", web::post().to(post_factory_reset))
                 .default_service(web::route().to(not_found))
         })
-        .bind(("127.0.0.1", port))?
-        .run()
-        .await
-    })?;
-    Ok(())
+        .bind(("127.0.0.1", port))
+        .with_context(|| format!("binding 127.0.0.1:{port}"))?;
+        tracing::info!(port, "admin API listening on loopback");
+        server.run().await.context("admin HTTP server")
+    })
 }
 
 #[cfg(test)]
