@@ -46,16 +46,22 @@ is two lock files — `flake.lock` pins the nixpkgs that *builds* the appliance,
 `devenv.lock` the one that *lints and tests* it. **Bump them together**;
 `check-pins` fails the build if they disagree.
 
-Both Rust crates' test suites run automatically inside their `nix build`
-(`rustPlatform.buildRustPackage`'s `doCheck = true`). There is no PHP suite
-anymore — the old Nextcloud plugin is retired (see architecture) — and no
+Both Rust crates set `doCheck = false`, so `nix build` compiles the shipping
+binaries and does not run the suites. The suites run via `cargo test` — in
+`devenv test`/`test-rust` locally and in CI's lint job. This is a concession
+to Codeberg's 10-minute cap: doCheck recompiles each crate in test
+configuration and links a binary per test target, which put
+`nix build .#losos-ctl` between 7.7 and 10.3 minutes across observed runs and
+cancelled real runs on unmodified main. **A bare `nix build` is therefore not
+a test gate** — run `devenv test` before trusting a change. There is no PHP
+suite anymore — the old Nextcloud plugin is retired (see architecture) — and no
 Haskell: the backend was a cabal project until it was ported to Rust.
 
 Both crates must stay clippy-clean (`-D warnings`) and rustfmt-clean. That is
 enforced in three places now: the devenv pre-commit hooks, the `lint` script,
-and CI. Until those existed nothing ran the linters at all — `doCheck` runs
-the test suite, not clippy — and backend-registrar had drifted to 17 rustfmt
-hunks plus a clippy error without CI noticing.
+and CI. Until those existed nothing ran the linters at all — back when
+`doCheck` was on it ran the test suite, never clippy — and backend-registrar
+had drifted to 17 rustfmt hunks plus a clippy error without CI noticing.
 
 ```sh
 # `nix develop -c` does not change directory, hence --manifest-path
