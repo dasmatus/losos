@@ -65,11 +65,12 @@ cargo clippy --manifest-path backend/Cargo.toml --all-targets -- -D warnings
 
 CI (Codeberg Actions, `.forgejo/workflows/ci.yml`) runs on hosted runners
 capped at **10 minutes / 8 GB per job** (and the RAM quota counts filesystem
-writes), so it only evaluates the flake (plus an eval-only instantiation of
-the ISO image derivation) and builds the three packages. The two system
-closures above — the install toplevel and the installer ISO — are **local-only
-gates**: build the ISO before merging anything that touches `installer.nix`,
-the `iso` block in `flake.nix`, or `isoImage.*` settings.
+writes), so each job is scoped to fit. The **install toplevel** remains a
+local-only gate. The **installer ISO is now built in CI**: its closure is 769
+paths, of which 766 are stock nixpkgs served by cache.nixos.org and only
+`losos-ctl` is expensive, so the `iso` job imports that one from the
+`losos-ctl` job as a 12 MiB artifact instead of recompiling it. Measured:
+~4.7 GiB written against a 10 GiB quota, 50 s for squashfs + xorriso.
 
 The VM tests are the real acceptance gate for the control plane and are *not*
 run by CI, so run them locally when touching either:

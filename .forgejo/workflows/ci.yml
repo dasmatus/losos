@@ -29,12 +29,22 @@ on:
 # equivalent, and the pre-commit hooks run the lint half before a commit ever
 # reaches here.
 #
-# Two gates stay local-only because the runners cannot host them at all:
-# the six nixos-test VMs need /dev/kvm, and the installer ISO
-# (~300 derivations, 1.9 GiB fetched, >4 GiB written) fits neither the time
-# nor the disk-as-RAM budget:
+# The six nixos-test VMs stay local-only — they need /dev/kvm, which these
+# runners do not provide:
 #   devenv shell vm-tests
-#   devenv shell build-iso
+#
+# The installer ISO used to be local-only too, on the grounds that it fit
+# "neither the time nor the disk-as-RAM budget". Measured, that was wrong on
+# both counts: writes come to ~4.7 GiB against a 10 GiB quota (8 GiB RAM plus
+# 2 GiB temp), and squashfs + xorriso take 50 s on four cores. The original
+# figure was taken against the default zstd level 19, which OOM-killed the
+# job; flake.nix already drops it to level 6 with a 1 GiB cap.
+#
+# What actually made it impossible was one path. The ISO closure is 769 store
+# paths: 766 stock nixpkgs that cache.nixos.org serves, and three of ours, of
+# which losos-ctl is the only expensive one — 9 minutes to compile. The iso
+# job therefore takes it from the losos-ctl job as a 12 MiB artifact rather
+# than building it, and each job stays inside its own 10-minute budget.
 #
 # fmt-bot reformats and pushes back on every push to main, so rustfmt is
 # never something a human has to fix by hand. Its commit carries [skip ci] —
@@ -140,10 +150,23 @@ jobs:
       - uses: actions/checkout@v4
       # buildRustPackage with doCheck = true: the crate's full cargo test
       # suite (104 tests) runs inside this build. It was ~8 of the 10 minutes
-      # with a cold store even before the suite grew — keep this job to one
+      # with a cold store even before the suite grew, and measured 9.1 minutes
+      # on the run that added the supervisor tests — keep this job to one
       # package, and re-time it before adding any heavy dependency to
       # backend/Cargo.toml.
       - run: nix build .#losos-ctl -L
+      # Hand losos-ctl to the iso job. Of the 769 store paths in the ISO's
+      # closure, 766 are stock nixpkgs that cache.nixos.org serves, and three
+      # are ours; losos-ctl is the only one that costs anything to produce.
+      # Exporting its closure to a file:// binary cache is 12 MiB and ~13 s,
+      # which is what lets the iso job exist at all: without it that job would
+      # have to compile this crate itself and blow the 10-minute cap.
+      - run: nix copy --to "file://$PWD/ctl-cache" --no-check-sigs .#losos-ctl
+      - uses: actions/upload-artifact@v3
+        with:
+          name: losos-ctl-store
+          path: ctl-cache
+          retention-days: 1
 
   registrar-and-ui:
     name: "rust: losos-registrar + admin UI"
@@ -223,3 +246,35 @@ jobs:
           # always safe: it touches only formatting.
           git pull --rebase origin "${GITHUB_REF_NAME}"
           git push origin "HEAD:${GITHUB_REF_NAME}"
+
+  iso:
+    name: "nix: build the installer ISO"
+    runs-on: codeberg-medium
+    # Needs losos-ctl's store export. Without it this job would rebuild that
+    # crate from source — 9 minutes on its own — and never finish in time.
+    needs: [losos-ctl]
+    container:
+      image: docker.io/nixos/nix:latest
+    steps:
+      - run: nix profile install nixpkgs#nodejs
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v3
+        with:
+          name: losos-ctl-store
+          path: ctl-cache
+      # --no-check-sigs because the exporting job signed nothing; the artifact
+      # came from a sibling job in this same workflow run, not from a public
+      # cache, so there is no third party to authenticate.
+      - run: nix copy --from "file://$PWD/ctl-cache" --no-check-sigs --all
+      # NOT --offline. The other 766 paths come from cache.nixos.org, and
+      # blocking the network would force nix to build them from source —
+      # precisely the opposite of what the import above buys us.
+      #
+      # Measured locally, with everything else substituted and throttled to
+      # this runner's 4 cores, squashfs + xorriso take 50 s and the build
+      # writes ~4.7 GiB against a 10 GiB quota (8 GiB RAM + 2 GiB temp; on
+      # these runners filesystem writes count as RAM). The old claim that the
+      # ISO "fits neither the time nor the disk-as-RAM budget" was measured
+      # against the default zstd level 19, which OOM-killed the job; level 6
+      # with a 1 GiB cap is already set in flake.nix and changes the picture.
+      - run: nix build .#nixosConfigurations.iso.config.system.build.isoImage -L
