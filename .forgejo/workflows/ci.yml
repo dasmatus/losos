@@ -77,7 +77,7 @@ env:
 
 jobs:
   lint:
-    name: "rust: clippy (+ rustfmt on PRs)"
+    name: "rust: clippy + tests (+ rustfmt on PRs)"
     runs-on: codeberg-medium
     # Runs in devShells.ci — a lean cargo/rustc/clippy/rustfmt shell from this
     # flake's pinned nixpkgs, i.e. the SAME rustc buildRustPackage compiles
@@ -113,6 +113,19 @@ jobs:
           nix develop .#ci -c bash -euo pipefail -c '
             cargo clippy --manifest-path backend/Cargo.toml --all-targets -- -D warnings
             cargo clippy --manifest-path backend-registrar/Cargo.toml --all-targets -- -D warnings
+          '
+      # The test suites live here, not inside buildRustPackage. doCheck used
+      # to run them, but it also recompiles each crate in test configuration
+      # and links a binary per test target, which pushed `nix build
+      # .#losos-ctl` to 7.7-10.3 minutes against a 10-minute cap — a coin
+      # flip that cancelled real runs on unmodified main. This job sits at
+      # ~4 minutes with the toolchain already loaded, so the suites are nearly
+      # free here. Mirrors devenv.nix's `test-rust`.
+      - name: test both crates
+        run: |
+          nix develop .#ci -c bash -euo pipefail -c '
+            cargo test --manifest-path backend/Cargo.toml
+            cargo test --manifest-path backend-registrar/Cargo.toml
           '
       # rustfmt is only *checked* on pull requests. On a push to main the
       # fmt-bot job below fixes it instead — checking it here too would mean
@@ -158,12 +171,10 @@ jobs:
     steps:
       - run: nix profile install nixpkgs#nodejs
       - uses: actions/checkout@v4
-      # buildRustPackage with doCheck = true: the crate's full cargo test
-      # suite (104 tests) runs inside this build. It was ~8 of the 10 minutes
-      # with a cold store even before the suite grew, and measured 9.1 minutes
-      # on the run that added the supervisor tests — keep this job to one
-      # package, and re-time it before adding any heavy dependency to
-      # backend/Cargo.toml.
+      # Compiles the shipping binaries only — doCheck is off, and the suite
+      # runs in the lint job instead (see flake/packages.nix for why). Even
+      # so this is the longest job here; keep it to one package and re-time it
+      # before adding any heavy dependency to backend/Cargo.toml.
       - run: nix build .#losos-ctl -L
       # Hand losos-ctl to the iso job. Of the 769 store paths in the ISO's
       # closure, 766 are stock nixpkgs that cache.nixos.org serves, and three
@@ -186,7 +197,7 @@ jobs:
     steps:
       - run: nix profile install nixpkgs#nodejs
       - uses: actions/checkout@v4
-      # The registrar's 42 tests run inside its build too (doCheck);
+      # Compiles only; the registrar's 42 tests run in the lint job.
       # losos-admin-ui is a trivial runCommand copy.
       - run: nix build .#losos-registrar .#losos-admin-ui -L
 

@@ -1,7 +1,8 @@
 # Per-output package definitions.
 #   losos-ctl  — the control plane (Rust crate under backend/), built via
-#                rustPlatform.buildRustPackage with doCheck so `cargo test`
-#                runs on build. Provides both the `lososd` system daemon and
+#                rustPlatform.buildRustPackage. doCheck is off; the suites
+#                run via cargo test (see the note on the derivation below).
+#                Provides both the `lososd` system daemon and
 #                the `losos-ctl` facade CLI (which also carries the
 #                `install` subcommand the installer ISO runs);
 #                modules/daemon.nix runs lososd system-wide and installs the
@@ -52,7 +53,20 @@ in
     cargoHash = "sha256-vwDnOequ7M/lBVfkrgT2uLMC8shQxnbPQsssEeigeE8=";
     # No system deps: zbus speaks the D-Bus wire protocol natively, so there is
     # no libdbus to link against.
-    doCheck = true;
+    # doCheck is off, and the tests still run — in CI's lint job and in
+    # `devenv test`, both of which invoke `cargo test` directly.
+    #
+    # The reason is Codeberg's 10-minute cap. doCheck does not merely execute
+    # the suite (that takes ~0.2 s); it compiles the crate a second time in
+    # test configuration and links a separate binary per test target. That
+    # pushed `nix build .#losos-ctl` to between 7.7 and 10.3 minutes across
+    # observed runs — a coin flip against the cap, which cancelled real runs
+    # on unmodified main before any of this was touched.
+    #
+    # The trade is explicit: a bare `nix build` no longer runs the suite, so
+    # the gate lives in the lint job (which has ~5 minutes of headroom and a
+    # toolchain already loaded) rather than inside the package build.
+    doCheck = false;
   };
 
   losos-registrar = pkgs.rustPlatform.buildRustPackage {
@@ -63,6 +77,8 @@ in
     # .#losos-registrar` will print the new hash to paste here.
     cargoHash = "sha256-uPQ/ftWa+GMR5EIMg3oXotjTi+dFBPubIR9qyFBsjA4=";
     # No system deps; pure Rust with rustls (no openssl).
-    doCheck = true;
+    # Same reasoning as losos-ctl above: the suite runs via cargo test in the
+    # lint job, not inside this derivation.
+    doCheck = false;
   };
 }
