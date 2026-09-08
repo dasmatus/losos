@@ -56,20 +56,43 @@
       # matters, because the things worth drifting (the lint/test/build
       # commands, which must be byte-identical between CI and a developer)
       # live in exactly one place, devenv.nix, and are not duplicated here.
-      devShells.${system}.default = pkgs.mkShell {
-        nativeBuildInputs = [
-          pkgs.cargo
-          pkgs.rustc
-          pkgs.clippy
-          pkgs.rustfmt
-          pkgs.rust-analyzer
-          pkgs.nodejs
-        ];
-        shellHook = ''
-          echo "Toolchain-only shell. For the scripts and pre-commit hooks:"
-          echo "  devenv shell      (or: direnv allow)"
-        '';
-      };
+      devShells.${system} =
+        let
+          # The toolchain both shells below share, and the same one
+          # buildRustPackage compiles with, because both come from this
+          # flake's pinned nixpkgs.
+          rust = [
+            pkgs.cargo
+            pkgs.rustc
+            pkgs.clippy
+            pkgs.rustfmt
+          ];
+        in
+        {
+          default = pkgs.mkShell {
+            nativeBuildInputs = rust ++ [
+              pkgs.rust-analyzer
+              pkgs.nodejs
+            ];
+            shellHook = ''
+              echo "Toolchain-only shell. For the scripts and pre-commit hooks:"
+              echo "  devenv shell      (or: direnv allow)"
+            '';
+          };
+
+          # What CI lints in. Deliberately lean — no rust-analyzer, no node,
+          # no shell UX — because it is realised from scratch on every CI run
+          # against a 10-minute cap.
+          #
+          # It exists so lint uses the SAME rustc as `nix build .#losos-ctl`.
+          # The lint job used to run on docker.io/rust:latest, which is a
+          # different and floating Rust: it went red on a tree that both this
+          # flake's toolchain and the maintainer's local one call clean, which
+          # is version skew, not a defect in the code. Linting with the
+          # compiler you ship with is the only way that stays true, and it
+          # also means an upstream Rust release cannot turn CI red on its own.
+          ci = pkgs.mkShell { nativeBuildInputs = rust; };
+        };
 
       # Both systems get `self` via specialArgs: the iso system reaches
       # self.packages.${system}.losos-ctl to wire the installer binary, the
