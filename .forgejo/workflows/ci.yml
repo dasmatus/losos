@@ -273,7 +273,9 @@ jobs:
     container:
       image: docker.io/nixos/nix:latest
     steps:
-      - run: nix profile install nixpkgs#nodejs
+      # jq parses the release API responses in the last step; the nix
+      # image ships neither it nor node.
+      - run: nix profile install nixpkgs#nodejs nixpkgs#jq
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v3
         with:
@@ -315,15 +317,60 @@ jobs:
           ls -lh losos-installer.iso
           sha256sum losos-installer.iso | tee losos-installer.iso.sha256
 
-      - name: publish the ISO
-        if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
+      # Manual runs get a throwaway artifact. Tags get a real release, below —
+      # attaching the same 1.5 GB twice would be silly.
+      - name: publish the ISO as an artifact
+        if: github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v3
         with:
           name: losos-installer-iso
           path: |
             losos-installer.iso
             losos-installer.iso.sha256
-          # Short on purpose: a tagged release should be attached to the
-          # release itself for anything long-lived. This artifact is a
-          # convenience for grabbing a build, not an archive.
           retention-days: 7
+
+      # A tag makes a release and hangs the image off it. Done with the API
+      # and curl rather than a third-party action: this repo pulls in only
+      # actions/checkout and actions/upload-artifact, and a release is one
+      # POST plus one multipart upload.
+      #
+      # BUDGET, because it is permanent. An artifact expires in 7 days; a
+      # release asset does not. At ~1.5 GB per image that is Codeberg's whole
+      # recommended "packages, LFS and attachments" allowance in a single
+      # release, and a second one puts the repository over it for good. Ask
+      # Codeberg for a quota before making a habit of this, or cut releases
+      # rarely and delete the assets of superseded ones.
+      - name: create the release and attach the image
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          TOKEN: ${{ secrets.FORGEJO_TOKEN }}
+          TOKEN_ALT: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          T="${TOKEN:-$TOKEN_ALT}"
+          if [ -z "$T" ]; then echo "no API token in the secrets context" >&2; exit 1; fi
+          API="${GITHUB_SERVER_URL}/api/v1/repos/${GITHUB_REPOSITORY}"
+          TAG="${GITHUB_REF_NAME}"
+          SUM=$(cut -d' ' -f1 losos-installer.iso.sha256)
+
+          # Reuse the release if the tag was already published, so a re-run
+          # does not fail on "release already exists".
+          id=$(curl -sS -H "Authorization: token $T" "$API/releases/tags/$TAG" \
+                 | jq -r '.id // empty')
+          if [ -z "$id" ]; then
+            id=$(jq -n --arg t "$TAG" --arg s "$SUM" \
+                   '{tag_name:$t, name:$t,
+                     body:("Installer ISO for \($t).\n\nsha256: `\($s)`\n\nWrite to a USB stick and boot the target machine; the installer partitions, encrypts and installs unattended.")}' \
+                 | curl -sS -X POST "$API/releases" \
+                     -H "Authorization: token $T" \
+                     -H 'Content-Type: application/json' --data-binary @- \
+                 | jq -r '.id')
+          fi
+          echo "release id: $id"
+
+          for f in losos-installer.iso losos-installer.iso.sha256; do
+            echo "attaching $f ($(stat -c%s "$f") bytes)"
+            curl -sS -X POST "$API/releases/$id/assets?name=$f" \
+              -H "Authorization: token $T" \
+              -F "attachment=@$f" -o /dev/null -w "  -> HTTP %{http_code} in %{time_total}s\n"
+          done
