@@ -1,6 +1,9 @@
 on:
   push:
     branches: [main]
+    # Tags build and publish the installer ISO; see the iso job. Pushes to
+    # main build it too, as a gate, but do not publish it.
+    tags: ["v*"]
   pull_request:
   schedule:
     # ~03:57 UTC Mondays (off the :00 mark).
@@ -45,6 +48,13 @@ on:
 # which losos-ctl is the only expensive one — 9 minutes to compile. The iso
 # job therefore takes it from the losos-ctl job as a 12 MiB artifact rather
 # than building it, and each job stays inside its own 10-minute budget.
+#
+# The iso job publishes the image as an artifact on a tag or a manual run,
+# never on an ordinary push. The image is ~1.5 GB and Codeberg asks that you
+# request resources before exceeding "1.5 GiB of packages, LFS and
+# attachments", so one ISO is the entire recommended budget; uploading one per
+# commit would be antisocial on a donation-funded host. The build still runs
+# on every push as a gate — only the upload is rationed.
 #
 # fmt-bot reformats and pushes back on every push to main, so rustfmt is
 # never something a human has to fix by hand. Its commit carries [skip ci] —
@@ -183,10 +193,17 @@ jobs:
   fmt-bot:
     name: "bot: cargo fmt, push back"
     runs-on: codeberg-medium
-    # Push events only. On a pull_request from a fork the automatic token is
-    # read-only, and pushing to somebody else's branch is not this job's
-    # business anyway — the lint job checks formatting there instead.
-    if: github.event_name == 'push'
+    # Pushes to a BRANCH only. Two exclusions, both deliberate:
+    #
+    # Not pull requests: on one from a fork the automatic token is read-only,
+    # and pushing to somebody else's branch is not this job's business anyway
+    # — the lint job checks formatting there instead.
+    #
+    # Not tags: a tag push is also a push event, and github.ref_name is then
+    # the tag, so the commit-and-push below would try to move a tag rather
+    # than a branch. Reformatting a released tag would be wrong even if it
+    # worked.
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/')
     container:
       image: docker.io/nixos/nix:latest
     steps:
@@ -278,3 +295,35 @@ jobs:
       # against the default zstd level 19, which OOM-killed the job; level 6
       # with a 1 GiB cap is already set in flake.nix and changes the picture.
       - run: nix build .#nixosConfigurations.iso.config.system.build.isoImage -L
+
+      # Publishing is gated on tags and manual runs, NOT on every push, and
+      # the reason is the size. The image is ~1.5 GB, and Codeberg asks that
+      # you request resources before exceeding "1.5 GiB of packages, LFS and
+      # attachments" — so one ISO is the whole recommended budget. Uploading
+      # one per commit to a donation-funded host would be antisocial, and
+      # Codeberg reserves the right to deny service over resource usage.
+      #
+      # The build above still runs on every push: that is the gate, and it is
+      # cheap (3.5 min). Only the 1.5 GB upload is rationed.
+      - name: stage the image
+        if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
+        # cp -L dereferences: `result` is a symlink into /nix/store, and the
+        # upload action would otherwise archive the link rather than the image.
+        run: |
+          set -euo pipefail
+          cp -L result/iso/*.iso ./losos-installer.iso
+          ls -lh losos-installer.iso
+          sha256sum losos-installer.iso | tee losos-installer.iso.sha256
+
+      - name: publish the ISO
+        if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
+        uses: actions/upload-artifact@v3
+        with:
+          name: losos-installer-iso
+          path: |
+            losos-installer.iso
+            losos-installer.iso.sha256
+          # Short on purpose: a tagged release should be attached to the
+          # release itself for anything long-lived. This artifact is a
+          # convenience for grabbing a build, not an archive.
+          retention-days: 7
