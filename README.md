@@ -88,7 +88,12 @@ cap at 10 minutes and 8 GB, and the tests need KVM. Run them locally:
 The `install` system closure is a local-only gate; build it before merging
 anything that touches the module set.
 
-The installer ISO **is** built in CI. It looks like it should not fit — but of
+The installer ISO **is** built in CI, and published as a downloadable
+artifact when you push a `v*` tag or trigger the workflow by hand — not on
+every commit, because the image is ~1.5 GB and that is Codeberg's entire
+recommended attachment budget in one file.
+
+ It looks like it should not fit — but of
 the 769 store paths in its closure, 766 are stock nixpkgs that cache.nixos.org
 serves and only `losos-ctl` costs anything to produce. The CI job takes that
 one from the job that already builds it, as a 12 MiB artifact, so it never
