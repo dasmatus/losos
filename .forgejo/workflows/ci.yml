@@ -352,25 +352,54 @@ jobs:
           API="${GITHUB_SERVER_URL}/api/v1/repos/${GITHUB_REPOSITORY}"
           TAG="${GITHUB_REF_NAME}"
           SUM=$(cut -d' ' -f1 losos-installer.iso.sha256)
+          AUTH="Authorization: token $T"
 
-          # Reuse the release if the tag was already published, so a re-run
-          # does not fail on "release already exists".
-          id=$(curl -sS -H "Authorization: token $T" "$API/releases/tags/$TAG" \
-                 | jq -r '.id // empty')
-          if [ -z "$id" ]; then
-            id=$(jq -n --arg t "$TAG" --arg s "$SUM" \
-                   '{tag_name:$t, name:$t,
-                     body:("Installer ISO for \($t).\n\nsha256: `\($s)`\n\nWrite to a USB stick and boot the target machine; the installer partitions, encrypts and installs unattended.")}' \
-                 | curl -sS -X POST "$API/releases" \
-                     -H "Authorization: token $T" \
-                     -H 'Content-Type: application/json' --data-binary @- \
-                 | jq -r '.id')
+          # Every call checks its HTTP status explicitly. `curl -sS` alone
+          # exits 0 on a 4xx, which is how the first version of this step
+          # reported success while creating nothing at all: the POST 404'd,
+          # jq turned the error body into `null`, and the assets went to
+          # /releases/null/assets. A step that can silently no-op is worse
+          # than one that fails.
+          api() { # api METHOD URL [curl args...] -> body on stdout, status in $CODE
+            local m="$1" u="$2"; shift 2
+            CODE=$(curl -sS -o /tmp/api.out -w '%{http_code}' -X "$m" -H "$AUTH" "$@" "$u")
+            cat /tmp/api.out
+          }
+
+          api GET "$API/releases/tags/$TAG" >/tmp/rel.json || true
+          if [ "$CODE" = "404" ]; then
+            # A 404 here is ambiguous: either this tag has no release yet, or
+            # the repository has Releases switched off entirely. Tell them
+            # apart, because the second is a setting no workflow can fix.
+            api GET "$API" >/tmp/repo.json || true
+            if [ "$(jq -r '.has_releases' /tmp/repo.json)" != "true" ]; then
+              echo "Releases are disabled on this repository (has_releases=false)." >&2
+              echo "Enable them under Settings -> Repository -> Advanced Settings," >&2
+              echo "then re-run this workflow or re-push the tag." >&2
+              exit 1
+            fi
+            body=$(jq -n --arg t "$TAG" --arg s "$SUM" \
+              '{tag_name:$t, name:$t,
+                body:("Installer ISO for \($t).\n\nsha256: `\($s)`\n\nWrite to a USB stick and boot the target machine; the installer partitions, encrypts and installs unattended.")}')
+            api POST "$API/releases" -H 'Content-Type: application/json' --data-binary "$body" >/tmp/rel.json
+            if [ "$CODE" != "201" ]; then
+              echo "creating the release failed: HTTP $CODE" >&2; cat /tmp/rel.json >&2; exit 1
+            fi
+          elif [ "$CODE" != "200" ]; then
+            echo "looking up the release failed: HTTP $CODE" >&2; cat /tmp/rel.json >&2; exit 1
           fi
+
+          id=$(jq -r '.id // empty' /tmp/rel.json)
+          case "$id" in
+            ''|*[!0-9]*) echo "no usable release id (got: '$id')" >&2; exit 1 ;;
+          esac
           echo "release id: $id"
 
           for f in losos-installer.iso losos-installer.iso.sha256; do
             echo "attaching $f ($(stat -c%s "$f") bytes)"
-            curl -sS -X POST "$API/releases/$id/assets?name=$f" \
-              -H "Authorization: token $T" \
-              -F "attachment=@$f" -o /dev/null -w "  -> HTTP %{http_code} in %{time_total}s\n"
+            api POST "$API/releases/$id/assets?name=$f" -F "attachment=@$f" >/dev/null
+            if [ "$CODE" != "201" ]; then
+              echo "attaching $f failed: HTTP $CODE" >&2; cat /tmp/api.out >&2; exit 1
+            fi
+            echo "  -> HTTP $CODE"
           done
