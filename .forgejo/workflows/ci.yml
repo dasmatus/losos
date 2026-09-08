@@ -36,6 +36,17 @@ on:
 #   devenv shell vm-tests
 #   devenv shell build-iso
 #
+# fmt-bot reformats and pushes back on every push to main, so rustfmt is
+# never something a human has to fix by hand. Its commit carries [skip ci] —
+# one of Forgejo's SKIP_WORKFLOW_STRINGS defaults — because otherwise the
+# push retriggers this whole workflow to reformat nothing. Consequently the
+# lint job only *checks* rustfmt on pull requests: checking it on a push too
+# would leave a red job on a commit the bot repairs seconds later.
+#
+# clippy is deliberately NOT auto-fixed the same way. `cargo clippy --fix`
+# rewrites code rather than whitespace, so it can change behaviour and
+# sometimes wants human judgement; it stays a gate that fails loudly.
+#
 # Every nix job repeats the nodejs install because each gets a fresh
 # container: the runner execs JS actions (actions/checkout) with `node` from
 # inside the container, and the nix image ships none — without it, checkout
@@ -46,7 +57,7 @@ env:
 
 jobs:
   lint:
-    name: "rust: clippy + rustfmt (both crates)"
+    name: "rust: clippy (+ rustfmt on PRs)"
     runs-on: codeberg-medium
     # Runs in devShells.ci — a lean cargo/rustc/clippy/rustfmt shell from this
     # flake's pinned nixpkgs, i.e. the SAME rustc buildRustPackage compiles
@@ -72,13 +83,27 @@ jobs:
     steps:
       - run: nix profile install nixpkgs#nodejs
       - uses: actions/checkout@v4
-      # Mirrors devenv.nix's `lint`.
+      # clippy is check-only, always. It is NOT auto-fixed and pushed the way
+      # rustfmt is: `cargo clippy --fix` applies machine-applicable
+      # suggestions, which can change behaviour, needs a clean tree, and
+      # sometimes wants human judgement. Reformatting is mechanical;
+      # rewriting code is not, and unreviewed code changes have no business
+      # landing on main by robot.
       - run: |
           nix develop .#ci -c bash -euo pipefail -c '
-            cargo fmt    --manifest-path backend/Cargo.toml --check
-            cargo fmt    --manifest-path backend-registrar/Cargo.toml --check
             cargo clippy --manifest-path backend/Cargo.toml --all-targets -- -D warnings
             cargo clippy --manifest-path backend-registrar/Cargo.toml --all-targets -- -D warnings
+          '
+      # rustfmt is only *checked* on pull requests. On a push to main the
+      # fmt-bot job below fixes it instead — checking it here too would mean
+      # this job goes red for something another job silently repairs a minute
+      # later, leaving a permanent failure on a commit that is already fine.
+      - name: rustfmt (pull requests only)
+        if: github.event_name == 'pull_request'
+        run: |
+          nix develop .#ci -c bash -euo pipefail -c '
+            cargo fmt --manifest-path backend/Cargo.toml --check
+            cargo fmt --manifest-path backend-registrar/Cargo.toml --check
           '
 
   eval:
@@ -131,3 +156,70 @@ jobs:
       # The registrar's 42 tests run inside its build too (doCheck);
       # losos-admin-ui is a trivial runCommand copy.
       - run: nix build .#losos-registrar .#losos-admin-ui -L
+
+  fmt-bot:
+    name: "bot: cargo fmt, push back"
+    runs-on: codeberg-medium
+    # Push events only. On a pull_request from a fork the automatic token is
+    # read-only, and pushing to somebody else's branch is not this job's
+    # business anyway — the lint job checks formatting there instead.
+    if: github.event_name == 'push'
+    container:
+      image: docker.io/nixos/nix:latest
+    steps:
+      - run: nix profile install nixpkgs#nodejs
+      - uses: actions/checkout@v4
+        with:
+          # Check out the branch, not the detached commit: a detached HEAD has
+          # nothing to commit onto.
+          ref: ${{ github.ref_name }}
+          # Forgejo creates this per run and it carries write access on push
+          # events, so no hand-made secret is needed.
+          token: ${{ secrets.FORGEJO_TOKEN }}
+      # Same toolchain as the lint job and as buildRustPackage — devShells.ci
+      # from this flake's pinned nixpkgs. Formatting with a different rustfmt
+      # than CI checks with is how you get a bot that fights its own linter.
+      - run: |
+          nix develop .#ci -c bash -euo pipefail -c '
+            cargo fmt --manifest-path backend/Cargo.toml
+            cargo fmt --manifest-path backend-registrar/Cargo.toml
+          '
+      - name: commit and push if anything changed
+        env:
+          # FORGEJO_TOKEN is the documented name; GITHUB_TOKEN is the
+          # compatibility alias. Take whichever this instance populates.
+          TOKEN: ${{ secrets.FORGEJO_TOKEN }}
+          TOKEN_ALT: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo "already formatted; nothing to do"
+            exit 0
+          fi
+          echo "rustfmt changed:"
+          git --no-pager diff --stat
+
+          git config user.name  "losos-fmt-bot"
+          git config user.email "losos-fmt-bot@noreply.codeberg.org"
+
+          # [skip ci] is load-bearing: without it this push retriggers the
+          # workflow, which reformats nothing, finds no diff and exits — but
+          # burns a full set of runners every time. With a rule that did keep
+          # producing a diff it would be an endless loop. The string is one of
+          # Forgejo's SKIP_WORKFLOW_STRINGS defaults ([skip ci], [ci skip],
+          # [no ci], [skip actions], [actions skip]).
+          git commit -am "style: cargo fmt [skip ci]"
+
+          T="${TOKEN:-$TOKEN_ALT}"
+          if [ -z "$T" ]; then
+            echo "no write token in the secrets context; cannot push" >&2
+            exit 1
+          fi
+          # set-url rather than echoing a URL, so the token never reaches the log.
+          git remote set-url origin \
+            "https://x-access-token:${T}@codeberg.org/${GITHUB_REPOSITORY}.git"
+          # A human push landing between checkout and here makes this a
+          # non-fast-forward. Rebasing our one mechanical commit on top is
+          # always safe: it touches only formatting.
+          git pull --rebase origin "${GITHUB_REF_NAME}"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
