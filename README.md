@@ -85,9 +85,14 @@ cap at 10 minutes and 8 GB, and the tests need KVM. Run them locally:
 | `losos-edge-proxy` | Two VMs: the master-proxy register/reconcile/forward path, and that enrollment is closed |
 | `losos-ds-render` | Renders every design-system component in headless Chromium |
 
-The installer ISO and the `install` system closure are also local-only gates.
-Build both before merging anything that touches the installer, the `iso` block
-or `isoImage.*`.
+The `install` system closure is a local-only gate; build it before merging
+anything that touches the module set.
+
+The installer ISO **is** built in CI. It looks like it should not fit — but of
+the 769 store paths in its closure, 766 are stock nixpkgs that cache.nixos.org
+serves and only `losos-ctl` costs anything to produce. The CI job takes that
+one from the job that already builds it, as a 12 MiB artifact, so it never
+compiles the crate twice. Squashfs and ISO assembly are 50 s on four cores.
 
 ## Layout
 
