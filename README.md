@@ -57,6 +57,11 @@ Everything is a named script:
 `nix develop` still works and gives a toolchain-only shell for anyone without
 the devenv CLI.
 
+Formatting is not your problem: a CI job reformats and pushes back on every
+push to `main`, and its commit carries `[skip ci]` so it does not retrigger
+the workflow. Clippy is *not* auto-fixed — it rewrites code rather than
+whitespace, so it stays a gate you have to satisfy yourself.
+
 CI does **not** go through devenv, and spells the same commands out directly.
 It was tried: every job first realises the whole dev toolchain, and both
 devenv jobs hit Codeberg's 10-minute cap (9m31s and 10m05s) while the one
