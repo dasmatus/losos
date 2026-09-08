@@ -48,24 +48,38 @@ jobs:
   lint:
     name: "rust: clippy + rustfmt (both crates)"
     runs-on: codeberg-medium
-    # The upstream rust image, not the nix one. This job needs a Rust
-    # toolchain and nothing else; building one through nix costs minutes that
-    # the cap does not have, and rust:latest already ships clippy and rustfmt.
+    # Runs in devShells.ci — a lean cargo/rustc/clippy/rustfmt shell from this
+    # flake's pinned nixpkgs, i.e. the SAME rustc buildRustPackage compiles
+    # with.
+    #
+    # This job first ran on docker.io/rust:latest and went red in 42 seconds
+    # on a tree that both the pinned toolchain and the maintainer's local one
+    # call clean. That is version skew: `latest` floats, so an upstream Rust
+    # release could turn CI red with no change to this repository, and the
+    # linter would disagree with the compiler that actually ships. Linting
+    # with the compiler you ship with removes the whole class.
+    #
+    # devShells.ci and not devenv: devenv realises the entire dev toolchain
+    # (rust-analyzer, node, bun, three Nix linters, shell UX) and blew the
+    # 10-minute cap at 9m31s. This shell is four packages.
     #
     # Until this job existed nothing enforced the two commands CLAUDE.md
     # documents as gates — buildRustPackage's doCheck runs the test suite, not
     # the linters — and backend-registrar had drifted to 17 rustfmt hunks plus
     # a clippy error without CI noticing.
     container:
-      image: docker.io/rust:latest
+      image: docker.io/nixos/nix:latest
     steps:
+      - run: nix profile install nixpkgs#nodejs
       - uses: actions/checkout@v4
-      - run: rustup component add clippy rustfmt
       # Mirrors devenv.nix's `lint`.
-      - run: cargo fmt --manifest-path backend/Cargo.toml --check
-      - run: cargo fmt --manifest-path backend-registrar/Cargo.toml --check
-      - run: cargo clippy --manifest-path backend/Cargo.toml --all-targets -- -D warnings
-      - run: cargo clippy --manifest-path backend-registrar/Cargo.toml --all-targets -- -D warnings
+      - run: |
+          nix develop .#ci -c bash -euo pipefail -c '
+            cargo fmt    --manifest-path backend/Cargo.toml --check
+            cargo fmt    --manifest-path backend-registrar/Cargo.toml --check
+            cargo clippy --manifest-path backend/Cargo.toml --all-targets -- -D warnings
+            cargo clippy --manifest-path backend-registrar/Cargo.toml --all-targets -- -D warnings
+          '
 
   eval:
     name: "nix: flake check + module merge + ISO derivation"
