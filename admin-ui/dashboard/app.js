@@ -2,10 +2,20 @@
 
 /* losos homepage — launcher tiles + live service probes + rebuild banner.
  *
- * Talks to the same-origin Nginx routes:
+ * Talks to the same-origin Nginx routes, and to nothing else:
  *   /nextcloud, /forgejo/            (service probes)
- *   /api/health, /api/state, /api/status  (lososd admin API, Bearer-authed)
- * plus the Tahoe WUI on :3456 (cross-origin, probed with mode:no-cors).
+ *   /api/health, /api/state, /api/settings, /api/status
+ *                                    (lososd admin API, Bearer-authed
+ *                                     except /api/health)
+ *
+ * Every fetch on this page is same-origin. It was not always: the Tahoe WUI
+ * answered on :3456, a second origin, and the CSP in modules/containers.nix
+ * named `$host:3456` in connect-src so this page could probe it. Tahoe-LAFS
+ * is gone and that entry went with it — the header is plain
+ * `connect-src 'self'` now, which covers this page whole (containers.nix
+ * records why). Leave it that way: a probe of some other origin added later
+ * should have to widen the header on purpose rather than find it already
+ * open.
  *
  * The admin token lives in sessionStorage ('losos-token'); it is entered on
  * the settings page. Without a token the homepage still probes the public
@@ -84,35 +94,16 @@ async function probeLososd(signal) {
   }
 }
 
-/* Tahoe WUI is cross-origin on :3456: a resolved (opaque) no-cors fetch
- * means something answered; a rejected one means nothing did.
- *
- * cache:'no-store' matters more here than on the same-origin probes — an
- * opaque response is still cacheable, so without it the browser can keep
- * answering this probe from cache and hold the dot green long after Tahoe
- * has died. */
-async function probeTahoe(signal) {
-  try {
-    await fetch(tahoeUrl(), { mode: 'no-cors', cache: 'no-store', signal: signal });
-    return 'up';
-  } catch (e) {
-    if (isAbort(e)) { throw e; }
-    return 'down';
-  }
-}
-
 async function runProbes(signal) {
   try {
     const results = await Promise.all([
       probeSameOrigin('/nextcloud', signal),
       probeSameOrigin('/forgejo/', signal),
       probeLososd(signal),
-      probeTahoe(signal),
     ]);
     setDot('nextcloud', results[0]);
     setDot('forgejo', results[1]);
     setDot('lososd', results[2]);
-    setDot('tahoe', results[3]);
   } catch (e) {
     // Each probe already turns an outage into 'down', so reaching here means
     // something else broke — worth a banner, not a silent dot.
@@ -125,21 +116,88 @@ const probePoll = createPoller(runProbes, PROBE_MS);
 
 // ── System card ───────────────────────────────────────────────────
 
+const UNKNOWN = '—';
+
 function setSharingMode(label) { $('sys-mode').textContent = label; }
 
+function modeLabel(data) {
+  if (data && data.mode === 'mesh') { return 'Mesh — contributing storage'; }
+  if (data && data.mode === 'local') { return 'Local — private'; }
+  return UNKNOWN;
+}
+
+// A window bound the daemon did not send, or sent in some other shape. The
+// settings page will not write one — it validates HH:MM before Apply and
+// lososd rejects the body again on the way in — so this is only ever an
+// overrides.nix edited by hand on the box. Say so rather than printing
+// "undefined".
+function hhmm(v) { return typeof v === 'string' && v ? v : '??:??'; }
+
+/* Paint the two mesh rows from a settingsResponse.
+ *
+ * This reports what the appliance is *configured* to do — the losos.cluster.*
+ * keys as they stand in overrides.nix — not whether the rke2 agent reached
+ * the edge and got itself a schedulable node. The admin API has no route
+ * that knows the latter, and a green dot here would be claiming it. Hence
+ * text rows and no dot.
+ *
+ * All three combinations have to read sensibly, because two of them are
+ * ordinary states and not errors: not joined at all, joined but keeping the
+ * CPU, and joined with a nightly window. A window whose end is before its
+ * start wraps midnight — that is the default (23:00→07:00) and the common
+ * case — so it is printed exactly as configured and never "corrected". */
+function setClusterInfo(s) {
+  const joined = !!(s && s.clusterEnable);
+  const sharing = joined && !!s.shareCompute;
+  $('sys-cluster').textContent = joined ? 'Joined' : 'Not joined';
+  if (sharing) {
+    $('sys-window').textContent = hhmm(s.computeWindowStart) + ' – ' + hhmm(s.computeWindowEnd);
+  } else {
+    $('sys-window').textContent = joined ? 'Compute not shared' : UNKNOWN;
+  }
+}
+
+/* Both mesh rows back to "unknown".
+ *
+ * Note this is not setClusterInfo(null): "Not joined" is a fact about the
+ * appliance, and a request that failed knows no facts. Painting the "off"
+ * state on a failed fetch is how a page ends up quietly asserting the
+ * opposite of what is true. */
+function clearClusterInfo() {
+  $('sys-cluster').textContent = UNKNOWN;
+  $('sys-window').textContent = UNKNOWN;
+}
+
+// Everything on the card except the hostname needs the admin token. One
+// helper puts the lot back to "unknown" so no failure path can leave half a
+// stale card standing next to a fresh sign-in hint.
+function clearAuthedInfo() {
+  setSharingMode(UNKNOWN);
+  clearClusterInfo();
+}
+
+/* Fill the System card.
+ *
+ * Two routes, because they answer different questions: /api/state is the
+ * storage mode the daemon is actually in, /api/settings is the overrides.nix
+ * body it last parsed — and the mesh keys exist only there. A 401 on either
+ * abandons the whole card and raises the sign-in hint, rather than leaving
+ * the half that already answered painted under a hint saying we are signed
+ * out. */
 async function loadSystemInfo() {
   $('sys-hostname').textContent = location.hostname;
-  if (!getToken()) { setSharingMode('—'); return; }
+  if (!getToken()) { clearAuthedInfo(); return; }
   try {
-    const res = await apiFetch('/api/state');
-    if (res.status === 401) { setSharingMode('—'); showHint(); return; }
-    if (!res.ok) { setSharingMode('—'); return; }
-    const data = await res.json();
-    if (data && data.mode === 'mesh') { setSharingMode('Mesh — contributing storage'); }
-    else if (data && data.mode === 'local') { setSharingMode('Local — private'); }
-    else { setSharingMode('—'); }
+    const state = await apiFetch('/api/state');
+    if (state.status === 401) { clearAuthedInfo(); showHint(); return; }
+    setSharingMode(state.ok ? modeLabel(await state.json()) : UNKNOWN);
+
+    const settings = await apiFetch('/api/settings');
+    if (settings.status === 401) { clearAuthedInfo(); showHint(); return; }
+    if (settings.ok) { setClusterInfo(await settings.json()); }
+    else { clearClusterInfo(); }
   } catch (e) {
-    setSharingMode('—');
+    clearAuthedInfo();
   }
 }
 
@@ -190,6 +248,14 @@ const statusPoll = pollStatus({
       showBanner('done', 'Rebuild complete.', message);
       clearTimeout(hideTimer);
       hideTimer = setTimeout(hideBanner, DONE_HIDE_MS);
+      // The card is painted once at load, and a finished rebuild is precisely
+      // what invalidates it — Apply on the settings page in another tab, or
+      // the 03:00 auto-upgrade, both land here. Inside the
+      // once-per-completion guard: /api/status keeps answering `done` for as
+      // long as nothing else runs, and re-fetching two routes every idle
+      // period for a card nobody changed is the kind of background traffic
+      // IDLE_STATUS_MS exists to avoid.
+      loadSystemInfo().catch(clearAuthedInfo);
     }
     lastBannerState = 'done';
   },
@@ -213,7 +279,7 @@ const statusPoll = pollStatus({
   onUnauthorized: function () {
     hideBanner();
     showHint();
-    setSharingMode('—');
+    clearAuthedInfo();
   },
 });
 
@@ -306,16 +372,12 @@ function wireContextMenu() {
     location.origin + '/nextcloud');
   wireTile('tile-forgejo', 'menu-forgejo', location.host + '/forgejo/',
     location.origin + '/forgejo/');
-  wireTile('tile-tahoe', 'menu-tahoe', location.hostname + ':3456/', tahoeUrl());
 }
 
 // ── Wiring ────────────────────────────────────────────────────────
 
 (function init() {
   wireErrorBanner();
-
-  const tileTahoe = $('tile-tahoe');
-  if (tileTahoe) { tileTahoe.href = tahoeUrl(); }
 
   window.addEventListener('scroll', onScroll, { passive: true });
   onScroll();
@@ -329,5 +391,5 @@ function wireContextMenu() {
   }
 
   probePoll.start();
-  loadSystemInfo().catch(function () { setSharingMode('—'); });
+  loadSystemInfo().catch(clearAuthedInfo);
 })();

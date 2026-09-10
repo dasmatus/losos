@@ -10,7 +10,8 @@
  *      coming back as an idle form.
  *   2. The form is populated from the settingsResponse keys
  *      {sharingMyStorage, nextcloudMode, forgejoMode, hostName, https,
- *      gpuEnable, apachePort, proxyEnable}. "Apply changes" stays disabled
+ *      gpuEnable, apachePort, proxyEnable, clusterEnable, shareCompute,
+ *      computeWindowStart, computeWindowEnd}. "Apply changes" stays disabled
  *      until the form is both dirty and valid; "Factory reset" stays
  *      disabled until the settings have actually loaded.
  *   3. Apply builds the overrides.nix body in JS (one `losos.<key> = <value>;`
@@ -28,6 +29,15 @@
 const POLL_MS = 2000;
 const DEFAULT_HOSTNAME = 'mattbox';
 const DEFAULT_APACHE_PORT = 11000;
+const DEFAULT_WINDOW_START = '23:00';
+const DEFAULT_WINDOW_END = '07:00';
+
+/* The compute window on a 24-hour clock, the one shape every layer agrees
+ * on: <input type="time"> emits exactly this, lososd's valid_hhmm() accepts
+ * exactly this, and the mesh-join unit hands the pair to the edge as
+ * written. Anchored, so "23:00 " or "1:2:3" is a rejection here rather than
+ * a 400 from /api/apply after the rebuild button was already armed. */
+const HHMM_RE = /^([01][0-9]|2[0-3]):[0-5][0-9]$/;
 
 /* How long a freshly started rebuild may go without reporting `building`
  * before a terminal state is believed anyway. See isStaleTerminal(). */
@@ -50,6 +60,11 @@ const els = {
   proxy: $('in-proxy'),
   gpu: $('in-gpu'),
   apachePort: $('in-apache-port'),
+  cluster: $('in-cluster'),
+  shareCompute: $('in-share-compute'),
+  windowStart: $('in-window-start'),
+  windowEnd: $('in-window-end'),
+  windowError: $('window-error'),
   factoryResetBtn: $('factory-reset-btn'),
 
   authOverlay: $('auth-overlay'),
@@ -75,6 +90,10 @@ function readForm() {
     gpuEnable: els.gpu.checked,
     apachePort: Number.isInteger(port) ? port : NaN,
     proxyEnable: els.proxy.checked,
+    clusterEnable: els.cluster.checked,
+    shareCompute: els.shareCompute.checked,
+    computeWindowStart: els.windowStart.value,
+    computeWindowEnd: els.windowEnd.value,
   };
 }
 
@@ -87,6 +106,18 @@ function populate(s) {
   els.gpu.checked = !!s.gpuEnable;
   els.apachePort.value = Number.isInteger(s.apachePort) ? s.apachePort : DEFAULT_APACHE_PORT;
   els.proxy.checked = !!s.proxyEnable;
+  els.cluster.checked = !!s.clusterEnable;
+  els.shareCompute.checked = !!s.shareCompute;
+  /* An <input type="time"> silently drops any value that is not HH:MM, so a
+   * malformed one cannot be shown back the way a malformed hostname is: the
+   * field would just read empty. Substitute the default instead, which is
+   * also what the daemon falls back to. Reachable only from an overrides.nix
+   * edited by hand on the box — /api/apply validates both bounds — and
+   * `original` is read off the form below, so the substituted value is not
+   * counted as a pending edit and Apply stays disabled until something is
+   * actually changed. */
+  els.windowStart.value = HHMM_RE.test(s.computeWindowStart) ? s.computeWindowStart : DEFAULT_WINDOW_START;
+  els.windowEnd.value = HHMM_RE.test(s.computeWindowEnd) ? s.computeWindowEnd : DEFAULT_WINDOW_END;
   original = readForm();
   settingsLoaded = true;
   // announce: if what the daemon has stored is itself invalid, say so now
@@ -113,6 +144,17 @@ function hostnameProblem(h) {
   return 'Use letters, digits and hyphens only, starting and ending with a letter or a digit.';
 }
 
+/* Both ends of the compute window, valid.
+ *
+ * Takes the whole form rather than one field: the two bounds are one
+ * setting, and an Apply that went out with a good start and a blank end
+ * would write half a window. Any order is legal — an end before the start
+ * wraps midnight, which is the default 23:00→07:00 — so there is nothing to
+ * compare between them, only a shape to check on each. */
+function validWindow(v) {
+  return HHMM_RE.test(v.computeWindowStart) && HHMM_RE.test(v.computeWindowEnd);
+}
+
 function sameSettings(a, b) {
   return a.sharingMyStorage === b.sharingMyStorage &&
     a.nextcloudMode === b.nextcloudMode &&
@@ -121,10 +163,14 @@ function sameSettings(a, b) {
     a.https === b.https &&
     a.gpuEnable === b.gpuEnable &&
     ((Number.isNaN(a.apachePort) && Number.isNaN(b.apachePort)) || a.apachePort === b.apachePort) &&
-    a.proxyEnable === b.proxyEnable;
+    a.proxyEnable === b.proxyEnable &&
+    a.clusterEnable === b.clusterEnable &&
+    a.shareCompute === b.shareCompute &&
+    a.computeWindowStart === b.computeWindowStart &&
+    a.computeWindowEnd === b.computeWindowEnd;
 }
 
-/* Recompute both buttons, and optionally the hostname message.
+/* Recompute both buttons, and optionally the field messages.
  *
  * `announce` is true only on `change` (which for a text input means the
  * value was committed) — showing the message on every keystroke would fire
@@ -132,10 +178,11 @@ function sameSettings(a, b) {
 function refreshControls(announce) {
   const v = readForm();
   const hostOk = validHostname(v.hostName);
+  const windowOk = validWindow(v);
   const dirty = original !== null && !sameSettings(original, v);
 
   els.applyBtn.disabled = !settingsLoaded || !dirty || !hostOk ||
-    !validPort(v.apachePort) || applying;
+    !validPort(v.apachePort) || !windowOk || applying;
   // Factory reset is destructive and irreversible from this box: it stays
   // dead until the settings have loaded, which is also what keeps it out of
   // reach while the token overlay is up.
@@ -148,6 +195,23 @@ function refreshControls(announce) {
   } else if (announce || els.hostNameError.textContent) {
     els.hostNameError.textContent = hostnameProblem(v.hostName);
     els.hostNameError.hidden = false;
+  }
+
+  // One message for the pair: both bounds share it, so aria-invalid is what
+  // says which of the two is at fault. In practice a browser with a real
+  // time picker only ever produces the empty case — the field cannot hold a
+  // half-typed value — but the fallback text input on a browser without one
+  // can, and that is the browser that most needs to be told the format.
+  els.windowStart.setAttribute('aria-invalid',
+    HHMM_RE.test(v.computeWindowStart) ? 'false' : 'true');
+  els.windowEnd.setAttribute('aria-invalid',
+    HHMM_RE.test(v.computeWindowEnd) ? 'false' : 'true');
+  if (windowOk) {
+    els.windowError.hidden = true;
+    els.windowError.textContent = '';
+  } else if (announce || els.windowError.textContent) {
+    els.windowError.textContent = 'Set both ends of the window as a 24-hour time, HH:MM.';
+    els.windowError.hidden = false;
   }
 }
 
@@ -174,6 +238,8 @@ function generateNix() {
   const v = readForm();
   const port = validPort(v.apachePort) ? v.apachePort : DEFAULT_APACHE_PORT;
   const host = validHostname(v.hostName) ? v.hostName : DEFAULT_HOSTNAME;
+  const winStart = HHMM_RE.test(v.computeWindowStart) ? v.computeWindowStart : DEFAULT_WINDOW_START;
+  const winEnd = HHMM_RE.test(v.computeWindowEnd) ? v.computeWindowEnd : DEFAULT_WINDOW_END;
   return '{ ... }:\n' +
     '{\n' +
     '  losos.sharingMyStorage = ' + (v.sharingMyStorage ? 'true' : 'false') + ';\n' +
@@ -184,6 +250,15 @@ function generateNix() {
     '  losos.gpu.enable = ' + (v.gpuEnable ? 'true' : 'false') + ';\n' +
     '  losos.nextcloud.apachePort = ' + port + ';\n' +
     '  losos.proxy.enable = ' + (v.proxyEnable ? 'true' : 'false') + ';\n' +
+    '  losos.cluster.enable = ' + (v.clusterEnable ? 'true' : 'false') + ';\n' +
+    '  losos.cluster.shareCompute = ' + (v.shareCompute ? 'true' : 'false') + ';\n' +
+    // Through nixString() like every other string written here, even though
+    // HHMM_RE has already reduced these two to five characters from a fixed
+    // alphabet. The escaping is what makes this file safe to generate from a
+    // browser at all; a value exempted from it because today's validator
+    // happens to precede it is how that property gets lost.
+    '  losos.cluster.computeWindow.start = ' + nixString(winStart) + ';\n' +
+    '  losos.cluster.computeWindow.end = ' + nixString(winEnd) + ';\n' +
     '}\n';
 }
 
@@ -444,11 +519,6 @@ document.querySelectorAll('.side-item').forEach(function (item) {
 
 (function init() {
   wireErrorBanner();
-
-  const navTahoe = $('nav-tahoe');
-  if (navTahoe) {
-    navTahoe.href = tahoeUrl();
-  }
 
   document.querySelectorAll('.content input, .content select').forEach(function (el) {
     el.addEventListener('input', function () { refreshControls(false); });

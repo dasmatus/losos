@@ -17,6 +17,15 @@ use crate::model::Settings;
 
 /// The committed default body. Returned when `overrides.nix` is missing, and
 /// written back verbatim by `factory-reset`.
+///
+/// The assignment lines must stay byte-identical to the ones in
+/// `modules/overrides.nix`, or `factory-reset` quietly changes settings it was
+/// never asked to change. The two headers differ on purpose — the module reads
+/// `_:` and this one `{ ... }:` — and that is fine, because
+/// [`parse_settings`] never looks at the header. `parses_the_committed_default_body`
+/// is the gate: it parses this constant and asserts the result equals
+/// [`Settings::default`], so a line added here and forgotten there fails the
+/// suite.
 pub const DEFAULT_OVERRIDES_NIX: &str = r#"{ ... }:
 
 {
@@ -28,6 +37,10 @@ pub const DEFAULT_OVERRIDES_NIX: &str = r#"{ ... }:
   losos.gpu.enable = true;
   losos.nextcloud.apachePort = 11000;
   losos.proxy.enable = false;
+  losos.cluster.enable = false;
+  losos.cluster.shareCompute = false;
+  losos.cluster.computeWindow.start = "23:00";
+  losos.cluster.computeWindow.end = "07:00";
 }
 "#;
 
@@ -133,6 +146,19 @@ pub fn parse_settings(content: &str) -> Settings {
             d.proxy_enable,
             lookup_nix("proxy.enable", content).or_else(|| lookup_nix("cfd.enable", content)),
         ),
+        // No legacy aliases below: these four keys have never had an earlier
+        // spelling, so an `.or_else` fallback here would only be a place for a
+        // typo to hide.
+        cluster_enable: read_bool(d.cluster_enable, lookup_nix("cluster.enable", content)),
+        share_compute: read_bool(d.share_compute, lookup_nix("cluster.shareCompute", content)),
+        compute_window_start: read_str(
+            &d.compute_window_start,
+            lookup_nix("cluster.computeWindow.start", content),
+        ),
+        compute_window_end: read_str(
+            &d.compute_window_end,
+            lookup_nix("cluster.computeWindow.end", content),
+        ),
     }
 }
 
@@ -181,6 +207,31 @@ pub fn valid_host_name(h: &str) -> bool {
         && b.iter().all(|c| c.is_ascii_alphanumeric() || *c == b'-')
 }
 
+/// Whether `s` is a wall-clock time of day spelled exactly `HH:MM`, 00:00
+/// through 23:59.
+///
+/// This is the format `<input type="time">` emits, which is why the SPA's
+/// regex and this function can agree without either side normalising. The
+/// value ends up in `losos.cluster.computeWindow.{start,end}` and from there in
+/// a systemd `OnCalendar`-shaped window the edge uses to taint this node; a
+/// value that is not `HH:MM` produces a config that either fails to evaluate or
+/// evaluates to a window that never opens, on a box with no shell to notice it
+/// from. The admin UI checks this too, but a browser is not a trust boundary —
+/// `POST /api/apply` accepts a body from anything holding the token.
+///
+/// Length is checked first, so the byte indexing below cannot panic.
+pub fn valid_hhmm(s: &str) -> bool {
+    let b = s.as_bytes();
+    b.len() == 5
+        && b[2] == b':'
+        && b[0].is_ascii_digit()
+        && b[1].is_ascii_digit()
+        && b[3].is_ascii_digit()
+        && b[4].is_ascii_digit()
+        && (b[0] - b'0') * 10 + (b[1] - b'0') < 24
+        && (b[3] - b'0') * 10 + (b[4] - b'0') < 60
+}
+
 /// Gate an `apply` payload before it overwrites `overrides.nix`.
 ///
 /// Deliberately shallow on syntax — no brace balancing, no Nix parsing.
@@ -217,6 +268,19 @@ pub fn validate_apply(t: &str) -> Result<&str, &'static str> {
             return Err(
                 "hostName must be 1-63 chars, alphanumeric at both ends, hyphens allowed between",
             );
+        }
+    }
+    // Same "only when the body sets it" rule as hostName: the two window keys
+    // are checked independently, so an apply that moves only the start time is
+    // not forced to restate the end.
+    if let Some(raw) = lookup_nix("cluster.computeWindow.start", t) {
+        if !valid_hhmm(strip_quotes(&raw)) {
+            return Err("computeWindowStart must be HH:MM, 00:00-23:59");
+        }
+    }
+    if let Some(raw) = lookup_nix("cluster.computeWindow.end", t) {
+        if !valid_hhmm(strip_quotes(&raw)) {
+            return Err("computeWindowEnd must be HH:MM, 00:00-23:59");
         }
     }
     Ok(t)
@@ -398,5 +462,72 @@ mod tests {
     fn apply_without_a_hostname_is_left_alone() {
         // Not every apply touches hostName; the check must not demand one.
         assert!(validate_apply("{ losos.sharingMyStorage = true; }").is_ok());
+    }
+
+    #[test]
+    fn the_compute_window_reads_back_from_the_two_keys() {
+        let s = parse_settings(
+            "{\n  losos.cluster.enable = true;\n  losos.cluster.shareCompute = true;\n  losos.cluster.computeWindow.start = \"01:30\";\n  losos.cluster.computeWindow.end = \"05:45\";\n}\n",
+        );
+        assert!(s.cluster_enable);
+        assert!(s.share_compute);
+        assert_eq!(s.compute_window_start, "01:30");
+        assert_eq!(s.compute_window_end, "05:45");
+    }
+
+    #[test]
+    fn valid_times_of_day_are_accepted() {
+        for t in ["00:00", "23:59", "07:00", "23:00"] {
+            assert!(valid_hhmm(t), "{t:?} should be valid");
+        }
+    }
+
+    #[test]
+    fn invalid_times_of_day_are_rejected() {
+        for t in [
+            "24:00",  // hour out of range
+            "7:00",   // unpadded hour: not what <input type="time"> emits
+            "23:60",  // minute out of range
+            "23:5",   // too short
+            "",       // empty
+            "1:2:3",  // seconds, and the wrong length
+            "23-00",  // right length, wrong separator
+            "ab:cd",  // right shape, not digits
+            "23:00 ", // trailing space
+        ] {
+            assert!(!valid_hhmm(t), "{t:?} should be rejected");
+        }
+    }
+
+    #[test]
+    fn apply_rejects_a_window_that_is_not_a_time_of_day() {
+        // The messages are part of the HTTP contract; the SPA shows them
+        // verbatim.
+        assert_eq!(
+            validate_apply("{ losos.cluster.computeWindow.start = \"24:00\"; }"),
+            Err("computeWindowStart must be HH:MM, 00:00-23:59")
+        );
+        assert_eq!(
+            validate_apply("{ losos.cluster.computeWindow.end = \"7:0\"; }"),
+            Err("computeWindowEnd must be HH:MM, 00:00-23:59")
+        );
+    }
+
+    #[test]
+    fn apply_accepts_one_window_key_on_its_own() {
+        // Each key is checked only when the body sets it, so moving the start
+        // time must not require restating the end.
+        assert!(validate_apply("{ losos.cluster.computeWindow.start = \"23:00\"; }").is_ok());
+        assert!(validate_apply("{ losos.cluster.computeWindow.end = \"07:00\"; }").is_ok());
+        // A window that wraps midnight is the default, not an error. One
+        // assignment per line: `lookup_nix` splits on the *first* `=`, so two
+        // assignments crammed onto one line are not a shape this parser reads
+        // and not a shape the SPA ever generates.
+        assert!(
+            validate_apply(
+                "{\n  losos.cluster.computeWindow.start = \"23:00\";\n  losos.cluster.computeWindow.end = \"07:00\";\n}\n"
+            )
+            .is_ok()
+        );
     }
 }

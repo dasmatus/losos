@@ -17,7 +17,6 @@
 			<a href="/nextcloud">Cloud</a>
 			<a href="/forgejo/">Git</a>
 			<a href="/settings">Settings</a>
-			<a id="nav-tahoe" href="#tahoe">Tahoe</a>
 		</nav>
 	</header>
 
@@ -27,6 +26,7 @@
 			<nav class="side-list" aria-label="Settings sections">
 				<a href="#sharing" class="side-item is-active" data-section="sharing"
 					id="side-sharing">Sharing</a>
+				<a href="#mesh" class="side-item" data-section="mesh" id="side-mesh">Mesh</a>
 				<a href="#services" class="side-item" data-section="services">Services</a>
 				<a href="#network" class="side-item" data-section="network">Network</a>
 				<a href="#hardware" class="side-item" data-section="hardware">Hardware</a>
@@ -84,9 +84,64 @@
 					</div>
 				</div>
 				<p class="group-hint">
-					When on, the appliance&rsquo;s Tahoe-LAFS node offers storage to the shared grid
-					(mesh mode). When off, the box stays a private local appliance. Changing this
-					triggers a full system rebuild.
+					When on, the appliance contributes storage to the shared Longhorn pool
+					(mesh mode). The <code>shared</code> data directory is unlocked from its own
+					fscrypt key, so a pooled volume can be traced back to this box. When off, the
+					box stays a private local appliance and that directory stays locked. Changing
+					this triggers a full system rebuild.
+				</p>
+			</section>
+
+			<!-- Mesh. Storage (Sharing, above) and compute are two separate
+			     offers: a box can pool disk without ever running someone
+			     else's workload, and the reverse. Hence a section of their
+			     own rather than more switches under Sharing. -->
+			<section class="section" id="section-mesh" aria-labelledby="side-mesh">
+				<div class="group">
+					<div class="row">
+						<label class="switch-row">
+							<span class="row-label">Join the compute mesh</span>
+							<span class="switch">
+								<input type="checkbox" id="in-cluster">
+								<span class="switch-track" aria-hidden="true"></span>
+							</span>
+						</label>
+					</div>
+					<div class="row">
+						<label class="switch-row">
+							<span class="row-label">Share my compute while I sleep</span>
+							<span class="switch">
+								<input type="checkbox" id="in-share-compute">
+								<span class="switch-track" aria-hidden="true"></span>
+							</span>
+						</label>
+					</div>
+					<!-- type="time" and not a text box: its value is always
+					     exactly HH:MM on a 24-hour clock whatever the locale
+					     shows in the field, which is the format the daemon
+					     parses and re-validates. A free-text "11pm" would be
+					     rejected on the way in with no way to see why from a
+					     box that has no shell. -->
+					<div class="row">
+						<label class="row-label" for="in-window-start">Window start</label>
+						<input type="time" id="in-window-start" required
+							aria-describedby="window-error">
+					</div>
+					<div class="row">
+						<label class="row-label" for="in-window-end">Window end</label>
+						<input type="time" id="in-window-end" required
+							aria-describedby="window-error">
+					</div>
+					<p class="field-error" id="window-error" role="alert" hidden></p>
+				</div>
+				<p class="group-hint">
+					Joining registers this box as a node of the shared cluster at the edge, so
+					pooled storage can be replicated here. Sharing compute also lets the edge
+					schedule mesh workloads on it, but only inside the window above. Outside it
+					the edge marks the box unschedulable and the CPU is yours. An end time
+					earlier than the start wraps midnight, which is the usual shape
+					(23:00 to 07:00). Times are in this appliance&rsquo;s own timezone &mdash; the edge is told which one, so a window means the same hours to you wherever the edge is. Changing
+					any of this triggers a full system rebuild.
 				</p>
 			</section>
 

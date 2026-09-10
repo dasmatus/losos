@@ -6,11 +6,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 `losos` is a **stateless NixOS appliance** flake: a tmpfs root rebuilt every
 boot, with all durable state bind-mounted back from an encrypted `/persist`
-via `impermanence`. It runs Nextcloud (for the `notshared` user) and Tahoe-LAFS
-(for the `shared` user) on repurposed mini-PCs, with **no SSH and no shell
-logins** — a set-and-forget box reached only through service web UIs and a
-dedicated admin endpoint. See `README.md` for the install/Tahoe/auto-upgrade
-walkthrough; this file covers what the README doesn't: build/dev commands and
+via `impermanence`. It runs Nextcloud (for the `notshared` user) and a
+contributed mesh-storage domain (for the `shared` user) on repurposed mini-PCs,
+with **no SSH and no shell logins** — a set-and-forget box reached only through
+service web UIs and a dedicated admin endpoint. See `README.md` for the
+install/mesh/auto-upgrade walkthrough; this file covers what the README doesn't: build/dev commands and
 the cross-file architecture.
 
 ## Build & develop
@@ -105,10 +105,11 @@ Inside the dev shell, `bcd` → `cd backend`, `rcd` → `cd backend-registrar`.
   control plane and the admin UI.
 
 **Stateless-by-impermanence model** (`impermanence.nix` + `disko.nix` +
-`boot.nix`): the root is tmpfs; `/persist` is LUKS-encrypted btrfs. Only the
+`boot.nix`): the root is tmpfs; `/persist` is LUKS-encrypted ext4 (with the
+`encrypt` feature, because fscrypt needs it and btrfs cannot provide it). Only the
 dirs in `environment.persistence."/persist".directories` survive a reboot
-(`/nix`, `/var`, `/etc/ssh`, `/etc/keys`, `/etc/nixos`, the two data homes,
-`machine-id`). **Anything new that must persist across reboot must be added
+(`/nix`, `/var`, `/etc/ssh`, `/etc/keys`, `/etc/nixos`, `/etc/rancher`, the two
+data homes, `machine-id`). **Anything new that must persist across reboot must be added
 to that list** or it silently vanishes on the next boot. `/persist` is
 `neededForBoot` so impermanence bind-mounts resolve before the sysroot is
 populated. Unlock is TPM2 (`losos.tpm.enable = true`, default) or a keyfile
@@ -116,13 +117,15 @@ at `/etc/keys/persist-keyfile` (no-TPM path, injected into the initrd as
 `/crypto_keyfile.bin`).
 
 **Two isolated data domains, no shell** (`configuration.nix`): `notshared`
-(uid 1000) owns Nextcloud, `shared` (uid 1001) owns Tahoe-LAFS; both homes are
+(uid 1000) owns Nextcloud, `shared` (uid 1001) owns the contributed mesh
+storage domain; both homes are
 mode `700`, each with its own primary group, so neither can read the other —
 `isNormalUser` without an explicit `group` puts both in `users`, and a `750`
 home then grants that group r-x, which silently defeated the isolation until
 `tests/impermanence.nix` caught it. Neither has a password, and
 `services.openssh.enable = false`. The only config change reachable from the
-running box is the **Local ↔ Mesh toggle** in the standalone admin UI.
+running box is via the standalone admin UI: the **Local ↔ Mesh** storage
+toggle, **join the compute mesh**, and **share my compute when I sleep**.
 
 **The lososd daemon, losos-ctl facade, and admin endpoint**
 (`modules/daemon.nix` + `backend/` + `admin-ui/`): the privileged logic lives
@@ -153,26 +156,27 @@ ordering of destructive steps is asserted without formatting anything. Wire
 contract: `backend/schema.json`. Set `losos.backend.package = null` to run
 without it.
 
-**Containers and the single front door** (`modules/containers.nix` +
-`modules/services.nix` + `modules/nextcloud-common.nix`): rootless Podman is
-gone. Nextcloud and Forgejo run as declarative **NixOS Containers**
-(systemd-nspawn) on private subnets (`10.231.1.2` / `10.231.2.2`) when their
-`losos.<svc>.mode == "container"`; the shared native Nextcloud stack lives in
-`nextcloud-common.nix` (`lososInternal.nextcloudStack`) so host-native and
-container mode can't drift. Nginx is the only thing holding public ports:
-path-based routing on the appliance's mDNS name (`<hostName>.local:80/nextcloud`,
-`:80/forgejo`), the admin SPA on the same `:80` vhost, the Tahoe web UI proxied on `:3456`
-(port-based — Tahoe generates absolute links). Shared stylesheets live in
+**Workloads and the single front door** (`modules/containers.nix` +
+`modules/workloads.nix` + `modules/cluster.nix` + `modules/nextcloud-common.nix`):
+rootless Podman is gone, and so is systemd-nspawn. Nextcloud and Forgejo run as
+**Kubernetes workloads in the box's own local k3s cluster** when their
+`losos.<svc>.mode == "container"`; the shared Nextcloud truth still lives in
+`nextcloud-common.nix` so host-native and workload mode can't drift. Nginx is
+the only thing holding public ports: path-based routing on the appliance's mDNS
+name (`<hostName>.local:80/nextcloud`, `:80/forgejo`) and the admin SPA on the
+same `:80` vhost. Shared stylesheets live in
 `admin-ui/design-system/` (`tokens.css` + `losos.css`, served at `/ds/`);
 `admin-ui/design-system/react` is a dev-machine-only React wrapper package for
 claude.ai/design — never part of the Nix closure (the `losos-admin-ui` package
 filters `design-system/` out of its `admin-ui/` copy and ships only the two
-stylesheets under `/ds/`). Each container
-backend answers only on its private IP or loopback.
+stylesheets under `/ds/`). The workload pods are
+`hostNetwork` (the local cluster runs no CNI), so they answer on loopback — see
+the gotcha about what that costs the `lanOnly` guard.
 
 **The `losos.*` option namespace** (`options.nix`): all project-specific
 knobs (`targetDrive`, `tpm.enable`, `sharingMyStorage`, `forgejo.enable`,
-`nextcloud.*`, `tahoe.introducerFurl`, `upgradeFlakeUri`, `backend.package`,
+`nextcloud.*`, `cluster.*` (mesh join, compute window), `shared.fscrypt.*`,
+`upgradeFlakeUri`, `backend.package`,
 `admin.{enable,port,apiPort,tokenFile,ui}`, `proxy.*` (appliance side of the
 master proxy), `edge.*` (VPS side, consumed via the `nixosModules.edge` flake
 output)) live
@@ -216,16 +220,44 @@ A separate `midnight-reboot.timer` reboots unconditionally at 00:07 with
   (default `/var/secrets/losos-admin-token`, persisted via `/var`) is written
   with a 64-hex-char random value (mode 0600) by lososd on first start if
   absent. NixOS doesn't manage it — don't try to declare it as a store path.
-- **tahoe-lafs is overlaid onto Python 3.12** (`configuration.nix`). nixos-unstable
-  defaults to Python 3.14, under which `txi2p-tahoe` fails to build. The tahoe
-  module picks the package up via `services.tahoe.*.package = pkgs.tahoe-lafs`.
-  Don't drop this overlay. (Set module `package = pkgs.tahoe-lafs` explicitly —
-  nixpkgs renamed `tahoelafs` → `tahoe-lafs` and the module default still points
-  at the old attr.)
-- **Tahoe user/group assertion fix** (`configuration.nix`): the tahoe module
-  creates `tahoe.<node>` / `tahoe.introducer-<name>` users without a group,
-  tripping nixpkgs' "user without group" assertion. Explicit
-  `users.groups."tahoe-*"` + `users.users."tahoe.*".group` are required.
+- **`/etc/rancher` must stay persisted** (`impermanence.nix`). `/var` covers
+  the bulk of both Kubernetes instances' state, but the agent writes
+  `/etc/rancher/node/password` on its first join and the server stores a hash of
+  it keyed by node name. On a tmpfs root that file is regenerated every boot and
+  the server then refuses the rejoin ("Node password rejected"). Drop the line
+  and the box silently falls out of the mesh on the first reboot after enrolling.
+- **`--disable`, `--flannel-backend` and `--disable-network-policy` are
+  server-only flags.** `k3s agent` hard-errors on an unknown flag, so passing any
+  of them to an agent crash-loops the unit forever — on a box with no shell.
+  nixpkgs' own `nixos/tests/rancher/multi-node.nix` gives its server nodes
+  `disable` and its agent node neither; rke2's `role` description says the same.
+  Gate every server-only flag on the role.
+- **The two Kubernetes instances are different clusters on purpose.**
+  `services.k3s` (role `server`) runs *this box's* Nextcloud and Forgejo;
+  `services.rke2` (role `agent`) joins the edge's mesh. An agent's kubelet cannot
+  start while its server is unreachable, and `midnight-reboot.timer` fires
+  unconditionally at 00:07 — so putting the box's own services in the edge's
+  cluster would take them down for any outage spanning midnight. Don't "simplify"
+  this into one cluster. rke2 rather than a second k3s because nixpkgs builds both
+  from one name-parameterized generator, so their state dirs
+  (`/var/lib/rancher/{k3s,rke2}`) and unit names don't collide — and there is no
+  `dataDir` option to make a second k3s work.
+- **`hostNetwork` pods have no distinguishable source address.** The local
+  cluster runs `--flannel-backend=none`, so its pods share the host's netns and
+  nginx sees them as `127.0.0.1` or the LAN IP. The old nspawn design relied on
+  containers having their own subnet, and the `lanOnly` guard denied it first.
+  That depth is gone: never write a `deny <podCidr>` rule, because it can't match.
+- **The compute window is enforced on the edge, in the appliance's zone.** The
+  NoSchedule taint can only be written by the edge (NodeRestriction lets no one
+  else), so the comparison happens on a machine that is not the owner's — an
+  edge VPS running UTC against an appliance shipping `Europe/Berlin`. The zone
+  therefore travels with the two bounds (`--window-tz`, `ComputeWindow.tz`) and
+  the edge evaluates each node with `TZ="$tz" date`. Before that it read its own
+  clock, and a 23:00–07:00 window entered in Berlin was enforced 00:00–08:00 in
+  winter and 01:00–09:00 in summer, sliding an hour at each DST change — which
+  handed strangers' pods the first hours of the owner's working day, the exact
+  thing the feature exists to prevent. Don't hoist `now` back out of the
+  per-node loop in `modules/edge.nix`: it is per-node because the zone is.
 - **`system.stateVersion = "26.11"` is set-once** — matches the nixos-unstable
   this flake tracks; don't change it.
 - **The `result` symlink is a `nix build` artifact** (pointing into
