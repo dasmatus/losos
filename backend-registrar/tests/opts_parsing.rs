@@ -34,6 +34,29 @@ fn serve_args(overrides: &[&str]) -> Vec<String> {
         .collect()
 }
 
+/// Flags every `join` invocation needs, with the same prepend-to-override
+/// trick [`serve_args`] uses.
+const JOIN_DEFAULTS: &[&str] = &[
+    "--registrar-url",
+    "https://register.losos.cfd",
+    "--appliance-id",
+    "mattbox-01",
+    "--node-name",
+    "mattbox-01",
+    "--token-file",
+    "/var/secrets/losos-proxy-token",
+    "--out-token-file",
+    "/var/secrets/losos-mesh-token",
+];
+
+fn join_args(overrides: &[&str]) -> Vec<String> {
+    std::iter::once("join")
+        .chain(overrides.iter().copied())
+        .chain(JOIN_DEFAULTS.iter().copied())
+        .map(str::to_string)
+        .collect()
+}
+
 fn serve_opts(overrides: &[&str]) -> losos_registrar::opts::ServeOpts {
     match parse(serve_args(overrides)) {
         Ok(Mode::Serve(opts)) => opts,
@@ -133,6 +156,124 @@ fn a_missing_required_flag_is_rejected() {
     assert!(parse(args).is_err());
 }
 
+/// The mesh flags are all optional, and an edge that omits them parses exactly
+/// the argument list it always did — which is what keeps
+/// `losos.edge.cluster.enable = false` a no-op on the master-proxy half.
+#[test]
+fn serve_without_the_mesh_flags_leaves_the_join_route_unconfigured() {
+    let opts = serve_opts(&[]);
+    assert!(opts.mesh_agent_token_file.is_none());
+    assert!(opts.mesh_server_addr.is_none());
+    assert!(opts.kube_token_file.is_none());
+    assert!(opts.kube_ca_file.is_none());
+    assert_eq!(opts.kube_api, "https://127.0.0.1:6443");
+    assert_eq!(
+        opts.compute_windows_file,
+        "/var/lib/losos-registrar/compute-windows.json"
+    );
+}
+
+#[test]
+fn serve_parses_the_mesh_flags() {
+    let opts = serve_opts(&[
+        "--mesh-agent-token-file",
+        "/var/secrets/losos-mesh-agent-token",
+        "--mesh-server-addr",
+        "https://198.51.100.7:9345",
+        "--kube-api",
+        "https://127.0.0.1:6443/",
+        "--kube-token-file",
+        "/var/secrets/losos-mesh-kube-token",
+        "--kube-ca-file",
+        "/var/secrets/losos-mesh-kube-ca.crt",
+        "--compute-windows-file",
+        "/var/lib/losos-registrar/compute-windows.json",
+    ]);
+    assert_eq!(
+        opts.mesh_agent_token_file.as_deref(),
+        Some("/var/secrets/losos-mesh-agent-token")
+    );
+    assert_eq!(
+        opts.mesh_server_addr.as_deref(),
+        Some("https://198.51.100.7:9345")
+    );
+    // The trailing slash is stripped at parse time; the cleanup builds URLs by
+    // concatenating "/api/v1/...", and "…:6443//api/v1/nodes/x" is a 404 from
+    // the apiserver that would read as "nothing to clean up".
+    assert_eq!(opts.kube_api, "https://127.0.0.1:6443");
+}
+
+/// `--share-compute` is interpolated straight out of a Nix bool, so anything
+/// other than `true`/`false` means the module emitted something it did not
+/// intend — a boot-time failure naming the flag beats a silent `false` that
+/// quietly stops the box contributing compute.
+#[test]
+fn join_rejects_a_non_boolean_share_compute() {
+    for value in ["yes", "1", "True", ""] {
+        assert!(
+            parse(join_args(&["--share-compute", value])).is_err(),
+            "--share-compute {value:?} must not parse"
+        );
+    }
+    assert!(parse(join_args(&["--share-compute", "true"])).is_ok());
+}
+
+/// The same `HH:MM` rule lososd and the edge enforce, checked here so a bad
+/// window fails at boot with the flag named rather than travelling to the edge
+/// to come back as an opaque 400 on a box with no shell.
+#[test]
+fn join_rejects_a_window_that_is_not_hhmm() {
+    for value in ["24:00", "7:00", "23:60", "23:5", "", "1:2:3", "07:00:00"] {
+        assert!(
+            parse(join_args(&["--window-start", value])).is_err(),
+            "--window-start {value:?} must not parse"
+        );
+        assert!(
+            parse(join_args(&["--window-end", value])).is_err(),
+            "--window-end {value:?} must not parse"
+        );
+    }
+    for value in ["00:00", "07:00", "23:59"] {
+        assert!(
+            parse(join_args(&["--window-start", value])).is_ok(),
+            "--window-start {value:?} must parse"
+        );
+    }
+}
+
+#[test]
+fn join_parses_its_own_flags() {
+    match parse(join_args(&[
+        "--share-compute",
+        "true",
+        "--expect-server-addr",
+        "https://edge.losos.cfd:9345",
+    ])) {
+        Ok(Mode::Join(opts)) => {
+            assert_eq!(opts.appliance_id, "mattbox-01");
+            assert_eq!(opts.node_name, "mattbox-01");
+            assert!(opts.share_compute);
+            assert_eq!(opts.window_start, "23:00");
+            assert_eq!(opts.window_end, "07:00");
+            assert_eq!(
+                opts.expect_server_addr.as_deref(),
+                Some("https://edge.losos.cfd:9345")
+            );
+        }
+        other => panic!("expected a join mode, got {}", mode_name(&other)),
+    }
+}
+
+/// Sharing off is the default, so an `ExecStart` that omitted the flag
+/// entirely cannot accidentally opt an owner into running other people's pods.
+#[test]
+fn join_defaults_to_not_sharing_compute() {
+    match parse(join_args(&[])) {
+        Ok(Mode::Join(opts)) => assert!(!opts.share_compute),
+        other => panic!("expected a join mode, got {}", mode_name(&other)),
+    }
+}
+
 #[test]
 fn an_unknown_subcommand_is_rejected() {
     assert!(parse(vec!["frobnicate".to_string()]).is_err());
@@ -171,6 +312,7 @@ fn mode_name(mode: &miette::Result<Mode>) -> &'static str {
         Ok(Mode::Serve(_)) => "serve",
         Ok(Mode::Announce(_)) => "announce",
         Ok(Mode::Seed(_)) => "seed",
+        Ok(Mode::Join(_)) => "join",
         Err(_) => "error",
     }
 }

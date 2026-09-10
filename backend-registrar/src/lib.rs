@@ -15,6 +15,12 @@
 //!     [`config::desired_config`] `serve`'s reconciler calls) so rathole can
 //!     start before the reconciler's first pass; a no-op if the file already
 //!     exists, since `serve` then owns it.
+//!   * `join` — runs once per boot on the appliance, before the rke2 agent.
+//!     POSTs `/cluster/join` with the same per-appliance token `announce`
+//!     uses, and writes the mesh node token the edge returns. Bounded retry,
+//!     then a non-zero exit: the unit is `Requires=`d by `rke2-agent.service`,
+//!     so failing loudly is what stops the agent wedging on a token that never
+//!     arrived.
 //!
 //! The pure core ([`config::desired_config`]) is separated from IO so the
 //! state machine is unit-tested with no filesystem, mirroring the Haskell
@@ -35,10 +41,13 @@ pub mod announce;
 pub mod config;
 pub mod error;
 mod fsutil;
+pub mod join;
 pub mod opts;
 pub mod registry;
 pub mod seed;
 pub mod server;
+pub mod window;
 pub use config::{desired_config, EdgeOpts, Files, TenantView};
 pub use error::{ApiError, RegistryError};
 pub use registry::{Registry, Tenant};
+pub use window::ComputeWindow;

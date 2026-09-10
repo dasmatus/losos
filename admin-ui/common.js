@@ -25,12 +25,6 @@ function authHeaders() {
   return t ? { 'Authorization': 'Bearer ' + t } : {};
 }
 
-// Tahoe writes absolute links, so its web UI is proxied by port rather than
-// by path — a second origin, hence the no-cors probe on the dashboard.
-function tahoeUrl() {
-  return location.protocol + '//' + location.hostname + ':3456/';
-}
-
 // ── Error banner ──────────────────────────────────────────────────
 // Both pages carry #error-banner / #error-text / #error-close.
 

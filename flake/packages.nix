@@ -16,18 +16,31 @@
 #                admin-ui/ and modules/containers.nix.
 #   losos-registrar — the Rust edge registration + Traefik/rathole config
 #                reconciler (`serve`) and appliance registration client
-#                (`announce`). Built via rustPlatform.buildRustPackage from
-#                backend-registrar/. See modules/edge-registrar.nix (edge) and
+#                (`announce`, `join`). Built via rustPlatform.buildRustPackage
+#                from backend-registrar/. See modules/edge.nix (edge) and
 #                modules/proxy.nix (appliance). cargoHash is the SHA256 of the
-#                vendored crate tarball; `lib.fakeHash` is a placeholder — the
-#                first `nix build .#losos-registrar` will print the real hash
-#                to paste here.
+#                vendored crate tarball; the first `nix build
+#                .#losos-registrar` after a dependency change prints the real
+#                hash to paste here.
+#   losos-image-{pause,nextcloud,forgejo} — the OCI images the local k3s
+#                cluster runs as static pods, defined in flake/images.nix and
+#                merged in below. modules/defaults.nix wires them to
+#                losos.workloads.*. They are exported as flake packages
+#                because that is how they reach a binary cache: the appliance
+#                substitutes them, it never builds them (see the header of
+#                flake/images.nix).
 { pkgs, ... }:
 
 let
   inherit (pkgs) lib;
+
+  # Only derivations may come out of this file — every attribute here becomes a
+  # flake package, and a non-derivation breaks `nix flake check` and
+  # `nix flake show` for everything else too.
+  images = import ./images.nix { inherit pkgs; };
 in
-{
+images
+// {
   losos-admin-ui = pkgs.runCommand "losos-admin-ui-0.1.0" { } ''
     cp -rT ${
       # admin-ui/ minus design-system/: the stylesheets ride in below by
