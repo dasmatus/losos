@@ -1,6 +1,6 @@
 # Disk layout: every drive in losos.targetDrives becomes a GPT disk with one
 # LVM physical volume; all PVs feed a single volume group `persist-vg`, whose
-# one logical volume `persist` is LUKS-encrypted btrfs mounted at /persist.
+# one logical volume `persist` is LUKS-encrypted ext4 mounted at /persist.
 # The first drive additionally carries the ESP. The root is a volatile tmpfs,
 # rebuilt from the closure every boot; all durable state lives under /persist
 # and is bind-mounted back onto the tmpfs root by impermanence.
@@ -10,7 +10,7 @@
 # installer performs. There is deliberately no RAID level: this is a
 # concatenation, so capacity adds up but any single disk failure loses the
 # volume; acceptable for a set-and-forget appliance whose data is also
-# replicated via Tahoe-LAFS / Nextcloud.
+# replicated across the mesh by Longhorn.
 #
 # Unlock method is chosen by losos.tpm.enable:
 #   true  -> TPM2 (enroll it post-install; see README)
@@ -83,7 +83,7 @@ in
     disk = builtins.listToAttrs (lib.imap0 mkDisk drives);
 
     # The single volume group spanning every drive's PV. One logical volume
-    # `persist` consumes all free extents, then carries the LUKS + btrfs stack
+    # `persist` consumes all free extents, then carries the LUKS + ext4 stack
     # exactly as the old single-disk layout did — only the device path changes
     # (now /dev/persist-vg/persist, set by disko's lvm_vg type).
     lvm_vg.persist-vg = {
@@ -112,12 +112,33 @@ in
             # password fallback is implied by systemd stage 1.
             crypttabExtraOpts = if useTpm then [ "tpm2-device=auto" ] else [ ];
           };
+          # ext4, not btrfs, and the choice is load-bearing: fscrypt needs a
+          # filesystem that implements it, and btrfs does not (the feature is
+          # absent from `mkfs.btrfs -O list-all`; the upstream patches are
+          # still unmerged). The shared data domain is protected by an fscrypt
+          # policy that is locked whenever losos.sharingMyStorage is off — see
+          # docs/superpowers/specs/2026-09-09-k3s-mesh-design.md — so the
+          # filesystem has to support it or that whole layer is unavailable.
+          #
+          # `-O encrypt` must be set at mkfs time; it cannot be enabled later
+          # on a mounted filesystem. disko's filesystem type passes extraArgs
+          # straight to `mkfs.<format>` before the device.
+          #
+          # The trade against btrfs is real and deliberate: this loses
+          # transparent zstd compression and, more importantly, data
+          # checksums. Since the LVM pool is a plain concatenation with no
+          # RAID, those checksums were the only thing that *detected* single-
+          # disk corruption. Longhorn replication across the mesh now covers
+          # that at a different layer.
           content = {
             type = "filesystem";
-            format = "btrfs";
+            format = "ext4";
+            extraArgs = [
+              "-O"
+              "encrypt"
+            ];
             mountpoint = "/persist";
             mountOptions = [
-              "compress=zstd"
               "noatime"
             ];
           };

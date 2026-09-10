@@ -1,9 +1,10 @@
 # losos
 
-A NixOS appliance that turns a mini-PC into a private cloud and a community
-storage node: Nextcloud for your own files, Tahoe-LAFS contributing spare disk
-to a distributed grid, the two users mutually unreadable. No SSH and no login
-shell — administration happens over the web, and upgrades run unattended.
+A NixOS appliance that turns a mini-PC into a private cloud and a node in a
+community compute-and-storage mesh: Nextcloud for your own files, spare disk and
+spare CPU contributed to a cluster of other boxes, the two users mutually
+unreadable. No SSH and no login shell — administration happens over the web, and
+upgrades run unattended.
 
 The root filesystem is tmpfs, rebuilt on every boot. Only what is explicitly
 listed as persistent survives, on an encrypted partition, so a powered-off box
@@ -14,7 +15,8 @@ gives up nothing to someone holding it.
 | | |
 |---|---|
 | **Nextcloud** | Files, calendar and contacts for the `notshared` user. Reached at `<host>.local/nextcloud`. |
-| **Tahoe-LAFS** | Contributes spare disk to a storage grid as the `shared` user. Web UI on `:3456`. |
+| **Mesh storage** | Contributes spare disk to the cluster as the `shared` user, replicated by Longhorn. The domain is fscrypt-locked whenever sharing is off. |
+| **Mesh compute** | Optional. Contributes CPU to the cluster during a nightly window — "share my compute when I sleep". |
 | **Forgejo** | Optional git hosting at `<host>.local/forgejo/`. |
 | **Admin UI** | A dependency-free static page at `<host>.local`, LAN-only, for the handful of settings the box exposes. |
 | **Master proxy** | Optional. Reaches the appliance from the internet through a rathole tunnel to a VPS running Traefik, without opening a port at home. |
@@ -37,6 +39,42 @@ the flake at run time rather than baking a copy into the ISO.
 Encryption unlocks from the TPM where there is one. Without a TPM it falls
 back to a keyfile in the initrd, which does **not** protect against someone
 taking the machine — see [docs/security-model.md](docs/security-model.md).
+
+`/persist` is formatted ext4 with the `encrypt` feature. That is not a
+preference: fscrypt needs a filesystem that implements it, and btrfs does not.
+It costs transparent compression and data checksums, which is why mesh
+replication matters more than it used to.
+
+## The mesh
+
+A box runs **two** Kubernetes instances, and they are deliberately different
+clusters:
+
+| | Local | Mesh |
+|---|---|---|
+| What | this box's own Nextcloud and Forgejo | Longhorn storage, shared compute |
+| Server | this box | the edge VPS |
+| Needs the network? | **no** | yes |
+
+The split is the whole point. A Kubernetes agent cannot start its kubelet while
+its server is unreachable, and this box reboots itself every night — so if your
+own files lived in the edge's cluster, any outage spanning midnight would take
+them offline until it ended, on a machine with no shell to fix it from. Your
+data stays in the local cluster, which depends on nothing off-box.
+
+Joining the mesh is off by default. Two switches in the settings page control
+it: one to join at all, one to contribute CPU — and the second only lends the
+machine out during a nightly window, so the box is yours while you are using it.
+
+Storage you contribute is locked when you are not contributing it. The `shared`
+domain sits under an fscrypt policy whose key is sealed to the TPM; with sharing
+off the key is not in the kernel keyring and the directory is unreadable **even
+to root on the running machine**. That is a layer on top of the disk encryption,
+not a replacement for it: LUKS protects a box that is switched off, fscrypt
+protects this domain from the box that is switched on.
+
+Contributed files are namespaced per machine, so a pooled volume stays
+attributable to the box that supplied it.
 
 ## Development
 

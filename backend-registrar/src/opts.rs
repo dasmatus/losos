@@ -57,6 +57,13 @@ fn parse_dur(s: &str) -> Result<Duration> {
 /// `losos.yml` and `rathole_config`; rathole hot-reloads the latter via its
 /// `notify` file-watcher (no signal needed), so there is no rathole-service
 /// handle here.
+///
+/// The `mesh_*` / `kube_*` fields are the `/cluster/join` half and are all
+/// optional. `modules/edge.nix` only appends their flags under
+/// `lib.optionals cfg.cluster.enable`, so an edge with
+/// `losos.edge.cluster.enable = false` parses exactly the arguments it always
+/// did and the join route answers 503 — the master-proxy half is untouched by
+/// the mesh existing.
 #[derive(Debug, Clone)]
 pub struct ServeOpts {
     pub listen: String,
@@ -70,6 +77,28 @@ pub struct ServeOpts {
     pub tenants_file: String,
     pub reconcile_interval: Duration,
     pub heartbeat_ttl: Duration,
+    /// The rke2 *agent* token an accepted join is handed back, read at request
+    /// time rather than at boot so a rotated file needs no restart. `None`
+    /// disables the join route.
+    pub mesh_agent_token_file: Option<String>,
+    /// `https://<advertiseAddr>:<supervisorPort>` — the rke2 **supervisor**
+    /// port (9345), not the apiserver port (6443). An agent registers on the
+    /// supervisor; pointing it at 6443 fails at join time with a TLS error
+    /// that names neither port.
+    pub mesh_server_addr: Option<String>,
+    /// The mesh apiserver the stale-node cleanup talks to. Loopback by
+    /// default: the registrar runs on the same host as `rke2-server`.
+    pub kube_api: String,
+    /// Bearer token for `kube_api`, extracted from the `losos-registrar`
+    /// ServiceAccount by `losos-mesh-rbac.service`.
+    pub kube_token_file: Option<String>,
+    /// The mesh cluster CA. The cleanup client pins its root store to this
+    /// file and disables the built-in webpki roots, so a public CA cannot
+    /// impersonate the cluster's apiserver.
+    pub kube_ca_file: Option<String>,
+    /// Where the reconciler publishes the per-node compute windows for the
+    /// edge's `losos-mesh-taint.service` to read.
+    pub compute_windows_file: String,
 }
 
 /// `seed` options. Writes the declarative rathole `[server]` base (for zero
@@ -95,15 +124,46 @@ pub struct AnnounceOpts {
     pub heartbeat_interval: Duration,
 }
 
+/// `join` options. Runs once per boot on the appliance, from
+/// `losos-mesh-join.service`, before `rke2-agent.service`.
+///
+/// It authenticates with the *same* `/var/secrets/losos-proxy-token` the
+/// announce client uses — mesh enrolment mints no second credential — and
+/// writes the rke2 node token the edge hands back to `out_token_file`, which
+/// is `losos.cluster.tokenFile`.
+#[derive(Debug, Clone)]
+pub struct JoinOpts {
+    pub registrar_url: String,
+    pub appliance_id: String,
+    pub node_name: String,
+    pub token_file: String,
+    pub out_token_file: String,
+    pub share_compute: bool,
+    pub window_start: String,
+    pub window_end: String,
+    /// The zone the two bounds are wall-clock times in, taken from the
+    /// appliance's own `time.timeZone` by modules/cluster.nix. The edge writes
+    /// the taint and so compares on its own clock; without this the hours are
+    /// reinterpreted in the edge's zone.
+    pub window_tz: String,
+    /// `losos.cluster.serverAddr` as this box has it configured. Purely a
+    /// consistency check: a mismatch against the edge's answer is logged, not
+    /// enforced, because the edge is the authority on its own address.
+    pub expect_server_addr: Option<String>,
+}
+
 pub enum Mode {
     Serve(ServeOpts),
     Announce(AnnounceOpts),
     Seed(SeedOpts),
+    Join(JoinOpts),
 }
 
 pub fn parse(args: Vec<String>) -> Result<Mode> {
     if args.is_empty() {
-        return Err(miette!("usage: losos-registrar serve|announce|seed ..."));
+        return Err(miette!(
+            "usage: losos-registrar serve|announce|seed|join ..."
+        ));
     }
     let mode = &args[0];
     let rest = &args[1..];
@@ -133,6 +193,17 @@ pub fn parse(args: Vec<String>) -> Result<Mode> {
                 tenants_file: req(&rest, "--tenants-file")?.to_string(),
                 reconcile_interval: parse_dur(arg(&rest, "--reconcile-interval").unwrap_or("15s"))?,
                 heartbeat_ttl: parse_dur(arg(&rest, "--heartbeat-ttl").unwrap_or("120s"))?,
+                mesh_agent_token_file: arg(&rest, "--mesh-agent-token-file").map(str::to_string),
+                mesh_server_addr: arg(&rest, "--mesh-server-addr").map(str::to_string),
+                kube_api: arg(&rest, "--kube-api")
+                    .unwrap_or("https://127.0.0.1:6443")
+                    .trim_end_matches('/')
+                    .to_string(),
+                kube_token_file: arg(&rest, "--kube-token-file").map(str::to_string),
+                kube_ca_file: arg(&rest, "--kube-ca-file").map(str::to_string),
+                compute_windows_file: arg(&rest, "--compute-windows-file")
+                    .unwrap_or("/var/lib/losos-registrar/compute-windows.json")
+                    .to_string(),
             }))
         }
         "announce" => Ok(Mode::Announce(AnnounceOpts {
@@ -153,9 +224,69 @@ pub fn parse(args: Vec<String>) -> Result<Mode> {
                 .map_err(|_| miette!("bad --rathole-bind-port"))?,
             bootstrap_token_file: req(&rest, "--bootstrap-token-file")?.to_string(),
         })),
+        "join" => Ok(Mode::Join(JoinOpts {
+            registrar_url: req(&rest, "--registrar-url")?.to_string(),
+            appliance_id: req(&rest, "--appliance-id")?.to_string(),
+            node_name: req(&rest, "--node-name")?.to_string(),
+            token_file: req(&rest, "--token-file")?.to_string(),
+            out_token_file: req(&rest, "--out-token-file")?.to_string(),
+            share_compute: parse_bool(arg(&rest, "--share-compute").unwrap_or("false"))?,
+            window_start: parse_hhmm(arg(&rest, "--window-start").unwrap_or("23:00"))?.to_string(),
+            window_end: parse_hhmm(arg(&rest, "--window-end").unwrap_or("07:00"))?.to_string(),
+            window_tz: parse_tz(arg(&rest, "--window-tz").unwrap_or("UTC"))?.to_string(),
+            expect_server_addr: arg(&rest, "--expect-server-addr").map(str::to_string),
+        })),
         other => Err(miette!(
-            "unknown subcommand {other:?}; expected serve|announce|seed"
+            "unknown subcommand {other:?}; expected serve|announce|seed|join"
         )),
+    }
+}
+
+/// Accept an IANA zone name, rejecting anything the edge's `date` would
+/// silently resolve to UTC.
+///
+/// Defaulting to `UTC` when the flag is absent matches what the edge did before
+/// the zone travelled at all, so an un-upgraded caller keeps its old behaviour
+/// instead of acquiring a new one.
+fn parse_tz(v: &str) -> miette::Result<&str> {
+    if crate::window::valid_tz(v) {
+        Ok(v)
+    } else {
+        Err(miette!(
+            "invalid --window-tz {v:?}; expected an IANA zone name such as Europe/Berlin or UTC"
+        ))
+    }
+}
+
+/// Parse the Nix spelling of a boolean. `modules/cluster.nix` interpolates
+/// `losos.cluster.shareCompute` straight into the unit's `ExecStart`, so the
+/// only two values that can arrive are `true` and `false` — and anything else
+/// means the module was edited into producing something it did not intend, so
+/// it is a boot-time failure that names the flag rather than a silent `false`
+/// that quietly stops the box contributing compute.
+fn parse_bool(s: &str) -> Result<bool> {
+    match s.trim() {
+        "true" => Ok(true),
+        "false" => Ok(false),
+        other => Err(miette!(
+            "bad --share-compute {other:?}; expected true|false"
+        )),
+    }
+}
+
+/// Validate an `HH:MM` compute-window bound, returning it unchanged.
+///
+/// The same rule lososd enforces on `losos.cluster.computeWindow.{start,end}`
+/// and the same one the edge re-checks on the wire. Rejecting here means a
+/// malformed window fails `losos-mesh-join.service` at boot with the flag
+/// named, rather than travelling to the edge to come back as an opaque 400 on
+/// a box with no shell to read it from.
+fn parse_hhmm(s: &str) -> Result<&str> {
+    let s = s.trim();
+    if crate::window::valid_hhmm(s) {
+        Ok(s)
+    } else {
+        Err(miette!("bad window {s:?}; expected HH:MM in 00:00-23:59"))
     }
 }
 

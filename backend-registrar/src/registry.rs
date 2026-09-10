@@ -23,6 +23,18 @@
 //! warning rather than becoming live rathole binds. Hostnames are *not*
 //! authoritative here at all — the reconciler overrides them from the
 //! operator whitelist (`tenants.json`), which is the security boundary.
+//!
+//! The file carries a second, independent map: the per-node compute windows
+//! `/cluster/join` records (see [`crate::window`]). It is *not* folded into
+//! the tenant records, and that is deliberate. A tenant record only exists
+//! once the box has registered for a master-proxy tunnel, and it is pruned the
+//! moment heartbeats stop; a compute window is set once per boot by a oneshot
+//! unit that races the announce client and never runs again. Hanging the
+//! window off the tenant would mean a join that lost that race — or a box that
+//! joins the mesh without wanting a proxy tunnel at all — silently contributed
+//! nothing, with the appliance believing it had opted in. Both maps live under
+//! the one lock so a single persist covers both and neither can be written
+//! from a stale snapshot of the other.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::PathBuf;
@@ -35,6 +47,7 @@ use crate::action::Action;
 use crate::config::TenantView;
 use crate::error::RegistryError;
 use crate::fsutil;
+use crate::window::{valid_hhmm, ComputeWindow};
 
 /// A live tenant. `last_seen` is a runtime concern of this module only — it is
 /// stripped before reaching [`TenantView`] / config generation.
@@ -48,6 +61,11 @@ pub struct Tenant {
 #[derive(serde::Serialize, serde::Deserialize, Default)]
 struct RegistryFile {
     tenants: HashMap<String, RegistryFileTenant>,
+    /// `#[serde(default)]` so a `registry.json` written before the mesh
+    /// existed still loads. An edge that has never seen a join simply has no
+    /// windows, which is exactly what the empty map means.
+    #[serde(default)]
+    compute_windows: BTreeMap<String, ComputeWindow>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -56,9 +74,22 @@ struct RegistryFileTenant {
     port: u16,
 }
 
+/// Everything the registry mutates, under one lock. Two `Mutex`es would need a
+/// documented acquisition order to persist both maps into one file without
+/// deadlocking; one struct makes the question unaskable.
+#[derive(Debug, Default)]
+struct State {
+    tenants: HashMap<String, Tenant>,
+    /// Keyed by node name. `/cluster/join` refuses a node name that is not the
+    /// caller's own appliance id, so this is also keyed by appliance id — and
+    /// that is what lets the reconciler check a window against the tenant
+    /// whitelist.
+    windows: BTreeMap<String, ComputeWindow>,
+}
+
 #[derive(Debug)]
 pub struct Registry {
-    inner: Mutex<HashMap<String, Tenant>>,
+    inner: Mutex<State>,
     port_range: (u16, u16),
     path: PathBuf,
 }
@@ -68,7 +99,7 @@ impl Registry {
     /// the API opens to re-attach to any persisted tenants.
     pub fn new(path: impl Into<PathBuf>, port_range: (u16, u16)) -> Self {
         Self {
-            inner: Mutex::new(HashMap::new()),
+            inner: Mutex::new(State::default()),
             port_range,
             path: path.into(),
         }
@@ -82,7 +113,10 @@ impl Registry {
     /// outside the configured range, or a port already claimed by a
     /// lower-sorting id is dropped with a warning. Iterating in id order makes
     /// which duplicate survives deterministic instead of `HashMap`-order
-    /// roulette.
+    /// roulette. Compute windows get the same treatment: a bound that is not
+    /// `HH:MM` is dropped rather than restored, because the edge's taint timer
+    /// interpolates these strings into a `kubectl` invocation and the file is
+    /// reachable by anything that can write the state directory.
     pub async fn load(&self) -> Result<(), RegistryError> {
         let file = match tokio::fs::read(&self.path).await {
             Ok(b) => b,
@@ -92,8 +126,8 @@ impl Registry {
         let file: RegistryFile = serde_json::from_slice(&file)?;
         let (lo, hi) = self.port_range;
         let now = Instant::now();
-        let mut map = self.inner.lock().await;
-        let mut claimed: HashSet<u16> = map.values().map(|t| t.rathole_port).collect();
+        let mut st = self.inner.lock().await;
+        let mut claimed: HashSet<u16> = st.tenants.values().map(|t| t.rathole_port).collect();
         // BTreeMap: deterministic id order, so duplicate resolution is stable.
         for (id, t) in file.tenants.into_iter().collect::<BTreeMap<_, _>>() {
             if id.trim().is_empty() || t.hostname.trim().is_empty() {
@@ -119,7 +153,7 @@ impl Registry {
                 );
                 continue;
             }
-            map.insert(
+            st.tenants.insert(
                 id,
                 Tenant {
                     hostname: t.hostname,
@@ -127,6 +161,25 @@ impl Registry {
                     last_seen: now,
                 },
             );
+        }
+        for (node, window) in file.compute_windows {
+            if node.trim().is_empty() {
+                tracing::warn!(
+                    target: Action::LoadRegistry.target(),
+                    "dropping compute window with an empty node name",
+                );
+                continue;
+            }
+            if !valid_hhmm(&window.window_start) || !valid_hhmm(&window.window_end) {
+                tracing::warn!(
+                    target: Action::LoadRegistry.target(),
+                    "dropping compute window for {node}: {:?}-{:?} is not HH:MM",
+                    window.window_start,
+                    window.window_end,
+                );
+                continue;
+            }
+            st.windows.insert(node, window);
         }
         Ok(())
     }
@@ -139,16 +192,16 @@ impl Registry {
     /// The lock is held across the persist: concurrent registrations serialise
     /// instead of racing two writes at `registry.json`.
     pub async fn register(&self, id: &str, hostname: &str) -> Result<u16, RegistryError> {
-        let mut map = self.inner.lock().await;
-        let port = match map.get_mut(id) {
+        let mut st = self.inner.lock().await;
+        let port = match st.tenants.get_mut(id) {
             Some(t) => {
                 t.hostname = hostname.to_string();
                 t.last_seen = Instant::now();
                 t.rathole_port
             }
             None => {
-                let port = alloc_port(&map, self.port_range)?;
-                map.insert(
+                let port = alloc_port(&st.tenants, self.port_range)?;
+                st.tenants.insert(
                     id.to_string(),
                     Tenant {
                         hostname: hostname.to_string(),
@@ -159,7 +212,7 @@ impl Registry {
                 port
             }
         };
-        self.persist_locked(&map).await?;
+        self.persist_locked(&st).await?;
         Ok(port)
     }
 
@@ -168,12 +221,61 @@ impl Registry {
     /// whitelist. Returns `false` if the id is unknown or already correct (no
     /// write happens in either case).
     pub async fn rehost(&self, id: &str, hostname: &str) -> Result<bool, RegistryError> {
-        let mut map = self.inner.lock().await;
-        match map.get_mut(id) {
+        let mut st = self.inner.lock().await;
+        match st.tenants.get_mut(id) {
             Some(t) if t.hostname != hostname => t.hostname = hostname.to_string(),
             _ => return Ok(false),
         }
-        self.persist_locked(&map).await?;
+        self.persist_locked(&st).await?;
+        Ok(true)
+    }
+
+    /// Record what an appliance told `/cluster/join` about sharing its compute.
+    /// Returns `true` if anything changed, so the handler knows whether to kick
+    /// the reconciler.
+    ///
+    /// Deliberately independent of whether the id has a tenant record: see the
+    /// module header. A box may join the mesh before — or without — registering
+    /// for a master-proxy tunnel, and losing its window in that case would be
+    /// silent, because `losos-mesh-join.service` is a `RemainAfterExit` oneshot
+    /// that never runs again until the next boot.
+    pub async fn set_compute_window(
+        &self,
+        node_name: &str,
+        window: ComputeWindow,
+    ) -> Result<bool, RegistryError> {
+        let mut st = self.inner.lock().await;
+        if st.windows.get(node_name) == Some(&window) {
+            return Ok(false);
+        }
+        st.windows.insert(node_name.to_string(), window);
+        self.persist_locked(&st).await?;
+        Ok(true)
+    }
+
+    /// Snapshot the compute windows for the reconciler to publish.
+    #[must_use]
+    pub async fn compute_windows(&self) -> BTreeMap<String, ComputeWindow> {
+        self.inner.lock().await.windows.clone()
+    }
+
+    /// Drop every compute window whose node name is not in `allowed`, and
+    /// persist if that removed anything.
+    ///
+    /// The operator whitelist is the authority for hostnames and for tunnels,
+    /// and it is the authority here too: a tenant the operator has deleted from
+    /// `losos.edge.tenants` must not keep steering the taint on a node it owns.
+    /// Without this the map only ever grows, since nothing else ages a window
+    /// out — a window has no `last_seen` and outlives the heartbeat TTL by
+    /// design.
+    pub async fn retain_windows(&self, allowed: &HashSet<&str>) -> Result<bool, RegistryError> {
+        let mut st = self.inner.lock().await;
+        let before = st.windows.len();
+        st.windows.retain(|node, _| allowed.contains(node.as_str()));
+        if st.windows.len() == before {
+            return Ok(false);
+        }
+        self.persist_locked(&st).await?;
         Ok(true)
     }
 
@@ -181,8 +283,8 @@ impl Registry {
     /// unknown — the appliance should re-register. Performs no IO, so it
     /// cannot fail.
     pub async fn heartbeat(&self, id: &str) -> bool {
-        let mut map = self.inner.lock().await;
-        if let Some(t) = map.get_mut(id) {
+        let mut st = self.inner.lock().await;
+        if let Some(t) = st.tenants.get_mut(id) {
             t.last_seen = Instant::now();
             true
         } else {
@@ -193,27 +295,28 @@ impl Registry {
     /// Remove a tenant and persist the change. A no-op for an unknown id —
     /// including the persist, so a stray deregister costs no write.
     pub async fn deregister(&self, id: &str) -> Result<(), RegistryError> {
-        let mut map = self.inner.lock().await;
-        if map.remove(id).is_none() {
+        let mut st = self.inner.lock().await;
+        if st.tenants.remove(id).is_none() {
             return Ok(());
         }
-        self.persist_locked(&map).await
+        self.persist_locked(&st).await
     }
 
     /// Remove tenants whose `last_seen` is older than `ttl`. Returns `true` if
     /// anything changed so the caller knows to reconcile.
     pub async fn prune(&self, ttl: Duration) -> bool {
         let now = Instant::now();
-        let mut map = self.inner.lock().await;
-        let before = map.len();
-        map.retain(|_, t| now.duration_since(t.last_seen) < ttl);
-        if map.len() == before {
+        let mut st = self.inner.lock().await;
+        let before = st.tenants.len();
+        st.tenants
+            .retain(|_, t| now.duration_since(t.last_seen) < ttl);
+        if st.tenants.len() == before {
             return false;
         }
         // best-effort persist: a prune-write failure is non-fatal — the next
         // register/heartbeat retries, and the in-memory state stays
         // authoritative for config generation.
-        if let Err(e) = self.persist_locked(&map).await {
+        if let Err(e) = self.persist_locked(&st).await {
             tracing::warn!(
                 target: Action::LoadRegistry.target(),
                 "prune persist failed (in-memory state still authoritative): {e}",
@@ -228,8 +331,9 @@ impl Registry {
     /// single source of truth.
     #[must_use]
     pub async fn views(&self) -> Vec<TenantView> {
-        let map = self.inner.lock().await;
-        let mut v: Vec<TenantView> = map
+        let st = self.inner.lock().await;
+        let mut v: Vec<TenantView> = st
+            .tenants
             .iter()
             .map(|(id, t)| TenantView {
                 id: id.clone(),
@@ -243,14 +347,16 @@ impl Registry {
         v
     }
 
-    /// Serialize and persist the registry atomically. Takes the live map by
+    /// Serialize and persist the registry atomically. Takes the live state by
     /// reference so it can only be called by a holder of the lock — snapshot
     /// and write are then one critical section and two writers cannot
     /// interleave at `registry.json`. The temp + fsync + rename itself runs on
     /// `spawn_blocking` (rename atomicity is a filesystem concern).
-    async fn persist_locked(&self, map: &HashMap<String, Tenant>) -> Result<(), RegistryError> {
+    async fn persist_locked(&self, st: &State) -> Result<(), RegistryError> {
         let file = RegistryFile {
-            tenants: map
+            compute_windows: st.windows.clone(),
+            tenants: st
+                .tenants
                 .iter()
                 .map(|(id, t)| {
                     (
