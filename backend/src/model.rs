@@ -9,7 +9,10 @@
 use serde::{Deserialize, Serialize};
 
 /// Sharing posture. `local` keeps storage private; `mesh` contributes it to the
-/// Tahoe-LAFS grid (and is the sole source of truth for `sharingMyStorage`).
+/// Longhorn pool on the edge's rke2 cluster (and is the sole source of truth
+/// for `sharingMyStorage`). It used to mean the Tahoe-LAFS grid; Tahoe is gone,
+/// but the two wire spellings are unchanged because `state.json` files, the VM
+/// tests and the admin SPA all carry them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Mode {
@@ -128,6 +131,20 @@ pub struct Settings {
     pub gpu_enable: bool,
     pub apache_port: i64,
     pub proxy_enable: bool,
+    pub cluster_enable: bool,
+    pub share_compute: bool,
+    /// The nightly compute window, as two separate `HH:MM` fields rather than
+    /// one `"23:00-07:00"` range. `options.nix` declares
+    /// `losos.cluster.computeWindow.start` and `.end` as two options, and
+    /// [`crate::overrides::lookup_nix`] reads exactly one `losos.<key> =
+    /// <value>;` per line — a single combined key would need a second parser
+    /// and a second validator to buy nothing. It also lets the SPA use a pair
+    /// of `<input type="time">`, which emits precisely this format.
+    ///
+    /// `end` earlier than `start` is legal and wraps midnight; that is the
+    /// default case, not an edge case.
+    pub compute_window_start: String,
+    pub compute_window_end: String,
 }
 
 impl Default for Settings {
@@ -143,6 +160,10 @@ impl Default for Settings {
             gpu_enable: true,
             apache_port: 11000,
             proxy_enable: false,
+            cluster_enable: false,
+            share_compute: false,
+            compute_window_start: "23:00".to_string(),
+            compute_window_end: "07:00".to_string(),
         }
     }
 }
@@ -160,6 +181,10 @@ impl Settings {
             "gpuEnable": self.gpu_enable,
             "apachePort": self.apache_port,
             "proxyEnable": self.proxy_enable,
+            "clusterEnable": self.cluster_enable,
+            "shareCompute": self.share_compute,
+            "computeWindowStart": self.compute_window_start,
+            "computeWindowEnd": self.compute_window_end,
         })
     }
 }
@@ -211,6 +236,10 @@ mod tests {
             "gpuEnable",
             "apachePort",
             "proxyEnable",
+            "clusterEnable",
+            "shareCompute",
+            "computeWindowStart",
+            "computeWindowEnd",
         ] {
             assert!(out.contains(key), "missing {key} in {out}");
         }

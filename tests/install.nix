@@ -5,8 +5,8 @@
 # them and asserts:
 #   1. drive detection finds the three target disks and skips the VM root,
 #   2. disko merges all three into one LVM volume group `persist-vg`,
-#   3. the single `persist` LV is opened as LUKS and mounted as btrfs at
-#      /mnt/persist,
+#   3. the single `persist` LV is opened as LUKS and mounted as ext4 at
+#      /mnt/persist, WITH the `encrypt` feature actually enabled,
 #   4. the ESP lands on the first target drive only.
 #
 # The installer is driven through its --disko-script seam (a prebuilt
@@ -126,12 +126,22 @@ pkgs.testers.nixosTest {
     # One logical volume `persist` consuming the pool.
     assert installer.succeed("lvs --noheadings -o lv_name persist-vg").strip() == "persist"
 
-    # The LV is opened as LUKS `persist` and mounted as btrfs at /mnt/persist
+    # The LV is opened as LUKS `persist` and mounted as ext4 at /mnt/persist
     # (disko.rootMountPoint defaults to /mnt, so the whole tree mounts there).
     installer.succeed("test -e /dev/mapper/persist")
-    assert installer.succeed("findmnt -no FSTYPE /mnt/persist").strip() == "btrfs", \
-        "expected btrfs at /mnt/persist"
+    assert installer.succeed("findmnt -no FSTYPE /mnt/persist").strip() == "ext4", \
+        "expected ext4 at /mnt/persist"
     installer.succeed("mountpoint -q /mnt/persist")
+
+    # ext4 is not a preference here: it is the whole reason the appliance gave
+    # up btrfs's compression and data checksums. fscrypt needs a filesystem
+    # that implements it, and the feature has to be set at mkfs time — it
+    # cannot be turned on later. modules/disko.nix asks for it via
+    # `extraArgs = [ "-O" "encrypt" ]`; if that argument were ever silently
+    # dropped, the filesystem type assertion above would still pass and the
+    # shared domain would sit unprotected. So check the feature, not just the
+    # format.
+    installer.succeed("tune2fs -l /dev/mapper/persist | grep -qw encrypt")
 
     # Each target drive carries an LVM PV partition; the VM root does not.
     for d in ("vdb", "vdc", "vdd"):

@@ -241,7 +241,7 @@ async fn the_removed_upload_endpoints_are_not_routed() {
     )
     .await;
 
-    for path in ["/config", "/tahoe"] {
+    for path in ["/config", "/nonexistent"] {
         let response = edge
             .client
             .post(format!("{}{path}", edge.base))

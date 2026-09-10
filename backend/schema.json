@@ -10,7 +10,7 @@
         "local",
         "mesh"
       ],
-      "description": "local = private Nextcloud (sharingMyStorage=false); mesh = contributes storage to the Tahoe grid (sharingMyStorage=true)."
+      "description": "local = private Nextcloud (sharingMyStorage=false); mesh = contributes storage to the Longhorn pool on the edge's rke2 cluster (sharingMyStorage=true). This used to mean the Tahoe-LAFS grid; Tahoe is gone, but the two spellings are unchanged because persisted state files and the admin SPA carry them."
     },
     "rebuildState": {
       "type": "string",
@@ -78,7 +78,11 @@
         "https",
         "gpuEnable",
         "apachePort",
-        "proxyEnable"
+        "proxyEnable",
+        "clusterEnable",
+        "shareCompute",
+        "computeWindowStart",
+        "computeWindowEnd"
       ],
       "properties": {
         "sharingMyStorage": {
@@ -117,6 +121,24 @@
         "proxyEnable": {
           "type": "boolean",
           "description": "losos.proxy.enable \u2014 expose this appliance through the master proxy (rathole tunnel to the edge Traefik)."
+        },
+        "clusterEnable": {
+          "type": "boolean",
+          "description": "losos.cluster.enable \u2014 join the edge's mesh rke2 cluster."
+        },
+        "shareCompute": {
+          "type": "boolean",
+          "description": "losos.cluster.shareCompute \u2014 contribute CPU during the window below."
+        },
+        "computeWindowStart": {
+          "type": "string",
+          "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$",
+          "description": "losos.cluster.computeWindow.start, HH:MM in time.timeZone."
+        },
+        "computeWindowEnd": {
+          "type": "string",
+          "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$",
+          "description": "losos.cluster.computeWindow.end, HH:MM. end < start wraps midnight."
         }
       }
     },
@@ -230,7 +252,7 @@
       }
     },
     "apply": {
-      "description": "`losos-ctl apply` \u2014 read Nix code (a full modules/overrides.nix body) from stdin, validate it references losos.* and is a module body, atomically overwrite modules/overrides.nix, mark a rebuild as building, start a supervised nixos-rebuild switch (systemd transient unit), and emit the job id on stdout. The admin UI generates the Nix code from the form and posts it. Non-zero exit + stderr on validation failure.",
+      "description": "`losos-ctl apply` \u2014 read Nix code (a full modules/overrides.nix body) from stdin, validate it references losos.*, is a module body, and carries a well-formed value for any of hostName, computeWindowStart and computeWindowEnd it sets, atomically overwrite modules/overrides.nix, mark a rebuild as building, start a supervised nixos-rebuild switch (systemd transient unit), and emit the job id on stdout. The admin UI generates the Nix code from the form and posts it. Non-zero exit + stderr on validation failure.",
       "stdin": {
         "type": "string",
         "description": "The full overrides.nix body the admin app generated."

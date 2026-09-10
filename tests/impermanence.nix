@@ -76,14 +76,6 @@ pkgs.testers.nixosTest {
       networking.networkmanager.enable = lib.mkForce false;
       services.avahi.enable = lib.mkForce false;
 
-      # modules/configuration.nix only gives the two tahoe accounts a group —
-      # the accounts themselves come from services.tahoe in modules/services.nix,
-      # which is not imported here (it would pull in Nextcloud, Forgejo and a
-      # tahoe-lafs rebuilt against Python 3.12). Without a kind, nixpkgs'
-      # "exactly one of isSystemUser/isNormalUser" assertion fires.
-      users.users."tahoe.shared".isSystemUser = true;
-      users.users."tahoe.introducer-local".isSystemUser = true;
-
       # An unprivileged third account, to check the homes keep out someone who
       # is neither owner (see the isolation subtest).
       users.users.outsider = {
@@ -154,8 +146,9 @@ pkgs.testers.nixosTest {
 
     # Everything the appliance must not lose. The paths are the ones the
     # modules actually use: lososd's state file and the token it mints
-    # (modules/daemon.nix), the two nspawn state dirs bind-mounted into the
-    # containers (modules/containers.nix), and the two data homes.
+    # (modules/daemon.nix), the two service state dirs the workload pods
+    # hostPath-mount (modules/workloads.nix), the Kubernetes node identity
+    # under /etc/rancher (modules/cluster.nix), and the two data homes.
     machine.succeed(
         "install -d -m 0755 /var/lib/losos",
         "echo '{\"mode\":\"local\"}' > /var/lib/losos/state.json",
@@ -174,6 +167,15 @@ pkgs.testers.nixosTest {
         "echo host-key > /etc/ssh/marker",
         "echo luks-keyfile > /etc/keys/marker",
         "echo flake-source > /etc/nixos/marker",
+        # Kubernetes node identity. /var covers the bulk of both instances'
+        # state, but NOT this: the agent writes /etc/rancher/node/password on
+        # its first join and the mesh server stores a hash of it keyed by node
+        # name. Regenerate it and the server refuses the rejoin, so the box
+        # silently falls out of the mesh on the first reboot after enrolling —
+        # with no shell to notice from. That is the whole reason /etc/rancher
+        # is in the persistence list, and this marker is what keeps it there.
+        "install -d -m 0700 /etc/rancher/node",
+        "echo node-password > /etc/rancher/node/marker",
     )
 
     # ... and files on the parts of the root that are *not* persisted. If these
@@ -205,6 +207,8 @@ pkgs.testers.nixosTest {
             "the admin token changed across the reboot"
         assert machine.succeed("cat /etc/ssh/marker").strip() == "host-key"
         assert machine.succeed("cat /etc/keys/marker").strip() == "luks-keyfile"
+        assert machine.succeed("cat /etc/rancher/node/marker").strip() == "node-password", \
+            "/etc/rancher did not survive: this box would fall out of the mesh"
         assert machine.succeed("cat /etc/nixos/marker").strip() == "flake-source"
         assert machine.succeed("cat /etc/machine-id").strip() == machine_id, \
             "/etc/machine-id was regenerated — it is in the persisted `files` list"
