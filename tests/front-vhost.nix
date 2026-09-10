@@ -3,16 +3,37 @@
 # containers.nix is the only file on the box that decides what the outside
 # world can reach, and both of its access rules have already been wrong once:
 #
-#   * `lanOnly` allowed 10.0.0.0/8, which *contains* the container subnets
-#     10.231.1.2 / 10.231.2.2 — so a compromised Nextcloud or Forgejo could
-#     talk to the root-equivalent admin API on the front vhost. It now denies
-#     10.231.0.0/16 first (nginx takes the first matching rule).
-#   * the whole vhost was gated on losos.admin.enable, so turning the
-#     dashboard off silently took /nextcloud and /forgejo/ down with it. Only
-#     the admin locations follow that flag now.
+#   * the whole vhost was gated on losos.admin.enable, so turning the dashboard
+#     off silently took /nextcloud and /forgejo/ down with it. Only the admin
+#     locations follow that flag now.
+#   * `lanOnly` allowed 10.0.0.0/8, which *contained* the nspawn subnet the two
+#     services used to live on (10.231.1.2 / 10.231.2.2) — so a compromised
+#     Nextcloud or Forgejo could talk to the root-equivalent admin API. The fix
+#     was `deny 10.231.0.0/16` as the first rule, and this test proved it by
+#     curling the admin routes *from* that source address.
 #
-# Both fixes are invisible to `nix eval`; this test pins them down. It asserts,
-# from three different *source addresses*:
+# The subnet and that deny rule are both gone, and this test must not pretend
+# otherwise. `mode == "container"` now means a hostNetwork pod in the box's own
+# k3s cluster (modules/workloads.nix): the pods share the host's network
+# namespace, so nginx sees them as 127.0.0.1 or as the box's own LAN address,
+# and there is no pod CIDR left to reject. containers.nix deleted the rule and
+# forbids re-adding one, because a deny that cannot match reads like protection.
+#
+# What the guard lost, spelled out here so nobody has to reconstruct it from the
+# diff: a pod that connects over loopback still matches no `allow` and falls
+# through to `deny all`, which the loopback subtest below covers — but a pod
+# that source-binds the box's own LAN address is indistinguishable from a laptop
+# on that LAN and passes. The "LAN source, same box" subtest asserts that 200 on
+# purpose, so the gap stays a tested fact rather than a surprise. What holds the
+# line is no longer this guard: /api is Bearer-authed against
+# losos.admin.tokenFile, which is 0600 root-only, and the workload pods run as
+# uid 1002/1003 — so they cannot read the token and cannot drive the API from
+# any source address at all. The static pages behind the other admin locations
+# are not secrets.
+#
+# None of this is reachable from `nix eval` — an access rule only becomes real
+# when a request carries a source address — so the test asserts from two of
+# them:
 #
 #   loopback (127.0.0.1)   -> admin routes 403. Deliberate, and load-bearing:
 #                             master-proxy tunnel traffic reaches this vhost
@@ -24,7 +45,6 @@
 #   LAN (192.168.1.x)      -> admin routes 200 (301 for the `= /settings`
 #                             redirect, which runs in nginx's rewrite phase
 #                             before allow/deny is consulted).
-#   container (10.231.1.2) -> admin routes 403.
 #
 # plus: /nextcloud and /forgejo/ are *not* LAN-guarded (that is how tunnel
 # traffic arrives, from loopback); the four security headers ride on both the
@@ -36,93 +56,36 @@
 #   appliance — losos.admin.enable = true  (192.168.1.1)
 #   noadmin   — losos.admin.enable = false (192.168.1.2)
 #
-# Nothing heavy is built: the Nextcloud/Forgejo container payloads are replaced
-# with empty NixOS systems and their backends are stubbed by two extra nginx
-# server blocks on the addresses the front vhost proxies to. Booting the real
-# stacks would cost hours and would not exercise a single line of routing.
+# Nothing heavy is built: no k3s, no kubelet, no workload pod. The routes under
+# test are nginx's, and a hostNetwork pod is nothing but a process listening on
+# the host's loopback, so two extra nginx server blocks on the ports the front
+# vhost proxies to are a faithful stand-in rather than a simplification.
+# Booting the real stacks would cost hours and would not exercise a single line
+# of routing.
 { pkgs }:
 
 let
   lososPkgs = import ../flake/packages.nix { inherit pkgs; };
 
-  # modules/containers.nix reads config.lososInternal.nextcloudStack, an option
-  # declared by modules/nextcloud-common.nix. Importing that module would drag
-  # nextcloud34 + postgres + 30 apps into the closure, and the only consumer of
-  # the value is the container body replaced below — so declare the option and
-  # leave it empty.
-  nextcloudStackStub =
-    { lib, ... }:
+  # Stand-ins for the two workloads and for lososd's loopback API, on exactly
+  # the addresses and ports modules/containers.nix proxies to. Separate ports,
+  # so none of them collides with the front vhost's 0.0.0.0:80 default_server.
+  #
+  # The two tunable ports are read from the same options containers.nix reads,
+  # and the appliance below sets a *non-default* apachePort on purpose: if
+  # anyone ever bakes the 11000 literal into the proxy_pass, this test fails
+  # instead of passing by coincidence. Forgejo's 3000 is a literal on both
+  # sides — containers.nix explains why it has deliberately never been an
+  # option.
+  stubBackends =
+    { config, ... }:
     {
-      options.lososInternal.nextcloudStack = lib.mkOption {
-        type = lib.types.attrs;
-        internal = true;
-        default = {
-          enable = false;
-        };
-      };
-    };
-
-  # The routes under test are nginx's, not nspawn's. Keep
-  # losos.<svc>.mode = "container" (that is what puts /nextcloud and /forgejo/
-  # in the vhost) but throw the container payloads away.
-  emptyContainers =
-    { lib, ... }:
-    {
-      containers.nextcloud = {
-        autoStart = lib.mkForce false;
-        config = lib.mkForce (_: {
-          system.stateVersion = "26.11";
-        });
-      };
-      containers.forgejo = {
-        autoStart = lib.mkForce false;
-        config = lib.mkForce (_: {
-          system.stateVersion = "26.11";
-        });
-      };
-    };
-
-  # nspawn would put 10.231.1.1 / 10.231.2.1 on the host end of each veth and
-  # the containers would answer on .2. With the containers gone, park the two
-  # backend addresses on a dummy link instead. This does double duty: the front
-  # vhost's proxy_pass has something to reach, and the test can originate a
-  # request *from* 10.231.1.2 — the source address the `deny 10.231.0.0/16`
-  # rule exists to reject.
-  stubNet =
-    { pkgs, ... }:
-    {
-      boot.kernelModules = [ "dummy" ];
-      systemd.services.losos-test-stub-net = {
-        description = "Container-subnet addresses for the front-vhost test";
-        wantedBy = [ "multi-user.target" ];
-        # nginx binds 10.231.1.2:80 and 10.231.2.2:3000 below, so the addresses
-        # have to exist before it starts.
-        requiredBy = [ "nginx.service" ];
-        before = [ "nginx.service" ];
-        after = [ "network-pre.target" ];
-        serviceConfig = {
-          Type = "oneshot";
-          RemainAfterExit = true;
-        };
-        path = [ pkgs.iproute2 ];
-        script = ''
-          ip link show losos-stub >/dev/null 2>&1 || ip link add losos-stub type dummy
-          ip addr replace 10.231.1.2/16 dev losos-stub
-          ip addr replace 10.231.2.2/16 dev losos-stub
-          ip link set losos-stub up
-        '';
-      };
-
-      # Stand-ins for the two container backends and for lososd's loopback API,
-      # on exactly the addresses/ports modules/containers.nix proxies to. More
-      # specific listen addresses than the front vhost's 0.0.0.0:80, so nginx
-      # routes connections to them and not to the default_server.
       services.nginx.virtualHosts = {
         "stub-nextcloud" = {
           listen = [
             {
-              addr = "10.231.1.2";
-              port = 80;
+              addr = "127.0.0.1";
+              port = config.losos.nextcloud.apachePort;
             }
           ];
           locations."/".extraConfig = ''return 200 "stub-nextcloud\n";'';
@@ -130,7 +93,7 @@ let
         "stub-forgejo" = {
           listen = [
             {
-              addr = "10.231.2.2";
+              addr = "127.0.0.1";
               port = 3000;
             }
           ];
@@ -140,7 +103,7 @@ let
           listen = [
             {
               addr = "127.0.0.1";
-              port = 8082;
+              port = config.losos.admin.apiPort;
             }
           ];
           locations."/".extraConfig = ''return 200 "stub-lososd\n";'';
@@ -152,18 +115,19 @@ let
     imports = [
       ../modules/options.nix
       ../modules/containers.nix
-      nextcloudStackStub
-      emptyContainers
-      stubNet
+      stubBackends
     ];
 
     losos = {
       hostName = "mattbox";
+      # "container" is what puts /nextcloud and /forgejo/ in the vhost; the
+      # workloads themselves are stubbed above, so neither modules/cluster.nix
+      # nor modules/workloads.nix is imported.
       nextcloud.mode = "container";
+      # Deliberately not the 11000 default — see stubBackends.
+      nextcloud.apachePort = 11007;
       forgejo.mode = "container";
       forgejo.enable = true;
-      # No /dev/dri in a VM, and the GPU bind mount is not what is under test.
-      gpu.enable = false;
       # No lososd: /api/ is answered by the stub above. The escape hatch only
       # works because modules/defaults.nix wires the real package with
       # lib.mkDefault — at normal priority this was a conflict, not an opt-out.
@@ -211,6 +175,15 @@ pkgs.testers.nixosTest {
     # is allowed to carry, and it arrives from loopback.
     SERVICE = ["/nextcloud", "/forgejo/"]
 
+    # The appliance's own LAN address (node 1 on vlan 1), spelled out rather
+    # than reached through its name. On the appliance itself the name is
+    # ambiguous: NixOS maps every machine's own hostname to 127.0.0.2, and the
+    # test framework adds 192.168.1.1 for the same name — so `http://appliance`
+    # from this node could be answered as *loopback*, which is the one thing
+    # this file exists to tell apart. From the other node the name resolves only
+    # to the LAN address, so the cross-node subtests keep using it.
+    LAN = "192.168.1.1"
+
     def code(node, url, source=None):
         src = f"--interface {source} " if source else ""
         return node.succeed(
@@ -228,17 +201,12 @@ pkgs.testers.nixosTest {
         return out
 
     with subtest("admin routes are 403 from loopback (tunnel traffic arrives here)"):
+        # This is also the naive on-box case: a hostNetwork pod that reaches
+        # nginx over loopback looks exactly like tunnel traffic and lands in the
+        # same `deny all`.
         for path in ADMIN:
             got = code(appliance, f"http://127.0.0.1{path}")
             assert got == "403", f"loopback {path}: expected 403, got {got}"
-
-    with subtest("admin routes are 403 from a container-subnet source address"):
-        # The exact thing the first `deny` in lanOnly exists for: a compromised
-        # Nextcloud/Forgejo reaching the front vhost from 10.231.x. Without that
-        # deny, `allow 10.0.0.0/8` would let this through.
-        for path in ADMIN:
-            got = code(appliance, f"http://appliance{path}", source="10.231.1.2")
-            assert got == "403", f"container-source {path}: expected 403, got {got}"
 
     with subtest("admin routes are 200 from the LAN"):
         for path in ADMIN:
@@ -249,13 +217,31 @@ pkgs.testers.nixosTest {
         body = noadmin.succeed("curl -s http://appliance/settings/")
         assert "losos &mdash; settings" in body, f"LAN /settings/ is not the SPA: {body!r}"
 
+    with subtest("LAN source, same box: 200 — the gap hostNetwork opened"):
+        # Not a property anyone wants; the honest replacement for the
+        # container-subnet 403 cases this test used to carry. The old nspawn
+        # workloads answered from 10.231.x and the first `deny` refused them
+        # before `allow 10.0.0.0/8` could wave them through. A hostNetwork pod
+        # has no address of its own, so it can source-bind the appliance's LAN
+        # address and is then indistinguishable from a laptop on the same LAN —
+        # which is what this curl imitates.
+        #
+        # The admin token is what stops it going any further: 0600 and owned by
+        # root, unreadable to a pod running as uid 1002/1003, so /api answers
+        # 401 to anything the pod could send. If these ever start returning 403,
+        # the guard grew a layer — check it is a real one (not a deny rule for a
+        # CIDR that cannot match) and update this subtest deliberately.
+        for path in ADMIN:
+            got = code(appliance, f"http://{LAN}{path}", source=LAN)
+            assert got == "200", f"LAN-source {path}: expected 200, got {got}"
+
     with subtest("`= /settings` redirects from every source"):
         # `return` runs in the rewrite phase, before allow/deny, so a guard on
         # this location would be dead config. The redirect target *is* guarded,
         # which is what the loopback 403 on /settings/ above proves.
         for label, node, url, source in (
             ("loopback", appliance, "http://127.0.0.1/settings", None),
-            ("container", appliance, "http://appliance/settings", "10.231.1.2"),
+            ("LAN source, same box", appliance, f"http://{LAN}/settings", LAN),
             ("LAN", noadmin, "http://appliance/settings", None),
         ):
             got = code(node, url, source=source)
@@ -267,6 +253,8 @@ pkgs.testers.nixosTest {
             assert got == "200", f"loopback {path}: expected 200, got {got}"
             got = code(noadmin, f"http://appliance{path}")
             assert got == "200", f"LAN {path}: expected 200, got {got}"
+        # Proof the two proxy_pass targets are the loopback ports the workload
+        # pods bind, not some address left over from the nspawn layout.
         assert "stub-nextcloud" in appliance.succeed("curl -s http://127.0.0.1/nextcloud")
         assert "stub-forgejo" in appliance.succeed("curl -s http://127.0.0.1/forgejo/")
 
@@ -285,10 +273,14 @@ pkgs.testers.nixosTest {
                 assert name in hdrs, f"{label}: missing {name} ({sorted(hdrs)})"
                 assert needle in hdrs[name], \
                     f"{label}: {name} = {hdrs[name]!r} lacks {needle!r}"
-        # $host interpolation in the CSP map value — the dashboard probes the
-        # Tahoe WUI cross-origin at <host>:3456 and would be blocked without it.
+        # connect-src is plain 'self', and the CSP no longer interpolates $host.
+        # The map value used to carry http://$host:3456 so the dashboard could
+        # probe the Tahoe web UI cross-origin; Tahoe-LAFS is gone, along with
+        # that vhost and the probe, so a :3456 entry here would be a grant to
+        # nothing.
         csp = headers(noadmin, "http://appliance/")["content-security-policy"]
-        assert "connect-src 'self' http://appliance:3456" in csp, f"CSP host not filled in: {csp}"
+        assert "connect-src 'self';" in csp, f"connect-src is not plain 'self': {csp}"
+        assert ":3456" not in csp, f"CSP still grants the retired Tahoe WUI: {csp}"
 
     with subtest("the admin CSP is not applied to the two service routes"):
         # Nextcloud and Forgejo ship their own CSP and both need inline script;

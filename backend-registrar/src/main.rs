@@ -72,6 +72,16 @@ async fn async_main() -> ExitCode {
                 ExitCode::FAILURE
             }
         },
+        Ok(Mode::Join(opts)) => match losos_registrar::join::run(opts).await {
+            Ok(()) => ExitCode::SUCCESS,
+            // Non-zero on purpose: `losos-mesh-join.service` is `Requires=`d by
+            // `rke2-agent.service`, so a failure here is what stops the agent
+            // starting with no token instead of wedging silently.
+            Err(e) => {
+                tracing::error!(target: Action::Join.target(), "{:?}", e);
+                ExitCode::FAILURE
+            }
+        },
         Ok(Mode::Seed(opts)) => match losos_registrar::seed::run(opts).await {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => {

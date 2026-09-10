@@ -30,6 +30,18 @@
 //! caller gets the victim's Traefik router, its Let's Encrypt cert, and a
 //! rathole service provisioned with an empty token.
 //!
+//! `/cluster/join` is the mesh half and reuses all of the above: the same
+//! per-appliance token, the same [`authenticate`], the same body cap and
+//! concurrency guard. It mints no second credential — the appliance's existing
+//! `/var/secrets/losos-proxy-token` is what proves it may enrol — and it adds
+//! exactly one authorisation bit, `losos.edge.tenants.<id>.cluster`, because a
+//! mesh node runs a kubelet on the edge's cluster while a proxy tenant only
+//! gets HTTP forwarded to it. Before handing back the node token it deletes the
+//! caller's stale `Node` object and node-password `Secret`: `factory-reset` and
+//! the reinstall ISO wipe `/persist`, the box regenerates
+//! `/etc/rancher/node/password`, and rke2 then refuses the rejoin *permanently*
+//! as a duplicate hostname — on an appliance with no shell to diagnose it from.
+//!
 //! Handler errors use the concrete [`ApiError`] enum (thiserror), mapped to
 //! HTTP status codes at the boundary — `?` converts io/serde/registry via
 //! `#[from]`. The reconciler orchestration (`reconcile_once`) returns
@@ -39,7 +51,7 @@
 //! `Result<T, E: Diagnostic>`, not for plain `std::error::Error`). It logs and
 //! continues rather than killing the server.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::future::Future;
 use std::path::Path;
 use std::sync::Arc;
@@ -62,6 +74,7 @@ use crate::config::{desired_config, EdgeOpts, TenantView};
 use crate::error::ApiError;
 use crate::opts::ServeOpts;
 use crate::registry::{Registry, Shared};
+use crate::window::{self, valid_hhmm, valid_tz, ComputeWindow};
 
 /// Per-tenant Traefik router config is public (hostnames only, no secrets) →
 /// world-readable so the `traefik` user can read it.
@@ -96,6 +109,24 @@ const MAX_INFLIGHT: usize = 64;
 /// same compare the known-id branch does. See [`decoy_probe`].
 const DECOY_TOKEN: &str = "\0decoy\0";
 
+/// The compute-window file carries node names and clock times, no secrets, but
+/// it lives inside the registrar's `StateDirectory` (0700 root) and only the
+/// edge's `losos-mesh-taint.service` — also root — reads it. Owner-only costs
+/// nothing here and keeps the narrow default.
+const COMPUTE_WINDOWS_FILE_MODE: u32 = 0o600;
+
+/// Budget for one request to the mesh apiserver. Two of these (the `Node`
+/// delete and the node-password `Secret` delete) plus a TLS handshake have to
+/// fit inside [`REQUEST_TIMEOUT`], or the join comes back as the guard's 504
+/// instead of this module's 503 — same retry for the client, but a far less
+/// useful line in the journal. The apiserver is on loopback, so 2s is already
+/// generous.
+const KUBE_TIMEOUT: Duration = Duration::from_secs(2);
+
+/// Longest node name the cleanup will build a URL from. Kubernetes object
+/// names are DNS subdomains, capped at 253 characters.
+const MAX_NODE_NAME_LEN: usize = 253;
+
 #[derive(Clone)]
 struct AppState {
     reg: Shared,
@@ -121,6 +152,52 @@ struct HeartbeatReq {
 #[derive(Debug, Serialize)]
 struct RegisterResp {
     rathole_port: u16,
+}
+
+/// A `/cluster/join` body. `share_compute` and the two window bounds default
+/// rather than being required so an older appliance — one whose
+/// `losos-mesh-join.service` predates the compute-window flags — still enrols,
+/// with sharing off, which is the safe direction.
+#[derive(Debug, Deserialize)]
+struct ClusterJoinReq {
+    appliance_id: String,
+    token: String,
+    node_name: String,
+    #[serde(default)]
+    share_compute: bool,
+    #[serde(default = "default_window_start")]
+    window_start: String,
+    #[serde(default = "default_window_end")]
+    window_end: String,
+    /// The IANA zone the two bounds are wall-clock times in — the appliance's
+    /// own time.timeZone. Defaulted rather than required so a client that
+    /// predates the field still joins; see window.rs for why UTC is the right
+    /// default rather than the edge's guess at the owner's zone.
+    #[serde(default = "default_window_tz")]
+    window_tz: String,
+}
+
+fn default_window_start() -> String {
+    "23:00".to_string()
+}
+
+fn default_window_end() -> String {
+    "07:00".to_string()
+}
+
+fn default_window_tz() -> String {
+    "UTC".to_string()
+}
+
+/// What an accepted join gets back: where to register, the node token to
+/// present, and the name the edge expects it under. `node_name` is echoed
+/// rather than assumed so the appliance-side client logs what the edge agreed
+/// to, not what it asked for.
+#[derive(Debug, Serialize)]
+struct ClusterJoinResp {
+    server_addr: String,
+    token: String,
+    node_name: String,
 }
 
 /// Bind `opts.listen` and serve until SIGTERM/SIGINT.
@@ -173,6 +250,10 @@ where
         // Same operation under a clearer name; the announce client never
         // calls either, so there is no wire-compat constraint to honour.
         .route("/unregister", post(deregister))
+        // Inside the body cap, the timeout and the concurrency semaphore, like
+        // every other route: Traefik's `register.<domain>` router has no path
+        // rule, so this one is on the public internet too.
+        .route("/cluster/join", post(cluster_join))
         // Bound at the router so an oversized body never materialises.
         .layer(DefaultBodyLimit::max(MAX_BODY_BYTES))
         // Added last, so outermost: the timeout and the concurrency cap cover
@@ -284,13 +365,268 @@ async fn deregister(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// Enrol this appliance in the edge's mesh rke2 cluster.
+///
+/// Four gates, in order, then a cleanup, then the token — and the order is the
+/// point of the route:
+///
+/// 1. [`authenticate`]: the existing closed-enrollment path, unmodified.
+/// 2. `cluster`: proxy membership does not imply mesh membership.
+/// 3. `node_name == appliance_id`: this is what makes the delete below safe.
+///    The only node object a caller can ever remove is the one named after
+///    itself, so no tenant can evict a neighbour from the cluster.
+/// 4. the window bounds are `HH:MM`. A browser is not a trust boundary and
+///    neither is lososd: this body arrives from anything holding the token.
+///
+/// The cleanup runs *before* the token is read, and a cleanup failure returns
+/// early. Handing out a node token after a failed cleanup reproduces exactly
+/// the permanent lockout this route exists to prevent: the agent starts, rke2
+/// sees a node of that name it already has a different password for, and
+/// rejects it for good.
+async fn cluster_join(
+    State(st): State<AppState>,
+    Json(req): Json<ClusterJoinReq>,
+) -> Result<Json<ClusterJoinResp>, ApiError> {
+    let tenant = authenticate(&st, &req.appliance_id, &req.token).await?;
+    if !tenant.cluster {
+        return Err(ApiError::ClusterForbidden);
+    }
+    if req.node_name != req.appliance_id {
+        return Err(ApiError::NodeNameForbidden);
+    }
+    if !valid_hhmm(&req.window_start) || !valid_hhmm(&req.window_end) {
+        return Err(ApiError::InvalidWindow);
+    }
+    // A zone the edge's `date` cannot resolve is silently treated as UTC, so an
+    // unvalidated value reintroduces the exact drift this field exists to fix —
+    // only one layer further down, where nothing logs it.
+    if !valid_tz(&req.window_tz) {
+        return Err(ApiError::InvalidWindow);
+    }
+
+    // Presence is checked here so an edge with `losos.edge.cluster.enable =
+    // false` answers 503 before touching the apiserver or the filesystem; the
+    // token itself is read after the cleanup.
+    let (Some(agent_token_file), Some(server_addr)) =
+        (&st.opts.mesh_agent_token_file, &st.opts.mesh_server_addr)
+    else {
+        return Err(ApiError::MeshUnconfigured);
+    };
+
+    cleanup_stale_node(&st, &req.node_name).await?;
+
+    let agent_token = match tokio::fs::read_to_string(agent_token_file).await {
+        Ok(content) => content,
+        Err(e) => {
+            tracing::error!(
+                target: Action::Join.target(),
+                "cannot read mesh agent token file {agent_token_file}: {e}",
+            );
+            return Err(ApiError::MeshUnconfigured);
+        }
+    };
+    let agent_token = agent_token.trim();
+    // The same operator-fault check tenant tokens get: a truncated or empty
+    // file would otherwise be written to `losos.cluster.tokenFile` on the
+    // appliance, where rke2 fails with a TLS error that names nothing.
+    if let Some(fault) = token_fault(agent_token) {
+        tracing::error!(
+            target: Action::Join.target(),
+            "mesh agent token file {agent_token_file} is {fault} — refusing every join until an operator fixes it",
+        );
+        return Err(ApiError::MeshUnconfigured);
+    }
+
+    let window = ComputeWindow {
+        share_compute: req.share_compute,
+        window_start: req.window_start,
+        window_end: req.window_end,
+        tz: req.window_tz,
+    };
+    if st.reg.set_compute_window(&req.node_name, window).await? {
+        // Kick the reconciler so the taint timer sees the new window on its
+        // next five-minute tick rather than up to `reconcile_interval` later.
+        st.notify.notify_one();
+    }
+
+    tracing::info!(
+        target: Action::Join.target(),
+        "enrolled {} as mesh node {} (share_compute={})",
+        req.appliance_id,
+        req.node_name,
+        req.share_compute,
+    );
+    Ok(Json(ClusterJoinResp {
+        server_addr: server_addr.clone(),
+        token: agent_token.to_string(),
+        node_name: req.node_name,
+    }))
+}
+
+/// Delete the caller's `Node` object and its node-password `Secret` from the
+/// mesh cluster, so a reinstalled box can rejoin under the same name.
+///
+/// 404 is success: it means this is a first join and there was nothing to
+/// clean. Any other non-2xx, and any transport failure, is a 503 — never a
+/// success, because the whole reason the route deletes anything is that
+/// proceeding without the delete is what bricks the rejoin.
+///
+/// Transport is the crate's existing reqwest+rustls, one bearer token, no
+/// kubeconfig parsing and no client certificates. The root store is *pinned*
+/// to the cluster CA (`tls_built_in_root_certs(false)`): the apiserver's
+/// certificate is issued by rke2's own CA, so trusting the public webpki roots
+/// here would only widen who can impersonate it.
+///
+/// `--kube-ca-file` is required only for an `https://` apiserver, mirroring
+/// `announce`'s conditional `https_only`: the VM tests point `--kube-api` at a
+/// plain-HTTP stub on loopback, and demanding a PEM there would mean the join
+/// path could only ever be exercised on a box with a real cluster on it.
+/// `modules/edge.nix` always generates `https://127.0.0.1:6443`, so in
+/// production the pin is on — and a plain-HTTP value logs a warning naming what
+/// it costs, since the ServiceAccount bearer token then crosses in cleartext.
+async fn cleanup_stale_node(st: &AppState, node_name: &str) -> Result<(), ApiError> {
+    let Some(token_file) = &st.opts.kube_token_file else {
+        tracing::error!(
+            target: Action::Join.target(),
+            "--kube-token-file was not supplied; cannot clean up a stale node",
+        );
+        return Err(ApiError::MeshUnconfigured);
+    };
+    let pinned = st.opts.kube_api.starts_with("https://");
+    if !pinned {
+        tracing::warn!(
+            target: Action::Join.target(),
+            "--kube-api {} is not https; the ServiceAccount token crosses in cleartext and the cluster CA is not pinned",
+            st.opts.kube_api,
+        );
+    }
+    let ca_file = match (&st.opts.kube_ca_file, pinned) {
+        (Some(path), _) => Some(path),
+        (None, false) => None,
+        (None, true) => {
+            tracing::error!(
+                target: Action::Join.target(),
+                "--kube-ca-file was not supplied for an https apiserver; refusing to trust the public roots",
+            );
+            return Err(ApiError::MeshUnconfigured);
+        }
+    };
+    // The name is interpolated into a request path. It reaches here having
+    // already been proved equal to a whitelist key, so this is an edge
+    // *configuration* fault, not an attack — but a key carrying a slash would
+    // let the path escape the collection it is meant to address, and a name
+    // Kubernetes cannot hold is one the agent could never register under
+    // either. Loud in the journal, opaque 503 to the caller.
+    if let Some(fault) = kube_name_fault(node_name) {
+        tracing::error!(
+            target: Action::Join.target(),
+            "appliance id {node_name:?} is {fault}, so it cannot be a Kubernetes node name",
+        );
+        return Err(ApiError::KubeApi(format!("unusable node name: {fault}")));
+    }
+
+    let ca = match ca_file {
+        Some(path) => {
+            let pem = tokio::fs::read(path)
+                .await
+                .map_err(|e| ApiError::KubeApi(format!("read CA {path}: {e}")))?;
+            Some(
+                reqwest::Certificate::from_pem(&pem)
+                    .map_err(|e| ApiError::KubeApi(format!("parse CA {path}: {e}")))?,
+            )
+        }
+        None => None,
+    };
+    let token = tokio::fs::read_to_string(token_file)
+        .await
+        .map_err(|e| ApiError::KubeApi(format!("read kube token {token_file}: {e}")))?;
+    let token = token.trim();
+    if token.is_empty() {
+        tracing::error!(
+            target: Action::Join.target(),
+            "kube token file {token_file} is empty; losos-mesh-rbac.service has not run",
+        );
+        return Err(ApiError::MeshUnconfigured);
+    }
+
+    // Built per request rather than cached in `AppState`. Joins are rare (one
+    // per appliance per boot), and a fresh client picks up a rotated
+    // ServiceAccount token or a re-issued cluster CA without restarting the
+    // registrar — which would drop every tenant's tunnel for the restart.
+    let mut builder = reqwest::Client::builder()
+        .timeout(KUBE_TIMEOUT)
+        .user_agent(concat!("losos-registrar/", env!("CARGO_PKG_VERSION")));
+    if let Some(ca) = ca {
+        builder = builder
+            .tls_built_in_root_certs(false)
+            .add_root_certificate(ca);
+    }
+    let client = builder
+        .build()
+        .map_err(|e| ApiError::KubeApi(format!("build kube client: {e}")))?;
+
+    let targets = [
+        format!("{}/api/v1/nodes/{node_name}", st.opts.kube_api),
+        format!(
+            "{}/api/v1/namespaces/kube-system/secrets/{node_name}.node-password.rke2",
+            st.opts.kube_api,
+        ),
+    ];
+    for url in targets {
+        let response = client
+            .delete(&url)
+            .bearer_auth(token)
+            .send()
+            .await
+            .map_err(|e| ApiError::KubeApi(format!("DELETE {url}: {e}")))?;
+        let status = response.status();
+        // 404 is the first-join case: nothing to clean is a clean result.
+        if status.is_success() || status.as_u16() == 404 {
+            tracing::debug!(target: Action::Join.target(), "DELETE {url} -> {status}");
+            continue;
+        }
+        return Err(ApiError::KubeApi(format!("DELETE {url} -> {status}")));
+    }
+    Ok(())
+}
+
+/// Why `name` cannot be a Kubernetes object name, or `None` if it can.
+///
+/// Kubernetes names are DNS subdomains: lowercase alphanumerics, `-` and `.`,
+/// at most 253 characters. Checking the charset rather than only rejecting `/`
+/// keeps this a whitelist — the point is that nothing which is not a plain
+/// path segment ever reaches the URL builder.
+fn kube_name_fault(name: &str) -> Option<&'static str> {
+    if name.is_empty() {
+        Some("empty")
+    } else if name.len() > MAX_NODE_NAME_LEN {
+        Some("longer than 253 characters")
+    } else if !name
+        .bytes()
+        .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-' || b == b'.')
+    {
+        Some("not lowercase alphanumeric, '-' and '.' only")
+    } else {
+        None
+    }
+}
+
 /// One tenant of the operator whitelist (`tenants.json`): the hostname it is
-/// allowed to claim and the path of the file holding its token. The path is
-/// public (it lives in the nix store); the *contents* are the secret.
+/// allowed to claim, the path of the file holding its token, and whether the
+/// operator has cleared it for the mesh cluster. The paths are public (they
+/// live in the nix store); the *contents* are the secret.
+///
+/// `cluster` is `#[serde(default)]` so a `tenants.json` generated before the
+/// mesh existed still parses — and defaults to `false`, which is the safe
+/// direction. Note that `modules/edge.nix` has to be taught to emit the field
+/// at all: its `tenantsJson` builds the attribute set by hand, and an
+/// unmodified one silently drops the flag and 403s every join.
 #[derive(Debug, Clone, Deserialize)]
 struct TenantEntry {
     hostname: String,
     token_file: String,
+    #[serde(default)]
+    cluster: bool,
 }
 
 /// `tenants.json` memoised behind an mtime+size check.
@@ -483,6 +819,12 @@ async fn reconciler(st: AppState) {
 ///   registration, hostname changes and pruning for every tenant on the edge.
 ///   The bootstrap token stays fatal: it is not per-tenant, and rathole's
 ///   `[server]` block cannot be rendered without it.
+///
+/// It also publishes the mesh compute windows, but only *after* both proxy
+/// config files are on disk, and it logs rather than propagating a failure
+/// there. `serve` calls this once before the API opens and treats an error as
+/// fatal, so a mesh-side write fault must never be able to stop an edge whose
+/// operator has not enabled the cluster at all from booting.
 async fn reconcile_once(st: &AppState) -> Result<()> {
     let pruned = st.reg.prune(st.opts.heartbeat_ttl).await;
     let views = st.reg.views().await;
@@ -568,6 +910,17 @@ async fn reconcile_once(st: &AppState) -> Result<()> {
             tracing::warn!(target: Action::Reconcile.target(), "dropping stale {id} failed: {e}");
         }
     }
+    // The whitelist is the authority for compute windows too: a tenant the
+    // operator has deleted must stop steering the taint on its node.
+    let allowed: HashSet<&str> = tenants.keys().map(String::as_str).collect();
+    let mut dropped_windows = false;
+    match st.reg.retain_windows(&allowed).await {
+        Ok(changed) => dropped_windows = changed,
+        Err(e) => {
+            tracing::warn!(target: Action::Reconcile.target(), "pruning compute windows failed: {e}");
+        }
+    }
+
     let mut repaired = false;
     for (id, hostname) in &rehome {
         match st.reg.rehost(id, hostname).await {
@@ -613,13 +966,45 @@ async fn reconcile_once(st: &AppState) -> Result<()> {
     // Restart=always would resurrect it ~5s later, a needless tunnel outage
     // on every tenant change. The atomic temp+rename above is the only
     // signal rathole needs.
-    if pruned || repaired || changed_traefik || changed_rathole {
+    // Published last and never fatal: this is the mesh half. `write_if_changed`
+    // creates the parent directory, so on an edge that has never seen a join
+    // the steady state is one small `{"nodes": []}` — a truthful statement that
+    // no window is recorded, which is what the taint timer needs to read in
+    // order to remove a taint it set earlier.
+    let windows = st.reg.compute_windows().await;
+    let changed_windows = match write_if_changed(
+        Path::new(&st.opts.compute_windows_file),
+        &window::render(&windows),
+        COMPUTE_WINDOWS_FILE_MODE,
+    )
+    .await
+    {
+        Ok(changed) => changed,
+        Err(e) => {
+            tracing::error!(
+                target: Action::Reconcile.target(),
+                "writing {} failed: {e:?}",
+                st.opts.compute_windows_file,
+            );
+            false
+        }
+    };
+
+    if pruned
+        || repaired
+        || changed_traefik
+        || changed_rathole
+        || dropped_windows
+        || changed_windows
+    {
         tracing::info!(
             target: Action::Reconcile.target(),
-            "reconciled {} tenant(s); traefik={} rathole={}",
+            "reconciled {} tenant(s), {} compute window(s); traefik={} rathole={} windows={}",
             enriched.len(),
+            windows.len(),
             changed_traefik,
             changed_rathole,
+            changed_windows,
         );
     }
     Ok(())

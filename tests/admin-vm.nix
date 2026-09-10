@@ -9,11 +9,14 @@
 #   5. lososd mints the admin token (64 hex chars, mode 0600) on first start.
 #
 # This is the "disko-free variant" the plan calls for: it imports only
-# options.nix + daemon.nix — no disko, impermanence, boot, services, or
-# containers — so the VM closure stays small (Haskell daemon + base NixOS;
-# no Nextcloud/Forgejo/Tahoe). The container + nginx front-door path is
-# verified by `nix eval` of the install config, not booted here (building
-# nextcloud34+postgres inside an nspawn closure is a multi-hour build).
+# options.nix + daemon.nix — no disko, impermanence, boot, services, cluster or
+# containers — so the VM closure stays small: the Rust daemon plus base NixOS,
+# with no Nextcloud, no Forgejo and neither Kubernetes instance. The nginx front
+# door has a booted test of its own (tests/front-vhost.nix, which stubs the
+# backends); the workload pods behind it are covered by `nix eval` of the
+# install config and are booted nowhere, because pulling the ~2.6 GiB Nextcloud
+# image into a test VM is a multi-hour build that exercises no line of the
+# control plane this file is about.
 { pkgs }:
 
 pkgs.testers.nixosTest {
@@ -23,8 +26,9 @@ pkgs.testers.nixosTest {
     { pkgs, ... }:
     let
       # Reuse flake/packages.nix so the test doesn't need the flake `self`
-      # (same trick tests/install.nix uses). The daemon + facade are one
-      # cabal package; lososd is ${pkg}/bin/lososd, losos-ctl is in PATH.
+      # (same trick tests/install.nix uses). The daemon + facade are two
+      # binaries of one Rust crate; lososd is ${pkg}/bin/lososd, losos-ctl is
+      # in PATH.
       lososPkgs = import ../flake/packages.nix { inherit pkgs; };
     in
     {
@@ -45,10 +49,11 @@ pkgs.testers.nixosTest {
   testScript = ''
     machine.start()
 
-    # lososd forks the warp listener + exports the D-Bus interface early in
-    # ExecStart, but systemd marks the unit active before both are guaranteed
-    # ready — so retry until the daemon answers. (--json is required by the
-    # facade's optparse flag even though output is always JSON.)
+    # lososd starts the actix-web listener on its own thread and exports the
+    # D-Bus interface early in ExecStart, but systemd marks the unit active
+    # before both are guaranteed ready — so retry until the daemon answers.
+    # (`--json` is accepted and does nothing; the facade's output is always
+    # JSON.)
     machine.wait_until_succeeds("losos-ctl state --json")
     machine.wait_for_unit("lososd.service")
 

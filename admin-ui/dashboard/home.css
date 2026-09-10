@@ -145,11 +145,6 @@ ul.grid {
   border: 1px solid var(--ls-warning);
   color: #8a6708;
 }
-.tile-icon--tahoe {
-  background: var(--ls-success-tint);
-  border: 1px solid var(--ls-success);
-  color: #1c7a45;
-}
 /* Live status rides on the icon corner (kept from the old dashboard; the
  * design's tiles are status-free). */
 .tile-icon .dot {
