@@ -56,6 +56,37 @@ pub enum ApiError {
     /// re-register.
     #[error("unknown appliance; re-register")]
     UnknownAppliance,
+    /// An authenticated tenant asked to join the mesh cluster without
+    /// `losos.edge.tenants.<id>.cluster` set. Mesh membership is a second,
+    /// narrower whitelist than proxy membership: the master-proxy tunnel only
+    /// forwards HTTP to one box, whereas a mesh node runs a kubelet on the
+    /// edge's cluster. Enrolling every proxy tenant by default would hand that
+    /// out to boxes the operator only ever meant to publish a website for.
+    #[error("cluster enrolment not permitted for this id")]
+    ClusterForbidden,
+    /// A join asked for a node name other than the caller's own appliance id.
+    /// This is what makes the handler's stale-node delete safe: the node object
+    /// it removes is always the caller's own, so a tenant cannot evict a
+    /// neighbour's node from the mesh by naming it.
+    #[error("node name must equal the appliance id")]
+    NodeNameForbidden,
+    /// A join reached an edge started without `--mesh-agent-token-file` /
+    /// `--mesh-server-addr`, or whose agent token file is unusable. The route
+    /// exists unconditionally so the master-proxy half needs no second binary,
+    /// but an edge with `losos.edge.cluster.enable = false` has no node token
+    /// to hand out.
+    #[error("mesh enrolment not configured on this edge")]
+    MeshUnconfigured,
+    /// A window a caller supplied is not `HH:MM`. Rejected rather than clamped:
+    /// a silently-corrected window is a box that contributes compute at an hour
+    /// its owner never agreed to.
+    #[error("window_start and window_end must be HH:MM, 00:00-23:59")]
+    InvalidWindow,
+    /// The mesh apiserver could not be reached, or refused the stale-node
+    /// cleanup. The payload names the URL and status for the log; the caller
+    /// gets a constant (see [`ApiError::public_body`]).
+    #[error("mesh apiserver: {0}")]
+    KubeApi(String),
     /// A filesystem operation backing a request failed (token/tenants read).
     #[error(transparent)]
     Io(#[from] io::Error),
@@ -87,10 +118,15 @@ impl ApiError {
     pub fn status(&self) -> StatusCode {
         match self {
             ApiError::Unauthorized => StatusCode::UNAUTHORIZED,
-            ApiError::HostnameForbidden => StatusCode::FORBIDDEN,
+            ApiError::HostnameForbidden
+            | ApiError::ClusterForbidden
+            | ApiError::NodeNameForbidden => StatusCode::FORBIDDEN,
             ApiError::UnknownAppliance => StatusCode::NOT_FOUND,
+            ApiError::InvalidWindow => StatusCode::BAD_REQUEST,
             ApiError::Io(_) | ApiError::Serde(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            ApiError::Registry(_) => StatusCode::SERVICE_UNAVAILABLE,
+            ApiError::Registry(_) | ApiError::MeshUnconfigured | ApiError::KubeApi(_) => {
+                StatusCode::SERVICE_UNAVAILABLE
+            }
         }
     }
 
@@ -106,11 +142,19 @@ impl ApiError {
     #[must_use]
     fn public_body(&self) -> Cow<'static, str> {
         match self {
-            ApiError::Unauthorized | ApiError::HostnameForbidden | ApiError::UnknownAppliance => {
-                Cow::Owned(self.to_string())
-            }
+            ApiError::Unauthorized
+            | ApiError::HostnameForbidden
+            | ApiError::UnknownAppliance
+            | ApiError::ClusterForbidden
+            | ApiError::NodeNameForbidden
+            | ApiError::MeshUnconfigured
+            | ApiError::InvalidWindow => Cow::Owned(self.to_string()),
             ApiError::Io(_) | ApiError::Serde(_) => Cow::Borrowed("internal error"),
             ApiError::Registry(_) => Cow::Borrowed("registry unavailable; retry later"),
+            // Deliberately *not* `self.to_string()`: the payload carries the
+            // apiserver URL and the status it returned, which tells an
+            // unauthenticated prober how the edge's control plane is addressed.
+            ApiError::KubeApi(_) => Cow::Borrowed("mesh control plane unavailable; retry later"),
         }
     }
 }
@@ -120,6 +164,16 @@ impl axum::response::IntoResponse for ApiError {
         match &self {
             ApiError::Io(_) | ApiError::Serde(_) | ApiError::Registry(_) => {
                 tracing::error!(target: Action::Serve.target(), "request failed: {self}");
+            }
+            // The two mesh server-side faults log at error under the join
+            // target: both mean an operator has to do something (place the
+            // agent token file, or fix the apiserver credentials), and both
+            // are invisible to the caller, who only ever sees a 503.
+            ApiError::MeshUnconfigured | ApiError::KubeApi(_) => {
+                tracing::error!(target: Action::Join.target(), "join failed: {self}");
+            }
+            ApiError::ClusterForbidden | ApiError::NodeNameForbidden | ApiError::InvalidWindow => {
+                tracing::warn!(target: Action::Join.target(), "join rejected: {self}");
             }
             ApiError::Unauthorized | ApiError::HostnameForbidden | ApiError::UnknownAppliance => {
                 tracing::debug!(target: Action::Serve.target(), "request rejected: {self}");

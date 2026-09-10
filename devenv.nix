@@ -1,10 +1,11 @@
 # devenv.sh configuration — the single entry point for developing losos.
 #
-# Wired into the flake (see flake.nix `devShells`), NOT run standalone via a
-# devenv.yaml. Standalone devenv keeps its own devenv.lock with its own
-# nixpkgs pin, which would be a second source of truth for the toolchain and
-# could drift from the rustc that `nix build .#losos-ctl` actually compiles
-# with. Through the flake there is one lock file and one nixpkgs.
+# Run standalone by the devenv CLI against devenv.yaml, NOT wired into the
+# flake. `devenv.lib.mkShell` cannot evaluate purely — it needs an absolute
+# path to the project root for `.devenv/`, and the documented escape needs
+# --impure, which would spread to CI. The cost is a second nixpkgs pin, in
+# devenv.yaml; `check-pins` below asserts it still agrees with flake.lock.
+# The long version of that argument is in flake.nix's `inputs` block.
 #
 # Everything below is dev-machine-only. None of it enters any losos system
 # closure — same rule as admin-ui/design-system/react.
@@ -19,6 +20,28 @@ let
     "backend-registrar"
   ];
   forEachCrate = cmd: lib.concatMapStringsSep "\n" (c: ''echo "── ${c}"; ${cmd c}'') crates;
+
+  # Print the attribute names of one of this flake's per-system output sets,
+  # space separated, for the loops in `vm-tests`, `build-pkgs` and
+  # `build-images` to iterate over.
+  #
+  # Asking the flake rather than writing the list down here is the whole point.
+  # `vm-tests` used to carry four hand-typed names against six exported checks,
+  # under a description that said "all four" — and the two it had never been
+  # taught about, losos-front-vhost and losos-impermanence, were exactly the
+  # two the k3s/fscrypt rework broke. A local gate that quietly skips whatever
+  # nobody remembered to add to it does not merely miss the regression: it
+  # prints a row of green ticks over the top of it. Same for `build-pkgs` and
+  # the three OCI images. If you add a check or a package, this picks it up;
+  # do not "clarify" it back into a literal list.
+  #
+  # x86_64-linux is a literal because the flake exports exactly one system (see
+  # `system` in flake.nix). builtins.attrNames forces the set and none of its
+  # values, so this stays instant even though every value behind it is a VM
+  # test or a multi-gigabyte image.
+  flakeAttrs =
+    output:
+    "command nix eval --raw --apply 'as: builtins.concatStringsSep \" \" (builtins.attrNames as)' .#${output}.x86_64-linux";
 
   # The host fish config minus Zellij, and minus the claude/codex aliases,
   # which call a host ollama wrapper that is neither reproducible nor relevant
@@ -207,27 +230,80 @@ in
   '';
   scripts.check-eval.description = "Force the full NixOS module merge for both systems.";
 
-  scripts.build-pkgs.exec = "command nix build --no-link -L .#losos-ctl .#losos-registrar .#losos-admin-ui";
-  scripts.build-pkgs.description = "Build all three flake packages.";
+  # Every flake package except the OCI images, which are their own script
+  # below because they are their own order of magnitude.
+  scripts.build-pkgs.exec = ''
+    set -eu
+    for p in $(${flakeAttrs "packages"}); do
+      case $p in
+        losos-image-*) continue ;;
+      esac
+      echo "── $p"
+      command nix build --no-link -L ".#$p"
+    done
+  '';
+  scripts.build-pkgs.description = "Build every flake package except the OCI images.";
 
-  # The real acceptance gate for the control plane. CI cannot run these — the
-  # Codeberg runners cap at 10 minutes and 8 GB — so they are a local gate.
+  # The three images the LOCAL k3s cluster runs as static pods
+  # (flake/images.nix, wired to losos.workloads.* in modules/defaults.nix).
+  #
+  # Opt-in, and deliberately not part of `devenv test`, because of what they
+  # cost: measured on a dev machine, the Nextcloud image's content closure is
+  # 2.3 GiB across 244 store paths (nextcloud34 with ~30 apps, php-with-
+  # extensions, apacheHttpd) and the tarball dockerTools writes out is of the
+  # same order again. That is precisely the "multi-gigabyte closure" the
+  # enterTest block below promises not to spend on you. Forgejo is a 585 MiB
+  # tarball over 126 paths, pause 51 MiB.
+  #
+  # It has to be gated *somewhere*, though, and until CI grows a job for it
+  # this is the only place. The appliance never builds these: it substitutes
+  # them from a binary cache during system.autoUpgrade at 03:00, on a
+  # repurposed mini-PC with a tmpfs root, no shell and nobody watching, three
+  # hours before an unconditional reboot. `check-flake` does not cover it —
+  # `nix flake check --no-build` evaluates these derivations, and evaluation
+  # cannot see an entrypoint that fails shellcheck (writeShellApplication runs
+  # it at build time) or a buildEnv whose paths collide. Run this before
+  # pushing anything that touches flake/images.nix or
+  # modules/nextcloud-stack.nix.
+  scripts.build-images.exec = ''
+    set -eu
+    for p in $(${flakeAttrs "packages"}); do
+      case $p in
+        losos-image-*) ;;
+        *) continue ;;
+      esac
+      echo "── $p"
+      command nix build --no-link -L ".#$p"
+    done
+  '';
+  scripts.build-images.description = "Build the OCI images the local cluster runs (gigabytes; opt-in).";
+
+  # The real acceptance gate for the control plane and the appliance's front
+  # door. CI cannot run these — the Codeberg runners cap at 10 minutes and 8 GB
+  # and offer no /dev/kvm — so they are a local gate, and the only one.
+  #
+  # The list comes from the flake (see flakeAttrs above for what that fixed).
   scripts.vm-tests.exec = ''
-    set -e
-    for t in losos-admin-daemon losos-install losos-ds-render losos-edge-proxy; do
+    set -eu
+    for t in $(${flakeAttrs "checks"}); do
       echo "══ VM test: $t"
       command nix build --no-link -L ".#checks.x86_64-linux.$t"
     done
   '';
-  scripts.vm-tests.description = "Run all four nixos-test VMs (needs /dev/kvm).";
+  scripts.vm-tests.description = "Run every nixos-test VM the flake exports (needs /dev/kvm).";
 
-  # Local-only gate: too big for CI on time and on disk-as-RAM.
+  # Not a local-only gate any more — the `iso` job in
+  # .forgejo/workflows/ci.yml builds this on every push, by importing
+  # losos-ctl from a sibling job instead of compiling it. This script stays
+  # because it is still the fastest way to get an image onto a USB stick, and
+  # because `devenv test` does not run it.
   scripts.build-iso.exec = "command nix build --no-link -L .#nixosConfigurations.iso.config.system.build.isoImage";
   scripts.build-iso.description = "Build the installer ISO (local-only gate).";
 
   # ── devenv test ──────────────────────────────────────────────────────────
   # `devenv test` runs the fast gates: everything that does not need KVM or a
-  # multi-gigabyte closure. The VM tests and the ISO stay opt-in.
+  # multi-gigabyte closure. The VM tests, the OCI images and the ISO stay
+  # opt-in — `vm-tests`, `build-images`, `build-iso`.
   enterTest = ''
     set -e
     check-pins
@@ -241,9 +317,10 @@ in
     echo "losos dev shell"
     echo "  fmt · lint · test-rust        Rust"
     echo "  check-flake · check-eval      Nix eval gates"
-    echo "  build-pkgs · build-iso        builds"
+    echo "  build-pkgs · build-images     builds"
+    echo "  build-iso                     the installer image"
     echo "  vm-tests                      the real acceptance gate (needs KVM)"
-    echo "  devenv test                   everything except VM tests and the ISO"
+    echo "  devenv test                   all of it bar VM tests, images, ISO"
 
     # Switch to fish only for an INTERACTIVE shell, detected by the bash `i`
     # flag in $-. This guard is load-bearing: `devenv shell lint` and every CI

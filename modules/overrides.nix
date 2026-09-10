@@ -25,4 +25,8 @@ _:
   losos.gpu.enable = true;
   losos.nextcloud.apachePort = 11000;
   losos.proxy.enable = false;
+  losos.cluster.enable = false;
+  losos.cluster.shareCompute = false;
+  losos.cluster.computeWindow.start = "23:00";
+  losos.cluster.computeWindow.end = "07:00";
 }

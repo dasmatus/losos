@@ -138,6 +138,199 @@ in
       '';
     };
 
+    # ── Compute mesh (appliance side) ───────────────────────────────────────
+    # Two Kubernetes instances run on the appliance and they are deliberately
+    # different clusters. See
+    # docs/superpowers/specs/2026-09-09-k3s-mesh-design.md.
+    #
+    #   LOCAL  services.k3s, role=server, /var/lib/rancher/k3s — runs THIS
+    #          box's Nextcloud and Forgejo. Always on when either service is in
+    #          "container" mode. It has no off-box dependency, so the appliance
+    #          boots and serves its own data with the edge unreachable.
+    #   MESH   services.rke2, role=agent, /var/lib/rancher/rke2 — joins the
+    #          edge's cluster for Longhorn storage and mesh compute. Gated on
+    #          losos.cluster.enable.
+    #
+    # The split exists because an agent's kubelet cannot start while its server
+    # is unreachable, and this box reboots unconditionally at 00:07
+    # (modules/updates.nix). A single-cluster design would take every
+    # appliance's own services down for any edge outage spanning midnight.
+    cluster.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Join the edge's mesh cluster as an rke2 agent, contributing storage
+        (Longhorn) and, when losos.cluster.shareCompute is on, compute. Off by
+        default: joining makes mesh workloads — but never this box's own
+        Nextcloud and Forgejo — depend on the edge being reachable.
+      '';
+    };
+
+    cluster.serverAddr = lib.mkOption {
+      type = lib.types.str;
+      default = "https://edge.losos.cfd:9345";
+      description = ''
+        The mesh control plane's rke2 supervisor endpoint. Note the port: rke2
+        agents register on 9345, not on the apiserver's 6443.
+      '';
+    };
+
+    cluster.tokenFile = lib.mkOption {
+      type = secretPath;
+      default = "/var/secrets/losos-mesh-token";
+      description = ''
+        The rke2 node token, fetched from the edge registrar's join route and
+        written 0600 by losos-mesh-join. Persisted via /var. Never a store
+        path.
+      '';
+    };
+
+    cluster.nodeName = lib.mkOption {
+      type = lib.types.str;
+      default = config.losos.proxy.applianceId;
+      defaultText = lib.literalExpression "config.losos.proxy.applianceId";
+      description = ''
+        This box's node name in the mesh cluster. Defaults to the appliance id
+        rather than losos.hostName, because every appliance ships the same
+        stock hostName ("mattbox") and the second box to join would collide —
+        the edge rejects a duplicate node name permanently. The appliance id is
+        already required to be unique: it is the registrar's registry key.
+      '';
+    };
+
+    cluster.kubeletPort = lib.mkOption {
+      type = lib.types.port;
+      default = 10260;
+      description = ''
+        Kubelet port for the MESH (rke2) instance. Must differ from the local
+        k3s server's kubelet, which holds the default 10250 — two kubelets on
+        one host cannot share it. Applied via services.rke2.extraKubeletConfig.
+      '';
+    };
+
+    cluster.shareCompute = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Contribute this box's CPU to the mesh during the window below ("share
+        my compute when I sleep"). Outside the window the edge holds a
+        NoSchedule taint on this box's mesh node, so mesh work is repelled.
+        This box's OWN Nextcloud and Forgejo are unaffected in either case:
+        they live in the local cluster, which has no taint and no scheduler.
+      '';
+    };
+
+    cluster.computeWindow.start = lib.mkOption {
+      type = lib.types.str;
+      default = "23:00";
+      description = ''
+        Start of the compute-sharing window, HH:MM in this box's own timezone
+        (config.time.timeZone). The zone is sent to the edge alongside the two
+        bounds, because the edge is what writes the NoSchedule taint and so
+        compares the window against its own clock — an edge VPS runs UTC while
+        this appliance ships Europe/Berlin, and without the zone a window
+        entered here would be enforced at the offset, sliding again at DST.
+
+        Validated by lososd, not only by the browser — a token holder can POST
+        to /api/apply directly.
+      '';
+    };
+
+    cluster.computeWindow.end = lib.mkOption {
+      type = lib.types.str;
+      default = "07:00";
+      description = ''
+        End of the compute-sharing window, HH:MM. A window whose end is before
+        its start wraps over midnight, which is the common case and the
+        default. Note that midnight-reboot.timer (00:07) and system.autoUpgrade
+        (03:00) both fall inside the default window.
+      '';
+    };
+
+    cluster.rke2.package = lib.mkOption {
+      type = lib.types.package;
+      default = pkgs.rke2;
+      defaultText = lib.literalExpression "pkgs.rke2";
+      description = "rke2 derivation for the appliance-side mesh agent.";
+    };
+
+    cluster.k3s.package = lib.mkOption {
+      type = lib.types.package;
+      default = pkgs.k3s;
+      defaultText = lib.literalExpression "pkgs.k3s";
+      description = "k3s derivation for the appliance-side local cluster server.";
+    };
+
+    # ── Workload images ─────────────────────────────────────────────────────
+    # The OCI images the LOCAL cluster runs, wired by modules/defaults.nix to
+    # this flake's own derivations (flake/images.nix). Internal: they are an
+    # implementation detail of container mode, not a knob.
+    #
+    # They are listed in the k3s instance's `images` option, which symlinks each
+    # into /var/lib/rancher/k3s/agent/images for the agent to import, so the
+    # pods can run with imagePullPolicy: Never and nothing is fetched from a
+    # container registry at runtime.
+    #
+    # The images themselves are NOT built on the appliance: a Nextcloud image is
+    # ~2.6 GiB, and system.autoUpgrade would rebuild it at 03:00 on a mini-PC
+    # with a tmpfs root, three hours before the unconditional 00:07 reboot.
+    # They come from this project's own Nix binary cache instead. That is a
+    # deliberate, documented relaxation: nothing is pulled from a *container*
+    # registry, but the box does substitute from a cache it trusts.
+    workloads.pauseImage = lib.mkOption {
+      type = lib.types.nullOr lib.types.package;
+      default = null;
+      internal = true;
+      description = "Pause (sandbox) image for the local cluster's pods.";
+    };
+
+    workloads.nextcloudImage = lib.mkOption {
+      type = lib.types.nullOr lib.types.package;
+      default = null;
+      internal = true;
+      description = "OCI image running the Nextcloud stack in container mode.";
+    };
+
+    workloads.forgejoImage = lib.mkOption {
+      type = lib.types.nullOr lib.types.package;
+      default = null;
+      internal = true;
+      description = "OCI image running Forgejo in container mode.";
+    };
+
+    # ── The shared data domain (fscrypt) ────────────────────────────────────
+    shared.fscrypt.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Protect /home/shared/data with an fscrypt policy that is unlocked only
+        while losos.sharingMyStorage is on. This is defence in depth on top of
+        the LUKS volume, not a replacement for it: LUKS protects a powered-off
+        box, fscrypt keeps the shared domain opaque to the RUNNING system — a
+        compromised Nextcloud pod, any other service, or root — whenever
+        sharing is off.
+
+        Requires an fscrypt-capable filesystem; modules/disko.nix formats
+        /persist as ext4 with -O encrypt for exactly this reason.
+      '';
+    };
+
+    shared.fscrypt.keyFile = lib.mkOption {
+      type = secretPath;
+      default = "/var/secrets/losos-shared-key";
+      description = ''
+        The fscrypt protector key. Sealed to the TPM when losos.tpm.enable is
+        true, so it is released only to a known-good boot state; on the no-TPM
+        path it is a 0600 keyfile, mirroring how modules/disko.nix already
+        branches for the LUKS volume. A design that only supported TPM2 would
+        brick every losos.tpm.enable = false machine.
+
+        The key lives inside the LUKS-protected /persist, which is what makes
+        the layering work: powered off, LUKS keeps it unreachable; booted with
+        sharing off, it is simply absent from the kernel keyring.
+      '';
+    };
+
     hostName = lib.mkOption {
       type = lib.types.str;
       default = "mattbox";
@@ -148,7 +341,26 @@ in
     sharingMyStorage = lib.mkOption {
       type = lib.types.bool;
       default = false;
-      description = "Expose local storage to the Tahoe-LAFS grid as a storage server.";
+      description = ''
+        Contribute this box's storage to the shared Longhorn pool on the mesh
+        (rke2) cluster. This is the one option the Local/Mesh toggle in the
+        admin UI drives: lososd patches the assignment on disk and starts a
+        rebuild, so this option and the API's `mode = mesh` always mean the
+        same thing (backend/schema.json, backend/src/model.rs).
+
+        It does double duty, and the second job is the load-bearing one: it
+        gates the fscrypt unlock of the shared data domain
+        (modules/fscrypt.nix). With sharing off the protector key is not in the
+        kernel keyring and /home/shared/data is opaque to every process on the
+        running box, root included. Publishing and decrypting are deliberately
+        one switch: a contributed volume nobody can read is not a
+        contribution, and a domain left unlocked while nothing is shared is a
+        standing liability on a box with no shell to lock it from.
+
+        This used to read "expose local storage to the Tahoe-LAFS grid as a
+        storage server". Tahoe-LAFS is gone; the option name is unchanged
+        because persisted state files and the admin SPA carry it.
+      '';
     };
 
     # ── Deployment mode switches ──────────────────────────────────────────
@@ -161,9 +373,17 @@ in
       description = ''
         "native" — run Nextcloud as a native NixOS service (services.nextcloud)
         on the host.
-        "container" — run the same native stack inside a declarative
-        systemd-nspawn container (containers.nextcloud, modules/containers.nix),
-        fronted by Nginx path routing. This is the default deployment.
+        "container" — run the same stack as a static pod in this box's own
+        local k3s cluster (modules/cluster.nix runs the cluster,
+        modules/workloads.nix writes the manifest and the config the pod
+        mounts), fronted by Nginx path routing (modules/containers.nix). This
+        is the default deployment.
+
+        The value is still spelled "container" even though it no longer means a
+        systemd-nspawn container on a private veth: that is the user-facing
+        wording in the settings SPA, and there is no installed base worth
+        breaking to rename it. modules/nextcloud-common.nix holds the truth
+        both modes share, so the two cannot drift.
       '';
     };
 
@@ -175,8 +395,10 @@ in
       default = "container";
       description = ''
         "native" — run Forgejo as a native NixOS service (services.forgejo).
-        "container" — run Forgejo inside a systemd-nspawn container
-        (containers.forgejo) behind Nginx path routing.
+        "container" — run Forgejo as a static pod in this box's own local k3s
+        cluster (modules/workloads.nix) behind Nginx path routing
+        (modules/containers.nix). As with losos.nextcloud.mode, "container" is
+        a kept spelling and no longer means systemd-nspawn.
       '';
     };
 
@@ -185,9 +407,10 @@ in
       default = false;
       description = ''
         Run the Forgejo git host. Consulted in *both* deployment modes: native
-        (modules/services.nix) and container (modules/containers.nix gates the
-        container, its /forgejo/ route and its firewall entry on this). Set to
-        true by modules/defaults.nix.
+        (modules/services.nix) and container (modules/workloads.nix gates the
+        pod and the config it mounts, modules/cluster.nix the local cluster,
+        modules/containers.nix the /forgejo/ route and its firewall entry).
+        Set to true by modules/defaults.nix.
       '';
     };
 
@@ -223,9 +446,17 @@ in
       type = lib.types.port;
       default = 11000;
       description = ''
-        Host loopback port forwarded to the Nextcloud container's port 80
-        (losos.nextcloud.mode == "container"). Nginx proxies to the container's
-        private IP; this forward is a convenience for local debugging.
+        Loopback port the Nextcloud pod's httpd listens on when
+        losos.nextcloud.mode == "container". The pod is hostNetwork (the local
+        cluster runs no CNI), so it binds 127.0.0.1 on the host itself and
+        Nginx proxies /nextcloud straight there — there is no container address
+        left to forward from.
+
+        Both ends read this one option: modules/workloads.nix renders the
+        Listen directive the pod mounts, modules/containers.nix writes the
+        matching proxy_pass, so they cannot drift. It stays rendered config
+        rather than an image layer because the settings SPA can retune it, and
+        a ~2.6 GiB image cannot be rebuilt on a mini-PC at 03:00.
       '';
     };
 
@@ -234,18 +465,15 @@ in
       type = lib.types.bool;
       default = true;
       description = ''
-        Enable host graphics (VA-API/Mesa) and pass /dev/dri into the Nextcloud
-        nspawn container for GPU acceleration.
-      '';
-    };
+        Enable host graphics (VA-API/Mesa) and hand /dev/dri to the Nextcloud
+        pod for GPU acceleration; modules/workloads.nix adds the hostPath
+        volume when this is on.
 
-    tahoe.introducerFurl = lib.mkOption {
-      type = lib.types.nullOr lib.types.str;
-      default = null;
-      description = ''
-        Paste the introducer.furl printed by the local introducer after its
-        first start. Leave null until then; the storage node won't connect
-        to a grid until it is set.
+        Under systemd-nspawn this also carried `DeviceAllow = char-drm rw` on
+        the container's unit, and a pod has no equivalent short of
+        `privileged: true` or a device plugin — so the mount alone may not be
+        sufficient. If VA-API comes back "permission denied" inside the pod,
+        that missing cgroup device rule is why, not this option.
       '';
     };
 
@@ -437,6 +665,21 @@ in
                 world-readable nix store.
               '';
             };
+            cluster = lib.mkOption {
+              type = lib.types.bool;
+              default = false;
+              description = ''
+                Permit this appliance to fetch a mesh node token from the
+                registrar's join route. Separate from registration: a tenant
+                may be published through the proxy without being allowed into
+                the cluster.
+
+                NOTE: this reaches the registrar only because modules/edge.nix
+                renders it into tenants.json. That writer hardcodes its
+                attribute set, so any new per-tenant option must be added there
+                too or it is silently dropped.
+              '';
+            };
           };
         }
       );
@@ -455,6 +698,85 @@ in
       type = lib.types.nullOr lib.types.package;
       default = null;
       description = "The losos-registrar derivation (Rust). Wired by the edge module to self.packages.<system>.losos-registrar.";
+    };
+
+    # ── Mesh control plane (edge side) ──────────────────────────────────────
+    # The edge is the cluster the appliances join. It runs services.rke2 with
+    # role = "server"; appliances run the same module with role = "agent".
+    # rke2 rather than k3s because nixpkgs generates both from one
+    # name-parameterized generator, so the appliance can run k3s for its own
+    # LOCAL cluster and rke2 for the MESH one without the two colliding on
+    # /var/lib/rancher/<name>, on the systemd unit name, or on the module's
+    # singleton-ness. See the spec for the full argument.
+    edge.cluster.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = "Run the mesh control plane (rke2 server) on this edge, and Longhorn on top of it.";
+    };
+
+    edge.cluster.package = lib.mkOption {
+      type = lib.types.package;
+      default = pkgs.rke2;
+      defaultText = lib.literalExpression "pkgs.rke2";
+      description = "rke2 derivation for the edge-side mesh server.";
+    };
+
+    edge.cluster.agentTokenFile = lib.mkOption {
+      type = secretPath;
+      default = "/var/secrets/losos-mesh-agent-token";
+      description = ''
+        The node token appliances present when joining (rke2's agentTokenFile).
+        The registrar hands its contents to enrolled tenants over the join
+        route; it is never published in the nix store.
+      '';
+    };
+
+    edge.cluster.advertiseAddr = lib.mkOption {
+      type = lib.types.str;
+      default = "";
+      description = ''
+        Address appliances reach this control plane on, passed as
+        --node-external-ip and returned to appliances as their serverAddr.
+        Required when losos.edge.cluster.enable is set — an rke2 server behind
+        NAT that advertises a private address is unjoinable.
+      '';
+    };
+
+    edge.cluster.apiPort = lib.mkOption {
+      type = lib.types.port;
+      default = 6443;
+      description = "Kubernetes apiserver port on the edge.";
+    };
+
+    edge.cluster.supervisorPort = lib.mkOption {
+      type = lib.types.port;
+      default = 9345;
+      description = ''
+        rke2's supervisor/registration port. Agents dial THIS, not the
+        apiserver's 6443, so it must be open in the edge firewall as well.
+      '';
+    };
+
+    edge.cluster.cni = lib.mkOption {
+      type = lib.types.str;
+      default = "canal";
+      description = ''
+        Mesh cluster CNI. Appliances sit on separate LANs behind NAT, so
+        cross-node replication needs an encrypted overlay — canal with a
+        WireGuard backend, or cilium with WireGuard encryption. Set on the
+        server only: rke2's own docs say an agent must not set `cni`.
+      '';
+    };
+
+    edge.cluster.longhornChart = lib.mkOption {
+      type = lib.types.nullOr lib.types.attrs;
+      default = null;
+      description = ''
+        Longhorn Helm chart spec handed to services.rke2.autoDeployCharts
+        (repo, version, hash, values). Longhorn is not packaged in nixpkgs, so
+        it is deployed as a pinned chart — a fixed-output derivation, so the
+        deployment stays reproducible. Null disables Longhorn.
+      '';
     };
   };
 
@@ -476,6 +798,9 @@ in
         "losos.proxy.tokenFile" = config.losos.proxy.tokenFile;
         "losos.proxy.bootstrapTokenFile" = config.losos.proxy.bootstrapTokenFile;
         "losos.edge.bootstrapTokenFile" = config.losos.edge.bootstrapTokenFile;
+        "losos.cluster.tokenFile" = config.losos.cluster.tokenFile;
+        "losos.shared.fscrypt.keyFile" = config.losos.shared.fscrypt.keyFile;
+        "losos.edge.cluster.agentTokenFile" = config.losos.edge.cluster.agentTokenFile;
       }
       // lib.mapAttrs' (
         id: tenant: lib.nameValuePair "losos.edge.tenants.${id}.tokenFile" tenant.tokenFile

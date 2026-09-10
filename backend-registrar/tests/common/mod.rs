@@ -12,8 +12,11 @@
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+use axum::http::{Method, StatusCode, Uri};
+use axum::Router;
 use losos_registrar::opts::ServeOpts;
 use tokio::sync::oneshot;
 
@@ -24,6 +27,13 @@ pub const OTHER_TOKEN: &str = "abad1deaabad1deaabad1deaabad1deaabad1deaabad1deaa
 /// The rathole `default_token` the edge is configured with.
 pub const BOOTSTRAP_TOKEN: &str =
     "b00757241pb00757241pb00757241pb00757241pb00757241pb00757241pb007";
+/// The shape of a real rke2 node token: `K10<ca hash>::server:<password>`.
+/// Long, and carrying `:` — which `token_fault` allows and a control-character
+/// check must not be tightened into rejecting.
+pub const MESH_AGENT_TOKEN: &str =
+    "K10bb0dcafebb0dcafebb0dcafebb0dcafebb0dcafebb0dcafe::server:meshpassword0123456789";
+/// The ServiceAccount bearer token the registrar presents to the apiserver.
+pub const KUBE_TOKEN: &str = "eyJhbGciOiJSUzI1NiIsImtpZCI6Imxvc29zLXJlZ2lzdHJhciJ9.stub";
 
 /// A directory under the system temp dir, removed when the guard drops.
 ///
@@ -66,12 +76,14 @@ impl Drop for TempDir {
 }
 
 /// One row of the operator whitelist: an appliance id, the hostname it may
-/// claim, and the contents of its token file (`None` writes no file at all —
-/// the "operator forgot to place the secret" case).
+/// claim, the contents of its token file (`None` writes no file at all — the
+/// "operator forgot to place the secret" case), and whether the operator has
+/// cleared it for the mesh cluster.
 pub struct TenantSpec {
     pub id: &'static str,
     pub hostname: String,
     pub token: Option<String>,
+    pub cluster: bool,
 }
 
 impl TenantSpec {
@@ -80,6 +92,7 @@ impl TenantSpec {
             id,
             hostname: hostname.to_string(),
             token: Some(token.to_string()),
+            cluster: false,
         }
     }
 
@@ -89,6 +102,46 @@ impl TenantSpec {
             id,
             hostname: hostname.to_string(),
             token: None,
+            cluster: false,
+        }
+    }
+
+    /// `losos.edge.tenants.<id>.cluster = true` — cleared for mesh enrolment.
+    #[must_use]
+    pub fn with_cluster(mut self) -> Self {
+        self.cluster = true;
+        self
+    }
+}
+
+/// The `serve` flags that turn the mesh half on.
+///
+/// Every test that predates the mesh starts an [`Edge`] with
+/// [`MeshFixture::default`], i.e. none of these flags — which is exactly the
+/// argument list `modules/edge.nix` generates for
+/// `losos.edge.cluster.enable = false`. Those tests therefore keep asserting
+/// that the master-proxy half is untouched by the join route existing.
+#[derive(Default)]
+pub struct MeshFixture {
+    /// Written to `mesh-agent.token`; enables `/cluster/join`.
+    pub agent_token: Option<String>,
+    /// `--mesh-server-addr`, the `https://<addr>:9345` an agent registers on.
+    pub server_addr: Option<String>,
+    /// `--kube-api`. A plain-HTTP stub in these tests: the registrar only
+    /// demands a pinned CA for an https apiserver.
+    pub kube_api: Option<String>,
+    /// Written to `kube.token`; `--kube-token-file`.
+    pub kube_token: Option<String>,
+}
+
+impl MeshFixture {
+    /// A fully configured mesh edge pointed at `kube_api`.
+    pub fn enabled(kube_api: &str) -> Self {
+        Self {
+            agent_token: Some(MESH_AGENT_TOKEN.to_string()),
+            server_addr: Some("https://198.51.100.7:9345".to_string()),
+            kube_api: Some(kube_api.to_string()),
+            kube_token: Some(KUBE_TOKEN.to_string()),
         }
     }
 }
@@ -108,10 +161,24 @@ impl Edge {
     /// port. `reconcile_interval` is deliberately short so a test can observe
     /// a steady-state pass without waiting on production's 15s tick.
     pub async fn start(tag: &str, tenants: &[TenantSpec]) -> Self {
+        Self::start_with_mesh(tag, tenants, MeshFixture::default()).await
+    }
+
+    /// As [`Edge::start`], with the mesh half configured.
+    pub async fn start_with_mesh(tag: &str, tenants: &[TenantSpec], mesh: MeshFixture) -> Self {
         let dir = TempDir::new(tag);
         std::fs::create_dir_all(dir.join("traefik")).expect("create traefik dir");
         std::fs::write(dir.join("bootstrap.token"), BOOTSTRAP_TOKEN).expect("write bootstrap");
         write_tenants(&dir, tenants);
+
+        let mesh_agent_token_file = mesh.agent_token.map(|token| {
+            std::fs::write(dir.join("mesh-agent.token"), token).expect("write mesh agent token");
+            dir.path_str("mesh-agent.token")
+        });
+        let kube_token_file = mesh.kube_token.map(|token| {
+            std::fs::write(dir.join("kube.token"), token).expect("write kube token");
+            dir.path_str("kube.token")
+        });
 
         let opts = ServeOpts {
             listen: "127.0.0.1:0".to_string(),
@@ -125,6 +192,18 @@ impl Edge {
             tenants_file: dir.path_str("tenants.json"),
             reconcile_interval: Duration::from_millis(50),
             heartbeat_ttl: Duration::from_secs(300),
+            mesh_agent_token_file,
+            mesh_server_addr: mesh.server_addr,
+            // The default is the production `https://127.0.0.1:6443`, which
+            // would make every cleanup demand a pinned CA — so a test that
+            // supplies no stub gets a URL that cannot connect, which is the
+            // honest shape of "this edge has no cluster".
+            kube_api: mesh
+                .kube_api
+                .unwrap_or_else(|| "https://127.0.0.1:6443".to_string()),
+            kube_token_file,
+            kube_ca_file: None,
+            compute_windows_file: dir.path_str("compute-windows.json"),
         };
 
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
@@ -192,6 +271,12 @@ impl Edge {
         std::fs::read_to_string(self.dir.join("registry.json")).ok()
     }
 
+    /// The file `losos-mesh-taint.service` reads on the real edge.
+    pub fn compute_windows(&self) -> Option<serde_json::Value> {
+        let text = std::fs::read_to_string(self.dir.join("compute-windows.json")).ok()?;
+        serde_json::from_str(&text).ok()
+    }
+
     /// Rewrite the whitelist while the registrar is running, the way an
     /// operator switch would.
     pub fn rewrite_tenants(&self, tenants: &[TenantSpec]) {
@@ -224,6 +309,22 @@ impl Edge {
         self.post(
             "/heartbeat",
             serde_json::json!({ "appliance_id": id, "token": token }),
+        )
+        .await
+    }
+
+    /// A `/cluster/join` with the default 23:00-07:00 window.
+    pub async fn join(&self, id: &str, node_name: &str, token: &str) -> (u16, String) {
+        self.post(
+            "/cluster/join",
+            serde_json::json!({
+                "appliance_id": id,
+                "token": token,
+                "node_name": node_name,
+                "share_compute": true,
+                "window_start": "23:00",
+                "window_end": "07:00",
+            }),
         )
         .await
     }
@@ -275,9 +376,123 @@ fn write_tenants(dir: &TempDir, tenants: &[TenantSpec]) {
             serde_json::json!({
                 "hostname": spec.hostname,
                 "token_file": token_path.to_string_lossy(),
+                "cluster": spec.cluster,
             }),
         );
     }
     let json = serde_json::to_vec_pretty(&map).expect("serialize tenants.json");
     std::fs::write(dir.join("tenants.json"), json).expect("write tenants.json");
+}
+
+/// A stand-in for the mesh apiserver.
+///
+/// It exists because the property under test is *what the join handler does
+/// before it hands out a token*: it must delete the caller's `Node` object and
+/// its node-password `Secret`, and it must refuse the join outright if that
+/// fails. Asserting that against a real rke2 cluster belongs in the VM tests;
+/// asserting it here needs something that records the requests and can be told
+/// to fail on demand.
+///
+/// Plain HTTP on loopback, which the registrar accepts for a non-`https`
+/// `--kube-api` (see `cleanup_stale_node`). Nothing secret crosses it.
+pub struct KubeStub {
+    pub base: String,
+    state: StubState,
+    stop: Option<oneshot::Sender<()>>,
+    join: Option<tokio::task::JoinHandle<()>>,
+}
+
+#[derive(Clone)]
+struct StubState {
+    /// The `METHOD path` of every request the stub saw, in order.
+    seen: Arc<Mutex<Vec<String>>>,
+    /// What to answer with. 404 is the apiserver's "no such node", which the
+    /// handler must treat as a clean result.
+    status: StatusCode,
+    /// The bearer token every request is expected to carry.
+    expect_bearer: Option<String>,
+}
+
+impl KubeStub {
+    /// A stub that answers every request with `status`.
+    pub async fn start(status: u16) -> Self {
+        Self::start_inner(status, None).await
+    }
+
+    /// A stub that also asserts the `Authorization` header, so a join that
+    /// forgot the ServiceAccount token fails loudly instead of passing because
+    /// the stub did not care.
+    pub async fn expecting_bearer(status: u16, token: &str) -> Self {
+        Self::start_inner(status, Some(token.to_string())).await
+    }
+
+    async fn start_inner(status: u16, expect_bearer: Option<String>) -> Self {
+        let state = StubState {
+            seen: Arc::new(Mutex::new(Vec::new())),
+            status: StatusCode::from_u16(status).expect("a valid status code"),
+            expect_bearer,
+        };
+        let app = Router::new()
+            .fallback(stub_handler)
+            .with_state(state.clone());
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind the kube stub");
+        let port = listener.local_addr().expect("local_addr").port();
+        let (stop, rx) = oneshot::channel::<()>();
+        let join = tokio::spawn(async move {
+            let _ = axum::serve(listener, app)
+                .with_graceful_shutdown(async move {
+                    let _ = rx.await;
+                })
+                .await;
+        });
+        Self {
+            base: format!("http://127.0.0.1:{port}"),
+            state,
+            stop: Some(stop),
+            join: Some(join),
+        }
+    }
+
+    /// Every request the stub saw, as `METHOD path`.
+    pub fn seen(&self) -> Vec<String> {
+        self.state
+            .seen
+            .lock()
+            .expect("the stub's request log is not poisoned")
+            .clone()
+    }
+
+    pub async fn shutdown(mut self) {
+        if let Some(stop) = self.stop.take() {
+            let _ = stop.send(());
+        }
+        if let Some(join) = self.join.take() {
+            let _ = tokio::time::timeout(Duration::from_secs(5), join).await;
+        }
+    }
+}
+
+async fn stub_handler(
+    axum::extract::State(state): axum::extract::State<StubState>,
+    headers: axum::http::HeaderMap,
+    method: Method,
+    uri: Uri,
+) -> StatusCode {
+    state
+        .seen
+        .lock()
+        .expect("the stub's request log is not poisoned")
+        .push(format!("{method} {}", uri.path()));
+    if let Some(expected) = &state.expect_bearer {
+        let supplied = headers
+            .get(axum::http::header::AUTHORIZATION)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or_default();
+        if supplied != format!("Bearer {expected}") {
+            return StatusCode::UNAUTHORIZED;
+        }
+    }
+    state.status
 }

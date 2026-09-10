@@ -1,5 +1,5 @@
 {
-  description = "losos — stateless NixOS: Nextcloud (notshared), Tahoe-LAFS (shared), auto-upgrade, midnight reboot, TPM-or-keyfile FDE";
+  description = "losos — stateless NixOS appliance: Nextcloud and Forgejo as k3s workloads, mesh storage and compute on rke2/Longhorn, auto-upgrade, midnight reboot, TPM-or-keyfile FDE";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -178,6 +178,17 @@
             ./modules/services.nix
             ./modules/nextcloud-common.nix
             ./modules/containers.nix
+            # The local k3s cluster + the mesh rke2 agent, and the workload
+            # manifests the local cluster runs. These must be imported together
+            # with containers.nix: that file now proxies /nextcloud and
+            # /forgejo to loopback ports that only these two modules make
+            # anything listen on, so dropping either leaves the front door
+            # serving 502s.
+            ./modules/cluster.nix
+            ./modules/workloads.nix
+            # The fscrypt policy on the shared data domain, locked and unlocked
+            # off losos.sharingMyStorage.
+            ./modules/fscrypt.nix
             ./modules/daemon.nix
             ./modules/overrides.nix
             ./modules/updates.nix
@@ -224,12 +235,23 @@
       #                         styles from tokens.css (tests/design-system.nix).
       #   losos-front-vhost   — boots two appliance VMs and asserts the Nginx
       #                         front door: the admin surface is LAN-only (403
-      #                         from loopback and from the container subnet),
-      #                         /nextcloud + /forgejo/ are not, and the security
-      #                         headers land (tests/front-vhost.nix).
+      #                         from loopback), /nextcloud + /forgejo/ are not,
+      #                         and the security headers land. There is no
+      #                         container-subnet case any more — hostNetwork
+      #                         pods have no address of their own, so the deny
+      #                         rule that used to carry it is gone on purpose
+      #                         (tests/front-vhost.nix).
       #   losos-impermanence  — boots a tmpfs-root VM with a real /persist,
       #                         reboots it, and asserts that exactly the
       #                         persisted set survives (tests/impermanence.nix).
+      #   losos-cluster       — boots an edge VM running the mesh rke2 server and
+      #                         an appliance VM running BOTH Kubernetes instances,
+      #                         and asserts they coexist: separate containerd
+      #                         sockets, kubelet ports and state dirs, both nodes
+      #                         registered, and — the property the two-cluster
+      #                         split exists to buy — this box's own workload
+      #                         still answering on loopback with the edge VM
+      #                         crashed and after a reboot (tests/cluster-vm.nix).
       checks.${system} = {
         losos-install = import ./tests/install.nix { inherit pkgs disko; };
         losos-admin-daemon = import ./tests/admin-vm.nix { inherit pkgs; };
@@ -237,6 +259,7 @@
         losos-ds-render = import ./tests/design-system.nix { inherit pkgs; };
         losos-front-vhost = import ./tests/front-vhost.nix { inherit pkgs; };
         losos-impermanence = import ./tests/impermanence.nix { inherit pkgs impermanence; };
+        losos-cluster = import ./tests/cluster-vm.nix { inherit pkgs; };
       };
     };
 }

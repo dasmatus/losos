@@ -26,15 +26,20 @@ on:
 #   nix path-info (no devenv)        1m32s  success
 #
 # So the commands below are spelled out directly. They are the same commands
-# devenv.nix defines as `lint`, `test-rust`, `check-flake`, `check-eval` and
-# `build-pkgs`, and the two must be kept in step by hand — that duplication is
-# the price of fitting the cap. `devenv test` remains the local one-shot
-# equivalent, and the pre-commit hooks run the lint half before a commit ever
-# reaches here.
+# devenv.nix defines as `lint`, `test-rust`, `check-flake`, `check-eval`,
+# `build-pkgs` and — for two of its three images — `build-images`, and the two
+# must be kept in step by hand. That duplication is the price of fitting the
+# cap. `devenv test` remains the local one-shot equivalent, and the pre-commit
+# hooks run the lint half before a commit ever reaches here.
 #
-# The six nixos-test VMs stay local-only — they need /dev/kvm, which these
-# runners do not provide:
+# The nixos-test VMs stay local-only — they need /dev/kvm, which these runners
+# do not provide:
 #   devenv shell vm-tests
+#
+# Neither this file nor devenv.nix names those VMs any more: `vm-tests` reads
+# the list out of `.#checks.x86_64-linux`, because the hand-kept version of it
+# had drifted to four names against six checks and skipped the two that the
+# k3s/fscrypt rework broke. Do not reintroduce a literal list in either place.
 #
 # The installer ISO used to be local-only too, on the grounds that it fit
 # "neither the time nor the disk-as-RAM budget". Measured, that was wrong on
@@ -147,9 +152,11 @@ jobs:
     steps:
       - run: nix profile install nixpkgs#nodejs
       - uses: actions/checkout@v4
-      # Mirrors devenv.nix's `check-flake`. Evaluates every output including
-      # all six VM test derivations and both nixosConfigurations; builds
-      # nothing.
+      # Mirrors devenv.nix's `check-flake`. Evaluates every output — every VM
+      # test derivation, both nixosConfigurations and every package, the three
+      # OCI images among them; builds nothing. Which is the limit of it: an
+      # image whose entrypoint fails shellcheck evaluates perfectly happily,
+      # and only the images job below catches that.
       - run: nix flake check --no-build -L
       # Mirrors devenv.nix's `check-eval`, and this is the gate the repo
       # lacked entirely: `flake check` only forces each nixosConfiguration's
@@ -200,6 +207,56 @@ jobs:
       # Compiles only; the registrar's 42 tests run in the lint job.
       # losos-admin-ui is a trivial runCommand copy.
       - run: nix build .#losos-registrar .#losos-admin-ui -L
+
+  images:
+    name: "nix: OCI images for the local cluster"
+    runs-on: codeberg-medium
+    container:
+      image: docker.io/nixos/nix:latest
+    steps:
+      - run: nix profile install nixpkgs#nodejs
+      - uses: actions/checkout@v4
+      # The cheap two thirds of devenv.nix's `build-images`.
+      #
+      # These are the images modules/defaults.nix wires into losos.workloads.*,
+      # and the appliance is *required* to substitute them: it never builds an
+      # image itself. A broken one therefore surfaces during
+      # system.autoUpgrade at 03:00 on a repurposed mini-PC with a tmpfs root
+      # and no shell, three hours before an unconditional reboot — which is to
+      # say it surfaces as a box that stopped serving, with nothing to read.
+      # The eval job cannot catch it: evaluation does not run the shellcheck
+      # that writeShellApplication performs at build time, and does not notice
+      # a buildEnv whose paths collide.
+      #
+      # Measured on a dev machine: losos-image-pause is a 51 MiB tarball over a
+      # handful of paths, losos-image-forgejo a 585 MiB tarball over a 647 MiB
+      # / 126-path content closure. Both sit far inside the ISO job's measured
+      # 4.7 GiB of writes against the 10 GiB quota (8 GiB RAM + 2 GiB temp; on
+      # these runners filesystem writes count as RAM).
+      - run: nix build .#losos-image-pause .#losos-image-forgejo -L
+      # losos-image-nextcloud is NOT built here, and since it is the image most
+      # likely to break, that is a real hole and not an oversight.
+      #
+      # Its content closure measures 2.3 GiB across 244 store paths (nextcloud34
+      # with ~30 apps, php-with-extensions, apacheHttpd), and dockerTools
+      # compresses it about as poorly as it compresses Forgejo — so call it
+      # another ~2 GiB of tarball on top. On writes that is ISO territory and
+      # would very likely fit. On wall clock nobody has ever timed it on a
+      # codeberg-medium runner, and the number that decides it is the download
+      # from cache.nixos.org, which cannot be measured on a machine that
+      # already has the closure.
+      #
+      # Guessing that number is how this repository got burned twice already,
+      # once in each direction: doCheck stayed on until `nix build .#losos-ctl`
+      # turned out to be a 7.7-10.3 minute coin flip that cancelled runs on
+      # unmodified main, and the ISO was excluded as fitting "neither the time
+      # nor the disk-as-RAM budget" on a figure measured against zstd level 19,
+      # when at level 6 it builds in 3.5 minutes. So: time it on a branch with
+      # workflow_dispatch before adding it to this run, rather than landing a
+      # job that may cancel every push at the cap.
+      #
+      # Until then the Nextcloud image's only gate is local:
+      #   devenv shell build-images
 
   fmt-bot:
     name: "bot: cargo fmt, push back"

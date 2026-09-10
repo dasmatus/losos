@@ -15,6 +15,7 @@ use std::fmt::Display;
 #[derive(Clone, Copy, Debug)]
 pub enum Action {
     Announce,
+    Join,
     Serve,
     Seed,
     BuildRuntime,
@@ -35,6 +36,7 @@ impl Action {
     pub const fn target(self) -> &'static str {
         match self {
             Action::Announce => "losos::announce",
+            Action::Join => "losos::join",
             Action::Serve => "losos::serve",
             Action::Seed => "losos::seed",
             Action::BuildRuntime => "losos::runtime",
@@ -53,6 +55,7 @@ impl Display for Action {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Action::Announce => f.write_str("[announce]"),
+            Action::Join => f.write_str("[join]"),
             Action::Serve => f.write_str("[serve]"),
             Action::Seed => f.write_str("[seed]"),
             Action::BuildRuntime => f.write_str("[build runtime]"),

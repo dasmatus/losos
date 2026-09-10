@@ -357,6 +357,7 @@ code {
 input[type="text"],
 input[type="number"],
 input[type="password"],
+input[type="time"],
 select {
   font: inherit;
   color: inherit;
@@ -368,6 +369,12 @@ select {
 }
 input[type="text"] { width: 180px; }
 input[type="number"] { width: 100px; }
+/* No width on the time field: the spinner segments and the clock button are
+ * UA-drawn and differently sized per browser, and a fixed width clips them.
+ * color-scheme is not cosmetic either — the clock popup is chrome, not page,
+ * so on a machine set to dark it opens black over these white rows unless
+ * the field says which scheme it is drawn on. This palette is light-only. */
+input[type="time"] { color-scheme: light; }
 /* Must follow the input block above to win on source order. The border is
  * the redundant half of the signal — .field-error carries the words, and
  * aria-invalid carries it to a screen reader. */

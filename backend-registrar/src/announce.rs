@@ -182,7 +182,11 @@ pub async fn run(opts: AnnounceOpts) -> Result<()> {
 /// no dependency, and it differs across appliances (which boot at different
 /// times) and across successive retries (which happen at different instants),
 /// which is the entire requirement. Nothing here is security-relevant.
-fn jitter(base: Duration) -> Duration {
+///
+/// Shared with [`crate::join`], whose backoff wants the same anti-lockstep
+/// property for the same reason: a rack of appliances rebooted together would
+/// otherwise hit `/cluster/join` in unison.
+pub(crate) fn jitter(base: Duration) -> Duration {
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |d| u64::from(d.subsec_nanos()));
