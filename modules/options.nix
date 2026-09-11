@@ -48,6 +48,32 @@ in
       '';
     };
 
+    # ── Storage headroom ────────────────────────────────────────────────────
+    storage.fillPercent = lib.mkOption {
+      type = lib.types.ints.between 50 100;
+      default = 90;
+      description = ''
+        Percentage of the `persist-vg` volume group the `persist` logical
+        volume claims at install time. The remainder is left unallocated on
+        purpose, and that is the whole point of the option.
+
+        This used to be 100%FREE, which made the layout — ext4 inside LUKS
+        inside an LV — technically resizable and practically frozen: with no
+        free extents there is nothing for `lvextend` to grow into, so the only
+        way to add space was to physically add a disk.
+
+        Leaving a margin buys two things on a box with no shell. `/nix` lives
+        on `/persist` through impermanence, so every generation grows it and
+        the 03:00 unattended rebuild is what fills it; growing out of that is
+        three online commands (see `losos-ctl grow`) instead of a house call.
+        And free extents are what an LVM snapshot needs, so a rollback point
+        taken before a risky rebuild becomes possible at all.
+
+        Set to 100 to get the old behaviour back on a box where capacity
+        matters more than being able to grow it.
+      '';
+    };
+
     # ── Hardening ───────────────────────────────────────────────────────────
     # Staged rather than one boolean, because the thing everyone reaches for
     # first no longer exists: `nixos/modules/profiles/hardened.nix` was removed
