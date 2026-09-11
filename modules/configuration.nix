@@ -179,7 +179,19 @@
   # covers AMD/Radeon — both coexist; drop the one that doesn't match the box.
   hardware.graphics = lib.mkIf config.losos.gpu.enable {
     enable = true;
-    enable32Bit = true;
+    # NOT enable32Bit, and it used to be. That option installs a second, 32-bit
+    # copy of Mesa and the VA-API drivers into /run/opengl-driver-32, and the
+    # only things that can load them are 32-bit userspace binaries: Steam, Wine,
+    # old proprietary games. This appliance has no desktop and no 32-bit
+    # anything. Its one GPU consumer is Nextcloud's hardware transcode, which
+    # runs 64-bit inside the workload.
+    #
+    # So the 32-bit half was unreachable by construction, and it is not small:
+    # a closure attribution of the install system put the graphics stack at
+    # 2.06 GiB over 129 store paths, of which 61 paths and roughly 992 MiB were
+    # the 32-bit copy alone. That is a sixth of everything a fresh box has to
+    # fetch or build, for a code path nothing on it can enter.
+    enable32Bit = false;
     # VA-API drivers. intel-media-driver covers modern Intel iGPUs (typical
     # mini-PC), intel-vaapi-driver the older Intel gens; both coexist. For an
     # AMD/Radeon box swap in `mesa`/`rocmPackages` as appropriate.
