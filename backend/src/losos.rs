@@ -46,6 +46,30 @@ pub trait Losos {
     /// which is the TPM path; the keyfile path must supply one or the
     /// resize prompts on a stdin the daemon does not have.
     fn luks_key_file(&mut self) -> anyhow::Result<Option<String>>;
+
+    // ── Setting the Nextcloud admin password ────────────────────────────
+    // Split look / plan / do the same way growth is, and for a second reason:
+    // the password is an argument to `run_occ` rather than a field of the
+    // action, so it cannot end up in an argv or in a serialized plan.
+    /// Which mode Nextcloud is *running* in, from `$LOSOS_NEXTCLOUD_MODE`.
+    fn nextcloud_mode(&mut self) -> anyhow::Result<crate::setup::NcMode>;
+    /// Locate the `occ` entry point: in container mode the single running
+    /// workload container, in native mode the host wrapper.
+    fn nextcloud_target(
+        &mut self,
+        mode: crate::setup::NcMode,
+    ) -> anyhow::Result<crate::setup::Target>;
+    /// Execute one planned step.
+    ///
+    /// `Err` means the step could not be run at all — a missing binary, an
+    /// unreachable CRI socket, an unwritable staging directory. A command that
+    /// ran and exited non-zero is `Ok(Some(outcome))`, so which failures mean
+    /// what is decided by [`crate::setup::interpret_occ`], purely.
+    fn run_occ(
+        &mut self,
+        action: &crate::setup::OccAction,
+        secret: &crate::setup::Secret,
+    ) -> anyhow::Result<Option<crate::setup::OccOutcome>>;
 }
 
 /// Message stamped on a rebuild the moment it is queued.
@@ -146,6 +170,76 @@ pub fn cmd_grow<L: Losos>(l: &mut L) -> anyhow::Result<Value> {
         "beforeBytes": before,
         "afterBytes": after,
         "claimedBytes": vg.free_bytes(),
+    }))
+}
+
+/// Replace the Nextcloud admin password.
+///
+/// Replaces, never reveals. The install-time password from
+/// `modules/nextcloud-common.nix` is 0600 and displayed nowhere; reading it
+/// back out over this API would make a root-only file API-readable and save the
+/// owner nothing, because they have to type a password they have chosen either
+/// way.
+///
+/// Both validations run before any effect, so a rejected password stages
+/// nothing and execs nothing. `changed` is derived from occ's exit status
+/// rather than asserted: see [`crate::setup::interpret_occ`] for why that
+/// status is worth trusting here and is not in `grow`.
+pub fn cmd_set_password<L: Losos>(l: &mut L, user: &str, password: &str) -> anyhow::Result<Value> {
+    use crate::setup::{
+        interpret_occ, plan_set_password, validate_password, validate_user, OccAction,
+    };
+
+    let user = validate_user(user).map_err(|e| anyhow::anyhow!(e))?;
+    let secret = validate_password(password).map_err(|e| anyhow::anyhow!(e))?;
+
+    let mode = l.nextcloud_mode()?;
+    let target = l.nextcloud_target(mode)?;
+    // The mode that actually ran, taken from the located target rather than
+    // from the env var, so the two cannot disagree in the reply.
+    let ran_mode = target.mode();
+    let plan = plan_set_password(&target, user).map_err(|e| anyhow::anyhow!(e))?;
+
+    let mut outcome = None;
+    let mut failed_at = None;
+    for (i, action) in plan.iter().enumerate() {
+        match l.run_occ(action, &secret) {
+            Ok(Some(o)) => outcome = Some(o),
+            Ok(None) => {}
+            Err(e) => {
+                failed_at = Some((i, e));
+                break;
+            }
+        }
+    }
+
+    // The staged file holds a plaintext password, so it gets removed whatever
+    // happened. Anything before the failure point has already run; this is the
+    // tail that did not.
+    let resume = failed_at.as_ref().map_or(plan.len(), |(i, _)| i + 1);
+    for action in plan.iter().skip(resume) {
+        if matches!(action, OccAction::ClearSecret { .. }) {
+            if let Err(e) = l.run_occ(action, &secret) {
+                // Warned about, not raised: it must not mask the failure that
+                // got us here, and the next attempt overwrites the file anyway.
+                tracing::warn!(error = ?e, "could not remove the staged Nextcloud password file");
+            }
+        }
+    }
+
+    if let Some((_, e)) = failed_at {
+        return Err(e);
+    }
+    let Some(outcome) = outcome else {
+        anyhow::bail!("set-password executed no occ command; plan_set_password is broken");
+    };
+    let message = interpret_occ(&outcome).map_err(|e| anyhow::anyhow!(e))?;
+
+    Ok(json!({
+        "user": user,
+        "mode": ran_mode.as_str(),
+        "changed": outcome.code == 0,
+        "message": message,
     }))
 }
 
@@ -457,6 +551,22 @@ mod tests {
             }
             fn luks_key_file(&mut self) -> anyhow::Result<Option<String>> {
                 self.0.luks_key_file()
+            }
+            fn nextcloud_mode(&mut self) -> anyhow::Result<crate::setup::NcMode> {
+                self.0.nextcloud_mode()
+            }
+            fn nextcloud_target(
+                &mut self,
+                mode: crate::setup::NcMode,
+            ) -> anyhow::Result<crate::setup::Target> {
+                self.0.nextcloud_target(mode)
+            }
+            fn run_occ(
+                &mut self,
+                action: &crate::setup::OccAction,
+                secret: &crate::setup::Secret,
+            ) -> anyhow::Result<Option<crate::setup::OccOutcome>> {
+                self.0.run_occ(action, secret)
             }
         }
 

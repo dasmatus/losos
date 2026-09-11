@@ -9,7 +9,8 @@
 
 use crate::io_backend::{atomic_write_secret, IoLosos};
 use crate::losos::{
-    cmd_apply, cmd_change, cmd_factory_reset, cmd_grow, cmd_settings, cmd_state, cmd_status,
+    cmd_apply, cmd_change, cmd_factory_reset, cmd_grow, cmd_set_password, cmd_settings, cmd_state,
+    cmd_status,
 };
 use crate::model::Mode;
 use crate::overrides::validate_apply;
@@ -169,6 +170,53 @@ async fn post_grow(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
     gate(&api, &req).unwrap_or_else(|| run(&api, cmd_grow))
 }
 
+/// Replace the Nextcloud admin password.
+///
+/// The body is parsed by hand rather than through actix's JSON extractor, for
+/// the same reason `post_apply` takes raw bytes: the extractor's rejection
+/// handler renders the offending payload into its error, and this payload is a
+/// password.
+///
+/// The 400s below name the field that was wrong and never echo what was sent.
+/// The command's own errors go through [`run`], which keeps the context chain
+/// out of the response and puts it in the journal — where, by construction, it
+/// cannot carry the password either: it is not a field of any `OccAction` and
+/// never reaches an argv.
+async fn post_set_password(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    if let Some(r) = gate(&api, &req) {
+        return r;
+    }
+    const SHAPE: &str = r#"body must be JSON: {"user": "...", "password": "..."}"#;
+    let Ok(doc) = serde_json::from_slice::<serde_json::Value>(&body) else {
+        return err(actix_web::http::StatusCode::BAD_REQUEST, SHAPE);
+    };
+    // `user` is optional: the appliance installs exactly one Nextcloud admin,
+    // and the wizard should not have to know its name to reset it.
+    let user = match doc.get("user") {
+        None | Some(serde_json::Value::Null) => crate::setup::DEFAULT_ADMIN_USER.to_string(),
+        Some(serde_json::Value::String(u)) => u.clone(),
+        Some(_) => return err(actix_web::http::StatusCode::BAD_REQUEST, SHAPE),
+    };
+    let Some(password) = doc.get("password").and_then(|p| p.as_str()) else {
+        return err(actix_web::http::StatusCode::BAD_REQUEST, SHAPE);
+    };
+    // Validated a second time inside the command; doing it here as well is what
+    // turns "too short" into a 400 the wizard can show next to the field
+    // instead of a 500 that says to read the journal.
+    if let Err(e) = crate::setup::validate_password(password) {
+        return err(actix_web::http::StatusCode::BAD_REQUEST, &e);
+    }
+    if let Err(e) = crate::setup::validate_user(&user) {
+        return err(actix_web::http::StatusCode::BAD_REQUEST, &e);
+    }
+    let password = password.to_string();
+    run(&api, |b| cmd_set_password(b, &user, &password))
+}
+
 async fn not_found() -> HttpResponse {
     err(actix_web::http::StatusCode::NOT_FOUND, "not found")
 }
@@ -275,6 +323,7 @@ pub fn serve(backend: IoLosos) -> anyhow::Result<()> {
                 .route("/api/apply", web::post().to(post_apply))
                 .route("/api/factory-reset", web::post().to(post_factory_reset))
                 .route("/api/grow", web::post().to(post_grow))
+                .route("/api/set-password", web::post().to(post_set_password))
                 .default_service(web::route().to(not_found))
         })
         .bind(("127.0.0.1", port))
