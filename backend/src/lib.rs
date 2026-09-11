@@ -36,4 +36,6 @@ pub mod io_backend;
 pub mod losos;
 pub mod model;
 pub mod overrides;
+pub mod recovery;
+pub mod setup;
 pub mod supervisor;

@@ -68,6 +68,21 @@ enum Command {
     /// (losos.storage.fillPercent); when that is exhausted, add a disk with
     /// pvcreate and vgextend and run this again.
     Grow,
+    /// Replace the Nextcloud admin password, read from stdin.
+    ///
+    /// Replaces it; there is no way to read the existing one out. The password
+    /// generated at install time by modules/nextcloud-common.nix is 0600 and
+    /// shown nowhere, which is exactly the problem this solves.
+    ///
+    /// Stdin and not a flag: /proc/<pid>/cmdline is world-readable, so
+    /// `--password hunter2` would publish it to every process on the box.
+    ///
+    ///   printf %s 'correct horse battery staple' | losos-ctl set-password
+    SetPassword {
+        /// Account to reset. Defaults to the appliance's Nextcloud admin.
+        #[arg(long, default_value = losos_ctl::setup::DEFAULT_ADMIN_USER)]
+        user: String,
+    },
     /// The losos auto-installer. Destructive: it repartitions every target disk.
     Install(InstallArgs),
 }
@@ -164,6 +179,23 @@ fn run(cli: Cli) -> Result<(), BackendFailure> {
             let code = validate_apply(&input)
                 .map_err(|e| BackendFailure(format!("losos-ctl apply: {e}")))?;
             call_backend("Apply", &(code,))?
+        }
+        Command::SetPassword { user } => {
+            let mut input = String::new();
+            std::io::stdin().read_to_string(&mut input).map_err(|e| {
+                BackendFailure(format!("losos-ctl set-password: cannot read stdin — {e}"))
+            })?;
+            // Exactly one trailing newline, not `trim`: `echo` and every heredoc
+            // add one, and a password is allowed to end in a space. Trimming
+            // would silently set a different password from the one that was
+            // typed, on the one command where nobody can check afterwards.
+            let password = input.strip_suffix('\n').unwrap_or(&input);
+            let password = password.strip_suffix('\r').unwrap_or(password);
+            // Checked locally so an obviously bad password fails without a round
+            // trip; lososd validates again, and that is the boundary.
+            losos_ctl::setup::validate_password(password)
+                .map_err(|e| BackendFailure(format!("losos-ctl set-password: {e}")))?;
+            call_backend("SetPassword", &(user.as_str(), password))?
         }
         // Handled before the bus is ever touched.
         Command::Install(_) => unreachable!("install is dispatched in main"),

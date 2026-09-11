@@ -195,6 +195,11 @@
             # HTTPS from a certificate the box generates itself. `install`
             # only: the live medium serves nothing.
             ./modules/tls.nix
+            # The first-run setup routes: the certificate tls.nix generates,
+            # served for download, and the facts the wizard needs before it
+            # holds an admin token. Must come with containers.nix — it merges
+            # its locations into that file's front vhost.
+            ./modules/setup.nix
             # Imported by `install` only, never by `iso`: the live medium must
             # keep squashfs loadable and its module policy permissive, and
             # hardening an installer that is discarded at the end of the
@@ -280,6 +285,12 @@
       #                         split exists to buy — this box's own workload
       #                         still answering on loopback with the edge VM
       #                         crashed and after a reboot (tests/cluster-vm.nix).
+      #   losos-setup         — boots one appliance and asserts the first-run
+      #                         setup routes: the certificate downloads byte for
+      #                         byte from /setup/losos-ca.crt with a type and a
+      #                         filename a browser can act on, /setup/state.json
+      #                         fingerprints the certificate that is actually on
+      #                         disk, and both are LAN-only (tests/setup.nix).
       checks.${system} = {
         losos-install = import ./tests/install.nix { inherit pkgs disko; };
         losos-admin-daemon = import ./tests/admin-vm.nix { inherit pkgs; };
@@ -291,6 +302,7 @@
         losos-hardening = import ./tests/hardening.nix { inherit pkgs; };
         losos-resize = import ./tests/resize.nix { inherit pkgs; };
         losos-tls = import ./tests/tls.nix { inherit pkgs; };
+        losos-setup = import ./tests/setup.nix { inherit pkgs; };
       };
     };
 }
