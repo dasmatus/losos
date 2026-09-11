@@ -56,7 +56,7 @@ pkgs.testers.nixosTest {
   name = "losos-setup";
 
   nodes.appliance =
-    { lib, ... }:
+    { ... }:
     {
       imports = [
         ../modules/options.nix
@@ -81,45 +81,6 @@ pkgs.testers.nixosTest {
         # port nothing listens on.
         forgejo.enable = false;
       };
-
-      # ── Working around a defect this test found, not one it introduced ─────
-      #
-      # modules/containers.nix declares the front vhost's listener as
-      # [0.0.0.0:80]; modules/tls.nix declares the same option on the same
-      # vhost as [0.0.0.0:80, 0.0.0.0:443 ssl]. Both are plain definitions of a
-      # list option, so the module system concatenates them and nginx is handed
-      #
-      #   listen 0.0.0.0:80 default_server;
-      #   listen 0.0.0.0:80 default_server;
-      #   listen 0.0.0.0:443 ssl default_server;
-      #
-      # which is `nginx: [emerg] a duplicate listen 0.0.0.0:80`. The config
-      # still *builds* — the nginx.conf derivation runs gixy, not `nginx -t` —
-      # and then fails in nginx.service's ExecStartPre at boot, so the failure
-      # lands on the appliance rather than on anyone's screen. The `install`
-      # system imports both modules, so this is the real front door
-      # crash-looping on a box with no shell.
-      #
-      # Nothing caught it because tests/tls.nix declares a vhost of its own
-      # instead of importing containers.nix; this is the first test to put the
-      # two modules together.
-      #
-      # The fix belongs in one of those two files — `lib.mkForce` on the list
-      # in tls.nix, or `lib.mkDefault` on the one in containers.nix — and this
-      # change owns neither. DELETE THIS BLOCK when the fix lands: if it is
-      # also spelled mkForce, the module system reports a conflict naming both
-      # files, which is the clearest reminder available.
-      services.nginx.virtualHosts."losos-front".listen = lib.mkForce [
-        {
-          addr = "0.0.0.0";
-          port = 80;
-        }
-        {
-          addr = "0.0.0.0";
-          port = 443;
-          ssl = true;
-        }
-      ];
 
       # For the script's own inspection of the certificate. The generator gets
       # openssl from its `path` in modules/tls.nix, and the publisher from its

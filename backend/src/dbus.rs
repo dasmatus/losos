@@ -12,8 +12,8 @@
 use crate::facade::{BUS_NAME, OBJECT_PATH};
 use crate::io_backend::IoLosos;
 use crate::losos::{
-    cmd_apply, cmd_change, cmd_factory_reset, cmd_grow, cmd_set_password, cmd_settings, cmd_state,
-    cmd_status,
+    cmd_apply, cmd_change, cmd_factory_reset, cmd_grow, cmd_recovery, cmd_set_password,
+    cmd_settings, cmd_state, cmd_status,
 };
 use crate::model::Mode;
 use crate::overrides::validate_apply;
@@ -105,6 +105,16 @@ impl Control {
     /// `occ` invocation, so there is no job id to hand back.
     fn set_password(&self, user: &str, password: &str) -> fdo::Result<String> {
         reply(&self.backend, |b| cmd_set_password(b, user, password))
+    }
+
+    /// The appliance recovery code, minted on the first call.
+    ///
+    /// A read with a side effect exactly once, which is why it is a method and
+    /// not a property: zbus caches properties and emits change signals for
+    /// them, and a changed-signal carrying this value would broadcast it to
+    /// every bus client the policy admits rather than to the one that asked.
+    fn recovery(&self) -> fdo::Result<String> {
+        reply(&self.backend, cmd_recovery)
     }
 }
 

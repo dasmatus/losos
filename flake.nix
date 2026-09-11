@@ -44,7 +44,21 @@
       # Flake packages: losos-ctl (the Rust lososd daemon + losos-ctl facade),
       # losos-registrar (the master-proxy edge) and losos-admin-ui (the static
       # admin SPA). See flake/packages.nix.
-      packages.${system} = import ./flake/packages.nix { inherit pkgs; };
+      packages.${system} =
+        import ./flake/packages.nix { inherit pkgs; }
+        # Bootable media, built off nixosConfigurations.install. Separate from
+        # packages.nix because these are the only outputs that reach back into
+        # `self` — they overlay the install system rather than building
+        # alongside it — and because they are gigabytes: `devenv shell
+        # build-media` builds everything matching `losos-disk-` and is
+        # deliberately opt-in, kept out of `devenv test`.
+        #
+        # losos-disk-qcow2 is a DEMO medium and not the appliance: it gives up
+        # full-disk encryption, the TPM and the tmpfs root, because a file
+        # cannot carry a key sealed to hardware it does not have. The header of
+        # flake/disk-images.nix says so at length; read it before handing the
+        # image to anyone as a way to actually run this.
+        // import ./flake/disk-images.nix { inherit self nixpkgs pkgs; };
 
       # The dev environment is devenv.nix, entered with `devenv shell` (see
       # devenv.yaml). This devShell exists so a bare `nix develop` still
@@ -200,6 +214,11 @@
             # holds an admin token. Must come with containers.nix — it merges
             # its locations into that file's front vhost.
             ./modules/setup.nix
+            # Where lososd keeps the appliance recovery code. One environment
+            # variable, but it must be imported for the daemon to agree with
+            # modules/impermanence.nix about a file that has to outlive a
+            # factory reset — see that module's header.
+            ./modules/recovery.nix
             # Imported by `install` only, never by `iso`: the live medium must
             # keep squashfs loadable and its module policy permissive, and
             # hardening an installer that is discarded at the end of the
@@ -222,6 +241,13 @@
             # The fscrypt policy on the shared data domain, locked and unlocked
             # off losos.sharingMyStorage.
             ./modules/fscrypt.nix
+            # Seals the secrets this box mints for itself with systemd-creds,
+            # so a copy of /persist that leaves the machine (a backup, a
+            # Longhorn replica, a support image) carries ciphertext rather than
+            # the Nextcloud admin password in plaintext. Next to fscrypt.nix
+            # because the two use the same sealing mechanism and cover
+            # different halves of the same problem.
+            ./modules/keyring.nix
             ./modules/daemon.nix
             ./modules/overrides.nix
             ./modules/updates.nix
@@ -303,6 +329,8 @@
         losos-resize = import ./tests/resize.nix { inherit pkgs; };
         losos-tls = import ./tests/tls.nix { inherit pkgs; };
         losos-setup = import ./tests/setup.nix { inherit pkgs; };
+        losos-admin-ui = import ./tests/admin-ui.nix { inherit pkgs; };
+        losos-keyring = import ./tests/keyring.nix { inherit pkgs; };
       };
     };
 }

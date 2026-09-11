@@ -93,16 +93,39 @@ pub struct State {
     pub sharing: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rebuild: Option<Rebuild>,
+    /// Whether an owner has ever claimed this box.
+    ///
+    /// False means nobody has set a password yet, and it is what opens the
+    /// one-shot claim route (`POST /api/setup/claim`, see
+    /// [`crate::losos::cmd_claim`]). It flips to true on the first successful
+    /// claim and is never flipped back by anything short of a reinstall —
+    /// notably not by `factory-reset`, which resets what the owner configured
+    /// and not who owns the box.
+    ///
+    /// `#[serde(default)]` because a state file written before this field
+    /// existed must still decode: a box that is already running has, by
+    /// definition, already been set up, and `false` is the safe reading only
+    /// because the claim route additionally refuses once a password exists.
+    #[serde(default)]
+    pub claimed: bool,
 }
 
 impl Default for State {
-    /// `{"mode":"local","sharing":false,"rebuild":null}` — what a fresh or
-    /// unreadable appliance reports, and what `factory-reset` writes.
+    /// `{"mode":"local","sharing":false,"rebuild":null,"claimed":false}` —
+    /// what a fresh or unreadable appliance reports.
+    ///
+    /// `factory-reset` deliberately does NOT write this whole value: it keeps
+    /// `claimed` as it found it. Resetting the settings an owner chose is not
+    /// the same as forgetting that the box has an owner, and re-opening the
+    /// claim route on a box already sitting on someone's LAN would hand the
+    /// next person on that network a password prompt with no key in front of
+    /// it. See [`crate::losos::cmd_factory_reset`].
     fn default() -> Self {
         State {
             mode: Mode::Local,
             sharing: false,
             rebuild: None,
+            claimed: false,
         }
     }
 }

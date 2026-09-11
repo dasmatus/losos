@@ -119,6 +119,9 @@ fn record(backend: &IoLosos, job: &str, state: RebuildState) {
                 progress: 0,
                 message: QUEUED.to_string(),
             }),
+            // Irrelevant to rebuild supervision, but State has no Default-based
+            // constructor here and the field is not optional.
+            claimed: true,
         },
     )
     .unwrap();
