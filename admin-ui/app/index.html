@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="referrer" content="no-referrer" />
+    <title>LosOS</title>
+    <!--
+      Blocking CLASSIC script, on purpose. It stamps data-theme on <html>
+      before the first paint so a stored Light/Dark choice never flashes the
+      other way. It cannot be inline: the admin CSP is `script-src 'self'`.
+      It cannot be `type="module"`: module scripts are deferred and run after
+      the parse, which is after the paint. See vite.config.ts.
+    -->
+    <script src="/theme-boot.js"></script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
