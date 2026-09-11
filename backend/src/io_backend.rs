@@ -310,6 +310,101 @@ impl Losos for IoLosos {
         Ok(supervisor::log_tail(&self.paths.rebuild_log()))
     }
 
+    // ── Online growth of /persist ───────────────────────────────────────
+    fn vg_free(&mut self) -> anyhow::Result<crate::grow::VgFree> {
+        // `vgs --units b --nosuffix --noheadings -o vg_free_count,vg_extent_size`
+        // gives the two numbers with no locale formatting to reparse. The
+        // extent count is already a count, so --units only affects the size.
+        let out = std::process::Command::new("vgs")
+            .args([
+                "--noheadings",
+                "--nosuffix",
+                "--units",
+                "b",
+                "-o",
+                "vg_free_count,vg_extent_size",
+                crate::grow::VG,
+            ])
+            .output()
+            .with_context(|| format!("running vgs against {}", crate::grow::VG))?;
+        if !out.status.success() {
+            anyhow::bail!(
+                "vgs failed: {}",
+                String::from_utf8_lossy(&out.stderr).trim()
+            );
+        }
+        let text = String::from_utf8_lossy(&out.stdout);
+        let mut fields = text.split_whitespace();
+        let free_extents: u64 = fields
+            .next()
+            .and_then(|f| f.parse().ok())
+            .with_context(|| format!("no free-extent count in vgs output: {text:?}"))?;
+        let extent_bytes: u64 = fields
+            .next()
+            .and_then(|f| f.parse().ok())
+            .with_context(|| format!("no extent size in vgs output: {text:?}"))?;
+        Ok(crate::grow::VgFree {
+            free_extents,
+            extent_bytes,
+        })
+    }
+
+    fn luks_key_file(&mut self) -> anyhow::Result<Option<String>> {
+        // `$LOSOS_LUKS_KEYFILE`, set by modules/daemon.nix on the no-TPM path.
+        //
+        // Unset means the TPM path, where the volume key is in the kernel
+        // keyring and `cryptsetup resize` finds it there. Where it is neither
+        // set nor in the keyring, cryptsetup falls back to prompting on stdin
+        // — and a daemon has none, so the resize dies with "Nothing to read on
+        // input." *after* lvextend has already grown the logical volume. That
+        // is not theoretical: it is how tests/resize.nix failed first.
+        Ok(std::env::var("LOSOS_LUKS_KEYFILE")
+            .ok()
+            .filter(|p| !p.is_empty()))
+    }
+
+    fn run_grow(&mut self, action: &crate::grow::GrowAction) -> anyhow::Result<()> {
+        let argv = crate::grow::action_argv(action);
+        let (cmd, args) = argv.split_first().expect("action_argv is never empty");
+        let out = std::process::Command::new(cmd)
+            .args(args)
+            .output()
+            .with_context(|| format!("running {}", argv.join(" ")))?;
+        if !out.status.success() {
+            anyhow::bail!(
+                "{} failed: {}",
+                argv.join(" "),
+                String::from_utf8_lossy(&out.stderr).trim()
+            );
+        }
+        Ok(())
+    }
+
+    fn persist_bytes(&mut self) -> anyhow::Result<u64> {
+        // `df -B1`, not `df -h`: this number is compared before and after to
+        // decide whether the grow did anything, so a value rounded to "1.6T"
+        // would report no change for the first 50 GB of growth.
+        //
+        // A subprocess rather than statvfs(2) because the alternative is a new
+        // crate dependency, and backend/Cargo.toml declares its whole set up
+        // front specifically so Cargo.lock — and the cargoHash pinned in
+        // flake/packages.nix — settles once. The other three steps here are
+        // subprocesses anyway.
+        let out = std::process::Command::new("df")
+            .args(["-B1", "--output=size", "/persist"])
+            .output()
+            .context("running df against /persist")?;
+        if !out.status.success() {
+            anyhow::bail!("df failed: {}", String::from_utf8_lossy(&out.stderr).trim());
+        }
+        let text = String::from_utf8_lossy(&out.stdout);
+        // Line 1 is the "1B-blocks" header; line 2 is the number.
+        text.lines()
+            .nth(1)
+            .and_then(|l| l.trim().parse().ok())
+            .with_context(|| format!("no size in df output: {text:?}"))
+    }
+
     fn next_job_id(&mut self) -> anyhow::Result<String> {
         // The timestamp and the pid are both constant within one second of one
         // long-lived daemon, so they alone let two jobs collide — and a

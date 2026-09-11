@@ -45,6 +45,52 @@ preference: fscrypt needs a filesystem that implements it, and btrfs does not.
 It costs transparent compression and data checksums, which is why mesh
 replication matters more than it used to.
 
+### Growing the disk later
+
+The logical volume claims 90% of the volume group, not all of it
+(`losos.storage.fillPercent`). The remainder exists so the disk can be grown
+without opening the box:
+
+```sh
+losos-ctl grow
+```
+
+That runs `lvextend`, `cryptsetup resize` and `resize2fs` in that order, with
+`/persist` still mounted and nothing restarted. It matters because `/persist`
+*is* `/nix` here — impermanence binds one over the other — so the store grows
+with every generation and the 03:00 unattended rebuild is what eventually fills
+it, on a machine with no shell to notice from.
+
+Once the reserve is used up, add a disk and run it again:
+
+```sh
+pvcreate /dev/sdX && vgextend persist-vg /dev/sdX && losos-ctl grow
+```
+
+It refuses rather than reporting success when there is nothing left to claim.
+
+## Hardening
+
+The baseline is on by default: KSPP kernel parameters, sysctl tightening, a
+kernel-module blacklist that also blocks explicit `modprobe`, tightened mount
+options, dbus-broker, and systemd sandboxing on the services that face the
+network. Four settings that can cost you something are opt-in:
+
+```nix
+losos.hardening.apparmor = true;   # mandatory access control
+losos.hardening.malloc   = true;   # GrapheneOS hardened_malloc
+losos.hardening.nosmt    = true;   # no SMT; roughly halves the core count
+losos.hardening.usbguard = true;   # block USB devices not present at boot
+```
+
+Three settings every hardening guide recommends are deliberately left out,
+because on this box they cost more than they buy: strict `rp_filter` (it drops
+the mDNS replies that are the only way in, and breaks Calico), disabled user
+namespaces (it stops both kubelets and containerd), and `noexec` on `/tmp` (nix
+builds execute there, and the nightly rebuild is the only self-repair path).
+`tests/hardening.nix` asserts all three are absent so they stay decisions
+rather than regressions.
+
 ## The mesh
 
 A box runs **two** Kubernetes instances, and they are deliberately different

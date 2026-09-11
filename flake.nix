@@ -281,6 +281,7 @@
         losos-impermanence = import ./tests/impermanence.nix { inherit pkgs impermanence; };
         losos-cluster = import ./tests/cluster-vm.nix { inherit pkgs; };
         losos-hardening = import ./tests/hardening.nix { inherit pkgs; };
+        losos-resize = import ./tests/resize.nix { inherit pkgs; };
       };
     };
 }

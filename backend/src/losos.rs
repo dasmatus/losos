@@ -31,6 +31,21 @@ pub trait Losos {
     /// Last non-empty line of the rebuild log, or `""`.
     fn rebuild_log_tail(&mut self) -> anyhow::Result<String>;
     fn next_job_id(&mut self) -> anyhow::Result<String>;
+
+    // ── Online growth of /persist ───────────────────────────────────────
+    // Split into "look" and "do" so the ordering of the destructive half is
+    // asserted against the plan, the same way the installer does it.
+    /// Unallocated extents in `persist-vg`.
+    fn vg_free(&mut self) -> anyhow::Result<crate::grow::VgFree>;
+    /// Execute one planned step.
+    fn run_grow(&mut self, action: &crate::grow::GrowAction) -> anyhow::Result<()>;
+    /// Total bytes of the `/persist` filesystem, for before/after reporting.
+    fn persist_bytes(&mut self) -> anyhow::Result<u64>;
+    /// Key file `cryptsetup resize` should authenticate with, if any.
+    /// `None` means "rely on the volume key being in the kernel keyring",
+    /// which is the TPM path; the keyfile path must supply one or the
+    /// resize prompts on a stdin the daemon does not have.
+    fn luks_key_file(&mut self) -> anyhow::Result<Option<String>>;
 }
 
 /// Message stamped on a rebuild the moment it is queued.
@@ -109,6 +124,29 @@ pub fn cmd_factory_reset<L: Losos>(l: &mut L) -> anyhow::Result<Value> {
     l.save_state(&s)?;
     l.spawn_rebuild(&job)?;
     Ok(json!({ "job": job, "reset": true }))
+}
+
+/// Extend `/persist` into the volume group's free extents, online.
+///
+/// Reports measured before/after sizes rather than "ok", because every way
+/// this goes wrong goes wrong *quietly*: `resize2fs` run against a mapping
+/// that has not been resized prints "Nothing to do!" and exits 0. `grew` is
+/// the only field worth trusting.
+pub fn cmd_grow<L: Losos>(l: &mut L) -> anyhow::Result<Value> {
+    let vg = l.vg_free()?;
+    let key_file = l.luks_key_file()?;
+    let plan = crate::grow::plan_grow(vg, key_file.as_deref()).map_err(|e| anyhow::anyhow!(e))?;
+    let before = l.persist_bytes()?;
+    for action in &plan {
+        l.run_grow(action)?;
+    }
+    let after = l.persist_bytes()?;
+    Ok(json!({
+        "grew": after > before,
+        "beforeBytes": before,
+        "afterBytes": after,
+        "claimedBytes": vg.free_bytes(),
+    }))
 }
 
 /// Rebuild progress. Polled by the admin UI roughly every two seconds.
@@ -340,6 +378,92 @@ mod tests {
         assert!(!f.state.sharing);
         assert!(f.spawned);
         assert_eq!(f.state.rebuild.as_ref().unwrap().message, MSG_RESET_STARTED);
+    }
+
+    #[test]
+    fn grow_runs_the_three_steps_in_order_and_reports_measured_sizes() {
+        use crate::grow::GrowAction;
+        let mut f = FakeLosos::new();
+        let before = f.persist_bytes;
+
+        let out = cmd_grow(&mut f).unwrap();
+
+        assert_eq!(
+            f.grow_ran,
+            vec![
+                GrowAction::ExtendLv { extents: 512 },
+                GrowAction::ResizeLuks { key_file: None },
+                GrowAction::ResizeFs,
+            ]
+        );
+        // Reported from two measurements, not from "the commands exited 0".
+        assert_eq!(out["grew"], true);
+        assert_eq!(out["beforeBytes"], before);
+        assert_eq!(out["afterBytes"], f.persist_bytes);
+        assert_eq!(out["claimedBytes"], 512u64 * 4 * 1024 * 1024);
+    }
+
+    #[test]
+    fn grow_refuses_when_there_is_nothing_to_grow_into() {
+        let mut f = FakeLosos::new();
+        f.vg_free_extents = 0;
+        let err = cmd_grow(&mut f).unwrap_err().to_string();
+        assert!(err.contains("no free extents"), "unhelpful: {err}");
+        // And nothing was run — a failed grow must not leave the LV extended
+        // with the filesystem unaware of it.
+        assert!(f.grow_ran.is_empty());
+    }
+
+    #[test]
+    fn grow_reports_no_growth_rather_than_claiming_success() {
+        // The failure this guards is real: resize2fs against a mapping that was
+        // never resized prints "Nothing to do!" and exits 0. A command that
+        // reported the exit status would call that a success.
+        struct Inert(FakeLosos);
+        impl Losos for Inert {
+            fn load_state(&mut self) -> anyhow::Result<State> {
+                self.0.load_state()
+            }
+            fn save_state(&mut self, s: &State) -> anyhow::Result<()> {
+                self.0.save_state(s)
+            }
+            fn rewrite_config(&mut self, b: bool) -> anyhow::Result<()> {
+                self.0.rewrite_config(b)
+            }
+            fn write_overrides(&mut self, b: &str) -> anyhow::Result<()> {
+                self.0.write_overrides(b)
+            }
+            fn read_overrides(&mut self) -> anyhow::Result<String> {
+                self.0.read_overrides()
+            }
+            fn spawn_rebuild(&mut self, j: &str) -> anyhow::Result<()> {
+                self.0.spawn_rebuild(j)
+            }
+            fn rebuild_log_tail(&mut self) -> anyhow::Result<String> {
+                self.0.rebuild_log_tail()
+            }
+            fn next_job_id(&mut self) -> anyhow::Result<String> {
+                self.0.next_job_id()
+            }
+            fn vg_free(&mut self) -> anyhow::Result<crate::grow::VgFree> {
+                self.0.vg_free()
+            }
+            /// Every step "succeeds" and nothing actually grows.
+            fn run_grow(&mut self, _: &crate::grow::GrowAction) -> anyhow::Result<()> {
+                Ok(())
+            }
+            fn persist_bytes(&mut self) -> anyhow::Result<u64> {
+                self.0.persist_bytes()
+            }
+            fn luks_key_file(&mut self) -> anyhow::Result<Option<String>> {
+                self.0.luks_key_file()
+            }
+        }
+
+        let mut inert = Inert(FakeLosos::new());
+        let out = cmd_grow(&mut inert).unwrap();
+        assert_eq!(out["grew"], false, "a no-op grow must not report success");
+        assert_eq!(out["beforeBytes"], out["afterBytes"]);
     }
 
     #[test]

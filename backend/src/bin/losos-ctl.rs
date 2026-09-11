@@ -61,6 +61,13 @@ enum Command {
     /// The destructive reset — wiping the disks — is the installer ISO, not
     /// this subcommand.
     FactoryReset,
+    /// Grow /persist into the volume group's unallocated extents.
+    ///
+    /// Online: nothing is unmounted and no rebuild is triggered. The space
+    /// comes from the margin modules/disko.nix leaves at install time
+    /// (losos.storage.fillPercent); when that is exhausted, add a disk with
+    /// pvcreate and vgextend and run this again.
+    Grow,
     /// The losos auto-installer. Destructive: it repartitions every target disk.
     Install(InstallArgs),
 }
@@ -145,6 +152,7 @@ fn run(cli: Cli) -> Result<(), BackendFailure> {
         Command::Settings { .. } => call_backend("Settings", &())?,
         Command::Change { mode } => call_backend("Change", &(mode.as_str(),))?,
         Command::FactoryReset => call_backend("FactoryReset", &())?,
+        Command::Grow => call_backend("Grow", &())?,
         Command::Apply => {
             let mut input = String::new();
             std::io::stdin()

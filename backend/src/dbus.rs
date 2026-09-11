@@ -11,7 +11,9 @@
 
 use crate::facade::{BUS_NAME, OBJECT_PATH};
 use crate::io_backend::IoLosos;
-use crate::losos::{cmd_apply, cmd_change, cmd_factory_reset, cmd_settings, cmd_state, cmd_status};
+use crate::losos::{
+    cmd_apply, cmd_change, cmd_factory_reset, cmd_grow, cmd_settings, cmd_state, cmd_status,
+};
 use crate::model::Mode;
 use crate::overrides::validate_apply;
 use zbus::{connection::Connection, fdo, interface};
@@ -80,6 +82,15 @@ impl Control {
     /// Soft factory reset.
     fn factory_reset(&self) -> fdo::Result<String> {
         reply(&self.backend, cmd_factory_reset)
+    }
+
+    /// Extend `/persist` into the volume group's free extents, online.
+    ///
+    /// Unlike `change` and `apply` this does not rebuild anything and returns
+    /// only when the resize is done — it is three short-lived commands, not a
+    /// supervised job, so there is no job id to hand back.
+    fn grow(&self) -> fdo::Result<String> {
+        reply(&self.backend, cmd_grow)
     }
 }
 

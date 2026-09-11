@@ -172,6 +172,37 @@
         }
       }
     },
+    "growResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "grew",
+        "beforeBytes",
+        "afterBytes",
+        "claimedBytes"
+      ],
+      "properties": {
+        "grew": {
+          "type": "boolean",
+          "description": "Whether the filesystem actually got bigger, measured rather than inferred from exit status. This is the only field worth trusting: every way a grow goes wrong goes wrong quietly, and a resize2fs run against an unresized mapping succeeds while changing nothing."
+        },
+        "beforeBytes": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Size of the /persist filesystem in bytes before the grow."
+        },
+        "afterBytes": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Size of the /persist filesystem in bytes after the grow."
+        },
+        "claimedBytes": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Bytes of unallocated volume-group space the logical volume claimed (free extents times extent size)."
+        }
+      }
+    },
     "statusResponse": {
       "type": "object",
       "additionalProperties": false,
@@ -265,6 +296,12 @@
       "description": "`losos-ctl factory-reset` \u2014 soft factory reset: atomically restore modules/overrides.nix to the committed default body, reset the persisted state to defaultState (Local, sharing off), mark a rebuild as building, start a supervised nixos-rebuild, and emit the job id. Non-destructive: it only touches lososd's own state + overrides.nix. The destructive tier (wipe disks + reinstall) is the installer ISO, which auto-runs `losos-install` as root's login shell.",
       "stdout": {
         "$ref": "#/$defs/factoryResetResponse"
+      }
+    },
+    "grow": {
+      "description": "`losos-ctl grow` — extend /persist into the volume group's unallocated extents, online. Three steps in a fixed order: lvextend, then cryptsetup resize, then resize2fs. The order is load-bearing and the failure is silent — resize2fs asks the LUKS mapping for its size, so running it before cryptsetup resize reads the pre-grow size, prints \"Nothing to do!\" and exits 0. Nothing is unmounted and no rebuild is triggered. The space comes from the margin modules/disko.nix leaves at install time (losos.storage.fillPercent, default 90); when that is exhausted, add a disk with pvcreate + vgextend and run this again. Errors when the volume group has no free extents, rather than succeeding with an empty plan.",
+      "stdout": {
+        "$ref": "#/$defs/growResponse"
       }
     },
     "install": {

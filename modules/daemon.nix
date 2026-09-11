@@ -62,7 +62,29 @@ in
       environment = {
         LOSOS_ADMIN_PORT = toString config.losos.admin.apiPort;
         LOSOS_ADMIN_TOKEN_FILE = toString config.losos.admin.tokenFile;
+      }
+      # What `cryptsetup resize` authenticates with during `losos-ctl grow`.
+      #
+      # Only on the no-TPM path. With a TPM the volume key is in the kernel
+      # keyring after the initrd unlock and cryptsetup finds it there; without
+      # one, it would fall back to prompting on a stdin the daemon does not
+      # have and fail *after* lvextend had already run.
+      // lib.optionalAttrs (!config.losos.tpm.enable) {
+        LOSOS_LUKS_KEYFILE = "/etc/keys/persist-keyfile";
       };
+      # What `losos-ctl grow` shells out to. A systemd unit's default PATH does
+      # not include these, and the failure is the unhelpful kind: the grow
+      # reports "No such file or directory" for lvextend after the admin has
+      # already been told the disk is full.
+      #
+      # coreutils is for `df`, which is how the daemon measures whether the
+      # filesystem actually got bigger rather than trusting an exit status.
+      path = [
+        pkgs.lvm2
+        pkgs.cryptsetup
+        pkgs.e2fsprogs
+        pkgs.coreutils
+      ];
       serviceConfig = {
         ExecStart = "${pkg}/bin/lososd";
         # `always`, not `on-failure`: a clean exit(0) — an unhandled shutdown
