@@ -65,6 +65,19 @@ in
 {
   name = "losos";
 
+  # Push what this shell builds to the cache the appliance substitutes from.
+  #
+  # This is the half that fills the cache; modules/cache.nix is the half that
+  # reads it. Without something pushing, a substituter is just a 404 the
+  # installer waits five seconds for.
+  #
+  # CI does not go through devenv (see the header of .forgejo/workflows/ci.yml
+  # -- routing jobs through `devenv shell` blew Codeberg's 10-minute cap), so
+  # this covers local builds only. Wiring the CI half needs a CACHIX_AUTH_TOKEN
+  # secret and is not done yet: until it is, the cache holds whatever a
+  # developer happened to build.
+  cachix.push = "losos";
+
   # ── Toolchain ────────────────────────────────────────────────────────────
   # channel = "nixpkgs" on purpose. The repo ships no rust-toolchain.toml
   # because the Nix builders use nixpkgs' rustc regardless; pinning a
