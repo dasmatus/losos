@@ -1,16 +1,13 @@
 //! The appliance recovery code: minted once, stable forever after, and never
 //! in a place it can leak from.
 //!
-//! The module under test is pulled in by path rather than through
-//! `losos_ctl::recovery`, because `src/lib.rs` is owned by another change in
-//! flight and does not export it yet. Once it does, the two lines below become
-//! `use losos_ctl::recovery::{...};` and the `#[allow]` goes with them — the
-//! test bodies do not change.
-#[allow(dead_code, unreachable_pub)]
-#[path = "../src/recovery.rs"]
-mod recovery;
-
-use recovery::{
+//! Exercised through the crate's public surface, so these tests see exactly
+//! what `lososd` sees: a `#[path]` include would compile a second, private copy
+//! of the module and could keep passing after the real one stopped being
+//! reachable.
+use losos_ctl::fake::FakeLosos;
+use losos_ctl::losos::cmd_recovery;
+use losos_ctl::recovery::{
     code_file_from, ensure_code, format_uuid_v4, is_well_formed, plan_ensure, CodeStore, Ensure,
     MemoryStore, MintReason, Recovery, DEFAULT_RECOVERY_FILE, UUID_LEN,
 };
@@ -249,5 +246,69 @@ fn the_path_falls_back_to_var_secrets_when_the_unit_says_nothing() {
     assert!(
         DEFAULT_RECOVERY_FILE.starts_with("/var/"),
         "the default must be under /var or impermanence drops it on reboot"
+    );
+}
+
+// ── The command layer, against the fake backend ─────────────────────────────
+//
+// Everything above tests the module in isolation. These drive `cmd_recovery`
+// through the `Losos` trait, which is the path `lososd` actually takes, so a
+// trait method wired to the wrong store fails here and nowhere else.
+
+#[test]
+fn the_command_mints_on_a_fresh_appliance_and_repeats_itself_after() {
+    let mut f = FakeLosos::new();
+
+    let first = cmd_recovery(&mut f).expect("first read on a fresh appliance");
+    assert_eq!(first["minted"], true, "the first call is the minting one");
+    let code = first["code"].as_str().expect("code must be a string");
+    assert!(is_well_formed(code), "minted a malformed code: {code}");
+
+    let second = cmd_recovery(&mut f).expect("second read");
+    assert_eq!(
+        second["code"], first["code"],
+        "the code changed between calls; the owner's written copy is now wrong"
+    );
+    assert_eq!(
+        second["minted"], false,
+        "a re-read must not claim to have minted anything"
+    );
+    assert_eq!(
+        f.recovery.writes, 1,
+        "the code file was written more than once"
+    );
+}
+
+#[test]
+fn a_code_already_on_disk_is_returned_rather_than_replaced() {
+    let mut f = FakeLosos::new();
+    f.recovery = MemoryStore::with_file(&format!("{GOOD}\n"));
+
+    let out = cmd_recovery(&mut f).expect("reading an existing code");
+    assert_eq!(
+        out["code"], GOOD,
+        "returned something other than the stored code"
+    );
+    assert_eq!(out["minted"], false);
+    assert_eq!(
+        f.recovery.writes, 0,
+        "an existing code must never be rewritten"
+    );
+}
+
+#[test]
+fn the_response_carries_the_code_and_nothing_else_about_the_box() {
+    let mut f = FakeLosos::new();
+    let out = cmd_recovery(&mut f).expect("reading the code");
+
+    let obj = out.as_object().expect("the response is a JSON object");
+    let mut keys: Vec<&str> = obj.keys().map(String::as_str).collect();
+    keys.sort_unstable();
+    // schema.json's recoveryResponse sets additionalProperties: false, so a new
+    // field here is a wire-contract change and has to be made deliberately.
+    assert_eq!(
+        keys,
+        ["code", "minted"],
+        "recoveryResponse gained or lost a field"
     );
 }

@@ -57,6 +57,12 @@ pub struct FakeLosos {
     /// `crictl` or an unreachable CRI socket — which is what the cleanup path
     /// has to survive.
     pub occ_spawn_fails: bool,
+
+    // ── The appliance recovery code ─────────────────────────────────────
+    /// In-memory stand-in for `/var/secrets/losos-recovery-code`. Public so a
+    /// test can seed it with [`crate::recovery::MemoryStore::with_file`] or
+    /// count its `writes` to prove the code is minted exactly once.
+    pub recovery: crate::recovery::MemoryStore,
 }
 
 impl FakeLosos {
@@ -86,6 +92,9 @@ impl FakeLosos {
             occ_stdout: "Successfully reset password for notshared".to_string(),
             occ_stderr: String::new(),
             occ_spawn_fails: false,
+            // Empty, so the default fake is a fresh appliance that has never
+            // minted a code — the state the first-run wizard actually meets.
+            recovery: crate::recovery::MemoryStore::empty(),
         }
     }
 }
@@ -139,6 +148,15 @@ impl Losos for FakeLosos {
         let id = format!("job-{}", self.job_counter);
         self.job_counter += 1;
         Ok(id)
+    }
+
+    /// The real decision, run against the in-memory store.
+    ///
+    /// Deliberately [`crate::recovery::ensure_code`] rather than a hand-written
+    /// stub: the mint-once behaviour is the thing under test, and a fake that
+    /// reimplemented it would prove only that the fake agrees with itself.
+    fn recovery_code(&mut self) -> anyhow::Result<crate::recovery::Recovery> {
+        crate::recovery::ensure_code(&mut self.recovery)
     }
 
     fn vg_free(&mut self) -> anyhow::Result<crate::grow::VgFree> {

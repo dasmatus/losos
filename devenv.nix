@@ -43,6 +43,57 @@ let
     output:
     "command nix eval --raw --apply 'as: builtins.concatStringsSep \" \" (builtins.attrNames as)' .#${output}.x86_64-linux";
 
+  # Package-name prefixes whose outputs are gigabytes rather than megabytes:
+  # the OCI images the local cluster runs (flake/images.nix) and the bootable
+  # media — the demo QCOW2 and the closure-carrying ISO (flake/disk-images.nix).
+  # `build-pkgs` skips both sets, and each gets its own opt-in script below.
+  #
+  # One list, three uses: the skip in `build-pkgs` and the select in
+  # `build-images` and `build-media` are all generated from it, so a new prefix
+  # cannot be added to one and forgotten in the others.
+  heavy = [
+    "losos-image-"
+    "losos-disk-"
+  ];
+  heavyGlob = lib.concatMapStringsSep "|" (p: "${p}*") heavy;
+
+  # Build every flake package whose name starts with `prefix`, narrowed further
+  # by the script's own arguments if it got any (`build-media qcow2`), since
+  # each of these is a separate multi-gigabyte build.
+  #
+  # The `matched` counter is the point. Selecting by prefix out of the flake's
+  # own attribute names is what keeps these scripts from drifting the way the
+  # hand-typed list above did — but a `for` loop over nothing exits 0 and
+  # prints a clean run, so a rename would turn "builds two images" into
+  # "builds nothing" with no visible difference. Matching nothing is an error.
+  buildMatching = prefix: ''
+    set -eu
+    matched=0
+    for p in $(${flakeAttrs "packages"}); do
+      case $p in
+        ${prefix}*) ;;
+        *) continue ;;
+      esac
+      if [ "$#" -gt 0 ]; then
+        wanted=0
+        for w in "$@"; do
+          case $p in
+            *"$w"*) wanted=1 ;;
+          esac
+        done
+        [ "$wanted" -eq 1 ] || continue
+      fi
+      matched=$((matched + 1))
+      echo "── $p"
+      command nix build --no-link -L ".#$p"
+    done
+    if [ "$matched" -eq 0 ]; then
+      echo "no flake package matches ${prefix}* (filter: $*)" >&2
+      echo "packages are: $(${flakeAttrs "packages"})" >&2
+      exit 1
+    fi
+  '';
+
   # The host fish config minus Zellij, and minus the claude/codex aliases,
   # which call a host ollama wrapper that is neither reproducible nor relevant
   # here. Carried over verbatim from flake/devshell.nix.
@@ -243,30 +294,31 @@ in
   '';
   scripts.check-eval.description = "Force the full NixOS module merge for both systems.";
 
-  # Every flake package except the OCI images, which are their own script
-  # below because they are their own order of magnitude.
+  # Every flake package except the OCI images and the bootable media, which
+  # are their own scripts below because they are their own order of magnitude.
   scripts.build-pkgs.exec = ''
     set -eu
     for p in $(${flakeAttrs "packages"}); do
       case $p in
-        losos-image-*) continue ;;
+        ${heavyGlob}) continue ;;
       esac
       echo "── $p"
       command nix build --no-link -L ".#$p"
     done
   '';
-  scripts.build-pkgs.description = "Build every flake package except the OCI images.";
+  scripts.build-pkgs.description = "Build every flake package except the images and media.";
 
   # The three images the LOCAL k3s cluster runs as static pods
   # (flake/images.nix, wired to losos.workloads.* in modules/defaults.nix).
   #
   # Opt-in, and deliberately not part of `devenv test`, because of what they
-  # cost: measured on a dev machine, the Nextcloud image's content closure is
-  # 2.3 GiB across 244 store paths (nextcloud34 with ~30 apps, php-with-
-  # extensions, apacheHttpd) and the tarball dockerTools writes out is of the
-  # same order again. That is precisely the "multi-gigabyte closure" the
-  # enterTest block below promises not to spend on you. Forgejo is a 585 MiB
-  # tarball over 126 paths, pause 51 MiB.
+  # cost. Measured on a dev machine (`nix path-info -S --closure-size` over the
+  # three `*-root` outputs): the Nextcloud image's content closure is 2.11 GiB
+  # across 253 store paths (nextcloud34 with ~30 apps, php-with-extensions,
+  # apacheHttpd), and dockerTools compresses that to a 634 MiB tarball — 62 s
+  # of zstd on 16 warm threads. That is precisely the "multi-gigabyte closure"
+  # the enterTest block below promises not to spend on you. Forgejo is a
+  # 585 MiB tarball over a 608 MiB / 130-path closure, pause 51 MiB.
   #
   # It has to be gated *somewhere*, though, and until CI grows a job for it
   # this is the only place. The appliance never builds these: it substitutes
@@ -278,18 +330,38 @@ in
   # it at build time) or a buildEnv whose paths collide. Run this before
   # pushing anything that touches flake/images.nix or
   # modules/nextcloud-stack.nix.
-  scripts.build-images.exec = ''
-    set -eu
-    for p in $(${flakeAttrs "packages"}); do
-      case $p in
-        losos-image-*) ;;
-        *) continue ;;
-      esac
-      echo "── $p"
-      command nix build --no-link -L ".#$p"
-    done
-  '';
+  scripts.build-images.exec = buildMatching "losos-image-";
   scripts.build-images.description = "Build the OCI images the local cluster runs (gigabytes; opt-in).";
+
+  # The two bootable media (flake/disk-images.nix), built off the same
+  # `install` system the ISO installs:
+  #
+  #   losos-disk-qcow2  a preinstalled QCOW2 for a VM. A demo and dev artifact,
+  #                     NOT the appliance: a disk image cannot carry the
+  #                     TPM-sealed LUKS-on-LVM the real install builds, so it
+  #                     has no full-disk encryption at all. Never hand one to
+  #                     someone who thinks it is the product.
+  #   losos-disk-iso    the installer ISO with the whole install closure in
+  #                     isoImage.storeContents, so nixos-install copies from
+  #                     the medium instead of fetching and building. Measured:
+  #                     that closure is 5.78 GiB of store data over 882 paths,
+  #                     of which 1.57 GiB has to come down from cache.nixos.org
+  #                     and 849 MiB of image tarballs plus losos-ctl would
+  #                     otherwise be built on the target.
+  #
+  # Local-only, both of them. The thin ISO the `iso` job builds is already
+  # ~1.5 GB (see .forgejo/workflows/ci.yml), Codeberg's entire recommended
+  # allowance for packages, LFS and attachments combined; these are bigger
+  # again and are never uploaded anywhere. Pass a substring to build one of
+  # them on its own: `build-media qcow2`.
+  #
+  # Worth knowing before you run this on an authenticated machine: `cachix.push`
+  # at the top of this file makes everything built in the shell a push
+  # candidate. That is the point for the OCI images, which the appliance
+  # substitutes. Nothing substitutes a medium, so pushing one spends the cache's
+  # quota on a file only you will ever read.
+  scripts.build-media.exec = buildMatching "losos-disk-";
+  scripts.build-media.description = "Build the demo QCOW2 and the closure-carrying ISO (many gigabytes; opt-in).";
 
   # The real acceptance gate for the control plane and the appliance's front
   # door. CI cannot run these — the Codeberg runners cap at 10 minutes and 8 GB
@@ -315,8 +387,9 @@ in
 
   # ── devenv test ──────────────────────────────────────────────────────────
   # `devenv test` runs the fast gates: everything that does not need KVM or a
-  # multi-gigabyte closure. The VM tests, the OCI images and the ISO stay
-  # opt-in — `vm-tests`, `build-images`, `build-iso`.
+  # multi-gigabyte closure. The VM tests, the OCI images, the ISO and the
+  # bootable media stay opt-in — `vm-tests`, `build-images`, `build-iso`,
+  # `build-media`.
   enterTest = ''
     set -e
     check-pins
@@ -332,8 +405,9 @@ in
     echo "  check-flake · check-eval      Nix eval gates"
     echo "  build-pkgs · build-images     builds"
     echo "  build-iso                     the installer image"
+    echo "  build-media                   demo QCOW2 + closure-carrying ISO"
     echo "  vm-tests                      the real acceptance gate (needs KVM)"
-    echo "  devenv test                   all of it bar VM tests, images, ISO"
+    echo "  devenv test                   all of it bar VM tests, images, media"
 
     # Switch to fish only for an INTERACTIVE shell, detected by the bash `i`
     # flag in $-. This guard is load-bearing: `devenv shell lint` and every CI

@@ -9,8 +9,8 @@
 
 use crate::io_backend::{atomic_write_secret, IoLosos};
 use crate::losos::{
-    cmd_apply, cmd_change, cmd_factory_reset, cmd_grow, cmd_set_password, cmd_settings, cmd_state,
-    cmd_status,
+    cmd_apply, cmd_change, cmd_factory_reset, cmd_grow, cmd_recovery, cmd_set_password,
+    cmd_settings, cmd_state, cmd_status,
 };
 use crate::model::Mode;
 use crate::overrides::validate_apply;
@@ -182,6 +182,45 @@ async fn post_grow(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
 /// out of the response and puts it in the journal — where, by construction, it
 /// cannot carry the password either: it is not a field of any `OccAction` and
 /// never reaches an argv.
+/// `GET /api/setup/claim` — has this box got an owner yet? No token required.
+///
+/// The page has to ask this before it can decide whether to show the wizard or
+/// the sign-in dialog, and on an unclaimed box there is no token to ask with.
+async fn get_claim_state(api: web::Data<Api>) -> HttpResponse {
+    run(&api, crate::losos::cmd_claim_state)
+}
+
+/// `POST /api/setup/claim` — set the first password and take ownership.
+///
+/// Unauthenticated **while the box is unclaimed, and never after**. See
+/// [`crate::losos::cmd_claim`] for why this window exists at all: the admin
+/// token is minted into a 0600 file on a box with no shell, so without it a
+/// fresh appliance cannot be administered by anyone.
+///
+/// The token is handed back in the reply so the page can continue
+/// authenticated. That is the same secret the gate checks, released exactly
+/// once, to the caller who just proved they were on the LAN during the window
+/// and set the owner password. After that this route refuses every call, so
+/// the token cannot be re-fetched by a later visitor.
+async fn post_claim(api: web::Data<Api>, body: web::Bytes) -> HttpResponse {
+    const SHAPE: &str = r#"body must be JSON: {"user": "..." (optional), "password": "..."}"#;
+    let Ok(doc) = serde_json::from_slice::<serde_json::Value>(&body) else {
+        return err(actix_web::http::StatusCode::BAD_REQUEST, SHAPE);
+    };
+    let user = match doc.get("user") {
+        None | Some(serde_json::Value::Null) => crate::setup::DEFAULT_ADMIN_USER.to_string(),
+        Some(serde_json::Value::String(u)) => u.clone(),
+        Some(_) => return err(actix_web::http::StatusCode::BAD_REQUEST, SHAPE),
+    };
+    let Some(password) = doc.get("password").and_then(|p| p.as_str()) else {
+        return err(actix_web::http::StatusCode::BAD_REQUEST, SHAPE);
+    };
+    let token = api.token.clone();
+    run(&api, move |l| {
+        crate::losos::cmd_claim(l, &user, password, &token)
+    })
+}
+
 async fn post_set_password(
     api: web::Data<Api>,
     req: HttpRequest,
@@ -215,6 +254,21 @@ async fn post_set_password(
     }
     let password = password.to_string();
     run(&api, |b| cmd_set_password(b, &user, &password))
+}
+
+/// The appliance recovery code.
+///
+/// `GET`, and there is no route that rotates it — see [`cmd_recovery`] for why
+/// replacing the code is not an operation this API offers.
+///
+/// Gated by the same Bearer token as everything else and no harder, which is a
+/// decision rather than an oversight: the token that would be needed to read
+/// this already authorises `POST /api/apply`, which writes arbitrary Nix and
+/// runs `nixos-rebuild switch` as root. A second factor in front of the code
+/// would cost the owner a step and cost an attacker who already holds the token
+/// nothing. The reasoning is written out in `backend/src/recovery.rs`.
+async fn get_recovery(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    gate(&api, &req).unwrap_or_else(|| run(&api, cmd_recovery))
 }
 
 async fn not_found() -> HttpResponse {
@@ -324,6 +378,12 @@ pub fn serve(backend: IoLosos) -> anyhow::Result<()> {
                 .route("/api/factory-reset", web::post().to(post_factory_reset))
                 .route("/api/grow", web::post().to(post_grow))
                 .route("/api/set-password", web::post().to(post_set_password))
+                .route("/api/recovery", web::get().to(get_recovery))
+                // The two unauthenticated routes, and the only ones besides
+                // /api/health. Both are first-run only: the state read is a
+                // single bit, and the claim refuses once the box has an owner.
+                .route("/api/setup/claim", web::get().to(get_claim_state))
+                .route("/api/setup/claim", web::post().to(post_claim))
                 .default_service(web::route().to(not_found))
         })
         .bind(("127.0.0.1", port))

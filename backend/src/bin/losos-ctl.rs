@@ -83,6 +83,20 @@ enum Command {
         #[arg(long, default_value = losos_ctl::setup::DEFAULT_ADMIN_USER)]
         user: String,
     },
+    /// Print the appliance recovery code, minting one on first use.
+    ///
+    /// Stable for the life of the installation: the same code comes back on
+    /// every later call, and there is no subcommand that replaces it. That is
+    /// the point — a code that could be rotated is a code the owner's written
+    /// copy stops matching.
+    ///
+    /// It survives `factory-reset` (which rewrites state.json and
+    /// overrides.nix, not /var/secrets) and is destroyed only by a reinstall,
+    /// which is the one event it exists for.
+    Recovery {
+        #[arg(long, hide = true)]
+        json: bool,
+    },
     /// The losos auto-installer. Destructive: it repartitions every target disk.
     Install(InstallArgs),
 }
@@ -168,6 +182,7 @@ fn run(cli: Cli) -> Result<(), BackendFailure> {
         Command::Change { mode } => call_backend("Change", &(mode.as_str(),))?,
         Command::FactoryReset => call_backend("FactoryReset", &())?,
         Command::Grow => call_backend("Grow", &())?,
+        Command::Recovery { .. } => call_backend("Recovery", &())?,
         Command::Apply => {
             let mut input = String::new();
             std::io::stdin()

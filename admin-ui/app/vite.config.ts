@@ -95,6 +95,18 @@ export default defineConfig({
         target: process.env["LOSOS_API_ORIGIN"] ?? "http://127.0.0.1:8082",
         changeOrigin: true,
       },
+      // The first-run wizard's step 1 reads /setup/state.json — the box's name
+      // and its certificate fingerprint — and on the appliance that file is
+      // served by nginx from disk rather than by lososd (modules/setup.nix),
+      // because the wizard has to name the box and show the fingerprint
+      // *before* the owner has trusted the connection or holds a token. Without
+      // this entry the dev origin falls through to the SPA's index.html, the
+      // document parses as HTML, and step 1 reports the box as too old to have
+      // a setup route at all.
+      "/setup": {
+        target: process.env["LOSOS_API_ORIGIN"] ?? "http://127.0.0.1:8082",
+        changeOrigin: true,
+      },
     },
   },
 });

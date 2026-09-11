@@ -234,6 +234,25 @@
         }
       }
     },
+    "recoveryResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code",
+        "minted"
+      ],
+      "properties": {
+        "code": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+          "description": "The appliance recovery code: a canonical lowercase v4 UUID, minted from 16 bytes of /dev/urandom on first read and stable for the life of the installation. Stored 0600 at /var/secrets/losos-recovery-code (LOSOS_RECOVERY_FILE, set by modules/recovery.nix) and persisted by impermanence's whole-/var bind mount. It survives `losos-ctl factory-reset`, which rewrites state.json and overrides.nix and does not touch /var/secrets; only a reinstall destroys it, which is the one event it exists for. There is no route that rotates it — a code the owner has written down must not be replaceable from the admin UI in one click."
+        },
+        "minted": {
+          "type": "boolean",
+          "description": "Whether *this* call created the code, so the first-run wizard can say \"write this down now\" once and \"here it is again\" afterwards. It describes the call, not persisted state: it is true on exactly one successful read per installation (or again after the file has been lost or corrupted, which lososd logs at error level because any previously written-down copy has just stopped matching)."
+        }
+      }
+    },
     "statusResponse": {
       "type": "object",
       "additionalProperties": false,
@@ -345,6 +364,12 @@
         "$ref": "#/$defs/setPasswordResponse"
       }
     },
+    "recovery": {
+      "description": "`losos-ctl recovery` — print the appliance recovery code, minting one on first use. Idempotent: every later call returns the same code and writes nothing. There is deliberately no rotate subcommand. What the code is for: a reinstall wipes /persist and with it the machine-id, /etc/rancher/node/password and /var/secrets/losos-proxy-token, so to the edge the box is a stranger claiming a hostname the registry has already seen, and the rejoin is refused as a duplicate. The code is the missing proof of ownership — a UUID the owner wrote down before the wipe. NOTE: the edge half does not exist yet. There is no `recovery` map in backend-registrar's registry.json and no /recover route, so today this code proves ownership at the first-run wizard and recovers nothing on its own; clients must not imply otherwise. Non-zero exit + stderr when the code file exists but cannot be read — minting over an unreadable file would destroy a code the owner still holds, so that case fails loudly instead.",
+      "stdout": {
+        "$ref": "#/$defs/recoveryResponse"
+      }
+    },
     "install": {
       "description": "`losos-ctl install [flags]` \u2014 the losos auto-installer (was losos-install.sh). Detects fixed disks, merges them into one LVM volume group via disko, runs nixos-install, and lays the flake at /persist/etc/nixos. Flags: --tpm, --drives A,/dev/b,..., --no-install, --disko-script PATH, --emit-target FILE. Drives auto-detection uses `lsblk --json`. Non-zero exit + stderr on failure (no candidate disks, disko/nixos-install failure).",
       "args": {
@@ -396,6 +421,10 @@
         "auth": true,
         "in": "{\"user\":\"...\" (optional, defaults to notshared),\"password\":\"...\"}",
         "out": "setPasswordResponse"
+      },
+      "GET /api/recovery": {
+        "auth": true,
+        "out": "recoveryResponse"
       }
     }
   },
@@ -443,6 +472,10 @@
           "s (password)"
         ],
         "out": "s (setPasswordResponse)"
+      },
+      "Recovery": {
+        "in": [],
+        "out": "s (recoveryResponse)"
       }
     }
   }

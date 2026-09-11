@@ -92,7 +92,12 @@ export function StackRow({ className, last, ...props }: RowProps) {
   );
 }
 
-export interface RowTextProps extends React.ComponentPropsWithoutRef<"div"> {
+/* `title` is omitted from the div's own props before being redeclared: on an
+ * HTMLElement `title` is the tooltip attribute and therefore a string, and a
+ * row label is a ReactNode — the two cannot both be called `title` on the
+ * same type. Dropping the attribute is the right way round, because a
+ * settings row should never be hiding half its meaning in a tooltip. */
+export interface RowTextProps extends Omit<React.ComponentPropsWithoutRef<"div">, "title"> {
   title: React.ReactNode;
   /* Secondary text that IS the row's content — a measured value, a
    * consequence. Not for explaining the control: that is GroupCaption. */

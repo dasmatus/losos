@@ -313,7 +313,11 @@ pub fn ensure_code<S: CodeStore + ?Sized>(store: &mut S) -> anyhow::Result<Recov
 /// Public rather than `#[cfg(test)]` so the daemon's own test suite can reach
 /// it once `Losos`/`FakeLosos` grow a recovery method — the fake backend has no
 /// business opening `/dev/urandom` either.
-#[derive(Debug, Default)]
+/// `Clone` so it can sit in [`crate::fake::FakeLosos`], which is cloned by the
+/// tests. A clone is an independent store, not a second handle — which is the
+/// right semantics here: two clones model two appliances, and that is exactly
+/// what `two_appliances_do_not_get_the_same_code` needs.
+#[derive(Debug, Default, Clone)]
 pub struct MemoryStore {
     /// The "file". `None` is a missing file.
     pub file: Option<String>,
