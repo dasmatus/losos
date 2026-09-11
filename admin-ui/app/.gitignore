@@ -1,0 +1,13 @@
+# Build inputs and outputs. package-lock.json is NOT here on purpose: the Nix
+# build runs `npm ci` against it, so it has to be committed and has to stay in
+# step with package.json.
+#
+# `dist/` being listed here is load-bearing, not tidiness. Tailwind v4 detects
+# its own sources by walking the project and skipping whatever git ignores, so
+# an unignored dist/ makes each build scan the PREVIOUS build's CSS and JS and
+# re-emit every class it finds there. Measured: 24.3 kB of CSS became 37.5 kB,
+# and it would have kept ratcheting. With dist/ ignored, two builds in a row
+# produce byte-identical hashed filenames.
+node_modules/
+dist/
+*.tsbuildinfo

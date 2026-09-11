@@ -1,0 +1,100 @@
+/* First-run wizard: the two things Tailwind utilities cannot express.
+ *
+ * A real stylesheet, imported from Wizard.tsx and bundled into the app's one
+ * CSS asset. That is the only shape this may take: under the appliance CSP
+ * (`style-src 'self'`) an injected <style> element is ignored silently and a
+ * style="" attribute is refused outright, so anything dynamic is either a
+ * class or a custom property set through the CSSOM.
+ *
+ * Nothing here repeats a token. The palette lives in src/styles/index.css and
+ * this file only names motion and print behaviour.
+ *
+ * No reduced-motion guard below, deliberately: index.css carries one
+ * `@media (prefers-reduced-motion: reduce)` block that kills every animation
+ * and transition in the app with `!important`, including these. A second guard
+ * here would be a second place to forget.
+ */
+
+/* ── Moving between steps ─────────────────────────────────────────────────
+ *
+ * Enter-only, and a step is keyed by its index so React remounts it and the
+ * animation runs again. There is no exit half: only one step is mounted at a
+ * time, so an exit would mean keeping the old one alive and measuring heights
+ * to stop the card from jumping. The direction is what carries the meaning —
+ * forward slides in from the right, Back from the left — and that survives on
+ * the enter alone. */
+
+@keyframes wizard-in-from-right {
+  from {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes wizard-in-from-left {
+  from {
+    opacity: 0;
+    transform: translateX(-24px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.wizard-step-forward {
+  animation: wizard-in-from-right 260ms cubic-bezier(0.2, 0.7, 0.3, 1) both;
+}
+
+.wizard-step-back {
+  animation: wizard-in-from-left 260ms cubic-bezier(0.2, 0.7, 0.3, 1) both;
+}
+
+/* ── Printing the recovery code ───────────────────────────────────────────
+ *
+ * The Print button on step 3 calls window.print(), which prints the document —
+ * the whole admin page, chrome and all. Narrowing that to one card is the job
+ * of these rules.
+ *
+ * `visibility` rather than `display`: hiding by display collapses every
+ * ancestor of the sheet too, and the sheet then has nothing to be positioned
+ * inside. Visibility is inherited and can be turned back on for one subtree,
+ * which leaves the ancestors' boxes in place but blank — hence the absolute
+ * position, which lifts the sheet to the top of the printed page instead of
+ * wherever the blank layout left it.
+ *
+ * Colours are forced to black on white. The sheet's elements carry palette
+ * classes (`text-ink`, `bg-surface`) that resolve through custom properties,
+ * and in the dark theme those are light text on a dark card: printed as-is
+ * that is either invisible or a page of toner. */
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+
+  .wizard-print-sheet,
+  .wizard-print-sheet * {
+    visibility: visible;
+    color: #000 !important;
+    background: transparent !important;
+    border-color: #000 !important;
+    box-shadow: none !important;
+  }
+
+  .wizard-print-sheet {
+    position: absolute;
+    inset-block-start: 0;
+    inset-inline-start: 0;
+    width: 100%;
+    background: #fff !important;
+  }
+}
+
+@page {
+  margin: 18mm;
+}
