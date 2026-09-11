@@ -134,7 +134,28 @@ let
     "img-src 'self' data:"
     "font-src 'self'"
     "connect-src 'self'"
+    # The first-run wizard embeds /nextcloud so the handover from "choose a
+    # password" to "here are your files" happens without leaving the page.
+    #
+    # It has to be spelled out: under CSP3 frame-src falls back to child-src
+    # and then to default-src, which is 'none' above, so an absent frame-src is
+    # a *block*, not an inherit.
+    #
+    # 'self' and nothing wider, and this is not merely tidiness. The framed
+    # page is same-origin, which means it is NOT sandboxed from us: it can
+    # reach `parent.document` and therefore the admin token in sessionStorage.
+    # docs/security-model.md already accepts that an XSS in Nextcloud is a full
+    # appliance compromise because the two share an origin; framing Nextcloud
+    # inside the admin document does not create that exposure, but it does
+    # remove the "an attacker must first land an XSS" step for anything
+    # Nextcloud itself loads. That trade was made deliberately — see the
+    # "Embedding Nextcloud in the wizard" section of the security model.
+    "frame-src 'self'"
     "form-action 'none'"
+    # Unchanged, and it governs the OTHER direction: who may frame the admin
+    # page. Nothing about embedding Nextcloud needs this loosened, and
+    # tests/front-vhost.nix asserts it stayed DENY precisely because reaching
+    # for it is the obvious wrong way to unblock an iframe.
     "frame-ancestors 'none'"
     "base-uri 'none'"
   ];
