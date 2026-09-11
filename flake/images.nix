@@ -348,6 +348,23 @@ let
       occ app:enable ${lib.concatStringsSep " " (lib.attrNames nc.apps)} ||
         echo "losos-nextcloud: app:enable failed for at least one app; Nextcloud is still serving. Check the admin UI's app list." >&2
 
+      # Nextcloud's own "Welcome to Nextcloud" modal, off.
+      #
+      # It is never named in nc.apps, so it is easy to assume it is not here —
+      # but `firstrunwizard` is listed in core/shipped.json's `defaultEnabled`
+      # array (verified against nextcloud-34.0.2), which means
+      # `maintenance:install` above enables it without anyone asking.
+      #
+      # The LosOS first-run wizard embeds /nextcloud in an iframe and walks the
+      # owner through signing in. With this app on, their first sign-in pops
+      # Nextcloud's welcome modal *inside* that frame: two wizards on screen at
+      # once, one of them talking about a product the owner has not been told
+      # they are running.
+      #
+      # Not fatal, for the same reason as app:enable above.
+      occ app:disable firstrunwizard ||
+        echo "losos-nextcloud: could not disable firstrunwizard; expect its modal inside the setup wizard." >&2
+
       ${nc.php}/bin/php-fpm --nodaemonize --fpm-config ${nextcloudFpmConf} &
 
       # Apache connects to the pool per request, so starting it first only
