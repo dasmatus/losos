@@ -48,6 +48,86 @@ in
       '';
     };
 
+    # ── TLS ─────────────────────────────────────────────────────────────────
+    # A self-signed certificate, generated on the box, valid for two years.
+    #
+    # Not ACME, and not because ACME is hard: this appliance is reached at
+    # `<hostName>.local` on the LAN and no certificate authority will ever issue
+    # for a name in `.local`. The master proxy has a real certificate, but that
+    # covers the tunnel, not the box, and the admin plane deliberately does not
+    # travel through it.
+    #
+    # Two years rather than 90 days is the answer to renewal on a machine with
+    # no shell. Nothing here can run certbot and nothing can prompt the owner to
+    # re-trust a new certificate on every device twice a year.
+    tls.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Serve HTTPS on :443 with a self-signed certificate generated on first
+        boot, alongside the existing plaintext :80.
+
+        This is what makes the appliance a *secure context* in a browser, which
+        two things need: WebAuthn refuses to run outside one, so passkeys are
+        impossible without it; and it is what stops the admin token and every
+        Nextcloud login crossing the LAN in clear text, which
+        docs/security-model.md currently lists as an accepted limitation.
+
+        The certificate is not trusted by anything until the owner installs it,
+        which is a step the first-run wizard owns.
+      '';
+    };
+
+    tls.validityDays = lib.mkOption {
+      type = lib.types.ints.positive;
+      default = 730;
+      description = ''
+        How long the generated certificate is valid, in days. Two years.
+
+        Short lifetimes are good practice precisely because something automated
+        renews them, and here nothing can: the renewal is a person installing a
+        new certificate on every device they use. A 90-day certificate on this
+        box would mean that chore four times a year, or an appliance that
+        silently stops being reachable over HTTPS.
+      '';
+    };
+
+    # ── Binary cache ────────────────────────────────────────────────────────
+    cache.substituters = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ "https://losos.cachix.org" ];
+      description = ''
+        Extra Nix substituters, added to the appliance *and* to the installer
+        medium. Empty disables the feature and nothing changes.
+
+        This exists because of one number. `losos.nextcloud.mode` defaults to
+        `container`, so the install closure contains `losos-image-nextcloud` —
+        a 2.3 GiB content closure over 244 store paths — and `losos-ctl install`
+        runs a bare `nixos-install` with no substituter flags. Without a cache
+        that serves it, a fresh install *builds* that image on a repurposed
+        mini-PC.
+
+        The installer medium matters as much as the installed system: a
+        substituter the target only learns about after it is installed does not
+        make installing it any faster.
+      '';
+    };
+
+    cache.trustedPublicKeys = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ "losos.cachix.org-1:4t3mjPiiE7RZHBk3znPi0mq4uP5RY630YXAapAWe708=" ];
+      description = ''
+        Public keys trusted for `losos.cache.substituters`.
+
+        A substituter whose key is missing or wrong does not fail loudly. Nix
+        declines to trust the signature, falls back to building from source, and
+        says so in a line nobody reads on a box with no shell. The symptom is
+        "the install is still slow", which is the exact thing the cache was
+        added to fix, so the two lists are asserted to be set together in
+        modules/cache.nix.
+      '';
+    };
+
     # ── Storage headroom ────────────────────────────────────────────────────
     storage.fillPercent = lib.mkOption {
       type = lib.types.ints.between 50 100;
