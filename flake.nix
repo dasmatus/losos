@@ -134,6 +134,21 @@
                 # insert the medium, boot, and the box reinstalls unattended —
                 # the destructive factory-reset / reinstall path.
                 losos.installer.autorun = true;
+                # Prebuild the admin UI into the medium.
+                #
+                # `losos-admin-ui` is a plain file copy today, but it is about
+                # to become a ShadCN/React bundle built with buildNpmPackage —
+                # a Node toolchain and an npm dependency fetch. Without this,
+                # `nixos-install` realises that derivation on the target, so a
+                # repurposed mini-PC with no shell runs npm as part of a first
+                # install. storeContents puts the finished output in the live
+                # system's store, and nix copies rather than builds anything it
+                # already has.
+                #
+                # Cheap, unlike embedding the whole appliance closure: this is
+                # one small output, so the medium stays inside the size budget
+                # CI and Codeberg's attachment quota are scoped to.
+                isoImage.storeContents = [ self.packages.${system}.losos-admin-ui ];
                 # The default (zstd level 19, cache sized off host RAM) gets
                 # OOM-killed on codeberg-medium CI runners (exit 137): the
                 # container sees the host's RAM but runs under a smaller
@@ -172,6 +187,11 @@
             disko.nixosModules.disko
             ./modules/options.nix
             ./modules/configuration.nix
+            # Imported by `install` only, never by `iso`: the live medium must
+            # keep squashfs loadable and its module policy permissive, and
+            # hardening an installer that is discarded at the end of the
+            # install protects nothing.
+            ./modules/hardening.nix
             ./modules/impermanence.nix
             ./modules/disko.nix
             ./modules/boot.nix
@@ -260,6 +280,7 @@
         losos-front-vhost = import ./tests/front-vhost.nix { inherit pkgs; };
         losos-impermanence = import ./tests/impermanence.nix { inherit pkgs impermanence; };
         losos-cluster = import ./tests/cluster-vm.nix { inherit pkgs; };
+        losos-hardening = import ./tests/hardening.nix { inherit pkgs; };
       };
     };
 }

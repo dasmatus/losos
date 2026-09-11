@@ -48,6 +48,84 @@ in
       '';
     };
 
+    # ── Hardening ───────────────────────────────────────────────────────────
+    # Staged rather than one boolean, because the thing everyone reaches for
+    # first no longer exists: `nixos/modules/profiles/hardened.nix` was removed
+    # in 26.05 and `linux_hardened` is now
+    # `throw "linux_hardened has been removed due to lack of maintenance"`.
+    # Upstream dropped the profile on the grounds that it "lacks a consistent
+    # and transparent baseline" and was "more of a 'grab bag' of settings than
+    # a cohesive security policy" — so modules/hardening.nix splits the safe
+    # part from the parts that can break something, and the second group is
+    # opt-in. Every flag is asserted in tests/hardening.nix, which also asserts
+    # that nothing here blocks the kernel surface k3s, rke2, containerd and
+    # Longhorn need.
+    hardening.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        The baseline hardening layer: KSPP kernel parameters, sysctl
+        tightening, a kernel-module blacklist that also blocks explicit
+        modprobe, nosuid/nodev mount options, dbus-broker, and systemd
+        sandboxing on the host services that face the network.
+
+        On by default because nothing in it costs this appliance anything it
+        was using — in particular it does not touch the container runtime, the
+        CNI or Longhorn's kernel surface. The settings that *could* cost
+        something live under the flags below instead.
+      '';
+    };
+
+    hardening.apparmor = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Enable AppArmor. Off by default: nixpkgs ships profiles for only a
+        fraction of what runs here, so it confines less than it looks like it
+        does, and an unconfined-but-confinable process is a policy decision
+        rather than a free win.
+      '';
+    };
+
+    hardening.malloc = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Use GrapheneOS' hardened_malloc as the system allocator
+        (environment.memoryAllocator.provider). Be clear about the blast
+        radius: it works by LD_PRELOAD, so it covers the host's dynamically
+        linked processes (nginx, avahi, lososd) and neither the static Go
+        binaries of k3s/rke2/containerd nor anything inside a pod, which has
+        its own rootfs. A real hardening win over a smaller surface than it
+        first appears, at a throughput and memory cost.
+      '';
+    };
+
+    hardening.nosmt = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Disable simultaneous multithreading
+        (security.allowSimultaneousMultithreading = false). Closes the
+        cross-thread side channels no software mitigation fully covers, and
+        roughly halves the core count of the mini-PC this runs on. Off by
+        default because the box transcodes video for Nextcloud and may run mesh
+        compute for strangers; turn it on if that second one worries you more
+        than the first.
+      '';
+    };
+
+    hardening.usbguard = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Run usbguard, blocking USB devices that were not present at boot. A
+        good fit for a set-and-forget appliance nobody is supposed to touch,
+        and a nuisance on one you still plug things into. Off by default so a
+        keyboard attached for console recovery keeps working.
+      '';
+    };
+
     # ── Master proxy (appliance side) ───────────────────────────────────────
     # Replaces the retired losos.cfd (Cloudflare Tunnel). The appliance dials
     # out to the edge over rathole (no inbound public port) and announces
