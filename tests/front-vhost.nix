@@ -282,6 +282,24 @@ pkgs.testers.nixosTest {
         assert "connect-src 'self';" in csp, f"connect-src is not plain 'self': {csp}"
         assert ":3456" not in csp, f"CSP still grants the retired Tahoe WUI: {csp}"
 
+        # frame-src 'self' — the setup wizard embeds /nextcloud, and without
+        # this the iframe is blocked. Under CSP3 frame-src falls back to
+        # child-src and then to default-src, which is 'none' here, so the grant
+        # has to be explicit; there is no "inherit" that would let it through.
+        #
+        # It is exactly 'self' and nothing wider. The admin page has no business
+        # framing any other origin, and this appliance publishes only two
+        # routes besides the admin surface.
+        assert "frame-src 'self'" in csp, f"the wizard cannot embed Nextcloud: {csp}"
+        assert "frame-src *" not in csp and "frame-src 'unsafe" not in csp, \
+            f"frame-src is wider than 'self': {csp}"
+        # X-Frame-Options governs who may frame US, not whom we may frame, so
+        # embedding Nextcloud must not have loosened it. Asserted here because
+        # confusing the two directions is the obvious way to "fix" a blocked
+        # iframe and it would expose the admin plane to clickjacking instead.
+        assert headers(noadmin, "http://appliance/")["x-frame-options"] == "DENY", \
+            "X-Frame-Options was loosened; it controls the other direction"
+
     with subtest("the admin CSP is not applied to the two service routes"):
         # Nextcloud and Forgejo ship their own CSP and both need inline script;
         # the map's ~^/nextcloud and ~^/forgejo arms exist to omit these.
