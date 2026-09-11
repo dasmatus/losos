@@ -237,14 +237,19 @@ jobs:
       # losos-image-nextcloud is NOT built here, and since it is the image most
       # likely to break, that is a real hole and not an oversight.
       #
-      # Its content closure measures 2.3 GiB across 244 store paths (nextcloud34
-      # with ~30 apps, php-with-extensions, apacheHttpd), and dockerTools
-      # compresses it about as poorly as it compresses Forgejo — so call it
-      # another ~2 GiB of tarball on top. On writes that is ISO territory and
-      # would very likely fit. On wall clock nobody has ever timed it on a
-      # codeberg-medium runner, and the number that decides it is the download
-      # from cache.nixos.org, which cannot be measured on a machine that
-      # already has the closure.
+      # Measured, not estimated: the tarball is 606 MiB, built in 34 s from a
+      # warm store. That is within a rounding error of losos-image-forgejo's
+      # 585 MiB, which this job does build, so the earlier guess here that it
+      # would add "~2 GiB of tarball" was wrong by a factor of three and is
+      # corrected rather than left standing.
+      #
+      # Size is therefore not the objection. The objection is the download: the
+      # content closure is 2.3 GiB across 244 store paths (nextcloud34 with
+      # ~30 apps, php-with-extensions, apacheHttpd) against Forgejo's 647 MiB,
+      # so on a cold runner this job fetches roughly 3.5x what it fetches today,
+      # from cache.nixos.org, inside a 10-minute cap. That number cannot be
+      # measured on a machine that already has the closure, and it is the one
+      # that decides whether this fits.
       #
       # Guessing that number is how this repository got burned twice already,
       # once in each direction: doCheck stayed on until `nix build .#losos-ctl`

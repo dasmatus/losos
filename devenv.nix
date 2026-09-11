@@ -312,13 +312,14 @@ in
   # (flake/images.nix, wired to losos.workloads.* in modules/defaults.nix).
   #
   # Opt-in, and deliberately not part of `devenv test`, because of what they
-  # cost. Measured on a dev machine (`nix path-info -S --closure-size` over the
-  # three `*-root` outputs): the Nextcloud image's content closure is 2.11 GiB
-  # across 253 store paths (nextcloud34 with ~30 apps, php-with-extensions,
-  # apacheHttpd), and dockerTools compresses that to a 634 MiB tarball — 62 s
-  # of zstd on 16 warm threads. That is precisely the "multi-gigabyte closure"
-  # the enterTest block below promises not to spend on you. Forgejo is a
-  # 585 MiB tarball over a 608 MiB / 130-path closure, pause 51 MiB.
+  # cost: measured on a dev machine, the Nextcloud image's content closure is
+  # 2.3 GiB across 244 store paths (nextcloud34 with ~30 apps, php-with-
+  # extensions, apacheHttpd). The tarball itself is smaller than that suggests,
+  # 606 MiB, against Forgejo's 585 MiB over 126 paths and pause's 51 MiB — so
+  # what costs you here is realising the closure, not writing the layers. From
+  # a warm store the three build in well under two minutes; from a cold one you
+  # are fetching 2.3 GiB first, which is precisely the "multi-gigabyte closure"
+  # the enterTest block below promises not to spend on you unasked.
   #
   # It has to be gated *somewhere*, though, and until CI grows a job for it
   # this is the only place. The appliance never builds these: it substitutes

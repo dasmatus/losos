@@ -14,3 +14,11 @@
 # system's conventional style. The other five findings (empty_pattern,
 # manual_inherit_from) are real and are fixed rather than suppressed.
 disabled = ["repeated_keys"]
+
+# Other Claude Code sessions check out git worktrees under .claude/worktrees/,
+# and the pre-commit hook runs `statix check` over the whole tree with
+# pass_filenames = false — so a lint in somebody else's in-progress worktree
+# fails a commit that does not touch a single file in it. Those trees are not
+# this commit's business and are not even on this branch. Gitignoring them does
+# not help, because statix walks the filesystem rather than asking git.
+ignore = [".claude"]
