@@ -172,6 +172,10 @@
               }
             )
             ./modules/options.nix
+            # Both systems import this. The installer medium needs the substituter
+            # as much as the installed box does: the whole cost is realising
+            # the 2.3 GiB Nextcloud image during `nixos-install`.
+            ./modules/cache.nix
             ./modules/disko.nix
             ./modules/installer.nix
           ];
@@ -187,6 +191,10 @@
             disko.nixosModules.disko
             ./modules/options.nix
             ./modules/configuration.nix
+            ./modules/cache.nix
+            # HTTPS from a certificate the box generates itself. `install`
+            # only: the live medium serves nothing.
+            ./modules/tls.nix
             # Imported by `install` only, never by `iso`: the live medium must
             # keep squashfs loadable and its module policy permissive, and
             # hardening an installer that is discarded at the end of the
@@ -282,6 +290,7 @@
         losos-cluster = import ./tests/cluster-vm.nix { inherit pkgs; };
         losos-hardening = import ./tests/hardening.nix { inherit pkgs; };
         losos-resize = import ./tests/resize.nix { inherit pkgs; };
+        losos-tls = import ./tests/tls.nix { inherit pkgs; };
       };
     };
 }
