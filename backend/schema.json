@@ -203,6 +203,37 @@
         }
       }
     },
+    "setPasswordResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "user",
+        "mode",
+        "changed",
+        "message"
+      ],
+      "properties": {
+        "user": {
+          "type": "string",
+          "description": "The account whose password was replaced, echoed back so a client knows which one changed. The password itself is never echoed, in any field, on any path — and is never read back out either: this command replaces the install-time password from modules/nextcloud-common.nix rather than revealing it, because surfacing that one would turn a root-only 0600 file into an API-readable secret and save the owner nothing."
+        },
+        "mode": {
+          "enum": [
+            "container",
+            "native"
+          ],
+          "description": "Which route actually ran, taken from the located target rather than from $LOSOS_NEXTCLOUD_MODE so the two cannot disagree. Container mode stages the password in a file and runs `crictl exec` against the workload pod; native mode passes OC_PASS in the child environment of the host's nextcloud-occ wrapper. Present because the two fail in different places and a support answer needs to know which was taken."
+        },
+        "changed": {
+          "type": "boolean",
+          "description": "Whether occ exited 0. Trustworthy here, unlike growResponse.grew: core/Command/User/ResetPassword.php returns 1 on every failure branch and 0 only after setPassword succeeded, so there is no succeed-while-doing-nothing path. A failure is an error reply (500 / org.losos1.Error.Failed), never `changed: false`."
+        },
+        "message": {
+          "type": "string",
+          "description": "occ's last non-empty stdout line, capped — normally \"Successfully reset password for <user>\". \"password updated\" when occ said nothing."
+        }
+      }
+    },
     "statusResponse": {
       "type": "object",
       "additionalProperties": false,
@@ -304,6 +335,16 @@
         "$ref": "#/$defs/growResponse"
       }
     },
+    "set-password": {
+      "description": "`losos-ctl set-password [--user <name>]` — replace the Nextcloud admin password, read from **stdin**. Stdin and not a flag because /proc/<pid>/cmdline is world-readable and nothing in modules/ sets hidepid, so `--password <value>` would publish the appliance's admin credentials to every process on the box. Exactly one trailing newline is stripped, nothing else: a password may end in a space. The password never reaches an argv on any path — in native mode it travels as OC_PASS in the child environment of `nextcloud-occ user:resetpassword <user> --password-from-env` (/proc/<pid>/environ is mode 0400 owner-only); in container mode it is staged at /var/lib/nextcloud/.losos-setpass (0600, chowned to uid 1002, removed on success and on failure alike) and read by /bin/losos-nextcloud-occ-setpass inside the pod, because `crictl exec` has no environment flag. Rejected server-side, before any effect: a password under 12 characters, over 256 bytes, or containing a control character (a newline would be silently truncated by the in-image wrapper's `$(cat …)`), and a user name that is not [A-Za-z0-9._@-] or that starts with '-' (`occ user:resetpassword --version --password-from-env` parses and changes nothing). Non-zero exit + stderr on any of those, on a pod that is running but has not finished `occ maintenance:install`, and on zero or more than one matching container — it refuses to guess rather than resetting a password in the wrong one.",
+      "stdin": {
+        "type": "string",
+        "description": "The new password. One trailing newline is stripped."
+      },
+      "stdout": {
+        "$ref": "#/$defs/setPasswordResponse"
+      }
+    },
     "install": {
       "description": "`losos-ctl install [flags]` \u2014 the losos auto-installer (was losos-install.sh). Detects fixed disks, merges them into one LVM volume group via disko, runs nixos-install, and lays the flake at /persist/etc/nixos. Flags: --tpm, --drives A,/dev/b,..., --no-install, --disko-script PATH, --emit-target FILE. Drives auto-detection uses `lsblk --json`. Non-zero exit + stderr on failure (no candidate disks, disko/nixos-install failure).",
       "args": {
@@ -346,6 +387,15 @@
       "POST /api/factory-reset": {
         "auth": true,
         "out": "factoryResetResponse"
+      },
+      "POST /api/grow": {
+        "auth": true,
+        "out": "growResponse"
+      },
+      "POST /api/set-password": {
+        "auth": true,
+        "in": "{\"user\":\"...\" (optional, defaults to notshared),\"password\":\"...\"}",
+        "out": "setPasswordResponse"
       }
     }
   },
@@ -382,6 +432,17 @@
       "Status": {
         "in": [],
         "out": "s (statusResponse)"
+      },
+      "Grow": {
+        "in": [],
+        "out": "s (growResponse)"
+      },
+      "SetPassword": {
+        "in": [
+          "s (user)",
+          "s (password)"
+        ],
+        "out": "s (setPasswordResponse)"
       }
     }
   }

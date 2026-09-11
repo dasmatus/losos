@@ -12,7 +12,8 @@
 use crate::facade::{BUS_NAME, OBJECT_PATH};
 use crate::io_backend::IoLosos;
 use crate::losos::{
-    cmd_apply, cmd_change, cmd_factory_reset, cmd_grow, cmd_settings, cmd_state, cmd_status,
+    cmd_apply, cmd_change, cmd_factory_reset, cmd_grow, cmd_set_password, cmd_settings, cmd_state,
+    cmd_status,
 };
 use crate::model::Mode;
 use crate::overrides::validate_apply;
@@ -91,6 +92,19 @@ impl Control {
     /// supervised job, so there is no job id to hand back.
     fn grow(&self) -> fdo::Result<String> {
         reply(&self.backend, cmd_grow)
+    }
+
+    /// Replace the Nextcloud admin password.
+    ///
+    /// The password is a method argument rather than a command-line one on
+    /// purpose: a D-Bus message body is delivered to this process and nowhere
+    /// else, while `/proc/<pid>/cmdline` is world-readable. The facade CLI
+    /// keeps that property by reading the password from stdin.
+    ///
+    /// Like `grow`, this is synchronous and rebuilds nothing: it is one short
+    /// `occ` invocation, so there is no job id to hand back.
+    fn set_password(&self, user: &str, password: &str) -> fdo::Result<String> {
+        reply(&self.backend, |b| cmd_set_password(b, user, password))
     }
 }
 

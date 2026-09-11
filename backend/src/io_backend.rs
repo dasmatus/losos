@@ -405,6 +405,135 @@ impl Losos for IoLosos {
             .with_context(|| format!("no size in df output: {text:?}"))
     }
 
+    // ── Setting the Nextcloud admin password ────────────────────────────
+    fn nextcloud_mode(&mut self) -> anyhow::Result<crate::setup::NcMode> {
+        // No default. Guessing "container" would run `crictl` against a socket
+        // that does not exist on a native box, and guessing "native" would run
+        // `nextcloud-occ`, which is not even in the closure of a container-mode
+        // box — and both failures read as "the command is broken" rather than
+        // "the daemon was not told". modules/daemon.nix sets this from
+        // config.losos.nextcloud.mode.
+        let raw = match std::env::var("LOSOS_NEXTCLOUD_MODE") {
+            Ok(raw) => raw,
+            Err(std::env::VarError::NotPresent) => anyhow::bail!(
+                "LOSOS_NEXTCLOUD_MODE is not set, so lososd cannot tell whether \
+                 Nextcloud is running as a k3s workload or natively. \
+                 modules/daemon.nix must set it from config.losos.nextcloud.mode."
+            ),
+            Err(e) => return Err(anyhow::Error::new(e).context("LOSOS_NEXTCLOUD_MODE")),
+        };
+        crate::setup::NcMode::parse(raw.trim()).with_context(|| {
+            format!("LOSOS_NEXTCLOUD_MODE must be 'container' or 'native': {raw:?}")
+        })
+    }
+
+    fn nextcloud_target(
+        &mut self,
+        mode: crate::setup::NcMode,
+    ) -> anyhow::Result<crate::setup::Target> {
+        if mode == crate::setup::NcMode::Native {
+            return Ok(crate::setup::Target::Native);
+        }
+        let socket = std::env::var("LOSOS_CRI_SOCKET")
+            .ok()
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| crate::setup::DEFAULT_CRI_SOCKET.to_string());
+        let argv = crate::setup::resolve_argv(&socket);
+        let (cmd, args) = argv.split_first().context("resolve_argv is never empty")?;
+        let out = std::process::Command::new(cmd)
+            .args(args)
+            .output()
+            .with_context(|| {
+                format!(
+                    "running {} (is pkgs.cri-tools on lososd's unit path?)",
+                    argv.join(" ")
+                )
+            })?;
+        if !out.status.success() {
+            anyhow::bail!(
+                "{} failed: {}",
+                argv.join(" "),
+                String::from_utf8_lossy(&out.stderr).trim()
+            );
+        }
+        let id = crate::setup::parse_container_ids(&String::from_utf8_lossy(&out.stdout))
+            .map_err(|e| anyhow::anyhow!(e))?;
+        Ok(crate::setup::Target::Container { socket, id })
+    }
+
+    fn run_occ(
+        &mut self,
+        action: &crate::setup::OccAction,
+        secret: &crate::setup::Secret,
+    ) -> anyhow::Result<Option<crate::setup::OccOutcome>> {
+        use crate::setup::{OccAction, OccOutcome, SecretChannel};
+        match action {
+            OccAction::StageSecret { path, uid } => {
+                let path = Path::new(path);
+                // No trailing newline: the in-image wrapper reads this with
+                // `$(cat …)`, which strips trailing newlines, so writing one
+                // would make the two sides agree only by accident.
+                atomic_write_secret(path, secret.expose().as_bytes())
+                    .with_context(|| format!("staging the new password at {}", path.display()))?;
+                // 0600 is root-only until this lands, and the pod's process is
+                // uid 1002. The chown is what makes the file readable by
+                // exactly one account and no group.
+                std::os::unix::fs::chown(path, Some(*uid), Some(*uid)).with_context(|| {
+                    format!(
+                        "giving {} to uid {uid} so the pod can read it",
+                        path.display()
+                    )
+                })?;
+                Ok(None)
+            }
+            OccAction::ClearSecret { path } => {
+                match std::fs::remove_file(path) {
+                    Ok(()) => {}
+                    // Already gone is the goal, not a failure.
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(e) => {
+                        return Err(anyhow::Error::new(e)
+                            .context(format!("removing the staged password at {path}")))
+                    }
+                }
+                Ok(None)
+            }
+            OccAction::RunOcc { argv, secret: chan } => {
+                let (cmd, args) = argv.split_first().context("RunOcc argv is never empty")?;
+                let mut child = std::process::Command::new(cmd);
+                child.args(args);
+                if let SecretChannel::Env = chan {
+                    // /proc/<pid>/environ is mode 0400 owner-only and this
+                    // child is root, unlike /proc/<pid>/cmdline.
+                    child.env("OC_PASS", secret.expose());
+                    // ResetPassword.php reads `getenv('NC_PASS') ?: getenv('OC_PASS')`,
+                    // so an NC_PASS inherited from anywhere would silently win
+                    // over the password the owner just typed.
+                    child.env_remove("NC_PASS");
+                    // The nixpkgs nextcloud-occ wrapper tests `$USER` under
+                    // `set -u`, and systemd does not export USER to a root
+                    // service with no User=. Unset, the wrapper aborts with
+                    // "USER: unbound variable" before occ ever starts.
+                    child.env("USER", "root");
+                }
+                let out = child.output().with_context(|| {
+                    format!(
+                        "running {} (is the occ wrapper on lososd's unit path?)",
+                        // The argv is safe to quote: the password is never in it.
+                        argv.join(" ")
+                    )
+                })?;
+                Ok(Some(OccOutcome {
+                    // A signalled child has no code; -1 is not a status occ can
+                    // return, so it cannot be mistaken for one.
+                    code: out.status.code().unwrap_or(-1),
+                    stdout: String::from_utf8_lossy(&out.stdout).into_owned(),
+                    stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
+                }))
+            }
+        }
+    }
+
     fn next_job_id(&mut self) -> anyhow::Result<String> {
         // The timestamp and the pid are both constant within one second of one
         // long-lived daemon, so they alone let two jobs collide — and a

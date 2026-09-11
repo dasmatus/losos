@@ -34,6 +34,29 @@ pub struct FakeLosos {
     pub grow_ran: Vec<crate::grow::GrowAction>,
     /// Key file handed to `cryptsetup resize`; None models the TPM path.
     pub luks_key_file: Option<String>,
+
+    // ── Setting the Nextcloud admin password ────────────────────────────
+    /// Mode the fake appliance reports running in.
+    pub nextcloud_mode: crate::setup::NcMode,
+    /// Container id `crictl ps` would return. `None` models a pod that is not
+    /// running yet — the common case on a box in its first few minutes.
+    pub nextcloud_container: Option<String>,
+    /// Every `occ` step that was executed, in order. Recorded rather than
+    /// simulated, so a test can assert the order and — the point of the whole
+    /// module — inspect every argv for the password.
+    pub occ_ran: Vec<crate::setup::OccAction>,
+    /// Content of the staged secret file, or `None` once it has been cleared.
+    /// A test reads this to prove the password travelled by file rather than by
+    /// argv, and that it does not survive the command.
+    pub staged_secret: Option<String>,
+    /// Exit code the fake `occ` reports.
+    pub occ_exit: i32,
+    pub occ_stdout: String,
+    pub occ_stderr: String,
+    /// Make `run_occ` fail to *spawn* the exec step, modelling a missing
+    /// `crictl` or an unreachable CRI socket — which is what the cleanup path
+    /// has to survive.
+    pub occ_spawn_fails: bool,
 }
 
 impl FakeLosos {
@@ -52,6 +75,17 @@ impl FakeLosos {
             persist_bytes: 20 * 1024 * 1024 * 1024,
             grow_ran: Vec::new(),
             luks_key_file: None,
+            // Container is the appliance's default (losos.nextcloud.mode), so
+            // it is the default here too: the mode most tests should exercise
+            // is the one most boxes run.
+            nextcloud_mode: crate::setup::NcMode::Container,
+            nextcloud_container: Some("c0ffee1234".to_string()),
+            occ_ran: Vec::new(),
+            staged_secret: None,
+            occ_exit: 0,
+            occ_stdout: "Successfully reset password for notshared".to_string(),
+            occ_stderr: String::new(),
+            occ_spawn_fails: false,
         }
     }
 }
@@ -135,5 +169,59 @@ impl Losos for FakeLosos {
 
     fn luks_key_file(&mut self) -> anyhow::Result<Option<String>> {
         Ok(self.luks_key_file.clone())
+    }
+
+    fn nextcloud_mode(&mut self) -> anyhow::Result<crate::setup::NcMode> {
+        Ok(self.nextcloud_mode)
+    }
+
+    fn nextcloud_target(
+        &mut self,
+        mode: crate::setup::NcMode,
+    ) -> anyhow::Result<crate::setup::Target> {
+        match mode {
+            crate::setup::NcMode::Native => Ok(crate::setup::Target::Native),
+            crate::setup::NcMode::Container => {
+                // Runs the real parser over what `crictl ps --quiet` would have
+                // printed, so "zero or two matches is an error" is genuinely
+                // covered instead of stubbed into always succeeding.
+                let stdout = self.nextcloud_container.clone().unwrap_or_default();
+                let id = crate::setup::parse_container_ids(&stdout)
+                    .map_err(|e| anyhow::anyhow!("{e}"))?;
+                Ok(crate::setup::Target::Container {
+                    socket: crate::setup::DEFAULT_CRI_SOCKET.to_string(),
+                    id,
+                })
+            }
+        }
+    }
+
+    fn run_occ(
+        &mut self,
+        action: &crate::setup::OccAction,
+        secret: &crate::setup::Secret,
+    ) -> anyhow::Result<Option<crate::setup::OccOutcome>> {
+        use crate::setup::OccAction;
+        self.occ_ran.push(action.clone());
+        match action {
+            // The one effect a later step reads back: the secret has to be in
+            // the file before the exec, and gone after the clear.
+            OccAction::StageSecret { .. } => {
+                self.staged_secret = Some(secret.expose().to_string());
+                Ok(None)
+            }
+            OccAction::ClearSecret { .. } => {
+                self.staged_secret = None;
+                Ok(None)
+            }
+            OccAction::RunOcc { .. } if self.occ_spawn_fails => {
+                Err(anyhow::anyhow!("crictl: No such file or directory"))
+            }
+            OccAction::RunOcc { .. } => Ok(Some(crate::setup::OccOutcome {
+                code: self.occ_exit,
+                stdout: self.occ_stdout.clone(),
+                stderr: self.occ_stderr.clone(),
+            })),
+        }
     }
 }
