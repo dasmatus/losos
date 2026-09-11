@@ -156,6 +156,66 @@ pub fn atomic_write_secret(path: &Path, content: &[u8]) -> anyhow::Result<()> {
     write_atomically(path, content, 0o600, 0o700)
 }
 
+/// The real [`crate::recovery::CodeStore`]: one 0600 file plus `/dev/urandom`.
+///
+/// Separate from [`IoLosos`] rather than folded into it because the recovery
+/// code is the one secret here that must outlive a factory reset, so its path
+/// comes from the unit's environment (`LOSOS_RECOVERY_FILE`) and not from
+/// [`Paths`], whose entries all live under directories a reset clears.
+#[derive(Debug, Clone)]
+pub struct FileCodeStore {
+    path: PathBuf,
+}
+
+impl FileCodeStore {
+    /// The path `modules/recovery.nix` puts in the unit's environment, falling
+    /// back to [`crate::recovery::DEFAULT_RECOVERY_FILE`].
+    pub fn from_env() -> Self {
+        Self {
+            path: crate::recovery::code_file(),
+        }
+    }
+}
+
+impl Default for FileCodeStore {
+    fn default() -> Self {
+        Self::from_env()
+    }
+}
+
+impl crate::recovery::CodeStore for FileCodeStore {
+    fn read_code(&mut self) -> anyhow::Result<Option<String>> {
+        match std::fs::read_to_string(&self.path) {
+            Ok(s) => Ok(Some(s)),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            // Must be an error rather than `None`: `ensure_code` mints over a
+            // `None`, so reporting an EIO or an EACCES that way would destroy a
+            // code the owner is still holding on paper. `tests/recovery.rs`
+            // asserts the propagation.
+            Err(e) => Err(anyhow::Error::new(e).context(format!(
+                "reading the recovery code at {}",
+                self.path.display()
+            ))),
+        }
+    }
+
+    fn write_code(&mut self, code: &str) -> anyhow::Result<()> {
+        // Trailing newline so `cat` of the file in a rescue shell prints
+        // cleanly; `is_well_formed` trims, so the round trip is exact.
+        atomic_write_secret(&self.path, format!("{code}\n").as_bytes())
+            .with_context(|| format!("writing the recovery code to {}", self.path.display()))
+    }
+
+    fn fresh_bytes(&mut self) -> anyhow::Result<[u8; 16]> {
+        use std::io::Read;
+        let mut buf = [0u8; 16];
+        std::fs::File::open("/dev/urandom")
+            .and_then(|mut f| f.read_exact(&mut buf))
+            .context("reading 16 bytes from /dev/urandom")?;
+        Ok(buf)
+    }
+}
+
 /// Read the persisted state.
 ///
 /// A missing file means a fresh appliance. A *corrupt* file is treated the same
@@ -534,6 +594,10 @@ impl Losos for IoLosos {
         }
     }
 
+    fn recovery_code(&mut self) -> anyhow::Result<crate::recovery::Recovery> {
+        crate::recovery::ensure_code(&mut FileCodeStore::from_env())
+    }
+
     fn next_job_id(&mut self) -> anyhow::Result<String> {
         // The timestamp and the pid are both constant within one second of one
         // long-lived daemon, so they alone let two jobs collide — and a
@@ -606,6 +670,7 @@ mod tests {
                 progress: 0,
                 message: "rebuild started".into(),
             }),
+            claimed: true,
         };
         write_state(&p, &s).unwrap();
         assert_eq!(read_state(&p), s);

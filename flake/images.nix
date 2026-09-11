@@ -265,6 +265,86 @@ let
     decorate_workers_output = no
   '';
 
+  # Where lososd stages a new admin password for this pod to read.
+  #
+  # Must equal `setup::STAGED_SECRET` in backend/src/setup.rs — the daemon
+  # writes this path and this script reads it, and nothing checks that the two
+  # spellings agree. Inside nc.home because that is a read-write `Directory`
+  # hostPath both the host and the pod can reach (modules/workloads.nix);
+  # /var/secrets/nextcloud-admin-pass would not do, being a `type: File` bind
+  # mount of a single inode that a temp-and-rename would swap out from under.
+  stagedSecret = "${nc.home}/.losos-setpass";
+
+  # `losos-ctl set-password`'s other half, in container mode.
+  #
+  # It exists because `occ` is not a program on this image's PATH: the
+  # entrypoint below defines it as a shell function *after* a `cd` to the
+  # webroot and an `export NEXTCLOUD_CONFIG_DIR`, and a `crictl exec` from the
+  # host inherits none of that. So the setup that makes occ work is repeated
+  # here, in a real script the daemon can exec by name.
+  #
+  # And it takes the password by file rather than by argument or environment,
+  # which is the whole reason it is a separate wrapper at all: `crictl exec`
+  # has **no** flag for passing an environment variable (its `-e` is
+  # `--ignore-errors`, checked against cri-tools 1.36.0), and an argument would
+  # put the owner's password in /proc/<pid>/cmdline, which is world-readable.
+  # A 0600 file chowned to this pod's uid is the only channel left.
+  #
+  # Contract, depended on by backend/src/setup.rs and not verifiable from it:
+  #
+  #   losos-nextcloud-occ-setpass <user>
+  #     reads the password from stagedSecret, runs
+  #     `occ user:resetpassword <user> --password-from-env`, exits with occ's
+  #     status, and never writes the password anywhere.
+  nextcloudSetpass = pkgs.writeShellApplication {
+    name = "losos-nextcloud-occ-setpass";
+    runtimeInputs = [ pkgs.coreutils ];
+    text = ''
+      if [ "$#" -ne 1 ]; then
+        echo "usage: losos-nextcloud-occ-setpass <user>" >&2
+        exit 2
+      fi
+      user=$1
+
+      secret=${stagedSecret}
+      [ -r "$secret" ] || {
+        echo "losos-nextcloud-occ-setpass: $secret is missing or unreadable. lososd stages it 0600 and chowns it to this pod's uid immediately before running this script." >&2
+        exit 1
+      }
+
+      # `$(cat …)` strips trailing newlines, and lososd writes the file with
+      # none — so this round-trips the password exactly. It is also why
+      # setup::validate_password rejects control characters: an embedded
+      # newline would be silently truncated right here and the owner would be
+      # left with a password that is not the one they typed.
+      #
+      # Assigned and exported on separate lines so the assignment's exit status
+      # is the one `set -e` sees, not `export`'s.
+      OC_PASS=$(cat "$secret")
+      export OC_PASS
+      [ -n "$OC_PASS" ] || {
+        echo "losos-nextcloud-occ-setpass: $secret is empty; refusing to set a blank password." >&2
+        exit 1
+      }
+      # core/Command/User/ResetPassword.php reads
+      # `getenv('NC_PASS') ?: getenv('OC_PASS')`, so any inherited NC_PASS would
+      # silently win over the password the owner just typed.
+      unset NC_PASS
+
+      # What the entrypoint's `occ` shell function does before every call, and
+      # what an external exec does not inherit.
+      cd ${nc.webroot}
+      export NEXTCLOUD_CONFIG_DIR=${nc.configDir}
+
+      # --password-from-env, so the password is never an argv element here
+      # either. Run under `set -e`, a non-zero occ is already fatal; the
+      # explicit status keeps that true if anything is ever appended below.
+      status=0
+      ${nc.php}/bin/php occ user:resetpassword "$user" --password-from-env || status=$?
+      exit "$status"
+    '';
+  };
+
   nextcloudEntrypoint = pkgs.writeShellApplication {
     name = "losos-nextcloud";
     runtimeInputs = [ pkgs.coreutils ];
@@ -556,6 +636,10 @@ in
       paths = baseTools ++ [
         pkgs.tini
         nextcloudEntrypoint
+        # Not on the Entrypoint — `losos-ctl set-password` execs it directly
+        # with `crictl exec`. It has to be in the image because that is the only
+        # place an exec into this pod can reach.
+        nextcloudSetpass
         nc.php
       ];
     };

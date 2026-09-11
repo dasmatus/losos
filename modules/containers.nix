@@ -230,7 +230,19 @@ in
 
     virtualHosts."losos-front" = {
       default = true; # default_server — master-proxy traffic arrives with a public hostname
-      listen = [
+      # mkDefault because modules/tls.nix restates this listener alongside its
+      # :443 one, on the same vhost (deliberately — see that file's header for
+      # why HTTPS must not be a second vhost). `listen` is a listOf, and two
+      # plain definitions would *concatenate* rather than override: the merged
+      # config would carry `listen 0.0.0.0:80 default_server;` twice and nginx
+      # would refuse to start with "a duplicate listen 0.0.0.0:80".
+      #
+      # That failure is invisible at build time — the nginx.conf derivation runs
+      # gixy, not `nginx -t` — so it lands in nginx.service's ExecStartPre at
+      # boot, which on this box means the only front door crash-loops with no
+      # shell to see it from. tests/setup.nix is what caught it, by being the
+      # first test to import containers.nix and tls.nix together.
+      listen = lib.mkDefault [
         {
           addr = "0.0.0.0";
           port = 80;

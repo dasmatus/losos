@@ -22,6 +22,28 @@ let
   enabled = config.losos.backend.package != null;
   pkg = config.losos.backend.package;
 
+  # Which way `losos-ctl set-password` has to reach into Nextcloud.
+  #
+  # There is no default on the daemon's side and there must not be: lososd
+  # treats an unset LOSOS_NEXTCLOUD_MODE as a hard error naming this module,
+  # because guessing runs `crictl` against a box that has no containerd or
+  # `nextcloud-occ` against a box whose closure never contained it — and both
+  # failures surface as "the owner cannot set their password", on an appliance
+  # with no shell to investigate from.
+  ncMode = config.losos.nextcloud.mode;
+  ncContainer = ncMode == "container";
+
+  # modules/cluster.nix's `localCriSocket`, which is a `let` binding there and
+  # so cannot be read from here. Repeated as a literal rather than promoted to
+  # an option: it is containerd's compiled-in default and nothing in this repo
+  # moves it. If it ever does move, it moves in both files or set-password
+  # starts reporting that the pod is not running.
+  #
+  # The box's *own* k3s containerd. Deliberately not /run/k3s/…, which belongs
+  # to the mesh rke2 agent — that one runs the edge's workloads and has never
+  # heard of this box's Nextcloud.
+  localCriSocket = "unix:///run/containerd/containerd.sock";
+
   # System-bus policy: root owns org.losos1; members of the fixed `losos`
   # group may send to it (the facade runs as root or a losos-group caller).
   # Everyone else is denied.
@@ -62,6 +84,15 @@ in
       environment = {
         LOSOS_ADMIN_PORT = toString config.losos.admin.apiPort;
         LOSOS_ADMIN_TOKEN_FILE = toString config.losos.admin.tokenFile;
+        # See the `ncMode` binding above for why this is always set and never
+        # defaulted daemon-side.
+        LOSOS_NEXTCLOUD_MODE = ncMode;
+      }
+      # Only in container mode: in native mode lososd never looks at it, and
+      # setting it anyway would suggest a CRI socket is consulted on a box that
+      # runs no containers.
+      // lib.optionalAttrs ncContainer {
+        LOSOS_CRI_SOCKET = localCriSocket;
       }
       # What `cryptsetup resize` authenticates with during `losos-ctl grow`.
       #
@@ -79,12 +110,26 @@ in
       #
       # coreutils is for `df`, which is how the daemon measures whether the
       # filesystem actually got bigger rather than trusting an exit status.
+      #
+      # `set-password` adds one entry per mode, and only the one that mode
+      # uses. `path` *replaces* PATH rather than extending it, so neither
+      # binary is reachable by accident: without the line below, the command
+      # fails at the exec with ENOENT after it has already staged a plaintext
+      # password on disk.
       path = [
         pkgs.lvm2
         pkgs.cryptsetup
         pkgs.e2fsprogs
         pkgs.coreutils
-      ];
+      ]
+      # crictl, to find and exec into the Nextcloud workload container.
+      ++ lib.optional ncContainer pkgs.cri-tools
+      # The nixpkgs `nextcloud-occ` wrapper. Gated on native mode for more than
+      # tidiness: in container mode services.nextcloud is never enabled, so
+      # this attribute pulls a whole second Nextcloud closure into a system
+      # that does not run one. `lib.optional false` does not force its
+      # argument, so the attribute is not even evaluated there.
+      ++ lib.optional (!ncContainer) config.services.nextcloud.occ;
       serviceConfig = {
         ExecStart = "${pkg}/bin/lososd";
         # `always`, not `on-failure`: a clean exit(0) — an unhandled shutdown

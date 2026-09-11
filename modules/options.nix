@@ -482,6 +482,46 @@ in
       description = "OCI image running Forgejo in container mode.";
     };
 
+    # ── The keyring (modules/keyring.nix) ───────────────────────────────────
+    # Seals the secrets this box mints for itself with systemd-creds, so a copy
+    # of /persist that leaves the machine carries ciphertext instead of the
+    # Nextcloud admin password in plaintext. Not GNOME keyring and nothing
+    # shaped like it: there is no session bus, no desktop and nobody to type a
+    # passphrase, so an agent holding an unlocked store in RAM would have
+    # nothing to be unlocked by.
+    keyring.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Seal this box's self-minted secrets with systemd-creds instead of
+        leaving them readable on disk. Covers a /persist copy that leaves the
+        box and a file-read bug in a service that can reach /var/secrets; it
+        deliberately does not cover root on the running box, because boot has
+        to work with nobody present. See modules/keyring.nix for the full list
+        of what it does and does not defend against.
+      '';
+    };
+
+    keyring.store = lib.mkOption {
+      type = lib.types.str;
+      default = "/var/secrets";
+      description = ''
+        Directory holding the sealed blobs (`<name>.cred`). Must NOT be under
+        /run: these have to survive a reboot, and the module asserts it.
+      '';
+    };
+
+    keyring.runtimeDir = lib.mkOption {
+      type = lib.types.str;
+      default = "/run/losos-keyring";
+      description = ''
+        Where a secret is unsealed to for the moment a service needs it. Must
+        be under /run, and the module asserts it — this is a systemd
+        RuntimeDirectory, which is tmpfs, and that is the whole point: the
+        plaintext never reaches the disk and does not outlive the boot.
+      '';
+    };
+
     # ── The shared data domain (fscrypt) ────────────────────────────────────
     shared.fscrypt.enable = lib.mkOption {
       type = lib.types.bool;

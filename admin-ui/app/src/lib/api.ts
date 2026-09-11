@@ -231,6 +231,53 @@ export function getHealth(options: RequestOptions = {}): Promise<HealthResponse>
   return call<HealthResponse>("/api/health", { ...options, anonymous: true });
 }
 
+export interface ClaimState {
+  /** Whether an owner has ever set a password on this box. */
+  claimed: boolean;
+}
+
+export interface ClaimResponse {
+  claimed: true;
+  user: string | null;
+  /** The admin token, released exactly once, to whoever claimed the box. */
+  token: string;
+}
+
+/* GET /api/setup/claim — public. Has this box got an owner yet?
+ *
+ * Public because it has to be: on an unclaimed box nobody holds a token, and
+ * this is the question whose answer decides whether the page shows the setup
+ * wizard or asks for one. It discloses a single bit about a machine the caller
+ * has already reached on the LAN. */
+export function getClaimState(options: RequestOptions = {}): Promise<ClaimState> {
+  return call<ClaimState>("/api/setup/claim", { ...options, anonymous: true });
+}
+
+/* POST /api/setup/claim — public, once, and never again.
+ *
+ * Takes ownership of a box nobody has set up: sets the first password and
+ * returns the admin token so this tab can carry on authenticated. The window
+ * is open only while the box is unclaimed; afterwards lososd refuses, so this
+ * cannot be used to re-read the token later.
+ *
+ * The reason it exists rather than a key prompt: `losos.admin.tokenFile` is 64
+ * random hex characters written 0600 by lososd on first start, on an appliance
+ * with no SSH and no shell logins. Nothing prints it anywhere. Asking a new
+ * owner to paste it was asking for something they had no way to obtain. */
+export function claimBox(
+  password: string,
+  user?: string,
+  options: RequestOptions = {},
+): Promise<ClaimResponse> {
+  return call<ClaimResponse>("/api/setup/claim", {
+    ...options,
+    method: "POST",
+    contentType: "application/json",
+    body: JSON.stringify(user === undefined ? { password } : { user, password }),
+    anonymous: true,
+  });
+}
+
 /** GET /api/state — current mode and the sharing flag. */
 export function getState(options: RequestOptions = {}): Promise<StateResponse> {
   return call<StateResponse>("/api/state", options);

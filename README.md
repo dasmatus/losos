@@ -45,6 +45,54 @@ preference: fscrypt needs a filesystem that implements it, and btrfs does not.
 It costs transparent compression and data checksums, which is why mesh
 replication matters more than it used to.
 
+### An ISO that carries the closure
+
+```sh
+nix build .#losos-disk-iso          # devenv shell build-media iso
+```
+
+The ordinary ISO carries the installer and nothing else, so the target machine
+fetches and builds the whole appliance itself. Measured on a dev machine, that
+closure is 5.78 GiB over 882 store paths. 1.57 GiB of it comes down from
+cache.nixos.org. The box compresses the Nextcloud, Forgejo and pause image
+tarballs itself, another 849 MiB, because no public cache has them, and
+compiles `losos-ctl` for the same reason. This ISO puts the finished closure in
+`isoImage.storeContents`, so `nixos-install` copies those paths off the medium
+instead.
+
+It still needs a network. The installer clones the flake at run time and
+`nixos-install` evaluates it, which fetches nixpkgs. Carrying store paths does
+not change that.
+
+It also only pays off if the medium and the clone agree. `losos-install` runs
+`git clone --depth 1` of `LOSOS_FLAKE_URL` and installs *that* revision, so an
+ISO built from a different commit evaluates to different store paths and the
+copies go unused without saying so. Build it from the commit you mean to
+install.
+
+Build it locally and keep it there. The plain ISO is already about 1.5 GB,
+Codeberg's whole recommended budget for packages and attachments, and the
+closure adds up to 2.4 GiB on top of it once compressed at the level the
+medium's squashfs uses. This is the offline half of what `modules/cache.nix`
+does online. A reachable binary cache is cheaper; the medium works without one.
+
+### A demo image for a VM
+
+```sh
+nix build .#losos-disk-qcow2        # devenv shell build-media qcow2
+```
+
+A preinstalled QCOW2 to boot in QEMU or virt-manager, so you can look at the
+admin UI, Nextcloud and the settings page without finding a spare machine.
+
+It is not the appliance, and the difference is the security model rather than a
+detail. A disk image cannot carry the TPM-sealed LUKS volume the installer
+builds, so this one has no full-disk encryption at all. Whoever holds the file
+can read everything in it. It also never runs the installer, so a QCOW2 that
+boots is no evidence that an install works. `tests/install.nix` and a real box
+remain the only things that say anything about that. Demo and development
+only.
+
 ### Growing the disk later
 
 The logical volume claims 90% of the volume group, not all of it
@@ -135,8 +183,9 @@ Everything is a named script:
 | `fmt` · `lint` · `test-rust` | Format, lint and test both Rust crates |
 | `check-flake` · `check-eval` | Evaluate the flake; force the full module merge |
 | `build-pkgs` · `build-iso` | Build the three packages; build the installer ISO |
-| `vm-tests` | The four `nixos-test` VMs. Needs `/dev/kvm` |
-| `devenv test` | Everything except the VM tests and the ISO |
+| `build-images` · `build-media` | The OCI images; the demo QCOW2 and the closure-carrying ISO. Gigabytes each, opt-in |
+| `vm-tests` | Every `nixos-test` VM the flake exports. Needs `/dev/kvm` |
+| `devenv test` | Everything except the VM tests, the images and the media |
 
 `nix develop` still works and gives a toolchain-only shell for anyone without
 the devenv CLI.

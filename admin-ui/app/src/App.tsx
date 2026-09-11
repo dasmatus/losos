@@ -26,12 +26,14 @@ import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { Toaster } from "@/components/ui/toast";
 import {
   dropToken,
+  getClaimState,
   hasToken,
   isWellFormedToken,
   signIn,
   subscribeAuth,
   TOKEN_PATTERN,
 } from "@/lib/api";
+import Wizard from "@/screens/Wizard";
 import { cn } from "@/lib/utils";
 
 /* The shell: sign-in gate, navigation, routes.
@@ -70,8 +72,62 @@ export default function App() {
   );
 }
 
-function Shell() {
+/* Which of the three things this page can be.
+ *
+ * "unknown" is a real state and not a loading spinner's excuse: until lososd
+ * has answered, showing either the wizard or the key prompt would be a guess,
+ * and both guesses are bad. A returning owner flashed the setup wizard thinks
+ * the box has been wiped. */
+type Gate = "unknown" | "setup" | "signin" | "open";
+
+function useGate(): Gate {
   const signedIn = React.useSyncExternalStore(subscribeAuth, hasToken, () => false);
+  const [claimed, setClaimed] = React.useState<boolean | null>(null);
+
+  React.useEffect(() => {
+    const controller = new AbortController();
+    let live = true;
+    void (async () => {
+      try {
+        const state = await getClaimState({ signal: controller.signal });
+        if (live) setClaimed(state.claimed);
+      } catch {
+        // An unreachable or older daemon is not an unclaimed box. Fall back to
+        // the key prompt, which is wrong for a fresh appliance but harmless on
+        // one that is merely offline — whereas opening setup on a box that is
+        // actually owned is an invitation.
+        if (live) setClaimed(true);
+      }
+    })();
+    return () => {
+      live = false;
+      controller.abort();
+    };
+  }, []);
+
+  if (signedIn) return "open";
+  if (claimed === null) return "unknown";
+  return claimed ? "signin" : "setup";
+}
+
+function Shell() {
+  const gate = useGate();
+  const signedIn = gate === "open";
+
+  // A box nobody has claimed gets the wizard and nothing else: no chrome, no
+  // navigation, no dialog over the top. There is nothing behind it worth
+  // showing yet, and the wizard is a sequence the owner should not be able to
+  // wander out of halfway.
+  if (gate === "setup") return <Wizard onDone={() => window.location.assign("/")} />;
+
+  if (gate === "unknown") {
+    return (
+      <div className="grid min-h-dvh place-items-center bg-ground text-ink">
+        <Spinner />
+        <span className="sr-only">Asking this box whether it has been set up.</span>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-dvh bg-ground text-ink">
@@ -100,7 +156,7 @@ function Shell() {
               element={
                 <RouteStub
                   title="Apps"
-                  summary="The apps this box serves — your files and your code — with a link to each and whether it is answering."
+                  summary="The apps this box serves, your files and your code, with a link to each and whether it is answering."
                 />
               }
             />

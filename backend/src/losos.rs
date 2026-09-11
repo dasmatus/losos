@@ -70,6 +70,16 @@ pub trait Losos {
         action: &crate::setup::OccAction,
         secret: &crate::setup::Secret,
     ) -> anyhow::Result<Option<crate::setup::OccOutcome>>;
+
+    // ── The appliance recovery code ─────────────────────────────────────
+    /// The appliance's recovery code, minting one only if there is none.
+    ///
+    /// One method rather than the look/plan/do split above because there is no
+    /// destructive ordering to assert: the whole of the decision is
+    /// [`crate::recovery::plan_ensure`], which is pure and tested on its own.
+    /// What this method carries is the *idempotence* — every call after the
+    /// first must return the same code and write nothing.
+    fn recovery_code(&mut self) -> anyhow::Result<crate::recovery::Recovery>;
 }
 
 /// Message stamped on a rebuild the moment it is queued.
@@ -135,14 +145,27 @@ pub fn cmd_apply<L: Losos>(l: &mut L, nix_code: &str) -> anyhow::Result<Value> {
 
 /// Soft factory reset: restore the committed defaults and rebuild.
 ///
-/// Unlike the other write commands this does not load the existing state
-/// first — it writes [`State::default`] wholesale, which is the reset. The
-/// destructive tier (wipe the disks) is the installer ISO, not this.
+/// Writes [`State::default`] rather than editing the existing state, with one
+/// field carried across: `claimed`. Resetting the settings an owner chose is
+/// not the same as forgetting that the box has an owner, and the claim route is
+/// unauthenticated precisely while `claimed` is false — see [`cmd_claim`]. The
+/// destructive tier (wipe the disks, and with them state.json) is the installer
+/// ISO, not this.
 pub fn cmd_factory_reset<L: Losos>(l: &mut L) -> anyhow::Result<Value> {
     l.write_overrides(DEFAULT_OVERRIDES_NIX)?;
     let job = l.next_job_id()?;
+    // `claimed` is carried over rather than reset, and this is the one field of
+    // State that a factory reset must not touch. Resetting the settings an
+    // owner chose is not the same as forgetting that the box has an owner: the
+    // claim route is unauthenticated while `claimed` is false, so re-opening it
+    // here would mean a reset performed from the admin UI hands the next person
+    // on that LAN an unguarded password prompt. The destructive tier that truly
+    // makes the box unowned is the installer ISO, which wipes /persist and takes
+    // state.json with it.
+    let claimed = l.load_state().map(|s| s.claimed).unwrap_or(false);
     let s = State {
         rebuild: Some(building(&job, MSG_RESET_STARTED)),
+        claimed,
         ..State::default()
     };
     l.save_state(&s)?;
@@ -241,6 +264,91 @@ pub fn cmd_set_password<L: Losos>(l: &mut L, user: &str, password: &str) -> anyh
         "changed": outcome.code == 0,
         "message": message,
     }))
+}
+
+/// Whether this box has an owner yet. Unauthenticated, on purpose.
+///
+/// The admin UI asks this before it decides what to show, so it has to answer
+/// without a token — the whole point is that on an unclaimed box nobody has
+/// one. It reveals a single bit about a machine the caller has already reached
+/// on the LAN, and `modules/containers.nix`'s `lanOnly` guard is what keeps
+/// "on the LAN" meaningful.
+pub fn cmd_claim_state<L: Losos>(l: &mut L) -> anyhow::Result<Value> {
+    let claimed = l.load_state().map(|s| s.claimed).unwrap_or(false);
+    Ok(json!({ "claimed": claimed }))
+}
+
+/// Claim an unowned box: set the first password, and record that it has an
+/// owner. One shot, and unauthenticated **only while unclaimed**.
+///
+/// This exists because the alternative did not work at all. `losos.admin.
+/// tokenFile` is 64 random hex characters minted by lososd into a 0600 file on
+/// first start, and this appliance has no SSH and no shell logins — so the
+/// admin key is unreadable by the person who just unboxed the machine. The UI
+/// that asked them to "paste the admin key, it is printed on the box" was
+/// describing a sticker nothing in this tree prints. A fresh appliance was
+/// therefore unadministrable: not inconvenient, impossible.
+///
+/// So the first boot has a claim window, the same shape every LAN appliance
+/// uses. While `State::claimed` is false this route needs no token; the first
+/// successful call sets the owner's password, flips the flag, and hands back
+/// the admin token so the page can carry on authenticated without a human ever
+/// seeing it. Every later call is refused, whatever it presents.
+///
+/// What guards the window is source address, not a secret: `/api` is LAN-only
+/// (`lanOnly` in `modules/containers.nix`, which deliberately denies loopback
+/// so master-proxy tunnel traffic cannot reach it either). The exposure is
+/// bounded by that guard and by the window closing on first use, and it is
+/// written down in `docs/security-model.md` rather than left implicit.
+///
+/// The password is validated before anything is staged or executed, exactly as
+/// in [`cmd_set_password`], and the flag is only set after the password change
+/// actually succeeded — a failed claim leaves the box claimable, or the owner
+/// would be locked out by their own typo.
+pub fn cmd_claim<L: Losos>(
+    l: &mut L,
+    user: &str,
+    password: &str,
+    token: &str,
+) -> anyhow::Result<Value> {
+    let mut state = l.load_state().unwrap_or_default();
+    if state.claimed {
+        anyhow::bail!("this box has already been set up");
+    }
+
+    // Reuses the set-password path whole, so the two cannot drift on the thing
+    // that matters most here: the password never reaching an argv.
+    let out = cmd_set_password(l, user, password)?;
+
+    state.claimed = true;
+    l.save_state(&state)?;
+
+    Ok(json!({
+        "claimed": true,
+        "user": out.get("user").cloned().unwrap_or(Value::Null),
+        "token": token,
+    }))
+}
+
+/// The appliance's recovery code, minted on the first call and stable after.
+///
+/// A read, not a rotation. There is deliberately no way to ask for a *new*
+/// code over this API: the value's only job is to still match what the owner
+/// wrote down before a reinstall wiped the box, and an endpoint that replaces
+/// it is an endpoint that invalidates their paper copy — from the admin UI, in
+/// one click, with nothing to undo it.
+///
+/// `minted` says whether *this* call created the code, so the wizard can say
+/// "write this down now" once and "here it is again" on every later visit.
+///
+/// What this does **not** do is recover anything yet. Nothing on the edge
+/// consumes the code — see `modules/recovery.nix` and the tail of
+/// `backend/src/recovery.rs` for the registrar half that does not exist. Until
+/// it does, the code proves ownership at the wizard and nowhere else, and the
+/// UI must not imply otherwise.
+pub fn cmd_recovery<L: Losos>(l: &mut L) -> anyhow::Result<Value> {
+    let r = l.recovery_code()?;
+    Ok(json!({ "code": r.code, "minted": r.minted }))
 }
 
 /// Rebuild progress. Polled by the admin UI roughly every two seconds.
@@ -567,6 +675,9 @@ mod tests {
                 secret: &crate::setup::Secret,
             ) -> anyhow::Result<Option<crate::setup::OccOutcome>> {
                 self.0.run_occ(action, secret)
+            }
+            fn recovery_code(&mut self) -> anyhow::Result<crate::recovery::Recovery> {
+                self.0.recovery_code()
             }
         }
 

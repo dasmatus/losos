@@ -1,0 +1,92 @@
+/* Widget board: the two things Tailwind utilities cannot express.
+ *
+ * A real stylesheet, imported from the renderers and bundled into the app's
+ * one CSS asset. Under the appliance CSP (`style-src 'self'`) an injected
+ * <style> element is ignored silently and a style="" attribute is refused, so
+ * anything genuinely dynamic is either a class or a custom property written
+ * through the CSSOM. Both are used below, and the stylesheet keeps ownership
+ * of what each property MEANS.
+ *
+ * No palette values here. Tokens live in src/styles/index.css.
+ *
+ * No reduced-motion guard either, deliberately: index.css carries one
+ * `@media (prefers-reduced-motion: reduce)` block that kills every animation
+ * and transition in the app with `!important`, including these. A second
+ * guard here would be a second place to forget.
+ */
+
+/* ── The heatmap's first paint ────────────────────────────────────────────
+ *
+ * 53 columns wash in left to right, oldest week first, so the year arrives
+ * the way it was lived rather than all at once. The stagger is a column
+ * index written onto each column as `--heat-i` — 53 hand-written delay
+ * classes would be the alternative, and Tailwind only emits classes it can
+ * see spelled out in the source.
+ *
+ * Enter-only, and it runs once: React keeps these elements across a refresh
+ * (each day is keyed by its date), so a tile polling every five minutes does
+ * not replay the animation at someone trying to read it. */
+
+@keyframes heat-wash {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.heat-col {
+  animation: heat-wash 220ms ease-out both;
+  /* 53 columns * 9ms ≈ 0.5s end to end. Long enough to read as a sweep,
+   * short enough that the last column is not still arriving when the eye
+   * gets there. */
+  animation-delay: calc(var(--heat-i, 0) * 9ms);
+}
+
+/* The hover/focus lift on a single day. A transform, not a size change:
+ * changing the square's width would reflow the whole grid under the cursor. */
+.heat-cell {
+  transition:
+    transform 120ms ease-out,
+    outline-color 120ms ease-out;
+  outline: 1px solid transparent;
+  outline-offset: 1px;
+}
+
+.heat-cell:hover,
+.heat-cell:focus-visible {
+  transform: scale(1.45);
+  outline-color: var(--accent);
+}
+
+/* ── Bar segments ─────────────────────────────────────────────────────────
+ *
+ * Two widths that are genuinely continuous, so they arrive as percentages on
+ * `--losos-fill` and `--losos-reserve` through the CSSOM. The transition is
+ * here rather than on a utility class so that a bar whose value changes on a
+ * refresh grows into its new length instead of jumping. */
+
+.bar-seg {
+  transition: width 420ms cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+
+.bar-fill {
+  width: var(--losos-fill, 0%);
+}
+
+.bar-reserve {
+  width: var(--losos-reserve, 0%);
+}
+
+/* ── A tile arriving ──────────────────────────────────────────────────────
+ *
+ * Staggered like the heatmap columns, by tile index. The board sets
+ * `--tile-i`; a board of eight is fully painted in under a third of a second. */
+
+.widget-tile {
+  animation: heat-wash 260ms cubic-bezier(0.2, 0.7, 0.3, 1) both;
+  animation-delay: calc(var(--tile-i, 0) * 45ms);
+}
