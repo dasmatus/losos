@@ -25,6 +25,15 @@ pub struct FakeLosos {
     pub log: Vec<String>,
     pub job_counter: u32,
     pub spawned: bool,
+    /// Unallocated extents the fake volume group reports.
+    pub vg_free_extents: u64,
+    /// Size of the fake `/persist`, in bytes.
+    pub persist_bytes: u64,
+    /// Every grow step that was executed, in order. The ordering is the thing
+    /// under test, so the fake records rather than simulates.
+    pub grow_ran: Vec<crate::grow::GrowAction>,
+    /// Key file handed to `cryptsetup resize`; None models the TPM path.
+    pub luks_key_file: Option<String>,
 }
 
 impl FakeLosos {
@@ -36,6 +45,13 @@ impl FakeLosos {
             log: Vec::new(),
             job_counter: 0,
             spawned: false,
+            // 512 extents of the lvm2 default 4 MiB = 2 GiB of headroom, on a
+            // 20 GiB filesystem. Both are arbitrary; what matters is that they
+            // are non-zero so the happy path is the default.
+            vg_free_extents: 512,
+            persist_bytes: 20 * 1024 * 1024 * 1024,
+            grow_ran: Vec::new(),
+            luks_key_file: None,
         }
     }
 }
@@ -89,5 +105,35 @@ impl Losos for FakeLosos {
         let id = format!("job-{}", self.job_counter);
         self.job_counter += 1;
         Ok(id)
+    }
+
+    fn vg_free(&mut self) -> anyhow::Result<crate::grow::VgFree> {
+        Ok(crate::grow::VgFree {
+            free_extents: self.vg_free_extents,
+            extent_bytes: 4 * 1024 * 1024,
+        })
+    }
+
+    fn run_grow(&mut self, action: &crate::grow::GrowAction) -> anyhow::Result<()> {
+        // Recorded, not simulated — except for the one effect the command
+        // actually reads back. `ResizeFs` is what makes the filesystem bigger,
+        // so only that step moves `persist_bytes`; a plan that ran the steps in
+        // the wrong order would still "work" here, which is precisely why the
+        // ordering is asserted against the plan in grow.rs rather than here.
+        self.grow_ran.push(action.clone());
+        if matches!(action, crate::grow::GrowAction::ResizeFs) {
+            let claimed = self.vg_free_extents.saturating_mul(4 * 1024 * 1024);
+            self.persist_bytes = self.persist_bytes.saturating_add(claimed);
+            self.vg_free_extents = 0;
+        }
+        Ok(())
+    }
+
+    fn persist_bytes(&mut self) -> anyhow::Result<u64> {
+        Ok(self.persist_bytes)
+    }
+
+    fn luks_key_file(&mut self) -> anyhow::Result<Option<String>> {
+        Ok(self.luks_key_file.clone())
     }
 }

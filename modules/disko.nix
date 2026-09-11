@@ -89,7 +89,24 @@ in
     lvm_vg.persist-vg = {
       type = "lvm_vg";
       lvs.persist = {
-        size = "100%FREE";
+        # Not 100%FREE, and the missing slice is the feature.
+        #
+        # The stack below is ext4 inside LUKS inside this LV, which is exactly
+        # the arrangement that grows online: lvextend, cryptsetup resize,
+        # resize2fs, none of which need /persist unmounted. With every extent
+        # already claimed, none of that is reachable — `lvextend` has nothing
+        # to take, so the only way to add space is to open the box and add a
+        # disk.
+        #
+        # That matters because /nix *is* /persist here (impermanence binds
+        # /persist/nix over /nix), so the store grows with every generation and
+        # the 03:00 unattended rebuild is what runs it out of room, on a
+        # machine with no shell to notice from. The unallocated remainder is
+        # also what an LVM snapshot needs, which is the only cheap rollback
+        # this layout can offer.
+        #
+        # losos.storage.fillPercent = 100 restores the old behaviour.
+        size = "${toString config.losos.storage.fillPercent}%FREE";
         content = {
           type = "luks";
           name = "persist"; # -> /dev/mapper/persist

@@ -8,7 +8,9 @@
 //! reachable before anyone has pasted a token.
 
 use crate::io_backend::{atomic_write_secret, IoLosos};
-use crate::losos::{cmd_apply, cmd_change, cmd_factory_reset, cmd_settings, cmd_state, cmd_status};
+use crate::losos::{
+    cmd_apply, cmd_change, cmd_factory_reset, cmd_grow, cmd_settings, cmd_state, cmd_status,
+};
 use crate::model::Mode;
 use crate::overrides::validate_apply;
 use actix_web::{web, App, HttpRequest, HttpResponse, HttpServer};
@@ -158,6 +160,15 @@ async fn post_factory_reset(api: web::Data<Api>, req: HttpRequest) -> HttpRespon
     gate(&api, &req).unwrap_or_else(|| run(&api, cmd_factory_reset))
 }
 
+/// Extend `/persist` into the volume group's free extents.
+///
+/// Synchronous, unlike every other POST here: it is three short-lived commands
+/// rather than a supervised rebuild, so it returns the measured before/after
+/// sizes instead of a job id to poll.
+async fn post_grow(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    gate(&api, &req).unwrap_or_else(|| run(&api, cmd_grow))
+}
+
 async fn not_found() -> HttpResponse {
     err(actix_web::http::StatusCode::NOT_FOUND, "not found")
 }
@@ -263,6 +274,7 @@ pub fn serve(backend: IoLosos) -> anyhow::Result<()> {
                 .route("/api/change", web::post().to(post_change))
                 .route("/api/apply", web::post().to(post_apply))
                 .route("/api/factory-reset", web::post().to(post_factory_reset))
+                .route("/api/grow", web::post().to(post_grow))
                 .default_service(web::route().to(not_found))
         })
         .bind(("127.0.0.1", port))

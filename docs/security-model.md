@@ -63,6 +63,53 @@ there. Enforcement:
 - The router's hostname comes from the whitelist, not from the runtime
   registry, so nothing an appliance sends can widen what it is served.
 
+## System hardening
+
+`losos.hardening.*` (`modules/hardening.nix`) is the kernel-and-userspace layer
+under everything above. It is staged rather than one switch, because the
+obvious shortcut no longer exists: NixOS removed `profiles/hardened.nix` in
+26.05, and `linux_hardened` in the nixpkgs this flake tracks is
+`throw "linux_hardened has been removed due to lack of maintenance"`. Upstream's
+stated reason — the profile "lacks a consistent and transparent baseline" and
+was "often more of a 'grab bag' of settings than a cohesive security policy" —
+is a fair criticism to inherit rather than repeat.
+
+**On by default** (`hardening.enable`): KSPP kernel parameters; sysctl
+tightening for kernel-address and log disclosure, unprivileged eBPF, ptrace,
+`userfaultfd`, the `fs.protected_*` family and the network stack; a
+kernel-module blacklist that also blocks explicit `modprobe`; a separate `/tmp`
+tmpfs and `noexec` on `/dev/shm`; dbus-broker; and systemd sandboxing on
+`nginx`, `avahi-daemon` and `lososd`.
+
+**Opt-in**, because each can cost something: `hardening.apparmor`,
+`hardening.malloc`, `hardening.nosmt`, `hardening.usbguard`.
+
+### What it does not cover
+
+Two limits worth stating rather than implying. The hardened allocator works by
+preloading, so it covers the host's dynamically linked processes and **nothing
+inside Kubernetes**: k3s, rke2 and containerd are static Go binaries that ignore
+preloading, and a pod has its own rootfs and therefore its own absent preload
+file. And no amount of kernel hardening touches the three limitations below —
+the shared origin, the cleartext LAN, or the no-TPM physical-access path.
+
+### Three things it deliberately does not do
+
+Each is on every hardening checklist, and each would cost more here than it
+buys. `tests/hardening.nix` asserts all three *absent*, so they read as
+decisions rather than oversights.
+
+- **`rp_filter` is 2 (loose), not 1 (strict)**, for two independent reasons.
+  Strict reverse-path filtering drops packets whose source would not route back
+  out the interface they arrived on — which is what multicast replies look like
+  on a multi-homed machine, and mDNS is the only way to reach a box with no SSH
+  and no shell login. Calico, half of the canal CNI the mesh cluster runs, also
+  does not work under it.
+- **User namespaces stay enabled.** `security.allowUserNamespaces = false` sets
+  `user.max_user_namespaces = 0`, which stops both kubelets and containerd.
+- **`/tmp` is not `noexec`.** Nix builds unpack and execute scripts there, and
+  the nightly unattended rebuild is this appliance's only self-repair path.
+
 ## Known limitations
 
 These are accepted, not unnoticed.

@@ -185,6 +185,26 @@ never read bare `config.X`; they read `config.losos.X`.** This is the only
 sanctioned place to add new options — earlier code wrongly declared options
 inside `config` blocks.
 
+**Hardening** (`hardening.nix`, `install` only): `losos.hardening.*` is built from
+KSPP primitives rather than wrapping an upstream profile, because there is none
+left to wrap — `profiles/hardened.nix` was removed in 26.05 and
+`linux_hardened` is now a `throw`. `hardening.enable` (default true) is the
+layer that costs nothing: kernel params, sysctls, a module blacklist that also
+blocks explicit `modprobe` (plain `boot.blacklistedKernelModules` does **not** —
+it only stops alias autoloading), `boot.tmp.useTmpfs`, dbus-broker, and systemd
+sandboxing on `nginx`/`avahi-daemon`/`lososd`. Four opt-in flags — `apparmor`,
+`malloc`, `nosmt`, `usbguard` — carry what can break something. Not imported by
+`iso`: the live medium needs squashfs. `tests/hardening.nix` asserts both halves,
+including that nothing blocks the kernel surface k3s, rke2, containerd and
+Longhorn need.
+
+**Online growth** (`grow.rs` + `losos.storage.fillPercent`): the LV deliberately
+stops short of the whole volume group, so `/persist` — which *is* `/nix`, via
+impermanence — can be grown without opening the box. `losos-ctl grow` runs
+lvextend, then `cryptsetup resize`, then `resize2fs`, in that order, online.
+The order is the whole correctness argument and the failure is silent, so it is
+asserted against the *plan* in `grow.rs` and end-to-end in `tests/resize.nix`.
+
 **Auto-upgrade + nightly reboot** (`updates.nix`): `system.autoUpgrade`
 rebuilds from `losos.upgradeFlakeUri` at 03:00. The default,
 `git+file:///etc/nixos#install`, only advances the system consistently and
@@ -201,6 +221,38 @@ A separate `midnight-reboot.timer` reboots unconditionally at 00:07 with
 `Persistent=true` to catch up if the box was off.
 
 ## Gotchas that bite silently
+
+- **Three hardening settings are deliberately *not* applied**, and all three are
+  on every checklist you will be tempted to copy from. `rp_filter` is `2`
+  (loose), not `1` — strict drops the multicast replies that make an SSH-less
+  box reachable, *and* Calico does not work under it. `user.max_user_namespaces`
+  stays non-zero — zeroing it stops both kubelets and containerd.
+  `/tmp` is not `noexec` — nix builds execute there and the nightly unattended
+  rebuild is the only self-repair path. `tests/hardening.nix` asserts all three
+  absent, so "fixing" one turns a test red instead of bricking a box.
+- **`fileSystems."/tmp"` does not mount anything.** NixOS masks `tmp.mount`
+  unless `boot.tmp.useTmpfs` is set, so the declaration silently produces no
+  mount and `/tmp` inherits the root filesystem's options. Cost one VM-test
+  round trip to find.
+- **The allocator preload file is `/etc/ld-nix.so.preload`**, read by NixOS'
+  patched loader — not the glibc-standard `/etc/ld.so.preload`, which never
+  exists here. Asserting the standard path passes when the allocator is off and
+  fails when it is on.
+- **`losos-ctl grow` runs three commands and only the order is load-bearing.**
+  `resize2fs` asks the LUKS *mapping* for its size, so running it before
+  `cryptsetup resize` reads the pre-grow size, prints "Nothing to do!" and
+  exits 0. And `lvextend -l 77` without the `+` is an absolute extent count,
+  which *shrinks* a larger volume — under mounted ext4 that destroys it.
+  `lososd` needs lvm2/cryptsetup/e2fsprogs on its unit `path` or the first
+  step fails with "No such file or directory".
+- **The LUKS key file must not live under `/root` or `/home`.** `lososd` runs
+  with `ProtectHome=true` — on purpose, so a compromised request handler cannot
+  read either data domain — and that hides `/root` too. `cryptsetup resize`
+  then fails with "Failed to open key file", *after* `lvextend` has already
+  grown the volume. `/etc/keys/persist-keyfile` is the path everything agrees
+  on: `disko.nix` writes it, `daemon.nix` passes it as `LOSOS_LUKS_KEYFILE`
+  (no-TPM path only), and `tests/resize.nix` uses it rather than a fixture of
+  its own, so the three cannot drift apart unnoticed.
 
 - **`lososd` is restarted mid-rebuild.** `nixos-rebuild switch` restarts the
   changed `lososd.service`, killing the watcher thread that was tracking the
