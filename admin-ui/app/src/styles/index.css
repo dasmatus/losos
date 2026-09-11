@@ -1,0 +1,318 @@
+/* LosOS admin UI — tokens, theme, motion.
+ *
+ * Tailwind v4, CSS-first: there is no tailwind.config.js. The palette below
+ * is the source of truth; `@theme inline` republishes it as Tailwind theme
+ * keys so `bg-surface`, `text-muted`, `border-line`, `rounded-card` and
+ * friends all resolve to the same custom properties. `inline` matters — it
+ * makes the utilities emit `var(--surface)` rather than a frozen copy of its
+ * value, which is what lets one attribute on <html> repaint the whole app.
+ *
+ * Under the appliance CSP (`style-src 'self'`) nothing here may be an inline
+ * <style> element or a style="" attribute. Every value a component needs at
+ * runtime is either a class or a custom property set through the CSSOM.
+ */
+
+@import "tailwindcss";
+
+/* ── Palette ──────────────────────────────────────────────────────────────
+ * Three states, not two. Bare :root is the complete light palette. The media
+ * arm is guarded with :not([data-theme="light"]) so an explicit Light choice
+ * survives a dark-preferring browser, and the [data-theme="dark"] rule comes
+ * last at equal specificity so an explicit Dark choice wins the other way.
+ * Absent attribute = Auto, and Auto is correct with no JavaScript at all. */
+
+:root {
+  color-scheme: light;
+
+  --ground: #f3f5f7;
+  --surface: #ffffff;
+  --sunk: #eaedf0;
+
+  --ink: #18212a;
+  --muted: #5c6a77;
+  --faint: #8c98a4;
+
+  --line: #dce1e6;
+  --hair: #eaeef1;
+
+  --accent: #0e6e7d;
+  --accent-wash: #e2eff1;
+
+  --ok: #2e7357;
+  --warn: #8c6512;
+  --crit: #a8443c;
+
+  /* Depth is a light-mode idea; dark flattens it and leans on --line. */
+  --elev-card: 0 1px 2px rgb(24 33 42 / 0.05), 0 4px 16px rgb(24 33 42 / 0.06);
+  --elev-pop: 0 12px 40px rgb(24 33 42 / 0.18);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
+    --ground: #0a0e12;
+    --surface: #141b22;
+    --sunk: #10171d;
+
+    --ink: #e2e8ee;
+    --muted: #94a2b0;
+    --faint: #6b7986;
+
+    --line: #212c36;
+    --hair: #1a242d;
+
+    --accent: #48b3c0;
+    --accent-wash: #0d2a2f;
+
+    --ok: #4fa583;
+    --warn: #c79a3e;
+    --crit: #d1756c;
+
+    --elev-card: 0 1px 2px rgb(0 0 0 / 0.4);
+    --elev-pop: 0 12px 40px rgb(0 0 0 / 0.55);
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --ground: #0a0e12;
+  --surface: #141b22;
+  --sunk: #10171d;
+
+  --ink: #e2e8ee;
+  --muted: #94a2b0;
+  --faint: #6b7986;
+
+  --line: #212c36;
+  --hair: #1a242d;
+
+  --accent: #48b3c0;
+  --accent-wash: #0d2a2f;
+
+  --ok: #4fa583;
+  --warn: #c79a3e;
+  --crit: #d1756c;
+
+  --elev-card: 0 1px 2px rgb(0 0 0 / 0.4);
+  --elev-pop: 0 12px 40px rgb(0 0 0 / 0.55);
+}
+
+/* ── Tailwind theme ───────────────────────────────────────────────────── */
+
+@theme inline {
+  --color-ground: var(--ground);
+  --color-surface: var(--surface);
+  --color-sunk: var(--sunk);
+
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+
+  --color-line: var(--line);
+  --color-hair: var(--hair);
+
+  --color-accent: var(--accent);
+  --color-accent-wash: var(--accent-wash);
+
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-crit: var(--crit);
+
+  /* Two radii and no others: 9px for cards, 6px for controls. */
+  --radius-card: 9px;
+  --radius-control: 6px;
+
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue",
+    Arial, sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono",
+    monospace;
+
+  /* Named apart from the palette vars on purpose: `@theme inline` still
+   * declares these on :root, so `--shadow-card: var(--shadow-card)` would be
+   * a self-reference and resolve to nothing. */
+  --shadow-card: var(--elev-card);
+  --shadow-pop: var(--elev-pop);
+
+  --animate-fade-in: fade-in 180ms ease-out both;
+  --animate-rise: rise 220ms cubic-bezier(0.2, 0.7, 0.3, 1) both;
+  --animate-pop: pop 160ms cubic-bezier(0.2, 0.7, 0.3, 1) both;
+  --animate-breathe: breathe 1.8s ease-in-out infinite;
+  --animate-sweep: sweep 1.15s linear infinite;
+  --animate-spin-slow: spin 1.1s linear infinite;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes pop {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes breathe {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+/* The indeterminate progress bar: a short band crossing the track. */
+@keyframes sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(320%);
+  }
+}
+
+/* ── Base ─────────────────────────────────────────────────────────────── */
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    margin: 0;
+    background-color: var(--ground);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    font-size: 15px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Digits that line up in a column, everywhere they occur. */
+  code,
+  kbd,
+  samp,
+  pre {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  /* The UA sheet's [hidden] rule loses to any class that sets display. */
+  [hidden] {
+    display: none !important;
+  }
+
+  /* Native <dialog>, which is what components/ui/dialog.tsx is built on:
+   * it brings the focus trap, the Escape handling and the top layer without
+   * a library, and a library is what would have injected a <style> element
+   * the CSP then refuses. */
+  dialog {
+    /* `margin: auto` is what centres a modal dialog in the top layer, and
+     * Tailwind's preflight zeroes the margin on every element — including
+     * this one, which left the dialog pinned to the top-left corner with a
+     * correctly dimmed backdrop behind it. Restoring it here, at element
+     * specificity, beats the preflight's universal selector. */
+    margin: auto;
+    max-width: min(32rem, calc(100vw - 2rem));
+    max-height: calc(100dvh - 4rem);
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    overflow: visible;
+  }
+
+  dialog::backdrop {
+    background-color: rgb(10 14 18 / 0.45);
+    backdrop-filter: blur(2px);
+    animation: fade-in 140ms ease-out both;
+  }
+
+  /* Scrollbars that belong to the palette rather than to the OS. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--line) transparent;
+  }
+}
+
+/* ── Utilities ────────────────────────────────────────────────────────── */
+
+/* "On this box" is a filled accent; "on the mesh" is the SAME accent, hatched.
+ * One hue in the whole app — ok/warn/crit are state, never identity. Use
+ * `hatched` for the mesh half of any pair, `bg-accent` for the local half. */
+/* Light and widely spaced on purpose: a chip carries a label, and a denser
+ * hatch buried it. The texture only has to differ from a flat fill, not
+ * compete with the text on top of it. */
+@utility hatched {
+  background-color: var(--accent-wash);
+  background-image: repeating-linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--accent) 30%, transparent) 0 1.5px,
+    transparent 1.5px 7px
+  );
+}
+
+/* The same hatch over a solid accent fill, for a filled mesh chip. */
+@utility hatched-solid {
+  background-color: var(--accent);
+  background-image: repeating-linear-gradient(
+    135deg,
+    rgb(255 255 255 / 0.28) 0 2px,
+    transparent 2px 6px
+  );
+}
+
+/* Numbers and identifiers: monospace, columns that line up. */
+@utility numeric {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+/* ── Motion ───────────────────────────────────────────────────────────── */
+
+/* Every animation and transition in this app is opt-out in one place. A
+ * component that needs motion uses `animate-*` or `transition-*`; nothing
+ * needs its own reduced-motion guard. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after,
+  *::backdrop {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}
