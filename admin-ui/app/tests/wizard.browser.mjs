@@ -60,7 +60,7 @@ const browser = await chromium.launch({ chromiumSandbox: false });
 
 /* One page wired to a box in a given state. `claimed` is the whole point: it
  * is what decides between the wizard and the key prompt. */
-async function open({ claimed, tls = false }) {
+async function open({ claimed, tls = false, path = '/' }) {
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
   const errors = [];
   page.on('pageerror', (e) => errors.push(String(e)));
@@ -108,7 +108,7 @@ async function open({ claimed, tls = false }) {
     }),
   );
 
-  await page.goto(origin, { waitUntil: 'networkidle' });
+  await page.goto(origin + path, { waitUntil: 'networkidle' });
   return { page, errors };
 }
 
@@ -183,6 +183,45 @@ await check('no em dash reappears in the wizard copy', async () => {
     [],
     `em dash used as a sentence connector:\n${offenders.join('\n')}`,
   );
+  await page.close();
+});
+
+/* Setup is not something a URL can step around.
+ *
+ * Two ways it could be, and both are real. A deep link straight to a settings
+ * route on a box nobody has claimed would be a half-configured page reached
+ * before the owner exists. And the wizard tears itself down halfway if the
+ * shell watches the claim flag rather than the wizard: step 2 claims the box
+ * and stores the token, so a gate keyed on "is it claimed" flips to the app
+ * mid-flow and skips step 3, the recovery code, which is the one thing that has
+ * to leave the box. The owner would never see it and would not know. */
+for (const path of ['/settings', '/settings/reset', '/storage', '/mesh', '/apps']) {
+  await check(`an unclaimed box shows setup at ${path}, not the page`, async () => {
+    const { page } = await open({ claimed: false, path });
+    const text = await page.locator('body').innerText();
+    assert.ok(
+      /Trust this box/i.test(text),
+      `${path} reached the app on a box with no owner`,
+    );
+    await page.close();
+  });
+}
+
+await check('claiming the box mid-wizard does not end the wizard', async () => {
+  const { page } = await open({ claimed: false });
+  // What step 2 does on success: the token lands in session storage and the
+  // claim flag flips. A shell keyed on either would swap the app in here.
+  await page.evaluate(() => {
+    window.sessionStorage.setItem('losos-token', '0'.repeat(64));
+    window.dispatchEvent(new StorageEvent('storage', { key: 'losos-token' }));
+  });
+  await page.waitForTimeout(200);
+  const text = await page.locator('body').innerText();
+  assert.ok(
+    /Trust this box|sign in|Recovery code/i.test(text),
+    'the wizard vanished once a token existed, so step 3 would never be shown',
+  );
+  assert.ok(!/Your board/i.test(text), 'the overview replaced the wizard mid-flow');
   await page.close();
 });
 

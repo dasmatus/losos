@@ -1,5 +1,5 @@
 import * as React from "react";
-import { BrowserRouter, NavLink, Route, Routes } from "react-router-dom";
+import { BrowserRouter, NavLink, Route, Routes, useNavigate, useParams } from "react-router-dom";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import {
   HardDriveIcon,
@@ -10,7 +10,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogBody,
@@ -34,15 +34,24 @@ import {
   TOKEN_PATTERN,
 } from "@/lib/api";
 import Wizard from "@/screens/Wizard";
+import Home from "@/screens/Home";
+import Settings from "@/screens/Settings";
+import { isSettingsPaneId, type SettingsPaneId } from "@/screens/settings/panes";
+import { WidgetBoard } from "@/widgets";
 import { cn } from "@/lib/utils";
 
 /* The shell: sign-in gate, navigation, routes.
  *
- * Each route below renders a <RouteStub>. Replace one by importing the real
- * screen and swapping the element — the shell, the gate and the chrome do not
- * change. Routes are real paths, not hashes, which needs
- * `try_files $uri /index.html` on the admin location in modules/containers.nix
- * so a deep link survives a reload.
+ * Routes are real paths, not hashes, which needs `try_files $uri /index.html`
+ * on the admin location in modules/containers.nix so a deep link survives a
+ * reload.
+ *
+ * Three of the five nav entries are shortcuts into a settings pane rather than
+ * screens of their own: storage, mesh and apps are what an owner actually opens
+ * this page for, so they get a top-level address, while network, hardware,
+ * about and reset live under /settings/<pane>. `paneHref` is the single place
+ * that mapping exists, so the sidebar and the URL cannot disagree about where a
+ * pane lives.
  *
  * House rules that hold everywhere below this line: no emoji (icons are
  * @hugeicons, Stroke Rounded, 1.5), no inline style attributes (the CSP
@@ -112,13 +121,35 @@ function useGate(): Gate {
 
 function Shell() {
   const gate = useGate();
+
+  /* Setup runs to the end once it has started, and this latch is what makes
+   * that true.
+   *
+   * Without it the wizard tears itself down halfway. Step 2 claims the box,
+   * which flips `claimed` AND stores the admin token, so the gate would
+   * immediately read "open" and swap the wizard for the app — skipping step 3,
+   * the recovery code, which is the one thing in this whole product that has to
+   * leave the box. The owner would never see it, and would not know they had
+   * not seen it.
+   *
+   * So the gate decides whether setup STARTS; only the wizard decides when it
+   * is over. There is no route that reaches around this: every path renders the
+   * wizard while it is up, so a deep link to /settings on an unclaimed box gets
+   * setup too, not a half-configured settings page. */
+  const [setupStarted, setSetupStarted] = React.useState(false);
+  const [setupDone, setSetupDone] = React.useState(false);
+  React.useEffect(() => {
+    if (gate === "setup") setSetupStarted(true);
+  }, [gate]);
+
+  const inSetup = setupStarted && !setupDone;
   const signedIn = gate === "open";
 
-  // A box nobody has claimed gets the wizard and nothing else: no chrome, no
+  // A box being set up gets the wizard and nothing else: no chrome, no
   // navigation, no dialog over the top. There is nothing behind it worth
-  // showing yet, and the wizard is a sequence the owner should not be able to
-  // wander out of halfway.
-  if (gate === "setup") return <Wizard onDone={() => window.location.assign("/")} />;
+  // showing yet, and it is a sequence the owner should not be able to wander
+  // out of halfway.
+  if (inSetup) return <Wizard onDone={() => setSetupDone(true)} />;
 
   if (gate === "unknown") {
     return (
@@ -142,51 +173,12 @@ function Shell() {
         <SectionNav />
         <main className="min-w-0 flex-1">
           <Routes>
-            <Route
-              path="/"
-              element={
-                <RouteStub
-                  title="Overview"
-                  summary="What this box is doing right now: the apps it serves, whether its storage is private or shared, and any change it is still applying."
-                />
-              }
-            />
-            <Route
-              path="/apps"
-              element={
-                <RouteStub
-                  title="Apps"
-                  summary="The apps this box serves, your files and your code, with a link to each and whether it is answering."
-                />
-              }
-            />
-            <Route
-              path="/storage"
-              element={
-                <RouteStub
-                  title="Storage"
-                  summary="How much room is left, and claiming the space held back at install time without opening the box."
-                />
-              }
-            />
-            <Route
-              path="/mesh"
-              element={
-                <RouteStub
-                  title="Mesh"
-                  summary="Joining other boxes, sharing storage, and the hours this box lends its spare capacity to the mesh."
-                />
-              }
-            />
-            <Route
-              path="/settings"
-              element={
-                <RouteStub
-                  title="Settings"
-                  summary="The name this box answers to, how it is reached from outside, and the reset that puts everything back to factory defaults."
-                />
-              }
-            />
+            <Route path="/" element={<Home widgets={<WidgetBoard />} showThemeSwitch={false} />} />
+            <Route path="/storage" element={<SettingsRoute pane="storage" />} />
+            <Route path="/mesh" element={<SettingsRoute pane="mesh" />} />
+            <Route path="/apps" element={<SettingsRoute pane="apps" />} />
+            <Route path="/settings" element={<SettingsRoute />} />
+            <Route path="/settings/:pane" element={<SettingsRoute />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </main>
@@ -277,18 +269,30 @@ function SectionNav() {
 
 /* Delete these as the real screens land. Kept deliberately plain: they exist
  * to prove the routing and the palette, not to suggest a layout. */
-function RouteStub({ title, summary }: { title: string; summary: string }) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
-        <CardDescription>{summary}</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <p className="text-[13px] text-faint">This section is not built yet.</p>
-      </CardContent>
-    </Card>
-  );
+/* The one place a settings pane's address is decided.
+ *
+ * Storage, mesh and apps are what an owner opens this page for, so they get a
+ * top-level address; network, hardware, about and reset sit under /settings.
+ * Both the sidebar and the router read this, so they cannot disagree about
+ * where a pane lives, and a deep link to any of them survives a reload because
+ * nginx serves index.html for unknown paths under the admin location.
+ */
+const TOP_LEVEL_PANES: readonly SettingsPaneId[] = ["storage", "mesh", "apps"];
+
+function paneHref(pane: SettingsPaneId): string {
+  return TOP_LEVEL_PANES.includes(pane) ? `/${pane}` : `/settings/${pane}`;
+}
+
+function SettingsRoute({ pane }: { pane?: SettingsPaneId }) {
+  const navigate = useNavigate();
+  const params = useParams();
+  // A pane named in the URL wins over the route's own default, so
+  // /settings/hardware opens hardware rather than the first pane.
+  const fromUrl = params["pane"];
+  const selected =
+    pane ?? (typeof fromUrl === "string" && isSettingsPaneId(fromUrl) ? fromUrl : undefined);
+
+  return <Settings pane={selected} onPaneChange={(next) => navigate(paneHref(next))} />;
 }
 
 function NotFound() {

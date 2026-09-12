@@ -301,8 +301,73 @@ let
         -nographic "$@"
     '';
   };
+  # ── The closure-carrying installer ISO ────────────────────────────────────
+  #
+  # Unlike the qcow2 above, this one IS the appliance: it is the ordinary
+  # installer medium, and what it installs is the real LUKS-on-LVM, TPM-sealed,
+  # tmpfs-root system. The only difference is what rides along in the store.
+  #
+  # The plain ISO carries the installer and one small output, so a fresh box
+  # fetches and builds the rest itself. Measured on a dev machine that closure
+  # is 5.78 GiB over 882 store paths. Most of it substitutes from
+  # cache.nixos.org, but three things cannot: the Nextcloud, Forgejo and pause
+  # image tarballs (849 MiB, and no public cache has them because dockerTools
+  # builds them from this flake) and `losos-ctl` itself. A repurposed mini-PC
+  # compresses multi-gigabyte layer tars and compiles Rust as part of its first
+  # install, with nobody watching and no shell to watch from.
+  #
+  # `isoImage.storeContents` puts the finished `install` toplevel on the medium,
+  # and `nix copy` prefers a path it already has over building one. So the
+  # expensive half of an install becomes a read off the USB stick.
+  #
+  # THREE THINGS THIS DOES NOT DO, each of which has bitten a medium like it:
+  #
+  #   It does not remove the network requirement. `losos-install` clones
+  #   LOSOS_FLAKE_URL at run time and `nixos-install` evaluates that clone,
+  #   which fetches nixpkgs. Carrying store paths changes what gets BUILT, not
+  #   whether the flake gets EVALUATED.
+  #
+  #   It does not help if the medium and the clone disagree. The installer
+  #   installs whatever revision it cloned; an ISO built from a different commit
+  #   evaluates to different store paths, the carried ones match nothing, and
+  #   the install silently falls back to building — slower than the plain ISO,
+  #   because it also read 2.4 GiB it could not use. Build this from the commit
+  #   you mean to install.
+  #
+  #   It does not belong in CI or on a release page. The plain ISO is already
+  #   ~1.5 GB, which is Codeberg's entire recommended budget for packages and
+  #   attachments; this adds ~2.4 GiB of compressed closure on top. It is a
+  #   local artefact. modules/cache.nix is the online half of the same problem
+  #   and is cheaper whenever a cache is reachable.
+  isoSystem = self.nixosConfigurations.iso.extendModules {
+    modules = [
+      (
+        { lib, ... }:
+        {
+          # mkForce, because the plain ISO already sets this to the admin UI
+          # alone (flake.nix) and a list would otherwise merge into "both" —
+          # which is not wrong, just redundant: the UI is inside the toplevel.
+          isoImage.storeContents = lib.mkForce [
+            self.nixosConfigurations.install.config.system.build.toplevel
+          ];
+
+          # A distinct volume label and file name, so a closure-carrying medium
+          # cannot be mistaken for the plain one after it has been written to a
+          # stick and the shell history is gone. They install identically and
+          # differ only in how long it takes, which is exactly the kind of
+          # difference nobody remembers about an unlabelled USB stick.
+          # `image.fileName`, not `isoImage.isoName`: nixpkgs renamed it and the
+          # old spelling still works but warns on every evaluation of this
+          # flake, including the ones CI and `devenv test` run.
+          image.fileName = lib.mkForce "losos-installer-full.iso";
+          isoImage.volumeID = lib.mkForce "LOSOS_FULL";
+        }
+      )
+    ];
+  };
 in
 {
   losos-disk-qcow2 = image;
   losos-disk-qcow2-run = runner;
+  losos-disk-iso = isoSystem.config.system.build.isoImage;
 }
