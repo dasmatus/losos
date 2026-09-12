@@ -46,6 +46,14 @@ export interface SettingsResponse {
   computeWindowStart: string;
   /** HH:MM. An end before the start wraps midnight. */
   computeWindowEnd: string;
+  /** losos.hardening.apparmor — confines less than it looks like it does. */
+  hardeningApparmor: boolean;
+  /** losos.hardening.malloc — hardened_malloc; host daemons only, not pods. */
+  hardeningMalloc: boolean;
+  /** losos.hardening.nosmt — halves the core count. */
+  hardeningNosmt: boolean;
+  /** losos.hardening.usbguard — blocks USB devices absent at boot. */
+  hardeningUsbguard: boolean;
 }
 
 export interface StatusResponse {
@@ -505,7 +513,14 @@ function nixBool(value: boolean): string {
  * defaultOverridesNix exactly: a `{ ... }:` header, then one
  * `losos.<key> = <value>;` per line, booleans and integers bare, strings
  * double-quoted. POST the result to /api/apply; that is the only write path
- * the UI has, and /api/change is never called from here. */
+ * the UI has, and /api/change is never called from here.
+ *
+ * EVERY key the box should keep has to be emitted here. This function does not
+ * patch overrides.nix, it REPLACES it — so a losos.* option that lososd parses
+ * but this list omits is silently reset to its default the first time anyone
+ * saves any setting, however unrelated. Adding a field to SettingsResponse
+ * without adding a line here is therefore not a missing feature, it is a
+ * regression in whatever that field controls. */
 export function buildOverridesNix(settings: SettingsResponse): string {
   return [
     "{ ... }:",
@@ -522,6 +537,10 @@ export function buildOverridesNix(settings: SettingsResponse): string {
     `  losos.cluster.shareCompute = ${nixBool(settings.shareCompute)};`,
     `  losos.cluster.computeWindow.start = ${nixString(settings.computeWindowStart)};`,
     `  losos.cluster.computeWindow.end = ${nixString(settings.computeWindowEnd)};`,
+    `  losos.hardening.apparmor = ${nixBool(settings.hardeningApparmor)};`,
+    `  losos.hardening.malloc = ${nixBool(settings.hardeningMalloc)};`,
+    `  losos.hardening.nosmt = ${nixBool(settings.hardeningNosmt)};`,
+    `  losos.hardening.usbguard = ${nixBool(settings.hardeningUsbguard)};`,
     "}",
     "",
   ].join("\n");

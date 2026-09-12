@@ -100,6 +100,10 @@ const KEYS = [
   "shareCompute",
   "computeWindowStart",
   "computeWindowEnd",
+  "hardeningApparmor",
+  "hardeningMalloc",
+  "hardeningNosmt",
+  "hardeningUsbguard",
 ] as const satisfies readonly (keyof SettingsResponse)[];
 
 function sameValue(a: unknown, b: unknown): boolean {

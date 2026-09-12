@@ -163,6 +163,39 @@ in
         # a permanent ROP gadget source. Nothing built this decade needs it.
         "vsyscall=none"
         "debugfs=off"
+
+        # CPU side channels. `mitigations=auto,nosmt` is deliberately NOT
+        # used: the `nosmt` half halves the core count of a mini-PC that
+        # transcodes video for Nextcloud, and it has its own opt-in flag
+        # (losos.hardening.nosmt) so that trade stays a decision rather than a
+        # side effect of this line. Everything below is the half that costs
+        # nothing a default kernel was not already paying.
+        #
+        # Each of these only *forces* a mitigation the kernel already applies
+        # by default on affected hardware; on unaffected CPUs they are no-ops.
+        # They are here because "default" is a moving target across kernel
+        # versions, and this box updates itself unattended at 03:00.
+        "spectre_v2=on"
+        "spec_store_bypass_disable=on"
+        "l1tf=flush"
+        "mds=full"
+        "tsx=off"
+        "tsx_async_abort=full"
+        # Transparent huge pages were the mitigation's own escape hatch; this
+        # is the KSPP-recommended setting rather than the kernel default.
+        "kvm.nx_huge_pages=force"
+
+        # DMA. A device plugged into a Thunderbolt or ExpressCard port can
+        # read main memory before the IOMMU is configured unless the firmware
+        # is told to shut early PCI DMA down; that is a live risk on an
+        # appliance sitting on a shelf. Complements — does not replace — the
+        # firewire-core/thunderbolt entries in the module blacklist below,
+        # which only stop the drivers, not the DMA.
+        "efi=disable_early_pci_dma"
+        "intel_iommu=on"
+        "amd_iommu=force_isolation"
+        "iommu.passthrough=0"
+        "iommu.strict=1"
       ];
 
       # Sets kernel.kexec_load_disabled and nohibernate. Both matter here:
@@ -349,7 +382,11 @@ in
 
     # ── Opt-in: hardened allocator ─────────────────────────────────────────
     (lib.mkIf cfg.malloc {
-      # Works by LD_PRELOAD via /etc/ld.so.preload. Worth being precise about
+      # Works by LD_PRELOAD via /etc/ld-nix.so.preload — NixOS' patched loader
+      # reads that path, not the glibc-standard /etc/ld.so.preload, which never
+      # exists here. Asserting the standard path passes while the allocator is
+      # off and fails once it is on; tests/hardening.nix uses the real one.
+      # Worth being precise about
       # the blast radius: k3s, rke2 and containerd are static Go binaries and
       # ignore LD_PRELOAD entirely, and a pod has its own rootfs and therefore
       # its own (absent) /etc/ld.so.preload. So this hardens the host's

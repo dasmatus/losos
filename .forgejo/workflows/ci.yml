@@ -84,8 +84,31 @@ on:
 # inside the container, and the nix image ships none — without it, checkout
 # itself fails. Not used by the repo's own code.
 
+# CI both fills losos.cachix.org and reads from it. The push half is per-job
+# (see each "push to cachix" step); this is the pull half, and it is worth as
+# much: without it every job rebuilds our own paths from source even when an
+# earlier run already pushed an identical one, which for losos-ctl alone is
+# ~9 minutes against a 10-minute cap.
+#
+# `extra-substituters`, never plain `substituters` — replacing the list would
+# drop cache.nixos.org, which serves the overwhelming majority of any closure
+# here, and trade a small win for a very large loss. Same reasoning, and the
+# same key, as modules/cache.nix on the appliance; if they ever disagree the
+# appliance's copy is the one that matters and this is the stale one.
+#
+# Reaching the daemon is not a concern in this container: docker.io/nixos/nix
+# runs single-user as root, so settings arriving by NIX_CONFIG are applied
+# rather than discarded as coming from an untrusted client. On a runner that
+# DID have a daemon, a substituter set this late would be ignored with a
+# warning and the job would quietly build from source instead — which is why
+# the losos-ctl job prints `nix config show` before it builds.
 env:
-  NIX_CONFIG: "experimental-features = nix-command flakes"
+  NIX_CONFIG: |
+    experimental-features = nix-command flakes
+    extra-substituters = https://losos.cachix.org
+    extra-trusted-public-keys = losos.cachix.org-1:4t3mjPiiE7RZHBk3znPi0mq4uP5RY630YXAapAWe708=
+    connect-timeout = 5
+    fallback = true
 
 jobs:
   clippy:
@@ -187,6 +210,15 @@ jobs:
     steps:
       - run: nix profile install nixpkgs#nodejs
       - uses: actions/checkout@v4
+      # Proof the substituter in this workflow's NIX_CONFIG was actually taken,
+      # printed in the one job where losing it is most expensive (~9 minutes of
+      # rustc). Nix does not fail when it declines a substituter from an
+      # untrusted client — it warns and builds from source — so "the cache is
+      # configured" and "the cache is in use" are different claims, and only
+      # this step distinguishes them. Never a gate: a missing cache must slow
+      # the build, not fail it.
+      - name: show effective nix config
+        run: nix config show | grep -E 'substituters|trusted-public-keys|trusted-users' || true
       # Compiles the shipping binaries only — doCheck is off, and the suite
       # runs in the lint job instead (see flake/packages.nix for why). Even
       # so this is the longest job here; keep it to one package and re-time it
@@ -241,7 +273,10 @@ jobs:
       - run: nix profile install nixpkgs#nodejs
       - uses: actions/checkout@v4
       # Compiles only; the registrar's 42 tests run in the lint job.
-      # losos-admin-ui is a trivial runCommand copy.
+      # losos-admin-ui is a buildNpmPackage: `npm ci` from the committed
+      # package-lock.json, then `tsc --noEmit && vite build`. So this step is
+      # also the typecheck gate for admin-ui/app, and the one place in CI that
+      # proves the npm dependency fetch still resolves.
       - run: nix build .#losos-registrar .#losos-admin-ui -L
       # Publish to the binary cache the appliance substitutes from.
       #
@@ -270,6 +305,24 @@ jobs:
           # pushes each path's whole closure, which is what the appliance needs:
           # the tarball alone is useless without what it was built from.
           nix build .#losos-registrar .#losos-admin-ui --no-link --print-out-paths | cachix push losos
+      # Export the built SPA for the `iso` job, exactly as the losos-ctl job
+      # exports its crate and for the same reason. flake.nix puts
+      # losos-admin-ui in isoImage.storeContents, so before this existed the
+      # ISO job would have run `npm ci` + vite itself — a second npm fetch
+      # inside a ten-minute cap, on a job that already spends 3.5 minutes.
+      #
+      # Cheap to carry: a dist/ tree with no store references, ~1 MiB against
+      # losos-ctl's 12 MiB, so the copy is seconds.
+      #
+      # This artifact, unlike the cachix push above, is NOT gated on a secret:
+      # a fork's ISO job must still get the bundle, or it goes red for want of
+      # a key the contributor cannot have.
+      - run: nix copy --to "file://$PWD/ui-cache" --no-check-sigs .#losos-admin-ui
+      - uses: actions/upload-artifact@v3
+        with:
+          name: losos-admin-ui-store
+          path: ui-cache
+          retention-days: 1
 
 
   images:
@@ -481,7 +534,12 @@ jobs:
     runs-on: codeberg-medium
     # Needs losos-ctl's store export. Without it this job would rebuild that
     # crate from source — 9 minutes on its own — and never finish in time.
-    needs: [losos-ctl]
+    #
+    # And registrar-and-ui's, for the same reason at smaller scale: flake.nix
+    # carries losos-admin-ui in isoImage.storeContents, and since that stopped
+    # being a file copy it is the second path in this closure cache.nixos.org
+    # cannot serve.
+    needs: [losos-ctl, registrar-and-ui]
     container:
       image: docker.io/nixos/nix:latest
     steps:
@@ -493,10 +551,15 @@ jobs:
         with:
           name: losos-ctl-store
           path: ctl-cache
-      # --no-check-sigs because the exporting job signed nothing; the artifact
-      # came from a sibling job in this same workflow run, not from a public
+      - uses: actions/download-artifact@v3
+        with:
+          name: losos-admin-ui-store
+          path: ui-cache
+      # --no-check-sigs because the exporting job signed nothing; the artifacts
+      # came from sibling jobs in this same workflow run, not from a public
       # cache, so there is no third party to authenticate.
       - run: nix copy --from "file://$PWD/ctl-cache" --no-check-sigs --all
+      - run: nix copy --from "file://$PWD/ui-cache" --no-check-sigs --all
       # NOT --offline. The other 766 paths come from cache.nixos.org, and
       # blocking the network would force nix to build them from source —
       # precisely the opposite of what the import above buys us.

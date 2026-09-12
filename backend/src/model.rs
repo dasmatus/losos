@@ -168,6 +168,29 @@ pub struct Settings {
     /// default case, not an edge case.
     pub compute_window_start: String,
     pub compute_window_end: String,
+    /// The four opt-in hardening flags (`losos.hardening.*`).
+    ///
+    /// They are settings rather than build-time constants for one reason: this
+    /// appliance has no SSH and no shell login, so `modules/overrides.nix` —
+    /// the file this struct is the parse of — is the only way to change a
+    /// `losos.*` option on a running box. Declared in `options.nix` and absent
+    /// here, the four were not merely off by default, they were unreachable,
+    /// which made them dead options on every box anyone installed.
+    ///
+    /// They are four fields rather than one set because each carries a
+    /// different and unrelated cost, spelled out in `options.nix`: AppArmor
+    /// confines less than it appears to, hardened_malloc costs throughput,
+    /// nosmt halves the core count of a box that transcodes video, and
+    /// usbguard can lock out a keyboard attached for console recovery. A
+    /// single "harden more" switch would hide all four behind one word.
+    ///
+    /// `losos.hardening.enable` — the baseline that costs nothing — is
+    /// deliberately NOT here. Turning the whole layer off from a web form is
+    /// not a setting, and nothing about it needs tuning per box.
+    pub hardening_apparmor: bool,
+    pub hardening_malloc: bool,
+    pub hardening_nosmt: bool,
+    pub hardening_usbguard: bool,
 }
 
 impl Default for Settings {
@@ -187,6 +210,10 @@ impl Default for Settings {
             share_compute: false,
             compute_window_start: "23:00".to_string(),
             compute_window_end: "07:00".to_string(),
+            hardening_apparmor: false,
+            hardening_malloc: false,
+            hardening_nosmt: false,
+            hardening_usbguard: false,
         }
     }
 }
@@ -208,6 +235,10 @@ impl Settings {
             "shareCompute": self.share_compute,
             "computeWindowStart": self.compute_window_start,
             "computeWindowEnd": self.compute_window_end,
+            "hardeningApparmor": self.hardening_apparmor,
+            "hardeningMalloc": self.hardening_malloc,
+            "hardeningNosmt": self.hardening_nosmt,
+            "hardeningUsbguard": self.hardening_usbguard,
         })
     }
 }
@@ -263,6 +294,10 @@ mod tests {
             "shareCompute",
             "computeWindowStart",
             "computeWindowEnd",
+            "hardeningApparmor",
+            "hardeningMalloc",
+            "hardeningNosmt",
+            "hardeningUsbguard",
         ] {
             assert!(out.contains(key), "missing {key} in {out}");
         }

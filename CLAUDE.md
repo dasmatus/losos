@@ -87,9 +87,18 @@ nix build .#checks.x86_64-linux.losos-install        # installer: detect + disko
 ```
 
 Inside the dev shell, `bcd` → `cd backend`, `rcd` → `cd backend-registrar`.
+
+`admin-ui/app` is the shipped SPA and **is** built by nix
+(`nix build .#losos-admin-ui` runs `npm ci` then `tsc --noEmit && vite build`,
+so the typecheck is part of the package). For an iteration loop it also has
+`npm run dev` (with `LOSOS_API_ORIGIN` pointed at a real box), `npm run
+typecheck`, and `npm run test:browser` — the last is the playwright check that
+`.#checks.x86_64-linux.losos-admin-ui` wraps.
+
 `admin-ui/design-system/react` has its own `npm run typecheck` / `npm test`
 (esbuild + tsc, no nix, no CI) — dev-machine-only, run manually from
-`admin-ui/design-system/react/` when touching the React wrapper.
+`admin-ui/design-system/react/` when touching the React wrapper. It is not
+what the appliance serves.
 
 ## Architecture (cross-file big picture)
 
@@ -145,10 +154,14 @@ thin **facade** CLI that keeps the old subcommand/JSON surface
 (`state`, `change --mode`, `status`, `settings`, `apply` (stdin),
 `factory-reset`; `--json` no-op) and relays each call to lososd over D-Bus.
 `losos-ctl install` stays a local subcommand (the ISO installer runs as root,
-no bus needed). The standalone admin UI (`admin-ui/`, packaged as
-`losos-admin-ui`) is a dependency-free static SPA — `dashboard/` + `settings/`
-plain-JS pages — served by the front Nginx vhost, which proxies `/api/*` to
-lososd's loopback API. The command layer is written against a `Losos` effect
+no bus needed). The admin UI (`admin-ui/app/`, packaged as `losos-admin-ui`
+with `buildNpmPackage`) is a React 19 + Vite + Tailwind v4 SPA on real paths
+(`/`, `/apps`, `/storage`, `/mesh`, `/settings/<pane>`), whose built `dist/`
+**is** the front Nginx vhost's document root — served with
+`try_files $uri $uri/ /index.html`, without which every deep link and every
+reload 404s. The vhost proxies `/api/*` to lososd's loopback API. It replaced
+a `dashboard/` + `settings/` pair of plain-JS pages; if you find a reference
+to those, or to `/ds/` or `/common.js`, it is stale. The command layer is written against a `Losos` effect
 **trait** with a real (`io_backend`) and an in-memory (`fake`) implementation,
 so the state machine is unit-tested with no filesystem; the installer repeats
 the pattern with `Install` + `plan_install`, whose plan is data, so the
@@ -164,12 +177,13 @@ rootless Podman is gone, and so is systemd-nspawn. Nextcloud and Forgejo run as
 `nextcloud-common.nix` so host-native and workload mode can't drift. Nginx is
 the only thing holding public ports: path-based routing on the appliance's mDNS
 name (`<hostName>.local:80/nextcloud`, `:80/forgejo`) and the admin SPA on the
-same `:80` vhost. Shared stylesheets live in
-`admin-ui/design-system/` (`tokens.css` + `losos.css`, served at `/ds/`);
-`admin-ui/design-system/react` is a dev-machine-only React wrapper package for
-claude.ai/design — never part of the Nix closure (the `losos-admin-ui` package
-filters `design-system/` out of its `admin-ui/` copy and ships only the two
-stylesheets under `/ds/`). The workload pods are
+same `:80` vhost. `admin-ui/design-system/` (`tokens.css` + `losos.css`, plus
+a `react/` wrapper package for claude.ai/design) is **dev-machine-only and no
+longer served at all** — the shipped SPA carries its own Tailwind v4 token
+layer in `admin-ui/app/src/styles/index.css`. It stays out of the Nix closure
+because `losos-admin-ui`'s source *root* is `admin-ui/app`; that is a stronger
+guarantee than the `design-system` name filter it replaced, which would have
+stopped matching on a rename. The workload pods are
 `hostNetwork` (the local cluster runs no CNI), so they answer on loopback — see
 the gotcha about what that costs the `lanOnly` guard.
 
@@ -263,7 +277,7 @@ A separate `midnight-reboot.timer` reboots unconditionally at 00:07 with
 - **The admin routes deny loopback on purpose** (`lanOnly` in
   `containers.nix`): master-proxy tunnel traffic reaches the front vhost *from
   127.0.0.1* (rathole's `local_addr`), so the LAN-only guard on `/`,
-  `/settings`, `/ds`, `/common.js` and `/api` must not allow loopback — a
+  `/assets/`, `/setup/` and `/api/` must not allow loopback — a
   `curl localhost/` on the box (or in a VM test) gets 403 by design. "Fixing"
   it with `allow 127.0.0.1` exposes the whole admin surface to the internet
   whenever `losos.proxy.enable` is on. Test against lososd's :8082 directly,

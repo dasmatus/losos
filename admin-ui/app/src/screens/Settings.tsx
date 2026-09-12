@@ -9,6 +9,7 @@ import { HardwarePane } from "./settings/pane-hardware";
 import { MeshPane } from "./settings/pane-mesh";
 import { NetworkPane } from "./settings/pane-network";
 import { ResetPane } from "./settings/pane-reset";
+import { SecurityPane } from "./settings/pane-security";
 import { StoragePane } from "./settings/pane-storage";
 import { DEFAULT_PANE, paneById, type SettingsPaneId } from "./settings/panes";
 import { PaneHeader } from "./settings/rows";
@@ -101,6 +102,8 @@ function Pane({
       return <NetworkPane form={form} />;
     case "hardware":
       return <HardwarePane form={form} />;
+    case "security":
+      return <SecurityPane form={form} />;
     case "about":
       return <AboutPane form={form} />;
     case "reset":
