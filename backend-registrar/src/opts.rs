@@ -122,6 +122,14 @@ pub struct AnnounceOpts {
     pub hostname: String,
     pub token_file: String,
     pub heartbeat_interval: Duration,
+    /// One-minute load average per core, below which this box calls itself
+    /// idle and lets the mesh schedule onto it inside its compute window.
+    ///
+    /// See crate::idle for why the default is 0.25 rather than something near
+    /// zero: an idle losos box runs two kubelets, containerd, Postgres, Redis
+    /// and a PHP-FPM pool, so a threshold near zero would mean "never idle"
+    /// and the feature would quietly never fire.
+    pub idle_load_threshold: f64,
 }
 
 /// `join` options. Runs once per boot on the appliance, from
@@ -212,6 +220,9 @@ pub fn parse(args: Vec<String>) -> Result<Mode> {
             hostname: req(&rest, "--hostname")?.to_string(),
             token_file: req(&rest, "--token-file")?.to_string(),
             heartbeat_interval: parse_dur(arg(&rest, "--heartbeat-interval").unwrap_or("30s"))?,
+            idle_load_threshold: parse_threshold(
+                arg(&rest, "--idle-load-threshold").unwrap_or("0.25"),
+            )?,
         })),
         "seed" => Ok(Mode::Seed(SeedOpts {
             rathole_config: req(&rest, "--rathole-config")?.to_string(),
@@ -255,6 +266,21 @@ fn parse_tz(v: &str) -> miette::Result<&str> {
         Err(miette!(
             "invalid --window-tz {v:?}; expected an IANA zone name such as Europe/Berlin or UTC"
         ))
+    }
+}
+
+/// A non-negative load threshold.
+///
+/// Rejects negatives and non-finite values rather than clamping: both mean the
+/// module generated something it did not intend, and a box that silently
+/// decides it is never idle (or always idle) is worse than one that refuses to
+/// start and says why.
+fn parse_threshold(v: &str) -> miette::Result<f64> {
+    match v.parse::<f64>() {
+        Ok(n) if n.is_finite() && n >= 0.0 => Ok(n),
+        _ => Err(miette!(
+            "invalid --idle-load-threshold {v:?}; expected a non-negative number such as 0.25"
+        )),
     }
 }
 

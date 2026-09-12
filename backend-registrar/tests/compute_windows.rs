@@ -7,7 +7,7 @@
 //! contracts. `valid_hhmm` is the only thing standing between an arbitrary
 //! request body and those arguments.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use losos_registrar::window::{render, valid_hhmm, ComputeWindow};
 use losos_registrar::ComputeWindow as ReExported;
@@ -26,7 +26,7 @@ fn window(share: bool, start: &str, end: &str) -> ComputeWindow {
 /// "no file" would leave it with nothing to act on and the taint stuck.
 #[test]
 fn no_windows_render_an_empty_node_list() {
-    let rendered = render(&BTreeMap::new());
+    let rendered = render(&BTreeMap::new(), &BTreeSet::new());
     let parsed: serde_json::Value = serde_json::from_str(&rendered).expect("valid JSON");
     assert_eq!(
         parsed["nodes"].as_array().expect("nodes is a list").len(),
@@ -39,7 +39,8 @@ fn no_windows_render_an_empty_node_list() {
 fn a_window_renders_every_field_the_taint_timer_reads() {
     let mut windows = BTreeMap::new();
     windows.insert("mattbox-01".to_string(), window(true, "23:00", "07:00"));
-    let parsed: serde_json::Value = serde_json::from_str(&render(&windows)).expect("valid JSON");
+    let parsed: serde_json::Value =
+        serde_json::from_str(&render(&windows, &BTreeSet::new())).expect("valid JSON");
 
     let node = &parsed["nodes"][0];
     assert_eq!(node["node_name"], "mattbox-01");
@@ -58,8 +59,12 @@ fn output_is_ordered_by_node_name_and_stable() {
     for id in ["zeta", "alpha", "mattbox-01", "beta"] {
         windows.insert(id.to_string(), window(true, "23:00", "07:00"));
     }
-    let first = render(&windows);
-    assert_eq!(first, render(&windows), "render is not deterministic");
+    let first = render(&windows, &BTreeSet::new());
+    assert_eq!(
+        first,
+        render(&windows, &BTreeSet::new()),
+        "render is not deterministic"
+    );
 
     let parsed: serde_json::Value = serde_json::from_str(&first).expect("valid JSON");
     let names: Vec<&str> = parsed["nodes"]
@@ -78,7 +83,8 @@ fn output_is_ordered_by_node_name_and_stable() {
 fn a_node_that_is_not_sharing_still_publishes_its_hours() {
     let mut windows = BTreeMap::new();
     windows.insert("mattbox-01".to_string(), window(false, "01:00", "05:30"));
-    let parsed: serde_json::Value = serde_json::from_str(&render(&windows)).expect("valid JSON");
+    let parsed: serde_json::Value =
+        serde_json::from_str(&render(&windows, &BTreeSet::new())).expect("valid JSON");
 
     assert_eq!(parsed["nodes"][0]["share_compute"], false);
     assert_eq!(parsed["nodes"][0]["window_start"], "01:00");
@@ -91,7 +97,8 @@ fn a_node_that_is_not_sharing_still_publishes_its_hours() {
 fn a_window_that_wraps_midnight_is_carried_through_untouched() {
     let mut windows = BTreeMap::new();
     windows.insert("mattbox-01".to_string(), window(true, "23:00", "07:00"));
-    let parsed: serde_json::Value = serde_json::from_str(&render(&windows)).expect("valid JSON");
+    let parsed: serde_json::Value =
+        serde_json::from_str(&render(&windows, &BTreeSet::new())).expect("valid JSON");
 
     assert_eq!(parsed["nodes"][0]["window_start"], "23:00");
     assert_eq!(parsed["nodes"][0]["window_end"], "07:00");
@@ -165,7 +172,7 @@ fn the_rendered_window_carries_the_zone() {
             tz: "Europe/Berlin".to_string(),
         },
     );
-    let out = render(&m);
+    let out = render(&m, &BTreeSet::new());
     assert!(
         out.contains("\"tz\""),
         "the file must name the field: {out}"
@@ -189,5 +196,69 @@ fn a_row_without_a_zone_still_decodes_and_means_utc() {
         r#"{"share_compute":true,"window_start":"23:00","window_end":"07:00"}"#,
     )
     .expect("a pre-tz row must still decode");
+    assert_eq!(w.tz, "UTC");
+}
+
+/* The idle bit reaches the file the taint script reads.
+ *
+ * The window is permission and idle is reality; the edge removes the taint
+ * only when both hold. The rendered file is the only channel between the
+ * registrar and that script, so a bit that does not survive rendering does not
+ * exist as far as scheduling is concerned. */
+#[test]
+fn an_idle_node_is_rendered_idle() {
+    let mut m = BTreeMap::new();
+    m.insert("awake".to_string(), window(true, "23:00", "07:00"));
+    m.insert("busy".to_string(), window(true, "23:00", "07:00"));
+
+    let mut idle = BTreeSet::new();
+    idle.insert("awake".to_string());
+
+    let out = render(&m, &idle);
+    let doc: serde_json::Value = serde_json::from_str(&out).unwrap();
+    let nodes = doc["nodes"].as_array().unwrap();
+
+    let find = |name: &str| {
+        nodes
+            .iter()
+            .find(|n| n["node_name"] == name)
+            .unwrap()
+            .clone()
+    };
+    assert_eq!(find("awake")["idle"], true);
+    assert_eq!(
+        find("busy")["idle"],
+        false,
+        "a node nobody reported idle must render busy"
+    );
+}
+
+/* Fail closed, and this is the assertion that matters most here.
+ *
+ * A registrar that has heard nothing from a box — because the edge restarted,
+ * because the box went offline, because the report aged past the heartbeat TTL
+ * — knows nothing about whether its owner is at the keyboard. "I could not
+ * tell" and "the owner is away" must never be the same answer, because one of
+ * them hands a stranger's workload to somebody who is using their machine. */
+#[test]
+fn a_node_nobody_reported_on_is_busy_not_idle() {
+    let mut m = BTreeMap::new();
+    m.insert("silent".to_string(), window(true, "23:00", "07:00"));
+
+    let out = render(&m, &BTreeSet::new());
+    let doc: serde_json::Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(doc["nodes"][0]["idle"], false);
+}
+
+/* A row written before idle reporting existed still decodes, and decodes as
+ * busy. A failed registry load is fatal at boot for the registrar, so a new
+ * field that is not defaulted would brick an edge on upgrade. */
+#[test]
+fn a_row_without_idle_decodes_as_busy() {
+    let w: losos_registrar::window::NodeWindow = serde_json::from_str(
+        r#"{"node_name":"box","share_compute":true,"window_start":"23:00","window_end":"07:00"}"#,
+    )
+    .expect("a pre-idle row must still decode");
+    assert!(!w.idle);
     assert_eq!(w.tz, "UTC");
 }
