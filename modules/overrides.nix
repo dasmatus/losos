@@ -14,6 +14,14 @@
 #
 # Values here mirror the option defaults in options.nix so the box behaves
 # unchanged until an admin changes something.
+#
+# The four losos.hardening.* flags are here for a reason worth stating: this
+# file is the ONLY way to change a losos option on a running box. There is no
+# SSH and no shell login, so an option declared in options.nix but absent here
+# is not merely off — it is unreachable, and was therefore a dead option on
+# every appliance anyone installed. `losos.hardening.enable`, the baseline that
+# costs nothing, is deliberately NOT exposed: turning the whole layer off from
+# a web form is not a setting.
 _:
 
 {
@@ -29,4 +37,8 @@ _:
   losos.cluster.shareCompute = false;
   losos.cluster.computeWindow.start = "23:00";
   losos.cluster.computeWindow.end = "07:00";
+  losos.hardening.apparmor = false;
+  losos.hardening.malloc = false;
+  losos.hardening.nosmt = false;
+  losos.hardening.usbguard = false;
 }

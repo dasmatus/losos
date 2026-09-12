@@ -9,11 +9,21 @@
 #                facade for root (see losos.backend.package), and
 #                modules/installer.nix draws the installer wrapper from the
 #                same derivation (losos.installer.package).
-#   losos-admin-ui — the standalone admin UI (no build step, no frameworks):
-#                a dashboard/ + settings/ pair of self-contained plain-JS pages,
-#                served by the front Nginx vhost (dashboard at /, settings at
-#                /settings/) with lososd's loopback API proxied at /api/*. See
-#                admin-ui/ and modules/containers.nix.
+#   losos-admin-ui — the admin SPA: React 19 + Vite + Tailwind v4, built from
+#                admin-ui/app/ with buildNpmPackage. $out IS the document root
+#                (index.html, hashed assets/, theme-boot.js), served by the
+#                front Nginx vhost with an SPA fallback — one app on real
+#                paths (/, /storage, /mesh, /apps, /settings/<pane>), not the
+#                dashboard/ + settings/ page pair it replaced — with lososd's
+#                loopback API proxied at /api/*. See admin-ui/app/ and
+#                modules/containers.nix.
+#
+#                Its npm dependency fetch is the one derivation here that
+#                needs the network on a machine that cannot substitute it. That
+#                costs a red CI job at worst, never a failed install: the
+#                output has no store references, modules/cache.nix points every
+#                box at losos.cachix.org, and flake.nix puts this path in the
+#                ISO's storeContents.
 #   losos-registrar — the Rust edge registration + Traefik/rathole config
 #                reconciler (`serve`) and appliance registration client
 #                (`announce`, `join`). Built via rustPlatform.buildRustPackage
@@ -41,21 +51,52 @@ let
 in
 images
 // {
-  losos-admin-ui = pkgs.runCommand "losos-admin-ui-0.1.0" { } ''
-    cp -rT ${
-      # admin-ui/ minus design-system/: the stylesheets ride in below by
-      # explicit path, and react/ must never enter the closure (nor be
-      # served by nginx).
-      lib.cleanSourceWith {
-        src = ./../admin-ui;
-        filter = name: type: lib.cleanSourceFilter name type && baseNameOf name != "design-system";
-      }
-    } $out
-    chmod -R u+rwX $out
-    mkdir -p $out/ds
-    cp ${./../admin-ui/design-system/tokens.css} $out/ds/tokens.css
-    cp ${./../admin-ui/design-system/losos.css} $out/ds/losos.css
-  '';
+  losos-admin-ui = pkgs.buildNpmPackage {
+    pname = "losos-admin-ui";
+    version = "0.1.0";
+
+    # admin-ui/app, not admin-ui/. The source ROOT is the exclusion: it is what
+    # keeps admin-ui/design-system/react out of the closure, and unlike the
+    # `baseNameOf name != "design-system"` filter this replaces, a root cannot
+    # quietly stop matching when somebody renames a directory.
+    src = ./../admin-ui/app;
+
+    # SHA256 of the npm dependency cache built from
+    # admin-ui/app/package-lock.json — same convention as cargoHash above. If
+    # the lock file changes, `nix build .#losos-admin-ui` prints the real hash
+    # to paste here (or `nix run nixpkgs#prefetch-npm-deps -- \
+    # admin-ui/app/package-lock.json` gets it without a failed build first).
+    #
+    # tests/admin-ui.nix carries the SAME hash over the SAME lock file: two
+    # derivations, one dependency set. Change both together.
+    npmDepsHash = "sha256-xXHkWQdrs6B4OwWasb3vwTYHALRS8P94cnvihWlHbE4=";
+
+    # No postinstall scripts. playwright is a devDependency (tests/admin-ui.nix
+    # drives the browser check with it) and its postinstall downloads browsers:
+    # there is no network in the sandbox, and the browsers it would fetch are
+    # not the ones anything here runs against. esbuild, rollup and
+    # @tailwindcss/oxide get their native binaries from the linux-x64-gnu
+    # packages pinned in package-lock.json rather than from a download, so
+    # nothing else needs a script to run.
+    npmFlags = [ "--ignore-scripts" ];
+    env.PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1";
+
+    # The default npmBuildScript is `npm run build`, which here is
+    # `tsc --noEmit && vite build` — so unlike the Rust crates (doCheck = off,
+    # see below) the typecheck IS part of building the shipping artefact. It
+    # costs seconds over ~80 files, not the minutes doCheck costs rustc.
+    #
+    # $out is the document root itself rather than a packed tarball: index.html
+    # at the top, content-hashed bundles under assets/, and the deliberately
+    # unhashed theme-boot.js beside them (admin-ui/app/vite.config.ts explains
+    # why that one file must keep a stable name). modules/containers.nix serves
+    # $out directly, with an SPA fallback because the app routes on real paths.
+    installPhase = ''
+      runHook preInstall
+      cp -r dist $out
+      runHook postInstall
+    '';
+  };
 
   losos-ctl = pkgs.rustPlatform.buildRustPackage {
     pname = "losos-ctl";

@@ -42,9 +42,9 @@
 #                             surface to the internet whenever
 #                             losos.proxy.enable is on. A version of this test
 #                             that expects 200 here is testing the bug.
-#   LAN (192.168.1.x)      -> admin routes 200 (301 for the `= /settings`
-#                             redirect, which runs in nginx's rewrite phase
-#                             before allow/deny is consulted).
+#   LAN (192.168.1.x)      -> admin routes 200, including paths that exist
+#                             only as client-side routes and are answered by
+#                             the SPA fallback.
 #
 # plus: /nextcloud and /forgejo/ are *not* LAN-guarded (that is how tunnel
 # traffic arrives, from loopback); the four security headers ride on both the
@@ -167,10 +167,19 @@ pkgs.testers.nixosTest {
     appliance.wait_for_open_port(80)
     noadmin.wait_for_open_port(80)
 
-    # The admin surface: dashboard, settings SPA, their shared assets, and the
-    # lososd API proxy. `= /settings` is handled separately — it is a rewrite-
-    # phase redirect and therefore not guarded (see containers.nix).
-    ADMIN = ["/", "/settings/", "/ds/losos.css", "/common.js", "/api/health"]
+    # The admin surface: the SPA, a client-side-only deep link, the pre-paint
+    # theme script, and the lososd API proxy.
+    #
+    # "/settings/network" is the one that earns its place. It exists ONLY as a
+    # client-side route — there is no such file in the bundle — so it can only
+    # be answered by the `/index.html` arm of try_files. Drop that arm and
+    # every deep link and every reload 404s, which is precisely the regression
+    # a curl of "/" alone cannot see.
+    #
+    # `= /settings` is gone along with the page pair: /settings is now an
+    # ordinary guarded route rather than a rewrite-phase redirect that could
+    # not be guarded at all.
+    ADMIN = ["/", "/settings", "/settings/network", "/theme-boot.js", "/api/health"]
     # Not guarded, by design: this is the only traffic the master-proxy tunnel
     # is allowed to carry, and it arrives from loopback.
     SERVICE = ["/nextcloud", "/forgejo/"]
@@ -213,9 +222,17 @@ pkgs.testers.nixosTest {
             got = code(noadmin, f"http://appliance{path}")
             assert got == "200", f"LAN {path}: expected 200, got {got}"
         body = noadmin.succeed("curl -s http://appliance/")
-        assert "LosOS &mdash; home" in body, f"LAN / did not serve the dashboard: {body!r}"
-        body = noadmin.succeed("curl -s http://appliance/settings/")
-        assert "losos &mdash; settings" in body, f"LAN /settings/ is not the SPA: {body!r}"
+        assert '<div id="root">' in body, f"LAN / did not serve the SPA: {body!r}"
+        # The blocking classic script that stamps the theme before first paint.
+        # It cannot be inline (script-src 'self') and it cannot be a module
+        # (deferred, so it would run after the paint), so its <script src> tag
+        # in the served document is the only evidence the arrangement survived
+        # the build. See admin-ui/app/vite.config.ts.
+        assert "/theme-boot.js" in body, f"the pre-paint theme script is not linked: {body!r}"
+        # The fallback itself: a path that exists only as a client-side route
+        # must return the SAME document, not a 404 and not a different page.
+        deep = noadmin.succeed("curl -s http://appliance/settings/network")
+        assert deep == body, "the SPA fallback did not serve index.html for a deep link"
 
     with subtest("LAN source, same box: 200 — the gap hostNetwork opened"):
         # Not a property anyone wants; the honest replacement for the
@@ -235,17 +252,16 @@ pkgs.testers.nixosTest {
             got = code(appliance, f"http://{LAN}{path}", source=LAN)
             assert got == "200", f"LAN-source {path}: expected 200, got {got}"
 
-    with subtest("`= /settings` redirects from every source"):
-        # `return` runs in the rewrite phase, before allow/deny, so a guard on
-        # this location would be dead config. The redirect target *is* guarded,
-        # which is what the loopback 403 on /settings/ above proves.
-        for label, node, url, source in (
-            ("loopback", appliance, "http://127.0.0.1/settings", None),
-            ("LAN source, same box", appliance, f"http://{LAN}/settings", LAN),
-            ("LAN", noadmin, "http://appliance/settings", None),
-        ):
-            got = code(node, url, source=source)
-            assert got == "301", f"{label} /settings: expected 301, got {got}"
+    with subtest("/setup/ fails closed rather than answering the SPA"):
+        # The SPA fallback must not swallow paths that carry data. The wizard
+        # reads /setup/state.json BEFORE a token exists, and modules/setup.nix
+        # merges that in as an EXACT match — exact matches beat this prefix, so
+        # where that module is imported the file still wins. Here it is not
+        # imported, so the correct answer is 404: the wizard has a branch for a
+        # missing setup route, and none for an HTML document it tried to parse
+        # as JSON.
+        got = code(noadmin, "http://appliance/setup/state.json")
+        assert got == "404", f"LAN /setup/state.json: expected 404, got {got}"
 
     with subtest("service routes are reachable from loopback and from the LAN"):
         for path in SERVICE:
@@ -324,8 +340,11 @@ pkgs.testers.nixosTest {
                 f"noadmin {path}: admin route still answering ({got})"
         # "/" has no location left either, so the request falls through to
         # nginx's own stock index page. That is a 200, so assert on the body:
-        # what matters is that the dashboard is gone, not the status code.
+        # what matters is that the admin SPA is gone, not the status code.
+        # `<div id="root">` rather than the word "LosOS": the SPA's <title> is
+        # not the only place that string can appear, but the React mount point
+        # appears nowhere except the document this test is checking for.
         body = appliance.succeed("curl -s http://noadmin/")
-        assert "LosOS" not in body, f"noadmin / still serving the dashboard: {body!r}"
+        assert '<div id="root">' not in body, f"noadmin / still serving the admin SPA: {body!r}"
   '';
 }

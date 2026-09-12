@@ -1,13 +1,12 @@
 # The Nginx front door.
 #
 # One default_server vhost on :80 carries everything the appliance publishes:
-# the dashboard at /, the settings SPA at /settings, lososd's JSON API at
-# /api/*, and the two service routes /nextcloud and /forgejo/. default_server
-# because master-proxy (Traefik+rathole) traffic arrives with a public
-# hostname, not <hostName>.local. Nothing but Nginx binds a public port. The
-# admin surface (/, /settings, /ds, /common.js, /api) is LAN-only (see
-# `lanOnly` below); only /nextcloud and /forgejo are reachable through the
-# master-proxy tunnel.
+# the admin SPA at /, lososd's JSON API at /api/*, and the two service routes
+# /nextcloud and /forgejo/. default_server because master-proxy
+# (Traefik+rathole) traffic arrives with a public hostname, not
+# <hostName>.local. Nothing but Nginx binds a public port. The admin surface
+# (/, /assets/, /setup/, /api/) is LAN-only (see `lanOnly` below); only
+# /nextcloud and /forgejo are reachable through the master-proxy tunnel.
 #
 # This file used to *define* the two services as well, as systemd-nspawn
 # containers on private veths (10.231.1.2 and 10.231.2.2) with NAT for egress.
@@ -61,7 +60,7 @@ let
   adminApiPort = config.losos.admin.apiPort;
   adminEnabled = config.losos.admin.enable && adminUi != null;
 
-  # Access guard for the admin surface (dashboard, settings SPA, their assets,
+  # Access guard for the admin surface (the SPA, its assets, the setup routes,
   # the lososd API): local network only. Master-proxy traffic must never reach
   # these routes — and it arrives from *loopback* (proxy.nix points rathole at
   # 127.0.0.1:80), so loopback is deliberately not allowed. That costs nothing
@@ -121,9 +120,18 @@ let
   # inherited set, so any header added at server level later would silently
   # vanish from exactly the locations that need it most.)
   #
-  # img-src carries `data:` because admin-ui/design-system/losos.css inlines
-  # the select chevron as a data: URI, and a CSS background-image is an img-src
-  # fetch. connect-src is plain 'self': it used to also carry http(s)://$host:3456
+  # img-src carries `data:` for Vite: anything imported under
+  # build.assetsInlineLimit (4 KiB by default) is emitted as a data: URI rather
+  # than a file, and a CSS background-image is an img-src fetch. The SPA
+  # imports no binary assets today, so the grant is currently unused — it is
+  # kept because the first small inlined SVG would otherwise fail in a console
+  # nobody is watching, on a box with no shell. To drop it, pair
+  # `img-src 'self'` with `build.assetsInlineLimit = 0` in
+  # admin-ui/app/vite.config.ts so the ban is enforced where it can be seen.
+  # (It previously covered a chevron inlined by the plain-JS pages'
+  # design-system stylesheet, which is no longer served.)
+  #
+  # connect-src is plain 'self': it used to also carry http(s)://$host:3456
   # for the dashboard's cross-origin probe of the Tahoe web UI, and Tahoe-LAFS
   # is gone — with it the :3456 vhost, the probe, and any reason for this page
   # to talk to a second origin.
@@ -206,7 +214,7 @@ in
       assertion = config.losos.admin.enable -> config.losos.admin.ui != null;
       message = ''
         losos.admin.enable is on but losos.admin.ui is null, so there is no
-        admin SPA to serve and the dashboard/settings routes would 404.
+        admin SPA to serve and every admin route would 404.
         modules/defaults.nix wires losos.admin.ui to the flake's
         losos-admin-ui package; either restore that or set
         losos.admin.enable = false.
@@ -215,12 +223,12 @@ in
   ];
 
   # ── Nginx front router ────────────────────────────────────────────────────
-  # One default_server vhost on :80: dashboard at /, settings SPA at
-  # /settings, lososd JSON API at /api/*, and the two workload routes. The
-  # pages reference their assets by absolute path (/ds/losos.css,
-  # /settings/app.js), so dashboard/ is the vhost root, settings/ is aliased
-  # alongside it, and the shared common.js (admin-ui root, used by both pages)
-  # gets an explicit alias.
+  # One default_server vhost on :80: the admin SPA at /, lososd's JSON API at
+  # /api/*, and the two workload routes. losos.admin.ui is a built Vite tree
+  # (index.html + hashed assets/ + theme-boot.js), so it is the vhost root
+  # outright — there is no page pair to alias alongside each other any more,
+  # and every asset the document loads is an absolute /assets/… path served
+  # from that same root.
   services.nginx = {
     enable = true;
     recommendedProxySettings = true;
@@ -248,39 +256,52 @@ in
           port = 80;
         }
       ];
-      root = lib.mkIf adminEnabled "${adminUi}/dashboard";
+      root = lib.mkIf adminEnabled "${adminUi}";
       extraConfig = adminHeaderDirectives;
       locations = lib.mkMerge [
         (lib.mkIf adminEnabled {
-          # Static dashboard (index.html at the root). LAN-only, like every
-          # admin location below.
+          # The whole admin surface is one location now: one SPA, one
+          # document, real paths. LAN-only, like every admin location below.
+          #
+          # The `/index.html` arm is the load-bearing one. The app routes on
+          # real paths rather than hashes (/storage, /settings/network), so
+          # without it a deep link — or an ordinary reload of one — 404s.
+          # admin-ui/app/src/App.tsx names this requirement in its own header.
+          #
+          # A consequence worth stating so nobody "fixes" it: an unknown path
+          # under / now returns index.html with 200, and the SPA's catch-all
+          # route renders "nothing here", where the old page pair returned
+          # 404. That is what an SPA fallback means.
           "/" = {
             index = "index.html";
-            tryFiles = "$uri $uri/ =404";
+            tryFiles = "$uri $uri/ /index.html";
             extraConfig = lanOnly;
           };
-          # SPA deep link: /settings -> /settings/ so relative-looking
-          # absolute asset paths resolve. Unguarded on purpose: `return`
-          # runs in the rewrite phase, before allow/deny are consulted, so
-          # a guard here would be dead config — and the redirect target is
-          # guarded.
-          "= /settings" = {
-            extraConfig = "return 301 /settings/;";
+          # Content-hashed filenames, so a year is safe: a changed bundle gets
+          # a changed name. `expires`, not `add_header` — an add_header at
+          # location scope REPLACES the inherited set rather than adding to
+          # it, which would silently drop the security headers this vhost sets
+          # at server level. `expires` is a different directive and leaves
+          # them alone.
+          #
+          # theme-boot.js is deliberately NOT covered: it is the one unhashed
+          # file in the bundle (admin-ui/app/vite.config.ts says why), so it
+          # has to keep revalidating against its ETag.
+          "/assets/" = {
+            extraConfig = ''
+              ${lanOnly}
+              expires 1y;
+            '';
           };
-          "/settings/" = {
-            alias = "${adminUi}/settings/";
-            index = "index.html";
-            tryFiles = "$uri $uri/ =404";
-            extraConfig = lanOnly;
-          };
-          "/ds/" = {
-            alias = "${adminUi}/ds/";
-            extraConfig = lanOnly;
-          };
-          # Shared page chrome: both SPAs load these by absolute path,
-          # but they live at the admin-ui root, not under dashboard/.
-          "= /common.js" = {
-            alias = "${adminUi}/common.js";
+          # Fail closed rather than handing the SPA's index.html to a client
+          # that asked for JSON. modules/setup.nix merges `= /setup/state.json`
+          # and `= /setup/losos-ca.crt` into this same vhost; an exact match
+          # beats this prefix, so where that module is imported nothing
+          # changes. Where it is not, the first-run wizard gets a 404 — which
+          # it has a branch for ("this box is too old to have a setup route")
+          # — instead of an HTML document it would try to parse as JSON.
+          "/setup/" = {
+            tryFiles = "$uri =404";
             extraConfig = lanOnly;
           };
           "/api/" = {

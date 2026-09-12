@@ -757,8 +757,8 @@ in
       type = lib.types.bool;
       default = true;
       description = ''
-        Serve the standalone losos admin UI (dashboard + settings SPA) on the
-        front Nginx vhost and run lososd's loopback JSON API (/api/*).
+        Serve the losos admin SPA on the front Nginx vhost and run lososd's
+        loopback JSON API (/api/*).
       '';
     };
 
@@ -777,13 +777,21 @@ in
       '';
     };
 
-    # Path of the packaged static admin UI (built from this flake's ./admin-ui
-    # by flake/packages.nix; wired in via modules/defaults.nix). Internal.
+    # Path of the built admin SPA (built from this flake's ./admin-ui/app by
+    # flake/packages.nix with buildNpmPackage; wired in via
+    # modules/defaults.nix). Internal.
     admin.ui = lib.mkOption {
       type = lib.types.nullOr lib.types.path;
       default = null;
       internal = true;
-      description = "Store path of the static admin UI (dashboard/ + settings/ subdirectories).";
+      description = ''
+        Store path of the built admin SPA: a Vite `dist/` tree with index.html
+        at its root, content-hashed bundles under assets/, and the
+        deliberately unhashed theme-boot.js beside them. This is the front
+        vhost's document root, served with an SPA fallback
+        (`try_files $uri $uri/ /index.html`) because the app routes on real
+        paths rather than hashes.
+      '';
     };
 
     # ── Installer (the `losos-ctl install` subcommand) ──────────────────────

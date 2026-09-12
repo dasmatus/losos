@@ -10,6 +10,55 @@ The root filesystem is tmpfs, rebuilt on every boot. Only what is explicitly
 listed as persistent survives, on an encrypted partition, so a powered-off box
 gives up nothing to someone holding it.
 
+## Why not just use something else
+
+Most of what follows is available elsewhere. Four things are not, and they are
+the reason this exists rather than a bookmark to someone else's project.
+
+**Against a Synology, QNAP or other NAS appliance.** Those are the closest
+thing in spirit: a box on a shelf, a web UI, no terminal. The difference is what
+happens when one is compromised. A NAS runs a long-lived, mutable root that
+accumulates state nobody enumerated — which is why a NAS ransomware event is
+usually discovered months after the initial foothold. Here the root is tmpfs and
+is discarded at every boot, and the only things that survive are the directories
+named explicitly in `impermanence.nix`. An attacker who writes anywhere else has
+until the next reboot, and `midnight-reboot.timer` fires at 00:07 whether anyone
+is watching or not. The second difference is that you can read every line of
+what your box runs, and rebuild it yourself from this repository.
+
+**Against a VPS or a rented seedbox.** The machine is in your home and the disk
+is LUKS-encrypted with the key sealed to its TPM, so the hosting provider,
+their staff, and anyone who takes the hardware get an opaque block device rather
+than your files. The trade you would normally make for that — losing a public
+address — is handled by the optional master proxy: a rathole tunnel out to a
+cheap VPS running Traefik, so the box is reachable from the internet without a
+single inbound port open at home.
+
+**Against plain NixOS, which this is built on.** Nothing here is unavailable to
+someone willing to write it. What the appliance adds is that it is already
+written and already tested: the two-user isolation, the encrypted-persistence
+layout, the online disk growth, the hardening baseline and the mesh gating are
+each asserted in a booted VM under `tests/`, not merely configured. And the
+administration surface is deliberately tiny — a handful of settings over the
+web, no SSH, no shell login — because the target reader is somebody who wants a
+private cloud, not a second job.
+
+**Against every self-hosting stack, on the mesh.** This is the part with no
+real equivalent. A box can lend its spare disk and spare CPU to other people's
+boxes, and it does so under two conditions that must both hold: a window you
+set (permission) *and* the box actually being idle (reality). Idleness can
+withdraw availability inside your window; it can never grant it outside one,
+because a quiet box at 14:00 is not consent. Every unknown — a missing
+heartbeat, a stale report, an edge that just restarted — resolves to "busy".
+The effect is that you can contribute real capacity without ever finding your
+own machine slow while you are sitting at it.
+
+**What this is not.** It is not a general-purpose server: there is no shell to
+log into, by design, and adding one would defeat most of the above. It is not a
+backup system — impermanence discards, it does not archive, and you still need
+copies of `/persist` somewhere else. It is not finished; see the caveats
+throughout this file, which are written to be read rather than buried.
+
 ## What runs on it
 
 | | |
@@ -18,7 +67,7 @@ gives up nothing to someone holding it.
 | **Mesh storage** | Contributes spare disk to the cluster as the `shared` user, replicated by Longhorn. The domain is fscrypt-locked whenever sharing is off. |
 | **Mesh compute** | Optional. Contributes CPU to the cluster during a nightly window — "share my compute when I sleep". |
 | **Forgejo** | Optional git hosting at `<host>.local/forgejo/`. |
-| **Admin UI** | A dependency-free static page at `<host>.local`, LAN-only, for the handful of settings the box exposes. |
+| **Admin UI** | A single-page app at `<host>.local`, LAN-only, for the handful of settings the box exposes. |
 | **Master proxy** | Optional. Reaches the appliance from the internet through a rathole tunnel to a VPS running Traefik, without opening a port at home. |
 
 The two data users have mode-`700` homes, each with its own primary group, no
@@ -157,8 +206,22 @@ them offline until it ended, on a machine with no shell to fix it from. Your
 data stays in the local cluster, which depends on nothing off-box.
 
 Joining the mesh is off by default. Two switches in the settings page control
-it: one to join at all, one to contribute CPU — and the second only lends the
-machine out during a nightly window, so the box is yours while you are using it.
+it: one to join at all, one to contribute CPU.
+
+The second lends the machine out only when **both** of two things hold: the
+nightly window you set, and the box actually being idle. The two are not
+interchangeable, and the direction matters. A window is a guess about a
+routine — set 23:00–07:00, then stay up editing photos, and you have told the
+mesh your box is free while you are sitting at it. So idleness can *withdraw*
+availability inside the window. It can never *grant* it outside one: an owner
+who set a window meant it, and a box that happens to be quiet at 14:00 has not
+consented to anything.
+
+Every unknown resolves to busy. A box too old to report idleness, a report
+older than the heartbeat's time-to-live, an edge that has just restarted and
+holds no live state — each reads as "in use", so the failure mode is that you
+contribute less than you offered, never that a stranger's job lands on a
+machine you are working at.
 
 Storage you contribute is locked when you are not contributing it. The `shared`
 domain sits under an fscrypt policy whose key is sealed to the TPM; with sharing
@@ -169,6 +232,48 @@ protects this domain from the box that is switched on.
 
 Contributed files are namespaced per machine, so a pooled volume stays
 attributable to the box that supplied it.
+
+## How it works
+
+Four mechanisms carry most of the behaviour above. None of them is exotic; what
+matters is which one owns what.
+
+**The root is thrown away, and a list decides what isn't.** `/` is a tmpfs, so
+it starts empty at every boot. `/persist` is a LUKS-encrypted ext4 partition,
+and `impermanence` bind-mounts a fixed set of directories out of it back into
+place: `/nix`, `/var`, `/etc/ssh`, `/etc/keys`, `/etc/nixos`, `/etc/rancher`,
+the two data homes, and `machine-id`. That list, in `modules/impermanence.nix`,
+is the whole contract — **anything not on it is gone at the next reboot**,
+which is the point for an attacker's foothold and the trap for a new feature
+that quietly writes state somewhere else. `/persist` is marked `neededForBoot`
+so it is available before those mounts resolve. It is unlocked from the TPM, or
+on hardware without one from a keyfile in the initrd — and that second path
+does not survive physical theft, which `docs/security-model.md` says plainly.
+
+**Administration is a daemon, not a login.** There is no SSH and no shell, so
+every privileged action goes through `lososd`, a root systemd service. It owns
+`/var/lib/losos/state.json` as sole writer, exposes one method per operation on
+the system D-Bus, and serves a token-authenticated JSON API on loopback only.
+Nginx proxies `/api/*` to it from the LAN-only admin vhost; the token is 64
+random hex characters that `lososd` itself writes, mode 0600, on first start.
+Changing a setting writes `modules/overrides.nix` and starts a supervised
+`nixos-rebuild switch` as a transient unit — which restarts `lososd` mid-flight,
+so it re-attaches to the running rebuild when it comes back up rather than
+reporting "building" forever.
+
+**Settings are Nix, not a database.** The settings page generates the body of
+`modules/overrides.nix` and posts it; there is no other write path. That is why
+a change costs a rebuild rather than a restart, and why the box can always be
+reproduced from this repository plus that one file.
+
+**It updates itself, and reboots whether or not that worked.**
+`system.autoUpgrade` rebuilds from `losos.upgradeFlakeUri` at 03:00. The default
+only advances the system consistently from the local checkout; point it at a
+`github:` URI to actually pull new packages. Separately,
+`midnight-reboot.timer` reboots unconditionally at 00:07, with `Persistent=true`
+so a box that was switched off catches up. The nightly reboot is not
+housekeeping — on a machine whose root is discarded at boot, it is the
+self-repair path, and it is why nothing here needs a shell to recover.
 
 ## Development
 
@@ -238,7 +343,8 @@ compiles the crate twice. Squashfs and ISO assembly are 50 s on four cores.
 modules/           NixOS modules; all options live under losos.* in options.nix
 backend/           lososd (root daemon) + losos-ctl (CLI facade), Rust
 backend-registrar/ the master-proxy edge: registration API + config reconciler
-admin-ui/          the static admin SPA and its stylesheets
+admin-ui/app/      the admin SPA the box serves (React + Vite + Tailwind)
+admin-ui/design-system/  dev-only tokens and a React wrapper; not shipped
 tests/             nixos-test VMs
 docs/              security model, baseline, design specs and plans
 ```

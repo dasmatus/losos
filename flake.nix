@@ -150,14 +150,14 @@
                 losos.installer.autorun = true;
                 # Prebuild the admin UI into the medium.
                 #
-                # `losos-admin-ui` is a plain file copy today, but it is about
-                # to become a ShadCN/React bundle built with buildNpmPackage —
-                # a Node toolchain and an npm dependency fetch. Without this,
-                # `nixos-install` realises that derivation on the target, so a
-                # repurposed mini-PC with no shell runs npm as part of a first
-                # install. storeContents puts the finished output in the live
-                # system's store, and nix copies rather than builds anything it
-                # already has.
+                # `losos-admin-ui` is a React/Tailwind bundle built with
+                # buildNpmPackage — a Node toolchain and an npm dependency
+                # fetch. Without this, `nixos-install` realises that derivation
+                # on the target, so a repurposed mini-PC with no shell runs npm
+                # as part of a first install, over a network it may not have.
+                # storeContents puts the finished output in the live system's
+                # store, and nix copies rather than builds anything it already
+                # has.
                 #
                 # Cheap, unlike embedding the whole appliance closure: this is
                 # one small output, so the medium stays inside the size budget

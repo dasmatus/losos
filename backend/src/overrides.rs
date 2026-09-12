@@ -41,6 +41,10 @@ pub const DEFAULT_OVERRIDES_NIX: &str = r#"{ ... }:
   losos.cluster.shareCompute = false;
   losos.cluster.computeWindow.start = "23:00";
   losos.cluster.computeWindow.end = "07:00";
+  losos.hardening.apparmor = false;
+  losos.hardening.malloc = false;
+  losos.hardening.nosmt = false;
+  losos.hardening.usbguard = false;
 }
 "#;
 
@@ -158,6 +162,21 @@ pub fn parse_settings(content: &str) -> Settings {
         compute_window_end: read_str(
             &d.compute_window_end,
             lookup_nix("cluster.computeWindow.end", content),
+        ),
+        // Each missing key reads FALSE, which is exactly what options.nix
+        // declares as its default. So an overrides.nix written before these
+        // four existed parses to "all off" — the behaviour that box already
+        // had — rather than to anything surprising. That property is what lets
+        // this land without a migration.
+        hardening_apparmor: read_bool(
+            d.hardening_apparmor,
+            lookup_nix("hardening.apparmor", content),
+        ),
+        hardening_malloc: read_bool(d.hardening_malloc, lookup_nix("hardening.malloc", content)),
+        hardening_nosmt: read_bool(d.hardening_nosmt, lookup_nix("hardening.nosmt", content)),
+        hardening_usbguard: read_bool(
+            d.hardening_usbguard,
+            lookup_nix("hardening.usbguard", content),
         ),
     }
 }
@@ -294,6 +313,58 @@ mod tests {
     fn parses_the_committed_default_body() {
         let s = parse_settings(DEFAULT_OVERRIDES_NIX);
         assert_eq!(s, Settings::default());
+    }
+
+    /// The constant above and the real `modules/overrides.nix` must agree.
+    ///
+    /// The doc comment on [`DEFAULT_OVERRIDES_NIX`] has always *asked* for
+    /// this, and nothing enforced it: the test above parses the constant, so
+    /// the two could drift apart silently and `factory-reset` — which writes
+    /// the constant — would quietly change settings it was never asked to
+    /// change. Reading the module through `include_str!` makes the compiler
+    /// carry the invariant.
+    ///
+    /// Compares parses, not bytes: the two headers differ on purpose (`_:`
+    /// against `{ ... }:`) and the module carries comments the constant does
+    /// not, so a byte comparison would fail on the arrangement the design
+    /// intends.
+    ///
+    /// The `include_str!` reaches OUTSIDE this crate, and `flake/packages.nix`
+    /// copies only `backend/` into the store. That is fine as long as
+    /// `doCheck` stays off — the shipping build never compiles this module —
+    /// and `cargo test` / `cargo clippy --all-targets` always run from the
+    /// repository root, which is how CI and `devenv test` invoke them. If
+    /// anyone ever turns `doCheck` on, this is the line that will fail, and
+    /// the fix is to widen that derivation's `src`, not to delete the test.
+    #[test]
+    fn the_committed_module_and_the_constant_agree() {
+        let module = include_str!("../../modules/overrides.nix");
+        assert_eq!(
+            parse_settings(module),
+            parse_settings(DEFAULT_OVERRIDES_NIX),
+            "modules/overrides.nix and DEFAULT_OVERRIDES_NIX have drifted; \
+             factory-reset would silently change settings"
+        );
+    }
+
+    /// The keys are spelled right and actually reach the fields.
+    ///
+    /// `parses_the_committed_default_body` cannot catch a typo here, because
+    /// every hardening default is `false` and a key that never matches also
+    /// reads `false`. Flipping all four to `true` is what tells a working
+    /// lookup apart from one that silently falls through.
+    #[test]
+    fn hardening_flags_are_read_from_the_file() {
+        let body = "{ ... }:\n{\n  \
+             losos.hardening.apparmor = true;\n  \
+             losos.hardening.malloc = true;\n  \
+             losos.hardening.nosmt = true;\n  \
+             losos.hardening.usbguard = true;\n}\n";
+        let s = parse_settings(body);
+        assert!(s.hardening_apparmor);
+        assert!(s.hardening_malloc);
+        assert!(s.hardening_nosmt);
+        assert!(s.hardening_usbguard);
     }
 
     #[test]

@@ -7,6 +7,7 @@ import {
   InformationCircleIcon,
   LayoutGridIcon,
   Share08Icon,
+  Shield01Icon,
 } from "@hugeicons/core-free-icons";
 
 /* The sidebar's list of panes, in order.
@@ -15,6 +16,11 @@ import {
  * the two things an owner came here to change (their disk, and what they
  * lend to the mesh) sit at the top, the irreversible one sits alone at the
  * bottom, and About is the second-to-last stop because it is a read.
+ *
+ * Security sits after Hardware rather than near the top on purpose: every
+ * switch on it is off by default and costs something, so it is a place an
+ * owner goes deliberately, not one they should meet while looking for their
+ * disk. The protections that cost nothing are always on and appear nowhere.
  *
  * `keywords` is what the search field matches on beyond the label. It exists
  * because the word an owner types is rarely the word on the row — "GPU" and
@@ -29,6 +35,7 @@ export type SettingsPaneId =
   | "apps"
   | "network"
   | "hardware"
+  | "security"
   | "about"
   | "reset";
 
@@ -92,6 +99,27 @@ export const SETTINGS_PANES: readonly [SettingsPane, ...SettingsPane[]] = [
     icon: CpuIcon,
     summary: "What this box is allowed to use inside itself.",
     keywords: ["gpu", "graphics", "card", "video", "processor", "acceleration"],
+  },
+  {
+    id: "security",
+    label: "Security",
+    icon: Shield01Icon,
+    summary: "Four extra protections that are off by default, and what each one costs.",
+    keywords: [
+      "hardening",
+      "harden",
+      "protection",
+      "apparmor",
+      "usb",
+      "usbguard",
+      "memory",
+      "malloc",
+      "smt",
+      "hyperthreading",
+      "processor",
+      "lock down",
+      "safe",
+    ],
   },
   {
     id: "about",

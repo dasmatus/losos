@@ -27,8 +27,12 @@
   cssEntry at `dist/losos.css` alone or every `var(--ls-*)` comes up
   undefined.
 - No Storybook anywhere in the repo (shape: package). Real usage examples
-  live in `admin-ui/dashboard/` and `admin-ui/settings/` (plain-JS pages
-  using the same class names) and `admin-ui/design-system/react/tests/render.test.tsx`.
+  live in `admin-ui/design-system/react/tests/render.test.tsx`. The plain-JS
+  pages that used to be the other example set (`admin-ui/dashboard/`,
+  `admin-ui/settings/`) are gone — the shipped UI is now `admin-ui/app/`,
+  which is Tailwind v4 with its own token layer in `src/styles/index.css` and
+  does NOT consume this design system. Treat that as the standing caveat here:
+  this package and the appliance's UI no longer share a stylesheet.
 - Composition gotcha from wave 1: a labeled `Switch` inside `Group` MUST be
   wrapped in `Row`. `.switch-row` has no padding or min-height of its own,
   only `.row` does, so bare Switch siblings in a Group visually overlap.

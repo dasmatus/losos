@@ -84,6 +84,18 @@ tmpfs and `noexec` on `/dev/shm`; dbus-broker; and systemd sandboxing on
 **Opt-in**, because each can cost something: `hardening.apparmor`,
 `hardening.malloc`, `hardening.nosmt`, `hardening.usbguard`.
 
+They are reachable from the **Security** pane of the settings page, and that is
+newer than the options themselves. Until it existed the four were declared in
+`options.nix` and named nowhere in `modules/overrides.nix` — and since that file
+is the only way to change a `losos.*` option on a box with no SSH and no shell
+login, they were not merely off by default, they were *unreachable*. An option
+an owner cannot turn on is not a mitigation, however carefully it is described.
+Getting this wrong twice is easy, because `apply` replaces `overrides.nix`
+wholesale from what the UI generates: a key the UI does not emit is erased on
+the next save of any unrelated setting. `backend/src/overrides.rs` carries a
+test asserting the module and the daemon's copy of its default body still
+agree.
+
 ### What it does not cover
 
 Two limits worth stating rather than implying. The hardened allocator works by
@@ -142,12 +154,24 @@ Reversing the decision is cheap and localised: serve the admin vhost under a
 second mDNS name on port 80. That is a genuinely different origin, at which
 point `sessionStorage` isolation applies and the CSP becomes a real boundary.
 
-### The LAN is inside the trust boundary
+### The LAN is inside the trust boundary — mostly, now
 
-There is no TLS on the appliance. The admin token crosses the local network in
-cleartext on every request, as do Nextcloud logins. Anything on the LAN, or
-anything able to ARP-spoof it, can read them. `security.acme` cannot help
-without a public name; a self-signed certificate with a stable CA would.
+This section used to say there was no TLS and that the admin token crossed the
+LAN in cleartext on every request. **That is no longer true**, and it is worth
+being precise about what replaced it, because a security document that
+understates the shipped posture is as misleading as one that overstates it.
+
+`losos.tls.enable` now defaults on. The appliance mints its own CA and serves
+HTTPS under it (`modules/tls.nix`), and the first-run wizard shows the
+certificate fingerprint so it can be checked before anything secret is typed.
+`security.acme` still cannot help — it needs a public name, which a `.local`
+box does not have — so this is a self-signed chain you trust once, not a
+publicly rooted one.
+
+What remains true: until that certificate is trusted, and on any client that
+skips the wizard, a LAN attacker able to ARP-spoof can still mount the usual
+first-use interception. The boundary is now "a network you trust *once*"
+rather than "a network you trust continuously".
 
 ### Physical access
 
