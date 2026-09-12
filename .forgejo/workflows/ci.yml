@@ -61,11 +61,18 @@ on:
 # commit would be antisocial on a donation-funded host. The build still runs
 # on every push as a gate — only the upload is rationed.
 #
+# clippy and test are separate jobs. As one they ran 9.9-10.1 minutes and were
+# cancelled at the cap on about half of all pushes: clippy type-checks and
+# emits .rmeta while cargo test needs linked binaries, so a single job compiles
+# the local crates twice. Apart, each pays the toolchain realisation once plus
+# one compile. Do not merge them again to "save a job" — the runners charge by
+# the job's wall clock, not by the number of jobs.
+#
 # fmt-bot reformats and pushes back on every push to main, so rustfmt is
 # never something a human has to fix by hand. Its commit carries [skip ci] —
 # one of Forgejo's SKIP_WORKFLOW_STRINGS defaults — because otherwise the
 # push retriggers this whole workflow to reformat nothing. Consequently the
-# lint job only *checks* rustfmt on pull requests: checking it on a push too
+# clippy job only *checks* rustfmt on pull requests: checking it on a push too
 # would leave a red job on a commit the bot repairs seconds later.
 #
 # clippy is deliberately NOT auto-fixed the same way. `cargo clippy --fix`
@@ -81,67 +88,69 @@ env:
   NIX_CONFIG: "experimental-features = nix-command flakes"
 
 jobs:
-  lint:
-    name: "rust: clippy + tests (+ rustfmt on PRs)"
+  clippy:
+    name: "rust: clippy (+ rustfmt on PRs)"
     runs-on: codeberg-medium
+    # clippy and the test suites are two jobs, not one, and the split is
+    # measured rather than cosmetic. Together they ran 9.9-10.1 minutes and
+    # were cancelled at the cap on roughly half of all pushes, because clippy
+    # and cargo test do not share build artifacts: clippy type-checks and
+    # emits .rmeta, test needs linked binaries, so one job compiles the local
+    # crates twice. Apart, each pays the toolchain realisation once plus a
+    # single compile.
+    #
     # Runs in devShells.ci — a lean cargo/rustc/clippy/rustfmt shell from this
     # flake's pinned nixpkgs, i.e. the SAME rustc buildRustPackage compiles
-    # with.
+    # with. This job first ran on docker.io/rust:latest and went red in 42
+    # seconds on a tree that both the pinned toolchain and the maintainer's
+    # local one call clean. `latest` floats, so an upstream Rust release could
+    # turn CI red with no change here, and the linter would disagree with the
+    # compiler that actually ships.
     #
-    # This job first ran on docker.io/rust:latest and went red in 42 seconds
-    # on a tree that both the pinned toolchain and the maintainer's local one
-    # call clean. That is version skew: `latest` floats, so an upstream Rust
-    # release could turn CI red with no change to this repository, and the
-    # linter would disagree with the compiler that actually ships. Linting
-    # with the compiler you ship with removes the whole class.
-    #
-    # devShells.ci and not devenv: devenv realises the entire dev toolchain
-    # (rust-analyzer, node, bun, three Nix linters, shell UX) and blew the
-    # 10-minute cap at 9m31s. This shell is four packages.
-    #
-    # Until this job existed nothing enforced the two commands CLAUDE.md
-    # documents as gates — buildRustPackage's doCheck runs the test suite, not
-    # the linters — and backend-registrar had drifted to 17 rustfmt hunks plus
-    # a clippy error without CI noticing.
+    # Not devenv: it realises the entire dev toolchain (rust-analyzer, node,
+    # bun, three Nix linters, shell UX) and blew the cap at 9m31s.
     container:
       image: docker.io/nixos/nix:latest
     steps:
       - run: nix profile install nixpkgs#nodejs
       - uses: actions/checkout@v4
-      # clippy is check-only, always. It is NOT auto-fixed and pushed the way
-      # rustfmt is: `cargo clippy --fix` applies machine-applicable
-      # suggestions, which can change behaviour, needs a clean tree, and
-      # sometimes wants human judgement. Reformatting is mechanical;
-      # rewriting code is not, and unreviewed code changes have no business
-      # landing on main by robot.
+      # Check-only, always. `cargo clippy --fix` rewrites code rather than
+      # whitespace, so it can change behaviour and sometimes wants human
+      # judgement; unreviewed code changes have no business landing on main by
+      # robot. Contrast fmt-bot below, which only reformats.
       - run: |
           nix develop .#ci -c bash -euo pipefail -c '
             cargo clippy --manifest-path backend/Cargo.toml --all-targets -- -D warnings
             cargo clippy --manifest-path backend-registrar/Cargo.toml --all-targets -- -D warnings
           '
-      # The test suites live here, not inside buildRustPackage. doCheck used
-      # to run them, but it also recompiles each crate in test configuration
-      # and links a binary per test target, which pushed `nix build
-      # .#losos-ctl` to 7.7-10.3 minutes against a 10-minute cap — a coin
-      # flip that cancelled real runs on unmodified main. This job sits at
-      # ~4 minutes with the toolchain already loaded, so the suites are nearly
-      # free here. Mirrors devenv.nix's `test-rust`.
-      - name: test both crates
-        run: |
-          nix develop .#ci -c bash -euo pipefail -c '
-            cargo test --manifest-path backend/Cargo.toml
-            cargo test --manifest-path backend-registrar/Cargo.toml
-          '
-      # rustfmt is only *checked* on pull requests. On a push to main the
-      # fmt-bot job below fixes it instead — checking it here too would mean
-      # this job goes red for something another job silently repairs a minute
-      # later, leaving a permanent failure on a commit that is already fine.
+      # rustfmt is only *checked* on pull requests. On a push to main fmt-bot
+      # fixes it instead — checking it here too would mean this job goes red
+      # for something another job repairs a minute later, leaving a permanent
+      # failure on a commit that is already fine.
       - name: rustfmt (pull requests only)
         if: github.event_name == 'pull_request'
         run: |
           nix develop .#ci -c bash -euo pipefail -c '
             cargo fmt --manifest-path backend/Cargo.toml --check
             cargo fmt --manifest-path backend-registrar/Cargo.toml --check
+          '
+
+  test:
+    name: "rust: test both crates"
+    runs-on: codeberg-medium
+    # The suites live here rather than inside buildRustPackage. doCheck used to
+    # run them, but it also recompiles each crate in test configuration and
+    # links a binary per test target, which pushed `nix build .#losos-ctl` to
+    # 7.7-10.3 minutes against the cap. Mirrors devenv.nix's `test-rust`.
+    container:
+      image: docker.io/nixos/nix:latest
+    steps:
+      - run: nix profile install nixpkgs#nodejs
+      - uses: actions/checkout@v4
+      - run: |
+          nix develop .#ci -c bash -euo pipefail -c '
+            cargo test --manifest-path backend/Cargo.toml
+            cargo test --manifest-path backend-registrar/Cargo.toml
           '
 
   eval:
