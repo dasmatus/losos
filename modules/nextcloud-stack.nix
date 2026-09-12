@@ -51,6 +51,16 @@ let
   # onlyoffice, richdocuments/Collabora, spreed/Talk, recognize, the
   # integration_* / user_saml / user_oidc / sociallogin connectors — can be
   # installed on demand by the admin.
+  #
+  # `mail` is deliberately NOT here, and "self-contained" is why. Every other
+  # app in this list works the moment it is enabled; the mail client is a
+  # client, so it is an empty window until it is pointed at an IMAP and SMTP
+  # server the appliance does not run. Shipping it enabled would put a broken-
+  # looking app in front of the owner on first login with nothing they can do
+  # about it. It comes back when this box grows a mail server of its own
+  # (Stalwart is the intended one), at which point it can be configured rather
+  # than merely present. Until then an admin who wants it can install it from
+  # the App Store, which is open.
   apps = with pkgs.nextcloud34Packages.apps; {
     inherit
       deck
@@ -65,7 +75,6 @@ let
       tables
       collectives
       news
-      mail
       music
       memories
       groupfolders
