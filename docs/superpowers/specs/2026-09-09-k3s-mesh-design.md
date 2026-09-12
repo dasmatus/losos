@@ -312,6 +312,52 @@ told the owner "the appliance reads both times on its own clock", and the option
 docs said the value was in `time.timeZone`. All three were false. A 23:00–07:00
 window was enforced 00:00–08:00 in winter and 01:00–09:00 in summer.
 
+### Idle, and how it composes with the window
+
+The window alone gives the box away during hours the owner might be using it:
+a schedule is a guess about a routine, and someone who set 23:00-07:00 and then
+stays up editing photos has told the mesh their machine is free while they are
+sitting at it. Idle alone is worse in the other direction — it would hand the
+box out whenever they stepped away for coffee, and a stranger's pod would start
+just in time for them to come back and contend with it.
+
+So the two compose, in one direction only:
+
+| | |
+|---|---|
+| window | permission: the hours an owner is willing to lend the box out |
+| idle | reality: whether they are using it right now |
+
+The taint comes off only when both hold. Idle can **withdraw** availability
+inside a window and can never **grant** it outside one, because an owner who set
+a window meant it, and a box being quiet at 14:00 is not consent.
+
+Only the appliance can measure the second one, so it rides on the heartbeat the
+announce loop already sends every 30s. The registrar records it with a
+timestamp, ages it against the same heartbeat TTL it prunes tenants on, and
+renders one boolean per node into the file the taint script reads.
+
+Every unknown resolves to **busy**: a field absent because the appliance
+predates idle reporting, a report older than the TTL, an edge that has just
+restarted and holds no live state (it is deliberately not persisted), an
+unreadable `/proc/loadavg`. "I could not tell" and "the owner is away" must
+never be the same answer, because one of them schedules a stranger's workload
+onto somebody who is using their machine.
+
+The measure is the one-minute load average per core against
+`losos.cluster.idleLoadThreshold`, default 0.25. Deliberately unclever: there
+is no session to attribute work to on a box with no logins, per-process
+accounting cannot tell the owner's Nextcloud from the mesh's pod, and anything
+sampling faster than the load average already does would flap — and every flap
+costs a pod eviction and a reschedule. The default is not near zero because an
+idle losos box runs two kubelets, containerd, Postgres, Redis and a PHP-FPM
+pool; a threshold near zero would mean "never idle" and the feature would
+silently never fire.
+
+What it cannot see is a box busy in a way that does not load the CPU, a large
+upload say. That is an honest gap rather than a defect: the mesh work it would
+be sharing with is CPU work, so CPU pressure is the contention that matters.
+
 ## Testing
 
 - `tests/cluster-vm.nix` (new) — an edge VM running the mesh k3s server and an
@@ -329,5 +375,3 @@ window was enforced 00:00–08:00 in winter and 01:00–09:00 in summer.
 - Migrating an existing appliance. There is no installed base (decision 12).
 - Rancher the management platform (Fleet, the multi-cluster UI). Only Longhorn
   and k3s are adopted.
-- Idle-based compute sharing. The window is a fixed clock schedule; load-based
-  detection is a possible refinement, noted but not built.

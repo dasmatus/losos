@@ -147,6 +147,14 @@ struct RegisterReq {
 struct HeartbeatReq {
     appliance_id: String,
     token: String,
+    /// Whether the appliance was idle when it sent this.
+    ///
+    /// Optional so an appliance that predates idle reporting still heartbeats;
+    /// absent is recorded as BUSY, never as idle. The failure that costs an
+    /// owner is lending their box out while they are using it, so every
+    /// unknown resolves that way.
+    #[serde(default)]
+    idle: Option<bool>,
 }
 
 #[derive(Debug, Serialize)]
@@ -345,6 +353,11 @@ async fn heartbeat(
     Json(req): Json<HeartbeatReq>,
 ) -> Result<StatusCode, ApiError> {
     authenticate(&st, &req.appliance_id, &req.token).await?;
+    // Recorded before the liveness check so the two cannot disagree about
+    // which heartbeat this was.
+    st.reg
+        .record_idle(&req.appliance_id, req.idle.unwrap_or(false))
+        .await;
     if st.reg.heartbeat(&req.appliance_id).await {
         Ok(StatusCode::NO_CONTENT)
     } else {
@@ -972,9 +985,13 @@ async fn reconcile_once(st: &AppState) -> Result<()> {
     // no window is recorded, which is what the taint timer needs to read in
     // order to remove a taint it set earlier.
     let windows = st.reg.compute_windows().await;
+    // Live, and deliberately not persisted: an edge that has just restarted
+    // knows nothing about who is idle, and "nobody" is the safe answer until
+    // each box says otherwise on its next heartbeat.
+    let idle = st.reg.idle_nodes(st.opts.heartbeat_ttl).await;
     let changed_windows = match write_if_changed(
         Path::new(&st.opts.compute_windows_file),
-        &window::render(&windows),
+        &window::render(&windows, &idle),
         COMPUTE_WINDOWS_FILE_MODE,
     )
     .await

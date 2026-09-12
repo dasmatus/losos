@@ -380,7 +380,7 @@ let
     # It is defined by backend-registrar/src/window.rs, which owns the writer:
     #   { "nodes": [ { "node_name": "mattbox-01", "share_compute": true,
     #                  "window_start": "23:00", "window_end": "07:00",
-    #                  "tz": "Europe/Berlin" } ] }
+    #                  "tz": "Europe/Berlin", "idle": true } ] }
     # A list under a named key rather than a bare array or a map: the named key
     # leaves room for a sibling field later, and the list keeps the writer's
     # output byte-stable so its reconciler can skip a no-op rewrite. node_name
@@ -393,16 +393,33 @@ let
                (.share_compute | tostring),
                (.window_start // ""),
                (.window_end // ""),
-               (.tz // "UTC") ]
+               (.tz // "UTC"),
+               ((.idle // false) | tostring) ]
            | @tsv' "$windows" |
-    while IFS=$'\t' read -r node share start end tz; do
+    while IFS=$'\t' read -r node share start end tz idle; do
       # A tenant that has been issued a token but has not finished joining
       # has no node object yet. Skip it rather than failing the whole run.
       if ! kubectl get node "$node" >/dev/null 2>&1; then
         continue
       fi
 
-      if [ "$share" = "true" ] && in_window "$start" "$end" "$tz"; then
+      # Three conditions, and they are not interchangeable.
+      #
+      #   share   the owner turned compute sharing on at all
+      #   window  the hours they said the box may be lent out
+      #   idle    whether they are actually using it right now
+      #
+      # The window is permission and idle is reality, and the mesh gets the
+      # machine only when both hold. Idle can withdraw availability inside a
+      # window; it can never grant it outside one, because an owner who set a
+      # window meant it and a box being quiet at 14:00 is not consent.
+      #
+      # `.idle // false` in the jq above is the fail-closed half: a registrar
+      # that has heard nothing from this box since it restarted, or whose last
+      # report is older than the heartbeat TTL, omits the field or writes
+      # false, and the taint stays on. "I could not tell" and "the owner is
+      # away" must never be the same answer.
+      if [ "$share" = "true" ] && [ "$idle" = "true" ] && in_window "$start" "$end" "$tz"; then
         # `kubectl taint <node> key-` exits non-zero when the taint is not
         # there, which is the steady state for an open window.
         kubectl taint node "$node" ${computeWindowTaint}- >/dev/null 2>&1 || true

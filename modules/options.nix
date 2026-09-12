@@ -397,10 +397,33 @@ in
       default = false;
       description = ''
         Contribute this box's CPU to the mesh during the window below ("share
-        my compute when I sleep"). Outside the window the edge holds a
+        my compute when I sleep"), and only while the box is actually idle.
+        Outside the window, or while the box is busy, the edge holds a
         NoSchedule taint on this box's mesh node, so mesh work is repelled.
         This box's OWN Nextcloud and Forgejo are unaffected in either case:
         they live in the local cluster, which has no taint and no scheduler.
+      '';
+    };
+
+    cluster.idleLoadThreshold = lib.mkOption {
+      type = lib.types.float;
+      default = 0.25;
+      description = ''
+        One-minute load average per core below which this box reports itself
+        idle, and so lets the mesh schedule onto it *inside* its compute
+        window. The window is permission; this is whether the owner is using
+        the machine right now. Idle can withdraw availability inside a window
+        and can never grant it outside one.
+
+        The default is 0.25 rather than something near zero because an idle
+        losos box is not at rest: two kubelets, containerd, Postgres, Redis and
+        a PHP-FPM pool all tick over, so a threshold near zero would mean
+        "never idle" and compute sharing would quietly never happen. 1.0 per
+        core is the other end — fully committed, by which point the owner is
+        already waiting on their own machine.
+
+        Set to 0 to stop reporting idle at all, which withdraws the box from
+        compute sharing without touching the window.
       '';
     };
 
