@@ -13,6 +13,25 @@
 # Until this file existed, eight files in this repo discussed "our own binary
 # cache" and not one configured a substituter. `substituters`, `nixConfig`,
 # `trusted-public-keys` and `nix.settings` had zero hits across every .nix file.
+#
+# WHAT FILLS IT. `.forgejo/workflows/ci.yml` pushes after each build job:
+# losos-ctl, losos-registrar, losos-admin-ui, and the pause and Forgejo images.
+# Those are exactly the paths cache.nixos.org cannot serve, because this flake
+# builds them.
+#
+# The Nextcloud image is the exception, and it is the one that matters most
+# here — it is the 2.3 GiB closure named above. It is NOT built on every push:
+# that job would fetch roughly 3.5x what the others do inside a 10-minute cap,
+# and nobody has measured whether it fits. It has its own manual job
+# (`image-nextcloud`, workflow_dispatch) that builds it, pushes it and prints
+# its own timing. The image only changes when modules/nextcloud-stack.nix or
+# flake/images.nix does, so running it by hand after those change is enough to
+# keep the cache honest.
+#
+# If that job is never run, this substituter simply does not have the image and
+# the appliance builds it — the behaviour from before the cache existed, not a
+# new failure. But it is the difference between a cache that saves the install
+# and one that saves everything except the expensive part.
 {
   lib,
   config,
