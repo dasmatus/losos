@@ -198,6 +198,33 @@ jobs:
       # Exporting its closure to a file:// binary cache is 12 MiB and ~13 s,
       # which is what lets the iso job exist at all: without it that job would
       # have to compile this crate itself and blow the 10-minute cap.
+      # Publish to the binary cache the appliance substitutes from.
+      #
+      # modules/cache.nix points every installed box AND every installer medium at
+      # https://losos.cachix.org, and the things it cannot get from cache.nixos.org
+      # are exactly ours: losos-ctl, the registrar, the admin UI and the three images. Until something pushed them
+      # that substituter was an empty promise, and a fresh install fell back to
+      # building them on a repurposed mini-PC.
+      #
+      # Skipped rather than failed when the secret is absent, which is the normal
+      # case for a pull request from a fork: forks get no secrets, and a push step
+      # that fails there would turn every outside contribution red for a reason the
+      # contributor cannot fix.
+      - name: push to cachix
+        env:
+          CACHIX_KEY: ${{ secrets.CACHIX_KEY }}
+        run: |
+          set -eu
+          if [ -z "${CACHIX_KEY:-}" ]; then
+            echo "no CACHIX_KEY in this context (fork pull request?); skipping push"
+            exit 0
+          fi
+          nix profile install nixpkgs#cachix
+          printf '%s' "$CACHIX_KEY" | cachix authtoken --stdin
+          # Already built by the step above, so this only resolves paths. cachix
+          # pushes each path's whole closure, which is what the appliance needs:
+          # the tarball alone is useless without what it was built from.
+          nix build .#losos-ctl --no-link --print-out-paths | cachix push losos
       - run: nix copy --to "file://$PWD/ctl-cache" --no-check-sigs .#losos-ctl
       - uses: actions/upload-artifact@v3
         with:
@@ -216,6 +243,34 @@ jobs:
       # Compiles only; the registrar's 42 tests run in the lint job.
       # losos-admin-ui is a trivial runCommand copy.
       - run: nix build .#losos-registrar .#losos-admin-ui -L
+      # Publish to the binary cache the appliance substitutes from.
+      #
+      # modules/cache.nix points every installed box AND every installer medium at
+      # https://losos.cachix.org, and the things it cannot get from cache.nixos.org
+      # are exactly ours: losos-registrar and losos-admin-ui. Until something pushed them
+      # that substituter was an empty promise, and a fresh install fell back to
+      # building them on a repurposed mini-PC.
+      #
+      # Skipped rather than failed when the secret is absent, which is the normal
+      # case for a pull request from a fork: forks get no secrets, and a push step
+      # that fails there would turn every outside contribution red for a reason the
+      # contributor cannot fix.
+      - name: push to cachix
+        env:
+          CACHIX_KEY: ${{ secrets.CACHIX_KEY }}
+        run: |
+          set -eu
+          if [ -z "${CACHIX_KEY:-}" ]; then
+            echo "no CACHIX_KEY in this context (fork pull request?); skipping push"
+            exit 0
+          fi
+          nix profile install nixpkgs#cachix
+          printf '%s' "$CACHIX_KEY" | cachix authtoken --stdin
+          # Already built by the step above, so this only resolves paths. cachix
+          # pushes each path's whole closure, which is what the appliance needs:
+          # the tarball alone is useless without what it was built from.
+          nix build .#losos-registrar .#losos-admin-ui --no-link --print-out-paths | cachix push losos
+
 
   images:
     name: "nix: OCI images for the local cluster"
@@ -243,6 +298,34 @@ jobs:
       # 4.7 GiB of writes against the 10 GiB quota (8 GiB RAM + 2 GiB temp; on
       # these runners filesystem writes count as RAM).
       - run: nix build .#losos-image-pause .#losos-image-forgejo -L
+      # Publish to the binary cache the appliance substitutes from.
+      #
+      # modules/cache.nix points every installed box AND every installer medium at
+      # https://losos.cachix.org, and the things it cannot get from cache.nixos.org
+      # are exactly ours: the OCI images the local cluster runs. Until something pushed them
+      # that substituter was an empty promise, and a fresh install fell back to
+      # building them on a repurposed mini-PC.
+      #
+      # Skipped rather than failed when the secret is absent, which is the normal
+      # case for a pull request from a fork: forks get no secrets, and a push step
+      # that fails there would turn every outside contribution red for a reason the
+      # contributor cannot fix.
+      - name: push to cachix
+        env:
+          CACHIX_KEY: ${{ secrets.CACHIX_KEY }}
+        run: |
+          set -eu
+          if [ -z "${CACHIX_KEY:-}" ]; then
+            echo "no CACHIX_KEY in this context (fork pull request?); skipping push"
+            exit 0
+          fi
+          nix profile install nixpkgs#cachix
+          printf '%s' "$CACHIX_KEY" | cachix authtoken --stdin
+          # Already built by the step above, so this only resolves paths. cachix
+          # pushes each path's whole closure, which is what the appliance needs:
+          # the tarball alone is useless without what it was built from.
+          nix build .#losos-image-pause .#losos-image-forgejo --no-link --print-out-paths | cachix push losos
+
       # losos-image-nextcloud is NOT built here, and since it is the image most
       # likely to break, that is a real hole and not an oversight.
       #
@@ -271,6 +354,53 @@ jobs:
       #
       # Until then the Nextcloud image's only gate is local:
       #   devenv shell build-images
+
+  # ── The Nextcloud image, on request ───────────────────────────────────────
+  #
+  # workflow_dispatch only, and that is the whole design rather than a
+  # compromise.
+  #
+  # The appliance is *required* to substitute this image: it never builds one.
+  # So a cache that does not have it is worse than no cache at all — the box
+  # discovers the gap during system.autoUpgrade at 03:00, on a mini-PC with a
+  # tmpfs root and no shell, three hours before an unconditional reboot. The
+  # `images` job cannot close that, because it runs on every push and this
+  # image's content closure is 2.3 GiB from a cold runner against a 10-minute
+  # cap — the number nobody has measured, and the note in that job explains at
+  # length why this repository does not guess it again.
+  #
+  # But the image does not need building on every push. It changes only when
+  # modules/nextcloud-stack.nix or flake/images.nix changes, which is rarely,
+  # and once it is in the cache every appliance substitutes it. So this runs
+  # when somebody asks for it, and prints its own timing so the number that
+  # decides whether it could ever join the `images` job gets measured rather
+  # than estimated.
+  #
+  # If it times out, that is the answer: it does not fit, and the local
+  # `devenv shell build-images` plus a manual `cachix push` is the path.
+  image-nextcloud:
+    name: "nix: Nextcloud image -> cachix (manual)"
+    runs-on: codeberg-medium
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    container:
+      image: docker.io/nixos/nix:latest
+    steps:
+      - run: nix profile install nixpkgs#nodejs
+      - uses: actions/checkout@v4
+      - name: build and push, with timing
+        env:
+          CACHIX_KEY: ${{ secrets.CACHIX_KEY }}
+        run: |
+          set -eu
+          if [ -z "${CACHIX_KEY:-}" ]; then
+            echo "no CACHIX_KEY; nothing to push to, so not spending ten minutes building"
+            exit 1
+          fi
+          nix profile install nixpkgs#cachix
+          printf '%s' "$CACHIX_KEY" | cachix authtoken --stdin
+          start=$(date +%s)
+          nix build .#losos-image-nextcloud -L --no-link --print-out-paths | cachix push losos
+          echo "build+push took $(( $(date +%s) - start ))s of the 600s cap"
 
   fmt-bot:
     name: "bot: cargo fmt, push back"
