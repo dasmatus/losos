@@ -56,6 +56,16 @@ pub struct Tenant {
     pub hostname: String,
     pub rathole_port: u16,
     pub last_seen: Instant,
+    /// The last thing this appliance said about whether it was busy, and when
+    /// it said it.
+    ///
+    /// Live state, held beside `last_seen` and never written to
+    /// `registry.json`. That is the point: an edge that restarts has no idea
+    /// who is idle, and must not act on a bit it read off disk from before the
+    /// restart — the box may have been woken up in between. Every appliance
+    /// re-asserts on its next heartbeat, which is at most `heartbeat_interval`
+    /// away, and until then it counts as busy.
+    pub idle: Option<(bool, Instant)>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Default)]
@@ -159,6 +169,7 @@ impl Registry {
                     hostname: t.hostname,
                     rathole_port: t.port,
                     last_seen: now,
+                    idle: None,
                 },
             );
         }
@@ -207,6 +218,7 @@ impl Registry {
                         hostname: hostname.to_string(),
                         rathole_port: port,
                         last_seen: Instant::now(),
+                        idle: None,
                     },
                 );
                 port
@@ -282,6 +294,38 @@ impl Registry {
     /// Refresh `last_seen` for a known tenant. Returns `false` if the id is
     /// unknown — the appliance should re-register. Performs no IO, so it
     /// cannot fail.
+    /// Record what an appliance said about being busy.
+    ///
+    /// Silently ignores an unknown id: the heartbeat handler answers that case
+    /// with "re-register", and inventing a tenant here would let an
+    /// unauthenticated-looking path create one.
+    pub async fn record_idle(&self, id: &str, idle: bool) {
+        let mut st = self.inner.lock().await;
+        if let Some(t) = st.tenants.get_mut(id) {
+            t.idle = Some((idle, Instant::now()));
+        }
+    }
+
+    /// Node names currently reporting idle, with a report no older than `ttl`.
+    ///
+    /// Keyed by node name rather than appliance id because that is what the
+    /// taint script matches on, and the join route forces the two equal.
+    ///
+    /// Stale is busy. An appliance that stopped heartbeating has not told us it
+    /// went back to work — it has told us nothing — and the mesh must not keep
+    /// scheduling onto a box on the strength of a report from an hour ago.
+    pub async fn idle_nodes(&self, ttl: std::time::Duration) -> std::collections::BTreeSet<String> {
+        let now = Instant::now();
+        let st = self.inner.lock().await;
+        st.tenants
+            .iter()
+            .filter_map(|(id, t)| match t.idle {
+                Some((true, at)) if now.duration_since(at) <= ttl => Some(id.clone()),
+                _ => None,
+            })
+            .collect()
+    }
+
     pub async fn heartbeat(&self, id: &str) -> bool {
         let mut st = self.inner.lock().await;
         if let Some(t) = st.tenants.get_mut(id) {

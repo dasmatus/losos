@@ -40,6 +40,14 @@ struct RegisterReq<'a> {
 struct HeartbeatReq<'a> {
     appliance_id: &'a str,
     token: &'a str,
+    /// Whether this box is free right now. See crate::idle for why it is a
+    /// load average and not something cleverer.
+    ///
+    /// Sent on every heartbeat rather than only on change, because the edge
+    /// ages it out: a report older than the heartbeat TTL counts as busy, so a
+    /// box that goes quiet stops being scheduled onto without anyone having to
+    /// notice it went quiet.
+    idle: bool,
 }
 
 pub async fn run(opts: AnnounceOpts) -> Result<()> {
@@ -125,9 +133,16 @@ pub async fn run(opts: AnnounceOpts) -> Result<()> {
         }
 
         if registered {
+            // Measured per heartbeat rather than cached: the whole value of
+            // this bit is that it is current. An unreadable /proc/loadavg
+            // reports BUSY, because "I could not tell" and "I am free" must
+            // never be the same answer to the mesh.
+            let idle = crate::idle::current_load()
+                .is_some_and(|load| crate::idle::is_idle(load, opts.idle_load_threshold));
             let req = HeartbeatReq {
                 appliance_id: &opts.appliance_id,
                 token: &token,
+                idle,
             };
             match client.post(&heartbeat_url).json(&req).send().await {
                 Ok(r) if r.status().is_success() => {

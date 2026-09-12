@@ -86,6 +86,14 @@ pub struct NodeWindow {
     pub window_end: String,
     #[serde(default = "default_tz")]
     pub tz: String,
+    /// Whether this box was idle as of its last heartbeat.
+    ///
+    /// The window says which hours the owner is willing to lend the machine
+    /// out; this says whether they are using it right now. The taint comes off
+    /// only when both agree, and this one can only ever withdraw availability
+    /// inside a window, never grant it outside one.
+    #[serde(default)]
+    pub idle: bool,
 }
 
 /// The published file itself. A named `nodes` field rather than a bare array
@@ -104,7 +112,10 @@ pub struct ComputeWindows {
 /// function of its input — which the `BTreeMap` input and the trailing newline
 /// both exist to guarantee.
 #[must_use]
-pub fn render(windows: &BTreeMap<String, ComputeWindow>) -> String {
+pub fn render(
+    windows: &BTreeMap<String, ComputeWindow>,
+    idle: &std::collections::BTreeSet<String>,
+) -> String {
     let doc = ComputeWindows {
         nodes: windows
             .iter()
@@ -114,6 +125,7 @@ pub fn render(windows: &BTreeMap<String, ComputeWindow>) -> String {
                 window_start: w.window_start.clone(),
                 window_end: w.window_end.clone(),
                 tz: w.tz.clone(),
+                idle: idle.contains(node_name),
             })
             .collect(),
     };

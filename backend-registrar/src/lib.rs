@@ -41,6 +41,7 @@ pub mod announce;
 pub mod config;
 pub mod error;
 mod fsutil;
+pub mod idle;
 pub mod join;
 pub mod opts;
 pub mod registry;

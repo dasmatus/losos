@@ -65,6 +65,13 @@ let
     (lib.escapeShellArg cfg.tokenFile)
     "--heartbeat-interval"
     (lib.escapeShellArg cfg.heartbeatInterval)
+    # Read from losos.cluster.* rather than losos.proxy.*: the announce loop is
+    # the appliance's only regular conversation with the edge, so the mesh's
+    # idle signal rides on it, but the knob belongs to the mesh feature that
+    # uses it. An appliance with the proxy on and the mesh off sends the bit
+    # and nothing reads it, which costs one boolean per heartbeat.
+    "--idle-load-threshold"
+    (lib.escapeShellArg (toString config.losos.cluster.idleLoadThreshold))
   ];
 in
 {
