@@ -222,8 +222,36 @@ pkgs.testers.nixosTest {
             "debugfs=off",
             "pti=on",
             "nohibernate",
+            # CPU side channels. Asserted because "the kernel does this by
+            # default" is a claim that expires: this box rebuilds itself from
+            # upstream at 03:00 with nobody watching, so a default that moves
+            # must fail here rather than on a shelf.
+            "spectre_v2=on",
+            "spec_store_bypass_disable=on",
+            "l1tf=flush",
+            "mds=full",
+            "tsx=off",
+            "tsx_async_abort=full",
+            "kvm.nx_huge_pages=force",
+            # DMA before the IOMMU is up — the one physical-access class the
+            # module blacklist cannot cover, because it stops drivers, not bus
+            # mastering.
+            "efi=disable_early_pci_dma",
+            "intel_iommu=on",
+            "amd_iommu=force_isolation",
+            "iommu.passthrough=0",
+            "iommu.strict=1",
         ):
             assert param in cmdline, f"missing kernel param {param}: {cmdline!r}"
+
+        # `nosmt` must NOT ride in on the baseline. It is the one CPU-side-channel
+        # setting with a real cost on this hardware — it halves the core count of
+        # a mini-PC that transcodes video — so it stays behind
+        # losos.hardening.nosmt, asserted separately on the `full` node below.
+        # A `mitigations=auto,nosmt` copied from a checklist would smuggle it in
+        # here, which is exactly what this line exists to catch.
+        assert "nosmt" not in cmdline, \
+            f"baseline hardening must not disable SMT; that is the nosmt flag's job: {cmdline!r}"
 
     with subtest("blacklisted modules cannot be loaded, not merely autoloaded"):
         # `boot.blacklistedKernelModules` alone only stops *automatic* loading

@@ -17,7 +17,15 @@
 # WHAT FILLS IT. `.forgejo/workflows/ci.yml` pushes after each build job:
 # losos-ctl, losos-registrar, losos-admin-ui, and the pause and Forgejo images.
 # Those are exactly the paths cache.nixos.org cannot serve, because this flake
-# builds them.
+# builds them. losos-admin-ui earns its place there only since it became a real
+# npm build; while it was a `cp -rT` of some static files, pushing it saved a
+# target nothing worth measuring.
+#
+# CI also READS from this cache — the same URL and key are in that workflow's
+# NIX_CONFIG as `extra-substituters`. So an unchanged losos-ctl is fetched
+# rather than recompiled, which is ~9 minutes against a 10-minute cap. Keep the
+# key here and there in step; this file is the one that matters, because it is
+# the one a real box uses.
 #
 # The Nextcloud image is the exception, and it is the one that matters most
 # here — it is the 2.3 GiB closure named above. It is NOT built on every push:

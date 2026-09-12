@@ -344,10 +344,23 @@ let
       (
         { lib, ... }:
         {
-          # mkForce, because the plain ISO already sets this to the admin UI
-          # alone (flake.nix) and a list would otherwise merge into "both" —
-          # which is not wrong, just redundant: the UI is inside the toplevel.
-          isoImage.storeContents = lib.mkForce [
+          # A plain definition, NOT mkForce. `storeContents` is a `listOf`, so
+          # every module's definition is CONCATENATED rather than overridden,
+          # and this one is the third contributor, not the first:
+          #
+          #   nixpkgs' iso-image.nix  [ <this ISO's own toplevel> ]
+          #   flake.nix               [ losos-admin-ui ]
+          #   here                    [ <the install toplevel> ]
+          #
+          # mkForce discards the other two. Dropping the admin UI is merely
+          # redundant — it is inside the install toplevel anyway — but dropping
+          # the live medium's OWN toplevel is fatal: the squashfs then has no
+          # copy of the system the kernel command line execs. The kernel and
+          # initrd are written outside the store, so such a medium POSTs,
+          # boots, and panics at switch-root, which is exactly the failure a
+          # green `nix build` cannot see. The assert on `losos-disk-iso` at
+          # the foot of this file is the gate.
+          isoImage.storeContents = [
             self.nixosConfigurations.install.config.system.build.toplevel
           ];
 
@@ -356,18 +369,64 @@ let
           # stick and the shell history is gone. They install identically and
           # differ only in how long it takes, which is exactly the kind of
           # difference nobody remembers about an unlabelled USB stick.
-          # `image.fileName`, not `isoImage.isoName`: nixpkgs renamed it and the
-          # old spelling still works but warns on every evaluation of this
-          # flake, including the ones CI and `devenv test` run.
-          image.fileName = lib.mkForce "losos-installer-full.iso";
+          # `image.baseName`, not `isoImage.isoName` (removed) and not
+          # `image.fileName` (has no effect here). nixpkgs derives the artefact
+          # name from the base name alone:
+          #
+          #   image.baseName             = "nixos-${label}-${system}"   (default)
+          #   system.build.isoImage      isoName = "${image.baseName}.iso"
+          #   image.fileName             consumed only by image.filePath
+          #
+          # so forcing `fileName` renamed nothing and both media came out as
+          # `nixos-minimal-<label>-x86_64-linux.iso` — the very collision the
+          # paragraph above says this block exists to prevent.
+          image.baseName = lib.mkForce "losos-installer-full";
           isoImage.volumeID = lib.mkForce "LOSOS_FULL";
         }
       )
     ];
   };
+  # The guard for the defect above, at eval time rather than at switch-root.
+  #
+  # A medium missing its own toplevel builds perfectly and fails only on real
+  # hardware, several minutes in, on a box with no shell to read the panic
+  # from. Booting a 4 GiB ISO in a VM test would catch it and costs far more
+  # than this does: the whole bug is one store path missing from one list, so
+  # checking the list is the proportionate gate. It runs everywhere the flake
+  # evaluates — `nix flake check --no-build`, `check-eval`, CI — because it is
+  # pure.
+  #
+  # Phrased as "contains its own toplevel" rather than "nobody called mkForce"
+  # so it also catches a filter, a `lib.subtractLists`, or a future nixpkgs
+  # that stops contributing the path at all.
+  isoSelf = isoSystem.config.system.build.toplevel;
+  carriesItself = builtins.elem isoSelf isoSystem.config.isoImage.storeContents;
 in
 {
   losos-disk-qcow2 = image;
   losos-disk-qcow2-run = runner;
-  losos-disk-iso = isoSystem.config.system.build.isoImage;
+
+  # The assert rides on THIS attribute, not on the set. Attached to the set it
+  # would be forced by any access to `packages` — including `nix build
+  # .#losos-ctl` — and dragging a full evaluation of the install and iso
+  # module trees into every CI job is how this repo has lost a ten-minute cap
+  # before. Here it costs nothing extra: anyone touching `losos-disk-iso` is
+  # evaluating that system anyway.
+  #
+  # It cannot be a NixOS `assertions` entry either: those are evaluated as part
+  # of building `system.build.toplevel`, so an assertion that reads
+  # `config.system.build.toplevel` is a cycle.
+  losos-disk-iso =
+    assert lib.assertMsg carriesItself ''
+      losos-disk-iso: isoImage.storeContents does not contain the live medium's
+      own toplevel (${isoSelf}). The squashfs would then lack the system this
+      ISO's own kernel command line execs, and because the kernel and initrd
+      are written outside the store, such a medium POSTs, boots, and panics at
+      switch-root — a failure no `nix build` can see.
+
+      `isoImage.storeContents` is a listOf: every module's definition is
+      CONCATENATED, so nixpkgs' iso-image.nix already contributes this path.
+      Define it plainly and let that definition stand. Never mkForce it.
+    '';
+    isoSystem.config.system.build.isoImage;
 }

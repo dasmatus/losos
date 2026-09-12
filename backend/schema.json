@@ -82,7 +82,11 @@
         "clusterEnable",
         "shareCompute",
         "computeWindowStart",
-        "computeWindowEnd"
+        "computeWindowEnd",
+        "hardeningApparmor",
+        "hardeningMalloc",
+        "hardeningNosmt",
+        "hardeningUsbguard"
       ],
       "properties": {
         "sharingMyStorage": {
@@ -139,6 +143,22 @@
           "type": "string",
           "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$",
           "description": "losos.cluster.computeWindow.end, HH:MM. end < start wraps midnight."
+        },
+        "hardeningApparmor": {
+          "type": "boolean",
+          "description": "losos.hardening.apparmor — AppArmor. Off by default; nixpkgs ships profiles for only a fraction of what runs here."
+        },
+        "hardeningMalloc": {
+          "type": "boolean",
+          "description": "losos.hardening.malloc — hardened_malloc. Off by default; covers the host's dynamically linked daemons, not the static Go binaries or anything in a pod."
+        },
+        "hardeningNosmt": {
+          "type": "boolean",
+          "description": "losos.hardening.nosmt — disable SMT. Off by default; roughly halves the core count. The baseline kernel parameters deliberately do NOT include nosmt so this stays the only way to turn it on."
+        },
+        "hardeningUsbguard": {
+          "type": "boolean",
+          "description": "losos.hardening.usbguard — block USB devices not present at boot. Off by default so a keyboard attached for console recovery keeps working."
         }
       }
     },
