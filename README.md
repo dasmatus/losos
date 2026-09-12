@@ -26,7 +26,7 @@ until the next reboot, and `midnight-reboot.timer` fires at 00:07 whether anyone
 is watching or not. The second difference is that you can read every line of
 what your box runs, and rebuild it yourself from this repository.
 
-**Against a VPS or a rented seedbox.** The machine is in your home and the disk
+**Against a VPS or a rented seedbox.** The machine this OS runs on is in your home and the disk
 is LUKS-encrypted with the key sealed to its TPM, so the hosting provider,
 their staff, and anyone who takes the hardware get an opaque block device rather
 than your files. The trade you would normally make for that — losing a public
@@ -46,7 +46,7 @@ private cloud, not a second job.
 **Against every self-hosting stack, on the mesh.** This is the part with no
 real equivalent. A box can lend its spare disk and spare CPU to other people's
 boxes, and it does so under two conditions that must both hold: a window you
-set (permission) *and* the box actually being idle (reality). Idleness can
+set (permission) _and_ the box actually being idle (reality). Idleness can
 withdraw availability inside your window; it can never grant it outside one,
 because a quiet box at 14:00 is not consent. Every unknown — a missing
 heartbeat, a stale report, an edge that just restarted — resolves to "busy".
@@ -61,14 +61,14 @@ throughout this file, which are written to be read rather than buried.
 
 ## What runs on it
 
-| | |
-|---|---|
-| **Nextcloud** | Files, calendar and contacts for the `notshared` user. Reached at `<host>.local/nextcloud`. |
+|                  |                                                                                                                                           |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| **Nextcloud**    | Files, calendar and contacts for the `notshared` user. Reached at `<host>.local/nextcloud`.                                               |
 | **Mesh storage** | Contributes spare disk to the cluster as the `shared` user, replicated by Longhorn. The domain is fscrypt-locked whenever sharing is off. |
-| **Mesh compute** | Optional. Contributes CPU to the cluster during a nightly window — "share my compute when I sleep". |
-| **Forgejo** | Optional git hosting at `<host>.local/forgejo/`. |
-| **Admin UI** | A single-page app at `<host>.local`, LAN-only, for the handful of settings the box exposes. |
-| **Master proxy** | Optional. Reaches the appliance from the internet through a rathole tunnel to a VPS running Traefik, without opening a port at home. |
+| **Mesh compute** | Optional. Contributes CPU to the cluster during a nightly window — "share my compute when I sleep".                                       |
+| **Forgejo**      | Optional git hosting at `<host>.local/forgejo/`.                                                                                          |
+| **Admin UI**     | A single-page app at `<host>.local`, LAN-only, for the handful of settings the box exposes.                                               |
+| **Master proxy** | Optional. Reaches the appliance from the internet through a rathole tunnel to a VPS running Traefik, without opening a port at home.      |
 
 The two data users have mode-`700` homes, each with its own primary group, no
 passwords and no shell. Neither can read the other's files — asserted in a
@@ -114,7 +114,7 @@ It still needs a network. The installer clones the flake at run time and
 not change that.
 
 It also only pays off if the medium and the clone agree. `losos-install` runs
-`git clone --depth 1` of `LOSOS_FLAKE_URL` and installs *that* revision, so an
+`git clone --depth 1` of `LOSOS_FLAKE_URL` and installs _that_ revision, so an
 ISO built from a different commit evaluates to different store paths and the
 copies go unused without saying so. Build it from the commit you mean to
 install.
@@ -154,7 +154,7 @@ losos-ctl grow
 
 That runs `lvextend`, `cryptsetup resize` and `resize2fs` in that order, with
 `/persist` still mounted and nothing restarted. It matters because `/persist`
-*is* `/nix` here — impermanence binds one over the other — so the store grows
+_is_ `/nix` here — impermanence binds one over the other — so the store grows
 with every generation and the 03:00 unattended rebuild is what eventually fills
 it, on a machine with no shell to notice from.
 
@@ -193,11 +193,11 @@ rather than regressions.
 A box runs **two** Kubernetes instances, and they are deliberately different
 clusters:
 
-| | Local | Mesh |
-|---|---|---|
-| What | this box's own Nextcloud and Forgejo | Longhorn storage, shared compute |
-| Server | this box | the edge VPS |
-| Needs the network? | **no** | yes |
+|                    | Local                                | Mesh                             |
+| ------------------ | ------------------------------------ | -------------------------------- |
+| What               | this box's own Nextcloud and Forgejo | Longhorn storage, shared compute |
+| Server             | this box                             | the edge VPS                     |
+| Needs the network? | **no**                               | yes                              |
 
 The split is the whole point. A Kubernetes agent cannot start its kubelet while
 its server is unreachable, and this box reboots itself every night — so if your
@@ -212,8 +212,8 @@ The second lends the machine out only when **both** of two things hold: the
 nightly window you set, and the box actually being idle. The two are not
 interchangeable, and the direction matters. A window is a guess about a
 routine — set 23:00–07:00, then stay up editing photos, and you have told the
-mesh your box is free while you are sitting at it. So idleness can *withdraw*
-availability inside the window. It can never *grant* it outside one: an owner
+mesh your box is free while you are sitting at it. So idleness can _withdraw_
+availability inside the window. It can never _grant_ it outside one: an owner
 who set a window meant it, and a box that happens to be quiet at 14:00 has not
 consented to anything.
 
@@ -283,21 +283,21 @@ devenv shell        # or: direnv allow
 
 Everything is a named script:
 
-| | |
-|---|---|
-| `fmt` · `lint` · `test-rust` | Format, lint and test both Rust crates |
-| `check-flake` · `check-eval` | Evaluate the flake; force the full module merge |
-| `build-pkgs` · `build-iso` | Build the three packages; build the installer ISO |
+|                                |                                                                                     |
+| ------------------------------ | ----------------------------------------------------------------------------------- |
+| `fmt` · `lint` · `test-rust`   | Format, lint and test both Rust crates                                              |
+| `check-flake` · `check-eval`   | Evaluate the flake; force the full module merge                                     |
+| `build-pkgs` · `build-iso`     | Build the three packages; build the installer ISO                                   |
 | `build-images` · `build-media` | The OCI images; the demo QCOW2 and the closure-carrying ISO. Gigabytes each, opt-in |
-| `vm-tests` | Every `nixos-test` VM the flake exports. Needs `/dev/kvm` |
-| `devenv test` | Everything except the VM tests, the images and the media |
+| `vm-tests`                     | Every `nixos-test` VM the flake exports. Needs `/dev/kvm`                           |
+| `devenv test`                  | Everything except the VM tests, the images and the media                            |
 
 `nix develop` still works and gives a toolchain-only shell for anyone without
 the devenv CLI.
 
 Formatting is not your problem: a CI job reformats and pushes back on every
 push to `main`, and its commit carries `[skip ci]` so it does not retrigger
-the workflow. Clippy is *not* auto-fixed — it rewrites code rather than
+the workflow. Clippy is _not_ auto-fixed — it rewrites code rather than
 whitespace, so it stays a gate you have to satisfy yourself.
 
 CI does **not** go through devenv, and spells the same commands out directly.
@@ -307,8 +307,8 @@ non-devenv job took 1m32s. The duplication between `devenv.nix` and
 `.forgejo/workflows/ci.yml` is the price of that cap, and the two have to be
 kept in step by hand.
 
-Two lock files exist: `flake.lock` pins the nixpkgs that *builds* the
-appliance, `devenv.lock` the one that *lints and tests* it. They must be
+Two lock files exist: `flake.lock` pins the nixpkgs that _builds_ the
+appliance, `devenv.lock` the one that _lints and tests_ it. They must be
 bumped together; `check-pins` fails if they disagree.
 
 ## Testing
@@ -316,12 +316,12 @@ bumped together; `check-pins` fails if they disagree.
 The VM tests are the real gate, and CI cannot run them — Codeberg's runners
 cap at 10 minutes and 8 GB, and the tests need KVM. Run them locally:
 
-| | |
-|---|---|
-| `losos-install` | Boots three empty disks and runs the installer through disko, LVM and LUKS |
-| `losos-admin-daemon` | `lososd` over D-Bus, its HTTP API, and the Bearer token |
-| `losos-edge-proxy` | Two VMs: the master-proxy register/reconcile/forward path, and that enrollment is closed |
-| `losos-ds-render` | Renders every design-system component in headless Chromium |
+|                      |                                                                                          |
+| -------------------- | ---------------------------------------------------------------------------------------- |
+| `losos-install`      | Boots three empty disks and runs the installer through disko, LVM and LUKS               |
+| `losos-admin-daemon` | `lososd` over D-Bus, its HTTP API, and the Bearer token                                  |
+| `losos-edge-proxy`   | Two VMs: the master-proxy register/reconcile/forward path, and that enrollment is closed |
+| `losos-ds-render`    | Renders every design-system component in headless Chromium                               |
 
 The `install` system closure is a local-only gate; build it before merging
 anything that touches the module set.
@@ -331,7 +331,7 @@ artifact when you push a `v*` tag or trigger the workflow by hand — not on
 every commit, because the image is ~1.5 GB and that is Codeberg's entire
 recommended attachment budget in one file.
 
- It looks like it should not fit — but of
+It looks like it should not fit — but of
 the 769 store paths in its closure, 766 are stock nixpkgs that cache.nixos.org
 serves and only `losos-ctl` costs anything to produce. The CI job takes that
 one from the job that already builds it, as a 12 MiB artifact, so it never
