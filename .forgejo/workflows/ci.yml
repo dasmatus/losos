@@ -85,7 +85,7 @@ on:
 # itself fails. Not used by the repo's own code.
 
 # CI both fills losos.cachix.org and reads from it. The push half is per-job
-# (see each "push to cachix" step); this is the pull half, and it is worth as
+# (see .forgejo/actions/cachix-push); this is the pull half, and it is worth as
 # much: without it every job rebuilds our own paths from source even when an
 # earlier run already pushed an identical one, which for losos-ctl alone is
 # ~9 minutes against a 10-minute cap.
@@ -109,6 +109,11 @@ env:
     extra-trusted-public-keys = losos.cachix.org-1:4t3mjPiiE7RZHBk3znPi0mq4uP5RY630YXAapAWe708=
     connect-timeout = 5
     fallback = true
+  # Not secret: a buzzheavier directory id is meaningless without the account
+  # token, and the region id is public (GET /api/locations). Set both under
+  # Settings -> Actions -> Variables.
+  BUZZ_PARENT_ID: ${{ vars.BUZZ_PARENT_ID }}
+  BUZZ_LOCATION_ID: ${{ vars.BUZZ_LOCATION_ID }}
 
 jobs:
   clippy:
@@ -238,25 +243,12 @@ jobs:
       # that substituter was an empty promise, and a fresh install fell back to
       # building them on a repurposed mini-PC.
       #
-      # Skipped rather than failed when the secret is absent, which is the normal
-      # case for a pull request from a fork: forks get no secrets, and a push step
-      # that fails there would turn every outside contribution red for a reason the
-      # contributor cannot fix.
-      - name: push to cachix
-        env:
-          CACHIX_KEY: ${{ secrets.CACHIX_KEY }}
-        run: |
-          set -eu
-          if [ -z "${CACHIX_KEY:-}" ]; then
-            echo "no CACHIX_KEY in this context (fork pull request?); skipping push"
-            exit 0
-          fi
-          nix profile install nixpkgs#cachix
-          printf '%s' "$CACHIX_KEY" | cachix authtoken --stdin
-          # Already built by the step above, so this only resolves paths. cachix
-          # pushes each path's whole closure, which is what the appliance needs:
-          # the tarball alone is useless without what it was built from.
-          nix build .#losos-ctl --no-link --print-out-paths | cachix push losos
+      # Skipping rather than failing when the secret is absent is the
+      # action's behaviour now; see .forgejo/actions/cachix-push.
+      - uses: ./.forgejo/actions/cachix-push
+        with:
+          installables: ".#losos-ctl"
+          token: ${{ secrets.CACHIX_KEY }}
       - run: nix copy --to "file://$PWD/ctl-cache" --no-check-sigs .#losos-ctl
       - uses: actions/upload-artifact@v3
         with:
@@ -286,25 +278,12 @@ jobs:
       # that substituter was an empty promise, and a fresh install fell back to
       # building them on a repurposed mini-PC.
       #
-      # Skipped rather than failed when the secret is absent, which is the normal
-      # case for a pull request from a fork: forks get no secrets, and a push step
-      # that fails there would turn every outside contribution red for a reason the
-      # contributor cannot fix.
-      - name: push to cachix
-        env:
-          CACHIX_KEY: ${{ secrets.CACHIX_KEY }}
-        run: |
-          set -eu
-          if [ -z "${CACHIX_KEY:-}" ]; then
-            echo "no CACHIX_KEY in this context (fork pull request?); skipping push"
-            exit 0
-          fi
-          nix profile install nixpkgs#cachix
-          printf '%s' "$CACHIX_KEY" | cachix authtoken --stdin
-          # Already built by the step above, so this only resolves paths. cachix
-          # pushes each path's whole closure, which is what the appliance needs:
-          # the tarball alone is useless without what it was built from.
-          nix build .#losos-registrar .#losos-admin-ui --no-link --print-out-paths | cachix push losos
+      # Skipping rather than failing when the secret is absent is the
+      # action's behaviour now; see .forgejo/actions/cachix-push.
+      - uses: ./.forgejo/actions/cachix-push
+        with:
+          installables: ".#losos-registrar .#losos-admin-ui"
+          token: ${{ secrets.CACHIX_KEY }}
       # Export the built SPA for the `iso` job, exactly as the losos-ctl job
       # exports its crate and for the same reason. flake.nix puts
       # losos-admin-ui in isoImage.storeContents, so before this existed the
@@ -359,25 +338,12 @@ jobs:
       # that substituter was an empty promise, and a fresh install fell back to
       # building them on a repurposed mini-PC.
       #
-      # Skipped rather than failed when the secret is absent, which is the normal
-      # case for a pull request from a fork: forks get no secrets, and a push step
-      # that fails there would turn every outside contribution red for a reason the
-      # contributor cannot fix.
-      - name: push to cachix
-        env:
-          CACHIX_KEY: ${{ secrets.CACHIX_KEY }}
-        run: |
-          set -eu
-          if [ -z "${CACHIX_KEY:-}" ]; then
-            echo "no CACHIX_KEY in this context (fork pull request?); skipping push"
-            exit 0
-          fi
-          nix profile install nixpkgs#cachix
-          printf '%s' "$CACHIX_KEY" | cachix authtoken --stdin
-          # Already built by the step above, so this only resolves paths. cachix
-          # pushes each path's whole closure, which is what the appliance needs:
-          # the tarball alone is useless without what it was built from.
-          nix build .#losos-image-pause .#losos-image-forgejo --no-link --print-out-paths | cachix push losos
+      # Skipping rather than failing when the secret is absent is the
+      # action's behaviour now; see .forgejo/actions/cachix-push.
+      - uses: ./.forgejo/actions/cachix-push
+        with:
+          installables: ".#losos-image-pause .#losos-image-forgejo"
+          token: ${{ secrets.CACHIX_KEY }}
 
       # losos-image-nextcloud is NOT built here, and since it is the image most
       # likely to break, that is a real hole and not an oversight.
@@ -440,20 +406,14 @@ jobs:
     steps:
       - run: nix profile install nixpkgs#nodejs
       - uses: actions/checkout@v4
-      - name: build and push, with timing
-        env:
-          CACHIX_KEY: ${{ secrets.CACHIX_KEY }}
-        run: |
-          set -eu
-          if [ -z "${CACHIX_KEY:-}" ]; then
-            echo "no CACHIX_KEY; nothing to push to, so not spending ten minutes building"
-            exit 1
-          fi
-          nix profile install nixpkgs#cachix
-          printf '%s' "$CACHIX_KEY" | cachix authtoken --stdin
-          start=$(date +%s)
-          nix build .#losos-image-nextcloud -L --no-link --print-out-paths | cachix push losos
-          echo "build+push took $(( $(date +%s) - start ))s of the 600s cap"
+      # require-token, unlike the three lanes above: there is no point
+      # spending ten minutes building an image with nowhere to put it.
+      - uses: ./.forgejo/actions/cachix-push
+        with:
+          installables: ".#losos-image-nextcloud"
+          build-args: "-L"
+          require-token: "true"
+          token: ${{ secrets.CACHIX_KEY }}
 
   fmt-bot:
     name: "bot: cargo fmt, push back"
@@ -573,108 +533,119 @@ jobs:
       # with a 1 GiB cap is already set in flake.nix and changes the picture.
       - run: nix build .#nixosConfigurations.iso.config.system.build.isoImage -L
 
-      # Publishing is gated on tags and manual runs, NOT on every push, and
-      # the reason is the size. The image is ~1.5 GB, and Codeberg asks that
-      # you request resources before exceeding "1.5 GiB of packages, LFS and
-      # attachments" — so one ISO is the whole recommended budget. Uploading
-      # one per commit to a donation-funded host would be antisocial, and
-      # Codeberg reserves the right to deny service over resource usage.
+      # Publishing is gated on tags, NOT on every push. The original reason
+      # was Codeberg's "1.5 GiB of packages, LFS and attachments" ceiling,
+      # which a single ISO spent in full. That argument is retired: the image
+      # goes to buzzheavier now and only the ~100-byte checksum and a small
+      # release.json are attached here. What remains is the plainer reason —
+      # a 1.5 GB upload per commit to any free host is antisocial.
       #
       # The build above still runs on every push: that is the gate, and it is
-      # cheap (3.5 min). Only the 1.5 GB upload is rationed.
+      # cheap (3.5 min). Only the upload is rationed.
+      #
+      # The download link is NOT permanent. buzzheavier's free tier keeps a
+      # file for 8 days, adds 2 days per download, and only makes it permanent
+      # after 30 downloads inside 60 days — which an appliance ISO will not
+      # see. .forgejo/workflows/refresh.yml re-uploads the newest release's
+      # image twice a week to keep its link alive. Delete that workflow and
+      # every published download link dies within about a week.
       - name: stage the image
-        if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
+        id: stage
+        if: startsWith(github.ref, 'refs/tags/')
         # cp -L dereferences: `result` is a symlink into /nix/store, and the
-        # upload action would otherwise archive the link rather than the image.
+        # upload would otherwise send the link rather than the image. The tag
+        # goes in the filename because the prune step matches on a prefix and
+        # because two releases must not collide in one buzzheavier directory.
         run: |
           set -euo pipefail
-          cp -L result/iso/*.iso ./losos-installer.iso
-          ls -lh losos-installer.iso
-          sha256sum losos-installer.iso | tee losos-installer.iso.sha256
+          name="losos-installer-${GITHUB_REF_NAME}.iso"
+          cp -L result/iso/*.iso "./${name}"
+          ls -lh "$name"
+          sha256sum "$name" | tee "${name}.sha256"
+          {
+            echo "name=${name}"
+            echo "storePath=$(readlink -f result)"
+          } >> "$GITHUB_OUTPUT"
 
-      # Manual runs get a throwaway artifact. Tags get a real release, below —
-      # attaching the same 1.5 GB twice would be silly.
-      - name: publish the ISO as an artifact
-        if: github.event_name == 'workflow_dispatch'
-        uses: actions/upload-artifact@v3
+      - id: publish
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: ./.forgejo/actions/publish-buzz
         with:
-          name: losos-installer-iso
-          path: |
-            losos-installer.iso
-            losos-installer.iso.sha256
-          retention-days: 7
+          file: ${{ steps.stage.outputs.name }}
+          filename: ${{ steps.stage.outputs.name }}
+          parent-id: ${{ env.BUZZ_PARENT_ID }}
+          location-id: ${{ env.BUZZ_LOCATION_ID }}
+          token: ${{ secrets.BUZZHEAVIER_TOKEN }}
 
-      # A tag makes a release and hangs the image off it. Done with the API
-      # and curl rather than a third-party action: this repo pulls in only
-      # actions/checkout and actions/upload-artifact, and a release is one
-      # POST plus one multipart upload.
-      #
-      # BUDGET, because it is permanent. An artifact expires in 7 days; a
-      # release asset does not. At ~1.5 GB per image that is Codeberg's whole
-      # recommended "packages, LFS and attachments" allowance in a single
-      # release, and a second one puts the repository over it for good. Ask
-      # Codeberg for a quota before making a habit of this, or cut releases
-      # rarely and delete the assets of superseded ones.
-      - name: create the release and attach the image
+      - name: compose the release body
+        id: body
         if: startsWith(github.ref, 'refs/tags/')
         env:
-          TOKEN: ${{ secrets.FORGEJO_TOKEN }}
-          TOKEN_ALT: ${{ secrets.GITHUB_TOKEN }}
+          ISO_NAME: ${{ steps.stage.outputs.name }}
+          ISO_URL: ${{ steps.publish.outputs.url }}
+          ISO_SUM: ${{ steps.publish.outputs.sha256 }}
+          ISO_SIZE: ${{ steps.publish.outputs.size }}
+          STORE_PATH: ${{ steps.stage.outputs.storePath }}
         run: |
           set -euo pipefail
-          T="${TOKEN:-$TOKEN_ALT}"
-          if [ -z "$T" ]; then echo "no API token in the secrets context" >&2; exit 1; fi
-          API="${GITHUB_SERVER_URL}/api/v1/repos/${GITHUB_REPOSITORY}"
-          TAG="${GITHUB_REF_NAME}"
-          SUM=$(cut -d' ' -f1 losos-installer.iso.sha256)
-          AUTH="Authorization: token $T"
+          human=$(awk -v b="$ISO_SIZE" 'BEGIN { printf "%.2f GiB", b/1073741824 }')
+          # refresh.yml reads this back to re-upload the same bytes without
+          # rebuilding. Keep the field names stable: changing one silently
+          # breaks the refresh for every release already published.
+          jq -n --arg iso "$ISO_NAME" --arg sum "$ISO_SUM" \
+                --argjson size "$ISO_SIZE" --arg path "$STORE_PATH" \
+            '{iso:$iso, sha256:$sum, size:$size, storePath:$path}' > release.json
+          cat release.json
+          {
+            echo "body<<RELEASE_BODY_EOF"
+            cat <<BODY
+          ### Download
 
-          # Every call checks its HTTP status explicitly. `curl -sS` alone
-          # exits 0 on a 4xx, which is how the first version of this step
-          # reported success while creating nothing at all: the POST 404'd,
-          # jq turned the error body into `null`, and the assets went to
-          # /releases/null/assets. A step that can silently no-op is worse
-          # than one that fails.
-          api() { # api METHOD URL [curl args...] -> body on stdout, status in $CODE
-            local m="$1" u="$2"; shift 2
-            CODE=$(curl -sS -o /tmp/api.out -w '%{http_code}' -X "$m" -H "$AUTH" "$@" "$u")
-            cat /tmp/api.out
-          }
+          **[${ISO_NAME}](${ISO_URL})** — ${human}
 
-          api GET "$API/releases/tags/$TAG" >/tmp/rel.json || true
-          if [ "$CODE" = "404" ]; then
-            # A 404 here is ambiguous: either this tag has no release yet, or
-            # the repository has Releases switched off entirely. Tell them
-            # apart, because the second is a setting no workflow can fix.
-            api GET "$API" >/tmp/repo.json || true
-            if [ "$(jq -r '.has_releases' /tmp/repo.json)" != "true" ]; then
-              echo "Releases are disabled on this repository (has_releases=false)." >&2
-              echo "Enable them under Settings -> Repository -> Advanced Settings," >&2
-              echo "then re-run this workflow or re-push the tag." >&2
-              exit 1
-            fi
-            body=$(jq -n --arg t "$TAG" --arg s "$SUM" \
-              '{tag_name:$t, name:$t,
-                body:("Installer ISO for \($t).\n\nsha256: `\($s)`\n\nWrite to a USB stick and boot the target machine; the installer partitions, encrypts and installs unattended.")}')
-            api POST "$API/releases" -H 'Content-Type: application/json' --data-binary "$body" >/tmp/rel.json
-            if [ "$CODE" != "201" ]; then
-              echo "creating the release failed: HTTP $CODE" >&2; cat /tmp/rel.json >&2; exit 1
-            fi
-          elif [ "$CODE" != "200" ]; then
-            echo "looking up the release failed: HTTP $CODE" >&2; cat /tmp/rel.json >&2; exit 1
-          fi
+          \`\`\`
+          sha256  ${ISO_SUM}
+          \`\`\`
 
-          id=$(jq -r '.id // empty' /tmp/rel.json)
-          case "$id" in
-            ''|*[!0-9]*) echo "no usable release id (got: '$id')" >&2; exit 1 ;;
-          esac
-          echo "release id: $id"
+          Verify against the \`.sha256\` attached below:
 
-          for f in losos-installer.iso losos-installer.iso.sha256; do
-            echo "attaching $f ($(stat -c%s "$f") bytes)"
-            api POST "$API/releases/$id/assets?name=$f" -F "attachment=@$f" >/dev/null
-            if [ "$CODE" != "201" ]; then
-              echo "attaching $f failed: HTTP $CODE" >&2; cat /tmp/api.out >&2; exit 1
-            fi
-            echo "  -> HTTP $CODE"
-          done
+          \`\`\`sh
+          sha256sum -c ${ISO_NAME}.sha256
+          \`\`\`
+
+          Write it to a USB stick and boot the target machine; the installer
+          partitions, encrypts and installs unattended.
+
+          ---
+
+          The image is hosted off-forge rather than attached here, because one
+          ISO is Codeberg's entire recommended allowance for packages, LFS and
+          attachments. That link is refreshed automatically and may still lapse
+          — if it has, build the same image from this tag with
+          \`nix build .#nixosConfigurations.iso.config.system.build.isoImage\`.
+          BODY
+            echo "RELEASE_BODY_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      # A tag makes a release; the API and curl do it, refactored into a local
+      # action shared with the refresh workflow. Only the checksum and the
+      # release.json manifest are attached — the image itself is a link.
+      - if: startsWith(github.ref, 'refs/tags/')
+        uses: ./.forgejo/actions/forgejo-release
+        with:
+          tag: ${{ github.ref_name }}
+          body: ${{ steps.body.outputs.body }}
+          assets: |
+            ${{ steps.stage.outputs.name }}.sha256
+            release.json
+          token: ${{ secrets.FORGEJO_TOKEN }}
+          token-alt: ${{ secrets.GITHUB_TOKEN }}
+
+      - if: startsWith(github.ref, 'refs/tags/')
+        uses: ./.forgejo/actions/prune-buzz
+        with:
+          parent-id: ${{ env.BUZZ_PARENT_ID }}
+          prefix: losos-installer-
+          keep: "5"
+          keep-id: ${{ steps.publish.outputs.id }}
+          token: ${{ secrets.BUZZHEAVIER_TOKEN }}

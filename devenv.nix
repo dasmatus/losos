@@ -124,9 +124,11 @@ in
   #
   # CI does not go through devenv (see the header of .forgejo/workflows/ci.yml
   # -- routing jobs through `devenv shell` blew Codeberg's 10-minute cap), so
-  # this covers local builds only. Wiring the CI half needs a CACHIX_AUTH_TOKEN
-  # secret and is not done yet: until it is, the cache holds whatever a
-  # developer happened to build.
+  # this covers local builds only. The CI half is wired too, since 728d255:
+  # .forgejo/actions/cachix-push pushes from four lanes using the CACHIX_KEY
+  # secret. The installer ISO is deliberately NOT among them here -- the
+  # release lane pushes it, so refresh.yml can substitute it instead of
+  # rebuilding.
   cachix.push = "losos";
 
   # ── Toolchain ────────────────────────────────────────────────────────────

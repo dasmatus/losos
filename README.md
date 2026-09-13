@@ -76,6 +76,16 @@ booted VM by `losos-impermanence`, not just claimed.
 
 ## Install
 
+Tagged releases carry a prebuilt image:
+
+**<https://codeberg.org/dasmatus/losos/releases/latest>**
+
+The ISO is linked from the release rather than attached to it, because one
+image is Codeberg's entire recommended allowance for packages, LFS and
+attachments. That link is re-uploaded automatically twice a week and can still
+lapse; the `.sha256` on the release stays valid either way. To build it
+yourself:
+
 ```sh
 nix build .#nixosConfigurations.iso.config.system.build.isoImage
 ```
@@ -326,10 +336,19 @@ cap at 10 minutes and 8 GB, and the tests need KVM. Run them locally:
 The `install` system closure is a local-only gate; build it before merging
 anything that touches the module set.
 
-The installer ISO **is** built in CI, and published as a downloadable
-artifact when you push a `v*` tag or trigger the workflow by hand — not on
-every commit, because the image is ~1.5 GB and that is Codeberg's entire
-recommended attachment budget in one file.
+The installer ISO **is** built in CI on every push, and published when you
+push a `v*` tag: the image goes to buzzheavier, the release body links it, and
+only the `.sha256` and a small `release.json` are attached to the release
+itself. Publishing stays rationed to tags because a 1.5 GB upload per commit to
+a free host would be antisocial — no longer because of Codeberg's attachment
+budget, which the image no longer touches.
+
+That download link is not permanent. buzzheavier's free tier keeps a file for
+8 days, adds 2 days per download, and only makes it permanent after 30
+downloads inside 60 days — which an appliance ISO will not see. So
+`.forgejo/workflows/refresh.yml` re-uploads the newest release's image twice a
+week and rewrites that release's body with the new link. Delete that workflow
+and every published download link dies within about a week.
 
 It looks like it should not fit — but of
 the 769 store paths in its closure, 766 are stock nixpkgs that cache.nixos.org
