@@ -1,0 +1,224 @@
+# Creates or updates a GitHub release for a tag and attaches its assets.
+#
+# The GitHub counterpart of .forgejo/actions/forgejo-release, and it replaces
+# three actions rather than one. On Codeberg the ISO cannot be attached at all —
+# Codeberg asks that a repository stay under "1.5 GiB of packages, LFS and
+# attachments" and one image is that entire allowance — so that lane uploads the
+# bytes to buzzheavier, links them from the release body, and runs
+# .forgejo/workflows/refresh.yml twice a week to stop the link expiring.
+#
+# None of that constraint exists here. A GitHub release asset may be up to 2 GiB
+# and does not count against any repository budget, so the image is attached
+# directly, the link never expires, and publish-buzz, prune-buzz and the whole
+# refresh workflow have nothing to do on this forge. Carrying them over would be
+# porting a workaround to a platform that does not have the problem — and would
+# have broken anyway: GitHub disables scheduled workflows after 60 days without
+# repository activity, so the treadmill that keeps those links alive would stop
+# silently and take every published download with it.
+#
+# Written against curl and jq rather than a marketplace release action, for the
+# same reason the Forgejo copy is: a release is a POST plus one upload per
+# asset, and this repository deliberately depends on almost no third-party
+# actions.
+#
+# Every call checks its HTTP status explicitly. `curl -sS` alone exits 0 on a
+# 4xx, which is how the Forgejo version of this block once reported success
+# while creating nothing at all: the POST 404'd, jq turned the error body into
+# `null` and the assets went to /releases/null/assets. A step that can silently
+# no-op is worse than one that fails.
+name: "GitHub release"
+description: "Create a release for a tag, or replace an existing release's body, and attach assets."
+
+inputs:
+  tag:
+    description: "Tag the release belongs to."
+    required: true
+  name:
+    description: "Release title. Defaults to the tag."
+    required: false
+    default: ""
+  body:
+    description: "Release body, replacing whatever is there."
+    required: true
+  assets:
+    description: "Newline-separated files to attach. Ignored in patch mode."
+    required: false
+    default: ""
+  mode:
+    description: "create (make it if missing, then attach) or patch (body only)."
+    required: false
+    default: "create"
+  retries:
+    description: "Attempts per asset upload. The ISO is ~1.5 GB; one TCP reset should not lose a release."
+    required: false
+    default: "3"
+  token:
+    description: "GITHUB_TOKEN, or a PAT. Needs `contents: write`."
+    required: true
+
+outputs:
+  id:
+    description: "Numeric release id."
+    value: ${{ steps.release.outputs.id }}
+  url:
+    description: "Web URL of the release."
+    value: ${{ steps.release.outputs.url }}
+
+runs:
+  using: composite
+  steps:
+    - id: release
+      shell: bash
+      env:
+        IN_TAG: ${{ inputs.tag }}
+        IN_NAME: ${{ inputs.name }}
+        IN_BODY: ${{ inputs.body }}
+        IN_ASSETS: ${{ inputs.assets }}
+        IN_MODE: ${{ inputs.mode }}
+        IN_RETRIES: ${{ inputs.retries }}
+        IN_TOKEN: ${{ inputs.token }}
+      run: |
+        set -euo pipefail
+
+        test -n "${IN_TOKEN:-}" || {
+          echo "::error::no API token — the release step would silently do nothing"
+          exit 1
+        }
+
+        # GITHUB_API_URL rather than a literal api.github.com: the runner sets
+        # it, and on GitHub Enterprise Server it is not api.github.com.
+        API="${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}"
+        TAG="$IN_TAG"
+        NAME="$IN_NAME"
+        if [ -z "$NAME" ]; then NAME="$TAG"; fi
+
+        # The token never reaches argv: on a shared runner `ps` would otherwise
+        # expose it for the whole duration of a multi-GB upload.
+        umask 077
+        conf=$(mktemp)
+        trap 'rm -f "$conf"' EXIT
+        {
+          printf 'header = "authorization: Bearer %s"\n' "$IN_TOKEN"
+          printf 'header = "accept: application/vnd.github+json"\n'
+          printf 'header = "x-github-api-version: 2022-11-28"\n'
+        } > "$conf"
+
+        # api METHOD URL [curl args...] -> body on stdout, status in $CODE
+        api() {
+          local m="$1" u="$2"; shift 2
+          CODE=$(curl -sS -o /tmp/api.out -w '%{http_code}' -X "$m" -K "$conf" "$@" "$u")
+          cat /tmp/api.out
+        }
+
+        api GET "$API/releases/tags/$TAG" >/tmp/rel.json || true
+
+        if [ "$CODE" = "404" ]; then
+          if [ "$IN_MODE" = "patch" ]; then
+            echo "::error::no release exists for $TAG to patch"
+            exit 1
+          fi
+          jq -n --arg t "$TAG" --arg n "$NAME" --arg b "$IN_BODY" \
+            '{tag_name:$t, name:$n, body:$b}' >/tmp/body.json
+          api POST "$API/releases" -H 'content-type: application/json' \
+            --data-binary @/tmp/body.json >/tmp/rel.json
+          if [ "$CODE" != "201" ]; then
+            echo "::error::creating the release failed: HTTP $CODE" >&2
+            cat /tmp/rel.json >&2; exit 1
+          fi
+        elif [ "$CODE" != "200" ]; then
+          echo "::error::looking up the release failed: HTTP $CODE" >&2
+          cat /tmp/rel.json >&2; exit 1
+        fi
+
+        id=$(jq -r '.id // empty' /tmp/rel.json)
+        case "$id" in
+          ''|*[!0-9]*) echo "::error::no usable release id (got: '$id')" >&2; exit 1 ;;
+        esac
+        url=$(jq -r '.html_url // empty' /tmp/rel.json)
+        # Assets go to a different host from the API (uploads.github.com), and
+        # the release object is the authoritative source for it — hardcoding the
+        # hostname would break on Enterprise Server. Strip the RFC 6570
+        # "{?name,label}" suffix the template carries.
+        upload=$(jq -r '.upload_url // empty' /tmp/rel.json | sed 's/{.*}$//')
+        echo "release id: $id"
+
+        # An existing release found by GET keeps whatever body it had, so patch
+        # mode — and a re-run of create mode over an existing tag — has to write
+        # it explicitly. PATCH replaces the field outright; it does not append.
+        jq -n --arg b "$IN_BODY" '{body:$b}' >/tmp/patch.json
+        api PATCH "$API/releases/$id" -H 'content-type: application/json' \
+          --data-binary @/tmp/patch.json >/tmp/rel.json
+        if [ "$CODE" != "200" ]; then
+          echo "::error::updating the release body failed: HTTP $CODE" >&2
+          cat /tmp/rel.json >&2; exit 1
+        fi
+        echo "release body written"
+
+        # Deletes any asset already attached under this name. GitHub answers a
+        # duplicate name with 422 rather than replacing it, so without this a
+        # re-run of a failed release lane cannot get past its first asset.
+        drop_existing() {
+          local want="$1" aid
+          api GET "$API/releases/$id/assets?per_page=100" >/tmp/assets.json || true
+          [ "$CODE" = "200" ] || return 0
+          aid=$(jq -r --arg n "$want" '.[] | select(.name == $n) | .id' /tmp/assets.json | head -1)
+          [ -n "$aid" ] || return 0
+          api DELETE "$API/releases/assets/$aid" >/dev/null || true
+          echo "replaced the existing $want (asset $aid)"
+        }
+
+        if [ "$IN_MODE" != "patch" ] && [ -n "$IN_ASSETS" ]; then
+          # Without this the loop below would POST to a bare "?name=..." and
+          # curl would fail with something that says nothing about the cause.
+          test -n "$upload" || {
+            echo "::error::the release carries no upload_url; cannot attach assets" >&2
+            exit 1
+          }
+          while IFS= read -r f; do
+            [ -n "$f" ] || continue
+            test -f "$f" || { echo "::error::asset not found: $f"; exit 1; }
+            base="$(basename "$f")"
+            bytes=$(stat -c%s "$f")
+            echo "attaching $base ($bytes bytes)"
+            # 2 GiB is GitHub's per-asset ceiling. The ISO is ~1.5 GB, so this
+            # has headroom rather than margin — say so before spending the
+            # upload instead of after.
+            if [ "$bytes" -gt 2147483648 ]; then
+              echo "::error::$base is $bytes bytes, over GitHub's 2 GiB per-asset limit — it cannot be attached to a release" >&2
+              exit 1
+            fi
+
+            ok=""
+            for attempt in $(seq 1 "$IN_RETRIES"); do
+              drop_existing "$base"
+              # -T streams the file from disk; `--data-binary @file` would read
+              # all 1.5 GB into memory first. -X POST keeps the method GitHub
+              # requires while still streaming. `Expect:` is cleared because
+              # curl adds a 100-continue for large bodies and waiting on it buys
+              # nothing here.
+              CODE=$(curl -sS -o /tmp/api.out -w '%{http_code}' \
+                -X POST -T "$f" -K "$conf" \
+                -H 'content-type: application/octet-stream' -H 'Expect:' \
+                --connect-timeout 30 \
+                "${upload}?name=${base}")
+              if [ "$CODE" = "201" ]; then ok=yes; break; fi
+              echo "::warning::attaching $base attempt ${attempt}/${IN_RETRIES} returned HTTP $CODE"
+              { cat /tmp/api.out; echo; } >&2 || true
+              # No back-off after the last attempt: there is nothing left to
+              # wait for, and the job would sit idle before failing. Written as
+              # an `if` rather than `[ ] && sleep` because the latter leans on
+              # exactly which operand of an && list `set -e` exempts.
+              if [ "$attempt" -lt "$IN_RETRIES" ]; then sleep $((attempt * 15)); fi
+            done
+            test -n "$ok" || {
+              echo "::error::attaching $base failed after ${IN_RETRIES} attempts" >&2
+              exit 1
+            }
+            echo "attached $base"
+          done <<< "$IN_ASSETS"
+        fi
+
+        {
+          echo "id=${id}"
+          echo "url=${url}"
+        } >> "$GITHUB_OUTPUT"
