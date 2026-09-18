@@ -317,6 +317,24 @@ non-devenv job took 1m32s. The duplication between `devenv.nix` and
 `.forgejo/workflows/ci.yml` is the price of that cap, and the two have to be
 kept in step by hand.
 
+There are two CI lanes, running the same gates against the same flake:
+`.forgejo/workflows/` on Codeberg and `.github/workflows/ci.yml` on GitHub.
+They too are kept in step by hand. Four things differ, and each is a platform
+difference rather than a preference:
+
+- The GitHub lane runs on `ubuntu-latest` with Nix installed by
+  `.github/actions/setup-nix`, not inside `docker.io/nixos/nix`. GitHub injects
+  a glibc-linked Node into container jobs to run JavaScript actions, and that
+  image is Alpine/musl, so `actions/checkout` could not start at all.
+- That action writes the substituters to `/etc/nix/nix.conf` before the daemon
+  starts, rather than passing `NIX_CONFIG`. A multi-user Nix daemon discards
+  cache settings from an untrusted client — with a warning, and a green build
+  that compiled everything from source.
+- GitHub caps jobs at six hours rather than ten minutes, so the Nextcloud image
+  — the one most likely to break, and the hole the Codeberg lane documents —
+  also builds on the weekly schedule there, not only on request.
+- Releases differ; see [Testing](#testing).
+
 Two lock files exist: `flake.lock` pins the nixpkgs that _builds_ the
 appliance, `devenv.lock` the one that _lints and tests_ it. They must be
 bumped together; `check-pins` fails if they disagree.
@@ -336,19 +354,27 @@ cap at 10 minutes and 8 GB, and the tests need KVM. Run them locally:
 The `install` system closure is a local-only gate; build it before merging
 anything that touches the module set.
 
-The installer ISO **is** built in CI on every push, and published when you
-push a `v*` tag: the image goes to buzzheavier, the release body links it, and
-only the `.sha256` and a small `release.json` are attached to the release
-itself. Publishing stays rationed to tags because a 1.5 GB upload per commit to
-a free host would be antisocial — no longer because of Codeberg's attachment
-budget, which the image no longer touches.
+The installer ISO **is** built in CI on every push, in both lanes, and
+published when you push a `v*` tag. Publishing stays rationed to tags because a
+1.5 GB upload per commit to a free host would be antisocial.
 
-That download link is not permanent. buzzheavier's free tier keeps a file for
-8 days, adds 2 days per download, and only makes it permanent after 30
-downloads inside 60 days — which an appliance ISO will not see. So
+Where the bytes land is the one place the two lanes genuinely diverge. On
+Codeberg the image goes to buzzheavier, the release body links it, and only the
+`.sha256` and a small `release.json` are attached to the release itself — one
+ISO is Codeberg's entire recommended allowance for packages, LFS and
+attachments. That download link is not permanent: buzzheavier's free tier keeps
+a file for 8 days, adds 2 days per download, and only makes it permanent after
+30 downloads inside 60 days, which an appliance ISO will not see. So
 `.forgejo/workflows/refresh.yml` re-uploads the newest release's image twice a
 week and rewrites that release's body with the new link. Delete that workflow
 and every published download link dies within about a week.
+
+On GitHub a release asset may be 2 GiB and counts against no repository budget,
+so the image is attached to the release directly by
+`.github/actions/github-release`. The link never expires, and there is no
+refresh treadmill to port — which is just as well, because GitHub disables
+scheduled workflows after 60 days without repository activity, so the treadmill
+would have stopped silently and taken every published download with it.
 
 It looks like it should not fit — but of
 the 769 store paths in its closure, 766 are stock nixpkgs that cache.nixos.org
