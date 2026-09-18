@@ -125,10 +125,13 @@ in
   # CI does not go through devenv (see the header of .forgejo/workflows/ci.yml
   # -- routing jobs through `devenv shell` blew Codeberg's 10-minute cap), so
   # this covers local builds only. The CI half is wired too, since 728d255:
-  # .forgejo/actions/cachix-push pushes from four lanes using the CACHIX_KEY
-  # secret. The installer ISO is deliberately NOT among them here -- the
+  # {.forgejo,.github}/actions/cachix-push pushes from four lanes using the
+  # CACHIX_KEY secret -- one copy of that action per forge, same cache, same
+  # key, because it is modules/cache.nix at the other end that decides them.
+  # The installer ISO is deliberately NOT among them here -- the Codeberg
   # release lane pushes it, so refresh.yml can substitute it instead of
-  # rebuilding.
+  # rebuilding. The GitHub lane attaches the image to the release instead, so
+  # it has nothing to substitute and nothing to refresh.
   cachix.push = "losos";
 
   # ── Toolchain ────────────────────────────────────────────────────────────

@@ -1,0 +1,74 @@
+# Pushes already-built store paths to the cache the appliance substitutes from.
+#
+# A near-verbatim port of .forgejo/actions/cachix-push: the cache, the key and
+# the skip-when-unset behaviour are the same on both forges, because it is the
+# appliance at the other end that decides them, not the CI host. The only
+# difference is that Nix is already on PATH here (see ../setup-nix) rather than
+# supplied by a container image.
+#
+# The one real difference between the calling lanes survives as the
+# `require-token` input: every lane skips when the secret is absent, because a
+# fork's pull request gets no secrets and a push step that failed there would
+# turn every outside contribution red for a reason the contributor cannot fix —
+# except the Nextcloud image lane, which fails instead, because there is no
+# point spending ten minutes building an image with nowhere to put it.
+#
+# The cache name is not a detail. modules/cache.nix wires every installed
+# appliance to substitute from it, and modules/cache.nix:24-28 is explicit that
+# CI and the appliance must agree; the module is the authoritative copy.
+#
+# The caller MUST run actions/checkout and ../setup-nix before using this.
+name: "Push to Cachix"
+description: "Authenticate to Cachix and push the closure of the given installables."
+
+inputs:
+  installables:
+    description: "Flake installables to resolve and push, space-separated."
+    required: true
+  cache:
+    description: "Cachix cache name."
+    required: false
+    default: "losos"
+  token:
+    description: "CACHIX_KEY."
+    required: false
+    default: ""
+  require-token:
+    description: "Fail instead of skipping when the token is absent."
+    required: false
+    default: "false"
+  build-args:
+    description: "Extra arguments for the nix build, e.g. -L."
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: push to cachix
+      shell: bash
+      env:
+        CACHIX_KEY: ${{ inputs.token }}
+        INSTALLABLES: ${{ inputs.installables }}
+        CACHE: ${{ inputs.cache }}
+        REQUIRE: ${{ inputs.require-token }}
+        BUILD_ARGS: ${{ inputs.build-args }}
+      run: |
+        set -eu
+        if [ -z "${CACHIX_KEY:-}" ]; then
+          if [ "$REQUIRE" = "true" ]; then
+            echo "no CACHIX_KEY; nothing to push to, so not spending ten minutes building" >&2
+            exit 1
+          fi
+          echo "no CACHIX_KEY in this context (fork pull request?); skipping push"
+          exit 0
+        fi
+        nix profile install nixpkgs#cachix
+        printf '%s' "$CACHIX_KEY" | cachix authtoken --stdin
+        start=$(date +%s)
+        # Usually already built by an earlier step, so this only resolves paths.
+        # cachix pushes each path's whole closure, which is what the appliance
+        # needs: a tarball alone is useless without what it was built from.
+        # shellcheck disable=SC2086  # both are deliberately word-split lists
+        nix build $BUILD_ARGS $INSTALLABLES --no-link --print-out-paths | cachix push "$CACHE"
+        echo "build+push took $(( $(date +%s) - start ))s"
