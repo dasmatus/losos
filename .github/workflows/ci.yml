@@ -1,0 +1,566 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+    # Tags build and publish the installer ISO; see the iso job. Pushes to
+    # main build it too, as a gate, but do not publish it.
+    tags: ["v*"]
+  pull_request:
+  schedule:
+    # ~04:57 UTC Mondays (off the :00 mark, and an hour off the Codeberg lane's
+    # 03:57 so the two do not fetch the same closures from cache.nixos.org at
+    # the same minute).
+    #
+    # GitHub runs scheduled workflows only from the default branch, and
+    # DISABLES them after 60 days with no repository activity. On Codeberg the
+    # weekly cron is a nicety; here it is the same, but be aware that a quiet
+    # repository stops running it silently.
+    - cron: "57 4 * * 1"
+  workflow_dispatch:
+
+# ── What this is, and how it differs from the Codeberg lane ─────────────────
+#
+# A port of .forgejo/workflows/ci.yml. The two run the same gates against the
+# same flake and must be kept in step by hand, exactly as both are kept in step
+# with devenv.nix's `lint`, `test-rust`, `check-flake`, `check-eval`,
+# `build-pkgs` and `build-images` scripts. `devenv test` remains the local
+# one-shot equivalent, and the pre-commit hooks run the lint half before a
+# commit reaches either forge.
+#
+# CI does NOT go through devenv, here for the same measured reason as there:
+# every job would first realise the whole dev toolchain — rustc, cargo, clippy,
+# rustfmt, rust-analyzer, nodejs, bun, nixfmt, deadnix, statix, plus the
+# interactive shell packages — before doing any work of its own. Measured on
+# Codeberg's runners: `devenv test` 9m31s, `devenv shell build-pkgs` 10m05s,
+# plain nix 1m32s. GitHub's 6-hour cap would survive that, but paying it in
+# nine jobs to run commands that do not need it is still waste.
+#
+# The nixos-test VMs stay local-only on both forges — they need /dev/kvm, which
+# neither host's runners provide:
+#   devenv shell vm-tests
+# Neither this file, ci.yml nor devenv.nix names those VMs: `vm-tests` reads the
+# list out of `.#checks.x86_64-linux`, because the hand-kept version of it had
+# drifted to four names against six checks. Do not reintroduce a literal list.
+#
+# Four things are deliberately NOT the same as the Forgejo copy, and each is a
+# platform difference rather than a preference:
+#
+# 1. No container, and no `nix profile install nixpkgs#nodejs` in every job.
+#    That line exists on Codeberg because act_runner execs JavaScript actions
+#    with `node` from inside docker.io/nixos/nix, which ships none. GitHub
+#    injects its own Node for container jobs instead — but a glibc-linked one,
+#    and nixos/nix is Alpine/musl, so actions/checkout could not start at all.
+#    ubuntu-latest has Node, jq and curl already; Nix arrives through
+#    ./.github/actions/setup-nix.
+#
+# 2. The substituters are written to /etc/nix/nix.conf before the daemon
+#    starts, not passed as NIX_CONFIG. ci.yml's own comment explains why that
+#    matters and warns about exactly this runner: a multi-user daemon discards
+#    cache settings from an untrusted client, with a warning and a green build
+#    that compiled everything from source. See ./.github/actions/setup-nix.
+#
+# 3. The ISO is attached to the release. Codeberg's 1.5 GiB allowance for
+#    packages, LFS and attachments is one image, which is why that lane uploads
+#    to buzzheavier and runs refresh.yml twice a week to stop the link
+#    expiring. A GitHub release asset may be 2 GiB and counts against no
+#    budget, so the bytes go straight onto the release and there is nothing for
+#    publish-buzz, prune-buzz or refresh.yml to do here. See
+#    ./.github/actions/github-release.
+#
+# 4. Jobs carry explicit `timeout-minutes`. Codeberg enforces 10 minutes for
+#    us; GitHub's default is 360, which is long enough for a wedged job to
+#    spend a day of a shared quota. The numbers below are the measured runtime
+#    with generous headroom, not targets.
+#
+# What the 10-minute cap bought is kept anyway where it is still worth
+# something. clippy and test remain two jobs: they do not share build
+# artifacts — clippy type-checks and emits .rmeta, test needs linked binaries —
+# so as one job they compile the local crates twice. And the iso job still
+# imports losos-ctl from a sibling job as a 12 MiB artifact rather than
+# building it: of the 769 store paths in the ISO's closure, 766 are stock
+# nixpkgs that cache.nixos.org serves and losos-ctl is the only expensive one,
+# at ~9 minutes of rustc. Skipping that is worth a 12 MiB round trip whatever
+# the cap is, and on a fork's pull request — which gets no cachix token — it is
+# the only thing that keeps the ISO job affordable.
+#
+# Both crates set doCheck = false, so `nix build` compiles the shipping
+# binaries and runs no suites; the suites run in the `test` job. A bare
+# `nix build` is therefore not a test gate.
+
+# Superseded runs are cancelled on pull requests and branches, where only the
+# newest push matters. Never on tags: the iso job's release is not something to
+# interrupt half way through a 1.5 GB upload.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+# Read-only by default; the two jobs that write (fmt-bot, iso) ask for
+# contents: write themselves. A fork's pull request gets a read-only token and
+# no secrets whatever this says.
+permissions:
+  contents: read
+
+jobs:
+  clippy:
+    name: "rust: clippy (+ rustfmt on PRs)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Runs in devShells.ci — a lean cargo/rustc/clippy/rustfmt shell from this
+    # flake's pinned nixpkgs, i.e. the SAME rustc buildRustPackage compiles
+    # with. On Codeberg this job first ran on docker.io/rust:latest and went red
+    # in 42 seconds on a tree the pinned toolchain calls clean. `latest` floats,
+    # so an upstream Rust release could turn CI red with no change here, and the
+    # linter would disagree with the compiler that actually ships.
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-nix
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      # Check-only, always. `cargo clippy --fix` rewrites code rather than
+      # whitespace, so it can change behaviour and sometimes wants human
+      # judgement; unreviewed code changes have no business landing on main by
+      # robot. Contrast fmt-bot below, which only reformats.
+      - run: |
+          nix develop .#ci -c bash -euo pipefail -c '
+            cargo clippy --manifest-path backend/Cargo.toml --all-targets -- -D warnings
+            cargo clippy --manifest-path backend-registrar/Cargo.toml --all-targets -- -D warnings
+          '
+      # rustfmt is only *checked* on pull requests. On a push to main fmt-bot
+      # fixes it instead — checking it here too would mean this job goes red
+      # for something another job repairs a minute later, leaving a permanent
+      # failure on a commit that is already fine.
+      - name: rustfmt (pull requests only)
+        if: github.event_name == 'pull_request'
+        run: |
+          nix develop .#ci -c bash -euo pipefail -c '
+            cargo fmt --manifest-path backend/Cargo.toml --check
+            cargo fmt --manifest-path backend-registrar/Cargo.toml --check
+          '
+
+  test:
+    name: "rust: test both crates"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # The suites live here rather than inside buildRustPackage. doCheck used to
+    # run them, but it also recompiles each crate in test configuration and
+    # links a binary per test target, which pushed `nix build .#losos-ctl` to
+    # 7.7-10.3 minutes. Mirrors devenv.nix's `test-rust`.
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-nix
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - run: |
+          nix develop .#ci -c bash -euo pipefail -c '
+            cargo test --manifest-path backend/Cargo.toml
+            cargo test --manifest-path backend-registrar/Cargo.toml
+          '
+
+  eval:
+    name: "nix: flake check + module merge + ISO derivation"
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-nix
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      # Mirrors devenv.nix's `check-flake`. Evaluates every output — every VM
+      # test derivation, both nixosConfigurations and every package, the three
+      # OCI images among them; builds nothing. Which is the limit of it: an
+      # image whose entrypoint fails shellcheck evaluates perfectly happily,
+      # and only the images job below catches that.
+      - run: nix flake check --no-build -L
+      # Mirrors devenv.nix's `check-eval`, and this is the gate the repo lacked
+      # entirely: `flake check` only forces each nixosConfiguration's toplevel
+      # *derivation*, so an option conflict, a type error or a failed assertion
+      # inside the module merge passed CI unnoticed. Forcing the drvPath forces
+      # the merge.
+      - run: nix eval --raw .#nixosConfigurations.install.config.system.build.toplevel.drvPath
+      - run: nix eval --raw .#nixosConfigurations.iso.config.system.build.toplevel.drvPath
+      # `flake check` does not reach the ISO *image* derivation, so without this
+      # an eval-reachable regression in the iso block or isoImage.* would
+      # surface only in the ISO build.
+      - run: nix path-info --derivation .#nixosConfigurations.iso.config.system.build.isoImage
+
+  losos-ctl:
+    name: "rust: lososd + losos-ctl build"
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-nix
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      # Compiles the shipping binaries only — doCheck is off, and the suite runs
+      # in the test job instead (see flake/packages.nix for why). Even so this
+      # is the longest job here; re-time it before adding any heavy dependency
+      # to backend/Cargo.toml.
+      - run: nix build .#losos-ctl -L
+      # Publish to the binary cache the appliance substitutes from.
+      #
+      # modules/cache.nix points every installed box AND every installer medium
+      # at https://losos.cachix.org, and the things it cannot get from
+      # cache.nixos.org are exactly ours: losos-ctl, the registrar, the admin UI
+      # and the three images. Until something pushed them that substituter was
+      # an empty promise, and a fresh install fell back to building them on a
+      # repurposed mini-PC.
+      #
+      # Skipping rather than failing when the secret is absent is the action's
+      # behaviour; see .github/actions/cachix-push.
+      - uses: ./.github/actions/cachix-push
+        with:
+          installables: ".#losos-ctl"
+          token: ${{ secrets.CACHIX_KEY }}
+      # Hand losos-ctl to the iso job. Exporting its closure to a file://
+      # binary cache is 12 MiB and ~13 s, against the ~9 minutes of rustc that
+      # job would otherwise spend rebuilding the crate — and it works on a fork
+      # pull request, which has no cachix token to substitute from.
+      - run: nix copy --to "file://$PWD/ctl-cache" --no-check-sigs .#losos-ctl
+      # v4, not v3: upload-artifact@v3 and download-artifact@v3 were retired on
+      # GitHub in January 2025 and now fail outright. The Forgejo copy still
+      # says v3 because Codeberg's act_runner still serves it.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: losos-ctl-store
+          path: ctl-cache
+          retention-days: 1
+          # upload-artifact@v4 silently omits dotfiles. A binary cache that
+          # arrives incomplete does not fail the iso job — it makes it rebuild
+          # from source instead, quietly, which is the exact failure this
+          # export exists to prevent.
+          include-hidden-files: true
+
+  registrar-and-ui:
+    name: "rust: losos-registrar + admin UI"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-nix
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      # Compiles only; the registrar's tests run in the test job.
+      # losos-admin-ui is a buildNpmPackage: `npm ci` from the committed
+      # package-lock.json, then `tsc --noEmit && vite build`. So this step is
+      # also the typecheck gate for admin-ui/app, and the one place in CI that
+      # proves the npm dependency fetch still resolves.
+      - run: nix build .#losos-registrar .#losos-admin-ui -L
+      - uses: ./.github/actions/cachix-push
+        with:
+          installables: ".#losos-registrar .#losos-admin-ui"
+          token: ${{ secrets.CACHIX_KEY }}
+      # Export the built SPA for the iso job, exactly as the losos-ctl job
+      # exports its crate and for the same reason. flake.nix puts
+      # losos-admin-ui in isoImage.storeContents, so without this the ISO job
+      # would run `npm ci` + vite itself.
+      #
+      # Cheap to carry: a dist/ tree with no store references, ~1 MiB against
+      # losos-ctl's 12 MiB.
+      #
+      # This artifact, unlike the cachix push above, is NOT gated on a secret:
+      # a fork's ISO job must still get the bundle, or it goes red for want of
+      # a key the contributor cannot have.
+      - run: nix copy --to "file://$PWD/ui-cache" --no-check-sigs .#losos-admin-ui
+      - uses: actions/upload-artifact@v4
+        with:
+          name: losos-admin-ui-store
+          path: ui-cache
+          retention-days: 1
+          # upload-artifact@v4 silently omits dotfiles. A binary cache that
+          # arrives incomplete does not fail the iso job — it makes it rebuild
+          # from source instead, quietly, which is the exact failure this
+          # export exists to prevent.
+          include-hidden-files: true
+
+  images:
+    name: "nix: OCI images for the local cluster"
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-nix
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      # The cheap two thirds of devenv.nix's `build-images`.
+      #
+      # These are the images modules/defaults.nix wires into losos.workloads.*,
+      # and the appliance is *required* to substitute them: it never builds an
+      # image itself. A broken one therefore surfaces during system.autoUpgrade
+      # at 03:00 on a repurposed mini-PC with a tmpfs root and no shell, three
+      # hours before an unconditional reboot — which is to say it surfaces as a
+      # box that stopped serving, with nothing to read. The eval job cannot
+      # catch it: evaluation does not run the shellcheck that
+      # writeShellApplication performs at build time, and does not notice a
+      # buildEnv whose paths collide.
+      #
+      # Measured on a dev machine: losos-image-pause is a 51 MiB tarball over a
+      # handful of paths, losos-image-forgejo a 585 MiB tarball over a 647 MiB /
+      # 126-path content closure.
+      - run: nix build .#losos-image-pause .#losos-image-forgejo -L
+      - uses: ./.github/actions/cachix-push
+        with:
+          installables: ".#losos-image-pause .#losos-image-forgejo"
+          token: ${{ secrets.CACHIX_KEY }}
+      # losos-image-nextcloud is not built here either; see the
+      # image-nextcloud job below for what changed about that on this forge.
+
+  # ── The Nextcloud image ────────────────────────────────────────────────────
+  #
+  # The appliance is *required* to substitute this image: it never builds one.
+  # So a cache that does not have it is worse than no cache at all — the box
+  # discovers the gap during system.autoUpgrade at 03:00, on a mini-PC with a
+  # tmpfs root and no shell, three hours before an unconditional reboot. It is
+  # also the image most likely to break.
+  #
+  # On Codeberg this is workflow_dispatch only, and the reason is the cap: the
+  # content closure is 2.3 GiB across 244 store paths (nextcloud34 with ~30
+  # apps, php-with-extensions, apacheHttpd) against Forgejo's 647 MiB, so on a
+  # cold runner it fetches roughly 3.5x what the `images` job fetches, inside
+  # ten minutes. That objection does not survive the move: this job may take an
+  # hour here.
+  #
+  # So it also runs on the weekly schedule, which closes the hole that lane
+  # documents as "a real hole and not an oversight" without putting a 2.3 GiB
+  # fetch on every push. It is deliberately NOT folded into `images`: the one
+  # number nobody has measured is what this costs a cold runner, and this
+  # repository has been burned twice by guessing — doCheck stayed on until
+  # `nix build .#losos-ctl` turned out to be a 7.7-10.3 minute coin flip, and
+  # the ISO was excluded as fitting "neither the time nor the disk-as-RAM
+  # budget" on a figure taken against zstd level 19 when flake.nix already sets
+  # level 6. The weekly run prints its own timing; move it into `images` once
+  # there are numbers, not before.
+  image-nextcloud:
+    name: "nix: Nextcloud image -> cachix"
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-nix
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      # require-token, unlike the lanes above: there is no point spending an
+      # hour building an image with nowhere to put it.
+      - uses: ./.github/actions/cachix-push
+        with:
+          installables: ".#losos-image-nextcloud"
+          build-args: "-L"
+          require-token: "true"
+          token: ${{ secrets.CACHIX_KEY }}
+
+  fmt-bot:
+    name: "bot: cargo fmt, push back"
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Pushes to a BRANCH only. Two exclusions, both deliberate:
+    #
+    # Not pull requests: on one from a fork the automatic token is read-only,
+    # and pushing to somebody else's branch is not this job's business anyway —
+    # the clippy job checks formatting there instead.
+    #
+    # Not tags: a tag push is also a push event, and github.ref_name is then
+    # the tag, so the commit-and-push below would try to move a tag rather than
+    # a branch. Reformatting a released tag would be wrong even if it worked.
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/')
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Check out the branch, not the detached commit: a detached HEAD has
+          # nothing to commit onto.
+          ref: ${{ github.ref_name }}
+          # Left at the default `persist-credentials: true` on purpose. It
+          # stores GITHUB_TOKEN as a git http.extraheader, so the push below
+          # needs no remote URL rewriting and no token ever appears in a URL or
+          # in the log — which is what the Forgejo copy's `git remote set-url`
+          # dance is working around.
+      - uses: ./.github/actions/setup-nix
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      # Same toolchain as the clippy job and as buildRustPackage — devShells.ci
+      # from this flake's pinned nixpkgs. Formatting with a different rustfmt
+      # than CI checks with is how you get a bot that fights its own linter.
+      - run: |
+          nix develop .#ci -c bash -euo pipefail -c '
+            cargo fmt --manifest-path backend/Cargo.toml
+            cargo fmt --manifest-path backend-registrar/Cargo.toml
+          '
+      - name: commit and push if anything changed
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo "already formatted; nothing to do"
+            exit 0
+          fi
+          echo "rustfmt changed:"
+          git --no-pager diff --stat
+
+          git config user.name  "losos-fmt-bot"
+          git config user.email "losos-fmt-bot@users.noreply.github.com"
+
+          # [skip ci] is belt-and-braces on GitHub rather than load-bearing as
+          # it is on Codeberg: a push authenticated with GITHUB_TOKEN does not
+          # trigger workflow runs at all, so there is no loop to break here.
+          # GitHub honours the same skip strings ([skip ci], [ci skip],
+          # [no ci], [skip actions], [actions skip]), the message stays
+          # identical across both forges, and it keeps working if this job is
+          # ever moved to a PAT — which WOULD retrigger.
+          git commit -am "style: cargo fmt [skip ci]"
+
+          # A human push landing between checkout and here makes this a
+          # non-fast-forward. Rebasing our one mechanical commit on top is
+          # always safe: it touches only formatting.
+          git pull --rebase origin "${GITHUB_REF_NAME}"
+          # If this fails with a protected-branch error, that is a repository
+          # setting and not a bug here: either allow this workflow to push to
+          # the branch, or drop this job and let the clippy job's rustfmt check
+          # run on pushes too.
+          git push origin "HEAD:${GITHUB_REF_NAME}"
+
+  iso:
+    name: "nix: build the installer ISO"
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    # Needs losos-ctl's store export. Without it this job would rebuild that
+    # crate from source — ~9 minutes on its own.
+    #
+    # And registrar-and-ui's, for the same reason at smaller scale: flake.nix
+    # carries losos-admin-ui in isoImage.storeContents, and since that stopped
+    # being a file copy it is the second path in this closure cache.nixos.org
+    # cannot serve.
+    needs: [losos-ctl, registrar-and-ui]
+    # Only the tag path writes, and only to releases.
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-nix
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: losos-ctl-store
+          path: ctl-cache
+      - uses: actions/download-artifact@v4
+        with:
+          name: losos-admin-ui-store
+          path: ui-cache
+      # --no-check-sigs because the exporting job signed nothing; the artifacts
+      # came from sibling jobs in this same workflow run, not from a public
+      # cache, so there is no third party to authenticate.
+      - run: nix copy --from "file://$PWD/ctl-cache" --no-check-sigs --all
+      - run: nix copy --from "file://$PWD/ui-cache" --no-check-sigs --all
+      # NOT --offline. The other 766 paths come from cache.nixos.org, and
+      # blocking the network would force nix to build them from source —
+      # precisely the opposite of what the import above buys us.
+      #
+      # Disk, not time, is the constraint on this runner: an ubuntu-latest
+      # image leaves roughly 20 GiB free, and this needs the ISO closure plus
+      # ~4.7 GiB of build writes plus a 1.5 GB dereferenced copy for the
+      # upload. It fits with room to spare. If it ever stops fitting, the first
+      # lever is deleting the preinstalled Android SDK and .NET trees before
+      # this step, not trimming the image.
+      - run: nix build .#nixosConfigurations.iso.config.system.build.isoImage -L
+
+      # Publishing is gated on tags, NOT on every push — a 1.5 GB upload per
+      # commit is antisocial on any host, and release assets are for releases.
+      # The build above still runs on every push: that is the gate, and it is
+      # cheap.
+      #
+      # Unlike the Codeberg lane there is no expiring off-forge link and no
+      # refresh treadmill: the image is attached to the release itself. See
+      # .github/actions/github-release.
+      - name: stage the image
+        id: stage
+        if: startsWith(github.ref, 'refs/tags/')
+        # cp -L dereferences: `result` is a symlink into /nix/store, and the
+        # upload would otherwise send the link rather than the image. The tag
+        # goes in the filename so that a downloaded image says which release it
+        # came from.
+        run: |
+          set -euo pipefail
+          name="losos-installer-${GITHUB_REF_NAME}.iso"
+          cp -L result/iso/*.iso "./${name}"
+          ls -lh "$name"
+          sha256sum "$name" | tee "${name}.sha256"
+          {
+            echo "name=${name}"
+            echo "size=$(stat -c%s "$name")"
+            echo "sha256=$(cut -d' ' -f1 < "${name}.sha256")"
+            echo "storePath=$(readlink -f result)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: compose the release body
+        id: body
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          ISO_NAME: ${{ steps.stage.outputs.name }}
+          ISO_SUM: ${{ steps.stage.outputs.sha256 }}
+          ISO_SIZE: ${{ steps.stage.outputs.size }}
+          STORE_PATH: ${{ steps.stage.outputs.storePath }}
+        run: |
+          set -euo pipefail
+          human=$(awk -v b="$ISO_SIZE" 'BEGIN { printf "%.2f GiB", b/1073741824 }')
+          url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/${ISO_NAME}"
+          # release.json records the exact store path the image was built from,
+          # so anyone can substitute those bytes instead of rebuilding them. The
+          # Codeberg lane's refresh workflow reads this back; nothing on this
+          # forge does, because nothing here expires. The field names are kept
+          # identical anyway so one manifest format serves both releases.
+          jq -n --arg iso "$ISO_NAME" --arg sum "$ISO_SUM" \
+                --argjson size "$ISO_SIZE" --arg path "$STORE_PATH" \
+            '{iso:$iso, sha256:$sum, size:$size, storePath:$path}' > release.json
+          cat release.json
+          {
+            echo "body<<RELEASE_BODY_EOF"
+            cat <<BODY
+          ### Download
+
+          **[${ISO_NAME}](${url})** — ${human}
+
+          \`\`\`
+          sha256  ${ISO_SUM}
+          \`\`\`
+
+          Verify against the \`.sha256\` attached below:
+
+          \`\`\`sh
+          sha256sum -c ${ISO_NAME}.sha256
+          \`\`\`
+
+          Write it to a USB stick and boot the target machine; the installer
+          partitions, encrypts and installs unattended.
+
+          ---
+
+          To build the same image from this tag instead:
+
+          \`\`\`sh
+          nix build .#nixosConfigurations.iso.config.system.build.isoImage
+          \`\`\`
+
+          Or substitute the bytes above from the project cache, using the store
+          path recorded in \`release.json\`:
+
+          \`\`\`sh
+          nix copy --from https://losos.cachix.org ${STORE_PATH}
+          \`\`\`
+          BODY
+            echo "RELEASE_BODY_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      # A tag makes a release, and the image goes on it. The checksum and the
+      # release.json manifest ride along.
+      - if: startsWith(github.ref, 'refs/tags/')
+        uses: ./.github/actions/github-release
+        with:
+          tag: ${{ github.ref_name }}
+          body: ${{ steps.body.outputs.body }}
+          assets: |
+            ${{ steps.stage.outputs.name }}
+            ${{ steps.stage.outputs.name }}.sha256
+            release.json
+          token: ${{ secrets.GITHUB_TOKEN }}

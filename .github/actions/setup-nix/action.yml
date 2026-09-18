@@ -1,0 +1,70 @@
+# Installs Nix with this project's substituters, for the GitHub Actions lane.
+#
+# This exists because of the one real difference between the two forges'
+# runners, and it is not cosmetic.
+#
+# .forgejo/workflows/ci.yml runs every job inside docker.io/nixos/nix and sets
+# the cache through a workflow-level `NIX_CONFIG`. That works there precisely
+# because that image runs Nix single-user as root: settings arriving by
+# environment variable are applied rather than discarded as coming from an
+# untrusted client. Its own comment says so, and warns what happens otherwise —
+# "on a runner that DID have a daemon, a substituter set this late would be
+# ignored with a warning and the job would quietly build from source instead".
+#
+# GitHub's hosted runners are exactly that runner. A normal Nix install here is
+# multi-user, the workflow user is not in `trusted-users`, and so
+# `extra-substituters` in the environment is dropped with a warning — leaving a
+# green workflow that compiles losos-ctl from source in every job that touches
+# it. The fix is to write the settings into /etc/nix/nix.conf *before* the
+# daemon starts, which is what `extra_nix_config` does.
+#
+# The container approach is not portable here either: GitHub injects its own
+# glibc-linked Node into container jobs to exec JavaScript actions, and
+# nixos/nix is Alpine/musl, so actions/checkout cannot start. On ubuntu-latest
+# both Node and jq are already present, which also retires the
+# `nix profile install nixpkgs#nodejs` line that every Forgejo job repeats.
+#
+# The caller MUST run actions/checkout before using this action.
+name: "Set up Nix"
+description: "Install Nix with the losos binary cache trusted in /etc/nix/nix.conf."
+
+inputs:
+  github-token:
+    description: >
+      Passed to Nix as an `access-tokens` entry so that fetching the `github:`
+      flake inputs does not draw on the shared, unauthenticated rate limit that
+      every other job on these runners is also drawing on.
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - uses: cachix/install-nix-action@v31
+      with:
+        github_access_token: ${{ inputs.github-token }}
+        # `extra-substituters`, never plain `substituters` — replacing the list
+        # would drop cache.nixos.org, which serves the overwhelming majority of
+        # any closure here, and trade a small win for a very large loss. Same
+        # reasoning, and the same key, as modules/cache.nix on the appliance; if
+        # they ever disagree the appliance's copy is the one that matters and
+        # this is the stale one.
+        #
+        # This is also the pull half of the cache, and it is worth as much as
+        # the push half in .github/actions/cachix-push: without it every job
+        # rebuilds our own paths from source even when an earlier run already
+        # pushed an identical one, which for losos-ctl alone is ~9 minutes.
+        extra_nix_config: |
+          experimental-features = nix-command flakes
+          extra-substituters = https://losos.cachix.org
+          extra-trusted-public-keys = losos.cachix.org-1:4t3mjPiiE7RZHBk3znPi0mq4uP5RY630YXAapAWe708=
+          connect-timeout = 5
+          fallback = true
+    # Proof the substituter was actually taken, rather than merely written
+    # down. Nix does not fail when it declines one — it warns and builds from
+    # source — so "the cache is configured" and "the cache is in use" are
+    # different claims, and only reading the effective config distinguishes
+    # them. Never a gate: a missing cache must slow the build, not fail it.
+    - name: show effective nix config
+      shell: bash
+      run: nix config show | grep -E 'substituters|trusted-public-keys|trusted-users' || true
