@@ -183,6 +183,68 @@ impl Default for FileCodeStore {
     }
 }
 
+/// The real [`crate::catalogue::Fetch`]: one `curl` per search.
+///
+/// A subprocess rather than a client crate, for the reasons in the header of
+/// `catalogue.rs` — chiefly that `flake/packages.nix` pins `cargoHash`, so a
+/// new dependency needs a hash only a `nix build` can produce.
+///
+/// The flags are the interesting part, and each one closes something:
+///
+///   * `--proto =https` and `--proto-redir =https` — this may speak nothing
+///     but HTTPS, and a redirect may not downgrade it. `search_url` only ever
+///     builds an `https://` URL, so today these are belt and braces; they are
+///     here so that stays true if the endpoint is ever made configurable.
+///   * `--fail` — a non-2xx exits non-zero instead of handing back an error
+///     page for `parse_results` to reject less legibly.
+///   * `--max-time` — bounds how long "no network" takes to say so. Without it
+///     a black-holed route holds the request until the browser gives up.
+///   * `--max-filesize` — a catalogue that answers with something enormous is
+///     not going to be rendered; refuse it rather than buffer it.
+///   * no `--insecure`, ever. The appliance's own certificate is self-signed
+///     (`modules/tls.nix`), which tempts that flag; this is an outbound call to
+///     a public host and the system trust store is correct for it.
+///
+/// Nothing is passed through a shell: the argument vector goes to `execve`, so
+/// the query needs no quoting to be safe. [`crate::catalogue::validate_query`]
+/// still refuses control characters, so the property does not rest on that.
+pub struct CurlFetch;
+
+impl crate::catalogue::Fetch for CurlFetch {
+    fn get(&mut self, url: &str) -> anyhow::Result<String> {
+        /// Bytes of response body accepted. The screen renders twenty rows.
+        const MAX_BYTES: usize = 2 * 1024 * 1024;
+
+        let out = std::process::Command::new("curl")
+            .args(["--silent", "--show-error", "--fail", "--location"])
+            .args(["--proto", "=https", "--proto-redir", "=https"])
+            .args(["--max-time", &crate::catalogue::TIMEOUT_SECS.to_string()])
+            .args(["--max-filesize", &MAX_BYTES.to_string()])
+            .args(["--header", "Accept: application/json"])
+            .arg(url)
+            .output()
+            // `curl` comes from the unit's `path` in modules/daemon.nix, which
+            // *replaces* PATH. Name that here: the bare ENOENT names only
+            // "curl" and sends the reader looking in the wrong file.
+            .context("running curl (is it on lososd's unit path? see modules/daemon.nix)")?;
+
+        if !out.status.success() {
+            // curl's own diagnosis is the useful half and it goes to the
+            // journal. The caller turns this into "the search did not come
+            // back", because an HTTP client's stderr is not something to put
+            // in front of the owner.
+            let why = String::from_utf8_lossy(&out.stderr);
+            anyhow::bail!("the catalogue search failed: {}", why.trim());
+        }
+        if out.stdout.len() > MAX_BYTES {
+            // --max-filesize only acts on a declared Content-Length, so a
+            // chunked response can still overrun it.
+            anyhow::bail!("the catalogue returned more than {MAX_BYTES} bytes");
+        }
+        String::from_utf8(out.stdout).context("the catalogue returned a body that is not UTF-8")
+    }
+}
+
 impl crate::recovery::CodeStore for FileCodeStore {
     fn read_code(&mut self) -> anyhow::Result<Option<String>> {
         match std::fs::read_to_string(&self.path) {
@@ -596,6 +658,13 @@ impl Losos for IoLosos {
 
     fn recovery_code(&mut self) -> anyhow::Result<crate::recovery::Recovery> {
         crate::recovery::ensure_code(&mut FileCodeStore::from_env())
+    }
+
+    fn search_apps(&mut self, query: &str) -> anyhow::Result<Vec<crate::catalogue::App>> {
+        let mut fetch = CurlFetch;
+        let url = crate::catalogue::search_url(query);
+        let body = crate::catalogue::Fetch::get(&mut fetch, &url)?;
+        crate::catalogue::parse_results(&body)
     }
 
     fn next_job_id(&mut self) -> anyhow::Result<String> {
