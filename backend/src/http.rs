@@ -9,8 +9,8 @@
 
 use crate::io_backend::{atomic_write_secret, IoLosos};
 use crate::losos::{
-    cmd_apply, cmd_change, cmd_factory_reset, cmd_grow, cmd_recovery, cmd_set_password,
-    cmd_settings, cmd_state, cmd_status,
+    cmd_apply, cmd_apps_search, cmd_change, cmd_factory_reset, cmd_grow, cmd_recovery,
+    cmd_set_password, cmd_settings, cmd_state, cmd_status,
 };
 use crate::model::Mode;
 use crate::overrides::validate_apply;
@@ -271,6 +271,41 @@ async fn get_recovery(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
     gate(&api, &req).unwrap_or_else(|| run(&api, cmd_recovery))
 }
 
+/// Search the app catalogue: `GET /api/apps/search?q=<query>`.
+///
+/// `GET` with the term in the query string, because that is what
+/// `admin-ui/app/src/screens/settings/catalogue.ts` sends and because the call
+/// is a read — it installs nothing and changes nothing on this box.
+///
+/// A malformed or missing `q` is a 400 with the reason in it, so the screen can
+/// put the sentence next to the field. It must not be a 404: the SPA treats a
+/// 404 as "this box does not serve the route", latches it, and never asks
+/// again for the rest of the session — so answering a bad query that way would
+/// disable the search until a reload.
+///
+/// Everything past validation is [`run`], which means a search that could not
+/// be made is a 500 with `command failed; see the lososd journal` and the real
+/// cause — curl's own diagnosis — in the journal. The screen shows that as a
+/// retryable failure, which is right: no route off the box and a catalogue
+/// having a bad afternoon are both things that come back.
+async fn get_apps_search(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    if let Some(r) = gate(&api, &req) {
+        return r;
+    }
+    let query =
+        web::Query::<std::collections::HashMap<String, String>>::from_query(req.query_string())
+            .ok()
+            .and_then(|q| q.get("q").cloned())
+            .unwrap_or_default();
+    // Validated here as well as in the command, for the same reason
+    // `set-password` is: it turns "too short" into a 400 beside the field
+    // rather than a 500 that says to read the journal.
+    if let Err(e) = crate::catalogue::validate_query(&query) {
+        return err(actix_web::http::StatusCode::BAD_REQUEST, &e);
+    }
+    run(&api, |b| cmd_apps_search(b, &query))
+}
+
 async fn not_found() -> HttpResponse {
     err(actix_web::http::StatusCode::NOT_FOUND, "not found")
 }
@@ -379,6 +414,7 @@ pub fn serve(backend: IoLosos) -> anyhow::Result<()> {
                 .route("/api/grow", web::post().to(post_grow))
                 .route("/api/set-password", web::post().to(post_set_password))
                 .route("/api/recovery", web::get().to(get_recovery))
+                .route("/api/apps/search", web::get().to(get_apps_search))
                 // The two unauthenticated routes, and the only ones besides
                 // /api/health. Both are first-run only: the state read is a
                 // single bit, and the claim refuses once the box has an owner.
