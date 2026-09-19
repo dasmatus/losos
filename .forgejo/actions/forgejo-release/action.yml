@@ -155,8 +155,19 @@ runs:
           while IFS= read -r f; do
             [ -n "$f" ] || continue
             test -f "$f" || { echo "::error::asset not found: $f"; exit 1; }
+            base=$(basename "$f")
+            api GET "$API/releases/$id/assets" >/tmp/assets.json || true
+            if [ "$CODE" = "200" ]; then
+              while IFS= read -r aid; do
+                [ -n "$aid" ] || continue
+                api DELETE "$API/releases/$id/assets/$aid" >/dev/null || true
+              done < <(jq -r --arg n "$base" '.[]? | select(.name == $n) | .id' /tmp/assets.json)
+            elif [ "$CODE" != "404" ]; then
+              echo "::error::listing existing assets failed: HTTP $CODE" >&2
+              cat /tmp/assets.json >&2; exit 1
+            fi
             echo "attaching $f ($(stat -c%s "$f") bytes)"
-            api POST "$API/releases/$id/assets?name=$(basename "$f")" \
+            api POST "$API/releases/$id/assets?name=$base" \
               -F "attachment=@$f" >/dev/null
             if [ "$CODE" != "201" ]; then
               echo "::error::attaching $f failed: HTTP $CODE" >&2
