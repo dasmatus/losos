@@ -22,6 +22,10 @@ inputs:
   token:
     description: "Forgejo API token."
     required: true
+  replace-version:
+    description: "Delete any existing package version before uploading."
+    required: false
+    default: "true"
   token-alt:
     description: "Fallback Forgejo API token."
     required: false
@@ -44,6 +48,7 @@ runs:
         IN_SERVER_URL: ${{ inputs.server-url }}
         IN_REPOSITORY: ${{ inputs.repository }}
         IN_TOKEN: ${{ inputs.token }}
+        IN_REPLACE_VERSION: ${{ inputs.replace-version }}
         IN_TOKEN_ALT: ${{ inputs.token-alt }}
       run: |
         set -euo pipefail
@@ -61,15 +66,17 @@ runs:
         api="${IN_SERVER_URL}/api/v1/packages/${owner}/generic/${pkg}/${ver}"
         auth="authorization: token $TOKEN"
 
-        status=$(curl -sS -o /tmp/pkg-delete.out -w '%{http_code}' -X DELETE -H "$auth" "$api" || true)
-        case "$status" in
-          204|404) ;;
-          *)
-            echo "::error::deleting existing package version failed: HTTP $status" >&2
-            cat /tmp/pkg-delete.out >&2
-            exit 1
-            ;;
-        esac
+        if [ "$IN_REPLACE_VERSION" = "true" ]; then
+          status=$(curl -sS -o /tmp/pkg-delete.out -w '%{http_code}' -X DELETE -H "$auth" "$api" || true)
+          case "$status" in
+            204|404) ;;
+            *)
+              echo "::error::deleting existing package version failed: HTTP $status" >&2
+              cat /tmp/pkg-delete.out >&2
+              exit 1
+              ;;
+          esac
+        fi
 
         while IFS= read -r f; do
           [ -n "$f" ] || continue
