@@ -1,0 +1,91 @@
+name: "Forgejo generic package"
+description: "Replace one Forgejo generic package version with the given files."
+
+inputs:
+  package-name:
+    description: "Generic package name."
+    required: true
+  package-version:
+    description: "Generic package version."
+    required: true
+  files:
+    description: "Newline-separated files to upload."
+    required: true
+  server-url:
+    description: "Forgejo server URL."
+    required: false
+    default: "https://codeberg.org"
+  repository:
+    description: "owner/repo on that server."
+    required: false
+    default: ""
+  token:
+    description: "Forgejo API token."
+    required: true
+  token-alt:
+    description: "Fallback Forgejo API token."
+    required: false
+    default: ""
+
+outputs:
+  base-url:
+    description: "Base API URL for this package version."
+    value: ${{ steps.publish.outputs.base-url }}
+
+runs:
+  using: composite
+  steps:
+    - id: publish
+      shell: bash
+      env:
+        IN_PACKAGE_NAME: ${{ inputs.package-name }}
+        IN_PACKAGE_VERSION: ${{ inputs.package-version }}
+        IN_FILES: ${{ inputs.files }}
+        IN_SERVER_URL: ${{ inputs.server-url }}
+        IN_REPOSITORY: ${{ inputs.repository }}
+        IN_TOKEN: ${{ inputs.token }}
+        IN_TOKEN_ALT: ${{ inputs.token-alt }}
+      run: |
+        set -euo pipefail
+
+        TOKEN="${IN_TOKEN:-$IN_TOKEN_ALT}"
+        test -n "$TOKEN" || {
+          echo "::error::no API token — the package upload would silently do nothing"
+          exit 1
+        }
+
+        repository="${IN_REPOSITORY:-$GITHUB_REPOSITORY}"
+        owner="${repository%%/*}"
+        pkg="$IN_PACKAGE_NAME"
+        ver="$IN_PACKAGE_VERSION"
+        api="${IN_SERVER_URL}/api/v1/packages/${owner}/generic/${pkg}/${ver}"
+        auth="authorization: token $TOKEN"
+
+        status=$(curl -sS -o /tmp/pkg-delete.out -w '%{http_code}' -X DELETE -H "$auth" "$api" || true)
+        case "$status" in
+          204|404) ;;
+          *)
+            echo "::error::deleting existing package version failed: HTTP $status" >&2
+            cat /tmp/pkg-delete.out >&2
+            exit 1
+            ;;
+        esac
+
+        while IFS= read -r f; do
+          [ -n "$f" ] || continue
+          test -f "$f" || {
+            echo "::error::package file not found: $f" >&2
+            exit 1
+          }
+          base=$(basename "$f")
+          echo "uploading $base ($(stat -c%s "$f") bytes)"
+          status=$(curl -sS -o /tmp/pkg-put.out -w '%{http_code}' \
+            -X PUT -H "$auth" --upload-file "$f" "${api}/${base}")
+          if [ "$status" != "201" ]; then
+            echo "::error::uploading $base failed: HTTP $status" >&2
+            cat /tmp/pkg-put.out >&2
+            exit 1
+          fi
+        done <<< "$IN_FILES"
+
+        echo "base-url=${IN_SERVER_URL}/api/packages/${owner}/generic/${pkg}/${ver}" >> "$GITHUB_OUTPUT"

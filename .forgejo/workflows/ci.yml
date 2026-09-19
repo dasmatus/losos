@@ -1,8 +1,8 @@
 on:
   push:
     branches: [main]
-    # Tags build and publish the installer ISO; see the iso job. Pushes to
-    # main build it too, as a gate, but do not publish it.
+    # Tags still build the installer ISO here, but GitHub's larger runners now
+    # publish both release media and update both release pages.
     tags: ["v*"]
   pull_request:
   schedule:
@@ -54,12 +54,10 @@ on:
 # job therefore takes it from the losos-ctl job as a 12 MiB artifact rather
 # than building it, and each job stays inside its own 10-minute budget.
 #
-# The iso job publishes the image as an artifact on a tag or a manual run,
-# never on an ordinary push. The image is ~1.5 GB and Codeberg asks that you
-# request resources before exceeding "1.5 GiB of packages, LFS and
-# attachments", so one ISO is the entire recommended budget; uploading one per
-# commit would be antisocial on a donation-funded host. The build still runs
-# on every push as a gate — only the upload is rationed.
+# The iso job is only a build gate now. Release publication moved to GitHub:
+# the demo QCOW2 does not fit this forge's 10-minute/8-GB runners, so the tag
+# path builds both media on GitHub, uploads them once to Codeberg's generic
+# package registry and then points both release pages there.
 #
 # clippy and test are separate jobs. As one they ran 9.9-10.1 minutes and were
 # cancelled at the cap on about half of all pushes: clippy type-checks and
@@ -109,11 +107,6 @@ env:
     extra-trusted-public-keys = losos.cachix.org-1:4t3mjPiiE7RZHBk3znPi0mq4uP5RY630YXAapAWe708=
     connect-timeout = 5
     fallback = true
-  # Not secret: a buzzheavier directory id is meaningless without the account
-  # token, and the region id is public (GET /api/locations). Set both under
-  # Settings -> Actions -> Variables.
-  BUZZ_PARENT_ID: ${{ vars.BUZZ_PARENT_ID }}
-  BUZZ_LOCATION_ID: ${{ vars.BUZZ_LOCATION_ID }}
 
 jobs:
   clippy:
@@ -503,9 +496,8 @@ jobs:
     container:
       image: docker.io/nixos/nix:latest
     steps:
-      # jq parses the release API responses in the last step; the nix
-      # image ships neither it nor node.
-      - run: nix profile install nixpkgs#nodejs nixpkgs#jq
+      # The nix image ships no node, and actions/checkout needs it.
+      - run: nix profile install nixpkgs#nodejs
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v3
         with:
@@ -532,120 +524,3 @@ jobs:
       # against the default zstd level 19, which OOM-killed the job; level 6
       # with a 1 GiB cap is already set in flake.nix and changes the picture.
       - run: nix build .#nixosConfigurations.iso.config.system.build.isoImage -L
-
-      # Publishing is gated on tags, NOT on every push. The original reason
-      # was Codeberg's "1.5 GiB of packages, LFS and attachments" ceiling,
-      # which a single ISO spent in full. That argument is retired: the image
-      # goes to buzzheavier now and only the ~100-byte checksum and a small
-      # release.json are attached here. What remains is the plainer reason —
-      # a 1.5 GB upload per commit to any free host is antisocial.
-      #
-      # The build above still runs on every push: that is the gate, and it is
-      # cheap (3.5 min). Only the upload is rationed.
-      #
-      # The download link is NOT permanent. buzzheavier's free tier keeps a
-      # file for 8 days, adds 2 days per download, and only makes it permanent
-      # after 30 downloads inside 60 days — which an appliance ISO will not
-      # see. .forgejo/workflows/refresh.yml re-uploads the newest release's
-      # image twice a week to keep its link alive. Delete that workflow and
-      # every published download link dies within about a week.
-      - name: stage the image
-        id: stage
-        if: startsWith(github.ref, 'refs/tags/')
-        # cp -L dereferences: `result` is a symlink into /nix/store, and the
-        # upload would otherwise send the link rather than the image. The tag
-        # goes in the filename because the prune step matches on a prefix and
-        # because two releases must not collide in one buzzheavier directory.
-        run: |
-          set -euo pipefail
-          name="losos-installer-${GITHUB_REF_NAME}.iso"
-          cp -L result/iso/*.iso "./${name}"
-          ls -lh "$name"
-          sha256sum "$name" | tee "${name}.sha256"
-          {
-            echo "name=${name}"
-            echo "storePath=$(readlink -f result)"
-          } >> "$GITHUB_OUTPUT"
-
-      - id: publish
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: ./.forgejo/actions/publish-buzz
-        with:
-          file: ${{ steps.stage.outputs.name }}
-          filename: ${{ steps.stage.outputs.name }}
-          parent-id: ${{ env.BUZZ_PARENT_ID }}
-          location-id: ${{ env.BUZZ_LOCATION_ID }}
-          token: ${{ secrets.BUZZHEAVIER_TOKEN }}
-
-      - name: compose the release body
-        id: body
-        if: startsWith(github.ref, 'refs/tags/')
-        env:
-          ISO_NAME: ${{ steps.stage.outputs.name }}
-          ISO_URL: ${{ steps.publish.outputs.url }}
-          ISO_SUM: ${{ steps.publish.outputs.sha256 }}
-          ISO_SIZE: ${{ steps.publish.outputs.size }}
-          STORE_PATH: ${{ steps.stage.outputs.storePath }}
-        run: |
-          set -euo pipefail
-          human=$(awk -v b="$ISO_SIZE" 'BEGIN { printf "%.2f GiB", b/1073741824 }')
-          # refresh.yml reads this back to re-upload the same bytes without
-          # rebuilding. Keep the field names stable: changing one silently
-          # breaks the refresh for every release already published.
-          jq -n --arg iso "$ISO_NAME" --arg sum "$ISO_SUM" \
-                --argjson size "$ISO_SIZE" --arg path "$STORE_PATH" \
-            '{iso:$iso, sha256:$sum, size:$size, storePath:$path}' > release.json
-          cat release.json
-          {
-            echo "body<<RELEASE_BODY_EOF"
-            cat <<BODY
-          ### Download
-
-          **[${ISO_NAME}](${ISO_URL})** — ${human}
-
-          \`\`\`
-          sha256  ${ISO_SUM}
-          \`\`\`
-
-          Verify against the \`.sha256\` attached below:
-
-          \`\`\`sh
-          sha256sum -c ${ISO_NAME}.sha256
-          \`\`\`
-
-          Write it to a USB stick and boot the target machine; the installer
-          partitions, encrypts and installs unattended.
-
-          ---
-
-          The image is hosted off-forge rather than attached here, because one
-          ISO is Codeberg's entire recommended allowance for packages, LFS and
-          attachments. That link is refreshed automatically and may still lapse
-          — if it has, build the same image from this tag with
-          \`nix build .#nixosConfigurations.iso.config.system.build.isoImage\`.
-          BODY
-            echo "RELEASE_BODY_EOF"
-          } >> "$GITHUB_OUTPUT"
-
-      # A tag makes a release; the API and curl do it, refactored into a local
-      # action shared with the refresh workflow. Only the checksum and the
-      # release.json manifest are attached — the image itself is a link.
-      - if: startsWith(github.ref, 'refs/tags/')
-        uses: ./.forgejo/actions/forgejo-release
-        with:
-          tag: ${{ github.ref_name }}
-          body: ${{ steps.body.outputs.body }}
-          assets: |
-            ${{ steps.stage.outputs.name }}.sha256
-            release.json
-          token: ${{ secrets.FORGEJO_TOKEN }}
-          token-alt: ${{ secrets.GITHUB_TOKEN }}
-
-      - if: startsWith(github.ref, 'refs/tags/')
-        uses: ./.forgejo/actions/prune-buzz
-        with:
-          parent-id: ${{ env.BUZZ_PARENT_ID }}
-          prefix: losos-installer-
-          keep: "5"
-          keep-id: ${{ steps.publish.outputs.id }}
-          token: ${{ secrets.BUZZHEAVIER_TOKEN }}
