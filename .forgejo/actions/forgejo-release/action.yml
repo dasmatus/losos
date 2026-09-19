@@ -32,6 +32,14 @@ inputs:
     description: "create (make it if missing, then attach) or patch (body only)."
     required: false
     default: "create"
+  server-url:
+    description: "Forgejo server URL. Defaults to the current workflow's server."
+    required: false
+    default: ""
+  repository:
+    description: "owner/repo on that server. Defaults to the current workflow's repository."
+    required: false
+    default: ""
   token:
     description: "Forgejo API token."
     required: true
@@ -64,6 +72,8 @@ runs:
         IN_BODY: ${{ inputs.body }}
         IN_ASSETS: ${{ inputs.assets }}
         IN_MODE: ${{ inputs.mode }}
+        IN_SERVER_URL: ${{ inputs.server-url }}
+        IN_REPOSITORY: ${{ inputs.repository }}
         IN_TOKEN: ${{ inputs.token }}
         IN_TOKEN_ALT: ${{ inputs.token-alt }}
       run: |
@@ -75,7 +85,9 @@ runs:
           exit 1
         }
 
-        API="${GITHUB_SERVER_URL}/api/v1/repos/${GITHUB_REPOSITORY}"
+        SERVER_URL="${IN_SERVER_URL:-$GITHUB_SERVER_URL}"
+        REPOSITORY="${IN_REPOSITORY:-$GITHUB_REPOSITORY}"
+        API="${SERVER_URL}/api/v1/repos/${REPOSITORY}"
         TAG="$IN_TAG"
         NAME="$IN_NAME"
         if [ -z "$NAME" ]; then NAME="$TAG"; fi
@@ -128,8 +140,8 @@ runs:
         # An existing release found by GET keeps whatever body it had, so patch
         # mode — and a re-run of create mode over an existing tag — has to write
         # it explicitly. PATCH replaces the field outright; it does not append,
-        # which is what the refresh job depends on when it swaps a dead download
-        # link for a live one.
+        # which is what the GitHub tag-release job depends on when it refreshes
+        # the release text from newly built metadata.
         jq -n --arg b "$IN_BODY" '{body:$b}' >/tmp/patch.json
         api PATCH "$API/releases/$id" -H 'content-type: application/json' \
           --data-binary @/tmp/patch.json >/tmp/rel.json

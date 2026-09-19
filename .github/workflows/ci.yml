@@ -3,8 +3,8 @@ name: ci
 on:
   push:
     branches: [main]
-    # Tags build and publish the installer ISO; see the iso job. Pushes to
-    # main build it too, as a gate, but do not publish it.
+    # Tags publish both release media from GitHub's larger runners; see the
+    # release-media job. Pushes to main build only the installer ISO gate.
     tags: ["v*"]
   pull_request:
   schedule:
@@ -60,13 +60,11 @@ on:
 #    cache settings from an untrusted client, with a warning and a green build
 #    that compiled everything from source. See ./.github/actions/setup-nix.
 #
-# 3. The ISO is attached to the release. Codeberg's 1.5 GiB allowance for
-#    packages, LFS and attachments is one image, which is why that lane uploads
-#    to buzzheavier and runs refresh.yml twice a week to stop the link
-#    expiring. A GitHub release asset may be 2 GiB and counts against no
-#    budget, so the bytes go straight onto the release and there is nothing for
-#    publish-buzz, prune-buzz or refresh.yml to do here. See
-#    ./.github/actions/github-release.
+# 3. Tags publish release media from here, not from Codeberg. The demo QCOW2 is
+#    too large for a GitHub release asset and too expensive for Codeberg's
+#    runners to build, so this lane builds both files, uploads them to
+#    Codeberg's generic package registry and then updates both release pages to
+#    point there.
 #
 # 4. Jobs carry explicit `timeout-minutes`. Codeberg enforces 10 minutes for
 #    us; GitHub's default is 360, which is long enough for a wedged job to
@@ -424,6 +422,7 @@ jobs:
     name: "nix: build the installer ISO"
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    if: ${{ !startsWith(github.ref, 'refs/tags/') }}
     # Needs losos-ctl's store export. Without it this job would rebuild that
     # crate from source — ~9 minutes on its own.
     #
@@ -432,9 +431,6 @@ jobs:
     # being a file copy it is the second path in this closure cache.nixos.org
     # cannot serve.
     needs: [losos-ctl, registrar-and-ui]
-    # Only the tag path writes, and only to releases.
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-nix
@@ -465,102 +461,217 @@ jobs:
       # this step, not trimming the image.
       - run: nix build .#nixosConfigurations.iso.config.system.build.isoImage -L
 
-      # Publishing is gated on tags, NOT on every push — a 1.5 GB upload per
-      # commit is antisocial on any host, and release assets are for releases.
-      # The build above still runs on every push: that is the gate, and it is
-      # cheap.
-      #
-      # Unlike the Codeberg lane there is no expiring off-forge link and no
-      # refresh treadmill: the image is attached to the release itself. See
-      # .github/actions/github-release.
-      - name: stage the image
-        id: stage
-        if: startsWith(github.ref, 'refs/tags/')
-        # cp -L dereferences: `result` is a symlink into /nix/store, and the
-        # upload would otherwise send the link rather than the image. The tag
-        # goes in the filename so that a downloaded image says which release it
-        # came from.
+  release-media:
+    name: "release: publish installer ISO and demo QCOW2"
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    if: ${{ startsWith(github.ref, 'refs/tags/') }}
+    needs: [losos-ctl, registrar-and-ui]
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-nix
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: free runner disk for media builds
         run: |
           set -euo pipefail
-          name="losos-installer-${GITHUB_REF_NAME}.iso"
-          cp -L result/iso/*.iso "./${name}"
-          ls -lh "$name"
-          sha256sum "$name" | tee "${name}.sha256"
+          sudo rm -rf /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL || true
+          df -h
+      - uses: actions/download-artifact@v4
+        with:
+          name: losos-ctl-store
+          path: ctl-cache
+      - uses: actions/download-artifact@v4
+        with:
+          name: losos-admin-ui-store
+          path: ui-cache
+      - run: nix copy --from "file://$PWD/ctl-cache" --no-check-sigs --all
+      - run: nix copy --from "file://$PWD/ui-cache" --no-check-sigs --all
+      - run: nix build .#nixosConfigurations.iso.config.system.build.isoImage -L
+      - run: mv result result-iso
+      - run: nix build .#losos-disk-qcow2 -L
+      - run: mv result result-qcow2
+      - name: stage the media
+        id: stage
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          iso="losos-installer-${TAG}.iso"
+          qcow2="losos-demo-${TAG}.qcow2"
+          cp -L result-iso/iso/*.iso "./${iso}"
+          cp -L result-qcow2/*.qcow2 "./${qcow2}"
+          sha256sum "$iso" | tee "${iso}.sha256"
+          sha256sum "$qcow2" | tee "${qcow2}.sha256"
           {
-            echo "name=${name}"
-            echo "size=$(stat -c%s "$name")"
-            echo "sha256=$(cut -d' ' -f1 < "${name}.sha256")"
-            echo "storePath=$(readlink -f result)"
+            echo "isoName=${iso}"
+            echo "isoSize=$(stat -c%s "$iso")"
+            echo "isoSha256=$(cut -d' ' -f1 < "${iso}.sha256")"
+            echo "isoStorePath=$(readlink -f result-iso)"
+            echo "qcow2Name=${qcow2}"
+            echo "qcow2Size=$(stat -c%s "$qcow2")"
+            echo "qcow2Sha256=$(cut -d' ' -f1 < "${qcow2}.sha256")"
+            echo "qcow2StorePath=$(readlink -f result-qcow2)"
           } >> "$GITHUB_OUTPUT"
-
+      - name: compose release metadata
+        id: meta
+        env:
+          TAG: ${{ github.ref_name }}
+          ISO_NAME: ${{ steps.stage.outputs.isoName }}
+          ISO_SIZE: ${{ steps.stage.outputs.isoSize }}
+          ISO_SHA256: ${{ steps.stage.outputs.isoSha256 }}
+          ISO_STORE_PATH: ${{ steps.stage.outputs.isoStorePath }}
+          QCOW2_NAME: ${{ steps.stage.outputs.qcow2Name }}
+          QCOW2_SIZE: ${{ steps.stage.outputs.qcow2Size }}
+          QCOW2_SHA256: ${{ steps.stage.outputs.qcow2Sha256 }}
+          QCOW2_STORE_PATH: ${{ steps.stage.outputs.qcow2StorePath }}
+        run: |
+          set -euo pipefail
+          base="https://codeberg.org/api/packages/dasmatus/generic/losos-release-media/${TAG}"
+          jq -n \
+            --arg package "losos-release-media" \
+            --arg version "$TAG" \
+            --arg iso "$ISO_NAME" \
+            --arg isoSha "$ISO_SHA256" \
+            --argjson isoSize "$ISO_SIZE" \
+            --arg isoPath "$ISO_STORE_PATH" \
+            --arg isoUrl "${base}/${ISO_NAME}" \
+            --arg qcow2 "$QCOW2_NAME" \
+            --arg qcow2Sha "$QCOW2_SHA256" \
+            --argjson qcow2Size "$QCOW2_SIZE" \
+            --arg qcow2Path "$QCOW2_STORE_PATH" \
+            --arg qcow2Url "${base}/${QCOW2_NAME}" \
+            '{
+               registry:{package:$package, version:$version},
+               iso:{name:$iso, sha256:$isoSha, size:$isoSize, storePath:$isoPath, url:$isoUrl},
+               qcow2:{name:$qcow2, sha256:$qcow2Sha, size:$qcow2Size, storePath:$qcow2Path, url:$qcow2Url}
+             }' > release.json
+          cat release.json
+          {
+            echo "baseUrl=${base}"
+            echo "isoUrl=${base}/${ISO_NAME}"
+            echo "qcow2Url=${base}/${QCOW2_NAME}"
+          } >> "$GITHUB_OUTPUT"
+      - uses: ./.github/actions/forgejo-generic-package
+        with:
+          server-url: https://codeberg.org
+          repository: dasmatus/losos
+          package-name: losos-release-media
+          package-version: ${{ github.ref_name }}
+          files: |
+            ${{ steps.stage.outputs.isoName }}
+            ${{ steps.stage.outputs.isoName }}.sha256
+            ${{ steps.stage.outputs.qcow2Name }}
+            ${{ steps.stage.outputs.qcow2Name }}.sha256
+            release.json
+          token: ${{ secrets.FORGEJO_TOKEN }}
       - name: compose the release body
         id: body
-        if: startsWith(github.ref, 'refs/tags/')
         env:
-          ISO_NAME: ${{ steps.stage.outputs.name }}
-          ISO_SUM: ${{ steps.stage.outputs.sha256 }}
-          ISO_SIZE: ${{ steps.stage.outputs.size }}
-          STORE_PATH: ${{ steps.stage.outputs.storePath }}
+          TAG: ${{ github.ref_name }}
+          BASE_URL: ${{ steps.meta.outputs.baseUrl }}
+          ISO_NAME: ${{ steps.stage.outputs.isoName }}
+          ISO_URL: ${{ steps.meta.outputs.isoUrl }}
+          ISO_SUM: ${{ steps.stage.outputs.isoSha256 }}
+          ISO_SIZE: ${{ steps.stage.outputs.isoSize }}
+          ISO_STORE_PATH: ${{ steps.stage.outputs.isoStorePath }}
+          QCOW2_NAME: ${{ steps.stage.outputs.qcow2Name }}
+          QCOW2_URL: ${{ steps.meta.outputs.qcow2Url }}
+          QCOW2_SUM: ${{ steps.stage.outputs.qcow2Sha256 }}
+          QCOW2_SIZE: ${{ steps.stage.outputs.qcow2Size }}
+          QCOW2_STORE_PATH: ${{ steps.stage.outputs.qcow2StorePath }}
         run: |
           set -euo pipefail
-          human=$(awk -v b="$ISO_SIZE" 'BEGIN { printf "%.2f GiB", b/1073741824 }')
-          url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/${ISO_NAME}"
-          # release.json records the exact store path the image was built from,
-          # so anyone can substitute those bytes instead of rebuilding them. The
-          # Codeberg lane's refresh workflow reads this back; nothing on this
-          # forge does, because nothing here expires. The field names are kept
-          # identical anyway so one manifest format serves both releases.
-          jq -n --arg iso "$ISO_NAME" --arg sum "$ISO_SUM" \
-                --argjson size "$ISO_SIZE" --arg path "$STORE_PATH" \
-            '{iso:$iso, sha256:$sum, size:$size, storePath:$path}' > release.json
-          cat release.json
+          iso_human=$(awk -v b="$ISO_SIZE" 'BEGIN { printf "%.2f GiB", b/1073741824 }')
+          qcow2_human=$(awk -v b="$QCOW2_SIZE" 'BEGIN { printf "%.2f GiB", b/1073741824 }')
           {
             echo "body<<RELEASE_BODY_EOF"
             cat <<BODY
-          ### Download
+          ### Generic registry
 
-          **[${ISO_NAME}](${url})** — ${human}
+          Versioned media for this tag live in the generic package registry:
+
+          \`${BASE_URL}/\`
+
+          ### Installer ISO
+
+          **[${ISO_NAME}](${ISO_URL})** — ${iso_human}
 
           \`\`\`
           sha256  ${ISO_SUM}
           \`\`\`
 
-          Verify against the \`.sha256\` attached below:
+          Verify it with:
 
           \`\`\`sh
+          curl -fsSLO ${ISO_URL}.sha256
+          curl -fsSLO ${ISO_URL}
           sha256sum -c ${ISO_NAME}.sha256
           \`\`\`
 
           Write it to a USB stick and boot the target machine; the installer
           partitions, encrypts and installs unattended.
 
+          ### Demo QCOW2
+
+          **[${QCOW2_NAME}](${QCOW2_URL})** — ${qcow2_human}
+
+          \`\`\`
+          sha256  ${QCOW2_SUM}
+          \`\`\`
+
+          Verify it with:
+
+          \`\`\`sh
+          curl -fsSLO ${QCOW2_URL}.sha256
+          curl -fsSLO ${QCOW2_URL}
+          sha256sum -c ${QCOW2_NAME}.sha256
+          \`\`\`
+
+          This image is for demos and development only. It does **not** carry the
+          appliance's TPM-sealed encrypted disk layout, so anyone who can read
+          the file can read its data.
+
           ---
 
-          To build the same image from this tag instead:
+          Build the installer ISO from this tag instead:
 
           \`\`\`sh
           nix build .#nixosConfigurations.iso.config.system.build.isoImage
           \`\`\`
 
-          Or substitute the bytes above from the project cache, using the store
-          path recorded in \`release.json\`:
+          Build the demo QCOW2 instead:
 
           \`\`\`sh
-          nix copy --from https://losos.cachix.org ${STORE_PATH}
+          nix build .#losos-disk-qcow2
+          \`\`\`
+
+          Or substitute the already-built store paths recorded in \`release.json\`
+          from the project cache:
+
+          \`\`\`sh
+          nix copy --from https://losos.cachix.org ${ISO_STORE_PATH}
+          nix copy --from https://losos.cachix.org ${QCOW2_STORE_PATH}
           \`\`\`
           BODY
             echo "RELEASE_BODY_EOF"
           } >> "$GITHUB_OUTPUT"
-
-      # A tag makes a release, and the image goes on it. The checksum and the
-      # release.json manifest ride along.
-      - if: startsWith(github.ref, 'refs/tags/')
-        uses: ./.github/actions/github-release
+      - uses: ./.github/actions/github-release
         with:
           tag: ${{ github.ref_name }}
           body: ${{ steps.body.outputs.body }}
           assets: |
-            ${{ steps.stage.outputs.name }}
-            ${{ steps.stage.outputs.name }}.sha256
+            ${{ steps.stage.outputs.isoName }}.sha256
+            ${{ steps.stage.outputs.qcow2Name }}.sha256
             release.json
           token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: ./.forgejo/actions/forgejo-release
+        with:
+          server-url: https://codeberg.org
+          repository: dasmatus/losos
+          tag: ${{ github.ref_name }}
+          body: ${{ steps.body.outputs.body }}
+          mode: create
+          token: ${{ secrets.FORGEJO_TOKEN }}

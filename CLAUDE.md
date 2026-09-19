@@ -71,14 +71,14 @@ cargo clippy --manifest-path backend/Cargo.toml --all-targets -- -D warnings
 
 **There are two CI lanes and both must be kept in step by hand**, with each
 other and with `devenv.nix`: `.forgejo/workflows/` (Codeberg) and
-`.github/workflows/ci.yml` (GitHub). Same gates, same flake, same nine jobs.
-A change to one is a change to both — the GitHub file's header lists the four
-places they deliberately differ (no container, substituters written to
-`/etc/nix/nix.conf` before the daemon starts, the Nextcloud image on the weekly
-schedule, and the ISO attached to the release instead of the buzzheavier detour
-plus `refresh.yml`). `.github/actions/` carries `setup-nix`, `cachix-push` and
-`github-release`; there is no GitHub counterpart to `publish-buzz`,
-`prune-buzz` or `forgejo-release`, and there should not be.
+`.github/workflows/ci.yml` (GitHub). Same flake, same ordinary gates, plus one
+GitHub-only tag-release job that builds the heavy media, uploads them to
+Codeberg's generic package registry and updates both release pages. A change to
+one is a change to both — the GitHub file's header lists the deliberate
+platform differences. `.github/actions/` now carries `setup-nix`,
+`cachix-push`, `github-release` and `forgejo-generic-package`; the Forgejo
+release API helper lives under `.forgejo/actions/forgejo-release` and is used
+from GitHub's tag-release job as well.
 
 CI (Codeberg Actions, `.forgejo/workflows/ci.yml`) runs on hosted runners
 capped at **10 minutes / 8 GB per job** (and the RAM quota counts filesystem
