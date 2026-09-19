@@ -2,21 +2,46 @@
 //!
 //! # What it is for
 //!
-//! A factory reset or a reinstall wipes `/persist`, and `/persist` is the only
-//! durable storage this box has: the persisted set in
-//! `modules/impermanence.nix` lives inside the LUKS volume, and
-//! `backend/src/installer.rs` passes `--yes-wipe-all-disks`, so the ESP goes
-//! too. The box therefore comes back up with a brand-new identity — a fresh
-//! `machine-id`, a fresh node password under `/etc/rancher`, and no
-//! `/var/secrets/losos-proxy-token`. To the edge that is a *different*
-//! appliance claiming a hostname the registry has already seen, and the rejoin
-//! is refused as a duplicate. Permanently, because nothing on the new box can
-//! prove it is the old one.
+//! The **reinstall ISO** wipes `/persist`, and `/persist` is the only durable
+//! storage this box has: the persisted set in `modules/impermanence.nix` lives
+//! inside the LUKS volume, and `backend/src/installer.rs` passes
+//! `--yes-wipe-all-disks`, so the ESP goes too. The box comes back up with a
+//! brand-new identity — a fresh `machine-id`, a fresh node password under
+//! `/etc/rancher`, and no `/var/secrets/losos-proxy-token`.
 //!
-//! The recovery code is that proof, and it is the only kind of proof available:
-//! something the *owner* holds, outside the box, from before the wipe. So this
-//! module has exactly one job — make a code, keep it stable for the life of the
-//! installation, and hand it back whenever the first-run wizard asks.
+//! `losos-ctl factory-reset` does **not** do that, whatever an earlier draft of
+//! this comment said. It restores the committed defaults and rebuilds; see
+//! [`crate::losos::cmd_factory_reset`], which is explicit that the destructive
+//! tier is the installer ISO, not the command.
+//!
+//! # What it does not solve — read this before wiring an edge half
+//!
+//! This module was conceived as the proof of continuity for that rejoin: to the
+//! edge, a re-imaged box looks like a stranger claiming a hostname the registry
+//! already knows. That lockout is real. It is also **already prevented by a
+//! different mechanism**, landed the day before this file: `/cluster/join` in
+//! `backend-registrar` deletes the caller's stale `Node` object and its
+//! node-password `Secret` before handing back a mesh token, precisely so a
+//! re-imaged box can rejoin under the same name. It authenticates that with the
+//! appliance's existing `/var/secrets/losos-proxy-token` and mints no second
+//! credential. The module header of `backend-registrar/src/server.rs` describes
+//! this exact failure — "rke2 then refuses the rejoin *permanently* as a
+//! duplicate hostname" — and the cleanup that fixes it.
+//!
+//! So the only thing a recovery code could still buy is self-service re-issue
+//! of the proxy token, for an owner who kept no copy of it (nothing in the
+//! flake creates that file — `modules/options.nix` says to provision it with
+//! agenix or by hand, so the owner or the edge operator already holds one).
+//! That is a different feature with a different threat model: an
+//! unauthenticated, internet-reachable route trading a UUID for a tenant's live
+//! credential. It is not what this module's text used to claim, and it should
+//! be decided on its own merits.
+//!
+//! Until that decision is made, this module has exactly one job — make a code,
+//! keep it stable for the life of the installation, and hand it back when the
+//! first-run wizard asks. **Nothing consumes it**, and the wizard step that
+//! shows it still tells the owner it is "the only proof that the new box is the
+//! old one", which is the claim `modules/recovery.nix` warns against.
 //!
 //! # Why the durable copy is not on the box
 //!
