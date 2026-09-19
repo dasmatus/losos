@@ -273,6 +273,71 @@
         }
       }
     },
+    "appsSearchResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sources",
+        "results"
+      ],
+      "properties": {
+        "sources": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "The catalogues searched, named so the screen can tell the reader where the rows came from. Sent even when `results` is empty, because \"nothing matched on Artifact Hub\" and \"nothing matched\" are different sentences and only the first one is true. Currently always [\"Artifact Hub\"]."
+        },
+        "results": {
+          "type": "array",
+          "description": "Matching apps, at most 20, in the catalogue's own relevance order. A row the box cannot attribute to a publisher is dropped rather than returned: `source` is the only field on the row that tells the reader whose code they are about to run, and a result with nowhere to attribute it must not be shown as though this appliance vouched for it.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "name",
+              "source"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "description": "Stable identity for the row: the catalogue's own package id where it gives one, otherwise `<repository>/<package>`, which is unique within the catalogue."
+              },
+              "name": {
+                "type": "string",
+                "description": "Display name, falling back to the package name."
+              },
+              "source": {
+                "type": "string",
+                "description": "Who published it — the organisation where the catalogue names one, otherwise the repository. Required on every row; see the note on `results`."
+              },
+              "summary": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "One-line description, or null. An empty or whitespace-only upstream value is sent as null rather than as an empty string, which is what the SPA's `nonEmptyString` would make of it anyway."
+              },
+              "version": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Chart version, or null."
+              },
+              "homepage": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "The package's own home page where it has one, otherwise its page on the catalogue, so every row stays clickable. Null only if neither can be built."
+              }
+            }
+          }
+        }
+      }
+    },
     "statusResponse": {
       "type": "object",
       "additionalProperties": false,
@@ -385,7 +450,7 @@
       }
     },
     "recovery": {
-      "description": "`losos-ctl recovery` — print the appliance recovery code, minting one on first use. Idempotent: every later call returns the same code and writes nothing. There is deliberately no rotate subcommand. What the code is for: a reinstall wipes /persist and with it the machine-id, /etc/rancher/node/password and /var/secrets/losos-proxy-token, so to the edge the box is a stranger claiming a hostname the registry has already seen, and the rejoin is refused as a duplicate. The code is the missing proof of ownership — a UUID the owner wrote down before the wipe. NOTE: the edge half does not exist yet. There is no `recovery` map in backend-registrar's registry.json and no /recover route, so today this code proves ownership at the first-run wizard and recovers nothing on its own; clients must not imply otherwise. Non-zero exit + stderr when the code file exists but cannot be read — minting over an unreadable file would destroy a code the owner still holds, so that case fails loudly instead.",
+      "description": "`losos-ctl recovery` — print the appliance recovery code, minting one on first use. Idempotent: every later call returns the same code and writes nothing. There is deliberately no rotate subcommand. NOTE: nothing consumes this code. It was conceived as proof that a re-imaged box is the same box, but that lockout is already prevented by /cluster/join in backend-registrar, which deletes the caller's stale Node object and node-password Secret before handing back a mesh token and proves identity with the proxy token the box already has. There is no `recovery` map in registry.json and no /recover route, and building one would be a different feature — self-service re-issue of the proxy token over an unauthenticated route — which has not been agreed. See the second section of backend/src/recovery.rs. Clients must not imply the code recovers anything. Non-zero exit + stderr when the code file exists but cannot be read — minting over an unreadable file would destroy a code the owner still holds, so that case fails loudly instead.",
       "stdout": {
         "$ref": "#/$defs/recoveryResponse"
       }
@@ -445,6 +510,12 @@
       "GET /api/recovery": {
         "auth": true,
         "out": "recoveryResponse"
+      },
+      "GET /api/apps/search": {
+        "auth": true,
+        "in": "query string: q=<search term>, 2-128 characters, no control characters",
+        "out": "appsSearchResponse",
+        "note": "Searches a public app catalogue from the box. The admin pages are served under `connect-src 'self'`, so the browser cannot reach a catalogue itself — lososd is the only thing here with an outbound path. HTTP-only, with no D-Bus method and no facade subcommand, following `POST /api/setup/claim`: the facade exists to control this appliance, and a CLI for a settings screen's search field would be surface with no caller. A bad or missing `q` is 400 with the reason, deliberately NOT 404 — the SPA latches a 404 as \"this box does not serve the route\" and stops asking for the rest of the session. A search that could not be made (no route off the box, the catalogue down, a body that is not JSON) is 500, which the screen shows as retryable."
       }
     }
   },
