@@ -70,7 +70,7 @@ runs:
         ver="$IN_PACKAGE_VERSION"
         api="${IN_SERVER_URL}/api/v1/packages/${owner}/generic/${pkg}/${ver}"
         auth="authorization: token $TOKEN"
-        base_url="${IN_SERVER_URL}/api/packages/${owner}/generic/${pkg}/${ver}"
+        base_url="${IN_SERVER_URL}/packages/${owner}/generic/${pkg}/${ver}"
 
         if [ "$IN_EMIT_ONLY" = "true" ]; then
           echo "base-url=${base_url}" >> "$GITHUB_OUTPUT"
