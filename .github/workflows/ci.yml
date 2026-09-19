@@ -260,6 +260,13 @@ jobs:
       # This artifact, unlike the cachix push above, is NOT gated on a secret:
       # a fork's ISO job must still get the bundle, or it goes red for want of
       # a key the contributor cannot have.
+      - run: nix copy --to "file://$PWD/registrar-cache" --no-check-sigs .#losos-registrar
+      - uses: actions/upload-artifact@v4
+        with:
+          name: losos-registrar-store
+          path: registrar-cache
+          retention-days: 1
+          include-hidden-files: true
       - run: nix copy --to "file://$PWD/ui-cache" --no-check-sigs .#losos-admin-ui
       - uses: actions/upload-artifact@v4
         with:
@@ -486,8 +493,13 @@ jobs:
         with:
           name: losos-admin-ui-store
           path: ui-cache
+      - uses: actions/download-artifact@v4
+        with:
+          name: losos-registrar-store
+          path: registrar-cache
       - run: nix copy --from "file://$PWD/ctl-cache" --no-check-sigs --all
       - run: nix copy --from "file://$PWD/ui-cache" --no-check-sigs --all
+      - run: nix copy --from "file://$PWD/registrar-cache" --no-check-sigs --all
       - run: nix build .#nixosConfigurations.iso.config.system.build.isoImage -L
       - run: mv result result-iso
       - run: nix build .#losos-disk-qcow2 -L
@@ -526,7 +538,6 @@ jobs:
             ${{ steps.stage.outputs.isoName }}.sha256
             ${{ steps.stage.outputs.qcow2Name }}
             ${{ steps.stage.outputs.qcow2Name }}.sha256
-            release.json
           token: ${{ secrets.FORGEJO_TOKEN }}
       - name: verify published registry files
         id: verify
