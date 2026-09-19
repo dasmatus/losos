@@ -34,7 +34,7 @@ on:
 # interactive shell packages — before doing any work of its own. Measured on
 # Codeberg's runners: `devenv test` 9m31s, `devenv shell build-pkgs` 10m05s,
 # plain nix 1m32s. GitHub's 6-hour cap would survive that, but paying it in
-# nine jobs to run commands that do not need it is still waste.
+# a double-digit job count to run commands that do not need it is still waste.
 #
 # The nixos-test VMs stay local-only on both forges — they need /dev/kvm, which
 # neither host's runners provide:
@@ -87,15 +87,15 @@ on:
 # `nix build` is therefore not a test gate.
 
 # Superseded runs are cancelled on pull requests and branches, where only the
-# newest push matters. Never on tags: the iso job's release is not something to
-# interrupt half way through a 1.5 GB upload.
+# newest push matters. Never on tags: the release-media job is not something to
+# interrupt half way through multi-gigabyte builds and uploads.
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
 
-# Read-only by default; the two jobs that write (fmt-bot, iso) ask for
-# contents: write themselves. A fork's pull request gets a read-only token and
-# no secrets whatever this says.
+# Read-only by default; the jobs that write ask for contents: write themselves.
+# A fork's pull request gets a read-only token and no secrets whatever this
+# says.
 permissions:
   contents: read
 
@@ -673,5 +673,8 @@ jobs:
           repository: dasmatus/losos
           tag: ${{ github.ref_name }}
           body: ${{ steps.body.outputs.body }}
-          mode: create
+          assets: |
+            ${{ steps.stage.outputs.isoName }}.sha256
+            ${{ steps.stage.outputs.qcow2Name }}.sha256
+            release.json
           token: ${{ secrets.FORGEJO_TOKEN }}
