@@ -514,20 +514,56 @@ jobs:
             echo "qcow2Sha256=$(cut -d' ' -f1 < "${qcow2}.sha256")"
             echo "qcow2StorePath=$(readlink -f result-qcow2)"
           } >> "$GITHUB_OUTPUT"
-      - id: package
+      - id: publish
         uses: ./.github/actions/forgejo-generic-package
         with:
           server-url: https://codeberg.org
           repository: dasmatus/losos
           package-name: losos-release-media
           package-version: ${{ github.ref_name }}
-          emit-only: "true"
-          files: /dev/null
+          files: |
+            ${{ steps.stage.outputs.isoName }}
+            ${{ steps.stage.outputs.isoName }}.sha256
+            ${{ steps.stage.outputs.qcow2Name }}
+            ${{ steps.stage.outputs.qcow2Name }}.sha256
+            release.json
           token: ${{ secrets.FORGEJO_TOKEN }}
+      - name: verify published registry files
+        id: verify
+        env:
+          BASE_URL: ${{ steps.publish.outputs.base-url }}
+          ISO_NAME: ${{ steps.stage.outputs.isoName }}
+          QCOW2_NAME: ${{ steps.stage.outputs.qcow2Name }}
+        run: |
+          set -euo pipefail
+          iso_url="${BASE_URL}/${ISO_NAME}"
+          qcow2_url="${BASE_URL}/${QCOW2_NAME}"
+
+          probe() {
+            local url="$1"
+            for _ in 1 2 3 4 5 6; do
+              if curl -fsSI -o /dev/null "$url"; then
+                return 0
+              fi
+              sleep 5
+            done
+            echo "::error::published file is not yet reachable: $url" >&2
+            return 1
+          }
+
+          probe "$iso_url"
+          probe "${iso_url}.sha256"
+          probe "$qcow2_url"
+          probe "${qcow2_url}.sha256"
+          {
+            echo "baseUrl=${BASE_URL}"
+            echo "isoUrl=${iso_url}"
+            echo "qcow2Url=${qcow2_url}"
+          } >> "$GITHUB_OUTPUT"
       - name: compose release metadata
         id: meta
         env:
-          BASE_URL: ${{ steps.package.outputs.base-url }}
+          BASE_URL: ${{ steps.verify.outputs.baseUrl }}
           TAG: ${{ github.ref_name }}
           ISO_NAME: ${{ steps.stage.outputs.isoName }}
           ISO_SIZE: ${{ steps.stage.outputs.isoSize }}
@@ -566,47 +602,17 @@ jobs:
             echo "isoUrl=${iso_url}"
             echo "qcow2Url=${qcow2_url}"
           } >> "$GITHUB_OUTPUT"
-      - id: publish
-        uses: ./.github/actions/forgejo-generic-package
+      - uses: ./.github/actions/forgejo-generic-package
         with:
           server-url: https://codeberg.org
           repository: dasmatus/losos
           package-name: losos-release-media
           package-version: ${{ github.ref_name }}
-          files: |
-            ${{ steps.stage.outputs.isoName }}
-            ${{ steps.stage.outputs.isoName }}.sha256
-            ${{ steps.stage.outputs.qcow2Name }}
-            ${{ steps.stage.outputs.qcow2Name }}.sha256
-            release.json
+          replace-version: "false"
+          files: release.json
           token: ${{ secrets.FORGEJO_TOKEN }}
-      - name: verify published registry files
-        env:
-          BASE_URL: ${{ steps.publish.outputs.base-url }}
-          ISO_NAME: ${{ steps.stage.outputs.isoName }}
-          QCOW2_NAME: ${{ steps.stage.outputs.qcow2Name }}
-        run: |
-          set -euo pipefail
-          iso_url="${BASE_URL}/${ISO_NAME}"
-          qcow2_url="${BASE_URL}/${QCOW2_NAME}"
-
-          probe() {
-            local url="$1"
-            for _ in 1 2 3 4 5 6; do
-              if curl -fsSI -o /dev/null "$url"; then
-                return 0
-              fi
-              sleep 5
-            done
-            echo "::error::published file is not yet reachable: $url" >&2
-            return 1
-          }
-
-          probe "$iso_url"
-          probe "${iso_url}.sha256"
-          probe "$qcow2_url"
-          probe "${qcow2_url}.sha256"
-          probe "${BASE_URL}/release.json"
+      - name: verify published release metadata
+        run: curl -fsSI -o /dev/null "${{ steps.meta.outputs.baseUrl }}/release.json"
       - name: compose the release body
         id: body
         env:
