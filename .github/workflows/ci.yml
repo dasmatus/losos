@@ -515,9 +515,23 @@ jobs:
             echo "qcow2Sha256=$(cut -d' ' -f1 < "${qcow2}.sha256")"
             echo "qcow2StorePath=$(readlink -f result-qcow2)"
           } >> "$GITHUB_OUTPUT"
-      - name: compose release metadata
+      - id: publish
+        uses: ./.github/actions/forgejo-generic-package
+        with:
+          server-url: https://codeberg.org
+          repository: dasmatus/losos
+          package-name: losos-release-media
+          package-version: ${{ github.ref_name }}
+          files: |
+            ${{ steps.stage.outputs.isoName }}
+            ${{ steps.stage.outputs.isoName }}.sha256
+            ${{ steps.stage.outputs.qcow2Name }}
+            ${{ steps.stage.outputs.qcow2Name }}.sha256
+          token: ${{ secrets.FORGEJO_TOKEN }}
+      - name: verify published registry files
         id: meta
         env:
+          BASE_URL: ${{ steps.publish.outputs.base-url }}
           TAG: ${{ github.ref_name }}
           ISO_NAME: ${{ steps.stage.outputs.isoName }}
           ISO_SIZE: ${{ steps.stage.outputs.isoSize }}
@@ -529,7 +543,26 @@ jobs:
           QCOW2_STORE_PATH: ${{ steps.stage.outputs.qcow2StorePath }}
         run: |
           set -euo pipefail
-          base="https://codeberg.org/api/packages/dasmatus/generic/losos-release-media/${TAG}"
+          iso_url="${BASE_URL}/${ISO_NAME}"
+          qcow2_url="${BASE_URL}/${QCOW2_NAME}"
+
+          probe() {
+            local url="$1"
+            for _ in 1 2 3 4 5 6; do
+              if curl -fsSI -o /dev/null "$url"; then
+                return 0
+              fi
+              sleep 5
+            done
+            echo "::error::published file is not yet reachable: $url" >&2
+            return 1
+          }
+
+          probe "$iso_url"
+          probe "${iso_url}.sha256"
+          probe "$qcow2_url"
+          probe "${qcow2_url}.sha256"
+
           jq -n \
             --arg package "losos-release-media" \
             --arg version "$TAG" \
@@ -537,12 +570,12 @@ jobs:
             --arg isoSha "$ISO_SHA256" \
             --argjson isoSize "$ISO_SIZE" \
             --arg isoPath "$ISO_STORE_PATH" \
-            --arg isoUrl "${base}/${ISO_NAME}" \
+            --arg isoUrl "$iso_url" \
             --arg qcow2 "$QCOW2_NAME" \
             --arg qcow2Sha "$QCOW2_SHA256" \
             --argjson qcow2Size "$QCOW2_SIZE" \
             --arg qcow2Path "$QCOW2_STORE_PATH" \
-            --arg qcow2Url "${base}/${QCOW2_NAME}" \
+            --arg qcow2Url "$qcow2_url" \
             '{
                registry:{package:$package, version:$version},
                iso:{name:$iso, sha256:$isoSha, size:$isoSize, storePath:$isoPath, url:$isoUrl},
@@ -550,9 +583,9 @@ jobs:
              }' > release.json
           cat release.json
           {
-            echo "baseUrl=${base}"
-            echo "isoUrl=${base}/${ISO_NAME}"
-            echo "qcow2Url=${base}/${QCOW2_NAME}"
+            echo "baseUrl=${BASE_URL}"
+            echo "isoUrl=${iso_url}"
+            echo "qcow2Url=${qcow2_url}"
           } >> "$GITHUB_OUTPUT"
       - uses: ./.github/actions/forgejo-generic-package
         with:
@@ -560,13 +593,11 @@ jobs:
           repository: dasmatus/losos
           package-name: losos-release-media
           package-version: ${{ github.ref_name }}
-          files: |
-            ${{ steps.stage.outputs.isoName }}
-            ${{ steps.stage.outputs.isoName }}.sha256
-            ${{ steps.stage.outputs.qcow2Name }}
-            ${{ steps.stage.outputs.qcow2Name }}.sha256
-            release.json
+          replace-version: "false"
+          files: release.json
           token: ${{ secrets.FORGEJO_TOKEN }}
+      - name: verify published release metadata
+        run: curl -fsS -o /dev/null "${{ steps.meta.outputs.baseUrl }}/release.json"
       - name: compose the release body
         id: body
         env:
