@@ -465,7 +465,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 120
     if: ${{ startsWith(github.ref, 'refs/tags/') }}
-    needs: [iso]
+    needs: [iso, losos-ctl, registrar-and-ui]
     permissions:
       contents: write
     steps:

@@ -161,6 +161,10 @@ runs:
               while IFS= read -r aid; do
                 [ -n "$aid" ] || continue
                 api DELETE "$API/releases/$id/assets/$aid" >/dev/null || true
+                if [ "$CODE" != "204" ] && [ "$CODE" != "404" ]; then
+                  echo "::error::deleting existing asset $aid failed: HTTP $CODE" >&2
+                  cat /tmp/api.out >&2; exit 1
+                fi
               done < <(jq -r --arg n "$base" '.[]? | select(.name == $n) | .id' /tmp/assets.json)
             elif [ "$CODE" != "404" ]; then
               echo "::error::listing existing assets failed: HTTP $CODE" >&2
