@@ -55,13 +55,11 @@
 #
 # ── Distribution ────────────────────────────────────────────────────────────
 #
-# Local target only. The image is a multi-GiB artifact: it cannot be built in
-# CI (10 minutes / 8 GB per job, and the RAM quota counts filesystem writes —
-# see .forgejo/workflows/ci.yml) and it cannot be published on Codeberg, whose
-# whole recommended budget for packages + LFS + attachments is ~1.5 GiB and is
-# already spent on one ISO. If it is ever published, it goes somewhere that
-# hosts large files, with the four points above repeated at the download link,
-# not implied by a filename.
+# It does not fit the Codeberg runners this repository uses for its ordinary CI:
+# 10 minutes / 8 GB per job, with filesystem writes counted as RAM. So the tag
+# release path builds it on GitHub's larger runners and publishes it to
+# Codeberg's generic package registry, with the warnings above repeated on the
+# release page rather than implied by a filename.
 #
 # x86_64-linux only, like the rest of this flake: the config being imaged is
 # nixosConfigurations.install, which is pinned to that system.
