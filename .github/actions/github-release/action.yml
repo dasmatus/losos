@@ -1,20 +1,11 @@
 # Creates or updates a GitHub release for a tag and attaches its assets.
 #
-# The GitHub counterpart of .forgejo/actions/forgejo-release, and it replaces
-# three actions rather than one. On Codeberg the ISO cannot be attached at all —
-# Codeberg asks that a repository stay under "1.5 GiB of packages, LFS and
-# attachments" and one image is that entire allowance — so that lane uploads the
-# bytes to buzzheavier, links them from the release body, and runs
-# .forgejo/workflows/refresh.yml twice a week to stop the link expiring.
-#
-# None of that constraint exists here. A GitHub release asset may be up to 2 GiB
-# and does not count against any repository budget, so the image is attached
-# directly, the link never expires, and publish-buzz, prune-buzz and the whole
-# refresh workflow have nothing to do on this forge. Carrying them over would be
-# porting a workaround to a platform that does not have the problem — and would
-# have broken anyway: GitHub disables scheduled workflows after 60 days without
-# repository activity, so the treadmill that keeps those links alive would stop
-# silently and take every published download with it.
+# The GitHub counterpart of .forgejo/actions/forgejo-release. The large media
+# files themselves now live in Codeberg's generic package registry, because the
+# demo QCOW2 is larger than GitHub's per-asset release limit and Codeberg's tag
+# release body points at the same registry. This action only carries the small
+# metadata assets (`*.sha256`, `release.json`) and writes the GitHub release
+# body that links to the registry.
 #
 # Written against curl and jq rather than a marketplace release action, for the
 # same reason the Forgejo copy is: a release is a POST plus one upload per
