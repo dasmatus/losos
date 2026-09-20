@@ -273,7 +273,10 @@ A separate `midnight-reboot.timer` reboots unconditionally at 00:07 with
   exits 0. And `lvextend -l 77` without the `+` is an absolute extent count,
   which *shrinks* a larger volume — under mounted ext4 that destroys it.
   `lososd` needs lvm2/cryptsetup/e2fsprogs on its unit `path` or the first
-  step fails with "No such file or directory".
+  step fails with "No such file or directory". The same applies to `curl`,
+  which `GET /api/apps/search` shells out to: `path` **replaces** PATH, so a
+  binary left off that list is not on it by accident, and the failure surfaces
+  to the owner as a feature that quietly never works.
 - **The LUKS key file must not live under `/root` or `/home`.** `lososd` runs
   with `ProtectHome=true` — on purpose, so a compromised request handler cannot
   read either data domain — and that hides `/root` too. `cryptsetup resize`
