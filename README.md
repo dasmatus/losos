@@ -80,11 +80,10 @@ Tagged releases carry a prebuilt image:
 
 **<https://codeberg.org/dasmatus/losos/releases/latest>**
 
-The ISO is linked from the release rather than attached to it, because one
-image is Codeberg's entire recommended allowance for packages, LFS and
-attachments. That link is re-uploaded automatically twice a week and can still
-lapse; the `.sha256` on the release stays valid either way. To build it
-yourself:
+The release pages link to versioned files in Codeberg's generic package
+registry rather than attaching the multi-gigabyte media directly. The registry
+holds the installer ISO and the demo QCOW2, and the release still carries the
+small `.sha256`/`release.json` metadata. To build the installer ISO yourself:
 
 ```sh
 nix build .#nixosConfigurations.iso.config.system.build.isoImage
@@ -143,6 +142,7 @@ nix build .#losos-disk-qcow2        # devenv shell build-media qcow2
 
 A preinstalled QCOW2 to boot in QEMU or virt-manager, so you can look at the
 admin UI, Nextcloud and the settings page without finding a spare machine.
+Tagged releases publish it beside the installer ISO in the generic registry.
 
 It is not the appliance, and the difference is the security model rather than a
 detail. A disk image cannot carry the TPM-sealed LUKS volume the installer
@@ -358,23 +358,14 @@ The installer ISO **is** built in CI on every push, in both lanes, and
 published when you push a `v*` tag. Publishing stays rationed to tags because a
 1.5 GB upload per commit to a free host would be antisocial.
 
-Where the bytes land is the one place the two lanes genuinely diverge. On
-Codeberg the image goes to buzzheavier, the release body links it, and only the
-`.sha256` and a small `release.json` are attached to the release itself — one
-ISO is Codeberg's entire recommended allowance for packages, LFS and
-attachments. That download link is not permanent: buzzheavier's free tier keeps
-a file for 8 days, adds 2 days per download, and only makes it permanent after
-30 downloads inside 60 days, which an appliance ISO will not see. So
-`.forgejo/workflows/refresh.yml` re-uploads the newest release's image twice a
-week and rewrites that release's body with the new link. Delete that workflow
-and every published download link dies within about a week.
-
-On GitHub a release asset may be 2 GiB and counts against no repository budget,
-so the image is attached to the release directly by
-`.github/actions/github-release`. The link never expires, and there is no
-refresh treadmill to port — which is just as well, because GitHub disables
-scheduled workflows after 60 days without repository activity, so the treadmill
-would have stopped silently and taken every published download with it.
+Where the bytes land is now the one intentional extra difference between the
+two lanes. The ordinary CI gates still run on both forges, but release
+publication happens from GitHub's larger runners: they build the installer ISO
+and the demo QCOW2, upload both to Codeberg's generic package registry, then
+update both release pages to point there. That keeps one durable, versioned set
+of downloads while avoiding GitHub's per-asset release limit and Codeberg's
+smaller build runners. The release pages themselves still only carry the small
+`.sha256` and `release.json` metadata.
 
 It looks like it should not fit — but of
 the 769 store paths in its closure, 766 are stock nixpkgs that cache.nixos.org
