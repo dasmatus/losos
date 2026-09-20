@@ -242,21 +242,21 @@ export function passwordProblem(password: string): string | null {
 
 // ── GET /api/recovery ─────────────────────────────────────────────────────
 
-/* PENDING — THE ROUTE DOES NOT EXIST YET.
+/* Served. `backend/src/recovery.rs` mints a v4 UUID once and keeps it at
+ * /var/secrets/losos-recovery-code; `backend/src/http.rs` routes GET
+ * /api/recovery to it, `backend/src/dbus.rs` exposes the same call as
+ * `Recovery`, and `backend/schema.json` carries the wire shape the interface
+ * below is transcribed from.
  *
- * backend/src/recovery.rs is written and tested: `ensure_code` mints a v4 UUID
- * once, keeps it at /var/secrets/losos-recovery-code, and returns
- * `Recovery { code, minted }`. modules/recovery.nix already points lososd at
- * the file with LOSOS_RECOVERY_FILE. What is missing is the wiring — no
- * `/api/recovery` in backend/src/http.rs, no `Recovery` method on the D-Bus
- * interface, nothing in backend/schema.json.
+ * The 404 branch is kept, and is not dead code: this SPA is served from the
+ * appliance's own store path, but `losos.backend.package` can be pinned to an
+ * older lososd, and a box mid-`nixos-rebuild switch` has the new UI in front of
+ * the previous daemon for the length of the rebuild. Step 3 then says the box
+ * cannot show a code, in words, and unblocks Continue.
  *
- * The shape below is transcribed from that module's `Recovery` struct, so when
- * the route lands it should need no change here. Until it does, this call
- * fails with a 404 and step 3 says the box cannot show a code yet, in words.
- * It must never invent one: a UUID the box did not mint is a piece of paper
- * that proves nothing, and the owner would not find out until the reinstall
- * this code exists to survive. */
+ * What it must never do is invent one. A UUID the box did not mint is a piece
+ * of paper that proves nothing, and the owner would not find out until the
+ * reinstall this code exists to survive. */
 
 export const RECOVERY_URL = "/api/recovery";
 
