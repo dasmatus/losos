@@ -63,6 +63,15 @@ pub struct FakeLosos {
     /// test can seed it with [`crate::recovery::MemoryStore::with_file`] or
     /// count its `writes` to prove the code is minted exactly once.
     pub recovery: crate::recovery::MemoryStore,
+
+    // ── Searching the app catalogue ─────────────────────────────────────
+    /// Body a fake catalogue hands back. `None` models the fetch not happening
+    /// at all — no route off the box, DNS unanswered, the catalogue down —
+    /// which is the case the screen has to keep working through.
+    pub catalogue_body: Option<String>,
+    /// Every query the fake was asked for, in order. A test reads this to
+    /// prove the command trimmed before searching rather than after.
+    pub catalogue_queries: Vec<String>,
 }
 
 impl FakeLosos {
@@ -95,6 +104,17 @@ impl FakeLosos {
             // Empty, so the default fake is a fresh appliance that has never
             // minted a code — the state the first-run wizard actually meets.
             recovery: crate::recovery::MemoryStore::empty(),
+            // One row, so the happy path is the default. Deliberately carries
+            // an organisation rather than only a repository name, because that
+            // is the field the row must be attributable by.
+            catalogue_body: Some(
+                r#"{"packages":[{"package_id":"a1b2","name":"nextcloud",
+                   "normalized_name":"nextcloud","display_name":"Nextcloud",
+                   "description":"A safe home for all your data","version":"6.6.10",
+                   "repository":{"name":"nextcloud","organization_display_name":"Nextcloud GmbH"}}]}"#
+                    .to_string(),
+            ),
+            catalogue_queries: Vec::new(),
         }
     }
 }
@@ -157,6 +177,18 @@ impl Losos for FakeLosos {
     /// reimplemented it would prove only that the fake agrees with itself.
     fn recovery_code(&mut self) -> anyhow::Result<crate::recovery::Recovery> {
         crate::recovery::ensure_code(&mut self.recovery)
+    }
+
+    /// The real parser, run against a recorded body — same reasoning as
+    /// `recovery_code` above: a fake that reimplemented the mapping would
+    /// prove only that the fake agrees with itself.
+    fn search_apps(&mut self, query: &str) -> anyhow::Result<Vec<crate::catalogue::App>> {
+        self.catalogue_queries.push(query.to_string());
+        let body = self
+            .catalogue_body
+            .as_deref()
+            .ok_or_else(|| anyhow::anyhow!("the catalogue could not be reached"))?;
+        crate::catalogue::parse_results(body)
     }
 
     fn vg_free(&mut self) -> anyhow::Result<crate::grow::VgFree> {

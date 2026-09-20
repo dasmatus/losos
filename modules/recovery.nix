@@ -1,20 +1,27 @@
 # The appliance recovery code — where lososd keeps it, and why there.
 #
-# What the code is for: a factory reset or a reinstall wipes /persist, and with
-# it every scrap of identity this box has. It comes back with a fresh
-# machine-id, a fresh /etc/rancher/node/password, and no
-# /var/secrets/losos-proxy-token. To the edge that is a stranger claiming a
-# hostname the registry has already seen, and the rejoin is refused as a
-# duplicate — permanently, because nothing on the new box can prove it is the
-# old one. The recovery code is the missing proof: a UUID the owner wrote down
-# before the wipe.
+# What the code is for: the reinstall ISO wipes /persist, and with it every
+# scrap of identity this box has. It comes back with a fresh machine-id, a
+# fresh /etc/rancher/node/password, and no /var/secrets/losos-proxy-token.
+# (`losos-ctl factory-reset` does NOT wipe the disk — it restores the committed
+# defaults and rebuilds. The destructive tier is the ISO; see
+# backend/src/losos.rs, cmd_factory_reset.)
 #
 # The appliance half is what this module wires. The edge half — a `recovery`
 # map in the registrar's registry.json and a route that trades a code for an
-# identity — does not exist yet, and modules/options.nix (losos.edge.*) is
-# where it will be declared when it does. Until then this code is minted,
-# stored and displayed, and recovers nothing on its own. Do not let the admin
-# UI imply otherwise.
+# identity — does not exist, and before building it, read the second section of
+# backend/src/recovery.rs: the mesh lockout this code was conceived to prevent
+# is ALREADY prevented by /cluster/join's stale-node cleanup, which proves
+# identity with the proxy token the box already has. What an edge half would
+# actually add is self-service re-issue of that token over an unauthenticated
+# internet-reachable route, which is a different feature with a different
+# threat model and has not been agreed.
+#
+# So today this code is minted, stored and displayed, and recovers nothing.
+# Nothing consumes it. Do not let the admin UI imply otherwise — and note that
+# admin-ui/app/src/screens/wizard/StepRecovery.tsx currently DOES, in the words
+# "the only proof that the new box is the old one". That copy and this comment
+# have to be settled together.
 #
 # Why this is a separate module rather than three lines in modules/daemon.nix:
 # same reason modules/tls.nix is separate. daemon.nix is about how the control
