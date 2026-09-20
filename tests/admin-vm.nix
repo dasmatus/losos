@@ -6,7 +6,14 @@
 #   2. `losos-ctl state` (the facade, over D-Bus) returns the state JSON,
 #   3. /api/health is reachable without a token (intentionally public),
 #   4. the admin API answers 401 without a Bearer token and 200 with it,
-#   5. lososd mints the admin token (64 hex chars, mode 0600) on first start.
+#   5. lososd mints the admin token (64 hex chars, mode 0600) on first start,
+#   6. /api/apps/search is gated like the rest and refuses a bad query with a
+#      400 rather than a 404.
+#
+# (6) deliberately never runs a search. The VM has no route to a catalogue and
+# should not get one for a test: what would be under test then is the test
+# host's network. The search itself is exercised against a recorded body in
+# backend/src/losos.rs, and the response mapping in backend/src/catalogue.rs.
 #
 # This is the "disko-free variant" the plan calls for: it imports only
 # options.nix + daemon.nix — no disko, impermanence, boot, services, cluster or
@@ -86,5 +93,22 @@ pkgs.testers.nixosTest {
     assert code == "200", f"expected 200 with token, got {code!r}"
     body = machine.succeed(f"curl -s -H '{hdr}' localhost:8082/api/state")
     assert '"mode"' in body, f"authed state missing mode: {body!r}"
+
+    # 6. The catalogue search: gated like everything else, and a query the box
+    # will not act on is a 400. Never a 404 — the settings screen latches a 404
+    # as "this box does not serve the route" and stops asking for the rest of
+    # the session, so answering that way would disable the field with nothing
+    # to say why.
+    code = machine.succeed(
+      "curl -s -o /dev/null -w '%{http_code}' 'localhost:8082/api/apps/search?q=nextcloud'"
+    )
+    assert code == "401", f"search answered {code!r} without a token, expected 401"
+
+    for label, query in [("no q", ""), ("one character", "?q=n")]:
+      code = machine.succeed(
+        f"curl -s -o /dev/null -w '%{{http_code}}' -H '{hdr}' "
+        f"'localhost:8082/api/apps/search{query}'"
+      )
+      assert code == "400", f"search with {label} answered {code!r}, expected 400"
   '';
 }
