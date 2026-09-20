@@ -128,10 +128,10 @@ in
   # {.forgejo,.github}/actions/cachix-push pushes from four lanes using the
   # CACHIX_KEY secret -- one copy of that action per forge, same cache, same
   # key, because it is modules/cache.nix at the other end that decides them.
-  # The installer ISO is deliberately NOT among them here -- the Codeberg
-  # release lane pushes it, so refresh.yml can substitute it instead of
-  # rebuilding. The GitHub lane attaches the image to the release instead, so
-  # it has nothing to substitute and nothing to refresh.
+  # The release media are deliberately NOT among them here. GitHub's tag lane
+  # publishes the installer ISO and the demo QCOW2 to Codeberg's generic
+  # package registry, and the release pages point there; the cache remains for
+  # substitution, not end-user downloads.
   cachix.push = "losos";
 
   # ── Toolchain ────────────────────────────────────────────────────────────
