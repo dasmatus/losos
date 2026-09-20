@@ -121,6 +121,13 @@ in
         pkgs.cryptsetup
         pkgs.e2fsprogs
         pkgs.coreutils
+        # What `GET /api/apps/search` shells out to. The admin pages are served
+        # under `connect-src 'self'`, so the browser cannot reach a catalogue
+        # itself and lososd does the search — see backend/src/catalogue.rs for
+        # why that is a subprocess rather than a client crate. Same failure
+        # shape as the grow binaries above if this line goes: ENOENT at the
+        # exec, reported to the owner as a search that will not come back.
+        pkgs.curl
       ]
       # crictl, to find and exec into the Nextcloud workload container.
       ++ lib.optional ncContainer pkgs.cri-tools

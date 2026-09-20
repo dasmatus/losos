@@ -80,6 +80,17 @@ pub trait Losos {
     /// What this method carries is the *idempotence* — every call after the
     /// first must return the same code and write nothing.
     fn recovery_code(&mut self) -> anyhow::Result<crate::recovery::Recovery>;
+
+    // ── Searching the app catalogue ─────────────────────────────────────
+    /// Rows matching `query`, from the catalogue in [`crate::catalogue`].
+    ///
+    /// The query arrives validated — [`cmd_apps_search`] refuses a bad one
+    /// before this is reached — so an `Err` here means the search could not be
+    /// made or did not come back: no route off the box, a catalogue that is
+    /// down, a body that is not JSON. All three are worth retrying, which is
+    /// why the screen distinguishes them from "this box does not serve the
+    /// route" (a 404) and offers the field again.
+    fn search_apps(&mut self, query: &str) -> anyhow::Result<Vec<crate::catalogue::App>>;
 }
 
 /// Message stamped on a rebuild the moment it is queued.
@@ -349,6 +360,23 @@ pub fn cmd_claim<L: Losos>(
 pub fn cmd_recovery<L: Losos>(l: &mut L) -> anyhow::Result<Value> {
     let r = l.recovery_code()?;
     Ok(json!({ "code": r.code, "minted": r.minted }))
+}
+
+/// Search the app catalogue.
+///
+/// Two fields out, both of which `admin-ui/app/src/screens/settings/
+/// catalogue.ts` parses: `results`, the rows, and `sources`, the catalogues
+/// they were drawn from. `sources` is sent even when `results` is empty —
+/// "nothing matched on Artifact Hub" and "nothing matched" are different
+/// sentences, and only the first one is true.
+///
+/// The query is validated here rather than only at the HTTP boundary so the
+/// rule travels with the command: every caller of this function gets the same
+/// refusal, and the D-Bus surface cannot grow a laxer one by accident.
+pub fn cmd_apps_search<L: Losos>(l: &mut L, query: &str) -> anyhow::Result<Value> {
+    let query = crate::catalogue::validate_query(query).map_err(|e| anyhow::anyhow!(e))?;
+    let results = l.search_apps(query)?;
+    Ok(json!({ "sources": [crate::catalogue::SOURCE], "results": results }))
 }
 
 /// Rebuild progress. Polled by the admin UI roughly every two seconds.
@@ -679,6 +707,9 @@ mod tests {
             fn recovery_code(&mut self) -> anyhow::Result<crate::recovery::Recovery> {
                 self.0.recovery_code()
             }
+            fn search_apps(&mut self, query: &str) -> anyhow::Result<Vec<crate::catalogue::App>> {
+                self.0.search_apps(query)
+            }
         }
 
         let mut inert = Inert(FakeLosos::new());
@@ -695,5 +726,70 @@ mod tests {
         assert!(out.get("rebuild").is_none());
         assert_eq!(out["mode"], "mesh");
         assert_eq!(out["sharing"], true);
+    }
+
+    // ── Searching the app catalogue ─────────────────────────────────────
+
+    #[test]
+    fn a_search_answers_in_the_two_fields_the_settings_screen_parses() {
+        let mut f = FakeLosos::new();
+        let out = cmd_apps_search(&mut f, "nextcloud").unwrap();
+
+        assert_eq!(out["sources"][0], crate::catalogue::SOURCE);
+        let rows = out["results"].as_array().unwrap();
+        assert_eq!(rows.len(), 1);
+        // The three the SPA requires on every row.
+        assert_eq!(rows[0]["name"], "Nextcloud");
+        assert_eq!(rows[0]["source"], "Nextcloud GmbH");
+        assert!(rows[0]["id"].is_string());
+    }
+
+    /// `sources` is not conditional on there being rows: "nothing matched on
+    /// Artifact Hub" and "nothing matched" are different sentences, and the
+    /// screen can only write the first one if the box says where it looked.
+    #[test]
+    fn a_search_that_matched_nothing_still_says_where_it_looked() {
+        let mut f = FakeLosos::new();
+        f.catalogue_body = Some(r#"{"packages":[]}"#.to_string());
+        let out = cmd_apps_search(&mut f, "nothing-matches-this").unwrap();
+
+        assert_eq!(out["sources"][0], crate::catalogue::SOURCE);
+        assert!(out["results"].as_array().unwrap().is_empty());
+    }
+
+    /// The command trims before it searches, so a trailing space the owner
+    /// typed is not part of the term the catalogue is asked for.
+    #[test]
+    fn the_query_reaches_the_catalogue_trimmed() {
+        let mut f = FakeLosos::new();
+        cmd_apps_search(&mut f, "  nextcloud  ").unwrap();
+        assert_eq!(f.catalogue_queries, vec!["nextcloud".to_string()]);
+    }
+
+    /// Refused *before* the effect, not after it. A query the box will not act
+    /// on must not become a request to somebody else's server.
+    #[test]
+    fn a_refused_query_never_reaches_the_catalogue() {
+        for bad in ["n", "", "   ", "next\ncloud"] {
+            let mut f = FakeLosos::new();
+            assert!(
+                cmd_apps_search(&mut f, bad).is_err(),
+                "{bad:?} was accepted"
+            );
+            assert!(
+                f.catalogue_queries.is_empty(),
+                "{bad:?} was sent to the catalogue anyway"
+            );
+        }
+    }
+
+    /// A box with no route out is an `Err`, which the HTTP layer turns into a
+    /// 500 and the screen offers to retry — deliberately not an empty result,
+    /// which would read as "there is no such app".
+    #[test]
+    fn a_catalogue_that_cannot_be_reached_is_an_error_not_an_empty_list() {
+        let mut f = FakeLosos::new();
+        f.catalogue_body = None;
+        assert!(cmd_apps_search(&mut f, "nextcloud").is_err());
     }
 }
