@@ -34,10 +34,18 @@ jobs:
         run: |
           set -euo pipefail
 
-          devenv_rev="$(python3 - <<'PY'
+          devenv_source="$(python3 - <<'PY'
           import json
           from pathlib import Path
-          print(json.loads(Path("devenv.lock").read_text())["nodes"]["devenv"]["locked"]["rev"])
+
+          original = json.loads(Path("devenv.lock").read_text())["nodes"]["devenv"]["original"]
+          if original["type"] != "github":
+              raise SystemExit("unsupported devenv source type")
+
+          source = f'github:{original["owner"]}/{original["repo"]}'
+          if "dir" in original:
+              source = f'{source}?dir={original["dir"]}'
+          print(source)
           PY
           )"
 
@@ -63,7 +71,23 @@ jobs:
           path.write_text(updated)
           PY
 
-          nix run "github:cachix/devenv/${devenv_rev}" -- update
+          nix run "$devenv_source" -- update
+
+          devenv_locked_source="$(python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          locked = json.loads(Path("devenv.lock").read_text())["nodes"]["devenv"]["locked"]
+          if locked["type"] != "github":
+              raise SystemExit("unsupported devenv source type")
+
+          source = f'github:{locked["owner"]}/{locked["repo"]}/{locked["rev"]}'
+          if "dir" in locked:
+              source = f'{source}?dir={locked["dir"]}'
+          print(source)
+          PY
+          )"
+          nix run "$devenv_locked_source" -- update
 
           nix develop -c bash -euo pipefail -c '
             cargo update --manifest-path backend/Cargo.toml
