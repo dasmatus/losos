@@ -143,9 +143,9 @@ jobs:
             gh pr list \
               --base "$DEFAULT_BRANCH" \
               --state open \
-              --json number,headRefName,headRepositoryOwner \
+              --json number,headRefName,isCrossRepository \
               --jq \
-              '.[] | select(.headRefName == "'"$branch"'" and .headRepositoryOwner.login == "'"$GITHUB_REPOSITORY_OWNER"'") | .number' \
+              '.[] | select(.headRefName == "'"$branch"'" and (.isCrossRepository | not)) | .number' \
               | head -n1
           )"
           if [ -n "$number" ]; then
