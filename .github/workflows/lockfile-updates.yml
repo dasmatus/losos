@@ -115,8 +115,15 @@ jobs:
           git push --force-with-lease origin "$branch"
 
           export GH_TOKEN="${LOCKFILE_UPDATE_TOKEN}"
-          head_ref="${GITHUB_REPOSITORY_OWNER}:$branch"
-          number="$(gh pr list --head "$head_ref" --base "$DEFAULT_BRANCH" --state open --json number --jq '.[0].number // empty')"
+          number="$(
+            gh pr list \
+              --base "$DEFAULT_BRANCH" \
+              --state open \
+              --json number,headRefName,headRepositoryOwner \
+              --jq \
+              '.[] | select(.headRefName == "'"$branch"'" and .headRepositoryOwner.login == "'"$GITHUB_REPOSITORY_OWNER"'") | .number' \
+              | head -n1
+          )"
           if [ -n "$number" ]; then
             gh pr edit "$number" \
               --title "chore: weekly lockfile updates" \
