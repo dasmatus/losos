@@ -89,6 +89,18 @@ jobs:
           )"
           nix run "$devenv_locked_source" -- update
 
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          flake_rev = json.loads(Path("flake.lock").read_text())["nodes"]["nixpkgs"]["locked"]["rev"]
+          devenv_rev = json.loads(Path("devenv.lock").read_text())["nodes"]["nixpkgs"]["locked"]["rev"]
+          if flake_rev != devenv_rev:
+              raise SystemExit(
+                  f"devenv.lock drifted from flake.lock: {devenv_rev} != {flake_rev}"
+              )
+          PY
+
           nix develop -c bash -euo pipefail -c '
             cargo update --manifest-path backend/Cargo.toml
             cargo update --manifest-path backend-registrar/Cargo.toml
