@@ -1,0 +1,109 @@
+name: lockfile-updates
+
+on:
+  schedule:
+    # ~04:17 UTC Mondays, offset from the main scheduled CI run.
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: lockfile-updates
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update:
+    name: "bot: weekly lockfile refresh"
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-nix
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      # flake.lock and devenv.{yaml,lock} are coupled: the flake's nixpkgs rev
+      # must be copied into devenv.yaml before devenv.lock is regenerated.
+      - name: refresh lockfiles
+        run: |
+          set -euo pipefail
+
+          nix flake update
+
+          python3 - <<'PY'
+          import json
+          import re
+          from pathlib import Path
+
+          rev = json.loads(Path("flake.lock").read_text())["nodes"]["nixpkgs"]["locked"]["rev"]
+          path = Path("devenv.yaml")
+          text = path.read_text()
+          updated, count = re.subn(
+              r"(^\s+url:\s+github:NixOS/nixpkgs/)[0-9a-f]{40}(\s*$)",
+              rf"\g<1>{rev}\g<2>",
+              text,
+              count=1,
+              flags=re.MULTILINE,
+          )
+          if count != 1:
+              raise SystemExit("failed to sync devenv.yaml nixpkgs revision")
+          path.write_text(updated)
+          PY
+
+          nix run github:cachix/devenv -- update
+
+          nix develop -c bash -euo pipefail -c '
+            cargo update --manifest-path backend/Cargo.toml
+            cargo update --manifest-path backend-registrar/Cargo.toml
+            npm update --prefix admin-ui/app --package-lock-only
+            npm update --prefix admin-ui/design-system/react --package-lock-only
+          '
+      - name: open or update pull request
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+
+          if git diff --quiet; then
+            echo "lockfiles already up to date"
+            exit 0
+          fi
+
+          branch=bot/weekly-lockfile-updates
+          body="$(mktemp)"
+          cat >"$body" <<'EOF'
+          ## Summary
+          - refresh the repository lockfiles
+          - keep `flake.lock`, `devenv.yaml` and `devenv.lock` in sync
+          - refresh Cargo and npm lockfiles
+          EOF
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$branch"
+          git add \
+            flake.lock \
+            devenv.yaml \
+            devenv.lock \
+            backend/Cargo.lock \
+            backend-registrar/Cargo.lock \
+            admin-ui/app/package-lock.json \
+            admin-ui/design-system/react/package-lock.json
+          git commit -m "chore: weekly lockfile updates"
+          git push --force-with-lease origin "$branch"
+
+          number="$(gh pr list --head "$branch" --base "$DEFAULT_BRANCH" --state open --json number --jq '.[0].number // empty')"
+          if [ -n "$number" ]; then
+            gh pr edit "$number" \
+              --title "chore: weekly lockfile updates" \
+              --body-file "$body"
+          else
+            gh pr create \
+              --base "$DEFAULT_BRANCH" \
+              --head "$branch" \
+              --title "chore: weekly lockfile updates" \
+              --body-file "$body"
+          fi
