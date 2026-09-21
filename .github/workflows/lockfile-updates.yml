@@ -165,9 +165,10 @@ jobs:
               --title "chore: weekly lockfile updates" \
               --body-file "$body"
           else
+            head_ref="${GITHUB_REPOSITORY_OWNER}:$branch"
             gh pr create \
               --base "$DEFAULT_BRANCH" \
-              --head "$branch" \
+              --head "$head_ref" \
               --title "chore: weekly lockfile updates" \
               --body-file "$body"
           fi
