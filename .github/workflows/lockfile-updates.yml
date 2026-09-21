@@ -34,17 +34,17 @@ jobs:
         run: |
           set -euo pipefail
 
-          devenv_source="$(python3 - <<'PY'
+          current_devenv_locked_source="$(python3 - <<'PY'
           import json
           from pathlib import Path
 
-          original = json.loads(Path("devenv.lock").read_text())["nodes"]["devenv"]["original"]
-          if original["type"] != "github":
+          locked = json.loads(Path("devenv.lock").read_text())["nodes"]["devenv"]["locked"]
+          if locked["type"] != "github":
               raise SystemExit("unsupported devenv source type")
 
-          source = f'github:{original["owner"]}/{original["repo"]}'
-          if "dir" in original:
-              source = f'{source}?dir={original["dir"]}'
+          source = f'github:{locked["owner"]}/{locked["repo"]}/{locked["rev"]}'
+          if "dir" in locked:
+              source = f'{source}?dir={locked["dir"]}'
           print(source)
           PY
           )"
@@ -71,7 +71,7 @@ jobs:
           path.write_text(updated)
           PY
 
-          nix run "$devenv_source" -- update
+          nix run "$current_devenv_locked_source" -- update
 
           devenv_locked_source="$(python3 - <<'PY'
           import json
@@ -87,7 +87,9 @@ jobs:
           print(source)
           PY
           )"
-          nix run "$devenv_locked_source" -- update
+          if [ "$devenv_locked_source" != "$current_devenv_locked_source" ]; then
+            nix run "$devenv_locked_source" -- update
+          fi
 
           python3 - <<'PY'
           import json
