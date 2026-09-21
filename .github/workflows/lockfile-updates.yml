@@ -67,23 +67,11 @@ jobs:
         run: |
           set -euo pipefail
 
-          if git diff --quiet; then
-            echo "lockfiles already up to date"
-            exit 0
-          fi
-
           branch=bot/weekly-lockfile-updates
-          body="$(mktemp)"
-          cat >"$body" <<'EOF'
-          ## Summary
-          - refresh the repository lockfiles
-          - keep `flake.lock`, `devenv.yaml` and `devenv.lock` in sync
-          - refresh Cargo and npm lockfiles
-          EOF
-
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -B "$branch"
+
           git add \
             flake.lock \
             devenv.yaml \
@@ -92,6 +80,19 @@ jobs:
             backend-registrar/Cargo.lock \
             admin-ui/app/package-lock.json \
             admin-ui/design-system/react/package-lock.json
+
+          if git diff --cached --quiet; then
+            echo "lockfiles already up to date"
+            exit 0
+          fi
+
+          body="$(mktemp)"
+          cat >"$body" <<'EOF'
+          ## Summary
+          - refresh the repository lockfiles
+          - keep `flake.lock`, `devenv.yaml` and `devenv.lock` in sync
+          - refresh Cargo and npm lockfiles
+          EOF
           git commit -m "chore: weekly lockfile updates"
           git push --force-with-lease origin "$branch"
 
