@@ -34,6 +34,13 @@ jobs:
         run: |
           set -euo pipefail
 
+          devenv_rev="$(python3 - <<'PY'
+          import json
+          from pathlib import Path
+          print(json.loads(Path("devenv.lock").read_text())["nodes"]["devenv"]["locked"]["rev"])
+          PY
+          )"
+
           nix flake update
 
           python3 - <<'PY'
@@ -56,7 +63,7 @@ jobs:
           path.write_text(updated)
           PY
 
-          nix run github:cachix/devenv -- update
+          nix run "github:cachix/devenv/${devenv_rev}" -- update
 
           nix develop -c bash -euo pipefail -c '
             cargo update --manifest-path backend/Cargo.toml
