@@ -21,6 +21,10 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The PR branch is pushed later with LOCKFILE_UPDATE_TOKEN so the
+          # resulting push/PR can trigger downstream CI.
+          persist-credentials: false
       - uses: ./.github/actions/setup-nix
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -62,10 +66,15 @@ jobs:
           '
       - name: open or update pull request
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          LOCKFILE_UPDATE_TOKEN: ${{ secrets.LOCKFILE_UPDATE_TOKEN }}
         run: |
           set -euo pipefail
+
+          if [ -z "${LOCKFILE_UPDATE_TOKEN}" ]; then
+            echo "LOCKFILE_UPDATE_TOKEN is required for branch pushes that trigger CI." >&2
+            exit 1
+          fi
 
           branch=bot/weekly-lockfile-updates
           git config user.name  "github-actions[bot]"
@@ -94,8 +103,11 @@ jobs:
           - refresh Cargo and npm lockfiles
           EOF
           git commit -m "chore: weekly lockfile updates"
+          git remote set-url origin \
+            "https://x-access-token:${LOCKFILE_UPDATE_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           git push --force-with-lease origin "$branch"
 
+          export GH_TOKEN="${LOCKFILE_UPDATE_TOKEN}"
           number="$(gh pr list --head "$branch" --base "$DEFAULT_BRANCH" --state open --json number --jq '.[0].number // empty')"
           if [ -n "$number" ]; then
             gh pr edit "$number" \
