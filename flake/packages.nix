@@ -69,7 +69,7 @@ images
     #
     # tests/admin-ui.nix carries the SAME hash over the SAME lock file: two
     # derivations, one dependency set. Change both together.
-    npmDepsHash = "sha256-xXHkWQdrs6B4OwWasb3vwTYHALRS8P94cnvihWlHbE4=";
+    npmDepsHash = "sha256-YczJBAGrZYSrtRSSeKYSOjSnj9UwxasiSAhUd6l+zRk=";
 
     # No postinstall scripts. playwright is a devDependency (tests/admin-ui.nix
     # drives the browser check with it) and its postinstall downloads browsers:
