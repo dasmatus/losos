@@ -34,7 +34,8 @@ let
   # parts (remote_addr, service name, local_addr) are templated in; the
   # secrets are read from their 0600 files so no token ever lands in the
   # store. rathole auto-detects [client] mode from the file.
-  genClientConf = pkgs.writeShellScript "losos-rathole-client-conf" ''
+  genClientConf = pkgs.writeShellScript "losos-rathole-client-conf" (
+    ''
         set -eu
         install -d -m 0700 ${confDir}
         umask 077
@@ -49,7 +50,21 @@ let
     token = "$token"
     local_addr = "127.0.0.1:80"
     EOF
-  '';
+  ''
+  + lib.optionalString (cfg.noisePublicKeyFile != null) ''
+        # Noise (NK): the tunnel is encrypted to the edge's public key, read at
+        # runtime like the tokens so no key material is in the store.
+        pub="$(tr -d '[:space:]' < ${cfg.noisePublicKeyFile})"
+        cat >> ${confDir}/client.toml <<EOF
+
+    [client.transport]
+    type = "noise"
+
+    [client.transport.noise]
+    remote_public_key = "$pub"
+    EOF
+  ''
+  );
 
   # announce flags. --token-file is a path (read at runtime), not the secret,
   # so it's safe to put on the command line / in the store.
