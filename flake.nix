@@ -160,11 +160,11 @@
                 # has.
                 #
                 # Cheap, unlike embedding the whole appliance closure: this is
-                # one small output, so the medium stays inside the size budget
-                # CI and Codeberg's attachment quota are scoped to.
+                # one small output, so the medium stays well inside GitHub's
+                # 2 GiB per-asset release limit.
                 isoImage.storeContents = [ self.packages.${system}.losos-admin-ui ];
                 # The default (zstd level 19, cache sized off host RAM) gets
-                # OOM-killed on codeberg-medium CI runners (exit 137): the
+                # OOM-killed on the former Codeberg CI runners (exit 137): the
                 # container sees the host's RAM but runs under a smaller
                 # cgroup limit. Level 6 + a 1 GiB cap trades a slightly
                 # larger ISO for a build that fits; boot speed is unaffected.
@@ -178,7 +178,7 @@
                 # same guard for the same reason.
                 disko.enableConfig = false;
                 # No flake source is baked into the ISO: losos-install clones
-                # LOSOS_FLAKE_URL (default: the public codeberg repo) into a
+                # LOSOS_FLAKE_URL (default: the public GitHub repo) into a
                 # writable work dir at run time, drops in
                 # modules/install-target.nix, and runs disko + nixos-install
                 # against the clone. The ISO needs network for that clone —

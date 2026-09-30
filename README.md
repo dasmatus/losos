@@ -76,14 +76,13 @@ booted VM by `losos-impermanence`, not just claimed.
 
 ## Install
 
-Tagged releases carry a prebuilt image:
+Tagged releases carry a prebuilt installer ISO:
 
-**<https://codeberg.org/dasmatus/losos/releases/latest>**
+**<https://github.com/dasmatus/losos/releases/latest>**
 
-The release pages link to versioned files in Codeberg's generic package
-registry rather than attaching the multi-gigabyte media directly. The registry
-holds the installer ISO and the demo QCOW2, and the release still carries the
-small `.sha256`/`release.json` metadata. To build the installer ISO yourself:
+The ISO and its `.sha256` are attached to the GitHub release. The demo QCOW2 is
+too large for a release asset, so the release links to it on GHCR. To build the
+installer ISO yourself:
 
 ```sh
 nix build .#nixosConfigurations.iso.config.system.build.isoImage
@@ -129,8 +128,7 @@ copies go unused without saying so. Build it from the commit you mean to
 install.
 
 Build it locally and keep it there. The plain ISO is already about 1.5 GB,
-Codeberg's whole recommended budget for packages and attachments, and the
-closure adds up to 2.4 GiB on top of it once compressed at the level the
+close to GitHub's 2 GiB per-asset release limit, and the closure adds up to 2.4 GiB on top of it once compressed at the level the
 medium's squashfs uses. This is the offline half of what `modules/cache.nix`
 does online. A reachable binary cache is cheaper; the medium works without one.
 
@@ -312,28 +310,18 @@ whitespace, so it stays a gate you have to satisfy yourself.
 
 CI does **not** go through devenv, and spells the same commands out directly.
 It was tried: every job first realises the whole dev toolchain, and both
-devenv jobs hit Codeberg's 10-minute cap (9m31s and 10m05s) while the one
-non-devenv job took 1m32s. The duplication between `devenv.nix` and
-`.forgejo/workflows/ci.yml` is the price of that cap, and the two have to be
-kept in step by hand.
+devenv jobs hit the 10-minute cap of the project's former CI host, Codeberg
+(9m31s and 10m05s), while the one non-devenv job took 1m32s. The duplication
+between `devenv.nix` and `.github/workflows/ci.yml` is the price of that, and
+the two have to be kept in step by hand.
 
-There are two CI lanes, running the same gates against the same flake:
-`.forgejo/workflows/` on Codeberg and `.github/workflows/ci.yml` on GitHub.
-They too are kept in step by hand. Four things differ, and each is a platform
-difference rather than a preference:
-
-- The GitHub lane runs on `ubuntu-latest` with Nix installed by
-  `.github/actions/setup-nix`, not inside `docker.io/nixos/nix`. GitHub injects
-  a glibc-linked Node into container jobs to run JavaScript actions, and that
-  image is Alpine/musl, so `actions/checkout` could not start at all.
-- That action writes the substituters to `/etc/nix/nix.conf` before the daemon
-  starts, rather than passing `NIX_CONFIG`. A multi-user Nix daemon discards
-  cache settings from an untrusted client — with a warning, and a green build
-  that compiled everything from source.
-- GitHub caps jobs at six hours rather than ten minutes, so the Nextcloud image
-  — the one most likely to break, and the hole the Codeberg lane documents —
-  also builds on the weekly schedule there, not only on request.
-- Releases differ; see [Testing](#testing).
+CI runs on GitHub's `ubuntu-latest` with Nix installed by
+`.github/actions/setup-nix`. That action writes the substituters to
+`/etc/nix/nix.conf` before the daemon starts, rather than passing
+`NIX_CONFIG`: a multi-user Nix daemon discards cache settings from an
+untrusted client — with a warning, and a green build that compiled everything
+from source. The Nextcloud image, the one most likely to break, builds on the
+weekly schedule and on request rather than on every push.
 
 Two lock files exist: `flake.lock` pins the nixpkgs that _builds_ the
 appliance, `devenv.lock` the one that _lints and tests_ it. They must be
@@ -341,8 +329,8 @@ bumped together; `check-pins` fails if they disagree.
 
 ## Testing
 
-The VM tests are the real gate, and CI cannot run them — Codeberg's runners
-cap at 10 minutes and 8 GB, and the tests need KVM. Run them locally:
+The VM tests are the real gate, and CI cannot run them — the tests need KVM,
+which GitHub's hosted runners do not offer. Run them locally:
 
 |                      |                                                                                          |
 | -------------------- | ---------------------------------------------------------------------------------------- |
@@ -354,22 +342,14 @@ cap at 10 minutes and 8 GB, and the tests need KVM. Run them locally:
 The `install` system closure is a local-only gate; build it before merging
 anything that touches the module set.
 
-The installer ISO **is** built in CI on every push, in both lanes, and
-published when you push a `v*` tag. Publishing stays rationed to tags because a
-1.5 GB upload per commit to a free host would be antisocial.
+The installer ISO **is** built in CI on every push, and published when you
+push a `v*` tag. The tag job builds the installer ISO and the demo QCOW2,
+attaches the ISO to the GitHub release, and pushes both to GHCR. The QCOW2
+cannot be a release asset, being over GitHub's 2 GiB per-asset limit.
 
-Where the bytes land is now the one intentional extra difference between the
-two lanes. The ordinary CI gates still run on both forges, but release
-publication happens from GitHub's larger runners: they build the installer ISO
-and the demo QCOW2, upload both to Codeberg's generic package registry, then
-update both release pages to point there. That keeps one durable, versioned set
-of downloads while avoiding GitHub's per-asset release limit and Codeberg's
-smaller build runners. The release pages themselves still only carry the small
-`.sha256` and `release.json` metadata.
-
-It looks like it should not fit — but of
-the 769 store paths in its closure, 766 are stock nixpkgs that cache.nixos.org
-serves and only `losos-ctl` costs anything to produce. The CI job takes that
+The ISO job is cheap: of the 769 store paths in its closure, 766 are stock
+nixpkgs that cache.nixos.org serves and only `losos-ctl` costs anything to
+produce. The CI job takes that
 one from the job that already builds it, as a 12 MiB artifact, so it never
 compiles the crate twice. Squashfs and ISO assembly are 50 s on four cores.
 

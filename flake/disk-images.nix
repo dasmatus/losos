@@ -55,11 +55,9 @@
 #
 # ── Distribution ────────────────────────────────────────────────────────────
 #
-# It does not fit the Codeberg runners this repository uses for its ordinary CI:
-# 10 minutes / 8 GB per job, with filesystem writes counted as RAM. So the tag
-# release path builds it on GitHub's larger runners and publishes it to
-# Codeberg's generic package registry, with the warnings above repeated on the
-# release page rather than implied by a filename.
+# It is larger than GitHub's 2 GiB per-asset release limit, so the tag release
+# path pushes it to GHCR as an OCI artifact instead of attaching it, with the
+# warnings above repeated on the release page rather than implied by a filename.
 #
 # x86_64-linux only, like the rest of this flake: the config being imaged is
 # nixosConfigurations.install, which is pinned to that system.
@@ -333,8 +331,7 @@ let
   #   you mean to install.
   #
   #   It does not belong in CI or on a release page. The plain ISO is already
-  #   ~1.5 GB, which is Codeberg's entire recommended budget for packages and
-  #   attachments; this adds ~2.4 GiB of compressed closure on top. It is a
+  #   ~1.5 GB, close to GitHub's 2 GiB per-asset release limit; this adds ~2.4 GiB of compressed closure on top. It is a
   #   local artefact. modules/cache.nix is the online half of the same problem
   #   and is cheaper whenever a cache is reachable.
   isoSystem = self.nixosConfigurations.iso.extendModules {
