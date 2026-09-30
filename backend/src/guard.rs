@@ -8,7 +8,7 @@
 
 use std::collections::HashMap;
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::Path;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
@@ -102,48 +102,48 @@ pub fn retry_after_secs(d: Duration) -> u64 {
     (d.as_secs() + u64::from(d.subsec_nanos() > 0)).max(1)
 }
 
-/// Append-only JSON-lines log: `{"ts","route","outcome","remote"}`.
+/// Append-only JSON-lines log at [`AUDIT_LOG`]:
+/// `{"ts","route","outcome","remote"}`.
 ///
 /// The token, request bodies and passwords are never passed in, so they cannot
 /// be logged. Mode 0600, `O_APPEND`. A write failure is reported to the
 /// journal and does not fail the request: a full disk must not stop the owner
 /// administering the box. It is not tamper-evident.
-pub struct Audit {
-    path: PathBuf,
-}
+///
+/// There is deliberately no way to point this at another path: the file name is
+/// the constant above and nothing else reaches the code that opens it.
+pub struct Audit;
 
-impl Audit {
-    pub fn new(path: impl Into<PathBuf>) -> Self {
-        Self { path: path.into() }
-    }
-
-    /// The appliance's audit log at [`AUDIT_LOG`].
-    pub fn system() -> Self {
-        Self::new(AUDIT_LOG)
-    }
-
-    pub fn record(&self, route: &str, outcome: &str, remote: &str) {
-        let line = serde_json::json!({
-            "ts": chrono::Utc::now().to_rfc3339(),
+/// One record as a JSON line, newline included. Pure, so it is unit-tested
+/// without touching the filesystem.
+pub fn audit_line(ts: &str, route: &str, outcome: &str, remote: &str) -> String {
+    format!(
+        "{}\n",
+        serde_json::json!({
+            "ts": ts,
             "route": route,
             "outcome": outcome,
             "remote": remote,
-        });
-        if let Err(e) = self.append(&format!("{line}\n")) {
-            tracing::error!(error = ?e, path = %self.path.display(), "audit log write failed");
+        })
+    )
+}
+
+impl Audit {
+    pub fn record(&self, route: &str, outcome: &str, remote: &str) {
+        let ts = chrono::Utc::now().to_rfc3339();
+        if let Err(e) = Self::append(&audit_line(&ts, route, outcome, remote)) {
+            tracing::error!(error = ?e, path = AUDIT_LOG, "audit log write failed");
         }
     }
 
-    fn append(&self, line: &str) -> std::io::Result<()> {
+    fn append(line: &str) -> std::io::Result<()> {
         use std::os::unix::fs::OpenOptionsExt;
-        if let Some(dir) = self.path.parent() {
-            std::fs::create_dir_all(dir)?;
-        }
+        std::fs::create_dir_all(Path::new(AUDIT_LOG).parent().unwrap_or(Path::new("/")))?;
         std::fs::OpenOptions::new()
             .create(true)
             .append(true)
             .mode(0o600)
-            .open(&self.path)?
+            .open(AUDIT_LOG)?
             .write_all(line.as_bytes())
     }
 }
@@ -212,5 +212,21 @@ mod tests {
         assert_eq!(retry_after_secs(Duration::from_millis(200)), 1);
         assert_eq!(retry_after_secs(Duration::from_secs(3)), 3);
         assert_eq!(retry_after_secs(Duration::from_millis(2500)), 3);
+    }
+
+    #[test]
+    fn audit_line_is_one_json_object_per_line_without_extras() {
+        let line = audit_line(
+            "2026-09-30T00:00:00+00:00",
+            "/api/apply",
+            "ok",
+            "192.168.1.9",
+        );
+        assert!(line.ends_with('\n') && line.matches('\n').count() == 1);
+        let v: serde_json::Value = serde_json::from_str(line.trim_end()).unwrap();
+        assert_eq!(v["route"], "/api/apply");
+        assert_eq!(v["outcome"], "ok");
+        assert_eq!(v["remote"], "192.168.1.9");
+        assert_eq!(v.as_object().unwrap().len(), 4);
     }
 }
