@@ -128,6 +128,31 @@ impl Audit {
         if !path.starts_with(allowed_root) {
             return None;
         }
+
+        let allowed_root_canon = allowed_root.canonicalize().ok()?;
+        let parent = path.parent()?;
+
+        let resolved_parent = if parent.exists() {
+            parent.canonicalize().ok()?
+        } else {
+            let mut existing = parent;
+            let mut tail: Vec<&std::ffi::OsStr> = Vec::new();
+            while !existing.exists() {
+                let name = existing.file_name()?;
+                tail.push(name);
+                existing = existing.parent()?;
+            }
+            let mut resolved = existing.canonicalize().ok()?;
+            for part in tail.iter().rev() {
+                resolved.push(part);
+            }
+            resolved
+        };
+
+        if !resolved_parent.starts_with(&allowed_root_canon) {
+            return None;
+        }
+
         Some(path)
     }
 
