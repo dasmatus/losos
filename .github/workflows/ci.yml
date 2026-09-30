@@ -64,7 +64,7 @@ on:
 #    too large for a GitHub release asset and too expensive for Codeberg's
 #    runners to build, so this lane builds both files, uploads them to
 #    Codeberg's generic package registry, pushes the same files to GHCR as OCI
-#    artifacts (ghcr.io/<owner>/<repo>/{installer-iso,demo-qcow2}:<tag>) and then
+#    artifacts (ghcr.io/<owner>/<repo>-{installer-iso,demo-qcow2}:<tag>) and then
 #    updates both release pages to point at both.
 #
 # 4. Jobs carry explicit `timeout-minutes`. Codeberg enforces 10 minutes for
@@ -566,14 +566,14 @@ jobs:
           set -euo pipefail
           # GHCR wants a lowercase repository path. Each medium is its own
           # package so it can be pulled (and its retention managed) alone:
-          #   ghcr.io/<owner>/<repo>/installer-iso:<tag>
-          #   ghcr.io/<owner>/<repo>/demo-qcow2:<tag>
+          #   ghcr.io/<owner>/<repo>-installer-iso:<tag>
+          #   ghcr.io/<owner>/<repo>-demo-qcow2:<tag>
           base="ghcr.io/${REPO,,}"
           oras="nix run nixpkgs#oras --"
           echo "$GH_TOKEN" | $oras login ghcr.io -u "$ACTOR" --password-stdin
           push() {
             local pkg="$1" file="$2" type="$3"
-            $oras push "${base}/${pkg}:${TAG}" \
+            $oras push "${base}-${pkg}:${TAG}" \
               --artifact-type "$type" \
               --annotation "org.opencontainers.image.source=https://github.com/${REPO}" \
               --annotation "org.opencontainers.image.version=${TAG}" \
@@ -582,8 +582,8 @@ jobs:
           push installer-iso "$ISO_NAME" application/vnd.losos.installer.iso.v1
           push demo-qcow2 "$QCOW2_NAME" application/vnd.losos.demo.qcow2.v1
           {
-            echo "isoRef=${base}/installer-iso:${TAG}"
-            echo "qcow2Ref=${base}/demo-qcow2:${TAG}"
+            echo "isoRef=${base}-installer-iso:${TAG}"
+            echo "qcow2Ref=${base}-demo-qcow2:${TAG}"
           } >> "$GITHUB_OUTPUT"
       - id: publish
         uses: ./.github/actions/forgejo-generic-package

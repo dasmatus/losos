@@ -49,7 +49,7 @@ impl Daemon {
         if let Some(seed) = token_file_seed {
             std::fs::write(&token_file, seed).unwrap();
         }
-        let audit_log = dir.path().join("audit.log");
+        let audit_log = dir.path().join("state").join("audit.log");
         let port = free_port();
 
         let child = Command::new(env!("CARGO_BIN_EXE_lososd"))
@@ -60,7 +60,6 @@ impl Daemon {
             .env("LOSOS_CONFIG", dir.path().join("defaults.nix"))
             .env("LOSOS_OVERRIDES", dir.path().join("overrides.nix"))
             .env("LOSOS_ADMIN_TOKEN_FILE", &token_file)
-            .env("LOSOS_AUDIT_LOG", &audit_log)
             .env("LOSOS_ADMIN_PORT", port.to_string())
             .env("RUST_LOG", "warn")
             .stdout(Stdio::null())
