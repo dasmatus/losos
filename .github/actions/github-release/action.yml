@@ -26,7 +26,7 @@ inputs:
     required: false
     default: ""
   body:
-    description: "Release body, replacing whatever is there."
+    description: "Generated release notes. Written between marker comments, so hand-written notes around them survive; see below."
     required: true
   assets:
     description: "Newline-separated files to attach. Ignored in patch mode."
@@ -98,15 +98,55 @@ runs:
           cat /tmp/api.out
         }
 
+        # The generated notes live between two marker comments. A release made
+        # by hand ("Draft a new release" on the web, which also creates the
+        # tag and so starts this lane) keeps the notes its author wrote: the
+        # generated section is appended below them, and a re-run replaces only
+        # what sits between the markers. Without this, publishing a release by
+        # hand and letting CI attach the ISO would silently erase the notes.
+        merge_body() {
+          jq --arg sec "$IN_BODY" '
+            "<!-- losos-release-media:begin -->" as $b
+            | "<!-- losos-release-media:end -->" as $e
+            | ($b + "\n" + $sec + "\n" + $e) as $block
+            | (.body // "") as $old
+            # split, not index + slice: jq 1.6 returns byte offsets from
+            # index but slices by codepoint, which misplaces the cut as soon
+            # as the notes carry a non-ASCII character such as an em dash.
+            | ($old | split($b)) as $p
+            | if ($p | length) == 2 and ($p[1] | contains($e))
+              then {body: ($p[0] + $block + ($p[1] | split($e) | .[1:] | join($e)))}
+              elif ($old | test("^\\s*$"))
+              then {body: $block}
+              else {body: ($old + "\n\n" + $block)}
+              end
+          ' "$1"
+        }
+
         api GET "$API/releases/tags/$TAG" >/tmp/rel.json || true
+
+        # A draft is invisible to the by-tag lookup above, so a release saved
+        # as a draft by hand before its tag was pushed would get a second,
+        # separate release beside it. Look for one before creating anything.
+        if [ "$CODE" = "404" ]; then
+          api GET "$API/releases?per_page=100" >/tmp/all.json || true
+          if [ "$CODE" = "200" ] && jq -e --arg t "$TAG" \
+              'map(select(.draft and .tag_name == $t)) | length > 0' /tmp/all.json >/dev/null; then
+            jq --arg t "$TAG" 'map(select(.draft and .tag_name == $t)) | .[0]' /tmp/all.json >/tmp/rel.json
+            CODE=200
+            echo "found a draft release for $TAG; filling that in"
+          else
+            CODE=404
+          fi
+        fi
 
         if [ "$CODE" = "404" ]; then
           if [ "$IN_MODE" = "patch" ]; then
             echo "::error::no release exists for $TAG to patch"
             exit 1
           fi
-          jq -n --arg t "$TAG" --arg n "$NAME" --arg b "$IN_BODY" \
-            '{tag_name:$t, name:$n, body:$b}' >/tmp/body.json
+          echo '{}' | merge_body /dev/stdin \
+            | jq --arg t "$TAG" --arg n "$NAME" '. + {tag_name:$t, name:$n}' >/tmp/body.json
           api POST "$API/releases" -H 'content-type: application/json' \
             --data-binary @/tmp/body.json >/tmp/rel.json
           if [ "$CODE" != "201" ]; then
@@ -131,9 +171,10 @@ runs:
         echo "release id: $id"
 
         # An existing release found by GET keeps whatever body it had, so patch
-        # mode — and a re-run of create mode over an existing tag — has to write
-        # it explicitly. PATCH replaces the field outright; it does not append.
-        jq -n --arg b "$IN_BODY" '{body:$b}' >/tmp/patch.json
+        # mode, a re-run over an existing tag, and a release made by hand all
+        # have to write it explicitly. PATCH replaces the field outright, which
+        # is why merge_body folds the existing body in first.
+        merge_body /tmp/rel.json >/tmp/patch.json
         api PATCH "$API/releases/$id" -H 'content-type: application/json' \
           --data-binary @/tmp/patch.json >/tmp/rel.json
         if [ "$CODE" != "200" ]; then
