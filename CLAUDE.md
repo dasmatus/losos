@@ -72,8 +72,9 @@ cargo clippy --manifest-path backend/Cargo.toml --all-targets -- -D warnings
 **There are two CI lanes and both must be kept in step by hand**, with each
 other and with `devenv.nix`: `.forgejo/workflows/` (Codeberg) and
 `.github/workflows/ci.yml` (GitHub). Same flake, same ordinary gates, plus one
-GitHub-only tag-release job that builds the heavy media, uploads them to
-Codeberg's generic package registry and updates both release pages. A change to
+GitHub-only tag-release job that builds the heavy media, attaches the ISO to
+the GitHub release, pushes both media to GHCR, and (only when `FORGEJO_TOKEN`
+is set) mirrors them to Codeberg's generic registry and release page. A change to
 one is a change to both — the GitHub file's header lists the deliberate
 platform differences. `.github/actions/` now carries `setup-nix`,
 `cachix-push`, `github-release` and `forgejo-generic-package`; the Forgejo
