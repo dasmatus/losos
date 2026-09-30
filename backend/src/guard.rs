@@ -8,7 +8,7 @@
 
 use std::collections::HashMap;
 use std::io::Write;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
@@ -23,9 +23,8 @@ const MAX_TRACKED: usize = 1024;
 /// A source quiet for this long is forgotten.
 const FORGET_AFTER: Duration = Duration::from_secs(3600);
 
-/// Default audit file. `/var` is bind-mounted from `/persist`, so this
-/// survives the nightly reboot; overridden by `$LOSOS_AUDIT_LOG`.
-pub const DEFAULT_AUDIT_LOG: &str = "/var/lib/losos/audit.log";
+/// File name of the audit log within the state directory.
+const AUDIT_FILE: &str = "audit.log";
 
 struct Record {
     failures: u32,
@@ -116,59 +115,12 @@ impl Audit {
         Self { path: path.into() }
     }
 
-    fn validated_audit_path(raw: &str) -> Option<PathBuf> {
-        let path = PathBuf::from(raw);
-        if !path.is_absolute() {
-            return None;
-        }
-        if path.components().any(|c| matches!(c, Component::ParentDir)) {
-            return None;
-        }
-        let allowed_root = Path::new("/var/lib/losos");
-        if !path.starts_with(allowed_root) {
-            return None;
-        }
-
-        let allowed_root_canon = allowed_root.canonicalize().ok()?;
-        let parent = path.parent()?;
-
-        let resolved_parent = if parent.exists() {
-            parent.canonicalize().ok()?
-        } else {
-            let mut existing = parent;
-            let mut tail: Vec<&std::ffi::OsStr> = Vec::new();
-            while !existing.exists() {
-                let name = existing.file_name()?;
-                tail.push(name);
-                existing = existing.parent()?;
-            }
-            let mut resolved = existing.canonicalize().ok()?;
-            for part in tail.iter().rev() {
-                resolved.push(part);
-            }
-            resolved
-        };
-
-        if !resolved_parent.starts_with(&allowed_root_canon) {
-            return None;
-        }
-
-        Some(path)
-    }
-
-    pub fn from_env() -> Self {
-        let raw = std::env::var("LOSOS_AUDIT_LOG").unwrap_or_else(|_| DEFAULT_AUDIT_LOG.to_string());
-        match Self::validated_audit_path(&raw) {
-            Some(path) => Self::new(path),
-            None => {
-                tracing::warn!(
-                    path = %raw,
-                    fallback = DEFAULT_AUDIT_LOG,
-                    "invalid LOSOS_AUDIT_LOG; falling back to default"
-                );
-                Self::new(DEFAULT_AUDIT_LOG)
-            }
-        }
+    /// The log inside the daemon's state directory (`$LOSOS_STATE_DIR`,
+    /// `/var/lib/losos` on the appliance — `/var` is bind-mounted from
+    /// `/persist`, so it survives the nightly reboot). The file name is fixed;
+    /// only the directory the daemon already trusts for `state.json` varies.
+    pub fn in_dir(state_dir: &Path) -> Self {
+        Self::new(state_dir.join(AUDIT_FILE))
     }
 
     pub fn record(&self, route: &str, outcome: &str, remote: &str) {
