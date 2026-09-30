@@ -11,8 +11,10 @@
 use crate::installer::{execute, plan_install, BlockDev, Install, LsblkOutput, Options};
 use crate::io_backend::atomic_write;
 use anyhow::{bail, Context};
+use std::net::ToSocketAddrs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::time::{Duration, Instant};
 
 /// Default upstream to install from. Overridable with `LOSOS_FLAKE_URL`.
 pub const DEFAULT_FLAKE_URL: &str = "https://github.com/dasmatus/losos.git";
@@ -26,6 +28,11 @@ pub const DEFAULT_TARGET_REL: &str = "modules/install-target.nix";
 pub const DEFAULT_EMIT_FILE: &str = "/tmp/losos-install-target.nix";
 /// Bytes of key material for a generated keyfile.
 const KEYFILE_BYTES: usize = 4096;
+/// How long to wait for the flake's host to resolve before giving up, in
+/// seconds. Overridable with `LOSOS_NETWORK_TIMEOUT`.
+const DEFAULT_NETWORK_TIMEOUT_SECS: u64 = 600;
+/// Attempts at the clone itself once the host resolves.
+const CLONE_ATTEMPTS: u32 = 3;
 
 /// The production installer.
 pub struct IoInstall;
@@ -114,15 +121,40 @@ impl Install for IoInstall {
     /// the default target drive and TPM mode. That means formatting the wrong
     /// disk. Without `.git` the work dir is a plain path flake and every file
     /// in it is visible.
+    ///
+    /// The autorun ISO starts this from tty1's autologin, which getty reaches
+    /// long before NetworkManager has a DHCP lease, so the first clone used to
+    /// die with "Could not resolve host" and drop the owner to a root shell.
+    /// It now waits for the flake's host to resolve, then retries the clone a
+    /// couple of times for a flaky first connection. Nothing destructive has
+    /// run by this point, so waiting is always safe.
     fn clone_flake(&mut self, url: &str, work: &Path) -> anyhow::Result<()> {
-        if work.exists() {
-            std::fs::remove_dir_all(work)
-                .with_context(|| format!("clearing {}", work.display()))?;
+        if let Some(host) = flake_host(url) {
+            let secs = std::env::var("LOSOS_NETWORK_TIMEOUT")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(DEFAULT_NETWORK_TIMEOUT_SECS);
+            wait_for_host(&host, Duration::from_secs(secs))?;
         }
-        run_quiet(
-            "git",
-            &["clone", "--depth", "1", url, &work.to_string_lossy()],
-        )?;
+        let mut attempt = 1;
+        loop {
+            if work.exists() {
+                std::fs::remove_dir_all(work)
+                    .with_context(|| format!("clearing {}", work.display()))?;
+            }
+            match run_quiet(
+                "git",
+                &["clone", "--depth", "1", url, &work.to_string_lossy()],
+            ) {
+                Ok(()) => break,
+                Err(e) if attempt < CLONE_ATTEMPTS => {
+                    println!("losos-install: clone attempt {attempt} of {CLONE_ATTEMPTS} failed, retrying: {e:#}");
+                    std::thread::sleep(Duration::from_secs(5 * u64::from(attempt)));
+                    attempt += 1;
+                }
+                Err(e) => return Err(e),
+            }
+        }
         let git_dir = work.join(".git");
         if git_dir.exists() {
             std::fs::remove_dir_all(&git_dir)
@@ -215,6 +247,73 @@ impl Install for IoInstall {
     }
 }
 
+/// The host a flake URL is fetched from, or `None` for a local path.
+///
+/// Covers the spellings `LOSOS_FLAKE_URL` realistically takes: `https://…`,
+/// `git+https://…`, `ssh://user@host/…` and scp-style `user@host:path`.
+fn flake_host(url: &str) -> Option<String> {
+    let url = url.strip_prefix("git+").unwrap_or(url);
+    let rest = match url.split_once("://") {
+        Some(("file", _)) => return None,
+        Some((_, rest)) => rest,
+        // scp-style `git@host:owner/repo`; a bare path has no `:` before `/`.
+        None => {
+            let (head, _) = url.split_once(':')?;
+            if head.contains('/') {
+                return None;
+            }
+            head
+        }
+    };
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or(rest);
+    let host = authority.rsplit('@').next().unwrap_or(authority);
+    let host = match host.rsplit_once(':') {
+        Some((h, port)) if port.chars().all(|c| c.is_ascii_digit()) => h,
+        _ => host,
+    };
+    (!host.is_empty()).then(|| host.to_string())
+}
+
+/// Block until `host` resolves, printing progress, or fail after `timeout`.
+///
+/// Resolution is the test because it is what the clone failed on, and it
+/// needs a lease and a working resolver: exactly what is missing while
+/// NetworkManager is still coming up. Ctrl-C ends the wait (the login
+/// wrapper then drops to a shell), which is how the owner gets to `nmtui` to
+/// join Wi-Fi before running `losos-install` again.
+fn wait_for_host(host: &str, timeout: Duration) -> anyhow::Result<()> {
+    let start = Instant::now();
+    let mut announced = false;
+    loop {
+        if (host, 443)
+            .to_socket_addrs()
+            .is_ok_and(|mut a| a.next().is_some())
+        {
+            if announced {
+                println!("losos-install: network is up, {host} resolves");
+            }
+            return Ok(());
+        }
+        let waited = start.elapsed();
+        if waited >= timeout {
+            bail!(
+                "no network: {host} did not resolve within {}s. Plug in a network \
+                 cable, or run nmtui to join Wi-Fi, then run losos-install again",
+                timeout.as_secs()
+            );
+        }
+        if !announced || waited.as_secs() % 30 < 2 {
+            println!(
+                "losos-install: waiting for network ({host} does not resolve yet, {}s so far). \
+                 Plug in a cable; for Wi-Fi press Ctrl-C, run nmtui, then run losos-install",
+                waited.as_secs()
+            );
+            announced = true;
+        }
+        std::thread::sleep(Duration::from_secs(2));
+    }
+}
+
 /// Enumerate block devices with `lsblk --json --bytes`.
 fn read_block_devices() -> anyhow::Result<Vec<BlockDev>> {
     let out = Command::new("lsblk")
@@ -282,4 +381,54 @@ pub fn run_install(opts: &Options) -> anyhow::Result<()> {
     };
     let acts = plan_install(opts, &devs).map_err(|e| anyhow::anyhow!(e))?;
     execute(&mut IoInstall, &acts)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{flake_host, wait_for_host};
+    use std::time::Duration;
+
+    #[test]
+    fn wait_for_host_gives_up_with_a_clear_message() {
+        // .invalid is reserved (RFC 6761) and never resolves.
+        let err = wait_for_host("losos.invalid", Duration::ZERO).unwrap_err();
+        assert!(err.to_string().contains("no network"), "{err}");
+    }
+
+    #[test]
+    fn wait_for_host_returns_at_once_for_a_literal_address() {
+        wait_for_host("127.0.0.1", Duration::ZERO).unwrap();
+    }
+
+    #[test]
+    fn flake_host_covers_the_url_spellings() {
+        let h = |u| flake_host(u);
+        assert_eq!(
+            h("https://github.com/dasmatus/losos.git").as_deref(),
+            Some("github.com")
+        );
+        assert_eq!(
+            h("git+https://github.com/dasmatus/losos").as_deref(),
+            Some("github.com")
+        );
+        assert_eq!(
+            h("https://example.org:8443/x.git").as_deref(),
+            Some("example.org")
+        );
+        assert_eq!(
+            h("ssh://git@example.org:2222/x.git").as_deref(),
+            Some("example.org")
+        );
+        assert_eq!(
+            h("git@github.com:dasmatus/losos.git").as_deref(),
+            Some("github.com")
+        );
+        assert_eq!(
+            h("https://user:pw@example.org/x").as_deref(),
+            Some("example.org")
+        );
+        assert_eq!(h("file:///srv/losos"), None);
+        assert_eq!(h("/srv/losos"), None);
+        assert_eq!(h("./losos"), None);
+    }
 }
