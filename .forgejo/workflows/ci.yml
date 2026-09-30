@@ -267,6 +267,10 @@ jobs:
       # also the typecheck gate for admin-ui/app, and the one place in CI that
       # proves the npm dependency fetch still resolves.
       - run: nix build .#losos-registrar .#losos-admin-ui -L
+      # The Playwright suite (admin-ui/app/tests/*.browser.mjs) against the
+      # production bundle, in headless chromium from nixpkgs. No /dev/kvm
+      # needed, unlike the VM tests. Reuses the npm deps built just above.
+      - run: nix build .#checks.x86_64-linux.losos-admin-ui -L
       # Publish to the binary cache the appliance substitutes from.
       #
       # modules/cache.nix points every installed box AND every installer medium at
