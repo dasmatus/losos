@@ -627,8 +627,24 @@ jobs:
           QCOW2_SUM: ${{ steps.stage.outputs.qcow2Sha256 }}
           QCOW2_SIZE: ${{ steps.stage.outputs.qcow2Size }}
           QCOW2_STORE_PATH: ${{ steps.stage.outputs.qcow2StorePath }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
+          # GHCR package pages, one per medium, under the repository's Packages
+          # tab. The package name is the image path after the owner, which the
+          # GHCR step lowercases, so this does too.
+          repo_name="${REPO#*/}"
+          pkgs="${GITHUB_SERVER_URL}/${REPO}/pkgs/container"
+          iso_pkg="${pkgs}/${repo_name,,}-installer-iso"
+          qcow2_pkg="${pkgs}/${repo_name,,}-demo-qcow2"
+          # oras pushes a single file as one raw layer, not a tarball, so the
+          # layer's digest is the file's own sha256 and the blob URL can be
+          # written without asking the registry. GHCR still wants a bearer
+          # token for it, even for a public package; an anonymous one will do.
+          qcow2_repo="${REPO,,}-demo-qcow2"
+          qcow2_blob="https://ghcr.io/v2/${qcow2_repo}/blobs/sha256:${QCOW2_SUM}"
           iso_human=$(awk -v b="$ISO_SIZE" 'BEGIN { printf "%.2f GiB", b/1073741824 }')
           qcow2_human=$(awk -v b="$QCOW2_SIZE" 'BEGIN { printf "%.2f GiB", b/1073741824 }')
           {
@@ -654,10 +670,27 @@ jobs:
           partitions, encrypts and installs unattended. It needs a network
           connection, because it clones the flake at run time.
 
+          Built from \`${SHA:0:7}\` by [this workflow run](${RUN_URL}).
+
           ### Demo QCOW2
 
-          ${QCOW2_NAME} — ${qcow2_human}, too large for a GitHub release asset.
-          Pull it from GHCR with [oras](https://oras.land), which fetches the
+          ${QCOW2_NAME} — ${qcow2_human}, too large for a GitHub release asset,
+          so it lives on GHCR: [package page](${qcow2_pkg}).
+
+          \`\`\`
+          sha256  ${QCOW2_SUM}
+          \`\`\`
+
+          Download the layer directly with curl (the token is anonymous):
+
+          \`\`\`sh
+          token=\$(curl -fsS "https://ghcr.io/token?scope=repository:${qcow2_repo}:pull" | jq -r .token)
+          curl -fL -H "Authorization: Bearer \$token" -o ${QCOW2_NAME} \\
+            ${qcow2_blob}
+          echo "${QCOW2_SUM}  ${QCOW2_NAME}" | sha256sum -c
+          \`\`\`
+
+          Or pull it with [oras](https://oras.land), which fetches the
           \`.sha256\` beside it:
 
           \`\`\`sh
@@ -665,15 +698,12 @@ jobs:
           sha256sum -c ${QCOW2_NAME}.sha256
           \`\`\`
 
-          \`\`\`
-          sha256  ${QCOW2_SUM}
-          \`\`\`
-
           This image is for demos and development only. It does **not** carry the
           appliance's TPM-sealed encrypted disk layout, so anyone who can read
           the file can read its data.
 
-          The installer ISO is on GHCR too: \`oras pull ${ISO_REF}\`
+          The installer ISO is on GHCR too ([package page](${iso_pkg})):
+          \`oras pull ${ISO_REF}\`
 
           ---
 
@@ -712,3 +742,23 @@ jobs:
             ${{ steps.stage.outputs.qcow2Name }}.sha256
             release.json
           token: ${{ secrets.GITHUB_TOKEN }}
+      # The curl download in the release notes only works once the GHCR
+      # package is public. A package pushed with GITHUB_TOKEN can start out
+      # private, and nothing else here would notice, so check the way a
+      # stranger would: an anonymous token and a HEAD on the layer. A warning,
+      # not a failure, because the release above is already published and
+      # visibility is a one-time switch in the package's settings.
+      - name: check the QCOW2 layer is publicly downloadable
+        env:
+          REPO: ${{ github.repository }}
+          QCOW2_SUM: ${{ steps.stage.outputs.qcow2Sha256 }}
+        run: |
+          set -uo pipefail
+          r="${REPO,,}-demo-qcow2"
+          token=$(curl -fsS "https://ghcr.io/token?scope=repository:${r}:pull" | jq -r '.token // empty')
+          if [ -n "$token" ] && curl -fsSI -o /dev/null -H "Authorization: Bearer $token" \
+              "https://ghcr.io/v2/${r}/blobs/sha256:${QCOW2_SUM}"; then
+            echo "the QCOW2 layer is publicly downloadable"
+          else
+            echo "::warning::ghcr.io/${r} is not publicly readable, so the release notes' curl download will fail. Make the package public: ${GITHUB_SERVER_URL}/${REPO}/pkgs/container/${r#*/} -> Package settings -> Change visibility."
+          fi
