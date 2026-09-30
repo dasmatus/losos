@@ -63,21 +63,11 @@ let
   # provisions them out of band.
   proxyToken = "/var/secrets/losos-proxy-token";
   bootstrapToken = "/var/secrets/losos-rathole-bootstrap";
-  # Throwaway X25519 pair generated for this test only (base64, as
-  # `rathole --genkey` prints them); protects nothing. The edge gets the
-  # private half and the appliance pins the public half, so the register /
-  # reconcile / forward path below only works if Noise negotiates.
-  noiseKey = "/var/secrets/losos-rathole-noise-key";
-  noisePub = "/var/secrets/losos-rathole-noise-pub";
-  noiseKeyValue = "oInX/T+UMBafypVOaXt2aEaoh7eLgMNo+Ov81WtoQk8=";
-  noisePubValue = "vxjh79ZmYZKYad666A4woy4+bakp2f0ey45JQEbYDUk=";
   secretFiles = {
     systemd.tmpfiles.rules = [
       "d /var/secrets 0700 root root - -"
       "f ${proxyToken} 0600 root root - ${proxyTokenValue}"
       "f ${bootstrapToken} 0600 root root - ${bootstrapTokenValue}"
-      "f ${noiseKey} 0600 root root - ${noiseKeyValue}"
-      "f ${noisePub} 0600 root root - ${noisePubValue}"
     ];
   };
   lososPkgs = import ../flake/packages.nix { inherit pkgs; };
@@ -118,7 +108,6 @@ pkgs.testers.nixosTest {
           heartbeatTtl = "120s";
           reconcileInterval = "2s"; # fast for the test
           bootstrapTokenFile = bootstrapToken;
-          noisePrivateKeyFile = noiseKey;
           tenants.mattbox = {
             hostname = "mattbox.losos.cfd";
             tokenFile = proxyToken;
@@ -158,7 +147,6 @@ pkgs.testers.nixosTest {
             applianceId = "mattbox";
             tokenFile = proxyToken;
             bootstrapTokenFile = bootstrapToken;
-            noisePublicKeyFile = noisePub;
             heartbeatInterval = "3s";
             registrar.package = lososPkgs.losos-registrar;
           };
@@ -207,6 +195,15 @@ pkgs.testers.nixosTest {
 
     # The client side of the same contract: pinned to the edge's public key,
     # and read from a runtime file rather than baked into the config.
+    # Nothing about Noise is provisioned in this test: the edge generates the
+    # keypair, the registrar serves the public half, and the appliance pins it.
+    edge.wait_for_unit("losos-rathole-noise-keygen.service")
+    edge_pub = edge.succeed("cat /var/secrets/losos-rathole-noise-key.pub").strip()
+    assert len(edge_pub) == 44, f"edge public key looks wrong: {edge_pub!r}"
+    assert edge.succeed("stat -c %a /var/secrets/losos-rathole-noise-key").strip() == "600"
+    appliance.wait_for_unit("losos-rathole-noise-pin.service")
+    pinned = appliance.succeed("cat /var/secrets/losos-rathole-noise-pub").strip()
+    assert pinned == edge_pub, f"appliance pinned {pinned!r}, edge has {edge_pub!r}"
     appliance.wait_for_unit("losos-rathole-client.service")
     client = appliance.succeed("cat /run/losos-rathole/client.toml")
     assert 'type = "noise"' in client, f"client not using Noise: {client!r}"

@@ -166,6 +166,24 @@ impl Edge {
 
     /// As [`Edge::start`], with the mesh half configured.
     pub async fn start_with_mesh(tag: &str, tenants: &[TenantSpec], mesh: MeshFixture) -> Self {
+        Self::start_inner(tag, tenants, mesh, None).await
+    }
+
+    /// As [`Edge::start`], serving `public_key` at `/noise-public-key`.
+    pub async fn start_with_noise_public_key(
+        tag: &str,
+        tenants: &[TenantSpec],
+        public_key: &str,
+    ) -> Self {
+        Self::start_inner(tag, tenants, MeshFixture::default(), Some(public_key)).await
+    }
+
+    async fn start_inner(
+        tag: &str,
+        tenants: &[TenantSpec],
+        mesh: MeshFixture,
+        noise_public_key: Option<&str>,
+    ) -> Self {
         let dir = TempDir::new(tag);
         std::fs::create_dir_all(dir.join("traefik")).expect("create traefik dir");
         std::fs::write(dir.join("bootstrap.token"), BOOTSTRAP_TOKEN).expect("write bootstrap");
@@ -180,6 +198,11 @@ impl Edge {
             dir.path_str("kube.token")
         });
 
+        let noise_public_key_file = noise_public_key.map(|key| {
+            std::fs::write(dir.join("noise.pub"), format!("{key}\n")).expect("write noise pub");
+            dir.path_str("noise.pub")
+        });
+
         let opts = ServeOpts {
             listen: "127.0.0.1:0".to_string(),
             registry_path: dir.path_str("registry.json"),
@@ -190,6 +213,7 @@ impl Edge {
             port_range: (50000, 50100),
             bootstrap_token_file: dir.path_str("bootstrap.token"),
             noise_private_key_file: None,
+            noise_public_key_file,
             tenants_file: dir.path_str("tenants.json"),
             reconcile_interval: Duration::from_millis(50),
             heartbeat_ttl: Duration::from_secs(300),

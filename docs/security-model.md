@@ -185,10 +185,15 @@ physical theft.
 The rathole tunnel between an appliance and the edge uses rathole's Noise
 transport (`Noise_NK_25519_ChaChaPoly_BLAKE2s`): the edge holds the private
 key (`losos.edge.noisePrivateKeyFile`, read by the registrar at runtime) and
-each appliance pins the public half (`losos.proxy.noisePublicKeyFile`), so the
-post-TLS-termination HTTP inside the tunnel is encrypted and the edge is
-authenticated. Both files are 0600 runtime files under `/var/secrets`, never
-store paths. Setting either option to `null` falls back to plain TCP; do not.
+each appliance pins the public half, so the post-TLS-termination HTTP inside
+the tunnel is encrypted and the edge is authenticated. Nothing is provisioned
+by hand: the edge generates the pair on first boot, and each appliance fetches
+the public key from the registrar (`GET /noise-public-key`) on first start and
+keeps it at `losos.proxy.noisePublicKeyFile`. That first fetch is trust on
+first use, protected only by the TLS in front of the registrar; a key file put
+there beforehand is never overwritten, which is the way to pin out of band.
+The private key is a 0600 runtime file under `/var/secrets`, never a store
+path. Setting either option to `null` falls back to plain TCP; do not.
 
 ### Throttling and audit log
 
