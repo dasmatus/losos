@@ -30,11 +30,11 @@
 # docs/superpowers/specs/2026-09-09-k3s-mesh-design.md. The appliance side is
 # modules/proxy.nix (proxy) and modules/cluster.nix (mesh).
 #
-# NOTE(transport): rathole runs plain TCP for now. The tunnel carries
-# post-TLS-termination HTTP, so enabling rathole's Noise transport (with a
-# distributed static keypair) is a hardening step before production — see the
-# spec's "Gotchas" and the rathole [transport] noise section. The registrar's
-# config writer is where that flip lands.
+# Transport: rathole's Noise transport (NK) encrypts the tunnel, which carries
+# post-TLS-termination HTTP. The edge holds the private key
+# (losos.edge.noisePrivateKeyFile, read by the registrar at runtime) and each
+# appliance pins the public half (losos.proxy.noisePublicKeyFile). Setting the
+# private key file to null falls back to plain TCP.
 {
   config,
   lib,
@@ -437,18 +437,29 @@ let
   # construction (zero churn, no hand-maintained byte-identity). Idempotent:
   # exits untouched when the file already exists — after first boot the
   # running registrar is the writer.
-  seedArgs = lib.concatStringsSep " " [
-    "${registrar}/bin/losos-registrar"
-    "seed"
-    "--rathole-config"
-    "/etc/rathole/server.toml"
-    "--rathole-bind-addr"
-    cfg.ratholeBindAddr
-    "--rathole-bind-port"
-    (toString cfg.ratholeBindPort)
-    "--bootstrap-token-file"
-    (toString cfg.bootstrapTokenFile)
+  #
+  # Both `seed` and `serve` render the same server.toml, so both must read the
+  # same Noise key or the seed and the reconciler would disagree.
+  noiseArgs = lib.optionals (cfg.noisePrivateKeyFile != null) [
+    "--noise-private-key-file"
+    (toString cfg.noisePrivateKeyFile)
   ];
+
+  seedArgs = lib.concatStringsSep " " (
+    [
+      "${registrar}/bin/losos-registrar"
+      "seed"
+      "--rathole-config"
+      "/etc/rathole/server.toml"
+      "--rathole-bind-addr"
+      cfg.ratholeBindAddr
+      "--rathole-bind-port"
+      (toString cfg.ratholeBindPort)
+      "--bootstrap-token-file"
+      (toString cfg.bootstrapTokenFile)
+    ]
+    ++ noiseArgs
+  );
 
   # Mesh half of `serve`. Every one of these is optional in the registrar's
   # parser, and without --mesh-agent-token-file the join route answers 503 —
@@ -496,6 +507,7 @@ let
       "--heartbeat-ttl"
       cfg.heartbeatTtl
     ]
+    ++ noiseArgs
     ++ meshServeArgs
   );
 in

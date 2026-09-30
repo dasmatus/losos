@@ -189,6 +189,7 @@ impl Edge {
             rathole_bind_port: 2333,
             port_range: (50000, 50100),
             bootstrap_token_file: dir.path_str("bootstrap.token"),
+            noise_private_key_file: None,
             tenants_file: dir.path_str("tenants.json"),
             reconcile_interval: Duration::from_millis(50),
             heartbeat_ttl: Duration::from_secs(300),

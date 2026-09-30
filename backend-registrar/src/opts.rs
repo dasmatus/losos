@@ -74,6 +74,8 @@ pub struct ServeOpts {
     pub rathole_bind_port: u16,
     pub port_range: (u16, u16),
     pub bootstrap_token_file: String,
+    /// 0600 file holding the rathole Noise private key; `None` = plain TCP.
+    pub noise_private_key_file: Option<String>,
     pub tenants_file: String,
     pub reconcile_interval: Duration,
     pub heartbeat_ttl: Duration,
@@ -111,6 +113,8 @@ pub struct SeedOpts {
     pub rathole_bind_addr: String,
     pub rathole_bind_port: u16,
     pub bootstrap_token_file: String,
+    /// 0600 file holding the rathole Noise private key; `None` = plain TCP.
+    pub noise_private_key_file: Option<String>,
 }
 
 /// `announce` options. The appliance reads its token from `token_file`
@@ -198,6 +202,7 @@ pub fn parse(args: Vec<String>) -> Result<Mode> {
                     .map_err(|_| miette!("bad --rathole-bind-port"))?,
                 port_range: (lo, hi),
                 bootstrap_token_file: req(&rest, "--bootstrap-token-file")?.to_string(),
+                noise_private_key_file: arg(&rest, "--noise-private-key-file").map(str::to_string),
                 tenants_file: req(&rest, "--tenants-file")?.to_string(),
                 reconcile_interval: parse_dur(arg(&rest, "--reconcile-interval").unwrap_or("15s"))?,
                 heartbeat_ttl: parse_dur(arg(&rest, "--heartbeat-ttl").unwrap_or("120s"))?,
@@ -234,6 +239,7 @@ pub fn parse(args: Vec<String>) -> Result<Mode> {
                 .parse()
                 .map_err(|_| miette!("bad --rathole-bind-port"))?,
             bootstrap_token_file: req(&rest, "--bootstrap-token-file")?.to_string(),
+            noise_private_key_file: arg(&rest, "--noise-private-key-file").map(str::to_string),
         })),
         "join" => Ok(Mode::Join(JoinOpts {
             registrar_url: req(&rest, "--registrar-url")?.to_string(),

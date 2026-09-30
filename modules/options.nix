@@ -299,6 +299,20 @@ in
       '';
     };
 
+    proxy.noisePublicKeyFile = lib.mkOption {
+      type = lib.types.nullOr secretPath;
+      default = "/var/secrets/losos-rathole-noise-pub";
+      description = ''
+        The edge's rathole Noise **public** key (base64), read at start into
+        the runtime client.toml. It pins the edge: the tunnel is encrypted to
+        that key, so a machine that merely answers on the endpoint cannot
+        read it. Must be the public half of losos.edge.noisePrivateKeyFile.
+        Not secret, but kept out of the store like the other tunnel material.
+        `null` runs the tunnel in plain TCP; the tunnel carries the admin
+        token, so leave it on.
+      '';
+    };
+
     proxy.heartbeatInterval = lib.mkOption {
       type = lib.types.str;
       default = "30s";
@@ -903,6 +917,18 @@ in
       description = "rathole default_token (0600). Shared by all appliance tunnels as the transport Noise bootstrap.";
     };
 
+    edge.noisePrivateKeyFile = lib.mkOption {
+      type = lib.types.nullOr secretPath;
+      default = "/var/secrets/losos-rathole-noise-key";
+      description = ''
+        The rathole server's Noise private key (base64, 0600, persisted via
+        /var), read by the registrar at runtime — never from the store. Make
+        the pair with `rathole --genkey` (its "Private Key" line goes here, the
+        "Public Key" line goes to every appliance's
+        losos.proxy.noisePublicKeyFile). `null` runs the tunnel in plain TCP.
+      '';
+    };
+
     edge.tenants = lib.mkOption {
       type = lib.types.attrsOf (
         lib.types.submodule {
@@ -1056,6 +1082,9 @@ in
         "losos.cluster.tokenFile" = config.losos.cluster.tokenFile;
         "losos.shared.fscrypt.keyFile" = config.losos.shared.fscrypt.keyFile;
         "losos.edge.cluster.agentTokenFile" = config.losos.edge.cluster.agentTokenFile;
+      }
+      // lib.optionalAttrs (config.losos.edge.noisePrivateKeyFile != null) {
+        "losos.edge.noisePrivateKeyFile" = config.losos.edge.noisePrivateKeyFile;
       }
       // lib.mapAttrs' (
         id: tenant: lib.nameValuePair "losos.edge.tenants.${id}.tokenFile" tenant.tokenFile

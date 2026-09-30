@@ -948,6 +948,17 @@ async fn reconcile_once(st: &AppState) -> Result<()> {
         rathole_bind_addr: st.opts.rathole_bind_addr.clone(),
         rathole_bind_port: st.opts.rathole_bind_port,
         bootstrap_token: bootstrap.to_string(),
+        noise_private_key: match &st.opts.noise_private_key_file {
+            None => None,
+            Some(f) => Some(
+                tokio::fs::read_to_string(f)
+                    .await
+                    .into_diagnostic()
+                    .with_context(|| format!("read noise private key file {f}"))?
+                    .trim()
+                    .to_string(),
+            ),
+        },
     };
     let files = desired_config(&enriched, &opts);
 
