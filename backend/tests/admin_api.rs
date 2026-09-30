@@ -23,7 +23,6 @@ struct Daemon {
     /// Held only so the daemon's throwaway directory outlives it.
     _dir: TempDir,
     token_file: std::path::PathBuf,
-    audit_log: std::path::PathBuf,
 }
 
 impl Drop for Daemon {
@@ -49,7 +48,6 @@ impl Daemon {
         if let Some(seed) = token_file_seed {
             std::fs::write(&token_file, seed).unwrap();
         }
-        let audit_log = dir.path().join("state").join("audit.log");
         let port = free_port();
 
         let child = Command::new(env!("CARGO_BIN_EXE_lososd"))
@@ -72,7 +70,6 @@ impl Daemon {
             port,
             _dir: dir,
             token_file,
-            audit_log,
         };
         daemon.wait_until_up();
         daemon
@@ -325,35 +322,24 @@ fn repeated_bad_tokens_are_throttled_and_health_stays_open() {
 }
 
 #[test]
-fn admin_mutations_are_audited_without_secrets() {
-    use std::os::unix::fs::PermissionsExt;
+fn mutating_routes_still_answer_when_the_audit_log_cannot_be_written() {
+    // The audit path is fixed at /var/lib/losos/audit.log, which a test runner
+    // usually cannot write. A failed append is journalled and must never turn
+    // into a failed request; the append itself is covered by the guard.rs
+    // unit tests.
     let daemon = Daemon::start(None);
     let token = daemon.token();
     let right = format!("Bearer {token}");
     let bad = format!("Bearer {}", flip_last(&token));
 
-    // A failed attempt on a mutating route, and a request that authenticates
-    // but is malformed (400 "rejected"); reads are not audited.
-    daemon.request("POST", "/api/grow", Some(&bad), None);
-    daemon.request("POST", "/api/change", Some(&right), Some("{}"));
-    daemon.request("GET", "/api/state", Some(&right), None);
-
-    let text = std::fs::read_to_string(&daemon.audit_log).unwrap();
-    let lines: Vec<serde_json::Value> = text
-        .lines()
-        .map(|l| serde_json::from_str(l).unwrap())
-        .collect();
-    assert_eq!(lines.len(), 2, "{text}");
-    assert_eq!(lines[0]["route"], "/api/grow");
-    assert_eq!(lines[0]["outcome"], "unauthorized");
-    assert_eq!(lines[0]["remote"], "127.0.0.1");
-    assert_eq!(lines[1]["route"], "/api/change");
-    assert_eq!(lines[1]["outcome"], "rejected");
-    assert!(!text.contains(&token));
-    let mode = std::fs::metadata(&daemon.audit_log)
-        .unwrap()
-        .permissions()
-        .mode()
-        & 0o777;
-    assert_eq!(mode, 0o600);
+    assert_eq!(
+        daemon.request("POST", "/api/grow", Some(&bad), None).status,
+        401
+    );
+    assert_eq!(
+        daemon
+            .request("POST", "/api/change", Some(&right), Some("{}"))
+            .status,
+        400
+    );
 }
