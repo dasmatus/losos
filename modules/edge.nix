@@ -440,6 +440,10 @@ let
   #
   # Both `seed` and `serve` render the same server.toml, so both must read the
   # same Noise key or the seed and the reconciler would disagree.
+  # The public half sits beside the private key. It is derived from it on every
+  # start (see losos-rathole-noise-keygen), so it cannot go stale or disagree.
+  noisePublicKeyFile = "${toString cfg.noisePrivateKeyFile}.pub";
+
   noiseArgs = lib.optionals (cfg.noisePrivateKeyFile != null) [
     "--noise-private-key-file"
     (toString cfg.noisePrivateKeyFile)
@@ -508,6 +512,10 @@ let
       cfg.heartbeatTtl
     ]
     ++ noiseArgs
+    ++ lib.optionals (cfg.noisePrivateKeyFile != null) [
+      "--noise-public-key-file"
+      noisePublicKeyFile
+    ]
     ++ meshServeArgs
   );
 in
@@ -612,12 +620,56 @@ in
         "losos-rathole.service"
         "losos-registrar.service"
       ];
+      after = lib.optional (cfg.noisePrivateKeyFile != null) "losos-rathole-noise-keygen.service";
       serviceConfig = {
         ExecStart = seedArgs;
         Type = "oneshot";
         RemainAfterExit = true;
         PrivateTmp = true;
       };
+    };
+
+    # ── Noise keypair (generated on first boot) ──────────────────────────
+    # The private key is 32 random bytes, base64 — the X25519 form rathole
+    # reads. Created only when absent, so a key provisioned by hand (or
+    # restored from backup) is never replaced. The public half is derived from
+    # the private one on every start by wrapping the raw key in a PKCS#8
+    # header for openssl; the registrar serves it at /noise-public-key and
+    # appliances pin it on first start. Ordered before everything that reads
+    # either file.
+    systemd.services.losos-rathole-noise-keygen = lib.mkIf (cfg.noisePrivateKeyFile != null) {
+      description = "losos rathole Noise keypair (generated once, on first boot)";
+      wantedBy = [ "multi-user.target" ];
+      before = [
+        "losos-rathole-seed.service"
+        "losos-rathole.service"
+        "losos-registrar.service"
+      ];
+      path = [
+        pkgs.openssl
+        pkgs.coreutils
+      ];
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+        PrivateTmp = true;
+      };
+      script = ''
+        set -eu
+        key=${toString cfg.noisePrivateKeyFile}
+        pub=${noisePublicKeyFile}
+        install -d -m 0700 "$(dirname "$key")"
+        if [ ! -s "$key" ]; then
+          (umask 077; head -c 32 /dev/urandom | base64 -w0 > "$key.new")
+          mv "$key.new" "$key"
+        fi
+        chmod 0600 "$key"
+        { printf '\x30\x2e\x02\x01\x00\x30\x05\x06\x03\x2b\x65\x6e\x04\x22\x04\x20'
+          base64 -d < "$key"
+        } | openssl pkey -inform DER -pubout -outform DER | tail -c 32 | base64 -w0 > "$pub.new"
+        chmod 0644 "$pub.new"
+        mv "$pub.new" "$pub"
+      '';
     };
 
     # ── rathole server (tunnel endpoint) ─────────────────────────────────

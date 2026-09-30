@@ -76,6 +76,9 @@ pub struct ServeOpts {
     pub bootstrap_token_file: String,
     /// 0600 file holding the rathole Noise private key; `None` = plain TCP.
     pub noise_private_key_file: Option<String>,
+    /// The matching public key, served verbatim at `GET /noise-public-key` so
+    /// appliances can pin it on first start. Public by nature; `None` = 404.
+    pub noise_public_key_file: Option<String>,
     pub tenants_file: String,
     pub reconcile_interval: Duration,
     pub heartbeat_ttl: Duration,
@@ -203,6 +206,7 @@ pub fn parse(args: Vec<String>) -> Result<Mode> {
                 port_range: (lo, hi),
                 bootstrap_token_file: req(&rest, "--bootstrap-token-file")?.to_string(),
                 noise_private_key_file: arg(&rest, "--noise-private-key-file").map(str::to_string),
+                noise_public_key_file: arg(&rest, "--noise-public-key-file").map(str::to_string),
                 tenants_file: req(&rest, "--tenants-file")?.to_string(),
                 reconcile_interval: parse_dur(arg(&rest, "--reconcile-interval").unwrap_or("15s"))?,
                 heartbeat_ttl: parse_dur(arg(&rest, "--heartbeat-ttl").unwrap_or("120s"))?,
