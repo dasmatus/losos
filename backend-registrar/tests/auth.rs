@@ -230,6 +230,34 @@ async fn health_needs_no_token() {
     edge.shutdown().await;
 }
 
+/// The Noise public key is served unauthenticated (it is public, and an
+/// appliance pins it before it holds any credential); without a key on disk the
+/// route is a 404, not an empty 200 the appliance would write out as its pin.
+#[tokio::test]
+async fn noise_public_key_is_served_when_present_and_404_otherwise() {
+    let none = Edge::start("noise-none", &[]).await;
+    let response = none
+        .client
+        .get(format!("{}/noise-public-key", none.base))
+        .send()
+        .await
+        .expect("responds");
+    assert_eq!(response.status().as_u16(), 404);
+    none.shutdown().await;
+
+    let key = "vxjh79ZmYZKYad666A4woy4+bakp2f0ey45JQEbYDUk=";
+    let some = Edge::start_with_noise_public_key("noise-some", &[], key).await;
+    let response = some
+        .client
+        .get(format!("{}/noise-public-key", some.base))
+        .send()
+        .await
+        .expect("responds");
+    assert_eq!(response.status().as_u16(), 200);
+    assert_eq!(response.text().await.unwrap_or_default(), key);
+    some.shutdown().await;
+}
+
 /// The upload endpoints are gone. They were never in the approved design, they
 /// fed an untrusted body to `serde_yaml` on the public edge, and they wrote it
 /// to disk as root — all to return a summary of what the caller had just sent.
