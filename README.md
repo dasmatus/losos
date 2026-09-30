@@ -76,14 +76,14 @@ booted VM by `losos-impermanence`, not just claimed.
 
 ## Install
 
-Tagged releases carry a prebuilt image:
+Tagged releases carry a prebuilt installer ISO:
 
-**<https://codeberg.org/dasmatus/losos/releases/latest>**
+**<https://github.com/dasmatus/losos/releases/latest>**
 
-The release pages link to versioned files in Codeberg's generic package
-registry rather than attaching the multi-gigabyte media directly. The registry
-holds the installer ISO and the demo QCOW2, and the release still carries the
-small `.sha256`/`release.json` metadata. To build the installer ISO yourself:
+The ISO and its `.sha256` are attached to the GitHub release. The demo QCOW2 is
+too large for a release asset, so the release links to it on GHCR (and, when
+the Codeberg mirror is configured, in its generic package registry). To build the
+installer ISO yourself:
 
 ```sh
 nix build .#nixosConfigurations.iso.config.system.build.isoImage
@@ -361,11 +361,11 @@ published when you push a `v*` tag. Publishing stays rationed to tags because a
 Where the bytes land is now the one intentional extra difference between the
 two lanes. The ordinary CI gates still run on both forges, but release
 publication happens from GitHub's larger runners: they build the installer ISO
-and the demo QCOW2, upload both to Codeberg's generic package registry, then
-update both release pages to point there. That keeps one durable, versioned set
-of downloads while avoiding GitHub's per-asset release limit and Codeberg's
-smaller build runners. The release pages themselves still only carry the small
-`.sha256` and `release.json` metadata.
+and the demo QCOW2, attach the ISO to the GitHub release, and push both to GHCR.
+The QCOW2 cannot be a release asset, being over GitHub's 2 GiB per-asset
+limit. When the `FORGEJO_TOKEN` secret is set, both files also go to Codeberg's
+generic package registry and the Codeberg release page links there; that half
+is optional, so a missing token no longer stops the GitHub release.
 
 It looks like it should not fit — but of
 the 769 store paths in its closure, 766 are stock nixpkgs that cache.nixos.org
