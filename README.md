@@ -347,6 +347,11 @@ push a `v*` tag. The tag job builds the installer ISO and the demo QCOW2,
 attaches the ISO to the GitHub release, and pushes both to GHCR. The QCOW2
 cannot be a release asset, being over GitHub's 2 GiB per-asset limit.
 
+A release can also be started from the web: "Draft a new release" with a new
+`v*` tag creates the tag, which starts the same job. It keeps the notes you
+wrote and adds the downloads below them, between two marker comments; a re-run
+replaces only that section.
+
 The ISO job is cheap: of the 769 store paths in its closure, 766 are stock
 nixpkgs that cache.nixos.org serves and only `losos-ctl` costs anything to
 produce. The CI job takes that
