@@ -27,8 +27,8 @@ nix build .#nixosConfigurations.iso.config.system.build.isoImage
 # Every gate is a named script there — fmt, lint, test-rust, check-flake,
 # check-eval, check-pins, build-pkgs, build-iso, vm-tests. CI does NOT invoke
 # them — it spells the same commands out directly, because routing jobs
-# through `devenv shell` blew Codeberg's 10-minute cap (9m31s and 10m05s
-# against 1m32s for the one non-devenv job). Keep the two in step by hand.
+# through `devenv shell` blew the old Codeberg CI's 10-minute cap (9m31s and
+# 10m05s against 1m32s for the one non-devenv job). Keep the two in step by hand.
 # Switches to fish on interactive entry; the `case $- in *i*)` guard keeps
 # `devenv shell <script>` and CI running under bash.
 devenv shell        # or: direnv allow
@@ -48,9 +48,10 @@ is two lock files — `flake.lock` pins the nixpkgs that *builds* the appliance,
 
 Both Rust crates set `doCheck = false`, so `nix build` compiles the shipping
 binaries and does not run the suites. The suites run via `cargo test` — in
-`devenv test`/`test-rust` locally and in CI's lint job. This is a concession
-to Codeberg's 10-minute cap: doCheck recompiles each crate in test
-configuration and links a binary per test target, which put
+`devenv test`/`test-rust` locally and in CI's lint job. This was a concession
+to the 10-minute cap of Codeberg, the project's former CI host: doCheck
+recompiles each crate in test configuration and links a binary per test
+target, which put
 `nix build .#losos-ctl` between 7.7 and 10.3 minutes across observed runs and
 cancelled real runs on unmodified main. **A bare `nix build` is therefore not
 a test gate** — run `devenv test` before trusting a change. There is no PHP
@@ -69,24 +70,20 @@ cargo test --manifest-path backend/Cargo.toml
 cargo clippy --manifest-path backend/Cargo.toml --all-targets -- -D warnings
 ```
 
-**There are two CI lanes and both must be kept in step by hand**, with each
-other and with `devenv.nix`: `.forgejo/workflows/` (Codeberg) and
-`.github/workflows/ci.yml` (GitHub). Same flake, same ordinary gates, plus one
-GitHub-only tag-release job that builds the heavy media, uploads them to
-Codeberg's generic package registry and updates both release pages. A change to
-one is a change to both — the GitHub file's header lists the deliberate
-platform differences. `.github/actions/` now carries `setup-nix`,
-`cachix-push`, `github-release` and `forgejo-generic-package`; the Forgejo
-release API helper lives under `.forgejo/actions/forgejo-release` and is used
-from GitHub's tag-release job as well.
+**GitHub is the only forge.** The project left Codeberg on 2026-09-30, and
+the `.forgejo/` lane went with it; references to Codeberg that remain in
+comments are history explaining a choice its CI forced. CI is
+`.github/workflows/ci.yml`, kept in step by hand with `devenv.nix`, plus a
+tag-release job that builds the heavy media, attaches the installer ISO to the
+GitHub release and pushes both media to GHCR (the demo QCOW2 is over GitHub's
+2 GiB per-asset limit). `.github/actions/` carries `setup-nix`, `cachix-push`
+and `github-release`.
 
-CI (Codeberg Actions, `.forgejo/workflows/ci.yml`) runs on hosted runners
-capped at **10 minutes / 8 GB per job** (and the RAM quota counts filesystem
-writes), so each job is scoped to fit. GitHub's runners cap at 6 hours, so the
-GitHub lane carries explicit `timeout-minutes` instead — but it keeps the
-cap-driven structure anyway, because the reasons outlive the cap: clippy and
-test stay separate jobs (as one they compile the local crates twice), and the
-`iso` job still imports `losos-ctl` as an artifact rather than rebuilding it. The **install toplevel** remains a
+GitHub's runners cap at 6 hours, so jobs carry explicit `timeout-minutes`. The
+structure Codeberg's 10-minute / 8 GB cap forced is kept because the reasons
+outlive the cap: clippy and test stay separate jobs (as one they compile the
+local crates twice), and the `iso` job imports `losos-ctl` as an artifact
+rather than rebuilding it. The **install toplevel** remains a
 local-only gate. The **installer ISO is now built in CI**: its closure is 769
 paths, of which 766 are stock nixpkgs served by cache.nixos.org and only
 `losos-ctl` is expensive, so the `iso` job imports that one from the

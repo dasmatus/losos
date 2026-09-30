@@ -8,69 +8,52 @@ on:
     tags: ["v*"]
   pull_request:
   schedule:
-    # ~04:57 UTC Mondays (off the :00 mark, and an hour off the Codeberg lane's
-    # 03:57 so the two do not fetch the same closures from cache.nixos.org at
-    # the same minute).
+    # ~04:57 UTC Mondays, off the :00 mark.
     #
     # GitHub runs scheduled workflows only from the default branch, and
-    # DISABLES them after 60 days with no repository activity. On Codeberg the
-    # weekly cron is a nicety; here it is the same, but be aware that a quiet
-    # repository stops running it silently.
+    # DISABLES them after 60 days with no repository activity. Be aware that a
+    # quiet repository stops running it silently.
     - cron: "57 4 * * 1"
   workflow_dispatch:
 
-# ── What this is, and how it differs from the Codeberg lane ─────────────────
+# ── What this is ────────────────────────────────────────────────────────────
 #
-# A port of .forgejo/workflows/ci.yml. The two run the same gates against the
-# same flake and must be kept in step by hand, exactly as both are kept in step
-# with devenv.nix's `lint`, `test-rust`, `check-flake`, `check-eval`,
-# `build-pkgs` and `build-images` scripts. `devenv test` remains the local
-# one-shot equivalent, and the pre-commit hooks run the lint half before a
-# commit reaches either forge.
+# The only CI lane. It began as a port of a Codeberg (Forgejo Actions) lane,
+# retired on 2026-09-30 when the project left Codeberg; the history below
+# explains choices that lane's 10-minute, 8 GB runners forced. It is kept in
+# step by hand with devenv.nix's `lint`, `test-rust`, `check-flake`,
+# `check-eval`, `build-pkgs` and `build-images` scripts. `devenv test` remains
+# the local one-shot equivalent, and the pre-commit hooks run the lint half
+# before a commit is pushed.
 #
-# CI does NOT go through devenv, here for the same measured reason as there:
-# every job would first realise the whole dev toolchain — rustc, cargo, clippy,
-# rustfmt, rust-analyzer, nodejs, bun, nixfmt, deadnix, statix, plus the
-# interactive shell packages — before doing any work of its own. Measured on
-# Codeberg's runners: `devenv test` 9m31s, `devenv shell build-pkgs` 10m05s,
-# plain nix 1m32s. GitHub's 6-hour cap would survive that, but paying it in
-# a double-digit job count to run commands that do not need it is still waste.
+# CI does NOT go through devenv: every job would first realise the whole dev
+# toolchain — rustc, cargo, clippy, rustfmt, rust-analyzer, nodejs, bun,
+# nixfmt, deadnix, statix, plus the interactive shell packages — before doing
+# any work of its own. Measured on Codeberg's runners: `devenv test` 9m31s,
+# `devenv shell build-pkgs` 10m05s, plain nix 1m32s. GitHub's 6-hour cap would
+# survive that, but paying it in a double-digit job count to run commands that
+# do not need it is still waste.
 #
-# The nixos-test VMs stay local-only on both forges — they need /dev/kvm, which
-# neither host's runners provide:
+# The nixos-test VMs stay local-only — they need /dev/kvm, which GitHub's
+# hosted runners do not provide:
 #   devenv shell vm-tests
-# Neither this file, ci.yml nor devenv.nix names those VMs: `vm-tests` reads the
-# list out of `.#checks.x86_64-linux`, because the hand-kept version of it had
+# Neither this file nor devenv.nix names those VMs: `vm-tests` reads the list
+# out of `.#checks.x86_64-linux`, because the hand-kept version of it had
 # drifted to four names against six checks. Do not reintroduce a literal list.
 #
-# Four things are deliberately NOT the same as the Forgejo copy, and each is a
-# platform difference rather than a preference:
+# The substituters are written to /etc/nix/nix.conf before the daemon starts,
+# not passed as NIX_CONFIG: a multi-user daemon discards cache settings from an
+# untrusted client, with a warning and a green build that compiled everything
+# from source. See ./.github/actions/setup-nix.
 #
-# 1. No container, and no `nix profile install nixpkgs#nodejs` in every job.
-#    That line exists on Codeberg because act_runner execs JavaScript actions
-#    with `node` from inside docker.io/nixos/nix, which ships none. GitHub
-#    injects its own Node for container jobs instead — but a glibc-linked one,
-#    and nixos/nix is Alpine/musl, so actions/checkout could not start at all.
-#    ubuntu-latest has Node, jq and curl already; Nix arrives through
-#    ./.github/actions/setup-nix.
+# Tags publish release media. The installer ISO (~1.5 GB) is attached to the
+# GitHub release itself. The demo QCOW2 is too large for a GitHub release
+# asset, so it and a copy of the ISO go to GHCR as OCI artifacts
+# (ghcr.io/<owner>/<repo>-{installer-iso,demo-qcow2}:<tag>).
 #
-# 2. The substituters are written to /etc/nix/nix.conf before the daemon
-#    starts, not passed as NIX_CONFIG. ci.yml's own comment explains why that
-#    matters and warns about exactly this runner: a multi-user daemon discards
-#    cache settings from an untrusted client, with a warning and a green build
-#    that compiled everything from source. See ./.github/actions/setup-nix.
-#
-# 3. Tags publish release media from here, not from Codeberg. The demo QCOW2 is
-#    too large for a GitHub release asset and too expensive for Codeberg's
-#    runners to build, so this lane builds both files, uploads them to
-#    Codeberg's generic package registry, pushes the same files to GHCR as OCI
-#    artifacts (ghcr.io/<owner>/<repo>-{installer-iso,demo-qcow2}:<tag>) and then
-#    updates both release pages to point at both.
-#
-# 4. Jobs carry explicit `timeout-minutes`. Codeberg enforces 10 minutes for
-#    us; GitHub's default is 360, which is long enough for a wedged job to
-#    spend a day of a shared quota. The numbers below are the measured runtime
-#    with generous headroom, not targets.
+# Jobs carry explicit `timeout-minutes`. GitHub's default is 360, which is long
+# enough for a wedged job to spend a day of a shared quota. The numbers below
+# are the measured runtime with generous headroom, not targets.
 #
 # What the 10-minute cap bought is kept anyway where it is still worth
 # something. clippy and test remain two jobs: they do not share build
@@ -222,8 +205,7 @@ jobs:
           # The iso job imports by path, not with `--all`; see the note there.
           nix path-info .#losos-ctl > ctl-cache/store-paths
       # v4, not v3: upload-artifact@v3 and download-artifact@v3 were retired on
-      # GitHub in January 2025 and now fail outright. The Forgejo copy still
-      # says v3 because Codeberg's act_runner still serves it.
+      # GitHub in January 2025 and now fail outright.
       - uses: actions/upload-artifact@v4
         with:
           name: losos-ctl-store
@@ -334,10 +316,10 @@ jobs:
   # tmpfs root and no shell, three hours before an unconditional reboot. It is
   # also the image most likely to break.
   #
-  # On Codeberg this is workflow_dispatch only, and the reason is the cap: the
-  # content closure is 2.3 GiB across 244 store paths (nextcloud34 with ~30
-  # apps, php-with-extensions, apacheHttpd) against Forgejo's 647 MiB, so on a
-  # cold runner it fetches roughly 3.5x what the `images` job fetches, inside
+  # On the retired Codeberg lane this was workflow_dispatch only, because of
+  # the cap: the content closure is 2.3 GiB across 244 store paths
+  # (nextcloud34 with ~30 apps, php-with-extensions, apacheHttpd) against
+  # Forgejo's 647 MiB, so on a cold runner it fetches roughly 3.5x what the `images` job fetches, inside
   # ten minutes. That objection does not survive the move: this job may take an
   # hour here.
   #
@@ -421,13 +403,10 @@ jobs:
           git config user.name  "losos-fmt-bot"
           git config user.email "losos-fmt-bot@users.noreply.github.com"
 
-          # [skip ci] is belt-and-braces on GitHub rather than load-bearing as
-          # it is on Codeberg: a push authenticated with GITHUB_TOKEN does not
-          # trigger workflow runs at all, so there is no loop to break here.
-          # GitHub honours the same skip strings ([skip ci], [ci skip],
-          # [no ci], [skip actions], [actions skip]), the message stays
-          # identical across both forges, and it keeps working if this job is
-          # ever moved to a PAT — which WOULD retrigger.
+          # [skip ci] is belt-and-braces rather than load-bearing: a push
+          # authenticated with GITHUB_TOKEN does not trigger workflow runs at
+          # all, so there is no loop to break here. It keeps working if this
+          # job is ever moved to a PAT — which WOULD retrigger.
           git commit -am "style: cargo fmt [skip ci]"
 
           # A human push landing between checkout and here makes this a
@@ -589,118 +568,62 @@ jobs:
             echo "isoRef=${base}-installer-iso:${TAG}"
             echo "qcow2Ref=${base}-demo-qcow2:${TAG}"
           } >> "$GITHUB_OUTPUT"
-      - id: publish
-        uses: ./.github/actions/forgejo-generic-package
-        with:
-          server-url: https://codeberg.org
-          repository: dasmatus/losos
-          package-name: losos-release-media
-          package-version: ${{ github.ref_name }}
-          files: |
-            ${{ steps.stage.outputs.isoName }}
-            ${{ steps.stage.outputs.isoName }}.sha256
-            ${{ steps.stage.outputs.qcow2Name }}
-            ${{ steps.stage.outputs.qcow2Name }}.sha256
-          token: ${{ secrets.FORGEJO_TOKEN }}
-      - name: verify published registry files
-        id: verify
-        env:
-          BASE_URL: ${{ steps.publish.outputs.base-url }}
-          ISO_NAME: ${{ steps.stage.outputs.isoName }}
-          QCOW2_NAME: ${{ steps.stage.outputs.qcow2Name }}
-        run: |
-          set -euo pipefail
-          iso_url="${BASE_URL}/${ISO_NAME}"
-          qcow2_url="${BASE_URL}/${QCOW2_NAME}"
-
-          probe() {
-            local url="$1"
-            for _ in 1 2 3 4 5 6; do
-              if curl -fsSI -o /dev/null "$url"; then
-                return 0
-              fi
-              sleep 5
-            done
-            echo "::error::published file is not yet reachable: $url" >&2
-            return 1
-          }
-
-          probe "$iso_url"
-          probe "${iso_url}.sha256"
-          probe "$qcow2_url"
-          probe "${qcow2_url}.sha256"
-          {
-            echo "baseUrl=${BASE_URL}"
-            echo "isoUrl=${iso_url}"
-            echo "qcow2Url=${qcow2_url}"
-          } >> "$GITHUB_OUTPUT"
+      # The ISO's download is the GitHub release asset: at ~1.5 GB it fits under
+      # GitHub's 2 GiB per-asset limit, which github-release checks before
+      # uploading. The demo QCOW2 does not fit, so GHCR is its only home. The
+      # asset URL is deterministic, so it can be written here before the upload.
       - name: compose release metadata
         id: meta
         env:
-          BASE_URL: ${{ steps.verify.outputs.baseUrl }}
           TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
           ISO_NAME: ${{ steps.stage.outputs.isoName }}
           ISO_SIZE: ${{ steps.stage.outputs.isoSize }}
           ISO_SHA256: ${{ steps.stage.outputs.isoSha256 }}
           ISO_STORE_PATH: ${{ steps.stage.outputs.isoStorePath }}
+          ISO_REF: ${{ steps.ghcr.outputs.isoRef }}
           QCOW2_NAME: ${{ steps.stage.outputs.qcow2Name }}
           QCOW2_SIZE: ${{ steps.stage.outputs.qcow2Size }}
           QCOW2_SHA256: ${{ steps.stage.outputs.qcow2Sha256 }}
           QCOW2_STORE_PATH: ${{ steps.stage.outputs.qcow2StorePath }}
+          QCOW2_REF: ${{ steps.ghcr.outputs.qcow2Ref }}
         run: |
           set -euo pipefail
-          iso_url="${BASE_URL}/${ISO_NAME}"
-          qcow2_url="${BASE_URL}/${QCOW2_NAME}"
+          iso_url="${GITHUB_SERVER_URL}/${REPO}/releases/download/${TAG}/${ISO_NAME}"
 
           jq -n \
-            --arg package "losos-release-media" \
             --arg version "$TAG" \
             --arg iso "$ISO_NAME" \
             --arg isoSha "$ISO_SHA256" \
             --argjson isoSize "$ISO_SIZE" \
             --arg isoPath "$ISO_STORE_PATH" \
             --arg isoUrl "$iso_url" \
+            --arg isoRef "$ISO_REF" \
             --arg qcow2 "$QCOW2_NAME" \
             --arg qcow2Sha "$QCOW2_SHA256" \
             --argjson qcow2Size "$QCOW2_SIZE" \
             --arg qcow2Path "$QCOW2_STORE_PATH" \
-            --arg qcow2Url "$qcow2_url" \
+            --arg qcow2Ref "$QCOW2_REF" \
             '{
-               registry:{package:$package, version:$version},
-               iso:{name:$iso, sha256:$isoSha, size:$isoSize, storePath:$isoPath, url:$isoUrl},
-               qcow2:{name:$qcow2, sha256:$qcow2Sha, size:$qcow2Size, storePath:$qcow2Path, url:$qcow2Url}
+               version:$version,
+               iso:{name:$iso, sha256:$isoSha, size:$isoSize, storePath:$isoPath,
+                    url:$isoUrl, oci:$isoRef},
+               qcow2:{name:$qcow2, sha256:$qcow2Sha, size:$qcow2Size, storePath:$qcow2Path,
+                      oci:$qcow2Ref}
              }' > release.json
           cat release.json
-          {
-            echo "baseUrl=${BASE_URL}"
-            echo "isoUrl=${iso_url}"
-            echo "qcow2Url=${qcow2_url}"
-          } >> "$GITHUB_OUTPUT"
-      - uses: ./.github/actions/forgejo-generic-package
-        with:
-          server-url: https://codeberg.org
-          repository: dasmatus/losos
-          package-name: losos-release-media
-          package-version: ${{ github.ref_name }}
-          replace-version: "false"
-          files: release.json
-          token: ${{ secrets.FORGEJO_TOKEN }}
-      - name: verify published release metadata
-        run: curl -fsSI -o /dev/null "${{ steps.meta.outputs.baseUrl }}/release.json"
+          echo "isoUrl=${iso_url}" >> "$GITHUB_OUTPUT"
       - name: compose the release body
         id: body
         env:
-          TAG: ${{ github.ref_name }}
-          BASE_URL: ${{ steps.meta.outputs.baseUrl }}
           ISO_NAME: ${{ steps.stage.outputs.isoName }}
           ISO_REF: ${{ steps.ghcr.outputs.isoRef }}
-          QCOW2_REF: ${{ steps.ghcr.outputs.qcow2Ref }}
           ISO_URL: ${{ steps.meta.outputs.isoUrl }}
           ISO_SUM: ${{ steps.stage.outputs.isoSha256 }}
           ISO_SIZE: ${{ steps.stage.outputs.isoSize }}
           ISO_STORE_PATH: ${{ steps.stage.outputs.isoStorePath }}
           QCOW2_NAME: ${{ steps.stage.outputs.qcow2Name }}
-          QCOW2_URL: ${{ steps.meta.outputs.qcow2Url }}
+          QCOW2_REF: ${{ steps.ghcr.outputs.qcow2Ref }}
           QCOW2_SUM: ${{ steps.stage.outputs.qcow2Sha256 }}
           QCOW2_SIZE: ${{ steps.stage.outputs.qcow2Size }}
           QCOW2_STORE_PATH: ${{ steps.stage.outputs.qcow2StorePath }}
@@ -711,22 +634,6 @@ jobs:
           {
             echo "body<<RELEASE_BODY_EOF"
             cat <<BODY
-          ### Generic registry
-
-          Versioned media for this tag live in the generic package registry:
-
-          \`${BASE_URL}/\`
-
-          ### GHCR
-
-          The same files are published as OCI artifacts (pull with
-          [oras](https://oras.land)):
-
-          \`\`\`sh
-          oras pull ${ISO_REF}
-          oras pull ${QCOW2_REF}
-          \`\`\`
-
           ### Installer ISO
 
           **[${ISO_NAME}](${ISO_URL})** — ${iso_human}
@@ -744,27 +651,29 @@ jobs:
           \`\`\`
 
           Write it to a USB stick and boot the target machine; the installer
-          partitions, encrypts and installs unattended.
+          partitions, encrypts and installs unattended. It needs a network
+          connection, because it clones the flake at run time.
 
           ### Demo QCOW2
 
-          **[${QCOW2_NAME}](${QCOW2_URL})** — ${qcow2_human}
+          ${QCOW2_NAME} — ${qcow2_human}, too large for a GitHub release asset.
+          Pull it from GHCR with [oras](https://oras.land), which fetches the
+          \`.sha256\` beside it:
+
+          \`\`\`sh
+          oras pull ${QCOW2_REF}
+          sha256sum -c ${QCOW2_NAME}.sha256
+          \`\`\`
 
           \`\`\`
           sha256  ${QCOW2_SUM}
           \`\`\`
 
-          Verify it with:
-
-          \`\`\`sh
-          curl -fsSLO ${QCOW2_URL}.sha256
-          curl -fsSLO ${QCOW2_URL}
-          sha256sum -c ${QCOW2_NAME}.sha256
-          \`\`\`
-
           This image is for demos and development only. It does **not** carry the
           appliance's TPM-sealed encrypted disk layout, so anyone who can read
           the file can read its data.
+
+          The installer ISO is on GHCR too: \`oras pull ${ISO_REF}\`
 
           ---
 
@@ -790,23 +699,16 @@ jobs:
           BODY
             echo "RELEASE_BODY_EOF"
           } >> "$GITHUB_OUTPUT"
+      # github-release refuses anything over 2 GiB before spending the upload,
+      # so an ISO that outgrows the limit fails this step loudly rather than
+      # producing a release without it.
       - uses: ./.github/actions/github-release
         with:
           tag: ${{ github.ref_name }}
           body: ${{ steps.body.outputs.body }}
           assets: |
+            ${{ steps.stage.outputs.isoName }}
             ${{ steps.stage.outputs.isoName }}.sha256
             ${{ steps.stage.outputs.qcow2Name }}.sha256
             release.json
           token: ${{ secrets.GITHUB_TOKEN }}
-      - uses: ./.forgejo/actions/forgejo-release
-        with:
-          server-url: https://codeberg.org
-          repository: dasmatus/losos
-          tag: ${{ github.ref_name }}
-          body: ${{ steps.body.outputs.body }}
-          assets: |
-            ${{ steps.stage.outputs.isoName }}.sha256
-            ${{ steps.stage.outputs.qcow2Name }}.sha256
-            release.json
-          token: ${{ secrets.FORGEJO_TOKEN }}
