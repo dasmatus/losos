@@ -122,16 +122,14 @@ in
   # reads it. Without something pushing, a substituter is just a 404 the
   # installer waits five seconds for.
   #
-  # CI does not go through devenv (see the header of .forgejo/workflows/ci.yml
-  # -- routing jobs through `devenv shell` blew Codeberg's 10-minute cap), so
-  # this covers local builds only. The CI half is wired too, since 728d255:
-  # {.forgejo,.github}/actions/cachix-push pushes from four lanes using the
-  # CACHIX_KEY secret -- one copy of that action per forge, same cache, same
-  # key, because it is modules/cache.nix at the other end that decides them.
-  # The release media are deliberately NOT among them here. GitHub's tag lane
-  # publishes the installer ISO and the demo QCOW2 to Codeberg's generic
-  # package registry, and the release pages point there; the cache remains for
-  # substitution, not end-user downloads.
+  # CI does not go through devenv (see the header of .github/workflows/ci.yml),
+  # so this covers local builds only. The CI half is wired too:
+  # .github/actions/cachix-push pushes from several jobs using the CACHIX_KEY
+  # secret -- same cache, same key, because it is modules/cache.nix at the other
+  # end that decides them. The release media are deliberately NOT among them.
+  # The tag lane attaches the installer ISO to the GitHub release and pushes
+  # both media to GHCR; the cache remains for substitution, not end-user
+  # downloads.
   cachix.push = "losos";
 
   # ── Toolchain ────────────────────────────────────────────────────────────
@@ -356,8 +354,7 @@ in
   #                     otherwise be built on the target.
   #
   # Local-only, both of them. The thin ISO the `iso` job builds is already
-  # ~1.5 GB (see .forgejo/workflows/ci.yml), Codeberg's entire recommended
-  # allowance for packages, LFS and attachments combined; these are bigger
+  # ~1.5 GB, close to GitHub's 2 GiB per-asset release limit; these are bigger
   # again and are never uploaded anywhere. Pass a substring to build one of
   # them on its own: `build-media qcow2`.
   #
@@ -370,8 +367,8 @@ in
   scripts.build-media.description = "Build the demo QCOW2 and the closure-carrying ISO (many gigabytes; opt-in).";
 
   # The real acceptance gate for the control plane and the appliance's front
-  # door. CI cannot run these — the Codeberg runners cap at 10 minutes and 8 GB
-  # and offer no /dev/kvm — so they are a local gate, and the only one.
+  # door. CI cannot run these — GitHub's hosted runners offer no /dev/kvm — so
+  # they are a local gate, and the only one.
   #
   # The list comes from the flake (see flakeAttrs above for what that fixed).
   scripts.vm-tests.exec = ''
@@ -384,7 +381,7 @@ in
   scripts.vm-tests.description = "Run every nixos-test VM the flake exports (needs /dev/kvm).";
 
   # Not a local-only gate any more — the `iso` job in
-  # .forgejo/workflows/ci.yml builds this on every push, by importing
+  # .github/workflows/ci.yml builds this on every push, by importing
   # losos-ctl from a sibling job instead of compiling it. This script stays
   # because it is still the fastest way to get an image onto a USB stick, and
   # because `devenv test` does not run it.

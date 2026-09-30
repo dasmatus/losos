@@ -1,17 +1,12 @@
 # Installs Nix with this project's substituters, for the GitHub Actions lane.
 #
-# This exists because of the one real difference between the two forges'
-# runners, and it is not cosmetic.
-#
-# .forgejo/workflows/ci.yml runs every job inside docker.io/nixos/nix and sets
-# the cache through a workflow-level `NIX_CONFIG`. That works there precisely
-# because that image runs Nix single-user as root: settings arriving by
+# The retired Codeberg lane ran every job inside docker.io/nixos/nix and set
+# the cache through a workflow-level `NIX_CONFIG`. That worked there only
+# because that image runs Nix single-user as root, so settings arriving by
 # environment variable are applied rather than discarded as coming from an
-# untrusted client. Its own comment says so, and warns what happens otherwise —
-# "on a runner that DID have a daemon, a substituter set this late would be
-# ignored with a warning and the job would quietly build from source instead".
+# untrusted client.
 #
-# GitHub's hosted runners are exactly that runner. A normal Nix install here is
+# GitHub's hosted runners are not that. A normal Nix install here is
 # multi-user, the workflow user is not in `trusted-users`, and so
 # `extra-substituters` in the environment is dropped with a warning — leaving a
 # green workflow that compiles losos-ctl from source in every job that touches

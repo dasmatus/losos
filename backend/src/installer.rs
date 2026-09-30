@@ -347,7 +347,7 @@ mod tests {
             no_install: false,
             disko_script: None,
             emit_target: None,
-            flake_url: "https://codeberg.org/dasmatus/losos.git".into(),
+            flake_url: "https://github.com/dasmatus/losos.git".into(),
             flake_work: PathBuf::from("/tmp/losos-flake"),
             keyfile: PathBuf::from("/etc/keys/persist-keyfile"),
             target_rel: PathBuf::from("modules/install-target.nix"),
