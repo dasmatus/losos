@@ -1,20 +1,18 @@
 # Creates or updates a GitHub release for a tag and attaches its assets.
 #
-# The GitHub counterpart of .forgejo/actions/forgejo-release. The release lane
-# attaches the installer ISO (~1.5 GB) here along with the small metadata
-# assets (`*.sha256`, `release.json`). The demo QCOW2 is larger than GitHub's
-# per-asset limit, so it lives on GHCR and in Codeberg's generic registry, and
-# the body this action writes links to it there.
+# The release lane attaches the installer ISO (~1.5 GB) here along with the
+# small metadata assets (`*.sha256`, `release.json`). The demo QCOW2 is larger
+# than GitHub's per-asset limit, so it lives on GHCR, and the body this action
+# writes links to it there.
 #
-# Written against curl and jq rather than a marketplace release action, for the
-# same reason the Forgejo copy is: a release is a POST plus one upload per
-# asset, and this repository deliberately depends on almost no third-party
-# actions.
+# Written against curl and jq rather than a marketplace release action: a
+# release is a POST plus one upload per asset, and this repository deliberately
+# depends on almost no third-party actions.
 #
 # Every call checks its HTTP status explicitly. `curl -sS` alone exits 0 on a
-# 4xx, which is how the Forgejo version of this block once reported success
-# while creating nothing at all: the POST 404'd, jq turned the error body into
-# `null` and the assets went to /releases/null/assets. A step that can silently
+# 4xx, which is how an earlier Forgejo version of this block once reported
+# success while creating nothing at all: the POST 404'd, jq turned the error
+# body into `null` and the assets went to /releases/null/assets. A step that can silently
 # no-op is worse than one that fails.
 name: "GitHub release"
 description: "Create a release for a tag, or replace an existing release's body, and attach assets."

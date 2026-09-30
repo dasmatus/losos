@@ -15,7 +15,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 /// Default upstream to install from. Overridable with `LOSOS_FLAKE_URL`.
-pub const DEFAULT_FLAKE_URL: &str = "https://codeberg.org/dasmatus/losos.git";
+pub const DEFAULT_FLAKE_URL: &str = "https://github.com/dasmatus/losos.git";
 /// Where the flake is cloned to. Overridable with `LOSOS_FLAKE_WORK`.
 pub const DEFAULT_FLAKE_WORK: &str = "/tmp/losos-flake";
 /// The LUKS keyfile for the unattended path. Overridable with `LOSOS_KEYFILE`.

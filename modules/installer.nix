@@ -11,7 +11,7 @@
 # (the flake's iso system sets it to self.packages.<system>.losos-ctl; the test
 # sets it via flake/packages.nix). The flake the installer builds from is
 # cloned over the network at run time (LOSOS_FLAKE_URL, default the public
-# codeberg repo) — the ISO needs working network either way, since evaluating
+# GitHub repo) — the ISO needs working network either way, since evaluating
 # the flake fetches its nixpkgs input.
 #
 # When `losos.installer.autorun` is true (installer ISO only), root's login
