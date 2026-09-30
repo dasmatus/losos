@@ -7,6 +7,7 @@
 //! Health is deliberately open so the dashboard can show whether the daemon is
 //! reachable before anyone has pasted a token.
 
+use crate::guard::{retry_after_secs, Audit, Throttle};
 use crate::io_backend::{atomic_write_secret, IoLosos};
 use crate::losos::{
     cmd_apply, cmd_apps_search, cmd_change, cmd_factory_reset, cmd_grow, cmd_recovery,
@@ -17,6 +18,7 @@ use crate::overrides::validate_apply;
 use actix_web::{web, App, HttpRequest, HttpResponse, HttpServer};
 use anyhow::Context;
 use std::path::Path;
+use std::time::Instant;
 
 /// Default loopback port; overridden by `$LOSOS_ADMIN_PORT`.
 const DEFAULT_PORT: u16 = 8082;
@@ -32,6 +34,8 @@ const TOKEN_HEX_LEN: usize = TOKEN_BYTES * 2;
 struct Api {
     backend: IoLosos,
     token: String,
+    throttle: Throttle,
+    audit: Audit,
 }
 
 /// `{"error": "..."}` at the given status — the shape the SPA expects.
@@ -88,16 +92,74 @@ fn authorized(api: &Api, req: &HttpRequest) -> bool {
         .is_some_and(|presented| constant_time_eq(presented.as_bytes(), api.token.as_bytes()))
 }
 
-/// Reject unauthenticated requests, with the body the SPA looks for.
-fn gate(api: &Api, req: &HttpRequest) -> Option<HttpResponse> {
-    if authorized(api, req) {
-        None
-    } else {
-        Some(err(
-            actix_web::http::StatusCode::UNAUTHORIZED,
-            "unauthorized",
-        ))
+/// The address to attribute a request to.
+///
+/// The listener is loopback-only, so the peer is always Nginx and the real
+/// client is whatever Nginx put in `X-Real-IP` (it overwrites any value the
+/// client sent). Anything else — the VM tests, curl on the box — is the peer.
+fn remote_addr(req: &HttpRequest) -> String {
+    let peer = req.peer_addr().map(|a| a.ip());
+    if peer.is_some_and(|ip| ip.is_loopback()) {
+        if let Some(ip) = req
+            .headers()
+            .get("x-real-ip")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.trim().parse::<std::net::IpAddr>().ok())
+        {
+            return ip.to_string();
+        }
     }
+    peer.map_or_else(|| "unknown".to_string(), |ip| ip.to_string())
+}
+
+/// Authenticate, throttle and audit one request, then run `f`.
+///
+/// Failed authentication is counted per remote address; past a small free
+/// budget the address is answered `429` with `Retry-After` for an
+/// exponentially growing (capped) window, and a correct token clears the
+/// count. `mutating` routes additionally append one audit record per attempt:
+/// the outcome of the command, or why the attempt never got that far.
+fn guarded(
+    api: &Api,
+    req: &HttpRequest,
+    route: &str,
+    mutating: bool,
+    f: impl FnOnce() -> HttpResponse,
+) -> HttpResponse {
+    let remote = remote_addr(req);
+    let audit = |outcome: &str| {
+        if mutating {
+            api.audit.record(route, outcome, &remote);
+        }
+    };
+    if let Err(wait) = api.throttle.check(&remote, Instant::now()) {
+        audit("throttled");
+        let mut resp = err(
+            actix_web::http::StatusCode::TOO_MANY_REQUESTS,
+            "too many failed attempts; slow down",
+        );
+        resp.headers_mut().insert(
+            actix_web::http::header::RETRY_AFTER,
+            retry_after_secs(wait).to_string().parse().expect("digits"),
+        );
+        return resp;
+    }
+    if !authorized(api, req) {
+        api.throttle.record_failure(&remote, Instant::now());
+        audit("unauthorized");
+        return err(actix_web::http::StatusCode::UNAUTHORIZED, "unauthorized");
+    }
+    api.throttle.record_success(&remote);
+    let resp = f();
+    let status = resp.status();
+    audit(if status.is_success() {
+        "ok"
+    } else if status.is_client_error() {
+        "rejected"
+    } else {
+        "error"
+    });
+    resp
 }
 
 async fn health() -> HttpResponse {
@@ -105,22 +167,27 @@ async fn health() -> HttpResponse {
 }
 
 async fn get_state(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
-    gate(&api, &req).unwrap_or_else(|| run(&api, cmd_state))
+    guarded(&api, &req, "/api/state", false, || run(&api, cmd_state))
 }
 
 async fn get_settings(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
-    gate(&api, &req).unwrap_or_else(|| run(&api, cmd_settings))
+    guarded(&api, &req, "/api/settings", false, || {
+        run(&api, cmd_settings)
+    })
 }
 
 async fn get_status(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
-    gate(&api, &req).unwrap_or_else(|| run(&api, cmd_status))
+    guarded(&api, &req, "/api/status", false, || run(&api, cmd_status))
 }
 
 async fn post_change(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> HttpResponse {
-    if let Some(r) = gate(&api, &req) {
-        return r;
-    }
-    let mode = serde_json::from_slice::<serde_json::Value>(&body)
+    guarded(&api, &req, "/api/change", true, || {
+        post_change_inner(&api, &body)
+    })
+}
+
+fn post_change_inner(api: &Api, body: &[u8]) -> HttpResponse {
+    let mode = serde_json::from_slice::<serde_json::Value>(body)
         .ok()
         .and_then(|v| v.get("mode").and_then(|m| m.as_str()).map(str::to_string));
     let Some(mode) = mode else {
@@ -135,13 +202,16 @@ async fn post_change(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) ->
             "mode must be 'local' or 'mesh'",
         );
     };
-    run(&api, |b| cmd_change(b, mode))
+    run(api, |b| cmd_change(b, mode))
 }
 
 async fn post_apply(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> HttpResponse {
-    if let Some(r) = gate(&api, &req) {
-        return r;
-    }
+    guarded(&api, &req, "/api/apply", true, || {
+        post_apply_inner(&api, &body)
+    })
+}
+
+fn post_apply_inner(api: &Api, body: &[u8]) -> HttpResponse {
     let Ok(text) = String::from_utf8(body.to_vec()) else {
         return err(
             actix_web::http::StatusCode::BAD_REQUEST,
@@ -152,13 +222,15 @@ async fn post_apply(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> 
         Err(e) => err(actix_web::http::StatusCode::BAD_REQUEST, e),
         Ok(code) => {
             let code = code.to_string();
-            run(&api, |b| cmd_apply(b, &code))
+            run(api, |b| cmd_apply(b, &code))
         }
     }
 }
 
 async fn post_factory_reset(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
-    gate(&api, &req).unwrap_or_else(|| run(&api, cmd_factory_reset))
+    guarded(&api, &req, "/api/factory-reset", true, || {
+        run(&api, cmd_factory_reset)
+    })
 }
 
 /// Extend `/persist` into the volume group's free extents.
@@ -167,7 +239,7 @@ async fn post_factory_reset(api: web::Data<Api>, req: HttpRequest) -> HttpRespon
 /// rather than a supervised rebuild, so it returns the measured before/after
 /// sizes instead of a job id to poll.
 async fn post_grow(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
-    gate(&api, &req).unwrap_or_else(|| run(&api, cmd_grow))
+    guarded(&api, &req, "/api/grow", true, || run(&api, cmd_grow))
 }
 
 /// Replace the Nextcloud admin password.
@@ -226,11 +298,14 @@ async fn post_set_password(
     req: HttpRequest,
     body: web::Bytes,
 ) -> HttpResponse {
-    if let Some(r) = gate(&api, &req) {
-        return r;
-    }
+    guarded(&api, &req, "/api/set-password", true, || {
+        post_set_password_inner(&api, &body)
+    })
+}
+
+fn post_set_password_inner(api: &Api, body: &[u8]) -> HttpResponse {
     const SHAPE: &str = r#"body must be JSON: {"user": "...", "password": "..."}"#;
-    let Ok(doc) = serde_json::from_slice::<serde_json::Value>(&body) else {
+    let Ok(doc) = serde_json::from_slice::<serde_json::Value>(body) else {
         return err(actix_web::http::StatusCode::BAD_REQUEST, SHAPE);
     };
     // `user` is optional: the appliance installs exactly one Nextcloud admin,
@@ -253,7 +328,7 @@ async fn post_set_password(
         return err(actix_web::http::StatusCode::BAD_REQUEST, &e);
     }
     let password = password.to_string();
-    run(&api, |b| cmd_set_password(b, &user, &password))
+    run(api, |b| cmd_set_password(b, &user, &password))
 }
 
 /// The appliance recovery code.
@@ -268,7 +343,9 @@ async fn post_set_password(
 /// would cost the owner a step and cost an attacker who already holds the token
 /// nothing. The reasoning is written out in `backend/src/recovery.rs`.
 async fn get_recovery(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
-    gate(&api, &req).unwrap_or_else(|| run(&api, cmd_recovery))
+    guarded(&api, &req, "/api/recovery", false, || {
+        run(&api, cmd_recovery)
+    })
 }
 
 /// Search the app catalogue: `GET /api/apps/search?q=<query>`.
@@ -289,9 +366,12 @@ async fn get_recovery(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
 /// retryable failure, which is right: no route off the box and a catalogue
 /// having a bad afternoon are both things that come back.
 async fn get_apps_search(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
-    if let Some(r) = gate(&api, &req) {
-        return r;
-    }
+    guarded(&api, &req, "/api/apps/search", false, || {
+        get_apps_search_inner(&api, &req)
+    })
+}
+
+fn get_apps_search_inner(api: &Api, req: &HttpRequest) -> HttpResponse {
     let query =
         web::Query::<std::collections::HashMap<String, String>>::from_query(req.query_string())
             .ok()
@@ -303,7 +383,7 @@ async fn get_apps_search(api: web::Data<Api>, req: HttpRequest) -> HttpResponse 
     if let Err(e) = crate::catalogue::validate_query(&query) {
         return err(actix_web::http::StatusCode::BAD_REQUEST, &e);
     }
-    run(&api, |b| cmd_apps_search(b, &query))
+    run(api, |b| cmd_apps_search(b, &query))
 }
 
 async fn not_found() -> HttpResponse {
@@ -400,7 +480,12 @@ pub fn serve(backend: IoLosos) -> anyhow::Result<()> {
     let token = ensure_token(Path::new(&token_file))?;
 
     actix_web::rt::System::new().block_on(async move {
-        let api = web::Data::new(Api { backend, token });
+        let api = web::Data::new(Api {
+            backend,
+            token,
+            throttle: Throttle::default(),
+            audit: Audit,
+        });
         let server = HttpServer::new(move || {
             App::new()
                 .app_data(api.clone())
