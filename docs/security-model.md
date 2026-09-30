@@ -180,9 +180,36 @@ keyfile is baked into the initrd, which lives on an unencrypted ESP — so on
 that path, physical possession yields the data. Only the TPM path resists
 physical theft.
 
+### Tunnel encryption
+
+The rathole tunnel between an appliance and the edge uses rathole's Noise
+transport (`Noise_NK_25519_ChaChaPoly_BLAKE2s`): the edge holds the private
+key (`losos.edge.noisePrivateKeyFile`, read by the registrar at runtime) and
+each appliance pins the public half (`losos.proxy.noisePublicKeyFile`), so the
+post-TLS-termination HTTP inside the tunnel is encrypted and the edge is
+authenticated. Both files are 0600 runtime files under `/var/secrets`, never
+store paths. Setting either option to `null` falls back to plain TCP; do not.
+
+### Throttling and audit log
+
+`lososd` counts failed authentication per remote address (the client address
+Nginx passes in `X-Real-IP`). After 10 failures an address is answered `429`
+with `Retry-After` for an exponentially growing window (1 s doubling, capped at
+5 min); during the window even the correct token is refused, and a correct
+token afterwards clears the count. `/api/health` and the first-run
+`/api/setup/claim` routes are not throttled.
+
+`POST /api/apply`, `/api/change`, `/api/set-password`, `/api/factory-reset` and
+`/api/grow` each append one JSON line to `/var/lib/losos/audit.log` (`/var` is
+bind-mounted from `/persist`, so it survives the nightly reboot): timestamp,
+route, remote address and outcome (`ok`, `rejected` for a 4xx, `error` for a
+5xx, `unauthorized`, `throttled`). Mode 0600, append-only writes. It records
+neither the token nor request bodies (so no passwords or Nix code). Read-only
+routes are not logged.
+
 ### Not covered
 
-Rathole runs plain TCP; the tunnel carries post-TLS-termination HTTP, so
-enabling its Noise transport is a hardening step still outstanding. Nothing
-rate-limits authentication attempts against `/api/`. There is no audit log of
-admin actions beyond the systemd journal.
+The audit log is not tamper-evident: root on the box can rewrite it, and it
+does not rotate. A failed write is reported to the journal and does not block
+the request. Throttling is per address, so a LAN attacker who spoofs addresses
+gets a fresh budget for each.

@@ -63,11 +63,21 @@ let
   # provisions them out of band.
   proxyToken = "/var/secrets/losos-proxy-token";
   bootstrapToken = "/var/secrets/losos-rathole-bootstrap";
+  # Throwaway X25519 pair generated for this test only (base64, as
+  # `rathole --genkey` prints them); protects nothing. The edge gets the
+  # private half and the appliance pins the public half, so the register /
+  # reconcile / forward path below only works if Noise negotiates.
+  noiseKey = "/var/secrets/losos-rathole-noise-key";
+  noisePub = "/var/secrets/losos-rathole-noise-pub";
+  noiseKeyValue = "oInX/T+UMBafypVOaXt2aEaoh7eLgMNo+Ov81WtoQk8=";
+  noisePubValue = "vxjh79ZmYZKYad666A4woy4+bakp2f0ey45JQEbYDUk=";
   secretFiles = {
     systemd.tmpfiles.rules = [
       "d /var/secrets 0700 root root - -"
       "f ${proxyToken} 0600 root root - ${proxyTokenValue}"
       "f ${bootstrapToken} 0600 root root - ${bootstrapTokenValue}"
+      "f ${noiseKey} 0600 root root - ${noiseKeyValue}"
+      "f ${noisePub} 0600 root root - ${noisePubValue}"
     ];
   };
   lososPkgs = import ../flake/packages.nix { inherit pkgs; };
@@ -108,6 +118,7 @@ pkgs.testers.nixosTest {
           heartbeatTtl = "120s";
           reconcileInterval = "2s"; # fast for the test
           bootstrapTokenFile = bootstrapToken;
+          noisePrivateKeyFile = noiseKey;
           tenants.mattbox = {
             hostname = "mattbox.losos.cfd";
             tokenFile = proxyToken;
@@ -147,6 +158,7 @@ pkgs.testers.nixosTest {
             applianceId = "mattbox";
             tokenFile = proxyToken;
             bootstrapTokenFile = bootstrapToken;
+            noisePublicKeyFile = noisePub;
             heartbeatInterval = "3s";
             registrar.package = lososPkgs.losos-registrar;
           };
@@ -188,8 +200,17 @@ pkgs.testers.nixosTest {
     seed = edge.succeed("cat /etc/rathole/server.toml")
     assert "bind_addr = " in seed, f"seed missing bind_addr scalar: {seed!r}"
     assert "default_token = " in seed, f"seed missing default_token: {seed!r}"
+    assert 'type = "noise"' in seed, f"seed missing the Noise transport: {seed!r}"
+    assert "local_private_key = " in seed, f"seed missing the Noise key: {seed!r}"
     edge.wait_for_unit("losos-rathole.service")
     edge.wait_for_unit("losos-registrar.service")
+
+    # The client side of the same contract: pinned to the edge's public key,
+    # and read from a runtime file rather than baked into the config.
+    appliance.wait_for_unit("losos-rathole-client.service")
+    client = appliance.succeed("cat /run/losos-rathole/client.toml")
+    assert 'type = "noise"' in client, f"client not using Noise: {client!r}"
+    assert "remote_public_key = " in client, f"client missing pinned key: {client!r}"
 
     # 2. The registrar API is up.
     edge.wait_until_succeeds("curl -fsS http://127.0.0.1:8443/health")
