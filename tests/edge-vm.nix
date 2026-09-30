@@ -188,8 +188,26 @@ pkgs.testers.nixosTest {
     seed = edge.succeed("cat /etc/rathole/server.toml")
     assert "bind_addr = " in seed, f"seed missing bind_addr scalar: {seed!r}"
     assert "default_token = " in seed, f"seed missing default_token: {seed!r}"
+    assert 'type = "noise"' in seed, f"seed missing the Noise transport: {seed!r}"
+    assert "local_private_key = " in seed, f"seed missing the Noise key: {seed!r}"
     edge.wait_for_unit("losos-rathole.service")
     edge.wait_for_unit("losos-registrar.service")
+
+    # The client side of the same contract: pinned to the edge's public key,
+    # and read from a runtime file rather than baked into the config.
+    # Nothing about Noise is provisioned in this test: the edge generates the
+    # keypair, the registrar serves the public half, and the appliance pins it.
+    edge.wait_for_unit("losos-rathole-noise-keygen.service")
+    edge_pub = edge.succeed("cat /var/secrets/losos-rathole-noise-key.pub").strip()
+    assert len(edge_pub) == 44, f"edge public key looks wrong: {edge_pub!r}"
+    assert edge.succeed("stat -c %a /var/secrets/losos-rathole-noise-key").strip() == "600"
+    appliance.wait_for_unit("losos-rathole-noise-pin.service")
+    pinned = appliance.succeed("cat /var/secrets/losos-rathole-noise-pub").strip()
+    assert pinned == edge_pub, f"appliance pinned {pinned!r}, edge has {edge_pub!r}"
+    appliance.wait_for_unit("losos-rathole-client.service")
+    client = appliance.succeed("cat /run/losos-rathole/client.toml")
+    assert 'type = "noise"' in client, f"client not using Noise: {client!r}"
+    assert "remote_public_key = " in client, f"client missing pinned key: {client!r}"
 
     # 2. The registrar API is up.
     edge.wait_until_succeeds("curl -fsS http://127.0.0.1:8443/health")

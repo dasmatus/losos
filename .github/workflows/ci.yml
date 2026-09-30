@@ -63,8 +63,9 @@ on:
 # 3. Tags publish release media from here, not from Codeberg. The demo QCOW2 is
 #    too large for a GitHub release asset and too expensive for Codeberg's
 #    runners to build, so this lane builds both files, uploads them to
-#    Codeberg's generic package registry and then updates both release pages to
-#    point there.
+#    Codeberg's generic package registry, pushes the same files to GHCR as OCI
+#    artifacts (ghcr.io/<owner>/<repo>-{installer-iso,demo-qcow2}:<tag>) and then
+#    updates both release pages to point at both.
 #
 # 4. Jobs carry explicit `timeout-minutes`. Codeberg enforces 10 minutes for
 #    us; GitHub's default is 360, which is long enough for a wedged job to
@@ -502,6 +503,7 @@ jobs:
     needs: [iso, losos-ctl, registrar-and-ui]
     permissions:
       contents: write
+      packages: write
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-nix
@@ -554,6 +556,38 @@ jobs:
             echo "qcow2Size=$(stat -c%s "$qcow2")"
             echo "qcow2Sha256=$(cut -d' ' -f1 < "${qcow2}.sha256")"
             echo "qcow2StorePath=$(readlink -f result-qcow2)"
+          } >> "$GITHUB_OUTPUT"
+      - name: publish the media to GHCR
+        id: ghcr
+        env:
+          TAG: ${{ github.ref_name }}
+          ISO_NAME: ${{ steps.stage.outputs.isoName }}
+          QCOW2_NAME: ${{ steps.stage.outputs.qcow2Name }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ACTOR: ${{ github.actor }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          # GHCR wants a lowercase repository path. Each medium is its own
+          # package so it can be pulled (and its retention managed) alone:
+          #   ghcr.io/<owner>/<repo>-installer-iso:<tag>
+          #   ghcr.io/<owner>/<repo>-demo-qcow2:<tag>
+          base="ghcr.io/${REPO,,}"
+          oras="nix run nixpkgs#oras --"
+          echo "$GH_TOKEN" | $oras login ghcr.io -u "$ACTOR" --password-stdin
+          push() {
+            local pkg="$1" file="$2" type="$3"
+            $oras push "${base}-${pkg}:${TAG}" \
+              --artifact-type "$type" \
+              --annotation "org.opencontainers.image.source=https://github.com/${REPO}" \
+              --annotation "org.opencontainers.image.version=${TAG}" \
+              "${file}:${type}" "${file}.sha256:text/plain"
+          }
+          push installer-iso "$ISO_NAME" application/vnd.losos.installer.iso.v1
+          push demo-qcow2 "$QCOW2_NAME" application/vnd.losos.demo.qcow2.v1
+          {
+            echo "isoRef=${base}-installer-iso:${TAG}"
+            echo "qcow2Ref=${base}-demo-qcow2:${TAG}"
           } >> "$GITHUB_OUTPUT"
       - id: publish
         uses: ./.github/actions/forgejo-generic-package
@@ -659,6 +693,8 @@ jobs:
           TAG: ${{ github.ref_name }}
           BASE_URL: ${{ steps.meta.outputs.baseUrl }}
           ISO_NAME: ${{ steps.stage.outputs.isoName }}
+          ISO_REF: ${{ steps.ghcr.outputs.isoRef }}
+          QCOW2_REF: ${{ steps.ghcr.outputs.qcow2Ref }}
           ISO_URL: ${{ steps.meta.outputs.isoUrl }}
           ISO_SUM: ${{ steps.stage.outputs.isoSha256 }}
           ISO_SIZE: ${{ steps.stage.outputs.isoSize }}
@@ -680,6 +716,16 @@ jobs:
           Versioned media for this tag live in the generic package registry:
 
           \`${BASE_URL}/\`
+
+          ### GHCR
+
+          The same files are published as OCI artifacts (pull with
+          [oras](https://oras.land)):
+
+          \`\`\`sh
+          oras pull ${ISO_REF}
+          oras pull ${QCOW2_REF}
+          \`\`\`
 
           ### Installer ISO
 

@@ -307,7 +307,12 @@ in
           "/api/" = {
             proxyPass = "http://127.0.0.1:${toString adminApiPort}";
             proxyWebsockets = true;
-            extraConfig = lanOnly;
+            # lososd only sees nginx as its peer; it throttles and audits by
+            # this header instead. nginx overwrites any client-supplied value.
+            extraConfig = ''
+              ${lanOnly}
+              proxy_set_header X-Real-IP $remote_addr;
+            '';
           };
         })
         (lib.mkIf nextcloudWorkload {

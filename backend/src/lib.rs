@@ -30,6 +30,7 @@ pub mod dbus;
 pub mod facade;
 pub mod fake;
 pub mod grow;
+pub mod guard;
 pub mod http;
 pub mod installer;
 pub mod installer_io;
