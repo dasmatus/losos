@@ -8,7 +8,7 @@
 
 use std::collections::HashMap;
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Component, Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
@@ -116,10 +116,34 @@ impl Audit {
         Self { path: path.into() }
     }
 
+    fn validated_audit_path(raw: &str) -> Option<PathBuf> {
+        let path = PathBuf::from(raw);
+        if !path.is_absolute() {
+            return None;
+        }
+        if path.components().any(|c| matches!(c, Component::ParentDir)) {
+            return None;
+        }
+        let allowed_root = Path::new("/var/lib/losos");
+        if !path.starts_with(allowed_root) {
+            return None;
+        }
+        Some(path)
+    }
+
     pub fn from_env() -> Self {
-        Self::new(
-            std::env::var("LOSOS_AUDIT_LOG").unwrap_or_else(|_| DEFAULT_AUDIT_LOG.to_string()),
-        )
+        let raw = std::env::var("LOSOS_AUDIT_LOG").unwrap_or_else(|_| DEFAULT_AUDIT_LOG.to_string());
+        match Self::validated_audit_path(&raw) {
+            Some(path) => Self::new(path),
+            None => {
+                tracing::warn!(
+                    path = %raw,
+                    fallback = DEFAULT_AUDIT_LOG,
+                    "invalid LOSOS_AUDIT_LOG; falling back to default"
+                );
+                Self::new(DEFAULT_AUDIT_LOG)
+            }
+        }
     }
 
     pub fn record(&self, route: &str, outcome: &str, remote: &str) {
