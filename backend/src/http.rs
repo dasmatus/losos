@@ -484,7 +484,7 @@ pub fn serve(backend: IoLosos) -> anyhow::Result<()> {
             backend,
             token,
             throttle: Throttle::default(),
-            audit: Audit::system(),
+            audit: Audit,
         });
         let server = HttpServer::new(move || {
             App::new()
