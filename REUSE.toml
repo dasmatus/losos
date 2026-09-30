@@ -4,7 +4,7 @@
 # per-file SPDX header added later wins over this blanket annotation.
 version = 1
 SPDX-PackageName = "losos"
-SPDX-PackageDownloadLocation = "https://codeberg.org/dasmatus/losos"
+SPDX-PackageDownloadLocation = "https://github.com/dasmatus/losos"
 
 [[annotations]]
 path = "**"
