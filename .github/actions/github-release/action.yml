@@ -1,11 +1,10 @@
 # Creates or updates a GitHub release for a tag and attaches its assets.
 #
-# The GitHub counterpart of .forgejo/actions/forgejo-release. The large media
-# files themselves now live in Codeberg's generic package registry, because the
-# demo QCOW2 is larger than GitHub's per-asset release limit and Codeberg's tag
-# release body points at the same registry. This action only carries the small
-# metadata assets (`*.sha256`, `release.json`) and writes the GitHub release
-# body that links to the registry.
+# The GitHub counterpart of .forgejo/actions/forgejo-release. The release lane
+# attaches the installer ISO (~1.5 GB) here along with the small metadata
+# assets (`*.sha256`, `release.json`). The demo QCOW2 is larger than GitHub's
+# per-asset limit, so it lives on GHCR and in Codeberg's generic registry, and
+# the body this action writes links to it there.
 #
 # Written against curl and jq rather than a marketplace release action, for the
 # same reason the Forgejo copy is: a release is a POST plus one upload per
