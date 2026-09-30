@@ -21,42 +21,11 @@
  * pinned to the same version as nixpkgs' playwright-driver.
  */
 
-import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
-import { extname, join, normalize } from 'node:path';
 import assert from 'node:assert';
-import { chromium } from 'playwright';
+import { launch, runner, serve } from './harness.mjs';
 
-const DIST = 'dist';
-const TYPES = {
-  '.html': 'text/html; charset=utf-8',
-  '.js': 'text/javascript; charset=utf-8',
-  '.css': 'text/css; charset=utf-8',
-  '.json': 'application/json',
-  '.svg': 'image/svg+xml',
-};
-
-/* Serves dist/ with an SPA fallback, the same shape nginx gives the admin
- * location (`try_files $uri /index.html`). Without the fallback a deep link
- * 404s and the test would be asserting against an error page. */
-const server = createServer((req, res) => {
-  const url = new URL(req.url, 'http://127.0.0.1');
-  const rel = normalize(url.pathname).replace(/^(\.\.[/\\])+/, '');
-  const send = async (file) => {
-    const body = await readFile(join(DIST, file));
-    res.writeHead(200, { 'Content-Type': TYPES[extname(file)] ?? 'application/octet-stream' });
-    res.end(body);
-  };
-  send(rel === '/' ? 'index.html' : rel).catch(() => send('index.html').catch(() => {
-    res.writeHead(404);
-    res.end('not found');
-  }));
-});
-
-await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
-const origin = `http://127.0.0.1:${server.address().port}`;
-
-const browser = await chromium.launch({ chromiumSandbox: false });
+const { origin, close: closeServer } = await serve();
+const browser = await launch();
 
 /* One page wired to a box in a given state. `claimed` is the whole point: it
  * is what decides between the wizard and the key prompt. */
@@ -112,16 +81,7 @@ async function open({ claimed, tls = false, path = '/' }) {
   return { page, errors };
 }
 
-const failures = [];
-const check = async (name, fn) => {
-  try {
-    await fn();
-    console.log(`  ok   ${name}`);
-  } catch (e) {
-    failures.push(`${name}: ${e.message}`);
-    console.log(`  FAIL ${name}\n       ${e.message}`);
-  }
-};
+const { check, finish } = runner();
 
 console.log('admin-ui browser checks');
 
@@ -226,10 +186,5 @@ await check('claiming the box mid-wizard does not end the wizard', async () => {
 });
 
 await browser.close();
-server.close();
-
-if (failures.length > 0) {
-  console.error(`\n${failures.length} failed:\n${failures.map((f) => `  - ${f}`).join('\n')}`);
-  process.exit(1);
-}
-console.log('\nall browser checks passed');
+await closeServer();
+finish();
