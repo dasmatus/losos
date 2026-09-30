@@ -484,7 +484,7 @@ pub fn serve(backend: IoLosos) -> anyhow::Result<()> {
             backend,
             token,
             throttle: Throttle::default(),
-            audit: Audit::from_env(),
+            audit: Audit::in_dir(&crate::io_backend::Paths::from_env().state_dir),
         });
         let server = HttpServer::new(move || {
             App::new()
