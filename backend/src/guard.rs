@@ -8,7 +8,7 @@
 
 use std::collections::HashMap;
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
@@ -23,8 +23,10 @@ const MAX_TRACKED: usize = 1024;
 /// A source quiet for this long is forgotten.
 const FORGET_AFTER: Duration = Duration::from_secs(3600);
 
-/// File name of the audit log within the state directory.
-const AUDIT_FILE: &str = "audit.log";
+/// Where the audit log lives. A constant, deliberately not read from the
+/// environment: `/var` is bind-mounted from `/persist`, so this survives the
+/// nightly reboot, and no input can steer where the daemon appends.
+pub const AUDIT_LOG: &str = "/var/lib/losos/audit.log";
 
 struct Record {
     failures: u32,
@@ -115,12 +117,9 @@ impl Audit {
         Self { path: path.into() }
     }
 
-    /// The log inside the daemon's state directory (`$LOSOS_STATE_DIR`,
-    /// `/var/lib/losos` on the appliance — `/var` is bind-mounted from
-    /// `/persist`, so it survives the nightly reboot). The file name is fixed;
-    /// only the directory the daemon already trusts for `state.json` varies.
-    pub fn in_dir(state_dir: &Path) -> Self {
-        Self::new(state_dir.join(AUDIT_FILE))
+    /// The appliance's audit log at [`AUDIT_LOG`].
+    pub fn system() -> Self {
+        Self::new(AUDIT_LOG)
     }
 
     pub fn record(&self, route: &str, outcome: &str, remote: &str) {
