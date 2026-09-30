@@ -53,7 +53,13 @@ pkgs.buildNpmPackage {
   npmFlags = [ "--ignore-scripts" ];
 
   env = {
-    PLAYWRIGHT_BROWSERS_PATH = pkgs.playwright-driver.browsers;
+    # Chromium only: that is all the suite launches. The full set also builds
+    # playwright-webkit, which currently fails in nixpkgs (auto-patchelf cannot
+    # find libmanette) and would take this check down with it.
+    PLAYWRIGHT_BROWSERS_PATH = pkgs.playwright-driver.browsers.override {
+      withFirefox = false;
+      withWebkit = false;
+    };
     PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS = "true";
     PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1";
     FONTCONFIG_FILE = pkgs.makeFontsConf { fontDirectories = [ pkgs.dejavu_fonts ]; };
