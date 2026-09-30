@@ -110,7 +110,8 @@ images
     # doCheck is off, and the tests still run — in CI's lint job and in
     # `devenv test`, both of which invoke `cargo test` directly.
     #
-    # The reason is Codeberg's 10-minute cap. doCheck does not merely execute
+    # The reason was the 10-minute cap on Codeberg, the project's former CI
+    # host. doCheck does not merely execute
     # the suite (that takes ~0.2 s); it compiles the crate a second time in
     # test configuration and links a separate binary per test target. That
     # pushed `nix build .#losos-ctl` to between 7.7 and 10.3 minutes across

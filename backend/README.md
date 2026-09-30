@@ -74,7 +74,7 @@ directory in tests.
 | `LOSOS_NO_DBUS` | unset; any value disables the bus listener |
 | `LOSOS_ADMIN_PORT` | `8082` |
 | `LOSOS_ADMIN_TOKEN_FILE` | `/var/secrets/losos-admin-token` |
-| `LOSOS_FLAKE_URL` | `https://codeberg.org/dasmatus/losos.git` |
+| `LOSOS_FLAKE_URL` | `https://github.com/dasmatus/losos.git` |
 | `LOSOS_FLAKE_WORK` | `/tmp/losos-flake` |
 | `LOSOS_KEYFILE` | `/etc/keys/persist-keyfile` |
 
