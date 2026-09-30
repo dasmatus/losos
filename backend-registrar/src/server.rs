@@ -252,6 +252,7 @@ where
 
     let app = Router::new()
         .route("/health", get(health))
+        .route("/noise-public-key", get(noise_public_key))
         .route("/register", post(register))
         .route("/heartbeat", post(heartbeat))
         .route("/deregister", post(deregister))
@@ -325,6 +326,21 @@ async fn guard(State(st): State<AppState>, req: Request, next: Next) -> Response
 
 async fn health() -> &'static str {
     "ok"
+}
+
+/// The tunnel's Noise public key, for appliances to pin on first start.
+///
+/// Unauthenticated on purpose: it is a public key, and the appliance fetches it
+/// before it holds any credential, over the TLS the edge is fronted with.
+/// 404 when Noise is off or the key has not been generated yet.
+async fn noise_public_key(State(st): State<AppState>) -> Response {
+    let Some(path) = &st.opts.noise_public_key_file else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    match tokio::fs::read_to_string(path).await {
+        Ok(key) => key.trim().to_string().into_response(),
+        Err(_) => StatusCode::NOT_FOUND.into_response(),
+    }
 }
 
 async fn register(
