@@ -13,6 +13,7 @@ fn opts() -> EdgeOpts {
         rathole_bind_addr: "0.0.0.0".to_string(),
         rathole_bind_port: 2333,
         bootstrap_token: "BOOT".to_string(),
+        noise_private_key: None,
     }
 }
 
@@ -82,6 +83,7 @@ fn an_ipv6_bind_address_is_bracketed() {
             rathole_bind_addr: "::".to_string(),
             rathole_bind_port: 2333,
             bootstrap_token: "BOOT".to_string(),
+            noise_private_key: None,
         },
     );
     assert!(
@@ -112,6 +114,7 @@ fn quotes_and_backslashes_are_escaped() {
             rathole_bind_addr: "0.0.0.0".to_string(),
             rathole_bind_port: 2333,
             bootstrap_token: r#"a"b\c"#.to_string(),
+            noise_private_key: None,
         },
     );
     assert!(
@@ -135,6 +138,7 @@ fn control_characters_in_a_token_are_escaped() {
             rathole_bind_addr: "0.0.0.0".to_string(),
             rathole_bind_port: 2333,
             bootstrap_token: raw.to_string(),
+            noise_private_key: None,
         },
     );
     let toml = files.rathole_toml;
@@ -185,5 +189,26 @@ fn a_non_bare_tenant_id_is_quoted_and_escaped() {
         toml.lines().filter(|l| l.trim() == "[server]").count(),
         1,
         "a tenant id smuggled a table header into server.toml: {toml:?}"
+    );
+}
+
+#[test]
+fn noise_key_renders_the_server_transport_and_absence_stays_plain_tcp() {
+    let plain = desired_config(&[], &opts());
+    assert!(!plain.rathole_toml.contains("transport"));
+
+    let noisy = desired_config(
+        &[],
+        &EdgeOpts {
+            noise_private_key: Some("PRIVKEY".to_string()),
+            ..opts()
+        },
+    );
+    assert!(
+        noisy.rathole_toml.contains(
+            "[server.transport]\ntype = \"noise\"\n\n[server.transport.noise]\nlocal_private_key = \"PRIVKEY\"\n"
+        ),
+        "{}",
+        noisy.rathole_toml
     );
 }

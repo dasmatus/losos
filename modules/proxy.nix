@@ -34,7 +34,8 @@ let
   # parts (remote_addr, service name, local_addr) are templated in; the
   # secrets are read from their 0600 files so no token ever lands in the
   # store. rathole auto-detects [client] mode from the file.
-  genClientConf = pkgs.writeShellScript "losos-rathole-client-conf" ''
+  genClientConf = pkgs.writeShellScript "losos-rathole-client-conf" (
+    ''
         set -eu
         install -d -m 0700 ${confDir}
         umask 077
@@ -49,7 +50,21 @@ let
     token = "$token"
     local_addr = "127.0.0.1:80"
     EOF
-  '';
+  ''
+  + lib.optionalString (cfg.noisePublicKeyFile != null) ''
+        # Noise (NK): the tunnel is encrypted to the edge's public key, read at
+        # runtime like the tokens so no key material is in the store.
+        pub="$(tr -d '[:space:]' < ${cfg.noisePublicKeyFile})"
+        cat >> ${confDir}/client.toml <<EOF
+
+    [client.transport]
+    type = "noise"
+
+    [client.transport.noise]
+    remote_public_key = "$pub"
+    EOF
+  ''
+  );
 
   # announce flags. --token-file is a path (read at runtime), not the secret,
   # so it's safe to put on the command line / in the store.
@@ -86,12 +101,61 @@ in
       }
     ];
 
+    # ── Noise pin (first start only) ─────────────────────────────────────
+    # The edge generates its own keypair. On first start the appliance fetches
+    # the public half from the registrar (the same TLS-fronted URL it registers
+    # with) and keeps it, so the tunnel is pinned to that key from then on:
+    # trust on first use, and nothing to provision by hand. A file already at
+    # noisePublicKeyFile (provisioned out of band) is never overwritten, which
+    # is also how to pin a key you distributed yourself. A key that does not
+    # look like 32 base64 bytes is refused rather than written.
+    systemd.services.losos-rathole-noise-pin = lib.mkIf (cfg.noisePublicKeyFile != null) {
+      description = "losos rathole Noise pin — fetch and keep the edge's public key";
+      wantedBy = [ "multi-user.target" ];
+      before = [ "losos-rathole-client.service" ];
+      after = [ "network-online.target" ];
+      wants = [ "network-online.target" ];
+      path = [
+        pkgs.curl
+        pkgs.coreutils
+        pkgs.gnugrep
+      ];
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+        Restart = "on-failure";
+        RestartSec = 10;
+        PrivateTmp = true;
+      };
+      script = ''
+        set -eu
+        pub=${toString cfg.noisePublicKeyFile}
+        [ -s "$pub" ] && exit 0
+        key="$(curl -fsS --max-time 20 ${lib.escapeShellArg cfg.registrarUrl}/noise-public-key)"
+        printf '%s' "$key" | grep -Eq '^[A-Za-z0-9+/]{43}=$' || {
+          echo "edge returned something that is not an X25519 public key" >&2
+          exit 1
+        }
+        install -d -m 0700 "$(dirname "$pub")"
+        printf '%s\n' "$key" > "$pub.new"
+        mv "$pub.new" "$pub"
+      '';
+    };
+
     # ── rathole client (outbound tunnel) ─────────────────────────────────
     systemd.services.losos-rathole-client = {
       description = "losos rathole client — outbound tunnel to the master-proxy edge";
       wantedBy = [ "multi-user.target" ];
-      after = [ "network-online.target" ];
-      wants = [ "network-online.target" ];
+      after = [
+        "network-online.target"
+      ]
+      ++ lib.optional (cfg.noisePublicKeyFile != null) "losos-rathole-noise-pin.service";
+      # Wants, not Requires: while the pin is still being fetched the client
+      # fails at its own ExecStartPre and Restart=always retries it.
+      wants = [
+        "network-online.target"
+      ]
+      ++ lib.optional (cfg.noisePublicKeyFile != null) "losos-rathole-noise-pin.service";
       serviceConfig = {
         ExecStartPre = genClientConf;
         ExecStart = "${rathole}/bin/rathole -c ${confDir}/client.toml";

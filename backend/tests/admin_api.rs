@@ -282,3 +282,64 @@ fn sigterm_stops_the_daemon_cleanly() {
     }
     panic!("lososd ignored SIGTERM");
 }
+
+#[test]
+fn repeated_bad_tokens_are_throttled_and_health_stays_open() {
+    let daemon = Daemon::start(None);
+    let token = daemon.token();
+    let bad = format!("Bearer {}", flip_last(&token));
+
+    // The free budget (10) is spent on plain 401s, and the 11th failure is
+    // still answered 401 while opening the first penalty window...
+    for _ in 0..11 {
+        assert_eq!(
+            daemon.request("GET", "/api/state", Some(&bad), None).status,
+            401
+        );
+    }
+    // ...after which the source is refused, even with the right token: a
+    // throttle that let a correct guess through would only slow wrong ones.
+    let throttled = daemon.request("GET", "/api/state", Some(&bad), None);
+    assert_eq!(throttled.status, 429);
+    let right = format!("Bearer {token}");
+    assert_eq!(
+        daemon
+            .request("GET", "/api/state", Some(&right), None)
+            .status,
+        429
+    );
+    // Liveness is never throttled.
+    assert_eq!(daemon.request("GET", "/api/health", None, None).status, 200);
+
+    // The window is short (1s at first) and a correct token then works again.
+    std::thread::sleep(Duration::from_millis(1100));
+    assert_eq!(
+        daemon
+            .request("GET", "/api/state", Some(&right), None)
+            .status,
+        200
+    );
+}
+
+#[test]
+fn mutating_routes_still_answer_when_the_audit_log_cannot_be_written() {
+    // The audit path is fixed at /var/lib/losos/audit.log, which a test runner
+    // usually cannot write. A failed append is journalled and must never turn
+    // into a failed request; the append itself is covered by the guard.rs
+    // unit tests.
+    let daemon = Daemon::start(None);
+    let token = daemon.token();
+    let right = format!("Bearer {token}");
+    let bad = format!("Bearer {}", flip_last(&token));
+
+    assert_eq!(
+        daemon.request("POST", "/api/grow", Some(&bad), None).status,
+        401
+    );
+    assert_eq!(
+        daemon
+            .request("POST", "/api/change", Some(&right), Some("{}"))
+            .status,
+        400
+    );
+}
