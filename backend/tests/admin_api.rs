@@ -23,6 +23,7 @@ struct Daemon {
     /// Held only so the daemon's throwaway directory outlives it.
     _dir: TempDir,
     token_file: std::path::PathBuf,
+    audit_log: std::path::PathBuf,
 }
 
 impl Drop for Daemon {
@@ -48,6 +49,7 @@ impl Daemon {
         if let Some(seed) = token_file_seed {
             std::fs::write(&token_file, seed).unwrap();
         }
+        let audit_log = dir.path().join("audit.log");
         let port = free_port();
 
         let child = Command::new(env!("CARGO_BIN_EXE_lososd"))
@@ -58,6 +60,7 @@ impl Daemon {
             .env("LOSOS_CONFIG", dir.path().join("defaults.nix"))
             .env("LOSOS_OVERRIDES", dir.path().join("overrides.nix"))
             .env("LOSOS_ADMIN_TOKEN_FILE", &token_file)
+            .env("LOSOS_AUDIT_LOG", &audit_log)
             .env("LOSOS_ADMIN_PORT", port.to_string())
             .env("RUST_LOG", "warn")
             .stdout(Stdio::null())
@@ -70,6 +73,7 @@ impl Daemon {
             port,
             _dir: dir,
             token_file,
+            audit_log,
         };
         daemon.wait_until_up();
         daemon
@@ -281,4 +285,76 @@ fn sigterm_stops_the_daemon_cleanly() {
         }
     }
     panic!("lososd ignored SIGTERM");
+}
+
+#[test]
+fn repeated_bad_tokens_are_throttled_and_health_stays_open() {
+    let daemon = Daemon::start(None);
+    let token = daemon.token();
+    let bad = format!("Bearer {}", flip_last(&token));
+
+    // The free budget (10) is spent on plain 401s, and the 11th failure is
+    // still answered 401 while opening the first penalty window...
+    for _ in 0..11 {
+        assert_eq!(
+            daemon.request("GET", "/api/state", Some(&bad), None).status,
+            401
+        );
+    }
+    // ...after which the source is refused, even with the right token: a
+    // throttle that let a correct guess through would only slow wrong ones.
+    let throttled = daemon.request("GET", "/api/state", Some(&bad), None);
+    assert_eq!(throttled.status, 429);
+    let right = format!("Bearer {token}");
+    assert_eq!(
+        daemon
+            .request("GET", "/api/state", Some(&right), None)
+            .status,
+        429
+    );
+    // Liveness is never throttled.
+    assert_eq!(daemon.request("GET", "/api/health", None, None).status, 200);
+
+    // The window is short (1s at first) and a correct token then works again.
+    std::thread::sleep(Duration::from_millis(1100));
+    assert_eq!(
+        daemon
+            .request("GET", "/api/state", Some(&right), None)
+            .status,
+        200
+    );
+}
+
+#[test]
+fn admin_mutations_are_audited_without_secrets() {
+    use std::os::unix::fs::PermissionsExt;
+    let daemon = Daemon::start(None);
+    let token = daemon.token();
+    let right = format!("Bearer {token}");
+    let bad = format!("Bearer {}", flip_last(&token));
+
+    // A failed attempt on a mutating route, and a request that authenticates
+    // but is malformed (400 "rejected"); reads are not audited.
+    daemon.request("POST", "/api/grow", Some(&bad), None);
+    daemon.request("POST", "/api/change", Some(&right), Some("{}"));
+    daemon.request("GET", "/api/state", Some(&right), None);
+
+    let text = std::fs::read_to_string(&daemon.audit_log).unwrap();
+    let lines: Vec<serde_json::Value> = text
+        .lines()
+        .map(|l| serde_json::from_str(l).unwrap())
+        .collect();
+    assert_eq!(lines.len(), 2, "{text}");
+    assert_eq!(lines[0]["route"], "/api/grow");
+    assert_eq!(lines[0]["outcome"], "unauthorized");
+    assert_eq!(lines[0]["remote"], "127.0.0.1");
+    assert_eq!(lines[1]["route"], "/api/change");
+    assert_eq!(lines[1]["outcome"], "rejected");
+    assert!(!text.contains(&token));
+    let mode = std::fs::metadata(&daemon.audit_log)
+        .unwrap()
+        .permissions()
+        .mode()
+        & 0o777;
+    assert_eq!(mode, 0o600);
 }

@@ -41,6 +41,10 @@ pub struct EdgeOpts {
     pub rathole_bind_port: u16,
     /// rathole `default_token` (also the bootstrap shared secret).
     pub bootstrap_token: String,
+    /// The tunnel's Noise (`Noise_NK_25519_ChaChaPoly_BLAKE2s`) private key,
+    /// base64, read from a 0600 file at runtime. `Some` turns rathole's Noise
+    /// transport on for the server; `None` leaves the tunnel plain TCP.
+    pub noise_private_key: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -165,6 +169,12 @@ pub fn desired_config(tenants: &[TenantView], opts: &EdgeOpts) -> Files {
         bind = format_bind(&opts.rathole_bind_addr, opts.rathole_bind_port),
         tok = toml_escape(&opts.bootstrap_token),
     );
+    if let Some(key) = &opts.noise_private_key {
+        toml.push_str(&format!(
+            "\n[server.transport]\ntype = \"noise\"\n\n[server.transport.noise]\nlocal_private_key = \"{}\"\n",
+            toml_escape(key)
+        ));
+    }
 
     if tenants.is_empty() {
         // rathole's server config requires a `services` field (serde rejects a
