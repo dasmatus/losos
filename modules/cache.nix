@@ -14,18 +14,17 @@
 # cache" and not one configured a substituter. `substituters`, `nixConfig`,
 # `trusted-public-keys` and `nix.settings` had zero hits across every .nix file.
 #
-# WHAT FILLS IT. `.github/workflows/ci.yml` pushes after each build job:
+# WHAT FILLS IT. `.github/workflows/ci.yml` publishes signed GHCR artifacts
+# through .github/actions/proxy-push after each build job:
 # losos-ctl, losos-registrar, losos-admin-ui, and the pause and Forgejo images.
 # Those are exactly the paths cache.nixos.org cannot serve, because this flake
 # builds them. losos-admin-ui earns its place there only since it became a real
 # npm build; while it was a `cp -rT` of some static files, pushing it saved a
 # target nothing worth measuring.
 #
-# CI also READS from this cache — the same URL and key are written into the
-# runner's nix.conf by .github/actions/setup-nix. So an unchanged losos-ctl is
-# fetched rather than recompiled, which saves ~9 minutes per job. Keep the
-# key here and there in step; this file is the one that matters, because it is
-# the one a real box uses.
+# CI also READS from this cache — setup-nix uses repository variables for the
+# proxy URL and public key. Configure those same values on the appliance via
+# losos.cache.*; without them the default is no project-specific substituter.
 #
 # The Nextcloud image is the exception, and it is the one that matters most
 # here — it is the 2.3 GiB closure named above. It is NOT built on every push:

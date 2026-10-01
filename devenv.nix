@@ -116,22 +116,6 @@ in
 {
   name = "losos";
 
-  # Push what this shell builds to the cache the appliance substitutes from.
-  #
-  # This is the half that fills the cache; modules/cache.nix is the half that
-  # reads it. Without something pushing, a substituter is just a 404 the
-  # installer waits five seconds for.
-  #
-  # CI does not go through devenv (see the header of .github/workflows/ci.yml),
-  # so this covers local builds only. The CI half is wired too:
-  # .github/actions/cachix-push pushes from several jobs using the CACHIX_KEY
-  # secret -- same cache, same key, because it is modules/cache.nix at the other
-  # end that decides them. The release media are deliberately NOT among them.
-  # The tag lane attaches the installer ISO to the GitHub release and pushes
-  # both media to GHCR; the cache remains for substitution, not end-user
-  # downloads.
-  cachix.push = "losos";
-
   # ── Toolchain ────────────────────────────────────────────────────────────
   # channel = "nixpkgs" on purpose. The repo ships no rust-toolchain.toml
   # because the Nix builders use nixpkgs' rustc regardless; pinning a
@@ -358,11 +342,8 @@ in
   # again and are never uploaded anywhere. Pass a substring to build one of
   # them on its own: `build-media qcow2`.
   #
-  # Worth knowing before you run this on an authenticated machine: `cachix.push`
-  # at the top of this file makes everything built in the shell a push
-  # candidate. That is the point for the OCI images, which the appliance
-  # substitutes. Nothing substitutes a medium, so pushing one spends the cache's
-  # quota on a file only you will ever read.
+  # Nothing substitutes a medium; CI only publishes package closures through
+  # the LosOS Desktop proxy, not the installer ISO or demo QCOW2.
   scripts.build-media.exec = buildMatching "losos-disk-";
   scripts.build-media.description = "Build the demo QCOW2 and the closure-carrying ISO (many gigabytes; opt-in).";
 

@@ -28,6 +28,8 @@ jobs:
       - uses: ./.github/actions/setup-nix
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
+          cache-url: ${{ vars.LOSOS_PROXY_URL }}
+          public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
       # flake.lock and devenv.{yaml,lock} are coupled: the flake's nixpkgs rev
       # must be copied into devenv.yaml before devenv.lock is regenerated.
       - name: refresh lockfiles
