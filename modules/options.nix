@@ -95,10 +95,11 @@ in
     # ── Binary cache ────────────────────────────────────────────────────────
     cache.substituters = lib.mkOption {
       type = lib.types.listOf lib.types.str;
-      default = [ "https://losos.cachix.org" ];
+      default = [ ];
       description = ''
         Extra Nix substituters, added to the appliance *and* to the installer
-        medium. Empty disables the feature and nothing changes.
+        medium. Set this to the LosOS Desktop proxy's public URL and set
+        trustedPublicKeys to its Nix signing key. Empty disables the feature.
 
         This exists because of one number. `losos.nextcloud.mode` defaults to
         `container`, so the install closure contains `losos-image-nextcloud` —
@@ -115,7 +116,7 @@ in
 
     cache.trustedPublicKeys = lib.mkOption {
       type = lib.types.listOf lib.types.str;
-      default = [ "losos.cachix.org-1:4t3mjPiiE7RZHBk3znPi0mq4uP5RY630YXAapAWe708=" ];
+      default = [ ];
       description = ''
         Public keys trusted for `losos.cache.substituters`.
 
