@@ -34,6 +34,8 @@ pkgs.testers.nixosTest {
 
       losos.hostName = "mattbox";
       losos.backend.package = lososPkgs.losos-ctl;
+      losos.cache.substituters = [ "https://proxy.example.test" ];
+      losos.cache.trustedPublicKeys = [ "losos-test-1:4t3mjPiiE7RZHBk3znPi0mq4uP5RY630YXAapAWe708=" ];
 
       # modules/tls.nix attaches its listener to the front vhost, which
       # modules/containers.nix owns. That module drags in the whole workload
@@ -136,8 +138,8 @@ pkgs.testers.nixosTest {
         # Nextcloud image on the target. Assert the setting is in force rather
         # than merely written down.
         conf = machine.succeed("nix --extra-experimental-features nix-command config show")
-        assert "losos.cachix.org" in conf, f"substituter not in force:\n{conf}"
-        assert "losos.cachix.org-1:" in conf, f"public key not trusted:\n{conf}"
+        assert "proxy.example.test" in conf, f"substituter not in force:\n{conf}"
+        assert "losos-test-1:" in conf, f"public key not trusted:\n{conf}"
         # cache.nixos.org still serves most of any closure here; ours is added,
         # not substituted for it.
         assert "cache.nixos.org" in conf, "the upstream cache was replaced rather than extended"
