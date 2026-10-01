@@ -22,7 +22,7 @@
 #                needs the network on a machine that cannot substitute it. That
 #                costs a red CI job at worst, never a failed install: the
 #                output has no store references, modules/cache.nix points every
-#                box at losos.cachix.org, and flake.nix puts this path in the
+#                box through its configured proxy, and flake.nix puts this path in the
 #                ISO's storeContents.
 #   losos-registrar — the Rust edge registration + Traefik/rathole config
 #                reconciler (`serve`) and appliance registration client

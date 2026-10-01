@@ -76,7 +76,7 @@ comments are history explaining a choice its CI forced. CI is
 `.github/workflows/ci.yml`, kept in step by hand with `devenv.nix`, plus a
 tag-release job that builds the heavy media, attaches the installer ISO to the
 GitHub release and pushes both media to GHCR (the demo QCOW2 is over GitHub's
-2 GiB per-asset limit). `.github/actions/` carries `setup-nix`, `cachix-push`
+2 GiB per-asset limit). `.github/actions/` carries `setup-nix`, `proxy-push`
 and `github-release`.
 
 GitHub's runners cap at 6 hours, so jobs carry explicit `timeout-minutes`. The
