@@ -400,8 +400,8 @@ whether a medium boots: v0.1.1 built green and was then reported unbootable.
 Each boot passes when the installer resolves `github.com`, which it does
 only after the firmware, bootloader, kernel, autologin and drive detection
 have all worked. The VM is killed as soon as the query is seen, and the
-disk it would install to is a throwaway file. On failure the job uploads a
-screenshot.
+disk it would install to is a throwaway file. If a boot times out, the job
+uploads a screenshot of where it stopped.
 
 ## Layout
 
