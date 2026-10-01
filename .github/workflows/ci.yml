@@ -176,9 +176,6 @@ jobs:
     name: "rust: lososd + losos-ctl build"
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    permissions:
-      contents: read
-      packages: write
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-nix
@@ -191,11 +188,6 @@ jobs:
       # is the longest job here; re-time it before adding any heavy dependency
       # to backend/Cargo.toml.
       - run: nix build .#losos-ctl -L
-      - uses: ./.github/actions/proxy-push
-        if: github.event_name != 'pull_request' && vars.LOSOS_PROXY_URL != ''
-        with:
-          installables: ".#losos-ctl"
-          signing-key: ${{ secrets.NIX_CACHE_SIGNING_KEY }}
       # Hand losos-ctl to the iso job. Exporting its closure to a file://
       # binary cache is 12 MiB and ~13 s, against the ~9 minutes of rustc that
       # job would otherwise spend rebuilding the crate — and it works on a fork
@@ -222,9 +214,6 @@ jobs:
     name: "rust: losos-registrar + admin UI"
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    permissions:
-      contents: read
-      packages: write
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-nix
@@ -242,11 +231,6 @@ jobs:
       # production bundle, in headless chromium from nixpkgs. No /dev/kvm
       # needed, unlike the VM tests. Reuses the npm deps built just above.
       - run: nix build .#checks.x86_64-linux.losos-admin-ui -L
-      - uses: ./.github/actions/proxy-push
-        if: github.event_name != 'pull_request' && vars.LOSOS_PROXY_URL != ''
-        with:
-          installables: ".#losos-registrar .#losos-admin-ui"
-          signing-key: ${{ secrets.NIX_CACHE_SIGNING_KEY }}
       # Export the built SPA for the iso job, exactly as the losos-ctl job
       # exports its crate and for the same reason. flake.nix puts
       # losos-admin-ui in isoImage.storeContents, so without this the ISO job
@@ -255,9 +239,8 @@ jobs:
       # Cheap to carry: a dist/ tree with no store references, ~1 MiB against
       # losos-ctl's 12 MiB.
       #
-      # This artifact, unlike the proxy push above, is NOT gated on a secret:
-      # a fork's ISO job must still get the bundle, or it goes red for want of
-      # a key the contributor cannot have.
+      # This artifact is NOT gated on a secret: a fork's ISO job must still get
+      # the bundle, or it goes red for want of a key the contributor cannot have.
       - name: export losos-registrar for the release-media job
         run: |
           nix copy --to "file://$PWD/registrar-cache" --no-check-sigs .#losos-registrar
@@ -287,9 +270,6 @@ jobs:
     name: "nix: OCI images for the local cluster"
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    permissions:
-      contents: read
-      packages: write
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-nix
@@ -313,13 +293,63 @@ jobs:
       # handful of paths, losos-image-forgejo a 585 MiB tarball over a 647 MiB /
       # 126-path content closure.
       - run: nix build .#losos-image-pause .#losos-image-forgejo -L
-      - uses: ./.github/actions/proxy-push
+      - name: export images for the publisher
+        if: github.event_name != 'pull_request' && vars.LOSOS_PROXY_URL != ''
+        run: |
+          nix copy --to "file://$PWD/images-cache" --no-check-sigs .#losos-image-pause .#losos-image-forgejo
+          nix path-info .#losos-image-pause .#losos-image-forgejo > images-cache/store-paths
+      - uses: actions/upload-artifact@v4
         if: github.event_name != 'pull_request' && vars.LOSOS_PROXY_URL != ''
         with:
-          installables: ".#losos-image-pause .#losos-image-forgejo"
-          signing-key: ${{ secrets.NIX_CACHE_SIGNING_KEY }}
+          name: losos-images-store
+          path: images-cache
+          retention-days: 1
+          include-hidden-files: true
       # losos-image-nextcloud is not built here either; see the
       # image-nextcloud job below for what changed about that on this forge.
+
+  publish-cache:
+    name: "nix: publish built paths to proxy"
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    if: github.event_name != 'pull_request' && vars.LOSOS_PROXY_URL != ''
+    needs: [losos-ctl, registrar-and-ui, images]
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-nix
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          cache-url: ${{ vars.LOSOS_PROXY_URL }}
+          public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: losos-ctl-store
+          path: ctl-cache
+      - uses: actions/download-artifact@v4
+        with:
+          name: losos-registrar-store
+          path: registrar-cache
+      - uses: actions/download-artifact@v4
+        with:
+          name: losos-admin-ui-store
+          path: ui-cache
+      - uses: actions/download-artifact@v4
+        with:
+          name: losos-images-store
+          path: images-cache
+      - name: import the build jobs' store exports
+        run: |
+          xargs -r nix copy --from "file://$PWD/ctl-cache" --no-check-sigs < ctl-cache/store-paths
+          xargs -r nix copy --from "file://$PWD/registrar-cache" --no-check-sigs < registrar-cache/store-paths
+          xargs -r nix copy --from "file://$PWD/ui-cache" --no-check-sigs < ui-cache/store-paths
+          xargs -r nix copy --from "file://$PWD/images-cache" --no-check-sigs < images-cache/store-paths
+      - uses: ./.github/actions/proxy-push
+        with:
+          installables: ".#losos-ctl .#losos-registrar .#losos-admin-ui .#losos-image-pause .#losos-image-forgejo"
+          signing-key: ${{ secrets.NIX_CACHE_SIGNING_KEY }}
 
   # ── The Nextcloud image ────────────────────────────────────────────────────
   #
