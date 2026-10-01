@@ -323,6 +323,36 @@ untrusted client — with a warning, and a green build that compiled everything
 from source. The Nextcloud image, the one most likely to break, builds on the
 weekly schedule and on request rather than on every push.
 
+### Project binary cache
+
+CI publishes signed Nix store closures as OCI artifacts in
+`ghcr.io/dasmatus/losos/nix-cache`, in the format served by the
+[LosOS Desktop proxy](https://github.com/dasmatus/losos-desktop/tree/main/proxy).
+These artifacts are Nix packages, **not** the release ISO or demo QCOW2; those
+remain GitHub release/GHCR media. Deploy a separate instance of the proxy with
+`GHCR_REPOSITORY=dasmatus/losos` and anonymous access to that GHCR package
+(or a read-only GHCR token configured on the proxy). A Desktop proxy still
+pointing at `dasmatus/losos-desktop` must keep doing so for Desktop updates
+and will not find this repository's packages.
+
+Generate a Nix secret signing key with `nix key generate-secret --key-name
+losos-1`. Configure its full value as the repository secret
+`NIX_CACHE_SIGNING_KEY`; set its public half (from `nix key
+convert-secret-to-public`) as repository variable `NIX_CACHE_PUBLIC_KEY`, and
+the deployed proxy's public HTTPS URL as repository variable `LOSOS_PROXY_URL`.
+The CI publisher uses `GITHUB_TOKEN` with `packages: write`; make the
+`losos/nix-cache` package publicly readable so the proxy can obtain it
+anonymously. Never put the secret key in the flake or on an appliance.
+
+For installations, configure both `losos.cache.substituters = [
+"https://<deployed-proxy>" ];` and `losos.cache.trustedPublicKeys = [
+"<public-key>" ];` in the flake's NixOS configuration **before building the
+installer**, so the installer and installed system agree with CI. Until the
+proxy URL and signing key are provided, the project cache is disabled (stock
+`cache.nixos.org` remains enabled); no Cachix account is needed. Confirm
+`/nix-cache-info` on the public URL and verify a published path with `nix
+copy --from <proxy-url> <store-path>` before relying on it for an install.
+
 Two lock files exist: `flake.lock` pins the nixpkgs that _builds_ the
 appliance, `devenv.lock` the one that _lints and tests_ it. They must be
 bumped together; `check-pins` fails if they disagree.
