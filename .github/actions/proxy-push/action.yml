@@ -1,0 +1,56 @@
+name: "Publish to LosOS proxy"
+description: "Sign Nix closures and publish them as GHCR artifacts served by the LosOS Desktop proxy."
+
+inputs:
+  installables:
+    description: "Space-separated flake installables to publish."
+    required: true
+  signing-key:
+    description: "NIX_CACHE_SIGNING_KEY, matching the configured trusted public key."
+    required: true
+  build-args:
+    description: "Extra nix build arguments."
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Publish signed store paths
+      shell: bash
+      env:
+        SIGNING_KEY: ${{ inputs.signing-key }}
+        INSTALLABLES: ${{ inputs.installables }}
+        BUILD_ARGS: ${{ inputs.build-args }}
+        GHCR_TOKEN: ${{ github.token }}
+        REPOSITORY: ${{ github.repository }}
+        ACTOR: ${{ github.actor }}
+      run: |
+        set -euo pipefail
+        if [ -z "$SIGNING_KEY" ]; then
+          echo "NIX_CACHE_SIGNING_KEY is required to publish signed store paths" >&2
+          exit 1
+        fi
+        work=$(mktemp -d)
+        trap 'rm -rf "$work"' EXIT
+        umask 077
+        printf '%s' "$SIGNING_KEY" > "$work/cache.sec"
+        # Pin the publisher to a reviewed revision of LosOS Desktop. It writes
+        # one signed narinfo/NAR OCI artifact per store path, as its proxy expects.
+        curl -fsSL --proto '=https' \
+          https://raw.githubusercontent.com/dasmatus/losos-desktop/d51ee113d3e77a06d2f8438f4a9a97c8af9aebec/tools/nix-cache-push \
+          -o "$work/nix-cache-push"
+        chmod +x "$work/nix-cache-push"
+        oras=$(nix build nixpkgs#oras --no-link --print-out-paths)
+        printf '%s' "$GHCR_TOKEN" | "$oras/bin/oras" login ghcr.io \
+          --username "$ACTOR" --password-stdin
+        # Word-split flake installables and arguments supplied by this workflow.
+        # shellcheck disable=SC2086
+        outputs=$(nix build $BUILD_ARGS $INSTALLABLES --no-link --print-out-paths)
+        mapfile -t paths <<< "$outputs"
+        [ "${#paths[@]}" -gt 0 ]
+        PATH="$oras/bin:$PATH" \
+          "$work/nix-cache-push" \
+            --repository "ghcr.io/${REPOSITORY,,}/nix-cache" \
+            --secret-key-file "$work/cache.sec" "${paths[@]}"
+        "$oras/bin/oras" logout ghcr.io
