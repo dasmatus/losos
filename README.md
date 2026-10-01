@@ -93,6 +93,12 @@ finds every fixed disk, merges them into one LVM volume group, encrypts it,
 and installs — unattended. It needs a network connection, because it clones
 the flake at run time rather than baking a copy into the ISO.
 
+**Turn Secure Boot off first.** Neither the ISO nor the installed system is
+signed, so with Secure Boot on the firmware refuses the stick (OVMF says
+"Access Denied"; other firmware just skips it or shows nothing). The ISO
+boots under UEFI and legacy BIOS alike, but the installed system uses
+systemd-boot, so the target machine must boot in UEFI mode.
+
 Encryption unlocks from the TPM where there is one. Without a TPM it falls
 back to a keyfile in the initrd, which does **not** protect against someone
 taking the machine — see [docs/security-model.md](docs/security-model.md).
@@ -387,6 +393,15 @@ nixpkgs that cache.nixos.org serves and only `losos-ctl` costs anything to
 produce. The CI job takes that
 one from the job that already builds it, as a 12 MiB artifact, so it never
 compiles the crate twice. Squashfs and ISO assembly are 50 s on four cores.
+
+The same job then boots the ISO it just built, from a virtual USB stick,
+under UEFI and under BIOS (`tests/iso-boot.py`). A build says nothing about
+whether a medium boots: v0.1.1 built green and was then reported unbootable.
+Each boot passes when the installer resolves `github.com`, which it does
+only after the firmware, bootloader, kernel, autologin and drive detection
+have all worked. The VM is killed as soon as the query is seen, and the
+disk it would install to is a throwaway file. On failure the job uploads a
+screenshot.
 
 ## Layout
 
