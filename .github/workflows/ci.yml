@@ -99,6 +99,8 @@ jobs:
       - uses: ./.github/actions/setup-nix
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
+          cache-url: ${{ vars.LOSOS_PROXY_URL }}
+          public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
       # Check-only, always. `cargo clippy --fix` rewrites code rather than
       # whitespace, so it can change behaviour and sometimes wants human
       # judgement; unreviewed code changes have no business landing on main by
@@ -133,6 +135,8 @@ jobs:
       - uses: ./.github/actions/setup-nix
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
+          cache-url: ${{ vars.LOSOS_PROXY_URL }}
+          public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
       - run: |
           nix develop .#ci -c bash -euo pipefail -c '
             cargo test --manifest-path backend/Cargo.toml
@@ -148,6 +152,8 @@ jobs:
       - uses: ./.github/actions/setup-nix
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
+          cache-url: ${{ vars.LOSOS_PROXY_URL }}
+          public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
       # Mirrors devenv.nix's `check-flake`. Evaluates every output — every VM
       # test derivation, both nixosConfigurations and every package, the three
       # OCI images among them; builds nothing. Which is the limit of it: an
@@ -178,6 +184,8 @@ jobs:
       - uses: ./.github/actions/setup-nix
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
+          cache-url: ${{ vars.LOSOS_PROXY_URL }}
+          public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
       # Compiles the shipping binaries only — doCheck is off, and the suite runs
       # in the test job instead (see flake/packages.nix for why). Even so this
       # is the longest job here; re-time it before adding any heavy dependency
@@ -222,6 +230,8 @@ jobs:
       - uses: ./.github/actions/setup-nix
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
+          cache-url: ${{ vars.LOSOS_PROXY_URL }}
+          public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
       # Compiles only; the registrar's tests run in the test job.
       # losos-admin-ui is a buildNpmPackage: `npm ci` from the committed
       # package-lock.json, then `tsc --noEmit && vite build`. So this step is
@@ -285,6 +295,8 @@ jobs:
       - uses: ./.github/actions/setup-nix
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
+          cache-url: ${{ vars.LOSOS_PROXY_URL }}
+          public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
       # The cheap two thirds of devenv.nix's `build-images`.
       #
       # These are the images modules/defaults.nix wires into losos.workloads.*,
@@ -347,6 +359,8 @@ jobs:
       - uses: ./.github/actions/setup-nix
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
+          cache-url: ${{ vars.LOSOS_PROXY_URL }}
+          public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
       # Do not spend an hour building an image without somewhere to publish it.
       - uses: ./.github/actions/proxy-push
         if: vars.LOSOS_PROXY_URL != ''
@@ -385,6 +399,8 @@ jobs:
       - uses: ./.github/actions/setup-nix
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
+          cache-url: ${{ vars.LOSOS_PROXY_URL }}
+          public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
       # Same toolchain as the clippy job and as buildRustPackage — devShells.ci
       # from this flake's pinned nixpkgs. Formatting with a different rustfmt
       # than CI checks with is how you get a bot that fights its own linter.
@@ -439,6 +455,8 @@ jobs:
       - uses: ./.github/actions/setup-nix
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
+          cache-url: ${{ vars.LOSOS_PROXY_URL }}
+          public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
       - uses: actions/download-artifact@v4
         with:
           name: losos-ctl-store
@@ -491,6 +509,8 @@ jobs:
       - uses: ./.github/actions/setup-nix
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
+          cache-url: ${{ vars.LOSOS_PROXY_URL }}
+          public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
       - name: free runner disk for media builds
         run: |
           set -euo pipefail
