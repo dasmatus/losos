@@ -31,10 +31,29 @@ inputs:
       every other job on these runners is also drawing on.
     required: false
     default: ""
+  cache-url:
+    description: "LOSOS_PROXY_URL from the calling workflow."
+    required: false
+    default: ""
+  public-key:
+    description: "NIX_CACHE_PUBLIC_KEY from the calling workflow."
+    required: false
+    default: ""
 
 runs:
   using: composite
   steps:
+    - name: Check proxy settings
+      shell: bash
+      env:
+        CACHE_URL: ${{ inputs.cache-url }}
+        PUBLIC_KEY: ${{ inputs.public-key }}
+      run: |
+        if { [ -n "$CACHE_URL" ] && [ -z "$PUBLIC_KEY" ]; } ||
+           { [ -z "$CACHE_URL" ] && [ -n "$PUBLIC_KEY" ]; }; then
+          echo "Set both LOSOS_PROXY_URL and NIX_CACHE_PUBLIC_KEY, or neither" >&2
+          exit 1
+        fi
     - uses: cachix/install-nix-action@v31
       with:
         github_access_token: ${{ inputs.github-token }}
@@ -46,13 +65,13 @@ runs:
         # this is the stale one.
         #
         # This is also the pull half of the cache, and it is worth as much as
-        # the push half in .github/actions/cachix-push: without it every job
+        # the push half in .github/actions/proxy-push: without it every job
         # rebuilds our own paths from source even when an earlier run already
         # pushed an identical one, which for losos-ctl alone is ~9 minutes.
         extra_nix_config: |
           experimental-features = nix-command flakes
-          extra-substituters = https://losos.cachix.org
-          extra-trusted-public-keys = losos.cachix.org-1:4t3mjPiiE7RZHBk3znPi0mq4uP5RY630YXAapAWe708=
+          extra-substituters = ${{ inputs.cache-url }}
+          extra-trusted-public-keys = ${{ inputs.public-key }}
           connect-timeout = 5
           fallback = true
     # Proof the substituter was actually taken, rather than merely written

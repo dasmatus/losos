@@ -63,7 +63,7 @@ on:
 # building it: of the 769 store paths in the ISO's closure, 766 are stock
 # nixpkgs that cache.nixos.org serves and losos-ctl is the only expensive one,
 # at ~9 minutes of rustc. Skipping that is worth a 12 MiB round trip whatever
-# the cap is, and on a fork's pull request — which gets no cachix token — it is
+# the cap is, and on a fork's pull request — which gets no cache signing key — it is
 # the only thing that keeps the ISO job affordable.
 #
 # Both crates set doCheck = false, so `nix build` compiles the shipping
@@ -99,6 +99,8 @@ jobs:
       - uses: ./.github/actions/setup-nix
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
+          cache-url: ${{ vars.LOSOS_PROXY_URL }}
+          public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
       # Check-only, always. `cargo clippy --fix` rewrites code rather than
       # whitespace, so it can change behaviour and sometimes wants human
       # judgement; unreviewed code changes have no business landing on main by
@@ -133,6 +135,8 @@ jobs:
       - uses: ./.github/actions/setup-nix
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
+          cache-url: ${{ vars.LOSOS_PROXY_URL }}
+          public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
       - run: |
           nix develop .#ci -c bash -euo pipefail -c '
             cargo test --manifest-path backend/Cargo.toml
@@ -148,6 +152,8 @@ jobs:
       - uses: ./.github/actions/setup-nix
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
+          cache-url: ${{ vars.LOSOS_PROXY_URL }}
+          public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
       # Mirrors devenv.nix's `check-flake`. Evaluates every output — every VM
       # test derivation, both nixosConfigurations and every package, the three
       # OCI images among them; builds nothing. Which is the limit of it: an
@@ -175,30 +181,17 @@ jobs:
       - uses: ./.github/actions/setup-nix
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
+          cache-url: ${{ vars.LOSOS_PROXY_URL }}
+          public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
       # Compiles the shipping binaries only — doCheck is off, and the suite runs
       # in the test job instead (see flake/packages.nix for why). Even so this
       # is the longest job here; re-time it before adding any heavy dependency
       # to backend/Cargo.toml.
       - run: nix build .#losos-ctl -L
-      # Publish to the binary cache the appliance substitutes from.
-      #
-      # modules/cache.nix points every installed box AND every installer medium
-      # at https://losos.cachix.org, and the things it cannot get from
-      # cache.nixos.org are exactly ours: losos-ctl, the registrar, the admin UI
-      # and the three images. Until something pushed them that substituter was
-      # an empty promise, and a fresh install fell back to building them on a
-      # repurposed mini-PC.
-      #
-      # Skipping rather than failing when the secret is absent is the action's
-      # behaviour; see .github/actions/cachix-push.
-      - uses: ./.github/actions/cachix-push
-        with:
-          installables: ".#losos-ctl"
-          token: ${{ secrets.CACHIX_KEY }}
       # Hand losos-ctl to the iso job. Exporting its closure to a file://
       # binary cache is 12 MiB and ~13 s, against the ~9 minutes of rustc that
       # job would otherwise spend rebuilding the crate — and it works on a fork
-      # pull request, which has no cachix token to substitute from.
+      # pull request, which has no cache signing key to publish with.
       - name: export losos-ctl for the iso job
         run: |
           nix copy --to "file://$PWD/ctl-cache" --no-check-sigs .#losos-ctl
@@ -226,6 +219,8 @@ jobs:
       - uses: ./.github/actions/setup-nix
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
+          cache-url: ${{ vars.LOSOS_PROXY_URL }}
+          public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
       # Compiles only; the registrar's tests run in the test job.
       # losos-admin-ui is a buildNpmPackage: `npm ci` from the committed
       # package-lock.json, then `tsc --noEmit && vite build`. So this step is
@@ -236,10 +231,6 @@ jobs:
       # production bundle, in headless chromium from nixpkgs. No /dev/kvm
       # needed, unlike the VM tests. Reuses the npm deps built just above.
       - run: nix build .#checks.x86_64-linux.losos-admin-ui -L
-      - uses: ./.github/actions/cachix-push
-        with:
-          installables: ".#losos-registrar .#losos-admin-ui"
-          token: ${{ secrets.CACHIX_KEY }}
       # Export the built SPA for the iso job, exactly as the losos-ctl job
       # exports its crate and for the same reason. flake.nix puts
       # losos-admin-ui in isoImage.storeContents, so without this the ISO job
@@ -248,9 +239,8 @@ jobs:
       # Cheap to carry: a dist/ tree with no store references, ~1 MiB against
       # losos-ctl's 12 MiB.
       #
-      # This artifact, unlike the cachix push above, is NOT gated on a secret:
-      # a fork's ISO job must still get the bundle, or it goes red for want of
-      # a key the contributor cannot have.
+      # This artifact is NOT gated on a secret: a fork's ISO job must still get
+      # the bundle, or it goes red for want of a key the contributor cannot have.
       - name: export losos-registrar for the release-media job
         run: |
           nix copy --to "file://$PWD/registrar-cache" --no-check-sigs .#losos-registrar
@@ -285,6 +275,8 @@ jobs:
       - uses: ./.github/actions/setup-nix
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
+          cache-url: ${{ vars.LOSOS_PROXY_URL }}
+          public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
       # The cheap two thirds of devenv.nix's `build-images`.
       #
       # These are the images modules/defaults.nix wires into losos.workloads.*,
@@ -301,12 +293,63 @@ jobs:
       # handful of paths, losos-image-forgejo a 585 MiB tarball over a 647 MiB /
       # 126-path content closure.
       - run: nix build .#losos-image-pause .#losos-image-forgejo -L
-      - uses: ./.github/actions/cachix-push
+      - name: export images for the publisher
+        if: github.event_name != 'pull_request' && vars.LOSOS_PROXY_URL != ''
+        run: |
+          nix copy --to "file://$PWD/images-cache" --no-check-sigs .#losos-image-pause .#losos-image-forgejo
+          nix path-info .#losos-image-pause .#losos-image-forgejo > images-cache/store-paths
+      - uses: actions/upload-artifact@v4
+        if: github.event_name != 'pull_request' && vars.LOSOS_PROXY_URL != ''
         with:
-          installables: ".#losos-image-pause .#losos-image-forgejo"
-          token: ${{ secrets.CACHIX_KEY }}
+          name: losos-images-store
+          path: images-cache
+          retention-days: 1
+          include-hidden-files: true
       # losos-image-nextcloud is not built here either; see the
       # image-nextcloud job below for what changed about that on this forge.
+
+  publish-cache:
+    name: "nix: publish built paths to proxy"
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    if: github.event_name != 'pull_request' && vars.LOSOS_PROXY_URL != ''
+    needs: [losos-ctl, registrar-and-ui, images]
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-nix
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          cache-url: ${{ vars.LOSOS_PROXY_URL }}
+          public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: losos-ctl-store
+          path: ctl-cache
+      - uses: actions/download-artifact@v4
+        with:
+          name: losos-registrar-store
+          path: registrar-cache
+      - uses: actions/download-artifact@v4
+        with:
+          name: losos-admin-ui-store
+          path: ui-cache
+      - uses: actions/download-artifact@v4
+        with:
+          name: losos-images-store
+          path: images-cache
+      - name: import the build jobs' store exports
+        run: |
+          xargs -r nix copy --from "file://$PWD/ctl-cache" --no-check-sigs < ctl-cache/store-paths
+          xargs -r nix copy --from "file://$PWD/registrar-cache" --no-check-sigs < registrar-cache/store-paths
+          xargs -r nix copy --from "file://$PWD/ui-cache" --no-check-sigs < ui-cache/store-paths
+          xargs -r nix copy --from "file://$PWD/images-cache" --no-check-sigs < images-cache/store-paths
+      - uses: ./.github/actions/proxy-push
+        with:
+          installables: ".#losos-ctl .#losos-registrar .#losos-admin-ui .#losos-image-pause .#losos-image-forgejo"
+          signing-key: ${{ secrets.NIX_CACHE_SIGNING_KEY }}
 
   # ── The Nextcloud image ────────────────────────────────────────────────────
   #
@@ -334,23 +377,27 @@ jobs:
   # level 6. The weekly run prints its own timing; move it into `images` once
   # there are numbers, not before.
   image-nextcloud:
-    name: "nix: Nextcloud image -> cachix"
+    name: "nix: Nextcloud image -> proxy"
     runs-on: ubuntu-latest
     timeout-minutes: 90
     if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-nix
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
-      # require-token, unlike the lanes above: there is no point spending an
-      # hour building an image with nowhere to put it.
-      - uses: ./.github/actions/cachix-push
+          cache-url: ${{ vars.LOSOS_PROXY_URL }}
+          public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
+      # Do not spend an hour building an image without somewhere to publish it.
+      - uses: ./.github/actions/proxy-push
+        if: vars.LOSOS_PROXY_URL != ''
         with:
           installables: ".#losos-image-nextcloud"
           build-args: "-L"
-          require-token: "true"
-          token: ${{ secrets.CACHIX_KEY }}
+          signing-key: ${{ secrets.NIX_CACHE_SIGNING_KEY }}
 
   fmt-bot:
     name: "bot: cargo fmt, push back"
@@ -382,6 +429,8 @@ jobs:
       - uses: ./.github/actions/setup-nix
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
+          cache-url: ${{ vars.LOSOS_PROXY_URL }}
+          public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
       # Same toolchain as the clippy job and as buildRustPackage — devShells.ci
       # from this flake's pinned nixpkgs. Formatting with a different rustfmt
       # than CI checks with is how you get a bot that fights its own linter.
@@ -436,6 +485,8 @@ jobs:
       - uses: ./.github/actions/setup-nix
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
+          cache-url: ${{ vars.LOSOS_PROXY_URL }}
+          public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
       - uses: actions/download-artifact@v4
         with:
           name: losos-ctl-store
@@ -488,6 +539,8 @@ jobs:
       - uses: ./.github/actions/setup-nix
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
+          cache-url: ${{ vars.LOSOS_PROXY_URL }}
+          public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
       - name: free runner disk for media builds
         run: |
           set -euo pipefail
@@ -719,13 +772,6 @@ jobs:
           nix build .#losos-disk-qcow2
           \`\`\`
 
-          Or substitute the already-built store paths recorded in \`release.json\`
-          from the project cache:
-
-          \`\`\`sh
-          nix copy --from https://losos.cachix.org ${ISO_STORE_PATH}
-          nix copy --from https://losos.cachix.org ${QCOW2_STORE_PATH}
-          \`\`\`
           BODY
             echo "RELEASE_BODY_EOF"
           } >> "$GITHUB_OUTPUT"
