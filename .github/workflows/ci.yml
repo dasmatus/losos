@@ -524,6 +524,41 @@ jobs:
       # lever is deleting the preinstalled Android SDK and .NET trees before
       # this step, not trimming the image.
       - run: nix build .#nixosConfigurations.iso.config.system.build.isoImage -L
+      # Building the ISO says nothing about whether it boots: v0.1.1 built
+      # green here and was then reported "not bootable in UEFI". So boot the
+      # image just built, unchanged, from a virtual USB stick under OVMF
+      # (UEFI) and SeaBIOS. tests/iso-boot.py passes once the installer
+      # resolves github.com, which needs the whole chain to work, from the
+      # firmware to root's autologin. The VM is killed within two seconds of
+      # that query, and the disk it would install to is a sparse temp file.
+      #
+      # Secure Boot is not a leg here: the ISO is unsigned and the firmware
+      # refuses it by design. The README says to turn it off.
+      #
+      # KVM: hosted Linux runners expose /dev/kvm but only to root until a
+      # udev rule opens it. Without it the script falls back to TCG, which
+      # still works, about ten times slower.
+      - name: boot the ISO under UEFI and BIOS
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends qemu-system-x86 ovmf
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules >/dev/null
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          iso=$(echo result/iso/*.iso)
+          status=0
+          for fw in uefi bios; do
+            python3 tests/iso-boot.py --iso "$iso" --firmware "$fw" --media usb \
+              --timeout 600 --out iso-boot || status=1
+          done
+          exit "$status"
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: iso-boot-screens
+          path: iso-boot/*.png
+          if-no-files-found: ignore
 
   release-media:
     name: "release: publish installer ISO and demo QCOW2"

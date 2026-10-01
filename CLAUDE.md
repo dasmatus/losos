@@ -89,6 +89,12 @@ paths, of which 766 are stock nixpkgs served by cache.nixos.org and only
 `losos-ctl` is expensive, so the `iso` job imports that one from the
 `losos-ctl` job as a 12 MiB artifact instead of recompiling it. Measured:
 ~4.7 GiB written against a 10 GiB quota, 50 s for squashfs + xorriso.
+The same job then boots that ISO under OVMF and SeaBIOS with
+`tests/iso-boot.py`, which passes when the installer's DNS query for
+github.com shows up in a pcap of the guest NIC. Don't add `restrict=on` to its
+netdev: QEMU then drops the DNS server from its DHCP offer and no query is
+ever sent. Secure Boot is deliberately not a leg: nothing here is signed, and
+the README tells owners to switch it off.
 
 The VM tests are the real acceptance gate for the control plane and are *not*
 run by CI, so run them locally when touching either:
