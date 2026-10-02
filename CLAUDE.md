@@ -374,6 +374,29 @@ A separate `midnight-reboot.timer` reboots unconditionally at 00:07 with
   handed strangers' pods the first hours of the owner's working day, the exact
   thing the feature exists to prevent. Don't hoist `now` back out of the
   per-node loop in `modules/edge.nix`: it is per-node because the zone is.
+- **The market is the registrar's third opt-in.** `/market/*` (Stripe Connect,
+  `backend-registrar/src/market.rs`, `wiki/Market.md`) answers 503 unless
+  `losos.edge.market.enable`, and 403 unless `losos.edge.tenants.<id>.market`.
+  `modules/edge.nix`'s `tenantsJson` hardcodes its attributes, so the `market`
+  key must stay listed there or every trade silently 403s. A paid order is an
+  entitlement: storage orders get a namespace and PVC on the mesh (idempotent,
+  409 counts as done, nothing is ever deleted), compute is a ledger credit
+  only. Listing and ordering are gated on what the seller's node already shares
+  (`Sharing`, from the registry's compute windows) — the market monetises the
+  mesh, it is not a second product. The admin UI reaches it through lososd's
+  `/api/market*` relay (`backend/src/market.rs`), which answers 200
+  `{available:false}` rather than 404 when the market is off, because the SPA
+  latches a 404 as "route not served". The Stripe key is held only by
+  the `losos-stripe-gate` unit (`losos-registrar stripe-gate`), which gets the
+  sealed blobs (`losos.edge.market.{stripeSecretKey,webhookSecret}Sealed`) by
+  `LoadCredentialEncrypted=`; the registrar talks to it over
+  `/run/losos-stripe-gate/gate.sock` and never sees the key, so don't add an
+  operation that forwards arbitrary Stripe calls, and keep the gate's request
+  validation (destination, currency, fee ceiling, session lifetime, https endpoint) tighter than what the
+  registrar happens to send. A missing blob skips the gate (`ConditionPathExists`)
+  and `/market/*` answers 503. Onboarding writes the box UUID
+  (`backend/src/boxid.rs`, a SHA-256 derivative of the recovery code — never the
+  code itself) onto the Stripe account.
 - **`system.stateVersion = "26.11"` is set-once** — matches the nixos-unstable
   this flake tracks; don't change it.
 - **The `result` symlink is a `nix build` artifact** (pointing into

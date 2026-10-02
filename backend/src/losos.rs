@@ -91,6 +91,14 @@ pub trait Losos {
     /// why the screen distinguishes them from "this box does not serve the
     /// route" (a 404) and offers the field again.
     fn search_apps(&mut self, query: &str) -> anyhow::Result<Vec<crate::catalogue::App>>;
+
+    // ── The market ──────────────────────────────────────────────────────
+    /// Relay one [`crate::market::Op`] to the edge's market, with this
+    /// appliance's credentials. `Ok(Unavailable)` when there is no registrar
+    /// configured or the edge does not offer the market to this box; a
+    /// [`crate::market::Refused`] error when the owner can act on the answer;
+    /// any other error is a fault for the journal.
+    fn market_request(&mut self, op: &crate::market::Op) -> anyhow::Result<crate::market::Outcome>;
 }
 
 /// Message stamped on a rebuild the moment it is queued.
@@ -377,6 +385,67 @@ pub fn cmd_apps_search<L: Losos>(l: &mut L, query: &str) -> anyhow::Result<Value
     let query = crate::catalogue::validate_query(query).map_err(|e| anyhow::anyhow!(e))?;
     let results = l.search_apps(query)?;
     Ok(json!({ "sources": [crate::catalogue::SOURCE], "results": results }))
+}
+
+/// Everything the Market pane shows, in one round trip.
+///
+/// `available: false` — with nothing else — when the edge runs no market, this
+/// box was not cleared for it, or the box has no registrar. That is the normal
+/// state of most appliances and must not look like a failure.
+pub fn cmd_market<L: Losos>(l: &mut L) -> anyhow::Result<Value> {
+    use crate::market::{Op, Outcome};
+    let Outcome::Reply(listings) = l.market_request(&Op::Browse)? else {
+        return Ok(json!({ "available": false }));
+    };
+    let Outcome::Reply(account) = l.market_request(&Op::Account)? else {
+        return Ok(json!({ "available": false }));
+    };
+    Ok(json!({ "available": true, "listings": listings, "account": account }))
+}
+
+/// One market action, validated here as well as at the HTTP boundary so the
+/// rule travels with the command.
+///
+/// The reply is the registrar's, with `available: true`. A Checkout URL that
+/// is not plain `https` is dropped rather than handed to the browser.
+pub fn cmd_market_op<L: Losos>(l: &mut L, op: &crate::market::Op) -> anyhow::Result<Value> {
+    use crate::market::{Op, Outcome, Refused};
+    // Onboarding names this box to Stripe by a UUID derived one-way from the
+    // recovery code — the code itself is a credential and never leaves.
+    let tagged;
+    let op = if matches!(op, Op::Onboard { .. }) {
+        let code = l.recovery_code()?;
+        tagged = Op::Onboard {
+            box_uuid: Some(crate::boxid::box_uuid(&code.code)),
+        };
+        &tagged
+    } else {
+        op
+    };
+    op.validate().map_err(|e| {
+        anyhow::Error::from(Refused {
+            status: 400,
+            message: e.to_string(),
+        })
+    })?;
+    let Outcome::Reply(mut reply) = l.market_request(op)? else {
+        return Err(Refused {
+            status: 409,
+            message: "the market is not offered to this appliance".to_string(),
+        }
+        .into());
+    };
+    for key in ["checkout_url", "url"] {
+        if let Some(url) = reply.get(key).and_then(Value::as_str) {
+            if !crate::market::stripe_hosted_url(url) {
+                anyhow::bail!("the registrar returned a {key} that is not a Stripe-hosted page");
+            }
+        }
+    }
+    if let Some(obj) = reply.as_object_mut() {
+        obj.insert("available".to_string(), json!(true));
+    }
+    Ok(reply)
 }
 
 /// Rebuild progress. Polled by the admin UI roughly every two seconds.
@@ -710,6 +779,12 @@ mod tests {
             fn search_apps(&mut self, query: &str) -> anyhow::Result<Vec<crate::catalogue::App>> {
                 self.0.search_apps(query)
             }
+            fn market_request(
+                &mut self,
+                op: &crate::market::Op,
+            ) -> anyhow::Result<crate::market::Outcome> {
+                self.0.market_request(op)
+            }
         }
 
         let mut inert = Inert(FakeLosos::new());
@@ -726,6 +801,154 @@ mod tests {
         assert!(out.get("rebuild").is_none());
         assert_eq!(out["mode"], "mesh");
         assert_eq!(out["sharing"], true);
+    }
+
+    // ── The market ──────────────────────────────────────────────────────
+
+    fn market_fake() -> FakeLosos {
+        let mut f = FakeLosos::new();
+        f.market_routes.insert(
+            "GET /market/listings".to_string(),
+            (200, r#"[{"id":"lst_1","kind":"storage"}]"#.to_string()),
+        );
+        f.market_routes.insert(
+            "POST /market/account".to_string(),
+            (200, r#"{"seller_ready":false}"#.to_string()),
+        );
+        f
+    }
+
+    #[test]
+    fn the_market_pane_gets_the_shelf_and_the_account_together() {
+        let mut f = market_fake();
+        let out = cmd_market(&mut f).unwrap();
+        assert_eq!(out["available"], true);
+        assert_eq!(out["listings"][0]["id"], "lst_1");
+        assert_eq!(out["account"]["seller_ready"], false);
+    }
+
+    #[test]
+    fn a_box_without_a_market_is_unavailable_not_failed() {
+        // No registrar configured.
+        let mut f = FakeLosos::new();
+        assert_eq!(
+            cmd_market(&mut f).unwrap(),
+            serde_json::json!({ "available": false })
+        );
+        // The edge runs a market but this box was not cleared for it.
+        let mut f = market_fake();
+        f.market_routes
+            .insert("POST /market/account".to_string(), (403, String::new()));
+        assert_eq!(
+            cmd_market(&mut f).unwrap(),
+            serde_json::json!({ "available": false })
+        );
+    }
+
+    #[test]
+    fn a_purchase_returns_the_checkout_url_and_nothing_unsafe() {
+        use crate::market::Op;
+        let order = Op::Order {
+            listing_id: "lst_1".to_string(),
+            quantity: 2,
+        };
+        let mut f = market_fake();
+        f.market_routes.insert(
+            "POST /market/orders".to_string(),
+            (
+                201,
+                r#"{"order_id":"ord_1","checkout_url":"https://checkout.stripe.com/c/1"}"#
+                    .to_string(),
+            ),
+        );
+        let out = cmd_market_op(&mut f, &order).unwrap();
+        assert_eq!(out["checkout_url"], "https://checkout.stripe.com/c/1");
+        assert_eq!(out["available"], true);
+
+        f.market_routes.insert(
+            "POST /market/orders".to_string(),
+            (201, r#"{"checkout_url":"javascript:alert(1)"}"#.to_string()),
+        );
+        assert!(cmd_market_op(&mut f, &order).is_err());
+    }
+
+    #[test]
+    fn onboarding_sends_the_derived_box_uuid_and_never_the_recovery_code() {
+        use crate::market::Op;
+        let mut f = market_fake();
+        f.market_routes.insert(
+            "POST /market/seller/onboard".to_string(),
+            (
+                200,
+                r#"{"ready":false,"url":"https://connect.stripe.com/x"}"#.to_string(),
+            ),
+        );
+        let code = f.recovery_code().unwrap().code;
+        cmd_market_op(&mut f, &Op::Onboard { box_uuid: None }).unwrap();
+        let Some(Op::Onboard {
+            box_uuid: Some(sent),
+        }) = f.market_ops.last().cloned()
+        else {
+            panic!("onboard went out without a box uuid: {:?}", f.market_ops);
+        };
+        assert_eq!(sent, crate::boxid::box_uuid(&code));
+        assert_ne!(sent, code);
+    }
+
+    #[test]
+    fn a_caller_cannot_name_a_different_box_uuid() {
+        use crate::market::Op;
+        let mut f = market_fake();
+        f.market_routes.insert(
+            "POST /market/seller/onboard".to_string(),
+            (200, r#"{"ready":true}"#.to_string()),
+        );
+        let forged = Op::Onboard {
+            box_uuid: Some("0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d".to_string()),
+        };
+        cmd_market_op(&mut f, &forged).unwrap();
+        assert_ne!(f.market_ops.last(), Some(&forged));
+    }
+
+    #[test]
+    fn a_bad_market_request_never_leaves_the_box() {
+        use crate::market::{Op, Refused};
+        let mut f = market_fake();
+        let e = cmd_market_op(
+            &mut f,
+            &Op::Order {
+                listing_id: "../x".to_string(),
+                quantity: 1,
+            },
+        )
+        .unwrap_err();
+        assert_eq!(e.downcast_ref::<Refused>().unwrap().status, 400);
+        assert!(f.market_ops.is_empty());
+    }
+
+    #[test]
+    fn a_refusal_from_the_registrar_reaches_the_owner_in_its_own_words() {
+        use crate::market::{Op, Refused};
+        let mut f = market_fake();
+        f.market_routes.insert(
+            "POST /market/listings".to_string(),
+            (
+                409,
+                "only an appliance sharing its compute on the mesh can sell it".to_string(),
+            ),
+        );
+        let e = cmd_market_op(
+            &mut f,
+            &Op::List {
+                kind: "compute".to_string(),
+                unit_price: 100,
+                capacity: 4,
+            },
+        )
+        .unwrap_err();
+        let r = e.downcast_ref::<Refused>().unwrap();
+        assert_eq!(r.status, 409);
+        assert!(r.message.contains("sharing its compute"));
     }
 
     // ── Searching the app catalogue ─────────────────────────────────────

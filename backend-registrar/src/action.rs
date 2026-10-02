@@ -26,6 +26,7 @@ pub enum Action {
     Authenticate,
     Bind,
     LoadRegistry,
+    Market,
 }
 
 impl Action {
@@ -47,6 +48,7 @@ impl Action {
             Action::Authenticate => "losos::auth",
             Action::Bind => "losos::bind",
             Action::LoadRegistry => "losos::registry",
+            Action::Market => "losos::market",
         }
     }
 }
@@ -66,6 +68,7 @@ impl Display for Action {
             Action::Authenticate => f.write_str("[authenticate]"),
             Action::Bind => f.write_str("[bind]"),
             Action::LoadRegistry => f.write_str("[load registry]"),
+            Action::Market => f.write_str("[market]"),
         }
     }
 }

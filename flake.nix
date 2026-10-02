@@ -288,6 +288,12 @@
       #                         registrar) + an appliance VM (rathole client +
       #                         announce + Nginx) and asserts the master-proxy
       #                         register/reconcile/forward path (tests/edge-vm.nix).
+      #   losos-edge-market   — boots an edge with the market on and asserts the
+      #                         Stripe gate's production wiring: sealed secrets,
+      #                         DynamicUser, a 0600 socket, blobs hidden from the
+      #                         registrar, a signed webhook through the gate, and a
+      #                         missing blob that darkens only the market
+      #                         (tests/market-vm.nix).
       #   losos-ds-render     — builds the losos-ds npm package and renders every
       #                         design-system component in headless chromium
       #                         (playwright-driver.browsers), asserting computed
@@ -321,6 +327,7 @@
         losos-install = import ./tests/install.nix { inherit pkgs disko; };
         losos-admin-daemon = import ./tests/admin-vm.nix { inherit pkgs; };
         losos-edge-proxy = import ./tests/edge-vm.nix { inherit pkgs; };
+        losos-edge-market = import ./tests/market-vm.nix { inherit pkgs; };
         losos-ds-render = import ./tests/design-system.nix { inherit pkgs; };
         losos-front-vhost = import ./tests/front-vhost.nix { inherit pkgs; };
         losos-impermanence = import ./tests/impermanence.nix { inherit pkgs impermanence; };
