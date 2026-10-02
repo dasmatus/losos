@@ -103,9 +103,10 @@ const MIN_TOKEN_LEN: usize = 32;
 /// route is held to. Still bounded: the body is buffered before it is verified.
 const MAX_WEBHOOK_BYTES: usize = 256 * 1024;
 
-/// Wall-clock budget for one request, end to end. Without it a slow-loris
-/// client holds a connection (and a concurrency permit) indefinitely.
-const REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
+/// Wall-clock budget for one request, end to end. It covers onboarding's three
+/// sequential Stripe calls (4s each) plus persistence, while still bounding
+/// slow-loris clients.
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// Requests allowed in flight at once. Every authenticated *and*
 /// unauthenticated request costs a `tenants.json` stat and (for a known id) a
@@ -658,9 +659,17 @@ async fn market_order(
     Json(req): Json<MarketOrderReq>,
 ) -> Result<(StatusCode, Json<CheckoutView>), ApiError> {
     let market = market_tenant(&st, &req.auth).await?;
+    let market_sellers = st
+        .tenants
+        .load(&st.opts.tenants_file)
+        .await?
+        .iter()
+        .filter(|(_, tenant)| tenant.market)
+        .map(|(id, _)| id.clone())
+        .collect();
     let sharing = sharing_of(&st).await;
     let checkout = market
-        .create_order(&req.auth.appliance_id, req.order, &sharing)
+        .create_order(&req.auth.appliance_id, req.order, &sharing, &market_sellers)
         .await?;
     Ok((StatusCode::CREATED, Json(checkout)))
 }
@@ -809,7 +818,34 @@ async fn provision_volume(
             },
         }),
     )
-    .await
+    .await?;
+    let url = format!(
+        "{}/api/v1/namespaces/{}/persistentvolumeclaims/{}",
+        kube.api, p.namespace, p.pvc,
+    );
+    let response = kube
+        .client
+        .get(&url)
+        .bearer_auth(&kube.token)
+        .send()
+        .await
+        .map_err(|e| ApiError::KubeApi(format!("GET {url}: {e}")))?;
+    let status = response.status();
+    if !status.is_success() {
+        return Err(ApiError::KubeApi(format!("GET {url} -> {status}")));
+    }
+    let claim: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| ApiError::KubeApi(format!("GET {url}: {e}")))?;
+    if claim["status"]["phase"].as_str() == Some("Bound") {
+        Ok(())
+    } else {
+        Err(ApiError::KubeApi(format!(
+            "PVC {}/{} is not Bound yet",
+            p.namespace, p.pvc,
+        )))
+    }
 }
 
 /// An authenticated handle on the mesh apiserver: a client whose root store is

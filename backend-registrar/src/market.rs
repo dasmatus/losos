@@ -76,9 +76,6 @@ pub const SUPPORTED_CURRENCIES: &[&str] = &["aud", "cad", "chf", "eur", "gbp", "
 /// Lifetime requested for a Checkout Session. Stripe requires at least 30 minutes
 /// from receipt, so include one minute for persistence and network transit.
 const CHECKOUT_TTL_SECS: u64 = 31 * 60;
-/// A pending order keeps its capacity reserved this long past the session's
-/// expiry, so a late `completed` webhook can never find the units resold.
-const PENDING_GRACE_SECS: u64 = 5 * 60;
 /// Expired orders are only history; drop them after a month.
 /// How long a paid order's entitlement lasts. Storage is priced per GiB-month
 /// and compute per vCPU-hour, but both are sold as a one-month rental: the
@@ -195,7 +192,8 @@ pub struct Listing {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum OrderStatus {
-    /// A Checkout Session exists; capacity is reserved.
+    /// A Checkout Session exists; capacity remains reserved until Stripe sends
+    /// a terminal event.
     Pending,
     /// Stripe confirmed payment. This is the entitlement.
     Paid,
@@ -330,10 +328,9 @@ pub fn quote(unit_price: u64, quantity: u64, fee_bps: u32) -> Result<Quote, Mark
     })
 }
 
-/// Whether a pending order still holds its units at `now`.
-fn pending_live(order: &Order, now: u64) -> bool {
+/// Whether a pending order still holds its units.
+fn pending_live(order: &Order) -> bool {
     order.status == OrderStatus::Pending
-        && now < order.created_at + CHECKOUT_TTL_SECS + PENDING_GRACE_SECS
 }
 
 /// Units of `listing` that are sold or held by a live checkout.
@@ -343,7 +340,7 @@ pub fn reserved(state: &MarketState, listing_id: &str, now: u64) -> u64 {
         .orders
         .values()
         .filter(|o| o.listing_id == listing_id)
-        .filter(|o| paid_live(o, now) || pending_live(o, now))
+        .filter(|o| paid_live(o, now) || pending_live(o))
         .map(|o| o.quantity)
         .sum()
 }
@@ -1021,6 +1018,7 @@ impl Market {
         buyer: &str,
         new: NewOrder,
         sharing: &Sharing,
+        market_sellers: &BTreeSet<String>,
     ) -> Result<CheckoutView, MarketError> {
         let stripe = self.stripe();
         let now = now_secs();
@@ -1032,6 +1030,9 @@ impl Market {
                 .filter(|l| l.active)
                 .cloned()
                 .ok_or(MarketError::NotFound)?;
+            if !market_sellers.contains(&listing.seller) {
+                return Err(MarketError::NotFound);
+            }
             let seller = state
                 .sellers
                 .get(&listing.seller)
@@ -1347,7 +1348,7 @@ mod tests {
     }
 
     #[test]
-    fn capacity_counts_paid_and_live_pending_only() {
+    fn capacity_counts_paid_and_pending_until_terminal_event() {
         let mut state = MarketState::default();
         let now = 10_000;
         for o in [
@@ -1357,13 +1358,13 @@ mod tests {
                 "lapsed",
                 OrderStatus::Pending,
                 4,
-                now - CHECKOUT_TTL_SECS - PENDING_GRACE_SECS - 1,
+                now - CHECKOUT_TTL_SECS - 900,
             ),
             order("expired", OrderStatus::Expired, 5, now - 60),
         ] {
             state.orders.insert(o.id.clone(), o);
         }
-        assert_eq!(reserved(&state, "lst_1", now), 5);
+        assert_eq!(reserved(&state, "lst_1", now), 9);
         assert_eq!(reserved(&state, "other", now), 0);
     }
 
@@ -1443,6 +1444,7 @@ mod tests {
         let paid = order("d", OrderStatus::Paid, 1, 0);
         state.orders.insert("p".into(), pending);
         state.orders.insert("d".into(), paid);
+        assert_eq!(reserved(&state, "lst_1", CHECKOUT_TTL_SECS + 900), 2);
         let event = |id: &str| {
             serde_json::json!({
                 "type": "checkout.session.expired",
@@ -1453,6 +1455,7 @@ mod tests {
         assert!(!apply_event(&mut state, &event("d"), 1));
         assert_eq!(state.orders["p"].status, OrderStatus::Expired);
         assert_eq!(state.orders["d"].status, OrderStatus::Paid);
+        assert_eq!(reserved(&state, "lst_1", CHECKOUT_TTL_SECS + 900), 1);
     }
 
     #[test]

@@ -40,8 +40,8 @@ use crate::market::{
     MAX_FEE_BPS,
 };
 
-/// Budget for one Stripe request. The registrar's router guard allows a whole
-/// request five seconds, so this leaves room for the store write around it.
+/// Each call is bounded so the registrar's 15s request budget covers three
+/// sequential onboarding calls plus persistence.
 const STRIPE_TIMEOUT: Duration = Duration::from_secs(4);
 /// Budget for a whole gate round trip, from the registrar's side.
 const GATE_TIMEOUT: Duration = Duration::from_secs(10);
@@ -175,18 +175,6 @@ impl StripeClient {
             )
             .await?;
         Ok(account_ready(&body))
-        let body = self
-            .send(
-                self.http
-                    .get(format!("{}{path}", self.api))
-                    .query(&[("ids[]", account_id), ("limit", "1")]),
-                &format!("GET {path}"),
-            )
-            .await?;
-        Ok(body["data"]
-            .as_array()
-            .and_then(|accounts| accounts.first())
-            .is_some_and(account_ready))
     }
 
     /// A one-time Stripe-hosted onboarding URL.

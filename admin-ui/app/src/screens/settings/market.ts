@@ -137,8 +137,19 @@ export function formatDay(epochSeconds: number): string {
   );
 }
 
-/** Only a plain https URL is ever opened: it came from the registrar via the
- *  box, and a `javascript:` link must not get as far as a window. */
-export function isHttps(url: unknown): url is string {
-  return typeof url === "string" && url.startsWith("https://");
+/** Only Stripe-hosted payment and onboarding URLs are ever opened. */
+export function isStripeHostedUrl(url: unknown): url is string {
+  if (typeof url !== "string") return false;
+  try {
+    const parsed = new URL(url);
+    return (
+      parsed.protocol === "https:" &&
+      parsed.username === "" &&
+      parsed.password === "" &&
+      (parsed.port === "" || parsed.port === "443") &&
+      (parsed.hostname === "checkout.stripe.com" || parsed.hostname === "connect.stripe.com")
+    );
+  } catch {
+    return false;
+  }
 }
