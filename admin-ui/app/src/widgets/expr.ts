@@ -36,7 +36,13 @@
  * time, and a step budget at evaluation time. A widget cannot hang the tab.
  */
 
+import { t } from "@/lib/i18n";
+
 // ── Errors ────────────────────────────────────────────────────────────────
+
+/* Messages are translated where they are thrown. Everything quoted inside one
+ * — a name, a token, an operator — is the owner's own source text or part of
+ * the language's syntax, and stays exactly as typed. */
 
 /** A message meant for the person typing the expression, not for a log. */
 export class ExprError extends Error {
@@ -138,7 +144,7 @@ function tokenize(source: string): Token[] {
       }
       const text = source.slice(start, i);
       const value = Number(text);
-      if (!Number.isFinite(value)) throw new ExprError(`${text} is not a number`, start);
+      if (!Number.isFinite(value)) throw new ExprError(t("widgets.expr.notNumber", { text }), start);
       tokens.push({ kind: "number", text, value, at: start });
       continue;
     }
@@ -163,7 +169,7 @@ function tokenize(source: string): Token[] {
         out += source[i];
         i += 1;
       }
-      if (i >= source.length) throw new ExprError("This text is missing its closing quote", start);
+      if (i >= source.length) throw new ExprError(t("widgets.expr.unclosedQuote"), start);
       i += 1;
       tokens.push({ kind: "string", text: out, value: out, at: start });
       continue;
@@ -177,7 +183,7 @@ function tokenize(source: string): Token[] {
     }
 
     const punct = PUNCT.find((candidate) => source.startsWith(candidate, i));
-    if (punct === undefined) throw new ExprError(`${ch} does not mean anything here`, i);
+    if (punct === undefined) throw new ExprError(t("widgets.expr.unknownChar", { ch }), i);
     tokens.push({ kind: "punct", text: punct, at: i });
     i += punct.length;
   }
@@ -227,7 +233,12 @@ class Parser {
     const node = this.conditional();
     const token = this.peek();
     if (token.kind !== "end") {
-      throw new ExprError(`This expression does not end after ${token.text || "here"}`, token.at);
+      throw new ExprError(
+        token.text.length > 0
+          ? t("widgets.expr.noEndAfter", { token: token.text })
+          : t("widgets.expr.noEndHere"),
+        token.at,
+      );
     }
     return node;
   }
@@ -254,7 +265,7 @@ class Parser {
   private expect(text: string): Token {
     const token = this.peek();
     if (token.kind !== "punct" || token.text !== text) {
-      throw new ExprError(`Expected ${text} here`, token.at);
+      throw new ExprError(t("widgets.expr.expected", { token: text }), token.at);
     }
     return this.next();
   }
@@ -262,7 +273,7 @@ class Parser {
   private track<T extends Node>(node: T): T {
     this.nodes += 1;
     if (this.nodes > MAX_NODES) {
-      throw new ExprError("This expression is too long to be worth reading", null);
+      throw new ExprError(t("widgets.expr.tooManyNodes"), null);
     }
     return node;
   }
@@ -270,7 +281,7 @@ class Parser {
   private nested<T>(fn: () => T): T {
     this.depth += 1;
     if (this.depth > MAX_DEPTH) {
-      throw new ExprError("This expression nests too deeply", this.peek().at);
+      throw new ExprError(t("widgets.expr.tooDeep"), this.peek().at);
     }
     try {
       return fn();
@@ -395,7 +406,7 @@ class Parser {
       if (token.text === ".") {
         this.next();
         const name = this.next();
-        if (name.kind !== "ident") throw new ExprError("Expected a name after the dot", name.at);
+        if (name.kind !== "ident") throw new ExprError(t("widgets.expr.nameAfterDot"), name.at);
         node = this.track<Node>({ kind: "member", object: node, name: name.text, at: name.at });
         continue;
       }
@@ -415,7 +426,7 @@ class Parser {
           for (;;) {
             args.push(this.nested(() => this.conditional()));
             if (args.length > MAX_ARGS) {
-              throw new ExprError("Too many values passed here", token.at);
+              throw new ExprError(t("widgets.expr.tooManyArgs"), token.at);
             }
             if (this.eat(",")) continue;
             this.expect(")");
@@ -456,7 +467,7 @@ class Parser {
       if (!this.eat("]")) {
         for (;;) {
           items.push(this.nested(() => this.conditional()));
-          if (items.length > MAX_ARGS) throw new ExprError("This list is too long", token.at);
+          if (items.length > MAX_ARGS) throw new ExprError(t("widgets.expr.listTooLong"), token.at);
           if (this.eat(",")) continue;
           this.expect("]");
           break;
@@ -466,7 +477,9 @@ class Parser {
     }
 
     throw new ExprError(
-      token.kind === "end" ? "This expression stops early" : `${token.text} does not belong here`,
+      token.kind === "end"
+        ? t("widgets.expr.stopsEarly")
+        : t("widgets.expr.doesNotBelong", { token: token.text }),
       token.at,
     );
   }
@@ -474,10 +487,10 @@ class Parser {
 
 /** Parse once, evaluate many times. Throws {@link ExprError} on bad input. */
 export function parseExpr(source: string): Node {
-  if (typeof source !== "string") throw new ExprError("An expression has to be text");
-  if (source.trim().length === 0) throw new ExprError("This expression is empty");
+  if (typeof source !== "string") throw new ExprError(t("widgets.expr.notText"));
+  if (source.trim().length === 0) throw new ExprError(t("widgets.expr.empty"));
   if (source.length > MAX_SOURCE) {
-    throw new ExprError(`An expression may be at most ${MAX_SOURCE} characters`);
+    throw new ExprError(t("widgets.expr.tooLong", { max: MAX_SOURCE }));
   }
   return new Parser(tokenize(source)).parse();
 }
@@ -505,7 +518,7 @@ interface Machine {
 }
 
 function member(value: unknown, key: string, at: number): unknown {
-  if (FORBIDDEN_KEYS.has(key)) throw new ExprError(`${key} is not readable`, at);
+  if (FORBIDDEN_KEYS.has(key)) throw new ExprError(t("widgets.expr.notReadable", { name: key }), at);
   if (value === null || value === undefined) return undefined;
   if (typeof value === "string") {
     return key === "length" ? value.length : undefined;
@@ -538,7 +551,7 @@ function numeric(value: unknown): number {
 function step(machine: Machine): void {
   machine.steps += 1;
   if (machine.steps > STEP_BUDGET) {
-    throw new ExprError("This expression does too much work", null);
+    throw new ExprError(t("widgets.expr.tooMuchWork"), null);
   }
 }
 
@@ -550,9 +563,11 @@ function walk(node: Node, machine: Machine): unknown {
       return node.value;
 
     case "ident": {
-      if (FORBIDDEN_KEYS.has(node.name)) throw new ExprError(`${node.name} is not readable`, node.at);
+      if (FORBIDDEN_KEYS.has(node.name)) {
+        throw new ExprError(t("widgets.expr.notReadable", { name: node.name }), node.at);
+      }
       if (!Object.hasOwn(machine.env, node.name)) {
-        throw new ExprError(`There is nothing called ${node.name} here`, node.at);
+        throw new ExprError(t("widgets.expr.unknownName", { name: node.name }), node.at);
       }
       return machine.env[node.name];
     }
@@ -578,15 +593,18 @@ function walk(node: Node, machine: Machine): unknown {
        * refusal — the allow-list is over objects, not over names, so nothing
        * a widget can construct can spoof its way in. */
       if (node.callee.kind !== "member") {
-        throw new ExprError("Only stat.* and fmt.* can be called", node.at);
+        throw new ExprError(t("widgets.expr.onlyCallable"), node.at);
       }
       const owner = walk(node.callee.object, machine);
       if (!machine.callable.has(owner)) {
-        throw new ExprError("Only stat.* and fmt.* can be called", node.at);
+        throw new ExprError(t("widgets.expr.onlyCallable"), node.at);
       }
       const fn = member(owner, node.callee.name, node.callee.at);
       if (typeof fn !== "function") {
-        throw new ExprError(`There is no such function as ${node.callee.name}`, node.callee.at);
+        throw new ExprError(
+          t("widgets.expr.noSuchFunction", { name: node.callee.name }),
+          node.callee.at,
+        );
       }
       const args = node.args.map((arg) => walk(arg, machine));
       return (fn as (...rest: unknown[]) => unknown)(...args);

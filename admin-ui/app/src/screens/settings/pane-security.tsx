@@ -1,5 +1,6 @@
 import * as React from "react";
 import { Switch } from "@/components/ui/switch";
+import { useT } from "@/lib/i18n-react";
 import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText } from "./rows";
 import type { SettingsForm } from "./use-settings-form";
 
@@ -23,6 +24,7 @@ import type { SettingsForm } from "./use-settings-form";
  */
 
 export function SecurityPane({ form }: { form: SettingsForm }) {
+  const t = useT();
   const apparmorId = React.useId();
   const mallocId = React.useId();
   const nosmtId = React.useId();
@@ -31,13 +33,13 @@ export function SecurityPane({ form }: { form: SettingsForm }) {
 
   return (
     <PaneSection>
-      <GroupTitle>Extra protection</GroupTitle>
+      <GroupTitle>{t("panes.security.group")}</GroupTitle>
       <Group>
         <Row>
           <RowText
             htmlFor={usbguardId}
-            title="Ignore USB devices plugged in later"
-            detail="Anything attached after the box starts is refused. Costs you a keyboard if you ever need one at the machine itself."
+            title={t("panes.security.usbguard.title")}
+            detail={t("panes.security.usbguard.detail")}
           />
           <Switch
             id={usbguardId}
@@ -49,8 +51,8 @@ export function SecurityPane({ form }: { form: SettingsForm }) {
         <Row>
           <RowText
             htmlFor={mallocId}
-            title="Stricter memory handling"
-            detail="Makes a whole family of break-in attempts fail instead of succeed quietly. Costs a little speed and a little memory."
+            title={t("panes.security.malloc.title")}
+            detail={t("panes.security.malloc.detail")}
           />
           <Switch
             id={mallocId}
@@ -62,8 +64,8 @@ export function SecurityPane({ form }: { form: SettingsForm }) {
         <Row>
           <RowText
             htmlFor={apparmorId}
-            title="Confine the programs that face the network"
-            detail="Limits what each one may touch if it is ever taken over. Only some of what runs here has a rule written for it, so it protects less than it sounds like."
+            title={t("panes.security.apparmor.title")}
+            detail={t("panes.security.apparmor.detail")}
           />
           <Switch
             id={apparmorId}
@@ -75,8 +77,8 @@ export function SecurityPane({ form }: { form: SettingsForm }) {
         <Row last>
           <RowText
             htmlFor={nosmtId}
-            title="Halve the processor to close a leak between jobs"
-            detail="Shuts the door two jobs can otherwise listen through. This is the expensive one: roughly half the speed, and you will notice it converting video."
+            title={t("panes.security.nosmt.title")}
+            detail={t("panes.security.nosmt.detail")}
           />
           <Switch
             id={nosmtId}
@@ -86,12 +88,7 @@ export function SecurityPane({ form }: { form: SettingsForm }) {
           />
         </Row>
       </Group>
-      <GroupCaption>
-        This box already protects itself in the ways that cost nothing, and those are always on and
-        not listed here. The four above are the ones with a price, so they are yours to decide. If
-        you lend spare capacity to the mesh, the middle two are the ones worth reading twice: they
-        are what stands between somebody else&rsquo;s job and yours.
-      </GroupCaption>
+      <GroupCaption>{t("panes.security.caption")}</GroupCaption>
     </PaneSection>
   );
 }

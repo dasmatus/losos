@@ -11,6 +11,7 @@
  */
 
 import { Badge } from "@/components/ui/badge";
+import { useLocale } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
 import { applyFormat, DASH } from "../format";
 import type { NumberData, Tone } from "../types";
@@ -23,6 +24,8 @@ const TONE_VARIANT: Record<Tone, "neutral" | "ok" | "warn" | "crit"> = {
 };
 
 export function NumberView({ data }: { data: NumberData }) {
+  // applyFormat writes decimal separators and units in the current language.
+  useLocale();
   const text = data.value === null ? DASH : applyFormat(data.value, data.format);
 
   return (

@@ -28,6 +28,9 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { ArrowLeft01Icon, ArrowRight01Icon, CheckmarkCircle02Icon } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { LanguagePicker } from "@/components/ui/language-picker";
+import { t } from "@/lib/i18n";
+import { useT } from "@/lib/i18n-react";
 import { StepRail } from "./wizard/StepRail";
 import { StepTrust } from "./wizard/StepTrust";
 import { StepSignIn } from "./wizard/StepSignIn";
@@ -52,6 +55,7 @@ export interface WizardProps {
 }
 
 export default function Wizard({ onDone }: WizardProps) {
+  const t = useT();
   const setup = useSetupState();
 
   const [step, setStep] = React.useState<StepId>("trust");
@@ -109,14 +113,22 @@ export default function Wizard({ onDone }: WizardProps) {
     setStep(next);
   };
 
-  if (finished) return <Closing name={boxName(setup)} />;
+  if (finished) return <Closing setup={setup} />;
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-4 px-4 py-6 sm:px-6">
       <div className="flex flex-col gap-3">
-        <h1 className="text-[17px] leading-tight font-semibold tracking-tight text-ink">
-          Set up {boxName(setup)}
-        </h1>
+        {/* The picker sits on the very first screen a new owner sees: someone
+            who cannot read the browser's language has to be able to switch
+            before step one asks them anything. */}
+        <div className="flex items-start justify-between gap-3">
+          <h1 className="text-[17px] leading-tight font-semibold tracking-tight text-ink">
+            {setup.kind === "ready"
+              ? t("wizard.title.named", { name: setup.state.hostName })
+              : t("wizard.title.unnamed")}
+          </h1>
+          <LanguagePicker className="shrink-0" />
+        </div>
         <StepRail current={step} />
       </div>
 
@@ -161,7 +173,7 @@ export default function Wizard({ onDone }: WizardProps) {
                   color="currentColor"
                   aria-hidden="true"
                 />
-                Back
+                {t("wizard.nav.back")}
               </Button>
             )}
           </div>
@@ -258,15 +270,17 @@ interface Gate {
 function gateFor(step: StepId, gates: Gates): Gate {
   switch (step) {
     case "trust":
-      return { allowed: true, label: "Continue" };
+      return { allowed: true, label: t("wizard.nav.continue") };
     case "signin":
-      return { allowed: gates.account !== null, label: "Continue" };
+      return { allowed: gates.account !== null, label: t("wizard.nav.continue") };
     case "recovery":
-      if (gates.codeSaved) return { allowed: true, label: "Continue" };
-      if (gates.codeUnavailable) return { allowed: true, label: "Continue without a code" };
-      return { allowed: false, label: "Continue" };
+      if (gates.codeSaved) return { allowed: true, label: t("wizard.nav.continue") };
+      if (gates.codeUnavailable) {
+        return { allowed: true, label: t("wizard.nav.continueWithoutCode") };
+      }
+      return { allowed: false, label: t("wizard.nav.continue") };
     case "finish":
-      return { allowed: gates.signedIn, label: "Finish" };
+      return { allowed: gates.signedIn, label: t("wizard.nav.finish") };
     default: {
       const unreachable: never = step;
       return unreachable;
@@ -280,7 +294,8 @@ function gateFor(step: StepId, gates: Gates): Gate {
  * it is. Deliberately a full stop rather than a dashboard: whatever the shell
  * routes to next is its decision, and a wizard that ends in a blank frame
  * looks like a crash. */
-function Closing({ name }: { name: string }) {
+function Closing({ setup }: { setup: SetupQuery }) {
+  const t = useT();
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-4 px-4 py-6 sm:px-6">
       <Card>
@@ -294,13 +309,14 @@ function Closing({ name }: { name: string }) {
               className="text-ok"
               aria-hidden="true"
             />
-            {name} is ready
+            {setup.kind === "ready"
+              ? t("wizard.closing.titleNamed", { name: setup.state.hostName })
+              : t("wizard.closing.titleUnnamed")}
           </CardTitle>
         </CardHeader>
         <CardContent>
           <StepText>
-            You can sign in from any device on this network. Keep the recovery code somewhere
-            that is not this box.
+            {t("wizard.closing.body")}
           </StepText>
         </CardContent>
       </Card>

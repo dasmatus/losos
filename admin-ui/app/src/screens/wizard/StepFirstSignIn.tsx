@@ -22,6 +22,7 @@ import {
   Login01Icon,
 } from "@hugeicons/core-free-icons";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { Rich, useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
 import { Callout, StepText } from "./parts";
 
@@ -46,6 +47,7 @@ export interface StepFirstSignInProps {
 }
 
 export function StepFirstSignIn({ account, signedIn, onSignedIn }: StepFirstSignInProps) {
+  const t = useT();
   const frame = React.useRef<HTMLIFrameElement>(null);
   const [watchable, setWatchable] = React.useState(true);
 
@@ -76,38 +78,32 @@ export function StepFirstSignIn({ account, signedIn, onSignedIn }: StepFirstSign
   return (
     <div className="flex flex-col gap-4">
       {signedIn ? (
-        <Callout tone="ok" icon={CheckmarkCircle02Icon} title="You are signed in">
-          <p className="mt-1">
-            That was the last step. Finish below, or carry on in the window here. Nothing is
-            waiting on you.
-          </p>
+        <Callout tone="ok" icon={CheckmarkCircle02Icon} title={t("wizard.first.signedIn.title")}>
+          <p className="mt-1">{t("wizard.first.signedIn.body")}</p>
         </Callout>
       ) : (
         <StepText>
-          Sign in below with the name and password you set{account === null ? "" : " in step 2"}.
-          {account === null ? null : (
-            <>
-              {" "}
-              The name is <span className="numeric text-ink">{account}</span>.
-            </>
-          )}{" "}
-          This page notices when you are through and finishes on its own.
+          {account === null ? (
+            t("wizard.first.intro")
+          ) : (
+            <Rich
+              k="wizard.first.introNamed"
+              vars={{ name: <span className="numeric text-ink">{account}</span> }}
+            />
+          )}
         </StepText>
       )}
 
       {!watchable && !signedIn && (
-        <Callout tone="info" icon={InformationCircleIcon} title="Cannot follow along">
-          <p className="mt-1">
-            The window below went somewhere this page cannot see. Sign in there, then say so
-            with the button underneath.
-          </p>
+        <Callout tone="info" icon={InformationCircleIcon} title={t("wizard.first.lost.title")}>
+          <p className="mt-1">{t("wizard.first.lost.body")}</p>
         </Callout>
       )}
 
       <iframe
         ref={frame}
         src={FILES_PATH}
-        title="Sign in to your files"
+        title={t("wizard.first.frameTitle")}
         // No sandbox attribute: it is same-origin by design (the CSP note in
         // modules/containers.nix covers what that costs and why it was
         // accepted), and a sandbox without allow-same-origin would give the
@@ -136,7 +132,7 @@ export function StepFirstSignIn({ account, signedIn, onSignedIn }: StepFirstSign
             color="currentColor"
             aria-hidden="true"
           />
-          Open in a new tab instead
+          {t("wizard.first.newTab")}
         </a>
 
         {!signedIn && (
@@ -148,7 +144,7 @@ export function StepFirstSignIn({ account, signedIn, onSignedIn }: StepFirstSign
               color="currentColor"
               aria-hidden="true"
             />
-            I have signed in
+            {t("wizard.first.manual")}
           </Button>
         )}
       </div>

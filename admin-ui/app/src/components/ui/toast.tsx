@@ -6,6 +6,7 @@ import {
   CheckmarkCircle02Icon,
   InformationCircleIcon,
 } from "@hugeicons/core-free-icons";
+import { useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
@@ -82,6 +83,7 @@ const TONE_CLASS = {
 
 /** Mount once, in the app shell. */
 export function Toaster() {
+  const t = useT();
   const items = React.useSyncExternalStore(
     subscribe,
     () => toasts,
@@ -127,7 +129,7 @@ export function Toaster() {
             variant="ghost"
             size="icon"
             className="size-7"
-            aria-label="Dismiss"
+            aria-label={t("ui.dismiss")}
             onClick={() => dismiss(item.id)}
           >
             <HugeiconsIcon
