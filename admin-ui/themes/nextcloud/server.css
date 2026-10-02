@@ -218,3 +218,12 @@ body {
     outline-offset: 2px;
   }
 }
+
+/* The login footer carries a line of literature after the name (see
+ * defaults.php, getSlogan), so the pill wraps instead of running the width
+ * of the page. */
+footer.guest-box {
+  max-width: min(36rem, calc(100vw - 2rem));
+  text-align: center;
+  text-wrap: balance;
+}
