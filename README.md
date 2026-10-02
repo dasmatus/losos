@@ -39,7 +39,7 @@ the [security model](docs/security-model.md).
 
 ```sh
 devenv shell        # or: direnv allow
-devenv test         # pin checks, lint, Rust tests and Nix evaluation; not builds or VM tests
+devenv test         # check-pins, lint, rust tests, flake eval
 devenv shell vm-tests
 ```
 
