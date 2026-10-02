@@ -98,6 +98,13 @@ images
     '';
   };
 
+  # The LosOS look for Nextcloud and Forgejo — the admin SPA's tokens.css plus
+  # each app's mapping onto it. Consumed by modules/nextcloud-stack.nix,
+  # modules/services.nix and images.nix through admin-ui/themes/default.nix,
+  # not through this attribute; it is exported so the files can be built and
+  # read on their own.
+  losos-themes = (import ./../admin-ui/themes { inherit pkgs; }).package;
+
   losos-ctl = pkgs.rustPlatform.buildRustPackage {
     pname = "losos-ctl";
     version = "0.1.0";

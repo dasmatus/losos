@@ -8,8 +8,14 @@
  * Every function is total. A widget that divides by zero, formats NaN or
  * hands `duration` a negative should get "—" and a tile that still renders,
  * not an exception that greys the tile over an arithmetic edge case.
+ *
+ * Text follows the language on screen: decimal separators, unit words, month
+ * names and "ago" are all read at call time, never frozen at import. A widget
+ * runs while its tile is mounted, and tile.tsx re-runs every tile when the
+ * language changes.
  */
 
+import { formatNumber as localeNumber, getLocale, t, INTL_TAG, type Locale } from "@/lib/i18n";
 import type { FmtApi, FormatName, StatApi } from "./types";
 
 const DASH = "—";
@@ -100,7 +106,12 @@ function formatBytes(value: number, digits?: number): string {
   }
   // Bytes and kilobytes have no useful decimal; terabytes need one.
   const places = digits ?? (unit <= 1 ? 0 : size < 10 ? 1 : size < 100 ? 1 : 0);
-  return `${negative ? "-" : ""}${size.toFixed(places)} ${BYTE_UNITS[unit] ?? "B"}`;
+  const digitsText = localeNumber(size, getLocale(), {
+    minimumFractionDigits: places,
+    maximumFractionDigits: places,
+    useGrouping: false,
+  });
+  return `${negative ? "-" : ""}${digitsText} ${BYTE_UNITS[unit] ?? "B"}`;
 }
 
 function formatPercent(value: number, digits = 1): string {
@@ -110,14 +121,18 @@ function formatPercent(value: number, digits = 1): string {
   // 99.96% rounding to "100%" is a lie a heatmap summary should not tell.
   const scaled = n * 100;
   const shown = scaled >= 100 ? scaled : Math.min(scaled, 99.999);
-  return `${shown.toFixed(places)}%`;
+  const text = localeNumber(shown, getLocale(), {
+    minimumFractionDigits: places,
+    maximumFractionDigits: places,
+  });
+  return t("widgets.format.percent", { n: text });
 }
 
 function formatNumber(value: number, digits = 0): string {
   const n = finite(value);
   if (n === null) return DASH;
   const places = Math.min(6, Math.max(0, Math.trunc(digits)));
-  return n.toLocaleString(undefined, {
+  return localeNumber(n, getLocale(), {
     minimumFractionDigits: places,
     maximumFractionDigits: places,
   });
@@ -131,16 +146,20 @@ function formatDuration(seconds: number): string {
   const n = finite(seconds);
   if (n === null) return DASH;
   const total = Math.max(0, Math.round(n));
-  if (total < MINUTE) return `${total} s`;
-  if (total < HOUR) return `${Math.round(total / MINUTE)} min`;
+  if (total < MINUTE) return t("widgets.format.seconds", { n: total });
+  if (total < HOUR) return t("widgets.format.minutes", { n: Math.round(total / MINUTE) });
   if (total < DAY) {
     const hours = Math.floor(total / HOUR);
     const mins = Math.round((total % HOUR) / MINUTE);
-    return mins === 0 ? `${hours} h` : `${hours} h ${mins} min`;
+    return mins === 0
+      ? t("widgets.format.hours", { n: hours })
+      : t("widgets.format.hoursMinutes", { h: hours, m: mins });
   }
   const days = Math.floor(total / DAY);
   const hours = Math.round((total % DAY) / HOUR);
-  return hours === 0 ? `${days} d` : `${days} d ${hours} h`;
+  return hours === 0
+    ? t("widgets.format.days", { n: days })
+    : t("widgets.format.daysHours", { d: days, h: hours });
 }
 
 /* `YYYY-MM-DD` is parsed as a LOCAL date, not UTC.
@@ -173,40 +192,61 @@ function toDate(value: string | number): Date | null {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
-const DATE_FORMAT = new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short" });
-const LONG_DATE_FORMAT = new Intl.DateTimeFormat(undefined, {
-  weekday: "short",
-  day: "numeric",
-  month: "short",
-  year: "numeric",
-});
-const TIME_FORMAT = new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" });
+/* One formatter per (shape, language), built the first time it is asked for.
+ * A heatmap labels 371 cells per render; building an Intl.DateTimeFormat per
+ * cell is measurably slow, and building one at import time would freeze the
+ * language the page happened to load in. */
+const DATE_SHAPES = {
+  date: { day: "numeric", month: "short" },
+  long: { weekday: "short", day: "numeric", month: "short", year: "numeric" },
+  time: { hour: "2-digit", minute: "2-digit" },
+  weekday: { weekday: "short" },
+  month: { month: "short" },
+} as const satisfies Record<string, Intl.DateTimeFormatOptions>;
+
+type DateShape = keyof typeof DATE_SHAPES;
+
+const dateFormats = new Map<string, Intl.DateTimeFormat>();
+
+/** The cached formatter for `shape` in the current language. */
+export function dateFormat(shape: DateShape, locale: Locale = getLocale()): Intl.DateTimeFormat {
+  const cacheKey = `${locale}:${shape}`;
+  let format = dateFormats.get(cacheKey);
+  if (format === undefined) {
+    format = new Intl.DateTimeFormat(INTL_TAG[locale], DATE_SHAPES[shape]);
+    dateFormats.set(cacheKey, format);
+  }
+  return format;
+}
 
 function formatDate(value: string | number): string {
   const date = toDate(value);
-  return date === null ? DASH : DATE_FORMAT.format(date);
+  return date === null ? DASH : dateFormat("date").format(date);
 }
 
 /** The tooltip form: "Thu, 12 Mar 2026". Not on the sandbox surface. */
 export function formatLongDate(value: string | number): string {
   const date = toDate(value);
-  return date === null ? DASH : LONG_DATE_FORMAT.format(date);
+  return date === null ? DASH : dateFormat("long").format(date);
 }
 
 function formatTime(value: string | number): string {
   const date = toDate(value);
-  return date === null ? DASH : TIME_FORMAT.format(date);
+  return date === null ? DASH : dateFormat("time").format(date);
 }
 
 function formatAgo(millis: number): string {
   const n = finite(millis);
   if (n === null) return DASH;
   const delta = Date.now() - n;
-  if (delta < 0) return "just now";
-  if (delta < 45_000) return "just now";
-  return `${formatDuration(delta / 1000)} ago`;
+  if (delta < 0) return t("widgets.format.justNow");
+  if (delta < 45_000) return t("widgets.format.justNow");
+  return t("widgets.format.ago", { duration: formatDuration(delta / 1000) });
 }
 
+/* The words are the widget author's own, so this stays an English-shaped
+ * one/many choice: it cannot know the plural forms of whatever language they
+ * were typed in. Built-in text uses plural messages from the catalogue. */
 function plural(count: number, one: string, many?: string): string {
   const n = finite(count) ?? 0;
   return Math.abs(n) === 1 ? one : (many ?? `${one}s`);

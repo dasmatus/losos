@@ -14,6 +14,8 @@
 
 import * as React from "react";
 import { Badge } from "@/components/ui/badge";
+import { t } from "@/lib/i18n";
+import { useT } from "@/lib/i18n-react";
 import { cn, setCssVar } from "@/lib/utils";
 import { applyFormat, DASH } from "../format";
 import type { BarData, Tone } from "../types";
@@ -32,6 +34,7 @@ function percent(part: number, whole: number): string {
 }
 
 export function BarView({ data }: { data: BarData }) {
+  const t = useT();
   const fill = React.useRef<HTMLDivElement>(null);
   const reserve = React.useRef<HTMLDivElement>(null);
 
@@ -62,7 +65,7 @@ export function BarView({ data }: { data: BarData }) {
         </span>
         {data.max > 0 && (
           <span className="numeric text-[13px] text-faint">
-            of {applyFormat(max, data.format)}
+            {t("widgets.bar.ofMax", { max: applyFormat(max, data.format) })}
           </span>
         )}
         {data.chip !== undefined && (
@@ -108,14 +111,23 @@ export function BarView({ data }: { data: BarData }) {
  * than a percentage, because "68%" without saying of what is not a reading. */
 function barLabel(data: BarData, max: number): string {
   const parts: string[] = [];
-  const fillName = data.fillLabel ?? "Used";
+  const fillName = data.fillLabel ?? t("widgets.bar.used");
   parts.push(
     data.value === null
-      ? `${fillName}: not measured`
-      : `${fillName}: ${applyFormat(data.value, data.format)} of ${applyFormat(max, data.format)}`,
+      ? t("widgets.bar.notMeasured", { name: fillName })
+      : t("widgets.bar.valueOfMax", {
+          name: fillName,
+          value: applyFormat(data.value, data.format),
+          max: applyFormat(max, data.format),
+        }),
   );
   if (data.reserve !== undefined && data.reserve > 0) {
-    parts.push(`${data.reserveLabel ?? "Held back"}: ${applyFormat(data.reserve, data.format)}`);
+    parts.push(
+      t("widgets.bar.reserve", {
+        name: data.reserveLabel ?? t("widgets.bar.heldBack"),
+        value: applyFormat(data.reserve, data.format),
+      }),
+    );
   }
   return parts.join(". ");
 }

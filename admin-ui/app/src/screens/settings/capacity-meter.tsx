@@ -1,4 +1,6 @@
 import * as React from "react";
+import { t } from "@/lib/i18n";
+import { Rich, useT } from "@/lib/i18n-react";
 import { cn, setCssVar } from "@/lib/utils";
 import { formatBytes } from "./format";
 import type { StorageFacts, StorageSource } from "./use-storage";
@@ -34,6 +36,7 @@ function percent(part: number, whole: number): number {
 }
 
 export function CapacityMeter({ facts, source }: CapacityMeterProps) {
+  useT();
   const usedBar = React.useRef<HTMLDivElement>(null);
   const lentBar = React.useRef<HTMLDivElement>(null);
 
@@ -56,8 +59,13 @@ export function CapacityMeter({ facts, source }: CapacityMeterProps) {
   }, [usedPct, lentPct]);
 
   const label = measured
-    ? `${formatBytes(used)} in use by this box, ${formatBytes(lent)} holding copies for the mesh, ${formatBytes(freeBytes)} free of ${formatBytes(total)}.`
-    : "This box has not reported how full its disk is.";
+    ? t("settings.capacity.label", {
+        used: formatBytes(used),
+        lent: formatBytes(lent),
+        free: formatBytes(freeBytes),
+        total: formatBytes(total),
+      })
+    : t("settings.capacity.unmeasured");
 
   return (
     <div className="flex flex-col gap-2.5">
@@ -87,11 +95,22 @@ export function CapacityMeter({ facts, source }: CapacityMeterProps) {
 
       {measured ? (
         <ul className="flex flex-wrap gap-x-5 gap-y-1.5">
-          <Key swatch="bg-accent" name="Yours" value={formatBytes(used)} />
-          <Key swatch="hatched-solid" name="Lent to the mesh" value={formatBytes(lent)} />
-          <Key swatch="bg-sunk border border-line" name="Free" value={formatBytes(freeBytes)} />
+          <Key swatch="bg-accent" name={t("settings.capacity.yours")} value={formatBytes(used)} />
+          <Key
+            swatch="hatched-solid"
+            name={t("settings.capacity.lent")}
+            value={formatBytes(lent)}
+          />
+          <Key
+            swatch="bg-sunk border border-line"
+            name={t("settings.capacity.free")}
+            value={formatBytes(freeBytes)}
+          />
           <li className="ml-auto text-[12.5px] text-muted">
-            <span className="numeric">{formatBytes(total)}</span> in total
+            <Rich
+              k="settings.capacity.total"
+              vars={{ total: <span className="numeric">{formatBytes(total)}</span> }}
+            />
           </li>
         </ul>
       ) : (
@@ -107,14 +126,14 @@ export function CapacityMeter({ facts, source }: CapacityMeterProps) {
 function unmeasuredReason(source: StorageSource): string {
   switch (source) {
     case "loading":
-      return "Asking this box how full its disk is…";
+      return t("settings.capacity.loading");
     case "error":
-      return "This box did not answer when asked how full its disk is.";
+      return t("settings.capacity.error");
     case "absent":
-      return "This box cannot yet report how full its disk is, so there is nothing to draw here.";
+      return t("settings.capacity.absent");
     case "box":
       // Answered, but with no total. Nothing to divide by.
-      return "This box answered without a size for its disk.";
+      return t("settings.capacity.noSize");
     default: {
       const exhaustive: never = source;
       return exhaustive;

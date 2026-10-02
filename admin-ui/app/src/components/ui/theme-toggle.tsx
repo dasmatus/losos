@@ -10,6 +10,8 @@ import {
   type ResolvedTheme,
   type Theme,
 } from "@/lib/theme";
+import type { MessageKey } from "@/lib/i18n";
+import { useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
 
 /** The React binding for the three-state theme store in lib/theme.ts. */
@@ -27,28 +29,30 @@ export function useTheme(): {
   return { theme, resolvedTheme, setTheme };
 }
 
-const OPTIONS: Record<Theme, { label: string; icon: typeof ComputerIcon }> = {
-  auto: { label: "Match the browser", icon: ComputerIcon },
-  light: { label: "Light", icon: Sun03Icon },
-  dark: { label: "Dark", icon: Moon02Icon },
+const OPTIONS: Record<Theme, { label: MessageKey; icon: typeof ComputerIcon }> = {
+  auto: { label: "ui.theme.auto", icon: ComputerIcon },
+  light: { label: "ui.theme.light", icon: Sun03Icon },
+  dark: { label: "ui.theme.dark", icon: Moon02Icon },
 };
 
 /* A three-way segmented control: Auto, Light, Dark. Not a two-state toggle —
  * Auto is the default and it is a real answer, not the absence of one. */
 export function ThemeToggle({ className }: { className?: string }) {
   const { theme, setTheme: choose } = useTheme();
+  const t = useT();
 
   return (
     <div
       role="radiogroup"
-      aria-label="Appearance"
+      aria-label={t("ui.theme.label")}
       className={cn(
         "inline-flex items-center gap-0.5 rounded-control border border-line bg-sunk p-0.5",
         className,
       )}
     >
       {THEMES.map((option) => {
-        const { label, icon } = OPTIONS[option];
+        const label = t(OPTIONS[option].label);
+        const { icon } = OPTIONS[option];
         const selected = theme === option;
         return (
           <button
