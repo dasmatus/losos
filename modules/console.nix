@@ -52,8 +52,10 @@ let
         local text=$1 width=$2 style=''${3:-}
         local pad=$(( (width - ''${#text}) / 2 ))
         (( pad < 0 )) && pad=0
+        local right=$(( width - pad - ''${#text} ))
+        (( right < 0 )) && right=0
         printf '\033[44;97m%s%*s%s%*s\033[0m\n' \
-          "$style" "$pad" "" "$text" "$(( width - pad - ''${#text} ))" ""
+          "$style" "$pad" "" "$text" "$right" ""
       }
 
       draw() {
