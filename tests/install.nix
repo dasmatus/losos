@@ -7,16 +7,18 @@
 #   2. disko merges all three into one LVM volume group `persist-vg`,
 #   3. the single `persist` LV is opened as LUKS and mounted as ext4 at
 #      /mnt/persist, WITH the `encrypt` feature actually enabled,
-#   4. the first target drive has a BIOS boot partition and ESP.
-#   5. GRUB from that disk boots under SeaBIOS.
+#   4. autodetection and both firmware overrides render the expected target.
+#   5. the first target drive has a BIOS boot partition and ESP.
+#   6. nixos-install installs the configured GRUB bootloader and it boots under
+#      SeaBIOS.
 #
 # The installer is driven through its --disko-script seam (a prebuilt
 # `config.system.build.diskoScript`) so the test never needs nix or the full
 # appliance closure inside the VM — it exercises the installer's drive
 # detection + override generation + the real disko format/mount path, which is
-# the "find drives, merge them to an LVM array, run disko" claim. The
-# subsequent `nixos-install` step is a thin, standard wrapper and isn't run
-# here (it would require building the whole appliance closure in the VM).
+# the "find drives, merge them to an LVM array, run disko" claim. The boot test
+# installs the running test system, which imports the production boot module,
+# through nixos-install's normal bootloader-install path.
 {
   pkgs,
   disko,
@@ -26,7 +28,7 @@ pkgs.testers.nixosTest {
   name = "losos-install-lvm";
 
   nodes.installer =
-    { config, pkgs, ... }:
+    { config, lib, pkgs, ... }:
     let
       # The disks the installer is expected to find and merge. The VM root is
       # /dev/vda (excluded by detection as a mounted disk), so these three
@@ -47,6 +49,7 @@ pkgs.testers.nixosTest {
         disko.nixosModules.disko
         ../modules/options.nix
         ../modules/disko.nix
+        ../modules/boot.nix
         ../modules/installer.nix
       ];
 
@@ -60,6 +63,16 @@ pkgs.testers.nixosTest {
       losos.targetDrives = targets;
       losos.tpm.enable = false;
       losos.bios = true;
+      boot.initrd.secrets = lib.mkForce {
+        "/crypto_keyfile.bin" = pkgs.writeText "bios-test-key" "test-only";
+      };
+      boot.loader.grub.extraConfig = ''
+        serial --unit=0 --speed=115200
+        terminal_input serial
+        terminal_output serial
+        echo BIOS_GRUB_BOOT_OK
+        halt
+      '';
 
       # Don't let disko inject /persist into the test VM's fileSystems — the
       # test boots from /dev/vda and only formats the targets on demand.
@@ -73,6 +86,7 @@ pkgs.testers.nixosTest {
         util-linux
         disko
         grub2
+        nixos-install-tools
         qemu
       ];
 
@@ -84,6 +98,7 @@ pkgs.testers.nixosTest {
       virtualisation = {
         memorySize = 2048;
         cores = 2;
+        useEFIBoot = false;
         # Three empty 2 GiB disks → /dev/vdb, /dev/vdc, /dev/vdd.
         emptyDiskImages = [
           2048
@@ -111,12 +126,22 @@ pkgs.testers.nixosTest {
     # 1. Drive detection in isolation: --emit-target writes the
     #    install-target Nix file listing detected drives, without touching
     #    the disks.
-    installer.succeed("losos-install --emit-target /tmp/detected.nix")
-    detected = installer.succeed("cat /tmp/detected.nix")
+    installer.succeed("losos-install --emit-target /tmp/autodetected.nix")
+    detected = installer.succeed("cat /tmp/autodetected.nix")
     for d in ("vdb", "vdc", "vdd"):
         assert f"/dev/{d}" in detected, f"detector missed /dev/{d}"
     assert "/dev/vda" not in detected, "detector picked up the VM root disk"
     assert "losos.targetDrives" in detected, "no losos.targetDrives assignment emitted"
+    assert "losos.bios = true;" in detected, "SeaBIOS autodetection did not select BIOS"
+
+    # Explicit choices must override the detected firmware, including the
+    # opposite-firmware case.
+    installer.succeed(
+        "losos-install --bios --emit-target /tmp/forced-bios.nix",
+        "losos-install --uefi --emit-target /tmp/forced-uefi.nix",
+    )
+    assert "losos.bios = true;" in installer.succeed("cat /tmp/forced-bios.nix")
+    assert "losos.bios = false;" in installer.succeed("cat /tmp/forced-uefi.nix")
 
     # 2. Full format+mount via the prebuilt diskoScript (the installer's
     #    --disko-script seam): the "merge them to an LVM array and run disko"
@@ -158,20 +183,18 @@ pkgs.testers.nixosTest {
     installer.succeed("lsblk -ln -o FSTYPE /dev/vdb | grep -q vfat")
     installer.fail("lsblk -ln -o FSTYPE /dev/vdc | grep -q vfat")
 
-    # Install GRUB to the formatted target disk and boot its BIOS core image in
-    # a nested SeaBIOS VM. The marker is emitted by grub.cfg, so this exercises
-    # the EF02 embedding area and the GRUB files on the target ESP together.
+    # Install the current system to the formatted target through nixos-install.
+    # Its boot.nix is the production module, so this exercises the generated
+    # GRUB installation path instead of invoking grub-install separately.
     installer.succeed(
-        "grub-install --target=i386-pc --boot-directory=/mnt/boot /dev/vdb",
-        "mkdir -p /mnt/boot/grub",
-        """cat > /mnt/boot/grub/grub.cfg <<'EOF'
-insmod serial
-serial --unit=0 --speed=115200
-terminal_input serial
-terminal_output serial
-echo BIOS_GRUB_BOOT_OK
-halt
-EOF""",
+        "mkdir -p /mnt/persist/nix /mnt/nix /mnt/etc/keys",
+        "mount --bind /mnt/persist/nix /mnt/nix",
+        "cp /etc/keys/persist-keyfile /mnt/etc/keys/persist-keyfile",
+        "chmod 600 /mnt/etc/keys/persist-keyfile",
+        "nixos-install --root /mnt --system /run/current-system "
+        "--no-root-passwd --no-channel-copy",
+        "umount -R /mnt || true",
+        "sync",
     )
     installer.succeed(
         "timeout 10s qemu-system-x86_64 -machine pc -accel tcg -m 128 "
