@@ -170,7 +170,7 @@
   --color-input-text: var(--ink);
   --color-input-background: var(--surface);
   --color-input-toggle-background: var(--sunk);
-  --color-input-border: var(--line);
+  --color-input-border: var(--muted);
   --color-input-border-hover: color-mix(in srgb, var(--muted) 60%, var(--surface));
 
   /* ── State, never identity (badge.tsx) ──────────────────────────────── *
