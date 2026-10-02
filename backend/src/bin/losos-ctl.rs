@@ -18,7 +18,6 @@ use losos_ctl::overrides::validate_apply;
 use std::io::{IsTerminal, Read, Write};
 use std::path::PathBuf;
 use std::process::ExitCode;
-use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 #[derive(Parser)]
@@ -183,6 +182,14 @@ fn parse_mode(s: &str) -> Result<Mode, String> {
 /// waiting for the installer's DNS lookup. So no answer means autodetect.
 const FIRMWARE_MENU_TIMEOUT: Duration = Duration::from_secs(30);
 
+/// One answer to the firmware prompt, or why there is none.
+#[derive(Debug)]
+enum MenuInput {
+    Line(String),
+    Timeout,
+    Eof,
+}
+
 fn select_firmware(explicit: Option<bool>, interactive: bool) -> std::io::Result<Option<bool>> {
     if let Some(bios) = explicit {
         return Ok(Some(bios));
@@ -190,25 +197,56 @@ fn select_firmware(explicit: Option<bool>, interactive: bool) -> std::io::Result
     if !interactive {
         return Ok(None);
     }
-    // stdin is read on its own thread so the prompt can time out. When it
-    // does, that thread stays parked in read_line until exit; nothing later
-    // in the install reads the terminal (disko gets --yes-wipe-all-disks).
-    let (tx, rx) = mpsc::channel();
-    std::thread::spawn(move || {
-        for line in std::io::stdin().lines() {
-            if tx.send(line).is_err() {
-                return;
-            }
-        }
-    });
-    prompt_firmware(&rx, FIRMWARE_MENU_TIMEOUT, &mut std::io::stdout())
+    prompt_firmware(
+        read_stdin_line,
+        FIRMWARE_MENU_TIMEOUT,
+        &mut std::io::stdout(),
+    )
 }
 
-/// The menu itself, over a channel of input lines, so the timeout and the
-/// retry loop are unit-testable. A closed channel (EOF) or a timeout picks
-/// autodetect; the deadline is overall, so retyping garbage cannot extend it.
+/// Read one line from stdin, giving up after `timeout`.
+///
+/// poll(2) rather than a reader thread: a thread left blocked in read_line
+/// after a timeout would keep reading the terminal for the rest of the
+/// install, and a `--tpm` install hands that terminal to disko to collect the
+/// LUKS passphrase. A stray reader would swallow it and leave disko waiting.
+/// The terminal is in canonical mode, so a readable stdin holds one whole
+/// line and read_line does not buffer past it.
+fn read_stdin_line(timeout: Duration) -> std::io::Result<MenuInput> {
+    use rustix::event::{poll, PollFd, PollFlags, Timespec};
+    let stdin = std::io::stdin();
+    let deadline = Instant::now() + timeout;
+    let ready = loop {
+        let left = deadline.saturating_duration_since(Instant::now());
+        let wait = Timespec::try_from(left).unwrap_or(Timespec {
+            tv_sec: i64::MAX,
+            tv_nsec: 0,
+        });
+        let mut fds = [PollFd::new(&stdin, PollFlags::IN)];
+        match poll(&mut fds, Some(&wait)) {
+            // A signal is not an answer: wait out the rest of the deadline.
+            Err(rustix::io::Errno::INTR) => continue,
+            other => break other?,
+        }
+    };
+    match ready {
+        0 => Ok(MenuInput::Timeout),
+        _ => {
+            let mut line = String::new();
+            if stdin.read_line(&mut line)? == 0 {
+                Ok(MenuInput::Eof)
+            } else {
+                Ok(MenuInput::Line(line))
+            }
+        }
+    }
+}
+
+/// The menu itself, over an injectable line source, so the timeout and the
+/// retry loop are unit-testable. A timeout or EOF picks autodetect; the
+/// deadline is overall, so retyping garbage cannot extend it.
 fn prompt_firmware(
-    lines: &mpsc::Receiver<std::io::Result<String>>,
+    mut read_line: impl FnMut(Duration) -> std::io::Result<MenuInput>,
     timeout: Duration,
     out: &mut impl Write,
 ) -> std::io::Result<Option<bool>> {
@@ -232,17 +270,17 @@ fn prompt_firmware(
         out.flush()?;
 
         let left = deadline.saturating_duration_since(Instant::now());
-        match lines.recv_timeout(left) {
-            Ok(line) => match FirmwareMode::parse(&line?) {
+        match read_line(left)? {
+            MenuInput::Line(line) => match FirmwareMode::parse(&line) {
                 Some(mode) => return Ok(mode.bios_override()),
                 None => writeln!(out, "Choose 1, 2, or 3.")?,
             },
-            Err(mpsc::RecvTimeoutError::Timeout) => {
+            MenuInput::Timeout => {
                 writeln!(out)?;
                 writeln!(out, "No choice made; autodetecting.")?;
                 return Ok(None);
             }
-            Err(mpsc::RecvTimeoutError::Disconnected) => return Ok(None),
+            MenuInput::Eof => return Ok(None),
         }
     }
 }
@@ -361,8 +399,7 @@ fn run(cli: Cli) -> Result<(), BackendFailure> {
 
 #[cfg(test)]
 mod tests {
-    use super::{prompt_firmware, validate_firmware_choice, FirmwareMode};
-    use std::sync::mpsc;
+    use super::{prompt_firmware, validate_firmware_choice, FirmwareMode, MenuInput};
     use std::time::Duration;
 
     #[test]
@@ -386,13 +423,20 @@ mod tests {
         assert!(validate_firmware_choice(None, true).is_ok());
     }
 
+    /// A scripted line source: each call pops the next answer.
+    fn script(mut answers: Vec<MenuInput>) -> impl FnMut(Duration) -> std::io::Result<MenuInput> {
+        answers.reverse();
+        move |_| Ok(answers.pop().unwrap_or(MenuInput::Eof))
+    }
+
     #[test]
     fn firmware_menu_retries_then_takes_a_valid_choice() {
-        let (tx, rx) = mpsc::channel();
-        tx.send(Ok("x".into())).unwrap();
-        tx.send(Ok("1".into())).unwrap();
         let mut out = Vec::new();
-        let got = prompt_firmware(&rx, Duration::from_secs(5), &mut out).unwrap();
+        let read = script(vec![
+            MenuInput::Line("x\n".into()),
+            MenuInput::Line("1\n".into()),
+        ]);
+        let got = prompt_firmware(read, Duration::from_secs(5), &mut out).unwrap();
         assert_eq!(got, Some(true));
         assert!(String::from_utf8(out)
             .unwrap()
@@ -402,19 +446,30 @@ mod tests {
     #[test]
     fn firmware_menu_autodetects_on_timeout_and_on_eof() {
         // Unattended boot: nobody types, so the menu must not block the install.
-        let (_tx, rx) = mpsc::channel();
         let mut out = Vec::new();
-        assert_eq!(
-            prompt_firmware(&rx, Duration::from_millis(50), &mut out).unwrap(),
-            None
-        );
+        let got = prompt_firmware(script(vec![MenuInput::Timeout]), Duration::ZERO, &mut out);
+        assert_eq!(got.unwrap(), None);
         assert!(String::from_utf8(out).unwrap().contains("autodetecting"));
 
-        let (tx, rx) = mpsc::channel::<std::io::Result<String>>();
-        drop(tx);
-        assert_eq!(
-            prompt_firmware(&rx, Duration::from_secs(5), &mut Vec::new()).unwrap(),
-            None
-        );
+        let got = prompt_firmware(script(vec![]), Duration::from_secs(5), &mut Vec::new());
+        assert_eq!(got.unwrap(), None);
+    }
+
+    #[test]
+    fn firmware_menu_deadline_is_overall() {
+        // Each re-prompt gets only what is left, never a fresh 30 s.
+        let mut budgets = Vec::new();
+        let mut first = true;
+        let read = |left: Duration| {
+            budgets.push(left);
+            if std::mem::take(&mut first) {
+                std::thread::sleep(Duration::from_millis(20));
+                Ok(MenuInput::Line("nope\n".into()))
+            } else {
+                Ok(MenuInput::Timeout)
+            }
+        };
+        prompt_firmware(read, Duration::from_millis(200), &mut Vec::new()).unwrap();
+        assert!(budgets[1] < budgets[0], "{budgets:?}");
     }
 }
