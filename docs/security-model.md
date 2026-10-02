@@ -1,220 +1,155 @@
 # Security model
 
-What losos defends against, what it does not, and which of those are
-deliberate choices rather than oversights. Written to be argued with.
+What losos defends against, and what it does not.
 
 ## Trust boundaries
 
-The appliance has no SSH and no login shell. Every durable secret lives on an
-encrypted `/persist`; the root filesystem is tmpfs and is rebuilt each boot.
-There are four boundaries that matter:
+The appliance has no SSH and no login shell. The root filesystem is a tmpfs;
+durable secrets live on the encrypted `/persist`.
 
-1. **The internet → the edge.** Only the master proxy (Traefik + rathole +
-   `losos-registrar`) is internet-facing, and it runs on a separate VPS, not
-   on the appliance.
-2. **The edge → the appliance.** A rathole tunnel. Traffic arrives at the
-   appliance's Nginx *from 127.0.0.1*, which is why the LAN-only guard on the
-   admin routes must never allow loopback.
-3. **The LAN → the appliance.** Everything on the local network is treated as
-   trusted. See "Known limitations".
-4. **`notshared` ↔ `shared`.** Two uids, each with its **own primary group**,
-   two home directories at mode `700`. Neither can read the other's data.
+1. **Internet → edge.** Only the master proxy (Traefik, rathole,
+   `losos-registrar`) faces the internet, and it runs on a separate VPS.
+2. **Edge → appliance.** A rathole tunnel. Its traffic reaches the appliance's
+   nginx from `127.0.0.1`, so the LAN-only guard on the admin routes must not
+   allow loopback.
+3. **LAN → appliance.** Trusted once; see [The LAN](#the-lan).
+4. **`notshared` ↔ `shared`.** Two users, each with its own primary group and
+   a mode-700 home. Neither can read the other's data.
 
-   This did not hold until recently, and the way it failed is worth keeping:
-   both accounts were `isNormalUser` with no explicit `group`, so nixpkgs gave
-   both the primary group `users` — and the homes' `750` granted r-x to exactly
-   that group. The mode kept out accounts *outside* `users` and nothing else,
-   so each data domain could read the other while the code, the comments and
-   the README all claimed otherwise. `tests/impermanence.nix` asserts the real
-   behaviour in a booted VM now, cross-reads and all.
+   This used to be broken: both users had the primary group `users` and
+   mode-750 homes, so each could read the other. `tests/impermanence.nix` now
+   checks cross-reads in a booted VM.
 
 ## The admin token
 
-`lososd` mints a 64-hex-character token from `/dev/urandom` on first start,
-writes it `0600` in a `0700` directory, and fsyncs it. It is not managed by
-NixOS and never enters the Nix store.
+`lososd` creates a 64-hex-character token from `/dev/urandom` on first start
+and writes it with mode 0600 in a 0700 directory. NixOS does not manage it and
+it never enters the Nix store.
 
-That token is **root-equivalent**: `POST /api/apply` writes arbitrary Nix to
-`overrides.nix` and runs `nixos-rebuild switch`. This is by design — the admin
-UI's whole purpose is reconfiguring the box — which is why the token's
-handling gets the attention it does:
+The token is equivalent to root: `POST /api/apply` writes arbitrary Nix to
+`overrides.nix` and runs `nixos-rebuild switch`.
 
-- The token file is validated on read. It must be exactly 64 lowercase hex
-  characters; anything else is discarded and re-minted with a loud error.
-  Previously *any* file content was accepted as the shared secret, so a
-  truncated or hand-edited file became a guessable root password.
-- Comparison is constant-time, after a case-insensitive scheme strip.
-- The API binds `127.0.0.1` only. Nginx proxies `/api/` to it, under the
+- On an unclaimed box, the first LAN caller to `POST /api/setup/claim` can set
+  the owner password without a token. The response hands that caller the admin
+  token exactly once, then the route refuses further claims. Set up a new box
+  only on a trusted LAN: whoever claims it first becomes its owner. The window
+  is guarded by source address (`lanOnly`, with loopback denied), not by a
+  secret, and closes on first use.
+- The file must contain exactly 64 lowercase hex characters. Anything else is
+  discarded and replaced, with an error in the log.
+- A claimed box cannot fetch the token again. To rotate it, write a new
+  64-character lowercase-hex value to the file and restart `lososd`, or delete
+  the file and restart it to mint a random replacement. Deleting it requires
+  local access to retrieve the replacement.
+- Comparison is constant-time.
+- The API listens on `127.0.0.1` only. nginx proxies `/api/` to it behind the
   LAN-only guard.
 
 ## Enrollment at the edge
 
-`losos.edge.tenants` is the security boundary: the registrar only ever writes
-a Traefik router, and only ever requests a certificate, for an id listed
-there. Enforcement:
+The registrar only creates a Traefik router or requests a certificate for ids
+listed in `losos.edge.tenants`.
 
-- Blank tokens are rejected *before* the tenant lookup, so a rejection leaks
-  nothing about which ids exist.
-- A token file below 32 characters refuses that tenant entirely rather than
-  accepting a weak secret.
-- The unknown-id path performs a decoy read and compare, so it costs roughly
-  what a known id costs. This was the larger timing oracle — a byte-compare
-  difference is far harder to measure than one filesystem read versus two.
-- The router's hostname comes from the whitelist, not from the runtime
-  registry, so nothing an appliance sends can widen what it is served.
+- Blank tokens are rejected before the tenant lookup, so the response does not
+  reveal which ids exist.
+- A tenant whose token file is shorter than 32 characters is refused.
+- An unknown id still costs a decoy read and compare, so its timing matches a
+  known id.
+- The router's hostname comes from the allow-list, not from what the appliance
+  sends.
 
 ## System hardening
 
-`losos.hardening.*` (`modules/hardening.nix`) is the kernel-and-userspace layer
-under everything above. It is staged rather than one switch, because the
-obvious shortcut no longer exists: NixOS removed `profiles/hardened.nix` in
-26.05, and `linux_hardened` in the nixpkgs this flake tracks is
-`throw "linux_hardened has been removed due to lack of maintenance"`. Upstream's
-stated reason — the profile "lacks a consistent and transparent baseline" and
-was "often more of a 'grab bag' of settings than a cohesive security policy" —
-is a fair criticism to inherit rather than repeat.
+`modules/hardening.nix`, `losos.hardening.*`. NixOS removed
+`profiles/hardened.nix` in 26.05 and `linux_hardened` no longer exists, so the
+settings are listed individually.
 
-**On by default** (`hardening.enable`): KSPP kernel parameters; sysctl
-tightening for kernel-address and log disclosure, unprivileged eBPF, ptrace,
-`userfaultfd`, the `fs.protected_*` family and the network stack; a
-kernel-module blacklist that also blocks explicit `modprobe`; a separate `/tmp`
-tmpfs and `noexec` on `/dev/shm`; dbus-broker; and systemd sandboxing on
-`nginx`, `avahi-daemon` and `lososd`.
+**On by default** (`hardening.enable`): KSPP kernel parameters; sysctls for
+kernel pointers and logs, unprivileged eBPF, ptrace, `userfaultfd`,
+`fs.protected_*` and the network stack; a module blacklist that also blocks
+explicit `modprobe`; a tmpfs `/tmp` and `noexec` on `/dev/shm`; dbus-broker;
+systemd sandboxing on `nginx`, `avahi-daemon` and `lososd`.
 
-**Opt-in**, because each can cost something: `hardening.apparmor`,
-`hardening.malloc`, `hardening.nosmt`, `hardening.usbguard`.
+**Opt-in**: `hardening.apparmor`, `hardening.malloc`, `hardening.nosmt`,
+`hardening.usbguard`. They are in the Security pane of the settings page.
+Because `apply` rewrites `overrides.nix` from what the UI generates, an option
+the UI does not write cannot be turned on at all. A test in
+`backend/src/overrides.rs` checks that the module and the daemon's default
+body agree.
 
-They are reachable from the **Security** pane of the settings page, and that is
-newer than the options themselves. Until it existed the four were declared in
-`options.nix` and named nowhere in `modules/overrides.nix` — and since that file
-is the only way to change a `losos.*` option on a box with no SSH and no shell
-login, they were not merely off by default, they were *unreachable*. An option
-an owner cannot turn on is not a mitigation, however carefully it is described.
-Getting this wrong twice is easy, because `apply` replaces `overrides.nix`
-wholesale from what the UI generates: a key the UI does not emit is erased on
-the next save of any unrelated setting. `backend/src/overrides.rs` carries a
-test asserting the module and the daemon's copy of its default body still
-agree.
+**Not covered.** `hardened_malloc` is preloaded, so it does not reach k3s,
+rke2 or containerd (static Go binaries) or anything in a pod. Hardening does
+not address the limitations below.
 
-### What it does not cover
+**Left out on purpose.** `tests/hardening.nix` checks that these stay off:
 
-Two limits worth stating rather than implying. The hardened allocator works by
-preloading, so it covers the host's dynamically linked processes and **nothing
-inside Kubernetes**: k3s, rke2 and containerd are static Go binaries that ignore
-preloading, and a pod has its own rootfs and therefore its own absent preload
-file. And no amount of kernel hardening touches the three limitations below —
-the shared origin, the cleartext LAN, or the no-TPM physical-access path.
-
-### Three things it deliberately does not do
-
-Each is on every hardening checklist, and each would cost more here than it
-buys. `tests/hardening.nix` asserts all three *absent*, so they read as
-decisions rather than oversights.
-
-- **`rp_filter` is 2 (loose), not 1 (strict)**, for two independent reasons.
-  Strict reverse-path filtering drops packets whose source would not route back
-  out the interface they arrived on — which is what multicast replies look like
-  on a multi-homed machine, and mDNS is the only way to reach a box with no SSH
-  and no shell login. Calico, half of the canal CNI the mesh cluster runs, also
-  does not work under it.
-- **User namespaces stay enabled.** `security.allowUserNamespaces = false` sets
-  `user.max_user_namespaces = 0`, which stops both kubelets and containerd.
-- **`/tmp` is not `noexec`.** Nix builds unpack and execute scripts there, and
-  the nightly unattended rebuild is this appliance's only self-repair path.
+- **Strict `rp_filter`.** It is `2` (loose). Strict mode drops mDNS replies on
+  a multi-homed host, and mDNS is how the box is found. Calico also fails
+  under it.
+- **Disabling user namespaces.** `user.max_user_namespaces = 0` stops both
+  kubelets and containerd.
+- **`noexec` on `/tmp`.** Nix builds run there, and the nightly rebuild is the
+  box's only self-repair path.
 
 ## Known limitations
 
-These are accepted, not unnoticed.
-
 ### The admin UI shares an origin with Nextcloud and Forgejo
 
-`http://<host>.local/` serves the admin SPA and `/api/`. The **same origin**
-serves `/nextcloud` and `/forgejo/`, which host user-controlled content:
-repositories, rendered markdown, attachments, uploaded files.
+`<host>.local/` serves the admin UI and `/api/`. The same origin serves
+`/nextcloud` and `/forgejo/`, which host user content.
 
-`sessionStorage` is scoped per **origin**, not per path. So a stored-XSS in
-either application executes on the admin origin and can read the admin token,
-and no Content-Security-Policy on the admin responses prevents it — the CSP
-constrains the admin documents, not the Nextcloud one. An `HttpOnly` cookie
-would not fix it either: on a shared origin, forged same-origin requests carry
-the cookie automatically. **Same-origin XSS defeats every browser-side
-mitigation.** The only real fix is origin separation — a distinct hostname or
-port for the admin plane.
+`sessionStorage` is per origin, so a stored XSS in either application can read
+the admin token. A CSP on the admin pages does not help, and neither would an
+`HttpOnly` cookie. **An XSS in Nextcloud or Forgejo is a full appliance
+compromise.**
 
-That was considered and declined, in favour of a single clean URL. The
-consequence is explicit: *an XSS in Nextcloud or Forgejo is a full appliance
-compromise.* The mitigations actually in place are defence in depth, not a
-fix — a strict CSP, `X-Frame-Options`, `nosniff` and `Referrer-Policy` on the
-admin surface; the LAN-only guard, which reduces exposure to attackers already
-on the LAN but does not help here because the attack runs in the victim's own
-browser; and keeping both applications patched, which is what actually
-carries the risk.
+The fix is a separate origin for the admin UI, such as a second mDNS name.
+That was declined in favour of a single URL. In place instead: a strict CSP,
+`X-Frame-Options`, `nosniff` and `Referrer-Policy` on the admin pages, the
+LAN-only guard, and keeping both applications patched.
 
-Reversing the decision is cheap and localised: serve the admin vhost under a
-second mDNS name on port 80. That is a genuinely different origin, at which
-point `sessionStorage` isolation applies and the CSP becomes a real boundary.
+### The LAN
 
-### The LAN is inside the trust boundary — mostly, now
+`losos.tls.enable` (default on) serves HTTPS with a certificate the box
+generates (`modules/tls.nix`). The first-run wizard shows its fingerprint.
+ACME is not possible for a `.local` name.
 
-This section used to say there was no TLS and that the admin token crossed the
-LAN in cleartext on every request. **That is no longer true**, and it is worth
-being precise about what replaced it, because a security document that
-understates the shipped posture is as misleading as one that overstates it.
-
-`losos.tls.enable` now defaults on. The appliance mints its own CA and serves
-HTTPS under it (`modules/tls.nix`), and the first-run wizard shows the
-certificate fingerprint so it can be checked before anything secret is typed.
-`security.acme` still cannot help — it needs a public name, which a `.local`
-box does not have — so this is a self-signed chain you trust once, not a
-publicly rooted one.
-
-What remains true: until that certificate is trusted, and on any client that
-skips the wizard, a LAN attacker able to ARP-spoof can still mount the usual
-first-use interception. The boundary is now "a network you trust *once*"
-rather than "a network you trust continuously".
+Until a client trusts that certificate, an attacker on the LAN who can
+ARP-spoof can intercept first use.
 
 ### Physical access
 
-`losos.tpm.enable` unlocks `/persist` from the TPM. On the no-TPM path a
-keyfile is baked into the initrd, which lives on an unencrypted ESP — so on
-that path, physical possession yields the data. Only the TPM path resists
-physical theft.
+With `losos.tpm.enable`, `/persist` unlocks from the TPM. Without a TPM the
+keyfile is in the initrd on an unencrypted ESP, so whoever has the machine has
+the data.
 
 ### Tunnel encryption
 
-The rathole tunnel between an appliance and the edge uses rathole's Noise
-transport (`Noise_NK_25519_ChaChaPoly_BLAKE2s`): the edge holds the private
-key (`losos.edge.noisePrivateKeyFile`, read by the registrar at runtime) and
-each appliance pins the public half, so the post-TLS-termination HTTP inside
-the tunnel is encrypted and the edge is authenticated. Nothing is provisioned
-by hand: the edge generates the pair on first boot, and each appliance fetches
-the public key from the registrar (`GET /noise-public-key`) on first start and
-keeps it at `losos.proxy.noisePublicKeyFile`. That first fetch is trust on
-first use, protected only by the TLS in front of the registrar; a key file put
-there beforehand is never overwritten, which is the way to pin out of band.
-The private key is a 0600 runtime file under `/var/secrets`, never a store
-path. Setting either option to `null` falls back to plain TCP; do not.
+The rathole tunnel uses Noise (`Noise_NK_25519_ChaChaPoly_BLAKE2s`). The edge
+holds the private key (`losos.edge.noisePrivateKeyFile`, a 0600 file under
+`/var/secrets`); each appliance pins the public key
+(`losos.proxy.noisePublicKeyFile`).
+
+The edge generates the pair on first boot. Each appliance fetches the public
+key from the registrar (`GET /noise-public-key`) on first start. That fetch is
+trust on first use, protected only by the registrar's TLS. A key file placed
+there beforehand is never overwritten, which is how to pin it out of band.
+Setting either option to `null` falls back to plain TCP.
 
 ### Throttling and audit log
 
-`lososd` counts failed authentication per remote address (the client address
-Nginx passes in `X-Real-IP`). After 10 failures an address is answered `429`
-with `Retry-After` for an exponentially growing window (1 s doubling, capped at
-5 min); during the window even the correct token is refused, and a correct
-token afterwards clears the count. `/api/health` and the first-run
-`/api/setup/claim` routes are not throttled.
+`lososd` counts failed authentications per client address (`X-Real-IP` from
+nginx). After 10 failures the address gets `429` with `Retry-After`, for a
+window starting at 1 s and doubling up to 5 min. During the window even the
+correct token is refused; a correct token afterwards clears the count.
+`/api/health` and `/api/setup/claim` are not throttled.
 
-`POST /api/apply`, `/api/change`, `/api/set-password`, `/api/factory-reset` and
-`/api/grow` each append one JSON line to `/var/lib/losos/audit.log` (`/var` is
-bind-mounted from `/persist`, so it survives the nightly reboot): timestamp,
-route, remote address and outcome (`ok`, `rejected` for a 4xx, `error` for a
-5xx, `unauthorized`, `throttled`). Mode 0600, append-only writes. It records
-neither the token nor request bodies (so no passwords or Nix code). Read-only
-routes are not logged.
+`POST /api/apply`, `/api/change`, `/api/set-password`, `/api/factory-reset`
+and `/api/grow` each append a JSON line to `/var/lib/losos/audit.log`:
+timestamp, route, remote address and outcome (`ok`, `rejected`, `error`,
+`unauthorized`, `throttled`). The file is mode 0600 and survives reboots. It
+does not record the token or request bodies. Read-only routes are not logged.
 
-### Not covered
-
-The audit log is not tamper-evident: root on the box can rewrite it, and it
-does not rotate. A failed write is reported to the journal and does not block
-the request. Throttling is per address, so a LAN attacker who spoofs addresses
-gets a fresh budget for each.
+Not covered: root can rewrite the audit log, it does not rotate, and a failed
+write does not block the request. Throttling is per address, so an attacker
+who spoofs addresses gets a fresh budget for each.
