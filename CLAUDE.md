@@ -347,6 +347,12 @@ A separate `midnight-reboot.timer` reboots unconditionally at 00:07 with
   handed strangers' pods the first hours of the owner's working day, the exact
   thing the feature exists to prevent. Don't hoist `now` back out of the
   per-node loop in `modules/edge.nix`: it is per-node because the zone is.
+- **The market is the registrar's third opt-in.** `/market/*` (Stripe Connect,
+  `backend-registrar/src/market.rs`, `wiki/Market.md`) answers 503 unless
+  `losos.edge.market.enable`, and 403 unless `losos.edge.tenants.<id>.market`.
+  `modules/edge.nix`'s `tenantsJson` hardcodes its attributes, so the `market`
+  key must stay listed there or every trade silently 403s. A paid order is an
+  entitlement record only — nothing provisions against it yet.
 - **`system.stateVersion = "26.11"` is set-once** — matches the nixos-unstable
   this flake tracks; don't change it.
 - **The `result` symlink is a `nix build` artifact** (pointing into

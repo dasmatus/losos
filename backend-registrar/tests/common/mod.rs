@@ -84,6 +84,7 @@ pub struct TenantSpec {
     pub hostname: String,
     pub token: Option<String>,
     pub cluster: bool,
+    pub market: bool,
 }
 
 impl TenantSpec {
@@ -93,6 +94,7 @@ impl TenantSpec {
             hostname: hostname.to_string(),
             token: Some(token.to_string()),
             cluster: false,
+            market: false,
         }
     }
 
@@ -103,7 +105,15 @@ impl TenantSpec {
             hostname: hostname.to_string(),
             token: None,
             cluster: false,
+            market: false,
         }
+    }
+
+    /// `losos.edge.tenants.<id>.market = true` — may buy and sell.
+    #[must_use]
+    pub fn with_market(mut self) -> Self {
+        self.market = true;
+        self
     }
 
     /// `losos.edge.tenants.<id>.cluster = true` — cleared for mesh enrolment.
@@ -146,6 +156,11 @@ impl MeshFixture {
     }
 }
 
+/// The Stripe secrets the market fixture writes, and what the stub answers.
+pub const STRIPE_KEY: &str = "sk_test_0123456789abcdef";
+pub const WEBHOOK_SECRET: &str = "whsec_0123456789abcdef";
+pub const RETURN_URL: &str = "https://losos.example/market";
+
 /// A running registrar: its temp state directory, its base URL, and the
 /// handles needed to stop it.
 pub struct Edge {
@@ -166,7 +181,19 @@ impl Edge {
 
     /// As [`Edge::start`], with the mesh half configured.
     pub async fn start_with_mesh(tag: &str, tenants: &[TenantSpec], mesh: MeshFixture) -> Self {
-        Self::start_inner(tag, tenants, mesh, None).await
+        Self::start_inner(tag, tenants, mesh, None, None).await
+    }
+
+    /// As [`Edge::start`], with the Stripe market pointed at `stripe_api`.
+    pub async fn start_with_market(tag: &str, tenants: &[TenantSpec], stripe_api: &str) -> Self {
+        Self::start_inner(
+            tag,
+            tenants,
+            MeshFixture::default(),
+            None,
+            Some(stripe_api.to_string()),
+        )
+        .await
     }
 
     /// As [`Edge::start`], serving `public_key` at `/noise-public-key`.
@@ -175,7 +202,7 @@ impl Edge {
         tenants: &[TenantSpec],
         public_key: &str,
     ) -> Self {
-        Self::start_inner(tag, tenants, MeshFixture::default(), Some(public_key)).await
+        Self::start_inner(tag, tenants, MeshFixture::default(), Some(public_key), None).await
     }
 
     async fn start_inner(
@@ -183,6 +210,7 @@ impl Edge {
         tenants: &[TenantSpec],
         mesh: MeshFixture,
         noise_public_key: Option<&str>,
+        stripe_api: Option<String>,
     ) -> Self {
         let dir = TempDir::new(tag);
         std::fs::create_dir_all(dir.join("traefik")).expect("create traefik dir");
@@ -201,6 +229,20 @@ impl Edge {
         let noise_public_key_file = noise_public_key.map(|key| {
             std::fs::write(dir.join("noise.pub"), format!("{key}\n")).expect("write noise pub");
             dir.path_str("noise.pub")
+        });
+
+        let market = stripe_api.map(|stripe_api| {
+            std::fs::write(dir.join("stripe.key"), STRIPE_KEY).expect("write stripe key");
+            std::fs::write(dir.join("webhook.secret"), WEBHOOK_SECRET).expect("write webhook");
+            Box::new(losos_registrar::market::MarketOpts {
+                state_file: dir.path_str("market.json"),
+                stripe_key_file: dir.path_str("stripe.key"),
+                webhook_secret_file: dir.path_str("webhook.secret"),
+                stripe_api,
+                return_url: RETURN_URL.to_string(),
+                currency: "eur".to_string(),
+                fee_bps: losos_registrar::market::DEFAULT_FEE_BPS,
+            })
         });
 
         let opts = ServeOpts {
@@ -229,6 +271,7 @@ impl Edge {
             kube_token_file,
             kube_ca_file: None,
             compute_windows_file: dir.path_str("compute-windows.json"),
+            market,
         };
 
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
@@ -402,6 +445,7 @@ fn write_tenants(dir: &TempDir, tenants: &[TenantSpec]) {
                 "hostname": spec.hostname,
                 "token_file": token_path.to_string_lossy(),
                 "cluster": spec.cluster,
+                "market": spec.market,
             }),
         );
     }

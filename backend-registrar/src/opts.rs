@@ -6,6 +6,8 @@ use std::time::Duration;
 
 use miette::{miette, IntoDiagnostic, Result};
 
+use crate::market::{MarketOpts, DEFAULT_FEE_BPS, MAX_FEE_BPS};
+
 fn arg<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
     args.iter()
         .position(|a| a == flag)
@@ -104,6 +106,9 @@ pub struct ServeOpts {
     /// Where the reconciler publishes the per-node compute windows for the
     /// edge's `losos-mesh-taint.service` to read.
     pub compute_windows_file: String,
+    /// The Stripe Connect market. `None` — no `--market-stripe-key-file` — and
+    /// every `/market/*` route answers 503; the rest of the API is unchanged.
+    pub market: Option<Box<MarketOpts>>,
 }
 
 /// `seed` options. Writes the declarative rathole `[server]` base (for zero
@@ -221,6 +226,7 @@ pub fn parse(args: Vec<String>) -> Result<Mode> {
                 compute_windows_file: arg(&rest, "--compute-windows-file")
                     .unwrap_or("/var/lib/losos-registrar/compute-windows.json")
                     .to_string(),
+                market: parse_market(&rest)?,
             }))
         }
         "announce" => Ok(Mode::Announce(AnnounceOpts {
@@ -261,6 +267,49 @@ pub fn parse(args: Vec<String>) -> Result<Mode> {
             "unknown subcommand {other:?}; expected serve|announce|seed|join"
         )),
     }
+}
+
+/// The `--market-*` flags. Enabled by `--market-stripe-key-file`; the webhook
+/// secret and the return URL are then required, because a market that can take
+/// payment but cannot hear about it would charge buyers and never fulfil.
+fn parse_market(args: &[String]) -> Result<Option<Box<MarketOpts>>> {
+    let Some(stripe_key_file) = arg(args, "--market-stripe-key-file") else {
+        return Ok(None);
+    };
+    let currency = arg(args, "--market-currency").unwrap_or("eur");
+    if currency.len() != 3 || !currency.bytes().all(|b| b.is_ascii_lowercase()) {
+        return Err(miette!(
+            "bad --market-currency {currency:?}; expected a lowercase ISO 4217 code"
+        ));
+    }
+    let fee_bps: u32 = match arg(args, "--market-fee-bps") {
+        None => DEFAULT_FEE_BPS,
+        Some(raw) => raw
+            .parse()
+            .map_err(|_| miette!("bad --market-fee-bps {raw:?}"))?,
+    };
+    if fee_bps > MAX_FEE_BPS {
+        return Err(miette!(
+            "--market-fee-bps {fee_bps} exceeds the {MAX_FEE_BPS} basis point ceiling"
+        ));
+    }
+    let return_url = req(args, "--market-return-url")?;
+    if !(return_url.starts_with("https://") || return_url.starts_with("http://")) {
+        return Err(miette!("--market-return-url must be an http(s) URL"));
+    }
+    Ok(Some(Box::new(MarketOpts {
+        state_file: arg(args, "--market-state-file")
+            .unwrap_or("/var/lib/losos-registrar/market.json")
+            .to_string(),
+        stripe_key_file: stripe_key_file.to_string(),
+        webhook_secret_file: req(args, "--market-webhook-secret-file")?.to_string(),
+        stripe_api: arg(args, "--market-stripe-api")
+            .unwrap_or("https://api.stripe.com")
+            .to_string(),
+        return_url: return_url.to_string(),
+        currency: currency.to_string(),
+        fee_bps,
+    })))
 }
 
 /// Accept an IANA zone name, rejecting anything the edge's `date` would

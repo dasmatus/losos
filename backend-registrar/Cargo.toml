@@ -25,6 +25,10 @@ tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 # route the public internet can reach. Already in the lock tree (rustls pulls
 # it), so making it direct adds no vendored crate.
 subtle = "2"
+# HMAC-SHA256 for Stripe webhook signatures, and the CSPRNG for order ids.
+# Already in the lock tree (rustls uses it), so — like `subtle` — making it
+# direct vendors no new crate and leaves `cargoHash` alone.
+ring = "0.17"
 
 # Crate-wide lint policy: forbid unsafe, surface stray pub items and stale
 # extern crates. Per-contributor clippy config is intentionally NOT used.

@@ -162,7 +162,7 @@ let
   tenantsJson = pkgs.writeText "losos-registrar-tenants.json" (
     builtins.toJSON (
       lib.mapAttrs (_: v: {
-        inherit (v) hostname cluster;
+        inherit (v) hostname cluster market;
         token_file = toString v.tokenFile;
       }) cfg.tenants
     )
@@ -484,6 +484,24 @@ let
     computeWindowsFile
   ];
 
+  # Market half of `serve`. Without --market-stripe-key-file every /market/*
+  # route answers 503, so an edge that leaves the market off parses exactly the
+  # arguments it always did.
+  marketServeArgs = lib.optionals cfg.market.enable [
+    "--market-stripe-key-file"
+    (toString cfg.market.stripeSecretKeyFile)
+    "--market-webhook-secret-file"
+    (toString cfg.market.webhookSecretFile)
+    "--market-state-file"
+    "/var/lib/losos-registrar/market.json"
+    "--market-fee-bps"
+    (toString cfg.market.feeBps)
+    "--market-currency"
+    cfg.market.currency
+    "--market-return-url"
+    cfg.market.returnUrl
+  ];
+
   serveArgs = lib.concatStringsSep " " (
     [
       "${registrar}/bin/losos-registrar"
@@ -517,6 +535,7 @@ let
       noisePublicKeyFile
     ]
     ++ meshServeArgs
+    ++ marketServeArgs
   );
 in
 {
@@ -528,6 +547,14 @@ in
     losos.edge.registrar.package = self.packages.x86_64-linux.losos-registrar;
 
     assertions = [
+      {
+        assertion = cfg.market.enable -> cfg.market.returnUrl != "";
+        message = ''
+          losos.edge.market.enable requires losos.edge.market.returnUrl: the
+          page Stripe sends buyers and sellers back to after Checkout and
+          onboarding.
+        '';
+      }
       {
         assertion = cfg.acmeEmail != null;
         message = "losos.edge.enable requires losos.edge.acmeEmail (Let's Encrypt account email).";

@@ -316,3 +316,57 @@ fn mode_name(mode: &miette::Result<Mode>) -> &'static str {
         Err(_) => "error",
     }
 }
+
+const MARKET_FLAGS: &[&str] = &[
+    "--market-stripe-key-file",
+    "/var/secrets/stripe-key",
+    "--market-webhook-secret-file",
+    "/var/secrets/stripe-webhook",
+    "--market-return-url",
+    "https://losos.cfd/market",
+];
+
+#[test]
+fn the_market_is_off_unless_a_stripe_key_file_is_given() {
+    assert!(serve_opts(&[]).market.is_none());
+}
+
+#[test]
+fn a_market_serve_invocation_takes_a_four_percent_cut_by_default() {
+    let opts = serve_opts(MARKET_FLAGS);
+    let market = opts.market.expect("market enabled");
+    assert_eq!(market.fee_bps, 400);
+    assert_eq!(market.currency, "eur");
+    assert_eq!(market.stripe_api, "https://api.stripe.com");
+    assert_eq!(market.state_file, "/var/lib/losos-registrar/market.json");
+}
+
+#[test]
+fn market_flags_are_all_or_nothing_and_bounded() {
+    // Taking payment without hearing about it, or without a place to send the
+    // buyer back to, must fail at boot.
+    for missing in ["--market-webhook-secret-file", "--market-return-url"] {
+        let args: Vec<&str> = MARKET_FLAGS
+            .chunks(2)
+            .filter(|pair| pair[0] != missing)
+            .flatten()
+            .copied()
+            .collect();
+        assert!(parse(serve_args(&args)).is_err(), "{missing} is required");
+    }
+    for (flag, bad) in [
+        ("--market-fee-bps", "2001"),
+        ("--market-fee-bps", "four"),
+        ("--market-currency", "EUR"),
+        ("--market-currency", "euro"),
+        ("--market-return-url", "ftp://x"),
+    ] {
+        let mut args = vec![flag, bad];
+        args.extend(MARKET_FLAGS);
+        assert!(parse(serve_args(&args)).is_err(), "{flag} {bad}");
+    }
+    let mut args = vec!["--market-fee-bps", "250", "--market-currency", "usd"];
+    args.extend(MARKET_FLAGS);
+    let market = serve_opts(&args).market.expect("market enabled");
+    assert_eq!((market.fee_bps, market.currency.as_str()), (250, "usd"));
+}
