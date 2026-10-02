@@ -1361,8 +1361,10 @@ impl Market {
         let event: Value = serde_json::from_slice(body)
             .map_err(|_| MarketError::Invalid("webhook body is not JSON"))?;
         let mut state = self.state.lock().await;
-        if apply_event(&mut state, &event, now_secs()) {
-            self.persist(&state).await?;
+        let mut next = state.clone();
+        if apply_event(&mut next, &event, now_secs()) {
+            self.persist(&next).await?;
+            *state = next;
         }
         Ok(())
     }
