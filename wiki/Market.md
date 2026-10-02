@@ -124,9 +124,12 @@ Every route answers 503 when the market is off. A tenant without the `market`
 bit gets 403. Neither party learns the other's appliance id, and the public
 listing view never shows one.
 
-Capacity is reserved when the Checkout Session is created, held for the
-session's 30 minutes plus a 5 minute grace, and released if it expires or
-Stripe cannot be reached. Two buyers racing for the last units cannot both get
+Capacity is reserved when the Checkout Session is created and held until
+Stripe says how it ended: paid (`checkout.session.completed`) or abandoned
+(`checkout.session.expired`, sent as the session's 31 minutes run out). It is
+released at once if Stripe cannot be reached to create the session. If neither
+event ever arrives, the hold lapses after Stripe's three-day retry window, so
+a payment delayed by an edge outage still finds its units unsold. Two buyers racing for the last units cannot both get
 a session.
 
 ## Operator setup
@@ -145,8 +148,7 @@ a session.
    was sealed with.
 3. Add two webhook endpoints, both at
    `https://register.<publicDomain>/market/webhook`: one for events on your
-   account (`checkout.session.completed`,
-   `checkout.session.async_payment_succeeded`, `checkout.session.expired`) and
+   account (`checkout.session.completed`, `checkout.session.expired`) and
    one that listens to **events on Connected accounts** (`account.updated`).
    Stripe signs each with its own secret, so seal both `whsec_...` secrets,
    one per line, under the name `stripe-webhook-secret` into

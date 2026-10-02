@@ -40,11 +40,18 @@ use crate::market::{
     MAX_FEE_BPS,
 };
 
-/// Budget for one Stripe request. The registrar's router guard allows a whole
-/// request five seconds, so this leaves room for the store write around it.
+/// Budget for one Stripe request.
 const STRIPE_TIMEOUT: Duration = Duration::from_secs(4);
-/// Budget for a whole gate round trip, from the registrar's side.
-const GATE_TIMEOUT: Duration = Duration::from_secs(10);
+/// Budget for a whole gate round trip, from the registrar's side. Every
+/// operation makes at most one Stripe request, so one Stripe budget plus the
+/// socket exchange around it. The registrar's routes that call the gate size
+/// their own budget from this (`STRIPE_ROUTE_TIMEOUT` in `server.rs`), so a
+/// slow but healthy Stripe answers before the route gives up on it.
+pub const GATE_TIMEOUT: Duration = Duration::from_secs(STRIPE_TIMEOUT.as_secs() + 1);
+/// Most gate round trips one registrar request makes: onboarding an existing
+/// seller validates the secrets, re-tags the account, re-reads its readiness
+/// and asks for a link.
+pub const MAX_GATE_CALLS_PER_REQUEST: u32 = 4;
 /// Largest request line the gate reads. A webhook body is capped at 256 KiB by
 /// the registrar and travels hex-encoded, so twice that, plus the framing.
 const MAX_REQUEST_BYTES: u64 = 2 * 256 * 1024 + 4096;
@@ -60,35 +67,55 @@ const SOCKET_MODE: u32 = 0o600;
 
 /// The few Stripe calls the market makes, over plain form-encoded REST so no
 /// SDK has to be vendored.
+///
+/// The key is not a field: it is baked into the client as a default
+/// `Authorization` header marked sensitive, so it is redacted from any debug
+/// output of a request and nothing that builds a URL can reach it.
 struct StripeClient {
     http: reqwest::Client,
-    api: String,
-    key: String,
+    /// The API base, e.g. `https://api.stripe.com`. Paths are appended as
+    /// percent-encoded segments by [`StripeClient::url`].
+    api: reqwest::Url,
 }
 
 impl StripeClient {
     fn new(api: &str, key: &str) -> Result<Self, MarketError> {
+        let api = reqwest::Url::parse(api)
+            .ok()
+            .filter(|url| !url.cannot_be_a_base())
+            .ok_or_else(|| MarketError::Stripe("stripe_api is not a base URL".to_string()))?;
         // The key travels in every request: https, or plain http to this
-        // machine only (the test stub).
-        let loopback = reqwest::Url::parse(api).ok().is_some_and(|url| {
-            url.scheme() == "http"
-                && matches!(url.host_str(), Some("127.0.0.1" | "localhost" | "[::1]"))
-        });
-        if !api.starts_with("https://") && !loopback {
+        // machine only (the test stub). `host_str` keeps an IPv6 literal's
+        // brackets, hence `[::1]`.
+        let loopback = api.scheme() == "http"
+            && matches!(api.host_str(), Some("127.0.0.1" | "localhost" | "[::1]"));
+        if api.scheme() != "https" && !loopback {
             return Err(MarketError::Stripe(
                 "stripe_api must use https:// to protect the key in transit".to_string(),
             ));
         }
+        let mut auth = reqwest::header::HeaderValue::try_from(format!("Bearer {key}"))
+            .map_err(|_| MarketError::Stripe("the Stripe key is not a header value".to_string()))?;
+        auth.set_sensitive(true);
         let http = reqwest::Client::builder()
             .timeout(STRIPE_TIMEOUT)
             .user_agent(concat!("losos-registrar/", env!("CARGO_PKG_VERSION")))
+            .default_headers(reqwest::header::HeaderMap::from_iter([(
+                reqwest::header::AUTHORIZATION,
+                auth,
+            )]))
             .build()
             .map_err(|e| MarketError::Stripe(format!("build client: {e}")))?;
-        Ok(Self {
-            http,
-            api: api.trim_end_matches('/').to_string(),
-            key: key.to_string(),
-        })
+        Ok(Self { http, api })
+    }
+
+    /// The API base plus `segments`, each percent-encoded as one segment.
+    fn url(&self, segments: &[&str]) -> reqwest::Url {
+        let mut url = self.api.clone();
+        if let Ok(mut path) = url.path_segments_mut() {
+            path.pop_if_empty().extend(segments);
+        }
+        url
     }
 
     async fn send(
@@ -97,7 +124,6 @@ impl StripeClient {
         what: &str,
     ) -> Result<Value, MarketError> {
         let response = request
-            .bearer_auth(&self.key)
             .send()
             .await
             .map_err(|e| MarketError::Stripe(format!("{what}: {e}")))?;
@@ -115,15 +141,17 @@ impl StripeClient {
 
     async fn post(
         &self,
-        path: &str,
+        segments: &[&str],
         form: &[(&str, String)],
         idempotency_key: Option<&str>,
     ) -> Result<Value, MarketError> {
-        let mut request = self.http.post(format!("{}{path}", self.api)).form(form);
+        let url = self.url(segments);
+        let what = format!("POST {}", url.path());
+        let mut request = self.http.post(url).form(form);
         if let Some(key) = idempotency_key {
             request = request.header("Idempotency-Key", key);
         }
-        self.send(request, &format!("POST {path}")).await
+        self.send(request, &what).await
     }
 
     /// Create the seller's Express account. The idempotency key makes a retry
@@ -143,7 +171,7 @@ impl StripeClient {
         }
         let body = self
             .post(
-                "/v1/accounts",
+                &["v1", "accounts"],
                 &form,
                 Some(&format!("losos-account-{appliance_id}")),
             )
@@ -157,7 +185,7 @@ impl StripeClient {
     /// Write the box's UUID onto an existing account's metadata.
     async fn tag_account(&self, account_id: &str, box_uuid: &str) -> Result<(), MarketError> {
         self.post(
-            &format!("/v1/accounts/{account_id}"),
+            &["v1", "accounts", account_id],
             &[("metadata[losos_box_uuid]", box_uuid.to_string())],
             None,
         )
@@ -167,26 +195,10 @@ impl StripeClient {
 
     /// Whether an existing account can already receive transfers.
     async fn account_ready(&self, account_id: &str) -> Result<bool, MarketError> {
-        let path = format!("/v1/accounts/{account_id}");
-        let body = self
-            .send(
-                self.http.get(format!("{}{path}", self.api)),
-                &format!("GET {path}"),
-            )
-            .await?;
+        let url = self.url(&["v1", "accounts", account_id]);
+        let what = format!("GET {}", url.path());
+        let body = self.send(self.http.get(url), &what).await?;
         Ok(account_ready(&body))
-        let body = self
-            .send(
-                self.http
-                    .get(format!("{}{path}", self.api))
-                    .query(&[("ids[]", account_id), ("limit", "1")]),
-                &format!("GET {path}"),
-            )
-            .await?;
-        Ok(body["data"]
-            .as_array()
-            .and_then(|accounts| accounts.first())
-            .is_some_and(account_ready))
     }
 
     /// A one-time Stripe-hosted onboarding URL.
@@ -197,7 +209,7 @@ impl StripeClient {
     ) -> Result<String, MarketError> {
         let body = self
             .post(
-                "/v1/account_links",
+                &["v1", "account_links"],
                 &[
                     ("account", account_id.to_string()),
                     ("type", "account_onboarding".to_string()),
@@ -257,7 +269,7 @@ impl StripeClient {
         ];
         let body = self
             .post(
-                "/v1/checkout/sessions",
+                &["v1", "checkout", "sessions"],
                 &form,
                 Some(&format!("losos-checkout-{}", c.order_id)),
             )
@@ -960,6 +972,22 @@ mod tests {
             assert!(StripeClient::new(url, "sk_test_key").is_ok(), "{url}");
         }
         assert!(StripeClient::new("http://127.0.0.1.example:8080", "sk_test_key").is_err());
+        assert!(StripeClient::new("http://localhost.attacker.example", "sk_test_key").is_err());
+        assert!(StripeClient::new("https://api.stripe.com", "sk_test_key").is_ok());
+    }
+
+    #[test]
+    fn stripe_paths_are_appended_as_encoded_segments() {
+        let client = StripeClient::new("https://api.stripe.com/", "sk_test_key").expect("client");
+        assert_eq!(
+            client.url(&["v1", "accounts", "acct_1"]).as_str(),
+            "https://api.stripe.com/v1/accounts/acct_1"
+        );
+        // A segment can never climb out of its place in the path.
+        assert_eq!(
+            client.url(&["v1", "accounts", "../x"]).as_str(),
+            "https://api.stripe.com/v1/accounts/..%2Fx"
+        );
     }
 
     #[test]

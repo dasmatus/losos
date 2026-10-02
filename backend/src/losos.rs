@@ -437,8 +437,8 @@ pub fn cmd_market_op<L: Losos>(l: &mut L, op: &crate::market::Op) -> anyhow::Res
     };
     for key in ["checkout_url", "url"] {
         if let Some(url) = reply.get(key).and_then(Value::as_str) {
-            if !crate::market::safe_checkout_url(url) {
-                anyhow::bail!("the registrar returned a {key} that is not plain https");
+            if !crate::market::stripe_hosted_url(url) {
+                anyhow::bail!("the registrar returned a {key} that is not a Stripe-hosted page");
             }
         }
     }

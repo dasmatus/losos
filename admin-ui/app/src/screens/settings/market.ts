@@ -110,7 +110,13 @@ export function useMarket(enabled: boolean): MarketData {
 // ── Money ─────────────────────────────────────────────────────────────────
 
 /** "12", "12.5", "12,50" → 1200, 1250, 1250. Null for anything else,
- *  including more than two decimals and zero. */
+ *  including more than two decimals and zero.
+ *
+ *  Two decimal places is right only because every market currency has them:
+ *  the edge accepts exactly `SUPPORTED_CURRENCIES` in
+ *  backend-registrar/src/market.rs (and the `losos.edge.market.currency`
+ *  enum). Adding a zero-decimal currency such as JPY there means carrying its
+ *  exponent through here and `formatMoney`, or every price is off by 100x. */
 export function toMinorUnits(text: string): number | null {
   const match = /^(\d{1,7})(?:[.,](\d{1,2}))?$/.exec(text.trim());
   if (match === null) return null;
@@ -137,8 +143,24 @@ export function formatDay(epochSeconds: number): string {
   );
 }
 
-/** Only a plain https URL is ever opened: it came from the registrar via the
- *  box, and a `javascript:` link must not get as far as a window. */
-export function isHttps(url: unknown): url is string {
-  return typeof url === "string" && url.startsWith("https://");
+/** The hosts a payment or onboarding tab may be sent to. Mirrors
+ *  `STRIPE_HOSTS` in backend/src/market.rs, which already refuses anything
+ *  else; this is the second check, so a `javascript:` link or a look-alike
+ *  card form never gets as far as a window. */
+const STRIPE_HOSTS: ReadonlySet<string> = new Set(["checkout.stripe.com", "connect.stripe.com"]);
+
+export function isStripePage(url: unknown): url is string {
+  if (typeof url !== "string") return false;
+  try {
+    const parsed = new URL(url);
+    return (
+      parsed.protocol === "https:" &&
+      parsed.username === "" &&
+      parsed.password === "" &&
+      parsed.port === "" &&
+      STRIPE_HOSTS.has(parsed.hostname)
+    );
+  } catch {
+    return false;
+  }
 }

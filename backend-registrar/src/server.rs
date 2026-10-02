@@ -79,6 +79,7 @@ use crate::market::{
 };
 use crate::opts::ServeOpts;
 use crate::registry::{Registry, Shared};
+use crate::stripe_gate::{GATE_TIMEOUT, MAX_GATE_CALLS_PER_REQUEST};
 use crate::window::{self, valid_hhmm, valid_tz, ComputeWindow};
 
 /// Per-tenant Traefik router config is public (hostnames only, no secrets) →
@@ -106,6 +107,18 @@ const MAX_WEBHOOK_BYTES: usize = 256 * 1024;
 /// Wall-clock budget for one request, end to end. Without it a slow-loris
 /// client holds a connection (and a concurrency permit) indefinitely.
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// Budget for the two market routes that wait on Stripe through the gate:
+/// onboarding (up to [`MAX_GATE_CALLS_PER_REQUEST`] sequential round trips) and
+/// ordering (two). Held to [`REQUEST_TIMEOUT`] they returned 504 on a slow but
+/// healthy Stripe after the account or session had already been made, and no
+/// link came back. Two seconds on top cover the store writes between calls.
+/// Still bounded, and still under the same in-flight cap.
+const STRIPE_ROUTE_TIMEOUT: Duration =
+    Duration::from_secs(GATE_TIMEOUT.as_secs() * MAX_GATE_CALLS_PER_REQUEST as u64 + 2);
+
+/// The routes [`STRIPE_ROUTE_TIMEOUT`] applies to.
+const STRIPE_ROUTES: [&str; 2] = ["/market/seller/onboard", "/market/orders"];
 
 /// Requests allowed in flight at once. Every authenticated *and*
 /// unauthenticated request costs a `tenants.json` stat and (for a known id) a
@@ -347,16 +360,22 @@ pub(crate) async fn shutdown_signal() {
 }
 
 /// Outermost middleware: shed load past [`MAX_INFLIGHT`], then bound whatever
-/// runs inside by [`REQUEST_TIMEOUT`].
+/// runs inside by [`REQUEST_TIMEOUT`], or [`STRIPE_ROUTE_TIMEOUT`] on the
+/// routes that wait on Stripe.
 async fn guard(State(st): State<AppState>, req: Request, next: Next) -> Response {
     let Ok(_permit) = Arc::clone(&st.limiter).try_acquire_owned() else {
         tracing::warn!(target: Action::Serve.target(), "shedding request: {MAX_INFLIGHT} in flight");
         return (StatusCode::SERVICE_UNAVAILABLE, "busy; retry later").into_response();
     };
-    match tokio::time::timeout(REQUEST_TIMEOUT, next.run(req)).await {
+    let budget = if STRIPE_ROUTES.contains(&req.uri().path()) {
+        STRIPE_ROUTE_TIMEOUT
+    } else {
+        REQUEST_TIMEOUT
+    };
+    match tokio::time::timeout(budget, next.run(req)).await {
         Ok(response) => response,
         Err(_) => {
-            tracing::warn!(target: Action::Serve.target(), "request exceeded {REQUEST_TIMEOUT:?}");
+            tracing::warn!(target: Action::Serve.target(), "request exceeded {budget:?}");
             (StatusCode::GATEWAY_TIMEOUT, "request timed out").into_response()
         }
     }
@@ -587,15 +606,20 @@ async fn market_tenant(st: &AppState, auth: &MarketAuth) -> Result<Arc<Market>, 
     Ok(Arc::clone(market))
 }
 
-/// What each appliance is sharing with the mesh right now: the market only
-/// sells what the owner already contributes.
-async fn sharing_of(st: &AppState) -> Sharing {
-    Sharing::from_windows(&st.reg.compute_windows().await)
+/// What each appliance may sell right now: what it already contributes to the
+/// mesh, and only while the operator still has its tenant's `market` bit on.
+/// Re-read on every call, so revoking a seller's opt-in pulls their listings
+/// from the shelf and refuses new orders for them without a restart; the
+/// seller's own routes are refused separately by [`market_tenant`].
+async fn sharing_of(st: &AppState) -> Result<Sharing, ApiError> {
+    let tenants = st.tenants.load(&st.opts.tenants_file).await?;
+    Ok(Sharing::from_windows(&st.reg.compute_windows().await)
+        .only_sellers(|seller| tenants.get(seller).is_some_and(|t| t.market)))
 }
 
 async fn market_browse(State(st): State<AppState>) -> Result<Json<Vec<PublicListing>>, ApiError> {
     let market = market_of(&st).await?;
-    let sharing = sharing_of(&st).await;
+    let sharing = sharing_of(&st).await?;
     Ok(Json(market.browse(&sharing).await))
 }
 
@@ -604,7 +628,7 @@ async fn market_account(
     Json(req): Json<MarketAuth>,
 ) -> Result<Json<AccountView>, ApiError> {
     let market = market_tenant(&st, &req).await?;
-    let sharing = sharing_of(&st).await;
+    let sharing = sharing_of(&st).await?;
     Ok(Json(market.account(&req.appliance_id, &sharing).await))
 }
 
@@ -635,7 +659,7 @@ async fn market_list(
     Json(req): Json<MarketListReq>,
 ) -> Result<(StatusCode, Json<ListingCreated>), ApiError> {
     let market = market_tenant(&st, &req.auth).await?;
-    let sharing = sharing_of(&st).await;
+    let sharing = sharing_of(&st).await?;
     let listing_id = market
         .create_listing(&req.auth.appliance_id, req.listing, &sharing)
         .await?;
@@ -658,7 +682,7 @@ async fn market_order(
     Json(req): Json<MarketOrderReq>,
 ) -> Result<(StatusCode, Json<CheckoutView>), ApiError> {
     let market = market_tenant(&st, &req.auth).await?;
-    let sharing = sharing_of(&st).await;
+    let sharing = sharing_of(&st).await?;
     let checkout = market
         .create_order(&req.auth.appliance_id, req.order, &sharing)
         .await?;
@@ -766,7 +790,40 @@ async fn kube_create(
     Err(ApiError::KubeApi(format!("POST {url} -> {status}")))
 }
 
-/// Ensure the buyer's namespace, then the order's claim inside it.
+/// The claim's `status.phase`, e.g. `Pending` or `Bound`.
+async fn kube_claim_phase(kube: &KubeAccess, url: &str) -> Result<String, ApiError> {
+    let response = kube
+        .client
+        .get(url)
+        .bearer_auth(&kube.token)
+        .send()
+        .await
+        .map_err(|e| ApiError::KubeApi(format!("GET {url}: {e}")))?;
+    let status = response.status();
+    if !status.is_success() {
+        return Err(ApiError::KubeApi(format!("GET {url} -> {status}")));
+    }
+    let claim: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| ApiError::KubeApi(format!("GET {url}: {e}")))?;
+    Ok(claim["status"]["phase"]
+        .as_str()
+        .unwrap_or("Unknown")
+        .to_string())
+}
+
+/// Ensure the buyer's namespace, then the order's claim inside it, and succeed
+/// only once the claim is `Bound`.
+///
+/// A `201` only means the apiserver stored the object. With no such storage
+/// class, or one out of capacity, the claim sits `Pending` forever, and an
+/// order marked provisioned at that point would never be retried and would
+/// report a volume that does not exist. So a claim that is not bound yet is an
+/// error here, and the next reconcile pass checks again (the create is a `409`
+/// by then). This assumes an `Immediate`-binding class, which Longhorn's
+/// default is; a `WaitForFirstConsumer` class stays `Pending` until something
+/// mounts the claim, which nothing on the edge does yet.
 async fn provision_volume(
     kube: &KubeAccess,
     storage_class: &str,
@@ -785,12 +842,13 @@ async fn provision_volume(
         }),
     )
     .await?;
+    let claims = format!(
+        "{}/api/v1/namespaces/{}/persistentvolumeclaims",
+        kube.api, p.namespace,
+    );
     kube_create(
         kube,
-        &format!(
-            "{}/api/v1/namespaces/{}/persistentvolumeclaims",
-            kube.api, p.namespace,
-        ),
+        &claims,
         &serde_json::json!({
             "apiVersion": "v1",
             "kind": "PersistentVolumeClaim",
@@ -809,7 +867,17 @@ async fn provision_volume(
             },
         }),
     )
-    .await
+    .await?;
+    match kube_claim_phase(kube, &format!("{claims}/{}", p.pvc))
+        .await?
+        .as_str()
+    {
+        "Bound" => Ok(()),
+        phase => Err(ApiError::KubeApi(format!(
+            "claim {}/{} is {phase}, not Bound yet; will check again",
+            p.namespace, p.pvc,
+        ))),
+    }
 }
 
 /// An authenticated handle on the mesh apiserver: a client whose root store is

@@ -48,6 +48,8 @@ async function open({
   stored = false,
   viewport = { width: 1280, height: 900 },
   locale = 'en-US',
+  market = { available: false },
+  checkoutUrl = 'https://checkout.stripe.com/c/pay/cs_test_1',
 } = {}) {
   const page = await browser.newPage({ viewport, locale });
   const errors = [];
@@ -70,12 +72,47 @@ async function open({
       : json(route, 401, { error: 'unauthorized' }),
   );
 
+  const marketPosts = [];
+  await page.route('**/api/market', (route) =>
+    authed(route) ? json(route, 200, market) : json(route, 401, { error: 'unauthorized' }),
+  );
+  await page.route('**/api/market/*', (route) => {
+    if (!authed(route)) return json(route, 401, { error: 'unauthorized' });
+    marketPosts.push([new URL(route.request().url()).pathname, route.request().postDataJSON()]);
+    return json(route, 201, { available: true, checkout_url: checkoutUrl });
+  });
+  // Stripe's own page, so a tab sent there has something to land on.
+  await page.context().route('https://checkout.stripe.com/**', (route) =>
+    route.fulfill({ status: 200, contentType: 'text/html', body: '<title>Stripe Checkout</title>' }),
+  );
+
   if (stored) {
     await page.addInitScript((t) => window.sessionStorage.setItem('losos-token', t), TOKEN);
   }
   await page.goto(origin + path, { waitUntil: 'networkidle' });
-  return { page, errors };
+  return { page, errors, marketPosts };
 }
+
+/* A box the market is offered to: one listing on the shelf, payouts set up,
+ * sharing storage only. */
+const MARKET = {
+  available: true,
+  listings: [
+    { id: 'lst_ab12', kind: 'storage', unit: 'GiB-month', unit_price: 5, currency: 'eur', available: 40 },
+  ],
+  account: {
+    fee_bps: 400,
+    currency: 'eur',
+    seller_onboarded: true,
+    seller_ready: true,
+    can_sell_storage: true,
+    can_sell_compute: false,
+    listings: [],
+    entitlements: { storage_gib: 0, compute_vcpu_hours: 0, next_expiry: null },
+    purchases: [],
+    sales: [],
+  },
+};
 
 const body = (page) => page.locator('body').innerText();
 const nav = (page) => page.getByRole('navigation', { name: 'Sections', exact: true });
@@ -141,7 +178,7 @@ await check('every sidebar entry lands on its own address', async () => {
   await page.close();
 });
 
-for (const path of ['/apps', '/storage', '/mesh', '/settings', '/settings/hardware', '/settings/about', '/settings/reset']) {
+for (const path of ['/apps', '/storage', '/mesh', '/settings', '/settings/hardware', '/settings/market', '/settings/about', '/settings/reset']) {
   await check(`a deep link to ${path} renders without errors and survives a reload`, async () => {
     const { page, errors } = await open({ path, stored: true });
     await nav(page).waitFor();
@@ -195,14 +232,59 @@ await check('a browser in a language we do not carry falls back to English', asy
 
 for (const locale of ['sk-SK', 'de-DE']) {
   await check(`every section renders in ${locale} without errors`, async () => {
-    for (const path of ['/', '/apps', '/storage', '/mesh', '/settings/network', '/settings/hardware', '/settings/security', '/settings/about', '/settings/reset']) {
-      const { page, errors } = await open({ path, stored: true, locale });
+    for (const path of ['/', '/apps', '/storage', '/mesh', '/settings/network', '/settings/hardware', '/settings/security', '/settings/market', '/settings/about', '/settings/reset']) {
+      const { page, errors } = await open({ path, stored: true, locale, market: MARKET });
       await page.locator('main').waitFor();
       assert.deepEqual(errors, [], `${path} threw in ${locale}`);
       await page.close();
     }
   });
 }
+
+await check('a box the market is not offered to says so quietly', async () => {
+  const { page, errors } = await open({ path: '/settings/market', stored: true });
+  await page.getByText('The market is not available on this box').waitFor();
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+await check('buying opens Stripe Checkout in a new tab', async () => {
+  const { page, errors, marketPosts } = await open({ path: '/settings/market', stored: true, market: MARKET });
+  const tab = page.context().waitForEvent('page');
+  await page.getByRole('button', { name: 'Buy', exact: true }).click();
+  const checkout = await tab;
+  await checkout.waitForURL('https://checkout.stripe.com/c/pay/cs_test_1');
+  assert.deepEqual(marketPosts, [['/api/market/orders', { listing_id: 'lst_ab12', quantity: 1 }]]);
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+await check('a payment page that is not Stripe is never opened', async () => {
+  const { page, marketPosts } = await open({
+    path: '/settings/market',
+    stored: true,
+    market: MARKET,
+    checkoutUrl: 'https://checkout.stripe.com.evil.example/pay',
+  });
+  const tab = page.context().waitForEvent('page');
+  await page.getByRole('button', { name: 'Buy', exact: true }).click();
+  const placeholder = await tab;
+  await page.getByText('no payment page came back').waitFor();
+  await placeholder.waitForEvent('close', { timeout: 2000 }).catch(() => {});
+  assert.ok(placeholder.isClosed(), 'the placeholder tab was left open');
+  assert.equal(marketPosts.length, 1);
+  await page.close();
+});
+
+await check('the listing form refuses a bad price before anything is sent', async () => {
+  const { page, marketPosts } = await open({ path: '/settings/market', stored: true, market: MARKET });
+  await page.getByPlaceholder('Price', { exact: false }).fill('0.005');
+  await page.getByPlaceholder('Capacity', { exact: false }).fill('10');
+  await page.getByRole('button', { name: 'Offer for sale' }).click();
+  await page.getByText('Enter a price like 0.05').waitFor();
+  assert.deepEqual(marketPosts, []);
+  await page.close();
+});
 
 await check('a phone-width viewport does not scroll the page sideways', async () => {
   const { page } = await open({ stored: true, viewport: { width: 375, height: 800 } });
