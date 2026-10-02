@@ -18,6 +18,8 @@ use losos_ctl::overrides::validate_apply;
 use std::io::{IsTerminal, Read, Write};
 use std::path::PathBuf;
 use std::process::ExitCode;
+use std::sync::mpsc;
+use std::time::{Duration, Instant};
 
 #[derive(Parser)]
 #[command(
@@ -173,6 +175,14 @@ fn parse_mode(s: &str) -> Result<Mode, String> {
     Mode::parse(s).ok_or_else(|| "mode must be 'local' or 'mesh'".to_string())
 }
 
+/// How long the ISO's firmware menu waits before taking the default.
+///
+/// The installer medium is set-and-forget: insert it, boot, walk away. A menu
+/// that waits forever would park an unattended reinstall at the prompt, and
+/// the CI gate `tests/iso-boot.py`, which never types anything, would time out
+/// waiting for the installer's DNS lookup. So no answer means autodetect.
+const FIRMWARE_MENU_TIMEOUT: Duration = Duration::from_secs(30);
+
 fn select_firmware(explicit: Option<bool>, interactive: bool) -> std::io::Result<Option<bool>> {
     if let Some(bios) = explicit {
         return Ok(Some(bios));
@@ -180,22 +190,59 @@ fn select_firmware(explicit: Option<bool>, interactive: bool) -> std::io::Result
     if !interactive {
         return Ok(None);
     }
-
-    loop {
-        println!("Choose the firmware mode for the installed system:");
-        println!("  1) BIOS");
-        println!("  2) UEFI (requires this installer to be booted in UEFI mode)");
-        println!("  3) Autodetect (use the firmware that booted this installer)");
-        print!("Selection [3]: ");
-        std::io::stdout().flush()?;
-
-        let mut choice = String::new();
-        if std::io::stdin().read_line(&mut choice)? == 0 {
-            return Ok(None);
+    // stdin is read on its own thread so the prompt can time out. When it
+    // does, that thread stays parked in read_line until exit; nothing later
+    // in the install reads the terminal (disko gets --yes-wipe-all-disks).
+    let (tx, rx) = mpsc::channel();
+    std::thread::spawn(move || {
+        for line in std::io::stdin().lines() {
+            if tx.send(line).is_err() {
+                return;
+            }
         }
-        match FirmwareMode::parse(&choice) {
-            Some(mode) => return Ok(mode.bios_override()),
-            None => println!("Choose 1, 2, or 3."),
+    });
+    prompt_firmware(&rx, FIRMWARE_MENU_TIMEOUT, &mut std::io::stdout())
+}
+
+/// The menu itself, over a channel of input lines, so the timeout and the
+/// retry loop are unit-testable. A closed channel (EOF) or a timeout picks
+/// autodetect; the deadline is overall, so retyping garbage cannot extend it.
+fn prompt_firmware(
+    lines: &mpsc::Receiver<std::io::Result<String>>,
+    timeout: Duration,
+    out: &mut impl Write,
+) -> std::io::Result<Option<bool>> {
+    let deadline = Instant::now() + timeout;
+    loop {
+        writeln!(out, "Choose the firmware mode for the installed system:")?;
+        writeln!(out, "  1) BIOS")?;
+        writeln!(
+            out,
+            "  2) UEFI (requires this installer to be booted in UEFI mode)"
+        )?;
+        writeln!(
+            out,
+            "  3) Autodetect (use the firmware that booted this installer)"
+        )?;
+        write!(
+            out,
+            "Selection [3, chosen automatically after {}s]: ",
+            timeout.as_secs()
+        )?;
+        out.flush()?;
+
+        let left = deadline.saturating_duration_since(Instant::now());
+        match lines.recv_timeout(left) {
+            Ok(line) => match FirmwareMode::parse(&line?) {
+                Some(mode) => return Ok(mode.bios_override()),
+                None => writeln!(out, "Choose 1, 2, or 3.")?,
+            },
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                writeln!(out)?;
+                writeln!(out, "No choice made; autodetecting.")?;
+                return Ok(None);
+            }
+            Err(mpsc::RecvTimeoutError::Disconnected) => return Ok(None),
         }
     }
 }
@@ -314,7 +361,9 @@ fn run(cli: Cli) -> Result<(), BackendFailure> {
 
 #[cfg(test)]
 mod tests {
-    use super::{validate_firmware_choice, FirmwareMode};
+    use super::{prompt_firmware, validate_firmware_choice, FirmwareMode};
+    use std::sync::mpsc;
+    use std::time::Duration;
 
     #[test]
     fn firmware_choices_resolve_as_expected() {
@@ -335,5 +384,37 @@ mod tests {
         assert!(validate_firmware_choice(Some(false), false).is_ok());
         assert!(validate_firmware_choice(Some(true), true).is_ok());
         assert!(validate_firmware_choice(None, true).is_ok());
+    }
+
+    #[test]
+    fn firmware_menu_retries_then_takes_a_valid_choice() {
+        let (tx, rx) = mpsc::channel();
+        tx.send(Ok("x".into())).unwrap();
+        tx.send(Ok("1".into())).unwrap();
+        let mut out = Vec::new();
+        let got = prompt_firmware(&rx, Duration::from_secs(5), &mut out).unwrap();
+        assert_eq!(got, Some(true));
+        assert!(String::from_utf8(out)
+            .unwrap()
+            .contains("Choose 1, 2, or 3."));
+    }
+
+    #[test]
+    fn firmware_menu_autodetects_on_timeout_and_on_eof() {
+        // Unattended boot: nobody types, so the menu must not block the install.
+        let (_tx, rx) = mpsc::channel();
+        let mut out = Vec::new();
+        assert_eq!(
+            prompt_firmware(&rx, Duration::from_millis(50), &mut out).unwrap(),
+            None
+        );
+        assert!(String::from_utf8(out).unwrap().contains("autodetecting"));
+
+        let (tx, rx) = mpsc::channel::<std::io::Result<String>>();
+        drop(tx);
+        assert_eq!(
+            prompt_firmware(&rx, Duration::from_secs(5), &mut Vec::new()).unwrap(),
+            None
+        );
     }
 }
