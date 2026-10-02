@@ -1,0 +1,26 @@
+{{/*
+  LosOS Git's front page, for visitors who are not signed in (signed in, "/"
+  is the dashboard and this is never rendered).
+
+  Forgejo's own home.tmpl with its pitch taken out: the subtitle was the
+  "Beyond coding. We forge." slogan, and below it came home_forgejo.tmpl's
+  four paragraphs selling Forgejo. What is left is the logo and the name,
+  which are LosOS Git's (img/logo.svg beside this, and APP_NAME). Keep the
+  markup in step with upstream's when Forgejo is bumped: same classes, so the
+  stock CSS and the LosOS theme lay it out without help.
+*/}}
+{{template "base/head" .}}
+<div role="main" aria-label="{{ctx.Locale.Tr "home"}}" class="page-content home">
+	<div class="tw-mb-8 tw-px-8">
+		<div class="center">
+			<img class="logo" width="220" height="220" src="{{AssetUrlPrefix}}/img/logo.svg" alt="{{ctx.Locale.Tr "logo"}}">
+			<div class="hero">
+				<h1 class="ui icon header title">
+					{{AppDisplayName}}
+				</h1>
+				<h2>The git host on your LosOS box.</h2>
+			</div>
+		</div>
+	</div>
+</div>
+{{template "base/footer" .}}

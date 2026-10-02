@@ -13,6 +13,7 @@
  */
 
 import * as React from "react";
+import { t } from "@/lib/i18n";
 import { getSetupState, isForbidden, isMissingRoute, type SetupState } from "./api";
 
 export type SetupQuery =
@@ -54,11 +55,12 @@ export function useSetupState(): SetupQuery {
 
 function message(error: unknown): string {
   if (error instanceof Error && error.message.length > 0) return error.message;
-  return "This box did not answer.";
+  return t("wizard.noAnswer");
 }
 
 /** The box's name when it is known, and a neutral word when it is not. Used
- *  in prose, where "this box" reads better than an empty gap. */
+ *  in prose, where "this box" reads better than an empty gap. Translated, so
+ *  call it while rendering a component that used `useT()`. */
 export function boxName(query: SetupQuery): string {
-  return query.kind === "ready" ? query.state.hostName : "this box";
+  return query.kind === "ready" ? query.state.hostName : t("wizard.boxName.fallback");
 }

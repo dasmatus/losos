@@ -29,6 +29,8 @@ import { Label, LabelHint } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/progress";
 import { isUnauthorized } from "@/lib/api";
+import { t } from "@/lib/i18n";
+import { Rich, useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
 import { isMissingRoute, passwordProblem, postSetPassword, MIN_PASSWORD_CHARS } from "./api";
 import { createPasskey, probePasskeySupport, type PasskeySupport } from "./passkey";
@@ -43,12 +45,10 @@ export interface StepSignInProps {
 }
 
 export function StepSignIn({ boxName, account, onPasswordSet }: StepSignInProps) {
+  const t = useT();
   return (
     <div className="flex flex-col gap-5">
-      <StepText>
-        This box made itself a random password when it was installed and showed it to nobody,
-        which is why nothing can sign in yet. Choose one now.
-      </StepText>
+      <StepText>{t("wizard.signin.intro")}</StepText>
 
       <PasswordForm account={account} onPasswordSet={onPasswordSet} />
 
@@ -68,6 +68,7 @@ function PasswordForm({
   account: string | null;
   onPasswordSet: (user: string) => void;
 }) {
+  const t = useT();
   const [password, setPassword] = React.useState("");
   const [confirm, setConfirm] = React.useState("");
   const [visible, setVisible] = React.useState(false);
@@ -91,7 +92,7 @@ function PasswordForm({
     // because a typo in the only password on a box with no shell login is not
     // recoverable by anything short of a factory reset.
     if (password !== confirm) {
-      setProblem("The two passwords are not the same.");
+      setProblem(t("wizard.signin.mismatch"));
       return;
     }
 
@@ -113,7 +114,7 @@ function PasswordForm({
   return (
     <form onSubmit={submit} noValidate className="flex flex-col gap-4">
       <div className="flex flex-col gap-2">
-        <Label htmlFor={passwordId}>New password</Label>
+        <Label htmlFor={passwordId}>{t("wizard.signin.newPassword")}</Label>
         <div className="flex items-center gap-2">
           <Input
             id={passwordId}
@@ -133,7 +134,7 @@ function PasswordForm({
             variant="secondary"
             size="icon"
             aria-pressed={visible}
-            aria-label={visible ? "Hide the password" : "Show the password"}
+            aria-label={visible ? t("wizard.signin.hide") : t("wizard.signin.show")}
             onClick={() => setVisible((shown) => !shown)}
           >
             <HugeiconsIcon
@@ -146,13 +147,12 @@ function PasswordForm({
           </Button>
         </div>
         <LabelHint>
-          At least {MIN_PASSWORD_CHARS} characters. Length is the only rule. A few unrelated
-          words beat one word with symbols in it.
+          {t("wizard.signin.hint", { count: MIN_PASSWORD_CHARS })}
         </LabelHint>
       </div>
 
       <div className="flex flex-col gap-2">
-        <Label htmlFor={confirmId}>Type it again</Label>
+        <Label htmlFor={confirmId}>{t("wizard.signin.again")}</Label>
         <Input
           id={confirmId}
           name="confirm-password"
@@ -166,10 +166,7 @@ function PasswordForm({
             setProblem(null);
           }}
         />
-        <LabelHint>
-          Nothing on this box can tell you what you typed, so a slip here means starting the
-          box over.
-        </LabelHint>
+        <LabelHint>{t("wizard.signin.againHint")}</LabelHint>
       </div>
 
       <FieldError id={problemId}>{problem}</FieldError>
@@ -183,14 +180,14 @@ function PasswordForm({
             color="currentColor"
             aria-hidden="true"
           />
-          {account === null ? "Set the password" : "Set a different password"}
+          {account === null ? t("wizard.signin.set") : t("wizard.signin.setDifferent")}
         </Button>
-        {busy && <Spinner label="Setting the password" className="text-muted" />}
+        {busy && <Spinner label={t("wizard.signin.setting")} className="text-muted" />}
       </div>
 
       {account !== null && (
-        <Callout tone="ok" icon={CheckmarkCircle02Icon} title="Password set">
-          <ReadoutRow label="Your sign-in name" className="mt-2">
+        <Callout tone="ok" icon={CheckmarkCircle02Icon} title={t("wizard.signin.done.title")}>
+          <ReadoutRow label={t("wizard.signin.done.name")} className="mt-2">
             <code className="numeric text-[13px] text-ink select-all">{account}</code>
           </ReadoutRow>
           <p className="mt-2 flex items-start gap-1.5">
@@ -202,8 +199,7 @@ function PasswordForm({
               className="mt-px shrink-0"
               aria-hidden="true"
             />
-            This is the name to type on the sign-in page at the end of the wizard, and in the
-            desktop and phone apps.
+            {t("wizard.signin.done.body")}
           </p>
         </Callout>
       )}
@@ -213,13 +209,13 @@ function PasswordForm({
 
 function describeSetPassword(error: unknown): string {
   if (isUnauthorized(error)) {
-    return "This box stopped accepting the admin key. Unlock the page again, then set the password.";
+    return t("wizard.signin.err.unauthorized");
   }
   if (isMissingRoute(error)) {
-    return "The software on this box cannot set the password yet. Update it and come back.";
+    return t("wizard.signin.err.missing");
   }
   if (error instanceof Error && error.message.length > 0) return error.message;
-  return "This box did not answer.";
+  return t("wizard.noAnswer");
 }
 
 // ── Passkey ───────────────────────────────────────────────────────────────
@@ -232,6 +228,7 @@ type Attempt =
   | { kind: "problem"; message: string };
 
 function PasskeyPanel({ boxName }: { boxName: string }) {
+  const t = useT();
   const [support, setSupport] = React.useState<PasskeySupport | null>(null);
   const [attempt, setAttempt] = React.useState<Attempt>({ kind: "idle" });
 
@@ -245,7 +242,7 @@ function PasskeyPanel({ boxName }: { boxName: string }) {
     };
   }, []);
 
-  const label = `${boxName} admin`;
+  const label = t("wizard.passkey.label", { name: boxName });
 
   const register = async (): Promise<void> => {
     setAttempt({ kind: "working" });
@@ -287,25 +284,21 @@ function PasskeyPanel({ boxName }: { boxName: string }) {
         />
         <div className="min-w-0 flex-1">
           <h3 className="text-[14px] leading-tight font-semibold text-ink">
-            Add a passkey as well
+            {t("wizard.passkey.heading")}
           </h3>
-          <StepText className="mt-1">
-            A passkey signs you in with your face, your fingerprint or your screen lock, from
-            this browser on this device. It is an addition, not a replacement: the desktop and
-            phone apps still sign in with the password you just set.
-          </StepText>
+          <StepText className="mt-1">{t("wizard.passkey.body")}</StepText>
         </div>
       </div>
 
       {support === null && (
         <p className="text-[13px] text-faint" aria-busy="true">
-          Checking what this browser can do.
+          {t("wizard.passkey.checking")}
         </p>
       )}
 
       {/* Visibly unavailable with a reason, never a button that fails. */}
       {support?.kind === "unavailable" && (
-        <Callout tone="info" icon={SecurityLockIcon} title="Not available here">
+        <Callout tone="info" icon={SecurityLockIcon} title={t("wizard.passkey.unavailable.title")}>
           <p className="mt-1">{support.reason}</p>
         </Callout>
       )}
@@ -325,26 +318,27 @@ function PasskeyPanel({ boxName }: { boxName: string }) {
                 color="currentColor"
                 aria-hidden="true"
               />
-              Create passkey
+              {t("wizard.passkey.create")}
             </Button>
             {attempt.kind === "working" && (
-              <Spinner label="Waiting for your device" className="text-muted" />
+              <Spinner label={t("wizard.passkey.waiting")} className="text-muted" />
             )}
           </div>
           {!support.platformAuthenticator && (
             <p className="text-[12.5px] leading-snug text-faint">
-              This device has no built-in fingerprint or face unlock, so your browser will ask
-              for a security key.
+              {t("wizard.passkey.securityKey")}
             </p>
           )}
         </div>
       )}
 
       {attempt.kind === "registered" && (
-        <Callout tone="ok" icon={CheckmarkCircle02Icon} title="Passkey created">
+        <Callout tone="ok" icon={CheckmarkCircle02Icon} title={t("wizard.passkey.created.title")}>
           <p className="mt-1">
-            Saved as <span className="numeric text-ink">{attempt.label}</span>. It works in this
-            browser on this device only.
+            <Rich
+              k="wizard.passkey.created.body"
+              vars={{ label: <span className="numeric text-ink">{attempt.label}</span> }}
+            />
           </p>
         </Callout>
       )}
@@ -353,17 +347,13 @@ function PasskeyPanel({ boxName }: { boxName: string }) {
           served. Say so plainly rather than showing a transport error — the
           owner has done nothing wrong and there is nothing for them to fix. */}
       {attempt.kind === "not-implemented" && (
-        <Callout tone="info" icon={InformationCircleIcon} title="Not on this box yet">
-          <p className="mt-1">
-            The software on this box cannot register a passkey yet. The password you set above
-            is enough to sign in; you can add a passkey later, from the security settings inside
-            your files.
-          </p>
+        <Callout tone="info" icon={InformationCircleIcon} title={t("wizard.passkey.notYet.title")}>
+          <p className="mt-1">{t("wizard.passkey.notYet.body")}</p>
         </Callout>
       )}
 
       {attempt.kind === "problem" && (
-        <Callout tone="warn" icon={Alert02Icon} title="That did not work">
+        <Callout tone="warn" icon={Alert02Icon} title={t("wizard.passkey.problem.title")}>
           <p className={cn("mt-1 break-words")}>{attempt.message}</p>
         </Callout>
       )}

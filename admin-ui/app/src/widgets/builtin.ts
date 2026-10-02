@@ -10,11 +10,16 @@
  * the allow-list stops describing what a widget can see, and the next person
  * reading this file would be reading a lie.
  *
+ * Text goes through t() at RUN time, so a tile shows the language that was on
+ * screen when it last ran; tile.tsx re-runs every tile when the language
+ * changes.
+ *
  * Vocabulary: these strings are read by the owner of a mini-PC in their
  * hallway. "this box", "the mesh", "an app". Never a scheduler, a runtime or
  * a unit of either.
  */
 
+import { t } from "@/lib/i18n";
 import type { WidgetFn } from "./types";
 
 // ── Uptime ────────────────────────────────────────────────────────────────
@@ -31,31 +36,35 @@ export const uptimeWidget: WidgetFn = async (losos) => {
 
   const parts: string[] = [];
   if (m.observedDays === 0) {
-    parts.push("Nothing watched yet");
+    parts.push(t("widgets.builtin.uptime.nothingYet"));
   } else {
-    parts.push(`${losos.fmt.percent(m.upRatio)} answered`);
+    parts.push(t("widgets.builtin.uptime.answered", { pct: losos.fmt.percent(m.upRatio) }));
     parts.push(
       m.outages === 0
-        ? "no quiet spells"
-        : `${m.outages} quiet ${losos.fmt.plural(m.outages, "spell")}`,
+        ? t("widgets.builtin.uptime.noQuiet")
+        : t("widgets.builtin.uptime.quietSpells", { count: m.outages }),
     );
     if (m.longestOutageSeconds > 0) {
-      parts.push(`longest ${losos.fmt.duration(m.longestOutageSeconds)}`);
+      parts.push(
+        t("widgets.builtin.uptime.longest", {
+          duration: losos.fmt.duration(m.longestOutageSeconds),
+        }),
+      );
     }
   }
 
   const watched =
     m.observedDays === 0
-      ? "This browser has not watched this box yet. Leave this page open and squares will fill in."
-      : `Watched from this browser on ${m.observedDays} ${losos.fmt.plural(m.observedDays, "day")}.`;
+      ? t("widgets.builtin.uptime.notWatched")
+      : t("widgets.builtin.uptime.watched", { count: m.observedDays });
 
   return {
     type: "heatmap",
-    title: "Answering",
+    title: t("widgets.builtin.uptime.title"),
     data: {
       days: m.days,
-      lowLabel: "Quiet",
-      highLabel: "Answering",
+      lowLabel: t("widgets.builtin.uptime.low"),
+      highLabel: t("widgets.builtin.uptime.title"),
     },
     foot: `${parts.join(" · ")} · ${watched}`,
   };
@@ -86,14 +95,14 @@ export const diskWidget: WidgetFn = async (losos) => {
   if (total === null) {
     return {
       type: "bar",
-      title: "Room on this box",
+      title: t("widgets.builtin.disk.title"),
       data: {
         value: null,
         max: 0,
         format: "bytes",
-        caption: "Not measured yet",
+        caption: t("widgets.builtin.disk.notMeasured"),
       },
-      foot: "This box reports its size when you claim space on the Storage page.",
+      foot: t("widgets.builtin.disk.reportsSize"),
     };
   }
 
@@ -102,29 +111,38 @@ export const diskWidget: WidgetFn = async (losos) => {
 
   return {
     type: "bar",
-    title: "Room on this box",
+    title: t("widgets.builtin.disk.title"),
     data: {
       value: used,
       reserve,
       max: total + reserve,
       format: "bytes",
-      fillLabel: "In use",
-      reserveLabel: "Held back to grow into",
-      ...(tight ? { chip: { text: "Filling up", tone: "warn" as const } } : {}),
+      fillLabel: t("widgets.builtin.disk.inUse"),
+      reserveLabel: t("widgets.builtin.disk.heldBack"),
+      ...(tight
+        ? { chip: { text: t("widgets.builtin.disk.fillingUp"), tone: "warn" as const } }
+        : {}),
       /* The headline reads "328 GB of 484 GB", where 484 is the whole disk —
        * the filesystem plus what is still unclaimed. The caption has to
        * reconcile that with the smaller figure the owner sees in their file
        * manager, or the two numbers look like a contradiction. */
       caption:
         used === null
-          ? `${losos.fmt.bytes(total)} formatted, ${losos.fmt.bytes(reserve)} not yet claimed`
-          : `${losos.fmt.bytes(total - used)} free now` +
-            (reserve > 0 ? `, ${losos.fmt.bytes(reserve)} more to claim` : ""),
+          ? t("widgets.builtin.disk.formatted", {
+              total: losos.fmt.bytes(total),
+              reserve: losos.fmt.bytes(reserve),
+            })
+          : reserve > 0
+            ? t("widgets.builtin.disk.freeMore", {
+                free: losos.fmt.bytes(total - used),
+                reserve: losos.fmt.bytes(reserve),
+              })
+            : t("widgets.builtin.disk.free", { free: losos.fmt.bytes(total - used) }),
     },
     foot:
       reserve > 0
-        ? `${losos.fmt.bytes(reserve)} is held back. You can claim it without opening the box.`
-        : "All of the disk is in the filesystem.",
+        ? t("widgets.builtin.disk.footReserve", { reserve: losos.fmt.bytes(reserve) })
+        : t("widgets.builtin.disk.footAll"),
   };
 };
 
@@ -145,15 +163,15 @@ export const meshWidget: WidgetFn = async (losos) => {
   if (!m.joined) {
     return {
       type: "bar",
-      title: "Sharing",
+      title: t("widgets.builtin.mesh.title"),
       data: {
         value: 0,
         max: 24,
         format: "duration",
-        caption: "This box is on its own",
-        fillLabel: "Yours",
+        caption: t("widgets.builtin.mesh.alone"),
+        fillLabel: t("widgets.builtin.mesh.yours"),
       },
-      foot: "Join other boxes from the Mesh page to lend and borrow time.",
+      foot: t("widgets.builtin.mesh.joinHint"),
     };
   }
 
@@ -161,17 +179,20 @@ export const meshWidget: WidgetFn = async (losos) => {
     const total = m.givenSeconds + m.takenSeconds;
     return {
       type: "bar",
-      title: "Sharing",
+      title: t("widgets.builtin.mesh.title"),
       data: {
         value: m.takenSeconds,
         reserve: m.givenSeconds,
         max: total === 0 ? 1 : total,
         format: "duration",
-        fillLabel: "Run for you elsewhere",
-        reserveLabel: "Run here for others",
-        caption: `${losos.fmt.duration(m.givenSeconds)} given · ${losos.fmt.duration(m.takenSeconds)} taken`,
+        fillLabel: t("widgets.builtin.mesh.runElsewhere"),
+        reserveLabel: t("widgets.builtin.mesh.runHere"),
+        caption: t("widgets.builtin.mesh.givenTaken", {
+          given: losos.fmt.duration(m.givenSeconds),
+          taken: losos.fmt.duration(m.takenSeconds),
+        }),
       },
-      foot: "Counted since this box joined.",
+      foot: t("widgets.builtin.mesh.counted"),
     };
   }
 
@@ -180,20 +201,22 @@ export const meshWidget: WidgetFn = async (losos) => {
 
   return {
     type: "bar",
-    title: "Sharing",
+    title: t("widgets.builtin.mesh.title"),
     data: {
       value: kept * 3600,
       reserve: lent * 3600,
       max: 24 * 3600,
       format: "duration",
-      fillLabel: "Kept for you",
-      reserveLabel: "Lent to the mesh",
+      fillLabel: t("widgets.builtin.mesh.kept"),
+      reserveLabel: t("widgets.builtin.mesh.lent"),
       caption: m.sharingCompute
-        ? `Spare time is lent between ${m.windowStart} and ${m.windowEnd}`
-        : "Spare time is not lent right now",
-      ...(m.sharingStorage ? { chip: { text: "Storage shared", tone: "neutral" as const } } : {}),
+        ? t("widgets.builtin.mesh.lentBetween", { start: m.windowStart, end: m.windowEnd })
+        : t("widgets.builtin.mesh.notLent"),
+      ...(m.sharingStorage
+        ? { chip: { text: t("widgets.builtin.mesh.storageShared"), tone: "neutral" as const } }
+        : {}),
     },
-    foot: "How much work each side has actually done is not reported yet.",
+    foot: t("widgets.builtin.mesh.notReported"),
   };
 };
 
@@ -207,23 +230,23 @@ export const appsWidget: WidgetFn = async (losos) => {
     label: app.name,
     detail:
       app.reachable === true
-        ? "Answering"
+        ? t("widgets.builtin.apps.answering")
         : app.reachable === false
-          ? "Not answering"
-          : "Not checked",
+          ? t("widgets.builtin.apps.notAnswering")
+          : t("widgets.builtin.apps.notChecked"),
     tone: app.reachable === false ? ("crit" as const) : ("neutral" as const),
     texture: app.onMesh ? ("mesh" as const) : ("local" as const),
-    badge: app.onMesh ? "on the mesh" : "on this box",
+    badge: app.onMesh ? t("widgets.builtin.apps.onMesh") : t("widgets.builtin.apps.onBox"),
   }));
 
   return {
     type: "list",
-    title: "Apps",
+    title: t("widgets.builtin.apps.title"),
     data: {
       items,
-      empty: "No apps yet. Finish setting the box up and they appear here.",
+      empty: t("widgets.builtin.apps.empty"),
     },
-    foot: `Served by ${m.hostName}.`,
+    foot: t("widgets.builtin.apps.servedBy", { host: m.hostName }),
   };
 };
 
@@ -241,12 +264,12 @@ export const rebuildsWidget: WidgetFn = async (losos) => {
   const items = m.entries.map((entry) => ({
     label:
       entry.state === "building"
-        ? "Applying a change"
+        ? t("widgets.builtin.rebuilds.applying")
         : entry.state === "done"
-          ? "Change applied"
+          ? t("widgets.builtin.rebuilds.applied")
           : entry.state === "failed"
-            ? "Change failed"
-            : "Idle",
+            ? t("widgets.builtin.rebuilds.failed")
+            : t("widgets.builtin.rebuilds.idle"),
     detail: `${losos.fmt.ago(entry.seenAt)}${entry.message.length > 0 ? ` · ${entry.message}` : ""}`,
     tone:
       entry.state === "failed"
@@ -258,13 +281,11 @@ export const rebuildsWidget: WidgetFn = async (losos) => {
 
   return {
     type: "list",
-    title: "Changes",
+    title: t("widgets.builtin.rebuilds.title"),
     data: {
       items,
-      empty: "Nothing has been changed from this browser.",
+      empty: t("widgets.builtin.rebuilds.empty"),
     },
-    foot: m.busy
-      ? "A change is being applied now. The box may be slow for a few minutes."
-      : "Only changes this browser was open for.",
+    foot: m.busy ? t("widgets.builtin.rebuilds.busy") : t("widgets.builtin.rebuilds.onlyThis"),
   };
 };

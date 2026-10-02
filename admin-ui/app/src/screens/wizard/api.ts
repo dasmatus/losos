@@ -23,6 +23,7 @@
  */
 
 import { ApiError, dropToken, getToken } from "@/lib/api";
+import { t } from "@/lib/i18n";
 
 // ── Transport ─────────────────────────────────────────────────────────────
 
@@ -65,7 +66,7 @@ async function authedJson<T>(path: string, request: AuthedRequest): Promise<T> {
     // let the shell re-prompt. Nothing in the wizard probes a candidate token,
     // so there is no case here where eviction would be wrong.
     dropToken();
-    throw new ApiError(401, "unauthorized");
+    throw new ApiError(401, t("wizard.api.unauthorized"));
   }
   if (!response.ok) throw new ApiError(response.status, await errorMessage(response));
   return (await response.json()) as T;
@@ -142,11 +143,11 @@ export async function getSetupState(options: RequestOptions = {}): Promise<Setup
  * thrown ApiError, which step 1 already has a branch for. */
 function parseSetupState(value: unknown): SetupState {
   if (typeof value !== "object" || value === null) {
-    throw new ApiError(0, "the setup document is not an object");
+    throw new ApiError(0, t("wizard.api.notObject"));
   }
   const raw = value as Record<string, unknown>;
   if (typeof raw["hostName"] !== "string" || typeof raw["fqdn"] !== "string") {
-    throw new ApiError(0, "the setup document does not name this box");
+    throw new ApiError(0, t("wizard.api.noName"));
   }
   return {
     hostName: raw["hostName"],
@@ -219,23 +220,24 @@ export function postSetPassword(
 export const MIN_PASSWORD_CHARS = 12;
 export const MAX_PASSWORD_BYTES = 256;
 
-/** The problem with `password`, in words the owner can act on, or null. */
+/** The problem with `password`, in words the owner can act on, or null.
+ *  Translated when produced, so it stays in the language it was shown in. */
 export function passwordProblem(password: string): string | null {
   // Characters, not UTF-16 units — a passphrase in a non-Latin script should
   // be measured the way its owner would count it, which is what the server
   // does with `chars().count()`.
   const characters = [...password].length;
   if (characters < MIN_PASSWORD_CHARS) {
-    return `Use at least ${MIN_PASSWORD_CHARS} characters. This one has ${characters}.`;
+    return t("wizard.password.tooShort", { min: MIN_PASSWORD_CHARS, count: characters });
   }
   if (new TextEncoder().encode(password).length > MAX_PASSWORD_BYTES) {
-    return "That is longer than this box accepts. Shorten it.";
+    return t("wizard.password.tooLong");
   }
   // A newline is the one that bites: the password reaches the app through a
   // staged file read with `$(cat …)`, which would silently truncate at the
   // first one — leaving the owner certain of a password that was never set.
   if (/\p{Cc}/u.test(password)) {
-    return "Remove the line breaks and control characters.";
+    return t("wizard.password.control");
   }
   return null;
 }

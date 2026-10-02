@@ -25,6 +25,8 @@ import {
 } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { intlTag, t } from "@/lib/i18n";
+import { useT } from "@/lib/i18n-react";
 import { getRecovery, isMissingRoute } from "./api";
 import { Callout, StepText } from "./parts";
 
@@ -45,6 +47,7 @@ type CodeQuery =
   | { kind: "failed"; message: string };
 
 export function StepRecovery({ boxName, saved, onSaved, onUnavailable }: StepRecoveryProps) {
+  const t = useT();
   const [query, setQuery] = React.useState<CodeQuery>({ kind: "loading" });
   const [attempt, setAttempt] = React.useState(0);
   const [copyFailed, setCopyFailed] = React.useState(false);
@@ -98,13 +101,7 @@ export function StepRecovery({ boxName, saved, onSaved, onUnavailable }: StepRec
 
   return (
     <div className="flex flex-col gap-5">
-      <StepText>
-        A factory reset or a reinstall erases this box's disk, and it comes back with a brand
-        new identity. To every other box it works with, that looks like a stranger claiming a
-        name they already know, and they refuse it. This code is the only proof that the new box
-        is the old one, so it cannot live on the disk it is meant to recover. Put it on paper,
-        or in a password manager.
-      </StepText>
+      <StepText>{t("wizard.recovery.intro")}</StepText>
 
       {query.kind === "loading" && (
         <div aria-busy="true" className="flex flex-col gap-3">
@@ -117,7 +114,7 @@ export function StepRecovery({ boxName, saved, onSaved, onUnavailable }: StepRec
         <>
           <div className="flex flex-col gap-3 rounded-card border border-line bg-sunk px-4 py-5">
             <span className="text-[12px] font-medium tracking-wide text-faint uppercase">
-              Recovery code for {boxName}
+              {t("wizard.recovery.codeFor", { name: boxName })}
             </span>
             {/* select-all: one click takes the whole code, so a manual
                 Ctrl+C works even where the clipboard API is unavailable. */}
@@ -129,8 +126,7 @@ export function StepRecovery({ boxName, saved, onSaved, onUnavailable }: StepRec
             </code>
             {!query.minted && (
               <p className="text-[12.5px] text-faint">
-                This box minted it earlier. It is the same code as before, and it will not
-                change.
+                {t("wizard.recovery.notMinted")}
               </p>
             )}
           </div>
@@ -144,7 +140,7 @@ export function StepRecovery({ boxName, saved, onSaved, onUnavailable }: StepRec
                 color="currentColor"
                 aria-hidden="true"
               />
-              Copy
+              {t("wizard.recovery.copy")}
             </Button>
             <Button variant="secondary" onClick={print}>
               <HugeiconsIcon
@@ -154,7 +150,7 @@ export function StepRecovery({ boxName, saved, onSaved, onUnavailable }: StepRec
                 color="currentColor"
                 aria-hidden="true"
               />
-              Print
+              {t("wizard.recovery.print")}
             </Button>
             {saved && (
               <span
@@ -168,17 +164,14 @@ export function StepRecovery({ boxName, saved, onSaved, onUnavailable }: StepRec
                   color="currentColor"
                   aria-hidden="true"
                 />
-                Taken off the screen.
+                {t("wizard.recovery.saved")}
               </span>
             )}
           </div>
 
           {copyFailed && (
-            <Callout tone="warn" icon={Alert02Icon} title="This browser would not copy it">
-              <p className="mt-1">
-                The code above is selected. Press Ctrl+C, or Cmd+C on a Mac. Printing works
-                either way and counts as saved.
-              </p>
+            <Callout tone="warn" icon={Alert02Icon} title={t("wizard.recovery.copyFailed.title")}>
+              <p className="mt-1">{t("wizard.recovery.copyFailed.body")}</p>
             </Callout>
           )}
 
@@ -190,18 +183,14 @@ export function StepRecovery({ boxName, saved, onSaved, onUnavailable }: StepRec
       )}
 
       {query.kind === "not-implemented" && (
-        <Callout tone="info" icon={InformationCircleIcon} title="No code on this box yet">
-          <p className="mt-1">
-            The software on this box cannot produce a recovery code yet. You can continue
-            without one; come back to this page after the box has updated itself and write the
-            code down then.
-          </p>
+        <Callout tone="info" icon={InformationCircleIcon} title={t("wizard.recovery.notYet.title")}>
+          <p className="mt-1">{t("wizard.recovery.notYet.body")}</p>
         </Callout>
       )}
 
       {query.kind === "failed" && (
         <div className="flex flex-col gap-3">
-          <Callout tone="crit" icon={Alert02Icon} title="Could not read the code">
+          <Callout tone="crit" icon={Alert02Icon} title={t("wizard.recovery.failed.title")}>
             <p className="mt-1 break-words">{query.message}</p>
           </Callout>
           <div>
@@ -213,7 +202,7 @@ export function StepRecovery({ boxName, saved, onSaved, onUnavailable }: StepRec
                 color="currentColor"
                 aria-hidden="true"
               />
-              Try again
+              {t("wizard.recovery.retry")}
             </Button>
           </div>
         </div>
@@ -227,19 +216,23 @@ export function StepRecovery({ boxName, saved, onSaved, onUnavailable }: StepRec
  * Its own markup rather than a print stylesheet over the card above, because
  * the two say different things: the screen version is a step in a flow, the
  * paper version has to still make sense in a drawer in two years, with no
- * wizard around it. Hence the date and the full sentence. */
+ * wizard around it. Hence the date and the full sentence. It prints in the
+ * interface language, date included, so the sheet reads as one language. */
 function RecoverySheet({ boxName, code }: { boxName: string; code: string }) {
+  const t = useT();
   return (
     <section className="wizard-print-sheet hidden print:block">
-      <h1 className="text-lg font-semibold">Recovery code for {boxName}</h1>
+      <h1 className="text-lg font-semibold">
+        {t("wizard.recovery.codeFor", { name: boxName })}
+      </h1>
       <p className="mt-1 text-sm">
-        Printed {new Date().toLocaleDateString(undefined, { dateStyle: "long" })}.
+        {t("wizard.recovery.printed", {
+          date: new Date().toLocaleDateString(intlTag(), { dateStyle: "long" }),
+        })}
       </p>
       <p className="numeric mt-6 text-2xl break-all">{code}</p>
       <p className="mt-6 max-w-prose text-sm leading-relaxed">
-        Keep this. If {boxName} is ever reset or reinstalled, this code is the only proof that
-        the rebuilt box is the same one. Without it the boxes it works with will treat it as a
-        stranger and refuse it. There is no copy anywhere else that survives a reset.
+        {t("wizard.recovery.sheetBody", { name: boxName })}
       </p>
       <p className="mt-4 flex items-center gap-2 text-sm">
         <HugeiconsIcon
@@ -249,7 +242,7 @@ function RecoverySheet({ boxName, code }: { boxName: string; code: string }) {
           color="currentColor"
           aria-hidden="true"
         />
-        Treat it like a key to the box, because that is what it is.
+        {t("wizard.recovery.sheetKey")}
       </p>
     </section>
   );
@@ -293,5 +286,5 @@ function selectAndCopy(element: HTMLElement | null): boolean {
 
 function describe(error: unknown): string {
   if (error instanceof Error && error.message.length > 0) return error.message;
-  return "This box did not answer.";
+  return t("wizard.noAnswer");
 }
