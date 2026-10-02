@@ -56,7 +56,7 @@ const WidgetBoard = React.lazy(() =>
 function ScreenFallback() {
   return (
     <div className="grid min-h-48 place-items-center text-muted">
-      <Spinner label="Loading" />
+      <Spinner />
     </div>
   );
 }
