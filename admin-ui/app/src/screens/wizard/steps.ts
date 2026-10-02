@@ -10,6 +10,8 @@
  * components is four edits and a silent miss.
  */
 
+import { t, type MessageKey } from "@/lib/i18n";
+
 export const STEP_IDS = ["trust", "signin", "recovery", "finish"] as const;
 
 export type StepId = (typeof STEP_IDS)[number];
@@ -19,18 +21,19 @@ export type StepDirection = "forward" | "back";
 
 export interface StepMeta {
   id: StepId;
-  /** The card's heading, and the line under the rail. */
-  title: string;
+  /** The card's heading, and the line under the rail. A message key, read
+   *  at render — a string here would freeze in the language of import. */
+  title: MessageKey;
   /** The rail's own label. Screen-reader-only, so it says which of the four
    *  rather than restating a title the reader has already heard. */
-  rail: string;
+  rail: MessageKey;
 }
 
 export const STEPS: readonly StepMeta[] = [
-  { id: "trust", title: "Trust this box", rail: "Trust this box" },
-  { id: "signin", title: "Choose how you sign in", rail: "Choose how you sign in" },
-  { id: "recovery", title: "Write down your recovery code", rail: "Recovery code" },
-  { id: "finish", title: "Sign in", rail: "Sign in" },
+  { id: "trust", title: "wizard.steps.trust", rail: "wizard.steps.trust" },
+  { id: "signin", title: "wizard.steps.signin", rail: "wizard.steps.signin" },
+  { id: "recovery", title: "wizard.steps.recovery.title", rail: "wizard.steps.recovery.rail" },
+  { id: "finish", title: "wizard.steps.finish", rail: "wizard.steps.finish" },
 ] as const;
 
 export const STEP_COUNT = STEPS.length;
@@ -40,8 +43,11 @@ export function stepIndex(id: StepId): number {
   return STEP_IDS.indexOf(id);
 }
 
+/** The step's title in the current language. Call while rendering a
+ *  component that used `useT()`. */
 export function stepTitle(id: StepId): string {
-  return STEPS.find((step) => step.id === id)?.title ?? "";
+  const key = STEPS.find((step) => step.id === id)?.title;
+  return key === undefined ? "" : t(key);
 }
 
 /* The neighbours, or null at the ends.

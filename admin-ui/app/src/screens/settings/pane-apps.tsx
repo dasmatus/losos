@@ -4,9 +4,10 @@ import { Alert01Icon, LinkSquare02Icon, Search01Icon } from "@hugeicons/core-fre
 import { Select } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
+import { t as translate, type MessageKey } from "@/lib/i18n";
+import { Rich, useT } from "@/lib/i18n-react";
 import type { ServiceMode } from "@/lib/api";
 import { useCatalogue, type CatalogueApp, type CatalogueState } from "./catalogue";
-import { plural } from "./format";
 import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText, StackRow } from "./rows";
 import type { SettingsForm } from "./use-settings-form";
 
@@ -22,9 +23,9 @@ import type { SettingsForm } from "./use-settings-form";
 
 /** The wire spells these `native` and `container`; the reader never sees
  *  either word. The labels are what the choice actually costs them. */
-const MODE_LABEL: Record<ServiceMode, string> = {
-  native: "Part of the system",
-  container: "Kept separate",
+const MODE_LABEL: Record<ServiceMode, MessageKey> = {
+  native: "panes.apps.mode.native",
+  container: "panes.apps.mode.container",
 };
 
 function isServiceMode(value: string): value is ServiceMode {
@@ -32,6 +33,7 @@ function isServiceMode(value: string): value is ServiceMode {
 }
 
 export function AppsPane({ form }: { form: SettingsForm }) {
+  const t = useT();
   const filesId = React.useId();
   const codeId = React.useId();
   const searchId = React.useId();
@@ -43,20 +45,20 @@ export function AppsPane({ form }: { form: SettingsForm }) {
   return (
     <>
       <PaneSection>
-        <GroupTitle>On this box</GroupTitle>
+        <GroupTitle>{t("panes.apps.onThisBox")}</GroupTitle>
         <Group>
           <AppModeRow
             id={filesId}
-            title="Files"
-            detail="Your documents, photos and calendars."
+            title={t("panes.apps.files.title")}
+            detail={t("panes.apps.files.detail")}
             value={draft?.nextcloudMode ?? "container"}
             disabled={disabled}
             onChange={(mode) => form.set("nextcloudMode", mode)}
           />
           <AppModeRow
             id={codeId}
-            title="Code"
-            detail="Your repositories and their issues."
+            title={t("panes.apps.code.title")}
+            detail={t("panes.apps.code.detail")}
             value={draft?.forgejoMode ?? "container"}
             disabled={disabled}
             onChange={(mode) => form.set("forgejoMode", mode)}
@@ -64,21 +66,24 @@ export function AppsPane({ form }: { form: SettingsForm }) {
           />
         </Group>
         <GroupCaption>
-          <strong className="font-medium text-ink">Kept separate</strong> runs an app walled off
-          from the rest of the box, so a problem inside it stays inside it. That is the setting to
-          leave alone.{" "}
-          <strong className="font-medium text-ink">Part of the system</strong> runs it alongside
-          everything else. It starts faster, and it is how this box worked before.
-          Changing either restarts that app while this box rebuilds itself.
+          <Rich
+            k="panes.apps.modeCaption"
+            vars={{
+              kept: (
+                <strong className="font-medium text-ink">{t(MODE_LABEL.container)}</strong>
+              ),
+              native: <strong className="font-medium text-ink">{t(MODE_LABEL.native)}</strong>,
+            }}
+          />
         </GroupCaption>
       </PaneSection>
 
       <PaneSection>
-        <GroupTitle>Find more</GroupTitle>
+        <GroupTitle>{t("panes.apps.findMore")}</GroupTitle>
         <Group>
           <StackRow last={catalogue.state.kind === "idle"}>
             <label htmlFor={searchId} className="sr-only">
-              Search for apps
+              {t("panes.apps.searchLabel")}
             </label>
             <div className="relative">
               <HugeiconsIcon
@@ -93,7 +98,7 @@ export function AppsPane({ form }: { form: SettingsForm }) {
                 id={searchId}
                 type="search"
                 value={catalogue.query}
-                placeholder="Search for an app"
+                placeholder={t("panes.apps.searchPlaceholder")}
                 autoComplete="off"
                 spellCheck={false}
                 disabled={disabled || catalogue.state.kind === "unsupported"}
@@ -135,6 +140,7 @@ interface AppModeRowProps {
 }
 
 function AppModeRow({ id, title, detail, value, disabled, onChange, last }: AppModeRowProps) {
+  const t = useT();
   return (
     <Row last={last}>
       <RowText htmlFor={id} title={title} detail={detail} />
@@ -151,8 +157,8 @@ function AppModeRow({ id, title, detail, value, disabled, onChange, last }: AppM
           if (isServiceMode(next)) onChange(next);
         }}
       >
-        <option value="container">{MODE_LABEL.container}</option>
-        <option value="native">{MODE_LABEL.native}</option>
+        <option value="container">{t(MODE_LABEL.container)}</option>
+        <option value="native">{t(MODE_LABEL.native)}</option>
       </Select>
     </Row>
   );
@@ -161,6 +167,7 @@ function AppModeRow({ id, title, detail, value, disabled, onChange, last }: AppM
 // ── The catalogue ─────────────────────────────────────────────────────────
 
 function CatalogueBody({ state }: { state: CatalogueState }) {
+  const t = useT();
   switch (state.kind) {
     case "idle":
       return null;
@@ -169,8 +176,8 @@ function CatalogueBody({ state }: { state: CatalogueState }) {
       return (
         <StackRow last>
           <div className="flex items-center gap-2.5 text-[13px] text-muted">
-            <Spinner size={16} label="Searching" />
-            Looking…
+            <Spinner size={16} label={t("panes.apps.searching")} />
+            {t("panes.apps.looking")}
           </div>
         </StackRow>
       );
@@ -178,17 +185,14 @@ function CatalogueBody({ state }: { state: CatalogueState }) {
     case "unsupported":
       return (
         <StackRow last>
-          <Note>
-            This box cannot look for new apps yet. When it can, the search will reach out from the
-            box itself. This page can talk to nothing but your own box, on purpose.
-          </Note>
+          <Note>{t("panes.apps.unsupported")}</Note>
         </StackRow>
       );
 
     case "failed":
       return (
         <StackRow last>
-          <Note tone="crit">The search did not come back: {state.message}</Note>
+          <Note tone="crit">{t("panes.apps.failed", { message: state.message })}</Note>
         </StackRow>
       );
 
@@ -197,7 +201,7 @@ function CatalogueBody({ state }: { state: CatalogueState }) {
       if (apps.length === 0) {
         return (
           <StackRow last>
-            <Note>Nothing came back for that.</Note>
+            <Note>{t("panes.apps.empty")}</Note>
           </StackRow>
         );
       }
@@ -218,6 +222,7 @@ function CatalogueBody({ state }: { state: CatalogueState }) {
 }
 
 function ResultRow({ app, last }: { app: CatalogueApp; last: boolean }) {
+  const t = useT();
   return (
     <Row last={last} className="animate-fade-in items-start">
       <div className="min-w-0 flex-1">
@@ -230,7 +235,7 @@ function ResultRow({ app, last }: { app: CatalogueApp; last: boolean }) {
         )}
         {/* The source is on every row and never abbreviated. It is the only
             thing here that says who wrote this and who you would be trusting. */}
-        <p className="mt-1 text-[12px] text-faint">from {app.source}</p>
+        <p className="mt-1 text-[12px] text-faint">{t("panes.apps.from", { source: app.source })}</p>
       </div>
       {app.homepage !== null && (
         <a
@@ -242,7 +247,7 @@ function ResultRow({ app, last }: { app: CatalogueApp; last: boolean }) {
             "text-[12.5px] text-accent transition-colors duration-150 hover:bg-accent-wash",
           )}
         >
-          Look at it
+          {t("panes.apps.lookAt")}
           <HugeiconsIcon
             icon={LinkSquare02Icon}
             size={13}
@@ -286,9 +291,12 @@ function Note({ children, tone }: { children: React.ReactNode; tone?: "crit" }) 
  * undo an install from. Naming the indexes searched is part of the same
  * honesty: the reader can go and judge the source for themselves. */
 function footerFor(state: CatalogueState): string {
-  const base =
-    "Nobody here has checked any of this. Anything you find comes from whoever published it, and installing it puts their code on the same box as your files.";
+  const base = translate("panes.apps.footer");
   if (state.kind !== "results" || state.results.sources.length === 0) return base;
   const { sources } = state.results;
-  return `Searched ${plural(sources.length, "index", "indexes")}: ${sources.join(", ")}. ${base}`;
+  return translate("panes.apps.footerSearched", {
+    count: sources.length,
+    sources: sources.join(", "),
+    footer: base,
+  });
 }

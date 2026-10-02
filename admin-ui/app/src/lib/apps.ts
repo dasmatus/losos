@@ -57,6 +57,7 @@ import {
   Settings01Icon,
 } from "@hugeicons/core-free-icons";
 import type { ServiceMode } from "@/lib/api";
+import { formatNumber, t, type MessageKey } from "@/lib/i18n";
 
 // ── Catalogue ─────────────────────────────────────────────────────────────
 
@@ -83,8 +84,9 @@ export type Provider =
 
 export interface AppDefinition {
   readonly id: AppId;
-  /** Shown under the tile. Short enough not to wrap at 84px. */
-  readonly name: string;
+  /** Shown under the tile. Short enough not to wrap at 84px. A message key,
+   *  translated at render — this catalogue is evaluated once, at import. */
+  readonly name: MessageKey;
   readonly icon: IconSvgElement;
   /** Path under the provider's base; joined by {@link deriveApps}. */
   readonly path: string;
@@ -92,8 +94,8 @@ export interface AppDefinition {
   /* What the app is, in a few words. Not the second line — a tile is 78px
    * wide and a sentence under it is an ellipsis with a word in front of it.
    * It is the tile's tooltip, and the second line is kept for things that
-   * were actually measured. */
-  readonly note: string;
+   * were actually measured. A message key, like `name`. */
+  readonly note: MessageKey;
 }
 
 /** Where the Files app answers on this box's front door, when it does. */
@@ -114,83 +116,83 @@ export const SETTINGS_ROUTE = "/settings";
 export const CATALOGUE: readonly AppDefinition[] = [
   {
     id: "files",
-    name: "Files",
+    name: "apps.files.name",
     icon: Folder01Icon,
     path: "/apps/files/",
     provider: "files",
-    note: "Everything you keep here",
+    note: "apps.files.note",
   },
   {
     id: "photos",
-    name: "Photos",
+    name: "apps.photos.name",
     icon: Image02Icon,
     path: "/apps/photos/",
     provider: "files",
-    note: "Pictures and albums",
+    note: "apps.photos.note",
   },
   {
     id: "calendar",
-    name: "Calendar",
+    name: "apps.calendar.name",
     icon: Calendar03Icon,
     path: "/apps/calendar/",
     provider: "files",
-    note: "Dates and reminders",
+    note: "apps.calendar.note",
   },
   {
     id: "contacts",
-    name: "Contacts",
+    name: "apps.contacts.name",
     icon: Contact01Icon,
     path: "/apps/contacts/",
     provider: "files",
-    note: "Names and addresses",
+    note: "apps.contacts.note",
   },
   {
     id: "notes",
-    name: "Notes",
+    name: "apps.notes.name",
     icon: Note03Icon,
     path: "/apps/notes/",
     provider: "files",
-    note: "Written down, kept here",
+    note: "apps.notes.note",
   },
   {
     id: "tasks",
-    name: "Tasks",
+    name: "apps.tasks.name",
     icon: CheckListIcon,
     path: "/apps/tasks/",
     provider: "files",
-    note: "Lists and due dates",
+    note: "apps.tasks.note",
   },
   {
     id: "mail",
-    name: "Mail",
+    name: "apps.mail.name",
     icon: Mail01Icon,
     path: "/apps/mail/",
     provider: "files",
-    note: "Your mail accounts",
+    note: "apps.mail.note",
   },
   {
     id: "music",
-    name: "Music",
+    name: "apps.music.name",
     icon: MusicNote01Icon,
     path: "/apps/music/",
     provider: "files",
-    note: "Your own library",
+    note: "apps.music.note",
   },
   {
     id: "code",
-    name: "Code",
+    name: "apps.code.name",
     icon: GitBranchIcon,
     path: "/",
     provider: "code",
-    note: "Your repositories",
+    note: "apps.code.note",
   },
   {
     id: "settings",
-    name: "Settings",
+    name: "apps.settings.name",
     icon: Settings01Icon,
     path: SETTINGS_ROUTE,
     provider: "box",
-    note: "Run this box",
+    note: "apps.settings.note",
   },
 ];
 
@@ -330,15 +332,15 @@ function resolve(state: Availability, measured: boolean): Presence {
 function noticeFor(facts: AppFacts): string | null {
   const files = facts.filesServedHere === false;
   const code = facts.codeServedHere === false;
-  if (files && code) {
-    return "Your files and your code are served under this box's own name, not from this page.";
-  }
-  if (files) return "Your files are served under this box's own name, not from this page.";
-  if (code) return "Your code is served under this box's own name, not from this page.";
+  if (files && code) return t("apps.notice.both");
+  if (files) return t("apps.notice.files");
+  if (code) return t("apps.notice.code");
   return null;
 }
 
-/** The grid, derived. The only sanctioned way to decide what gets a tile. */
+/** The grid, derived. The only sanctioned way to decide what gets a tile.
+ *  The notice is translated, so call this while rendering a component that
+ *  used `useT()`. */
 export function deriveApps(facts: AppFacts): AppGridModel {
   const tiles: AppTileModel[] = [];
   let pendingCount = 0;
@@ -523,7 +525,7 @@ const UNITS = ["bytes", "kB", "MB", "GB", "TB", "PB"] as const;
  * value nothing measured — a fabricated figure on a homepage is indistinguish-
  * able from a real one. */
 export function formatBytes(bytes: number): string {
-  if (!Number.isFinite(bytes) || bytes < 0) return "unknown";
+  if (!Number.isFinite(bytes) || bytes < 0) return t("apps.format.unknown");
   let value = bytes;
   let unit = 0;
   while (value >= 1000 && unit < UNITS.length - 1) {
@@ -531,18 +533,32 @@ export function formatBytes(bytes: number): string {
     unit += 1;
   }
   const digits = unit > 0 && value < 10 ? 1 : 0;
-  return `${value.toFixed(digits)} ${UNITS[unit] ?? "bytes"}`;
+  if (unit === 0) return t("apps.format.bytes", { count: Math.round(value) });
+  /* Rounded first so formatNumber prints exactly the digits toFixed would,
+   * with the locale's decimal separator. */
+  const shown = formatNumber(Number(value.toFixed(digits)), undefined, {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  });
+  return `${shown} ${UNITS[unit] ?? "bytes"}`;
 }
 
-/** Whole days and hours from a second count. "6 d 3 h", "14 h", "just now". */
+/** Whole days and hours from a second count. "6 d 3 h", "14 h", "just now".
+ *  Translated, like formatBytes: call it during a subscribed render. */
 export function formatUptime(seconds: number): string {
-  if (!Number.isFinite(seconds) || seconds < 0) return "unknown";
+  if (!Number.isFinite(seconds) || seconds < 0) return t("apps.format.unknown");
   const total = Math.floor(seconds);
   const days = Math.floor(total / 86_400);
   const hours = Math.floor((total % 86_400) / 3600);
   const minutes = Math.floor((total % 3600) / 60);
-  if (days > 0) return hours === 0 ? `${days} d` : `${days} d ${hours} h`;
-  if (hours > 0) return minutes === 0 ? `${hours} h` : `${hours} h ${minutes} min`;
-  if (minutes > 0) return `${minutes} min`;
-  return "just now";
+  if (days > 0) {
+    return hours === 0 ? t("apps.uptime.days", { days }) : t("apps.uptime.daysHours", { days, hours });
+  }
+  if (hours > 0) {
+    return minutes === 0
+      ? t("apps.uptime.hours", { hours })
+      : t("apps.uptime.hoursMinutes", { hours, minutes });
+  }
+  if (minutes > 0) return t("apps.uptime.minutes", { minutes });
+  return t("apps.uptime.justNow");
 }

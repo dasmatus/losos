@@ -33,6 +33,7 @@
  */
 
 import { ApiError, dropToken, getToken } from "@/lib/api";
+import { t } from "@/lib/i18n";
 
 // ── Is this even possible in this browser, on this connection? ────────────
 
@@ -84,12 +85,11 @@ export async function probePasskeySupport(): Promise<PasskeySupport> {
   if (!window.isSecureContext) {
     return {
       kind: "unavailable",
-      reason:
-        "Passkeys need an encrypted connection. Go back a step, install this box's certificate, and reopen this page at its https address.",
+      reason: t("wizard.passkey.needsHttps"),
     };
   }
   if (typeof window.PublicKeyCredential === "undefined" || navigator.credentials === undefined) {
-    return { kind: "unavailable", reason: "This browser cannot create passkeys." };
+    return { kind: "unavailable", reason: t("wizard.passkey.noBrowserSupport") };
   }
 
   let platformAuthenticator = false;
@@ -210,7 +210,7 @@ async function authedJson<T>(path: string, body: unknown, signal?: AbortSignal):
   const response = await fetch(path, init);
   if (response.status === 401) {
     dropToken();
-    throw new ApiError(401, "unauthorized");
+    throw new ApiError(401, t("wizard.api.unauthorized"));
   }
   if (!response.ok) {
     let message = `HTTP ${response.status}`;
@@ -282,7 +282,7 @@ export async function createPasskey(options: CreatePasskeyOptions): Promise<Pass
   }
 
   if (credential === null || !isAttestation(credential)) {
-    return { kind: "failed", message: "This browser returned a passkey this box cannot read." };
+    return { kind: "failed", message: t("wizard.passkey.unreadable") };
   }
 
   const attestation = credential.response;
@@ -312,7 +312,7 @@ export async function createPasskey(options: CreatePasskeyOptions): Promise<Pass
      * sign-in and be refused. */
     return {
       kind: "failed",
-      message: `${describe(error)} Your device may have saved a passkey this box did not keep; remove it from your device's passkey list before trying again.`,
+      message: t("wizard.passkey.orphan", { error: describe(error) }),
     };
   }
 }
@@ -394,15 +394,14 @@ function fromCeremonyError(error: unknown): PasskeyOutcome {
     case "InvalidStateError":
       return {
         kind: "failed",
-        message: "This device already has a passkey for this box.",
+        message: t("wizard.passkey.duplicate"),
       };
     case "SecurityError":
       // The expected failure on an mDNS name, and the reason the password
       // half of step 2 is not optional.
       return {
         kind: "failed",
-        message:
-          "This browser would not accept this box's local name for a passkey. Use the password instead.",
+        message: t("wizard.passkey.securityError"),
       };
     default:
       return { kind: "failed", message: describe(error) };
@@ -411,5 +410,5 @@ function fromCeremonyError(error: unknown): PasskeyOutcome {
 
 function describe(error: unknown): string {
   if (error instanceof Error && error.message.length > 0) return error.message;
-  return "This box did not answer.";
+  return t("wizard.noAnswer");
 }
