@@ -16,16 +16,19 @@ Write it to a USB stick and boot the target machine.
 - **Turn Secure Boot off.** Nothing is signed. With Secure Boot on, the
   firmware refuses the stick (OVMF shows "Access Denied"; other firmware may
   skip it silently).
-- **UEFI or BIOS, both work.** The installer installs for whichever firmware
-  booted it: UEFI gets systemd-boot, legacy BIOS gets GRUB plus a 1 MiB BIOS
-  boot partition on the first disk. Force one with `losos-install --bios` or
-  `--uefi`. BIOS is mainly for testing in a VM.
+- **UEFI or BIOS, both work.** On the installer ISO, a terminal menu lets you
+  choose BIOS, UEFI, or autodetect (the firmware that booted the ISO). UEFI gets
+  systemd-boot; legacy BIOS gets GRUB plus a 1 MiB BIOS boot partition on the
+  first disk. `losos-install --bios` and `--uefi` select a mode without showing
+  the menu. BIOS is mainly for testing in a VM. This menu is only part of the
+  installer ISO; it is not shown on the installed appliance.
 - **Connect the network.** The installer clones the flake at run time.
 
 ## What the installer does
 
-It runs unattended. It finds every fixed disk, puts them in one LVM volume
-group, encrypts it with LUKS, formats `/persist` as ext4, and installs.
+After the firmware choice, the installer runs unattended. It finds every fixed
+disk, puts them in one LVM volume group, encrypts it with LUKS, formats
+`/persist` as ext4, and installs.
 
 - With a TPM, `/persist` unlocks from the TPM.
 - Without a TPM, it unlocks from a keyfile in the initrd. That keyfile sits on

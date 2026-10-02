@@ -15,7 +15,7 @@ use losos_ctl::facade::{call_backend, BackendFailure};
 use losos_ctl::installer_io::{options_from_env, run_install};
 use losos_ctl::model::Mode;
 use losos_ctl::overrides::validate_apply;
-use std::io::Read;
+use std::io::{IsTerminal, Read, Write};
 use std::path::PathBuf;
 use std::process::ExitCode;
 
@@ -128,6 +128,32 @@ struct InstallArgs {
     emit_target: Option<PathBuf>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum FirmwareMode {
+    Bios,
+    Uefi,
+    Autodetect,
+}
+
+impl FirmwareMode {
+    fn parse(choice: &str) -> Option<Self> {
+        match choice.trim() {
+            "1" => Some(Self::Bios),
+            "2" => Some(Self::Uefi),
+            "" | "3" => Some(Self::Autodetect),
+            _ => None,
+        }
+    }
+
+    fn bios_override(self) -> Option<bool> {
+        match self {
+            Self::Bios => Some(true),
+            Self::Uefi => Some(false),
+            Self::Autodetect => None,
+        }
+    }
+}
+
 /// Split `--drives a,b,c`, rejecting a list that is empty once trimmed.
 fn parse_drives(s: &str) -> Result<Vec<String>, String> {
     let ds: Vec<String> = s
@@ -147,6 +173,33 @@ fn parse_mode(s: &str) -> Result<Mode, String> {
     Mode::parse(s).ok_or_else(|| "mode must be 'local' or 'mesh'".to_string())
 }
 
+fn select_firmware(explicit: Option<bool>, interactive: bool) -> std::io::Result<Option<bool>> {
+    if let Some(bios) = explicit {
+        return Ok(Some(bios));
+    }
+    if !interactive {
+        return Ok(None);
+    }
+
+    loop {
+        println!("Choose the firmware mode for the installed system:");
+        println!("  1) BIOS");
+        println!("  2) UEFI");
+        println!("  3) Autodetect (use the firmware that booted this installer)");
+        print!("Selection [3]: ");
+        std::io::stdout().flush()?;
+
+        let mut choice = String::new();
+        if std::io::stdin().read_line(&mut choice)? == 0 {
+            return Ok(None);
+        }
+        match FirmwareMode::parse(&choice) {
+            Some(mode) => return Ok(mode.bios_override()),
+            None => println!("Choose 1, 2, or 3."),
+        }
+    }
+}
+
 fn main() -> ExitCode {
     let cli = Cli::parse();
 
@@ -156,13 +209,26 @@ fn main() -> ExitCode {
         // Line-buffering matters when stdout is a pipe: block buffering would
         // hold the installer's own progress lines until exit, after the output
         // of the subprocesses they announce.
+        let explicit_bios = match (args.bios, args.uefi) {
+            (true, _) => Some(true),
+            (_, true) => Some(false),
+            _ => None,
+        };
+        let on_installer_iso = std::env::var_os("LOSOS_INSTALLER_ISO").is_some();
+        let interactive = on_installer_iso
+            && std::io::stdin().is_terminal()
+            && std::io::stdout().is_terminal()
+            && args.emit_target.is_none();
+        let bios = match select_firmware(explicit_bios, interactive) {
+            Ok(bios) => bios,
+            Err(e) => {
+                eprintln!("losos-install: cannot read firmware selection: {e}");
+                return ExitCode::FAILURE;
+            }
+        };
         let opts = options_from_env(
             args.tpm,
-            match (args.bios, args.uefi) {
-                (true, _) => Some(true),
-                (_, true) => Some(false),
-                _ => None,
-            },
+            bios,
             args.drives.clone(),
             args.no_install,
             args.disko_script.clone(),
@@ -229,4 +295,22 @@ fn run(cli: Cli) -> Result<(), BackendFailure> {
     };
     println!("{json}");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::FirmwareMode;
+
+    #[test]
+    fn firmware_choices_resolve_as_expected() {
+        assert_eq!(FirmwareMode::parse("1"), Some(FirmwareMode::Bios));
+        assert_eq!(FirmwareMode::parse("2"), Some(FirmwareMode::Uefi));
+        assert_eq!(FirmwareMode::parse("3"), Some(FirmwareMode::Autodetect));
+        assert_eq!(FirmwareMode::parse(""), Some(FirmwareMode::Autodetect));
+        assert_eq!(FirmwareMode::parse("4"), None);
+
+        assert_eq!(FirmwareMode::Bios.bios_override(), Some(true));
+        assert_eq!(FirmwareMode::Uefi.bios_override(), Some(false));
+        assert_eq!(FirmwareMode::Autodetect.bios_override(), None);
+    }
 }
