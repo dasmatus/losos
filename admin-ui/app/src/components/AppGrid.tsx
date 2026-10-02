@@ -5,6 +5,7 @@ import { AppTile, AppTileSkeleton, staggerClass } from "@/components/AppTile";
 import { buttonVariants } from "@/components/ui/button";
 import type { AppGridModel } from "@/lib/apps";
 import { SETUP_ROUTE } from "@/lib/apps";
+import { useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
 
 /* The grid of app tiles.
@@ -29,12 +30,13 @@ export interface AppGridProps {
 }
 
 export function AppGrid({ model, setupRoute = SETUP_ROUTE, className }: AppGridProps) {
+  const t = useT();
   const measuring = model.pendingCount > 0;
 
   return (
     <div className={cn("flex flex-col gap-4", className)}>
       <ul
-        aria-label="Apps on this box"
+        aria-label={t("home.grid.label")}
         aria-busy={measuring}
         className={cn(
           "grid list-none grid-cols-[repeat(auto-fill,minmax(78px,1fr))]",
@@ -55,7 +57,7 @@ export function AppGrid({ model, setupRoute = SETUP_ROUTE, className }: AppGridP
 
       {measuring && (
         <p className="animate-fade-in text-[12.5px] text-faint" role="status">
-          Looking for the apps on this box.
+          {t("home.grid.measuring")}
         </p>
       )}
 
@@ -76,6 +78,7 @@ export function AppGrid({ model, setupRoute = SETUP_ROUTE, className }: AppGridP
  * measure how far setup got, and inventing a step number would be worse than
  * saying nothing. */
 function SetupPrompt({ setupRoute }: { setupRoute: string }) {
+  const t = useT();
   return (
     <div
       className={cn(
@@ -96,11 +99,8 @@ function SetupPrompt({ setupRoute }: { setupRoute: string }) {
       </span>
 
       <div className="min-w-0 flex-1">
-        <p className="text-[13.5px] font-medium text-ink">This box is not set up yet</p>
-        <p className="text-[12.5px] text-muted">
-          Your files, photos, calendar and the rest appear here once you have finished. It takes a
-          few minutes and you only do it once.
-        </p>
+        <p className="text-[13.5px] font-medium text-ink">{t("home.setup.title")}</p>
+        <p className="text-[12.5px] text-muted">{t("home.setup.body")}</p>
       </div>
 
       {/* A link, not a button: it navigates. The button primitive renders a
@@ -110,7 +110,7 @@ function SetupPrompt({ setupRoute }: { setupRoute: string }) {
         to={setupRoute}
         className={cn(buttonVariants({ variant: "primary", size: "sm" }), "shrink-0 no-underline")}
       >
-        Set up this box
+        {t("home.setup.action")}
       </Link>
     </div>
   );

@@ -14,6 +14,7 @@ import {
   Share08Icon,
   Timer02Icon,
 } from "@hugeicons/core-free-icons";
+import type { MessageKey } from "@/lib/i18n";
 import type { BuiltinId } from "@/lib/widgets";
 import { appsWidget, diskWidget, meshWidget, rebuildsWidget, uptimeWidget } from "./builtin";
 import type { WidgetFn, WidgetKind } from "./types";
@@ -24,8 +25,11 @@ export type WidgetSpan = "full" | "half";
 
 export interface CatalogueEntry {
   readonly id: BuiltinId;
-  readonly name: string;
-  readonly blurb: string;
+  /** Message keys, not text: this table is built at import time, and text
+   *  read then would stay in whatever language was on screen at that moment.
+   *  Callers translate with t() while rendering. */
+  readonly name: MessageKey;
+  readonly blurb: MessageKey;
   readonly icon: IconSvgElement;
   readonly run: WidgetFn;
   readonly span: WidgetSpan;
@@ -48,8 +52,8 @@ export interface CatalogueEntry {
 export const CATALOGUE: readonly CatalogueEntry[] = [
   {
     id: "uptime",
-    name: "Answering",
-    blurb: "A year of days, one square each, shaded by how much of the day this box answered.",
+    name: "widgets.catalogue.uptime.name",
+    blurb: "widgets.catalogue.uptime.blurb",
     icon: Calendar03Icon,
     run: uptimeWidget,
     span: "full",
@@ -57,8 +61,8 @@ export const CATALOGUE: readonly CatalogueEntry[] = [
   },
   {
     id: "disk",
-    name: "Room",
-    blurb: "How much of the disk is in use, and how much is held back for the box to grow into.",
+    name: "widgets.catalogue.disk.name",
+    blurb: "widgets.catalogue.disk.blurb",
     icon: HardDriveIcon,
     run: diskWidget,
     span: "half",
@@ -66,8 +70,8 @@ export const CATALOGUE: readonly CatalogueEntry[] = [
   },
   {
     id: "mesh",
-    name: "Sharing",
-    blurb: "The hours a day this box lends its spare time to other boxes, against the hours it keeps.",
+    name: "widgets.catalogue.mesh.name",
+    blurb: "widgets.catalogue.mesh.blurb",
     icon: Share08Icon,
     run: meshWidget,
     span: "half",
@@ -75,8 +79,8 @@ export const CATALOGUE: readonly CatalogueEntry[] = [
   },
   {
     id: "apps",
-    name: "Apps",
-    blurb: "Which apps this box serves, and whether each one answered just now.",
+    name: "widgets.catalogue.apps.name",
+    blurb: "widgets.catalogue.apps.blurb",
     icon: LayoutGridIcon,
     run: appsWidget,
     span: "half",
@@ -84,8 +88,8 @@ export const CATALOGUE: readonly CatalogueEntry[] = [
   },
   {
     id: "rebuilds",
-    name: "Changes",
-    blurb: "Settings changes this box has applied, newest first, and whether each one took.",
+    name: "widgets.catalogue.rebuilds.name",
+    blurb: "widgets.catalogue.rebuilds.blurb",
     icon: Timer02Icon,
     run: rebuildsWidget,
     span: "half",

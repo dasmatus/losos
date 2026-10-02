@@ -34,6 +34,7 @@ import {
   type StatusResponse,
 } from "@/lib/api";
 import { CODE_BASE, FILES_BASE, recallSetup } from "@/lib/apps";
+import { getLocale, t } from "@/lib/i18n";
 import type {
   AppInfo,
   AppsMetric,
@@ -517,7 +518,7 @@ async function appsMetric(settings: SettingsResponse): Promise<AppsMetric> {
   const apps: AppInfo[] = [
     {
       id: "files",
-      name: "Files",
+      name: t("widgets.metrics.files"),
       path: FILES_BASE,
       reachable: filesUp,
       onMesh: settings.sharingMyStorage,
@@ -527,7 +528,7 @@ async function appsMetric(settings: SettingsResponse): Promise<AppsMetric> {
   if (codeOn) {
     apps.push({
       id: "code",
-      name: "Code",
+      name: t("widgets.metrics.code"),
       path: `${CODE_BASE}/`,
       reachable: codeUp,
       onMesh: false,
@@ -613,8 +614,9 @@ export async function loadMetric(name: string, options: LoadOptions = {}): Promi
       return meshMetric(await cachedSettings(options.signal, fresh));
 
     case "apps.list":
+      // Keyed by language: the app names in it are display text.
       return cached(
-        "apps",
+        `apps:${getLocale()}`,
         APPS_TTL_MS,
         async () => appsMetric(await cachedSettings(options.signal, fresh)),
         fresh,

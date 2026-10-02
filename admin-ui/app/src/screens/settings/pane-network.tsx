@@ -1,6 +1,7 @@
 import * as React from "react";
 import { FieldError, Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
+import { useT } from "@/lib/i18n-react";
 import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText, RowValue } from "./rows";
 import type { SettingsForm } from "./use-settings-form";
 
@@ -17,6 +18,7 @@ import type { SettingsForm } from "./use-settings-form";
  */
 
 export function NetworkPane({ form }: { form: SettingsForm }) {
+  const t = useT();
   const nameId = React.useId();
   const nameErrorId = React.useId();
   const httpsId = React.useId();
@@ -33,10 +35,10 @@ export function NetworkPane({ form }: { form: SettingsForm }) {
   return (
     <>
       <PaneSection>
-        <GroupTitle>Name</GroupTitle>
+        <GroupTitle>{t("panes.network.name")}</GroupTitle>
         <Group>
           <Row>
-            <RowText htmlFor={nameId} title="This box is called" />
+            <RowText htmlFor={nameId} title={t("panes.network.called")} />
             <Input
               id={nameId}
               value={name}
@@ -53,7 +55,7 @@ export function NetworkPane({ form }: { form: SettingsForm }) {
             />
           </Row>
           <Row last>
-            <RowText title="Reached on your home network at" />
+            <RowText title={t("panes.network.reachedAt")} />
             <RowValue>{name.length > 0 ? `${name}.local` : "—"}</RowValue>
           </Row>
         </Group>
@@ -62,22 +64,17 @@ export function NetworkPane({ form }: { form: SettingsForm }) {
           {nameProblem}
         </FieldError>
 
-        <GroupCaption>
-          Letters, digits and hyphens, starting and ending with a letter or a digit, up to 63
-          characters. Everything about this box hangs off the name: change it and the address you
-          use to reach it changes with it, along with the addresses the apps hand out. There is no
-          other way into this box, so a name it cannot answer to is a box you cannot reach.
-        </GroupCaption>
+        <GroupCaption>{t("panes.network.nameCaption")}</GroupCaption>
       </PaneSection>
 
       <PaneSection>
-        <GroupTitle>Reaching it</GroupTitle>
+        <GroupTitle>{t("panes.network.reaching")}</GroupTitle>
         <Group>
           <Row>
             <RowText
               htmlFor={httpsId}
-              title="Encrypt the connection"
-              detail="Your browser will want a certificate it trusts."
+              title={t("panes.network.encrypt")}
+              detail={t("panes.network.encryptDetail")}
             />
             <Switch
               id={httpsId}
@@ -87,7 +84,7 @@ export function NetworkPane({ form }: { form: SettingsForm }) {
             />
           </Row>
           <Row>
-            <RowText htmlFor={proxyId} title="Reachable from outside your home" />
+            <RowText htmlFor={proxyId} title={t("panes.network.outside")} />
             <Switch
               id={proxyId}
               checked={draft?.proxyEnable ?? false}
@@ -96,7 +93,7 @@ export function NetworkPane({ form }: { form: SettingsForm }) {
             />
           </Row>
           <Row last>
-            <RowText htmlFor={portId} title="Port the files app listens on" />
+            <RowText htmlFor={portId} title={t("panes.network.port")} />
             <Input
               id={portId}
               type="number"
@@ -118,12 +115,7 @@ export function NetworkPane({ form }: { form: SettingsForm }) {
           {portProblem}
         </FieldError>
 
-        <GroupCaption>
-          With &ldquo;reachable from outside&rdquo; on, this box opens a way out to a small relay so
-          you can get at it from anywhere. Nothing on your router needs opening. The port is an
-          inside detail. The files app answers on it behind the front door, and there is no reason
-          to change it unless something else on this box already wants that number.
-        </GroupCaption>
+        <GroupCaption>{t("panes.network.reachCaption")}</GroupCaption>
       </PaneSection>
     </>
   );
