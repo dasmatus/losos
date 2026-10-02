@@ -998,6 +998,7 @@ dependencies = [
  "chrono",
  "clap",
  "predicates",
+ "rustix",
  "serde",
  "serde_json",
  "thiserror",
