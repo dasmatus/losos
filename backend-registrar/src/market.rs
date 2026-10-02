@@ -223,7 +223,8 @@ pub struct Listing {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum OrderStatus {
-    /// A Checkout Session exists; capacity is reserved.
+    /// A Checkout Session exists; capacity remains reserved until Stripe sends
+    /// a terminal event.
     Pending,
     /// Stripe confirmed payment. This is the entitlement.
     Paid,
@@ -1380,7 +1381,7 @@ mod tests {
     }
 
     #[test]
-    fn capacity_counts_paid_and_live_pending_only() {
+    fn capacity_counts_paid_and_pending_until_terminal_event() {
         let mut state = MarketState::default();
         let now = 1_000_000;
         for o in [
@@ -1479,6 +1480,7 @@ mod tests {
         let paid = order("d", OrderStatus::Paid, 1, 0);
         state.orders.insert("p".into(), pending);
         state.orders.insert("d".into(), paid);
+        assert_eq!(reserved(&state, "lst_1", CHECKOUT_TTL_SECS + 900), 2);
         let event = |id: &str| {
             serde_json::json!({
                 "type": "checkout.session.expired",
@@ -1489,6 +1491,7 @@ mod tests {
         assert!(!apply_event(&mut state, &event("d"), 1));
         assert_eq!(state.orders["p"].status, OrderStatus::Expired);
         assert_eq!(state.orders["d"].status, OrderStatus::Paid);
+        assert_eq!(reserved(&state, "lst_1", CHECKOUT_TTL_SECS + 900), 1);
     }
 
     #[test]

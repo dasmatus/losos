@@ -463,6 +463,7 @@ mod tests {
             "https://example.com/pay",
             "https://checkout.stripe.com.evil.example/x",
             "https://checkout.stripe.com@evil.example/x",
+            "https://user@checkout.stripe.com/x",
             "https://evil.example/https://checkout.stripe.com/",
             "https://checkout.stripe.com:8443/x",
             "https://CHECKOUT.stripe.com/x",

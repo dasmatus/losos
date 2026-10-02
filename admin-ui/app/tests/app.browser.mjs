@@ -50,6 +50,7 @@ async function open({
   locale = 'en-US',
   market = { available: false },
   checkoutUrl = 'https://checkout.stripe.com/c/pay/cs_test_1',
+  onboardUrl = 'https://connect.stripe.com/setup/e/acct_test/abc',
 } = {}) {
   const page = await browser.newPage({ viewport, locale });
   const errors = [];
@@ -71,20 +72,26 @@ async function open({
       ? json(route, 200, { state: 'idle', progress: 0, message: '' })
       : json(route, 401, { error: 'unauthorized' }),
   );
-
+  // The market relay: `market` is GET /api/market's document, every action is
+  // recorded, and each answers the way lososd does on success.
   const marketPosts = [];
   await page.route('**/api/market', (route) =>
     authed(route) ? json(route, 200, market) : json(route, 401, { error: 'unauthorized' }),
   );
-  await page.route('**/api/market/*', (route) => {
+  await page.route('**/api/market/**', (route) => {
     if (!authed(route)) return json(route, 401, { error: 'unauthorized' });
-    marketPosts.push([new URL(route.request().url()).pathname, route.request().postDataJSON()]);
-    return json(route, 201, { available: true, checkout_url: checkoutUrl });
+    const path = new URL(route.request().url()).pathname;
+    marketPosts.push([path, route.request().postDataJSON()]);
+    if (path === '/api/market/onboard') return json(route, 200, { available: true, ready: false, url: onboardUrl });
+    if (path === '/api/market/orders') return json(route, 201, { available: true, checkout_url: checkoutUrl });
+    return json(route, 201, { available: true });
   });
-  // Stripe's own page, so a tab sent there has something to land on.
-  await page.context().route('https://checkout.stripe.com/**', (route) =>
-    route.fulfill({ status: 200, contentType: 'text/html', body: '<title>Stripe Checkout</title>' }),
-  );
+  // Stripe's own pages, so a tab sent there has something to land on.
+  for (const host of ['checkout.stripe.com', 'connect.stripe.com']) {
+    await page.context().route(`https://${host}/**`, (route) =>
+      route.fulfill({ status: 200, contentType: 'text/html', body: '<title>Stripe</title>' }),
+    );
+  }
 
   if (stored) {
     await page.addInitScript((t) => window.sessionStorage.setItem('losos-token', t), TOKEN);
@@ -273,6 +280,30 @@ await check('a payment page that is not Stripe is never opened', async () => {
   await placeholder.waitForEvent('close', { timeout: 2000 }).catch(() => {});
   assert.ok(placeholder.isClosed(), 'the placeholder tab was left open');
   assert.equal(marketPosts.length, 1);
+  await page.close();
+});
+
+await check('setting up payouts opens Stripe onboarding in a tab with no opener', async () => {
+  const unready = { ...MARKET, account: { ...MARKET.account, seller_onboarded: false, seller_ready: false } };
+  const { page, errors, marketPosts } = await open({ path: '/settings/market', stored: true, market: unready });
+  const tab = page.waitForEvent('popup');
+  await page.getByRole('button', { name: 'Set up payouts' }).click();
+  const onboarding = await tab;
+  await onboarding.waitForURL('https://connect.stripe.com/setup/e/acct_test/abc');
+  assert.equal(await onboarding.evaluate(() => window.opener), null);
+  assert.deepEqual(marketPosts, [['/api/market/onboard', {}]]);
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+await check('a valid listing is sent in minor units', async () => {
+  const { page, marketPosts } = await open({ path: '/settings/market', stored: true, market: MARKET });
+  await page.getByLabel('Price per unit (EUR)').fill('1,25');
+  await page.getByLabel('Capacity (units)').fill('2');
+  const sent = page.waitForRequest((request) => request.url().endsWith('/api/market/listings'));
+  await page.getByRole('button', { name: 'Offer for sale' }).click();
+  await sent;
+  assert.deepEqual(marketPosts, [['/api/market/listings', { kind: 'storage', unit_price: 125, capacity: 2 }]]);
   await page.close();
 });
 

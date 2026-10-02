@@ -16,6 +16,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use axum::http::{Method, StatusCode, Uri};
+use axum::response::IntoResponse;
 use axum::Router;
 use losos_registrar::opts::ServeOpts;
 use tokio::sync::oneshot;
@@ -591,23 +592,28 @@ struct StubState {
 impl KubeStub {
     /// A stub that answers every request with `status`.
     pub async fn start(status: u16) -> Self {
-        Self::start_inner(status, None).await
+        Self::start_inner(status, None, "Bound").await
+    }
+
+    /// A stub whose claims report `phase` until told otherwise.
+    pub async fn start_with_claim_phase(status: u16, phase: &str) -> Self {
+        Self::start_inner(status, None, phase).await
     }
 
     /// A stub that also asserts the `Authorization` header, so a join that
     /// forgot the ServiceAccount token fails loudly instead of passing because
     /// the stub did not care.
     pub async fn expecting_bearer(status: u16, token: &str) -> Self {
-        Self::start_inner(status, Some(token.to_string())).await
+        Self::start_inner(status, Some(token.to_string()), "Bound").await
     }
 
-    async fn start_inner(status: u16, expect_bearer: Option<String>) -> Self {
+    async fn start_inner(status: u16, expect_bearer: Option<String>, phase: &str) -> Self {
         let state = StubState {
             seen: Arc::new(Mutex::new(Vec::new())),
             bodies: Arc::new(Mutex::new(Vec::new())),
             status: StatusCode::from_u16(status).expect("a valid status code"),
             expect_bearer,
-            claim_phase: Arc::new(Mutex::new("Bound".to_string())),
+            claim_phase: Arc::new(Mutex::new(phase.to_string())),
         };
         let app = Router::new()
             .fallback(stub_handler)
@@ -677,7 +683,6 @@ async fn stub_handler(
     uri: Uri,
     body: axum::body::Bytes,
 ) -> axum::response::Response {
-    use axum::response::IntoResponse;
     state
         .seen
         .lock()

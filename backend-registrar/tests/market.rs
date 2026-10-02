@@ -613,6 +613,30 @@ async fn a_purchase_is_a_destination_charge_with_the_four_percent_cut() {
 }
 
 #[tokio::test]
+async fn a_revoked_seller_market_permission_blocks_new_orders() {
+    let stripe = StripeStub::start().await;
+    let edge = Edge::start_with_market("market-revoked-seller", &tenants(), &stripe.base).await;
+    ready_seller(&edge).await;
+    let (status, body) = list(&edge, "storage", 100, 10).await;
+    assert_eq!(status, 201, "{body}");
+    let listing_id = parse(&body)["listing_id"]
+        .as_str()
+        .expect("listing id")
+        .to_string();
+
+    edge.rewrite_tenants(&[
+        TenantSpec::new("seller-box", "seller.example", GOOD_TOKEN),
+        TenantSpec::new("buyer-box", "buyer.example", OTHER_TOKEN).with_market(),
+        TenantSpec::new("plain-box", "plain.example", THIRD_TOKEN),
+    ]);
+    assert_eq!(order(&edge, &listing_id, 1).await.0, 404);
+    assert!(stripe.calls("POST", "/v1/checkout/sessions").is_empty());
+
+    edge.shutdown().await;
+    stripe.shutdown().await;
+}
+
+#[tokio::test]
 async fn orders_cannot_oversell_or_buy_from_oneself() {
     let stripe = StripeStub::start().await;
     let edge = Edge::start_with_market("market-oversell", &tenants(), &stripe.base).await;
@@ -940,6 +964,40 @@ async fn a_paid_storage_order_becomes_a_claim_in_the_buyers_namespace() {
 }
 
 #[tokio::test]
+async fn a_storage_order_is_not_provisioned_until_its_claim_is_bound() {
+    let stripe = StripeStub::start().await;
+    let kube = KubeStub::start_with_claim_phase(409, "Pending").await;
+    let edge = Edge::start_with_market_and_mesh(
+        "market-fulfil-pending",
+        &tenants(),
+        &stripe.base,
+        MeshFixture::enabled(&kube.base),
+    )
+    .await;
+    buy_paid(&edge, "storage", 2).await;
+
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    let account = buyer_account(&edge).await;
+    assert!(account["purchases"][0]["volume"].is_null());
+    assert!(
+        kube.seen()
+            .iter()
+            .filter(|path| path.starts_with("GET ") && path.contains("/persistentvolumeclaims/"))
+            .count()
+            >= 2
+    );
+
+    kube.set_claim_phase("Bound");
+    let account = wait_for_volume(&edge).await;
+    assert_eq!(account["purchases"][0]["status"], "paid");
+    assert_eq!(account["entitlements"]["storage_gib"], 2);
+
+    edge.shutdown().await;
+    kube.shutdown().await;
+    stripe.shutdown().await;
+}
+
+#[tokio::test]
 async fn a_conflict_from_the_apiserver_counts_as_already_provisioned() {
     let stripe = StripeStub::start().await;
     let kube = KubeStub::start(409).await;
@@ -992,7 +1050,7 @@ async fn a_claim_that_is_not_bound_yet_is_not_reported_as_a_volume() {
     let kube = KubeStub::start(201).await;
     kube.set_claim_phase("Pending");
     let edge = Edge::start_with_market_and_mesh(
-        "market-fulfil-pending",
+        "market-fulfil-pending-201",
         &tenants(),
         &stripe.base,
         MeshFixture::enabled(&kube.base),
