@@ -69,10 +69,12 @@ pkgs.testers.nixosTest {
       losos.tpm.enable = false;
       losos.bios = true;
       boot.initrd.luks.devices = lib.mkForce { };
-      # boot.nix's no-TPM path ships the keyfile as an initrd secret, which a
-      # directly booted test VM cannot carry ("values must be unquoted paths").
-      # Nothing here unlocks LUKS at boot, so drop both halves.
-      boot.initrd.secrets = lib.mkForce { };
+      # boot.nix's no-TPM path ships the keyfile as an initrd secret. A
+      # directly booted test VM only accepts a store path string there
+      # ("values must be unquoted paths"), not a derivation.
+      boot.initrd.secrets = lib.mkForce {
+        "/crypto_keyfile.bin" = "${pkgs.writeText "bios-test-key" "test-only"}";
+      };
       fileSystems."/persist" = lib.mkForce {
         device = "tmpfs";
         fsType = "tmpfs";
