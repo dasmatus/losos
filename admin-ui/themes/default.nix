@@ -164,17 +164,6 @@ in
     # theme-*.css from that directory on start, so nothing needs to enumerate
     # the themes in app.ini.
     customDir = "${package}/forgejo";
-    files = forgejoFiles;
-    # The directories `files` lives in, parents first, for native mode's
-    # tmpfiles rules.
-    dirs = [
-      "public"
-      "public/assets"
-      "public/assets/css"
-      "public/assets/img"
-      "templates"
-      "templates/custom"
-    ];
 
     # app.ini, in services.forgejo.settings' shape (the image renders it to
     # INI). Merged under each mode's own settings.
