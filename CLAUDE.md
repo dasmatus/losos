@@ -9,9 +9,11 @@ boot, with all durable state bind-mounted back from an encrypted `/persist`
 via `impermanence`. It runs Nextcloud (for the `notshared` user) and a
 contributed mesh-storage domain (for the `shared` user) on repurposed mini-PCs,
 with **no SSH and no shell logins** — a set-and-forget box reached only through
-service web UIs and a dedicated admin endpoint. See `README.md` for the
-install/mesh/auto-upgrade walkthrough; this file covers what the README doesn't: build/dev commands and
-the cross-file architecture.
+service web UIs and a dedicated admin endpoint. User documentation lives in
+`wiki/`, which `.github/workflows/wiki.yml` publishes to the GitHub wiki on
+push to `main` (edit `wiki/`, not the web wiki — it is overwritten). The
+README is a short overview that links there. This file covers build/dev
+commands and the cross-file architecture.
 
 ## Build & develop
 

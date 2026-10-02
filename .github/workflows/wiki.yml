@@ -1,0 +1,46 @@
+name: wiki
+
+# Publishes wiki/ to the GitHub wiki. wiki/ is the source of truth: edits made
+# in the web wiki editor are overwritten on the next push here.
+#
+# The wiki repository only exists after its first page has been created in the
+# web UI; until then the clone below fails.
+
+on:
+  push:
+    branches: [main]
+    paths: ["wiki/**", ".github/workflows/wiki.yml"]
+  workflow_dispatch:
+
+concurrency:
+  group: wiki
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: push wiki/ to the wiki repository
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          auth="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
+          git -c http.extraheader="$auth" clone --depth 1 \
+            "https://github.com/${GITHUB_REPOSITORY}.wiki.git" "$RUNNER_TEMP/wiki"
+          rsync -a --delete --exclude .git wiki/ "$RUNNER_TEMP/wiki/"
+          cd "$RUNNER_TEMP/wiki"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "wiki already up to date"
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Sync from ${GITHUB_REPOSITORY}@${GITHUB_SHA::7}"
+          git -c http.extraheader="$auth" push origin HEAD
