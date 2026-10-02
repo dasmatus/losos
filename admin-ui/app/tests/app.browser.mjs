@@ -43,8 +43,13 @@ const json = (route, status, body) =>
 
 /* A claimed box whose API refuses anything without the right Bearer token.
  * `stored` pre-seeds sessionStorage, i.e. a returning owner in the same tab. */
-async function open({ path = '/', stored = false, viewport = { width: 1280, height: 900 } } = {}) {
-  const page = await browser.newPage({ viewport });
+async function open({
+  path = '/',
+  stored = false,
+  viewport = { width: 1280, height: 900 },
+  locale = 'en-US',
+} = {}) {
+  const page = await browser.newPage({ viewport, locale });
   const errors = [];
   page.on('pageerror', (e) => errors.push(String(e)));
 
@@ -168,6 +173,36 @@ await check('the theme toggle stamps the choice on <html> and it survives a relo
   assert.equal(reloaded, after, 'the theme was lost on reload (theme-boot.js did not stamp it)');
   await page.close();
 });
+
+await check('a Slovak browser gets Slovak, and the picker switches to German for good', async () => {
+  const { page, errors } = await open({ stored: true, locale: 'sk-SK' });
+  await page.getByRole('navigation', { name: 'Sekcie', exact: true }).getByText('Prehľad').waitFor();
+  assert.equal(await page.evaluate(() => document.documentElement.lang), 'sk');
+  await page.getByLabel('Jazyk').selectOption('de');
+  await page.getByRole('navigation', { name: 'Bereiche', exact: true }).getByText('Übersicht').waitFor();
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.getByRole('navigation', { name: 'Bereiche', exact: true }).getByText('Übersicht').waitFor();
+  assert.equal(await page.evaluate(() => document.documentElement.lang), 'de');
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+await check('a browser in a language we do not carry falls back to English', async () => {
+  const { page } = await open({ stored: true, locale: 'fr-FR' });
+  await nav(page).getByText('Overview').waitFor();
+  await page.close();
+});
+
+for (const locale of ['sk-SK', 'de-DE']) {
+  await check(`every section renders in ${locale} without errors`, async () => {
+    for (const path of ['/', '/apps', '/storage', '/mesh', '/settings/network', '/settings/hardware', '/settings/security', '/settings/about', '/settings/reset']) {
+      const { page, errors } = await open({ path, stored: true, locale });
+      await page.locator('main').waitFor();
+      assert.deepEqual(errors, [], `${path} threw in ${locale}`);
+      await page.close();
+    }
+  });
+}
 
 await check('a phone-width viewport does not scroll the page sideways', async () => {
   const { page } = await open({ stored: true, viewport: { width: 375, height: 800 } });

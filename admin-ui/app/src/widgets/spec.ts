@@ -28,6 +28,7 @@
  * and arrives with the next system update, like the rest of the admin page.
  */
 
+import { t, type MessageKey } from "@/lib/i18n";
 import { evaluate, ExprError, parseExpr, toNumberOrNull, toText, type Node } from "./expr";
 import { fmt, stat } from "./format";
 import {
@@ -96,30 +97,48 @@ function isWidgetKind(value: unknown): value is WidgetKind {
 
 const MAX_TEXT = 80;
 
-function text(record: Record<string, unknown>, key: string, label: string): string | undefined {
+/* Field names in the messages below are message keys, translated only when a
+ * message is actually thrown — so the sentence is in the language on screen
+ * at the moment the owner reads it. */
+function text(
+  record: Record<string, unknown>,
+  key: string,
+  labelKey: MessageKey,
+): string | undefined {
   const value = record[key];
   if (value === undefined || value === null) return undefined;
-  if (typeof value !== "string") throw new WidgetError(`${label} has to be text.`);
+  if (typeof value !== "string") {
+    throw new WidgetError(t("widgets.spec.mustBeText", { label: t(labelKey) }));
+  }
   const trimmed = value.trim();
   if (trimmed.length === 0) return undefined;
-  if (trimmed.length > MAX_TEXT) throw new WidgetError(`${label} is too long.`);
+  if (trimmed.length > MAX_TEXT) {
+    throw new WidgetError(t("widgets.spec.tooLong", { label: t(labelKey) }));
+  }
   return trimmed;
 }
 
 function expression(
   record: Record<string, unknown>,
   key: string,
-  label: string,
+  labelKey: MessageKey,
 ): string | undefined {
   const value = record[key];
   if (value === undefined || value === null) return undefined;
-  if (typeof value !== "string") throw new WidgetError(`${label} has to be text.`);
+  if (typeof value !== "string") {
+    throw new WidgetError(t("widgets.spec.mustBeText", { label: t(labelKey) }));
+  }
   const trimmed = value.trim();
   if (trimmed.length === 0) return undefined;
   try {
     parseExpr(trimmed);
   } catch (error) {
-    throw new WidgetError(`${label}: ${error instanceof ExprError ? error.message : "not valid"}`);
+    throw new WidgetError(
+      t("widgets.spec.fieldProblem", {
+        label: t(labelKey),
+        problem: error instanceof ExprError ? error.message : t("widgets.spec.notValid"),
+      }),
+    );
   }
   return trimmed;
 }
@@ -136,26 +155,26 @@ function counted(record: Record<string, unknown>, key: string, high: number): nu
  * localStorage, and on the paste-JSON path — three doors, one validator. */
 export function parseSpec(input: unknown): WidgetSpec {
   if (typeof input !== "object" || input === null) {
-    throw new WidgetError("A widget has to be a record of settings.");
+    throw new WidgetError(t("widgets.spec.notRecord"));
   }
   const record = input as Record<string, unknown>;
 
-  const title = text(record, "title", "The title");
-  if (title === undefined) throw new WidgetError("Give the widget a title.");
+  const title = text(record, "title", "widgets.spec.label.title");
+  if (title === undefined) throw new WidgetError(t("widgets.spec.needTitle"));
 
   const type = record["type"];
   if (!isWidgetKind(type)) {
-    throw new WidgetError(`Pick one of: ${WIDGET_KINDS.join(", ")}.`);
+    throw new WidgetError(t("widgets.spec.pickKind", { kinds: WIDGET_KINDS.join(", ") }));
   }
 
   const metric = record["metric"];
   if (!isMetricName(metric)) {
-    throw new WidgetError("Pick a reading this box actually publishes.");
+    throw new WidgetError(t("widgets.spec.pickMetric"));
   }
 
   const format = record["format"];
   if (format !== undefined && format !== null && !isFormatName(format)) {
-    throw new WidgetError("That is not a way of formatting a number.");
+    throw new WidgetError(t("widgets.spec.badFormat"));
   }
 
   const spec: Mutable<WidgetSpec> = { version: 1, title, type, metric };
@@ -165,44 +184,52 @@ export function parseSpec(input: unknown): WidgetSpec {
   const limit = counted(record, "limit", 200);
   if (limit !== undefined) spec.limit = limit;
 
-  assign(spec, "foot", text(record, "foot", "The note"));
-  assign(spec, "caption", text(record, "caption", "The caption"));
+  assign(spec, "foot", text(record, "foot", "widgets.spec.label.foot"));
+  assign(spec, "caption", text(record, "caption", "widgets.spec.label.caption"));
   if (typeof format === "string") spec.format = format as FormatName;
 
   switch (type) {
     case "number": {
-      const value = expression(record, "value", "The figure");
-      if (value === undefined) throw new WidgetError("Say which figure to show.");
+      const value = expression(record, "value", "widgets.spec.label.value");
+      if (value === undefined) throw new WidgetError(t("widgets.spec.needValue"));
       spec.value = value;
       break;
     }
     case "bar": {
-      const value = expression(record, "value", "The figure");
-      const max = expression(record, "max", "The full extent");
-      if (value === undefined) throw new WidgetError("Say which figure to show.");
-      if (max === undefined) throw new WidgetError("Say what the bar is full at.");
+      const value = expression(record, "value", "widgets.spec.label.value");
+      const max = expression(record, "max", "widgets.spec.label.max");
+      if (value === undefined) throw new WidgetError(t("widgets.spec.needValue"));
+      if (max === undefined) throw new WidgetError(t("widgets.spec.needMax"));
       spec.value = value;
       spec.max = max;
-      assign(spec, "reserve", expression(record, "reserve", "The held-back part"));
-      assign(spec, "fillLabel", text(record, "fillLabel", "The fill label"));
-      assign(spec, "reserveLabel", text(record, "reserveLabel", "The held-back label"));
+      assign(spec, "reserve", expression(record, "reserve", "widgets.spec.label.reserve"));
+      assign(spec, "fillLabel", text(record, "fillLabel", "widgets.spec.label.fillLabel"));
+      assign(
+        spec,
+        "reserveLabel",
+        text(record, "reserveLabel", "widgets.spec.label.reserveLabel"),
+      );
       break;
     }
     case "list": {
-      const items = expression(record, "items", "The rows");
-      if (items === undefined) throw new WidgetError("Say which rows to list.");
+      const items = expression(record, "items", "widgets.spec.label.items");
+      if (items === undefined) throw new WidgetError(t("widgets.spec.needItems"));
       spec.items = items;
-      assign(spec, "itemLabel", expression(record, "itemLabel", "The row label"));
-      assign(spec, "itemDetail", expression(record, "itemDetail", "The row detail"));
-      assign(spec, "empty", text(record, "empty", "The empty message"));
+      assign(spec, "itemLabel", expression(record, "itemLabel", "widgets.spec.label.itemLabel"));
+      assign(
+        spec,
+        "itemDetail",
+        expression(record, "itemDetail", "widgets.spec.label.itemDetail"),
+      );
+      assign(spec, "empty", text(record, "empty", "widgets.spec.label.empty"));
       break;
     }
     case "heatmap": {
-      const daysExpr = expression(record, "daysExpr", "The days");
-      if (daysExpr === undefined) throw new WidgetError("Say which days to draw.");
+      const daysExpr = expression(record, "daysExpr", "widgets.spec.label.days");
+      if (daysExpr === undefined) throw new WidgetError(t("widgets.spec.needDays"));
       spec.daysExpr = daysExpr;
-      assign(spec, "lowLabel", text(record, "lowLabel", "The low label"));
-      assign(spec, "highLabel", text(record, "highLabel", "The high label"));
+      assign(spec, "lowLabel", text(record, "lowLabel", "widgets.spec.label.lowLabel"));
+      assign(spec, "highLabel", text(record, "highLabel", "widgets.spec.label.highLabel"));
       break;
     }
   }
@@ -264,7 +291,7 @@ function evalNode(node: Node | undefined, env: Record<string, unknown>): unknown
   try {
     return evaluate(node, env, { callable: CALLABLE });
   } catch (error) {
-    throw new WidgetError(error instanceof ExprError ? error.message : "That did not work out.");
+    throw new WidgetError(error instanceof ExprError ? error.message : t("widgets.spec.didNotWork"));
   }
 }
 
@@ -313,7 +340,7 @@ export function compileSpec(spec: WidgetSpec): WidgetFn {
       case "list": {
         const raw = evalNode(compiled.items, env);
         if (!Array.isArray(raw)) {
-          throw new WidgetError("The rows have to come out as a list.");
+          throw new WidgetError(t("widgets.spec.rowsNotList"));
         }
         const items: ListItem[] = [];
         for (const element of raw.slice(0, MAX_ROWS)) {
@@ -342,7 +369,7 @@ export function compileSpec(spec: WidgetSpec): WidgetFn {
       case "heatmap": {
         const raw = evalNode(compiled.days, env);
         if (!Array.isArray(raw)) {
-          throw new WidgetError("The days have to come out as a list.");
+          throw new WidgetError(t("widgets.spec.daysNotList"));
         }
         const days: HeatmapDay[] = [];
         for (const element of raw.slice(0, 371)) {
@@ -350,7 +377,7 @@ export function compileSpec(spec: WidgetSpec): WidgetFn {
           if (day !== null) days.push(day);
         }
         if (days.length === 0) {
-          throw new WidgetError("None of those days had a date on them.");
+          throw new WidgetError(t("widgets.spec.noDates"));
         }
         const data = {
           days,
@@ -400,16 +427,18 @@ function readDay(element: unknown): HeatmapDay | null {
 
 // ── A starting point for the editor ───────────────────────────────────────
 
-/** What the Custom… dialog opens with: a valid spec that draws something. */
+/** What the Custom… dialog opens with: a valid spec that draws something.
+ *  The title and caption are written in the language on screen; once saved
+ *  they are the owner's own text and stay as they are. */
 export function blankSpec(): WidgetSpec {
   return {
     version: 1,
-    title: "Room to grow",
+    title: t("widgets.spec.blank.title"),
     type: "number",
     metric: "storage.bytes",
     value: "m.reserveBytes",
     format: "bytes",
-    caption: "held back, claimable without opening the box",
+    caption: t("widgets.spec.blank.caption"),
   };
 }
 
@@ -419,61 +448,62 @@ export function blankSpec(): WidgetSpec {
  * because the language is small and unfamiliar, and a blank box with a
  * grammar reference beside it teaches nobody anything. */
 export interface SpecExample {
-  readonly label: string;
+  /** Message keys, translated where the example is shown. */
+  readonly label: MessageKey;
   readonly metric: MetricName;
   readonly type: WidgetKind;
   readonly expression: string;
-  readonly note: string;
+  readonly note: MessageKey;
 }
 
 export const EXAMPLES: readonly SpecExample[] = [
   {
-    label: "Days watched",
+    label: "widgets.spec.example.daysWatched.label",
     metric: "uptime.days",
     type: "number",
     expression: "m.observedDays",
-    note: "How many days this browser has a reading for.",
+    note: "widgets.spec.example.daysWatched.note",
   },
   {
-    label: "Answered, as a share",
+    label: "widgets.spec.example.answeredShare.label",
     metric: "uptime.days",
     type: "number",
     expression: "m.upRatio",
-    note: "Set the format to percent.",
+    note: "widgets.spec.example.answeredShare.note",
   },
   {
-    label: "Longest quiet spell",
+    label: "widgets.spec.example.longestQuiet.label",
     metric: "uptime.days",
     type: "number",
     expression: "m.longestOutageSeconds",
-    note: "Set the format to duration.",
+    note: "widgets.spec.example.longestQuiet.note",
   },
   {
-    label: "Room left",
+    label: "widgets.spec.example.roomLeft.label",
     metric: "storage.bytes",
     type: "number",
     expression: "m.totalBytes - (m.usedBytes ?? 0)",
-    note: "Set the format to bytes.",
+    note: "widgets.spec.example.roomLeft.note",
   },
   {
-    label: "Hours lent a day",
+    label: "widgets.spec.example.hoursLent.label",
     metric: "mesh.compute",
     type: "number",
     expression: "m.windowHours",
-    note: "Zero when this box is not lending time.",
+    note: "widgets.spec.example.hoursLent.note",
   },
   {
-    label: "Apps answering",
+    label: "widgets.spec.example.appsAnswering.label",
     metric: "apps.list",
     type: "list",
     expression: "m.apps",
-    note: "Row label: it.name. Row detail: it.path",
+    note: "widgets.spec.example.appsAnswering.note",
   },
   {
-    label: "Typical day",
+    label: "widgets.spec.example.typicalDay.label",
     metric: "uptime.days",
     type: "number",
     expression: "stat.median([1, 2, 3])",
-    note: "stat.* takes a list and gives back one number.",
+    note: "widgets.spec.example.typicalDay.note",
   },
 ];
