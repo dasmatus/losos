@@ -217,7 +217,7 @@ fn with(mut base: Value, extra: Value) -> Value {
 }
 
 fn parse(body: &str) -> Value {
-    serde_json::from_str(body).unwrap_or_else(|_| panic!("not JSON: {body:?}"))
+    serde_json::from_str(body).unwrap_or_else(|_| panic!("not JSON body"))
 }
 
 fn now() -> u64 {
