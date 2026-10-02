@@ -32,7 +32,9 @@ The token is equivalent to root: `POST /api/apply` writes arbitrary Nix to
 - On an unclaimed box, the first LAN caller to `POST /api/setup/claim` can set
   the owner password without a token. The response hands that caller the admin
   token exactly once, then the route refuses further claims. Set up a new box
-  only on a trusted LAN: whoever claims it first becomes its owner.
+  only on a trusted LAN: whoever claims it first becomes its owner. The window
+  is guarded by source address (`lanOnly`, with loopback denied), not by a
+  secret, and closes on first use.
 - The file must contain exactly 64 lowercase hex characters. Anything else is
   discarded and replaced, with an error in the log.
 - A claimed box cannot fetch the token again. To rotate it, write a new

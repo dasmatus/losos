@@ -4,7 +4,7 @@
 
 ```sh
 devenv shell        # or: direnv allow
-devenv test         # pin checks, lint, Rust tests, flake and module evaluation
+devenv test         # pin checks, lint, rust tests, flake eval (no builds)
 ```
 
 `nix develop` gives the toolchain only, for people without devenv.
