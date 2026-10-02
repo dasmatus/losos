@@ -1047,13 +1047,26 @@ in
     };
 
     edge.market.currency = lib.mkOption {
-      type = lib.types.enum [ "aud" "cad" "chf" "eur" "gbp" "nzd" "usd" ];
+      type = lib.types.enum [
+        "aud"
+        "cad"
+        "chf"
+        "eur"
+        "gbp"
+        "nzd"
+        "usd"
+      ];
       default = "eur";
       description = "Supported two-decimal ISO 4217 currency, lowercase. One currency per edge; listings are priced in its minor unit (cents).";
     };
 
     edge.market.storageClass = lib.mkOption {
-      type = lib.types.strMatching "[a-z0-9]([-a-z0-9.]*[a-z0-9])?";
+      # A DNS-1123 subdomain, as Kubernetes requires of the name; the
+      # registrar applies the same check to --market-storage-class.
+      type =
+        lib.types.addCheck
+          (lib.types.strMatching "[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*")
+          (s: lib.stringLength s <= 253);
       default = "longhorn";
       description = ''
         The Kubernetes StorageClass a purchased storage volume is claimed

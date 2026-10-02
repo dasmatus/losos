@@ -12,6 +12,7 @@
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -38,8 +39,9 @@ pub const KUBE_TOKEN: &str = "eyJhbGciOiJSUzI1NiIsImtpZCI6Imxvc29zLXJlZ2lzdHJhci
 
 /// A directory under the system temp dir, removed when the guard drops.
 ///
-/// Uniquified by pid + a monotonic clock reading so `cargo test`'s parallel
-/// threads (and two concurrent `cargo test` runs) never share one.
+/// Uniquified by pid, the wall clock and a per-process counter, so neither
+/// `cargo test`'s parallel threads nor two concurrent `cargo test` runs ever
+/// share one.
 pub struct TempDir {
     path: PathBuf,
 }
@@ -49,7 +51,11 @@ impl TempDir {
         let nanos = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_or(0, |d| d.as_nanos());
-        let path = std::env::temp_dir().join(format!("l-{}-{nanos}", std::process::id()));
+        // The clock alone can repeat across threads (a coarse clock, or two
+        // calls inside one tick); the counter cannot within one process.
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        let n = NEXT.fetch_add(1, Ordering::Relaxed);
+        let path = std::env::temp_dir().join(format!("l-{}-{nanos}-{n}", std::process::id()));
         std::fs::create_dir_all(&path).expect("create temp dir");
         Self { path }
     }

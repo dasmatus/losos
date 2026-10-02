@@ -697,7 +697,7 @@ async fn a_failed_checkout_or_an_expired_session_frees_the_units() {
 
     let expired = json!({
         "type": "checkout.session.expired",
-        "data": { "object": { "client_reference_id": order_id } }
+        "data": { "object": { "id": "cs_test_1", "client_reference_id": order_id } }
     });
     assert_eq!(webhook(&edge, &expired).await.0, 200);
     assert_eq!(browse(&edge).await.1[0]["available"], 10);
@@ -999,26 +999,40 @@ async fn a_storage_order_is_not_provisioned_until_its_claim_is_bound() {
 
 #[tokio::test]
 async fn a_lapsed_volume_keeps_its_units_until_its_claim_is_deleted() {
+    lapsed_claim_holds_its_units("market-lapsed-volume", "volume", "Bound").await;
+}
+
+/// A claim that was created but never bound still asks Longhorn for its GiB
+/// and may bind later, so it holds the units just like a bound one.
+#[tokio::test]
+async fn a_lapsed_claim_that_never_bound_keeps_its_units_too() {
+    lapsed_claim_holds_its_units("market-lapsed-unbound", "claim", "Pending").await;
+}
+
+/// Seed ten GiB, all sold to an order whose month ran out long ago and whose
+/// claim, recorded under `field`, is still in the mesh in `phase`. The units
+/// stay off the shelf until the claim is deleted.
+async fn lapsed_claim_holds_its_units(tag: &str, field: &str, phase: &str) {
     let stripe = StripeStub::start().await;
-    let kube = KubeStub::start_with_claim_phase(409, "Bound").await;
-    // Ten GiB, all sold to an order whose month ran out long ago and whose
-    // claim still exists in the mesh.
+    let kube = KubeStub::start_with_claim_phase(409, phase).await;
+    let mut order = json!({
+        "id": "ord_old", "listing_id": "lst_old", "buyer": "buyer-box",
+        "seller": "seller-box", "kind": "storage", "quantity": 10,
+        "unit_price": 100, "amount": 1000, "fee": 40, "currency": "eur",
+        "status": "paid", "session_id": "cs_test_old", "created_at": 0,
+        "paid_at": 0, "expires_at": 1,
+    });
+    order[field] = json!("market-buyer-box/ord-old");
     let state = json!({
         "sellers": { "seller-box": { "account_id": "acct_test_1", "ready": true } },
         "listings": { "lst_old": {
             "id": "lst_old", "seller": "seller-box", "kind": "storage",
             "unit_price": 100, "capacity": 10, "active": true, "created_at": 0,
         }},
-        "orders": { "ord_old": {
-            "id": "ord_old", "listing_id": "lst_old", "buyer": "buyer-box",
-            "seller": "seller-box", "kind": "storage", "quantity": 10,
-            "unit_price": 100, "amount": 1000, "fee": 40, "currency": "eur",
-            "status": "paid", "session_id": "cs_test_old", "created_at": 0,
-            "paid_at": 0, "expires_at": 1, "volume": "market-buyer-box/ord-old",
-        }},
+        "orders": { "ord_old": order },
     });
     let edge = Edge::start_market_with_state(
-        "market-lapsed-volume",
+        tag,
         &tenants(),
         &stripe.base,
         MeshFixture::enabled(&kube.base),
@@ -1037,7 +1051,7 @@ async fn a_lapsed_volume_keeps_its_units_until_its_claim_is_deleted() {
     assert_eq!(
         shelf,
         json!([]),
-        "units of a live claim were put back on sale"
+        "units of a live {phase} claim were put back on sale"
     );
 
     // The operator deletes it; the next pass returns the units.

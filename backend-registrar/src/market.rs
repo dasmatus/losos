@@ -261,10 +261,17 @@ pub struct Order {
     #[serde(default)]
     pub expires_at: Option<u64>,
     /// The Kubernetes volume claim provisioned for a paid storage order, as
-    /// `<namespace>/<pvc>`. Written only after the apiserver accepted it, so
-    /// its absence on a live paid order means "still to do".
+    /// `<namespace>/<pvc>`. Written only once the claim is `Bound`, so its
+    /// absence on a live paid order means "still to do".
     #[serde(default)]
     pub volume: Option<String>,
+    /// The claim the edge is about to ask the apiserver for, as
+    /// `<namespace>/<pvc>`. Written *before* the create, so neither a crash
+    /// after it nor a claim that never binds can lose track of storage
+    /// Longhorn may be holding. The claim may not exist (the create failed);
+    /// a `404` then returns the units like any deleted claim.
+    #[serde(default)]
+    pub claim: Option<String>,
 }
 
 /// Everything the market persists, in `market.json`.
@@ -385,6 +392,22 @@ fn history<'a>(orders: impl Iterator<Item = &'a Order>, now: u64) -> Vec<OrderVi
         .collect()
 }
 
+/// Release an order whose Checkout Session could not be created. Only a
+/// still-pending order is released: an error from the gate does not prove
+/// Stripe made no session (a timeout after Stripe answered looks the same),
+/// and a signed `completed` event for that session may already have marked
+/// the order paid while the call was in flight. Expiring it then would hand
+/// the buyer's paid units back to the shelf.
+fn release_failed_checkout(state: &mut MarketState, order_id: &str) -> bool {
+    match state.orders.get_mut(order_id) {
+        Some(o) if o.status == OrderStatus::Pending => {
+            o.status = OrderStatus::Expired;
+            true
+        }
+        _ => false,
+    }
+}
+
 /// Mark every pending order whose hold has run out as `Expired`, drop expired
 /// orders past their retention, and drop closed listings no order still names.
 /// Returns the ids that expired and how many records were dropped; both zero
@@ -436,14 +459,21 @@ pub fn reserved(state: &MarketState, listing_id: &str, now: u64) -> u64 {
         .sum()
 }
 
-/// Whether a storage order's claim still exists. The volume holds the buyer's
-/// data, so nothing deletes it at expiry, and while it exists Longhorn keeps
-/// its GiB. Releasing them to the listing at expiry would sell the same
-/// capacity twice and leave the next buyer's claim `Pending`. The units come
-/// back when an operator removes the claim and the reconcile pass sees it gone
-/// ([`lapsed_volumes`], `Market::mark_reclaimed`).
+/// Whether a storage order's claim may still exist. The volume holds the
+/// buyer's data, so nothing deletes it at expiry, and while it exists Longhorn
+/// keeps its GiB. Releasing them to the listing at expiry would sell the same
+/// capacity twice and leave the next buyer's claim `Pending`. That holds for a
+/// claim that never bound too: it still asks for the GiB, and may bind later.
+/// The units come back when an operator removes the claim and the reconcile
+/// pass sees it gone ([`lapsed_volumes`], `Market::mark_reclaimed`).
 fn holds_volume(order: &Order) -> bool {
-    order.status == OrderStatus::Paid && order.kind == Kind::Storage && order.volume.is_some()
+    order.status == OrderStatus::Paid && order.kind == Kind::Storage && claim_of(order).is_some()
+}
+
+/// The order's claim, bound or not. `volume` alone is enough for an order
+/// recorded before `claim` existed: a bound claim was certainly created.
+fn claim_of(order: &Order) -> Option<&str> {
+    order.claim.as_deref().or(order.volume.as_deref())
 }
 
 /// Lapsed storage orders whose claim was created and has not been seen gone:
@@ -455,7 +485,7 @@ pub fn lapsed_volumes(state: &MarketState, now: u64) -> Vec<(String, String)> {
         .orders
         .values()
         .filter(|o| holds_volume(o) && !paid_live(o, now))
-        .filter_map(|o| Some((o.id.clone(), o.volume.clone()?)))
+        .filter_map(|o| Some((o.id.clone(), claim_of(o)?.to_string())))
         .collect()
 }
 
@@ -712,7 +742,14 @@ pub fn apply_event(state: &mut MarketState, event: &Value, now: u64) -> bool {
             else {
                 return false;
             };
-            if order.status == OrderStatus::Pending {
+            // Only the session the order is waiting on can release it. A
+            // retried order gets a new session, and the old one's `expired`
+            // event names the same order; without this it would free units
+            // the live session still holds. An order with no recorded
+            // session is left to `expire_stale`.
+            let current =
+                order.session_id.is_some() && order.session_id.as_deref() == object["id"].as_str();
+            if order.status == OrderStatus::Pending && current {
                 order.status = OrderStatus::Expired;
                 true
             } else {
@@ -1216,6 +1253,7 @@ impl Market {
                 paid_at: None,
                 expires_at: None,
                 volume: None,
+                claim: None,
             };
             expire_stale(&mut state, now);
             state.orders.insert(order.id.clone(), order.clone());
@@ -1252,10 +1290,9 @@ impl Market {
                 })
             }
             Err(e) => {
-                if let Some(o) = state.orders.get_mut(&order.id) {
-                    o.status = OrderStatus::Expired;
+                if release_failed_checkout(&mut state, &order.id) {
+                    self.persist(&state).await?;
                 }
-                self.persist(&state).await?;
                 Err(e)
             }
         }
@@ -1283,7 +1320,28 @@ impl Market {
         pending_provisions(&*self.state.lock().await, now_secs())
     }
 
-    /// Record that `order_id`'s volume now exists.
+    /// Record that `order_id`'s claim is about to be created. Called before
+    /// the create, and a failure here stops it, so a claim is never made that
+    /// the market does not know about.
+    pub async fn mark_claimed(
+        &self,
+        order_id: &str,
+        namespace: &str,
+        pvc: &str,
+    ) -> Result<(), MarketError> {
+        let claim = format!("{namespace}/{pvc}");
+        let mut state = self.state.lock().await;
+        let mut next = state.clone();
+        match next.orders.get_mut(order_id) {
+            Some(o) if o.claim.as_deref() != Some(&claim) => o.claim = Some(claim),
+            _ => return Ok(()),
+        }
+        self.persist(&next).await?;
+        *state = next;
+        Ok(())
+    }
+
+    /// Record that `order_id`'s volume is bound.
     pub async fn mark_provisioned(
         &self,
         order_id: &str,
@@ -1310,6 +1368,7 @@ impl Market {
         let mut next = state.clone();
         if let Some(o) = next.orders.get_mut(order_id) {
             o.volume = None;
+            o.claim = None;
             self.persist(&next).await?;
             *state = next;
         }
@@ -1354,6 +1413,7 @@ mod tests {
             paid_at: None,
             expires_at: None,
             volume: None,
+            claim: None,
         }
     }
 
@@ -1629,7 +1689,7 @@ mod tests {
         let event = |id: &str| {
             serde_json::json!({
                 "type": "checkout.session.expired",
-                "data": { "object": { "client_reference_id": id } }
+                "data": { "object": { "id": format!("cs_{id}"), "client_reference_id": id } }
             })
         };
         assert!(apply_event(&mut state, &event("p"), 1));
@@ -1637,6 +1697,47 @@ mod tests {
         assert_eq!(state.orders["p"].status, OrderStatus::Expired);
         assert_eq!(state.orders["d"].status, OrderStatus::Paid);
         assert_eq!(reserved(&state, "lst_1", CHECKOUT_TTL_SECS + 900), 1);
+    }
+
+    #[test]
+    fn a_failed_checkout_does_not_expire_an_order_already_paid() {
+        let mut state = state_of(vec![
+            order("p", OrderStatus::Pending, 1, 0),
+            order("d", OrderStatus::Paid, 1, 0),
+        ]);
+        assert!(release_failed_checkout(&mut state, "p"));
+        assert!(!release_failed_checkout(&mut state, "d"));
+        assert!(!release_failed_checkout(&mut state, "missing"));
+        assert_eq!(state.orders["p"].status, OrderStatus::Expired);
+        assert_eq!(state.orders["d"].status, OrderStatus::Paid);
+    }
+
+    #[test]
+    fn only_the_recorded_session_expiring_releases_an_order() {
+        let mut state = MarketState::default();
+        state
+            .orders
+            .insert("p".into(), order("p", OrderStatus::Pending, 1, 0));
+        let mut lost = order("lost", OrderStatus::Pending, 1, 0);
+        lost.session_id = None;
+        state.orders.insert("lost".into(), lost);
+        let event = |session: Option<&str>, id: &str| {
+            serde_json::json!({
+                "type": "checkout.session.expired",
+                "data": { "object": { "id": session, "client_reference_id": id } }
+            })
+        };
+        // An older session for the same order, and one with no id at all.
+        assert!(!apply_event(&mut state, &event(Some("cs_older"), "p"), 1));
+        assert!(!apply_event(&mut state, &event(None, "p"), 1));
+        assert_eq!(state.orders["p"].status, OrderStatus::Pending);
+        // With nothing recorded there is nothing to bind to, so the sweep
+        // decides, not an event.
+        assert!(!apply_event(&mut state, &event(Some("cs_any"), "lost"), 1));
+        assert!(!apply_event(&mut state, &event(None, "lost"), 1));
+        assert_eq!(state.orders["lost"].status, OrderStatus::Pending);
+        assert!(apply_event(&mut state, &event(Some("cs_p"), "p"), 1));
+        assert_eq!(state.orders["p"].status, OrderStatus::Expired);
     }
 
     #[test]
@@ -1693,15 +1794,22 @@ mod tests {
         let mut lapsed = paid("lapsed", Kind::Storage, 3, "b", Some(now - 1));
         lapsed.volume = Some("market-b/lapsed".to_string());
         let unprovisioned = paid("never", Kind::Storage, 4, "b", Some(now - 1));
+        // Created but never bound: Longhorn may still be holding its GiB.
+        let mut unbound = paid("unbound", Kind::Storage, 7, "b", Some(now - 1));
+        unbound.claim = Some("market-b/unbound".to_string());
         let mut live = paid("live", Kind::Storage, 2, "b", Some(now + 1));
         live.volume = Some("market-b/live".to_string());
-        let mut st = state_of(vec![lapsed, unprovisioned, live]);
-        assert_eq!(reserved(&st, "lst_1", now), 5);
+        let mut st = state_of(vec![lapsed, unprovisioned, unbound, live]);
+        assert_eq!(reserved(&st, "lst_1", now), 12);
         assert_eq!(
             lapsed_volumes(&st, now),
-            vec![("lapsed".to_string(), "market-b/lapsed".to_string())]
+            vec![
+                ("lapsed".to_string(), "market-b/lapsed".to_string()),
+                ("unbound".to_string(), "market-b/unbound".to_string()),
+            ]
         );
         st.orders.get_mut("lapsed").unwrap().volume = None;
+        st.orders.get_mut("unbound").unwrap().claim = None;
         assert_eq!(reserved(&st, "lst_1", now), 2);
         assert!(lapsed_volumes(&st, now).is_empty());
     }

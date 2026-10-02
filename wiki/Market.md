@@ -68,7 +68,10 @@ gone, because the claim still holds Longhorn capacity after the month ends.
   class, or no capacity) is checked again on every pass. That assumes an
   `Immediate`-binding class, as Longhorn's default is: a `WaitForFirstConsumer`
   class never binds, because nothing mounts the claim yet. The account view
-  reports the claim as `volume: "<namespace>/<claim>"`.
+  reports a bound claim as `volume: "<namespace>/<claim>"`. The edge writes
+  the claim's name down before it asks for it, so a claim that never binds,
+  or one created just before the edge stopped, still keeps its units sold
+  after the month ends.
 - **Compute.** A credit in vCPU-hours, listed under `entitlements`. Nothing
   meters or schedules against it yet.
 
@@ -82,8 +85,9 @@ Limits to know about, none of which are enforced yet:
 - Nothing is ever deleted. A lapsed entitlement stops being reported, but the
   volume holds the buyer's data and removing it is an operator decision. Until
   the operator deletes the claim, its GiB stay sold, so the same capacity is
-  never sold twice. The reconcile pass checks each lapsed claim and puts its
-  units back on sale once the apiserver answers 404 for it.
+  never sold twice. That holds for a claim still `Pending` too, since it may
+  yet bind. The reconcile pass checks each lapsed claim and puts its units
+  back on sale once the apiserver answers 404 for it.
 - The registrar's ServiceAccount gains cluster-wide `get`/`create` on
   namespaces and PersistentVolumeClaims when the market is enabled. Kubernetes
   RBAC cannot scope either to `market-*` names.
@@ -141,8 +145,10 @@ listing view never shows one.
 
 Capacity is reserved when the Checkout Session is created and held until
 Stripe says how it ended: paid (`checkout.session.completed`) or abandoned
-(`checkout.session.expired`, sent as the session's 31 minutes run out). It is
-released at once if Stripe cannot be reached to create the session. If neither
+(`checkout.session.expired`, sent as the session's 31 minutes run out). An
+`expired` event only counts if it names the session the order recorded. It is
+released at once if Stripe cannot be reached to create the session, unless a
+payment for it has already landed. If neither
 event ever arrives, the hold lapses after Stripe's three-day retry window, so
 a payment delayed by an edge outage still finds its units unsold; the next
 reconcile pass then records the order as `expired`. A payment that arrives

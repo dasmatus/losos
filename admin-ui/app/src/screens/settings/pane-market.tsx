@@ -65,7 +65,7 @@ export function MarketPane({ form }: { form: SettingsForm }) {
         <Group>
           <Row last>
             <RowText title={t("panes.market.failed")} detail={state.message} />
-            <Button size="sm" variant="secondary" onClick={market.refresh}>
+            <Button size="sm" variant="secondary" disabled={form.locked} onClick={market.refresh}>
               {t("panes.market.refresh")}
             </Button>
           </Row>
@@ -145,6 +145,7 @@ export function MarketPane({ form }: { form: SettingsForm }) {
                 key={listing.id}
                 listing={listing}
                 market={market}
+                disabled={disabled}
                 last={i === listings.length - 1}
               />
             ))
@@ -153,7 +154,7 @@ export function MarketPane({ form }: { form: SettingsForm }) {
         <GroupCaption>{t("panes.market.payCaption")}</GroupCaption>
       </PaneSection>
 
-      <SellSection market={market} />
+      <SellSection market={market} disabled={disabled} />
     </>
   );
 }
@@ -185,10 +186,13 @@ function PurchaseRow({ order, last }: { order: MarketOrder; last: boolean }) {
 function ShelfRow({
   listing,
   market,
+  disabled,
   last,
 }: {
   listing: MarketShelfListing;
   market: MarketData;
+  /** The pane's lock: a request in flight, or the admin token gone. */
+  disabled: boolean;
   last: boolean;
 }) {
   const t = useT();
@@ -243,12 +247,12 @@ function ShelfRow({
             inputMode="numeric"
             className="w-20"
             value={quantity}
-            disabled={market.busy}
+            disabled={disabled}
             aria-invalid={quantityProblem !== null}
             aria-describedby={quantityProblem === null ? undefined : qtyErrorId}
             onChange={(e) => setQuantity(e.target.value)}
           />
-          <Button size="sm" disabled={market.busy} onClick={() => void buy()}>
+          <Button size="sm" disabled={disabled} onClick={() => void buy()}>
             {t("panes.market.buyButton")}
           </Button>
         </div>
@@ -260,7 +264,7 @@ function ShelfRow({
   );
 }
 
-function SellSection({ market }: { market: MarketData }) {
+function SellSection({ market, disabled }: { market: MarketData; disabled: boolean }) {
   const t = useT();
   const kindId = React.useId();
   const priceId = React.useId();
@@ -334,7 +338,7 @@ function SellSection({ market }: { market: MarketData }) {
             }
           />
           {!account.seller_ready && (
-            <Button size="sm" disabled={market.busy} onClick={() => void onboard()}>
+            <Button size="sm" disabled={disabled} onClick={() => void onboard()}>
               {account.seller_onboarded
                 ? t("panes.market.payoutsContinue")
                 : t("panes.market.payoutsStart")}
@@ -355,7 +359,7 @@ function SellSection({ market }: { market: MarketData }) {
                   <Select
                     id={kindId}
                     value={effectiveKind}
-                    disabled={market.busy}
+                    disabled={disabled}
                     onChange={(e) => setKind(e.target.value === "compute" ? "compute" : "storage")}
                   >
                     <option value="storage" disabled={!canStorage}>
@@ -377,7 +381,7 @@ function SellSection({ market }: { market: MarketData }) {
                       currency: account.currency.toUpperCase(),
                     })}
                     value={price}
-                    disabled={market.busy}
+                    disabled={disabled}
                     aria-invalid={problem?.field === "price"}
                     aria-describedby={problem?.field === "price" ? priceErrorId : undefined}
                     onChange={(e) => setPrice(e.target.value)}
@@ -392,13 +396,13 @@ function SellSection({ market }: { market: MarketData }) {
                     inputMode="numeric"
                     placeholder={t("panes.market.capacityLabel")}
                     value={capacity}
-                    disabled={market.busy}
+                    disabled={disabled}
                     aria-invalid={problem?.field === "capacity"}
                     aria-describedby={problem?.field === "capacity" ? capErrorId : undefined}
                     onChange={(e) => setCapacity(e.target.value)}
                   />
                 </div>
-                <Button disabled={market.busy || !sellable} onClick={() => void submit()}>
+                <Button disabled={disabled || !sellable} onClick={() => void submit()}>
                   {t("panes.market.listButton")}
                 </Button>
               </div>
@@ -421,7 +425,7 @@ function SellSection({ market }: { market: MarketData }) {
               <Button
                 size="sm"
                 variant="secondary"
-                disabled={market.busy}
+                disabled={disabled}
                 onClick={() => void market.close(l.id)}
               >
                 {t("panes.market.closeButton")}
