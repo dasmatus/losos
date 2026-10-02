@@ -313,6 +313,113 @@ fn mode_name(mode: &miette::Result<Mode>) -> &'static str {
         Ok(Mode::Announce(_)) => "announce",
         Ok(Mode::Seed(_)) => "seed",
         Ok(Mode::Join(_)) => "join",
+        Ok(Mode::StripeGate(_)) => "stripe-gate",
         Err(_) => "error",
     }
+}
+
+const MARKET_FLAGS: &[&str] = &[
+    "--market-gate-socket",
+    "/run/losos-stripe-gate/gate.sock",
+    "--market-return-url",
+    "https://losos.cfd/market",
+];
+
+#[test]
+fn the_market_is_off_unless_a_gate_socket_is_given() {
+    assert!(serve_opts(&[]).market.is_none());
+}
+
+#[test]
+fn a_market_serve_invocation_takes_a_four_percent_cut_by_default() {
+    let opts = serve_opts(MARKET_FLAGS);
+    let market = opts.market.expect("market enabled");
+    assert_eq!(market.fee_bps, 400);
+    assert_eq!(market.currency, "eur");
+    assert_eq!(market.gate_socket, "/run/losos-stripe-gate/gate.sock");
+    assert_eq!(market.state_file, "/var/lib/losos-registrar/market.json");
+    assert_eq!(market.storage_class, "longhorn");
+}
+
+#[test]
+fn market_flags_are_all_or_nothing_and_bounded() {
+    // Taking payment without a place to send the buyer back to must fail at
+    // boot.
+    let missing = "--market-return-url";
+    let args: Vec<&str> = MARKET_FLAGS
+        .chunks(2)
+        .filter(|pair| pair[0] != missing)
+        .flatten()
+        .copied()
+        .collect();
+    assert!(parse(serve_args(&args)).is_err(), "{missing} is required");
+    for (flag, bad) in [
+        ("--market-fee-bps", "2001"),
+        ("--market-fee-bps", "four"),
+        ("--market-currency", "EUR"),
+        ("--market-currency", "euro"),
+        ("--market-currency", "jpy"),
+        ("--market-currency", "kwd"),
+        ("--market-return-url", "ftp://x"),
+        ("--market-storage-class", ""),
+        ("--market-storage-class", "Longhorn"),
+        ("--market-storage-class", "a..b"),
+        ("--market-storage-class", "a.-b"),
+        ("--market-storage-class", "-a"),
+        ("--market-storage-class", "a_b"),
+        ("--market-storage-class", &"a".repeat(64)),
+        ("--market-storage-class", &format!("{}.b", "a".repeat(64))),
+        ("--market-storage-class", &vec!["a".repeat(63); 4].join(".")),
+    ] {
+        let mut args = vec![flag, bad];
+        args.extend(MARKET_FLAGS);
+        assert!(parse(serve_args(&args)).is_err(), "{flag} {bad}");
+    }
+    let mut args = vec!["--market-fee-bps", "250", "--market-currency", "usd"];
+    args.extend(MARKET_FLAGS);
+    let market = serve_opts(&args).market.expect("market enabled");
+    assert_eq!((market.fee_bps, market.currency.as_str()), (250, "usd"));
+    // 63 + 1 + 63 + 1 + 63 + 1 + 61: every label at its limit, 253 in all.
+    let longest = format!(
+        "{}.{}.{}.{}",
+        "a".repeat(63),
+        "b".repeat(63),
+        "c".repeat(63),
+        "d".repeat(61)
+    );
+    for good in ["longhorn-ssd", "longhorn.io.v2", longest.as_str()] {
+        let mut args = vec!["--market-storage-class", good];
+        args.extend(MARKET_FLAGS);
+        let market = serve_opts(&args).market.expect("market enabled");
+        assert_eq!(market.storage_class, good);
+    }
+}
+
+#[test]
+fn the_stripe_gate_subcommand_parses_and_validates() {
+    let args = |extra: &[&str]| -> Vec<String> {
+        ["stripe-gate", "--socket", "/run/g.sock"]
+            .into_iter()
+            .chain(extra.iter().copied())
+            .map(String::from)
+            .collect()
+    };
+    let full = [
+        "--stripe-key-file",
+        "/run/credentials/g/key",
+        "--webhook-secret-file",
+        "/run/credentials/g/hook",
+        "--currency",
+        "eur",
+    ];
+    match parse(args(&full)) {
+        Ok(Mode::StripeGate(gate)) => {
+            assert_eq!(gate.socket, "/run/g.sock");
+            assert_eq!(gate.currency, "eur");
+            assert_eq!(gate.stripe_api, "https://api.stripe.com");
+        }
+        other => panic!("expected stripe-gate, got {}", mode_name(&other)),
+    }
+    assert!(parse(args(&["--currency", "EUR"])).is_err());
+    assert!(parse(args(&[])).is_err(), "the key file is required");
 }

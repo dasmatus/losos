@@ -7,6 +7,7 @@ import { ApplyBar } from "./settings/apply-bar";
 import { AboutPane } from "./settings/pane-about";
 import { AppsPane } from "./settings/pane-apps";
 import { HardwarePane } from "./settings/pane-hardware";
+import { MarketPane } from "./settings/pane-market";
 import { MeshPane } from "./settings/pane-mesh";
 import { NetworkPane } from "./settings/pane-network";
 import { ResetPane } from "./settings/pane-reset";
@@ -98,6 +99,8 @@ function Pane({
       return <StoragePane form={form} storage={storage} />;
     case "mesh":
       return <MeshPane form={form} />;
+    case "market":
+      return <MarketPane form={form} />;
     case "apps":
       return <AppsPane form={form} />;
     case "network":

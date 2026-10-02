@@ -57,8 +57,9 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
+use axum::body::Bytes;
 use axum::extract::{DefaultBodyLimit, Request, State};
-use axum::http::StatusCode;
+use axum::http::{HeaderMap, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
@@ -72,8 +73,13 @@ use tokio::sync::{Mutex, Notify, Semaphore};
 use crate::action::Action;
 use crate::config::{desired_config, EdgeOpts, TenantView};
 use crate::error::ApiError;
+use crate::market::{
+    AccountView, CheckoutView, Market, MarketError, NewListing, NewOrder, OnboardView, Provision,
+    PublicListing, Sharing,
+};
 use crate::opts::ServeOpts;
 use crate::registry::{Registry, Shared};
+use crate::stripe_gate::{GATE_TIMEOUT, MAX_GATE_CALLS_PER_REQUEST};
 use crate::window::{self, valid_hhmm, valid_tz, ComputeWindow};
 
 /// Per-tenant Traefik router config is public (hostnames only, no secrets) →
@@ -94,9 +100,25 @@ const MAX_BODY_BYTES: usize = 16 * 1024;
 /// able to authenticate a tenant on an internet-facing route.
 const MIN_TOKEN_LEN: usize = 32;
 
+/// Stripe events (`account.updated` especially) outgrow the 16 KiB every other
+/// route is held to. Still bounded: the body is buffered before it is verified.
+const MAX_WEBHOOK_BYTES: usize = 256 * 1024;
+
 /// Wall-clock budget for one request, end to end. Without it a slow-loris
 /// client holds a connection (and a concurrency permit) indefinitely.
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// Budget for the two market routes that wait on Stripe through the gate:
+/// onboarding (up to [`MAX_GATE_CALLS_PER_REQUEST`] sequential round trips) and
+/// ordering (two). Held to [`REQUEST_TIMEOUT`] they returned 504 on a slow but
+/// healthy Stripe after the account or session had already been made, and no
+/// link came back. Two seconds on top cover the store writes between calls.
+/// Still bounded, and still under the same in-flight cap.
+const STRIPE_ROUTE_TIMEOUT: Duration =
+    Duration::from_secs(GATE_TIMEOUT.as_secs() * MAX_GATE_CALLS_PER_REQUEST as u64 + 2);
+
+/// The routes [`STRIPE_ROUTE_TIMEOUT`] applies to.
+const STRIPE_ROUTES: [&str; 2] = ["/market/seller/onboard", "/market/orders"];
 
 /// Requests allowed in flight at once. Every authenticated *and*
 /// unauthenticated request costs a `tenants.json` stat and (for a known id) a
@@ -134,6 +156,8 @@ struct AppState {
     notify: Arc<Notify>,
     tenants: Arc<TenantCache>,
     limiter: Arc<Semaphore>,
+    /// `None` unless `--market-gate-socket` was given.
+    market: Option<Arc<Market>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -236,12 +260,25 @@ where
     reg.load().await.context("load registry")?;
     tracing::info!(target: Action::LoadRegistry.target(), "registry loaded");
 
+    // Opened before the API accepts: an unreadable `market.json` stops the
+    // edge from starting rather than serving a market that has forgotten who
+    // paid for what.
+    let market = match &opts.market {
+        Some(m) => Some(Arc::new(
+            Market::open((**m).clone())
+                .await
+                .map_err(|e| miette!("open market store: {e}"))?,
+        )),
+        None => None,
+    };
+
     let state = AppState {
         reg,
         opts: Arc::new(opts),
         notify: Arc::new(Notify::new()),
         tenants: Arc::new(TenantCache::default()),
         limiter: Arc::new(Semaphore::new(MAX_INFLIGHT)),
+        market,
     };
 
     // Generate config from whatever we just loaded, so the box is serving
@@ -263,6 +300,20 @@ where
         // every other route: Traefik's `register.<domain>` router has no path
         // rule, so this one is on the public internet too.
         .route("/cluster/join", post(cluster_join))
+        // The optional Stripe Connect market. Every route answers 503 unless
+        // the edge was started with `--market-gate-socket`. Browsing is
+        // anonymous and shows no seller identity; everything else takes the
+        // appliance token like the routes above; the webhook is authenticated
+        // by Stripe's signature instead and needs a larger body than the rest.
+        .route("/market/listings", get(market_browse).post(market_list))
+        .route("/market/listings/close", post(market_close))
+        .route("/market/seller/onboard", post(market_onboard))
+        .route("/market/orders", post(market_order))
+        .route("/market/account", post(market_account))
+        .route(
+            "/market/webhook",
+            post(market_webhook).layer(DefaultBodyLimit::max(MAX_WEBHOOK_BYTES)),
+        )
         // Bound at the router so an oversized body never materialises.
         .layer(DefaultBodyLimit::max(MAX_BODY_BYTES))
         // Added last, so outermost: the timeout and the concurrency cap cover
@@ -285,7 +336,7 @@ where
 }
 
 /// Resolve on SIGTERM (systemd's stop signal) or SIGINT.
-async fn shutdown_signal() {
+pub(crate) async fn shutdown_signal() {
     let interrupt = async {
         let _ = tokio::signal::ctrl_c().await;
     };
@@ -309,16 +360,22 @@ async fn shutdown_signal() {
 }
 
 /// Outermost middleware: shed load past [`MAX_INFLIGHT`], then bound whatever
-/// runs inside by [`REQUEST_TIMEOUT`].
+/// runs inside by [`REQUEST_TIMEOUT`], or [`STRIPE_ROUTE_TIMEOUT`] on the
+/// routes that wait on Stripe.
 async fn guard(State(st): State<AppState>, req: Request, next: Next) -> Response {
     let Ok(_permit) = Arc::clone(&st.limiter).try_acquire_owned() else {
         tracing::warn!(target: Action::Serve.target(), "shedding request: {MAX_INFLIGHT} in flight");
         return (StatusCode::SERVICE_UNAVAILABLE, "busy; retry later").into_response();
     };
-    match tokio::time::timeout(REQUEST_TIMEOUT, next.run(req)).await {
+    let budget = if STRIPE_ROUTES.contains(&req.uri().path()) {
+        STRIPE_ROUTE_TIMEOUT
+    } else {
+        REQUEST_TIMEOUT
+    };
+    match tokio::time::timeout(budget, next.run(req)).await {
         Ok(response) => response,
         Err(_) => {
-            tracing::warn!(target: Action::Serve.target(), "request exceeded {REQUEST_TIMEOUT:?}");
+            tracing::warn!(target: Action::Serve.target(), "request exceeded {budget:?}");
             (StatusCode::GATEWAY_TIMEOUT, "request timed out").into_response()
         }
     }
@@ -492,32 +549,436 @@ async fn cluster_join(
     }))
 }
 
-/// Delete the caller's `Node` object and its node-password `Secret` from the
-/// mesh cluster, so a reinstalled box can rejoin under the same name.
+/// Body of every authenticated market route; the route-specific fields sit
+/// beside the credentials.
+#[derive(Debug, Deserialize)]
+struct MarketAuth {
+    appliance_id: String,
+    token: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct MarketListReq {
+    #[serde(flatten)]
+    auth: MarketAuth,
+    #[serde(flatten)]
+    listing: NewListing,
+}
+
+#[derive(Debug, Deserialize)]
+struct MarketCloseReq {
+    #[serde(flatten)]
+    auth: MarketAuth,
+    listing_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct MarketOrderReq {
+    #[serde(flatten)]
+    auth: MarketAuth,
+    #[serde(flatten)]
+    order: NewOrder,
+}
+
+#[derive(Debug, Serialize)]
+struct ListingCreated {
+    listing_id: String,
+}
+
+async fn market_of(st: &AppState) -> Result<&Arc<Market>, ApiError> {
+    let market = st
+        .market
+        .as_ref()
+        .ok_or(ApiError::Market(MarketError::Unconfigured))?;
+    market.validate_secrets().await?;
+    Ok(market)
+}
+
+/// Authenticate, then require both a configured market and the tenant's
+/// `market` bit. Authentication comes first so an unauthenticated caller
+/// learns nothing about whether the market exists for anyone else.
+async fn market_tenant(st: &AppState, auth: &MarketAuth) -> Result<Arc<Market>, ApiError> {
+    let tenant = authenticate(st, &auth.appliance_id, &auth.token).await?;
+    let market = market_of(st).await?;
+    if !tenant.market {
+        return Err(ApiError::Market(MarketError::Forbidden));
+    }
+    Ok(Arc::clone(market))
+}
+
+/// What each appliance may sell right now: what it already contributes to the
+/// mesh, and only while the operator still has its tenant's `market` bit on.
+/// Re-read on every call, so revoking a seller's opt-in pulls their listings
+/// from the shelf and refuses new orders for them without a restart; the
+/// seller's own routes are refused separately by [`market_tenant`].
+async fn sharing_of(st: &AppState) -> Result<Sharing, ApiError> {
+    let tenants = st.tenants.load(&st.opts.tenants_file).await?;
+    Ok(Sharing::from_windows(&st.reg.compute_windows().await)
+        .only_sellers(|seller| tenants.get(seller).is_some_and(|t| t.market)))
+}
+
+async fn market_browse(State(st): State<AppState>) -> Result<Json<Vec<PublicListing>>, ApiError> {
+    let market = market_of(&st).await?;
+    let sharing = sharing_of(&st).await?;
+    Ok(Json(market.browse(&sharing).await))
+}
+
+async fn market_account(
+    State(st): State<AppState>,
+    Json(req): Json<MarketAuth>,
+) -> Result<Json<AccountView>, ApiError> {
+    let market = market_tenant(&st, &req).await?;
+    let sharing = sharing_of(&st).await?;
+    Ok(Json(market.account(&req.appliance_id, &sharing).await))
+}
+
+/// `box_uuid` is the box's own UUID, written onto its Stripe account. Optional
+/// so a box that predates it still onboards.
+#[derive(Debug, Deserialize)]
+struct MarketOnboardReq {
+    #[serde(flatten)]
+    auth: MarketAuth,
+    #[serde(default)]
+    box_uuid: Option<String>,
+}
+
+async fn market_onboard(
+    State(st): State<AppState>,
+    Json(req): Json<MarketOnboardReq>,
+) -> Result<Json<OnboardView>, ApiError> {
+    let market = market_tenant(&st, &req.auth).await?;
+    Ok(Json(
+        market
+            .onboard(&req.auth.appliance_id, req.box_uuid.as_deref())
+            .await?,
+    ))
+}
+
+async fn market_list(
+    State(st): State<AppState>,
+    Json(req): Json<MarketListReq>,
+) -> Result<(StatusCode, Json<ListingCreated>), ApiError> {
+    let market = market_tenant(&st, &req.auth).await?;
+    let sharing = sharing_of(&st).await?;
+    let listing_id = market
+        .create_listing(&req.auth.appliance_id, req.listing, &sharing)
+        .await?;
+    Ok((StatusCode::CREATED, Json(ListingCreated { listing_id })))
+}
+
+async fn market_close(
+    State(st): State<AppState>,
+    Json(req): Json<MarketCloseReq>,
+) -> Result<StatusCode, ApiError> {
+    let market = market_tenant(&st, &req.auth).await?;
+    market
+        .close_listing(&req.auth.appliance_id, &req.listing_id)
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn market_order(
+    State(st): State<AppState>,
+    Json(req): Json<MarketOrderReq>,
+) -> Result<(StatusCode, Json<CheckoutView>), ApiError> {
+    let market = market_tenant(&st, &req.auth).await?;
+    let sharing = sharing_of(&st).await?;
+    let checkout = market
+        .create_order(&req.auth.appliance_id, req.order, &sharing)
+        .await?;
+    Ok((StatusCode::CREATED, Json(checkout)))
+}
+
+/// Stripe's event delivery. No appliance token: the signature over the raw body
+/// is the credential, so the body is taken as bytes and never re-serialised.
+async fn market_webhook(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Result<StatusCode, ApiError> {
+    let market = market_of(&st).await?;
+    let signature = headers
+        .get("stripe-signature")
+        .and_then(|v| v.to_str().ok())
+        .ok_or(ApiError::Market(MarketError::BadSignature))?;
+    market.webhook(signature, &body).await?;
+    // A payment may just have become a volume to provision.
+    st.notify.notify_one();
+    Ok(StatusCode::OK)
+}
+
+/// Expire pending orders whose hold has run out, free the units of lapsed
+/// storage orders whose claim an operator has deleted, then provision the
+/// volume for every paid storage order that lacks one.
 ///
-/// 404 is success: it means this is a first join and there was nothing to
-/// clean. Any other non-2xx, and any transport failure, is a 503 — never a
-/// success, because the whole reason the route deletes anything is that
-/// proceeding without the delete is what bricks the rejoin.
+/// Runs after every reconcile pass, and the webhook kicks the reconciler, so a
+/// purchase is usually fulfilled within a second and a failed attempt is
+/// retried every `--reconcile-interval`. It is idempotent: a `409` from the
+/// apiserver means a previous attempt created the object and died before the
+/// order was marked, and counts as success. Nothing is ever deleted — a lapsed
+/// order stops being reported as an entitlement but its volume is the buyer's
+/// data, and removing it is an operator decision.
 ///
-/// Transport is the crate's existing reqwest+rustls, one bearer token, no
-/// kubeconfig parsing and no client certificates. The root store is *pinned*
-/// to the cluster CA (`tls_built_in_root_certs(false)`): the apiserver's
-/// certificate is issued by rke2's own CA, so trusting the public webpki roots
-/// here would only widen who can impersonate it.
+/// Compute orders have nothing to provision: they are a ledger credit.
+async fn fulfil_market(st: &AppState) {
+    let Some(market) = &st.market else {
+        return;
+    };
+    match market.expire_stale().await {
+        Ok(expired) => {
+            for id in expired {
+                tracing::info!(
+                    target: Action::Market.target(),
+                    "order {id} expired: no payment arrived while its units were held",
+                );
+            }
+        }
+        Err(e) => tracing::error!(
+            target: Action::Market.target(),
+            "could not record stale orders as expired: {e}",
+        ),
+    }
+    let pending = market.pending_provisions().await;
+    let lapsed = market.lapsed_volumes().await;
+    if pending.is_empty() && lapsed.is_empty() {
+        return;
+    }
+    let kube = match kube_access(st).await {
+        Ok(kube) => kube,
+        Err(e) => {
+            tracing::error!(
+                target: Action::Market.target(),
+                "{} paid storage order(s) cannot be fulfilled and {} lapsed volume(s) cannot be checked: {e}",
+                pending.len(),
+                lapsed.len(),
+            );
+            return;
+        }
+    };
+    reclaim_lapsed(&kube, market, lapsed).await;
+    for p in pending {
+        if let Err(e) = market.mark_claimed(&p.order_id, &p.namespace, &p.pvc).await {
+            tracing::error!(
+                target: Action::Market.target(),
+                "order {} cannot be fulfilled until its claim is recorded: {e}",
+                p.order_id,
+            );
+            continue;
+        }
+        match provision_volume(&kube, market.storage_class(), &p).await {
+            Ok(()) => {
+                if let Err(e) = market
+                    .mark_provisioned(&p.order_id, &p.namespace, &p.pvc)
+                    .await
+                {
+                    tracing::error!(
+                        target: Action::Market.target(),
+                        "volume for order {} exists but could not be recorded: {e}",
+                        p.order_id,
+                    );
+                } else {
+                    tracing::info!(
+                        target: Action::Market.target(),
+                        "provisioned {}/{} ({} GiB) for order {}",
+                        p.namespace,
+                        p.pvc,
+                        p.gib,
+                        p.order_id,
+                    );
+                }
+            }
+            Err(e) => tracing::error!(
+                target: Action::Market.target(),
+                "provisioning order {}: {e}",
+                p.order_id,
+            ),
+        }
+    }
+}
+
+/// Return a lapsed order's units to its listing once its claim is gone.
 ///
-/// `--kube-ca-file` is required only for an `https://` apiserver, mirroring
-/// `announce`'s conditional `https_only`: the VM tests point `--kube-api` at a
-/// plain-HTTP stub on loopback, and demanding a PEM there would mean the join
-/// path could only ever be exercised on a box with a real cluster on it.
-/// `modules/edge.nix` always generates `https://127.0.0.1:6443`, so in
-/// production the pin is on — and a plain-HTTP value logs a warning naming what
-/// it costs, since the ServiceAccount bearer token then crosses in cleartext.
-async fn cleanup_stale_node(st: &AppState, node_name: &str) -> Result<(), ApiError> {
+/// Nothing on the edge deletes a buyer's volume: it holds their data, and
+/// removing it is the operator's decision. Until they do, Longhorn keeps its
+/// GiB, so the order keeps them reserved too. This notices the deletion.
+async fn reclaim_lapsed(
+    kube: &KubeAccess,
+    market: &crate::market::Market,
+    lapsed: Vec<(String, String)>,
+) {
+    for (order_id, volume) in lapsed {
+        let Some((namespace, pvc)) = volume.split_once('/') else {
+            continue;
+        };
+        let url = format!(
+            "{}/api/v1/namespaces/{namespace}/persistentvolumeclaims/{pvc}",
+            kube.api,
+        );
+        match kube_claim_exists(kube, &url).await {
+            Ok(true) => {}
+            Ok(false) => match market.mark_reclaimed(&order_id).await {
+                Ok(()) => tracing::info!(
+                    target: Action::Market.target(),
+                    "claim {volume} of lapsed order {order_id} is gone; its units are for sale again",
+                ),
+                Err(e) => tracing::error!(
+                    target: Action::Market.target(),
+                    "claim {volume} is gone but order {order_id} could not be updated: {e}",
+                ),
+            },
+            Err(e) => tracing::error!(
+                target: Action::Market.target(),
+                "checking claim {volume} of lapsed order {order_id}: {e}",
+            ),
+        }
+    }
+}
+
+/// Whether the claim at `url` exists. Only a `404` means it does not; any
+/// other failure is an error, so an apiserver hiccup never frees units that
+/// are still in use.
+async fn kube_claim_exists(kube: &KubeAccess, url: &str) -> Result<bool, ApiError> {
+    let response = kube
+        .client
+        .get(url)
+        .bearer_auth(&kube.token)
+        .send()
+        .await
+        .map_err(|e| ApiError::KubeApi(format!("GET {url}: {e}")))?;
+    match response.status() {
+        reqwest::StatusCode::NOT_FOUND => Ok(false),
+        status if status.is_success() => Ok(true),
+        status => Err(ApiError::KubeApi(format!("GET {url} -> {status}"))),
+    }
+}
+
+/// POST `body` to `url`; `201 Created` and `409 Already Exists` are success.
+async fn kube_create(
+    kube: &KubeAccess,
+    url: &str,
+    body: &serde_json::Value,
+) -> Result<(), ApiError> {
+    let response = kube
+        .client
+        .post(url)
+        .bearer_auth(&kube.token)
+        .json(body)
+        .send()
+        .await
+        .map_err(|e| ApiError::KubeApi(format!("POST {url}: {e}")))?;
+    let status = response.status();
+    if status.is_success() || status == StatusCode::CONFLICT {
+        return Ok(());
+    }
+    Err(ApiError::KubeApi(format!("POST {url} -> {status}")))
+}
+
+/// The claim's `status.phase`, e.g. `Pending` or `Bound`.
+async fn kube_claim_phase(kube: &KubeAccess, url: &str) -> Result<String, ApiError> {
+    let response = kube
+        .client
+        .get(url)
+        .bearer_auth(&kube.token)
+        .send()
+        .await
+        .map_err(|e| ApiError::KubeApi(format!("GET {url}: {e}")))?;
+    let status = response.status();
+    if !status.is_success() {
+        return Err(ApiError::KubeApi(format!("GET {url} -> {status}")));
+    }
+    let claim: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| ApiError::KubeApi(format!("GET {url}: {e}")))?;
+    Ok(claim["status"]["phase"]
+        .as_str()
+        .unwrap_or("Unknown")
+        .to_string())
+}
+
+/// Ensure the buyer's namespace, then the order's claim inside it, and succeed
+/// only once the claim is `Bound`.
+///
+/// A `201` only means the apiserver stored the object. With no such storage
+/// class, or one out of capacity, the claim sits `Pending` forever, and an
+/// order marked provisioned at that point would never be retried and would
+/// report a volume that does not exist. So a claim that is not bound yet is an
+/// error here, and the next reconcile pass checks again (the create is a `409`
+/// by then). This assumes an `Immediate`-binding class, which Longhorn's
+/// default is; a `WaitForFirstConsumer` class stays `Pending` until something
+/// mounts the claim, which nothing on the edge does yet.
+async fn provision_volume(
+    kube: &KubeAccess,
+    storage_class: &str,
+    p: &Provision,
+) -> Result<(), ApiError> {
+    kube_create(
+        kube,
+        &format!("{}/api/v1/namespaces", kube.api),
+        &serde_json::json!({
+            "apiVersion": "v1",
+            "kind": "Namespace",
+            "metadata": {
+                "name": p.namespace,
+                "labels": { "losos.market/managed": "true" },
+            },
+        }),
+    )
+    .await?;
+    let claims = format!(
+        "{}/api/v1/namespaces/{}/persistentvolumeclaims",
+        kube.api, p.namespace,
+    );
+    kube_create(
+        kube,
+        &claims,
+        &serde_json::json!({
+            "apiVersion": "v1",
+            "kind": "PersistentVolumeClaim",
+            "metadata": {
+                "name": p.pvc,
+                "namespace": p.namespace,
+                "labels": {
+                    "losos.market/managed": "true",
+                    "losos.market/order": p.pvc,
+                },
+            },
+            "spec": {
+                "accessModes": ["ReadWriteOnce"],
+                "storageClassName": storage_class,
+                "resources": { "requests": { "storage": format!("{}Gi", p.gib) } },
+            },
+        }),
+    )
+    .await?;
+    match kube_claim_phase(kube, &format!("{claims}/{}", p.pvc))
+        .await?
+        .as_str()
+    {
+        "Bound" => Ok(()),
+        phase => Err(ApiError::KubeApi(format!(
+            "claim {}/{} is {phase}, not Bound yet; will check again",
+            p.namespace, p.pvc,
+        ))),
+    }
+}
+
+/// An authenticated handle on the mesh apiserver: a client whose root store is
+/// pinned to the cluster CA, the ServiceAccount bearer token, and the base URL.
+struct KubeAccess {
+    client: reqwest::Client,
+    token: String,
+    api: String,
+}
+
+/// Build the mesh apiserver client from `--kube-*`. Every failure is an edge
+/// *configuration* fault: loud in the journal, opaque to the caller. See
+/// [`cleanup_stale_node`] for what the CA pin buys.
+async fn kube_access(st: &AppState) -> Result<KubeAccess, ApiError> {
     let Some(token_file) = &st.opts.kube_token_file else {
         tracing::error!(
             target: Action::Join.target(),
-            "--kube-token-file was not supplied; cannot clean up a stale node",
+            "--kube-token-file was not supplied; cannot reach the mesh apiserver",
         );
         return Err(ApiError::MeshUnconfigured);
     };
@@ -540,20 +1001,6 @@ async fn cleanup_stale_node(st: &AppState, node_name: &str) -> Result<(), ApiErr
             return Err(ApiError::MeshUnconfigured);
         }
     };
-    // The name is interpolated into a request path. It reaches here having
-    // already been proved equal to a whitelist key, so this is an edge
-    // *configuration* fault, not an attack — but a key carrying a slash would
-    // let the path escape the collection it is meant to address, and a name
-    // Kubernetes cannot hold is one the agent could never register under
-    // either. Loud in the journal, opaque 503 to the caller.
-    if let Some(fault) = kube_name_fault(node_name) {
-        tracing::error!(
-            target: Action::Join.target(),
-            "appliance id {node_name:?} is {fault}, so it cannot be a Kubernetes node name",
-        );
-        return Err(ApiError::KubeApi(format!("unusable node name: {fault}")));
-    }
-
     let ca = match ca_file {
         Some(path) => {
             let pem = tokio::fs::read(path)
@@ -593,18 +1040,62 @@ async fn cleanup_stale_node(st: &AppState, node_name: &str) -> Result<(), ApiErr
     let client = builder
         .build()
         .map_err(|e| ApiError::KubeApi(format!("build kube client: {e}")))?;
+    Ok(KubeAccess {
+        client,
+        token: token.to_string(),
+        api: st.opts.kube_api.clone(),
+    })
+}
 
+/// Delete the caller's `Node` object and its node-password `Secret` from the
+/// mesh cluster, so a reinstalled box can rejoin under the same name.
+///
+/// 404 is success: it means this is a first join and there was nothing to
+/// clean. Any other non-2xx, and any transport failure, is a 503 — never a
+/// success, because the whole reason the route deletes anything is that
+/// proceeding without the delete is what bricks the rejoin.
+///
+/// Transport is the crate's existing reqwest+rustls, one bearer token, no
+/// kubeconfig parsing and no client certificates. The root store is *pinned*
+/// to the cluster CA (`tls_built_in_root_certs(false)`): the apiserver's
+/// certificate is issued by rke2's own CA, so trusting the public webpki roots
+/// here would only widen who can impersonate it.
+///
+/// `--kube-ca-file` is required only for an `https://` apiserver, mirroring
+/// `announce`'s conditional `https_only`: the VM tests point `--kube-api` at a
+/// plain-HTTP stub on loopback, and demanding a PEM there would mean the join
+/// path could only ever be exercised on a box with a real cluster on it.
+/// `modules/edge.nix` always generates `https://127.0.0.1:6443`, so in
+/// production the pin is on — and a plain-HTTP value logs a warning naming what
+/// it costs, since the ServiceAccount bearer token then crosses in cleartext.
+async fn cleanup_stale_node(st: &AppState, node_name: &str) -> Result<(), ApiError> {
+    // The name is interpolated into a request path. It reaches here having
+    // already been proved equal to a whitelist key, so this is an edge
+    // *configuration* fault, not an attack — but a key carrying a slash would
+    // let the path escape the collection it is meant to address, and a name
+    // Kubernetes cannot hold is one the agent could never register under
+    // either. Loud in the journal, opaque 503 to the caller.
+    if let Some(fault) = kube_name_fault(node_name) {
+        tracing::error!(
+            target: Action::Join.target(),
+            "appliance id {node_name:?} is {fault}, so it cannot be a Kubernetes node name",
+        );
+        return Err(ApiError::KubeApi(format!("unusable node name: {fault}")));
+    }
+
+    let kube = kube_access(st).await?;
     let targets = [
-        format!("{}/api/v1/nodes/{node_name}", st.opts.kube_api),
+        format!("{}/api/v1/nodes/{node_name}", kube.api),
         format!(
             "{}/api/v1/namespaces/kube-system/secrets/{node_name}.node-password.rke2",
-            st.opts.kube_api,
+            kube.api,
         ),
     ];
     for url in targets {
-        let response = client
+        let response = kube
+            .client
             .delete(&url)
-            .bearer_auth(token)
+            .bearer_auth(&kube.token)
             .send()
             .await
             .map_err(|e| ApiError::KubeApi(format!("DELETE {url}: {e}")))?;
@@ -656,6 +1147,11 @@ struct TenantEntry {
     token_file: String,
     #[serde(default)]
     cluster: bool,
+    /// May buy and sell on the market. A third, separate bit: publishing a
+    /// website or lending compute does not mean the operator agreed to settle
+    /// money with this box.
+    #[serde(default)]
+    market: bool,
 }
 
 /// `tenants.json` memoised behind an mtime+size check.
@@ -824,6 +1320,7 @@ async fn reconciler(st: AppState) {
             // single failed pass; the next tick retries.
             tracing::error!(target: Action::Reconcile.target(), "reconcile failed: {e}");
         }
+        fulfil_market(&st).await;
     }
 }
 

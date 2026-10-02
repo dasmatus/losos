@@ -48,6 +48,9 @@ async function open({
   stored = false,
   viewport = { width: 1280, height: 900 },
   locale = 'en-US',
+  market = { available: false },
+  checkoutUrl = 'https://checkout.stripe.com/c/pay/cs_test_1',
+  onboardUrl = 'https://connect.stripe.com/setup/e/acct_test/abc',
 } = {}) {
   const page = await browser.newPage({ viewport, locale });
   const errors = [];
@@ -69,13 +72,54 @@ async function open({
       ? json(route, 200, { state: 'idle', progress: 0, message: '' })
       : json(route, 401, { error: 'unauthorized' }),
   );
+  // The market relay: `market` is GET /api/market's document, every action is
+  // recorded, and each answers the way lososd does on success.
+  const marketPosts = [];
+  await page.route('**/api/market', (route) =>
+    authed(route) ? json(route, 200, market) : json(route, 401, { error: 'unauthorized' }),
+  );
+  await page.route('**/api/market/**', (route) => {
+    if (!authed(route)) return json(route, 401, { error: 'unauthorized' });
+    const path = new URL(route.request().url()).pathname;
+    marketPosts.push([path, route.request().postDataJSON()]);
+    if (path === '/api/market/onboard') return json(route, 200, { available: true, ready: false, url: onboardUrl });
+    if (path === '/api/market/orders') return json(route, 201, { available: true, checkout_url: checkoutUrl });
+    return json(route, 201, { available: true });
+  });
+  // Stripe's own pages, so a tab sent there has something to land on.
+  for (const host of ['checkout.stripe.com', 'connect.stripe.com']) {
+    await page.context().route(`https://${host}/**`, (route) =>
+      route.fulfill({ status: 200, contentType: 'text/html', body: '<title>Stripe</title>' }),
+    );
+  }
 
   if (stored) {
     await page.addInitScript((t) => window.sessionStorage.setItem('losos-token', t), TOKEN);
   }
   await page.goto(origin + path, { waitUntil: 'networkidle' });
-  return { page, errors };
+  return { page, errors, marketPosts };
 }
+
+/* A box the market is offered to: one listing on the shelf, payouts set up,
+ * sharing storage only. */
+const MARKET = {
+  available: true,
+  listings: [
+    { id: 'lst_ab12', kind: 'storage', unit: 'GiB-month', unit_price: 5, currency: 'eur', available: 40 },
+  ],
+  account: {
+    fee_bps: 400,
+    currency: 'eur',
+    seller_onboarded: true,
+    seller_ready: true,
+    can_sell_storage: true,
+    can_sell_compute: false,
+    listings: [],
+    entitlements: { storage_gib: 0, compute_vcpu_hours: 0, next_expiry: null },
+    purchases: [],
+    sales: [],
+  },
+};
 
 const body = (page) => page.locator('body').innerText();
 const nav = (page) => page.getByRole('navigation', { name: 'Sections', exact: true });
@@ -141,7 +185,7 @@ await check('every sidebar entry lands on its own address', async () => {
   await page.close();
 });
 
-for (const path of ['/apps', '/storage', '/mesh', '/settings', '/settings/hardware', '/settings/about', '/settings/reset']) {
+for (const path of ['/apps', '/storage', '/mesh', '/settings', '/settings/hardware', '/settings/market', '/settings/about', '/settings/reset']) {
   await check(`a deep link to ${path} renders without errors and survives a reload`, async () => {
     const { page, errors } = await open({ path, stored: true });
     await nav(page).waitFor();
@@ -195,14 +239,129 @@ await check('a browser in a language we do not carry falls back to English', asy
 
 for (const locale of ['sk-SK', 'de-DE']) {
   await check(`every section renders in ${locale} without errors`, async () => {
-    for (const path of ['/', '/apps', '/storage', '/mesh', '/settings/network', '/settings/hardware', '/settings/security', '/settings/about', '/settings/reset']) {
-      const { page, errors } = await open({ path, stored: true, locale });
+    for (const path of ['/', '/apps', '/storage', '/mesh', '/settings/network', '/settings/hardware', '/settings/security', '/settings/market', '/settings/about', '/settings/reset']) {
+      const { page, errors } = await open({ path, stored: true, locale, market: MARKET });
       await page.locator('main').waitFor();
       assert.deepEqual(errors, [], `${path} threw in ${locale}`);
       await page.close();
     }
   });
 }
+
+await check('a box the market is not offered to says so quietly', async () => {
+  const { page, errors } = await open({ path: '/settings/market', stored: true });
+  await page.getByText('The market is not available on this box').waitFor();
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+await check('buying opens Stripe Checkout in a new tab', async () => {
+  const { page, errors, marketPosts } = await open({ path: '/settings/market', stored: true, market: MARKET });
+  const tab = page.context().waitForEvent('page');
+  await page.getByRole('button', { name: 'Buy', exact: true }).click();
+  const checkout = await tab;
+  await checkout.waitForURL('https://checkout.stripe.com/c/pay/cs_test_1');
+  assert.deepEqual(marketPosts, [['/api/market/orders', { listing_id: 'lst_ab12', quantity: 1 }]]);
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+await check('a payment page that is not Stripe is never opened', async () => {
+  const { page, marketPosts } = await open({
+    path: '/settings/market',
+    stored: true,
+    market: MARKET,
+    checkoutUrl: 'https://checkout.stripe.com.evil.example/pay',
+  });
+  const tab = page.context().waitForEvent('page');
+  await page.getByRole('button', { name: 'Buy', exact: true }).click();
+  const placeholder = await tab;
+  await page.getByText('no payment page came back').waitFor();
+  await placeholder.waitForEvent('close', { timeout: 2000 }).catch(() => {});
+  assert.ok(placeholder.isClosed(), 'the placeholder tab was left open');
+  assert.equal(marketPosts.length, 1);
+  await page.close();
+});
+
+await check('setting up payouts opens Stripe onboarding in a tab with no opener', async () => {
+  const unready = { ...MARKET, account: { ...MARKET.account, seller_onboarded: false, seller_ready: false } };
+  const { page, errors, marketPosts } = await open({ path: '/settings/market', stored: true, market: unready });
+  const tab = page.waitForEvent('popup');
+  await page.getByRole('button', { name: 'Set up payouts' }).click();
+  const onboarding = await tab;
+  await onboarding.waitForURL('https://connect.stripe.com/setup/e/acct_test/abc');
+  assert.equal(await onboarding.evaluate(() => window.opener), null);
+  assert.deepEqual(marketPosts, [['/api/market/onboard', {}]]);
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+await check('a valid listing is sent in minor units', async () => {
+  const { page, marketPosts } = await open({ path: '/settings/market', stored: true, market: MARKET });
+  await page.getByLabel('Price per unit (EUR)').fill('1,25');
+  await page.getByLabel('Capacity (units)').fill('2');
+  const sent = page.waitForRequest((request) => request.url().endsWith('/api/market/listings'));
+  await page.getByRole('button', { name: 'Offer for sale' }).click();
+  await sent;
+  assert.deepEqual(marketPosts, [['/api/market/listings', { kind: 'storage', unit_price: 125, capacity: 2 }]]);
+  await page.close();
+});
+
+await check('the listing form refuses a bad price before anything is sent', async () => {
+  const { page, marketPosts } = await open({ path: '/settings/market', stored: true, market: MARKET });
+  await page.getByPlaceholder('Price', { exact: false }).fill('0.005');
+  await page.getByPlaceholder('Capacity', { exact: false }).fill('10');
+  await page.getByRole('button', { name: 'Offer for sale' }).click();
+  await page.getByText('Enter a price above zero, like 0.05.').waitFor();
+  const price = page.getByPlaceholder('Price', { exact: false });
+  assert.equal(await price.getAttribute('aria-invalid'), 'true');
+  const described = await price.getAttribute('aria-describedby');
+  assert.match(await page.locator(`[id="${described}"]`).innerText(), /like 0\.05/);
+  assert.deepEqual(marketPosts, []);
+  await page.close();
+});
+
+await check('a zero-decimal currency is priced in whole units, not hundredths', async () => {
+  const yen = { ...MARKET, account: { ...MARKET.account, currency: 'jpy' } };
+  const { page, marketPosts } = await open({ path: '/settings/market', stored: true, market: yen });
+  await page.getByLabel('Price per unit (JPY)').fill('1,5');
+  await page.getByLabel('Capacity (units)').fill('2');
+  await page.getByRole('button', { name: 'Offer for sale' }).click();
+  await page.getByText('Enter a price above zero, like 5.').waitFor();
+  assert.deepEqual(marketPosts, []);
+  await page.getByLabel('Price per unit (JPY)').fill('500');
+  const sent = page.waitForRequest((request) => request.url().endsWith('/api/market/listings'));
+  await page.getByRole('button', { name: 'Offer for sale' }).click();
+  await sent;
+  assert.deepEqual(marketPosts, [['/api/market/listings', { kind: 'storage', unit_price: 500, capacity: 2 }]]);
+  await page.close();
+});
+
+await check('a blocked payouts pop-up says so next to the button', async () => {
+  const unready = { ...MARKET, account: { ...MARKET.account, seller_onboarded: false, seller_ready: false } };
+  const { page, errors, marketPosts } = await open({ path: '/settings/market', stored: true, market: unready });
+  await page.evaluate(() => {
+    window.open = () => null;
+  });
+  await page.getByRole('button', { name: 'Set up payouts' }).click();
+  await page.getByRole('alert').filter({ hasText: 'Allow pop-ups for this page' }).waitFor();
+  assert.deepEqual(marketPosts, []);
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+await check('a quantity out of range is tied to its field', async () => {
+  const { page, marketPosts } = await open({ path: '/settings/market', stored: true, market: MARKET });
+  const qty = page.getByLabel('Quantity');
+  await qty.fill('41');
+  await page.getByRole('button', { name: 'Buy', exact: true }).click();
+  await page.getByText('Enter a whole number from 1 to 40.').waitFor();
+  assert.equal(await qty.getAttribute('aria-invalid'), 'true');
+  const described = await qty.getAttribute('aria-describedby');
+  assert.match(await page.locator(`[id="${described}"]`).innerText(), /from 1 to 40/);
+  assert.deepEqual(marketPosts, []);
+  await page.close();
+});
 
 await check('a phone-width viewport does not scroll the page sideways', async () => {
   const { page } = await open({ stored: true, viewport: { width: 375, height: 800 } });

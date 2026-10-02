@@ -949,6 +949,21 @@ in
                 world-readable nix store.
               '';
             };
+            market = lib.mkOption {
+              type = lib.types.bool;
+              default = false;
+              description = ''
+                Permit this appliance to buy and sell storage and compute on
+                the edge's Stripe Connect market (losos.edge.market). Separate
+                from registration and from `cluster`: being published through
+                the proxy, or lending compute to the mesh, does not mean the
+                operator agreed to settle money with this box. Inert unless
+                losos.edge.market.enable is set.
+
+                Like `cluster`, this reaches the registrar only because
+                modules/edge.nix renders it into tenants.json.
+              '';
+            };
             cluster = lib.mkOption {
               type = lib.types.bool;
               default = false;
@@ -969,6 +984,107 @@ in
       );
       default = { };
       description = "Closed-enrollment whitelist of appliances permitted to register. The registrar only ever writes Traefik routers for ids listed here.";
+    };
+
+    # ── Market (edge side) ──────────────────────────────────────────────────
+    # Optional storage / compute marketplace settled through Stripe Connect.
+    # The edge is the Stripe platform account: buyers pay it, the seller's share
+    # is forwarded to the seller's connected account, and `feeBps` stays behind.
+    # Off by default; see wiki/Market.md.
+    edge.market.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Serve the /market/* routes of losos-registrar. Without this every one
+        of them answers 503. Needs a Stripe platform account with Connect
+        enabled; see wiki/Market.md for the one-time dashboard setup.
+      '';
+    };
+
+    edge.market.stripeSecretKeySealed = lib.mkOption {
+      type = secretPath;
+      default = "/var/secrets/losos-stripe-secret-key.cred";
+      description = ''
+        The platform's Stripe secret (`sk_...`) or restricted (`rk_...`) key,
+        **sealed** with `systemd-creds` under the credential name
+        `stripe-secret-key`. The key is never stored in plaintext on disk: the
+        `losos-stripe-gate` unit receives this blob through
+        `LoadCredentialEncrypted=`, so a copy of `/var` carries ciphertext only
+        and the registrar process never holds the key. Seal it from stdin so
+        the plaintext never touches the disk either (see wiki/Market.md).
+        Rotating it means sealing a new blob and restarting the gate. A blob
+        that is missing skips the gate, so the market answers 503 and the rest
+        of the registrar is untouched. A key of any other shape is refused
+        before anything is sent to Stripe.
+      '';
+    };
+
+    edge.market.webhookSecretSealed = lib.mkOption {
+      type = secretPath;
+      default = "/var/secrets/losos-stripe-webhook-secret.cred";
+      description = ''
+        The signing secrets (`whsec_...`), one per line, of the Stripe webhook
+        endpoints that point at
+        `https://register.<publicDomain>/market/webhook`, **sealed** with
+        `systemd-creds` under the credential name `stripe-webhook-secret` and
+        handed to the gate like `stripeSecretKeySealed`. Stripe needs two
+        endpoints: one for events on the platform account
+        (checkout.session.completed, checkout.session.expired) and one for
+        events on Connected accounts
+        (account.updated). The registrar accepts a signature from either.
+      '';
+    };
+
+    edge.market.feeBps = lib.mkOption {
+      type = lib.types.ints.between 0 2000;
+      default = 400;
+      description = ''
+        The platform's cut of every sale in basis points of the gross amount:
+        400 is 4%. Collected as Stripe's application_fee_amount on a
+        destination charge. Capped at 20% so a typo cannot take a third of
+        every sale.
+      '';
+    };
+
+    edge.market.currency = lib.mkOption {
+      type = lib.types.enum [
+        "aud"
+        "cad"
+        "chf"
+        "eur"
+        "gbp"
+        "nzd"
+        "usd"
+      ];
+      default = "eur";
+      description = "Supported two-decimal ISO 4217 currency, lowercase. One currency per edge; listings are priced in its minor unit (cents).";
+    };
+
+    edge.market.storageClass = lib.mkOption {
+      # A DNS-1123 subdomain, as Kubernetes requires of the name: at most
+      # 253 characters, each dot-separated label at most 63. The registrar
+      # applies the same check to --market-storage-class.
+      type =
+        lib.types.addCheck
+          (lib.types.strMatching "[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*")
+          (s: lib.stringLength s <= 253 && lib.all (l: lib.stringLength l <= 63) (lib.splitString "." s));
+      default = "longhorn";
+      description = ''
+        The Kubernetes StorageClass a purchased storage volume is claimed
+        from: the mesh's Longhorn pool, which is what appliances sharing their
+        storage contribute to.
+      '';
+    };
+
+    edge.market.returnUrl = lib.mkOption {
+      type = lib.types.str;
+      default = "";
+      example = "https://losos.cfd/market";
+      description = ''
+        Where Stripe sends a buyer back to after Checkout and a seller back to
+        after onboarding. `?order=<id>&status=paid|cancelled` is appended for
+        Checkout. Required when the market is enabled.
+      '';
     };
 
     edge.rathole.package = lib.mkOption {
@@ -1085,6 +1201,8 @@ in
         "losos.cluster.tokenFile" = config.losos.cluster.tokenFile;
         "losos.shared.fscrypt.keyFile" = config.losos.shared.fscrypt.keyFile;
         "losos.edge.cluster.agentTokenFile" = config.losos.edge.cluster.agentTokenFile;
+        "losos.edge.market.stripeSecretKeySealed" = config.losos.edge.market.stripeSecretKeySealed;
+        "losos.edge.market.webhookSecretSealed" = config.losos.edge.market.webhookSecretSealed;
       }
       // lib.optionalAttrs (config.losos.edge.noisePrivateKeyFile != null) {
         "losos.edge.noisePrivateKeyFile" = config.losos.edge.noisePrivateKeyFile;

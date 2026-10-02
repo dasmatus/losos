@@ -12,10 +12,12 @@
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use axum::http::{Method, StatusCode, Uri};
+use axum::response::IntoResponse;
 use axum::Router;
 use losos_registrar::opts::ServeOpts;
 use tokio::sync::oneshot;
@@ -37,21 +39,23 @@ pub const KUBE_TOKEN: &str = "eyJhbGciOiJSUzI1NiIsImtpZCI6Imxvc29zLXJlZ2lzdHJhci
 
 /// A directory under the system temp dir, removed when the guard drops.
 ///
-/// Uniquified by pid + a monotonic clock reading so `cargo test`'s parallel
-/// threads (and two concurrent `cargo test` runs) never share one.
+/// Uniquified by pid, the wall clock and a per-process counter, so neither
+/// `cargo test`'s parallel threads nor two concurrent `cargo test` runs ever
+/// share one.
 pub struct TempDir {
     path: PathBuf,
 }
 
 impl TempDir {
-    pub fn new(tag: &str) -> Self {
+    pub fn new(_tag: &str) -> Self {
         let nanos = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_or(0, |d| d.as_nanos());
-        let path = std::env::temp_dir().join(format!(
-            "losos-registrar-test-{tag}-{}-{nanos}",
-            std::process::id()
-        ));
+        // The clock alone can repeat across threads (a coarse clock, or two
+        // calls inside one tick); the counter cannot within one process.
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        let n = NEXT.fetch_add(1, Ordering::Relaxed);
+        let path = std::env::temp_dir().join(format!("l-{}-{nanos}-{n}", std::process::id()));
         std::fs::create_dir_all(&path).expect("create temp dir");
         Self { path }
     }
@@ -84,6 +88,7 @@ pub struct TenantSpec {
     pub hostname: String,
     pub token: Option<String>,
     pub cluster: bool,
+    pub market: bool,
 }
 
 impl TenantSpec {
@@ -93,6 +98,7 @@ impl TenantSpec {
             hostname: hostname.to_string(),
             token: Some(token.to_string()),
             cluster: false,
+            market: false,
         }
     }
 
@@ -103,7 +109,15 @@ impl TenantSpec {
             hostname: hostname.to_string(),
             token: None,
             cluster: false,
+            market: false,
         }
+    }
+
+    /// `losos.edge.tenants.<id>.market = true` — may buy and sell.
+    #[must_use]
+    pub fn with_market(mut self) -> Self {
+        self.market = true;
+        self
     }
 
     /// `losos.edge.tenants.<id>.cluster = true` — cleared for mesh enrolment.
@@ -146,6 +160,11 @@ impl MeshFixture {
     }
 }
 
+/// The Stripe secrets the market fixture writes, and what the stub answers.
+pub const STRIPE_KEY: &str = "sk_test_0123456789abcdef";
+pub const WEBHOOK_SECRET: &str = "whsec_0123456789abcdef";
+pub const RETURN_URL: &str = "https://losos.example/market";
+
 /// A running registrar: its temp state directory, its base URL, and the
 /// handles needed to stop it.
 pub struct Edge {
@@ -154,6 +173,10 @@ pub struct Edge {
     pub client: reqwest::Client,
     stop: Option<oneshot::Sender<()>>,
     join: Option<tokio::task::JoinHandle<miette::Result<()>>>,
+    /// The Stripe gate the market talks to, when the market is on. The
+    /// registrar itself never sees the key files this writes.
+    gate_stop: Option<oneshot::Sender<()>>,
+    gate_join: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl Edge {
@@ -166,7 +189,77 @@ impl Edge {
 
     /// As [`Edge::start`], with the mesh half configured.
     pub async fn start_with_mesh(tag: &str, tenants: &[TenantSpec], mesh: MeshFixture) -> Self {
-        Self::start_inner(tag, tenants, mesh, None).await
+        Self::start_inner(tag, tenants, mesh, None, None).await
+    }
+
+    /// As [`Edge::start`], with the Stripe market pointed at `stripe_api` and
+    /// `seller-box` already enrolled in the mesh with compute sharing on —
+    /// the market only sells what an appliance is sharing.
+    pub async fn start_with_market(tag: &str, tenants: &[TenantSpec], stripe_api: &str) -> Self {
+        Self::start_market(
+            tag,
+            tenants,
+            stripe_api,
+            MeshFixture::default(),
+            &[("seller-box", true)],
+        )
+        .await
+    }
+
+    /// As [`Edge::start_with_market`], with the mesh half configured too, so
+    /// a paid storage order has an apiserver to be fulfilled against.
+    pub async fn start_with_market_and_mesh(
+        tag: &str,
+        tenants: &[TenantSpec],
+        stripe_api: &str,
+        mesh: MeshFixture,
+    ) -> Self {
+        Self::start_market(tag, tenants, stripe_api, mesh, &[("seller-box", true)]).await
+    }
+
+    /// The general form: `enrolled` lists `(appliance id, share_compute)` for
+    /// every appliance that has already joined the mesh, written into
+    /// `registry.json` before the edge starts.
+    pub async fn start_market(
+        tag: &str,
+        tenants: &[TenantSpec],
+        stripe_api: &str,
+        mesh: MeshFixture,
+        enrolled: &[(&str, bool)],
+    ) -> Self {
+        Self::start_inner_seeded(
+            tag,
+            tenants,
+            mesh,
+            None,
+            Some(stripe_api.to_string()),
+            enrolled,
+            None,
+        )
+        .await
+    }
+
+    /// As [`Edge::start_market`], with `market.json` written before the edge
+    /// starts, for states a test cannot reach in real time (an entitlement
+    /// that lapsed a month ago).
+    pub async fn start_market_with_state(
+        tag: &str,
+        tenants: &[TenantSpec],
+        stripe_api: &str,
+        mesh: MeshFixture,
+        enrolled: &[(&str, bool)],
+        market_state: &serde_json::Value,
+    ) -> Self {
+        Self::start_inner_seeded(
+            tag,
+            tenants,
+            mesh,
+            None,
+            Some(stripe_api.to_string()),
+            enrolled,
+            Some(market_state),
+        )
+        .await
     }
 
     /// As [`Edge::start`], serving `public_key` at `/noise-public-key`.
@@ -175,7 +268,7 @@ impl Edge {
         tenants: &[TenantSpec],
         public_key: &str,
     ) -> Self {
-        Self::start_inner(tag, tenants, MeshFixture::default(), Some(public_key)).await
+        Self::start_inner(tag, tenants, MeshFixture::default(), Some(public_key), None).await
     }
 
     async fn start_inner(
@@ -183,8 +276,52 @@ impl Edge {
         tenants: &[TenantSpec],
         mesh: MeshFixture,
         noise_public_key: Option<&str>,
+        stripe_api: Option<String>,
+    ) -> Self {
+        Self::start_inner_seeded(tag, tenants, mesh, noise_public_key, stripe_api, &[], None).await
+    }
+
+    async fn start_inner_seeded(
+        tag: &str,
+        tenants: &[TenantSpec],
+        mesh: MeshFixture,
+        noise_public_key: Option<&str>,
+        stripe_api: Option<String>,
+        enrolled: &[(&str, bool)],
+        market_state: Option<&serde_json::Value>,
     ) -> Self {
         let dir = TempDir::new(tag);
+        if let Some(market_state) = market_state {
+            std::fs::write(
+                dir.join("market.json"),
+                serde_json::to_vec(market_state).expect("serialize market state"),
+            )
+            .expect("seed market.json");
+        }
+        if !enrolled.is_empty() {
+            let windows: serde_json::Map<String, serde_json::Value> = enrolled
+                .iter()
+                .map(|(id, share)| {
+                    (
+                        (*id).to_string(),
+                        serde_json::json!({
+                            "share_compute": share,
+                            "window_start": "23:00",
+                            "window_end": "07:00",
+                            "tz": "UTC",
+                        }),
+                    )
+                })
+                .collect();
+            std::fs::write(
+                dir.join("registry.json"),
+                serde_json::to_vec(
+                    &serde_json::json!({ "tenants": {}, "compute_windows": windows }),
+                )
+                .expect("serialize registry"),
+            )
+            .expect("seed registry.json");
+        }
         std::fs::create_dir_all(dir.join("traefik")).expect("create traefik dir");
         std::fs::write(dir.join("bootstrap.token"), BOOTSTRAP_TOKEN).expect("write bootstrap");
         write_tenants(&dir, tenants);
@@ -201,6 +338,38 @@ impl Edge {
         let noise_public_key_file = noise_public_key.map(|key| {
             std::fs::write(dir.join("noise.pub"), format!("{key}\n")).expect("write noise pub");
             dir.path_str("noise.pub")
+        });
+
+        let mut gate_stop = None;
+        let mut gate_join = None;
+        let market = stripe_api.map(|stripe_api| {
+            std::fs::write(dir.join("stripe.key"), STRIPE_KEY).expect("write stripe key");
+            std::fs::write(dir.join("webhook.secret"), WEBHOOK_SECRET).expect("write webhook");
+            let gate = losos_registrar::stripe_gate::GateOpts {
+                socket: dir.path_str("gate.sock"),
+                stripe_key_file: dir.path_str("stripe.key"),
+                webhook_secret_file: dir.path_str("webhook.secret"),
+                stripe_api,
+                currency: "eur".to_string(),
+            };
+            let listener = losos_registrar::stripe_gate::bind(&gate.socket).expect("bind gate");
+            let (stop, rx) = oneshot::channel::<()>();
+            gate_stop = Some(stop);
+            gate_join = Some(tokio::spawn(losos_registrar::stripe_gate::serve(
+                listener,
+                gate,
+                async move {
+                    let _ = rx.await;
+                },
+            )));
+            Box::new(losos_registrar::market::MarketOpts {
+                state_file: dir.path_str("market.json"),
+                gate_socket: dir.path_str("gate.sock"),
+                return_url: RETURN_URL.to_string(),
+                currency: "eur".to_string(),
+                fee_bps: losos_registrar::market::DEFAULT_FEE_BPS,
+                storage_class: losos_registrar::market::DEFAULT_STORAGE_CLASS.to_string(),
+            })
         });
 
         let opts = ServeOpts {
@@ -229,6 +398,7 @@ impl Edge {
             kube_token_file,
             kube_ca_file: None,
             compute_windows_file: dir.path_str("compute-windows.json"),
+            market,
         };
 
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
@@ -249,6 +419,8 @@ impl Edge {
             client: reqwest::Client::new(),
             stop: Some(stop),
             join: Some(join),
+            gate_stop,
+            gate_join,
         };
         // `serve` does its registry load and first reconcile pass *before* it
         // starts accepting, so a successful /health is proof both finished —
@@ -369,7 +541,19 @@ impl Edge {
 
     /// Stop the server and wait for `serve` to return, so a panic inside it
     /// fails the test instead of vanishing with the runtime.
+    /// Stop the Stripe gate while the registrar keeps running: the edge whose
+    /// key was never sealed, or whose gate could not unseal it.
+    pub async fn stop_gate(&mut self) {
+        if let Some(stop) = self.gate_stop.take() {
+            let _ = stop.send(());
+        }
+        if let Some(join) = self.gate_join.take() {
+            let _ = tokio::time::timeout(Duration::from_secs(5), join).await;
+        }
+    }
+
     pub async fn shutdown(mut self) {
+        self.stop_gate().await;
         if let Some(stop) = self.stop.take() {
             let _ = stop.send(());
         }
@@ -402,6 +586,7 @@ fn write_tenants(dir: &TempDir, tenants: &[TenantSpec]) {
                 "hostname": spec.hostname,
                 "token_file": token_path.to_string_lossy(),
                 "cluster": spec.cluster,
+                "market": spec.market,
             }),
         );
     }
@@ -431,31 +616,42 @@ pub struct KubeStub {
 struct StubState {
     /// The `METHOD path` of every request the stub saw, in order.
     seen: Arc<Mutex<Vec<String>>>,
+    /// The JSON body of every request that had one, with its `METHOD path`.
+    bodies: Arc<Mutex<Vec<(String, serde_json::Value)>>>,
     /// What to answer with. 404 is the apiserver's "no such node", which the
     /// handler must treat as a clean result.
     status: StatusCode,
     /// The bearer token every request is expected to carry.
     expect_bearer: Option<String>,
+    /// The `status.phase` a `GET` of a PersistentVolumeClaim reports.
+    claim_phase: Arc<Mutex<String>>,
 }
 
 impl KubeStub {
     /// A stub that answers every request with `status`.
     pub async fn start(status: u16) -> Self {
-        Self::start_inner(status, None).await
+        Self::start_inner(status, None, "Bound").await
+    }
+
+    /// A stub whose claims report `phase` until told otherwise.
+    pub async fn start_with_claim_phase(status: u16, phase: &str) -> Self {
+        Self::start_inner(status, None, phase).await
     }
 
     /// A stub that also asserts the `Authorization` header, so a join that
     /// forgot the ServiceAccount token fails loudly instead of passing because
     /// the stub did not care.
     pub async fn expecting_bearer(status: u16, token: &str) -> Self {
-        Self::start_inner(status, Some(token.to_string())).await
+        Self::start_inner(status, Some(token.to_string()), "Bound").await
     }
 
-    async fn start_inner(status: u16, expect_bearer: Option<String>) -> Self {
+    async fn start_inner(status: u16, expect_bearer: Option<String>, phase: &str) -> Self {
         let state = StubState {
             seen: Arc::new(Mutex::new(Vec::new())),
+            bodies: Arc::new(Mutex::new(Vec::new())),
             status: StatusCode::from_u16(status).expect("a valid status code"),
             expect_bearer,
+            claim_phase: Arc::new(Mutex::new(phase.to_string())),
         };
         let app = Router::new()
             .fallback(stub_handler)
@@ -489,6 +685,25 @@ impl KubeStub {
             .clone()
     }
 
+    /// The JSON body of every request that carried one, as
+    /// `(METHOD path, body)`.
+    pub fn bodies(&self) -> Vec<(String, serde_json::Value)> {
+        self.state
+            .bodies
+            .lock()
+            .expect("the stub's body log is not poisoned")
+            .clone()
+    }
+
+    /// What a `GET` of any claim reports from now on (`Bound` by default).
+    pub fn set_claim_phase(&self, phase: &str) {
+        *self
+            .state
+            .claim_phase
+            .lock()
+            .expect("the stub's claim phase is not poisoned") = phase.to_string();
+    }
+
     pub async fn shutdown(mut self) {
         if let Some(stop) = self.stop.take() {
             let _ = stop.send(());
@@ -504,20 +719,40 @@ async fn stub_handler(
     headers: axum::http::HeaderMap,
     method: Method,
     uri: Uri,
-) -> StatusCode {
+    body: axum::body::Bytes,
+) -> axum::response::Response {
     state
         .seen
         .lock()
         .expect("the stub's request log is not poisoned")
         .push(format!("{method} {}", uri.path()));
+    if let Ok(json) = serde_json::from_slice(&body) {
+        state
+            .bodies
+            .lock()
+            .expect("the stub's body log is not poisoned")
+            .push((format!("{method} {}", uri.path()), json));
+    }
     if let Some(expected) = &state.expect_bearer {
         let supplied = headers
             .get(axum::http::header::AUTHORIZATION)
             .and_then(|v| v.to_str().ok())
             .unwrap_or_default();
         if supplied != format!("Bearer {expected}") {
-            return StatusCode::UNAUTHORIZED;
+            return StatusCode::UNAUTHORIZED.into_response();
         }
     }
-    state.status
+    if method == Method::GET && uri.path().contains("/persistentvolumeclaims/") {
+        let phase = state
+            .claim_phase
+            .lock()
+            .expect("the stub's claim phase is not poisoned")
+            .clone();
+        // "Gone" stands for a claim an operator has deleted.
+        if phase == "Gone" {
+            return StatusCode::NOT_FOUND.into_response();
+        }
+        return axum::Json(serde_json::json!({ "status": { "phase": phase } })).into_response();
+    }
+    state.status.into_response()
 }

@@ -72,6 +72,13 @@ async fn async_main() -> ExitCode {
                 ExitCode::FAILURE
             }
         },
+        Ok(Mode::StripeGate(opts)) => match losos_registrar::stripe_gate::run(opts).await {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(e) => {
+                tracing::error!(target: Action::Market.target(), "stripe gate: {:?}", e);
+                ExitCode::FAILURE
+            }
+        },
         Ok(Mode::Join(opts)) => match losos_registrar::join::run(opts).await {
             Ok(()) => ExitCode::SUCCESS,
             // Non-zero on purpose: `losos-mesh-join.service` is `Requires=`d by

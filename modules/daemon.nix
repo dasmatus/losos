@@ -102,6 +102,17 @@ in
       # have and fail *after* lvextend had already run.
       // lib.optionalAttrs (!config.losos.tpm.enable) {
         LOSOS_LUKS_KEYFILE = "/etc/keys/persist-keyfile";
+      }
+      # How `/api/market*` reaches the edge's market (backend/src/market.rs).
+      # Only with the master proxy on: without a registrar the daemon finds
+      # none of these and answers `available: false`, which is the right
+      # reading of a box that has no edge to trade through. The token *file*
+      # path, never its contents: lososd reads it per request and sends it to
+      # curl on stdin, so it is in no environment and no argument vector.
+      // lib.optionalAttrs config.losos.proxy.enable {
+        LOSOS_REGISTRAR_URL = config.losos.proxy.registrarUrl;
+        LOSOS_APPLIANCE_ID = config.losos.proxy.applianceId;
+        LOSOS_PROXY_TOKEN_FILE = toString config.losos.proxy.tokenFile;
       };
       # What `losos-ctl grow` shells out to. A systemd unit's default PATH does
       # not include these, and the failure is the unhelpful kind: the grow
