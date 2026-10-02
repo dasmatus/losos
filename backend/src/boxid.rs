@@ -229,7 +229,7 @@ mod tests {
         let code = "3f2b8c1e-7a4d-4e9b-9c15-0d6a2b7e4f31";
         let id = box_uuid(code);
         assert_eq!(id, box_uuid(code));
-        assert!(crate::recovery::is_well_formed(&id), "{id}");
+        assert!(crate::recovery::is_well_formed(&id), "generated box UUID is not well formed");
         assert_ne!(id, box_uuid("0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"));
     }
 
