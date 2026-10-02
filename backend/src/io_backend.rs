@@ -259,7 +259,7 @@ fn curl_market(
 ) -> anyhow::Result<(u16, String)> {
     /// A listing page is small; a registrar that sends more is wrong.
     const MAX_BYTES: usize = 1024 * 1024;
-    const TIMEOUT_SECS: &str = "15";
+const TIMEOUT_SECS: &str = "25";
 
     let (method, path) = op.route();
     let token = std::fs::read_to_string(&config.token_file)
