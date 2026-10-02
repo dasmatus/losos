@@ -16,8 +16,10 @@ Write it to a USB stick and boot the target machine.
 - **Turn Secure Boot off.** Nothing is signed. With Secure Boot on, the
   firmware refuses the stick (OVMF shows "Access Denied"; other firmware may
   skip it silently).
-- **Boot in UEFI mode.** The ISO boots under UEFI and legacy BIOS, but the
-  installed system uses systemd-boot and needs UEFI.
+- **UEFI or BIOS, both work.** The installer installs for whichever firmware
+  booted it: UEFI gets systemd-boot, legacy BIOS gets GRUB plus a 1 MiB BIOS
+  boot partition on the first disk. Force one with `losos-install --bios` or
+  `--uefi`. BIOS is mainly for testing in a VM.
 - **Connect the network.** The installer clones the flake at run time.
 
 ## What the installer does
@@ -31,6 +33,25 @@ group, encrypts it with LUKS, formats `/persist` as ext4, and installs.
 
 `/persist` is ext4 with the `encrypt` feature because fscrypt needs it and
 btrfs does not support it. You lose compression and data checksums.
+
+After the reboot, tty1 shows a full-screen banner with the box's IP address and
+`<hostname>.local`. Open that address in a browser on any computer on the same
+network. The banner updates when the address changes.
+
+## Try it in a VM (BIOS)
+
+```sh
+qemu-img create -f raw disk.img 40G
+qemu-system-x86_64 -m 4096 -smp 2 -enable-kvm -machine q35 \
+  -drive file=losos.iso,media=cdrom,readonly=on \
+  -drive file=disk.img,format=raw,if=virtio \
+  -nic user,hostfwd=tcp::8080-:80
+```
+
+Without `-bios` QEMU boots SeaBIOS, so the installer picks GRUB. Once it
+finishes, shut the VM down and boot again without the `-drive …media=cdrom`
+line. The VM's address is only reachable from the host through the forward:
+open `http://localhost:8080`.
 
 ## ISO with the full closure
 
