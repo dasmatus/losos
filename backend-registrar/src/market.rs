@@ -976,6 +976,17 @@ impl Market {
         Ok(())
     }
 
+    /// Make `next` the live state, but only once it is on disk. Every write
+    /// goes through here, each built on a clone taken under the lock. A change
+    /// made to the live state first would outlive a failed write (a full
+    /// disk): the caller is told it failed, yet the change stands in memory,
+    /// is acted on, and the next successful write commits it silently.
+    async fn commit(&self, live: &mut MarketState, next: MarketState) -> Result<(), MarketError> {
+        self.persist(&next).await?;
+        *live = next;
+        Ok(())
+    }
+
     fn stripe(&self) -> GateClient {
         GateClient::new(&self.opts.gate_socket)
     }
@@ -1072,7 +1083,8 @@ impl Market {
             None => {
                 let account_id = stripe.create_account(id, box_uuid).await?;
                 let mut state = self.state.lock().await;
-                state.sellers.insert(
+                let mut next = state.clone();
+                next.sellers.insert(
                     id.to_string(),
                     Seller {
                         account_id: account_id.clone(),
@@ -1080,7 +1092,7 @@ impl Market {
                         box_uuid: box_uuid.map(str::to_string),
                     },
                 );
-                self.persist(&state).await?;
+                self.commit(&mut state, next).await?;
                 account_id
             }
         };
@@ -1095,19 +1107,21 @@ impl Market {
 
     async fn set_box_uuid(&self, id: &str, uuid: &str) -> Result<(), MarketError> {
         let mut state = self.state.lock().await;
-        if let Some(seller) = state.sellers.get_mut(id) {
+        let mut next = state.clone();
+        if let Some(seller) = next.sellers.get_mut(id) {
             seller.box_uuid = Some(uuid.to_string());
-            self.persist(&state).await?;
+            self.commit(&mut state, next).await?;
         }
         Ok(())
     }
 
     async fn set_ready(&self, id: &str, ready: bool) -> Result<(), MarketError> {
         let mut state = self.state.lock().await;
-        if let Some(seller) = state.sellers.get_mut(id) {
+        let mut next = state.clone();
+        if let Some(seller) = next.sellers.get_mut(id) {
             if seller.ready != ready {
                 seller.ready = ready;
-                self.persist(&state).await?;
+                self.commit(&mut state, next).await?;
             }
         }
         Ok(())
@@ -1158,7 +1172,8 @@ impl Market {
             return Err(MarketError::Conflict("too many active listings"));
         }
         let id = random_id("lst")?;
-        state.listings.insert(
+        let mut next = state.clone();
+        next.listings.insert(
             id.clone(),
             Listing {
                 id: id.clone(),
@@ -1170,14 +1185,15 @@ impl Market {
                 created_at: now_secs(),
             },
         );
-        self.persist(&state).await?;
+        self.commit(&mut state, next).await?;
         Ok(id)
     }
 
     /// Stop selling. Orders already placed keep their units.
     pub async fn close_listing(&self, seller: &str, listing_id: &str) -> Result<(), MarketError> {
         let mut state = self.state.lock().await;
-        let listing = state
+        let mut next = state.clone();
+        let listing = next
             .listings
             .get_mut(listing_id)
             .filter(|l| l.seller == seller)
@@ -1186,10 +1202,10 @@ impl Market {
             listing.active = false;
             // Nothing refers to a listing nobody ordered from, so it goes now
             // rather than lingering as a closed row.
-            if !state.orders.values().any(|o| o.listing_id == listing_id) {
-                state.listings.remove(listing_id);
+            if !next.orders.values().any(|o| o.listing_id == listing_id) {
+                next.listings.remove(listing_id);
             }
-            self.persist(&state).await?;
+            self.commit(&mut state, next).await?;
         }
         Ok(())
     }
@@ -1255,9 +1271,10 @@ impl Market {
                 volume: None,
                 claim: None,
             };
-            expire_stale(&mut state, now);
-            state.orders.insert(order.id.clone(), order.clone());
-            self.persist(&state).await?;
+            let mut next = state.clone();
+            expire_stale(&mut next, now);
+            next.orders.insert(order.id.clone(), order.clone());
+            self.commit(&mut state, next).await?;
             (order, seller.account_id)
         };
 
@@ -1275,12 +1292,13 @@ impl Market {
             })
             .await;
         let mut state = self.state.lock().await;
+        let mut next = state.clone();
         match session {
             Ok((session_id, url)) => {
-                if let Some(o) = state.orders.get_mut(&order.id) {
+                if let Some(o) = next.orders.get_mut(&order.id) {
                     o.session_id = Some(session_id);
                 }
-                self.persist(&state).await?;
+                self.commit(&mut state, next).await?;
                 Ok(CheckoutView {
                     order_id: order.id,
                     checkout_url: url,
@@ -1290,8 +1308,8 @@ impl Market {
                 })
             }
             Err(e) => {
-                if release_failed_checkout(&mut state, &order.id) {
-                    self.persist(&state).await?;
+                if release_failed_checkout(&mut next, &order.id) {
+                    self.commit(&mut state, next).await?;
                 }
                 Err(e)
             }
@@ -1305,8 +1323,7 @@ impl Market {
         let mut next = state.clone();
         let (expired, pruned) = expire_stale(&mut next, now_secs());
         if !expired.is_empty() || pruned > 0 {
-            self.persist(&next).await?;
-            *state = next;
+            self.commit(&mut state, next).await?;
         }
         Ok(expired)
     }
@@ -1336,9 +1353,7 @@ impl Market {
             Some(o) if o.claim.as_deref() != Some(&claim) => o.claim = Some(claim),
             _ => return Ok(()),
         }
-        self.persist(&next).await?;
-        *state = next;
-        Ok(())
+        self.commit(&mut state, next).await
     }
 
     /// Record that `order_id`'s volume is bound.
@@ -1349,9 +1364,10 @@ impl Market {
         pvc: &str,
     ) -> Result<(), MarketError> {
         let mut state = self.state.lock().await;
-        if let Some(o) = state.orders.get_mut(order_id) {
+        let mut next = state.clone();
+        if let Some(o) = next.orders.get_mut(order_id) {
             o.volume = Some(format!("{namespace}/{pvc}"));
-            self.persist(&state).await?;
+            self.commit(&mut state, next).await?;
         }
         Ok(())
     }
@@ -1369,8 +1385,7 @@ impl Market {
         if let Some(o) = next.orders.get_mut(order_id) {
             o.volume = None;
             o.claim = None;
-            self.persist(&next).await?;
-            *state = next;
+            self.commit(&mut state, next).await?;
         }
         Ok(())
     }
@@ -1384,8 +1399,7 @@ impl Market {
         let mut state = self.state.lock().await;
         let mut next = state.clone();
         if apply_event(&mut next, &event, now_secs()) {
-            self.persist(&next).await?;
-            *state = next;
+            self.commit(&mut state, next).await?;
         }
         Ok(())
     }
@@ -1771,6 +1785,44 @@ mod tests {
             active,
             created_at: 0,
         }
+    }
+
+    /// A write that fails leaves the live state as it was, so nothing the
+    /// caller was told failed is acted on, or committed by a later write.
+    #[tokio::test]
+    async fn a_failed_write_changes_nothing_in_memory() {
+        let dir = std::env::temp_dir().join(format!("market-commit-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut st = state_of(vec![order("p", OrderStatus::Pending, 1, 0)]);
+        st.listings.insert("lst_1".into(), listing("lst_1", true));
+        st.sellers.insert(
+            "s".into(),
+            Seller {
+                account_id: "acct_1".into(),
+                ready: false,
+                box_uuid: None,
+            },
+        );
+        let file = dir.join("market.json");
+        std::fs::write(&file, serde_json::to_vec(&st).unwrap()).unwrap();
+        let market = Market::open(MarketOpts {
+            state_file: file.to_string_lossy().into_owned(),
+            gate_socket: "/nonexistent".into(),
+            return_url: "https://example.test/market".into(),
+            currency: "eur".into(),
+            fee_bps: DEFAULT_FEE_BPS,
+            storage_class: DEFAULT_STORAGE_CLASS.into(),
+        })
+        .await
+        .unwrap();
+        // Every write now fails: the directory it renames into is gone.
+        std::fs::remove_dir_all(&dir).unwrap();
+
+        assert!(market.close_listing("s", "lst_1").await.is_err());
+        assert!(market.set_ready("s", true).await.is_err());
+        assert!(market.mark_claimed("p", "market-b", "p").await.is_err());
+        assert!(market.mark_provisioned("p", "market-b", "p").await.is_err());
+        assert_eq!(*market.state.lock().await, st);
     }
 
     #[test]

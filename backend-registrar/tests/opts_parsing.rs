@@ -367,7 +367,9 @@ fn market_flags_are_all_or_nothing_and_bounded() {
         ("--market-storage-class", "a.-b"),
         ("--market-storage-class", "-a"),
         ("--market-storage-class", "a_b"),
-        ("--market-storage-class", &"a".repeat(254)),
+        ("--market-storage-class", &"a".repeat(64)),
+        ("--market-storage-class", &format!("{}.b", "a".repeat(64))),
+        ("--market-storage-class", &vec!["a".repeat(63); 4].join(".")),
     ] {
         let mut args = vec![flag, bad];
         args.extend(MARKET_FLAGS);
@@ -377,7 +379,14 @@ fn market_flags_are_all_or_nothing_and_bounded() {
     args.extend(MARKET_FLAGS);
     let market = serve_opts(&args).market.expect("market enabled");
     assert_eq!((market.fee_bps, market.currency.as_str()), (250, "usd"));
-    let longest = format!("{}.{}", "a".repeat(63), "b".repeat(189));
+    // 63 + 1 + 63 + 1 + 63 + 1 + 61: every label at its limit, 253 in all.
+    let longest = format!(
+        "{}.{}.{}.{}",
+        "a".repeat(63),
+        "b".repeat(63),
+        "c".repeat(63),
+        "d".repeat(61)
+    );
     for good in ["longhorn-ssd", "longhorn.io.v2", longest.as_str()] {
         let mut args = vec!["--market-storage-class", good];
         args.extend(MARKET_FLAGS);
