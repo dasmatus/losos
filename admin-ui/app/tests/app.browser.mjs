@@ -252,7 +252,9 @@ await check('market onboarding, listing validation, and checkout use their API a
   await page.getByRole('button', { name: 'Buy', exact: true }).click();
   const blockedPopup = await blockedPopupPromise;
   await page.getByText('The order was made, but no payment page came back. Refresh and try again.').waitFor();
-  assert.ok(!blockedPopup.url().startsWith('https://checkout.stripe.com.attacker.example'));
+  const blockedPopupUrl = new URL(blockedPopup.url());
+  assert.strictEqual(blockedPopupUrl.protocol, 'https:');
+  assert.strictEqual(blockedPopupUrl.hostname, 'checkout.stripe.com');
   if (!blockedPopup.isClosed()) await blockedPopup.close();
 
   assert.deepStrictEqual(errors, []);
