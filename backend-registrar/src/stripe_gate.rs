@@ -207,6 +207,7 @@ impl StripeClient {
         let sep = if return_url.contains('?') { '&' } else { '?' };
         let form = [
             ("mode", "payment".to_string()),
+            ("payment_method_types[]", "card".to_string()),
             ("client_reference_id", c.order_id.clone()),
             (
                 "success_url",
@@ -361,6 +362,7 @@ pub(crate) struct CheckoutRequest {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case")]
 pub(crate) enum Request {
+    ValidateSecrets,
     CreateAccount {
         appliance_id: String,
         #[serde(default)]
@@ -510,6 +512,13 @@ async fn stripe(opts: &GateOpts) -> Result<StripeClient, MarketError> {
 
 async fn handle(opts: &GateOpts, request: Request) -> Reply {
     match request {
+        Request::ValidateSecrets => match stripe(opts).await {
+            Ok(_) => match read_webhook_secrets(&opts.webhook_secret_file).await {
+                Ok(_) => Reply::default(),
+                Err(e) => e.into(),
+            },
+            Err(e) => e.into(),
+        },
         Request::CreateAccount {
             appliance_id,
             box_uuid,
@@ -777,6 +786,10 @@ impl GateClient {
                 FaultKind::Stripe => MarketError::Stripe(message),
             }),
         }
+    }
+
+    pub async fn validate_secrets(&self) -> Result<(), MarketError> {
+        self.call(&Request::ValidateSecrets).await.map(|_| ())
     }
 
     /// Create the seller's Express account; a retry returns the same one.

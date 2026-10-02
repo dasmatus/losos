@@ -36,7 +36,9 @@ function unitName(unit: string): string {
 
 function openInNewTab(url: unknown): boolean {
   if (!isHttps(url)) return false;
-  window.open(url, "_blank", "noopener,noreferrer");
+  const tab = window.open(url, "_blank");
+  if (tab === null) return false;
+  tab.opener = null;
   return true;
 }
 
@@ -202,10 +204,19 @@ function ShelfRow({
       return;
     }
     setProblem(null);
+    const tab = window.open("about:blank", "_blank");
+    if (tab === null) {
+      setProblem(t("panes.market.noCheckout"));
+      return;
+    }
+    tab.opener = null;
     const reply = await market.order(listing.id, n);
-    if (reply !== null) {
-      if (openInNewTab(reply.checkout_url)) setOpened(true);
-      else setProblem(t("panes.market.noCheckout"));
+    if (reply !== null && isHttps(reply.checkout_url)) {
+      tab.location.href = reply.checkout_url;
+      setOpened(true);
+    } else {
+      tab.close();
+      if (reply !== null) setProblem(t("panes.market.noCheckout"));
     }
   };
 

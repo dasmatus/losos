@@ -1047,9 +1047,9 @@ in
     };
 
     edge.market.currency = lib.mkOption {
-      type = lib.types.strMatching "[a-z]{3}";
+      type = lib.types.enum [ "aud" "cad" "chf" "eur" "gbp" "nzd" "usd" ];
       default = "eur";
-      description = "ISO 4217 code, lowercase. One currency per edge; listings are priced in its minor unit (cents).";
+      description = "Supported two-decimal ISO 4217 currency, lowercase. One currency per edge; listings are priced in its minor unit (cents).";
     };
 
     edge.market.storageClass = lib.mkOption {

@@ -358,6 +358,8 @@ fn market_flags_are_all_or_nothing_and_bounded() {
         ("--market-fee-bps", "four"),
         ("--market-currency", "EUR"),
         ("--market-currency", "euro"),
+        ("--market-currency", "jpy"),
+        ("--market-currency", "kwd"),
         ("--market-return-url", "ftp://x"),
     ] {
         let mut args = vec![flag, bad];

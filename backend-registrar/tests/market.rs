@@ -326,6 +326,37 @@ async fn every_market_route_is_503_when_the_edge_has_no_market() {
 }
 
 #[tokio::test]
+async fn market_routes_are_disabled_when_either_stripe_secret_is_missing() {
+    let stripe = StripeStub::start().await;
+    let edge = Edge::start_with_market("market-missing-secret", &tenants(), &stripe.base).await;
+
+    std::fs::remove_file(edge.dir.join("webhook.secret")).expect("remove webhook secret");
+    assert_eq!(browse(&edge).await.0, 503);
+    assert_eq!(order(&edge, "lst_test", 1).await.0, 503);
+    assert!(stripe.calls("POST", "/v1/checkout/sessions").is_empty());
+
+    std::fs::write(edge.dir.join("webhook.secret"), WEBHOOK_SECRET)
+        .expect("restore webhook secret");
+    std::fs::remove_file(edge.dir.join("stripe.key")).expect("remove Stripe key");
+    let (status, _) = edge
+        .post("/market/account", auth("seller-box", GOOD_TOKEN))
+        .await;
+    assert_eq!(status, 503);
+    assert_eq!(
+        edge.client
+            .get(format!("{}/health", edge.base))
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        200
+    );
+
+    edge.shutdown().await;
+    stripe.shutdown().await;
+}
+
+#[tokio::test]
 async fn market_routes_need_a_token_and_the_market_bit() {
     let stripe = StripeStub::start().await;
     let edge = Edge::start_with_market("market-auth", &tenants(), &stripe.base).await;
@@ -498,6 +529,7 @@ async fn a_purchase_is_a_destination_charge_with_the_four_percent_cut() {
     assert_eq!(sent.form["line_items[0][quantity]"], "8");
     assert_eq!(sent.form["line_items[0][price_data][unit_amount]"], "250");
     assert_eq!(sent.form["line_items[0][price_data][currency]"], "eur");
+    assert_eq!(sent.form["payment_method_types[]"], "card");
     assert_eq!(
         sent.form["payment_intent_data[application_fee_amount]"],
         "80"
