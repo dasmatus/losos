@@ -37,7 +37,6 @@ let
   # image in flake/images.nix.
   themes = import ../admin-ui/themes { inherit pkgs; };
   forgejoNative = config.losos.forgejo.mode == "native" && config.losos.forgejo.enable;
-  forgejoCss = "${config.services.forgejo.customDir}/public/assets/css";
 
   nextcloudWorkload = config.losos.nextcloud.mode == "container";
   forgejoWorkload = config.losos.forgejo.mode == "container" && config.losos.forgejo.enable;
@@ -57,7 +56,9 @@ in
     enable = true;
     lfs.enable = true;
     database.type = "postgres";
-    settings = {
+    # LosOS Git's name, theme, <meta> tags and footer (admin-ui/themes/),
+    # under this box's own settings.
+    settings = lib.recursiveUpdate themes.forgejo.settings {
       server.HTTP_PORT = 8888;
       # Forgejo's default is open sign-up. Native mode is LAN-only (:8888 is
       # not routed through the master-proxy tunnel), but "anyone on the LAN"
@@ -70,26 +71,22 @@ in
       # Kept on here, unlike the container path (modules/containers.nix),
       # because native mode is not published through the tunnel.
       actions.ENABLED = true;
-      inherit (themes.forgejo) ui;
     };
   };
 
-  # The theme files, linked into the custom asset directory Forgejo serves
-  # its stock themes beside (the image copies them instead — see
-  # flake/images.nix). L+ replaces a stale link from an older generation, so
-  # a rebuild with a changed theme takes effect on the next restart. The
-  # directories are created owned by forgejo, like the customDir the nixpkgs
-  # module creates above them; tmpfiles would otherwise make them root's.
+  # LosOS Git's files (themes, logos, template overrides), linked into the
+  # custom directory at the paths Forgejo looks for them (the image copies
+  # them instead — see flake/images.nix). L+ replaces a stale link from an
+  # older generation, so a rebuild with a changed theme takes effect on the
+  # next restart. The directories are created owned by forgejo, like the
+  # customDir the nixpkgs module creates above them; tmpfiles would otherwise
+  # make them root's.
   systemd.tmpfiles.rules = lib.mkIf forgejoNative (
     let
-      inherit (config.services.forgejo) user group;
+      inherit (config.services.forgejo) user group customDir;
     in
-    [
-      "d ${config.services.forgejo.customDir}/public 0750 ${user} ${group} -"
-      "d ${config.services.forgejo.customDir}/public/assets 0750 ${user} ${group} -"
-      "d ${forgejoCss} 0750 ${user} ${group} -"
-    ]
-    ++ map (f: "L+ ${forgejoCss}/${f} - - - - ${themes.forgejo.cssDir}/${f}") themes.forgejo.files
+    map (d: "d ${customDir}/${d} 0750 ${user} ${group} -") themes.forgejo.dirs
+    ++ map (f: "L+ ${customDir}/${f} - - - - ${themes.forgejo.customDir}/${f}") themes.forgejo.files
   );
 
   # ── Nextcloud (for the notshared user) — native path ──────────────────
