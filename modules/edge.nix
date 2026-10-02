@@ -594,6 +594,13 @@ in
         '';
       }
       {
+        assertion = cfg.market.enable -> meshEnabled;
+        message = ''
+          losos.edge.market.enable requires losos.edge.cluster.enable so paid
+          storage orders can be fulfilled by the mesh.
+        '';
+      }
+      {
         assertion = cfg.acmeEmail != null;
         message = "losos.edge.enable requires losos.edge.acmeEmail (Let's Encrypt account email).";
       }

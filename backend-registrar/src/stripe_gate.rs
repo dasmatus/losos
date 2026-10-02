@@ -964,6 +964,7 @@ mod tests {
 
     #[test]
     fn stripe_api_allows_http_only_for_loopback_hosts() {
+        assert!(StripeClient::new("https://api.stripe.com", "sk_test_key").is_ok());
         for url in [
             "http://127.0.0.1:8080",
             "http://localhost:8080",
@@ -971,9 +972,9 @@ mod tests {
         ] {
             assert!(StripeClient::new(url, "sk_test_key").is_ok(), "{url}");
         }
+        assert!(StripeClient::new("https://", "sk_test_key").is_err());
         assert!(StripeClient::new("http://127.0.0.1.example:8080", "sk_test_key").is_err());
         assert!(StripeClient::new("http://localhost.attacker.example", "sk_test_key").is_err());
-        assert!(StripeClient::new("https://api.stripe.com", "sk_test_key").is_ok());
     }
 
     #[test]
