@@ -33,6 +33,12 @@ let
   # reason to exist.
   nc = import ./nextcloud-stack.nix { inherit pkgs lib; };
 
+  # The LosOS look for Forgejo (admin-ui/themes/), shared with the workload
+  # image in flake/images.nix.
+  themes = import ../admin-ui/themes { inherit pkgs; };
+  forgejoNative = config.losos.forgejo.mode == "native" && config.losos.forgejo.enable;
+  forgejoCss = "${config.services.forgejo.customDir}/public/assets/css";
+
   nextcloudWorkload = config.losos.nextcloud.mode == "container";
   forgejoWorkload = config.losos.forgejo.mode == "container" && config.losos.forgejo.enable;
 in
@@ -47,7 +53,7 @@ in
 
   # Forgejo (native). Only active in native mode; in container mode the git
   # host runs as a workload behind Nginx (see containers.nix).
-  services.forgejo = lib.mkIf (config.losos.forgejo.mode == "native" && config.losos.forgejo.enable) {
+  services.forgejo = lib.mkIf forgejoNative {
     enable = true;
     lfs.enable = true;
     database.type = "postgres";
@@ -64,8 +70,27 @@ in
       # Kept on here, unlike the container path (modules/containers.nix),
       # because native mode is not published through the tunnel.
       actions.ENABLED = true;
+      inherit (themes.forgejo) ui;
     };
   };
+
+  # The theme files, linked into the custom asset directory Forgejo serves
+  # its stock themes beside (the image copies them instead — see
+  # flake/images.nix). L+ replaces a stale link from an older generation, so
+  # a rebuild with a changed theme takes effect on the next restart. The
+  # directories are created owned by forgejo, like the customDir the nixpkgs
+  # module creates above them; tmpfiles would otherwise make them root's.
+  systemd.tmpfiles.rules = lib.mkIf forgejoNative (
+    let
+      inherit (config.services.forgejo) user group;
+    in
+    [
+      "d ${config.services.forgejo.customDir}/public 0750 ${user} ${group} -"
+      "d ${config.services.forgejo.customDir}/public/assets 0750 ${user} ${group} -"
+      "d ${forgejoCss} 0750 ${user} ${group} -"
+    ]
+    ++ map (f: "L+ ${forgejoCss}/${f} - - - - ${themes.forgejo.cssDir}/${f}") themes.forgejo.files
+  );
 
   # ── Nextcloud (for the notshared user) — native path ──────────────────
   # Only active when losos.nextcloud.mode == "native". In "container" mode
