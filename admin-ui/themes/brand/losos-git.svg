@@ -1,15 +1,16 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
   <title>LosOS Git</title>
-  <rect x="5" y="27" width="54" height="32" rx="9" fill="#167f8e"/>
+  <rect x="4" y="4" width="56" height="56" rx="12" fill="#167f8e"/>
   <g fill="none" stroke="#ffffff" stroke-width="3.5" stroke-linecap="round">
-    <path d="M17 33v20"/>
-    <path d="M47 41c0 7-30 3-30 12"/>
+    <path d="M32 12v40"/>
+    <path d="M32 45c0-8 17-8 17-17v-12"/>
   </g>
   <g fill="#167f8e" stroke="#ffffff" stroke-width="3">
-    <circle cx="17" cy="53" r="3.5"/>
-    <circle cx="47" cy="40" r="3.5"/>
+    <circle cx="32" cy="12" r="3.5"/>
+    <circle cx="32" cy="52" r="3.5"/>
+    <circle cx="49" cy="15" r="3.5"/>
   </g>
-  <svg x="13" y="0" width="38" height="38" viewBox="0 0 16 16" shape-rendering="crispEdges">
+  <svg x="18" y="17" width="28" height="28" viewBox="0 0 16 16" shape-rendering="crispEdges">
     <path fill="#171717" d="M3 11h1v1h-1z"/>
     <path fill="#1b2a26" d="M11 6h1v1h-1zM11 7h1v1h-1zM11 8h1v1h-1zM10 9h1v1h-1zM10 10h1v1h-1zM9 11h1v1h-1zM8 12h1v1h-1zM7 13h1v1h-1z"/>
     <path fill="#3d2b29" d="M14 3h1v1h-1zM13 4h2v1h-2zM12 5h1v1h-1z"/>
