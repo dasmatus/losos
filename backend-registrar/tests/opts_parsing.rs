@@ -361,6 +361,13 @@ fn market_flags_are_all_or_nothing_and_bounded() {
         ("--market-currency", "jpy"),
         ("--market-currency", "kwd"),
         ("--market-return-url", "ftp://x"),
+        ("--market-storage-class", ""),
+        ("--market-storage-class", "Longhorn"),
+        ("--market-storage-class", "a..b"),
+        ("--market-storage-class", "a.-b"),
+        ("--market-storage-class", "-a"),
+        ("--market-storage-class", "a_b"),
+        ("--market-storage-class", &"a".repeat(254)),
     ] {
         let mut args = vec![flag, bad];
         args.extend(MARKET_FLAGS);
@@ -370,6 +377,13 @@ fn market_flags_are_all_or_nothing_and_bounded() {
     args.extend(MARKET_FLAGS);
     let market = serve_opts(&args).market.expect("market enabled");
     assert_eq!((market.fee_bps, market.currency.as_str()), (250, "usd"));
+    let longest = format!("{}.{}", "a".repeat(63), "b".repeat(189));
+    for good in ["longhorn-ssd", "longhorn.io.v2", longest.as_str()] {
+        let mut args = vec!["--market-storage-class", good];
+        args.extend(MARKET_FLAGS);
+        let market = serve_opts(&args).market.expect("market enabled");
+        assert_eq!(market.storage_class, good);
+    }
 }
 
 #[test]

@@ -317,6 +317,13 @@ fn parse_market(args: &[String]) -> Result<Option<Box<MarketOpts>>> {
             "--market-fee-bps {fee_bps} exceeds the {MAX_FEE_BPS} basis point ceiling"
         ));
     }
+    let storage_class =
+        arg(args, "--market-storage-class").unwrap_or(crate::market::DEFAULT_STORAGE_CLASS);
+    if !dns_subdomain(storage_class) {
+        return Err(miette!(
+            "bad --market-storage-class {storage_class:?}; expected a Kubernetes object name (DNS-1123 subdomain)"
+        ));
+    }
     let return_url = req(args, "--market-return-url")?;
     if !crate::stripe_gate::url_ok(return_url) {
         return Err(miette!(
@@ -331,10 +338,24 @@ fn parse_market(args: &[String]) -> Result<Option<Box<MarketOpts>>> {
         return_url: return_url.to_string(),
         currency: currency.to_string(),
         fee_bps,
-        storage_class: arg(args, "--market-storage-class")
-            .unwrap_or(crate::market::DEFAULT_STORAGE_CLASS)
-            .to_string(),
+        storage_class: storage_class.to_string(),
     })))
+}
+
+/// A Kubernetes object name in the DNS-1123 subdomain form, which is what a
+/// `StorageClass` name must be: at most 253 characters of dot-separated
+/// labels, each lowercase alphanumeric with inner hyphens. Anything else would
+/// only fail later, as a claim the apiserver refuses on every reconcile pass.
+fn dns_subdomain(name: &str) -> bool {
+    name.len() <= 253
+        && name.split('.').all(|label| {
+            !label.is_empty()
+                && !label.starts_with('-')
+                && !label.ends_with('-')
+                && label
+                    .bytes()
+                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+        })
 }
 
 /// Accept an IANA zone name, rejecting anything the edge's `date` would

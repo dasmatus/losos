@@ -757,6 +757,14 @@ async fn fulfil_market(st: &AppState) {
     };
     reclaim_lapsed(&kube, market, lapsed).await;
     for p in pending {
+        if let Err(e) = market.mark_claimed(&p.order_id, &p.namespace, &p.pvc).await {
+            tracing::error!(
+                target: Action::Market.target(),
+                "order {} cannot be fulfilled until its claim is recorded: {e}",
+                p.order_id,
+            );
+            continue;
+        }
         match provision_volume(&kube, market.storage_class(), &p).await {
             Ok(()) => {
                 if let Err(e) = market
