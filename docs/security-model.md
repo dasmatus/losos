@@ -29,8 +29,16 @@ it never enters the Nix store.
 The token is equivalent to root: `POST /api/apply` writes arbitrary Nix to
 `overrides.nix` and runs `nixos-rebuild switch`.
 
+- On an unclaimed box, the first LAN caller to `POST /api/setup/claim` can set
+  the owner password without a token. The response hands that caller the admin
+  token exactly once, then the route refuses further claims. Set up a new box
+  only on a trusted LAN: whoever claims it first becomes its owner.
 - The file must contain exactly 64 lowercase hex characters. Anything else is
   discarded and replaced, with an error in the log.
+- A claimed box cannot fetch the token again. To rotate it, write a new
+  64-character lowercase-hex value to the file and restart `lososd`, or delete
+  the file and restart it to mint a random replacement. Deleting it requires
+  local access to retrieve the replacement.
 - Comparison is constant-time.
 - The API listens on `127.0.0.1` only. nginx proxies `/api/` to it behind the
   LAN-only guard.
