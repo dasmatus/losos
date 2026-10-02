@@ -245,6 +245,87 @@ impl crate::catalogue::Fetch for CurlFetch {
     }
 }
 
+/// One request to the registrar's market, by `curl`.
+///
+/// The body — which carries the appliance's proxy token — goes to curl on
+/// stdin (`--data-binary @-`), so the secret is never in an argument vector.
+/// `--fail` is deliberately absent: the registrar's 4xx bodies are the
+/// refusals the owner needs to read, and the status comes back via
+/// `--write-out`. `--proto =https` and no `--insecure` for the reasons in
+/// [`CurlFetch`], with more at stake here since this call authenticates.
+fn curl_market(
+    config: &crate::market::Config,
+    op: &crate::market::Op,
+) -> anyhow::Result<(u16, String)> {
+    /// A listing page is small; a registrar that sends more is wrong.
+    const MAX_BYTES: usize = 1024 * 1024;
+    /// Above the registrar's own budget for the routes that wait on Stripe
+    /// (`STRIPE_ROUTE_TIMEOUT` in backend-registrar/src/server.rs, 22 s:
+    /// four gate calls of 5 s plus persistence), so a slow but successful
+    /// onboarding is not dropped here after the account was already made.
+    const TIMEOUT_SECS: &str = "25";
+
+    let (method, path) = op.route();
+    let token = std::fs::read_to_string(&config.token_file)
+        .with_context(|| format!("reading the proxy token {}", config.token_file))?;
+    let body = op.body(&config.appliance_id, token.trim());
+
+    let mut cmd = std::process::Command::new("curl");
+    cmd.args(["--silent", "--show-error"])
+        .args([
+            "--proto",
+            "=https",
+            "--proto-redir",
+            "=https",
+            "--max-redirs",
+            "0",
+        ])
+        .args(["--max-time", TIMEOUT_SECS])
+        .args(["--max-filesize", &MAX_BYTES.to_string()])
+        .args(["--header", "Accept: application/json"])
+        .args(["--write-out", "\n%{http_code}"])
+        .args(["--request", method]);
+    if body.is_some() {
+        cmd.args(["--header", "Content-Type: application/json"])
+            .args(["--data-binary", "@-"]);
+    }
+    cmd.arg(format!("{}{path}", config.registrar_url))
+        .stdin(if body.is_some() {
+            std::process::Stdio::piped()
+        } else {
+            std::process::Stdio::null()
+        })
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    let mut child = cmd
+        .spawn()
+        .context("running curl (is it on lososd's unit path? see modules/daemon.nix)")?;
+    if let (Some(body), Some(mut stdin)) = (body, child.stdin.take()) {
+        stdin
+            .write_all(body.as_bytes())
+            .context("sending the market request to curl")?;
+    }
+    let out = child.wait_with_output().context("waiting for curl")?;
+    if !out.status.success() {
+        anyhow::bail!(
+            "the market request failed: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        );
+    }
+    if out.stdout.len() > MAX_BYTES + 8 {
+        anyhow::bail!("the registrar returned more than {MAX_BYTES} bytes");
+    }
+    let text = String::from_utf8(out.stdout).context("the registrar returned non-UTF-8")?;
+    let (body, code) = text
+        .rsplit_once('\n')
+        .context("curl returned no status line")?;
+    let status = code
+        .trim()
+        .parse::<u16>()
+        .context("curl returned a status that is not a number")?;
+    Ok((status, body.to_string()))
+}
+
 impl crate::recovery::CodeStore for FileCodeStore {
     fn read_code(&mut self) -> anyhow::Result<Option<String>> {
         match std::fs::read_to_string(&self.path) {
@@ -665,6 +746,14 @@ impl Losos for IoLosos {
         let url = crate::catalogue::search_url(query);
         let body = crate::catalogue::Fetch::get(&mut fetch, &url)?;
         crate::catalogue::parse_results(&body)
+    }
+
+    fn market_request(&mut self, op: &crate::market::Op) -> anyhow::Result<crate::market::Outcome> {
+        let Some(config) = crate::market::Config::from_env() else {
+            return Ok(crate::market::Outcome::Unavailable);
+        };
+        let (status, body) = curl_market(&config, op)?;
+        crate::market::classify(status, &body)
     }
 
     fn next_job_id(&mut self) -> anyhow::Result<String> {

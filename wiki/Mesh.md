@@ -40,6 +40,11 @@ the box when it is off; fscrypt protects this directory while it is on.
 
 Contributed files are namespaced per machine.
 
+## Selling
+
+Storage and compute can also be sold to other boxes through the optional
+Stripe Connect market. See [Market](Market).
+
 ## Persistence
 
 The mesh agent writes `/etc/rancher/node/password` on first join. That path

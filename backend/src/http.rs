@@ -54,6 +54,16 @@ fn run(
 ) -> HttpResponse {
     match api.backend.serialized(f) {
         Ok(v) => HttpResponse::Ok().json(v),
+        // A market answer the owner can act on keeps its words; it is the
+        // registrar's own sentence, vetted by `market::classify`.
+        Err(e) if e.downcast_ref::<crate::market::Refused>().is_some() => {
+            let r = e.downcast_ref::<crate::market::Refused>().expect("checked");
+            err(
+                actix_web::http::StatusCode::from_u16(r.status)
+                    .unwrap_or(actix_web::http::StatusCode::BAD_REQUEST),
+                &r.message,
+            )
+        }
         Err(e) => {
             tracing::error!(error = ?e, "admin API command failed");
             err(
@@ -386,6 +396,102 @@ fn get_apps_search_inner(api: &Api, req: &HttpRequest) -> HttpResponse {
     run(api, |b| cmd_apps_search(b, &query))
 }
 
+/// `GET /api/market` — the market as this box sees it: the shelf and its own
+/// account, or `{"available": false}` when it is not offered here.
+///
+/// Relayed to the edge because the pages cannot call it themselves; see
+/// `backend/src/market.rs`. Unavailable is a 200, not a 404, because the SPA
+/// latches a 404 as "this box does not serve the route" for the whole session.
+async fn get_market(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    guarded(&api, &req, "/api/market", false, || {
+        run(&api, crate::losos::cmd_market)
+    })
+}
+
+/// The `POST /api/market/*` actions. The body is parsed by hand and the 400s
+/// name the field, never echoing what was sent.
+async fn post_market(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+    route: &'static str,
+    build: fn(&serde_json::Value) -> Option<crate::market::Op>,
+) -> HttpResponse {
+    guarded(&api, &req, route, true, || {
+        let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
+        match build(&doc) {
+            Some(op) => run(&api, |b| crate::losos::cmd_market_op(b, &op)),
+            None => err(
+                actix_web::http::StatusCode::BAD_REQUEST,
+                "the request body is missing a required field",
+            ),
+        }
+    })
+}
+
+fn field_u64(doc: &serde_json::Value, key: &str) -> Option<u64> {
+    doc.get(key).and_then(serde_json::Value::as_u64)
+}
+
+fn field_str(doc: &serde_json::Value, key: &str) -> Option<String> {
+    doc.get(key)
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string)
+}
+
+async fn post_market_onboard(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    post_market(api, req, body, "/api/market/onboard", |_| {
+        Some(crate::market::Op::Onboard { box_uuid: None })
+    })
+    .await
+}
+
+async fn post_market_listing(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    post_market(api, req, body, "/api/market/listings", |d| {
+        Some(crate::market::Op::List {
+            kind: field_str(d, "kind")?,
+            unit_price: field_u64(d, "unit_price")?,
+            capacity: field_u64(d, "capacity")?,
+        })
+    })
+    .await
+}
+
+async fn post_market_close(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    post_market(api, req, body, "/api/market/listings/close", |d| {
+        Some(crate::market::Op::Close {
+            listing_id: field_str(d, "listing_id")?,
+        })
+    })
+    .await
+}
+
+async fn post_market_order(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    post_market(api, req, body, "/api/market/orders", |d| {
+        Some(crate::market::Op::Order {
+            listing_id: field_str(d, "listing_id")?,
+            quantity: field_u64(d, "quantity")?,
+        })
+    })
+    .await
+}
+
 async fn not_found() -> HttpResponse {
     err(actix_web::http::StatusCode::NOT_FOUND, "not found")
 }
@@ -500,6 +606,14 @@ pub fn serve(backend: IoLosos) -> anyhow::Result<()> {
                 .route("/api/set-password", web::post().to(post_set_password))
                 .route("/api/recovery", web::get().to(get_recovery))
                 .route("/api/apps/search", web::get().to(get_apps_search))
+                .route("/api/market", web::get().to(get_market))
+                .route("/api/market/onboard", web::post().to(post_market_onboard))
+                .route("/api/market/listings", web::post().to(post_market_listing))
+                .route(
+                    "/api/market/listings/close",
+                    web::post().to(post_market_close),
+                )
+                .route("/api/market/orders", web::post().to(post_market_order))
                 // The two unauthenticated routes, and the only ones besides
                 // /api/health. Both are first-run only: the state read is a
                 // single bit, and the claim refuses once the box has an owner.

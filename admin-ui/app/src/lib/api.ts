@@ -339,6 +339,132 @@ export function postGrow(options: RequestOptions = {}): Promise<GrowResponse> {
   return call<GrowResponse>("/api/grow", { ...options, method: "POST" });
 }
 
+// ── Market ────────────────────────────────────────────────────────────────
+
+/* The optional storage/compute market, relayed by lososd to the edge (the
+ * pages cannot call the edge themselves under `connect-src 'self'`). Shapes
+ * are backend/schema.json's marketResponse and marketActionResponse; the
+ * registrar's own documents sit inside them. Prices are in the minor unit
+ * (cents) of `account.currency`. */
+
+export type MarketKind = "storage" | "compute";
+
+export interface MarketShelfListing {
+  id: string;
+  kind: MarketKind;
+  unit: string;
+  unit_price: number;
+  currency: string;
+  available: number;
+}
+
+export interface MarketOwnListing {
+  id: string;
+  kind: MarketKind;
+  unit: string;
+  unit_price: number;
+  capacity: number;
+  available: number;
+  active: boolean;
+}
+
+export interface MarketOrder {
+  id: string;
+  kind: MarketKind;
+  unit: string;
+  quantity: number;
+  amount: number;
+  fee: number;
+  seller_net: number;
+  currency: string;
+  status: "pending" | "paid" | "expired";
+  created_at: number;
+  paid_at: number | null;
+  expires_at: number | null;
+  expired: boolean;
+  /** `<namespace>/<claim>` once a storage order has its volume. */
+  volume: string | null;
+}
+
+export interface MarketAccount {
+  fee_bps: number;
+  currency: string;
+  seller_onboarded: boolean;
+  seller_ready: boolean;
+  can_sell_storage: boolean;
+  can_sell_compute: boolean;
+  listings: MarketOwnListing[];
+  entitlements: { storage_gib: number; compute_vcpu_hours: number; next_expiry: number | null };
+  purchases: MarketOrder[];
+  sales: MarketOrder[];
+}
+
+export type MarketResponse =
+  | { available: false }
+  | {
+      available: true;
+      listings: MarketShelfListing[];
+      account: MarketAccount;
+    };
+
+export interface MarketActionResponse {
+  available: true;
+  checkout_url?: string;
+  /** POST /api/market/onboard: Stripe's hosted onboarding page, when the
+   *  account is not yet ready. */
+  url?: string | null;
+  ready?: boolean;
+}
+
+/** GET /api/market — the shelf and this box's own account, or
+ *  `{ available: false }` when the market is not offered here. */
+export function getMarket(options: RequestOptions = {}): Promise<MarketResponse> {
+  return call<MarketResponse>("/api/market", options);
+}
+
+function marketPost(
+  path: string,
+  body: Record<string, unknown>,
+  options: RequestOptions,
+): Promise<MarketActionResponse> {
+  return call<MarketActionResponse>(path, {
+    ...options,
+    method: "POST",
+    contentType: "application/json",
+    body: JSON.stringify(body),
+  });
+}
+
+/** POST /api/market/onboard — start or resume Stripe onboarding. */
+export function postMarketOnboard(options: RequestOptions = {}): Promise<MarketActionResponse> {
+  return marketPost("/api/market/onboard", {}, options);
+}
+
+/** POST /api/market/listings — sell what this box already shares. */
+export function postMarketListing(
+  listing: { kind: MarketKind; unit_price: number; capacity: number },
+  options: RequestOptions = {},
+): Promise<MarketActionResponse> {
+  return marketPost("/api/market/listings", listing, options);
+}
+
+/** POST /api/market/listings/close — stop selling a listing. */
+export function postMarketClose(
+  listingId: string,
+  options: RequestOptions = {},
+): Promise<MarketActionResponse> {
+  return marketPost("/api/market/listings/close", { listing_id: listingId }, options);
+}
+
+/** POST /api/market/orders — buy; the reply carries the Checkout URL. */
+export function postMarketOrder(
+  listingId: string,
+  quantity: number,
+  options: RequestOptions = {},
+): Promise<MarketActionResponse> {
+  return marketPost("/api/market/orders", { listing_id: listingId, quantity }, options);
+}
+
 // ── Sign-in ───────────────────────────────────────────────────────────────
 
 /* Probe a pasted token against a cheap authed route and store it if lososd
