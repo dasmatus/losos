@@ -29,11 +29,13 @@ src/
   bin/            the two binaries
 ```
 
-The command handlers in `losos.rs` are generic over the `Losos` trait and know
-nothing about paths, systemd, D-Bus or HTTP. `io_backend` implements the trait
-for real; `fake` implements it in memory for tests. The installer follows the
-same pattern with `Install`, `plan_install` and `execute`: the plan is data, so
-tests check the order of destructive steps without touching a disk.
+The `cmd_*` handlers in `losos.rs` (state, change, status, settings, apply,
+claim, grow, password, recovery, app search) are generic over the `Losos`
+trait and know nothing about paths, systemd, D-Bus or HTTP. `io_backend`
+implements the trait for real; `fake` implements it in memory for tests. The
+installer follows the same pattern with `Install`, `plan_install` and
+`execute`: the plan is data, so tests check the order of destructive steps
+without touching a disk.
 
 ## Build and test
 
