@@ -491,8 +491,7 @@ fn checkout_fault(c: &CheckoutRequest, currency: &str, now: u64) -> Option<&'sta
     };
     // The platform's cut is capped at the same ceiling the operator's
     // `--market-fee-bps` is held to, and can never take the whole charge.
-    if c.fee >= amount || u128::from(c.fee) * 10_000 > u128::from(amount) * u128::from(MAX_FEE_BPS)
-    {
+    if c.fee >= amount || c.fee > crate::market::fee_for(amount, MAX_FEE_BPS) {
         return Some("fee is outside the allowed range");
     }
     if c.expires_at <= now || c.expires_at > now + MAX_SESSION_SECS {
