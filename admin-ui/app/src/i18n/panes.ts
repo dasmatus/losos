@@ -823,9 +823,9 @@ export default defineMessages({
     de: "Preis pro Einheit ({currency})",
   },
   "panes.market.priceInvalid": {
-    en: "Enter a price like 0.05 (at most two decimals, more than zero).",
-    sk: "Zadajte cenu ako 0.05 (najviac dve desatinné miesta, viac ako nula).",
-    de: "Gib einen Preis wie 0.05 ein (höchstens zwei Nachkommastellen, mehr als null).",
+    en: "Enter a price above zero, like {example}.",
+    sk: "Zadajte cenu vyššiu ako nula, napríklad {example}.",
+    de: "Gib einen Preis über null ein, etwa {example}.",
   },
   "panes.market.capacityLabel": {
     en: "Capacity (units)",

@@ -127,8 +127,10 @@ Bodies are JSON.
 | `POST /market/orders`          | token      | `listing_id`, `quantity`; returns a Checkout URL |
 | `POST /market/webhook`         | signature  | Stripe events                                   |
 
-Every route answers 503 when the market is off. A tenant without the `market`
-bit gets 403. Neither party learns the other's appliance id, and the public
+Every route answers 503 when the market is off. On the token routes, a tenant
+without the `market` bit gets 403; the public listing view and the webhook
+belong to no tenant, so they never do. `POST /market/account` returns the 100
+most recent purchases and sales on each side, live ones first. Neither party learns the other's appliance id, and the public
 listing view never shows one.
 
 Capacity is reserved when the Checkout Session is created and held until
@@ -136,8 +138,11 @@ Stripe says how it ended: paid (`checkout.session.completed`) or abandoned
 (`checkout.session.expired`, sent as the session's 31 minutes run out). It is
 released at once if Stripe cannot be reached to create the session. If neither
 event ever arrives, the hold lapses after Stripe's three-day retry window, so
-a payment delayed by an edge outage still finds its units unsold. Two buyers racing for the last units cannot both get
-a session.
+a payment delayed by an edge outage still finds its units unsold; the next
+reconcile pass then records the order as `expired`. A payment that arrives
+even later is honoured if the units are still free, and otherwise logged with
+its session id so the operator can refund it. Two buyers racing for the last
+units cannot both get a session.
 
 ## Operator setup
 
@@ -161,7 +166,9 @@ a session.
    one per line, under the name `stripe-webhook-secret` into
    `losos.edge.market.webhookSecretSealed` (default
    `/var/secrets/losos-stripe-webhook-secret.cred`); the edge accepts either.
-4. Set `losos.edge.market.enable = true` and `losos.edge.market.returnUrl`.
+4. Set `losos.edge.market.enable = true` and `losos.edge.market.returnUrl`,
+   an absolute http(s) URL with no credentials and no `#fragment` (the order
+   and status are appended as query parameters).
 5. Set `losos.edge.tenants.<id>.market = true` for each box allowed to trade.
 
 Start in Stripe **test mode**. The edge has been tested against a stand-in for
@@ -173,7 +180,9 @@ Stripe accepts it; the first test-mode run settles that.
 - The webhook is authenticated by Stripe's HMAC signature over the raw body,
   with a five minute replay window and a larger body cap than other routes.
 - A payment only counts when the session id, amount and currency equal what
-  the edge recorded for the order. A mismatch is logged and not fulfilled.
+  the edge recorded for the order. A mismatch is logged and not fulfilled. If
+  the edge stopped before it wrote the session id down, the signed event's id
+  is adopted, since only this edge's gate can have named the order in it.
 - **The registrar never holds the Stripe key.** A separate unit,
   `losos-stripe-gate` (`losos-registrar stripe-gate`), is the only process that
   has it. The registrar talks to the gate over a Unix socket

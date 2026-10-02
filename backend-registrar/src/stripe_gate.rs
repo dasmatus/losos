@@ -500,10 +500,34 @@ fn token_ok(id: &str, max: usize) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'))
 }
 
-fn url_ok(url: &str) -> bool {
-    url.len() <= 512
-        && (url.starts_with("https://") || url.starts_with("http://"))
-        && !url.chars().any(|c| c.is_control() || c.is_whitespace())
+/// Whether `url` can be handed to Stripe as a return or refresh URL: an
+/// absolute http(s) URL with a host, no credentials, and no fragment, since
+/// `?order=...&status=...` is appended and would land after a `#` unread.
+/// Shared with the registrar's `--market-return-url` check, so a value the
+/// registrar starts with is one the gate accepts.
+pub fn url_ok(url: &str) -> bool {
+    if url.len() > 512 || url.chars().any(|c| c.is_control() || c.is_whitespace()) {
+        return false;
+    }
+    // The WHATWG parser reads `https:///market` as host `market`; insist the
+    // authority is actually written where it belongs.
+    let Some(authority) = url
+        .strip_prefix("https://")
+        .or_else(|| url.strip_prefix("http://"))
+    else {
+        return false;
+    };
+    if authority.starts_with(['/', '\\']) {
+        return false;
+    }
+    let Ok(parsed) = reqwest::Url::parse(url) else {
+        return false;
+    };
+    matches!(parsed.scheme(), "https" | "http")
+        && parsed.host_str().is_some_and(|h| !h.is_empty())
+        && parsed.username().is_empty()
+        && parsed.password().is_none()
+        && parsed.fragment().is_none()
 }
 
 /// Why a Checkout request is outside what the gate allows, or `None`.
@@ -1042,6 +1066,31 @@ mod tests {
                 checkout_fault(&c, "eur", NOW).is_some(),
                 "{name} was allowed"
             );
+        }
+    }
+
+    #[test]
+    fn return_urls_are_parsed_not_prefix_matched() {
+        for good in [
+            "https://losos.cfd/market",
+            "https://losos.cfd/market?from=stripe",
+            "http://localhost:8080/back",
+        ] {
+            assert!(url_ok(good), "{good} was refused");
+        }
+        for bad in [
+            "https://",
+            "http://",
+            "https:///market",
+            "https://losos.cfd/market#done",
+            "https://user:pw@losos.cfd/market",
+            "https://user@losos.cfd/market",
+            "ftp://losos.cfd/market",
+            "javascript:alert(1)",
+            "https://losos.cfd/a b",
+            "losos.cfd/market",
+        ] {
+            assert!(!url_ok(bad), "{bad} was allowed");
         }
     }
 

@@ -109,31 +109,49 @@ export function useMarket(enabled: boolean): MarketData {
 
 // ── Money ─────────────────────────────────────────────────────────────────
 
-/** "12", "12.5", "12,50" → 1200, 1250, 1250. Null for anything else,
- *  including more than two decimals and zero.
- *
- *  Two decimal places is right only because every market currency has them:
- *  the edge accepts exactly `SUPPORTED_CURRENCIES` in
- *  backend-registrar/src/market.rs (and the `losos.edge.market.currency`
- *  enum). Adding a zero-decimal currency such as JPY there means carrying its
- *  exponent through here and `formatMoney`, or every price is off by 100x. */
-export function toMinorUnits(text: string): number | null {
-  const match = /^(\d{1,7})(?:[.,](\d{1,2}))?$/.exec(text.trim());
+/** Decimal places in `currency`'s minor unit (2 for EUR, 0 for JPY, 3 for
+ *  KWD), from the browser's ISO 4217 table. Stripe and the edge both count
+ *  prices in that minor unit, so this is the one place the scale is decided.
+ *  The edge only accepts two-decimal currencies today (`SUPPORTED_CURRENCIES`
+ *  in backend-registrar/src/market.rs); this keeps the pane right if that
+ *  list grows rather than relying on it. */
+export function minorDigits(currency: string): number {
+  try {
+    return (
+      new Intl.NumberFormat("en", {
+        style: "currency",
+        currency: currency.toUpperCase(),
+      }).resolvedOptions().maximumFractionDigits ?? 2
+    );
+  } catch {
+    return 2;
+  }
+}
+
+/** "12", "12.5", "12,50" in EUR → 1200, 1250, 1250; "1200" in JPY → 1200.
+ *  Null for anything else, including more decimals than the currency has,
+ *  and zero. */
+export function toMinorUnits(text: string, currency: string): number | null {
+  const digits = minorDigits(currency);
+  const fraction = digits > 0 ? `(?:[.,](\\d{1,${digits}}))?` : "";
+  const match = new RegExp(`^(\\d{1,7})${fraction}$`).exec(text.trim());
   if (match === null) return null;
   const whole = Number(match[1]);
-  const cents = Number((match[2] ?? "").padEnd(2, "0"));
-  const total = whole * 100 + cents;
+  const part = Number((match[2] ?? "").padEnd(digits, "0") || "0");
+  const total = whole * 10 ** digits + part;
   return total > 0 ? total : null;
 }
 
 export function formatMoney(minor: number, currency: string): string {
+  const digits = minorDigits(currency);
+  const major = minor / 10 ** digits;
   try {
     return new Intl.NumberFormat(intlTag(), {
       style: "currency",
       currency: currency.toUpperCase(),
-    }).format(minor / 100);
+    }).format(major);
   } catch {
-    return `${(minor / 100).toFixed(2)} ${currency.toUpperCase()}`;
+    return `${major.toFixed(digits)} ${currency.toUpperCase()}`;
   }
 }
 
