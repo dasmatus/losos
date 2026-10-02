@@ -144,9 +144,8 @@
                 # both built from the same Rust crate). installer.nix packages
                 # it; self.packages is in scope via specialArgs.
                 losos.installer.package = self.packages.${system}.losos-ctl;
-                # Booting the ISO auto-runs losos-install as root's login shell:
-                # insert the medium, boot, and the box reinstalls unattended —
-                # the destructive factory-reset / reinstall path.
+                # Booting the ISO auto-runs losos-install as root's login shell,
+                # which presents the firmware-mode menu before destructive work.
                 losos.installer.autorun = true;
                 # Prebuild the admin UI into the medium.
                 #
