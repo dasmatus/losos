@@ -62,8 +62,12 @@ listing when it lapses.
   purchased size, from `losos.edge.market.storageClass` (default `longhorn`).
   It runs after every reconcile pass and straight after a paid webhook, is
   idempotent (an `AlreadyExists` answer counts as done), and retries every
-  reconcile interval if the apiserver refuses. The account view reports the
-  claim as `volume: "<namespace>/<claim>"`.
+  reconcile interval if the apiserver refuses. The order counts as fulfilled
+  only once the claim is `Bound`; a claim left `Pending` (no such storage
+  class, or no capacity) is checked again on every pass. That assumes an
+  `Immediate`-binding class, as Longhorn's default is: a `WaitForFirstConsumer`
+  class never binds, because nothing mounts the claim yet. The account view
+  reports the claim as `volume: "<namespace>/<claim>"`.
 - **Compute.** A credit in vCPU-hours, listed under `entitlements`. Nothing
   meters or schedules against it yet.
 
@@ -92,7 +96,10 @@ own listings and sales.
   greyed with the reason. The edge enforces the same rule; the pane only
   explains it.
 - Payment and Stripe onboarding open Stripe's own pages in a new tab. Nothing
-  in the admin UI sees a card, and only plain `https://` links are opened.
+  in the admin UI sees a card, and only `https://checkout.stripe.com` and
+  `https://connect.stripe.com` pages are opened, checked by lososd and again
+  by the page, so a compromised edge cannot send the owner to a look-alike
+  card form. Custom Checkout domains are not supported.
 - The pages cannot call the edge themselves (the admin UI's CSP is
   `connect-src 'self'`), so `lososd` relays: `GET /api/market` and
   `POST /api/market/{onboard,listings,listings/close,orders}`. The relay uses
