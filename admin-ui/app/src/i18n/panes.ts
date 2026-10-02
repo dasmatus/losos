@@ -606,4 +606,260 @@ export default defineMessages({
     sk: "Nepodarilo sa to",
     de: "Das hat nicht geklappt",
   },
+  // ── Market ──────────────────────────────────────────────────────────────
+  "panes.market.loading": {
+    en: "Looking at the market…",
+    sk: "Pozeráme sa na trh…",
+    de: "Der Markt wird geladen …",
+  },
+  "panes.market.failed": {
+    en: "The market did not answer",
+    sk: "Trh neodpovedal",
+    de: "Der Markt hat nicht geantwortet",
+  },
+  "panes.market.refresh": {
+    en: "Refresh",
+    sk: "Obnoviť",
+    de: "Aktualisieren",
+  },
+  "panes.market.unavailable.title": {
+    en: "The market is not available on this box",
+    sk: "Trh na tomto zariadení nie je dostupný",
+    de: "Der Markt ist auf dieser Box nicht verfügbar",
+  },
+  "panes.market.unavailable.detail": {
+    en: "It is optional, and it needs the box to be reachable through a master proxy whose operator has switched it on. Nothing else on the box depends on it.",
+    sk: "Je voliteľný a vyžaduje, aby bolo zariadenie dostupné cez hlavný proxy server, ktorého prevádzkovateľ trh zapol. Nič iné na zariadení od neho nezávisí.",
+    de: "Er ist optional und setzt voraus, dass die Box über einen Master-Proxy erreichbar ist, dessen Betreiber ihn eingeschaltet hat. Nichts sonst auf der Box hängt davon ab.",
+  },
+  "panes.market.actionFailed": {
+    en: "That did not work. Try again in a moment.",
+    sk: "Nepodarilo sa to. Skúste to o chvíľu znova.",
+    de: "Das hat nicht geklappt. Versuch es gleich noch einmal.",
+  },
+  "panes.market.yours": {
+    en: "What you have bought",
+    sk: "Čo ste si kúpili",
+    de: "Was du gekauft hast",
+  },
+  "panes.market.storageBought": {
+    en: "Storage",
+    sk: "Úložisko",
+    de: "Speicher",
+  },
+  "panes.market.storageBoughtDetail": {
+    en: "Capacity on the mesh that you may claim while the purchase lasts.",
+    sk: "Kapacita v mesh sieti, ktorú môžete využívať, kým kúpa trvá.",
+    de: "Kapazität im Mesh, die du beanspruchen darfst, solange der Kauf läuft.",
+  },
+  "panes.market.computeBought": {
+    en: "Compute",
+    sk: "Výpočtový výkon",
+    de: "Rechenleistung",
+  },
+  "panes.market.computeBoughtDetail": {
+    en: "Credit only for now: nothing meters or schedules against it yet.",
+    sk: "Zatiaľ len kredit: nič ho ešte nemeria ani podľa neho neplánuje.",
+    de: "Vorerst nur ein Guthaben: Noch misst oder plant nichts dagegen.",
+  },
+  "panes.market.gib": {
+    en: "{count} GiB",
+    sk: "{count} GiB",
+    de: "{count} GiB",
+  },
+  "panes.market.hours": {
+    en: "{count} vCPU-hours",
+    sk: "{count} vCPU-hodín",
+    de: "{count} vCPU-Stunden",
+  },
+  "panes.market.buy": {
+    en: "Buy from other boxes",
+    sk: "Kúpiť od iných zariadení",
+    de: "Bei anderen Boxen kaufen",
+  },
+  "panes.market.shelfEmpty": {
+    en: "Nobody is selling anything right now.",
+    sk: "Momentálne nikto nič nepredáva.",
+    de: "Im Moment verkauft niemand etwas.",
+  },
+  "panes.market.payCaption": {
+    en: "You pay on Stripe's own page, which opens in a new tab. This box never sees your card. Come back here and refresh once you have paid.",
+    sk: "Platíte na stránke Stripe, ktorá sa otvorí na novej karte. Toto zariadenie vašu kartu nikdy nevidí. Po zaplatení sa vráťte sem a obnovte stránku.",
+    de: "Du bezahlst auf der Seite von Stripe, die sich in einem neuen Tab öffnet. Diese Box sieht deine Karte nie. Komm nach der Zahlung hierher zurück und aktualisiere.",
+  },
+  "panes.market.kind.storage": {
+    en: "Storage",
+    sk: "Úložisko",
+    de: "Speicher",
+  },
+  "panes.market.kind.compute": {
+    en: "Compute",
+    sk: "Výpočtový výkon",
+    de: "Rechenleistung",
+  },
+  "panes.market.unit.storage": {
+    en: "GiB-month",
+    sk: "GiB-mesiac",
+    de: "GiB-Monat",
+  },
+  "panes.market.unit.compute": {
+    en: "vCPU-hour",
+    sk: "vCPU-hodina",
+    de: "vCPU-Stunde",
+  },
+  "panes.market.status.pending": {
+    en: "Awaiting payment",
+    sk: "Čaká na platbu",
+    de: "Wartet auf Zahlung",
+  },
+  "panes.market.status.paid": {
+    en: "Paid",
+    sk: "Zaplatené",
+    de: "Bezahlt",
+  },
+  "panes.market.status.expired": {
+    en: "Not paid",
+    sk: "Nezaplatené",
+    de: "Nicht bezahlt",
+  },
+  "panes.market.status.lapsed": {
+    en: "Ended",
+    sk: "Skončilo",
+    de: "Abgelaufen",
+  },
+  "panes.market.until": {
+    en: "until {date}",
+    sk: "do {date}",
+    de: "bis {date}",
+  },
+  "panes.market.volume": {
+    en: "volume {volume}",
+    sk: "zväzok {volume}",
+    de: "Volume {volume}",
+  },
+  "panes.market.quantityRange": {
+    en: "Enter a whole number from 1 to {max}.",
+    sk: "Zadajte celé číslo od 1 do {max}.",
+    de: "Gib eine ganze Zahl von 1 bis {max} ein.",
+  },
+  "panes.market.quantity": {
+    en: "Quantity",
+    sk: "Množstvo",
+    de: "Menge",
+  },
+  "panes.market.available": {
+    en: "{count} available",
+    sk: "Dostupné: {count}",
+    de: "{count} verfügbar",
+  },
+  "panes.market.buyButton": {
+    en: "Buy",
+    sk: "Kúpiť",
+    de: "Kaufen",
+  },
+  "panes.market.noCheckout": {
+    en: "The order was made, but no payment page came back. Refresh and try again.",
+    sk: "Objednávka vznikla, ale platobná stránka sa nevrátila. Obnovte stránku a skúste to znova.",
+    de: "Die Bestellung wurde angelegt, aber es kam keine Zahlungsseite zurück. Aktualisiere und versuch es erneut.",
+  },
+  "panes.market.paying": {
+    en: "The payment page is open in another tab. Refresh here once you have paid.",
+    sk: "Platobná stránka je otvorená na inej karte. Po zaplatení tu obnovte stránku.",
+    de: "Die Zahlungsseite ist in einem anderen Tab geöffnet. Aktualisiere hier, sobald du bezahlt hast.",
+  },
+  "panes.market.sell": {
+    en: "Sell what you already share",
+    sk: "Predávať to, čo už zdieľate",
+    de: "Verkaufen, was du schon teilst",
+  },
+  "panes.market.payouts": {
+    en: "Payouts",
+    sk: "Výplaty",
+    de: "Auszahlungen",
+  },
+  "panes.market.payoutsReady": {
+    en: "Your Stripe account can receive payments.",
+    sk: "Váš účet Stripe môže prijímať platby.",
+    de: "Dein Stripe-Konto kann Zahlungen empfangen.",
+  },
+  "panes.market.payoutsPending": {
+    en: "Stripe still needs a few details from you before it can pay you.",
+    sk: "Stripe od vás ešte potrebuje niekoľko údajov, aby vám mohol platiť.",
+    de: "Stripe braucht noch ein paar Angaben von dir, bevor es dich bezahlen kann.",
+  },
+  "panes.market.payoutsNone": {
+    en: "To be paid you need a Stripe account. Setting it up happens on Stripe's page.",
+    sk: "Aby ste mohli dostávať platby, potrebujete účet Stripe. Nastavuje sa na stránke Stripe.",
+    de: "Um bezahlt zu werden, brauchst du ein Stripe-Konto. Das richtest du auf der Seite von Stripe ein.",
+  },
+  "panes.market.payoutsStart": {
+    en: "Set up payouts",
+    sk: "Nastaviť výplaty",
+    de: "Auszahlungen einrichten",
+  },
+  "panes.market.payoutsContinue": {
+    en: "Continue setup",
+    sk: "Pokračovať v nastavení",
+    de: "Einrichtung fortsetzen",
+  },
+  "panes.market.nothingShared": {
+    en: "Nothing to sell yet. Join the mesh first (and share compute, to sell compute): the market only sells what you already lend.",
+    sk: "Zatiaľ nie je čo predávať. Najprv sa pripojte k mesh sieti (a na predaj výkonu zdieľajte výpočtový výkon): trh predáva len to, čo už požičiavate.",
+    de: "Noch nichts zu verkaufen. Tritt zuerst dem Mesh bei (und teile Rechenleistung, um sie zu verkaufen): Der Markt verkauft nur, was du ohnehin verleihst.",
+  },
+  "panes.market.kindLabel": {
+    en: "What to sell",
+    sk: "Čo predávať",
+    de: "Was verkaufen",
+  },
+  "panes.market.priceLabel": {
+    en: "Price per unit ({currency})",
+    sk: "Cena za jednotku ({currency})",
+    de: "Preis pro Einheit ({currency})",
+  },
+  "panes.market.priceInvalid": {
+    en: "Enter a price like 0.05 (at most two decimals, more than zero).",
+    sk: "Zadajte cenu ako 0.05 (najviac dve desatinné miesta, viac ako nula).",
+    de: "Gib einen Preis wie 0.05 ein (höchstens zwei Nachkommastellen, mehr als null).",
+  },
+  "panes.market.capacityLabel": {
+    en: "Capacity (units)",
+    sk: "Kapacita (jednotky)",
+    de: "Kapazität (Einheiten)",
+  },
+  "panes.market.capacityInvalid": {
+    en: "Enter a whole number of units, at least 1.",
+    sk: "Zadajte celý počet jednotiek, aspoň 1.",
+    de: "Gib eine ganze Zahl an Einheiten ein, mindestens 1.",
+  },
+  "panes.market.listButton": {
+    en: "Offer for sale",
+    sk: "Ponúknuť na predaj",
+    de: "Zum Verkauf anbieten",
+  },
+  "panes.market.open": {
+    en: "on sale",
+    sk: "v predaji",
+    de: "im Verkauf",
+  },
+  "panes.market.closed": {
+    en: "closed",
+    sk: "zatvorené",
+    de: "geschlossen",
+  },
+  "panes.market.closeButton": {
+    en: "Stop selling",
+    sk: "Prestať predávať",
+    de: "Nicht mehr verkaufen",
+  },
+  "panes.market.sellCaption": {
+    en: "The platform keeps {percent}% of each sale to cover running costs; the rest goes to your Stripe account.",
+    sk: "Platforma si z každého predaja necháva {percent} % na pokrytie nákladov; zvyšok ide na váš účet Stripe.",
+    de: "Die Plattform behält {percent} % jedes Verkaufs für die Betriebskosten; der Rest geht an dein Stripe-Konto.",
+  },
+  "panes.market.youReceive": {
+    en: "you receive {amount}",
+    sk: "dostanete {amount}",
+    de: "du erhältst {amount}",
+  },
 });
