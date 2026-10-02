@@ -1253,6 +1253,11 @@ impl Market {
             if !sharing.allows(&listing.seller, listing.kind) {
                 return Err(MarketError::NotFound);
             }
+            if listing.kind == Kind::Storage && namespace_for(buyer).is_none() {
+                return Err(MarketError::Invalid(
+                    "appliance id cannot name a storage namespace",
+                ));
+            }
             if listing.seller == buyer {
                 return Err(MarketError::Invalid("cannot buy your own listing"));
             }
