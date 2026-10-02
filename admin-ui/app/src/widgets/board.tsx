@@ -25,10 +25,16 @@ import {
   removeWidget,
   subscribeBoard,
 } from "@/lib/widgets";
-import { WidgetGallery } from "./gallery";
+import { startWhenIdle } from "@/lib/defer";
 import { startUptimeProbe } from "./metrics";
 import { WidgetTile } from "./tile";
 import "./widgets.css";
+
+/* The gallery, and the editor inside it, only matter once the owner presses
+ * "Add a widget". They are fetched then, not with the board. */
+const WidgetGallery = React.lazy(() =>
+  import("./gallery").then((m) => ({ default: m.WidgetGallery })),
+);
 
 export interface WidgetBoardProps {
   className?: string;
@@ -40,6 +46,13 @@ export interface WidgetBoardProps {
 export function WidgetBoard({ className, heading = "Your board" }: WidgetBoardProps) {
   const board = React.useSyncExternalStore(subscribeBoard, getBoard, getServerBoard);
   const [galleryOpen, setGalleryOpen] = React.useState(false);
+  // Stays mounted after the first open so the dialog can finish closing and
+  // reopens without fetching the chunk again.
+  const [galleryLoaded, setGalleryLoaded] = React.useState(false);
+  const openGallery = (): void => {
+    setGalleryLoaded(true);
+    setGalleryOpen(true);
+  };
 
   /* The uptime heartbeat.
    *
@@ -48,7 +61,7 @@ export function WidgetBoard({ className, heading = "Your board" }: WidgetBoardPr
    * a thing the owner opted into by adding the widget, not something the
    * admin page does behind them. Idempotent: calling it twice is one timer.
    * The shell may start it too; see widgets/index.ts. */
-  React.useEffect(() => startUptimeProbe(), []);
+  React.useEffect(() => startWhenIdle(startUptimeProbe), []);
 
   const widgets = board.widgets;
 
@@ -61,7 +74,7 @@ export function WidgetBoard({ className, heading = "Your board" }: WidgetBoardPr
             {widgets.length} of {MAX_WIDGETS}
           </span>
           <div className="flex-1" />
-          <Button variant="secondary" size="sm" onClick={() => setGalleryOpen(true)}>
+          <Button variant="secondary" size="sm" onClick={openGallery}>
             <HugeiconsIcon
               icon={PlusSignIcon}
               size={15}
@@ -75,7 +88,7 @@ export function WidgetBoard({ className, heading = "Your board" }: WidgetBoardPr
       )}
 
       {widgets.length === 0 ? (
-        <EmptyBoard onAdd={() => setGalleryOpen(true)} />
+        <EmptyBoard onAdd={openGallery} />
       ) : (
         <div className="grid gap-4 md:grid-cols-2">
           {widgets.map((instance, index) => (
@@ -91,7 +104,11 @@ export function WidgetBoard({ className, heading = "Your board" }: WidgetBoardPr
         </div>
       )}
 
-      <WidgetGallery open={galleryOpen} onOpenChange={setGalleryOpen} count={widgets.length} />
+      {galleryLoaded && (
+        <React.Suspense fallback={null}>
+          <WidgetGallery open={galleryOpen} onOpenChange={setGalleryOpen} count={widgets.length} />
+        </React.Suspense>
+      )}
     </section>
   );
 }
