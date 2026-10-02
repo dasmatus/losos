@@ -1,8 +1,8 @@
 /* LosOS admin UI — tokens, theme, motion.
  *
- * Tailwind v4, CSS-first: there is no tailwind.config.js. The palette below
- * is the source of truth; `@theme inline` republishes it as Tailwind theme
- * keys so `bg-surface`, `text-muted`, `border-line`, `rounded-card` and
+ * Tailwind v4, CSS-first: there is no tailwind.config.js. The palette in
+ * tokens.css is the source of truth; `@theme inline` republishes it as
+ * Tailwind theme keys so `bg-surface`, `text-muted`, `border-line`, `rounded-card` and
  * friends all resolve to the same custom properties. `inline` matters — it
  * makes the utilities emit `var(--surface)` rather than a frozen copy of its
  * value, which is what lets one attribute on <html> repaint the whole app.
@@ -13,91 +13,13 @@
  */
 
 @import "tailwindcss";
+@import "./tokens.css";
 
 /* ── Palette ──────────────────────────────────────────────────────────────
- * Three states, not two. Bare :root is the complete light palette. The media
- * arm is guarded with :not([data-theme="light"]) so an explicit Light choice
- * survives a dark-preferring browser, and the [data-theme="dark"] rule comes
- * last at equal specificity so an explicit Dark choice wins the other way.
- * Absent attribute = Auto, and Auto is correct with no JavaScript at all. */
-
-:root {
-  color-scheme: light;
-
-  --ground: #f3f5f7;
-  --surface: #ffffff;
-  --sunk: #eaedf0;
-
-  --ink: #18212a;
-  --muted: #5c6a77;
-  --faint: #8c98a4;
-
-  --line: #dce1e6;
-  --hair: #eaeef1;
-
-  --accent: #0e6e7d;
-  --accent-wash: #e2eff1;
-
-  --ok: #2e7357;
-  --warn: #8c6512;
-  --crit: #a8443c;
-
-  /* Depth is a light-mode idea; dark flattens it and leans on --line. */
-  --elev-card: 0 1px 2px rgb(24 33 42 / 0.05), 0 4px 16px rgb(24 33 42 / 0.06);
-  --elev-pop: 0 12px 40px rgb(24 33 42 / 0.18);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    color-scheme: dark;
-
-    --ground: #0a0e12;
-    --surface: #141b22;
-    --sunk: #10171d;
-
-    --ink: #e2e8ee;
-    --muted: #94a2b0;
-    --faint: #6b7986;
-
-    --line: #212c36;
-    --hair: #1a242d;
-
-    --accent: #48b3c0;
-    --accent-wash: #0d2a2f;
-
-    --ok: #4fa583;
-    --warn: #c79a3e;
-    --crit: #d1756c;
-
-    --elev-card: 0 1px 2px rgb(0 0 0 / 0.4);
-    --elev-pop: 0 12px 40px rgb(0 0 0 / 0.55);
-  }
-}
-
-:root[data-theme="dark"] {
-  color-scheme: dark;
-
-  --ground: #0a0e12;
-  --surface: #141b22;
-  --sunk: #10171d;
-
-  --ink: #e2e8ee;
-  --muted: #94a2b0;
-  --faint: #6b7986;
-
-  --line: #212c36;
-  --hair: #1a242d;
-
-  --accent: #48b3c0;
-  --accent-wash: #0d2a2f;
-
-  --ok: #4fa583;
-  --warn: #c79a3e;
-  --crit: #d1756c;
-
-  --elev-card: 0 1px 2px rgb(0 0 0 / 0.4);
-  --elev-pop: 0 12px 40px rgb(0 0 0 / 0.55);
-}
+ * Lives in tokens.css, as plain custom properties, because the Nextcloud and
+ * Forgejo themes (admin-ui/themes/) ship the same file and cannot run
+ * Tailwind. Everything below reads it through var(); see that file's header
+ * for the three-state Auto/Light/Dark rules. */
 
 /* ── Tailwind theme ───────────────────────────────────────────────────── */
 
@@ -120,16 +42,12 @@
   --color-warn: var(--warn);
   --color-crit: var(--crit);
 
-  /* Two radii and no others: 9px for cards, 6px for controls. */
-  --radius-card: 9px;
-  --radius-control: 6px;
+  /* Two radii and no others; the values are in tokens.css. */
+  --radius-card: var(--card-radius);
+  --radius-control: var(--control-radius);
 
-  --font-sans:
-    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue",
-    Arial, sans-serif;
-  --font-mono:
-    ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono",
-    monospace;
+  --font-sans: var(--font-ui);
+  --font-mono: var(--font-code);
 
   /* Named apart from the palette vars on purpose: `@theme inline` still
    * declares these on :root, so `--shadow-card: var(--shadow-card)` would be

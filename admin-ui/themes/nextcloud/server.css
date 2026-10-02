@@ -1,0 +1,207 @@
+/* Nextcloud, in the LosOS homepage's clothes.
+ *
+ * Shipped as a Nextcloud *theme folder* — themes/losos/core/css/server.css
+ * inside the server package, with `'theme' => 'losos'` in config.php — and
+ * not through the theming app or an injected <link>. A theme folder is the
+ * one mechanism Nextcloud documents for CSS: its resource locator adds this
+ * sheet *after* core's own server.css on every page, logged in or not
+ * (lib/private/Template/CSSResourceLocator.php, doFindTheme), the integrity
+ * checker skips themes/ by design, and the sheet is served from Nextcloud's
+ * own origin and path, so its CSP and the /nextcloud subpath need nothing.
+ * admin-ui/themes/default.nix puts it there; modules/nextcloud-stack.nix
+ * builds the package with it, so native and workload mode get the same one.
+ *
+ * losos-tokens.css beside this file is the admin SPA's palette, copied
+ * verbatim from admin-ui/app/src/styles/tokens.css. This file maps
+ * Nextcloud's variables onto it; every value is a var() into the tokens or a
+ * color-mix() of one, so a palette change there lands here untouched.
+ *
+ * ── Why `:root body` ─────────────────────────────────────────────────────
+ * The theming app declares its variables on body, as [data-theme-light] /
+ * [data-theme-dark] (specificity 0,1,0), from <link>s that come *after* this
+ * one in the document. :root body is 0,1,1, so it wins without !important
+ * and without depending on load order. High contrast is left alone on
+ * purpose — both the explicit choice and the OS preference — because a
+ * person who asked for more contrast should get Nextcloud's, not a palette
+ * that was tuned for calm. So is the dyslexia font.
+ */
+@import url("losos-tokens.css");
+
+@media not (prefers-contrast: more) {
+  :root body:not([data-theme-light-highcontrast], [data-theme-dark-highcontrast]) {
+    /* ── Surfaces: ground, surface, sunk ──────────────────────────────── *
+     * The homepage's three levels. The page (and the strip the header sits
+     * on) is --ground, the app's content container is a --surface card on
+     * it, and hover and wells sink into --sunk. */
+    --color-main-background: var(--surface);
+    --color-main-background-translucent: color-mix(in srgb, var(--surface) 97%, transparent);
+    --color-main-background-blur: color-mix(in srgb, var(--surface) 80%, transparent);
+    --color-background-hover: var(--sunk);
+    --color-background-dark: var(--sunk);
+    --color-background-darker: color-mix(in srgb, var(--sunk) 60%, var(--line));
+    --color-placeholder-light: var(--sunk);
+    --color-placeholder-dark: var(--line);
+    --color-loading-light: var(--line);
+    --color-loading-dark: var(--muted);
+
+    /* No photograph behind the apps: the homepage is a flat --ground, and so
+     * is the strip around Nextcloud's content. */
+    --image-background: none;
+    --color-background-plain: var(--ground);
+    --color-background-plain-text: var(--ink);
+
+    /* ── Text ──────────────────────────────────────────────────────────── */
+    --color-main-text: var(--ink);
+    --color-text-maxcontrast: var(--muted);
+    --color-text-maxcontrast-default: var(--muted);
+    --color-text-maxcontrast-background-blur: var(--muted);
+
+    /* ── Lines ─────────────────────────────────────────────────────────── *
+     * maxcontrast is what Nextcloud draws input borders and checkboxes
+     * with, and it has to hold 3:1 against the surface (WCAG 1.4.11) where
+     * the homepage's quiet --line does not. Hence a step toward --muted
+     * rather than --line itself. */
+    --color-border: var(--line);
+    --color-border-dark: color-mix(in srgb, var(--line) 70%, var(--faint));
+    --color-border-maxcontrast: color-mix(in srgb, var(--faint) 55%, var(--muted));
+    --color-scrollbar: var(--line) transparent;
+
+    /* ── The one accent ────────────────────────────────────────────────── *
+     * Primary text is --surface, not white, for button.tsx's reason: in the
+     * dark palette --accent is a light teal, and white on it does not
+     * read. The hover is button.tsx's opacity-90, thinned toward the card. */
+    --color-primary: var(--accent);
+    --color-primary-text: var(--surface);
+    --color-primary-hover: color-mix(in srgb, var(--accent) 90%, var(--surface));
+    --color-primary-light: var(--accent-wash);
+    --color-primary-light-text: var(--accent);
+    --color-primary-light-hover: color-mix(in srgb, var(--accent-wash) 80%, var(--accent));
+    --color-primary-element: var(--accent);
+    --color-primary-element-hover: color-mix(in srgb, var(--accent) 90%, var(--surface));
+    --color-primary-element-text: var(--surface);
+    --color-primary-element-text-dark: var(--surface);
+    --color-primary-element-light: var(--accent-wash);
+    --color-primary-element-light-hover: color-mix(in srgb, var(--accent-wash) 80%, var(--accent));
+    --color-primary-element-light-text: var(--accent);
+    --gradient-primary-background: linear-gradient(40deg, var(--accent) 0%, var(--accent) 100%);
+
+    /* ── State, never identity (badge.tsx) ─────────────────────────────── *
+     * Info is not a state on the homepage; it is the accent. Favourite is
+     * a star, and the homepage has no yellow but --warn. */
+    --color-error: var(--crit);
+    --color-error-hover: color-mix(in srgb, var(--crit) 88%, var(--ink));
+    --color-error-text: var(--crit);
+    --color-warning: var(--warn);
+    --color-warning-hover: color-mix(in srgb, var(--warn) 88%, var(--ink));
+    --color-warning-text: var(--warn);
+    --color-success: var(--ok);
+    --color-success-hover: color-mix(in srgb, var(--ok) 88%, var(--ink));
+    --color-success-text: var(--ok);
+    --color-info: var(--accent);
+    --color-info-hover: color-mix(in srgb, var(--accent) 88%, var(--ink));
+    --color-info-text: var(--accent);
+    --color-favorite: var(--warn);
+
+    /* ── Depth ─────────────────────────────────────────────────────────── */
+    --color-box-shadow: color-mix(in srgb, var(--ink) 22%, transparent);
+  }
+
+  /* The few values a token cannot be mapped onto, because Nextcloud wants
+   * them as an rgb triplet (to put its own alpha on) or as a CSS filter.
+   * They follow the same three states tokens.css does, spelled the way
+   * Nextcloud spells them: Auto by the OS, or the user's explicit
+   * Appearance choice on <body>. The triplets are tokens.css's --surface in
+   * each palette; change one, change the other. */
+  :root body:not([data-theme-light-highcontrast], [data-theme-dark-highcontrast]) {
+    --color-main-background-rgb: 255, 255, 255;
+    /* The header's icons sit on --ground now, not on a dark photograph:
+     * bright ground, so invert the white icons to ink. */
+    --background-image-invert-if-bright: invert(100%);
+    --background-invert-if-bright: invert(100%);
+    --background-invert-if-dark: no;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root body:not([data-theme-light], [data-theme-light-highcontrast], [data-theme-dark-highcontrast]) {
+      --color-main-background-rgb: 20, 27, 34;
+      --background-image-invert-if-bright: no;
+      --background-invert-if-bright: no;
+      --background-invert-if-dark: invert(100%);
+    }
+  }
+
+  :root body[data-theme-dark] {
+    --color-main-background-rgb: 20, 27, 34;
+    --background-image-invert-if-bright: no;
+    --background-invert-if-bright: no;
+    --background-invert-if-dark: invert(100%);
+  }
+}
+
+/* ── Shape and type ───────────────────────────────────────────────────────
+ * Outside the contrast guard: radii and the type stack are not contrast. Two
+ * radii, as on the homepage — controls get --control-radius, every
+ * container gets --card-radius. The pill stays a pill; the homepage's
+ * badges are rounded-full too. */
+:root body {
+  --border-radius-small: var(--control-radius);
+  --border-radius-element: var(--control-radius);
+  --border-radius: var(--control-radius);
+  --border-radius-large: var(--control-radius);
+  --border-radius-container: var(--card-radius);
+  --border-radius-container-large: var(--card-radius);
+  --body-container-radius: var(--card-radius);
+  --default-font-size: 15px;
+  --default-line-height: 1.5;
+}
+
+:root body:not([data-theme-opendyslexic]) {
+  --font-face: var(--font-ui);
+}
+
+/* ── Components ───────────────────────────────────────────────────────── */
+
+body {
+  -webkit-font-smoothing: antialiased;
+}
+
+/* card.tsx: the app's content area is a card on the ground — hairline
+ * border, card shadow (which the dark palette flattens to a hairline on its
+ * own). Nextcloud already rounds it and sets it on --color-main-background;
+ * only the edge is ours. */
+#content,
+#content-vue {
+  border: 1px solid var(--line);
+  box-shadow: var(--elev-card);
+}
+
+/* The login and other guest pages: one card on the ground, like the
+ * first-run wizard's. */
+.guest-box,
+.login-box,
+body#body-login .wrapper > main > .login-box {
+  background-color: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: var(--card-radius);
+  box-shadow: var(--elev-card);
+  backdrop-filter: none;
+}
+
+/* The homepage's sidebar marks the current page with the accent's wash and
+ * accent text, not a solid fill. Nextcloud's navigation paints its active
+ * entry from the primary-element variables (with !important, from scoped Vue
+ * styles), so rather than fight those rules this redefines the variables
+ * they read, on the active entry only — a local declaration always beats an
+ * inherited one, whatever the specificity. */
+.app-navigation-entry.active {
+  --color-primary-element: var(--accent-wash);
+  --color-primary-element-hover: color-mix(in srgb, var(--accent-wash) 80%, var(--accent));
+  --color-primary-element-text: var(--accent);
+}
+
+/* index.css's focus ring. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

@@ -81,6 +81,10 @@ let
   # log_type = errorlog sends Nextcloud's log to stderr, which php-fpm forwards
   # to the container log. The alternative is a nextcloud.log inside the data
   # directory on a box with no shell to read it from.
+  #
+  # theme names the LosOS theme folder that modules/nextcloud-stack.nix builds
+  # into nc.package; the native path sets the same value through
+  # services.nextcloud.settings.
   nextcloudImageConfig = pkgs.writeText "losos-image.config.php" ''
     <?php
     $CONFIG = [
@@ -103,6 +107,7 @@ let
         'port' => 0,
       ],
       'log_type' => 'errorlog',
+      'theme' => '${nc.theme}',
     ];
   '';
 
@@ -475,6 +480,10 @@ let
   forgejoStateDir = "/var/lib/forgejo";
   forgejoCustomDir = "${forgejoStateDir}/custom";
 
+  # The LosOS look (admin-ui/themes/). The same import modules/services.nix
+  # makes for native mode, so both modes ship one set of files.
+  themes = import ../admin-ui/themes { inherit pkgs; };
+
   # Everything about Forgejo that does not vary per box. The mounted
   # losos.ini — HTTP_ADDR, HTTP_PORT, ROOT_URL, DISABLE_REGISTRATION,
   # INSTALL_LOCK, actions.ENABLED — is concatenated *after* this at start, and
@@ -520,6 +529,9 @@ let
     [log]
     MODE = console
     LEVEL = Info
+
+    [ui]
+    DEFAULT_THEME = ${themes.forgejo.ui.DEFAULT_THEME}
   '';
 
   forgejoEntrypoint = pkgs.writeShellApplication {
@@ -557,6 +569,14 @@ let
       export USER=forgejo
 
       mkdir -p ${forgejoCustomDir}/conf ${forgejoStateDir}/data ${forgejoStateDir}/repositories
+
+      # The LosOS themes, into the custom asset directory Forgejo serves its
+      # stock themes beside. Copied, not linked: this directory is a hostPath
+      # on the host, where a link into the image's store would dangle. Copied
+      # on every start, so an image with a changed theme replaces the old one,
+      # and before `forgejo web`, which lists the available themes once.
+      install -d ${forgejoCustomDir}/public/assets/css
+      install -m 0644 ${themes.forgejo.cssDir}/*.css ${forgejoCustomDir}/public/assets/css/
 
       # Generated once and kept. `forgejo generate secret` is the same
       # generator the NixOS module uses, and the __FILE environment variables
