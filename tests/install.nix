@@ -63,8 +63,14 @@ pkgs.testers.nixosTest {
       losos.targetDrives = targets;
       losos.tpm.enable = false;
       losos.bios = true;
+      boot.initrd.luks.devices = lib.mkForce { };
       boot.initrd.secrets = lib.mkForce {
         "/crypto_keyfile.bin" = pkgs.writeText "bios-test-key" "test-only";
+      };
+      fileSystems."/persist" = lib.mkForce {
+        device = "tmpfs";
+        fsType = "tmpfs";
+        options = [ "noauto" ];
       };
       boot.loader.grub.extraConfig = ''
         serial --unit=0 --speed=115200
