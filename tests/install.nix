@@ -140,14 +140,15 @@ pkgs.testers.nixosTest {
     assert "losos.targetDrives" in detected, "no losos.targetDrives assignment emitted"
     assert "losos.bios = true;" in detected, "SeaBIOS autodetection did not select BIOS"
 
-    # Explicit choices must override the detected firmware, including the
-    # opposite-firmware case.
+    # Explicit BIOS must override autodetection. UEFI cannot be selected when
+    # the installer itself was booted in BIOS mode, because bootctl needs EFI
+    # variables to install the firmware boot entry.
     installer.succeed(
         "losos-install --bios --emit-target /tmp/forced-bios.nix",
-        "losos-install --uefi --emit-target /tmp/forced-uefi.nix",
     )
     assert "losos.bios = true;" in installer.succeed("cat /tmp/forced-bios.nix")
-    assert "losos.bios = false;" in installer.succeed("cat /tmp/forced-uefi.nix")
+    installer.fail("losos-install --uefi --emit-target /tmp/forced-uefi.nix")
+    installer.succeed("test ! -e /tmp/forced-uefi.nix")
 
     # 2. Full format+mount via the prebuilt diskoScript (the installer's
     #    --disko-script seam): the "merge them to an LVM array and run disko"

@@ -12,7 +12,7 @@
 
 use clap::{Args, Parser, Subcommand};
 use losos_ctl::facade::{call_backend, BackendFailure};
-use losos_ctl::installer_io::{options_from_env, run_install};
+use losos_ctl::installer_io::{booted_in_bios, options_from_env, run_install};
 use losos_ctl::model::Mode;
 use losos_ctl::overrides::validate_apply;
 use std::io::{IsTerminal, Read, Write};
@@ -111,7 +111,7 @@ struct InstallArgs {
     /// medium.
     #[arg(long, conflicts_with = "uefi")]
     bios: bool,
-    /// Install for UEFI (systemd-boot), even if this medium booted in BIOS mode.
+    /// Install for UEFI (systemd-boot); requires this medium to boot in UEFI mode.
     #[arg(long)]
     uefi: bool,
     /// Override drive auto-detection with a comma-separated list.
@@ -184,7 +184,7 @@ fn select_firmware(explicit: Option<bool>, interactive: bool) -> std::io::Result
     loop {
         println!("Choose the firmware mode for the installed system:");
         println!("  1) BIOS");
-        println!("  2) UEFI");
+        println!("  2) UEFI (requires this installer to be booted in UEFI mode)");
         println!("  3) Autodetect (use the firmware that booted this installer)");
         print!("Selection [3]: ");
         std::io::stdout().flush()?;
@@ -226,6 +226,10 @@ fn main() -> ExitCode {
                 return ExitCode::FAILURE;
             }
         };
+        if let Err(e) = validate_firmware_choice(bios, booted_in_bios()) {
+            eprintln!("losos-install: {e}");
+            return ExitCode::FAILURE;
+        }
         let opts = options_from_env(
             args.tpm,
             bios,
@@ -249,6 +253,17 @@ fn main() -> ExitCode {
             eprintln!("{e}");
             ExitCode::FAILURE
         }
+    }
+}
+
+fn validate_firmware_choice(
+    target_bios: Option<bool>,
+    installer_bios: bool,
+) -> Result<(), &'static str> {
+    if installer_bios && target_bios == Some(false) {
+        Err("cannot install for UEFI when the installer was booted in BIOS mode; reboot the installer in UEFI mode")
+    } else {
+        Ok(())
     }
 }
 
@@ -299,7 +314,7 @@ fn run(cli: Cli) -> Result<(), BackendFailure> {
 
 #[cfg(test)]
 mod tests {
-    use super::FirmwareMode;
+    use super::{validate_firmware_choice, FirmwareMode};
 
     #[test]
     fn firmware_choices_resolve_as_expected() {
@@ -312,5 +327,13 @@ mod tests {
         assert_eq!(FirmwareMode::Bios.bios_override(), Some(true));
         assert_eq!(FirmwareMode::Uefi.bios_override(), Some(false));
         assert_eq!(FirmwareMode::Autodetect.bios_override(), None);
+    }
+
+    #[test]
+    fn uefi_install_requires_uefi_booted_installer() {
+        assert!(validate_firmware_choice(Some(false), true).is_err());
+        assert!(validate_firmware_choice(Some(false), false).is_ok());
+        assert!(validate_firmware_choice(Some(true), true).is_ok());
+        assert!(validate_firmware_choice(None, true).is_ok());
     }
 }
