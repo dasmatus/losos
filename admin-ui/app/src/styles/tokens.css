@@ -44,6 +44,7 @@
 
   --ground: #f3f5f7;
   --surface: #ffffff;
+  --surface-rgb: 255, 255, 255;
   --sunk: #eaedf0;
 
   --ink: #18212a;
@@ -71,6 +72,7 @@
 
     --ground: #0a0e12;
     --surface: #141b22;
+    --surface-rgb: 20, 27, 34;
     --sunk: #10171d;
 
     --ink: #e2e8ee;
@@ -99,6 +101,7 @@
 
   --ground: #0a0e12;
   --surface: #141b22;
+  --surface-rgb: 20, 27, 34;
   --sunk: #10171d;
 
   --ink: #e2e8ee;
