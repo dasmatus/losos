@@ -36,6 +36,11 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 
 tracing = "0.1"
+
+# poll(2) on stdin, so the installer ISO's firmware menu can time out without
+# leaving a reader thread on the terminal. A safe wrapper, because the crate
+# forbids unsafe code; already in the lock file through tempfile.
+rustix = { version = "1", features = ["event"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [dev-dependencies]

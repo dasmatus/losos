@@ -21,8 +21,11 @@ Write it to a USB stick and boot the target machine.
   systemd-boot; legacy BIOS gets GRUB plus a 1 MiB BIOS boot partition on the
   first disk. With no answer within 30 seconds the menu takes autodetect, so
   an unattended boot still installs. `losos-install --bios` and `--uefi`
-  select a mode without showing the menu. BIOS is mainly for testing in a VM. This menu is only part of the
-  installer ISO; it is not shown on the installed appliance.
+  select a mode without showing the menu. UEFI, from the menu or `--uefi`,
+  needs the stick itself booted in UEFI mode, because systemd-boot writes the
+  firmware's boot entry; from a BIOS-booted stick the installer refuses it
+  before touching any disk. BIOS is mainly for testing in a VM. This menu is
+  only part of the installer ISO; it is not shown on the installed appliance.
 - **Connect the network.** The installer clones the flake at run time.
 
 ## What the installer does
