@@ -998,6 +998,66 @@ async fn a_storage_order_is_not_provisioned_until_its_claim_is_bound() {
 }
 
 #[tokio::test]
+async fn a_lapsed_volume_keeps_its_units_until_its_claim_is_deleted() {
+    let stripe = StripeStub::start().await;
+    let kube = KubeStub::start_with_claim_phase(409, "Bound").await;
+    // Ten GiB, all sold to an order whose month ran out long ago and whose
+    // claim still exists in the mesh.
+    let state = json!({
+        "sellers": { "seller-box": { "account_id": "acct_test_1", "ready": true } },
+        "listings": { "lst_old": {
+            "id": "lst_old", "seller": "seller-box", "kind": "storage",
+            "unit_price": 100, "capacity": 10, "active": true, "created_at": 0,
+        }},
+        "orders": { "ord_old": {
+            "id": "ord_old", "listing_id": "lst_old", "buyer": "buyer-box",
+            "seller": "seller-box", "kind": "storage", "quantity": 10,
+            "unit_price": 100, "amount": 1000, "fee": 40, "currency": "eur",
+            "status": "paid", "session_id": "cs_test_old", "created_at": 0,
+            "paid_at": 0, "expires_at": 1, "volume": "market-buyer-box/ord-old",
+        }},
+    });
+    let edge = Edge::start_market_with_state(
+        "market-lapsed-volume",
+        &tenants(),
+        &stripe.base,
+        MeshFixture::enabled(&kube.base),
+        &[("seller-box", true)],
+        &state,
+    )
+    .await;
+
+    // The claim is still there, so the GiB are still Longhorn's.
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert!(kube
+        .seen()
+        .iter()
+        .any(|p| p == "GET /api/v1/namespaces/market-buyer-box/persistentvolumeclaims/ord-old"));
+    let (_, shelf) = browse(&edge).await;
+    assert_eq!(
+        shelf,
+        json!([]),
+        "units of a live claim were put back on sale"
+    );
+
+    // The operator deletes it; the next pass returns the units.
+    kube.set_claim_phase("Gone");
+    let mut shelf = Value::Null;
+    for _ in 0..100 {
+        shelf = browse(&edge).await.1;
+        if shelf.as_array().is_some_and(|a| !a.is_empty()) {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert_eq!(shelf[0]["available"], 10);
+
+    edge.shutdown().await;
+    kube.shutdown().await;
+    stripe.shutdown().await;
+}
+
+#[tokio::test]
 async fn a_conflict_from_the_apiserver_counts_as_already_provisioned() {
     let stripe = StripeStub::start().await;
     let kube = KubeStub::start(409).await;
