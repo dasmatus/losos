@@ -71,6 +71,7 @@ const MAX_QUANTITY: u64 = 1_000_000;
 const MAX_CAPACITY: u64 = 1_000_000_000;
 /// Active listings one seller may hold at once.
 const MAX_LISTINGS_PER_SELLER: usize = 20;
+pub const SUPPORTED_CURRENCIES: &[&str] = &["aud", "cad", "chf", "eur", "gbp", "nzd", "usd"];
 
 /// Lifetime requested for a Checkout Session. Stripe requires at least 30 minutes
 /// from receipt, so include one minute for persistence and network transit.
@@ -776,6 +777,10 @@ impl Market {
     #[must_use]
     pub fn fee_bps(&self) -> u32 {
         self.opts.fee_bps
+    }
+
+    pub async fn validate_secrets(&self) -> Result<(), MarketError> {
+        self.stripe().validate_secrets().await
     }
 
     async fn persist(&self, state: &MarketState) -> Result<(), MarketError> {

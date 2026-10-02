@@ -566,10 +566,13 @@ struct ListingCreated {
     listing_id: String,
 }
 
-fn market_of(st: &AppState) -> Result<&Arc<Market>, ApiError> {
-    st.market
+async fn market_of(st: &AppState) -> Result<&Arc<Market>, ApiError> {
+    let market = st
+        .market
         .as_ref()
-        .ok_or(ApiError::Market(MarketError::Unconfigured))
+        .ok_or(ApiError::Market(MarketError::Unconfigured))?;
+    market.validate_secrets().await?;
+    Ok(market)
 }
 
 /// Authenticate, then require both a configured market and the tenant's
@@ -577,7 +580,7 @@ fn market_of(st: &AppState) -> Result<&Arc<Market>, ApiError> {
 /// learns nothing about whether the market exists for anyone else.
 async fn market_tenant(st: &AppState, auth: &MarketAuth) -> Result<Arc<Market>, ApiError> {
     let tenant = authenticate(st, &auth.appliance_id, &auth.token).await?;
-    let market = market_of(st)?;
+    let market = market_of(st).await?;
     if !tenant.market {
         return Err(ApiError::Market(MarketError::Forbidden));
     }
@@ -591,7 +594,7 @@ async fn sharing_of(st: &AppState) -> Sharing {
 }
 
 async fn market_browse(State(st): State<AppState>) -> Result<Json<Vec<PublicListing>>, ApiError> {
-    let market = market_of(&st)?;
+    let market = market_of(&st).await?;
     let sharing = sharing_of(&st).await;
     Ok(Json(market.browse(&sharing).await))
 }
@@ -669,7 +672,7 @@ async fn market_webhook(
     headers: HeaderMap,
     body: Bytes,
 ) -> Result<StatusCode, ApiError> {
-    let market = market_of(&st)?;
+    let market = market_of(&st).await?;
     let signature = headers
         .get("stripe-signature")
         .and_then(|v| v.to_str().ok())
