@@ -16,7 +16,7 @@ it and this README disagree, `schema.json` and the code are right.
 src/
   lib.rs          crate docs and module wiring
   model.rs        Mode, RebuildState, Rebuild, State, Settings
-  losos.rs        the Losos effect trait + the six commands
+  losos.rs        the Losos effect trait + generic command handlers
   overrides.rs    parsing and rendering the two Nix files (pure)
   fake.rs         in-memory Losos, for tests
   io_backend.rs   the real Losos: files, environment, paths
@@ -29,13 +29,11 @@ src/
   bin/            the two binaries
 ```
 
-The commands in `losos.rs` (`cmd_state`, `cmd_change`, `cmd_status`,
-`cmd_settings`, `cmd_apply`, `cmd_factory_reset`) are generic over the `Losos`
-trait and know nothing about paths, systemd, D-Bus or HTTP. `io_backend`
-implements the trait for real; `fake` implements it in memory for tests. The
-installer follows the same pattern with `Install`, `plan_install` and
-`execute`: the plan is data, so tests check the order of destructive steps
-without touching a disk.
+The command handlers in `losos.rs` are generic over the `Losos` trait and know
+nothing about paths, systemd, D-Bus or HTTP. `io_backend` implements the trait
+for real; `fake` implements it in memory for tests. The installer follows the
+same pattern with `Install`, `plan_install` and `execute`: the plan is data, so
+tests check the order of destructive steps without touching a disk.
 
 ## Build and test
 
@@ -85,10 +83,12 @@ directory.
   target the default disk.
 - **The keyfile is copied to `/mnt/etc/keys` before `nixos-install`.** The
   chrooted bootloader install looks up `boot.initrd.secrets` inside `/mnt`.
-- **`ensure_token` replaces a token file that is not 64 lowercase hex
-  characters.** A write cut short by the nightly reboot would otherwise leave
-  a short, guessable token. To reset the token, delete the file and restart
-  `lososd`; editing it does not work.
+- **`ensure_token` accepts any token file containing exactly 64 lowercase hex
+  characters.** To rotate the token, write a new value in that format and
+  restart `lososd`, or delete the file and restart it to mint a random one. The
+  first-owner claim returns the token only once; after claiming, a newly minted
+  token cannot be fetched through the UI, so rotation requires local access to
+  the token file.
 - **The daemon shares one `IoLosos`.** `bin/lososd.rs` builds it once and
   passes clones to `dbus::serve`, `http::serve` and every rebuild watcher. Its
   lock serialises read-modify-write of `state.json` across the bus and HTTP,
