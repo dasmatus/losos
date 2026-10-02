@@ -503,14 +503,39 @@ let
     computeWindowsFile
   ];
 
+  # The Stripe secrets are stored sealed (systemd-creds) and only ever exist in
+  # plaintext on this tmpfs RuntimeDirectory, unsealed when the registrar
+  # starts. This is the same shape as modules/keyring.nix, and deliberately not
+  # LoadCredentialEncrypted=: that fails the whole unit when a blob is missing,
+  # and this unit also carries the master proxy, so an edge that has not sealed
+  # its Stripe keys yet (or whose host key changed) must lose the market and
+  # nothing else. The leading "-" on ExecStartPre does the same for a decrypt
+  # that fails. The registrar reads the files per request and answers 503 for
+  # an absent one.
+  marketRuntimeDir = "/run/losos-registrar";
+  unsealMarketSecrets = pkgs.writeShellScript "losos-unseal-market-secrets" ''
+    umask 077
+    unseal() {
+      name=$1 src=$2
+      if [ ! -f "$src" ]; then
+        echo "losos-registrar: no sealed $name at $src; the market stays off" >&2
+        return 0
+      fi
+      ${config.systemd.package}/bin/systemd-creds decrypt --name="$name" "$src" "${marketRuntimeDir}/$name" \
+        || echo "losos-registrar: could not unseal $name from $src; the market stays off" >&2
+    }
+    unseal stripe-secret-key ${lib.escapeShellArg (toString cfg.market.stripeSecretKeySealed)}
+    unseal stripe-webhook-secret ${lib.escapeShellArg (toString cfg.market.webhookSecretSealed)}
+  '';
+
   # Market half of `serve`. Without --market-stripe-key-file every /market/*
   # route answers 503, so an edge that leaves the market off parses exactly the
   # arguments it always did.
   marketServeArgs = lib.optionals cfg.market.enable [
     "--market-stripe-key-file"
-    (toString cfg.market.stripeSecretKeyFile)
+    "${marketRuntimeDir}/stripe-secret-key"
     "--market-webhook-secret-file"
-    (toString cfg.market.webhookSecretFile)
+    "${marketRuntimeDir}/stripe-webhook-secret"
     "--market-state-file"
     "/var/lib/losos-registrar/market.json"
     "--market-fee-bps"
@@ -654,6 +679,13 @@ in
         # Runs as root; deliberately no ProtectSystem (would make /etc RO).
         PrivateTmp = true;
         NoNewPrivileges = true;
+      }
+      // lib.optionalAttrs cfg.market.enable {
+        # Where the sealed Stripe secrets are unsealed to: tmpfs, so the
+        # plaintext never reaches the disk and does not outlive the unit.
+        RuntimeDirectory = "losos-registrar";
+        RuntimeDirectoryMode = "0700";
+        ExecStartPre = "-${unsealMarketSecrets}";
       };
     };
 

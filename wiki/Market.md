@@ -130,15 +130,26 @@ a session.
 ## Operator setup
 
 1. In the Stripe dashboard, enable **Connect** on the platform account.
-2. Place the secret key, 0600, at `losos.edge.market.stripeSecretKeyFile`
-   (default `/var/secrets/losos-stripe-secret-key`). A restricted key works.
+2. Seal the secret key (a restricted key works) with `systemd-creds`, reading
+   it from stdin so the plaintext never touches the disk:
+
+   ```sh
+   systemd-creds encrypt --name=stripe-secret-key - \
+     /var/secrets/losos-stripe-secret-key.cred
+   ```
+
+   The blob's path is `losos.edge.market.stripeSecretKeySealed`. The name
+   must be exactly `stripe-secret-key`: a blob only decrypts under the name it
+   was sealed with.
 3. Add two webhook endpoints, both at
    `https://register.<publicDomain>/market/webhook`: one for events on your
    account (`checkout.session.completed`,
    `checkout.session.async_payment_succeeded`, `checkout.session.expired`) and
    one that listens to **events on Connected accounts** (`account.updated`).
-   Stripe signs each with its own secret, so put both `whsec_...` secrets in
-   `losos.edge.market.webhookSecretFile`, one per line; the edge accepts either.
+   Stripe signs each with its own secret, so seal both `whsec_...` secrets,
+   one per line, under the name `stripe-webhook-secret` into
+   `losos.edge.market.webhookSecretSealed` (default
+   `/var/secrets/losos-stripe-webhook-secret.cred`); the edge accepts either.
 4. Set `losos.edge.market.enable = true` and `losos.edge.market.returnUrl`.
 5. Set `losos.edge.tenants.<id>.market = true` for each box allowed to trade.
 
@@ -152,6 +163,16 @@ Stripe accepts it; the first test-mode run settles that.
   with a five minute replay window and a larger body cap than other routes.
 - A payment only counts when the session id, amount and currency equal what
   the edge recorded for the order. A mismatch is logged and not fulfilled.
+- The Stripe secrets are never stored in plaintext on the edge. They live as
+  `systemd-creds` blobs (TPM2 where the edge has one, otherwise the host key)
+  and the registrar unit unseals them into its tmpfs RuntimeDirectory
+  (`/run/losos-registrar`, 0700) at start, so a copy of `/var` carries
+  ciphertext only. This is the same mechanism as `modules/keyring.nix`. It
+  does not defend against root on the running edge, which can unseal by
+  design. Rotating a secret means sealing a new blob and restarting
+  `losos-registrar`. A blob that is missing or will not unseal turns the market
+  off (503) and nothing else: the unseal step may fail without failing the
+  unit, which also carries the master proxy.
 - Secret files are shape-checked (`sk_`/`rk_`, `whsec_`) before use.
 - `market.json` is 0600 and written atomically. A file that does not parse
   stops the edge from starting rather than being treated as empty, because

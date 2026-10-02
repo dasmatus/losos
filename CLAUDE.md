@@ -359,7 +359,11 @@ A separate `midnight-reboot.timer` reboots unconditionally at 00:07 with
   mesh, it is not a second product. The admin UI reaches it through lososd's
   `/api/market*` relay (`backend/src/market.rs`), which answers 200
   `{available:false}` rather than 404 when the market is off, because the SPA
-  latches a 404 as "route not served".
+  latches a 404 as "route not served". The Stripe secrets are stored sealed
+  (`systemd-creds`, `losos.edge.market.{stripeSecretKey,webhookSecret}Sealed`)
+  and unsealed into `/run/losos-registrar` by an `ExecStartPre` with a leading
+  `-`. Don't switch that to `LoadCredentialEncrypted=`: a missing blob would
+  then fail the whole registrar and take the master proxy with it.
 - **`system.stateVersion = "26.11"` is set-once** — matches the nixos-unstable
   this flake tracks; don't change it.
 - **The `result` symlink is a `nix build` artifact** (pointing into

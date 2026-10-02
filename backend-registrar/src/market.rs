@@ -933,10 +933,23 @@ fn secret_fault(secret: &str, prefixes: &[&str]) -> Option<&'static str> {
     }
 }
 
+/// Read a secret file. One that is absent is "not configured" (503), not an
+/// upstream failure: the Stripe secrets are stored sealed and unsealed into
+/// tmpfs at start, so an edge that has not sealed them yet, or whose host key
+/// changed, has no file here and must say so rather than blame Stripe.
+async fn read_secret_file(path: &str) -> Result<String, MarketError> {
+    match tokio::fs::read_to_string(path).await {
+        Ok(raw) => Ok(raw),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            tracing::error!(target: Action::Market.target(), "secret file {path} is absent");
+            Err(MarketError::Unconfigured)
+        }
+        Err(e) => Err(MarketError::Stripe(format!("read secret {path}: {e}"))),
+    }
+}
+
 async fn read_secret(path: &str, prefixes: &[&str]) -> Result<String, MarketError> {
-    let raw = tokio::fs::read_to_string(path)
-        .await
-        .map_err(|e| MarketError::Stripe(format!("read secret {path}: {e}")))?;
+    let raw = read_secret_file(path).await?;
     let secret = raw.trim();
     if let Some(fault) = secret_fault(secret, prefixes) {
         tracing::error!(target: Action::Market.target(), "secret file {path} is {fault}");
@@ -949,9 +962,7 @@ async fn read_secret(path: &str, prefixes: &[&str]) -> Result<String, MarketErro
 /// connected-account events (`account.updated`) with the secrets of two
 /// different endpoints, so the edge accepts either.
 async fn read_webhook_secrets(path: &str) -> Result<Vec<String>, MarketError> {
-    let raw = tokio::fs::read_to_string(path)
-        .await
-        .map_err(|e| MarketError::Stripe(format!("read secret {path}: {e}")))?;
+    let raw = read_secret_file(path).await?;
     let secrets: Vec<String> = raw
         .lines()
         .map(str::trim)
@@ -1349,6 +1360,24 @@ impl Market {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_unsealed_secret_that_is_absent_means_not_configured() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let missing = std::env::temp_dir().join("losos-no-such-secret-for-test");
+        let path = missing.to_str().unwrap();
+        assert!(matches!(
+            rt.block_on(read_secret(path, &["sk_"])),
+            Err(MarketError::Unconfigured)
+        ));
+        assert!(matches!(
+            rt.block_on(read_webhook_secrets(path)),
+            Err(MarketError::Unconfigured)
+        ));
+    }
 
     fn order(id: &str, status: OrderStatus, qty: u64, created_at: u64) -> Order {
         Order {
