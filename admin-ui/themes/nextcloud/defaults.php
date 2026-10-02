@@ -61,7 +61,7 @@ class OC_Theme {
 		['Veľký brat ťa sleduje.', 'George Orwell', '1984'],
 		['Všetky zvieratá sú si rovné, ale niektoré zvieratá sú si rovnejšie.', 'George Orwell', 'Zvieracia farma'],
 		['Štyri nohy dobré, dve nohy zlé.', 'George Orwell', 'Zvieracia farma'],
-		['Na západe nič nového.', 'Erich Maria Remarque', 'Na západe nič nového'],
+		['Na západe nič nové.', 'Erich Maria Remarque', 'Na západe nič nové'],
 	];
 
 	/* An empty URL makes the footer's name plain text instead of a link out
