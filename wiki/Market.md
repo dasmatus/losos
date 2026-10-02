@@ -78,6 +78,30 @@ Limits to know about, none of which are enforced yet:
   namespaces and PersistentVolumeClaims when the market is enabled. Kubernetes
   RBAC cannot scope either to `market-*` names.
 
+## Admin UI
+
+Owners reach the market from **Settings → Market** in the admin UI. The pane
+shows what the owner has bought (with expiry and volume), the shelf to buy
+from, and, for selling, Stripe payout setup, a listing form and the owner's
+own listings and sales.
+
+- The listing form only offers what is already shared: storage once the box
+  has joined the mesh, compute once it also shares compute. Anything else is
+  greyed with the reason. The edge enforces the same rule; the pane only
+  explains it.
+- Payment and Stripe onboarding open Stripe's own pages in a new tab. Nothing
+  in the admin UI sees a card, and only plain `https://` links are opened.
+- The pages cannot call the edge themselves (the admin UI's CSP is
+  `connect-src 'self'`), so `lososd` relays: `GET /api/market` and
+  `POST /api/market/{onboard,listings,listings/close,orders}`. The relay uses
+  the registrar's URL, the appliance id and the proxy token that
+  `losos.proxy.enable` already provides, requires https, and sends the token
+  to `curl` on stdin rather than on the command line.
+- Where the market is off (no proxy, the edge has it disabled, or this tenant
+  is not opted in) `GET /api/market` answers `{"available": false}` with a 200
+  and the pane says so. It is deliberately not a 404: the admin UI treats a 404
+  as "this box does not serve the route" for the rest of the session.
+
 ## API
 
 All routes live on the registrar's public API (`register.<publicDomain>`).

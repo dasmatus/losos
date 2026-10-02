@@ -33,6 +33,17 @@ export default defineMessages({
     sk: "sieť zdieľať pripojiť výpočtový výkon okno hodiny spánok noc požičiavať ostatní",
     de: "teilen beitreten Rechenleistung Zeitfenster Stunden schlafen Nacht verleihen andere",
   },
+  "settings.panes.market.label": { en: "Market", sk: "Trh", de: "Markt" },
+  "settings.panes.market.summary": {
+    en: "Get paid for the storage and compute you already share, or buy some from other boxes.",
+    sk: "Nechajte si zaplatiť za úložisko a výpočtový výkon, ktoré už zdieľate, alebo si kúpte od iných zariadení.",
+    de: "Lass dir den Speicher und die Rechenleistung bezahlen, die du schon teilst, oder kauf welche von anderen Boxen.",
+  },
+  "settings.panes.market.keywords": {
+    en: "",
+    sk: "predaj kúpa platba peniaze stripe cena zárobok výplata objednávka",
+    de: "verkaufen kaufen Zahlung Geld Stripe Preis verdienen Auszahlung Bestellung",
+  },
   "settings.panes.apps.label": { en: "Apps", sk: "Aplikácie", de: "Apps" },
   "settings.panes.apps.summary": {
     en: "The apps this box runs, how each one runs, and where to look for more.",

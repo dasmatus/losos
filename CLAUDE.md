@@ -352,7 +352,14 @@ A separate `midnight-reboot.timer` reboots unconditionally at 00:07 with
   `losos.edge.market.enable`, and 403 unless `losos.edge.tenants.<id>.market`.
   `modules/edge.nix`'s `tenantsJson` hardcodes its attributes, so the `market`
   key must stay listed there or every trade silently 403s. A paid order is an
-  entitlement record only — nothing provisions against it yet.
+  entitlement: storage orders get a namespace and PVC on the mesh (idempotent,
+  409 counts as done, nothing is ever deleted), compute is a ledger credit
+  only. Listing and ordering are gated on what the seller's node already shares
+  (`Sharing`, from the registry's compute windows) — the market monetises the
+  mesh, it is not a second product. The admin UI reaches it through lososd's
+  `/api/market*` relay (`backend/src/market.rs`), which answers 200
+  `{available:false}` rather than 404 when the market is off, because the SPA
+  latches a 404 as "route not served".
 - **`system.stateVersion = "26.11"` is set-once** — matches the nixos-unstable
   this flake tracks; don't change it.
 - **The `result` symlink is a `nix build` artifact** (pointing into

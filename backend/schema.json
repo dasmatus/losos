@@ -273,6 +273,53 @@
         }
       }
     },
+    "marketResponse": {
+      "type": "object",
+      "required": [
+        "available"
+      ],
+      "properties": {
+        "available": {
+          "type": "boolean",
+          "description": "False \u2014 and nothing else present \u2014 when the edge runs no market, this box was not cleared for it, or the box has no master proxy configured. That is the normal state of most appliances, so it is a 200 and not an error."
+        },
+        "listings": {
+          "type": "array",
+          "description": "What can be bought now, as the registrar's GET /market/listings returns it. Names no seller."
+        },
+        "account": {
+          "type": "object",
+          "description": "This appliance's own market activity, as the registrar's POST /market/account returns it: fee_bps, currency, seller_onboarded, seller_ready, can_sell_storage, can_sell_compute, listings, entitlements, purchases (each with status, expires_at and, for storage, the provisioned volume) and sales."
+        }
+      }
+    },
+    "marketActionResponse": {
+      "type": "object",
+      "required": [
+        "available"
+      ],
+      "properties": {
+        "available": {
+          "const": true
+        },
+        "checkout_url": {
+          "type": "string",
+          "description": "POST /api/market/orders only. Always plain https; the page sends the owner there to pay."
+        },
+        "url": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "POST /api/market/onboard only: Stripe's hosted onboarding link, null once the account is ready. Always plain https."
+        },
+        "ready": {
+          "type": "boolean",
+          "description": "POST /api/market/onboard only: whether the connected account can already receive transfers."
+        }
+      },
+      "description": "The registrar's own reply to the action, plus `available`."
+    },
     "appsSearchResponse": {
       "type": "object",
       "additionalProperties": false,
@@ -516,6 +563,35 @@
         "in": "query string: q=<search term>, 2-128 characters, no control characters",
         "out": "appsSearchResponse",
         "note": "Searches a public app catalogue from the box. The admin pages are served under `connect-src 'self'`, so the browser cannot reach a catalogue itself — lososd is the only thing here with an outbound path. HTTP-only, with no D-Bus method and no facade subcommand, following `POST /api/setup/claim`: the facade exists to control this appliance, and a CLI for a settings screen's search field would be surface with no caller. A bad or missing `q` is 400 with the reason, deliberately NOT 404 — the SPA latches a 404 as \"this box does not serve the route\" and stops asking for the rest of the session. A search that could not be made (no route off the box, the catalogue down, a body that is not JSON) is 500, which the screen shows as retryable."
+      },
+      "GET /api/market": {
+        "auth": true,
+        "out": "marketResponse",
+        "note": "The optional storage/compute market, relayed to the edge's registrar (backend/src/market.rs). The pages cannot call the edge themselves under `connect-src 'self'`, and the registrar wants the appliance's proxy token, which the browser must not hold. HTTP-only, following /api/apps/search. Not-offered is 200 with available:false, deliberately NOT 404, which the SPA latches."
+      },
+      "POST /api/market/onboard": {
+        "auth": true,
+        "in": "{}",
+        "out": "marketActionResponse",
+        "note": "Start or resume Stripe Connect onboarding. Audited."
+      },
+      "POST /api/market/listings": {
+        "auth": true,
+        "in": "{\"kind\": \"storage|compute\", \"unit_price\": <minor units>, \"capacity\": <units>}",
+        "out": "marketActionResponse",
+        "note": "List what this box already shares on the mesh. 409 with the registrar's reason when it is not sharing it, or has not finished onboarding. Audited."
+      },
+      "POST /api/market/listings/close": {
+        "auth": true,
+        "in": "{\"listing_id\": \"...\"}",
+        "out": "marketActionResponse",
+        "note": "Stop selling a listing. Orders already paid keep their units. Audited."
+      },
+      "POST /api/market/orders": {
+        "auth": true,
+        "in": "{\"listing_id\": \"...\", \"quantity\": <units>}",
+        "out": "marketActionResponse",
+        "note": "Buy units. Returns a Stripe Checkout URL for the page to open. Audited. Owner-actionable refusals are 400/409 carrying the registrar's own sentence."
       }
     }
   },
