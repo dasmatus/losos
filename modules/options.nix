@@ -1029,8 +1029,8 @@ in
         `systemd-creds` under the credential name `stripe-webhook-secret` and
         handed to the gate like `stripeSecretKeySealed`. Stripe needs two
         endpoints: one for events on the platform account
-        (checkout.session.completed, checkout.session.async_payment_succeeded,
-        checkout.session.expired) and one for events on Connected accounts
+        (checkout.session.completed, checkout.session.expired) and one for
+        events on Connected accounts
         (account.updated). The registrar accepts a signature from either.
       '';
     };

@@ -269,7 +269,7 @@ pub fn parse(args: Vec<String>) -> Result<Mode> {
             let currency = arg(&rest, "--currency").unwrap_or("eur");
             if !valid_currency(currency) {
                 return Err(miette!(
-                    "bad --currency {currency:?}; expected a supported two-decimal currency"
+                    "bad --currency {currency:?}; expected a supported two-decimal ISO 4217 code"
                 ));
             }
             Ok(Mode::StripeGate(GateOpts {
@@ -303,7 +303,7 @@ fn parse_market(args: &[String]) -> Result<Option<Box<MarketOpts>>> {
     let currency = arg(args, "--market-currency").unwrap_or("eur");
     if !valid_currency(currency) {
         return Err(miette!(
-            "bad --market-currency {currency:?}; expected a supported two-decimal currency"
+            "bad --market-currency {currency:?}; expected a supported two-decimal ISO 4217 code"
         ));
     }
     let fee_bps: u32 = match arg(args, "--market-fee-bps") {
