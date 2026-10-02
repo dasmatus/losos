@@ -33,6 +33,16 @@ let
   # reason to exist.
   nc = import ./nextcloud-stack.nix { inherit pkgs lib; };
 
+  # The LosOS look for Forgejo (admin-ui/themes/), shared with the workload
+  # image in flake/images.nix.
+  themes = import ../admin-ui/themes { inherit pkgs; };
+  forgejoNative = config.losos.forgejo.mode == "native" && config.losos.forgejo.enable;
+  forgejoManagedDirs = [
+    "public/assets/css"
+    "public/assets/img"
+    "templates"
+  ];
+
   nextcloudWorkload = config.losos.nextcloud.mode == "container";
   forgejoWorkload = config.losos.forgejo.mode == "container" && config.losos.forgejo.enable;
 in
@@ -47,11 +57,13 @@ in
 
   # Forgejo (native). Only active in native mode; in container mode the git
   # host runs as a workload behind Nginx (see containers.nix).
-  services.forgejo = lib.mkIf (config.losos.forgejo.mode == "native" && config.losos.forgejo.enable) {
+  services.forgejo = lib.mkIf forgejoNative {
     enable = true;
     lfs.enable = true;
     database.type = "postgres";
-    settings = {
+    # LosOS Git's name, theme, <meta> tags and footer (admin-ui/themes/),
+    # under this box's own settings.
+    settings = lib.recursiveUpdate themes.forgejo.settings {
       server.HTTP_PORT = 8888;
       # Forgejo's default is open sign-up. Native mode is LAN-only (:8888 is
       # not routed through the master-proxy tunnel), but "anyone on the LAN"
@@ -66,6 +78,23 @@ in
       actions.ENABLED = true;
     };
   };
+
+  # Replace each LosOS-managed tree as a unit before Forgejo starts. This keeps
+  # removed or renamed assets from surviving in the persistent custom directory;
+  # unrelated custom data, especially conf/ secrets, is untouched.
+  systemd.services.forgejo.preStart = lib.mkIf forgejoNative (
+    let
+      customDir = config.services.forgejo.customDir;
+      replaceTree = dir: ''
+        rm -rf -- ${lib.escapeShellArg "${customDir}/${dir}"}
+        ln -s -- ${lib.escapeShellArg "${themes.forgejo.customDir}/${dir}"} ${lib.escapeShellArg "${customDir}/${dir}"}
+      '';
+    in
+    lib.mkBefore ''
+      install -d ${lib.escapeShellArg "${customDir}/public/assets"}
+      ${lib.concatMapStrings replaceTree forgejoManagedDirs}
+    ''
+  );
 
   # ── Nextcloud (for the notshared user) — native path ──────────────────
   # Only active when losos.nextcloud.mode == "native". In "container" mode

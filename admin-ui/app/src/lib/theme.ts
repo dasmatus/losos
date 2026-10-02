@@ -2,7 +2,7 @@
  *
  * The choice is an attribute on <html> and nothing else:
  *
- *   auto   -> no data-theme attribute. The palette in styles/index.css has a
+ *   auto   -> no data-theme attribute. The palette in styles/tokens.css has a
  *             `@media (prefers-color-scheme: dark)` arm guarded by
  *             `:root:not([data-theme="light"])`, so Auto is correct with zero
  *             JavaScript — including before this module has loaded.
