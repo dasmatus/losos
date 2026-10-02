@@ -1,5 +1,6 @@
 import * as React from "react";
 import { Switch } from "@/components/ui/switch";
+import { useT } from "@/lib/i18n-react";
 import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText } from "./rows";
 import type { SettingsForm } from "./use-settings-form";
 
@@ -13,18 +14,19 @@ import type { SettingsForm } from "./use-settings-form";
  */
 
 export function HardwarePane({ form }: { form: SettingsForm }) {
+  const t = useT();
   const gpuId = React.useId();
   const disabled = form.locked || !form.ready;
 
   return (
     <PaneSection>
-      <GroupTitle>Graphics</GroupTitle>
+      <GroupTitle>{t("panes.hardware.graphics")}</GroupTitle>
       <Group>
         <Row last>
           <RowText
             htmlFor={gpuId}
-            title="Let apps use the graphics chip"
-            detail="Only switch this on if this box has one."
+            title={t("panes.hardware.gpu.title")}
+            detail={t("panes.hardware.gpu.detail")}
           />
           <Switch
             id={gpuId}
@@ -34,11 +36,7 @@ export function HardwarePane({ form }: { form: SettingsForm }) {
           />
         </Row>
       </Group>
-      <GroupCaption>
-        Some jobs, like recognising what is in a photo or converting a video, run much faster on a
-        graphics chip than on the main processor. Switching this on tells the apps they may use one.
-        On a box without one it changes nothing except the time the next rebuild takes.
-      </GroupCaption>
+      <GroupCaption>{t("panes.hardware.caption")}</GroupCaption>
     </PaneSection>
   );
 }

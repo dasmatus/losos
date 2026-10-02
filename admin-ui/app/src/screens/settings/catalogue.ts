@@ -1,5 +1,7 @@
 import * as React from "react";
 import { isAbort, isUnauthorized } from "@/lib/api";
+import { t } from "@/lib/i18n";
+import { useLocale } from "@/lib/i18n-react";
 import { authedGet, isRecord, nonEmptyString, notPresent } from "./http";
 
 /* Searching for more apps.
@@ -101,10 +103,18 @@ function parseResults(body: unknown): CatalogueResults {
   return { sources, apps };
 }
 
-function describe(error: unknown): string {
+/* The box's own words when it gave any (they arrive in its language, not
+ * ours), else null — which is resolved to our sentence at render, in the
+ * language on screen then, not the one on screen when the search failed. */
+function describe(error: unknown): string | null {
   if (error instanceof Error && error.message.length > 0) return error.message;
-  return "The search did not come back.";
+  return null;
 }
+
+/** What the hook holds: CatalogueState with the fallback message unresolved. */
+type HeldState =
+  | Exclude<CatalogueState, { kind: "failed" }>
+  | { kind: "failed"; message: string | null };
 
 /** Debounce: long enough that typing a word is one search, not seven. */
 const DEBOUNCE_MS = 350;
@@ -117,7 +127,8 @@ export interface Catalogue {
 
 export function useCatalogue(enabled: boolean): Catalogue {
   const [query, setQuery] = React.useState("");
-  const [state, setState] = React.useState<CatalogueState>({ kind: "idle" });
+  const locale = useLocale();
+  const [held, setState] = React.useState<HeldState>({ kind: "idle" });
 
   /* Once the box has said it does not serve the route, stop asking. Held in
    * a ref rather than derived from `state` so it survives the state going
@@ -164,6 +175,14 @@ export function useCatalogue(enabled: boolean): Catalogue {
       window.clearTimeout(timer);
     };
   }, [query, enabled]);
+
+  const state = React.useMemo<CatalogueState>(
+    () =>
+      held.kind === "failed"
+        ? { kind: "failed", message: held.message ?? t("settings.catalogue.noAnswer") }
+        : held,
+    [held, locale],
+  );
 
   return { query, setQuery, state };
 }

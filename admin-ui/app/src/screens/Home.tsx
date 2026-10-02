@@ -7,6 +7,7 @@ import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
+import { LanguagePicker } from "@/components/ui/language-picker";
 import {
   getHealth,
   getSettings,
@@ -34,6 +35,8 @@ import {
   type AppId,
   type Availabilities,
 } from "@/lib/apps";
+import { t as translate, type MessageKey } from "@/lib/i18n";
+import { Rich, useT } from "@/lib/i18n-react";
 import { cn, setCssVar } from "@/lib/utils";
 
 /* The homepage — the grid of apps, and the two facts worth a glance above and
@@ -97,6 +100,7 @@ export function Home({
   uptimeSeconds = null,
   storage = null,
 }: HomeProps) {
+  const t = useT();
   const signedIn = React.useSyncExternalStore(subscribeAuth, hasToken, () => false);
   const health = useHealth();
   const { settings, boxState, status } = useBoxFacts(signedIn);
@@ -130,7 +134,7 @@ export function Home({
       </Card>
 
       {widgets !== undefined && (
-        <section aria-label="At a glance" className="flex flex-col gap-3">
+        <section aria-label={t("home.glance.label")} className="flex flex-col gap-3">
           {widgets}
         </section>
       )}
@@ -155,6 +159,7 @@ function HomeHeader({
   health: Health;
   showThemeSwitch: boolean;
 }) {
+  const t = useT();
   return (
     <header className="flex flex-wrap items-center gap-x-4 gap-y-2 animate-fade-in">
       <div className="min-w-0 flex-1">
@@ -164,20 +169,24 @@ function HomeHeader({
         <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12.5px] text-muted">
           <span className="inline-flex items-center gap-1.5">
             <StatusDot state={healthDot(health)} />
-            {healthWord(health)}
+            {t(healthWord(health))}
           </span>
 
           {uptimeSeconds !== null && uptimeSeconds >= 0 && (
             <>
               <Separator orientation="vertical" className="h-3" />
               <span>
-                up <span className="numeric">{formatUptime(uptimeSeconds)}</span>
+                <Rich
+                  k="home.header.up"
+                  vars={{ uptime: <span className="numeric">{formatUptime(uptimeSeconds)}</span> }}
+                />
               </span>
             </>
           )}
         </p>
       </div>
 
+      {showThemeSwitch && <LanguagePicker />}
       {showThemeSwitch && <ThemeToggle />}
     </header>
   );
@@ -189,10 +198,10 @@ function healthDot(health: Health): DotState {
   return "pending";
 }
 
-function healthWord(health: Health): string {
-  if (health === "ok") return "Answering";
-  if (health === "down") return "Not answering";
-  return "Checking";
+function healthWord(health: Health): MessageKey {
+  if (health === "ok") return "home.header.answering";
+  if (health === "down") return "home.header.notAnswering";
+  return "home.header.checking";
 }
 
 /* The name in the address bar, which is the name this browser reached the box
@@ -200,9 +209,11 @@ function healthWord(health: Health): string {
  * the box's own name the moment the settings call lands. */
 function browserHostName(): string {
   try {
-    return window.location.hostname === "" ? "this box" : window.location.hostname;
+    return window.location.hostname === ""
+      ? translate("home.header.thisBox")
+      : window.location.hostname;
   } catch {
-    return "this box";
+    return translate("home.header.thisBox");
   }
 }
 
@@ -212,16 +223,17 @@ function browserHostName(): string {
  * the indeterminate band in practice — which is honest: the box knows a
  * rebuild is running and does not know how far along it is. */
 function ApplyingChange({ status }: { status: StatusResponse }) {
+  const t = useT();
   return (
     <div className="animate-rise rounded-card border border-line bg-surface px-4 py-3 shadow-card">
       <p className="flex items-center gap-2 text-[13px] font-medium text-ink">
         <StatusDot state="pending" />
-        Applying a change to this box
+        {t("home.applying.title")}
       </p>
       {status.message !== "" && (
         <p className="mt-0.5 truncate text-[12px] text-muted">{status.message}</p>
       )}
-      <Progress className="mt-2.5" value={null} label="Applying a change" />
+      <Progress className="mt-2.5" value={null} label={t("home.applying.short")} />
     </div>
   );
 }
@@ -244,6 +256,7 @@ function ApplyingChange({ status }: { status: StatusResponse }) {
  * bar's width. Nothing here ever prints an amount it did not measure.
  */
 function StorageStrip({ sharing, storage }: { sharing: boolean; storage: HomeStorage | null }) {
+  const t = useT();
   const measured = readStorage(storage, sharing);
   const usedPercent = measured === null ? null : measured.usedPercent;
   const lentPercent = measured === null ? null : measured.lentPercent;
@@ -302,7 +315,7 @@ function StorageStrip({ sharing, storage }: { sharing: boolean; storage: HomeSto
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px]">
         <span className="inline-flex items-center gap-1.5 text-muted">
           <span className="inline-block size-2.5 shrink-0 rounded-[3px] bg-accent" aria-hidden="true" />
-          On this box
+          {t("home.storage.onThisBox")}
           {measured !== null && (
             <span className="numeric text-faint">{formatBytes(measured.usedBytes)}</span>
           )}
@@ -314,7 +327,7 @@ function StorageStrip({ sharing, storage }: { sharing: boolean; storage: HomeSto
               className="hatched-solid inline-block size-2.5 shrink-0 rounded-[3px]"
               aria-hidden="true"
             />
-            Lent to other boxes
+            {t("home.storage.lent")}
             {measured !== null && measured.lentBytes !== null && (
               <span className="numeric text-faint">{formatBytes(measured.lentBytes)}</span>
             )}
@@ -329,7 +342,7 @@ function StorageStrip({ sharing, storage }: { sharing: boolean; storage: HomeSto
               className="inline-block size-2.5 shrink-0 rounded-[3px] bg-sunk ring-1 ring-line ring-inset"
               aria-hidden="true"
             />
-            Room left
+            {t("home.storage.roomLeft")}
             <span className="numeric text-faint">{formatBytes(measured.freeBytes)}</span>
           </span>
         )}
@@ -337,8 +350,8 @@ function StorageStrip({ sharing, storage }: { sharing: boolean; storage: HomeSto
 
       <p className="text-[12px] text-faint">
         {sharing
-          ? "Everything you keep here stays on this box. Room it is not using is lent to the mesh."
-          : "Everything you keep here stays on this box. Nothing is copied anywhere else."}
+          ? t("home.storage.sharing")
+          : t("home.storage.local")}
       </p>
     </div>
   );
@@ -390,6 +403,7 @@ function clampPercent(value: number): number {
  * no widgets has no empty frame on its homepage. Pass this component as
  * `widgets` while wiring the board up, to see where it lands. */
 export function HomeWidgetPlaceholder() {
+  const t = useT();
   return (
     <div
       className={cn(
@@ -404,14 +418,15 @@ export function HomeWidgetPlaceholder() {
         color="currentColor"
         aria-hidden="true"
       />
-      Widgets appear here.
+      {t("home.widgets.placeholder")}
     </div>
   );
 }
 
 // ── Facts ─────────────────────────────────────────────────────────────────
 
-/* Everything the grid is told, assembled in one place.
+/* Everything the grid is told, assembled in one place. Its notes are
+ * translated, so it runs during Home's render, which used `useT()`.
  *
  * The two rules this function exists to keep: a second line is a measurement
  * or it is the catalogue's static sentence, never a guess; and an attention
@@ -436,16 +451,16 @@ function buildFacts({
     const total = storage.totalBytes;
     if (Number.isFinite(total) && total > 0) {
       const ratio = storage.usedBytes / total;
-      if (ratio >= 0.95) attention.files = { level: "crit", note: "Out of room" };
-      else if (ratio >= 0.9) attention.files = { level: "warn", note: "Almost full" };
+      if (ratio >= 0.95) attention.files = { level: "crit", note: translate("home.attention.outOfRoom") };
+      else if (ratio >= 0.9) attention.files = { level: "warn", note: translate("home.attention.almostFull") };
     }
   }
 
   if (status !== null) {
     if (status.state === "building") {
-      attention.settings = { level: "pending", note: "Applying a change" };
+      attention.settings = { level: "pending", note: translate("home.applying.short") };
     } else if (status.state === "failed") {
-      attention.settings = { level: "crit", note: "A change failed" };
+      attention.settings = { level: "crit", note: translate("home.attention.changeFailed") };
     }
   }
 

@@ -30,50 +30,42 @@ import {
 } from "@hugeicons/core-free-icons";
 import { buttonVariants } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { intlTag } from "@/lib/i18n";
+import { useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
 import { Callout, ReadoutRow, StepText } from "./parts";
 import { passkeysPossibleHere } from "./passkey";
 import type { SetupQuery } from "./useSetupState";
 
 export function StepTrust({ query }: { query: SetupQuery }) {
+  const t = useT();
   return (
     <div className="flex flex-col gap-5">
-      <StepText>
-        This box signs its own certificate, so your browser has never seen it before and will
-        not trust it yet. Install the certificate, then reopen this page at the address below.
-        Everything after this step travels over that connection. That includes the password you
-        are about to set and the passkey you may want, and neither should cross the network in
-        the clear.
-      </StepText>
+      <StepText>{t("wizard.trust.intro")}</StepText>
 
       {query.kind === "loading" && <LoadingTrust />}
       {query.kind === "ready" && <ReadyTrust query={query} />}
 
       {query.kind === "blocked" && (
-        <Callout tone="warn" icon={Alert02Icon} title="Not available from here">
-          <p className="mt-1">
-            The certificate is only handed out to devices on the same network as this box.
-            Open this page from that network to install it.
-          </p>
+        <Callout tone="warn" icon={Alert02Icon} title={t("wizard.trust.blocked.title")}>
+          <p className="mt-1">{t("wizard.trust.blocked.body")}</p>
         </Callout>
       )}
 
       {query.kind === "absent" && (
-        <Callout tone="info" icon={InformationCircleIcon} title="Nothing to install">
+        <Callout tone="info" icon={InformationCircleIcon} title={t("wizard.trust.nothing.title")}>
           <p className="mt-1">
-            This box is not serving an encrypted address, so there is no certificate to
-            trust. You can continue{passkeysPossibleHere() ? "" : "; the passkey option on the next step will not be offered"}.
+            {passkeysPossibleHere()
+              ? t("wizard.trust.absent")
+              : t("wizard.trust.absentNoPasskey")}
           </p>
         </Callout>
       )}
 
       {query.kind === "failed" && (
-        <Callout tone="crit" icon={Alert02Icon} title="Could not read the setup details">
+        <Callout tone="crit" icon={Alert02Icon} title={t("wizard.trust.failed.title")}>
           <p className="mt-1 break-words">{query.message}</p>
-          <p className="mt-1">
-            You can continue without installing the certificate, or reload this page to try
-            again.
-          </p>
+          <p className="mt-1">{t("wizard.trust.failed.body")}</p>
         </Callout>
       )}
     </div>
@@ -90,17 +82,18 @@ function LoadingTrust() {
 }
 
 function ReadyTrust({ query }: { query: Extract<SetupQuery, { kind: "ready" }> }) {
+  const t = useT();
   const { fqdn, tls, certificate } = query.state;
   const secure = window.isSecureContext && window.location.protocol === "https:";
   const onTheRightName = secure && window.location.hostname === fqdn;
 
   if (!tls || certificate === null) {
     return (
-      <Callout tone="info" icon={InformationCircleIcon} title="Nothing to install">
+      <Callout tone="info" icon={InformationCircleIcon} title={t("wizard.trust.nothing.title")}>
         <p className="mt-1">
-          {query.state.hostName} is not serving an encrypted address, so there is no
-          certificate to trust. You can continue
-          {passkeysPossibleHere() ? "" : "; the passkey option on the next step will not be offered"}.
+          {passkeysPossibleHere()
+            ? t("wizard.trust.noTls", { name: query.state.hostName })
+            : t("wizard.trust.noTlsNoPasskey", { name: query.state.hostName })}
         </p>
       </Callout>
     );
@@ -126,7 +119,7 @@ function ReadyTrust({ query }: { query: Extract<SetupQuery, { kind: "ready" }> }
             color="currentColor"
             aria-hidden="true"
           />
-          Get the certificate
+          {t("wizard.trust.getCert")}
         </a>
 
         {onTheRightName ? (
@@ -138,7 +131,7 @@ function ReadyTrust({ query }: { query: Extract<SetupQuery, { kind: "ready" }> }
               color="currentColor"
               aria-hidden="true"
             />
-            You are already on the encrypted address.
+            {t("wizard.trust.alreadyEncrypted")}
           </span>
         ) : (
           <a
@@ -152,21 +145,19 @@ function ReadyTrust({ query }: { query: Extract<SetupQuery, { kind: "ready" }> }
               color="currentColor"
               aria-hidden="true"
             />
-            Reopen at https://{fqdn}
+            {t("wizard.trust.reopen", { fqdn })}
           </a>
         )}
       </div>
 
       <div className="flex flex-col gap-4 rounded-control border border-line bg-sunk px-4 py-3.5">
-        <ReadoutRow label="Check this fingerprint">
+        <ReadoutRow label={t("wizard.trust.checkFingerprint")}>
           <code className="numeric text-[12.5px] leading-relaxed break-all text-ink select-all">
             {certificate.fingerprintDisplay}
           </code>
         </ReadoutRow>
         <p className="text-[12.5px] leading-snug text-muted">
-          Your browser shows the same fingerprint when it asks whether to trust the certificate.
-          If the two do not match character for character, stop: something between you and{" "}
-          {query.state.hostName} is not this box.
+          {t("wizard.trust.fingerprintBody", { name: query.state.hostName })}
         </p>
         {certificate.expires.length > 0 && (
           <p className="flex items-center gap-1.5 text-[12.5px] text-faint">
@@ -177,27 +168,20 @@ function ReadyTrust({ query }: { query: Extract<SetupQuery, { kind: "ready" }> }
               color="currentColor"
               aria-hidden="true"
             />
-            Valid until {formatExpiry(certificate.expires)}. This box mints a new one before
-            then on its own.
+            {t("wizard.trust.validUntil", { date: formatExpiry(certificate.expires) })}
           </p>
         )}
       </div>
 
       {!secure && (
-        <Callout tone="warn" icon={SecurityLockIcon} title="This page is not encrypted yet">
-          <p className="mt-1">
-            You can continue either way. On an unencrypted address no browser will offer to
-            make a passkey, so step 2 will ask you for a password only.
-          </p>
+        <Callout tone="warn" icon={SecurityLockIcon} title={t("wizard.trust.unencrypted.title")}>
+          <p className="mt-1">{t("wizard.trust.unencrypted.body")}</p>
         </Callout>
       )}
 
       {secure && !onTheRightName && (
-        <Callout tone="info" icon={GlobeIcon} title="Encrypted, but under another name">
-          <p className="mt-1">
-            The certificate is issued for {fqdn}. Reopen this page there so your browser
-            accepts it.
-          </p>
+        <Callout tone="info" icon={GlobeIcon} title={t("wizard.trust.otherName.title")}>
+          <p className="mt-1">{t("wizard.trust.otherName.body", { fqdn })}</p>
         </Callout>
       )}
     </div>
@@ -206,9 +190,11 @@ function ReadyTrust({ query }: { query: Extract<SetupQuery, { kind: "ready" }> }
 
 /* The document carries ISO 8601 in UTC. Shown in the reader's own locale,
  * because a date is the one field here nobody has to compare character for
- * character — unlike the fingerprint two elements up. */
+ * character — unlike the fingerprint two elements up. The reader's locale is
+ * the interface language, so the date reads in the same language as the
+ * sentence around it. */
 function formatExpiry(iso: string): string {
   const when = new Date(iso);
   if (Number.isNaN(when.getTime())) return iso;
-  return when.toLocaleDateString(undefined, { dateStyle: "long" });
+  return when.toLocaleDateString(intlTag(), { dateStyle: "long" });
 }

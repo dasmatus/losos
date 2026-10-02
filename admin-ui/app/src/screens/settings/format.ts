@@ -1,4 +1,9 @@
-/* Formatting for the settings screen. Pure, no DOM, no imports.
+/* Formatting for the settings screen. Pure, no DOM.
+ *
+ * Locale-aware: numbers go through formatNumber (decimal comma in Slovak and
+ * German), durations through plural messages. Like every helper that calls
+ * the global t(), these read the language at call time, so call them while a
+ * component subscribed with useT() renders.
  *
  * Deliberately local rather than reaching into another screen's helpers:
  * these three functions are the whole of what this screen needs to turn a
@@ -6,6 +11,8 @@
  * formatter with a dashboard widget acquires a reason to change when the
  * dashboard changes.
  */
+
+import { formatNumber, t } from "@/lib/i18n";
 
 const KIB = 1024;
 
@@ -18,7 +25,7 @@ const UNITS = ["B", "KB", "MB", "GB", "TB", "PB"] as const;
 /** A byte count as a person reads it. `null` and nonsense both render as a dash. */
 export function formatBytes(bytes: number | null, digits = 1): string {
   if (bytes === null || !Number.isFinite(bytes) || bytes < 0) return "—";
-  if (bytes < KIB) return `${Math.round(bytes)} B`;
+  if (bytes < KIB) return `${formatNumber(Math.round(bytes))} B`;
 
   let value = bytes;
   let unit = 0;
@@ -32,21 +39,22 @@ export function formatBytes(bytes: number | null, digits = 1): string {
    * differently from its neighbours for no reason a reader can see. So the
    * decimal appears only where it carries information: below ten, where the
    * difference between 4 GB and 4.4 GB is a tenth of the figure. */
-  const shown = value >= 10 ? value.toFixed(0) : value.toFixed(digits);
+  const places = value >= 10 ? 0 : digits;
+  const shown = formatNumber(value, undefined, {
+    minimumFractionDigits: places,
+    maximumFractionDigits: places,
+    useGrouping: false,
+  });
   return `${shown} ${UNITS[unit] ?? "B"}`;
 }
 
-/** A duration in minutes as words: "8 hours", "7 h 30 min", "45 min". */
+/** A duration in minutes as words: "8 hours", "7 h 30 min", "45 min" —
+ *  in the language on screen. */
 export function formatMinutes(total: number): string {
-  if (!Number.isFinite(total) || total <= 0) return "no time";
+  if (!Number.isFinite(total) || total <= 0) return t("settings.format.noTime");
   const hours = Math.floor(total / 60);
   const minutes = Math.round(total % 60);
-  if (hours === 0) return `${minutes} min`;
-  if (minutes === 0) return hours === 1 ? "1 hour" : `${hours} hours`;
-  return `${hours} h ${minutes} min`;
-}
-
-/** "3 apps" / "1 app". The plural of an English noun that just takes an s. */
-export function plural(count: number, one: string, many = `${one}s`): string {
-  return `${count} ${count === 1 ? one : many}`;
+  if (hours === 0) return t("settings.format.minutesShort", { count: minutes });
+  if (minutes === 0) return t("settings.format.hours", { count: hours });
+  return t("settings.format.hoursMinutes", { hours, minutes });
 }
