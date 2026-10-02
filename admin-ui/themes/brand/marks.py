@@ -96,13 +96,14 @@ def fish(grid, x, y, size):
 
 # The cloud is ☁️ drawn the way the emoji fonts draw it: a soft white cloud
 # that fades to a cool grey underneath, with an outline so it still reads on a
-# white page. Three puffs and a flat base. Drawn twice from the same shapes,
+# white page. Three puffs and a flat base, with the fish
+# centred in the body of the cloud. Drawn twice from the same shapes,
 # stroked and then filled, so the outline traces the union and not each puff.
 CLOUD = """\
-    <circle cx="33" cy="39" r="15"/>
-    <circle cx="15" cy="47" r="10"/>
-    <circle cx="49" cy="46" r="11"/>
-    <rect x="15" y="44" width="34" height="13"/>"""
+    <circle cx="32" cy="33" r="18"/>
+    <circle cx="14" cy="44" r="11"/>
+    <circle cx="50" cy="43" r="12"/>
+    <rect x="14" y="40" width="36" height="15"/>"""
 
 
 def cloud_mark(grid):
@@ -121,7 +122,7 @@ def cloud_mark(grid):
   <g fill="url(#sky)">
 {CLOUD}
   </g>
-{fish(grid, 12, 4, 38)}
+{fish(grid, 15, 20, 32)}
 </svg>
 """
 
