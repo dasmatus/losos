@@ -7,6 +7,8 @@ import {
   subscribeAuth,
   type GrowResponse,
 } from "@/lib/api";
+import { t } from "@/lib/i18n";
+import { useLocale } from "@/lib/i18n-react";
 import { authedGet, byteCount, isRecord, notPresent } from "./http";
 
 /* Storage: what the box says about its disk, and claiming the reserve.
@@ -86,10 +88,17 @@ function parseFacts(body: unknown): StorageFacts {
   };
 }
 
-function describe(error: unknown): string {
+/* The box's own words when it gave any, else null — resolved to our sentence
+ * at render, so it follows a language change made after the failure. */
+function describe(error: unknown): string | null {
   if (error instanceof Error && error.message.length > 0) return error.message;
-  return "This box did not answer.";
+  return null;
 }
+
+/** What the hook holds: GrowOutcome with the fallback message unresolved. */
+type HeldOutcome =
+  | Exclude<GrowOutcome, { kind: "failed" }>
+  | { kind: "failed"; message: string | null };
 
 export function useStorage(): Storage {
   const signedIn = React.useSyncExternalStore(subscribeAuth, hasToken, () => false);
@@ -97,7 +106,8 @@ export function useStorage(): Storage {
   const [facts, setFacts] = React.useState<StorageFacts>(NOTHING_KNOWN);
   const [source, setSource] = React.useState<StorageSource>("loading");
   const [growing, setGrowing] = React.useState(false);
-  const [outcome, setOutcome] = React.useState<GrowOutcome | null>(null);
+  const [held, setOutcome] = React.useState<HeldOutcome | null>(null);
+  const locale = useLocale();
 
   React.useEffect(() => {
     if (!signedIn) {
@@ -169,6 +179,14 @@ export function useStorage(): Storage {
   }, [growing, record]);
 
   const dismissOutcome = React.useCallback(() => setOutcome(null), []);
+
+  const outcome = React.useMemo<GrowOutcome | null>(
+    () =>
+      held?.kind === "failed"
+        ? { kind: "failed", message: held.message ?? t("settings.form.noAnswer") }
+        : held,
+    [held, locale],
+  );
 
   return { facts, source, growing, outcome, grow, dismissOutcome };
 }

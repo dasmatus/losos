@@ -1,4 +1,6 @@
-/* The compute window, as arithmetic. Pure — no React, no DOM.
+/* The compute window, as arithmetic. Pure — no React, no DOM. The one
+ * sentence it writes (describeWindow) reads the language at call time, so
+ * call it while a component subscribed with useT() renders.
  *
  * This is a transcription of `in_window()` in modules/edge.nix, and the two
  * have to agree or the strip in the Mesh pane paints hours the edge will not
@@ -27,6 +29,8 @@
  * converts anything — the strip is drawn in the same local hours the fields
  * hold, which is the only reading that stays true after a DST change.
  */
+
+import { t } from "@/lib/i18n";
 
 /** Minutes since local midnight, or null if the value is not HH:MM. */
 export function minutesOf(hhmm: string): number | null {
@@ -107,17 +111,20 @@ export function hourCells(startHhmm: string, endHhmm: string): readonly HourCell
 export function describeWindow(startHhmm: string, endHhmm: string): string {
   const start = minutesOf(startHhmm);
   const end = minutesOf(endHhmm);
-  if (start === null || end === null) return "The hours are not set.";
-  if (start === end) {
-    return "Nothing is shared: the window starts and ends at the same minute.";
-  }
+  if (start === null || end === null) return t("settings.window.notSet");
+  if (start === end) return t("settings.window.nothing");
 
   const total = sharedMinutes(start, end);
   const hours = total / 60;
   const length =
     Number.isInteger(hours) && hours >= 1
-      ? `${hours} ${hours === 1 ? "hour" : "hours"}`
-      : `${Math.round(total)} minutes`;
-  const wraps = start > end ? ", across midnight" : "";
-  return `Shared from ${startHhmm} until ${endHhmm}${wraps}. That is ${length} a day, your local time.`;
+      ? t("settings.format.hours", { count: hours })
+      : t("settings.format.minutes", { count: Math.round(total) });
+  // Two whole sentences rather than an appended clause: where ", across
+  // midnight" goes is the language's business, not this function's.
+  return t(start > end ? "settings.window.sharedWraps" : "settings.window.shared", {
+    start: startHhmm,
+    end: endHhmm,
+    length,
+  });
 }

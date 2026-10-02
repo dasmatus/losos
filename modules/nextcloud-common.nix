@@ -65,6 +65,11 @@ in
     extraAppsEnable = true;
     extraApps = nc.apps;
     inherit (nc) appstoreEnable;
+
+    # LosOS cloud: the theme folder nextcloud-stack.nix builds into
+    # `package` above (without `theme` it is present and never loaded), and
+    # the keys that drop Nextcloud's welcome files and links out.
+    settings = nc.brandSettings;
   };
 
   # ── The admin password file ───────────────────────────────────────────────

@@ -1,5 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useT } from "@/lib/i18n-react";
 import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText, RowValue } from "./rows";
 import { describeWindow } from "./window";
 import type { SettingsForm } from "./use-settings-form";
@@ -14,6 +15,7 @@ import type { SettingsForm } from "./use-settings-form";
  */
 
 export function AboutPane({ form }: { form: SettingsForm }) {
+  const t = useT();
   const saved = form.saved;
 
   if (saved === null) {
@@ -34,75 +36,73 @@ export function AboutPane({ form }: { form: SettingsForm }) {
   return (
     <>
       <PaneSection>
-        <GroupTitle>This box</GroupTitle>
+        <GroupTitle>{t("panes.about.thisBox")}</GroupTitle>
         <Group>
           <Row>
-            <RowText title="Called" />
+            <RowText title={t("panes.about.called")} />
             <RowValue className="text-ink">{saved.hostName}</RowValue>
           </Row>
           <Row>
-            <RowText title="Reached at" />
+            <RowText title={t("panes.about.reachedAt")} />
             <RowValue className="text-ink">
               {`${saved.https ? "https" : "http"}://${saved.hostName}.local`}
             </RowValue>
           </Row>
           <Row>
-            <RowText title="Storage" />
+            <RowText title={t("panes.about.storage")} />
             {/* Filled for "kept to itself", hatched for "shared with the
                 mesh" — the same pairing the capacity meter uses, and the only
                 place in the app where two things differ by texture instead of
                 by colour. */}
             <Badge variant={saved.sharingMyStorage ? "mesh" : "local"}>
-              {saved.sharingMyStorage ? "shared with the mesh" : "kept to itself"}
+              {saved.sharingMyStorage
+                ? t("panes.about.storageShared")
+                : t("panes.about.storageLocal")}
             </Badge>
           </Row>
           <Row last>
-            <RowText title="Reachable from outside" />
-            <RowValue>{saved.proxyEnable ? "yes" : "no"}</RowValue>
+            <RowText title={t("panes.about.reachableOutside")} />
+            <RowValue>{saved.proxyEnable ? t("panes.about.yes") : t("panes.about.no")}</RowValue>
           </Row>
         </Group>
       </PaneSection>
 
       <PaneSection>
-        <GroupTitle>Spare time</GroupTitle>
+        <GroupTitle>{t("panes.about.spareTime")}</GroupTitle>
         <Group>
           <Row>
-            <RowText title="On the mesh" />
-            <RowValue>{saved.clusterEnable ? "joined" : "not joined"}</RowValue>
+            <RowText title={t("panes.about.onMesh")} />
+            <RowValue>{saved.clusterEnable ? t("panes.about.joined") : t("panes.about.notJoined")}</RowValue>
           </Row>
           <Row last>
-            <RowText title="Lent out" />
+            <RowText title={t("panes.about.lentOut")} />
             <RowValue>
               {saved.clusterEnable && saved.shareCompute
                 ? `${saved.computeWindowStart}–${saved.computeWindowEnd}`
-                : "never"}
+                : t("panes.about.never")}
             </RowValue>
           </Row>
         </Group>
         <GroupCaption>
           {saved.clusterEnable && saved.shareCompute
             ? describeWindow(saved.computeWindowStart, saved.computeWindowEnd)
-            : "Nothing on this box is doing work for anyone else."}
+            : t("panes.about.idle")}
         </GroupCaption>
       </PaneSection>
 
       <PaneSection>
-        <GroupTitle>Keeping itself current</GroupTitle>
+        <GroupTitle>{t("panes.about.current")}</GroupTitle>
         <Group>
           <Row>
-            <RowText title="Looks for updates" />
-            <RowValue>every night at 03:00</RowValue>
+            <RowText title={t("panes.about.updates")} />
+            <RowValue>{t("panes.about.everyNightAt", { time: "03:00" })}</RowValue>
           </Row>
           <Row last>
-            <RowText title="Restarts" />
-            <RowValue>every night at 00:07</RowValue>
+            <RowText title={t("panes.about.restarts")} />
+            <RowValue>{t("panes.about.everyNightAt", { time: "00:07" })}</RowValue>
           </Row>
         </Group>
-        <GroupCaption>
-          This box keeps itself up to date on its own and restarts once a night so nothing is left
-          half-applied. If it is switched off at the time, it catches up the next time it is on.
-          Your admin key is remembered only until you close this tab.
-        </GroupCaption>
+        <GroupCaption>{t("panes.about.caption")}</GroupCaption>
       </PaneSection>
     </>
   );

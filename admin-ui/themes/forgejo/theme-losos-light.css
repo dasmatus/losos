@@ -1,0 +1,20 @@
+/* LosOS for Forgejo — always light, like the homepage's Light.
+ *
+ * Forgejo's stock forgejo-light theme first, so every variable this theme does
+ * not restate keeps its upstream value; then the admin SPA's palette; then
+ * the mapping from one to the other, which losos-forgejo.css explains.
+ * Forgejo puts data-theme="losos-light" on <html>, which tokens.css treats
+ * as an explicit Light.
+ *
+ * Every file named here sits in Forgejo's custom public/assets/css/, beside
+ * the stock themes, so the relative imports resolve under any ROOT_URL
+ * subpath — /forgejo/ on this appliance.
+ */
+@import url("./theme-forgejo-light.css");
+@import url("./losos-tokens.css");
+@import url("./losos-forgejo.css");
+
+/* The name in the theme picker, on releases that read it. */
+gitea-theme-meta-info {
+  --theme-display-name: "LosOS (light)";
+}

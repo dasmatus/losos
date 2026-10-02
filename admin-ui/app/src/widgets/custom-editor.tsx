@@ -32,6 +32,8 @@ import {
 import { FieldError, Input, Select } from "@/components/ui/input";
 import { Label, LabelHint } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import type { MessageKey } from "@/lib/i18n";
+import { Rich, useLocale, useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
 import { CUSTOM_REFRESH_MS } from "./catalogue";
 import { createSandbox } from "./sandbox";
@@ -52,39 +54,44 @@ import {
 /* Nothing in this dialog may name a scheduler, a runtime or a unit of either.
  * These labels are the user-facing spelling of each metric key, and the key
  * itself never appears on screen. */
-const METRIC_LABEL: Record<MetricName, string> = {
-  "uptime.days": "Whether this box answered, day by day",
-  "storage.bytes": "Room on this box",
-  "mesh.compute": "Sharing with other boxes",
-  "apps.list": "The apps this box serves",
-  "rebuilds.recent": "Changes this box has applied",
-  "box.settings": "How this box is set up",
-  "box.status": "What this box is doing right now",
+const METRIC_LABEL: Record<MetricName, MessageKey> = {
+  "uptime.days": "widgets.editor.metric.uptime",
+  "storage.bytes": "widgets.editor.metric.storage",
+  "mesh.compute": "widgets.editor.metric.mesh",
+  "apps.list": "widgets.editor.metric.apps",
+  "rebuilds.recent": "widgets.editor.metric.rebuilds",
+  "box.settings": "widgets.editor.metric.settings",
+  "box.status": "widgets.editor.metric.status",
 };
 
-const KIND_LABEL: Record<WidgetKind, string> = {
-  number: "One big figure",
-  bar: "A figure with a bar",
-  list: "A list of rows",
-  heatmap: "A square for every day",
+const KIND_LABEL: Record<WidgetKind, MessageKey> = {
+  number: "widgets.editor.kind.number",
+  bar: "widgets.editor.kind.bar",
+  list: "widgets.editor.kind.list",
+  heatmap: "widgets.editor.kind.heatmap",
 };
 
-const FORMAT_LABEL: Record<FormatName, string> = {
-  number: "Plain number",
-  bytes: "Size, like 412 GB",
-  percent: "Percentage",
-  duration: "Length of time",
-  plain: "Exactly as given",
+const FORMAT_LABEL: Record<FormatName, MessageKey> = {
+  number: "widgets.editor.format.number",
+  bytes: "widgets.editor.format.bytes",
+  percent: "widgets.editor.format.percent",
+  duration: "widgets.editor.format.duration",
+  plain: "widgets.editor.format.plain",
 };
 
 /* The names an expression may use. Shown in the dialog, because a language
- * nobody can see the vocabulary of is a language nobody will use. */
-const VOCABULARY = [
-  ["m", "the reading you picked above, e.g. m.totalBytes"],
-  ["it", "one row, in the two row fields"],
-  ["stat.", "sum, mean, min, max, median, p95, count, last, ratio"],
-  ["fmt.", "bytes, percent, number, duration, date, time, ago, plural"],
-] as const;
+ * nobody can see the vocabulary of is a language nobody will use. The names
+ * are the language's own and are never translated; the meanings are. The
+ * function lists under stat. and fmt. are identifiers too, so they stay
+ * literal here rather than going through the catalogue. */
+type Meaning = { key: MessageKey } | { literal: string };
+
+const VOCABULARY: readonly (readonly [string, Meaning])[] = [
+  ["m", { key: "widgets.editor.vocab.m" }],
+  ["it", { key: "widgets.editor.vocab.it" }],
+  ["stat.", { literal: "sum, mean, min, max, median, p95, count, last, ratio" }],
+  ["fmt.", { literal: "bytes, percent, number, duration, date, time, ago, plural" }],
+];
 
 // ── The editor ────────────────────────────────────────────────────────────
 
@@ -121,6 +128,8 @@ function draftFrom(spec: WidgetSpec): Draft {
 }
 
 export function CustomEditor({ open, onOpenChange, onSave }: CustomEditorProps) {
+  const t = useT();
+  const locale = useLocale();
   const [draft, setDraft] = React.useState<Draft>(() => draftFrom(blankSpec()));
   const [pasted, setPasted] = React.useState("");
   const [pasteProblem, setPasteProblem] = React.useState<string | null>(null);
@@ -138,12 +147,14 @@ export function CustomEditor({ open, onOpenChange, onSave }: CustomEditorProps) 
    * is cheap — it parses at most six short expressions — so it runs on each
    * render and its message sits under the form. */
   const attempt = React.useMemo<{ spec: WidgetSpec } | { problem: string }>(() => {
+    // The problem is a sentence; the locale is listed so it follows a switch.
+    void locale;
     try {
       return { spec: parseSpec(draftToSpec(draft)) };
     } catch (error) {
-      return { problem: error instanceof Error ? error.message : "That does not add up yet." };
+      return { problem: error instanceof Error ? error.message : t("widgets.editor.doesNotAddUp") };
     }
-  }, [draft]);
+  }, [draft, locale]);
 
   const spec = "spec" in attempt ? attempt.spec : null;
   const kind = (draft["type"] ?? "number") as WidgetKind;
@@ -158,14 +169,14 @@ export function CustomEditor({ open, onOpenChange, onSave }: CustomEditorProps) 
     try {
       parsed = JSON.parse(pasted);
     } catch {
-      setPasteProblem("That is not a complete record. Check the brackets.");
+      setPasteProblem(t("widgets.editor.pasteIncomplete"));
       return;
     }
     try {
       setDraft(draftFrom(parseSpec(parsed)));
       setPasteProblem(null);
     } catch (error) {
-      setPasteProblem(error instanceof Error ? error.message : "That widget could not be read.");
+      setPasteProblem(error instanceof Error ? error.message : t("widgets.editor.pasteUnreadable"));
     }
   };
 
@@ -178,25 +189,22 @@ export function CustomEditor({ open, onOpenChange, onSave }: CustomEditorProps) 
       dialogClassName="w-[min(52rem,calc(100vw-2rem))] max-w-[52rem]"
     >
       <DialogHeader>
-        <DialogTitle id={titleId}>Build a widget</DialogTitle>
-        <DialogDescription id={hintId}>
-          Pick a reading and a shape, then say what to show. Only readings this box publishes are
-          available, and a widget can only read them.
-        </DialogDescription>
+        <DialogTitle id={titleId}>{t("widgets.editor.title")}</DialogTitle>
+        <DialogDescription id={hintId}>{t("widgets.editor.description")}</DialogDescription>
       </DialogHeader>
 
       <DialogBody>
         <Tabs defaultValue="build">
           <TabsList>
-            <TabsTrigger value="build">Build</TabsTrigger>
-            <TabsTrigger value="paste">Paste</TabsTrigger>
-            <TabsTrigger value="help">What you can write</TabsTrigger>
+            <TabsTrigger value="build">{t("widgets.editor.tab.build")}</TabsTrigger>
+            <TabsTrigger value="paste">{t("widgets.editor.tab.paste")}</TabsTrigger>
+            <TabsTrigger value="help">{t("widgets.editor.tab.help")}</TabsTrigger>
           </TabsList>
 
           <TabsContent value="build">
             <div className="grid gap-5 md:grid-cols-[minmax(0,1fr)_minmax(0,18rem)]">
               <div className="flex flex-col gap-3.5">
-                <Field label="Title">
+                <Field label={t("widgets.editor.field.title")}>
                   <Input
                     value={draft["title"] ?? ""}
                     maxLength={80}
@@ -205,7 +213,7 @@ export function CustomEditor({ open, onOpenChange, onSave }: CustomEditorProps) 
                 </Field>
 
                 <div className="grid gap-3.5 sm:grid-cols-2">
-                  <Field label="Reading">
+                  <Field label={t("widgets.editor.field.reading")}>
                     <Select
                       className="w-full"
                       value={draft["metric"] ?? "storage.bytes"}
@@ -213,13 +221,13 @@ export function CustomEditor({ open, onOpenChange, onSave }: CustomEditorProps) 
                     >
                       {METRIC_NAMES.map((name) => (
                         <option key={name} value={name}>
-                          {METRIC_LABEL[name]}
+                          {t(METRIC_LABEL[name])}
                         </option>
                       ))}
                     </Select>
                   </Field>
 
-                  <Field label="Shape">
+                  <Field label={t("widgets.editor.field.shape")}>
                     <Select
                       className="w-full"
                       value={kind}
@@ -227,7 +235,7 @@ export function CustomEditor({ open, onOpenChange, onSave }: CustomEditorProps) 
                     >
                       {WIDGET_KINDS.map((name) => (
                         <option key={name} value={name}>
-                          {KIND_LABEL[name]}
+                          {t(KIND_LABEL[name])}
                         </option>
                       ))}
                     </Select>
@@ -236,7 +244,10 @@ export function CustomEditor({ open, onOpenChange, onSave }: CustomEditorProps) 
 
                 {(kind === "number" || kind === "bar") && (
                   <>
-                    <Field label="The figure" hint="For example: m.totalBytes - m.usedBytes">
+                    <Field
+                      label={t("widgets.editor.field.value")}
+                      hint={t("widgets.editor.hint.value", { example: "m.totalBytes - m.usedBytes" })}
+                    >
                       <Input
                         className="numeric"
                         spellCheck={false}
@@ -245,7 +256,7 @@ export function CustomEditor({ open, onOpenChange, onSave }: CustomEditorProps) 
                       />
                     </Field>
 
-                    <Field label="Shown as">
+                    <Field label={t("widgets.editor.field.format")}>
                       <Select
                         className="w-full"
                         value={draft["format"] ?? "number"}
@@ -253,7 +264,7 @@ export function CustomEditor({ open, onOpenChange, onSave }: CustomEditorProps) 
                       >
                         {FORMAT_NAMES.map((name) => (
                           <option key={name} value={name}>
-                            {FORMAT_LABEL[name]}
+                            {t(FORMAT_LABEL[name])}
                           </option>
                         ))}
                       </Select>
@@ -263,7 +274,10 @@ export function CustomEditor({ open, onOpenChange, onSave }: CustomEditorProps) 
 
                 {kind === "bar" && (
                   <>
-                    <Field label="Full at" hint="What counts as a full bar, e.g. m.totalBytes">
+                    <Field
+                      label={t("widgets.editor.field.max")}
+                      hint={t("widgets.editor.hint.max", { example: "m.totalBytes" })}
+                    >
                       <Input
                         className="numeric"
                         spellCheck={false}
@@ -272,8 +286,8 @@ export function CustomEditor({ open, onOpenChange, onSave }: CustomEditorProps) 
                       />
                     </Field>
                     <Field
-                      label="Held back"
-                      hint="Drawn hatched, right after the fill. Leave empty for none."
+                      label={t("widgets.editor.field.reserve")}
+                      hint={t("widgets.editor.hint.reserve")}
                     >
                       <Input
                         className="numeric"
@@ -283,13 +297,13 @@ export function CustomEditor({ open, onOpenChange, onSave }: CustomEditorProps) 
                       />
                     </Field>
                     <div className="grid gap-3.5 sm:grid-cols-2">
-                      <Field label="Label for the fill">
+                      <Field label={t("widgets.editor.field.fillLabel")}>
                         <Input
                           value={draft["fillLabel"] ?? ""}
                           onChange={(event) => set("fillLabel", event.target.value)}
                         />
                       </Field>
-                      <Field label="Label for the held-back part">
+                      <Field label={t("widgets.editor.field.reserveLabel")}>
                         <Input
                           value={draft["reserveLabel"] ?? ""}
                           onChange={(event) => set("reserveLabel", event.target.value)}
@@ -301,7 +315,10 @@ export function CustomEditor({ open, onOpenChange, onSave }: CustomEditorProps) 
 
                 {kind === "list" && (
                   <>
-                    <Field label="The rows" hint="A list, for example: m.apps">
+                    <Field
+                      label={t("widgets.editor.field.items")}
+                      hint={t("widgets.editor.hint.items", { example: "m.apps" })}
+                    >
                       <Input
                         className="numeric"
                         spellCheck={false}
@@ -310,7 +327,7 @@ export function CustomEditor({ open, onOpenChange, onSave }: CustomEditorProps) 
                       />
                     </Field>
                     <div className="grid gap-3.5 sm:grid-cols-2">
-                      <Field label="Row label" hint="it.name">
+                      <Field label={t("widgets.editor.field.itemLabel")} hint="it.name">
                         <Input
                           className="numeric"
                           spellCheck={false}
@@ -318,7 +335,7 @@ export function CustomEditor({ open, onOpenChange, onSave }: CustomEditorProps) 
                           onChange={(event) => set("itemLabel", event.target.value)}
                         />
                       </Field>
-                      <Field label="Row detail" hint="it.path">
+                      <Field label={t("widgets.editor.field.itemDetail")} hint="it.path">
                         <Input
                           className="numeric"
                           spellCheck={false}
@@ -327,7 +344,7 @@ export function CustomEditor({ open, onOpenChange, onSave }: CustomEditorProps) 
                         />
                       </Field>
                     </div>
-                    <Field label="When there is nothing">
+                    <Field label={t("widgets.editor.field.empty")}>
                       <Input
                         value={draft["empty"] ?? ""}
                         onChange={(event) => set("empty", event.target.value)}
@@ -338,7 +355,10 @@ export function CustomEditor({ open, onOpenChange, onSave }: CustomEditorProps) 
 
                 {kind === "heatmap" && (
                   <>
-                    <Field label="The days" hint="A list of days, for example: m.days">
+                    <Field
+                      label={t("widgets.editor.field.days")}
+                      hint={t("widgets.editor.hint.days", { example: "m.days" })}
+                    >
                       <Input
                         className="numeric"
                         spellCheck={false}
@@ -347,13 +367,13 @@ export function CustomEditor({ open, onOpenChange, onSave }: CustomEditorProps) 
                       />
                     </Field>
                     <div className="grid gap-3.5 sm:grid-cols-2">
-                      <Field label="Low end">
+                      <Field label={t("widgets.editor.field.lowLabel")}>
                         <Input
                           value={draft["lowLabel"] ?? ""}
                           onChange={(event) => set("lowLabel", event.target.value)}
                         />
                       </Field>
-                      <Field label="High end">
+                      <Field label={t("widgets.editor.field.highLabel")}>
                         <Input
                           value={draft["highLabel"] ?? ""}
                           onChange={(event) => set("highLabel", event.target.value)}
@@ -364,7 +384,10 @@ export function CustomEditor({ open, onOpenChange, onSave }: CustomEditorProps) 
                 )}
 
                 {kind !== "list" && kind !== "heatmap" && (
-                  <Field label="Caption" hint="A line under the figure.">
+                  <Field
+                    label={t("widgets.editor.field.caption")}
+                    hint={t("widgets.editor.hint.caption")}
+                  >
                     <Input
                       value={draft["caption"] ?? ""}
                       onChange={(event) => set("caption", event.target.value)}
@@ -372,7 +395,7 @@ export function CustomEditor({ open, onOpenChange, onSave }: CustomEditorProps) 
                   </Field>
                 )}
 
-                <Field label="Note" hint="The small line at the bottom of the tile.">
+                <Field label={t("widgets.editor.field.foot")} hint={t("widgets.editor.hint.foot")}>
                   <Input
                     value={draft["foot"] ?? ""}
                     onChange={(event) => set("foot", event.target.value)}
@@ -399,7 +422,7 @@ export function CustomEditor({ open, onOpenChange, onSave }: CustomEditorProps) 
 
               <div className="flex flex-col gap-3">
                 <p className="text-[12px] font-medium tracking-wide text-faint uppercase">
-                  Preview
+                  {t("widgets.editor.preview")}
                 </p>
                 <Preview spec={spec} />
                 <Examples
@@ -410,7 +433,7 @@ export function CustomEditor({ open, onOpenChange, onSave }: CustomEditorProps) 
                       type: example.type,
                       value: example.type === "list" ? (previous["value"] ?? "") : example.expression,
                       items: example.type === "list" ? example.expression : (previous["items"] ?? ""),
-                      title: example.label,
+                      title: t(example.label),
                     }));
                   }}
                 />
@@ -420,7 +443,7 @@ export function CustomEditor({ open, onOpenChange, onSave }: CustomEditorProps) 
 
           <TabsContent value="paste">
             <div className="flex flex-col gap-3">
-              <Label htmlFor="widget-json">A widget, as text</Label>
+              <Label htmlFor="widget-json">{t("widgets.editor.paste.label")}</Label>
               <textarea
                 id="widget-json"
                 rows={10}
@@ -439,22 +462,19 @@ export function CustomEditor({ open, onOpenChange, onSave }: CustomEditorProps) 
                 placeholder={JSON.stringify(blankSpec(), null, 2)}
               />
               <FieldError>{pasteProblem}</FieldError>
-              <LabelHint>
-                Widgets are plain records. Copy one out of another browser, or write one here, then
-                load it into the form to check it.
-              </LabelHint>
+              <LabelHint>{t("widgets.editor.paste.hint")}</LabelHint>
               <Button
                 variant="secondary"
                 className="self-start"
                 disabled={pasted.trim().length === 0}
                 onClick={usePaste}
               >
-                Load into the form
+                {t("widgets.editor.paste.load")}
               </Button>
 
               {spec !== null && (
                 <>
-                  <Label htmlFor="widget-json-out">What the form holds now</Label>
+                  <Label htmlFor="widget-json-out">{t("widgets.editor.paste.current")}</Label>
                   <textarea
                     id="widget-json-out"
                     readOnly
@@ -472,12 +492,7 @@ export function CustomEditor({ open, onOpenChange, onSave }: CustomEditorProps) 
 
           <TabsContent value="help">
             <div className="flex flex-col gap-4 text-[13px] leading-relaxed text-muted">
-              <p>
-                A widget here is not a program. It is a reading, a shape, and a few short
-                expressions. That is a deliberate limit: this page is served with a rule that
-                forbids the browser from running code it was handed at the last moment, and a box
-                you cannot log in to is not the place to discover that the rule applies.
-              </p>
+              <p>{t("widgets.editor.help.intro")}</p>
 
               <dl className="flex flex-col gap-2">
                 {VOCABULARY.map(([name, meaning]) => (
@@ -485,27 +500,29 @@ export function CustomEditor({ open, onOpenChange, onSave }: CustomEditorProps) 
                     <dt className="numeric rounded-[4px] bg-sunk px-1.5 py-0.5 text-[12.5px] text-ink">
                       {name}
                     </dt>
-                    <dd className="text-[12.5px]">{meaning}</dd>
+                    <dd className="text-[12.5px]">
+                      {"key" in meaning ? t(meaning.key) : meaning.literal}
+                    </dd>
                   </div>
                 ))}
               </dl>
 
               <p>
-                Between them you can use <Code>+ - * / %</Code>, comparisons, <Code>&amp;&amp;</Code>{" "}
-                and <Code>||</Code>, <Code>a ? b : c</Code>, and <Code>??</Code> for a fallback when
-                a figure has not been measured. Dividing by nothing gives nothing rather than an
-                error.
+                <Rich
+                  k="widgets.editor.help.operators"
+                  vars={{
+                    arith: <Code>+ - * / %</Code>,
+                    and: <Code>&amp;&amp;</Code>,
+                    or: <Code>||</Code>,
+                    cond: <Code>a ? b : c</Code>,
+                    coalesce: <Code>??</Code>,
+                  }}
+                />
               </p>
 
-              <p>
-                A widget that wants more than that, with its own requests, its own state or a loop,
-                belongs in the box&apos;s own admin page and arrives with the next system update,
-                the same way these five did.
-              </p>
+              <p>{t("widgets.editor.help.more")}</p>
 
-              <p className="text-faint">
-                Widgets are kept in this browser only, and refresh about once a minute.
-              </p>
+              <p className="text-faint">{t("widgets.editor.help.kept")}</p>
             </div>
           </TabsContent>
         </Tabs>
@@ -513,10 +530,10 @@ export function CustomEditor({ open, onOpenChange, onSave }: CustomEditorProps) 
 
       <DialogFooter>
         <Button variant="ghost" onClick={() => onOpenChange(false)}>
-          Cancel
+          {t("widgets.editor.cancel")}
         </Button>
         <Button disabled={spec === null} onClick={save}>
-          Add to the board
+          {t("widgets.editor.addToBoard")}
         </Button>
       </DialogFooter>
     </Dialog>
@@ -561,6 +578,8 @@ function Field({
  * same renderer a board tile uses. A preview that renders sample data would
  * agree with the tile right up until it mattered. */
 function Preview({ spec }: { spec: WidgetSpec | null }) {
+  const t = useT();
+  const locale = useLocale();
   const [result, setResult] = React.useState<WidgetResult | null>(null);
   const [problem, setProblem] = React.useState<string | null>(null);
 
@@ -584,7 +603,7 @@ function Preview({ spec }: { spec: WidgetSpec | null }) {
           setProblem(
             error instanceof WidgetError || error instanceof Error
               ? error.message
-              : "That did not work out.",
+              : t("widgets.editor.didNotWork"),
           );
         }
       })();
@@ -597,12 +616,13 @@ function Preview({ spec }: { spec: WidgetSpec | null }) {
       controller.abort();
       clearTimeout(timer);
     };
-  }, [spec]);
+    // The locale is listed so the preview re-runs, and its text follows a switch.
+  }, [spec, locale]);
 
   return (
     <div className="rounded-card border border-line bg-surface p-4">
       {spec === null && (
-        <p className="text-[12.5px] text-faint">Fill the form in and it appears here.</p>
+        <p className="text-[12.5px] text-faint">{t("widgets.editor.previewEmpty")}</p>
       )}
 
       {spec !== null && problem !== null && (
@@ -610,7 +630,7 @@ function Preview({ spec }: { spec: WidgetSpec | null }) {
       )}
 
       {spec !== null && problem === null && result === null && (
-        <p className="text-[12.5px] text-faint">Working…</p>
+        <p className="text-[12.5px] text-faint">{t("widgets.editor.working")}</p>
       )}
 
       {result !== null && problem === null && (
@@ -629,9 +649,12 @@ function Preview({ spec }: { spec: WidgetSpec | null }) {
 }
 
 function Examples({ onPick }: { onPick: (example: (typeof EXAMPLES)[number]) => void }) {
+  const t = useT();
   return (
     <div className="flex flex-col gap-2">
-      <p className="text-[12px] font-medium tracking-wide text-faint uppercase">Try one</p>
+      <p className="text-[12px] font-medium tracking-wide text-faint uppercase">
+        {t("widgets.editor.tryOne")}
+      </p>
       <ul className="flex flex-col gap-1">
         {EXAMPLES.map((example) => (
           <li key={example.label}>
@@ -643,7 +666,7 @@ function Examples({ onPick }: { onPick: (example: (typeof EXAMPLES)[number]) => 
                 "transition-colors duration-150 hover:bg-sunk",
               )}
             >
-              <span className="block text-[12.5px] text-ink">{example.label}</span>
+              <span className="block text-[12.5px] text-ink">{t(example.label)}</span>
               <span className="numeric block truncate text-[11.5px] text-faint">
                 {example.expression}
               </span>
