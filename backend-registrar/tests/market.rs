@@ -143,6 +143,7 @@ async fn stripe_handler(
             let ready = state.account_ready.load(Ordering::SeqCst);
             Json(account_object(ready)).into_response()
         }
+        ("POST", "/v1/accounts/acct_test_1") => Json(account_object(false)).into_response(),
         ("POST", "/v1/account_links") => {
             Json(json!({ "url": "https://connect.stripe.test/onboard/abc" })).into_response()
         }
@@ -1014,6 +1015,86 @@ async fn only_what_an_appliance_shares_on_the_mesh_can_be_sold() {
 
     // The storage listing is on the shelf while sharing, and orderable.
     assert_eq!(browse(&edge).await.1[0]["id"], listing_id.as_str());
+
+    edge.shutdown().await;
+    stripe.shutdown().await;
+}
+
+const BOX_UUID: &str = "3f2b8c1e-7a4d-4e9b-9c15-0d6a2b7e4f31";
+
+#[tokio::test]
+async fn the_box_uuid_is_written_onto_the_stripe_account() {
+    let stripe = StripeStub::start().await;
+    let edge = Edge::start_with_market("market-box-uuid", &tenants(), &stripe.base).await;
+
+    let mut body = auth("seller-box", GOOD_TOKEN);
+    body["box_uuid"] = json!(BOX_UUID);
+    let (status, text) = edge.post("/market/seller/onboard", body.clone()).await;
+    assert_eq!(status, 200, "{text}");
+    let created = &stripe.calls("POST", "/v1/accounts")[0];
+    assert_eq!(created.form["metadata[losos_box_uuid]"], BOX_UUID);
+    assert_eq!(created.form["metadata[losos_appliance_id]"], "seller-box");
+
+    // The same UUID again changes nothing at Stripe.
+    let (status, _) = edge.post("/market/seller/onboard", body).await;
+    assert_eq!(status, 200);
+    assert!(stripe.calls("POST", "/v1/accounts/acct_test_1").is_empty());
+
+    // A different one re-tags the existing account rather than making another.
+    let mut other = auth("seller-box", GOOD_TOKEN);
+    other["box_uuid"] = json!("0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d");
+    let (status, _) = edge.post("/market/seller/onboard", other).await;
+    assert_eq!(status, 200);
+    let tags = stripe.calls("POST", "/v1/accounts/acct_test_1");
+    assert_eq!(tags.len(), 1);
+    assert_eq!(
+        tags[0].form["metadata[losos_box_uuid]"],
+        "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+    );
+    assert_eq!(stripe.calls("POST", "/v1/accounts").len(), 1);
+
+    edge.shutdown().await;
+    stripe.shutdown().await;
+}
+
+#[tokio::test]
+async fn a_box_uuid_that_is_not_a_uuid_is_refused_before_stripe() {
+    let stripe = StripeStub::start().await;
+    let edge = Edge::start_with_market("market-bad-uuid", &tenants(), &stripe.base).await;
+    for bad in [
+        "",
+        "not-a-uuid",
+        "3F2B8C1E-7A4D-4E9B-9C15-0D6A2B7E4F31",
+        "x'; drop",
+    ] {
+        let mut body = auth("seller-box", GOOD_TOKEN);
+        body["box_uuid"] = json!(bad);
+        let (status, text) = edge.post("/market/seller/onboard", body).await;
+        assert_eq!(status, 400, "{bad:?}: {text}");
+    }
+    assert!(stripe.calls("POST", "/v1/accounts").is_empty());
+    edge.shutdown().await;
+    stripe.shutdown().await;
+}
+
+#[tokio::test]
+async fn without_the_gate_the_market_answers_503_and_the_proxy_lives() {
+    let stripe = StripeStub::start().await;
+    let mut edge = Edge::start_with_market("market-no-gate", &tenants(), &stripe.base).await;
+    edge.stop_gate().await;
+
+    let (status, _) = edge
+        .post("/market/seller/onboard", auth("seller-box", GOOD_TOKEN))
+        .await;
+    assert_eq!(status, 503);
+    assert!(stripe.calls("POST", "/v1/accounts").is_empty());
+    let health = edge
+        .client
+        .get(format!("{}/health", edge.base))
+        .send()
+        .await
+        .expect("health");
+    assert!(health.status().is_success());
 
     edge.shutdown().await;
     stripe.shutdown().await;

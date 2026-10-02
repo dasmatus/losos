@@ -1,0 +1,985 @@
+//! The Stripe gate: the one process on the edge that holds the Stripe key.
+//!
+//! `losos-registrar serve` is internet-reachable and runs as root next to
+//! Traefik and rathole. The market only needs five things from Stripe, so the
+//! key lives in a second, small process (`losos-registrar stripe-gate`, its
+//! own systemd unit and its own dynamic user) and the registrar asks it for
+//! those five things over a Unix socket. The registrar never reads the key or
+//! the webhook secrets, never opens a connection to Stripe, and cannot ask for
+//! anything outside the list.
+//!
+//! What the split buys, and what it does not. A bug in the registrar's public
+//! surface can no longer leak the key out of the registrar's memory or files,
+//! and the key can no longer be used for refunds, payouts, customer lists or
+//! any other endpoint: the gate has no such operation. It does **not** stop a
+//! compromised registrar asking the gate to create a Checkout Session, so the
+//! gate also bounds what that request may say (the currency, the destination
+//! being an `acct_` id, the platform fee within [`MAX_FEE_BPS`], the session's
+//! lifetime). Both processes still run on one machine and the registrar is
+//! root; `modules/edge.nix` hides the key's files and credentials directory
+//! from the registrar's mount namespace as a second layer, not a boundary a
+//! determined root process could not cross.
+//!
+//! Wire protocol: one connection is one request. The client sends one line of
+//! JSON ([`Request`]) and closes its write half; the gate answers one line of
+//! JSON ([`Reply`]) and closes. No new dependency: tokio's `net` and `io-util`
+//! are already enabled for the registrar.
+
+use std::io;
+use std::path::{Path, PathBuf};
+use std::time::Duration;
+
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
+use tokio::net::{UnixListener, UnixStream};
+
+use crate::action::Action;
+use crate::market::{
+    account_ready, decode_hex, now_secs, valid_box_uuid, verify_signature, Kind, MarketError,
+    MAX_FEE_BPS,
+};
+
+/// Budget for one Stripe request. The registrar's router guard allows a whole
+/// request five seconds, so this leaves room for the store write around it.
+const STRIPE_TIMEOUT: Duration = Duration::from_secs(4);
+/// Budget for a whole gate round trip, from the registrar's side.
+const GATE_TIMEOUT: Duration = Duration::from_secs(10);
+/// Largest request line the gate reads. A webhook body is capped at 256 KiB by
+/// the registrar and travels hex-encoded, so twice that, plus the framing.
+const MAX_REQUEST_BYTES: u64 = 2 * 256 * 1024 + 4096;
+/// Largest reply the registrar reads back.
+const MAX_REPLY_BYTES: u64 = 16 * 1024;
+/// Connections handled at once. The registrar is the only client.
+const MAX_IN_FLIGHT: usize = 16;
+/// Stripe takes a Checkout Session expiry between 30 minutes and 24 hours out.
+const MAX_SESSION_SECS: u64 = 24 * 3600;
+const SOCKET_MODE: u32 = 0o600;
+
+// ── Stripe ───────────────────────────────────────────────────────────────
+
+/// The few Stripe calls the market makes, over plain form-encoded REST so no
+/// SDK has to be vendored.
+struct StripeClient {
+    http: reqwest::Client,
+    api: String,
+    key: String,
+}
+
+impl StripeClient {
+    fn new(api: &str, key: &str) -> Result<Self, MarketError> {
+        // The key travels in every request: https, or plain http to this
+        // machine only (the test stub).
+        let loopback = ["http://127.0.0.1", "http://localhost", "http://[::1]"]
+            .iter()
+            .any(|p| api.starts_with(p));
+        if !api.starts_with("https://") && !loopback {
+            return Err(MarketError::Stripe(
+                "stripe_api must use https:// to protect the key in transit".to_string(),
+            ));
+        }
+        let http = reqwest::Client::builder()
+            .timeout(STRIPE_TIMEOUT)
+            .user_agent(concat!("losos-registrar/", env!("CARGO_PKG_VERSION")))
+            .build()
+            .map_err(|e| MarketError::Stripe(format!("build client: {e}")))?;
+        Ok(Self {
+            http,
+            api: api.trim_end_matches('/').to_string(),
+            key: key.to_string(),
+        })
+    }
+
+    async fn send(
+        &self,
+        request: reqwest::RequestBuilder,
+        what: &str,
+    ) -> Result<Value, MarketError> {
+        let response = request
+            .bearer_auth(&self.key)
+            .send()
+            .await
+            .map_err(|e| MarketError::Stripe(format!("{what}: {e}")))?;
+        let status = response.status();
+        let body: Value = response.json().await.unwrap_or(Value::Null);
+        if status.is_success() {
+            Ok(body)
+        } else {
+            let message = body["error"]["message"].as_str().unwrap_or("no detail");
+            Err(MarketError::Stripe(format!(
+                "{what} -> {status}: {message}"
+            )))
+        }
+    }
+
+    async fn post(
+        &self,
+        path: &str,
+        form: &[(&str, String)],
+        idempotency_key: Option<&str>,
+    ) -> Result<Value, MarketError> {
+        let mut request = self.http.post(format!("{}{path}", self.api)).form(form);
+        if let Some(key) = idempotency_key {
+            request = request.header("Idempotency-Key", key);
+        }
+        self.send(request, &format!("POST {path}")).await
+    }
+
+    /// Create the seller's Express account. The idempotency key makes a retry
+    /// or a racing second request return the same account.
+    async fn create_account(
+        &self,
+        appliance_id: &str,
+        box_uuid: Option<&str>,
+    ) -> Result<String, MarketError> {
+        let mut form = vec![
+            ("type", "express".to_string()),
+            ("capabilities[transfers][requested]", "true".to_string()),
+            ("metadata[losos_appliance_id]", appliance_id.to_string()),
+        ];
+        if let Some(uuid) = box_uuid {
+            form.push(("metadata[losos_box_uuid]", uuid.to_string()));
+        }
+        let body = self
+            .post(
+                "/v1/accounts",
+                &form,
+                Some(&format!("losos-account-{appliance_id}")),
+            )
+            .await?;
+        body["id"]
+            .as_str()
+            .map(str::to_string)
+            .ok_or_else(|| MarketError::Stripe("account response had no id".to_string()))
+    }
+
+    /// Write the box's UUID onto an existing account's metadata.
+    async fn tag_account(&self, account_id: &str, box_uuid: &str) -> Result<(), MarketError> {
+        self.post(
+            &format!("/v1/accounts/{account_id}"),
+            &[("metadata[losos_box_uuid]", box_uuid.to_string())],
+            None,
+        )
+        .await
+        .map(|_| ())
+    }
+
+    /// Whether an existing account can already receive transfers.
+    async fn account_ready(&self, account_id: &str) -> Result<bool, MarketError> {
+        let path = format!("/v1/accounts/{account_id}");
+        let body = self
+            .send(
+                self.http.get(format!("{}{path}", self.api)),
+                &format!("GET {path}"),
+            )
+            .await?;
+        Ok(account_ready(&body))
+    }
+
+    /// A one-time Stripe-hosted onboarding URL.
+    async fn account_link(
+        &self,
+        account_id: &str,
+        return_url: &str,
+    ) -> Result<String, MarketError> {
+        let body = self
+            .post(
+                "/v1/account_links",
+                &[
+                    ("account", account_id.to_string()),
+                    ("type", "account_onboarding".to_string()),
+                    ("refresh_url", return_url.to_string()),
+                    ("return_url", return_url.to_string()),
+                ],
+                None,
+            )
+            .await?;
+        body["url"]
+            .as_str()
+            .map(str::to_string)
+            .ok_or_else(|| MarketError::Stripe("account link had no url".to_string()))
+    }
+
+    /// A Checkout Session that charges the platform, forwards the amount
+    /// minus the fee to `destination`, and keeps `fee`.
+    async fn checkout(&self, c: &CheckoutRequest) -> Result<(String, String), MarketError> {
+        let return_url = &c.return_url;
+        let sep = if return_url.contains('?') { '&' } else { '?' };
+        let form = [
+            ("mode", "payment".to_string()),
+            ("client_reference_id", c.order_id.clone()),
+            (
+                "success_url",
+                format!("{return_url}{sep}order={}&status=paid", c.order_id),
+            ),
+            (
+                "cancel_url",
+                format!("{return_url}{sep}order={}&status=cancelled", c.order_id),
+            ),
+            ("expires_at", c.expires_at.to_string()),
+            ("metadata[order_id]", c.order_id.clone()),
+            ("line_items[0][quantity]", c.quantity.to_string()),
+            ("line_items[0][price_data][currency]", c.currency.clone()),
+            (
+                "line_items[0][price_data][unit_amount]",
+                c.unit_price.to_string(),
+            ),
+            (
+                "line_items[0][price_data][product_data][name]",
+                format!("{} ({}) - losos market", c.kind.label(), c.kind.unit()),
+            ),
+            (
+                "payment_intent_data[application_fee_amount]",
+                c.fee.to_string(),
+            ),
+            (
+                "payment_intent_data[transfer_data][destination]",
+                c.destination.clone(),
+            ),
+            (
+                "payment_intent_data[metadata][order_id]",
+                c.order_id.clone(),
+            ),
+        ];
+        let body = self
+            .post(
+                "/v1/checkout/sessions",
+                &form,
+                Some(&format!("losos-checkout-{}", c.order_id)),
+            )
+            .await?;
+        match (body["id"].as_str(), body["url"].as_str()) {
+            (Some(id), Some(url)) => Ok((id.to_string(), url.to_string())),
+            _ => Err(MarketError::Stripe(
+                "checkout session had no id or url".to_string(),
+            )),
+        }
+    }
+}
+
+/// Why a secret file is unusable, or `None`. These are hand-placed under
+/// `/var/secrets`, so a wrong file must fail loudly rather than be sent to
+/// Stripe, or worse, accepted by the webhook check.
+fn secret_fault(secret: &str, prefixes: &[&str]) -> Option<&'static str> {
+    if secret.is_empty() {
+        Some("empty")
+    } else if secret.chars().any(|c| c.is_control() || c.is_whitespace()) {
+        Some("carrying whitespace or a control character")
+    } else if !prefixes.iter().any(|p| secret.starts_with(p)) {
+        Some("not shaped like the expected Stripe secret")
+    } else {
+        None
+    }
+}
+
+/// Read a secret file. One that is absent is "not configured" (503), not an
+/// upstream failure: the Stripe secrets are stored sealed and unsealed into
+/// tmpfs at start, so an edge that has not sealed them yet, or whose host key
+/// changed, has no file here and must say so rather than blame Stripe.
+async fn read_secret_file(path: &str) -> Result<String, MarketError> {
+    match tokio::fs::read_to_string(path).await {
+        Ok(raw) => Ok(raw),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            tracing::error!(target: Action::Market.target(), "secret file {path} is absent");
+            Err(MarketError::Unconfigured)
+        }
+        Err(e) => Err(MarketError::Stripe(format!("read secret {path}: {e}"))),
+    }
+}
+
+async fn read_secret(path: &str, prefixes: &[&str]) -> Result<String, MarketError> {
+    let raw = read_secret_file(path).await?;
+    let secret = raw.trim();
+    if let Some(fault) = secret_fault(secret, prefixes) {
+        tracing::error!(target: Action::Market.target(), "secret file {path} is {fault}");
+        return Err(MarketError::Unconfigured);
+    }
+    Ok(secret.to_string())
+}
+
+/// The webhook secrets, one per line. Stripe signs platform events and
+/// connected-account events (`account.updated`) with the secrets of two
+/// different endpoints, so the edge accepts either.
+async fn read_webhook_secrets(path: &str) -> Result<Vec<String>, MarketError> {
+    let raw = read_secret_file(path).await?;
+    let secrets: Vec<String> = raw
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .map(str::to_string)
+        .collect();
+    if secrets.is_empty()
+        || secrets
+            .iter()
+            .any(|s| secret_fault(s, &["whsec_"]).is_some())
+    {
+        tracing::error!(
+            target: Action::Market.target(),
+            "webhook secret file {path} is empty or holds something that is not a whsec_ secret",
+        );
+        return Err(MarketError::Unconfigured);
+    }
+    Ok(secrets)
+}
+
+// ── the gate's own settings ──────────────────────────────────────────────
+
+/// `losos-registrar stripe-gate` settings.
+#[derive(Debug, Clone)]
+pub struct GateOpts {
+    /// Unix socket the registrar connects to. Created 0600.
+    pub socket: String,
+    /// The platform's Stripe secret key (`sk_...` or a restricted `rk_...`),
+    /// read per request so a rotated credential needs no restart.
+    pub stripe_key_file: String,
+    /// The webhook endpoints' signing secrets (`whsec_...`), one per line.
+    pub webhook_secret_file: String,
+    /// `https://api.stripe.com`; overridden only by tests.
+    pub stripe_api: String,
+    /// The one currency this edge sells in. A request in any other is refused.
+    pub currency: String,
+}
+
+// ── wire protocol ────────────────────────────────────────────────────────
+
+/// What a Checkout Session may say. The gate checks every field.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct CheckoutRequest {
+    pub(crate) order_id: String,
+    pub(crate) kind: Kind,
+    pub(crate) quantity: u64,
+    pub(crate) unit_price: u64,
+    pub(crate) currency: String,
+    pub(crate) fee: u64,
+    pub(crate) destination: String,
+    pub(crate) return_url: String,
+    pub(crate) expires_at: u64,
+}
+
+/// The only things the gate will do. There is deliberately no generic
+/// "forward this to Stripe" operation.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(tag = "op", rename_all = "snake_case")]
+pub(crate) enum Request {
+    CreateAccount {
+        appliance_id: String,
+        #[serde(default)]
+        box_uuid: Option<String>,
+    },
+    TagAccount {
+        account_id: String,
+        box_uuid: String,
+    },
+    AccountReady {
+        account_id: String,
+    },
+    AccountLink {
+        account_id: String,
+        return_url: String,
+    },
+    Checkout(CheckoutRequest),
+    VerifyWebhook {
+        signature: String,
+        body_hex: String,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum FaultKind {
+    /// No usable key or secret: the market is not set up on this edge.
+    Unconfigured,
+    /// The request was outside what the gate allows.
+    Refused,
+    BadSignature,
+    /// Stripe failed or refused.
+    Stripe,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub(crate) struct Fault {
+    pub(crate) kind: FaultKind,
+    pub(crate) message: String,
+}
+
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub(crate) struct Reply {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) ready: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) error: Option<Fault>,
+}
+
+impl Reply {
+    fn fault(kind: FaultKind, message: impl Into<String>) -> Self {
+        Self {
+            error: Some(Fault {
+                kind,
+                message: message.into(),
+            }),
+            ..Self::default()
+        }
+    }
+}
+
+impl From<MarketError> for Reply {
+    fn from(e: MarketError) -> Self {
+        match e {
+            MarketError::Unconfigured => Self::fault(FaultKind::Unconfigured, "not configured"),
+            MarketError::BadSignature => Self::fault(FaultKind::BadSignature, "bad signature"),
+            MarketError::Stripe(m) => Self::fault(FaultKind::Stripe, m),
+            other => Self::fault(FaultKind::Stripe, other.to_string()),
+        }
+    }
+}
+
+// ── request validation ───────────────────────────────────────────────────
+
+fn refuse(what: &str) -> Reply {
+    Reply::fault(FaultKind::Refused, what)
+}
+
+/// `acct_...`, the shape of a Stripe account id.
+fn account_id_ok(id: &str) -> bool {
+    id.len() <= 64
+        && id.strip_prefix("acct_").is_some_and(|rest| {
+            !rest.is_empty() && rest.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
+        })
+}
+
+fn token_ok(id: &str, max: usize) -> bool {
+    !id.is_empty()
+        && id.len() <= max
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'))
+}
+
+fn url_ok(url: &str) -> bool {
+    url.len() <= 512
+        && (url.starts_with("https://") || url.starts_with("http://"))
+        && !url.chars().any(|c| c.is_control() || c.is_whitespace())
+}
+
+/// Why a Checkout request is outside what the gate allows, or `None`.
+fn checkout_fault(c: &CheckoutRequest, currency: &str, now: u64) -> Option<&'static str> {
+    if !token_ok(&c.order_id, 64) {
+        return Some("bad order id");
+    }
+    if !account_id_ok(&c.destination) {
+        return Some("destination is not a Stripe account id");
+    }
+    if !url_ok(&c.return_url) {
+        return Some("bad return url");
+    }
+    if c.currency != currency {
+        return Some("currency is not the one this edge sells in");
+    }
+    if c.quantity == 0 || c.unit_price == 0 {
+        return Some("empty order");
+    }
+    let Some(amount) = c.quantity.checked_mul(c.unit_price) else {
+        return Some("amount overflows");
+    };
+    // The platform's cut is capped at the same ceiling the operator's
+    // `--market-fee-bps` is held to, and can never take the whole charge.
+    if c.fee >= amount || u128::from(c.fee) * 10_000 > u128::from(amount) * u128::from(MAX_FEE_BPS)
+    {
+        return Some("fee is outside the allowed range");
+    }
+    if c.expires_at <= now || c.expires_at > now + MAX_SESSION_SECS {
+        return Some("session lifetime is outside the allowed range");
+    }
+    None
+}
+
+fn encode_hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+// ── the gate ─────────────────────────────────────────────────────────────
+
+async fn stripe(opts: &GateOpts) -> Result<StripeClient, MarketError> {
+    let key = read_secret(&opts.stripe_key_file, &["sk_", "rk_"]).await?;
+    StripeClient::new(&opts.stripe_api, &key)
+}
+
+async fn handle(opts: &GateOpts, request: Request) -> Reply {
+    match request {
+        Request::CreateAccount {
+            appliance_id,
+            box_uuid,
+        } => {
+            if !token_ok(&appliance_id, 64) {
+                return refuse("bad appliance id");
+            }
+            if box_uuid.as_deref().is_some_and(|u| !valid_box_uuid(u)) {
+                return refuse("bad box uuid");
+            }
+            match stripe(opts).await {
+                Ok(s) => match s.create_account(&appliance_id, box_uuid.as_deref()).await {
+                    Ok(id) => Reply {
+                        id: Some(id),
+                        ..Reply::default()
+                    },
+                    Err(e) => e.into(),
+                },
+                Err(e) => e.into(),
+            }
+        }
+        Request::TagAccount {
+            account_id,
+            box_uuid,
+        } => {
+            if !account_id_ok(&account_id) {
+                return refuse("bad account id");
+            }
+            if !valid_box_uuid(&box_uuid) {
+                return refuse("bad box uuid");
+            }
+            match stripe(opts).await {
+                Ok(s) => match s.tag_account(&account_id, &box_uuid).await {
+                    Ok(()) => Reply::default(),
+                    Err(e) => e.into(),
+                },
+                Err(e) => e.into(),
+            }
+        }
+        Request::AccountReady { account_id } => {
+            if !account_id_ok(&account_id) {
+                return refuse("bad account id");
+            }
+            match stripe(opts).await {
+                Ok(s) => match s.account_ready(&account_id).await {
+                    Ok(ready) => Reply {
+                        ready: Some(ready),
+                        ..Reply::default()
+                    },
+                    Err(e) => e.into(),
+                },
+                Err(e) => e.into(),
+            }
+        }
+        Request::AccountLink {
+            account_id,
+            return_url,
+        } => {
+            if !account_id_ok(&account_id) {
+                return refuse("bad account id");
+            }
+            if !url_ok(&return_url) {
+                return refuse("bad return url");
+            }
+            match stripe(opts).await {
+                Ok(s) => match s.account_link(&account_id, &return_url).await {
+                    Ok(url) => Reply {
+                        url: Some(url),
+                        ..Reply::default()
+                    },
+                    Err(e) => e.into(),
+                },
+                Err(e) => e.into(),
+            }
+        }
+        Request::Checkout(c) => {
+            if let Some(why) = checkout_fault(&c, &opts.currency, now_secs()) {
+                return refuse(why);
+            }
+            match stripe(opts).await {
+                Ok(s) => match s.checkout(&c).await {
+                    Ok((id, url)) => Reply {
+                        id: Some(id),
+                        url: Some(url),
+                        ..Reply::default()
+                    },
+                    Err(e) => e.into(),
+                },
+                Err(e) => e.into(),
+            }
+        }
+        Request::VerifyWebhook {
+            signature,
+            body_hex,
+        } => {
+            let Some(body) = decode_hex(&body_hex) else {
+                return refuse("body is not hex");
+            };
+            let secrets = match read_webhook_secrets(&opts.webhook_secret_file).await {
+                Ok(s) => s,
+                Err(e) => return e.into(),
+            };
+            let now = now_secs();
+            if secrets
+                .iter()
+                .any(|secret| verify_signature(secret, &signature, &body, now).is_ok())
+            {
+                Reply::default()
+            } else {
+                MarketError::BadSignature.into()
+            }
+        }
+    }
+}
+
+async fn serve_connection(opts: &GateOpts, stream: UnixStream) -> io::Result<()> {
+    let (read, mut write) = stream.into_split();
+    let mut line = Vec::new();
+    BufReader::new(read.take(MAX_REQUEST_BYTES))
+        .read_until(b'\n', &mut line)
+        .await?;
+    let reply = match serde_json::from_slice::<Request>(&line) {
+        Ok(request) => handle(opts, request).await,
+        Err(_) => refuse("unknown or malformed request"),
+    };
+    let mut out = serde_json::to_vec(&reply).map_err(io::Error::other)?;
+    out.push(b'\n');
+    write.write_all(&out).await?;
+    write.shutdown().await
+}
+
+/// Bind the socket, replacing a stale one left by a previous run.
+///
+/// # Errors
+/// If the socket cannot be created or its mode set.
+pub fn bind(path: &str) -> io::Result<UnixListener> {
+    match std::fs::remove_file(path) {
+        Ok(()) => {}
+        Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+        Err(e) => return Err(e),
+    }
+    let listener = UnixListener::bind(path)?;
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(SOCKET_MODE))?;
+    }
+    Ok(listener)
+}
+
+/// Serve the gate until `shutdown` resolves.
+pub async fn serve<F>(listener: UnixListener, opts: GateOpts, shutdown: F)
+where
+    F: std::future::Future<Output = ()> + Send + 'static,
+{
+    let opts = std::sync::Arc::new(opts);
+    let slots = std::sync::Arc::new(tokio::sync::Semaphore::new(MAX_IN_FLIGHT));
+    tokio::pin!(shutdown);
+    loop {
+        tokio::select! {
+            () = &mut shutdown => break,
+            accepted = listener.accept() => {
+                let Ok((stream, _)) = accepted else { continue };
+                let Ok(permit) = slots.clone().try_acquire_owned() else {
+                    // Over the cap: drop the connection; the registrar reads
+                    // that as the gate being unavailable.
+                    continue;
+                };
+                let opts = opts.clone();
+                tokio::spawn(async move {
+                    let _permit = permit;
+                    let work = serve_connection(&opts, stream);
+                    match tokio::time::timeout(GATE_TIMEOUT, work).await {
+                        Ok(Ok(())) => {}
+                        Ok(Err(e)) => tracing::warn!(target: Action::Market.target(), "gate connection: {e}"),
+                        Err(_) => tracing::warn!(target: Action::Market.target(), "gate connection timed out"),
+                    }
+                });
+            }
+        }
+    }
+}
+
+/// Run the gate as the process's main job.
+///
+/// # Errors
+/// If the socket cannot be bound.
+pub async fn run(opts: GateOpts) -> miette::Result<()> {
+    use miette::{Context, IntoDiagnostic};
+    let listener = bind(&opts.socket)
+        .into_diagnostic()
+        .with_context(|| format!("bind {}", opts.socket))?;
+    tracing::info!(target: Action::Bind.target(), "stripe gate listening on {}", opts.socket);
+    serve(listener, opts, crate::server::shutdown_signal()).await;
+    Ok(())
+}
+
+// ── the registrar's side ─────────────────────────────────────────────────
+
+/// How the registrar reaches Stripe: only through the gate.
+#[derive(Debug, Clone)]
+pub struct GateClient {
+    socket: PathBuf,
+}
+
+impl GateClient {
+    #[must_use]
+    pub fn new(socket: impl AsRef<Path>) -> Self {
+        Self {
+            socket: socket.as_ref().to_path_buf(),
+        }
+    }
+
+    async fn exchange(&self, request: &Request) -> Result<Reply, MarketError> {
+        let stream = match UnixStream::connect(&self.socket).await {
+            Ok(s) => s,
+            // No gate running: the key was never sealed, or the unit could not
+            // decrypt it. That is "the market is off here", not a Stripe fault.
+            Err(e)
+                if matches!(
+                    e.kind(),
+                    io::ErrorKind::NotFound | io::ErrorKind::ConnectionRefused
+                ) =>
+            {
+                tracing::error!(
+                    target: Action::Market.target(),
+                    "stripe gate is not running at {}",
+                    self.socket.display(),
+                );
+                return Err(MarketError::Unconfigured);
+            }
+            Err(e) => return Err(MarketError::Stripe(format!("gate: {e}"))),
+        };
+        let (read, mut write) = stream.into_split();
+        let mut line = serde_json::to_vec(request)?;
+        line.push(b'\n');
+        write
+            .write_all(&line)
+            .await
+            .map_err(|e| MarketError::Stripe(format!("gate: {e}")))?;
+        write
+            .shutdown()
+            .await
+            .map_err(|e| MarketError::Stripe(format!("gate: {e}")))?;
+        let mut raw = Vec::new();
+        read.take(MAX_REPLY_BYTES)
+            .read_to_end(&mut raw)
+            .await
+            .map_err(|e| MarketError::Stripe(format!("gate: {e}")))?;
+        serde_json::from_slice(&raw).map_err(|_| MarketError::Stripe("gate: no reply".to_string()))
+    }
+
+    async fn call(&self, request: &Request) -> Result<Reply, MarketError> {
+        let reply = tokio::time::timeout(GATE_TIMEOUT, self.exchange(request))
+            .await
+            .map_err(|_| MarketError::Stripe("gate: timed out".to_string()))??;
+        match reply.error {
+            None => Ok(Reply {
+                error: None,
+                ..reply
+            }),
+            Some(Fault { kind, message }) => Err(match kind {
+                FaultKind::Unconfigured => MarketError::Unconfigured,
+                FaultKind::BadSignature => MarketError::BadSignature,
+                FaultKind::Refused => MarketError::Stripe(format!("gate refused: {message}")),
+                FaultKind::Stripe => MarketError::Stripe(message),
+            }),
+        }
+    }
+
+    /// Create the seller's Express account; a retry returns the same one.
+    ///
+    /// # Errors
+    /// If the gate is unavailable or Stripe refuses.
+    pub async fn create_account(
+        &self,
+        appliance_id: &str,
+        box_uuid: Option<&str>,
+    ) -> Result<String, MarketError> {
+        self.call(&Request::CreateAccount {
+            appliance_id: appliance_id.to_string(),
+            box_uuid: box_uuid.map(str::to_string),
+        })
+        .await?
+        .id
+        .ok_or_else(|| MarketError::Stripe("gate: no account id".to_string()))
+    }
+
+    /// Write the box's UUID onto an existing account.
+    ///
+    /// # Errors
+    /// If the gate is unavailable or Stripe refuses.
+    pub async fn tag_account(&self, account_id: &str, box_uuid: &str) -> Result<(), MarketError> {
+        self.call(&Request::TagAccount {
+            account_id: account_id.to_string(),
+            box_uuid: box_uuid.to_string(),
+        })
+        .await
+        .map(|_| ())
+    }
+
+    /// Whether an existing account can already receive transfers.
+    ///
+    /// # Errors
+    /// If the gate is unavailable or Stripe refuses.
+    pub async fn account_ready(&self, account_id: &str) -> Result<bool, MarketError> {
+        self.call(&Request::AccountReady {
+            account_id: account_id.to_string(),
+        })
+        .await?
+        .ready
+        .ok_or_else(|| MarketError::Stripe("gate: no readiness".to_string()))
+    }
+
+    /// A one-time Stripe-hosted onboarding URL.
+    ///
+    /// # Errors
+    /// If the gate is unavailable or Stripe refuses.
+    pub async fn account_link(
+        &self,
+        account_id: &str,
+        return_url: &str,
+    ) -> Result<String, MarketError> {
+        self.call(&Request::AccountLink {
+            account_id: account_id.to_string(),
+            return_url: return_url.to_string(),
+        })
+        .await?
+        .url
+        .ok_or_else(|| MarketError::Stripe("gate: no url".to_string()))
+    }
+
+    /// A Checkout Session; returns its id and hosted URL.
+    ///
+    /// # Errors
+    /// If the gate is unavailable, refuses the request, or Stripe refuses.
+    pub(crate) async fn checkout(
+        &self,
+        request: CheckoutRequest,
+    ) -> Result<(String, String), MarketError> {
+        let reply = self.call(&Request::Checkout(request)).await?;
+        match (reply.id, reply.url) {
+            (Some(id), Some(url)) => Ok((id, url)),
+            _ => Err(MarketError::Stripe(
+                "checkout session had no id or url".to_string(),
+            )),
+        }
+    }
+
+    /// Whether `signature` is a valid `Stripe-Signature` for `body` under any
+    /// of the webhook secrets the gate holds.
+    ///
+    /// # Errors
+    /// [`MarketError::BadSignature`] if it is not; others if the gate is
+    /// unavailable.
+    pub async fn verify_webhook(&self, signature: &str, body: &[u8]) -> Result<(), MarketError> {
+        self.call(&Request::VerifyWebhook {
+            signature: signature.to_string(),
+            body_hex: encode_hex(body),
+        })
+        .await
+        .map(|_| ())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const NOW: u64 = 1_000_000;
+
+    fn checkout() -> CheckoutRequest {
+        CheckoutRequest {
+            order_id: "ord_0a1b2c".to_string(),
+            kind: Kind::Storage,
+            quantity: 10,
+            unit_price: 100,
+            currency: "eur".to_string(),
+            fee: 40,
+            destination: "acct_1Abc".to_string(),
+            return_url: "https://losos.example/market".to_string(),
+            expires_at: NOW + 1800,
+        }
+    }
+
+    #[test]
+    fn secret_files_are_shape_checked() {
+        assert_eq!(secret_fault("", &["sk_"]), Some("empty"));
+        assert!(secret_fault("sk_live_x", &["sk_", "rk_"]).is_none());
+        assert!(secret_fault("pk_live_x", &["sk_", "rk_"]).is_some());
+        assert!(secret_fault("sk_a b", &["sk_"]).is_some());
+    }
+
+    #[test]
+    fn an_absent_secret_file_means_not_configured() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let missing = std::env::temp_dir().join("losos-no-such-secret-for-test");
+        let path = missing.to_str().unwrap();
+        assert!(matches!(
+            rt.block_on(read_secret(path, &["sk_"])),
+            Err(MarketError::Unconfigured)
+        ));
+        assert!(matches!(
+            rt.block_on(read_webhook_secrets(path)),
+            Err(MarketError::Unconfigured)
+        ));
+    }
+
+    #[test]
+    fn a_well_formed_checkout_is_allowed() {
+        assert_eq!(checkout_fault(&checkout(), "eur", NOW), None);
+    }
+
+    #[test]
+    fn a_checkout_outside_the_limits_is_refused() {
+        type Mutation = Box<dyn Fn(&mut CheckoutRequest)>;
+        let cases: Vec<(&str, Mutation)> = vec![
+            (
+                "destination",
+                Box::new(|c| c.destination = "cus_123".into()),
+            ),
+            ("destination", Box::new(|c| c.destination = "acct_".into())),
+            (
+                "return",
+                Box::new(|c| c.return_url = "javascript:alert(1)".into()),
+            ),
+            ("currency", Box::new(|c| c.currency = "usd".into())),
+            ("empty", Box::new(|c| c.quantity = 0)),
+            ("overflow", Box::new(|c| c.unit_price = u64::MAX)),
+            ("fee over ceiling", Box::new(|c| c.fee = 201)),
+            ("fee is all of it", Box::new(|c| c.fee = 1000)),
+            ("already expired", Box::new(|c| c.expires_at = NOW)),
+            ("too far out", Box::new(|c| c.expires_at = NOW + 25 * 3600)),
+            ("order id", Box::new(|c| c.order_id = "ord 1".into())),
+        ];
+        for (name, mutate) in cases {
+            let mut c = checkout();
+            mutate(&mut c);
+            assert!(
+                checkout_fault(&c, "eur", NOW).is_some(),
+                "{name} was allowed"
+            );
+        }
+    }
+
+    #[test]
+    fn the_fee_ceiling_is_the_operators_ceiling() {
+        let mut c = checkout();
+        c.fee = 200;
+        assert_eq!(checkout_fault(&c, "eur", NOW), None);
+    }
+
+    #[test]
+    fn requests_name_only_the_five_operations_and_the_tag() {
+        for ok in [
+            r#"{"op":"create_account","appliance_id":"box-1"}"#,
+            r#"{"op":"tag_account","account_id":"acct_1","box_uuid":"x"}"#,
+            r#"{"op":"account_ready","account_id":"acct_1"}"#,
+            r#"{"op":"verify_webhook","signature":"s","body_hex":"00"}"#,
+        ] {
+            assert!(serde_json::from_str::<Request>(ok).is_ok(), "{ok}");
+        }
+        for bad in [
+            r#"{"op":"refund","payment_intent":"pi_1"}"#,
+            r#"{"op":"forward","path":"/v1/payouts"}"#,
+            r#"{}"#,
+        ] {
+            assert!(serde_json::from_str::<Request>(bad).is_err(), "{bad}");
+        }
+    }
+}
