@@ -270,7 +270,9 @@ asserted against the *plan* in `grow.rs` and end-to-end in `tests/resize.nix`.
 installer ISO's firmware menu writes `losos.bios` into `install-target.nix`:
 BIOS and UEFI can be chosen explicitly, or autodetect uses the absence of
 `/sys/firmware/efi` (also available noninteractively with `--bios`/`--uefi`).
-The menu exists only on the installer ISO, not the installed system. BIOS
+The menu exists only on the installer ISO, not the installed system, and
+takes autodetect after 30 s unanswered: the medium is meant to install
+unattended, and `tests/iso-boot.py` never types. BIOS
 switches `boot.nix` to GRUB and adds an EF02 partition to the first drive in
 `disko.nix`; the ESP stays `/boot` either way. `console.nix` replaces getty on
 tty1 with a banner service showing the LAN IPv4 and `<hostName>.local`.

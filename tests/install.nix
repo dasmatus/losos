@@ -28,7 +28,12 @@ pkgs.testers.nixosTest {
   name = "losos-install-lvm";
 
   nodes.installer =
-    { config, lib, pkgs, ... }:
+    {
+      config,
+      lib,
+      pkgs,
+      ...
+    }:
     let
       # The disks the installer is expected to find and merge. The VM root is
       # /dev/vda (excluded by detection as a mounted disk), so these three
@@ -64,14 +69,24 @@ pkgs.testers.nixosTest {
       losos.tpm.enable = false;
       losos.bios = true;
       boot.initrd.luks.devices = lib.mkForce { };
-      boot.initrd.secrets = lib.mkForce {
-        "/crypto_keyfile.bin" = pkgs.writeText "bios-test-key" "test-only";
-      };
+      # boot.nix's no-TPM path ships the keyfile as an initrd secret, which a
+      # directly booted test VM cannot carry ("values must be unquoted paths").
+      # Nothing here unlocks LUKS at boot, so drop both halves.
+      boot.initrd.secrets = lib.mkForce { };
       fileSystems."/persist" = lib.mkForce {
         device = "tmpfs";
         fsType = "tmpfs";
         options = [ "noauto" ];
       };
+      # qemu-vm.nix points GRUB at the VM's own root disk with mkVMOverride,
+      # which would also beat boot.nix's mkDefault and silently install GRUB
+      # to /dev/vda instead of the target. Clear that, so the device list is
+      # boot.nix's own (the first target drive, /dev/vdb).
+      boot.loader.grub.device = lib.mkOverride 5 "";
+      # nixos-install installs the bootloader by running the system's own
+      # switch-to-configuration in the chroot; test nodes leave it out unless
+      # asked.
+      system.switch.enable = true;
       boot.loader.grub.extraConfig = ''
         serial --unit=0 --speed=115200
         terminal_input serial
@@ -198,18 +213,29 @@ pkgs.testers.nixosTest {
         "mount --bind /mnt/persist/nix /mnt/nix",
         "cp /etc/keys/persist-keyfile /mnt/etc/keys/persist-keyfile",
         "chmod 600 /mnt/etc/keys/persist-keyfile",
-        "nixos-install --root /mnt --system /run/current-system "
+        # The store path, not the /run/current-system symlink: the profile
+        # nixos-install sets is read again inside the /mnt chroot, where that
+        # symlink resolves to nothing.
+        "nixos-install --root /mnt --system $(readlink -f /run/current-system) "
         "--no-root-passwd --no-channel-copy",
         "umount -R /mnt || true",
         "sync",
     )
+    # Boot the target disk alone under SeaBIOS. The injected grub.cfg prints a
+    # marker on serial and halts; poll the log for it rather than betting on a
+    # fixed timeout, since this is QEMU inside a (possibly TCG) test VM.
+    # -snapshot, not readonly=on: an emulated IDE disk cannot be read-only.
     installer.succeed(
-        "timeout 10s qemu-system-x86_64 -machine pc -accel tcg -m 128 "
-        "-display none -monitor none -serial stdio -no-shutdown "
-        "-drive file=/dev/vdb,format=raw,if=ide,readonly=on -boot order=c "
-        "> /tmp/bios-boot.log 2>&1; status=$?; "
-        "test $status -eq 124 && grep -q BIOS_GRUB_BOOT_OK /tmp/bios-boot.log"
+        "qemu-system-x86_64 -machine pc -accel tcg -m 128 "
+        "-display none -monitor none -serial file:/tmp/bios-boot.log -no-shutdown "
+        "-drive file=/dev/vdb,format=raw,if=ide -snapshot -boot order=c "
+        "-daemonize -pidfile /tmp/bios-boot.pid"
     )
+    try:
+        installer.wait_until_succeeds("grep -q BIOS_GRUB_BOOT_OK /tmp/bios-boot.log", timeout=300)
+    finally:
+        print("BIOS BOOT LOG:\n" + installer.execute("cat /tmp/bios-boot.log")[1])
+        installer.execute("kill $(cat /tmp/bios-boot.pid)")
 
     installer.succeed("umount -R /mnt || true")
   '';
