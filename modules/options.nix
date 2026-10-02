@@ -56,7 +56,8 @@ in
         systemd-boot on UEFI. The first target drive then also carries a 1 MiB
         BIOS boot partition for GRUB's core image. The installer sets this
         itself: it is true when the installer medium was booted in BIOS mode
-        (no /sys/firmware/efi) and can be forced with `--bios` / `--uefi`.
+        (no /sys/firmware/efi); `--uefi` requires booting the installer in UEFI
+        mode so systemd-boot can write the firmware boot entry.
         Mostly for testing the installed system in a BIOS-only VM.
       '';
     };
