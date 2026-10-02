@@ -200,6 +200,25 @@ let
             "delete"
           ];
         }
+      ]
+      # Market fulfilment (backend-registrar/src/market.rs): a paid storage
+      # order becomes a PersistentVolumeClaim in a `market-<buyer>` namespace.
+      # Neither can be scoped to those namespaces — a namespace does not exist
+      # before it is created, and a ClusterRole cannot say "namespaces named
+      # market-*" — so these are create/get only, never update or delete, and
+      # present only when the market is on.
+      ++ lib.optionals cfg.market.enable [
+        {
+          apiGroups = [ "" ];
+          resources = [
+            "namespaces"
+            "persistentvolumeclaims"
+          ];
+          verbs = [
+            "get"
+            "create"
+          ];
+        }
       ];
     }
     {
@@ -500,6 +519,8 @@ let
     cfg.market.currency
     "--market-return-url"
     cfg.market.returnUrl
+    "--market-storage-class"
+    cfg.market.storageClass
   ];
 
   serveArgs = lib.concatStringsSep " " (

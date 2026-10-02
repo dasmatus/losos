@@ -74,8 +74,8 @@ use crate::action::Action;
 use crate::config::{desired_config, EdgeOpts, TenantView};
 use crate::error::ApiError;
 use crate::market::{
-    AccountView, CheckoutView, Market, MarketError, NewListing, NewOrder, OnboardView,
-    PublicListing,
+    AccountView, CheckoutView, Market, MarketError, NewListing, NewOrder, OnboardView, Provision,
+    PublicListing, Sharing,
 };
 use crate::opts::ServeOpts;
 use crate::registry::{Registry, Shared};
@@ -584,8 +584,16 @@ async fn market_tenant(st: &AppState, auth: &MarketAuth) -> Result<Arc<Market>, 
     Ok(Arc::clone(market))
 }
 
+/// What each appliance is sharing with the mesh right now: the market only
+/// sells what the owner already contributes.
+async fn sharing_of(st: &AppState) -> Sharing {
+    Sharing::from_windows(&st.reg.compute_windows().await)
+}
+
 async fn market_browse(State(st): State<AppState>) -> Result<Json<Vec<PublicListing>>, ApiError> {
-    Ok(Json(market_of(&st)?.browse().await))
+    let market = market_of(&st)?;
+    let sharing = sharing_of(&st).await;
+    Ok(Json(market.browse(&sharing).await))
 }
 
 async fn market_account(
@@ -593,7 +601,8 @@ async fn market_account(
     Json(req): Json<MarketAuth>,
 ) -> Result<Json<AccountView>, ApiError> {
     let market = market_tenant(&st, &req).await?;
-    Ok(Json(market.account(&req.appliance_id).await))
+    let sharing = sharing_of(&st).await;
+    Ok(Json(market.account(&req.appliance_id, &sharing).await))
 }
 
 async fn market_onboard(
@@ -609,8 +618,9 @@ async fn market_list(
     Json(req): Json<MarketListReq>,
 ) -> Result<(StatusCode, Json<ListingCreated>), ApiError> {
     let market = market_tenant(&st, &req.auth).await?;
+    let sharing = sharing_of(&st).await;
     let listing_id = market
-        .create_listing(&req.auth.appliance_id, req.listing)
+        .create_listing(&req.auth.appliance_id, req.listing, &sharing)
         .await?;
     Ok((StatusCode::CREATED, Json(ListingCreated { listing_id })))
 }
@@ -631,8 +641,9 @@ async fn market_order(
     Json(req): Json<MarketOrderReq>,
 ) -> Result<(StatusCode, Json<CheckoutView>), ApiError> {
     let market = market_tenant(&st, &req.auth).await?;
+    let sharing = sharing_of(&st).await;
     let checkout = market
-        .create_order(&req.auth.appliance_id, req.order)
+        .create_order(&req.auth.appliance_id, req.order, &sharing)
         .await?;
     Ok((StatusCode::CREATED, Json(checkout)))
 }
@@ -650,35 +661,156 @@ async fn market_webhook(
         .and_then(|v| v.to_str().ok())
         .ok_or(ApiError::Market(MarketError::BadSignature))?;
     market.webhook(signature, &body).await?;
+    // A payment may just have become a volume to provision.
+    st.notify.notify_one();
     Ok(StatusCode::OK)
 }
 
-/// Delete the caller's `Node` object and its node-password `Secret` from the
-/// mesh cluster, so a reinstalled box can rejoin under the same name.
+/// Provision the volume for every paid storage order that lacks one.
 ///
-/// 404 is success: it means this is a first join and there was nothing to
-/// clean. Any other non-2xx, and any transport failure, is a 503 — never a
-/// success, because the whole reason the route deletes anything is that
-/// proceeding without the delete is what bricks the rejoin.
+/// Runs after every reconcile pass, and the webhook kicks the reconciler, so a
+/// purchase is usually fulfilled within a second and a failed attempt is
+/// retried every `--reconcile-interval`. It is idempotent: a `409` from the
+/// apiserver means a previous attempt created the object and died before the
+/// order was marked, and counts as success. Nothing is ever deleted — a lapsed
+/// order stops being reported as an entitlement but its volume is the buyer's
+/// data, and removing it is an operator decision.
 ///
-/// Transport is the crate's existing reqwest+rustls, one bearer token, no
-/// kubeconfig parsing and no client certificates. The root store is *pinned*
-/// to the cluster CA (`tls_built_in_root_certs(false)`): the apiserver's
-/// certificate is issued by rke2's own CA, so trusting the public webpki roots
-/// here would only widen who can impersonate it.
-///
-/// `--kube-ca-file` is required only for an `https://` apiserver, mirroring
-/// `announce`'s conditional `https_only`: the VM tests point `--kube-api` at a
-/// plain-HTTP stub on loopback, and demanding a PEM there would mean the join
-/// path could only ever be exercised on a box with a real cluster on it.
-/// `modules/edge.nix` always generates `https://127.0.0.1:6443`, so in
-/// production the pin is on — and a plain-HTTP value logs a warning naming what
-/// it costs, since the ServiceAccount bearer token then crosses in cleartext.
-async fn cleanup_stale_node(st: &AppState, node_name: &str) -> Result<(), ApiError> {
+/// Compute orders have nothing to provision: they are a ledger credit.
+async fn fulfil_market(st: &AppState) {
+    let Some(market) = &st.market else {
+        return;
+    };
+    let pending = market.pending_provisions().await;
+    if pending.is_empty() {
+        return;
+    }
+    let kube = match kube_access(st).await {
+        Ok(kube) => kube,
+        Err(e) => {
+            tracing::error!(
+                target: Action::Market.target(),
+                "{} paid storage order(s) cannot be fulfilled: {e}",
+                pending.len(),
+            );
+            return;
+        }
+    };
+    for p in pending {
+        match provision_volume(&kube, market.storage_class(), &p).await {
+            Ok(()) => {
+                if let Err(e) = market
+                    .mark_provisioned(&p.order_id, &p.namespace, &p.pvc)
+                    .await
+                {
+                    tracing::error!(
+                        target: Action::Market.target(),
+                        "volume for order {} exists but could not be recorded: {e}",
+                        p.order_id,
+                    );
+                } else {
+                    tracing::info!(
+                        target: Action::Market.target(),
+                        "provisioned {}/{} ({} GiB) for order {}",
+                        p.namespace,
+                        p.pvc,
+                        p.gib,
+                        p.order_id,
+                    );
+                }
+            }
+            Err(e) => tracing::error!(
+                target: Action::Market.target(),
+                "provisioning order {}: {e}",
+                p.order_id,
+            ),
+        }
+    }
+}
+
+/// POST `body` to `url`; `201 Created` and `409 Already Exists` are success.
+async fn kube_create(
+    kube: &KubeAccess,
+    url: &str,
+    body: &serde_json::Value,
+) -> Result<(), ApiError> {
+    let response = kube
+        .client
+        .post(url)
+        .bearer_auth(&kube.token)
+        .json(body)
+        .send()
+        .await
+        .map_err(|e| ApiError::KubeApi(format!("POST {url}: {e}")))?;
+    let status = response.status();
+    if status.is_success() || status == StatusCode::CONFLICT {
+        return Ok(());
+    }
+    Err(ApiError::KubeApi(format!("POST {url} -> {status}")))
+}
+
+/// Ensure the buyer's namespace, then the order's claim inside it.
+async fn provision_volume(
+    kube: &KubeAccess,
+    storage_class: &str,
+    p: &Provision,
+) -> Result<(), ApiError> {
+    kube_create(
+        kube,
+        &format!("{}/api/v1/namespaces", kube.api),
+        &serde_json::json!({
+            "apiVersion": "v1",
+            "kind": "Namespace",
+            "metadata": {
+                "name": p.namespace,
+                "labels": { "losos.market/managed": "true" },
+            },
+        }),
+    )
+    .await?;
+    kube_create(
+        kube,
+        &format!(
+            "{}/api/v1/namespaces/{}/persistentvolumeclaims",
+            kube.api, p.namespace,
+        ),
+        &serde_json::json!({
+            "apiVersion": "v1",
+            "kind": "PersistentVolumeClaim",
+            "metadata": {
+                "name": p.pvc,
+                "namespace": p.namespace,
+                "labels": {
+                    "losos.market/managed": "true",
+                    "losos.market/order": p.pvc,
+                },
+            },
+            "spec": {
+                "accessModes": ["ReadWriteOnce"],
+                "storageClassName": storage_class,
+                "resources": { "requests": { "storage": format!("{}Gi", p.gib) } },
+            },
+        }),
+    )
+    .await
+}
+
+/// An authenticated handle on the mesh apiserver: a client whose root store is
+/// pinned to the cluster CA, the ServiceAccount bearer token, and the base URL.
+struct KubeAccess {
+    client: reqwest::Client,
+    token: String,
+    api: String,
+}
+
+/// Build the mesh apiserver client from `--kube-*`. Every failure is an edge
+/// *configuration* fault: loud in the journal, opaque to the caller. See
+/// [`cleanup_stale_node`] for what the CA pin buys.
+async fn kube_access(st: &AppState) -> Result<KubeAccess, ApiError> {
     let Some(token_file) = &st.opts.kube_token_file else {
         tracing::error!(
             target: Action::Join.target(),
-            "--kube-token-file was not supplied; cannot clean up a stale node",
+            "--kube-token-file was not supplied; cannot reach the mesh apiserver",
         );
         return Err(ApiError::MeshUnconfigured);
     };
@@ -701,20 +833,6 @@ async fn cleanup_stale_node(st: &AppState, node_name: &str) -> Result<(), ApiErr
             return Err(ApiError::MeshUnconfigured);
         }
     };
-    // The name is interpolated into a request path. It reaches here having
-    // already been proved equal to a whitelist key, so this is an edge
-    // *configuration* fault, not an attack — but a key carrying a slash would
-    // let the path escape the collection it is meant to address, and a name
-    // Kubernetes cannot hold is one the agent could never register under
-    // either. Loud in the journal, opaque 503 to the caller.
-    if let Some(fault) = kube_name_fault(node_name) {
-        tracing::error!(
-            target: Action::Join.target(),
-            "appliance id {node_name:?} is {fault}, so it cannot be a Kubernetes node name",
-        );
-        return Err(ApiError::KubeApi(format!("unusable node name: {fault}")));
-    }
-
     let ca = match ca_file {
         Some(path) => {
             let pem = tokio::fs::read(path)
@@ -754,18 +872,62 @@ async fn cleanup_stale_node(st: &AppState, node_name: &str) -> Result<(), ApiErr
     let client = builder
         .build()
         .map_err(|e| ApiError::KubeApi(format!("build kube client: {e}")))?;
+    Ok(KubeAccess {
+        client,
+        token: token.to_string(),
+        api: st.opts.kube_api.clone(),
+    })
+}
 
+/// Delete the caller's `Node` object and its node-password `Secret` from the
+/// mesh cluster, so a reinstalled box can rejoin under the same name.
+///
+/// 404 is success: it means this is a first join and there was nothing to
+/// clean. Any other non-2xx, and any transport failure, is a 503 — never a
+/// success, because the whole reason the route deletes anything is that
+/// proceeding without the delete is what bricks the rejoin.
+///
+/// Transport is the crate's existing reqwest+rustls, one bearer token, no
+/// kubeconfig parsing and no client certificates. The root store is *pinned*
+/// to the cluster CA (`tls_built_in_root_certs(false)`): the apiserver's
+/// certificate is issued by rke2's own CA, so trusting the public webpki roots
+/// here would only widen who can impersonate it.
+///
+/// `--kube-ca-file` is required only for an `https://` apiserver, mirroring
+/// `announce`'s conditional `https_only`: the VM tests point `--kube-api` at a
+/// plain-HTTP stub on loopback, and demanding a PEM there would mean the join
+/// path could only ever be exercised on a box with a real cluster on it.
+/// `modules/edge.nix` always generates `https://127.0.0.1:6443`, so in
+/// production the pin is on — and a plain-HTTP value logs a warning naming what
+/// it costs, since the ServiceAccount bearer token then crosses in cleartext.
+async fn cleanup_stale_node(st: &AppState, node_name: &str) -> Result<(), ApiError> {
+    // The name is interpolated into a request path. It reaches here having
+    // already been proved equal to a whitelist key, so this is an edge
+    // *configuration* fault, not an attack — but a key carrying a slash would
+    // let the path escape the collection it is meant to address, and a name
+    // Kubernetes cannot hold is one the agent could never register under
+    // either. Loud in the journal, opaque 503 to the caller.
+    if let Some(fault) = kube_name_fault(node_name) {
+        tracing::error!(
+            target: Action::Join.target(),
+            "appliance id {node_name:?} is {fault}, so it cannot be a Kubernetes node name",
+        );
+        return Err(ApiError::KubeApi(format!("unusable node name: {fault}")));
+    }
+
+    let kube = kube_access(st).await?;
     let targets = [
-        format!("{}/api/v1/nodes/{node_name}", st.opts.kube_api),
+        format!("{}/api/v1/nodes/{node_name}", kube.api),
         format!(
             "{}/api/v1/namespaces/kube-system/secrets/{node_name}.node-password.rke2",
-            st.opts.kube_api,
+            kube.api,
         ),
     ];
     for url in targets {
-        let response = client
+        let response = kube
+            .client
             .delete(&url)
-            .bearer_auth(token)
+            .bearer_auth(&kube.token)
             .send()
             .await
             .map_err(|e| ApiError::KubeApi(format!("DELETE {url}: {e}")))?;
@@ -990,6 +1152,7 @@ async fn reconciler(st: AppState) {
             // single failed pass; the next tick retries.
             tracing::error!(target: Action::Reconcile.target(), "reconcile failed: {e}");
         }
+        fulfil_market(&st).await;
     }
 }
 
