@@ -10,10 +10,19 @@
 
 let
   useTpm = config.losos.tpm.enable;
+  bios = config.losos.bios;
 in
 {
-  boot.loader.systemd-boot.enable = true;
-  boot.loader.efi.canTouchEfiVariables = true;
+  # UEFI: systemd-boot in the ESP. Legacy BIOS (losos.bios): GRUB written to
+  # the first target drive, whose BIOS boot partition disko.nix creates. /boot
+  # stays the same vfat partition either way, so the layout below is shared.
+  boot.loader.systemd-boot.enable = !bios;
+  boot.loader.efi.canTouchEfiVariables = !bios;
+  boot.loader.grub = lib.mkIf bios {
+    enable = true;
+    efiSupport = false;
+    devices = lib.mkDefault [ (builtins.head config.losos.targetDrives) ];
+  };
 
   # Latest upstream kernel. The losos appliance runs on repurposed mini-PCs
   # whose NVMe/Wi-Fi/sleep hardware quirks are fixed fastest in mainline, so

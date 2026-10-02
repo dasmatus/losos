@@ -38,7 +38,17 @@ let
       content = {
         type = "gpt";
         partitions =
-          (lib.optionalAttrs (dev == firstDrive) {
+          (lib.optionalAttrs (dev == firstDrive && config.losos.bios) {
+            # GRUB's core image has no room between the GPT and the first
+            # partition, so a BIOS boot partition holds it. No filesystem and
+            # no mountpoint; priority 1 puts it first on the disk.
+            boot = {
+              type = "EF02";
+              size = "1M";
+              priority = 1;
+            };
+          })
+          // (lib.optionalAttrs (dev == firstDrive) {
             ESP = {
               type = "EF00";
               size = "500M";
