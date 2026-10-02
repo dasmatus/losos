@@ -1061,12 +1061,13 @@ in
     };
 
     edge.market.storageClass = lib.mkOption {
-      # A DNS-1123 subdomain, as Kubernetes requires of the name; the
-      # registrar applies the same check to --market-storage-class.
+      # A DNS-1123 subdomain, as Kubernetes requires of the name: at most
+      # 253 characters, each dot-separated label at most 63. The registrar
+      # applies the same check to --market-storage-class.
       type =
         lib.types.addCheck
           (lib.types.strMatching "[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*")
-          (s: lib.stringLength s <= 253);
+          (s: lib.stringLength s <= 253 && lib.all (l: lib.stringLength l <= 63) (lib.splitString "." s));
       default = "longhorn";
       description = ''
         The Kubernetes StorageClass a purchased storage volume is claimed

@@ -40,6 +40,7 @@
   lib,
   pkgs,
   self,
+  utils,
   ...
 }:
 
@@ -468,7 +469,12 @@ let
     (toString cfg.noisePrivateKeyFile)
   ];
 
-  seedArgs = lib.concatStringsSep " " (
+  # ExecStart lines are built with escapeSystemdExecArgs, not by joining with
+  # spaces. Several arguments are operator strings (the bind address, the port
+  # range, the return URL): systemd would expand a `%` in one as a specifier
+  # (a return URL with `%2F` in it reached the registrar changed), and split
+  # one with a space into two arguments.
+  seedArgs = utils.escapeSystemdExecArgs (
     [
       "${registrar}/bin/losos-registrar"
       "seed"
@@ -540,7 +546,7 @@ let
     cfg.market.storageClass
   ];
 
-  serveArgs = lib.concatStringsSep " " (
+  serveArgs = utils.escapeSystemdExecArgs (
     [
       "${registrar}/bin/losos-registrar"
       "serve"

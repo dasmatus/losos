@@ -344,12 +344,13 @@ fn parse_market(args: &[String]) -> Result<Option<Box<MarketOpts>>> {
 
 /// A Kubernetes object name in the DNS-1123 subdomain form, which is what a
 /// `StorageClass` name must be: at most 253 characters of dot-separated
-/// labels, each lowercase alphanumeric with inner hyphens. Anything else would
+/// labels, each 1 to 63 characters of lowercase alphanumerics with inner
+/// hyphens. Anything else would
 /// only fail later, as a claim the apiserver refuses on every reconcile pass.
 fn dns_subdomain(name: &str) -> bool {
     name.len() <= 253
         && name.split('.').all(|label| {
-            !label.is_empty()
+            (1..=63).contains(&label.len())
                 && !label.starts_with('-')
                 && !label.ends_with('-')
                 && label
