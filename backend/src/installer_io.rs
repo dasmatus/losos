@@ -354,7 +354,7 @@ fn env_or(key: &str, default: &str) -> String {
 /// tables, so its absence is the standard test. The installed system has to
 /// boot the way the machine did, because that is the only firmware proven to
 /// work on it.
-fn booted_in_bios() -> bool {
+pub fn booted_in_bios() -> bool {
     !Path::new("/sys/firmware/efi").exists()
 }
 
