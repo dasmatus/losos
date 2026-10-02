@@ -1,0 +1,16 @@
+{{/*
+  Rendered into every page's <head> (Forgejo's custom/header hook), whatever
+  theme the account has picked, which is why this is here and not in the
+  LosOS theme CSS: an account created before the LosOS theme keeps its old
+  theme, and it should still not be sent to forgejo.org.
+
+  The navbar's Help entries (one for visitors, one in the signed-in user
+  menu) are hard-coded to forgejo.org/docs in base/head_navbar.tmpl, with no
+  setting to turn them off, and overriding that whole template to drop two
+  links would pin all of the navbar to one Forgejo release. Hiding them
+  costs one rule.
+*/}}
+<style>
+	#navbar a[href^="https://forgejo.org/"],
+	#navbar li:has(> a[href^="https://forgejo.org/"]) { display: none; }
+</style>
