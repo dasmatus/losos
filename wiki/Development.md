@@ -4,7 +4,7 @@
 
 ```sh
 devenv shell        # or: direnv allow
-devenv test         # everything except VM tests, images and media
+devenv test         # pin checks, lint, Rust tests, flake and module evaluation
 ```
 
 `nix develop` gives the toolchain only, for people without devenv.
@@ -17,6 +17,9 @@ devenv test         # everything except VM tests, images and media
 | `build-pkgs` · `build-iso`     | Build the packages; build the installer ISO |
 | `build-images` · `build-media` | OCI images; demo QCOW2 and closure ISO (large, opt-in) |
 | `vm-tests`                     | All NixOS VM tests (needs `/dev/kvm`) |
+
+`devenv test` does not build packages or the installer ISO, or run VM tests.
+Those are separate opt-in scripts.
 
 ## Rust
 
