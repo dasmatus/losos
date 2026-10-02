@@ -17,6 +17,8 @@ import {
   type SettingsResponse,
   type StatusResponse,
 } from "@/lib/api";
+import { t, type MessageKey } from "@/lib/i18n";
+import { useLocale } from "@/lib/i18n-react";
 
 /* The whole settings screen is one form over one document.
  *
@@ -123,18 +125,39 @@ function changedKeysOf(
   return KEYS.filter((key) => !sameValue(saved[key], draft[key]));
 }
 
-function problemsOf(draft: SettingsResponse | null): FormProblems {
+/* Text held in state is held as a message key, or as the box's own words
+ * when it sent some, and only turned into a sentence when the hook returns.
+ * A string resolved when the event happened would stay in whichever language
+ * was on screen then. */
+type Msg = { key: MessageKey } | { raw: string };
+
+function say(msg: Msg): string {
+  return "raw" in msg ? msg.raw : t(msg.key);
+}
+
+/** The box's status message, or our own sentence when it sent none. */
+function statusMsg(message: string, fallback: MessageKey): Msg {
+  return message.length > 0 ? { raw: message } : { key: fallback };
+}
+
+interface HeldBanner {
+  phase: RebuildPhase;
+  title: MessageKey;
+  message: Msg;
+}
+
+type ProblemKeys = { [K in keyof FormProblems]: MessageKey | null };
+
+function problemsOf(draft: SettingsResponse | null): ProblemKeys {
   if (draft === null) return { hostName: null, apachePort: null, computeWindow: null };
 
   const host = draft.hostName;
-  let hostName: string | null = null;
-  if (host.length === 0) hostName = "Give this box a name.";
-  else if (host.length > 63) hostName = "A name is at most 63 characters.";
-  else if (!isValidHostName(host))
-    hostName =
-      "Use letters, digits and hyphens only, starting and ending with a letter or a digit.";
+  let hostName: MessageKey | null = null;
+  if (host.length === 0) hostName = "settings.form.hostEmpty";
+  else if (host.length > 63) hostName = "settings.form.hostTooLong";
+  else if (!isValidHostName(host)) hostName = "settings.form.hostChars";
 
-  const apachePort = isValidPort(draft.apachePort) ? null : "Pick a number between 1024 and 65535.";
+  const apachePort = isValidPort(draft.apachePort) ? null : "settings.form.port";
 
   /* Any order is legal — an end before the start wraps midnight, which is
    * the default 23:00 to 07:00 — so there is nothing to compare between the
@@ -143,7 +166,7 @@ function problemsOf(draft: SettingsResponse | null): FormProblems {
   const computeWindow =
     isValidTime(draft.computeWindowStart) && isValidTime(draft.computeWindowEnd)
       ? null
-      : "Set both ends of the window as a 24-hour time, HH:MM.";
+      : "settings.form.window";
 
   return { hostName, apachePort, computeWindow };
 }
@@ -184,9 +207,9 @@ function normalize(settings: SettingsResponse): SettingsResponse {
   };
 }
 
-function describe(error: unknown): string {
-  if (error instanceof Error && error.message.length > 0) return error.message;
-  return "This box did not answer.";
+function describe(error: unknown): Msg {
+  if (error instanceof Error && error.message.length > 0) return { raw: error.message };
+  return { key: "settings.form.noAnswer" };
 }
 
 export function useSettingsForm(): SettingsForm {
@@ -194,9 +217,10 @@ export function useSettingsForm(): SettingsForm {
 
   const [saved, setSaved] = React.useState<SettingsResponse | null>(null);
   const [draft, setDraft] = React.useState<SettingsResponse | null>(null);
-  const [loadError, setLoadError] = React.useState<string | null>(null);
+  const [heldLoadError, setLoadError] = React.useState<Msg | null>(null);
   const [applying, setApplying] = React.useState(false);
-  const [rebuild, setRebuild] = React.useState<RebuildBanner | null>(null);
+  const [heldRebuild, setRebuild] = React.useState<HeldBanner | null>(null);
+  const locale = useLocale();
 
   const draftRef = React.useRef<SettingsResponse | null>(null);
   draftRef.current = draft;
@@ -257,11 +281,8 @@ export function useSettingsForm(): SettingsForm {
         setApplyingBoth(true);
         setRebuild({
           phase: "building",
-          title: "Applying your changes",
-          message:
-            status.message.length > 0
-              ? status.message
-              : "This box is rebuilding itself. It stays reachable while it works.",
+          title: "settings.form.applyingYours",
+          message: statusMsg(status.message, "settings.form.buildingMessage"),
         });
         return;
       }
@@ -278,9 +299,8 @@ export function useSettingsForm(): SettingsForm {
       if (status.state === "done") {
         setRebuild({
           phase: "done",
-          title: "Changes applied",
-          message:
-            status.message.length > 0 ? status.message : "This box is running the new settings.",
+          title: "settings.form.doneTitle",
+          message: statusMsg(status.message, "settings.form.doneMessage"),
         });
         void load().catch((error: unknown) => setLoadError(describe(error)));
         return;
@@ -289,11 +309,8 @@ export function useSettingsForm(): SettingsForm {
       if (status.state === "failed") {
         setRebuild({
           phase: "failed",
-          title: "The changes could not be applied",
-          message:
-            status.message.length > 0
-              ? status.message
-              : "Nothing changed. This box is still running its previous settings.",
+          title: "settings.form.failedTitle",
+          message: statusMsg(status.message, "settings.form.failedMessage"),
         });
         return;
       }
@@ -360,9 +377,8 @@ export function useSettingsForm(): SettingsForm {
         setApplyingBoth(true);
         setRebuild({
           phase: "building",
-          title: "Applying changes",
-          message:
-            status.message.length > 0 ? status.message : "This box is already rebuilding itself.",
+          title: "settings.form.joinedTitle",
+          message: statusMsg(status.message, "settings.form.joinedMessage"),
         });
         poller.start();
       } catch {
@@ -377,12 +393,16 @@ export function useSettingsForm(): SettingsForm {
   }, [signedIn, load, poller, setApplyingBoth]);
 
   const runRebuild = React.useCallback(
-    async (trigger: () => Promise<{ job: string }>, starting: string) => {
+    async (trigger: () => Promise<{ job: string }>, starting: MessageKey) => {
       sawBuildingRef.current = false;
       jobRef.current = null;
       settleUntilRef.current = Date.now() + SETTLE_MS;
       setApplyingBoth(true);
-      setRebuild({ phase: "building", title: starting, message: "Starting…" });
+      setRebuild({
+        phase: "building",
+        title: starting,
+        message: { key: "settings.form.starting" },
+      });
       try {
         const ack = await trigger();
         jobRef.current = ack.job.length > 0 ? ack.job : null;
@@ -394,7 +414,11 @@ export function useSettingsForm(): SettingsForm {
           setRebuild(null);
           return;
         }
-        setRebuild({ phase: "failed", title: "That did not start", message: describe(error) });
+        setRebuild({
+          phase: "failed",
+          title: "settings.form.didNotStart",
+          message: describe(error),
+        });
       }
     },
     [poller, setApplyingBoth],
@@ -413,19 +437,50 @@ export function useSettingsForm(): SettingsForm {
     const current = draftRef.current;
     if (current === null) return;
     const body = buildOverridesNix(sanitize(current));
-    void runRebuild(() => postApply(body), "Applying your changes");
+    void runRebuild(() => postApply(body), "settings.form.applyingYours");
   }, [runRebuild]);
 
   const factoryReset = React.useCallback(() => {
-    void runRebuild(() => postFactoryReset(), "Putting everything back");
+    void runRebuild(() => postFactoryReset(), "settings.form.resetTitle");
   }, [runRebuild]);
 
   const dismissRebuild = React.useCallback(() => setRebuild(null), []);
 
   const changedKeys = React.useMemo(() => changedKeysOf(saved, draft), [saved, draft]);
-  const problems = React.useMemo(() => problemsOf(draft), [draft]);
+  const problemKeys = React.useMemo(() => problemsOf(draft), [draft]);
   const valid =
-    problems.hostName === null && problems.apachePort === null && problems.computeWindow === null;
+    problemKeys.hostName === null &&
+    problemKeys.apachePort === null &&
+    problemKeys.computeWindow === null;
+
+  /* Everything below turns held keys into sentences. `locale` is a dep of
+   * each, so a language change re-resolves them rather than serving the
+   * memoised text of the previous language. */
+  const problems = React.useMemo<FormProblems>(() => {
+    const resolve = (key: MessageKey | null): string | null => (key === null ? null : t(key));
+    return {
+      hostName: resolve(problemKeys.hostName),
+      apachePort: resolve(problemKeys.apachePort),
+      computeWindow: resolve(problemKeys.computeWindow),
+    };
+  }, [problemKeys, locale]);
+
+  const rebuild = React.useMemo<RebuildBanner | null>(
+    () =>
+      heldRebuild === null
+        ? null
+        : {
+            phase: heldRebuild.phase,
+            title: t(heldRebuild.title),
+            message: say(heldRebuild.message),
+          },
+    [heldRebuild, locale],
+  );
+
+  const loadError = React.useMemo(
+    () => (heldLoadError === null ? null : say(heldLoadError)),
+    [heldLoadError, locale],
+  );
 
   return {
     locked: !signedIn,

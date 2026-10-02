@@ -19,6 +19,7 @@
  */
 
 import { ApiError } from "@/lib/api";
+import { t } from "@/lib/i18n";
 import { fmt, stat } from "./format";
 import { loadMetric, type LoadOptions } from "./metrics";
 import {
@@ -56,7 +57,7 @@ export function createSandbox(options: SandboxOptions = {}): LososApi {
     opts: MetricOptions = {},
   ): Promise<MetricMap[K]> {
     if (!isMetricName(name)) {
-      throw new WidgetError(`There is no reading called ${String(name)}`);
+      throw new WidgetError(t("widgets.sandbox.noReading", { name: String(name) }));
     }
 
     const days = clamp(opts.days, MIN_DAYS, MAX_DAYS);
@@ -99,15 +100,15 @@ function readableReason(error: unknown): string {
     if (message.length > 0 && message.length < 120) return message;
   }
 
-  return "This box did not answer.";
+  return t("widgets.sandbox.noAnswer");
 }
 
 function fromStatus(status: number): string {
-  if (status === 401) return "This tab is no longer signed in.";
-  if (status === 403) return "This page is not allowed to ask for that.";
-  if (status === 404) return "This box does not report that yet.";
-  if (status >= 500) return "This box is busy or restarting. It will be back.";
-  return "This box did not answer.";
+  if (status === 401) return t("widgets.sandbox.signedOut");
+  if (status === 403) return t("widgets.sandbox.forbidden");
+  if (status === 404) return t("widgets.sandbox.notReported");
+  if (status >= 500) return t("widgets.sandbox.busy");
+  return t("widgets.sandbox.noAnswer");
 }
 
 /** The two namespaces a custom expression is allowed to CALL into. Passed to

@@ -22,6 +22,7 @@ import {
 import { FieldError, MonoInput } from "@/components/ui/input";
 import { Label, LabelHint } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/progress";
+import { LanguagePicker } from "@/components/ui/language-picker";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { Toaster } from "@/components/ui/toast";
 import {
@@ -38,6 +39,8 @@ import Home from "@/screens/Home";
 import Settings from "@/screens/Settings";
 import { isSettingsPaneId, type SettingsPaneId } from "@/screens/settings/panes";
 import { WidgetBoard } from "@/widgets";
+import type { MessageKey } from "@/lib/i18n";
+import { useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
 
 /* The shell: sign-in gate, navigation, routes.
@@ -60,17 +63,17 @@ import { cn } from "@/lib/utils";
 
 interface NavItem {
   to: string;
-  label: string;
+  label: MessageKey;
   icon: IconSvgElement;
   end?: boolean;
 }
 
 const NAV: readonly NavItem[] = [
-  { to: "/", label: "Overview", icon: Home01Icon, end: true },
-  { to: "/apps", label: "Apps", icon: LayoutGridIcon },
-  { to: "/storage", label: "Storage", icon: HardDriveIcon },
-  { to: "/mesh", label: "Mesh", icon: Share08Icon },
-  { to: "/settings", label: "Settings", icon: Settings01Icon },
+  { to: "/", label: "shell.nav.overview", icon: Home01Icon, end: true },
+  { to: "/apps", label: "shell.nav.apps", icon: LayoutGridIcon },
+  { to: "/storage", label: "shell.nav.storage", icon: HardDriveIcon },
+  { to: "/mesh", label: "shell.nav.mesh", icon: Share08Icon },
+  { to: "/settings", label: "shell.nav.settings", icon: Settings01Icon },
 ];
 
 export default function App() {
@@ -121,6 +124,7 @@ function useGate(): Gate {
 
 function Shell() {
   const gate = useGate();
+  const t = useT();
 
   /* Setup runs to the end once it has started, and this latch is what makes
    * that true.
@@ -155,7 +159,7 @@ function Shell() {
     return (
       <div className="grid min-h-dvh place-items-center bg-ground text-ink">
         <Spinner />
-        <span className="sr-only">Asking this box whether it has been set up.</span>
+        <span className="sr-only">{t("shell.asking")}</span>
       </div>
     );
   }
@@ -193,18 +197,20 @@ function Shell() {
 // ── Chrome ────────────────────────────────────────────────────────────────
 
 function TopBar({ signedIn }: { signedIn: boolean }) {
+  const t = useT();
   return (
     <header className="sticky top-0 z-40 border-b border-line bg-surface/85 backdrop-blur-sm">
       <div className="mx-auto flex w-full max-w-6xl items-center gap-3 px-4 py-3 sm:px-6">
         <span className="text-[15px] font-semibold tracking-tight">LosOS</span>
         <Badge variant="outline" className="hidden sm:inline-flex">
-          this box
+          {t("shell.thisBox")}
         </Badge>
         <div className="flex-1" />
+        <LanguagePicker />
         <ThemeToggle />
         {signedIn && (
           <Button variant="ghost" size="sm" onClick={dropToken}>
-            Sign out
+            {t("shell.signOut")}
           </Button>
         )}
       </div>
@@ -218,9 +224,10 @@ function TopBar({ signedIn }: { signedIn: boolean }) {
  * as likely to be configured from a phone on the same network as from a
  * laptop. */
 function SectionNav() {
+  const t = useT();
   return (
     <nav
-      aria-label="Sections"
+      aria-label={t("shell.nav.label")}
       className={cn(
         "shrink-0",
         "max-md:-mx-4 max-md:overflow-x-auto max-md:px-4 max-md:pb-2 sm:max-md:-mx-6 sm:max-md:px-6",
@@ -256,7 +263,7 @@ function SectionNav() {
                 color="currentColor"
                 aria-hidden="true"
               />
-              {item.label}
+              {t(item.label)}
             </NavLink>
           </li>
         ))}
@@ -296,13 +303,12 @@ function SettingsRoute({ pane }: { pane?: SettingsPaneId }) {
 }
 
 function NotFound() {
+  const t = useT();
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Nothing here</CardTitle>
-        <CardDescription>
-          That address does not match any section of this box&apos;s admin page.
-        </CardDescription>
+        <CardTitle>{t("shell.notFound.title")}</CardTitle>
+        <CardDescription>{t("shell.notFound.body")}</CardDescription>
       </CardHeader>
     </Card>
   );
@@ -319,6 +325,7 @@ function NotFound() {
  *
  * Non-dismissible — there is nothing to look at behind it. */
 function SignInDialog({ open }: { open: boolean }) {
+  const t = useT();
   const [value, setValue] = React.useState("");
   const [problem, setProblem] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
@@ -330,16 +337,16 @@ function SignInDialog({ open }: { open: boolean }) {
     event.preventDefault();
     const candidate = value.trim();
     if (!isWellFormedToken(candidate)) {
-      setProblem("An admin key is 64 characters, digits and the letters a to f.");
+      setProblem(t("shell.signIn.badShape"));
       return;
     }
     setBusy(true);
     setProblem(null);
     try {
       if (await signIn(candidate)) setValue("");
-      else setProblem("That key was not accepted.");
+      else setProblem(t("shell.signIn.rejected"));
     } catch {
-      setProblem("This box did not answer. Check that it is switched on.");
+      setProblem(t("shell.signIn.noAnswer"));
     } finally {
       setBusy(false);
     }
@@ -359,13 +366,11 @@ function SignInDialog({ open }: { open: boolean }) {
           like. One message, ours. */}
       <form onSubmit={submit} noValidate>
         <DialogHeader>
-          <DialogTitle id={titleId}>Unlock this box</DialogTitle>
-          <DialogDescription id={hintId}>
-            Paste the admin key. It is printed on the box and never leaves it.
-          </DialogDescription>
+          <DialogTitle id={titleId}>{t("shell.signIn.title")}</DialogTitle>
+          <DialogDescription id={hintId}>{t("shell.signIn.hint")}</DialogDescription>
         </DialogHeader>
         <DialogBody className="flex flex-col gap-2">
-          <Label htmlFor="admin-key">Admin key</Label>
+          <Label htmlFor="admin-key">{t("shell.signIn.label")}</Label>
           <MonoInput
             id="admin-key"
             name="admin-key"
@@ -381,12 +386,12 @@ function SignInDialog({ open }: { open: boolean }) {
             }}
           />
           <FieldError id={errorId}>{problem}</FieldError>
-          <LabelHint>The key is remembered until this tab is closed.</LabelHint>
+          <LabelHint>{t("shell.signIn.remembered")}</LabelHint>
         </DialogBody>
         <DialogFooter>
-          {busy && <Spinner label="Checking the key" className="mr-auto text-muted" />}
+          {busy && <Spinner label={t("shell.signIn.checking")} className="mr-auto text-muted" />}
           <Button type="submit" disabled={busy || value.trim().length === 0}>
-            Unlock
+            {t("shell.signIn.unlock")}
           </Button>
         </DialogFooter>
       </form>

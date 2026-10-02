@@ -1,6 +1,7 @@
 import * as React from "react";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import { Cancel01Icon, Search01Icon } from "@hugeicons/core-free-icons";
+import { useLocale, useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
 import { paneMatches, SETTINGS_PANES, type SettingsPaneId } from "./panes";
 
@@ -31,12 +32,15 @@ export interface SidebarProps {
 }
 
 export function Sidebar({ current, onSelect }: SidebarProps) {
+  const t = useT();
+  const locale = useLocale();
   const [search, setSearch] = React.useState("");
   const searchId = React.useId();
 
+  // The locale is a dep: the match reads the labels in the language on screen.
   const visible = React.useMemo(
     () => SETTINGS_PANES.filter((pane) => paneMatches(pane, search)),
-    [search],
+    [search, locale],
   );
 
   /* Enter in the search field goes to the first match. With one match left
@@ -49,7 +53,7 @@ export function Sidebar({ current, onSelect }: SidebarProps) {
 
   return (
     <nav
-      aria-label="Settings sections"
+      aria-label={t("settings.sidebar.nav")}
       className={cn(
         "shrink-0 rounded-card border border-line bg-sunk p-2",
         "md:w-[200px] md:self-start",
@@ -57,7 +61,7 @@ export function Sidebar({ current, onSelect }: SidebarProps) {
     >
       <form onSubmit={submit} role="search" className="relative mb-2">
         <label htmlFor={searchId} className="sr-only">
-          Search settings
+          {t("settings.sidebar.searchLabel")}
         </label>
         <HugeiconsIcon
           icon={Search01Icon}
@@ -71,7 +75,7 @@ export function Sidebar({ current, onSelect }: SidebarProps) {
           id={searchId}
           type="search"
           value={search}
-          placeholder="Search"
+          placeholder={t("settings.sidebar.searchPlaceholder")}
           autoComplete="off"
           spellCheck={false}
           onChange={(event) => setSearch(event.target.value)}
@@ -89,7 +93,7 @@ export function Sidebar({ current, onSelect }: SidebarProps) {
         {search.length > 0 && (
           <button
             type="button"
-            aria-label="Clear search"
+            aria-label={t("settings.sidebar.clear")}
             onClick={() => setSearch("")}
             className={cn(
               "absolute top-1/2 right-1 -translate-y-1/2 rounded-control p-1",
@@ -109,7 +113,7 @@ export function Sidebar({ current, onSelect }: SidebarProps) {
 
       {visible.length === 0 ? (
         <p className="animate-fade-in px-2 py-3 text-[12.5px] leading-snug text-muted">
-          Nothing here matches “{search.trim()}”.
+          {t("settings.sidebar.noMatch", { query: search.trim() })}
         </p>
       ) : (
         <ul

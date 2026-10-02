@@ -3,8 +3,8 @@ import { Alert02Icon, CheckmarkCircle02Icon } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/ui/button";
 import { Progress, Spinner } from "@/components/ui/progress";
 import { LogView } from "@/components/ui/scroll-area";
+import { useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
-import { plural } from "./format";
 import type { SettingsForm } from "./use-settings-form";
 
 /* The bar that admits a settings change on this box is not a save.
@@ -21,13 +21,14 @@ import type { SettingsForm } from "./use-settings-form";
  */
 
 export function ApplyBar({ form }: { form: SettingsForm }) {
+  const t = useT();
   const { rebuild } = form;
 
   if (rebuild !== null) {
     return (
       <div className={cn(BAR, "animate-rise flex-col items-stretch gap-2.5")}>
         <div className="flex items-center gap-2.5">
-          {rebuild.phase === "building" && <Spinner className="text-accent" label="Applying" />}
+          {rebuild.phase === "building" && <Spinner className="text-accent" label={t("settings.applyBar.spinner")} />}
           {rebuild.phase === "done" && (
             <HugeiconsIcon
               icon={CheckmarkCircle02Icon}
@@ -51,7 +52,7 @@ export function ApplyBar({ form }: { form: SettingsForm }) {
           <p className="flex-1 text-[13.5px] font-medium">{rebuild.title}</p>
           {rebuild.phase !== "building" && (
             <Button variant="ghost" size="sm" onClick={form.dismissRebuild}>
-              Dismiss
+              {t("settings.applyBar.dismiss")}
             </Button>
           )}
         </div>
@@ -59,7 +60,7 @@ export function ApplyBar({ form }: { form: SettingsForm }) {
         {/* lososd reports 0 for the whole of a rebuild and 100 only at the
             end, so a determinate bar would sit at zero for minutes and read
             as stuck. The indeterminate band is the honest one. */}
-        {rebuild.phase === "building" && <Progress label="Applying your changes" />}
+        {rebuild.phase === "building" && <Progress label={t("settings.form.applyingYours")} />}
 
         {rebuild.message.length > 0 && <LogView>{rebuild.message}</LogView>}
       </div>
@@ -74,19 +75,19 @@ export function ApplyBar({ form }: { form: SettingsForm }) {
     <div className={cn(BAR, "animate-rise items-center gap-3")}>
       <div className="min-w-0 flex-1">
         <p className="text-[13.5px] leading-snug font-medium">
-          {plural(count, "change")} not applied yet
+          {t("settings.applyBar.pending", { count })}
         </p>
         <p className="mt-0.5 text-[12.5px] leading-snug text-muted">
           {form.valid
-            ? "This box rebuilds itself to take them on. It stays reachable while it works."
-            : "Fix what is marked before this can be applied."}
+            ? t("settings.applyBar.valid")
+            : t("settings.applyBar.invalid")}
         </p>
       </div>
       <Button variant="ghost" size="sm" onClick={form.discard} disabled={form.applying}>
-        Discard
+        {t("settings.applyBar.discard")}
       </Button>
       <Button size="sm" onClick={form.apply} disabled={!form.valid || form.applying}>
-        Apply
+        {t("settings.applyBar.apply")}
       </Button>
     </div>
   );

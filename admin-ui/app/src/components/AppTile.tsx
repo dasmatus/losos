@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { StatusDot } from "@/components/ui/badge";
 import type { AppTileModel } from "@/lib/apps";
+import { useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
 
 /* One app on the homepage.
@@ -49,7 +50,10 @@ export interface AppTileProps {
 }
 
 export function AppTile({ tile, index = 0 }: AppTileProps) {
+  const t = useT();
   const { app, href, leavesAdmin, detail, attention } = tile;
+  const name = t(app.name);
+  const note = t(app.note);
   const second = attention === null ? detail : attention.note;
 
   const body = (
@@ -86,7 +90,7 @@ export function AppTile({ tile, index = 0 }: AppTileProps) {
       </span>
 
       <span className="block w-full truncate text-center text-[12.5px] leading-tight font-medium text-ink">
-        {app.name}
+        {name}
       </span>
 
       {/* The second line, when there is one. A tile that needs attention says
@@ -115,11 +119,11 @@ export function AppTile({ tile, index = 0 }: AppTileProps) {
   return (
     <li className={cn("animate-rise", staggerClass(index))}>
       {leavesAdmin ? (
-        <a href={href} title={app.note} className={className}>
+        <a href={href} title={note} className={className}>
           {body}
         </a>
       ) : (
-        <Link to={href} title={app.note} className={className}>
+        <Link to={href} title={note} className={className}>
           {body}
         </Link>
       )}
