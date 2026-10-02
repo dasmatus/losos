@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <title>LosOS cloud</title>
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#d5e1ea"/>
+    </linearGradient>
+  </defs>
+  <g fill="#8fa5b5" stroke="#8fa5b5" stroke-width="3" stroke-linejoin="round">
+    <circle cx="33" cy="39" r="15"/>
+    <circle cx="15" cy="47" r="10"/>
+    <circle cx="49" cy="46" r="11"/>
+    <rect x="15" y="44" width="34" height="13"/>
+  </g>
+  <g fill="url(#sky)">
+    <circle cx="33" cy="39" r="15"/>
+    <circle cx="15" cy="47" r="10"/>
+    <circle cx="49" cy="46" r="11"/>
+    <rect x="15" y="44" width="34" height="13"/>
+  </g>
+  <svg x="12" y="4" width="38" height="38" viewBox="0 0 16 16" shape-rendering="crispEdges">
+    <path fill="#171717" d="M3 11h1v1h-1z"/>
+    <path fill="#1b2a26" d="M11 6h1v1h-1zM11 7h1v1h-1zM11 8h1v1h-1zM10 9h1v1h-1zM10 10h1v1h-1zM9 11h1v1h-1zM8 12h1v1h-1zM7 13h1v1h-1z"/>
+    <path fill="#3d2b29" d="M14 3h1v1h-1zM13 4h2v1h-2zM12 5h1v1h-1z"/>
+    <path fill="#3e4e43" d="M3 8h1v1h-1zM3 9h2v1h-2zM2 10h1v1h-1zM5 10h1v1h-1zM2 11h1v1h-1zM7 11h1v1h-1zM2 12h1v1h-1zM6 12h2v1h-2zM2 13h1v1h-1z"/>
+    <path fill="#4c6051" d="M4 11h2v1h-2zM3 12h1v1h-1z"/>
+    <path fill="#5d7764" d="M4 8h2v1h-2zM5 9h1v1h-1zM3 10h2v1h-2zM6 10h2v1h-2zM6 11h1v1h-1z"/>
+    <path fill="#659473" d="M6 9h1v1h-1z"/>
+    <path fill="#66361d" d="M8 4h2v1h-2zM7 5h1v1h-1zM4 7h1v1h-1z"/>
+    <path fill="#6c4627" d="M11 1h2v1h-2zM11 2h1v1h-1zM13 2h1v1h-1zM10 3h1v1h-1zM5 4h2v1h-2zM4 5h1v1h-1zM4 6h1v1h-1zM5 12h1v1h-1zM6 13h1v1h-1z"/>
+    <path fill="#733d20" d="M11 5h1v1h-1zM10 8h1v1h-1zM9 9h1v1h-1zM8 10h2v1h-2zM8 11h1v1h-1z"/>
+    <path fill="#9e441f" d="M11 4h1v1h-1zM8 5h1v1h-1zM10 7h1v1h-1zM6 8h1v1h-1zM9 8h1v1h-1zM7 9h1v1h-1z"/>
+    <path fill="#ba4f23" d="M10 4h1v1h-1zM9 5h1v1h-1zM6 6h3v1h-3zM10 6h1v1h-1zM5 7h3v1h-3zM9 7h1v1h-1zM8 8h1v1h-1zM8 9h1v1h-1z"/>
+    <path fill="#bc7d49" d="M13 3h1v1h-1zM12 4h1v1h-1zM6 5h1v1h-1zM5 6h1v1h-1zM5 13h1v1h-1zM4 14h2v1h-2z"/>
+    <path fill="#d39c74" d="M12 2h1v1h-1zM11 3h2v1h-2zM5 5h1v1h-1z"/>
+    <path fill="#df7d53" d="M10 5h1v1h-1zM9 6h1v1h-1zM8 7h1v1h-1zM7 8h1v1h-1z"/>
+  </svg>
+</svg>
