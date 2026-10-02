@@ -707,8 +707,9 @@ async fn market_webhook(
     Ok(StatusCode::OK)
 }
 
-/// Expire pending orders whose hold has run out, then provision the volume
-/// for every paid storage order that lacks one.
+/// Expire pending orders whose hold has run out, free the units of lapsed
+/// storage orders whose claim an operator has deleted, then provision the
+/// volume for every paid storage order that lacks one.
 ///
 /// Runs after every reconcile pass, and the webhook kicks the reconciler, so a
 /// purchase is usually fulfilled within a second and a failed attempt is
@@ -738,7 +739,8 @@ async fn fulfil_market(st: &AppState) {
         ),
     }
     let pending = market.pending_provisions().await;
-    if pending.is_empty() {
+    let lapsed = market.lapsed_volumes().await;
+    if pending.is_empty() && lapsed.is_empty() {
         return;
     }
     let kube = match kube_access(st).await {
@@ -746,12 +748,14 @@ async fn fulfil_market(st: &AppState) {
         Err(e) => {
             tracing::error!(
                 target: Action::Market.target(),
-                "{} paid storage order(s) cannot be fulfilled: {e}",
+                "{} paid storage order(s) cannot be fulfilled and {} lapsed volume(s) cannot be checked: {e}",
                 pending.len(),
+                lapsed.len(),
             );
             return;
         }
     };
+    reclaim_lapsed(&kube, market, lapsed).await;
     for p in pending {
         match provision_volume(&kube, market.storage_class(), &p).await {
             Ok(()) => {
@@ -781,6 +785,62 @@ async fn fulfil_market(st: &AppState) {
                 p.order_id,
             ),
         }
+    }
+}
+
+/// Return a lapsed order's units to its listing once its claim is gone.
+///
+/// Nothing on the edge deletes a buyer's volume: it holds their data, and
+/// removing it is the operator's decision. Until they do, Longhorn keeps its
+/// GiB, so the order keeps them reserved too. This notices the deletion.
+async fn reclaim_lapsed(
+    kube: &KubeAccess,
+    market: &crate::market::Market,
+    lapsed: Vec<(String, String)>,
+) {
+    for (order_id, volume) in lapsed {
+        let Some((namespace, pvc)) = volume.split_once('/') else {
+            continue;
+        };
+        let url = format!(
+            "{}/api/v1/namespaces/{namespace}/persistentvolumeclaims/{pvc}",
+            kube.api,
+        );
+        match kube_claim_exists(kube, &url).await {
+            Ok(true) => {}
+            Ok(false) => match market.mark_reclaimed(&order_id).await {
+                Ok(()) => tracing::info!(
+                    target: Action::Market.target(),
+                    "claim {volume} of lapsed order {order_id} is gone; its units are for sale again",
+                ),
+                Err(e) => tracing::error!(
+                    target: Action::Market.target(),
+                    "claim {volume} is gone but order {order_id} could not be updated: {e}",
+                ),
+            },
+            Err(e) => tracing::error!(
+                target: Action::Market.target(),
+                "checking claim {volume} of lapsed order {order_id}: {e}",
+            ),
+        }
+    }
+}
+
+/// Whether the claim at `url` exists. Only a `404` means it does not; any
+/// other failure is an error, so an apiserver hiccup never frees units that
+/// are still in use.
+async fn kube_claim_exists(kube: &KubeAccess, url: &str) -> Result<bool, ApiError> {
+    let response = kube
+        .client
+        .get(url)
+        .bearer_auth(&kube.token)
+        .send()
+        .await
+        .map_err(|e| ApiError::KubeApi(format!("GET {url}: {e}")))?;
+    match response.status() {
+        reqwest::StatusCode::NOT_FOUND => Ok(false),
+        status if status.is_success() => Ok(true),
+        status => Err(ApiError::KubeApi(format!("GET {url} -> {status}"))),
     }
 }
 

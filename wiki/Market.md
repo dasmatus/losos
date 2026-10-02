@@ -54,8 +54,9 @@ units, which is Stripe's floor.
 
 ## Fulfilment
 
-A paid order is a **30 day entitlement** (`expires_at`). Units return to the
-listing when it lapses.
+A paid order is a **30 day entitlement** (`expires_at`). Compute units return
+to the listing when it lapses. Storage units return only once the claim is
+gone, because the claim still holds Longhorn capacity after the month ends.
 
 - **Storage.** The edge creates the namespace `market-<buyer id>` in the mesh
   cluster and a `PersistentVolumeClaim` named after the order (`ord-...`) of the
@@ -79,7 +80,10 @@ Limits to know about, none of which are enforced yet:
 - The buyer has no access path to the claim; it exists in the cluster for a
   workload to mount.
 - Nothing is ever deleted. A lapsed entitlement stops being reported, but the
-  volume holds the buyer's data and removing it is an operator decision.
+  volume holds the buyer's data and removing it is an operator decision. Until
+  the operator deletes the claim, its GiB stay sold, so the same capacity is
+  never sold twice. The reconcile pass checks each lapsed claim and puts its
+  units back on sale once the apiserver answers 404 for it.
 - The registrar's ServiceAccount gains cluster-wide `get`/`create` on
   namespaces and PersistentVolumeClaims when the market is enabled. Kubernetes
   RBAC cannot scope either to `market-*` names.
@@ -130,7 +134,9 @@ Bodies are JSON.
 Every route answers 503 when the market is off. On the token routes, a tenant
 without the `market` bit gets 403; the public listing view and the webhook
 belong to no tenant, so they never do. `POST /market/account` returns the 100
-most recent purchases and sales on each side, live ones first. Neither party learns the other's appliance id, and the public
+most recent purchases and sales on each side, live ones first. A closed
+listing nobody ordered from is deleted; one with orders stays as long as they
+do. Neither party learns the other's appliance id, and the public
 listing view never shows one.
 
 Capacity is reserved when the Checkout Session is created and held until

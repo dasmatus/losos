@@ -259,7 +259,11 @@ fn curl_market(
 ) -> anyhow::Result<(u16, String)> {
     /// A listing page is small; a registrar that sends more is wrong.
     const MAX_BYTES: usize = 1024 * 1024;
-const TIMEOUT_SECS: &str = "25";
+    /// Above the registrar's own budget for the routes that wait on Stripe
+    /// (`STRIPE_ROUTE_TIMEOUT` in backend-registrar/src/server.rs, 22 s:
+    /// four gate calls of 5 s plus persistence), so a slow but successful
+    /// onboarding is not dropped here after the account was already made.
+    const TIMEOUT_SECS: &str = "25";
 
     let (method, path) = op.route();
     let token = std::fs::read_to_string(&config.token_file)

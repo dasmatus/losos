@@ -228,6 +228,30 @@ impl Edge {
             None,
             Some(stripe_api.to_string()),
             enrolled,
+            None,
+        )
+        .await
+    }
+
+    /// As [`Edge::start_market`], with `market.json` written before the edge
+    /// starts, for states a test cannot reach in real time (an entitlement
+    /// that lapsed a month ago).
+    pub async fn start_market_with_state(
+        tag: &str,
+        tenants: &[TenantSpec],
+        stripe_api: &str,
+        mesh: MeshFixture,
+        enrolled: &[(&str, bool)],
+        market_state: &serde_json::Value,
+    ) -> Self {
+        Self::start_inner_seeded(
+            tag,
+            tenants,
+            mesh,
+            None,
+            Some(stripe_api.to_string()),
+            enrolled,
+            Some(market_state),
         )
         .await
     }
@@ -248,7 +272,7 @@ impl Edge {
         noise_public_key: Option<&str>,
         stripe_api: Option<String>,
     ) -> Self {
-        Self::start_inner_seeded(tag, tenants, mesh, noise_public_key, stripe_api, &[]).await
+        Self::start_inner_seeded(tag, tenants, mesh, noise_public_key, stripe_api, &[], None).await
     }
 
     async fn start_inner_seeded(
@@ -258,8 +282,16 @@ impl Edge {
         noise_public_key: Option<&str>,
         stripe_api: Option<String>,
         enrolled: &[(&str, bool)],
+        market_state: Option<&serde_json::Value>,
     ) -> Self {
         let dir = TempDir::new(tag);
+        if let Some(market_state) = market_state {
+            std::fs::write(
+                dir.join("market.json"),
+                serde_json::to_vec(market_state).expect("serialize market state"),
+            )
+            .expect("seed market.json");
+        }
         if !enrolled.is_empty() {
             let windows: serde_json::Map<String, serde_json::Value> = enrolled
                 .iter()
@@ -710,6 +742,10 @@ async fn stub_handler(
             .lock()
             .expect("the stub's claim phase is not poisoned")
             .clone();
+        // "Gone" stands for a claim an operator has deleted.
+        if phase == "Gone" {
+            return StatusCode::NOT_FOUND.into_response();
+        }
         return axum::Json(serde_json::json!({ "status": { "phase": phase } })).into_response();
     }
     state.status.into_response()

@@ -385,9 +385,10 @@ fn history<'a>(orders: impl Iterator<Item = &'a Order>, now: u64) -> Vec<OrderVi
         .collect()
 }
 
-/// Mark every pending order whose hold has run out as `Expired`, and drop
-/// expired orders past their retention. Returns the ids that expired and how
-/// many old orders were dropped; both zero means nothing changed.
+/// Mark every pending order whose hold has run out as `Expired`, drop expired
+/// orders past their retention, and drop closed listings no order still names.
+/// Returns the ids that expired and how many records were dropped; both zero
+/// means nothing changed.
 ///
 /// [`reserved`] already stops counting such an order, so this changes no
 /// availability; it makes the release durable and visible (the order reads
@@ -401,23 +402,61 @@ pub fn expire_stale(state: &mut MarketState, now: u64) -> (Vec<String>, usize) {
             expired.push(order.id.clone());
         }
     }
-    let before = state.orders.len();
+    let before = state.orders.len() + state.listings.len();
     state.orders.retain(|_, o| {
         !(o.status == OrderStatus::Expired && now > o.created_at + EXPIRED_RETENTION_SECS)
     });
-    (expired, before - state.orders.len())
+    // A closed listing is only kept while an order still names it; otherwise
+    // create-and-close would grow `market.json` without bound.
+    let referenced: std::collections::BTreeSet<&str> = state
+        .orders
+        .values()
+        .map(|o| o.listing_id.as_str())
+        .collect();
+    let keep: std::collections::BTreeSet<String> = state
+        .listings
+        .values()
+        .filter(|l| l.active || referenced.contains(l.id.as_str()))
+        .map(|l| l.id.clone())
+        .collect();
+    state.listings.retain(|id, _| keep.contains(id));
+    (expired, before - state.orders.len() - state.listings.len())
 }
 
-/// Units of `listing` that are sold or held by a live checkout.
+/// Units of `listing` that are sold, held by a live checkout, or still
+/// occupied by a volume.
 #[must_use]
 pub fn reserved(state: &MarketState, listing_id: &str, now: u64) -> u64 {
     state
         .orders
         .values()
         .filter(|o| o.listing_id == listing_id)
-        .filter(|o| paid_live(o, now) || pending_live(o, now))
+        .filter(|o| paid_live(o, now) || pending_live(o, now) || holds_volume(o))
         .map(|o| o.quantity)
         .sum()
+}
+
+/// Whether a storage order's claim still exists. The volume holds the buyer's
+/// data, so nothing deletes it at expiry, and while it exists Longhorn keeps
+/// its GiB. Releasing them to the listing at expiry would sell the same
+/// capacity twice and leave the next buyer's claim `Pending`. The units come
+/// back when an operator removes the claim and the reconcile pass sees it gone
+/// ([`lapsed_volumes`], `Market::mark_reclaimed`).
+fn holds_volume(order: &Order) -> bool {
+    order.status == OrderStatus::Paid && order.kind == Kind::Storage && order.volume.is_some()
+}
+
+/// Lapsed storage orders whose claim was created and has not been seen gone:
+/// `(order id, "<namespace>/<claim>")`. The reconcile pass checks each one
+/// against the cluster.
+#[must_use]
+pub fn lapsed_volumes(state: &MarketState, now: u64) -> Vec<(String, String)> {
+    state
+        .orders
+        .values()
+        .filter(|o| holds_volume(o) && !paid_live(o, now))
+        .filter_map(|o| Some((o.id.clone(), o.volume.clone()?)))
+        .collect()
 }
 
 /// Whether a paid order's entitlement is still running at `now`. A lapsed
@@ -1108,6 +1147,11 @@ impl Market {
             .ok_or(MarketError::NotFound)?;
         if listing.active {
             listing.active = false;
+            // Nothing refers to a listing nobody ordered from, so it goes now
+            // rather than lingering as a closed row.
+            if !state.orders.values().any(|o| o.listing_id == listing_id) {
+                state.listings.remove(listing_id);
+            }
             self.persist(&state).await?;
         }
         Ok(())
@@ -1250,6 +1294,24 @@ impl Market {
         if let Some(o) = state.orders.get_mut(order_id) {
             o.volume = Some(format!("{namespace}/{pvc}"));
             self.persist(&state).await?;
+        }
+        Ok(())
+    }
+
+    /// Lapsed storage orders whose claim may still exist.
+    pub async fn lapsed_volumes(&self) -> Vec<(String, String)> {
+        lapsed_volumes(&*self.state.lock().await, now_secs())
+    }
+
+    /// Record that `order_id`'s claim is gone, which returns its units to the
+    /// listing.
+    pub async fn mark_reclaimed(&self, order_id: &str) -> Result<(), MarketError> {
+        let mut state = self.state.lock().await;
+        let mut next = state.clone();
+        if let Some(o) = next.orders.get_mut(order_id) {
+            o.volume = None;
+            self.persist(&next).await?;
+            *state = next;
         }
         Ok(())
     }
@@ -1598,6 +1660,52 @@ mod tests {
         assert_eq!(expire_stale(&mut st, now), (vec![], 0));
     }
 
+    fn listing(id: &str, active: bool) -> Listing {
+        Listing {
+            id: id.to_string(),
+            seller: "s".to_string(),
+            kind: Kind::Storage,
+            unit_price: 100,
+            capacity: 10,
+            active,
+            created_at: 0,
+        }
+    }
+
+    #[test]
+    fn a_closed_listing_is_kept_only_while_an_order_names_it() {
+        let mut st = state_of(vec![order("o", OrderStatus::Paid, 1, 0)]);
+        for l in [
+            listing("lst_1", false),
+            listing("lst_open", true),
+            listing("lst_gone", false),
+        ] {
+            st.listings.insert(l.id.clone(), l);
+        }
+        assert_eq!(expire_stale(&mut st, 10), (vec![], 1));
+        let left: Vec<&str> = st.listings.keys().map(String::as_str).collect();
+        assert_eq!(left, ["lst_1", "lst_open"]);
+    }
+
+    #[test]
+    fn a_lapsed_volume_holds_its_units_until_it_is_reclaimed() {
+        let now = 2 * ENTITLEMENT_SECS;
+        let mut lapsed = paid("lapsed", Kind::Storage, 3, "b", Some(now - 1));
+        lapsed.volume = Some("market-b/lapsed".to_string());
+        let unprovisioned = paid("never", Kind::Storage, 4, "b", Some(now - 1));
+        let mut live = paid("live", Kind::Storage, 2, "b", Some(now + 1));
+        live.volume = Some("market-b/live".to_string());
+        let mut st = state_of(vec![lapsed, unprovisioned, live]);
+        assert_eq!(reserved(&st, "lst_1", now), 5);
+        assert_eq!(
+            lapsed_volumes(&st, now),
+            vec![("lapsed".to_string(), "market-b/lapsed".to_string())]
+        );
+        st.orders.get_mut("lapsed").unwrap().volume = None;
+        assert_eq!(reserved(&st, "lst_1", now), 2);
+        assert!(lapsed_volumes(&st, now).is_empty());
+    }
+
     #[test]
     fn a_payment_for_an_order_whose_session_id_was_lost_is_still_fulfilled() {
         let mut lost = order("o1", OrderStatus::Pending, 2, 0);
@@ -1618,13 +1726,8 @@ mod tests {
     #[test]
     fn a_payment_after_the_hold_is_honoured_only_while_the_units_are_free() {
         let listing = Listing {
-            id: "lst_1".to_string(),
-            seller: "s".to_string(),
-            kind: Kind::Storage,
-            unit_price: 100,
             capacity: 5,
-            active: true,
-            created_at: 0,
+            ..listing("lst_1", true)
         };
         let late = order("late", OrderStatus::Expired, 3, 0);
         let mut st = state_of(vec![late.clone()]);
