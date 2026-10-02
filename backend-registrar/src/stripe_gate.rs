@@ -70,11 +70,15 @@ impl StripeClient {
     fn new(api: &str, key: &str) -> Result<Self, MarketError> {
         // The key travels in every request: https, or plain http to this
         // machine only (the test stub).
-        let loopback = reqwest::Url::parse(api).ok().is_some_and(|url| {
+        let parsed_api = reqwest::Url::parse(api).ok();
+        let https = parsed_api
+            .as_ref()
+            .is_some_and(|url| url.scheme() == "https" && url.host_str().is_some());
+        let loopback = parsed_api.as_ref().is_some_and(|url| {
             url.scheme() == "http"
                 && matches!(url.host_str(), Some("127.0.0.1" | "localhost" | "[::1]"))
         });
-        if !api.starts_with("https://") && !loopback {
+        if !https && !loopback {
             return Err(MarketError::Stripe(
                 "stripe_api must use https:// to protect the key in transit".to_string(),
             ));
@@ -940,6 +944,7 @@ mod tests {
 
     #[test]
     fn stripe_api_allows_http_only_for_loopback_hosts() {
+        assert!(StripeClient::new("https://api.stripe.com", "sk_test_key").is_ok());
         for url in [
             "http://127.0.0.1:8080",
             "http://localhost:8080",
@@ -947,6 +952,7 @@ mod tests {
         ] {
             assert!(StripeClient::new(url, "sk_test_key").is_ok(), "{url}");
         }
+        assert!(StripeClient::new("https://", "sk_test_key").is_err());
         assert!(StripeClient::new("http://127.0.0.1.example:8080", "sk_test_key").is_err());
     }
 
