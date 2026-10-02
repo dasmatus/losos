@@ -318,8 +318,10 @@ fn parse_market(args: &[String]) -> Result<Option<Box<MarketOpts>>> {
         ));
     }
     let return_url = req(args, "--market-return-url")?;
-    if !(return_url.starts_with("https://") || return_url.starts_with("http://")) {
-        return Err(miette!("--market-return-url must be an http(s) URL"));
+    if !crate::stripe_gate::url_ok(return_url) {
+        return Err(miette!(
+            "--market-return-url must be an absolute http(s) URL with a host, no credentials and no #fragment"
+        ));
     }
     Ok(Some(Box::new(MarketOpts {
         state_file: arg(args, "--market-state-file")

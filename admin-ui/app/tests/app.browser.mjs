@@ -312,7 +312,53 @@ await check('the listing form refuses a bad price before anything is sent', asyn
   await page.getByPlaceholder('Price', { exact: false }).fill('0.005');
   await page.getByPlaceholder('Capacity', { exact: false }).fill('10');
   await page.getByRole('button', { name: 'Offer for sale' }).click();
-  await page.getByText('Enter a price like 0.05').waitFor();
+  await page.getByText('Enter a price above zero, like 0.05.').waitFor();
+  const price = page.getByPlaceholder('Price', { exact: false });
+  assert.equal(await price.getAttribute('aria-invalid'), 'true');
+  const described = await price.getAttribute('aria-describedby');
+  assert.match(await page.locator(`[id="${described}"]`).innerText(), /like 0\.05/);
+  assert.deepEqual(marketPosts, []);
+  await page.close();
+});
+
+await check('a zero-decimal currency is priced in whole units, not hundredths', async () => {
+  const yen = { ...MARKET, account: { ...MARKET.account, currency: 'jpy' } };
+  const { page, marketPosts } = await open({ path: '/settings/market', stored: true, market: yen });
+  await page.getByLabel('Price per unit (JPY)').fill('1,5');
+  await page.getByLabel('Capacity (units)').fill('2');
+  await page.getByRole('button', { name: 'Offer for sale' }).click();
+  await page.getByText('Enter a price above zero, like 5.').waitFor();
+  assert.deepEqual(marketPosts, []);
+  await page.getByLabel('Price per unit (JPY)').fill('500');
+  const sent = page.waitForRequest((request) => request.url().endsWith('/api/market/listings'));
+  await page.getByRole('button', { name: 'Offer for sale' }).click();
+  await sent;
+  assert.deepEqual(marketPosts, [['/api/market/listings', { kind: 'storage', unit_price: 500, capacity: 2 }]]);
+  await page.close();
+});
+
+await check('a blocked payouts pop-up says so next to the button', async () => {
+  const unready = { ...MARKET, account: { ...MARKET.account, seller_onboarded: false, seller_ready: false } };
+  const { page, errors, marketPosts } = await open({ path: '/settings/market', stored: true, market: unready });
+  await page.evaluate(() => {
+    window.open = () => null;
+  });
+  await page.getByRole('button', { name: 'Set up payouts' }).click();
+  await page.getByRole('alert').filter({ hasText: 'Allow pop-ups for this page' }).waitFor();
+  assert.deepEqual(marketPosts, []);
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+await check('a quantity out of range is tied to its field', async () => {
+  const { page, marketPosts } = await open({ path: '/settings/market', stored: true, market: MARKET });
+  const qty = page.getByLabel('Quantity');
+  await qty.fill('41');
+  await page.getByRole('button', { name: 'Buy', exact: true }).click();
+  await page.getByText('Enter a whole number from 1 to 40.').waitFor();
+  assert.equal(await qty.getAttribute('aria-invalid'), 'true');
+  const described = await qty.getAttribute('aria-describedby');
+  assert.match(await page.locator(`[id="${described}"]`).innerText(), /from 1 to 40/);
   assert.deepEqual(marketPosts, []);
   await page.close();
 });

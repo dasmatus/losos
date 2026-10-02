@@ -707,7 +707,8 @@ async fn market_webhook(
     Ok(StatusCode::OK)
 }
 
-/// Provision the volume for every paid storage order that lacks one.
+/// Expire pending orders whose hold has run out, then provision the volume
+/// for every paid storage order that lacks one.
 ///
 /// Runs after every reconcile pass, and the webhook kicks the reconciler, so a
 /// purchase is usually fulfilled within a second and a failed attempt is
@@ -722,6 +723,20 @@ async fn fulfil_market(st: &AppState) {
     let Some(market) = &st.market else {
         return;
     };
+    match market.expire_stale().await {
+        Ok(expired) => {
+            for id in expired {
+                tracing::info!(
+                    target: Action::Market.target(),
+                    "order {id} expired: no payment arrived while its units were held",
+                );
+            }
+        }
+        Err(e) => tracing::error!(
+            target: Action::Market.target(),
+            "could not record stale orders as expired: {e}",
+        ),
+    }
     let pending = market.pending_provisions().await;
     if pending.is_empty() {
         return;

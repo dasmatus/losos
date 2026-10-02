@@ -93,7 +93,6 @@ const CHECKOUT_TTL_SECS: u64 = 31 * 60;
 /// gate outage, and the late event then marked the order paid over units
 /// another buyer had already reserved.
 const PENDING_HOLD_SECS: u64 = 3 * 24 * 3600;
-/// Expired orders are only history; drop them after a month.
 /// How long a paid order's entitlement lasts. Storage is priced per GiB-month
 /// and compute per vCPU-hour, but both are sold as a one-month rental: the
 /// units are the size of the grant, the 30 days its lifetime.
@@ -103,7 +102,13 @@ pub const ENTITLEMENT_SECS: u64 = 30 * 24 * 3600;
 pub const DEFAULT_STORAGE_CLASS: &str = "longhorn";
 /// Namespace prefix for everything bought by one appliance.
 const NAMESPACE_PREFIX: &str = "market-";
+/// Expired orders are only history; drop them after a month.
 const EXPIRED_RETENTION_SECS: u64 = 30 * 24 * 3600;
+/// Orders shown per side (purchases, sales) in the account view. Paid orders
+/// are the ledger and are never pruned, so without a cap an active trader's
+/// view would outgrow lososd's 1 MiB relay limit and the pane would stop
+/// loading. Live orders sort first, so a cut only ever drops old history.
+const ACCOUNT_HISTORY: usize = 100;
 /// Stripe's recommended replay window for webhook timestamps.
 const WEBHOOK_TOLERANCE_SECS: u64 = 5 * 60;
 
@@ -365,6 +370,44 @@ fn pending_live(order: &Order, now: u64) -> bool {
         && now < order.created_at + CHECKOUT_TTL_SECS + PENDING_HOLD_SECS
 }
 
+/// One side of an account's order history: live orders first, then newest
+/// first, at most [`ACCOUNT_HISTORY`] of them.
+fn history<'a>(orders: impl Iterator<Item = &'a Order>, now: u64) -> Vec<OrderView> {
+    let mut orders: Vec<&Order> = orders.collect();
+    orders.sort_by_key(|o| {
+        let live = paid_live(o, now) || pending_live(o, now);
+        (std::cmp::Reverse(live), std::cmp::Reverse(o.created_at))
+    });
+    orders
+        .into_iter()
+        .take(ACCOUNT_HISTORY)
+        .map(|o| OrderView::of(o, now))
+        .collect()
+}
+
+/// Mark every pending order whose hold has run out as `Expired`, and drop
+/// expired orders past their retention. Returns the ids that expired and how
+/// many old orders were dropped; both zero means nothing changed.
+///
+/// [`reserved`] already stops counting such an order, so this changes no
+/// availability; it makes the release durable and visible (the order reads
+/// `expired` rather than a three-day-old `pending`) and keeps `market.json`
+/// from carrying abandoned checkouts forever.
+pub fn expire_stale(state: &mut MarketState, now: u64) -> (Vec<String>, usize) {
+    let mut expired = Vec::new();
+    for order in state.orders.values_mut() {
+        if order.status == OrderStatus::Pending && !pending_live(order, now) {
+            order.status = OrderStatus::Expired;
+            expired.push(order.id.clone());
+        }
+    }
+    let before = state.orders.len();
+    state.orders.retain(|_, o| {
+        !(o.status == OrderStatus::Expired && now > o.created_at + EXPIRED_RETENTION_SECS)
+    });
+    (expired, before - state.orders.len())
+}
+
 /// Units of `listing` that are sold or held by a live checkout.
 #[must_use]
 pub fn reserved(state: &MarketState, listing_id: &str, now: u64) -> u64 {
@@ -559,14 +602,20 @@ pub fn apply_event(state: &mut MarketState, event: &Value, now: u64) -> bool {
             }
             let Some(order) = object["client_reference_id"]
                 .as_str()
-                .and_then(|id| state.orders.get_mut(id))
+                .and_then(|id| state.orders.get(id))
             else {
                 return false;
             };
-            if order.status != OrderStatus::Pending {
-                return false;
-            }
-            let matches = order.session_id.as_deref() == object["id"].as_str()
+            let session = object["id"].as_str();
+            // A missing `session_id` means the edge stopped between Stripe
+            // creating the session and the id being written. The event is
+            // signed and names this order, which only this edge's gate can
+            // have put in `client_reference_id`, so its id is adopted.
+            let matches = session.is_some_and(|s| s.starts_with("cs_"))
+                && order
+                    .session_id
+                    .as_deref()
+                    .is_none_or(|s| Some(s) == session)
                 && object["amount_total"].as_u64() == Some(order.amount)
                 && object["currency"]
                     .as_str()
@@ -579,6 +628,39 @@ pub fn apply_event(state: &mut MarketState, event: &Value, now: u64) -> bool {
                 );
                 return false;
             }
+            match order.status {
+                OrderStatus::Paid => return false,
+                OrderStatus::Pending => {}
+                // Paid after its reservation was released: Stripe retried for
+                // longer than the hold. Honour it if the units are still free;
+                // otherwise they belong to someone else now and the buyer is
+                // owed a refund, which only the dashboard can issue.
+                OrderStatus::Expired => {
+                    let room = state
+                        .listings
+                        .get(&order.listing_id)
+                        .map_or(0, |l| available(state, l, now));
+                    if order.quantity > room {
+                        tracing::error!(
+                            target: Action::Market.target(),
+                            "order {} was paid after its reservation lapsed and its units are sold; refund session {} in the Stripe dashboard",
+                            order.id,
+                            session.unwrap_or_default(),
+                        );
+                        return false;
+                    }
+                    tracing::warn!(
+                        target: Action::Market.target(),
+                        "order {} was paid after its reservation lapsed; its units are still free, so it is fulfilled",
+                        order.id,
+                    );
+                }
+            }
+            let id = order.id.clone();
+            let Some(order) = state.orders.get_mut(&id) else {
+                return false;
+            };
+            order.session_id = session.map(str::to_string);
             order.status = OrderStatus::Paid;
             order.paid_at = Some(now);
             order.expires_at = Some(now + ENTITLEMENT_SECS);
@@ -849,18 +931,8 @@ impl Market {
                 })
                 .collect(),
             entitlements: entitlements(&state, id, now),
-            purchases: state
-                .orders
-                .values()
-                .filter(|o| o.buyer == id)
-                .map(|o| OrderView::of(o, now))
-                .collect(),
-            sales: state
-                .orders
-                .values()
-                .filter(|o| o.seller == id)
-                .map(|o| OrderView::of(o, now))
-                .collect(),
+            purchases: history(state.orders.values().filter(|o| o.buyer == id), now),
+            sales: history(state.orders.values().filter(|o| o.seller == id), now),
         }
     }
 
@@ -1101,9 +1173,7 @@ impl Market {
                 expires_at: None,
                 volume: None,
             };
-            state.orders.retain(|_, o| {
-                !(o.status == OrderStatus::Expired && now > o.created_at + EXPIRED_RETENTION_SECS)
-            });
+            expire_stale(&mut state, now);
             state.orders.insert(order.id.clone(), order.clone());
             self.persist(&state).await?;
             (order, seller.account_id)
@@ -1145,6 +1215,19 @@ impl Market {
                 Err(e)
             }
         }
+    }
+
+    /// Persist the release of every pending order whose hold has run out.
+    /// Run on each reconcile pass; returns the orders it expired.
+    pub async fn expire_stale(&self) -> Result<Vec<String>, MarketError> {
+        let mut state = self.state.lock().await;
+        let mut next = state.clone();
+        let (expired, pruned) = expire_stale(&mut next, now_secs());
+        if !expired.is_empty() || pruned > 0 {
+            self.persist(&next).await?;
+            *state = next;
+        }
+        Ok(expired)
     }
 
     pub fn storage_class(&self) -> &str {
@@ -1492,6 +1575,83 @@ mod tests {
         assert_eq!(state.orders["p"].status, OrderStatus::Expired);
         assert_eq!(state.orders["d"].status, OrderStatus::Paid);
         assert_eq!(reserved(&state, "lst_1", CHECKOUT_TTL_SECS + 900), 1);
+    }
+
+    #[test]
+    fn a_stale_pending_order_is_recorded_as_expired_and_old_ones_are_dropped() {
+        let hold = CHECKOUT_TTL_SECS + PENDING_HOLD_SECS;
+        let now = EXPIRED_RETENTION_SECS + hold + 10;
+        let mut st = state_of(vec![
+            order("fresh", OrderStatus::Pending, 1, now - 60),
+            order("stale", OrderStatus::Pending, 2, now - hold),
+            order("paid", OrderStatus::Paid, 3, 0),
+            order("ancient", OrderStatus::Expired, 4, 0),
+        ]);
+        let (expired, pruned) = expire_stale(&mut st, now);
+        assert_eq!(expired, vec!["stale".to_string()]);
+        assert_eq!(pruned, 1);
+        assert_eq!(st.orders["stale"].status, OrderStatus::Expired);
+        assert_eq!(st.orders["fresh"].status, OrderStatus::Pending);
+        assert_eq!(st.orders["paid"].status, OrderStatus::Paid);
+        assert!(!st.orders.contains_key("ancient"));
+        // A second pass has nothing left to do, so nothing is rewritten.
+        assert_eq!(expire_stale(&mut st, now), (vec![], 0));
+    }
+
+    #[test]
+    fn a_payment_for_an_order_whose_session_id_was_lost_is_still_fulfilled() {
+        let mut lost = order("o1", OrderStatus::Pending, 2, 0);
+        lost.session_id = None;
+        let mut st = state_of(vec![lost.clone()]);
+        let mut event = completed(&lost);
+        event["data"]["object"]["id"] = "cs_recovered".into();
+        assert!(apply_event(&mut st, &event, 10));
+        assert_eq!(st.orders["o1"].status, OrderStatus::Paid);
+        assert_eq!(st.orders["o1"].session_id.as_deref(), Some("cs_recovered"));
+        // Only something shaped like a Checkout Session id is adopted.
+        let mut st = state_of(vec![lost.clone()]);
+        event["data"]["object"]["id"] = "pi_not_a_session".into();
+        assert!(!apply_event(&mut st, &event, 10));
+        assert_eq!(st.orders["o1"].status, OrderStatus::Pending);
+    }
+
+    #[test]
+    fn a_payment_after_the_hold_is_honoured_only_while_the_units_are_free() {
+        let listing = Listing {
+            id: "lst_1".to_string(),
+            seller: "s".to_string(),
+            kind: Kind::Storage,
+            unit_price: 100,
+            capacity: 5,
+            active: true,
+            created_at: 0,
+        };
+        let late = order("late", OrderStatus::Expired, 3, 0);
+        let mut st = state_of(vec![late.clone()]);
+        st.listings.insert(listing.id.clone(), listing);
+        assert!(apply_event(&mut st, &completed(&late), 10));
+        assert_eq!(st.orders["late"].status, OrderStatus::Paid);
+
+        // The same payment when someone else has bought the units since.
+        let mut st2 = state_of(vec![late.clone(), order("other", OrderStatus::Paid, 4, 0)]);
+        st2.listings = st.listings.clone();
+        assert!(!apply_event(&mut st2, &completed(&late), 10));
+        assert_eq!(st2.orders["late"].status, OrderStatus::Expired);
+    }
+
+    #[test]
+    fn the_account_history_is_bounded_and_keeps_live_orders() {
+        let now = 10 * ENTITLEMENT_SECS;
+        let mut orders: Vec<Order> = (0..ACCOUNT_HISTORY as u64 + 50)
+            .map(|i| order(&format!("old{i:03}"), OrderStatus::Expired, 1, i))
+            .collect();
+        orders.push(paid("live", Kind::Storage, 1, "b", Some(now + 1)));
+        let st = state_of(orders);
+        let view = history(st.orders.values(), now);
+        assert_eq!(view.len(), ACCOUNT_HISTORY);
+        assert_eq!(view[0].id, "live");
+        // Then newest first.
+        assert_eq!(view[1].id, format!("old{:03}", ACCOUNT_HISTORY + 49));
     }
 
     #[test]

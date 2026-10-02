@@ -6,7 +6,15 @@ import type { MarketKind, MarketOrder, MarketShelfListing } from "@/lib/api";
 import { t as translate, type MessageKey } from "@/lib/i18n";
 import { useT } from "@/lib/i18n-react";
 import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText, StackRow } from "./rows";
-import { formatDay, formatMoney, isStripePage, toMinorUnits, useMarket, type MarketData } from "./market";
+import {
+  formatDay,
+  formatMoney,
+  isStripePage,
+  minorDigits,
+  toMinorUnits,
+  useMarket,
+  type MarketData,
+} from "./market";
 import type { SettingsForm } from "./use-settings-form";
 
 /* Buying and selling what the mesh already shares.
@@ -185,17 +193,20 @@ function ShelfRow({
 }) {
   const t = useT();
   const qtyId = React.useId();
+  const qtyErrorId = React.useId();
   const [quantity, setQuantity] = React.useState("1");
+  const [quantityProblem, setQuantityProblem] = React.useState<string | null>(null);
   const [problem, setProblem] = React.useState<string | null>(null);
   const [opened, setOpened] = React.useState(false);
 
   const buy = async () => {
     const n = Number(quantity);
+    setProblem(null);
     if (!Number.isInteger(n) || n < 1 || n > listing.available) {
-      setProblem(t("panes.market.quantityRange", { max: listing.available }));
+      setQuantityProblem(t("panes.market.quantityRange", { max: listing.available }));
       return;
     }
-    setProblem(null);
+    setQuantityProblem(null);
     const checkoutTab = window.open("about:blank", "_blank");
     if (checkoutTab === null) {
       setProblem(t("panes.market.popupBlocked"));
@@ -233,6 +244,8 @@ function ShelfRow({
             className="w-20"
             value={quantity}
             disabled={market.busy}
+            aria-invalid={quantityProblem !== null}
+            aria-describedby={quantityProblem === null ? undefined : qtyErrorId}
             onChange={(e) => setQuantity(e.target.value)}
           />
           <Button size="sm" disabled={market.busy} onClick={() => void buy()}>
@@ -240,7 +253,8 @@ function ShelfRow({
           </Button>
         </div>
       </div>
-      {problem !== null && <FieldError>{problem}</FieldError>}
+      <FieldError id={qtyErrorId}>{quantityProblem}</FieldError>
+      <FieldError>{problem}</FieldError>
       {opened && <p className="text-[12.5px] text-muted">{t("panes.market.paying")}</p>}
     </StackRow>
   );
@@ -251,6 +265,8 @@ function SellSection({ market }: { market: MarketData }) {
   const kindId = React.useId();
   const priceId = React.useId();
   const capId = React.useId();
+  const priceErrorId = React.useId();
+  const capErrorId = React.useId();
   const state = market.state;
   const account = state.kind === "ready" ? state.account : null;
   const canStorage = account?.can_sell_storage ?? false;
@@ -258,7 +274,11 @@ function SellSection({ market }: { market: MarketData }) {
   const [kind, setKind] = React.useState<MarketKind>("storage");
   const [price, setPrice] = React.useState("");
   const [capacity, setCapacity] = React.useState("");
-  const [problem, setProblem] = React.useState<string | null>(null);
+  const [problem, setProblem] = React.useState<{
+    field: "price" | "capacity";
+    text: string;
+  } | null>(null);
+  const [onboardProblem, setOnboardProblem] = React.useState<string | null>(null);
 
   if (account === null) return null;
 
@@ -270,9 +290,10 @@ function SellSection({ market }: { market: MarketData }) {
   const onboard = async () => {
     const onboardingTab = window.open("about:blank", "_blank");
     if (onboardingTab === null) {
-      setProblem(t("panes.market.popupBlocked"));
+      setOnboardProblem(t("panes.market.popupBlocked"));
       return;
     }
+    setOnboardProblem(null);
     onboardingTab.opener = null;
     const reply = await market.onboard();
     if (reply !== null && isStripePage(reply.url)) onboardingTab.location.href = reply.url;
@@ -280,10 +301,16 @@ function SellSection({ market }: { market: MarketData }) {
   };
 
   const submit = async () => {
-    const minor = toMinorUnits(price);
+    const minor = toMinorUnits(price, account.currency);
     const cap = Number(capacity);
-    if (minor === null) return setProblem(t("panes.market.priceInvalid"));
-    if (!Number.isInteger(cap) || cap < 1) return setProblem(t("panes.market.capacityInvalid"));
+    if (minor === null) {
+      const digits = minorDigits(account.currency);
+      const example = (5 / 10 ** digits).toFixed(digits);
+      return setProblem({ field: "price", text: t("panes.market.priceInvalid", { example }) });
+    }
+    if (!Number.isInteger(cap) || cap < 1) {
+      return setProblem({ field: "capacity", text: t("panes.market.capacityInvalid") });
+    }
     setProblem(null);
     if (await market.list(effectiveKind, minor, cap)) {
       setPrice("");
@@ -351,6 +378,8 @@ function SellSection({ market }: { market: MarketData }) {
                     })}
                     value={price}
                     disabled={market.busy}
+                    aria-invalid={problem?.field === "price"}
+                    aria-describedby={problem?.field === "price" ? priceErrorId : undefined}
                     onChange={(e) => setPrice(e.target.value)}
                   />
                 </div>
@@ -364,6 +393,8 @@ function SellSection({ market }: { market: MarketData }) {
                     placeholder={t("panes.market.capacityLabel")}
                     value={capacity}
                     disabled={market.busy}
+                    aria-invalid={problem?.field === "capacity"}
+                    aria-describedby={problem?.field === "capacity" ? capErrorId : undefined}
                     onChange={(e) => setCapacity(e.target.value)}
                   />
                 </div>
@@ -372,7 +403,9 @@ function SellSection({ market }: { market: MarketData }) {
                 </Button>
               </div>
             )}
-            {problem !== null && <FieldError>{problem}</FieldError>}
+            <FieldError id={problem?.field === "price" ? priceErrorId : capErrorId}>
+              {problem?.text}
+            </FieldError>
           </StackRow>
         )}
 
@@ -397,6 +430,7 @@ function SellSection({ market }: { market: MarketData }) {
           </Row>
         ))}
       </Group>
+      <FieldError className="px-1.5 pt-2">{onboardProblem}</FieldError>
       <GroupCaption>{t("panes.market.sellCaption", { percent: feePercent })}</GroupCaption>
       {account.sales.length > 0 && (
         <Group className="mt-3">
