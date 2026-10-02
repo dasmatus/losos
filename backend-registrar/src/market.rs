@@ -524,7 +524,7 @@ pub fn apply_event(state: &mut MarketState, event: &Value, now: u64) -> bool {
     let kind = event.get("type").and_then(Value::as_str).unwrap_or("");
     let object = &event["data"]["object"];
     match kind {
-        "checkout.session.completed" | "checkout.session.async_payment_succeeded" => {
+        "checkout.session.completed" => {
             if object["payment_status"].as_str() != Some("paid") {
                 return false;
             }
@@ -1222,6 +1222,16 @@ mod tests {
             st.orders["ord_a"].expires_at,
             Some(1_000 + ENTITLEMENT_SECS)
         );
+    }
+
+    #[test]
+    fn delayed_payment_events_do_not_fulfil_orders() {
+        let mut st = state_of(vec![order("ord_a", OrderStatus::Pending, 4, 0)]);
+        let o = st.orders["ord_a"].clone();
+        let mut event = completed(&o);
+        event["type"] = "checkout.session.async_payment_succeeded".into();
+        assert!(!apply_event(&mut st, &event, 1_000));
+        assert_eq!(st.orders["ord_a"].status, OrderStatus::Pending);
     }
 
     #[test]

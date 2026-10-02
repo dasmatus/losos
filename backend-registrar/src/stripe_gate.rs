@@ -70,9 +70,10 @@ impl StripeClient {
     fn new(api: &str, key: &str) -> Result<Self, MarketError> {
         // The key travels in every request: https, or plain http to this
         // machine only (the test stub).
-        let loopback = ["http://127.0.0.1", "http://localhost", "http://[::1]"]
-            .iter()
-            .any(|p| api.starts_with(p));
+        let loopback = reqwest::Url::parse(api).ok().is_some_and(|url| {
+            url.scheme() == "http"
+                && matches!(url.host_str(), Some("127.0.0.1" | "localhost" | "[::1]"))
+        });
         if !api.starts_with("https://") && !loopback {
             return Err(MarketError::Stripe(
                 "stripe_api must use https:// to protect the key in transit".to_string(),
@@ -175,7 +176,10 @@ impl StripeClient {
                 &format!("GET {path}"),
             )
             .await?;
-        Ok(account_ready(&body))
+        Ok(body["data"]
+            .as_array()
+            .and_then(|accounts| accounts.first())
+            .is_some_and(account_ready))
     }
 
     /// A one-time Stripe-hosted onboarding URL.
@@ -940,6 +944,18 @@ mod tests {
     }
 
     #[test]
+    fn stripe_api_allows_http_only_for_loopback_hosts() {
+        for url in [
+            "http://127.0.0.1:8080",
+            "http://localhost:8080",
+            "http://[::1]:8080",
+        ] {
+            assert!(StripeClient::new(url, "sk_test_key").is_ok(), "{url}");
+        }
+        assert!(StripeClient::new("http://127.0.0.1.example:8080", "sk_test_key").is_err());
+    }
+
+    #[test]
     fn a_checkout_outside_the_limits_is_refused() {
         type Mutation = Box<dyn Fn(&mut CheckoutRequest)>;
         let cases: Vec<(&str, Mutation)> = vec![
@@ -979,8 +995,9 @@ mod tests {
     }
 
     #[test]
-    fn requests_name_only_the_five_operations_and_the_tag() {
+    fn requests_name_only_the_market_operations() {
         for ok in [
+            r#"{"op":"validate_secrets"}"#,
             r#"{"op":"create_account","appliance_id":"box-1"}"#,
             r#"{"op":"tag_account","account_id":"acct_1","box_uuid":"x"}"#,
             r#"{"op":"account_ready","account_id":"acct_1"}"#,

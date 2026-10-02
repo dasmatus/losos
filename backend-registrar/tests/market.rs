@@ -43,7 +43,7 @@ struct Seen {
 #[derive(Clone)]
 struct StripeState {
     seen: Arc<Mutex<Vec<Seen>>>,
-    /// What `GET /v1/accounts/<id>` reports.
+    /// What `GET /v1/accounts?ids[]=...` reports.
     account_ready: Arc<AtomicBool>,
     /// Make checkout creation fail with a 500.
     fail_checkout: Arc<AtomicBool>,
@@ -139,9 +139,9 @@ async fn stripe_handler(
     });
     match (method.as_str(), uri.path()) {
         ("POST", "/v1/accounts") => Json(json!({ "id": "acct_test_1" })).into_response(),
-        ("GET", "/v1/accounts/acct_test_1") => {
+        ("GET", "/v1/accounts") => {
             let ready = state.account_ready.load(Ordering::SeqCst);
-            Json(account_object(ready)).into_response()
+            Json(json!({ "data": [account_object(ready)] })).into_response()
         }
         ("POST", "/v1/accounts/acct_test_1") => Json(account_object(false)).into_response(),
         ("POST", "/v1/account_links") => {

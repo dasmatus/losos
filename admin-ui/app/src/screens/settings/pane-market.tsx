@@ -34,14 +34,6 @@ function unitName(unit: string): string {
   return key === undefined ? unit : translate(key);
 }
 
-function openInNewTab(url: unknown): boolean {
-  if (!isHttps(url)) return false;
-  const tab = window.open(url, "_blank");
-  if (tab === null) return false;
-  tab.opener = null;
-  return true;
-}
-
 export function MarketPane({ form }: { form: SettingsForm }) {
   const t = useT();
   const market = useMarket(!form.locked);
@@ -204,19 +196,23 @@ function ShelfRow({
       return;
     }
     setProblem(null);
-    const tab = window.open("about:blank", "_blank");
-    if (tab === null) {
-      setProblem(t("panes.market.noCheckout"));
+    const checkoutTab = window.open("about:blank", "_blank");
+    if (checkoutTab === null) {
+      setProblem(t("panes.market.popupBlocked"));
       return;
     }
-    tab.opener = null;
+    checkoutTab.opener = null;
     const reply = await market.order(listing.id, n);
-    if (reply !== null && isHttps(reply.checkout_url)) {
-      tab.location.href = reply.checkout_url;
-      setOpened(true);
+    if (reply !== null) {
+      if (isHttps(reply.checkout_url)) {
+        checkoutTab.location.href = reply.checkout_url;
+        setOpened(true);
+      } else {
+        checkoutTab.close();
+        setProblem(t("panes.market.noCheckout"));
+      }
     } else {
-      tab.close();
-      if (reply !== null) setProblem(t("panes.market.noCheckout"));
+      checkoutTab.close();
     }
   };
 
@@ -272,8 +268,15 @@ function SellSection({ market }: { market: MarketData }) {
   const feePercent = account.fee_bps / 100;
 
   const onboard = async () => {
+    const onboardingTab = window.open("about:blank", "_blank");
+    if (onboardingTab === null) {
+      setProblem(t("panes.market.popupBlocked"));
+      return;
+    }
+    onboardingTab.opener = null;
     const reply = await market.onboard();
-    if (reply !== null && isHttps(reply.url)) openInNewTab(reply.url);
+    if (reply !== null && isHttps(reply.url)) onboardingTab.location.href = reply.url;
+    else onboardingTab.close();
   };
 
   const submit = async () => {

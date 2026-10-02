@@ -762,6 +762,11 @@ export default defineMessages({
     sk: "Objednávka vznikla, ale platobná stránka sa nevrátila. Obnovte stránku a skúste to znova.",
     de: "Die Bestellung wurde angelegt, aber es kam keine Zahlungsseite zurück. Aktualisiere und versuch es erneut.",
   },
+  "panes.market.popupBlocked": {
+    en: "Allow pop-ups for this page, then try again.",
+    sk: "Povoľte vyskakovacie okná pre túto stránku a skúste to znova.",
+    de: "Erlaube Pop-ups für diese Seite und versuche es erneut.",
+  },
   "panes.market.paying": {
     en: "The payment page is open in another tab. Refresh here once you have paid.",
     sk: "Platobná stránka je otvorená na inej karte. Po zaplatení tu obnovte stránku.",
