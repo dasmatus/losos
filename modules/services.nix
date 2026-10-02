@@ -37,6 +37,11 @@ let
   # image in flake/images.nix.
   themes = import ../admin-ui/themes { inherit pkgs; };
   forgejoNative = config.losos.forgejo.mode == "native" && config.losos.forgejo.enable;
+  forgejoManagedDirs = [
+    "public/assets/css"
+    "public/assets/img"
+    "templates"
+  ];
 
   nextcloudWorkload = config.losos.nextcloud.mode == "container";
   forgejoWorkload = config.losos.forgejo.mode == "container" && config.losos.forgejo.enable;
@@ -74,19 +79,21 @@ in
     };
   };
 
-  # LosOS Git's files (themes, logos, template overrides), linked into the
-  # custom directory at the paths Forgejo looks for them (the image copies
-  # them instead — see flake/images.nix). L+ replaces a stale link from an
-  # older generation, so a rebuild with a changed theme takes effect on the
-  # next restart. The directories are created owned by forgejo, like the
-  # customDir the nixpkgs module creates above them; tmpfiles would otherwise
-  # make them root's.
-  systemd.tmpfiles.rules = lib.mkIf forgejoNative (
+  # Replace each LosOS-managed tree as a unit before Forgejo starts. This keeps
+  # removed or renamed assets from surviving in the persistent custom directory;
+  # unrelated custom data, especially conf/ secrets, is untouched.
+  systemd.services.forgejo.preStart = lib.mkIf forgejoNative (
     let
-      inherit (config.services.forgejo) user group customDir;
+      customDir = config.services.forgejo.customDir;
+      replaceTree = dir: ''
+        rm -rf -- ${lib.escapeShellArg "${customDir}/${dir}"}
+        ln -s -- ${lib.escapeShellArg "${themes.forgejo.customDir}/${dir}"} ${lib.escapeShellArg "${customDir}/${dir}"}
+      '';
     in
-    map (d: "d ${customDir}/${d} 0750 ${user} ${group} -") themes.forgejo.dirs
-    ++ map (f: "L+ ${customDir}/${f} - - - - ${themes.forgejo.customDir}/${f}") themes.forgejo.files
+    lib.mkBefore ''
+      install -d ${lib.escapeShellArg "${customDir}/public/assets"}
+      ${lib.concatMapStrings replaceTree forgejoManagedDirs}
+    ''
   );
 
   # ── Nextcloud (for the notshared user) — native path ──────────────────

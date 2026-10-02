@@ -581,15 +581,16 @@ let
       export HOME=${forgejoStateDir}
       export USER=forgejo
 
-      mkdir -p ${forgejoCustomDir}/conf ${forgejoStateDir}/data ${forgejoStateDir}/repositories
+      mkdir -p ${forgejoCustomDir}/conf ${forgejoCustomDir}/public/assets ${forgejoStateDir}/data ${forgejoStateDir}/repositories
 
-      # LosOS Git's themes, logos and template overrides, into the custom
-      # directory at the paths Forgejo looks for them (admin-ui/themes/).
-      # Copied, not linked: this directory is a hostPath on the host, where a
-      # link into the image's store would dangle. Copied on every start, so an
-      # image with a changed theme replaces the old one, and before `forgejo
-      # web`, which lists the available themes once.
-      cp -rT --no-preserve=mode,ownership ${themes.forgejo.customDir} ${forgejoCustomDir}
+      # Replace each LosOS-managed tree instead of merging into the persistent
+      # custom directory, so removed or renamed assets cannot survive upgrades.
+      # Keep conf/ intact because its secrets persist across restarts. Copy
+      # rather than link because the store is not mounted in the pod.
+      for tree in public/assets/css public/assets/img templates; do
+        rm -rf "${forgejoCustomDir}/$tree"
+        cp -rT --no-preserve=mode,ownership "${themes.forgejo.customDir}/$tree" "${forgejoCustomDir}/$tree"
+      done
 
       # Generated once and kept. `forgejo generate secret` is the same
       # generator the NixOS module uses, and the __FILE environment variables
