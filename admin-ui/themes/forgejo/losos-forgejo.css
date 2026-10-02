@@ -1,0 +1,288 @@
+/* Forgejo, in the LosOS homepage's clothes.
+ *
+ * Not a theme by itself: the three theme-losos-*.css files beside it each
+ * import one of Forgejo's own stock themes, then losos-tokens.css (the admin
+ * SPA's palette, copied verbatim from admin-ui/app/src/styles/tokens.css),
+ * then this file. So everything Forgejo defines and this file does not
+ * mention — the syntax-highlighting palette, the ANSI console colours, the
+ * diff rows, the label colours users pick for themselves — stays exactly as
+ * upstream ships it, and a Forgejo upgrade that adds a variable gets the
+ * stock value instead of nothing.
+ *
+ * What this file does is point Forgejo's variables at ours. Every value below
+ * is a var() into the token layer or a color-mix() of one, never a literal,
+ * so a palette change in tokens.css lands here with no edit — and dark mode
+ * is not restated at all: the tokens switch, and every mapping follows.
+ *
+ * The rules mirror the homepage's components (admin-ui/app/src/components/
+ * ui/), not just its colours:
+ *
+ *   ground / surface / sunk   page / card / recessed, as Home.tsx lays out
+ *   one accent                --accent for everything that is "the action";
+ *                             ok / warn / crit are state and never identity
+ *   two radii                 --card-radius on boxes, --control-radius on
+ *                             everything you click or type into
+ *   primary button            accent fill, --surface text (button.tsx: not
+ *                             white — --accent is a light teal in the dark
+ *                             palette and white on it does not read)
+ *   focus ring                2px --accent outline, offset 2px (index.css)
+ *
+ * Specificity is kept at Forgejo's own: this sheet loads after index.css, so
+ * equal specificity is enough to win, and anything higher would also beat
+ * the per-page rules Forgejo relies on. The only !important below is where
+ * Forgejo's own rule is !important.
+ */
+
+:root {
+  accent-color: var(--accent);
+
+  /* ── Type and shape ─────────────────────────────────────────────────── */
+  --fonts-proportional: var(--font-ui);
+  --fonts-monospace: var(--font-code), var(--fonts-emoji);
+  --border-radius: var(--control-radius);
+  --border-radius-medium: var(--card-radius);
+
+  /* ── The one accent ─────────────────────────────────────────────────── *
+   * Forgejo wants a ramp of fourteen shades and nine alphas; the homepage
+   * has one accent and one wash. Mixing toward --ink darkens in light mode
+   * and lightens in dark mode, which is the direction Forgejo's own dark
+   * theme inverts its ramp in — so one ramp serves both palettes. */
+  --color-primary: var(--accent);
+  --color-primary-contrast: var(--surface);
+  --color-primary-dark-1: color-mix(in srgb, var(--accent) 92%, var(--ink));
+  --color-primary-dark-2: color-mix(in srgb, var(--accent) 84%, var(--ink));
+  --color-primary-dark-3: color-mix(in srgb, var(--accent) 76%, var(--ink));
+  --color-primary-dark-4: color-mix(in srgb, var(--accent) 68%, var(--ink));
+  --color-primary-dark-5: color-mix(in srgb, var(--accent) 60%, var(--ink));
+  --color-primary-dark-6: color-mix(in srgb, var(--accent) 52%, var(--ink));
+  --color-primary-dark-7: color-mix(in srgb, var(--accent) 44%, var(--ink));
+  --color-primary-light-1: color-mix(in srgb, var(--accent) 88%, var(--surface));
+  --color-primary-light-2: color-mix(in srgb, var(--accent) 76%, var(--surface));
+  --color-primary-light-3: color-mix(in srgb, var(--accent) 62%, var(--surface));
+  --color-primary-light-4: color-mix(in srgb, var(--accent) 46%, var(--surface));
+  --color-primary-light-5: color-mix(in srgb, var(--accent) 30%, var(--surface));
+  --color-primary-light-6: color-mix(in srgb, var(--accent) 16%, var(--surface));
+  --color-primary-light-7: var(--accent-wash);
+  --color-primary-alpha-10: color-mix(in srgb, var(--accent) 10%, transparent);
+  --color-primary-alpha-20: color-mix(in srgb, var(--accent) 20%, transparent);
+  --color-primary-alpha-30: color-mix(in srgb, var(--accent) 30%, transparent);
+  --color-primary-alpha-40: color-mix(in srgb, var(--accent) 40%, transparent);
+  --color-primary-alpha-50: color-mix(in srgb, var(--accent) 50%, transparent);
+  --color-primary-alpha-60: color-mix(in srgb, var(--accent) 60%, transparent);
+  --color-primary-alpha-70: color-mix(in srgb, var(--accent) 70%, transparent);
+  --color-primary-alpha-80: color-mix(in srgb, var(--accent) 80%, transparent);
+  --color-primary-alpha-90: color-mix(in srgb, var(--accent) 90%, transparent);
+  /* button.tsx's primary hover is `opacity-90`, i.e. the accent thinning
+   * toward whatever is behind it — which on a card is --surface. */
+  --color-primary-hover: color-mix(in srgb, var(--accent) 90%, var(--surface));
+  --color-primary-active: var(--color-primary-dark-2);
+  --color-accent: var(--accent);
+  --color-small-accent: var(--accent-wash);
+  --color-highlight-fg: var(--accent);
+  --color-highlight-bg: var(--accent-wash);
+  --color-reaction-active-bg: var(--accent-wash);
+  --color-reaction-hover-bg: var(--color-primary-alpha-20);
+
+  /* ── Surfaces ───────────────────────────────────────────────────────── *
+   * Page on --ground, every box on --surface, headers and wells on --sunk:
+   * the homepage's three levels, in the same order. */
+  --color-body: var(--ground);
+  --color-box-body: var(--surface);
+  --color-box-body-highlight: var(--sunk);
+  --color-box-header: var(--sunk);
+  --color-card: var(--surface);
+  --fancy-card-bg: var(--surface);
+  --fancy-card-border: var(--line);
+  --color-menu: var(--surface);
+  --color-footer: var(--surface);
+  --color-nav-bg: var(--surface);
+  --color-nav-hover-bg: var(--sunk);
+  --color-nav-text: var(--ink);
+  --color-secondary-nav-bg: var(--ground);
+  --color-header-wrapper: var(--surface);
+  --color-secondary-bg: var(--sunk);
+  --color-code-bg: var(--surface);
+  --color-markup-code-block: var(--sunk);
+  --color-markup-code-inline: var(--sunk);
+  --color-editor-line-highlight: var(--sunk);
+  --color-project-board-bg: var(--sunk);
+  --color-expand-button: var(--sunk);
+  --color-timeline: var(--line);
+  --color-diff-inactive: var(--sunk);
+
+  /* Hover is the secondary/ghost button's `hover:bg-sunk`; active is one
+   * step further, toward the hairline. */
+  --color-hover: var(--sunk);
+  --color-active: color-mix(in srgb, var(--sunk) 60%, var(--line));
+  --color-button: var(--surface);
+
+  /* ── Lines ──────────────────────────────────────────────────────────── *
+   * Forgejo's "secondary" is its border colour, with a ramp either side of
+   * it. --line is the border everywhere on the homepage; --hair is the
+   * quieter rule between rows of one card. */
+  --color-secondary: var(--line);
+  --color-secondary-dark-1: var(--line);
+  --color-secondary-dark-2: color-mix(in srgb, var(--line) 80%, var(--faint));
+  --color-secondary-dark-3: color-mix(in srgb, var(--line) 60%, var(--faint));
+  --color-secondary-dark-4: color-mix(in srgb, var(--line) 40%, var(--faint));
+  --color-secondary-dark-5: color-mix(in srgb, var(--line) 20%, var(--faint));
+  --color-secondary-dark-6: var(--faint);
+  --color-secondary-dark-7: color-mix(in srgb, var(--faint) 70%, var(--muted));
+  --color-secondary-dark-8: color-mix(in srgb, var(--faint) 40%, var(--muted));
+  --color-secondary-dark-9: var(--muted);
+  --color-secondary-dark-10: color-mix(in srgb, var(--muted) 70%, var(--ink));
+  --color-secondary-dark-11: color-mix(in srgb, var(--muted) 50%, var(--ink));
+  --color-secondary-dark-12: color-mix(in srgb, var(--muted) 30%, var(--ink));
+  --color-secondary-dark-13: var(--ink);
+  --color-secondary-light-1: var(--hair);
+  --color-secondary-light-2: var(--sunk);
+  --color-secondary-light-3: color-mix(in srgb, var(--sunk) 50%, var(--surface));
+  --color-secondary-light-4: var(--surface);
+  --color-secondary-alpha-10: color-mix(in srgb, var(--line) 10%, transparent);
+  --color-secondary-alpha-20: color-mix(in srgb, var(--line) 20%, transparent);
+  --color-secondary-alpha-30: color-mix(in srgb, var(--line) 30%, transparent);
+  --color-secondary-alpha-40: color-mix(in srgb, var(--line) 40%, transparent);
+  --color-secondary-alpha-50: color-mix(in srgb, var(--line) 50%, transparent);
+  --color-secondary-alpha-60: color-mix(in srgb, var(--line) 60%, transparent);
+  --color-secondary-alpha-70: color-mix(in srgb, var(--line) 70%, transparent);
+  --color-secondary-alpha-80: color-mix(in srgb, var(--line) 80%, transparent);
+  --color-secondary-alpha-90: color-mix(in srgb, var(--line) 90%, transparent);
+  --color-secondary-hover: var(--color-secondary-dark-2);
+  --color-secondary-active: var(--color-secondary-dark-4);
+  --color-light-border: var(--line);
+
+  /* ── Text ───────────────────────────────────────────────────────────── */
+  --color-text: var(--ink);
+  --color-text-dark: var(--ink);
+  --color-text-light: var(--muted);
+  --color-text-light-1: var(--muted);
+  --color-text-light-2: color-mix(in srgb, var(--muted) 50%, var(--faint));
+  --color-text-light-3: var(--faint);
+  --color-placeholder-text: var(--muted);
+  --color-caret: var(--ink);
+  --color-label-text: var(--ink);
+  --color-label-bg: var(--sunk);
+  --color-label-hover-bg: color-mix(in srgb, var(--sunk) 60%, var(--line));
+  --color-label-active-bg: var(--line);
+  --color-label-bg-alt: var(--line);
+
+  /* ── Inputs (input.tsx) ─────────────────────────────────────────────── */
+  --color-input-text: var(--ink);
+  --color-input-background: var(--surface);
+  --color-input-toggle-background: var(--sunk);
+  --color-input-border: var(--muted);
+  --color-input-border-hover: color-mix(in srgb, var(--muted) 60%, var(--surface));
+
+  /* ── State, never identity (badge.tsx) ──────────────────────────────── *
+   * The tinted forms are the badge's `bg-<state>/12` over the card. */
+  --color-red: var(--crit);
+  --color-green: var(--ok);
+  --color-yellow: var(--warn);
+  --color-red-light: var(--crit);
+  --color-green-light: var(--ok);
+  --color-yellow-light: var(--warn);
+  --color-error-text: var(--crit);
+  --color-error-bg: color-mix(in srgb, var(--crit) 12%, var(--surface));
+  --color-error-bg-hover: color-mix(in srgb, var(--crit) 18%, var(--surface));
+  --color-error-bg-active: color-mix(in srgb, var(--crit) 24%, var(--surface));
+  --color-error-border: color-mix(in srgb, var(--crit) 35%, var(--surface));
+  --color-success-text: var(--ok);
+  --color-success-bg: color-mix(in srgb, var(--ok) 12%, var(--surface));
+  --color-success-border: color-mix(in srgb, var(--ok) 35%, var(--surface));
+  --color-warning-text: var(--warn);
+  --color-warning-bg: color-mix(in srgb, var(--warn) 12%, var(--surface));
+  --color-warning-border: color-mix(in srgb, var(--warn) 35%, var(--surface));
+  /* Info is not a state on the homepage; it is the accent's wash. */
+  --color-info-text: var(--accent);
+  --color-info-bg: var(--accent-wash);
+  --color-info-border: color-mix(in srgb, var(--accent) 35%, var(--surface));
+  --color-red-badge: var(--crit);
+  --color-red-badge-bg: color-mix(in srgb, var(--crit) 12%, transparent);
+  --color-red-badge-hover-bg: color-mix(in srgb, var(--crit) 24%, transparent);
+  --color-green-badge: var(--ok);
+  --color-green-badge-bg: color-mix(in srgb, var(--ok) 12%, transparent);
+  --color-green-badge-hover-bg: color-mix(in srgb, var(--ok) 24%, transparent);
+  --color-yellow-badge: var(--warn);
+  --color-yellow-badge-bg: color-mix(in srgb, var(--warn) 12%, transparent);
+  --color-yellow-badge-hover-bg: color-mix(in srgb, var(--warn) 24%, transparent);
+  --color-icon-green: var(--ok);
+  --color-icon-red: var(--crit);
+
+  /* ── Depth ──────────────────────────────────────────────────────────── */
+  --color-shadow: color-mix(in srgb, var(--ink) 18%, transparent);
+  --color-overlay-backdrop: rgb(10 14 18 / 0.45);
+}
+
+/* ── Components ───────────────────────────────────────────────────────── */
+
+body {
+  font-size: 15px;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* card.tsx: a box is a card — the card radius and the card shadow, which
+ * the dark palette flattens to a hairline of its own accord. Forgejo draws a
+ * segment's corners from --border-radius, which is the control radius above,
+ * so boxes are rounded here and nowhere else. An attached header and segment
+ * are one card in two parts (the README box), so only their outer corners
+ * are rounded; rounding every part put a seam of corners across the middle. */
+.ui.segment:not(.attached),
+.ui.segments,
+.ui.card,
+.ui.cards > .card {
+  border-radius: var(--card-radius);
+  box-shadow: var(--elev-card);
+}
+
+.ui.top.attached.header,
+.ui.top.attached.segment {
+  border-top-left-radius: var(--card-radius);
+  border-top-right-radius: var(--card-radius);
+}
+
+.ui.bottom.attached.header,
+.ui.bottom.attached.segment {
+  border-bottom-left-radius: var(--card-radius);
+  border-bottom-right-radius: var(--card-radius);
+}
+
+/* The top bar is a surface on the ground with a hairline under it, like the
+ * homepage's header row — not a tinted band. */
+#navbar {
+  border-bottom: 1px solid var(--line);
+}
+
+/* Dropdowns and popups are the homepage's dialog surface: --elev-pop. */
+.ui.dropdown .menu,
+.ui.popup,
+.tippy-box {
+  box-shadow: var(--elev-pop);
+}
+
+/* button.tsx's primary: accent fill, --surface text, thinning on hover. */
+.ui.primary.button,
+.ui.primary.buttons .button {
+  color: var(--surface);
+}
+
+/* index.css's focus ring, on everything Forgejo makes focusable. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* input.tsx: a 2px accent ring at 35% on focus, border to accent. */
+input:not([type="checkbox"], [type="radio"]):focus,
+textarea:focus,
+.ui.form input:not([type="checkbox"], [type="radio"]):focus,
+.ui.form textarea:focus,
+.ui.input input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+/* Upstream sets the selection to a steel grey with !important. */
+::selection {
+  background: color-mix(in srgb, var(--accent) 30%, transparent) !important;
+  color: var(--ink) !important;
+}
