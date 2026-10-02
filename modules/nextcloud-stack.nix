@@ -43,7 +43,26 @@ let
   dataDir = "${datadir}/data";
   storeAppsDir = "${home}/store-apps";
 
-  package = pkgs.nextcloud34;
+  themes = import ../admin-ui/themes { inherit pkgs; };
+
+  # Stock Nextcloud plus the LosOS theme folder (admin-ui/themes/), copied
+  # into the package rather than linked beside it. Nextcloud looks for
+  # themes/<name>/ under its real server root — lib/base.php derives it from
+  # __DIR__, which PHP resolves through symlinks — and the webroot below is a
+  # tree of symlinks into *this* derivation, so a theme anywhere else would be
+  # silently never found. Defining it here, once, is what puts the same theme
+  # under both modes: native hands `package` to services.nextcloud, and the
+  # image serves `webroot`, which is built from it.
+  #
+  # themes/ is excluded from Nextcloud's integrity check by design
+  # (IntegrityCheck/Iterator/ExcludeFoldersByPathFilterIterator.php), so the
+  # extra folder does not turn the admin overview red.
+  package = pkgs.nextcloud34.overrideAttrs (old: {
+    postInstall = (old.postInstall or "") + ''
+      mkdir -p "$out/themes"
+      cp -r --no-preserve=mode ${themes.nextcloud.dir} "$out/themes/${themes.nextcloud.name}"
+    '';
+  });
 
   # A curated set of self-contained apps from nixpkgs (no external servers,
   # IdPs or API keys required), auto-enabled on every start. The App Store
@@ -89,8 +108,13 @@ let
       twofactor_admin
       guests
       impersonate
-      unroundedcorners
       ;
+    # `unroundedcorners` used to be here and is not, on purpose: it squares
+    # off Nextcloud's corners by rewriting the same radius variables the LosOS
+    # theme sets (admin-ui/themes/nextcloud/server.css), so the two fought
+    # over every container. The theme's radii are the homepage's — 9px cards,
+    # 6px controls — and that consistency is what the theme is for.
+    #
     # The old in-tree `losos` Nextcloud plugin is retired — OS settings moved
     # to the standalone admin endpoint (modules/daemon.nix + admin-ui/).
   };
@@ -145,6 +169,11 @@ in
     dataDir
     storeAppsDir
     ;
+
+  # config.php's `theme` key: which folder under the package's themes/ to
+  # load. Set in both modes — services.nextcloud.settings natively, the
+  # image's config snippet in workload mode — from this one value.
+  theme = themes.nextcloud.name;
 
   # The `notshared` user owns this instance — see modules/configuration.nix for
   # the two-domain split.
