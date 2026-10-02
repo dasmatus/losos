@@ -33,12 +33,30 @@ import {
   subscribeAuth,
   TOKEN_PATTERN,
 } from "@/lib/api";
-import Wizard from "@/screens/Wizard";
-import Home from "@/screens/Home";
-import Settings from "@/screens/Settings";
 import { isSettingsPaneId, type SettingsPaneId } from "@/screens/settings/panes";
-import { WidgetBoard } from "@/widgets";
 import { cn } from "@/lib/utils";
+
+/* Screens load on demand.
+ *
+ * The shell — gate, chrome, sign-in — is all a returning owner needs for the
+ * first paint, and the unlock dialog is what most visits start on. The wizard
+ * runs once in the life of a box and settings is five panes of forms; neither
+ * should be parsed and compiled on the main thread before the page can show
+ * anything. Each is its own chunk, fetched when its route is first reached. */
+const Wizard = React.lazy(() => import("@/screens/Wizard"));
+const Home = React.lazy(() => import("@/screens/Home"));
+const Settings = React.lazy(() => import("@/screens/Settings"));
+const WidgetBoard = React.lazy(() =>
+  import("@/widgets/board").then((m) => ({ default: m.WidgetBoard })),
+);
+
+function ScreenFallback() {
+  return (
+    <div className="grid min-h-48 place-items-center text-muted">
+      <Spinner label="Loading" />
+    </div>
+  );
+}
 
 /* The shell: sign-in gate, navigation, routes.
  *
@@ -149,7 +167,19 @@ function Shell() {
   // navigation, no dialog over the top. There is nothing behind it worth
   // showing yet, and it is a sequence the owner should not be able to wander
   // out of halfway.
-  if (inSetup) return <Wizard onDone={() => setSetupDone(true)} />;
+  if (inSetup) {
+    return (
+      <React.Suspense
+        fallback={
+          <div className="grid min-h-dvh place-items-center bg-ground text-ink">
+            <Spinner label="Loading setup" />
+          </div>
+        }
+      >
+        <Wizard onDone={() => setSetupDone(true)} />
+      </React.Suspense>
+    );
+  }
 
   if (gate === "unknown") {
     return (
@@ -172,8 +202,21 @@ function Shell() {
       >
         <SectionNav />
         <main className="min-w-0 flex-1">
+          <React.Suspense fallback={<ScreenFallback />}>
           <Routes>
-            <Route path="/" element={<Home widgets={<WidgetBoard />} showThemeSwitch={false} />} />
+            <Route
+              path="/"
+              element={
+                <Home
+                  widgets={
+                    <React.Suspense fallback={null}>
+                      <WidgetBoard />
+                    </React.Suspense>
+                  }
+                  showThemeSwitch={false}
+                />
+              }
+            />
             <Route path="/storage" element={<SettingsRoute pane="storage" />} />
             <Route path="/mesh" element={<SettingsRoute pane="mesh" />} />
             <Route path="/apps" element={<SettingsRoute pane="apps" />} />
@@ -181,6 +224,7 @@ function Shell() {
             <Route path="/settings/:pane" element={<SettingsRoute />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
+          </React.Suspense>
         </main>
       </div>
 

@@ -29,8 +29,11 @@ import { toast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
 import { addBuiltin, addCustom, hasBuiltin, MAX_WIDGETS, type BuiltinId } from "@/lib/widgets";
 import { CATALOGUE } from "./catalogue";
-import { CustomEditor } from "./custom-editor";
 import type { WidgetSpec } from "./spec";
+
+const CustomEditor = React.lazy(() =>
+  import("./custom-editor").then((m) => ({ default: m.CustomEditor })),
+);
 
 export interface GalleryProps {
   open: boolean;
@@ -196,14 +199,18 @@ export function WidgetGallery({ open, onOpenChange, count }: GalleryProps) {
         </DialogFooter>
       </Dialog>
 
-      <CustomEditor
-        open={open && editing}
-        onOpenChange={(next) => {
-          setEditing(next);
-          if (!next && !open) onOpenChange(false);
-        }}
-        onSave={save}
-      />
+      {editing && (
+        <React.Suspense fallback={null}>
+          <CustomEditor
+            open={open && editing}
+            onOpenChange={(next) => {
+              setEditing(next);
+              if (!next && !open) onOpenChange(false);
+            }}
+            onSave={save}
+          />
+        </React.Suspense>
+      )}
     </>
   );
 }
