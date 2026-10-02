@@ -29,6 +29,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton, SkeletonLine } from "@/components/ui/skeleton";
+import { t } from "@/lib/i18n";
+import { useLocale, useT } from "@/lib/i18n-react";
 import { cn, setCssVar } from "@/lib/utils";
 import type { WidgetInstance } from "@/lib/widgets";
 import { catalogueEntry, CUSTOM_REFRESH_MS, spanForKind, type WidgetSpan } from "./catalogue";
@@ -55,9 +57,9 @@ function resolve(instance: WidgetInstance): Runnable | { error: string } {
   if (instance.source.kind === "builtin") {
     const entry = catalogueEntry(instance.source.id);
     if (entry === undefined) {
-      return { error: "This widget is not part of this version of the box." };
+      return { error: t("widgets.tile.notInVersion") };
     }
-    return { run: entry.run, span: entry.span, refreshMs: entry.refreshMs, name: entry.name };
+    return { run: entry.run, span: entry.span, refreshMs: entry.refreshMs, name: t(entry.name) };
   }
 
   const spec = instance.source.spec;
@@ -69,7 +71,7 @@ function resolve(instance: WidgetInstance): Runnable | { error: string } {
       name: spec.title,
     };
   } catch (error) {
-    return { error: error instanceof Error ? error.message : "This widget could not be read." };
+    return { error: error instanceof Error ? error.message : t("widgets.tile.couldNotRead") };
   }
 }
 
@@ -86,7 +88,7 @@ function messageFor(error: unknown): string {
     const message = error.message.trim();
     return message.length > 160 ? `${message.slice(0, 157)}…` : message;
   }
-  return "This widget stopped working.";
+  return t("widgets.tile.stopped");
 }
 
 /* A returned value is checked before it is drawn.
@@ -118,7 +120,14 @@ export interface WidgetTileProps {
 }
 
 export function WidgetTile({ instance, index, total, onRemove, onMove }: WidgetTileProps) {
-  const resolved = React.useMemo(() => resolve(instance), [instance]);
+  const t = useT();
+  const locale = useLocale();
+  // The locale is a dependency: resolving names a built-in and may produce a
+  // parse error, both of which are text.
+  const resolved = React.useMemo(() => {
+    void locale;
+    return resolve(instance);
+  }, [instance, locale]);
   const [state, setState] = React.useState<RunState>({ status: "loading" });
   const [nonce, setNonce] = React.useState(0);
 
@@ -127,7 +136,7 @@ export function WidgetTile({ instance, index, total, onRemove, onMove }: WidgetT
 
   React.useEffect(() => {
     if (runnable === null) {
-      setState({ status: "failed", message: resolveError ?? "This widget could not be read." });
+      setState({ status: "failed", message: resolveError ?? t("widgets.tile.couldNotRead") });
       return;
     }
 
@@ -139,7 +148,7 @@ export function WidgetTile({ instance, index, total, onRemove, onMove }: WidgetT
         const value = await runnable.run(createSandbox({ signal: controller.signal }));
         if (!live) return;
         if (!isResult(value)) {
-          setState({ status: "failed", message: "This widget did not return anything to draw." });
+          setState({ status: "failed", message: t("widgets.tile.nothingToDraw") });
           return;
         }
         /* A refresh redraws the tile, which is never more urgent than a click
@@ -166,11 +175,13 @@ export function WidgetTile({ instance, index, total, onRemove, onMove }: WidgetT
       controller.abort();
       clearInterval(timer);
     };
+    /* `runnable` changes identity with the locale (see `resolved`), so a
+     * language change re-runs every tile and the built-ins' text follows. */
   }, [runnable, resolveError, nonce]);
 
   const title =
     instance.title ??
-    (state.status === "ready" ? state.result.title : (runnable?.name ?? "Widget"));
+    (state.status === "ready" ? state.result.title : (runnable?.name ?? t("widgets.tile.fallbackTitle")));
 
   const failed = state.status === "failed";
 
@@ -200,19 +211,19 @@ export function WidgetTile({ instance, index, total, onRemove, onMove }: WidgetT
 
         <div className="flex shrink-0 items-center gap-0.5">
           <IconButton
-            label={`Move ${title} earlier`}
+            label={t("widgets.tile.moveEarlier", { title })}
             icon={ArrowUp01Icon}
             disabled={index === 0}
             onClick={() => onMove(instance.id, "up")}
           />
           <IconButton
-            label={`Move ${title} later`}
+            label={t("widgets.tile.moveLater", { title })}
             icon={ArrowDown01Icon}
             disabled={index >= total - 1}
             onClick={() => onMove(instance.id, "down")}
           />
           <IconButton
-            label={`Remove ${title}`}
+            label={t("widgets.tile.remove", { title })}
             icon={Delete02Icon}
             onClick={() => onRemove(instance.id)}
           />
@@ -273,6 +284,7 @@ function TileSkeleton() {
  * the person who typed an expression into the Custom dialog — has to be able
  * to read what went wrong, and this box has no console to read it in. */
 function FailedBody({ message, onRetry }: { message: string; onRetry: () => void }) {
+  const t = useT();
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-start gap-2.5">
@@ -294,7 +306,7 @@ function FailedBody({ message, onRetry }: { message: string; onRetry: () => void
           color="currentColor"
           aria-hidden="true"
         />
-        Try again
+        {t("widgets.tile.tryAgain")}
       </Button>
     </div>
   );

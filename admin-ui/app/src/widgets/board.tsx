@@ -16,6 +16,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { DashboardSquare01Icon, PlusSignIcon } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
 import {
   getBoard,
@@ -39,11 +40,13 @@ const WidgetGallery = React.lazy(() =>
 export interface WidgetBoardProps {
   className?: string;
   /** Heading above the tiles. Pass null to drop it — the Overview screen has
-   *  its own heading and does not want a second one. */
+   *  its own heading and does not want a second one. Omitted, it is "Your
+   *  board" in the current language. */
   heading?: string | null;
 }
 
-export function WidgetBoard({ className, heading = "Your board" }: WidgetBoardProps) {
+export function WidgetBoard({ className, heading }: WidgetBoardProps) {
+  const t = useT();
   const board = React.useSyncExternalStore(subscribeBoard, getBoard, getServerBoard);
   const [galleryOpen, setGalleryOpen] = React.useState(false);
   // Stays mounted after the first open so the dialog can finish closing and
@@ -69,9 +72,11 @@ export function WidgetBoard({ className, heading = "Your board" }: WidgetBoardPr
     <section className={cn("flex flex-col gap-4", className)}>
       {heading !== null && (
         <div className="flex items-center gap-3">
-          <h2 className="text-[15px] font-semibold tracking-tight">{heading}</h2>
+          <h2 className="text-[15px] font-semibold tracking-tight">
+            {heading ?? t("widgets.board.heading")}
+          </h2>
           <span className="numeric text-[12px] text-faint">
-            {widgets.length} of {MAX_WIDGETS}
+            {t("widgets.board.count", { count: widgets.length, max: MAX_WIDGETS })}
           </span>
           <div className="flex-1" />
           <Button variant="secondary" size="sm" onClick={openGallery}>
@@ -82,7 +87,7 @@ export function WidgetBoard({ className, heading = "Your board" }: WidgetBoardPr
               color="currentColor"
               aria-hidden="true"
             />
-            Add a widget
+            {t("widgets.board.add")}
           </Button>
         </div>
       )}
@@ -114,6 +119,7 @@ export function WidgetBoard({ className, heading = "Your board" }: WidgetBoardPr
 }
 
 function EmptyBoard({ onAdd }: { onAdd: () => void }) {
+  const t = useT();
   return (
     <Card>
       <CardHeader className="items-start">
@@ -131,12 +137,8 @@ function EmptyBoard({ onAdd }: { onAdd: () => void }) {
             aria-hidden="true"
           />
         </span>
-        <CardTitle>Nothing on the board yet</CardTitle>
-        <CardDescription>
-          Add a widget to keep an eye on the things you care about: how much room is left, whether
-          the box has been answering, which apps are up. They live in this browser and change
-          nothing on the box.
-        </CardDescription>
+        <CardTitle>{t("widgets.board.emptyTitle")}</CardTitle>
+        <CardDescription>{t("widgets.board.emptyBody")}</CardDescription>
       </CardHeader>
       <CardContent>
         <Button onClick={onAdd}>
@@ -147,7 +149,7 @@ function EmptyBoard({ onAdd }: { onAdd: () => void }) {
             color="currentColor"
             aria-hidden="true"
           />
-          Add a widget
+          {t("widgets.board.add")}
         </Button>
       </CardContent>
     </Card>

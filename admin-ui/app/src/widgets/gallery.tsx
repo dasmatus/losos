@@ -26,6 +26,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { toast } from "@/components/ui/toast";
+import { useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
 import { addBuiltin, addCustom, hasBuiltin, MAX_WIDGETS, type BuiltinId } from "@/lib/widgets";
 import { CATALOGUE } from "./catalogue";
@@ -43,6 +44,7 @@ export interface GalleryProps {
 }
 
 export function WidgetGallery({ open, onOpenChange, count }: GalleryProps) {
+  const t = useT();
   const [editing, setEditing] = React.useState(false);
   const titleId = React.useId();
   const hintId = React.useId();
@@ -51,23 +53,23 @@ export function WidgetGallery({ open, onOpenChange, count }: GalleryProps) {
 
   const add = (id: BuiltinId, name: string): void => {
     if (addBuiltin(id) === null) {
-      toast.error("The board is full.", `Remove a widget first. ${MAX_WIDGETS} is the most.`);
+      toast.error(t("widgets.gallery.full"), t("widgets.gallery.fullHint", { max: MAX_WIDGETS }));
       return;
     }
-    toast.success(`${name} added.`);
+    toast.success(t("widgets.gallery.added", { name }));
   };
 
   const save = (spec: WidgetSpec): boolean => {
     try {
       if (addCustom(spec) === null) {
-        toast.error("The board is full.", `Remove a widget first. ${MAX_WIDGETS} is the most.`);
+        toast.error(t("widgets.gallery.full"), t("widgets.gallery.fullHint", { max: MAX_WIDGETS }));
         return false;
       }
     } catch (error) {
-      toast.error("That widget could not be added.", error instanceof Error ? error.message : "");
+      toast.error(t("widgets.gallery.notAdded"), error instanceof Error ? error.message : "");
       return false;
     }
-    toast.success(`${spec.title} added.`);
+    toast.success(t("widgets.gallery.added", { name: spec.title }));
     setEditing(false);
     onOpenChange(false);
     return true;
@@ -83,17 +85,15 @@ export function WidgetGallery({ open, onOpenChange, count }: GalleryProps) {
         dialogClassName="w-[min(44rem,calc(100vw-2rem))] max-w-[44rem]"
       >
         <DialogHeader>
-          <DialogTitle id={titleId}>Add a widget</DialogTitle>
-          <DialogDescription id={hintId}>
-            Widgets live in this browser. Adding one changes nothing on the box and starts nothing
-            running.
-          </DialogDescription>
+          <DialogTitle id={titleId}>{t("widgets.gallery.title")}</DialogTitle>
+          <DialogDescription id={hintId}>{t("widgets.gallery.description")}</DialogDescription>
         </DialogHeader>
 
         <DialogBody>
           <ul className="grid gap-3 sm:grid-cols-2">
             {CATALOGUE.map((entry) => {
               const already = hasBuiltin(entry.id);
+              const name = t(entry.name);
               return (
                 <li key={entry.id}>
                   <div
@@ -117,17 +117,17 @@ export function WidgetGallery({ open, onOpenChange, count }: GalleryProps) {
                           aria-hidden="true"
                         />
                       </span>
-                      <span className="text-[14px] font-semibold">{entry.name}</span>
+                      <span className="text-[14px] font-semibold">{name}</span>
                     </div>
 
-                    <p className="flex-1 text-[12.5px] leading-snug text-muted">{entry.blurb}</p>
+                    <p className="flex-1 text-[12.5px] leading-snug text-muted">{t(entry.blurb)}</p>
 
                     <Button
                       variant={already ? "ghost" : "secondary"}
                       size="sm"
                       className="self-start"
                       disabled={full}
-                      onClick={() => add(entry.id, entry.name)}
+                      onClick={() => add(entry.id, name)}
                     >
                       <HugeiconsIcon
                         icon={already ? CheckmarkCircle02Icon : PlusSignIcon}
@@ -136,7 +136,7 @@ export function WidgetGallery({ open, onOpenChange, count }: GalleryProps) {
                         color="currentColor"
                         aria-hidden="true"
                       />
-                      {already ? "Add another" : "Add"}
+                      {already ? t("widgets.gallery.addAnother") : t("widgets.gallery.add")}
                     </Button>
                   </div>
                 </li>
@@ -165,12 +165,11 @@ export function WidgetGallery({ open, onOpenChange, count }: GalleryProps) {
                       aria-hidden="true"
                     />
                   </span>
-                  <span className="text-[14px] font-semibold">Custom</span>
+                  <span className="text-[14px] font-semibold">{t("widgets.gallery.custom")}</span>
                 </div>
 
                 <p className="flex-1 text-[12.5px] leading-snug text-muted">
-                  Build your own from one of the readings this box publishes. Pick a shape, write
-                  what to show, and see it before you keep it.
+                  {t("widgets.gallery.customBlurb")}
                 </p>
 
                 <Button
@@ -180,7 +179,7 @@ export function WidgetGallery({ open, onOpenChange, count }: GalleryProps) {
                   disabled={full}
                   onClick={() => setEditing(true)}
                 >
-                  Build one
+                  {t("widgets.gallery.buildOne")}
                 </Button>
               </div>
             </li>
@@ -190,11 +189,11 @@ export function WidgetGallery({ open, onOpenChange, count }: GalleryProps) {
         <DialogFooter>
           {full && (
             <p className="mr-auto text-[12px] text-warn">
-              The board holds {MAX_WIDGETS}. Remove one to add another.
+              {t("widgets.gallery.holds", { max: MAX_WIDGETS })}
             </p>
           )}
           <Button variant="secondary" onClick={() => onOpenChange(false)}>
-            Done
+            {t("widgets.gallery.done")}
           </Button>
         </DialogFooter>
       </Dialog>

@@ -1,6 +1,7 @@
 import * as React from "react";
 import { FieldError, Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
+import { Rich, useT } from "@/lib/i18n-react";
 import { HourStrip } from "./hour-strip";
 import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText, StackRow } from "./rows";
 import { describeWindow } from "./window";
@@ -24,6 +25,7 @@ import type { SettingsForm } from "./use-settings-form";
  */
 
 export function MeshPane({ form }: { form: SettingsForm }) {
+  const t = useT();
   const joinId = React.useId();
   const shareId = React.useId();
   const startId = React.useId();
@@ -46,10 +48,10 @@ export function MeshPane({ form }: { form: SettingsForm }) {
   return (
     <>
       <PaneSection>
-        <GroupTitle>Other boxes</GroupTitle>
+        <GroupTitle>{t("panes.mesh.otherBoxes")}</GroupTitle>
         <Group>
           <Row last>
-            <RowText htmlFor={joinId} title="Join the mesh" />
+            <RowText htmlFor={joinId} title={t("panes.mesh.join")} />
             <Switch
               id={joinId}
               checked={joined}
@@ -58,21 +60,17 @@ export function MeshPane({ form }: { form: SettingsForm }) {
             />
           </Row>
         </Group>
-        <GroupCaption>
-          The mesh is other people&apos;s boxes, running the same system as this one. Joining lets
-          them keep copies of your files and lets you keep copies of theirs, and it is what makes
-          the hours below worth anything.
-        </GroupCaption>
+        <GroupCaption>{t("panes.mesh.joinCaption")}</GroupCaption>
       </PaneSection>
 
       <PaneSection>
-        <GroupTitle>Spare time</GroupTitle>
+        <GroupTitle>{t("panes.mesh.spareTime")}</GroupTitle>
         <Group>
           <Row>
             <RowText
               htmlFor={shareId}
-              title="Lend this box while I sleep"
-              detail={windowDisabled && !disabled ? "Join the mesh first." : undefined}
+              title={t("panes.mesh.lend")}
+              detail={windowDisabled && !disabled ? t("panes.mesh.joinFirst") : undefined}
             />
             <Switch
               id={shareId}
@@ -93,10 +91,10 @@ export function MeshPane({ form }: { form: SettingsForm }) {
             {/* No `htmlFor` here: the row heads a PAIR of fields, and each
                 carries its own name below. Pointing this one at the start
                 field would name it "Hours Lend from" to a screen reader. */}
-            <RowText title="Hours" />
+            <RowText title={t("panes.mesh.hours")} />
             <div className="flex items-center gap-2">
               <label htmlFor={startId} className="sr-only">
-                Lend from
+                {t("panes.mesh.lendFrom")}
               </label>
               <Input
                 id={startId}
@@ -110,9 +108,9 @@ export function MeshPane({ form }: { form: SettingsForm }) {
                 }
                 onChange={(event) => form.set("computeWindowStart", event.target.value)}
               />
-              <span className="text-[12.5px] text-muted">until</span>
+              <span className="text-[12.5px] text-muted">{t("panes.mesh.until")}</span>
               <label htmlFor={endId} className="sr-only">
-                Lend until
+                {t("panes.mesh.lendUntil")}
               </label>
               <Input
                 id={endId}
@@ -135,12 +133,7 @@ export function MeshPane({ form }: { form: SettingsForm }) {
         </FieldError>
 
         <GroupCaption>
-          These are the hours on <em>your</em> clock, and they travel with the setting. The box that
-          hands out the work is told which time zone you meant, so the window does not slide by an
-          hour when the clocks change. The end is the moment it stops. Set it to 07:00 and seven
-          o&apos;clock is yours again. An end earlier than the start simply runs through midnight,
-          which is what &ldquo;while I sleep&rdquo; usually means. Work already running is left to
-          finish; nothing new starts once the window shuts.
+          <Rich k="panes.mesh.windowCaption" vars={{ your: <em>{t("panes.mesh.your")}</em> }} />
         </GroupCaption>
       </PaneSection>
     </>

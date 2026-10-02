@@ -10,15 +10,17 @@
  * is decoration to a sighted user and nothing at all to anyone else.
  */
 
+import { useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
 import { STEPS, STEP_COUNT, stepIndex, stepTitle, type StepId } from "./steps";
 
 export function StepRail({ current }: { current: StepId }) {
+  const t = useT();
   const index = stepIndex(current);
 
   return (
     <div className="flex flex-col gap-2">
-      <ol aria-label="Setup progress" className="flex gap-1.5">
+      <ol aria-label={t("wizard.rail.label")} className="flex gap-1.5">
         {STEPS.map((step, position) => (
           <li
             key={step.id}
@@ -35,8 +37,11 @@ export function StepRail({ current }: { current: StepId }) {
               )}
             />
             <span className="sr-only">
-              {step.rail}
-              {position < index ? " (done)" : position === index ? " (current)" : ""}
+              {position < index
+                ? t("wizard.rail.done", { step: t(step.rail) })
+                : position === index
+                  ? t("wizard.rail.current", { step: t(step.rail) })
+                  : t(step.rail)}
             </span>
           </li>
         ))}
@@ -44,7 +49,7 @@ export function StepRail({ current }: { current: StepId }) {
 
       <p className="text-[12.5px] leading-snug text-faint">
         <span className="numeric">
-          Step {index + 1} of {STEP_COUNT}
+          {t("wizard.rail.position", { current: index + 1, total: STEP_COUNT })}
         </span>
         <span aria-hidden="true"> &middot; </span>
         <span className="text-muted">{stepTitle(current)}</span>
