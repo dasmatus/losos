@@ -205,7 +205,7 @@ pkgs.testers.nixosTest {
     )
     installer.succeed(
         "timeout 10s qemu-system-x86_64 -machine pc -accel tcg -m 128 "
-        "-display none -monitor none -serial stdio "
+        "-display none -monitor none -serial stdio -no-shutdown "
         "-drive file=/dev/vdb,format=raw,if=ide,readonly=on -boot order=c "
         "> /tmp/bios-boot.log 2>&1; status=$?; "
         "test $status -eq 124 && grep -q BIOS_GRUB_BOOT_OK /tmp/bios-boot.log"
