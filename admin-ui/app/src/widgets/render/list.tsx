@@ -11,6 +11,7 @@
  */
 
 import { StatusDot, Badge } from "@/components/ui/badge";
+import { useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
 import type { ListData, Texture, Tone } from "../types";
 
@@ -31,10 +32,11 @@ const BADGE_VARIANT: Record<Texture, "local" | "mesh" | "neutral"> = {
 const VISIBLE_ROWS = 8;
 
 export function ListView({ data }: { data: ListData }) {
+  const t = useT();
   if (data.items.length === 0) {
     return (
       <p className="text-[12.5px] leading-snug text-faint">
-        {data.empty ?? "Nothing to show yet."}
+        {data.empty ?? t("widgets.list.empty")}
       </p>
     );
   }
@@ -73,7 +75,7 @@ export function ListView({ data }: { data: ListData }) {
 
       {hidden > 0 && (
         <p className="text-[11.5px] text-faint">
-          {hidden} more not shown.
+          {t("widgets.list.moreHidden", { count: hidden })}
         </p>
       )}
     </div>

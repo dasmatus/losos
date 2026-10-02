@@ -1,6 +1,7 @@
 import * as React from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Loading03Icon } from "@hugeicons/core-free-icons";
+import { useT } from "@/lib/i18n-react";
 import { cn, setCssVar } from "@/lib/utils";
 
 export interface ProgressProps extends React.ComponentPropsWithoutRef<"div"> {
@@ -21,6 +22,7 @@ export interface ProgressProps extends React.ComponentPropsWithoutRef<"div"> {
  * lososd reports 0 for the whole of a rebuild and 100 on success, so in
  * practice the indeterminate band is what a rebuild looks like. */
 export function Progress({ value = null, label, className, ...props }: ProgressProps) {
+  const t = useT();
   const fill = React.useRef<HTMLDivElement>(null);
   const clamped = value === null ? null : Math.min(100, Math.max(0, Math.round(value)));
 
@@ -35,7 +37,7 @@ export function Progress({ value = null, label, className, ...props }: ProgressP
       aria-valuemin={0}
       aria-valuemax={100}
       aria-valuenow={clamped ?? undefined}
-      aria-valuetext={clamped === null ? "Working" : `${clamped}%`}
+      aria-valuetext={clamped === null ? t("ui.working") : `${clamped}%`}
       className={cn("h-1.5 w-full overflow-hidden rounded-full bg-sunk", className)}
       {...props}
     >
@@ -60,7 +62,8 @@ export interface SpinnerProps extends React.ComponentPropsWithoutRef<"span"> {
 }
 
 /** A spinner. The label is the only thing a screen reader gets. */
-export function Spinner({ size = 18, label = "Working", className, ...props }: SpinnerProps) {
+export function Spinner({ size = 18, label, className, ...props }: SpinnerProps) {
+  const t = useT();
   return (
     <span role="status" className={cn("inline-flex items-center", className)} {...props}>
       <HugeiconsIcon
@@ -71,7 +74,7 @@ export function Spinner({ size = 18, label = "Working", className, ...props }: S
         className="animate-spin-slow"
         aria-hidden="true"
       />
-      <span className="sr-only">{label}</span>
+      <span className="sr-only">{label ?? t("ui.working")}</span>
     </span>
   );
 }
