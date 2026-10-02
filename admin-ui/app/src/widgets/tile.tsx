@@ -151,10 +151,13 @@ export function WidgetTile({ instance, index, total, onRemove, onMove }: WidgetT
           setState({ status: "failed", message: t("widgets.tile.nothingToDraw") });
           return;
         }
-        setState({ status: "ready", result: value });
+        /* A refresh redraws the tile, which is never more urgent than a click
+         * or a keystroke. As a transition React yields to input between
+         * slices of the render instead of holding the thread for all of it. */
+        React.startTransition(() => setState({ status: "ready", result: value }));
       } catch (error) {
         if (!live) return;
-        setState({ status: "failed", message: messageFor(error) });
+        React.startTransition(() => setState({ status: "failed", message: messageFor(error) }));
       }
     };
 
