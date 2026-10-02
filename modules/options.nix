@@ -1001,24 +1001,33 @@ in
       '';
     };
 
-    edge.market.stripeSecretKeyFile = lib.mkOption {
+    edge.market.stripeSecretKeySealed = lib.mkOption {
       type = secretPath;
-      default = "/var/secrets/losos-stripe-secret-key";
+      default = "/var/secrets/losos-stripe-secret-key.cred";
       description = ''
         The platform's Stripe secret (`sk_...`) or restricted (`rk_...`) key,
-        0600. Read on every request, so rotating it needs no restart. A file of
-        any other shape is refused before anything is sent to Stripe.
+        **sealed** with `systemd-creds` under the credential name
+        `stripe-secret-key`. The key is never stored in plaintext on disk: the
+        registrar unit decrypts this blob into its tmpfs RuntimeDirectory at
+        start, so a copy of `/var` carries ciphertext only. Seal it from stdin
+        so the plaintext never touches the disk either (see wiki/Market.md).
+        Rotating it means sealing a new blob and restarting the registrar. A
+        blob that is missing or will not decrypt leaves the market answering
+        503 and does not stop the rest of the registrar. A key of any other
+        shape is refused before anything is sent to Stripe.
       '';
     };
 
-    edge.market.webhookSecretFile = lib.mkOption {
+    edge.market.webhookSecretSealed = lib.mkOption {
       type = secretPath;
-      default = "/var/secrets/losos-stripe-webhook-secret";
+      default = "/var/secrets/losos-stripe-webhook-secret.cred";
       description = ''
-        The signing secrets (`whsec_...`), one per line, 0600, of the Stripe
-        webhook endpoints that point at
-        `https://register.<publicDomain>/market/webhook`. Stripe needs two:
-        one for events on the platform account
+        The signing secrets (`whsec_...`), one per line, of the Stripe webhook
+        endpoints that point at
+        `https://register.<publicDomain>/market/webhook`, **sealed** with
+        `systemd-creds` under the credential name `stripe-webhook-secret` and
+        unsealed into tmpfs like `stripeSecretKeySealed`. Stripe needs two
+        endpoints: one for events on the platform account
         (checkout.session.completed, checkout.session.async_payment_succeeded,
         checkout.session.expired) and one for events on Connected accounts
         (account.updated). The registrar accepts a signature from either.
@@ -1177,8 +1186,8 @@ in
         "losos.cluster.tokenFile" = config.losos.cluster.tokenFile;
         "losos.shared.fscrypt.keyFile" = config.losos.shared.fscrypt.keyFile;
         "losos.edge.cluster.agentTokenFile" = config.losos.edge.cluster.agentTokenFile;
-        "losos.edge.market.stripeSecretKeyFile" = config.losos.edge.market.stripeSecretKeyFile;
-        "losos.edge.market.webhookSecretFile" = config.losos.edge.market.webhookSecretFile;
+        "losos.edge.market.stripeSecretKeySealed" = config.losos.edge.market.stripeSecretKeySealed;
+        "losos.edge.market.webhookSecretSealed" = config.losos.edge.market.webhookSecretSealed;
       }
       // lib.optionalAttrs (config.losos.edge.noisePrivateKeyFile != null) {
         "losos.edge.noisePrivateKeyFile" = config.losos.edge.noisePrivateKeyFile;
