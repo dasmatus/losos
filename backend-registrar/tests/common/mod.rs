@@ -169,6 +169,10 @@ pub struct Edge {
     pub client: reqwest::Client,
     stop: Option<oneshot::Sender<()>>,
     join: Option<tokio::task::JoinHandle<miette::Result<()>>>,
+    /// The Stripe gate the market talks to, when the market is on. The
+    /// registrar itself never sees the key files this writes.
+    gate_stop: Option<oneshot::Sender<()>>,
+    gate_join: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl Edge {
@@ -300,14 +304,31 @@ impl Edge {
             dir.path_str("noise.pub")
         });
 
+        let mut gate_stop = None;
+        let mut gate_join = None;
         let market = stripe_api.map(|stripe_api| {
             std::fs::write(dir.join("stripe.key"), STRIPE_KEY).expect("write stripe key");
             std::fs::write(dir.join("webhook.secret"), WEBHOOK_SECRET).expect("write webhook");
-            Box::new(losos_registrar::market::MarketOpts {
-                state_file: dir.path_str("market.json"),
+            let gate = losos_registrar::stripe_gate::GateOpts {
+                socket: dir.path_str("gate.sock"),
                 stripe_key_file: dir.path_str("stripe.key"),
                 webhook_secret_file: dir.path_str("webhook.secret"),
                 stripe_api,
+                currency: "eur".to_string(),
+            };
+            let listener = losos_registrar::stripe_gate::bind(&gate.socket).expect("bind gate");
+            let (stop, rx) = oneshot::channel::<()>();
+            gate_stop = Some(stop);
+            gate_join = Some(tokio::spawn(losos_registrar::stripe_gate::serve(
+                listener,
+                gate,
+                async move {
+                    let _ = rx.await;
+                },
+            )));
+            Box::new(losos_registrar::market::MarketOpts {
+                state_file: dir.path_str("market.json"),
+                gate_socket: dir.path_str("gate.sock"),
                 return_url: RETURN_URL.to_string(),
                 currency: "eur".to_string(),
                 fee_bps: losos_registrar::market::DEFAULT_FEE_BPS,
@@ -362,6 +383,8 @@ impl Edge {
             client: reqwest::Client::new(),
             stop: Some(stop),
             join: Some(join),
+            gate_stop,
+            gate_join,
         };
         // `serve` does its registry load and first reconcile pass *before* it
         // starts accepting, so a successful /health is proof both finished —
@@ -482,7 +505,19 @@ impl Edge {
 
     /// Stop the server and wait for `serve` to return, so a panic inside it
     /// fails the test instead of vanishing with the runtime.
+    /// Stop the Stripe gate while the registrar keeps running: the edge whose
+    /// key was never sealed, or whose gate could not unseal it.
+    pub async fn stop_gate(&mut self) {
+        if let Some(stop) = self.gate_stop.take() {
+            let _ = stop.send(());
+        }
+        if let Some(join) = self.gate_join.take() {
+            let _ = tokio::time::timeout(Duration::from_secs(5), join).await;
+        }
+    }
+
     pub async fn shutdown(mut self) {
+        self.stop_gate().await;
         if let Some(stop) = self.stop.take() {
             let _ = stop.send(());
         }

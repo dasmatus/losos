@@ -143,7 +143,7 @@ struct AppState {
     notify: Arc<Notify>,
     tenants: Arc<TenantCache>,
     limiter: Arc<Semaphore>,
-    /// `None` unless `--market-stripe-key-file` was given.
+    /// `None` unless `--market-gate-socket` was given.
     market: Option<Arc<Market>>,
 }
 
@@ -288,7 +288,7 @@ where
         // rule, so this one is on the public internet too.
         .route("/cluster/join", post(cluster_join))
         // The optional Stripe Connect market. Every route answers 503 unless
-        // the edge was started with `--market-stripe-key-file`. Browsing is
+        // the edge was started with `--market-gate-socket`. Browsing is
         // anonymous and shows no seller identity; everything else takes the
         // appliance token like the routes above; the webhook is authenticated
         // by Stripe's signature instead and needs a larger body than the rest.
@@ -323,7 +323,7 @@ where
 }
 
 /// Resolve on SIGTERM (systemd's stop signal) or SIGINT.
-async fn shutdown_signal() {
+pub(crate) async fn shutdown_signal() {
     let interrupt = async {
         let _ = tokio::signal::ctrl_c().await;
     };
@@ -605,12 +605,26 @@ async fn market_account(
     Ok(Json(market.account(&req.appliance_id, &sharing).await))
 }
 
+/// `box_uuid` is the box's own UUID, written onto its Stripe account. Optional
+/// so a box that predates it still onboards.
+#[derive(Debug, Deserialize)]
+struct MarketOnboardReq {
+    #[serde(flatten)]
+    auth: MarketAuth,
+    #[serde(default)]
+    box_uuid: Option<String>,
+}
+
 async fn market_onboard(
     State(st): State<AppState>,
-    Json(req): Json<MarketAuth>,
+    Json(req): Json<MarketOnboardReq>,
 ) -> Result<Json<OnboardView>, ApiError> {
-    let market = market_tenant(&st, &req).await?;
-    Ok(Json(market.onboard(&req.appliance_id).await?))
+    let market = market_tenant(&st, &req.auth).await?;
+    Ok(Json(
+        market
+            .onboard(&req.auth.appliance_id, req.box_uuid.as_deref())
+            .await?,
+    ))
 }
 
 async fn market_list(

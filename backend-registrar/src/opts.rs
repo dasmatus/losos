@@ -7,6 +7,7 @@ use std::time::Duration;
 use miette::{miette, IntoDiagnostic, Result};
 
 use crate::market::{MarketOpts, DEFAULT_FEE_BPS, MAX_FEE_BPS};
+use crate::stripe_gate::GateOpts;
 
 fn arg<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
     args.iter()
@@ -106,7 +107,7 @@ pub struct ServeOpts {
     /// Where the reconciler publishes the per-node compute windows for the
     /// edge's `losos-mesh-taint.service` to read.
     pub compute_windows_file: String,
-    /// The Stripe Connect market. `None` — no `--market-stripe-key-file` — and
+    /// The Stripe Connect market. `None` — no `--market-gate-socket` — and
     /// every `/market/*` route answers 503; the rest of the API is unchanged.
     pub market: Option<Box<MarketOpts>>,
 }
@@ -177,12 +178,13 @@ pub enum Mode {
     Announce(AnnounceOpts),
     Seed(SeedOpts),
     Join(JoinOpts),
+    StripeGate(GateOpts),
 }
 
 pub fn parse(args: Vec<String>) -> Result<Mode> {
     if args.is_empty() {
         return Err(miette!(
-            "usage: losos-registrar serve|announce|seed|join ..."
+            "usage: losos-registrar serve|announce|seed|join|stripe-gate ..."
         ));
     }
     let mode = &args[0];
@@ -263,21 +265,43 @@ pub fn parse(args: Vec<String>) -> Result<Mode> {
             window_tz: parse_tz(arg(&rest, "--window-tz").unwrap_or("UTC"))?.to_string(),
             expect_server_addr: arg(&rest, "--expect-server-addr").map(str::to_string),
         })),
+        "stripe-gate" => {
+            let currency = arg(&rest, "--currency").unwrap_or("eur");
+            if !valid_currency(currency) {
+                return Err(miette!(
+                    "bad --currency {currency:?}; expected a lowercase ISO 4217 code"
+                ));
+            }
+            Ok(Mode::StripeGate(GateOpts {
+                socket: req(&rest, "--socket")?.to_string(),
+                stripe_key_file: req(&rest, "--stripe-key-file")?.to_string(),
+                webhook_secret_file: req(&rest, "--webhook-secret-file")?.to_string(),
+                stripe_api: arg(&rest, "--stripe-api")
+                    .unwrap_or("https://api.stripe.com")
+                    .to_string(),
+                currency: currency.to_string(),
+            }))
+        }
         other => Err(miette!(
-            "unknown subcommand {other:?}; expected serve|announce|seed|join"
+            "unknown subcommand {other:?}; expected serve|announce|seed|join|stripe-gate"
         )),
     }
 }
 
-/// The `--market-*` flags. Enabled by `--market-stripe-key-file`; the webhook
-/// secret and the return URL are then required, because a market that can take
-/// payment but cannot hear about it would charge buyers and never fulfil.
+fn valid_currency(c: &str) -> bool {
+    c.len() == 3 && c.bytes().all(|b| b.is_ascii_lowercase())
+}
+
+/// The `--market-*` flags. Enabled by `--market-gate-socket`, the Unix socket
+/// of the Stripe gate (`stripe-gate`), which alone holds the key and the
+/// webhook secrets; the return URL is then required, because a market that can
+/// take payment but has nowhere to send the buyer back to would be half-made.
 fn parse_market(args: &[String]) -> Result<Option<Box<MarketOpts>>> {
-    let Some(stripe_key_file) = arg(args, "--market-stripe-key-file") else {
+    let Some(gate_socket) = arg(args, "--market-gate-socket") else {
         return Ok(None);
     };
     let currency = arg(args, "--market-currency").unwrap_or("eur");
-    if currency.len() != 3 || !currency.bytes().all(|b| b.is_ascii_lowercase()) {
+    if !valid_currency(currency) {
         return Err(miette!(
             "bad --market-currency {currency:?}; expected a lowercase ISO 4217 code"
         ));
@@ -301,11 +325,7 @@ fn parse_market(args: &[String]) -> Result<Option<Box<MarketOpts>>> {
         state_file: arg(args, "--market-state-file")
             .unwrap_or("/var/lib/losos-registrar/market.json")
             .to_string(),
-        stripe_key_file: stripe_key_file.to_string(),
-        webhook_secret_file: req(args, "--market-webhook-secret-file")?.to_string(),
-        stripe_api: arg(args, "--market-stripe-api")
-            .unwrap_or("https://api.stripe.com")
-            .to_string(),
+        gate_socket: gate_socket.to_string(),
         return_url: return_url.to_string(),
         currency: currency.to_string(),
         fee_bps,

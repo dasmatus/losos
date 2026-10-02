@@ -16,8 +16,11 @@
 //!     start before the reconciler's first pass; a no-op if the file already
 //!     exists, since `serve` then owns it.
 //!   * (`serve` also hosts the optional Stripe Connect storage/compute market —
-//!     see [`market`]; its routes answer 503 unless `--market-stripe-key-file`
-//!     is given.)
+//!     see [`market`]; its routes answer 503 unless `--market-gate-socket`
+//!     is given. The Stripe key is not held by `serve` at all: see
+//!     [`stripe_gate`].)
+//!   * `stripe-gate` — the separate process that holds the Stripe key and does
+//!     the few Stripe calls the market needs, for `serve`, over a Unix socket.
 //!   * `join` — runs once per boot on the appliance, before the rke2 agent.
 //!     POSTs `/cluster/join` with the same per-appliance token `announce`
 //!     uses, and writes the mesh node token the edge returns. Bounded retry,
@@ -51,6 +54,7 @@ pub mod opts;
 pub mod registry;
 pub mod seed;
 pub mod server;
+pub mod stripe_gate;
 pub mod window;
 pub use config::{desired_config, EdgeOpts, Files, TenantView};
 pub use error::{ApiError, RegistryError};
