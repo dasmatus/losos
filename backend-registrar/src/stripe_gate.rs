@@ -166,10 +166,12 @@ impl StripeClient {
 
     /// Whether an existing account can already receive transfers.
     async fn account_ready(&self, account_id: &str) -> Result<bool, MarketError> {
-        let path = format!("/v1/accounts/{account_id}");
+        let path = "/v1/accounts";
         let body = self
             .send(
-                self.http.get(format!("{}{path}", self.api)),
+                self.http
+                    .get(format!("{}{path}", self.api))
+                    .query(&[("ids[]", account_id), ("limit", "1")]),
                 &format!("GET {path}"),
             )
             .await?;
