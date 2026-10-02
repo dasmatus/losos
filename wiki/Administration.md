@@ -22,8 +22,18 @@ wizard walks you through that.
 
 `lososd` writes a random 64-hex-character token to
 `/var/secrets/losos-admin-token` (mode 0600) on first start. The token can
-change any setting, so it is equivalent to root. To reset it, delete the file
-and restart `lososd`; editing it by hand does not work.
+change any setting, so it is equivalent to root.
+
+On a new, unclaimed box, the first LAN caller to submit `POST /api/setup/claim`
+sets the owner password and receives the token in the response. This route
+requires no token, but stops accepting claims once the box has an owner. Set up
+the box only on a trusted LAN; the first caller becomes its owner. The token is
+handed back only once and cannot be fetched again through the UI.
+
+To rotate the token, write a new value of exactly 64 lowercase hex characters
+to the token file and restart `lososd`. Alternatively, delete the file and
+restart the daemon to mint a random replacement. Deleting it requires local
+file access to retrieve the new token; a claimed UI cannot fetch it.
 
 ## Settings
 
