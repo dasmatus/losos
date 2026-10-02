@@ -1,3 +1,4 @@
+import { useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
 import { describeWindow, hourCells } from "./window";
 
@@ -28,6 +29,7 @@ export interface HourStripProps {
 const TICK_EVERY = 6;
 
 export function HourStrip({ start, end, muted = false }: HourStripProps) {
+  useT(); // describeWindow below speaks the language on screen
   const cells = hourCells(start, end);
 
   return (

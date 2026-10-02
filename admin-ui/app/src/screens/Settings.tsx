@@ -1,6 +1,7 @@
 import * as React from "react";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import { Alert02Icon, SquareLock01Icon } from "@hugeicons/core-free-icons";
+import { useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
 import { ApplyBar } from "./settings/apply-bar";
 import { AboutPane } from "./settings/pane-about";
@@ -43,6 +44,7 @@ export interface SettingsProps {
 }
 
 export default function Settings({ pane, onPaneChange }: SettingsProps) {
+  const t = useT();
   const [ownPane, setOwnPane] = React.useState<SettingsPaneId>(DEFAULT_PANE);
   const current = pane ?? ownPane;
 
@@ -63,7 +65,7 @@ export default function Settings({ pane, onPaneChange }: SettingsProps) {
       <Sidebar current={current} onSelect={select} />
 
       <div className="min-w-0 flex-1">
-        <PaneHeader title={meta.label} summary={meta.summary} />
+        <PaneHeader title={t(meta.labelKey)} summary={t(meta.summaryKey)} />
 
         {form.locked && <LockedNotice />}
         {form.loadError !== null && <LoadErrorNotice message={form.loadError} />}
@@ -123,18 +125,19 @@ function Pane({
  * the dialog is ever made dismissible. Every control in every pane is already
  * disabled on `form.locked`; this says why. */
 function LockedNotice() {
+  const t = useT();
   return (
     <Notice icon={SquareLock01Icon} tone="muted">
-      Paste the admin key to change anything here. Nothing on this screen can be read or written
-      without it.
+      {t("settings.notice.locked")}
     </Notice>
   );
 }
 
 function LoadErrorNotice({ message }: { message: string }) {
+  const t = useT();
   return (
     <Notice icon={Alert02Icon} tone="crit">
-      This box&apos;s settings could not be read: {message}
+      {t("settings.notice.loadError", { message })}
     </Notice>
   );
 }

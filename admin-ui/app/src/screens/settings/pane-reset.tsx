@@ -10,6 +10,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { useT } from "@/lib/i18n-react";
 import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText } from "./rows";
 import type { SettingsForm } from "./use-settings-form";
 
@@ -28,6 +29,7 @@ import type { SettingsForm } from "./use-settings-form";
  */
 
 export function ResetPane({ form }: { form: SettingsForm }) {
+  const t = useT();
   const [confirming, setConfirming] = React.useState(false);
   const titleId = React.useId();
   const bodyId = React.useId();
@@ -37,23 +39,19 @@ export function ResetPane({ form }: { form: SettingsForm }) {
   return (
     <>
       <PaneSection>
-        <GroupTitle>Start over</GroupTitle>
+        <GroupTitle>{t("panes.reset.startOver")}</GroupTitle>
         <Group className="border-crit/35">
           <Row last>
             <RowText
-              title="Put every setting back"
-              detail="The name, the network, the mesh, the apps. All of it, back to the way this box came."
+              title={t("panes.reset.title")}
+              detail={t("panes.reset.detail")}
             />
             <Button variant="destructive" disabled={blocked} onClick={() => setConfirming(true)}>
-              Reset…
+              {t("panes.reset.button")}
             </Button>
           </Row>
         </Group>
-        <GroupCaption>
-          Your files, your photos and your repositories are not touched. This only undoes the
-          choices made on this screen. The box rebuilds itself afterwards and comes back under its
-          original name, so the address you use to reach it will change back too.
-        </GroupCaption>
+        <GroupCaption>{t("panes.reset.caption")}</GroupCaption>
       </PaneSection>
 
       <Dialog
@@ -72,31 +70,31 @@ export function ResetPane({ form }: { form: SettingsForm }) {
               className="text-crit"
               aria-hidden="true"
             />
-            Put every setting back?
+            {t("panes.reset.dialogTitle")}
           </DialogTitle>
           <DialogDescription id={bodyId}>
-            This cannot be undone from here, and there is no other way into this box.
+            {t("panes.reset.dialogBody")}
           </DialogDescription>
         </DialogHeader>
         <DialogBody>
           <ul className="flex flex-col gap-1.5 text-[13px] leading-snug text-muted">
             <li className="flex gap-2">
               <span aria-hidden="true" className="mt-2 size-1.5 shrink-0 rounded-full bg-crit" />
-              Every setting goes back to its original value, including the name this box answers to.
+              {t("panes.reset.goes")}
             </li>
             <li className="flex gap-2">
               <span aria-hidden="true" className="mt-2 size-1.5 shrink-0 rounded-full bg-ok" />
-              Your files and repositories stay exactly where they are.
+              {t("panes.reset.stays")}
             </li>
             <li className="flex gap-2">
               <span aria-hidden="true" className="mt-2 size-1.5 shrink-0 rounded-full bg-faint" />
-              The box rebuilds itself, which takes a few minutes. It stays reachable while it works.
+              {t("panes.reset.rebuilds")}
             </li>
           </ul>
         </DialogBody>
         <DialogFooter>
           <Button variant="ghost" onClick={() => setConfirming(false)}>
-            Keep my settings
+            {t("panes.reset.keep")}
           </Button>
           <Button
             variant="destructive"
@@ -105,7 +103,7 @@ export function ResetPane({ form }: { form: SettingsForm }) {
               form.factoryReset();
             }}
           >
-            Put everything back
+            {t("panes.reset.confirm")}
           </Button>
         </DialogFooter>
       </Dialog>

@@ -20,8 +20,10 @@
 
 import * as React from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { t } from "@/lib/i18n";
+import { useLocale, useT } from "@/lib/i18n-react";
 import { cn, setCssVar } from "@/lib/utils";
-import { DASH, formatLongDate, parseDayKey } from "../format";
+import { dateFormat, DASH, fmt, formatLongDate, parseDayKey } from "../format";
 import type { HeatmapData, HeatmapDay } from "../types";
 import "../widgets.css";
 
@@ -32,11 +34,20 @@ const ROWS = 7;
 /* Monday first. The box ships Europe/Berlin and the owner is reading a
  * calendar, not a GitHub profile; a week that starts on Sunday looks wrong to
  * most of the people this appliance is for. */
-const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
 /** Only three labels fit beside 10px rows without crowding. */
 const SHOWN_WEEKDAYS = new Set([0, 2, 4]);
 
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+/* Weekday and month names come from Intl in the current language, read at
+ * render — a fixed English list would be the one untranslated corner of the
+ * board. 2024-01-01 was a Monday, so day i of that week is weekday i. */
+function weekdayNames(): string[] {
+  const format = dateFormat("weekday");
+  return Array.from({ length: 7 }, (_, i) => format.format(new Date(2024, 0, 1 + i)));
+}
+
+function monthName(month: number): string {
+  return dateFormat("month").format(new Date(2024, month, 1));
+}
 
 // ── Intensity ─────────────────────────────────────────────────────────────
 
@@ -168,17 +179,22 @@ function buildGrid(days: readonly HeatmapDay[]): Grid {
         label = "";
       } else if (record === undefined || record.value === null) {
         kind = "none";
-        label = `${formatLongDate(stamp)}: not watched`;
+        label = t("widgets.heatmap.cellNotWatched", { date: formatLongDate(stamp) });
       } else if (record.value <= 0) {
         kind = "quiet";
-        label = `${formatLongDate(stamp)}: did not answer`;
+        label = t("widgets.heatmap.cellQuiet", { date: formatLongDate(stamp) });
       } else {
         kind = "up";
         level = levelOf(record.value);
-        label = `${formatLongDate(stamp)}: ${(record.value * 100).toFixed(1)}% answered`;
+        label = t("widgets.heatmap.cellAnswered", {
+          date: formatLongDate(stamp),
+          pct: fmt.percent(record.value, 1),
+        });
       }
 
-      if (record?.note !== undefined) label = `${formatLongDate(stamp)}: ${record.note}`;
+      if (record?.note !== undefined) {
+        label = t("widgets.heatmap.cellNote", { date: formatLongDate(stamp), note: record.note });
+      }
 
       cells.push({ key: stamp, date: stamp, kind, level, label });
     }
@@ -188,7 +204,7 @@ function buildGrid(days: readonly HeatmapDay[]): Grid {
     const columnStart = addDays(gridStart, column * ROWS);
     const month = columnStart.getMonth();
     if (month !== lastMonth && columns > 6) {
-      months.push(MONTHS[month] ?? null);
+      months.push(monthName(month));
       lastMonth = month;
     } else {
       months.push(null);
@@ -210,7 +226,13 @@ export interface HeatmapViewProps {
 }
 
 export function HeatmapView({ data, summary }: HeatmapViewProps) {
-  const grid = React.useMemo(() => buildGrid(data.days), [data.days]);
+  const t = useT();
+  const locale = useLocale();
+  // Every cell's tooltip and the month rail are text: rebuild on a language change.
+  const grid = React.useMemo(() => {
+    void locale;
+    return buildGrid(data.days);
+  }, [data.days, locale]);
 
   const counts = React.useMemo(() => {
     let watched = 0;
@@ -228,7 +250,7 @@ export function HeatmapView({ data, summary }: HeatmapViewProps) {
       <ScrollArea orientation="horizontal" className="-mx-1 px-1 pb-1">
         <div
           role="img"
-          aria-label={summary ?? "Daily record"}
+          aria-label={summary ?? t("widgets.heatmap.dailyRecord")}
           className="inline-flex w-max gap-2"
         >
           <WeekdayRail />
@@ -245,8 +267,8 @@ export function HeatmapView({ data, summary }: HeatmapViewProps) {
       </ScrollArea>
 
       <Legend
-        low={data.lowLabel ?? "Quiet"}
-        high={data.highLabel ?? "Answering"}
+        low={data.lowLabel ?? t("widgets.heatmap.quiet")}
+        high={data.highLabel ?? t("widgets.heatmap.answering")}
         watched={counts.watched}
         quiet={counts.quiet}
       />
@@ -279,10 +301,11 @@ function Column({ cells, index }: { cells: Cell[]; index: number }) {
 }
 
 function WeekdayRail() {
+  useLocale();
   return (
     <div className="flex flex-col gap-[3px] pt-[22px]" aria-hidden="true">
-      {WEEKDAYS.map((day, index) => (
-        <div key={day} className="flex h-2.5 items-center text-[9px] leading-none text-faint">
+      {weekdayNames().map((day, index) => (
+        <div key={index} className="flex h-2.5 items-center text-[9px] leading-none text-faint">
           {SHOWN_WEEKDAYS.has(index) ? day : ""}
         </div>
       ))}
@@ -322,6 +345,7 @@ function Legend({
   watched: number;
   quiet: number;
 }) {
+  const t = useT();
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[11px] text-faint">
       <div className="flex items-center gap-1.5">
@@ -335,11 +359,11 @@ function Legend({
 
       <div className="flex items-center gap-1.5">
         <span className="size-2.5 rounded-[2px] border border-hair" aria-hidden="true" />
-        <span>Not watched</span>
+        <span>{t("widgets.heatmap.notWatched")}</span>
       </div>
 
       <div className="numeric ml-auto">
-        {watched === 0 ? DASH : `${watched} watched · ${quiet} quiet`}
+        {watched === 0 ? DASH : t("widgets.heatmap.counts", { watched, quiet })}
       </div>
     </div>
   );

@@ -12,6 +12,8 @@ import {
 import { Spinner } from "@/components/ui/progress";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
+import { t as translate } from "@/lib/i18n";
+import { useT } from "@/lib/i18n-react";
 import { CapacityMeter } from "./capacity-meter";
 import { formatBytes } from "./format";
 import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText, RowValue, StackRow } from "./rows";
@@ -24,6 +26,7 @@ export interface StoragePaneProps {
 }
 
 export function StoragePane({ form, storage }: StoragePaneProps) {
+  const t = useT();
   const [confirming, setConfirming] = React.useState(false);
   const titleId = React.useId();
   const bodyId = React.useId();
@@ -37,7 +40,7 @@ export function StoragePane({ form, storage }: StoragePaneProps) {
   return (
     <>
       <PaneSection>
-        <GroupTitle>This box&apos;s disk</GroupTitle>
+        <GroupTitle>{t("panes.storage.disk")}</GroupTitle>
         <Group>
           <StackRow>
             <CapacityMeter facts={storage.facts} source={storage.source} />
@@ -45,19 +48,19 @@ export function StoragePane({ form, storage }: StoragePaneProps) {
 
           <Row>
             <RowText
-              title="Held back for later"
-              detail="Space this box did not claim when it was set up."
+              title={t("panes.storage.held.title")}
+              detail={t("panes.storage.held.detail")}
             />
             <div className="flex items-center gap-2.5">
-              <RowValue>{reserve === null ? "not reported" : formatBytes(reserve)}</RowValue>
+              <RowValue>{reserve === null ? t("panes.storage.notReported") : formatBytes(reserve)}</RowValue>
               <Button
                 variant="secondary"
                 size="sm"
                 disabled={form.locked || storage.growing || !hasReserve}
                 onClick={() => setConfirming(true)}
               >
-                {storage.growing ? <Spinner size={15} label="Claiming the reserve" /> : null}
-                Use reserve…
+                {storage.growing ? <Spinner size={15} label={t("panes.storage.claiming")} /> : null}
+                {t("panes.storage.useReserve")}
               </Button>
             </div>
           </Row>
@@ -68,18 +71,14 @@ export function StoragePane({ form, storage }: StoragePaneProps) {
             </StackRow>
           )}
         </Group>
-        <GroupCaption>
-          This box deliberately left part of its disk unclaimed so it could be made bigger later
-          without opening the case. Using the reserve happens while everything keeps running, and it
-          only goes one way. The disk cannot be made smaller again afterwards.
-        </GroupCaption>
+        <GroupCaption>{t("panes.storage.diskCaption")}</GroupCaption>
       </PaneSection>
 
       <PaneSection>
-        <GroupTitle>The mesh</GroupTitle>
+        <GroupTitle>{t("panes.storage.mesh")}</GroupTitle>
         <Group>
           <Row>
-            <RowText htmlFor={shareId} title="Share this box’s disk with the mesh" />
+            <RowText htmlFor={shareId} title={t("panes.storage.share")} />
             <Switch
               id={shareId}
               checked={sharing}
@@ -88,18 +87,13 @@ export function StoragePane({ form, storage }: StoragePaneProps) {
             />
           </Row>
           <Row last>
-            <RowText title="If this disk dies" />
+            <RowText title={t("panes.storage.ifDies")} />
             <RowValue className={sharing ? "text-ok" : undefined}>
-              {sharing ? "rebuilds in about 40 minutes" : "nothing here is copied anywhere"}
+              {sharing ? t("panes.storage.rebuilds") : t("panes.storage.notCopied")}
             </RowValue>
           </Row>
         </Group>
-        <GroupCaption>
-          Your box lends its spare room to other people&apos;s boxes, and copies of your own files
-          are kept on theirs. The two travel together, because a pool you take from but never give
-          to is not a pool. While this is off, the shared half of the disk stays locked and
-          unreadable by anything on this box, including the box itself.
-        </GroupCaption>
+        <GroupCaption>{t("panes.storage.meshCaption")}</GroupCaption>
       </PaneSection>
 
       <Dialog
@@ -109,17 +103,17 @@ export function StoragePane({ form, storage }: StoragePaneProps) {
         describedBy={bodyId}
       >
         <DialogHeader>
-          <DialogTitle id={titleId}>Use the space held back?</DialogTitle>
+          <DialogTitle id={titleId}>{t("panes.storage.dialogTitle")}</DialogTitle>
           <DialogDescription id={bodyId}>
             {reserve === null
-              ? "This box has not said how much it is holding back. It will take whatever is there."
-              : `This adds about ${formatBytes(reserve)} to this box's storage.`}{" "}
-            It happens while everything keeps running, takes a few minutes, and cannot be undone.
+              ? t("panes.storage.dialogUnknown")
+              : t("panes.storage.dialogAdds", { size: formatBytes(reserve) })}{" "}
+            {t("panes.storage.dialogTail")}
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
           <Button variant="ghost" onClick={() => setConfirming(false)}>
-            Cancel
+            {t("panes.storage.cancel")}
           </Button>
           <Button
             onClick={() => {
@@ -127,7 +121,7 @@ export function StoragePane({ form, storage }: StoragePaneProps) {
               storage.grow();
             }}
           >
-            Use it
+            {t("panes.storage.useIt")}
           </Button>
         </DialogFooter>
       </Dialog>
@@ -150,6 +144,7 @@ function GrowReport({
   outcome: GrowOutcome;
   onDismiss: () => void;
 }) {
+  const t = useT();
   const view = describeOutcome(outcome);
   return (
     <div className="animate-fade-in flex items-start gap-2.5">
@@ -166,7 +161,7 @@ function GrowReport({
         <p className="mt-0.5 text-[12.5px] leading-snug text-muted">{view.detail}</p>
       </div>
       <Button variant="ghost" size="sm" onClick={onDismiss}>
-        Dismiss
+        {t("panes.storage.dismiss")}
       </Button>
     </div>
   );
@@ -183,24 +178,29 @@ function describeOutcome(outcome: GrowOutcome): {
       return {
         icon: CheckmarkCircle02Icon,
         tone: "text-ok",
-        title: "This box has more room",
-        detail: `${formatBytes(outcome.beforeBytes)} before, ${formatBytes(outcome.afterBytes)} now.`,
+        title: translate("panes.storage.grew.title"),
+        detail: translate("panes.storage.grew.detail", {
+          before: formatBytes(outcome.beforeBytes),
+          after: formatBytes(outcome.afterBytes),
+        }),
       };
     case "nothing":
       return {
         icon: InformationCircleIcon,
         tone: "text-muted",
-        title: "Nothing changed",
+        title: translate("panes.storage.nothing.title"),
         detail:
           outcome.claimedBytes > 0
-            ? `${formatBytes(outcome.claimedBytes)} was taken from the spare space, but the storage itself did not end up any bigger.`
-            : "There was no space left to take. The disk is already using all of itself.",
+            ? translate("panes.storage.nothing.claimed", {
+                size: formatBytes(outcome.claimedBytes),
+              })
+            : translate("panes.storage.nothing.none"),
       };
     case "failed":
       return {
         icon: Alert02Icon,
         tone: "text-crit",
-        title: "That did not work",
+        title: translate("panes.storage.failed.title"),
         detail: outcome.message,
       };
     default: {

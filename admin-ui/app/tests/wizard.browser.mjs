@@ -30,7 +30,7 @@ const browser = await launch();
 /* One page wired to a box in a given state. `claimed` is the whole point: it
  * is what decides between the wizard and the key prompt. */
 async function open({ claimed, tls = false, path = '/' }) {
-  const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  const page = await browser.newPage({ viewport: { width: 1280, height: 900 }, locale: 'en-US' });
   const errors = [];
   page.on('pageerror', (e) => errors.push(String(e)));
 
