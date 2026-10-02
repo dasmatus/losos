@@ -107,6 +107,13 @@ struct InstallArgs {
     /// Use TPM2 (a passphrase is asked once, at format time).
     #[arg(long)]
     tpm: bool,
+    /// Install for legacy BIOS (GRUB). Default: whatever firmware booted this
+    /// medium.
+    #[arg(long, conflicts_with = "uefi")]
+    bios: bool,
+    /// Install for UEFI (systemd-boot), even if this medium booted in BIOS mode.
+    #[arg(long)]
+    uefi: bool,
     /// Override drive auto-detection with a comma-separated list.
     #[arg(long, value_name = "A,/dev/b,...", value_parser = parse_drives)]
     drives: Option<Vec<String>>,
@@ -151,6 +158,11 @@ fn main() -> ExitCode {
         // of the subprocesses they announce.
         let opts = options_from_env(
             args.tpm,
+            match (args.bios, args.uefi) {
+                (true, _) => Some(true),
+                (_, true) => Some(false),
+                _ => None,
+            },
             args.drives.clone(),
             args.no_install,
             args.disko_script.clone(),

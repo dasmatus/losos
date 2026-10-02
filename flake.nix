@@ -227,6 +227,9 @@
             ./modules/impermanence.nix
             ./modules/disko.nix
             ./modules/boot.nix
+            # The banner on tty1 that tells whoever is standing at the box
+            # which address to open in a browser.
+            ./modules/console.nix
             ./modules/services.nix
             ./modules/nextcloud-common.nix
             ./modules/containers.nix
