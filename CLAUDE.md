@@ -217,6 +217,18 @@ server root and a symlink beside the package is never found. Forgejo gets
 (tmpfiles links natively, copied by the image's entrypoint) with
 `DEFAULT_THEME = losos-auto`, which Forgejo stamps on accounts at creation —
 an existing account keeps its old theme until its owner switches.
+Owners see the two apps as **LosOS cloud** and **LosOS Git**: the theme
+folder's `defaults.php` names Nextcloud, Forgejo's `APP_NAME` names it, and
+both get logos drawn from `admin-ui/themes/brand/` (`marks.py` turns
+`fish.png` into the SVGs; every PNG and the `.ico` is rendered from those at
+build time). The rest of the upstream marketing goes by config (no skeleton
+files, no help or sign-up links, no "Powered by") and two Forgejo template
+overrides. Two non-obvious bits: Nextcloud's header filter inverts any logo
+it thinks is its own white one, so `server.css` sets
+`--image-logoheader-custom`; and the theming app reads a few `core/img/`
+files by absolute path, so `nextcloud-stack.nix` overwrites those in the
+package, which is why the image sets `integrity.check.disabled` as
+`services.nextcloud` already does.
 `admin-ui/themes/default.nix` is plain data imported by all three callers, for
 the same reason `nextcloud-stack.nix` is. The workload pods are
 `hostNetwork` (the local cluster runs no CNI), so they answer on loopback — see

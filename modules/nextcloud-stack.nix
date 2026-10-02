@@ -57,11 +57,23 @@ let
   # themes/ is excluded from Nextcloud's integrity check by design
   # (IntegrityCheck/Iterator/ExcludeFoldersByPathFilterIterator.php), so the
   # extra folder does not turn the admin overview red.
+  #
+  # A few core/img/ files are then overwritten with the theme's: the theming
+  # app reads those by absolute path rather than through the theme folder,
+  # for the favicons the web-app manifest names (admin-ui/themes/default.nix,
+  # coreImages, says which and why). That *does* change files the integrity
+  # check covers, so the image disables it, as services.nextcloud always has
+  # for the same package: the store is read-only and Nix checks it already.
   package = pkgs.nextcloud34.overrideAttrs (old: {
-    postInstall = (old.postInstall or "") + ''
-      mkdir -p "$out/themes"
-      cp -r --no-preserve=mode ${themes.nextcloud.dir} "$out/themes/${themes.nextcloud.name}"
-    '';
+    postInstall =
+      (old.postInstall or "")
+      + ''
+        mkdir -p "$out/themes"
+        cp -r --no-preserve=mode ${themes.nextcloud.dir} "$out/themes/${themes.nextcloud.name}"
+      ''
+      + lib.concatMapStrings (f: ''
+        install -m0644 ${themes.nextcloud.dir}/core/img/${f} "$out/core/img/${f}"
+      '') themes.nextcloud.coreImages;
   });
 
   # A curated set of self-contained apps from nixpkgs (no external servers,
@@ -170,10 +182,15 @@ in
     storeAppsDir
     ;
 
-  # config.php's `theme` key: which folder under the package's themes/ to
-  # load. Set in both modes — services.nextcloud.settings natively, the
-  # image's config snippet in workload mode — from this one value.
-  theme = themes.nextcloud.name;
+  # config.php keys for the LosOS cloud branding, set in both modes —
+  # services.nextcloud.settings natively, the image's config snippet in
+  # workload mode — from this one attrset. `theme` loads the folder under the
+  # package's themes/; the rest (admin-ui/themes/default.nix) take out what
+  # a theme folder cannot reach.
+  brandSettings = {
+    theme = themes.nextcloud.name;
+  }
+  // themes.nextcloud.settings;
 
   # The `notshared` user owns this instance — see modules/configuration.nix for
   # the two-domain split.

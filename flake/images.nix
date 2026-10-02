@@ -82,9 +82,11 @@ let
   # to the container log. The alternative is a nextcloud.log inside the data
   # directory on a box with no shell to read it from.
   #
-  # theme names the LosOS theme folder that modules/nextcloud-stack.nix builds
-  # into nc.package; the native path sets the same value through
-  # services.nextcloud.settings.
+  # The branding keys (theme and the rest of nc.brandSettings) are the ones
+  # the native path sets through services.nextcloud.settings, rendered to
+  # PHP. integrity.check.disabled matches what services.nextcloud sets on the
+  # same package: nextcloud-stack.nix overwrites a few core/img/ files with
+  # LosOS cloud's, the store is read-only, and Nix checks it already.
   nextcloudImageConfig = pkgs.writeText "losos-image.config.php" ''
     <?php
     $CONFIG = [
@@ -107,8 +109,14 @@ let
         'port' => 0,
       ],
       'log_type' => 'errorlog',
-      'theme' => '${nc.theme}',
-    ];
+      'integrity.check.disabled' => true,
+    ${
+      lib.concatStrings (
+        lib.mapAttrsToList (
+          k: v: "  '${k}' => ${if lib.isBool v then lib.boolToString v else "'${v}'"},\n"
+        ) nc.brandSettings
+      )
+    }];
   '';
 
   # Apache's runtime scratch: the pid file, the mutexes, the FastCGI socket.
@@ -530,9 +538,14 @@ let
     MODE = console
     LEVEL = Info
 
-    [ui]
-    DEFAULT_THEME = ${themes.forgejo.ui.DEFAULT_THEME}
   '';
+
+  # LosOS Git's name, theme, <meta> tags and footer (admin-ui/themes/), in
+  # the shape modules/services.nix merges into services.forgejo.settings
+  # natively. Concatenated between the base and the per-box file.
+  forgejoBrandIni = pkgs.writeText "forgejo-brand.ini" (
+    lib.generators.toINI { } themes.forgejo.settings
+  );
 
   forgejoEntrypoint = pkgs.writeShellApplication {
     name = "losos-forgejo";
@@ -570,13 +583,13 @@ let
 
       mkdir -p ${forgejoCustomDir}/conf ${forgejoStateDir}/data ${forgejoStateDir}/repositories
 
-      # The LosOS themes, into the custom asset directory Forgejo serves its
-      # stock themes beside. Copied, not linked: this directory is a hostPath
-      # on the host, where a link into the image's store would dangle. Copied
-      # on every start, so an image with a changed theme replaces the old one,
-      # and before `forgejo web`, which lists the available themes once.
-      install -d ${forgejoCustomDir}/public/assets/css
-      install -m 0644 ${themes.forgejo.cssDir}/*.css ${forgejoCustomDir}/public/assets/css/
+      # LosOS Git's themes, logos and template overrides, into the custom
+      # directory at the paths Forgejo looks for them (admin-ui/themes/).
+      # Copied, not linked: this directory is a hostPath on the host, where a
+      # link into the image's store would dangle. Copied on every start, so an
+      # image with a changed theme replaces the old one, and before `forgejo
+      # web`, which lists the available themes once.
+      cp -rT --no-preserve=mode,ownership ${themes.forgejo.customDir} ${forgejoCustomDir}
 
       # Generated once and kept. `forgejo generate secret` is the same
       # generator the NixOS module uses, and the __FILE environment variables
@@ -593,7 +606,7 @@ let
       done
 
       config=${forgejoCustomDir}/conf/app.ini
-      cat ${forgejoBaseIni} "$conf" > "$config"
+      cat ${forgejoBaseIni} ${forgejoBrandIni} "$conf" > "$config"
 
       FORGEJO__security__SECRET_KEY__FILE=${forgejoCustomDir}/conf/SECRET_KEY
       FORGEJO__security__INTERNAL_TOKEN__FILE=${forgejoCustomDir}/conf/INTERNAL_TOKEN
