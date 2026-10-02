@@ -49,7 +49,7 @@ modules/                 NixOS modules; options in options.nix
 backend/                 lososd + losos-ctl (Rust)
 backend-registrar/       master-proxy edge registrar (Rust)
 admin-ui/app/            the admin SPA
-admin-ui/themes/         Nextcloud and Forgejo themes built on the SPA's tokens.css
+admin-ui/themes/         LosOS cloud and LosOS Git: themes on the SPA's tokens.css, logos, names
 admin-ui/design-system/  dev-only tokens and React wrapper; not shipped
 tests/                   NixOS VM tests
 docs/                    security model, design specs and plans
