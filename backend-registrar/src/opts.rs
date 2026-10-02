@@ -6,6 +6,9 @@ use std::time::Duration;
 
 use miette::{miette, IntoDiagnostic, Result};
 
+use crate::market::{MarketOpts, DEFAULT_FEE_BPS, MAX_FEE_BPS, SUPPORTED_CURRENCIES};
+use crate::stripe_gate::GateOpts;
+
 fn arg<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
     args.iter()
         .position(|a| a == flag)
@@ -104,6 +107,9 @@ pub struct ServeOpts {
     /// Where the reconciler publishes the per-node compute windows for the
     /// edge's `losos-mesh-taint.service` to read.
     pub compute_windows_file: String,
+    /// The Stripe Connect market. `None` — no `--market-gate-socket` — and
+    /// every `/market/*` route answers 503; the rest of the API is unchanged.
+    pub market: Option<Box<MarketOpts>>,
 }
 
 /// `seed` options. Writes the declarative rathole `[server]` base (for zero
@@ -172,12 +178,13 @@ pub enum Mode {
     Announce(AnnounceOpts),
     Seed(SeedOpts),
     Join(JoinOpts),
+    StripeGate(GateOpts),
 }
 
 pub fn parse(args: Vec<String>) -> Result<Mode> {
     if args.is_empty() {
         return Err(miette!(
-            "usage: losos-registrar serve|announce|seed|join ..."
+            "usage: losos-registrar serve|announce|seed|join|stripe-gate ..."
         ));
     }
     let mode = &args[0];
@@ -221,6 +228,7 @@ pub fn parse(args: Vec<String>) -> Result<Mode> {
                 compute_windows_file: arg(&rest, "--compute-windows-file")
                     .unwrap_or("/var/lib/losos-registrar/compute-windows.json")
                     .to_string(),
+                market: parse_market(&rest)?,
             }))
         }
         "announce" => Ok(Mode::Announce(AnnounceOpts {
@@ -257,10 +265,98 @@ pub fn parse(args: Vec<String>) -> Result<Mode> {
             window_tz: parse_tz(arg(&rest, "--window-tz").unwrap_or("UTC"))?.to_string(),
             expect_server_addr: arg(&rest, "--expect-server-addr").map(str::to_string),
         })),
+        "stripe-gate" => {
+            let currency = arg(&rest, "--currency").unwrap_or("eur");
+            if !valid_currency(currency) {
+                return Err(miette!(
+                    "bad --currency {currency:?}; expected a supported two-decimal ISO 4217 code"
+                ));
+            }
+            Ok(Mode::StripeGate(GateOpts {
+                socket: req(&rest, "--socket")?.to_string(),
+                stripe_key_file: req(&rest, "--stripe-key-file")?.to_string(),
+                webhook_secret_file: req(&rest, "--webhook-secret-file")?.to_string(),
+                stripe_api: arg(&rest, "--stripe-api")
+                    .unwrap_or("https://api.stripe.com")
+                    .to_string(),
+                currency: currency.to_string(),
+            }))
+        }
         other => Err(miette!(
-            "unknown subcommand {other:?}; expected serve|announce|seed|join"
+            "unknown subcommand {other:?}; expected serve|announce|seed|join|stripe-gate"
         )),
     }
+}
+
+fn valid_currency(c: &str) -> bool {
+    SUPPORTED_CURRENCIES.contains(&c)
+}
+
+/// The `--market-*` flags. Enabled by `--market-gate-socket`, the Unix socket
+/// of the Stripe gate (`stripe-gate`), which alone holds the key and the
+/// webhook secrets; the return URL is then required, because a market that can
+/// take payment but has nowhere to send the buyer back to would be half-made.
+fn parse_market(args: &[String]) -> Result<Option<Box<MarketOpts>>> {
+    let Some(gate_socket) = arg(args, "--market-gate-socket") else {
+        return Ok(None);
+    };
+    let currency = arg(args, "--market-currency").unwrap_or("eur");
+    if !valid_currency(currency) {
+        return Err(miette!(
+            "bad --market-currency {currency:?}; expected a supported two-decimal ISO 4217 code"
+        ));
+    }
+    let fee_bps: u32 = match arg(args, "--market-fee-bps") {
+        None => DEFAULT_FEE_BPS,
+        Some(raw) => raw
+            .parse()
+            .map_err(|_| miette!("bad --market-fee-bps {raw:?}"))?,
+    };
+    if fee_bps > MAX_FEE_BPS {
+        return Err(miette!(
+            "--market-fee-bps {fee_bps} exceeds the {MAX_FEE_BPS} basis point ceiling"
+        ));
+    }
+    let storage_class =
+        arg(args, "--market-storage-class").unwrap_or(crate::market::DEFAULT_STORAGE_CLASS);
+    if !dns_subdomain(storage_class) {
+        return Err(miette!(
+            "bad --market-storage-class {storage_class:?}; expected a Kubernetes object name (DNS-1123 subdomain)"
+        ));
+    }
+    let return_url = req(args, "--market-return-url")?;
+    if !crate::stripe_gate::url_ok(return_url) {
+        return Err(miette!(
+            "--market-return-url must be an absolute http(s) URL with a host, no credentials and no #fragment"
+        ));
+    }
+    Ok(Some(Box::new(MarketOpts {
+        state_file: arg(args, "--market-state-file")
+            .unwrap_or("/var/lib/losos-registrar/market.json")
+            .to_string(),
+        gate_socket: gate_socket.to_string(),
+        return_url: return_url.to_string(),
+        currency: currency.to_string(),
+        fee_bps,
+        storage_class: storage_class.to_string(),
+    })))
+}
+
+/// A Kubernetes object name in the DNS-1123 subdomain form, which is what a
+/// `StorageClass` name must be: at most 253 characters of dot-separated
+/// labels, each 1 to 63 characters of lowercase alphanumerics with inner
+/// hyphens. Anything else would
+/// only fail later, as a claim the apiserver refuses on every reconcile pass.
+fn dns_subdomain(name: &str) -> bool {
+    name.len() <= 253
+        && name.split('.').all(|label| {
+            (1..=63).contains(&label.len())
+                && !label.starts_with('-')
+                && !label.ends_with('-')
+                && label
+                    .bytes()
+                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+        })
 }
 
 /// Accept an IANA zone name, rejecting anything the edge's `date` would

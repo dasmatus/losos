@@ -7,6 +7,7 @@ import {
   InformationCircleIcon,
   LayoutGridIcon,
   Share08Icon,
+  ShoppingCart01Icon,
   Shield01Icon,
 } from "@hugeicons/core-free-icons";
 import { t, template, type MessageKey } from "@/lib/i18n";
@@ -34,6 +35,7 @@ import { t, template, type MessageKey } from "@/lib/i18n";
 export type SettingsPaneId =
   | "storage"
   | "mesh"
+  | "market"
   | "apps"
   | "network"
   | "hardware"
@@ -112,6 +114,18 @@ export const SETTINGS_PANES: readonly [SettingsPane, ...SettingsPane[]] = [
     "night",
     "lend",
     "others",
+  ]),
+  pane("market", ShoppingCart01Icon, [
+    "sell",
+    "buy",
+    "pay",
+    "payment",
+    "stripe",
+    "money",
+    "price",
+    "earn",
+    "storage",
+    "compute",
   ]),
   pane("apps", LayoutGridIcon, [
     "files",

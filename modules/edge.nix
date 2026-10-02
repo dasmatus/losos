@@ -40,6 +40,7 @@
   lib,
   pkgs,
   self,
+  utils,
   ...
 }:
 
@@ -162,7 +163,7 @@ let
   tenantsJson = pkgs.writeText "losos-registrar-tenants.json" (
     builtins.toJSON (
       lib.mapAttrs (_: v: {
-        inherit (v) hostname cluster;
+        inherit (v) hostname cluster market;
         token_file = toString v.tokenFile;
       }) cfg.tenants
     )
@@ -198,6 +199,25 @@ let
           verbs = [
             "get"
             "delete"
+          ];
+        }
+      ]
+      # Market fulfilment (backend-registrar/src/market.rs): a paid storage
+      # order becomes a PersistentVolumeClaim in a `market-<buyer>` namespace.
+      # Neither can be scoped to those namespaces — a namespace does not exist
+      # before it is created, and a ClusterRole cannot say "namespaces named
+      # market-*" — so these are create/get only, never update or delete, and
+      # present only when the market is on.
+      ++ lib.optionals cfg.market.enable [
+        {
+          apiGroups = [ "" ];
+          resources = [
+            "namespaces"
+            "persistentvolumeclaims"
+          ];
+          verbs = [
+            "get"
+            "create"
           ];
         }
       ];
@@ -449,7 +469,12 @@ let
     (toString cfg.noisePrivateKeyFile)
   ];
 
-  seedArgs = lib.concatStringsSep " " (
+  # ExecStart lines are built with escapeSystemdExecArgs, not by joining with
+  # spaces. Several arguments are operator strings (the bind address, the port
+  # range, the return URL): systemd would expand a `%` in one as a specifier
+  # (a return URL with `%2F` in it reached the registrar changed), and split
+  # one with a space into two arguments.
+  seedArgs = utils.escapeSystemdExecArgs (
     [
       "${registrar}/bin/losos-registrar"
       "seed"
@@ -484,7 +509,44 @@ let
     computeWindowsFile
   ];
 
-  serveArgs = lib.concatStringsSep " " (
+  # The Stripe key lives in a unit of its own, `losos-stripe-gate`
+  # (`losos-registrar stripe-gate`), and nowhere else. The registrar — the
+  # internet-facing process, which also carries the master proxy — never holds
+  # it: it asks the gate over a Unix socket for the few things it may need
+  # (create an account carrying the box UUID, tag, check or link one, start a
+  # checkout, verify a webhook) and the gate refuses anything outside the
+  # operator's limits (destination account shape, currency, fee ceiling,
+  # session lifetime). The blobs are sealed with systemd-creds and handed to
+  # the gate by LoadCredentialEncrypted=, so they are plaintext only in that
+  # unit's private credential tmpfs. A missing blob skips the gate
+  # (ConditionPathExists) and the registrar answers 503 for /market/*; since
+  # the gate is its own unit, a blob that will not decrypt cannot touch the
+  # proxy, which is why the older ExecStartPre dance is gone.
+  gateSocket = "/run/losos-stripe-gate/gate.sock";
+  gateSealed = [
+    (toString cfg.market.stripeSecretKeySealed)
+    (toString cfg.market.webhookSecretSealed)
+  ];
+
+  # Market half of `serve`. Without --market-gate-socket every /market/*
+  # route answers 503, so an edge that leaves the market off parses exactly the
+  # arguments it always did.
+  marketServeArgs = lib.optionals cfg.market.enable [
+    "--market-gate-socket"
+    gateSocket
+    "--market-state-file"
+    "/var/lib/losos-registrar/market.json"
+    "--market-fee-bps"
+    (toString cfg.market.feeBps)
+    "--market-currency"
+    cfg.market.currency
+    "--market-return-url"
+    cfg.market.returnUrl
+    "--market-storage-class"
+    cfg.market.storageClass
+  ];
+
+  serveArgs = utils.escapeSystemdExecArgs (
     [
       "${registrar}/bin/losos-registrar"
       "serve"
@@ -517,6 +579,7 @@ let
       noisePublicKeyFile
     ]
     ++ meshServeArgs
+    ++ marketServeArgs
   );
 in
 {
@@ -528,6 +591,21 @@ in
     losos.edge.registrar.package = self.packages.x86_64-linux.losos-registrar;
 
     assertions = [
+      {
+        assertion = cfg.market.enable -> cfg.market.returnUrl != "";
+        message = ''
+          losos.edge.market.enable requires losos.edge.market.returnUrl: the
+          page Stripe sends buyers and sellers back to after Checkout and
+          onboarding.
+        '';
+      }
+      {
+        assertion = cfg.market.enable -> meshEnabled;
+        message = ''
+          losos.edge.market.enable requires losos.edge.cluster.enable so paid
+          storage orders can be fulfilled by the mesh.
+        '';
+      }
       {
         assertion = cfg.acmeEmail != null;
         message = "losos.edge.enable requires losos.edge.acmeEmail (Let's Encrypt account email).";
@@ -590,12 +668,17 @@ in
         "network-online.target"
         "losos-rathole-seed.service"
       ]
-      ++ lib.optional meshEnabled "losos-mesh-rbac.service";
+      ++ lib.optional meshEnabled "losos-mesh-rbac.service"
+      ++ lib.optional cfg.market.enable "losos-stripe-gate.service";
       # Wants, not Requires, on the RBAC extractor: the master-proxy half must
       # keep serving /register and rewriting Traefik on an edge whose mesh
       # apiserver is down or not yet up. A failed extraction costs the join
       # route (503) and nothing else.
-      wants = [ "network-online.target" ] ++ lib.optional meshEnabled "losos-mesh-rbac.service";
+      wants = [
+        "network-online.target"
+      ]
+      ++ lib.optional meshEnabled "losos-mesh-rbac.service"
+      ++ lib.optional cfg.market.enable "losos-stripe-gate.service";
       serviceConfig = {
         ExecStart = serveArgs;
         StateDirectory = "losos-registrar";
@@ -606,6 +689,63 @@ in
         # Runs as root; deliberately no ProtectSystem (would make /etc RO).
         PrivateTmp = true;
         NoNewPrivileges = true;
+      }
+      // lib.optionalAttrs cfg.market.enable {
+        # Second layer behind the gate: the registrar cannot read the sealed
+        # blobs or the gate's credential directory, even as root.
+        InaccessiblePaths = map (path: "-${path}") gateSealed ++ [
+          "-/run/credentials/losos-stripe-gate.service"
+        ];
+      };
+    };
+
+    # ── losos-stripe-gate (the only holder of the Stripe key) ────────────
+    systemd.services.losos-stripe-gate = lib.mkIf cfg.market.enable {
+      description = "losos Stripe gate — holds the Stripe key for the registrar";
+      wantedBy = [ "multi-user.target" ];
+      before = [ "losos-registrar.service" ];
+      # The registrar wants, not requires, the gate: see `gateSocket`.
+      unitConfig.ConditionPathExists = gateSealed;
+      serviceConfig = {
+        ExecStart = lib.concatStringsSep " " [
+          "${registrar}/bin/losos-registrar"
+          "stripe-gate"
+          "--socket"
+          gateSocket
+          "--stripe-key-file"
+          "%d/stripe-secret-key"
+          "--webhook-secret-file"
+          "%d/stripe-webhook-secret"
+          "--currency"
+          cfg.market.currency
+        ];
+        LoadCredentialEncrypted = [
+          "stripe-secret-key:${toString cfg.market.stripeSecretKeySealed}"
+          "stripe-webhook-secret:${toString cfg.market.webhookSecretSealed}"
+        ];
+        DynamicUser = true;
+        RuntimeDirectory = "losos-stripe-gate";
+        RuntimeDirectoryMode = "0755";
+        Restart = "always";
+        RestartSec = 5;
+        NoNewPrivileges = true;
+        ProtectSystem = "strict";
+        ProtectHome = true;
+        PrivateTmp = true;
+        PrivateDevices = true;
+        ProtectKernelTunables = true;
+        ProtectKernelModules = true;
+        ProtectControlGroups = true;
+        RestrictAddressFamilies = [
+          "AF_UNIX"
+          "AF_INET"
+          "AF_INET6"
+        ];
+        RestrictNamespaces = true;
+        LockPersonality = true;
+        MemoryDenyWriteExecute = true;
+        SystemCallArchitectures = "native";
+        CapabilityBoundingSet = "";
       };
     };
 

@@ -72,6 +72,13 @@ pub struct FakeLosos {
     /// Every query the fake was asked for, in order. A test reads this to
     /// prove the command trimmed before searching rather than after.
     pub catalogue_queries: Vec<String>,
+
+    // ── The market ──────────────────────────────────────────────────────
+    /// Registrar answers by `METHOD path`, as `(status, body)`. A route with no
+    /// entry models a box with no registrar configured.
+    pub market_routes: std::collections::BTreeMap<String, (u16, String)>,
+    /// Every operation asked for, in order.
+    pub market_ops: Vec<crate::market::Op>,
 }
 
 impl FakeLosos {
@@ -115,6 +122,8 @@ impl FakeLosos {
                     .to_string(),
             ),
             catalogue_queries: Vec::new(),
+            market_routes: std::collections::BTreeMap::new(),
+            market_ops: Vec::new(),
         }
     }
 }
@@ -189,6 +198,16 @@ impl Losos for FakeLosos {
             .as_deref()
             .ok_or_else(|| anyhow::anyhow!("the catalogue could not be reached"))?;
         crate::catalogue::parse_results(body)
+    }
+
+    /// The real classifier, run against a scripted registrar.
+    fn market_request(&mut self, op: &crate::market::Op) -> anyhow::Result<crate::market::Outcome> {
+        self.market_ops.push(op.clone());
+        let (method, path) = op.route();
+        match self.market_routes.get(&format!("{method} {path}")) {
+            None => Ok(crate::market::Outcome::Unavailable),
+            Some((status, body)) => crate::market::classify(*status, body),
+        }
     }
 
     fn vg_free(&mut self) -> anyhow::Result<crate::grow::VgFree> {

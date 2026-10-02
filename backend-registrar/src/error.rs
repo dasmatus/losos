@@ -21,6 +21,7 @@ use std::io;
 use axum::http::StatusCode;
 
 use crate::action::Action;
+use crate::market::MarketError;
 
 /// Registry-layer failures: persistence IO, JSON parse, or the rathole port
 /// range being exhausted (no free port for a new tenant).
@@ -87,6 +88,10 @@ pub enum ApiError {
     /// gets a constant (see [`ApiError::public_body`]).
     #[error("mesh apiserver: {0}")]
     KubeApi(String),
+    /// A market route failed; see [`MarketError`] for the variants and
+    /// [`ApiError::status`] for their statuses.
+    #[error(transparent)]
+    Market(#[from] MarketError),
     /// A filesystem operation backing a request failed (token/tenants read).
     #[error(transparent)]
     Io(#[from] io::Error),
@@ -123,6 +128,15 @@ impl ApiError {
             | ApiError::NodeNameForbidden => StatusCode::FORBIDDEN,
             ApiError::UnknownAppliance => StatusCode::NOT_FOUND,
             ApiError::InvalidWindow => StatusCode::BAD_REQUEST,
+            ApiError::Market(e) => match e {
+                MarketError::Unconfigured => StatusCode::SERVICE_UNAVAILABLE,
+                MarketError::Forbidden => StatusCode::FORBIDDEN,
+                MarketError::Invalid(_) | MarketError::BadSignature => StatusCode::BAD_REQUEST,
+                MarketError::NotFound => StatusCode::NOT_FOUND,
+                MarketError::Conflict(_) => StatusCode::CONFLICT,
+                MarketError::Stripe(_) => StatusCode::BAD_GATEWAY,
+                MarketError::Store(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            },
             ApiError::Io(_) | ApiError::Serde(_) => StatusCode::INTERNAL_SERVER_ERROR,
             ApiError::Registry(_) | ApiError::MeshUnconfigured | ApiError::KubeApi(_) => {
                 StatusCode::SERVICE_UNAVAILABLE
@@ -150,6 +164,19 @@ impl ApiError {
             | ApiError::MeshUnconfigured
             | ApiError::InvalidWindow => Cow::Owned(self.to_string()),
             ApiError::Io(_) | ApiError::Serde(_) => Cow::Borrowed("internal error"),
+            ApiError::Market(e) => match e {
+                MarketError::Unconfigured
+                | MarketError::Forbidden
+                | MarketError::Invalid(_)
+                | MarketError::NotFound
+                | MarketError::Conflict(_)
+                | MarketError::BadSignature => Cow::Owned(e.to_string()),
+                // The payload names the Stripe endpoint and its error text.
+                MarketError::Stripe(_) => {
+                    Cow::Borrowed("payment provider unavailable; retry later")
+                }
+                MarketError::Store(_) => Cow::Borrowed("internal error"),
+            },
             ApiError::Registry(_) => Cow::Borrowed("registry unavailable; retry later"),
             // Deliberately *not* `self.to_string()`: the payload carries the
             // apiserver URL and the status it returned, which tells an
@@ -171,6 +198,12 @@ impl axum::response::IntoResponse for ApiError {
             // are invisible to the caller, who only ever sees a 503.
             ApiError::MeshUnconfigured | ApiError::KubeApi(_) => {
                 tracing::error!(target: Action::Join.target(), "join failed: {self}");
+            }
+            ApiError::Market(MarketError::Stripe(_) | MarketError::Store(_)) => {
+                tracing::error!(target: Action::Market.target(), "market request failed: {self}");
+            }
+            ApiError::Market(_) => {
+                tracing::warn!(target: Action::Market.target(), "market request rejected: {self}");
             }
             ApiError::ClusterForbidden | ApiError::NodeNameForbidden | ApiError::InvalidWindow => {
                 tracing::warn!(target: Action::Join.target(), "join rejected: {self}");
