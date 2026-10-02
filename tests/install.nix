@@ -7,7 +7,8 @@
 #   2. disko merges all three into one LVM volume group `persist-vg`,
 #   3. the single `persist` LV is opened as LUKS and mounted as ext4 at
 #      /mnt/persist, WITH the `encrypt` feature actually enabled,
-#   4. the ESP lands on the first target drive only.
+#   4. the first target drive has a BIOS boot partition and ESP.
+#   5. GRUB from that disk boots under SeaBIOS.
 #
 # The installer is driven through its --disko-script seam (a prebuilt
 # `config.system.build.diskoScript`) so the test never needs nix or the full
@@ -58,18 +59,21 @@ pkgs.testers.nixosTest {
       # by the test script before disko runs (disko's luks passwordFile).
       losos.targetDrives = targets;
       losos.tpm.enable = false;
+      losos.bios = true;
 
       # Don't let disko inject /persist into the test VM's fileSystems — the
       # test boots from /dev/vda and only formats the targets on demand.
       disko.enableConfig = false;
 
-      # lvm2 at runtime (mirrors production) + the tools the assertions use.
+      # Runtime tools for the installer, assertions, and BIOS boot check.
       services.lvm.enable = true;
       environment.systemPackages = with pkgs; [
         lvm2
         cryptsetup
         util-linux
         disko
+        grub2
+        qemu
       ];
 
       # Expose the prebuilt diskoScript at a fixed path so the test can drive
@@ -148,10 +152,34 @@ pkgs.testers.nixosTest {
         installer.succeed(f"lsblk -ln -o FSTYPE /dev/{d} | grep -q LVM2")
     installer.fail("lsblk -ln -o FSTYPE /dev/vda | grep -q LVM2")
 
-    # The ESP lands on the first target drive only (vdb): its first partition
-    # is vfat. The other targets have no vfat partition.
+    # BIOS GRUB's embedding partition is first on vdb, followed by the ESP.
+    assert installer.succeed("lsblk -no PARTTYPE /dev/vdb1").strip().lower() == \
+        "21686148-6449-6e6f-744e-656564454649"
     installer.succeed("lsblk -ln -o FSTYPE /dev/vdb | grep -q vfat")
     installer.fail("lsblk -ln -o FSTYPE /dev/vdc | grep -q vfat")
+
+    # Install GRUB to the formatted target disk and boot its BIOS core image in
+    # a nested SeaBIOS VM. The marker is emitted by grub.cfg, so this exercises
+    # the EF02 embedding area and the GRUB files on the target ESP together.
+    installer.succeed(
+        "grub-install --target=i386-pc --boot-directory=/mnt/boot /dev/vdb",
+        "mkdir -p /mnt/boot/grub",
+        """cat > /mnt/boot/grub/grub.cfg <<'EOF'
+insmod serial
+serial --unit=0 --speed=115200
+terminal_input serial
+terminal_output serial
+echo BIOS_GRUB_BOOT_OK
+halt
+EOF""",
+    )
+    installer.succeed(
+        "timeout 10s qemu-system-x86_64 -machine pc -accel tcg -m 128 "
+        "-display none -monitor none -serial stdio "
+        "-drive file=/dev/vdb,format=raw,if=ide,readonly=on -boot order=c "
+        "> /tmp/bios-boot.log 2>&1; status=$?; "
+        "test $status -eq 124 && grep -q BIOS_GRUB_BOOT_OK /tmp/bios-boot.log"
+    )
 
     installer.succeed("umount -R /mnt || true")
   '';
