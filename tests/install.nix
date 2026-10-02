@@ -65,7 +65,7 @@ pkgs.testers.nixosTest {
       losos.bios = true;
       boot.initrd.luks.devices = lib.mkForce { };
       boot.initrd.secrets = lib.mkForce {
-        "/crypto_keyfile.bin" = pkgs.writeText "bios-test-key" "test-only";
+        "/crypto_keyfile.bin" = "${pkgs.writeText "bios-test-key" "test-only"}";
       };
       fileSystems."/persist" = lib.mkForce {
         device = "tmpfs";
