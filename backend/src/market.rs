@@ -274,10 +274,32 @@ fn public_message(body: &str) -> String {
     }
 }
 
-/// Whether a Checkout URL is one the owner's browser should be sent to.
+/// The only hosts the owner's browser is ever sent to: Stripe-hosted Checkout
+/// and Connect onboarding (the account link). Custom Checkout domains are not
+/// supported.
+pub const STRIPE_HOSTS: [&str; 2] = ["checkout.stripe.com", "connect.stripe.com"];
+
+/// Whether a Checkout or onboarding URL is one the owner's browser should be
+/// sent to.
+///
+/// A plain `https://` test is not enough: the registrar is exactly the party
+/// the Stripe gate is built to distrust, and a compromised one could hand back
+/// any HTTPS page dressed up as a card form. So the host must be one of
+/// [`STRIPE_HOSTS`], exactly: no port, no userinfo (`https://checkout.stripe.com@evil/`
+/// names the host `evil`), and no lookalike suffix.
 #[must_use]
-pub fn safe_checkout_url(url: &str) -> bool {
-    url.starts_with("https://") && !url.chars().any(|c| c.is_control() || c.is_whitespace())
+pub fn stripe_hosted_url(url: &str) -> bool {
+    if url
+        .chars()
+        .any(|c| c.is_control() || c.is_whitespace() || c == '\\')
+    {
+        return false;
+    }
+    let Some(rest) = url.strip_prefix("https://") else {
+        return false;
+    };
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
+    STRIPE_HOSTS.contains(&authority)
 }
 
 #[cfg(test)]
@@ -426,10 +448,28 @@ mod tests {
     }
 
     #[test]
-    fn only_plain_https_checkout_urls_are_followed() {
-        assert!(safe_checkout_url("https://checkout.stripe.com/c/pay/cs_1"));
-        assert!(!safe_checkout_url("http://checkout.stripe.com/x"));
-        assert!(!safe_checkout_url("javascript:alert(1)"));
-        assert!(!safe_checkout_url("https://a b"));
+    fn only_stripe_hosted_pages_are_followed() {
+        assert!(stripe_hosted_url("https://checkout.stripe.com/c/pay/cs_1"));
+        assert!(stripe_hosted_url(
+            "https://checkout.stripe.com/c/pay/cs_1#fragment"
+        ));
+        assert!(stripe_hosted_url(
+            "https://connect.stripe.com/setup/e/acct_1/abc"
+        ));
+        for bad in [
+            "http://checkout.stripe.com/x",
+            "javascript:alert(1)",
+            "https://a b",
+            "https://example.com/pay",
+            "https://checkout.stripe.com.evil.example/x",
+            "https://checkout.stripe.com@evil.example/x",
+            "https://evil.example/https://checkout.stripe.com/",
+            "https://checkout.stripe.com:8443/x",
+            "https://CHECKOUT.stripe.com/x",
+            "https://checkout.stripe.com\\@evil.example/",
+            "https://",
+        ] {
+            assert!(!stripe_hosted_url(bad), "{bad}");
+        }
     }
 }

@@ -71,14 +71,28 @@ const MAX_QUANTITY: u64 = 1_000_000;
 const MAX_CAPACITY: u64 = 1_000_000_000;
 /// Active listings one seller may hold at once.
 const MAX_LISTINGS_PER_SELLER: usize = 20;
+/// Two-decimal currencies only. The admin UI converts prices with a fixed
+/// factor of 100 (`toMinorUnits` and `formatMoney` in
+/// admin-ui/app/src/screens/settings/market.ts), and [`MIN_CHARGE_MINOR`] is in
+/// those units too, so a zero- or three-decimal currency added here would be
+/// charged and shown 100x or 10x off until both learn its exponent.
 pub const SUPPORTED_CURRENCIES: &[&str] = &["aud", "cad", "chf", "eur", "gbp", "nzd", "usd"];
 
 /// Lifetime requested for a Checkout Session. Stripe requires at least 30 minutes
 /// from receipt, so include one minute for persistence and network transit.
 const CHECKOUT_TTL_SECS: u64 = 31 * 60;
-/// A pending order keeps its capacity reserved this long past the session's
-/// expiry, so a late `completed` webhook can never find the units resold.
-const PENDING_GRACE_SECS: u64 = 5 * 60;
+/// How long past the session's expiry a pending order keeps its capacity when
+/// no terminal event (`checkout.session.completed` or `.expired`) has arrived.
+///
+/// The reservation is released by the event, not by the clock: Stripe sends
+/// `checkout.session.expired` as the session lapses, so an abandoned checkout
+/// frees its units at about the 31 minute mark. The clock is only the backstop
+/// for an event that never comes, and it is Stripe's own retry horizon (three
+/// days in live mode) on purpose. A shorter one released the units while a
+/// `completed` event for them could still be on its way, held up by an edge or
+/// gate outage, and the late event then marked the order paid over units
+/// another buyer had already reserved.
+const PENDING_HOLD_SECS: u64 = 3 * 24 * 3600;
 /// Expired orders are only history; drop them after a month.
 /// How long a paid order's entitlement lasts. Storage is priced per GiB-month
 /// and compute per vCPU-hour, but both are sold as a one-month rental: the
@@ -134,6 +148,11 @@ impl Kind {
 /// the registry on every call, so an owner who stops sharing withdraws their
 /// listings from the shelf at once; the listings themselves are kept and
 /// reappear when sharing resumes. Orders already paid are unaffected.
+///
+/// The operator's per-tenant `market` bit narrows it the same way (see
+/// [`Sharing::only_sellers`]): turning a seller's opt-in off takes their
+/// listings off the shelf and out of reach of new orders at once, rather than
+/// only stopping them from creating new ones.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct Sharing {
     enrolled: BTreeSet<String>,
@@ -151,6 +170,15 @@ impl Sharing {
                 .map(|(k, _)| k.clone())
                 .collect(),
         }
+    }
+
+    /// Keep only the sellers `permitted` accepts: the tenants whose `market`
+    /// bit is on right now.
+    #[must_use]
+    pub fn only_sellers(mut self, permitted: impl Fn(&str) -> bool) -> Self {
+        self.enrolled.retain(|seller| permitted(seller));
+        self.compute.retain(|seller| permitted(seller));
+        self
     }
 
     #[must_use]
@@ -333,7 +361,7 @@ pub fn quote(unit_price: u64, quantity: u64, fee_bps: u32) -> Result<Quote, Mark
 /// Whether a pending order still holds its units at `now`.
 fn pending_live(order: &Order, now: u64) -> bool {
     order.status == OrderStatus::Pending
-        && now < order.created_at + CHECKOUT_TTL_SECS + PENDING_GRACE_SECS
+        && now < order.created_at + CHECKOUT_TTL_SECS + PENDING_HOLD_SECS
 }
 
 /// Units of `listing` that are sold or held by a live checkout.
@@ -1310,6 +1338,11 @@ mod tests {
         assert!(sharing.allows("on", Kind::Storage) && sharing.allows("on", Kind::Compute));
         assert!(sharing.allows("off", Kind::Storage) && !sharing.allows("off", Kind::Compute));
         assert!(!sharing.allows("absent", Kind::Storage));
+
+        // The operator's opt-in narrows it: a revoked seller sells nothing.
+        let sharing = sharing.only_sellers(|seller| seller == "off");
+        assert!(!sharing.allows("on", Kind::Storage) && !sharing.allows("on", Kind::Compute));
+        assert!(sharing.allows("off", Kind::Storage));
     }
 
     #[test]
@@ -1349,21 +1382,24 @@ mod tests {
     #[test]
     fn capacity_counts_paid_and_live_pending_only() {
         let mut state = MarketState::default();
-        let now = 10_000;
+        let now = 1_000_000;
         for o in [
             order("paid", OrderStatus::Paid, 3, 0),
             order("live", OrderStatus::Pending, 2, now - 60),
+            // Past its session with no terminal event yet: a `completed` for
+            // it may still arrive, so its units stay held.
+            order("late", OrderStatus::Pending, 7, now - 40 * 60),
             order(
                 "lapsed",
                 OrderStatus::Pending,
                 4,
-                now - CHECKOUT_TTL_SECS - PENDING_GRACE_SECS - 1,
+                now - CHECKOUT_TTL_SECS - PENDING_HOLD_SECS - 1,
             ),
             order("expired", OrderStatus::Expired, 5, now - 60),
         ] {
             state.orders.insert(o.id.clone(), o);
         }
-        assert_eq!(reserved(&state, "lst_1", now), 5);
+        assert_eq!(reserved(&state, "lst_1", now), 12);
         assert_eq!(reserved(&state, "other", now), 0);
     }
 

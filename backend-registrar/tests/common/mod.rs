@@ -584,6 +584,8 @@ struct StubState {
     status: StatusCode,
     /// The bearer token every request is expected to carry.
     expect_bearer: Option<String>,
+    /// The `status.phase` a `GET` of a PersistentVolumeClaim reports.
+    claim_phase: Arc<Mutex<String>>,
 }
 
 impl KubeStub {
@@ -605,6 +607,7 @@ impl KubeStub {
             bodies: Arc::new(Mutex::new(Vec::new())),
             status: StatusCode::from_u16(status).expect("a valid status code"),
             expect_bearer,
+            claim_phase: Arc::new(Mutex::new("Bound".to_string())),
         };
         let app = Router::new()
             .fallback(stub_handler)
@@ -648,6 +651,15 @@ impl KubeStub {
             .clone()
     }
 
+    /// What a `GET` of any claim reports from now on (`Bound` by default).
+    pub fn set_claim_phase(&self, phase: &str) {
+        *self
+            .state
+            .claim_phase
+            .lock()
+            .expect("the stub's claim phase is not poisoned") = phase.to_string();
+    }
+
     pub async fn shutdown(mut self) {
         if let Some(stop) = self.stop.take() {
             let _ = stop.send(());
@@ -664,7 +676,8 @@ async fn stub_handler(
     method: Method,
     uri: Uri,
     body: axum::body::Bytes,
-) -> StatusCode {
+) -> axum::response::Response {
+    use axum::response::IntoResponse;
     state
         .seen
         .lock()
@@ -683,8 +696,16 @@ async fn stub_handler(
             .and_then(|v| v.to_str().ok())
             .unwrap_or_default();
         if supplied != format!("Bearer {expected}") {
-            return StatusCode::UNAUTHORIZED;
+            return StatusCode::UNAUTHORIZED.into_response();
         }
     }
-    state.status
+    if method == Method::GET && uri.path().contains("/persistentvolumeclaims/") {
+        let phase = state
+            .claim_phase
+            .lock()
+            .expect("the stub's claim phase is not poisoned")
+            .clone();
+        return axum::Json(serde_json::json!({ "status": { "phase": phase } })).into_response();
+    }
+    state.status.into_response()
 }

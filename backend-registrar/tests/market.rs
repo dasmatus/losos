@@ -43,7 +43,7 @@ struct Seen {
 #[derive(Clone)]
 struct StripeState {
     seen: Arc<Mutex<Vec<Seen>>>,
-    /// What `GET /v1/accounts?ids[]=...` reports.
+    /// What `GET /v1/accounts/acct_test_1` reports.
     account_ready: Arc<AtomicBool>,
     /// Make checkout creation fail with a 500.
     fail_checkout: Arc<AtomicBool>,
@@ -139,9 +139,12 @@ async fn stripe_handler(
     });
     match (method.as_str(), uri.path()) {
         ("POST", "/v1/accounts") => Json(json!({ "id": "acct_test_1" })).into_response(),
-        ("GET", "/v1/accounts") => {
+        // Retrieve one account by id. The list endpoint (`GET /v1/accounts`)
+        // is deliberately not served: it has no id filter and would hand back
+        // some other seller's account.
+        ("GET", "/v1/accounts/acct_test_1") => {
             let ready = state.account_ready.load(Ordering::SeqCst);
-            Json(json!({ "data": [account_object(ready)] })).into_response()
+            Json(account_object(ready)).into_response()
         }
         ("POST", "/v1/accounts/acct_test_1") => Json(account_object(false)).into_response(),
         ("POST", "/v1/account_links") => {
@@ -434,6 +437,9 @@ async fn onboarding_creates_one_account_and_hands_back_a_link() {
     let view = parse(&body);
     assert_eq!(view["ready"], true);
     assert!(view["url"].is_null());
+    // Readiness comes from retrieving this seller's own account by id.
+    assert!(!stripe.calls("GET", "/v1/accounts/acct_test_1").is_empty());
+    assert!(stripe.calls("GET", "/v1/accounts").is_empty());
 
     edge.shutdown().await;
     stripe.shutdown().await;
@@ -823,9 +829,15 @@ async fn either_of_two_webhook_secrets_verifies() {
     .expect("overwrite webhook secrets");
 
     let body = serde_json::to_vec(&json!({ "type": "ping" })).expect("event");
-    for secret in [WEBHOOK_SECRET, connect_secret] {
+    // The failure message names which endpoint's secret failed, never the
+    // secret itself.
+    for (endpoint, secret) in [("platform", WEBHOOK_SECRET), ("connect", connect_secret)] {
         let header = sign_webhook(secret, &body, now());
-        assert_eq!(webhook_raw(&edge, &body, &header).await.0, 200, "{secret}");
+        assert_eq!(
+            webhook_raw(&edge, &body, &header).await.0,
+            200,
+            "{endpoint} endpoint secret"
+        );
     }
     let header = sign_webhook("whsec_third", &body, now());
     assert_eq!(webhook_raw(&edge, &body, &header).await.0, 400);
@@ -975,6 +987,42 @@ async fn a_refused_claim_stays_pending_and_never_loses_the_payment() {
 }
 
 #[tokio::test]
+async fn a_claim_that_is_not_bound_yet_is_not_reported_as_a_volume() {
+    let stripe = StripeStub::start().await;
+    let kube = KubeStub::start(201).await;
+    kube.set_claim_phase("Pending");
+    let edge = Edge::start_with_market_and_mesh(
+        "market-fulfil-pending",
+        &tenants(),
+        &stripe.base,
+        MeshFixture::enabled(&kube.base),
+    )
+    .await;
+    buy_paid(&edge, "storage", 4).await;
+
+    // No storage class, or no capacity: the claim stays Pending, and the
+    // reconciler keeps checking instead of recording a volume.
+    tokio::time::sleep(Duration::from_millis(400)).await;
+    let gets = kube
+        .seen()
+        .iter()
+        .filter(|s| s.starts_with("GET ") && s.contains("/persistentvolumeclaims/"))
+        .count();
+    assert!(gets >= 2, "{:?}", kube.seen());
+    let account = buyer_account(&edge).await;
+    assert_eq!(account["purchases"][0]["status"], "paid");
+    assert!(account["purchases"][0]["volume"].is_null());
+
+    // Once it binds, the next pass records it.
+    kube.set_claim_phase("Bound");
+    wait_for_volume(&edge).await;
+
+    edge.shutdown().await;
+    kube.shutdown().await;
+    stripe.shutdown().await;
+}
+
+#[tokio::test]
 async fn compute_orders_are_a_credit_and_touch_no_cluster() {
     let stripe = StripeStub::start().await;
     let kube = KubeStub::start(201).await;
@@ -1047,6 +1095,49 @@ async fn only_what_an_appliance_shares_on_the_mesh_can_be_sold() {
 
     // The storage listing is on the shelf while sharing, and orderable.
     assert_eq!(browse(&edge).await.1[0]["id"], listing_id.as_str());
+
+    edge.shutdown().await;
+    stripe.shutdown().await;
+}
+
+#[tokio::test]
+async fn revoking_a_sellers_opt_in_takes_their_listings_off_sale() {
+    let stripe = StripeStub::start().await;
+    let edge = Edge::start_market(
+        "market-revoke",
+        &tenants(),
+        &stripe.base,
+        MeshFixture::default(),
+        &[("seller-box", true)],
+    )
+    .await;
+    ready_seller(&edge).await;
+    let (status, body) = list(&edge, "storage", 100, 10).await;
+    assert_eq!(status, 201, "{body}");
+    let listing_id = parse(&body)["listing_id"].as_str().expect("id").to_string();
+    assert_eq!(browse(&edge).await.1[0]["id"], listing_id.as_str());
+
+    // The operator turns the seller's market bit off; the buyer keeps theirs.
+    edge.rewrite_tenants(&[
+        TenantSpec::new("seller-box", "seller.example", GOOD_TOKEN),
+        TenantSpec::new("buyer-box", "buyer.example", OTHER_TOKEN).with_market(),
+    ]);
+
+    let (status, shelf) = browse(&edge).await;
+    assert_eq!(status, 200);
+    assert_eq!(
+        shelf,
+        json!([]),
+        "a revoked seller's listing left the shelf"
+    );
+    // Off the shelf reads the same as gone: the buyer cannot tell a revoked
+    // seller from a closed listing.
+    let (status, body) = order(&edge, &listing_id, 1).await;
+    assert_eq!(status, 404, "{body}");
+    assert!(
+        stripe.calls("POST", "/v1/checkout/sessions").is_empty(),
+        "no buyer is charged for a revoked seller"
+    );
 
     edge.shutdown().await;
     stripe.shutdown().await;

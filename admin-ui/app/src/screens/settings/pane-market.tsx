@@ -6,7 +6,7 @@ import type { MarketKind, MarketOrder, MarketShelfListing } from "@/lib/api";
 import { t as translate, type MessageKey } from "@/lib/i18n";
 import { useT } from "@/lib/i18n-react";
 import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText, StackRow } from "./rows";
-import { formatDay, formatMoney, isHttps, toMinorUnits, useMarket, type MarketData } from "./market";
+import { formatDay, formatMoney, isStripePage, toMinorUnits, useMarket, type MarketData } from "./market";
 import type { SettingsForm } from "./use-settings-form";
 
 /* Buying and selling what the mesh already shares.
@@ -204,7 +204,7 @@ function ShelfRow({
     checkoutTab.opener = null;
     const reply = await market.order(listing.id, n);
     if (reply !== null) {
-      if (isHttps(reply.checkout_url)) {
+      if (isStripePage(reply.checkout_url)) {
         checkoutTab.location.href = reply.checkout_url;
         setOpened(true);
       } else {
@@ -275,7 +275,7 @@ function SellSection({ market }: { market: MarketData }) {
     }
     onboardingTab.opener = null;
     const reply = await market.onboard();
-    if (reply !== null && isHttps(reply.url)) onboardingTab.location.href = reply.url;
+    if (reply !== null && isStripePage(reply.url)) onboardingTab.location.href = reply.url;
     else onboardingTab.close();
   };
 
