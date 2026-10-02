@@ -184,14 +184,48 @@ impl Edge {
         Self::start_inner(tag, tenants, mesh, None, None).await
     }
 
-    /// As [`Edge::start`], with the Stripe market pointed at `stripe_api`.
+    /// As [`Edge::start`], with the Stripe market pointed at `stripe_api` and
+    /// `seller-box` already enrolled in the mesh with compute sharing on —
+    /// the market only sells what an appliance is sharing.
     pub async fn start_with_market(tag: &str, tenants: &[TenantSpec], stripe_api: &str) -> Self {
-        Self::start_inner(
+        Self::start_market(
             tag,
             tenants,
+            stripe_api,
             MeshFixture::default(),
+            &[("seller-box", true)],
+        )
+        .await
+    }
+
+    /// As [`Edge::start_with_market`], with the mesh half configured too, so
+    /// a paid storage order has an apiserver to be fulfilled against.
+    pub async fn start_with_market_and_mesh(
+        tag: &str,
+        tenants: &[TenantSpec],
+        stripe_api: &str,
+        mesh: MeshFixture,
+    ) -> Self {
+        Self::start_market(tag, tenants, stripe_api, mesh, &[("seller-box", true)]).await
+    }
+
+    /// The general form: `enrolled` lists `(appliance id, share_compute)` for
+    /// every appliance that has already joined the mesh, written into
+    /// `registry.json` before the edge starts.
+    pub async fn start_market(
+        tag: &str,
+        tenants: &[TenantSpec],
+        stripe_api: &str,
+        mesh: MeshFixture,
+        enrolled: &[(&str, bool)],
+    ) -> Self {
+        Self::start_inner_seeded(
+            tag,
+            tenants,
+            mesh,
             None,
             Some(stripe_api.to_string()),
+            enrolled,
         )
         .await
     }
@@ -212,7 +246,42 @@ impl Edge {
         noise_public_key: Option<&str>,
         stripe_api: Option<String>,
     ) -> Self {
+        Self::start_inner_seeded(tag, tenants, mesh, noise_public_key, stripe_api, &[]).await
+    }
+
+    async fn start_inner_seeded(
+        tag: &str,
+        tenants: &[TenantSpec],
+        mesh: MeshFixture,
+        noise_public_key: Option<&str>,
+        stripe_api: Option<String>,
+        enrolled: &[(&str, bool)],
+    ) -> Self {
         let dir = TempDir::new(tag);
+        if !enrolled.is_empty() {
+            let windows: serde_json::Map<String, serde_json::Value> = enrolled
+                .iter()
+                .map(|(id, share)| {
+                    (
+                        (*id).to_string(),
+                        serde_json::json!({
+                            "share_compute": share,
+                            "window_start": "23:00",
+                            "window_end": "07:00",
+                            "tz": "UTC",
+                        }),
+                    )
+                })
+                .collect();
+            std::fs::write(
+                dir.join("registry.json"),
+                serde_json::to_vec(
+                    &serde_json::json!({ "tenants": {}, "compute_windows": windows }),
+                )
+                .expect("serialize registry"),
+            )
+            .expect("seed registry.json");
+        }
         std::fs::create_dir_all(dir.join("traefik")).expect("create traefik dir");
         std::fs::write(dir.join("bootstrap.token"), BOOTSTRAP_TOKEN).expect("write bootstrap");
         write_tenants(&dir, tenants);
@@ -242,6 +311,7 @@ impl Edge {
                 return_url: RETURN_URL.to_string(),
                 currency: "eur".to_string(),
                 fee_bps: losos_registrar::market::DEFAULT_FEE_BPS,
+                storage_class: losos_registrar::market::DEFAULT_STORAGE_CLASS.to_string(),
             })
         });
 
@@ -475,6 +545,8 @@ pub struct KubeStub {
 struct StubState {
     /// The `METHOD path` of every request the stub saw, in order.
     seen: Arc<Mutex<Vec<String>>>,
+    /// The JSON body of every request that had one, with its `METHOD path`.
+    bodies: Arc<Mutex<Vec<(String, serde_json::Value)>>>,
     /// What to answer with. 404 is the apiserver's "no such node", which the
     /// handler must treat as a clean result.
     status: StatusCode,
@@ -498,6 +570,7 @@ impl KubeStub {
     async fn start_inner(status: u16, expect_bearer: Option<String>) -> Self {
         let state = StubState {
             seen: Arc::new(Mutex::new(Vec::new())),
+            bodies: Arc::new(Mutex::new(Vec::new())),
             status: StatusCode::from_u16(status).expect("a valid status code"),
             expect_bearer,
         };
@@ -533,6 +606,16 @@ impl KubeStub {
             .clone()
     }
 
+    /// The JSON body of every request that carried one, as
+    /// `(METHOD path, body)`.
+    pub fn bodies(&self) -> Vec<(String, serde_json::Value)> {
+        self.state
+            .bodies
+            .lock()
+            .expect("the stub's body log is not poisoned")
+            .clone()
+    }
+
     pub async fn shutdown(mut self) {
         if let Some(stop) = self.stop.take() {
             let _ = stop.send(());
@@ -548,12 +631,20 @@ async fn stub_handler(
     headers: axum::http::HeaderMap,
     method: Method,
     uri: Uri,
+    body: axum::body::Bytes,
 ) -> StatusCode {
     state
         .seen
         .lock()
         .expect("the stub's request log is not poisoned")
         .push(format!("{method} {}", uri.path()));
+    if let Ok(json) = serde_json::from_slice(&body) {
+        state
+            .bodies
+            .lock()
+            .expect("the stub's body log is not poisoned")
+            .push((format!("{method} {}", uri.path()), json));
+    }
     if let Some(expected) = &state.expect_bearer {
         let supplied = headers
             .get(axum::http::header::AUTHORIZATION)

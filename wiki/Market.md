@@ -11,7 +11,14 @@ cut to cover its running costs. It is off by default, at three levels.
 | A seller may list     | closed  | Stripe reports the connected account ready    |
 
 A box that never trades is unaffected. The market is a feature of the edge's
-`losos-registrar`; nothing on the appliance changes.
+`losos-registrar`.
+
+**The market sells what you already share, and nothing else.** It is a way to
+be paid for the storage and compute a box contributes to the mesh, not a
+separate product. A box can list storage only while its node is enrolled in the
+mesh, and compute only while it is also sharing compute
+(`losos.cluster.shareCompute`). Stop sharing and your listings leave the shelf
+immediately (they return if you resume; orders already paid are unaffected).
 
 ## How the money moves
 
@@ -43,10 +50,33 @@ Prices are in the minor unit (cents) of one currency per edge
 (`losos.edge.market.currency`). A single order must total at least 50 minor
 units, which is Stripe's floor.
 
-**A paid order is the entitlement. It does not provision anything yet.** The
-order record is the proof of purchase; turning it into a Longhorn volume or a
-scheduled workload is a separate step, kept apart so the payment path can be
-run and audited before anything is handed out against it.
+## Fulfilment
+
+A paid order is a **30 day entitlement** (`expires_at`). Units return to the
+listing when it lapses.
+
+- **Storage.** The edge creates the namespace `market-<buyer id>` in the mesh
+  cluster and a `PersistentVolumeClaim` named after the order (`ord-...`) of the
+  purchased size, from `losos.edge.market.storageClass` (default `longhorn`).
+  It runs after every reconcile pass and straight after a paid webhook, is
+  idempotent (an `AlreadyExists` answer counts as done), and retries every
+  reconcile interval if the apiserver refuses. The account view reports the
+  claim as `volume: "<namespace>/<claim>"`.
+- **Compute.** A credit in vCPU-hours, listed under `entitlements`. Nothing
+  meters or schedules against it yet.
+
+Limits to know about, none of which are enforced yet:
+
+- The claim is not pinned to the seller's node: Longhorn places replicas across
+  the pool, so the seller is paid for contributing to it, not for hosting
+  that particular volume.
+- The buyer has no access path to the claim; it exists in the cluster for a
+  workload to mount.
+- Nothing is ever deleted. A lapsed entitlement stops being reported, but the
+  volume holds the buyer's data and removing it is an operator decision.
+- The registrar's ServiceAccount gains cluster-wide `get`/`create` on
+  namespaces and PersistentVolumeClaims when the market is enabled. Kubernetes
+  RBAC cannot scope either to `market-*` names.
 
 ## API
 
@@ -57,7 +87,7 @@ Bodies are JSON.
 | Route                          | Auth       | Purpose                                         |
 | ------------------------------ | ---------- | ----------------------------------------------- |
 | `GET /market/listings`         | none       | What can be bought now. Names no seller         |
-| `POST /market/account`         | token      | Your listings, purchases and sales              |
+| `POST /market/account`         | token      | Your listings, purchases, sales, entitlements   |
 | `POST /market/seller/onboard`  | token      | Start or resume Stripe onboarding               |
 | `POST /market/listings`        | token      | `kind`, `unit_price`, `capacity`                |
 | `POST /market/listings/close`  | token      | `listing_id`; paid orders keep their units      |
@@ -110,8 +140,9 @@ Stripe accepts it; the first test-mode run settles that.
 - **Refunds and disputes.** Handle them in the Stripe dashboard, using
   `reverse_transfer` and `refund_application_fee` so the seller's share and the
   platform's cut are both returned. The market does not model either.
-- **Fulfilment.** See above.
+- **Enforcing the entitlement.** Fulfilment creates the claim; it does not
+  stop a buyer using more than they bought, meter compute, or revoke access at
+  expiry.
 - **Tax, invoicing and seller verification** beyond what Stripe's onboarding
   does. Running a marketplace has legal duties that depend on where you
   operate; this is an experiment, not advice.
-- **An admin UI.** The routes are there; the SPA does not use them yet.

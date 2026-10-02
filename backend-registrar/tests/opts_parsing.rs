@@ -339,6 +339,7 @@ fn a_market_serve_invocation_takes_a_four_percent_cut_by_default() {
     assert_eq!(market.currency, "eur");
     assert_eq!(market.stripe_api, "https://api.stripe.com");
     assert_eq!(market.state_file, "/var/lib/losos-registrar/market.json");
+    assert_eq!(market.storage_class, "longhorn");
 }
 
 #[test]

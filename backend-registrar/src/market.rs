@@ -37,7 +37,7 @@
 //! charge refunded there should use `reverse_transfer` and
 //! `refund_application_fee`; this module does not model either.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::io;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -76,6 +76,15 @@ const CHECKOUT_TTL_SECS: u64 = 30 * 60;
 /// expiry, so a late `completed` webhook can never find the units resold.
 const PENDING_GRACE_SECS: u64 = 5 * 60;
 /// Expired orders are only history; drop them after a month.
+/// How long a paid order's entitlement lasts. Storage is priced per GiB-month
+/// and compute per vCPU-hour, but both are sold as a one-month rental: the
+/// units are the size of the grant, the 30 days its lifetime.
+pub const ENTITLEMENT_SECS: u64 = 30 * 24 * 3600;
+/// The Longhorn `StorageClass` a purchased volume is provisioned from, when
+/// `--market-storage-class` does not say otherwise (Longhorn's own default).
+pub const DEFAULT_STORAGE_CLASS: &str = "longhorn";
+/// Namespace prefix for everything bought by one appliance.
+const NAMESPACE_PREFIX: &str = "market-";
 const EXPIRED_RETENTION_SECS: u64 = 30 * 24 * 3600;
 /// Stripe's recommended replay window for webhook timestamps.
 const WEBHOOK_TOLERANCE_SECS: u64 = 5 * 60;
@@ -111,6 +120,44 @@ impl Kind {
         match self {
             Kind::Storage => "Storage",
             Kind::Compute => "Compute",
+        }
+    }
+}
+
+/// Which appliances are sharing what *right now*, as the edge knows it from
+/// `/cluster/join`.
+///
+/// The market sells nothing of its own: it monetises what an owner already
+/// contributes to the mesh. An appliance may therefore only sell storage while
+/// its node is enrolled in the mesh cluster, and compute only while it is
+/// enrolled *and* has `losos.cluster.shareCompute` on. The set is rebuilt from
+/// the registry on every call, so an owner who stops sharing withdraws their
+/// listings from the shelf at once; the listings themselves are kept and
+/// reappear when sharing resumes. Orders already paid are unaffected.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct Sharing {
+    enrolled: BTreeSet<String>,
+    compute: BTreeSet<String>,
+}
+
+impl Sharing {
+    #[must_use]
+    pub fn from_windows(windows: &BTreeMap<String, crate::window::ComputeWindow>) -> Self {
+        Self {
+            enrolled: windows.keys().cloned().collect(),
+            compute: windows
+                .iter()
+                .filter(|(_, w)| w.share_compute)
+                .map(|(k, _)| k.clone())
+                .collect(),
+        }
+    }
+
+    #[must_use]
+    pub fn allows(&self, seller: &str, kind: Kind) -> bool {
+        match kind {
+            Kind::Storage => self.enrolled.contains(seller),
+            Kind::Compute => self.compute.contains(seller),
         }
     }
 }
@@ -170,6 +217,16 @@ pub struct Order {
     pub session_id: Option<String>,
     pub created_at: u64,
     pub paid_at: Option<u64>,
+    /// When the entitlement lapses: `paid_at` plus [`ENTITLEMENT_SECS`].
+    /// `None` on an order that is not paid, or was paid before fulfilment
+    /// existed (which therefore never lapses).
+    #[serde(default)]
+    pub expires_at: Option<u64>,
+    /// The Kubernetes volume claim provisioned for a paid storage order, as
+    /// `<namespace>/<pvc>`. Written only after the apiserver accepted it, so
+    /// its absence on a live paid order means "still to do".
+    #[serde(default)]
+    pub volume: Option<String>,
 }
 
 /// Everything the market persists, in `market.json`.
@@ -282,9 +339,97 @@ pub fn reserved(state: &MarketState, listing_id: &str, now: u64) -> u64 {
         .orders
         .values()
         .filter(|o| o.listing_id == listing_id)
-        .filter(|o| o.status == OrderStatus::Paid || pending_live(o, now))
+        .filter(|o| paid_live(o, now) || pending_live(o, now))
         .map(|o| o.quantity)
         .sum()
+}
+
+/// Whether a paid order's entitlement is still running at `now`. A lapsed
+/// order hands its units back to the listing.
+fn paid_live(order: &Order, now: u64) -> bool {
+    order.status == OrderStatus::Paid && order.expires_at.is_none_or(|e| now < e)
+}
+
+/// What one appliance holds right now, summed over its live paid orders.
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize)]
+pub struct Entitlements {
+    /// GiB of Longhorn capacity it may claim.
+    pub storage_gib: u64,
+    /// vCPU-hours of compute credit. This is a ledger entry only: nothing
+    /// meters or schedules against it yet.
+    pub compute_vcpu_hours: u64,
+    /// The soonest `expires_at` among the live orders, if any lapses.
+    pub next_expiry: Option<u64>,
+}
+
+#[must_use]
+pub fn entitlements(state: &MarketState, buyer: &str, now: u64) -> Entitlements {
+    let mut out = Entitlements::default();
+    for o in state
+        .orders
+        .values()
+        .filter(|o| o.buyer == buyer && paid_live(o, now))
+    {
+        match o.kind {
+            Kind::Storage => out.storage_gib = out.storage_gib.saturating_add(o.quantity),
+            Kind::Compute => {
+                out.compute_vcpu_hours = out.compute_vcpu_hours.saturating_add(o.quantity);
+            }
+        }
+        if let Some(e) = o.expires_at {
+            out.next_expiry = Some(out.next_expiry.map_or(e, |n| n.min(e)));
+        }
+    }
+    out
+}
+
+/// The namespace holding everything `buyer` has bought, or `None` if no valid
+/// Kubernetes namespace (a DNS label) can be built from the id.
+#[must_use]
+pub fn namespace_for(buyer: &str) -> Option<String> {
+    let name = format!("{NAMESPACE_PREFIX}{buyer}");
+    let label = name.len() <= 63
+        && name
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+        && !name.ends_with('-');
+    label.then_some(name)
+}
+
+/// The claim name for an order. Order ids are `ord_<hex>`; `_` is not a legal
+/// DNS character.
+#[must_use]
+pub fn pvc_name(order_id: &str) -> String {
+    order_id.replace('_', "-").to_ascii_lowercase()
+}
+
+/// One storage order still waiting for its volume.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Provision {
+    pub order_id: String,
+    pub namespace: String,
+    pub pvc: String,
+    pub gib: u64,
+}
+
+/// Paid, unexpired storage orders with no volume yet. An order whose buyer id
+/// cannot name a namespace is skipped (and logged by the caller) rather than
+/// retried forever.
+#[must_use]
+pub fn pending_provisions(state: &MarketState, now: u64) -> Vec<Provision> {
+    state
+        .orders
+        .values()
+        .filter(|o| o.kind == Kind::Storage && o.volume.is_none() && paid_live(o, now))
+        .filter_map(|o| {
+            Some(Provision {
+                order_id: o.id.clone(),
+                namespace: namespace_for(&o.buyer)?,
+                pvc: pvc_name(&o.id),
+                gib: o.quantity,
+            })
+        })
+        .collect()
 }
 
 /// Units still buyable.
@@ -403,6 +548,7 @@ pub fn apply_event(state: &mut MarketState, event: &Value, now: u64) -> bool {
             }
             order.status = OrderStatus::Paid;
             order.paid_at = Some(now);
+            order.expires_at = Some(now + ENTITLEMENT_SECS);
             true
         }
         "checkout.session.expired" => {
@@ -484,10 +630,15 @@ pub struct OrderView {
     pub status: OrderStatus,
     pub created_at: u64,
     pub paid_at: Option<u64>,
+    pub expires_at: Option<u64>,
+    /// Whether the entitlement has run out.
+    pub expired: bool,
+    /// `<namespace>/<claim>` once a storage order's volume exists.
+    pub volume: Option<String>,
 }
 
 impl OrderView {
-    fn of(o: &Order) -> Self {
+    fn of(o: &Order, now: u64) -> Self {
         Self {
             id: o.id.clone(),
             listing_id: o.listing_id.clone(),
@@ -501,6 +652,9 @@ impl OrderView {
             status: o.status,
             created_at: o.created_at,
             paid_at: o.paid_at,
+            expires_at: o.expires_at,
+            expired: o.status == OrderStatus::Paid && !paid_live(o, now),
+            volume: o.volume.clone(),
         }
     }
 }
@@ -511,7 +665,14 @@ pub struct AccountView {
     pub currency: String,
     pub seller_onboarded: bool,
     pub seller_ready: bool,
+    /// Whether the seller's node is enrolled in the mesh, which is what lets
+    /// it list storage.
+    pub can_sell_storage: bool,
+    /// Whether it is enrolled and sharing compute, which is what lets it list
+    /// compute.
+    pub can_sell_compute: bool,
     pub listings: Vec<OwnListing>,
+    pub entitlements: Entitlements,
     pub purchases: Vec<OrderView>,
     pub sales: Vec<OrderView>,
 }
@@ -747,6 +908,8 @@ pub struct MarketOpts {
     /// cannot be compared.
     pub currency: String,
     pub fee_bps: u32,
+    /// `StorageClass` purchased volumes are claimed from.
+    pub storage_class: String,
 }
 
 pub struct Market {
@@ -852,7 +1015,7 @@ impl Market {
     }
 
     /// Everything one appliance may see about its own market activity.
-    pub async fn account(&self, id: &str) -> AccountView {
+    pub async fn account(&self, id: &str, sharing: &Sharing) -> AccountView {
         let now = now_secs();
         let state = self.state.lock().await;
         let seller = state.sellers.get(id);
@@ -861,6 +1024,8 @@ impl Market {
             currency: self.opts.currency.clone(),
             seller_onboarded: seller.is_some(),
             seller_ready: seller.is_some_and(|s| s.ready),
+            can_sell_storage: sharing.allows(id, Kind::Storage),
+            can_sell_compute: sharing.allows(id, Kind::Compute),
             listings: state
                 .listings
                 .values()
@@ -875,29 +1040,31 @@ impl Market {
                     active: l.active,
                 })
                 .collect(),
+            entitlements: entitlements(&state, id, now),
             purchases: state
                 .orders
                 .values()
                 .filter(|o| o.buyer == id)
-                .map(OrderView::of)
+                .map(|o| OrderView::of(o, now))
                 .collect(),
             sales: state
                 .orders
                 .values()
                 .filter(|o| o.seller == id)
-                .map(OrderView::of)
+                .map(|o| OrderView::of(o, now))
                 .collect(),
         }
     }
 
     /// Every listing a buyer could order right now. Anonymous.
-    pub async fn browse(&self) -> Vec<PublicListing> {
+    pub async fn browse(&self, sharing: &Sharing) -> Vec<PublicListing> {
         let now = now_secs();
         let state = self.state.lock().await;
         state
             .listings
             .values()
             .filter(|l| l.active && state.sellers.get(&l.seller).is_some_and(|s| s.ready))
+            .filter(|l| sharing.allows(&l.seller, l.kind))
             .filter_map(|l| {
                 let left = available(&state, l, now);
                 (left > 0).then(|| PublicListing {
@@ -967,7 +1134,14 @@ impl Market {
         &self,
         seller: &str,
         new: NewListing,
+        sharing: &Sharing,
     ) -> Result<String, MarketError> {
+        if !sharing.allows(seller, new.kind) {
+            return Err(MarketError::Conflict(match new.kind {
+                Kind::Storage => "only an appliance sharing its storage on the mesh can sell it",
+                Kind::Compute => "only an appliance sharing its compute on the mesh can sell it",
+            }));
+        }
         // The price and capacity are validated as an order of one unit and the
         // whole capacity would be, so a listing nobody could ever buy is
         // refused up front.
@@ -1040,6 +1214,7 @@ impl Market {
         &self,
         buyer: &str,
         new: NewOrder,
+        sharing: &Sharing,
     ) -> Result<CheckoutView, MarketError> {
         let stripe = self.stripe().await?;
         let now = now_secs();
@@ -1057,6 +1232,10 @@ impl Market {
                 .filter(|s| s.ready)
                 .cloned()
                 .ok_or(MarketError::NotFound)?;
+            // Not for sale while the seller has stopped sharing it.
+            if !sharing.allows(&listing.seller, listing.kind) {
+                return Err(MarketError::NotFound);
+            }
             if listing.seller == buyer {
                 return Err(MarketError::Invalid("cannot buy your own listing"));
             }
@@ -1079,6 +1258,8 @@ impl Market {
                 session_id: None,
                 created_at: now,
                 paid_at: None,
+                expires_at: None,
+                volume: None,
             };
             state.orders.retain(|_, o| {
                 !(o.status == OrderStatus::Expired && now > o.created_at + EXPIRED_RETENTION_SECS)
@@ -1121,6 +1302,30 @@ impl Market {
         }
     }
 
+    pub fn storage_class(&self) -> &str {
+        &self.opts.storage_class
+    }
+
+    /// Storage orders that are paid and live but have no volume yet.
+    pub async fn pending_provisions(&self) -> Vec<Provision> {
+        pending_provisions(&*self.state.lock().await, now_secs())
+    }
+
+    /// Record that `order_id`'s volume now exists.
+    pub async fn mark_provisioned(
+        &self,
+        order_id: &str,
+        namespace: &str,
+        pvc: &str,
+    ) -> Result<(), MarketError> {
+        let mut state = self.state.lock().await;
+        if let Some(o) = state.orders.get_mut(order_id) {
+            o.volume = Some(format!("{namespace}/{pvc}"));
+            self.persist(&state).await?;
+        }
+        Ok(())
+    }
+
     /// Handle a Stripe webhook delivery. `signature` is the raw header.
     pub async fn webhook(&self, signature: &str, body: &[u8]) -> Result<(), MarketError> {
         let secrets = read_webhook_secrets(&self.opts.webhook_secret_file).await?;
@@ -1161,6 +1366,8 @@ mod tests {
             session_id: Some(format!("cs_{id}")),
             created_at,
             paid_at: None,
+            expires_at: None,
+            volume: None,
         }
     }
 
@@ -1175,6 +1382,112 @@ mod tests {
                 "currency": "EUR",
             }}
         })
+    }
+
+    fn paid(id: &str, kind: Kind, qty: u64, buyer: &str, expires_at: Option<u64>) -> Order {
+        let mut o = order(id, OrderStatus::Paid, qty, 0);
+        o.kind = kind;
+        o.buyer = buyer.to_string();
+        o.paid_at = Some(0);
+        o.expires_at = expires_at;
+        o
+    }
+
+    fn state_of(orders: Vec<Order>) -> MarketState {
+        let mut st = MarketState::default();
+        for o in orders {
+            st.orders.insert(o.id.clone(), o);
+        }
+        st
+    }
+
+    #[test]
+    fn a_payment_starts_a_thirty_day_entitlement() {
+        let mut st = state_of(vec![order("ord_a", OrderStatus::Pending, 4, 0)]);
+        let o = st.orders["ord_a"].clone();
+        assert!(apply_event(&mut st, &completed(&o), 1_000));
+        assert_eq!(
+            st.orders["ord_a"].expires_at,
+            Some(1_000 + ENTITLEMENT_SECS)
+        );
+    }
+
+    #[test]
+    fn entitlements_sum_live_paid_orders_per_buyer() {
+        let st = state_of(vec![
+            paid("ord_a", Kind::Storage, 5, "b", Some(100)),
+            paid("ord_b", Kind::Storage, 7, "b", Some(50)),
+            paid("ord_c", Kind::Compute, 3, "b", None),
+            paid("ord_d", Kind::Storage, 99, "other", Some(100)),
+            order("ord_e", OrderStatus::Pending, 99, 0),
+        ]);
+        let e = entitlements(&st, "b", 10);
+        assert_eq!(e.storage_gib, 12);
+        assert_eq!(e.compute_vcpu_hours, 3);
+        assert_eq!(e.next_expiry, Some(50));
+    }
+
+    #[test]
+    fn a_lapsed_order_stops_counting_and_frees_its_units() {
+        let st = state_of(vec![paid("ord_a", Kind::Storage, 5, "b", Some(100))]);
+        assert_eq!(entitlements(&st, "b", 99).storage_gib, 5);
+        assert_eq!(reserved(&st, "lst_1", 99), 5);
+        assert_eq!(entitlements(&st, "b", 100), Entitlements::default());
+        assert_eq!(reserved(&st, "lst_1", 100), 0);
+    }
+
+    #[test]
+    fn only_live_paid_storage_orders_await_a_volume() {
+        let mut done = paid("ord_done", Kind::Storage, 1, "b", Some(100));
+        done.volume = Some("market-b/ord-done".to_string());
+        let st = state_of(vec![
+            paid("ord_todo", Kind::Storage, 2, "b", Some(100)),
+            done,
+            paid("ord_late", Kind::Storage, 3, "b", Some(5)),
+            paid("ord_cpu", Kind::Compute, 4, "b", Some(100)),
+            order("ord_pending", OrderStatus::Pending, 5, 0),
+            paid("ord_bad", Kind::Storage, 6, "Bad_Name", Some(100)),
+        ]);
+        assert_eq!(
+            pending_provisions(&st, 10),
+            vec![Provision {
+                order_id: "ord_todo".to_string(),
+                namespace: "market-b".to_string(),
+                pvc: "ord-todo".to_string(),
+                gib: 2,
+            }]
+        );
+    }
+
+    #[test]
+    fn namespaces_are_dns_labels_or_nothing() {
+        assert_eq!(
+            namespace_for("mattbox-01").as_deref(),
+            Some("market-mattbox-01")
+        );
+        assert_eq!(namespace_for("a.b"), None);
+        assert_eq!(namespace_for("A"), None);
+        assert_eq!(namespace_for("x-"), None);
+        assert_eq!(namespace_for(&"a".repeat(60)), None);
+        assert_eq!(pvc_name("ord_ab12"), "ord-ab12");
+    }
+
+    #[test]
+    fn selling_needs_the_matching_mesh_contribution() {
+        use crate::window::ComputeWindow;
+        let w = |share| ComputeWindow {
+            share_compute: share,
+            window_start: "23:00".to_string(),
+            window_end: "07:00".to_string(),
+            tz: "UTC".to_string(),
+        };
+        let sharing = Sharing::from_windows(&BTreeMap::from([
+            ("on".to_string(), w(true)),
+            ("off".to_string(), w(false)),
+        ]));
+        assert!(sharing.allows("on", Kind::Storage) && sharing.allows("on", Kind::Compute));
+        assert!(sharing.allows("off", Kind::Storage) && !sharing.allows("off", Kind::Compute));
+        assert!(!sharing.allows("absent", Kind::Storage));
     }
 
     #[test]

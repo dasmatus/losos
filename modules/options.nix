@@ -1042,6 +1042,16 @@ in
       description = "ISO 4217 code, lowercase. One currency per edge; listings are priced in its minor unit (cents).";
     };
 
+    edge.market.storageClass = lib.mkOption {
+      type = lib.types.strMatching "[a-z0-9]([-a-z0-9.]*[a-z0-9])?";
+      default = "longhorn";
+      description = ''
+        The Kubernetes StorageClass a purchased storage volume is claimed
+        from: the mesh's Longhorn pool, which is what appliances sharing their
+        storage contribute to.
+      '';
+    };
+
     edge.market.returnUrl = lib.mkOption {
       type = lib.types.str;
       default = "";

@@ -20,7 +20,10 @@ use axum::extract::State;
 use axum::http::{HeaderMap, Method, StatusCode, Uri};
 use axum::response::{IntoResponse, Response};
 use axum::{Json, Router};
-use common::{Edge, TenantSpec, GOOD_TOKEN, OTHER_TOKEN, RETURN_URL, STRIPE_KEY, WEBHOOK_SECRET};
+use common::{
+    Edge, KubeStub, MeshFixture, TenantSpec, GOOD_TOKEN, OTHER_TOKEN, RETURN_URL, STRIPE_KEY,
+    WEBHOOK_SECRET,
+};
 use losos_registrar::market::sign_webhook;
 use serde_json::{json, Value};
 use tokio::sync::oneshot;
@@ -793,6 +796,224 @@ async fn either_of_two_webhook_secrets_verifies() {
     }
     let header = sign_webhook("whsec_third", &body, now());
     assert_eq!(webhook_raw(&edge, &body, &header).await.0, 400);
+
+    edge.shutdown().await;
+    stripe.shutdown().await;
+}
+
+/// List, order and pay for `quantity` units; returns the order id.
+async fn buy_paid(edge: &Edge, kind: &str, quantity: u64) -> String {
+    ready_seller(edge).await;
+    let (status, body) = list(edge, kind, 100, 100).await;
+    assert_eq!(status, 201, "{body}");
+    let listing_id = parse(&body)["listing_id"].as_str().expect("id").to_string();
+    let (status, body) = order(edge, &listing_id, quantity).await;
+    assert_eq!(status, 201, "{body}");
+    let checkout = parse(&body);
+    let order_id = checkout["order_id"].as_str().expect("order id").to_string();
+    let amount = checkout["amount"].as_u64().expect("amount");
+    assert_eq!(
+        webhook(edge, &completed(&order_id, "cs_test_1", amount))
+            .await
+            .0,
+        200
+    );
+    order_id
+}
+
+async fn buyer_account(edge: &Edge) -> Value {
+    let (status, body) = edge
+        .post("/market/account", auth("buyer-box", OTHER_TOKEN))
+        .await;
+    assert_eq!(status, 200, "{body}");
+    parse(&body)
+}
+
+/// Poll the buyer's account until `purchases[0].volume` is set.
+async fn wait_for_volume(edge: &Edge) -> Value {
+    for _ in 0..100 {
+        let account = buyer_account(edge).await;
+        if !account["purchases"][0]["volume"].is_null() {
+            return account;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    panic!("the volume was never provisioned");
+}
+
+#[tokio::test]
+async fn a_paid_storage_order_becomes_a_claim_in_the_buyers_namespace() {
+    let stripe = StripeStub::start().await;
+    let kube = KubeStub::expecting_bearer(201, common::KUBE_TOKEN).await;
+    let edge = Edge::start_with_market_and_mesh(
+        "market-fulfil-storage",
+        &tenants(),
+        &stripe.base,
+        MeshFixture::enabled(&kube.base),
+    )
+    .await;
+    let order_id = buy_paid(&edge, "storage", 5).await;
+
+    let account = wait_for_volume(&edge).await;
+    let claim = order_id.replace('_', "-");
+    assert_eq!(
+        account["purchases"][0]["volume"],
+        format!("market-buyer-box/{claim}").as_str()
+    );
+    assert_eq!(account["entitlements"]["storage_gib"], 5);
+    assert_eq!(account["entitlements"]["compute_vcpu_hours"], 0);
+    let expires = account["purchases"][0]["expires_at"]
+        .as_u64()
+        .expect("expiry");
+    let thirty_days = 30 * 24 * 3600;
+    assert!(expires > now() + thirty_days - 60 && expires <= now() + thirty_days);
+    assert_eq!(account["purchases"][0]["expired"], false);
+
+    let bodies = kube.bodies();
+    let namespace = bodies
+        .iter()
+        .find(|(k, _)| k == "POST /api/v1/namespaces")
+        .expect("a namespace was created");
+    assert_eq!(namespace.1["metadata"]["name"], "market-buyer-box");
+    let pvc = bodies
+        .iter()
+        .find(|(k, _)| k == "POST /api/v1/namespaces/market-buyer-box/persistentvolumeclaims")
+        .expect("a claim was created");
+    assert_eq!(pvc.1["metadata"]["name"], claim.as_str());
+    assert_eq!(pvc.1["spec"]["storageClassName"], "longhorn");
+    assert_eq!(pvc.1["spec"]["resources"]["requests"]["storage"], "5Gi");
+    assert_eq!(pvc.1["spec"]["accessModes"][0], "ReadWriteOnce");
+
+    // Fulfilment is once-only: later reconcile passes create nothing more.
+    let seen = kube.seen().len();
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert_eq!(kube.seen().len(), seen);
+
+    edge.shutdown().await;
+    kube.shutdown().await;
+    stripe.shutdown().await;
+}
+
+#[tokio::test]
+async fn a_conflict_from_the_apiserver_counts_as_already_provisioned() {
+    let stripe = StripeStub::start().await;
+    let kube = KubeStub::start(409).await;
+    let edge = Edge::start_with_market_and_mesh(
+        "market-fulfil-conflict",
+        &tenants(),
+        &stripe.base,
+        MeshFixture::enabled(&kube.base),
+    )
+    .await;
+    buy_paid(&edge, "storage", 2).await;
+    let account = wait_for_volume(&edge).await;
+    assert_eq!(account["entitlements"]["storage_gib"], 2);
+
+    edge.shutdown().await;
+    kube.shutdown().await;
+    stripe.shutdown().await;
+}
+
+#[tokio::test]
+async fn a_refused_claim_stays_pending_and_never_loses_the_payment() {
+    let stripe = StripeStub::start().await;
+    let kube = KubeStub::start(403).await;
+    let edge = Edge::start_with_market_and_mesh(
+        "market-fulfil-refused",
+        &tenants(),
+        &stripe.base,
+        MeshFixture::enabled(&kube.base),
+    )
+    .await;
+    buy_paid(&edge, "storage", 3).await;
+
+    // The reconciler keeps retrying …
+    tokio::time::sleep(Duration::from_millis(400)).await;
+    assert!(kube.seen().len() >= 2, "{:?}", kube.seen());
+    // … and the buyer still holds the entitlement, with no volume yet.
+    let account = buyer_account(&edge).await;
+    assert_eq!(account["purchases"][0]["status"], "paid");
+    assert!(account["purchases"][0]["volume"].is_null());
+    assert_eq!(account["entitlements"]["storage_gib"], 3);
+
+    edge.shutdown().await;
+    kube.shutdown().await;
+    stripe.shutdown().await;
+}
+
+#[tokio::test]
+async fn compute_orders_are_a_credit_and_touch_no_cluster() {
+    let stripe = StripeStub::start().await;
+    let kube = KubeStub::start(201).await;
+    let edge = Edge::start_with_market_and_mesh(
+        "market-fulfil-compute",
+        &tenants(),
+        &stripe.base,
+        MeshFixture::enabled(&kube.base),
+    )
+    .await;
+    buy_paid(&edge, "compute", 12).await;
+
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    let account = buyer_account(&edge).await;
+    assert_eq!(account["entitlements"]["compute_vcpu_hours"], 12);
+    assert_eq!(account["entitlements"]["storage_gib"], 0);
+    assert!(account["purchases"][0]["volume"].is_null());
+    assert!(kube.seen().is_empty(), "{:?}", kube.seen());
+
+    edge.shutdown().await;
+    kube.shutdown().await;
+    stripe.shutdown().await;
+}
+
+#[tokio::test]
+async fn only_what_an_appliance_shares_on_the_mesh_can_be_sold() {
+    let stripe = StripeStub::start().await;
+    // seller-box is enrolled but not sharing compute; buyer-box is not enrolled.
+    let edge = Edge::start_market(
+        "market-sharing",
+        &tenants(),
+        &stripe.base,
+        MeshFixture::default(),
+        &[("seller-box", false)],
+    )
+    .await;
+    ready_seller(&edge).await;
+
+    let (status, body) = list(&edge, "compute", 100, 10).await;
+    assert_eq!(status, 409, "{body}");
+    assert!(body.contains("sharing its compute"), "{body}");
+    let (status, body) = list(&edge, "storage", 100, 10).await;
+    assert_eq!(status, 201, "{body}");
+    let listing_id = parse(&body)["listing_id"].as_str().expect("id").to_string();
+
+    let (_, body) = edge
+        .post("/market/account", auth("seller-box", GOOD_TOKEN))
+        .await;
+    let seller = parse(&body);
+    assert_eq!(seller["can_sell_storage"], true);
+    assert_eq!(seller["can_sell_compute"], false);
+    let buyer = buyer_account(&edge).await;
+    assert_eq!(buyer["can_sell_storage"], false);
+
+    // A box that is not on the mesh cannot list at all.
+    let (status, _) = edge
+        .post("/market/seller/onboard", auth("buyer-box", OTHER_TOKEN))
+        .await;
+    assert_eq!(status, 200);
+    let (status, _) = edge
+        .post(
+            "/market/listings",
+            with(
+                auth("buyer-box", OTHER_TOKEN),
+                json!({ "kind": "storage", "unit_price": 100, "capacity": 10 }),
+            ),
+        )
+        .await;
+    assert_eq!(status, 409);
+
+    // The storage listing is on the shelf while sharing, and orderable.
+    assert_eq!(browse(&edge).await.1[0]["id"], listing_id.as_str());
 
     edge.shutdown().await;
     stripe.shutdown().await;

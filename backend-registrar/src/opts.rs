@@ -309,6 +309,9 @@ fn parse_market(args: &[String]) -> Result<Option<Box<MarketOpts>>> {
         return_url: return_url.to_string(),
         currency: currency.to_string(),
         fee_bps,
+        storage_class: arg(args, "--market-storage-class")
+            .unwrap_or(crate::market::DEFAULT_STORAGE_CLASS)
+            .to_string(),
     })))
 }
 
