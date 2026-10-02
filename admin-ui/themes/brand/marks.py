@@ -127,25 +127,27 @@ def cloud_mark(grid):
 """
 
 
-# LosOS Git: the same fish, on a git branch instead of a cloud: a commit line
-# with a second line forking off it, white on a badge in the LosOS teal. Same
-# construction as the cloud mark, so the two read as one family. The teal is a
-# step lighter than the light palette's --accent so the badge still holds on
-# the dark palette's ground; an image cannot follow the page's mode.
+# LosOS Git: the same fish, centred on the master branch the way the cloud
+# mark centres it in the cloud. The badge is the LosOS teal, a step lighter
+# than the light palette's --accent so it still holds on the dark palette's
+# ground (an image cannot follow the page's mode). Master runs down the
+# middle, commit to commit, with the fish on it; one feature branch forks off
+# to the right so the shape still says "git" at favicon size.
 def git_mark(grid):
     return f"""\
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
   <title>LosOS Git</title>
-  <rect x="5" y="27" width="54" height="32" rx="9" fill="#167f8e"/>
+  <rect x="4" y="4" width="56" height="56" rx="12" fill="#167f8e"/>
   <g fill="none" stroke="#ffffff" stroke-width="3.5" stroke-linecap="round">
-    <path d="M17 33v20"/>
-    <path d="M47 41c0 7-30 3-30 12"/>
+    <path d="M32 12v40"/>
+    <path d="M32 45c0-8 17-8 17-17v-12"/>
   </g>
   <g fill="#167f8e" stroke="#ffffff" stroke-width="3">
-    <circle cx="17" cy="53" r="3.5"/>
-    <circle cx="47" cy="40" r="3.5"/>
+    <circle cx="32" cy="12" r="3.5"/>
+    <circle cx="32" cy="52" r="3.5"/>
+    <circle cx="49" cy="15" r="3.5"/>
   </g>
-{fish(grid, 13, 0, 38)}
+{fish(grid, 18, 17, 28)}
 </svg>
 """
 
