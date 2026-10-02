@@ -160,9 +160,8 @@ in
     # Everything here belongs in Forgejo's $FORGEJO_CUSTOM, at the same
     # relative path: css beside where Forgejo serves its stock themes, so the
     # relative @imports resolve; img/ where its templates load the logo and
-    # favicons from; templates/ where it looks for overrides. Forgejo lists
-    # theme-*.css from that directory on start, so nothing needs to enumerate
-    # the themes in app.ini.
+    # favicons from; templates/ where it looks for overrides. The files in
+    # customDir provide the stylesheets; ui.THEMES registers them in Appearance.
     customDir = "${package}/forgejo";
 
     # app.ini, in services.forgejo.settings' shape (the image renders it to
@@ -177,7 +176,10 @@ in
       # Forgejo copies DEFAULT_THEME into each account when it is created, so
       # this reaches new accounts; an existing account keeps the theme it had
       # until its owner picks LosOS under Settings → Appearance.
-      ui.DEFAULT_THEME = "losos-auto";
+      ui = {
+        THEMES = "auto,forgejo-auto,forgejo-light,forgejo-dark,gitea,arc-green,losos-auto,losos-light,losos-dark";
+        DEFAULT_THEME = "losos-auto";
+      };
 
       # The <meta> tags of pages that are not a repository's. Upstream's
       # describe Forgejo.
