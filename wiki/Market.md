@@ -25,7 +25,9 @@ immediately (they return if you resume; orders already paid are unaffected).
 The edge is the Stripe **platform**. Money never touches a losos box.
 
 1. A seller onboards: the edge creates a Stripe Express connected account for
-   it and returns Stripe's hosted onboarding link.
+   it, **tags it with the box's UUID** (metadata `losos_box_uuid`), and returns
+   Stripe's hosted onboarding link. A box that was onboarded before this
+   existed is tagged the next time its owner opens the page.
 2. Stripe tells the edge (`account.updated`) when the account can receive
    transfers. Only then can the seller list anything.
 3. A buyer orders units of a listing. The edge reserves them and creates a
@@ -138,8 +140,8 @@ a session.
      /var/secrets/losos-stripe-secret-key.cred
    ```
 
-   The blob's path is `losos.edge.market.stripeSecretKeySealed`. The name
-   must be exactly `stripe-secret-key`: a blob only decrypts under the name it
+   The blob's path is `losos.edge.market.stripeSecretKeySealed`, and only the
+   gate unit ever decrypts it. The name must be exactly `stripe-secret-key`: a blob only decrypts under the name it
    was sealed with.
 3. Add two webhook endpoints, both at
    `https://register.<publicDomain>/market/webhook`: one for events on your
@@ -163,16 +165,37 @@ Stripe accepts it; the first test-mode run settles that.
   with a five minute replay window and a larger body cap than other routes.
 - A payment only counts when the session id, amount and currency equal what
   the edge recorded for the order. A mismatch is logged and not fulfilled.
+- **The registrar never holds the Stripe key.** A separate unit,
+  `losos-stripe-gate` (`losos-registrar stripe-gate`), is the only process that
+  has it. The registrar talks to the gate over a Unix socket
+  (`/run/losos-stripe-gate/gate.sock`, 0600) and may ask only for: create an
+  account, tag an account, check an account, make an onboarding link, start a
+  Checkout Session, verify a webhook signature. The gate refuses a checkout
+  whose destination is not an `acct_...` id, whose currency differs from the
+  configured one, whose fee exceeds the 20% ceiling (or the whole amount),
+  whose return URL is not a plain http(s) URL, or whose session lifetime is more than a day.
+  It also refuses a non-`https` Stripe endpoint. There is no "forward this to
+  Stripe" operation. A compromised registrar therefore cannot read the key, cannot
+  send money anywhere but a connected account at the gate's fee limits, and
+  cannot issue refunds or payouts; it can still ask for checkouts, because
+  that is its job. Both units run as processes on the same machine, and root
+  on the edge can still reach both. The registrar also has the sealed blobs and
+  the gate's credential directory marked inaccessible, as a second layer.
 - The Stripe secrets are never stored in plaintext on the edge. They live as
   `systemd-creds` blobs (TPM2 where the edge has one, otherwise the host key)
-  and the registrar unit unseals them into its tmpfs RuntimeDirectory
-  (`/run/losos-registrar`, 0700) at start, so a copy of `/var` carries
-  ciphertext only. This is the same mechanism as `modules/keyring.nix`. It
-  does not defend against root on the running edge, which can unseal by
-  design. Rotating a secret means sealing a new blob and restarting
-  `losos-registrar`. A blob that is missing or will not unseal turns the market
-  off (503) and nothing else: the unseal step may fail without failing the
-  unit, which also carries the master proxy.
+  handed to the gate with `LoadCredentialEncrypted=`, so they are plaintext only
+  in that unit's private credential tmpfs and a copy of `/var` carries
+  ciphertext only. Rotating a secret means sealing a new blob and restarting
+  `losos-stripe-gate`. A missing blob skips the gate, which turns the market
+  off (503) and nothing else; the gate is its own unit, so the master proxy in
+  the registrar is never affected.
+- **The Stripe account carries the box's UUID, not its recovery code.** The
+  recovery code is a credential and stays on the box. What is sent is a
+  one-way value derived from it (`SHA-256("losos-box-id-v1:" + code)`, first
+  16 bytes, formatted as a UUID), which is stable for the life of the
+  installation and reveals nothing from which the code could be recovered. The
+  registrar checks it is a canonical UUID and the browser cannot choose it:
+  lososd adds it itself.
 - Secret files are shape-checked (`sk_`/`rk_`, `whsec_`) before use.
 - `market.json` is 0600 and written atomically. A file that does not parse
   stops the edge from starting rather than being treated as empty, because

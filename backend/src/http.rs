@@ -445,7 +445,7 @@ async fn post_market_onboard(
     body: web::Bytes,
 ) -> HttpResponse {
     post_market(api, req, body, "/api/market/onboard", |_| {
-        Some(crate::market::Op::Onboard)
+        Some(crate::market::Op::Onboard { box_uuid: None })
     })
     .await
 }

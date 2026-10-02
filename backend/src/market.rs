@@ -85,8 +85,13 @@ pub enum Op {
     Browse,
     /// This appliance's listings, purchases, sales and entitlements.
     Account,
-    /// Start or resume Stripe onboarding.
-    Onboard,
+    /// Start or resume Stripe onboarding. `box_uuid` is the box's derived
+    /// public UUID (see `boxid.rs`), written onto the Stripe account; the HTTP
+    /// layer leaves it `None` and [`crate::losos::cmd_market_op`] fills it in,
+    /// so no caller can name a UUID that is not this box's.
+    Onboard {
+        box_uuid: Option<String>,
+    },
     List {
         kind: String,
         unit_price: u64,
@@ -116,7 +121,11 @@ impl Op {
     /// A sentence naming what was wrong, suitable for a 400.
     pub fn validate(&self) -> Result<(), &'static str> {
         match self {
-            Op::Browse | Op::Account | Op::Onboard => Ok(()),
+            Op::Browse | Op::Account => Ok(()),
+            Op::Onboard { box_uuid } => match box_uuid {
+                Some(u) if !crate::recovery::is_well_formed(u) => Err("box_uuid is not a UUID"),
+                _ => Ok(()),
+            },
             Op::List {
                 kind,
                 unit_price,
@@ -160,7 +169,7 @@ impl Op {
         match self {
             Op::Browse => ("GET", "/market/listings"),
             Op::Account => ("POST", "/market/account"),
-            Op::Onboard => ("POST", "/market/seller/onboard"),
+            Op::Onboard { .. } => ("POST", "/market/seller/onboard"),
             Op::List { .. } => ("POST", "/market/listings"),
             Op::Close { .. } => ("POST", "/market/listings/close"),
             Op::Order { .. } => ("POST", "/market/orders"),
@@ -176,7 +185,11 @@ impl Op {
         let mut doc = json!({ "appliance_id": appliance_id, "token": token });
         let extra = match self {
             Op::Browse => return None,
-            Op::Account | Op::Onboard => json!({}),
+            Op::Account => json!({}),
+            Op::Onboard { box_uuid } => match box_uuid {
+                Some(u) => json!({ "box_uuid": u }),
+                None => json!({}),
+            },
             Op::List {
                 kind,
                 unit_price,
@@ -331,9 +344,34 @@ mod tests {
     }
 
     #[test]
+    fn the_onboard_body_carries_the_box_uuid_only_when_set() {
+        let none: Value =
+            serde_json::from_str(&Op::Onboard { box_uuid: None }.body("a", "t").unwrap()).unwrap();
+        assert!(none.get("box_uuid").is_none());
+        let id = "3f2b8c1e-7a4d-4e9b-9c15-0d6a2b7e4f31";
+        let some: Value = serde_json::from_str(
+            &Op::Onboard {
+                box_uuid: Some(id.to_string()),
+            }
+            .body("a", "t")
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(some["box_uuid"], id);
+        assert!(Op::Onboard {
+            box_uuid: Some("nope".to_string())
+        }
+        .validate()
+        .is_err());
+    }
+
+    #[test]
     fn routes_match_the_registrar() {
         assert_eq!(Op::Browse.route(), ("GET", "/market/listings"));
-        assert_eq!(Op::Onboard.route(), ("POST", "/market/seller/onboard"));
+        assert_eq!(
+            Op::Onboard { box_uuid: None }.route(),
+            ("POST", "/market/seller/onboard")
+        );
         assert_eq!(
             Op::Close {
                 listing_id: "l".to_string()

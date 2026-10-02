@@ -359,11 +359,17 @@ A separate `midnight-reboot.timer` reboots unconditionally at 00:07 with
   mesh, it is not a second product. The admin UI reaches it through lososd's
   `/api/market*` relay (`backend/src/market.rs`), which answers 200
   `{available:false}` rather than 404 when the market is off, because the SPA
-  latches a 404 as "route not served". The Stripe secrets are stored sealed
-  (`systemd-creds`, `losos.edge.market.{stripeSecretKey,webhookSecret}Sealed`)
-  and unsealed into `/run/losos-registrar` by an `ExecStartPre` with a leading
-  `-`. Don't switch that to `LoadCredentialEncrypted=`: a missing blob would
-  then fail the whole registrar and take the master proxy with it.
+  latches a 404 as "route not served". The Stripe key is held only by
+  the `losos-stripe-gate` unit (`losos-registrar stripe-gate`), which gets the
+  sealed blobs (`losos.edge.market.{stripeSecretKey,webhookSecret}Sealed`) by
+  `LoadCredentialEncrypted=`; the registrar talks to it over
+  `/run/losos-stripe-gate/gate.sock` and never sees the key, so don't add an
+  operation that forwards arbitrary Stripe calls, and keep the gate's request
+  validation (destination, currency, fee ceiling, session lifetime, https endpoint) tighter than what the
+  registrar happens to send. A missing blob skips the gate (`ConditionPathExists`)
+  and `/market/*` answers 503. Onboarding writes the box UUID
+  (`backend/src/boxid.rs`, a SHA-256 derivative of the recovery code — never the
+  code itself) onto the Stripe account.
 - **`system.stateVersion = "26.11"` is set-once** — matches the nixos-unstable
   this flake tracks; don't change it.
 - **The `result` symlink is a `nix build` artifact** (pointing into
