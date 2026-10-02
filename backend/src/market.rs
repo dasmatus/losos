@@ -274,10 +274,24 @@ fn public_message(body: &str) -> String {
     }
 }
 
-/// Whether a Checkout URL is one the owner's browser should be sent to.
+/// Whether a Stripe-hosted Checkout or Connect URL is safe to open.
 #[must_use]
 pub fn safe_checkout_url(url: &str) -> bool {
-    url.starts_with("https://") && !url.chars().any(|c| c.is_control() || c.is_whitespace())
+    let Ok(url) = url.parse::<actix_web::http::Uri>() else {
+        return false;
+    };
+    if url.scheme_str() != Some("https") {
+        return false;
+    }
+    let Some(authority) = url.authority().map(|authority| authority.as_str()) else {
+        return false;
+    };
+    ["checkout.stripe.com", "connect.stripe.com"]
+        .iter()
+        .any(|host| {
+            authority.eq_ignore_ascii_case(host)
+                || authority.eq_ignore_ascii_case(&format!("{host}:443"))
+        })
 }
 
 #[cfg(test)]
@@ -426,10 +440,19 @@ mod tests {
     }
 
     #[test]
-    fn only_plain_https_checkout_urls_are_followed() {
+    fn only_stripe_hosted_https_urls_are_followed() {
         assert!(safe_checkout_url("https://checkout.stripe.com/c/pay/cs_1"));
+        assert!(safe_checkout_url("https://connect.stripe.com/setup/abc"));
         assert!(!safe_checkout_url("http://checkout.stripe.com/x"));
         assert!(!safe_checkout_url("javascript:alert(1)"));
         assert!(!safe_checkout_url("https://a b"));
+        assert!(!safe_checkout_url(
+            "https://checkout.stripe.com.attacker.example/x"
+        ));
+        assert!(!safe_checkout_url(
+            "https://checkout.stripe.com@attacker.example/x"
+        ));
+        assert!(!safe_checkout_url("https://user@checkout.stripe.com/x"));
+        assert!(!safe_checkout_url("https://evil.example/x"));
     }
 }

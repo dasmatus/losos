@@ -130,7 +130,7 @@ images
     src = lib.cleanSource ./../backend-registrar;
     # SHA256 of the vendored crate tarball. If deps change, `nix build
     # .#losos-registrar` will print the new hash to paste here.
-    cargoHash = "sha256-uPQ/ftWa+GMR5EIMg3oXotjTi+dFBPubIR9qyFBsjA4=";
+    cargoHash = "sha256-Jn5W0NSSedbNBPo2URWAA7a4rysRqN0EQyIKC3u99z0=";
     # No system deps; pure Rust with rustls (no openssl).
     # Same reasoning as losos-ctl above: the suite runs via cargo test in the
     # lint job, not inside this derivation.

@@ -16,6 +16,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use axum::http::{Method, StatusCode, Uri};
+use axum::response::IntoResponse;
 use axum::Router;
 use losos_registrar::opts::ServeOpts;
 use tokio::sync::oneshot;
@@ -582,6 +583,7 @@ struct StubState {
     /// What to answer with. 404 is the apiserver's "no such node", which the
     /// handler must treat as a clean result.
     status: StatusCode,
+    pvc_phase: Arc<Mutex<String>>,
     /// The bearer token every request is expected to carry.
     expect_bearer: Option<String>,
 }
@@ -589,21 +591,26 @@ struct StubState {
 impl KubeStub {
     /// A stub that answers every request with `status`.
     pub async fn start(status: u16) -> Self {
-        Self::start_inner(status, None).await
+        Self::start_inner(status, None, "Bound").await
+    }
+
+    pub async fn start_with_pvc_phase(status: u16, phase: &str) -> Self {
+        Self::start_inner(status, None, phase).await
     }
 
     /// A stub that also asserts the `Authorization` header, so a join that
     /// forgot the ServiceAccount token fails loudly instead of passing because
     /// the stub did not care.
     pub async fn expecting_bearer(status: u16, token: &str) -> Self {
-        Self::start_inner(status, Some(token.to_string())).await
+        Self::start_inner(status, Some(token.to_string()), "Bound").await
     }
 
-    async fn start_inner(status: u16, expect_bearer: Option<String>) -> Self {
+    async fn start_inner(status: u16, expect_bearer: Option<String>, phase: &str) -> Self {
         let state = StubState {
             seen: Arc::new(Mutex::new(Vec::new())),
             bodies: Arc::new(Mutex::new(Vec::new())),
             status: StatusCode::from_u16(status).expect("a valid status code"),
+            pvc_phase: Arc::new(Mutex::new(phase.to_string())),
             expect_bearer,
         };
         let app = Router::new()
@@ -648,6 +655,14 @@ impl KubeStub {
             .clone()
     }
 
+    pub fn set_pvc_phase(&self, phase: &str) {
+        *self
+            .state
+            .pvc_phase
+            .lock()
+            .expect("the stub's PVC phase is not poisoned") = phase.to_string();
+    }
+
     pub async fn shutdown(mut self) {
         if let Some(stop) = self.stop.take() {
             let _ = stop.send(());
@@ -664,7 +679,7 @@ async fn stub_handler(
     method: Method,
     uri: Uri,
     body: axum::body::Bytes,
-) -> StatusCode {
+) -> axum::response::Response {
     state
         .seen
         .lock()
@@ -683,8 +698,16 @@ async fn stub_handler(
             .and_then(|v| v.to_str().ok())
             .unwrap_or_default();
         if supplied != format!("Bearer {expected}") {
-            return StatusCode::UNAUTHORIZED;
+            return StatusCode::UNAUTHORIZED.into_response();
         }
     }
-    state.status
+    if method == Method::GET && uri.path().contains("/persistentvolumeclaims/") {
+        let phase = state
+            .pvc_phase
+            .lock()
+            .expect("the stub's PVC phase is not poisoned")
+            .clone();
+        return axum::Json(serde_json::json!({ "status": { "phase": phase } })).into_response();
+    }
+    state.status.into_response()
 }
