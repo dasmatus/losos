@@ -44,14 +44,11 @@ pub struct TempDir {
 }
 
 impl TempDir {
-    pub fn new(tag: &str) -> Self {
+    pub fn new(_tag: &str) -> Self {
         let nanos = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_or(0, |d| d.as_nanos());
-        let path = std::env::temp_dir().join(format!(
-            "losos-registrar-test-{tag}-{}-{nanos}",
-            std::process::id()
-        ));
+        let path = std::env::temp_dir().join(format!("l-{}-{nanos}", std::process::id()));
         std::fs::create_dir_all(&path).expect("create temp dir");
         Self { path }
     }
