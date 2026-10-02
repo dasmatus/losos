@@ -57,8 +57,9 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
+use axum::body::Bytes;
 use axum::extract::{DefaultBodyLimit, Request, State};
-use axum::http::StatusCode;
+use axum::http::{HeaderMap, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
@@ -72,6 +73,10 @@ use tokio::sync::{Mutex, Notify, Semaphore};
 use crate::action::Action;
 use crate::config::{desired_config, EdgeOpts, TenantView};
 use crate::error::ApiError;
+use crate::market::{
+    AccountView, CheckoutView, Market, MarketError, NewListing, NewOrder, OnboardView,
+    PublicListing,
+};
 use crate::opts::ServeOpts;
 use crate::registry::{Registry, Shared};
 use crate::window::{self, valid_hhmm, valid_tz, ComputeWindow};
@@ -93,6 +98,10 @@ const MAX_BODY_BYTES: usize = 16 * 1024;
 /// truncated write, a placeholder, or an empty file — none of which should be
 /// able to authenticate a tenant on an internet-facing route.
 const MIN_TOKEN_LEN: usize = 32;
+
+/// Stripe events (`account.updated` especially) outgrow the 16 KiB every other
+/// route is held to. Still bounded: the body is buffered before it is verified.
+const MAX_WEBHOOK_BYTES: usize = 256 * 1024;
 
 /// Wall-clock budget for one request, end to end. Without it a slow-loris
 /// client holds a connection (and a concurrency permit) indefinitely.
@@ -134,6 +143,8 @@ struct AppState {
     notify: Arc<Notify>,
     tenants: Arc<TenantCache>,
     limiter: Arc<Semaphore>,
+    /// `None` unless `--market-stripe-key-file` was given.
+    market: Option<Arc<Market>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -236,12 +247,25 @@ where
     reg.load().await.context("load registry")?;
     tracing::info!(target: Action::LoadRegistry.target(), "registry loaded");
 
+    // Opened before the API accepts: an unreadable `market.json` stops the
+    // edge from starting rather than serving a market that has forgotten who
+    // paid for what.
+    let market = match &opts.market {
+        Some(m) => Some(Arc::new(
+            Market::open((**m).clone())
+                .await
+                .map_err(|e| miette!("open market store: {e}"))?,
+        )),
+        None => None,
+    };
+
     let state = AppState {
         reg,
         opts: Arc::new(opts),
         notify: Arc::new(Notify::new()),
         tenants: Arc::new(TenantCache::default()),
         limiter: Arc::new(Semaphore::new(MAX_INFLIGHT)),
+        market,
     };
 
     // Generate config from whatever we just loaded, so the box is serving
@@ -263,6 +287,20 @@ where
         // every other route: Traefik's `register.<domain>` router has no path
         // rule, so this one is on the public internet too.
         .route("/cluster/join", post(cluster_join))
+        // The optional Stripe Connect market. Every route answers 503 unless
+        // the edge was started with `--market-stripe-key-file`. Browsing is
+        // anonymous and shows no seller identity; everything else takes the
+        // appliance token like the routes above; the webhook is authenticated
+        // by Stripe's signature instead and needs a larger body than the rest.
+        .route("/market/listings", get(market_browse).post(market_list))
+        .route("/market/listings/close", post(market_close))
+        .route("/market/seller/onboard", post(market_onboard))
+        .route("/market/orders", post(market_order))
+        .route("/market/account", post(market_account))
+        .route(
+            "/market/webhook",
+            post(market_webhook).layer(DefaultBodyLimit::max(MAX_WEBHOOK_BYTES)),
+        )
         // Bound at the router so an oversized body never materialises.
         .layer(DefaultBodyLimit::max(MAX_BODY_BYTES))
         // Added last, so outermost: the timeout and the concurrency cap cover
@@ -492,6 +530,129 @@ async fn cluster_join(
     }))
 }
 
+/// Body of every authenticated market route; the route-specific fields sit
+/// beside the credentials.
+#[derive(Debug, Deserialize)]
+struct MarketAuth {
+    appliance_id: String,
+    token: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct MarketListReq {
+    #[serde(flatten)]
+    auth: MarketAuth,
+    #[serde(flatten)]
+    listing: NewListing,
+}
+
+#[derive(Debug, Deserialize)]
+struct MarketCloseReq {
+    #[serde(flatten)]
+    auth: MarketAuth,
+    listing_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct MarketOrderReq {
+    #[serde(flatten)]
+    auth: MarketAuth,
+    #[serde(flatten)]
+    order: NewOrder,
+}
+
+#[derive(Debug, Serialize)]
+struct ListingCreated {
+    listing_id: String,
+}
+
+fn market_of(st: &AppState) -> Result<&Arc<Market>, ApiError> {
+    st.market
+        .as_ref()
+        .ok_or(ApiError::Market(MarketError::Unconfigured))
+}
+
+/// Authenticate, then require both a configured market and the tenant's
+/// `market` bit. Authentication comes first so an unauthenticated caller
+/// learns nothing about whether the market exists for anyone else.
+async fn market_tenant(st: &AppState, auth: &MarketAuth) -> Result<Arc<Market>, ApiError> {
+    let tenant = authenticate(st, &auth.appliance_id, &auth.token).await?;
+    let market = market_of(st)?;
+    if !tenant.market {
+        return Err(ApiError::Market(MarketError::Forbidden));
+    }
+    Ok(Arc::clone(market))
+}
+
+async fn market_browse(State(st): State<AppState>) -> Result<Json<Vec<PublicListing>>, ApiError> {
+    Ok(Json(market_of(&st)?.browse().await))
+}
+
+async fn market_account(
+    State(st): State<AppState>,
+    Json(req): Json<MarketAuth>,
+) -> Result<Json<AccountView>, ApiError> {
+    let market = market_tenant(&st, &req).await?;
+    Ok(Json(market.account(&req.appliance_id).await))
+}
+
+async fn market_onboard(
+    State(st): State<AppState>,
+    Json(req): Json<MarketAuth>,
+) -> Result<Json<OnboardView>, ApiError> {
+    let market = market_tenant(&st, &req).await?;
+    Ok(Json(market.onboard(&req.appliance_id).await?))
+}
+
+async fn market_list(
+    State(st): State<AppState>,
+    Json(req): Json<MarketListReq>,
+) -> Result<(StatusCode, Json<ListingCreated>), ApiError> {
+    let market = market_tenant(&st, &req.auth).await?;
+    let listing_id = market
+        .create_listing(&req.auth.appliance_id, req.listing)
+        .await?;
+    Ok((StatusCode::CREATED, Json(ListingCreated { listing_id })))
+}
+
+async fn market_close(
+    State(st): State<AppState>,
+    Json(req): Json<MarketCloseReq>,
+) -> Result<StatusCode, ApiError> {
+    let market = market_tenant(&st, &req.auth).await?;
+    market
+        .close_listing(&req.auth.appliance_id, &req.listing_id)
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn market_order(
+    State(st): State<AppState>,
+    Json(req): Json<MarketOrderReq>,
+) -> Result<(StatusCode, Json<CheckoutView>), ApiError> {
+    let market = market_tenant(&st, &req.auth).await?;
+    let checkout = market
+        .create_order(&req.auth.appliance_id, req.order)
+        .await?;
+    Ok((StatusCode::CREATED, Json(checkout)))
+}
+
+/// Stripe's event delivery. No appliance token: the signature over the raw body
+/// is the credential, so the body is taken as bytes and never re-serialised.
+async fn market_webhook(
+    State(st): State<AppState>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Result<StatusCode, ApiError> {
+    let market = market_of(&st)?;
+    let signature = headers
+        .get("stripe-signature")
+        .and_then(|v| v.to_str().ok())
+        .ok_or(ApiError::Market(MarketError::BadSignature))?;
+    market.webhook(signature, &body).await?;
+    Ok(StatusCode::OK)
+}
+
 /// Delete the caller's `Node` object and its node-password `Secret` from the
 /// mesh cluster, so a reinstalled box can rejoin under the same name.
 ///
@@ -656,6 +817,11 @@ struct TenantEntry {
     token_file: String,
     #[serde(default)]
     cluster: bool,
+    /// May buy and sell on the market. A third, separate bit: publishing a
+    /// website or lending compute does not mean the operator agreed to settle
+    /// money with this box.
+    #[serde(default)]
+    market: bool,
 }
 
 /// `tenants.json` memoised behind an mtime+size check.

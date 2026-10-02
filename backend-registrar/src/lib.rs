@@ -15,6 +15,9 @@
 //!     [`config::desired_config`] `serve`'s reconciler calls) so rathole can
 //!     start before the reconciler's first pass; a no-op if the file already
 //!     exists, since `serve` then owns it.
+//!   * (`serve` also hosts the optional Stripe Connect storage/compute market —
+//!     see [`market`]; its routes answer 503 unless `--market-stripe-key-file`
+//!     is given.)
 //!   * `join` — runs once per boot on the appliance, before the rke2 agent.
 //!     POSTs `/cluster/join` with the same per-appliance token `announce`
 //!     uses, and writes the mesh node token the edge returns. Bounded retry,
@@ -43,6 +46,7 @@ pub mod error;
 mod fsutil;
 pub mod idle;
 pub mod join;
+pub mod market;
 pub mod opts;
 pub mod registry;
 pub mod seed;

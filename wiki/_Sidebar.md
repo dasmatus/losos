@@ -2,6 +2,7 @@
 - [Install](Install)
 - [Administration](Administration)
 - [Mesh](Mesh)
+- [Market](Market)
 - [Master proxy](Master-Proxy)
 - [Hardening](Hardening)
 - [Security model](Security-Model)
