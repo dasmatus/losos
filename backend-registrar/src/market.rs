@@ -70,8 +70,9 @@ const MAX_CAPACITY: u64 = 1_000_000_000;
 /// Active listings one seller may hold at once.
 const MAX_LISTINGS_PER_SELLER: usize = 20;
 
-/// Lifetime of a Checkout Session. 30 minutes is Stripe's minimum.
-const CHECKOUT_TTL_SECS: u64 = 30 * 60;
+/// Lifetime requested for a Checkout Session. Stripe requires at least 30 minutes
+/// from receipt, so include one minute for persistence and network transit.
+const CHECKOUT_TTL_SECS: u64 = 31 * 60;
 /// A pending order keeps its capacity reserved this long past the session's
 /// expiry, so a late `completed` webhook can never find the units resold.
 const PENDING_GRACE_SECS: u64 = 5 * 60;
