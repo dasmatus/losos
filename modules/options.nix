@@ -840,10 +840,9 @@ in
       type = lib.types.bool;
       default = false;
       description = ''
-        Auto-run `losos-install` as root's login shell on tty1 at boot. This is
-        what turns the installer ISO into a set-and-forget reinstall / factory-
-        reset medium: insert it, boot, and the installer runs unattended. Leave
-        false on a normal target system.
+        Auto-run `losos-install` as root's login shell on tty1 at boot. On the
+        installer ISO, this starts the installer and its firmware-mode menu.
+        Leave false on a normal target system.
       '';
     };
 
