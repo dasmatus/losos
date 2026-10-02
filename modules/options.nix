@@ -1008,13 +1008,14 @@ in
         The platform's Stripe secret (`sk_...`) or restricted (`rk_...`) key,
         **sealed** with `systemd-creds` under the credential name
         `stripe-secret-key`. The key is never stored in plaintext on disk: the
-        registrar unit decrypts this blob into its tmpfs RuntimeDirectory at
-        start, so a copy of `/var` carries ciphertext only. Seal it from stdin
-        so the plaintext never touches the disk either (see wiki/Market.md).
-        Rotating it means sealing a new blob and restarting the registrar. A
-        blob that is missing or will not decrypt leaves the market answering
-        503 and does not stop the rest of the registrar. A key of any other
-        shape is refused before anything is sent to Stripe.
+        `losos-stripe-gate` unit receives this blob through
+        `LoadCredentialEncrypted=`, so a copy of `/var` carries ciphertext only
+        and the registrar process never holds the key. Seal it from stdin so
+        the plaintext never touches the disk either (see wiki/Market.md).
+        Rotating it means sealing a new blob and restarting the gate. A blob
+        that is missing skips the gate, so the market answers 503 and the rest
+        of the registrar is untouched. A key of any other shape is refused
+        before anything is sent to Stripe.
       '';
     };
 
@@ -1026,7 +1027,7 @@ in
         endpoints that point at
         `https://register.<publicDomain>/market/webhook`, **sealed** with
         `systemd-creds` under the credential name `stripe-webhook-secret` and
-        unsealed into tmpfs like `stripeSecretKeySealed`. Stripe needs two
+        handed to the gate like `stripeSecretKeySealed`. Stripe needs two
         endpoints: one for events on the platform account
         (checkout.session.completed, checkout.session.async_payment_succeeded,
         checkout.session.expired) and one for events on Connected accounts

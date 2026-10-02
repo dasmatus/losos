@@ -503,39 +503,31 @@ let
     computeWindowsFile
   ];
 
-  # The Stripe secrets are stored sealed (systemd-creds) and only ever exist in
-  # plaintext on this tmpfs RuntimeDirectory, unsealed when the registrar
-  # starts. This is the same shape as modules/keyring.nix, and deliberately not
-  # LoadCredentialEncrypted=: that fails the whole unit when a blob is missing,
-  # and this unit also carries the master proxy, so an edge that has not sealed
-  # its Stripe keys yet (or whose host key changed) must lose the market and
-  # nothing else. The leading "-" on ExecStartPre does the same for a decrypt
-  # that fails. The registrar reads the files per request and answers 503 for
-  # an absent one.
-  marketRuntimeDir = "/run/losos-registrar";
-  unsealMarketSecrets = pkgs.writeShellScript "losos-unseal-market-secrets" ''
-    umask 077
-    unseal() {
-      name=$1 src=$2
-      if [ ! -f "$src" ]; then
-        echo "losos-registrar: no sealed $name at $src; the market stays off" >&2
-        return 0
-      fi
-      ${config.systemd.package}/bin/systemd-creds decrypt --name="$name" "$src" "${marketRuntimeDir}/$name" \
-        || echo "losos-registrar: could not unseal $name from $src; the market stays off" >&2
-    }
-    unseal stripe-secret-key ${lib.escapeShellArg (toString cfg.market.stripeSecretKeySealed)}
-    unseal stripe-webhook-secret ${lib.escapeShellArg (toString cfg.market.webhookSecretSealed)}
-  '';
+  # The Stripe key lives in a unit of its own, `losos-stripe-gate`
+  # (`losos-registrar stripe-gate`), and nowhere else. The registrar — the
+  # internet-facing process, which also carries the master proxy — never holds
+  # it: it asks the gate over a Unix socket for the few things it may need
+  # (create an account carrying the box UUID, tag, check or link one, start a
+  # checkout, verify a webhook) and the gate refuses anything outside the
+  # operator's limits (destination account shape, currency, fee ceiling,
+  # session lifetime). The blobs are sealed with systemd-creds and handed to
+  # the gate by LoadCredentialEncrypted=, so they are plaintext only in that
+  # unit's private credential tmpfs. A missing blob skips the gate
+  # (ConditionPathExists) and the registrar answers 503 for /market/*; since
+  # the gate is its own unit, a blob that will not decrypt cannot touch the
+  # proxy, which is why the older ExecStartPre dance is gone.
+  gateSocket = "/run/losos-stripe-gate/gate.sock";
+  gateSealed = [
+    (toString cfg.market.stripeSecretKeySealed)
+    (toString cfg.market.webhookSecretSealed)
+  ];
 
-  # Market half of `serve`. Without --market-stripe-key-file every /market/*
+  # Market half of `serve`. Without --market-gate-socket every /market/*
   # route answers 503, so an edge that leaves the market off parses exactly the
   # arguments it always did.
   marketServeArgs = lib.optionals cfg.market.enable [
-    "--market-stripe-key-file"
-    "${marketRuntimeDir}/stripe-secret-key"
-    "--market-webhook-secret-file"
-    "${marketRuntimeDir}/stripe-webhook-secret"
+    "--market-gate-socket"
+    gateSocket
     "--market-state-file"
     "/var/lib/losos-registrar/market.json"
     "--market-fee-bps"
@@ -663,12 +655,17 @@ in
         "network-online.target"
         "losos-rathole-seed.service"
       ]
-      ++ lib.optional meshEnabled "losos-mesh-rbac.service";
+      ++ lib.optional meshEnabled "losos-mesh-rbac.service"
+      ++ lib.optional cfg.market.enable "losos-stripe-gate.service";
       # Wants, not Requires, on the RBAC extractor: the master-proxy half must
       # keep serving /register and rewriting Traefik on an edge whose mesh
       # apiserver is down or not yet up. A failed extraction costs the join
       # route (503) and nothing else.
-      wants = [ "network-online.target" ] ++ lib.optional meshEnabled "losos-mesh-rbac.service";
+      wants = [
+        "network-online.target"
+      ]
+      ++ lib.optional meshEnabled "losos-mesh-rbac.service"
+      ++ lib.optional cfg.market.enable "losos-stripe-gate.service";
       serviceConfig = {
         ExecStart = serveArgs;
         StateDirectory = "losos-registrar";
@@ -681,11 +678,61 @@ in
         NoNewPrivileges = true;
       }
       // lib.optionalAttrs cfg.market.enable {
-        # Where the sealed Stripe secrets are unsealed to: tmpfs, so the
-        # plaintext never reaches the disk and does not outlive the unit.
-        RuntimeDirectory = "losos-registrar";
-        RuntimeDirectoryMode = "0700";
-        ExecStartPre = "-${unsealMarketSecrets}";
+        # Second layer behind the gate: the registrar cannot read the sealed
+        # blobs or the gate's credential directory, even as root.
+        InaccessiblePaths = map (path: "-${path}") gateSealed ++ [
+          "-/run/credentials/losos-stripe-gate.service"
+        ];
+      };
+    };
+
+    # ── losos-stripe-gate (the only holder of the Stripe key) ────────────
+    systemd.services.losos-stripe-gate = lib.mkIf cfg.market.enable {
+      description = "losos Stripe gate — holds the Stripe key for the registrar";
+      wantedBy = [ "multi-user.target" ];
+      before = [ "losos-registrar.service" ];
+      # The registrar wants, not requires, the gate: see `gateSocket`.
+      unitConfig.ConditionPathExists = gateSealed;
+      serviceConfig = {
+        ExecStart = lib.concatStringsSep " " [
+          "${registrar}/bin/losos-registrar"
+          "stripe-gate"
+          "--socket"
+          gateSocket
+          "--stripe-key-file"
+          "%d/stripe-secret-key"
+          "--webhook-secret-file"
+          "%d/stripe-webhook-secret"
+          "--currency"
+          cfg.market.currency
+        ];
+        LoadCredentialEncrypted = [
+          "stripe-secret-key:${toString cfg.market.stripeSecretKeySealed}"
+          "stripe-webhook-secret:${toString cfg.market.webhookSecretSealed}"
+        ];
+        DynamicUser = true;
+        RuntimeDirectory = "losos-stripe-gate";
+        RuntimeDirectoryMode = "0755";
+        Restart = "always";
+        RestartSec = 5;
+        NoNewPrivileges = true;
+        ProtectSystem = "strict";
+        ProtectHome = true;
+        PrivateTmp = true;
+        PrivateDevices = true;
+        ProtectKernelTunables = true;
+        ProtectKernelModules = true;
+        ProtectControlGroups = true;
+        RestrictAddressFamilies = [
+          "AF_UNIX"
+          "AF_INET"
+          "AF_INET6"
+        ];
+        RestrictNamespaces = true;
+        LockPersonality = true;
+        MemoryDenyWriteExecute = true;
+        SystemCallArchitectures = "native";
+        CapabilityBoundingSet = "";
       };
     };
 

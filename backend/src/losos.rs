@@ -409,7 +409,19 @@ pub fn cmd_market<L: Losos>(l: &mut L) -> anyhow::Result<Value> {
 /// The reply is the registrar's, with `available: true`. A Checkout URL that
 /// is not plain `https` is dropped rather than handed to the browser.
 pub fn cmd_market_op<L: Losos>(l: &mut L, op: &crate::market::Op) -> anyhow::Result<Value> {
-    use crate::market::{Outcome, Refused};
+    use crate::market::{Op, Outcome, Refused};
+    // Onboarding names this box to Stripe by a UUID derived one-way from the
+    // recovery code — the code itself is a credential and never leaves.
+    let tagged;
+    let op = if matches!(op, Op::Onboard { .. }) {
+        let code = l.recovery_code()?;
+        tagged = Op::Onboard {
+            box_uuid: Some(crate::boxid::box_uuid(&code.code)),
+        };
+        &tagged
+    } else {
+        op
+    };
     op.validate().map_err(|e| {
         anyhow::Error::from(Refused {
             status: 400,
@@ -858,6 +870,44 @@ mod tests {
             (201, r#"{"checkout_url":"javascript:alert(1)"}"#.to_string()),
         );
         assert!(cmd_market_op(&mut f, &order).is_err());
+    }
+
+    #[test]
+    fn onboarding_sends_the_derived_box_uuid_and_never_the_recovery_code() {
+        use crate::market::Op;
+        let mut f = market_fake();
+        f.market_routes.insert(
+            "POST /market/seller/onboard".to_string(),
+            (
+                200,
+                r#"{"ready":false,"url":"https://connect.stripe.com/x"}"#.to_string(),
+            ),
+        );
+        let code = f.recovery_code().unwrap().code;
+        cmd_market_op(&mut f, &Op::Onboard { box_uuid: None }).unwrap();
+        let Some(Op::Onboard {
+            box_uuid: Some(sent),
+        }) = f.market_ops.last().cloned()
+        else {
+            panic!("onboard went out without a box uuid: {:?}", f.market_ops);
+        };
+        assert_eq!(sent, crate::boxid::box_uuid(&code));
+        assert_ne!(sent, code);
+    }
+
+    #[test]
+    fn a_caller_cannot_name_a_different_box_uuid() {
+        use crate::market::Op;
+        let mut f = market_fake();
+        f.market_routes.insert(
+            "POST /market/seller/onboard".to_string(),
+            (200, r#"{"ready":true}"#.to_string()),
+        );
+        let forged = Op::Onboard {
+            box_uuid: Some("0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d".to_string()),
+        };
+        cmd_market_op(&mut f, &forged).unwrap();
+        assert_ne!(f.market_ops.last(), Some(&forged));
     }
 
     #[test]

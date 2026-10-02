@@ -573,7 +573,7 @@
         "auth": true,
         "in": "{}",
         "out": "marketActionResponse",
-        "note": "Start or resume Stripe Connect onboarding. Audited."
+        "note": "Start or resume Stripe Connect onboarding. Audited. The body is ignored: lososd itself sends the registrar this box's UUID, derived one-way from the recovery code (backend/src/boxid.rs, so the code is never sent), and the edge writes it onto the Stripe account as metadata."
       },
       "POST /api/market/listings": {
         "auth": true,
