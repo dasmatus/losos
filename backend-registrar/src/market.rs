@@ -1021,6 +1021,12 @@ impl Market {
     }
 
     async fn stripe(&self) -> Result<StripeClient, MarketError> {
+        if !self.opts.stripe_api.starts_with("https://") {
+            return Err(MarketError::Stripe(
+                "stripe_api must use https:// to protect sensitive credentials in transit"
+                    .to_string(),
+            ));
+        }
         let key = read_secret(&self.opts.stripe_key_file, &["sk_", "rk_"]).await?;
         StripeClient::new(&self.opts.stripe_api, &key)
     }
