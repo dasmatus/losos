@@ -12,12 +12,13 @@
 
 use clap::{Args, Parser, Subcommand};
 use losos_ctl::facade::{call_backend, BackendFailure};
-use losos_ctl::installer_io::{options_from_env, run_install};
+use losos_ctl::installer_io::{booted_in_bios, options_from_env, run_install};
 use losos_ctl::model::Mode;
 use losos_ctl::overrides::validate_apply;
-use std::io::Read;
+use std::io::{IsTerminal, Read, Write};
 use std::path::PathBuf;
 use std::process::ExitCode;
+use std::time::{Duration, Instant};
 
 #[derive(Parser)]
 #[command(
@@ -107,6 +108,13 @@ struct InstallArgs {
     /// Use TPM2 (a passphrase is asked once, at format time).
     #[arg(long)]
     tpm: bool,
+    /// Install for legacy BIOS (GRUB). Default: whatever firmware booted this
+    /// medium.
+    #[arg(long, conflicts_with = "uefi")]
+    bios: bool,
+    /// Install for UEFI (systemd-boot); requires this medium to boot in UEFI mode.
+    #[arg(long)]
+    uefi: bool,
     /// Override drive auto-detection with a comma-separated list.
     #[arg(long, value_name = "A,/dev/b,...", value_parser = parse_drives)]
     drives: Option<Vec<String>>,
@@ -119,6 +127,32 @@ struct InstallArgs {
     /// Write install-target.nix to FILE and exit, touching no disks.
     #[arg(long, value_name = "FILE")]
     emit_target: Option<PathBuf>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum FirmwareMode {
+    Bios,
+    Uefi,
+    Autodetect,
+}
+
+impl FirmwareMode {
+    fn parse(choice: &str) -> Option<Self> {
+        match choice.trim() {
+            "1" => Some(Self::Bios),
+            "2" => Some(Self::Uefi),
+            "" | "3" => Some(Self::Autodetect),
+            _ => None,
+        }
+    }
+
+    fn bios_override(self) -> Option<bool> {
+        match self {
+            Self::Bios => Some(true),
+            Self::Uefi => Some(false),
+            Self::Autodetect => None,
+        }
+    }
 }
 
 /// Split `--drives a,b,c`, rejecting a list that is empty once trimmed.
@@ -140,6 +174,117 @@ fn parse_mode(s: &str) -> Result<Mode, String> {
     Mode::parse(s).ok_or_else(|| "mode must be 'local' or 'mesh'".to_string())
 }
 
+/// How long the ISO's firmware menu waits before taking the default.
+///
+/// The installer medium is set-and-forget: insert it, boot, walk away. A menu
+/// that waits forever would park an unattended reinstall at the prompt, and
+/// the CI gate `tests/iso-boot.py`, which never types anything, would time out
+/// waiting for the installer's DNS lookup. So no answer means autodetect.
+const FIRMWARE_MENU_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// One answer to the firmware prompt, or why there is none.
+#[derive(Debug)]
+enum MenuInput {
+    Line(String),
+    Timeout,
+    Eof,
+}
+
+fn select_firmware(explicit: Option<bool>, interactive: bool) -> std::io::Result<Option<bool>> {
+    if let Some(bios) = explicit {
+        return Ok(Some(bios));
+    }
+    if !interactive {
+        return Ok(None);
+    }
+    prompt_firmware(
+        read_stdin_line,
+        FIRMWARE_MENU_TIMEOUT,
+        &mut std::io::stdout(),
+    )
+}
+
+/// Read one line from stdin, giving up after `timeout`.
+///
+/// poll(2) rather than a reader thread: a thread left blocked in read_line
+/// after a timeout would keep reading the terminal for the rest of the
+/// install, and a `--tpm` install hands that terminal to disko to collect the
+/// LUKS passphrase. A stray reader would swallow it and leave disko waiting.
+/// The terminal is in canonical mode, so a readable stdin holds one whole
+/// line and read_line does not buffer past it.
+fn read_stdin_line(timeout: Duration) -> std::io::Result<MenuInput> {
+    use rustix::event::{poll, PollFd, PollFlags, Timespec};
+    let stdin = std::io::stdin();
+    let deadline = Instant::now() + timeout;
+    let ready = loop {
+        let left = deadline.saturating_duration_since(Instant::now());
+        let wait = Timespec::try_from(left).unwrap_or(Timespec {
+            tv_sec: i64::MAX,
+            tv_nsec: 0,
+        });
+        let mut fds = [PollFd::new(&stdin, PollFlags::IN)];
+        match poll(&mut fds, Some(&wait)) {
+            // A signal is not an answer: wait out the rest of the deadline.
+            Err(rustix::io::Errno::INTR) => continue,
+            other => break other?,
+        }
+    };
+    match ready {
+        0 => Ok(MenuInput::Timeout),
+        _ => {
+            let mut line = String::new();
+            if stdin.read_line(&mut line)? == 0 {
+                Ok(MenuInput::Eof)
+            } else {
+                Ok(MenuInput::Line(line))
+            }
+        }
+    }
+}
+
+/// The menu itself, over an injectable line source, so the timeout and the
+/// retry loop are unit-testable. A timeout or EOF picks autodetect; the
+/// deadline is overall, so retyping garbage cannot extend it.
+fn prompt_firmware(
+    mut read_line: impl FnMut(Duration) -> std::io::Result<MenuInput>,
+    timeout: Duration,
+    out: &mut impl Write,
+) -> std::io::Result<Option<bool>> {
+    let deadline = Instant::now() + timeout;
+    loop {
+        writeln!(out, "Choose the firmware mode for the installed system:")?;
+        writeln!(out, "  1) BIOS")?;
+        writeln!(
+            out,
+            "  2) UEFI (requires this installer to be booted in UEFI mode)"
+        )?;
+        writeln!(
+            out,
+            "  3) Autodetect (use the firmware that booted this installer)"
+        )?;
+        write!(
+            out,
+            "Selection [3, chosen automatically after {}s]: ",
+            timeout.as_secs()
+        )?;
+        out.flush()?;
+
+        let left = deadline.saturating_duration_since(Instant::now());
+        match read_line(left)? {
+            MenuInput::Line(line) => match FirmwareMode::parse(&line) {
+                Some(mode) => return Ok(mode.bios_override()),
+                None => writeln!(out, "Choose 1, 2, or 3.")?,
+            },
+            MenuInput::Timeout => {
+                writeln!(out)?;
+                writeln!(out, "No choice made; autodetecting.")?;
+                return Ok(None);
+            }
+            MenuInput::Eof => return Ok(None),
+        }
+    }
+}
+
 fn main() -> ExitCode {
     let cli = Cli::parse();
 
@@ -149,8 +294,30 @@ fn main() -> ExitCode {
         // Line-buffering matters when stdout is a pipe: block buffering would
         // hold the installer's own progress lines until exit, after the output
         // of the subprocesses they announce.
+        let explicit_bios = match (args.bios, args.uefi) {
+            (true, _) => Some(true),
+            (_, true) => Some(false),
+            _ => None,
+        };
+        let on_installer_iso = std::env::var_os("LOSOS_INSTALLER_ISO").is_some();
+        let interactive = on_installer_iso
+            && std::io::stdin().is_terminal()
+            && std::io::stdout().is_terminal()
+            && args.emit_target.is_none();
+        let bios = match select_firmware(explicit_bios, interactive) {
+            Ok(bios) => bios,
+            Err(e) => {
+                eprintln!("losos-install: cannot read firmware selection: {e}");
+                return ExitCode::FAILURE;
+            }
+        };
+        if let Err(e) = validate_firmware_choice(bios, booted_in_bios()) {
+            eprintln!("losos-install: {e}");
+            return ExitCode::FAILURE;
+        }
         let opts = options_from_env(
             args.tpm,
+            bios,
             args.drives.clone(),
             args.no_install,
             args.disko_script.clone(),
@@ -171,6 +338,17 @@ fn main() -> ExitCode {
             eprintln!("{e}");
             ExitCode::FAILURE
         }
+    }
+}
+
+fn validate_firmware_choice(
+    target_bios: Option<bool>,
+    installer_bios: bool,
+) -> Result<(), &'static str> {
+    if installer_bios && target_bios == Some(false) {
+        Err("cannot install for UEFI when the installer was booted in BIOS mode; reboot the installer in UEFI mode")
+    } else {
+        Ok(())
     }
 }
 
@@ -217,4 +395,81 @@ fn run(cli: Cli) -> Result<(), BackendFailure> {
     };
     println!("{json}");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{prompt_firmware, validate_firmware_choice, FirmwareMode, MenuInput};
+    use std::time::Duration;
+
+    #[test]
+    fn firmware_choices_resolve_as_expected() {
+        assert_eq!(FirmwareMode::parse("1"), Some(FirmwareMode::Bios));
+        assert_eq!(FirmwareMode::parse("2"), Some(FirmwareMode::Uefi));
+        assert_eq!(FirmwareMode::parse("3"), Some(FirmwareMode::Autodetect));
+        assert_eq!(FirmwareMode::parse(""), Some(FirmwareMode::Autodetect));
+        assert_eq!(FirmwareMode::parse("4"), None);
+
+        assert_eq!(FirmwareMode::Bios.bios_override(), Some(true));
+        assert_eq!(FirmwareMode::Uefi.bios_override(), Some(false));
+        assert_eq!(FirmwareMode::Autodetect.bios_override(), None);
+    }
+
+    #[test]
+    fn uefi_install_requires_uefi_booted_installer() {
+        assert!(validate_firmware_choice(Some(false), true).is_err());
+        assert!(validate_firmware_choice(Some(false), false).is_ok());
+        assert!(validate_firmware_choice(Some(true), true).is_ok());
+        assert!(validate_firmware_choice(None, true).is_ok());
+    }
+
+    /// A scripted line source: each call pops the next answer.
+    fn script(mut answers: Vec<MenuInput>) -> impl FnMut(Duration) -> std::io::Result<MenuInput> {
+        answers.reverse();
+        move |_| Ok(answers.pop().unwrap_or(MenuInput::Eof))
+    }
+
+    #[test]
+    fn firmware_menu_retries_then_takes_a_valid_choice() {
+        let mut out = Vec::new();
+        let read = script(vec![
+            MenuInput::Line("x\n".into()),
+            MenuInput::Line("1\n".into()),
+        ]);
+        let got = prompt_firmware(read, Duration::from_secs(5), &mut out).unwrap();
+        assert_eq!(got, Some(true));
+        assert!(String::from_utf8(out)
+            .unwrap()
+            .contains("Choose 1, 2, or 3."));
+    }
+
+    #[test]
+    fn firmware_menu_autodetects_on_timeout_and_on_eof() {
+        // Unattended boot: nobody types, so the menu must not block the install.
+        let mut out = Vec::new();
+        let got = prompt_firmware(script(vec![MenuInput::Timeout]), Duration::ZERO, &mut out);
+        assert_eq!(got.unwrap(), None);
+        assert!(String::from_utf8(out).unwrap().contains("autodetecting"));
+
+        let got = prompt_firmware(script(vec![]), Duration::from_secs(5), &mut Vec::new());
+        assert_eq!(got.unwrap(), None);
+    }
+
+    #[test]
+    fn firmware_menu_deadline_is_overall() {
+        // Each re-prompt gets only what is left, never a fresh 30 s.
+        let mut budgets = Vec::new();
+        let mut first = true;
+        let read = |left: Duration| {
+            budgets.push(left);
+            if std::mem::take(&mut first) {
+                std::thread::sleep(Duration::from_millis(20));
+                Ok(MenuInput::Line("nope\n".into()))
+            } else {
+                Ok(MenuInput::Timeout)
+            }
+        };
+        prompt_firmware(read, Duration::from_millis(200), &mut Vec::new()).unwrap();
+        assert!(budgets[1] < budgets[0], "{budgets:?}");
+    }
 }

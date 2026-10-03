@@ -144,9 +144,8 @@
                 # both built from the same Rust crate). installer.nix packages
                 # it; self.packages is in scope via specialArgs.
                 losos.installer.package = self.packages.${system}.losos-ctl;
-                # Booting the ISO auto-runs losos-install as root's login shell:
-                # insert the medium, boot, and the box reinstalls unattended —
-                # the destructive factory-reset / reinstall path.
+                # Booting the ISO auto-runs losos-install as root's login shell,
+                # which presents the firmware-mode menu before destructive work.
                 losos.installer.autorun = true;
                 # Prebuild the admin UI into the medium.
                 #
@@ -227,6 +226,9 @@
             ./modules/impermanence.nix
             ./modules/disko.nix
             ./modules/boot.nix
+            # The banner on tty1 that tells whoever is standing at the box
+            # which address to open in a browser.
+            ./modules/console.nix
             ./modules/services.nix
             ./modules/nextcloud-common.nix
             ./modules/containers.nix
@@ -323,6 +325,9 @@
       #                         filename a browser can act on, /setup/state.json
       #                         fingerprints the certificate that is actually on
       #                         disk, and both are LAN-only (tests/setup.nix).
+      #   losos-console       — boots one VM and asserts the address banner owns
+      #                         tty1 instead of getty and shows the LAN address
+      #                         and the .local name (tests/console.nix).
       checks.${system} = {
         losos-install = import ./tests/install.nix { inherit pkgs disko; };
         losos-admin-daemon = import ./tests/admin-vm.nix { inherit pkgs; };
@@ -338,6 +343,7 @@
         losos-setup = import ./tests/setup.nix { inherit pkgs; };
         losos-admin-ui = import ./tests/admin-ui.nix { inherit pkgs; };
         losos-keyring = import ./tests/keyring.nix { inherit pkgs; };
+        losos-console = import ./tests/console.nix { inherit pkgs; };
       };
     };
 }
