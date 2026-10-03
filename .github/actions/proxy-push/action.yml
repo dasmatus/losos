@@ -35,10 +35,18 @@ runs:
         trap 'rm -rf "$work"' EXIT
         umask 077
         printf '%s' "$SIGNING_KEY" > "$work/cache.sec"
-        # Pin the publisher to a reviewed revision of LosOS Desktop. It writes
-        # one signed narinfo/NAR OCI artifact per store path, as its proxy expects.
+        # Fetch the publisher from LosOS Desktop's main, resolved to a commit at
+        # run time so the script tracks upstream fixes and the log records which
+        # revision ran. It writes one signed narinfo/NAR OCI artifact per store
+        # path, as its proxy expects.
+        rev=$(git ls-remote https://github.com/dasmatus/losos-desktop refs/heads/main | cut -f1)
+        if [ -z "$rev" ]; then
+          echo "could not resolve dasmatus/losos-desktop main" >&2
+          exit 1
+        fi
+        echo "nix-cache-push from dasmatus/losos-desktop@$rev"
         curl -fsSL --proto '=https' \
-          https://raw.githubusercontent.com/dasmatus/losos-desktop/3a504ba90a00296e2aa63261cffebe6cf3fff476/tools/nix-cache-push \
+          "https://raw.githubusercontent.com/dasmatus/losos-desktop/$rev/tools/nix-cache-push" \
           -o "$work/nix-cache-push"
         chmod +x "$work/nix-cache-push"
         oras=$(nix build nixpkgs#oras --no-link --print-out-paths)
