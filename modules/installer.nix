@@ -16,7 +16,7 @@
 #
 # When `losos.installer.autorun` is true (installer ISO only), root's login
 # shell becomes `losos-install` and tty1 autologs in as root — so booting the ISO
-# runs the installer unattended, the destructive factory-reset / reinstall path.
+# starts the installer and its firmware-mode menu before any destructive work.
 {
   pkgs,
   lib,
@@ -65,11 +65,13 @@ let
   # to it through /run/current-system/sw/bin/losos-install, and any exit
   # re-looped the destructive installer via getty again.
   losos-install = pkgs.writeShellScriptBin "losos-install" ''
+    ${lib.optionalString autorun "export LOSOS_INSTALLER_ISO=1"}
     exec ${ctl}/bin/losos-ctl install "$@"
   '';
 
   losos-install-login = pkgs.writeShellScriptBin "losos-install-login" ''
     trap : INT
+    ${lib.optionalString autorun "export LOSOS_INSTALLER_ISO=1"}
     ${ctl}/bin/losos-ctl install "$@"
     exec ${lib.getExe pkgs.bash}
   '';

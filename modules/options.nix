@@ -48,6 +48,20 @@ in
       '';
     };
 
+    bios = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Boot the appliance with GRUB in legacy BIOS mode instead of
+        systemd-boot on UEFI. The first target drive then also carries a 1 MiB
+        BIOS boot partition for GRUB's core image. The installer sets this
+        itself: it is true when the installer medium was booted in BIOS mode
+        (no /sys/firmware/efi); `--uefi` requires booting the installer in UEFI
+        mode so systemd-boot can write the firmware boot entry.
+        Mostly for testing the installed system in a BIOS-only VM.
+      '';
+    };
+
     # ── TLS ─────────────────────────────────────────────────────────────────
     # A self-signed certificate, generated on the box, valid for two years.
     #
@@ -827,10 +841,9 @@ in
       type = lib.types.bool;
       default = false;
       description = ''
-        Auto-run `losos-install` as root's login shell on tty1 at boot. This is
-        what turns the installer ISO into a set-and-forget reinstall / factory-
-        reset medium: insert it, boot, and the installer runs unattended. Leave
-        false on a normal target system.
+        Auto-run `losos-install` as root's login shell on tty1 at boot. On the
+        installer ISO, this starts the installer and its firmware-mode menu.
+        Leave false on a normal target system.
       '';
     };
 
