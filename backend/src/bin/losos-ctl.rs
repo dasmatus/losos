@@ -117,7 +117,7 @@ struct InstallArgs {
     uefi: bool,
     /// Override drive auto-detection with a comma-separated list.
     #[arg(long, value_name = "A,/dev/b,...", value_parser = parse_drives)]
-    drives: Option<Vec<String>>,
+    drives: Option<DriveList>,
     /// Stop after disko (format and mount); skip nixos-install.
     #[arg(long)]
     no_install: bool,
@@ -155,8 +155,17 @@ impl FirmwareMode {
     }
 }
 
+/// The parsed `--drives` list.
+///
+/// A newtype rather than `Vec<String>` because clap reads `Option<Vec<T>>` as
+/// "the flag takes many values of T": with a parser that returns the whole Vec
+/// it panicked with a type mismatch on first access, so `--drives` crashed
+/// before doing anything.
+#[derive(Clone, Debug)]
+struct DriveList(Vec<String>);
+
 /// Split `--drives a,b,c`, rejecting a list that is empty once trimmed.
-fn parse_drives(s: &str) -> Result<Vec<String>, String> {
+fn parse_drives(s: &str) -> Result<DriveList, String> {
     let ds: Vec<String> = s
         .split(',')
         .map(|d| d.trim().to_string())
@@ -165,7 +174,7 @@ fn parse_drives(s: &str) -> Result<Vec<String>, String> {
     if ds.is_empty() {
         Err("no drives given".to_string())
     } else {
-        Ok(ds)
+        Ok(DriveList(ds))
     }
 }
 
@@ -318,7 +327,7 @@ fn main() -> ExitCode {
         let opts = options_from_env(
             args.tpm,
             bios,
-            args.drives.clone(),
+            args.drives.clone().map(|d| d.0),
             args.no_install,
             args.disko_script.clone(),
             args.emit_target.clone(),
@@ -399,7 +408,8 @@ fn run(cli: Cli) -> Result<(), BackendFailure> {
 
 #[cfg(test)]
 mod tests {
-    use super::{prompt_firmware, validate_firmware_choice, FirmwareMode, MenuInput};
+    use super::{prompt_firmware, validate_firmware_choice, Cli, Command, FirmwareMode, MenuInput};
+    use clap::Parser;
     use std::time::Duration;
 
     #[test]
@@ -471,5 +481,25 @@ mod tests {
         };
         prompt_firmware(read, Duration::from_millis(200), &mut Vec::new()).unwrap();
         assert!(budgets[1] < budgets[0], "{budgets:?}");
+    }
+
+    fn install_drives(argv: &[&str]) -> Option<Vec<String>> {
+        let cli = Cli::try_parse_from(argv).unwrap();
+        match cli.command {
+            Command::Install(args) => args.drives.map(|d| d.0),
+            _ => panic!("not the install subcommand"),
+        }
+    }
+
+    #[test]
+    fn drives_flag_parses_a_comma_list() {
+        // clap reads `Option<Vec<_>>` as "many values of _", so a parser that
+        // returns the whole Vec panicked on first access instead of parsing.
+        assert_eq!(
+            install_drives(&["losos-ctl", "install", "--drives", "vdb, /dev/vdc,,"]),
+            Some(vec!["vdb".to_string(), "/dev/vdc".to_string()])
+        );
+        assert_eq!(install_drives(&["losos-ctl", "install"]), None);
+        assert!(Cli::try_parse_from(["losos-ctl", "install", "--drives", " , "]).is_err());
     }
 }
