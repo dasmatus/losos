@@ -348,9 +348,20 @@ fn env_or(key: &str, default: &str) -> String {
     std::env::var(key).unwrap_or_else(|_| default.to_string())
 }
 
+/// Whether the installer medium itself was booted in legacy BIOS mode.
+///
+/// The kernel only creates `/sys/firmware/efi` when the firmware handed it EFI
+/// tables, so its absence is the standard test. The installed system has to
+/// boot the way the machine did, because that is the only firmware proven to
+/// work on it.
+pub fn booted_in_bios() -> bool {
+    !Path::new("/sys/firmware/efi").exists()
+}
+
 /// Fill in the environment-overridable defaults around the parsed CLI flags.
 pub fn options_from_env(
     tpm: bool,
+    bios: Option<bool>,
     drives: Option<Vec<String>>,
     no_install: bool,
     disko_script: Option<PathBuf>,
@@ -358,6 +369,7 @@ pub fn options_from_env(
 ) -> Options {
     Options {
         tpm,
+        bios: bios.unwrap_or_else(booted_in_bios),
         drives,
         no_install,
         disko_script,
