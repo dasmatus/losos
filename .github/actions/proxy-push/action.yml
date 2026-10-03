@@ -38,7 +38,7 @@ runs:
         # Pin the publisher to a reviewed revision of LosOS Desktop. It writes
         # one signed narinfo/NAR OCI artifact per store path, as its proxy expects.
         curl -fsSL --proto '=https' \
-          https://raw.githubusercontent.com/dasmatus/losos-desktop/d51ee113d3e77a06d2f8438f4a9a97c8af9aebec/tools/nix-cache-push \
+          https://raw.githubusercontent.com/dasmatus/losos-desktop/3a504ba90a00296e2aa63261cffebe6cf3fff476/tools/nix-cache-push \
           -o "$work/nix-cache-push"
         chmod +x "$work/nix-cache-push"
         oras=$(nix build nixpkgs#oras --no-link --print-out-paths)
