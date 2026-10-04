@@ -284,8 +284,19 @@ async fn get_claim_state(api: web::Data<Api>) -> HttpResponse {
 /// once, to the caller who just proved they were on the LAN during the window
 /// and set the owner password. After that this route refuses every call, so
 /// the token cannot be re-fetched by a later visitor.
-async fn post_claim(api: web::Data<Api>, body: web::Bytes) -> HttpResponse {
+async fn post_claim(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> HttpResponse {
     const SHAPE: &str = r#"body must be JSON: {"user": "..." (optional), "password": "..."}"#;
+    let header = |name: &str| req.headers().get(name).and_then(|v| v.to_str().ok());
+    let hostname = std::fs::read_to_string("/proc/sys/kernel/hostname").unwrap_or_default();
+    if let Some(why) = claim_fault(
+        header("content-type"),
+        header("host"),
+        header("origin"),
+        hostname.trim(),
+    ) {
+        tracing::warn!(reason = why, "refused a claim request");
+        return err(actix_web::http::StatusCode::FORBIDDEN, why);
+    }
     let Ok(doc) = serde_json::from_slice::<serde_json::Value>(&body) else {
         return err(actix_web::http::StatusCode::BAD_REQUEST, SHAPE);
     };
@@ -301,6 +312,77 @@ async fn post_claim(api: web::Data<Api>, body: web::Bytes) -> HttpResponse {
     run(&api, move |l| {
         crate::losos::cmd_claim(l, &user, password, &token)
     })
+}
+
+/// Why a claim request must be refused before it is even parsed, if it must.
+///
+/// The claim route is the one state-changing route with no token, so the
+/// LAN-only guard in nginx is all that stands in front of it, and that guard
+/// cannot tell a person on the LAN from a web page *running in the browser of*
+/// a person on the LAN. Three checks close the two ways a page can do this:
+///
+///   * **Content-Type must be `application/json`.** Without it a page can POST
+///     the JSON body as `text/plain`, a "simple" request the browser sends
+///     without a CORS preflight, and set the owner password on a box it has
+///     never seen. Requiring the JSON type forces a preflight, and lososd
+///     answers no CORS, so the browser never sends the real request.
+///   * **Host must be this box**: its hostname, `<hostname>.local`, or an IP
+///     literal. Under DNS rebinding the page's own domain resolves to the box,
+///     the request is same-origin to the browser, and it could read the reply,
+///     which carries the admin token. The Host header still names the
+///     attacker's domain, and that is what this refuses.
+///   * **Origin, when present, must match Host.** Belt and braces for the two
+///     above: a browser always sends it on a cross-origin POST.
+///
+/// Requests with no Origin (curl, the VM tests) pass the third check; they
+/// cannot come from a page.
+fn claim_fault(
+    content_type: Option<&str>,
+    host: Option<&str>,
+    origin: Option<&str>,
+    hostname: &str,
+) -> Option<&'static str> {
+    let is_json = content_type
+        .and_then(|ct| ct.split(';').next())
+        .is_some_and(|essence| essence.trim().eq_ignore_ascii_case("application/json"));
+    if !is_json {
+        return Some("claim requests must be sent as application/json");
+    }
+    let Some(host) = host.map(host_part).filter(|h| !h.is_empty()) else {
+        return Some("claim requests must name this box in Host");
+    };
+    let own_name = !hostname.is_empty()
+        && (host.eq_ignore_ascii_case(hostname)
+            || host
+                .strip_suffix(".local")
+                .is_some_and(|h| h.eq_ignore_ascii_case(hostname)));
+    if !own_name && host.parse::<std::net::IpAddr>().is_err() {
+        return Some("claim requests must name this box in Host");
+    }
+    if let Some(origin) = origin {
+        let authority = origin
+            .strip_prefix("https://")
+            .or_else(|| origin.strip_prefix("http://"));
+        let same = authority.is_some_and(|a| host_part(a).eq_ignore_ascii_case(host));
+        if !same {
+            return Some("claim requests must come from this box's own page");
+        }
+    }
+    None
+}
+
+/// The host of a `Host` header or an origin's authority: no port, no
+/// brackets around an IPv6 literal, no trailing dot.
+fn host_part(authority: &str) -> &str {
+    let a = authority.trim();
+    if let Some(rest) = a.strip_prefix('[') {
+        return rest.split(']').next().unwrap_or("");
+    }
+    let a = match a.rsplit_once(':') {
+        Some((h, port)) if port.bytes().all(|b| b.is_ascii_digit()) => h,
+        _ => a,
+    };
+    a.strip_suffix('.').unwrap_or(a)
 }
 
 async fn post_set_password(
@@ -631,6 +713,91 @@ pub fn serve(backend: IoLosos) -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const JSON: Option<&str> = Some("application/json");
+
+    #[test]
+    fn claim_from_the_box_own_page_passes() {
+        assert_eq!(
+            claim_fault(
+                JSON,
+                Some("mattbox.local"),
+                Some("http://mattbox.local"),
+                "mattbox"
+            ),
+            None
+        );
+        assert_eq!(
+            claim_fault(
+                Some("application/json; charset=utf-8"),
+                Some("MattBox.local:443"),
+                Some("https://mattbox.local"),
+                "mattbox"
+            ),
+            None
+        );
+        assert_eq!(
+            claim_fault(
+                JSON,
+                Some("192.168.1.20"),
+                Some("http://192.168.1.20"),
+                "mattbox"
+            ),
+            None
+        );
+        assert_eq!(
+            claim_fault(JSON, Some("[fe80::1]:80"), None, "mattbox"),
+            None
+        );
+        // curl on the box, or a VM test talking to lososd directly.
+        assert_eq!(
+            claim_fault(JSON, Some("127.0.0.1:8082"), None, "mattbox"),
+            None
+        );
+    }
+
+    #[test]
+    fn claim_as_a_simple_request_is_refused() {
+        // What a cross-site page sends to skip the CORS preflight.
+        assert!(claim_fault(Some("text/plain"), Some("mattbox.local"), None, "mattbox").is_some());
+        assert!(claim_fault(None, Some("mattbox.local"), None, "mattbox").is_some());
+        assert!(claim_fault(
+            Some("application/x-www-form-urlencoded"),
+            Some("mattbox.local"),
+            None,
+            "mattbox"
+        )
+        .is_some());
+    }
+
+    #[test]
+    fn claim_under_dns_rebinding_is_refused() {
+        // Same-origin to the browser, but the Host is the attacker's name.
+        assert!(claim_fault(
+            JSON,
+            Some("evil.example:80"),
+            Some("http://evil.example"),
+            "mattbox"
+        )
+        .is_some());
+        assert!(claim_fault(JSON, Some("evil.example"), None, "mattbox").is_some());
+        assert!(claim_fault(JSON, Some("mattbox.evil.example"), None, "mattbox").is_some());
+        assert!(claim_fault(JSON, None, None, "mattbox").is_some());
+        // An unreadable hostname leaves only IP literals.
+        assert!(claim_fault(JSON, Some(".local"), None, "").is_some());
+    }
+
+    #[test]
+    fn claim_from_another_origin_is_refused() {
+        assert!(claim_fault(
+            JSON,
+            Some("mattbox.local"),
+            Some("https://evil.example"),
+            "mattbox"
+        )
+        .is_some());
+        assert!(claim_fault(JSON, Some("mattbox.local"), Some("null"), "mattbox").is_some());
+    }
 
     #[test]
     fn token_is_64_hex_chars_mode_600_and_stable_across_calls() {

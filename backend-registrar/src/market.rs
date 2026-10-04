@@ -71,6 +71,13 @@ const MAX_QUANTITY: u64 = 1_000_000;
 const MAX_CAPACITY: u64 = 1_000_000_000;
 /// Active listings one seller may hold at once.
 const MAX_LISTINGS_PER_SELLER: usize = 20;
+/// Unpaid checkouts one buyer may hold at once. Every order reserves its
+/// units the moment it is written and keeps them until Stripe says the
+/// session expired (31 minutes) or, if that webhook is lost, for three days
+/// more. With no cap a buyer could order every listing's whole stock, never
+/// pay, and reorder each half hour, so nothing on the market could ever be
+/// bought; each order is also a row `market.json` keeps for a month.
+const MAX_PENDING_PER_BUYER: usize = 3;
 /// Two-decimal currencies only. The admin UI converts prices with a fixed
 /// factor of 100 (`toMinorUnits` and `formatMoney` in
 /// admin-ui/app/src/screens/settings/market.ts), and [`MIN_CHARGE_MINOR`] is in
@@ -1249,6 +1256,16 @@ impl Market {
                 return Err(MarketError::Invalid("cannot buy your own listing"));
             }
             let q = quote(listing.unit_price, new.quantity, self.opts.fee_bps)?;
+            let unpaid = state
+                .orders
+                .values()
+                .filter(|o| o.buyer == buyer && pending_live(o, now))
+                .count();
+            if unpaid >= MAX_PENDING_PER_BUYER {
+                return Err(MarketError::Conflict(
+                    "too many unpaid checkouts; pay for one or let it expire first",
+                ));
+            }
             if new.quantity > available(&state, &listing, now) {
                 return Err(MarketError::Conflict("not enough units available"));
             }
