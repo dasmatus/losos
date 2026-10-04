@@ -673,6 +673,35 @@ async fn orders_cannot_oversell_or_buy_from_oneself() {
 }
 
 #[tokio::test]
+async fn a_buyer_cannot_hoard_stock_in_unpaid_checkouts() {
+    let stripe = StripeStub::start().await;
+    let edge = Edge::start_with_market("market-hoard", &tenants(), &stripe.base).await;
+    ready_seller(&edge).await;
+    let (_, body) = list(&edge, "storage", 100, 100).await;
+    let listing_id = parse(&body)["listing_id"].as_str().expect("id").to_string();
+
+    let mut order_ids = Vec::new();
+    for _ in 0..3 {
+        let (status, body) = order(&edge, &listing_id, 1).await;
+        assert_eq!(status, 201, "{body}");
+        order_ids.push(parse(&body)["order_id"].as_str().expect("id").to_string());
+    }
+    let (status, _) = order(&edge, &listing_id, 1).await;
+    assert_eq!(status, 409, "a fourth unpaid checkout");
+
+    // One lapses: the buyer may try again.
+    let expired = json!({
+        "type": "checkout.session.expired",
+        "data": { "object": { "id": "cs_test_1", "client_reference_id": order_ids[0] } }
+    });
+    assert_eq!(webhook(&edge, &expired).await.0, 200);
+    assert_eq!(order(&edge, &listing_id, 1).await.0, 201);
+
+    edge.shutdown().await;
+    stripe.shutdown().await;
+}
+
+#[tokio::test]
 async fn a_failed_checkout_or_an_expired_session_frees_the_units() {
     let stripe = StripeStub::start().await;
     let edge = Edge::start_with_market("market-release", &tenants(), &stripe.base).await;
