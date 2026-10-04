@@ -35,6 +35,13 @@ The token is equivalent to root: `POST /api/apply` writes arbitrary Nix to
   only on a trusted LAN: whoever claims it first becomes its owner. The window
   is guarded by source address (`lanOnly`, with loopback denied), not by a
   secret, and closes on first use.
+- The claim route also refuses what a web page in a LAN browser could send:
+  a body that is not `application/json` (which would skip the CORS
+  preflight), a `Host` that is not the box's hostname, `<hostname>.local` or
+  an IP literal (DNS rebinding), and an `Origin` that does not match `Host`.
+- `claimed` fails closed. A state file from before the flag existed reads as
+  claimed, and so does a state file that cannot be parsed. Only a box with no
+  state file at all is unclaimed.
 - The file must contain exactly 64 lowercase hex characters. Anything else is
   discarded and replaced, with an error in the log.
 - A claimed box cannot fetch the token again. To rotate it, write a new
@@ -43,7 +50,12 @@ The token is equivalent to root: `POST /api/apply` writes arbitrary Nix to
   local access to retrieve the replacement.
 - Comparison is constant-time.
 - The API listens on `127.0.0.1` only. nginx proxies `/api/` to it behind the
-  LAN-only guard.
+  LAN-only guard. The hostNetwork Nextcloud and Forgejo pods share that
+  loopback, so an iptables owner match (`modules/daemon.nix`) resets any
+  connection to the API port that is not made by root or nginx.
+- The LAN-only guard denies `10.42.0.0/16`, the mesh's pod network, before it
+  allows `10.0.0.0/8`. A mesh pod reaching the box's own address is delivered
+  locally with its pod address, which the allow would otherwise accept.
 
 ## Enrollment at the edge
 
@@ -57,6 +69,10 @@ listed in `losos.edge.tenants`.
   known id.
 - The router's hostname comes from the allow-list, not from what the appliance
   sends.
+- Traefik buffers each request before it reaches the registrar and holds one
+  source address to 8 in flight, so slow anonymous requests cannot hold the
+  registrar's 64 permits. While the registrar is shedding load it does not
+  prune tenants for missed heartbeats.
 
 ## System hardening
 
