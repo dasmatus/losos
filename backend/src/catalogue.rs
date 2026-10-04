@@ -210,7 +210,14 @@ fn parse_app(entry: &Value) -> Option<App> {
     // page rather than to nothing keeps every row clickable, and a reader who
     // wants to know what they are installing is better served by the catalogue
     // entry than by a dead link.
+    //
+    // Only an https:// home page is kept. `home_url` is the publisher's own
+    // `home:` field, so anyone who publishes a chart chooses it, and it lands
+    // in an `href` on the admin page: a `javascript:` or `data:` value there
+    // is blocked today only by React and the CSP, which is two layers of
+    // someone else's defaults rather than a decision made here.
     let homepage = field(entry, &["home_url", "homepage"])
+        .filter(|u| is_https_url(u))
         .map(str::to_string)
         .or_else(|| Some(format!("{PACKAGE_PAGE}/{}/{}", repo_name?, slug?)));
 
@@ -222,6 +229,23 @@ fn parse_app(entry: &Value) -> Option<App> {
         version: field(entry, &["version", "app_version"]).map(str::to_string),
         homepage,
     })
+}
+
+/// `https://` followed by a host, case-insensitive on the scheme. No userinfo
+/// (`https://catalogue.example@evil.example/` reads as one host and goes to
+/// another) and no whitespace or control characters.
+fn is_https_url(u: &str) -> bool {
+    let Some(rest) = u
+        .get(..8)
+        .filter(|p| p.eq_ignore_ascii_case("https://"))
+        .map(|_| &u[8..])
+    else {
+        return false;
+    };
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or("");
+    !authority.is_empty()
+        && !authority.contains('@')
+        && !u.chars().any(|c| c.is_whitespace() || c.is_control())
 }
 
 /// Parse a search response body into rows.
@@ -319,6 +343,31 @@ mod tests {
           "repository":{"name":"r","display_name":"R"}}]}"#;
         let apps = parse_results(body).unwrap();
         assert_eq!(apps[0].homepage.as_deref(), Some("https://example.org/"));
+    }
+
+    #[test]
+    fn a_home_url_that_is_not_plain_https_falls_back_to_the_catalogue_page() {
+        for bad in [
+            "javascript:alert(document.domain)",
+            "JavaScript:alert(1)",
+            "data:text/html,<script>alert(1)</script>",
+            "http://example.org/",
+            "https://catalogue.example@evil.example/",
+            "https://",
+            "https://exa mple.org/",
+        ] {
+            let body = format!(
+                r#"{{"packages":[{{"name":"n","normalized_name":"n","home_url":{},
+                  "repository":{{"name":"r","display_name":"R"}}}}]}}"#,
+                serde_json::Value::from(bad)
+            );
+            let apps = parse_results(&body).unwrap();
+            assert_eq!(
+                apps[0].homepage.as_deref(),
+                Some("https://artifacthub.io/packages/helm/r/n"),
+                "{bad} should not reach an href"
+            );
+        }
     }
 
     /// The tolerance is the point: an upstream that renames the array or the
