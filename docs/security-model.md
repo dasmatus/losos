@@ -39,9 +39,10 @@ The token is equivalent to root: `POST /api/apply` writes arbitrary Nix to
   a body that is not `application/json` (which would skip the CORS
   preflight), a `Host` that is not the box's hostname, `<hostname>.local` or
   an IP literal (DNS rebinding), and an `Origin` that does not match `Host`.
-- `claimed` fails closed. A state file from before the flag existed reads as
-  claimed, and so does a state file that cannot be parsed. Only a box with no
-  state file at all is unclaimed.
+- `claimed` fails closed. Any state file reads as claimed, whatever it says
+  (a stored `false` from the older build included), and so does a path that
+  cannot be read or is a dangling symlink. Only a box with nothing at the
+  state path is unclaimed.
 - The file must contain exactly 64 lowercase hex characters. Anything else is
   discarded and replaced, with an error in the log.
 - A claimed box cannot fetch the token again. To rotate it, write a new
