@@ -280,10 +280,10 @@ pub fn parse(args: Vec<String>) -> Result<Mode> {
                     .unwrap_or("https://api.stripe.com")
                     .to_string(),
                 currency: currency.to_string(),
-                max_fee_bps: match arg(&rest, "--fee-bps") {
-                    None => MAX_FEE_BPS,
+                fee_bps: match arg(&rest, "--fee-bps") {
+                    None => None,
                     Some(raw) => match raw.parse::<u32>() {
-                        Ok(bps) if bps <= MAX_FEE_BPS => bps,
+                        Ok(bps) if bps <= MAX_FEE_BPS => Some(bps),
                         _ => {
                             return Err(miette!(
                                 "bad --fee-bps {raw:?}; expected at most {MAX_FEE_BPS}"

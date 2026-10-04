@@ -57,6 +57,11 @@ The token is equivalent to root: `POST /api/apply` writes arbitrary Nix to
 - The LAN-only guard denies `10.42.0.0/16`, the mesh's pod network, before it
   allows `10.0.0.0/8`. A mesh pod reaching the box's own address is delivered
   locally with its pod address, which the allow would otherwise accept.
+- The guard also refuses a request whose source address is the address it
+  arrived on. Only the box itself can send from its own address, so this stops
+  a hostNetwork pod that binds the LAN address and goes through nginx. Not
+  covered: a box with two local addresses, where a pod binds one and connects
+  to the other.
 
 ## Enrollment at the edge
 
