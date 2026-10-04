@@ -111,7 +111,7 @@ images
     src = lib.cleanSource ./../backend;
     # SHA256 of the vendored crate tarball. If deps change, `nix build
     # .#losos-ctl-rs` will print the new hash to paste here.
-    cargoHash = "sha256-jSweHP/Wr9o0EvMf9gNOOttN4RCB1862PX96y8jEeKo=";
+    cargoHash = "sha256-yLs520M4TINILHjRnJ+XINUTCmY+1TaRkf5ARqkG068=";
     # No system deps: zbus speaks the D-Bus wire protocol natively, so there is
     # no libdbus to link against.
     # doCheck is off, and the tests still run — in CI's lint job and in
@@ -137,7 +137,7 @@ images
     src = lib.cleanSource ./../backend-registrar;
     # SHA256 of the vendored crate tarball. If deps change, `nix build
     # .#losos-registrar` will print the new hash to paste here.
-    cargoHash = "sha256-Jn5W0NSSedbNBPo2URWAA7a4rysRqN0EQyIKC3u99z0=";
+    cargoHash = "sha256-LYnFlT0Nc/CoCCLO8g3uD283lo2DKEYpOWgv0PEuElo=";
     # No system deps; pure Rust with rustls (no openssl).
     # Same reasoning as losos-ctl above: the suite runs via cargo test in the
     # lint job, not inside this derivation.
