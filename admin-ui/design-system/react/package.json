@@ -20,17 +20,17 @@
     "build": "esbuild src/index.ts --bundle --format=esm --jsx=automatic --external:react --external:react-dom --outfile=dist/index.js && tsc --emitDeclarationOnly && cp ../tokens.css ../losos.css dist/ && cat ../tokens.css ../losos.css > dist/styles.css"
   },
   "peerDependencies": {
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
   },
   "devDependencies": {
     "@types/node": "^20.19.43",
-    "@types/react": "^19.0.0",
-    "@types/react-dom": "^19.2.4",
-    "esbuild": "^0.25.0",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "esbuild": "^0.28.2",
     "playwright": "1.63.0",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
     "typescript": "^5.7.0"
   }
 }
