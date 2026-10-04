@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # The PR branch is pushed later with LOCKFILE_UPDATE_TOKEN so the
           # resulting push/PR can trigger downstream CI.
