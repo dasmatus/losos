@@ -93,9 +93,13 @@ let
   # text, so a divergence shows up as a red test and not as a route that
   # quietly guards nothing.
   #
+  # The leading `deny 10.42.0.0/16` is the mesh's pod network; containers.nix
+  # says why it must come before `allow 10.0.0.0/8`.
+  #
   # The same warning applies here as there: never "fix" a loopback 403 with
   # `allow 127.0.0.1`. Loopback is where the tunnel arrives.
   lanOnly = ''
+    deny 10.42.0.0/16;
     allow 10.0.0.0/8;
     allow 172.16.0.0/12;
     allow 192.168.0.0/16;
