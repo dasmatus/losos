@@ -280,6 +280,22 @@ pub fn parse(args: Vec<String>) -> Result<Mode> {
                     .unwrap_or("https://api.stripe.com")
                     .to_string(),
                 currency: currency.to_string(),
+                fee_bps: match arg(&rest, "--fee-bps") {
+                    None => None,
+                    Some(raw) => match raw.parse::<u32>() {
+                        Ok(bps) if bps <= MAX_FEE_BPS => Some(bps),
+                        _ => {
+                            return Err(miette!(
+                                "bad --fee-bps {raw:?}; expected at most {MAX_FEE_BPS}"
+                            ))
+                        }
+                    },
+                },
+                return_url: match arg(&rest, "--return-url") {
+                    None => None,
+                    Some(u) if crate::stripe_gate::url_ok(u) => Some(u.to_string()),
+                    Some(u) => return Err(miette!("bad --return-url {u:?}")),
+                },
             }))
         }
         other => Err(miette!(
