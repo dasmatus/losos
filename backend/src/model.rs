@@ -110,13 +110,33 @@ pub struct State {
     /// else guarded that: the claim route never checked for an existing
     /// password, whatever an earlier comment here said. A fresh box has no
     /// state file at all and gets [`State::default`], which is unclaimed.
-    #[serde(default = "claimed_when_absent")]
+    ///
+    /// An explicit `false` on disk also decodes as `true`. A box upgraded from
+    /// the vulnerable build had its first state write serialise `"claimed":
+    /// false`, which the absent-field default never sees. So the file's
+    /// *existence* is the marker, not its value: every writer of state needs
+    /// the admin token (or root on the bus), which an unclaimed box cannot
+    /// have, so a state file only ever belongs to a box that has an owner. The
+    /// value is still written, and still read through [`State::default`] when
+    /// there is no file.
+    #[serde(
+        default = "claimed_when_absent",
+        deserialize_with = "claimed_when_on_disk"
+    )]
     pub claimed: bool,
 }
 
 /// See [`State::claimed`]: a state file without the field predates it.
 fn claimed_when_absent() -> bool {
     true
+}
+
+/// See [`State::claimed`]: whatever bool the file holds, a file means claimed.
+fn claimed_when_on_disk<'de, D>(d: D) -> Result<bool, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    bool::deserialize(d).map(|_| true)
 }
 
 impl Default for State {

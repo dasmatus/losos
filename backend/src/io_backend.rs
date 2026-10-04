@@ -397,7 +397,19 @@ impl crate::recovery::CodeStore for FileCodeStore {
 pub fn read_state(path: &Path) -> State {
     let bytes = match std::fs::read(path) {
         Ok(b) => b,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return State::default(),
+        // `read` reports NotFound for a dangling symlink too, so absence is
+        // confirmed on the directory entry itself: only an entry that is really
+        // missing is a fresh box, and an entry that exists (or cannot be
+        // inspected) is not.
+        Err(e)
+            if e.kind() == std::io::ErrorKind::NotFound
+                && matches!(
+                    std::fs::symlink_metadata(path),
+                    Err(ref m) if m.kind() == std::io::ErrorKind::NotFound
+                ) =>
+        {
+            return State::default()
+        }
         Err(e) => {
             // A path that became a directory, lost traversal permission or
             // hit an I/O error is not a fresh box: fail closed like corruption.
@@ -879,6 +891,25 @@ mod tests {
         std::fs::create_dir_all(&p).unwrap();
         assert!(read_state(&p).claimed);
         std::fs::remove_dir_all(&p).ok();
+    }
+
+    #[test]
+    fn dangling_state_symlink_reads_as_claimed() {
+        let dir = tmpdir().join("dangling");
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = dir.join("state.json");
+        std::os::unix::fs::symlink(dir.join("nowhere.json"), &p).unwrap();
+        assert!(read_state(&p).claimed);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn explicit_unclaimed_on_disk_reads_as_claimed() {
+        // Written by a build that serialised the old default on every save.
+        let p = tmpdir().join("explicit-false.json");
+        std::fs::write(&p, br#"{"mode":"local","sharing":false,"claimed":false}"#).unwrap();
+        assert!(read_state(&p).claimed);
+        std::fs::remove_file(&p).ok();
     }
 
     #[test]
