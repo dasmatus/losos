@@ -156,6 +156,10 @@ struct AppState {
     notify: Arc<Notify>,
     tenants: Arc<TenantCache>,
     limiter: Arc<Semaphore>,
+    /// When [`guard`] last shed a request for want of a permit. While that is
+    /// within one `heartbeat_ttl`, [`reconcile_once`] does not prune: see
+    /// there.
+    last_shed: Arc<std::sync::Mutex<Option<std::time::Instant>>>,
     /// `None` unless `--market-gate-socket` was given.
     market: Option<Arc<Market>>,
 }
@@ -278,6 +282,7 @@ where
         notify: Arc::new(Notify::new()),
         tenants: Arc::new(TenantCache::default()),
         limiter: Arc::new(Semaphore::new(MAX_INFLIGHT)),
+        last_shed: Arc::new(std::sync::Mutex::new(None)),
         market,
     };
 
@@ -365,6 +370,9 @@ pub(crate) async fn shutdown_signal() {
 async fn guard(State(st): State<AppState>, req: Request, next: Next) -> Response {
     let Ok(_permit) = Arc::clone(&st.limiter).try_acquire_owned() else {
         tracing::warn!(target: Action::Serve.target(), "shedding request: {MAX_INFLIGHT} in flight");
+        if let Ok(mut last) = st.last_shed.lock() {
+            *last = Some(std::time::Instant::now());
+        }
         return (StatusCode::SERVICE_UNAVAILABLE, "busy; retry later").into_response();
     };
     let budget = if STRIPE_ROUTES.contains(&req.uri().path()) {
@@ -1351,8 +1359,31 @@ async fn reconciler(st: AppState) {
 /// there. `serve` calls this once before the API opens and treats an error as
 /// fatal, so a mesh-side write fault must never be able to stop an edge whose
 /// operator has not enabled the cluster at all from booting.
+///
+/// And it does not prune while the API is shedding load. A missed heartbeat
+/// is only evidence that an appliance went away if this registrar was able
+/// to hear it: under a flood of slow anonymous requests every `/heartbeat`
+/// was answered 503, the prune then took each tenant for dead, and the pass
+/// below removed every router and rathole service on the edge. An attacker
+/// with no token at all could take every appliance's public site down for as
+/// long as the flood lasted. A dead appliance kept a little longer costs a
+/// router that answers 502.
 async fn reconcile_once(st: &AppState) -> Result<()> {
-    let pruned = st.reg.prune(st.opts.heartbeat_ttl).await;
+    let ttl = st.opts.heartbeat_ttl;
+    let shedding = st
+        .last_shed
+        .lock()
+        .map(|last| last.is_some_and(|t| t.elapsed() < ttl))
+        .unwrap_or(true);
+    let pruned = if shedding {
+        tracing::warn!(
+            target: Action::Serve.target(),
+            "not pruning: requests were shed within the last {ttl:?}, so missed heartbeats prove nothing",
+        );
+        false
+    } else {
+        st.reg.prune(ttl).await
+    };
     let views = st.reg.views().await;
     let tenants = st
         .tenants
