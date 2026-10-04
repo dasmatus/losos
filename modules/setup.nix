@@ -93,12 +93,16 @@ let
   # text, so a divergence shows up as a red test and not as a route that
   # quietly guards nothing.
   #
-  # The leading `deny 10.42.0.0/16` is the mesh's pod network; containers.nix
-  # says why it must come before `allow 10.0.0.0/8`.
+  # The leading `if` refuses traffic from the box itself (source = the address
+  # it arrived on), and `deny 10.42.0.0/16` is the mesh's pod network;
+  # containers.nix says why each is there.
   #
   # The same warning applies here as there: never "fix" a loopback 403 with
   # `allow 127.0.0.1`. Loopback is where the tunnel arrives.
   lanOnly = ''
+    if ($remote_addr = $server_addr) {
+      return 403;
+    }
     deny 10.42.0.0/16;
     allow 10.0.0.0/8;
     allow 172.16.0.0/12;

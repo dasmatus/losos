@@ -17,9 +17,11 @@
 #
 # One node, not two. tests/front-vhost.nix needs a second appliance because it
 # is about what other machines see; here every interesting distinction is
-# between two source addresses on the same box, and curl --interface makes both
-# without booting a second VM (the same trick that file's "LAN source, same
-# box" subtest uses).
+# between source addresses on the same box, and curl --interface makes them
+# without booting a second VM. The LAN client is a second address on the vlan
+# (CLIENT below), not the box's own: the guard refuses a request whose source
+# is the address it arrived on, because that is a local process posing as the
+# LAN.
 #
 # losos.admin.enable is off on purpose. The routes under test do not follow
 # that flag — modules/setup.nix argues why — and leaving it off keeps the
@@ -116,10 +118,14 @@ pkgs.testers.nixosTest {
     # the hostname, which NixOS also maps to 127.0.0.2 — and loopback is the one
     # thing these subtests exist to tell apart.
     LAN = "192.168.1.1"
+    # A second address on the same vlan, standing in for another machine. The
+    # box's own address will not do as a source: the guard refuses it.
+    CLIENT = "192.168.1.50"
+    appliance.succeed(f"ip addr add {CLIENT}/24 dev eth1")
 
     def lan(path, extra=""):
         """curl the route as a machine on the LAN would see it."""
-        return f"curl -s --interface {LAN} {extra} http://{LAN}{path}"
+        return f"curl -s --interface {CLIENT} {extra} http://{LAN}{path}"
 
     def code(url, source=None):
         src = f"--interface {source} " if source else ""
@@ -167,8 +173,19 @@ pkgs.testers.nixosTest {
         for path in (CERT_URL, STATE_URL):
             got = code(f"http://127.0.0.1{path}")
             assert got == "403", f"loopback {path}: expected 403, got {got}"
-            got = code(f"http://{LAN}{path}", source=LAN)
+            got = code(f"http://{LAN}{path}", source=CLIENT)
             assert got == "200", f"LAN {path}: expected 200, got {got}"
+            # The copy of lanOnly in modules/setup.nix carries the same two
+            # refusals as containers.nix: the box posing as the LAN, and the
+            # mesh's pod network.
+            got = code(f"http://{LAN}{path}", source=LAN)
+            assert got == "403", f"box-as-LAN {path}: expected 403, got {got}"
+
+    with subtest("a mesh pod address is refused on the setup routes"):
+        appliance.succeed("ip addr add 10.42.0.7/32 dev eth1")
+        for path in (CERT_URL, STATE_URL):
+            got = code(f"http://{LAN}{path}", source="10.42.0.7")
+            assert got == "403", f"mesh-pod {path}: expected 403, got {got}"
 
     with subtest("state.json describes the certificate that is actually on disk"):
         doc = json.loads(appliance.succeed(lan(STATE_URL)))
