@@ -86,6 +86,16 @@ let
   # cannot match is worse than an acknowledged gap, because it reads like
   # protection.
   #
+  # The source-bound pod is closed now too, by the `if` at the top: a request
+  # whose source address is the very address it arrived on came from this
+  # box, because no other host can send from the box's own address. That
+  # matches a hostNetwork pod that binds the LAN address before connecting
+  # to it, and no real LAN client. What it does not match is a box with two
+  # local addresses where the pod binds one and connects to the other; such a
+  # pod still reaches only what a LAN client reaches, and /api still wants the
+  # token, but the claim route is unauthenticated while the box is unowned.
+  # `if` with nothing but `return` is the use of it nginx documents as safe.
+  #
   # The *mesh* is different, and `deny 10.42.0.0/16` is for it. Once
   # losos.cluster.enable is on, the rke2 agent runs canal with rke2's default
   # cluster-cidr, 10.42.0.0/16 (modules/edge.nix does not override it), and
@@ -108,6 +118,9 @@ let
   # (A LAN that genuinely numbers itself inside RFC1918 is the normal case and
   # is what the allows are for; there is no longer a carve-out to collide with.)
   lanOnly = ''
+    if ($remote_addr = $server_addr) {
+      return 403;
+    }
     deny 10.42.0.0/16;
     allow 10.0.0.0/8;
     allow 172.16.0.0/12;
