@@ -69,8 +69,22 @@ function parseApp(value: unknown): CatalogueApp | null {
     source,
     summary: nonEmptyString(value["summary"]),
     version: nonEmptyString(value["version"]),
-    homepage: nonEmptyString(value["homepage"]),
+    homepage: httpsUrl(value["homepage"]),
   };
+}
+
+/* The home page is the chart publisher's own `home:` field and goes into an
+ * href. lososd already keeps only https:// values (backend/src/catalogue.rs);
+ * this repeats the check so the link does not depend on one side alone. */
+function httpsUrl(value: unknown): string | null {
+  const raw = nonEmptyString(value);
+  if (raw === null) return null;
+  try {
+    const url = new URL(raw);
+    return url.protocol === "https:" && url.username === "" && url.password === "" ? raw : null;
+  } catch {
+    return null;
+  }
 }
 
 function parseResults(body: unknown): CatalogueResults {
