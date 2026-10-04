@@ -125,12 +125,34 @@ let
   # route (POST /cluster/join). That route is therefore on the public
   # internet and authenticates every caller against the same per-appliance
   # token the proxy uses — see backend-registrar/src/server.rs.
+  # The two middlewares are what keeps one anonymous client from taking the
+  # registrar's whole in-flight budget. Every route there shares one pool of
+  # 64 permits, taken before the body is read, so 64 connections that send
+  # headers and then trickle (or withhold) a body used to hold all of them
+  # and answer every tenant's /heartbeat with 503. `buffering` makes Traefik
+  # read the whole body before it forwards anything, so a slow body costs a
+  # Traefik goroutine and not a registrar permit; its cap matches the
+  # registrar's largest (MAX_WEBHOOK_BYTES, the Stripe webhook). `inFlightReq`
+  # then holds any one source address to a handful of requests at once,
+  # keyed by the remote address Traefik itself saw. The registrar also stops
+  # pruning while it is shedding (reconcile_once in server.rs), so what a
+  # many-address flood still manages is a 503, not every tenant's routes gone.
   registerYml = pkgs.writeText "losos-register-route.yml" ''
     http:
+      middlewares:
+        register-buffer:
+          buffering:
+            maxRequestBodyBytes: 262144
+        register-per-client:
+          inFlightReq:
+            amount: 8
       routers:
         register:
           rule: "Host(`${registerDomain}`)"
           service: register
+          middlewares:
+            - register-per-client
+            - register-buffer
           entryPoints:
             - websecure
           tls:
@@ -718,6 +740,14 @@ in
           "%d/stripe-webhook-secret"
           "--currency"
           cfg.market.currency
+          # The same two values the registrar is given. The gate holds every
+          # Checkout and onboarding link to them exactly, so a compromised
+          # registrar can neither raise the platform's cut past what the
+          # operator set nor send buyers and sellers to a page of its choosing.
+          "--fee-bps"
+          (toString cfg.market.feeBps)
+          "--return-url"
+          cfg.market.returnUrl
         ];
         LoadCredentialEncrypted = [
           "stripe-secret-key:${toString cfg.market.stripeSecretKeySealed}"
