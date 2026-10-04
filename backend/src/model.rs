@@ -102,12 +102,41 @@ pub struct State {
     /// notably not by `factory-reset`, which resets what the owner configured
     /// and not who owns the box.
     ///
-    /// `#[serde(default)]` because a state file written before this field
-    /// existed must still decode: a box that is already running has, by
-    /// definition, already been set up, and `false` is the safe reading only
-    /// because the claim route additionally refuses once a password exists.
-    #[serde(default)]
+    /// An *absent* field decodes as `true`. A state file written before this
+    /// field existed belongs to a box that was already running, and therefore
+    /// already set up; reading it as unclaimed reopened the unauthenticated
+    /// claim route on every upgraded box, for the first caller on its LAN to
+    /// reset the owner's password and walk off with the admin token. Nothing
+    /// else guarded that: the claim route never checked for an existing
+    /// password, whatever an earlier comment here said. A fresh box has no
+    /// state file at all and gets [`State::default`], which is unclaimed.
+    ///
+    /// An explicit `false` on disk also decodes as `true`. A box upgraded from
+    /// the vulnerable build had its first state write serialise `"claimed":
+    /// false`, which the absent-field default never sees. So the file's
+    /// *existence* is the marker, not its value: every writer of state needs
+    /// the admin token (or root on the bus), which an unclaimed box cannot
+    /// have, so a state file only ever belongs to a box that has an owner. The
+    /// value is still written, and still read through [`State::default`] when
+    /// there is no file.
+    #[serde(
+        default = "claimed_when_absent",
+        deserialize_with = "claimed_when_on_disk"
+    )]
     pub claimed: bool,
+}
+
+/// See [`State::claimed`]: a state file without the field predates it.
+fn claimed_when_absent() -> bool {
+    true
+}
+
+/// See [`State::claimed`]: whatever bool the file holds, a file means claimed.
+fn claimed_when_on_disk<'de, D>(d: D) -> Result<bool, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    bool::deserialize(d).map(|_| true)
 }
 
 impl Default for State {

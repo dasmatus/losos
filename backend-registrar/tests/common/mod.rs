@@ -351,6 +351,8 @@ impl Edge {
                 webhook_secret_file: dir.path_str("webhook.secret"),
                 stripe_api,
                 currency: "eur".to_string(),
+                fee_bps: Some(losos_registrar::market::DEFAULT_FEE_BPS),
+                return_url: Some(RETURN_URL.to_string()),
             };
             let listener = losos_registrar::stripe_gate::bind(&gate.socket).expect("bind gate");
             let (stop, rx) = oneshot::channel::<()>();

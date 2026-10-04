@@ -378,6 +378,17 @@ pub struct GateOpts {
     pub stripe_api: String,
     /// The one currency this edge sells in. A request in any other is refused.
     pub currency: String,
+    /// The platform cut every Checkout must carry, in basis points, when set:
+    /// the operator's `--market-fee-bps`. The fee must then be exactly what
+    /// that rate gives, so a compromised registrar can neither raise the cut
+    /// nor waive it. Unset, the fee is only held under the 20% hard ceiling
+    /// ([`MAX_FEE_BPS`]).
+    pub fee_bps: Option<u32>,
+    /// The only return URL Checkout and onboarding may name, when set: the
+    /// operator's `--market-return-url`. Unset, any https or http URL passes
+    /// [`url_ok`], which let a compromised registrar send buyers and sellers
+    /// anywhere once Stripe was done with them.
+    pub return_url: Option<String>,
 }
 
 // ── wire protocol ────────────────────────────────────────────────────────
@@ -531,14 +542,20 @@ pub fn url_ok(url: &str) -> bool {
 }
 
 /// Why a Checkout request is outside what the gate allows, or `None`.
-fn checkout_fault(c: &CheckoutRequest, currency: &str, now: u64) -> Option<&'static str> {
+fn checkout_fault(
+    c: &CheckoutRequest,
+    currency: &str,
+    fee_bps: Option<u32>,
+    return_url: Option<&str>,
+    now: u64,
+) -> Option<&'static str> {
     if !token_ok(&c.order_id, 64) {
         return Some("bad order id");
     }
     if !account_id_ok(&c.destination) {
         return Some("destination is not a Stripe account id");
     }
-    if !url_ok(&c.return_url) {
+    if !url_ok(&c.return_url) || return_url.is_some_and(|want| c.return_url != want) {
         return Some("bad return url");
     }
     if c.currency != currency {
@@ -550,9 +567,14 @@ fn checkout_fault(c: &CheckoutRequest, currency: &str, now: u64) -> Option<&'sta
     let Some(amount) = c.quantity.checked_mul(c.unit_price) else {
         return Some("amount overflows");
     };
-    // The platform's cut is capped at the same ceiling the operator's
-    // `--market-fee-bps` is held to, and can never take the whole charge.
-    if c.fee >= amount || c.fee > crate::market::fee_for(amount, MAX_FEE_BPS) {
+    // The platform's cut is exactly the operator's rate when the gate knows
+    // it, never above the MAX_FEE_BPS ceiling otherwise, and can never take
+    // the whole charge.
+    let fee_ok = match fee_bps {
+        Some(bps) => c.fee == crate::market::fee_for(amount, bps.min(MAX_FEE_BPS)),
+        None => c.fee <= crate::market::fee_for(amount, MAX_FEE_BPS),
+    };
+    if c.fee >= amount || !fee_ok {
         return Some("fee is outside the allowed range");
     }
     if c.expires_at <= now || c.expires_at > now + MAX_SESSION_SECS {
@@ -654,7 +676,12 @@ async fn handle(opts: &GateOpts, request: Request) -> Reply {
             if !account_id_ok(&account_id) {
                 return refuse("bad account id");
             }
-            if !url_ok(&return_url) {
+            if !url_ok(&return_url)
+                || opts
+                    .return_url
+                    .as_deref()
+                    .is_some_and(|want| return_url != want)
+            {
                 return refuse("bad return url");
             }
             stripe_or_reply!(opts, key, s);
@@ -667,7 +694,13 @@ async fn handle(opts: &GateOpts, request: Request) -> Reply {
             }
         }
         Request::Checkout(c) => {
-            if let Some(why) = checkout_fault(&c, &opts.currency, now_secs()) {
+            if let Some(why) = checkout_fault(
+                &c,
+                &opts.currency,
+                opts.fee_bps,
+                opts.return_url.as_deref(),
+                now_secs(),
+            ) {
                 return refuse(why);
             }
             stripe_or_reply!(opts, key, s);
@@ -1005,7 +1038,7 @@ mod tests {
 
     #[test]
     fn a_well_formed_checkout_is_allowed() {
-        assert_eq!(checkout_fault(&checkout(), "eur", NOW), None);
+        assert_eq!(checkout_fault(&checkout(), "eur", None, None, NOW), None);
     }
 
     #[test]
@@ -1063,10 +1096,34 @@ mod tests {
             let mut c = checkout();
             mutate(&mut c);
             assert!(
-                checkout_fault(&c, "eur", NOW).is_some(),
+                checkout_fault(&c, "eur", None, None, NOW).is_some(),
                 "{name} was allowed"
             );
         }
+    }
+
+    #[test]
+    fn checkout_is_held_to_the_operators_fee_and_return_url() {
+        // checkout() is 10 x 100 with a fee of 40: exactly 400 bps.
+        let c = checkout();
+        let at = |fee: u64| CheckoutRequest { fee, ..checkout() };
+        let url = Some(c.return_url.as_str());
+        assert_eq!(checkout_fault(&c, "eur", Some(400), url, NOW), None);
+        // Above the operator's rate, below it, and waived entirely.
+        assert!(checkout_fault(&at(41), "eur", Some(400), url, NOW).is_some());
+        assert!(checkout_fault(&at(39), "eur", Some(400), url, NOW).is_some());
+        assert!(checkout_fault(&at(0), "eur", Some(400), url, NOW).is_some());
+        // Without a configured rate only the hard ceiling applies.
+        assert_eq!(checkout_fault(&at(0), "eur", None, None, NOW), None);
+        assert!(checkout_fault(&at(201), "eur", None, None, NOW).is_some());
+        assert!(checkout_fault(
+            &c,
+            "eur",
+            Some(400),
+            Some("https://elsewhere.example/"),
+            NOW
+        )
+        .is_some());
     }
 
     #[test]
@@ -1098,7 +1155,7 @@ mod tests {
     fn the_fee_ceiling_is_the_operators_ceiling() {
         let mut c = checkout();
         c.fee = 200;
-        assert_eq!(checkout_fault(&c, "eur", NOW), None);
+        assert_eq!(checkout_fault(&c, "eur", None, None, NOW), None);
     }
 
     #[test]
