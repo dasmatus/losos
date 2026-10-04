@@ -76,6 +76,51 @@ in
 
     services.dbus.packages = [ dbusPolicy ];
 
+    # Only root and nginx may open a connection to the loopback API.
+    #
+    # lososd binds 127.0.0.1, which keeps the LAN out, but not this box: the
+    # Nextcloud and Forgejo pods are hostNetwork and share its loopback, as
+    # uid 1002 and 1003, and both are on the internet whenever the master
+    # proxy is. Going around nginx skips the lanOnly guard entirely, and
+    # lososd trusts X-Real-IP from any loopback peer because it assumes that
+    # peer is nginx. So a compromised pod could claim an unclaimed box (the
+    # claim route hands back the admin token, which is root), lock the owner
+    # out by spending their address's failed-auth budget, and write false
+    # addresses into the audit log.
+    #
+    # A unix socket with SO_PEERCRED would say the same thing in the daemon,
+    # but the hardening profile gives lososd ProcSubset=pid and no AF_NETLINK,
+    # so it cannot look a TCP peer's uid up itself, and moving nginx to a
+    # socket changes every test that talks to :8082. An owner match on
+    # OUTPUT says it at the kernel instead: a locally generated packet to the
+    # port is rejected unless its socket belongs to root (the daemon's own
+    # tooling, the VM tests) or nginx. tests/admin-vm.nix asserts both halves.
+    #
+    # `-I`, so it sits ahead of anything appended later; the delete first
+    # makes a firewall reload idempotent. nginx is named only when it runs:
+    # iptables refuses an owner match for a user that does not exist, and a
+    # firewall that fails to start is a box with no front door.
+    networking.firewall =
+      let
+        rule = lib.concatStringsSep " " (
+          [
+            "OUTPUT -o lo -p tcp -d 127.0.0.1 --dport ${toString config.losos.admin.apiPort}"
+            "-m owner ! --uid-owner 0"
+          ]
+          ++ lib.optional config.services.nginx.enable "-m owner ! --uid-owner ${config.services.nginx.user}"
+          ++ [ "-j REJECT --reject-with tcp-reset" ]
+        );
+      in
+      lib.mkIf config.networking.firewall.enable {
+        extraCommands = ''
+          iptables -w -D ${rule} 2>/dev/null || true
+          iptables -w -I ${rule}
+        '';
+        extraStopCommands = ''
+          iptables -w -D ${rule} 2>/dev/null || true
+        '';
+      };
+
     systemd.services.lososd = {
       description = "losos appliance control daemon (D-Bus + admin HTTP API)";
       wantedBy = [ "multi-user.target" ];
