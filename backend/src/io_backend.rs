@@ -390,13 +390,23 @@ impl crate::recovery::CodeStore for FileCodeStore {
 /// defaults rather than raising: the admin UI going blank is a worse failure
 /// than silently resetting to defaults, and the next write repairs the file.
 ///
-/// With one exception: a corrupt file reads as **claimed**. Unclaimed is the
+/// With one exception: a corrupt or otherwise unreadable file reads as **claimed**. Unclaimed is the
 /// state in which `POST /api/setup/claim` needs no token, so failing open
 /// here would hand an owned box to the next LAN caller whenever its state
 /// file was damaged. A genuinely fresh box has no file, not a corrupt one.
 pub fn read_state(path: &Path) -> State {
-    let Ok(bytes) = std::fs::read(path) else {
-        return State::default();
+    let bytes = match std::fs::read(path) {
+        Ok(b) => b,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return State::default(),
+        Err(e) => {
+            // A path that became a directory, lost traversal permission or
+            // hit an I/O error is not a fresh box: fail closed like corruption.
+            tracing::warn!(path = %path.display(), error = %e, "state file unreadable; using defaults (claimed)");
+            return State {
+                claimed: true,
+                ..State::default()
+            };
+        }
     };
     match serde_json::from_slice::<State>(&bytes) {
         Ok(s) => s,
@@ -860,6 +870,15 @@ mod tests {
         assert_eq!(std::fs::read(&staged).unwrap(), b"pw");
         assert_eq!(std::fs::read(&victim).unwrap(), b"untouched");
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn unreadable_state_path_reads_as_claimed() {
+        // A directory where the file should be: read fails, but not NotFound.
+        let p = tmpdir().join("state-is-a-dir.json");
+        std::fs::create_dir_all(&p).unwrap();
+        assert!(read_state(&p).claimed);
+        std::fs::remove_dir_all(&p).ok();
     }
 
     #[test]
