@@ -330,7 +330,10 @@ pub fn cmd_claim<L: Losos>(
     password: &str,
     token: &str,
 ) -> anyhow::Result<Value> {
-    let mut state = l.load_state().unwrap_or_default();
+    // Fail closed: if the state cannot be read, nobody gets to claim the box.
+    let mut state = l
+        .load_state()
+        .map_err(|e| e.context("reading the state before a claim"))?;
     if state.claimed {
         anyhow::bail!("this box has already been set up");
     }
