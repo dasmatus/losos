@@ -82,8 +82,29 @@ let
   # still matches none of the allows and falls through to `deny all`, so the
   # naive case is covered — but a compromised pod can source-bind the LAN
   # address and would then pass this guard. Do not paper that over with a deny
-  # rule for a pod CIDR: there is no pod CIDR, and a rule that cannot match is
-  # worse than an acknowledged gap, because it reads like protection.
+  # rule for the *local* cluster's pods: it has no pod CIDR, and a rule that
+  # cannot match is worse than an acknowledged gap, because it reads like
+  # protection.
+  #
+  # The source-bound pod is closed now too, by the `if` at the top: a request
+  # whose source address is the very address it arrived on came from this
+  # box, because no other host can send from the box's own address. That
+  # matches a hostNetwork pod that binds the LAN address before connecting
+  # to it, and no real LAN client. What it does not match is a box with two
+  # local addresses where the pod binds one and connects to the other; such a
+  # pod still reaches only what a LAN client reaches, and /api still wants the
+  # token, but the claim route is unauthenticated while the box is unowned.
+  # `if` with nothing but `return` is the use of it nginx documents as safe.
+  #
+  # The *mesh* is different, and `deny 10.42.0.0/16` is for it. Once
+  # losos.cluster.enable is on, the rke2 agent runs canal with rke2's default
+  # cluster-cidr, 10.42.0.0/16 (modules/edge.nix does not override it), and
+  # schedules other people's pods here. A pod that connects to this box's own
+  # LAN address is delivered locally, so flannel's MASQUERADE in POSTROUTING
+  # never runs and nginx sees the pod address, which `allow 10.0.0.0/8` would
+  # wave through to the whole admin surface, the unauthenticated claim route
+  # included. Hence the deny first. A LAN that numbers itself inside
+  # 10.42.0.0/16 would collide with the mesh's pod network anyway.
   #
   # What is genuinely left: /api is Bearer-authed against
   # losos.admin.tokenFile, which is 0600 root-only, and the workload pods run
@@ -97,6 +118,10 @@ let
   # (A LAN that genuinely numbers itself inside RFC1918 is the normal case and
   # is what the allows are for; there is no longer a carve-out to collide with.)
   lanOnly = ''
+    if ($remote_addr = $server_addr) {
+      return 403;
+    }
+    deny 10.42.0.0/16;
     allow 10.0.0.0/8;
     allow 172.16.0.0/12;
     allow 192.168.0.0/16;

@@ -85,12 +85,20 @@ fn temp_path(path: &Path) -> PathBuf {
 ///
 /// `create_new` is what keeps `mode` honest: the file carries its permissions
 /// from the moment it exists, instead of being created wide and narrowed after.
-fn fill_temp(tmp: &Path, content: &[u8], mode: u32) -> std::io::Result<()> {
+///
+/// `owner`, when set, is applied through the open descriptor (`fchown`) before
+/// the file is renamed into place. A path-based `chown` after the rename
+/// follows symlinks, and in a directory someone else can write to that is a
+/// way to make root hand them any file on the box.
+fn fill_temp(tmp: &Path, content: &[u8], mode: u32, owner: Option<u32>) -> std::io::Result<()> {
     let mut file = std::fs::OpenOptions::new()
         .write(true)
         .create_new(true)
         .mode(mode)
         .open(tmp)?;
+    if let Some(uid) = owner {
+        std::os::unix::fs::fchown(&file, Some(uid), Some(uid))?;
+    }
     file.write_all(content)?;
     // Without this the rename can land before the bytes do, and a power cut
     // between the two leaves a correctly named, empty config.
@@ -99,7 +107,13 @@ fn fill_temp(tmp: &Path, content: &[u8], mode: u32) -> std::io::Result<()> {
 
 /// Write `content` to `path` atomically, with `mode` on the resulting file and
 /// `dir_mode` on any parent directory this call has to create.
-fn write_atomically(path: &Path, content: &[u8], mode: u32, dir_mode: u32) -> anyhow::Result<()> {
+fn write_atomically(
+    path: &Path,
+    content: &[u8],
+    mode: u32,
+    dir_mode: u32,
+    owner: Option<u32>,
+) -> anyhow::Result<()> {
     if let Some(dir) = path.parent().filter(|d| !d.as_os_str().is_empty()) {
         std::fs::DirBuilder::new()
             .recursive(true)
@@ -109,7 +123,7 @@ fn write_atomically(path: &Path, content: &[u8], mode: u32, dir_mode: u32) -> an
     }
 
     let tmp = temp_path(path);
-    if let Err(e) = fill_temp(&tmp, content, mode) {
+    if let Err(e) = fill_temp(&tmp, content, mode, owner) {
         let _ = std::fs::remove_file(&tmp);
         return Err(anyhow::Error::new(e).context(format!("writing {}", tmp.display())));
     }
@@ -143,7 +157,7 @@ fn write_atomically(path: &Path, content: &[u8], mode: u32, dir_mode: u32) -> an
 /// the whole new one — never a truncated config, and never a blend of two
 /// concurrent writers.
 pub fn atomic_write(path: &Path, content: &[u8]) -> anyhow::Result<()> {
-    write_atomically(path, content, 0o644, 0o755)
+    write_atomically(path, content, 0o644, 0o755, None)
 }
 
 /// [`atomic_write`] for a secret: mode 0600 from creation, in a 0700 directory.
@@ -153,7 +167,18 @@ pub fn atomic_write(path: &Path, content: &[u8]) -> anyhow::Result<()> {
 /// any local process can read it, and a token that was ever readable is a token
 /// to rotate.
 pub fn atomic_write_secret(path: &Path, content: &[u8]) -> anyhow::Result<()> {
-    write_atomically(path, content, 0o600, 0o700)
+    write_atomically(path, content, 0o600, 0o700, None)
+}
+
+/// [`atomic_write_secret`] for a file that must belong to `uid` (owner and
+/// group), owned from before it appears under its real name.
+///
+/// For the staged Nextcloud password, which lands in a directory the pod's
+/// uid can write to. The old sequence, write as root then `chown(path)`, let
+/// that uid swap the freshly renamed file for a symlink to the admin token in
+/// the gap and have root chown the token over to it.
+pub fn atomic_write_secret_owned(path: &Path, content: &[u8], uid: u32) -> anyhow::Result<()> {
+    write_atomically(path, content, 0o600, 0o700, Some(uid))
 }
 
 /// The real [`crate::recovery::CodeStore`]: one 0600 file plus `/dev/urandom`.
@@ -361,18 +386,48 @@ impl crate::recovery::CodeStore for FileCodeStore {
 
 /// Read the persisted state.
 ///
-/// A missing file means a fresh appliance. A *corrupt* file is treated the same
-/// way rather than raising: the admin UI going blank is a worse failure than
-/// silently resetting to defaults, and the next write repairs the file.
+/// A missing file means a fresh appliance. A *corrupt* file is read as the
+/// defaults rather than raising: the admin UI going blank is a worse failure
+/// than silently resetting to defaults, and the next write repairs the file.
+///
+/// With one exception: a corrupt or otherwise unreadable file reads as **claimed**. Unclaimed is the
+/// state in which `POST /api/setup/claim` needs no token, so failing open
+/// here would hand an owned box to the next LAN caller whenever its state
+/// file was damaged. A genuinely fresh box has no file, not a corrupt one.
 pub fn read_state(path: &Path) -> State {
-    let Ok(bytes) = std::fs::read(path) else {
-        return State::default();
+    let bytes = match std::fs::read(path) {
+        Ok(b) => b,
+        // `read` reports NotFound for a dangling symlink too, so absence is
+        // confirmed on the directory entry itself: only an entry that is really
+        // missing is a fresh box, and an entry that exists (or cannot be
+        // inspected) is not.
+        Err(e)
+            if e.kind() == std::io::ErrorKind::NotFound
+                && matches!(
+                    std::fs::symlink_metadata(path),
+                    Err(ref m) if m.kind() == std::io::ErrorKind::NotFound
+                ) =>
+        {
+            return State::default()
+        }
+        Err(e) => {
+            // A path that became a directory, lost traversal permission or
+            // hit an I/O error is not a fresh box: fail closed like corruption.
+            tracing::warn!(path = %path.display(), error = %e, "state file unreadable; using defaults (claimed)");
+            return State {
+                claimed: true,
+                ..State::default()
+            };
+        }
     };
     match serde_json::from_slice::<State>(&bytes) {
         Ok(s) => s,
         Err(e) => {
-            tracing::warn!(path = %path.display(), error = %e, "unreadable state file; using defaults");
-            State::default()
+            tracing::warn!(path = %path.display(), error = %e, "unreadable state file; using defaults (claimed)");
+            State {
+                claimed: true,
+                ..State::default()
+            }
         }
     }
 }
@@ -676,17 +731,11 @@ impl Losos for IoLosos {
                 // No trailing newline: the in-image wrapper reads this with
                 // `$(cat …)`, which strips trailing newlines, so writing one
                 // would make the two sides agree only by accident.
-                atomic_write_secret(path, secret.expose().as_bytes())
+                // Owned by the pod's uid from creation, via fchown on the temp
+                // file: never a path-based chown after the rename, which would
+                // follow a symlink the pod planted in its own directory.
+                atomic_write_secret_owned(path, secret.expose().as_bytes(), *uid)
                     .with_context(|| format!("staging the new password at {}", path.display()))?;
-                // 0600 is root-only until this lands, and the pod's process is
-                // uid 1002. The chown is what makes the file readable by
-                // exactly one account and no group.
-                std::os::unix::fs::chown(path, Some(*uid), Some(*uid)).with_context(|| {
-                    format!(
-                        "giving {} to uid {uid} so the pod can read it",
-                        path.display()
-                    )
-                })?;
                 Ok(None)
             }
             OccAction::ClearSecret { path } => {
@@ -803,16 +852,83 @@ mod tests {
     }
 
     #[test]
+    fn state_file_from_before_the_claim_flag_reads_as_claimed() {
+        let p = tmpdir().join("pre-claim.json");
+        std::fs::write(&p, br#"{"mode":"local","sharing":false}"#).unwrap();
+        assert!(read_state(&p).claimed);
+        std::fs::remove_file(&p).ok();
+    }
+
+    #[test]
+    fn staged_secret_is_owned_through_the_fd_and_never_follows_a_symlink() {
+        use std::os::unix::fs::MetadataExt;
+        let dir = tmpdir().join("stage");
+        std::fs::create_dir_all(&dir).unwrap();
+        let victim = dir.join("victim");
+        std::fs::write(&victim, b"untouched").unwrap();
+        let staged = dir.join(".losos-setpass");
+        // What a hostile pod would plant: the staged name already pointing at
+        // a file it must not get.
+        std::os::unix::fs::symlink(&victim, &staged).unwrap();
+        let uid = std::fs::metadata(&dir).unwrap().uid();
+        atomic_write_secret_owned(&staged, b"pw", uid).unwrap();
+        let meta = std::fs::symlink_metadata(&staged).unwrap();
+        assert!(
+            meta.file_type().is_file(),
+            "the symlink was replaced, not followed"
+        );
+        assert_eq!(meta.uid(), uid);
+        assert_eq!(meta.mode() & 0o777, 0o600);
+        assert_eq!(std::fs::read(&staged).unwrap(), b"pw");
+        assert_eq!(std::fs::read(&victim).unwrap(), b"untouched");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn unreadable_state_path_reads_as_claimed() {
+        // A directory where the file should be: read fails, but not NotFound.
+        let p = tmpdir().join("state-is-a-dir.json");
+        std::fs::create_dir_all(&p).unwrap();
+        assert!(read_state(&p).claimed);
+        std::fs::remove_dir_all(&p).ok();
+    }
+
+    #[test]
+    fn dangling_state_symlink_reads_as_claimed() {
+        let dir = tmpdir().join("dangling");
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = dir.join("state.json");
+        std::os::unix::fs::symlink(dir.join("nowhere.json"), &p).unwrap();
+        assert!(read_state(&p).claimed);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn explicit_unclaimed_on_disk_reads_as_claimed() {
+        // Written by a build that serialised the old default on every save.
+        let p = tmpdir().join("explicit-false.json");
+        std::fs::write(&p, br#"{"mode":"local","sharing":false,"claimed":false}"#).unwrap();
+        assert!(read_state(&p).claimed);
+        std::fs::remove_file(&p).ok();
+    }
+
+    #[test]
     fn missing_state_file_reads_as_default() {
         let p = tmpdir().join("does-not-exist.json");
         assert_eq!(read_state(&p), State::default());
     }
 
     #[test]
-    fn corrupt_state_file_reads_as_default_rather_than_failing() {
+    fn corrupt_state_file_reads_as_default_but_claimed() {
         let p = tmpdir().join("corrupt.json");
         std::fs::write(&p, b"{ this is not json").unwrap();
-        assert_eq!(read_state(&p), State::default());
+        assert_eq!(
+            read_state(&p),
+            State {
+                claimed: true,
+                ..State::default()
+            }
+        );
         std::fs::remove_file(&p).ok();
     }
 

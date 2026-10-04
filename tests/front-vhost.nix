@@ -19,17 +19,14 @@
 # and there is no pod CIDR left to reject. containers.nix deleted the rule and
 # forbids re-adding one, because a deny that cannot match reads like protection.
 #
-# What the guard lost, spelled out here so nobody has to reconstruct it from the
-# diff: a pod that connects over loopback still matches no `allow` and falls
-# through to `deny all`, which the loopback subtest below covers — but a pod
-# that source-binds the box's own LAN address is indistinguishable from a laptop
-# on that LAN and passes. The "LAN source, same box" subtest asserts that 200 on
-# purpose, so the gap stays a tested fact rather than a surprise. What holds the
-# line is no longer this guard: /api is Bearer-authed against
-# losos.admin.tokenFile, which is 0600 root-only, and the workload pods run as
-# uid 1002/1003 — so they cannot read the token and cannot drive the API from
-# any source address at all. The static pages behind the other admin locations
-# are not secrets.
+# What the guard lost, and how it got it back: a pod that connects over
+# loopback matches no `allow` and falls through to `deny all`, which the
+# loopback subtest below covers. A pod that source-binds the box's own LAN
+# address used to pass as a laptop on that LAN; the guard now refuses any
+# request whose source is the address it arrived on, and the "LAN source, same
+# box" subtest asserts that 403. The mesh is the one place a pod CIDR is real
+# (rke2's canal, 10.42.0.0/16), so a client sending from 10.42.x is refused
+# too, before `allow 10.0.0.0/8` can wave it through.
 #
 # None of this is reachable from `nix eval` — an access rule only becomes real
 # when a request carries a source address — so the test asserts from two of
@@ -234,23 +231,31 @@ pkgs.testers.nixosTest {
         deep = noadmin.succeed("curl -s http://appliance/settings/network")
         assert deep == body, "the SPA fallback did not serve index.html for a deep link"
 
-    with subtest("LAN source, same box: 200 — the gap hostNetwork opened"):
-        # Not a property anyone wants; the honest replacement for the
-        # container-subnet 403 cases this test used to carry. The old nspawn
-        # workloads answered from 10.231.x and the first `deny` refused them
-        # before `allow 10.0.0.0/8` could wave them through. A hostNetwork pod
-        # has no address of its own, so it can source-bind the appliance's LAN
-        # address and is then indistinguishable from a laptop on the same LAN —
-        # which is what this curl imitates.
-        #
-        # The admin token is what stops it going any further: 0600 and owned by
-        # root, unreadable to a pod running as uid 1002/1003, so /api answers
-        # 401 to anything the pod could send. If these ever start returning 403,
-        # the guard grew a layer — check it is a real one (not a deny rule for a
-        # CIDR that cannot match) and update this subtest deliberately.
+    with subtest("LAN source, same box: 403, the hostNetwork gap closed"):
+        # A hostNetwork pod has no address of its own, so it can source-bind the
+        # appliance's LAN address, which this curl imitates. The guard's
+        # `$remote_addr = $server_addr` check refuses it: no other host can send
+        # from the box's own address. This used to assert 200, and the
+        # unauthenticated claim route was behind it.
         for path in ADMIN:
             got = code(appliance, f"http://{LAN}{path}", source=LAN)
-            assert got == "200", f"LAN-source {path}: expected 200, got {got}"
+            assert got == "403", f"LAN-source {path}: expected 403, got {got}"
+
+    with subtest("a mesh pod address is refused before 10.0.0.0/8 is allowed"):
+        # What a pod in the mesh's canal network looks like when it reaches the
+        # box's own address: delivered locally, so not masqueraded. The route
+        # back is what lets the reply (and the firewall's reverse-path check)
+        # find the client.
+        noadmin.succeed("ip addr add 10.42.0.7/32 dev eth1")
+        appliance.succeed("ip route add 10.42.0.7/32 via 192.168.1.2 dev eth1")
+        for path in ADMIN:
+            got = code(noadmin, f"http://appliance{path}", source="10.42.0.7")
+            assert got == "403", f"mesh-pod {path}: expected 403, got {got}"
+        # And a 10.x LAN outside the mesh range still gets in.
+        noadmin.succeed("ip addr add 10.43.9.9/32 dev eth1")
+        appliance.succeed("ip route add 10.43.9.9/32 via 192.168.1.2 dev eth1")
+        got = code(noadmin, "http://appliance/", source="10.43.9.9")
+        assert got == "200", f"10.x LAN /: expected 200, got {got}"
 
     with subtest("/setup/ fails closed rather than answering the SPA"):
         # The SPA fallback must not swallow paths that carry data. The wizard
