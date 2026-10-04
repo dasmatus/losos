@@ -8,7 +8,11 @@
 #   4. the admin API answers 401 without a Bearer token and 200 with it,
 #   5. lososd mints the admin token (64 hex chars, mode 0600) on first start,
 #   6. /api/apps/search is gated like the rest and refuses a bad query with a
-#      400 rather than a 404.
+#      400 rather than a 404,
+#   7. only root (and nginx, where it runs) may connect to the loopback API:
+#      any other local uid, such as a hostNetwork pod's, is reset at connect,
+#   8. the unauthenticated claim refuses what a web page would send: a
+#      text/plain body, a rebound Host, a foreign Origin.
 #
 # (6) deliberately never runs a search. The VM has no route to a catalogue and
 # should not get one for a test: what would be under test then is the test
@@ -110,5 +114,31 @@ pkgs.testers.nixosTest {
         f"'localhost:8082/api/apps/search{query}'"
       )
       assert code == "400", f"search with {label} answered {code!r}, expected 400"
+
+    # 7. The owner match in modules/daemon.nix. curl prints 000 when the
+    # connection itself fails, and `|| true` keeps its non-zero exit from
+    # failing the step: the code is what is asserted.
+    code = machine.succeed(
+      "runuser -u nobody -- curl -s -o /dev/null -w '%{http_code}' "
+      "127.0.0.1:8082/api/health || true"
+    )
+    assert code == "000", f"a non-root local user reached lososd: {code!r}"
+    machine.succeed("curl -fsS 127.0.0.1:8082/api/health")
+
+    # 8. Claim requests a browser page could forge. All refused with 403
+    # before the body is looked at, so the box stays unclaimed throughout.
+    for label, args in [
+      ("text/plain", "-H 'Content-Type: text/plain'"),
+      ("rebound Host", "-H 'Content-Type: application/json' -H 'Host: evil.example'"),
+      ("foreign Origin",
+       "-H 'Content-Type: application/json' -H 'Origin: https://evil.example'"),
+    ]:
+      code = machine.succeed(
+        f"curl -s -o /dev/null -w '%{{http_code}}' {args} "
+        "-d '{\"password\":\"attacker-password\"}' 127.0.0.1:8082/api/setup/claim"
+      )
+      assert code == "403", f"claim with {label} answered {code!r}, expected 403"
+    claim = machine.succeed("curl -fsS 127.0.0.1:8082/api/setup/claim")
+    assert '"claimed":false' in claim.replace(" ", ""), f"box got claimed: {claim!r}"
   '';
 }
