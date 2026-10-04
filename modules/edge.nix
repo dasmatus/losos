@@ -146,6 +146,9 @@ let
         register-per-client:
           inFlightReq:
             amount: 8
+            sourceCriterion:
+              ipStrategy:
+                depth: 0
       routers:
         register:
           rule: "Host(`${registerDomain}`)"
@@ -747,7 +750,7 @@ in
           "--fee-bps"
           (toString cfg.market.feeBps)
           "--return-url"
-          cfg.market.returnUrl
+          (utils.escapeSystemdExecArg cfg.market.returnUrl)
         ];
         LoadCredentialEncrypted = [
           "stripe-secret-key:${toString cfg.market.stripeSecretKeySealed}"
