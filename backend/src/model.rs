@@ -102,12 +102,21 @@ pub struct State {
     /// notably not by `factory-reset`, which resets what the owner configured
     /// and not who owns the box.
     ///
-    /// `#[serde(default)]` because a state file written before this field
-    /// existed must still decode: a box that is already running has, by
-    /// definition, already been set up, and `false` is the safe reading only
-    /// because the claim route additionally refuses once a password exists.
-    #[serde(default)]
+    /// An *absent* field decodes as `true`. A state file written before this
+    /// field existed belongs to a box that was already running, and therefore
+    /// already set up; reading it as unclaimed reopened the unauthenticated
+    /// claim route on every upgraded box, for the first caller on its LAN to
+    /// reset the owner's password and walk off with the admin token. Nothing
+    /// else guarded that: the claim route never checked for an existing
+    /// password, whatever an earlier comment here said. A fresh box has no
+    /// state file at all and gets [`State::default`], which is unclaimed.
+    #[serde(default = "claimed_when_absent")]
     pub claimed: bool,
+}
+
+/// See [`State::claimed`]: a state file without the field predates it.
+fn claimed_when_absent() -> bool {
+    true
 }
 
 impl Default for State {
