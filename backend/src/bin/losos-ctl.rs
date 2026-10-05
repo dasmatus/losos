@@ -12,7 +12,8 @@
 
 use clap::{Args, Parser, Subcommand};
 use losos_ctl::facade::{call_backend, BackendFailure};
-use losos_ctl::installer_io::{booted_in_bios, options_from_env, run_install};
+use losos_ctl::installer::resolve_tpm;
+use losos_ctl::installer_io::{booted_in_bios, options_from_env, run_install, tpm_present};
 use losos_ctl::model::Mode;
 use losos_ctl::overrides::validate_apply;
 use std::io::{IsTerminal, Read, Write};
@@ -105,9 +106,14 @@ enum Command {
 /// Flags for the installer. Runs locally; never touches the bus.
 #[derive(Args)]
 struct InstallArgs {
-    /// Use TPM2 (a passphrase is asked once, at format time).
-    #[arg(long)]
+    /// Seal the disk key to the TPM2 chip. Default wherever a chip is visible;
+    /// with this flag a missing chip is an error instead of a keyfile install.
+    #[arg(long, conflicts_with = "no_tpm")]
     tpm: bool,
+    /// Keep the disk key in the initrd on the boot partition instead of the
+    /// TPM2 chip, even where one exists.
+    #[arg(long)]
+    no_tpm: bool,
     /// Install for legacy BIOS (GRUB). Default: whatever firmware booted this
     /// medium.
     #[arg(long, conflicts_with = "uefi")]
@@ -217,8 +223,10 @@ fn select_firmware(explicit: Option<bool>, interactive: bool) -> std::io::Result
 ///
 /// poll(2) rather than a reader thread: a thread left blocked in read_line
 /// after a timeout would keep reading the terminal for the rest of the
-/// install, and a `--tpm` install hands that terminal to disko to collect the
-/// LUKS passphrase. A stray reader would swallow it and leave disko waiting.
+/// install; disko and systemd-cryptenroll inherit it, and nothing may read
+/// from it under them. (Neither prompts any more — both modes format from
+/// the generated keyfile — but a stray reader would still eat the first
+/// line typed at a later `nmtui`.)
 /// The terminal is in canonical mode, so a readable stdin holds one whole
 /// line and read_line does not buffer past it.
 fn read_stdin_line(timeout: Duration) -> std::io::Result<MenuInput> {
@@ -324,8 +332,20 @@ fn main() -> ExitCode {
             eprintln!("losos-install: {e}");
             return ExitCode::FAILURE;
         }
+        let explicit_tpm = match (args.tpm, args.no_tpm) {
+            (true, _) => Some(true),
+            (_, true) => Some(false),
+            _ => None,
+        };
+        let tpm = match resolve_tpm(explicit_tpm, tpm_present()) {
+            Ok(tpm) => tpm,
+            Err(e) => {
+                eprintln!("losos-install: {e}");
+                return ExitCode::FAILURE;
+            }
+        };
         let opts = options_from_env(
-            args.tpm,
+            tpm,
             bios,
             args.drives.clone().map(|d| d.0),
             args.no_install,

@@ -580,11 +580,13 @@ impl Losos for IoLosos {
     }
 
     fn luks_key_file(&mut self) -> anyhow::Result<Option<String>> {
-        // `$LOSOS_LUKS_KEYFILE`, set by modules/daemon.nix on the no-TPM path.
+        // `$LOSOS_LUKS_KEYFILE`, set by modules/daemon.nix in both unlock
+        // modes (the TPM path keeps the keyfile inside /persist as its
+        // recovery slot).
         //
-        // Unset means the TPM path, where the volume key is in the kernel
-        // keyring and `cryptsetup resize` finds it there. Where it is neither
-        // set nor in the keyring, cryptsetup falls back to prompting on stdin
+        // Unset means "rely on the kernel keyring", where the volume key sits
+        // after a TPM2 unlock. Where it is neither set nor in the keyring,
+        // cryptsetup falls back to prompting on stdin
         // — and a daemon has none, so the resize dies with "Nothing to read on
         // input." *after* lvextend has already grown the logical volume. That
         // is not theoretical: it is how tests/resize.nix failed first.
