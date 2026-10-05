@@ -133,8 +133,8 @@ pkgs.testers.nixosTest {
             f"curl -s -o /dev/null -w '%{{http_code}}' {src}{url}"
         ).strip()
 
-    def headers(path):
-        raw = appliance.succeed(lan(path, "-D - -o /dev/null"))
+    def headers(path, extra=""):
+        raw = appliance.succeed(lan(path, f"-D - -o /dev/null {extra}"))
         out = {}
         for line in raw.splitlines()[1:]:
             if ":" in line:
@@ -239,6 +239,26 @@ pkgs.testers.nixosTest {
                 f"{path}: the inherited CSP was replaced by a location-level add_header: {h}"
             assert h.get("x-content-type-options") == "nosniff", f"{path}: {h}"
             assert h.get("x-frame-options") == "DENY", f"{path}: {h}"
+
+    with subtest("the finder origin, and only it, may read state.json cross-origin"):
+        # modules/options.nix `losos.setup.finderOrigins`: the "find my box"
+        # page on the edge host reads this document from a public origin, under
+        # Chrome's Local Network Access permission. The header must name that
+        # origin exactly on this one route and be absent everywhere else — a
+        # wildcard, or the header on the SPA or /nextcloud, would let any page
+        # the owner has open take inventory of the LAN.
+        FINDER = "https://losos-proxy.dasmat.us"
+        def cors(path, origin):
+            return headers(path, f"-H 'Origin: {origin}'").get("access-control-allow-origin")
+        assert cors(STATE_URL, FINDER) == FINDER, headers(STATE_URL, f"-H 'Origin: {FINDER}'")
+        assert cors(STATE_URL, "https://losos-proxy.dasmat.us.evil.example") is None
+        assert cors(STATE_URL, "https://evil.example") is None
+        assert cors(STATE_URL, "http://losos-proxy.dasmat.us") is None, "scheme is part of the origin"
+        assert cors(CERT_URL, FINDER) is None, "the certificate is not for other origins"
+        assert cors("/nextcloud/", FINDER) is None, "the service route gets no CORS header"
+        # And allowing the read did not cost the route its security headers.
+        h = headers(STATE_URL, f"-H 'Origin: {FINDER}'")
+        assert "default-src 'none'" in h.get("content-security-policy", ""), h
 
     with subtest("the file is readable by nginx and holds nothing secret"):
         assert appliance.succeed(f"stat -c %a {STATE}").strip() == "644", \
