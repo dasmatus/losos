@@ -1,0 +1,64 @@
+# The Vercel host for the edge registrar. A separate crate on purpose: it
+# depends on `losos-registrar` by path and adds the Vercel bridge, the Redis
+# state store and the demo status page, so nothing Vercel-specific is in the
+# crate the self-hosted edge ships, and `nix build .#losos-registrar` (whose
+# cargoHash pins backend-registrar/Cargo.lock) is untouched by a dependency
+# that only this host needs. Deployed by pointing a Vercel project's Root
+# Directory at this directory — see README.md.
+[package]
+name = "losos-edge-vercel"
+version = "0.1.0"
+edition = "2021"
+publish = false
+authors = ["Matus Mastena <shadiness9530+ou1rlygj@pm.me>"]
+description = "losos edge registrar as a Vercel Function: the master-proxy control plane without the tunnel, for demonstrations"
+license = "AGPL-3.0-or-later"
+
+# Not a member of a workspace: the repository is deliberately not a Cargo
+# workspace (each crate has its own lock), and without this table cargo would
+# go looking for one above this directory.
+[workspace]
+
+[dependencies]
+losos-registrar = { path = "../backend-registrar" }
+# `axum` turns on `vercel_runtime::axum::VercelLayer`, which drives an axum
+# router from Vercel's function bridge; the runtime itself speaks HTTP/1 to
+# the bridge over loopback, so the registrar's router runs unmodified.
+vercel_runtime = { version = "2", features = ["axum"] }
+axum = "0.8"
+tower = { version = "0.5", features = ["util"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync", "time", "fs"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Same feature set as the registrar's own reqwest, so the two resolve to one
+# copy of rustls rather than two TLS stacks in one binary.
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+miette = { version = "7", features = ["fancy"] }
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+# The CSPRNG for the placeholder bootstrap token; already in the tree via
+# the registrar.
+ring = "0.17"
+
+[dev-dependencies]
+http-body-util = "0.1"
+
+[lints.rust]
+unsafe_code = "forbid"
+unreachable_pub = "warn"
+
+[lib]
+path = "src/lib.rs"
+
+# Vercel's Rust runtime builds one function per `[[bin]]` whose path is under
+# api/. There is exactly one: vercel.json rewrites every path to it, and the
+# registrar's own router does the routing.
+[[bin]]
+name = "registrar"
+path = "api/registrar.rs"
+
+[profile.release]
+codegen-units = 1
+lto = "fat"
+opt-level = 3

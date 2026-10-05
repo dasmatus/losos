@@ -18,6 +18,9 @@ let
   crates = [
     "backend"
     "backend-registrar"
+    # The Vercel host for the registrar (edge-vercel/README.md). Not built by
+    # nix — Vercel builds it — but linted and tested with the other two.
+    "edge-vercel"
   ];
   forEachCrate = cmd: lib.concatMapStringsSep "\n" (c: ''echo "── ${c}"; ${cmd c}'') crates;
 
@@ -236,10 +239,10 @@ in
     ${forEachCrate (c: "cargo fmt --manifest-path ${c}/Cargo.toml --check")}
     ${forEachCrate (c: "cargo clippy --manifest-path ${c}/Cargo.toml --all-targets -- -D warnings")}
   '';
-  scripts.lint.description = "rustfmt --check + clippy -D warnings, both crates.";
+  scripts.lint.description = "rustfmt --check + clippy -D warnings, every crate.";
 
   scripts.test-rust.exec = forEachCrate (c: "cargo test --manifest-path ${c}/Cargo.toml");
-  scripts.test-rust.description = "Unit tests for both Rust crates.";
+  scripts.test-rust.description = "Unit tests for every Rust crate.";
 
   scripts.check-flake.exec = "command nix flake check --no-build -L";
   scripts.check-flake.description = "Evaluate every flake output (builds nothing).";
