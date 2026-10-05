@@ -335,7 +335,7 @@ pub fn container_log_argv(socket: &str, id: &str) -> Vec<String> {
         socket.to_string(),
         "logs".into(),
         "--tail".into(),
-        "5".into(),
+        "20".into(),
         id.to_string(),
     ]
 }
@@ -352,14 +352,26 @@ pub fn container_log_argv(socket: &str, id: &str) -> Vec<String> {
 /// needs; the sentence around it says plainly that waiting will not fix it.
 pub fn describe_stopped(log_tail: &str) -> Option<String> {
     const MAX: usize = 240;
-    // Not `last_line`: that one already caps silently, and a cut here should
-    // be visible, so the owner knows the message goes on.
-    let last = log_tail
+    // The line to show is the last one that reads as a complaint, and only
+    // failing that the last line of all. A tool that fails on its arguments
+    // prints the complaint first and its usage after (Symfony's console,
+    // behind `occ`, does exactly that, and take 7 of the recorded install
+    // demo surfaced a `maintenance:install [--database DATABASE] …` usage
+    // line here with the reason scrolled off above it). Not `last_line`
+    // either way: that one caps silently, and a cut here should be visible,
+    // so the owner knows the message goes on.
+    let lines: Vec<&str> = log_tail
         .lines()
         .map(str::trim)
-        .rfind(|l| !l.is_empty())
-        .unwrap_or_default()
-        .to_string();
+        .filter(|l| !l.is_empty())
+        .collect();
+    let last = lines
+        .iter()
+        .rev()
+        .find(|l| looks_like_a_complaint(l))
+        .or(lines.last())
+        .map(|l| (*l).to_string())
+        .unwrap_or_default();
     if last.is_empty() {
         return None;
     }
@@ -374,6 +386,29 @@ pub fn describe_stopped(log_tail: &str) -> Option<String> {
          The box retries on its own; if this stays on screen the message \
          above is what needs fixing."
     ))
+}
+
+/// Does a log line read as the reason something stopped, rather than as
+/// progress or usage text? Case-insensitive words, no regex crate needed.
+fn looks_like_a_complaint(line: &str) -> bool {
+    const WORDS: [&str; 14] = [
+        "error",
+        "fail",
+        "cannot",
+        "can't",
+        "denied",
+        "refused",
+        "requires",
+        "required",
+        "not found",
+        "no such",
+        "missing",
+        "exception",
+        "invalid",
+        "not enough",
+    ];
+    let lower = line.to_lowercase();
+    WORDS.iter().any(|w| lower.contains(w))
 }
 
 /// Pick the one container id out of `crictl ps --quiet` output.

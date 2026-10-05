@@ -577,6 +577,16 @@ export default defineMessages({
     sk: "Nižšie sa prihláste menom a heslom, ktoré ste nastavili v kroku 2. Meno je {name}. Táto stránka spozná, keď budete prihlásení, a dokončí sa sama.",
     de: "Melde dich unten mit dem Namen und dem Passwort an, die du in Schritt 2 festgelegt hast. Der Name ist {name}. Diese Seite merkt, wenn du durch bist, und schließt von selbst ab.",
   },
+  "wizard.first.starting.title": {
+    en: "Your files are still starting",
+    sk: "Vaše súbory sa ešte spúšťajú",
+    de: "Deine Dateien starten noch",
+  },
+  "wizard.first.starting.body": {
+    en: "The files app has not answered yet, so the window below shows an error page for now. This page keeps asking and the sign-in form appears on its own. On a new box this takes a minute or two.",
+    sk: "Aplikácia so súbormi ešte neodpovedá, takže okno nižšie zatiaľ ukazuje chybovú stránku. Táto stránka sa pýta ďalej a prihlasovací formulár sa objaví sám. Na novom zariadení to trvá minútu či dve.",
+    de: "Die Dateien-App antwortet noch nicht, deshalb zeigt das Fenster unten vorerst eine Fehlerseite. Diese Seite fragt weiter nach, und das Anmeldeformular erscheint von selbst. Auf einer neuen Box dauert das ein, zwei Minuten.",
+  },
   "wizard.first.lost.title": {
     en: "Cannot follow along",
     sk: "Nedá sa sledovať",

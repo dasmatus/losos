@@ -39,6 +39,29 @@ const LOGIN_PATH = /\/login(\/|$|\?)/;
  * way. */
 const WATCH_PERIOD_MS = 700;
 
+/* How often the frame is loaded again while what it shows is not the files
+ * app at all. On a new box this step is reached a minute or two before the
+ * app's web server is up (occ finishes installing first, Apache follows), and
+ * what the frame gets in between is nginx's own "502 Bad Gateway" page, which
+ * nothing ever reloads. Take 7 of the recorded install demo (2026-10-05) sat
+ * on that page for fifteen minutes with the step saying "You are signed in". */
+const RELOAD_PERIOD_MS = 5000;
+
+/* Whether the document in the frame is one of the files app's own pages.
+ * Nextcloud stamps its request token on <head> of every page it renders,
+ * signed in or not; nginx's error pages and a blank frame carry nothing. */
+function isFilesAppPage(doc: Document): boolean {
+  return doc.head !== null && doc.head.dataset["requesttoken"] !== undefined;
+}
+
+/* Whether that page is rendered for a signed-in user: Nextcloud sets
+ * `data-user` on <head> only then. The login page, a maintenance page and a
+ * two-factor challenge all have the token and no user. */
+function isSignedInPage(doc: Document): boolean {
+  const user = doc.head?.dataset["user"];
+  return typeof user === "string" && user.length > 0;
+}
+
 export interface StepFirstSignInProps {
   /** The account name lososd echoed back in step 2, if that step was done. */
   account: string | null;
@@ -50,6 +73,11 @@ export function StepFirstSignIn({ account, signedIn, onSignedIn }: StepFirstSign
   const t = useT();
   const frame = React.useRef<HTMLIFrameElement>(null);
   const [watchable, setWatchable] = React.useState(true);
+  // True while the frame shows something that is not the files app (nginx
+  // answering for a web server that is not up yet). Drives the note below
+  // and the periodic reload.
+  const [starting, setStarting] = React.useState(false);
+  const lastReload = React.useRef(0);
 
   React.useEffect(() => {
     if (signedIn) return;
@@ -62,7 +90,25 @@ export function StepFirstSignIn({ account, signedIn, onSignedIn }: StepFirstSign
         // about:blank reads as "blank" here, so this also covers the frame
         // before its first document has committed.
         if (!path.startsWith(FILES_PATH)) return;
+        const doc = win.document;
+        if (doc.readyState !== "complete") return;
+        if (!isFilesAppPage(doc)) {
+          // Not the app: nginx's 502 while Apache is still coming up, or
+          // its 504. Say so, and ask again every few seconds; the page the
+          // owner wants appears on its own once the app answers.
+          setStarting(true);
+          const now = Date.now();
+          if (now - lastReload.current >= RELOAD_PERIOD_MS) {
+            lastReload.current = now;
+            win.location.replace(FILES_PATH);
+          }
+          return;
+        }
+        setStarting(false);
         if (LOGIN_PATH.test(path)) return;
+        // A page of the app that is not the login page is still not proof
+        // of a session: a maintenance page is one too. The user stamp is.
+        if (!isSignedInPage(doc)) return;
         onSignedIn();
       } catch {
         /* Cross-origin now: the frame followed a redirect off this box. There
@@ -97,6 +143,16 @@ export function StepFirstSignIn({ account, signedIn, onSignedIn }: StepFirstSign
       {!watchable && !signedIn && (
         <Callout tone="info" icon={InformationCircleIcon} title={t("wizard.first.lost.title")}>
           <p className="mt-1">{t("wizard.first.lost.body")}</p>
+        </Callout>
+      )}
+
+      {watchable && starting && !signedIn && (
+        <Callout
+          tone="info"
+          icon={InformationCircleIcon}
+          title={t("wizard.first.starting.title")}
+        >
+          <p className="mt-1">{t("wizard.first.starting.body")}</p>
         </Callout>
       )}
 
