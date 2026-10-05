@@ -45,8 +45,10 @@ devenv runs standalone rather than through the flake: `devenv.lib.mkShell`
 cannot evaluate purely (it needs an absolute project root for `.devenv/`), and
 the documented workaround needs `--impure`, which would spread to CI. The cost
 is two lock files — `flake.lock` pins the nixpkgs that *builds* the appliance,
-`devenv.lock` the one that *lints and tests* it. **Bump them together**;
-`check-pins` fails the build if they disagree.
+`devenv.lock` (via the rev in `devenv.yaml`) the one that *lints and tests*
+it. **Bump them together**; `check-pins` and CI's `pins` job fail if the three
+disagree. They did disagree for two weeks after dependabot bumped `flake.lock`
+alone, with nothing in CI to notice.
 
 Both Rust crates set `doCheck = false`, so `nix build` compiles the shipping
 binaries and does not run the suites. The suites run via `cargo test` — in
