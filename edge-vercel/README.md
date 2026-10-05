@@ -45,9 +45,9 @@ a separate crate meant to be torn down after the demonstration.
 
 1. In Vercel, **Add New → Project**, import this repository, and set
    **Root Directory** to `edge-vercel`. This is a new project: the two that
-   already exist on the team, `losos-cache-proxy` (the Nix binary cache
-   proxy CI pulls from) and `losos-desktop-proxy`, are other services and
-   are not touched by this. Keep *Include files outside the root
+   already exist on the team, `losos-cache-proxy` (the Nix binary cache proxy
+   at `losos-proxy.dasmat.us` that CI and the appliance pull from) and
+   `losos-desktop-proxy`, are other services and are not touched by this. Keep *Include files outside the root
    directory in the build step* enabled: the crate depends on
    `../backend-registrar` by path. Framework preset: *Other*. No build
    command — Vercel's Rust runtime finds `Cargo.toml` and builds the one
@@ -76,15 +76,16 @@ a separate crate meant to be torn down after the demonstration.
    never crosses the internet in the clear. Without a database the registry
    lives in one function instance's memory: fine for a five-minute demo, but
    a cold start forgets every box and two instances can disagree.
-4. **Domain**: Settings → Domains → add the edge's hostname. The appliance
-   default is `https://losos-proxy.dasmat.us` (`losos.proxy.registrarUrl`);
-   that name is currently connected to the `losos-cache-proxy` project, so
-   adding it here makes Vercel ask to move it (DNS already points it at
-   Vercel, so no record changes; a new name would need a CNAME to
-   `cname.vercel-dns.com`, and the `registrarUrl` default changed to match).
-   Until a domain is added the deployment is reachable at its
-   `https://<project>.vercel.app` URL.
-5. Deploy. `https://losos-proxy.dasmat.us/health` answers `ok`, `/` shows the
+4. **Domain**: Settings → Domains → add `losos-edge.dasmat.us`, the
+   appliance default (`losos.proxy.registrarUrl`, and the origin the box
+   lets read its setup document, `losos.setup.finderOrigins`). `dasmat.us`
+   uses third-party nameservers, so the name needs a CNAME to
+   `cname.vercel-dns.com` there; Vercel shows the exact record. (Not
+   `losos-proxy.dasmat.us`: that one is the Nix cache proxy.) Until the
+   domain resolves the deployment is reachable at its
+   `https://<project>.vercel.app` URL, and the box needs `registrarUrl` and
+   `finderOrigins` set to that instead.
+5. Deploy. `https://losos-edge.dasmat.us/health` answers `ok`, `/` shows the
    page, `/status` the JSON.
 
 The appliance token is the same value on both sides: whatever is in
@@ -117,19 +118,19 @@ screenshots on the PR.
 
 On a box (or the demo VM), `losos.proxy.enable = true` with the matching
 `applianceId`, `hostname` and `tokenFile`; `losos.proxy.registrarUrl`
-already defaults to `https://losos-proxy.dasmat.us`. The announce service registers and heartbeats; the rathole
+already defaults to `https://losos-edge.dasmat.us`. The announce service registers and heartbeats; the rathole
 client has nothing to dial and retries harmlessly (set
 `losos.proxy.edgeRatholeEndpoint` to anything). Or run the client alone from
 any machine:
 
 ```sh
 printf '%s' '<the 64-hex token>' > /tmp/demo.token
-losos-registrar announce --registrar-url https://losos-proxy.dasmat.us \
+losos-registrar announce --registrar-url https://losos-edge.dasmat.us \
   --appliance-id mattbox --hostname mattbox.losos.cfd \
   --token-file /tmp/demo.token --heartbeat-interval 10s
 ```
 
-Then open `https://losos-proxy.dasmat.us/`: the box appears within a second,
+Then open `https://losos-edge.dasmat.us/`: the box appears within a second,
 its *last seen* resets on every heartbeat, and it drops off `LOSOS_HEARTBEAT_TTL`
 after the client is stopped (the page reloads `/status` every five seconds;
 pruning happens on whichever request comes next).
