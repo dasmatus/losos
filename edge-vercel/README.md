@@ -91,6 +91,28 @@ The appliance token is the same value on both sides: whatever is in
 `LOSOS_TENANTS` for an id must be the content of that box's
 `losos.proxy.tokenFile`.
 
+## Find my box (`/find`)
+
+`public/find.html` is a second static page: the gentle way for an owner to
+reach a new box. Chrome's **Local Network Access** permission (Chrome 142+;
+Chromium 141 with `--enable-features=LocalNetworkAccessChecks`) lets a page on
+a public HTTPS origin fetch from the local network after the person says yes
+once, so the page asks `http://<name>.local/setup/state.json` — the document
+the first-run wizard already publishes — with `targetAddressSpace: 'local'`,
+and on an answer shows a link to the box. The box has to allow this origin to
+read that document cross-origin: `losos.setup.finderOrigins`, whose default
+is this host's address, and whose nginx map `tests/setup.nix` asserts. The
+lookup never touches the function; nothing about the owner's network reaches
+Vercel. Browsers without the permission get the typed-address instructions.
+
+To exercise it without a box: serve `public/` over HTTPS on an address Chrome
+counts as public, stand up anything that answers `/setup/state.json` with
+`Access-Control-Allow-Origin: <that origin>` on a private address, start
+Chromium with `--host-resolver-rules="MAP mattbox.local <that address>"`, and
+grant `local-network-access` for the origin over CDP (`Browser.setPermission`)
+since a headless browser never shows the prompt. That is what produced the
+screenshots on the PR.
+
 ## Point an appliance at it
 
 On a box (or the demo VM), `losos.proxy.enable = true` with the matching
