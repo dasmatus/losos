@@ -137,6 +137,7 @@ jobs:
           nix develop .#ci -c bash -euo pipefail -c '
             cargo clippy --manifest-path backend/Cargo.toml --all-targets -- -D warnings
             cargo clippy --manifest-path backend-registrar/Cargo.toml --all-targets -- -D warnings
+            cargo clippy --manifest-path edge-vercel/Cargo.toml --all-targets -- -D warnings
           '
       # rustfmt is only *checked* on pull requests. On a push to main fmt-bot
       # fixes it instead — checking it here too would mean this job goes red
@@ -148,10 +149,11 @@ jobs:
           nix develop .#ci -c bash -euo pipefail -c '
             cargo fmt --manifest-path backend/Cargo.toml --check
             cargo fmt --manifest-path backend-registrar/Cargo.toml --check
+            cargo fmt --manifest-path edge-vercel/Cargo.toml --check
           '
 
   test:
-    name: "rust: test both crates"
+    name: "rust: test the crates"
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # The suites live here rather than inside buildRustPackage. doCheck used to
@@ -169,6 +171,7 @@ jobs:
           nix develop .#ci -c bash -euo pipefail -c '
             cargo test --manifest-path backend/Cargo.toml
             cargo test --manifest-path backend-registrar/Cargo.toml
+            cargo test --manifest-path edge-vercel/Cargo.toml
           '
 
   eval:
@@ -466,6 +469,7 @@ jobs:
           nix develop .#ci -c bash -euo pipefail -c '
             cargo fmt --manifest-path backend/Cargo.toml
             cargo fmt --manifest-path backend-registrar/Cargo.toml
+            cargo fmt --manifest-path edge-vercel/Cargo.toml
           '
       - name: commit and push if anything changed
         run: |

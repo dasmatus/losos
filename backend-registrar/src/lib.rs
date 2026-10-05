@@ -58,5 +58,5 @@ pub mod stripe_gate;
 pub mod window;
 pub use config::{desired_config, EdgeOpts, Files, TenantView};
 pub use error::{ApiError, RegistryError};
-pub use registry::{Registry, Tenant};
+pub use registry::{Registry, Snapshot, SnapshotTenant, Tenant};
 pub use window::ComputeWindow;
