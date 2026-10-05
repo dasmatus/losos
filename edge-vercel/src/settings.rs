@@ -42,20 +42,16 @@ pub const PORT_RANGE_VAR: &str = "LOSOS_PORT_RANGE";
 /// `LOSOS_STATE_DIR`: the scratch directory; default `/tmp/losos-edge`.
 /// `/tmp` is the one writable path in a Vercel Function.
 pub const STATE_DIR_VAR: &str = "LOSOS_STATE_DIR";
-/// `LOSOS_STATE_KEY`: the Redis key the registry snapshot is kept under;
-/// default `losos:edge:registry`.
+/// `LOSOS_STATE_KEY`: the key the registry snapshot is stored under; default
+/// `losos:edge:registry`. Two deployments may share one database by using two
+/// keys.
 pub const STATE_KEY_VAR: &str = "LOSOS_STATE_KEY";
 
-/// The `(url, token)` variable pairs that name the Redis store, in the order
-/// they are tried. The first pair is this crate's own, for pointing at any
-/// Upstash-compatible endpoint; the other two are what Vercel's marketplace
-/// writes into a project when an Upstash Redis store is connected to it, under
-/// its current and its older naming.
-pub const STORE_VARS: [(&str, &str); 3] = [
-    ("LOSOS_REDIS_REST_URL", "LOSOS_REDIS_REST_TOKEN"),
-    ("UPSTASH_REDIS_REST_URL", "UPSTASH_REDIS_REST_TOKEN"),
-    ("KV_REST_API_URL", "KV_REST_API_TOKEN"),
-];
+/// The variables that may carry the Postgres connection string, in the order
+/// they are tried. The first is this crate's own; `DATABASE_URL` is what
+/// Vercel's marketplace writes when a Neon database is connected to the
+/// project (alongside `POSTGRES_URL` and the unpooled variants).
+pub const STORE_VARS: [&str; 3] = ["LOSOS_DATABASE_URL", "DATABASE_URL", "POSTGRES_URL"];
 
 const DEFAULT_TTL: &str = "120s";
 const DEFAULT_PORT_RANGE: &str = "50000-50100";
@@ -78,9 +74,8 @@ pub struct TenantSpec {
 /// Where the registry lives between requests.
 #[derive(Debug, Clone)]
 pub struct StoreSettings {
-    /// The Upstash REST endpoint, `https://<name>.upstash.io`.
+    /// A Postgres connection string, `postgres://user:password@host/db?sslmode=require`.
     pub url: String,
-    pub token: String,
     pub key: String,
 }
 
@@ -98,9 +93,9 @@ pub struct Settings {
 }
 
 impl Settings {
-    /// Read the environment. Fails on a missing or malformed whitelist and on a
-    /// store URL without its token (or the reverse), so a half-configured
-    /// project refuses to start rather than quietly running without a store.
+    /// Read the environment. Fails on a missing or malformed whitelist, so a
+    /// half-configured project refuses to start rather than answering 401 to
+    /// every box.
     pub fn from_env() -> Result<Self> {
         let raw = std::env::var(TENANTS_VAR)
             .map_err(|_| miette!("{TENANTS_VAR} is not set; see edge-vercel/README.md"))?;
@@ -203,30 +198,22 @@ fn token_bytes(token: &str) -> &[u8] {
     token.trim().as_bytes()
 }
 
-/// The first configured `(url, token)` pair of [`STORE_VARS`], with the key.
+/// The first set variable of [`STORE_VARS`], with the key.
 fn store_from_env() -> Result<Option<StoreSettings>> {
-    for (url_var, token_var) in STORE_VARS {
-        let url = std::env::var(url_var).ok().filter(|v| !v.trim().is_empty());
-        let token = std::env::var(token_var)
-            .ok()
-            .filter(|v| !v.trim().is_empty());
-        match (url, token) {
-            (None, None) => continue,
-            (Some(url), Some(token)) => {
-                if !url.starts_with("https://") {
-                    return Err(miette!(
-                        "{url_var} must be an https:// URL; the store token would otherwise cross in cleartext"
-                    ));
-                }
-                return Ok(Some(StoreSettings {
-                    url: url.trim_end_matches('/').to_string(),
-                    token: token.trim().to_string(),
-                    key: std::env::var(STATE_KEY_VAR)
-                        .unwrap_or_else(|_| DEFAULT_STATE_KEY.to_string()),
-                }));
-            }
-            _ => return Err(miette!("{url_var} and {token_var} must be set together")),
+    for var in STORE_VARS {
+        let Some(url) = std::env::var(var).ok().filter(|v| !v.trim().is_empty()) else {
+            continue;
+        };
+        let url = url.trim();
+        if !(url.starts_with("postgres://") || url.starts_with("postgresql://")) {
+            return Err(miette!(
+                "{var} must be a postgres:// connection string; see edge-vercel/README.md"
+            ));
         }
+        return Ok(Some(StoreSettings {
+            url: url.to_string(),
+            key: std::env::var(STATE_KEY_VAR).unwrap_or_else(|_| DEFAULT_STATE_KEY.to_string()),
+        }));
     }
     Ok(None)
 }

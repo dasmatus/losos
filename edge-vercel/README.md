@@ -3,8 +3,8 @@
 A demonstration host for the master-proxy control plane. It runs
 `losos-registrar`'s own HTTP API — the same router, authentication, body cap
 and load shedding the self-hosted edge runs — as one Vercel Function, keeps
-the registry in a Redis reachable over HTTPS, and adds a status page an
-audience can watch. It is **not** a replacement for the edge VPS
+the registry in a Postgres (Neon, from Vercel's marketplace), and adds a
+status page an audience can watch. It is **not** a replacement for the edge VPS
 (`nixosModules.edge`), and the self-hosted path is unchanged by it.
 
 ## What runs here, and what cannot
@@ -13,7 +13,7 @@ audience can watch. It is **not** a replacement for the edge VPS
 |---|---|---|
 | `losos-registrar serve`: `/register`, `/heartbeat`, `/deregister`, `/health` | yes | **yes, unmodified** |
 | Tenant whitelist + token check | `losos.edge.tenants` → `tenants.json` + `/var/secrets` files | the same files, written from `LOSOS_TENANTS` |
-| Registry persistence | `registry.json` on disk | Redis (Upstash) over HTTPS; memory only if none is configured |
+| Registry persistence | `registry.json` on disk | one `jsonb` row in a Neon Postgres, over TLS; memory only if none is configured |
 | Reconciler (prune by TTL, Traefik + rathole config files) | timer, every 15 s | runs once per request; files land on the function's scratch disk and `/status/traefik` shows the Traefik one |
 | rathole tunnel server (`:2333`, Noise) | yes | **no** — a raw TCP listener holding long-lived connections has no serverless shape |
 | Traefik, per-tenant TLS, `*.publicDomain` routing | yes | **no** — nothing to forward to without the tunnel |
@@ -37,14 +37,17 @@ This puts the registrar on a third party's platform and makes its registry
 readable at `/status` by anyone who has the URL: appliance ids, the hostnames
 the operator whitelisted, tunnel ports, last-seen ages and idle flags. The
 tokens never leave the environment variables and the function's scratch
-disk, are never written to Redis, and are never shown by any route — but a
+disk, are never written to the database, and are never shown by any route — but a
 production edge deliberately exposes none of this, which is why this host is
 a separate crate meant to be torn down after the demonstration.
 
 ## Deploy
 
 1. In Vercel, **Add New → Project**, import this repository, and set
-   **Root Directory** to `edge-vercel`. Keep *Include files outside the root
+   **Root Directory** to `edge-vercel`. This is a new project: the two that
+   already exist on the team, `losos-cache-proxy` (the Nix binary cache
+   proxy CI pulls from) and `losos-desktop-proxy`, are other services and
+   are not touched by this. Keep *Include files outside the root
    directory in the build step* enabled: the crate depends on
    `../backend-registrar` by path. Framework preset: *Other*. No build
    command — Vercel's Rust runtime finds `Cargo.toml` and builds the one
@@ -60,19 +63,26 @@ a separate crate meant to be torn down after the demonstration.
    | `LOSOS_BOOTSTRAP_TOKEN` | no | rathole's `default_token`; only reaches the scratch-disk `rathole.toml`. Random when unset. |
    | `RUST_LOG` | no | e.g. `info` (default) or `losos=debug`. |
 
-3. **Storage** (recommended): Storage tab → *Create Database* → **Upstash
-   Redis** (free tier) → connect it to the project. The integration writes
-   `KV_REST_API_URL`/`KV_REST_API_TOKEN` (or `UPSTASH_REDIS_REST_URL`/
-   `UPSTASH_REDIS_REST_TOKEN`; both spellings are read) into the project and
-   the function finds them on the next deploy. Pick the same region for the
-   function and the store. Without a store the registry lives in one function
-   instance's memory: fine for a five-minute demo, but a cold start forgets
-   every box and two instances can disagree.
-4. **Domain**: Settings → Domains → add `losos-proxy.dasmat.us`. That name
-   is already on the team, connected to the `losos-cache-proxy` project, so
-   Vercel asks to move it; DNS already points it at Vercel, so no record
-   changes (a name that did not would need a CNAME to `cname.vercel-dns.com`).
-   Until the domain is moved the deployment is reachable at its
+3. **Database** (recommended): Storage tab → *Create Database* → **Neon**
+   (Serverless Postgres, free tier) → connect it to the project. The
+   integration writes `DATABASE_URL` (and `POSTGRES_URL`; either is read, and
+   `LOSOS_DATABASE_URL` overrides both) into the project, and the function
+   finds it on the next deploy. Nothing else to set up: the function creates
+   its one table, `losos_edge_registry`, on first use, and keeps the whole
+   registry as one `jsonb` row under the key `LOSOS_STATE_KEY` (default
+   `losos:edge:registry`). Pick the same region for the function and the
+   database. The connection string must be `postgres://…`; `sslmode` is
+   forced to `require` unless the string says otherwise, so the registry
+   never crosses the internet in the clear. Without a database the registry
+   lives in one function instance's memory: fine for a five-minute demo, but
+   a cold start forgets every box and two instances can disagree.
+4. **Domain**: Settings → Domains → add the edge's hostname. The appliance
+   default is `https://losos-proxy.dasmat.us` (`losos.proxy.registrarUrl`);
+   that name is currently connected to the `losos-cache-proxy` project, so
+   adding it here makes Vercel ask to move it (DNS already points it at
+   Vercel, so no record changes; a new name would need a CNAME to
+   `cname.vercel-dns.com`, and the `registrarUrl` default changed to match).
+   Until a domain is added the deployment is reachable at its
    `https://<project>.vercel.app` URL.
 5. Deploy. `https://losos-proxy.dasmat.us/health` answers `ok`, `/` shows the
    page, `/status` the JSON.
@@ -105,13 +115,22 @@ pruning happens on whichever request comes next).
 ## Develop
 
 ```sh
-cargo test            # drives the real router + real store client against a fake Upstash
+cargo test            # drives the real router through the wrapper, on an in-memory store
 cargo clippy --all-targets -- -D warnings
 cargo fmt --check
 ```
 
 `devenv test` and CI run the same three for this crate alongside the other
-two. To run the function locally the way Vercel does, build it and start the
+two. The Postgres store has its own suite, `tests/postgres.rs`, gated on
+`LOSOS_TEST_DATABASE_URL` so a laptop without a database still passes; CI's
+test job starts a Postgres service and sets it. Locally:
+
+```sh
+docker run -d --name losos-pg -e POSTGRES_USER=losos -e POSTGRES_PASSWORD=losos \
+  -e POSTGRES_DB=losos -p 127.0.0.1:5433:5432 postgres:17-alpine
+LOSOS_TEST_DATABASE_URL='postgres://losos:losos@127.0.0.1:5433/losos?sslmode=disable' \
+  cargo test --test postgres
+``` To run the function locally the way Vercel does, build it and start the
 binary with the environment above; `vercel_runtime` listens on
 `127.0.0.1:${VERCEL_DEV_PORT:-3000}` when there is no bridge:
 
@@ -131,6 +150,7 @@ by nothing on the VPS: `server::build` (the router and reconciler without the
 listener and the timer, which `serve` now calls) and
 `Registry::{export,import}` (a snapshot with ages instead of monotonic
 instants, so the registry can travel between processes). Everything
-Vercel-specific — the bridge, the environment handling, the Redis store, the
-status routes and the page — is in this crate, which `nix build` never sees.
+Vercel-specific — the bridge, the environment handling, the Postgres store,
+the status routes and the page — is in this crate, which `nix build` never
+sees.
 Removing the Vercel deployment later is deleting this directory.

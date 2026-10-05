@@ -36,7 +36,7 @@ pub const NOT_ON_THIS_HOST: [&str; 4] = [
 pub struct Status {
     /// Always `"vercel"`; lets a page tell this host from a real edge.
     pub host: &'static str,
-    /// `"redis"` or `"memory"`.
+    /// `"postgres"` or `"memory"`.
     pub store: &'static str,
     pub heartbeat_ttl_secs: u64,
     pub generated_at_unix: u64,

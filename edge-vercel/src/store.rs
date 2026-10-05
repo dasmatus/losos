@@ -1,121 +1,254 @@
-//! The registry's home between requests: one key in a Redis spoken to over
-//! HTTPS.
+//! The registry's home between requests: one row in a Postgres.
 //!
-//! Upstash's REST API is a plain HTTP shape — `POST <url>` with the command as
-//! a JSON array and a bearer token, `{"result": …}` or `{"error": …}` back —
-//! so the whole client is a few lines of `reqwest`, which the registrar already
-//! links. Redis rather than a blob store because the registry is rewritten on
-//! every heartbeat and read on every request: an eventually consistent object
-//! store could hand a request a snapshot from before the previous one's write
-//! and lose that write when this one saved. A `GET`/`SET` on one key is
-//! consistent, and the host serialises requests within an instance (see
-//! [`crate::host`]); two instances can still race, and the loser's write wins,
-//! which for a registry of a few boxes heartbeating every half minute costs at
-//! most one heartbeat.
+//! A function instance may be created for one request and gone after it, and
+//! several may run at once, so the registry has to live somewhere every
+//! instance can reach. That is a Postgres — Neon, as Vercel's marketplace
+//! provisions it — holding the whole [`Snapshot`] as one `jsonb` row under one
+//! key, read before and upserted after every request. One row rather than a
+//! table per tenant because the registrar's own model is one file: the
+//! reconciler reasons about the whole set at once, and a snapshot that is one
+//! value cannot be half-read.
 //!
-//! The snapshot carries no secret (see [`losos_registrar::Registry::export`]),
-//! so the store holds tenant ids, hostnames, ports and ages, and nothing else.
+//! Two instances can still interleave a read and a write; the later upsert
+//! wins, which for a registry of a few boxes heartbeating every half minute
+//! costs at most one heartbeat. The host serialises requests within an
+//! instance (see [`crate::host`]), so there is no race inside one.
+//!
+//! The connection is made lazily and kept for the life of the instance, and
+//! remade when it drops; TLS is the registrar's own rustls (with `ring`), with
+//! Mozilla's roots, so Neon's certificate is verified like any other. The
+//! snapshot carries no secret (see [`losos_registrar::Registry::export`]), so
+//! the database holds tenant ids, hostnames, ports and ages, and nothing else.
+
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::Arc;
 
 use losos_registrar::Snapshot;
-use serde::Deserialize;
-use std::time::Duration;
+use tokio::sync::Mutex;
+use tokio_postgres::config::SslMode;
+use tokio_postgres::Client;
+use tokio_postgres_rustls::MakeRustlsConnect;
 
 use crate::settings::StoreSettings;
 
-/// Budget for one round trip. The store is in the same cloud as the function;
-/// anything slower than this is an outage, and the request budget it has to
-/// fit inside is the registrar's five seconds.
-const TIMEOUT: Duration = Duration::from_secs(3);
+/// The one table. Created on first connect, idempotently, so a fresh database
+/// from the marketplace needs no migration step.
+///
+/// Under an advisory lock, because two cold instances answering their first
+/// requests at once both run this, and two concurrent `CREATE TABLE IF NOT
+/// EXISTS` on a table that does not exist yet is a documented Postgres race:
+/// one of them fails on `pg_type`'s unique index instead of seeing the other's
+/// table. The lock serialises them; the second then finds the table and
+/// no-ops — quietly, since the `NOTICE` it would otherwise raise lands in the
+/// function log on every cold start.
+const SCHEMA: &str = "SET client_min_messages = warning; \
+    BEGIN; \
+    SELECT pg_advisory_xact_lock(705051); \
+    CREATE TABLE IF NOT EXISTS losos_edge_registry (\
+    key text PRIMARY KEY, \
+    snapshot jsonb NOT NULL, \
+    updated_at timestamptz NOT NULL DEFAULT now()); \
+    COMMIT";
 
 #[derive(Debug, thiserror::Error)]
 pub enum StoreError {
-    #[error("store request: {0}")]
-    Transport(#[from] reqwest::Error),
-    #[error("store answered {0}")]
-    Status(reqwest::StatusCode),
-    #[error("store error: {0}")]
-    Redis(String),
-    #[error("stored snapshot is not valid JSON: {0}")]
+    #[error("database: {0}")]
+    Postgres(#[from] tokio_postgres::Error),
+    #[error("database TLS setup: {0}")]
+    Tls(#[from] rustls::Error),
+    #[error("stored snapshot is not a snapshot: {0}")]
     Corrupt(#[from] serde_json::Error),
-    #[error("store answered a {0} where a string or null was expected")]
-    Shape(&'static str),
 }
 
-/// An Upstash-compatible Redis, holding the snapshot under one key.
-#[derive(Debug, Clone)]
-pub struct Store {
-    client: reqwest::Client,
-    url: String,
-    token: String,
+type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
+
+/// Where a snapshot is kept between requests. Object-safe so the host can hold
+/// whichever one the settings name.
+pub trait Store: Send + Sync {
+    /// The saved snapshot, or `None` when nothing has been saved yet.
+    fn load(&self) -> BoxFuture<'_, Result<Option<Snapshot>, StoreError>>;
+    /// Replace the saved snapshot.
+    fn save<'a>(&'a self, snapshot: &'a Snapshot) -> BoxFuture<'a, Result<(), StoreError>>;
+    /// `"postgres"` or `"memory"`, for the status route.
+    fn kind(&self) -> &'static str;
+}
+
+/// A Postgres, holding the snapshot under one key.
+pub struct PgStore {
+    config: tokio_postgres::Config,
+    tls: MakeRustlsConnect,
     key: String,
+    /// The live connection, if one has been made and has not dropped. Behind
+    /// a lock so one instance never opens two.
+    client: Mutex<Option<Client>>,
 }
 
-#[derive(Deserialize)]
-struct Reply {
-    #[serde(default)]
-    result: Option<serde_json::Value>,
-    #[serde(default)]
-    error: Option<String>,
-}
-
-impl Store {
+impl PgStore {
+    /// Parse the connection string and prepare TLS; nothing connects yet.
+    ///
+    /// `sslmode` is taken from the string when it says so and is otherwise
+    /// `require`, not tokio-postgres's `prefer`: Neon refuses plaintext, and a
+    /// store that silently fell back to it elsewhere would send the registry
+    /// in the clear. `sslmode=disable` stays honoured so a test can point at a
+    /// Postgres on loopback.
     pub fn new(settings: &StoreSettings) -> Result<Self, StoreError> {
-        let client = reqwest::Client::builder()
-            .timeout(TIMEOUT)
-            .user_agent(concat!("losos-edge-vercel/", env!("CARGO_PKG_VERSION")))
-            .build()?;
+        let mut config: tokio_postgres::Config = settings.url.parse()?;
+        if config.get_ssl_mode() == SslMode::Prefer {
+            config.ssl_mode(SslMode::Require);
+        }
+        let roots = rustls::RootCertStore {
+            roots: webpki_roots::TLS_SERVER_ROOTS.to_vec(),
+        };
+        // Named rather than `ClientConfig::builder()`: that picks the one
+        // enabled crypto provider and panics if the tree ever enables two.
+        let tls = rustls::ClientConfig::builder_with_provider(Arc::new(
+            rustls::crypto::ring::default_provider(),
+        ))
+        .with_safe_default_protocol_versions()?
+        .with_root_certificates(roots)
+        .with_no_client_auth();
         Ok(Self {
-            client,
-            url: settings.url.clone(),
-            token: settings.token.clone(),
+            config,
+            tls: MakeRustlsConnect::new(tls),
             key: settings.key.clone(),
+            client: Mutex::new(None),
         })
     }
 
-    /// The saved snapshot, or `None` when nothing has been saved yet.
-    pub async fn load(&self) -> Result<Option<Snapshot>, StoreError> {
-        let reply = self.command(&["GET", &self.key]).await?;
-        match reply {
-            None | Some(serde_json::Value::Null) => Ok(None),
-            Some(serde_json::Value::String(json)) => Ok(Some(serde_json::from_str(&json)?)),
-            Some(serde_json::Value::Array(_)) => Err(StoreError::Shape("array")),
-            Some(serde_json::Value::Object(_)) => Err(StoreError::Shape("object")),
-            Some(serde_json::Value::Number(_)) => Err(StoreError::Shape("number")),
-            Some(serde_json::Value::Bool(_)) => Err(StoreError::Shape("boolean")),
-        }
+    /// Open a connection, drive it on a task, and make sure the table exists.
+    async fn connect(&self) -> Result<Client, StoreError> {
+        let (client, connection) = self.config.connect(self.tls.clone()).await?;
+        tokio::spawn(async move {
+            if let Err(e) = connection.await {
+                tracing::warn!("database connection ended: {e}");
+            }
+        });
+        client.batch_execute(SCHEMA).await?;
+        Ok(client)
     }
 
-    /// Replace the saved snapshot.
-    pub async fn save(&self, snapshot: &Snapshot) -> Result<(), StoreError> {
-        let json = serde_json::to_string(snapshot)?;
-        self.command(&["SET", &self.key, &json]).await?;
-        Ok(())
+    /// The live client, connecting first if there is none or the last one
+    /// dropped. The guard is handed back so a caller can forget a client whose
+    /// query failed, and the next call reconnects rather than retrying a dead
+    /// socket.
+    async fn client(&self) -> Result<tokio::sync::MutexGuard<'_, Option<Client>>, StoreError> {
+        let mut slot = self.client.lock().await;
+        if slot.as_ref().is_none_or(Client::is_closed) {
+            *slot = Some(self.connect().await?);
+        }
+        Ok(slot)
+    }
+}
+
+/// A query's outcome; on failure the client in `slot` is forgotten.
+fn settle<T>(
+    slot: &mut Option<Client>,
+    outcome: Result<T, tokio_postgres::Error>,
+) -> Result<T, StoreError> {
+    match outcome {
+        Ok(v) => Ok(v),
+        Err(e) => {
+            *slot = None;
+            Err(e.into())
+        }
+    }
+}
+
+impl Store for PgStore {
+    fn load(&self) -> BoxFuture<'_, Result<Option<Snapshot>, StoreError>> {
+        Box::pin(async move {
+            let mut slot = self.client().await?;
+            let outcome = slot
+                .as_ref()
+                .expect("connected above")
+                .query_opt(
+                    "SELECT snapshot FROM losos_edge_registry WHERE key = $1",
+                    &[&self.key],
+                )
+                .await;
+            match settle(&mut slot, outcome)? {
+                None => Ok(None),
+                Some(row) => {
+                    let value: serde_json::Value = row.try_get(0)?;
+                    Ok(Some(serde_json::from_value(value)?))
+                }
+            }
+        })
     }
 
-    /// One Redis command, as Upstash takes it: `POST <url>` with the command as
-    /// a JSON array. The `result` is handed back as-is for the caller to shape.
-    async fn command(&self, argv: &[&str]) -> Result<Option<serde_json::Value>, StoreError> {
-        let response = self
-            .client
-            .post(&self.url)
-            .bearer_auth(&self.token)
-            .json(&argv)
-            .send()
-            .await?;
-        let status = response.status();
-        // Upstash answers 4xx with `{"error": "..."}`; read it before judging
-        // the status so the log carries the reason, not just the number.
-        let reply: Reply = match response.json().await {
-            Ok(reply) => reply,
-            Err(_) if !status.is_success() => return Err(StoreError::Status(status)),
-            Err(e) => return Err(StoreError::Transport(e)),
-        };
-        if let Some(error) = reply.error {
-            return Err(StoreError::Redis(error));
+    fn save<'a>(&'a self, snapshot: &'a Snapshot) -> BoxFuture<'a, Result<(), StoreError>> {
+        Box::pin(async move {
+            let value = serde_json::to_value(snapshot)?;
+            let mut slot = self.client().await?;
+            let outcome = slot
+                .as_ref()
+                .expect("connected above")
+                .execute(
+                    "INSERT INTO losos_edge_registry (key, snapshot, updated_at) \
+                     VALUES ($1, $2, now()) \
+                     ON CONFLICT (key) DO UPDATE \
+                     SET snapshot = EXCLUDED.snapshot, updated_at = now()",
+                    &[&self.key, &value],
+                )
+                .await;
+            settle(&mut slot, outcome).map(|_| ())
+        })
+    }
+
+    fn kind(&self) -> &'static str {
+        "postgres"
+    }
+}
+
+/// A store that is only this process's memory — what the host runs with when
+/// no database is configured, and what the tests hand two hosts to share.
+///
+/// Shared by cloning: every clone sees the same cell, so two [`crate::Host`]s
+/// built on clones of one `MemStore` behave like two function instances on
+/// one database.
+#[derive(Debug, Clone, Default)]
+pub struct MemStore {
+    cell: Arc<std::sync::Mutex<Option<String>>>,
+}
+
+impl MemStore {
+    /// What the last `save` left, as the JSON text it was serialised to; for
+    /// tests that want to see exactly what a database would be holding.
+    pub fn saved_json(&self) -> Option<String> {
+        self.cell.lock().map_or(None, |c| c.clone())
+    }
+
+    /// Put arbitrary JSON text where the next `load` will find it, as if a
+    /// previous instance had saved it.
+    pub fn seed_json(&self, json: impl Into<String>) {
+        if let Ok(mut c) = self.cell.lock() {
+            *c = Some(json.into());
         }
-        if !status.is_success() {
-            return Err(StoreError::Status(status));
-        }
-        Ok(reply.result)
+    }
+}
+
+impl Store for MemStore {
+    fn load(&self) -> BoxFuture<'_, Result<Option<Snapshot>, StoreError>> {
+        Box::pin(async move {
+            match self.saved_json() {
+                None => Ok(None),
+                Some(json) => Ok(Some(serde_json::from_str(&json)?)),
+            }
+        })
+    }
+
+    fn save<'a>(&'a self, snapshot: &'a Snapshot) -> BoxFuture<'a, Result<(), StoreError>> {
+        Box::pin(async move {
+            let json = serde_json::to_string(snapshot)?;
+            if let Ok(mut c) = self.cell.lock() {
+                *c = Some(json);
+            }
+            Ok(())
+        })
+    }
+
+    fn kind(&self) -> &'static str {
+        "memory"
     }
 }
