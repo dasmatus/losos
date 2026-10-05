@@ -86,7 +86,10 @@ in
   ];
 
   # Keyfile path: inject the keyfile from the host into the initrd. The TPM
-  # path needs no secret — the key lives in the LUKS2 header, sealed by TPM2.
+  # path needs no secret — the key lives in the LUKS2 header, sealed by TPM2 —
+  # and must declare none: /etc/keys/persist-keyfile exists on that path too
+  # (the recovery slot inside /persist), and an entry here would bake it onto
+  # the ESP. tests/invariants.nix asserts the set is empty.
   boot.initrd.secrets =
     if useTpm then { } else { "/crypto_keyfile.bin" = "/etc/keys/persist-keyfile"; };
 
