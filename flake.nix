@@ -39,6 +39,20 @@
     let
       system = "x86_64-linux";
       pkgs = nixpkgs.legacyPackages.${system};
+      # The module list entry for one of the box-specific files, see the
+      # `install` system below: the live copy under /etc/nixos when it can be
+      # read (impure evaluation on the box), else the in-tree copy when the
+      # tree has one, else nothing.
+      onBox =
+        name:
+        let
+          live = /etc/nixos/modules + "/${name}";
+          shipped = ./modules + "/${name}";
+        in
+        if builtins.pathExists live then
+          [ live ]
+        else
+          nixpkgs.lib.optional (builtins.pathExists shipped) shipped;
     in
     {
       # Flake packages: losos-ctl (the Rust lososd daemon + losos-ctl facade),
@@ -251,19 +265,31 @@
             # different halves of the same problem.
             ./modules/keyring.nix
             ./modules/daemon.nix
-            ./modules/overrides.nix
+            # modules/overrides.nix is imported through onBox below, never here.
             ./modules/updates.nix
             ./modules/defaults.nix
             ./modules/proxy.nix
-            # Host-specific drive list, firmware mode and unlock mode, written
-            # by losos-install at install time. Only imported when it exists
-            # so the published flake (without it) still evaluates against the
-            # defaults — which is also what a `github:` upgradeFlakeUri
-            # evaluates on the box, so those defaults have to describe a box
-            # the ISO actually produces (TPM2 unlock wherever a chip exists;
-            # see losos.tpm.enable and tests/invariants.nix).
           ]
-          ++ nixpkgs.lib.optional (builtins.pathExists ./modules/install-target.nix) ./modules/install-target.nix;
+          # The two files that describe *this* box rather than the appliance:
+          # modules/install-target.nix (drive list, firmware mode, unlock
+          # mode, written by losos-install at install time; not in the
+          # published tree) and modules/overrides.nix (the settings the admin
+          # UI writes through lososd; the published tree carries only the
+          # defaults). A local evaluation — the installer's work dir, lososd's
+          # /etc/nixos#install, the default git+file:///etc/nixos upgrade —
+          # sees them in-tree. A remote upgradeFlakeUri (`github:…#install`)
+          # evaluates the published tree, which has neither, and used to flip
+          # a keyfile box to the TPM shape, forget its drives and firmware
+          # mode, and reset every setting. So the live copies on the box are
+          # preferred when they can be read: updates.nix and lososd pass
+          # `--impure` to nixos-rebuild for exactly this. Under pure
+          # evaluation (CI, `nix flake check`, tests/invariants.nix, the
+          # installer) builtins.pathExists on an absolute path is false, not
+          # an error, so the in-tree file or the defaults apply as before.
+          # Only one copy of each is ever imported: two would double-define
+          # every option in it.
+          ++ onBox "overrides.nix"
+          ++ onBox "install-target.nix";
         };
 
       };
