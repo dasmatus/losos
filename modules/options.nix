@@ -41,25 +41,32 @@ in
 
     tpm.enable = lib.mkOption {
       type = lib.types.bool;
-      default = false;
+      default = true;
       description = ''
-        Unlock the persistent LUKS partition from a TPM2 chip at boot instead
-        of from the random keyfile at /etc/keys/persist-keyfile (which the
-        initrd carries, on the unencrypted ESP).
+        Unlock the persistent LUKS volume from a TPM2 chip at boot. The
+        installer seals the disk key into a LUKS2 token (`systemd-cryptenroll
+        --tpm2-device=auto`, bound to no PCRs — see backend/src/installer_io.rs
+        for why) right after formatting, so the box boots unattended from its
+        first boot and the initrd carries no secret. The same random keyfile
+        the volume was formatted with stays as a recovery slot at
+        /etc/keys/persist-keyfile, inside the encrypted volume; `losos-ctl
+        grow` authenticates `cryptsetup resize` with it.
 
-        Off by default, and the default is load-bearing. The installer ISO
-        runs `losos-ctl install` without `--tpm` (modules/installer.nix), so
-        every box it produces is in keyfile mode; and the TPM path needs a
-        passphrase typed at format time plus `systemd-cryptenroll` run after
-        the first boot — on an appliance with no shell, neither can happen
-        unattended. A default of true therefore described no shipped box, and
-        it bit in one place: modules/install-target.nix, which records the
-        mode the installer chose, is only imported when it exists, and a
-        `github:` upgradeFlakeUri evaluates a checkout without it. With the
-        old default that nightly rebuild dropped the keyfile from the initrd,
-        asked crypttab for a TPM token nobody had enrolled, and the 00:07
-        reboot stopped at a passphrase prompt. tests/invariants.nix pins the
-        default. Turn it on per box with `losos-ctl install --tpm`.
+        Set to false by the installer on a machine with no TPM2 (and by
+        `losos-ctl install --no-tpm`): then that keyfile is baked into the
+        initrd as /crypto_keyfile.bin, on the unencrypted ESP, and whoever has
+        the disk has the data.
+
+        This default is the mode the installer ISO picks wherever a chip
+        exists, and tests/invariants.nix asserts the two agree: the published
+        flake (no modules/install-target.nix, which is also what a `github:`
+        upgradeFlakeUri evaluates) must describe a box the ISO actually
+        produces. The remaining gap is a box the installer put in keyfile
+        mode: install-target.nix records that, but a `github:` upgrade does
+        not carry it, drops the keyfile from the initrd and stops the 00:07
+        reboot at a passphrase prompt — the same way it loses targetDrives and
+        bios. Keep such a box on the default git+file:///etc/nixos URI until
+        install-target.nix travels with the upgrade.
       '';
     };
 

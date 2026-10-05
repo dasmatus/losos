@@ -141,12 +141,24 @@ ARP-spoof can intercept first use.
 
 ### Physical access
 
-By default (`losos.tpm.enable = false`, which is what the installer ISO
-produces) the LUKS keyfile is in the initrd on an unencrypted ESP, so whoever
-has the machine has the data. With `losos.tpm.enable` (`losos-ctl install
---tpm`, then `systemd-cryptenroll` on the installed system) `/persist` unlocks
-from the TPM instead; that path is tested but not automated, so a stolen box
-is in the threat model, not outside it.
+By default (`losos.tpm.enable = true`, which is what the installer ISO
+produces wherever it finds a TPM 2.0 chip) the installer seals the LUKS key
+into a TPM2 token right after formatting, and `/persist` unlocks from the chip
+at boot with no secret in the initrd. The token is bound to no PCRs, on
+purpose: the box updates firmware, bootloader and kernel unattended and has no
+shell to recover a lockout from. That buys exactly one property: the disk on
+its own (pulled, cloned, imaged) is unreadable. It does not buy protection
+against a thief who takes the whole box, since the chip will unseal for any
+software booted on that machine; a stolen box is in the threat model, not
+outside it. The same random key the volume was formatted with is kept inside
+the encrypted volume at `/etc/keys/persist-keyfile` as a recovery slot, for
+`losos-ctl grow` and for re-enrolment; it is only reachable once the volume is
+open.
+
+Without a chip, or with `losos-ctl install --no-tpm`, that keyfile is baked
+into the initrd on the unencrypted ESP instead, so whoever has the disk has
+the data. `tests/tpm.nix` boots the TPM path end to end under swtpm;
+`tests/install.nix` the keyfile path.
 
 ### Tunnel encryption
 

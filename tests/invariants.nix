@@ -9,9 +9,12 @@
 # against the *published* flake — the one with no modules/install-target.nix,
 # which is what a `github:` upgrade URI evaluates — because that is the shape
 # in which the defaults are load-bearing. A developer's checkout that carries
-# an install-target.nix of its own would make the unlock-mode assertion read
+# an install-target.nix of its own would make the unlock-mode assertions read
 # that file instead; that file is written by the installer onto the box and
-# is not meant to be in a working tree.
+# is not meant to be in a working tree. The keyfile half of the unlock story
+# (the secret is baked, the chip is not asked) is tests/install.nix's; the
+# TPM half end to end (format, enrol, reboot, unlock from swtpm) is
+# tests/tpm.nix's.
 {
   pkgs,
   lib,
@@ -31,8 +34,14 @@ assert must (lib.hasInfix "--delete-older-than" gc.options)
 assert must
   (loader.systemd-boot.configurationLimit != null && loader.systemd-boot.configurationLimit <= 10)
   "boot.loader.systemd-boot.configurationLimit is unbounded: with linuxPackages_latest every nightly kernel lands in a 500 MiB ESP until the bootloader install fails";
-assert must (!config.losos.tpm.enable)
-  "losos.tpm.enable defaults to true: the installer ISO ships keyfile mode (no --tpm), so a github: upgrade of a real box would drop the keyfile from the initrd and stop the 00:07 reboot at a passphrase prompt";
+assert must config.losos.tpm.enable
+  "losos.tpm.enable is off in the published flake: the installer seals the disk key to the TPM2 wherever a chip exists, so a github: upgrade of such a box would bake a keyfile into the initrd it does not have and fail the bootloader install";
+assert must (config.boot.initrd.secrets == { })
+  "the TPM path declares an initrd secret (${toString (builtins.attrNames config.boot.initrd.secrets)}): the recovery keyfile exists inside /persist on that path too, and an entry here would put it on the unencrypted ESP";
+assert must config.boot.initrd.systemd.tpm2.enable
+  "boot.initrd.systemd.tpm2.enable is off: the initrd cannot read the sealed LUKS2 token and every boot stops at a passphrase prompt";
+assert must (lib.elem "tpm2-device=auto" config.boot.initrd.luks.devices.persist.crypttabExtraOpts)
+  "crypttab for `persist` has no tpm2-device=auto (${toString config.boot.initrd.luks.devices.persist.crypttabExtraOpts}): the enrolled token is never consulted";
 assert must (lib.hasSuffix "#install" config.losos.upgradeFlakeUri)
   "losos.upgradeFlakeUri has no #install fragment (${config.losos.upgradeFlakeUri}); nixos-rebuild would look for nixosConfigurations.<hostname>, which this flake does not export";
 assert must (!config.losos.bios && config.boot.loader.systemd-boot.enable)

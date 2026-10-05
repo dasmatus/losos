@@ -111,7 +111,8 @@ run by CI, so run them locally when touching either:
 
 ```sh
 nix build .#checks.x86_64-linux.losos-admin-daemon   # lososd: D-Bus + HTTP + token
-nix build .#checks.x86_64-linux.losos-install        # installer: detect + disko + LVM
+nix build .#checks.x86_64-linux.losos-install        # installer: detect + disko + LVM (keyfile path, BIOS)
+nix build .#checks.x86_64-linux.losos-tpm-unlock     # installer: format + enrol + reboot + unlock from swtpm
 ```
 
 Inside the dev shell, `bcd` → `cd backend`, `rcd` → `cd backend-registrar`.
@@ -149,14 +150,24 @@ dirs in `environment.persistence."/persist".directories` survive a reboot
 data homes, `machine-id`). **Anything new that must persist across reboot must be added
 to that list** or it silently vanishes on the next boot. `/persist` is
 `neededForBoot` so impermanence bind-mounts resolve before the sysroot is
-populated. Unlock is a keyfile at `/etc/keys/persist-keyfile` (the default
-and what the ISO ships: injected into the initrd as `/crypto_keyfile.bin`, so
-it sits on the unencrypted ESP) or TPM2 (`losos.tpm.enable = true`, opt-in via
-`losos-ctl install --tpm`, which needs a passphrase at format time and a
-`systemd-cryptenroll` after first boot that nothing automates yet). The
-default used to be `true` while the installer never passed `--tpm`; a
-`github:` upgrade then evaluated a tree without `install-target.nix` and
-locked the box at a passphrase prompt. `tests/invariants.nix` pins it.
+populated. The volume is always formatted, unattended, from a random keyfile
+the installer generates at `/etc/keys/persist-keyfile`. Unlock is TPM2 by
+default (`losos.tpm.enable = true`): the installer runs `systemd-cryptenroll
+--tpm2-device=auto --tpm2-pcrs= --unlock-key-file=…` right after `disko`, so
+the initrd carries no secret and the keyfile stays only inside `/persist` as
+the recovery slot (`losos-ctl grow` authenticates with it). No PCR binding, on
+purpose: the box updates itself unattended with no shell to recover a lockout
+from (same call as `keyring.nix`). Where the installer medium sees no
+`/dev/tpmrm0`, or with `losos-ctl install --no-tpm`, the box is in keyfile
+mode: `tpm.enable = false` in `install-target.nix` and the keyfile injected
+into the initrd as `/crypto_keyfile.bin`, on the unencrypted ESP. The two
+crypttab shapes are exclusive: systemd-cryptsetup given a key file *and*
+`tpm2-device=` reads the file as a sealed blob. `tests/invariants.nix` pins the
+default and that the TPM path declares no initrd secret; `tests/tpm.nix` boots
+it end to end under swtpm. The one hazard left: a keyfile box upgraded from a
+`github:` URI evaluates a tree without `install-target.nix`, flips to the TPM
+shape, and stops at a passphrase prompt — the same way it loses `targetDrives`
+and `bios`; keep such boxes on the default `git+file:///etc/nixos` URI.
 
 **Two isolated data domains, no shell** (`configuration.nix`): `notshared`
 (uid 1000) owns Nextcloud, `shared` (uid 1001) owns the contributed mesh
@@ -338,14 +349,24 @@ A separate `midnight-reboot.timer` reboots unconditionally at 00:07 with
   which `GET /api/apps/search` shells out to: `path` **replaces** PATH, so a
   binary left off that list is not on it by accident, and the failure surfaces
   to the owner as a feature that quietly never works.
+- **The LUKS keyfile is hex text, and must stay NUL-free.** disko hands
+  `passwordFile` to `luksFormat` as `<(echo -n "$(cat FILE)")`, a command
+  substitution that drops NUL bytes and a trailing newline, while the initrd
+  (`/crypto_keyfile.bin`) and `systemd-cryptenroll --unlock-key-file` read
+  the file raw. The installer used to write 4096 random bytes, so the volume
+  was formatted with one key and unlocked with another on practically every
+  install; nothing reached that failure until `tests/tpm.nix` enrolled the
+  chip. `ensure_keyfile` now writes 2048 random bytes as 4096 hex characters.
+  Don't "harden" it back to raw bytes, and don't put a newline in it.
 - **The LUKS key file must not live under `/root` or `/home`.** `lososd` runs
   with `ProtectHome=true` — on purpose, so a compromised request handler cannot
   read either data domain — and that hides `/root` too. `cryptsetup resize`
   then fails with "Failed to open key file", *after* `lvextend` has already
   grown the volume. `/etc/keys/persist-keyfile` is the path everything agrees
-  on: `disko.nix` writes it, `daemon.nix` passes it as `LOSOS_LUKS_KEYFILE`
-  (no-TPM path only), and `tests/resize.nix` uses it rather than a fixture of
-  its own, so the three cannot drift apart unnoticed.
+  on: `disko.nix` formats from it, the installer keeps it inside `/persist`
+  on both unlock paths, `daemon.nix` passes it as `LOSOS_LUKS_KEYFILE`, and
+  `tests/resize.nix` uses it rather than a fixture of its own, so they cannot
+  drift apart unnoticed.
 
 - **`lososd` is restarted mid-rebuild.** `nixos-rebuild switch` restarts the
   changed `lososd.service`, killing the watcher thread that was tracking the

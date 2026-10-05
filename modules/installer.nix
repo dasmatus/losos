@@ -1,10 +1,10 @@
 # The losos installer: the `losos-install` wrapper around `losos-ctl install`.
 #
-# The auto-installer is now a subcommand of the Haskell losos-ctl backend (see
-# backend/src/Installer.hs). This module packages it as the `losos-install`
-# command name the VM test (tests/install.nix) and the README rely on, so the
-# CLI surface is unchanged: `losos-install --emit-target …`, `--disko-script …`,
-# `--tpm`, `--drives …`, `--no-install`.
+# The auto-installer is a subcommand of the Rust losos-ctl backend (see
+# backend/src/installer.rs). This module packages it as the `losos-install`
+# command name the VM tests (tests/install.nix, tests/tpm.nix) and the wiki
+# rely on, so the CLI surface is unchanged: `losos-install --emit-target …`,
+# `--disko-script …`, `--tpm` / `--no-tpm`, `--drives …`, `--no-install`.
 #
 # It stays free of any flake coupling (no `self`) so the VM test can import it:
 # the losos-ctl derivation is supplied via the `losos.installer.package` option
@@ -30,9 +30,10 @@ let
 
   # The tools losos-ctl install shells out to at runtime: disko + git for the
   # full path, util-linux for lsblk (drive detection), coreutils for cp/chmod
-  # (laying the flake). nixos-install comes from the installer medium's own PATH
-  # (--prefix preserves the rest of PATH). cryptsetup/lvm2 mirror the old wrap
-  # in case disko reaches for them directly.
+  # (laying the flake), systemd for systemd-cryptenroll (sealing the disk key
+  # to the TPM2 right after the format). nixos-install comes from the installer
+  # medium's own PATH (--prefix preserves the rest of PATH). cryptsetup/lvm2
+  # mirror the old wrap in case disko reaches for them directly.
   tools = lib.makeBinPath [
     pkgs.disko
     pkgs.git
@@ -40,6 +41,7 @@ let
     pkgs.coreutils
     pkgs.cryptsetup
     pkgs.lvm2
+    config.systemd.package
   ];
 
   # Two wrapper variants, because the command and the login shell need
