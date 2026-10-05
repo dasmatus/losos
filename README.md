@@ -32,8 +32,9 @@ survive, on an encrypted `/persist` partition.
    disk, encrypts them and installs without prompting.
 
 Details, the demo VM image and disk growth: [Install](https://github.com/dasmatus/losos/wiki/Install).
-Without a TPM, the disk key is stored unencrypted on the boot partition; see
-the [security model](docs/security-model.md).
+The disk key is sealed to the machine's TPM chip; on a machine without one it
+is stored unencrypted on the boot partition. See the
+[security model](docs/security-model.md).
 
 ## Develop
 

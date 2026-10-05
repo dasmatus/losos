@@ -18,7 +18,10 @@ in the repository, versioned with the code. Summary:
 - **Shared origin.** The admin UI, Nextcloud and Forgejo share one origin. An
   XSS in Nextcloud or Forgejo can read the admin token, which is equivalent to
   root. The fix would be a separate hostname for the admin UI.
-- **No TPM means no protection against theft.** The keyfile is on an
-  unencrypted ESP.
+- **Theft of the whole box is not defended against.** The disk key is sealed
+  to the TPM without PCR binding, so the chip releases it to any software run
+  on that machine; only the disk on its own is unreadable. On a machine
+  without a TPM the keyfile is on an unencrypted ESP and even the disk alone
+  is readable.
 - **The audit log is not tamper-evident** and does not rotate.
 - **Throttling is per address**, so address spoofing on the LAN bypasses it.

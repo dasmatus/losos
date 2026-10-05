@@ -26,13 +26,28 @@
 //!     first boot finds an empty store.
 //!   * The keyfile is staged into `/mnt/etc/keys` *before* `nixos-install`,
 //!     because the chrooted bootloader install resolves `boot.initrd.secrets`
-//!     inside `/mnt` and hard-fails when the source is missing.
+//!     inside `/mnt` and hard-fails when the source is missing. Only on the
+//!     keyfile path: on the TPM path that copy is what would put the key on
+//!     the unencrypted ESP, so it is deliberately absent.
+//!   * The TPM2 token is enrolled right after `disko`, before `nixos-install`,
+//!     and always from the same random keyfile the volume was formatted with.
+//!     Both modes format identically and unattended; the TPM path then adds a
+//!     sealed token and keeps the keyfile only inside `/persist` (as the
+//!     recovery slot `cryptsetup resize` and a future re-enrolment use), the
+//!     keyfile path bakes it into the initrd. Enrolling before the long
+//!     install means a chip that cannot seal fails the run in seconds, not
+//!     after twenty minutes of copying.
 
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
 
 /// Smallest disk worth installing onto (1 GB).
 pub const MIN_BYTES: u64 = 1_000_000_000;
+
+/// The block device carrying the LUKS header: the `persist` logical volume of
+/// the `persist-vg` volume group modules/disko.nix declares. The TPM2 token is
+/// enrolled here, not on the opened mapping.
+pub const LUKS_HEADER_DEVICE: &str = "/dev/persist-vg/persist";
 
 // ── Block devices ────────────────────────────────────────────────────────────
 
@@ -184,6 +199,26 @@ pub enum InstallAction {
     RunNixosInstall(PathBuf),
     LayFlake(PathBuf, PathBuf),
     CopyKeyfile(PathBuf, PathBuf),
+    /// Seal a LUKS2 token to the TPM2 on `device`, authenticating with the
+    /// keyfile the volume was formatted with. Never prompts.
+    EnrollTpm(PathBuf, PathBuf),
+}
+
+/// `--tpm` / `--no-tpm` against what the installer medium can see.
+///
+/// Neither flag means "use the chip if there is one": TPM2 is the default
+/// wherever it exists, the keyfile is what a box without one gets. `--tpm` on
+/// a machine with no chip is an error rather than a silent keyfile install,
+/// because the owner asked for a property the result would not have.
+pub fn resolve_tpm(explicit: Option<bool>, present: bool) -> Result<bool, String> {
+    match explicit {
+        Some(true) if !present => Err(
+            "--tpm given but no TPM2 device (/dev/tpmrm0 or /dev/tpm0) is visible; enable the TPM in the firmware or install with --no-tpm"
+                .to_string(),
+        ),
+        Some(choice) => Ok(choice),
+        None => Ok(present),
+    }
 }
 
 /// Turn options plus detected devices into an ordered action list.
@@ -208,14 +243,22 @@ pub fn plan_install(opts: &Options, devs: &[BlockDev]) -> Result<Vec<InstallActi
         return Ok(acts);
     }
 
-    // The keyfile must exist before disko runs: it is the LUKS passwordFile.
-    if !opts.tpm {
-        acts.push(InstallAction::EnsureKeyfile(opts.keyfile.clone()));
-    }
+    acts.push(InstallAction::Log(if opts.tpm {
+        "losos-install: unlock: TPM2 (disk key sealed to the chip; recovery key kept inside /persist)"
+            .to_string()
+    } else {
+        "losos-install: unlock: keyfile in the initrd (no TPM2 chip, or --no-tpm)".to_string()
+    }));
+
+    // The keyfile must exist before disko runs: it is the LUKS passwordFile in
+    // both modes. The TPM path formats with it too and enrols the chip from
+    // it, which is what makes that path unattended.
+    acts.push(InstallAction::EnsureKeyfile(opts.keyfile.clone()));
 
     if let Some(script) = &opts.disko_script {
         acts.push(InstallAction::WriteTarget(opts.emit_file.clone(), target));
         acts.push(InstallAction::RunDiskoScript(script.clone()));
+        acts.extend(enroll(opts));
         acts.push(InstallAction::Log(
             "losos-install: format+mount complete (test mode, no install).".to_string(),
         ));
@@ -232,8 +275,23 @@ pub fn plan_install(opts: &Options, devs: &[BlockDev]) -> Result<Vec<InstallActi
         target,
     ));
     acts.push(InstallAction::RunDisko(work.clone()));
+    acts.extend(enroll(opts));
     acts.extend(install_tail(opts, work));
     Ok(acts)
+}
+
+/// The TPM2 enrolment, on the TPM path only. Runs against the freshly
+/// formatted header, before anything slow.
+fn enroll(opts: &Options) -> Vec<InstallAction> {
+    if !opts.tpm {
+        return Vec::new();
+    }
+    vec![
+        InstallAction::Log(
+            "losos-install: sealing the disk key to the TPM2 (systemd-cryptenroll)".to_string(),
+        ),
+        InstallAction::EnrollTpm(PathBuf::from(LUKS_HEADER_DEVICE), opts.keyfile.clone()),
+    ]
 }
 
 /// The steps after the disks are formatted and mounted.
@@ -254,18 +312,25 @@ fn install_tail(opts: &Options, work: &Path) -> Vec<InstallAction> {
     }
 
     if !opts.tpm {
-        // Two copies, both before nixos-install: the chroot one is read by the
-        // bootloader install when it bakes the secret into the initrd, and the
-        // /persist one is what later rebuilds on the running box read.
+        // The chroot copy, before nixos-install: the bootloader install reads
+        // it when it bakes the secret into the initrd. Keyfile path only — on
+        // the TPM path this copy is exactly what would put the key on the
+        // unencrypted ESP, and boot.nix declares no initrd secret there.
         acts.push(InstallAction::CopyKeyfile(
             opts.keyfile.clone(),
             PathBuf::from("/mnt/etc/keys/persist-keyfile"),
         ));
-        acts.push(InstallAction::CopyKeyfile(
-            opts.keyfile.clone(),
-            PathBuf::from("/mnt/persist/etc/keys/persist-keyfile"),
-        ));
     }
+    // The /persist copy, in both modes, inside the encrypted volume. On the
+    // keyfile path later rebuilds on the running box read it when they
+    // regenerate the initrd; on the TPM path it is the recovery slot:
+    // `losos-ctl grow` authenticates `cryptsetup resize` with it, and it is
+    // what a re-enrolment after a cleared TPM would start from. It is only
+    // reachable once the volume is open, which is the point.
+    acts.push(InstallAction::CopyKeyfile(
+        opts.keyfile.clone(),
+        PathBuf::from("/mnt/persist/etc/keys/persist-keyfile"),
+    ));
 
     acts.push(InstallAction::RunNixosInstall(work.to_path_buf()));
     acts.push(InstallAction::LayFlake(
@@ -276,16 +341,6 @@ fn install_tail(opts: &Options, work: &Path) -> Vec<InstallAction> {
         "losos-install: done. Remove the install medium and reboot into the installed system."
             .to_string(),
     ));
-    if opts.tpm {
-        // Nothing else tells the user to do this, and until they do, every boot
-        // of a headless box stops at a passphrase prompt.
-        acts.push(InstallAction::Log(
-            "losos-install: TPM mode: the passphrase typed at format time is asked on every boot until TPM2 is enrolled. Boot the installed system, then run:".to_string(),
-        ));
-        acts.push(InstallAction::Log(
-            "losos-install:   systemd-cryptenroll --tpm2-device=auto --tpm2-pcrs=0+7 /dev/persist-vg/persist".to_string(),
-        ));
-    }
     acts
 }
 
@@ -321,6 +376,7 @@ pub trait Install {
     fn run_nixos_install(&mut self, work: &Path) -> anyhow::Result<()>;
     fn lay_flake(&mut self, work: &Path, dest: &Path) -> anyhow::Result<()>;
     fn copy_keyfile(&mut self, src: &Path, dst: &Path) -> anyhow::Result<()>;
+    fn enroll_tpm(&mut self, device: &Path, keyfile: &Path) -> anyhow::Result<()>;
     fn log_info(&mut self, msg: &str);
 }
 
@@ -338,6 +394,7 @@ pub fn execute<I: Install>(installer: &mut I, acts: &[InstallAction]) -> anyhow:
             InstallAction::RunNixosInstall(d) => installer.run_nixos_install(d)?,
             InstallAction::LayFlake(s, d) => installer.lay_flake(s, d)?,
             InstallAction::CopyKeyfile(s, d) => installer.copy_keyfile(s, d)?,
+            InstallAction::EnrollTpm(dev, key) => installer.enroll_tpm(dev, key)?,
         }
     }
     Ok(())
@@ -508,22 +565,111 @@ mod tests {
     }
 
     #[test]
-    fn tpm_mode_skips_the_keyfile_entirely() {
+    fn tpm_mode_keeps_the_keyfile_off_the_esp_and_enrols_before_installing() {
         let o = Options {
             tpm: true,
             ..opts()
         };
         let acts = plan_install(&o, &targets()).unwrap();
-        assert!(!acts
+        // Both modes format from the same random keyfile, unattended.
+        assert!(acts
             .iter()
             .any(|a| matches!(a, InstallAction::EnsureKeyfile(_))));
-        assert!(!acts
+        // The chroot copy is the one the bootloader install bakes into the
+        // initrd on the ESP; it must not exist on the TPM path.
+        let copies: Vec<&PathBuf> = acts
             .iter()
-            .any(|a| matches!(a, InstallAction::CopyKeyfile(..))));
-        // ...but the store still has to be bound through /persist.
+            .filter_map(|a| match a {
+                InstallAction::CopyKeyfile(_, dst) => Some(dst),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            copies,
+            vec![&PathBuf::from("/mnt/persist/etc/keys/persist-keyfile")]
+        );
+        // The token is sealed from that keyfile, on the header device, after
+        // the format and before the slow install.
+        let pos = |f: &dyn Fn(&InstallAction) -> bool| acts.iter().position(f).unwrap();
+        let disko = pos(&|a| matches!(a, InstallAction::RunDisko(_)));
+        let enrol = pos(&|a| matches!(a, InstallAction::EnrollTpm(..)));
+        let install = pos(&|a| matches!(a, InstallAction::RunNixosInstall(_)));
+        assert!(disko < enrol && enrol < install, "{acts:?}");
+        assert_eq!(
+            acts[enrol],
+            InstallAction::EnrollTpm(
+                PathBuf::from(LUKS_HEADER_DEVICE),
+                PathBuf::from("/etc/keys/persist-keyfile")
+            )
+        );
+        // ...and the store still has to be bound through /persist.
         assert!(acts
             .iter()
             .any(|a| matches!(a, InstallAction::BindMount(..))));
+    }
+
+    #[test]
+    fn keyfile_mode_bakes_the_key_into_the_initrd_and_never_touches_the_tpm() {
+        let acts = plan_install(&opts(), &targets()).unwrap();
+        assert!(!acts
+            .iter()
+            .any(|a| matches!(a, InstallAction::EnrollTpm(..))));
+        let copies: Vec<&PathBuf> = acts
+            .iter()
+            .filter_map(|a| match a {
+                InstallAction::CopyKeyfile(_, dst) => Some(dst),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            copies,
+            vec![
+                &PathBuf::from("/mnt/etc/keys/persist-keyfile"),
+                &PathBuf::from("/mnt/persist/etc/keys/persist-keyfile")
+            ]
+        );
+        // Both copies precede nixos-install: the chroot one is read by the
+        // bootloader install.
+        let install = acts
+            .iter()
+            .position(|a| matches!(a, InstallAction::RunNixosInstall(_)))
+            .unwrap();
+        assert!(acts[..install]
+            .iter()
+            .any(|a| matches!(a, InstallAction::CopyKeyfile(..))));
+    }
+
+    #[test]
+    fn disko_script_mode_enrols_the_tpm_too() {
+        // tests/tpm.nix drives this seam with swtpm, so the test-mode flow
+        // has to seal the token just like the real one, right after the
+        // prebuilt script formats.
+        let o = Options {
+            tpm: true,
+            disko_script: Some(PathBuf::from("/etc/losos/disko-script")),
+            ..opts()
+        };
+        let acts = plan_install(&o, &targets()).unwrap();
+        let script = acts
+            .iter()
+            .position(|a| matches!(a, InstallAction::RunDiskoScript(_)))
+            .unwrap();
+        assert!(matches!(acts[script + 1], InstallAction::Log(_)));
+        assert!(matches!(acts[script + 2], InstallAction::EnrollTpm(..)));
+        assert!(!acts
+            .iter()
+            .any(|a| matches!(a, InstallAction::RunNixosInstall(_))));
+    }
+
+    #[test]
+    fn tpm_is_the_default_where_a_chip_exists_and_an_error_where_it_is_forced_without_one() {
+        assert_eq!(resolve_tpm(None, true), Ok(true));
+        assert_eq!(resolve_tpm(None, false), Ok(false));
+        assert_eq!(resolve_tpm(Some(false), true), Ok(false));
+        assert_eq!(resolve_tpm(Some(true), true), Ok(true));
+        assert!(resolve_tpm(Some(true), false)
+            .unwrap_err()
+            .contains("--no-tpm"));
     }
 
     #[test]
@@ -603,32 +749,27 @@ mod tests {
     }
 
     #[test]
-    fn tpm_run_ends_with_the_enrollment_hint() {
-        let logs = |acts: Vec<InstallAction>| -> Vec<String> {
-            acts.into_iter()
+    fn no_run_ends_with_a_manual_enrolment_hint() {
+        // The old TPM path told the owner to run systemd-cryptenroll by hand
+        // after the first boot, on a box with no shell. Nothing may say that
+        // any more: enrolment is an action in the plan, not a chore.
+        for tpm in [false, true] {
+            let acts = plan_install(&Options { tpm, ..opts() }, &targets()).unwrap();
+            let logs: Vec<&String> = acts
+                .iter()
                 .filter_map(|a| match a {
                     InstallAction::Log(t) => Some(t),
                     _ => None,
                 })
-                .collect()
-        };
-        let keyfile_logs = logs(plan_install(&opts(), &targets()).unwrap());
-        assert!(keyfile_logs.iter().any(|l| l.contains("done")));
-        assert!(!keyfile_logs
-            .iter()
-            .any(|l| l.contains("systemd-cryptenroll")));
-
-        let tpm_logs = logs(
-            plan_install(
-                &Options {
-                    tpm: true,
-                    ..opts()
-                },
-                &targets(),
-            )
-            .unwrap(),
-        );
-        assert!(tpm_logs.iter().any(|l| l.contains("systemd-cryptenroll")));
+                .collect();
+            assert!(logs.iter().any(|l| l.contains("done")));
+            assert!(!logs.iter().any(|l| l.contains("passphrase")), "{logs:?}");
+            assert_eq!(
+                logs.iter().any(|l| l.contains("unlock: TPM2")),
+                tpm,
+                "{logs:?}"
+            );
+        }
     }
 
     #[test]

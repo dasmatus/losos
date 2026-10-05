@@ -26,8 +26,9 @@ pub const DEFAULT_KEYFILE: &str = "/etc/keys/persist-keyfile";
 pub const DEFAULT_TARGET_REL: &str = "modules/install-target.nix";
 /// Where `--disko-script` writes the rendered target.
 pub const DEFAULT_EMIT_FILE: &str = "/tmp/losos-install-target.nix";
-/// Bytes of key material for a generated keyfile.
-const KEYFILE_BYTES: usize = 4096;
+/// Random bytes drawn for a generated keyfile. The file itself is their hex
+/// spelling, so it is twice this long; see `keyfile_text`.
+const KEYFILE_RANDOM_BYTES: usize = 2048;
 /// How long to wait for the flake's host to resolve before giving up, in
 /// seconds. Overridable with `LOSOS_NETWORK_TIMEOUT`.
 const DEFAULT_NETWORK_TIMEOUT_SECS: u64 = 600;
@@ -77,6 +78,31 @@ fn owner_only_dir(p: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// The keyfile's contents for `random` bytes of entropy: their lowercase hex
+/// spelling, no newline.
+///
+/// The same file is read twice by two different readers, and they must see
+/// the same bytes. At boot, stage 1 feeds `/crypto_keyfile.bin` to cryptsetup
+/// as is, and so do `systemd-cryptenroll --unlock-key-file` (the TPM path's
+/// enrolment) and `cryptsetup resize`. At format time, disko's luks `passwordFile` becomes
+/// `<(echo -n "$(cat file)")` (lib/types/luks.nix), and bash's command
+/// substitution drops every NUL byte and any trailing newlines. With raw
+/// `/dev/urandom` output the volume was therefore formatted with a key that
+/// was *not* the file's contents (4096 random bytes lose about 16 NULs), and
+/// the first boot of a fresh install sat at "Please enter passphrase for disk
+/// persist" with no passphrase anyone could type. Hex is NUL-free and
+/// newline-free, so it survives the substitution byte for byte;
+/// `tests/install.nix` asserts the generated file opens the volume.
+fn keyfile_text(random: &[u8]) -> String {
+    use std::fmt::Write;
+    random
+        .iter()
+        .fold(String::with_capacity(random.len() * 2), |mut s, b| {
+            let _ = write!(s, "{b:02x}");
+            s
+        })
+}
+
 /// Make a file owner-only (0600). It holds a LUKS key.
 fn owner_only_file(p: &Path) -> anyhow::Result<()> {
     use std::os::unix::fs::PermissionsExt;
@@ -98,12 +124,12 @@ impl Install for IoInstall {
         if let Some(dir) = path.parent() {
             owner_only_dir(dir)?;
         }
-        let mut buf = vec![0u8; KEYFILE_BYTES];
+        let mut buf = vec![0u8; KEYFILE_RANDOM_BYTES];
         {
             use std::io::Read;
             std::fs::File::open("/dev/urandom")?.read_exact(&mut buf)?;
         }
-        std::fs::write(path, &buf)?;
+        std::fs::write(path, keyfile_text(&buf))?;
         owner_only_file(path)
     }
 
@@ -242,6 +268,33 @@ impl Install for IoInstall {
         owner_only_file(dst)
     }
 
+    /// Seal a LUKS2 token to the TPM2, unattended.
+    ///
+    /// `--unlock-key-file` authenticates with the keyfile the volume was just
+    /// formatted with, so nothing is typed. `--tpm2-pcrs=` (empty) binds the
+    /// token to no PCRs, on purpose and for the same reason modules/keyring.nix
+    /// gives: this box updates its firmware, bootloader and kernel unattended
+    /// and has no shell to recover from, so a token bound to PCR 0 or 7 would
+    /// lock the owner out on the first firmware update. What the chip buys
+    /// without PCRs is that the disk alone (pulled, cloned, imaged) is
+    /// unreadable; a thief who takes the whole box keeps the chip and is
+    /// outside this threat model, as docs/security-model.md says.
+    ///
+    /// Inherited stdio: the tool prints what it sealed, and that belongs on
+    /// the installer console.
+    fn enroll_tpm(&mut self, device: &Path, keyfile: &Path) -> anyhow::Result<()> {
+        let unlock = format!("--unlock-key-file={}", keyfile.display());
+        run_inherit(
+            "systemd-cryptenroll",
+            &[
+                "--tpm2-device=auto",
+                "--tpm2-pcrs=",
+                &unlock,
+                &device.to_string_lossy(),
+            ],
+        )
+    }
+
     fn log_info(&mut self, msg: &str) {
         println!("{msg}");
     }
@@ -358,6 +411,17 @@ pub fn booted_in_bios() -> bool {
     !Path::new("/sys/firmware/efi").exists()
 }
 
+/// Whether the installer medium can see a TPM2 chip.
+///
+/// `/dev/tpmrm0` is the kernel's resource-managed interface, which is what
+/// systemd-cryptenroll and the initrd's systemd-cryptsetup open; `/dev/tpm0`
+/// is the raw one, present whenever the driver bound at all. Either means the
+/// hardware is there; the enrolment itself is what proves the chip works, and
+/// it runs before anything slow.
+pub fn tpm_present() -> bool {
+    Path::new("/dev/tpmrm0").exists() || Path::new("/dev/tpm0").exists()
+}
+
 /// Fill in the environment-overridable defaults around the parsed CLI flags.
 pub fn options_from_env(
     tpm: bool,
@@ -397,8 +461,54 @@ pub fn run_install(opts: &Options) -> anyhow::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{flake_host, wait_for_host};
+    use super::{flake_host, keyfile_text, wait_for_host, IoInstall, KEYFILE_RANDOM_BYTES};
+    use crate::installer::Install;
     use std::time::Duration;
+
+    #[test]
+    fn keyfile_survives_bash_command_substitution() {
+        // Every byte value, including NUL and newline, which bash's
+        // `$(cat file)` would drop; the written text must carry none.
+        let random: Vec<u8> = (0..=255u8).cycle().take(KEYFILE_RANDOM_BYTES).collect();
+        let text = keyfile_text(&random);
+        assert_eq!(text.len(), 2 * KEYFILE_RANDOM_BYTES);
+        assert!(text.bytes().all(|b| b.is_ascii_hexdigit()), "{text}");
+        // What `echo -n "$(cat file)"` hands cryptsetup at format time.
+        let as_bash_sees_it: String = text.chars().filter(|&c| c != '\0').collect();
+        assert_eq!(as_bash_sees_it.trim_end_matches('\n'), text);
+        // And it is the random bytes, not a constant.
+        assert_ne!(keyfile_text(&[1, 2, 3]), keyfile_text(&[3, 2, 1]));
+    }
+
+    #[test]
+    fn a_generated_keyfile_is_hex_owner_only_and_left_alone_when_present() {
+        use std::os::unix::fs::PermissionsExt;
+        // No tempfile crate in this crate's dev-dependencies (a Cargo.lock
+        // change means a new cargoHash); a pid-named dir under $TMPDIR does.
+        let dir = std::env::temp_dir().join(format!("losos-keyfile-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = dir.join("keys").join("persist-keyfile");
+        IoInstall.ensure_keyfile(&path).unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(text.len(), 2 * KEYFILE_RANDOM_BYTES);
+        assert!(text.bytes().all(|b| b.is_ascii_hexdigit()), "{text}");
+        assert_eq!(
+            std::fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+        assert_eq!(
+            std::fs::metadata(path.parent().unwrap())
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777,
+            0o700
+        );
+        // A second run keeps the key the volume was formatted with.
+        IoInstall.ensure_keyfile(&path).unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), text);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 
     #[test]
     fn wait_for_host_gives_up_with_a_clear_message() {
