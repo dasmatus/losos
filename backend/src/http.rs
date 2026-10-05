@@ -64,6 +64,20 @@ fn run(
                 &r.message,
             )
         }
+        // The first boot's one expected failure: Nextcloud is still installing
+        // itself, so the first password cannot be set *yet*. 503 with the
+        // reason and a Retry-After, so the wizard waits and says why, instead
+        // of the opaque 500 that once sent owners to re-image a working box.
+        Err(e) if e.downcast_ref::<crate::setup::NotReady>().is_some() => {
+            let why = &e
+                .downcast_ref::<crate::setup::NotReady>()
+                .expect("checked")
+                .0;
+            tracing::info!(reason = why.as_str(), "claim refused: not ready yet");
+            HttpResponse::build(actix_web::http::StatusCode::SERVICE_UNAVAILABLE)
+                .insert_header(("Retry-After", "10"))
+                .json(serde_json::json!({ "error": why, "ready": false, "waitingFor": why }))
+        }
         Err(e) => {
             tracing::error!(error = ?e, "admin API command failed");
             err(

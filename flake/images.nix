@@ -358,6 +358,37 @@ let
     '';
   };
 
+  # The readiness probe behind `GET /api/setup/claim`'s `ready` flag.
+  #
+  # Same shape as the setpass wrapper, for the same reason: `occ` is a shell
+  # function of the entrypoint, not a program, and a `crictl exec` from the
+  # host has to repeat its setup. `--state Running` is true from the first
+  # line of the entrypoint, long before `maintenance:install` below has
+  # finished, so lososd asks occ itself whether the instance is installed and
+  # serving, and the first-run wizard waits on that answer instead of letting
+  # the owner submit into a failure.
+  #
+  # Contract, depended on by backend/src/setup.rs (`IMAGE_OCC_STATUS`):
+  #
+  #   losos-nextcloud-occ-status
+  #     runs `occ status --output=json` and exits with occ's status. Prints
+  #     `{"installed":…,"maintenance":…,"needsDbUpgrade":…,…}` on stdout.
+  nextcloudStatus = pkgs.writeShellApplication {
+    name = "losos-nextcloud-occ-status";
+    runtimeInputs = [ pkgs.coreutils ];
+    text = ''
+      if [ "$#" -ne 0 ]; then
+        echo "usage: losos-nextcloud-occ-status" >&2
+        exit 2
+      fi
+      cd ${nc.webroot}
+      export NEXTCLOUD_CONFIG_DIR=${nc.configDir}
+      status=0
+      ${nc.php}/bin/php occ status --output=json || status=$?
+      exit "$status"
+    '';
+  };
+
   nextcloudEntrypoint = pkgs.writeShellApplication {
     name = "losos-nextcloud";
     runtimeInputs = [ pkgs.coreutils ];
@@ -674,6 +705,9 @@ in
         # with `crictl exec`. It has to be in the image because that is the only
         # place an exec into this pod can reach.
         nextcloudSetpass
+        # Likewise: lososd execs it to learn whether Nextcloud is installed
+        # and serving before it lets the wizard set the first password.
+        nextcloudStatus
         nc.php
       ];
     };

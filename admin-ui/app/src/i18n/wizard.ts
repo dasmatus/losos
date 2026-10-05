@@ -279,6 +279,47 @@ export default defineMessages({
     sk: "Toto zariadenie si pri inštalácii vytvorilo náhodné heslo a nikomu ho neukázalo, preto sa zatiaľ nikto nemôže prihlásiť. Zvoľte si teraz vlastné.",
     de: "Diese Box hat sich bei der Installation ein zufälliges Passwort gegeben und es niemandem gezeigt, deshalb kann sich noch niemand anmelden. Wähl jetzt eins.",
   },
+  "wizard.signin.waiting.title": {
+    en: "Waiting for this box to finish starting",
+    sk: "Čaká sa, kým sa zariadenie dokončí spúšťať",
+    de: "Warten, bis diese Box fertig gestartet ist",
+  },
+  "wizard.signin.waiting.body": {
+    en: "The password can be set as soon as the file service is ready. This page checks every few seconds and lets you continue on its own; there is nothing to click.",
+    sk: "Heslo bude možné nastaviť, hneď ako bude súborová služba pripravená. Táto stránka to kontroluje každých pár sekúnd a sama vás pustí ďalej; nie je potrebné nič stláčať.",
+    de: "Das Passwort kann gesetzt werden, sobald der Dateidienst bereit ist. Diese Seite prüft das alle paar Sekunden und lässt dich von selbst weiter; es gibt nichts zu klicken.",
+  },
+  "wizard.signin.waiting.since": {
+    en: {
+      one: "Waiting for {count} second so far.",
+      other: "Waiting for {count} seconds so far.",
+    },
+    sk: {
+      one: "Zatiaľ sa čaká {count} sekundu.",
+      few: "Zatiaľ sa čakajú {count} sekundy.",
+      many: "Zatiaľ sa čaká {count} sekundy.",
+      other: "Zatiaľ sa čaká {count} sekúnd.",
+    },
+    de: {
+      one: "Bisher {count} Sekunde gewartet.",
+      other: "Bisher {count} Sekunden gewartet.",
+    },
+  },
+  "wizard.signin.waiting.unreachable": {
+    en: "This box did not answer the last check. It keeps trying.",
+    sk: "Zariadenie neodpovedalo na poslednú kontrolu. Skúša sa to ďalej.",
+    de: "Diese Box hat auf die letzte Prüfung nicht geantwortet. Es wird weiter versucht.",
+  },
+  "wizard.signin.ready": {
+    en: "Ready. You can set the password now.",
+    sk: "Pripravené. Heslo môžete nastaviť teraz.",
+    de: "Bereit. Du kannst das Passwort jetzt setzen.",
+  },
+  "wizard.signin.err.notReady": {
+    en: "This box is not ready for the password yet. The page keeps checking and will let you try again.",
+    sk: "Zariadenie ešte nie je pripravené na heslo. Stránka to ďalej kontroluje a pustí vás skúsiť to znova.",
+    de: "Diese Box ist noch nicht bereit für das Passwort. Die Seite prüft weiter und lässt dich es erneut versuchen.",
+  },
   "wizard.signin.mismatch": {
     en: "The two passwords are not the same.",
     sk: "Heslá sa nezhodujú.",
