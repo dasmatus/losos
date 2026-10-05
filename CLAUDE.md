@@ -149,9 +149,14 @@ dirs in `environment.persistence."/persist".directories` survive a reboot
 data homes, `machine-id`). **Anything new that must persist across reboot must be added
 to that list** or it silently vanishes on the next boot. `/persist` is
 `neededForBoot` so impermanence bind-mounts resolve before the sysroot is
-populated. Unlock is TPM2 (`losos.tpm.enable = true`, default) or a keyfile
-at `/etc/keys/persist-keyfile` (no-TPM path, injected into the initrd as
-`/crypto_keyfile.bin`).
+populated. Unlock is a keyfile at `/etc/keys/persist-keyfile` (the default
+and what the ISO ships: injected into the initrd as `/crypto_keyfile.bin`, so
+it sits on the unencrypted ESP) or TPM2 (`losos.tpm.enable = true`, opt-in via
+`losos-ctl install --tpm`, which needs a passphrase at format time and a
+`systemd-cryptenroll` after first boot that nothing automates yet). The
+default used to be `true` while the installer never passed `--tpm`; a
+`github:` upgrade then evaluated a tree without `install-target.nix` and
+locked the box at a passphrase prompt. `tests/invariants.nix` pins it.
 
 **Two isolated data domains, no shell** (`configuration.nix`): `notshared`
 (uid 1000) owns Nextcloud, `shared` (uid 1001) owns the contributed mesh

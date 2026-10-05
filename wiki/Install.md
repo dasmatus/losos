@@ -34,9 +34,15 @@ After the firmware choice, the installer runs unattended. It finds every fixed
 disk, puts them in one LVM volume group, encrypts it with LUKS, formats
 `/persist` as ext4, and installs.
 
-- With a TPM, `/persist` unlocks from the TPM.
-- Without a TPM, it unlocks from a keyfile in the initrd. That keyfile sits on
-  an unencrypted ESP, so anyone who takes the machine can read the data.
+- By default `/persist` unlocks from a keyfile in the initrd. That keyfile
+  sits on an unencrypted ESP, so anyone who takes the machine can read the
+  data. This is what the installer ISO does, TPM or not.
+- Unlocking from the TPM instead is opt-in: run `losos-ctl install --tpm`
+  from the installer's shell. It asks for a passphrase at format time, and
+  until you run `systemd-cryptenroll --tpm2-device=auto --tpm2-pcrs=0+7
+  /dev/persist-vg/persist` on the installed system, every boot stops at that
+  passphrase. Nothing automates that step yet, which is why it is not the
+  default on a box with no shell.
 
 `/persist` is ext4 with the `encrypt` feature because fscrypt needs it and
 btrfs does not support it. You lose compression and data checksums.
