@@ -52,6 +52,7 @@ import { Label, LabelHint } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/progress";
 import {
+  ApiError,
   claimBox,
   getClaimState,
   hasToken,
@@ -59,6 +60,7 @@ import {
   isNotReady,
   isUnauthorized,
   saveToken,
+  type ClaimResponse,
 } from "@/lib/api";
 import { t } from "@/lib/i18n";
 import { Rich, useT } from "@/lib/i18n-react";
@@ -281,11 +283,52 @@ async function setFirstPassword(
     const result = await postSetPassword(password);
     return { user: result.user, adminKey: null };
   }
-  const claimed = await claimBox(password);
+  const claimed = await claimAgainIfTheReplyWasLost(password);
   saveToken(claimed.token);
   // lososd always names the account it changed; the type allows null because
   // the wire contract does. An unnamed account is still a set password.
   return { user: claimed.user ?? "", adminKey: claimed.token };
+}
+
+/* How many times step 2 asks again when the claim's reply never arrived, and
+ * how long it waits between asks. Six tries five seconds apart is about half
+ * a minute of asking on top of whatever each request itself took. */
+const LOST_REPLY_TRIES = 6;
+const LOST_REPLY_PAUSE_MS = 5000;
+
+/* A claim whose answer was lost on the way, as opposed to one lososd refused.
+ *
+ * Take 6 of the recorded install demo (2026-10-05): on a box still warming
+ * up, setting the password took longer than the proxy in front of lososd
+ * waited, the browser got "HTTP 504", and lososd finished anyway — password
+ * set, box claimed, and the admin key, which that reply carries exactly once,
+ * delivered to nobody. The step showed an error over a box that was in fact
+ * owned by the person reading it. lososd now answers the same reply again to
+ * the same password for a few minutes after a claim (backend/src/receipt.rs),
+ * so the right move on a lost reply is to ask again, with the same password,
+ * rather than to report a failure the owner cannot act on.
+ *
+ * 504 and 502 are the proxy speaking for a lososd that did not answer in
+ * time or is restarting; 408 is the proxy giving up on the request; a fetch
+ * that throws a TypeError never reached a server at all. A 4xx from lososd
+ * itself (a short password, a box someone else claimed) is an answer, and is
+ * not retried. */
+function isLostReply(error: unknown): boolean {
+  if (error instanceof ApiError) {
+    return error.status === 408 || error.status === 502 || error.status === 504;
+  }
+  return error instanceof TypeError;
+}
+
+async function claimAgainIfTheReplyWasLost(password: string): Promise<ClaimResponse> {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return await claimBox(password);
+    } catch (error) {
+      if (!isLostReply(error) || attempt >= LOST_REPLY_TRIES) throw error;
+      await new Promise((resolve) => setTimeout(resolve, LOST_REPLY_PAUSE_MS));
+    }
+  }
 }
 
 // ── Waiting for the box to be ready ───────────────────────────────────────
