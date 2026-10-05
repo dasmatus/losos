@@ -22,7 +22,17 @@ in
     enable = true;
     efiSupport = false;
     devices = lib.mkDefault [ (builtins.head config.losos.targetDrives) ];
+    configurationLimit = 5;
   };
+
+  # Keep the last five generations in the boot menu, on either loader (the
+  # GRUB half is in the block above). The ESP is 500 MiB (disko.nix) and
+  # every nightly rebuild that lands a new linuxPackages_latest kernel copies
+  # a kernel and an initrd into it; with no cap the ESP fills in months and
+  # `nixos-rebuild switch` fails on the bootloader step, on a box with no
+  # shell. The store side is nix.gc in updates.nix; this is the half that
+  # frees the ESP, and the two are kept together in tests/invariants.nix.
+  boot.loader.systemd-boot.configurationLimit = 5;
 
   # Latest upstream kernel. The losos appliance runs on repurposed mini-PCs
   # whose NVMe/Wi-Fi/sleep hardware quirks are fixed fastest in mainline, so

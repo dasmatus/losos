@@ -4,14 +4,14 @@
 //! throwaway directory in tests without touching `/etc` or `/var`.
 //!
 //! Every file this module owns is written through [`atomic_write`] — a unique
-//! temp file, fsynced, then renamed over the target. `state.json`,
-//! `overrides.nix` and `defaults.nix` all take that route: the appliance has no
-//! shell, so a config truncated by a crash or by two concurrent writers would
-//! fail every later rebuild with nobody able to log in and repair it.
+//! temp file, fsynced, then renamed over the target. `state.json` and
+//! `overrides.nix` both take that route: the appliance has no shell, so a
+//! config truncated by a crash or by two concurrent writers would fail every
+//! later rebuild with nobody able to log in and repair it.
 
 use crate::losos::Losos;
 use crate::model::State;
-use crate::overrides::{inject_line, DEFAULT_OVERRIDES_NIX};
+use crate::overrides::DEFAULT_OVERRIDES_NIX;
 use crate::supervisor;
 use anyhow::Context;
 use std::io::Write;
@@ -25,9 +25,8 @@ use std::sync::{Arc, Mutex, MutexGuard};
 pub struct Paths {
     /// `$LOSOS_STATE_DIR`, holding `state.json` and `rebuild.log`.
     pub state_dir: PathBuf,
-    /// `$LOSOS_CONFIG` — patched by `change --mode`.
-    pub config_file: PathBuf,
-    /// `$LOSOS_OVERRIDES` — replaced by `apply` / `factory-reset`.
+    /// `$LOSOS_OVERRIDES` — replaced by `apply` / `factory-reset`, line-patched
+    /// by `change --mode`. The only Nix file the control plane writes.
     pub overrides_file: PathBuf,
     /// `$LOSOS_FLAKE`, the flake reference rebuilds are made from.
     pub flake_ref: String,
@@ -42,7 +41,6 @@ impl Paths {
     pub fn from_env() -> Self {
         Paths {
             state_dir: PathBuf::from(env_or("LOSOS_STATE_DIR", "/var/lib/losos")),
-            config_file: PathBuf::from(env_or("LOSOS_CONFIG", "/etc/nixos/defaults.nix")),
             overrides_file: PathBuf::from(env_or(
                 "LOSOS_OVERRIDES",
                 "/etc/nixos/modules/overrides.nix",
@@ -513,32 +511,6 @@ impl Losos for IoLosos {
 
     fn save_state(&mut self, s: &State) -> anyhow::Result<()> {
         write_state(&self.paths.state_file(), s)
-    }
-
-    fn rewrite_config(&mut self, sharing: bool) -> anyhow::Result<()> {
-        let path = &self.paths.config_file;
-        let contents = match std::fs::read_to_string(path) {
-            Ok(c) => c,
-            // Absent config is a warning, not a failure: the appliance may be
-            // running from a flake laid out differently, and refusing to change
-            // mode over it would be worse than carrying on.
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                tracing::warn!(path = %path.display(), "config missing; not rewriting");
-                return Ok(());
-            }
-            // Anything else — a permission error, a bad sector — is a real
-            // failure. Carrying on would report a mode change that never
-            // reached the disk.
-            Err(e) => {
-                return Err(anyhow::Error::new(e).context(format!("reading {}", path.display())))
-            }
-        };
-        let lines: Vec<String> = contents.lines().map(str::to_string).collect();
-        let mut out = inject_line(sharing, &lines).join("\n");
-        out.push('\n');
-        // Atomic, like every other file here: a truncated defaults.nix fails
-        // every future rebuild, including the nightly auto-upgrade.
-        atomic_write(path, out.as_bytes()).with_context(|| format!("rewriting {}", path.display()))
     }
 
     fn write_overrides(&mut self, body: &str) -> anyhow::Result<()> {

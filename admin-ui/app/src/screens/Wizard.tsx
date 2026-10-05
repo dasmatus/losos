@@ -66,6 +66,7 @@ export default function Wizard({ onDone }: WizardProps) {
    * steps so a Back-then-Forward does not reset them — retyping a password
    * because you went back to re-read the fingerprint would be its own bug. */
   const [account, setAccount] = React.useState<string | null>(null);
+  const [adminKey, setAdminKey] = React.useState<string | null>(null);
   const [codeSaved, setCodeSaved] = React.useState(false);
   const [codeUnavailable, setCodeUnavailable] = React.useState(false);
   const [signedIn, setSignedIn] = React.useState(false);
@@ -88,7 +89,12 @@ export default function Wizard({ onDone }: WizardProps) {
     panel.current?.focus();
   }, [step]);
 
-  const onPasswordSet = React.useCallback((user: string) => setAccount(user), []);
+  const onPasswordSet = React.useCallback((user: string, key: string | null) => {
+    setAccount(user);
+    // A second password set from this tab goes through set-password and
+    // carries no key; the one from the claim stays on screen.
+    if (key !== null) setAdminKey(key);
+  }, []);
   const onCodeSaved = React.useCallback(() => setCodeSaved(true), []);
   const onCodeUnavailable = React.useCallback(() => setCodeUnavailable(true), []);
   const onSignedIn = React.useCallback(() => setSignedIn(true), []);
@@ -152,6 +158,7 @@ export default function Wizard({ onDone }: WizardProps) {
               step={step}
               setup={setup}
               account={account}
+              adminKey={adminKey}
               codeSaved={codeSaved}
               signedIn={signedIn}
               onPasswordSet={onPasswordSet}
@@ -199,9 +206,10 @@ interface StepBodyProps {
   step: StepId;
   setup: SetupQuery;
   account: string | null;
+  adminKey: string | null;
   codeSaved: boolean;
   signedIn: boolean;
-  onPasswordSet: (user: string) => void;
+  onPasswordSet: (user: string, adminKey: string | null) => void;
   onCodeSaved: () => void;
   onCodeUnavailable: () => void;
   onSignedIn: () => void;
@@ -216,6 +224,7 @@ function StepBody(props: StepBodyProps) {
         <StepSignIn
           boxName={boxName(props.setup)}
           account={props.account}
+          adminKey={props.adminKey}
           onPasswordSet={props.onPasswordSet}
         />
       );
@@ -223,6 +232,7 @@ function StepBody(props: StepBodyProps) {
       return (
         <StepRecovery
           boxName={boxName(props.setup)}
+          adminKey={props.adminKey}
           saved={props.codeSaved}
           onSaved={props.onCodeSaved}
           onUnavailable={props.onCodeUnavailable}

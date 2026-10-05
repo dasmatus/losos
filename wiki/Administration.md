@@ -30,9 +30,15 @@ requires no token, but stops accepting claims once the box has an owner. Set up
 the box only on a trusted LAN; the first caller becomes its owner. The token is
 handed back only once and cannot be fetched again through the UI.
 
-To rotate the token, use local file access to write a new value of exactly 64
-lowercase hex characters to the token file, then restart `lososd`. A claimed UI
-cannot fetch a replacement token.
+The first-run wizard is that caller. After it sets the password it shows the
+token as the **admin key**, with a Copy button, and prints it on the recovery
+sheet in the next step under the recovery code. That is the only time the box
+shows it: the browser tab remembers it until it is closed, and every later
+visit to the admin pages asks for it. Keep it with the recovery code.
+
+There is no way to rotate the token from the box: it has no shell, and a
+claimed UI cannot fetch a replacement. Losing the key means reinstalling from
+the install medium, which wipes the disk.
 
 ## Settings
 
