@@ -760,6 +760,27 @@ impl Losos for IoLosos {
         }
     }
 
+    fn nextcloud_status(
+        &mut self,
+        target: &crate::setup::Target,
+    ) -> anyhow::Result<crate::setup::OccOutcome> {
+        let argv = crate::setup::plan_status(target);
+        let (cmd, args) = argv.split_first().context("plan_status is never empty")?;
+        let mut child = std::process::Command::new(cmd);
+        child.args(args);
+        // Same reason as the native RunOcc arm above: nixpkgs' nextcloud-occ
+        // wrapper reads `$USER` under `set -u`.
+        child.env("USER", "root");
+        let out = child
+            .output()
+            .with_context(|| format!("running {}", argv.join(" ")))?;
+        Ok(crate::setup::OccOutcome {
+            code: out.status.code().unwrap_or(-1),
+            stdout: String::from_utf8_lossy(&out.stdout).into_owned(),
+            stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
+        })
+    }
+
     fn recovery_code(&mut self) -> anyhow::Result<crate::recovery::Recovery> {
         crate::recovery::ensure_code(&mut FileCodeStore::from_env())
     }
