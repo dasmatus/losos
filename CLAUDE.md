@@ -356,7 +356,7 @@ A separate `midnight-reboot.timer` reboots unconditionally at 00:07 with
   the file raw. The installer used to write 4096 random bytes, so the volume
   was formatted with one key and unlocked with another on practically every
   install; nothing reached that failure until `tests/tpm.nix` enrolled the
-  chip. `ensure_keyfile` now writes 64 random bytes as 128 hex characters.
+  chip. `ensure_keyfile` now writes 2048 random bytes as 4096 hex characters.
   Don't "harden" it back to raw bytes, and don't put a newline in it.
 - **The LUKS key file must not live under `/root` or `/home`.** `lososd` runs
   with `ProtectHome=true` — on purpose, so a compromised request handler cannot

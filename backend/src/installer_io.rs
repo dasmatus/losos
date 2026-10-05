@@ -26,9 +26,9 @@ pub const DEFAULT_KEYFILE: &str = "/etc/keys/persist-keyfile";
 pub const DEFAULT_TARGET_REL: &str = "modules/install-target.nix";
 /// Where `--disko-script` writes the rendered target.
 pub const DEFAULT_EMIT_FILE: &str = "/tmp/losos-install-target.nix";
-/// Bytes of entropy behind a generated keyfile. The file holds their hex
-/// spelling, twice as long; see [`keyfile_text`] for why it is text.
-const KEYFILE_BYTES: usize = 64;
+/// Random bytes drawn for a generated keyfile. The file itself is their hex
+/// spelling, so it is twice this long; see `keyfile_text`.
+const KEYFILE_RANDOM_BYTES: usize = 2048;
 /// How long to wait for the flake's host to resolve before giving up, in
 /// seconds. Overridable with `LOSOS_NETWORK_TIMEOUT`.
 const DEFAULT_NETWORK_TIMEOUT_SECS: u64 = 600;
@@ -78,6 +78,31 @@ fn owner_only_dir(p: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// The keyfile's contents for `random` bytes of entropy: their lowercase hex
+/// spelling, no newline.
+///
+/// The same file is read twice by two different readers, and they must see
+/// the same bytes. At boot, stage 1 feeds `/crypto_keyfile.bin` to cryptsetup
+/// as is, and so do `systemd-cryptenroll --unlock-key-file` (the TPM path's
+/// enrolment) and `cryptsetup resize`. At format time, disko's luks `passwordFile` becomes
+/// `<(echo -n "$(cat file)")` (lib/types/luks.nix), and bash's command
+/// substitution drops every NUL byte and any trailing newlines. With raw
+/// `/dev/urandom` output the volume was therefore formatted with a key that
+/// was *not* the file's contents (4096 random bytes lose about 16 NULs), and
+/// the first boot of a fresh install sat at "Please enter passphrase for disk
+/// persist" with no passphrase anyone could type. Hex is NUL-free and
+/// newline-free, so it survives the substitution byte for byte;
+/// `tests/install.nix` asserts the generated file opens the volume.
+fn keyfile_text(random: &[u8]) -> String {
+    use std::fmt::Write;
+    random
+        .iter()
+        .fold(String::with_capacity(random.len() * 2), |mut s, b| {
+            let _ = write!(s, "{b:02x}");
+            s
+        })
+}
+
 /// Make a file owner-only (0600). It holds a LUKS key.
 fn owner_only_file(p: &Path) -> anyhow::Result<()> {
     use std::os::unix::fs::PermissionsExt;
@@ -99,7 +124,7 @@ impl Install for IoInstall {
         if let Some(dir) = path.parent() {
             owner_only_dir(dir)?;
         }
-        let mut buf = vec![0u8; KEYFILE_BYTES];
+        let mut buf = vec![0u8; KEYFILE_RANDOM_BYTES];
         {
             use std::io::Read;
             std::fs::File::open("/dev/urandom")?.read_exact(&mut buf)?;
@@ -275,28 +300,6 @@ impl Install for IoInstall {
     }
 }
 
-/// The keyfile's contents for `entropy`: lowercase hex, no newline.
-///
-/// Text, not raw bytes, because three readers have to agree on the key and
-/// one of them is a shell. disko hands `passwordFile` to `cryptsetup
-/// luksFormat` as `<(echo -n "$(cat FILE)")`: a command substitution, which
-/// drops every NUL byte and any trailing newline. The initrd
-/// (`/crypto_keyfile.bin`) and `systemd-cryptenroll --unlock-key-file` read
-/// the file raw. With 4096 random bytes the two readings differed in every
-/// real install (a NUL-free 4 KiB is a one-in-ten-million file), so the
-/// volume was formatted with one key and unlocked with another; neither
-/// tests/install.nix (halts in GRUB) nor the first real boot (stopped
-/// earlier, on a missing virtio driver) reached that failure. tests/tpm.nix
-/// did, on the enrolment. Hex has no NUL and no newline, so all three read
-/// the same 128 bytes.
-fn keyfile_text(entropy: &[u8]) -> String {
-    use std::fmt::Write;
-    entropy.iter().fold(String::new(), |mut s, b| {
-        let _ = write!(s, "{b:02x}");
-        s
-    })
-}
-
 /// The host a flake URL is fetched from, or `None` for a local path.
 ///
 /// Covers the spellings `LOSOS_FLAKE_URL` realistically takes: `https://…`,
@@ -458,18 +461,23 @@ pub fn run_install(opts: &Options) -> anyhow::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{flake_host, keyfile_text, wait_for_host, IoInstall, KEYFILE_BYTES};
+    use super::{flake_host, keyfile_text, wait_for_host, IoInstall, KEYFILE_RANDOM_BYTES};
     use crate::installer::Install;
     use std::time::Duration;
 
     #[test]
-    fn the_keyfile_is_shell_safe_text() {
-        // disko reads it through `$(cat …)`, the initrd and cryptenroll read
-        // it raw: the three agree only if there is no NUL and no newline.
-        let text = keyfile_text(&[0x00, 0x0a, 0xff, 0x41]);
-        assert_eq!(text, "000aff41");
-        assert_eq!(text.len(), 8);
-        assert!(text.bytes().all(|b| b.is_ascii_hexdigit()));
+    fn keyfile_survives_bash_command_substitution() {
+        // Every byte value, including NUL and newline, which bash's
+        // `$(cat file)` would drop; the written text must carry none.
+        let random: Vec<u8> = (0..=255u8).cycle().take(KEYFILE_RANDOM_BYTES).collect();
+        let text = keyfile_text(&random);
+        assert_eq!(text.len(), 2 * KEYFILE_RANDOM_BYTES);
+        assert!(text.bytes().all(|b| b.is_ascii_hexdigit()), "{text}");
+        // What `echo -n "$(cat file)"` hands cryptsetup at format time.
+        let as_bash_sees_it: String = text.chars().filter(|&c| c != '\0').collect();
+        assert_eq!(as_bash_sees_it.trim_end_matches('\n'), text);
+        // And it is the random bytes, not a constant.
+        assert_ne!(keyfile_text(&[1, 2, 3]), keyfile_text(&[3, 2, 1]));
     }
 
     #[test]
@@ -482,7 +490,7 @@ mod tests {
         let path = dir.join("keys").join("persist-keyfile");
         IoInstall.ensure_keyfile(&path).unwrap();
         let text = std::fs::read_to_string(&path).unwrap();
-        assert_eq!(text.len(), 2 * KEYFILE_BYTES);
+        assert_eq!(text.len(), 2 * KEYFILE_RANDOM_BYTES);
         assert!(text.bytes().all(|b| b.is_ascii_hexdigit()), "{text}");
         assert_eq!(
             std::fs::metadata(&path).unwrap().permissions().mode() & 0o777,
