@@ -51,6 +51,15 @@ assert must (lib.hasSuffix "#install" config.losos.upgradeFlakeUri)
   "losos.upgradeFlakeUri has no #install fragment (${config.losos.upgradeFlakeUri}); nixos-rebuild would look for nixosConfigurations.<hostname>, which this flake does not export";
 assert must (!config.losos.bios && config.boot.loader.systemd-boot.enable)
   "the published flake is not on the UEFI/systemd-boot path; the README tells owners to boot the installer in UEFI mode";
+assert must
+  (lib.elem "lososPersistentSources" config.system.activationScripts.createPersistentStorageDirs.deps)
+  "impermanence's createPersistentStorageDirs no longer waits for lososPersistentSources: inside nixos-install's chroot there is no passwd file yet (userborn), so impermanence's chown-by-name fails on every persisted directory";
+assert must
+  (
+    lib.hasInfix "ensure /persist/home/notshared 1000 1000 700" config.system.activationScripts.lososPersistentSources.text
+    && lib.hasInfix "ensure /persist/etc/rancher 0 0 0755" config.system.activationScripts.lososPersistentSources.text
+  )
+  "lososPersistentSources does not pre-create the persisted directories by numeric id (a home as its owner with its homeMode, a plain directory as root 0755)";
 # GRUB's limit is only set under `losos.bios`, which the published flake has
 # off; asserting it here would read the module's default. tests/install.nix
 # boots the BIOS path and is where that half is exercised.
