@@ -275,7 +275,12 @@ that host `/cluster/join` and `/market/*` answer 503 and `/noise-public-key`
 404. `devenv.nix`'s `crates` list and CI lint/test it like the other two;
 `nix build` never sees it. Its `tests/postgres.rs` is gated on
 `LOSOS_TEST_DATABASE_URL` (CI's test job provides a Postgres service); the
-rest of its suite runs on the in-memory store.
+rest of its suite runs on the in-memory store. Its second static page,
+`public/find.html`, is the "find my box" flow: Chrome's Local Network Access
+permission lets it read a box's `/setup/state.json` from the public origin,
+which `modules/setup.nix` allows for exactly the origins in
+`losos.setup.finderOrigins` (an nginx map, asserted by `tests/setup.nix`),
+never `*` — the document is LAN inventory.
 
 **The `losos.*` option namespace** (`options.nix`): all project-specific
 knobs (`targetDrive`, `tpm.enable`, `sharingMyStorage`, `forgejo.enable`,

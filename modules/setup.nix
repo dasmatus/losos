@@ -114,6 +114,41 @@ let
   # document the wizard fails to parse.
   json = builtins.toJSON;
 
+  # ── Cross-origin read of state.json, for the finder page ─────────────────
+  # options.nix (`losos.setup.finderOrigins`) says what this is for and why it
+  # is an allow-list. The shape here is the one modules/containers.nix uses
+  # for its security headers, for the same reason: `add_header` at location
+  # scope would replace the inherited set, so the header is added at server
+  # level with a value that is empty — and therefore omitted — everywhere it
+  # does not apply. The value depends on origin *and* path together, so a
+  # matching Origin on any other route (the SPA, the certificate, /nextcloud)
+  # still gets nothing. A browser only sends Origin on cross-origin requests,
+  # so the wizard's own same-origin read is unaffected.
+  #
+  # No `Vary: Origin`: the wizard fetches with `cache: 'no-store'`, the finder
+  # does the same, and nothing else reads this document. Exact matches only,
+  # so an origin that reads like a pattern is a non-match, not a hole.
+  finderOrigins = config.losos.setup.finderOrigins;
+  corsEnabled = finderOrigins != [ ];
+  # Two maps rather than one keyed on "$http_origin $uri": a combined key is
+  # long enough to overflow nginx's default map_hash_bucket_size (64), and the
+  # fix for that is a global tunable nobody would connect to this file. The
+  # second map's value is the first map's variable, which nginx resolves
+  # per request, so the header carries the origin only when both match.
+  corsMap = ''
+    map $http_origin $losos_finder_origin {
+        default "";
+    ${
+      lib.concatMapStrings (o: ''
+        "${o}" "${o}";
+      '') finderOrigins
+    }}
+    map $uri $losos_setup_cors {
+        default "";
+        "${stateUrl}" $losos_finder_origin;
+    }
+  '';
+
   # temp + rename: nginx must never read a half-written document, and the
   # request that caught it would be the first one the wizard ever makes.
   writeState = body: ''
@@ -169,6 +204,21 @@ let
       '';
 in
 {
+  assertions = [
+    {
+      # The origins are pasted into an nginx map verbatim; the shape check is
+      # what keeps a stray quote or path from becoming an nginx config error on
+      # a box with no shell to read it from.
+      assertion = lib.all (o: builtins.match "https?://[A-Za-z0-9.-]+(:[0-9]+)?" o != null) finderOrigins;
+      message = "losos.setup.finderOrigins entries must be bare origins, scheme://host[:port]: ${toString finderOrigins}";
+    }
+  ];
+
+  services.nginx.appendHttpConfig = lib.mkIf corsEnabled corsMap;
+  services.nginx.virtualHosts."losos-front".extraConfig = lib.mkIf corsEnabled ''
+    add_header Access-Control-Allow-Origin $losos_setup_cors always;
+  '';
+
   # ── The document the wizard reads before it has a token ───────────────────
   #
   # Deliberately only what is true *without* one: the box's name, and the
@@ -263,7 +313,8 @@ in
     {
       # ── The setup document ────────────────────────────────────────────────
       # No add_header here either, for the same reason as above — including no
-      # Cache-Control. The wizard asks for this with `cache: 'no-store'`, which
+      # Cache-Control, and including the CORS header, which lives at server
+      # level (see `corsMap`). The wizard asks for this with `cache: 'no-store'`, which
       # costs nothing; nginx serves Last-Modified and ETag for a static file,
       # so even a client that does cache it revalidates and sees a new
       # fingerprint as soon as the file is rewritten.
