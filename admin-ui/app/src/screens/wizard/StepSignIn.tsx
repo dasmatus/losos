@@ -5,6 +5,16 @@
  * shows it to nobody; the appliance has no SSH and no shell login, so without
  * this step a fresh box cannot be signed into at all.
  *
+ * On a fresh box this tab holds no admin token, and every /api route except
+ * the claim refuses without one. So the first password goes through
+ * `POST /api/setup/claim` (@/lib/api `claimBox`): public while the box is
+ * unowned, never after, and it hands back the admin token so the rest of the
+ * wizard — the recovery code, the sign-in frame — runs authenticated. The
+ * token-gated `/api/set-password` is only for a second attempt from the same
+ * tab, once the claim has closed the window. The old code posted to
+ * set-password first, got a 401 on every fresh box, and the wizard could not
+ * get past this step; the browser test walks it now.
+ *
  * A password is collected whatever else happens. The passkey is an addition,
  * never a substitute: the desktop and phone sync clients authenticate with a
  * name and a password, and no passkey helps them. See ./passkey.ts.
@@ -28,7 +38,7 @@ import { FieldError, Input } from "@/components/ui/input";
 import { Label, LabelHint } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/progress";
-import { isUnauthorized } from "@/lib/api";
+import { claimBox, hasToken, isUnauthorized, saveToken } from "@/lib/api";
 import { t } from "@/lib/i18n";
 import { Rich, useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
@@ -99,11 +109,11 @@ function PasswordForm({
     setBusy(true);
     setProblem(null);
     try {
-      const result = await postSetPassword(password);
+      const user = await setFirstPassword(password);
       setPassword("");
       setConfirm("");
       setVisible(false);
-      onPasswordSet(result.user);
+      onPasswordSet(user);
     } catch (error) {
       setProblem(describeSetPassword(error));
     } finally {
@@ -205,6 +215,23 @@ function PasswordForm({
       )}
     </form>
   );
+}
+
+/* Claim the box when this tab holds no token, which on a fresh box is always;
+ * change the password through the gated route when it does. The claim's reply
+ * carries the admin token and it is stored before anything else happens, so a
+ * failure after this point (the name missing from the reply, say) still leaves
+ * the tab signed in rather than locked out of a box it just claimed. */
+async function setFirstPassword(password: string): Promise<string> {
+  if (hasToken()) {
+    const result = await postSetPassword(password);
+    return result.user;
+  }
+  const claimed = await claimBox(password);
+  saveToken(claimed.token);
+  // lososd always names the account it changed; the type allows null because
+  // the wire contract does. An unnamed account is still a set password.
+  return claimed.user ?? "";
 }
 
 function describeSetPassword(error: unknown): string {

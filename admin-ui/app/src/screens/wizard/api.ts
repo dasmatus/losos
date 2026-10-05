@@ -1,17 +1,20 @@
 /* The first-run wizard's own client calls.
  *
- * Three of these routes exist today and one does not. The distinction is
- * marked on every declaration below and it is load-bearing — a wizard that
- * pretends to have minted a recovery code is worse than one that says it
- * cannot, because the owner writes down a number that proves nothing.
+ * Every route here is served today; the status is marked on each declaration
+ * below because it has not always been, and a wizard that pretends to have
+ * minted a recovery code is worse than one that says it cannot — the owner
+ * writes down a number that proves nothing.
  *
  *   SHIPPING  GET  /setup/state.json   modules/setup.nix, static, no token
  *   SHIPPING  GET  /setup/losos-ca.crt modules/setup.nix, static, no token
- *   SHIPPING  POST /api/set-password   backend/src/http.rs + setup.rs
- *   PENDING   GET  /api/recovery       backend/src/recovery.rs exists; no HTTP
- *                                      route is wired to it yet
+ *   SHIPPING  POST /api/set-password   backend/src/http.rs + setup.rs, token
+ *   SHIPPING  GET  /api/recovery       backend/src/http.rs + recovery.rs, token
  *
- * The passkey half is pending too and lives in ./passkey.ts.
+ * The first password on a fresh box does not go through set-password at all:
+ * nothing holds a token yet. Step 2 claims the box through @/lib/api's
+ * `claimBox` (`POST /api/setup/claim`, public until first use), which is
+ * where the token comes from. The passkey half is pending and lives in
+ * ./passkey.ts.
  *
  * Why a transport of its own rather than @/lib/api's: that module's `call()`
  * is private and its exported surface is one function per route it already
