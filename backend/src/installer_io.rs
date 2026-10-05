@@ -243,6 +243,33 @@ impl Install for IoInstall {
         owner_only_file(dst)
     }
 
+    /// Seal a LUKS2 token to the TPM2, unattended.
+    ///
+    /// `--unlock-key-file` authenticates with the keyfile the volume was just
+    /// formatted with, so nothing is typed. `--tpm2-pcrs=` (empty) binds the
+    /// token to no PCRs, on purpose and for the same reason modules/keyring.nix
+    /// gives: this box updates its firmware, bootloader and kernel unattended
+    /// and has no shell to recover from, so a token bound to PCR 0 or 7 would
+    /// lock the owner out on the first firmware update. What the chip buys
+    /// without PCRs is that the disk alone (pulled, cloned, imaged) is
+    /// unreadable; a thief who takes the whole box keeps the chip and is
+    /// outside this threat model, as docs/security-model.md says.
+    ///
+    /// Inherited stdio: the tool prints what it sealed, and that belongs on
+    /// the installer console.
+    fn enroll_tpm(&mut self, device: &Path, keyfile: &Path) -> anyhow::Result<()> {
+        let unlock = format!("--unlock-key-file={}", keyfile.display());
+        run_inherit(
+            "systemd-cryptenroll",
+            &[
+                "--tpm2-device=auto",
+                "--tpm2-pcrs=",
+                &unlock,
+                &device.to_string_lossy(),
+            ],
+        )
+    }
+
     fn log_info(&mut self, msg: &str) {
         println!("{msg}");
     }
@@ -379,6 +406,17 @@ fn env_or(key: &str, default: &str) -> String {
 /// work on it.
 pub fn booted_in_bios() -> bool {
     !Path::new("/sys/firmware/efi").exists()
+}
+
+/// Whether the installer medium can see a TPM2 chip.
+///
+/// `/dev/tpmrm0` is the kernel's resource-managed interface, which is what
+/// systemd-cryptenroll and the initrd's systemd-cryptsetup open; `/dev/tpm0`
+/// is the raw one, present whenever the driver bound at all. Either means the
+/// hardware is there; the enrolment itself is what proves the chip works, and
+/// it runs before anything slow.
+pub fn tpm_present() -> bool {
+    Path::new("/dev/tpmrm0").exists() || Path::new("/dev/tpm0").exists()
 }
 
 /// Fill in the environment-overridable defaults around the parsed CLI flags.
