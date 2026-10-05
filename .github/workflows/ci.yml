@@ -123,7 +123,7 @@ jobs:
     # so an upstream Rust release could turn CI red with no change here, and the
     # linter would disagree with the compiler that actually ships.
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-nix
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -159,7 +159,7 @@ jobs:
     # links a binary per test target, which pushed `nix build .#losos-ctl` to
     # 7.7-10.3 minutes. Mirrors devenv.nix's `test-rust`.
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-nix
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -176,7 +176,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-nix
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -205,7 +205,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-nix
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -227,7 +227,7 @@ jobs:
           nix path-info .#losos-ctl > ctl-cache/store-paths
       # v4, not v3: upload-artifact@v3 and download-artifact@v3 were retired on
       # GitHub in January 2025 and now fail outright.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: losos-ctl-store
           path: ctl-cache
@@ -243,7 +243,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-nix
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -273,7 +273,7 @@ jobs:
         run: |
           nix copy --to "file://$PWD/registrar-cache" --no-check-sigs .#losos-registrar
           nix path-info .#losos-registrar > registrar-cache/store-paths
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: losos-registrar-store
           path: registrar-cache
@@ -283,7 +283,7 @@ jobs:
         run: |
           nix copy --to "file://$PWD/ui-cache" --no-check-sigs .#losos-admin-ui
           nix path-info .#losos-admin-ui > ui-cache/store-paths
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: losos-admin-ui-store
           path: ui-cache
@@ -299,7 +299,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-nix
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -326,7 +326,7 @@ jobs:
         run: |
           nix copy --to "file://$PWD/images-cache" --no-check-sigs .#losos-image-pause .#losos-image-forgejo
           nix path-info .#losos-image-pause .#losos-image-forgejo > images-cache/store-paths
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: github.event_name != 'pull_request' && vars.LOSOS_PROXY_URL != ''
         with:
           name: losos-images-store
@@ -346,25 +346,25 @@ jobs:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-nix
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           cache-url: ${{ vars.LOSOS_PROXY_URL }}
           public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: losos-ctl-store
           path: ctl-cache
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: losos-registrar-store
           path: registrar-cache
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: losos-admin-ui-store
           path: ui-cache
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: losos-images-store
           path: images-cache
@@ -413,7 +413,7 @@ jobs:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-nix
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -444,7 +444,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # Check out the branch, not the detached commit: a detached HEAD has
           # nothing to commit onto.
@@ -509,17 +509,17 @@ jobs:
     # cannot serve.
     needs: [losos-ctl, registrar-and-ui]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-nix
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           cache-url: ${{ vars.LOSOS_PROXY_URL }}
           public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: losos-ctl-store
           path: ctl-cache
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: losos-admin-ui-store
           path: ui-cache
@@ -581,7 +581,7 @@ jobs:
               --timeout 600 --out iso-boot || status=1
           done
           exit "$status"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: iso-boot-screens
@@ -598,7 +598,7 @@ jobs:
       contents: write
       packages: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-nix
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -609,15 +609,15 @@ jobs:
           set -euo pipefail
           sudo rm -rf /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL || true
           df -h
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: losos-ctl-store
           path: ctl-cache
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: losos-admin-ui-store
           path: ui-cache
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: losos-registrar-store
           path: registrar-cache
