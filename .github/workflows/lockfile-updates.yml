@@ -36,21 +36,6 @@ jobs:
         run: |
           set -euo pipefail
 
-          current_devenv_locked_source="$(python3 - <<'PY'
-          import json
-          from pathlib import Path
-
-          locked = json.loads(Path("devenv.lock").read_text())["nodes"]["devenv"]["locked"]
-          if locked["type"] != "github":
-              raise SystemExit("unsupported devenv source type")
-
-          source = f'github:{locked["owner"]}/{locked["repo"]}/{locked["rev"]}'
-          if "dir" in locked:
-              source = f'{source}?dir={locked["dir"]}'
-          print(source)
-          PY
-          )"
-
           nix flake update
 
           python3 - <<'PY'
@@ -73,25 +58,14 @@ jobs:
           path.write_text(updated)
           PY
 
-          nix run "$current_devenv_locked_source" -- update
-
-          devenv_locked_source="$(python3 - <<'PY'
-          import json
-          from pathlib import Path
-
-          locked = json.loads(Path("devenv.lock").read_text())["nodes"]["devenv"]["locked"]
-          if locked["type"] != "github":
-              raise SystemExit("unsupported devenv source type")
-
-          source = f'github:{locked["owner"]}/{locked["repo"]}/{locked["rev"]}'
-          if "dir" in locked:
-              source = f'{source}?dir={locked["dir"]}'
-          print(source)
-          PY
-          )"
-          if [ "$devenv_locked_source" != "$current_devenv_locked_source" ]; then
-            nix run "$devenv_locked_source" -- update
-          fi
+          # The devenv CLI comes from the nixpkgs just locked, not from
+          # devenv.lock: that lock pins devenv's `src/modules` sub-flake, which
+          # carries the modules and no package, so `nix run` on it fails with
+          # "does not provide attribute 'packages.x86_64-linux.default'".
+          # nixpkgs' build is on cache.nixos.org; devenv's own root flake would
+          # compile it from source inside this job's 45 minutes.
+          nixpkgs_rev="$(jq -r '.nodes.nixpkgs.locked.rev' flake.lock)"
+          nix run "github:NixOS/nixpkgs/${nixpkgs_rev}#devenv" -- update
 
           python3 - <<'PY'
           import json
