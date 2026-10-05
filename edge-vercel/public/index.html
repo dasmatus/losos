@@ -112,7 +112,7 @@
         fetch('/status', { cache: 'no-store' }).then((r) => { if (!r.ok) throw new Error(`/status → ${r.status}`); return r.json(); }),
         fetch('/status/traefik', { cache: 'no-store' }).then((r) => r.ok ? r.text() : `# /status/traefik → ${r.status}`),
       ]);
-      el('store').textContent = `store: ${s.store === 'redis' ? 'Redis (survives cold starts)' : 'memory (this instance only)'}`;
+      el('store').textContent = `store: ${s.store === 'postgres' ? 'Neon Postgres (survives cold starts)' : 'memory (this instance only)'}`;
       el('ttl').textContent = `heartbeat TTL: ${s.heartbeat_ttl_secs}s`;
       el('when').textContent = new Date(s.generated_at_unix * 1000).toLocaleTimeString();
       el('traefik').textContent = t;

@@ -1,14 +1,16 @@
 //! The host's one job: make the registrar behave on a platform that forgets.
 //!
-//! Every test drives the real router through the real wrapper, with the real
-//! `Store` talking HTTP to a fake Upstash. What is asserted is the serverless
-//! property the self-hosted tests cannot: that a *second* instance, built from
-//! nothing, knows what the first one was told.
+//! Every test drives the real router through the real wrapper, over a store
+//! two hosts can share (`MemStore`; the Postgres store is covered in
+//! `tests/postgres.rs`). What is asserted is the serverless property the
+//! self-hosted tests cannot: that a *second* instance, built from nothing,
+//! knows what the first one was told.
 
 mod common;
 
 use axum::http::Method;
-use common::{call, fake_upstash, heartbeat_body, host, register_body, TempDir, GOOD_TOKEN};
+use common::{call, heartbeat_body, host, register_body, TempDir, GOOD_TOKEN};
+use losos_edge_vercel::{MemStore, PgStore, StoreSettings};
 
 #[tokio::test]
 async fn health_and_status_answer_with_nothing_registered() {
@@ -40,8 +42,7 @@ async fn health_and_status_answer_with_nothing_registered() {
 #[tokio::test]
 async fn enrollment_is_closed_here_too() {
     let dir = TempDir::new();
-    let (url, _kv) = fake_upstash().await;
-    let host = host(&dir, Some(&url)).await;
+    let host = host(&dir, Some(Box::new(MemStore::default()))).await;
 
     let wrong = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef";
     for (id, token) in [
@@ -66,8 +67,8 @@ async fn enrollment_is_closed_here_too() {
 #[tokio::test]
 async fn a_registered_box_shows_up_in_status_and_in_the_traefik_config() {
     let dir = TempDir::new();
-    let (url, kv) = fake_upstash().await;
-    let host = host(&dir, Some(&url)).await;
+    let store = MemStore::default();
+    let host = host(&dir, Some(Box::new(store.clone()))).await;
 
     let body = register_body("demo-box", "demo.losos.example", GOOD_TOKEN);
     let (status, body) = call(&host, Method::POST, "/register", Some(&body)).await;
@@ -81,7 +82,7 @@ async fn a_registered_box_shows_up_in_status_and_in_the_traefik_config() {
 
     let (_, body) = call(&host, Method::GET, "/status", None).await;
     let parsed: serde_json::Value = serde_json::from_str(&body).expect("JSON");
-    assert_eq!(parsed["store"], "redis");
+    assert_eq!(parsed["store"], "memory");
     let tenants = parsed["tenants"].as_array().expect("tenants");
     assert_eq!(tenants.len(), 1);
     assert_eq!(tenants[0]["id"], "demo-box");
@@ -99,12 +100,7 @@ async fn a_registered_box_shows_up_in_status_and_in_the_traefik_config() {
     );
 
     // What went to the store: the snapshot, with no token in it anywhere.
-    let saved = kv
-        .lock()
-        .expect("kv")
-        .get("losos:test")
-        .cloned()
-        .expect("snapshot saved");
+    let saved = store.saved_json().expect("snapshot saved");
     assert!(saved.contains("demo.losos.example"));
     assert!(!saved.contains(GOOD_TOKEN), "a token reached the store");
 }
@@ -112,10 +108,10 @@ async fn a_registered_box_shows_up_in_status_and_in_the_traefik_config() {
 /// The property this crate exists for.
 #[tokio::test]
 async fn a_fresh_instance_knows_what_the_previous_one_was_told() {
-    let (url, _kv) = fake_upstash().await;
+    let store = MemStore::default();
 
     let first_dir = TempDir::new();
-    let first = host(&first_dir, Some(&url)).await;
+    let first = host(&first_dir, Some(Box::new(store.clone()))).await;
     let body = register_body("demo-box", "demo.losos.example", GOOD_TOKEN);
     let (status, _) = call(&first, Method::POST, "/register", Some(&body)).await;
     assert_eq!(status, 200);
@@ -124,7 +120,7 @@ async fn a_fresh_instance_knows_what_the_previous_one_was_told() {
 
     // A new instance: new scratch disk, nothing in memory, same store.
     let second_dir = TempDir::new();
-    let second = host(&second_dir, Some(&url)).await;
+    let second = host(&second_dir, Some(Box::new(store))).await;
     let body = heartbeat_body("demo-box", GOOD_TOKEN, false);
     let (status, _) = call(&second, Method::POST, "/heartbeat", Some(&body)).await;
     assert_eq!(status, 204, "the second instance should know demo-box");
@@ -164,9 +160,8 @@ async fn without_a_store_a_fresh_instance_starts_empty() {
 /// import applies the TTL to what it loads.
 #[tokio::test]
 async fn a_box_whose_heartbeats_stopped_is_pruned_on_load() {
-    let (url, kv) = fake_upstash().await;
-    kv.lock().expect("kv").insert(
-        "losos:test".to_string(),
+    let store = MemStore::default();
+    store.seed_json(
         serde_json::json!({
             "tenants": {
                 "demo-box": {
@@ -187,7 +182,7 @@ async fn a_box_whose_heartbeats_stopped_is_pruned_on_load() {
         .to_string(),
     );
     let dir = TempDir::new();
-    let host = host(&dir, Some(&url)).await;
+    let host = host(&dir, Some(Box::new(store.clone()))).await;
 
     let (_, body) = call(&host, Method::GET, "/status", None).await;
     let parsed: serde_json::Value = serde_json::from_str(&body).expect("JSON");
@@ -198,28 +193,28 @@ async fn a_box_whose_heartbeats_stopped_is_pruned_on_load() {
         tenants.is_empty(),
         "expected both boxes gone, got {tenants:?}"
     );
-    let saved = kv
-        .lock()
-        .expect("kv")
-        .get("losos:test")
-        .cloned()
-        .expect("snapshot saved after the read");
+    let saved = store.saved_json().expect("snapshot saved after the read");
     let saved: serde_json::Value = serde_json::from_str(&saved).expect("JSON");
     assert_eq!(saved["tenants"].as_object().map(|m| m.len()), Some(0));
 }
 
-/// A store that cannot be reached must not be papered over with memory.
+/// A database that cannot be reached must not be papered over with memory.
 #[tokio::test]
 async fn an_unreachable_store_fails_the_request_rather_than_forgetting() {
     // Bind and drop: the port is now closed, so the connect is refused fast.
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await
         .expect("bind");
-    let url = format!("http://{}", listener.local_addr().expect("addr"));
+    let port = listener.local_addr().expect("addr").port();
     drop(listener);
+    let store = PgStore::new(&StoreSettings {
+        url: format!("postgres://losos:losos@127.0.0.1:{port}/losos?sslmode=disable"),
+        key: "losos:test".to_string(),
+    })
+    .expect("a closed port is still a valid connection string");
 
     let dir = TempDir::new();
-    let host = host(&dir, Some(&url)).await;
+    let host = host(&dir, Some(Box::new(store))).await;
     let body = register_body("demo-box", "demo.losos.example", GOOD_TOKEN);
     let (status, body) = call(&host, Method::POST, "/register", Some(&body)).await;
     assert_eq!(status, 503, "body: {body}");

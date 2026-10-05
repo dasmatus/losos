@@ -14,11 +14,12 @@
 //!     environment variables, since the function has no `/var/secrets`, and
 //!     writes them to the function's scratch disk in the files the registrar
 //!     already reads — so the whitelist code path is the production one.
-//!   * [`store`] keeps the registry in a Redis reachable over HTTPS (Upstash,
-//!     as Vercel's marketplace provisions it). A function instance may be
-//!     recreated between two heartbeats and may run several copies at once,
-//!     so local state is not state. Without a store the registry lives in the
-//!     instance's memory and survives only while that instance is warm.
+//!   * [`store`] keeps the registry in a Postgres (Neon, as Vercel's
+//!     marketplace provisions it), one `jsonb` row read before and upserted
+//!     after every request. A function instance may be recreated between two
+//!     heartbeats and may run several copies at once, so local state is not
+//!     state. Without a database the registry lives in the instance's memory
+//!     and survives only while that instance is warm.
 //!   * [`host`] wraps every request: load the registry from the store, let the
 //!     registrar answer, run one reconcile pass (which is where the heartbeat
 //!     TTL prunes), save the registry back. The reconciler is driven by
@@ -40,7 +41,7 @@
 //! hostnames and their liveness — to a third-party platform and, through
 //! `/status`, to anyone with the URL. It is a demonstration deployment. The
 //! tokens themselves never leave the environment variables and the function's
-//! scratch disk, and are never written to the store or shown by any route.
+//! scratch disk, and are never written to the database or shown by any route.
 
 #![warn(unreachable_pub)]
 
@@ -51,4 +52,4 @@ pub mod store;
 
 pub use host::Host;
 pub use settings::{Settings, StoreSettings, TenantSpec};
-pub use store::Store;
+pub use store::{MemStore, PgStore, Store};
