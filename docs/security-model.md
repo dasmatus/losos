@@ -34,7 +34,10 @@ The token is equivalent to root: `POST /api/apply` writes arbitrary Nix to
   token exactly once, then the route refuses further claims. Set up a new box
   only on a trusted LAN: whoever claims it first becomes its owner. The window
   is guarded by source address (`lanOnly`, with loopback denied), not by a
-  secret, and closes on first use.
+  secret, and closes on first use. While Nextcloud is still installing itself
+  the route answers 503 and changes nothing (`GET /api/setup/claim` says
+  `ready: false` with the reason); the window stays open until a claim
+  succeeds.
 - The claim route also refuses what a web page in a LAN browser could send:
   a body that is not `application/json` (which would skip the CORS
   preflight), a `Host` that is not the box's hostname, `<hostname>.local` or
