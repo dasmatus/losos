@@ -1,13 +1,11 @@
 //! Reading and writing the two Nix files the control plane owns.
 //!
 //! This module is pure: it takes and returns strings, touches no filesystem,
-//! and is where the whole `overrides.nix` contract lives. Two separate files
-//! are involved and they are deliberately **not** the same one:
-//!
-//!   * `modules/overrides.nix` (`LOSOS_OVERRIDES`) — read by `settings`,
-//!     overwritten wholesale by `apply` and `factory-reset`.
-//!   * `defaults.nix` (`LOSOS_CONFIG`) — only ever line-patched by
-//!     `change --mode`, via [`inject_line`].
+//! and is where the whole `overrides.nix` contract lives. One file is
+//! involved, `modules/overrides.nix` (`LOSOS_OVERRIDES`): read by `settings`,
+//! overwritten wholesale by `apply` and `factory-reset`, and line-patched by
+//! `change --mode` via [`inject_line`]. (`change` used to patch a second file,
+//! `defaults.nix`, which no installed box has; see `cmd_change`.)
 //!
 //! Parsing is line-based on purpose. A real Nix parser would reject the
 //! hand-edited files this appliance tolerates, and the only values that need
@@ -181,7 +179,7 @@ pub fn parse_settings(content: &str) -> Settings {
     }
 }
 
-/// Patch the `losos.sharingMyStorage` assignment in `defaults.nix`.
+/// Patch the `losos.sharingMyStorage` assignment in `overrides.nix`.
 ///
 /// Replaces the first real assignment in place. When there is none, the line is
 /// inserted before the closing brace, or appended if the file doesn't end in

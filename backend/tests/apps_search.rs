@@ -48,7 +48,6 @@ impl Daemon {
         let child = Command::new(env!("CARGO_BIN_EXE_lososd"))
             .env("LOSOS_NO_DBUS", "1")
             .env("LOSOS_STATE_DIR", dir.path().join("state"))
-            .env("LOSOS_CONFIG", dir.path().join("defaults.nix"))
             .env("LOSOS_OVERRIDES", dir.path().join("overrides.nix"))
             .env("LOSOS_ADMIN_TOKEN_FILE", &token_file)
             .env("LOSOS_ADMIN_PORT", port.to_string())

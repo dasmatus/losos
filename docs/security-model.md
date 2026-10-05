@@ -141,9 +141,12 @@ ARP-spoof can intercept first use.
 
 ### Physical access
 
-With `losos.tpm.enable`, `/persist` unlocks from the TPM. Without a TPM the
-keyfile is in the initrd on an unencrypted ESP, so whoever has the machine has
-the data.
+By default (`losos.tpm.enable = false`, which is what the installer ISO
+produces) the LUKS keyfile is in the initrd on an unencrypted ESP, so whoever
+has the machine has the data. With `losos.tpm.enable` (`losos-ctl install
+--tpm`, then `systemd-cryptenroll` on the installed system) `/persist` unlocks
+from the TPM instead; that path is tested but not automated, so a stolen box
+is in the threat model, not outside it.
 
 ### Tunnel encryption
 
