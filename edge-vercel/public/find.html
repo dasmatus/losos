@@ -1,0 +1,232 @@
+<!doctype html>
+<!--
+  Find my box.
+
+  A new LosOS box has no screen anyone wants to read and no address anyone
+  wants to type: the installed way to reach it is a tty1 banner showing
+  "mattbox.local" and an IPv4 address. This page is the gentler way in.
+
+  It uses Chrome's Local Network Access permission: a page on a public,
+  HTTPS origin may fetch from the local network once the person has said
+  yes to "look for and connect to any device on your local network". With
+  that, this page asks http://<name>.local/setup/state.json — the document
+  the first-run wizard already publishes (modules/setup.nix), LAN-only and
+  without secrets — and, if a LosOS box answers, hands over a link to it.
+  The box lets exactly this origin read that document cross-origin
+  (losos.setup.finderOrigins); nothing else on the box is reachable from
+  here, and nothing is sent to the edge host: the lookup happens entirely in
+  the browser, between the person's machine and their box.
+
+  Browsers without the permission (Firefox, Safari, older Chrome) get the
+  plain instructions instead. The page is static, served by Vercel from
+  public/, and reads nothing from the function.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Find my LosOS box</title>
+<meta name="description" content="Find the LosOS box on your home network from the browser, without typing an address.">
+<style>
+  :root {
+    color-scheme: light;
+    --ground: #f3f5f7; --surface: #ffffff; --sunk: #eaedf0;
+    --ink: #18212a; --muted: #5c6a77; --faint: #8c98a4;
+    --line: #dce1e6; --hair: #eaeef1;
+    --accent: #0e6e7d; --accent-wash: #e2eff1;
+    --ok: #2e7357; --warn: #8c6512; --crit: #a8443c;
+    --elev-card: 0 1px 2px rgb(24 33 42 / 0.05), 0 4px 16px rgb(24 33 42 / 0.06);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      color-scheme: dark;
+      --ground: #0d1218; --surface: #141b22; --sunk: #0f151b;
+      --ink: #e6ebf0; --muted: #9aa7b3; --faint: #6b7883;
+      --line: #263039; --hair: #1c252e;
+      --accent: #48b3c0; --accent-wash: #0d2a2f;
+      --ok: #5fb08f; --warn: #d1a340; --crit: #e0776d;
+      --elev-card: none;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--ground); color: var(--ink);
+    font: 16px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  main { max-width: 640px; margin: 0 auto; padding: 40px 16px 64px; }
+  header { margin-bottom: 20px; }
+  h1 { font-size: 26px; margin: 0 0 6px; letter-spacing: -0.01em; }
+  .lede { color: var(--muted); margin: 0; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
+          box-shadow: var(--elev-card); padding: 22px; margin-bottom: 16px; }
+  .card h2 { font-size: 17px; margin: 0 0 10px; }
+  .card p { margin: 0 0 10px; }
+  .card p:last-child { margin-bottom: 0; }
+  form { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 14px; }
+  label { color: var(--muted); font-size: 14px; flex-basis: 100%; }
+  .name { display: flex; align-items: center; border: 1px solid var(--line); border-radius: 8px;
+          background: var(--sunk); padding: 0 10px; flex: 1 1 200px; }
+  .name span { color: var(--faint); font: 14px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  input { border: 0; background: transparent; color: var(--ink); font: inherit; padding: 9px 4px; width: 100%; min-width: 0; outline: none; }
+  button, .button {
+    border: 0; border-radius: 8px; padding: 10px 18px; font: inherit; font-weight: 600; cursor: pointer;
+    background: var(--accent); color: #fff; text-decoration: none; display: inline-block;
+  }
+  button[disabled] { opacity: .55; cursor: progress; }
+  .status { margin-top: 14px; display: none; }
+  .status.show { display: block; }
+  .found { border-left: 3px solid var(--ok); padding: 10px 14px; background: var(--sunk); border-radius: 8px; }
+  .found strong { font-size: 17px; }
+  .found .open { margin-top: 12px; }
+  .nope { border-left: 3px solid var(--warn); padding: 10px 14px; background: var(--sunk); border-radius: 8px; color: var(--muted); }
+  .nope strong, .nope li strong { color: var(--ink); }
+  .nope ul { margin: 8px 0 0; padding-left: 18px; }
+  .muted { color: var(--muted); }
+  .small { font-size: 14px; }
+  ol { padding-left: 20px; margin: 0; }
+  ol li { margin-bottom: 6px; }
+  code { font: 14px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background: var(--sunk); padding: 1px 5px; border-radius: 4px; }
+  footer { color: var(--faint); font-size: 13px; }
+  footer a { color: inherit; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Find my LosOS box</h1>
+    <p class="lede">Your box is on your home network, not on the internet. This page asks your browser to look for it there, so you never have to read its screen or type an address.</p>
+  </header>
+
+  <section class="card" id="finder">
+    <h2>Look for it</h2>
+    <p>Plug the box in, give it a minute to boot, and make sure this computer is on the same Wi‑Fi or network. Then:</p>
+    <form id="form">
+      <label for="name">The box's name — leave it as is unless you renamed yours</label>
+      <div class="name"><span>http://</span><input id="name" value="mattbox" autocomplete="off" spellcheck="false" aria-label="box name"><span>.local</span></div>
+      <button id="go" type="submit">Find my box</button>
+    </form>
+    <p class="small muted" style="margin-top:10px">Your browser will ask whether this page may look for devices on your local network. Say yes; the lookup happens on your computer and nothing about your network is sent anywhere.</p>
+    <div class="status" id="status"></div>
+  </section>
+
+  <section class="card" id="manual">
+    <h2>Or type the address</h2>
+    <ol>
+      <li>The box's own screen shows its address, as <code>mattbox.local</code> and as a number like <code>192.168.1.23</code>.</li>
+      <li>Type either one into the address bar, with <code>http://</code> in front: <code>http://mattbox.local</code>.</li>
+      <li>The first-run setup opens. It walks you through trusting the box's certificate and choosing a password.</li>
+    </ol>
+  </section>
+
+  <footer>Part of the LosOS edge host · <a href="/">registrar status</a> · the lookup uses the browser's Local Network Access permission (Chrome 142 or newer).</footer>
+</main>
+
+<script>
+(() => {
+  const form = document.getElementById('form');
+  const nameInput = document.getElementById('name');
+  const go = document.getElementById('go');
+  const status = document.getElementById('status');
+
+  // Chrome exposes the permission under this name; a browser that has never
+  // heard of it throws on the query, and that is the whole feature test.
+  async function supported() {
+    if (!navigator.permissions || !navigator.permissions.query) return null;
+    try { return await navigator.permissions.query({ name: 'local-network-access' }); }
+    catch { return null; }
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+
+  function show(html, cls) {
+    status.className = 'status show';
+    status.innerHTML = `<div class="${cls}">${html}</div>`;
+  }
+
+  // The wizard publishes this document for its own first step; it is the
+  // right thing to ask for because it names the box and says nothing a
+  // stranger on the LAN could not learn by looking at the box.
+  async function probe(name) {
+    const base = `http://${name}.local`;
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 8000);
+    try {
+      const r = await fetch(`${base}/setup/state.json`, {
+        // Tells the browser we expect a local-network address, which is what
+        // makes a plain-http fetch from an https page allowed at all.
+        targetAddressSpace: 'local',
+        mode: 'cors',
+        cache: 'no-store',
+        signal: ctl.signal,
+      });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const doc = await r.json();
+      if (typeof doc.hostName !== 'string' || typeof doc.fqdn !== 'string') throw new Error('not a LosOS setup document');
+      return { base, doc };
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  function found({ base, doc }) {
+    const tls = doc.tls
+      ? 'Its certificate is ready for you to install; the setup page shows how.'
+      : 'It is not serving HTTPS yet; the setup page will say what that means.';
+    show(
+      `<strong>Found it.</strong> A LosOS box called <code>${escapeHtml(doc.hostName)}</code> answered at <code>${escapeHtml(doc.fqdn)}</code>. ${tls}` +
+      `<div class="open"><a class="button" href="${escapeHtml(base)}/" rel="noopener">Open the box's setup</a></div>`,
+      'found');
+  }
+
+  function notFound(name, permission, err) {
+    const denied = permission && permission.state === 'denied';
+    const why = denied
+      ? `<strong>Your browser is not allowed to look.</strong> Permission for this site to reach your local network was refused. Click the icon left of the address bar, allow <em>Local network access</em>, and try again.`
+      : `<strong>Nothing answered at <code>${escapeHtml(name)}.local</code>.</strong>`;
+    show(
+      why +
+      `<ul>` +
+      `<li>Is the box switched on, and has it had a minute to boot?</li>` +
+      `<li>Is this computer on the <strong>same network</strong> as the box? A guest Wi‑Fi or a VPN keeps them apart.</li>` +
+      `<li>Did you rename the box? Put its name in the field above.</li>` +
+      `<li>You can always type the address from the box's screen instead (below).</li>` +
+      `</ul>` +
+      (err ? `<p class="small" style="margin:8px 0 0">Browser said: <code>${escapeHtml(err)}</code></p>` : ''),
+      'nope');
+  }
+
+  function unsupported() {
+    show(
+      `<strong>This browser cannot look for devices on your network.</strong> That is a Chrome 142+ feature. ` +
+      `Nothing is wrong with your box: type its address from its screen instead, as described below.`,
+      'nope');
+  }
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const name = nameInput.value.trim().toLowerCase().replace(/\.local$/, '');
+    if (!/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/.test(name)) {
+      show('<strong>That is not a valid name.</strong> Letters, digits and dashes only, like <code>mattbox</code>.', 'nope');
+      return;
+    }
+    const permission = await supported();
+    if (!permission) { unsupported(); return; }
+    go.disabled = true;
+    show('<span class="muted">Looking for <code>' + escapeHtml(name) + '.local</code>… if the browser asks, allow it to look for devices on your local network.</span>', 'muted');
+    try {
+      found(await probe(name));
+    } catch (err) {
+      notFound(name, await supported(), err && err.message);
+    } finally {
+      go.disabled = false;
+    }
+  });
+
+  // Firefox and Safari: say so before the person clicks, not after.
+  supported().then(p => { if (!p) unsupported(); });
+})();
+</script>
+</body>
+</html>
