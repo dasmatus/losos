@@ -29,7 +29,7 @@ const browser = await launch();
 
 /* One page wired to a box in a given state. `claimed` is the whole point: it
  * is what decides between the wizard and the key prompt. */
-async function open({ claimed, tls = false, path = '/' }) {
+async function open({ claimed, tls = false, path = '/', ready = true, waitingFor = null }) {
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 }, locale: 'en-US' });
   const errors = [];
   page.on('pageerror', (e) => errors.push(String(e)));
@@ -55,10 +55,13 @@ async function open({ claimed, tls = false, path = '/' }) {
         ),
       });
     }
+    /* `ready` is a function or a value: a function lets a test flip the box
+     * from installing to ready between two polls. */
+    const isReady = typeof ready === 'function' ? ready() : ready;
     return route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ claimed }),
+      body: JSON.stringify({ claimed, ready: isReady, waitingFor: isReady ? null : waitingFor }),
     });
   });
 
@@ -224,6 +227,89 @@ await check('claiming the box mid-wizard does not end the wizard', async () => {
     'the wizard vanished once a token existed, so step 3 would never be shown',
   );
   assert.ok(!/Your board/i.test(text), 'the overview replaced the wizard mid-flow');
+  await page.close();
+});
+
+
+/* What the recorded install demo showed: on a fresh box the Nextcloud pod is
+ * still running `occ maintenance:install` when the owner reaches step 2, and
+ * the claim failed into "command failed; see the lososd journal". lososd now
+ * says `ready: false` with a reason, and the step must wait on that rather
+ * than let the owner submit into it. */
+await check('step 2 waits with the reason on screen while the box is not ready, and never submits', async () => {
+  const { page, errors } = await open({
+    claimed: false,
+    ready: false,
+    waitingFor: 'Nextcloud is still installing itself. This happens once, on the first boot, and takes a few minutes.',
+  });
+  const requests = [];
+  page.on('request', (req) => requests.push({ method: req.method(), url: new URL(req.url()).pathname }));
+  await page.getByRole('button', { name: /^Continue$/ }).click();
+  await page.waitForTimeout(400);
+  const text = await page.locator('body').innerText();
+  assert.ok(/finish starting/i.test(text), `no waiting panel while not ready:\n${text}`);
+  assert.ok(/still installing itself/.test(text), 'lososd\'s reason is not shown to the owner');
+  assert.ok(await page.locator('input[name="new-password"]').isDisabled(), 'the password field is enabled while the box cannot take one');
+  assert.ok(await page.getByRole('button', { name: /^Set the password$/ }).isDisabled(), 'the submit is enabled while the box cannot take a password');
+  assert.ok(!requests.some((r) => r.method === 'POST' && r.url === '/api/setup/claim'), 'a claim was sent while not ready');
+  assert.deepStrictEqual(errors, []);
+  await page.close();
+});
+
+/* The whole point: nothing to click. The poll notices the box is ready and
+ * the form opens on its own, then the claim goes through as before. */
+await check('step 2 opens on its own once the box reports ready, then claims', async () => {
+  /* A flag rather than a poll count: the shell asks the same route once to
+   * pick wizard-or-app before step 2 ever mounts, and the number of times it
+   * does so is not this test's business. */
+  let installed = false;
+  const { page, errors } = await open({
+    claimed: false,
+    ready: () => installed,
+    waitingFor: 'Nextcloud is still installing itself.',
+  });
+  await page.getByRole('button', { name: /^Continue$/ }).click();
+  await page.waitForTimeout(300);
+  assert.ok(await page.locator('input[name="new-password"]').isDisabled(), 'expected to start out waiting');
+  installed = true;
+  // The next poll comes after the 5 s interval; nothing is clicked.
+  await page.locator('input[name="new-password"]:not([disabled])').waitFor({ timeout: 8000 });
+  const text = await page.locator('body').innerText();
+  assert.ok(/You can set the password now/i.test(text), `no "ready" line after the wait:\n${text}`);
+  assert.ok(!/finish starting/i.test(text), 'the waiting panel is still up after the box became ready');
+  await page.locator('input[name="new-password"]').fill('correct horse battery staple');
+  await page.locator('input[name="confirm-password"]').fill('correct horse battery staple');
+  await page.getByRole('button', { name: /^Set the password$/ }).click();
+  await page.waitForTimeout(300);
+  assert.ok(/Password set/i.test(await page.locator('body').innerText()), 'the claim after the wait did not go through');
+  assert.deepStrictEqual(errors, []);
+  await page.close();
+});
+
+/* The race: the last poll said ready, the submit landed a moment after the
+ * pod went into maintenance. lososd answers 503 with the reason; the step
+ * must read that as "not yet", not as a failure that stops the wizard. */
+await check('a 503 from the claim itself sends step 2 back to waiting', async () => {
+  const { page } = await open({ claimed: false, ready: true });
+  await page.route('**/api/setup/claim', async (route) => {
+    if (route.request().method() !== 'POST') return route.fallback();
+    return route.fulfill({
+      status: 503,
+      contentType: 'application/json',
+      headers: { 'Retry-After': '10' },
+      body: JSON.stringify({ error: 'Nextcloud is in maintenance mode right now.', ready: false, waitingFor: 'Nextcloud is in maintenance mode right now.' }),
+    });
+  });
+  await page.getByRole('button', { name: /^Continue$/ }).click();
+  await page.locator('input[name="new-password"]').fill('correct horse battery staple');
+  await page.locator('input[name="confirm-password"]').fill('correct horse battery staple');
+  await page.getByRole('button', { name: /^Set the password$/ }).click();
+  await page.waitForTimeout(400);
+  const text = await page.locator('body').innerText();
+  assert.ok(/not ready for the password yet/i.test(text), `the 503 is not explained:\n${text}`);
+  assert.ok(/maintenance mode/.test(text), 'lososd\'s reason from the 503 is not shown');
+  assert.ok(await page.getByRole('button', { name: /^Set the password$/ }).isDisabled(), 'the submit stayed enabled after a 503');
+  assert.ok(!/stopped accepting|see the lososd journal/i.test(text), 'the 503 reads as a hard failure');
   await page.close();
 });
 
