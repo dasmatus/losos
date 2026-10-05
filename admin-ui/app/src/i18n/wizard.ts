@@ -360,6 +360,24 @@ export default defineMessages({
     sk: "Softvér na tomto zariadení zatiaľ nevie nastaviť heslo. Aktualizujte ho a vráťte sa.",
     de: "Die Software auf dieser Box kann das Passwort noch nicht festlegen. Aktualisiere sie und komm zurück.",
   },
+  "wizard.signin.key.title": {
+    en: "Your admin key, shown only now",
+    sk: "Váš správcovský kľúč, zobrazí sa iba teraz",
+    de: "Dein Admin-Schlüssel, nur jetzt zu sehen",
+  },
+  "wizard.signin.key.body": {
+    en: "This key opens these admin pages from any browser. This tab remembers it until it is closed; the box keeps no copy a browser can ask for again. Copy it into a password manager now. It is also printed on the sheet in the next step.",
+    sk: "Tento kľúč otvára tieto správcovské stránky z ľubovoľného prehliadača. Táto karta si ho pamätá, kým ju nezatvoríte; zariadenie si nenecháva kópiu, o ktorú by prehliadač mohol znova požiadať. Skopírujte si ho teraz do správcu hesiel. Vytlačí sa aj na hárok v ďalšom kroku.",
+    de: "Dieser Schlüssel öffnet diese Admin-Seiten aus jedem Browser. Dieser Tab merkt ihn sich, bis er geschlossen wird; die Box behält keine Kopie, die ein Browser noch einmal abfragen könnte. Kopiere ihn jetzt in einen Passwortmanager. Er steht auch auf dem Blatt im nächsten Schritt.",
+  },
+  "wizard.signin.key.label": { en: "Admin key", sk: "Správcovský kľúč", de: "Admin-Schlüssel" },
+  "wizard.signin.key.copy": { en: "Copy the key", sk: "Kopírovať kľúč", de: "Schlüssel kopieren" },
+  "wizard.signin.key.copied": { en: "Copied.", sk: "Skopírované.", de: "Kopiert." },
+  "wizard.signin.key.copyFailed": {
+    en: "This browser would not copy it. The key is selected; press Ctrl+C, or Cmd+C on a Mac.",
+    sk: "Tento prehliadač ho neskopíroval. Kľúč je označený; stlačte Ctrl+C, na Macu Cmd+C.",
+    de: "Dieser Browser wollte ihn nicht kopieren. Der Schlüssel ist markiert; drück Strg+C, auf dem Mac Cmd+C.",
+  },
   "wizard.passkey.label": { en: "{name} admin", sk: "{name} (správca)", de: "{name} Admin" },
   "wizard.passkey.heading": {
     en: "Add a passkey as well",
@@ -480,6 +498,16 @@ export default defineMessages({
     en: "Keep this. If {name} is ever reset or reinstalled, this code is the only proof that the rebuilt box is the same one. Without it the boxes it works with will treat it as a stranger and refuse it. There is no copy anywhere else that survives a reset.",
     sk: "Tento papier si odložte. Ak sa {name} niekedy resetuje alebo preinštaluje, tento kód je jediným dôkazom, že obnovené zariadenie je to isté. Bez neho ho zariadenia, s ktorými spolupracuje, budú považovať za cudzinca a odmietnu ho. Nikde inde neexistuje kópia, ktorá by reset prežila.",
     de: "Heb das auf. Falls {name} jemals zurückgesetzt oder neu installiert wird, ist dieser Code der einzige Beweis, dass die neu aufgesetzte Box dieselbe ist. Ohne ihn behandeln die Boxen, mit denen sie zusammenarbeitet, sie als Fremde und lehnen sie ab. Es gibt nirgendwo sonst eine Kopie, die ein Zurücksetzen übersteht.",
+  },
+  "wizard.recovery.sheetAdminKey": {
+    en: "Admin key for {name}",
+    sk: "Správcovský kľúč pre {name}",
+    de: "Admin-Schlüssel für {name}",
+  },
+  "wizard.recovery.sheetAdminKeyBody": {
+    en: "Paste this on the admin pages when they ask to be unlocked. It was shown once, during setup, and the box will not show it again.",
+    sk: "Vložte ho na správcovských stránkach, keď požiadajú o odomknutie. Zobrazil sa raz, počas nastavenia, a zariadenie ho znova neukáže.",
+    de: "Gib ihn auf den Admin-Seiten ein, wenn sie entsperrt werden wollen. Er wurde einmal gezeigt, bei der Einrichtung, und die Box zeigt ihn nicht noch einmal.",
   },
   "wizard.recovery.sheetKey": {
     en: "Treat it like a key to the box, because that is what it is.",
