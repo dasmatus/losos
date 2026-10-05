@@ -40,10 +40,15 @@
 { pkgs, impermanence }:
 
 let
-  # The real persistence spec, read straight out of the module. It is a
-  # `_: { ... }` module with no dependency on its arguments, so it can be
-  # applied to an empty attrset and inspected.
-  lososPersistence = (import ../modules/impermanence.nix { }).environment.persistence."/persist";
+  # The real persistence spec, read straight out of the module. The spec
+  # itself does not depend on the module's arguments (only its activation
+  # script does, lazily), so a stub `config` is enough to inspect it.
+  lososPersistence =
+    (import ../modules/impermanence.nix {
+      config = { };
+      inherit (pkgs) lib;
+      inherit pkgs;
+    }).environment.persistence."/persist";
   persistedDirs = builtins.filter (d: d != "/nix") lososPersistence.directories;
 in
 
