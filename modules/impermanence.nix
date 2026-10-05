@@ -121,20 +121,28 @@ in
   # under userborn is not an activation step anyway; the list of what to
   # create is read back from the same option impermanence reads, so the two
   # cannot drift.
-  system.activationScripts.lososPersistentSources = {
-    deps = [ ];
-    text = ''
-      ensure() {
-        # path uid gid mode; only ever creates, never changes what exists,
-        # exactly like impermanence's own creation step.
-        if [ ! -d "$1" ]; then
-          ${pkgs.coreutils}/bin/install -d -m "$4" -o "$2" -g "$3" "$1"
-        fi
-      }
-      ${lib.concatMapStringsSep "\n" ensureLine specs}
-    '';
+  #
+  # Only while "/persist" is still declared: the demo disk image
+  # (flake/disk-images.nix) forces `environment.persistence` to `{ }`, and
+  # impermanence then defines no createPersistentStorageDirs at all, so a
+  # bare `deps` here would leave a snippet with no `text` and fail the
+  # evaluation of losos-disk-qcow2.
+  system.activationScripts = lib.mkIf (config.environment.persistence ? "/persist") {
+    lososPersistentSources = {
+      deps = [ ];
+      text = ''
+        ensure() {
+          # path uid gid mode; only ever creates, never changes what exists,
+          # exactly like impermanence's own creation step.
+          if [ ! -d "$1" ]; then
+            ${pkgs.coreutils}/bin/install -d -m "$4" -o "$2" -g "$3" "$1"
+          fi
+        }
+        ${lib.concatMapStringsSep "\n" ensureLine specs}
+      '';
+    };
+    createPersistentStorageDirs.deps = [ "lososPersistentSources" ];
   };
-  system.activationScripts.createPersistentStorageDirs.deps = [ "lososPersistentSources" ];
 
   environment.persistence."/persist" = {
     hideMounts = true;
