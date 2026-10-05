@@ -6,10 +6,13 @@
 #
 # Each entry here is a finding from the 2026-10-05 critical review that was
 # true on main for weeks without a test turning red. They are asserted
-# against the *published* flake — the one with no modules/install-target.nix,
-# which is what a `github:` upgrade URI evaluates — because that is the shape
-# in which the defaults are load-bearing. A developer's checkout that carries
-# an install-target.nix of its own would make the unlock-mode assertions read
+# against the *published* flake — the one with no modules/install-target.nix
+# — because that is the shape in which the defaults are load-bearing: it is
+# what a `github:` upgrade URI evaluates on a box whose live files could not
+# be read. (With --impure, which the nightly upgrade and lososd pass, the
+# box's own install-target.nix and overrides.nix win; this check runs pure,
+# so it sees neither.) A developer's checkout that carries an
+# install-target.nix of its own would make the unlock-mode assertions read
 # that file instead; that file is written by the installer onto the box and
 # is not meant to be in a working tree. The keyfile half of the unlock story
 # (the secret is baked, the chip is not asked) is tests/install.nix's; the
@@ -42,6 +45,8 @@ assert must config.boot.initrd.systemd.tpm2.enable
   "boot.initrd.systemd.tpm2.enable is off: the initrd cannot read the sealed LUKS2 token and every boot stops at a passphrase prompt";
 assert must (lib.elem "tpm2-device=auto" config.boot.initrd.luks.devices.persist.crypttabExtraOpts)
   "crypttab for `persist` has no tpm2-device=auto (${toString config.boot.initrd.luks.devices.persist.crypttabExtraOpts}): the enrolled token is never consulted";
+assert must (lib.elem "--impure" config.system.autoUpgrade.flags)
+  "system.autoUpgrade does not pass --impure (${toString config.system.autoUpgrade.flags}): a remote upgradeFlakeUri then evaluates the published tree without this box's install-target.nix and overrides.nix, flips a keyfile box to the TPM shape and resets every setting";
 assert must (lib.hasSuffix "#install" config.losos.upgradeFlakeUri)
   "losos.upgradeFlakeUri has no #install fragment (${config.losos.upgradeFlakeUri}); nixos-rebuild would look for nixosConfigurations.<hostname>, which this flake does not export";
 assert must (!config.losos.bios && config.boot.loader.systemd-boot.enable)

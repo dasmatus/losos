@@ -59,14 +59,13 @@ in
 
         This default is the mode the installer ISO picks wherever a chip
         exists, and tests/invariants.nix asserts the two agree: the published
-        flake (no modules/install-target.nix, which is also what a `github:`
-        upgradeFlakeUri evaluates) must describe a box the ISO actually
-        produces. The remaining gap is a box the installer put in keyfile
-        mode: install-target.nix records that, but a `github:` upgrade does
-        not carry it, drops the keyfile from the initrd and stops the 00:07
-        reboot at a passphrase prompt — the same way it loses targetDrives and
-        bios. Keep such a box on the default git+file:///etc/nixos URI until
-        install-target.nix travels with the upgrade.
+        flake (no modules/install-target.nix) must describe a box the ISO
+        actually produces. A box the installer put in keyfile mode has that
+        recorded in install-target.nix, and flake.nix reads that file from
+        /etc/nixos under --impure (which the nightly upgrade and lososd pass)
+        so a `github:` upgradeFlakeUri keeps it; without the flag such an
+        upgrade would drop the keyfile from the initrd and stop the 00:07
+        reboot at a passphrase prompt.
       '';
     };
 
@@ -787,15 +786,14 @@ in
         attribute". lososd uses the same `#install` ref (backend/src/io_backend.rs).
         Use a github: URI (still with `#install`) for remote auto-updates.
 
-        A remote URI evaluates a checkout without modules/install-target.nix,
-        the file the installer writes with this box's drive list, firmware
-        mode and unlock mode (flake.nix imports it only when present). The
-        defaults then apply: keyfile unlock, which is what the installer ISO
-        ships, so the box still boots; but targetDrives falls back to
-        /dev/sda and bios to false, so a BIOS box or one whose first drive is
-        not /dev/sda gets a bootloader step that fails and keeps the previous
-        generation. Carry install-target.nix in the remote flake, or keep the
-        local default.
+        A remote URI evaluates the published tree, which has neither
+        modules/install-target.nix (this box's drive list, firmware mode and
+        unlock mode, written by the installer) nor this box's
+        modules/overrides.nix (the settings the admin UI writes). flake.nix
+        therefore reads both from /etc/nixos when the evaluation is impure,
+        and the nightly upgrade (updates.nix) and lososd both pass --impure.
+        Evaluate the flake purely against a remote URI and the defaults
+        apply instead: TPM2 unlock, /dev/sda, UEFI, every setting reset.
       '';
     };
 
