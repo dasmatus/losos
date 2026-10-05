@@ -296,8 +296,11 @@ in
 
     proxy.registrarUrl = lib.mkOption {
       type = lib.types.str;
-      default = "https://register.losos.cfd";
-      description = "Base URL of the edge losos-registrar HTTP API (fronted by Traefik at a static hostname).";
+      # The demo edge (edge-vercel/, the registrar as a Vercel Function at the
+      # owner's domain). A self-hosted edge is register.<losos.edge.publicDomain>,
+      # e.g. https://register.losos.cfd; set this to that when one exists.
+      default = "https://losos-proxy.dasmat.us";
+      description = "Base URL of the edge losos-registrar HTTP API (fronted by Traefik at a static hostname, or the Vercel demo host).";
     };
 
     proxy.hostname = lib.mkOption {
