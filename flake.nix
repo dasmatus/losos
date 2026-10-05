@@ -255,9 +255,13 @@
             ./modules/updates.nix
             ./modules/defaults.nix
             ./modules/proxy.nix
-            # Host-specific drive list + TPM mode, written by losos-install at
-            # install time. Only imported when it exists so the published
-            # flake (without it) still evaluates against the default drive.
+            # Host-specific drive list, firmware mode and unlock mode, written
+            # by losos-install at install time. Only imported when it exists
+            # so the published flake (without it) still evaluates against the
+            # defaults — which is also what a `github:` upgradeFlakeUri
+            # evaluates on the box, so those defaults have to describe a box
+            # the ISO actually produces (keyfile unlock; see losos.tpm.enable
+            # and tests/invariants.nix).
           ]
           ++ nixpkgs.lib.optional (builtins.pathExists ./modules/install-target.nix) ./modules/install-target.nix;
         };
