@@ -205,6 +205,16 @@ await check('step 2 claims the box through the public claim route and keeps the 
   await page.close();
 });
 
+/* The key is released exactly once, in the claim reply, and the sign-in
+ * dialog on every later visit asks for it. A wizard that stored it in session
+ * storage and showed it to nobody made closing the tab a permanent lockout. */
+await check('step 2 shows the admin key from the claim, since nothing else ever will', async () => {
+  const { page, text } = await claimThroughStepTwo();
+  assert.ok(text.includes('0'.repeat(64)), `the admin key is not on screen after the claim:\n${text}`);
+  assert.ok(/admin key/i.test(text), 'the key is shown without saying what it is');
+  await page.close();
+});
+
 await check('claiming the box mid-wizard does not end the wizard', async () => {
   // Step 2 stores the token and flips the claim flag. A shell keyed on either
   // would swap the app in here and step 3, the recovery code, would never show.
