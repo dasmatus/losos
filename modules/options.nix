@@ -127,13 +127,39 @@ in
       '';
     };
 
+    # ── Finding the box from a web page ──────────────────────────────────────
+    # Chrome's Local Network Access permission lets a public, HTTPS page ask
+    # the owner once ("look for and connect to devices on your local network")
+    # and then fetch from `<hostName>.local`. The finder page on the edge host
+    # (edge-vercel/public/find.html) uses that to read `/setup/state.json`
+    # and hand the owner a link to their box, instead of a tty1 banner and an
+    # address to type. The document is LAN-only and holds no secret, but it
+    # is inventory — the box's name and its certificate's fingerprint — and
+    # CORS is the only thing deciding which *web pages* on the owner's own
+    # machine may read it. So it is an allow-list of exact origins, not `*`:
+    # a page the owner merely happens to have open does not learn there is a
+    # LosOS box on the LAN. modules/setup.nix turns this into an nginx map.
+    setup.finderOrigins = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ "https://losos-edge.dasmat.us" ];
+      example = [ "https://find.example.org" ];
+      description = ''
+        Web origins (scheme://host[:port], no path, no trailing slash) that may
+        read `/setup/state.json` cross-origin, which is what the "find my box"
+        page on the edge host needs. Everything else on the admin surface
+        stays same-origin. An empty list switches the header off.
+      '';
+    };
+
     # ── Binary cache ────────────────────────────────────────────────────────
     cache.substituters = lib.mkOption {
       type = lib.types.listOf lib.types.str;
       default = [ ];
       description = ''
         Extra Nix substituters, added to the appliance *and* to the installer
-        medium. Set this to the LosOS Desktop proxy's public URL and set
+        medium. Set this to the LosOS cache proxy's public URL
+        (`https://losos-proxy.dasmat.us`, the `losos-cache-proxy` Vercel
+        project; CI reads the same value from `LOSOS_PROXY_URL`) and set
         trustedPublicKeys to its Nix signing key. Empty disables the feature.
 
         This exists because of one number. `losos.nextcloud.mode` defaults to
@@ -296,8 +322,13 @@ in
 
     proxy.registrarUrl = lib.mkOption {
       type = lib.types.str;
-      default = "https://register.losos.cfd";
-      description = "Base URL of the edge losos-registrar HTTP API (fronted by Traefik at a static hostname).";
+      # The demo edge (edge-vercel/, the registrar as a Vercel Function at the
+      # owner's domain). Not losos-proxy.dasmat.us: that name is the Nix binary
+      # cache proxy (`losos.cache.substituters`), decided 2026-10-05. A
+      # self-hosted edge is register.<losos.edge.publicDomain>, e.g.
+      # https://register.losos.cfd; set this to that when one exists.
+      default = "https://losos-edge.dasmat.us";
+      description = "Base URL of the edge losos-registrar HTTP API (fronted by Traefik at a static hostname, or the Vercel demo host).";
     };
 
     proxy.hostname = lib.mkOption {

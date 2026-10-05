@@ -259,6 +259,29 @@ the same reason `nextcloud-stack.nix` is. The workload pods are
 `hostNetwork` (the local cluster runs no CNI), so they answer on loopback — see
 the gotcha about what that costs the `lanOnly` guard.
 
+**The Vercel demo host** (`edge-vercel/`): a third Rust crate, outside the
+flake, that runs the registrar's router as one Vercel Function with the
+registry as one `jsonb` row in a Neon Postgres (tokio-postgres over rustls;
+`DATABASE_URL` from Vercel's marketplace integration, loaded before and
+upserted after every request) and two demo-only routes (`/status`,
+`/status/traefik`) plus a static page. It exists for presentations and is
+meant to be deleted afterwards: the only changes it needed in
+`backend-registrar` are `server::build` (the router and reconciler without
+the listener and the timer; `serve` calls it) and `Registry::{export,import}`
+(a snapshot with ages, so the registry can travel between processes;
+`import` applies the heartbeat TTL because no reconciler ran in between).
+The tunnel, Traefik, the mesh and the Stripe gate cannot run there, so on
+that host `/cluster/join` and `/market/*` answer 503 and `/noise-public-key`
+404. `devenv.nix`'s `crates` list and CI lint/test it like the other two;
+`nix build` never sees it. Its `tests/postgres.rs` is gated on
+`LOSOS_TEST_DATABASE_URL` (CI's test job provides a Postgres service); the
+rest of its suite runs on the in-memory store. Its second static page,
+`public/find.html`, is the "find my box" flow: Chrome's Local Network Access
+permission lets it read a box's `/setup/state.json` from the public origin,
+which `modules/setup.nix` allows for exactly the origins in
+`losos.setup.finderOrigins` (an nginx map, asserted by `tests/setup.nix`),
+never `*` — the document is LAN inventory.
+
 **The `losos.*` option namespace** (`options.nix`): all project-specific
 knobs (`targetDrive`, `tpm.enable`, `sharingMyStorage`, `forgejo.enable`,
 `nextcloud.*`, `cluster.*` (mesh join, compute window), `shared.fscrypt.*`,
