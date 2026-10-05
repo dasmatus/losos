@@ -45,7 +45,7 @@ reachable from the internet.
 ## Demo deployment on Vercel
 
 `edge-vercel/` runs the registrar's API — the same router and the same
-token check — as a Vercel Function at `https://losos-proxy.dasmat.us` (the
+token check — as a Vercel Function at `https://losos-edge.dasmat.us` (the
 default `losos.proxy.registrarUrl`), with the registry in a Neon Postgres
 and a status page at `/` that shows the registered boxes and the Traefik
 configuration the edge would be writing for them. It is the control plane
