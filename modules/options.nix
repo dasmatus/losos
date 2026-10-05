@@ -141,7 +141,7 @@ in
     # LosOS box on the LAN. modules/setup.nix turns this into an nginx map.
     setup.finderOrigins = lib.mkOption {
       type = lib.types.listOf lib.types.str;
-      default = [ "https://losos-proxy.dasmat.us" ];
+      default = [ "https://losos-edge.dasmat.us" ];
       example = [ "https://find.example.org" ];
       description = ''
         Web origins (scheme://host[:port], no path, no trailing slash) that may
@@ -157,7 +157,9 @@ in
       default = [ ];
       description = ''
         Extra Nix substituters, added to the appliance *and* to the installer
-        medium. Set this to the LosOS Desktop proxy's public URL and set
+        medium. Set this to the LosOS cache proxy's public URL
+        (`https://losos-proxy.dasmat.us`, the `losos-cache-proxy` Vercel
+        project; CI reads the same value from `LOSOS_PROXY_URL`) and set
         trustedPublicKeys to its Nix signing key. Empty disables the feature.
 
         This exists because of one number. `losos.nextcloud.mode` defaults to
@@ -321,9 +323,11 @@ in
     proxy.registrarUrl = lib.mkOption {
       type = lib.types.str;
       # The demo edge (edge-vercel/, the registrar as a Vercel Function at the
-      # owner's domain). A self-hosted edge is register.<losos.edge.publicDomain>,
-      # e.g. https://register.losos.cfd; set this to that when one exists.
-      default = "https://losos-proxy.dasmat.us";
+      # owner's domain). Not losos-proxy.dasmat.us: that name is the Nix binary
+      # cache proxy (`losos.cache.substituters`), decided 2026-10-05. A
+      # self-hosted edge is register.<losos.edge.publicDomain>, e.g.
+      # https://register.losos.cfd; set this to that when one exists.
+      default = "https://losos-edge.dasmat.us";
       description = "Base URL of the edge losos-registrar HTTP API (fronted by Traefik at a static hostname, or the Vercel demo host).";
     };
 

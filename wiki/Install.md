@@ -60,7 +60,7 @@ After the reboot, tty1 shows a full-screen banner with the box's IP address and
 network. The banner updates when the address changes.
 
 If reading a screen and typing an address is the scary part, open
-[losos-proxy.dasmat.us/find](https://losos-proxy.dasmat.us/find) in Chrome
+[losos-edge.dasmat.us/find](https://losos-edge.dasmat.us/find) in Chrome
 instead and press **Find my box**. Chrome asks once whether the page may look
 for devices on your local network (its *Local Network Access* permission,
 Chrome 142 or newer); say yes, and the page finds the box by its name and
