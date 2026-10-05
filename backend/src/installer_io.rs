@@ -26,8 +26,9 @@ pub const DEFAULT_KEYFILE: &str = "/etc/keys/persist-keyfile";
 pub const DEFAULT_TARGET_REL: &str = "modules/install-target.nix";
 /// Where `--disko-script` writes the rendered target.
 pub const DEFAULT_EMIT_FILE: &str = "/tmp/losos-install-target.nix";
-/// Bytes of key material for a generated keyfile.
-const KEYFILE_BYTES: usize = 4096;
+/// Bytes of entropy behind a generated keyfile. The file holds their hex
+/// spelling, twice as long; see [`keyfile_text`] for why it is text.
+const KEYFILE_BYTES: usize = 64;
 /// How long to wait for the flake's host to resolve before giving up, in
 /// seconds. Overridable with `LOSOS_NETWORK_TIMEOUT`.
 const DEFAULT_NETWORK_TIMEOUT_SECS: u64 = 600;
@@ -103,7 +104,7 @@ impl Install for IoInstall {
             use std::io::Read;
             std::fs::File::open("/dev/urandom")?.read_exact(&mut buf)?;
         }
-        std::fs::write(path, &buf)?;
+        std::fs::write(path, keyfile_text(&buf))?;
         owner_only_file(path)
     }
 
@@ -245,6 +246,28 @@ impl Install for IoInstall {
     fn log_info(&mut self, msg: &str) {
         println!("{msg}");
     }
+}
+
+/// The keyfile's contents for `entropy`: lowercase hex, no newline.
+///
+/// Text, not raw bytes, because three readers have to agree on the key and
+/// one of them is a shell. disko hands `passwordFile` to `cryptsetup
+/// luksFormat` as `<(echo -n "$(cat FILE)")`: a command substitution, which
+/// drops every NUL byte and any trailing newline. The initrd
+/// (`/crypto_keyfile.bin`) and `systemd-cryptenroll --unlock-key-file` read
+/// the file raw. With 4096 random bytes the two readings differed in every
+/// real install (a NUL-free 4 KiB is a one-in-ten-million file), so the
+/// volume was formatted with one key and unlocked with another; neither
+/// tests/install.nix (halts in GRUB) nor the first real boot (stopped
+/// earlier, on a missing virtio driver) reached that failure. tests/tpm.nix
+/// did, on the enrolment. Hex has no NUL and no newline, so all three read
+/// the same 128 bytes.
+fn keyfile_text(entropy: &[u8]) -> String {
+    use std::fmt::Write;
+    entropy.iter().fold(String::new(), |mut s, b| {
+        let _ = write!(s, "{b:02x}");
+        s
+    })
 }
 
 /// The host a flake URL is fetched from, or `None` for a local path.
@@ -397,8 +420,49 @@ pub fn run_install(opts: &Options) -> anyhow::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{flake_host, wait_for_host};
+    use super::{flake_host, keyfile_text, wait_for_host, IoInstall, KEYFILE_BYTES};
+    use crate::installer::Install;
     use std::time::Duration;
+
+    #[test]
+    fn the_keyfile_is_shell_safe_text() {
+        // disko reads it through `$(cat …)`, the initrd and cryptenroll read
+        // it raw: the three agree only if there is no NUL and no newline.
+        let text = keyfile_text(&[0x00, 0x0a, 0xff, 0x41]);
+        assert_eq!(text, "000aff41");
+        assert_eq!(text.len(), 8);
+        assert!(text.bytes().all(|b| b.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn a_generated_keyfile_is_hex_owner_only_and_left_alone_when_present() {
+        use std::os::unix::fs::PermissionsExt;
+        // No tempfile crate in this crate's dev-dependencies (a Cargo.lock
+        // change means a new cargoHash); a pid-named dir under $TMPDIR does.
+        let dir = std::env::temp_dir().join(format!("losos-keyfile-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = dir.join("keys").join("persist-keyfile");
+        IoInstall.ensure_keyfile(&path).unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(text.len(), 2 * KEYFILE_BYTES);
+        assert!(text.bytes().all(|b| b.is_ascii_hexdigit()), "{text}");
+        assert_eq!(
+            std::fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+        assert_eq!(
+            std::fs::metadata(path.parent().unwrap())
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777,
+            0o700
+        );
+        // A second run keeps the key the volume was formatted with.
+        IoInstall.ensure_keyfile(&path).unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), text);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 
     #[test]
     fn wait_for_host_gives_up_with_a_clear_message() {
