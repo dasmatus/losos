@@ -61,7 +61,6 @@ directory.
 | Variable | Default |
 |---|---|
 | `LOSOS_STATE_DIR` | `/var/lib/losos` |
-| `LOSOS_CONFIG` | `/etc/nixos/defaults.nix` |
 | `LOSOS_OVERRIDES` | `/etc/nixos/modules/overrides.nix` |
 | `LOSOS_FLAKE` | `/etc/nixos#install` |
 | `LOSOS_NO_DBUS` | unset; any value disables the bus listener |
@@ -73,8 +72,12 @@ directory.
 
 ## Things that look wrong but are intended
 
-- **`change --mode` writes `defaults.nix`; `apply` and `factory-reset` write
-  `overrides.nix`.** Module import order in the flake decides which wins.
+- **`change --mode`, `apply` and `factory-reset` all write
+  `modules/overrides.nix`.** `change` line-patches the one `sharingMyStorage`
+  assignment; the other two replace the file. It is the only Nix file the
+  control plane writes and the only one the flake evaluates for a runtime
+  setting. (`change` used to patch `/etc/nixos/defaults.nix`, a path no
+  installed box has, and reported success when it was missing.)
 - **A corrupt `state.json` becomes the default state.** A blank admin UI would
   be worse, and the next write repairs the file.
 - **`disko` runs with `--yes-wipe-all-disks`.** Otherwise it prompts on stdin,
