@@ -135,10 +135,13 @@ pkgs.testers.nixosTest {
     installer.start()
     installer.wait_for_unit("default.target")
 
-    # disko's luks `passwordFile` reads this at format time.
+    # disko's luks `passwordFile` reads this at format time, through a shell
+    # command substitution that drops NUL bytes — the same shape the
+    # installer's ensure_keyfile writes (hex, no newline), so the format-time
+    # key is the file's raw bytes too.
     installer.succeed(
         "install -d -m 700 /etc/keys",
-        "head -c 4096 /dev/urandom > /etc/keys/persist-keyfile",
+        "head -c 64 /dev/urandom | od -An -tx1 | tr -d ' \\n' > /etc/keys/persist-keyfile",
         "chmod 600 /etc/keys/persist-keyfile",
     )
 

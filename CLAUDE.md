@@ -338,6 +338,15 @@ A separate `midnight-reboot.timer` reboots unconditionally at 00:07 with
   which `GET /api/apps/search` shells out to: `path` **replaces** PATH, so a
   binary left off that list is not on it by accident, and the failure surfaces
   to the owner as a feature that quietly never works.
+- **The LUKS keyfile is hex text, and must stay NUL-free.** disko hands
+  `passwordFile` to `luksFormat` as `<(echo -n "$(cat FILE)")`, a command
+  substitution that drops NUL bytes and a trailing newline, while the initrd
+  (`/crypto_keyfile.bin`) and `systemd-cryptenroll --unlock-key-file` read
+  the file raw. The installer used to write 4096 random bytes, so the volume
+  was formatted with one key and unlocked with another on practically every
+  install; nothing reached that failure until `tests/tpm.nix` enrolled the
+  chip. `ensure_keyfile` now writes 64 random bytes as 128 hex characters.
+  Don't "harden" it back to raw bytes, and don't put a newline in it.
 - **The LUKS key file must not live under `/root` or `/home`.** `lososd` runs
   with `ProtectHome=true` — on purpose, so a compromised request handler cannot
   read either data domain — and that hides `/root` too. `cryptsetup resize`
