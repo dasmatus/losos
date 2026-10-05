@@ -167,18 +167,50 @@ for (const path of ['/settings', '/settings/reset', '/storage', '/mesh', '/apps'
   });
 }
 
-await check('claiming the box mid-wizard does not end the wizard', async () => {
-  const { page } = await open({ claimed: false });
-  // What step 2 does on success: the token lands in session storage and the
-  // claim flag flips. A shell keyed on either would swap the app in here.
-  await page.evaluate(() => {
-    window.sessionStorage.setItem('losos-token', '0'.repeat(64));
-    window.dispatchEvent(new StorageEvent('storage', { key: 'losos-token' }));
-  });
-  await page.waitForTimeout(200);
+/* Walk step 2 for real: Continue past the certificate, type a password twice,
+ * submit. Returns the page, every request the page sent, and the body text
+ * after lososd (stubbed) has answered. */
+async function claimThroughStepTwo(password = 'correct horse battery staple') {
+  const { page, errors } = await open({ claimed: false });
+  const requests = [];
+  page.on('request', (req) => requests.push({ method: req.method(), url: new URL(req.url()).pathname }));
+
+  await page.getByRole('button', { name: /^Continue$/ }).click();
+  await page.locator('input[name="new-password"]').fill(password);
+  await page.locator('input[name="confirm-password"]').fill(password);
+  await page.getByRole('button', { name: /^Set the password$/ }).click();
+  await page.waitForTimeout(300);
+
   const text = await page.locator('body').innerText();
+  return { page, errors, requests, text };
+}
+
+/* The bug the wizard shipped with: step 2 posted the first password to the
+ * token-gated /api/set-password, and on a fresh box nothing holds a token, so
+ * every first run ended in a 401 on this step. The public claim route is the
+ * one that both sets the password and hands out the token; this is the only
+ * check that proves step 2 uses it. */
+await check('step 2 claims the box through the public claim route and keeps the token', async () => {
+  const { page, errors, requests, text } = await claimThroughStepTwo();
+  const claims = requests.filter((r) => r.method === 'POST' && r.url === '/api/setup/claim');
+  assert.strictEqual(claims.length, 1, `expected one claim POST, saw ${JSON.stringify(requests)}`);
   assert.ok(
-    /Trust this box|sign in|Recovery code/i.test(text),
+    !requests.some((r) => r.method === 'POST' && r.url === '/api/set-password'),
+    'a fresh box has no token to send to /api/set-password; step 2 must claim instead',
+  );
+  const token = await page.evaluate(() => window.sessionStorage.getItem('losos-token'));
+  assert.strictEqual(token, '0'.repeat(64), 'the token from the claim reply was not stored');
+  assert.ok(/Password set/i.test(text), `step 2 did not report the password as set; page errors: ${JSON.stringify(errors)}\n${text}`);
+  assert.ok(/notshared/.test(text), 'the account name lososd echoed back is not shown');
+  await page.close();
+});
+
+await check('claiming the box mid-wizard does not end the wizard', async () => {
+  // Step 2 stores the token and flips the claim flag. A shell keyed on either
+  // would swap the app in here and step 3, the recovery code, would never show.
+  const { page, text } = await claimThroughStepTwo();
+  assert.ok(
+    /Trust this box|sign in|Recovery code|Password set/i.test(text),
     'the wizard vanished once a token existed, so step 3 would never be shown',
   );
   assert.ok(!/Your board/i.test(text), 'the overview replaced the wizard mid-flow');
