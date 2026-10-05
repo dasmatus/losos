@@ -141,11 +141,12 @@ in
       }
       # What `cryptsetup resize` authenticates with during `losos-ctl grow`.
       #
-      # Only on the no-TPM path. With a TPM the volume key is in the kernel
-      # keyring after the initrd unlock and cryptsetup finds it there; without
-      # one, it would fall back to prompting on a stdin the daemon does not
-      # have and fail *after* lvextend had already run.
-      // lib.optionalAttrs (!config.losos.tpm.enable) {
+      # In both unlock modes: the installer formats from this keyfile and
+      # keeps a copy inside /persist on the TPM path too (the recovery slot),
+      # so the same path works whether the chip or the initrd opened the
+      # volume. Without it cryptsetup would fall back to prompting on a stdin
+      # the daemon does not have and fail *after* lvextend had already run.
+      // {
         LOSOS_LUKS_KEYFILE = "/etc/keys/persist-keyfile";
       }
       # How `/api/market*` reaches the edge's market (backend/src/market.rs).
