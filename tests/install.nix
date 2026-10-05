@@ -63,8 +63,8 @@ pkgs.testers.nixosTest {
       losos.installer.package = lososPkgs.losos-ctl;
 
       # Drive list the disko layout pools into `persist-vg`, plus TPM mode.
-      # The test uses the keyfile path (unattended); the keyfile is created
-      # by the test script before disko runs (disko's luks passwordFile).
+      # The test uses the keyfile path (unattended); losos-install generates
+      # the keyfile before disko runs (disko's luks passwordFile).
       losos.targetDrives = targets;
       losos.tpm.enable = false;
       losos.bios = true;
@@ -135,12 +135,11 @@ pkgs.testers.nixosTest {
     installer.start()
     installer.wait_for_unit("default.target")
 
-    # disko's luks `passwordFile` reads this at format time.
-    installer.succeed(
-        "install -d -m 700 /etc/keys",
-        "head -c 4096 /dev/urandom > /etc/keys/persist-keyfile",
-        "chmod 600 /etc/keys/persist-keyfile",
-    )
+    # No keyfile is staged here on purpose: losos-install generates
+    # /etc/keys/persist-keyfile itself (disko's luks `passwordFile` reads it
+    # at format time), and the generator is what the open-with-the-file
+    # assertion below exercises.
+    installer.succeed("test ! -e /etc/keys/persist-keyfile")
 
     # DEBUG: what does the VM see?
     print("LSBLK:\n" + installer.succeed("lsblk -bdno NAME,SIZE,RM,TYPE"))
@@ -184,6 +183,18 @@ pkgs.testers.nixosTest {
     installer.succeed("test -e /dev/mapper/persist")
     assert installer.succeed("findmnt -no FSTYPE /mnt/persist").strip() == "ext4", \
         "expected ext4 at /mnt/persist"
+
+    # The keyfile *as a file* must open the volume, byte for byte, because
+    # that is how stage 1 presents /crypto_keyfile.bin at boot. disko formats
+    # through `echo -n "$(cat passwordFile)"`, which drops NUL bytes, so a
+    # raw-random keyfile formats fine, mounts fine (same mangled key both
+    # times) and then never unlocks on the installed box. This is the check
+    # the first-boot leg below cannot make: it stops at GRUB.
+    installer.succeed(
+        "cryptsetup open --test-passphrase --key-file /etc/keys/persist-keyfile "
+        "/dev/persist-vg/persist"
+    )
+    installer.succeed("test $(stat -c %a /etc/keys/persist-keyfile) = 600")
     installer.succeed("mountpoint -q /mnt/persist")
 
     # ext4 is not a preference here: it is the whole reason the appliance gave
