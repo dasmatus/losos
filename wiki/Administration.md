@@ -67,7 +67,9 @@ other's files. `tests/impermanence.nix` checks this.
 - **03:00** — `system.autoUpgrade` rebuilds from `losos.upgradeFlakeUri`. The
   default, `git+file:///etc/nixos#install`, does not pull new packages. Set a
   `github:` URI to get updates. Keep the `#install` fragment; without it the
-  rebuild fails.
+  rebuild fails. A remote URI still uses this box's drive list, firmware
+  mode, unlock mode and settings: the rebuild reads them from `/etc/nixos`
+  on the box, not from the published repository.
 - **00:07** — `midnight-reboot.timer` reboots unconditionally
   (`Persistent=true`, so a box that was off catches up). Because the root is
   rebuilt on boot, the reboot is how the box repairs itself.
