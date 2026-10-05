@@ -6,20 +6,19 @@
 //!
 //! One simplification is inherited from `TestM` and worth stating plainly:
 //! [`FakeLosos::config`] stands in for *both* Nix files. In production
-//! `rewrite_config` patches `defaults.nix` while `write_overrides` replaces
-//! `overrides.nix`, and they are different files. The fake collapses them, so
-//! these tests must not be read as evidence about which file wins at Nix
-//! evaluation time.
+//! `config` stands in for `overrides.nix`, the one file every command that
+//! changes a setting writes: `apply` and `factory-reset` replace it, `change`
+//! line-patches it through `read_overrides` + `write_overrides`.
 
 use crate::losos::Losos;
 use crate::model::State;
-use crate::overrides::{inject_line, DEFAULT_OVERRIDES_NIX};
+use crate::overrides::DEFAULT_OVERRIDES_NIX;
 
 /// A fake world: everything the commands can observe or mutate.
 #[derive(Debug, Clone)]
 pub struct FakeLosos {
     pub state: State,
-    /// Stands in for both Nix files (see the module docs).
+    /// Stands in for `overrides.nix` (see the module docs).
     pub config: Vec<String>,
     /// Lines the "rebuild log" would contain.
     pub log: Vec<String>,
@@ -141,13 +140,6 @@ impl Losos for FakeLosos {
 
     fn save_state(&mut self, s: &State) -> anyhow::Result<()> {
         self.state = s.clone();
-        Ok(())
-    }
-
-    fn rewrite_config(&mut self, sharing: bool) -> anyhow::Result<()> {
-        // Runs the real line-injection routine, so that logic is genuinely
-        // covered rather than stubbed out.
-        self.config = inject_line(sharing, &self.config);
         Ok(())
     }
 
