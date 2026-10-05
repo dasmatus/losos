@@ -1,0 +1,142 @@
+<!doctype html>
+<!--
+  The demo window onto the registrar. Served by Vercel as a static file; every
+  other path is the function. Polls /status and /status/traefik every five
+  seconds and draws them. Plain HTML, no build step, no dependency: the palette
+  below is copied from admin-ui/app/src/styles/tokens.css so the page looks
+  like the box's own homepage.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LosOS edge — demo</title>
+<style>
+  :root {
+    color-scheme: light;
+    --ground: #f3f5f7; --surface: #ffffff; --sunk: #eaedf0;
+    --ink: #18212a; --muted: #5c6a77; --faint: #8c98a4;
+    --line: #dce1e6; --hair: #eaeef1;
+    --accent: #0e6e7d; --accent-wash: #e2eff1;
+    --ok: #2e7357; --warn: #8c6512; --crit: #a8443c;
+    --elev-card: 0 1px 2px rgb(24 33 42 / 0.05), 0 4px 16px rgb(24 33 42 / 0.06);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      color-scheme: dark;
+      --ground: #0d1218; --surface: #141b22; --sunk: #0f151b;
+      --ink: #e6ebf0; --muted: #9aa7b3; --faint: #6b7883;
+      --line: #263039; --hair: #1c252e;
+      --accent: #48b3c0; --accent-wash: #0d2a2f;
+      --ok: #5fb08f; --warn: #d1a340; --crit: #e0776d;
+      --elev-card: none;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--ground); color: var(--ink);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  main { max-width: 960px; margin: 0 auto; padding: 32px 16px 64px; }
+  header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 16px; margin-bottom: 20px; }
+  h1 { font-size: 22px; margin: 0; letter-spacing: -0.01em; }
+  h1 small { color: var(--muted); font-weight: 400; font-size: 15px; margin-left: 8px; }
+  .pill { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 13px;
+          background: var(--accent-wash); color: var(--accent); border: 1px solid transparent; }
+  .pill.warn { background: transparent; color: var(--warn); border-color: var(--warn); }
+  a.pill { text-decoration: none; margin-left: auto; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
+          box-shadow: var(--elev-card); padding: 20px; margin-bottom: 16px; }
+  .card h2 { font-size: 16px; margin: 0 0 12px; }
+  .notice { border-left: 3px solid var(--warn); padding: 8px 14px; color: var(--muted); }
+  .notice strong { color: var(--ink); }
+  .notice ul { margin: 6px 0 0; padding-left: 18px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--hair); vertical-align: top; }
+  th { color: var(--muted); font-weight: 500; font-size: 13px; }
+  tr:last-child td { border-bottom: 0; }
+  td.num { font-variant-numeric: tabular-nums; }
+  .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; }
+  .live .dot { background: var(--ok); } .stale .dot { background: var(--warn); }
+  .empty { color: var(--faint); padding: 18px 10px; text-align: center; }
+  pre { margin: 0; background: var(--sunk); border: 1px solid var(--hair); border-radius: 8px;
+        padding: 14px; font: 12.5px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        overflow: auto; color: var(--ink); }
+  footer { color: var(--faint); font-size: 13px; }
+  #error { color: var(--crit); margin-top: 8px; display: none; }
+  code { font: 13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background: var(--sunk); padding: 1px 5px; border-radius: 4px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>LosOS edge <small>registrar, running as a Vercel Function</small></h1>
+    <span class="pill" id="store">store: …</span>
+    <span class="pill" id="ttl">heartbeat TTL: …</span>
+    <span class="pill warn">demo deployment</span>
+    <a class="pill" href="/find">Find my box →</a>
+  </header>
+
+  <section class="card">
+    <h2>Registered boxes</h2>
+    <table>
+      <thead><tr><th>State</th><th>Appliance</th><th>Public hostname</th><th>Tunnel port</th><th>Last heartbeat</th><th>Idle</th></tr></thead>
+      <tbody id="rows"><tr><td colspan="6" class="empty">Loading…</td></tr></tbody>
+    </table>
+    <div id="error"></div>
+  </section>
+
+  <section class="card">
+    <h2>What Traefik would be reloading right now</h2>
+    <p style="margin:0 0 10px;color:var(--muted)">
+      The reconciler writes this <code>losos.yml</code> from the registry on every pass. On the VPS, Traefik's
+      file provider picks it up and routes each hostname into that box's tunnel; here it is only shown.
+    </p>
+    <pre id="traefik">…</pre>
+  </section>
+
+  <section class="card notice">
+    <strong>Control plane only.</strong> This host runs the registrar's API — enrolment, heartbeats, pruning,
+    config generation. Not running here, because a serverless function cannot hold them:
+    <ul id="missing"></ul>
+  </section>
+
+  <footer>Updated <span id="when">—</span> · refreshes every 5 s · <code>/status</code> is the JSON this page reads.</footer>
+</main>
+<script>
+  const el = (id) => document.getElementById(id);
+  const ago = (s) => s < 60 ? `${s}s ago` : s < 3600 ? `${Math.floor(s / 60)}m ${s % 60}s ago` : `${Math.floor(s / 3600)}h ago`;
+  const esc = (v) => String(v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+  async function refresh() {
+    try {
+      const [s, t] = await Promise.all([
+        fetch('/status', { cache: 'no-store' }).then((r) => { if (!r.ok) throw new Error(`/status → ${r.status}`); return r.json(); }),
+        fetch('/status/traefik', { cache: 'no-store' }).then((r) => r.ok ? r.text() : `# /status/traefik → ${r.status}`),
+      ]);
+      el('store').textContent = `store: ${s.store === 'postgres' ? 'Neon Postgres (survives cold starts)' : 'memory (this instance only)'}`;
+      el('ttl').textContent = `heartbeat TTL: ${s.heartbeat_ttl_secs}s`;
+      el('when').textContent = new Date(s.generated_at_unix * 1000).toLocaleTimeString();
+      el('traefik').textContent = t;
+      el('missing').innerHTML = s.not_on_this_host.map((m) => `<li>${esc(m)}</li>`).join('');
+      const rows = s.tenants.map((b) => {
+        // Past half the TTL without a heartbeat, the box is on its way out.
+        const stale = b.seen_ago_secs * 2 >= s.heartbeat_ttl_secs;
+        const idle = b.idle === null ? '<span style="color:var(--faint)">unknown</span>' : b.idle ? 'idle' : 'busy';
+        return `<tr class="${stale ? 'stale' : 'live'}"><td><span class="dot"></span>${stale ? 'expiring' : 'live'}</td>` +
+          `<td><code>${esc(b.id)}</code></td><td>${esc(b.hostname)}</td><td class="num">${b.rathole_port}</td>` +
+          `<td class="num">${ago(b.seen_ago_secs)}</td><td>${idle}</td></tr>`;
+      });
+      el('rows').innerHTML = rows.length ? rows.join('') :
+        '<tr><td colspan="6" class="empty">No box is registered. Start <code>losos-registrar announce</code> on one and it appears here.</td></tr>';
+      el('error').style.display = 'none';
+    } catch (e) {
+      el('error').textContent = `Could not read the registrar: ${e.message}`;
+      el('error').style.display = 'block';
+    }
+  }
+  refresh();
+  setInterval(refresh, 5000);
+</script>
+</body>
+</html>
