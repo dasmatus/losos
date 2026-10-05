@@ -709,6 +709,20 @@ impl std::fmt::Display for NotReady {
     }
 }
 
+/// A claim on a box that already has an owner. Typed so the HTTP layer can
+/// answer 409 with the sentence, which the wizard shows, rather than the 500
+/// "command failed; see the lososd journal" every untyped error becomes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AlreadyClaimed;
+
+impl std::fmt::Display for AlreadyClaimed {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("this box has already been set up")
+    }
+}
+
+impl std::error::Error for AlreadyClaimed {}
+
 impl std::error::Error for NotReady {}
 
 /// Last non-empty line, capped. occ writes one line worth reading and a
