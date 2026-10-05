@@ -59,6 +59,18 @@ After the reboot, tty1 shows a full-screen banner with the box's IP address and
 `<hostname>.local`. Open that address in a browser on any computer on the same
 network. The banner updates when the address changes.
 
+If reading a screen and typing an address is the scary part, open
+[losos-edge.dasmat.us/find](https://losos-edge.dasmat.us/find) in Chrome
+instead and press **Find my box**. Chrome asks once whether the page may look
+for devices on your local network (its *Local Network Access* permission,
+Chrome 142 or newer); say yes, and the page finds the box by its name and
+links you to its setup. The lookup runs inside your browser, between your
+computer and the box: the page reads the box's `/setup/state.json` (its name
+and certificate fingerprint, nothing more), and nothing about your network
+leaves your machine. The box only lets that one page read the document
+(`losos.setup.finderOrigins`). Firefox and Safari have no such permission and
+get the typed-address instructions instead.
+
 ## Try it in a VM (BIOS)
 
 For the TPM path, the VM needs an emulated chip at install time *and* at
