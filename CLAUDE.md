@@ -164,10 +164,11 @@ into the initrd as `/crypto_keyfile.bin`, on the unencrypted ESP. The two
 crypttab shapes are exclusive: systemd-cryptsetup given a key file *and*
 `tpm2-device=` reads the file as a sealed blob. `tests/invariants.nix` pins the
 default and that the TPM path declares no initrd secret; `tests/tpm.nix` boots
-it end to end under swtpm. The one hazard left: a keyfile box upgraded from a
-`github:` URI evaluates a tree without `install-target.nix`, flips to the TPM
-shape, and stops at a passphrase prompt — the same way it loses `targetDrives`
-and `bios`; keep such boxes on the default `git+file:///etc/nixos` URI.
+it end to end under swtpm. A remote `github:` upgrade URI evaluates a tree
+without `install-target.nix`, so `flake.nix` prefers the live
+`/etc/nixos/modules/{install-target,overrides}.nix` whenever it can read them,
+and both rebuild paths (`updates.nix`, `supervisor.rs`) pass `--impure` for
+that; see the auto-upgrade section.
 
 **Two isolated data domains, no shell** (`configuration.nix`): `notshared`
 (uid 1000) owns Nextcloud, `shared` (uid 1001) owns the contributed mesh
@@ -304,7 +305,17 @@ tty1 with a banner service showing the LAN IPv4 and `<hostName>.local`.
 **Auto-upgrade + nightly reboot** (`updates.nix`): `system.autoUpgrade`
 rebuilds from `losos.upgradeFlakeUri` at 03:00. The default,
 `git+file:///etc/nixos#install`, only advances the system consistently and
-does not pull new nixpkgs; set a `github:` URI to actually upgrade.
+does not pull new nixpkgs; set a `github:` URI to actually upgrade. **Both
+rebuild paths are `--impure` on purpose** (`system.autoUpgrade.flags` and
+lososd's `rebuild_command`): the published tree carries neither this box's
+`modules/install-target.nix` nor its `modules/overrides.nix`, so `flake.nix`
+imports the live copies from `/etc/nixos` when it can read them, and only an
+impure evaluation can. Drop the flag and a `github:` upgrade flips a keyfile
+box to the TPM shape, forgets its drives and firmware mode, and resets every
+setting. `builtins.pathExists` on an absolute path is `false` under pure
+evaluation (not an error), so CI, `nix flake check` and the installer stay
+pure and see the in-tree file or the defaults. `tests/invariants.nix` pins
+the flag.
 `nix.gc` runs at 04:30 with `--delete-older-than 14d`, and `boot.nix` caps
 both loaders at five generations: `/nix` *is* `/persist`, the ESP is 500 MiB,
 and `linuxPackages_latest` lands a new kernel there most nights, so without

@@ -16,6 +16,14 @@
     # with "flake does not provide attribute". losos.upgradeFlakeUri defaults
     # to git+file:///etc/nixos#install.
     flake = config.losos.upgradeFlakeUri;
+    # Impure on purpose: flake.nix reads modules/install-target.nix and
+    # modules/overrides.nix from /etc/nixos when it can, so a remote
+    # upgradeFlakeUri keeps this box's drives, firmware mode, unlock mode and
+    # settings instead of evaluating the published defaults. Under the local
+    # default URI the files are in-tree anyway and the flag changes nothing.
+    # lososd passes the same flag (backend/src/supervisor.rs);
+    # tests/invariants.nix pins this one.
+    flags = [ "--impure" ];
     dates = "03:00"; # build/upgrade well away from the midnight reboot
     allowReboot = true; # reboot if the upgrade changed kernel/initrd
     randomizedDelaySec = "30m"; # spread load, avoid hammering the flake ref
