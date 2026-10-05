@@ -384,6 +384,67 @@ await check('a 409 from the claim is shown and not asked again', async () => {
   await page.close();
 });
 
+/* Step 4 on a new box, take 7 of the recorded install demo (2026-10-05): the
+ * frame is opened a minute or two before the files app's web server is up,
+ * so what it shows is nginx's "502 Bad Gateway" page. The old watcher read
+ * "/nextcloud, not the login page" as a session and said "You are signed in"
+ * over an error page nothing ever reloaded. The step now reloads the frame
+ * until the files app answers, and counts only a page the app stamps with a
+ * user as signed in. */
+await check('step 4 keeps reloading a frame that nginx answered for, and signs in only on a real session', async () => {
+  const { page } = await open({ claimed: false, ready: true });
+  let hits = 0;
+  await page.route('**/nextcloud', async (route) => {
+    hits += 1;
+    if (hits <= 2) {
+      return route.fulfill({ status: 502, contentType: 'text/html', body: '<html><head><title>502 Bad Gateway</title></head><body><center><h1>502 Bad Gateway</h1></center><hr><center>nginx</center></body></html>' });
+    }
+    if (hits === 3) {
+      // The login page: the app's token on <head>, no user.
+      return route.fulfill({ status: 200, contentType: 'text/html', body: '<html><head data-requesttoken="tok"><title>Login</title></head><body><form><input id="user"><input id="password" type="password"><button id="go" type="button" onclick="location.href=\'/nextcloud/apps/files/\'">Log in</button></form></body></html>' });
+    }
+    return route.fulfill({ status: 200, contentType: 'text/html', body: '<html><head data-requesttoken="tok"><title>Files</title></head><body>should not be asked again</body></html>' });
+  });
+  await page.route('**/nextcloud/apps/files/', (route) =>
+    route.fulfill({ status: 200, contentType: 'text/html', body: '<html><head data-requesttoken="tok" data-user="notshared"><title>Files</title></head><body><div id="app-content">files</div></body></html>' }),
+  );
+  await page.route('**/api/recovery', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ code: 'c5b6add9-e47a-43d5-87be-9b45e4a81441', minted: true }) }),
+  );
+  // Through steps 1 to 3.
+  await page.getByRole('button', { name: /^Continue$/ }).click();
+  await page.locator('input[name="new-password"]').fill('correct horse battery staple');
+  await page.locator('input[name="confirm-password"]').fill('correct horse battery staple');
+  await page.getByRole('button', { name: /^Set the password$/ }).click();
+  await page.getByText('notshared').first().waitFor({ timeout: 5000 });
+  await page.getByRole('button', { name: /^Continue$/ }).click();
+  await page.getByRole('button', { name: 'Copy' }).click();
+  await page.getByRole('button', { name: /^Continue$/ }).click();
+  await page.locator('iframe').first().waitFor({ timeout: 5000 });
+
+  // On the 502: not signed in, says the app is starting, and reloads.
+  await page.waitForTimeout(1500);
+  let text = await page.locator('body').innerText();
+  assert.ok(!/You are signed in/.test(text), `an nginx error page counted as a session:\n${text}`);
+  assert.ok(/still starting/.test(text), `the starting note is missing:\n${text}`);
+  await page.waitForFunction(() => {
+    const f = document.querySelector('iframe');
+    return !!f && !!f.contentDocument && !!f.contentDocument.querySelector('#user');
+  }, null, { timeout: 20_000 });
+  assert.ok(hits >= 3, `the frame was not reloaded until the app answered (hits=${hits})`);
+  // The login page itself is not a session either, and the note is gone.
+  await page.waitForTimeout(1200);
+  text = await page.locator('body').innerText();
+  assert.ok(!/You are signed in/.test(text), 'the login page counted as a session');
+  assert.ok(!/still starting/.test(text), 'the starting note stayed after the app answered');
+  assert.ok(await page.getByRole('button', { name: /^Finish/ }).isDisabled(), 'Finish enabled before any sign-in');
+  // "Sign in" inside the frame: the app renders a page stamped with the user.
+  await page.frameLocator('iframe').first().locator('#go').click();
+  await page.getByText('You are signed in').waitFor({ timeout: 10_000 });
+  assert.ok(!(await page.getByRole('button', { name: /^Finish/ }).isDisabled()), 'Finish still disabled after signing in');
+  await page.close();
+});
+
 await browser.close();
 await closeServer();
 finish();
