@@ -247,13 +247,13 @@ pkgs.testers.nixosTest {
         # origin exactly on this one route and be absent everywhere else — a
         # wildcard, or the header on the SPA or /nextcloud, would let any page
         # the owner has open take inventory of the LAN.
-        FINDER = "https://losos-proxy.dasmat.us"
+        FINDER = "https://losos-edge.dasmat.us"
         def cors(path, origin):
             return headers(path, f"-H 'Origin: {origin}'").get("access-control-allow-origin")
         assert cors(STATE_URL, FINDER) == FINDER, headers(STATE_URL, f"-H 'Origin: {FINDER}'")
-        assert cors(STATE_URL, "https://losos-proxy.dasmat.us.evil.example") is None
+        assert cors(STATE_URL, "https://losos-edge.dasmat.us.evil.example") is None
         assert cors(STATE_URL, "https://evil.example") is None
-        assert cors(STATE_URL, "http://losos-proxy.dasmat.us") is None, "scheme is part of the origin"
+        assert cors(STATE_URL, "http://losos-edge.dasmat.us") is None, "scheme is part of the origin"
         assert cors(CERT_URL, FINDER) is None, "the certificate is not for other origins"
         assert cors("/nextcloud/", FINDER) is None, "the service route gets no CORS header"
         # And allowing the read did not cost the route its security headers.
