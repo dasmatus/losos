@@ -21,10 +21,12 @@ pub trait Losos {
     /// [`State::default`] rather than an error.
     fn load_state(&mut self) -> anyhow::Result<State>;
     fn save_state(&mut self, s: &State) -> anyhow::Result<()>;
-    /// Patch `losos.sharingMyStorage` in `defaults.nix` (`LOSOS_CONFIG`).
-    fn rewrite_config(&mut self, sharing: bool) -> anyhow::Result<()>;
-    /// Replace `overrides.nix` (`LOSOS_OVERRIDES`) wholesale.
+    /// Replace `overrides.nix` (`LOSOS_OVERRIDES`) wholesale. The one file
+    /// the box evaluates for a runtime setting; `change` line-patches it
+    /// through this too, after reading it back.
     fn write_overrides(&mut self, body: &str) -> anyhow::Result<()>;
+    /// `overrides.nix` as it is on disk, or the committed defaults when the
+    /// file is absent (a fresh appliance). A read *error* is an error.
     fn read_overrides(&mut self) -> anyhow::Result<String>;
     /// Start a rebuild for `job` and arrange for its completion to be recorded.
     fn spawn_rebuild(&mut self, job: &str) -> anyhow::Result<()>;
@@ -133,11 +135,24 @@ pub fn cmd_settings<L: Losos>(l: &mut L) -> anyhow::Result<Value> {
 
 /// Switch sharing posture and rebuild.
 ///
-/// `sharing` is derived from the mode and is never passed in separately. Note
-/// this writes `defaults.nix`, not `overrides.nix`.
+/// `sharing` is derived from the mode and is never passed in separately.
+///
+/// This patches the `losos.sharingMyStorage` line of `overrides.nix` — the
+/// same file `apply` writes whole and the admin UI's Storage toggle goes
+/// through — and leaves every other line alone. It used to patch
+/// `/etc/nixos/defaults.nix`, a path that exists on no installed box (the
+/// module is `modules/defaults.nix`, and the option is not assigned there
+/// anyway), and a missing file was logged as a warning and reported as
+/// success: the CLI and the D-Bus method recorded `mode: mesh` in state.json,
+/// spawned a rebuild that changed nothing, and answered OK. Only the web UI,
+/// which never called this, actually moved the box. Now all three roads
+/// write the one file the flake evaluates.
 pub fn cmd_change<L: Losos>(l: &mut L, mode: Mode) -> anyhow::Result<Value> {
     let sharing = mode == Mode::Mesh;
-    l.rewrite_config(sharing)?;
+    let lines: Vec<String> = l.read_overrides()?.lines().map(str::to_string).collect();
+    let mut body = crate::overrides::inject_line(sharing, &lines).join("\n");
+    body.push('\n');
+    l.write_overrides(&body)?;
     let job = l.next_job_id()?;
     let mut s = l.load_state()?;
     s.mode = mode;
@@ -536,6 +551,31 @@ mod tests {
             .any(|l| l.contains("losos.sharingMyStorage = false;")));
     }
 
+    /// `change` and `apply` must agree on the file, or the Storage toggle in
+    /// the admin UI (apply) and the CLI/D-Bus road (change) each think they
+    /// own the box. The fake holds one `overrides.nix`; a change must be
+    /// visible to `settings`, which reads that file, and must leave every
+    /// other assignment where `apply` put it.
+    #[test]
+    fn change_patches_the_overrides_file_that_settings_reads() {
+        let mut f = FakeLosos::new();
+        cmd_apply(
+            &mut f,
+            "{ ... }:\n{\n  losos.sharingMyStorage = false;\n  losos.hostName = \"kept\";\n}\n",
+        )
+        .unwrap();
+        cmd_change(&mut f, Mode::Mesh).unwrap();
+        let settings = cmd_settings(&mut f).unwrap();
+        assert_eq!(settings["sharingMyStorage"], true);
+        assert_eq!(settings["hostName"], "kept");
+        assert_eq!(
+            f.config.len(),
+            5,
+            "change rewrote more than one line: {:?}",
+            f.config
+        );
+    }
+
     #[test]
     fn status_reports_idle_then_building() {
         let mut f = FakeLosos::new();
@@ -728,9 +768,6 @@ mod tests {
             }
             fn save_state(&mut self, s: &State) -> anyhow::Result<()> {
                 self.0.save_state(s)
-            }
-            fn rewrite_config(&mut self, b: bool) -> anyhow::Result<()> {
-                self.0.rewrite_config(b)
             }
             fn write_overrides(&mut self, b: &str) -> anyhow::Result<()> {
                 self.0.write_overrides(b)
