@@ -30,6 +30,13 @@ requires no token, but stops accepting claims once the box has an owner. Set up
 the box only on a trusted LAN; the first caller becomes its owner. The token is
 handed back only once and cannot be fetched again through the UI.
 
+A claim sent before Nextcloud has finished its first start answers `503` with
+`{"error": …, "ready": false, "waitingFor": …}` and changes nothing; the box
+stays claimable. `GET /api/setup/claim` carries the same `ready` and
+`waitingFor` fields, and the first-run wizard polls it and lets the owner
+proceed on its own once they flip. On a fresh box this takes a few minutes:
+the Nextcloud pod runs `occ maintenance:install` before it serves anything.
+
 The first-run wizard is that caller. After it sets the password it shows the
 token as the **admin key**, with a Copy button, and prints it on the recovery
 sheet in the next step under the recovery code. That is the only time the box

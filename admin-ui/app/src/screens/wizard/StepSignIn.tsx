@@ -15,6 +15,16 @@
  * set-password first, got a 401 on every fresh box, and the wizard could not
  * get past this step; the browser test walks it now.
  *
+ * The step also waits before it asks. On a fresh box the Nextcloud pod spends
+ * its first minutes in `occ maintenance:install`, and a claim sent in that
+ * window fails: it is occ that sets the password. `GET /api/setup/claim` now
+ * carries `ready` and `waitingFor`, so the form stays disabled behind a
+ * waiting panel that polls every few seconds and opens on its own, and a 503
+ * from the claim itself (the race between the last poll and the submit) goes
+ * back to waiting rather than reading as an error. The recorded install demo
+ * showed what this replaces: an owner typing a good password into a bare
+ * "command failed; see the lososd journal".
+ *
  * A password is collected whatever else happens. The passkey is an addition,
  * never a substitute: the desktop and phone sync clients authenticate with a
  * name and a password, and no passkey helps them. See ./passkey.ts.
@@ -29,6 +39,7 @@ import {
   FingerPrintIcon,
   Key01Icon,
   InformationCircleIcon,
+  Loading03Icon,
   LockPasswordIcon,
   SecurityLockIcon,
   UserCircleIcon,
@@ -40,7 +51,15 @@ import { FieldError, Input } from "@/components/ui/input";
 import { Label, LabelHint } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/progress";
-import { claimBox, hasToken, isUnauthorized, saveToken } from "@/lib/api";
+import {
+  claimBox,
+  getClaimState,
+  hasToken,
+  isAbort,
+  isNotReady,
+  isUnauthorized,
+  saveToken,
+} from "@/lib/api";
 import { t } from "@/lib/i18n";
 import { Rich, useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
@@ -92,6 +111,10 @@ function PasswordForm({
   const [visible, setVisible] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
   const [problem, setProblem] = React.useState<string | null>(null);
+  // Only a box nobody has claimed has anything to wait for: once this tab
+  // holds the token the password goes through the gated route, and lososd
+  // answers readiness only on the public one.
+  const readiness = useReadiness(account === null && !hasToken());
   const passwordId = React.useId();
   const confirmId = React.useId();
   const problemId = React.useId();
@@ -123,14 +146,32 @@ function PasswordForm({
       setVisible(false);
       onPasswordSet(result.user, result.adminKey);
     } catch (error) {
+      // Lost the race between the last poll and the submit: lososd says not
+      // yet, and changed nothing. Back to waiting, with the reason on screen.
+      if (isNotReady(error)) readiness.notYet(error instanceof Error ? error.message : null);
       setProblem(describeSetPassword(error));
     } finally {
       setBusy(false);
     }
   };
 
+  const waiting = readiness.state.kind === "waiting";
+
   return (
     <form onSubmit={submit} noValidate className="flex flex-col gap-4">
+      {readiness.state.kind !== "ready" && <WaitingPanel state={readiness.state} />}
+      {readiness.state.kind === "ready" && readiness.state.waited && (
+        <p role="status" className="flex items-center gap-1.5 text-[13px] text-ok">
+          <HugeiconsIcon
+            icon={CheckmarkCircle02Icon}
+            size={16}
+            strokeWidth={1.5}
+            color="currentColor"
+            aria-hidden="true"
+          />
+          {t("wizard.signin.ready")}
+        </p>
+      )}
       <div className="flex flex-col gap-2">
         <Label htmlFor={passwordId}>{t("wizard.signin.newPassword")}</Label>
         <div className="flex items-center gap-2">
@@ -140,7 +181,7 @@ function PasswordForm({
             type={visible ? "text" : "password"}
             autoComplete="new-password"
             value={password}
-            disabled={busy}
+            disabled={busy || waiting}
             aria-invalid={problem !== null}
             aria-describedby={problem !== null ? problemId : undefined}
             onChange={(event) => {
@@ -177,7 +218,7 @@ function PasswordForm({
           type={visible ? "text" : "password"}
           autoComplete="new-password"
           value={confirm}
-          disabled={busy}
+          disabled={busy || waiting}
           aria-invalid={problem !== null}
           onChange={(event) => {
             setConfirm(event.target.value);
@@ -190,7 +231,10 @@ function PasswordForm({
       <FieldError id={problemId}>{problem}</FieldError>
 
       <div className="flex items-center gap-3">
-        <Button type="submit" disabled={busy || password.length === 0 || confirm.length === 0}>
+        <Button
+          type="submit"
+          disabled={busy || waiting || password.length === 0 || confirm.length === 0}
+        >
           <HugeiconsIcon
             icon={LockPasswordIcon}
             size={18}
@@ -242,6 +286,127 @@ async function setFirstPassword(
   // lososd always names the account it changed; the type allows null because
   // the wire contract does. An unnamed account is still a set password.
   return { user: claimed.user ?? "", adminKey: claimed.token };
+}
+
+// ── Waiting for the box to be ready ───────────────────────────────────────
+
+/** How often the step asks lososd again while it is not ready. Each ask is a
+ *  `crictl exec` on the box, so this is seconds, not milliseconds; the first
+ *  boot's install takes minutes anyway. */
+const READINESS_POLL_MS = 5000;
+
+type ReadinessState =
+  /* Not asked yet, or the answer is on its way: nothing is shown until the
+   * first reply so a box that is ready never flashes a waiting panel. */
+  | { kind: "unknown" }
+  /* lososd said not yet; `reason` is its sentence, `since` when waiting
+   * began, `unreachable` whether the last poll got no answer at all. */
+  | { kind: "waiting"; reason: string | null; since: number; unreachable: boolean }
+  /* `waited` says whether a waiting panel was ever shown, so the step can
+   * say "ready now" to someone who sat through it and nothing to anyone
+   * else. */
+  | { kind: "ready"; waited: boolean };
+
+interface Readiness {
+  state: ReadinessState;
+  /** The submit got a 503: go back to waiting with lososd's reason. */
+  notYet: (reason: string | null) => void;
+}
+
+/* Poll `GET /api/setup/claim` until `ready` is true. A lososd from before the
+ * field answers without it, which reads as ready: an old box must not be
+ * waited on forever for an answer it cannot give. A poll that fails outright
+ * (the box rebooting, say) keeps waiting and says the box did not answer. */
+function useReadiness(enabled: boolean): Readiness {
+  const [state, setState] = React.useState<ReadinessState>(
+    enabled ? { kind: "unknown" } : { kind: "ready", waited: false },
+  );
+  // Bumped by `notYet` so the effect below starts a fresh poll loop after a
+  // 503 from the submit; `enabled` alone would not change.
+  const [restarts, setRestarts] = React.useState(0);
+
+  React.useEffect(() => {
+    if (!enabled) return;
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let live = true;
+
+    const ask = async (): Promise<void> => {
+      try {
+        const answer = await getClaimState({ signal: controller.signal });
+        if (!live) return;
+        if (answer.ready !== false) {
+          setState((prev) => ({ kind: "ready", waited: prev.kind === "waiting" }));
+          return;
+        }
+        setState((prev) => ({
+          kind: "waiting",
+          reason: answer.waitingFor ?? null,
+          since: prev.kind === "waiting" ? prev.since : Date.now(),
+          unreachable: false,
+        }));
+      } catch (error) {
+        if (!live || isAbort(error)) return;
+        setState((prev) =>
+          prev.kind === "waiting"
+            ? { ...prev, unreachable: true }
+            : { kind: "waiting", reason: null, since: Date.now(), unreachable: true },
+        );
+      }
+      timer = setTimeout(() => void ask(), READINESS_POLL_MS);
+    };
+    // A restart after a 503 already knows the answer is "not yet", so it
+    // waits one interval before asking; the first run asks at once so a
+    // ready box never shows the panel.
+    if (restarts === 0) void ask();
+    else timer = setTimeout(() => void ask(), READINESS_POLL_MS);
+
+    return () => {
+      live = false;
+      controller.abort();
+      if (timer !== undefined) clearTimeout(timer);
+    };
+  }, [enabled, restarts]);
+
+  const notYet = React.useCallback((reason: string | null) => {
+    setState((prev) => ({
+      kind: "waiting",
+      reason,
+      since: prev.kind === "waiting" ? prev.since : Date.now(),
+      unreachable: false,
+    }));
+    setRestarts((n) => n + 1);
+  }, []);
+
+  return { state, notYet };
+}
+
+/* What the owner sees instead of a disabled form with no explanation. The
+ * reason is lososd's own sentence when it gave one ("Nextcloud is still
+ * installing itself…"), and the elapsed count ticks so a long wait visibly
+ * is one rather than a hung page. */
+function WaitingPanel({ state }: { state: ReadinessState }) {
+  const t = useT();
+  const [now, setNow] = React.useState(() => Date.now());
+  React.useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  if (state.kind !== "waiting") return null;
+  const seconds = Math.max(0, Math.floor((now - state.since) / 1000));
+  return (
+    <Callout tone="info" icon={Loading03Icon} title={t("wizard.signin.waiting.title")}>
+      <div role="status" aria-live="polite" className="mt-1 flex flex-col gap-2">
+        <p>{t("wizard.signin.waiting.body")}</p>
+        {state.reason !== null && <p className="text-ink">{state.reason}</p>}
+        <p className="flex items-center gap-2 text-faint">
+          <Spinner label={t("wizard.signin.waiting.title")} className="text-muted" />
+          {t("wizard.signin.waiting.since", { count: seconds })}
+          {state.unreachable && <span>{t("wizard.signin.waiting.unreachable")}</span>}
+        </p>
+      </div>
+    </Callout>
+  );
 }
 
 // ── The admin key ─────────────────────────────────────────────────────────
@@ -308,6 +473,9 @@ function AdminKey({ value }: { value: string }) {
 }
 
 function describeSetPassword(error: unknown): string {
+  if (isNotReady(error)) {
+    return t("wizard.signin.err.notReady");
+  }
   if (isUnauthorized(error)) {
     return t("wizard.signin.err.unauthorized");
   }
