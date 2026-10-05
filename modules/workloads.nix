@@ -93,8 +93,10 @@ let
   # They are not cosmetic: Postgres peer auth over /run/postgresql compares the
   # *uid* of the connecting process, and the pod shares the host's user
   # namespace, so the pod's runAsUser is what Postgres maps to a role. gid ==
-  # uid by construction there, hence one binding each.
-  nextcloudUid = 1002;
+  # uid by construction there, hence one binding each. Nextcloud's comes from
+  # nextcloud-stack.nix, which flake/images.nix reads too: the image bakes
+  # /run/nextcloud owned by that uid, so the two must not drift.
+  nextcloudUid = (import ./nextcloud-stack.nix { inherit pkgs lib; }).uid;
   forgejoUid = 1003;
 
   # Redis' socket is mode 0660, group redis-nextcloud, and a container does not
