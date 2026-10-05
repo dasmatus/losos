@@ -22,9 +22,9 @@
 //! instance. Across instances the store's last writer wins; see
 //! [`crate::store`] for what that costs.
 //!
-//! A store that cannot be read fails the request with 503 rather than serving
+//! A database that cannot be read fails the request with 503 rather than serving
 //! from whatever this instance remembers: a stale registry that then got saved
-//! would overwrite every heartbeat other instances recorded. A store that
+//! would overwrite every heartbeat other instances recorded. A database that
 //! cannot be written fails a mutating request the same way, so the appliance's
 //! announce loop retries, and lets a read through, since nothing was lost.
 
@@ -43,12 +43,12 @@ use tokio::sync::Mutex;
 
 use crate::settings::Settings;
 use crate::status::{self, Status};
-use crate::store::Store;
+use crate::store::{PgStore, Store, StoreError};
 
 /// A built registrar plus the pieces this host adds around it.
 pub struct Host {
     app: App,
-    store: Option<Store>,
+    store: Option<Box<dyn Store>>,
     ttl: Duration,
     traefik_file: PathBuf,
     /// Held for the whole of every request; see the module header.
@@ -56,15 +56,23 @@ pub struct Host {
 }
 
 impl Host {
-    /// Materialise the settings onto the scratch disk and build the registrar.
+    /// Materialise the settings onto the scratch disk and build the registrar,
+    /// with the Postgres the settings name (or none).
     pub async fn new(settings: &Settings) -> Result<Self> {
+        let store: Option<Box<dyn Store>> = match &settings.store {
+            Some(s) => Some(Box::new(PgStore::new(s).into_diagnostic_store()?)),
+            None => None,
+        };
+        Self::with_store(settings, store).await
+    }
+
+    /// As [`Host::new`], with the store supplied — a [`crate::store::MemStore`]
+    /// in the tests, where two hosts on one cell stand in for two instances
+    /// on one database.
+    pub async fn with_store(settings: &Settings, store: Option<Box<dyn Store>>) -> Result<Self> {
         let opts = settings
             .materialise()
             .wrap_err("write whitelist and token files")?;
-        let store = match &settings.store {
-            Some(s) => Some(Store::new(s).into_diagnostic_store()?),
-            None => None,
-        };
         let ttl = opts.heartbeat_ttl;
         let traefik_file = PathBuf::from(&opts.traefik_dir).join("losos.yml");
         let app = build(opts).await.wrap_err("build registrar")?;
@@ -72,7 +80,7 @@ impl Host {
             "edge host ready: {} tenant(s) whitelisted, ttl {}s, store {}",
             settings.tenants.len(),
             ttl.as_secs(),
-            if store.is_some() { "redis" } else { "memory" },
+            store.as_ref().map_or("none", |s| s.kind()),
         );
         Ok(Self {
             app,
@@ -95,11 +103,7 @@ impl Host {
     /// The registry as of the last reconcile pass, for the status route.
     pub async fn status(&self) -> Status {
         let snapshot = self.app.registry().export().await;
-        let store = if self.store.is_some() {
-            "redis"
-        } else {
-            "memory"
-        };
+        let store = self.store.as_ref().map_or("memory", |s| s.kind());
         Status::from_snapshot(snapshot, self.ttl, store)
     }
 
@@ -117,13 +121,13 @@ impl Host {
         }
     }
 
-    async fn load(&self, store: &Store) -> Result<(), crate::store::StoreError> {
+    async fn load(&self, store: &dyn Store) -> Result<(), crate::store::StoreError> {
         let snapshot = store.load().await?.unwrap_or_default();
         self.app.registry().import(snapshot, self.ttl).await;
         Ok(())
     }
 
-    async fn save(&self, store: &Store) -> Result<(), crate::store::StoreError> {
+    async fn save(&self, store: &dyn Store) -> Result<(), crate::store::StoreError> {
         let snapshot = self.app.registry().export().await;
         store.save(&snapshot).await
     }
@@ -133,7 +137,7 @@ impl Host {
 async fn turn(State(host): State<Arc<Host>>, req: Request, next: Next) -> Response {
     let _turn = host.turn.lock().await;
     if let Some(store) = &host.store {
-        if let Err(e) = host.load(store).await {
+        if let Err(e) = host.load(store.as_ref()).await {
             tracing::error!("cannot load the registry from the store: {e}");
             return unavailable();
         }
@@ -146,7 +150,7 @@ async fn turn(State(host): State<Arc<Host>>, req: Request, next: Next) -> Respon
     let response = next.run(req).await;
     host.reconcile().await;
     if let Some(store) = &host.store {
-        if let Err(e) = host.save(store).await {
+        if let Err(e) = host.save(store.as_ref()).await {
             tracing::error!("cannot save the registry to the store: {e}");
             if mutating {
                 return unavailable();
@@ -170,7 +174,7 @@ trait IntoDiagnosticStore<T> {
     fn into_diagnostic_store(self) -> Result<T>;
 }
 
-impl<T> IntoDiagnosticStore<T> for std::result::Result<T, crate::store::StoreError> {
+impl<T> IntoDiagnosticStore<T> for std::result::Result<T, StoreError> {
     fn into_diagnostic_store(self) -> Result<T> {
         self.map_err(|e| miette::miette!("state store: {e}"))
     }

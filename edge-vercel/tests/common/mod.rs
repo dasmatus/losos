@@ -1,22 +1,19 @@
-//! Fixtures: a stand-in for Upstash, and a host built against it.
+//! Fixtures: a host built on a store the test can see into.
 //!
-//! The fake speaks the two commands the store uses, in Upstash's REST shape,
-//! and nothing else — the point is to drive the real `Store` over real HTTP,
-//! not to model Redis.
+//! The tests run the real router through the real wrapper. The store is the
+//! crate's own `MemStore`, which two hosts can share by cloning, so a test can
+//! stand up a "second instance" without a database; the Postgres store has its
+//! own, gated, test in `tests/postgres.rs`.
 #![allow(dead_code, unreachable_pub)]
 
-use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use axum::extract::State;
-use axum::http::{Method, StatusCode};
-use axum::routing::post;
-use axum::{Json, Router};
+use axum::http::Method;
 use http_body_util::BodyExt;
-use losos_edge_vercel::{Host, Settings, StoreSettings, TenantSpec};
+use losos_edge_vercel::{Host, Settings, Store, TenantSpec};
 use tower::ServiceExt;
 
 /// A 64-hex-character token, the shape the docs describe for a real appliance.
@@ -45,59 +42,10 @@ impl Drop for TempDir {
     }
 }
 
-/// The fake's whole state: the key space.
-pub type Kv = Arc<Mutex<HashMap<String, String>>>;
-
-/// Start a fake Upstash on an ephemeral port. Returns its base URL and the
-/// key space, so a test can seed or inspect what the store saved.
-pub async fn fake_upstash() -> (String, Kv) {
-    let kv: Kv = Arc::default();
-    let app = Router::new()
-        .route("/", post(command))
-        .with_state(Arc::clone(&kv));
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-        .await
-        .expect("bind fake upstash");
-    let addr = listener.local_addr().expect("local addr");
-    tokio::spawn(async move {
-        let _ = axum::serve(listener, app).await;
-    });
-    // The store insists on https for a real endpoint; the test endpoint is
-    // loopback, so the settings are built directly rather than from env.
-    (format!("http://{addr}"), kv)
-}
-
-async fn command(
-    State(kv): State<Kv>,
-    Json(argv): Json<Vec<serde_json::Value>>,
-) -> (StatusCode, Json<serde_json::Value>) {
-    let words: Vec<String> = argv
-        .iter()
-        .map(|v| match v {
-            serde_json::Value::String(s) => s.clone(),
-            other => other.to_string(),
-        })
-        .collect();
-    let mut kv = kv.lock().expect("kv lock");
-    match words.first().map(String::as_str) {
-        Some("GET") if words.len() == 2 => {
-            let value = kv.get(&words[1]).cloned();
-            (StatusCode::OK, Json(serde_json::json!({ "result": value })))
-        }
-        Some("SET") if words.len() == 3 => {
-            kv.insert(words[1].clone(), words[2].clone());
-            (StatusCode::OK, Json(serde_json::json!({ "result": "OK" })))
-        }
-        _ => (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({ "error": format!("unsupported command {words:?}") })),
-        ),
-    }
-}
-
-/// A host with one whitelisted tenant, `demo-box` → `demo.losos.example`, a
-/// two-minute TTL, and the given store (or none).
-pub async fn host(dir: &TempDir, store_url: Option<&str>) -> Arc<Host> {
+/// The settings every test host runs with: one whitelisted tenant,
+/// `demo-box` → `demo.losos.example`, a two-minute TTL, no database (the
+/// store is handed to [`host`] directly).
+pub fn settings(dir: &TempDir) -> Settings {
     let mut tenants = std::collections::BTreeMap::new();
     tenants.insert(
         "demo-box".to_string(),
@@ -108,19 +56,23 @@ pub async fn host(dir: &TempDir, store_url: Option<&str>) -> Arc<Host> {
             market: false,
         },
     );
-    let settings = Settings {
+    Settings {
         tenants,
         bootstrap_token: "test-bootstrap-0123456789abcdef0123".to_string(),
         heartbeat_ttl: "120s".to_string(),
         port_range: "50000-50100".to_string(),
         state_dir: dir.path.clone(),
-        store: store_url.map(|url| StoreSettings {
-            url: url.to_string(),
-            token: "test-token".to_string(),
-            key: "losos:test".to_string(),
-        }),
-    };
-    Arc::new(Host::new(&settings).await.expect("build host"))
+        store: None,
+    }
+}
+
+/// A host on the given store (or none, meaning memory for this instance only).
+pub async fn host(dir: &TempDir, store: Option<Box<dyn Store>>) -> Arc<Host> {
+    Arc::new(
+        Host::with_store(&settings(dir), store)
+            .await
+            .expect("build host"),
+    )
 }
 
 /// Drive one request through the router, in-process, exactly as Vercel's

@@ -159,7 +159,25 @@ jobs:
     # The suites live here rather than inside buildRustPackage. doCheck used to
     # run them, but it also recompiles each crate in test configuration and
     # links a binary per test target, which pushed `nix build .#losos-ctl` to
-    # 7.7-10.3 minutes. Mirrors devenv.nix's `test-rust`.
+    # 7.7-10.3 minutes. Mirrors devenv.nix's `test-rust`, plus a Postgres for
+    # edge-vercel's gated store suite (tests/postgres.rs), which devenv does
+    # not start: without LOSOS_TEST_DATABASE_URL that suite passes trivially.
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: losos
+          POSTGRES_PASSWORD: losos
+          POSTGRES_DB: losos
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U losos"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      LOSOS_TEST_DATABASE_URL: postgres://losos:losos@127.0.0.1:5432/losos?sslmode=disable
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-nix
