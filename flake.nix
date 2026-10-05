@@ -260,8 +260,8 @@
             # so the published flake (without it) still evaluates against the
             # defaults — which is also what a `github:` upgradeFlakeUri
             # evaluates on the box, so those defaults have to describe a box
-            # the ISO actually produces (keyfile unlock; see losos.tpm.enable
-            # and tests/invariants.nix).
+            # the ISO actually produces (TPM2 unlock wherever a chip exists;
+            # see losos.tpm.enable and tests/invariants.nix).
           ]
           ++ nixpkgs.lib.optional (builtins.pathExists ./modules/install-target.nix) ./modules/install-target.nix;
         };
@@ -287,6 +287,10 @@
       #   losos-install       — boots a VM with three empty disks and runs the
       #                         installer end-to-end through the disko format/mount
       #                         path (tests/install.nix).
+      #   losos-tpm-unlock    — boots a VM with swtpm, runs the installer's
+      #                         format + TPM2 enrolment against the production
+      #                         layout, reboots into it and asserts /persist
+      #                         unlocks from the chip unattended (tests/tpm.nix).
       #   losos-admin-daemon  — boots a minimal losos appliance and exercises the
       #                         lososd daemon + losos-ctl facade + the Bearer-
       #                         authed admin HTTP API (tests/admin-vm.nix).
@@ -334,6 +338,7 @@
       #                         and the .local name (tests/console.nix).
       checks.${system} = {
         losos-install = import ./tests/install.nix { inherit pkgs disko; };
+        losos-tpm-unlock = import ./tests/tpm.nix { inherit pkgs disko; };
         losos-admin-daemon = import ./tests/admin-vm.nix { inherit pkgs; };
         losos-edge-proxy = import ./tests/edge-vm.nix { inherit pkgs; };
         losos-edge-market = import ./tests/market-vm.nix { inherit pkgs; };
