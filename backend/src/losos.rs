@@ -81,6 +81,13 @@ pub trait Losos {
         &mut self,
         target: &crate::setup::Target,
     ) -> anyhow::Result<crate::setup::OccOutcome>;
+    /// The last few log lines of the most recent Nextcloud container in any
+    /// state, when [`Losos::nextcloud_target`] found no running one: the argv
+    /// pair is [`crate::setup::last_container_argv`] then
+    /// [`crate::setup::container_log_argv`], and the text is read by
+    /// [`crate::setup::describe_stopped`]. `Ok(None)` when there is no such
+    /// container or no log; native mode has neither.
+    fn nextcloud_last_log(&mut self, mode: crate::setup::NcMode) -> anyhow::Result<Option<String>>;
 
     // ── The appliance recovery code ─────────────────────────────────────
     /// The appliance's recovery code, minting one only if there is none.
@@ -347,13 +354,32 @@ pub fn cmd_claim_state<L: Losos>(l: &mut L) -> anyhow::Result<Value> {
 /// rather than as an error, because on a box with no shell the only thing the
 /// owner can do about either is wait.
 pub fn nextcloud_readiness<L: Losos>(l: &mut L) -> Readiness {
-    let target = match l.nextcloud_mode().and_then(|m| l.nextcloud_target(m)) {
+    const NOT_STARTED: &str =
+        "Nextcloud has not started yet. On a new box this takes a few minutes.";
+    let mode = match l.nextcloud_mode() {
+        Ok(m) => m,
+        Err(e) => {
+            tracing::info!(error = ?e, "Nextcloud mode unknown");
+            return Readiness::NotYet(NOT_STARTED.to_string());
+        }
+    };
+    let target = match l.nextcloud_target(mode) {
         Ok(t) => t,
         Err(e) => {
             tracing::info!(error = ?e, "Nextcloud not located yet");
-            return Readiness::NotYet(
-                "Nextcloud has not started yet. On a new box this takes a few minutes.".to_string(),
-            );
+            // No running container. Before saying "not yet", look at whether
+            // one *was* running and what it said as it died: a pod in
+            // CrashLoopBackOff is "not yet" forever, and its last log line
+            // is the only thing an owner with no shell can act on.
+            let why = match l.nextcloud_last_log(mode) {
+                Ok(Some(tail)) => crate::setup::describe_stopped(&tail),
+                Ok(None) => None,
+                Err(e) => {
+                    tracing::info!(error = ?e, "Nextcloud last log could not be read");
+                    None
+                }
+            };
+            return Readiness::NotYet(why.unwrap_or_else(|| NOT_STARTED.to_string()));
         }
     };
     match l.nextcloud_status(&target) {
@@ -883,6 +909,12 @@ mod tests {
                 target: &crate::setup::Target,
             ) -> anyhow::Result<crate::setup::OccOutcome> {
                 self.0.nextcloud_status(target)
+            }
+            fn nextcloud_last_log(
+                &mut self,
+                mode: crate::setup::NcMode,
+            ) -> anyhow::Result<Option<String>> {
+                self.0.nextcloud_last_log(mode)
             }
             fn recovery_code(&mut self) -> anyhow::Result<crate::recovery::Recovery> {
                 self.0.recovery_code()

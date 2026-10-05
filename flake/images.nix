@@ -417,7 +417,12 @@ let
       done
       [ -s "$adminpass" ] || fail "$adminpass is empty — refusing to install Nextcloud with a blank admin password."
 
-      mkdir -p ${nextcloudRunDir}
+      # Baked into the image owned by this uid (fakeRootCommands below), so
+      # this only ever confirms it; a pod with no capabilities cannot create
+      # it under a root-owned /run, which is how the first container builds
+      # crash-looped on `mkdir` here.
+      [ -d ${nextcloudRunDir} ] && [ -w ${nextcloudRunDir} ] ||
+        fail "${nextcloudRunDir} is missing or not writable by uid $(id -u); the image must create it owned by that uid (flake/images.nix, fakeRootCommands)."
       chmod 0700 ${nextcloudRunDir}
 
       # The state root is a hostPath. The pod runs as the nextcloud uid and has
@@ -655,8 +660,15 @@ let
       # Both are idempotent and both are needed after an upgrade: `migrate`
       # brings the schema forward, `regenerate hooks` rewrites the store paths
       # baked into every repository's git hooks, which change on every rebuild.
+      # Forgejo 16 no longer has the `hooks` subcommand (`admin regenerate`
+      # lists only `keys`; it prints its usage and exits 0 when asked for
+      # hooks, which is what the pod log of 2026-10-05 showed), so ask before
+      # calling: on a version that has it the hooks are rewritten, on one that
+      # does not the hooks are Forgejo's own business.
       forgejo migrate
-      forgejo admin regenerate hooks
+      if forgejo admin regenerate --help 2>/dev/null | grep -qE '^ +hooks '; then
+        forgejo admin regenerate hooks
+      fi
 
       exec forgejo web
     '';
@@ -712,6 +724,19 @@ in
       ];
     };
     extraCommands = commonLayout;
+    # Apache's runtime directory, owned by the uid the pod runs as. The pod
+    # drops every capability and runs as nc.uid, and the image's /run is
+    # root's, so the entrypoint's `mkdir -p /run/nextcloud` failed with
+    # "Permission denied" on every start and the pod sat in CrashLoopBackOff
+    # for as long as the box was up — found on the recorded install demo of
+    # 2026-10-05, where it was the whole reason Nextcloud never answered.
+    # extraCommands runs unprivileged and cannot chown; this runs under
+    # fakeroot, so the ownership is recorded in the layer.
+    fakeRootCommands = ''
+      mkdir -p .${nextcloudRunDir}
+      chown ${toString nc.uid}:${toString nc.uid} .${nextcloudRunDir}
+      chmod 0700 .${nextcloudRunDir}
+    '';
     config = {
       # tini in process-group mode: it forwards the kubelet's SIGTERM to both
       # Apache and php-fpm, which are siblings under the entrypoint rather than

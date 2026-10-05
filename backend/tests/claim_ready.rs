@@ -13,8 +13,8 @@
 use losos_ctl::fake::FakeLosos;
 use losos_ctl::losos::{cmd_claim, cmd_claim_state, nextcloud_readiness, Losos};
 use losos_ctl::setup::{
-    interpret_status, plan_status, NcMode, NotReady, OccOutcome, Readiness, Target,
-    IMAGE_OCC_STATUS, NATIVE_OCC,
+    container_log_argv, describe_stopped, interpret_status, last_container_argv, plan_status,
+    NcMode, NotReady, OccOutcome, Readiness, Target, IMAGE_OCC_STATUS, NATIVE_OCC,
 };
 
 const PASSWORD: &str = "zqx-marmalade-77-parapet";
@@ -93,6 +93,21 @@ fn a_not_installed_exit_is_the_same_window() {
     };
     let why = interpret_status(&out).unwrap_err();
     assert!(why.contains("still installing"), "{why}");
+}
+
+#[test]
+fn a_container_that_exists_but_is_not_running_is_starting_not_an_error() {
+    // crictl's own failure on the first boot, before the pod's process is up
+    // (recorded 2026-10-05 from the install demo): the owner gets a sentence,
+    // not the rpc error.
+    let out = OccOutcome {
+        code: 1,
+        stdout: String::new(),
+        stderr: "time=\"2026-10-05T17:24:45+02:00\" level=error msg=\"execing command in container 22938b19bbb2 synchronously: rpc error: code = NotFound desc = failed to exec in container: failed to create exec \\\"abc\\\": task abc not found\"".to_string(),
+    };
+    let why = interpret_status(&out).unwrap_err();
+    assert!(why.contains("starting but not answering"), "{why}");
+    assert!(!why.contains("rpc error"), "{why}");
 }
 
 #[test]
@@ -228,4 +243,98 @@ fn the_same_claim_succeeds_once_the_probe_says_ready() {
     );
     assert!(!l.occ_ran.is_empty());
     assert!(l.load_state().unwrap().claimed);
+}
+
+// ── A pod that keeps dying says why ──────────────────────────────────────────
+
+#[test]
+fn a_pod_that_keeps_dying_shows_its_last_words() {
+    let mut l = FakeLosos {
+        nextcloud_container: None,
+        last_log: Some(
+            "+ mkdir -p /run/nextcloud\nmkdir: cannot create directory '/run/nextcloud': Permission denied\n"
+                .to_string(),
+        ),
+        ..Default::default()
+    };
+    let Readiness::NotYet(why) = nextcloud_readiness(&mut l) else {
+        panic!("a box with no running container is not ready");
+    };
+    assert!(
+        why.contains("mkdir: cannot create directory '/run/nextcloud': Permission denied"),
+        "the last log line is the one thing the owner can act on: {why}"
+    );
+    assert!(
+        why.starts_with("Nextcloud started and stopped again."),
+        "{why}"
+    );
+    assert_eq!(l.last_log_asked, 1);
+    assert!(l.status_probed.is_empty(), "nothing to exec into");
+}
+
+#[test]
+fn a_running_pod_is_never_asked_for_last_words() {
+    let mut l = FakeLosos {
+        status_exit: 0,
+        status_stdout: installed().stdout,
+        last_log: Some("would be misleading if shown".to_string()),
+        ..Default::default()
+    };
+    assert_eq!(nextcloud_readiness(&mut l), Readiness::Ready);
+    assert_eq!(l.last_log_asked, 0);
+}
+
+#[test]
+fn an_empty_or_missing_log_stays_not_started_yet() {
+    for log in [None, Some(String::new()), Some("\n \n".to_string())] {
+        let mut l = FakeLosos {
+            nextcloud_container: None,
+            last_log: log,
+            ..Default::default()
+        };
+        let Readiness::NotYet(why) = nextcloud_readiness(&mut l) else {
+            panic!("not ready");
+        };
+        assert!(why.starts_with("Nextcloud has not started yet."), "{why}");
+    }
+    let mut l = FakeLosos {
+        nextcloud_mode: NcMode::Native,
+        nextcloud_container: None,
+        last_log: Some("native boxes have no container log".to_string()),
+        ..Default::default()
+    };
+    // Native mode locates fine; the probe decides, and the log is never read.
+    let _ = nextcloud_readiness(&mut l);
+    assert_eq!(l.last_log_asked, 0);
+}
+
+#[test]
+fn the_last_container_lookup_is_any_state_latest_only_and_logs_take_a_tail() {
+    let ps = last_container_argv("unix:///run/containerd/containerd.sock");
+    assert_eq!(ps[0], "crictl");
+    assert_eq!(
+        &ps[1..3],
+        [
+            "--runtime-endpoint",
+            "unix:///run/containerd/containerd.sock"
+        ]
+    );
+    assert_eq!(ps[3], "ps");
+    for flag in ["--all", "--latest", "--quiet", "--no-trunc"] {
+        assert!(ps.contains(&flag.to_string()), "{flag} missing from {ps:?}");
+    }
+    assert!(
+        !ps.contains(&"--state".to_string()),
+        "any state, not just Running"
+    );
+    let logs = container_log_argv("unix:///run/containerd/containerd.sock", "c0ffee");
+    assert_eq!(&logs[3..], ["logs", "--tail", "5", "c0ffee"]);
+
+    assert_eq!(describe_stopped(""), None);
+    assert_eq!(describe_stopped("\n\n"), None);
+    let long = "x".repeat(400);
+    let shown = describe_stopped(&format!("first\n{long}\n")).unwrap();
+    assert!(shown.contains(&"x".repeat(240)));
+    assert!(!shown.contains(&"x".repeat(241)));
+    assert!(shown.contains('\u{2026}'), "a cut line says it was cut");
 }
