@@ -26,9 +26,10 @@ partition.
   is that the root here is discarded on every boot, so an attacker's changes
   last until the next reboot (at 00:07 each night at the latest). You can also
   read and rebuild everything the box runs.
-- **A VPS.** The box is in your home and its disk is encrypted with a key
-  sealed to its TPM. The optional [master proxy](Master-Proxy) gives it a
-  public address without an inbound port.
+- **A VPS.** The box is in your home and its disk is encrypted; the key
+  lives on the box (on the boot partition by default, or sealed to a TPM if
+  you install with `--tpm`). The optional [master proxy](Master-Proxy) gives
+  it a public address without an inbound port.
 - **Plain NixOS.** You could write all of this yourself. Here it is already
   written, and the user isolation, encrypted persistence, disk growth,
   hardening and mesh gating are each tested in a VM.

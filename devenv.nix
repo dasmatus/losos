@@ -251,21 +251,29 @@ in
   # fails inside `nix build .#losos-ctl`, or the reverse — an expensive and
   # very confusing failure. This is the whole cost of standalone mode, so it is
   # checked mechanically rather than left to whoever remembers.
+  # Three files, not two: devenv.yaml names the rev, but devenv.lock is what
+  # devenv actually resolves, and a yaml edit without `devenv update` leaves
+  # the lock on the old tree — which is exactly how the lint toolchain drifted
+  # from the build toolchain for two weeks after dependabot bumped flake.lock
+  # (PR #4) and nobody bumped the other two. CI runs the same comparison in
+  # its `pins` job; keep the two in step by hand, like every other gate here.
   scripts.check-pins.exec = ''
     set -eu
     lock=$(${lib.getExe pkgs.jq} -r '.nodes.nixpkgs.locked.rev' flake.lock)
     yaml=$(${pkgs.gnugrep}/bin/grep -oE '[0-9a-f]{40}' devenv.yaml | head -1)
-    if [ "$lock" != "$yaml" ]; then
+    dlock=$(${lib.getExe pkgs.jq} -r '.nodes.nixpkgs.locked.rev' devenv.lock)
+    if [ "$lock" != "$yaml" ] || [ "$lock" != "$dlock" ]; then
       echo "nixpkgs pins disagree:" >&2
       echo "  flake.lock  $lock" >&2
       echo "  devenv.yaml $yaml" >&2
-      echo "Bump both together: nix flake update nixpkgs, copy the rev into" >&2
+      echo "  devenv.lock $dlock" >&2
+      echo "Bump all three together: nix flake update nixpkgs, copy the rev into" >&2
       echo "devenv.yaml, then devenv update." >&2
       exit 1
     fi
-    echo "nixpkgs pin agrees across flake.lock and devenv.yaml ($lock)"
+    echo "nixpkgs pin agrees across flake.lock, devenv.yaml and devenv.lock ($lock)"
   '';
-  scripts.check-pins.description = "Assert flake.lock and devenv.yaml pin the same nixpkgs.";
+  scripts.check-pins.description = "Assert flake.lock, devenv.yaml and devenv.lock pin the same nixpkgs.";
 
   # flake check only forces each nixosConfiguration's toplevel *derivation*;
   # these two force the full module merge, which is what actually catches

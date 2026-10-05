@@ -45,8 +45,10 @@ devenv runs standalone rather than through the flake: `devenv.lib.mkShell`
 cannot evaluate purely (it needs an absolute project root for `.devenv/`), and
 the documented workaround needs `--impure`, which would spread to CI. The cost
 is two lock files — `flake.lock` pins the nixpkgs that *builds* the appliance,
-`devenv.lock` the one that *lints and tests* it. **Bump them together**;
-`check-pins` fails the build if they disagree.
+`devenv.lock` (via the rev in `devenv.yaml`) the one that *lints and tests*
+it. **Bump them together**; `check-pins` and CI's `pins` job fail if the three
+disagree. They did disagree for two weeks after dependabot bumped `flake.lock`
+alone, with nothing in CI to notice.
 
 Both Rust crates set `doCheck = false`, so `nix build` compiles the shipping
 binaries and does not run the suites. The suites run via `cargo test` — in
@@ -98,6 +100,12 @@ netdev: QEMU then drops the DNS server from its DHCP offer and no query is
 ever sent. Secure Boot is deliberately not a leg: nothing here is signed, and
 the README tells owners to switch it off.
 
+One flake check is not a VM: `losos-invariants` (`tests/invariants.nix`)
+evaluates the published `install` configuration and asserts the option values
+the appliance cannot afford to lose by a default drifting (garbage collection,
+the boot-menu cap, the unlock mode, the `#install` fragment). `nix flake check
+--no-build` runs it, so CI's eval job fails on it at zero build cost.
+
 The VM tests are the real acceptance gate for the control plane and are *not*
 run by CI, so run them locally when touching either:
 
@@ -141,9 +149,14 @@ dirs in `environment.persistence."/persist".directories` survive a reboot
 data homes, `machine-id`). **Anything new that must persist across reboot must be added
 to that list** or it silently vanishes on the next boot. `/persist` is
 `neededForBoot` so impermanence bind-mounts resolve before the sysroot is
-populated. Unlock is TPM2 (`losos.tpm.enable = true`, default) or a keyfile
-at `/etc/keys/persist-keyfile` (no-TPM path, injected into the initrd as
-`/crypto_keyfile.bin`).
+populated. Unlock is a keyfile at `/etc/keys/persist-keyfile` (the default
+and what the ISO ships: injected into the initrd as `/crypto_keyfile.bin`, so
+it sits on the unencrypted ESP) or TPM2 (`losos.tpm.enable = true`, opt-in via
+`losos-ctl install --tpm`, which needs a passphrase at format time and a
+`systemd-cryptenroll` after first boot that nothing automates yet). The
+default used to be `true` while the installer never passed `--tpm`; a
+`github:` upgrade then evaluated a tree without `install-target.nix` and
+locked the box at a passphrase prompt. `tests/invariants.nix` pins it.
 
 **Two isolated data domains, no shell** (`configuration.nix`): `notshared`
 (uid 1000) owns Nextcloud, `shared` (uid 1001) owns the contributed mesh
@@ -281,6 +294,11 @@ tty1 with a banner service showing the LAN IPv4 and `<hostName>.local`.
 rebuilds from `losos.upgradeFlakeUri` at 03:00. The default,
 `git+file:///etc/nixos#install`, only advances the system consistently and
 does not pull new nixpkgs; set a `github:` URI to actually upgrade.
+`nix.gc` runs at 04:30 with `--delete-older-than 14d`, and `boot.nix` caps
+both loaders at five generations: `/nix` *is* `/persist`, the ESP is 500 MiB,
+and `linuxPackages_latest` lands a new kernel there most nights, so without
+both the box fills itself up and the 03:00 switch fails on the bootloader
+step. `tests/invariants.nix` asserts both at eval time.
 
 **The `#install` fragment is load-bearing.** Without it `nixos-rebuild`
 resolves `nixosConfigurations.$(hostname)`, which this flake does not export

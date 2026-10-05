@@ -55,7 +55,6 @@ impl Daemon {
             // the HTTP surface under test.
             .env("LOSOS_NO_DBUS", "1")
             .env("LOSOS_STATE_DIR", dir.path().join("state"))
-            .env("LOSOS_CONFIG", dir.path().join("defaults.nix"))
             .env("LOSOS_OVERRIDES", dir.path().join("overrides.nix"))
             .env("LOSOS_ADMIN_TOKEN_FILE", &token_file)
             .env("LOSOS_ADMIN_PORT", port.to_string())
