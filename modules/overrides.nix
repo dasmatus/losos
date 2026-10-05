@@ -5,7 +5,11 @@
 # and triggers a supervised `nixos-rebuild switch` (systemd-run transient
 # unit). Because the flake is rebuilt from the local working tree
 # (git+file:///etc/nixos), the rewritten file is picked up on the next eval
-# (the "dirty tree" warning is expected and harmless).
+# (the "dirty tree" warning is expected and harmless). A remote
+# losos.upgradeFlakeUri would evaluate the published copy of this file (the
+# defaults below) instead, so flake.nix prefers /etc/nixos/modules/overrides.nix
+# whenever it can read it, which is why updates.nix and lososd rebuild with
+# --impure.
 #
 # This file must stay tracked by git (git flakes only copy tracked files into
 # the store) and must keep exactly the assignment lines lososd rewrites — the
