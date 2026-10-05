@@ -260,8 +260,13 @@ export interface ClaimState {
 export interface ClaimResponse {
   claimed: true;
   user: string | null;
-  /** The admin token, released exactly once, to whoever claimed the box. */
+  /** The admin token, released to whoever claimed the box — once, plus the
+   *  replays below. */
   token: string;
+  /** True when this is the reply to an earlier claim given again: the same
+   *  password asked within lososd's grace window after a reply that was lost
+   *  in transit (backend/src/receipt.rs). Absent on a first claim. */
+  replayed?: boolean;
 }
 
 /* GET /api/setup/claim — public. Has this box got an owner yet?

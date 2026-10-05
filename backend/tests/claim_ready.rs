@@ -12,9 +12,10 @@
 
 use losos_ctl::fake::FakeLosos;
 use losos_ctl::losos::{cmd_claim, cmd_claim_state, nextcloud_readiness, Losos};
+use losos_ctl::receipt::Receipts;
 use losos_ctl::setup::{
     container_log_argv, describe_stopped, interpret_status, last_container_argv, plan_status,
-    NcMode, NotReady, OccOutcome, Readiness, Target, IMAGE_OCC_STATUS, NATIVE_OCC,
+    AlreadyClaimed, NcMode, NotReady, OccOutcome, Readiness, Target, IMAGE_OCC_STATUS, NATIVE_OCC,
 };
 
 const PASSWORD: &str = "zqx-marmalade-77-parapet";
@@ -191,9 +192,23 @@ fn a_claimed_box_is_not_probed_on_every_anonymous_request() {
         status_stdout: r#"{"installed":false}"#.to_string(),
         ..FakeLosos::default()
     };
-    cmd_claim(&mut l, "notshared", PASSWORD, TOKEN).unwrap_err();
+    cmd_claim(
+        &mut l,
+        "notshared",
+        PASSWORD,
+        TOKEN,
+        &mut Receipts::default(),
+    )
+    .unwrap_err();
     l.status_stdout = installed().stdout;
-    cmd_claim(&mut l, "notshared", PASSWORD, TOKEN).unwrap();
+    cmd_claim(
+        &mut l,
+        "notshared",
+        PASSWORD,
+        TOKEN,
+        &mut Receipts::default(),
+    )
+    .unwrap();
     let probes_before = l.status_probed.len();
     let v = cmd_claim_state(&mut l).unwrap();
     assert_eq!(v["claimed"], true);
@@ -211,7 +226,14 @@ fn a_claim_before_nextcloud_is_ready_is_refused_typed_and_changes_nothing() {
         status_stdout: r#"{"installed":false}"#.to_string(),
         ..FakeLosos::default()
     };
-    let err = cmd_claim(&mut l, "notshared", PASSWORD, TOKEN).unwrap_err();
+    let err = cmd_claim(
+        &mut l,
+        "notshared",
+        PASSWORD,
+        TOKEN,
+        &mut Receipts::default(),
+    )
+    .unwrap_err();
     let not_ready = err
         .downcast_ref::<NotReady>()
         .expect("the HTTP layer keys its 503 on this type");
@@ -233,7 +255,14 @@ fn the_same_claim_succeeds_once_the_probe_says_ready() {
         nextcloud_mode: NcMode::Container,
         ..FakeLosos::default()
     };
-    let v = cmd_claim(&mut l, "notshared", PASSWORD, TOKEN).unwrap();
+    let v = cmd_claim(
+        &mut l,
+        "notshared",
+        PASSWORD,
+        TOKEN,
+        &mut Receipts::default(),
+    )
+    .unwrap();
     assert_eq!(v["claimed"], true);
     assert_eq!(v["token"], TOKEN);
     assert_eq!(
@@ -337,4 +366,77 @@ fn the_last_container_lookup_is_any_state_latest_only_and_logs_take_a_tail() {
     assert!(shown.contains(&"x".repeat(240)));
     assert!(!shown.contains(&"x".repeat(241)));
     assert!(shown.contains('\u{2026}'), "a cut line says it was cut");
+}
+
+// ── A reply lost in transit can be asked for again ───────────────────────────
+
+/* Take 6 of the recorded install demo (2026-10-05): the claim's occ run
+ * outlived the proxy's timeout, the browser saw a 504, lososd finished anyway,
+ * and the admin key — in that one reply — reached nobody. */
+
+#[test]
+fn the_same_password_asked_again_gets_the_same_reply_without_a_second_occ() {
+    let mut l = FakeLosos::default();
+    let mut receipts = Receipts::default();
+    let first = cmd_claim(&mut l, "notshared", PASSWORD, TOKEN, &mut receipts).unwrap();
+    let occ_runs = l.occ_ran.len();
+    let probes = l.status_probed.len();
+
+    let again = cmd_claim(&mut l, "notshared", PASSWORD, TOKEN, &mut receipts).unwrap();
+    assert_eq!(again["claimed"], true);
+    assert_eq!(again["token"], first["token"]);
+    assert_eq!(again["user"], first["user"]);
+    assert_eq!(
+        again["replayed"], true,
+        "the page can tell a replay from a first claim"
+    );
+    assert_eq!(l.occ_ran.len(), occ_runs, "a replay runs no occ");
+    assert_eq!(l.status_probed.len(), probes, "and probes nothing");
+    assert!(l.staged_secret.is_none());
+}
+
+#[test]
+fn a_different_password_on_a_claimed_box_is_a_typed_conflict() {
+    let mut l = FakeLosos::default();
+    let mut receipts = Receipts::default();
+    cmd_claim(&mut l, "notshared", PASSWORD, TOKEN, &mut receipts).unwrap();
+    let occ_runs = l.occ_ran.len();
+
+    let err = cmd_claim(
+        &mut l,
+        "notshared",
+        "not-the-same-passphrase",
+        TOKEN,
+        &mut receipts,
+    )
+    .unwrap_err();
+    assert!(
+        err.downcast_ref::<AlreadyClaimed>().is_some(),
+        "the HTTP layer keys its 409 on this type: {err}"
+    );
+    assert_eq!(l.occ_ran.len(), occ_runs);
+}
+
+#[test]
+fn a_claimed_box_with_no_receipt_in_memory_refuses_every_password() {
+    // The daemon restarted since the claim (nixos-rebuild switch restarts
+    // lososd), so the receipt is gone: the right password gets no key.
+    let mut l = FakeLosos::default();
+    cmd_claim(
+        &mut l,
+        "notshared",
+        PASSWORD,
+        TOKEN,
+        &mut Receipts::default(),
+    )
+    .unwrap();
+    let err = cmd_claim(
+        &mut l,
+        "notshared",
+        PASSWORD,
+        TOKEN,
+        &mut Receipts::default(),
+    )
+    .unwrap_err();
+    assert!(err.downcast_ref::<AlreadyClaimed>().is_some(), "{err}");
 }
