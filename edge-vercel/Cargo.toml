@@ -1,5 +1,5 @@
 # The Vercel host for the edge registrar. A separate crate on purpose: it
-# depends on `losos-registrar` by path and adds the Vercel bridge, the Redis
+# depends on `losos-registrar` by path and adds the Vercel bridge, the Postgres
 # state store and the demo status page, so nothing Vercel-specific is in the
 # crate the self-hosted edge ships, and `nix build .#losos-registrar` (whose
 # cargoHash pins backend-registrar/Cargo.lock) is untouched by a dependency
@@ -30,9 +30,13 @@ tower = { version = "0.5", features = ["util"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync", "time", "fs"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-# Same feature set as the registrar's own reqwest, so the two resolve to one
-# copy of rustls rather than two TLS stacks in one binary.
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+# The registry's home between requests: a Postgres (Neon, as Vercel's
+# marketplace provisions it), spoken to over TLS with the same rustls the
+# registrar's reqwest already links, so one TLS stack ends up in the binary.
+tokio-postgres = { version = "0.7", features = ["with-serde_json-1"] }
+tokio-postgres-rustls = { version = "0.14", default-features = false, features = ["ring"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+webpki-roots = "1"
 miette = { version = "7", features = ["fancy"] }
 thiserror = "2"
 tracing = "0.1"
@@ -43,6 +47,7 @@ ring = "0.17"
 
 [dev-dependencies]
 http-body-util = "0.1"
+futures-util = { version = "0.3", default-features = false }
 
 [lints.rust]
 unsafe_code = "forbid"

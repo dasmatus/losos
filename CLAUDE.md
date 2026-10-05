@@ -261,7 +261,9 @@ the gotcha about what that costs the `lanOnly` guard.
 
 **The Vercel demo host** (`edge-vercel/`): a third Rust crate, outside the
 flake, that runs the registrar's router as one Vercel Function with the
-registry in an Upstash Redis (REST) and two demo-only routes (`/status`,
+registry as one `jsonb` row in a Neon Postgres (tokio-postgres over rustls;
+`DATABASE_URL` from Vercel's marketplace integration, loaded before and
+upserted after every request) and two demo-only routes (`/status`,
 `/status/traefik`) plus a static page. It exists for presentations and is
 meant to be deleted afterwards: the only changes it needed in
 `backend-registrar` are `server::build` (the router and reconciler without
@@ -271,7 +273,9 @@ the listener and the timer; `serve` calls it) and `Registry::{export,import}`
 The tunnel, Traefik, the mesh and the Stripe gate cannot run there, so on
 that host `/cluster/join` and `/market/*` answer 503 and `/noise-public-key`
 404. `devenv.nix`'s `crates` list and CI lint/test it like the other two;
-`nix build` never sees it.
+`nix build` never sees it. Its `tests/postgres.rs` is gated on
+`LOSOS_TEST_DATABASE_URL` (CI's test job provides a Postgres service); the
+rest of its suite runs on the in-memory store.
 
 **The `losos.*` option namespace** (`options.nix`): all project-specific
 knobs (`targetDrive`, `tpm.enable`, `sharingMyStorage`, `forgejo.enable`,
