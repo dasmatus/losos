@@ -95,7 +95,7 @@ jobs:
     # (PR #4) and `devenv test` failed on main for two weeks before anyone
     # ran it. No nix needed: jq ships on the runner image.
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: |
           set -eu
           lock=$(jq -r '.nodes.nixpkgs.locked.rev' flake.lock)
