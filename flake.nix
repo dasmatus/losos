@@ -344,6 +344,14 @@
         losos-admin-ui = import ./tests/admin-ui.nix { inherit pkgs; };
         losos-keyring = import ./tests/keyring.nix { inherit pkgs; };
         losos-console = import ./tests/console.nix { inherit pkgs; };
+        # Not a VM: evaluates the install configuration and asserts on the
+        # merged option values, so `nix flake check --no-build` turns red the
+        # moment a load-bearing default drifts (tests/invariants.nix).
+        losos-invariants = import ./tests/invariants.nix {
+          inherit pkgs;
+          inherit (nixpkgs) lib;
+          inherit (self.nixosConfigurations.install) config;
+        };
       };
     };
 }
