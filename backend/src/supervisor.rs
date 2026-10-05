@@ -140,6 +140,18 @@ fn poll_unit(job: &str) -> Poll {
     classify_show(stdout.as_deref())
 }
 
+/// The `nixos-rebuild` invocation the transient unit runs.
+///
+/// `--impure` is load-bearing, not a convenience: flake.nix reads
+/// `modules/install-target.nix` and `modules/overrides.nix` from `/etc/nixos`
+/// when it can, so a remote `losos.upgradeFlakeUri` keeps this box's drives,
+/// firmware mode, unlock mode and settings. The nightly upgrade passes the
+/// same flag (modules/updates.nix). Under the default local `flake_ref` both
+/// files are in-tree and the flag changes nothing.
+pub fn rebuild_command(flake_ref: &str) -> [&str; 5] {
+    ["nixos-rebuild", "switch", "--flake", flake_ref, "--impure"]
+}
+
 /// Start the transient unit for `job`. `Err` carries the detail that goes into
 /// the message the admin UI shows.
 fn launch_unit(paths: &Paths, job: &str) -> Result<(), String> {
@@ -149,7 +161,7 @@ fn launch_unit(paths: &Paths, job: &str) -> Result<(), String> {
         .arg(format!("--description=losos rebuild {job}"))
         .arg(format!("--property=StandardOutput=append:{log_str}"))
         .arg(format!("--property=StandardError=append:{log_str}"))
-        .args(["nixos-rebuild", "switch", "--flake", &paths.flake_ref])
+        .args(rebuild_command(&paths.flake_ref))
         .status();
     match status {
         Ok(s) if s.success() => Ok(()),
@@ -383,5 +395,22 @@ mod tests {
     #[test]
     fn unit_name_matches_the_shipped_contract() {
         assert_eq!(unit_name("20260821-1"), "losos-rebuild-20260821-1");
+    }
+
+    #[test]
+    fn the_rebuild_is_impure_so_the_box_keeps_its_own_files() {
+        // flake.nix reads install-target.nix and overrides.nix from
+        // /etc/nixos only under --impure; drop the flag and a remote flake
+        // ref resets the box to the published defaults.
+        assert_eq!(
+            rebuild_command("/etc/nixos#install"),
+            [
+                "nixos-rebuild",
+                "switch",
+                "--flake",
+                "/etc/nixos#install",
+                "--impure"
+            ]
+        );
     }
 }
