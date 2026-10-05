@@ -68,7 +68,13 @@ a separate crate meant to be torn down after the demonstration.
    function and the store. Without a store the registry lives in one function
    instance's memory: fine for a five-minute demo, but a cold start forgets
    every box and two instances can disagree.
-4. Deploy. `https://<project>.vercel.app/health` answers `ok`, `/` shows the
+4. **Domain**: Settings → Domains → add `losos-proxy.dasmat.us`. That name
+   is already on the team, connected to the `losos-cache-proxy` project, so
+   Vercel asks to move it; DNS already points it at Vercel, so no record
+   changes (a name that did not would need a CNAME to `cname.vercel-dns.com`).
+   Until the domain is moved the deployment is reachable at its
+   `https://<project>.vercel.app` URL.
+5. Deploy. `https://losos-proxy.dasmat.us/health` answers `ok`, `/` shows the
    page, `/status` the JSON.
 
 The appliance token is the same value on both sides: whatever is in
@@ -77,21 +83,21 @@ The appliance token is the same value on both sides: whatever is in
 
 ## Point an appliance at it
 
-On a box (or the demo VM), `losos.proxy.registrarUrl =
-"https://<project>.vercel.app"` with the matching `applianceId`, `hostname`
-and `tokenFile`. The announce service registers and heartbeats; the rathole
+On a box (or the demo VM), `losos.proxy.enable = true` with the matching
+`applianceId`, `hostname` and `tokenFile`; `losos.proxy.registrarUrl`
+already defaults to `https://losos-proxy.dasmat.us`. The announce service registers and heartbeats; the rathole
 client has nothing to dial and retries harmlessly (set
 `losos.proxy.edgeRatholeEndpoint` to anything). Or run the client alone from
 any machine:
 
 ```sh
 printf '%s' '<the 64-hex token>' > /tmp/demo.token
-losos-registrar announce --registrar-url https://<project>.vercel.app \
+losos-registrar announce --registrar-url https://losos-proxy.dasmat.us \
   --appliance-id mattbox --hostname mattbox.losos.cfd \
   --token-file /tmp/demo.token --heartbeat-interval 10s
 ```
 
-Then open `https://<project>.vercel.app/`: the box appears within a second,
+Then open `https://losos-proxy.dasmat.us/`: the box appears within a second,
 its *last seen* resets on every heartbeat, and it drops off `LOSOS_HEARTBEAT_TTL`
 after the client is stopped (the page reloads `/status` every five seconds;
 pruning happens on whichever request comes next).

@@ -45,7 +45,8 @@ reachable from the internet.
 ## Demo deployment on Vercel
 
 `edge-vercel/` runs the registrar's API — the same router and the same
-token check — as a Vercel Function, with the registry in an Upstash Redis
+token check — as a Vercel Function at `https://losos-proxy.dasmat.us` (the
+default `losos.proxy.registrarUrl`), with the registry in an Upstash Redis
 and a status page at `/` that shows the registered boxes and the Traefik
 configuration the edge would be writing for them. It is the control plane
 only: the rathole tunnel, Traefik's TLS, the mesh and the market cannot run
