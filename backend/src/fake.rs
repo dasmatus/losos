@@ -56,6 +56,16 @@ pub struct FakeLosos {
     /// `crictl` or an unreachable CRI socket — which is what the cleanup path
     /// has to survive.
     pub occ_spawn_fails: bool,
+    /// What the fake `occ status --output=json` prints and exits with. The
+    /// default is an installed, serving instance; a test that wants the
+    /// first-boot window sets `installed: false` or a non-zero exit.
+    pub status_exit: i32,
+    pub status_stdout: String,
+    pub status_stderr: String,
+    /// Make the status probe fail to spawn, like `occ_spawn_fails`.
+    pub status_spawn_fails: bool,
+    /// Every readiness probe that ran, with the target it was aimed at.
+    pub status_probed: Vec<crate::setup::Target>,
 
     // ── The appliance recovery code ─────────────────────────────────────
     /// In-memory stand-in for `/var/secrets/losos-recovery-code`. Public so a
@@ -107,6 +117,11 @@ impl FakeLosos {
             occ_stdout: "Successfully reset password for notshared".to_string(),
             occ_stderr: String::new(),
             occ_spawn_fails: false,
+            status_exit: 0,
+            status_stdout: r#"{"installed":true,"version":"34.0.2.1","versionstring":"34.0.2","edition":"","maintenance":false,"needsDbUpgrade":false,"productname":"Nextcloud","extendedSupport":false}"#.to_string(),
+            status_stderr: String::new(),
+            status_spawn_fails: false,
+            status_probed: Vec::new(),
             // Empty, so the default fake is a fresh appliance that has never
             // minted a code — the state the first-run wizard actually meets.
             recovery: crate::recovery::MemoryStore::empty(),
@@ -284,5 +299,20 @@ impl Losos for FakeLosos {
                 stderr: self.occ_stderr.clone(),
             })),
         }
+    }
+
+    fn nextcloud_status(
+        &mut self,
+        target: &crate::setup::Target,
+    ) -> anyhow::Result<crate::setup::OccOutcome> {
+        self.status_probed.push(target.clone());
+        if self.status_spawn_fails {
+            anyhow::bail!("crictl: No such file or directory");
+        }
+        Ok(crate::setup::OccOutcome {
+            code: self.status_exit,
+            stdout: self.status_stdout.clone(),
+            stderr: self.status_stderr.clone(),
+        })
     }
 }
