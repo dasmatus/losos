@@ -220,3 +220,121 @@ async fn a_full_port_range_is_an_error() {
     let third = registry.register("c", "c.losos.cfd").await;
     assert!(third.is_err(), "expected exhaustion, got {third:?}");
 }
+
+/// `export` → `import` is how a host with no durable disk carries the registry
+/// between two processes: ports and liveness must survive the trip, and the
+/// TTL must be applied on the way in, because the reconciler that would have
+/// pruned did not exist while nobody was running.
+#[tokio::test]
+async fn a_snapshot_round_trip_keeps_ports_and_ages_and_prunes_by_ttl() {
+    let ttl = std::time::Duration::from_secs(120);
+    let dir = TempDir::new("snapshot-round-trip");
+    let first = Registry::new(dir.join("a.json"), RANGE);
+    assert_eq!(
+        first
+            .register("box-a", "a.losos.cfd")
+            .await
+            .expect("register a"),
+        50000
+    );
+    assert_eq!(
+        first
+            .register("box-b", "b.losos.cfd")
+            .await
+            .expect("register b"),
+        50001
+    );
+    first.record_idle("box-a", true).await;
+
+    let mut snapshot = first.export().await;
+    assert_eq!(snapshot.tenants.len(), 2);
+    assert_eq!(snapshot.tenants["box-a"].rathole_port, 50000);
+    assert!(snapshot.tenants["box-a"].seen_ago_secs <= 1);
+    assert_eq!(
+        snapshot.tenants["box-a"].idle.map(|(idle, _)| idle),
+        Some(true)
+    );
+    assert_eq!(snapshot.tenants["box-b"].idle, None);
+    // No token travels in a snapshot: the whitelist's files stay the only
+    // place a secret lives.
+    let json = serde_json::to_string(&snapshot).expect("serialise");
+    assert!(
+        !json.contains("token"),
+        "snapshot carries a token field: {json}"
+    );
+
+    // Age box-b past the TTL before the trip, as a long silence would.
+    snapshot
+        .tenants
+        .get_mut("box-b")
+        .expect("box-b")
+        .seen_ago_secs = 121;
+
+    let second = Registry::new(dir.join("b.json"), RANGE);
+    second.import(snapshot, ttl).await;
+    let views = second.views().await;
+    assert_eq!(views.len(), 1, "box-b should have been pruned on import");
+    assert_eq!(views[0].id, "box-a");
+    assert_eq!(
+        views[0].rathole_port, 50000,
+        "the port must survive the trip"
+    );
+    assert!(
+        second.idle_nodes(ttl).await.contains("box-a"),
+        "a fresh idle report must survive the trip"
+    );
+    // The next free port is allocated around the imported one.
+    assert_eq!(
+        second
+            .register("box-c", "c.losos.cfd")
+            .await
+            .expect("register c"),
+        50001
+    );
+}
+
+/// Import validates what it loads the way `load` does: a port outside the
+/// range and a malformed window are dropped, not trusted.
+#[tokio::test]
+async fn import_drops_what_load_would_drop() {
+    use losos_registrar::{ComputeWindow, Snapshot, SnapshotTenant};
+    let ttl = std::time::Duration::from_secs(120);
+    let dir = TempDir::new("snapshot-validate");
+    let registry = Registry::new(dir.join("r.json"), RANGE);
+    let mut snapshot = Snapshot::default();
+    snapshot.tenants.insert(
+        "out-of-range".to_string(),
+        SnapshotTenant {
+            hostname: "x.losos.cfd".to_string(),
+            rathole_port: 1,
+            seen_ago_secs: 0,
+            idle: None,
+        },
+    );
+    snapshot.tenants.insert(
+        "fine".to_string(),
+        SnapshotTenant {
+            hostname: "fine.losos.cfd".to_string(),
+            rathole_port: 50007,
+            seen_ago_secs: 0,
+            idle: Some((true, 0)),
+        },
+    );
+    snapshot.compute_windows.insert(
+        "fine".to_string(),
+        ComputeWindow {
+            share_compute: true,
+            window_start: "25:00".to_string(),
+            window_end: "07:00".to_string(),
+            tz: "UTC".to_string(),
+        },
+    );
+    registry.import(snapshot, ttl).await;
+    let views = registry.views().await;
+    assert_eq!(views.len(), 1);
+    assert_eq!(
+        (views[0].id.as_str(), views[0].rathole_port),
+        ("fine", 50007)
+    );
+    assert!(registry.compute_windows().await.is_empty());
+}
