@@ -303,6 +303,79 @@ pub fn resolve_argv(socket: &str) -> Vec<String> {
     ]
 }
 
+/// The most recent Nextcloud container in **any** state, for reading its last
+/// words when [`resolve_argv`] finds no running one.
+///
+/// `--all` because the interesting container is the one that just exited;
+/// `--latest` because a crash-looping pod leaves a trail of them and only the
+/// newest explains the present. Same flag traps as [`resolve_argv`].
+pub fn last_container_argv(socket: &str) -> Vec<String> {
+    vec![
+        "crictl".into(),
+        "--runtime-endpoint".into(),
+        socket.to_string(),
+        "ps".into(),
+        "--all".into(),
+        "--name".into(),
+        CONTAINER_NAME_RE.into(),
+        "--namespace".into(),
+        CONTAINER_NAMESPACE_RE.into(),
+        "--latest".into(),
+        "--quiet".into(),
+        "--no-trunc".into(),
+    ]
+}
+
+/// The tail of one container's log, as the owner's only window into a pod that
+/// keeps dying on a box with no shell.
+pub fn container_log_argv(socket: &str, id: &str) -> Vec<String> {
+    vec![
+        "crictl".into(),
+        "--runtime-endpoint".into(),
+        socket.to_string(),
+        "logs".into(),
+        "--tail".into(),
+        "5".into(),
+        id.to_string(),
+    ]
+}
+
+/// Word a stopped container's last log line for the waiting panel, or `None`
+/// when there is nothing to show (no container yet, or an empty log).
+///
+/// This exists because the alternative was discovered the hard way: the
+/// recorded install demo of 2026-10-05 sat on "Nextcloud has not started yet"
+/// for an hour while the pod was in CrashLoopBackOff over a one-line
+/// `mkdir: cannot create directory '/run/nextcloud': Permission denied`, and
+/// the only way to read that line was to boot the live ISO and mount the
+/// encrypted volume by hand. The line is what the owner (or whoever they ask)
+/// needs; the sentence around it says plainly that waiting will not fix it.
+pub fn describe_stopped(log_tail: &str) -> Option<String> {
+    const MAX: usize = 240;
+    // Not `last_line`: that one already caps silently, and a cut here should
+    // be visible, so the owner knows the message goes on.
+    let last = log_tail
+        .lines()
+        .map(str::trim)
+        .rfind(|l| !l.is_empty())
+        .unwrap_or_default()
+        .to_string();
+    if last.is_empty() {
+        return None;
+    }
+    let shown = if last.chars().count() > MAX {
+        let cut: String = last.chars().take(MAX).collect();
+        format!("{cut}\u{2026}")
+    } else {
+        last
+    };
+    Some(format!(
+        "Nextcloud started and stopped again. Its last message was: {shown} \
+         The box retries on its own; if this stays on screen the message \
+         above is what needs fixing."
+    ))
+}
+
 /// Pick the one container id out of `crictl ps --quiet` output.
 ///
 /// Zero and many are both errors rather than a guess. The filters in
