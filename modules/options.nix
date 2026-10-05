@@ -41,10 +41,25 @@ in
 
     tpm.enable = lib.mkOption {
       type = lib.types.bool;
-      default = true;
+      default = false;
       description = ''
-        Use a TPM2 chip to unlock the persistent LUKS partition at boot.
-        Disable on machines without TPM2; a random keyfile is used instead.
+        Unlock the persistent LUKS partition from a TPM2 chip at boot instead
+        of from the random keyfile at /etc/keys/persist-keyfile (which the
+        initrd carries, on the unencrypted ESP).
+
+        Off by default, and the default is load-bearing. The installer ISO
+        runs `losos-ctl install` without `--tpm` (modules/installer.nix), so
+        every box it produces is in keyfile mode; and the TPM path needs a
+        passphrase typed at format time plus `systemd-cryptenroll` run after
+        the first boot — on an appliance with no shell, neither can happen
+        unattended. A default of true therefore described no shipped box, and
+        it bit in one place: modules/install-target.nix, which records the
+        mode the installer chose, is only imported when it exists, and a
+        `github:` upgradeFlakeUri evaluates a checkout without it. With the
+        old default that nightly rebuild dropped the keyfile from the initrd,
+        asked crypttab for a TPM token nobody had enrolled, and the 00:07
+        reboot stopped at a passphrase prompt. tests/invariants.nix pins the
+        default. Turn it on per box with `losos-ctl install --tpm`.
       '';
     };
 
@@ -764,6 +779,16 @@ in
         `install` — so every unfragmented run dies with "flake does not provide
         attribute". lososd uses the same `#install` ref (backend/src/io_backend.rs).
         Use a github: URI (still with `#install`) for remote auto-updates.
+
+        A remote URI evaluates a checkout without modules/install-target.nix,
+        the file the installer writes with this box's drive list, firmware
+        mode and unlock mode (flake.nix imports it only when present). The
+        defaults then apply: keyfile unlock, which is what the installer ISO
+        ships, so the box still boots; but targetDrives falls back to
+        /dev/sda and bios to false, so a BIOS box or one whose first drive is
+        not /dev/sda gets a bootloader step that fails and keeps the previous
+        generation. Carry install-target.nix in the remote flake, or keep the
+        local default.
       '';
     };
 
