@@ -5,6 +5,16 @@
  * shows it to nobody; the appliance has no SSH and no shell login, so without
  * this step a fresh box cannot be signed into at all.
  *
+ * On a fresh box this tab holds no admin token, and every /api route except
+ * the claim refuses without one. So the first password goes through
+ * `POST /api/setup/claim` (@/lib/api `claimBox`): public while the box is
+ * unowned, never after, and it hands back the admin token so the rest of the
+ * wizard — the recovery code, the sign-in frame — runs authenticated. The
+ * token-gated `/api/set-password` is only for a second attempt from the same
+ * tab, once the claim has closed the window. The old code posted to
+ * set-password first, got a 401 on every fresh box, and the wizard could not
+ * get past this step; the browser test walks it now.
+ *
  * A password is collected whatever else happens. The passkey is an addition,
  * never a substitute: the desktop and phone sync clients authenticate with a
  * name and a password, and no passkey helps them. See ./passkey.ts.
@@ -15,7 +25,9 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import {
   Alert02Icon,
   CheckmarkCircle02Icon,
+  Copy01Icon,
   FingerPrintIcon,
+  Key01Icon,
   InformationCircleIcon,
   LockPasswordIcon,
   SecurityLockIcon,
@@ -28,11 +40,12 @@ import { FieldError, Input } from "@/components/ui/input";
 import { Label, LabelHint } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/progress";
-import { isUnauthorized } from "@/lib/api";
+import { claimBox, hasToken, isUnauthorized, saveToken } from "@/lib/api";
 import { t } from "@/lib/i18n";
 import { Rich, useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
 import { isMissingRoute, passwordProblem, postSetPassword, MIN_PASSWORD_CHARS } from "./api";
+import { copyText } from "./copy";
 import { createPasskey, probePasskeySupport, type PasskeySupport } from "./passkey";
 import { Callout, ReadoutRow, StepText } from "./parts";
 
@@ -41,16 +54,21 @@ export interface StepSignInProps {
   boxName: string;
   /** The account lososd reported after the password was set, or null. */
   account: string | null;
-  onPasswordSet: (user: string) => void;
+  /** The admin key the claim released to this tab, or null when the password
+   *  was set some other way. Held by the wizard so Back does not lose it. */
+  adminKey: string | null;
+  onPasswordSet: (user: string, adminKey: string | null) => void;
 }
 
-export function StepSignIn({ boxName, account, onPasswordSet }: StepSignInProps) {
+export function StepSignIn({ boxName, account, adminKey, onPasswordSet }: StepSignInProps) {
   const t = useT();
   return (
     <div className="flex flex-col gap-5">
       <StepText>{t("wizard.signin.intro")}</StepText>
 
       <PasswordForm account={account} onPasswordSet={onPasswordSet} />
+
+      {adminKey !== null && <AdminKey value={adminKey} />}
 
       <Separator />
 
@@ -66,7 +84,7 @@ function PasswordForm({
   onPasswordSet,
 }: {
   account: string | null;
-  onPasswordSet: (user: string) => void;
+  onPasswordSet: (user: string, adminKey: string | null) => void;
 }) {
   const t = useT();
   const [password, setPassword] = React.useState("");
@@ -99,11 +117,11 @@ function PasswordForm({
     setBusy(true);
     setProblem(null);
     try {
-      const result = await postSetPassword(password);
+      const result = await setFirstPassword(password);
       setPassword("");
       setConfirm("");
       setVisible(false);
-      onPasswordSet(result.user);
+      onPasswordSet(result.user, result.adminKey);
     } catch (error) {
       setProblem(describeSetPassword(error));
     } finally {
@@ -204,6 +222,88 @@ function PasswordForm({
         </Callout>
       )}
     </form>
+  );
+}
+
+/* Claim the box when this tab holds no token, which on a fresh box is always;
+ * change the password through the gated route when it does. The claim's reply
+ * carries the admin token and it is stored before anything else happens, so a
+ * failure after this point (the name missing from the reply, say) still leaves
+ * the tab signed in rather than locked out of a box it just claimed. */
+async function setFirstPassword(
+  password: string,
+): Promise<{ user: string; adminKey: string | null }> {
+  if (hasToken()) {
+    const result = await postSetPassword(password);
+    return { user: result.user, adminKey: null };
+  }
+  const claimed = await claimBox(password);
+  saveToken(claimed.token);
+  // lososd always names the account it changed; the type allows null because
+  // the wire contract does. An unnamed account is still a set password.
+  return { user: claimed.user ?? "", adminKey: claimed.token };
+}
+
+// ── The admin key ─────────────────────────────────────────────────────────
+
+/* Shown once, here, because nothing else ever shows it. lososd mints the key
+ * into a 0600 file on a box with no shell and releases it exactly once, in
+ * the claim reply; the sign-in dialog the shell shows on a later visit asks
+ * for it and has nowhere to point. Before this callout existed, closing the
+ * tab after setup meant the admin pages were gone for good. The key is also
+ * printed on the recovery sheet in the next step. */
+function AdminKey({ value }: { value: string }) {
+  const t = useT();
+  const [copied, setCopied] = React.useState<boolean | null>(null);
+  const keyRef = React.useRef<HTMLElement>(null);
+
+  const copy = async (): Promise<void> => {
+    setCopied(await copyText(value, keyRef.current));
+  };
+
+  return (
+    <Callout tone="warn" icon={Key01Icon} title={t("wizard.signin.key.title")}>
+      <p className="mt-1">{t("wizard.signin.key.body")}</p>
+      <div className="mt-3 flex flex-col gap-3 rounded-card border border-line bg-surface px-3.5 py-3">
+        <span className="text-[12px] font-medium tracking-wide text-faint uppercase">
+          {t("wizard.signin.key.label")}
+        </span>
+        {/* select-all: one click takes the whole key, so a manual Ctrl+C works
+            even where the clipboard API is unavailable. */}
+        <code ref={keyRef} className="numeric text-[13px] leading-snug break-all text-ink select-all">
+          {value}
+        </code>
+      </div>
+      <div className="mt-3 flex flex-wrap items-center gap-2.5">
+        <Button variant="secondary" size="sm" onClick={() => void copy()}>
+          <HugeiconsIcon
+            icon={Copy01Icon}
+            size={16}
+            strokeWidth={1.5}
+            color="currentColor"
+            aria-hidden="true"
+          />
+          {t("wizard.signin.key.copy")}
+        </Button>
+        {copied === true && (
+          <span role="status" className="inline-flex items-center gap-1.5 text-[13px] text-ok">
+            <HugeiconsIcon
+              icon={CheckmarkCircle02Icon}
+              size={16}
+              strokeWidth={1.5}
+              color="currentColor"
+              aria-hidden="true"
+            />
+            {t("wizard.signin.key.copied")}
+          </span>
+        )}
+        {copied === false && (
+          <span role="status" className="text-[13px] text-muted">
+            {t("wizard.signin.key.copyFailed")}
+          </span>
+        )}
+      </div>
+    </Callout>
   );
 }
 

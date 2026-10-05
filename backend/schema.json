@@ -447,7 +447,7 @@
       }
     },
     "change": {
-      "description": "`losos-ctl change --mode <local|mesh>` \u2014 rewrite the flake's sharingMyStorage line, mark a rebuild as building, spawn a detached nixos-rebuild. Returns immediately. stdout: changeResponse. Non-zero exit + stderr on invalid mode.",
+      "description": "`losos-ctl change --mode <local|mesh>` \u2014 patch the losos.sharingMyStorage line of modules/overrides.nix in place (the same file `apply` writes whole), mark a rebuild as building, spawn a detached nixos-rebuild. Returns immediately. stdout: changeResponse. Non-zero exit + stderr on invalid mode.",
       "stdout": {
         "$ref": "#/$defs/changeResponse"
       }

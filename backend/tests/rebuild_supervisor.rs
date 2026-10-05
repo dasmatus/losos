@@ -100,7 +100,6 @@ impl Units for Script {
 fn appliance(dir: &TempDir) -> IoLosos {
     IoLosos::new(Paths {
         state_dir: dir.path().join("state"),
-        config_file: dir.path().join("defaults.nix"),
         overrides_file: dir.path().join("overrides.nix"),
         flake_ref: "/etc/nixos#install".to_string(),
     })
