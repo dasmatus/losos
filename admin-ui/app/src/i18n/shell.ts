@@ -38,9 +38,9 @@ export default defineMessages({
   },
   "shell.signIn.title": { en: "Unlock this box", sk: "Odomknite toto zariadenie", de: "Diese Box entsperren" },
   "shell.signIn.hint": {
-    en: "Paste the admin key. It is printed on the box and never leaves it.",
-    sk: "Vložte správcovský kľúč. Je vytlačený na zariadení a nikdy ho neopustí.",
-    de: "Füge den Admin-Schlüssel ein. Er ist auf der Box aufgedruckt und verlässt sie nie.",
+    en: "Paste the admin key. It was shown once, during setup, and is on the printed recovery sheet.",
+    sk: "Vložte správcovský kľúč. Zobrazil sa raz, počas nastavenia, a je na vytlačenom hárku na obnovenie.",
+    de: "Füge den Admin-Schlüssel ein. Er wurde einmal gezeigt, bei der Einrichtung, und steht auf dem gedruckten Wiederherstellungsblatt.",
   },
   "shell.signIn.label": { en: "Admin key", sk: "Správcovský kľúč", de: "Admin-Schlüssel" },
   "shell.signIn.remembered": {
