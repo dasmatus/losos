@@ -544,10 +544,23 @@ pub fn plan_status(target: &Target) -> Vec<String> {
 pub fn interpret_status(outcome: &OccOutcome) -> Result<(), String> {
     const INSTALLING: &str = "Nextcloud is still installing itself. \
          This happens once, on the first boot, and takes a few minutes.";
+    const STARTING: &str = "Nextcloud is starting but not answering yet. \
+         On a new box this takes a few minutes.";
     if outcome.code != 0 {
         let combined = format!("{}\n{}", outcome.stdout, outcome.stderr);
         if combined.contains("not installed") {
             return Err(INSTALLING.to_string());
+        }
+        // The runtime, not occ, answered: the container exists but is not
+        // running yet (seen on the first boot, between the pod being created
+        // and its process starting: `failed to create exec`,
+        // `container is not running`). That is the same window as "has not
+        // started yet", worded for the owner rather than crictl's rpc error.
+        if combined.contains("failed to exec in container")
+            || combined.contains("is not running")
+            || combined.contains("not in running state")
+        {
+            return Err(STARTING.to_string());
         }
         let detail = {
             let stderr = last_line(&outcome.stderr);

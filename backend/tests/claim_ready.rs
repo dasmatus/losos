@@ -96,6 +96,21 @@ fn a_not_installed_exit_is_the_same_window() {
 }
 
 #[test]
+fn a_container_that_exists_but_is_not_running_is_starting_not_an_error() {
+    // crictl's own failure on the first boot, before the pod's process is up
+    // (recorded 2026-10-05 from the install demo): the owner gets a sentence,
+    // not the rpc error.
+    let out = OccOutcome {
+        code: 1,
+        stdout: String::new(),
+        stderr: "time=\"2026-10-05T17:24:45+02:00\" level=error msg=\"execing command in container 22938b19bbb2 synchronously: rpc error: code = NotFound desc = failed to exec in container: failed to create exec \\\"abc\\\": task abc not found\"".to_string(),
+    };
+    let why = interpret_status(&out).unwrap_err();
+    assert!(why.contains("starting but not answering"), "{why}");
+    assert!(!why.contains("rpc error"), "{why}");
+}
+
+#[test]
 fn maintenance_and_db_upgrade_are_named_not_lumped_in() {
     let mk = |maint: bool, upg: bool| OccOutcome {
         code: 0,
