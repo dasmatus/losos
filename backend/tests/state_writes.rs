@@ -20,7 +20,6 @@ const ROUNDS: usize = 24;
 fn paths_in(dir: &TempDir) -> Paths {
     Paths {
         state_dir: dir.path().join("state"),
-        config_file: dir.path().join("defaults.nix"),
         overrides_file: dir.path().join("overrides.nix"),
         flake_ref: "/etc/nixos#install".to_string(),
     }
@@ -131,41 +130,56 @@ fn job_ids_are_shared_across_clones_of_one_backend() {
     assert_ne!(one.next_job_id().unwrap(), two.next_job_id().unwrap());
 }
 
+/// `change --mode` line-patches overrides.nix on disk, through the same
+/// temp-and-rename as everything else, and the rest of the file survives.
 #[test]
-fn defaults_nix_is_rewritten_whole_or_not_at_all() {
+fn change_patches_overrides_nix_in_place_and_leaves_nothing_behind() {
     let dir = TempDir::new().unwrap();
     let paths = paths_in(&dir);
     std::fs::write(
-        &paths.config_file,
-        "{ ... }:\n{\n  losos.sharingMyStorage = true;\n}\n",
+        &paths.overrides_file,
+        "{ ... }:\n{\n  losos.sharingMyStorage = true;\n  losos.hostName = \"kept\";\n}\n",
     )
     .unwrap();
+    std::fs::create_dir_all(&paths.state_dir).unwrap();
     let mut backend = IoLosos::new(paths.clone());
 
-    backend.rewrite_config(false).unwrap();
+    let lines: Vec<String> = backend
+        .read_overrides()
+        .unwrap()
+        .lines()
+        .map(str::to_string)
+        .collect();
+    let mut body = losos_ctl::overrides::inject_line(false, &lines).join("\n");
+    body.push('\n');
+    backend.write_overrides(&body).unwrap();
 
-    let out = std::fs::read_to_string(&paths.config_file).unwrap();
+    let out = std::fs::read_to_string(&paths.overrides_file).unwrap();
     assert!(out.contains("losos.sharingMyStorage = false;"), "{out}");
-    // The rewrite goes through a temp file and a rename, like every other write
-    // here, so nothing is left half-written next to it.
-    let left = strays(&dir, &["defaults.nix"]);
+    assert!(out.contains("losos.hostName = \"kept\";"), "{out}");
+    let left = strays(&dir, &["overrides.nix", "state"]);
     assert!(left.is_empty(), "files left behind: {left:?}");
 }
 
+/// A fresh appliance has no overrides.nix yet, and `change` must still land
+/// the line: the committed defaults are read in its place and written back
+/// with the one assignment changed. (This is what the old `change` got wrong
+/// in the other direction — it patched a file that did not exist, logged a
+/// warning and reported success.)
 #[test]
-fn a_missing_defaults_nix_is_a_warning_but_an_unreadable_one_is_not() {
+fn a_missing_overrides_nix_reads_as_the_defaults_but_an_unreadable_one_is_an_error() {
     let dir = TempDir::new().unwrap();
     let mut backend = IoLosos::new(paths_in(&dir));
-    // Absent: the appliance may be running from a flake laid out differently.
-    assert!(backend.rewrite_config(true).is_ok());
+    let body = backend.read_overrides().unwrap();
+    assert!(body.contains("losos.sharingMyStorage"), "{body}");
 
     // A directory in its place stands in for any read error that is not
     // "absent". Reporting a mode change that never reached the disk is worse
     // than failing.
     let paths = paths_in(&dir);
-    std::fs::create_dir(&paths.config_file).unwrap();
+    std::fs::create_dir(&paths.overrides_file).unwrap();
     let mut backend = IoLosos::new(paths);
-    assert!(backend.rewrite_config(true).is_err());
+    assert!(backend.read_overrides().is_err());
 }
 
 #[test]

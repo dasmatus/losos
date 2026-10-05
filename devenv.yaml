@@ -12,7 +12,7 @@
 # project root for its .devenv directory. See the inputs block in flake.nix.
 inputs:
   nixpkgs:
-    url: github:NixOS/nixpkgs/f13ff45afd1bb73e640eaa08a7066dbed07e3238
+    url: github:NixOS/nixpkgs/b1b875982b17dabde9b4a37f3e229e74913e6db3
 
   # Required explicitly by devenv for the git-hooks.hooks options in
   # devenv.nix. Follows nixpkgs so the hooks lint with the same rustc and the

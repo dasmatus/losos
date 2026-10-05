@@ -28,10 +28,15 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { intlTag, t } from "@/lib/i18n";
 import { useT } from "@/lib/i18n-react";
 import { getRecovery, isMissingRoute } from "./api";
+import { copyText } from "./copy";
 import { Callout, StepText } from "./parts";
 
 export interface StepRecoveryProps {
   boxName: string;
+  /** The admin key step 2 received from the claim, printed on the sheet
+   *  under the code. Null when this tab did not claim the box (a second
+   *  visit to the wizard, or a password changed through set-password). */
+  adminKey: string | null;
   /** True once the owner has copied or printed it. Owned by the wizard. */
   saved: boolean;
   onSaved: () => void;
@@ -46,7 +51,13 @@ type CodeQuery =
   | { kind: "not-implemented" }
   | { kind: "failed"; message: string };
 
-export function StepRecovery({ boxName, saved, onSaved, onUnavailable }: StepRecoveryProps) {
+export function StepRecovery({
+  boxName,
+  adminKey,
+  saved,
+  onSaved,
+  onUnavailable,
+}: StepRecoveryProps) {
   const t = useT();
   const [query, setQuery] = React.useState<CodeQuery>({ kind: "loading" });
   const [attempt, setAttempt] = React.useState(0);
@@ -178,7 +189,7 @@ export function StepRecovery({ boxName, saved, onSaved, onUnavailable }: StepRec
           {/* Present in the document at all times, shown only on paper: the
               print rules in ./wizard.css hide everything else on the page and
               force this subtree to black on white. */}
-          <RecoverySheet boxName={boxName} code={query.code} />
+          <RecoverySheet boxName={boxName} code={query.code} adminKey={adminKey} />
         </>
       )}
 
@@ -218,7 +229,15 @@ export function StepRecovery({ boxName, saved, onSaved, onUnavailable }: StepRec
  * paper version has to still make sense in a drawer in two years, with no
  * wizard around it. Hence the date and the full sentence. It prints in the
  * interface language, date included, so the sheet reads as one language. */
-function RecoverySheet({ boxName, code }: { boxName: string; code: string }) {
+function RecoverySheet({
+  boxName,
+  code,
+  adminKey,
+}: {
+  boxName: string;
+  code: string;
+  adminKey: string | null;
+}) {
   const t = useT();
   return (
     <section className="wizard-print-sheet hidden print:block">
@@ -234,6 +253,20 @@ function RecoverySheet({ boxName, code }: { boxName: string; code: string }) {
       <p className="mt-6 max-w-prose text-sm leading-relaxed">
         {t("wizard.recovery.sheetBody", { name: boxName })}
       </p>
+      {/* The admin key goes on the same sheet because it has the same
+          property: the box shows it once and keeps no copy a browser can ask
+          for. One piece of paper, two things that must leave the box. */}
+      {adminKey !== null && (
+        <>
+          <h2 className="mt-8 text-base font-semibold">
+            {t("wizard.recovery.sheetAdminKey", { name: boxName })}
+          </h2>
+          <p className="numeric mt-2 text-base break-all">{adminKey}</p>
+          <p className="mt-2 max-w-prose text-sm leading-relaxed">
+            {t("wizard.recovery.sheetAdminKeyBody")}
+          </p>
+        </>
+      )}
       <p className="mt-4 flex items-center gap-2 text-sm">
         <HugeiconsIcon
           icon={Key01Icon}
@@ -246,42 +279,6 @@ function RecoverySheet({ boxName, code }: { boxName: string; code: string }) {
       </p>
     </section>
   );
-}
-
-/* Copy, by whichever route this browser allows.
- *
- * navigator.clipboard exists only in a secure context, and step 1 of this very
- * wizard is what makes the connection secure — so on the first pass through,
- * over http, it is routinely absent. The fallback selects the code element
- * that is already on screen and asks the document to copy the selection: no
- * synthetic textarea to position (which would need a style attribute the CSP
- * refuses) and the owner can see what was taken. */
-async function copyText(text: string, element: HTMLElement | null): Promise<boolean> {
-  if (window.isSecureContext && navigator.clipboard !== undefined) {
-    try {
-      await navigator.clipboard.writeText(text);
-      return true;
-    } catch {
-      /* Permission refused, or no focus. Fall through. */
-    }
-  }
-  return selectAndCopy(element);
-}
-
-function selectAndCopy(element: HTMLElement | null): boolean {
-  if (element === null) return false;
-  const selection = window.getSelection();
-  if (selection === null) return false;
-  const range = document.createRange();
-  range.selectNodeContents(element);
-  selection.removeAllRanges();
-  selection.addRange(range);
-  try {
-    // Deprecated, and the only copy this browser has on a plain http page.
-    return document.execCommand("copy");
-  } catch {
-    return false;
-  }
 }
 
 function describe(error: unknown): string {
