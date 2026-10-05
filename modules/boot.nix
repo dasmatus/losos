@@ -61,6 +61,17 @@ in
   # dm_mod is the device-mapper base (LVM + LUKS both sit on it); dm-snapshot
   # is pulled in by disko's lvm_vg config but we list it explicitly to be safe.
   # tpm_tis must be in the initrd for the TPM2 token to be readable early.
+  #
+  # The virtio entries are what lets the *installed* system boot inside a VM.
+  # Without them the ISO installs fine (the live medium carries nixpkgs'
+  # full installer module set) and the first boot from disk then times out
+  # in stage 1 on "waiting for device /dev/persist-vg/persist" and drops to
+  # an emergency shell that no one can log in to, because the initrd has no
+  # driver for the virtio disk the volume group lives on. Found by recording
+  # a real install-and-reboot under QEMU/SeaBIOS; tests/install.nix never
+  # sees it because its boot leg stops at GRUB. Real mini-PCs never load
+  # these, so they cost nothing there, and a VM is the agreed way to show
+  # this system without putting the box on a network.
   boot.initrd.availableKernelModules = lib.optional useTpm "tpm_tis" ++ [
     "dm_mod"
     "dm-snapshot"
@@ -69,6 +80,9 @@ in
     "nvme"
     "usb_storage"
     "sd_mod"
+    "virtio_pci"
+    "virtio_blk"
+    "virtio_scsi"
   ];
 
   # Keyfile path: inject the keyfile from the host into the initrd. The TPM
