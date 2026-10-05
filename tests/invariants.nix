@@ -8,7 +8,10 @@
 # true on main for weeks without a test turning red. They are asserted
 # against the *published* flake — the one with no modules/install-target.nix,
 # which is what a `github:` upgrade URI evaluates — because that is the shape
-# in which the defaults are load-bearing.
+# in which the defaults are load-bearing. A developer's checkout that carries
+# an install-target.nix of its own would make the unlock-mode assertion read
+# that file instead; that file is written by the installer onto the box and
+# is not meant to be in a working tree.
 {
   pkgs,
   lib,
@@ -28,6 +31,12 @@ assert must (lib.hasInfix "--delete-older-than" gc.options)
 assert must
   (loader.systemd-boot.configurationLimit != null && loader.systemd-boot.configurationLimit <= 10)
   "boot.loader.systemd-boot.configurationLimit is unbounded: with linuxPackages_latest every nightly kernel lands in a 500 MiB ESP until the bootloader install fails";
+assert must (!config.losos.tpm.enable)
+  "losos.tpm.enable defaults to true: the installer ISO ships keyfile mode (no --tpm), so a github: upgrade of a real box would drop the keyfile from the initrd and stop the 00:07 reboot at a passphrase prompt";
+assert must (lib.hasSuffix "#install" config.losos.upgradeFlakeUri)
+  "losos.upgradeFlakeUri has no #install fragment (${config.losos.upgradeFlakeUri}); nixos-rebuild would look for nixosConfigurations.<hostname>, which this flake does not export";
+assert must (!config.losos.bios && config.boot.loader.systemd-boot.enable)
+  "the published flake is not on the UEFI/systemd-boot path; the README tells owners to boot the installer in UEFI mode";
 # GRUB's limit is only set under `losos.bios`, which the published flake has
 # off; asserting it here would read the module's default. tests/install.nix
 # boots the BIOS path and is where that half is exercised.
