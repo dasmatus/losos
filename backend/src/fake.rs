@@ -66,6 +66,11 @@ pub struct FakeLosos {
     pub status_spawn_fails: bool,
     /// Every readiness probe that ran, with the target it was aimed at.
     pub status_probed: Vec<crate::setup::Target>,
+    /// What `crictl logs` of the latest container would print; `None` is
+    /// "no container has ever run".
+    pub last_log: Option<String>,
+    /// How often the last log was asked for — a running pod must never be.
+    pub last_log_asked: usize,
 
     // ── The appliance recovery code ─────────────────────────────────────
     /// In-memory stand-in for `/var/secrets/losos-recovery-code`. Public so a
@@ -122,6 +127,8 @@ impl FakeLosos {
             status_stderr: String::new(),
             status_spawn_fails: false,
             status_probed: Vec::new(),
+            last_log: None,
+            last_log_asked: 0,
             // Empty, so the default fake is a fresh appliance that has never
             // minted a code — the state the first-run wizard actually meets.
             recovery: crate::recovery::MemoryStore::empty(),
@@ -314,5 +321,13 @@ impl Losos for FakeLosos {
             stdout: self.status_stdout.clone(),
             stderr: self.status_stderr.clone(),
         })
+    }
+
+    fn nextcloud_last_log(
+        &mut self,
+        _mode: crate::setup::NcMode,
+    ) -> anyhow::Result<Option<String>> {
+        self.last_log_asked += 1;
+        Ok(self.last_log.clone())
     }
 }

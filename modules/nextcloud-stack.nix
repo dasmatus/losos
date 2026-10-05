@@ -209,6 +209,16 @@ in
     socketDir = "/run/postgresql";
   };
 
+  # The uid the Nextcloud process runs as, in both modes. Pinned (and matched
+  # by modules/configuration.nix's users.users.nextcloud) because Postgres
+  # peer auth maps the *kernel* uid of the connecting process to a role and
+  # the pod shares the host's user namespace; modules/workloads.nix writes it
+  # into the pod's runAsUser, and flake/images.nix bakes the one directory the
+  # entrypoint needs outside its hostPath mounts (/run/nextcloud) owned by it,
+  # because a pod that has dropped every capability cannot create a directory
+  # under a root-owned /run. gid == uid by construction.
+  uid = 1002;
+
   # services.redis.servers.nextcloud's default socket. Native mode gets this
   # wired by configureRedis; the pod mounts the directory and reads the same
   # path out of the image's config snippet.
