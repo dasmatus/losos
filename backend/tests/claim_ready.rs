@@ -357,7 +357,16 @@ fn the_last_container_lookup_is_any_state_latest_only_and_logs_take_a_tail() {
         "any state, not just Running"
     );
     let logs = container_log_argv("unix:///run/containerd/containerd.sock", "c0ffee");
-    assert_eq!(&logs[3..], ["logs", "--tail", "5", "c0ffee"]);
+    assert_eq!(&logs[3..], ["logs", "--tail", "20", "c0ffee"]);
+
+    // The complaint beats the usage that follows it, as Symfony prints them.
+    let symfony = "\n  The \"--admin-pass\" option requires a value.\n\n\nmaintenance:install [--database DATABASE] [--database-name DATABASE-NAME]\n";
+    let shown = describe_stopped(symfony).unwrap();
+    assert!(shown.contains("requires a value"), "{shown}");
+    assert!(!shown.contains("maintenance:install ["), "{shown}");
+    // No complaint anywhere: the last line, as before.
+    let plain = describe_stopped("starting\nstill starting\n").unwrap();
+    assert!(plain.contains("still starting"), "{plain}");
 
     assert_eq!(describe_stopped(""), None);
     assert_eq!(describe_stopped("\n\n"), None);
