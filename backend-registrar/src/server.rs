@@ -258,6 +258,71 @@ pub async fn serve<F>(listener: TcpListener, opts: ServeOpts, shutdown: F) -> Re
 where
     F: Future<Output = ()> + Send + 'static,
 {
+    let app = build(opts).await?;
+    let recon = tokio::spawn(reconciler(app.state.clone()));
+
+    // axum::serve returns when the listener errors or `shutdown` resolves.
+    axum::serve(listener, app.router)
+        .with_graceful_shutdown(shutdown)
+        .await
+        .into_diagnostic()?;
+    tracing::info!(target: Action::Serve.target(), "http server stopped");
+
+    // Structured shutdown: stop the reconciler and await its result so a
+    // panic inside it surfaces instead of being silently detached.
+    recon.abort();
+    let _ = recon.await;
+    Ok(())
+}
+
+/// A built registrar that nothing is serving yet: the router, and the handles
+/// a host needs to drive the reconciler itself.
+///
+/// [`serve`] is the self-hosted shape — one long-lived process that owns a
+/// listener and ticks the reconciler on a timer. A host without either (a
+/// serverless function, which is handed each request by its platform and may
+/// not outlive it) builds one of these instead and calls [`App::reconcile`]
+/// when it sees fit. The router is the same router with the same auth, body
+/// cap, timeout and concurrency guard; nothing about the request surface is
+/// decided by who serves it.
+pub struct App {
+    state: AppState,
+    router: Router,
+}
+
+impl App {
+    /// The registrar's router: every route [`serve`] exposes, nothing more.
+    pub fn router(&self) -> Router {
+        self.router.clone()
+    }
+
+    /// The live registry, for a host that persists it somewhere other than
+    /// `--registry` (see [`Registry::export`]).
+    #[must_use]
+    pub fn registry(&self) -> &Shared {
+        &self.state.reg
+    }
+
+    /// The options this app was built with.
+    #[must_use]
+    pub fn opts(&self) -> &ServeOpts {
+        &self.state.opts
+    }
+
+    /// One reconciler pass, as the timer would run it: prune, rewrite the
+    /// Traefik and rathole files if anything changed, publish the compute
+    /// windows, then fulfil paid market orders.
+    pub async fn reconcile(&self) -> Result<()> {
+        reconcile_once(&self.state).await?;
+        fulfil_market(&self.state).await;
+        Ok(())
+    }
+}
+
+/// Load the registry, open the market store if configured, run the first
+/// reconcile pass and build the router — everything [`serve`] does before it
+/// starts accepting, with no socket and no background task.
+pub async fn build(opts: ServeOpts) -> Result<App> {
     let reg = Arc::new(Registry::new(opts.registry_path.clone(), opts.port_range));
     // Re-attach before the API opens: restore routes for tenants the edge
     // already knew about so a rebooting edge doesn't drop every appliance.
@@ -290,9 +355,7 @@ where
     // before any heartbeat arrives.
     reconcile_once(&state).await?;
 
-    let recon = tokio::spawn(reconciler(state.clone()));
-
-    let app = Router::new()
+    let router = Router::new()
         .route("/health", get(health))
         .route("/noise-public-key", get(noise_public_key))
         .route("/register", post(register))
@@ -326,18 +389,7 @@ where
         .layer(middleware::from_fn_with_state(state.clone(), guard))
         .with_state(state.clone());
 
-    // axum::serve returns when the listener errors or `shutdown` resolves.
-    axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown)
-        .await
-        .into_diagnostic()?;
-    tracing::info!(target: Action::Serve.target(), "http server stopped");
-
-    // Structured shutdown: stop the reconciler and await its result so a
-    // panic inside it surfaces instead of being silently detached.
-    recon.abort();
-    let _ = recon.await;
-    Ok(())
+    Ok(App { state, router })
 }
 
 /// Resolve on SIGTERM (systemd's stop signal) or SIGINT.

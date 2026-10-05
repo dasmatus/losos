@@ -84,6 +84,31 @@ struct RegistryFileTenant {
     port: u16,
 }
 
+/// The wire form of [`Registry::export`] / [`Registry::import`]. Ages, not
+/// instants, and no secrets — see `export` for why.
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Snapshot {
+    /// Keyed by appliance id. `BTreeMap` so the serialised form is stable and
+    /// a store can compare two snapshots bytewise.
+    #[serde(default)]
+    pub tenants: BTreeMap<String, SnapshotTenant>,
+    #[serde(default)]
+    pub compute_windows: BTreeMap<String, ComputeWindow>,
+}
+
+/// One tenant in a [`Snapshot`].
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SnapshotTenant {
+    pub hostname: String,
+    pub rathole_port: u16,
+    /// Seconds between the last register/heartbeat and the export.
+    pub seen_ago_secs: u64,
+    /// The last idle report, as `(idle, seconds between the report and the
+    /// export)`. `None` when the box has not reported since it registered.
+    #[serde(default)]
+    pub idle: Option<(bool, u64)>,
+}
+
 /// Everything the registry mutates, under one lock. Two `Mutex`es would need a
 /// documented acquisition order to persist both maps into one file without
 /// deadlocking; one struct makes the question unaskable.
@@ -389,6 +414,136 @@ impl Registry {
             .collect();
         v.sort_by(|a, b| a.id.cmp(&b.id));
         v
+    }
+
+    /// Everything the registry knows, as plain data that can travel to another
+    /// process: tenants with their ports and *how long ago* each was seen, the
+    /// last idle report with its own age, and the compute windows.
+    ///
+    /// This exists for a host that has no durable local disk. `registry.json`
+    /// (see [`Registry::load`]) is the self-hosted edge's store and omits
+    /// liveness on purpose — a restarting edge grants every tenant grace. A
+    /// host that is recreated on every request cannot afford that: with grace
+    /// on each import the heartbeat TTL would never elapse and a dead box would
+    /// stay routed forever. So the snapshot carries ages, and
+    /// [`Registry::import`] applies the TTL as it loads them. Ages rather than
+    /// absolute timestamps because `last_seen` is a monotonic [`Instant`],
+    /// which has no meaning outside the process that read it. No token is
+    /// carried: the whitelist's token files stay the only place a secret lives.
+    #[must_use]
+    pub async fn export(&self) -> Snapshot {
+        let now = Instant::now();
+        let st = self.inner.lock().await;
+        Snapshot {
+            tenants: st
+                .tenants
+                .iter()
+                .map(|(id, t)| {
+                    (
+                        id.clone(),
+                        SnapshotTenant {
+                            hostname: t.hostname.clone(),
+                            rathole_port: t.rathole_port,
+                            seen_ago_secs: now.duration_since(t.last_seen).as_secs(),
+                            idle: t
+                                .idle
+                                .map(|(idle, at)| (idle, now.duration_since(at).as_secs())),
+                        },
+                    )
+                })
+                .collect(),
+            compute_windows: st.windows.clone(),
+        }
+    }
+
+    /// Replace the live state with `snap`, applying the same validation as
+    /// [`Registry::load`] and dropping every tenant whose `seen_ago_secs` has
+    /// reached `ttl` — the prune the reconciler would have done had this
+    /// process been alive to do it.
+    ///
+    /// Does not touch `registry.json`: on the host this is for, the imported
+    /// snapshot *is* the durable copy and the local file is scratch. The
+    /// self-hosted edge never calls this.
+    ///
+    /// An age that cannot be represented on this process's monotonic clock
+    /// (the host booted more recently than the tenant was last seen) is clamped
+    /// to "just now". That grants at most one TTL of grace right after a boot,
+    /// which is the same allowance [`Registry::load`] makes for every tenant on
+    /// every restart; refusing the tenant instead would drop a live box because
+    /// the machine under it is new. An idle report in the same position is
+    /// dropped, because stale is busy and a report whose age is unknown is not
+    /// a report of idleness.
+    pub async fn import(&self, snap: Snapshot, ttl: Duration) {
+        let (lo, hi) = self.port_range;
+        let now = Instant::now();
+        let mut st = self.inner.lock().await;
+        st.tenants.clear();
+        st.windows.clear();
+        let mut claimed: HashSet<u16> = HashSet::new();
+        for (id, t) in snap.tenants {
+            if id.trim().is_empty() || t.hostname.trim().is_empty() {
+                tracing::warn!(
+                    target: Action::LoadRegistry.target(),
+                    "dropping snapshot entry with empty id or hostname",
+                );
+                continue;
+            }
+            if t.rathole_port < lo || t.rathole_port > hi {
+                tracing::warn!(
+                    target: Action::LoadRegistry.target(),
+                    "dropping tenant {id}: port {} outside range {lo}-{hi}",
+                    t.rathole_port,
+                );
+                continue;
+            }
+            let age = Duration::from_secs(t.seen_ago_secs);
+            if age >= ttl {
+                tracing::info!(
+                    target: Action::LoadRegistry.target(),
+                    "pruning tenant {id}: last seen {}s ago, TTL {}s",
+                    t.seen_ago_secs,
+                    ttl.as_secs(),
+                );
+                continue;
+            }
+            if !claimed.insert(t.rathole_port) {
+                tracing::warn!(
+                    target: Action::LoadRegistry.target(),
+                    "dropping tenant {id}: port {} already claimed",
+                    t.rathole_port,
+                );
+                continue;
+            }
+            let idle = t.idle.and_then(|(idle, ago)| {
+                let ago = Duration::from_secs(ago);
+                if ago >= ttl {
+                    return None;
+                }
+                now.checked_sub(ago).map(|at| (idle, at))
+            });
+            st.tenants.insert(
+                id,
+                Tenant {
+                    hostname: t.hostname,
+                    rathole_port: t.rathole_port,
+                    last_seen: now.checked_sub(age).unwrap_or(now),
+                    idle,
+                },
+            );
+        }
+        for (node, window) in snap.compute_windows {
+            if node.trim().is_empty()
+                || !valid_hhmm(&window.window_start)
+                || !valid_hhmm(&window.window_end)
+            {
+                tracing::warn!(
+                    target: Action::LoadRegistry.target(),
+                    "dropping compute window for {node:?}: malformed",
+                );
+                continue;
+            }
+            st.windows.insert(node, window);
+        }
     }
 
     /// Serialize and persist the registry atomically. Takes the live state by
