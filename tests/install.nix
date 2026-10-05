@@ -62,9 +62,10 @@ pkgs.testers.nixosTest {
       # losos-install manually through its --emit-target / --disko-script seams).
       losos.installer.package = lososPkgs.losos-ctl;
 
-      # Drive list the disko layout pools into `persist-vg`, plus TPM mode.
-      # The test uses the keyfile path (unattended); the keyfile is created
-      # by the test script before disko runs (disko's luks passwordFile).
+      # Drive list the disko layout pools into `persist-vg`, plus the unlock
+      # mode. This VM has no TPM, so it is the keyfile path; the keyfile is
+      # created by the test script before disko runs (disko's luks
+      # passwordFile). tests/tpm.nix is the other half.
       losos.targetDrives = targets;
       losos.tpm.enable = false;
       losos.bios = true;
@@ -159,6 +160,12 @@ pkgs.testers.nixosTest {
     assert "/dev/vda" not in detected, "detector picked up the VM root disk"
     assert "losos.targetDrives" in detected, "no losos.targetDrives assignment emitted"
     assert "losos.bios = true;" in detected, "SeaBIOS autodetection did not select BIOS"
+    # No chip in this VM, so the installer falls back to the keyfile; asking
+    # for the chip anyway is an error, not a silent keyfile install. The TPM
+    # half of this story is tests/tpm.nix.
+    assert "losos.tpm.enable = false;" in detected, "no TPM here, yet the installer chose it"
+    installer.fail("losos-install --tpm --emit-target /tmp/forced-tpm.nix")
+    installer.succeed("test ! -e /tmp/forced-tpm.nix")
 
     # Explicit BIOS must override autodetection. UEFI cannot be selected when
     # the installer itself was booted in BIOS mode, because bootctl needs EFI

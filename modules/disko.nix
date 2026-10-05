@@ -12,9 +12,13 @@
 # volume; acceptable for a set-and-forget appliance whose data is also
 # replicated across the mesh by Longhorn.
 #
-# Unlock method is chosen by losos.tpm.enable:
-#   true  -> TPM2 (enroll it post-install; see README)
-#   false -> random keyfile at /etc/keys/persist-keyfile (injected into initrd)
+# The volume is always formatted from the random keyfile the installer
+# generates at /etc/keys/persist-keyfile, unattended. What differs by
+# losos.tpm.enable is how it is opened at boot:
+#   true  -> a TPM2 token the installer enrols right after the format
+#            (systemd-cryptenroll, backend/src/installer_io.rs); the keyfile
+#            stays only inside /persist as the recovery slot
+#   false -> the same keyfile, injected into the initrd (boot.nix)
 {
   lib,
   config,
@@ -120,12 +124,11 @@ in
         content = {
           type = "luks";
           name = "persist"; # -> /dev/mapper/persist
-          # Format-time key:
-          #   TPM path  -> prompt for a passphrase at `disko` format time,
-          #                then enroll the TPM2 token afterwards.
-          #   keyfile   -> use the pre-generated keyfile as the LUKS key,
-          #                so the same file unlocks at boot unattended.
-          passwordFile = if useTpm then null else "/etc/keys/persist-keyfile";
+          # Format-time key, in both modes: the keyfile the installer
+          # generated. Nothing is ever typed. On the TPM path the installer
+          # then enrols the chip from this same file; on the keyfile path the
+          # same file unlocks at boot from the initrd.
+          passwordFile = "/etc/keys/persist-keyfile";
           settings = {
             allowDiscards = true;
             # NOTE: no `keyFile` here. disko reuses settings.keyFile at
@@ -136,7 +139,10 @@ in
             # (boot.initrd.luks.devices.persist.keyFile), next to the
             # boot.initrd.secrets entry that materializes it. TPM2 path
             # relies on the enrolled LUKS2 token via tpm2-device=auto; the
-            # password fallback is implied by systemd stage 1.
+            # password fallback is implied by systemd stage 1. The two must
+            # stay exclusive: systemd-cryptsetup given both a key file and
+            # tpm2-device= reads the file as a sealed TPM2 blob, not as a
+            # LUKS key, so "keyfile first, chip second" is not expressible.
             crypttabExtraOpts = if useTpm then [ "tpm2-device=auto" ] else [ ];
           };
           # ext4, not btrfs, and the choice is load-bearing: fscrypt needs a
