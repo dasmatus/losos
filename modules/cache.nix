@@ -23,8 +23,10 @@
 # target nothing worth measuring.
 #
 # CI also READS from this cache — setup-nix uses repository variables for the
-# proxy URL and public key. Configure those same values on the appliance via
-# losos.cache.*; without them the default is no project-specific substituter.
+# proxy URL and public key. The appliance carries the same two values as the
+# defaults of losos.cache.* (modules/options.nix), so a stock install pulls
+# from the cache without the owner configuring anything; tests/invariants.nix
+# pins them. Set losos.cache.substituters = [ ] to opt out.
 #
 # The Nextcloud image is the exception, and it is the one that matters most
 # here — it is the 2.3 GiB closure named above. It is NOT built on every push:
