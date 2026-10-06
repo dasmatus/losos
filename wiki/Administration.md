@@ -2,8 +2,12 @@
 
 ## Admin UI
 
-Open `https://<host>.local/` from the LAN. The admin UI is blocked for anything
+Open `http://<ip>/` (the address on the box's tty1 banner) or
+`https://<host>.local/` from the LAN. The admin UI is blocked for anything
 outside the LAN, including traffic through the [master proxy](Master-Proxy).
+`<host>.local` is an mDNS name: a computer that does not resolve it (typically
+the host of a NAT'ed VM) uses the IP address, and every route below answers on
+it the same way.
 
 Services on the same host:
 
