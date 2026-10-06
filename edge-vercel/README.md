@@ -46,7 +46,7 @@ a separate crate meant to be torn down after the demonstration.
 1. In Vercel, **Add New → Project**, import this repository, and set
    **Root Directory** to `edge-vercel`. This is a new project: the two that
    already exist on the team, `losos-cache-proxy` (the Nix binary cache proxy
-   at `losos-proxy.dasmat.us` that CI and the appliance pull from) and
+   at `proxy.losos.dasmat.us` that CI and the appliance pull from) and
    `losos-desktop-proxy`, are other services and are not touched by this. Keep *Include files outside the root
    directory in the build step* enabled: the crate depends on
    `../backend-registrar` by path. Framework preset: *Other*. No build
@@ -81,7 +81,7 @@ a separate crate meant to be torn down after the demonstration.
    lets read its setup document, `losos.setup.finderOrigins`). `dasmat.us`
    uses third-party nameservers, so the name needs a CNAME to
    `cname.vercel-dns.com` there; Vercel shows the exact record. (Not
-   `losos-proxy.dasmat.us`: that one is the Nix cache proxy.) Until the
+   `proxy.losos.dasmat.us`: that one is the Nix cache proxy.) Until the
    domain resolves the deployment is reachable at its
    `https://<project>.vercel.app` URL, and the box needs `registrarUrl` and
    `finderOrigins` set to that instead.
