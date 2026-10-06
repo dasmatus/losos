@@ -313,14 +313,21 @@ function PasswordForm({
   );
 }
 
-/* The three rules, each with a tick that fills in as the owner types. On
+/* The four rules, each with a tick that fills in as the owner types. On
  * screen before the first keystroke, so a refusal never cites a rule the
- * owner has not seen; and only three, so the list is read rather than
- * skipped. The server checks the same three (backend/src/setup.rs). */
-const RULE_KEYS: Record<PasswordRuleId, "wizard.signin.rule.length" | "wizard.signin.rule.cases" | "wizard.signin.rule.digit"> = {
+ * owner has not seen; and only four, so the list is read rather than
+ * skipped. The server checks the same four (backend/src/setup.rs). */
+const RULE_KEYS: Record<
+  PasswordRuleId,
+  | "wizard.signin.rule.length"
+  | "wizard.signin.rule.cases"
+  | "wizard.signin.rule.digit"
+  | "wizard.signin.rule.symbol"
+> = {
   length: "wizard.signin.rule.length",
   cases: "wizard.signin.rule.cases",
   digit: "wizard.signin.rule.digit",
+  symbol: "wizard.signin.rule.symbol",
 };
 
 function PasswordRules({ password }: { password: string }) {

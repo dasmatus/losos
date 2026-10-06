@@ -68,12 +68,14 @@ pub const DEFAULT_ADMIN_USER: &str = "notshared";
 /// Length is no longer the only rule. Since `crate::signin` the one password
 /// opens the admin pages too — `POST /api/apply` and a factory reset sit
 /// behind it, not only the owner's files — so [`validate_password`] also
-/// wants both letter cases and a digit. Three rules, all shown up front by
-/// the wizard with a tick each, and nothing hidden: an owner who meets what
-/// is on screen is never refused by a rule they did not see. No symbol
-/// rule, on purpose — a symbol is what a phone keyboard hides and what a
-/// shell round trip mangles, and it is the rule that makes people shorten
-/// the rest. Nextcloud's own policy app can add more if an owner wants it.
+/// wants both letter cases, a digit and a symbol (the owner asked for the
+/// digit and symbol rules by name, 2026-10-06). Four rules, all shown up
+/// front by the wizard with a tick each, and nothing hidden: an owner who
+/// meets what is on screen is never refused by a rule they did not see. A
+/// symbol here is any character that is not a letter, a digit or
+/// whitespace, so a hyphen between two words counts and nothing has to be
+/// hunted for on a phone keyboard. Nextcloud's own policy app can add more
+/// if an owner wants it.
 pub const MIN_PASSWORD_CHARS: usize = 12;
 
 /// Longest password accepted, in bytes.
@@ -529,7 +531,18 @@ pub fn validate_password(password: &str) -> Result<Secret, String> {
     if !password.chars().any(char::is_numeric) {
         return Err("password must contain a digit".to_string());
     }
+    if !password.chars().any(is_symbol) {
+        return Err("password must contain a symbol (anything that is not a letter or a digit, such as - or !)".to_string());
+    }
     Ok(Secret(password.to_string()))
+}
+
+/// A "special character" for the password rule: not a letter, not a digit,
+/// not whitespace. Punctuation and symbols in any script, so `-`, `!`, `€`
+/// and `…` all count, and a space does not — a space separates the words
+/// the hint recommends and should not satisfy a rule about symbols.
+pub fn is_symbol(c: char) -> bool {
+    !c.is_alphanumeric() && !c.is_whitespace()
 }
 
 /// Turn a located target into an ordered action list.
