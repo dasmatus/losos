@@ -60,6 +60,17 @@ Setup:
    `tests/invariants.nix` fails if either default is dropped. Rotating the
    signing key means changing the variable and the default together.
 
+Every job reports what it actually got from the cache. `setup-nix` puts a
+`nix` shim on `PATH` that counts nix's own `copying path '…' from '<url>'`
+and `building '…'` lines per invocation and writes a **Nix binary cache
+use** table to the job's step summary (one row per nix command that copied
+or built anything: paths from the LosOS cache, from `cache.nixos.org`, from
+elsewhere, and built on the runner), plus one `LosOS cache: …` line in the
+job log right after the command. A row with the LosOS column at 0 and a
+non-zero "built here" means this project's own paths were compiled although
+an earlier run should have pushed them; a job that only evaluates adds no
+row. The shim changes neither nix's output nor its exit status.
+
 Check `<proxy-url>/nix-cache-info` and `nix copy --from <proxy-url>
 <store-path>` before relying on it. An unreachable cache is not fatal: the
 appliance waits 5 s and falls back to `cache.nixos.org` and building. Never
