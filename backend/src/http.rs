@@ -36,6 +36,9 @@ struct Api {
     token: String,
     throttle: Throttle,
     audit: Audit,
+    /// The last claim answered, so a reply lost to a proxy timeout can be
+    /// given again to the same password (`crate::receipt`).
+    claims: std::sync::Mutex<crate::receipt::Receipts>,
 }
 
 /// `{"error": "..."}` at the given status — the shape the SPA expects.
@@ -62,6 +65,29 @@ fn run(
                 actix_web::http::StatusCode::from_u16(r.status)
                     .unwrap_or(actix_web::http::StatusCode::BAD_REQUEST),
                 &r.message,
+            )
+        }
+        // The first boot's one expected failure: Nextcloud is still installing
+        // itself, so the first password cannot be set *yet*. 503 with the
+        // reason and a Retry-After, so the wizard waits and says why, instead
+        // of the opaque 500 that once sent owners to re-image a working box.
+        Err(e) if e.downcast_ref::<crate::setup::NotReady>().is_some() => {
+            let why = &e
+                .downcast_ref::<crate::setup::NotReady>()
+                .expect("checked")
+                .0;
+            tracing::info!(reason = why.as_str(), "claim refused: not ready yet");
+            HttpResponse::build(actix_web::http::StatusCode::SERVICE_UNAVAILABLE)
+                .insert_header(("Retry-After", "10"))
+                .json(serde_json::json!({ "error": why, "ready": false, "waitingFor": why }))
+        }
+        // A second owner, or the first one again after the grace window:
+        // the sentence, as a 409 the wizard already knows how to show.
+        Err(e) if e.downcast_ref::<crate::setup::AlreadyClaimed>().is_some() => {
+            tracing::warn!("claim refused: the box already has an owner");
+            err(
+                actix_web::http::StatusCode::CONFLICT,
+                &crate::setup::AlreadyClaimed.to_string(),
             )
         }
         Err(e) => {
@@ -309,8 +335,15 @@ async fn post_claim(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> 
         return err(actix_web::http::StatusCode::BAD_REQUEST, SHAPE);
     };
     let token = api.token.clone();
+    let claims = api.clone();
     run(&api, move |l| {
-        crate::losos::cmd_claim(l, &user, password, &token)
+        // Held across the occ run on purpose: two claims racing each other
+        // would otherwise both see an unclaimed box.
+        let mut receipts = claims
+            .claims
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        crate::losos::cmd_claim(l, &user, password, &token, &mut receipts)
     })
 }
 
@@ -673,6 +706,7 @@ pub fn serve(backend: IoLosos) -> anyhow::Result<()> {
             token,
             throttle: Throttle::default(),
             audit: Audit,
+            claims: std::sync::Mutex::new(crate::receipt::Receipts::default()),
         });
         let server = HttpServer::new(move || {
             App::new()

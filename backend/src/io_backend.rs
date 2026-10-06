@@ -760,6 +760,68 @@ impl Losos for IoLosos {
         }
     }
 
+    fn nextcloud_status(
+        &mut self,
+        target: &crate::setup::Target,
+    ) -> anyhow::Result<crate::setup::OccOutcome> {
+        let argv = crate::setup::plan_status(target);
+        let (cmd, args) = argv.split_first().context("plan_status is never empty")?;
+        let mut child = std::process::Command::new(cmd);
+        child.args(args);
+        // Same reason as the native RunOcc arm above: nixpkgs' nextcloud-occ
+        // wrapper reads `$USER` under `set -u`.
+        child.env("USER", "root");
+        let out = child
+            .output()
+            .with_context(|| format!("running {}", argv.join(" ")))?;
+        Ok(crate::setup::OccOutcome {
+            code: out.status.code().unwrap_or(-1),
+            stdout: String::from_utf8_lossy(&out.stdout).into_owned(),
+            stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
+        })
+    }
+
+    fn nextcloud_last_log(&mut self, mode: crate::setup::NcMode) -> anyhow::Result<Option<String>> {
+        if mode == crate::setup::NcMode::Native {
+            return Ok(None);
+        }
+        let socket = std::env::var("LOSOS_CRI_SOCKET")
+            .ok()
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| crate::setup::DEFAULT_CRI_SOCKET.to_string());
+        let run = |argv: Vec<String>| -> anyhow::Result<std::process::Output> {
+            let (cmd, args) = argv.split_first().context("argv is never empty")?;
+            std::process::Command::new(cmd)
+                .args(args)
+                .output()
+                .with_context(|| format!("running {}", argv.join(" ")))
+        };
+        let listed = run(crate::setup::last_container_argv(&socket))?;
+        if !listed.status.success() {
+            anyhow::bail!(
+                "crictl ps --all failed: {}",
+                String::from_utf8_lossy(&listed.stderr).trim()
+            );
+        }
+        let stdout = String::from_utf8_lossy(&listed.stdout);
+        let Some(id) = stdout.lines().map(str::trim).find(|l| !l.is_empty()) else {
+            return Ok(None);
+        };
+        // `crictl logs` prints the container's stdout and stderr on its own
+        // matching streams; the entrypoint's `fail` writes to stderr.
+        let logged = run(crate::setup::container_log_argv(&socket, id))?;
+        let text = format!(
+            "{}\n{}",
+            String::from_utf8_lossy(&logged.stdout),
+            String::from_utf8_lossy(&logged.stderr)
+        );
+        Ok(if text.trim().is_empty() {
+            None
+        } else {
+            Some(text)
+        })
+    }
+
     fn recovery_code(&mut self) -> anyhow::Result<crate::recovery::Recovery> {
         crate::recovery::ensure_code(&mut FileCodeStore::from_env())
     }
