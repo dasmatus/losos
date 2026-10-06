@@ -15,6 +15,19 @@
 #                             does something useful with it
 #   GET /setup/state.json     hostName, fqdn, and the certificate's fingerprint
 #                             and expiry
+#   GET /setup/trust.sh       a POSIX sh script that installs the certificate
+#   GET /setup/trust.ps1      the same for PowerShell on Windows
+#
+# The two scripts are modules/setup/trust.{sh,ps1} with the certificate, its
+# fingerprint and the box's name filled in at boot. They exist because the
+# alternative — "download this file, open your OS's certificate manager, find
+# the trust setting, restart the browser" — is a wall of instructions that
+# most owners read as "skip this step", and skipping it costs them the passkey
+# and sends every password over the LAN in the clear. One line pasted into a
+# terminal is the shortest honest version of the step. The scripts are served
+# as text so the line before the `| sh` can be read in a browser tab first,
+# and they are deliberately boring: no sudo, no download, no second file,
+# one store per browser family, undone by deleting one entry.
 #
 # They are attached by merging into
 # `services.nginx.virtualHosts."losos-front".locations`, not by editing
@@ -84,6 +97,13 @@ let
   # registered for; Windows opens a `.pem` in a text editor.
   certUrl = "/setup/losos-ca.crt";
   stateUrl = "/setup/state.json";
+  # `.sh` and `.ps1`, because the owner is asked to pipe one into `sh` and the
+  # other into `iex`, and an extension that says which is which is the one
+  # thing a person checks before pressing Enter.
+  trustShUrl = "/setup/trust.sh";
+  trustPs1Url = "/setup/trust.ps1";
+  trustSh = "${stateDir}/trust.sh";
+  trustPs1 = "${stateDir}/trust.ps1";
 
   # Verbatim from `lanOnly` in modules/containers.nix, which cannot be reached
   # from here (it is a `let` binding, not an option) and which is being edited
@@ -113,6 +133,23 @@ let
   # Rendered through toJSON so a hostName containing a quote cannot produce a
   # document the wizard fails to parse.
   json = builtins.toJSON;
+
+  # ── The box's own address, filled in per request ──────────────────────────
+  # The wizard's one-line installer has to name an address that works from a
+  # terminal — on this computer, and on the next one the owner reads the
+  # line to. The page's own location is `localhost:8080` behind a port
+  # forward and `mattbox.local` on a machine whose neighbour cannot resolve
+  # it; the box's DHCP address is the one every machine on the LAN reaches.
+  #
+  # The unit that writes state.json runs once at boot, before nginx and
+  # possibly before DHCP has answered, and the lease can change later; so
+  # the file carries a placeholder and nginx substitutes `$server_addr` — the
+  # address this very request arrived on — when it serves the document. For
+  # a LAN client that is the box's address on the LAN, by definition
+  # reachable; and it is known at request time without any unit watching
+  # the interfaces. sub_filter is the stock module for exactly this: a
+  # literal swapped once in a static body.
+  addressPlaceholder = "@ADDRESS@";
 
   # ── Cross-origin read of state.json, for the finder page ─────────────────
   # options.nix (`losos.setup.finderOrigins`) says what this is for and why it
@@ -177,19 +214,41 @@ let
       +%Y-%m-%dT%H:%M:%SZ)
   '';
 
+  # The install scripts, from their templates. Three placeholders: the PEM
+  # line is replaced by the certificate file itself (sed's `r` queues the file
+  # and `d` drops the marker line), the fingerprint is the display spelling
+  # the owner is told to compare, and the name is for the entry's label and
+  # the closing sentence. The certificate is pasted raw, so what the script
+  # installs is byte for byte what ${certUrl} serves — tests/setup.nix
+  # extracts it back out and cmp's it. temp + rename, as for state.json.
+  renderInstaller = template: out: ''
+    sed -e "/^@PEM@$/{r ${certFile}" -e "d}" \
+      -e "s/@FINGERPRINT@/$display/g" \
+      -e "s/@HOST@/${hostName}/g" \
+      ${template} > ${out}.new
+    mv ${out}.new ${out}
+  '';
+
   stateScript =
     if tlsEnabled then
       measureCert
+      + renderInstaller ./setup/trust.sh trustSh
+      + renderInstaller ./setup/trust.ps1 trustPs1
       + writeState ''
         {
           "hostName": ${json hostName},
           "fqdn": ${json fqdn},
+          "address": ${json addressPlaceholder},
           "tls": true,
           "certificate": {
             "url": ${json certUrl},
             "fingerprint": "sha256:$hex",
             "fingerprintDisplay": "$display",
-            "expires": "$expires"
+            "expires": "$expires",
+            "install": {
+              "sh": ${json trustShUrl},
+              "ps1": ${json trustPs1Url}
+            }
           }
         }
       ''
@@ -198,6 +257,7 @@ let
         {
           "hostName": ${json hostName},
           "fqdn": ${json fqdn},
+          "address": ${json addressPlaceholder},
           "tls": false,
           "certificate": null
         }
@@ -243,6 +303,7 @@ in
     path = [
       pkgs.openssl
       pkgs.coreutils
+      pkgs.gnused
     ];
     serviceConfig = {
       Type = "oneshot";
@@ -309,6 +370,31 @@ in
           # door's headers.
         '';
       };
+
+      # ── The install scripts, for a human with a terminal ──────────────────
+      # text/plain, so the URL opens as readable text in a browser tab — the
+      # wizard links it with "read it first" — and so `irm` returns a string
+      # for `iex` rather than trying to parse it. The same LAN guard and the
+      # same no-add_header rule as the certificate: nothing here is secret,
+      # and the inherited security headers do not hurt a script.
+      "= ${trustShUrl}" = {
+        alias = trustSh;
+        extraConfig = ''
+          ${lanOnly}
+          types { }
+          default_type text/plain;
+          charset utf-8;
+        '';
+      };
+      "= ${trustPs1Url}" = {
+        alias = trustPs1;
+        extraConfig = ''
+          ${lanOnly}
+          types { }
+          default_type text/plain;
+          charset utf-8;
+        '';
+      };
     })
     {
       # ── The setup document ────────────────────────────────────────────────
@@ -324,6 +410,16 @@ in
           ${lanOnly}
           types { }
           default_type application/json;
+          # The box's address, per request (see `addressPlaceholder`). The
+          # placeholder is matched with its quotes so the substitution is
+          # the whole JSON string value and nothing else in the document
+          # can be mistaken for it. sub_filter drops the ETag, which is why
+          # Last-Modified is kept explicitly: the wizard sends no-store
+          # anyway, and a client that does cache still revalidates.
+          sub_filter_types application/json;
+          sub_filter_once on;
+          sub_filter_last_modified on;
+          sub_filter '"${addressPlaceholder}"' '"$server_addr"';
         '';
       };
     }

@@ -247,6 +247,74 @@ export default defineMessages({
     sk: "Môžete pokračovať bez inštalácie certifikátu alebo stránku načítať znova a skúsiť to ešte raz.",
     de: "Du kannst ohne das Zertifikat weitermachen oder die Seite neu laden und es noch einmal versuchen.",
   },
+  // TrustCommand.tsx — the one-line installer.
+  "wizard.trust.quick.title": {
+    en: "The quick way: one line in a terminal",
+    sk: "Rýchla cesta: jeden riadok v termináli",
+    de: "Der schnelle Weg: eine Zeile im Terminal",
+  },
+  "wizard.trust.quick.osLabel": {
+    en: "Operating system",
+    sk: "Operačný systém",
+    de: "Betriebssystem",
+  },
+  "wizard.trust.quick.unix": {
+    en: "macOS / Linux",
+    sk: "macOS / Linux",
+    de: "macOS / Linux",
+  },
+  "wizard.trust.quick.windows": { en: "Windows", sk: "Windows", de: "Windows" },
+  "wizard.trust.quick.bodyUnix": {
+    en: "On this computer, open Terminal, paste this line and press Enter. macOS asks for your account password once, to change what your keychain trusts.",
+    sk: "Na tomto počítači otvorte Terminál, vložte tento riadok a stlačte Enter. macOS sa raz opýta na heslo k účtu, aby mohol zmeniť, čomu dôveruje vaša kľúčenka.",
+    de: "Öffne auf diesem Computer das Terminal, füge diese Zeile ein und drücke Enter. macOS fragt einmal nach deinem Kontopasswort, um zu ändern, wem dein Schlüsselbund vertraut.",
+  },
+  "wizard.trust.quick.bodyWindows": {
+    en: "On this computer, open PowerShell (press the Windows key, type PowerShell, press Enter), paste this line and press Enter. Windows then shows its own dialog asking whether to install the certificate.",
+    sk: "Na tomto počítači otvorte PowerShell (stlačte kláves Windows, napíšte PowerShell, stlačte Enter), vložte tento riadok a stlačte Enter. Windows potom zobrazí vlastný dialóg s otázkou, či certifikát nainštalovať.",
+    de: "Öffne auf diesem Computer PowerShell (Windows-Taste drücken, PowerShell tippen, Enter), füge diese Zeile ein und drücke Enter. Windows zeigt dann einen eigenen Dialog, ob das Zertifikat installiert werden soll.",
+  },
+  "wizard.trust.quick.bodyPhone": {
+    en: "Phones have no terminal: on this device, use the certificate download below instead. On a computer, this line does the whole step.",
+    sk: "Telefóny nemajú terminál: na tomto prístroji použite namiesto toho stiahnutie certifikátu nižšie. Na počítači tento riadok urobí celý krok.",
+    de: "Telefone haben kein Terminal: Nimm auf diesem Gerät stattdessen den Zertifikat-Download unten. Auf einem Computer erledigt diese Zeile den ganzen Schritt.",
+  },
+  "wizard.trust.quick.copy": { en: "Copy", sk: "Kopírovať", de: "Kopieren" },
+  "wizard.trust.quick.copied": {
+    en: "Copied",
+    sk: "Skopírované",
+    de: "Kopiert",
+  },
+  "wizard.trust.quick.what": {
+    en: "It adds one certificate to the stores your browsers read, for your user only. It installs no software, changes nothing else, and is undone by deleting that one entry.",
+    sk: "Pridá jeden certifikát do úložísk, ktoré čítajú vaše prehliadače, len pre vášho používateľa. Neinštaluje žiadny softvér, nič iné nemení a vráti sa späť zmazaním tej jednej položky.",
+    de: "Sie fügt den Speichern, die deine Browser lesen, ein Zertifikat hinzu, nur für deinen Benutzer. Sie installiert keine Software, ändert sonst nichts und lässt sich durch Löschen dieses einen Eintrags rückgängig machen.",
+  },
+  "wizard.trust.quick.where": {
+    en: "It comes from this box, on your own network, not from the internet. The box's private key never leaves the box.",
+    sk: "Pochádza z tohto zariadenia, z vašej vlastnej siete, nie z internetu. Súkromný kľúč zariadenia nikdy zariadenie neopustí.",
+    de: "Sie kommt von dieser Box, aus deinem eigenen Netzwerk, nicht aus dem Internet. Der private Schlüssel der Box verlässt die Box nie.",
+  },
+  "wizard.trust.quick.read": {
+    en: "Read the script first",
+    sk: "Najprv si skript prečítajte",
+    de: "Lies das Skript zuerst",
+  },
+  "wizard.trust.quick.readTail": {
+    en: "if you like. It is short, plain text, and says at the top what it does.",
+    sk: "ak chcete. Je krátky, v čistom texte a hneď na začiatku hovorí, čo robí.",
+    de: "wenn du magst. Es ist kurz, reiner Text, und sagt ganz oben, was es tut.",
+  },
+  "wizard.trust.quick.then": {
+    en: "It prints the fingerprint shown below so you can compare the two. Then restart your browser and reopen this page at https://{fqdn}.",
+    sk: "Vypíše odtlačok zobrazený nižšie, aby ste si oba mohli porovnať. Potom reštartujte prehliadač a otvorte túto stránku znova na https://{fqdn}.",
+    de: "Sie gibt den unten gezeigten Fingerabdruck aus, damit du beide vergleichen kannst. Starte danach deinen Browser neu und öffne diese Seite unter https://{fqdn} erneut.",
+  },
+  "wizard.trust.byHand": {
+    en: "Or by hand: download the certificate and add it to your browser or system as a trusted authority.",
+    sk: "Alebo ručne: stiahnite certifikát a pridajte ho do prehliadača alebo systému ako dôveryhodnú autoritu.",
+    de: "Oder von Hand: Lade das Zertifikat herunter und füge es deinem Browser oder System als vertrauenswürdige Stelle hinzu.",
+  },
   "wizard.trust.getCert": {
     en: "Get the certificate",
     sk: "Stiahnuť certifikát",

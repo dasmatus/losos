@@ -35,6 +35,7 @@ import { useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
 import { Callout, ReadoutRow, StepText } from "./parts";
 import { passkeysPossibleHere } from "./passkey";
+import { TrustCommand } from "./TrustCommand";
 import type { SetupQuery } from "./useSetupState";
 
 export function StepTrust({ query }: { query: SetupQuery }) {
@@ -47,13 +48,21 @@ export function StepTrust({ query }: { query: SetupQuery }) {
       {query.kind === "ready" && <ReadyTrust query={query} />}
 
       {query.kind === "blocked" && (
-        <Callout tone="warn" icon={Alert02Icon} title={t("wizard.trust.blocked.title")}>
+        <Callout
+          tone="warn"
+          icon={Alert02Icon}
+          title={t("wizard.trust.blocked.title")}
+        >
           <p className="mt-1">{t("wizard.trust.blocked.body")}</p>
         </Callout>
       )}
 
       {query.kind === "absent" && (
-        <Callout tone="info" icon={InformationCircleIcon} title={t("wizard.trust.nothing.title")}>
+        <Callout
+          tone="info"
+          icon={InformationCircleIcon}
+          title={t("wizard.trust.nothing.title")}
+        >
           <p className="mt-1">
             {passkeysPossibleHere()
               ? t("wizard.trust.absent")
@@ -63,7 +72,11 @@ export function StepTrust({ query }: { query: SetupQuery }) {
       )}
 
       {query.kind === "failed" && (
-        <Callout tone="crit" icon={Alert02Icon} title={t("wizard.trust.failed.title")}>
+        <Callout
+          tone="crit"
+          icon={Alert02Icon}
+          title={t("wizard.trust.failed.title")}
+        >
           <p className="mt-1 break-words">{query.message}</p>
           <p className="mt-1">{t("wizard.trust.failed.body")}</p>
         </Callout>
@@ -81,15 +94,24 @@ function LoadingTrust() {
   );
 }
 
-function ReadyTrust({ query }: { query: Extract<SetupQuery, { kind: "ready" }> }) {
+function ReadyTrust({
+  query,
+}: {
+  query: Extract<SetupQuery, { kind: "ready" }>;
+}) {
   const t = useT();
   const { fqdn, tls, certificate } = query.state;
-  const secure = window.isSecureContext && window.location.protocol === "https:";
+  const secure =
+    window.isSecureContext && window.location.protocol === "https:";
   const onTheRightName = secure && window.location.hostname === fqdn;
 
   if (!tls || certificate === null) {
     return (
-      <Callout tone="info" icon={InformationCircleIcon} title={t("wizard.trust.nothing.title")}>
+      <Callout
+        tone="info"
+        icon={InformationCircleIcon}
+        title={t("wizard.trust.nothing.title")}
+      >
         <p className="mt-1">
           {passkeysPossibleHere()
             ? t("wizard.trust.noTls", { name: query.state.hostName })
@@ -99,8 +121,27 @@ function ReadyTrust({ query }: { query: Extract<SetupQuery, { kind: "ready" }> }
     );
   }
 
+  // The one-line installer leads, the download follows as the manual route.
+  // Not on a page the browser already trusts: the step is done there, and a
+  // panel asking to install what is installed reads as "something is wrong".
+  const quick = secure ? null : certificate.install;
+
   return (
     <div className="flex flex-col gap-5">
+      {quick !== null && (
+        <TrustCommand
+          install={quick}
+          fqdn={fqdn}
+          address={query.state.address}
+        />
+      )}
+
+      {quick !== null && (
+        <p className="text-[13px] leading-snug text-muted">
+          {t("wizard.trust.byHand")}
+        </p>
+      )}
+
       <div className="flex flex-wrap items-center gap-2.5">
         {/* An anchor, not a button: this is a download, and the browser's own
             handling of the content type is what opens Firefox's import dialog
@@ -168,19 +209,29 @@ function ReadyTrust({ query }: { query: Extract<SetupQuery, { kind: "ready" }> }
               color="currentColor"
               aria-hidden="true"
             />
-            {t("wizard.trust.validUntil", { date: formatExpiry(certificate.expires) })}
+            {t("wizard.trust.validUntil", {
+              date: formatExpiry(certificate.expires),
+            })}
           </p>
         )}
       </div>
 
       {!secure && (
-        <Callout tone="warn" icon={SecurityLockIcon} title={t("wizard.trust.unencrypted.title")}>
+        <Callout
+          tone="warn"
+          icon={SecurityLockIcon}
+          title={t("wizard.trust.unencrypted.title")}
+        >
           <p className="mt-1">{t("wizard.trust.unencrypted.body", { fqdn })}</p>
         </Callout>
       )}
 
       {secure && !onTheRightName && (
-        <Callout tone="info" icon={GlobeIcon} title={t("wizard.trust.otherName.title")}>
+        <Callout
+          tone="info"
+          icon={GlobeIcon}
+          title={t("wizard.trust.otherName.title")}
+        >
           <p className="mt-1">{t("wizard.trust.otherName.body", { fqdn })}</p>
         </Callout>
       )}
