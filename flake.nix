@@ -95,13 +95,26 @@
             pkgs.clippy
             pkgs.rustfmt
           ];
+          # mold as the linker, ccache and sccache in front of the compilers
+          # — the same stdenv flake/packages.nix builds the crates with, so
+          # `cargo` in either shell links and caches the way `nix build`
+          # does. The stdenv carries ccache and mold (so `cc` on PATH is
+          # both); `env` carries sccache. See the header of
+          # flake/fast-build.nix for what each tool buys and for the one
+          # piece (edge-vercel on Vercel) it cannot reach.
+          fast = import ./flake/fast-build.nix { inherit pkgs; };
+          mkShell = pkgs.mkShell.override { inherit (fast) stdenv; };
         in
         {
-          default = pkgs.mkShell {
-            nativeBuildInputs = rust ++ [
-              pkgs.rust-analyzer
-              pkgs.nodejs
-            ];
+          default = mkShell {
+            nativeBuildInputs =
+              rust
+              ++ fast.packages
+              ++ [
+                pkgs.rust-analyzer
+                pkgs.nodejs
+              ];
+            inherit (fast) env;
             shellHook = ''
               echo "Toolchain-only shell. For the scripts and pre-commit hooks:"
               echo "  devenv shell      (or: direnv allow)"
@@ -119,7 +132,10 @@
           # is version skew, not a defect in the code. Linting with the
           # compiler you ship with is the only way that stays true, and it
           # also means an upstream Rust release cannot turn CI red on its own.
-          ci = pkgs.mkShell { nativeBuildInputs = rust; };
+          ci = mkShell {
+            nativeBuildInputs = rust ++ fast.packages;
+            inherit (fast) env;
+          };
         };
 
       # Both systems get `self` via specialArgs: the iso system reaches
