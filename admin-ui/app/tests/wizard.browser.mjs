@@ -484,6 +484,52 @@ await check('step 4 hides the frame and keeps reloading it until the files app a
   await page.close();
 });
 
+await check('step 4 lets a slow first answer from the files app arrive instead of cancelling it with the next reload', async () => {
+  const { page } = await open({ claimed: false, ready: true });
+  // One nginx error page, then the app answers, but slowly: the first
+  // request after the claim can take longer than the reload period on a
+  // busy box (take 9 of the recorded demo, 2026-10-06: Apache was up, yet the
+  // step sat on "still starting" for nine minutes, because every 5 s the
+  // frame was told to load /nextcloud again while the previous load was
+  // still waiting for its first byte, and a navigation that never commits
+  // never replaces the error page the watcher keeps reading).
+  let hits = 0;
+  await page.route('**/nextcloud', async (route) => {
+    hits += 1;
+    if (hits === 1) {
+      return route.fulfill({ status: 502, contentType: 'text/html', body: '<html><head><title>502 Bad Gateway</title></head><body><center><h1>502 Bad Gateway</h1></center><hr><center>nginx</center></body></html>' });
+    }
+    await new Promise((r) => setTimeout(r, 7000));
+    try {
+      await route.fulfill({ status: 200, contentType: 'text/html', body: '<html><head data-requesttoken="tok"><title>Login</title></head><body><form><input id="user"><input id="password" type="password"></form></body></html>' });
+    } catch {
+      /* The browser gave up on this load before it was answered. */
+    }
+  });
+  await page.route('**/api/recovery', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ code: 'c5b6add9-e47a-43d5-87be-9b45e4a81441', minted: true }) }),
+  );
+  await page.getByRole('button', { name: /^Continue$/ }).click();
+  await page.locator('input[name="new-password"]').fill('correct horse battery staple');
+  await page.locator('input[name="confirm-password"]').fill('correct horse battery staple');
+  await page.getByRole('button', { name: /^Set the password$/ }).click();
+  await page.getByText('notshared').first().waitFor({ timeout: 5000 });
+  await page.getByRole('button', { name: /^Continue$/ }).click();
+  await page.getByRole('button', { name: 'Copy' }).click();
+  await page.getByRole('button', { name: /^Continue$/ }).click();
+  await page.locator('iframe').first().waitFor({ state: 'attached', timeout: 5000 });
+  await page.waitForFunction(() => {
+    const f = document.querySelector('iframe');
+    return !!f && !!f.contentDocument && !!f.contentDocument.querySelector('#user');
+  }, null, { timeout: 25_000 });
+  assert.ok(hits <= 3, `the slow answer was cancelled by further reloads (hits=${hits})`);
+  await page.waitForTimeout(1200);
+  const text = await page.locator('body').innerText();
+  assert.ok(!/still starting/.test(text), 'the starting note stayed after the app answered');
+  assert.ok(await page.locator('iframe').first().isVisible(), 'the frame stayed hidden after the app answered');
+  await page.close();
+});
+
 await browser.close();
 await closeServer();
 finish();
