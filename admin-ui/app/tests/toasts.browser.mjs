@@ -1,15 +1,23 @@
-/* The toast stack: every status update in the admin UI and the wizard is a
- * notification sliding in at the top right (src/components/ui/toast.tsx over
- * shadcn's Sonner, src/components/ui/sonner.tsx).
+/* The notification corner: every status update and every outcome in the
+ * admin UI and the wizard is a notification sliding in at the top right
+ * (src/components/ui/toast.tsx). Two kinds share the corner: a status
+ * ("applying", "not ready yet", "finish paying in the other tab") is
+ * shadcn's Sonner (sonner.tsx, `[data-sonner-toast]`), and a confirmation
+ * ("applied", "failed", "copied", "paid") is shadcn's Toast over Radix
+ * (toaster.tsx, `[data-toast]`). Confirmations take the top of the corner,
+ * the status stack sits under them, and a confirmation that answers a
+ * status dismisses it.
  *
  * What is checked here is the behaviour the other two files only meet in
- * passing: a toast lands in the top-right corner and not in the page, a new
- * one stacks above the old, a success goes on its own after a few seconds
- * and an error stays longer, the close button is immediate, the pointer
- * pauses the countdown, prefers-reduced-motion switches the slide off, and
- * the stack is still styled under the appliance's Content-Security-Policy
- * (Sonner injects its stylesheet as a <style> element, which that policy
- * refuses; the bundle has to carry it as a file). Each is driven through a real flow (an apply, a sign-in, a claim), never
+ * passing: each kind lands in the top-right corner and not in the page, the
+ * status gives way to its outcome, the two never overlap, a success goes on
+ * its own after a few seconds and an error stays longer, the close button is
+ * immediate, the pointer pauses the countdown, prefers-reduced-motion
+ * switches the slide off, and both are still styled under the appliance's
+ * Content-Security-Policy (Sonner injects its stylesheet as a <style>
+ * element, which that policy refuses; the bundle has to carry it as a file;
+ * Radix sets its swipe offset through React's style prop, which the policy
+ * allows). Each is driven through a real flow (an apply, a sign-in, a claim), never
  * by calling toast() from the test: the point is that the flows raise them.
  *
  * Same arrangement as the other files: the real dist/ bundle, the API
@@ -77,6 +85,10 @@ async function openApp({
   await page.route('**/api/setup/claim', (route) => json(route, 200, { claimed: true }));
   await page.route('**/api/state', (route) => json(route, 200, { mode: 'local', sharing: false }));
   await page.route('**/api/settings', (route) => json(route, 200, SETTINGS));
+  await page.route('**/api/storage', (route) => json(route, 200, STORAGE));
+  await page.route('**/api/grow', (route) =>
+    json(route, 200, { grew: true, beforeBytes: STORAGE.totalBytes, afterBytes: STORAGE.totalBytes + STORAGE.reserveBytes, claimedBytes: STORAGE.reserveBytes }),
+  );
   await page.route('**/api/status', (route) => {
     if (applies.length === 0) return json(route, 200, { state: 'idle', progress: 0, message: '' });
     const next = queue.length > 1 ? queue.shift() : queue[0];
@@ -99,13 +111,26 @@ async function applyARename(page) {
   await page.getByRole('button', { name: 'Apply', exact: true }).click();
 }
 
-/* Sonner's toast element: data-type carries the tone. */
-const toasts = (page) => page.locator('[data-sonner-toast]');
-const toastWith = (page, text) => page.locator('[data-sonner-toast]').filter({ hasText: text });
+/* The two kinds. A status is Sonner's element; a confirmation is the Radix
+ * toast, with the tone on data-tone. */
+const statuses = (page) => page.locator('[data-sonner-toast]');
+const statusWith = (page, text) => statuses(page).filter({ hasText: text });
+const toasts = (page) => page.locator('[data-toast]');
+const toastWith = (page, text) => toasts(page).filter({ hasText: text });
+
+const STORAGE = { totalBytes: 480 * 1024 ** 3, usedBytes: 120 * 1024 ** 3, lentBytes: 0, reserveBytes: 110 * 1024 ** 3 };
+
+/* Right edge near the viewport's, top near the top. */
+function inTheCorner(box, width) {
+  return box !== null && width - (box.x + box.width) < 40 && box.y < 160;
+}
+function overlap(a, b) {
+  return a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+}
 
 console.log('admin-ui toast checks');
 
-await check('an applied change is reported as a toast in the top-right corner, and the bar leaves', async () => {
+await check('an apply is a status while it runs and a confirmation when it is done, which settles the status', async () => {
   const { page, errors, applies } = await openApp({
     statuses: [
       { state: 'building', progress: 0, message: 'switching to the new generation', job: 'job-1' },
@@ -115,23 +140,23 @@ await check('an applied change is reported as a toast in the top-right corner, a
   await applyARename(page);
   assert.equal(applies.length, 1, 'expected one POST /api/apply');
 
-  // Starting: an info toast, and the sticky bar as the progress report.
-  const starting = toastWith(page, 'Applying your changes');
+  // Running: a Sonner status in the corner, and the sticky bar as the progress report.
+  const starting = statusWith(page, 'Applying your changes');
   await starting.waitFor();
   assert.equal(await starting.getAttribute('data-type'), 'info');
   await page.getByRole('progressbar').waitFor();
+  const width = await page.evaluate(() => window.innerWidth);
+  assert.ok(inTheCorner(await starting.boundingBox(), width), 'the status is not in the corner');
+  assert.equal(await toasts(page).count(), 0, 'a confirmation showed before anything was done');
 
-  // Finished: a success toast with the box's own last line.
+  // Done: a confirmation with the box's own last line, and the status has given way.
   const done = toastWith(page, 'Changes applied');
   await done.waitFor({ timeout: 10000 });
-  assert.equal(await done.getAttribute('data-type'), 'success');
-  assert.match(await done.innerText(), /activation finished/, "the box's status message is not on the toast");
-
-  // Top right: the toast's right edge sits near the viewport's, its top near the top.
+  assert.equal(await done.getAttribute('data-tone'), 'success');
+  assert.match(await done.innerText(), /activation finished/, "the box's status message is not on the confirmation");
+  await starting.waitFor({ state: 'hidden', timeout: 2000 });
   const box = await done.boundingBox();
-  const width = await page.evaluate(() => window.innerWidth);
-  assert.ok(box !== null && width - (box.x + box.width) < 40, `toast is not at the right edge: ${JSON.stringify(box)}`);
-  assert.ok(box.y < 120, `toast is not at the top: ${JSON.stringify(box)}`);
+  assert.ok(inTheCorner(box, width), `the confirmation is not in the corner: ${JSON.stringify(box)}`);
 
   // The bar is gone: nothing inline repeats the outcome.
   await page.getByRole('progressbar').waitFor({ state: 'hidden' });
@@ -141,7 +166,34 @@ await check('an applied change is reported as a toast in the top-right corner, a
   await page.close();
 });
 
-await check('a new toast stacks above the older one, and a success leaves on its own after a few seconds', async () => {
+await check('a confirmation lands above a status that is still up, and the two never overlap', async () => {
+  // A rebuild that never finishes keeps the status up; a disk grow on the
+  // storage pane then produces a confirmation beside it.
+  const { page, errors } = await openApp({
+    statuses: [{ state: 'building', progress: 0, message: '', job: 'job-1' }],
+  });
+  await applyARename(page);
+  const applying = statusWith(page, 'Applying your changes');
+  await applying.waitFor();
+  const alone = await applying.boundingBox();
+
+  await page.getByRole('link', { name: 'Storage' }).first().click();
+  await page.getByRole('button', { name: /^Use reserve/ }).click();
+  await page.getByRole('button', { name: /^Use it/ }).click();
+  const grew = toastWith(page, 'more room');
+  await grew.waitFor({ timeout: 10000 });
+  await page.waitForTimeout(500); // the status slides down under it
+  const [top, under] = await Promise.all([grew.boundingBox(), applying.boundingBox()]);
+  assert.ok(top !== null && under !== null, 'both should be visible');
+  assert.ok(top.y < under.y, `the confirmation should sit above the status: confirmation y=${top.y}, status y=${under.y}`);
+  assert.ok(!overlap(top, under), `the two overlap: ${JSON.stringify([top, under])}`);
+  assert.ok(under.y > alone.y, 'the status did not move down to make room');
+  assert.ok(await applying.isVisible(), 'an unrelated confirmation dismissed the status');
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+await check('a success leaves on its own after a few seconds; a persistent status does not', async () => {
   const { page } = await openApp({
     statuses: [
       { state: 'building', progress: 0, message: '', job: 'job-1' },
@@ -149,21 +201,15 @@ await check('a new toast stacks above the older one, and a success leaves on its
     ],
   });
   await applyARename(page);
-  const starting = toastWith(page, 'Applying your changes');
   const done = toastWith(page, 'Changes applied');
   await done.waitFor({ timeout: 10000 });
-  await starting.waitFor();
-  const [a, b] = await Promise.all([starting.boundingBox(), done.boundingBox()]);
-  assert.ok(b.y < a.y, `the newer toast should sit above the older: new y=${b.y}, old y=${a.y}`);
-
-  // Both are gone within their 5 s, with no click.
-  await starting.waitFor({ state: 'hidden', timeout: 8000 });
+  // Gone within its 5 s, with no click.
   await done.waitFor({ state: 'hidden', timeout: 8000 });
   assert.equal(await toasts(page).count(), 0);
   await page.close();
 });
 
-await check('a failed apply is an error toast carrying the box\'s last log line, and it stays longer', async () => {
+await check('a failed apply is an error confirmation carrying the box\'s last log line, and it stays longer', async () => {
   const { page } = await openApp({
     statuses: [
       { state: 'building', progress: 0, message: '', job: 'job-1' },
@@ -173,8 +219,9 @@ await check('a failed apply is an error toast carrying the box\'s last log line,
   await applyARename(page);
   const failed = toastWith(page, 'could not be applied');
   await failed.waitFor({ timeout: 10000 });
-  assert.equal(await failed.getAttribute('data-type'), 'error');
+  assert.equal(await failed.getAttribute('data-tone'), 'error');
   assert.match(await failed.innerText(), /nextcloud\.drv failed/);
+  assert.equal(await statuses(page).count(), 0, 'the "applying" status outlived its failure');
   // Still there when a success would long have gone.
   await page.waitForTimeout(6500);
   assert.equal(await failed.count(), 1, 'the error left as fast as a success would');
@@ -183,20 +230,21 @@ await check('a failed apply is an error toast carrying the box\'s last log line,
   await page.close();
 });
 
-await check('an apply that does not start is an error toast, not a stuck bar', async () => {
+await check('an apply that does not start is an error confirmation, not a stuck bar', async () => {
   const { page } = await openApp({ applyStatus: 409 });
   await applyARename(page);
   const toast = toastWith(page, 'did not start');
   await toast.waitFor();
-  assert.equal(await toast.getAttribute('data-type'), 'error');
+  assert.equal(await toast.getAttribute('data-tone'), 'error');
   assert.match(await toast.innerText(), /already running/);
   assert.equal(await page.getByRole('progressbar').count(), 0, 'the progress bar stayed up after the refusal');
+  assert.equal(await statuses(page).count(), 0, 'an "applying" status is up for a rebuild that never started');
   // Apply is live again: the change is still pending.
   assert.ok(await page.getByRole('button', { name: 'Apply', exact: true }).isEnabled());
   await page.close();
 });
 
-await check('the close button dismisses a toast at once', async () => {
+await check('the close button dismisses a confirmation at once, and a status too', async () => {
   const { page } = await openApp({
     statuses: [
       { state: 'building', progress: 0, message: '', job: 'job-1' },
@@ -204,6 +252,11 @@ await check('the close button dismisses a toast at once', async () => {
     ],
   });
   await applyARename(page);
+  const applying = statusWith(page, 'Applying your changes');
+  await applying.waitFor();
+  await applying.hover();
+  await applying.getByRole('button', { name: 'Dismiss' }).click();
+  await applying.waitFor({ state: 'hidden', timeout: 2000 });
   const failed = toastWith(page, 'could not be applied');
   await failed.waitFor({ timeout: 10000 });
   await failed.getByRole('button', { name: 'Dismiss' }).click();
@@ -211,7 +264,7 @@ await check('the close button dismisses a toast at once', async () => {
   await page.close();
 });
 
-await check('the pointer over a toast pauses its countdown', async () => {
+await check('the pointer over a confirmation pauses its countdown', async () => {
   const { page } = await openApp({
     statuses: [
       { state: 'building', progress: 0, message: '', job: 'job-1' },
@@ -224,13 +277,13 @@ await check('the pointer over a toast pauses its countdown', async () => {
   await done.hover();
   // Past its 5 s and still there while the pointer rests on it.
   await page.waitForTimeout(6000);
-  assert.equal(await done.count(), 1, 'the toast left while hovered');
+  assert.equal(await done.count(), 1, 'the confirmation left while hovered');
   await page.mouse.move(10, 10);
   await done.waitFor({ state: 'hidden', timeout: 8000 });
   await page.close();
 });
 
-await check('prefers-reduced-motion switches the slide off', async () => {
+await check('prefers-reduced-motion switches the slide off for both kinds', async () => {
   const { page } = await openApp({
     reducedMotion: 'reduce',
     statuses: [
@@ -239,21 +292,20 @@ await check('prefers-reduced-motion switches the slide off', async () => {
     ],
   });
   await applyARename(page);
+  const applying = statusWith(page, 'Applying your changes');
+  await applying.waitFor();
+  // Sonner moves a toast with a transition on transform; the global
+  // reduced-motion rule in index.css (and Sonner's own) must have zeroed it.
+  const status = await applying.evaluate((el) => getComputedStyle(el).transitionDuration);
+  assert.ok(/^(0s)(, 0s)*$/.test(status), `the status still slides under reduced motion: ${status}`);
   const done = toastWith(page, 'Changes applied');
   await done.waitFor({ timeout: 10000 });
-  // Sonner moves a toast with a transition on transform, not a keyframe
-  // animation; the global reduced-motion rule in index.css (and Sonner's
-  // own) must have zeroed it.
-  const motion = await done.evaluate((el) => {
-    const s = getComputedStyle(el);
-    return { transition: s.transitionDuration, animation: s.animationName };
-  });
-  assert.ok(/^(0s)(, 0s)*$/.test(motion.transition), `the toast still slides under reduced motion: ${motion.transition}`);
-  assert.equal(motion.animation, 'none', `the toast still animates under reduced motion: ${motion.animation}`);
+  const motion = await done.evaluate((el) => getComputedStyle(el).animationName);
+  assert.equal(motion, 'none', `the confirmation still animates under reduced motion: ${motion}`);
   await page.close();
 });
 
-await check('unlocking the admin pages raises a toast, and a wrong password does not', async () => {
+await check('unlocking the admin pages is a confirmation, and a wrong password raises nothing', async () => {
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 }, locale: 'en-US' });
   await page.route('**/api/**', (route) => json(route, 200, {}));
   await page.route('**/api/setup/claim', (route) => json(route, 200, { claimed: true }));
@@ -269,28 +321,36 @@ await check('unlocking the admin pages raises a toast, and a wrong password does
   await page.locator('#owner-password').fill('wrong password 1A!');
   await page.getByRole('button', { name: 'Unlock' }).click();
   await page.getByText('That password was not accepted').waitFor();
-  assert.equal(await toasts(page).count(), 0, 'a refused password must stay under the field, not become a toast');
+  assert.equal(await toasts(page).count() + await statuses(page).count(), 0, 'a refused password must stay under the field');
 
   await page.locator('#owner-password').fill(PASSWORD);
   await page.getByRole('button', { name: 'Unlock' }).click();
   const unlocked = toastWith(page, 'Unlocked');
   await unlocked.waitFor();
-  assert.equal(await unlocked.getAttribute('data-type'), 'success');
+  assert.equal(await unlocked.getAttribute('data-tone'), 'success');
   await page.close();
 });
 
-/* The wizard has its own shell and so its own stack: the claim on step 2
- * raises "Password set" there. */
-await check('the wizard raises its toasts too: the claim on step 2', async () => {
+/* The wizard has its own shell and so its own corner: step 2 raises the
+ * readiness as a status and "Password set" as the confirmation that
+ * settles it. */
+await check('the wizard raises both kinds: a readiness status on step 2, then the confirmation that settles it', async () => {
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 }, locale: 'en-US' });
   const errors = [];
   page.on('pageerror', (e) => errors.push(String(e)));
+  let claims = 0;
   await page.route('**/api/**', (route) => json(route, 200, {}));
-  await page.route('**/api/setup/claim', (route) =>
-    route.request().method() === 'POST'
-      ? json(route, 200, { claimed: true, user: 'notshared', token: '0'.repeat(64) })
-      : json(route, 200, { claimed: false, ready: true, waitingFor: null }),
-  );
+  await page.route('**/api/setup/claim', (route) => {
+    if (route.request().method() === 'POST') {
+      return json(route, 200, { claimed: true, user: 'notshared', token: '0'.repeat(64) });
+    }
+    // Not ready for the first two polls, ready from the third: the owner
+    // sits through the waiting panel and is told when it lifts.
+    claims += 1;
+    return claims <= 2
+      ? json(route, 200, { claimed: false, ready: false, waitingFor: 'the files app is starting' })
+      : json(route, 200, { claimed: false, ready: true, waitingFor: null });
+  });
   await page.route('**/setup/state.json', (route) =>
     json(route, 200, {
       hostName: 'mattbox',
@@ -309,15 +369,20 @@ await check('the wizard raises its toasts too: the claim on step 2', async () =>
   await page.goto(origin + '/', { waitUntil: 'networkidle' });
 
   await page.getByRole('button', { name: /^Continue$/ }).click();
+  const ready = statusWith(page, /ready/i);
+  await ready.waitFor({ timeout: 15000 });
+  assert.equal(await ready.getAttribute('data-type'), 'info', 'the box becoming ready is a status, not an outcome');
+  await page.locator('input[name="new-password"]:not([disabled])').waitFor();
   await page.locator('input[name="new-password"]').fill(PASSWORD);
   await page.locator('input[name="confirm-password"]').fill(PASSWORD);
   await page.getByRole('button', { name: /^Set the password$/ }).click();
   const set = toastWith(page, 'Password set');
   await set.waitFor();
-  assert.equal(await set.getAttribute('data-type'), 'success');
-  assert.match(await set.innerText(), /notshared/, 'the account name is not on the toast');
+  assert.equal(await set.getAttribute('data-tone'), 'success');
+  assert.match(await set.innerText(), /notshared/, 'the account name is not on the confirmation');
+  await ready.waitFor({ state: 'hidden', timeout: 2000 });
 
-  // The copy button on the key: its outcome is a toast as well.
+  // The copy button on the key: its outcome is a confirmation as well.
   await page.getByRole('button', { name: /^Copy/ }).first().click();
   await toastWith(page, /copied|Not copied/i).first().waitFor();
   assert.deepEqual(errors, []);
@@ -325,12 +390,13 @@ await check('the wizard raises its toasts too: the claim on step 2', async () =>
 });
 
 /* The real policy: the bundle served with the admin vhost's CSP header. A
- * toast must still come out styled (position, width, the surface colour,
- * the house stripe), which it only does when Sonner's stylesheet reached
- * the page as a file and the palette came from a class, since the policy
- * refuses the <style> element Sonner injects and any style attribute. The
- * refused element is a console line, never a page error. */
-await check('under the appliance CSP the stack is styled and the page raises no error', async () => {
+ * status must still come out styled (position, the surface colour, the
+ * house radius and stripe), which it only does when Sonner's stylesheet
+ * reached the page as a file and the palette came from a class, since the
+ * policy refuses the <style> element Sonner injects and any style
+ * attribute; the refused element is a console line, never a page error.
+ * And the Radix confirmation must come out styled and animated too. */
+await check('under the appliance CSP both kinds are styled and the page raises no error', async () => {
   const { origin: strict, close } = await serve({ csp: true });
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 }, locale: 'en-US' });
   const errors = [];
@@ -345,6 +411,10 @@ await check('under the appliance CSP the stack is styled and the page raises no 
       ? { state: 'idle', progress: 0, message: '' }
       : { state: 'building', progress: 0, message: '', job: 'job-1' }),
   );
+  await page.route('**/api/storage', (route) => json(route, 200, STORAGE));
+  await page.route('**/api/grow', (route) =>
+    json(route, 200, { grew: true, beforeBytes: STORAGE.totalBytes, afterBytes: STORAGE.totalBytes + STORAGE.reserveBytes, claimedBytes: STORAGE.reserveBytes }),
+  );
   await page.route('**/api/apply', (route) => {
     applies.push(1);
     return json(route, 200, { job: 'job-1' });
@@ -355,7 +425,7 @@ await check('under the appliance CSP the stack is styled and the page raises no 
   assert.match(header ?? '', /style-src 'self'/, 'the strict server is not sending the policy');
 
   await applyARename(page);
-  const starting = toastWith(page, 'Applying your changes');
+  const starting = statusWith(page, 'Applying your changes');
   await starting.waitFor();
   const style = await starting.evaluate((el) => {
     const s = getComputedStyle(el);
@@ -371,8 +441,22 @@ await check('under the appliance CSP the stack is styled and the page raises no 
   assert.equal(style.radius, '9px', `the house radius is not applied: ${style.radius}`);
   assert.equal(style.background, 'rgb(255, 255, 255)', `the surface colour is not applied: ${style.background}`);
   assert.match(style.shadow, /inset/, 'the tone stripe is missing');
-  const box = await starting.boundingBox();
-  assert.ok(box !== null && 1280 - (box.x + box.width) < 40 && box.y < 120, `not in the corner: ${JSON.stringify(box)}`);
+  assert.ok(inTheCorner(await starting.boundingBox(), 1280), 'the status is not in the corner');
+
+  await page.getByRole('link', { name: 'Storage' }).first().click();
+  await page.getByRole('button', { name: /^Use reserve/ }).click();
+  await page.getByRole('button', { name: /^Use it/ }).click();
+  const grew = toastWith(page, 'more room');
+  await grew.waitFor({ timeout: 10000 });
+  const confirmation = await grew.evaluate((el) => {
+    const s = getComputedStyle(el);
+    return { background: s.backgroundColor, shadow: s.boxShadow, animation: s.animationName, radius: s.borderRadius };
+  });
+  assert.equal(confirmation.background, 'rgb(255, 255, 255)', `the confirmation's surface is not applied: ${confirmation.background}`);
+  assert.match(confirmation.shadow, /inset/, "the confirmation's tone stripe is missing");
+  assert.equal(confirmation.radius, '9px', `the confirmation's radius is not the card radius: ${confirmation.radius}`);
+  assert.equal(confirmation.animation, 'toast-in', `the confirmation did not slide in: ${confirmation.animation}`);
+  assert.ok(inTheCorner(await grew.boundingBox(), 1280), 'the confirmation is not in the corner');
   assert.deepEqual(errors, []);
   await page.close();
   await close();

@@ -1,19 +1,18 @@
 import { HugeiconsIcon } from "@hugeicons/react";
-import {
-  Alert02Icon,
-  Cancel01Icon,
-  CheckmarkCircle02Icon,
-  InformationCircleIcon,
-} from "@hugeicons/core-free-icons";
+import { Cancel01Icon, InformationCircleIcon } from "@hugeicons/core-free-icons";
 import { Toaster as Sonner, type ToasterProps } from "sonner";
 import { useTheme } from "@/components/ui/theme-toggle";
 import { useT } from "@/lib/i18n-react";
+import { useConfirmationsHeight } from "./corner";
 
-/* shadcn's Sonner component, on LosOS tokens.
+/* shadcn's Sonner component, on LosOS tokens: the status stack.
  *
- * shadcn/ui retired its own Toast in favour of Sonner, so this is the one
- * toast it ships: the `sonner` library's <Toaster/>, themed and positioned
- * here. Where shadcn's copy hands Sonner the palette through a style
+ * Sonner carries the status updates (toast.status in toast.tsx): what is
+ * happening, what is being waited for. The "done" confirmations are
+ * shadcn's Toast (toaster.tsx) and take the top of the same corner; this
+ * stack sits under them by their measured height (corner.ts), so the two
+ * never land on each other. The `sonner` library's <Toaster/>, themed and
+ * positioned here. Where shadcn's copy hands Sonner the palette through a style
  * attribute and reads the theme from next-themes, this one maps the palette
  * in src/styles/index.css (`.toaster`) and reads lib/theme.ts, because the
  * appliance CSP (`style-src 'self'`) is the rule of the house and the theme
@@ -41,6 +40,9 @@ import { useT } from "@/lib/i18n-react";
 export function Toaster(props: ToasterProps) {
   const { resolvedTheme } = useTheme();
   const t = useT();
+  /* The confirmations above, plus the same gap the stack keeps inside. */
+  const above = useConfirmationsHeight();
+  const below = above > 0 ? above + 10 : 0;
   return (
     <Sonner
       theme={resolvedTheme}
@@ -48,19 +50,15 @@ export function Toaster(props: ToasterProps) {
       closeButton
       visibleToasts={5}
       gap={10}
-      offset={16}
-      mobileOffset={12}
+      offset={{ top: 16 + below, right: 16 }}
+      mobileOffset={{ top: 12 + below, right: 12, left: 12 }}
       containerAriaLabel={t("ui.notifications")}
       className="toaster"
       icons={{
-        success: (
-          <HugeiconsIcon icon={CheckmarkCircle02Icon} size={20} strokeWidth={1.5} color="currentColor" />
-        ),
         info: (
           <HugeiconsIcon icon={InformationCircleIcon} size={20} strokeWidth={1.5} color="currentColor" />
         ),
-        error: <HugeiconsIcon icon={Alert02Icon} size={20} strokeWidth={1.5} color="currentColor" />,
-        close: <HugeiconsIcon icon={Cancel01Icon} size={14} strokeWidth={1.5} color="currentColor" />,
+        close: <HugeiconsIcon icon={Cancel01Icon} size={12} strokeWidth={1.5} color="currentColor" />,
       }}
       toastOptions={{
         closeButtonAriaLabel: t("ui.dismiss"),

@@ -16,6 +16,7 @@ import {
   toMinorUnits,
   useMarket,
   type MarketData,
+  ORDER_STATUS,
 } from "./market";
 import type { SettingsForm } from "./use-settings-form";
 
@@ -270,7 +271,10 @@ function ShelfRow({
         checkoutTab.location.href = reply.checkout_url;
         // Longer than a plain note: it is the one instruction the owner needs
         // when they come back from the other tab.
-        toast.info(t("panes.market.orderPlaced"), t("panes.market.paying"), { duration: 12000 });
+        toast.status(t("panes.market.orderPlaced"), t("panes.market.paying"), {
+          id: ORDER_STATUS,
+          duration: Infinity,
+        });
       } else {
         checkoutTab.close();
         toast.error(t("panes.market.actionFailedTitle"), t("panes.market.noCheckout"));
@@ -347,7 +351,7 @@ function SellSection({ market, disabled }: { market: MarketData; disabled: boole
     const reply = await market.onboard();
     if (reply !== null && isStripePage(reply.url)) {
       onboardingTab.location.href = reply.url;
-      toast.info(t("panes.market.payoutsOpened"), t("panes.market.payoutsOpenedBody"), { duration: 12000 });
+      toast.status(t("panes.market.payoutsOpened"), t("panes.market.payoutsOpenedBody"), { duration: 12000 });
     } else onboardingTab.close();
   };
 
