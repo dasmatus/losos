@@ -424,18 +424,35 @@ pub fn nextcloud_readiness<L: Losos>(l: &mut L) -> Readiness {
 /// in [`cmd_set_password`], and the flag is only set after the password change
 /// actually succeeded — a failed claim leaves the box claimable, or the owner
 /// would be locked out by their own typo.
+///
+/// `receipts` is the daemon's memory of the claim it last answered
+/// ([`crate::receipt`]): a claimed box still answers, with the same reply,
+/// a caller who presents the password that claimed it within the grace
+/// window. That is for the reply that was lost in transit — the proxy timed
+/// out while occ was still running, and the admin key in the reply reached
+/// nobody — and it changes nothing: no occ runs, the state is not rewritten.
 pub fn cmd_claim<L: Losos>(
     l: &mut L,
     user: &str,
     password: &str,
     token: &str,
+    receipts: &mut crate::receipt::Receipts,
 ) -> anyhow::Result<Value> {
     // Fail closed: if the state cannot be read, nobody gets to claim the box.
     let mut state = l
         .load_state()
         .map_err(|e| e.context("reading the state before a claim"))?;
     if state.claimed {
-        anyhow::bail!("this box has already been set up");
+        if let Some(user) = receipts.replay(password) {
+            tracing::info!("claim answered again: same password, inside the grace window");
+            return Ok(json!({
+                "claimed": true,
+                "user": user,
+                "token": token,
+                "replayed": true,
+            }));
+        }
+        return Err(crate::setup::AlreadyClaimed.into());
     }
     // Asked before anything is staged: the wizard shows this sentence and
     // keeps waiting, where the 500 a failed occ would produce told the owner
@@ -450,10 +467,12 @@ pub fn cmd_claim<L: Losos>(
 
     state.claimed = true;
     l.save_state(&state)?;
+    let user = out.get("user").cloned().unwrap_or(Value::Null);
+    receipts.remember(user.as_str().unwrap_or(""), password);
 
     Ok(json!({
         "claimed": true,
-        "user": out.get("user").cloned().unwrap_or(Value::Null),
+        "user": user,
         "token": token,
     }))
 }
