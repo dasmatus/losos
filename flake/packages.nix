@@ -1,6 +1,8 @@
 # Per-output package definitions.
 #   losos-ctl  — the control plane (Rust crate under backend/), built via
-#                rustPlatform.buildRustPackage. doCheck is off; the suites
+#                flake/fast-build.nix's buildRustPackage (mold as the
+#                linker; ccache and sccache where the host exposes their
+#                caches). doCheck is off; the suites
 #                run via cargo test (see the note on the derivation below).
 #                Provides both the `lososd` system daemon and
 #                the `losos-ctl` facade CLI (which also carries the
@@ -26,7 +28,7 @@
 #                ISO's storeContents.
 #   losos-registrar — the Rust edge registration + Traefik/rathole config
 #                reconciler (`serve`) and appliance registration client
-#                (`announce`, `join`). Built via rustPlatform.buildRustPackage
+#                (`announce`, `join`). Built via the same buildRustPackage
 #                from backend-registrar/. See modules/edge.nix (edge) and
 #                modules/proxy.nix (appliance). cargoHash is the SHA256 of the
 #                vendored crate tarball; the first `nix build
@@ -48,6 +50,15 @@ let
   # flake package, and a non-derivation breaks `nix flake check` and
   # `nix flake show` for everything else too.
   images = import ./images.nix { inherit pkgs; };
+
+  # mold as the linker, ccache in front of gcc, sccache in front of rustc —
+  # for both crates, and for the dev shells through the same file, so that
+  # `cargo` in a shell and `nix build` agree on how a binary is linked. The
+  # caches are gated on the host exposing their directories to the sandbox
+  # and are otherwise never invoked; mold is not gated on anything. The
+  # header of fast-build.nix says what each one is worth here, and how to
+  # turn the caches on for `nix build` on a dev machine.
+  inherit (import ./fast-build.nix { inherit pkgs; }) buildRustPackage;
 in
 images
 // {
@@ -69,7 +80,7 @@ images
     #
     # tests/admin-ui.nix carries the SAME hash over the SAME lock file: two
     # derivations, one dependency set. Change both together.
-    npmDepsHash = "sha256-0m0u+4DHQyB39+tSwkS5kEJfkVvP3gIsj5clwbAI9vE=";
+    npmDepsHash = "sha256-ODD+6M2mxkpsgDcdoUMv1878m4xXFRlM36eBufqJNQo=";
 
     # No postinstall scripts. playwright is a devDependency (tests/admin-ui.nix
     # drives the browser check with it) and its postinstall downloads browsers:
@@ -105,13 +116,13 @@ images
   # read on their own.
   losos-themes = (import ./../admin-ui/themes { inherit pkgs; }).package;
 
-  losos-ctl = pkgs.rustPlatform.buildRustPackage {
+  losos-ctl = buildRustPackage {
     pname = "losos-ctl";
     version = "0.1.0";
     src = lib.cleanSource ./../backend;
     # SHA256 of the vendored crate tarball. If deps change, `nix build
     # .#losos-ctl-rs` will print the new hash to paste here.
-    cargoHash = "sha256-GIcn5ZDT790eQCO4KapdSnBT+KOO2V37C6UXvvJlJ1M=";
+    cargoHash = "sha256-wB/0jq8bGnbECXYsrBbqZrd34JP8QfQ/bJrLWqTom3E=";
     # No system deps: zbus speaks the D-Bus wire protocol natively, so there is
     # no libdbus to link against.
     # doCheck is off, and the tests still run — in CI's lint job and in
@@ -131,13 +142,13 @@ images
     doCheck = false;
   };
 
-  losos-registrar = pkgs.rustPlatform.buildRustPackage {
+  losos-registrar = buildRustPackage {
     pname = "losos-registrar";
     version = "0.1.0";
     src = lib.cleanSource ./../backend-registrar;
     # SHA256 of the vendored crate tarball. If deps change, `nix build
     # .#losos-registrar` will print the new hash to paste here.
-    cargoHash = "sha256-H4cBLi2h8Ruo66ZZjqkPdk0Ky7OSlX/eznJTzxtNHtw=";
+    cargoHash = "sha256-s9vVxt46+4e8zBU6ti0jIGN5++DeyoBjjdozk9lWT0Y=";
     # No system deps; pure Rust with rustls (no openssl).
     # Same reasoning as losos-ctl above: the suite runs via cargo test in the
     # lint job, not inside this derivation.
