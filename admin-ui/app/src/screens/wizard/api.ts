@@ -121,12 +121,28 @@ export interface SetupCertificate {
   fingerprintDisplay: string;
   /** ISO 8601 in UTC. The certificate is minted for two years. */
   expires: string;
+  /** The one-line installers modules/setup.nix renders from the certificate:
+   *  a POSIX sh script for macOS and Linux, a PowerShell one for Windows.
+   *  Null on a box whose software predates them; step 1 then offers the
+   *  download only. */
+  install: SetupInstallers | null;
+}
+
+export interface SetupInstallers {
+  sh: string;
+  ps1: string;
 }
 
 export interface SetupState {
   hostName: string;
   /** `<hostName>.local` — the name the certificate is valid for. */
   fqdn: string;
+  /** The box's IP address as this request reached it, filled in by nginx per
+   *  response (`$server_addr`, see modules/setup.nix). For a LAN client that
+   *  is the box's DHCP address: the one that works in a terminal on any
+   *  machine on the network, unlike the page's own `.local` name or a port
+   *  forward's `localhost`. Null on a box whose software predates it. */
+  address: string | null;
   /** False when `losos.tls.enable` is off. There is then no certificate to
    *  install and step 1 has nothing to ask for. */
   tls: boolean;
@@ -155,6 +171,7 @@ function parseSetupState(value: unknown): SetupState {
   return {
     hostName: raw["hostName"],
     fqdn: raw["fqdn"],
+    address: parseAddress(raw["address"]),
     tls: raw["tls"] === true,
     certificate: parseCertificate(raw["certificate"]),
   };
@@ -172,7 +189,24 @@ function parseCertificate(value: unknown): SetupCertificate | null {
     fingerprintDisplay:
       typeof raw["fingerprintDisplay"] === "string" ? raw["fingerprintDisplay"] : fingerprint,
     expires: typeof raw["expires"] === "string" ? raw["expires"] : "",
+    install: parseInstallers(raw["install"]),
   };
+}
+
+/** An unsubstituted placeholder (a box serving the file without nginx's
+ *  sub_filter in front of it) counts as absent, not as an address. */
+function parseAddress(value: unknown): string | null {
+  if (typeof value !== "string" || value.length === 0 || value.includes("@")) return null;
+  return value;
+}
+
+function parseInstallers(value: unknown): SetupInstallers | null {
+  if (typeof value !== "object" || value === null) return null;
+  const raw = value as Record<string, unknown>;
+  const sh = raw["sh"];
+  const ps1 = raw["ps1"];
+  if (typeof sh !== "string" || typeof ps1 !== "string") return null;
+  return { sh, ps1 };
 }
 
 // ── POST /api/set-password ────────────────────────────────────────────────
