@@ -1,7 +1,10 @@
 # Mesh
 
 A box can lend spare disk and CPU to other losos boxes. Joining is off by
-default. The settings page has two switches: join the mesh, and share compute.
+default. The Mesh pane has two switches: join the mesh, and share compute. The
+third, sharing this box's disk, sits on the [Market](Market) pane, because
+lending disk and being paid for it are one decision; while the market is
+planned, that switch is out of reach with it.
 
 ## Two clusters
 

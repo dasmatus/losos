@@ -99,17 +99,7 @@ function pane(
  * assertion under `noUncheckedIndexedAccess` — the shape carries the
  * guarantee instead of a `!` asserting it. */
 export const SETTINGS_PANES: readonly [SettingsPane, ...SettingsPane[]] = [
-  pane("storage", HardDriveIcon, [
-    "disk",
-    "space",
-    "capacity",
-    "room",
-    "grow",
-    "reserve",
-    "backup",
-    "copies",
-    "full",
-  ]),
+  pane("storage", HardDriveIcon, ["disk", "space", "capacity", "room", "grow", "reserve", "full"]),
   pane("mesh", Share08Icon, [
     "share",
     "join",
@@ -126,12 +116,32 @@ export const SETTINGS_PANES: readonly [SettingsPane, ...SettingsPane[]] = [
    * none yet. The row stays on the sidebar, greyed and labelled "soon(TM)",
    * because it is one of the things the box can say it has planned; the pane
    * behind it (pane-market.tsx, lososd's /api/market relay, the registrar's
-   * /market routes) is finished and untouched. Opening it is `planned: false`
-   * here and the matching switch in tests/app.browser.mjs. */
+   * /market routes) is finished and untouched. The disk-sharing switch sits
+   * on that pane too, so sharing opens with the market and not before.
+   * Opening it is `planned: false` here and the matching switch in
+   * tests/app.browser.mjs. */
   pane(
     "market",
     ShoppingCart01Icon,
-    ["sell", "buy", "pay", "payment", "stripe", "money", "price", "earn", "storage", "compute"],
+    [
+      "sell",
+      "buy",
+      "pay",
+      "payment",
+      "stripe",
+      "money",
+      "price",
+      "earn",
+      "storage",
+      "compute",
+      // The disk-sharing switch lives on this pane (see pane-market.tsx).
+      "share",
+      "lend",
+      "disk",
+      "mesh",
+      "backup",
+      "copies",
+    ],
     { planned: true },
   ),
   pane("apps", LayoutGridIcon, [

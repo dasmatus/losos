@@ -511,36 +511,6 @@ export default defineMessages({
     sk: "Toto zariadenie zámerne nechalo časť disku nezabranú, aby sa dalo neskôr zväčšiť bez otvárania skrinky. Použitie rezervy prebehne za chodu všetkého ostatného a ide len jedným smerom. Disk sa potom už nedá znova zmenšiť.",
     de: "Diese Box hat absichtlich einen Teil ihrer Festplatte frei gelassen, damit sie sich später vergrößern lässt, ohne das Gehäuse zu öffnen. Die Reserve wird genutzt, während alles weiterläuft, und das geht nur in eine Richtung. Kleiner machen lässt sich die Festplatte danach nicht mehr.",
   },
-  "panes.storage.mesh": {
-    en: "The mesh",
-    sk: "Sieť mesh",
-    de: "Das Mesh",
-  },
-  "panes.storage.share": {
-    en: "Share this box’s disk with the mesh",
-    sk: "Zdieľať disk tohto zariadenia so sieťou mesh",
-    de: "Die Festplatte dieser Box mit dem Mesh teilen",
-  },
-  "panes.storage.ifDies": {
-    en: "If this disk dies",
-    sk: "Ak tento disk zlyhá",
-    de: "Wenn diese Festplatte stirbt",
-  },
-  "panes.storage.rebuilds": {
-    en: "rebuilds in about 40 minutes",
-    sk: "obnoví sa asi za 40 minút",
-    de: "in etwa 40 Minuten wiederhergestellt",
-  },
-  "panes.storage.notCopied": {
-    en: "nothing here is copied anywhere",
-    sk: "nič odtiaľto sa nikam nekopíruje",
-    de: "nichts hier wird irgendwohin kopiert",
-  },
-  "panes.storage.meshCaption": {
-    en: "Your box lends its spare room to other people's boxes, and copies of your own files are kept on theirs. The two travel together, because a pool you take from but never give to is not a pool. While this is off, the shared half of the disk stays locked and unreadable by anything on this box, including the box itself.",
-    sk: "Vaše zariadenie požičiava voľné miesto zariadeniam iných ľudí a kópie vašich súborov sa uchovávajú na ich zariadeniach. Jedno nejde bez druhého, pretože spoločný fond, z ktorého len beriete a nikdy doň nedávate, nie je spoločný fond. Kým je to vypnuté, zdieľaná polovica disku zostáva zamknutá a nečitateľná pre čokoľvek na tomto zariadení vrátane zariadenia samotného.",
-    de: "Deine Box verleiht ihren freien Platz an die Boxen anderer Leute, und Kopien deiner eigenen Dateien liegen auf ihren. Beides gehört zusammen, denn ein Pool, aus dem du nur nimmst und in den du nie gibst, ist kein Pool. Solange das aus ist, bleibt die geteilte Hälfte der Festplatte gesperrt und für nichts auf dieser Box lesbar, auch nicht für die Box selbst.",
-  },
   "panes.storage.dialogTitle": {
     en: "Use the space held back?",
     sk: "Použiť odložené miesto?",
@@ -607,6 +577,37 @@ export default defineMessages({
     de: "Das hat nicht geklappt",
   },
   // ── Market ──────────────────────────────────────────────────────────────
+  // The disk-sharing group, moved here from Storage with the switch.
+  "panes.market.share.title": {
+    en: "The mesh",
+    sk: "Sieť mesh",
+    de: "Das Mesh",
+  },
+  "panes.market.share.switch": {
+    en: "Share this box’s disk with the mesh",
+    sk: "Zdieľať disk tohto zariadenia so sieťou mesh",
+    de: "Die Festplatte dieser Box mit dem Mesh teilen",
+  },
+  "panes.market.share.ifDies": {
+    en: "If this disk dies",
+    sk: "Ak tento disk zlyhá",
+    de: "Wenn diese Festplatte stirbt",
+  },
+  "panes.market.share.rebuilds": {
+    en: "rebuilds in about 40 minutes",
+    sk: "obnoví sa asi za 40 minút",
+    de: "in etwa 40 Minuten wiederhergestellt",
+  },
+  "panes.market.share.notCopied": {
+    en: "nothing here is copied anywhere",
+    sk: "nič odtiaľto sa nikam nekopíruje",
+    de: "nichts hier wird irgendwohin kopiert",
+  },
+  "panes.market.share.caption": {
+    en: "Your box lends its spare room to other people's boxes, and copies of your own files are kept on theirs. The two travel together, because a pool you take from but never give to is not a pool. While this is off, the shared half of the disk stays locked and unreadable by anything on this box, including the box itself.",
+    sk: "Vaše zariadenie požičiava voľné miesto zariadeniam iných ľudí a kópie vašich súborov sa uchovávajú na ich zariadeniach. Jedno nejde bez druhého, pretože spoločný fond, z ktorého len beriete a nikdy doň nedávate, nie je spoločný fond. Kým je to vypnuté, zdieľaná polovica disku zostáva zamknutá a nečitateľná pre čokoľvek na tomto zariadení vrátane zariadenia samotného.",
+    de: "Deine Box verleiht ihren freien Platz an die Boxen anderer Leute, und Kopien deiner eigenen Dateien liegen auf ihren. Beides gehört zusammen, denn ein Pool, aus dem du nur nimmst und in den du nie gibst, ist kein Pool. Solange das aus ist, bleibt die geteilte Hälfte der Festplatte gesperrt und für nichts auf dieser Box lesbar, auch nicht für die Box selbst.",
+  },
   "panes.market.loading": {
     en: "Looking at the market…",
     sk: "Pozeráme sa na trh…",

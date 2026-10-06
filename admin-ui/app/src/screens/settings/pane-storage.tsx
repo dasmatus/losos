@@ -10,7 +10,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/progress";
-import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { t as translate } from "@/lib/i18n";
 import { useT } from "@/lib/i18n-react";
@@ -20,6 +19,11 @@ import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText, RowValue, S
 import type { SettingsForm } from "./use-settings-form";
 import type { GrowOutcome, Storage } from "./use-storage";
 
+/* The disk only: how big it is, what it holds, and the reserve. Sharing it
+ * with the mesh used to be the second group here and now lives on the Market
+ * pane (pane-market.tsx), because lending disk to other boxes and being paid
+ * for it are one decision, and the market is where that decision is made.
+ * `form` stays in the props: Apply still writes every pane's slice at once. */
 export interface StoragePaneProps {
   form: SettingsForm;
   storage: Storage;
@@ -30,10 +34,7 @@ export function StoragePane({ form, storage }: StoragePaneProps) {
   const [confirming, setConfirming] = React.useState(false);
   const titleId = React.useId();
   const bodyId = React.useId();
-  const shareId = React.useId();
 
-  const draft = form.draft;
-  const sharing = draft?.sharingMyStorage ?? false;
   const reserve = storage.facts.reserveBytes;
   const hasReserve = reserve === null || reserve > 0;
 
@@ -72,28 +73,6 @@ export function StoragePane({ form, storage }: StoragePaneProps) {
           )}
         </Group>
         <GroupCaption>{t("panes.storage.diskCaption")}</GroupCaption>
-      </PaneSection>
-
-      <PaneSection>
-        <GroupTitle>{t("panes.storage.mesh")}</GroupTitle>
-        <Group>
-          <Row>
-            <RowText htmlFor={shareId} title={t("panes.storage.share")} />
-            <Switch
-              id={shareId}
-              checked={sharing}
-              disabled={form.locked || !form.ready}
-              onCheckedChange={(next) => form.set("sharingMyStorage", next)}
-            />
-          </Row>
-          <Row last>
-            <RowText title={t("panes.storage.ifDies")} />
-            <RowValue className={sharing ? "text-ok" : undefined}>
-              {sharing ? t("panes.storage.rebuilds") : t("panes.storage.notCopied")}
-            </RowValue>
-          </Row>
-        </Group>
-        <GroupCaption>{t("panes.storage.meshCaption")}</GroupCaption>
       </PaneSection>
 
       <Dialog
