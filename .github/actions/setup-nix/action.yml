@@ -66,7 +66,7 @@ runs:
           case "$info" in
             *StoreDir:*) echo "LosOS cache answers at $CACHE_URL" ;;
             *)
-              msg="LOSOS_PROXY_URL ($CACHE_URL) did not answer /nix-cache-info with a StoreDir line, so every job in this run builds this project's own paths from source. Point the variable at the host the losos-cache-proxy Vercel project serves (https://losos-proxy.dasmat.us), or unset both cache variables."
+              msg="LOSOS_PROXY_URL ($CACHE_URL) did not answer /nix-cache-info with a StoreDir line, so every job in this run builds this project's own paths from source. Point the variable at the host the losos-cache-proxy Vercel project serves (https://proxy.losos.dasmat.us), or unset both cache variables."
               echo "::warning title=LosOS binary cache not answering::$msg"
               printf '> **LosOS binary cache not answering.** %s\n' "$msg" >> "$GITHUB_STEP_SUMMARY"
               ;;
