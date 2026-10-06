@@ -62,6 +62,11 @@ export function runner() {
       console.log(`  FAIL ${name}\n       ${e.message}`);
     }
   };
+  /* A check kept for a feature that is not reachable yet. It prints so a run
+   * shows what it is not covering, rather than the coverage going quietly. */
+  const skip = (name, reason) => {
+    console.log(`  skip ${name} (${reason})`);
+  };
   const finish = () => {
     if (failures.length > 0) {
       console.error(`\n${failures.length} failed:\n${failures.map((f) => `  - ${f}`).join('\n')}`);
@@ -69,5 +74,5 @@ export function runner() {
     }
     console.log('\nall browser checks passed');
   };
-  return { check, finish };
+  return { check, skip, finish };
 }

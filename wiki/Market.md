@@ -1,8 +1,17 @@
-# Market (experimental)
+# Market (planned)
 
 An optional marketplace where one box sells spare storage or compute and
 another buys it. Payment goes through **Stripe Connect**; the edge keeps a 4%
-cut to cover its running costs. It is off by default, at three levels.
+cut to cover its running costs.
+
+**It is not open yet.** The code is finished end to end (the registrar's
+`/market/*` routes, the Stripe gate, lososd's relay and the admin UI pane),
+but a Stripe Connect platform needs a registered business behind it, and
+there is none yet. Until there is, the admin UI shows the **Market** tab
+greyed out with a "soon(TM)" badge: it cannot be clicked or reached by
+address, and nothing on a box asks the market anything. The rest of this page
+describes how it works once it opens. Everything below is also off by default,
+at three levels.
 
 |                       | Default | Switch                                        |
 | --------------------- | ------- | --------------------------------------------- |
@@ -94,10 +103,16 @@ Limits to know about, none of which are enforced yet:
 
 ## Admin UI
 
-Owners reach the market from **Settings → Market** in the admin UI. The pane
-shows what the owner has bought (with expiry and volume), the shelf to buy
-from, and, for selling, Stripe payout setup, a listing form and the owner's
-own listings and sales.
+Today the **Settings → Market** row is greyed out and labelled "soon(TM)": it
+is a disabled button, skipped by the keyboard, and `/settings/market` opens
+the default pane instead. Opening it is one flag (`planned` on the row in
+`admin-ui/app/src/screens/settings/panes.ts`) plus the matching switch in
+`admin-ui/app/tests/app.browser.mjs`, which holds the pane's browser checks
+until then.
+
+Once open, the pane shows what the owner has bought (with expiry and volume),
+the shelf to buy from, and, for selling, Stripe payout setup, a listing form
+and the owner's own listings and sales.
 
 - The listing form only offers what is already shared: storage once the box
   has joined the mesh, compute once it also shares compute. Anything else is
