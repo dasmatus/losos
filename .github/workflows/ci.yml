@@ -129,6 +129,21 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           cache-url: ${{ vars.LOSOS_PROXY_URL }}
           public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
+      # The compiler caches that devShells.ci carries (flake/fast-build.nix):
+      # sccache in front of rustc, ccache in front of gcc. Both write to
+      # ~/.cache on the runner, which is a fresh VM every run, so without
+      # this step they would start empty every time and cache nothing. Keyed
+      # on the lock files: a dependency bump starts from the nearest older
+      # cache (restore-keys) rather than from nothing, and an unchanged lock
+      # gets its exact cache back. mold needs no cache; it is just faster.
+      - uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cache/sccache
+            ~/.cache/ccache
+          key: ${{ runner.os }}-clippy-compiler-cache-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-clippy-compiler-cache-
       # Check-only, always. `cargo clippy --fix` rewrites code rather than
       # whitespace, so it can change behaviour and sometimes wants human
       # judgement; unreviewed code changes have no business landing on main by
@@ -151,6 +166,11 @@ jobs:
             cargo fmt --manifest-path backend-registrar/Cargo.toml --check
             cargo fmt --manifest-path edge-vercel/Cargo.toml --check
           '
+      # The hit rate, so a cache that stopped being taken is visible in the
+      # log rather than as a job that quietly got slower.
+      - name: compiler cache statistics
+        if: always()
+        run: nix develop .#ci -c bash -euo pipefail -c 'sccache --show-stats; ccache --show-stats'
 
   test:
     name: "rust: test the crates"
@@ -185,12 +205,28 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           cache-url: ${{ vars.LOSOS_PROXY_URL }}
           public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
+      # Same as in the clippy job, under its own key: the test profile
+      # compiles every crate differently (linked test binaries, dev
+      # dependencies), so the two jobs' caches share nothing worth sharing.
+      - uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cache/sccache
+            ~/.cache/ccache
+          key: ${{ runner.os }}-test-compiler-cache-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-test-compiler-cache-
       - run: |
           nix develop .#ci -c bash -euo pipefail -c '
             cargo test --manifest-path backend/Cargo.toml
             cargo test --manifest-path backend-registrar/Cargo.toml
             cargo test --manifest-path edge-vercel/Cargo.toml
           '
+      # The hit rate, so a cache that stopped being taken is visible in the
+      # log rather than as a job that quietly got slower.
+      - name: compiler cache statistics
+        if: always()
+        run: nix develop .#ci -c bash -euo pipefail -c 'sccache --show-stats; ccache --show-stats'
 
   eval:
     name: "nix: flake check + module merge + ISO derivation"
