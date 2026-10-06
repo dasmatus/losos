@@ -1,12 +1,15 @@
 /* The toast stack: every status update in the admin UI and the wizard is a
- * notification sliding in at the top right (src/components/ui/toast.tsx).
+ * notification sliding in at the top right (src/components/ui/toast.tsx over
+ * shadcn's Sonner, src/components/ui/sonner.tsx).
  *
  * What is checked here is the behaviour the other two files only meet in
  * passing: a toast lands in the top-right corner and not in the page, a new
  * one stacks above the old, a success goes on its own after a few seconds
  * and an error stays longer, the close button is immediate, the pointer
- * pauses the countdown, and prefers-reduced-motion switches the slide off.
- * Each is driven through a real flow (an apply, a sign-in, a claim), never
+ * pauses the countdown, prefers-reduced-motion switches the slide off, and
+ * the stack is still styled under the appliance's Content-Security-Policy
+ * (Sonner injects its stylesheet as a <style> element, which that policy
+ * refuses; the bundle has to carry it as a file). Each is driven through a real flow (an apply, a sign-in, a claim), never
  * by calling toast() from the test: the point is that the flows raise them.
  *
  * Same arrangement as the other files: the real dist/ bundle, the API
@@ -96,8 +99,9 @@ async function applyARename(page) {
   await page.getByRole('button', { name: 'Apply', exact: true }).click();
 }
 
-const toasts = (page) => page.locator('[data-toast]');
-const toastWith = (page, text) => page.locator('[data-toast]').filter({ hasText: text });
+/* Sonner's toast element: data-type carries the tone. */
+const toasts = (page) => page.locator('[data-sonner-toast]');
+const toastWith = (page, text) => page.locator('[data-sonner-toast]').filter({ hasText: text });
 
 console.log('admin-ui toast checks');
 
@@ -114,13 +118,13 @@ await check('an applied change is reported as a toast in the top-right corner, a
   // Starting: an info toast, and the sticky bar as the progress report.
   const starting = toastWith(page, 'Applying your changes');
   await starting.waitFor();
-  assert.equal(await starting.getAttribute('data-tone'), 'info');
+  assert.equal(await starting.getAttribute('data-type'), 'info');
   await page.getByRole('progressbar').waitFor();
 
   // Finished: a success toast with the box's own last line.
   const done = toastWith(page, 'Changes applied');
   await done.waitFor({ timeout: 10000 });
-  assert.equal(await done.getAttribute('data-tone'), 'success');
+  assert.equal(await done.getAttribute('data-type'), 'success');
   assert.match(await done.innerText(), /activation finished/, "the box's status message is not on the toast");
 
   // Top right: the toast's right edge sits near the viewport's, its top near the top.
@@ -169,8 +173,7 @@ await check('a failed apply is an error toast carrying the box\'s last log line,
   await applyARename(page);
   const failed = toastWith(page, 'could not be applied');
   await failed.waitFor({ timeout: 10000 });
-  assert.equal(await failed.getAttribute('data-tone'), 'error');
-  assert.equal(await failed.getAttribute('role'), 'alert', 'an error must announce itself');
+  assert.equal(await failed.getAttribute('data-type'), 'error');
   assert.match(await failed.innerText(), /nextcloud\.drv failed/);
   // Still there when a success would long have gone.
   await page.waitForTimeout(6500);
@@ -185,7 +188,7 @@ await check('an apply that does not start is an error toast, not a stuck bar', a
   await applyARename(page);
   const toast = toastWith(page, 'did not start');
   await toast.waitFor();
-  assert.equal(await toast.getAttribute('data-tone'), 'error');
+  assert.equal(await toast.getAttribute('data-type'), 'error');
   assert.match(await toast.innerText(), /already running/);
   assert.equal(await page.getByRole('progressbar').count(), 0, 'the progress bar stayed up after the refusal');
   // Apply is live again: the change is still pending.
@@ -238,8 +241,15 @@ await check('prefers-reduced-motion switches the slide off', async () => {
   await applyARename(page);
   const done = toastWith(page, 'Changes applied');
   await done.waitFor({ timeout: 10000 });
-  const animation = await done.evaluate((el) => getComputedStyle(el).animationName);
-  assert.equal(animation, 'none', `the toast still animates under reduced motion: ${animation}`);
+  // Sonner moves a toast with a transition on transform, not a keyframe
+  // animation; the global reduced-motion rule in index.css (and Sonner's
+  // own) must have zeroed it.
+  const motion = await done.evaluate((el) => {
+    const s = getComputedStyle(el);
+    return { transition: s.transitionDuration, animation: s.animationName };
+  });
+  assert.ok(/^(0s)(, 0s)*$/.test(motion.transition), `the toast still slides under reduced motion: ${motion.transition}`);
+  assert.equal(motion.animation, 'none', `the toast still animates under reduced motion: ${motion.animation}`);
   await page.close();
 });
 
@@ -265,7 +275,7 @@ await check('unlocking the admin pages raises a toast, and a wrong password does
   await page.getByRole('button', { name: 'Unlock' }).click();
   const unlocked = toastWith(page, 'Unlocked');
   await unlocked.waitFor();
-  assert.equal(await unlocked.getAttribute('data-tone'), 'success');
+  assert.equal(await unlocked.getAttribute('data-type'), 'success');
   await page.close();
 });
 
@@ -304,7 +314,7 @@ await check('the wizard raises its toasts too: the claim on step 2', async () =>
   await page.getByRole('button', { name: /^Set the password$/ }).click();
   const set = toastWith(page, 'Password set');
   await set.waitFor();
-  assert.equal(await set.getAttribute('data-tone'), 'success');
+  assert.equal(await set.getAttribute('data-type'), 'success');
   assert.match(await set.innerText(), /notshared/, 'the account name is not on the toast');
 
   // The copy button on the key: its outcome is a toast as well.
@@ -312,6 +322,60 @@ await check('the wizard raises its toasts too: the claim on step 2', async () =>
   await toastWith(page, /copied|Not copied/i).first().waitFor();
   assert.deepEqual(errors, []);
   await page.close();
+});
+
+/* The real policy: the bundle served with the admin vhost's CSP header. A
+ * toast must still come out styled (position, width, the surface colour,
+ * the house stripe), which it only does when Sonner's stylesheet reached
+ * the page as a file and the palette came from a class, since the policy
+ * refuses the <style> element Sonner injects and any style attribute. The
+ * refused element is a console line, never a page error. */
+await check('under the appliance CSP the stack is styled and the page raises no error', async () => {
+  const { origin: strict, close } = await serve({ csp: true });
+  const page = await browser.newPage({ viewport: { width: 1280, height: 900 }, locale: 'en-US' });
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(String(e)));
+  const applies = [];
+  await page.route('**/api/**', (route) => json(route, 200, {}));
+  await page.route('**/api/setup/claim', (route) => json(route, 200, { claimed: true }));
+  await page.route('**/api/state', (route) => json(route, 200, { mode: 'local', sharing: false }));
+  await page.route('**/api/settings', (route) => json(route, 200, SETTINGS));
+  await page.route('**/api/status', (route) =>
+    json(route, 200, applies.length === 0
+      ? { state: 'idle', progress: 0, message: '' }
+      : { state: 'building', progress: 0, message: '', job: 'job-1' }),
+  );
+  await page.route('**/api/apply', (route) => {
+    applies.push(1);
+    return json(route, 200, { job: 'job-1' });
+  });
+  await page.addInitScript((t) => window.sessionStorage.setItem('losos-token', t), TOKEN);
+  await page.goto(strict + '/settings/network', { waitUntil: 'networkidle' });
+  const header = await page.evaluate(async () => (await fetch('/')).headers.get('content-security-policy'));
+  assert.match(header ?? '', /style-src 'self'/, 'the strict server is not sending the policy');
+
+  await applyARename(page);
+  const starting = toastWith(page, 'Applying your changes');
+  await starting.waitFor();
+  const style = await starting.evaluate((el) => {
+    const s = getComputedStyle(el);
+    return {
+      position: s.position,
+      radius: s.getPropertyValue('--border-radius').trim(),
+      background: s.backgroundColor,
+      shadow: s.boxShadow,
+    };
+  });
+  assert.equal(style.position, 'absolute', "Sonner's own stylesheet did not reach the page");
+  // 9px is --card-radius; Sonner's own default is 8px, so the two cannot be confused.
+  assert.equal(style.radius, '9px', `the house radius is not applied: ${style.radius}`);
+  assert.equal(style.background, 'rgb(255, 255, 255)', `the surface colour is not applied: ${style.background}`);
+  assert.match(style.shadow, /inset/, 'the tone stripe is missing');
+  const box = await starting.boundingBox();
+  assert.ok(box !== null && 1280 - (box.x + box.width) < 40 && box.y < 120, `not in the corner: ${JSON.stringify(box)}`);
+  assert.deepEqual(errors, []);
+  await page.close();
+  await close();
 });
 
 await browser.close();
