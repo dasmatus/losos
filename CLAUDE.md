@@ -74,6 +74,24 @@ cargo test --manifest-path backend/Cargo.toml
 cargo clippy --manifest-path backend/Cargo.toml --all-targets -- -D warnings
 ```
 
+**Every Rust binary links with mold and compiles through ccache (C) and
+sccache (rustc)** — `flake/fast-build.nix`, one stdenv shared by both flake
+devShells, devenv and `flake/packages.nix`, so `cargo` in a shell and
+`nix build` link the same way. In the shells it is on with no setup (caches
+under `~/.cache`; CI persists them with `actions/cache` in the clippy and
+test jobs). Inside `nix build` the caches are gated on the host exposing
+`/var/cache/ccache` and `/var/cache/sccache` to the sandbox
+(`extra-sandbox-paths`, directories `0770 root:nixbld`) and are otherwise
+never invoked, so a box's 03:00 rebuild is the plain build it always was;
+mold is never gated. ccache cannot cache rustc — the minutes saved are
+sccache's — and edge-vercel on Vercel's builders gets neither. Two things
+in that file look odd and are load-bearing: the stdenv is composed mold
+first and ccache around it (the other way round, `useMoldLinker` reads
+ccache's version as the compiler's and silently drops `-fuse-ld=mold`), and
+`RUSTC_WRAPPER` is a script named anything but `sccache` (the `cc` crate
+fronts the C compiler with sccache too when it sees that name, with
+`CCACHE_DISABLE` set, and ccache then caches nothing).
+
 **GitHub is the only forge.** The project left Codeberg on 2026-09-30, and
 the `.forgejo/` lane went with it; references to Codeberg that remain in
 comments are history explaining a choice its CI forced. CI is
