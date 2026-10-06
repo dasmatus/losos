@@ -22,6 +22,7 @@ import {
   Login01Icon,
 } from "@hugeicons/core-free-icons";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/progress";
 import { Rich, useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
 import { Callout, StepText } from "./parts";
@@ -40,12 +41,23 @@ const LOGIN_PATH = /\/login(\/|$|\?)/;
 const WATCH_PERIOD_MS = 700;
 
 /* How often the frame is loaded again while what it shows is not the files
- * app at all. On a new box this step is reached a minute or two before the
+ * app at all. On a new box this step is reached a few minutes before the
  * app's web server is up (occ finishes installing first, Apache follows), and
  * what the frame gets in between is nginx's own "502 Bad Gateway" page, which
  * nothing ever reloads. Take 7 of the recorded install demo (2026-10-05) sat
  * on that page for fifteen minutes with the step saying "You are signed in". */
 const RELOAD_PERIOD_MS = 5000;
+
+/* What the frame is known to hold. It starts out `loading` (nothing has
+ * committed yet), becomes `starting` when a document arrived that is not the
+ * app's (nginx answering for a web server that is not up), and `app` once a
+ * page of the files app itself rendered. Only `app` is shown: until then the
+ * frame loads in the background and a quiet panel stands in its place, so
+ * the owner never sees a raw "502 Bad Gateway" where their sign-in form
+ * should be (take 8 of the recorded demo showed that page for six minutes;
+ * an error page as the first thing after setting a password reads as
+ * something broke, not as something starting). */
+type FrameState = "loading" | "starting" | "app";
 
 /* Whether the document in the frame is one of the files app's own pages.
  * Nextcloud stamps its request token on <head> of every page it renders,
@@ -69,15 +81,19 @@ export interface StepFirstSignInProps {
   onSignedIn: () => void;
 }
 
-export function StepFirstSignIn({ account, signedIn, onSignedIn }: StepFirstSignInProps) {
+export function StepFirstSignIn({
+  account,
+  signedIn,
+  onSignedIn,
+}: StepFirstSignInProps) {
   const t = useT();
   const frame = React.useRef<HTMLIFrameElement>(null);
   const [watchable, setWatchable] = React.useState(true);
-  // True while the frame shows something that is not the files app (nginx
-  // answering for a web server that is not up yet). Drives the note below
-  // and the periodic reload.
-  const [starting, setStarting] = React.useState(false);
+  const [frameState, setFrameState] = React.useState<FrameState>("loading");
   const lastReload = React.useRef(0);
+  // The frame is on screen only once it holds a page of the app, or once
+  // the sign-in is done (then it is the app, whatever it shows next).
+  const showFrame = signedIn || frameState === "app";
 
   React.useEffect(() => {
     if (signedIn) return;
@@ -94,9 +110,10 @@ export function StepFirstSignIn({ account, signedIn, onSignedIn }: StepFirstSign
         if (doc.readyState !== "complete") return;
         if (!isFilesAppPage(doc)) {
           // Not the app: nginx's 502 while Apache is still coming up, or
-          // its 504. Say so, and ask again every few seconds; the page the
-          // owner wants appears on its own once the app answers.
-          setStarting(true);
+          // its 504. Keep the frame hidden, say so, and ask again every few
+          // seconds; the page the owner wants appears on its own once the
+          // app answers.
+          setFrameState("starting");
           const now = Date.now();
           if (now - lastReload.current >= RELOAD_PERIOD_MS) {
             lastReload.current = now;
@@ -104,7 +121,7 @@ export function StepFirstSignIn({ account, signedIn, onSignedIn }: StepFirstSign
           }
           return;
         }
-        setStarting(false);
+        setFrameState("app");
         if (LOGIN_PATH.test(path)) return;
         // A page of the app that is not the login page is still not proof
         // of a session: a maintenance page is one too. The user stamp is.
@@ -122,9 +139,13 @@ export function StepFirstSignIn({ account, signedIn, onSignedIn }: StepFirstSign
   }, [signedIn, onSignedIn]);
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="relative flex flex-col gap-4">
       {signedIn ? (
-        <Callout tone="ok" icon={CheckmarkCircle02Icon} title={t("wizard.first.signedIn.title")}>
+        <Callout
+          tone="ok"
+          icon={CheckmarkCircle02Icon}
+          title={t("wizard.first.signedIn.title")}
+        >
           <p className="mt-1">{t("wizard.first.signedIn.body")}</p>
         </Callout>
       ) : (
@@ -134,26 +155,51 @@ export function StepFirstSignIn({ account, signedIn, onSignedIn }: StepFirstSign
           ) : (
             <Rich
               k="wizard.first.introNamed"
-              vars={{ name: <span className="numeric text-ink">{account}</span> }}
+              vars={{
+                name: <span className="numeric text-ink">{account}</span>,
+              }}
             />
           )}
         </StepText>
       )}
 
       {!watchable && !signedIn && (
-        <Callout tone="info" icon={InformationCircleIcon} title={t("wizard.first.lost.title")}>
+        <Callout
+          tone="info"
+          icon={InformationCircleIcon}
+          title={t("wizard.first.lost.title")}
+        >
           <p className="mt-1">{t("wizard.first.lost.body")}</p>
         </Callout>
       )}
 
-      {watchable && starting && !signedIn && (
-        <Callout
-          tone="info"
-          icon={InformationCircleIcon}
-          title={t("wizard.first.starting.title")}
+      {watchable && !showFrame && (
+        /* Stands where the frame will be, same height, so nothing jumps when
+           the frame takes over. Before the first document: opening. After a
+           document that is not the app: starting, with the reason. */
+        <div
+          role="status"
+          className={cn(
+            "flex h-[min(68vh,640px)] w-full flex-col items-center justify-center gap-3 px-6 text-center",
+            "rounded-control border border-line bg-surface animate-fade-in",
+          )}
         >
-          <p className="mt-1">{t("wizard.first.starting.body")}</p>
-        </Callout>
+          <Spinner
+            size={22}
+            className="text-muted"
+            label={t("wizard.first.opening")}
+          />
+          <p className="text-base font-medium text-ink">
+            {frameState === "starting"
+              ? t("wizard.first.starting.title")
+              : t("wizard.first.opening")}
+          </p>
+          {frameState === "starting" && (
+            <p className="max-w-prose text-sm text-muted">
+              {t("wizard.first.starting.body")}
+            </p>
+          )}
+        </div>
       )}
 
       <iframe
@@ -165,31 +211,43 @@ export function StepFirstSignIn({ account, signedIn, onSignedIn }: StepFirstSign
         // accepted), and a sandbox without allow-same-origin would give the
         // framed page a null origin — which breaks its own session cookie and
         // means it could never sign anyone in.
+        // Kept in the document while hidden: a frame loads and can be read
+        // whether or not it is visible, and that reading is what decides
+        // when to show it. Hidden means out of the layout, the tab order
+        // and the accessibility tree, not merely transparent.
+        aria-hidden={!showFrame}
+        tabIndex={showFrame ? undefined : -1}
         className={cn(
-          "h-[min(68vh,640px)] w-full rounded-control border border-line bg-surface",
-          "animate-fade-in",
+          "w-full rounded-control border border-line bg-surface",
+          showFrame
+            ? "h-[min(68vh,640px)] animate-fade-in"
+            : "invisible pointer-events-none absolute h-px w-px overflow-hidden",
         )}
       />
 
       <div className="flex flex-wrap items-center gap-2.5">
-        {/* Always offered, not only when the watcher gives up: a frame this
-            size is cramped on a phone, and some browsers block third-party
-            storage in frames aggressively enough to break a login form. */}
-        <a
-          href={FILES_PATH}
-          target="_blank"
-          rel="noopener noreferrer"
-          className={cn(buttonVariants({ variant: "secondary", size: "sm" }))}
-        >
-          <HugeiconsIcon
-            icon={LinkSquare02Icon}
-            size={16}
-            strokeWidth={1.5}
-            color="currentColor"
-            aria-hidden="true"
-          />
-          {t("wizard.first.newTab")}
-        </a>
+        {/* Offered whenever the frame is, not only when the watcher gives
+            up: a frame this size is cramped on a phone, and some browsers
+            block third-party storage in frames aggressively enough to break
+            a login form. Not while the app is still starting: the tab would
+            open on the same error page the frame is hiding. */}
+        {(showFrame || !watchable) && (
+          <a
+            href={FILES_PATH}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={cn(buttonVariants({ variant: "secondary", size: "sm" }))}
+          >
+            <HugeiconsIcon
+              icon={LinkSquare02Icon}
+              size={16}
+              strokeWidth={1.5}
+              color="currentColor"
+              aria-hidden="true"
+            />
+            {t("wizard.first.newTab")}
+          </a>
+        )}
 
         {!signedIn && (
           <Button variant="ghost" size="sm" onClick={onSignedIn}>

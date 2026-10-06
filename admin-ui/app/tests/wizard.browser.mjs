@@ -390,8 +390,10 @@ await check('a 409 from the claim is shown and not asked again', async () => {
  * "/nextcloud, not the login page" as a session and said "You are signed in"
  * over an error page nothing ever reloaded. The step now reloads the frame
  * until the files app answers, and counts only a page the app stamps with a
- * user as signed in. */
-await check('step 4 keeps reloading a frame that nginx answered for, and signs in only on a real session', async () => {
+ * user as signed in. Take 8 then showed that 502 page in the frame for six
+ * minutes; now the frame stays hidden, loading in the background behind a
+ * quiet panel, until it holds a page of the app. */
+await check('step 4 hides the frame and keeps reloading it until the files app answers, and signs in only on a real session', async () => {
   const { page } = await open({ claimed: false, ready: true });
   let hits = 0;
   await page.route('**/nextcloud', async (route) => {
@@ -420,23 +422,30 @@ await check('step 4 keeps reloading a frame that nginx answered for, and signs i
   await page.getByRole('button', { name: /^Continue$/ }).click();
   await page.getByRole('button', { name: 'Copy' }).click();
   await page.getByRole('button', { name: /^Continue$/ }).click();
-  await page.locator('iframe').first().waitFor({ timeout: 5000 });
+  await page.locator('iframe').first().waitFor({ state: 'attached', timeout: 5000 });
 
-  // On the 502: not signed in, says the app is starting, and reloads.
+  // On the 502: not signed in, the frame is not on screen (the error page
+  // loads behind a panel that says the app is starting), the new-tab link
+  // that would open the same error page is withheld, and the frame reloads.
   await page.waitForTimeout(1500);
   let text = await page.locator('body').innerText();
   assert.ok(!/You are signed in/.test(text), `an nginx error page counted as a session:\n${text}`);
   assert.ok(/still starting/.test(text), `the starting note is missing:\n${text}`);
+  assert.ok(!(await page.locator('iframe').first().isVisible()), 'the frame showed the nginx error page');
+  assert.ok(!(await page.getByRole('link', { name: /new tab/ }).isVisible()), 'the new-tab link was offered onto an error page');
   await page.waitForFunction(() => {
     const f = document.querySelector('iframe');
     return !!f && !!f.contentDocument && !!f.contentDocument.querySelector('#user');
   }, null, { timeout: 20_000 });
   assert.ok(hits >= 3, `the frame was not reloaded until the app answered (hits=${hits})`);
-  // The login page itself is not a session either, and the note is gone.
+  // The login page itself is not a session either; the note is gone and the
+  // frame is now on screen, with the new-tab link beside it.
   await page.waitForTimeout(1200);
   text = await page.locator('body').innerText();
   assert.ok(!/You are signed in/.test(text), 'the login page counted as a session');
   assert.ok(!/still starting/.test(text), 'the starting note stayed after the app answered');
+  assert.ok(await page.locator('iframe').first().isVisible(), 'the frame stayed hidden after the app answered');
+  assert.ok(await page.getByRole('link', { name: /new tab/ }).isVisible(), 'the new-tab link is missing once the app answered');
   assert.ok(await page.getByRole('button', { name: /^Finish/ }).isDisabled(), 'Finish enabled before any sign-in');
   // "Sign in" inside the frame: the app renders a page stamped with the user.
   await page.frameLocator('iframe').first().locator('#go').click();
