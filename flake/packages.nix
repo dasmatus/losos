@@ -1,6 +1,8 @@
 # Per-output package definitions.
 #   losos-ctl  — the control plane (Rust crate under backend/), built via
-#                rustPlatform.buildRustPackage. doCheck is off; the suites
+#                flake/fast-build.nix's buildRustPackage (mold as the
+#                linker; ccache and sccache where the host exposes their
+#                caches). doCheck is off; the suites
 #                run via cargo test (see the note on the derivation below).
 #                Provides both the `lososd` system daemon and
 #                the `losos-ctl` facade CLI (which also carries the
@@ -26,7 +28,7 @@
 #                ISO's storeContents.
 #   losos-registrar — the Rust edge registration + Traefik/rathole config
 #                reconciler (`serve`) and appliance registration client
-#                (`announce`, `join`). Built via rustPlatform.buildRustPackage
+#                (`announce`, `join`). Built via the same buildRustPackage
 #                from backend-registrar/. See modules/edge.nix (edge) and
 #                modules/proxy.nix (appliance). cargoHash is the SHA256 of the
 #                vendored crate tarball; the first `nix build
@@ -48,6 +50,15 @@ let
   # flake package, and a non-derivation breaks `nix flake check` and
   # `nix flake show` for everything else too.
   images = import ./images.nix { inherit pkgs; };
+
+  # mold as the linker, ccache in front of gcc, sccache in front of rustc —
+  # for both crates, and for the dev shells through the same file, so that
+  # `cargo` in a shell and `nix build` agree on how a binary is linked. The
+  # caches are gated on the host exposing their directories to the sandbox
+  # and are otherwise never invoked; mold is not gated on anything. The
+  # header of fast-build.nix says what each one is worth here, and how to
+  # turn the caches on for `nix build` on a dev machine.
+  inherit (import ./fast-build.nix { inherit pkgs; }) buildRustPackage;
 in
 images
 // {
@@ -105,7 +116,7 @@ images
   # read on their own.
   losos-themes = (import ./../admin-ui/themes { inherit pkgs; }).package;
 
-  losos-ctl = pkgs.rustPlatform.buildRustPackage {
+  losos-ctl = buildRustPackage {
     pname = "losos-ctl";
     version = "0.1.0";
     src = lib.cleanSource ./../backend;
@@ -131,7 +142,7 @@ images
     doCheck = false;
   };
 
-  losos-registrar = pkgs.rustPlatform.buildRustPackage {
+  losos-registrar = buildRustPackage {
     pname = "losos-registrar";
     version = "0.1.0";
     src = lib.cleanSource ./../backend-registrar;
