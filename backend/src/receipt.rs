@@ -43,9 +43,18 @@ pub struct Receipts {
 }
 
 impl Receipts {
-    /// Note that `password` was just set for `user`, as of now.
+    /// Note that `password` was just set for `user`, as of now. Without a
+    /// salt from the kernel nothing is remembered: the claim itself has
+    /// already succeeded, and losing the replay is the safer failure than a
+    /// digest salted with something guessable.
     pub fn remember(&mut self, user: &str, password: &str) {
-        self.remember_at(user, password, fresh_salt(), Instant::now());
+        match urandom::<16>() {
+            Some(salt) => self.remember_at(user, password, salt, Instant::now()),
+            None => {
+                tracing::warn!("no salt from /dev/urandom; this claim cannot be replayed");
+                self.last = None;
+            }
+        }
     }
 
     /// The account the claim set, when `password` is the one it set and the
@@ -88,42 +97,47 @@ fn constant_time_eq(a: &[u8; 32], b: &[u8; 32]) -> bool {
     a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
 }
 
-/// Sixteen bytes from `/dev/urandom`; if that cannot be read, the digest is
-/// salted with the clock instead. The salt only keeps two receipts for the
-/// same password from sharing a digest, and the receipt never leaves RAM,
-/// so a weak salt costs less than a claim refused for want of one.
-fn fresh_salt() -> [u8; 16] {
+/// `N` bytes from `/dev/urandom`, or `None` when they cannot be read. No
+/// fallback to the clock or a fixed value: a predictable salt is the one
+/// thing this must not be, and the caller can do without a receipt.
+fn urandom<const N: usize>() -> Option<[u8; N]> {
     use std::io::Read;
-    let mut salt = [0u8; 16];
-    let read = std::fs::File::open("/dev/urandom").and_then(|mut f| f.read_exact(&mut salt));
-    if read.is_err() {
-        let nanos = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0);
-        salt = nanos.to_le_bytes();
-    }
-    salt
+    let mut buf = Vec::with_capacity(N);
+    std::fs::File::open("/dev/urandom")
+        .ok()?
+        .take(N as u64)
+        .read_to_end(&mut buf)
+        .ok()?;
+    buf.try_into().ok()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    const SALT: [u8; 16] = [7; 16];
+    // Every salt and password here is drawn at run time rather than written
+    // out: the tests are about equality and the clock, not about any value.
+    fn salt() -> [u8; 16] {
+        urandom().expect("/dev/urandom")
+    }
+
+    fn password() -> String {
+        String::from_utf8_lossy(&urandom::<32>().expect("/dev/urandom")).into_owned()
+    }
 
     #[test]
     fn the_same_password_inside_the_window_gets_the_account_back() {
         let t0 = Instant::now();
+        let pw = password();
         let mut r = Receipts::default();
         assert_eq!(
-            r.replay_at("anything", t0),
+            r.replay_at(&password(), t0),
             None,
             "nothing to replay before a claim"
         );
-        r.remember_at("notshared", "zqx-marmalade-77-parapet", SALT, t0);
+        r.remember_at("notshared", &pw, salt(), t0);
         assert_eq!(
-            r.replay_at("zqx-marmalade-77-parapet", t0 + Duration::from_secs(90)),
+            r.replay_at(&pw, t0 + Duration::from_secs(90)),
             Some("notshared")
         );
     }
@@ -131,26 +145,28 @@ mod tests {
     #[test]
     fn another_password_or_a_late_one_is_refused() {
         let t0 = Instant::now();
+        let pw = password();
         let mut r = Receipts::default();
-        r.remember_at("notshared", "zqx-marmalade-77-parapet", SALT, t0);
-        assert_eq!(r.replay_at("zqx-marmalade-77-parapeT", t0), None);
-        assert_eq!(r.replay_at("", t0), None);
-        assert_eq!(
-            r.replay_at("zqx-marmalade-77-parapet", t0 + GRACE),
-            Some("notshared")
-        );
-        assert_eq!(
-            r.replay_at(
-                "zqx-marmalade-77-parapet",
-                t0 + GRACE + Duration::from_secs(1)
-            ),
-            None
-        );
+        r.remember_at("notshared", &pw, salt(), t0);
+        assert_eq!(r.replay_at(&password(), t0), None);
+        assert_eq!(r.replay_at(&pw[..0], t0), None);
+        assert_eq!(r.replay_at(&pw, t0 + GRACE), Some("notshared"));
+        assert_eq!(r.replay_at(&pw, t0 + GRACE + Duration::from_secs(1)), None);
+    }
+
+    #[test]
+    fn remember_salts_from_the_kernel_and_replays() {
+        let pw = password();
+        let mut r = Receipts::default();
+        r.remember("notshared", &pw);
+        assert_eq!(r.replay(&pw), Some("notshared"));
     }
 
     #[test]
     fn the_salt_is_in_the_digest() {
-        assert_ne!(digest(&[1; 16], "pw"), digest(&[2; 16], "pw"));
-        assert_eq!(digest(&SALT, "pw"), digest(&SALT, "pw"));
+        let pw = password();
+        let s = salt();
+        assert_ne!(digest(&s, &pw), digest(&salt(), &pw));
+        assert_eq!(digest(&s, &pw), digest(&s, &pw));
     }
 }
