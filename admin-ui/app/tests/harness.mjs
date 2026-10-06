@@ -17,15 +17,34 @@ const TYPES = {
   '.svg': 'image/svg+xml',
 };
 
+/* The admin vhost's Content-Security-Policy (modules/containers.nix,
+ * `adminCsp`), minus the frame-src line the wizard needs for /nextcloud.
+ * A check that passes `csp: true` to serve() gets its pages under it, so a
+ * library that styles itself with an injected <style> element, or a
+ * component that sets a style attribute, fails here before it fails on the
+ * box. */
+export const ADMIN_CSP = [
+  "default-src 'none'",
+  "script-src 'self'",
+  "style-src 'self'",
+  "img-src 'self' data:",
+  "font-src 'self'",
+  "connect-src 'self'",
+  "frame-src 'self'",
+].join('; ');
+
 /* Serves dist/ with an SPA fallback (`try_files $uri /index.html`). Without it
  * a deep link 404s and the test would be asserting against an error page. */
-export async function serve() {
+export async function serve({ csp = false } = {}) {
   const server = createServer((req, res) => {
     const url = new URL(req.url, 'http://127.0.0.1');
     const rel = normalize(url.pathname).replace(/^(\.\.[/\\])+/, '');
     const send = async (file) => {
       const body = await readFile(join(DIST, file));
-      res.writeHead(200, { 'Content-Type': TYPES[extname(file)] ?? 'application/octet-stream' });
+      res.writeHead(200, {
+        'Content-Type': TYPES[extname(file)] ?? 'application/octet-stream',
+        ...(csp ? { 'Content-Security-Policy': ADMIN_CSP } : {}),
+      });
       res.end(body);
     };
     send(rel === '/' ? 'index.html' : rel).catch(() =>
