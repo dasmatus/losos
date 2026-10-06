@@ -13,14 +13,14 @@ export default defineMessages({
   // ── Panes ─────────────────────────────────────────────────────────────────
   "settings.panes.storage.label": { en: "Storage", sk: "Úložisko", de: "Speicher" },
   "settings.panes.storage.summary": {
-    en: "How much room this box has, what it is holding for other people, and the space held back when it was set up.",
-    sk: "Koľko miesta má toto zariadenie, čo uchováva pre iných ľudí a miesto, ktoré sa pri nastavení ponechalo v rezerve.",
-    de: "Wie viel Platz diese Box hat, was sie für andere aufbewahrt und welcher Platz bei der Einrichtung zurückgehalten wurde.",
+    en: "How much room this box has, what it is holding, and the space held back when it was set up.",
+    sk: "Koľko miesta má toto zariadenie, čo uchováva a miesto, ktoré sa pri nastavení ponechalo v rezerve.",
+    de: "Wie viel Platz diese Box hat, was sie aufbewahrt und welcher Platz bei der Einrichtung zurückgehalten wurde.",
   },
   "settings.panes.storage.keywords": {
     en: "",
-    sk: "disk miesto kapacita zväčšiť rozšíriť rezerva záloha kópie plný",
-    de: "Festplatte Platz Speicherplatz Kapazität vergrößern erweitern Reserve Backup Kopien voll",
+    sk: "disk miesto kapacita zväčšiť rozšíriť rezerva plný",
+    de: "Festplatte Platz Speicherplatz Kapazität vergrößern erweitern Reserve voll",
   },
   "settings.panes.mesh.label": { en: "Mesh", sk: "Mesh", de: "Mesh" },
   "settings.panes.mesh.summary": {
@@ -35,14 +35,14 @@ export default defineMessages({
   },
   "settings.panes.market.label": { en: "Market", sk: "Trh", de: "Markt" },
   "settings.panes.market.summary": {
-    en: "Get paid for the storage and compute you already share, or buy some from other boxes.",
-    sk: "Nechajte si zaplatiť za úložisko a výpočtový výkon, ktoré už zdieľate, alebo si kúpte od iných zariadení.",
-    de: "Lass dir den Speicher und die Rechenleistung bezahlen, die du schon teilst, oder kauf welche von anderen Boxen.",
+    en: "Share this box’s disk with the mesh, get paid for the storage and compute you share, or buy some from other boxes.",
+    sk: "Zdieľajte disk tohto zariadenia so sieťou mesh, nechajte si zaplatiť za úložisko a výpočtový výkon, ktoré zdieľate, alebo si kúpte od iných zariadení.",
+    de: "Teile die Festplatte dieser Box mit dem Mesh, lass dir den Speicher und die Rechenleistung bezahlen, die du teilst, oder kauf welche von anderen Boxen.",
   },
   "settings.panes.market.keywords": {
     en: "",
-    sk: "predaj kúpa platba peniaze stripe cena zárobok výplata objednávka",
-    de: "verkaufen kaufen Zahlung Geld Stripe Preis verdienen Auszahlung Bestellung",
+    sk: "predaj kúpa platba peniaze stripe cena zárobok výplata objednávka zdieľať disk požičiavať záloha kópie",
+    de: "verkaufen kaufen Zahlung Geld Stripe Preis verdienen Auszahlung Bestellung teilen Festplatte verleihen Backup Kopien",
   },
   "settings.panes.apps.label": { en: "Apps", sk: "Aplikácie", de: "Apps" },
   "settings.panes.apps.summary": {
@@ -124,6 +124,9 @@ export default defineMessages({
   },
   "settings.sidebar.searchPlaceholder": { en: "Search", sk: "Hľadať", de: "Suchen" },
   "settings.sidebar.clear": { en: "Clear search", sk: "Vymazať hľadanie", de: "Suche leeren" },
+  /* The badge on a planned pane's row. Deliberately the same in every
+   * language: it is a tag, not a sentence, and it reads as one. */
+  "settings.sidebar.soon": { en: "soon(TM)", sk: "soon(TM)", de: "soon(TM)" },
   "settings.sidebar.noMatch": {
     en: "Nothing here matches “{query}”.",
     sk: "Hľadaniu „{query}“ tu nič nezodpovedá.",
