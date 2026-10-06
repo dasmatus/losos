@@ -287,6 +287,10 @@ pkgs.testers.nixosTest {
             "curl -s -H 'X-Losos-Server-Addr: evil.example' http://127.0.0.1/nextcloud"
         )
         assert "own-address=127.0.0.1" in own, f"server address not forwarded: {own!r}"
+        # The libvirt case: the owner types the box's LAN IP (no mDNS there),
+        # and that very address is what the pod is told to trust.
+        lan = noadmin.succeed(f"curl -s http://{LAN}/nextcloud")
+        assert f"own-address={LAN}" in lan, f"LAN address not forwarded: {lan!r}"
         assert "stub-forgejo" in appliance.succeed("curl -s http://127.0.0.1/forgejo/")
 
     with subtest("security headers ride on admin responses, including the 403s"):
