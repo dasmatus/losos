@@ -48,6 +48,20 @@ const WATCH_PERIOD_MS = 700;
  * on that page for fifteen minutes with the step saying "You are signed in". */
 const RELOAD_PERIOD_MS = 5000;
 
+/* How long one of those loads may stay in flight before it is given up on
+ * and asked for again. A load that is still waiting for its first byte must
+ * not be interrupted by the next reload: the frame keeps showing (and the
+ * watcher keeps reading) the old error page until the new document commits,
+ * so a reload issued every RELOAD_PERIOD_MS on top of a load that needs
+ * longer than that to answer cancels it every time, and the app's page never
+ * arrives at all. That is what take 9 of the recorded demo did (2026-10-06):
+ * Apache was up, its first answer after the claim took longer than five
+ * seconds on the busy box, and the step sat on "still starting" for nine
+ * minutes. nginx answers for a web server that is down at once (502) and
+ * for one that hangs after its own proxy timeout (504), both of which end
+ * the load; this bound only covers a connection that stalls short of either. */
+const RELOAD_GIVE_UP_MS = 60_000;
+
 /* What the frame is known to hold. It starts out `loading` (nothing has
  * committed yet), becomes `starting` when a document arrived that is not the
  * app's (nginx answering for a web server that is not up), and `app` once a
@@ -91,6 +105,9 @@ export function StepFirstSignIn({
   const [watchable, setWatchable] = React.useState(true);
   const [frameState, setFrameState] = React.useState<FrameState>("loading");
   const lastReload = React.useRef(0);
+  // Whether a load the watcher asked for has not finished yet (the frame's
+  // load event clears it). See RELOAD_GIVE_UP_MS.
+  const reloadPending = React.useRef(false);
   // The frame is on screen only once it holds a page of the app, or once
   // the sign-in is done (then it is the app, whatever it shows next).
   const showFrame = signedIn || frameState === "app";
@@ -115,8 +132,13 @@ export function StepFirstSignIn({
           // app answers.
           setFrameState("starting");
           const now = Date.now();
-          if (now - lastReload.current >= RELOAD_PERIOD_MS) {
+          const since = now - lastReload.current;
+          const due = reloadPending.current
+            ? since >= RELOAD_GIVE_UP_MS
+            : since >= RELOAD_PERIOD_MS;
+          if (due) {
             lastReload.current = now;
+            reloadPending.current = true;
             win.location.replace(FILES_PATH);
           }
           return;
@@ -205,6 +227,9 @@ export function StepFirstSignIn({
       <iframe
         ref={frame}
         src={FILES_PATH}
+        onLoad={() => {
+          reloadPending.current = false;
+        }}
         title={t("wizard.first.frameTitle")}
         // No sandbox attribute: it is same-origin by design (the CSP note in
         // modules/containers.nix covers what that costs and why it was
