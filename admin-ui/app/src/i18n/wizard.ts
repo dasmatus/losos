@@ -270,9 +270,9 @@ export default defineMessages({
     de: "Sie fügt den Speichern, die deine Browser lesen, ein Zertifikat hinzu, nur für deinen Benutzer. Sie installiert keine Software, ändert sonst nichts und lässt sich durch Löschen dieses einen Eintrags rückgängig machen.",
   },
   "wizard.trust.quick.where": {
-    en: "It comes from this box, at the address you are on, not from the internet. The box's private key never leaves the box.",
-    sk: "Pochádza z tohto zariadenia, z adresy, na ktorej ste, nie z internetu. Súkromný kľúč zariadenia nikdy zariadenie neopustí.",
-    de: "Sie kommt von dieser Box, unter der Adresse, auf der du bist, nicht aus dem Internet. Der private Schlüssel der Box verlässt die Box nie.",
+    en: "It comes from this box, on your own network, not from the internet. The box's private key never leaves the box.",
+    sk: "Pochádza z tohto zariadenia, z vašej vlastnej siete, nie z internetu. Súkromný kľúč zariadenia nikdy zariadenie neopustí.",
+    de: "Sie kommt von dieser Box, aus deinem eigenen Netzwerk, nicht aus dem Internet. Der private Schlüssel der Box verlässt die Box nie.",
   },
   "wizard.trust.quick.read": {
     en: "Read the script first",

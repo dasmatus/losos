@@ -128,7 +128,13 @@ function ReadyTrust({
 
   return (
     <div className="flex flex-col gap-5">
-      {quick !== null && <TrustCommand install={quick} fqdn={fqdn} />}
+      {quick !== null && (
+        <TrustCommand
+          install={quick}
+          fqdn={fqdn}
+          address={query.state.address}
+        />
+      )}
 
       {quick !== null && (
         <p className="text-[13px] leading-snug text-muted">

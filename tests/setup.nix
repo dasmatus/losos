@@ -199,6 +199,22 @@ pkgs.testers.nixosTest {
         assert doc["fqdn"] == "mattbox.local", doc
         assert doc["tls"] is True, doc
 
+    with subtest("the document names the address the request reached the box on"):
+        # The one-line installer in the wizard is built on this field, so it
+        # has to be the box's LAN address as a LAN client sees it — not the
+        # placeholder the unit wrote to disk, not loopback, not whatever
+        # address DHCP had or had not handed out when the unit ran at boot.
+        doc = json.loads(appliance.succeed(lan(STATE_URL)))
+        assert doc["address"] == LAN, f"address is not the one the request arrived on: {doc}"
+        on_disk = json.loads(appliance.succeed(f"cat {STATE}"))
+        assert on_disk["address"] == "@ADDRESS@", \
+            "the file must stay address-free: the unit runs before DHCP and the lease moves"
+        # The substitution is a response-time property, so a second address
+        # on the box yields a second answer from the same file.
+        appliance.succeed("ip addr add 192.168.1.2/24 dev eth1")
+        doc2 = json.loads(appliance.succeed(f"curl -s --interface {CLIENT} http://192.168.1.2{STATE_URL}"))
+        assert doc2["address"] == "192.168.1.2", doc2
+
         display = appliance.succeed(
             f"openssl x509 -in {CERT} -noout -fingerprint -sha256"
         ).strip().split("=", 1)[1]
