@@ -29,10 +29,29 @@ const browser = await launch();
 
 /* One page wired to a box in a given state. `claimed` is the whole point: it
  * is what decides between the wizard and the key prompt. */
-async function open({ claimed, tls = false, path = '/', ready = true, waitingFor = null }) {
+async function open({
+  claimed,
+  tls = false,
+  path = '/',
+  ready = true,
+  waitingFor = null,
+  /* An origin to pretend the page is served from, with every request to it
+   * answered by the real harness server. The harness listens on 127.0.0.1
+   * with a port, and some of what the wizard shows depends on the page NOT
+   * having one — a port is what a VM's forward looks like. */
+  at = null,
+}) {
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 }, locale: 'en-US' });
   const errors = [];
   page.on('pageerror', (e) => errors.push(String(e)));
+
+  if (at !== null) {
+    await page.route(`${at}/**`, async (route) => {
+      const url = new URL(route.request().url());
+      const response = await route.fetch({ url: origin + url.pathname + url.search });
+      await route.fulfill({ response });
+    });
+  }
 
   /* Registered FIRST, and that order is load-bearing: when several routes
    * match, Playwright uses the one registered LAST. With this catch-all added
@@ -72,6 +91,8 @@ async function open({ claimed, tls = false, path = '/', ready = true, waitingFor
       body: JSON.stringify({
         hostName: 'mattbox',
         fqdn: 'mattbox.local',
+        /* What nginx substitutes per request: the box's LAN address. */
+        address: BOX_ADDRESS,
         tls,
         /* The shape modules/setup.nix writes, installers included. */
         certificate: tls
@@ -87,9 +108,13 @@ async function open({ claimed, tls = false, path = '/', ready = true, waitingFor
     }),
   );
 
-  await page.goto(origin + path, { waitUntil: 'networkidle' });
+  await page.goto((at ?? origin) + path, { waitUntil: 'networkidle' });
   return { page, errors };
 }
+
+/* The address modules/setup.nix fills into state.json: the box's own, as
+ * the request reached it. */
+const BOX_ADDRESS = '192.168.122.56';
 
 const { check, finish } = runner();
 
@@ -120,33 +145,44 @@ await check('a box that already has an owner asks to sign in, not to set up', as
   await page.close();
 });
 
-/* The one-line installer: the line names this box at the address the page is
- * on, on plain http, and fetches the script for the platform chosen. The
- * origin here is http://127.0.0.1:<port>, so the port has to ride along —
- * that is the VM port-forward case — and the Windows switch has to change
- * both the fetch command and the script. */
-await check('step 1 offers a one-line install command for the address this page is on', async () => {
-  const { page, errors } = await open({ claimed: false, tls: true });
+/* The one-line installer: the line names the box by the IP address the box
+ * reports (state.json `address`, which nginx fills in per request), on plain
+ * http, whatever name the page itself was opened on — `mattbox.local` here,
+ * which the next computer over may not resolve. The Windows switch has to
+ * change both the fetch command and the script. */
+await check('step 1 offers a one-line install command naming the box by its IP address', async () => {
+  const { page, errors } = await open({ claimed: false, tls: true, at: 'http://mattbox.local' });
+  const base = `http://${BOX_ADDRESS}`;
   const line = page.getByTestId('trust-command-line');
   const text = (await line.innerText()).trim();
   assert.strictEqual(
     text,
-    `curl -fsSL ${origin}/setup/trust.sh | sh`,
+    `curl -fsSL ${base}/setup/trust.sh | sh`,
     `unexpected command; page errors: ${JSON.stringify(errors)}`,
   );
   const body = await page.locator('body').innerText();
   assert.ok(/Read the script first/i.test(body), 'the script must be offered to read before running');
   assert.ok(/Or by hand/i.test(body), 'the download stays as the manual route');
   const readLink = page.getByRole('link', { name: /Read the script first/i });
-  assert.strictEqual(await readLink.getAttribute('href'), `${origin}/setup/trust.sh`);
+  assert.strictEqual(await readLink.getAttribute('href'), `${base}/setup/trust.sh`);
 
   await page.getByRole('button', { name: 'Windows' }).click();
   assert.strictEqual(
     (await line.innerText()).trim(),
-    `irm ${origin}/setup/trust.ps1 | iex`,
+    `irm ${base}/setup/trust.ps1 | iex`,
     'the Windows choice must switch both the fetcher and the script',
   );
-  assert.strictEqual(await readLink.getAttribute('href'), `${origin}/setup/trust.ps1`);
+  assert.strictEqual(await readLink.getAttribute('href'), `${base}/setup/trust.ps1`);
+  await page.close();
+});
+
+/* Behind a port forward (a VM's `localhost:8080`, or this harness) the
+ * address the box sees on its side is not reachable from the page's, so the
+ * page's own host and port are what the line has to carry. */
+await check("behind a port forward the command keeps the page's own host and port", async () => {
+  const { page } = await open({ claimed: false, tls: true });
+  const text = (await page.getByTestId('trust-command-line').innerText()).trim();
+  assert.strictEqual(text, `curl -fsSL ${origin}/setup/trust.sh | sh`);
   await page.close();
 });
 
@@ -160,6 +196,7 @@ await check('a box without the installers offers the download only', async () =>
       body: JSON.stringify({
         hostName: 'mattbox',
         fqdn: 'mattbox.local',
+        address: BOX_ADDRESS,
         tls: true,
         certificate: {
           url: '/setup/losos-ca.crt',
