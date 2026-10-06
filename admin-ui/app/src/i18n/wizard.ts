@@ -280,11 +280,6 @@ export default defineMessages({
     de: "Telefone haben kein Terminal: Nimm auf diesem Gerät stattdessen den Zertifikat-Download unten. Auf einem Computer erledigt diese Zeile den ganzen Schritt.",
   },
   "wizard.trust.quick.copy": { en: "Copy", sk: "Kopírovať", de: "Kopieren" },
-  "wizard.trust.quick.copied": {
-    en: "Copied",
-    sk: "Skopírované",
-    de: "Kopiert",
-  },
   "wizard.trust.quick.what": {
     en: "It adds one certificate to the stores your browsers read, for your user only. It installs no software, changes nothing else, and is undone by deleting that one entry.",
     sk: "Pridá jeden certifikát do úložísk, ktoré čítajú vaše prehliadače, len pre vášho používateľa. Neinštaluje žiadny softvér, nič iné nemení a vráti sa späť zmazaním tej jednej položky.",
@@ -402,11 +397,6 @@ export default defineMessages({
     en: "This box did not answer the last check. It keeps trying.",
     sk: "Zariadenie neodpovedalo na poslednú kontrolu. Skúša sa to ďalej.",
     de: "Diese Box hat auf die letzte Prüfung nicht geantwortet. Es wird weiter versucht.",
-  },
-  "wizard.signin.ready": {
-    en: "Ready. You can set the password now.",
-    sk: "Pripravené. Heslo môžete nastaviť teraz.",
-    de: "Bereit. Du kannst das Passwort jetzt setzen.",
   },
   "wizard.signin.err.notReady": {
     en: "This box is not ready for the password yet. The page keeps checking and will let you try again.",
@@ -553,11 +543,6 @@ export default defineMessages({
     en: "Treat it like a key to the box, because that is what it is.",
     sk: "Zaobchádzajte s ním ako s kľúčom od zariadenia, pretože presne tým je.",
     de: "Behandle ihn wie einen Schlüssel zur Box, denn genau das ist er.",
-  },
-  "wizard.signin.key.copied": {
-    en: "Copied.",
-    sk: "Skopírované.",
-    de: "Kopiert.",
   },
   "wizard.signin.key.copyFailed": {
     en: "This browser would not copy it. The key is selected; press Ctrl+C, or Cmd+C on a Mac.",
@@ -769,5 +754,68 @@ export default defineMessages({
     en: "I have signed in",
     sk: "Prihlásenie je hotové",
     de: "Ich habe mich angemeldet",
+  },
+
+  // ── Toasts the wizard raises ──────────────────────────────────────────────
+  "wizard.trust.quick.copiedTitle": {
+    en: "Command copied",
+    sk: "Príkaz je skopírovaný",
+    de: "Befehl kopiert",
+  },
+  "wizard.trust.quick.copiedBody": {
+    en: "Paste it into a terminal on this computer.",
+    sk: "Vložte ho do terminálu na tomto počítači.",
+    de: "Füg ihn in ein Terminal auf diesem Computer ein.",
+  },
+  "wizard.trust.quick.copyFailed": {
+    en: "This browser would not copy it. The line is selected; press Ctrl+C, or Cmd+C on a Mac.",
+    sk: "Tento prehliadač ho neskopíroval. Riadok je označený; stlačte Ctrl+C, na Macu Cmd+C.",
+    de: "Dieser Browser wollte ihn nicht kopieren. Die Zeile ist markiert; drück Strg+C, auf dem Mac Cmd+C.",
+  },
+  "wizard.copyFailedTitle": {
+    en: "Not copied",
+    sk: "Neskopírované",
+    de: "Nicht kopiert",
+  },
+  "wizard.signin.readyTitle": { en: "Ready", sk: "Pripravené", de: "Bereit" },
+  "wizard.signin.readyBody": {
+    en: "You can set the password now.",
+    sk: "Heslo môžete nastaviť teraz.",
+    de: "Du kannst das Passwort jetzt setzen.",
+  },
+  "wizard.signin.done.toast": {
+    en: "Sign in as {name} from now on.",
+    sk: "Odteraz sa prihlasujte ako {name}.",
+    de: "Melde dich ab jetzt als {name} an.",
+  },
+  "wizard.signin.notSet": {
+    en: "The password was not set",
+    sk: "Heslo sa nenastavilo",
+    de: "Das Passwort wurde nicht gesetzt",
+  },
+  "wizard.signin.key.copiedTitle": {
+    en: "Spare key copied",
+    sk: "Náhradný kľúč je skopírovaný",
+    de: "Ersatzschlüssel kopiert",
+  },
+  "wizard.signin.key.copiedBody": {
+    en: "Paste it somewhere that is not this box.",
+    sk: "Vložte ho niekam mimo tohto zariadenia.",
+    de: "Füg ihn irgendwo ein, nur nicht auf dieser Box.",
+  },
+  "wizard.first.signedIn.toast": {
+    en: "That was the last step. Finish below.",
+    sk: "To bol posledný krok. Dokončite nastavenie nižšie.",
+    de: "Das war der letzte Schritt. Schließ unten ab.",
+  },
+  "wizard.closing.toast": {
+    en: "Setup finished",
+    sk: "Nastavenie je dokončené",
+    de: "Einrichtung abgeschlossen",
+  },
+  "wizard.recovery.savedTitle": {
+    en: "Recovery code copied",
+    sk: "Obnovovací kód je skopírovaný",
+    de: "Wiederherstellungscode kopiert",
   },
 });

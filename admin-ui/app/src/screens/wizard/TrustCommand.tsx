@@ -19,8 +19,9 @@
 
 import * as React from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { CheckmarkCircle02Icon, Copy01Icon } from "@hugeicons/core-free-icons";
+import { Copy01Icon } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/ui/button";
+import { toast } from "@/components/ui/toast";
 import { useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
 import type { SetupInstallers } from "./api";
@@ -78,15 +79,20 @@ export function TrustCommand({
   const [platform, setPlatform] = React.useState<Platform>(
     detected === "windows" ? "windows" : "unix",
   );
-  const [copied, setCopied] = React.useState(false);
   const lineRef = React.useRef<HTMLElement>(null);
 
   const command = commandFor(platform, install, address);
   const scriptUrl =
     boxBase(address) + (platform === "windows" ? install.ps1 : install.sh);
 
+  // The outcome is a toast, not a label swap on the button: the button keeps
+  // saying what it does, and the stack says what just happened.
   const copy = async () => {
-    setCopied(await copyText(command, lineRef.current));
+    if (await copyText(command, lineRef.current)) {
+      toast.success(t("wizard.trust.quick.copiedTitle"), t("wizard.trust.quick.copiedBody"));
+    } else {
+      toast.error(t("wizard.copyFailedTitle"), t("wizard.trust.quick.copyFailed"));
+    }
   };
 
   return (
@@ -109,10 +115,7 @@ export function TrustCommand({
               key={p}
               type="button"
               aria-pressed={platform === p}
-              onClick={() => {
-                setPlatform(p);
-                setCopied(false);
-              }}
+              onClick={() => setPlatform(p)}
               className={cn(
                 "rounded-[inherit] px-2.5 py-1 transition-colors",
                 platform === p
@@ -144,17 +147,15 @@ export function TrustCommand({
         >
           {command}
         </code>
-        <Button variant="secondary" size="sm" onClick={copy} aria-live="polite">
+        <Button variant="secondary" size="sm" onClick={copy}>
           <HugeiconsIcon
-            icon={copied ? CheckmarkCircle02Icon : Copy01Icon}
+            icon={Copy01Icon}
             size={16}
             strokeWidth={1.5}
             color="currentColor"
             aria-hidden="true"
           />
-          {copied
-            ? t("wizard.trust.quick.copied")
-            : t("wizard.trust.quick.copy")}
+          {t("wizard.trust.quick.copy")}
         </Button>
       </div>
 

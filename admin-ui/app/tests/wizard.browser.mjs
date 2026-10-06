@@ -610,7 +610,9 @@ await check('step 3 hides the frame and keeps reloading it until the files app a
   assert.ok(await page.getByRole('button', { name: /^Finish/ }).isDisabled(), 'Finish enabled before any sign-in');
   // "Sign in" inside the frame: the app renders a page stamped with the user.
   await page.frameLocator('iframe').first().locator('#go').click();
-  await page.getByText('You are signed in').waitFor({ timeout: 10_000 });
+  // Twice on the page once it happens: the step's callout and the toast.
+  await page.getByRole('region', { name: 'Sign in' }).getByText('You are signed in').waitFor({ timeout: 10_000 });
+  await page.getByTestId('toaster').getByText('You are signed in').waitFor();
   assert.ok(!(await page.getByRole('button', { name: /^Finish/ }).isDisabled()), 'Finish still disabled after signing in');
   await page.close();
 });

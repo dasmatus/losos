@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { FieldError, Input, Select } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/progress";
 import { Switch } from "@/components/ui/switch";
+import { toast } from "@/components/ui/toast";
 import type { MarketKind, MarketOrder, MarketShelfListing } from "@/lib/api";
 import { t as translate, type MessageKey } from "@/lib/i18n";
 import { useT } from "@/lib/i18n-react";
@@ -31,8 +32,11 @@ import type { SettingsForm } from "./use-settings-form";
  * not a separate product, so the sell side only offers what the owner is
  * already sharing (the edge enforces it; this pane greys out the rest and
  * says why). Payment happens on Stripe's own page in a new tab — nothing on
- * this page ever sees a card — so after a purchase the pane tells the owner
- * to come back and refresh rather than pretending to know the outcome.
+ * this page ever sees a card — so after a purchase a toast tells the owner
+ * to come back and refresh rather than pretending to know the outcome, and
+ * the refresh that finds the order paid raises the "payment received" one
+ * (market.ts). Every refusal is a toast too; only a field the owner can fix
+ * keeps its error under the field.
  */
 
 const KIND_LABEL: Record<MarketKind, MessageKey> = {
@@ -111,11 +115,6 @@ export function MarketPane({ form }: { form: SettingsForm }) {
   return (
     <>
       {sharing}
-      {market.actionError !== null && (
-        <p role="alert" className="mb-3 text-[13px] text-crit">
-          {market.actionError.length > 0 ? market.actionError : t("panes.market.actionFailed")}
-        </p>
-      )}
 
       <PaneSection>
         <GroupTitle>{t("panes.market.yours")}</GroupTitle>
@@ -251,12 +250,9 @@ function ShelfRow({
   const qtyErrorId = React.useId();
   const [quantity, setQuantity] = React.useState("1");
   const [quantityProblem, setQuantityProblem] = React.useState<string | null>(null);
-  const [problem, setProblem] = React.useState<string | null>(null);
-  const [opened, setOpened] = React.useState(false);
 
   const buy = async () => {
     const n = Number(quantity);
-    setProblem(null);
     if (!Number.isInteger(n) || n < 1 || n > listing.available) {
       setQuantityProblem(t("panes.market.quantityRange", { max: listing.available }));
       return;
@@ -264,7 +260,7 @@ function ShelfRow({
     setQuantityProblem(null);
     const checkoutTab = window.open("about:blank", "_blank");
     if (checkoutTab === null) {
-      setProblem(t("panes.market.popupBlocked"));
+      toast.error(t("panes.market.actionFailedTitle"), t("panes.market.popupBlocked"));
       return;
     }
     checkoutTab.opener = null;
@@ -272,10 +268,12 @@ function ShelfRow({
     if (reply !== null) {
       if (isStripePage(reply.checkout_url)) {
         checkoutTab.location.href = reply.checkout_url;
-        setOpened(true);
+        // Longer than a plain note: it is the one instruction the owner needs
+        // when they come back from the other tab.
+        toast.info(t("panes.market.orderPlaced"), t("panes.market.paying"), { duration: 12000 });
       } else {
         checkoutTab.close();
-        setProblem(t("panes.market.noCheckout"));
+        toast.error(t("panes.market.actionFailedTitle"), t("panes.market.noCheckout"));
       }
     } else {
       checkoutTab.close();
@@ -309,8 +307,6 @@ function ShelfRow({
         </div>
       </div>
       <FieldError id={qtyErrorId}>{quantityProblem}</FieldError>
-      <FieldError>{problem}</FieldError>
-      {opened && <p className="text-[12.5px] text-muted">{t("panes.market.paying")}</p>}
     </StackRow>
   );
 }
@@ -333,7 +329,6 @@ function SellSection({ market, disabled }: { market: MarketData; disabled: boole
     field: "price" | "capacity";
     text: string;
   } | null>(null);
-  const [onboardProblem, setOnboardProblem] = React.useState<string | null>(null);
 
   if (account === null) return null;
 
@@ -345,14 +340,15 @@ function SellSection({ market, disabled }: { market: MarketData; disabled: boole
   const onboard = async () => {
     const onboardingTab = window.open("about:blank", "_blank");
     if (onboardingTab === null) {
-      setOnboardProblem(t("panes.market.popupBlocked"));
+      toast.error(t("panes.market.actionFailedTitle"), t("panes.market.popupBlocked"));
       return;
     }
-    setOnboardProblem(null);
     onboardingTab.opener = null;
     const reply = await market.onboard();
-    if (reply !== null && isStripePage(reply.url)) onboardingTab.location.href = reply.url;
-    else onboardingTab.close();
+    if (reply !== null && isStripePage(reply.url)) {
+      onboardingTab.location.href = reply.url;
+      toast.info(t("panes.market.payoutsOpened"), t("panes.market.payoutsOpenedBody"), { duration: 12000 });
+    } else onboardingTab.close();
   };
 
   const submit = async () => {
@@ -485,7 +481,6 @@ function SellSection({ market, disabled }: { market: MarketData; disabled: boole
           </Row>
         ))}
       </Group>
-      <FieldError className="px-1.5 pt-2">{onboardProblem}</FieldError>
       <GroupCaption>{t("panes.market.sellCaption", { percent: feePercent })}</GroupCaption>
       {account.sales.length > 0 && (
         <Group className="mt-3">

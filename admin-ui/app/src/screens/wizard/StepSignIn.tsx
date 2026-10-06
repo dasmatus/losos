@@ -33,7 +33,6 @@
 import * as React from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
-  Alert02Icon,
   CheckmarkCircle02Icon,
   CircleIcon,
   Copy01Icon,
@@ -81,6 +80,7 @@ import {
   probePasskeySupport,
   type PasskeySupport,
 } from "./passkey";
+import { toast } from "@/components/ui/toast";
 import { Callout, ReadoutRow, StepText } from "./parts";
 
 export interface StepSignInProps {
@@ -165,12 +165,23 @@ function PasswordForm({
       setConfirm("");
       setVisible(false);
       onPasswordSet(result.user, result.adminKey);
+      toast.success(
+        t("wizard.signin.done.title"),
+        t("wizard.signin.done.toast", { name: result.user }),
+      );
     } catch (error) {
       // Lost the race between the last poll and the submit: lososd says not
       // yet, and changed nothing. Back to waiting, with the reason on screen.
-      if (isNotReady(error))
-        readiness.notYet(error instanceof Error ? error.message : null);
-      setProblem(describeSetPassword(error));
+      if (isNotReady(error)) {
+        const reason = error instanceof Error ? error.message : null;
+        readiness.notYet(reason);
+        toast.info(t("wizard.signin.err.notReady"), reason ?? undefined);
+        return;
+      }
+      // The box's refusal is a toast: it is about the request, not about a
+      // field the owner can fix, which is what the line under the field is
+      // for. An error toast stays long enough to read the box's sentence.
+      toast.error(t("wizard.signin.notSet"), describeSetPassword(error));
     } finally {
       setBusy(false);
     }
@@ -184,25 +195,18 @@ function PasswordForm({
   // sat greyed out behind the panel that then appeared.
   const waiting = readiness.state.kind !== "ready";
 
+  /* Someone who sat through the waiting panel is told the moment it lifts,
+   * once, as a toast; someone whose box was ready all along hears nothing.
+   * `waited` is on the state so a re-render cannot raise it twice. */
+  const waited = readiness.state.kind === "ready" && readiness.state.waited;
+  React.useEffect(() => {
+    if (waited) toast.success(t("wizard.signin.readyTitle"), t("wizard.signin.readyBody"));
+  }, [waited, t]);
+
   return (
     <form onSubmit={submit} noValidate className="flex flex-col gap-4">
       {readiness.state.kind !== "ready" && (
         <WaitingPanel state={readiness.state} />
-      )}
-      {readiness.state.kind === "ready" && readiness.state.waited && (
-        <p
-          role="status"
-          className="flex items-center gap-1.5 text-[13px] text-ok"
-        >
-          <HugeiconsIcon
-            icon={CheckmarkCircle02Icon}
-            size={16}
-            strokeWidth={1.5}
-            color="currentColor"
-            aria-hidden="true"
-          />
-          {t("wizard.signin.ready")}
-        </p>
       )}
       <div className="flex flex-col gap-2">
         <Label htmlFor={passwordId}>{t("wizard.signin.newPassword")}</Label>
@@ -585,11 +589,14 @@ function WaitingPanel({ state }: { state: ReadinessState }) {
  * that step is hidden, see ./steps.ts, so the sheet lives here now.) */
 function AdminKey({ value, boxName }: { value: string; boxName: string }) {
   const t = useT();
-  const [copied, setCopied] = React.useState<boolean | null>(null);
   const keyRef = React.useRef<HTMLElement>(null);
 
   const copy = async (): Promise<void> => {
-    setCopied(await copyText(value, keyRef.current));
+    if (await copyText(value, keyRef.current)) {
+      toast.success(t("wizard.signin.key.copiedTitle"), t("wizard.signin.key.copiedBody"));
+    } else {
+      toast.error(t("wizard.copyFailedTitle"), t("wizard.signin.key.copyFailed"));
+    }
   };
 
   // Prints the document; the rules in ./wizard.css narrow that to the sheet.
@@ -632,26 +639,6 @@ function AdminKey({ value, boxName }: { value: string; boxName: string }) {
           />
           {t("wizard.signin.key.print")}
         </Button>
-        {copied === true && (
-          <span
-            role="status"
-            className="inline-flex items-center gap-1.5 text-[13px] text-ok"
-          >
-            <HugeiconsIcon
-              icon={CheckmarkCircle02Icon}
-              size={16}
-              strokeWidth={1.5}
-              color="currentColor"
-              aria-hidden="true"
-            />
-            {t("wizard.signin.key.copied")}
-          </span>
-        )}
-        {copied === false && (
-          <span role="status" className="text-[13px] text-muted">
-            {t("wizard.signin.key.copyFailed")}
-          </span>
-        )}
       </div>
       {/* Present in the document at all times, shown only on paper: the
           print rules in ./wizard.css hide everything else on the page and
@@ -714,8 +701,7 @@ type Attempt =
   | { kind: "idle" }
   | { kind: "working" }
   | { kind: "registered"; label: string }
-  | { kind: "not-implemented" }
-  | { kind: "problem"; message: string };
+  | { kind: "not-implemented" };
 
 function PasskeyPanel({ boxName }: { boxName: string }) {
   const t = useT();
@@ -740,6 +726,7 @@ function PasskeyPanel({ boxName }: { boxName: string }) {
     switch (outcome.kind) {
       case "registered":
         setAttempt({ kind: "registered", label: outcome.label });
+        toast.success(t("wizard.passkey.created.title"), outcome.label);
         return;
       case "cancelled":
         setAttempt({ kind: "idle" });
@@ -752,7 +739,11 @@ function PasskeyPanel({ boxName }: { boxName: string }) {
         setAttempt({ kind: "idle" });
         return;
       case "failed":
-        setAttempt({ kind: "problem", message: outcome.message });
+        // Back to the button, with the reason in the stack rather than in a
+        // box under it: a second try is one click, and the box's sentence
+        // has nothing the owner can fix on this form.
+        setAttempt({ kind: "idle" });
+        toast.error(t("wizard.passkey.problem.title"), outcome.message);
         return;
       default: {
         const unreachable: never = outcome;
@@ -858,16 +849,6 @@ function PasskeyPanel({ boxName }: { boxName: string }) {
           title={t("wizard.passkey.notYet.title")}
         >
           <p className="mt-1">{t("wizard.passkey.notYet.body")}</p>
-        </Callout>
-      )}
-
-      {attempt.kind === "problem" && (
-        <Callout
-          tone="warn"
-          icon={Alert02Icon}
-          title={t("wizard.passkey.problem.title")}
-        >
-          <p className={cn("mt-1 break-words")}>{attempt.message}</p>
         </Callout>
       )}
     </div>

@@ -10,7 +10,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "test:browser": "node tests/wizard.browser.mjs && node tests/app.browser.mjs"
+    "test:browser": "node tests/wizard.browser.mjs && node tests/app.browser.mjs && node tests/toasts.browser.mjs"
   },
   "dependencies": {
     "@hugeicons/core-free-icons": "^4.3.5",
