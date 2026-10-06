@@ -175,7 +175,7 @@ function ReadyTrust({ query }: { query: Extract<SetupQuery, { kind: "ready" }> }
 
       {!secure && (
         <Callout tone="warn" icon={SecurityLockIcon} title={t("wizard.trust.unencrypted.title")}>
-          <p className="mt-1">{t("wizard.trust.unencrypted.body")}</p>
+          <p className="mt-1">{t("wizard.trust.unencrypted.body", { fqdn })}</p>
         </Callout>
       )}
 

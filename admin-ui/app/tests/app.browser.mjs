@@ -211,6 +211,21 @@ for (const path of ['/apps', '/storage', '/mesh', '/settings', '/settings/hardwa
   });
 }
 
+await check('About leads with the address this browser is using and names the .local address separately', async () => {
+  /* The harness serves on 127.0.0.1:<port> and the stubbed box is called
+   * mattbox, so the two differ — the libvirt case, where the owner reached
+   * the box by IP and mattbox.local does not resolve on the host. The pane
+   * must not send them to the name as if it were the one address. */
+  const { page, errors } = await open({ path: '/settings/about', stored: true });
+  const main = page.locator('main');
+  await main.getByText(origin, { exact: true }).waitFor();
+  await main.getByText('http://mattbox.local', { exact: true }).waitFor();
+  const text = await main.innerText();
+  assert.ok(text.indexOf(origin) < text.indexOf('http://mattbox.local'), 'the address in use comes before the name');
+  assert.deepStrictEqual(errors, []);
+  await page.close();
+});
+
 await check('an unknown address says so instead of showing a blank page', async () => {
   const { page } = await open({ path: '/no/such/page', stored: true });
   await page.getByText('Nothing here').waitFor();
