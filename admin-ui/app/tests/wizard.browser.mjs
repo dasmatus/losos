@@ -289,6 +289,36 @@ await check('step 2 opens on its own once the box reports ready, then claims', a
 /* The race: the last poll said ready, the submit landed a moment after the
  * pod went into maintenance. lososd answers 503 with the reason; the step
  * must read that as "not yet", not as a failure that stops the wizard. */
+/* Take 9 of the recorded install demo (2026-10-06): on a busy box the first
+ * GET /api/setup/claim took twelve seconds, and until it answered step 2's
+ * form was open, with no panel, as if the box were ready. A password typed
+ * then sat greyed out behind the waiting panel that followed. Before the
+ * first answer the form is disabled and nothing is shown. */
+await check('step 2 keeps the form disabled until the first readiness answer, without flashing the panel', async () => {
+  const { page } = await open({ claimed: false, ready: true });
+  let release;
+  const held = new Promise((r) => { release = r; });
+  // Registered after open()'s routes, so it wins: the first answer waits
+  // until the test lets it go.
+  await page.route('**/api/setup/claim', async (route) => {
+    if (route.request().method() !== 'GET') return route.fallback();
+    await held;
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ claimed: false, ready: true, waitingFor: null }) });
+  });
+  await page.getByRole('button', { name: /^Continue$/ }).click();
+  const pw = page.locator('input[name="new-password"]');
+  await pw.waitFor({ timeout: 5000 });
+  assert.ok(await pw.isDisabled(), 'the form was open before the box had answered');
+  assert.ok(await page.getByRole('button', { name: /^Set the password$/ }).isDisabled(), 'the submit was enabled before the box had answered');
+  let text = await page.locator('body').innerText();
+  assert.ok(!/finish starting/i.test(text), `the waiting panel flashed before any answer:\n${text}`);
+  release();
+  await page.locator('input[name="new-password"]:not([disabled])').waitFor({ timeout: 5000 });
+  text = await page.locator('body').innerText();
+  assert.ok(!/finish starting/i.test(text), 'the waiting panel is up on a ready box');
+  await page.close();
+});
+
 await check('a 503 from the claim itself sends step 2 back to waiting', async () => {
   const { page } = await open({ claimed: false, ready: true });
   await page.route('**/api/setup/claim', async (route) => {
