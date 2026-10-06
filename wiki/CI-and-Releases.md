@@ -46,7 +46,8 @@ Setup:
    variable `NIX_CACHE_PUBLIC_KEY`.
 4. Store the proxy's HTTPS URL as repository variable `LOSOS_PROXY_URL`.
    That is the domain attached to the `losos-cache-proxy` Vercel project,
-   `https://losos-proxy.dasmat.us`, and nothing else: a hostname that merely
+   `https://proxy.losos.dasmat.us`, and nothing else (the earlier name,
+   `losos-proxy.dasmat.us`, now 307-redirects there): a hostname that merely
    resolves to Vercel answers `DEPLOYMENT_NOT_FOUND`, nix prints
    `warning: '<url>' does not appear to be a binary cache` in every job and
    builds from source, and the run stays green. `setup-nix` now checks
@@ -54,10 +55,21 @@ Setup:
 5. Make the `losos/nix-cache` package public.
 6. Keep `losos.cache.substituters` and `losos.cache.trustedPublicKeys` in
    `modules/options.nix` at the same URL and key. Their defaults are
-   `https://losos-proxy.dasmat.us` and the `losos-1` public key, so a stock
+   `https://proxy.losos.dasmat.us` and the `losos-1` public key, so a stock
    appliance and installer medium already pull from the cache;
    `tests/invariants.nix` fails if either default is dropped. Rotating the
    signing key means changing the variable and the default together.
+
+Every job reports what it actually got from the cache. `setup-nix` puts a
+`nix` shim on `PATH` that counts nix's own `copying path '…' from '<url>'`
+and `building '…'` lines per invocation and writes a **Nix binary cache
+use** table to the job's step summary (one row per nix command that copied
+or built anything: paths from the LosOS cache, from `cache.nixos.org`, from
+elsewhere, and built on the runner), plus one `LosOS cache: …` line in the
+job log right after the command. A row with the LosOS column at 0 and a
+non-zero "built here" means this project's own paths were compiled although
+an earlier run should have pushed them; a job that only evaluates adds no
+row. The shim changes neither nix's output nor its exit status.
 
 Check `<proxy-url>/nix-cache-info` and `nix copy --from <proxy-url>
 <store-path>` before relying on it. An unreachable cache is not fatal: the
