@@ -11,7 +11,10 @@ import { cn } from "@/lib/utils";
  * silently, on a box with no console anyone will ever look at. So the
  * primitives here are plain elements plus Tailwind classes, and the few that
  * need real behaviour (dialog, tabs, switch) implement it against native
- * semantics. `asChild` is not supported; wrap or restyle instead. */
+ * semantics. `asChild` is not supported; wrap or restyle instead. The one
+ * exception is Radix Toast (toast-primitives.tsx), which injects nothing and
+ * sets its swipe offset through React's style prop, a CSSOM write the
+ * policy allows. */
 
 export const buttonVariants = cva(
   cn(

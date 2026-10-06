@@ -21,6 +21,10 @@ import { toast } from "@/components/ui/toast";
 import { t, type MessageKey } from "@/lib/i18n";
 import { useLocale } from "@/lib/i18n-react";
 
+/* The one status the form raises: it names the rebuild so the outcome can
+ * dismiss it, and a second apply replaces rather than stacks it. */
+const REBUILD_STATUS = "rebuild";
+
 /* The whole settings screen is one form over one document.
  *
  * /api/apply takes the ENTIRE modules/overrides.nix body, not a patch: all
@@ -296,13 +300,15 @@ export function useSettingsForm(): SettingsForm {
       setApplyingBoth(false);
       setRebuild(null);
 
-      /* The outcome is a toast, in the language on screen at this moment: a
-       * toast is gone in seconds, so there is nothing to re-resolve on a
-       * language change, unlike the held texts below. */
+      /* The outcome is a confirmation, in the language on screen at this
+       * moment: a toast is gone in seconds, so there is nothing to re-resolve
+       * on a language change, unlike the held texts below. It settles the
+       * "applying" status, which has stayed up for the whole rebuild. */
       if (status.state === "done") {
         toast.success(
           t("settings.form.doneTitle"),
           say(statusMsg(status.message, "settings.form.doneMessage")),
+          { settles: REBUILD_STATUS },
         );
         void load().catch((error: unknown) => setLoadError(describe(error)));
         return;
@@ -312,6 +318,7 @@ export function useSettingsForm(): SettingsForm {
         toast.error(
           t("settings.form.failedTitle"),
           say(statusMsg(status.message, "settings.form.failedMessage")),
+          { settles: REBUILD_STATUS },
         );
         return;
       }
@@ -404,14 +411,18 @@ export function useSettingsForm(): SettingsForm {
       try {
         const ack = await trigger();
         jobRef.current = ack.job.length > 0 ? ack.job : null;
-        toast.info(t(starting), t("settings.form.buildingMessage"));
+        // A status, not a confirmation: it stays until the outcome settles it.
+        toast.status(t(starting), t("settings.form.buildingMessage"), {
+          id: REBUILD_STATUS,
+          duration: Infinity,
+        });
         poller.start();
       } catch (error) {
         setApplyingBoth(false);
         jobRef.current = null;
         setRebuild(null);
         if (isUnauthorized(error)) return;
-        toast.error(t("settings.form.didNotStart"), say(describe(error)));
+        toast.error(t("settings.form.didNotStart"), say(describe(error)), { settles: REBUILD_STATUS });
       }
     },
     [poller, setApplyingBoth],

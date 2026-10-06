@@ -17,6 +17,10 @@ import {
 import { toast } from "@/components/ui/toast";
 import { intlTag, t, type MessageKey } from "@/lib/i18n";
 
+/* The status a purchase raises while Stripe is open in the other tab;
+ * the "payment received" confirmation settles it (pane-market.tsx raises it). */
+export const ORDER_STATUS = "market-order";
+
 /* The market pane's data.
  *
  * The market is optional at three levels (the edge, this box's tenant entry,
@@ -74,6 +78,8 @@ function announcePaid(previous: Map<string, MarketOrder["status"]>, account: Mar
           quantity: order.quantity,
           unit: unitKey === undefined ? order.unit : t(unitKey),
         }),
+        // Settles the "order placed, finish paying" status the buy raised.
+        { settles: ORDER_STATUS },
       );
     }
   }
@@ -153,7 +159,7 @@ export function useMarket(enabled: boolean): MarketData {
     close: async (id) =>
       (await act(
         () => postMarketClose(id),
-        () => toast.info(t("panes.market.closedTitle")),
+        () => toast.done(t("panes.market.closedTitle")),
       )) !== null,
     order: (id, quantity) => act(() => postMarketOrder(id, quantity)),
   };

@@ -1,59 +1,98 @@
 import { toast as sonner } from "sonner";
+import { Toaster as StatusStack } from "./sonner";
+import { Confirmations } from "./toaster";
+import { confirm, dismissAllConfirmations } from "./use-toast";
 
-/* Status updates, in the shape of a macOS notification.
+/* Status updates and confirmations, in the shape of a macOS notification.
  *
- * Every "saved", "failed", "applying", "copied" and "paid" in the admin UI
- * and the setup wizard goes through here: one `toast()` any module can call
- * without a hook or a provider, and one <Toaster/> mounted in each shell.
- * The stack hangs off the top-right corner, a new one slides in from the
- * right and the older ones gather behind it, each dismisses itself after a
- * few seconds (an error stays longer, and any of them waits while the
- * pointer is over the stack), and each carries a close button for whoever
- * reads faster.
+ * Two kinds, two components, one corner:
  *
- * The component is shadcn's Sonner (./sonner.tsx). This file is the house
- * API over it: a title, an optional second line and an optional lifetime,
- * with the lifetime chosen per tone rather than per call site, so an error
- * never leaves as fast as a success by somebody forgetting a number.
- */
+ *   toast.status()  — something is happening or has to be waited for: the
+ *                     box is rebuilding, is not ready for the password yet,
+ *                     a payment is being finished in the other tab. Sonner
+ *                     (sonner.tsx), shadcn's component for exactly this.
+ *
+ *   toast.success() — something is done: applied, grown, copied, unlocked,
+ *   toast.error()     paid, or refused for good. shadcn's Toast (Radix,
+ *   toast.done()      toaster.tsx), which the owner reads as the result.
+ *
+ * Both hang off the top-right corner and look the same; the confirmations
+ * take the top and the status stack sits under them, never on them
+ * (corner.ts). A confirmation that answers a status names it (`settles`),
+ * and the status gives way the moment the result is there: "Applying your
+ * changes" leaves as "Changes applied" arrives.
+ *
+ * Lifetimes are chosen here per kind rather than per call site, so an error
+ * never leaves as fast as a success by somebody forgetting a number. A
+ * status may be given an `id` and `duration: Infinity` to stay until it is
+ * settled or dismissed. */
 
-export type ToastTone = "info" | "success" | "error";
-
-export interface ToastOptions {
-  /** How long the toast stays, in milliseconds. Defaults per tone. */
+export interface StatusOptions {
+  /** A stable name, so a later status replaces it and a confirmation can settle it. */
+  id?: string;
+  /** How long it stays, in milliseconds; Infinity until settled or dismissed. */
   duration?: number;
 }
 
-/* Long enough to read a sentence, short enough that a run of three does
- * not pile up. An error gets longer: it is the one the owner may need to
- * act on, and it may carry the box's own words as a second line. */
-export const TOAST_MS: Record<ToastTone, number> = {
-  info: 5000,
+export interface ConfirmOptions {
+  /** How long it stays, in milliseconds. Defaults per tone. */
+  duration?: number;
+  /** The id of the status this confirmation answers; it is dismissed first. */
+  settles?: string;
+}
+
+export type ConfirmTone = "done" | "success" | "error";
+
+/* Long enough to read a sentence, short enough that a run of three does not
+ * pile up. An error gets longer: it is the one the owner may need to act on,
+ * and it may carry the box's own words as a second line. */
+export const STATUS_MS = 5000;
+export const CONFIRM_MS: Record<ConfirmTone, number> = {
+  done: 5000,
   success: 5000,
   error: 9000,
 };
 
-function show(tone: ToastTone, title: string, description?: string, options: ToastOptions = {}) {
-  const data = {
-    duration: options.duration ?? TOAST_MS[tone],
+function status(title: string, description?: string, options: StatusOptions = {}): string | number {
+  return sonner.info(title, {
+    ...(options.id !== undefined ? { id: options.id } : {}),
+    duration: options.duration ?? STATUS_MS,
     ...(description !== undefined && description.length > 0 ? { description } : {}),
-  };
-  return sonner[tone](title, data);
+  });
 }
 
-export const toast = Object.assign(
-  (title: string, description?: string, options?: ToastOptions) =>
-    show("info", title, description, options),
-  {
-    info: (title: string, description?: string, options?: ToastOptions) =>
-      show("info", title, description, options),
-    success: (title: string, description?: string, options?: ToastOptions) =>
-      show("success", title, description, options),
-    error: (title: string, description?: string, options?: ToastOptions) =>
-      show("error", title, description, options),
-    dismiss: (id: string | number) => sonner.dismiss(id),
-    dismissAll: () => sonner.dismiss(),
-  },
-);
+function settle(tone: ConfirmTone, title: string, description?: string, options: ConfirmOptions = {}): string {
+  if (options.settles !== undefined) sonner.dismiss(options.settles);
+  return confirm({
+    tone,
+    title,
+    ...(description !== undefined && description.length > 0 ? { description } : {}),
+    duration: options.duration ?? CONFIRM_MS[tone],
+  });
+}
 
-export { Toaster } from "./sonner";
+export const toast = {
+  status,
+  done: (title: string, description?: string, options?: ConfirmOptions) =>
+    settle("done", title, description, options),
+  success: (title: string, description?: string, options?: ConfirmOptions) =>
+    settle("success", title, description, options),
+  error: (title: string, description?: string, options?: ConfirmOptions) =>
+    settle("error", title, description, options),
+  /** Dismiss a status by its id. */
+  dismiss: (id: string | number) => sonner.dismiss(id),
+  dismissAll: () => {
+    sonner.dismiss();
+    dismissAllConfirmations();
+  },
+};
+
+/** Both stacks, mounted once per shell. */
+export function Toaster() {
+  return (
+    <>
+      <Confirmations />
+      <StatusStack />
+    </>
+  );
+}

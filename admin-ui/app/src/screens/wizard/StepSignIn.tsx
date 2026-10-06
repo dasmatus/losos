@@ -83,6 +83,10 @@ import {
 import { toast } from "@/components/ui/toast";
 import { Callout, ReadoutRow, StepText } from "./parts";
 
+/* The readiness status ("not ready yet", then "ready"): one id, so the
+ * later replaces the earlier and "Password set" settles whichever is up. */
+const READINESS_STATUS = "readiness";
+
 export interface StepSignInProps {
   /** The box's own name, for the label the passkey is saved under. */
   boxName: string;
@@ -168,6 +172,7 @@ function PasswordForm({
       toast.success(
         t("wizard.signin.done.title"),
         t("wizard.signin.done.toast", { name: result.user }),
+        { settles: READINESS_STATUS },
       );
     } catch (error) {
       // Lost the race between the last poll and the submit: lososd says not
@@ -175,7 +180,7 @@ function PasswordForm({
       if (isNotReady(error)) {
         const reason = error instanceof Error ? error.message : null;
         readiness.notYet(reason);
-        toast.info(t("wizard.signin.err.notReady"), reason ?? undefined);
+        toast.status(t("wizard.signin.err.notReady"), reason ?? undefined, { id: READINESS_STATUS });
         return;
       }
       // The box's refusal is a toast: it is about the request, not about a
@@ -196,11 +201,14 @@ function PasswordForm({
   const waiting = readiness.state.kind !== "ready";
 
   /* Someone who sat through the waiting panel is told the moment it lifts,
-   * once, as a toast; someone whose box was ready all along hears nothing.
-   * `waited` is on the state so a re-render cannot raise it twice. */
+   * once, as a status (the box reporting on itself; "Password set" is the
+   * confirmation that follows); someone whose box was ready all along hears
+   * nothing. `waited` is on the state so a re-render cannot raise it twice. */
   const waited = readiness.state.kind === "ready" && readiness.state.waited;
   React.useEffect(() => {
-    if (waited) toast.success(t("wizard.signin.readyTitle"), t("wizard.signin.readyBody"));
+    if (waited) {
+      toast.status(t("wizard.signin.readyTitle"), t("wizard.signin.readyBody"), { id: READINESS_STATUS });
+    }
   }, [waited, t]);
 
   return (

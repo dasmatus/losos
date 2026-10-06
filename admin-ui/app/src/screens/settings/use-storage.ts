@@ -129,7 +129,7 @@ export function useStorage(): Storage {
    * against a mounted filesystem. Slow, and not cancellable — aborting the
    * fetch would abandon the answer, not the work.
    *
-   * The outcome is a toast. `grew` is the only field worth reporting: the
+   * The outcome is a confirmation. `grew` is the only field worth reporting: the
    * daemon measured the filesystem on both sides rather than trusting three
    * exit statuses, because a resize2fs run against an unresized mapping
    * prints "Nothing to do!" and exits 0. So a false `grew` says nothing
@@ -138,7 +138,7 @@ export function useStorage(): Storage {
     if (!result.grew) {
       // Measured, not inferred. Nothing moved, so nothing about the reading
       // changed either — and the toast says so in those words.
-      toast.info(
+      toast.done(
         t("panes.storage.nothing.title"),
         result.claimedBytes > 0
           ? t("panes.storage.nothing.claimed", { size: formatBytes(result.claimedBytes) })

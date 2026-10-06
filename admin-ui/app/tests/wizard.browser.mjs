@@ -612,7 +612,7 @@ await check('step 3 hides the frame and keeps reloading it until the files app a
   await page.frameLocator('iframe').first().locator('#go').click();
   // Twice on the page once it happens: the step's callout and the toast.
   await page.getByRole('region', { name: 'Sign in' }).getByText('You are signed in').waitFor({ timeout: 10_000 });
-  await page.locator('[data-sonner-toast]').getByText('You are signed in').waitFor();
+  await page.locator('[data-toast]').getByText('You are signed in').waitFor();
   assert.ok(!(await page.getByRole('button', { name: /^Finish/ }).isDisabled()), 'Finish still disabled after signing in');
   await page.close();
 });

@@ -82,6 +82,7 @@ export default defineMessages({
   "ui.working": { en: "Working", sk: "Pracujeme", de: "Wird ausgeführt" },
   "ui.dismiss": { en: "Dismiss", sk: "Zavrieť", de: "Schließen" },
   "ui.notifications": { en: "Notifications", sk: "Upozornenia", de: "Benachrichtigungen" },
+  "ui.confirmations": { en: "Confirmations", sk: "Potvrdenia", de: "Bestätigungen" },
   "ui.theme.label": { en: "Appearance", sk: "Vzhľad", de: "Erscheinungsbild" },
   "ui.theme.auto": { en: "Match the browser", sk: "Podľa prehliadača", de: "Wie im Browser" },
   "ui.theme.light": { en: "Light", sk: "Svetlý", de: "Hell" },
