@@ -121,6 +121,16 @@ export interface SetupCertificate {
   fingerprintDisplay: string;
   /** ISO 8601 in UTC. The certificate is minted for two years. */
   expires: string;
+  /** The one-line installers modules/setup.nix renders from the certificate:
+   *  a POSIX sh script for macOS and Linux, a PowerShell one for Windows.
+   *  Null on a box whose software predates them; step 1 then offers the
+   *  download only. */
+  install: SetupInstallers | null;
+}
+
+export interface SetupInstallers {
+  sh: string;
+  ps1: string;
 }
 
 export interface SetupState {
@@ -172,7 +182,17 @@ function parseCertificate(value: unknown): SetupCertificate | null {
     fingerprintDisplay:
       typeof raw["fingerprintDisplay"] === "string" ? raw["fingerprintDisplay"] : fingerprint,
     expires: typeof raw["expires"] === "string" ? raw["expires"] : "",
+    install: parseInstallers(raw["install"]),
   };
+}
+
+function parseInstallers(value: unknown): SetupInstallers | null {
+  if (typeof value !== "object" || value === null) return null;
+  const raw = value as Record<string, unknown>;
+  const sh = raw["sh"];
+  const ps1 = raw["ps1"];
+  if (typeof sh !== "string" || typeof ps1 !== "string") return null;
+  return { sh, ps1 };
 }
 
 // ── POST /api/set-password ────────────────────────────────────────────────

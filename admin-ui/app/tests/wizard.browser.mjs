@@ -73,8 +73,15 @@ async function open({ claimed, tls = false, path = '/', ready = true, waitingFor
         hostName: 'mattbox',
         fqdn: 'mattbox.local',
         tls,
+        /* The shape modules/setup.nix writes, installers included. */
         certificate: tls
-          ? { sha256: 'AA:BB', notAfter: '2028-01-01T00:00:00Z', url: '/setup/losos.crt' }
+          ? {
+              url: '/setup/losos-ca.crt',
+              fingerprint: 'sha256:' + 'ab'.repeat(32),
+              fingerprintDisplay: 'AB:'.repeat(31) + 'AB',
+              expires: '2028-01-01T00:00:00Z',
+              install: { sh: '/setup/trust.sh', ps1: '/setup/trust.ps1' },
+            }
           : null,
       }),
     }),
@@ -110,6 +117,64 @@ await check('a box that already has an owner asks to sign in, not to set up', as
     !/Trust this box/i.test(text),
     'showing setup to a returning owner reads as "this box has been wiped"',
   );
+  await page.close();
+});
+
+/* The one-line installer: the line names this box at the address the page is
+ * on, on plain http, and fetches the script for the platform chosen. The
+ * origin here is http://127.0.0.1:<port>, so the port has to ride along —
+ * that is the VM port-forward case — and the Windows switch has to change
+ * both the fetch command and the script. */
+await check('step 1 offers a one-line install command for the address this page is on', async () => {
+  const { page, errors } = await open({ claimed: false, tls: true });
+  const line = page.getByTestId('trust-command-line');
+  const text = (await line.innerText()).trim();
+  assert.strictEqual(
+    text,
+    `curl -fsSL ${origin}/setup/trust.sh | sh`,
+    `unexpected command; page errors: ${JSON.stringify(errors)}`,
+  );
+  const body = await page.locator('body').innerText();
+  assert.ok(/Read the script first/i.test(body), 'the script must be offered to read before running');
+  assert.ok(/Or by hand/i.test(body), 'the download stays as the manual route');
+  const readLink = page.getByRole('link', { name: /Read the script first/i });
+  assert.strictEqual(await readLink.getAttribute('href'), `${origin}/setup/trust.sh`);
+
+  await page.getByRole('button', { name: 'Windows' }).click();
+  assert.strictEqual(
+    (await line.innerText()).trim(),
+    `irm ${origin}/setup/trust.ps1 | iex`,
+    'the Windows choice must switch both the fetcher and the script',
+  );
+  assert.strictEqual(await readLink.getAttribute('href'), `${origin}/setup/trust.ps1`);
+  await page.close();
+});
+
+await check('a box without the installers offers the download only', async () => {
+  const { page } = await open({ claimed: false, tls: true });
+  // Re-stub with no `install` field, as a box on older software answers.
+  await page.route('**/setup/state.json', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        hostName: 'mattbox',
+        fqdn: 'mattbox.local',
+        tls: true,
+        certificate: {
+          url: '/setup/losos-ca.crt',
+          fingerprint: 'sha256:' + 'ab'.repeat(32),
+          fingerprintDisplay: 'AB:'.repeat(31) + 'AB',
+          expires: '2028-01-01T00:00:00Z',
+        },
+      }),
+    }),
+  );
+  await page.reload({ waitUntil: 'networkidle' });
+  assert.strictEqual(await page.getByTestId('trust-command').count(), 0);
+  const body = await page.locator('body').innerText();
+  assert.ok(/Get the certificate/i.test(body), 'the download must still be there');
+  assert.ok(!/Or by hand/i.test(body), '"by hand" makes no sense when there is no other way');
   await page.close();
 });
 

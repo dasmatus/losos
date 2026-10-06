@@ -62,6 +62,21 @@ network. The `.local` name works too wherever the computer resolves mDNS names
 VirtualBox NAT guest usually does not, so use the address there). Both reach
 the same pages. The banner updates when the address changes.
 
+The first page is the setup wizard. Its first step is trusting the box's
+own certificate, so that the rest of the setup, and every later sign-in,
+travels over HTTPS and your browser can offer a passkey. The step shows one
+line to paste into a terminal, picked for the computer you are on: on macOS
+and Linux `curl -fsSL http://<address>/setup/trust.sh | sh`, on Windows
+`irm http://<address>/setup/trust.ps1 | iex`. The script is served by the box
+itself as plain text (open the link in a tab to read it first), adds the one
+certificate to the stores your browsers read for your user only (the login
+keychain on macOS, the user's Trusted Root store on Windows, the NSS stores
+Chrome and Firefox use on Linux), installs nothing else, never asks for
+administrator rights, and prints the certificate's SHA-256 fingerprint so you
+can compare it with the one on the page. Phones get the plain download
+instead. The manual route stays below it: download `losos-ca.crt` and add it
+as a trusted authority yourself.
+
 If reading a screen and typing an address is the scary part, open
 [losos-edge.dasmat.us/find](https://losos-edge.dasmat.us/find) in Chrome
 instead and press **Find my box**. Chrome asks once whether the page may look
