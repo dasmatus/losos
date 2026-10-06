@@ -28,7 +28,7 @@ pkgs.buildNpmPackage {
   # unpacked store copy, whose name is the path's basename ("design-system").
   src = ../admin-ui/design-system;
   sourceRoot = "design-system/react";
-  npmDepsHash = "sha256-KVY1Pv06RX6Ko56eL3woJHPeNeXmJFHvXJoqIFsmfas=";
+  npmDepsHash = "sha256-5XptamL+AGHavCiB7RrQpcwG2He6CrvV2uaZXPT1DoM=";
 
   # No postinstall scripts: esbuild's binary rides in via its platform
   # package, and playwright must not try to download browsers (no network).
