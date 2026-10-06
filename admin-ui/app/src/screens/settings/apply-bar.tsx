@@ -1,5 +1,3 @@
-import { HugeiconsIcon } from "@hugeicons/react";
-import { Alert02Icon, CheckmarkCircle02Icon } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/ui/button";
 import { Progress, Spinner } from "@/components/ui/progress";
 import { LogView } from "@/components/ui/scroll-area";
@@ -14,6 +12,8 @@ import type { SettingsForm } from "./use-settings-form";
  * restarts itself halfway through, and the outcome arrives minutes later — so
  * the screen cannot pretend a toggle took effect when it was flipped. It
  * stays pending until Apply, and then the bar becomes the progress report.
+ * The outcome, done or failed, is a toast from use-settings-form, and the bar
+ * leaves with it.
  *
  * It is sticky at the bottom of the pane column rather than fixed to the
  * viewport: fixed would cover the last row of whichever pane is open, and the
@@ -28,39 +28,14 @@ export function ApplyBar({ form }: { form: SettingsForm }) {
     return (
       <div className={cn(BAR, "animate-rise flex-col items-stretch gap-2.5")}>
         <div className="flex items-center gap-2.5">
-          {rebuild.phase === "building" && <Spinner className="text-accent" label={t("settings.applyBar.spinner")} />}
-          {rebuild.phase === "done" && (
-            <HugeiconsIcon
-              icon={CheckmarkCircle02Icon}
-              size={19}
-              strokeWidth={1.5}
-              color="currentColor"
-              className="text-ok"
-              aria-hidden="true"
-            />
-          )}
-          {rebuild.phase === "failed" && (
-            <HugeiconsIcon
-              icon={Alert02Icon}
-              size={19}
-              strokeWidth={1.5}
-              color="currentColor"
-              className="text-crit"
-              aria-hidden="true"
-            />
-          )}
+          <Spinner className="text-accent" label={t("settings.applyBar.spinner")} />
           <p className="flex-1 text-[13.5px] font-medium">{rebuild.title}</p>
-          {rebuild.phase !== "building" && (
-            <Button variant="ghost" size="sm" onClick={form.dismissRebuild}>
-              {t("settings.applyBar.dismiss")}
-            </Button>
-          )}
         </div>
 
         {/* lososd reports 0 for the whole of a rebuild and 100 only at the
             end, so a determinate bar would sit at zero for minutes and read
             as stuck. The indeterminate band is the honest one. */}
-        {rebuild.phase === "building" && <Progress label={t("settings.form.applyingYours")} />}
+        <Progress label={t("settings.form.applyingYours")} />
 
         {rebuild.message.length > 0 && <LogView>{rebuild.message}</LogView>}
       </div>

@@ -26,7 +26,7 @@ import { Label, LabelHint } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/progress";
 import { LanguagePicker } from "@/components/ui/language-picker";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
-import { Toaster } from "@/components/ui/toast";
+import { toast, Toaster } from "@/components/ui/toast";
 import {
   dropToken,
   getClaimState,
@@ -185,6 +185,9 @@ function Shell() {
         }
       >
         <Wizard onDone={() => setSetupDone(true)} />
+        {/* The wizard has its own shell, so it gets its own stack: step 2's
+            "ready" and "password set" and step 1's "copied" land here. */}
+        <Toaster />
       </React.Suspense>
     );
   }
@@ -410,8 +413,10 @@ function SignInDialog({ open }: { open: boolean }) {
     try {
       const accepted =
         mode === "key" ? await signIn(candidate) : await signInWithPassword(candidate);
-      if (accepted) setValue("");
-      else setProblem(t(mode === "key" ? "shell.signIn.rejected" : "shell.signIn.wrongPassword"));
+      if (accepted) {
+        setValue("");
+        toast.success(t("shell.signIn.unlocked"), t("shell.signIn.unlockedBody"));
+      } else setProblem(t(mode === "key" ? "shell.signIn.rejected" : "shell.signIn.wrongPassword"));
     } catch (error) {
       // LosOS cloud is what checks the password, and it could not be asked.
       // Say so, and point at the spare key rather than at a retry.

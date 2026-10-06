@@ -25,7 +25,6 @@ import * as React from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
   Alert02Icon,
-  CheckmarkCircle02Icon,
   Copy01Icon,
   InformationCircleIcon,
   Key01Icon,
@@ -38,6 +37,7 @@ import { intlTag, t } from "@/lib/i18n";
 import { useT } from "@/lib/i18n-react";
 import { getRecovery, isMissingRoute } from "./api";
 import { copyText } from "./copy";
+import { toast } from "@/components/ui/toast";
 import { Callout, StepText } from "./parts";
 
 export interface StepRecoveryProps {
@@ -70,7 +70,6 @@ export function StepRecovery({
   const t = useT();
   const [query, setQuery] = React.useState<CodeQuery>({ kind: "loading" });
   const [attempt, setAttempt] = React.useState(0);
-  const [copyFailed, setCopyFailed] = React.useState(false);
   const codeRef = React.useRef<HTMLElement>(null);
 
   React.useEffect(() => {
@@ -104,10 +103,10 @@ export function StepRecovery({
   const copy = async (): Promise<void> => {
     if (query.kind !== "ready") return;
     if (await copyText(query.code, codeRef.current)) {
-      setCopyFailed(false);
+      toast.success(t("wizard.recovery.savedTitle"), t("wizard.recovery.saved"));
       onSaved();
     } else {
-      setCopyFailed(true);
+      toast.error(t("wizard.recovery.copyFailed.title"), t("wizard.recovery.copyFailed.body"));
     }
   };
 
@@ -172,28 +171,7 @@ export function StepRecovery({
               />
               {t("wizard.recovery.print")}
             </Button>
-            {saved && (
-              <span
-                role="status"
-                className="inline-flex items-center gap-1.5 text-[13px] text-ok"
-              >
-                <HugeiconsIcon
-                  icon={CheckmarkCircle02Icon}
-                  size={18}
-                  strokeWidth={1.5}
-                  color="currentColor"
-                  aria-hidden="true"
-                />
-                {t("wizard.recovery.saved")}
-              </span>
-            )}
           </div>
-
-          {copyFailed && (
-            <Callout tone="warn" icon={Alert02Icon} title={t("wizard.recovery.copyFailed.title")}>
-              <p className="mt-1">{t("wizard.recovery.copyFailed.body")}</p>
-            </Callout>
-          )}
 
           {/* Present in the document at all times, shown only on paper: the
               print rules in ./wizard.css hide everything else on the page and

@@ -81,6 +81,7 @@ export default defineMessages({
 
   "ui.working": { en: "Working", sk: "Pracujeme", de: "Wird ausgeführt" },
   "ui.dismiss": { en: "Dismiss", sk: "Zavrieť", de: "Schließen" },
+  "ui.notifications": { en: "Notifications", sk: "Upozornenia", de: "Benachrichtigungen" },
   "ui.theme.label": { en: "Appearance", sk: "Vzhľad", de: "Erscheinungsbild" },
   "ui.theme.auto": { en: "Match the browser", sk: "Podľa prehliadača", de: "Wie im Browser" },
   "ui.theme.light": { en: "Light", sk: "Svetlý", de: "Hell" },
@@ -90,5 +91,13 @@ export default defineMessages({
     en: "Browser language",
     sk: "Jazyk prehliadača",
     de: "Browsersprache",
+  },
+
+  // ── Toasts the shell raises ───────────────────────────────────────────────
+  "shell.signIn.unlocked": { en: "Unlocked", sk: "Odomknuté", de: "Entsperrt" },
+  "shell.signIn.unlockedBody": {
+    en: "The admin pages are open in this tab until you close it.",
+    sk: "Správcovské stránky sú v tejto karte otvorené, kým ju nezavriete.",
+    de: "Die Admin-Seiten sind in diesem Tab geöffnet, bis du ihn schließt.",
   },
 });
