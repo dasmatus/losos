@@ -46,10 +46,14 @@ Setup:
    variable `NIX_CACHE_PUBLIC_KEY`.
 4. Store the proxy's HTTPS URL as repository variable `LOSOS_PROXY_URL`.
 5. Make the `losos/nix-cache` package public.
-6. Before building the installer, set `losos.cache.substituters` and
-   `losos.cache.trustedPublicKeys` to the same URL and key.
+6. Keep `losos.cache.substituters` and `losos.cache.trustedPublicKeys` in
+   `modules/options.nix` at the same URL and key. Their defaults are
+   `https://losos-proxy.dasmat.us` and the `losos-1` public key, so a stock
+   appliance and installer medium already pull from the cache;
+   `tests/invariants.nix` fails if either default is dropped. Rotating the
+   signing key means changing the variable and the default together.
 
 Check `<proxy-url>/nix-cache-info` and `nix copy --from <proxy-url>
-<store-path>` before relying on it. Until configured, only
-`cache.nixos.org` is used. Never put the secret key in the flake or on an
-appliance.
+<store-path>` before relying on it. An unreachable cache is not fatal: the
+appliance waits 5 s and falls back to `cache.nixos.org` and building. Never
+put the secret key in the flake or on an appliance.
