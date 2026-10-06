@@ -66,7 +66,7 @@ runs:
           case "$info" in
             *StoreDir:*) echo "LosOS cache answers at $CACHE_URL" ;;
             *)
-              msg="LOSOS_PROXY_URL ($CACHE_URL) did not answer /nix-cache-info with a StoreDir line, so every job in this run builds this project's own paths from source. Point the variable at the host the losos-cache-proxy Vercel project serves (https://losos-proxy.dasmat.us), or unset both cache variables."
+              msg="LOSOS_PROXY_URL ($CACHE_URL) did not answer /nix-cache-info with a StoreDir line, so every job in this run builds this project's own paths from source. Point the variable at the host the losos-cache-proxy Vercel project serves (https://proxy.losos.dasmat.us), or unset both cache variables."
               echo "::warning title=LosOS binary cache not answering::$msg"
               printf '> **LosOS binary cache not answering.** %s\n' "$msg" >> "$GITHUB_STEP_SUMMARY"
               ;;
@@ -92,6 +92,76 @@ runs:
           extra-trusted-public-keys = ${{ inputs.public-key }}
           connect-timeout = 5
           fallback = true
+    # Answer "was the cache used, and for how much?" per nix invocation.
+    # Nix prints `copying path '…' from '<substituter>'…` and
+    # `building '…drv'…` once per path on a non-tty stderr, and nothing else
+    # in a job says which substituter served what. A `nix` shim ahead of the
+    # real binary on PATH tees stderr through a file, counts those lines per
+    # substituter when the command exits, and writes one line to the job log
+    # and one table row to the step summary. The row with the LosOS column at
+    # 0 and "built here" above 0 is the one to look for: this project's own
+    # paths were compiled although an earlier run should have pushed them.
+    # Nothing here changes nix's behaviour or exit status, and a job that
+    # copies and builds nothing (eval only) adds no row.
+    - name: install the nix cache-use shim
+      shell: bash
+      env:
+        CACHE_URL: ${{ inputs.cache-url }}
+      run: |
+        real="$(command -v nix)"
+        dir="$RUNNER_TEMP/losos-nix-shim"
+        mkdir -p "$dir"
+        {
+          printf '#!/usr/bin/env bash\n'
+          printf 'REAL=%q\n' "$real"
+          printf 'LOSOS_CACHE=%q\n' "$CACHE_URL"
+          printf 'SHIM_DIR=%q\n' "$dir"
+          cat <<'SHIM'
+        # Run the real nix with stderr teed through a file; report what came from
+        # where once it exits. Stdout is untouched (fd 3 keeps it) so `nix eval
+        # --raw` and `nix path-info` callers see exactly what they would without the
+        # shim, and the exit status is nix's own.
+        set -o pipefail
+        log="$(mktemp "$SHIM_DIR/stderr.XXXXXX")"
+        { "$REAL" "$@" 2>&1 1>&3 | tee -a "$log" >&2; } 3>&1
+        status=${PIPESTATUS[0]}
+        count() { grep -c -F -- "$1" "$log" 2>/dev/null || true; }
+        nixos=$(count "' from 'https://cache.nixos.org'")
+        built=$(grep -c -E "^building '/nix/store/" "$log" 2>/dev/null || true)
+        fetched=$(grep -c -E "^copying path '/nix/store/[^']*' from '" "$log" 2>/dev/null || true)
+        if [ -n "$LOSOS_CACHE" ]; then
+          losos=$(count "' from '$LOSOS_CACHE'")
+          other=$(( fetched - nixos - losos ))
+        else
+          losos="n/a"
+          other=$(( fetched - nixos ))
+        fi
+        rm -f "$log"
+        if [ "$fetched" -gt 0 ] || [ "$built" -gt 0 ]; then
+          # First line only, trimmed: `nix develop -c bash -c '<script>'` callers
+          # would otherwise put a whole script into one table cell.
+          cmd="nix $*"
+          cmd="${cmd%%$'\n'*}"
+          [ "${#cmd}" -gt 90 ] && cmd="${cmd:0:87}..."
+          echo "LosOS cache: $losos path(s) from ${LOSOS_CACHE:-(no cache configured)}, $nixos from cache.nixos.org, $other elsewhere, $built built here [$cmd]" >&2
+          if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+            if [ ! -e "$SHIM_DIR/.summary-header" ]; then
+              {
+                printf '### Nix binary cache use\n\n'
+                printf '| nix command | from LosOS cache (%s) | from cache.nixos.org | elsewhere | built here |\n' "${LOSOS_CACHE:-not configured}"
+                printf '|---|---:|---:|---:|---:|\n'
+              } >> "$GITHUB_STEP_SUMMARY"
+              : > "$SHIM_DIR/.summary-header"
+            fi
+            printf '| `%s` | %s | %s | %s | %s |\n' "${cmd//|/\\|}" "$losos" "$nixos" "$other" "$built" >> "$GITHUB_STEP_SUMMARY"
+          fi
+        fi
+        exit "$status"
+        SHIM
+        } > "$dir/nix"
+        chmod +x "$dir/nix"
+        echo "$dir" >> "$GITHUB_PATH"
+        echo "nix shim at $dir/nix wraps $real"
     # Proof the substituter was actually taken, rather than merely written
     # down. Nix does not fail when it declines one — it warns and builds from
     # source — so "the cache is configured" and "the cache is in use" are

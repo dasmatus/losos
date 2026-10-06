@@ -158,11 +158,11 @@ in
       # of the GHCR-hosted cache CI pushes to. CI reads the same URL from the
       # `LOSOS_PROXY_URL` repository variable; the two must name one host or
       # the appliance substitutes from a cache nothing fills.
-      default = [ "https://losos-proxy.dasmat.us" ];
+      default = [ "https://proxy.losos.dasmat.us" ];
       description = ''
         Extra Nix substituters, added to the appliance *and* to the installer
         medium. The default is the LosOS cache proxy's public URL
-        (`https://losos-proxy.dasmat.us`); `trustedPublicKeys` carries its
+        (`https://proxy.losos.dasmat.us`); `trustedPublicKeys` carries its
         signing key. Set it to `[ ]` to use cache.nixos.org alone.
 
         This exists because of one number. `losos.nextcloud.mode` defaults to
@@ -331,7 +331,7 @@ in
     proxy.registrarUrl = lib.mkOption {
       type = lib.types.str;
       # The demo edge (edge-vercel/, the registrar as a Vercel Function at the
-      # owner's domain). Not losos-proxy.dasmat.us: that name is the Nix binary
+      # owner's domain). Not proxy.losos.dasmat.us: that name is the Nix binary
       # cache proxy (`losos.cache.substituters`), decided 2026-10-05. A
       # self-hosted edge is register.<losos.edge.publicDomain>, e.g.
       # https://register.losos.cfd; set this to that when one exists.
