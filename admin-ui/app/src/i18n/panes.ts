@@ -21,6 +21,16 @@ export default defineMessages({
     sk: "Adresa",
     de: "Erreichbar unter",
   },
+  "panes.about.byName": {
+    en: "By name",
+    sk: "Podľa názvu",
+    de: "Über den Namen",
+  },
+  "panes.about.addressCaption": {
+    en: "The name {name} is found over the local network (mDNS). Where a computer cannot find it, such as the host of a virtual machine, the numeric address on the box's screen works instead, and the box answers to it the same way.",
+    sk: "Názov {name} sa hľadá cez lokálnu sieť (mDNS). Ak ho počítač nenájde, napríklad hostiteľ virtuálneho stroja, funguje číselná adresa z obrazovky zariadenia a zariadenie na ňu odpovedá rovnako.",
+    de: "Der Name {name} wird über das lokale Netz gefunden (mDNS). Findet ein Computer ihn nicht, etwa der Host einer virtuellen Maschine, geht die Zahlenadresse vom Bildschirm der Box; die Box antwortet darauf genauso.",
+  },
   "panes.about.storage": {
     en: "Storage",
     sk: "Úložisko",
@@ -326,9 +336,9 @@ export default defineMessages({
     de: "Im Heimnetz erreichbar unter",
   },
   "panes.network.nameCaption": {
-    en: "Letters, digits and hyphens, starting and ending with a letter or a digit, up to 63 characters. Everything about this box hangs off the name: change it and the address you use to reach it changes with it, along with the addresses the apps hand out. There is no other way into this box, so a name it cannot answer to is a box you cannot reach.",
-    sk: "Písmená, číslice a pomlčky, na začiatku aj na konci písmeno alebo číslica, najviac 63 znakov. Všetko na tomto zariadení visí na názve: keď ho zmeníte, zmení sa aj adresa, na ktorej ho nájdete, a s ňou aj adresy, ktoré rozdávajú aplikácie. Do zariadenia sa nedá dostať inak, takže názov, na ktorý nevie odpovedať, znamená zariadenie, na ktoré sa nedostanete.",
-    de: "Buchstaben, Ziffern und Bindestriche, am Anfang und Ende ein Buchstabe oder eine Ziffer, höchstens 63 Zeichen. An dem Namen hängt alles auf dieser Box: Änderst du ihn, ändert sich die Adresse, unter der du sie erreichst, und mit ihr die Adressen, die die Apps herausgeben. Es gibt keinen anderen Weg in diese Box, also ist ein Name, auf den sie nicht hören kann, eine Box, die du nicht erreichst.",
+    en: "Letters, digits and hyphens, starting and ending with a letter or a digit, up to 63 characters. Everything about this box hangs off the name: change it and the address you use to reach it changes with it, along with the addresses the apps hand out. There is no other way into this box, so a name it cannot answer to is a box you cannot reach. The name is found over the local network (mDNS); a computer that cannot find it reaches the box by the numeric address on its screen, which a rename does not change.",
+    sk: "Písmená, číslice a pomlčky, na začiatku aj na konci písmeno alebo číslica, najviac 63 znakov. Všetko na tomto zariadení visí na názve: keď ho zmeníte, zmení sa aj adresa, na ktorej ho nájdete, a s ňou aj adresy, ktoré rozdávajú aplikácie. Do zariadenia sa nedá dostať inak, takže názov, na ktorý nevie odpovedať, znamená zariadenie, na ktoré sa nedostanete. Názov sa hľadá cez lokálnu sieť (mDNS); počítač, ktorý ho nenájde, sa na zariadenie dostane cez číselnú adresu z jeho obrazovky, ktorú premenovanie nemení.",
+    de: "Buchstaben, Ziffern und Bindestriche, am Anfang und Ende ein Buchstabe oder eine Ziffer, höchstens 63 Zeichen. An dem Namen hängt alles auf dieser Box: Änderst du ihn, ändert sich die Adresse, unter der du sie erreichst, und mit ihr die Adressen, die die Apps herausgeben. Es gibt keinen anderen Weg in diese Box, also ist ein Name, auf den sie nicht hören kann, eine Box, die du nicht erreichst. Der Name wird über das lokale Netz gefunden (mDNS); ein Computer, der ihn nicht findet, erreicht die Box über die Zahlenadresse auf ihrem Bildschirm, die eine Umbenennung nicht ändert.",
   },
   "panes.network.reaching": {
     en: "Reaching it",
