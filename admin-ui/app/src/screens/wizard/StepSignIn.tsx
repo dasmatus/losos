@@ -42,6 +42,7 @@ import {
   InformationCircleIcon,
   Loading03Icon,
   LockPasswordIcon,
+  PrinterIcon,
   SecurityLockIcon,
   UserCircleIcon,
   ViewIcon,
@@ -63,7 +64,7 @@ import {
   saveToken,
   type ClaimResponse,
 } from "@/lib/api";
-import { t } from "@/lib/i18n";
+import { intlTag, t } from "@/lib/i18n";
 import { Rich, useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
 import {
@@ -106,7 +107,7 @@ export function StepSignIn({
 
       <PasswordForm account={account} onPasswordSet={onPasswordSet} />
 
-      {adminKey !== null && <AdminKey value={adminKey} />}
+      {adminKey !== null && <AdminKey value={adminKey} boxName={boxName} />}
 
       <Separator />
 
@@ -579,9 +580,10 @@ function WaitingPanel({ state }: { state: ReadinessState }) {
  * LosOS cloud that checks it — so while LosOS cloud is not running the
  * password cannot be checked, and this key is the way in. lososd mints it
  * into a 0600 file on a box with no shell and releases it exactly once, in
- * the claim reply, which is why it is shown here and printed on the recovery
- * sheet in the next step, and nowhere else. */
-function AdminKey({ value }: { value: string }) {
+ * the claim reply, which is why it is shown here, copyable and printable,
+ * and nowhere else. (It used to print on the recovery-code step's sheet;
+ * that step is hidden, see ./steps.ts, so the sheet lives here now.) */
+function AdminKey({ value, boxName }: { value: string; boxName: string }) {
   const t = useT();
   const [copied, setCopied] = React.useState<boolean | null>(null);
   const keyRef = React.useRef<HTMLElement>(null);
@@ -589,6 +591,9 @@ function AdminKey({ value }: { value: string }) {
   const copy = async (): Promise<void> => {
     setCopied(await copyText(value, keyRef.current));
   };
+
+  // Prints the document; the rules in ./wizard.css narrow that to the sheet.
+  const print = (): void => window.print();
 
   return (
     <Callout tone="info" icon={Key01Icon} title={t("wizard.signin.key.title")}>
@@ -617,6 +622,16 @@ function AdminKey({ value }: { value: string }) {
           />
           {t("wizard.signin.key.copy")}
         </Button>
+        <Button variant="secondary" size="sm" onClick={print}>
+          <HugeiconsIcon
+            icon={PrinterIcon}
+            size={16}
+            strokeWidth={1.5}
+            color="currentColor"
+            aria-hidden="true"
+          />
+          {t("wizard.signin.key.print")}
+        </Button>
         {copied === true && (
           <span
             role="status"
@@ -638,7 +653,44 @@ function AdminKey({ value }: { value: string }) {
           </span>
         )}
       </div>
+      {/* Present in the document at all times, shown only on paper: the
+          print rules in ./wizard.css hide everything else on the page and
+          force this subtree to black on white. */}
+      <KeySheet boxName={boxName} value={value} />
     </Callout>
+  );
+}
+
+/* What comes out of the printer: the key, what it is for, and the date, in
+ * the interface language, so the sheet still makes sense in a drawer in two
+ * years with no wizard around it. */
+function KeySheet({ boxName, value }: { boxName: string; value: string }) {
+  const t = useT();
+  return (
+    <section className="wizard-print-sheet hidden print:block">
+      <h1 className="text-lg font-semibold">
+        {t("wizard.signin.key.sheetTitle", { name: boxName })}
+      </h1>
+      <p className="mt-1 text-sm">
+        {t("wizard.signin.key.sheetPrinted", {
+          date: new Date().toLocaleDateString(intlTag(), { dateStyle: "long" }),
+        })}
+      </p>
+      <p className="numeric mt-6 text-xl break-all">{value}</p>
+      <p className="mt-6 max-w-prose text-sm leading-relaxed">
+        {t("wizard.signin.key.sheetBody")}
+      </p>
+      <p className="mt-4 flex items-center gap-2 text-sm">
+        <HugeiconsIcon
+          icon={Key01Icon}
+          size={16}
+          strokeWidth={1.5}
+          color="currentColor"
+          aria-hidden="true"
+        />
+        {t("wizard.signin.key.sheetKey")}
+      </p>
+    </section>
   );
 }
 

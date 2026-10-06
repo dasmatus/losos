@@ -153,10 +153,10 @@ function Shell() {
    *
    * Without it the wizard tears itself down halfway. Step 2 claims the box,
    * which flips `claimed` AND stores the admin token, so the gate would
-   * immediately read "open" and swap the wizard for the app — skipping step 3,
-   * the recovery code, which is the one thing in this whole product that has to
-   * leave the box. The owner would never see it, and would not know they had
-   * not seen it.
+   * immediately read "open" and swap the wizard for the app — before the owner
+   * has copied the spare admin key step 2 shows exactly once, and skipping the
+   * sign-in check. The owner would never see the key, and would not know they
+   * had not seen it.
    *
    * So the gate decides whether setup STARTS; only the wizard decides when it
    * is over. There is no route that reaches around this: every path renders the

@@ -66,9 +66,9 @@ export default defineMessages({
     de: "Stattdessen das Passwort verwenden",
   },
   "shell.signIn.hint": {
-    en: "Paste the spare admin key. It was shown once, during setup, and is on the printed recovery sheet.",
-    sk: "Vložte náhradný správcovský kľúč. Zobrazil sa raz, počas nastavenia, a je na vytlačenom hárku na obnovenie.",
-    de: "Füge den Ersatz-Admin-Schlüssel ein. Er wurde einmal gezeigt, bei der Einrichtung, und steht auf dem gedruckten Wiederherstellungsblatt.",
+    en: "Paste the spare admin key. It was shown once, during setup, and is on the sheet if you printed it.",
+    sk: "Vložte náhradný správcovský kľúč. Zobrazil sa raz, počas nastavenia, a je na hárku, ak ste si ho vytlačili.",
+    de: "Füge den Ersatz-Admin-Schlüssel ein. Er wurde einmal gezeigt, bei der Einrichtung, und steht auf dem Blatt, falls du es gedruckt hast.",
   },
   "shell.signIn.label": { en: "Spare admin key", sk: "Náhradný správcovský kľúč", de: "Ersatz-Admin-Schlüssel" },
   "shell.signIn.remembered": {
