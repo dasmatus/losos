@@ -57,8 +57,8 @@ cannot cover: LosOS cloud not running, which is what checks the password. The
 unlock dialog has a link to enter it instead.
 
 A new password has to be at least 12 characters with a lower-case letter, an
-upper-case letter and a digit; the wizard shows the three rules with a tick
-each as you type. A password set before this rule existed still signs in.
+upper-case letter, a digit and a symbol such as `-` or `!`; the wizard shows
+the four rules with a tick each as you type. A password set before this rule existed still signs in.
 
 There is no way to rotate the token from the box: it has no shell. Losing the
 password *and* the spare key means reinstalling from the install medium,

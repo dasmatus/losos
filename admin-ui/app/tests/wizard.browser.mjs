@@ -173,7 +173,7 @@ for (const path of ['/settings', '/settings/reset', '/storage', '/mesh', '/apps'
 /* Walk step 2 for real: Continue past the certificate, type a password twice,
  * submit. Returns the page, every request the page sent, and the body text
  * after lososd (stubbed) has answered. */
-async function claimThroughStepTwo(password = 'Correct horse battery staple 1') {
+async function claimThroughStepTwo(password = 'Correct-horse battery staple 1') {
   const { page, errors } = await open({ claimed: false });
   const requests = [];
   page.on('request', (req) => requests.push({ method: req.method(), url: new URL(req.url()).pathname }));
@@ -220,24 +220,27 @@ await check('step 2 shows the spare admin key from the claim, since nothing else
   await page.close();
 });
 
-/* The three rules are on screen before a character is typed and tick off
+/* The four rules are on screen before a character is typed and tick off
  * as they are met, so a refusal never names a rule the owner has not seen.
- * One password now opens the admin pages too, which is why there are three
- * rules and not one; three is also why they fit on screen. */
-await check('step 2 shows the three password rules up front and ticks them as they are met', async () => {
+ * One password now opens the admin pages too, which is why there are four
+ * rules and not one; four is also why they still fit on screen. */
+await check('step 2 shows the four password rules up front and ticks them as they are met', async () => {
   const { page } = await open({ claimed: false });
   await page.getByRole('button', { name: /^Continue$/ }).click();
   const rules = page.locator('[data-testid="password-rules"] li');
-  assert.strictEqual(await rules.count(), 3, 'expected exactly three rules');
+  assert.strictEqual(await rules.count(), 4, 'expected exactly four rules');
   const met = async () => rules.evaluateAll((items) => items.map((li) => li.dataset.met));
-  assert.deepStrictEqual(await met(), ['false', 'false', 'false'], 'rules ticked before anything was typed');
+  assert.deepStrictEqual(await met(), ['false', 'false', 'false', 'false'], 'rules ticked before anything was typed');
   const field = page.locator('input[name="new-password"]');
   await field.fill('correct horse battery staple');
-  assert.deepStrictEqual(await met(), ['true', 'false', 'false'], 'only the length should be met');
+  assert.deepStrictEqual(await met(), ['true', 'false', 'false', 'false'], 'only the length should be met');
   await field.fill('Correct horse battery staple');
-  assert.deepStrictEqual(await met(), ['true', 'true', 'false'], 'length and cases should be met');
+  assert.deepStrictEqual(await met(), ['true', 'true', 'false', 'false'], 'length and cases should be met');
+  // A space is not a symbol: the fourth rule stays open until a real one.
   await field.fill('Correct horse battery staple 1');
-  assert.deepStrictEqual(await met(), ['true', 'true', 'true'], 'all three should be met');
+  assert.deepStrictEqual(await met(), ['true', 'true', 'true', 'false'], 'a space must not count as a symbol');
+  await field.fill('Correct-horse battery staple 1');
+  assert.deepStrictEqual(await met(), ['true', 'true', 'true', 'true'], 'all four should be met');
   // The server's refusal has a local twin: a password that misses a rule is
   // refused next to the field, before any request, naming the rule.
   await field.fill('correct horse battery staple');
@@ -308,8 +311,8 @@ await check('step 2 opens on its own once the box reports ready, then claims', a
   const text = await page.locator('body').innerText();
   assert.ok(/You can set the password now/i.test(text), `no "ready" line after the wait:\n${text}`);
   assert.ok(!/finish starting/i.test(text), 'the waiting panel is still up after the box became ready');
-  await page.locator('input[name="new-password"]').fill('Correct horse battery staple 1');
-  await page.locator('input[name="confirm-password"]').fill('Correct horse battery staple 1');
+  await page.locator('input[name="new-password"]').fill('Correct-horse battery staple 1');
+  await page.locator('input[name="confirm-password"]').fill('Correct-horse battery staple 1');
   await page.getByRole('button', { name: /^Set the password$/ }).click();
   await page.waitForTimeout(300);
   assert.ok(/Password set/i.test(await page.locator('body').innerText()), 'the claim after the wait did not go through');
@@ -362,8 +365,8 @@ await check('a 503 from the claim itself sends step 2 back to waiting', async ()
     });
   });
   await page.getByRole('button', { name: /^Continue$/ }).click();
-  await page.locator('input[name="new-password"]').fill('Correct horse battery staple 1');
-  await page.locator('input[name="confirm-password"]').fill('Correct horse battery staple 1');
+  await page.locator('input[name="new-password"]').fill('Correct-horse battery staple 1');
+  await page.locator('input[name="confirm-password"]').fill('Correct-horse battery staple 1');
   await page.getByRole('button', { name: /^Set the password$/ }).click();
   await page.waitForTimeout(400);
   const text = await page.locator('body').innerText();
@@ -400,8 +403,8 @@ await check('a claim whose reply was lost is asked again, and the second answer 
     });
   });
   await page.getByRole('button', { name: /^Continue$/ }).click();
-  await page.locator('input[name="new-password"]').fill('Correct horse battery staple 1');
-  await page.locator('input[name="confirm-password"]').fill('Correct horse battery staple 1');
+  await page.locator('input[name="new-password"]').fill('Correct-horse battery staple 1');
+  await page.locator('input[name="confirm-password"]').fill('Correct-horse battery staple 1');
   await page.getByRole('button', { name: /^Set the password$/ }).click();
   await page.waitForTimeout(1500);
   let text = await page.locator('body').innerText();
@@ -435,8 +438,8 @@ await check('a 409 from the claim is shown and not asked again', async () => {
     });
   });
   await page.getByRole('button', { name: /^Continue$/ }).click();
-  await page.locator('input[name="new-password"]').fill('Correct horse battery staple 1');
-  await page.locator('input[name="confirm-password"]').fill('Correct horse battery staple 1');
+  await page.locator('input[name="new-password"]').fill('Correct-horse battery staple 1');
+  await page.locator('input[name="confirm-password"]').fill('Correct-horse battery staple 1');
   await page.getByRole('button', { name: /^Set the password$/ }).click();
   await page.waitForTimeout(6000);
   const text = await page.locator('body').innerText();
@@ -476,8 +479,8 @@ await check('step 4 hides the frame and keeps reloading it until the files app a
   );
   // Through steps 1 to 3.
   await page.getByRole('button', { name: /^Continue$/ }).click();
-  await page.locator('input[name="new-password"]').fill('Correct horse battery staple 1');
-  await page.locator('input[name="confirm-password"]').fill('Correct horse battery staple 1');
+  await page.locator('input[name="new-password"]').fill('Correct-horse battery staple 1');
+  await page.locator('input[name="confirm-password"]').fill('Correct-horse battery staple 1');
   await page.getByRole('button', { name: /^Set the password$/ }).click();
   await page.getByText('notshared').first().waitFor({ timeout: 5000 });
   await page.getByRole('button', { name: /^Continue$/ }).click();
@@ -541,8 +544,8 @@ await check('step 4 lets a slow first answer from the files app arrive instead o
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ code: 'c5b6add9-e47a-43d5-87be-9b45e4a81441', minted: true }) }),
   );
   await page.getByRole('button', { name: /^Continue$/ }).click();
-  await page.locator('input[name="new-password"]').fill('Correct horse battery staple 1');
-  await page.locator('input[name="confirm-password"]').fill('Correct horse battery staple 1');
+  await page.locator('input[name="new-password"]').fill('Correct-horse battery staple 1');
+  await page.locator('input[name="confirm-password"]').fill('Correct-horse battery staple 1');
   await page.getByRole('button', { name: /^Set the password$/ }).click();
   await page.getByText('notshared').first().waitFor({ timeout: 5000 });
   await page.getByRole('button', { name: /^Continue$/ }).click();

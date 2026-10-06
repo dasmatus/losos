@@ -443,7 +443,7 @@ A separate `midnight-reboot.timer` reboots unconditionally at 00:07 with
   route answers 503 while Nextcloud is down, which is what the printed spare
   key is for — so don't remove the key path from the unlock dialog, and don't
   turn the sign-in probe into a `curl -u` (the password would be in an argv).
-  A new password wants 12+ characters, both cases and a digit
+  A new password wants 12+ characters, both cases, a digit and a symbol
   (`setup::validate_password`); a sign-in checks only the candidate's shape
   (`signin::validate_candidate`), or a password set under an older rule set
   would lock its owner out.
@@ -456,6 +456,11 @@ A separate `midnight-reboot.timer` reboots unconditionally at 00:07 with
   matches `[-.a-zA-Z0-9]*`, so `192.168.attacker.example` would be trusted
   too. `localhost` and `127.0.0.1` need nothing — Nextcloud trusts them
   unconditionally.
+- **The Nextcloud image serves no pretty URLs.** `front_controller_active`
+  is unset in the pod's config, so `/nextcloud/apps/<id>/` is an Apache 404
+  and only `/nextcloud/index.php/apps/<id>/` reaches the app. The admin UI's
+  app tiles (`admin-ui/app/src/lib/apps.ts`) link through `index.php` for
+  that reason; don't "tidy" them back to the short form.
 - **The admin token is created by lososd, not by NixOS.** `losos.admin.tokenFile`
   (default `/var/secrets/losos-admin-token`, persisted via `/var`) is written
   with a 64-hex-char random value (mode 0600) by lososd on first start if

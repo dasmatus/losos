@@ -98,7 +98,15 @@ export interface AppDefinition {
   readonly note: MessageKey;
 }
 
-/** Where the Files app answers on this box's front door, when it does. */
+/** Where the Files app answers on this box's front door, when it does.
+ *
+ * Every app path below goes through `index.php`. The workload image serves
+ * Nextcloud without its pretty-URL rewrites (flake/images.nix transcribes
+ * upstream's .htaccess minus that block, and never sets
+ * `front_controller_active`), so `/nextcloud/apps/tasks/` is an Apache 404
+ * — which is exactly what the owner saw on 2026-10-06 — while
+ * `/nextcloud/index.php/apps/tasks/` is the URL Nextcloud itself generates
+ * on this box. */
 export const FILES_BASE = "/nextcloud";
 /** Where the code host answers on this box's front door, when it does. */
 export const CODE_BASE = "/forgejo";
@@ -118,7 +126,7 @@ export const CATALOGUE: readonly AppDefinition[] = [
     id: "files",
     name: "apps.files.name",
     icon: Folder01Icon,
-    path: "/apps/files/",
+    path: "/index.php/apps/files/",
     provider: "files",
     note: "apps.files.note",
   },
@@ -126,7 +134,7 @@ export const CATALOGUE: readonly AppDefinition[] = [
     id: "photos",
     name: "apps.photos.name",
     icon: Image02Icon,
-    path: "/apps/photos/",
+    path: "/index.php/apps/photos/",
     provider: "files",
     note: "apps.photos.note",
   },
@@ -134,7 +142,7 @@ export const CATALOGUE: readonly AppDefinition[] = [
     id: "calendar",
     name: "apps.calendar.name",
     icon: Calendar03Icon,
-    path: "/apps/calendar/",
+    path: "/index.php/apps/calendar/",
     provider: "files",
     note: "apps.calendar.note",
   },
@@ -142,7 +150,7 @@ export const CATALOGUE: readonly AppDefinition[] = [
     id: "contacts",
     name: "apps.contacts.name",
     icon: Contact01Icon,
-    path: "/apps/contacts/",
+    path: "/index.php/apps/contacts/",
     provider: "files",
     note: "apps.contacts.note",
   },
@@ -150,7 +158,7 @@ export const CATALOGUE: readonly AppDefinition[] = [
     id: "notes",
     name: "apps.notes.name",
     icon: Note03Icon,
-    path: "/apps/notes/",
+    path: "/index.php/apps/notes/",
     provider: "files",
     note: "apps.notes.note",
   },
@@ -158,7 +166,7 @@ export const CATALOGUE: readonly AppDefinition[] = [
     id: "tasks",
     name: "apps.tasks.name",
     icon: CheckListIcon,
-    path: "/apps/tasks/",
+    path: "/index.php/apps/tasks/",
     provider: "files",
     note: "apps.tasks.note",
   },
@@ -166,7 +174,7 @@ export const CATALOGUE: readonly AppDefinition[] = [
     id: "mail",
     name: "apps.mail.name",
     icon: Mail01Icon,
-    path: "/apps/mail/",
+    path: "/index.php/apps/mail/",
     provider: "files",
     note: "apps.mail.note",
   },
@@ -174,7 +182,7 @@ export const CATALOGUE: readonly AppDefinition[] = [
     id: "music",
     name: "apps.music.name",
     icon: MusicNote01Icon,
-    path: "/apps/music/",
+    path: "/index.php/apps/music/",
     provider: "files",
     note: "apps.music.note",
   },
