@@ -7,6 +7,8 @@ import {
   LayoutGridIcon,
   Settings01Icon,
   Share08Icon,
+  ViewIcon,
+  ViewOffSlashIcon,
 } from "@hugeicons/core-free-icons";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -19,7 +21,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { FieldError, MonoInput } from "@/components/ui/input";
+import { FieldError, Input, MonoInput } from "@/components/ui/input";
 import { Label, LabelHint } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/progress";
 import { LanguagePicker } from "@/components/ui/language-picker";
@@ -29,8 +31,10 @@ import {
   dropToken,
   getClaimState,
   hasToken,
+  isNotReady,
   isWellFormedToken,
   signIn,
+  signInWithPassword,
   subscribeAuth,
   TOKEN_PATTERN,
 } from "@/lib/api";
@@ -360,37 +364,59 @@ function NotFound() {
 
 // ── Sign-in ───────────────────────────────────────────────────────────────
 
-/* The admin token gate.
+/* The gate.
  *
- * lososd mints a 64-hex-character token on first start and keeps it at
- * /var/secrets/losos-admin-token, mode 0600. There is no SSH and no shell
- * login, so the owner reads it off the box itself. It is held in
- * sessionStorage: per-tab on purpose, and closing the tab signs out.
+ * It asks for the owner's password — the one the wizard set, the one that
+ * signs in to LosOS cloud — and lososd checks it by asking LosOS cloud
+ * (`POST /api/sign-in`, backend/src/signin.rs). What comes back is the admin
+ * token, held in sessionStorage: per-tab on purpose, and closing the tab
+ * signs out. Before this the dialog asked for that token itself, a
+ * 64-character key the box shows once; an owner who had not copied it was
+ * locked out of these pages with a password that worked everywhere else.
+ *
+ * The key is still a way in, behind a link, because the password route has
+ * one gap: it is LosOS cloud that checks the password, so while LosOS cloud is
+ * not running (still starting, or broken) the password cannot be checked at
+ * all. lososd says so with a 503, and the dialog then points at the link and
+ * the printed sheet rather than at the password field.
  *
  * Non-dismissible — there is nothing to look at behind it. */
 function SignInDialog({ open }: { open: boolean }) {
   const t = useT();
+  const [mode, setMode] = React.useState<"password" | "key">("password");
   const [value, setValue] = React.useState("");
+  const [visible, setVisible] = React.useState(false);
   const [problem, setProblem] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
   const errorId = React.useId();
   const titleId = React.useId();
   const hintId = React.useId();
 
+  const switchTo = (next: "password" | "key"): void => {
+    setMode(next);
+    setValue("");
+    setProblem(null);
+  };
+
   const submit = async (event: React.FormEvent): Promise<void> => {
     event.preventDefault();
-    const candidate = value.trim();
-    if (!isWellFormedToken(candidate)) {
+    const candidate = mode === "key" ? value.trim() : value;
+    if (mode === "key" && !isWellFormedToken(candidate)) {
       setProblem(t("shell.signIn.badShape"));
       return;
     }
     setBusy(true);
     setProblem(null);
     try {
-      if (await signIn(candidate)) setValue("");
-      else setProblem(t("shell.signIn.rejected"));
-    } catch {
-      setProblem(t("shell.signIn.noAnswer"));
+      const accepted =
+        mode === "key" ? await signIn(candidate) : await signInWithPassword(candidate);
+      if (accepted) setValue("");
+      else setProblem(t(mode === "key" ? "shell.signIn.rejected" : "shell.signIn.wrongPassword"));
+    } catch (error) {
+      // LosOS cloud is what checks the password, and it could not be asked.
+      // Say so, and point at the spare key rather than at a retry.
+      if (mode === "password" && isNotReady(error)) setProblem(t("shell.signIn.cloudDown"));
+      else setProblem(t("shell.signIn.noAnswer"));
     } finally {
       setBusy(false);
     }
@@ -404,33 +430,83 @@ function SignInDialog({ open }: { open: boolean }) {
       labelledBy={titleId}
       describedBy={hintId}
     >
-      {/* noValidate: `pattern` below still documents the shape and drives
-          :invalid, but the browser's own bubble would say "match the requested
-          format" where this form can say what an admin key actually looks
+      {/* noValidate: `pattern` on the key field still documents the shape and
+          drives :invalid, but the browser's own bubble would say "match the
+          requested format" where this form can say what a key actually looks
           like. One message, ours. */}
       <form onSubmit={submit} noValidate>
         <DialogHeader>
           <DialogTitle id={titleId}>{t("shell.signIn.title")}</DialogTitle>
-          <DialogDescription id={hintId}>{t("shell.signIn.hint")}</DialogDescription>
+          <DialogDescription id={hintId}>
+            {t(mode === "key" ? "shell.signIn.hint" : "shell.signIn.passwordHint")}
+          </DialogDescription>
         </DialogHeader>
         <DialogBody className="flex flex-col gap-2">
-          <Label htmlFor="admin-key">{t("shell.signIn.label")}</Label>
-          <MonoInput
-            id="admin-key"
-            name="admin-key"
-            autoComplete="off"
-            pattern={TOKEN_PATTERN.source}
-            value={value}
-            disabled={busy}
-            aria-invalid={problem !== null}
-            aria-describedby={problem !== null ? errorId : undefined}
-            onChange={(event) => {
-              setValue(event.target.value);
-              setProblem(null);
-            }}
-          />
+          {mode === "password" ? (
+            <>
+              <Label htmlFor="owner-password">{t("shell.signIn.passwordLabel")}</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="owner-password"
+                  name="owner-password"
+                  type={visible ? "text" : "password"}
+                  autoComplete="current-password"
+                  autoFocus
+                  value={value}
+                  disabled={busy}
+                  aria-invalid={problem !== null}
+                  aria-describedby={problem !== null ? errorId : undefined}
+                  onChange={(event) => {
+                    setValue(event.target.value);
+                    setProblem(null);
+                  }}
+                />
+                <Button
+                  variant="secondary"
+                  size="icon"
+                  aria-pressed={visible}
+                  aria-label={visible ? t("shell.signIn.hide") : t("shell.signIn.show")}
+                  onClick={() => setVisible((shown) => !shown)}
+                >
+                  <HugeiconsIcon
+                    icon={visible ? ViewOffSlashIcon : ViewIcon}
+                    size={18}
+                    strokeWidth={1.5}
+                    color="currentColor"
+                    aria-hidden="true"
+                  />
+                </Button>
+              </div>
+            </>
+          ) : (
+            <>
+              <Label htmlFor="admin-key">{t("shell.signIn.label")}</Label>
+              <MonoInput
+                id="admin-key"
+                name="admin-key"
+                autoComplete="off"
+                autoFocus
+                pattern={TOKEN_PATTERN.source}
+                value={value}
+                disabled={busy}
+                aria-invalid={problem !== null}
+                aria-describedby={problem !== null ? errorId : undefined}
+                onChange={(event) => {
+                  setValue(event.target.value);
+                  setProblem(null);
+                }}
+              />
+            </>
+          )}
           <FieldError id={errorId}>{problem}</FieldError>
           <LabelHint>{t("shell.signIn.remembered")}</LabelHint>
+          <button
+            type="button"
+            className="mt-1 self-start text-[13px] text-accent underline-offset-2 hover:underline"
+            onClick={() => switchTo(mode === "key" ? "password" : "key")}
+          >
+            {t(mode === "key" ? "shell.signIn.usePassword" : "shell.signIn.useKey")}
+          </button>
         </DialogBody>
         <DialogFooter>
           {busy && <Spinner label={t("shell.signIn.checking")} className="mr-auto text-muted" />}

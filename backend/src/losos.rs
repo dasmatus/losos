@@ -88,6 +88,19 @@ pub trait Losos {
     /// [`crate::setup::describe_stopped`]. `Ok(None)` when there is no such
     /// container or no log; native mode has neither.
     fn nextcloud_last_log(&mut self, mode: crate::setup::NcMode) -> anyhow::Result<Option<String>>;
+    /// Ask the running Nextcloud whether `secret` is `user`'s password, on
+    /// behalf of the browser at `client` (an IP, forwarded so Nextcloud's own
+    /// brute-force protection counts the right party). The request is
+    /// [`crate::signin::login_request`] and the answer is read by
+    /// [`crate::signin::interpret_login`]; `Err` means the question could
+    /// not even be sent, which [`cmd_sign_in`] reports as "not now" rather
+    /// than as "wrong".
+    fn nextcloud_login(
+        &mut self,
+        user: &str,
+        secret: &crate::setup::Secret,
+        client: &str,
+    ) -> anyhow::Result<crate::signin::LoginOutcome>;
 
     // ── The appliance recovery code ─────────────────────────────────────
     /// The appliance's recovery code, minting one only if there is none.
@@ -475,6 +488,52 @@ pub fn cmd_claim<L: Losos>(
         "user": user,
         "token": token,
     }))
+}
+
+/// Unlock the admin pages with the owner's password.
+///
+/// The password is checked by Nextcloud, not by this daemon — see the header
+/// of [`crate::signin`] for why the credential has to live in one place. A
+/// correct one is answered with the admin token, the same secret the claim
+/// released, so the page carries on exactly as it did with a pasted key.
+///
+/// Only the *shape* of the candidate is checked here
+/// ([`crate::signin::validate_candidate`]), never the rules for a new
+/// password: an owner whose password predates a stricter rule set still has
+/// to get in with it.
+///
+/// Unauthenticated by nature — it is how a tab gets its token — and so
+/// guarded by the HTTP layer the way the claim is (same-box `Host`, JSON
+/// only, matching `Origin`) and throttled per address like a bad token.
+pub fn cmd_sign_in<L: Losos>(
+    l: &mut L,
+    password: &str,
+    token: &str,
+    client: &str,
+) -> anyhow::Result<Value> {
+    use crate::signin::{validate_candidate, LoginOutcome, Throttled, WrongPassword};
+
+    let secret = validate_candidate(password).map_err(|e| anyhow::anyhow!(e))?;
+    let user = crate::setup::DEFAULT_ADMIN_USER;
+    let outcome = match l.nextcloud_login(user, &secret, client) {
+        Ok(o) => o,
+        Err(e) => {
+            tracing::info!(error = ?e, "the sign-in probe could not reach LosOS cloud");
+            LoginOutcome::Unavailable(
+                "LosOS cloud could not be reached, so the password could not be checked. \
+                 It may still be starting."
+                    .to_string(),
+            )
+        }
+    };
+    match outcome {
+        LoginOutcome::Accepted => Ok(json!({ "user": user, "token": token })),
+        LoginOutcome::Rejected => Err(WrongPassword.into()),
+        LoginOutcome::Throttled => Err(Throttled.into()),
+        // Typed as the claim's "not yet", so the HTTP layer answers 503 with
+        // the sentence and the dialog can offer the spare key.
+        LoginOutcome::Unavailable(why) => Err(crate::setup::NotReady(why).into()),
+    }
 }
 
 /// The appliance's recovery code, minted on the first call and stable after.
@@ -934,6 +993,14 @@ mod tests {
                 mode: crate::setup::NcMode,
             ) -> anyhow::Result<Option<String>> {
                 self.0.nextcloud_last_log(mode)
+            }
+            fn nextcloud_login(
+                &mut self,
+                user: &str,
+                secret: &crate::setup::Secret,
+                client: &str,
+            ) -> anyhow::Result<crate::signin::LoginOutcome> {
+                self.0.nextcloud_login(user, secret, client)
             }
             fn recovery_code(&mut self) -> anyhow::Result<crate::recovery::Recovery> {
                 self.0.recovery_code()
