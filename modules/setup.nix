@@ -134,6 +134,23 @@ let
   # document the wizard fails to parse.
   json = builtins.toJSON;
 
+  # ── The box's own address, filled in per request ──────────────────────────
+  # The wizard's one-line installer has to name an address that works from a
+  # terminal — on this computer, and on the next one the owner reads the
+  # line to. The page's own location is `localhost:8080` behind a port
+  # forward and `mattbox.local` on a machine whose neighbour cannot resolve
+  # it; the box's DHCP address is the one every machine on the LAN reaches.
+  #
+  # The unit that writes state.json runs once at boot, before nginx and
+  # possibly before DHCP has answered, and the lease can change later; so
+  # the file carries a placeholder and nginx substitutes `$server_addr` — the
+  # address this very request arrived on — when it serves the document. For
+  # a LAN client that is the box's address on the LAN, by definition
+  # reachable; and it is known at request time without any unit watching
+  # the interfaces. sub_filter is the stock module for exactly this: a
+  # literal swapped once in a static body.
+  addressPlaceholder = "@ADDRESS@";
+
   # ── Cross-origin read of state.json, for the finder page ─────────────────
   # options.nix (`losos.setup.finderOrigins`) says what this is for and why it
   # is an allow-list. The shape here is the one modules/containers.nix uses
@@ -221,6 +238,7 @@ let
         {
           "hostName": ${json hostName},
           "fqdn": ${json fqdn},
+          "address": ${json addressPlaceholder},
           "tls": true,
           "certificate": {
             "url": ${json certUrl},
@@ -239,6 +257,7 @@ let
         {
           "hostName": ${json hostName},
           "fqdn": ${json fqdn},
+          "address": ${json addressPlaceholder},
           "tls": false,
           "certificate": null
         }
@@ -391,6 +410,16 @@ in
           ${lanOnly}
           types { }
           default_type application/json;
+          # The box's address, per request (see `addressPlaceholder`). The
+          # placeholder is matched with its quotes so the substitution is
+          # the whole JSON string value and nothing else in the document
+          # can be mistaken for it. sub_filter drops the ETag, which is why
+          # Last-Modified is kept explicitly: the wizard sends no-store
+          # anyway, and a client that does cache still revalidates.
+          sub_filter_types application/json;
+          sub_filter_once on;
+          sub_filter_last_modified on;
+          sub_filter '"${addressPlaceholder}"' '"$server_addr"';
         '';
       };
     }

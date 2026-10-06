@@ -38,19 +38,27 @@ export function detectPlatform(): Platform | "phone" {
   return "unix";
 }
 
-/** The box, as this browser reaches it, on plain http. The port rides along
- *  only when the page itself is on http with one (a VM's port forward); an
- *  https port would be the wrong one for :80. */
-function boxBase(): string {
-  const { protocol, host, hostname } = window.location;
-  return `http://${protocol === "http:" ? host : hostname}`;
+/** The box, on plain http, at an address a terminal can reach.
+ *
+ *  The box's own IP address (state.json `address`, the one this request
+ *  arrived on) comes first: it works from this computer and from the next
+ *  one the owner reads the line to, where the page's `mattbox.local` may
+ *  not resolve. The page's own host wins only when it carries an explicit
+ *  port: that is a port forward (a VM's `localhost:8080`), where the address
+ *  the box sees on its side is not reachable from this one. An https port
+ *  would be the wrong one for :80, so only an http port rides along. */
+export function boxBase(address: string | null): string {
+  const { protocol, host, hostname, port } = window.location;
+  if (protocol === "http:" && port !== "") return `http://${host}`;
+  return `http://${address ?? hostname}`;
 }
 
 export function commandFor(
   platform: Platform,
   install: SetupInstallers,
+  address: string | null,
 ): string {
-  const base = boxBase();
+  const base = boxBase(address);
   return platform === "windows"
     ? `irm ${base}${install.ps1} | iex`
     : `curl -fsSL ${base}${install.sh} | sh`;
@@ -59,9 +67,11 @@ export function commandFor(
 export function TrustCommand({
   install,
   fqdn,
+  address,
 }: {
   install: SetupInstallers;
   fqdn: string;
+  address: string | null;
 }) {
   const t = useT();
   const detected = React.useMemo(detectPlatform, []);
@@ -71,9 +81,9 @@ export function TrustCommand({
   const [copied, setCopied] = React.useState(false);
   const lineRef = React.useRef<HTMLElement>(null);
 
-  const command = commandFor(platform, install);
+  const command = commandFor(platform, install, address);
   const scriptUrl =
-    boxBase() + (platform === "windows" ? install.ps1 : install.sh);
+    boxBase(address) + (platform === "windows" ? install.ps1 : install.sh);
 
   const copy = async () => {
     setCopied(await copyText(command, lineRef.current));
