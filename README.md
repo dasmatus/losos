@@ -18,7 +18,7 @@ survive, on an encrypted `/persist` partition.
 | **Mesh storage** | Optional. Spare disk for the mesh as the `shared` user, replicated by Longhorn |
 | **Mesh compute** | Optional. Spare CPU for the mesh inside a time window, only when idle    |
 | **Forgejo**      | Optional git hosting at `<host>.local/forgejo/`                          |
-| **Admin UI**     | Settings page at `<host>.local`, LAN only                                |
+| **Admin UI**     | Settings page at `<host>.local` (or the IP on the box's screen), LAN only |
 | **Master proxy** | Optional. Public access through a tunnel to a VPS, no inbound port at home |
 
 ## Install
