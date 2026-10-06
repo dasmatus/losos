@@ -52,9 +52,9 @@ export default defineMessages({
     de: "Die Box ist bereit",
   },
   "wizard.closing.body": {
-    en: "You can sign in from any device on this network. Keep the recovery code somewhere that is not this box.",
-    sk: "Prihlásiť sa môžete z akéhokoľvek prístroja v tejto sieti. Kód na obnovenie uchovávajte niekde mimo tohto zariadenia.",
-    de: "Du kannst dich von jedem Gerät in diesem Netzwerk anmelden. Bewahre den Wiederherstellungscode irgendwo auf, nur nicht auf dieser Box.",
+    en: "You can sign in from any device on this network. Keep the spare admin key somewhere that is not this box.",
+    sk: "Prihlásiť sa môžete z akéhokoľvek prístroja v tejto sieti. Náhradný správcovský kľúč uchovávajte niekde mimo tohto zariadenia.",
+    de: "Du kannst dich von jedem Gerät in diesem Netzwerk anmelden. Bewahre den Ersatz-Admin-Schlüssel irgendwo auf, nur nicht auf dieser Box.",
   },
 
   // ── steps.ts / StepRail.tsx ─────────────────────────────────────────────
@@ -68,6 +68,7 @@ export default defineMessages({
     sk: "Vyberte si spôsob prihlásenia",
     de: "Wähle, wie du dich anmeldest",
   },
+  // The two recovery keys stay for the hidden step (see steps.ts).
   "wizard.steps.recovery.title": {
     en: "Write down your recovery code",
     sk: "Zapíšte si kód na obnovenie",
@@ -141,6 +142,26 @@ export default defineMessages({
     en: "Remove the line breaks and control characters.",
     sk: "Odstráňte zalomenia riadkov a riadiace znaky.",
     de: "Entferne die Zeilenumbrüche und Steuerzeichen.",
+  },
+  "wizard.password.noLower": {
+    en: "Add a lower-case letter.",
+    sk: "Pridajte malé písmeno.",
+    de: "Füge einen Kleinbuchstaben hinzu.",
+  },
+  "wizard.password.noUpper": {
+    en: "Add an upper-case letter.",
+    sk: "Pridajte veľké písmeno.",
+    de: "Füge einen Großbuchstaben hinzu.",
+  },
+  "wizard.password.noDigit": {
+    en: "Add a digit.",
+    sk: "Pridajte číslicu.",
+    de: "Füge eine Ziffer hinzu.",
+  },
+  "wizard.password.noSymbol": {
+    en: "Add a symbol, such as - or !.",
+    sk: "Pridajte symbol, napríklad - alebo !.",
+    de: "Füge ein Sonderzeichen hinzu, etwa - oder !.",
   },
 
   // ── passkey.ts ──────────────────────────────────────────────────────────
@@ -279,9 +300,9 @@ export default defineMessages({
 
   // ── StepSignIn.tsx ──────────────────────────────────────────────────────
   "wizard.signin.intro": {
-    en: "This box made itself a random password when it was installed and showed it to nobody, which is why nothing can sign in yet. Choose one now.",
-    sk: "Toto zariadenie si pri inštalácii vytvorilo náhodné heslo a nikomu ho neukázalo, preto sa zatiaľ nikto nemôže prihlásiť. Zvoľte si teraz vlastné.",
-    de: "Diese Box hat sich bei der Installation ein zufälliges Passwort gegeben und es niemandem gezeigt, deshalb kann sich noch niemand anmelden. Wähl jetzt eins.",
+    en: "This box made itself a random password when it was installed and showed it to nobody, which is why nothing can sign in yet. Choose one now. It is the one password for everything here: LosOS cloud, the apps on your phone and computer, and these admin pages.",
+    sk: "Toto zariadenie si pri inštalácii vytvorilo náhodné heslo a nikomu ho neukázalo, preto sa zatiaľ nikto nemôže prihlásiť. Zvoľte si teraz vlastné. Je to jediné heslo na všetko: LosOS cloud, aplikácie v telefóne a počítači aj tieto správcovské stránky.",
+    de: "Diese Box hat sich bei der Installation ein zufälliges Passwort gegeben und es niemandem gezeigt, deshalb kann sich noch niemand anmelden. Wähl jetzt eins. Es ist das eine Passwort für alles hier: LosOS cloud, die Apps auf Handy und Computer und diese Admin-Seiten.",
   },
   "wizard.signin.waiting.title": {
     en: "Waiting for this box to finish starting",
@@ -345,24 +366,34 @@ export default defineMessages({
     de: "Passwort anzeigen",
   },
   "wizard.signin.hint": {
-    en: {
-      one: "At least {count} character. Length is the only rule. A few unrelated words beat one word with symbols in it.",
-      other:
-        "At least {count} characters. Length is the only rule. A few unrelated words beat one word with symbols in it.",
-    },
-    sk: {
-      one: "Aspoň {count} znak. Jediným pravidlom je dĺžka. Niekoľko nesúvisiacich slov je lepších než jedno slovo so symbolmi.",
-      few: "Aspoň {count} znaky. Jediným pravidlom je dĺžka. Niekoľko nesúvisiacich slov je lepších než jedno slovo so symbolmi.",
-      many: "Aspoň {count} znakov. Jediným pravidlom je dĺžka. Niekoľko nesúvisiacich slov je lepších než jedno slovo so symbolmi.",
-      other:
-        "Aspoň {count} znakov. Jediným pravidlom je dĺžka. Niekoľko nesúvisiacich slov je lepších než jedno slovo so symbolmi.",
-    },
-    de: {
-      one: "Mindestens {count} Zeichen. Die Länge ist die einzige Regel. Ein paar Wörter, die nichts miteinander zu tun haben, schlagen ein Wort mit Sonderzeichen.",
-      other:
-        "Mindestens {count} Zeichen. Die Länge ist die einzige Regel. Ein paar Wörter, die nichts miteinander zu tun haben, schlagen ein Wort mit Sonderzeichen.",
-    },
+    en: "Four rules, and these are all of them. A few unrelated words joined with a dash, with a capital letter and a number somewhere, is the easiest way to meet them.",
+    sk: "Štyri pravidlá, a sú to všetky. Najľahšie ich splníte niekoľkými nesúvisiacimi slovami spojenými pomlčkou, s veľkým písmenom a číslom niekde vnútri.",
+    de: "Vier Regeln, und das sind alle. Am einfachsten erfüllst du sie mit ein paar Wörtern, die nichts miteinander zu tun haben, durch Bindestriche verbunden, mit einem Großbuchstaben und einer Zahl irgendwo.",
   },
+  "wizard.signin.rules": { en: "Password rules", sk: "Pravidlá hesla", de: "Passwortregeln" },
+  "wizard.signin.rule.length": {
+    en: { one: "At least {count} character", other: "At least {count} characters" },
+    sk: {
+      one: "Aspoň {count} znak",
+      few: "Aspoň {count} znaky",
+      many: "Aspoň {count} znakov",
+      other: "Aspoň {count} znakov",
+    },
+    de: { one: "Mindestens {count} Zeichen", other: "Mindestens {count} Zeichen" },
+  },
+  "wizard.signin.rule.cases": {
+    en: "A capital letter and a small letter",
+    sk: "Veľké aj malé písmeno",
+    de: "Ein Großbuchstabe und ein Kleinbuchstabe",
+  },
+  "wizard.signin.rule.digit": { en: "A digit", sk: "Číslica", de: "Eine Ziffer" },
+  "wizard.signin.rule.symbol": {
+    en: "A symbol, such as - or !",
+    sk: "Symbol, napríklad - alebo !",
+    de: "Ein Sonderzeichen, etwa - oder !",
+  },
+  "wizard.signin.rule.met": { en: "(done)", sk: "(splnené)", de: "(erfüllt)" },
+  "wizard.signin.rule.unmet": { en: "(not yet)", sk: "(ešte nie)", de: "(noch nicht)" },
   "wizard.signin.again": {
     en: "Type it again",
     sk: "Zadajte ho znova",
@@ -414,24 +445,46 @@ export default defineMessages({
     de: "Die Software auf dieser Box kann das Passwort noch nicht festlegen. Aktualisiere sie und komm zurück.",
   },
   "wizard.signin.key.title": {
-    en: "Your admin key, shown only now",
-    sk: "Váš správcovský kľúč, zobrazí sa iba teraz",
-    de: "Dein Admin-Schlüssel, nur jetzt zu sehen",
+    en: "Your spare admin key, shown only now",
+    sk: "Váš náhradný správcovský kľúč, zobrazí sa iba teraz",
+    de: "Dein Ersatz-Admin-Schlüssel, nur jetzt zu sehen",
   },
   "wizard.signin.key.body": {
-    en: "This key opens these admin pages from any browser. This tab remembers it until it is closed; the box keeps no copy a browser can ask for again. Copy it into a password manager now. It is also printed on the sheet in the next step.",
-    sk: "Tento kľúč otvára tieto správcovské stránky z ľubovoľného prehliadača. Táto karta si ho pamätá, kým ju nezatvoríte; zariadenie si nenecháva kópiu, o ktorú by prehliadač mohol znova požiadať. Skopírujte si ho teraz do správcu hesiel. Vytlačí sa aj na hárok v ďalšom kroku.",
-    de: "Dieser Schlüssel öffnet diese Admin-Seiten aus jedem Browser. Dieser Tab merkt ihn sich, bis er geschlossen wird; die Box behält keine Kopie, die ein Browser noch einmal abfragen könnte. Kopiere ihn jetzt in einen Passwortmanager. Er steht auch auf dem Blatt im nächsten Schritt.",
+    en: "From now on your password unlocks these admin pages. This key is the spare: it opens them even while LosOS cloud is not running to check the password. The box shows it only now and keeps no copy a browser can ask for again, so copy it into a password manager, or print it and keep the sheet.",
+    sk: "Odteraz tieto správcovské stránky odomyká vaše heslo. Tento kľúč je náhradný: otvorí ich, aj keď LosOS cloud práve nebeží a heslo sa nedá overiť. Zariadenie ho zobrazí iba teraz a nenecháva si kópiu, o ktorú by prehliadač mohol znova požiadať, preto si ho skopírujte do správcu hesiel alebo si ho vytlačte a hárok odložte.",
+    de: "Ab jetzt entsperrt dein Passwort diese Admin-Seiten. Dieser Schlüssel ist der Ersatz: Er öffnet sie auch, während LosOS cloud nicht läuft und das Passwort nicht prüfen kann. Die Box zeigt ihn nur jetzt und behält keine Kopie, die ein Browser noch einmal abfragen könnte, also kopiere ihn in einen Passwortmanager, oder druck ihn aus und heb das Blatt auf.",
   },
   "wizard.signin.key.label": {
-    en: "Admin key",
-    sk: "Správcovský kľúč",
-    de: "Admin-Schlüssel",
+    en: "Spare admin key",
+    sk: "Náhradný správcovský kľúč",
+    de: "Ersatz-Admin-Schlüssel",
   },
   "wizard.signin.key.copy": {
     en: "Copy the key",
     sk: "Kopírovať kľúč",
     de: "Schlüssel kopieren",
+  },
+  "wizard.signin.key.print": { en: "Print", sk: "Tlačiť", de: "Drucken" },
+  // The printed sheet. Its own markup in StepSignIn.tsx (KeySheet).
+  "wizard.signin.key.sheetTitle": {
+    en: "Spare admin key for {name}",
+    sk: "Náhradný správcovský kľúč pre {name}",
+    de: "Ersatz-Admin-Schlüssel für {name}",
+  },
+  "wizard.signin.key.sheetPrinted": {
+    en: "Printed {date}.",
+    sk: "Vytlačené {date}.",
+    de: "Gedruckt am {date}.",
+  },
+  "wizard.signin.key.sheetBody": {
+    en: "The admin pages normally unlock with your password. If LosOS cloud is not running and the password cannot be checked, choose \"Use the spare admin key instead\" and paste this. It was shown once, during setup, and the box will not show it again.",
+    sk: "Správcovské stránky sa bežne odomykajú vaším heslom. Ak LosOS cloud nebeží a heslo sa nedá overiť, zvoľte „Použiť namiesto toho náhradný správcovský kľúč“ a vložte tento. Zobrazil sa raz, počas nastavenia, a zariadenie ho znova neukáže.",
+    de: "Die Admin-Seiten entsperrst du normalerweise mit deinem Passwort. Wenn LosOS cloud nicht läuft und das Passwort nicht geprüft werden kann, wähl „Stattdessen den Ersatz-Admin-Schlüssel verwenden“ und gib diesen ein. Er wurde einmal gezeigt, bei der Einrichtung, und die Box zeigt ihn nicht noch einmal.",
+  },
+  "wizard.signin.key.sheetKey": {
+    en: "Treat it like a key to the box, because that is what it is.",
+    sk: "Zaobchádzajte s ním ako s kľúčom od zariadenia, pretože presne tým je.",
+    de: "Behandle ihn wie einen Schlüssel zur Box, denn genau das ist er.",
   },
   "wizard.signin.key.copied": {
     en: "Copied.",
@@ -509,7 +562,7 @@ export default defineMessages({
     de: "Das hat nicht geklappt",
   },
 
-  // ── StepRecovery.tsx ────────────────────────────────────────────────────
+  // ── StepRecovery.tsx (hidden step; kept so it can come back) ────────────
   "wizard.recovery.intro": {
     en: "A factory reset or a reinstall erases this box's disk, and it comes back with a brand new identity. To every other box it works with, that looks like a stranger claiming a name they already know, and they refuse it. This code is the only proof that the new box is the old one, so it cannot live on the disk it is meant to recover. Put it on paper, or in a password manager.",
     sk: "Obnovenie továrenských nastavení alebo preinštalovanie vymaže disk tohto zariadenia a to sa vráti s úplne novou identitou. Pre všetky ostatné zariadenia, s ktorými spolupracuje, to vyzerá ako cudzinec, ktorý si nárokuje meno, ktoré už poznajú, a tak ho odmietnu. Tento kód je jediným dôkazom, že nové zariadenie je to staré, preto nemôže byť uložený na disku, ktorý má obnoviť. Zapíšte si ho na papier alebo do správcu hesiel.",
@@ -573,14 +626,14 @@ export default defineMessages({
     de: "Heb das auf. Falls {name} jemals zurückgesetzt oder neu installiert wird, ist dieser Code der einzige Beweis, dass die neu aufgesetzte Box dieselbe ist. Ohne ihn behandeln die Boxen, mit denen sie zusammenarbeitet, sie als Fremde und lehnen sie ab. Es gibt nirgendwo sonst eine Kopie, die ein Zurücksetzen übersteht.",
   },
   "wizard.recovery.sheetAdminKey": {
-    en: "Admin key for {name}",
-    sk: "Správcovský kľúč pre {name}",
-    de: "Admin-Schlüssel für {name}",
+    en: "Spare admin key for {name}",
+    sk: "Náhradný správcovský kľúč pre {name}",
+    de: "Ersatz-Admin-Schlüssel für {name}",
   },
   "wizard.recovery.sheetAdminKeyBody": {
-    en: "Paste this on the admin pages when they ask to be unlocked. It was shown once, during setup, and the box will not show it again.",
-    sk: "Vložte ho na správcovských stránkach, keď požiadajú o odomknutie. Zobrazil sa raz, počas nastavenia, a zariadenie ho znova neukáže.",
-    de: "Gib ihn auf den Admin-Seiten ein, wenn sie entsperrt werden wollen. Er wurde einmal gezeigt, bei der Einrichtung, und die Box zeigt ihn nicht noch einmal.",
+    en: "The admin pages normally unlock with your password. If LosOS cloud is not running and the password cannot be checked, choose \"Use the spare admin key instead\" and paste this. It was shown once, during setup, and the box will not show it again.",
+    sk: "Správcovské stránky sa bežne odomykajú vaším heslom. Ak LosOS cloud nebeží a heslo sa nedá overiť, zvoľte „Použiť namiesto toho náhradný správcovský kľúč“ a vložte tento. Zobrazil sa raz, počas nastavenia, a zariadenie ho znova neukáže.",
+    de: "Die Admin-Seiten entsperrst du normalerweise mit deinem Passwort. Wenn LosOS cloud nicht läuft und das Passwort nicht geprüft werden kann, wähl „Stattdessen den Ersatz-Admin-Schlüssel verwenden“ und gib diesen ein. Er wurde einmal gezeigt, bei der Einrichtung, und die Box zeigt ihn nicht noch einmal.",
   },
   "wizard.recovery.sheetKey": {
     en: "Treat it like a key to the box, because that is what it is.",

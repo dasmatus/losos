@@ -71,6 +71,16 @@ pub struct FakeLosos {
     pub last_log: Option<String>,
     /// How often the last log was asked for — a running pod must never be.
     pub last_log_asked: usize,
+    /// The password the fake Nextcloud accepts for the admin account, or
+    /// `None` for a Nextcloud that cannot be asked at all (the pod not up
+    /// yet). A sign-in attempt compares against this; nothing else does.
+    pub accepted_password: Option<String>,
+    /// Model Nextcloud's brute-force protection having shut the door.
+    pub login_throttled: bool,
+    /// Every sign-in probe that was made: the account asked about and the
+    /// client address forwarded, in order. A test reads this to prove the
+    /// probe names the one admin account and carries the browser's address.
+    pub login_asked: Vec<(String, String)>,
 
     // ── The appliance recovery code ─────────────────────────────────────
     /// In-memory stand-in for `/var/secrets/losos-recovery-code`. Public so a
@@ -129,6 +139,11 @@ impl FakeLosos {
             status_probed: Vec::new(),
             last_log: None,
             last_log_asked: 0,
+            // A reachable Nextcloud whose password nobody knows yet, like a
+            // fresh box: a sign-in has to fail until a test sets one.
+            accepted_password: None,
+            login_throttled: false,
+            login_asked: Vec::new(),
             // Empty, so the default fake is a fresh appliance that has never
             // minted a code — the state the first-run wizard actually meets.
             recovery: crate::recovery::MemoryStore::empty(),
@@ -198,6 +213,25 @@ impl Losos for FakeLosos {
     /// Deliberately [`crate::recovery::ensure_code`] rather than a hand-written
     /// stub: the mint-once behaviour is the thing under test, and a fake that
     /// reimplemented it would prove only that the fake agrees with itself.
+    fn nextcloud_login(
+        &mut self,
+        user: &str,
+        secret: &crate::setup::Secret,
+        client: &str,
+    ) -> anyhow::Result<crate::signin::LoginOutcome> {
+        use crate::signin::LoginOutcome;
+        self.login_asked
+            .push((user.to_string(), client.to_string()));
+        if self.login_throttled {
+            return Ok(LoginOutcome::Throttled);
+        }
+        match &self.accepted_password {
+            None => anyhow::bail!("connection refused (the fake Nextcloud is not up)"),
+            Some(p) if p == secret.expose() => Ok(LoginOutcome::Accepted),
+            Some(_) => Ok(LoginOutcome::Rejected),
+        }
+    }
+
     fn recovery_code(&mut self) -> anyhow::Result<crate::recovery::Recovery> {
         crate::recovery::ensure_code(&mut self.recovery)
     }

@@ -1,4 +1,4 @@
-/* The progress rail: four thin bars, one per step.
+/* The progress rail: one thin bar per step.
  *
  * Done is a full accent bar, the current step is the same bar at half opacity,
  * and the steps ahead are an empty track. One accent, no second hue — the
@@ -6,7 +6,7 @@
  *
  * The bars are the only thing on screen, but they are not the only thing the
  * rail says: each carries a screen-reader-only label, and the line underneath
- * names the step in numbers and in words. A row of four unlabelled rectangles
+ * names the step in numbers and in words. A row of unlabelled rectangles
  * is decoration to a sighted user and nothing at all to anyone else.
  */
 

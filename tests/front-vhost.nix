@@ -85,7 +85,10 @@ let
               port = config.losos.nextcloud.apachePort;
             }
           ];
-          locations."/".extraConfig = ''return 200 "stub-nextcloud\n";'';
+          # Echoes the header the real /nextcloud location sets from
+          # $server_addr, so the test below can prove it arrives: the pod's
+          # trusted_domains reads it to accept the box's own IP address.
+          locations."/".extraConfig = ''return 200 "stub-nextcloud own-address=$http_x_losos_server_addr\n";'';
         };
         "stub-forgejo" = {
           listen = [
@@ -277,6 +280,17 @@ pkgs.testers.nixosTest {
         # Proof the two proxy_pass targets are the loopback ports the workload
         # pods bind, not some address left over from the nspawn layout.
         assert "stub-nextcloud" in appliance.succeed("curl -s http://127.0.0.1/nextcloud")
+        # The address the request arrived on travels to the pod as
+        # X-Losos-Server-Addr, and a client cannot supply it: nginx replaces
+        # the header, so the loopback probe sees 127.0.0.1 whatever it sent.
+        own = appliance.succeed(
+            "curl -s -H 'X-Losos-Server-Addr: evil.example' http://127.0.0.1/nextcloud"
+        )
+        assert "own-address=127.0.0.1" in own, f"server address not forwarded: {own!r}"
+        # The libvirt case: the owner types the box's LAN IP (no mDNS there),
+        # and that very address is what the pod is told to trust.
+        lan = noadmin.succeed(f"curl -s http://{LAN}/nextcloud")
+        assert f"own-address={LAN}" in lan, f"LAN address not forwarded: {lan!r}"
         assert "stub-forgejo" in appliance.succeed("curl -s http://127.0.0.1/forgejo/")
 
     with subtest("security headers ride on admin responses, including the 403s"):

@@ -822,6 +822,68 @@ impl Losos for IoLosos {
         })
     }
 
+    fn nextcloud_login(
+        &mut self,
+        user: &str,
+        secret: &crate::setup::Secret,
+        client: &str,
+    ) -> anyhow::Result<crate::signin::LoginOutcome> {
+        use std::io::Read;
+        use std::net::{TcpStream, ToSocketAddrs};
+        use std::time::Duration;
+
+        let url = std::env::var("LOSOS_NEXTCLOUD_LOGIN_URL")
+            .ok()
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| crate::signin::DEFAULT_LOGIN_URL.to_string());
+        let host = std::env::var("LOSOS_NEXTCLOUD_LOGIN_HOST")
+            .ok()
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| crate::signin::DEFAULT_LOGIN_HOST.to_string());
+        let endpoint = crate::signin::parse_login_url(&url).map_err(|e| anyhow::anyhow!(e))?;
+        let request = crate::signin::login_request(&endpoint, &host, user, secret, client);
+
+        // A raw socket rather than curl: curl takes credentials on the
+        // command line or in a file, and neither is a channel this crate
+        // lets a password use (see the header of crate::setup). The hop is
+        // loopback and the answer is one status line, so std is enough.
+        let addr = endpoint
+            .addr
+            .to_socket_addrs()
+            .with_context(|| format!("resolving {}", endpoint.addr))?
+            .next()
+            .with_context(|| format!("{} names no address", endpoint.addr))?;
+        let mut stream = TcpStream::connect_timeout(&addr, Duration::from_secs(5))
+            .with_context(|| format!("connecting to LosOS cloud at {addr}"))?;
+        // Nextcloud's brute-force protection answers a wrong password late on
+        // purpose — up to 25 seconds — so the read waits longer than that.
+        stream.set_read_timeout(Some(Duration::from_secs(40)))?;
+        stream.set_write_timeout(Some(Duration::from_secs(5)))?;
+        stream
+            .write_all(&request)
+            .context("sending the sign-in probe to LosOS cloud")?;
+        // The status line is all that is read; the rest is drained only as
+        // far as one buffer goes, and `Connection: close` ends the exchange.
+        let mut buf = vec![0u8; 4096];
+        let mut filled = 0;
+        while filled < buf.len() {
+            match stream.read(&mut buf[filled..]) {
+                Ok(0) => break,
+                Ok(n) => {
+                    filled += n;
+                    if buf[..filled].windows(4).any(|w| w == b"\r\n\r\n") {
+                        break;
+                    }
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+                Err(e) => return Err(e).context("reading LosOS cloud's answer"),
+            }
+        }
+        Ok(crate::signin::interpret_login(crate::signin::status_code(
+            &buf[..filled],
+        )))
+    }
+
     fn recovery_code(&mut self) -> anyhow::Result<crate::recovery::Recovery> {
         crate::recovery::ensure_code(&mut FileCodeStore::from_env())
     }

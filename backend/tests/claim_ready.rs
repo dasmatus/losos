@@ -18,7 +18,7 @@ use losos_ctl::setup::{
     AlreadyClaimed, NcMode, NotReady, OccOutcome, Readiness, Target, IMAGE_OCC_STATUS, NATIVE_OCC,
 };
 
-const PASSWORD: &str = "zqx-marmalade-77-parapet";
+const PASSWORD: &str = "Zqx-marmalade-77-parapet";
 const TOKEN: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
 /// A password that is not [`PASSWORD`], drawn at run time rather than

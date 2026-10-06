@@ -63,9 +63,19 @@ pub const DEFAULT_ADMIN_USER: &str = "notshared";
 /// Above Nextcloud's own `password_policy` default of 10, and deliberately a
 /// server-side rule rather than a browser one: the admin HTTP API is reachable
 /// by anything that holds the admin token, and the wizard's `<input>` is not a
-/// boundary. The floor is length only. Composition rules ("one symbol, one
-/// digit") push people towards shorter passwords they reuse, and Nextcloud's
-/// own policy app is the right place to add more if an owner wants it.
+/// boundary.
+///
+/// Length is no longer the only rule. Since `crate::signin` the one password
+/// opens the admin pages too — `POST /api/apply` and a factory reset sit
+/// behind it, not only the owner's files — so [`validate_password`] also
+/// wants both letter cases, a digit and a symbol (the owner asked for the
+/// digit and symbol rules by name, 2026-10-06). Four rules, all shown up
+/// front by the wizard with a tick each, and nothing hidden: an owner who
+/// meets what is on screen is never refused by a rule they did not see. A
+/// symbol here is any character that is not a letter, a digit or
+/// whitespace, so a hyphen between two words counts and nothing has to be
+/// hunted for on a phone keyboard. Nextcloud's own policy app can add more
+/// if an owner wants it.
 pub const MIN_PASSWORD_CHARS: usize = 12;
 
 /// Longest password accepted, in bytes.
@@ -191,8 +201,17 @@ impl NcMode {
 pub struct Secret(String);
 
 impl Secret {
-    /// The plaintext. Every call site is one of exactly two: writing the staged
-    /// file, or setting `OC_PASS` on a child process.
+    /// Wrap a password the caller has already checked. Crate-private so the
+    /// two validators ([`validate_password`] for a new password,
+    /// [`crate::signin::validate_candidate`] for one being tried) stay the
+    /// only ways to make one.
+    pub(crate) fn new(password: &str) -> Secret {
+        Secret(password.to_string())
+    }
+
+    /// The plaintext. Every call site is one of exactly three: writing the
+    /// staged file, setting `OC_PASS` on a child process, or the Basic
+    /// header of the sign-in probe (`crate::signin::login_request`).
     pub fn expose(&self) -> &str {
         &self.0
     }
@@ -499,7 +518,31 @@ pub fn validate_password(password: &str) -> Result<Secret, String> {
             c as u32
         ));
     }
+    // The three composition rules, each with its own sentence so the wizard
+    // can show the one that is missing. Unicode-aware on purpose: `Ž` is an
+    // upper-case letter and `ß` a lower-case one, and an owner typing on a
+    // Slovak or German keyboard should not be told otherwise.
+    if !password.chars().any(char::is_lowercase) {
+        return Err("password must contain a lower-case letter".to_string());
+    }
+    if !password.chars().any(char::is_uppercase) {
+        return Err("password must contain an upper-case letter".to_string());
+    }
+    if !password.chars().any(char::is_numeric) {
+        return Err("password must contain a digit".to_string());
+    }
+    if !password.chars().any(is_symbol) {
+        return Err("password must contain a symbol (anything that is not a letter or a digit, such as - or !)".to_string());
+    }
     Ok(Secret(password.to_string()))
+}
+
+/// A "special character" for the password rule: not a letter, not a digit,
+/// not whitespace. Punctuation and symbols in any script, so `-`, `!`, `€`
+/// and `…` all count, and a space does not — a space separates the words
+/// the hint recommends and should not satisfy a rule about symbols.
+pub fn is_symbol(c: char) -> bool {
+    !c.is_alphanumeric() && !c.is_whitespace()
 }
 
 /// Turn a located target into an ordered action list.

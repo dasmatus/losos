@@ -1,4 +1,4 @@
-/* The four steps, in order, and the arithmetic for moving between them.
+/* The three steps, in order, and the arithmetic for moving between them.
  *
  * Split out of Wizard.tsx because StepRail.tsx needs the same list and the
  * same index, and a rail that disagrees with the state machine about how many
@@ -12,7 +12,15 @@
 
 import { t, type MessageKey } from "@/lib/i18n";
 
-export const STEP_IDS = ["trust", "signin", "recovery", "finish"] as const;
+/* "recovery" is deliberately absent. StepRecovery.tsx, its i18n and
+ * GET /api/recovery all still exist, and lososd keeps minting the code (the
+ * market's box ID is derived from it), but nothing can *use* the code yet —
+ * the edge half that would accept it after a reinstall is not built — so the
+ * step asked owners to keep a piece of paper that proves nothing. Matus
+ * chose to hide it (2026-10-06) rather than demo a promise. To bring it back:
+ * add "recovery" between "signin" and "finish" here, restore its STEPS entry,
+ * and re-wire the `recovery` case in Wizard.tsx (StepBody and gateFor). */
+export const STEP_IDS = ["trust", "signin", "finish"] as const;
 
 export type StepId = (typeof STEP_IDS)[number];
 
@@ -24,7 +32,7 @@ export interface StepMeta {
   /** The card's heading, and the line under the rail. A message key, read
    *  at render — a string here would freeze in the language of import. */
   title: MessageKey;
-  /** The rail's own label. Screen-reader-only, so it says which of the four
+  /** The rail's own label. Screen-reader-only, so it says which of the three
    *  rather than restating a title the reader has already heard. */
   rail: MessageKey;
 }
@@ -32,7 +40,6 @@ export interface StepMeta {
 export const STEPS: readonly StepMeta[] = [
   { id: "trust", title: "wizard.steps.trust", rail: "wizard.steps.trust" },
   { id: "signin", title: "wizard.steps.signin", rail: "wizard.steps.signin" },
-  { id: "recovery", title: "wizard.steps.recovery.title", rail: "wizard.steps.recovery.rail" },
   { id: "finish", title: "wizard.steps.finish", rail: "wizard.steps.finish" },
 ] as const;
 

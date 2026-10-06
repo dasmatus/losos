@@ -35,12 +35,14 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import {
   Alert02Icon,
   CheckmarkCircle02Icon,
+  CircleIcon,
   Copy01Icon,
   FingerPrintIcon,
   Key01Icon,
   InformationCircleIcon,
   Loading03Icon,
   LockPasswordIcon,
+  PrinterIcon,
   SecurityLockIcon,
   UserCircleIcon,
   ViewIcon,
@@ -62,14 +64,16 @@ import {
   saveToken,
   type ClaimResponse,
 } from "@/lib/api";
-import { t } from "@/lib/i18n";
+import { intlTag, t } from "@/lib/i18n";
 import { Rich, useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
 import {
   isMissingRoute,
   passwordProblem,
+  passwordRules,
   postSetPassword,
   MIN_PASSWORD_CHARS,
+  type PasswordRuleId,
 } from "./api";
 import { copyText } from "./copy";
 import {
@@ -103,7 +107,7 @@ export function StepSignIn({
 
       <PasswordForm account={account} onPasswordSet={onPasswordSet} />
 
-      {adminKey !== null && <AdminKey value={adminKey} />}
+      {adminKey !== null && <AdminKey value={adminKey} boxName={boxName} />}
 
       <Separator />
 
@@ -235,9 +239,8 @@ function PasswordForm({
             />
           </Button>
         </div>
-        <LabelHint>
-          {t("wizard.signin.hint", { count: MIN_PASSWORD_CHARS })}
-        </LabelHint>
+        <LabelHint>{t("wizard.signin.hint")}</LabelHint>
+        <PasswordRules password={password} />
       </div>
 
       <div className="flex flex-col gap-2">
@@ -308,6 +311,55 @@ function PasswordForm({
         </Callout>
       )}
     </form>
+  );
+}
+
+/* The four rules, each with a tick that fills in as the owner types. On
+ * screen before the first keystroke, so a refusal never cites a rule the
+ * owner has not seen; and only four, so the list is read rather than
+ * skipped. The server checks the same four (backend/src/setup.rs). */
+const RULE_KEYS: Record<
+  PasswordRuleId,
+  | "wizard.signin.rule.length"
+  | "wizard.signin.rule.cases"
+  | "wizard.signin.rule.digit"
+  | "wizard.signin.rule.symbol"
+> = {
+  length: "wizard.signin.rule.length",
+  cases: "wizard.signin.rule.cases",
+  digit: "wizard.signin.rule.digit",
+  symbol: "wizard.signin.rule.symbol",
+};
+
+function PasswordRules({ password }: { password: string }) {
+  const t = useT();
+  return (
+    <ul
+      aria-label={t("wizard.signin.rules")}
+      data-testid="password-rules"
+      className="mt-1 flex flex-col gap-1 text-[13px]"
+    >
+      {passwordRules(password).map((rule) => (
+        <li
+          key={rule.id}
+          data-rule={rule.id}
+          data-met={rule.met ? "true" : "false"}
+          className={cn("flex items-center gap-1.5", rule.met ? "text-ok" : "text-muted")}
+        >
+          <HugeiconsIcon
+            icon={rule.met ? CheckmarkCircle02Icon : CircleIcon}
+            size={16}
+            strokeWidth={1.5}
+            color="currentColor"
+            aria-hidden="true"
+          />
+          {t(RULE_KEYS[rule.id], { count: MIN_PASSWORD_CHARS })}
+          <span className="sr-only">
+            {rule.met ? t("wizard.signin.rule.met") : t("wizard.signin.rule.unmet")}
+          </span>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -523,13 +575,15 @@ function WaitingPanel({ state }: { state: ReadinessState }) {
 
 // ── The admin key ─────────────────────────────────────────────────────────
 
-/* Shown once, here, because nothing else ever shows it. lososd mints the key
+/* The spare. The password the owner just set is what unlocks the admin
+ * pages from now on (the shell's dialog, `POST /api/sign-in`), and it is
+ * LosOS cloud that checks it — so while LosOS cloud is not running the
+ * password cannot be checked, and this key is the way in. lososd mints it
  * into a 0600 file on a box with no shell and releases it exactly once, in
- * the claim reply; the sign-in dialog the shell shows on a later visit asks
- * for it and has nowhere to point. Before this callout existed, closing the
- * tab after setup meant the admin pages were gone for good. The key is also
- * printed on the recovery sheet in the next step. */
-function AdminKey({ value }: { value: string }) {
+ * the claim reply, which is why it is shown here, copyable and printable,
+ * and nowhere else. (It used to print on the recovery-code step's sheet;
+ * that step is hidden, see ./steps.ts, so the sheet lives here now.) */
+function AdminKey({ value, boxName }: { value: string; boxName: string }) {
   const t = useT();
   const [copied, setCopied] = React.useState<boolean | null>(null);
   const keyRef = React.useRef<HTMLElement>(null);
@@ -538,8 +592,11 @@ function AdminKey({ value }: { value: string }) {
     setCopied(await copyText(value, keyRef.current));
   };
 
+  // Prints the document; the rules in ./wizard.css narrow that to the sheet.
+  const print = (): void => window.print();
+
   return (
-    <Callout tone="warn" icon={Key01Icon} title={t("wizard.signin.key.title")}>
+    <Callout tone="info" icon={Key01Icon} title={t("wizard.signin.key.title")}>
       <p className="mt-1">{t("wizard.signin.key.body")}</p>
       <div className="mt-3 flex flex-col gap-3 rounded-card border border-line bg-surface px-3.5 py-3">
         <span className="text-[12px] font-medium tracking-wide text-faint uppercase">
@@ -565,6 +622,16 @@ function AdminKey({ value }: { value: string }) {
           />
           {t("wizard.signin.key.copy")}
         </Button>
+        <Button variant="secondary" size="sm" onClick={print}>
+          <HugeiconsIcon
+            icon={PrinterIcon}
+            size={16}
+            strokeWidth={1.5}
+            color="currentColor"
+            aria-hidden="true"
+          />
+          {t("wizard.signin.key.print")}
+        </Button>
         {copied === true && (
           <span
             role="status"
@@ -586,7 +653,44 @@ function AdminKey({ value }: { value: string }) {
           </span>
         )}
       </div>
+      {/* Present in the document at all times, shown only on paper: the
+          print rules in ./wizard.css hide everything else on the page and
+          force this subtree to black on white. */}
+      <KeySheet boxName={boxName} value={value} />
     </Callout>
+  );
+}
+
+/* What comes out of the printer: the key, what it is for, and the date, in
+ * the interface language, so the sheet still makes sense in a drawer in two
+ * years with no wizard around it. */
+function KeySheet({ boxName, value }: { boxName: string; value: string }) {
+  const t = useT();
+  return (
+    <section className="wizard-print-sheet hidden print:block">
+      <h1 className="text-lg font-semibold">
+        {t("wizard.signin.key.sheetTitle", { name: boxName })}
+      </h1>
+      <p className="mt-1 text-sm">
+        {t("wizard.signin.key.sheetPrinted", {
+          date: new Date().toLocaleDateString(intlTag(), { dateStyle: "long" }),
+        })}
+      </p>
+      <p className="numeric mt-6 text-xl break-all">{value}</p>
+      <p className="mt-6 max-w-prose text-sm leading-relaxed">
+        {t("wizard.signin.key.sheetBody")}
+      </p>
+      <p className="mt-4 flex items-center gap-2 text-sm">
+        <HugeiconsIcon
+          icon={Key01Icon}
+          size={16}
+          strokeWidth={1.5}
+          color="currentColor"
+          aria-hidden="true"
+        />
+        {t("wizard.signin.key.sheetKey")}
+      </p>
+    </section>
   );
 }
 
