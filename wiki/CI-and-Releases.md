@@ -45,6 +45,12 @@ Setup:
 3. Store the public key (`nix key convert-secret-to-public`) as repository
    variable `NIX_CACHE_PUBLIC_KEY`.
 4. Store the proxy's HTTPS URL as repository variable `LOSOS_PROXY_URL`.
+   That is the domain attached to the `losos-cache-proxy` Vercel project,
+   `https://losos-proxy.dasmat.us`, and nothing else: a hostname that merely
+   resolves to Vercel answers `DEPLOYMENT_NOT_FOUND`, nix prints
+   `warning: '<url>' does not appear to be a binary cache` in every job and
+   builds from source, and the run stays green. `setup-nix` now checks
+   `<url>/nix-cache-info` and annotates the run when that happens.
 5. Make the `losos/nix-cache` package public.
 6. Keep `losos.cache.substituters` and `losos.cache.trustedPublicKeys` in
    `modules/options.nix` at the same URL and key. Their defaults are
