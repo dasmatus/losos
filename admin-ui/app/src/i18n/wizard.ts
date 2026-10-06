@@ -84,7 +84,11 @@ export default defineMessages({
     sk: "Priebeh nastavenia",
     de: "Fortschritt der Einrichtung",
   },
-  "wizard.rail.done": { en: "{step} (done)", sk: "{step} (hotovo)", de: "{step} (erledigt)" },
+  "wizard.rail.done": {
+    en: "{step} (done)",
+    sk: "{step} (hotovo)",
+    de: "{step} (erledigt)",
+  },
   "wizard.rail.current": {
     en: "{step} (current)",
     sk: "{step} (aktuálny krok)",
@@ -279,12 +283,57 @@ export default defineMessages({
     sk: "Toto zariadenie si pri inštalácii vytvorilo náhodné heslo a nikomu ho neukázalo, preto sa zatiaľ nikto nemôže prihlásiť. Zvoľte si teraz vlastné.",
     de: "Diese Box hat sich bei der Installation ein zufälliges Passwort gegeben und es niemandem gezeigt, deshalb kann sich noch niemand anmelden. Wähl jetzt eins.",
   },
+  "wizard.signin.waiting.title": {
+    en: "Waiting for this box to finish starting",
+    sk: "Čaká sa, kým sa zariadenie dokončí spúšťať",
+    de: "Warten, bis diese Box fertig gestartet ist",
+  },
+  "wizard.signin.waiting.body": {
+    en: "The password can be set as soon as the file service is ready. This page checks every few seconds and lets you continue on its own; there is nothing to click.",
+    sk: "Heslo bude možné nastaviť, hneď ako bude súborová služba pripravená. Táto stránka to kontroluje každých pár sekúnd a sama vás pustí ďalej; nie je potrebné nič stláčať.",
+    de: "Das Passwort kann gesetzt werden, sobald der Dateidienst bereit ist. Diese Seite prüft das alle paar Sekunden und lässt dich von selbst weiter; es gibt nichts zu klicken.",
+  },
+  "wizard.signin.waiting.since": {
+    en: {
+      one: "Waiting for {count} second so far.",
+      other: "Waiting for {count} seconds so far.",
+    },
+    sk: {
+      one: "Zatiaľ sa čaká {count} sekundu.",
+      few: "Zatiaľ sa čakajú {count} sekundy.",
+      many: "Zatiaľ sa čaká {count} sekundy.",
+      other: "Zatiaľ sa čaká {count} sekúnd.",
+    },
+    de: {
+      one: "Bisher {count} Sekunde gewartet.",
+      other: "Bisher {count} Sekunden gewartet.",
+    },
+  },
+  "wizard.signin.waiting.unreachable": {
+    en: "This box did not answer the last check. It keeps trying.",
+    sk: "Zariadenie neodpovedalo na poslednú kontrolu. Skúša sa to ďalej.",
+    de: "Diese Box hat auf die letzte Prüfung nicht geantwortet. Es wird weiter versucht.",
+  },
+  "wizard.signin.ready": {
+    en: "Ready. You can set the password now.",
+    sk: "Pripravené. Heslo môžete nastaviť teraz.",
+    de: "Bereit. Du kannst das Passwort jetzt setzen.",
+  },
+  "wizard.signin.err.notReady": {
+    en: "This box is not ready for the password yet. The page keeps checking and will let you try again.",
+    sk: "Zariadenie ešte nie je pripravené na heslo. Stránka to ďalej kontroluje a pustí vás skúsiť to znova.",
+    de: "Diese Box ist noch nicht bereit für das Passwort. Die Seite prüft weiter und lässt dich es erneut versuchen.",
+  },
   "wizard.signin.mismatch": {
     en: "The two passwords are not the same.",
     sk: "Heslá sa nezhodujú.",
     de: "Die beiden Passwörter sind nicht gleich.",
   },
-  "wizard.signin.newPassword": { en: "New password", sk: "Nové heslo", de: "Neues Passwort" },
+  "wizard.signin.newPassword": {
+    en: "New password",
+    sk: "Nové heslo",
+    de: "Neues Passwort",
+  },
   "wizard.signin.hide": {
     en: "Hide the password",
     sk: "Skryť heslo",
@@ -324,7 +373,11 @@ export default defineMessages({
     sk: "Nič na tomto zariadení vám nedokáže povedať, čo ste zadali, takže preklep tu znamená nastavovať zariadenie odznova.",
     de: "Nichts auf dieser Box kann dir sagen, was du eingegeben hast, also heißt ein Tippfehler hier, die Box neu aufzusetzen.",
   },
-  "wizard.signin.set": { en: "Set the password", sk: "Nastaviť heslo", de: "Passwort festlegen" },
+  "wizard.signin.set": {
+    en: "Set the password",
+    sk: "Nastaviť heslo",
+    de: "Passwort festlegen",
+  },
   "wizard.signin.setDifferent": {
     en: "Set a different password",
     sk: "Nastaviť iné heslo",
@@ -370,15 +423,31 @@ export default defineMessages({
     sk: "Tento kľúč otvára tieto správcovské stránky z ľubovoľného prehliadača. Táto karta si ho pamätá, kým ju nezatvoríte; zariadenie si nenecháva kópiu, o ktorú by prehliadač mohol znova požiadať. Skopírujte si ho teraz do správcu hesiel. Vytlačí sa aj na hárok v ďalšom kroku.",
     de: "Dieser Schlüssel öffnet diese Admin-Seiten aus jedem Browser. Dieser Tab merkt ihn sich, bis er geschlossen wird; die Box behält keine Kopie, die ein Browser noch einmal abfragen könnte. Kopiere ihn jetzt in einen Passwortmanager. Er steht auch auf dem Blatt im nächsten Schritt.",
   },
-  "wizard.signin.key.label": { en: "Admin key", sk: "Správcovský kľúč", de: "Admin-Schlüssel" },
-  "wizard.signin.key.copy": { en: "Copy the key", sk: "Kopírovať kľúč", de: "Schlüssel kopieren" },
-  "wizard.signin.key.copied": { en: "Copied.", sk: "Skopírované.", de: "Kopiert." },
+  "wizard.signin.key.label": {
+    en: "Admin key",
+    sk: "Správcovský kľúč",
+    de: "Admin-Schlüssel",
+  },
+  "wizard.signin.key.copy": {
+    en: "Copy the key",
+    sk: "Kopírovať kľúč",
+    de: "Schlüssel kopieren",
+  },
+  "wizard.signin.key.copied": {
+    en: "Copied.",
+    sk: "Skopírované.",
+    de: "Kopiert.",
+  },
   "wizard.signin.key.copyFailed": {
     en: "This browser would not copy it. The key is selected; press Ctrl+C, or Cmd+C on a Mac.",
     sk: "Tento prehliadač ho neskopíroval. Kľúč je označený; stlačte Ctrl+C, na Macu Cmd+C.",
     de: "Dieser Browser wollte ihn nicht kopieren. Der Schlüssel ist markiert; drück Strg+C, auf dem Mac Cmd+C.",
   },
-  "wizard.passkey.label": { en: "{name} admin", sk: "{name} (správca)", de: "{name} Admin" },
+  "wizard.passkey.label": {
+    en: "{name} admin",
+    sk: "{name} (správca)",
+    de: "{name} Admin",
+  },
   "wizard.passkey.heading": {
     en: "Add a passkey as well",
     sk: "Pridajte aj prístupový kľúč",
@@ -488,7 +557,11 @@ export default defineMessages({
     sk: "Kód sa nepodarilo načítať",
     de: "Der Code konnte nicht gelesen werden",
   },
-  "wizard.recovery.retry": { en: "Try again", sk: "Skúsiť znova", de: "Erneut versuchen" },
+  "wizard.recovery.retry": {
+    en: "Try again",
+    sk: "Skúsiť znova",
+    de: "Erneut versuchen",
+  },
   "wizard.recovery.printed": {
     en: "Printed {date}.",
     sk: "Vytlačené {date}.",
@@ -535,6 +608,21 @@ export default defineMessages({
     en: "Sign in below with the name and password you set in step 2. The name is {name}. This page notices when you are through and finishes on its own.",
     sk: "Nižšie sa prihláste menom a heslom, ktoré ste nastavili v kroku 2. Meno je {name}. Táto stránka spozná, keď budete prihlásení, a dokončí sa sama.",
     de: "Melde dich unten mit dem Namen und dem Passwort an, die du in Schritt 2 festgelegt hast. Der Name ist {name}. Diese Seite merkt, wenn du durch bist, und schließt von selbst ab.",
+  },
+  "wizard.first.starting.title": {
+    en: "Your files are still starting",
+    sk: "Vaše súbory sa ešte spúšťajú",
+    de: "Deine Dateien starten noch",
+  },
+  "wizard.first.starting.body": {
+    en: "The files app has not answered yet. This page keeps asking in the background and the sign-in form appears here on its own. On a new box this takes a few minutes.",
+    sk: "Aplikácia so súbormi ešte neodpovedá. Táto stránka sa pýta ďalej na pozadí a prihlasovací formulár sa tu objaví sám. Na novom zariadení to trvá pár minút.",
+    de: "Die Dateien-App antwortet noch nicht. Diese Seite fragt im Hintergrund weiter nach, und das Anmeldeformular erscheint hier von selbst. Auf einer neuen Box dauert das ein paar Minuten.",
+  },
+  "wizard.first.opening": {
+    en: "Opening the sign-in page…",
+    sk: "Otvára sa prihlasovacia stránka…",
+    de: "Die Anmeldeseite wird geöffnet …",
   },
   "wizard.first.lost.title": {
     en: "Cannot follow along",

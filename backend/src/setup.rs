@@ -114,6 +114,19 @@ pub const NATIVE_OCC: &str = "nextcloud-occ";
 /// substitution round-trips it exactly.
 pub const IMAGE_OCC_SETPASS: &str = "/bin/losos-nextcloud-occ-setpass";
 
+/// The container-mode readiness probe, which also lives **inside the image**.
+///
+/// > `/bin/losos-nextcloud-occ-status` runs `occ status --output=json` from
+/// > the webroot with `NEXTCLOUD_CONFIG_DIR` set, and exits with occ's status.
+///
+/// It exists because `crictl ps --state Running` is true from the first line
+/// of the pod's entrypoint, and that entrypoint runs `occ maintenance:install`
+/// before it serves anything — minutes on a mini-PC, the better part of an
+/// hour under emulation. A password reset in that window fails, and the
+/// first-run wizard used to show the owner a bare 500. Now the wizard asks
+/// [`interpret_status`]'s question first and waits.
+pub const IMAGE_OCC_STATUS: &str = "/bin/losos-nextcloud-occ-status";
+
 /// The CRI socket of the box's **own** k3s cluster's containerd
 /// (`modules/cluster.nix`, `localCriSocket`).
 ///
@@ -288,6 +301,114 @@ pub fn resolve_argv(socket: &str) -> Vec<String> {
         "--quiet".into(),
         "--no-trunc".into(),
     ]
+}
+
+/// The most recent Nextcloud container in **any** state, for reading its last
+/// words when [`resolve_argv`] finds no running one.
+///
+/// `--all` because the interesting container is the one that just exited;
+/// `--latest` because a crash-looping pod leaves a trail of them and only the
+/// newest explains the present. Same flag traps as [`resolve_argv`].
+pub fn last_container_argv(socket: &str) -> Vec<String> {
+    vec![
+        "crictl".into(),
+        "--runtime-endpoint".into(),
+        socket.to_string(),
+        "ps".into(),
+        "--all".into(),
+        "--name".into(),
+        CONTAINER_NAME_RE.into(),
+        "--namespace".into(),
+        CONTAINER_NAMESPACE_RE.into(),
+        "--latest".into(),
+        "--quiet".into(),
+        "--no-trunc".into(),
+    ]
+}
+
+/// The tail of one container's log, as the owner's only window into a pod that
+/// keeps dying on a box with no shell.
+pub fn container_log_argv(socket: &str, id: &str) -> Vec<String> {
+    vec![
+        "crictl".into(),
+        "--runtime-endpoint".into(),
+        socket.to_string(),
+        "logs".into(),
+        "--tail".into(),
+        "20".into(),
+        id.to_string(),
+    ]
+}
+
+/// Word a stopped container's last log line for the waiting panel, or `None`
+/// when there is nothing to show (no container yet, or an empty log).
+///
+/// This exists because the alternative was discovered the hard way: the
+/// recorded install demo of 2026-10-05 sat on "Nextcloud has not started yet"
+/// for an hour while the pod was in CrashLoopBackOff over a one-line
+/// `mkdir: cannot create directory '/run/nextcloud': Permission denied`, and
+/// the only way to read that line was to boot the live ISO and mount the
+/// encrypted volume by hand. The line is what the owner (or whoever they ask)
+/// needs; the sentence around it says plainly that waiting will not fix it.
+pub fn describe_stopped(log_tail: &str) -> Option<String> {
+    const MAX: usize = 240;
+    // The line to show is the last one that reads as a complaint, and only
+    // failing that the last line of all. A tool that fails on its arguments
+    // prints the complaint first and its usage after (Symfony's console,
+    // behind `occ`, does exactly that, and take 7 of the recorded install
+    // demo surfaced a `maintenance:install [--database DATABASE] …` usage
+    // line here with the reason scrolled off above it). Not `last_line`
+    // either way: that one caps silently, and a cut here should be visible,
+    // so the owner knows the message goes on.
+    let lines: Vec<&str> = log_tail
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .collect();
+    let last = lines
+        .iter()
+        .rev()
+        .find(|l| looks_like_a_complaint(l))
+        .or(lines.last())
+        .map(|l| (*l).to_string())
+        .unwrap_or_default();
+    if last.is_empty() {
+        return None;
+    }
+    let shown = if last.chars().count() > MAX {
+        let cut: String = last.chars().take(MAX).collect();
+        format!("{cut}\u{2026}")
+    } else {
+        last
+    };
+    Some(format!(
+        "Nextcloud started and stopped again. Its last message was: {shown} \
+         The box retries on its own; if this stays on screen the message \
+         above is what needs fixing."
+    ))
+}
+
+/// Does a log line read as the reason something stopped, rather than as
+/// progress or usage text? Case-insensitive words, no regex crate needed.
+fn looks_like_a_complaint(line: &str) -> bool {
+    const WORDS: [&str; 14] = [
+        "error",
+        "fail",
+        "cannot",
+        "can't",
+        "denied",
+        "refused",
+        "requires",
+        "required",
+        "not found",
+        "no such",
+        "missing",
+        "exception",
+        "invalid",
+        "not enough",
+    ];
+    let lower = line.to_lowercase();
+    WORDS.iter().any(|w| lower.contains(w))
 }
 
 /// Pick the one container id out of `crictl ps --quiet` output.
@@ -499,6 +620,145 @@ pub fn interpret_occ(outcome: &OccOutcome) -> Result<String, String> {
         )
     })
 }
+
+/// The argv that asks Nextcloud whether it is ready to take an `occ` command.
+///
+/// Pure, like [`plan_set_password`]: the target is an input, and the test
+/// suite asserts the exact command line without spawning anything.
+pub fn plan_status(target: &Target) -> Vec<String> {
+    match target {
+        Target::Native => vec![NATIVE_OCC.into(), "status".into(), "--output=json".into()],
+        Target::Container { socket, id } => vec![
+            "crictl".into(),
+            "--runtime-endpoint".into(),
+            socket.clone(),
+            "exec".into(),
+            "--sync".into(),
+            id.clone(),
+            IMAGE_OCC_STATUS.into(),
+        ],
+    }
+}
+
+/// Why Nextcloud cannot take the first password yet, in a sentence the wizard
+/// shows to the owner. `Ok(())` means an `occ user:resetpassword` would reach
+/// an installed, serving instance.
+///
+/// `occ status --output=json` prints `{"installed":…,"maintenance":…,
+/// "needsDbUpgrade":…,…}`; before `maintenance:install` has finished it prints
+/// `installed: false`, or exits non-zero with "not installed" on its stderr,
+/// depending on how far the installer got. All of those are the same answer
+/// here: not yet.
+pub fn interpret_status(outcome: &OccOutcome) -> Result<(), String> {
+    const INSTALLING: &str = "Nextcloud is still installing itself. \
+         This happens once, on the first boot, and takes a few minutes.";
+    const STARTING: &str = "Nextcloud is starting but not answering yet. \
+         On a new box this takes a few minutes.";
+    if outcome.code != 0 {
+        let combined = format!("{}\n{}", outcome.stdout, outcome.stderr);
+        if combined.contains("not installed") {
+            return Err(INSTALLING.to_string());
+        }
+        // The runtime, not occ, answered: the container exists but is not
+        // running yet (seen on the first boot, between the pod being created
+        // and its process starting: `failed to create exec`,
+        // `container is not running`). That is the same window as "has not
+        // started yet", worded for the owner rather than crictl's rpc error.
+        if combined.contains("failed to exec in container")
+            || combined.contains("is not running")
+            || combined.contains("not in running state")
+        {
+            return Err(STARTING.to_string());
+        }
+        let detail = {
+            let stderr = last_line(&outcome.stderr);
+            if stderr.is_empty() {
+                last_line(&outcome.stdout)
+            } else {
+                stderr
+            }
+        };
+        return Err(if detail.is_empty() {
+            format!(
+                "Nextcloud did not answer `occ status` (exit {}).",
+                outcome.code
+            )
+        } else {
+            format!(
+                "Nextcloud did not answer `occ status` (exit {}): {detail}",
+                outcome.code
+            )
+        });
+    }
+    // occ prints Symfony deprecation notices and the like *before* the JSON
+    // on a bad day, so the document is the last line that parses, not stdout
+    // whole.
+    let doc = outcome
+        .stdout
+        .lines()
+        .rev()
+        .map(str::trim)
+        .find_map(|l| serde_json::from_str::<serde_json::Value>(l).ok());
+    let Some(doc) = doc else {
+        return Err("Nextcloud answered `occ status` with something other than JSON.".to_string());
+    };
+    let flag = |k: &str| doc.get(k).and_then(serde_json::Value::as_bool);
+    if flag("installed") != Some(true) {
+        return Err(INSTALLING.to_string());
+    }
+    if flag("maintenance") == Some(true) {
+        return Err("Nextcloud is in maintenance mode right now.".to_string());
+    }
+    if flag("needsDbUpgrade") == Some(true) {
+        return Err(
+            "Nextcloud is upgrading its database. This finishes on its own in a few minutes."
+                .to_string(),
+        );
+    }
+    Ok(())
+}
+
+/// Whether the box can take its first password, and if not, why not yet.
+///
+/// Serialized into `GET /api/setup/claim`'s reply as `ready` and `waitingFor`,
+/// so the wizard can wait with a reason on screen instead of letting the
+/// owner submit into a 500.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Readiness {
+    Ready,
+    NotYet(String),
+}
+
+/// `POST /api/setup/claim` while Nextcloud cannot take the password yet.
+///
+/// A distinct error type so the HTTP layer can answer 503 with the reason and
+/// a `Retry-After`, rather than the opaque 500 every other command failure
+/// gets: this one is expected on every fresh box, is nobody's fault, and
+/// resolves itself. The box stays claimable — nothing was changed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NotReady(pub String);
+
+impl std::fmt::Display for NotReady {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "not ready for the first password yet: {}", self.0)
+    }
+}
+
+/// A claim on a box that already has an owner. Typed so the HTTP layer can
+/// answer 409 with the sentence, which the wizard shows, rather than the 500
+/// "command failed; see the lososd journal" every untyped error becomes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AlreadyClaimed;
+
+impl std::fmt::Display for AlreadyClaimed {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("this box has already been set up")
+    }
+}
+
+impl std::error::Error for AlreadyClaimed {}
+
+impl std::error::Error for NotReady {}
 
 /// Last non-empty line, capped. occ writes one line worth reading and a
 /// variable amount of Symfony framing around it.

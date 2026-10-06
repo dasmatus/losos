@@ -40,6 +40,7 @@ pub mod losos;
 pub mod market;
 pub mod model;
 pub mod overrides;
+pub mod receipt;
 pub mod recovery;
 pub mod setup;
 pub mod supervisor;
