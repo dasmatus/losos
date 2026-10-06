@@ -1,7 +1,7 @@
 /* One fetch of /setup/state.json, shared by every step that needs it.
  *
- * Step 1 wants the certificate and the https address, step 3 prints the box's
- * name onto the recovery sheet, and step 4 names the address the sign-in page
+ * Step 1 wants the certificate and the https address, step 2 prints the box's
+ * name onto the spare-key sheet, and step 3 names the address the sign-in page
  * is on. Fetching it per step would be three requests for a file written once
  * per boot, and — worse — three independent error states for one failure.
  *

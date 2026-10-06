@@ -51,10 +51,9 @@ the tab the token on a yes. The box keeps no second copy of the password, so
 changing it inside LosOS cloud changes it for the admin pages too.
 
 The token itself is still shown once, after the password is set, as the
-**spare admin key**, with a Copy button, and printed on the recovery sheet in
-the next step under the recovery code. It is for the one case the password
-cannot cover: LosOS cloud not running, which is what checks the password. The
-unlock dialog has a link to enter it instead.
+**spare admin key**, with Copy and Print buttons. It is for the one case the
+password cannot cover: LosOS cloud not running, which is what checks the
+password. The unlock dialog has a link to enter it instead.
 
 A new password has to be at least 12 characters with a lower-case letter, an
 upper-case letter, a digit and a symbol such as `-` or `!`; the wizard shows

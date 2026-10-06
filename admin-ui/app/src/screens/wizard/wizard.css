@@ -54,9 +54,9 @@
   animation: wizard-in-from-left 260ms cubic-bezier(0.2, 0.7, 0.3, 1) both;
 }
 
-/* ── Printing the recovery code ───────────────────────────────────────────
+/* ── Printing the spare admin key ─────────────────────────────────────────
  *
- * The Print button on step 3 calls window.print(), which prints the document —
+ * The Print button on step 2 calls window.print(), which prints the document —
  * the whole admin page, chrome and all. Narrowing that to one card is the job
  * of these rules.
  *

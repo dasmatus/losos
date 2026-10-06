@@ -1,22 +1,25 @@
 /* The first-run wizard.
  *
- * Four steps, and it exists because of one bug: modules/nextcloud-common.nix
+ * Three steps, and it exists because of one bug: modules/nextcloud-common.nix
  * mints the first admin password from /dev/urandom, writes it 0600 and shows
  * it to nobody. There is no SSH and no shell login, so on a box out of the
  * carton nothing — not the owner, not a support call — can sign in at all.
- * Step 2 is the fix; the other three are what has to be true around it.
+ * Step 2 is the fix; the other two are what has to be true around it.
  *
  *   1  Trust this box       install the self-signed certificate, come back on
  *                           https, because step 2 sends a password and a
  *                           passkey cannot be made without a secure context
- *   2  Choose how you sign in   the password (required), the passkey (offered)
- *   3  Recovery code        the one thing that must leave the box
- *   4  Sign in              the files app, embedded, watched
+ *   2  Choose how you sign in   the password (required), the passkey (offered),
+ *                           and the spare admin key, shown and printable once
+ *   3  Sign in              the files app, embedded, watched
+ *
+ * There was a recovery-code step between 2 and 3; wizard/steps.ts says why it
+ * is hidden and how to bring it back.
  *
  * This component owns the sequence and the gates and nothing else. Each step
- * reports upward when its gate is met — `account` for step 2, `codeSaved` for
- * step 3, `signedIn` for step 4 — and the footer reads those. Steps do not
- * move the wizard themselves.
+ * reports upward when its gate is met — `account` for step 2, `signedIn` for
+ * step 3 — and the footer reads those. Steps do not move the wizard
+ * themselves.
  *
  * House rules, same as everywhere in this app: no inline style attributes (the
  * appliance CSP refuses them), no emoji, and nothing a user reads names a
@@ -34,7 +37,6 @@ import { useT } from "@/lib/i18n-react";
 import { StepRail } from "./wizard/StepRail";
 import { StepTrust } from "./wizard/StepTrust";
 import { StepSignIn } from "./wizard/StepSignIn";
-import { StepRecovery } from "./wizard/StepRecovery";
 import { StepFirstSignIn } from "./wizard/StepFirstSignIn";
 import { StepText } from "./wizard/parts";
 import { boxName, useSetupState, type SetupQuery } from "./wizard/useSetupState";
@@ -67,8 +69,6 @@ export default function Wizard({ onDone }: WizardProps) {
    * because you went back to re-read the fingerprint would be its own bug. */
   const [account, setAccount] = React.useState<string | null>(null);
   const [adminKey, setAdminKey] = React.useState<string | null>(null);
-  const [codeSaved, setCodeSaved] = React.useState(false);
-  const [codeUnavailable, setCodeUnavailable] = React.useState(false);
   const [signedIn, setSignedIn] = React.useState(false);
 
   /* The step's own <section> takes focus on a move, not the heading inside
@@ -95,13 +95,11 @@ export default function Wizard({ onDone }: WizardProps) {
     // carries no key; the one from the claim stays on screen.
     if (key !== null) setAdminKey(key);
   }, []);
-  const onCodeSaved = React.useCallback(() => setCodeSaved(true), []);
-  const onCodeUnavailable = React.useCallback(() => setCodeUnavailable(true), []);
   const onSignedIn = React.useCallback(() => setSignedIn(true), []);
 
   const previous = previousStep(step);
   const next = nextStep(step);
-  const gate = gateFor(step, { account, codeSaved, codeUnavailable, signedIn });
+  const gate = gateFor(step, { account, signedIn });
 
   const goBack = (): void => {
     if (previous === null) return;
@@ -159,11 +157,8 @@ export default function Wizard({ onDone }: WizardProps) {
               setup={setup}
               account={account}
               adminKey={adminKey}
-              codeSaved={codeSaved}
               signedIn={signedIn}
               onPasswordSet={onPasswordSet}
-              onCodeSaved={onCodeSaved}
-              onCodeUnavailable={onCodeUnavailable}
               onSignedIn={onSignedIn}
             />
           </CardContent>
@@ -207,11 +202,8 @@ interface StepBodyProps {
   setup: SetupQuery;
   account: string | null;
   adminKey: string | null;
-  codeSaved: boolean;
   signedIn: boolean;
   onPasswordSet: (user: string, adminKey: string | null) => void;
-  onCodeSaved: () => void;
-  onCodeUnavailable: () => void;
   onSignedIn: () => void;
 }
 
@@ -226,16 +218,6 @@ function StepBody(props: StepBodyProps) {
           account={props.account}
           adminKey={props.adminKey}
           onPasswordSet={props.onPasswordSet}
-        />
-      );
-    case "recovery":
-      return (
-        <StepRecovery
-          boxName={boxName(props.setup)}
-          adminKey={props.adminKey}
-          saved={props.codeSaved}
-          onSaved={props.onCodeSaved}
-          onUnavailable={props.onCodeUnavailable}
         />
       );
     case "finish":
@@ -258,8 +240,6 @@ function StepBody(props: StepBodyProps) {
 
 interface Gates {
   account: string | null;
-  codeSaved: boolean;
-  codeUnavailable: boolean;
   signedIn: boolean;
 }
 
@@ -272,23 +252,14 @@ interface Gate {
  *
  * Step 1 is always passable — the certificate may already be installed, and a
  * box with `losos.tls.enable` off has none to install. Step 2 waits on a
- * password because that is the bug this wizard exists to fix. Step 3 waits on
- * the code having been copied or printed, and falls back to an explicit
- * "without a code" when the box cannot produce one: refusing to let anyone
- * past a step whose content failed to load would be a locked door, not a
- * safeguard, and the changed label is what keeps it from reading as done. */
+ * password because that is the bug this wizard exists to fix. Step 3 waits
+ * on a real session in the embedded files app. */
 function gateFor(step: StepId, gates: Gates): Gate {
   switch (step) {
     case "trust":
       return { allowed: true, label: t("wizard.nav.continue") };
     case "signin":
       return { allowed: gates.account !== null, label: t("wizard.nav.continue") };
-    case "recovery":
-      if (gates.codeSaved) return { allowed: true, label: t("wizard.nav.continue") };
-      if (gates.codeUnavailable) {
-        return { allowed: true, label: t("wizard.nav.continueWithoutCode") };
-      }
-      return { allowed: false, label: t("wizard.nav.continue") };
     case "finish":
       return { allowed: gates.signedIn, label: t("wizard.nav.finish") };
     default: {

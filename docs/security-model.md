@@ -53,8 +53,8 @@ The token is equivalent to root: `POST /api/apply` writes arbitrary Nix to
   loopback, whether the password is the admin account's, and answers with
   the token on a 200. lososd keeps no copy or hash of the password, so there
   is exactly one credential and it lives in Nextcloud; the cost is that the
-  route answers 503 while Nextcloud is not running, which is what the admin
-  key printed on the recovery sheet is for. The route is unauthenticated by
+  route answers 503 while Nextcloud is not running, which is what the spare
+  admin key shown (and printable) during setup is for. The route is unauthenticated by
   nature and so carries the claim route's three same-box checks, and the
   per-address throttle counts a wrong password as it counts a wrong token;
   Nextcloud's own brute-force protection sees the browser's address through

@@ -287,8 +287,9 @@ export function passwordProblem(password: string): string | null {
  * The 404 branch is kept, and is not dead code: this SPA is served from the
  * appliance's own store path, but `losos.backend.package` can be pinned to an
  * older lososd, and a box mid-`nixos-rebuild switch` has the new UI in front of
- * the previous daemon for the length of the rebuild. Step 3 then says the box
- * cannot show a code, in words, and unblocks Continue.
+ * the previous daemon for the length of the rebuild. The recovery step (hidden
+ * at present, see ./steps.ts) then says the box cannot show a code, in words,
+ * and unblocks Continue.
  *
  * What it must never do is invent one. A UUID the box did not mint is a piece
  * of paper that proves nothing, and the owner would not find out until the

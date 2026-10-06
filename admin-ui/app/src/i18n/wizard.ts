@@ -52,9 +52,9 @@ export default defineMessages({
     de: "Die Box ist bereit",
   },
   "wizard.closing.body": {
-    en: "You can sign in from any device on this network. Keep the recovery code somewhere that is not this box.",
-    sk: "Prihlásiť sa môžete z akéhokoľvek prístroja v tejto sieti. Kód na obnovenie uchovávajte niekde mimo tohto zariadenia.",
-    de: "Du kannst dich von jedem Gerät in diesem Netzwerk anmelden. Bewahre den Wiederherstellungscode irgendwo auf, nur nicht auf dieser Box.",
+    en: "You can sign in from any device on this network. Keep the spare admin key somewhere that is not this box.",
+    sk: "Prihlásiť sa môžete z akéhokoľvek prístroja v tejto sieti. Náhradný správcovský kľúč uchovávajte niekde mimo tohto zariadenia.",
+    de: "Du kannst dich von jedem Gerät in diesem Netzwerk anmelden. Bewahre den Ersatz-Admin-Schlüssel irgendwo auf, nur nicht auf dieser Box.",
   },
 
   // ── steps.ts / StepRail.tsx ─────────────────────────────────────────────
@@ -68,6 +68,7 @@ export default defineMessages({
     sk: "Vyberte si spôsob prihlásenia",
     de: "Wähle, wie du dich anmeldest",
   },
+  // The two recovery keys stay for the hidden step (see steps.ts).
   "wizard.steps.recovery.title": {
     en: "Write down your recovery code",
     sk: "Zapíšte si kód na obnovenie",
@@ -449,9 +450,9 @@ export default defineMessages({
     de: "Dein Ersatz-Admin-Schlüssel, nur jetzt zu sehen",
   },
   "wizard.signin.key.body": {
-    en: "From now on your password unlocks these admin pages. This key is the spare: it opens them even while LosOS cloud is not running to check the password. The box shows it only now and keeps no copy a browser can ask for again, so copy it into a password manager. It is also printed on the sheet in the next step.",
-    sk: "Odteraz tieto správcovské stránky odomyká vaše heslo. Tento kľúč je náhradný: otvorí ich, aj keď LosOS cloud práve nebeží a heslo sa nedá overiť. Zariadenie ho zobrazí iba teraz a nenecháva si kópiu, o ktorú by prehliadač mohol znova požiadať, preto si ho skopírujte do správcu hesiel. Vytlačí sa aj na hárok v ďalšom kroku.",
-    de: "Ab jetzt entsperrt dein Passwort diese Admin-Seiten. Dieser Schlüssel ist der Ersatz: Er öffnet sie auch, während LosOS cloud nicht läuft und das Passwort nicht prüfen kann. Die Box zeigt ihn nur jetzt und behält keine Kopie, die ein Browser noch einmal abfragen könnte, also kopiere ihn in einen Passwortmanager. Er steht auch auf dem Blatt im nächsten Schritt.",
+    en: "From now on your password unlocks these admin pages. This key is the spare: it opens them even while LosOS cloud is not running to check the password. The box shows it only now and keeps no copy a browser can ask for again, so copy it into a password manager, or print it and keep the sheet.",
+    sk: "Odteraz tieto správcovské stránky odomyká vaše heslo. Tento kľúč je náhradný: otvorí ich, aj keď LosOS cloud práve nebeží a heslo sa nedá overiť. Zariadenie ho zobrazí iba teraz a nenecháva si kópiu, o ktorú by prehliadač mohol znova požiadať, preto si ho skopírujte do správcu hesiel alebo si ho vytlačte a hárok odložte.",
+    de: "Ab jetzt entsperrt dein Passwort diese Admin-Seiten. Dieser Schlüssel ist der Ersatz: Er öffnet sie auch, während LosOS cloud nicht läuft und das Passwort nicht prüfen kann. Die Box zeigt ihn nur jetzt und behält keine Kopie, die ein Browser noch einmal abfragen könnte, also kopiere ihn in einen Passwortmanager, oder druck ihn aus und heb das Blatt auf.",
   },
   "wizard.signin.key.label": {
     en: "Spare admin key",
@@ -462,6 +463,28 @@ export default defineMessages({
     en: "Copy the key",
     sk: "Kopírovať kľúč",
     de: "Schlüssel kopieren",
+  },
+  "wizard.signin.key.print": { en: "Print", sk: "Tlačiť", de: "Drucken" },
+  // The printed sheet. Its own markup in StepSignIn.tsx (KeySheet).
+  "wizard.signin.key.sheetTitle": {
+    en: "Spare admin key for {name}",
+    sk: "Náhradný správcovský kľúč pre {name}",
+    de: "Ersatz-Admin-Schlüssel für {name}",
+  },
+  "wizard.signin.key.sheetPrinted": {
+    en: "Printed {date}.",
+    sk: "Vytlačené {date}.",
+    de: "Gedruckt am {date}.",
+  },
+  "wizard.signin.key.sheetBody": {
+    en: "The admin pages normally unlock with your password. If LosOS cloud is not running and the password cannot be checked, choose \"Use the spare admin key instead\" and paste this. It was shown once, during setup, and the box will not show it again.",
+    sk: "Správcovské stránky sa bežne odomykajú vaším heslom. Ak LosOS cloud nebeží a heslo sa nedá overiť, zvoľte „Použiť namiesto toho náhradný správcovský kľúč“ a vložte tento. Zobrazil sa raz, počas nastavenia, a zariadenie ho znova neukáže.",
+    de: "Die Admin-Seiten entsperrst du normalerweise mit deinem Passwort. Wenn LosOS cloud nicht läuft und das Passwort nicht geprüft werden kann, wähl „Stattdessen den Ersatz-Admin-Schlüssel verwenden“ und gib diesen ein. Er wurde einmal gezeigt, bei der Einrichtung, und die Box zeigt ihn nicht noch einmal.",
+  },
+  "wizard.signin.key.sheetKey": {
+    en: "Treat it like a key to the box, because that is what it is.",
+    sk: "Zaobchádzajte s ním ako s kľúčom od zariadenia, pretože presne tým je.",
+    de: "Behandle ihn wie einen Schlüssel zur Box, denn genau das ist er.",
   },
   "wizard.signin.key.copied": {
     en: "Copied.",
@@ -539,7 +562,7 @@ export default defineMessages({
     de: "Das hat nicht geklappt",
   },
 
-  // ── StepRecovery.tsx ────────────────────────────────────────────────────
+  // ── StepRecovery.tsx (hidden step; kept so it can come back) ────────────
   "wizard.recovery.intro": {
     en: "A factory reset or a reinstall erases this box's disk, and it comes back with a brand new identity. To every other box it works with, that looks like a stranger claiming a name they already know, and they refuse it. This code is the only proof that the new box is the old one, so it cannot live on the disk it is meant to recover. Put it on paper, or in a password manager.",
     sk: "Obnovenie továrenských nastavení alebo preinštalovanie vymaže disk tohto zariadenia a to sa vráti s úplne novou identitou. Pre všetky ostatné zariadenia, s ktorými spolupracuje, to vyzerá ako cudzinec, ktorý si nárokuje meno, ktoré už poznajú, a tak ho odmietnu. Tento kód je jediným dôkazom, že nové zariadenie je to staré, preto nemôže byť uložený na disku, ktorý má obnoviť. Zapíšte si ho na papier alebo do správcu hesiel.",

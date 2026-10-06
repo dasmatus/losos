@@ -156,8 +156,8 @@ await check('no em dash reappears in the wizard copy', async () => {
  * before the owner exists. And the wizard tears itself down halfway if the
  * shell watches the claim flag rather than the wizard: step 2 claims the box
  * and stores the token, so a gate keyed on "is it claimed" flips to the app
- * mid-flow and skips step 3, the recovery code, which is the one thing that has
- * to leave the box. The owner would never see it and would not know. */
+ * mid-flow, before the owner has copied the spare admin key that step 2 shows
+ * exactly once. The owner would never see it and would not know. */
 for (const path of ['/settings', '/settings/reset', '/storage', '/mesh', '/apps']) {
   await check(`an unclaimed box shows setup at ${path}, not the page`, async () => {
     const { page } = await open({ claimed: false, path });
@@ -254,11 +254,11 @@ await check('step 2 shows the four password rules up front and ticks them as the
 
 await check('claiming the box mid-wizard does not end the wizard', async () => {
   // Step 2 stores the token and flips the claim flag. A shell keyed on either
-  // would swap the app in here and step 3, the recovery code, would never show.
+  // would swap the app in here, and the spare admin key would never be seen.
   const { page, text } = await claimThroughStepTwo();
   assert.ok(
-    /Trust this box|sign in|Recovery code|Password set/i.test(text),
-    'the wizard vanished once a token existed, so step 3 would never be shown',
+    /Trust this box|sign in|spare admin key|Password set/i.test(text),
+    'the wizard vanished once a token existed, before the spare key was shown',
   );
   assert.ok(!/Your board/i.test(text), 'the overview replaced the wizard mid-flow');
   await page.close();
@@ -448,7 +448,7 @@ await check('a 409 from the claim is shown and not asked again', async () => {
   await page.close();
 });
 
-/* Step 4 on a new box, take 7 of the recorded install demo (2026-10-05): the
+/* Step 3 on a new box, take 7 of the recorded install demo (2026-10-05): the
  * frame is opened a minute or two before the files app's web server is up,
  * so what it shows is nginx's "502 Bad Gateway" page. The old watcher read
  * "/nextcloud, not the login page" as a session and said "You are signed in"
@@ -457,7 +457,7 @@ await check('a 409 from the claim is shown and not asked again', async () => {
  * user as signed in. Take 8 then showed that 502 page in the frame for six
  * minutes; now the frame stays hidden, loading in the background behind a
  * quiet panel, until it holds a page of the app. */
-await check('step 4 hides the frame and keeps reloading it until the files app answers, and signs in only on a real session', async () => {
+await check('step 3 hides the frame and keeps reloading it until the files app answers, and signs in only on a real session', async () => {
   const { page } = await open({ claimed: false, ready: true });
   let hits = 0;
   await page.route('**/nextcloud', async (route) => {
@@ -474,17 +474,12 @@ await check('step 4 hides the frame and keeps reloading it until the files app a
   await page.route('**/nextcloud/apps/files/', (route) =>
     route.fulfill({ status: 200, contentType: 'text/html', body: '<html><head data-requesttoken="tok" data-user="notshared"><title>Files</title></head><body><div id="app-content">files</div></body></html>' }),
   );
-  await page.route('**/api/recovery', (route) =>
-    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ code: 'c5b6add9-e47a-43d5-87be-9b45e4a81441', minted: true }) }),
-  );
-  // Through steps 1 to 3.
+  // Through steps 1 and 2.
   await page.getByRole('button', { name: /^Continue$/ }).click();
   await page.locator('input[name="new-password"]').fill('Correct-horse battery staple 1');
   await page.locator('input[name="confirm-password"]').fill('Correct-horse battery staple 1');
   await page.getByRole('button', { name: /^Set the password$/ }).click();
   await page.getByText('notshared').first().waitFor({ timeout: 5000 });
-  await page.getByRole('button', { name: /^Continue$/ }).click();
-  await page.getByRole('button', { name: 'Copy' }).click();
   await page.getByRole('button', { name: /^Continue$/ }).click();
   await page.locator('iframe').first().waitFor({ state: 'attached', timeout: 5000 });
 
@@ -518,7 +513,7 @@ await check('step 4 hides the frame and keeps reloading it until the files app a
   await page.close();
 });
 
-await check('step 4 lets a slow first answer from the files app arrive instead of cancelling it with the next reload', async () => {
+await check('step 3 lets a slow first answer from the files app arrive instead of cancelling it with the next reload', async () => {
   const { page } = await open({ claimed: false, ready: true });
   // One nginx error page, then the app answers, but slowly: the first
   // request after the claim can take longer than the reload period on a
@@ -540,16 +535,11 @@ await check('step 4 lets a slow first answer from the files app arrive instead o
       /* The browser gave up on this load before it was answered. */
     }
   });
-  await page.route('**/api/recovery', (route) =>
-    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ code: 'c5b6add9-e47a-43d5-87be-9b45e4a81441', minted: true }) }),
-  );
   await page.getByRole('button', { name: /^Continue$/ }).click();
   await page.locator('input[name="new-password"]').fill('Correct-horse battery staple 1');
   await page.locator('input[name="confirm-password"]').fill('Correct-horse battery staple 1');
   await page.getByRole('button', { name: /^Set the password$/ }).click();
   await page.getByText('notshared').first().waitFor({ timeout: 5000 });
-  await page.getByRole('button', { name: /^Continue$/ }).click();
-  await page.getByRole('button', { name: 'Copy' }).click();
   await page.getByRole('button', { name: /^Continue$/ }).click();
   await page.locator('iframe').first().waitFor({ state: 'attached', timeout: 5000 });
   await page.waitForFunction(() => {
