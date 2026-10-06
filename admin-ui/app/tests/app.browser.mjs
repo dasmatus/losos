@@ -24,10 +24,13 @@ const { check, skip, finish } = runner();
  * "soon(TM)" badge, nothing navigates to it, and its address falls back to
  * the default pane. The pane's own checks below are kept behind this switch
  * so that opening the tab is two flips, there and here, and brings its
- * coverage straight back. A check at the bottom asserts the two agree. */
+ * coverage straight back; the checks on the greyed row run only until then.
+ * Both states were run green before the switch was set. */
 const MARKET_TAB_OPEN = false;
 const whenMarketOpen = (name, fn) =>
   MARKET_TAB_OPEN ? check(name, fn) : skip(name, 'the Market tab is planned, not open');
+const whenMarketPlanned = (name, fn) =>
+  MARKET_TAB_OPEN ? skip(name, 'the Market tab is open') : check(name, fn);
 
 const SETTINGS = {
   sharingMyStorage: false,
@@ -268,13 +271,13 @@ const MARKET_ROW = {
 };
 
 for (const [locale, [navName, label]] of Object.entries(MARKET_ROW)) {
-  await check(`the Market row is greyed out as soon(TM) and cannot be opened (${locale})`, async () => {
+  await whenMarketPlanned(`the Market row is greyed out as soon(TM) and cannot be opened (${locale})`, async () => {
     const tag = { en: 'en-US', sk: 'sk-SK', de: 'de-DE' }[locale];
     const { page, errors } = await open({ path: '/settings', stored: true, locale: tag, market: MARKET });
     const row = settingsNav(page, navName).getByRole('button', { name: `${label} soon(TM)`, exact: true });
     await row.waitFor();
-    assert.equal(await row.isDisabled(), MARKET_TAB_OPEN ? false : true, 'the row is not disabled');
-    assert.equal(await row.getAttribute('aria-disabled'), MARKET_TAB_OPEN ? null : 'true');
+    assert.equal(await row.isDisabled(), true, 'the row is not disabled');
+    assert.equal(await row.getAttribute('aria-disabled'), 'true');
     // A disabled button is not in the Tab order: Tab from the search field
     // must land on the next open row, never on Market.
     const before = new URL(page.url()).pathname;
@@ -291,7 +294,7 @@ for (const [locale, [navName, label]] of Object.entries(MARKET_ROW)) {
   });
 }
 
-await check('the greyed Market row is skipped by the keyboard', async () => {
+await whenMarketPlanned('the greyed Market row is skipped by the keyboard', async () => {
   const { page } = await open({ path: '/settings', stored: true });
   const search = settingsNav(page).getByRole('searchbox');
   await search.fill('m');
@@ -319,7 +322,7 @@ await check('the greyed Market row is skipped by the keyboard', async () => {
   await page.close();
 });
 
-await check('a deep link to the planned Market pane lands on the default pane and asks the market nothing', async () => {
+await whenMarketPlanned('a deep link to the planned Market pane lands on the default pane and asks the market nothing', async () => {
   const marketCalls = [];
   const { page, errors } = await open({ path: '/settings/market', stored: true, market: MARKET });
   page.on('request', (request) => {
@@ -328,6 +331,13 @@ await check('a deep link to the planned Market pane lands on the default pane an
   await page.locator('main').waitFor();
   await page.getByRole('heading', { name: 'Storage', exact: true, level: 1 }).waitFor();
   assert.ok(!/Nothing here/.test(await body(page)), 'fell through to not-found');
+  // The disk-sharing switch moved onto the Market pane, so a planned market
+  // means no way to switch sharing on: Storage must not still carry it.
+  assert.equal(
+    await page.getByRole('switch', { name: 'Share this box’s disk with the mesh' }).count(),
+    0,
+    'the disk-sharing switch is still on the Storage pane',
+  );
   await page.reload({ waitUntil: 'networkidle' });
   await page.getByRole('heading', { name: 'Storage', exact: true, level: 1 }).waitFor();
   assert.deepEqual(marketCalls, [], 'the Market pane was mounted (it asked /api/market)');
@@ -335,9 +345,10 @@ await check('a deep link to the planned Market pane lands on the default pane an
   await page.close();
 });
 
-await whenMarketOpen('a box the market is not offered to says so quietly', async () => {
+await whenMarketOpen('a box the market is not offered to says so quietly, and still offers the sharing switch', async () => {
   const { page, errors } = await open({ path: '/settings/market', stored: true });
   await page.getByText('The market is not available on this box').waitFor();
+  await page.getByRole('switch', { name: 'Share this box’s disk with the mesh' }).waitFor();
   assert.deepEqual(errors, []);
   await page.close();
 });

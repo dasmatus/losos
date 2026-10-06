@@ -2,10 +2,11 @@ import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { FieldError, Input, Select } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/progress";
+import { Switch } from "@/components/ui/switch";
 import type { MarketKind, MarketOrder, MarketShelfListing } from "@/lib/api";
 import { t as translate, type MessageKey } from "@/lib/i18n";
 import { useT } from "@/lib/i18n-react";
-import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText, StackRow } from "./rows";
+import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText, RowValue, StackRow } from "./rows";
 import {
   formatDay,
   formatMoney,
@@ -17,14 +18,21 @@ import {
 } from "./market";
 import type { SettingsForm } from "./use-settings-form";
 
-/* Buying and selling what the mesh already shares.
+/* Sharing this box's disk, and buying and selling what the mesh shares.
  *
- * This is a way to be paid for the storage and compute a box contributes, not
- * a separate product, so the sell side only offers what the owner is already
- * sharing (the edge enforces it; this pane greys out the rest and says why).
- * Payment happens on Stripe's own page in a new tab — nothing on this page
- * ever sees a card — so after a purchase the pane tells the owner to come back
- * and refresh rather than pretending to know the outcome.
+ * The first group is the disk-sharing switch (`sharingMyStorage`), moved here
+ * from the Storage pane: lending disk to other boxes and being paid for it
+ * are one decision, so they sit on one pane, and while the pane is planned
+ * (panes.ts) the switch is out of reach with it. It renders in every state
+ * below, before the market has answered and whether or not it is available,
+ * because it is a setting of this box, not something the edge serves.
+ *
+ * The rest is a way to be paid for the storage and compute a box contributes,
+ * not a separate product, so the sell side only offers what the owner is
+ * already sharing (the edge enforces it; this pane greys out the rest and
+ * says why). Payment happens on Stripe's own page in a new tab — nothing on
+ * this page ever sees a card — so after a purchase the pane tells the owner
+ * to come back and refresh rather than pretending to know the outcome.
  */
 
 const KIND_LABEL: Record<MarketKind, MessageKey> = {
@@ -46,45 +54,55 @@ export function MarketPane({ form }: { form: SettingsForm }) {
   const t = useT();
   const market = useMarket(!form.locked);
   const { state } = market;
+  const sharing = <SharingSection form={form} />;
 
   if (state.kind === "loading") {
     return (
-      <PaneSection>
-        <Group>
-          <Row last>
-            <RowText title={t("panes.market.loading")} />
-            <Spinner size={16} />
-          </Row>
-        </Group>
-      </PaneSection>
+      <>
+        {sharing}
+        <PaneSection>
+          <Group>
+            <Row last>
+              <RowText title={t("panes.market.loading")} />
+              <Spinner size={16} />
+            </Row>
+          </Group>
+        </PaneSection>
+      </>
     );
   }
   if (state.kind === "failed") {
     return (
-      <PaneSection>
-        <Group>
-          <Row last>
-            <RowText title={t("panes.market.failed")} detail={state.message} />
-            <Button size="sm" variant="secondary" disabled={form.locked} onClick={market.refresh}>
-              {t("panes.market.refresh")}
-            </Button>
-          </Row>
-        </Group>
-      </PaneSection>
+      <>
+        {sharing}
+        <PaneSection>
+          <Group>
+            <Row last>
+              <RowText title={t("panes.market.failed")} detail={state.message} />
+              <Button size="sm" variant="secondary" disabled={form.locked} onClick={market.refresh}>
+                {t("panes.market.refresh")}
+              </Button>
+            </Row>
+          </Group>
+        </PaneSection>
+      </>
     );
   }
   if (state.kind === "unavailable") {
     return (
-      <PaneSection>
-        <Group>
-          <Row last>
-            <RowText
-              title={t("panes.market.unavailable.title")}
-              detail={t("panes.market.unavailable.detail")}
-            />
-          </Row>
-        </Group>
-      </PaneSection>
+      <>
+        {sharing}
+        <PaneSection>
+          <Group>
+            <Row last>
+              <RowText
+                title={t("panes.market.unavailable.title")}
+                detail={t("panes.market.unavailable.detail")}
+              />
+            </Row>
+          </Group>
+        </PaneSection>
+      </>
     );
   }
 
@@ -92,6 +110,7 @@ export function MarketPane({ form }: { form: SettingsForm }) {
   const disabled = form.locked || market.busy;
   return (
     <>
+      {sharing}
       {market.actionError !== null && (
         <p role="alert" className="mb-3 text-[13px] text-crit">
           {market.actionError.length > 0 ? market.actionError : t("panes.market.actionFailed")}
@@ -156,6 +175,38 @@ export function MarketPane({ form }: { form: SettingsForm }) {
 
       <SellSection market={market} disabled={disabled} />
     </>
+  );
+}
+
+/* The disk-sharing switch and what it buys the owner. Disabled on `locked`
+ * and until the form has loaded, like every other control on the form; the
+ * value is the draft's, and Apply writes it with the rest. */
+function SharingSection({ form }: { form: SettingsForm }) {
+  const t = useT();
+  const shareId = React.useId();
+  const sharing = form.draft?.sharingMyStorage ?? false;
+  return (
+    <PaneSection>
+      <GroupTitle>{t("panes.market.share.title")}</GroupTitle>
+      <Group>
+        <Row>
+          <RowText htmlFor={shareId} title={t("panes.market.share.switch")} />
+          <Switch
+            id={shareId}
+            checked={sharing}
+            disabled={form.locked || !form.ready}
+            onCheckedChange={(next) => form.set("sharingMyStorage", next)}
+          />
+        </Row>
+        <Row last>
+          <RowText title={t("panes.market.share.ifDies")} />
+          <RowValue className={sharing ? "text-ok" : undefined}>
+            {sharing ? t("panes.market.share.rebuilds") : t("panes.market.share.notCopied")}
+          </RowValue>
+        </Row>
+      </Group>
+      <GroupCaption>{t("panes.market.share.caption")}</GroupCaption>
+    </PaneSection>
   );
 }
 
