@@ -21,6 +21,17 @@ use losos_ctl::setup::{
 const PASSWORD: &str = "zqx-marmalade-77-parapet";
 const TOKEN: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
+/// A password that is not [`PASSWORD`], drawn at run time rather than
+/// written out.
+fn another_password() -> String {
+    use std::io::Read;
+    let mut buf = Vec::new();
+    std::fs::File::open("/dev/urandom")
+        .and_then(|f| f.take(32).read_to_end(&mut buf))
+        .expect("/dev/urandom");
+    String::from_utf8_lossy(&buf).into_owned()
+}
+
 fn installed() -> OccOutcome {
     OccOutcome {
         code: 0,
@@ -414,7 +425,7 @@ fn a_different_password_on_a_claimed_box_is_a_typed_conflict() {
     let err = cmd_claim(
         &mut l,
         "notshared",
-        "not-the-same-passphrase",
+        &another_password(),
         TOKEN,
         &mut receipts,
     )
