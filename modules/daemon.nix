@@ -139,6 +139,24 @@ in
       // lib.optionalAttrs ncContainer {
         LOSOS_CRI_SOCKET = localCriSocket;
       }
+      # Where `POST /api/sign-in` asks Nextcloud whether the owner's password
+      # is right (backend/src/signin.rs): one loopback request to the OCS
+      # route that only authenticates. Container mode reaches the pod's
+      # Apache on the host's loopback at the subpath the front vhost
+      # preserves; native mode goes through the box's own nginx to the
+      # services.nextcloud vhost, which is why that one needs the Host
+      # header spelled out. `localhost` is trusted by Nextcloud whatever
+      # trusted_domains says, so the container probe can never be answered
+      # "Untrusted domain" — but the native vhost is selected by name.
+      // {
+        LOSOS_NEXTCLOUD_LOGIN_URL =
+          if ncContainer then
+            "http://127.0.0.1:${toString config.losos.nextcloud.apachePort}/nextcloud/ocs/v2.php/cloud/user"
+          else
+            "http://127.0.0.1:80/ocs/v2.php/cloud/user";
+        LOSOS_NEXTCLOUD_LOGIN_HOST =
+          if ncContainer then "localhost" else config.losos.nextcloud.hostName;
+      }
       # What `cryptsetup resize` authenticates with during `losos-ctl grow`.
       #
       # In both unlock modes: the installer formats from this keyfile and

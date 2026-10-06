@@ -43,4 +43,5 @@ pub mod overrides;
 pub mod receipt;
 pub mod recovery;
 pub mod setup;
+pub mod signin;
 pub mod supervisor;

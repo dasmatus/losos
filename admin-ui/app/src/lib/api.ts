@@ -489,9 +489,47 @@ export function postMarketOrder(
 
 // ── Sign-in ───────────────────────────────────────────────────────────────
 
+export interface SignInResponse {
+  user: string;
+  /** The admin token, the same one the claim released. */
+  token: string;
+}
+
+/* POST /api/sign-in — public. Unlock the tab with the owner's password.
+ *
+ * The password is the one the wizard set, and lososd checks it by asking
+ * LosOS cloud (backend/src/signin.rs): there is no second copy to drift
+ * from. A correct one is answered with the admin token, which is stored for
+ * the tab exactly as a pasted key was. Resolves false on a wrong password
+ * (401, which `call` does not treat as the session ending here — the request
+ * is anonymous), throws an ApiError otherwise: a 503 means LosOS cloud could
+ * not be asked, see `isNotReady`, and that is the case the spare key is for. */
+export async function signInWithPassword(
+  password: string,
+  options: RequestOptions = {},
+): Promise<boolean> {
+  if (password.length === 0) return false;
+  let reply: SignInResponse;
+  try {
+    reply = await call<SignInResponse>("/api/sign-in", {
+      ...options,
+      method: "POST",
+      contentType: "application/json",
+      body: JSON.stringify({ password }),
+      anonymous: true,
+    });
+  } catch (error) {
+    if (isUnauthorized(error)) return false;
+    throw error;
+  }
+  saveToken(reply.token);
+  return true;
+}
+
 /* Probe a pasted token against a cheap authed route and store it if lososd
  * accepts it. Resolves false on rejection, throws on anything else, and a
- * rejected candidate leaves the stored token alone. */
+ * rejected candidate leaves the stored token alone. The spare way in, for
+ * when LosOS cloud is not running to check the password. */
 export async function signIn(candidate: string, options: RequestOptions = {}): Promise<boolean> {
   const token = candidate.trim();
   if (token.length === 0) return false;
