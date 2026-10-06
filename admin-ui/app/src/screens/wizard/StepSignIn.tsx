@@ -65,9 +65,18 @@ import {
 import { t } from "@/lib/i18n";
 import { Rich, useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
-import { isMissingRoute, passwordProblem, postSetPassword, MIN_PASSWORD_CHARS } from "./api";
+import {
+  isMissingRoute,
+  passwordProblem,
+  postSetPassword,
+  MIN_PASSWORD_CHARS,
+} from "./api";
 import { copyText } from "./copy";
-import { createPasskey, probePasskeySupport, type PasskeySupport } from "./passkey";
+import {
+  createPasskey,
+  probePasskeySupport,
+  type PasskeySupport,
+} from "./passkey";
 import { Callout, ReadoutRow, StepText } from "./parts";
 
 export interface StepSignInProps {
@@ -81,7 +90,12 @@ export interface StepSignInProps {
   onPasswordSet: (user: string, adminKey: string | null) => void;
 }
 
-export function StepSignIn({ boxName, account, adminKey, onPasswordSet }: StepSignInProps) {
+export function StepSignIn({
+  boxName,
+  account,
+  adminKey,
+  onPasswordSet,
+}: StepSignInProps) {
   const t = useT();
   return (
     <div className="flex flex-col gap-5">
@@ -150,20 +164,32 @@ function PasswordForm({
     } catch (error) {
       // Lost the race between the last poll and the submit: lososd says not
       // yet, and changed nothing. Back to waiting, with the reason on screen.
-      if (isNotReady(error)) readiness.notYet(error instanceof Error ? error.message : null);
+      if (isNotReady(error))
+        readiness.notYet(error instanceof Error ? error.message : null);
       setProblem(describeSetPassword(error));
     } finally {
       setBusy(false);
     }
   };
 
-  const waiting = readiness.state.kind === "waiting";
+  // The form is open only once lososd has said the box is ready. Before the
+  // first answer (`unknown`) nothing is shown, so a ready box never flashes a
+  // waiting panel, but the fields are already disabled: on take 9 of the
+  // recorded install demo (2026-10-06) that first answer took twelve seconds
+  // on a busy box, the form was open meanwhile, and a password typed into it
+  // sat greyed out behind the panel that then appeared.
+  const waiting = readiness.state.kind !== "ready";
 
   return (
     <form onSubmit={submit} noValidate className="flex flex-col gap-4">
-      {readiness.state.kind !== "ready" && <WaitingPanel state={readiness.state} />}
+      {readiness.state.kind !== "ready" && (
+        <WaitingPanel state={readiness.state} />
+      )}
       {readiness.state.kind === "ready" && readiness.state.waited && (
-        <p role="status" className="flex items-center gap-1.5 text-[13px] text-ok">
+        <p
+          role="status"
+          className="flex items-center gap-1.5 text-[13px] text-ok"
+        >
           <HugeiconsIcon
             icon={CheckmarkCircle02Icon}
             size={16}
@@ -195,7 +221,9 @@ function PasswordForm({
             variant="secondary"
             size="icon"
             aria-pressed={visible}
-            aria-label={visible ? t("wizard.signin.hide") : t("wizard.signin.show")}
+            aria-label={
+              visible ? t("wizard.signin.hide") : t("wizard.signin.show")
+            }
             onClick={() => setVisible((shown) => !shown)}
           >
             <HugeiconsIcon
@@ -235,7 +263,9 @@ function PasswordForm({
       <div className="flex items-center gap-3">
         <Button
           type="submit"
-          disabled={busy || waiting || password.length === 0 || confirm.length === 0}
+          disabled={
+            busy || waiting || password.length === 0 || confirm.length === 0
+          }
         >
           <HugeiconsIcon
             icon={LockPasswordIcon}
@@ -244,15 +274,25 @@ function PasswordForm({
             color="currentColor"
             aria-hidden="true"
           />
-          {account === null ? t("wizard.signin.set") : t("wizard.signin.setDifferent")}
+          {account === null
+            ? t("wizard.signin.set")
+            : t("wizard.signin.setDifferent")}
         </Button>
-        {busy && <Spinner label={t("wizard.signin.setting")} className="text-muted" />}
+        {busy && (
+          <Spinner label={t("wizard.signin.setting")} className="text-muted" />
+        )}
       </div>
 
       {account !== null && (
-        <Callout tone="ok" icon={CheckmarkCircle02Icon} title={t("wizard.signin.done.title")}>
+        <Callout
+          tone="ok"
+          icon={CheckmarkCircle02Icon}
+          title={t("wizard.signin.done.title")}
+        >
           <ReadoutRow label={t("wizard.signin.done.name")} className="mt-2">
-            <code className="numeric text-[13px] text-ink select-all">{account}</code>
+            <code className="numeric text-[13px] text-ink select-all">
+              {account}
+            </code>
           </ReadoutRow>
           <p className="mt-2 flex items-start gap-1.5">
             <HugeiconsIcon
@@ -320,7 +360,9 @@ function isLostReply(error: unknown): boolean {
   return error instanceof TypeError;
 }
 
-async function claimAgainIfTheReplyWasLost(password: string): Promise<ClaimResponse> {
+async function claimAgainIfTheReplyWasLost(
+  password: string,
+): Promise<ClaimResponse> {
   for (let attempt = 1; ; attempt += 1) {
     try {
       return await claimBox(password);
@@ -340,11 +382,17 @@ const READINESS_POLL_MS = 5000;
 
 type ReadinessState =
   /* Not asked yet, or the answer is on its way: nothing is shown until the
-   * first reply so a box that is ready never flashes a waiting panel. */
+   * first reply so a box that is ready never flashes a waiting panel, but
+   * the form is disabled, as it is while waiting. */
   | { kind: "unknown" }
   /* lososd said not yet; `reason` is its sentence, `since` when waiting
    * began, `unreachable` whether the last poll got no answer at all. */
-  | { kind: "waiting"; reason: string | null; since: number; unreachable: boolean }
+  | {
+      kind: "waiting";
+      reason: string | null;
+      since: number;
+      unreachable: boolean;
+    }
   /* `waited` says whether a waiting panel was ever shown, so the step can
    * say "ready now" to someone who sat through it and nothing to anyone
    * else. */
@@ -379,7 +427,10 @@ function useReadiness(enabled: boolean): Readiness {
         const answer = await getClaimState({ signal: controller.signal });
         if (!live) return;
         if (answer.ready !== false) {
-          setState((prev) => ({ kind: "ready", waited: prev.kind === "waiting" }));
+          setState((prev) => ({
+            kind: "ready",
+            waited: prev.kind === "waiting",
+          }));
           return;
         }
         setState((prev) => ({
@@ -393,7 +444,12 @@ function useReadiness(enabled: boolean): Readiness {
         setState((prev) =>
           prev.kind === "waiting"
             ? { ...prev, unreachable: true }
-            : { kind: "waiting", reason: null, since: Date.now(), unreachable: true },
+            : {
+                kind: "waiting",
+                reason: null,
+                since: Date.now(),
+                unreachable: true,
+              },
         );
       }
       timer = setTimeout(() => void ask(), READINESS_POLL_MS);
@@ -438,14 +494,27 @@ function WaitingPanel({ state }: { state: ReadinessState }) {
   if (state.kind !== "waiting") return null;
   const seconds = Math.max(0, Math.floor((now - state.since) / 1000));
   return (
-    <Callout tone="info" icon={Loading03Icon} title={t("wizard.signin.waiting.title")}>
-      <div role="status" aria-live="polite" className="mt-1 flex flex-col gap-2">
+    <Callout
+      tone="info"
+      icon={Loading03Icon}
+      title={t("wizard.signin.waiting.title")}
+    >
+      <div
+        role="status"
+        aria-live="polite"
+        className="mt-1 flex flex-col gap-2"
+      >
         <p>{t("wizard.signin.waiting.body")}</p>
         {state.reason !== null && <p className="text-ink">{state.reason}</p>}
         <p className="flex items-center gap-2 text-faint">
-          <Spinner label={t("wizard.signin.waiting.title")} className="text-muted" />
+          <Spinner
+            label={t("wizard.signin.waiting.title")}
+            className="text-muted"
+          />
           {t("wizard.signin.waiting.since", { count: seconds })}
-          {state.unreachable && <span>{t("wizard.signin.waiting.unreachable")}</span>}
+          {state.unreachable && (
+            <span>{t("wizard.signin.waiting.unreachable")}</span>
+          )}
         </p>
       </div>
     </Callout>
@@ -478,7 +547,10 @@ function AdminKey({ value }: { value: string }) {
         </span>
         {/* select-all: one click takes the whole key, so a manual Ctrl+C works
             even where the clipboard API is unavailable. */}
-        <code ref={keyRef} className="numeric text-[13px] leading-snug break-all text-ink select-all">
+        <code
+          ref={keyRef}
+          className="numeric text-[13px] leading-snug break-all text-ink select-all"
+        >
           {value}
         </code>
       </div>
@@ -494,7 +566,10 @@ function AdminKey({ value }: { value: string }) {
           {t("wizard.signin.key.copy")}
         </Button>
         {copied === true && (
-          <span role="status" className="inline-flex items-center gap-1.5 text-[13px] text-ok">
+          <span
+            role="status"
+            className="inline-flex items-center gap-1.5 text-[13px] text-ok"
+          >
             <HugeiconsIcon
               icon={CheckmarkCircle02Icon}
               size={16}
@@ -609,7 +684,11 @@ function PasskeyPanel({ boxName }: { boxName: string }) {
 
       {/* Visibly unavailable with a reason, never a button that fails. */}
       {support?.kind === "unavailable" && (
-        <Callout tone="info" icon={SecurityLockIcon} title={t("wizard.passkey.unavailable.title")}>
+        <Callout
+          tone="info"
+          icon={SecurityLockIcon}
+          title={t("wizard.passkey.unavailable.title")}
+        >
           <p className="mt-1">{support.reason}</p>
         </Callout>
       )}
@@ -632,7 +711,10 @@ function PasskeyPanel({ boxName }: { boxName: string }) {
               {t("wizard.passkey.create")}
             </Button>
             {attempt.kind === "working" && (
-              <Spinner label={t("wizard.passkey.waiting")} className="text-muted" />
+              <Spinner
+                label={t("wizard.passkey.waiting")}
+                className="text-muted"
+              />
             )}
           </div>
           {!support.platformAuthenticator && (
@@ -644,11 +726,19 @@ function PasskeyPanel({ boxName }: { boxName: string }) {
       )}
 
       {attempt.kind === "registered" && (
-        <Callout tone="ok" icon={CheckmarkCircle02Icon} title={t("wizard.passkey.created.title")}>
+        <Callout
+          tone="ok"
+          icon={CheckmarkCircle02Icon}
+          title={t("wizard.passkey.created.title")}
+        >
           <p className="mt-1">
             <Rich
               k="wizard.passkey.created.body"
-              vars={{ label: <span className="numeric text-ink">{attempt.label}</span> }}
+              vars={{
+                label: (
+                  <span className="numeric text-ink">{attempt.label}</span>
+                ),
+              }}
             />
           </p>
         </Callout>
@@ -658,13 +748,21 @@ function PasskeyPanel({ boxName }: { boxName: string }) {
           served. Say so plainly rather than showing a transport error — the
           owner has done nothing wrong and there is nothing for them to fix. */}
       {attempt.kind === "not-implemented" && (
-        <Callout tone="info" icon={InformationCircleIcon} title={t("wizard.passkey.notYet.title")}>
+        <Callout
+          tone="info"
+          icon={InformationCircleIcon}
+          title={t("wizard.passkey.notYet.title")}
+        >
           <p className="mt-1">{t("wizard.passkey.notYet.body")}</p>
         </Callout>
       )}
 
       {attempt.kind === "problem" && (
-        <Callout tone="warn" icon={Alert02Icon} title={t("wizard.passkey.problem.title")}>
+        <Callout
+          tone="warn"
+          icon={Alert02Icon}
+          title={t("wizard.passkey.problem.title")}
+        >
           <p className={cn("mt-1 break-words")}>{attempt.message}</p>
         </Callout>
       )}
