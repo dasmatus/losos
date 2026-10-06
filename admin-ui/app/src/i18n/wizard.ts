@@ -262,9 +262,9 @@ export default defineMessages({
     de: "Diese Seite ist noch nicht verschlüsselt",
   },
   "wizard.trust.unencrypted.body": {
-    en: "You can continue either way. On an unencrypted address no browser will offer to make a passkey, so step 2 will ask you for a password only.",
-    sk: "Pokračovať môžete tak či tak. Na nešifrovanej adrese žiadny prehliadač neponúkne vytvorenie prístupového kľúča, takže krok 2 si vypýta iba heslo.",
-    de: "Weitermachen kannst du so oder so. Auf einer unverschlüsselten Adresse bietet kein Browser an, einen Passkey zu erstellen, also fragt Schritt 2 nur nach einem Passwort.",
+    en: "You can continue either way. On an unencrypted address no browser will offer to make a passkey, so step 2 will ask you for a password only. If {fqdn} does not open on this computer, stay on the address you are on: the box answers the same there.",
+    sk: "Pokračovať môžete tak či tak. Na nešifrovanej adrese žiadny prehliadač neponúkne vytvorenie prístupového kľúča, takže krok 2 si vypýta iba heslo. Ak sa {fqdn} na tomto počítači neotvorí, zostaňte na adrese, na ktorej ste: zariadenie tam odpovedá rovnako.",
+    de: "Weitermachen kannst du so oder so. Auf einer unverschlüsselten Adresse bietet kein Browser an, einen Passkey zu erstellen, also fragt Schritt 2 nur nach einem Passwort. Öffnet sich {fqdn} auf diesem Computer nicht, bleib auf der Adresse, auf der du bist: die Box antwortet dort genauso.",
   },
   "wizard.trust.otherName.title": {
     en: "Encrypted, but under another name",

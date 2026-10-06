@@ -73,7 +73,11 @@ let
           while read -r ip; do
             [ -n "$ip" ] && body+=("http://$ip" "")
           done <<<"$ips"
-          body+=("or: http://$fqdn" "")
+          # The name second, and qualified: a computer that does not resolve
+          # mDNS (the host of a libvirt VM, for one) gets "server not found"
+          # from it, and an owner who picked it over the address above had
+          # no way to know the two were not equally good.
+          body+=("or, on computers that find the box by name:" "http://$fqdn" "")
         else
           body+=(
             "No network address yet."
