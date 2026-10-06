@@ -1,4 +1,4 @@
-/* Step 4 — Sign in, without leaving the page.
+/* Step 3 — Sign in, without leaving the page.
  *
  * The sign-in page is embedded rather than linked. `frame-src 'self'` is in
  * the admin CSP for exactly this (modules/containers.nix spells it out, since
