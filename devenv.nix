@@ -24,6 +24,14 @@ let
   ];
   forEachCrate = cmd: lib.concatMapStringsSep "\n" (c: ''echo "── ${c}"; ${cmd c}'') crates;
 
+  # mold as the linker, ccache in front of gcc, sccache in front of rustc:
+  # the stdenv flake/packages.nix builds the crates with and flake.nix's
+  # devShells carry, imported here so `cargo` under devenv links and caches
+  # the same way. A function of `pkgs` precisely so this standalone shell
+  # can share it with the flake without being wired through it. What each
+  # tool buys, and the Nix-sandbox caveat, is in that file's header.
+  fast = import ./flake/fast-build.nix { inherit pkgs lib; };
+
   # Print the attribute names of one of this flake's per-system output sets,
   # space separated, for the loops in `vm-tests`, `build-pkgs` and
   # `build-images` to iterate over.
@@ -119,6 +127,10 @@ in
 {
   name = "losos";
 
+  # The shell's own stdenv, so `cc` on PATH is ccache in front of gcc with
+  # mold behind it; `env` puts sccache in front of rustc.
+  inherit (fast) stdenv env;
+
   # ── Toolchain ────────────────────────────────────────────────────────────
   # channel = "nixpkgs" on purpose. The repo ships no rust-toolchain.toml
   # because the Nix builders use nixpkgs' rustc regardless; pinning a
@@ -149,26 +161,28 @@ in
     bun.enable = true;
   };
 
-  packages = with pkgs; [
-    # Nix tooling the git hooks below call.
-    nixfmt-rfc-style
-    deadnix
-    statix
+  packages =
+    fast.packages
+    ++ (with pkgs; [
+      # Nix tooling the git hooks below call.
+      nixfmt-rfc-style
+      deadnix
+      statix
 
-    # Handy when poking at the appliance's own surfaces.
-    jq
-    curl
+      # Handy when poking at the appliance's own surfaces.
+      jq
+      curl
 
-    # Shell UX, carried over from the flake/devshell.nix this file replaces:
-    # the host fish config minus Zellij, which would wrap the shell in a
-    # multiplexer and make cargo output noisier for no gain.
-    fish
-    bat
-    eza
-    zoxide
-    fastfetch
-    starship
-  ];
+      # Shell UX, carried over from the flake/devshell.nix this file replaces:
+      # the host fish config minus Zellij, which would wrap the shell in a
+      # multiplexer and make cargo output noisier for no gain.
+      fish
+      bat
+      eza
+      zoxide
+      fastfetch
+      starship
+    ]);
 
   # ── Pre-commit hooks ─────────────────────────────────────────────────────
   # These are the gate CI runs, moved to before the commit instead of after
