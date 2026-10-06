@@ -224,7 +224,18 @@ with `buildNpmPackage`) is a React 19 + Vite + Tailwind v4 SPA on real paths
 `try_files $uri $uri/ /index.html`, without which every deep link and every
 reload 404s. The vhost proxies `/api/*` to lososd's loopback API. It replaced
 a `dashboard/` + `settings/` pair of plain-JS pages; if you find a reference
-to those, or to `/ds/` or `/common.js`, it is stale. The command layer is written against a `Losos` effect
+to those, or to `/ds/` or `/common.js`, it is stale. The SPA's primitives
+(`admin-ui/app/src/components/ui/`) are **shadcn/ui components on the box's
+palette** (`components.json` points the CLI at `src/styles/index.css`, which
+aliases shadcn's colour names onto `tokens.css`; `accent` and `muted` are
+deliberately not aliased because the app already uses both names for
+something else). None of them is Radix: the admin page is served under
+`style-src 'self'`, which (verified in Chromium) allows React `style` props
+and every other CSSOM write but refuses `setAttribute("style")` and any
+`<style>` element a library creates at runtime, so sonner renders unstyled
+unless its shipped `styles.css` is imported into the bundle, and Radix's
+scroll lock (react-remove-scroll) silently does nothing. Dialog stays on the
+native `<dialog>` for that reason. The command layer is written against a `Losos` effect
 **trait** with a real (`io_backend`) and an in-memory (`fake`) implementation,
 so the state machine is unit-tested with no filesystem; the installer repeats
 the pattern with `Install` + `plan_install`, whose plan is data, so the

@@ -1,4 +1,5 @@
 import * as React from "react";
+import { ButtonGroup, ButtonGroupText } from "@/components/ui/button-group";
 import { FieldError, Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Rich, useT } from "@/lib/i18n-react";
@@ -92,7 +93,9 @@ export function MeshPane({ form }: { form: SettingsForm }) {
                 carries its own name below. Pointing this one at the start
                 field would name it "Hours Lend from" to a screen reader. */}
             <RowText title={t("panes.mesh.hours")} />
-            <div className="flex items-center gap-2">
+            {/* A shadcn Button Group: from, the word between, until — one
+                control with shared edges, not three widgets in a row. */}
+            <ButtonGroup aria-label={t("panes.mesh.hours")}>
               <label htmlFor={startId} className="sr-only">
                 {t("panes.mesh.lendFrom")}
               </label>
@@ -108,7 +111,7 @@ export function MeshPane({ form }: { form: SettingsForm }) {
                 }
                 onChange={(event) => form.set("computeWindowStart", event.target.value)}
               />
-              <span className="text-[12.5px] text-muted">{t("panes.mesh.until")}</span>
+              <ButtonGroupText>{t("panes.mesh.until")}</ButtonGroupText>
               <label htmlFor={endId} className="sr-only">
                 {t("panes.mesh.lendUntil")}
               </label>
@@ -124,7 +127,7 @@ export function MeshPane({ form }: { form: SettingsForm }) {
                 }
                 onChange={(event) => form.set("computeWindowEnd", event.target.value)}
               />
-            </div>
+            </ButtonGroup>
           </Row>
         </Group>
 

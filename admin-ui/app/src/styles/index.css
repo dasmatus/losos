@@ -42,6 +42,31 @@
   --color-warn: var(--warn);
   --color-crit: var(--crit);
 
+  /* shadcn/ui's colour names, aliased onto the palette above so a component
+   * pasted from `npx shadcn add` resolves without a rename pass
+   * (components.json points the CLI at this file). Two names are deliberately
+   * NOT aliased because the app already uses them for something else:
+   * shadcn's `accent` is a hover wash and ours is the brand teal; shadcn's
+   * `muted` is a background and ours is body text. A pasted component that
+   * says `bg-accent` or `bg-muted` means `bg-accent-wash` / `bg-sunk` here. */
+  --color-background: var(--ground);
+  --color-foreground: var(--ink);
+  --color-card: var(--surface);
+  --color-card-foreground: var(--ink);
+  --color-popover: var(--surface);
+  --color-popover-foreground: var(--ink);
+  --color-primary: var(--accent);
+  --color-primary-foreground: var(--surface);
+  --color-secondary: var(--sunk);
+  --color-secondary-foreground: var(--ink);
+  --color-muted-foreground: var(--muted);
+  --color-accent-foreground: var(--accent);
+  --color-destructive: var(--crit);
+  --color-destructive-foreground: var(--surface);
+  --color-border: var(--line);
+  --color-input: var(--line);
+  --color-ring: var(--accent);
+
   /* Two radii and no others; the values are in tokens.css. */
   --radius-card: var(--card-radius);
   --radius-control: var(--control-radius);

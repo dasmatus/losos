@@ -1,6 +1,4 @@
 import * as React from "react";
-import { HugeiconsIcon } from "@hugeicons/react";
-import { Loading03Icon } from "@hugeicons/core-free-icons";
 import { useT } from "@/lib/i18n-react";
 import { cn, setCssVar } from "@/lib/utils";
 
@@ -32,6 +30,7 @@ export function Progress({ value = null, label, className, ...props }: ProgressP
 
   return (
     <div
+      data-slot="progress"
       role="progressbar"
       aria-label={label}
       aria-valuemin={0}
@@ -56,25 +55,6 @@ export function Progress({ value = null, label, className, ...props }: ProgressP
   );
 }
 
-export interface SpinnerProps extends React.ComponentPropsWithoutRef<"span"> {
-  size?: number;
-  label?: string;
-}
-
-/** A spinner. The label is the only thing a screen reader gets. */
-export function Spinner({ size = 18, label, className, ...props }: SpinnerProps) {
-  const t = useT();
-  return (
-    <span role="status" className={cn("inline-flex items-center", className)} {...props}>
-      <HugeiconsIcon
-        icon={Loading03Icon}
-        size={size}
-        strokeWidth={1.5}
-        color="currentColor"
-        className="animate-spin-slow"
-        aria-hidden="true"
-      />
-      <span className="sr-only">{label ?? t("ui.working")}</span>
-    </span>
-  );
-}
+/* Spinner lives in spinner.tsx now (shadcn's file layout); re-exported here
+ * so the callers that imported it from the progress bar keep compiling. */
+export { Spinner, type SpinnerProps } from "@/components/ui/spinner";

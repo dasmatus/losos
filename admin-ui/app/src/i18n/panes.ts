@@ -878,4 +878,36 @@ export default defineMessages({
     sk: "dostanete {amount}",
     de: "du erhältst {amount}",
   },
+
+  // ── Table headers (shadcn Table in the apps catalogue and the market) ──
+  "panes.apps.col.app": {
+    en: "App",
+    sk: "Aplikácia",
+    de: "App",
+  },
+  "panes.apps.col.source": {
+    en: "Published by",
+    sk: "Zverejnil",
+    de: "Veröffentlicht von",
+  },
+  "panes.market.col.item": {
+    en: "Bought",
+    sk: "Kúpené",
+    de: "Gekauft",
+  },
+  "panes.market.col.quantity": {
+    en: "Quantity",
+    sk: "Množstvo",
+    de: "Menge",
+  },
+  "panes.market.col.until": {
+    en: "Until",
+    sk: "Do",
+    de: "Bis",
+  },
+  "panes.market.col.status": {
+    en: "Status",
+    sk: "Stav",
+    de: "Status",
+  },
 });
