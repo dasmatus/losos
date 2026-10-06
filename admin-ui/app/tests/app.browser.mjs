@@ -143,7 +143,7 @@ console.log('admin-ui app browser checks');
  * (POST /api/sign-in). The stub below plays that route: the right password
  * is answered with the token, anything else with 401 — or, when `cloudDown`
  * is set, with the 503 lososd sends while LosOS cloud cannot be asked. */
-const PASSWORD = 'Correct horse battery staple 1';
+const PASSWORD = 'Correct-horse battery staple 1';
 async function openGate({ cloudDown = false } = {}) {
   const opened = await open();
   const signIns = [];
@@ -175,7 +175,7 @@ await check('the right password opens the app and the token is kept for the tab'
 
 await check('a wrong password is refused and the prompt stays up', async () => {
   const { page } = await openGate();
-  await page.locator('#owner-password').fill('Wrong horse battery staple 1');
+  await page.locator('#owner-password').fill('Wrong-horse battery staple 1');
   await page.getByRole('button', { name: 'Unlock' }).click();
   await page.waitForTimeout(300);
   const text = await body(page);

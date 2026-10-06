@@ -157,6 +157,11 @@ export default defineMessages({
     sk: "Pridajte číslicu.",
     de: "Füge eine Ziffer hinzu.",
   },
+  "wizard.password.noSymbol": {
+    en: "Add a symbol, such as - or !.",
+    sk: "Pridajte symbol, napríklad - alebo !.",
+    de: "Füge ein Sonderzeichen hinzu, etwa - oder !.",
+  },
 
   // ── passkey.ts ──────────────────────────────────────────────────────────
   "wizard.passkey.needsHttps": {
@@ -360,9 +365,9 @@ export default defineMessages({
     de: "Passwort anzeigen",
   },
   "wizard.signin.hint": {
-    en: "Three rules, and these are all of them. A few unrelated words with a capital letter and a number somewhere beat one word with symbols in it.",
-    sk: "Tri pravidlá, a sú to všetky. Niekoľko nesúvisiacich slov s veľkým písmenom a číslom niekde vnútri je lepších než jedno slovo so symbolmi.",
-    de: "Drei Regeln, und das sind alle. Ein paar Wörter, die nichts miteinander zu tun haben, mit einem Großbuchstaben und einer Zahl irgendwo, schlagen ein Wort mit Sonderzeichen.",
+    en: "Four rules, and these are all of them. A few unrelated words joined with a dash, with a capital letter and a number somewhere, is the easiest way to meet them.",
+    sk: "Štyri pravidlá, a sú to všetky. Najľahšie ich splníte niekoľkými nesúvisiacimi slovami spojenými pomlčkou, s veľkým písmenom a číslom niekde vnútri.",
+    de: "Vier Regeln, und das sind alle. Am einfachsten erfüllst du sie mit ein paar Wörtern, die nichts miteinander zu tun haben, durch Bindestriche verbunden, mit einem Großbuchstaben und einer Zahl irgendwo.",
   },
   "wizard.signin.rules": { en: "Password rules", sk: "Pravidlá hesla", de: "Passwortregeln" },
   "wizard.signin.rule.length": {
@@ -381,6 +386,11 @@ export default defineMessages({
     de: "Ein Großbuchstabe und ein Kleinbuchstabe",
   },
   "wizard.signin.rule.digit": { en: "A digit", sk: "Číslica", de: "Eine Ziffer" },
+  "wizard.signin.rule.symbol": {
+    en: "A symbol, such as - or !",
+    sk: "Symbol, napríklad - alebo !",
+    de: "Ein Sonderzeichen, etwa - oder !",
+  },
   "wizard.signin.rule.met": { en: "(done)", sk: "(splnené)", de: "(erfüllt)" },
   "wizard.signin.rule.unmet": { en: "(not yet)", sk: "(ešte nie)", de: "(noch nicht)" },
   "wizard.signin.again": {
