@@ -1,7 +1,10 @@
 # Mesh
 
 A box can lend spare disk and CPU to other losos boxes. Joining is off by
-default. The settings page has two switches: join the mesh, and share compute.
+default. The Mesh pane has two switches: join the mesh, and share compute. The
+third, sharing this box's disk, sits on the [Market](Market) pane, because
+lending disk and being paid for it are one decision; while the market is
+planned, that switch is out of reach with it.
 
 ## Two clusters
 
@@ -42,8 +45,9 @@ Contributed files are namespaced per machine.
 
 ## Selling
 
-Storage and compute can also be sold to other boxes through the optional
-Stripe Connect market. See [Market](Market).
+Storage and compute will also be sellable to other boxes through the optional
+Stripe Connect market, which is built but not open yet (the admin UI shows its
+tab greyed out as "soon(TM)"). See [Market](Market).
 
 ## Persistence
 
