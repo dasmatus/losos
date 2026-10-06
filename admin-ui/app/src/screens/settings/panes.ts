@@ -59,6 +59,10 @@ export interface SettingsPane {
   readonly summary: string;
   /** English search words. Always searched, whatever the language. */
   keywords: readonly string[];
+  /** Drawn in the sidebar but not open yet: greyed, not focusable, and its
+   *  address is not an address. The pane's code stays in the tree so it can
+   *  be opened by flipping this flag, and nothing else. */
+  planned: boolean;
 }
 
 /* The text lives in the catalogue under keys, never as a string here: this
@@ -69,6 +73,7 @@ function pane(
   id: SettingsPaneId,
   icon: IconSvgElement,
   keywords: readonly string[],
+  { planned = false }: { planned?: boolean } = {},
 ): SettingsPane {
   const labelKey = `settings.panes.${id}.label` as const;
   const summaryKey = `settings.panes.${id}.summary` as const;
@@ -79,6 +84,7 @@ function pane(
     keywordsKey: `settings.panes.${id}.keywords`,
     icon,
     keywords,
+    planned,
     get label() {
       return t(labelKey);
     },
@@ -93,17 +99,7 @@ function pane(
  * assertion under `noUncheckedIndexedAccess` — the shape carries the
  * guarantee instead of a `!` asserting it. */
 export const SETTINGS_PANES: readonly [SettingsPane, ...SettingsPane[]] = [
-  pane("storage", HardDriveIcon, [
-    "disk",
-    "space",
-    "capacity",
-    "room",
-    "grow",
-    "reserve",
-    "backup",
-    "copies",
-    "full",
-  ]),
+  pane("storage", HardDriveIcon, ["disk", "space", "capacity", "room", "grow", "reserve", "full"]),
   pane("mesh", Share08Icon, [
     "share",
     "join",
@@ -115,18 +111,39 @@ export const SETTINGS_PANES: readonly [SettingsPane, ...SettingsPane[]] = [
     "lend",
     "others",
   ]),
-  pane("market", ShoppingCart01Icon, [
-    "sell",
-    "buy",
-    "pay",
-    "payment",
-    "stripe",
-    "money",
-    "price",
-    "earn",
-    "storage",
-    "compute",
-  ]),
+  /* The market is planned, not open: it needs a registered business behind
+   * the Stripe platform account before a single cent can move, and there is
+   * none yet. The row stays on the sidebar, greyed and labelled "soon(TM)",
+   * because it is one of the things the box can say it has planned; the pane
+   * behind it (pane-market.tsx, lososd's /api/market relay, the registrar's
+   * /market routes) is finished and untouched. The disk-sharing switch sits
+   * on that pane too, so sharing opens with the market and not before.
+   * Opening it is `planned: false` here and the matching switch in
+   * tests/app.browser.mjs. */
+  pane(
+    "market",
+    ShoppingCart01Icon,
+    [
+      "sell",
+      "buy",
+      "pay",
+      "payment",
+      "stripe",
+      "money",
+      "price",
+      "earn",
+      "storage",
+      "compute",
+      // The disk-sharing switch lives on this pane (see pane-market.tsx).
+      "share",
+      "lend",
+      "disk",
+      "mesh",
+      "backup",
+      "copies",
+    ],
+    { planned: true },
+  ),
   pane("apps", LayoutGridIcon, [
     "files",
     "code",
@@ -178,10 +195,12 @@ export const SETTINGS_PANES: readonly [SettingsPane, ...SettingsPane[]] = [
 
 export const DEFAULT_PANE: SettingsPaneId = "storage";
 
-/** Parse a URL segment into a pane id. For an integrator wiring
- *  `/settings/:pane`; an unknown segment falls back rather than 404s. */
+/** Parse a URL segment into the id of a pane that can be opened. For an
+ *  integrator wiring `/settings/:pane`; an unknown segment falls back rather
+ *  than 404s. A planned pane's segment is unknown here on purpose: a deep
+ *  link to it lands on the default pane, the same as typing it would. */
 export function isSettingsPaneId(value: unknown): value is SettingsPaneId {
-  return SETTINGS_PANES.some((pane) => pane.id === value);
+  return SETTINGS_PANES.some((pane) => pane.id === value && !pane.planned);
 }
 
 export function paneById(id: SettingsPaneId): SettingsPane {

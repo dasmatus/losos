@@ -51,6 +51,9 @@ export default function Settings({ pane, onPaneChange }: SettingsProps) {
 
   const select = React.useCallback(
     (next: SettingsPaneId) => {
+      // The sidebar disables a planned pane's row, so this is the belt to
+      // that brace: whatever asks for one, nothing navigates there.
+      if (paneById(next).planned) return;
       setOwnPane(next);
       onPaneChange?.(next);
     },
@@ -100,6 +103,10 @@ function Pane({
     case "mesh":
       return <MeshPane form={form} />;
     case "market":
+      // Unreachable while the pane is planned (panes.ts): its row is
+      // disabled, `select` refuses it and the router does not parse its
+      // segment. Kept so the pane stays compiled and type-checked, and so
+      // opening it is one flag away.
       return <MarketPane form={form} />;
     case "apps":
       return <AppsPane form={form} />;
