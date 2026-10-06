@@ -42,8 +42,9 @@ Contributed files are namespaced per machine.
 
 ## Selling
 
-Storage and compute can also be sold to other boxes through the optional
-Stripe Connect market. See [Market](Market).
+Storage and compute will also be sellable to other boxes through the optional
+Stripe Connect market, which is built but not open yet (the admin UI shows its
+tab greyed out as "soon(TM)"). See [Market](Market).
 
 ## Persistence
 
