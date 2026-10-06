@@ -18,6 +18,17 @@ export function AboutPane({ form }: { form: SettingsForm }) {
   const t = useT();
   const saved = form.saved;
 
+  /* Two addresses, and the order matters. `here` is the one this browser is
+   * using right now, read off the address bar, so it is true by construction
+   * — if it did not work, this page would not be showing. `byName` is the
+   * mDNS name the box announces, which every link the apps hand out is built
+   * on, and which a computer that does not resolve .local (the host of a
+   * libvirt VM, say) cannot open at all. Leading with the name told an owner
+   * who had just reached the box by its IP address to go somewhere that did
+   * not load. */
+  const here = browserOrigin();
+  const byName = saved === null ? "" : `${saved.https ? "https" : "http"}://${saved.hostName}.local`;
+
   if (saved === null) {
     return (
       <PaneSection>
@@ -44,10 +55,14 @@ export function AboutPane({ form }: { form: SettingsForm }) {
           </Row>
           <Row>
             <RowText title={t("panes.about.reachedAt")} />
-            <RowValue className="text-ink">
-              {`${saved.https ? "https" : "http"}://${saved.hostName}.local`}
-            </RowValue>
+            <RowValue className="text-ink">{here}</RowValue>
           </Row>
+          {byName !== here && (
+            <Row>
+              <RowText title={t("panes.about.byName")} />
+              <RowValue className="text-ink">{byName}</RowValue>
+            </Row>
+          )}
           <Row>
             <RowText title={t("panes.about.storage")} />
             {/* Filled for "kept to itself", hatched for "shared with the
@@ -65,6 +80,7 @@ export function AboutPane({ form }: { form: SettingsForm }) {
             <RowValue>{saved.proxyEnable ? t("panes.about.yes") : t("panes.about.no")}</RowValue>
           </Row>
         </Group>
+        <GroupCaption>{t("panes.about.addressCaption", { name: `${saved.hostName}.local` })}</GroupCaption>
       </PaneSection>
 
       <PaneSection>
@@ -106,4 +122,15 @@ export function AboutPane({ form }: { form: SettingsForm }) {
       </PaneSection>
     </>
   );
+}
+
+/* The origin in the address bar. Empty if there is none to read (a file: URL,
+ * a test harness without a window), in which case the row shows the name. */
+function browserOrigin(): string {
+  try {
+    const origin = window.location.origin;
+    return origin === "null" ? "" : origin;
+  } catch {
+    return "";
+  }
 }

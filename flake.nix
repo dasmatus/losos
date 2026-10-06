@@ -378,6 +378,9 @@
       #   losos-console       — boots one VM and asserts the address banner owns
       #                         tty1 instead of getty and shows the LAN address
       #                         and the .local name (tests/console.nix).
+      #   losos-nextcloud-httpd — not a VM: the Nextcloud pod's Apache on a
+      #                         fixture webroot, asserting the URL map
+      #                         (tests/nextcloud-httpd.nix).
       checks.${system} = {
         losos-install = import ./tests/install.nix { inherit pkgs disko; };
         losos-tpm-unlock = import ./tests/tpm.nix { inherit pkgs disko; };
@@ -395,6 +398,12 @@
         losos-admin-ui = import ./tests/admin-ui.nix { inherit pkgs; };
         losos-keyring = import ./tests/keyring.nix { inherit pkgs; };
         losos-console = import ./tests/console.nix { inherit pkgs; };
+        # Not a VM either: starts the Nextcloud pod's httpd and php-fpm in the
+        # build sandbox on the config text flake/images.nix bakes, against a
+        # fixture webroot, and asserts which entry point every URL shape
+        # reaches — the pretty /nextcloud/apps/<app>/ links the homepage
+        # tiles use included (tests/nextcloud-httpd.nix).
+        losos-nextcloud-httpd = import ./tests/nextcloud-httpd.nix { inherit pkgs; };
         # Not a VM: evaluates the install configuration and asserts on the
         # merged option values, so `nix flake check --no-build` turns red the
         # moment a load-bearing default drifts (tests/invariants.nix).
