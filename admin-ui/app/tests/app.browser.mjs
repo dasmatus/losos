@@ -17,7 +17,17 @@ import { launch, runner, serve } from './harness.mjs';
 const TOKEN = 'a'.repeat(64);
 const { origin, close: closeServer } = await serve();
 const browser = await launch();
-const { check, finish } = runner();
+const { check, skip, finish } = runner();
+
+/* The Market pane is planned, not open (`planned: true` on its row in
+ * src/screens/settings/panes.ts): the sidebar shows it greyed with a
+ * "soon(TM)" badge, nothing navigates to it, and its address falls back to
+ * the default pane. The pane's own checks below are kept behind this switch
+ * so that opening the tab is two flips, there and here, and brings its
+ * coverage straight back. A check at the bottom asserts the two agree. */
+const MARKET_TAB_OPEN = false;
+const whenMarketOpen = (name, fn) =>
+  MARKET_TAB_OPEN ? check(name, fn) : skip(name, 'the Market tab is planned, not open');
 
 const SETTINGS = {
   sharingMyStorage: false,
@@ -185,7 +195,7 @@ await check('every sidebar entry lands on its own address', async () => {
   await page.close();
 });
 
-for (const path of ['/apps', '/storage', '/mesh', '/settings', '/settings/hardware', '/settings/market', '/settings/about', '/settings/reset']) {
+for (const path of ['/apps', '/storage', '/mesh', '/settings', '/settings/hardware', '/settings/about', '/settings/reset']) {
   await check(`a deep link to ${path} renders without errors and survives a reload`, async () => {
     const { page, errors } = await open({ path, stored: true });
     await nav(page).waitFor();
@@ -239,7 +249,7 @@ await check('a browser in a language we do not carry falls back to English', asy
 
 for (const locale of ['sk-SK', 'de-DE']) {
   await check(`every section renders in ${locale} without errors`, async () => {
-    for (const path of ['/', '/apps', '/storage', '/mesh', '/settings/network', '/settings/hardware', '/settings/security', '/settings/market', '/settings/about', '/settings/reset']) {
+    for (const path of ['/', '/apps', '/storage', '/mesh', '/settings/network', '/settings/hardware', '/settings/security', '/settings/about', '/settings/reset']) {
       const { page, errors } = await open({ path, stored: true, locale, market: MARKET });
       await page.locator('main').waitFor();
       assert.deepEqual(errors, [], `${path} threw in ${locale}`);
@@ -248,14 +258,91 @@ for (const locale of ['sk-SK', 'de-DE']) {
   });
 }
 
-await check('a box the market is not offered to says so quietly', async () => {
+/* The greyed Market row. The Settings screen's own sidebar is the second
+ * <nav> on the page ("Sections" is the shell's). */
+const settingsNav = (page, name = 'Settings sections') => page.getByRole('navigation', { name, exact: true });
+const MARKET_ROW = {
+  en: ['Settings sections', 'Market'],
+  sk: ['Sekcie nastavení', 'Trh'],
+  de: ['Einstellungsbereiche', 'Markt'],
+};
+
+for (const [locale, [navName, label]] of Object.entries(MARKET_ROW)) {
+  await check(`the Market row is greyed out as soon(TM) and cannot be opened (${locale})`, async () => {
+    const tag = { en: 'en-US', sk: 'sk-SK', de: 'de-DE' }[locale];
+    const { page, errors } = await open({ path: '/settings', stored: true, locale: tag, market: MARKET });
+    const row = settingsNav(page, navName).getByRole('button', { name: `${label} soon(TM)`, exact: true });
+    await row.waitFor();
+    assert.equal(await row.isDisabled(), MARKET_TAB_OPEN ? false : true, 'the row is not disabled');
+    assert.equal(await row.getAttribute('aria-disabled'), MARKET_TAB_OPEN ? null : 'true');
+    // A disabled button is not in the Tab order: Tab from the search field
+    // must land on the next open row, never on Market.
+    const before = new URL(page.url()).pathname;
+    await row.click({ force: true }).catch(() => {});
+    await page.waitForTimeout(200);
+    assert.equal(new URL(page.url()).pathname, before, 'clicking the greyed row navigated');
+    assert.equal(
+      await settingsNav(page, navName).locator('button[aria-current="page"]').filter({ hasText: label }).count(),
+      0,
+      'the Market row became current',
+    );
+    assert.deepEqual(errors, []);
+    await page.close();
+  });
+}
+
+await check('the greyed Market row is skipped by the keyboard', async () => {
+  const { page } = await open({ path: '/settings', stored: true });
+  const search = settingsNav(page).getByRole('searchbox');
+  await search.fill('m');
+  // "m" matches Mesh, Market (keywords) and more; Enter must open the first
+  // *open* match, and Tab from the field must never rest on the Market row.
+  const labels = await settingsNav(page).getByRole('button').allInnerTexts();
+  assert.ok(labels.some((l) => /Market/.test(l)), `Market is not among the matches: ${labels.join(', ')}`);
+  await search.press('Enter');
+  await page.waitForTimeout(200);
+  assert.notEqual(new URL(page.url()).pathname, '/settings/market');
+  // Walk the Tab order from the field until focus leaves the sidebar; every
+  // stop is a row (or the clear button), and Market must not be among them.
+  const seen = [];
+  for (let i = 0; i < labels.length + 2; i++) {
+    await page.keyboard.press('Tab');
+    const stop = await page.evaluate(() => {
+      const el = document.activeElement;
+      return el?.closest('nav[aria-label="Settings sections"]') ? (el.textContent ?? '') : null;
+    });
+    if (stop === null) break;
+    seen.push(stop);
+  }
+  assert.ok(seen.length >= 2, `Tab never walked the sidebar rows: ${seen.join(' | ')}`);
+  assert.ok(!seen.some((t) => /Market/.test(t)), `Tab rested on the Market row: ${seen.join(' | ')}`);
+  await page.close();
+});
+
+await check('a deep link to the planned Market pane lands on the default pane and asks the market nothing', async () => {
+  const marketCalls = [];
+  const { page, errors } = await open({ path: '/settings/market', stored: true, market: MARKET });
+  page.on('request', (request) => {
+    if (/\/api\/market/.test(request.url())) marketCalls.push(request.url());
+  });
+  await page.locator('main').waitFor();
+  await page.getByRole('heading', { name: 'Storage', exact: true, level: 1 }).waitFor();
+  assert.ok(!/Nothing here/.test(await body(page)), 'fell through to not-found');
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.getByRole('heading', { name: 'Storage', exact: true, level: 1 }).waitFor();
+  assert.deepEqual(marketCalls, [], 'the Market pane was mounted (it asked /api/market)');
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+await whenMarketOpen('a box the market is not offered to says so quietly', async () => {
   const { page, errors } = await open({ path: '/settings/market', stored: true });
   await page.getByText('The market is not available on this box').waitFor();
   assert.deepEqual(errors, []);
   await page.close();
 });
 
-await check('buying opens Stripe Checkout in a new tab', async () => {
+await whenMarketOpen('buying opens Stripe Checkout in a new tab', async () => {
   const { page, errors, marketPosts } = await open({ path: '/settings/market', stored: true, market: MARKET });
   const tab = page.context().waitForEvent('page');
   await page.getByRole('button', { name: 'Buy', exact: true }).click();
@@ -266,7 +353,7 @@ await check('buying opens Stripe Checkout in a new tab', async () => {
   await page.close();
 });
 
-await check('a payment page that is not Stripe is never opened', async () => {
+await whenMarketOpen('a payment page that is not Stripe is never opened', async () => {
   const { page, marketPosts } = await open({
     path: '/settings/market',
     stored: true,
@@ -283,7 +370,7 @@ await check('a payment page that is not Stripe is never opened', async () => {
   await page.close();
 });
 
-await check('setting up payouts opens Stripe onboarding in a tab with no opener', async () => {
+await whenMarketOpen('setting up payouts opens Stripe onboarding in a tab with no opener', async () => {
   const unready = { ...MARKET, account: { ...MARKET.account, seller_onboarded: false, seller_ready: false } };
   const { page, errors, marketPosts } = await open({ path: '/settings/market', stored: true, market: unready });
   const tab = page.waitForEvent('popup');
@@ -296,7 +383,7 @@ await check('setting up payouts opens Stripe onboarding in a tab with no opener'
   await page.close();
 });
 
-await check('a valid listing is sent in minor units', async () => {
+await whenMarketOpen('a valid listing is sent in minor units', async () => {
   const { page, marketPosts } = await open({ path: '/settings/market', stored: true, market: MARKET });
   await page.getByLabel('Price per unit (EUR)').fill('1,25');
   await page.getByLabel('Capacity (units)').fill('2');
@@ -307,7 +394,7 @@ await check('a valid listing is sent in minor units', async () => {
   await page.close();
 });
 
-await check('the listing form refuses a bad price before anything is sent', async () => {
+await whenMarketOpen('the listing form refuses a bad price before anything is sent', async () => {
   const { page, marketPosts } = await open({ path: '/settings/market', stored: true, market: MARKET });
   await page.getByPlaceholder('Price', { exact: false }).fill('0.005');
   await page.getByPlaceholder('Capacity', { exact: false }).fill('10');
@@ -321,7 +408,7 @@ await check('the listing form refuses a bad price before anything is sent', asyn
   await page.close();
 });
 
-await check('a zero-decimal currency is priced in whole units, not hundredths', async () => {
+await whenMarketOpen('a zero-decimal currency is priced in whole units, not hundredths', async () => {
   const yen = { ...MARKET, account: { ...MARKET.account, currency: 'jpy' } };
   const { page, marketPosts } = await open({ path: '/settings/market', stored: true, market: yen });
   await page.getByLabel('Price per unit (JPY)').fill('1,5');
@@ -337,7 +424,7 @@ await check('a zero-decimal currency is priced in whole units, not hundredths', 
   await page.close();
 });
 
-await check('a blocked payouts pop-up says so next to the button', async () => {
+await whenMarketOpen('a blocked payouts pop-up says so next to the button', async () => {
   const unready = { ...MARKET, account: { ...MARKET.account, seller_onboarded: false, seller_ready: false } };
   const { page, errors, marketPosts } = await open({ path: '/settings/market', stored: true, market: unready });
   await page.evaluate(() => {
@@ -350,7 +437,7 @@ await check('a blocked payouts pop-up says so next to the button', async () => {
   await page.close();
 });
 
-await check('a quantity out of range is tied to its field', async () => {
+await whenMarketOpen('a quantity out of range is tied to its field', async () => {
   const { page, marketPosts } = await open({ path: '/settings/market', stored: true, market: MARKET });
   const qty = page.getByLabel('Quantity');
   await qty.fill('41');

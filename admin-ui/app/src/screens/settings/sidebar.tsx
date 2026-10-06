@@ -24,6 +24,12 @@ import { paneMatches, SETTINGS_PANES, type SettingsPaneId } from "./panes";
  * The search filters the rows. It does not search inside panes: this box has
  * eleven settings, the pane summaries and keywords cover all of them, and a
  * full-text index over eleven switches would be a lie about how much is here.
+ *
+ * A planned pane (`pane.planned`, today the market) keeps its row so an owner
+ * sees what is coming, but the row is a disabled button: greyed, carrying a
+ * "soon(TM)" badge, skipped by Tab and announced as unavailable. It is not a
+ * link to nowhere and not a tooltip trick — `disabled` is the one attribute
+ * that gets all three for free.
  */
 
 export interface SidebarProps {
@@ -43,11 +49,12 @@ export function Sidebar({ current, onSelect }: SidebarProps) {
     [search, locale],
   );
 
-  /* Enter in the search field goes to the first match. With one match left
-   * that is the whole interaction: type three letters, press Enter. */
+  /* Enter in the search field goes to the first match that can be opened.
+   * With one match left that is the whole interaction: type three letters,
+   * press Enter. A planned pane is never that match, however well it fits. */
   const submit = (event: React.FormEvent): void => {
     event.preventDefault();
-    const first = visible[0];
+    const first = visible.find((pane) => !pane.planned);
     if (first !== undefined) onSelect(first.id);
   };
 
@@ -132,6 +139,7 @@ export function Sidebar({ current, onSelect }: SidebarProps) {
                 label={pane.label}
                 icon={pane.icon}
                 selected={pane.id === current}
+                planned={pane.planned}
                 onClick={() => onSelect(pane.id)}
               />
             </li>
@@ -146,10 +154,13 @@ interface SidebarRowProps {
   label: string;
   icon: IconSvgElement;
   selected: boolean;
+  /** Drawn but not open: see the note at the top of the file. */
+  planned: boolean;
   onClick: () => void;
 }
 
-function SidebarRow({ label, icon, selected, onClick }: SidebarRowProps) {
+function SidebarRow({ label, icon, selected, planned, onClick }: SidebarRowProps) {
+  const t = useT();
   return (
     <button
       type="button"
@@ -157,14 +168,22 @@ function SidebarRow({ label, icon, selected, onClick }: SidebarRowProps) {
       // not options in a listbox, and a screen reader should say "current
       // page" rather than "selected".
       aria-current={selected ? "page" : undefined}
+      // Both: `disabled` takes the row out of the Tab order and off the click
+      // path, `aria-disabled` is what assistive tech reads back. A planned
+      // row is never the selected one — its id is not an address — so the
+      // selected styling below cannot meet this branch.
+      disabled={planned}
+      aria-disabled={planned ? "true" : undefined}
       onClick={onClick}
       className={cn(
         "flex w-full items-center gap-2 rounded-control px-2 py-1.5 text-left",
         "text-[13px] whitespace-nowrap",
         "transition-colors duration-150",
-        selected
-          ? "bg-accent font-medium text-surface"
-          : "text-ink hover:bg-surface active:bg-surface",
+        planned
+          ? "cursor-not-allowed text-faint"
+          : selected
+            ? "bg-accent font-medium text-surface"
+            : "text-ink hover:bg-surface active:bg-surface",
       )}
     >
       <span
@@ -172,12 +191,23 @@ function SidebarRow({ label, icon, selected, onClick }: SidebarRowProps) {
         className={cn(
           "flex size-[21px] shrink-0 items-center justify-center rounded-[6px]",
           "transition-colors duration-150",
-          selected ? "bg-accent-wash text-accent" : "bg-surface text-muted",
+          planned
+            ? "bg-surface text-faint"
+            : selected
+              ? "bg-accent-wash text-accent"
+              : "bg-surface text-muted",
         )}
       >
         <HugeiconsIcon icon={icon} size={13} strokeWidth={1.5} color="currentColor" />
       </span>
       {label}
+      {planned && (
+        // Part of the button's text, so the accessible name is "Market
+        // soon(TM)" and a screen reader hears the reason with the row.
+        <span className="ml-auto rounded-[6px] bg-surface px-1.5 py-px text-[10.5px] font-medium tracking-wide text-faint">
+          {t("settings.sidebar.soon")}
+        </span>
+      )}
     </button>
   );
 }
