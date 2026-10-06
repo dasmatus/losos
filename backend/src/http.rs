@@ -2,7 +2,11 @@
 //!
 //! Bound to `127.0.0.1` only; Nginx proxies `/api/*` here for the admin UI.
 //! Every route except `/api/health` requires `Authorization: Bearer <token>`,
-//! where the token is the file at `$LOSOS_ADMIN_TOKEN_FILE`.
+//! where the token is the file at `$LOSOS_ADMIN_TOKEN_FILE` — except the
+//! three that exist to *get* one: the first-run claim (`/api/setup/claim`)
+//! and the password sign-in (`/api/sign-in`, `crate::signin`), which answer
+//! with the token when the owner has proved themselves, and the claim-state
+//! read the page needs before it knows which of the two to show.
 //!
 //! Health is deliberately open so the dashboard can show whether the daemon is
 //! reachable before anyone has pasted a token.
@@ -11,7 +15,7 @@ use crate::guard::{retry_after_secs, Audit, Throttle};
 use crate::io_backend::{atomic_write_secret, IoLosos};
 use crate::losos::{
     cmd_apply, cmd_apps_search, cmd_change, cmd_factory_reset, cmd_grow, cmd_recovery,
-    cmd_set_password, cmd_settings, cmd_state, cmd_status,
+    cmd_set_password, cmd_settings, cmd_sign_in, cmd_state, cmd_status,
 };
 use crate::model::Mode;
 use crate::overrides::validate_apply;
@@ -80,6 +84,30 @@ fn run(
             HttpResponse::build(actix_web::http::StatusCode::SERVICE_UNAVAILABLE)
                 .insert_header(("Retry-After", "10"))
                 .json(serde_json::json!({ "error": why, "ready": false, "waitingFor": why }))
+        }
+        // A password sign-in that LosOS cloud turned down: 401, which the
+        // dialog shows as "try again" and the caller counts as a failure for
+        // the per-address throttle, exactly like a wrong token.
+        Err(e) if e.downcast_ref::<crate::signin::WrongPassword>().is_some() => {
+            tracing::info!("sign-in refused: wrong password");
+            err(
+                actix_web::http::StatusCode::UNAUTHORIZED,
+                &crate::signin::WrongPassword.to_string(),
+            )
+        }
+        // LosOS cloud's own brute-force protection shut the door; the page
+        // says "wait" rather than "wrong".
+        Err(e) if e.downcast_ref::<crate::signin::Throttled>().is_some() => {
+            tracing::warn!("sign-in refused: LosOS cloud is throttling this address");
+            let mut resp = err(
+                actix_web::http::StatusCode::TOO_MANY_REQUESTS,
+                &crate::signin::Throttled.to_string(),
+            );
+            resp.headers_mut().insert(
+                actix_web::http::header::RETRY_AFTER,
+                "30".parse().expect("digits"),
+            );
+            resp
         }
         // A second owner, or the first one again after the grace window:
         // the sentence, as a 409 the wizard already knows how to show.
@@ -345,6 +373,71 @@ async fn post_claim(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> 
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         crate::losos::cmd_claim(l, &user, password, &token, &mut receipts)
     })
+}
+
+/// `POST /api/sign-in` — unlock the admin pages with the owner's password.
+///
+/// The second of the two routes that hand out the admin token
+/// ([`post_claim`] is the first), and the one every later visit uses: the
+/// password is checked by Nextcloud over loopback ([`crate::losos::cmd_sign_in`],
+/// `crate::signin`), and a correct one is answered with the same token the
+/// claim released. No Bearer, by nature — it is how a tab gets one — so it
+/// gets the claim's three same-box checks ([`claim_fault`]) against a page in
+/// a LAN browser, and the daemon's own per-address throttle counts a wrong
+/// password exactly as it counts a wrong token: a few free tries, then
+/// `429` with `Retry-After` for a growing window. Nextcloud throttles the
+/// forwarded client address on top of that.
+async fn post_sign_in(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> HttpResponse {
+    const SHAPE: &str = r#"body must be JSON: {"password": "..."}"#;
+    let header = |name: &str| req.headers().get(name).and_then(|v| v.to_str().ok());
+    let hostname = std::fs::read_to_string("/proc/sys/kernel/hostname").unwrap_or_default();
+    if let Some(why) = claim_fault(
+        header("content-type"),
+        header("host"),
+        header("origin"),
+        hostname.trim(),
+    ) {
+        tracing::warn!(reason = why, "refused a sign-in request");
+        return err(actix_web::http::StatusCode::FORBIDDEN, why);
+    }
+    let remote = remote_addr(&req);
+    if let Err(wait) = api.throttle.check(&remote, Instant::now()) {
+        api.audit.record("/api/sign-in", "throttled", &remote);
+        let mut resp = err(
+            actix_web::http::StatusCode::TOO_MANY_REQUESTS,
+            "too many failed attempts; slow down",
+        );
+        resp.headers_mut().insert(
+            actix_web::http::header::RETRY_AFTER,
+            retry_after_secs(wait).to_string().parse().expect("digits"),
+        );
+        return resp;
+    }
+    let Ok(doc) = serde_json::from_slice::<serde_json::Value>(&body) else {
+        return err(actix_web::http::StatusCode::BAD_REQUEST, SHAPE);
+    };
+    let Some(password) = doc.get("password").and_then(|p| p.as_str()) else {
+        return err(actix_web::http::StatusCode::BAD_REQUEST, SHAPE);
+    };
+    if let Err(e) = crate::signin::validate_candidate(password) {
+        return err(actix_web::http::StatusCode::BAD_REQUEST, &e);
+    }
+    let token = api.token.clone();
+    let client = remote.clone();
+    let resp = run(&api, move |l| cmd_sign_in(l, password, &token, &client));
+    let outcome = if resp.status().is_success() {
+        api.throttle.record_success(&remote);
+        "ok"
+    } else if resp.status() == actix_web::http::StatusCode::UNAUTHORIZED {
+        api.throttle.record_failure(&remote, Instant::now());
+        "unauthorized"
+    } else if resp.status().is_client_error() {
+        "rejected"
+    } else {
+        "error"
+    };
+    api.audit.record("/api/sign-in", outcome, &remote);
+    resp
 }
 
 /// Why a claim request must be refused before it is even parsed, if it must.
@@ -730,11 +823,14 @@ pub fn serve(backend: IoLosos) -> anyhow::Result<()> {
                     web::post().to(post_market_close),
                 )
                 .route("/api/market/orders", web::post().to(post_market_order))
-                // The two unauthenticated routes, and the only ones besides
-                // /api/health. Both are first-run only: the state read is a
-                // single bit, and the claim refuses once the box has an owner.
+                // The unauthenticated routes besides /api/health. These two
+                // are first-run only: the state read is a single bit, and
+                // the claim refuses once the box has an owner.
                 .route("/api/setup/claim", web::get().to(get_claim_state))
                 .route("/api/setup/claim", web::post().to(post_claim))
+                // The third: the password sign-in, which answers with the
+                // token on a claimed box and is guarded like the claim.
+                .route("/api/sign-in", web::post().to(post_sign_in))
                 .default_service(web::route().to(not_found))
         })
         .bind(("127.0.0.1", port))

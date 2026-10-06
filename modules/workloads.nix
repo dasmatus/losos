@@ -163,10 +163,36 @@ let
     "overwrite.cli.url" = phpStr (
       if proxied then "https://${proxyHostName}/nextcloud" else "http://${hostName}.local/nextcloud"
     );
-    # Requests arrive with the appliance's mDNS name (direct) or the
-    # master-proxy public hostname (tunnel) — both must be trusted, or
-    # Nextcloud rejects tunnel traffic with "Untrusted domain".
-    trusted_domains = phpList ([ "${hostName}.local" ] ++ lib.optional proxied proxyHostName);
+    # Requests arrive with the appliance's mDNS name (direct), its bare name
+    # (a router or Windows that resolves `losos` without the suffix), the
+    # master-proxy public hostname (tunnel), or the box's own IP address — a
+    # libvirt VM gets no mDNS name, so its owner types the address the
+    # console banner shows. All of those must be trusted, or Nextcloud
+    # answers "Untrusted domain"; localhost and 127.0.0.1 it trusts on its
+    # own (TrustedDomainHelper, REGEX_LOCALHOST).
+    #
+    # The address is a PHP expression, not a literal, because the box does
+    # not know it at build time: DHCP hands it out, and it changes when the
+    # box moves. nginx tells the pod which address each request arrived on
+    # (X-Losos-Server-Addr, set from $server_addr in modules/containers.nix),
+    # and this reads it back per request. Only an IP literal is accepted, so
+    # even a header that somehow reached Apache from a client could at most
+    # trust an address — which a Host header attack needs to resolve to this
+    # box anyway — never a name. `occ` runs with no $_SERVER entry and gets
+    # the static list. Not a wildcard like `192.168.*`: that trusts
+    # `192.168.attacker.example` too.
+    trusted_domains = ''
+      array_values(array_filter(array_merge(
+        ${phpList ([ "${hostName}.local" hostName ] ++ lib.optional proxied proxyHostName)},
+        (function () {
+          $own = $_SERVER['HTTP_X_LOSOS_SERVER_ADDR'] ?? null;
+          if (!is_string($own) || filter_var($own, FILTER_VALIDATE_IP) === false) {
+            return [];
+          }
+          // Nextcloud strips the port but keeps an IPv6 literal's brackets.
+          return str_contains($own, ':') ? [$own, '[' . $own . ']'] : [$own];
+        })()
+      )))'';
     # Loopback, not a container address: the veth is gone and Nginx now
     # reaches the pod over the host's own loopback. Without this Nextcloud
     # sees one client address for every request, so the brute-force throttle

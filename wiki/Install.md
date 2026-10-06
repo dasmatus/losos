@@ -56,8 +56,9 @@ disk, puts them in one LVM volume group, encrypts it with LUKS, formats
 btrfs does not support it. You lose compression and data checksums.
 
 After the reboot, tty1 shows a full-screen banner with the box's IP address and
-`<hostname>.local`. Open that address in a browser on any computer on the same
-network. The banner updates when the address changes.
+`<hostname>.local`. Open either in a browser on any computer on the same
+network; the IP address is the one to use from a libvirt VM, which gets no
+`.local` name. The banner updates when the address changes.
 
 If reading a screen and typing an address is the scary part, open
 [losos-edge.dasmat.us/find](https://losos-edge.dasmat.us/find) in Chrome

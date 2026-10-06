@@ -48,10 +48,21 @@ The token is equivalent to root: `POST /api/apply` writes arbitrary Nix to
   state path is unclaimed.
 - The file must contain exactly 64 lowercase hex characters. Anything else is
   discarded and replaced, with an error in the log.
-- A claimed box cannot fetch the token again. To rotate it, write a new
-  64-character lowercase-hex value to the file and restart `lososd`, or delete
-  the file and restart it to mint a random replacement. Deleting it requires
-  local access to retrieve the replacement.
+- A claimed box gets the token again only by proving the owner's password:
+  `POST /api/sign-in` (`backend/src/signin.rs`) asks Nextcloud, over
+  loopback, whether the password is the admin account's, and answers with
+  the token on a 200. lososd keeps no copy or hash of the password, so there
+  is exactly one credential and it lives in Nextcloud; the cost is that the
+  route answers 503 while Nextcloud is not running, which is what the admin
+  key printed on the recovery sheet is for. The route is unauthenticated by
+  nature and so carries the claim route's three same-box checks, and the
+  per-address throttle counts a wrong password as it counts a wrong token;
+  Nextcloud's own brute-force protection sees the browser's address through
+  `X-Forwarded-For` and throttles it too.
+- To rotate the token, write a new 64-character lowercase-hex value to the
+  file and restart `lososd`, or delete the file and restart it to mint a
+  random replacement. The next password sign-in hands out the new one; the
+  printed spare is then stale.
 - Comparison is constant-time.
 - The API listens on `127.0.0.1` only. nginx proxies `/api/` to it behind the
   LAN-only guard. The hostNetwork Nextcloud and Forgejo pods share that
@@ -182,7 +193,8 @@ Setting either option to `null` falls back to plain TCP.
 nginx). After 10 failures the address gets `429` with `Retry-After`, for a
 window starting at 1 s and doubling up to 5 min. During the window even the
 correct token is refused; a correct token afterwards clears the count.
-`/api/health` and `/api/setup/claim` are not throttled.
+`/api/health` and `/api/setup/claim` are not throttled; `/api/sign-in` is,
+by the same counter.
 
 `POST /api/apply`, `/api/change`, `/api/set-password`, `/api/factory-reset`
 and `/api/grow` each append a JSON line to `/var/lib/losos/audit.log`:

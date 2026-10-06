@@ -218,10 +218,32 @@ export function postSetPassword(
  * before the request rather than as a 400 afterwards. Keep the two in step:
  * MIN_PASSWORD_CHARS / MAX_PASSWORD_BYTES are the constants' names there too.
  *
- * Length only, and that is deliberate on the server's side: composition rules
- * push people towards shorter passwords they reuse. */
+ * Three rules, and all three are on screen with a tick each before the owner
+ * types a character (`passwordRules`): this one password now opens the admin
+ * pages as well as LosOS cloud, so it is held to more than length — but an
+ * owner who meets what is shown is never refused by a rule they did not see.
+ * No symbol rule, deliberately: it is the one that phone keyboards hide and
+ * that makes people shorten the rest. */
 export const MIN_PASSWORD_CHARS = 12;
 export const MAX_PASSWORD_BYTES = 256;
+
+export type PasswordRuleId = "length" | "cases" | "digit";
+
+export interface PasswordRule {
+  id: PasswordRuleId;
+  /** Whether `password` satisfies it. */
+  met: boolean;
+}
+
+/** Each rule and whether the password meets it, in the order shown. Unicode
+ *  classes, like the server: a Slovak Ž is an upper-case letter here too. */
+export function passwordRules(password: string): PasswordRule[] {
+  return [
+    { id: "length", met: [...password].length >= MIN_PASSWORD_CHARS },
+    { id: "cases", met: /\p{Ll}/u.test(password) && /\p{Lu}/u.test(password) },
+    { id: "digit", met: /\p{N}/u.test(password) },
+  ];
+}
 
 /** The problem with `password`, in words the owner can act on, or null.
  *  Translated when produced, so it stays in the language it was shown in. */
@@ -242,6 +264,9 @@ export function passwordProblem(password: string): string | null {
   if (/\p{Cc}/u.test(password)) {
     return t("wizard.password.control");
   }
+  if (!/\p{Ll}/u.test(password)) return t("wizard.password.noLower");
+  if (!/\p{Lu}/u.test(password)) return t("wizard.password.noUpper");
+  if (!/\p{N}/u.test(password)) return t("wizard.password.noDigit");
   return null;
 }
 

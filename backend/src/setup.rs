@@ -63,9 +63,17 @@ pub const DEFAULT_ADMIN_USER: &str = "notshared";
 /// Above Nextcloud's own `password_policy` default of 10, and deliberately a
 /// server-side rule rather than a browser one: the admin HTTP API is reachable
 /// by anything that holds the admin token, and the wizard's `<input>` is not a
-/// boundary. The floor is length only. Composition rules ("one symbol, one
-/// digit") push people towards shorter passwords they reuse, and Nextcloud's
-/// own policy app is the right place to add more if an owner wants it.
+/// boundary.
+///
+/// Length is no longer the only rule. Since `crate::signin` the one password
+/// opens the admin pages too — `POST /api/apply` and a factory reset sit
+/// behind it, not only the owner's files — so [`validate_password`] also
+/// wants both letter cases and a digit. Three rules, all shown up front by
+/// the wizard with a tick each, and nothing hidden: an owner who meets what
+/// is on screen is never refused by a rule they did not see. No symbol
+/// rule, on purpose — a symbol is what a phone keyboard hides and what a
+/// shell round trip mangles, and it is the rule that makes people shorten
+/// the rest. Nextcloud's own policy app can add more if an owner wants it.
 pub const MIN_PASSWORD_CHARS: usize = 12;
 
 /// Longest password accepted, in bytes.
@@ -191,8 +199,17 @@ impl NcMode {
 pub struct Secret(String);
 
 impl Secret {
-    /// The plaintext. Every call site is one of exactly two: writing the staged
-    /// file, or setting `OC_PASS` on a child process.
+    /// Wrap a password the caller has already checked. Crate-private so the
+    /// two validators ([`validate_password`] for a new password,
+    /// [`crate::signin::validate_candidate`] for one being tried) stay the
+    /// only ways to make one.
+    pub(crate) fn new(password: &str) -> Secret {
+        Secret(password.to_string())
+    }
+
+    /// The plaintext. Every call site is one of exactly three: writing the
+    /// staged file, setting `OC_PASS` on a child process, or the Basic
+    /// header of the sign-in probe (`crate::signin::login_request`).
     pub fn expose(&self) -> &str {
         &self.0
     }
@@ -498,6 +515,19 @@ pub fn validate_password(password: &str) -> Result<Secret, String> {
             "password must not contain control characters (found U+{:04X})",
             c as u32
         ));
+    }
+    // The three composition rules, each with its own sentence so the wizard
+    // can show the one that is missing. Unicode-aware on purpose: `Ž` is an
+    // upper-case letter and `ß` a lower-case one, and an owner typing on a
+    // Slovak or German keyboard should not be told otherwise.
+    if !password.chars().any(char::is_lowercase) {
+        return Err("password must contain a lower-case letter".to_string());
+    }
+    if !password.chars().any(char::is_uppercase) {
+        return Err("password must contain an upper-case letter".to_string());
+    }
+    if !password.chars().any(char::is_numeric) {
+        return Err("password must contain a digit".to_string());
     }
     Ok(Secret(password.to_string()))
 }
