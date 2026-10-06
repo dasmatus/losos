@@ -20,7 +20,9 @@ Services on the same host:
 `losos.tls.enable` (on by default) adds HTTPS on :443 with a certificate the
 box generates itself, valid for two years. Plain HTTP on :80 stays open.
 Browsers do not trust the certificate until you install it; the first-run
-wizard walks you through that.
+wizard offers a one-line installer for macOS, Linux and Windows
+(`/setup/trust.sh`, `/setup/trust.ps1`, both LAN-only) and the plain
+download (`/setup/losos-ca.crt`). See [Install](Install).
 
 ## Admin token
 

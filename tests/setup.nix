@@ -86,8 +86,12 @@ pkgs.testers.nixosTest {
 
       # For the script's own inspection of the certificate. The generator gets
       # openssl from its `path` in modules/tls.nix, and the publisher from its
-      # own in modules/setup.nix; neither needs this.
-      environment.systemPackages = [ pkgs.openssl ];
+      # own in modules/setup.nix; neither needs this. certutil is what
+      # trust.sh drives on Linux; here it stands in for the owner's laptop.
+      environment.systemPackages = [
+        pkgs.openssl
+        pkgs.nssTools
+      ];
 
       virtualisation = {
         memorySize = 1024;
@@ -113,6 +117,8 @@ pkgs.testers.nixosTest {
     STATE = "/var/lib/losos-setup/state.json"
     CERT_URL = "/setup/losos-ca.crt"
     STATE_URL = "/setup/state.json"
+    SH_URL = "/setup/trust.sh"
+    PS1_URL = "/setup/trust.ps1"
 
     # This node's own address on vlan 1. Spelled out rather than reached through
     # the hostname, which NixOS also maps to 127.0.0.2 — and loopback is the one
@@ -170,7 +176,7 @@ pkgs.testers.nixosTest {
         # route that answers loopback is a route on the public internet the
         # moment losos.proxy.enable is on. A version of this subtest expecting
         # 200 here is testing that bug.
-        for path in (CERT_URL, STATE_URL):
+        for path in (CERT_URL, STATE_URL, SH_URL, PS1_URL):
             got = code(f"http://127.0.0.1{path}")
             assert got == "403", f"loopback {path}: expected 403, got {got}"
             got = code(f"http://{LAN}{path}", source=CLIENT)
@@ -183,7 +189,7 @@ pkgs.testers.nixosTest {
 
     with subtest("a mesh pod address is refused on the setup routes"):
         appliance.succeed("ip addr add 10.42.0.7/32 dev eth1")
-        for path in (CERT_URL, STATE_URL):
+        for path in (CERT_URL, STATE_URL, SH_URL, PS1_URL):
             got = code(f"http://{LAN}{path}", source="10.42.0.7")
             assert got == "403", f"mesh-pod {path}: expected 403, got {got}"
 
@@ -233,7 +239,7 @@ pkgs.testers.nixosTest {
         # loudly; this is the confirmation that what it checked is what the
         # running server does.
         assert headers(STATE_URL).get("content-type") == "application/json", headers(STATE_URL)
-        for path in (CERT_URL, STATE_URL):
+        for path in (CERT_URL, STATE_URL, SH_URL, PS1_URL):
             h = headers(path)
             assert "default-src 'none'" in h.get("content-security-policy", ""), \
                 f"{path}: the inherited CSP was replaced by a location-level add_header: {h}"
@@ -260,12 +266,79 @@ pkgs.testers.nixosTest {
         h = headers(STATE_URL, f"-H 'Origin: {FINDER}'")
         assert "default-src 'none'" in h.get("content-security-policy", ""), h
 
+    with subtest("the install scripts carry this certificate, and are what the document advertises"):
+        # The wizard's one-line command fetches whichever of the two the
+        # document names; the script then installs the PEM it carries. So the
+        # PEM inside each has to be the certificate on disk, byte for byte,
+        # and the fingerprint printed for the owner to compare has to be the
+        # one the wizard shows. A sed template that lost its marker line would
+        # serve a script that installs the literal text "@PEM@".
+        doc = json.loads(appliance.succeed(lan(STATE_URL)))
+        install = doc["certificate"]["install"]
+        assert install == {"sh": SH_URL, "ps1": PS1_URL}, install
+        display = doc["certificate"]["fingerprintDisplay"]
+        for path in (SH_URL, PS1_URL):
+            local = "/tmp" + path.replace("/setup/", "/")
+            appliance.succeed(lan(path, f"-o {local}"))
+            h = headers(path)
+            assert h.get("content-type", "").startswith("text/plain"), \
+                f"{path}: a script must open as text in a browser tab (and as a string for irm): {h}"
+            body = appliance.succeed(f"cat {local}")
+            assert "@PEM@" not in body and "@FINGERPRINT@" not in body and "@HOST@" not in body, \
+                f"{path}: a placeholder survived rendering"
+            assert display in body, f"{path}: does not print the fingerprint the wizard shows"
+            assert "mattbox" in body, f"{path}: does not name the box"
+            appliance.succeed(
+                f"sed -n '/-----BEGIN CERTIFICATE-----/,/-----END CERTIFICATE-----/p' {local} > {local}.pem"
+                f" && cmp {local}.pem {CERT}"
+            )
+        appliance.succeed("sh -n /tmp/trust.sh")
+
+    with subtest("trust.sh installs the certificate into a user's browser stores"):
+        # As an ordinary user, with a home that has a Firefox profile in it:
+        # the shape of the owner's laptop. Afterwards both NSS databases —
+        # the one Chrome reads and the profile's — hold the certificate under
+        # the box's name, trusted for TLS ("C"). Not root, so the system-store
+        # branch is not taken: NixOS has none of those tools, and a script that
+        # reached for sudo would fail the whole point.
+        HOME = "/tmp/owner"
+        PROFILE = f"{HOME}/.mozilla/firefox/abc123.default-release"
+        appliance.succeed(
+            f"mkdir -p {PROFILE}"
+            f" && certutil -d sql:{PROFILE} -N --empty-password"
+            f" && chmod -R 777 {HOME}"
+            " && chmod 755 /tmp/trust.sh"
+        )
+        out = appliance.succeed(
+            f"setpriv --reuid=nobody --regid=nogroup --clear-groups"
+            f" env HOME={HOME} PATH=$PATH sh /tmp/trust.sh"
+        )
+        assert display in out, f"the script did not print the fingerprint to compare: {out}"
+        for db in (f"{HOME}/.pki/nssdb", PROFILE):
+            listing = appliance.succeed(f"certutil -d sql:{db} -L")
+            assert "LosOS mattbox" in listing and "C,," in listing, f"{db}: {listing}"
+        # Running it again replaces rather than stacks the entry.
+        appliance.succeed(
+            f"setpriv --reuid=nobody --regid=nogroup --clear-groups"
+            f" env HOME={HOME} PATH=$PATH sh /tmp/trust.sh"
+        )
+        n = appliance.succeed(f"certutil -d sql:{HOME}/.pki/nssdb -L | grep -c 'LosOS mattbox'").strip()
+        assert n == "1", f"a second run stacked a duplicate: {n} entries"
+        # And a script whose certificate does not match its fingerprint
+        # installs nothing. One stray character in the base64 is enough.
+        appliance.succeed("sed '/^MII/s/.*/&x/' /tmp/trust.sh > /tmp/bad.sh")
+        appliance.fail("env HOME=/tmp/other sh /tmp/bad.sh")
+        appliance.fail("test -e /tmp/other/.pki/nssdb/cert9.db")
+
     with subtest("the file is readable by nginx and holds nothing secret"):
         assert appliance.succeed(f"stat -c %a {STATE}").strip() == "644", \
             "nginx has to read this, and there is nothing in it to hide"
         assert appliance.succeed("stat -c %a /var/lib/losos-setup").strip() == "755"
+        for f in ("trust.sh", "trust.ps1"):
+            assert appliance.succeed(f"stat -c %a /var/lib/losos-setup/{f}").strip() == "644", f
         # temp+rename, so a request can never catch a half-written document.
         appliance.succeed(f"test ! -e {STATE}.new")
+        appliance.succeed("test ! -e /var/lib/losos-setup/trust.sh.new")
 
     with subtest("the vhost containers.nix owns is still intact"):
         # modules/setup.nix merges into the same attribute path rather than
@@ -279,9 +352,9 @@ pkgs.testers.nixosTest {
         # The unit runs on every boot. It must be a function of the certificate
         # on disk and nothing else — a fingerprint that moves is one the owner
         # already wrote down and can no longer match.
-        before = appliance.succeed(f"cat {STATE}")
+        before = appliance.succeed(f"cat {STATE} /var/lib/losos-setup/trust.sh /var/lib/losos-setup/trust.ps1")
         appliance.succeed("systemctl restart losos-setup-state.service")
-        after = appliance.succeed(f"cat {STATE}")
+        after = appliance.succeed(f"cat {STATE} /var/lib/losos-setup/trust.sh /var/lib/losos-setup/trust.ps1")
         assert before == after, "the published setup state is not stable across a restart"
   '';
 }
