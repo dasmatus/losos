@@ -541,6 +541,139 @@ await whenMarketOpen('a quantity out of range is tied to its field', async () =>
   await page.close();
 });
 
+/* ── The shadcn conversion ─────────────────────────────────────────────
+ * The admin UI's primitives are shadcn/ui components on the box's palette
+ * (admin-ui/app/components.json). These checks pin the places that changed
+ * shape, by the `data-slot` each component stamps on itself, so a later
+ * "tidy" that drops one back to a bare div fails here and not on a box. */
+
+const RESULTS = {
+  sources: ['nixpkgs', 'flathub'],
+  results: [
+    { id: 'jellyfin', name: 'Jellyfin', version: '10.11.0', summary: 'A media server.', source: 'nixpkgs', homepage: 'https://jellyfin.org' },
+    { id: 'immich', name: 'Immich', version: '2.4.1', summary: 'Photo backup.', source: 'nixpkgs', homepage: 'https://immich.app' },
+    { id: 'vaultwarden', name: 'Vaultwarden', summary: 'A password manager server.', source: 'flathub' },
+  ],
+};
+
+await check('the sign-in prompt is one Field: the eye sits inside the password box and a refusal marks the field invalid', async () => {
+  const { page } = await openGate();
+  const field = page.locator('[role="dialog"] [data-slot="field"], dialog [data-slot="field"]').first();
+  await field.waitFor();
+  const group = field.locator('[data-slot="input-group"]');
+  const input = group.locator('input#owner-password');
+  assert.equal(await input.count(), 1, 'the password input is not inside the Input Group');
+  const eye = group.getByRole('button', { name: /show the password/i });
+  assert.equal(await eye.count(), 1, 'the show/hide button is not an Input Group addon');
+  await eye.click();
+  assert.equal(await input.getAttribute('type'), 'text', 'the eye did not reveal the password');
+  assert.equal(await field.getAttribute('data-invalid'), null, 'the field is invalid before anything was typed');
+  await input.fill('Wrong-horse battery staple 1');
+  await page.getByRole('button', { name: 'Unlock' }).click();
+  await page.waitForTimeout(300);
+  assert.equal(await field.getAttribute('data-invalid'), 'true', 'a refusal did not mark the field invalid');
+  const error = field.locator('[data-slot="field-error"]');
+  assert.equal(await error.getAttribute('role'), 'alert');
+  assert.equal(await input.getAttribute('aria-describedby'), await error.getAttribute('id'), 'the error is not linked to the input');
+  await page.close();
+});
+
+await check('the catalogue lists hits in a Table with the publisher as a column, and shows an Empty state when nothing comes back', async () => {
+  const { page, errors } = await open({ path: '/apps', stored: true });
+  await page.route('**/api/apps/search**', (route) => {
+    const q = new URL(route.request().url()).searchParams.get('q') ?? '';
+    return json(route, 200, q === 'zzz' ? { sources: ['nixpkgs'], results: [] } : RESULTS);
+  });
+  const search = page.getByPlaceholder('Search for an app');
+  assert.equal(await search.locator('xpath=ancestor::*[@data-slot="input-group"]').count(), 1, 'the search is not an Input Group');
+  await search.fill('media');
+  const table = page.locator('[data-slot="table"]');
+  await table.waitFor();
+  const heads = await table.locator('thead th').allInnerTexts();
+  assert.deepEqual(heads.slice(0, 2), ['App', 'Published by']);
+  assert.equal(await table.locator('tbody tr').count(), 3, 'one row per hit');
+  const sources = await table.locator('tbody tr td:nth-child(2)').allInnerTexts();
+  assert.deepEqual(sources, ['nixpkgs', 'nixpkgs', 'flathub'], 'the publisher must be on every row, never abbreviated');
+  assert.equal(await table.getByRole('link', { name: /Look at it/ }).count(), 2, 'a hit without a homepage gets no link');
+  await search.fill('zzz');
+  await page.locator('[data-slot="empty"]').waitFor();
+  assert.match(await body(page), /Nothing came back/i);
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+await check('an empty board and an unknown address are both Empty states', async () => {
+  const { page } = await open({ stored: true });
+  const board = page.locator('[data-slot="empty"]');
+  await board.waitFor();
+  assert.equal(await board.getByRole('button', { name: 'Add a widget' }).count(), 1, 'the invitation lost its button');
+  await page.goto(origin + '/nothing-here', { waitUntil: 'networkidle' });
+  await page.locator('[data-slot="empty"]').waitFor();
+  assert.match(await body(page), /Nothing here/);
+  await page.close();
+});
+
+await check('the gallery offers each widget as an Item with its own action', async () => {
+  const { page } = await open({ stored: true });
+  await page.getByRole('button', { name: 'Add a widget' }).first().click();
+  const dialog = page.getByRole('dialog');
+  await dialog.waitFor();
+  const items = dialog.locator('[data-slot="item"]');
+  const count = await items.count();
+  assert.ok(count >= 3, `expected the catalogue plus the custom card, got ${count}`);
+  for (let i = 0; i < count; i++) {
+    const item = items.nth(i);
+    assert.equal(await item.locator('[data-slot="item-title"]').count(), 1, `item ${i} has no title`);
+    assert.equal(await item.getByRole('button').count(), 1, `item ${i} does not carry exactly one action`);
+  }
+  assert.equal(await items.last().getAttribute('data-variant'), 'dashed', 'the build-your-own card is the dashed one');
+  await page.close();
+});
+
+await check('the theme toggle is a Toggle Group: a radio group the arrow keys move through', async () => {
+  const { page } = await open({ stored: true });
+  const group = page.getByRole('radiogroup', { name: 'Appearance' });
+  assert.equal(await group.getAttribute('data-slot'), 'toggle-group');
+  const auto = group.getByRole('radio', { name: 'Match the browser' });
+  assert.equal(await auto.getAttribute('aria-checked'), 'true');
+  await auto.focus();
+  await page.keyboard.press('ArrowRight');
+  assert.equal(await group.getByRole('radio', { name: 'Light' }).getAttribute('aria-checked'), 'true', 'ArrowRight did not move the choice');
+  assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), 'light');
+  await page.keyboard.press('End');
+  assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), 'dark', 'End did not jump to the last choice');
+  await page.close();
+});
+
+await check('the mesh hours are one Button Group holding both time inputs', async () => {
+  const { page } = await open({ path: '/mesh', stored: true });
+  const group = page.getByRole('group', { name: 'Hours' });
+  await group.waitFor();
+  assert.equal(await group.getAttribute('data-slot'), 'button-group');
+  assert.equal(await group.locator('input[type="time"]').count(), 2);
+  assert.equal(await group.locator('[data-slot="button-group-text"]').innerText(), 'until');
+  await page.close();
+});
+
+await whenMarketOpen('purchases are listed in a Table with a column per fact', async () => {
+  const bought = {
+    ...MARKET,
+    account: {
+      ...MARKET.account,
+      purchases: [
+        { id: 'ord_1', kind: 'storage', amount: 1000, currency: 'eur', quantity: 2, unit: 'GiB-month', status: 'paid', expired: false, expires_at: '2027-01-01T00:00:00Z', volume: 'pvc-1' },
+      ],
+    },
+  };
+  const { page } = await open({ path: '/settings/market', stored: true, market: bought });
+  const table = page.getByTestId('market-purchases');
+  await table.waitFor();
+  assert.deepEqual(await table.locator('thead th').allInnerTexts(), ['Bought', 'Quantity', 'Until', 'Status']);
+  assert.equal(await table.locator('tbody tr').count(), 1);
+  assert.equal(await page.getByLabel('Quantity').locator('xpath=ancestor::*[@data-slot="button-group"]').count(), 1, 'quantity and Order are not one Button Group');
+  await page.close();
+});
+
 await check('a phone-width viewport does not scroll the page sideways', async () => {
   const { page } = await open({ stored: true, viewport: { width: 375, height: 800 } });
   await nav(page).waitFor();

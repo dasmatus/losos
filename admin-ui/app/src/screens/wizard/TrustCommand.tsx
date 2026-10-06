@@ -21,8 +21,8 @@ import * as React from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { CheckmarkCircle02Icon, Copy01Icon } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/ui/button";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useT } from "@/lib/i18n-react";
-import { cn } from "@/lib/utils";
 import type { SetupInstallers } from "./api";
 import { copyText } from "./copy";
 
@@ -99,33 +99,22 @@ export function TrustCommand({
         <p id="trust-quick-title" className="text-[14px] font-medium text-ink">
           {t("wizard.trust.quick.title")}
         </p>
-        <div
-          role="group"
+        {/* A shadcn Toggle Group: one radio group, arrow keys move the choice. */}
+        <ToggleGroup
+          variant="outline"
+          size="sm"
           aria-label={t("wizard.trust.quick.osLabel")}
-          className="inline-flex rounded-control border border-line bg-surface p-0.5 text-[12.5px]"
+          value={platform}
+          onValueChange={(next) => {
+            if (next === "unix" || next === "windows") {
+              setPlatform(next);
+              setCopied(false);
+            }
+          }}
         >
-          {(["unix", "windows"] as const).map((p) => (
-            <button
-              key={p}
-              type="button"
-              aria-pressed={platform === p}
-              onClick={() => {
-                setPlatform(p);
-                setCopied(false);
-              }}
-              className={cn(
-                "rounded-[inherit] px-2.5 py-1 transition-colors",
-                platform === p
-                  ? "bg-accent text-surface"
-                  : "text-muted hover:text-ink",
-              )}
-            >
-              {p === "unix"
-                ? t("wizard.trust.quick.unix")
-                : t("wizard.trust.quick.windows")}
-            </button>
-          ))}
-        </div>
+          <ToggleGroupItem value="unix">{t("wizard.trust.quick.unix")}</ToggleGroupItem>
+          <ToggleGroupItem value="windows">{t("wizard.trust.quick.windows")}</ToggleGroupItem>
+        </ToggleGroup>
       </div>
 
       <p className="text-[13px] leading-snug text-muted">

@@ -29,7 +29,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { FieldError, Input, Select } from "@/components/ui/input";
+import { FieldError, Input } from "@/components/ui/input";
+import { NativeSelect } from "@/components/ui/native-select";
 import { Label, LabelHint } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { MessageKey } from "@/lib/i18n";
@@ -214,7 +215,7 @@ export function CustomEditor({ open, onOpenChange, onSave }: CustomEditorProps) 
 
                 <div className="grid gap-3.5 sm:grid-cols-2">
                   <Field label={t("widgets.editor.field.reading")}>
-                    <Select
+                    <NativeSelect
                       className="w-full"
                       value={draft["metric"] ?? "storage.bytes"}
                       onChange={(event) => set("metric", event.target.value)}
@@ -224,11 +225,11 @@ export function CustomEditor({ open, onOpenChange, onSave }: CustomEditorProps) 
                           {t(METRIC_LABEL[name])}
                         </option>
                       ))}
-                    </Select>
+                    </NativeSelect>
                   </Field>
 
                   <Field label={t("widgets.editor.field.shape")}>
-                    <Select
+                    <NativeSelect
                       className="w-full"
                       value={kind}
                       onChange={(event) => set("type", event.target.value)}
@@ -238,7 +239,7 @@ export function CustomEditor({ open, onOpenChange, onSave }: CustomEditorProps) 
                           {t(KIND_LABEL[name])}
                         </option>
                       ))}
-                    </Select>
+                    </NativeSelect>
                   </Field>
                 </div>
 
@@ -257,7 +258,7 @@ export function CustomEditor({ open, onOpenChange, onSave }: CustomEditorProps) 
                     </Field>
 
                     <Field label={t("widgets.editor.field.format")}>
-                      <Select
+                      <NativeSelect
                         className="w-full"
                         value={draft["format"] ?? "number"}
                         onChange={(event) => set("format", event.target.value)}
@@ -267,7 +268,7 @@ export function CustomEditor({ open, onOpenChange, onSave }: CustomEditorProps) 
                             {t(FORMAT_LABEL[name])}
                           </option>
                         ))}
-                      </Select>
+                      </NativeSelect>
                     </Field>
                   </>
                 )}

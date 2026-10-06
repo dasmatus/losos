@@ -4,6 +4,7 @@ import { ComputerIcon, Moon02Icon, Sun03Icon } from "@hugeicons/core-free-icons"
 import {
   getResolvedTheme,
   getTheme,
+  isTheme,
   setTheme,
   subscribeTheme,
   THEMES,
@@ -12,7 +13,7 @@ import {
 } from "@/lib/theme";
 import type { MessageKey } from "@/lib/i18n";
 import { useT } from "@/lib/i18n-react";
-import { cn } from "@/lib/utils";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
 /** The React binding for the three-state theme store in lib/theme.ts. */
 export function useTheme(): {
@@ -36,40 +37,28 @@ const OPTIONS: Record<Theme, { label: MessageKey; icon: typeof ComputerIcon }> =
 };
 
 /* A three-way segmented control: Auto, Light, Dark. Not a two-state toggle —
- * Auto is the default and it is a real answer, not the absence of one. */
+ * Auto is the default and it is a real answer, not the absence of one. A
+ * shadcn Toggle Group (single-select), which renders the radiogroup the old
+ * hand-made control did and adds the arrow-key behaviour it lacked. */
 export function ThemeToggle({ className }: { className?: string }) {
   const { theme, setTheme: choose } = useTheme();
   const t = useT();
 
   return (
-    <div
-      role="radiogroup"
+    <ToggleGroup
       aria-label={t("ui.theme.label")}
-      className={cn(
-        "inline-flex items-center gap-0.5 rounded-control border border-line bg-sunk p-0.5",
-        className,
-      )}
+      value={theme}
+      onValueChange={(next) => {
+        if (isTheme(next)) choose(next);
+      }}
+      size="icon"
+      className={className}
     >
       {THEMES.map((option) => {
         const label = t(OPTIONS[option].label);
         const { icon } = OPTIONS[option];
-        const selected = theme === option;
         return (
-          <button
-            key={option}
-            type="button"
-            role="radio"
-            aria-checked={selected}
-            aria-label={label}
-            title={label}
-            onClick={() => choose(option)}
-            className={cn(
-              "inline-flex size-7 items-center justify-center rounded-[4px]",
-              "transition-colors duration-150",
-              "focus-visible:ring-2 focus-visible:ring-accent/40 focus-visible:outline-none",
-              selected ? "bg-surface text-ink shadow-card" : "text-faint hover:text-ink",
-            )}
-          >
+          <ToggleGroupItem key={option} value={option} aria-label={label} title={label}>
             <HugeiconsIcon
               icon={icon}
               size={16}
@@ -77,9 +66,9 @@ export function ThemeToggle({ className }: { className?: string }) {
               color="currentColor"
               aria-hidden="true"
             />
-          </button>
+          </ToggleGroupItem>
         );
       })}
-    </div>
+    </ToggleGroup>
   );
 }

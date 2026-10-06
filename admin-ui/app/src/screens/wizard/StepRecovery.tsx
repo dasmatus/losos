@@ -38,7 +38,8 @@ import { intlTag, t } from "@/lib/i18n";
 import { useT } from "@/lib/i18n-react";
 import { getRecovery, isMissingRoute } from "./api";
 import { copyText } from "./copy";
-import { Callout, StepText } from "./parts";
+import { StepText } from "./parts";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 export interface StepRecoveryProps {
   boxName: string;
@@ -190,9 +191,13 @@ export function StepRecovery({
           </div>
 
           {copyFailed && (
-            <Callout tone="warn" icon={Alert02Icon} title={t("wizard.recovery.copyFailed.title")}>
-              <p className="mt-1">{t("wizard.recovery.copyFailed.body")}</p>
-            </Callout>
+            <Alert variant="warn">
+              <HugeiconsIcon icon={Alert02Icon} size={19} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+              <AlertTitle>{t("wizard.recovery.copyFailed.title")}</AlertTitle>
+              <AlertDescription>
+                <p>{t("wizard.recovery.copyFailed.body")}</p>
+              </AlertDescription>
+            </Alert>
           )}
 
           {/* Present in the document at all times, shown only on paper: the
@@ -203,16 +208,24 @@ export function StepRecovery({
       )}
 
       {query.kind === "not-implemented" && (
-        <Callout tone="info" icon={InformationCircleIcon} title={t("wizard.recovery.notYet.title")}>
-          <p className="mt-1">{t("wizard.recovery.notYet.body")}</p>
-        </Callout>
+        <Alert variant="default">
+          <HugeiconsIcon icon={InformationCircleIcon} size={19} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+          <AlertTitle>{t("wizard.recovery.notYet.title")}</AlertTitle>
+          <AlertDescription>
+            <p>{t("wizard.recovery.notYet.body")}</p>
+          </AlertDescription>
+        </Alert>
       )}
 
       {query.kind === "failed" && (
         <div className="flex flex-col gap-3">
-          <Callout tone="crit" icon={Alert02Icon} title={t("wizard.recovery.failed.title")}>
-            <p className="mt-1 break-words">{query.message}</p>
-          </Callout>
+          <Alert variant="crit">
+            <HugeiconsIcon icon={Alert02Icon} size={19} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+            <AlertTitle>{t("wizard.recovery.failed.title")}</AlertTitle>
+            <AlertDescription>
+              <p className="break-words">{query.message}</p>
+            </AlertDescription>
+          </Alert>
           <div>
             <Button variant="secondary" onClick={() => setAttempt((n) => n + 1)}>
               <HugeiconsIcon
