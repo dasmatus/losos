@@ -154,13 +154,16 @@ in
     # ── Binary cache ────────────────────────────────────────────────────────
     cache.substituters = lib.mkOption {
       type = lib.types.listOf lib.types.str;
-      default = [ ];
+      # The LosOS cache proxy: the `losos-cache-proxy` Vercel project in front
+      # of the GHCR-hosted cache CI pushes to. CI reads the same URL from the
+      # `LOSOS_PROXY_URL` repository variable; the two must name one host or
+      # the appliance substitutes from a cache nothing fills.
+      default = [ "https://losos-proxy.dasmat.us" ];
       description = ''
         Extra Nix substituters, added to the appliance *and* to the installer
-        medium. Set this to the LosOS cache proxy's public URL
-        (`https://losos-proxy.dasmat.us`, the `losos-cache-proxy` Vercel
-        project; CI reads the same value from `LOSOS_PROXY_URL`) and set
-        trustedPublicKeys to its Nix signing key. Empty disables the feature.
+        medium. The default is the LosOS cache proxy's public URL
+        (`https://losos-proxy.dasmat.us`); `trustedPublicKeys` carries its
+        signing key. Set it to `[ ]` to use cache.nixos.org alone.
 
         This exists because of one number. `losos.nextcloud.mode` defaults to
         `container`, so the install closure contains `losos-image-nextcloud` —
@@ -177,9 +180,14 @@ in
 
     cache.trustedPublicKeys = lib.mkOption {
       type = lib.types.listOf lib.types.str;
-      default = [ ];
+      # The public half of `NIX_CACHE_SIGNING_KEY`, the key CI signs the cache
+      # with (`nix key generate-secret --key-name losos-1`; the repository
+      # variable `NIX_CACHE_PUBLIC_KEY` holds this same value). Public, so it
+      # belongs in the tree; the secret half never does.
+      default = [ "losos-1:35OIuYFMKDrlC6yTzqivDPqNqZTMjM0l2MB89bRRreg=" ];
       description = ''
-        Public keys trusted for `losos.cache.substituters`.
+        Public keys trusted for `losos.cache.substituters`. The default is the
+        LosOS cache's signing key; rotate both together.
 
         A substituter whose key is missing or wrong does not fail loudly. Nix
         declines to trust the signature, falls back to building from source, and
