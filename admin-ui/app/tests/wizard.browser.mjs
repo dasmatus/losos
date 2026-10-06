@@ -156,8 +156,8 @@ await check('no em dash reappears in the wizard copy', async () => {
  * before the owner exists. And the wizard tears itself down halfway if the
  * shell watches the claim flag rather than the wizard: step 2 claims the box
  * and stores the token, so a gate keyed on "is it claimed" flips to the app
- * mid-flow and skips step 3, the recovery code, which is the one thing that has
- * to leave the box. The owner would never see it and would not know. */
+ * mid-flow, before the owner has copied the spare admin key that step 2 shows
+ * exactly once. The owner would never see it and would not know. */
 for (const path of ['/settings', '/settings/reset', '/storage', '/mesh', '/apps']) {
   await check(`an unclaimed box shows setup at ${path}, not the page`, async () => {
     const { page } = await open({ claimed: false, path });
@@ -173,7 +173,7 @@ for (const path of ['/settings', '/settings/reset', '/storage', '/mesh', '/apps'
 /* Walk step 2 for real: Continue past the certificate, type a password twice,
  * submit. Returns the page, every request the page sent, and the body text
  * after lososd (stubbed) has answered. */
-async function claimThroughStepTwo(password = 'correct horse battery staple') {
+async function claimThroughStepTwo(password = 'Correct-horse battery staple 1') {
   const { page, errors } = await open({ claimed: false });
   const requests = [];
   page.on('request', (req) => requests.push({ method: req.method(), url: new URL(req.url()).pathname }));
@@ -208,23 +208,57 @@ await check('step 2 claims the box through the public claim route and keeps the 
   await page.close();
 });
 
-/* The key is released exactly once, in the claim reply, and the sign-in
- * dialog on every later visit asks for it. A wizard that stored it in session
- * storage and showed it to nobody made closing the tab a permanent lockout. */
-await check('step 2 shows the admin key from the claim, since nothing else ever will', async () => {
+/* The key is released exactly once, in the claim reply. It is the spare now
+ * — the password unlocks the admin pages — but the spare is still the only
+ * way in while LosOS cloud is not running, and a wizard that stored it in
+ * session storage and showed it to nobody made that a permanent lockout. */
+await check('step 2 shows the spare admin key from the claim, since nothing else ever will', async () => {
   const { page, text } = await claimThroughStepTwo();
   assert.ok(text.includes('0'.repeat(64)), `the admin key is not on screen after the claim:\n${text}`);
-  assert.ok(/admin key/i.test(text), 'the key is shown without saying what it is');
+  assert.ok(/spare admin key/i.test(text), 'the key is shown without saying what it is for');
+  assert.ok(/your password unlocks these admin pages/i.test(text), 'step 2 does not say the password is the way in now');
+  await page.close();
+});
+
+/* The four rules are on screen before a character is typed and tick off
+ * as they are met, so a refusal never names a rule the owner has not seen.
+ * One password now opens the admin pages too, which is why there are four
+ * rules and not one; four is also why they still fit on screen. */
+await check('step 2 shows the four password rules up front and ticks them as they are met', async () => {
+  const { page } = await open({ claimed: false });
+  await page.getByRole('button', { name: /^Continue$/ }).click();
+  const rules = page.locator('[data-testid="password-rules"] li');
+  assert.strictEqual(await rules.count(), 4, 'expected exactly four rules');
+  const met = async () => rules.evaluateAll((items) => items.map((li) => li.dataset.met));
+  assert.deepStrictEqual(await met(), ['false', 'false', 'false', 'false'], 'rules ticked before anything was typed');
+  const field = page.locator('input[name="new-password"]');
+  await field.fill('correct horse battery staple');
+  assert.deepStrictEqual(await met(), ['true', 'false', 'false', 'false'], 'only the length should be met');
+  await field.fill('Correct horse battery staple');
+  assert.deepStrictEqual(await met(), ['true', 'true', 'false', 'false'], 'length and cases should be met');
+  // A space is not a symbol: the fourth rule stays open until a real one.
+  await field.fill('Correct horse battery staple 1');
+  assert.deepStrictEqual(await met(), ['true', 'true', 'true', 'false'], 'a space must not count as a symbol');
+  await field.fill('Correct-horse battery staple 1');
+  assert.deepStrictEqual(await met(), ['true', 'true', 'true', 'true'], 'all four should be met');
+  // The server's refusal has a local twin: a password that misses a rule is
+  // refused next to the field, before any request, naming the rule.
+  await field.fill('correct horse battery staple');
+  await page.locator('input[name="confirm-password"]').fill('correct horse battery staple');
+  await page.getByRole('button', { name: /^Set the password$/ }).click();
+  await page.waitForTimeout(200);
+  const text = await page.locator('body').innerText();
+  assert.ok(/upper-case letter/i.test(text), `the missing rule is not named:\n${text}`);
   await page.close();
 });
 
 await check('claiming the box mid-wizard does not end the wizard', async () => {
   // Step 2 stores the token and flips the claim flag. A shell keyed on either
-  // would swap the app in here and step 3, the recovery code, would never show.
+  // would swap the app in here, and the spare admin key would never be seen.
   const { page, text } = await claimThroughStepTwo();
   assert.ok(
-    /Trust this box|sign in|Recovery code|Password set/i.test(text),
-    'the wizard vanished once a token existed, so step 3 would never be shown',
+    /Trust this box|sign in|spare admin key|Password set/i.test(text),
+    'the wizard vanished once a token existed, before the spare key was shown',
   );
   assert.ok(!/Your board/i.test(text), 'the overview replaced the wizard mid-flow');
   await page.close();
@@ -277,8 +311,8 @@ await check('step 2 opens on its own once the box reports ready, then claims', a
   const text = await page.locator('body').innerText();
   assert.ok(/You can set the password now/i.test(text), `no "ready" line after the wait:\n${text}`);
   assert.ok(!/finish starting/i.test(text), 'the waiting panel is still up after the box became ready');
-  await page.locator('input[name="new-password"]').fill('correct horse battery staple');
-  await page.locator('input[name="confirm-password"]').fill('correct horse battery staple');
+  await page.locator('input[name="new-password"]').fill('Correct-horse battery staple 1');
+  await page.locator('input[name="confirm-password"]').fill('Correct-horse battery staple 1');
   await page.getByRole('button', { name: /^Set the password$/ }).click();
   await page.waitForTimeout(300);
   assert.ok(/Password set/i.test(await page.locator('body').innerText()), 'the claim after the wait did not go through');
@@ -331,8 +365,8 @@ await check('a 503 from the claim itself sends step 2 back to waiting', async ()
     });
   });
   await page.getByRole('button', { name: /^Continue$/ }).click();
-  await page.locator('input[name="new-password"]').fill('correct horse battery staple');
-  await page.locator('input[name="confirm-password"]').fill('correct horse battery staple');
+  await page.locator('input[name="new-password"]').fill('Correct-horse battery staple 1');
+  await page.locator('input[name="confirm-password"]').fill('Correct-horse battery staple 1');
   await page.getByRole('button', { name: /^Set the password$/ }).click();
   await page.waitForTimeout(400);
   const text = await page.locator('body').innerText();
@@ -369,8 +403,8 @@ await check('a claim whose reply was lost is asked again, and the second answer 
     });
   });
   await page.getByRole('button', { name: /^Continue$/ }).click();
-  await page.locator('input[name="new-password"]').fill('correct horse battery staple');
-  await page.locator('input[name="confirm-password"]').fill('correct horse battery staple');
+  await page.locator('input[name="new-password"]').fill('Correct-horse battery staple 1');
+  await page.locator('input[name="confirm-password"]').fill('Correct-horse battery staple 1');
   await page.getByRole('button', { name: /^Set the password$/ }).click();
   await page.waitForTimeout(1500);
   let text = await page.locator('body').innerText();
@@ -404,8 +438,8 @@ await check('a 409 from the claim is shown and not asked again', async () => {
     });
   });
   await page.getByRole('button', { name: /^Continue$/ }).click();
-  await page.locator('input[name="new-password"]').fill('correct horse battery staple');
-  await page.locator('input[name="confirm-password"]').fill('correct horse battery staple');
+  await page.locator('input[name="new-password"]').fill('Correct-horse battery staple 1');
+  await page.locator('input[name="confirm-password"]').fill('Correct-horse battery staple 1');
   await page.getByRole('button', { name: /^Set the password$/ }).click();
   await page.waitForTimeout(6000);
   const text = await page.locator('body').innerText();
@@ -414,7 +448,7 @@ await check('a 409 from the claim is shown and not asked again', async () => {
   await page.close();
 });
 
-/* Step 4 on a new box, take 7 of the recorded install demo (2026-10-05): the
+/* Step 3 on a new box, take 7 of the recorded install demo (2026-10-05): the
  * frame is opened a minute or two before the files app's web server is up,
  * so what it shows is nginx's "502 Bad Gateway" page. The old watcher read
  * "/nextcloud, not the login page" as a session and said "You are signed in"
@@ -423,7 +457,7 @@ await check('a 409 from the claim is shown and not asked again', async () => {
  * user as signed in. Take 8 then showed that 502 page in the frame for six
  * minutes; now the frame stays hidden, loading in the background behind a
  * quiet panel, until it holds a page of the app. */
-await check('step 4 hides the frame and keeps reloading it until the files app answers, and signs in only on a real session', async () => {
+await check('step 3 hides the frame and keeps reloading it until the files app answers, and signs in only on a real session', async () => {
   const { page } = await open({ claimed: false, ready: true });
   let hits = 0;
   await page.route('**/nextcloud', async (route) => {
@@ -440,17 +474,12 @@ await check('step 4 hides the frame and keeps reloading it until the files app a
   await page.route('**/nextcloud/apps/files/', (route) =>
     route.fulfill({ status: 200, contentType: 'text/html', body: '<html><head data-requesttoken="tok" data-user="notshared"><title>Files</title></head><body><div id="app-content">files</div></body></html>' }),
   );
-  await page.route('**/api/recovery', (route) =>
-    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ code: 'c5b6add9-e47a-43d5-87be-9b45e4a81441', minted: true }) }),
-  );
-  // Through steps 1 to 3.
+  // Through steps 1 and 2.
   await page.getByRole('button', { name: /^Continue$/ }).click();
-  await page.locator('input[name="new-password"]').fill('correct horse battery staple');
-  await page.locator('input[name="confirm-password"]').fill('correct horse battery staple');
+  await page.locator('input[name="new-password"]').fill('Correct-horse battery staple 1');
+  await page.locator('input[name="confirm-password"]').fill('Correct-horse battery staple 1');
   await page.getByRole('button', { name: /^Set the password$/ }).click();
   await page.getByText('notshared').first().waitFor({ timeout: 5000 });
-  await page.getByRole('button', { name: /^Continue$/ }).click();
-  await page.getByRole('button', { name: 'Copy' }).click();
   await page.getByRole('button', { name: /^Continue$/ }).click();
   await page.locator('iframe').first().waitFor({ state: 'attached', timeout: 5000 });
 
@@ -484,7 +513,7 @@ await check('step 4 hides the frame and keeps reloading it until the files app a
   await page.close();
 });
 
-await check('step 4 lets a slow first answer from the files app arrive instead of cancelling it with the next reload', async () => {
+await check('step 3 lets a slow first answer from the files app arrive instead of cancelling it with the next reload', async () => {
   const { page } = await open({ claimed: false, ready: true });
   // One nginx error page, then the app answers, but slowly: the first
   // request after the claim can take longer than the reload period on a
@@ -506,16 +535,11 @@ await check('step 4 lets a slow first answer from the files app arrive instead o
       /* The browser gave up on this load before it was answered. */
     }
   });
-  await page.route('**/api/recovery', (route) =>
-    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ code: 'c5b6add9-e47a-43d5-87be-9b45e4a81441', minted: true }) }),
-  );
   await page.getByRole('button', { name: /^Continue$/ }).click();
-  await page.locator('input[name="new-password"]').fill('correct horse battery staple');
-  await page.locator('input[name="confirm-password"]').fill('correct horse battery staple');
+  await page.locator('input[name="new-password"]').fill('Correct-horse battery staple 1');
+  await page.locator('input[name="confirm-password"]').fill('Correct-horse battery staple 1');
   await page.getByRole('button', { name: /^Set the password$/ }).click();
   await page.getByText('notshared').first().waitFor({ timeout: 5000 });
-  await page.getByRole('button', { name: /^Continue$/ }).click();
-  await page.getByRole('button', { name: 'Copy' }).click();
   await page.getByRole('button', { name: /^Continue$/ }).click();
   await page.locator('iframe').first().waitFor({ state: 'attached', timeout: 5000 });
   await page.waitForFunction(() => {

@@ -369,6 +369,17 @@ in
               proxy_request_buffering off;
               proxy_read_timeout 86400s;
               proxy_send_timeout 86400s;
+              # The address this request reached the box on. The pod's
+              # losos.config.php (modules/workloads.nix) adds it to
+              # trusted_domains, so a browser that opens the box by its IP
+              # address — the only way in from a libvirt VM, which gets no
+              # mDNS name — is not met with "Untrusted domain". $server_addr
+              # is the kernel's view of the accepting socket, not anything
+              # the client sent, and proxy_set_header replaces a header of
+              # the same name on the way in; nginx also drops a client's
+              # X_Losos_Server_Addr (underscores, which CGI would fold into
+              # the same variable) under its default ignore_invalid_headers.
+              proxy_set_header X-Losos-Server-Addr $server_addr;
             '';
           };
         })

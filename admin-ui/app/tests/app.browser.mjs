@@ -139,9 +139,72 @@ const nav = (page) => page.getByRole('navigation', { name: 'Sections', exact: tr
 
 console.log('admin-ui app browser checks');
 
-await check('a wrong key is refused and the prompt stays up', async () => {
-  const { page } = await open();
-  await page.getByRole('textbox').fill('b'.repeat(64));
+/* The gate takes the owner's password, and lososd checks it with LosOS cloud
+ * (POST /api/sign-in). The stub below plays that route: the right password
+ * is answered with the token, anything else with 401 — or, when `cloudDown`
+ * is set, with the 503 lososd sends while LosOS cloud cannot be asked. */
+const PASSWORD = 'Correct-horse battery staple 1';
+async function openGate({ cloudDown = false } = {}) {
+  const opened = await open();
+  const signIns = [];
+  await opened.page.route('**/api/sign-in', (route) => {
+    const req = route.request();
+    signIns.push({ contentType: req.headers()['content-type'], body: req.postDataJSON() });
+    if (cloudDown) {
+      return json(route, 503, { error: 'LosOS cloud did not answer', ready: false, waitingFor: 'LosOS cloud did not answer' });
+    }
+    return req.postDataJSON()?.password === PASSWORD
+      ? json(route, 200, { user: 'notshared', token: TOKEN })
+      : json(route, 401, { error: 'that password was not accepted' });
+  });
+  return { ...opened, signIns };
+}
+
+await check('the right password opens the app and the token is kept for the tab', async () => {
+  const { page, signIns } = await openGate();
+  await page.locator('#owner-password').fill(PASSWORD);
+  await page.getByRole('button', { name: 'Unlock' }).click();
+  await page.getByRole('button', { name: 'Sign out' }).waitFor();
+  await page.getByText('Unlock this box').waitFor({ state: 'hidden' });
+  assert.equal(await page.evaluate(() => sessionStorage.getItem('losos-token')), TOKEN);
+  assert.equal(signIns.length, 1, 'expected exactly one sign-in request');
+  assert.equal(signIns[0].contentType, 'application/json', 'lososd refuses a sign-in that is not application/json');
+  assert.deepEqual(signIns[0].body, { password: PASSWORD });
+  await page.close();
+});
+
+await check('a wrong password is refused and the prompt stays up', async () => {
+  const { page } = await openGate();
+  await page.locator('#owner-password').fill('Wrong-horse battery staple 1');
+  await page.getByRole('button', { name: 'Unlock' }).click();
+  await page.waitForTimeout(300);
+  const text = await body(page);
+  assert.ok(/Unlock this box/i.test(text), 'the prompt closed on a wrong password');
+  assert.ok(/was not accepted/i.test(text), `no refusal shown:\n${text}`);
+  assert.equal(await page.getByRole('button', { name: 'Sign out' }).count(), 0, 'the app unlocked on a wrong password');
+  assert.equal(await page.evaluate(() => sessionStorage.getItem('losos-token')), null);
+  await page.close();
+});
+
+await check('while LosOS cloud is down the prompt says so and points at the spare key', async () => {
+  const { page } = await openGate({ cloudDown: true });
+  await page.locator('#owner-password').fill(PASSWORD);
+  await page.getByRole('button', { name: 'Unlock' }).click();
+  await page.waitForTimeout(300);
+  const text = await body(page);
+  assert.ok(/LosOS cloud is not running/i.test(text), `the 503 was not explained:\n${text}`);
+  assert.ok(/spare admin key/i.test(text), 'the spare key is not offered');
+  assert.equal(await page.evaluate(() => sessionStorage.getItem('losos-token')), null);
+  await page.close();
+});
+
+/* The spare: the admin key behind a link, for when LosOS cloud cannot check
+ * the password. Same checks as the password half — a wrong one is refused
+ * and the right one unlocks and is kept. */
+await check('a wrong spare key is refused and the prompt stays up', async () => {
+  const { page } = await openGate();
+  await page.getByRole('button', { name: /Use the spare admin key instead/ }).click();
+  await page.locator('#admin-key').fill('b'.repeat(64));
   await page.getByRole('button', { name: 'Unlock' }).click();
   await page.waitForTimeout(300);
   assert.ok(/Unlock this box/i.test(await body(page)), 'the prompt closed on a wrong key');
@@ -154,17 +217,19 @@ await check('a wrong key is refused and the prompt stays up', async () => {
   await page.close();
 });
 
-await check('the right key opens the app and is kept for the tab', async () => {
-  const { page } = await open();
-  await page.getByRole('textbox').fill(TOKEN);
+await check('the right spare key opens the app and is kept for the tab', async () => {
+  const { page, signIns } = await openGate();
+  await page.getByRole('button', { name: /Use the spare admin key instead/ }).click();
+  await page.locator('#admin-key').fill(TOKEN);
   await page.getByRole('button', { name: 'Unlock' }).click();
   await page.getByRole('button', { name: 'Sign out' }).waitFor();
   await page.getByText('Unlock this box').waitFor({ state: 'hidden' });
   assert.equal(await page.evaluate(() => sessionStorage.getItem('losos-token')), TOKEN);
+  assert.equal(signIns.length, 0, 'the key path must not go through the password route');
   await page.close();
 });
 
-await check('signing out returns to the prompt and forgets the key', async () => {
+await check('signing out returns to the prompt and forgets the token', async () => {
   const { page } = await open({ stored: true });
   await page.getByRole('button', { name: 'Sign out' }).click();
   await page.getByText('Unlock this box').waitFor();

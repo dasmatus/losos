@@ -254,6 +254,25 @@
         }
       }
     },
+    "signInResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "user",
+        "token"
+      ],
+      "properties": {
+        "user": {
+          "type": "string",
+          "description": "The account the password belonged to: the one Nextcloud admin this appliance installs (notshared)."
+        },
+        "token": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$",
+          "description": "The admin token, the same secret the first-run claim released. The page stores it for the tab and uses it as the Bearer on every other route; nothing about the token itself changed when the password became the way to get it."
+        }
+      }
+    },
     "recoveryResponse": {
       "type": "object",
       "additionalProperties": false,
@@ -487,7 +506,7 @@
       }
     },
     "set-password": {
-      "description": "`losos-ctl set-password [--user <name>]` — replace the Nextcloud admin password, read from **stdin**. Stdin and not a flag because /proc/<pid>/cmdline is world-readable and nothing in modules/ sets hidepid, so `--password <value>` would publish the appliance's admin credentials to every process on the box. Exactly one trailing newline is stripped, nothing else: a password may end in a space. The password never reaches an argv on any path — in native mode it travels as OC_PASS in the child environment of `nextcloud-occ user:resetpassword <user> --password-from-env` (/proc/<pid>/environ is mode 0400 owner-only); in container mode it is staged at /var/lib/nextcloud/.losos-setpass (0600, chowned to uid 1002, removed on success and on failure alike) and read by /bin/losos-nextcloud-occ-setpass inside the pod, because `crictl exec` has no environment flag. Rejected server-side, before any effect: a password under 12 characters, over 256 bytes, or containing a control character (a newline would be silently truncated by the in-image wrapper's `$(cat …)`), and a user name that is not [A-Za-z0-9._@-] or that starts with '-' (`occ user:resetpassword --version --password-from-env` parses and changes nothing). Non-zero exit + stderr on any of those, on a pod that is running but has not finished `occ maintenance:install`, and on zero or more than one matching container — it refuses to guess rather than resetting a password in the wrong one.",
+      "description": "`losos-ctl set-password [--user <name>]` — replace the Nextcloud admin password, read from **stdin**. Stdin and not a flag because /proc/<pid>/cmdline is world-readable and nothing in modules/ sets hidepid, so `--password <value>` would publish the appliance's admin credentials to every process on the box. Exactly one trailing newline is stripped, nothing else: a password may end in a space. The password never reaches an argv on any path — in native mode it travels as OC_PASS in the child environment of `nextcloud-occ user:resetpassword <user> --password-from-env` (/proc/<pid>/environ is mode 0400 owner-only); in container mode it is staged at /var/lib/nextcloud/.losos-setpass (0600, chowned to uid 1002, removed on success and on failure alike) and read by /bin/losos-nextcloud-occ-setpass inside the pod, because `crictl exec` has no environment flag. Rejected server-side, before any effect: a password under 12 characters, without a lower-case letter, an upper-case letter, a digit and a symbol (Unicode-aware: Ž and ß count as letters; a symbol is anything that is neither a letter, a digit nor whitespace), over 256 bytes, or containing a control character (a newline would be silently truncated by the in-image wrapper's `$(cat …)`), and a user name that is not [A-Za-z0-9._@-] or that starts with '-' (`occ user:resetpassword --version --password-from-env` parses and changes nothing). Non-zero exit + stderr on any of those, on a pod that is running but has not finished `occ maintenance:install`, and on zero or more than one matching container — it refuses to guess rather than resetting a password in the wrong one.",
       "stdin": {
         "type": "string",
         "description": "The new password. One trailing newline is stripped."
@@ -553,6 +572,12 @@
         "auth": true,
         "in": "{\"user\":\"...\" (optional, defaults to notshared),\"password\":\"...\"}",
         "out": "setPasswordResponse"
+      },
+      "POST /api/sign-in": {
+        "auth": false,
+        "in": "{\"password\":\"...\"}",
+        "out": "signInResponse",
+        "note": "Unlock the admin pages with the owner's password (backend/src/signin.rs). No Bearer by nature — it is how a tab gets one — so it carries the claim route's three same-box checks (application/json only, Host naming this box, Origin matching Host; 403 otherwise) and the per-address throttle counts a wrong password like a wrong token (429 + Retry-After after a few free tries). The password is checked by Nextcloud, not by a copy lososd keeps: one loopback request to $LOSOS_NEXTCLOUD_LOGIN_URL (the OCS route that only authenticates) with the password in a Basic header and the browser's address in X-Forwarded-For, so Nextcloud's own brute-force protection counts the browser. 200 with the admin token on a correct password; 401 on a wrong one; 429 when Nextcloud is throttling that address; 503 with {\"error\", \"ready\": false, \"waitingFor\"} when Nextcloud cannot be asked (still starting, not running) — that is the case the printed spare key exists for. Only the candidate's shape is checked (non-empty, at most 256 bytes, no control characters), never the rules for a new password, so a password set under an older build still signs in. HTTP-only, like the claim."
       },
       "GET /api/recovery": {
         "auth": true,

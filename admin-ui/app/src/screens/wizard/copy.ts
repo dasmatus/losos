@@ -7,8 +7,9 @@
  * textarea to position (which would need a style attribute the CSP refuses)
  * and the owner can see what was taken.
  *
- * Shared by the recovery code (step 3) and the admin key (step 2), which are
- * the two things the wizard asks the owner to take off the screen. */
+ * Shared by the admin key (step 2) and the recovery code (its step is hidden,
+ * see ./steps.ts), the things the wizard asks the owner to take off the
+ * screen. */
 export async function copyText(text: string, element: HTMLElement | null): Promise<boolean> {
   if (window.isSecureContext && navigator.clipboard !== undefined) {
     try {

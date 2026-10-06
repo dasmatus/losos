@@ -17,6 +17,13 @@ Services on the same host:
 | Nextcloud        | `<host>.local/nextcloud`  |
 | Forgejo (opt-in) | `<host>.local/forgejo/`   |
 
+The box's IP address (the one the tty1 banner shows) and its bare name work
+in place of `<host>.local` everywhere, Nextcloud included. That is the way in
+from a libvirt VM, which gets no mDNS name: nginx tells the Nextcloud pod
+which address each request arrived on, and the pod trusts exactly that one,
+never a wildcard (`modules/workloads.nix`). `localhost` and `127.0.0.1`
+Nextcloud trusts on its own.
+
 `losos.tls.enable` (on by default) adds HTTPS on :443 with a certificate the
 box generates itself, valid for two years. Plain HTTP on :80 stays open.
 Browsers do not trust the certificate until you install it; the first-run
@@ -41,15 +48,24 @@ stays claimable. `GET /api/setup/claim` carries the same `ready` and
 proceed on its own once they flip. On a fresh box this takes a few minutes:
 the Nextcloud pod runs `occ maintenance:install` before it serves anything.
 
-The first-run wizard is that caller. After it sets the password it shows the
-token as the **admin key**, with a Copy button, and prints it on the recovery
-sheet in the next step under the recovery code. That is the only time the box
-shows it: the browser tab remembers it until it is closed, and every later
-visit to the admin pages asks for it. Keep it with the recovery code.
+The first-run wizard is that caller. Every later visit to the admin pages
+asks for the **password** the wizard set, the same one that signs in to
+LosOS cloud: `POST /api/sign-in` asks Nextcloud whether it is right and hands
+the tab the token on a yes. The box keeps no second copy of the password, so
+changing it inside LosOS cloud changes it for the admin pages too.
 
-There is no way to rotate the token from the box: it has no shell, and a
-claimed UI cannot fetch a replacement. Losing the key means reinstalling from
-the install medium, which wipes the disk.
+The token itself is still shown once, after the password is set, as the
+**spare admin key**, with Copy and Print buttons. It is for the one case the
+password cannot cover: LosOS cloud not running, which is what checks the
+password. The unlock dialog has a link to enter it instead.
+
+A new password has to be at least 12 characters with a lower-case letter, an
+upper-case letter, a digit and a symbol such as `-` or `!`; the wizard shows
+the four rules with a tick each as you type. A password set before this rule existed still signs in.
+
+There is no way to rotate the token from the box: it has no shell. Losing the
+password *and* the spare key means reinstalling from the install medium,
+which wipes the disk.
 
 ## Settings
 

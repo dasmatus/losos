@@ -18,7 +18,7 @@ use losos_ctl::setup::{
 
 /// Distinctive enough that a substring search cannot match it by accident, and
 /// long enough to clear the minimum.
-const PASSWORD: &str = "zqx-marmalade-77-parapet";
+const PASSWORD: &str = "Zqx-marmalade-77-parapet";
 
 fn container() -> Target {
     Target::Container {
@@ -108,10 +108,32 @@ fn a_too_short_password_is_refused_before_anything_runs() {
 fn the_minimum_is_counted_in_characters_not_bytes() {
     // 11 characters that are 22 bytes. Counting bytes would accept it and
     // report a floor the owner did not actually clear.
-    let eleven = "ααααααααααα";
+    let eleven = "Α1-αααααααα";
     assert_eq!(eleven.chars().count(), 11);
     assert!(validate_password(eleven).is_err());
-    assert!(validate_password("αααααααααααα").is_ok());
+    assert!(validate_password("Α1-ααααααααα").is_ok());
+}
+
+#[test]
+fn the_four_composition_rules_each_name_what_is_missing() {
+    // One password opens the admin pages and LosOS cloud, so a new one wants
+    // both cases, a digit and a symbol as well as the length. Each refusal
+    // names the one rule it is about, because the wizard shows that sentence.
+    let err = validate_password("zqx-marmalade-77-parapet").unwrap_err();
+    assert!(err.contains("upper-case"), "unhelpful: {err}");
+    let err = validate_password("ZQX-MARMALADE-77-PARAPET").unwrap_err();
+    assert!(err.contains("lower-case"), "unhelpful: {err}");
+    let err = validate_password("Zqx-marmalade-parapet").unwrap_err();
+    assert!(err.contains("digit"), "unhelpful: {err}");
+    let err = validate_password("Zqx marmalade 77 parapet").unwrap_err();
+    assert!(err.contains("symbol"), "unhelpful: {err}");
+    assert!(validate_password("Zqx-marmalade-77-parapet").is_ok());
+    // Unicode letters count for their case: a Slovak or German keyboard
+    // must not be told its capital letter is not one. And a symbol is any
+    // non-alphanumeric, non-space character, whatever the keyboard.
+    assert!(validate_password("žltý kôň 7 ÚPEL!").is_ok());
+    assert!(validate_password("straße über 9 ÖL€").is_ok());
+    assert!(validate_password("Zqx…marmalade 77 parapet").is_ok());
 }
 
 #[test]
@@ -120,11 +142,11 @@ fn a_password_containing_a_newline_is_refused() {
     // in-image wrapper reads with `$(cat …)`, so an embedded newline would be
     // silently truncated there: the owner would believe they set one password
     // and find a different one in force, locked out of the only admin account.
-    let err = validate_password("correct horse\nbattery").unwrap_err();
+    let err = validate_password("Correct horse\nbattery-1").unwrap_err();
     assert!(err.contains("control character"), "unhelpful: {err}");
-    assert!(validate_password("tab\there-too").is_err());
+    assert!(validate_password("Tab\there-too-1").is_err());
     // A space is not a control character and must survive.
-    assert!(validate_password("correct horse battery").is_ok());
+    assert!(validate_password("Correct horse-battery 1").is_ok());
 }
 
 #[test]

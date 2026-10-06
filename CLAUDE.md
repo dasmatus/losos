@@ -434,6 +434,34 @@ A separate `midnight-reboot.timer` reboots unconditionally at 00:07 with
   it with `allow 127.0.0.1` exposes the whole admin surface to the internet
   whenever `losos.proxy.enable` is on. Test against lososd's :8082 directly,
   or curl with a LAN source address.
+- **The owner's password unlocks the admin pages, and Nextcloud is the judge.**
+  `POST /api/sign-in` (`backend/src/signin.rs`) sends the password to
+  Nextcloud over loopback (`$LOSOS_NEXTCLOUD_LOGIN_URL`, set per mode in
+  `daemon.nix`) in a Basic header and answers with the admin token on a 200.
+  lososd keeps no hash of the password on purpose: a second copy would drift
+  the moment the owner changed it inside Nextcloud. The cost is that the
+  route answers 503 while Nextcloud is down, which is what the printed spare
+  key is for — so don't remove the key path from the unlock dialog, and don't
+  turn the sign-in probe into a `curl -u` (the password would be in an argv).
+  A new password wants 12+ characters, both cases, a digit and a symbol
+  (`setup::validate_password`); a sign-in checks only the candidate's shape
+  (`signin::validate_candidate`), or a password set under an older rule set
+  would lock its owner out.
+- **Nextcloud trusts the box's own IP address through one nginx header.**
+  The `/nextcloud` location sets `X-Losos-Server-Addr $server_addr`, and the
+  pod's `losos.config.php` appends that value to `trusted_domains` per
+  request, IP literals only. That is how a libvirt VM, which gets no mDNS
+  name, is reached at `http://192.168.122.x/nextcloud` without "Untrusted
+  domain". Don't replace it with a `192.168.*` wildcard: Nextcloud's `*`
+  matches `[-.a-zA-Z0-9]*`, so `192.168.attacker.example` would be trusted
+  too. `localhost` and `127.0.0.1` need nothing — Nextcloud trusts them
+  unconditionally.
+- **The admin UI's app tiles link through `index.php`.** Nextcloud answers
+  `/nextcloud/index.php/apps/<id>/` on every configuration, while the short
+  `/nextcloud/apps/<id>/` form only works when the pod's Apache rewrites
+  pretty URLs, and without that it was an Apache 404 straight from the
+  admin home. `admin-ui/app/src/lib/apps.ts` uses the long form for that
+  reason; don't "tidy" the tiles back to the short one.
 - **The admin token is created by lososd, not by NixOS.** `losos.admin.tokenFile`
   (default `/var/secrets/losos-admin-token`, persisted via `/var`) is written
   with a 64-hex-char random value (mode 0600) by lososd on first start if
