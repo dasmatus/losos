@@ -13,6 +13,7 @@
 
 use crate::model::{Mode, Rebuild, RebuildState, State};
 use crate::overrides::{parse_settings, DEFAULT_OVERRIDES_NIX};
+use crate::setup::Readiness;
 use serde_json::{json, Value};
 
 /// Anything the commands need from the outside world.
@@ -72,6 +73,21 @@ pub trait Losos {
         action: &crate::setup::OccAction,
         secret: &crate::setup::Secret,
     ) -> anyhow::Result<Option<crate::setup::OccOutcome>>;
+    /// Ask the located Nextcloud whether it is ready for `occ`: the argv is
+    /// [`crate::setup::plan_status`], the answer is read by
+    /// [`crate::setup::interpret_status`]. `Err` means the probe could not be
+    /// run at all; a non-zero exit is data, as for [`Losos::run_occ`].
+    fn nextcloud_status(
+        &mut self,
+        target: &crate::setup::Target,
+    ) -> anyhow::Result<crate::setup::OccOutcome>;
+    /// The last few log lines of the most recent Nextcloud container in any
+    /// state, when [`Losos::nextcloud_target`] found no running one: the argv
+    /// pair is [`crate::setup::last_container_argv`] then
+    /// [`crate::setup::container_log_argv`], and the text is read by
+    /// [`crate::setup::describe_stopped`]. `Ok(None)` when there is no such
+    /// container or no log; native mode has neither.
+    fn nextcloud_last_log(&mut self, mode: crate::setup::NcMode) -> anyhow::Result<Option<String>>;
 
     // ── The appliance recovery code ─────────────────────────────────────
     /// The appliance's recovery code, minting one only if there is none.
@@ -307,9 +323,78 @@ pub fn cmd_set_password<L: Losos>(l: &mut L, user: &str, password: &str) -> anyh
 /// one. It reveals a single bit about a machine the caller has already reached
 /// on the LAN, and `modules/containers.nix`'s `lanOnly` guard is what keeps
 /// "on the LAN" meaningful.
+///
+/// `ready` and `waitingFor` say whether the first password can be set *now*.
+/// On a fresh box the Nextcloud pod spends its first minutes in
+/// `occ maintenance:install`, and a claim sent before that finishes fails;
+/// the wizard polls this instead and lets the owner proceed when it is true.
+/// Only probed while unclaimed — afterwards there is nothing to wait for, and
+/// an unauthenticated route should not spawn a process per request forever.
 pub fn cmd_claim_state<L: Losos>(l: &mut L) -> anyhow::Result<Value> {
     let claimed = l.load_state().map(|s| s.claimed).unwrap_or(false);
-    Ok(json!({ "claimed": claimed }))
+    if claimed {
+        return Ok(json!({ "claimed": true, "ready": true, "waitingFor": Value::Null }));
+    }
+    match nextcloud_readiness(l) {
+        Readiness::Ready => {
+            Ok(json!({ "claimed": false, "ready": true, "waitingFor": Value::Null }))
+        }
+        Readiness::NotYet(why) => {
+            Ok(json!({ "claimed": false, "ready": false, "waitingFor": why }))
+        }
+    }
+}
+
+/// Can Nextcloud take an `occ user:resetpassword` right now?
+///
+/// Three things have to be true, and each has its own sentence for the
+/// owner: the mode is known, the `occ` entry point can be found (in container
+/// mode, that the pod is running at all), and `occ status` says installed and
+/// not in maintenance. A probe that cannot even be run reads as "not yet"
+/// rather than as an error, because on a box with no shell the only thing the
+/// owner can do about either is wait.
+pub fn nextcloud_readiness<L: Losos>(l: &mut L) -> Readiness {
+    const NOT_STARTED: &str =
+        "Nextcloud has not started yet. On a new box this takes a few minutes.";
+    let mode = match l.nextcloud_mode() {
+        Ok(m) => m,
+        Err(e) => {
+            tracing::info!(error = ?e, "Nextcloud mode unknown");
+            return Readiness::NotYet(NOT_STARTED.to_string());
+        }
+    };
+    let target = match l.nextcloud_target(mode) {
+        Ok(t) => t,
+        Err(e) => {
+            tracing::info!(error = ?e, "Nextcloud not located yet");
+            // No running container. Before saying "not yet", look at whether
+            // one *was* running and what it said as it died: a pod in
+            // CrashLoopBackOff is "not yet" forever, and its last log line
+            // is the only thing an owner with no shell can act on.
+            let why = match l.nextcloud_last_log(mode) {
+                Ok(Some(tail)) => crate::setup::describe_stopped(&tail),
+                Ok(None) => None,
+                Err(e) => {
+                    tracing::info!(error = ?e, "Nextcloud last log could not be read");
+                    None
+                }
+            };
+            return Readiness::NotYet(why.unwrap_or_else(|| NOT_STARTED.to_string()));
+        }
+    };
+    match l.nextcloud_status(&target) {
+        Ok(outcome) => match crate::setup::interpret_status(&outcome) {
+            Ok(()) => Readiness::Ready,
+            Err(why) => Readiness::NotYet(why),
+        },
+        Err(e) => {
+            tracing::info!(error = ?e, "Nextcloud status probe could not run");
+            Readiness::NotYet(
+                "Nextcloud is starting but not answering yet. On a new box this takes a few minutes."
+                    .to_string(),
+            )
+        }
+    }
 }
 
 /// Claim an unowned box: set the first password, and record that it has an
@@ -339,18 +424,41 @@ pub fn cmd_claim_state<L: Losos>(l: &mut L) -> anyhow::Result<Value> {
 /// in [`cmd_set_password`], and the flag is only set after the password change
 /// actually succeeded — a failed claim leaves the box claimable, or the owner
 /// would be locked out by their own typo.
+///
+/// `receipts` is the daemon's memory of the claim it last answered
+/// ([`crate::receipt`]): a claimed box still answers, with the same reply,
+/// a caller who presents the password that claimed it within the grace
+/// window. That is for the reply that was lost in transit — the proxy timed
+/// out while occ was still running, and the admin key in the reply reached
+/// nobody — and it changes nothing: no occ runs, the state is not rewritten.
 pub fn cmd_claim<L: Losos>(
     l: &mut L,
     user: &str,
     password: &str,
     token: &str,
+    receipts: &mut crate::receipt::Receipts,
 ) -> anyhow::Result<Value> {
     // Fail closed: if the state cannot be read, nobody gets to claim the box.
     let mut state = l
         .load_state()
         .map_err(|e| e.context("reading the state before a claim"))?;
     if state.claimed {
-        anyhow::bail!("this box has already been set up");
+        if let Some(user) = receipts.replay(password) {
+            tracing::info!("claim answered again: same password, inside the grace window");
+            return Ok(json!({
+                "claimed": true,
+                "user": user,
+                "token": token,
+                "replayed": true,
+            }));
+        }
+        return Err(crate::setup::AlreadyClaimed.into());
+    }
+    // Asked before anything is staged: the wizard shows this sentence and
+    // keeps waiting, where the 500 a failed occ would produce told the owner
+    // nothing. Typed, so the HTTP layer answers 503 rather than 500.
+    if let Readiness::NotYet(why) = nextcloud_readiness(l) {
+        return Err(crate::setup::NotReady(why).into());
     }
 
     // Reuses the set-password path whole, so the two cannot drift on the thing
@@ -359,10 +467,12 @@ pub fn cmd_claim<L: Losos>(
 
     state.claimed = true;
     l.save_state(&state)?;
+    let user = out.get("user").cloned().unwrap_or(Value::Null);
+    receipts.remember(user.as_str().unwrap_or(""), password);
 
     Ok(json!({
         "claimed": true,
-        "user": out.get("user").cloned().unwrap_or(Value::Null),
+        "user": user,
         "token": token,
     }))
 }
@@ -812,6 +922,18 @@ mod tests {
                 secret: &crate::setup::Secret,
             ) -> anyhow::Result<Option<crate::setup::OccOutcome>> {
                 self.0.run_occ(action, secret)
+            }
+            fn nextcloud_status(
+                &mut self,
+                target: &crate::setup::Target,
+            ) -> anyhow::Result<crate::setup::OccOutcome> {
+                self.0.nextcloud_status(target)
+            }
+            fn nextcloud_last_log(
+                &mut self,
+                mode: crate::setup::NcMode,
+            ) -> anyhow::Result<Option<String>> {
+                self.0.nextcloud_last_log(mode)
             }
             fn recovery_code(&mut self) -> anyhow::Result<crate::recovery::Recovery> {
                 self.0.recovery_code()

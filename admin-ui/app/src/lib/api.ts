@@ -110,6 +110,12 @@ export function isUnauthorized(error: unknown): boolean {
   return error instanceof ApiError && error.unauthorized;
 }
 
+/** The claim's "not yet": lososd answered 503 because Nextcloud is still
+ *  starting. Nothing is wrong and nothing was changed; wait and ask again. */
+export function isNotReady(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 503;
+}
+
 /** The poller's own abort, or the tab navigating away. Not an outage. */
 export function isAbort(error: unknown): boolean {
   return error instanceof DOMException && error.name === "AbortError";
@@ -242,13 +248,25 @@ export function getHealth(options: RequestOptions = {}): Promise<HealthResponse>
 export interface ClaimState {
   /** Whether an owner has ever set a password on this box. */
   claimed: boolean;
+  /** Whether the first password can be set *now*. False while Nextcloud is
+   *  still installing itself on a fresh box, which takes minutes; the wizard
+   *  polls until it flips. Absent from a lososd older than this field, which
+   *  the wizard reads as ready, so an old box is not waited on forever. */
+  ready?: boolean;
+  /** Why not yet, in a sentence for the owner, when `ready` is false. */
+  waitingFor?: string | null;
 }
 
 export interface ClaimResponse {
   claimed: true;
   user: string | null;
-  /** The admin token, released exactly once, to whoever claimed the box. */
+  /** The admin token, released to whoever claimed the box — once, plus the
+   *  replays below. */
   token: string;
+  /** True when this is the reply to an earlier claim given again: the same
+   *  password asked within lososd's grace window after a reply that was lost
+   *  in transit (backend/src/receipt.rs). Absent on a first claim. */
+  replayed?: boolean;
 }
 
 /* GET /api/setup/claim — public. Has this box got an owner yet?
@@ -271,7 +289,11 @@ export function getClaimState(options: RequestOptions = {}): Promise<ClaimState>
  * The reason it exists rather than a key prompt: `losos.admin.tokenFile` is 64
  * random hex characters written 0600 by lososd on first start, on an appliance
  * with no SSH and no shell logins. Nothing prints it anywhere. Asking a new
- * owner to paste it was asking for something they had no way to obtain. */
+ * owner to paste it was asking for something they had no way to obtain.
+ *
+ * Answers 503 with `{error, ready: false, waitingFor}` while Nextcloud cannot
+ * take the password yet (first boot, still installing); the box stays
+ * claimable and the wizard goes back to waiting. See `isNotReady`. */
 export function claimBox(
   password: string,
   user?: string,
