@@ -317,6 +317,18 @@
       # nixosConfiguration would fail the root-fs/bootloader assertions and
       # could not be configured from outside anyway). `self` is baked in so
       # losos.edge.registrar.package resolves to this flake's registrar.
+      # The edge of the two-VM LAN demo (demo/edge-lan/): the edge module on a
+      # QEMU VM that is also the LAN's router. `nix build
+      # .#nixosConfigurations.edge-demo.config.system.build.vm` makes the
+      # run script; demo/edge-lan/run.sh drives it beside the installer ISO.
+      nixosConfigurations.edge-demo = nixpkgs.lib.nixosSystem {
+        inherit system;
+        modules = [
+          self.nixosModules.edge
+          "${nixpkgs}/nixos/modules/virtualisation/qemu-vm.nix"
+          ./demo/edge-lan/edge-vm.nix
+        ];
+      };
       nixosModules.edge = {
         imports = [
           ./modules/options.nix
@@ -386,6 +398,7 @@
         losos-tpm-unlock = import ./tests/tpm.nix { inherit pkgs disko; };
         losos-admin-daemon = import ./tests/admin-vm.nix { inherit pkgs; };
         losos-edge-proxy = import ./tests/edge-vm.nix { inherit pkgs; };
+        losos-edge-lan = import ./tests/edge-lan.nix { inherit pkgs; };
         losos-edge-market = import ./tests/market-vm.nix { inherit pkgs; };
         losos-ds-render = import ./tests/design-system.nix { inherit pkgs; };
         losos-front-vhost = import ./tests/front-vhost.nix { inherit pkgs; };

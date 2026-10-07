@@ -258,6 +258,74 @@ export default defineMessages({
   },
 
   // ── Mesh ────────────────────────────────────────────────────────────────
+  // The edge proxy group: what lososd found when it last looked (GET
+  // /api/edge). The box refuses to turn sharing on without one, so the words
+  // here are the words of that refusal, ahead of it.
+  "panes.mesh.edge.title": {
+    en: "Edge proxy",
+    sk: "Okrajový proxy server",
+    de: "Edge-Proxy",
+  },
+  "panes.mesh.edge.looking": {
+    en: "Looking for an edge proxy…",
+    sk: "Hľadá sa okrajový proxy server…",
+    de: "Suche nach einem Edge-Proxy…",
+  },
+  "panes.mesh.edge.unknown": {
+    en: "This box could not say whether an edge proxy is in reach.",
+    sk: "Zariadenie nevie povedať, či je okrajový proxy server dostupný.",
+    de: "Diese Box konnte nicht sagen, ob ein Edge-Proxy erreichbar ist.",
+  },
+  "panes.mesh.edge.found": {
+    en: "Edge proxy found: {name}",
+    sk: "Okrajový proxy server nájdený: {name}",
+    de: "Edge-Proxy gefunden: {name}",
+  },
+  "panes.mesh.edge.viaLan": {
+    en: "On this network",
+    sk: "V tejto sieti",
+    de: "In diesem Netzwerk",
+  },
+  "panes.mesh.edge.viaInternet": {
+    en: "Over the internet",
+    sk: "Cez internet",
+    de: "Über das Internet",
+  },
+  "panes.mesh.edge.none": {
+    en: "No edge proxy found",
+    sk: "Žiadny okrajový proxy server sa nenašiel",
+    de: "Kein Edge-Proxy gefunden",
+  },
+  "panes.mesh.edge.noneDetail": {
+    en: "This box searched its network and nothing answered.",
+    sk: "Zariadenie prehľadalo svoju sieť a nič neodpovedalo.",
+    de: "Diese Box hat ihr Netzwerk durchsucht, und nichts hat geantwortet.",
+  },
+  "panes.mesh.edge.noneTried": {
+    en: "This box searched its network and asked {url}; nothing answered.",
+    sk: "Zariadenie prehľadalo svoju sieť a oslovilo {url}; nič neodpovedalo.",
+    de: "Diese Box hat ihr Netzwerk durchsucht und {url} gefragt; nichts hat geantwortet.",
+  },
+  "panes.mesh.edge.lanUnsearched": {
+    en: "This box could not search its network, and nothing answered elsewhere.",
+    sk: "Zariadenie nemohlo prehľadať svoju sieť a inde nič neodpovedalo.",
+    de: "Diese Box konnte ihr Netzwerk nicht durchsuchen, und anderswo hat nichts geantwortet.",
+  },
+  "panes.mesh.edge.sharingOff": {
+    en: "Sharing is off",
+    sk: "Zdieľanie je vypnuté",
+    de: "Teilen ist aus",
+  },
+  "panes.mesh.edge.needed": {
+    en: "Needs an edge proxy in reach.",
+    sk: "Vyžaduje dostupný okrajový proxy server.",
+    de: "Braucht einen erreichbaren Edge-Proxy.",
+  },
+  "panes.mesh.edge.caption": {
+    en: "The edge proxy is the box in the middle: it holds the mesh together and makes yours reachable from outside. This box looks for one on its own network and at its usual address every few seconds, and anything that shares your storage over the network stays off until one answers. Your own files and apps work either way.",
+    sk: "Okrajový proxy server je zariadenie uprostred: drží sieť mesh pohromade a sprístupňuje to vaše zvonku. Toto zariadenie ho každých pár sekúnd hľadá vo vlastnej sieti aj na svojej obvyklej adrese, a čokoľvek, čo zdieľa vaše úložisko cez sieť, zostane vypnuté, kým sa niektorý neozve. Vaše vlastné súbory a aplikácie fungujú tak či tak.",
+    de: "Der Edge-Proxy ist die Box in der Mitte: Er hält das Mesh zusammen und macht deine von außen erreichbar. Diese Box sucht alle paar Sekunden in ihrem eigenen Netzwerk und an ihrer üblichen Adresse nach einem, und alles, was deinen Speicher über das Netzwerk teilt, bleibt aus, bis einer antwortet. Deine eigenen Dateien und Apps laufen so oder so.",
+  },
   "panes.mesh.otherBoxes": {
     en: "Other boxes",
     sk: "Iné zariadenia",

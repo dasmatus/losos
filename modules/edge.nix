@@ -54,6 +54,9 @@ let
 
   # ── Mesh control plane constants ────────────────────────────────────────
   meshEnabled = cfg.cluster.enable;
+  # The registrar API answers off-box when it is bound to a non-loopback
+  # address, or when the edge advertises itself on the LAN (which rebinds it).
+  registrarOffBox = cfg.registrarApiBind != "127.0.0.1" || cfg.lan.advertise;
 
   # rke2 writes the admin kubeconfig here on a SERVER only; an agent never
   # gets one. Both mesh units below run on the edge, so this path is real.
@@ -983,6 +986,40 @@ in
       };
     };
 
+    # ── On the LAN: let appliances find this edge ────────────────────────
+    # DNS-SD over the Avahi daemon, which also gives the edge its `.local`
+    # name — the one the default losos.edge.lan.url points at. The service
+    # file carries the registrar API port and a `url=` record; the appliance
+    # side (backend/src/edge.rs) prefers the record and falls back to the
+    # resolved address and port, then probes /health before believing either.
+    # Off-loopback binding is forced here only when the operator left the
+    # bind at its loopback default, because an advertised edge nobody can
+    # dial is worse than none: the box would show "found" and then refuse.
+    services.avahi = lib.mkIf cfg.lan.advertise {
+      enable = true;
+      nssmdns4 = true;
+      openFirewall = true;
+      publish = {
+        enable = true;
+        addresses = true;
+        workstation = true;
+      };
+      extraServiceFiles.losos-edge = ''
+        <?xml version="1.0" standalone='no'?>
+        <!DOCTYPE service-group SYSTEM "avahi-service.dtd">
+        <service-group>
+          <name replace-wildcards="yes">losos edge on %h</name>
+          <service>
+            <type>_losos-edge._tcp</type>
+            <port>${toString cfg.registrarApiPort}</port>
+            <txt-record>url=${cfg.lan.url}</txt-record>
+            <txt-record>txtvers=1</txt-record>
+          </service>
+        </service-group>
+      '';
+    };
+    losos.edge.registrarApiBind = lib.mkIf cfg.lan.advertise (lib.mkDefault "::");
+
     # ── Firewall: public web + the rathole client-dial port ──────────────
     # The registrar API is loopback-only in production (Traefik fronts it at
     # register.<publicDomain>); only open it in the firewall when it is bound
@@ -998,7 +1035,7 @@ in
       443
       cfg.ratholeBindPort
     ]
-    ++ lib.optional (cfg.registrarApiBind != "127.0.0.1") cfg.registrarApiPort
+    ++ lib.optional registrarOffBox cfg.registrarApiPort
     ++ lib.optionals meshEnabled [
       cfg.cluster.apiPort
       cfg.cluster.supervisorPort

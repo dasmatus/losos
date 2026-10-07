@@ -37,6 +37,7 @@ import {
   type MarketData,
   ORDER_STATUS,
 } from "./market";
+import { useEdge } from "./use-edge";
 import type { SettingsForm } from "./use-settings-form";
 
 /* Sharing this box's disk, and buying and selling what the mesh shares.
@@ -223,18 +224,27 @@ export function MarketPane({ form }: { form: SettingsForm }) {
  * value is the draft's, and Apply writes it with the rest. */
 function SharingSection({ form }: { form: SettingsForm }) {
   const t = useT();
+  const edge = useEdge();
   const shareId = React.useId();
   const sharing = form.draft?.sharingMyStorage ?? false;
+  /* Same rule as the Join switch on the Mesh pane: no edge in reach means
+   * the daemon refuses to turn this on, so it is greyed and says why, unless
+   * it is already on, in which case turning it off must stay possible. */
+  const refused = edge.blocked && !(form.saved?.sharingMyStorage ?? false);
   return (
     <PaneSection>
       <GroupTitle>{t("panes.market.share.title")}</GroupTitle>
       <Group>
         <Row>
-          <RowText htmlFor={shareId} title={t("panes.market.share.switch")} />
+          <RowText
+            htmlFor={shareId}
+            title={t("panes.market.share.switch")}
+            detail={refused && !form.locked ? t("panes.mesh.edge.needed") : undefined}
+          />
           <Switch
             id={shareId}
             checked={sharing}
-            disabled={form.locked || !form.ready}
+            disabled={form.locked || !form.ready || refused}
             onCheckedChange={(next) => form.set("sharingMyStorage", next)}
           />
         </Row>

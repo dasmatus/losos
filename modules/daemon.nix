@@ -154,8 +154,15 @@ in
             "http://127.0.0.1:${toString config.losos.nextcloud.apachePort}/nextcloud/ocs/v2.php/cloud/user"
           else
             "http://127.0.0.1:80/ocs/v2.php/cloud/user";
-        LOSOS_NEXTCLOUD_LOGIN_HOST =
-          if ncContainer then "localhost" else config.losos.nextcloud.hostName;
+        LOSOS_NEXTCLOUD_LOGIN_HOST = if ncContainer then "localhost" else config.losos.nextcloud.hostName;
+      }
+      # Where lososd looks for an edge proxy besides the LAN (backend/src/edge.rs):
+      # the configured registrar, probed whether or not the master proxy is on,
+      # because the question is "is there an edge anywhere this box could share
+      # through", not "is this box enrolled". The LAN half needs no setting; it
+      # is the `_losos-edge._tcp` browse over the Avahi the box already runs.
+      // {
+        LOSOS_EDGE_URL = config.losos.proxy.registrarUrl;
       }
       # What `cryptsetup resize` authenticates with during `losos-ctl grow`.
       #
@@ -203,6 +210,21 @@ in
         # shape as the grow binaries above if this line goes: ENOENT at the
         # exec, reported to the owner as a search that will not come back.
         pkgs.curl
+        # What the edge scan browses the LAN with (backend/src/edge.rs):
+        # `avahi-browse` for `_losos-edge._tcp`, under coreutils' `timeout`.
+        # Missing, the scan reports the LAN as unsearched and only the
+        # configured edge can open the sharing gate — a box on a LAN with an
+        # edge and no internet would then never be allowed to share.
+        pkgs.avahi
+        # What every rebuild is started with. `systemd-run` resolves a relative
+        # program name against the *caller's* PATH before it writes the
+        # transient unit, and fails with "Failed to find executable
+        # nixos-rebuild" when it cannot — so with this entry missing, every
+        # `change`, `apply` and factory reset died at the launch with a 500
+        # ("failed to start rebuild: systemd-run exited 1") and nothing was
+        # ever rebuilt from the admin UI. tests/edge-lan.nix drives a mode
+        # change through the daemon and would catch the line going again.
+        config.system.build.nixos-rebuild
       ]
       # crictl, to find and exec into the Nextcloud workload container.
       ++ lib.optional ncContainer pkgs.cri-tools

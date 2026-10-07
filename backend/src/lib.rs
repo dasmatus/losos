@@ -28,6 +28,7 @@
 pub mod boxid;
 pub mod catalogue;
 pub mod dbus;
+pub mod edge;
 pub mod facade;
 pub mod fake;
 pub mod grow;

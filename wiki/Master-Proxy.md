@@ -42,6 +42,41 @@ Tunnel traffic reaches nginx from `127.0.0.1`. The admin routes therefore
 deny loopback. Do not add `allow 127.0.0.1` to them, or the admin UI becomes
 reachable from the internet.
 
+## Edge on the same LAN
+
+An edge does not have to be a VPS. With `losos.edge.lan.advertise = true` it
+also announces itself over mDNS (`_losos-edge._tcp`, with the registrar URL
+in a `url=` record, default `http://<edge>.local:8443`, `losos.edge.lan.url`),
+binds the registrar API off-loopback and opens its port, so a box on the same
+network finds it with no configuration and may share storage through it — see
+[Mesh](Mesh#finding-the-edge). This is the shape of an **on-premises
+deployment**: one always-on machine on the company network running
+`nixosModules.edge`, and boxes installed from the stock ISO beside it.
+
+```nix
+# the edge machine's configuration
+imports = [ losos.nixosModules.edge ];
+losos.edge = {
+  enable = true;
+  acmeEmail = "ops@example.com";       # a public name gets a certificate as usual
+  lan.advertise = true;                # announce on the LAN, bind the API off-loopback
+  tenants.<id>.tokenFile = "/run/secrets/tenant-<id>";
+};
+```
+
+The boxes need nothing: the ISO installs the published `install`
+configuration, the Mesh pane shows "Edge proxy found: … On this network" once
+the edge answers, and sharing can be switched on. Two limits today: the
+tunnel's enrolment address (`losos.proxy.registrarUrl`) is a build-time
+option that still defaults to the public edge, so a site that wants the
+tunnel to terminate on its own edge sets it in its own flake; and the advert
+is mDNS, so the edge and the boxes must share a broadcast domain (one VLAN).
+
+`demo/edge-lan/run.sh` stands this whole arrangement up on one machine as two
+VMs on a virtual switch — the edge (as the LAN's router too), a box installed
+from the ISO — and walks through found → allowed → edge gone → refused →
+back. Its README says which parts stand in for what on a real site.
+
 ## Demo deployment on Vercel
 
 `edge-vercel/` runs the registrar's API — the same router and the same
