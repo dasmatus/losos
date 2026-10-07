@@ -3,6 +3,7 @@ import { ButtonGroup, ButtonGroupText } from "@/components/ui/button-group";
 import { FieldError, Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/progress";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { HelpLink } from "@/components/ui/help-link";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Alert02Icon, CheckmarkBadge01Icon } from "@hugeicons/core-free-icons";
 import { cn } from "@/lib/utils";
@@ -117,7 +118,7 @@ export function EdgeGroup({ view }: { view: EdgeView }) {
     );
   }
   let title: string;
-  let detail: string | undefined;
+  let detail: React.ReactNode;
   let value: React.ReactNode = null;
   let tone: string | undefined;
   if (state.kind === "loading") {
@@ -129,11 +130,19 @@ export function EdgeGroup({ view }: { view: EdgeView }) {
   } else {
     title = t("panes.mesh.edge.none");
     const tried = state.edge.configuredUrl;
-    detail = state.edge.lanSearched
+    const why = state.edge.lanSearched
       ? tried === null
         ? t("panes.mesh.edge.noneDetail")
         : t("panes.mesh.edge.noneTried", { url: tried })
       : t("panes.mesh.edge.lanUnsearched");
+    /* The refusal the switches below are about to give has a handbook page;
+     * it is linked here, where the owner reads why, rather than only from
+     * the 409 toast an apply would raise. */
+    detail = (
+      <>
+        {why} <HelpLink entry="edge-not-found" />
+      </>
+    );
     value = t("panes.mesh.edge.sharingOff");
     tone = "text-danger";
   }
