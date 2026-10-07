@@ -244,12 +244,10 @@ function TopBar({ signedIn }: { signedIn: boolean }) {
   return (
     <header className="sticky top-0 z-40 border-b border-line bg-surface/85 backdrop-blur-sm">
       <div className="mx-auto flex w-full max-w-6xl items-center gap-3 px-4 py-3 sm:px-6">
-        <span className="flex items-center gap-2 text-[15px] font-semibold tracking-tight">
-          {/* The cooked salmon (losos is Slovak for salmon), pixel art kept
-              square-edged at any size. Bundled, so img-src 'self' holds. */}
-          <img src={logoUrl} alt="" width={28} height={28} className="size-7 [image-rendering:pixelated]" />
-          LosOS
-        </span>
+        {/* The cooked salmon (losos is Slovak for salmon) in place of the
+            name, pixel art kept square-edged at any size; its alt text is the
+            name. Bundled, so img-src 'self' holds. */}
+        <img src={logoUrl} alt="LosOS" width={32} height={32} className="size-8 [image-rendering:pixelated]" />
         <Badge variant="outline" className="hidden sm:inline-flex">
           {t("shell.thisBox")}
         </Badge>
