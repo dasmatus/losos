@@ -46,6 +46,11 @@ pkgs.testers.nixosTest {
       imports = [
         ../modules/options.nix
         ../modules/daemon.nix
+        # The option document (/etc/losos/options.json) and the LosOS Git
+        # wiring. No Forgejo runs here, so the reconciler reports it
+        # unavailable; what step 9 asserts is the document and the config
+        # routes themselves.
+        ../modules/config-repo.nix
       ];
 
       # Non-null backend.package is what gates daemon.nix on (its `enabled`).
@@ -138,6 +143,30 @@ pkgs.testers.nixosTest {
         "-d '{\"password\":\"attacker-password\"}' 127.0.0.1:8082/api/setup/claim"
       )
       assert code == "403", f"claim with {label} answered {code!r}, expected 403"
+
+    # 9. Every losos.* option, joined with overrides.nix, and the
+    # configuration repository document (modules/config-repo.nix,
+    # backend/src/options.rs, backend/src/config_repo.rs). The document is
+    # generated from this very configuration, so an option declared in
+    # modules/options.nix is in it by construction; `fillPercent` is the
+    # canary for "the join happened" rather than "an empty list came back".
+    machine.succeed("test -s /etc/losos/options.json")
+    body = machine.succeed(f"curl -fsS -H '{hdr}' localhost:8082/api/options")
+    assert '"available":true' in body.replace(" ", ""), f"options not available: {body[:200]!r}"
+    assert '"storage.fillPercent"' in body, f"options document lacks fillPercent: {body[:200]!r}"
+    assert '"stray":[]' in body.replace(" ", ""), f"a fresh box has stray lines: {body[:200]!r}"
+    config = machine.succeed("losos-ctl config")
+    assert '"enabled"' in config and '"log"' in config, f"losos-ctl config: {config[:200]!r}"
+    # An apply that names an option the box does not declare is refused with
+    # the key in the sentence, before anything is written or rebuilt.
+    code = machine.succeed(
+      f"curl -s -o /tmp/apply.out -w '%{{http_code}}' -H '{hdr}' "
+      "-H 'Content-Type: text/plain' --data-binary "
+      "'{ ... }: { losos.hostName = \"mattbox\"; losos.noSuch.option = true; }' "
+      "localhost:8082/api/apply"
+    )
+    assert code == "400", f"apply with an undeclared key answered {code!r}, expected 400"
+    assert "noSuch.option" in machine.succeed("cat /tmp/apply.out")
     claim = machine.succeed("curl -fsS 127.0.0.1:8082/api/setup/claim")
     assert '"claimed":false' in claim.replace(" ", ""), f"box got claimed: {claim!r}"
   '';

@@ -22,6 +22,8 @@ fn paths_in(dir: &TempDir) -> Paths {
         state_dir: dir.path().join("state"),
         overrides_file: dir.path().join("overrides.nix"),
         flake_ref: "/etc/nixos#install".to_string(),
+        config_dir: "/etc/nixos".into(),
+        options_file: "/etc/losos/options.json".into(),
     }
 }
 
