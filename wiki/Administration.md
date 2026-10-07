@@ -93,6 +93,16 @@ stays claimable. `GET /api/setup/claim` carries the same `ready` and
 proceed on its own once they flip. On a fresh box this takes a few minutes:
 the Nextcloud pod runs `occ maintenance:install` before it serves anything.
 
+`ready` flips when that install finishes, which is before LosOS cloud
+answers a browser: the pod then enables its 26 apps and only after that
+starts Apache. Measured natively on a 4-core host (2026-10-07), the install
+takes about 11 s, enabling the apps about 13 s, and the first page answers
+27 s after the pod started; the wizard's sign-in step shows "Your files are
+still starting" for that gap. A reboot repeats the same steps against an
+installed instance in about 2 s. In a VM without KVM (QEMU's TCG emulation)
+the same steps take 10 to 30 minutes, so give a demo VM hardware
+virtualisation.
+
 The first-run wizard is that caller. Every later visit to the admin pages
 asks for the **password** the wizard set, the same one that signs in to
 LosOS cloud: `POST /api/sign-in` asks Nextcloud whether it is right and hands
