@@ -1,104 +1,42 @@
 #!/usr/bin/env python3
-"""Generate the LosOS cloud and LosOS Git marks from fish.png.
+"""Generate the LosOS cloud and LosOS Git marks from plate.png.
 
-fish.png is the source: 16x16 pixel art, stored at 10x (160x160). This script
-reads it back to its 16x16 grid and writes each mark as a self-contained SVG
-whose fish is one square per pixel, so it stays crisp at any size, from a 16px
-favicon to the login page. The PNGs and the .ico each app also wants are
-rasterized from these SVGs at build time (admin-ui/themes/default.nix), so
-only the SVGs are committed.
+plate.png is the source: the plate of salmon, cut out of the photo on a
+transparent ground, 512 px square. This script embeds it in each mark as a
+data: URI, so every SVG is self-contained and still draws where it is served
+on its own (Nextcloud's logo.svg, Forgejo's home page). The PNGs and the
+.ico each app also wants are rasterized from these SVGs at build time
+(admin-ui/themes/default.nix), so only the SVGs and plate.png are committed.
 
-Standard library only. Run it after changing fish.png or a shape below:
+Standard library only. Run it after changing plate.png or a shape below:
 
     python3 admin-ui/themes/brand/marks.py
 """
 
+import base64
 import os
-import struct
-import zlib
+import shutil
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-SCALE = 10  # fish.png is drawn at 10 screen pixels per art pixel
+PLATE = os.path.join(HERE, "plate.png")
 
 
-def read_png(path):
-    """Decode an 8-bit RGBA, non-interlaced PNG to rows of (r, g, b, a)."""
-    data = open(path, "rb").read()
-    assert data[:8] == b"\x89PNG\r\n\x1a\n", "not a PNG"
-    pos, idat = 8, b""
-    while pos < len(data):
-        (length,) = struct.unpack(">I", data[pos : pos + 4])
-        kind, body = data[pos + 4 : pos + 8], data[pos + 8 : pos + 8 + length]
-        pos += 12 + length
-        if kind == b"IHDR":
-            width, height, depth, colour, _, _, interlace = struct.unpack(">IIBBBBB", body)
-            assert (depth, colour, interlace) == (8, 6, 0), "need 8-bit RGBA, not interlaced"
-        elif kind == b"IDAT":
-            idat += body
-    raw, bpp = zlib.decompress(idat), 4
-    stride, rows, prev, i = width * bpp, [], bytearray(width * bpp), 0
-    for _ in range(height):
-        kind, line = raw[i], bytearray(raw[i + 1 : i + 1 + stride])
-        i += 1 + stride
-        for x in range(stride):
-            a = line[x - bpp] if x >= bpp else 0
-            b = prev[x]
-            c = prev[x - bpp] if x >= bpp else 0
-            if kind == 1:
-                line[x] = (line[x] + a) & 255
-            elif kind == 2:
-                line[x] = (line[x] + b) & 255
-            elif kind == 3:
-                line[x] = (line[x] + (a + b) // 2) & 255
-            elif kind == 4:
-                p = a + b - c
-                pa, pb, pc = abs(p - a), abs(p - b), abs(p - c)
-                line[x] = (line[x] + (a if pa <= pb and pa <= pc else b if pb <= pc else c)) & 255
-        rows.append([tuple(line[x : x + 4]) for x in range(0, stride, 4)])
-        prev = line
-    return rows
+def plate_uri():
+    with open(PLATE, "rb") as f:
+        return "data:image/png;base64," + base64.b64encode(f.read()).decode("ascii")
 
 
-def fish_grid():
-    rows = read_png(os.path.join(HERE, "fish.png"))
-    size = len(rows) // SCALE
-    return [[rows[y * SCALE][x * SCALE] for x in range(size)] for y in range(size)]
-
-
-def fish_paths(grid):
-    """One <path> per colour, each horizontal run of a colour one rectangle."""
-    runs = {}
-    for y, row in enumerate(grid):
-        x = 0
-        while x < len(row):
-            r, g, b, a = row[x]
-            if a == 0:
-                x += 1
-                continue
-            end = x
-            while end < len(row) and row[end] == row[x]:
-                end += 1
-            runs.setdefault("#%02x%02x%02x" % (r, g, b), []).append(f"M{x} {y}h{end - x}v1h-{end - x}z")
-            x = end
-    return "\n".join(
-        f'    <path fill="{colour}" d="{"".join(d)}"/>' for colour, d in sorted(runs.items())
-    )
-
-
-def fish(grid, x, y, size):
-    """The fish as a nested 16-unit viewport placed at (x, y), size units wide."""
-    n = len(grid)
-    return (
-        f'  <svg x="{x}" y="{y}" width="{size}" height="{size}" viewBox="0 0 {n} {n}" '
-        f'shape-rendering="crispEdges">\n{fish_paths(grid)}\n  </svg>'
-    )
+def plate(uri, x, y, size):
+    """The plate, placed at (x, y) in a box size units square (the photo is
+    square with the plate centred in it, so the box is the frame)."""
+    return f'  <image x="{x}" y="{y}" width="{size}" height="{size}" href="{uri}"/>'
 
 
 # The cloud is ☁️ drawn the way the emoji fonts draw it: a soft white cloud
 # that fades to a cool grey underneath, with an outline so it still reads on a
-# white page. Three puffs and a flat base, with the fish
-# centred in the body of the cloud. Drawn twice from the same shapes,
-# stroked and then filled, so the outline traces the union and not each puff.
+# white page. Three puffs and a flat base, with the plate centred in the body
+# of the cloud. Drawn twice from the same shapes, stroked and then filled, so
+# the outline traces the union and not each puff.
 CLOUD = """\
     <circle cx="32" cy="33" r="18"/>
     <circle cx="14" cy="44" r="11"/>
@@ -106,7 +44,7 @@ CLOUD = """\
     <rect x="14" y="40" width="36" height="15"/>"""
 
 
-def cloud_mark(grid):
+def cloud_mark(uri):
     return f"""\
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
   <title>LosOS cloud</title>
@@ -122,18 +60,18 @@ def cloud_mark(grid):
   <g fill="url(#sky)">
 {CLOUD}
   </g>
-{fish(grid, 15, 20, 32)}
+{plate(uri, 13, 19, 38)}
 </svg>
 """
 
 
-# LosOS Git: the same fish, centred on the master branch the way the cloud
+# LosOS Git: the same plate, centred on the master branch the way the cloud
 # mark centres it in the cloud. The badge is the LosOS teal, a step lighter
 # than the light palette's --accent so it still holds on the dark palette's
 # ground (an image cannot follow the page's mode). Master runs down the
-# middle, commit to commit, with the fish on it; one feature branch forks off
+# middle, commit to commit, with the plate on it; one feature branch forks off
 # to the right so the shape still says "git" at favicon size.
-def git_mark(grid):
+def git_mark(uri):
     return f"""\
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
   <title>LosOS Git</title>
@@ -147,36 +85,32 @@ def git_mark(grid):
     <circle cx="32" cy="52" r="3.5"/>
     <circle cx="49" cy="15" r="3.5"/>
   </g>
-{fish(grid, 18, 17, 28)}
-</svg>
-"""
-
-
-# The admin pages' own logo and favicon: the cooked salmon alone, no badge.
-# It is written into the SPA's source tree rather than referenced from here,
-# because losos-admin-ui's source root is admin-ui/app and nothing outside
-# it reaches the build.
-def bare_mark(grid):
-    n = len(grid)
-    return f"""\
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {n} {n}" width="{n * 4}" height="{n * 4}" shape-rendering="crispEdges">
-  <title>LosOS</title>
-{fish_paths(grid)}
+{plate(uri, 14, 14, 36)}
 </svg>
 """
 
 
 def main():
-    grid = fish_grid()
-    app_assets = os.path.join(HERE, "..", "..", "app", "src", "assets")
+    uri = plate_uri()
     for path, svg in (
-        (os.path.join(HERE, "losos-cloud.svg"), cloud_mark(grid)),
-        (os.path.join(HERE, "losos-git.svg"), git_mark(grid)),
-        (os.path.join(app_assets, "losos.svg"), bare_mark(grid)),
+        (os.path.join(HERE, "losos-cloud.svg"), cloud_mark(uri)),
+        (os.path.join(HERE, "losos-git.svg"), git_mark(uri)),
     ):
-        os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "w") as out:
             out.write(svg)
+        print("wrote", os.path.relpath(path, HERE))
+    # The admin pages' own logo and favicon, and the handbook's: the plate
+    # alone, a 128 px copy of the same cut-out (shown at 32 CSS px, so sharp
+    # on a 4x display). Copied rather than referenced, because losos-admin-ui's
+    # source root is admin-ui/app and nothing outside it reaches the build,
+    # and the handbook is built from handbook/ alone.
+    small = os.path.join(HERE, "plate-128.png")
+    for path in (
+        os.path.join(HERE, "..", "..", "app", "src", "assets", "losos.png"),
+        os.path.join(HERE, "..", "..", "..", "handbook", "static", "img", "losos.png"),
+    ):
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        shutil.copyfile(small, path)
         print("wrote", os.path.relpath(path, HERE))
 
 
