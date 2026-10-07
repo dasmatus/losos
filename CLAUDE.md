@@ -147,6 +147,25 @@ typecheck`, and `npm run test:browser` — the last is the playwright check that
 `admin-ui/design-system/react/` when touching the React wrapper. It is not
 what the appliance serves.
 
+## Pull requests
+
+`.github/pull_request_template.md` is the shape of every PR description:
+Before / After prose, a **screenshots table**, How, Tested, notes for the
+reviewer. Fill every section. The screenshots are **required for any change
+a person can see** — the admin UI, the wizard, the installer and tty1
+screens, the two app themes, the wiki and docs pages — one Before and one
+After per screen, taken at the same window size and in the same state so
+the only difference is the change. A change with nothing visible says
+"No visible change." under that heading and why, instead of the table.
+Sessions working from a project thread keep their screenshots in the
+project folder under `/mnt/project-files/demo/<topic>/` and name that folder
+in the table (the project folder is not reachable from GitHub, so the owner
+drops the images into the body if they should live on the PR); the
+attribution block the project requires goes above the template, as the
+first two lines. Under Tested, say what did not run and why — a session
+has no KVM, so the VM tests are usually "not run" rather than silently
+missing.
+
 ## Architecture (cross-file big picture)
 
 **Two NixOS systems share one module set** (`flake.nix`):

@@ -62,6 +62,22 @@ Also build the system closure locally:
 nix build .#nixosConfigurations.install.config.system.build.toplevel
 ```
 
+## Pull requests
+
+The template in `.github/pull_request_template.md` fills the description:
+Before / After prose, a screenshots table, How, Tested, notes for the
+reviewer. Keep every section.
+
+Screenshots are required for any change a person can see: the admin UI and
+the wizard, the installer and the tty1 banner, the Nextcloud and Forgejo
+themes, the wiki and docs pages. Take a Before and an After per screen at
+the same window size and in the same state, so the only difference is the
+change, and drag them into the table. A change with nothing visible says
+"No visible change." under that heading, and why.
+
+Under Tested, list what ran and what did not. The VM tests need KVM; if
+they were not run, say so.
+
 ## Lock files and hashes
 
 - `flake.lock` pins the nixpkgs that builds the appliance; `devenv.lock` the
