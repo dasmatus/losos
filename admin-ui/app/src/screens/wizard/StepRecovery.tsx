@@ -40,6 +40,7 @@ import { copyText } from "./copy";
 import { toast } from "@/components/ui/toast";
 import { StepText } from "./parts";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { HelpLink } from "@/components/ui/help-link";
 
 export interface StepRecoveryProps {
   boxName: string;
@@ -107,7 +108,7 @@ export function StepRecovery({
       toast.success(t("wizard.recovery.savedTitle"), t("wizard.recovery.saved"));
       onSaved();
     } else {
-      toast.error(t("wizard.recovery.copyFailed.title"), t("wizard.recovery.copyFailed.body"));
+      toast.error(t("wizard.recovery.copyFailed.title"), t("wizard.recovery.copyFailed.body"), { help: "index" });
     }
   };
 
@@ -198,6 +199,7 @@ export function StepRecovery({
             <AlertTitle>{t("wizard.recovery.failed.title")}</AlertTitle>
             <AlertDescription>
               <p className="break-words">{query.message}</p>
+              <HelpLink entry="wizard-waits" />
             </AlertDescription>
           </Alert>
           <div>

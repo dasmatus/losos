@@ -92,7 +92,7 @@ export function WidgetGallery({ open, onOpenChange, count }: GalleryProps) {
 
   const addHandWidget = (widget: HandWidget): void => {
     if (addHand(widget.id) === null) {
-      toast.error(t("widgets.gallery.full"), t("widgets.gallery.fullHint", { max: MAX_WIDGETS }));
+      toast.error(t("widgets.gallery.full"), t("widgets.gallery.fullHint", { max: MAX_WIDGETS }), { help: "look-and-widgets" });
       return;
     }
     toast.success(t("widgets.gallery.added", { name: widget.name }));
@@ -107,13 +107,14 @@ export function WidgetGallery({ open, onOpenChange, count }: GalleryProps) {
       toast.error(
         t("look.widgets.notDeleted", { name: widget.name }),
         error instanceof Error ? error.message : "",
+        { help: "look-and-widgets" },
       );
     }
   };
 
   const add = (id: BuiltinId, name: string): void => {
     if (addBuiltin(id) === null) {
-      toast.error(t("widgets.gallery.full"), t("widgets.gallery.fullHint", { max: MAX_WIDGETS }));
+      toast.error(t("widgets.gallery.full"), t("widgets.gallery.fullHint", { max: MAX_WIDGETS }), { help: "look-and-widgets" });
       return;
     }
     toast.success(t("widgets.gallery.added", { name }));
@@ -122,11 +123,11 @@ export function WidgetGallery({ open, onOpenChange, count }: GalleryProps) {
   const save = (spec: WidgetSpec): boolean => {
     try {
       if (addCustom(spec) === null) {
-        toast.error(t("widgets.gallery.full"), t("widgets.gallery.fullHint", { max: MAX_WIDGETS }));
+        toast.error(t("widgets.gallery.full"), t("widgets.gallery.fullHint", { max: MAX_WIDGETS }), { help: "look-and-widgets" });
         return false;
       }
     } catch (error) {
-      toast.error(t("widgets.gallery.notAdded"), error instanceof Error ? error.message : "");
+      toast.error(t("widgets.gallery.notAdded"), error instanceof Error ? error.message : "", { help: "look-and-widgets" });
       return false;
     }
     toast.success(t("widgets.gallery.added", { name: spec.title }));
@@ -363,6 +364,7 @@ export function WidgetGallery({ open, onOpenChange, count }: GalleryProps) {
                   toast.error(
                     t("widgets.gallery.full"),
                     t("widgets.gallery.fullHint", { max: MAX_WIDGETS }),
+                    { help: "look-and-widgets" },
                   );
                   return;
                 }

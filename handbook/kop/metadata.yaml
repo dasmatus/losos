@@ -1,0 +1,19 @@
+# Metadata for the hand-in PDF of the KOP (handbook/docs/project/kop).
+# Read by scripts/build-kop.sh through pandoc; the body comes from the
+# Markdown pages, so this file holds only what the title page needs.
+title: "LosOS"
+subtitle: "Bezstavový operačný systém pre vlastný cloud a mesh úložisko"
+doctype: "Komplexná odborná práca"
+author: "Matúš Maštena"
+school: "Stredná priemyselná škola elektrotechnická"
+school-address: "Hálova 16, 851 01 Bratislava"
+field: ""              # študijný odbor; doplní autor
+consultant: ""         # konzultant; doplní autor
+school-year: "2026/2027"
+place: "Bratislava"
+year: "2027"
+lang: sk
+# Pandoc options that belong to the document rather than to the script.
+numbersections: true
+toc: true
+toc-depth: 2

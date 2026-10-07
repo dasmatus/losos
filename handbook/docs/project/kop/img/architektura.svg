@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="560" viewBox="0 0 920 560" font-family="Inter, 'DejaVu Sans', Arial, sans-serif" font-size="14">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0 0L10 5L0 10z" fill="#355"/>
+    </marker>
+    <pattern id="hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <rect width="8" height="8" fill="#e6f0f0"/><line x1="0" y1="0" x2="0" y2="8" stroke="#9cc" stroke-width="3"/>
+    </pattern>
+  </defs>
+  <rect width="920" height="560" fill="#fff"/>
+  <!-- outside -->
+  <rect x="30" y="20" width="200" height="56" rx="8" fill="#f3f6f6" stroke="#9ab"/>
+  <text x="130" y="43" text-anchor="middle" font-weight="600">Prehliadač v LAN</text>
+  <text x="130" y="63" text-anchor="middle" fill="#456">http(s)://&lt;adresa&gt;/</text>
+  <rect x="690" y="20" width="200" height="56" rx="8" fill="#f3f6f6" stroke="#9ab"/>
+  <text x="790" y="43" text-anchor="middle" font-weight="600">Edge (internet alebo LAN)</text>
+  <text x="790" y="63" text-anchor="middle" fill="#456">registrátor · tunel · mesh · trh</text>
+  <!-- box -->
+  <rect x="30" y="110" width="860" height="430" rx="12" fill="none" stroke="#0e6e7d" stroke-width="2" stroke-dasharray="6 4"/>
+  <text x="46" y="134" fill="#0e6e7d" font-weight="700">BOX (LosOS, NixOS)</text>
+  <!-- nginx -->
+  <rect x="60" y="150" width="800" height="70" rx="8" fill="#e6f2f3" stroke="#0e6e7d"/>
+  <text x="460" y="174" text-anchor="middle" font-weight="600">nginx: jediné vstupné dvere (port 80/443)</text>
+  <text x="460" y="198" text-anchor="middle" fill="#345">/  administračné stránky (len LAN) · /api → lososd · /nextcloud  LosOS cloud · /forgejo/  LosOS Git · /handbook/ (len LAN)</text>
+  <!-- three columns -->
+  <rect x="60" y="250" width="250" height="150" rx="8" fill="#fff" stroke="#0e6e7d"/>
+  <text x="185" y="274" text-anchor="middle" font-weight="600">lososd (Rust, root)</text>
+  <text x="185" y="298" text-anchor="middle" fill="#345">stav boxu (state.json)</text>
+  <text x="185" y="318" text-anchor="middle" fill="#345">D-Bus org.losos1 · HTTP API :8082</text>
+  <text x="185" y="338" text-anchor="middle" fill="#345">prestavby (nixos-rebuild)</text>
+  <text x="185" y="358" text-anchor="middle" fill="#345">sprievodca, prihlásenie, vzhľad</text>
+  <text x="185" y="378" text-anchor="middle" fill="#345">losos-ctl = fasáda cez D-Bus</text>
+
+  <rect x="335" y="250" width="250" height="150" rx="8" fill="#fff" stroke="#0e6e7d"/>
+  <text x="460" y="274" text-anchor="middle" font-weight="600">k3s: vlastný cluster boxu</text>
+  <text x="460" y="298" text-anchor="middle" fill="#345">Nextcloud (pod, hostNetwork)</text>
+  <text x="460" y="318" text-anchor="middle" fill="#345">Forgejo (pod, hostNetwork)</text>
+  <text x="460" y="338" text-anchor="middle" fill="#345">obrazy zostavené so systémom</text>
+  <text x="460" y="358" text-anchor="middle" fill="#345">beží aj bez siete</text>
+  <text x="460" y="378" text-anchor="middle" fill="#345">dáta: /home/notshared (700)</text>
+
+  <rect x="610" y="250" width="250" height="150" rx="8" fill="url(#hatch)" stroke="#0e6e7d"/>
+  <text x="735" y="274" text-anchor="middle" font-weight="600">rke2 agent: mesh</text>
+  <text x="735" y="298" text-anchor="middle" fill="#345">server beží na edge</text>
+  <text x="735" y="318" text-anchor="middle" fill="#345">Longhorn: replikovaný pool</text>
+  <text x="735" y="338" text-anchor="middle" fill="#345">cudzie úlohy len v okne a pri nečinnosti</text>
+  <text x="735" y="358" text-anchor="middle" fill="#345">dáta: /home/shared (700, fscrypt)</text>
+  <text x="735" y="378" text-anchor="middle" fill="#345">iný cluster než k3s, zámerne</text>
+  <!-- storage -->
+  <rect x="60" y="430" width="800" height="90" rx="8" fill="#f7f9f9" stroke="#0e6e7d"/>
+  <text x="460" y="454" text-anchor="middle" font-weight="600">/  = tmpfs, postavený nanovo pri každom štarte z popisu systému</text>
+  <text x="460" y="478" text-anchor="middle" fill="#345">/persist = LVM → LUKS (kľúč v TPM 2.0, alebo keyfile v initrd) → ext4 s fscrypt</text>
+  <text x="460" y="500" text-anchor="middle" fill="#345">prežije len zoznam: /nix /var /etc/nixos /etc/keys /etc/ssh /etc/rancher /home/notshared /home/shared machine-id</text>
+  <!-- arrows -->
+  <line x1="130" y1="76" x2="130" y2="150" stroke="#355" stroke-width="2" marker-end="url(#a)"/>
+  <line x1="790" y1="150" x2="790" y2="76" stroke="#355" stroke-width="2" marker-end="url(#a)"/>
+  <text x="810" y="118" fill="#345" font-size="12">tunel (Noise), len smerom von</text>
+  <line x1="735" y1="250" x2="790" y2="150" stroke="#355" stroke-width="1.5" stroke-dasharray="4 3"/>
+  <line x1="185" y1="220" x2="185" y2="250" stroke="#355" stroke-width="2" marker-end="url(#a)"/>
+  <line x1="460" y1="220" x2="460" y2="250" stroke="#355" stroke-width="2" marker-end="url(#a)"/>
+  <line x1="185" y1="400" x2="185" y2="430" stroke="#355" stroke-width="2" marker-end="url(#a)"/>
+  <line x1="460" y1="400" x2="460" y2="430" stroke="#355" stroke-width="2" marker-end="url(#a)"/>
+  <line x1="735" y1="400" x2="735" y2="430" stroke="#355" stroke-width="2" marker-end="url(#a)"/>
+</svg>

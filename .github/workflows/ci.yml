@@ -296,7 +296,7 @@ jobs:
           include-hidden-files: true
 
   registrar-and-ui:
-    name: "rust: losos-registrar + admin UI"
+    name: "rust: losos-registrar + admin UI + handbook"
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -310,16 +310,19 @@ jobs:
       # losos-admin-ui is a buildNpmPackage: `npm ci` from the committed
       # package-lock.json, then `tsc --noEmit && vite build`. So this step is
       # also the typecheck gate for admin-ui/app, and the one place in CI that
-      # proves the npm dependency fetch still resolves.
-      - run: nix build .#losos-registrar .#losos-admin-ui -L
+      # proves the npm dependency fetch still resolves. losos-handbook is the
+      # same shape: `npm ci` then `docusaurus build` of handbook/, rooted at
+      # /handbook/ for the box (the public site is handbook.yml's build of the
+      # same source), and it fails on a broken link.
+      - run: nix build .#losos-registrar .#losos-admin-ui .#losos-handbook -L
       # The Playwright suite (admin-ui/app/tests/*.browser.mjs) against the
       # production bundle, in headless chromium from nixpkgs. No /dev/kvm
       # needed, unlike the VM tests. Reuses the npm deps built just above.
       - run: nix build .#checks.x86_64-linux.losos-admin-ui -L
-      # Export the built SPA for the iso job, exactly as the losos-ctl job
-      # exports its crate and for the same reason. flake.nix puts
-      # losos-admin-ui in isoImage.storeContents, so without this the ISO job
-      # would run `npm ci` + vite itself.
+      # Export the built SPA and the handbook for the iso job, exactly as the
+      # losos-ctl job exports its crate and for the same reason. flake.nix
+      # puts both in isoImage.storeContents, so without this the ISO job
+      # would run `npm ci` + vite and docusaurus itself.
       #
       # Cheap to carry: a dist/ tree with no store references, ~1 MiB against
       # losos-ctl's 12 MiB.
@@ -336,10 +339,10 @@ jobs:
           path: registrar-cache
           retention-days: 1
           include-hidden-files: true
-      - name: export the admin UI for the iso job
+      - name: export the admin UI and the handbook for the iso job
         run: |
-          nix copy --to "file://$PWD/ui-cache" --no-check-sigs .#losos-admin-ui
-          nix path-info .#losos-admin-ui > ui-cache/store-paths
+          nix copy --to "file://$PWD/ui-cache" --no-check-sigs .#losos-admin-ui .#losos-handbook
+          nix path-info .#losos-admin-ui .#losos-handbook > ui-cache/store-paths
       - uses: actions/upload-artifact@v7
         with:
           name: losos-admin-ui-store
@@ -433,7 +436,7 @@ jobs:
           xargs -r nix copy --from "file://$PWD/images-cache" --no-check-sigs < images-cache/store-paths
       - uses: ./.github/actions/proxy-push
         with:
-          installables: ".#losos-ctl .#losos-registrar .#losos-admin-ui .#losos-image-pause .#losos-image-forgejo"
+          installables: ".#losos-ctl .#losos-registrar .#losos-admin-ui .#losos-handbook .#losos-image-pause .#losos-image-forgejo"
           signing-key: ${{ secrets.NIX_CACHE_SIGNING_KEY }}
 
   # ── The Nextcloud image ────────────────────────────────────────────────────
