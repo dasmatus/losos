@@ -1,6 +1,6 @@
 ---
 title: Stuck at a passphrase prompt
-sidebar_position: 5
+sidebar_position: 6
 ---
 
 # Stuck at a passphrase prompt

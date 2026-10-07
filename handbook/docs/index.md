@@ -36,6 +36,9 @@ box on their desk, not for the people who build it (they have the
 - Something is wrong and all you have is the local network:
   [When something goes wrong](./troubleshooting/index.md) is organised by what you see,
   and every page starts with the steps that need nothing but the LAN.
+- The provider's line is down and the box is not:
+  [The internet is down, the box is not](./troubleshooting/internet-is-down.md)
+  says what keeps working, what waits, and that nothing needs redoing after.
 
 ## How to read the addresses
 

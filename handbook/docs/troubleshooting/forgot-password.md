@@ -1,6 +1,6 @@
 ---
 title: Forgot the password
-sidebar_position: 4
+sidebar_position: 5
 ---
 
 # Forgot the password

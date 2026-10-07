@@ -1,6 +1,6 @@
 ---
 title: Sharing is refused
-sidebar_position: 11
+sidebar_position: 12
 ---
 
 # Sharing is refused
