@@ -1,6 +1,6 @@
 ---
 title: An app tile gives 404, or "untrusted domain"
-sidebar_position: 7
+sidebar_position: 8
 ---
 
 # An app tile gives 404, or "untrusted domain"
