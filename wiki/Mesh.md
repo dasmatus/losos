@@ -75,8 +75,13 @@ cannot do for this box (buying on the market, selling this box's spare
 storage and compute). A company's own edge wears the warning, and that is
 not a fault. See [Master proxy — Official edges](Master-Proxy#official-edges).
 
-`demo/edge-lan/run.sh` boots an edge and a box on one virtual network and
-walks through exactly this: found, allowed, edge gone, refused.
+`demo/edge-lan/run.sh` boots two boxes and an edge on one virtual network
+and walks through exactly this in the verification checklist's order
+(`demo/edge-lan/CHECKLIST.md`): first with no edge anywhere (nothing found,
+sharing refused, local use intact, a reboot changes nothing), then with the
+edge on (found on both boxes within a scan, allowed, edge gone, refused,
+back). `demo/edge-lan/record.sh` records the same walk from the boxes' admin
+UI.
 
 ## Sharing storage
 
