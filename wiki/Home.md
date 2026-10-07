@@ -8,6 +8,11 @@ The root filesystem is a tmpfs that is rebuilt on every boot. Only directories
 listed in `modules/impermanence.nix` survive, on an encrypted `/persist`
 partition.
 
+The owner's manual is the **[handbook](https://losos.dasmat.us)**
+(`handbook/` in the repository), which every box also serves at
+`http://<address>/handbook/` so it can be read from the LAN alone. The pages
+below are for people who build and run the project.
+
 ## Pages
 
 - [Install](Install) — installer ISO, Secure Boot, TPM, demo image, growing the disk

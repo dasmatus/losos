@@ -1,0 +1,9 @@
+{
+  "label": "Reference",
+  "position": 5,
+  "link": {
+    "type": "generated-index",
+    "title": "Reference",
+    "description": "Tables to look things up in: addresses, what persists, settings, the security model, the words."
+  }
+}

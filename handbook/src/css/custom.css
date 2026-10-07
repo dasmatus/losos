@@ -1,0 +1,45 @@
+/* The box's own palette (admin-ui/app/src/styles/tokens.css), mapped onto
+ * Infima's variables so the handbook reads as the same product as the admin
+ * pages it is linked from. Light and dark follow the reader's choice, and the
+ * navbar toggle, like the admin page's. */
+:root {
+  --ifm-color-primary: #0e6e7d;
+  --ifm-color-primary-dark: #0c6371;
+  --ifm-color-primary-darker: #0b5d6a;
+  --ifm-color-primary-darkest: #094d58;
+  --ifm-color-primary-light: #107989;
+  --ifm-color-primary-lighter: #117f90;
+  --ifm-color-primary-lightest: #158fa2;
+  --ifm-background-color: #f3f5f7;
+  --ifm-font-color-base: #18212a;
+  --ifm-code-font-size: 92%;
+  --ifm-font-family-base: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --docusaurus-highlighted-code-line-bg: rgba(14, 110, 125, 0.12);
+}
+
+[data-theme='dark'] {
+  --ifm-color-primary: #48b3c0;
+  --ifm-color-primary-dark: #37a9b7;
+  --ifm-color-primary-darker: #34a0ad;
+  --ifm-color-primary-darkest: #2b838f;
+  --ifm-color-primary-light: #5bbcc7;
+  --ifm-color-primary-lighter: #66c0cb;
+  --ifm-color-primary-lightest: #86cdd6;
+  --ifm-background-color: #0a0e12;
+  --ifm-font-color-base: #e2e8ee;
+  --docusaurus-highlighted-code-line-bg: rgba(72, 179, 192, 0.2);
+}
+
+/* The salmon is pixel art: let it stay crisp at navbar size. */
+.navbar__logo img {
+  image-rendering: pixelated;
+}
+
+/* Symptom pages open with a "what you see" line; make it stand out. */
+.losos-symptom {
+  border-left: 4px solid var(--ifm-color-primary);
+  padding: 0.5rem 1rem;
+  margin: 0 0 1.5rem;
+  background: var(--ifm-color-emphasis-100);
+  border-radius: 0 var(--ifm-global-radius) var(--ifm-global-radius) 0;
+}

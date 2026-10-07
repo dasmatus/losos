@@ -1,0 +1,26 @@
+{
+  "title": {
+    "message": "Príručka LosOS",
+    "description": "The title in the navbar"
+  },
+  "logo.alt": {
+    "message": "LosOS",
+    "description": "The alt text of navbar logo"
+  },
+  "item.label.Handbook": {
+    "message": "Príručka",
+    "description": "Navbar item with label Handbook"
+  },
+  "item.label.Types": {
+    "message": "Typy",
+    "description": "Navbar item with label Types"
+  },
+  "item.label.When something goes wrong": {
+    "message": "Keď niečo nefunguje",
+    "description": "Navbar item with label When something goes wrong"
+  },
+  "item.label.GitHub": {
+    "message": "GitHub",
+    "description": "Navbar item with label GitHub"
+  }
+}

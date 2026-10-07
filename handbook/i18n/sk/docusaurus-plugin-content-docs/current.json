@@ -1,0 +1,54 @@
+{
+  "version.label": {
+    "message": "Aktuálna",
+    "description": "The label for version current"
+  },
+  "sidebar.handbook.category.Getting started": {
+    "message": "Začíname",
+    "description": "The label for category 'Getting started' in sidebar 'handbook'"
+  },
+  "sidebar.handbook.category.Getting started.link.generated-index.title": {
+    "message": "Začíname",
+    "description": "The generated-index page title for category 'Getting started' in sidebar 'handbook'"
+  },
+  "sidebar.handbook.category.Getting started.link.generated-index.description": {
+    "message": "Od USB kľúča k zariadeniu, ktoré odpovedá vo vašom prehliadači.",
+    "description": "The generated-index page description for category 'Getting started' in sidebar 'handbook'"
+  },
+  "sidebar.handbook.category.Types of setup": {
+    "message": "Typy nasadenia",
+    "description": "The label for category 'Types of setup' in sidebar 'handbook'"
+  },
+  "sidebar.handbook.category.Owner's manual": {
+    "message": "Príručka vlastníka",
+    "description": "The label for category 'Owner's manual' in sidebar 'handbook'"
+  },
+  "sidebar.handbook.category.Owner's manual.link.generated-index.title": {
+    "message": "Príručka vlastníka",
+    "description": "The generated-index page title for category 'Owner's manual' in sidebar 'handbook'"
+  },
+  "sidebar.handbook.category.Owner's manual.link.generated-index.description": {
+    "message": "Každodenná práca: správcovské stránky, aplikácie, nastavenia, aktualizácie a disk.",
+    "description": "The generated-index page description for category 'Owner's manual' in sidebar 'handbook'"
+  },
+  "sidebar.handbook.category.When something goes wrong": {
+    "message": "Keď niečo nefunguje",
+    "description": "The label for category 'When something goes wrong' in sidebar 'handbook'"
+  },
+  "sidebar.handbook.category.Reference": {
+    "message": "Referencia",
+    "description": "The label for category 'Reference' in sidebar 'handbook'"
+  },
+  "sidebar.handbook.category.Reference.link.generated-index.title": {
+    "message": "Referencia",
+    "description": "The generated-index page title for category 'Reference' in sidebar 'handbook'"
+  },
+  "sidebar.handbook.category.Reference.link.generated-index.description": {
+    "message": "Tabuľky na vyhľadanie: adresy, čo prežije reštart, nastavenia, bezpečnostný model, pojmy.",
+    "description": "The generated-index page description for category 'Reference' in sidebar 'handbook'"
+  },
+  "sidebar.handbook.category.The project": {
+    "message": "Projekt",
+    "description": "The label for category 'The project' in sidebar 'handbook'"
+  }
+}

@@ -59,6 +59,12 @@ let
   adminUi = config.losos.admin.ui;
   adminApiPort = config.losos.admin.apiPort;
   adminEnabled = config.losos.admin.enable && adminUi != null;
+  # The owner's handbook (handbook/, built as losos-handbook with its base at
+  # /handbook/). Served under the admin guard: it is part of the admin
+  # surface, not a public page, and a box reached through the tunnel must not
+  # hand out its manual any more than its settings.
+  handbook = config.losos.admin.handbook;
+  handbookEnabled = adminEnabled && handbook != null;
 
   # Access guard for the admin surface (the SPA, its assets, the setup routes,
   # the lososd API): local network only. Master-proxy traffic must never reach
@@ -193,13 +199,37 @@ let
     "base-uri 'none'"
   ];
 
+  # The handbook's policy. Docusaurus boots its colour mode from an inline
+  # script in <head> and the pages carry inline style attributes, neither of
+  # which the admin SPA's policy allows; the site is static text this
+  # repository builds, with nothing an owner typed in it, so 'unsafe-inline'
+  # is a grant to our own build and nothing else. Everything else stays as
+  # tight as the admin policy: no remote origins at all (the handbook has to
+  # work with no internet, so it never asks for any), no framing, no forms.
+  # Why a separate arm rather than loosening adminCsp: the admin page keeps
+  # the token in sessionStorage, and 'unsafe-inline' there would turn any
+  # injected markup into a token read.
+  handbookCsp = lib.concatStringsSep "; " [
+    "default-src 'none'"
+    "script-src 'self' 'unsafe-inline'"
+    "style-src 'self' 'unsafe-inline'"
+    "img-src 'self' data:"
+    "font-src 'self'"
+    "connect-src 'self'"
+    "frame-ancestors 'none'"
+    "base-uri 'none'"
+    "form-action 'none'"
+  ];
+
   # One map per header: value on the admin surface, empty (header omitted) on
-  # the two proxied service routes.
-  adminHeaderMap = variable: value: ''
+  # the two proxied service routes, and the handbook's own value (or the
+  # admin value, for the headers it shares) under /handbook/.
+  adminHeaderMap = variable: value: handbookValue: ''
     map $uri ${variable} {
         default        "${value}";
         ~^/nextcloud   "";
         ~^/forgejo     "";
+        ~^/handbook/   "${handbookValue}";
     }
   '';
 
@@ -208,6 +238,7 @@ let
       name = "Content-Security-Policy";
       variable = "$losos_csp";
       value = adminCsp;
+      handbookValue = handbookCsp;
     }
     {
       name = "X-Frame-Options";
@@ -226,7 +257,9 @@ let
     }
   ];
 
-  adminHeaderMaps = lib.concatMapStrings (h: adminHeaderMap h.variable h.value) adminHeaders;
+  adminHeaderMaps = lib.concatMapStrings (
+    h: adminHeaderMap h.variable h.value (h.handbookValue or h.value)
+  ) adminHeaders;
 
   # `always` so the headers ride on the 403s the lanOnly guard emits too.
   adminHeaderDirectives = lib.concatMapStrings (
@@ -328,6 +361,27 @@ in
           "/setup/" = {
             tryFiles = "$uri =404";
             extraConfig = lanOnly;
+          };
+        })
+        (lib.mkIf handbookEnabled {
+          # The owner's handbook, a second static tree beside the SPA's. It is
+          # built with every link rooted at /handbook/, so `alias` (not
+          # `root`) maps the prefix onto the store path. Docusaurus emits one
+          # directory per page with its own index.html, so `$uri/` with the
+          # index directive answers every page address; a path that is none
+          # of those gets the site's own 404 page rather than the SPA's
+          # index.html, which is what the `/` location's fallback would hand
+          # out and which would render "nothing here" under the wrong app.
+          # LAN-only like the rest of the admin surface; the header map
+          # above gives this prefix its own CSP.
+          "/handbook/" = {
+            alias = "${handbook}/";
+            index = "index.html";
+            tryFiles = "$uri $uri/ =404";
+            extraConfig = ''
+              ${lanOnly}
+              error_page 404 /handbook/404.html;
+            '';
           };
           "/api/" = {
             proxyPass = "http://127.0.0.1:${toString adminApiPort}";
