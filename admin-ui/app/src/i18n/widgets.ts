@@ -392,9 +392,9 @@ export default defineMessages({
     de: "Speicher geteilt",
   },
   "widgets.builtin.mesh.notReported": {
-    en: "How much work each side has actually done is not reported yet.",
-    sk: "Koľko práce každá strana naozaj vykonala, sa zatiaľ neoznamuje.",
-    de: "Wie viel Arbeit jede Seite tatsächlich geleistet hat, wird noch nicht gemeldet.",
+    en: "How much work each side has done is not reported yet.",
+    sk: "Koľko práce každá strana vykonala, sa zatiaľ neoznamuje.",
+    de: "Wie viel Arbeit jede Seite geleistet hat, wird noch nicht gemeldet.",
   },
 
   // ── builtin.ts: apps ───────────────────────────────────────────────────
@@ -517,9 +517,9 @@ export default defineMessages({
     de: "Wähle eins davon: {kinds}.",
   },
   "widgets.spec.pickMetric": {
-    en: "Pick a reading this box actually publishes.",
-    sk: "Vyberte údaj, ktorý toto zariadenie naozaj zverejňuje.",
-    de: "Wähle einen Messwert, den diese Box wirklich bereitstellt.",
+    en: "Pick a reading this box publishes.",
+    sk: "Vyberte údaj, ktorý toto zariadenie zverejňuje.",
+    de: "Wähle einen Messwert, den diese Box bereitstellt.",
   },
   "widgets.spec.badFormat": {
     en: "That is not a way of formatting a number.",
@@ -924,9 +924,9 @@ export default defineMessages({
     de: "Was gerade im Formular steht",
   },
   "widgets.editor.help.intro": {
-    en: "A widget here is not a program. It is a reading, a shape, and a few short expressions. That is a deliberate limit: this page is served with a rule that forbids the browser from running code it was handed at the last moment, and a box you cannot log in to is not the place to discover that the rule applies.",
-    sk: "Widget tu nie je program. Je to údaj, tvar a niekoľko krátkych výrazov. Je to zámerné obmedzenie: táto stránka sa poskytuje s pravidlom, ktoré prehliadaču zakazuje spúšťať kód odovzdaný na poslednú chvíľu, a zariadenie, do ktorého sa nedá prihlásiť, nie je miesto, kde by ste mali zistiť, že to pravidlo platí.",
-    de: "Ein Widget ist hier kein Programm. Es ist ein Messwert, eine Form und ein paar kurze Ausdrücke. Das ist eine bewusste Grenze: Diese Seite wird mit einer Regel ausgeliefert, die dem Browser verbietet, Code auszuführen, den er im letzten Moment bekommen hat, und eine Box, auf der du dich nicht anmelden kannst, ist nicht der Ort, um herauszufinden, dass die Regel gilt.",
+    en: "A widget here is not a program. It is a reading, a shape, and a few short expressions. That limit is deliberate. This page is served with a rule that forbids the browser from running code it was handed at the last moment, and a box you cannot log in to is not the place to discover that the rule applies.",
+    sk: "Widget tu nie je program. Je to údaj, tvar a niekoľko krátkych výrazov. To obmedzenie je zámerné. Táto stránka sa poskytuje s pravidlom, ktoré prehliadaču zakazuje spúšťať kód odovzdaný na poslednú chvíľu, a zariadenie, do ktorého sa nedá prihlásiť, nie je miesto, kde by ste mali zistiť, že to pravidlo platí.",
+    de: "Ein Widget ist hier kein Programm. Es ist ein Messwert, eine Form und ein paar kurze Ausdrücke. Diese Grenze ist Absicht. Diese Seite wird mit einer Regel ausgeliefert, die dem Browser verbietet, Code auszuführen, den er im letzten Moment bekommen hat, und eine Box, auf der du dich nicht anmelden kannst, ist nicht der Ort, um herauszufinden, dass die Regel gilt.",
   },
   "widgets.editor.help.operators": {
     en: "Between them you can use {arith}, comparisons, {and} and {or}, {cond}, and {coalesce} for a fallback when a figure has not been measured. Dividing by nothing gives nothing rather than an error.",

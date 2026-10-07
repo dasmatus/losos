@@ -35,7 +35,7 @@ export default defineMessages({
   },
   "settings.panes.market.label": { en: "Market", sk: "Trh", de: "Markt" },
   "settings.panes.market.summary": {
-    en: "Share this box’s disk with the mesh, get paid for the storage and compute you share, or buy some from other boxes.",
+    en: "Share this box's disk with the mesh, get paid for the storage and compute you share, or buy some from other boxes.",
     sk: "Zdieľajte disk tohto zariadenia so sieťou mesh, nechajte si zaplatiť za úložisko a výpočtový výkon, ktoré zdieľate, alebo si kúpte od iných zariadení.",
     de: "Teile die Festplatte dieser Box mit dem Mesh, lass dir den Speicher und die Rechenleistung bezahlen, die du teilst, oder kauf welche von anderen Boxen.",
   },
@@ -123,7 +123,7 @@ export default defineMessages({
    * language: it is a tag, not a sentence, and it reads as one. */
   "settings.sidebar.soon": { en: "soon(TM)", sk: "soon(TM)", de: "soon(TM)" },
   "settings.sidebar.noMatch": {
-    en: "Nothing here matches “{query}”.",
+    en: "Nothing here matches \"{query}\".",
     sk: "Hľadaniu „{query}“ tu nič nezodpovedá.",
     de: "Hier passt nichts zu „{query}“.",
   },
@@ -297,9 +297,9 @@ export default defineMessages({
     de: "Die Stunden sind nicht festgelegt.",
   },
   "settings.window.nothing": {
-    en: "Nothing is shared: the window starts and ends at the same minute.",
-    sk: "Nič sa nezdieľa: okno sa začína aj končí v tú istú minútu.",
-    de: "Nichts wird geteilt: Das Zeitfenster beginnt und endet in derselben Minute.",
+    en: "Nothing is shared. The window starts and ends at the same minute.",
+    sk: "Nič sa nezdieľa. Okno sa začína aj končí v tú istú minútu.",
+    de: "Nichts wird geteilt. Das Zeitfenster beginnt und endet in derselben Minute.",
   },
   "settings.window.shared": {
     en: "Shared from {start} until {end}. That is {length} a day, your local time.",
