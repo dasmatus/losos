@@ -49,7 +49,10 @@ on:
 # Tags publish release media. The installer ISO (~1.5 GB) is attached to the
 # GitHub release itself. The demo QCOW2 is too large for a GitHub release
 # asset, so it and a copy of the ISO go to GHCR as OCI artifacts
-# (ghcr.io/<owner>/<repo>-{installer-iso,demo-qcow2}:<tag>).
+# (ghcr.io/<owner>/<repo>-{installer-iso,demo-qcow2}:<tag>). Every push to
+# main (and every tag) also publishes the static losos-registrar for the
+# operator's machine as ghcr.io/<owner>/<repo>/images:<channel>-x86_64,
+# which the LosOS proxy serves as plain files; see publish-tool.
 #
 # Jobs carry explicit `timeout-minutes`. GitHub's default is 360, which is long
 # enough for a wedged job to spend a day of a shared quota. The numbers below
@@ -315,6 +318,23 @@ jobs:
       # /handbook/ for the box (the public site is handbook.yml's build of the
       # same source), and it fails on a broken link.
       - run: nix build .#losos-registrar .#losos-admin-ui .#losos-handbook -L
+      # The same crate linked statically against musl, for the operator's own
+      # machine (the key ceremony, provisioning/edge-identity/README.md): the
+      # glibc build above only runs where /nix/store exists. It is built here,
+      # where the registrar's cargo vendor tarball is already realised, and
+      # handed to the publish-tool job as a plain file: that job pushes it to
+      # GHCR, and it needs packages: write, which this job - it runs on
+      # fork pull requests - must not have.
+      - run: nix build .#losos-registrar-static -o result-static -L
+      - name: export the static losos-registrar for the publish-tool job
+        run: |
+          mkdir dev-machine
+          cp -L result-static/bin/losos-registrar dev-machine/losos-registrar
+      - uses: actions/upload-artifact@v7
+        with:
+          name: losos-registrar-dev-machine
+          path: dev-machine
+          retention-days: 1
       # The Playwright suite (admin-ui/app/tests/*.browser.mjs) against the
       # production bundle, in headless chromium from nixpkgs. No /dev/kvm
       # needed, unlike the VM tests. Reuses the npm deps built just above.
@@ -438,6 +458,84 @@ jobs:
         with:
           installables: ".#losos-ctl .#losos-registrar .#losos-admin-ui .#losos-handbook .#losos-image-pause .#losos-image-forgejo"
           signing-key: ${{ secrets.NIX_CACHE_SIGNING_KEY }}
+
+  # ── The dev-machine tool ───────────────────────────────────────────────────
+  #
+  # The static losos-registrar goes to GHCR as the OCI artifact
+  # `ghcr.io/<owner>/<repo>/images:<channel>-x86_64`, one layer per file
+  # (`losos-registrar`, `SHA256SUMS`), which is the shape the LosOS proxy's
+  # `/updates/<channel>/<arch>/<file>` route serves: it picks the layer whose
+  # `org.opencontainers.image.title` is the file name (oras sets that per
+  # file) and redirects to GHCR's blob storage, SHA256SUMS inline. So an
+  # operator fetches the binary with one curl, see
+  # provisioning/edge-identity/README.md. The channel is `main` for pushes to
+  # main, the tag for a release tag (which also moves `stable`), and the
+  # branch name - lowercased, anything the proxy's channel grammar refuses
+  # replaced by `-` - for a manual run on any other branch. Never on a pull
+  # request: a pull request from a fork has no package write, and one from a
+  # branch here must not move a tag an operator downloads from.
+  publish-tool:
+    name: "release: losos-registrar for the dev machine -> GHCR"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: github.event_name != 'pull_request'
+    needs: [registrar-and-ui]
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: losos-registrar-dev-machine
+          path: dev-machine
+      - uses: oras-project/setup-oras@005458ad77f1c8facd38a094e4af2e69e5607ff4 # v2.0.2
+      - name: push the binary to GHCR as the proxy's images artifact
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ACTOR: ${{ github.actor }}
+          REPO: ${{ github.repository }}
+          REF: ${{ github.ref }}
+          REF_NAME: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
+          PROXY_URL: ${{ vars.LOSOS_PROXY_URL }}
+        run: |
+          set -euo pipefail
+          case "$REF" in
+            refs/heads/main) channel=main ;;
+            refs/tags/*) channel="$REF_NAME" ;;
+            *) channel=$(printf '%s' "$REF_NAME" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9.-' '-' | cut -c1-32) ;;
+          esac
+          # The proxy accepts `[a-z0-9][a-z0-9.-]{0,31}` as a channel; a tag
+          # outside it would be pushed and never served.
+          if ! printf '%s' "$channel" | grep -Eq '^[a-z0-9][a-z0-9.-]{0,31}$'; then
+            echo "::error::'$channel' is not a channel the proxy serves"
+            exit 1
+          fi
+          cd dev-machine
+          chmod 0755 losos-registrar
+          sha256sum losos-registrar > SHA256SUMS
+          cat SHA256SUMS
+          repository="ghcr.io/${REPO,,}/images"
+          trap 'oras logout ghcr.io || true' EXIT
+          printf '%s' "$GH_TOKEN" | oras login ghcr.io --username "$ACTOR" --password-stdin
+          oras push "${repository}:${channel}-x86_64" \
+            --artifact-type application/vnd.losos.tool.v1 \
+            --annotation "org.opencontainers.image.source=https://github.com/${REPO}" \
+            --annotation "org.opencontainers.image.revision=${SHA}" \
+            --annotation "org.opencontainers.image.version=${channel}" \
+            losos-registrar:application/octet-stream SHA256SUMS:text/plain
+          case "$REF" in
+            refs/tags/*) oras tag "${repository}:${channel}-x86_64" stable-x86_64 ;;
+          esac
+          {
+            echo "## losos-registrar for the dev machine"
+            echo
+            echo "- \`${repository}:${channel}-x86_64\`"
+            if [ -n "$PROXY_URL" ]; then
+              echo "- ${PROXY_URL}/updates/${channel}/x86_64/losos-registrar"
+            fi
+            echo "- $(cat SHA256SUMS)"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   # ── The Nextcloud image ────────────────────────────────────────────────────
   #

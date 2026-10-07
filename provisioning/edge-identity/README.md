@@ -54,13 +54,31 @@ secret in this flow and none is stored anywhere.
 Who is allowed is the `operators` list in the same file. Adding or removing
 a person is a pull request, reviewed like the key itself.
 
+## Getting the tool
+
+CI publishes `losos-registrar` for the dev machine, linked statically so it
+runs on any x86_64 Linux with nothing installed, to GHCR, and the LosOS
+proxy serves it. One line fetches it, checks it against the sums CI wrote
+beside it, and makes it executable:
+
+```sh
+curl -fsSLO "https://proxy.losos.dasmat.us/updates/main/x86_64/{losos-registrar,SHA256SUMS}" && sha256sum -c --ignore-missing SHA256SUMS && chmod +x losos-registrar
+```
+
+`main` is the newest build of the main branch; a release tag is published
+under its own name (`/updates/v1.0/x86_64/…`) and as `stable`. The files
+come from the OCI artifact `ghcr.io/dasmatus/losos/images:<channel>-x86_64`,
+which `oras pull` fetches too; the proxy only redirects to GHCR's storage
+(`SHA256SUMS` it serves itself). Or build it yourself: `nix build
+.#losos-registrar-static` (the same binary), `nix build .#losos-registrar`
+(for a machine with Nix), or `cargo build` in `backend-registrar/`.
+
 ## Operator steps
 
-You need: the `losos-registrar` binary on your machine (`nix build
-.#losos-registrar`, or `cargo build` in `backend-registrar/`), `ssh`, a VPS
-running the edge module (`nixosModules.edge`, see the wiki) that you can SSH
-into as root or as a user with passwordless `sudo`, and a browser signed in
-to a GitHub account on the allowlist.
+You need: `losos-registrar` on your machine (above), `ssh`, a VPS running
+the edge module (`nixosModules.edge`, see the wiki) that you can SSH into
+as root or as a user with passwordless `sudo`, and a browser signed in to a
+GitHub account on the allowlist.
 
 1. **Check the sign-in.** `losos-registrar provision whoami` prints the code,
    waits for you to enter it, and ends with your login and id and the
@@ -135,6 +153,10 @@ official yet, 3 refused.
 ## What stays manual
 
 - Creating the OAuth App and committing its client id (once).
+- Making the `losos/images` GHCR package public, once CI has created it
+  with its first push to main: GitHub creates a package private, and the
+  proxy answers `502 token: 403` for a private one. Same as `losos/nix-cache`
+  before it, see the wiki's CI page.
 - The SSH access to the VPS: a key `ssh` finds (agent or `--ssh-key`), the
   host in `known_hosts` (or `--known-hosts`), root or passwordless `sudo`.
 - The two lines in the VPS's configuration and its rebuild (step 5): the
