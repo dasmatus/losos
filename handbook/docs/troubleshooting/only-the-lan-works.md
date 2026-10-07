@@ -1,6 +1,7 @@
 ---
 title: Only the local network works
 sidebar_position: 1
+slug: /troubleshooting/only-the-lan-works
 ---
 
 # Only the local network works

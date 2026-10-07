@@ -45,6 +45,8 @@ jobs:
           cache-dependency-path: handbook/package-lock.json
       - run: npm ci --no-audit --no-fund
       - run: npm run typecheck
+      # The admin UI's "What to do" links must all land on a page.
+      - run: npm run check:links
       - run: npm run build
       # The public site is rooted at / on losos.dasmat.us; the box's copy is
       # rooted at /handbook/ and is built by nix, not here.

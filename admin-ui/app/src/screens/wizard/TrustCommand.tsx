@@ -91,7 +91,7 @@ export function TrustCommand({
     if (await copyText(command, lineRef.current)) {
       toast.success(t("wizard.trust.quick.copiedTitle"), t("wizard.trust.quick.copiedBody"));
     } else {
-      toast.error(t("wizard.copyFailedTitle"), t("wizard.trust.quick.copyFailed"));
+      toast.error(t("wizard.copyFailedTitle"), t("wizard.trust.quick.copyFailed"), { help: "certificate-warning" });
     }
   };
 

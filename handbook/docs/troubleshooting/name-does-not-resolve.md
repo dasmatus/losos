@@ -1,6 +1,7 @@
 ---
 title: The name does not resolve
 sidebar_position: 3
+slug: /troubleshooting/name-does-not-resolve
 ---
 
 # The name does not resolve

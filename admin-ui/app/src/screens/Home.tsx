@@ -3,6 +3,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { DashboardSquare01Icon } from "@hugeicons/core-free-icons";
 import { AppGrid } from "@/components/AppGrid";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { HelpLink } from "@/components/ui/help-link";
 import { StatusDot, type DotState } from "@/components/ui/badge";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -172,6 +173,7 @@ function HomeHeader({
             <StatusDot state={healthDot(health)} />
             {t(healthWord(health))}
           </span>
+          {health === "down" && <HelpLink entry="cannot-reach-the-box" />}
 
           {uptimeSeconds !== null && uptimeSeconds >= 0 && (
             <>

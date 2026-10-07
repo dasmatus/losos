@@ -1,6 +1,7 @@
 ---
 title: Certificate warning
 sidebar_position: 4
+slug: /troubleshooting/certificate-warning
 ---
 
 # Certificate warning

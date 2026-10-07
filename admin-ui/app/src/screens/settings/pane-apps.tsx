@@ -7,6 +7,7 @@ import {
   Search01Icon,
 } from "@hugeicons/core-free-icons";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { HelpLink } from "@/components/ui/help-link";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia } from "@/components/ui/empty";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { NativeSelect } from "@/components/ui/native-select";
@@ -209,7 +210,12 @@ function CatalogueBody({ state }: { state: CatalogueState }) {
         <StackRow last>
           <Alert variant="crit">
             <HugeiconsIcon icon={Alert01Icon} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
-            <AlertDescription>{t("panes.apps.failed", { message: state.message })}</AlertDescription>
+            <AlertDescription>
+              <p>{t("panes.apps.failed", { message: state.message })}</p>
+              {/* The catalogue is fetched from the internet: the usual cause
+                  is a box with only the LAN. */}
+              <HelpLink entry="only-the-lan-works" />
+            </AlertDescription>
           </Alert>
         </StackRow>
       );
