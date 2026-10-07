@@ -376,6 +376,20 @@
   font-feature-settings: "tnum";
 }
 
+/* ── React Aria ───────────────────────────────────────────────────────── */
+
+/* React Aria's press handling can inject this one rule as a <style> element
+ * at runtime, which `style-src 'self'` would refuse. The Switch does not
+ * trigger it today; shipping the rule from the bundle means nothing changes
+ * if a later version or another pressable does: a tap is still not held back
+ * by the browser's double-tap-to-zoom wait. Same anonymous @layer as
+ * upstream, so any class still wins over it. */
+@layer {
+  [data-react-aria-pressable] {
+    touch-action: pan-x pan-y pinch-zoom;
+  }
+}
+
 /* ── Motion ───────────────────────────────────────────────────────────── */
 
 /* Every animation and transition in this app is opt-out in one place. A
