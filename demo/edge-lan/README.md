@@ -23,6 +23,20 @@ the whole thing takes a few minutes; without it, budget about an hour for
 the install and another for the first boot. Requirements, knobs and the
 state directory are listed at the top of `run.sh`.
 
+## Pooling storage with no internet
+
+This is the answer to "can storage be expanded on the local network with no
+edge proxy reachable": a box's **own** disk grows without any edge
+(`losos-ctl grow`, a bigger drive, Local mode are never gated), but
+**pooling** storage across boxes is the mesh, and the mesh's control plane
+(rke2 server, Longhorn, the registrar) runs on the edge machine, so there is
+nothing to pool into without one. For a site with no internet, the edge is
+one always-on PC on the LAN running `nixosModules.edge` with
+`losos.edge.lan.advertise = true`, exactly as `edge-vm.nix` does here: the
+boxes find it over mDNS and pooling works with the WAN cable unplugged. That
+is the decided shape (2026-10-07); a box acting as its own LAN's edge is not
+planned.
+
 ## What the pieces are
 
 | In the demo | On a company network |
