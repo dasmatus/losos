@@ -1,0 +1,8 @@
+{
+  "label": "Technická dokumentácia (KOP)",
+  "position": 10,
+  "link": {
+    "type": "doc",
+    "id": "project/kop/index"
+  }
+}

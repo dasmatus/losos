@@ -257,11 +257,11 @@ let
         INSTALL_LOCK = true;
       };
       actions = {
-        # Actions is remote code execution by design and this appliance
-        # registers no runner, so enabling it on an internet-reachable route
-        # buys nothing and exposes the runner-registration API. Flip to true
-        # together with an actual runner.
-        ENABLED = false;
+        # Actions is remote code execution by design, so this follows the
+        # runner (modules/git-runner.nix): on only while the box registers
+        # one, off otherwise. Enabled with nothing to run jobs, it would only
+        # expose the runner-registration API on an internet-reachable route.
+        ENABLED = config.losos.forgejo.runner.enable;
       };
     };
   };
