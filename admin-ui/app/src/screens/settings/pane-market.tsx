@@ -1,8 +1,28 @@
 import * as React from "react";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { ShoppingBag02Icon } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/ui/button";
-import { FieldError, Input, Select } from "@/components/ui/input";
+import { ButtonGroup } from "@/components/ui/button-group";
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+} from "@/components/ui/empty";
+import { FieldError, Input } from "@/components/ui/input";
+import { NativeSelect } from "@/components/ui/native-select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { Spinner } from "@/components/ui/progress";
 import { Switch } from "@/components/ui/switch";
+import { toast } from "@/components/ui/toast";
 import type { MarketKind, MarketOrder, MarketShelfListing } from "@/lib/api";
 import { t as translate, type MessageKey } from "@/lib/i18n";
 import { useT } from "@/lib/i18n-react";
@@ -15,6 +35,7 @@ import {
   toMinorUnits,
   useMarket,
   type MarketData,
+  ORDER_STATUS,
 } from "./market";
 import type { SettingsForm } from "./use-settings-form";
 
@@ -31,8 +52,11 @@ import type { SettingsForm } from "./use-settings-form";
  * not a separate product, so the sell side only offers what the owner is
  * already sharing (the edge enforces it; this pane greys out the rest and
  * says why). Payment happens on Stripe's own page in a new tab — nothing on
- * this page ever sees a card — so after a purchase the pane tells the owner
- * to come back and refresh rather than pretending to know the outcome.
+ * this page ever sees a card — so after a purchase a toast tells the owner
+ * to come back and refresh rather than pretending to know the outcome, and
+ * the refresh that finds the order paid raises the "payment received" one
+ * (market.ts). Every refusal is a toast too; only a field the owner can fix
+ * keeps its error under the field.
  */
 
 const KIND_LABEL: Record<MarketKind, MessageKey> = {
@@ -111,11 +135,6 @@ export function MarketPane({ form }: { form: SettingsForm }) {
   return (
     <>
       {sharing}
-      {market.actionError !== null && (
-        <p role="alert" className="mb-3 text-[13px] text-crit">
-          {market.actionError.length > 0 ? market.actionError : t("panes.market.actionFailed")}
-        </p>
-      )}
 
       <PaneSection>
         <GroupTitle>{t("panes.market.yours")}</GroupTitle>
@@ -141,9 +160,23 @@ export function MarketPane({ form }: { form: SettingsForm }) {
         </Group>
         {account.purchases.length > 0 && (
           <Group className="mt-3">
-            {account.purchases.map((order, i) => (
-              <PurchaseRow key={order.id} order={order} last={i === account.purchases.length - 1} />
-            ))}
+            {/* A shadcn Table: every order has the same four facts, and the
+                amount and the date want a column each so they line up. */}
+            <Table data-testid="market-purchases">
+              <TableHeader>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead>{t("panes.market.col.item")}</TableHead>
+                  <TableHead>{t("panes.market.col.quantity")}</TableHead>
+                  <TableHead>{t("panes.market.col.until")}</TableHead>
+                  <TableHead className="text-right">{t("panes.market.col.status")}</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {account.purchases.map((order) => (
+                  <PurchaseRow key={order.id} order={order} />
+                ))}
+              </TableBody>
+            </Table>
           </Group>
         )}
       </PaneSection>
@@ -152,12 +185,19 @@ export function MarketPane({ form }: { form: SettingsForm }) {
         <GroupTitle>{t("panes.market.buy")}</GroupTitle>
         <Group>
           {listings.length === 0 ? (
-            <Row last>
-              <RowText title={t("panes.market.shelfEmpty")} />
-              <Button size="sm" variant="secondary" disabled={disabled} onClick={market.refresh}>
-                {t("panes.market.refresh")}
-              </Button>
-            </Row>
+            <Empty className="border-0 p-5 md:p-8">
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <HugeiconsIcon icon={ShoppingBag02Icon} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+                </EmptyMedia>
+                <EmptyDescription>{t("panes.market.shelfEmpty")}</EmptyDescription>
+              </EmptyHeader>
+              <EmptyContent>
+                <Button size="sm" variant="secondary" disabled={disabled} onClick={market.refresh}>
+                  {t("panes.market.refresh")}
+                </Button>
+              </EmptyContent>
+            </Empty>
           ) : (
             listings.map((listing, i) => (
               <ShelfRow
@@ -210,27 +250,30 @@ function SharingSection({ form }: { form: SettingsForm }) {
   );
 }
 
-function PurchaseRow({ order, last }: { order: MarketOrder; last: boolean }) {
+function PurchaseRow({ order }: { order: MarketOrder }) {
   const t = useT();
   const status =
     order.status === "paid" && order.expired
       ? t("panes.market.status.lapsed")
       : t(`panes.market.status.${order.status}` as MessageKey);
-  const bits = [
-    `${order.quantity} ${unitName(order.unit)}`,
+  const until =
     order.status === "paid" && order.expires_at !== null && !order.expired
-      ? t("panes.market.until", { date: formatDay(order.expires_at) })
-      : null,
-    order.volume !== null ? t("panes.market.volume", { volume: order.volume }) : null,
-  ].filter((x): x is string => x !== null);
+      ? formatDay(order.expires_at)
+      : "–";
   return (
-    <Row last={last}>
-      <RowText
-        title={`${t(KIND_LABEL[order.kind])} · ${formatMoney(order.amount, order.currency)}`}
-        detail={bits.join(" · ")}
-      />
-      <span className="text-[13px] text-muted">{status}</span>
-    </Row>
+    <TableRow>
+      <TableCell>
+        <p>{`${t(KIND_LABEL[order.kind])} · ${formatMoney(order.amount, order.currency)}`}</p>
+        {order.volume !== null && (
+          <p className="numeric mt-0.5 text-[12px] text-faint">
+            {t("panes.market.volume", { volume: order.volume })}
+          </p>
+        )}
+      </TableCell>
+      <TableCell className="numeric">{`${order.quantity} ${unitName(order.unit)}`}</TableCell>
+      <TableCell className="numeric text-muted">{until}</TableCell>
+      <TableCell className="text-right text-muted">{status}</TableCell>
+    </TableRow>
   );
 }
 
@@ -251,12 +294,9 @@ function ShelfRow({
   const qtyErrorId = React.useId();
   const [quantity, setQuantity] = React.useState("1");
   const [quantityProblem, setQuantityProblem] = React.useState<string | null>(null);
-  const [problem, setProblem] = React.useState<string | null>(null);
-  const [opened, setOpened] = React.useState(false);
 
   const buy = async () => {
     const n = Number(quantity);
-    setProblem(null);
     if (!Number.isInteger(n) || n < 1 || n > listing.available) {
       setQuantityProblem(t("panes.market.quantityRange", { max: listing.available }));
       return;
@@ -264,7 +304,7 @@ function ShelfRow({
     setQuantityProblem(null);
     const checkoutTab = window.open("about:blank", "_blank");
     if (checkoutTab === null) {
-      setProblem(t("panes.market.popupBlocked"));
+      toast.error(t("panes.market.actionFailedTitle"), t("panes.market.popupBlocked"));
       return;
     }
     checkoutTab.opener = null;
@@ -272,10 +312,15 @@ function ShelfRow({
     if (reply !== null) {
       if (isStripePage(reply.checkout_url)) {
         checkoutTab.location.href = reply.checkout_url;
-        setOpened(true);
+        // Longer than a plain note: it is the one instruction the owner needs
+        // when they come back from the other tab.
+        toast.status(t("panes.market.orderPlaced"), t("panes.market.paying"), {
+          id: ORDER_STATUS,
+          duration: Infinity,
+        });
       } else {
         checkoutTab.close();
-        setProblem(t("panes.market.noCheckout"));
+        toast.error(t("panes.market.actionFailedTitle"), t("panes.market.noCheckout"));
       }
     } else {
       checkoutTab.close();
@@ -289,28 +334,28 @@ function ShelfRow({
           title={`${t(KIND_LABEL[listing.kind])} · ${formatMoney(listing.unit_price, listing.currency)} / ${unitName(listing.unit)}`}
           detail={t("panes.market.available", { count: listing.available })}
         />
-        <div className="flex items-center gap-2">
+        {/* A shadcn Button Group: the quantity and the Order button are one
+            control, so the number reads as the button's argument. */}
+        <ButtonGroup>
           <label htmlFor={qtyId} className="sr-only">
             {t("panes.market.quantity")}
           </label>
           <Input
             id={qtyId}
             inputMode="numeric"
-            className="w-20"
+            className="numeric w-20"
             value={quantity}
             disabled={disabled}
             aria-invalid={quantityProblem !== null}
             aria-describedby={quantityProblem === null ? undefined : qtyErrorId}
             onChange={(e) => setQuantity(e.target.value)}
           />
-          <Button size="sm" disabled={disabled} onClick={() => void buy()}>
+          <Button disabled={disabled} onClick={() => void buy()}>
             {t("panes.market.buyButton")}
           </Button>
-        </div>
+        </ButtonGroup>
       </div>
       <FieldError id={qtyErrorId}>{quantityProblem}</FieldError>
-      <FieldError>{problem}</FieldError>
-      {opened && <p className="text-[12.5px] text-muted">{t("panes.market.paying")}</p>}
     </StackRow>
   );
 }
@@ -333,7 +378,6 @@ function SellSection({ market, disabled }: { market: MarketData; disabled: boole
     field: "price" | "capacity";
     text: string;
   } | null>(null);
-  const [onboardProblem, setOnboardProblem] = React.useState<string | null>(null);
 
   if (account === null) return null;
 
@@ -345,14 +389,15 @@ function SellSection({ market, disabled }: { market: MarketData; disabled: boole
   const onboard = async () => {
     const onboardingTab = window.open("about:blank", "_blank");
     if (onboardingTab === null) {
-      setOnboardProblem(t("panes.market.popupBlocked"));
+      toast.error(t("panes.market.actionFailedTitle"), t("panes.market.popupBlocked"));
       return;
     }
-    setOnboardProblem(null);
     onboardingTab.opener = null;
     const reply = await market.onboard();
-    if (reply !== null && isStripePage(reply.url)) onboardingTab.location.href = reply.url;
-    else onboardingTab.close();
+    if (reply !== null && isStripePage(reply.url)) {
+      onboardingTab.location.href = reply.url;
+      toast.status(t("panes.market.payoutsOpened"), t("panes.market.payoutsOpenedBody"), { duration: 12000 });
+    } else onboardingTab.close();
   };
 
   const submit = async () => {
@@ -407,7 +452,7 @@ function SellSection({ market, disabled }: { market: MarketData; disabled: boole
                   <label htmlFor={kindId} className="sr-only">
                     {t("panes.market.kindLabel")}
                   </label>
-                  <Select
+                  <NativeSelect
                     id={kindId}
                     value={effectiveKind}
                     disabled={disabled}
@@ -419,7 +464,7 @@ function SellSection({ market, disabled }: { market: MarketData; disabled: boole
                     <option value="compute" disabled={!canCompute}>
                       {t("panes.market.kind.compute")}
                     </option>
-                  </Select>
+                  </NativeSelect>
                 </div>
                 <div>
                   <label htmlFor={priceId} className="sr-only">
@@ -485,7 +530,6 @@ function SellSection({ market, disabled }: { market: MarketData; disabled: boole
           </Row>
         ))}
       </Group>
-      <FieldError className="px-1.5 pt-2">{onboardProblem}</FieldError>
       <GroupCaption>{t("panes.market.sellCaption", { percent: feePercent })}</GroupCaption>
       {account.sales.length > 0 && (
         <Group className="mt-3">

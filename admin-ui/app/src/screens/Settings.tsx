@@ -15,12 +15,12 @@ import { SecurityPane } from "./settings/pane-security";
 import { StoragePane } from "./settings/pane-storage";
 import { DEFAULT_PANE, paneById, type SettingsPaneId } from "./settings/panes";
 import { PaneHeader } from "./settings/rows";
-import { Sidebar } from "./settings/sidebar";
 import { useSettingsForm, type SettingsForm } from "./settings/use-settings-form";
 import { useStorage, type Storage } from "./settings/use-storage";
 
-/* Settings, in the macOS System Settings idiom: a recessed sidebar of panes
- * on the left, one pane of grouped rows on the right.
+/* Settings: one pane of grouped rows. Which pane is the page's single
+ * sidebar's business (components/app-sidebar.tsx), which lists every pane
+ * among the page's other destinations; this screen shows the one chosen.
  *
  * ONE FORM, SEVEN PANES. /api/apply takes the whole of modules/overrides.nix,
  * not a patch, so every pane edits a slice of a single draft and Apply writes
@@ -29,36 +29,23 @@ import { useStorage, type Storage } from "./settings/use-storage";
  * draft, the validation and the rebuild watch all live in useSettingsForm;
  * the panes below are views onto it and nothing more.
  *
- * The pane selection is uncontrolled by default and controllable by props, so
- * this screen works dropped straight into a route and also works under
- * `/settings/:pane` if the shell would rather own the URL. It deliberately
- * does not reach for the router itself — a screen that requires a
- * <BrowserRouter> above it cannot be rendered anywhere else, including a
- * test.
+ * The pane comes in as a prop; the shell reads it from the address. This
+ * screen deliberately does not reach for the router itself: a screen that
+ * requires a <BrowserRouter> above it cannot be rendered anywhere else,
+ * including a test.
  */
 
 export interface SettingsProps {
-  /** Controlled selection. Omit to let this screen keep its own. */
+  /** The pane to show. The address decides it (lib/routes.ts). */
   pane?: SettingsPaneId;
-  /** Fires on every selection, controlled or not. Wire it to the URL. */
-  onPaneChange?: (pane: SettingsPaneId) => void;
 }
 
-export default function Settings({ pane, onPaneChange }: SettingsProps) {
+export default function Settings({ pane = DEFAULT_PANE }: SettingsProps) {
   const t = useT();
-  const [ownPane, setOwnPane] = React.useState<SettingsPaneId>(DEFAULT_PANE);
-  const current = pane ?? ownPane;
-
-  const select = React.useCallback(
-    (next: SettingsPaneId) => {
-      // The sidebar disables a planned pane's row, so this is the belt to
-      // that brace: whatever asks for one, nothing navigates there.
-      if (paneById(next).planned) return;
-      setOwnPane(next);
-      onPaneChange?.(next);
-    },
-    [onPaneChange],
-  );
+  // A planned pane is never shown, whatever asks for it: the sidebar draws
+  // its entry disabled and lib/routes.ts does not parse its segment, and
+  // this is the belt to those braces.
+  const current = paneById(pane).planned ? DEFAULT_PANE : pane;
 
   const form = useSettingsForm();
   const storage = useStorage();
@@ -66,8 +53,6 @@ export default function Settings({ pane, onPaneChange }: SettingsProps) {
 
   return (
     <div className="flex gap-4 max-md:flex-col md:gap-5">
-      <Sidebar current={current} onSelect={select} />
-
       <div className="min-w-0 flex-1">
         <PaneHeader title={t(meta.labelKey)} summary={t(meta.summaryKey)} />
 

@@ -17,8 +17,13 @@ import {
   type SettingsResponse,
   type StatusResponse,
 } from "@/lib/api";
+import { toast } from "@/components/ui/toast";
 import { t, type MessageKey } from "@/lib/i18n";
 import { useLocale } from "@/lib/i18n-react";
+
+/* The one status the form raises: it names the rebuild so the outcome can
+ * dismiss it, and a second apply replaces rather than stacks it. */
+const REBUILD_STATUS = "rebuild";
 
 /* The whole settings screen is one form over one document.
  *
@@ -53,10 +58,11 @@ export const DEFAULTS = {
  * Apply and say "changes applied" while this one is still starting. */
 const SETTLE_MS = 20000;
 
-export type RebuildPhase = "building" | "done" | "failed";
-
+/* The sticky bar only ever shows a rebuild in flight. Its outcome, done or
+ * failed, arrives as a toast (components/ui/toast.tsx) and the bar goes: an
+ * outcome is an event the owner glances at, not a strip to keep clearing. */
 export interface RebuildBanner {
-  phase: RebuildPhase;
+  phase: "building";
   title: string;
   message: string;
 }
@@ -86,7 +92,6 @@ export interface SettingsForm {
   discard: () => void;
   apply: () => void;
   factoryReset: () => void;
-  dismissRebuild: () => void;
 }
 
 const KEYS = [
@@ -141,7 +146,6 @@ function statusMsg(message: string, fallback: MessageKey): Msg {
 }
 
 interface HeldBanner {
-  phase: RebuildPhase;
   title: MessageKey;
   message: Msg;
 }
@@ -280,7 +284,6 @@ export function useSettingsForm(): SettingsForm {
         sawBuildingRef.current = true;
         setApplyingBoth(true);
         setRebuild({
-          phase: "building",
           title: "settings.form.applyingYours",
           message: statusMsg(status.message, "settings.form.buildingMessage"),
         });
@@ -295,28 +298,32 @@ export function useSettingsForm(): SettingsForm {
       poller.stop();
       jobRef.current = null;
       setApplyingBoth(false);
+      setRebuild(null);
 
+      /* The outcome is a confirmation, in the language on screen at this
+       * moment: a toast is gone in seconds, so there is nothing to re-resolve
+       * on a language change, unlike the held texts below. It settles the
+       * "applying" status, which has stayed up for the whole rebuild. */
       if (status.state === "done") {
-        setRebuild({
-          phase: "done",
-          title: "settings.form.doneTitle",
-          message: statusMsg(status.message, "settings.form.doneMessage"),
-        });
+        toast.success(
+          t("settings.form.doneTitle"),
+          say(statusMsg(status.message, "settings.form.doneMessage")),
+          { settles: REBUILD_STATUS },
+        );
         void load().catch((error: unknown) => setLoadError(describe(error)));
         return;
       }
 
       if (status.state === "failed") {
-        setRebuild({
-          phase: "failed",
-          title: "settings.form.failedTitle",
-          message: statusMsg(status.message, "settings.form.failedMessage"),
-        });
+        toast.error(
+          t("settings.form.failedTitle"),
+          say(statusMsg(status.message, "settings.form.failedMessage")),
+          { settles: REBUILD_STATUS },
+        );
         return;
       }
 
       // idle: nothing is running, and nothing of ours ever was.
-      setRebuild(null);
     },
     [poller, load, setApplyingBoth],
   );
@@ -376,7 +383,6 @@ export function useSettingsForm(): SettingsForm {
         settleUntilRef.current = 0;
         setApplyingBoth(true);
         setRebuild({
-          phase: "building",
           title: "settings.form.joinedTitle",
           message: statusMsg(status.message, "settings.form.joinedMessage"),
         });
@@ -399,26 +405,24 @@ export function useSettingsForm(): SettingsForm {
       settleUntilRef.current = Date.now() + SETTLE_MS;
       setApplyingBoth(true);
       setRebuild({
-        phase: "building",
         title: starting,
         message: { key: "settings.form.starting" },
       });
       try {
         const ack = await trigger();
         jobRef.current = ack.job.length > 0 ? ack.job : null;
+        // A status, not a confirmation: it stays until the outcome settles it.
+        toast.status(t(starting), t("settings.form.buildingMessage"), {
+          id: REBUILD_STATUS,
+          duration: Infinity,
+        });
         poller.start();
       } catch (error) {
         setApplyingBoth(false);
         jobRef.current = null;
-        if (isUnauthorized(error)) {
-          setRebuild(null);
-          return;
-        }
-        setRebuild({
-          phase: "failed",
-          title: "settings.form.didNotStart",
-          message: describe(error),
-        });
+        setRebuild(null);
+        if (isUnauthorized(error)) return;
+        toast.error(t("settings.form.didNotStart"), say(describe(error)), { settles: REBUILD_STATUS });
       }
     },
     [poller, setApplyingBoth],
@@ -444,8 +448,6 @@ export function useSettingsForm(): SettingsForm {
     void runRebuild(() => postFactoryReset(), "settings.form.resetTitle");
   }, [runRebuild]);
 
-  const dismissRebuild = React.useCallback(() => setRebuild(null), []);
-
   const changedKeys = React.useMemo(() => changedKeysOf(saved, draft), [saved, draft]);
   const problemKeys = React.useMemo(() => problemsOf(draft), [draft]);
   const valid =
@@ -470,7 +472,7 @@ export function useSettingsForm(): SettingsForm {
       heldRebuild === null
         ? null
         : {
-            phase: heldRebuild.phase,
+            phase: "building",
             title: t(heldRebuild.title),
             message: say(heldRebuild.message),
           },
@@ -498,6 +500,5 @@ export function useSettingsForm(): SettingsForm {
     discard,
     apply,
     factoryReset,
-    dismissRebuild,
   };
 }

@@ -11,9 +11,15 @@ import {
   type MarketAccount,
   type MarketActionResponse,
   type MarketKind,
+  type MarketOrder,
   type MarketShelfListing,
 } from "@/lib/api";
-import { intlTag } from "@/lib/i18n";
+import { toast } from "@/components/ui/toast";
+import { intlTag, t, type MessageKey } from "@/lib/i18n";
+
+/* The status a purchase raises while Stripe is open in the other tab;
+ * the "payment received" confirmation settles it (pane-market.tsx raises it). */
+export const ORDER_STATUS = "market-order";
 
 /* The market pane's data.
  *
@@ -35,8 +41,6 @@ export type MarketState =
 
 export interface MarketData {
   state: MarketState;
-  /** Message of the last action that was refused or failed. */
-  actionError: string | null;
   /** True while an action is in flight. */
   busy: boolean;
   refresh: () => void;
@@ -46,11 +50,50 @@ export interface MarketData {
   order: (listingId: string, quantity: number) => Promise<MarketActionResponse | null>;
 }
 
+const KIND_NAME: Record<MarketKind, MessageKey> = {
+  storage: "panes.market.kind.storage",
+  compute: "panes.market.kind.compute",
+};
+
+const UNIT_NAME: Record<string, MessageKey> = {
+  "GiB-month": "panes.market.unit.storage",
+  "vCPU-hour": "panes.market.unit.compute",
+};
+
+/* Payment happens on Stripe's page in another tab, and the box learns of it
+ * from the edge, so this pane only ever sees a purchase go from pending to
+ * paid on a refresh. That moment is the "purchase done" the owner came back
+ * for: compare the statuses the previous answer carried and say so once per
+ * order. The first answer of a session seeds the map and announces nothing;
+ * a purchase paid last week is not news. */
+function announcePaid(previous: Map<string, MarketOrder["status"]>, account: MarketAccount): void {
+  for (const order of account.purchases) {
+    const before = previous.get(order.id);
+    if (before !== undefined && before !== "paid" && order.status === "paid") {
+      const unitKey = UNIT_NAME[order.unit];
+      toast.success(
+        t("panes.market.paidTitle"),
+        t("panes.market.paidBody", {
+          kind: t(KIND_NAME[order.kind]),
+          quantity: order.quantity,
+          unit: unitKey === undefined ? order.unit : t(unitKey),
+        }),
+        // Settles the "order placed, finish paying" status the buy raised.
+        { settles: ORDER_STATUS },
+      );
+    }
+  }
+}
+
+function statusesOf(account: MarketAccount): Map<string, MarketOrder["status"]> {
+  return new Map(account.purchases.map((order) => [order.id, order.status]));
+}
+
 export function useMarket(enabled: boolean): MarketData {
   const [state, setState] = React.useState<MarketState>({ kind: "loading" });
-  const [actionError, setActionError] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
   const [tick, setTick] = React.useState(0);
+  const seen = React.useRef<Map<string, MarketOrder["status"]> | null>(null);
 
   React.useEffect(() => {
     if (!enabled) return;
@@ -59,6 +102,10 @@ export function useMarket(enabled: boolean): MarketData {
       try {
         const reply = await getMarket({ signal: controller.signal });
         if (controller.signal.aborted) return;
+        if (reply.available) {
+          if (seen.current !== null) announcePaid(seen.current, reply.account);
+          seen.current = statusesOf(reply.account);
+        }
         setState(
           reply.available ? { kind: "ready", listings: reply.listings, account: reply.account } : { kind: "unavailable" },
         );
@@ -73,18 +120,23 @@ export function useMarket(enabled: boolean): MarketData {
   const refresh = React.useCallback(() => setTick((n) => n + 1), []);
 
   /* One in-flight action at a time: each one changes money or what is for
-   * sale, and a double click must not become two orders. */
+   * sale, and a double click must not become two orders. A refusal or a
+   * failure is a toast carrying the edge's own sentence when it sent one. */
   const act = React.useCallback(
-    async <T,>(fn: () => Promise<T>): Promise<T | null> => {
+    async <T,>(fn: () => Promise<T>, done?: () => void): Promise<T | null> => {
       setBusy(true);
-      setActionError(null);
       try {
         const out = await fn();
+        done?.();
         refresh();
         return out;
       } catch (error) {
         if (!isUnauthorized(error)) {
-          setActionError(error instanceof ApiError || error instanceof Error ? error.message : "");
+          const said = error instanceof ApiError || error instanceof Error ? error.message : "";
+          toast.error(
+            t("panes.market.actionFailedTitle"),
+            said.length > 0 ? said : t("panes.market.actionFailed"),
+          );
         }
         return null;
       } finally {
@@ -96,13 +148,19 @@ export function useMarket(enabled: boolean): MarketData {
 
   return {
     state,
-    actionError,
     busy,
     refresh,
     onboard: () => act(() => postMarketOnboard()),
     list: async (kind, priceMinor, capacity) =>
-      (await act(() => postMarketListing({ kind, unit_price: priceMinor, capacity }))) !== null,
-    close: async (id) => (await act(() => postMarketClose(id))) !== null,
+      (await act(
+        () => postMarketListing({ kind, unit_price: priceMinor, capacity }),
+        () => toast.success(t("panes.market.listedTitle"), t("panes.market.listedBody")),
+      )) !== null,
+    close: async (id) =>
+      (await act(
+        () => postMarketClose(id),
+        () => toast.done(t("panes.market.closedTitle")),
+      )) !== null,
     order: (id, quantity) => act(() => postMarketOrder(id, quantity)),
   };
 }

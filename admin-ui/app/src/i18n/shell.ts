@@ -8,6 +8,13 @@ export default defineMessages({
   "shell.nav.mesh": { en: "Mesh", sk: "Mesh", de: "Mesh" },
   "shell.nav.settings": { en: "Settings", sk: "Nastavenia", de: "Einstellungen" },
   "shell.nav.label": { en: "Sections", sk: "Sekcie", de: "Bereiche" },
+  /* Under Market in the sidebar, greyed with it: the disk-sharing switch
+   * lives on the Market pane and opens when the market does. */
+  "shell.nav.diskSharing": { en: "Disk sharing", sk: "Zdieľanie disku", de: "Festplattenfreigabe" },
+  "shell.nav.collapse": { en: "Collapse the sidebar", sk: "Zbaliť bočný panel", de: "Seitenleiste einklappen" },
+  "shell.nav.expand": { en: "Expand the sidebar", sk: "Rozbaliť bočný panel", de: "Seitenleiste ausklappen" },
+  /* The fold toggle on an entry with sub-entries; aria-expanded says which way. */
+  "shell.nav.subEntries": { en: "Entries under {name}", sk: "Položky pod {name}", de: "Einträge unter {name}" },
   "shell.asking": {
     en: "Asking this box whether it has been set up.",
     sk: "Zisťujeme, či je toto zariadenie už nastavené.",
@@ -81,6 +88,8 @@ export default defineMessages({
 
   "ui.working": { en: "Working", sk: "Pracujeme", de: "Wird ausgeführt" },
   "ui.dismiss": { en: "Dismiss", sk: "Zavrieť", de: "Schließen" },
+  "ui.notifications": { en: "Notifications", sk: "Upozornenia", de: "Benachrichtigungen" },
+  "ui.confirmations": { en: "Confirmations", sk: "Potvrdenia", de: "Bestätigungen" },
   "ui.theme.label": { en: "Appearance", sk: "Vzhľad", de: "Erscheinungsbild" },
   "ui.theme.auto": { en: "Match the browser", sk: "Podľa prehliadača", de: "Wie im Browser" },
   "ui.theme.light": { en: "Light", sk: "Svetlý", de: "Hell" },
@@ -90,5 +99,13 @@ export default defineMessages({
     en: "Browser language",
     sk: "Jazyk prehliadača",
     de: "Browsersprache",
+  },
+
+  // ── Toasts the shell raises ───────────────────────────────────────────────
+  "shell.signIn.unlocked": { en: "Unlocked", sk: "Odomknuté", de: "Entsperrt" },
+  "shell.signIn.unlockedBody": {
+    en: "The admin pages are open in this tab until you close it.",
+    sk: "Správcovské stránky sú v tejto karte otvorené, kým ju nezavriete.",
+    de: "Die Admin-Seiten sind in diesem Tab geöffnet, bis du ihn schließt.",
   },
 });

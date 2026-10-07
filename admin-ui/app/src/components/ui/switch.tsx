@@ -26,6 +26,8 @@ export function Switch({
     <button
       type="button"
       role="switch"
+      data-slot="switch"
+      data-state={checked ? "checked" : "unchecked"}
       aria-checked={checked}
       disabled={disabled}
       onClick={(event) => {
