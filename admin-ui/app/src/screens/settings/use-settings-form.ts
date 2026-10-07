@@ -3,6 +3,7 @@ import {
   ApiError,
   buildOverridesNix,
   createStatusPoller,
+  getOptions,
   getSettings,
   getStatus,
   hasToken,
@@ -15,6 +16,7 @@ import {
   postFactoryReset,
   subscribeAuth,
   STATUS_PERIOD_MS,
+  type OptionsResponse,
   type SettingsResponse,
   type StatusResponse,
 } from "@/lib/api";
@@ -22,6 +24,7 @@ import { toast } from "@/components/ui/toast";
 import type { HandbookEntry } from "@/lib/handbook";
 import { t, type MessageKey } from "@/lib/i18n";
 import { useLocale } from "@/lib/i18n-react";
+import { fits, OWNED, type Misfit } from "@/lib/option-value";
 
 /* The one status the form raises: it names the rebuild so the outcome can
  * dismiss it, and a second apply replaces rather than stacks it. */
@@ -85,12 +88,30 @@ export interface SettingsForm {
   draft: SettingsResponse | null;
   dirty: boolean;
   changedKeys: readonly (keyof SettingsResponse)[];
+  /* The rest of modules/overrides.nix: every `losos.<name>` line the sixteen
+   * keys above do not own, as Nix literals by name (lib/option-value.ts).
+   * The Advanced pane edits these; Apply writes them after the sixteen. A
+   * name the box declares no option for (a stray) is carried too, so it is
+   * shown rather than silently dropped, and `valid` stays false until it is
+   * removed, because lososd's gate would refuse it. */
+  extra: Readonly<Record<string, string>>;
+  savedExtra: Readonly<Record<string, string>>;
+  changedExtra: readonly string[];
+  /** Pending edits, the sixteen keys and the extras together. */
+  changeCount: number;
+  /** Every option this box declares, or null while loading. `available`
+   *  false when the box serves no document (an older lososd). */
+  options: OptionsResponse | null;
   problems: FormProblems;
+  /** Extras whose literal does not fit, by name, with the sentence. */
+  extraProblems: Readonly<Record<string, string>>;
   valid: boolean;
   /** A rebuild this screen started, or one it joined, is in flight. */
   applying: boolean;
   rebuild: RebuildBanner | null;
   set: <K extends keyof SettingsResponse>(key: K, value: SettingsResponse[K]) => void;
+  /** Set one extra line's literal, or remove the line with null. */
+  setExtra: (name: string, raw: string | null) => void;
   discard: () => void;
   apply: () => void;
   factoryReset: () => void;
@@ -130,6 +151,48 @@ function changedKeysOf(
 ): (keyof SettingsResponse)[] {
   if (saved === null || draft === null) return [];
   return KEYS.filter((key) => !sameValue(saved[key], draft[key]));
+}
+
+/* The overrides.nix lines the sixteen keys do not own, as the option
+ * document reports them: each declared option's `set` literal, plus the
+ * strays. Owned names are left out even when set — the form's own field
+ * carries them, and buildOverridesNix filters them anyway. */
+function extrasOf(options: OptionsResponse | null): Record<string, string> {
+  const extra: Record<string, string> = {};
+  if (options === null) return extra;
+  for (const option of options.options) {
+    if (option.set !== null && !(option.name in OWNED)) extra[option.name] = option.set;
+  }
+  for (const stray of options.stray) extra[stray.key] = stray.value;
+  return extra;
+}
+
+function changedExtraOf(
+  saved: Readonly<Record<string, string>>,
+  draft: Readonly<Record<string, string>>,
+): string[] {
+  const names = new Set([...Object.keys(saved), ...Object.keys(draft)]);
+  return [...names].filter((name) => saved[name] !== draft[name]).sort();
+}
+
+/* Which extras lososd's gate would refuse, by name. A stray is always one;
+ * a declared option's literal is checked against its editor kind. */
+function extraProblemsOf(
+  options: OptionsResponse | null,
+  draft: Readonly<Record<string, string>>,
+): Record<string, Misfit> {
+  const problems: Record<string, Misfit> = {};
+  if (options === null) return problems;
+  for (const [name, raw] of Object.entries(draft)) {
+    const option = options.options.find((o) => o.name === name);
+    if (option === undefined) {
+      problems[name] = { key: "advanced.fit.stray" };
+      continue;
+    }
+    const misfit = fits(option.editor, raw);
+    if (misfit !== null) problems[name] = misfit;
+  }
+  return problems;
 }
 
 /* Text held in state is held as a message key, or as the box's own words
@@ -223,6 +286,9 @@ export function useSettingsForm(): SettingsForm {
 
   const [saved, setSaved] = React.useState<SettingsResponse | null>(null);
   const [draft, setDraft] = React.useState<SettingsResponse | null>(null);
+  const [options, setOptions] = React.useState<OptionsResponse | null>(null);
+  const [savedExtra, setSavedExtra] = React.useState<Record<string, string>>({});
+  const [extra, setExtra_] = React.useState<Record<string, string>>({});
   const [heldLoadError, setLoadError] = React.useState<Msg | null>(null);
   const [applying, setApplying] = React.useState(false);
   const [heldRebuild, setRebuild] = React.useState<HeldBanner | null>(null);
@@ -232,6 +298,8 @@ export function useSettingsForm(): SettingsForm {
   draftRef.current = draft;
   const savedRef = React.useRef<SettingsResponse | null>(null);
   savedRef.current = saved;
+  const extraRef = React.useRef<Record<string, string>>({});
+  extraRef.current = extra;
 
   /* Poll bookkeeping. Refs, not state: the poller is built once and its
    * handlers have to see current values without the poller being rebuilt —
@@ -270,9 +338,31 @@ export function useSettingsForm(): SettingsForm {
   }, []);
 
   const load = React.useCallback(async (signal?: AbortSignal): Promise<void> => {
-    const fresh = normalize(await getSettings(signal === undefined ? {} : { signal }));
+    const request = signal === undefined ? {} : { signal };
+    const fresh = normalize(await getSettings(request));
+    /* The option document rides along with the settings: the Advanced pane
+     * needs it, and the extras it carries are part of the same draft. A box
+     * without the route (an older lososd) still gets its settings — the
+     * pane then says the document is not served, and Apply writes the
+     * sixteen lines as before. */
+    let doc: OptionsResponse | null = null;
+    try {
+      doc = await getOptions(request);
+    } catch (error) {
+      if (isAbort(error) || isUnauthorized(error)) throw error;
+      doc = null;
+    }
+    // An answer that is not the document (a proxy's page, an older daemon's
+    // empty object) counts as no document, not as a broken form.
+    if (doc === null || !Array.isArray(doc.options) || !Array.isArray(doc.stray)) {
+      doc = { available: false, version: 0, options: [], stray: [], excluded: {} };
+    }
+    const lines = extrasOf(doc);
     setSaved(fresh);
     setDraft(fresh);
+    setOptions(doc);
+    setSavedExtra(lines);
+    setExtra_(lines);
     setLoadError(null);
   }, []);
 
@@ -357,6 +447,9 @@ export function useSettingsForm(): SettingsForm {
       poller.stop();
       setSaved(null);
       setDraft(null);
+      setOptions(null);
+      setSavedExtra({});
+      setExtra_({});
       setLoadError(null);
       setApplyingBoth(false);
       setRebuild(null);
@@ -449,12 +542,26 @@ export function useSettingsForm(): SettingsForm {
     [],
   );
 
-  const discard = React.useCallback(() => setDraft(saved), [saved]);
+  const setExtra = React.useCallback((name: string, raw: string | null) => {
+    setExtra_((current) => {
+      if (raw === null) {
+        if (!(name in current)) return current;
+        const { [name]: _dropped, ...rest } = current;
+        return rest;
+      }
+      return current[name] === raw ? current : { ...current, [name]: raw };
+    });
+  }, []);
+
+  const discard = React.useCallback(() => {
+    setDraft(saved);
+    setExtra_(savedExtra);
+  }, [saved, savedExtra]);
 
   const apply = React.useCallback(() => {
     const current = draftRef.current;
     if (current === null) return;
-    const body = buildOverridesNix(sanitize(current));
+    const body = buildOverridesNix(sanitize(current), extraRef.current);
     /* A 409 on an apply that turns on disk sharing or the mesh join is the
      * edge gate: no reachable edge, so the switch is refused. Any other
      * refusal (a rebuild already running, a bad body) is the apply page. */
@@ -472,11 +579,14 @@ export function useSettingsForm(): SettingsForm {
   }, [runRebuild]);
 
   const changedKeys = React.useMemo(() => changedKeysOf(saved, draft), [saved, draft]);
+  const changedExtra = React.useMemo(() => changedExtraOf(savedExtra, extra), [savedExtra, extra]);
   const problemKeys = React.useMemo(() => problemsOf(draft), [draft]);
+  const extraMisfits = React.useMemo(() => extraProblemsOf(options, extra), [options, extra]);
   const valid =
     problemKeys.hostName === null &&
     problemKeys.apachePort === null &&
-    problemKeys.computeWindow === null;
+    problemKeys.computeWindow === null &&
+    Object.keys(extraMisfits).length === 0;
 
   /* Everything below turns held keys into sentences. `locale` is a dep of
    * each, so a language change re-resolves them rather than serving the
@@ -489,6 +599,14 @@ export function useSettingsForm(): SettingsForm {
       computeWindow: resolve(problemKeys.computeWindow),
     };
   }, [problemKeys, locale]);
+
+  const extraProblems = React.useMemo<Record<string, string>>(
+    () =>
+      Object.fromEntries(
+        Object.entries(extraMisfits).map(([name, misfit]) => [name, t(misfit.key, misfit.vars)]),
+      ),
+    [extraMisfits, locale],
+  );
 
   const rebuild = React.useMemo<RebuildBanner | null>(
     () =>
@@ -513,13 +631,20 @@ export function useSettingsForm(): SettingsForm {
     loadError,
     saved,
     draft,
-    dirty: changedKeys.length > 0,
+    dirty: changedKeys.length + changedExtra.length > 0,
     changedKeys,
+    extra,
+    savedExtra,
+    changedExtra,
+    changeCount: changedKeys.length + changedExtra.length,
+    options,
     problems,
+    extraProblems,
     valid,
     applying,
     rebuild,
     set,
+    setExtra,
     discard,
     apply,
     factoryReset,

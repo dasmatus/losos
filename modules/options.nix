@@ -751,6 +751,39 @@ in
       '';
     };
 
+    # ── The box's configuration on LosOS Git ──────────────────────────────
+    # /etc/nixos is a git repository; every Apply commits there
+    # (backend/src/config_repo.rs). With this on, lososd keeps it in step
+    # with a private repository on the box's own Forgejo, owned by the
+    # owner's account, and takes a commit pushed there (after its
+    # overrides.nix passes the gates every Apply does) and rebuilds from it.
+    configRepo.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Publish this box's configuration (/etc/nixos) to a private repository
+        on LosOS Git, and pick up commits pushed to it. Needs
+        losos.forgejo.enable. Off, every change is still committed on the
+        box; it is just not published anywhere.
+      '';
+    };
+    configRepo.owner = lib.mkOption {
+      type = lib.types.str;
+      default = "notshared";
+      description = ''
+        The LosOS Git account the configuration repository belongs to. lososd
+        creates it as a site administrator if it is missing and gives it the
+        owner's password whenever that password is proved (the first-run
+        claim, a password change, a sign-in), so one password opens LosOS
+        Git too.
+      '';
+    };
+    configRepo.name = lib.mkOption {
+      type = lib.types.str;
+      default = "losos-config";
+      description = "The name of the configuration repository on LosOS Git.";
+    };
+
     nextcloud.hostName = lib.mkOption {
       type = lib.types.str;
       default = "localhost";

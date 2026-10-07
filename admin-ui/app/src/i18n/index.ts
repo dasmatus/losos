@@ -4,6 +4,7 @@
  * never claim the same key, and every entry carries en, sk and de side by side
  * — see define.ts. lib/i18n.ts is the only reader. */
 
+import advanced from "./advanced";
 import apps from "./apps";
 import home from "./home";
 import look from "./look";
@@ -24,6 +25,7 @@ export const MESSAGES = {
   ...widgets,
   ...apps,
   ...look,
+  ...advanced,
 };
 
 export type MessageKey = keyof typeof MESSAGES;

@@ -4,8 +4,9 @@
 //!
 //!   1. claims `org.losos1` on the system bus and exports the control
 //!      interface for `losos-ctl`,
-//!   2. re-attaches a watcher to any rebuild still recorded as in flight, and
-//!   3. serves the Bearer-authed loopback HTTP API the admin UI talks to.
+//!   2. re-attaches a watcher to any rebuild still recorded as in flight,
+//!   3. starts the thread that keeps /etc/nixos in step with LosOS Git, and
+//!   4. serves the Bearer-authed loopback HTTP API the admin UI talks to.
 //!
 //! Step 2 must not be dropped: `nixos-rebuild switch` restarts this daemon
 //! during activation, so the watcher that started a rebuild dies partway
@@ -13,7 +14,7 @@
 
 use anyhow::Context;
 use losos_ctl::io_backend::{IoLosos, Paths};
-use losos_ctl::{dbus, http, supervisor};
+use losos_ctl::{config_repo, dbus, http, supervisor};
 
 fn main() -> std::process::ExitCode {
     tracing_subscriber::fmt()
@@ -92,6 +93,7 @@ fn run() -> anyhow::Result<()> {
         };
 
         supervisor::start_supervisor(&backend);
+        config_repo::start_reconciler(&backend);
 
         // The bus connection and the HTTP thread carry the load from here; this
         // task waits for whichever comes first, a stop signal or the HTTP
