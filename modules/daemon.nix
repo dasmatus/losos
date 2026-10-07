@@ -203,6 +203,18 @@ in
         # shape as the grow binaries above if this line goes: ENOENT at the
         # exec, reported to the owner as a search that will not come back.
         pkgs.curl
+        # What Apply, a storage-mode change and a factory reset run. The
+        # rebuild is a `systemd-run` transient unit, and systemd-run resolves a
+        # bare command against the caller's PATH before PID 1 sees it: with
+        # nixos-rebuild missing here, every one of them failed with "Failed to
+        # find executable nixos-rebuild" and the admin UI said only "That did
+        # not start". supervisor.rs passes this PATH on to the unit
+        # (--setenv=PATH), which is how nix and git reach the rebuild; PID 1's
+        # own default PATH has neither. The same three autoUpgrade puts on
+        # its unit.
+        config.system.build.nixos-rebuild
+        config.nix.package.out
+        pkgs.gitMinimal
       ]
       # crictl, to find and exec into the Nextcloud workload container.
       ++ lib.optional ncContainer pkgs.cri-tools
