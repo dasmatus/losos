@@ -283,7 +283,7 @@ pkgs.testers.nixosTest {
         # Let the framebuffer catch up with the serial line before the shot
         # (time.sleep: the machine's own sleep() runs a command in a guest
         # that is powering off).
-        time.sleep(2)
+        time.sleep(3)
         m.screenshot("06-refused-tampered-store")
         m.wait_for_shutdown()
   '';

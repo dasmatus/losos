@@ -218,6 +218,18 @@ in
       };
       path = [ pkgs.coreutils ];
       script = ''
+        # The console output goes to /dev/console, which is the last
+        # console= on the command line; where that is a serial port (a VM
+        # test, a headless box) the screen would show nothing, and the
+        # screen is where the owner looks. So say it on tty0 as well,
+        # unless tty0 is /dev/console already.
+        screen=/dev/null
+        active=$(cat /sys/class/tty/console/active 2>/dev/null || true)
+        [ "''${active##* }" = tty0 ] || screen=/dev/tty0
+        say() {
+          echo "$1"
+          echo "$1" > "$screen" 2>/dev/null || true
+        }
         # No sed in the systemd initrd; bash does the parsing.
         expected=
         for word in $(cat /proc/cmdline); do
@@ -225,16 +237,16 @@ in
             ${mediumHashParam}=*) expected=''${word#*=} ;;
           esac
         done
-        echo "LosOS: verifying the medium's system image against the signed hash (a few seconds)"
+        say "LosOS: verifying the medium's system image against the signed hash (a few seconds)"
         actual=$(sha256sum /sysroot/iso/nix-store.squashfs | cut -d' ' -f1)
         if [ "$actual" != "$expected" ]; then
-          echo "LosOS: THE MEDIUM HAS BEEN ALTERED: its system image does not match the hash"
-          echo "LosOS: in the signed loader (expected $expected, found $actual). Refusing to start it."
+          say "LosOS: THE MEDIUM HAS BEEN ALTERED: its system image does not match the hash"
+          say "LosOS: in the signed loader (expected $expected, found $actual). Refusing to start it."
           sleep 5
           systemctl --no-block poweroff
           exit 1
         fi
-        echo "LosOS: the medium's system image matches the signed hash"
+        say "LosOS: the medium's system image matches the signed hash"
       '';
     };
 
