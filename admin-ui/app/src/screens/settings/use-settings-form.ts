@@ -1,5 +1,6 @@
 import * as React from "react";
 import {
+  ApiError,
   buildOverridesNix,
   createStatusPoller,
   getOptions,
@@ -20,6 +21,7 @@ import {
   type StatusResponse,
 } from "@/lib/api";
 import { toast } from "@/components/ui/toast";
+import type { HandbookEntry } from "@/lib/handbook";
 import { t, type MessageKey } from "@/lib/i18n";
 import { useLocale } from "@/lib/i18n-react";
 import { fits, OWNED, type Misfit } from "@/lib/option-value";
@@ -294,6 +296,8 @@ export function useSettingsForm(): SettingsForm {
 
   const draftRef = React.useRef<SettingsResponse | null>(null);
   draftRef.current = draft;
+  const savedRef = React.useRef<SettingsResponse | null>(null);
+  savedRef.current = saved;
   const extraRef = React.useRef<Record<string, string>>({});
   extraRef.current = extra;
 
@@ -408,7 +412,7 @@ export function useSettingsForm(): SettingsForm {
         toast.error(
           t("settings.form.failedTitle"),
           say(statusMsg(status.message, "settings.form.failedMessage")),
-          { settles: REBUILD_STATUS },
+          { settles: REBUILD_STATUS, help: "apply-fails" },
         );
         return;
       }
@@ -492,7 +496,14 @@ export function useSettingsForm(): SettingsForm {
   }, [signedIn, load, poller, setApplyingBoth]);
 
   const runRebuild = React.useCallback(
-    async (trigger: () => Promise<{ job: string }>, starting: MessageKey) => {
+    async (
+      trigger: () => Promise<{ job: string }>,
+      starting: MessageKey,
+      /* The handbook page a refusal leads to; the default is the apply page,
+       * and apply() names the sharing page when the box refuses a mesh switch
+       * (lososd answers 409 while no edge is reachable). */
+      helpFor: (error: unknown) => HandbookEntry = () => "apply-fails",
+    ) => {
       sawBuildingRef.current = false;
       jobRef.current = null;
       settleUntilRef.current = Date.now() + SETTLE_MS;
@@ -515,7 +526,10 @@ export function useSettingsForm(): SettingsForm {
         jobRef.current = null;
         setRebuild(null);
         if (isUnauthorized(error)) return;
-        toast.error(t("settings.form.didNotStart"), say(describe(error)), { settles: REBUILD_STATUS });
+        toast.error(t("settings.form.didNotStart"), say(describe(error)), {
+          settles: REBUILD_STATUS,
+          help: helpFor(error),
+        });
       }
     },
     [poller, setApplyingBoth],
@@ -548,7 +562,16 @@ export function useSettingsForm(): SettingsForm {
     const current = draftRef.current;
     if (current === null) return;
     const body = buildOverridesNix(sanitize(current), extraRef.current);
-    void runRebuild(() => postApply(body), "settings.form.applyingYours");
+    /* A 409 on an apply that turns on disk sharing or the mesh join is the
+     * edge gate: no reachable edge, so the switch is refused. Any other
+     * refusal (a rebuild already running, a bad body) is the apply page. */
+    const before = savedRef.current;
+    const turnsOnMesh =
+      (current.sharingMyStorage && !(before?.sharingMyStorage ?? false)) ||
+      (current.clusterEnable && !(before?.clusterEnable ?? false));
+    void runRebuild(() => postApply(body), "settings.form.applyingYours", (error) =>
+      turnsOnMesh && error instanceof ApiError && error.status === 409 ? "sharing-refused" : "apply-fails",
+    );
   }, [runRebuild]);
 
   const factoryReset = React.useCallback(() => {

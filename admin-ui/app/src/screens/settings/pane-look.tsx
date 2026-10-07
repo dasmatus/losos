@@ -81,18 +81,18 @@ export function LookPane({ locked }: { locked: boolean }) {
       await chooseBackground(choice);
       toast.success(t(choice.kind === "none" ? "look.toast.pictureRemoved" : "look.toast.pictureSet"));
     } catch (error) {
-      toast.error(t("look.toast.notSaved"), error instanceof Error ? error.message : "");
+      toast.error(t("look.toast.notSaved"), error instanceof Error ? error.message : "", { help: "look-and-widgets" });
     }
   };
 
   const upload = async (file: File): Promise<void> => {
     const fault = checkPicture(file);
     if (fault === "type") {
-      toast.error(t("look.toast.badType"));
+      toast.error(t("look.toast.badType"), undefined, { help: "look-and-widgets" });
       return;
     }
     if (fault === "size") {
-      toast.error(t("look.toast.tooBig", { mb }));
+      toast.error(t("look.toast.tooBig", { mb }), undefined, { help: "look-and-widgets" });
       return;
     }
     setUploading(true);
@@ -100,7 +100,7 @@ export function LookPane({ locked }: { locked: boolean }) {
       await uploadBackground(file);
       toast.success(t("look.toast.pictureSet"));
     } catch (error) {
-      toast.error(t("look.toast.notSaved"), error instanceof Error ? error.message : "");
+      toast.error(t("look.toast.notSaved"), error instanceof Error ? error.message : "", { help: "look-and-widgets" });
     } finally {
       setUploading(false);
     }
@@ -111,7 +111,7 @@ export function LookPane({ locked }: { locked: boolean }) {
       await removeBackground();
       toast.success(t("look.toast.pictureRemoved"));
     } catch (error) {
-      toast.error(t("look.toast.notSaved"), error instanceof Error ? error.message : "");
+      toast.error(t("look.toast.notSaved"), error instanceof Error ? error.message : "", { help: "look-and-widgets" });
     }
   };
 
@@ -124,6 +124,7 @@ export function LookPane({ locked }: { locked: boolean }) {
       toast.error(
         t("look.widgets.notDeleted", { name: widget.name }),
         error instanceof Error ? error.message : "",
+        { help: "look-and-widgets" },
       );
     }
   };
@@ -267,6 +268,7 @@ export function LookPane({ locked }: { locked: boolean }) {
                       toast.error(
                         t("look.toast.notSaved"),
                         error instanceof Error ? error.message : "",
+                        { help: "look-and-widgets" },
                       ),
                     );
                 }}

@@ -1,0 +1,10 @@
+{
+  "label": "Owner's manual",
+  "position": 3,
+  "link": {
+    "type": "generated-index",
+    "title": "Owner's manual",
+    "description": "Day to day: the admin pages, the apps, settings, updates and the disk."
+  },
+  "className": "hb-icon hb-icon-manual"
+}

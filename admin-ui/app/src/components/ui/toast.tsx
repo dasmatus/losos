@@ -2,6 +2,7 @@ import { toast as sonner } from "sonner";
 import { Toaster as StatusStack } from "./sonner";
 import { Confirmations } from "./toaster";
 import { confirm, dismissAllConfirmations } from "./use-toast";
+import type { HandbookEntry } from "@/lib/handbook";
 
 /* Status updates and confirmations, in the shape of a macOS notification.
  *
@@ -25,7 +26,12 @@ import { confirm, dismissAllConfirmations } from "./use-toast";
  * Lifetimes are chosen here per kind rather than per call site, so an error
  * never leaves as fast as a success by somebody forgetting a number. A
  * status may be given an `id` and `duration: Infinity` to stay until it is
- * settled or dismissed. */
+ * settled or dismissed.
+ *
+ * An error names its handbook page (`help`, lib/handbook.ts) and the toast
+ * carries a "What to do" link to it; `index` when no page fits. Every
+ * toast.error() call passes one, so no refusal leaves the owner with only
+ * the box's sentence. */
 
 export interface StatusOptions {
   /** A stable name, so a later status replaces it and a confirmation can settle it. */
@@ -39,6 +45,11 @@ export interface ConfirmOptions {
   duration?: number;
   /** The id of the status this confirmation answers; it is dismissed first. */
   settles?: string;
+}
+
+export interface ErrorOptions extends ConfirmOptions {
+  /** The handbook page this error leads to; `index` for the chapter's start. */
+  help: HandbookEntry;
 }
 
 export type ConfirmTone = "done" | "success" | "error";
@@ -61,12 +72,18 @@ function status(title: string, description?: string, options: StatusOptions = {}
   });
 }
 
-function settle(tone: ConfirmTone, title: string, description?: string, options: ConfirmOptions = {}): string {
+function settle(
+  tone: ConfirmTone,
+  title: string,
+  description?: string,
+  options: ConfirmOptions & { help?: HandbookEntry } = {},
+): string {
   if (options.settles !== undefined) sonner.dismiss(options.settles);
   return confirm({
     tone,
     title,
     ...(description !== undefined && description.length > 0 ? { description } : {}),
+    ...(options.help !== undefined ? { help: options.help } : {}),
     duration: options.duration ?? CONFIRM_MS[tone],
   });
 }
@@ -77,7 +94,7 @@ export const toast = {
     settle("done", title, description, options),
   success: (title: string, description?: string, options?: ConfirmOptions) =>
     settle("success", title, description, options),
-  error: (title: string, description?: string, options?: ConfirmOptions) =>
+  error: (title: string, description: string | undefined, options: ErrorOptions) =>
     settle("error", title, description, options),
   /** Dismiss a status by its id. */
   dismiss: (id: string | number) => sonner.dismiss(id),

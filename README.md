@@ -7,7 +7,9 @@ login shell: you administer it from a web page, and it upgrades itself.
 The root filesystem is a tmpfs rebuilt on every boot. Only listed directories
 survive, on an encrypted `/persist` partition.
 
-**Documentation: [the wiki](https://github.com/dasmatus/losos/wiki)**
+**Owner's handbook: [losos.dasmat.us](https://losos.dasmat.us)** (source in
+[`handbook/`](handbook/); every box also serves it at `/handbook/`).
+**Developer documentation: [the wiki](https://github.com/dasmatus/losos/wiki)**
 (source in [`wiki/`](wiki/)).
 
 ## What runs on it
