@@ -73,8 +73,10 @@ in
       # installer page stays unlocked unless this is set — and that page
       # rewrites the database and the admin credentials.
       security.INSTALL_LOCK = true;
-      # Kept on here, unlike the container path (modules/containers.nix),
-      # because native mode is not published through the tunnel.
+      # Kept on here regardless of the runner, unlike the container path
+      # (modules/workloads.nix follows losos.forgejo.runner.enable), because
+      # native mode is not published through the tunnel. The runner itself
+      # (modules/git-runner.nix) registers against this instance on :8888.
       actions.ENABLED = true;
     };
   };

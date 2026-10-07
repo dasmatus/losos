@@ -56,6 +56,11 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// Print what lososd found when it last looked for an edge proxy.
+    Edge {
+        #[arg(long)]
+        json: bool,
+    },
     /// Apply Nix config read from stdin (rewrites overrides.nix, then rebuilds).
     Apply,
     /// Soft factory reset: restore defaults and rebuild.
@@ -409,6 +414,7 @@ fn run(cli: Cli) -> Result<(), BackendFailure> {
         Command::State { .. } => call_backend("State", &())?,
         Command::Status { .. } => call_backend("Status", &())?,
         Command::Settings { .. } => call_backend("Settings", &())?,
+        Command::Edge { .. } => call_backend("Edge", &())?,
         Command::Change { mode } => call_backend("Change", &(mode.as_str(),))?,
         Command::FactoryReset => call_backend("FactoryReset", &())?,
         Command::Grow => call_backend("Grow", &())?,
