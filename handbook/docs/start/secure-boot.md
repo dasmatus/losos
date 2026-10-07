@@ -31,7 +31,7 @@ check cover the whole boot:
 The installer then prints what happened, above its firmware menu:
 
 ```
-Secure Boot: enabled. The firmware verified this medium's signature before starting it.
+Secure Boot: enabled. The firmware verified this medium's signature.
 ```
 
 or `Secure Boot: disabled ...` when the firmware checked nothing, or

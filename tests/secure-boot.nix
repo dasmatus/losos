@@ -46,6 +46,10 @@ let
         {
           # efi-readvar, to show the certificate the firmware holds in `db`.
           environment.systemPackages = [ pkgs.efitools ];
+          # The instrumentation's loglevel=7 floods the screen with driver
+          # chatter and, under TCG, leaves the framebuffer seconds behind
+          # the serial console; the screenshots are the point here.
+          boot.kernelParams = pkgs.lib.mkAfter [ "loglevel=4" ];
         }
       ];
     }).config.system.build.isoImage;
@@ -252,7 +256,7 @@ pkgs.testers.nixosTest {
         m.succeed(
             "{ echo '# bootctl status | head -12'; bootctl status 2>/dev/null | head -12;"
             " echo; echo '# od -An -tu1 -j4 -N1 " + SB_VAR + "'; od -An -tu1 -j4 -N1 " + SB_VAR + ";"
-            " echo; echo '# efi-readvar -v db | grep Subject'; efi-readvar -v db | grep -m1 Subject; } > /dev/tty8"
+            " echo; echo '# efi-readvar -v db | grep -A1 -m1 Subject'; efi-readvar -v db | grep -A1 -m1 Subject; } > /dev/tty8"
         )
         m.succeed("chvt 8")
         m.wait_until_tty_matches("8", "Secure Boot: enabled")
@@ -275,6 +279,8 @@ pkgs.testers.nixosTest {
         m.wait_for_console_text("verifying the medium's system image")
         # ... and stage 1 stops it.
         m.wait_for_console_text("THE MEDIUM HAS BEEN ALTERED")
+        # Let the framebuffer catch up with the serial line before the shot.
+        m.sleep(2)
         m.screenshot("06-refused-tampered-store")
         m.wait_for_shutdown()
   '';
