@@ -36,8 +36,10 @@ GRUB and a 1 MiB boot partition on the first disk. **Autodetect** picks the
 mode the stick was booted in and is what the menu takes after 30 seconds, so
 an unattended boot still installs. UEFI needs the stick itself booted in UEFI
 mode; from a BIOS-booted stick the installer refuses it before touching any
-disk. BIOS is mainly for virtual machines. Secure Boot is unsupported in
-both: turn it off.
+disk. BIOS is mainly for virtual machines. Under UEFI the stick is signed
+and a firmware that has the LosOS certificate enrolled verifies it; the
+installed box's own loader is not signed, so it needs Secure Boot off. See
+[Secure Boot and signed media](../start/secure-boot).
 
 ## The three media
 

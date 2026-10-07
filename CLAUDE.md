@@ -77,6 +77,14 @@ and is never served or built by nix.
 - `hardening.nix` (install only): KSPP primitives, on by default, with
   `apparmor`, `malloc`, `nosmt`, `usbguard` opt-in. `tests/hardening.nix`
   asserts both halves.
+- `secure-boot.nix` (iso only): the medium's `EFI/BOOT/BOOTX64.EFI` is a
+  signable UKI (ukify: kernel + initrd + cmdline) in place of GRUB, with
+  the squashfs's SHA-256 on the signed cmdline and a stage-1 unit that
+  checks it. `losos-sign-iso` (`flake/sign-iso.sh`) signs the finished
+  ISO in place via the El Torito EFI image; CI and the release job run it
+  with the secret, `tests/secure-boot.nix` under OVMF with a throwaway key.
+  The certificate is `keys/secure-boot-db.pem` (comment-only until the
+  ceremony).
 - `updates.nix`: `system.autoUpgrade` at 03:00 from `losos.upgradeFlakeUri`
   (default `git+file:///etc/nixos#install`, set a `github:` URI to really
   upgrade), `nix.gc` at 04:30 with `--delete-older-than 14d`, five boot
@@ -159,8 +167,12 @@ and is never served or built by nix.
     and `RUSTC_WRAPPER` is a script not named `sccache`. Either way round
     silently caches nothing.
 20. Don't add `restrict=on` to the ISO boot test's netdev; QEMU then offers
-    no DNS server and the test never sees its query. Secure Boot is not a
-    leg: nothing is signed.
+    no DNS server and the test never sees its query. The ISO's UEFI loader
+    is a UKI (`modules/secure-boot.nix`), signed after `nix build` by
+    `losos-sign-iso` with the `SECURE_BOOT_DB_KEY` secret, never inside a
+    derivation: a key in the store would reach the public cache. The
+    production key is made only by `provisioning/secure-boot/keygen.sh` on
+    the owner's machine; `tests/secure-boot.nix` uses a throwaway one.
 21. `system.stateVersion = "26.11"` is set once. `result` is never committed.
 22. Edit `wiki/`, not the web wiki; the workflow overwrites it.
 23. No `Co-Authored-By`, `Generated with` or session links in commits, PRs

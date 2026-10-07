@@ -36,8 +36,13 @@ overená skutočným štartom média.
   systém, ktorý inštaluje (z cache, nie kompilovaním).
 - Obrazovka a klávesnica len na inštaláciu. Potom obrazovka ukazuje len
   banner s adresou boxu.
-- **Secure Boot vypnutý.** Nič v LosOS nie je podpísané; so zapnutým Secure
-  Boot firmvér kľúč odmietne, niekedy potichu.
+- **Secure Boot vypnutý, alebo certifikát LosOS zapísaný do firmvéru.**
+  Inštalačné médium je podpísané: zavádzač UEFI je jeden zjednotený obraz
+  jadra (jadro, initrd, príkazový riadok) podpísaný certifikátom LosOS a
+  pred pripojením systémového obrazu overí jeho odtlačok. Firmvér, ktorý
+  dôveruje len kľúčom Microsoftu, médium odmietne (*Access Denied*), kým sa
+  doň nezapíše certifikát z `EFI/losos/` na médiu. Nainštalovaný box má
+  vlastný zavádzač nepodpísaný, takže sám potrebuje Secure Boot vypnutý.
 
 ## Priebeh
 

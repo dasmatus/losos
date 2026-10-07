@@ -711,21 +711,60 @@ jobs:
       # lever is deleting the preinstalled Android SDK and .NET trees before
       # this step, not trimming the image.
       - run: nix build .#nixosConfigurations.iso.config.system.build.isoImage -L
+      # Sign the medium's UEFI loader (modules/secure-boot.nix). The db key
+      # is a repository secret, so this happens after the build, on a copy
+      # outside the store, and only where the secret reaches: pushes to main
+      # and tags. A fork's pull request has no key and boots unsigned, which
+      # the legs below allow for. With no certificate committed yet there is
+      # nothing to sign with either, and the ISO ships as `nix build` made
+      # it.
+      - name: sign the ISO's UEFI loader
+        id: sign
+        env:
+          SECURE_BOOT_DB_KEY: ${{ secrets.SECURE_BOOT_DB_KEY }}
+        run: |
+          set -euo pipefail
+          cp -L result/iso/*.iso installer.iso
+          chmod u+w installer.iso
+          if ! grep -q '^-----BEGIN CERTIFICATE-----' keys/secure-boot-db.pem; then
+            echo "keys/secure-boot-db.pem carries no certificate yet: the ISO stays unsigned"
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ -z "$SECURE_BOOT_DB_KEY" ]; then
+            echo "::notice::SECURE_BOOT_DB_KEY is not available here (fork or missing secret): the ISO stays unsigned"
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          umask 077
+          key=$(mktemp)
+          printf '%s\n' "$SECURE_BOOT_DB_KEY" > "$key"
+          nix run .#losos-sign-iso -- sign --key "$key" --cert keys/secure-boot-db.pem installer.iso
+          rm -f "$key"
+          nix run .#losos-sign-iso -- verify --cert keys/secure-boot-db.pem installer.iso
+          echo "signed=true" >> "$GITHUB_OUTPUT"
       # Building the ISO says nothing about whether it boots: v0.1.1 built
       # green here and was then reported "not bootable in UEFI". So boot the
-      # image just built, unchanged, from a virtual USB stick under OVMF
-      # (UEFI) and SeaBIOS. tests/iso-boot.py passes once the installer
-      # resolves github.com, which needs the whole chain to work, from the
-      # firmware to root's autologin. The VM is killed within two seconds of
-      # that query, and the disk it would install to is a sparse temp file.
+      # image just built (signed, where it was), from a virtual USB stick
+      # under OVMF (UEFI) and SeaBIOS. tests/iso-boot.py passes once the
+      # installer resolves github.com, which needs the whole chain to work,
+      # from the firmware to root's autologin. The VM is killed within two
+      # seconds of that query, and the disk it would install to is a sparse
+      # temp file.
       #
-      # Secure Boot is not a leg here: the ISO is unsigned and the firmware
-      # refuses it by design. The README says to turn it off.
+      # Secure Boot has two legs. `uefi-sb-ms` is a stock PC: OVMF with only
+      # Microsoft's keys must refuse the medium whether it is signed or not,
+      # and the script passes on the firmware's "Access Denied". `uefi-sb`
+      # enrols the committed LosOS certificate into a fresh variable store
+      # and must boot — only meaningful once the loader is signed, so it runs
+      # on main and tags and is skipped on a fork's pull request.
       #
       # KVM: hosted Linux runners expose /dev/kvm but only to root until a
       # udev rule opens it. Without it the script falls back to TCG, which
       # still works, about ten times slower.
-      - name: boot the ISO under UEFI and BIOS
+      - name: boot the ISO under UEFI, BIOS and Secure Boot
+        env:
+          SIGNED: ${{ steps.sign.outputs.signed }}
         run: |
           sudo apt-get update -q
           sudo apt-get install -y -q --no-install-recommends qemu-system-x86 ovmf
@@ -733,12 +772,18 @@ jobs:
             | sudo tee /etc/udev/rules.d/99-kvm4all.rules >/dev/null
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-          iso=$(echo result/iso/*.iso)
           status=0
           for fw in uefi bios; do
-            python3 tests/iso-boot.py --iso "$iso" --firmware "$fw" --media usb \
+            python3 tests/iso-boot.py --iso installer.iso --firmware "$fw" --media usb \
               --timeout 600 --out iso-boot || status=1
           done
+          python3 tests/iso-boot.py --iso installer.iso --firmware uefi-sb-ms --media usb \
+            --expect refused --timeout 300 --out iso-boot || status=1
+          if [ "$SIGNED" = true ]; then
+            nix shell --inputs-from . nixpkgs#python3Packages.virt-firmware -c \
+              python3 tests/iso-boot.py --iso installer.iso --firmware uefi-sb --media usb \
+                --enroll keys/secure-boot-db.pem --timeout 600 --out iso-boot || status=1
+          fi
           exit "$status"
       - uses: actions/upload-artifact@v7
         if: failure()
@@ -789,6 +834,51 @@ jobs:
       - run: mv result result-iso
       - run: nix build .#losos-disk-qcow2 -L
       - run: mv result result-qcow2
+      # A release is signed or it is not a release: once the certificate is
+      # committed, a missing secret fails the job rather than publishing an
+      # unsigned medium under a page that says to verify it. Before the key
+      # ceremony has run there is no certificate, and the release says so.
+      #
+      # The same key signs SHA256SUMS: the loader's Authenticode signature is
+      # over a PE digest structure and this one is a plain PKCS#1 signature
+      # over the text, so the two cannot be confused for each other, and one
+      # certificate on the release page verifies both.
+      - name: sign the ISO's UEFI loader and the checksum list
+        id: sign
+        env:
+          SECURE_BOOT_DB_KEY: ${{ secrets.SECURE_BOOT_DB_KEY }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          iso="losos-installer-${TAG}.iso"
+          qcow2="losos-demo-${TAG}.qcow2"
+          cp -L result-iso/iso/*.iso "./${iso}"
+          chmod u+w "./${iso}"
+          cp -L result-qcow2/*.qcow2 "./${qcow2}"
+          if ! grep -q '^-----BEGIN CERTIFICATE-----' keys/secure-boot-db.pem; then
+            echo "::warning::keys/secure-boot-db.pem carries no certificate: this release is unsigned (run provisioning/secure-boot/keygen.sh)"
+            sha256sum "$iso" "$qcow2" | tee SHA256SUMS
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ -z "$SECURE_BOOT_DB_KEY" ]; then
+            echo "::error::keys/secure-boot-db.pem is committed but the SECURE_BOOT_DB_KEY secret is missing; refusing to publish an unsigned release"
+            exit 1
+          fi
+          umask 077
+          key=$(mktemp)
+          printf '%s\n' "$SECURE_BOOT_DB_KEY" > "$key"
+          nix run .#losos-sign-iso -- sign --key "$key" --cert keys/secure-boot-db.pem "./${iso}"
+          nix run .#losos-sign-iso -- verify --cert keys/secure-boot-db.pem "./${iso}"
+          sha256sum "$iso" "$qcow2" | tee SHA256SUMS
+          openssl dgst -sha256 -sign "$key" -out SHA256SUMS.sig SHA256SUMS
+          rm -f "$key"
+          openssl x509 -in keys/secure-boot-db.pem -out losos-secure-boot-db.pem
+          openssl x509 -in keys/secure-boot-db.pem -outform DER -out losos-secure-boot-db.cer
+          openssl dgst -sha256 -verify <(openssl x509 -pubkey -noout -in losos-secure-boot-db.pem) \
+            -signature SHA256SUMS.sig SHA256SUMS
+          echo "signed=true" >> "$GITHUB_OUTPUT"
+          echo "fingerprint=$(openssl x509 -in losos-secure-boot-db.pem -noout -fingerprint -sha256 | cut -d= -f2)" >> "$GITHUB_OUTPUT"
       - name: stage the media
         id: stage
         env:
@@ -797,8 +887,6 @@ jobs:
           set -euo pipefail
           iso="losos-installer-${TAG}.iso"
           qcow2="losos-demo-${TAG}.qcow2"
-          cp -L result-iso/iso/*.iso "./${iso}"
-          cp -L result-qcow2/*.qcow2 "./${qcow2}"
           sha256sum "$iso" | tee "${iso}.sha256"
           sha256sum "$qcow2" | tee "${qcow2}.sha256"
           {
@@ -891,6 +979,8 @@ jobs:
       - name: compose the release body
         id: body
         env:
+          SIGNED: ${{ steps.sign.outputs.signed }}
+          FINGERPRINT: ${{ steps.sign.outputs.fingerprint }}
           ISO_NAME: ${{ steps.stage.outputs.isoName }}
           ISO_REF: ${{ steps.ghcr.outputs.isoRef }}
           ISO_URL: ${{ steps.meta.outputs.isoUrl }}
@@ -922,6 +1012,38 @@ jobs:
           qcow2_blob="https://ghcr.io/v2/${qcow2_repo}/blobs/sha256:${QCOW2_SUM}"
           iso_human=$(awk -v b="$ISO_SIZE" 'BEGIN { printf "%.2f GiB", b/1073741824 }')
           qcow2_human=$(awk -v b="$QCOW2_SIZE" 'BEGIN { printf "%.2f GiB", b/1073741824 }')
+          release_dir="${ISO_URL%/*}"
+          if [ "$SIGNED" = true ]; then
+            signing=$(cat <<SIGNED_EOF
+          **Signed.** The ISO's UEFI loader carries a Secure Boot signature by
+          the LosOS certificate (SHA-256 fingerprint \`${FINGERPRINT}\`), the
+          same certificate that signs \`SHA256SUMS\`. Verify the checksum list
+          and the medium with:
+
+          \`\`\`sh
+          curl -fsSLO ${release_dir}/SHA256SUMS
+          curl -fsSLO ${release_dir}/SHA256SUMS.sig
+          curl -fsSLO ${release_dir}/losos-secure-boot-db.pem
+          openssl dgst -sha256 -verify <(openssl x509 -pubkey -noout -in losos-secure-boot-db.pem) \\
+            -signature SHA256SUMS.sig SHA256SUMS
+          sha256sum -c --ignore-missing SHA256SUMS
+          \`\`\`
+
+          To boot it with Secure Boot on, enrol \`losos-secure-boot-db.cer\`
+          (the same certificate in DER; the stick also carries it at
+          \`EFI/losos/\`) into the firmware's \`db\`; the handbook's install
+          page has the steps. A firmware with only the stock Microsoft keys
+          refuses the stick, which is the signature working.
+          SIGNED_EOF
+          )
+          else
+            signing=$(cat <<UNSIGNED_EOF
+          **Not signed.** No Secure Boot certificate was committed when this
+          tag was built, so the UEFI loader is unsigned: turn Secure Boot off
+          to boot it. \`SHA256SUMS\` is here, unsigned.
+          UNSIGNED_EOF
+          )
+          fi
           {
             echo "body<<RELEASE_BODY_EOF"
             cat <<BODY
@@ -940,6 +1062,8 @@ jobs:
           curl -fsSLO ${ISO_URL}
           sha256sum -c ${ISO_NAME}.sha256
           \`\`\`
+
+          ${signing}
 
           Write it to a USB stick and boot the target machine; the installer
           partitions, encrypts and installs unattended. It needs a network
@@ -1008,6 +1132,10 @@ jobs:
             ${{ steps.stage.outputs.isoName }}
             ${{ steps.stage.outputs.isoName }}.sha256
             ${{ steps.stage.outputs.qcow2Name }}.sha256
+            SHA256SUMS
+            ${{ steps.sign.outputs.signed == 'true' && 'SHA256SUMS.sig' || '' }}
+            ${{ steps.sign.outputs.signed == 'true' && 'losos-secure-boot-db.pem' || '' }}
+            ${{ steps.sign.outputs.signed == 'true' && 'losos-secure-boot-db.cer' || '' }}
             release.json
           token: ${{ secrets.GITHUB_TOKEN }}
       # The curl download in the release notes only works once the GHCR
