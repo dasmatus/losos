@@ -186,6 +186,7 @@ pkgs.testers.nixosTest {
   testScript = ''
     import os
     import shutil
+    import time
 
     SB_VAR = "/sys/firmware/efi/efivars/SecureBoot-8be4df61-93ca-11d2-aa0d-00e098032b8c"
     STUB_VAR = "/sys/firmware/efi/efivars/StubInfo-4a67b082-0a4c-41cf-b6c7-440b29bb8c4f"
@@ -279,8 +280,10 @@ pkgs.testers.nixosTest {
         m.wait_for_console_text("verifying the medium's system image")
         # ... and stage 1 stops it.
         m.wait_for_console_text("THE MEDIUM HAS BEEN ALTERED")
-        # Let the framebuffer catch up with the serial line before the shot.
-        m.sleep(2)
+        # Let the framebuffer catch up with the serial line before the shot
+        # (time.sleep: the machine's own sleep() runs a command in a guest
+        # that is powering off).
+        time.sleep(2)
         m.screenshot("06-refused-tampered-store")
         m.wait_for_shutdown()
   '';
