@@ -23,17 +23,23 @@
 #      that turns `losos.cluster.enable` on is 409, an apply that changes only
 #      the hostname is accepted, and state.json still says what it said;
 #   6. the edge returns and the gate reopens;
-#   7. the official-edge identity: the edge carries a certificate a test root
-#      key signed (made at build time with `losos-registrar identity`), so
-#      `/api/edge` says `official`, and `/api/market` is merely unavailable
-#      (no market configured) rather than refused; with the edge gone the
-#      market answers `reason: noOfficialEdge` and an order is 409 with
-#      `officialEdgeRequired`.
+#   7. the official-edge identity: the registrar carries a certificate a
+#      test root key signed (made at build time with `losos-registrar
+#      identity`), so `/api/edge` says `official` and `/api/market` is merely
+#      unavailable (no market configured) rather than refused; with the
+#      registrar gone and only the unsigned edge left, sharing is still
+#      allowed but the market answers `reason: noOfficialEdge` and an order
+#      is 409 with `officialEdgeRequired`.
 #
-# The configured URL is pointed at a port nothing listens on, so only the
-# LAN road can open the gate here: that is the case the feature exists for
-# (an edge beside the boxes, no internet), and a public edge that happened to
-# answer from the test host would otherwise make step 4 impossible to reach.
+# Two edges are in reach at once, as a box on a company network with
+# internet would see: the registrar on the LAN (advertised, official) and the
+# configured URL, which here is a plain HTTP server on the edge VM that
+# answers /health and nothing else — the shape of an edge nobody signed. So
+# `/api/edge` lists two, sharing is allowed through either, and when the
+# registrar alone is stopped the box still has an edge (the gate stays open)
+# but no official one (the market is refused). Stopping both is "no edge".
+# The configured URL is not the public edge on purpose: one that happened to
+# answer from the test host would make the no-edge steps impossible to reach.
 { pkgs }:
 
 let
@@ -61,6 +67,12 @@ let
           > $out/edge.cert.json
       '';
   identityKey = "/var/secrets/losos-edge-identity.key";
+  # The second, unsigned edge: a directory with a `health` file, served by
+  # Python's http.server on 8444. GET /health is 200; /identity is 404.
+  plainEdgeRoot = pkgs.runCommand "plain-edge-root" { } ''
+    mkdir -p $out
+    echo ok > $out/health
+  '';
   secretFiles = {
     systemd.tmpfiles.rules = [
       "d /var/secrets 0700 root root - -"
@@ -108,6 +120,17 @@ pkgs.testers.nixosTest {
             certFile = "${identityFixture}/edge.cert.json";
           };
         };
+        # The unsigned second edge (see the header).
+        systemd.services.losos-plain-edge = {
+          description = "a bare /health responder standing in for an unsigned edge";
+          wantedBy = [ "multi-user.target" ];
+          after = [ "network.target" ];
+          serviceConfig = {
+            ExecStart = "${pkgs.python3}/bin/python3 -m http.server 8444 --bind :: --directory ${plainEdgeRoot}";
+            DynamicUser = true;
+          };
+        };
+        networking.firewall.allowedTCPPorts = [ 8444 ];
         virtualisation = {
           memorySize = 1024;
           cores = 2;
@@ -123,8 +146,8 @@ pkgs.testers.nixosTest {
         ];
         networking.hostName = "mattbox";
         losos.backend.package = lososPkgs.losos-ctl;
-        # Nothing at the configured URL: see the header.
-        losos.proxy.registrarUrl = "http://127.0.0.1:9";
+        # The unsigned second edge: see the header.
+        losos.proxy.registrarUrl = "http://edge.local:8444";
         losos.proxy.officialRootKeyFile = "${identityFixture}/root.pub";
         # What modules/configuration.nix gives the real box.
         services.avahi = {
@@ -157,6 +180,8 @@ pkgs.testers.nixosTest {
     edge.wait_for_unit("losos-registrar.service")
     edge.wait_for_unit("avahi-daemon.service")
     edge.wait_until_succeeds("curl -fsS http://localhost:8443/health")
+    edge.wait_for_unit("losos-plain-edge.service")
+    edge.wait_until_succeeds("curl -fsS http://localhost:8444/health")
 
     box.wait_for_unit("avahi-daemon.service")
     box.wait_until_succeeds("losos-ctl state --json")
@@ -190,22 +215,27 @@ pkgs.testers.nixosTest {
         assert code == "200", f"/api/edge answered {code}: {body!r}"
         return json.loads(body)
 
-    def wait_edge(reachable):
+    def wait_edge(reachable, official=None):
         def probe(_):
-            return edge_doc()["reachable"] == reachable
-        with box.nested(f"waiting for /api/edge reachable={reachable}"):
+            d = edge_doc()
+            return d["reachable"] == reachable and (official is None or d["official"] == official)
+        with box.nested(f"waiting for /api/edge reachable={reachable} official={official}"):
             retry(probe, timeout_seconds=90)
 
-    wait_edge(True)
+    wait_edge(True, official=True)
     doc = edge_doc()
     print("edge:", doc)
     assert doc["lanSearched"] is True, doc
+    # Both edges, LAN first; only the registrar is official.
+    assert [e["url"] for e in doc["edges"]] == ["http://edge.local:8443", "http://edge.local:8444"], doc
     assert doc["edges"][0]["source"] == "lan", doc
-    assert doc["edges"][0]["url"] == "http://edge.local:8443", doc
     assert doc["edges"][0]["name"].startswith("losos edge on"), doc
-    assert doc["configuredUrl"] == "http://127.0.0.1:9", doc
+    assert doc["edges"][0]["official"] is True, doc
+    assert doc["edges"][1]["source"] == "configured", doc
+    assert doc["edges"][1]["official"] is False, doc
+    assert doc["configuredUrl"] == "http://edge.local:8444", doc
     facade = json.loads(box.succeed("losos-ctl edge --json"))
-    assert facade["reachable"] is True, facade
+    assert facade["reachable"] is True and facade["official"] is True, facade
 
     # 7a. The identity: the registrar answers the challenge, the box verified
     #     it on this scan, and the market gate is open (the market itself is
@@ -216,8 +246,7 @@ pkgs.testers.nixosTest {
     assert answer["cert"]["url"] == "http://edge.local:8443", answer
     assert answer["cert"]["name"] == "losos test edge", answer
     box.fail("curl -fsS 'http://edge.local:8443/identity?nonce=zz'")
-    assert doc["official"] is True, doc
-    assert doc["edges"][0]["official"] is True, doc
+    box.fail("curl -fsS 'http://edge.local:8444/identity?nonce=" + "ab" * 32 + "'")
     code, body = api("GET", "/api/market")
     assert code == "200", f"/api/market answered {code}: {body!r}"
     assert json.loads(body) == {"available": False}, body
@@ -235,13 +264,35 @@ pkgs.testers.nixosTest {
     code, body = api("POST", "/api/change", {"mode": "local"})
     assert code == "200", f"change to local answered {code}: {body!r}"
 
-    # 4. The edge goes away. The advert may linger in caches; the /health
-    #    probe is what decides, so stopping the registrar is enough.
+    # 7b. The official edge goes away but the unsigned one stays: an edge is
+    #     in reach, so sharing is still allowed, but no official one, so the
+    #     market says why and an action is refused before anything leaves
+    #     the box.
     edge.succeed("systemctl stop losos-registrar.service")
+    wait_edge(True, official=False)
+    doc = edge_doc()
+    assert [e["url"] for e in doc["edges"]] == ["http://edge.local:8444"], doc
+    code, body = api("GET", "/api/market")
+    assert code == "200", f"/api/market answered {code}: {body!r}"
+    assert json.loads(body) == {"available": False, "reason": "noOfficialEdge"}, body
+    code, body = api("POST", "/api/market/orders", {"listing_id": "lst_1", "quantity": 1})
+    assert code == "409", f"a market order with no official edge answered {code}: {body!r}"
+    refused = json.loads(body)
+    assert refused["officialEdgeRequired"] is True, refused
+    assert "only edges LosOS runs" in refused["error"], refused
+    code, body = api("POST", "/api/change", {"mode": "mesh"})
+    assert code == "200", f"change to mesh through an unsigned edge answered {code}: {body!r}"
+    code, body = api("POST", "/api/change", {"mode": "local"})
+    assert code == "200", f"change to local answered {code}: {body!r}"
+
+    # 4. Every edge goes away. The advert may linger in caches; the /health
+    #    probe is what decides, so stopping the services is enough.
+    edge.succeed("systemctl stop losos-plain-edge.service")
     wait_edge(False)
     doc = edge_doc()
     assert doc["edges"] == [], doc
     assert doc["lanSearched"] is True, doc
+    assert doc["official"] is False, doc
 
     # 5. Refusals, in the daemon's words, with nothing written.
     # The rebuild the accepted change queued fails on its own (no flake in
@@ -295,23 +346,16 @@ pkgs.testers.nixosTest {
     out = box.fail("losos-ctl change --mode mesh 2>&1")
     assert "no edge proxy is reachable" in out, out
 
-    # 7b. No official edge in reach: the market says why, an action is refused
-    #     before anything leaves the box.
-    assert doc["official"] is False, doc
+    # With no edge at all the market is refused too, as a market question
+    # and not as a sharing one.
     code, body = api("GET", "/api/market")
-    assert code == "200", f"/api/market answered {code}: {body!r}"
     assert json.loads(body) == {"available": False, "reason": "noOfficialEdge"}, body
-    code, body = api("POST", "/api/market/orders", {"listing_id": "lst_1", "quantity": 1})
-    assert code == "409", f"a market order with no official edge answered {code}: {body!r}"
-    refused = json.loads(body)
-    assert refused["officialEdgeRequired"] is True, refused
-    assert "only edges LosOS runs" in refused["error"], refused
 
-    # 6. The edge comes back; the gate reopens.
-    edge.succeed("systemctl start losos-registrar.service")
+    # 6. The edges come back; the gate reopens, the market with it.
+    edge.succeed("systemctl start losos-plain-edge.service losos-registrar.service")
     edge.wait_until_succeeds("curl -fsS http://localhost:8443/health")
-    wait_edge(True)
-    assert edge_doc()["official"] is True, edge_doc()
+    wait_edge(True, official=True)
+    assert len(edge_doc()["edges"]) == 2, edge_doc()
     code, body = api("POST", "/api/change", {"mode": "mesh"})
     assert code == "200", f"change to mesh after the edge returned answered {code}: {body!r}"
   '';

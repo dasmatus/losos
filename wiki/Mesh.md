@@ -47,9 +47,11 @@ every 20 seconds, on two roads:
   with internet is the public edge. It is probed whether or not the master
   proxy is switched on.
 
-A candidate counts only once its `/health` answers. The Mesh pane shows the
-result at the top ("Edge proxy found: …" or "No edge proxy found", with what
-was tried), and `GET /api/edge` serves it.
+A candidate counts only once its `/health` answers, and several can be in
+reach at once (a company's edge on the LAN and the public one over the
+internet, say): `GET /api/edge` lists them all, LAN first, and the Mesh pane
+shows one row per edge, or "No edge proxy found" with what was tried.
+Sharing is allowed while any of them answers.
 
 While nothing answers, the box **refuses to turn network-dependent sharing
 on**: switching to mesh mode, and any apply that turns `losos.sharingMyStorage`
@@ -63,10 +65,11 @@ Finding an edge and *trusting it with money* are two different questions.
 Any edge that answers opens sharing. Trading on the market is allowed only
 through an **official** edge: one that presents a certificate signed by the
 LosOS root key and answers the box's fresh nonce with it, checked on every
-scan. The Mesh pane's second edge row says which kind the box found
-("Trading allowed" or "Sharing only"); a company's own edge is the latter and
-that is not a fault. See [Master proxy — Official
-edges](Master-Proxy#official-edges).
+scan. Each edge's row carries a sign beside its name: a check for an
+official edge, a warning for any other, whose tooltip lists what that edge
+cannot do for this box (buying on the market, selling this box's spare
+storage and compute). A company's own edge wears the warning, and that is
+not a fault. See [Master proxy — Official edges](Master-Proxy#official-edges).
 
 `demo/edge-lan/run.sh` boots an edge and a box on one virtual network and
 walks through exactly this: found, allowed, edge gone, refused.

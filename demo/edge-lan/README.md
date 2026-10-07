@@ -54,8 +54,8 @@ option it turns on, `losos.edge.lan.advertise`, is the one a real site sets
   LAN edge sets that option to the edge's URL in its own flake. Feeding the
   discovered URL into the tunnel is not done yet.
 - The demo edge carries no identity (`losos.edge.identity.*` unset), so the
-  box reads it as "Not an official LosOS edge · Sharing only": discovery and
-  sharing work, the market stays off. That is also what a company's own edge
+  box shows it with a warning sign ("Not an official LosOS edge"): discovery
+  and sharing work, the market stays off. That is also what a company's own edge
   looks like; only an edge with a certificate signed by the LosOS root key is
   official ([Master proxy — Official edges](../../wiki/Master-Proxy.md)).
 - The two VMs talk over slirp to the outside: the edge NATs the LAN to its
