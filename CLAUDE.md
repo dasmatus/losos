@@ -369,6 +369,23 @@ which `modules/setup.nix` allows for exactly the origins in
 `losos.setup.finderOrigins` (an nginx map, asserted by `tests/setup.nix`),
 never `*` — the document is LAN inventory.
 
+**Edge federation and the box's path rule** (`wiki/Edge-Federation.md`,
+`backend-registrar/src/relay.rs`, `modules/edge-gateway.nix`,
+`modules/proxy.nix`): a user-hosted edge (a *spoke*) relays its boxes to an
+official edge (a *hub*) with `POST /relay`; the hub lists the spoke as a
+tenant with a `relayZone` and routes `<spoke>.<box>` with the spoke's token.
+A spoke with `losos.edge.lan.openEnrolment` enrols unknown boxes
+trust-on-first-use under `/var/lib/losos-registrar/enrolled/`; the option
+asserts `lan.advertise`, never set it on a VPS. `losos.edge.gateway.enable`
+is the preset the `losos-disk-edge-qcow2` image boots. On the box, `lososd`
+picks the path (LAN edge, else the configured one, else none) and drives
+`losos-rathole-client` + `losos-registrar-announce` through
+`/run/losos/edge-path.env` and the `/run/losos/edge-none` marker, so a box
+with no edge in reach runs no tunnel; both files are on `/run`, so the
+units dial the configured edge until the first scan, which is what
+`tests/edge-vm.nix` (no lososd) relies on. `tests/edge-federation.nix` is the
+three-VM acceptance test; it is not run by CI.
+
 **The `losos.*` option namespace** (`options.nix`): all project-specific
 knobs (`targetDrive`, `tpm.enable`, `sharingMyStorage`, `forgejo.enable`,
 `nextcloud.*`, `cluster.*` (mesh join, compute window), `shared.fscrypt.*`,
