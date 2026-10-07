@@ -14,8 +14,9 @@
 use crate::guard::{retry_after_secs, Audit, Throttle};
 use crate::io_backend::{atomic_write_secret, IoLosos};
 use crate::losos::{
-    cmd_apply, cmd_apps_search, cmd_change, cmd_factory_reset, cmd_grow, cmd_recovery,
-    cmd_set_password, cmd_settings, cmd_sign_in, cmd_state, cmd_status,
+    cmd_apply, cmd_apps_search, cmd_change, cmd_config, cmd_config_sync, cmd_factory_reset,
+    cmd_grow, cmd_options, cmd_recovery, cmd_set_password, cmd_settings, cmd_sign_in, cmd_state,
+    cmd_status,
 };
 use crate::model::Mode;
 use crate::overrides::validate_apply;
@@ -70,6 +71,14 @@ fn run(
                     .unwrap_or(actix_web::http::StatusCode::BAD_REQUEST),
                 &r.message,
             )
+        }
+        // An apply the option document turned down: the sentence names the
+        // key and the rule, and the pane puts it beside the field.
+        Err(e) if e.downcast_ref::<crate::options::Rejected>().is_some() => {
+            let why = e
+                .downcast_ref::<crate::options::Rejected>()
+                .expect("checked");
+            err(actix_web::http::StatusCode::BAD_REQUEST, &why.0)
         }
         // A look request the owner can act on — a picture that is not one,
         // a widget with no name — keeps its sentence, as a 400.
@@ -803,6 +812,31 @@ async fn delete_widget(
     })
 }
 
+// ── Every option, and the configuration repository ───────────────────────
+
+/// `GET /api/options` — every `losos.*` option the box declares, with its
+/// editor kind and what `overrides.nix` sets (`crate::options`). The
+/// Advanced pane is drawn from this. A box without the document answers
+/// `available: false`, deliberately not 404, which the SPA latches.
+async fn get_options(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    guarded(&api, &req, "/api/options", false, || run(&api, cmd_options))
+}
+
+/// `GET /api/config` — the configuration repository as the History pane
+/// shows it (`crate::config_repo`).
+async fn get_config(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    guarded(&api, &req, "/api/config", false, || run(&api, cmd_config))
+}
+
+/// `POST /api/config/sync` — one sync with LosOS Git, now, then the same
+/// document as the read. Mutating (it can push, fast-forward and rebuild),
+/// so audited.
+async fn post_config_sync(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    guarded(&api, &req, "/api/config/sync", true, || {
+        run(&api, cmd_config_sync)
+    })
+}
+
 async fn not_found() -> HttpResponse {
     err(actix_web::http::StatusCode::NOT_FOUND, "not found")
 }
@@ -934,6 +968,9 @@ pub fn serve(backend: IoLosos) -> anyhow::Result<()> {
                     web::post().to(post_market_close),
                 )
                 .route("/api/market/orders", web::post().to(post_market_order))
+                .route("/api/options", web::get().to(get_options))
+                .route("/api/config", web::get().to(get_config))
+                .route("/api/config/sync", web::post().to(post_config_sync))
                 .route("/api/look", web::get().to(get_look))
                 .route("/api/look", web::post().to(post_look))
                 .route("/api/look/background", web::put().to(put_background))

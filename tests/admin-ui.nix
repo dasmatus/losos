@@ -29,7 +29,13 @@
 # when nixpkgs moves and the npm pin did not, rather than at run time inside a
 # sandbox with no network to fix it from. Same arrangement, and same reasoning,
 # as tests/design-system.nix.
-{ pkgs }:
+{
+  pkgs,
+  # The option document (flake.nix passes the `losos-options-doc` check). With
+  # it, tests/advanced.browser.mjs renders every option the install
+  # configuration declares; without it the test falls back to its fixture.
+  optionsJson ? null,
+}:
 let
   inherit (pkgs) lib;
   pinnedPlaywright =
@@ -63,6 +69,9 @@ pkgs.buildNpmPackage {
     PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS = "true";
     PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1";
     FONTCONFIG_FILE = pkgs.makeFontsConf { fontDirectories = [ pkgs.dejavu_fonts ]; };
+  }
+  // lib.optionalAttrs (optionsJson != null) {
+    LOSOS_OPTIONS_JSON = optionsJson;
   };
 
   # npmBuildScript's default already ran `npm run build`, which is where the

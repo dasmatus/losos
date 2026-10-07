@@ -45,6 +45,20 @@ npm run typecheck
 npm run test:browser
 ```
 
+`tests/advanced.browser.mjs` renders every option the box declares. Outside
+nix it reads `tests/fixtures/options.json`, a copy of the document
+`flake/options-doc.nix` generates; refresh it after changing
+`modules/options.nix` with
+
+```sh
+nix build --no-link --print-out-paths .#checks.x86_64-linux.losos-options-doc
+cp "$(nix build --no-link --print-out-paths .#checks.x86_64-linux.losos-options-doc)" \
+   admin-ui/app/tests/fixtures/options.json
+```
+
+(`nix flake check` and `tests/admin-ui.nix` use the freshly generated one,
+so a stale fixture only affects a run on a dev machine.)
+
 ## VM tests
 
 CI cannot run these (no KVM on hosted runners). Run them locally before
