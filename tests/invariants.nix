@@ -64,6 +64,8 @@ assert must (lib.elem "https://proxy.losos.dasmat.us" config.nix.settings.extra-
   "the LosOS cache proxy is not among nix.settings.extra-substituters (${toString config.nix.settings.extra-substituters}): a fresh install then builds the 2.3 GiB Nextcloud image on the box instead of downloading it";
 assert must (lib.any (lib.hasPrefix "losos-1:") config.nix.settings.extra-trusted-public-keys)
   "no losos-1 key in nix.settings.extra-trusted-public-keys: nix declines the cache's signatures and silently builds from source, the slow install the cache exists to avoid";
+assert must (lib.elem config.system.build.nixos-rebuild config.systemd.services.lososd.path)
+  "nixos-rebuild is not on lososd's unit path: systemd-run resolves the rebuild command against the caller's PATH, so every Apply, storage-mode change and factory reset fails before the rebuild unit exists";
 # GRUB's limit is only set under `losos.bios`, which the published flake has
 # off; asserting it here would read the module's default. tests/install.nix
 # boots the BIOS path and is where that half is exercised.

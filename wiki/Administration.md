@@ -31,6 +31,49 @@ wizard offers a one-line installer for macOS, Linux and Windows
 (`/setup/trust.sh`, `/setup/trust.ps1`, both LAN-only) and the plain
 download (`/setup/losos-ca.crt`). See [Install](Install).
 
+## Look
+
+**Settings → Look** changes how the admin pages look, for every browser that
+opens the box. Nothing here is a setting in the Nix sense: it is a document
+lososd keeps at `/var/lib/losos/look.json`, so a change takes effect the
+moment it is saved, with no rebuild.
+
+### Background
+
+Pick one of the three shipped pictures, or upload one of your own (PNG, JPEG,
+WebP, GIF or SVG, up to 8 MiB). The **Veil** slider lays the page colour over
+the picture, from 20 % to 90 %, so text stays readable in both the light and
+the dark theme. *Plain* removes the picture again.
+
+An uploaded picture is served by lososd at `/api/look/background` without a
+token, because a CSS `background-image` cannot send one. The route sits behind
+the same LAN-only guard as the rest of the admin pages, and a wallpaper is
+not a secret.
+
+### Widgets written by hand
+
+The Overview board's gallery (**Add a widget**) has two ways to make your
+own. *Build one* composes a widget from the box's readings without any code.
+*Write one* takes HTML, style and script of your own, kept on the box and
+listed on this pane, where it can be edited and deleted.
+
+A hand-written widget runs inside a sandboxed frame, an origin of its own
+with no access to the admin pages, the admin token or the API. It talks to
+the box through a small `losos` object the frame provides:
+
+| Call                           | What it gives                                                        |
+| ------------------------------ | -------------------------------------------------------------------- |
+| `losos.metric(name)`           | A promise of one of the box's readings, the same names the gallery's built-in widgets use (`storage.bytes`, `box.settings`, …). |
+| `losos.theme`, `losos.lang`    | `light`/`dark` and the language the admin page is in.                |
+| `losos.palette`                | The box's colours, also set as CSS variables (`var(--accent)` works). |
+| `losos.onTheme(fn)`            | Called whenever the owner switches the theme.                         |
+| `losos.resize()`               | Ask the board to re-measure the tile after a change it cannot see.    |
+
+The editor's **Help** tab repeats this with an example, and its preview is the
+real frame, so what it shows is what the tile will show. A widget can fetch
+the internet (a weather tile, say) but not the box; up to 24 widgets of
+64 KiB each.
+
 ## Admin token
 
 `lososd` writes a random 64-hex-character token to

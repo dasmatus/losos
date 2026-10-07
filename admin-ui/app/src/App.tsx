@@ -47,6 +47,7 @@ import {
   subscribeAuth,
   TOKEN_PATTERN,
 } from "@/lib/api";
+import { followAuth } from "@/lib/look";
 import type { SettingsPaneId } from "@/screens/settings/panes";
 import { paneFromPath } from "@/lib/routes";
 import { useT } from "@/lib/i18n-react";
@@ -142,6 +143,12 @@ function Shell() {
   const gate = useGate();
   const t = useT();
 
+  /* The look — the wallpaper and the hand-written widgets — follows the
+   * token: loaded on sign-in, dropped on sign-out. Once, for the page. */
+  React.useEffect(() => {
+    followAuth();
+  }, []);
+
   /* Setup runs to the end once it has started, and this latch is what makes
    * that true.
    *
@@ -196,7 +203,7 @@ function Shell() {
   }
 
   return (
-    <div className="min-h-dvh bg-ground text-ink">
+    <div className="losos-shell min-h-dvh text-ink">
       <TopBar signedIn={signedIn} />
 
       <SidebarProvider
