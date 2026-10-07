@@ -11,10 +11,12 @@ own. **It wipes every fixed disk in the machine.**
 
 ## What you need
 
-- A machine with a 64-bit Intel or AMD processor, at least 4 GiB of memory
-  and one disk of 40 GiB or more. Mini-PCs built for offices are ideal; most
-  have a TPM 2.0 chip in the firmware (Intel PTT or AMD fTPM), which the
-  installer uses to keep the disk key.
+- A machine with a 64-bit Intel or AMD processor (x86_64) and UEFI or BIOS
+  firmware, at least 4 GiB of memory and one disk of 40 GiB or more. Mini-PCs
+  built for offices are ideal; most have a TPM 2.0 chip in the firmware
+  (Intel PTT or AMD fTPM), which the installer uses to keep the disk key.
+  LosOS is built for x86_64 only: it cannot be installed on an ARM machine,
+  and in particular **not on an Apple Silicon (M-series) Mac**.
 - A USB stick of 2 GiB or more.
 - A wired network connection with internet access. The installer downloads
   the system it installs.
