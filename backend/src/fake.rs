@@ -103,6 +103,15 @@ pub struct FakeLosos {
     pub market_routes: std::collections::BTreeMap<String, (u16, String)>,
     /// Every operation asked for, in order.
     pub market_ops: Vec<crate::market::Op>,
+
+    // ── Finding an edge proxy ───────────────────────────────────────────
+    /// What the fake scanner last found. The default has one LAN edge in
+    /// reach, so the happy path is the default and a test of the gate puts
+    /// an empty scan here on purpose.
+    pub edge: crate::edge::EdgeStatus,
+    /// How often the status was asked for: the gate must read it on every
+    /// turn-on, and a read-only command must not.
+    pub edge_asked: usize,
 }
 
 impl FakeLosos {
@@ -160,7 +169,24 @@ impl FakeLosos {
             catalogue_queries: Vec::new(),
             market_routes: std::collections::BTreeMap::new(),
             market_ops: Vec::new(),
+            edge: crate::edge::EdgeStatus::found(
+                vec![crate::edge::Edge {
+                    name: "edge".to_string(),
+                    url: "http://edge.local:8443".to_string(),
+                    source: crate::edge::Source::Lan,
+                }],
+                true,
+                None,
+            ),
+            edge_asked: 0,
         }
+    }
+
+    /// A fake whose scan found nothing: the box with no edge in reach.
+    #[must_use]
+    pub fn without_edge(mut self) -> Self {
+        self.edge = crate::edge::EdgeStatus::found(Vec::new(), true, None);
+        self
     }
 }
 
@@ -249,6 +275,11 @@ impl Losos for FakeLosos {
     }
 
     /// The real classifier, run against a scripted registrar.
+    fn edge_status(&mut self) -> anyhow::Result<crate::edge::EdgeStatus> {
+        self.edge_asked += 1;
+        Ok(self.edge.clone())
+    }
+
     fn market_request(&mut self, op: &crate::market::Op) -> anyhow::Result<crate::market::Outcome> {
         self.market_ops.push(op.clone());
         let (method, path) = op.route();

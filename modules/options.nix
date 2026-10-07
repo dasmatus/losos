@@ -1169,6 +1169,41 @@ in
       '';
     };
 
+    # ── Edge on the LAN ─────────────────────────────────────────────────────
+    # The appliance looks for an edge proxy before it lets anyone share
+    # storage (backend/src/edge.rs): at losos.proxy.registrarUrl, and on its
+    # own network by DNS-SD. This is the network half: the edge publishes
+    # `_losos-edge._tcp` over mDNS with a `url=` TXT record naming its
+    # registrar API, and the box's `avahi-browse` finds it. Off by default
+    # because a production edge is a VPS with no LAN to speak of; on for an
+    # edge that sits beside the boxes (a home server, the two-VM demo in
+    # demo/edge-lan/), where it is what lets a box with no internet share.
+    edge.lan.advertise = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Advertise this edge on the local network over mDNS/DNS-SD as
+        `_losos-edge._tcp`, so appliances on the same LAN find it without
+        any configuration. Also opens the registrar API port in the firewall
+        and binds it off-loopback when losos.edge.registrarApiBind is still
+        the loopback default: a box that found the edge dials the advertised
+        URL directly, there being no Traefik hostname on a LAN.
+      '';
+    };
+
+    edge.lan.url = lib.mkOption {
+      type = lib.types.str;
+      default = "http://${config.networking.hostName}.local:${toString config.losos.edge.registrarApiPort}";
+      defaultText = lib.literalExpression ''"http://''${config.networking.hostName}.local:''${toString config.losos.edge.registrarApiPort}"'';
+      description = ''
+        The registrar API URL the advertisement carries (`url=` TXT record).
+        Appliances probe `<url>/health` before they count the edge as found,
+        so it must be reachable from the LAN as written. The default is the
+        edge's own mDNS name, resolvable by every appliance (they run Avahi's
+        NSS module); set an IP literal when the LAN's mDNS is unreliable.
+      '';
+    };
+
     edge.rathole.package = lib.mkOption {
       type = lib.types.package;
       default = pkgs.rathole;

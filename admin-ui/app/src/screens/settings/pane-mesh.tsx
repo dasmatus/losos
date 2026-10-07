@@ -2,10 +2,12 @@ import * as React from "react";
 import { ButtonGroup, ButtonGroupText } from "@/components/ui/button-group";
 import { FieldError, Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
+import { Spinner } from "@/components/ui/progress";
 import { Rich, useT } from "@/lib/i18n-react";
 import { HourStrip } from "./hour-strip";
-import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText, StackRow } from "./rows";
+import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText, RowValue, StackRow } from "./rows";
 import { describeWindow } from "./window";
+import { useEdge, type EdgeView } from "./use-edge";
 import type { SettingsForm } from "./use-settings-form";
 
 /* Joining the mesh, and the hours this box lends while nobody is using it.
@@ -23,10 +25,64 @@ import type { SettingsForm } from "./use-settings-form";
  * So the copy says "your local time", the strip is drawn in local hours with
  * no conversion anywhere, and the caption says the hours travel with the
  * setting. That sentence is load-bearing, not reassurance.
+ *
+ * Above all of it sits the edge proxy. The mesh is other boxes behind an
+ * edge, and lososd looks for one every few seconds (on the LAN by DNS-SD and
+ * at the configured registrar) and refuses to turn joining on when none
+ * answers. The first group shows that reading, and the Join switch is greyed
+ * with the same reason while nothing is in reach — a switch the box is going
+ * to refuse should not look like it will take. A box already joined keeps
+ * its switch live, so the owner can still leave while the edge is away.
  */
+
+/* The first group: what the box found when it last looked for an edge. */
+export function EdgeGroup({ view }: { view: EdgeView }) {
+  const t = useT();
+  const { state } = view;
+  let title: string;
+  let detail: string | undefined;
+  let value: React.ReactNode = null;
+  let tone: string | undefined;
+  if (state.kind === "loading") {
+    title = t("panes.mesh.edge.looking");
+    value = <Spinner size={16} />;
+  } else if (state.kind === "failed") {
+    title = t("panes.mesh.edge.unknown");
+    detail = state.message;
+  } else if (state.edge.reachable) {
+    const first = state.edge.edges[0];
+    title = t("panes.mesh.edge.found", { name: first?.name ?? "" });
+    detail = first?.url;
+    value = t(first?.source === "configured" ? "panes.mesh.edge.viaInternet" : "panes.mesh.edge.viaLan");
+    tone = "text-ok";
+  } else {
+    title = t("panes.mesh.edge.none");
+    const tried = state.edge.configuredUrl;
+    detail = state.edge.lanSearched
+      ? tried === null
+        ? t("panes.mesh.edge.noneDetail")
+        : t("panes.mesh.edge.noneTried", { url: tried })
+      : t("panes.mesh.edge.lanUnsearched");
+    value = t("panes.mesh.edge.sharingOff");
+    tone = "text-danger";
+  }
+  return (
+    <PaneSection>
+      <GroupTitle>{t("panes.mesh.edge.title")}</GroupTitle>
+      <Group>
+        <Row last data-edge={state.kind === "known" ? (state.edge.reachable ? "found" : "none") : state.kind}>
+          <RowText title={title} detail={detail} />
+          <RowValue className={tone}>{value}</RowValue>
+        </Row>
+      </Group>
+      <GroupCaption>{t("panes.mesh.edge.caption")}</GroupCaption>
+    </PaneSection>
+  );
+}
 
 export function MeshPane({ form }: { form: SettingsForm }) {
   const t = useT();
+  const edge = useEdge();
   const joinId = React.useId();
   const shareId = React.useId();
   const startId = React.useId();
@@ -40,6 +96,11 @@ export function MeshPane({ form }: { form: SettingsForm }) {
   const end = draft?.computeWindowEnd ?? "";
 
   const disabled = form.locked || !form.ready;
+  /* No edge in reach and not joined yet: the daemon would refuse the join,
+   * so the switch is greyed and says why. Already joined (as saved) stays
+   * live, so the owner can leave the mesh while the edge is away. */
+  const joinRefused = edge.blocked && !(form.saved?.clusterEnable ?? false);
+  const joinDisabled = disabled || joinRefused;
   /* The window only means anything once this box has joined. Greyed rather
    * than hidden, because the shape of what joining gets you is half the
    * decision — and both halves go out in the same apply, so turning join on
@@ -48,15 +109,21 @@ export function MeshPane({ form }: { form: SettingsForm }) {
 
   return (
     <>
+      <EdgeGroup view={edge} />
+
       <PaneSection>
         <GroupTitle>{t("panes.mesh.otherBoxes")}</GroupTitle>
         <Group>
           <Row last>
-            <RowText htmlFor={joinId} title={t("panes.mesh.join")} />
+            <RowText
+              htmlFor={joinId}
+              title={t("panes.mesh.join")}
+              detail={joinRefused && !disabled ? t("panes.mesh.edge.needed") : undefined}
+            />
             <Switch
               id={joinId}
               checked={joined}
-              disabled={disabled}
+              disabled={joinDisabled}
               onCheckedChange={(next) => form.set("clusterEnable", next)}
             />
           </Row>

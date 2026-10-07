@@ -14,7 +14,7 @@
 use crate::guard::{retry_after_secs, Audit, Throttle};
 use crate::io_backend::{atomic_write_secret, IoLosos};
 use crate::losos::{
-    cmd_apply, cmd_apps_search, cmd_change, cmd_factory_reset, cmd_grow, cmd_recovery,
+    cmd_apply, cmd_apps_search, cmd_change, cmd_edge, cmd_factory_reset, cmd_grow, cmd_recovery,
     cmd_set_password, cmd_settings, cmd_sign_in, cmd_state, cmd_status,
 };
 use crate::model::Mode;
@@ -108,6 +108,20 @@ fn run(
                 "30".parse().expect("digits"),
             );
             resp
+        }
+        // Sharing turned on with no edge proxy in reach (`crate::edge`):
+        // 409 with the reason and a flag the Mesh pane keys on, so the switch
+        // can say why it did not take rather than "command failed".
+        Err(e) if e.downcast_ref::<crate::edge::EdgeRequired>().is_some() => {
+            let why = e
+                .downcast_ref::<crate::edge::EdgeRequired>()
+                .expect("checked");
+            tracing::warn!(setting = why.setting, "refused: no edge proxy reachable");
+            HttpResponse::build(actix_web::http::StatusCode::CONFLICT).json(serde_json::json!({
+                "error": why.to_string(),
+                "edgeRequired": true,
+                "setting": why.setting,
+            }))
         }
         // A second owner, or the first one again after the grace window:
         // the sentence, as a 409 the wizard already knows how to show.
@@ -242,6 +256,11 @@ async fn get_settings(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
 
 async fn get_status(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
     guarded(&api, &req, "/api/status", false, || run(&api, cmd_status))
+}
+
+/// What the daemon found when it last looked for an edge proxy.
+async fn get_edge(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    guarded(&api, &req, "/api/edge", false, || run(&api, cmd_edge))
 }
 
 async fn post_change(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> HttpResponse {
@@ -808,6 +827,7 @@ pub fn serve(backend: IoLosos) -> anyhow::Result<()> {
                 .route("/api/state", web::get().to(get_state))
                 .route("/api/settings", web::get().to(get_settings))
                 .route("/api/status", web::get().to(get_status))
+                .route("/api/edge", web::get().to(get_edge))
                 .route("/api/change", web::post().to(post_change))
                 .route("/api/apply", web::post().to(post_apply))
                 .route("/api/factory-reset", web::post().to(post_factory_reset))
