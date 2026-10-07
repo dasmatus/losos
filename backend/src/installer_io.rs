@@ -447,10 +447,10 @@ impl SecureBoot {
     pub fn banner(self) -> &'static str {
         match self {
             SecureBoot::Enabled => {
-                "Secure Boot: enabled. The firmware verified this medium's signature before starting it."
+                "Secure Boot: enabled. The firmware verified this medium's signature."
             }
             SecureBoot::Disabled => {
-                "Secure Boot: disabled. The firmware started this medium without checking its signature."
+                "Secure Boot: disabled. The firmware did not check this medium's signature."
             }
             SecureBoot::Bios => "Secure Boot: not available (legacy BIOS boot).",
         }
