@@ -1,49 +1,63 @@
 #!/usr/bin/env bash
-# demo/edge-lan/run.sh — a losos box and an edge proxy on one virtual network.
+# demo/edge-lan/run.sh — two losos boxes and an edge proxy on one virtual
+# network, without the edge first, then with it.
 #
-# What it shows: the box finds the edge on the LAN by itself (mDNS/DNS-SD),
-# the Mesh pane says so and lets storage be shared; the edge is switched off,
-# the box notices within a minute and refuses to turn sharing on, in its own
-# words; the edge comes back and the gate reopens. See wiki/Mesh.md, "Finding
-# the edge", and backend/src/edge.rs.
+# What it shows (the order is the KOP verification checklist's,
+# demo/edge-lan/CHECKLIST.md): scenario A, no edge anywhere — both boxes
+# search their network, find nothing, refuse to turn sharing on in their own
+# words, keep serving their owners, and one of them is rebooted to show the
+# state holds; scenario B, the edge is switched on — both boxes find it by
+# mDNS within a scan, the Mesh pane says so and the sharing switches go live;
+# the edge is switched off and both notice; it returns and the gate reopens.
+# See wiki/Mesh.md, "Finding the edge", and backend/src/edge.rs.
 #
 # Host requirements (everything else comes through `nix shell`):
-#   * nix with flakes (https://nixos.org/download), 20 GB of free disk,
-#     8 GB of RAM to give the box;
+#   * nix with flakes (https://nixos.org/download), 20 GB of free disk per
+#     box, RAM to give each box (LOSOS_BOX_MEM, 8 GB default; 4 GB works for
+#     the walkthrough);
 #   * /dev/kvm for a demo that takes minutes rather than hours — without it
-#     QEMU falls back to software emulation and the install alone takes
-#     about 45 minutes;
-#   * no root: the two VMs talk over a VDE switch (a unix socket), and the
-#     host reaches them through QEMU port forwards on 127.0.0.1.
+#     QEMU falls back to software emulation and each install takes about 45
+#     minutes;
+#   * no root: the VMs talk over a VDE switch (a unix socket), and the host
+#     reaches them through QEMU port forwards on 127.0.0.1.
 #
 # Usage:
 #   demo/edge-lan/run.sh build [--iso PATH]   build the edge VM and the ISO
-#   demo/edge-lan/run.sh up                   start the LAN, the edge, install
-#                                             the box from the ISO, boot it,
-#                                             claim it (prints the admin key)
-#   demo/edge-lan/run.sh walk                 the walkthrough, over the API
+#   demo/edge-lan/run.sh up                   start the LAN and the edge,
+#                                             install each box from the ISO,
+#                                             boot and claim them (prints the
+#                                             admin keys)
+#   demo/edge-lan/run.sh walk                 the walkthrough, over the API:
+#                                             scenario A (edge off) then B
+#   demo/edge-lan/run.sh join [N]             turn a box's mesh join on for
+#                                             real (a rebuild on the box)
 #   demo/edge-lan/run.sh edge off|on          power the edge off, or back on
+#   demo/edge-lan/run.sh api [N] METHOD PATH  one request to box N (default 1)
 #   demo/edge-lan/run.sh status               what is running
 #   demo/edge-lan/run.sh down                 stop everything (keeps disks)
 #   demo/edge-lan/run.sh clean                stop and delete the state dir
 #
-# Ports on the host (override with the environment variables named):
-#   LOSOS_BOX_PORT      8080  the box's web UI    http://127.0.0.1:8080/
+# Knobs (environment variables):
+#   LOSOS_BOXES         2     how many boxes (1 shows the gate on one box)
+#   LOSOS_BOX_PORT      8080  box 1's web UI on the host; box N is +N-1
+#                             (http://127.0.0.1:8080/, http://127.0.0.1:8081/)
 #   LOSOS_EDGE_API_PORT 8443  the edge's registrar http://127.0.0.1:8443/health
+#   LOSOS_BOX_MEM/CPUS/DISK_GB, LOSOS_BOX_PASSWORD, LOSOS_FLAKE, LOSOS_NIX_ARGS
 #
 # State lives in $LOSOS_DEMO_STATE (default demo/edge-lan/state, gitignored):
-# the VDE socket, both disks, QMP sockets, logs, and the admin key.
+# the VDE socket, the disks, QMP sockets, logs, and the admin keys.
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo="$(cd "$here/../.." && pwd)"
 state="${LOSOS_DEMO_STATE:-$here/state}"
+boxes="${LOSOS_BOXES:-2}"
 box_port="${LOSOS_BOX_PORT:-8080}"
 edge_api_port="${LOSOS_EDGE_API_PORT:-8443}"
 box_mem="${LOSOS_BOX_MEM:-8192}"
 box_cpus="${LOSOS_BOX_CPUS:-4}"
 box_disk_gb="${LOSOS_BOX_DISK_GB:-40}"
-# The password the claim sets on the box. Demo only; change it after.
+# The password the claim sets on the boxes. Demo only; change it after.
 box_password="${LOSOS_BOX_PASSWORD:-Losos-demo-2026!}"
 flake="${LOSOS_FLAKE:-$repo}"
 # Extra `nix` arguments, e.g. input overrides on a machine that cannot reach
@@ -152,17 +166,24 @@ edge_off() {
   sleep 1
 }
 
-# ── the box ────────────────────────────────────────────────────────────────
-box_qemu() { # box_qemu BOOT(d|c) — start the box VM; stdout is QEMU's
-  local boot=$1
-  rm -f "$state/box.qmp"
-  mkdir -p "$state/tpm"
+# ── the boxes ──────────────────────────────────────────────────────────────
+# Everything about box N is keyed on N: disk, TPM state, QMP socket, MACs,
+# the host port (box_port + N - 1) and the admin key. The two boxes are
+# identical installs from the same ISO, which is the point: nothing on a box
+# is demo-specific or knows about the other.
+port_of() { echo $((box_port + $1 - 1)); }
+key_of() { echo "$state/admin-key-$1"; }
+
+box_qemu() { # box_qemu N BOOT(d|c) — start box N; stdout is QEMU's
+  local n=$1 boot=$2
+  rm -f "$state/box$n.qmp"
+  mkdir -p "$state/tpm$n"
   # swtpm: the installer enrols the disk key into it, so the installed box
   # unlocks with no passphrase. Same state dir for the install and every boot.
-  if ! [ -S "$state/tpm/swtpm-sock" ] || ! kill -0 "$(cat "$state/tpm/swtpm.pid" 2>/dev/null)" 2>/dev/null; then
-    in_tools swtpm socket --tpm2 --tpmstate dir="$state/tpm" \
-      --ctrl type=unixio,path="$state/tpm/swtpm-sock" --pid file="$state/tpm/swtpm.pid" \
-      --log file="$state/tpm/swtpm.log" -d
+  if ! [ -S "$state/tpm$n/swtpm-sock" ] || ! kill -0 "$(cat "$state/tpm$n/swtpm.pid" 2>/dev/null)" 2>/dev/null; then
+    in_tools swtpm socket --tpm2 --tpmstate dir="$state/tpm$n" \
+      --ctrl type=unixio,path="$state/tpm$n/swtpm-sock" --pid file="$state/tpm$n/swtpm.pid" \
+      --log file="$state/tpm$n/swtpm.log" -d
   fi
   # Two NICs: the LAN (DHCP from the edge, mDNS to find it) and a restricted
   # user network that carries ONLY the host's port forward to the web UI —
@@ -170,165 +191,218 @@ box_qemu() { # box_qemu BOOT(d|c) — start the box VM; stdout is QEMU's
   # road to the internet is the edge's NAT, and the edge going away really
   # does leave it with no edge anywhere.
   in_tools qemu-system-x86_64 \
-    -name losos-box -machine q35 "${accel_args[@]}" -smp "$box_cpus" -m "$box_mem" \
-    -drive file="$state/box.qcow2",if=virtio,format=qcow2,discard=unmap \
+    -name "losos-box$n" -machine q35 "${accel_args[@]}" -smp "$box_cpus" -m "$box_mem" \
+    -drive file="$state/box$n.qcow2",if=virtio,format=qcow2,discard=unmap \
     -cdrom "$state/losos.iso" -boot order="$boot" \
-    -netdev vde,id=lan,sock="$state/lan.sock" -device virtio-net-pci,netdev=lan,mac=52:54:00:b0:11:01 \
-    -netdev user,id=host,restrict=on,hostfwd=tcp:127.0.0.1:"$box_port"-:80 -device virtio-net-pci,netdev=host,mac=52:54:00:b0:11:02 \
-    -chardev socket,id=chrtpm,path="$state/tpm/swtpm-sock" -tpmdev emulator,id=tpm0,chardev=chrtpm -device tpm-tis,tpmdev=tpm0 \
+    -netdev vde,id=lan,sock="$state/lan.sock" -device virtio-net-pci,netdev=lan,mac="52:54:00:b0:1$n:01" \
+    -netdev user,id=host,restrict=on,hostfwd=tcp:127.0.0.1:"$(port_of "$n")"-:80 -device virtio-net-pci,netdev=host,mac="52:54:00:b0:1$n:02" \
+    -chardev socket,id=chrtpm,path="$state/tpm$n/swtpm-sock" -tpmdev emulator,id=tpm0,chardev=chrtpm -device tpm-tis,tpmdev=tpm0 \
     -device virtio-rng-pci \
-    -display none -vnc 127.0.0.1:"${LOSOS_BOX_VNC:-7}" \
-    -qmp unix:"$state/box.qmp",server,nowait \
-    -serial file:"$state/box-serial.log" \
-    -daemonize -pidfile "$state/box.pid"
+    -display none -vnc 127.0.0.1:"$((${LOSOS_BOX_VNC:-7} + n - 1))" \
+    -qmp unix:"$state/box$n.qmp",server,nowait \
+    -serial file:"$state/box$n-serial.log" \
+    -daemonize -pidfile "$state/box$n.pid"
 }
 
-box_api() { # box_api METHOD PATH [JSON]
-  local method=$1 path=$2 data=${3:-}
+box_api() { # box_api N METHOD PATH [JSON]
+  local n=$1 method=$2 path=$3 data=${4:-}
   local token=""
-  [ -s "$state/admin-key" ] && token="$(cat "$state/admin-key")"
+  [ -s "$(key_of "$n")" ] && token="$(cat "$(key_of "$n")")"
   in_tools curl -sS --max-time 15 -X "$method" \
     ${token:+-H "Authorization: Bearer $token"} \
     ${data:+-H "Content-Type: application/json" --data-binary "$data"} \
-    -w '\n%{http_code}' "http://127.0.0.1:$box_port$path"
+    -w '\n%{http_code}' "http://127.0.0.1:$(port_of "$n")$path"
 }
 
-screen_digest() { # a digest of the box's console, for the "is it done" heuristic
-  qmp "$state/box.qmp" '"screendump","arguments":{"filename":"'"$state"'/screen.ppm"}' >/dev/null
-  [ -s "$state/screen.ppm" ] && in_tools sha256sum "$state/screen.ppm" | cut -c1-16 || echo none
+screen_digest() { # screen_digest N — a digest of the console, for the "is it done" heuristic
+  qmp "$state/box$1.qmp" '"screendump","arguments":{"filename":"'"$state"'/screen'"$1"'.ppm"}' >/dev/null
+  [ -s "$state/screen$1.ppm" ] && in_tools sha256sum "$state/screen$1.ppm" | cut -c1-16 || echo none
 }
 
-box_install() {
+box_install() { # box_install N
+  local n=$1
   [ -r "$state/losos.iso" ] || die "no ISO; run: $0 build"
-  if [ -s "$state/installed" ]; then log "box already installed ($state/box.qcow2)"; return; fi
-  alive "$state/box.qmp" && die "a box VM is already running"
+  if [ -s "$state/installed$n" ]; then log "box $n already installed ($state/box$n.qcow2)"; return; fi
+  alive "$state/box$n.qmp" && die "box $n's VM is already running"
   lan_up
-  rm -f "$state/box.qcow2"
-  in_tools qemu-img create -q -f qcow2 "$state/box.qcow2" "${box_disk_gb}G"
-  log "booting the installer ISO; the box installs itself unattended ($(have_kvm && echo 'a few minutes' || echo 'about 45 minutes without KVM'))"
-  log "watch it on VNC 127.0.0.1:$((5900 + ${LOSOS_BOX_VNC:-7})) if you like"
-  box_qemu d
+  rm -f "$state/box$n.qcow2"
+  in_tools qemu-img create -q -f qcow2 "$state/box$n.qcow2" "${box_disk_gb}G"
+  log "box $n: booting the installer ISO; it installs itself unattended ($(have_kvm && echo 'a few minutes' || echo 'about 45 minutes without KVM'))"
+  log "watch it on VNC 127.0.0.1:$((5900 + ${LOSOS_BOX_VNC:-7} + n - 1)) if you like"
+  box_qemu "$n" d
   # The installer ends on a shell that says "done. Remove the install medium
   # and reboot"; there is no serial copy of that line, so completion is read
   # off the machine: the console stops changing and the disk stops growing.
   local started=$SECONDS last="" same=0 size="" lastsize="" minutes
   while :; do
     sleep 30
-    alive "$state/box.qmp" || die "the box VM exited during the install; see $state/box-serial.log"
-    local d; d=$(screen_digest); size=$(stat -c %s "$state/box.qcow2")
+    alive "$state/box$n.qmp" || die "box $n's VM exited during the install; see $state/box$n-serial.log"
+    local d; d=$(screen_digest "$n"); size=$(stat -c %s "$state/box$n.qcow2")
     if [ "$d" = "$last" ] && [ "$size" = "$lastsize" ]; then same=$((same + 1)); else same=0; fi
     last=$d; lastsize=$size
     minutes=$(( (SECONDS - started) / 60 ))
-    printf '\r  installing… %d min, disk %d MiB   ' "$minutes" $((size / 1048576)) >&2
+    printf '\r  box %s installing… %d min, disk %d MiB   ' "$n" "$minutes" $((size / 1048576)) >&2
     # Six quiet samples (three minutes) after the first ten minutes.
     if [ $same -ge 6 ] && [ $minutes -ge 10 ]; then break; fi
-    if [ $minutes -ge 150 ]; then die "the install did not finish in 150 minutes"; fi
+    if [ $minutes -ge 150 ]; then die "box $n's install did not finish in 150 minutes"; fi
   done
   echo >&2
-  log "install finished after $minutes min; shutting the installer down"
-  qmp "$state/box.qmp" quit >/dev/null; sleep 2
-  date -u +%FT%TZ >"$state/installed"
+  log "box $n: install finished after $minutes min; shutting the installer down"
+  qmp "$state/box$n.qmp" quit >/dev/null; sleep 2
+  date -u +%FT%TZ >"$state/installed$n"
 }
 
-box_boot() {
-  [ -s "$state/installed" ] || box_install
-  if alive "$state/box.qmp"; then log "box already running"; return; fi
+box_boot() { # box_boot N
+  local n=$1
+  [ -s "$state/installed$n" ] || box_install "$n"
+  if alive "$state/box$n.qmp"; then log "box $n already running"; return; fi
   lan_up
-  log "booting the installed box from its disk"
-  box_qemu c
-  log "waiting for the box's web UI (http://127.0.0.1:$box_port/)"
+  log "box $n: booting from its disk"
+  box_qemu "$n" c
+}
+
+wait_box() { # wait_box N — until the web UI answers
+  local n=$1
+  log "box $n: waiting for the web UI (http://127.0.0.1:$(port_of "$n")/)"
   for _ in $(seq 1 300); do
-    if box_api GET /api/health 2>/dev/null | tail -1 | grep -q 200; then break; fi
+    if box_api "$n" GET /api/health 2>/dev/null | tail -1 | grep -q 200; then log "box $n is up"; return; fi
     sleep 2
   done
-  box_api GET /api/health | tail -1 | grep -q 200 || die "the box did not answer in 10 minutes; see $state/box-serial.log"
-  log "box is up"
+  die "box $n did not answer in 10 minutes; see $state/box$n-serial.log"
 }
 
-box_claim() {
-  if [ -s "$state/admin-key" ]; then log "box already claimed; admin key in $state/admin-key"; return; fi
-  log "waiting for LosOS cloud to finish its first start so the box can be claimed (minutes; ~45 without KVM)"
+box_claim() { # box_claim N
+  local n=$1
+  if [ -s "$(key_of "$n")" ]; then log "box $n already claimed; admin key in $(key_of "$n")"; return; fi
+  log "box $n: waiting for LosOS cloud to finish its first start so the box can be claimed (minutes; ~45 without KVM)"
   local out code
   while :; do
-    out=$(box_api GET /api/setup/claim); code=$(tail -1 <<<"$out")
+    out=$(box_api "$n" GET /api/setup/claim); code=$(tail -1 <<<"$out")
     if [ "$code" = 200 ] && grep -q '"ready": *true' <<<"$out"; then break; fi
     if grep -q '"claimed": *true' <<<"$out"; then
-      die "the box is already claimed and this run has no admin key; run: $0 clean"
+      die "box $n is already claimed and this run has no admin key; run: $0 clean"
     fi
     sleep 10
   done
   # The claim is the first-run password. From here it is a plain request:
   # the box names an IP literal in Host (the forward's), which the claim
   # route accepts as "this box".
-  out=$(box_api POST /api/setup/claim "{\"password\":$(in_tools jq -Rn --arg p "$box_password" '$p')}")
+  out=$(box_api "$n" POST /api/setup/claim "{\"password\":$(in_tools jq -Rn --arg p "$box_password" '$p')}")
   code=$(tail -1 <<<"$out")
-  [ "$code" = 200 ] || die "claim answered $code: $(head -n -1 <<<"$out")"
-  head -n -1 <<<"$out" | in_tools jq -r .token >"$state/admin-key"
-  chmod 600 "$state/admin-key"
-  log "claimed. Password: $box_password   Admin key (spare): $(cat "$state/admin-key")"
+  [ "$code" = 200 ] || die "box $n: claim answered $code: $(head -n -1 <<<"$out")"
+  head -n -1 <<<"$out" | in_tools jq -r .token >"$(key_of "$n")"
+  chmod 600 "$(key_of "$n")"
+  log "box $n claimed. Password: $box_password   Admin key (spare): $(cat "$(key_of "$n")")"
 }
 
+each_box() { for n in $(seq 1 "$boxes"); do "$@" "$n"; done; }
+
 cmd_up() {
+  # The edge is the LAN's DHCP server and its road to the internet, and the
+  # installer needs both; so it is up for the install and the first boot.
+  # `walk` switches it off before scenario A.
   edge_up
-  box_boot
-  box_claim
-  log "ready. Open http://127.0.0.1:$box_port/mesh and sign in with the password; then: $0 walk"
+  # Sequential: two software-emulated installs at once would halve each
+  # other's speed, and the heuristic that reads completion off the console
+  # is per box anyway.
+  each_box box_install
+  each_box box_boot
+  each_box wait_box
+  each_box box_claim
+  log "ready. Open http://127.0.0.1:$box_port/mesh (box 1) and http://127.0.0.1:$((box_port + boxes - 1))/mesh (box $boxes), sign in with the password; then: $0 walk"
 }
 
 # ── the walkthrough ────────────────────────────────────────────────────────
-edge_doc() { box_api GET /api/edge | head -n -1; }
+edge_doc() { box_api "$1" GET /api/edge | head -n -1; }
 
-wait_edge() { # wait_edge true|false
-  local want=$1 doc
+wait_edge_box() { # wait_edge_box N true|false
+  local n=$1 want=$2 doc
   for _ in $(seq 1 30); do
-    doc=$(edge_doc)
-    if [ "$(in_tools jq -r .reachable <<<"$doc")" = "$want" ]; then echo "$doc"; return; fi
+    doc=$(edge_doc "$n")
+    if [ "$(in_tools jq -r .reachable <<<"$doc")" = "$want" ]; then break; fi
     sleep 5
+    doc=""
   done
-  die "the box still says reachable != $want after 150 s: $doc"
+  [ -n "$doc" ] || die "box $n still says reachable != $want after 150 s: $(edge_doc "$n")"
+  printf '   box %s: ' "$n" >&2; in_tools jq -c '{reachable, official, edges: [.edges[] | {url, source, official}]}' <<<"$doc" >&2
+}
+
+wait_edge() { # wait_edge true|false — on every box
+  local n
+  for n in $(seq 1 "$boxes"); do wait_edge_box "$n" "$1"; done
+}
+
+refuse_mesh() { # refuse_mesh N — the gate closed: 409 in the daemon's words
+  local n=$1 out code
+  out=$(box_api "$n" POST /api/change '{"mode":"mesh"}'); code=$(tail -1 <<<"$out")
+  [ "$code" = 409 ] || die "box $n: expected a 409 with no edge, got $code: $(head -n -1 <<<"$out")"
+  printf '   box %s: 409 — %s\n' "$n" "$(head -n -1 <<<"$out" | in_tools jq -r .error)" >&2
 }
 
 cmd_walk() {
-  [ -s "$state/admin-key" ] || die "the box is not claimed; run: $0 up"
-  local doc
-  log "1. What the box found when it last looked for an edge proxy (GET /api/edge):"
-  doc=$(wait_edge true); in_tools jq . <<<"$doc"
-  log "   -> reachable, found on the LAN: $(in_tools jq -r '.edges[0].name + " at " + .edges[0].url' <<<"$doc")"
-  log "   The Mesh pane shows this at the top and its Join switch is live."
+  local n
+  for n in $(seq 1 "$boxes"); do [ -s "$(key_of "$n")" ] || die "box $n is not claimed; run: $0 up"; done
+  each_box wait_box
 
-  log "2. Powering the edge off."
+  log "Scenario A — no edge proxy anywhere."
   edge_off
-  log "   Waiting for the box to notice (it looks every 20 s)…"
-  doc=$(wait_edge false); in_tools jq . <<<"$doc"
-  log "   -> no edge proxy found; the pane says so and the switches are greyed."
+  log "A1. What each box found when it last looked (GET /api/edge); it looks every 20 s:"
+  wait_edge false
+  log "    -> No edge proxy found, on every box. The Mesh pane says so and its sharing switches are greyed."
 
-  log "3. Asking the box to share its storage anyway (POST /api/change mesh):"
-  local out code
-  out=$(box_api POST /api/change '{"mode":"mesh"}'); code=$(tail -1 <<<"$out")
-  head -n -1 <<<"$out" | in_tools jq .
-  [ "$code" = 409 ] && log "   -> refused with 409, in the box's own words. Nothing was written." \
-                    || die "expected a 409, got $code"
+  log "A2. Asking each box to share its storage anyway (POST /api/change mesh):"
+  each_box refuse_mesh
+  log "    -> refused, nothing written. The switches say \"Needs an edge proxy in reach.\""
 
-  log "4. Something that is not sharing still works: the box's settings read back fine."
-  box_api GET /api/settings | head -n -1 | in_tools jq '{hostName, clusterEnable, sharingMyStorage}'
+  log "A3. Everything that is not sharing still works: settings read back on every box."
+  for n in $(seq 1 "$boxes"); do
+    printf '   box %s: ' "$n" >&2
+    box_api "$n" GET /api/settings | head -n -1 | in_tools jq -c '{hostName, clusterEnable, sharingMyStorage}' >&2
+  done
 
-  log "5. Bringing the edge back."
+  if [ "$boxes" -ge 2 ]; then
+    log "A4. Rebooting box 2; it must come back saying the same."
+    qmp "$state/box2.qmp" system_reset >/dev/null
+    sleep 20
+    wait_box 2
+    wait_edge_box 2 false
+    refuse_mesh 2
+    log "    -> same state after the restart: local services up, no edge, sharing refused."
+  fi
+
+  log "Scenario B — the edge is switched on."
   edge_up
-  doc=$(wait_edge true)
-  log "   -> found again: $(in_tools jq -r '.edges[0].url' <<<"$doc"). The gate is open; the Join switch is live."
-  log "done. To see the box actually accept a mesh join now: $0 join (starts a real rebuild on the box)."
+  log "B1. Both boxes find it by themselves (mDNS, _losos-edge._tcp), within one scan:"
+  wait_edge true
+  log "    -> Edge proxy found, On this network. The Mesh pane shows one row per edge with its sign (check: official; warning: not signed by the LosOS root key — this demo edge carries no identity)."
+  log "B2. The gate is open: the Join switch is live on every box. '$0 join N' performs the real join (a rebuild on the box); the pooled-storage steps B3/B4 need the mesh wiring listed in CHECKLIST.md."
+
+  log "B5. Powering the edge off; both boxes notice within two scans and refuse again:"
+  edge_off
+  wait_edge false
+  each_box refuse_mesh
+  log "    -> and each box's own apps keep working; this is scenario A again."
+
+  log "B6. Bringing the edge back; the gate reopens with no hand on the boxes:"
+  edge_up
+  wait_edge true
+  log "done. The order above is demo/edge-lan/CHECKLIST.md; the recording of the same walk from the boxes' admin UI is made by demo/edge-lan/record.sh."
 }
 
 cmd_join() {
-  [ -s "$state/admin-key" ] || die "the box is not claimed; run: $0 up"
-  local out code
-  out=$(box_api POST /api/change '{"mode":"mesh"}'); code=$(tail -1 <<<"$out")
+  local n=${1:-1} out code
+  [ -s "$(key_of "$n")" ] || die "box $n is not claimed; run: $0 up"
+  out=$(box_api "$n" POST /api/change '{"mode":"mesh"}'); code=$(tail -1 <<<"$out")
   head -n -1 <<<"$out" | in_tools jq .
-  [ "$code" = 200 ] || die "the box refused ($code); is the edge up?"
-  log "accepted: the box is rebuilding into mesh mode. Follow it with: $0 api GET /api/status"
+  [ "$code" = 200 ] || die "box $n refused ($code); is the edge up?"
+  log "accepted: box $n is rebuilding into mesh mode. Follow it with: $0 api $n GET /api/status"
 }
 
-cmd_api() { box_api "$@"; echo; }
+cmd_api() {
+  local n=1
+  case ${1:-} in [0-9]*) n=$1; shift ;; esac
+  box_api "$n" "$@"; echo
+}
 
 cmd_edge() {
   case ${1:-} in
@@ -339,21 +413,28 @@ cmd_edge() {
 }
 
 cmd_status() {
+  local n
   printf 'LAN switch: %s\n' "$([ -S "$state/lan.sock/ctl" ] && echo up || echo down)"
   printf 'edge VM:    %s\n' "$(alive "$state/edge.qmp" && echo running || echo stopped)"
-  printf 'box VM:     %s (%s)\n' "$(alive "$state/box.qmp" && echo running || echo stopped)" \
-    "$([ -s "$state/installed" ] && echo installed || echo 'not installed')"
-  [ -s "$state/admin-key" ] && printf 'box:        claimed; web UI http://127.0.0.1:%s/\n' "$box_port"
-  if alive "$state/box.qmp" && [ -s "$state/admin-key" ]; then
-    printf 'edge seen:  %s\n' "$(edge_doc | in_tools jq -c '{reachable, edges: [.edges[].url]}')"
-  fi
+  for n in $(seq 1 "$boxes"); do
+    printf 'box %s VM:   %s (%s)' "$n" "$(alive "$state/box$n.qmp" && echo running || echo stopped)" \
+      "$([ -s "$state/installed$n" ] && echo installed || echo 'not installed')"
+    [ -s "$(key_of "$n")" ] && printf '; claimed; web UI http://127.0.0.1:%s/' "$(port_of "$n")"
+    echo
+    if alive "$state/box$n.qmp" && [ -s "$(key_of "$n")" ]; then
+      printf '  edge seen: %s\n' "$(edge_doc "$n" | in_tools jq -c '{reachable, official, edges: [.edges[].url]}')"
+    fi
+  done
 }
 
 cmd_down() {
+  local n
   log "stopping the VMs"
-  alive "$state/box.qmp" && qmp "$state/box.qmp" quit >/dev/null
+  for n in $(seq 1 "$boxes"); do
+    alive "$state/box$n.qmp" && qmp "$state/box$n.qmp" quit >/dev/null
+    [ -f "$state/tpm$n/swtpm.pid" ] && kill "$(cat "$state/tpm$n/swtpm.pid")" 2>/dev/null || true
+  done
   edge_off
-  [ -f "$state/tpm/swtpm.pid" ] && kill "$(cat "$state/tpm/swtpm.pid")" 2>/dev/null || true
   [ -f "$state/vde.pid" ] && kill "$(cat "$state/vde.pid")" 2>/dev/null || true
   rm -f "$state/vde.pid"
   log "down (disks kept in $state)"
@@ -367,5 +448,5 @@ cmd_clean() {
 
 case ${1:-} in
   build|up|walk|join|api|edge|status|down|clean) cmd=$1; shift; "cmd_$cmd" "$@" ;;
-  *) sed -n '2,40p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
+  *) sed -n '2,48p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
 esac
