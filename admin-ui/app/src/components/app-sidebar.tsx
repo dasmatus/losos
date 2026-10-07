@@ -20,6 +20,7 @@ import {
   SidebarHeader,
   SidebarInput,
   SidebarMenu,
+  SidebarMenuAction,
   SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuIcon,
@@ -28,9 +29,6 @@ import {
   SidebarMenuSubButton,
   SidebarMenuSubItem,
   SidebarTrigger,
-  sidebarMenuActionClassName,
-  sidebarMenuButtonVariants,
-  sidebarMenuSubButtonVariants,
   useSidebar,
 } from "@/components/ui/sidebar";
 import { t as translate, template, type MessageKey } from "@/lib/i18n";
@@ -63,8 +61,9 @@ import { paneById, paneMatches, type SettingsPaneId } from "@/screens/settings/p
  * announced as unavailable, with "soon(TM)" in its accessible name.
  *
  * On a wide screen the trigger (or Ctrl/Cmd+B) narrows the panel to a rail of
- * icons; on a phone the panel is one row naming where you are, and the
- * trigger opens it in place. */
+ * icons, each naming itself in a tooltip; on a phone a row naming where you
+ * are opens the panel as a Sheet from the left. The primitives are shadcn's
+ * base registry (components/ui/sidebar.tsx, on Base UI). */
 
 interface LinkEntry {
   kind: "link";
@@ -229,7 +228,7 @@ export function AppSidebar() {
   useLocale(); // the tree's text is read during render
   const { pathname } = useLocation();
   const navigate = useNavigate();
-  const { state, isMobile, openMobile, setOpenMobile } = useSidebar();
+  const { state, isMobile, setOpenMobile } = useSidebar();
   const rail = !isMobile && state === "collapsed";
   const [search, setSearch] = React.useState("");
   const searchId = React.useId();
@@ -268,11 +267,12 @@ export function AppSidebar() {
   const setOpen = (key: string, open: boolean): void => setOpenFolds((current) => ({ ...current, [key]: open }));
 
   return (
-    <Sidebar aria-label={t("shell.nav.label")} className="max-md:w-full">
-      <SidebarHeader>
-        <SidebarTrigger label={t(rail || (isMobile && !openMobile) ? "shell.nav.expand" : "shell.nav.collapse")} />
-        {isMobile && !openMobile ? (
-          // A phone, folded: one row naming where you are.
+    <>
+      {isMobile && (
+        // A phone: one row naming where you are; it, or the trigger, slides
+        // the panel in from the left as a Sheet.
+        <div className="flex w-full items-center gap-1.5 rounded-card border border-line bg-sunk p-2">
+          <SidebarTrigger label={t("shell.nav.expand")} />
           <button
             type="button"
             onClick={() => setOpenMobile(true)}
@@ -280,7 +280,11 @@ export function AppSidebar() {
           >
             {here !== null ? t(here) : t("shell.nav.label")}
           </button>
-        ) : (
+        </div>
+      )}
+      <Sidebar aria-label={t("shell.nav.label")} mobileTitle={t("shell.nav.label")} closeLabel={t("ui.dismiss")}>
+        <SidebarHeader className={cn(isMobile && "pr-10")}>
+          {!isMobile && <SidebarTrigger label={t(rail ? "shell.nav.expand" : "shell.nav.collapse")} />}
           <form onSubmit={submit} role="search" className="relative min-w-0 flex-1 group-data-[collapsible=icon]/sidebar:hidden">
             <label htmlFor={searchId} className="sr-only">
               {t("settings.sidebar.searchLabel")}
@@ -313,32 +317,32 @@ export function AppSidebar() {
               </button>
             )}
           </form>
-        )}
-      </SidebarHeader>
+        </SidebarHeader>
 
-      <SidebarContent>
-        {tree.length === 0 ? (
-          <p className="animate-fade-in px-2 py-3 text-[12.5px] leading-snug text-muted">
-            {t("settings.sidebar.noMatch", { query: search.trim() })}
-          </p>
-        ) : (
-          <SidebarMenu>
-            {tree.map((entry) => (
-              <TopEntry
-                key={entry.key}
-                entry={entry}
-                pathname={pathname}
-                rail={rail}
-                open={isOpen(entry.key)}
-                onOpenChange={(open) => setOpen(entry.key, open)}
-                isOpen={isOpen}
-                setOpen={setOpen}
-              />
-            ))}
-          </SidebarMenu>
-        )}
-      </SidebarContent>
-    </Sidebar>
+        <SidebarContent>
+          {tree.length === 0 ? (
+            <p className="animate-fade-in px-2 py-3 text-[12.5px] leading-snug text-muted">
+              {t("settings.sidebar.noMatch", { query: search.trim() })}
+            </p>
+          ) : (
+            <SidebarMenu>
+              {tree.map((entry) => (
+                <TopEntry
+                  key={entry.key}
+                  entry={entry}
+                  pathname={pathname}
+                  rail={rail}
+                  open={isOpen(entry.key)}
+                  onOpenChange={(open) => setOpen(entry.key, open)}
+                  isOpen={isOpen}
+                  setOpen={setOpen}
+                />
+              ))}
+            </SidebarMenu>
+          )}
+        </SidebarContent>
+      </Sidebar>
+    </>
   );
 }
 
@@ -377,7 +381,7 @@ function Chevron() {
       strokeWidth={1.5}
       color="currentColor"
       aria-hidden="true"
-      className="transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90"
+      className="transition-transform duration-200 in-data-[panel-open]:rotate-90"
     />
   );
 }
@@ -390,25 +394,24 @@ function TopEntry({ entry, pathname, rail, open, onOpenChange, isOpen, setOpen }
     const holdsCurrent = containsCurrent(entry, pathname);
     if (rail) {
       // On the rail there is nothing to unfold: the icon goes to the fold's
-      // first page, and says where it is with the accent wash.
+      // first page, says where it is with the accent wash, and names itself
+      // in a tooltip.
       return (
         <SidebarMenuItem>
-          <Link
-            to={entry.railTo}
-            title={label}
-            aria-label={label}
-            aria-current={holdsCurrent ? "page" : undefined}
-            className={sidebarMenuButtonVariants({ isActive: false })}
+          <SidebarMenuButton
+            tooltip={label}
+            render={<Link to={entry.railTo} aria-current={holdsCurrent ? "page" : undefined} />}
           >
             <Glyph icon={entry.icon} active={holdsCurrent} />
-          </Link>
+            <span className="sr-only">{label}</span>
+          </SidebarMenuButton>
         </SidebarMenuItem>
       );
     }
     return (
       <SidebarMenuItem>
-        <Collapsible open={open} onOpenChange={onOpenChange} className="group/collapsible">
-          <CollapsibleTrigger className={cn(sidebarMenuButtonVariants({ isActive: false }), holdsCurrent && "font-medium")}>
+        <Collapsible open={open} onOpenChange={(next) => onOpenChange(next)}>
+          <CollapsibleTrigger render={<SidebarMenuButton className={cn(holdsCurrent && "font-medium")} />}>
             <Glyph icon={entry.icon} active={holdsCurrent} />
             <span>{label}</span>
             <span className="ml-auto flex text-muted">
@@ -426,7 +429,7 @@ function TopEntry({ entry, pathname, rail, open, onOpenChange, isOpen, setOpen }
   if (entry.kind === "planned") {
     return (
       <SidebarMenuItem>
-        <SidebarMenuButton planned disabled aria-disabled="true" title={rail ? label : undefined}>
+        <SidebarMenuButton planned disabled aria-disabled="true">
           {entry.icon !== undefined && <Glyph icon={entry.icon} planned />}
           <span className="group-data-[collapsible=icon]/sidebar:sr-only">{label}</span>
           {entry.badge && <SidebarMenuBadge>{t("settings.sidebar.soon")}</SidebarMenuBadge>}
@@ -437,16 +440,14 @@ function TopEntry({ entry, pathname, rail, open, onOpenChange, isOpen, setOpen }
 
   const active = isCurrent(entry, pathname);
   const link = (
-    <Link
-      to={entry.to}
-      aria-current={active ? "page" : undefined}
-      title={rail ? label : undefined}
-      data-active={active ? "true" : undefined}
-      className={cn("peer/menu-button", sidebarMenuButtonVariants({ isActive: active }))}
+    <SidebarMenuButton
+      isActive={active}
+      tooltip={label}
+      render={<Link to={entry.to} aria-current={active ? "page" : undefined} />}
     >
       <Glyph icon={entry.icon} active={active} />
       <span className="group-data-[collapsible=icon]/sidebar:sr-only">{label}</span>
-    </Link>
+    </SidebarMenuButton>
   );
 
   const children = entry.children ?? [];
@@ -454,13 +455,9 @@ function TopEntry({ entry, pathname, rail, open, onOpenChange, isOpen, setOpen }
 
   return (
     <SidebarMenuItem>
-      <Collapsible open={open} onOpenChange={onOpenChange} className="group/collapsible">
+      <Collapsible open={open} onOpenChange={(next) => onOpenChange(next)}>
         {link}
-        <CollapsibleTrigger
-          data-slot="sidebar-menu-action"
-          className={sidebarMenuActionClassName}
-          aria-label={t("shell.nav.subEntries", { name: label })}
-        >
+        <CollapsibleTrigger render={<SidebarMenuAction aria-label={t("shell.nav.subEntries", { name: label })} />}>
           <Chevron />
         </CollapsibleTrigger>
         <CollapsibleContent>
@@ -508,14 +505,13 @@ function SubEntries({
           const active = isCurrent(entry, pathname);
           return (
             <SidebarMenuSubItem key={entry.key}>
-              <Link
-                to={entry.to}
-                aria-current={active ? "page" : undefined}
-                className={sidebarMenuSubButtonVariants({ isActive: active })}
+              <SidebarMenuSubButton
+                isActive={active}
+                render={<Link to={entry.to} aria-current={active ? "page" : undefined} />}
               >
                 <Glyph icon={entry.icon} active={active} />
                 <span className="truncate">{label}</span>
-              </Link>
+              </SidebarMenuSubButton>
             </SidebarMenuSubItem>
           );
         }

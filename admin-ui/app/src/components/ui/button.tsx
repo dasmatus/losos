@@ -14,7 +14,10 @@ import { cn } from "@/lib/utils";
  * semantics. `asChild` is not supported; wrap or restyle instead. The one
  * exception is Radix Toast (toast-primitives.tsx), which injects nothing and
  * sets its swipe offset through React's style prop, a CSSOM write the
- * policy allows. */
+ * policy allows. Where a floating or modal part is needed (the sidebar's
+ * tooltips and phone sheet, its folds), it comes from shadcn's base
+ * registry on Base UI, which styles through CSSOM only: tooltip.tsx,
+ * sheet.tsx, collapsible.tsx. */
 
 export const buttonVariants = cva(
   cn(

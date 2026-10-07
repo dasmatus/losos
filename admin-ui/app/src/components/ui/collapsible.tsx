@@ -1,102 +1,40 @@
-import * as React from "react";
+import { Collapsible as CollapsiblePrimitive } from "@base-ui/react/collapsible";
 import { cn } from "@/lib/utils";
 
-/* shadcn/ui's Collapsible, Radix-free.
+/* shadcn/ui's Collapsible from its base registry, on Base UI.
  *
- * Same three parts and the same props as shadcn's (`open`, `defaultOpen`,
- * `onOpenChange`; `data-state` on every part), implemented against plain
- * elements for the reason in button.tsx. The content folds with a grid-rows
- * transition from 0fr to 1fr, which needs no measured height and so no
- * runtime style at all; prefers-reduced-motion drops the transition with
- * every other one in the stylesheet. While closed the content is `inert`
- * and, once folded, `visibility: hidden`: folded links must not be
- * reachable by Tab or by a screen reader. */
+ * Base UI rather than Radix because Base UI writes every style it needs
+ * through CSSOM (the panel's measured height arrives as
+ * --collapsible-panel-height on a React style prop), which the admin CSP
+ * allows, and injects no <style> element, which it refuses. The trigger
+ * carries aria-expanded and aria-controls and gets `data-panel-open` while
+ * its panel is open; the panel carries `data-open`/`data-closed`.
+ *
+ * The content stays mounted when closed, with the `hidden` attribute, so a
+ * folded entry is out of the tab order and the accessibility tree but its
+ * height can animate on the way out (`data-ending-style`). */
 
-interface CollapsibleContextValue {
-  open: boolean;
-  toggle: () => void;
-  contentId: string;
+function Collapsible(props: CollapsiblePrimitive.Root.Props) {
+  return <CollapsiblePrimitive.Root data-slot="collapsible" {...props} />;
 }
 
-const CollapsibleContext = React.createContext<CollapsibleContextValue | null>(null);
-
-function useCollapsible(): CollapsibleContextValue {
-  const context = React.useContext(CollapsibleContext);
-  if (context === null) throw new Error("Collapsible parts must sit inside <Collapsible>");
-  return context;
+function CollapsibleTrigger(props: CollapsiblePrimitive.Trigger.Props) {
+  return <CollapsiblePrimitive.Trigger data-slot="collapsible-trigger" {...props} />;
 }
 
-interface CollapsibleProps extends React.ComponentProps<"div"> {
-  open?: boolean;
-  defaultOpen?: boolean;
-  onOpenChange?: (open: boolean) => void;
-}
-
-function Collapsible({ open, defaultOpen = false, onOpenChange, className, children, ...props }: CollapsibleProps) {
-  const [own, setOwn] = React.useState(defaultOpen);
-  const isOpen = open ?? own;
-  const contentId = React.useId();
-  const value = React.useMemo<CollapsibleContextValue>(
-    () => ({
-      open: isOpen,
-      contentId,
-      toggle: () => {
-        if (open === undefined) setOwn(!isOpen);
-        onOpenChange?.(!isOpen);
-      },
-    }),
-    [isOpen, open, onOpenChange, contentId],
-  );
+function CollapsibleContent({ className, keepMounted = true, ...props }: CollapsiblePrimitive.Panel.Props) {
   return (
-    <CollapsibleContext.Provider value={value}>
-      <div data-slot="collapsible" data-state={isOpen ? "open" : "closed"} className={className} {...props}>
-        {children}
-      </div>
-    </CollapsibleContext.Provider>
-  );
-}
-
-function CollapsibleTrigger({ className, onClick, ...props }: React.ComponentProps<"button">) {
-  const { open, toggle, contentId } = useCollapsible();
-  return (
-    <button
-      type="button"
-      data-slot="collapsible-trigger"
-      data-state={open ? "open" : "closed"}
-      aria-expanded={open}
-      aria-controls={contentId}
-      className={className}
-      onClick={(event) => {
-        onClick?.(event);
-        if (!event.defaultPrevented) toggle();
-      }}
+    <CollapsiblePrimitive.Panel
+      data-slot="collapsible-content"
+      keepMounted={keepMounted}
+      className={cn(
+        "h-(--collapsible-panel-height) overflow-hidden transition-[height] duration-200 ease-out",
+        "data-starting-style:h-0 data-ending-style:h-0",
+        className,
+      )}
       {...props}
     />
   );
 }
 
-function CollapsibleContent({ className, children, ...props }: React.ComponentProps<"div">) {
-  const { open, contentId } = useCollapsible();
-  return (
-    <div
-      id={contentId}
-      data-slot="collapsible-content"
-      data-state={open ? "open" : "closed"}
-      inert={!open}
-      className={cn(
-        "grid transition-[grid-template-rows,opacity,visibility] duration-200 ease-out",
-        // visibility switches discretely, at the end of a fold and at the
-        // start of an unfold, so a folded entry is hidden (not merely
-        // clipped) once the fold has run.
-        "data-[state=closed]:invisible data-[state=closed]:grid-rows-[0fr] data-[state=closed]:opacity-0",
-        "data-[state=open]:visible data-[state=open]:grid-rows-[1fr] data-[state=open]:opacity-100",
-        className,
-      )}
-      {...props}
-    >
-      <div className="min-h-0 overflow-hidden">{children}</div>
-    </div>
-  );
-}
-
-export { Collapsible, CollapsibleTrigger, CollapsibleContent, useCollapsible };
+export { Collapsible, CollapsibleTrigger, CollapsibleContent };
