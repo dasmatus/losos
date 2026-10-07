@@ -58,7 +58,9 @@ async function shoot(n, step, box) {
   const page = await openMesh(box);
   const state = want[step];
   try {
-    if (state) await page.locator(`[data-edge="${state}"]`).waitFor({ timeout: 90000 });
+    // .first(): a box with two edges in reach draws two "found" rows, and a
+    // strict locator refuses to wait on more than one match.
+    if (state) await page.locator(`[data-edge="${state}"]`).first().waitFor({ timeout: 90000 });
   } catch (e) {
     log(`${box}: pane did not reach data-edge=${state} for ${step}; photographing as is`);
   }
