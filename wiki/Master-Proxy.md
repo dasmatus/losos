@@ -118,51 +118,59 @@ The check is an Ed25519 identity:
   and refuses every action with 409 `officialEdgeRequired`; nothing leaves
   the box.
 
-The key ceremony is three commands of the registrar binary, run by the owner
-on a machine of their own:
+The key ceremony is run by the owner **on a machine of their own** with the
+registrar binary, and every step that makes or uses the root key first signs
+the owner in with GitHub:
 
 ```sh
-# once: the root. Keep root.key offline; the printed public key goes into
-# keys/official-edge-root.pub and ships with the next release.
-losos-registrar identity keygen --out root.key
+# once: the root. Keep root.key offline. --publish opens the pull request
+# that writes the public key into keys/official-edge-root.pub.
+losos-registrar provision root-keygen --out root.key --publish
 
-# per edge: a keypair on the edge (the private key stays there, 0600)...
-losos-registrar identity keygen --out /var/secrets/losos-edge-identity.key
-# ...and a certificate signed by the root, with the edge's PUBLIC key and the
-# URL boxes will probe. --days bounds it; re-sign before it expires.
-losos-registrar identity sign --root-key root.key \
-  --public-key <printed edge public key> \
-  --name "LosOS edge Berlin" --url https://register.losos.cfd --days 365 \
-  > edge.cert.json
+# per edge: a key pair made in memory, a certificate signed by the root for
+# the URL boxes will probe, both shipped to the VPS over one SSH session,
+# the registrar restarted, and the box's four checks run against it.
+losos-registrar provision edge --name "LosOS edge Berlin" \
+  --url https://register.losos.cfd --ssh root@edge.example \
+  --root-key root.key --days 365
+
+# after the edge's configuration names the two files (below): the checks alone.
+losos-registrar provision verify --url https://register.losos.cfd --root-key root.key
 ```
 
 On the edge: `losos.edge.identity.keyFile = "/var/secrets/losos-edge-identity.key"`
-and `losos.edge.identity.certFile = ./edge.cert.json`. The registrar refuses
-to start if the certificate is not for that key. An edge with neither option
-(the default, and the shape of a company's own edge, including the one
+and `losos.edge.identity.certFile = "/etc/losos/edge-identity.cert.json"`,
+the two paths `provision edge` installs. The registrar refuses to start if
+the certificate is not for that key. An edge with neither option (the
+default, and the shape of a company's own edge, including the one
 `demo/edge-lan/` boots) answers `/identity` with 404 and is simply not
-official.
+official. The primitives behind `provision` (`losos-registrar identity
+keygen|sign|show|verify`) are what the tests use to build a root of their
+own at build time.
 
-### Provisioning from the box
+### Who may run the ceremony
 
-The ceremony above is also packaged as two Forgejo Actions workflows meant to
-run **on the owner's box**, in a private repository on LosOS Git
-(`provisioning/edge-identity/` in this repository, with its own README of
-operator steps). LosOS Git ships with an Actions runner on the box for this
-(`losos.forgejo.runner.enable`, on by default with LosOS Git; host mode, the
-unprivileged `losos-git-runner` user, label `losos`). The `root-keygen`
-workflow makes the root key *on the box*, stores it as the repository's
-`LOSOS_ROOT_KEY` secret, and publishes the public half: committed to that
-repository and opened as a pull request against `keys/official-edge-root.pub`
-here. The `provision-edge` workflow, per edge, makes the edge's keypair, signs
-its certificate, ships both to the VPS over SSH into the two
-`losos.edge.identity` paths, restarts the registrar, and runs the box's four
-checks against `GET /identity?nonce=` (`losos-registrar identity verify`).
-What stays with the owner: creating the repository and its tokens, the SSH
-deploy key on the VPS, the two identity lines in the edge's configuration and
-its rebuild, and merging the pull request. The root key then exists in one
-place, Forgejo's secret store under the box's `/var`; losing the box means
-re-keying every edge with a release.
+`provision` carries the public client id of the project's GitHub OAuth App
+and an **allowlist** of GitHub accounts, both compiled into the binary from
+`backend-registrar/operators.json`. Each gated command prints a one-time
+code, the operator enters it at github.com/login/device, and GitHub hands
+the tool a token for that account; the tool asks GitHub who that is and
+compares the account's *numeric id* (logins can be renamed; ids cannot) with
+the list. Anyone else is refused before anything is made or signed (exit 3).
+No secret is involved: the device flow needs no client secret, and no token
+is stored. `LOSOS_GITHUB_TOKEN` (for example `gh auth token`) skips the
+browser; it is checked the same way. Changing who is allowed is a pull
+request against that file, reviewed like the key itself.
+
+The gate decides whom the tooling serves and makes each signing a named
+act; the root key stays the whole secret, and anyone holding `root.key`
+could sign with any Ed25519 tool. The operator steps, including creating
+the OAuth App, are in
+[provisioning/edge-identity/README.md](https://github.com/dasmatus/losos/blob/main/provisioning/edge-identity/README.md).
+There is no Forgejo Actions runner on the box and Actions is off in LosOS
+Git: the ceremony used to be two workflows there, which put the root key
+inside the appliance's `/var` (a reinstall lost it) and let any LosOS Git
+account run code on the box.
 
 What this does and does not protect: a company that runs its own edge gets
 a working on-premises deployment and cannot settle trades through it, and a
