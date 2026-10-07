@@ -1,15 +1,8 @@
 import * as React from "react";
-import { BrowserRouter, NavLink, Route, Routes, useNavigate, useParams } from "react-router-dom";
-import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
-import {
-  HardDriveIcon,
-  Home01Icon,
-  LayoutGridIcon,
-  Settings01Icon,
-  Share08Icon,
-  ViewIcon,
-  ViewOffSlashIcon,
-} from "@hugeicons/core-free-icons";
+import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { ViewIcon, ViewOffSlashIcon } from "@hugeicons/core-free-icons";
+import { AppSidebar } from "@/components/app-sidebar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -25,6 +18,7 @@ import { FieldError, Input, MonoInput } from "@/components/ui/input";
 import { Label, LabelHint } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/progress";
 import { LanguagePicker } from "@/components/ui/language-picker";
+import { SidebarProvider } from "@/components/ui/sidebar";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { toast, Toaster } from "@/components/ui/toast";
 import {
@@ -38,8 +32,8 @@ import {
   subscribeAuth,
   TOKEN_PATTERN,
 } from "@/lib/api";
-import { isSettingsPaneId, type SettingsPaneId } from "@/screens/settings/panes";
-import type { MessageKey } from "@/lib/i18n";
+import type { SettingsPaneId } from "@/screens/settings/panes";
+import { paneFromPath } from "@/lib/routes";
 import { useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
 
@@ -71,32 +65,17 @@ function ScreenFallback() {
  * on the admin location in modules/containers.nix so a deep link survives a
  * reload.
  *
- * Three of the five nav entries are shortcuts into a settings pane rather than
- * screens of their own: storage, mesh and apps are what an owner actually opens
- * this page for, so they get a top-level address, while network, hardware,
- * about and reset live under /settings/<pane>. `paneHref` is the single place
- * that mapping exists, so the sidebar and the URL cannot disagree about where a
- * pane lives.
+ * Every destination is in one sidebar (components/app-sidebar.tsx, shadcn's
+ * Sidebar): Overview, then the settings panes, with storage, mesh and apps at
+ * a top-level address because they are what an owner opens this page for,
+ * and network, hardware, security, about and reset under /settings/<pane>.
+ * lib/routes.ts is the single place that mapping exists, so the sidebar and
+ * the URL cannot disagree about where a pane lives.
  *
  * House rules that hold everywhere below this line: no emoji (icons are
  * @hugeicons, Stroke Rounded, 1.5), no inline style attributes (the CSP
  * refuses them), and nothing a user reads may name a container runtime — it
  * is "an app", and it "runs on this box" or "on the mesh". */
-
-interface NavItem {
-  to: string;
-  label: MessageKey;
-  icon: IconSvgElement;
-  end?: boolean;
-}
-
-const NAV: readonly NavItem[] = [
-  { to: "/", label: "shell.nav.overview", icon: Home01Icon, end: true },
-  { to: "/apps", label: "shell.nav.apps", icon: LayoutGridIcon },
-  { to: "/storage", label: "shell.nav.storage", icon: HardDriveIcon },
-  { to: "/mesh", label: "shell.nav.mesh", icon: Share08Icon },
-  { to: "/settings", label: "shell.nav.settings", icon: Settings01Icon },
-];
 
 export default function App() {
   return (
@@ -205,13 +184,13 @@ function Shell() {
     <div className="min-h-dvh bg-ground text-ink">
       <TopBar signedIn={signedIn} />
 
-      <div
+      <SidebarProvider
         className={cn(
           "mx-auto flex w-full max-w-6xl px-4 pt-5 pb-12 sm:px-6",
           "max-md:flex-col max-md:gap-3 md:gap-6",
         )}
       >
-        <SectionNav />
+        <AppSidebar />
         <main className="min-w-0 flex-1">
           <React.Suspense fallback={<ScreenFallback />}>
           <Routes>
@@ -237,7 +216,7 @@ function Shell() {
           </Routes>
           </React.Suspense>
         </main>
-      </div>
+      </SidebarProvider>
 
       <SignInDialog open={!signedIn} />
       <Toaster />
@@ -269,88 +248,17 @@ function TopBar({ signedIn }: { signedIn: boolean }) {
   );
 }
 
-/* One nav, two shapes: a vertical rail beside the content from md up, and a
- * horizontally scrolling row above it on a phone. Not two lists and not a
- * hamburger — five destinations fit on a narrow screen, and the appliance is
- * as likely to be configured from a phone on the same network as from a
- * laptop. */
-function SectionNav() {
-  const t = useT();
-  return (
-    <nav
-      aria-label={t("shell.nav.label")}
-      className={cn(
-        "shrink-0",
-        "max-md:-mx-4 max-md:overflow-x-auto max-md:px-4 max-md:pb-2 sm:max-md:-mx-6 sm:max-md:px-6",
-        "md:w-44",
-      )}
-    >
-      <ul
-        className={cn(
-          "flex gap-1",
-          "max-md:w-max",
-          "md:sticky md:top-20 md:flex-col md:gap-0.5",
-        )}
-      >
-        {NAV.map((item) => (
-          <li key={item.to}>
-            <NavLink
-              to={item.to}
-              end={item.end === true}
-              className={({ isActive }) =>
-                cn(
-                  "flex items-center gap-2.5 rounded-control px-3 py-2 text-[13.5px] whitespace-nowrap",
-                  "transition-colors duration-150",
-                  isActive
-                    ? "bg-accent-wash font-medium text-accent"
-                    : "text-muted hover:bg-sunk hover:text-ink",
-                )
-              }
-            >
-              <HugeiconsIcon
-                icon={item.icon}
-                size={18}
-                strokeWidth={1.5}
-                color="currentColor"
-                aria-hidden="true"
-              />
-              {t(item.label)}
-            </NavLink>
-          </li>
-        ))}
-      </ul>
-    </nav>
-  );
-}
-
 // ── Placeholders ──────────────────────────────────────────────────────────
 
 /* Delete these as the real screens land. Kept deliberately plain: they exist
  * to prove the routing and the palette, not to suggest a layout. */
-/* The one place a settings pane's address is decided.
- *
- * Storage, mesh and apps are what an owner opens this page for, so they get a
- * top-level address; network, hardware, about and reset sit under /settings.
- * Both the sidebar and the router read this, so they cannot disagree about
- * where a pane lives, and a deep link to any of them survives a reload because
- * nginx serves index.html for unknown paths under the admin location.
- */
-const TOP_LEVEL_PANES: readonly SettingsPaneId[] = ["storage", "mesh", "apps"];
-
-function paneHref(pane: SettingsPaneId): string {
-  return TOP_LEVEL_PANES.includes(pane) ? `/${pane}` : `/settings/${pane}`;
-}
-
 function SettingsRoute({ pane }: { pane?: SettingsPaneId }) {
-  const navigate = useNavigate();
-  const params = useParams();
-  // A pane named in the URL wins over the route's own default, so
-  // /settings/hardware opens hardware rather than the first pane.
-  const fromUrl = params["pane"];
-  const selected =
-    pane ?? (typeof fromUrl === "string" && isSettingsPaneId(fromUrl) ? fromUrl : undefined);
-
-  return <Settings pane={selected} onPaneChange={(next) => navigate(paneHref(next))} />;
+  const { pathname } = useLocation();
+  // The route's own pane, else the one the path names (lib/routes.ts), so
+  // /settings/hardware opens hardware and /settings opens Network, the first
+  // entry under Settings in the sidebar.
+  const selected = pane ?? paneFromPath(pathname) ?? undefined;
+  return <Settings pane={selected} />;
 }
 
 function NotFound() {

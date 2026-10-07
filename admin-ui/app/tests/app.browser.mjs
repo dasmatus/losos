@@ -237,29 +237,113 @@ await check('signing out returns to the prompt and forgets the token', async () 
   await page.close();
 });
 
+/* One sidebar (src/components/app-sidebar.tsx): Overview, Apps, Storage and
+ * Mesh are links at the top; Settings is a fold whose entries are the
+ * settings panes. Every entry, top or folded, must land on its own address
+ * and be the only one marked current there. */
 const DESTINATIONS = [
   ['Overview', '/'],
   ['Apps', '/apps'],
   ['Storage', '/storage'],
   ['Mesh', '/mesh'],
-  ['Settings', '/settings'],
+  ['Network', '/settings/network', 'Settings'],
+  ['Hardware', '/settings/hardware', 'Settings'],
+  ['Security', '/settings/security', 'Settings'],
+  ['About', '/settings/about', 'Settings'],
+  ['Reset', '/settings/reset', 'Settings'],
 ];
-await check('every sidebar entry lands on its own address', async () => {
+/* Open a fold by its name, if it is not open already. */
+async function unfold(page, name) {
+  const fold = nav(page).getByRole('button', { name, exact: true });
+  if ((await fold.getAttribute('aria-expanded')) !== 'true') await fold.click();
+}
+await check('every sidebar entry, folded or not, lands on its own address', async () => {
   const { page } = await open({ stored: true });
-  for (const [label, path] of DESTINATIONS) {
+  for (const [label, path, under] of DESTINATIONS) {
+    if (under !== undefined) await unfold(page, under);
     await nav(page).getByRole('link', { name: label, exact: true }).click();
     await page.waitForURL(origin + path);
-    // aria-current follows the route a render later than the URL changes.
-    await nav(page)
-      .locator('a[aria-current="page"]')
-      .filter({ hasText: label })
-      .waitFor({ timeout: 2000 });
+    await nav(page).locator('a[aria-current="page"]').filter({ hasText: label }).waitFor({ timeout: 2000 });
     assert.equal(
       await nav(page).locator('a[aria-current="page"]').count(),
       1,
       `${label}: expected exactly one entry marked current`,
     );
   }
+  // /settings itself opens the first entry under Settings.
+  await page.goto(origin + '/settings', { waitUntil: 'networkidle' });
+  await page.getByRole('heading', { name: 'Network', exact: true, level: 1 }).waitFor();
+  await nav(page).locator('a[aria-current="page"]').filter({ hasText: 'Network' }).waitFor();
+  await page.close();
+});
+
+await check('there is one panel: no second list of panes beside the content', async () => {
+  const { page } = await open({ path: '/settings/hardware', stored: true });
+  await nav(page).waitFor();
+  assert.equal(await page.getByRole('navigation').count(), 1, 'more than one <nav> on a settings page');
+  assert.equal(await page.locator('main').getByRole('link').filter({ hasText: /^(Network|Hardware|Security)$/ }).count(), 0);
+  await page.close();
+});
+
+await check('a fold opens by itself on one of its pages, and folds away from the keyboard', async () => {
+  const { page } = await open({ path: '/settings/security', stored: true });
+  const settings = nav(page).getByRole('button', { name: 'Settings', exact: true });
+  assert.equal(await settings.getAttribute('aria-expanded'), 'true', 'Settings is folded on one of its own pages');
+  const mesh = nav(page).getByRole('button', { name: 'Entries under Mesh', exact: true });
+  assert.equal(await mesh.getAttribute('aria-expanded'), 'false', 'Mesh is unfolded while elsewhere');
+  // Folded entries are inert: neither a click target nor a Tab stop.
+  const market = nav(page).getByRole('button', { name: 'Market soon(TM)', exact: true });
+  assert.equal(await market.isVisible(), false, 'the folded Market entry is visible');
+  // Fold Settings with the keyboard: its pages leave the Tab order with it.
+  await settings.focus();
+  await page.keyboard.press('Enter');
+  assert.equal(await settings.getAttribute('aria-expanded'), 'false');
+  const hardware = nav(page).getByRole('link', { name: 'Hardware', exact: true, includeHidden: true });
+  await page.waitForTimeout(300);
+  assert.equal(await hardware.isVisible(), false, 'a folded page link is still visible');
+  assert.equal(await hardware.evaluate((el) => el.closest('[inert]') !== null), true, 'a folded page link is still reachable');
+  await page.keyboard.press('Enter');
+  assert.equal(await settings.getAttribute('aria-expanded'), 'true');
+  await nav(page).getByRole('link', { name: 'Hardware', exact: true }).click();
+  await page.waitForURL(origin + '/settings/hardware');
+  await page.close();
+});
+
+await check('the panel narrows to icons with its trigger or Ctrl+B, and remembers it', async () => {
+  const { page, errors } = await open({ path: '/mesh', stored: true });
+  const panel = nav(page);
+  const wide = (await panel.boundingBox()).width;
+  await panel.getByRole('button', { name: 'Collapse the sidebar' }).click();
+  await page.waitForTimeout(350);
+  const narrow = (await panel.boundingBox()).width;
+  assert.ok(narrow < 70 && wide > 200, `the panel did not narrow to a rail: ${wide} -> ${narrow}`);
+  // On the rail every entry is still a named link, and the current one is marked.
+  await panel.getByRole('link', { name: 'Mesh', exact: true }).waitFor();
+  assert.equal(await panel.getByRole('searchbox').isVisible(), false, 'the search box is still on the rail');
+  await panel.getByRole('link', { name: 'Settings', exact: true }).click();
+  await page.waitForURL(origin + '/settings');
+  // The choice survives a reload; Ctrl+B widens it again.
+  await page.reload({ waitUntil: 'networkidle' });
+  assert.ok((await panel.boundingBox()).width < 70, 'the rail was forgotten on reload');
+  await page.keyboard.press('Control+b');
+  await page.waitForTimeout(350);
+  assert.ok((await panel.boundingBox()).width > 200, 'Ctrl+B did not widen the panel');
+  await panel.getByRole('searchbox').waitFor();
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+await check('on a phone the panel is one row naming where you are, and opens in place', async () => {
+  const { page } = await open({ path: '/settings/about', stored: true, viewport: { width: 375, height: 800 } });
+  const panel = nav(page);
+  await panel.getByRole('button', { name: 'About', exact: true }).waitFor();
+  assert.equal(await panel.getByRole('link').count(), 0, 'the folded phone panel shows its entries');
+  await panel.getByRole('button', { name: 'Expand the sidebar' }).click();
+  await panel.getByRole('link', { name: 'Storage', exact: true }).click();
+  await page.waitForURL(origin + '/storage');
+  // Choosing a destination folds the panel back to its one row.
+  await panel.getByRole('button', { name: 'Storage', exact: true }).waitFor();
+  assert.equal(await panel.getByRole('link').count(), 0);
   await page.close();
 });
 
@@ -341,23 +425,29 @@ for (const locale of ['sk-SK', 'de-DE']) {
   });
 }
 
-/* The greyed Market row. The Settings screen's own sidebar is the second
- * <nav> on the page ("Sections" is the shell's). */
-const settingsNav = (page, name = 'Settings sections') => page.getByRole('navigation', { name, exact: true });
+/* The greyed Market entry, under Mesh in the one sidebar. */
+const settingsNav = (page, name = 'Sections') => page.getByRole('navigation', { name, exact: true });
 const MARKET_ROW = {
-  en: ['Settings sections', 'Market'],
-  sk: ['Sekcie nastavení', 'Trh'],
-  de: ['Einstellungsbereiche', 'Markt'],
+  en: ['Sections', 'Market', 'Disk sharing'],
+  sk: ['Sekcie', 'Trh', 'Zdieľanie disku'],
+  de: ['Bereiche', 'Markt', 'Festplattenfreigabe'],
 };
 
-for (const [locale, [navName, label]] of Object.entries(MARKET_ROW)) {
-  await whenMarketPlanned(`the Market row is greyed out as soon(TM) and cannot be opened (${locale})`, async () => {
+for (const [locale, [navName, label, sharing]] of Object.entries(MARKET_ROW)) {
+  await whenMarketPlanned(`the Market entry is greyed out as soon(TM) under Mesh, disk sharing with it, and neither opens (${locale})`, async () => {
     const tag = { en: 'en-US', sk: 'sk-SK', de: 'de-DE' }[locale];
-    const { page, errors } = await open({ path: '/settings', stored: true, locale: tag, market: MARKET });
+    // On /mesh the Mesh entry is unfolded, which shows Market under it.
+    const { page, errors } = await open({ path: '/mesh', stored: true, locale: tag, market: MARKET });
     const row = settingsNav(page, navName).getByRole('button', { name: `${label} soon(TM)`, exact: true });
     await row.waitFor();
     assert.equal(await row.isDisabled(), true, 'the row is not disabled');
     assert.equal(await row.getAttribute('aria-disabled'), 'true');
+    const share = settingsNav(page, navName).getByRole('button', { name: sharing, exact: true });
+    await share.waitFor();
+    assert.equal(await share.isDisabled(), true, 'disk sharing is not greyed with the market');
+    // Under Market, not beside it: its row sits further right.
+    const [m, d] = await Promise.all([row.boundingBox(), share.boundingBox()]);
+    assert.ok(d.x > m.x && d.y > m.y, 'disk sharing is not nested under Market');
     // A disabled button is not in the Tab order: Tab from the search field
     // must land on the next open row, never on Market.
     const before = new URL(page.url()).pathname;
@@ -375,7 +465,7 @@ for (const [locale, [navName, label]] of Object.entries(MARKET_ROW)) {
 }
 
 await whenMarketPlanned('the greyed Market row is skipped by the keyboard', async () => {
-  const { page } = await open({ path: '/settings', stored: true });
+  const { page } = await open({ path: '/mesh', stored: true });
   const search = settingsNav(page).getByRole('searchbox');
   await search.fill('m');
   // "m" matches Mesh, Market (keywords) and more; Enter must open the first
@@ -392,7 +482,7 @@ await whenMarketPlanned('the greyed Market row is skipped by the keyboard', asyn
     await page.keyboard.press('Tab');
     const stop = await page.evaluate(() => {
       const el = document.activeElement;
-      return el?.closest('nav[aria-label="Settings sections"]') ? (el.textContent ?? '') : null;
+      return el?.closest('nav[aria-label="Sections"]') ? (el.textContent ?? '') : null;
     });
     if (stop === null) break;
     seen.push(stop);
@@ -402,14 +492,14 @@ await whenMarketPlanned('the greyed Market row is skipped by the keyboard', asyn
   await page.close();
 });
 
-await whenMarketPlanned('a deep link to the planned Market pane lands on the default pane and asks the market nothing', async () => {
+await whenMarketPlanned('a deep link to the planned Market pane lands on the first Settings pane and asks the market nothing', async () => {
   const marketCalls = [];
   const { page, errors } = await open({ path: '/settings/market', stored: true, market: MARKET });
   page.on('request', (request) => {
     if (/\/api\/market/.test(request.url())) marketCalls.push(request.url());
   });
   await page.locator('main').waitFor();
-  await page.getByRole('heading', { name: 'Storage', exact: true, level: 1 }).waitFor();
+  await page.getByRole('heading', { name: 'Network', exact: true, level: 1 }).waitFor();
   assert.ok(!/Nothing here/.test(await body(page)), 'fell through to not-found');
   // The disk-sharing switch moved onto the Market pane, so a planned market
   // means no way to switch sharing on: Storage must not still carry it.
@@ -419,7 +509,7 @@ await whenMarketPlanned('a deep link to the planned Market pane lands on the def
     'the disk-sharing switch is still on the Storage pane',
   );
   await page.reload({ waitUntil: 'networkidle' });
-  await page.getByRole('heading', { name: 'Storage', exact: true, level: 1 }).waitFor();
+  await page.getByRole('heading', { name: 'Network', exact: true, level: 1 }).waitFor();
   assert.deepEqual(marketCalls, [], 'the Market pane was mounted (it asked /api/market)');
   assert.deepEqual(errors, []);
   await page.close();
