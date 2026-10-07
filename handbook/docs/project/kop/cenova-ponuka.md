@@ -6,8 +6,21 @@ sidebar_position: 8
 # Cenová ponuka hardvérového a softvérového vybavenia
 
 Bod 3 zadania: *spracujte cenovú ponuku hardvérového a softvérového
-vybavenia potrebného na realizáciu projektu.* Táto kapitola hovorí, z čoho
-sa ponuka skladá a prečo; konkrétne položky s cenami a zdrojmi sú
+vybavenia potrebného na realizáciu projektu v prípade reálneho nasadenia.*
+
+:::note[Znenie bodu 3]
+Dovetok *„v prípade reálneho nasadenia"* je doplnenie, ktoré autor navrhol
+konzultantovi 7. októbra 2026 spolu s pripomienkami k zadaniu; čaká na
+potvrdenie. Dôvod: obhajoba prebieha vo virtuálnom stroji, ktorý nič
+nestojí, takže ponuka má zmysel len pre skutočné nasadenie na hardvér.
+Ak konzultant doplnenie neprijme, platí pôvodné znenie bez dovetku a
+kapitola sa nemení, lebo aj tak oceňuje reálne nasadenie.
+:::
+
+Ponuka preto oceňuje **reálne nasadenie**: jeden fyzický box pre
+jednotlivca alebo kanceláriu, a firemnú zostavu s vlastným edge. Ukážka na
+obhajobe beží vo virtuálnom stroji a nie je položkou ponuky. Táto kapitola
+hovorí, z čoho sa ponuka skladá a prečo; konkrétne položky s cenami a zdrojmi sú
 v samostatnom dokumente **Cenová ponuka LosOS** a tabuľke
 *cenova-ponuka.xlsx*, ktoré sú súčasťou materiálov k obhajobe (autor sa
 rozhodol udržiavať ich mimo repozitára kódu, lebo ceny sa menia a repozitár
@@ -97,11 +110,12 @@ ponuka s tým počíta minimom objednávky).
 ## Výsledok ponuky
 
 Dokument s cenami (stav k 7. októbru 2026, slovenské maloobchodné ceny
-s DPH 23 %, zdroj a dátum pri každej položke) počíta dve konfigurácie:
+s DPH 23 %, zdroj a dátum pri každej položke) počíta dve konfigurácie
+reálneho nasadenia:
 
 | Konfigurácia                                   | Z čoho sa skladá                                                           | Jednorazovo   | Ročne        |
 | ---------------------------- | ---------------------------------------------------------- | ------------------ | ---------------- |
-| **A: maturitná ukážka**                        | jeden box (Acer Veriton N150), doména (Namecheap, 7,79 € ročne), elektrina | 452,59 €      | 25,31 €      |
+| **A: jeden fyzický box**                       | jeden box (Acer Veriton N150), doména (Namecheap, 7,79 € ročne), elektrina | 452,59 €      | 25,31 €      |
 | A + voliteľný edge v cloude                    | k tomu Hetzner CX23 ako edge                                               | 452,59 €      | 113,72 €     |
 | **B: nasadenie vo firme**                      | tri boxy, lokálny x86 edge, prepínač, doména, elektrina                    | 1 795,59 €    | 74,37 €      |
 
@@ -109,7 +123,8 @@ Softvér nestojí nič: každý komponent je slobodný (tabuľka licencií vyš�
 takže softvérová časť ponuky sú len prevádzkové služby (doména, prípadne
 VPS). Predpoklady: elektrina 0,20 € za kWh, práca autora neocenená (pozri
 predchádzajúcu časť), Raspberry Pi ako edge je uvedené len orientačne a označené *na
-overenie*, lebo flake zatiaľ zostavuje len x86_64. Konfigurácia A je to,
-čo sa predvádza na obhajobe (vo virtuálnom stroji, so schváleným nahradením
-fyzického boxu); konfigurácia B je ponuka, s ktorou chce autor po maturite
-osloviť firmy.
+overenie*, lebo flake zatiaľ zostavuje len x86_64. Konfigurácia A je
+najmenšie reálne nasadenie a zároveň systém, ktorý sa predvádza na obhajobe,
+tam však vo virtuálnom stroji (so schváleným nahradením fyzického boxu),
+takže ukážka sama nič nestojí; konfigurácia B je ponuka, s ktorou chce autor
+po maturite osloviť firmy.
