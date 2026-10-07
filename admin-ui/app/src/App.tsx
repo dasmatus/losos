@@ -2,8 +2,9 @@ import * as React from "react";
 import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Compass01Icon, ViewIcon, ViewOffSlashIcon } from "@hugeicons/core-free-icons";
-import logoUrl from "@/assets/losos.svg";
+import logoUrl from "@/assets/losos.png";
 import { AppSidebar } from "@/components/app-sidebar";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -253,10 +254,30 @@ function TopBar({ signedIn }: { signedIn: boolean }) {
   return (
     <header className="sticky top-0 z-40 border-b border-line bg-surface/85 backdrop-blur-sm">
       <div className="mx-auto flex w-full max-w-6xl items-center gap-3 px-4 py-3 sm:px-6">
-        {/* The cooked salmon (losos is Slovak for salmon) in place of the
-            name, pixel art kept square-edged at any size; its alt text is the
-            name. Bundled, so img-src 'self' holds. */}
-        <img src={logoUrl} alt="LosOS" width={32} height={32} className="size-8 [image-rendering:pixelated]" />
+        {/* The plate of salmon (losos is Slovak for salmon) in place of the
+            name: Matus's own photo, cut out at the plate's rim, so nothing in
+            it is anyone else's drawing; its alt text is the name. Bundled, so
+            img-src 'self' holds. A photo of dinner needs a word of
+            explanation, so the plate is a tooltip trigger whose accessible
+            name is that explanation (Base UI shows no tooltip on touch). */}
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <button
+                  type="button"
+                  aria-label={t("shell.logoTip")}
+                  className="inline-flex shrink-0 rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+                />
+              }
+            >
+              <img src={logoUrl} alt="LosOS" width={32} height={32} className="size-8" />
+            </TooltipTrigger>
+            <TooltipContent side="bottom" align="start" className="max-w-[22rem]">
+              {t("shell.logoTip")}
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
         <Badge variant="outline" className="hidden sm:inline-flex">
           {t("shell.thisBox")}
         </Badge>

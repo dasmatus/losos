@@ -21,6 +21,11 @@ export default defineMessages({
     de: "Frage die Box, ob sie schon eingerichtet ist.",
   },
   "shell.thisBox": { en: "this box", sk: "toto zariadenie", de: "diese Box" },
+  "shell.logoTip": {
+    en: "Losos is Slovak for salmon. The logo is a plate of it, from the owner's own photo.",
+    sk: "LosOS je pomenovaný po lososovi. Logo je tanier lososa z vlastnej fotky majiteľa.",
+    de: "Losos ist Slowakisch für Lachs. Das Logo ist ein Teller davon, vom eigenen Foto des Besitzers.",
+  },
   "shell.signOut": { en: "Sign out", sk: "Odhlásiť sa", de: "Abmelden" },
   "shell.notFound.title": { en: "Nothing here", sk: "Nič tu nie je", de: "Hier ist nichts" },
   "shell.notFound.body": {

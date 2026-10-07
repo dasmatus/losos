@@ -399,9 +399,11 @@ server root and a symlink beside the package is never found. Forgejo gets
 an existing account keeps its old theme until its owner switches.
 Owners see the two apps as **LosOS cloud** and **LosOS Git**: the theme
 folder's `defaults.php` names Nextcloud, Forgejo's `APP_NAME` names it, and
-both get logos drawn from `admin-ui/themes/brand/` (`marks.py` turns
-`fish.png` into the SVGs; every PNG and the `.ico` is rendered from those at
-build time). The rest of the upstream marketing goes by config (no skeleton
+both get logos drawn from `admin-ui/themes/brand/` (`marks.py` wraps
+`plate.png`, the plate of salmon cut out of Matus's own photo, into the
+SVGs and copies it to the SPA and the handbook; every PNG and the `.ico` is
+rendered from those at build time). The old pixel-art fish was dropped over
+a copyright worry; nothing drawn by anyone else goes back in. The rest of the upstream marketing goes by config (no skeleton
 files, no help or sign-up links, no "Powered by") and two Forgejo template
 overrides. Two non-obvious bits: Nextcloud's header filter inverts any logo
 it thinks is its own white one, so `server.css` sets
