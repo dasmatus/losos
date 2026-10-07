@@ -12,8 +12,8 @@
 use crate::facade::{BUS_NAME, OBJECT_PATH};
 use crate::io_backend::IoLosos;
 use crate::losos::{
-    cmd_apply, cmd_change, cmd_factory_reset, cmd_grow, cmd_recovery, cmd_set_password,
-    cmd_settings, cmd_state, cmd_status,
+    cmd_apply, cmd_change, cmd_config, cmd_config_sync, cmd_factory_reset, cmd_grow, cmd_options,
+    cmd_recovery, cmd_set_password, cmd_settings, cmd_state, cmd_status,
 };
 use crate::model::Mode;
 use crate::overrides::validate_apply;
@@ -115,6 +115,24 @@ impl Control {
     /// every bus client the policy admits rather than to the one that asked.
     fn recovery(&self) -> fdo::Result<String> {
         reply(&self.backend, cmd_recovery)
+    }
+
+    /// Every `losos.*` option the box declares, with what `overrides.nix`
+    /// sets — the document the admin UI's Advanced pane is drawn from.
+    fn options(&self) -> fdo::Result<String> {
+        reply(&self.backend, cmd_options)
+    }
+
+    /// The configuration repository: where it is on LosOS Git, the branch
+    /// head, the last commits, how the last sync went.
+    fn config(&self) -> fdo::Result<String> {
+        reply(&self.backend, cmd_config)
+    }
+
+    /// Sync with LosOS Git now (push, or take a pushed commit and rebuild),
+    /// then the same document as `Config`.
+    fn config_sync(&self) -> fdo::Result<String> {
+        reply(&self.backend, cmd_config_sync)
     }
 }
 
