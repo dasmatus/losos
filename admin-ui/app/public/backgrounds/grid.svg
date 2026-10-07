@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" preserveAspectRatio="xMidYMid slice">
+  <!-- Grid: a quiet dot grid over slate. Shipped background (backend/src/look.rs SHIPPED). -->
+  <defs>
+    <pattern id="dots" width="40" height="40" patternUnits="userSpaceOnUse">
+      <circle cx="20" cy="20" r="2" fill="#8c98a4" opacity="0.55"/>
+    </pattern>
+    <radialGradient id="glow" cx="0.75" cy="0.2" r="0.8">
+      <stop offset="0" stop-color="#48b3c0" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#48b3c0" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1600" height="1000" fill="#2a3540"/>
+  <rect width="1600" height="1000" fill="url(#glow)"/>
+  <rect width="1600" height="1000" fill="url(#dots)"/>
+</svg>

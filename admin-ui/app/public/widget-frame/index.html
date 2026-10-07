@@ -1,0 +1,232 @@
+<!doctype html>
+<!--
+  The widget frame: where a widget the owner wrote by hand runs.
+
+  The admin page is served under `script-src 'self'` with no 'unsafe-inline'
+  and no 'unsafe-eval' (modules/containers.nix), so the text an owner types
+  into the editor can never run inside that page. It runs here instead, in a
+  real URL the board embeds as
+
+      <iframe sandbox="allow-scripts" src="/widget-frame/">
+
+  Three things make that safe, and every one of them is load-bearing:
+
+    1. `sandbox` WITHOUT `allow-same-origin`. The frame is an opaque origin:
+       it cannot read the page's sessionStorage (the admin token), its
+       cookies or its DOM, and a fetch to /api from in here carries no token
+       and gets no CORS answer. It is not this page's choice — the attribute
+       is on the embedding element, which the widget cannot reach.
+    2. Its own CSP, from nginx, for this directory only (the `~^/widget-frame/`
+       arm of the header map). Permissive for itself: inline script and
+       style, pictures and fetches off the box. An `<iframe srcdoc>` would
+       have inherited the page's strict policy, which is why this is a file.
+    3. `frame-ancestors 'self'` in that policy, and no X-Frame-Options, so
+       only the box's own pages may embed it.
+
+  Everything the widget gets from the box comes through postMessage: the
+  parent sends the source to render and the readings asked for, this file
+  answers with its height and any error. The contract is the `losos` object
+  below, documented in the editor's Help tab (i18n/look.ts).
+
+  Plain script on purpose — nothing here is built by Vite, so it stays in
+  sync with nothing and depends on nothing.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="referrer" content="no-referrer" />
+    <title>Widget</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: transparent;
+        color: var(--ink, #18212a);
+        font-family:
+          system-ui,
+          -apple-system,
+          "Segoe UI",
+          Roboto,
+          sans-serif;
+        font-size: 13.5px;
+        line-height: 1.45;
+      }
+      body {
+        overflow: hidden;
+      }
+      a {
+        color: var(--accent, #0e6e7d);
+      }
+    </style>
+  </head>
+  <body>
+    <script>
+      (() => {
+        "use strict";
+        const parentWindow = window.parent;
+        const send = (message) => parentWindow.postMessage(message, "*");
+
+        // ── The bridge ────────────────────────────────────────────────
+        let seq = 0;
+        const pending = new Map();
+        const themeListeners = new Set();
+        // What the admin page last sent. Read through the getters below, so
+        // the frozen `losos` object follows the page and the widget cannot
+        // write it.
+        const current = { theme: "light", lang: "en", palette: {} };
+        const losos = {
+          /** "light" or "dark", following the admin page. */
+          get theme() {
+            return current.theme;
+          },
+          /** "en", "sk" or "de": the language the admin page is in. */
+          get lang() {
+            return current.lang;
+          },
+          /** The box's colours, also set as CSS variables on <html>. */
+          get palette() {
+            return current.palette;
+          },
+          /** One of the box's readings, by name. Resolves with its document. */
+          metric(name, opts) {
+            return new Promise((resolve, reject) => {
+              seq += 1;
+              const id = seq;
+              pending.set(id, { resolve, reject });
+              send({ losos: "metric", id, name: String(name), opts: opts || {} });
+            });
+          },
+          /** Called with the new theme whenever the admin page switches. */
+          onTheme(fn) {
+            themeListeners.add(fn);
+            return () => themeListeners.delete(fn);
+          },
+          /** Ask the board to re-measure now, after a change it cannot see. */
+          resize() {
+            report();
+          },
+        };
+        Object.freeze(losos);
+        window.losos = losos;
+
+        // ── Height ────────────────────────────────────────────────────
+        let last = -1;
+        let queued = false;
+        const report = () => {
+          if (queued) return;
+          queued = true;
+          requestAnimationFrame(() => {
+            queued = false;
+            const height = Math.ceil(
+              Math.max(document.body.scrollHeight, document.documentElement.scrollHeight),
+            );
+            if (height !== last) {
+              last = height;
+              send({ losos: "size", height });
+            }
+          });
+        };
+        if (typeof ResizeObserver === "function") {
+          const observer = new ResizeObserver(report);
+          observer.observe(document.documentElement);
+          observer.observe(document.body);
+        }
+
+        // ── Errors ────────────────────────────────────────────────────
+        const sayError = (message) => send({ losos: "error", message: String(message) });
+        window.addEventListener("error", (event) => {
+          sayError(event.message || "The widget threw an error.");
+        });
+        window.addEventListener("unhandledrejection", (event) => {
+          const reason = event.reason;
+          sayError(reason && reason.message ? reason.message : String(reason));
+        });
+
+        // ── Rendering ─────────────────────────────────────────────────
+        const applyTheme = (message) => {
+          if (message.theme === "light" || message.theme === "dark") {
+            current.theme = message.theme;
+            document.documentElement.setAttribute("data-theme", message.theme);
+            document.documentElement.style.colorScheme = message.theme;
+          }
+          if (typeof message.lang === "string") {
+            current.lang = message.lang;
+            document.documentElement.lang = message.lang;
+          }
+          if (message.palette && typeof message.palette === "object") {
+            const palette = {};
+            for (const [name, value] of Object.entries(message.palette)) {
+              if (!/^--[a-z0-9-]+$/.test(name) || typeof value !== "string") continue;
+              document.documentElement.style.setProperty(name, value);
+              palette[name] = value;
+            }
+            current.palette = Object.freeze(palette);
+          }
+        };
+
+        /* Scripts parsed out of innerHTML never run; a script element made
+         * fresh and given the same text does. So the source is parsed into a
+         * template, every <script> is rebuilt, and the lot is appended. */
+        const render = (source) => {
+          const template = document.createElement("template");
+          template.innerHTML = String(source);
+          for (const old of Array.from(template.content.querySelectorAll("script"))) {
+            const fresh = document.createElement("script");
+            for (const attribute of Array.from(old.attributes)) {
+              fresh.setAttribute(attribute.name, attribute.value);
+            }
+            fresh.textContent = old.textContent;
+            old.replaceWith(fresh);
+          }
+          document.body.replaceChildren(template.content);
+          report();
+        };
+
+        window.addEventListener("message", (event) => {
+          if (event.source !== parentWindow) return;
+          const message = event.data;
+          if (!message || typeof message !== "object") return;
+          switch (message.losos) {
+            case "load":
+              applyTheme(message);
+              render(message.source);
+              break;
+            case "theme":
+              applyTheme(message);
+              for (const fn of themeListeners) {
+                try {
+                  fn(current.theme);
+                } catch (error) {
+                  sayError(error && error.message ? error.message : String(error));
+                }
+              }
+              break;
+            case "metric:result": {
+              const waiting = pending.get(message.id);
+              if (waiting === undefined) return;
+              pending.delete(message.id);
+              waiting.resolve(message.value);
+              break;
+            }
+            case "metric:error": {
+              const waiting = pending.get(message.id);
+              if (waiting === undefined) return;
+              pending.delete(message.id);
+              waiting.reject(new Error(String(message.message)));
+              break;
+            }
+            default:
+              break;
+          }
+        });
+
+        // The board may have sent `load` before this listener existed; say
+        // hello and it sends it again.
+        send({ losos: "hello" });
+      })();
+    </script>
+  </body>
+</html>

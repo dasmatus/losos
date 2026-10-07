@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" preserveAspectRatio="xMidYMid slice">
+  <!-- Dusk: warm to cool, the hour the box starts lending. Shipped background (backend/src/look.rs SHIPPED). -->
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#c79a3e"/>
+      <stop offset="0.45" stop-color="#a8443c"/>
+      <stop offset="1" stop-color="#1b2a44"/>
+    </linearGradient>
+  </defs>
+  <rect width="1600" height="1000" fill="url(#sky)"/>
+  <circle cx="420" cy="300" r="420" fill="#ffd27a" opacity="0.18"/>
+  <ellipse cx="1150" cy="820" rx="700" ry="260" fill="#0a0e12" opacity="0.35"/>
+  <ellipse cx="300" cy="960" rx="900" ry="200" fill="#0a0e12" opacity="0.3"/>
+</svg>

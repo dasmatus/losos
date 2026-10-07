@@ -144,6 +144,25 @@ That was declined in favour of a single URL. In place instead: a strict CSP,
 `X-Frame-Options`, `nosniff` and `Referrer-Policy` on the admin pages, the
 LAN-only guard, and keeping both applications patched.
 
+### Widgets written by hand
+
+The owner can write a widget as HTML, style and script of their own
+(Settings → Look, or the board's gallery). Its source is stored on the box
+and run only inside `<iframe sandbox="allow-scripts" src="/widget-frame/">`:
+no `allow-same-origin`, so the frame is an opaque origin that cannot read the
+admin page, its `sessionStorage` (the token) or the API, and `/widget-frame/`
+is the one path nginx serves under a permissive CSP of its own
+(`modules/containers.nix`), with `frame-ancestors 'self'` and no
+`X-Frame-Options` so only the box's own pages may embed it. Everything the
+widget learns about the box comes over postMessage from the page, which
+answers only the readings the built-in widgets already have.
+
+The author is the owner, signed in with the admin token, so this is not an
+injection surface: what it is, is a way for a hand-written widget that does
+not work to not take the admin page with it. A widget may fetch the internet
+(`connect-src https: http:` in the frame's policy); the admin page itself
+still cannot.
+
 ### The LAN
 
 `losos.tls.enable` (default on) serves HTTPS with a certificate the box

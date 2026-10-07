@@ -1,8 +1,7 @@
 import * as React from "react";
 import { FieldError, Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
 import { useT } from "@/lib/i18n-react";
-import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText, RowValue } from "./rows";
+import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText, RowValue, SwitchRow } from "./rows";
 import type { SettingsForm } from "./use-settings-form";
 
 /* The name this box answers to, and how it is reached.
@@ -70,28 +69,21 @@ export function NetworkPane({ form }: { form: SettingsForm }) {
       <PaneSection>
         <GroupTitle>{t("panes.network.reaching")}</GroupTitle>
         <Group>
-          <Row>
-            <RowText
-              htmlFor={httpsId}
-              title={t("panes.network.encrypt")}
-              detail={t("panes.network.encryptDetail")}
-            />
-            <Switch
-              id={httpsId}
-              checked={draft?.https ?? false}
-              disabled={disabled}
-              onCheckedChange={(next) => form.set("https", next)}
-            />
-          </Row>
-          <Row>
-            <RowText htmlFor={proxyId} title={t("panes.network.outside")} />
-            <Switch
-              id={proxyId}
-              checked={draft?.proxyEnable ?? false}
-              disabled={disabled}
-              onCheckedChange={(next) => form.set("proxyEnable", next)}
-            />
-          </Row>
+          <SwitchRow
+            id={httpsId}
+            title={t("panes.network.encrypt")}
+            description={t("panes.network.encryptDetail")}
+            checked={draft?.https ?? false}
+            disabled={disabled}
+            onCheckedChange={(next) => form.set("https", next)}
+          />
+          <SwitchRow
+            id={proxyId}
+            title={t("panes.network.outside")}
+            checked={draft?.proxyEnable ?? false}
+            disabled={disabled}
+            onCheckedChange={(next) => form.set("proxyEnable", next)}
+          />
           <Row last>
             <RowText htmlFor={portId} title={t("panes.network.port")} />
             <Input
