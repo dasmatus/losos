@@ -162,7 +162,9 @@ const TREE: readonly Entry[] = [
     label: "shell.nav.settings",
     icon: Settings01Icon,
     railTo: "/settings",
-    children: (["network", "hardware", "security", "about", "reset"] as const).map(settingsLeaf),
+    children: (["network", "look", "hardware", "security", "about", "reset"] as const).map(
+      settingsLeaf,
+    ),
   },
 ];
 

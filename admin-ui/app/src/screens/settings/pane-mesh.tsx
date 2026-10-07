@@ -1,10 +1,9 @@
 import * as React from "react";
 import { ButtonGroup, ButtonGroupText } from "@/components/ui/button-group";
 import { FieldError, Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
 import { Rich, useT } from "@/lib/i18n-react";
 import { HourStrip } from "./hour-strip";
-import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText, StackRow } from "./rows";
+import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText, StackRow, SwitchRow } from "./rows";
 import { describeWindow } from "./window";
 import type { SettingsForm } from "./use-settings-form";
 
@@ -51,15 +50,14 @@ export function MeshPane({ form }: { form: SettingsForm }) {
       <PaneSection>
         <GroupTitle>{t("panes.mesh.otherBoxes")}</GroupTitle>
         <Group>
-          <Row last>
-            <RowText htmlFor={joinId} title={t("panes.mesh.join")} />
-            <Switch
-              id={joinId}
-              checked={joined}
-              disabled={disabled}
-              onCheckedChange={(next) => form.set("clusterEnable", next)}
-            />
-          </Row>
+          <SwitchRow
+            id={joinId}
+            title={t("panes.mesh.join")}
+            checked={joined}
+            disabled={disabled}
+            onCheckedChange={(next) => form.set("clusterEnable", next)}
+            last
+          />
         </Group>
         <GroupCaption>{t("panes.mesh.joinCaption")}</GroupCaption>
       </PaneSection>
@@ -67,19 +65,14 @@ export function MeshPane({ form }: { form: SettingsForm }) {
       <PaneSection>
         <GroupTitle>{t("panes.mesh.spareTime")}</GroupTitle>
         <Group>
-          <Row>
-            <RowText
-              htmlFor={shareId}
-              title={t("panes.mesh.lend")}
-              detail={windowDisabled && !disabled ? t("panes.mesh.joinFirst") : undefined}
-            />
-            <Switch
-              id={shareId}
-              checked={sharing}
-              disabled={windowDisabled}
-              onCheckedChange={(next) => form.set("shareCompute", next)}
-            />
-          </Row>
+          <SwitchRow
+            id={shareId}
+            title={t("panes.mesh.lend")}
+            description={windowDisabled && !disabled ? t("panes.mesh.joinFirst") : undefined}
+            checked={sharing}
+            disabled={windowDisabled}
+            onCheckedChange={(next) => form.set("shareCompute", next)}
+          />
 
           <StackRow>
             <HourStrip start={start} end={end} muted={!sharing || windowDisabled} />

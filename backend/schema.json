@@ -292,6 +292,44 @@
         }
       }
     },
+    "lookResponse": {
+      "type": "object",
+      "description": "The look of the admin pages, kept on the box as /var/lib/losos/look.json (backend/src/look.rs) so every browser sees the same thing. Not a setting: changing it writes the document and nothing else (no rebuild, no overrides.nix).",
+      "properties": {
+        "version": {
+          "type": "integer",
+          "description": "Document version, 1."
+        },
+        "background": {
+          "type": "object",
+          "description": "{\"kind\":\"none\"}, {\"kind\":\"shipped\",\"name\":\"tide|grid|dusk\"} (a picture in the SPA bundle, /backgrounds/<name>.svg), or {\"kind\":\"upload\",\"version\":N,\"contentType\":\"image/...\",\"url\":\"/api/look/background?v=N\"} for a picture the owner uploaded. `url` is added by the render, not stored."
+        },
+        "veil": {
+          "type": "integer",
+          "description": "How much of the page colour is laid over the picture, 20-90 percent (default 60), so text stays readable in both themes."
+        },
+        "widgets": {
+          "type": "array",
+          "description": "Widgets written by hand, in creation order: {\"id\":\"w<N>\" (never reused), \"name\", \"span\":\"half|full\", \"source\"}. The source is the owner's HTML, style and script, stored verbatim and run only inside the sandboxed /widget-frame/ (see POST /api/look/widgets)."
+        },
+        "shipped": {
+          "type": "array",
+          "description": "The names of the shipped pictures, for the pane's swatches."
+        },
+        "limits": {
+          "type": "object",
+          "description": "{widgets, nameChars, sourceBytes, imageBytes, veil:{min,max}}: what the writes refuse with 400, so the pages can check before sending."
+        }
+      },
+      "required": [
+        "version",
+        "background",
+        "veil",
+        "widgets",
+        "shipped",
+        "limits"
+      ]
+    },
     "marketResponse": {
       "type": "object",
       "required": [
@@ -617,6 +655,44 @@
         "in": "{\"listing_id\": \"...\", \"quantity\": <units>}",
         "out": "marketActionResponse",
         "note": "Buy units. Returns a Stripe Checkout URL for the page to open. Audited. Owner-actionable refusals are 400/409 carrying the registrar's own sentence."
+      },
+      "GET /api/look": {
+        "auth": true,
+        "out": "lookResponse"
+      },
+      "POST /api/look": {
+        "auth": true,
+        "in": "{\"background\": {\"kind\":\"none\"} | {\"kind\":\"shipped\",\"name\":\"...\"} (optional), \"veil\": 20..90 (optional)}",
+        "out": "lookResponse",
+        "note": "Choose a shipped picture, none, or the veil. Choosing anything but the upload removes the uploaded picture's bytes. 400 with the reason for an unknown name or a veil out of range. Not audited and not a rebuild: the look is a document, not a setting."
+      },
+      "PUT /api/look/background": {
+        "auth": true,
+        "in": "the picture's bytes, Content-Type image/png|jpeg|webp|gif|svg+xml, at most limits.imageBytes",
+        "out": "lookResponse",
+        "note": "Upload a background of your own. The bytes are sniffed, not trusted from the header: PNG, JPEG, WebP, GIF and SVG by their magic, 400 for anything else or anything over the limit. Written to /var/lib/losos/background.img before the document, so a crash between the two leaves the old picture, never a dangling reference. Each upload bumps `version`, which the SPA puts in the URL so a browser cache never shows the previous picture."
+      },
+      "DELETE /api/look/background": {
+        "auth": true,
+        "out": "lookResponse",
+        "note": "Back to plain. Idempotent."
+      },
+      "GET /api/look/background": {
+        "auth": false,
+        "in": "query string: v=<version> (ignored by lososd; a cache key for the browser)",
+        "out": "the picture's bytes with its sniffed Content-Type, nosniff, Cache-Control private + immutable; 404 when there is none",
+        "note": "The one route under /api that takes no Bearer, on purpose: the page paints the picture through CSS (`background-image: url(...)`), and a CSS fetch carries no header. The route sits behind the same LAN-only nginx guard as the SPA, and a wallpaper is not a secret. Nothing else should join it here."
+      },
+      "POST /api/look/widgets": {
+        "auth": true,
+        "in": "{\"id\": \"w<N>\" (optional: rewrite that one), \"name\": \"...\", \"span\": \"half|full\", \"source\": \"...\"}",
+        "out": "{\"widget\": {id, name, span, source}}",
+        "note": "Write or rewrite a widget by hand. The source is kept verbatim and never run by lososd or by the admin page: the board embeds it in `<iframe sandbox=\"allow-scripts\" src=\"/widget-frame/\">`, an opaque origin with no token and no API, which gets the source and the box's readings over postMessage (modules/containers.nix carries the frame's own CSP). 400 for a missing name, a name over limits.nameChars, a source over limits.sourceBytes, more than limits.widgets widgets, or an id the box does not have. A new id is w<next>, never a reused one, so a board tile pointing at a deleted widget stays pointing at nothing."
+      },
+      "DELETE /api/look/widgets/{id}": {
+        "auth": true,
+        "out": "{\"deleted\": true|false}",
+        "note": "Idempotent; false when there was no such widget."
       }
     }
   },

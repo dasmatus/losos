@@ -15,7 +15,14 @@
 
 import * as React from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { CheckmarkCircle02Icon, PlusSignIcon, PuzzleIcon } from "@hugeicons/core-free-icons";
+import {
+  CheckmarkCircle02Icon,
+  Delete02Icon,
+  PencilEdit02Icon,
+  PlusSignIcon,
+  PuzzleIcon,
+  SourceCodeIcon,
+} from "@hugeicons/core-free-icons";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -35,12 +42,31 @@ import {
   ItemMedia,
   ItemTitle,
 } from "@/components/ui/item";
-import { addBuiltin, addCustom, hasBuiltin, MAX_WIDGETS, type BuiltinId } from "@/lib/widgets";
+import {
+  getLookState,
+  getServerLookState,
+  removeHandWidget,
+  subscribeLook,
+  type HandWidget,
+} from "@/lib/look";
+import {
+  addBuiltin,
+  addCustom,
+  addHand,
+  hasBuiltin,
+  hasHand,
+  MAX_WIDGETS,
+  removeHandTiles,
+  type BuiltinId,
+} from "@/lib/widgets";
 import { CATALOGUE } from "./catalogue";
 import type { WidgetSpec } from "./spec";
 
 const CustomEditor = React.lazy(() =>
   import("./custom-editor").then((m) => ({ default: m.CustomEditor })),
+);
+const HandEditor = React.lazy(() =>
+  import("./hand-editor").then((m) => ({ default: m.HandEditor })),
 );
 
 export interface GalleryProps {
@@ -53,10 +79,38 @@ export interface GalleryProps {
 export function WidgetGallery({ open, onOpenChange, count }: GalleryProps) {
   const t = useT();
   const [editing, setEditing] = React.useState(false);
+  /* The hand-written editor: null closed, {} writing a new one, or the
+   * widget being edited. A separate dialog from the spec editor because
+   * they are different things that happen to end on the same board. */
+  const [writing, setWriting] = React.useState<{ widget?: HandWidget } | null>(null);
+  const look = React.useSyncExternalStore(subscribeLook, getLookState, getServerLookState);
   const titleId = React.useId();
   const hintId = React.useId();
 
   const full = count >= MAX_WIDGETS;
+  const hand = look.look?.widgets ?? [];
+
+  const addHandWidget = (widget: HandWidget): void => {
+    if (addHand(widget.id) === null) {
+      toast.error(t("widgets.gallery.full"), t("widgets.gallery.fullHint", { max: MAX_WIDGETS }), { help: "look-and-widgets" });
+      return;
+    }
+    toast.success(t("widgets.gallery.added", { name: widget.name }));
+  };
+
+  const deleteHandWidget = async (widget: HandWidget): Promise<void> => {
+    try {
+      await removeHandWidget(widget.id);
+      removeHandTiles(widget.id);
+      toast.success(t("look.widgets.deleted", { name: widget.name }));
+    } catch (error) {
+      toast.error(
+        t("look.widgets.notDeleted", { name: widget.name }),
+        error instanceof Error ? error.message : "",
+        { help: "look-and-widgets" },
+      );
+    }
+  };
 
   const add = (id: BuiltinId, name: string): void => {
     if (addBuiltin(id) === null) {
@@ -85,8 +139,13 @@ export function WidgetGallery({ open, onOpenChange, count }: GalleryProps) {
   return (
     <>
       <Dialog
-        open={open && !editing}
-        onOpenChange={onOpenChange}
+        open={open && !editing && writing === null}
+        // Handing over to an editor closes this dialog, and a native <dialog>
+        // reports every close the same way; that one is not the owner leaving.
+        onOpenChange={(next) => {
+          if (!next && (editing || writing !== null)) return;
+          onOpenChange(next);
+        }}
         labelledBy={titleId}
         describedBy={hintId}
         dialogClassName="w-[min(44rem,calc(100vw-2rem))] max-w-[44rem]"
@@ -165,7 +224,118 @@ export function WidgetGallery({ open, onOpenChange, count }: GalleryProps) {
                 </ItemFooter>
               </Item>
             </li>
+
+            <li className="flex">
+              <Item variant="dashed" className="h-full content-start">
+                <ItemMedia variant="hatched">
+                  <HugeiconsIcon
+                    icon={SourceCodeIcon}
+                    strokeWidth={1.5}
+                    color="currentColor"
+                    aria-hidden="true"
+                  />
+                </ItemMedia>
+                <ItemContent>
+                  <ItemTitle>{t("look.gallery.hand")}</ItemTitle>
+                  <ItemDescription>{t("look.gallery.handBlurb")}</ItemDescription>
+                </ItemContent>
+                <ItemFooter className="justify-start">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={full || look.look === null}
+                    onClick={() => setWriting({})}
+                  >
+                    {t("look.gallery.writeOne")}
+                  </Button>
+                </ItemFooter>
+              </Item>
+            </li>
           </ul>
+
+          {/* The widgets the box keeps, written by hand on it: each one can
+              go on the board, be edited, or be deleted from the box. */}
+          {hand.length > 0 && (
+            <section className="mt-5" aria-labelledby={`${titleId}-hand`}>
+              <h3 id={`${titleId}-hand`} className="mb-2 text-[12.5px] font-medium text-muted">
+                {t("look.gallery.section")}
+              </h3>
+              <ul className="grid gap-3 sm:grid-cols-2">
+                {hand.map((widget) => {
+                  const already = hasHand(widget.id);
+                  return (
+                    <li key={widget.id} className="flex">
+                      <Item variant="outline" className="h-full content-start">
+                        <ItemMedia variant="icon">
+                          <HugeiconsIcon
+                            icon={SourceCodeIcon}
+                            strokeWidth={1.5}
+                            color="currentColor"
+                            aria-hidden="true"
+                          />
+                        </ItemMedia>
+                        <ItemContent>
+                          <ItemTitle>{widget.name}</ItemTitle>
+                          <ItemDescription>
+                            {t(widget.span === "full" ? "look.widgets.full" : "look.widgets.half")}
+                          </ItemDescription>
+                        </ItemContent>
+                        <ItemFooter className="justify-start gap-1">
+                          <Button
+                            variant={already ? "ghost" : "secondary"}
+                            size="sm"
+                            disabled={full}
+                            onClick={() => addHandWidget(widget)}
+                          >
+                            <HugeiconsIcon
+                              icon={already ? CheckmarkCircle02Icon : PlusSignIcon}
+                              size={15}
+                              strokeWidth={1.5}
+                              color="currentColor"
+                              aria-hidden="true"
+                            />
+                            {already ? t("widgets.gallery.addAnother") : t("widgets.gallery.add")}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-8"
+                            aria-label={t("look.widgets.edit", { name: widget.name })}
+                            title={t("look.widgets.edit", { name: widget.name })}
+                            onClick={() => setWriting({ widget })}
+                          >
+                            <HugeiconsIcon
+                              icon={PencilEdit02Icon}
+                              size={16}
+                              strokeWidth={1.5}
+                              color="currentColor"
+                              aria-hidden="true"
+                            />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-8"
+                            aria-label={t("look.widgets.delete", { name: widget.name })}
+                            title={t("look.widgets.delete", { name: widget.name })}
+                            onClick={() => void deleteHandWidget(widget)}
+                          >
+                            <HugeiconsIcon
+                              icon={Delete02Icon}
+                              size={16}
+                              strokeWidth={1.5}
+                              color="currentColor"
+                              aria-hidden="true"
+                            />
+                          </Button>
+                        </ItemFooter>
+                      </Item>
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          )}
         </DialogBody>
 
         <DialogFooter>
@@ -179,6 +349,31 @@ export function WidgetGallery({ open, onOpenChange, count }: GalleryProps) {
           </Button>
         </DialogFooter>
       </Dialog>
+
+      {writing !== null && (
+        <React.Suspense fallback={null}>
+          <HandEditor
+            open={open}
+            onOpenChange={(next) => {
+              if (!next) setWriting(null);
+            }}
+            {...(writing.widget === undefined ? {} : { widget: writing.widget })}
+            onSaved={(widget, created) => {
+              if (created) {
+                if (addHand(widget.id) === null) {
+                  toast.error(
+                    t("widgets.gallery.full"),
+                    t("widgets.gallery.fullHint", { max: MAX_WIDGETS }),
+                    { help: "look-and-widgets" },
+                  );
+                  return;
+                }
+                onOpenChange(false);
+              }
+            }}
+          />
+        </React.Suspense>
+      )}
 
       {editing && (
         <React.Suspense fallback={null}>
