@@ -121,9 +121,12 @@ const config: Config = {
         alt: 'LosOS',
         src: 'img/losos.svg',
       },
+      // No page links in the bar: the SPA's TopBar carries none (its
+      // navigation is the sidebar), so the chapters are reached from the
+      // sidebar here too. Right-hand side, in the SPA's order: the language
+      // picker, the three-way theme control, and a plain text link where the
+      // SPA has "Sign out".
       items: [
-        {to: '/types', position: 'left', label: 'Types'},
-        {to: '/troubleshooting', position: 'left', label: 'When something goes wrong'},
         {type: 'localeDropdown', position: 'right'},
         {
           href: 'https://github.com/dasmatus/losos',
