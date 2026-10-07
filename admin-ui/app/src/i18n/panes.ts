@@ -116,6 +116,21 @@ export default defineMessages({
     sk: "každú noc o {time}",
     de: "jede Nacht um {time}",
   },
+  "panes.about.handbook": {
+    en: "Handbook",
+    sk: "Príručka",
+    de: "Handbuch",
+  },
+  "panes.about.handbookLink": {
+    en: "Open the handbook",
+    sk: "Otvoriť príručku",
+    de: "Handbuch öffnen",
+  },
+  "panes.about.handbookCaption": {
+    en: "The owner's manual, with a chapter for when something goes wrong. This box carries its own copy, so it opens without the internet.",
+    sk: "Príručka vlastníka s kapitolou pre prípad, že niečo nefunguje. Toto zariadenie má vlastnú kópiu, takže sa otvorí aj bez internetu.",
+    de: "Das Handbuch für Besitzer, mit einem Kapitel für den Fall, dass etwas nicht funktioniert. Diese Box trägt ihre eigene Kopie, also öffnet es sich auch ohne Internet.",
+  },
   "panes.about.caption": {
     en: "This box keeps itself up to date on its own and restarts once a night so nothing is left half-applied. If it is switched off at the time, it catches up the next time it is on. Your admin key is remembered only until you close this tab.",
     sk: "Toto zariadenie sa aktualizuje samo a raz za noc sa reštartuje, aby nič nezostalo použité len napoly. Ak je v tom čase vypnuté, dobehne to pri ďalšom zapnutí. Váš správcovský kľúč si pamätá len do zatvorenia tejto karty.",

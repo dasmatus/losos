@@ -1,0 +1,54 @@
+{
+  "version.label": {
+    "message": "Aktuell",
+    "description": "The label for version current"
+  },
+  "sidebar.handbook.category.Getting started": {
+    "message": "Erste Schritte",
+    "description": "The label for category 'Getting started' in sidebar 'handbook'"
+  },
+  "sidebar.handbook.category.Getting started.link.generated-index.title": {
+    "message": "Erste Schritte",
+    "description": "The generated-index page title for category 'Getting started' in sidebar 'handbook'"
+  },
+  "sidebar.handbook.category.Getting started.link.generated-index.description": {
+    "message": "Vom USB-Stick zur Box, die in deinem Browser antwortet.",
+    "description": "The generated-index page description for category 'Getting started' in sidebar 'handbook'"
+  },
+  "sidebar.handbook.category.Types of setup": {
+    "message": "Arten der Einrichtung",
+    "description": "The label for category 'Types of setup' in sidebar 'handbook'"
+  },
+  "sidebar.handbook.category.Owner's manual": {
+    "message": "Handbuch für Besitzer",
+    "description": "The label for category 'Owner's manual' in sidebar 'handbook'"
+  },
+  "sidebar.handbook.category.Owner's manual.link.generated-index.title": {
+    "message": "Handbuch für Besitzer",
+    "description": "The generated-index page title for category 'Owner's manual' in sidebar 'handbook'"
+  },
+  "sidebar.handbook.category.Owner's manual.link.generated-index.description": {
+    "message": "Der Alltag: die Admin-Seiten, die Apps, Einstellungen, Updates und die Festplatte.",
+    "description": "The generated-index page description for category 'Owner's manual' in sidebar 'handbook'"
+  },
+  "sidebar.handbook.category.When something goes wrong": {
+    "message": "Wenn etwas nicht funktioniert",
+    "description": "The label for category 'When something goes wrong' in sidebar 'handbook'"
+  },
+  "sidebar.handbook.category.Reference": {
+    "message": "Referenz",
+    "description": "The label for category 'Reference' in sidebar 'handbook'"
+  },
+  "sidebar.handbook.category.Reference.link.generated-index.title": {
+    "message": "Referenz",
+    "description": "The generated-index page title for category 'Reference' in sidebar 'handbook'"
+  },
+  "sidebar.handbook.category.Reference.link.generated-index.description": {
+    "message": "Tabellen zum Nachschlagen: Adressen, was einen Neustart übersteht, Einstellungen, das Sicherheitsmodell, die Begriffe.",
+    "description": "The generated-index page description for category 'Reference' in sidebar 'handbook'"
+  },
+  "sidebar.handbook.category.The project": {
+    "message": "Das Projekt",
+    "description": "The label for category 'The project' in sidebar 'handbook'"
+  }
+}

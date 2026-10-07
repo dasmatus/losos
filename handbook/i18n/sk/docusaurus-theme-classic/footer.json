@@ -1,0 +1,38 @@
+{
+  "link.title.This handbook": {
+    "message": "Táto príručka",
+    "description": "The title of the footer links column with title=This handbook in the footer"
+  },
+  "link.title.For developers": {
+    "message": "Pre vývojárov",
+    "description": "The title of the footer links column with title=For developers in the footer"
+  },
+  "link.item.label.Getting started": {
+    "message": "Začíname",
+    "description": "The label of footer link with label=Getting started linking to /start/what-is-losos"
+  },
+  "link.item.label.Types of setup": {
+    "message": "Typy nasadenia",
+    "description": "The label of footer link with label=Types of setup linking to /types"
+  },
+  "link.item.label.When something goes wrong": {
+    "message": "Keď niečo nefunguje",
+    "description": "The label of footer link with label=When something goes wrong linking to /troubleshooting"
+  },
+  "link.item.label.Wiki": {
+    "message": "Wiki",
+    "description": "The label of footer link with label=Wiki linking to https://github.com/dasmatus/losos/wiki"
+  },
+  "link.item.label.Source": {
+    "message": "Zdrojový kód",
+    "description": "The label of footer link with label=Source linking to https://github.com/dasmatus/losos"
+  },
+  "link.item.label.Releases": {
+    "message": "Vydania",
+    "description": "The label of footer link with label=Releases linking to https://github.com/dasmatus/losos/releases"
+  },
+  "copyright": {
+    "message": "LosOS. Každé zariadenie má túto príručku na /handbook/, s internetom aj bez neho.",
+    "description": "The footer copyright"
+  }
+}
