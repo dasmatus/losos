@@ -373,6 +373,8 @@ await check('an empty name is refused in the dialog, with nothing sent', async (
   await page.getByRole('button', { name: 'Add a widget' }).first().click();
   await page.getByRole('dialog', { name: 'Add a widget' }).getByRole('button', { name: 'Write one' }).click();
   const editor = page.getByRole('dialog', { name: 'Write a widget' });
+  // The disclaimer sits where code gets pasted.
+  await editor.getByTestId('hand-paste-note').filter({ hasText: 'Pasting something from the internet? Read it first.' }).waitFor();
   await editor.getByRole('button', { name: 'Save and put on the board' }).click();
   await editor.getByText('Give it a name.').waitFor();
   assert.deepEqual(writes, []);

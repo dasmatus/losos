@@ -13,6 +13,9 @@
  */
 
 import * as React from "react";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { Alert02Icon } from "@hugeicons/core-free-icons";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -187,6 +190,17 @@ export function HandEditor({ open, onOpenChange, widget, onSaved }: HandEditorPr
                     </NativeSelect>
                   </Label>
                 </div>
+
+                {/* Where the code gets pasted, so the warning sits right above
+                 * it: a widget is script the owner chose to run, and the
+                 * sandbox limits what it can reach, not what it can say. */}
+                <Alert variant="warn" role="note" data-testid="hand-paste-note">
+                  <HugeiconsIcon icon={Alert02Icon} size={19} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+                  <AlertTitle>{t("look.editor.pasted.title")}</AlertTitle>
+                  <AlertDescription>
+                    <p>{t("look.editor.pasted.body")}</p>
+                  </AlertDescription>
+                </Alert>
 
                 <Label htmlFor={sourceId} className="flex flex-col gap-1.5">
                   <span>{t("look.editor.field.source")}</span>
