@@ -2,6 +2,7 @@ import * as React from "react";
 import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Compass01Icon, ViewIcon, ViewOffSlashIcon } from "@hugeicons/core-free-icons";
+import logoUrl from "@/assets/losos.svg";
 import { AppSidebar } from "@/components/app-sidebar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -243,7 +244,12 @@ function TopBar({ signedIn }: { signedIn: boolean }) {
   return (
     <header className="sticky top-0 z-40 border-b border-line bg-surface/85 backdrop-blur-sm">
       <div className="mx-auto flex w-full max-w-6xl items-center gap-3 px-4 py-3 sm:px-6">
-        <span className="text-[15px] font-semibold tracking-tight">LosOS</span>
+        <span className="flex items-center gap-2 text-[15px] font-semibold tracking-tight">
+          {/* The cooked salmon (losos is Slovak for salmon), pixel art kept
+              square-edged at any size. Bundled, so img-src 'self' holds. */}
+          <img src={logoUrl} alt="" width={28} height={28} className="size-7 [image-rendering:pixelated]" />
+          LosOS
+        </span>
         <Badge variant="outline" className="hidden sm:inline-flex">
           {t("shell.thisBox")}
         </Badge>
