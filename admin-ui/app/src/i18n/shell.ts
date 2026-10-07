@@ -8,6 +8,13 @@ export default defineMessages({
   "shell.nav.mesh": { en: "Mesh", sk: "Mesh", de: "Mesh" },
   "shell.nav.settings": { en: "Settings", sk: "Nastavenia", de: "Einstellungen" },
   "shell.nav.label": { en: "Sections", sk: "Sekcie", de: "Bereiche" },
+  /* Under Market in the sidebar, greyed with it: the disk-sharing switch
+   * lives on the Market pane and opens when the market does. */
+  "shell.nav.diskSharing": { en: "Disk sharing", sk: "Zdieľanie disku", de: "Festplattenfreigabe" },
+  "shell.nav.collapse": { en: "Collapse the sidebar", sk: "Zbaliť bočný panel", de: "Seitenleiste einklappen" },
+  "shell.nav.expand": { en: "Expand the sidebar", sk: "Rozbaliť bočný panel", de: "Seitenleiste ausklappen" },
+  /* The fold toggle on an entry with sub-entries; aria-expanded says which way. */
+  "shell.nav.subEntries": { en: "Entries under {name}", sk: "Položky pod {name}", de: "Einträge unter {name}" },
   "shell.asking": {
     en: "Asking this box whether it has been set up.",
     sk: "Zisťujeme, či je toto zariadenie už nastavené.",
