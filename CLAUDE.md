@@ -430,7 +430,12 @@ A separate `midnight-reboot.timer` reboots unconditionally at 00:07 with
   step fails with "No such file or directory". The same applies to `curl`,
   which `GET /api/apps/search` shells out to: `path` **replaces** PATH, so a
   binary left off that list is not on it by accident, and the failure surfaces
-  to the owner as a feature that quietly never works.
+  to the owner as a feature that quietly never works. `nixos-rebuild` is on
+  that list for the same reason: systemd-run resolves a bare command against
+  the *caller's* PATH, so without it every Apply failed before the rebuild
+  unit existed. And lososd must not get `ProcSubset=pid`: it hides
+  `/proc/devices`, and vgs exits 4 without it. `tests/invariants.nix` pins
+  both.
 - **The LUKS keyfile is hex text, and must stay NUL-free.** disko hands
   `passwordFile` to `luksFormat` as `<(echo -n "$(cat FILE)")`, a command
   substitution that drops NUL bytes and a trailing newline, while the initrd
