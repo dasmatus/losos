@@ -245,15 +245,18 @@ pkgs.testers.nixosTest {
         print(db)
         assert "LosOS test db" in db, db
 
-        # The same facts on the screen, for the record.
-        m.succeed("chvt 2")
+        # The same facts on the screen, for the record. tty8: the medium
+        # autologs root in on every console logind spawns a getty for
+        # (tty1-tty6), and agetty hangs the tty up as it starts, which
+        # turns a write already in flight on tty2 into EIO.
         m.succeed(
             "{ echo '# bootctl status | head -12'; bootctl status 2>/dev/null | head -12;"
             " echo; echo '# od -An -tu1 -j4 -N1 " + SB_VAR + "'; od -An -tu1 -j4 -N1 " + SB_VAR + ";"
-            " echo; echo '# efi-readvar -v db | grep Subject'; efi-readvar -v db | grep -m1 Subject; } > /dev/tty2"
+            " echo; echo '# efi-readvar -v db | grep Subject'; efi-readvar -v db | grep -m1 Subject; } > /dev/tty8"
         )
-        m.wait_until_tty_matches("2", "Secure Boot: enabled")
-        m.screenshot("02-signed-tty2-proof")
+        m.succeed("chvt 8")
+        m.wait_until_tty_matches("8", "Secure Boot: enabled")
+        m.screenshot("02-signed-tty8-proof")
         m.shutdown()
 
     with subtest("a firmware with only Microsoft's keys refuses the signed medium"):
