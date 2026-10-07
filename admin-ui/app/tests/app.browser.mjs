@@ -62,6 +62,8 @@ async function open({
   viewport = { width: 1280, height: 900 },
   locale = 'en-US',
   market = { available: false },
+  edge = EDGE_FOUND,
+  settings = SETTINGS,
   checkoutUrl = 'https://checkout.stripe.com/c/pay/cs_test_1',
   onboardUrl = 'https://connect.stripe.com/setup/e/acct_test/abc',
 } = {}) {
@@ -78,13 +80,34 @@ async function open({
     authed(route) ? json(route, 200, { mode: 'local', sharing: false }) : json(route, 401, { error: 'unauthorized' }),
   );
   await page.route('**/api/settings', (route) =>
-    authed(route) ? json(route, 200, SETTINGS) : json(route, 401, { error: 'unauthorized' }),
+    authed(route) ? json(route, 200, settings) : json(route, 401, { error: 'unauthorized' }),
   );
   await page.route('**/api/status', (route) =>
     authed(route)
       ? json(route, 200, { state: 'idle', progress: 0, message: '' })
       : json(route, 401, { error: 'unauthorized' }),
   );
+  // The edge scan: GET /api/edge's document, and the gate it implies. An
+  // apply that turns sharing on while `edge.reachable` is false is answered
+  // the way lososd answers it: 409 with the sentence and `edgeRequired`.
+  const applies = [];
+  await page.route('**/api/edge', (route) =>
+    authed(route) ? json(route, 200, edge) : json(route, 401, { error: 'unauthorized' }),
+  );
+  await page.route('**/api/apply', (route) => {
+    if (!authed(route)) return json(route, 401, { error: 'unauthorized' });
+    const nix = route.request().postData() ?? '';
+    applies.push(nix);
+    const turnsOn = /losos\.(sharingMyStorage|cluster\.enable) = true;/.test(nix);
+    if (turnsOn && !edge.reachable) {
+      return json(route, 409, {
+        error: 'no edge proxy is reachable from this box, so losos.cluster.enable cannot be turned on: storage can only be shared through an edge. Local use keeps working.',
+        edgeRequired: true,
+        setting: 'losos.cluster.enable',
+      });
+    }
+    return json(route, 200, { job: 'job-1' });
+  });
   // The market relay: `market` is GET /api/market's document, every action is
   // recorded, and each answers the way lososd does on success.
   const marketPosts = [];
@@ -110,8 +133,41 @@ async function open({
     await page.addInitScript((t) => window.sessionStorage.setItem('losos-token', t), TOKEN);
   }
   await page.goto(origin + path, { waitUntil: 'networkidle' });
-  return { page, errors, marketPosts };
+  return { page, errors, marketPosts, applies };
 }
+
+/* What lososd's scan reports with an edge on the LAN, and with none. */
+const EDGE_FOUND = {
+  reachable: true,
+  official: true,
+  edges: [{ name: 'edge demo', url: 'http://edge.local:8443', source: 'lan', official: true }],
+  lanSearched: true,
+  configuredUrl: 'https://losos-edge.dasmat.us',
+  checkedAt: 1760000000,
+};
+/* The same edge without the LosOS root's signature: a company's own. */
+const EDGE_COMPANY = {
+  ...EDGE_FOUND,
+  official: false,
+  edges: [{ ...EDGE_FOUND.edges[0], official: false }],
+};
+/* Two edges at once: the company's on the LAN and the public one over the
+ * internet, which is the official one. */
+const EDGE_BOTH = {
+  ...EDGE_FOUND,
+  edges: [
+    { ...EDGE_FOUND.edges[0], official: false },
+    { name: 'losos-edge.dasmat.us', url: 'https://losos-edge.dasmat.us', source: 'configured', official: true },
+  ],
+};
+const EDGE_NONE = {
+  reachable: false,
+  official: false,
+  edges: [],
+  lanSearched: true,
+  configuredUrl: 'https://losos-edge.dasmat.us',
+  checkedAt: 1760000000,
+};
 
 /* A box the market is offered to: one listing on the shelf, payouts set up,
  * sharing storage only. */
@@ -996,6 +1052,122 @@ await whenMarketOpen('purchases are listed in a Table with a column per fact', a
   assert.deepEqual(await table.locator('thead th').allInnerTexts(), ['Bought', 'Quantity', 'Until', 'Status']);
   assert.equal(await table.locator('tbody tr').count(), 1);
   assert.equal(await page.getByLabel('Quantity').locator('xpath=ancestor::*[@data-slot="button-group"]').count(), 1, 'quantity and Order are not one Button Group');
+  await page.close();
+});
+
+await check('the Mesh pane names the edge proxy the box found, and the join switch is live', async () => {
+  const { page, errors } = await open({ path: '/mesh', stored: true });
+  const row = page.locator('[data-edge="found"]');
+  await row.waitFor();
+  const text = await row.innerText();
+  assert.match(text, /Edge proxy found: edge demo/);
+  assert.match(text, /http:\/\/edge\.local:8443/);
+  assert.match(text, /On this network/);
+  const join = page.getByRole('switch', { name: 'Join the mesh', exact: true });
+  assert.equal(await join.isDisabled(), false, 'the join switch is greyed with an edge in reach');
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+await check('each edge in reach gets a row; a company edge wears a warning sign whose tooltip lists what is missing', async () => {
+  const { page, errors } = await open({ path: '/mesh', stored: true, edge: EDGE_BOTH });
+  const rows = page.locator('[data-edge="found"]');
+  await rows.first().waitFor();
+  assert.equal(await rows.count(), 2, 'one row per edge');
+  const company = page.locator('[data-edge-official="no"]');
+  const official = page.locator('[data-edge-official="yes"]');
+  assert.match(await company.innerText(), /Edge proxy found: edge demo/);
+  assert.match(await company.innerText(), /On this network/);
+  assert.match(await official.innerText(), /losos-edge\.dasmat\.us/);
+  assert.match(await official.innerText(), /Over the internet/);
+
+  const warning = company.locator('[data-edge-sign="warning"]');
+  assert.equal(await warning.count(), 1, 'the company edge has no warning sign');
+  assert.equal(await official.locator('[data-edge-sign="official"]').count(), 1, 'the official edge has no check');
+  assert.match(await warning.getAttribute('aria-label'), /Not an official LosOS edge/);
+  await warning.hover();
+  const tip = page.locator('[data-slot="tooltip-content"]');
+  await tip.waitFor({ timeout: 3000 });
+  const text = await tip.innerText();
+  assert.match(text, /Not an official LosOS edge/);
+  assert.match(text, /buying storage or compute on the market/);
+  assert.match(text, /selling this box's spare storage and compute/);
+  assert.match(text, /Sharing storage through it works/);
+
+  const join = page.getByRole('switch', { name: 'Join the mesh', exact: true });
+  assert.equal(await join.isDisabled(), false, 'an edge in reach greyed the join switch');
+  assert.deepEqual(errors, []);
+  await page.close();
+
+  // Only a company edge: same sign, and the caption says the market waits.
+  const alone = await open({ path: '/mesh', stored: true, edge: EDGE_COMPANY });
+  await alone.page.locator('[data-edge-sign="warning"]').waitFor();
+  assert.match(await body(alone.page), /None of these is run by LosOS, so the market/);
+  assert.equal(await alone.page.locator('[data-edge-sign="official"]').count(), 0);
+  assert.deepEqual(alone.errors, []);
+  await alone.page.close();
+});
+
+await check('with no edge proxy in reach the Mesh pane says so and the join switch is greyed with the reason', async () => {
+  const { page, errors } = await open({ path: '/mesh', stored: true, edge: EDGE_NONE });
+  const row = page.locator('[data-edge="none"]');
+  await row.waitFor();
+  const text = await row.innerText();
+  assert.match(text, /No edge proxy found/);
+  assert.match(text, /asked https:\/\/losos-edge\.dasmat\.us; nothing answered/);
+  assert.match(text, /Sharing is off/);
+  const join = page.getByRole('switch', { name: 'Join the mesh', exact: true });
+  assert.equal(await join.isDisabled(), true, 'the join switch is live with no edge in reach');
+  assert.match(await body(page), /Needs an edge proxy in reach\./);
+  // The hours underneath depend on joining, so they are greyed too.
+  assert.equal(await page.getByRole('switch', { name: 'Lend compute while this box is idle' }).count() >= 0, true);
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+await check('a box already joined keeps its join switch live while the edge is away, so it can leave', async () => {
+  const joined = { ...SETTINGS, clusterEnable: true };
+  const { page } = await open({ path: '/mesh', stored: true, edge: EDGE_NONE });
+  await page.route('**/api/settings', (route) => json(route, 200, joined));
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.locator('[data-edge="none"]').waitFor();
+  const join = page.getByRole('switch', { name: 'Join the mesh', exact: true });
+  assert.equal(await join.isChecked(), true);
+  assert.equal(await join.isDisabled(), false, 'a joined box cannot leave while the edge is away');
+  await page.close();
+});
+
+await check('the daemon\'s refusal reaches the owner in the daemon\'s own words', async () => {
+  // The edge appears, the owner flips Join, the edge vanishes before Apply:
+  // the switch was live, so the 409 is what tells the owner. Its sentence is
+  // the toast, and nothing is marked as applying afterwards.
+  // The fixture's port 80 fails the form's own validation and keeps Apply
+  // greyed; this check is about the daemon's refusal, so the form is valid.
+  const { page, applies } = await open({ path: '/mesh', stored: true, settings: { ...SETTINGS, apachePort: 11000 } });
+  await page.locator('[data-edge="found"]').waitFor();
+  const join = page.getByRole('switch', { name: 'Join the mesh', exact: true });
+  await page.locator('[data-slot="switch"]').filter({ has: join }).click();
+  assert.equal(await join.isChecked(), true, 'the join switch did not flip');
+  await page.getByRole('button', { name: 'Apply', exact: true }).waitFor();
+  await page.unroute('**/api/edge');
+  await page.unroute('**/api/apply');
+  await page.route('**/api/edge', (route) => json(route, 200, EDGE_NONE));
+  await page.route('**/api/apply', (route) => {
+    applies.push(route.request().postData() ?? '');
+    return json(route, 409, {
+      error: 'no edge proxy is reachable from this box, so losos.cluster.enable cannot be turned on: storage can only be shared through an edge. Local use keeps working.',
+      edgeRequired: true,
+      setting: 'losos.cluster.enable',
+    });
+  });
+  await page.getByRole('button', { name: 'Apply', exact: true }).click();
+  const toast = page.locator('[data-toast]').filter({ hasText: /no edge proxy is reachable/ });
+  await toast.waitFor({ timeout: 5000 });
+  assert.match(await toast.innerText(), /Local use keeps working/);
+  assert.equal(applies.length, 1, 'Apply did not post exactly once');
+  assert.match(applies[0], /losos\.cluster\.enable = true;/);
+  // Nothing is applying: the bar is back with Apply armed.
+  await page.getByRole('button', { name: 'Apply', exact: true }).waitFor();
   await page.close();
 });
 

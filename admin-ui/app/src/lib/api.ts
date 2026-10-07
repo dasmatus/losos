@@ -93,11 +93,23 @@ export interface HealthResponse {
 /** A non-2xx from lososd, carrying its `{"error": "..."}` message. */
 export class ApiError extends Error {
   readonly status: number;
+  /** The box refused a sharing setting because no edge proxy is in reach:
+   *  a 409 whose body carries `edgeRequired: true` (backend/src/edge.rs). */
+  readonly edgeRequired: boolean;
+  /** The box refused a market action because no edge in reach is one LosOS
+   *  runs: a 409 with `officialEdgeRequired: true`. */
+  readonly officialEdgeRequired: boolean;
 
-  constructor(status: number, message: string) {
+  constructor(
+    status: number,
+    message: string,
+    { edgeRequired = false, officialEdgeRequired = false } = {},
+  ) {
     super(message);
     this.name = "ApiError";
     this.status = status;
+    this.edgeRequired = edgeRequired;
+    this.officialEdgeRequired = officialEdgeRequired;
   }
 
   /** The token this tab holds is not the one lososd minted. Re-prompt. */
@@ -223,20 +235,38 @@ async function call<T>(path: string, options: CallOptions = {}): Promise<T> {
   }
 
   if (!response.ok) {
-    throw new ApiError(response.status, await errorMessage(response));
+    const { message, edgeRequired, officialEdgeRequired } = await errorBody(response);
+    throw new ApiError(response.status, message, { edgeRequired, officialEdgeRequired });
   }
 
   return (await response.json()) as T;
 }
 
-async function errorMessage(response: Response): Promise<string> {
+interface ErrorBody {
+  message: string;
+  edgeRequired: boolean;
+  officialEdgeRequired: boolean;
+}
+
+async function errorBody(response: Response): Promise<ErrorBody> {
   try {
-    const body = (await response.json()) as { error?: unknown };
-    if (typeof body.error === "string" && body.error.length > 0) return body.error;
+    const body = (await response.json()) as {
+      error?: unknown;
+      edgeRequired?: unknown;
+      officialEdgeRequired?: unknown;
+    };
+    const flags = {
+      edgeRequired: body.edgeRequired === true,
+      officialEdgeRequired: body.officialEdgeRequired === true,
+    };
+    if (typeof body.error === "string" && body.error.length > 0) {
+      return { message: body.error, ...flags };
+    }
+    return { message: `HTTP ${response.status}`, ...flags };
   } catch {
     /* lososd restarting mid-rebuild answers through nginx, not as JSON */
   }
-  return `HTTP ${response.status}`;
+  return { message: `HTTP ${response.status}`, edgeRequired: false, officialEdgeRequired: false };
 }
 
 // ── Routes ────────────────────────────────────────────────────────────────
@@ -322,6 +352,56 @@ export function getSettings(options: RequestOptions = {}): Promise<SettingsRespo
 /** GET /api/status — rebuild progress. Poll it with {@link createStatusPoller}. */
 export function getStatus(options: RequestOptions = {}): Promise<StatusResponse> {
   return call<StatusResponse>("/api/status", options);
+}
+
+/* ── Edge proxies ─────────────────────────────────────────────────────────
+ * What lososd found when it last looked for an edge proxy: on the LAN by
+ * DNS-SD (`_losos-edge._tcp` over the Avahi the box already runs) and at the
+ * configured registrar URL. Both are probed; a candidate is listed only once
+ * its /health answered. The daemon refreshes this every few seconds, and the
+ * same answer gates sharing: POST /api/change to mesh, or an apply that turns
+ * `sharingMyStorage` or `clusterEnable` on, is a 409 `{edgeRequired: true}`
+ * while `reachable` is false. See backend/src/edge.rs. */
+
+export type EdgeSource = "lan" | "configured";
+
+export interface EdgeProxy {
+  /** The advertised instance name, or the configured URL's host. */
+  name: string;
+  /** Proved on this scan to be an edge LosOS runs (a certificate the LosOS
+   *  root signed, a fresh nonce answered). Only official edges may process
+   *  trading; a company's own edge is found and shares storage with this
+   *  false. */
+  official: boolean;
+  /** Base URL of its registrar API. */
+  url: string;
+  source: EdgeSource;
+}
+
+export interface EdgeResponse {
+  /** At least one edge answered. The one bit the gate reads. */
+  reachable: boolean;
+  /** At least one edge is official: the bit the market gate reads. */
+  official: boolean;
+  /** Every edge that answered, LAN first. */
+  edges: EdgeProxy[];
+  /** False when the LAN could not be searched at all (Avahi down). */
+  lanSearched: boolean;
+  /** The configured registrar URL that was tried, if any. */
+  configuredUrl: string | null;
+  /** Unix seconds of the scan; null before the first. */
+  checkedAt: number | null;
+}
+
+/** GET /api/edge — the last edge scan. */
+export function getEdge(options: RequestOptions = {}): Promise<EdgeResponse> {
+  return call<EdgeResponse>("/api/edge", options);
+}
+
+/** The box refused because no edge proxy is in reach (a 409 with
+ *  `edgeRequired: true`). */
+export function isEdgeRequired(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 409 && error.edgeRequired;
 }
 
 /** POST /api/change — flip local/mesh and start a rebuild. Returns at once. */
@@ -423,7 +503,12 @@ export interface MarketAccount {
 }
 
 export type MarketResponse =
-  | { available: false }
+  | {
+      available: false;
+      /** Why, when the owner can see it on the Mesh pane: the edges in reach
+       *  are none that LosOS runs, so trading is off while sharing works. */
+      reason?: "noOfficialEdge";
+    }
   | {
       available: true;
       listings: MarketShelfListing[];

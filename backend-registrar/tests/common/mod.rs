@@ -385,6 +385,8 @@ impl Edge {
             bootstrap_token_file: dir.path_str("bootstrap.token"),
             noise_private_key_file: None,
             noise_public_key_file,
+            identity_key_file: None,
+            identity_cert_file: None,
             tenants_file: dir.path_str("tenants.json"),
             reconcile_interval: Duration::from_millis(50),
             heartbeat_ttl: Duration::from_secs(300),

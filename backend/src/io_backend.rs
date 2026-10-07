@@ -308,6 +308,156 @@ impl crate::catalogue::Fetch for CurlFetch {
     }
 }
 
+/// Browse the LAN for `_losos-edge._tcp` once.
+///
+/// `None` when `avahi-browse` could not run at all (not on the unit path,
+/// Avahi down, the browse hung past its budget): the caller reports the LAN
+/// as unsearched rather than empty. `--terminate` makes the browse return
+/// once the cache has settled; `timeout` is the ceiling for an Avahi that
+/// never settles. Both binaries come from the unit's `path` in
+/// modules/daemon.nix.
+fn browse_lan() -> Option<String> {
+    let out = std::process::Command::new("timeout")
+        .arg(crate::edge::BROWSE_TIMEOUT_SECS.to_string())
+        .args([
+            "avahi-browse",
+            "--parsable",
+            "--resolve",
+            "--terminate",
+            crate::edge::SERVICE_TYPE,
+        ])
+        .stdin(std::process::Stdio::null())
+        .output();
+    match out {
+        Ok(out) if out.status.success() => Some(String::from_utf8_lossy(&out.stdout).into_owned()),
+        Ok(out) => {
+            tracing::info!(
+                status = ?out.status.code(),
+                stderr = %String::from_utf8_lossy(&out.stderr).trim(),
+                "avahi-browse did not complete; the LAN was not searched"
+            );
+            None
+        }
+        Err(e) => {
+            tracing::info!(error = %e, "avahi-browse could not run (is it on lososd's unit path? see modules/daemon.nix)");
+            None
+        }
+    }
+}
+
+/// Whether `url` is a live edge registrar: its `/health` answers 2xx inside
+/// the probe budget. Plain curl, no `--proto` pin: a LAN edge is reached
+/// over http by design (there is no CA for `.local`), and the probe carries
+/// nothing but the request line.
+fn edge_answers(url: &str) -> bool {
+    let out = std::process::Command::new("curl")
+        .args([
+            "--silent",
+            "--show-error",
+            "--fail",
+            "--output",
+            "/dev/null",
+        ])
+        .args(["--max-time", &crate::edge::PROBE_TIMEOUT_SECS.to_string()])
+        .args(["--max-redirs", "0"])
+        .arg(format!("{url}/health"))
+        .stdin(std::process::Stdio::null())
+        .output();
+    match out {
+        Ok(out) => out.status.success(),
+        Err(e) => {
+            tracing::info!(error = %e, "curl could not run (is it on lososd's unit path? see modules/daemon.nix)");
+            false
+        }
+    }
+}
+
+/// `GET {url}/identity?nonce={nonce}`: the body when the edge has an
+/// identity to show, `None` on 404 (a company edge) or any failure. Same
+/// curl discipline as the health probe; the body is bounded by curl's
+/// `--max-filesize` so a hostile edge cannot feed the parser a gigabyte.
+fn edge_identity(url: &str, nonce: &str) -> Option<String> {
+    let out = std::process::Command::new("curl")
+        .args(["--silent", "--show-error", "--fail"])
+        .args(["--max-time", &crate::edge::PROBE_TIMEOUT_SECS.to_string()])
+        .args(["--max-redirs", "0"])
+        .args(["--max-filesize", "65536"])
+        .arg(format!("{url}/identity?nonce={nonce}"))
+        .stdin(std::process::Stdio::null())
+        .output()
+        .ok()?;
+    out.status
+        .success()
+        .then(|| String::from_utf8_lossy(&out.stdout).into_owned())
+}
+
+/// The LosOS root public key this box trusts, from the file
+/// `$LOSOS_EDGE_ROOT_KEY_FILE` names (`losos.proxy.officialRootKeyFile`).
+/// An absent or empty file means no edge can be official: fail closed.
+fn root_public_key() -> Option<String> {
+    let path = std::env::var("LOSOS_EDGE_ROOT_KEY_FILE").ok()?;
+    let text = std::fs::read_to_string(path).ok()?;
+    crate::edge::parse_root_key_file(&text)
+}
+
+/// A fresh 32-byte nonce, hex, for one scan's challenges.
+fn fresh_nonce() -> String {
+    use ring::rand::SecureRandom;
+    let mut bytes = [0u8; 32];
+    if ring::rand::SystemRandom::new().fill(&mut bytes).is_err() {
+        // No randomness means no challenge worth trusting: an all-zero nonce
+        // is still a valid request, and a replayed answer to it would only
+        // ever mark an edge official that the root did sign.
+        tracing::warn!("the system random source failed; this scan's nonce is not fresh");
+    }
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// One complete scan: the LAN browse, the configured URL from
+/// `$LOSOS_EDGE_URL`, a probe of every candidate, and the identity
+/// challenge for the ones that answered.
+fn scan_edge_now() -> crate::edge::EdgeStatus {
+    let configured = std::env::var("LOSOS_EDGE_URL")
+        .ok()
+        .filter(|v| !v.trim().is_empty());
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs());
+    let root = root_public_key();
+    let nonce = fresh_nonce();
+    let trust = crate::edge::Trust {
+        root_public: root.as_deref(),
+        nonce: &nonce,
+    };
+    crate::edge::assemble(
+        browse_lan().as_deref(),
+        configured.as_deref(),
+        edge_answers,
+        &trust,
+        edge_identity,
+        now,
+    )
+}
+
+/// Keep the edge scan fresh: one pass now, then one every
+/// [`crate::edge::SCAN_INTERVAL`] for the life of the daemon.
+///
+/// A plain thread rather than a tokio task, like the rebuild watcher: the
+/// scan is two subprocesses and a sleep, and the command core that reads the
+/// result is synchronous.
+pub fn start_edge_scanner(backend: &IoLosos) {
+    let backend = backend.clone();
+    let spawned = std::thread::Builder::new()
+        .name("lososd-edge-scan".into())
+        .spawn(move || loop {
+            backend.scan_edge();
+            std::thread::sleep(crate::edge::SCAN_INTERVAL);
+        });
+    if let Err(e) = spawned {
+        tracing::error!(error = %e, "could not start the edge scanner; sharing stays gated on inline scans");
+    }
+}
+
 /// One request to the registrar's market, by `curl`.
 ///
 /// The body — which carries the appliance's proxy token — goes to curl on
@@ -678,6 +828,10 @@ pub fn write_state(path: &Path, s: &State) -> anyhow::Result<()> {
 pub struct IoLosos {
     pub paths: Paths,
     state_lock: Arc<Mutex<()>>,
+    /// The latest edge scan (`crate::edge`), shared by every clone. `None`
+    /// until the scanner thread has run once; `edge_status` then scans
+    /// inline rather than answer "unknown" to the first caller.
+    edge: Arc<Mutex<Option<crate::edge::EdgeStatus>>>,
 }
 
 impl IoLosos {
@@ -687,6 +841,31 @@ impl IoLosos {
         IoLosos {
             paths,
             state_lock: Arc::new(Mutex::new(())),
+            edge: Arc::new(Mutex::new(None)),
+        }
+    }
+
+    /// Look for an edge proxy now and remember the answer. What the scanner
+    /// thread calls on its cadence, and what `edge_status` falls back to
+    /// before the thread's first pass.
+    pub fn scan_edge(&self) -> crate::edge::EdgeStatus {
+        let status = scan_edge_now();
+        tracing::debug!(
+            reachable = status.reachable,
+            edges = status.edges.len(),
+            lan_searched = status.lan_searched,
+            "edge scan"
+        );
+        *self.edge.lock().unwrap_or_else(|p| p.into_inner()) = Some(status.clone());
+        status
+    }
+
+    /// The cached scan, or a fresh one when there is none yet.
+    fn edge_cached(&self) -> crate::edge::EdgeStatus {
+        let cached = self.edge.lock().unwrap_or_else(|p| p.into_inner()).clone();
+        match cached {
+            Some(status) => status,
+            None => self.scan_edge(),
         }
     }
 
@@ -735,6 +914,10 @@ impl Default for IoLosos {
 impl Losos for IoLosos {
     fn load_state(&mut self) -> anyhow::Result<State> {
         Ok(read_state(&self.paths.state_file()))
+    }
+
+    fn edge_status(&mut self) -> anyhow::Result<crate::edge::EdgeStatus> {
+        Ok(self.edge_cached())
     }
 
     fn save_state(&mut self, s: &State) -> anyhow::Result<()> {

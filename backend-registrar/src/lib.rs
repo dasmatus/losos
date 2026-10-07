@@ -47,6 +47,7 @@ pub mod announce;
 pub mod config;
 pub mod error;
 mod fsutil;
+pub mod identity;
 pub mod idle;
 pub mod join;
 pub mod market;
