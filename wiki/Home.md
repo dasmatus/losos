@@ -14,6 +14,7 @@ partition.
 - [Administration](Administration) — the admin UI, settings, upgrades and the nightly reboot
 - [Mesh](Mesh) — contributing storage and compute to other boxes
 - [Master proxy](Master-Proxy) — reaching the box from the internet without opening a port
+- [Edge federation](Edge-Federation) — your own edge on the LAN, relayed through the official ones
 - [Hardening](Hardening) — the default hardening baseline and the opt-in flags
 - [Security model](Security-Model) — what is and is not defended
 - [Architecture](Architecture) — how the pieces fit together

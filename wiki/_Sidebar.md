@@ -4,6 +4,7 @@
 - [Mesh](Mesh)
 - [Market](Market) (planned)
 - [Master proxy](Master-Proxy)
+- [Edge federation](Edge-Federation)
 - [Hardening](Hardening)
 - [Security model](Security-Model)
 - [Architecture](Architecture)
