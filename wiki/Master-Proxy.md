@@ -101,9 +101,11 @@ The check is an Ed25519 identity:
   answered: the root signed the certificate, the certificate names the URL
   the box is talking to, it is not expired, and the nonce the box just made
   up is signed by the certificate's key. Four checks, all four or nothing;
-  the result is `official` on `GET /api/edge` and the second row of the Mesh
-  pane's edge group ("Official LosOS edge · Trading allowed" or "Not an
-  official LosOS edge · Sharing only"). While no official edge is in reach
+  the result is `official` per edge on `GET /api/edge` and a sign beside
+  each edge's name on the Mesh pane: a check for an official edge, a warning
+  for any other, with a tooltip listing what that edge cannot do for the box.
+  A box may have several edges in reach; sharing works through any of them,
+  trading only through an official one. While no official edge is in reach
   the market relay answers `{available: false, reason: "noOfficialEdge"}`
   and refuses every action with 409 `officialEdgeRequired`; nothing leaves
   the box.

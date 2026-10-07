@@ -316,36 +316,22 @@ export default defineMessages({
     sk: "Zdieľanie je vypnuté",
     de: "Teilen ist aus",
   },
-  // The second edge row: is the edge one LosOS runs? Decides trading only.
-  "panes.mesh.edge.official": {
-    en: "Official LosOS edge",
-    sk: "Oficiálny okrajový server LosOS",
-    de: "Offizieller LosOS-Edge",
+  // The sign beside each edge's name: is this edge one LosOS runs? It
+  // decides trading only; the words are the tooltip and the button's name.
+  "panes.mesh.edge.officialTip": {
+    en: "Official LosOS edge. It proved it is run by LosOS, so it may process storage and compute trading for this box.",
+    sk: "Oficiálny okrajový server LosOS. Preukázal, že ho prevádzkuje LosOS, takže môže pre toto zariadenie spracúvať obchodovanie s úložiskom a výpočtami.",
+    de: "Offizieller LosOS-Edge. Er hat nachgewiesen, dass LosOS ihn betreibt; er darf für diese Box den Handel mit Speicher und Rechenleistung abwickeln.",
   },
-  "panes.mesh.edge.officialDetail": {
-    en: "This edge proved it is run by LosOS, so it may process storage and compute trading for this box.",
-    sk: "Tento okrajový server preukázal, že ho prevádzkuje LosOS, takže môže pre toto zariadenie spracúvať obchodovanie s úložiskom a výpočtami.",
-    de: "Dieser Edge hat nachgewiesen, dass LosOS ihn betreibt; er darf für diese Box den Handel mit Speicher und Rechenleistung abwickeln.",
+  "panes.mesh.edge.companyTip": {
+    en: "Not an official LosOS edge. What you are missing through it:\n• buying storage or compute on the market\n• selling this box's spare storage and compute\nSharing storage through it works.",
+    sk: "Nie je oficiálny okrajový server LosOS. Čo cez neho chýba:\n• nákup úložiska alebo výpočtov na trhu\n• predaj voľného úložiska a výpočtov tohto zariadenia\nZdieľanie úložiska cez neho funguje.",
+    de: "Kein offizieller LosOS-Edge. Was dir darüber fehlt:\n• Speicher oder Rechenleistung auf dem Markt kaufen\n• freien Speicher und Rechenleistung dieser Box verkaufen\nSpeicher darüber zu teilen funktioniert.",
   },
-  "panes.mesh.edge.company": {
-    en: "Not an official LosOS edge",
-    sk: "Nie je oficiálny okrajový server LosOS",
-    de: "Kein offizieller LosOS-Edge",
-  },
-  "panes.mesh.edge.companyDetail": {
-    en: "Sharing storage through it works. Trading needs an edge run by LosOS.",
-    sk: "Zdieľanie úložiska cez neho funguje. Obchodovanie vyžaduje okrajový server prevádzkovaný LosOS.",
-    de: "Speicher darüber zu teilen funktioniert. Handel braucht einen von LosOS betriebenen Edge.",
-  },
-  "panes.mesh.edge.tradingOn": {
-    en: "Trading allowed",
-    sk: "Obchodovanie povolené",
-    de: "Handel erlaubt",
-  },
-  "panes.mesh.edge.tradingOff": {
-    en: "Sharing only",
-    sk: "Len zdieľanie",
-    de: "Nur Teilen",
+  "panes.mesh.edge.captionCompany": {
+    en: "The edge proxy is the box in the middle: it holds the mesh together and makes yours reachable from outside. Several can be in reach at once; sharing works through any of them. None of these is run by LosOS, so the market (buying and selling storage and compute) stays off until an official edge answers. Your own files and apps work either way.",
+    sk: "Okrajový proxy server je zariadenie uprostred: drží sieť mesh pohromade a sprístupňuje to vaše zvonku. Dostupných ich môže byť viac naraz; zdieľanie funguje cez ktorýkoľvek. Žiadny z týchto neprevádzkuje LosOS, takže trh (nákup a predaj úložiska a výpočtov) zostane vypnutý, kým sa neozve oficiálny. Vaše vlastné súbory a aplikácie fungujú tak či tak.",
+    de: "Der Edge-Proxy ist die Box in der Mitte: Er hält das Mesh zusammen und macht deine von außen erreichbar. Mehrere können zugleich erreichbar sein; Teilen funktioniert über jeden davon. Keiner davon wird von LosOS betrieben, darum bleibt der Markt (Speicher und Rechenleistung kaufen und verkaufen) aus, bis ein offizieller antwortet. Deine eigenen Dateien und Apps laufen so oder so.",
   },
   "panes.mesh.edge.needed": {
     en: "Needs an edge proxy in reach.",

@@ -3,6 +3,10 @@ import { ButtonGroup, ButtonGroupText } from "@/components/ui/button-group";
 import { FieldError, Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Spinner } from "@/components/ui/progress";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { Alert02Icon, CheckmarkBadge01Icon } from "@hugeicons/core-free-icons";
+import { cn } from "@/lib/utils";
 import { Rich, useT } from "@/lib/i18n-react";
 import { HourStrip } from "./hour-strip";
 import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText, RowValue, StackRow } from "./rows";
@@ -35,10 +39,84 @@ import type { SettingsForm } from "./use-settings-form";
  * its switch live, so the owner can still leave while the edge is away.
  */
 
-/* The first group: what the box found when it last looked for an edge. */
+/* The first group: what the box found when it last looked for an edge.
+ *
+ * One row per edge, because a box may have several in reach at once (its
+ * own network's and the public one, say): sharing is allowed while ANY of
+ * them answers, and trading only through one that proved it is LosOS's.
+ * That second fact sits next to each edge's name as a sign with a tooltip:
+ * a check for an official edge, a warning for any other, whose tooltip
+ * lists what that edge cannot do for this box. The sign is a button so the
+ * same words are its accessible name — Base UI shows no tooltip on touch,
+ * and a settings row must not hide half its meaning in a hover. */
+
+function EdgeSign({ official }: { official: boolean }) {
+  const t = useT();
+  const label = t(official ? "panes.mesh.edge.officialTip" : "panes.mesh.edge.companyTip");
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <button
+            type="button"
+            aria-label={label}
+            data-edge-sign={official ? "official" : "warning"}
+            className={cn(
+              "inline-flex size-5 shrink-0 items-center justify-center rounded-full align-middle",
+              "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand",
+              official ? "text-ok" : "text-warn",
+            )}
+          />
+        }
+      >
+        <HugeiconsIcon icon={official ? CheckmarkBadge01Icon : Alert02Icon} size={16} strokeWidth={2} />
+      </TooltipTrigger>
+      <TooltipContent side="top" align="start" className="max-w-[22rem] whitespace-pre-line">
+        {label}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
 export function EdgeGroup({ view }: { view: EdgeView }) {
   const t = useT();
   const { state } = view;
+  if (state.kind === "known" && state.edge.reachable) {
+    const edges = state.edge.edges;
+    return (
+      <PaneSection>
+        <GroupTitle>{t("panes.mesh.edge.title")}</GroupTitle>
+        <TooltipProvider>
+          <Group>
+            {edges.map((edge, i) => (
+              <Row
+                key={edge.url}
+                last={i === edges.length - 1}
+                data-edge="found"
+                data-edge-official={edge.official ? "yes" : "no"}
+              >
+                <RowText
+                  title={
+                    <span className="inline-flex items-center gap-1.5">
+                      <span>{t("panes.mesh.edge.found", { name: edge.name })}</span>
+                      <EdgeSign official={edge.official} />
+                    </span>
+                  }
+                  detail={edge.url}
+                />
+                <RowValue className="text-ok">
+                  {t(edge.source === "configured" ? "panes.mesh.edge.viaInternet" : "panes.mesh.edge.viaLan")}
+                </RowValue>
+              </Row>
+            ))}
+          </Group>
+        </TooltipProvider>
+        <GroupCaption>
+          {t(state.edge.official ? "panes.mesh.edge.caption" : "panes.mesh.edge.captionCompany")}
+        </GroupCaption>
+      </PaneSection>
+    );
+  }
   let title: string;
   let detail: string | undefined;
   let value: React.ReactNode = null;
@@ -49,12 +127,6 @@ export function EdgeGroup({ view }: { view: EdgeView }) {
   } else if (state.kind === "failed") {
     title = t("panes.mesh.edge.unknown");
     detail = state.message;
-  } else if (state.edge.reachable) {
-    const first = state.edge.edges[0];
-    title = t("panes.mesh.edge.found", { name: first?.name ?? "" });
-    detail = first?.url;
-    value = t(first?.source === "configured" ? "panes.mesh.edge.viaInternet" : "panes.mesh.edge.viaLan");
-    tone = "text-ok";
   } else {
     title = t("panes.mesh.edge.none");
     const tried = state.edge.configuredUrl;
@@ -66,35 +138,14 @@ export function EdgeGroup({ view }: { view: EdgeView }) {
     value = t("panes.mesh.edge.sharingOff");
     tone = "text-danger";
   }
-  /* Second row, only with an edge in reach: whether it is one LosOS runs.
-   * The box checked that itself (a certificate the LosOS root signed, a
-   * fresh nonce answered), and it decides one thing only: trading. A
-   * company's own edge is "sharing only", which is the normal reading on
-   * an on-premises network and not a fault, so its tone is muted, not red. */
-  const found = state.kind === "known" && state.edge.reachable;
-  const official = found && state.edge.official;
   return (
     <PaneSection>
       <GroupTitle>{t("panes.mesh.edge.title")}</GroupTitle>
       <Group>
-        <Row
-          last={!found}
-          data-edge={state.kind === "known" ? (state.edge.reachable ? "found" : "none") : state.kind}
-        >
+        <Row last data-edge={state.kind === "known" ? "none" : state.kind}>
           <RowText title={title} detail={detail} />
           <RowValue className={tone}>{value}</RowValue>
         </Row>
-        {found ? (
-          <Row last data-edge-official={official ? "yes" : "no"}>
-            <RowText
-              title={t(official ? "panes.mesh.edge.official" : "panes.mesh.edge.company")}
-              detail={t(official ? "panes.mesh.edge.officialDetail" : "panes.mesh.edge.companyDetail")}
-            />
-            <RowValue className={official ? "text-ok" : "text-muted"}>
-              {t(official ? "panes.mesh.edge.tradingOn" : "panes.mesh.edge.tradingOff")}
-            </RowValue>
-          </Row>
-        ) : null}
       </Group>
       <GroupCaption>{t("panes.mesh.edge.caption")}</GroupCaption>
     </PaneSection>
