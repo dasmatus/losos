@@ -1,15 +1,11 @@
 {
   "title": {
-    "message": "Príručka LosOS",
+    "message": "Príručka",
     "description": "The title in the navbar"
   },
   "logo.alt": {
     "message": "LosOS",
     "description": "The alt text of navbar logo"
-  },
-  "item.label.Handbook": {
-    "message": "Príručka",
-    "description": "Navbar item with label Handbook"
   },
   "item.label.Types": {
     "message": "Typy",

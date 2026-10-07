@@ -4,5 +4,6 @@
   "link": {
     "type": "doc",
     "id": "types/index"
-  }
+  },
+  "className": "hb-icon hb-icon-types"
 }

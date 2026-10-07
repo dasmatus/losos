@@ -1,4 +1,5 @@
 ---
+sidebar_class_name: hb-icon hb-icon-home
 slug: /
 title: LosOS handbook
 sidebar_position: 0
