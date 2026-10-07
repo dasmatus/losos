@@ -708,7 +708,22 @@ function nixBool(value: boolean): string {
  * saves any setting, however unrelated. Adding a field to SettingsResponse
  * without adding a line here is therefore not a missing feature, it is a
  * regression in whatever that field controls. */
-export function buildOverridesNix(settings: SettingsResponse): string {
+export function buildOverridesNix(
+  settings: SettingsResponse,
+  /* Every other `losos.<name>` the file should carry, as Nix literals the
+   * Advanced pane produced (lib/option-value.ts): one line each, after the
+   * sixteen above, sorted so the file is stable from one apply to the next
+   * and the commit lososd makes shows only what changed. A name here that is
+   * one of the sixteen would be a second line for the same key; the first
+   * wins in lososd's parser, so the form's own value would silently win over
+   * the Advanced pane's. The pane never hands one in (it edits those through
+   * the form), and the filter below is the belt to that. */
+  extra: Readonly<Record<string, string>> = {},
+): string {
+  const extraLines = Object.keys(extra)
+    .filter((name) => !OWNED_NAMES.has(name))
+    .sort()
+    .map((name) => `  losos.${name} = ${extra[name]};`);
   return [
     "{ ... }:",
     "{",
@@ -728,10 +743,31 @@ export function buildOverridesNix(settings: SettingsResponse): string {
     `  losos.hardening.malloc = ${nixBool(settings.hardeningMalloc)};`,
     `  losos.hardening.nosmt = ${nixBool(settings.hardeningNosmt)};`,
     `  losos.hardening.usbguard = ${nixBool(settings.hardeningUsbguard)};`,
+    ...extraLines,
     "}",
     "",
   ].join("\n");
 }
+
+/** The sixteen `losos.*` names the lines above always write. */
+export const OWNED_NAMES: ReadonlySet<string> = new Set([
+  "sharingMyStorage",
+  "nextcloud.mode",
+  "forgejo.mode",
+  "hostName",
+  "nextcloud.https",
+  "gpu.enable",
+  "nextcloud.apachePort",
+  "proxy.enable",
+  "cluster.enable",
+  "cluster.shareCompute",
+  "cluster.computeWindow.start",
+  "cluster.computeWindow.end",
+  "hardening.apparmor",
+  "hardening.malloc",
+  "hardening.nosmt",
+  "hardening.usbguard",
+]);
 
 // ── Validators the server also enforces ───────────────────────────────────
 
@@ -867,4 +903,128 @@ export function deleteHandWidget(
     ...options,
     method: "DELETE",
   });
+}
+
+// ── Every option, and the configuration repository ────────────────────────
+
+/* The editor kind of one `losos.*` option, as flake/options-doc.nix
+ * classifies its Nix type. `nullable` wraps another; `opaque` is a package,
+ * a path or an attribute set, shown but never edited. The pane has to draw
+ * every kind here, and a kind it cannot draw is what tests/advanced.browser.mjs
+ * fails on. */
+export type OptionEditor =
+  | { kind: "bool" }
+  | { kind: "str"; pattern?: string; form?: "path" }
+  | { kind: "int"; min?: number; max?: number }
+  | { kind: "float" }
+  | { kind: "enum"; values: string[] }
+  | { kind: "list" }
+  | { kind: "nullable"; inner: OptionEditor }
+  | { kind: "opaque"; reason: string };
+
+/** A value as the option document carries it: JSON for the simple shapes, a
+ *  package by its name, anything else as pretty-printed Nix. */
+export type OptionValue =
+  | boolean
+  | number
+  | string
+  | null
+  | OptionValue[]
+  | { package: string }
+  | { nix: string };
+
+export interface OptionDoc {
+  /** `losos.` is implied: "nextcloud.apachePort". */
+  name: string;
+  /** The first segment of the name, or "general" for a top-level option. */
+  group: string;
+  editor: OptionEditor;
+  /** The Nix type's own description. */
+  nixType: string;
+  description: string;
+  default: OptionValue;
+  defaultText: string | null;
+  /** What the last rebuild merged — the value the box runs with. */
+  current: OptionValue;
+  /** A wrong value leaves the box unreachable or locked out: ask first. */
+  danger: boolean;
+  /** Who sets it at normal priority ("installer"), or null. */
+  fixed: string | null;
+  readOnly: boolean;
+  /** The literal modules/overrides.nix assigns it, or null for none. */
+  set: string | null;
+}
+
+export interface OptionsResponse {
+  available: boolean;
+  version: number;
+  options: OptionDoc[];
+  /** Assignments in overrides.nix for names the box declares no option for. */
+  stray: { key: string; value: string }[];
+  /** Prefixes left out of the document, with the reason. */
+  excluded: Record<string, string>;
+}
+
+/** GET /api/options — every losos.* option with the current overrides joined in. */
+export function getOptions(options: RequestOptions = {}): Promise<OptionsResponse> {
+  return call<OptionsResponse>("/api/options", options);
+}
+
+/** How the last sync with LosOS Git went. `off`: LosOS Git is off on this
+ *  box; `pending`: not synced yet; the rest are what sync_once reports. */
+export type ConfigSyncState =
+  | "off"
+  | "pending"
+  | "ok"
+  | "waiting"
+  | "refused"
+  | "diverged"
+  | "unavailable"
+  | "error";
+
+export interface ConfigRepository {
+  owner: string;
+  name: string;
+  /** The repository's page on this box: /forgejo/<owner>/<name>. */
+  url: string;
+  /** The URL lososd pushes to (loopback; not for the owner). */
+  clone: string;
+  viaForgejo: boolean;
+}
+
+export interface ConfigHead {
+  sha: string;
+  branch: string | null;
+}
+
+export interface ConfigLogEntry {
+  sha: string;
+  /** ISO 8601 committer date. */
+  when: string;
+  subject: string;
+}
+
+export interface ConfigSync {
+  state: ConfigSyncState;
+  detail: string;
+  syncedAt: string | null;
+  remoteHead: string | null;
+}
+
+export interface ConfigResponse {
+  enabled: boolean;
+  repository: ConfigRepository | null;
+  head: ConfigHead | null;
+  log: ConfigLogEntry[];
+  sync: ConfigSync;
+}
+
+/** GET /api/config — the configuration repository and its history. */
+export function getConfig(options: RequestOptions = {}): Promise<ConfigResponse> {
+  return call<ConfigResponse>("/api/config", options);
+}
+
+/** POST /api/config/sync — one sync with LosOS Git now, then the document. */
+export function postConfigSync(options: RequestOptions = {}): Promise<ConfigResponse> {
+  return call<ConfigResponse>("/api/config/sync", { ...options, method: "POST" });
 }
