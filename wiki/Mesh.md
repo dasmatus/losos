@@ -51,7 +51,11 @@ A candidate counts only once its `/health` answers, and several can be in
 reach at once (a company's edge on the LAN and the public one over the
 internet, say): `GET /api/edge` lists them all, LAN first, and the Mesh pane
 shows one row per edge, or "No edge proxy found" with what was tried.
-Sharing is allowed while any of them answers.
+Sharing is allowed while any of them answers. Growing a box's own disk
+needs no edge at all; pooling across boxes does, because the mesh's control
+plane runs on the edge, and on a LAN with no internet that edge is one
+always-on PC running the edge module ([Master proxy — Edge on the same
+LAN](Master-Proxy#edge-on-the-same-lan)).
 
 While nothing answers, the box **refuses to turn network-dependent sharing
 on**: switching to mesh mode, and any apply that turns `losos.sharingMyStorage`

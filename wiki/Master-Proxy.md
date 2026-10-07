@@ -66,7 +66,12 @@ losos.edge = {
 
 The boxes need nothing: the ISO installs the published `install`
 configuration, the Mesh pane shows "Edge proxy found: … On this network" once
-the edge answers, and sharing can be switched on. Two limits today: the
+the edge answers, and sharing can be switched on. **This is also how storage
+is pooled on a LAN with no internet**: a box's own disk grows without any edge
+(`losos-ctl grow`, Local mode), but pooling across boxes is the mesh, whose
+control plane (rke2 server, Longhorn, the registrar) lives on the edge
+machine, so the edge on a LAN PC is what makes an offline site work. The
+WAN can be unplugged; mDNS is all the boxes use to find it. Two limits today: the
 tunnel's enrolment address (`losos.proxy.registrarUrl`) is a build-time
 option that still defaults to the public edge, so a site that wants the
 tunnel to terminate on its own edge sets it in its own flake; and the advert
