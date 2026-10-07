@@ -27,6 +27,7 @@
 
 pub mod boxid;
 pub mod catalogue;
+pub mod config_repo;
 pub mod dbus;
 pub mod facade;
 pub mod fake;
@@ -40,6 +41,7 @@ pub mod look;
 pub mod losos;
 pub mod market;
 pub mod model;
+pub mod options;
 pub mod overrides;
 pub mod receipt;
 pub mod recovery;

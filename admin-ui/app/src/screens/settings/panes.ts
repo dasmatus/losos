@@ -8,6 +8,8 @@ import {
   LayoutGridIcon,
   PaintBoardIcon,
   Share08Icon,
+  SlidersHorizontalIcon,
+  GitCommitIcon,
   ShoppingCart01Icon,
   Shield01Icon,
 } from "@hugeicons/core-free-icons";
@@ -42,6 +44,8 @@ export type SettingsPaneId =
   | "look"
   | "hardware"
   | "security"
+  | "advanced"
+  | "history"
   | "about"
   | "reset";
 
@@ -202,6 +206,35 @@ export const SETTINGS_PANES: readonly [SettingsPane, ...SettingsPane[]] = [
     "processor",
     "lock down",
     "safe",
+  ]),
+  /* Advanced and History sit between Security and About: every option,
+   * then the record of every change. Advanced carries the long tail an
+   * owner reaches for rarely and deliberately — like Security, below the
+   * everyday panes — and History is the audit of all of them. */
+  pane("advanced", SlidersHorizontalIcon, [
+    "all",
+    "every",
+    "option",
+    "options",
+    "expert",
+    "nix",
+    "config",
+    "configuration",
+    "overrides",
+    "raw",
+  ]),
+  pane("history", GitCommitIcon, [
+    "git",
+    "commit",
+    "commits",
+    "log",
+    "repository",
+    "repo",
+    "clone",
+    "sync",
+    "forgejo",
+    "changes",
+    "audit",
   ]),
   pane("about", InformationCircleIcon, ["version", "info", "identity", "key", "admin", "updates"]),
   pane("reset", ArrowReloadHorizontalIcon, [
