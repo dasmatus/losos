@@ -307,6 +307,48 @@ fn announce_parses_its_own_flags() {
     }
 }
 
+#[test]
+fn identity_verify_takes_the_four_facts_the_box_checks() {
+    use losos_registrar::opts::IdentityOpts;
+    let args: Vec<String> = [
+        "identity",
+        "verify",
+        "--root-public",
+        "ab",
+        "--url",
+        "https://e.example",
+        "--nonce",
+        "0011",
+        "--answer",
+        "-",
+    ]
+    .iter()
+    .map(|s| s.to_string())
+    .collect();
+    match parse(args) {
+        Ok(Mode::Identity(IdentityOpts::Verify {
+            root_public,
+            url,
+            nonce,
+            answer,
+        })) => {
+            assert_eq!(root_public, "ab");
+            assert_eq!(url, "https://e.example");
+            assert_eq!(nonce, "0011");
+            assert_eq!(answer, "-");
+        }
+        other => panic!("expected identity verify, got {}", mode_name(&other)),
+    }
+    let missing: Vec<String> = ["identity", "verify", "--url", "https://e.example"]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    assert!(
+        parse(missing).is_err(),
+        "verify without the root key parsed"
+    );
+}
+
 fn mode_name(mode: &miette::Result<Mode>) -> &'static str {
     match mode {
         Ok(Mode::Serve(_)) => "serve",

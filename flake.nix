@@ -260,6 +260,7 @@
             # which address to open in a browser.
             ./modules/console.nix
             ./modules/services.nix
+            ./modules/git-runner.nix
             ./modules/nextcloud-common.nix
             ./modules/containers.nix
             # The local k3s cluster + the mesh rke2 agent, and the workload
@@ -393,6 +394,11 @@
       #   losos-nextcloud-httpd — not a VM: the Nextcloud pod's Apache on a
       #                         fixture webroot, asserting the URL map
       #                         (tests/nextcloud-httpd.nix).
+      #   losos-git-runner    — boots native Forgejo plus the on-box Actions
+      #                         runner and asserts the secret registration end
+      #                         to end: one runner row, the UUID the runner
+      #                         derives from the same secret, the daemon seen
+      #                         online, idempotent on restart (tests/git-runner.nix).
       checks.${system} = {
         losos-install = import ./tests/install.nix { inherit pkgs disko; };
         losos-tpm-unlock = import ./tests/tpm.nix { inherit pkgs disko; };
@@ -408,6 +414,7 @@
         losos-resize = import ./tests/resize.nix { inherit pkgs; };
         losos-tls = import ./tests/tls.nix { inherit pkgs; };
         losos-setup = import ./tests/setup.nix { inherit pkgs; };
+        losos-git-runner = import ./tests/git-runner.nix { inherit pkgs; };
         losos-admin-ui = import ./tests/admin-ui.nix { inherit pkgs; };
         losos-keyring = import ./tests/keyring.nix { inherit pkgs; };
         losos-console = import ./tests/console.nix { inherit pkgs; };

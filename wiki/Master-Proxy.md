@@ -140,6 +140,27 @@ to start if the certificate is not for that key. An edge with neither option
 `demo/edge-lan/` boots) answers `/identity` with 404 and is simply not
 official.
 
+### Provisioning from the box
+
+The ceremony above is also packaged as two Forgejo Actions workflows meant to
+run **on the owner's box**, in a private repository on LosOS Git
+(`provisioning/edge-identity/` in this repository, with its own README of
+operator steps). LosOS Git ships with an Actions runner on the box for this
+(`losos.forgejo.runner.enable`, on by default with LosOS Git; host mode, the
+unprivileged `losos-git-runner` user, label `losos`). The `root-keygen`
+workflow makes the root key *on the box*, stores it as the repository's
+`LOSOS_ROOT_KEY` secret, and publishes the public half: committed to that
+repository and opened as a pull request against `keys/official-edge-root.pub`
+here. The `provision-edge` workflow, per edge, makes the edge's keypair, signs
+its certificate, ships both to the VPS over SSH into the two
+`losos.edge.identity` paths, restarts the registrar, and runs the box's four
+checks against `GET /identity?nonce=` (`losos-registrar identity verify`).
+What stays with the owner: creating the repository and its tokens, the SSH
+deploy key on the VPS, the two identity lines in the edge's configuration and
+its rebuild, and merging the pull request. The root key then exists in one
+place, Forgejo's secret store under the box's `/var`; losing the box means
+re-keying every edge with a release.
+
 What this does and does not protect: a company that runs its own edge gets
 a working on-premises deployment and cannot settle trades through it, and a
 stranger who stands up an edge cannot make boxes trade through it, because

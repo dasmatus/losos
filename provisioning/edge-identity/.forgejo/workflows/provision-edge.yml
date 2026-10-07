@@ -1,0 +1,67 @@
+# Give an edge an official identity: a certificate signed by this box's root
+# key, deployed over SSH. Runs on the box's own runner (label `losos`).
+#
+# Secrets this needs on the repository:
+#   LOSOS_ROOT_KEY       the root private key (set by the root-keygen workflow)
+#   EDGE_SSH_KEY         an OpenSSH private key the edge accepts (root, or a
+#                        user with passwordless sudo)
+#   EDGE_KNOWN_HOSTS     the edge's host key line(s), `ssh-keyscan edge.example`
+#
+# The first run on a new edge ends with "not official yet" (exit 2): the files
+# are in place, but the registrar serves /identity only once the edge's
+# configuration names them. Set losos.edge.identity.{keyFile,certFile} there,
+# rebuild, and run this again with verify_only.
+name: provision-edge
+on:
+  workflow_dispatch:
+    inputs:
+      name:
+        description: the edge's name, as the Mesh pane will show it
+        required: true
+      url:
+        description: the registrar URL boxes probe (https://register.example)
+        required: true
+      ssh:
+        description: SSH target (root@edge.example)
+        required: true
+      days:
+        description: certificate lifetime in days
+        default: "365"
+      verify_only:
+        description: only check that the edge answers as official
+        type: boolean
+        default: false
+jobs:
+  provision:
+    runs-on: losos
+    steps:
+      - name: Check out the provisioning repository
+        run: |
+          set -eu
+          base="${LOSOS_FORGEJO_URL:-$GITHUB_SERVER_URL}"
+          git clone --depth 1 "$(printf '%s' "${base%/}" | sed "s#://#://oauth2:${JOB_TOKEN}@#")/${GITHUB_REPOSITORY}.git" .
+        env:
+          JOB_TOKEN: ${{ github.token }}
+      - name: Provision
+        run: |
+          set -eu
+          umask 077
+          printf '%s\n' "$LOSOS_ROOT_KEY" > root.key
+          printf '%s\n' "$EDGE_SSH_KEY" > ssh.key
+          printf '%s\n' "$EDGE_KNOWN_HOSTS" > known_hosts
+          trap 'shred -u root.key ssh.key 2>/dev/null || rm -f root.key ssh.key' EXIT
+          if [ "${VERIFY_ONLY}" = "true" ]; then
+            ./provision-edge.sh --url "$EDGE_URL" --root-key root.key --verify-only
+          else
+            ./provision-edge.sh --name "$EDGE_NAME" --url "$EDGE_URL" --ssh "$EDGE_SSH" --days "$EDGE_DAYS" \
+              --root-key root.key --ssh-key ssh.key --known-hosts known_hosts
+          fi
+        env:
+          LOSOS_ROOT_KEY: ${{ secrets.LOSOS_ROOT_KEY }}
+          EDGE_SSH_KEY: ${{ secrets.EDGE_SSH_KEY }}
+          EDGE_KNOWN_HOSTS: ${{ secrets.EDGE_KNOWN_HOSTS }}
+          EDGE_NAME: ${{ inputs.name }}
+          EDGE_URL: ${{ inputs.url }}
+          EDGE_SSH: ${{ inputs.ssh }}
+          EDGE_DAYS: ${{ inputs.days }}
+          VERIFY_ONLY: ${{ inputs.verify_only }}

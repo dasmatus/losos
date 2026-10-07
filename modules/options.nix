@@ -772,6 +772,38 @@ in
       '';
     };
 
+    forgejo.runner.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Run a Forgejo Actions runner on the box itself (modules/git-runner.nix,
+        host mode, the unprivileged `losos-git-runner` user), so LosOS Git can
+        run workflows — the official-edge key ceremony in
+        provisioning/edge-identity/ is the one it exists for. Takes effect only
+        with losos.forgejo.enable. In container mode this also switches
+        actions.ENABLED in the pod, so the two cannot disagree: Actions is
+        remote code execution by design and is never on without a runner.
+      '';
+    };
+
+    forgejo.runner.name = lib.mkOption {
+      type = lib.types.str;
+      default = "losos-box";
+      description = "The runner's name in LosOS Git's runner list.";
+    };
+
+    forgejo.runner.secretFile = lib.mkOption {
+      type = secretPath;
+      default = "/var/secrets/losos-git-runner-secret";
+      description = ''
+        The 40-hex-character secret shared between Forgejo and the runner
+        (`forgejo-cli actions register --secret-file`). Generated on first
+        start if absent, 0600 root; persisted under /var. The runner's UUID
+        is derived from it, so a new secret means a new runner in Forgejo's
+        list, not a renamed one.
+      '';
+    };
+
     nextcloud.hostName = lib.mkOption {
       type = lib.types.str;
       default = "localhost";
@@ -1365,6 +1397,7 @@ in
         "losos.proxy.bootstrapTokenFile" = config.losos.proxy.bootstrapTokenFile;
         "losos.edge.bootstrapTokenFile" = config.losos.edge.bootstrapTokenFile;
         "losos.cluster.tokenFile" = config.losos.cluster.tokenFile;
+        "losos.forgejo.runner.secretFile" = config.losos.forgejo.runner.secretFile;
         "losos.shared.fscrypt.keyFile" = config.losos.shared.fscrypt.keyFile;
         "losos.edge.cluster.agentTokenFile" = config.losos.edge.cluster.agentTokenFile;
         "losos.edge.market.stripeSecretKeySealed" = config.losos.edge.market.stripeSecretKeySealed;

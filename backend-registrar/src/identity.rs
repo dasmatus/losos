@@ -313,6 +313,34 @@ pub fn run(opts: crate::opts::IdentityOpts) -> Result<()> {
             println!("{}", to_hex(pair.public_key().as_ref()));
             Ok(())
         }
+        IdentityOpts::Verify {
+            root_public,
+            url,
+            nonce,
+            answer,
+        } => {
+            let text = if answer == "-" {
+                std::io::read_to_string(std::io::stdin()).into_diagnostic()?
+            } else {
+                std::fs::read_to_string(&answer)
+                    .into_diagnostic()
+                    .wrap_err_with(|| format!("reading {answer}"))?
+            };
+            let answer: Answer = serde_json::from_str(&text)
+                .into_diagnostic()
+                .wrap_err("the answer is not a /identity document")?;
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+            match check_answer(root_public.trim(), &answer, &url, &nonce, now) {
+                Ok(()) => {
+                    println!("official: {} at {}", answer.cert.name, answer.cert.url);
+                    Ok(())
+                }
+                Err(why) => Err(miette!("not an official edge: {why:?}")),
+            }
+        }
         IdentityOpts::Sign {
             root_key,
             public_key,

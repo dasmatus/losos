@@ -589,9 +589,19 @@ A separate `midnight-reboot.timer` reboots unconditionally at 00:07 with
   file is **empty on purpose** until the owner writes the public key: no
   root, nothing official, market off. The private key lives offline with the
   owner and is never committed; `losos-registrar identity
-  {keygen,sign,show}` is the whole ceremony (`backend-registrar/src/identity.rs`),
+  {keygen,sign,show,verify}` is the whole ceremony (`backend-registrar/src/identity.rs`),
   `losos.edge.identity.{keyFile,certFile}` the edge side. `tests/edge-lan.nix`
   builds its own root at build time rather than trusting the shipped file.
+  The ceremony is meant to run *from the box*: `provisioning/edge-identity/`
+  is a Forgejo Actions repository (root key made on the box, kept as an
+  Actions secret, edges provisioned over SSH), executed by the on-box runner
+  in `modules/git-runner.nix` — host mode, registered with a shared secret
+  (`forgejo-cli actions register --secret-file`, idempotent per boot, UUID
+  derived from the secret) rather than a one-shot token, and working against
+  the container pod's app.ini on the host filesystem in container mode.
+  `losos.forgejo.runner.enable` also drives the pod's `actions.ENABLED`, so
+  Actions is never on without a runner. `tests/git-runner.nix` covers the
+  native path end to end; the container path shares the script untested.
 - **`system.stateVersion = "26.11"` is set-once** — matches the nixos-unstable
   this flake tracks; don't change it.
 - **The `result` symlink is a `nix build` artifact** (pointing into
