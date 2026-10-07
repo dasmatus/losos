@@ -35,6 +35,11 @@ not run tests.
 On pushes to `main`, a CI job runs `cargo fmt` and commits the result. Clippy
 is not auto-fixed.
 
+Another job then rewrites the history so that no commit credits Claude or
+links a claude.ai session, and force-pushes the branches and tags that
+moved. If `main` changed under you, `git pull --rebase` picks the rewritten
+commits up cleanly; a plain `git pull` would merge the two histories.
+
 ## Admin UI
 
 From `admin-ui/app/`:

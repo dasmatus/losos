@@ -217,13 +217,13 @@ await check('a box without the installers offers the download only', async () =>
 
 /* The bug this exists for: step 1 predicted from the BOX's tls flag while step
  * 2 decided from the BROWSER's secure context, so on localhost step 1 promised
- * "the passkey option will not be offered" and step 2 offered it. Both now read
+ * "the next step will not offer a passkey" and step 2 offered it. Both now read
  * passkeysPossibleHere(). The assertion is the agreement, not either value,
  * because which way it goes depends on where the test runs. */
 await check('step 1 does not promise something step 2 contradicts', async () => {
   const { page } = await open({ claimed: false, tls: false });
   const step1 = await page.locator('body').innerText();
-  const promisedNoPasskey = /passkey option on the next step will not be offered/i.test(step1);
+  const promisedNoPasskey = /next step will not offer a passkey/i.test(step1);
 
   const secure = await page.evaluate(
     () => window.isSecureContext && typeof window.PublicKeyCredential !== 'undefined',

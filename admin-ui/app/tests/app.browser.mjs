@@ -795,7 +795,7 @@ await whenMarketPlanned('a deep link to the planned Market pane lands on the fir
   // The disk-sharing switch moved onto the Market pane, so a planned market
   // means no way to switch sharing on: Storage must not still carry it.
   assert.equal(
-    await page.getByRole('switch', { name: 'Share this box’s disk with the mesh' }).count(),
+    await page.getByRole('switch', { name: "Share this box's disk with the mesh" }).count(),
     0,
     'the disk-sharing switch is still on the Storage pane',
   );
@@ -809,7 +809,7 @@ await whenMarketPlanned('a deep link to the planned Market pane lands on the fir
 await whenMarketOpen('a box the market is not offered to says so quietly, and still offers the sharing switch', async () => {
   const { page, errors } = await open({ path: '/settings/market', stored: true });
   await page.getByText('The market is not available on this box').waitFor();
-  await page.getByRole('switch', { name: 'Share this box’s disk with the mesh' }).waitFor();
+  await page.getByRole('switch', { name: "Share this box's disk with the mesh" }).waitFor();
   assert.deepEqual(errors, []);
   await page.close();
 });

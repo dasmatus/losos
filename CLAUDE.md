@@ -2,122 +2,190 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## What this is
+## Context
 
-`losos` is a **stateless NixOS appliance** flake: a tmpfs root rebuilt every
-boot, with all durable state bind-mounted back from an encrypted `/persist`
-via `impermanence`. It runs Nextcloud (for the `notshared` user) and a
-contributed mesh-storage domain (for the `shared` user) on repurposed mini-PCs,
-with **no SSH and no shell logins** — a set-and-forget box reached only through
-service web UIs and a dedicated admin endpoint. User documentation lives in
-`wiki/`, which `.github/workflows/wiki.yml` publishes to the GitHub wiki on
-push to `main` (edit `wiki/`, not the web wiki — it is overwritten). The
-README is a short overview that links there. This file covers build/dev
-commands and the cross-file architecture.
+`losos` is a stateless NixOS appliance for repurposed mini-PCs: tmpfs root,
+encrypted `/persist` bind-mounted back by impermanence, Nextcloud for the
+owner, spare disk and CPU lent to a mesh, no SSH and no shell. The owner
+reaches it only through web UIs and one admin endpoint, so a bad nightly
+upgrade has no one to notice it. User docs live in `wiki/`, published to the
+GitHub wiki on push to `main`; `wiki/Architecture.md` and
+`wiki/Development.md` carry the long form of what this file compresses.
 
-## Build & develop
+## Commands
 
 ```sh
-# Build the flake outputs (Rust daemon+facade, static admin UI) and the target system closure
+devenv shell                 # or: direnv allow. Scripts: fmt, lint, test-rust,
+                             # check-flake, check-eval, check-pins, build-pkgs,
+                             # build-iso, vm-tests
+devenv test                  # the gate. Everything but the VMs and the ISO
+cargo test   --manifest-path backend/Cargo.toml
+cargo clippy --manifest-path backend/Cargo.toml --all-targets -- -D warnings
 nix build .#losos-ctl .#losos-admin-ui
 nix build .#nixosConfigurations.install.config.system.build.toplevel
-
-# Build the installer ISO (write to USB, boot on the target machine)
 nix build .#nixosConfigurations.iso.config.system.build.isoImage
-
-# Dev environment: devenv (devenv.nix + devenv.yaml), NOT the flake devShell.
-# Every gate is a named script there — fmt, lint, test-rust, check-flake,
-# check-eval, check-pins, build-pkgs, build-iso, vm-tests. CI does NOT invoke
-# them — it spells the same commands out directly, because routing jobs
-# through `devenv shell` blew the old Codeberg CI's 10-minute cap (9m31s and
-# 10m05s against 1m32s for the one non-devenv job). Keep the two in step by hand.
-# Switches to fish on interactive entry; the `case $- in *i*)` guard keeps
-# `devenv shell <script>` and CI running under bash.
-devenv shell        # or: direnv allow
-devenv test         # everything except the VM tests and the ISO
+nix build .#checks.x86_64-linux.losos-admin-daemon  # lososd: D-Bus, HTTP, token
+nix build .#checks.x86_64-linux.losos-install       # installer, keyfile, BIOS
+nix build .#checks.x86_64-linux.losos-tpm-unlock    # installer, swtpm unlock
+npm run dev | typecheck | test:browser              # in admin-ui/app
 ```
 
-`nix develop` still resolves, but it is a **toolchain-only** shell for anyone
-without the devenv CLI — deliberately no scripts and no hooks, so it cannot
-drift from devenv.nix.
+Three Rust crates: `backend/` (lososd + losos-ctl), `backend-registrar/`,
+`edge-vercel/` (outside the flake). All three must pass clippy with
+`-D warnings` and rustfmt; the devenv pre-commit hooks, `lint` and CI each
+check it. `nix develop` is a toolchain-only shell for people without devenv.
+Inside the shell `bcd` and `rcd` cd into the two in-flake crates.
+`admin-ui/design-system/react` has its own `npm run typecheck` and `npm test`
+and is never served or built by nix.
 
-devenv runs standalone rather than through the flake: `devenv.lib.mkShell`
-cannot evaluate purely (it needs an absolute project root for `.devenv/`), and
-the documented workaround needs `--impure`, which would spread to CI. The cost
-is two lock files — `flake.lock` pins the nixpkgs that *builds* the appliance,
-`devenv.lock` (via the rev in `devenv.yaml`) the one that *lints and tests*
-it. **Bump them together**; `check-pins` and CI's `pins` job fail if the three
-disagree. They did disagree for two weeks after dependabot bumped `flake.lock`
-alone, with nothing in CI to notice.
+## Layout
 
-Both Rust crates set `doCheck = false`, so `nix build` compiles the shipping
-binaries and does not run the suites. The suites run via `cargo test` — in
-`devenv test`/`test-rust` locally and in CI's lint job. This was a concession
-to the 10-minute cap of Codeberg, the project's former CI host: doCheck
-recompiles each crate in test configuration and links a binary per test
-target, which put
-`nix build .#losos-ctl` between 7.7 and 10.3 minutes across observed runs and
-cancelled real runs on unmodified main. **A bare `nix build` is therefore not
-a test gate** — run `devenv test` before trusting a change. There is no PHP
-suite anymore — the old Nextcloud plugin is retired (see architecture) — and no
-Haskell: the backend was a cabal project until it was ported to Rust.
+- `flake.nix` builds two systems from one module set: `iso` (options, disko,
+  installer) and `install` (everything). `specialArgs.self` lets
+  `defaults.nix` wire `losos-ctl` and `losos-admin-ui` in.
+- `modules/options.nix` declares every knob under `options.losos`;
+  `defaults.nix` sets them. Modules read `config.losos.X`, never bare
+  `config.X`.
+- `impermanence.nix` + `disko.nix` + `boot.nix`: tmpfs root, LUKS ext4
+  `/persist` formatted unattended from `/etc/keys/persist-keyfile`. Unlock is
+  TPM2 with no PCR binding by default; without a TPM the keyfile rides in the
+  initrd on the ESP. The installer writes `modules/install-target.nix` (the
+  box's drives, firmware mode, unlock mode) onto the box; it is not in the
+  tree, and `flake.nix` imports the live copy from `/etc/nixos` on rebuilds.
+- `configuration.nix`: `notshared` (uid 1000, Nextcloud) and `shared`
+  (uid 1001, mesh storage), each with its own group and a `700` home, no
+  passwords, `openssh` off.
+- `daemon.nix` + `backend/`: `lososd` is a root daemon owning
+  `/var/lib/losos/state.json`, exporting one D-Bus method per subcommand
+  (`org.losos1`, `/org/losos1`, `org.losos.Control1`) and a Bearer-authed
+  JSON API on `127.0.0.1:8082`. Rebuilds are `systemd-run` units
+  `losos-rebuild-<job>` watched by a thread. `losos-ctl` relays to it over
+  D-Bus; `losos-ctl install` is local. Commands are written against the
+  `Losos` trait (`io_backend` real, `fake` in memory); the installer's plan
+  is data, so step order is unit-tested. Wire contract: `backend/schema.json`.
+- `admin-ui/app`: React 19 + Vite + Tailwind SPA on real paths. Its `dist/`
+  is the front nginx vhost's root (`try_files … /index.html`), `/api/*` is
+  proxied to lososd. Palette in `src/styles/tokens.css`.
+- `containers.nix`, `workloads.nix`, `cluster.nix`, `nextcloud-common.nix`:
+  Nextcloud and Forgejo run as hostNetwork pods in the box's own k3s server;
+  `services.rke2` (agent) joins the edge's mesh. Nginx is the only public
+  listener: `<host>.local/nextcloud`, `/forgejo`, admin SPA on `/`.
+- `admin-ui/themes/`: the SPA's `tokens.css` is shipped byte for byte as
+  `losos-tokens.css` into the Nextcloud theme folder and Forgejo's custom
+  CSS, so one colour change moves all three. `default.nix` is the data every
+  caller imports. Owners see LosOS cloud and LosOS Git.
+- `hardening.nix` (install only): KSPP primitives, on by default, with
+  `apparmor`, `malloc`, `nosmt`, `usbguard` opt-in. `tests/hardening.nix`
+  asserts both halves.
+- `updates.nix`: `system.autoUpgrade` at 03:00 from `losos.upgradeFlakeUri`
+  (default `git+file:///etc/nixos#install`, set a `github:` URI to really
+  upgrade), `nix.gc` at 04:30 with `--delete-older-than 14d`, five boot
+  generations, unconditional reboot at 00:07. `tests/invariants.nix` pins
+  these at eval time.
+- `grow.rs`: `losos-ctl grow` runs lvextend, `cryptsetup resize`, `resize2fs`
+  online, asserted against the plan and in `tests/resize.nix`.
+- `edge-vercel/`: the registrar's router as one Vercel Function over Neon
+  Postgres, for demos. `/cluster/join` and `/market/*` answer 503 there.
+- `backend-registrar/src/market.rs`: Stripe Connect, third opt-in of the
+  registrar. The key lives only in the `losos-stripe-gate` unit, reached over
+  `/run/losos-stripe-gate/gate.sock`.
+- `flake/fast-build.nix`: every Rust binary links with mold and compiles
+  through ccache and sccache, in shells and in `nix build` alike.
+- CI is `.github/workflows/ci.yml`, kept in step with `devenv.nix` by hand.
+  `fmt-bot` pushes `cargo fmt` to main, `iso` imports `losos-ctl` as an
+  artifact and boots the ISO under OVMF and SeaBIOS, tags run
+  `release-media`. `history-scrub.yml` rewrites the history after every push
+  to main (rules in `.github/scripts/scrub-message.py`), pushing branches
+  with the `HISTORY_SCRUB_DEPLOY_KEY` deploy key and tags with the CI token.
+  The VM tests are not in CI; there is no KVM there.
 
-Both crates must stay clippy-clean (`-D warnings`) and rustfmt-clean. That is
-enforced in three places now: the devenv pre-commit hooks, the `lint` script,
-and CI. Until those existed nothing ran the linters at all — back when
-`doCheck` was on it ran the test suite, never clippy — and backend-registrar
-had drifted to 17 rustfmt hunks plus a clippy error without CI noticing.
+## Rules
 
-```sh
-# `nix develop -c` does not change directory, hence --manifest-path
-cargo test --manifest-path backend/Cargo.toml
-cargo clippy --manifest-path backend/Cargo.toml --all-targets -- -D warnings
-```
+1. Anything that must survive a reboot goes into
+   `environment.persistence."/persist".directories`, or it is gone next boot.
+   `/etc/rancher` stays listed: the k3s agent's node password lives there and
+   the server rejects a node that regenerates it.
+2. Run `devenv test` before trusting a change. `doCheck` is off in both
+   crates, so a green `nix build` ran no tests.
+3. Bump `flake.lock`, the rev in `devenv.yaml` and `devenv.lock` together.
+   `check-pins` and CI's `pins` job fail when they differ.
+4. Keep `--impure` on both rebuild paths (`system.autoUpgrade.flags`,
+   `supervisor.rs`) and the `#install` fragment on the flake URI. Pure
+   evaluation cannot see `/etc/nixos/modules/install-target.nix`, and without
+   the fragment `nixos-rebuild` asks for `nixosConfigurations.$(hostname)`,
+   which does not exist.
+5. Keep the `rp_filter = 2`, non-zero `user.max_user_namespaces` and
+   executable `/tmp`. Strict rp_filter drops the multicast replies that make
+   the box reachable and breaks Calico, zero namespaces stops both kubelets,
+   noexec `/tmp` stops nix builds. `tests/hardening.nix` asserts all three.
+6. Gate `--disable`, `--flannel-backend` and `--disable-network-policy` on
+   the server role. `k3s agent` crash-loops on an unknown flag.
+7. Leave the two Kubernetes instances as two clusters. The box's own apps in
+   the edge's cluster would go down for any edge outage spanning the 00:07
+   reboot.
+8. Never write a `deny <podCidr>` nginx rule. hostNetwork pods arrive from
+   `127.0.0.1` or the LAN address.
+9. `lanOnly` denies loopback on purpose: rathole's tunnel delivers from
+   `127.0.0.1`. Test against lososd's `:8082` or with a LAN source address.
+10. Nextcloud trusts the box's own IP through the `X-Losos-Server-Addr`
+    header, IP literals only. Nextcloud's `*` matches `[-.a-zA-Z0-9]*`.
+11. App tiles link `/nextcloud/index.php/apps/<id>/`. The short form is an
+    Apache 404 unless the pod rewrites pretty URLs.
+12. Sign-in sends the password to Nextcloud over loopback and keeps no hash.
+    Keep the spare-key path in the unlock dialog, never `curl -u`, and let
+    `signin::validate_candidate` check shape only, or old passwords lock
+    their owner out.
+13. The keyfile is 4096 hex characters, no NUL, no newline, at
+    `/etc/keys/persist-keyfile`. disko reads it through
+    `<(echo -n "$(cat FILE)")`, the initrd and cryptenroll read it raw, and
+    `ProtectHome=true` hides `/root` and `/home` from lososd.
+14. `losos-ctl grow` is correct only in the order lvextend with `+`,
+    `cryptsetup resize`, `resize2fs`. Any binary lososd shells out to
+    (lvm2, cryptsetup, e2fsprogs, curl) must be on its unit `path`; `path`
+    replaces PATH.
+15. Keep `start_supervisor`'s re-attach in `supervisor.rs`. `nixos-rebuild
+    switch` restarts lososd mid-rebuild and a rebuild would otherwise read
+    `building` forever.
+16. `losos.admin.tokenFile` is written by lososd on first start. Do not
+    declare it from nix.
+17. The compute window's time zone travels with its bounds and the edge
+    evaluates `now` per node in `modules/edge.nix`. Hoisting it enforced a
+    Berlin window in UTC and slid an hour at each DST change.
+18. `tenantsJson` in `modules/edge.nix` must keep the `market` key or every
+    trade 403s. The `/api/market*` relay answers 200 `{available:false}`
+    when the market is off; the SPA latches a 404 as "not served". Never add
+    an operation that forwards arbitrary Stripe calls through the gate.
+19. In `flake/fast-build.nix` the stdenv is mold first with ccache around it,
+    and `RUSTC_WRAPPER` is a script not named `sccache`. Either way round
+    silently caches nothing.
+20. Don't add `restrict=on` to the ISO boot test's netdev; QEMU then offers
+    no DNS server and the test never sees its query. Secure Boot is not a
+    leg: nothing is signed.
+21. `system.stateVersion = "26.11"` is set once. `result` is never committed.
+22. Edit `wiki/`, not the web wiki; the workflow overwrites it.
+23. No `Co-Authored-By`, `Generated with` or session links in commits, PRs
+    or branch names. The commit-msg hook refuses them and the scrub bot
+    rewrites what gets through. After a rewrite, `git pull --rebase`.
+24. Match `.github/workflows/ci.yml` and `devenv.nix` by hand when adding a
+    gate. Neither calls the other.
 
-**Every Rust binary links with mold and compiles through ccache (C) and
-sccache (rustc)** — `flake/fast-build.nix`, one stdenv shared by both flake
-devShells, devenv and `flake/packages.nix`, so `cargo` in a shell and
-`nix build` link the same way. In the shells it is on with no setup (caches
-under `~/.cache`; CI persists them with `actions/cache` in the clippy and
-test jobs). Inside `nix build` the caches are gated on the host exposing
-`/var/cache/ccache` and `/var/cache/sccache` to the sandbox
-(`extra-sandbox-paths`, directories `0770 root:nixbld`) and are otherwise
-never invoked, so a box's 03:00 rebuild is the plain build it always was;
-mold is never gated. ccache cannot cache rustc — the minutes saved are
-sccache's — and edge-vercel on Vercel's builders gets neither. Two things
-in that file look odd and are load-bearing: the stdenv is composed mold
-first and ccache around it (the other way round, `useMoldLinker` reads
-ccache's version as the compiler's and silently drops `-fuse-ld=mold`), and
-`RUSTC_WRAPPER` is a script named anything but `sccache` (the `cc` crate
-fronts the C compiler with sccache too when it sees that name, with
-`CCACHE_DISABLE` set, and ccache then caches nothing).
+## Rationalizations to reject
 
-**GitHub is the only forge.** The project left Codeberg on 2026-09-30, and
-the `.forgejo/` lane went with it; references to Codeberg that remain in
-comments are history explaining a choice its CI forced. CI is
-`.github/workflows/ci.yml`, kept in step by hand with `devenv.nix`, plus a
-tag-release job that builds the heavy media, attaches the installer ISO to the
-GitHub release and pushes both media to GHCR (the demo QCOW2 is over GitHub's
-2 GiB per-asset limit). `.github/actions/` carries `setup-nix`, `proxy-push`
-and `github-release`.
+| Excuse | Why it fails |
+|---|---|
+| "`allow 127.0.0.1` fixes the 403 in the VM test" | It opens the admin surface to the internet whenever the proxy tunnel is on. |
+| "Strict rp_filter is on every hardening checklist" | It drops the mDNS replies of an SSH-less box and Calico stops working. |
+| "One cluster is simpler" | Midnight reboots plus an edge outage take the owner's Nextcloud down. |
+| "Raw random bytes are a stronger key" | disko's command substitution drops NULs; the volume is formatted with one key and unlocked with another. |
+| "Pure evaluation is cleaner, drop `--impure`" | A `github:` upgrade flips a keyfile box to TPM, forgets its drives and resets every setting. |
+| "`nix build` passed" | It compiled. The suites run in `devenv test` and CI only. |
+| "A `192.168.*` wildcard is simpler than a header" | It trusts `192.168.attacker.example` too. |
+| "A pod-CIDR deny adds depth" | There is no pod CIDR to match; the pods share the host's netns. |
+| "Attribution trailers are standard practice" | Not here. The hook refuses them and the bot rewrites history to remove them. |
 
-GitHub's runners cap at 6 hours, so jobs carry explicit `timeout-minutes`. The
-structure Codeberg's 10-minute / 8 GB cap forced is kept because the reasons
-outlive the cap: clippy and test stay separate jobs (as one they compile the
-local crates twice), and the `iso` job imports `losos-ctl` as an artifact
-rather than rebuilding it. The **install toplevel** remains a
-local-only gate. The **installer ISO is now built in CI**: its closure is 769
-paths, of which 766 are stock nixpkgs served by cache.nixos.org and only
-`losos-ctl` is expensive, so the `iso` job imports that one from the
-`losos-ctl` job as a 12 MiB artifact instead of recompiling it. Measured:
-~4.7 GiB written against a 10 GiB quota, 50 s for squashfs + xorriso.
-The same job then boots that ISO under OVMF and SeaBIOS with
-`tests/iso-boot.py`, which passes when the installer's DNS query for
-github.com shows up in a pcap of the guest NIC. Don't add `restrict=on` to its
-netdev: QEMU then drops the DNS server from its DHCP offer and no query is
-ever sent. Secure Boot is deliberately not a leg: nothing here is signed, and
-the README tells owners to switch it off.
+## Before you finish
 
+<<<<<<< HEAD
 One flake check is not a VM: `losos-invariants` (`tests/invariants.nix`)
 evaluates the published `install` configuration and asserts the option values
 the appliance cannot afford to lose by a default drifting (garbage collection,
@@ -644,3 +712,13 @@ A separate `midnight-reboot.timer` reboots unconditionally at 00:07 with
   this flake tracks; don't change it.
 - **The `result` symlink is a `nix build` artifact** (pointing into
   `/nix/store`), gitignored, never committed.
+=======
+- [ ] `devenv test` passed, not only `nix build`?
+- [ ] New persistent path listed in `impermanence.nix`?
+- [ ] New option declared under `options.losos`, default in `defaults.nix`?
+- [ ] New binary lososd calls added to the unit `path`?
+- [ ] VM tests run locally if the installer or control plane changed?
+- [ ] CI and `devenv.nix` still in step; the three nixpkgs pins agree?
+- [ ] Docs changed in `wiki/`, not the web wiki?
+- [ ] Commit message carries no trailer and no session link?
+>>>>>>> 299f9f2 (CLAUDE.md: a third of the length, in the skill-template shape)
