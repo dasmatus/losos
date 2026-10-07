@@ -1,0 +1,168 @@
+name: history-scrub
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Rewrite the runner's clone and list the refs that would move, but push nothing."
+        type: boolean
+        default: true
+
+# ── What this is ────────────────────────────────────────────────────────────
+#
+# The history is written by Claude Code sessions as much as by hand, and the
+# sessions leave marks: `Co-Authored-By: Claude …` trailers, `Claude-Session:`
+# and bare claude.ai/code links, `🤖 Generated with` footers, commits authored
+# as `Claude <noreply@anthropic.com>`, and GitHub's own merge subjects naming a
+# `claude/<thread>` head branch. The devenv commit-msg hook refuses the
+# trailers locally, but the web sessions run no hooks and the merge button
+# writes its own subject. This job is the backstop: after every push to main
+# it rewrites whatever slipped through and force-pushes the result.
+#
+# The rules live in .github/scripts/scrub-message.py and the wiring in
+# .github/scripts/scrub-history.sh, so the same rewrite can be previewed on a
+# dev machine (see the header there). git-filter-repo keeps the hash of every
+# commit the rules do not touch, so a clean history is a no-op and nothing
+# before the first offending commit ever moves.
+#
+# Every ref is rewritten, not only main: a pull-request branch carries main's
+# history too, and rewriting main alone would make each open PR re-introduce
+# the old commits on merge. The push is one `--force-with-lease` per moved
+# ref, pinned to the hash the clone was taken from, so a commit that landed on
+# a branch while this ran is never overwritten — the push is refused instead,
+# and the next push to main gets it.
+#
+# Two credentials push, and the split is forced. The repository ruleset
+# ("QLT", target: branch, every branch) blocks non-fast-forward pushes and
+# requires signed commits. GITHUB_TOKEN cannot bypass it: GitHub refuses to
+# list the Actions app as a bypass actor on a user-owned repository ("must be
+# part of the ruleset source or owner organization"). A deploy key can be one,
+# so BRANCHES are pushed over SSH with the key in the HISTORY_SCRUB_DEPLOY_KEY
+# secret, whose public half is the write-enabled "history-scrub" deploy key
+# of this repository, and whose type (DeployKey) is a bypass actor on the
+# ruleset. TAGS are outside a branch-target ruleset, so they are pushed with
+# GITHUB_TOKEN — on purpose: a push made with GITHUB_TOKEN starts no workflow
+# runs, while one made with a deploy key does, and tags moved with the key
+# would fire the release-media job once per tag. The deploy-key push of main
+# does start ci.yml once more, on the rewritten tip (its concurrency group
+# cancels the run on the old tip), and this workflow once more, which then
+# finds nothing to do. Rewritten commits cannot carry their old signatures;
+# the merges GitHub signed show as unverified afterwards.
+#
+# The key was set up once, as an admin, with:
+#   ssh-keygen -t ed25519 -N "" -C history-scrub -f /tmp/history-scrub
+#   gh repo deploy-key add /tmp/history-scrub.pub --allow-write --title history-scrub
+#   gh secret set HISTORY_SCRUB_DEPLOY_KEY < /tmp/history-scrub
+#   rm /tmp/history-scrub /tmp/history-scrub.pub
+# and the ruleset given {actor_id: null, actor_type: "DeployKey",
+# bypass_mode: "always"} in its bypass_actors.
+#
+# After a rewrite, anyone with the old main checked out gets it back with
+# `git pull --rebase` (git skips the commits whose patch is already upstream);
+# a plain `git pull` would merge the two histories.
+
+# One rewrite at a time: two concurrent runs would each push a different
+# rewrite of the same refs.
+concurrency:
+  group: history-scrub
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  scrub:
+    name: "bot: scrub Claude mentions out of the history"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    env:
+      DRY_RUN: ${{ inputs.dry_run == true }}
+    steps:
+      # The checkout is only for the scripts and flake.lock; the rewrite
+      # happens in a separate bare clone below, which holds every branch and
+      # tag rather than one detached commit.
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-nix
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          cache-url: ${{ vars.LOSOS_PROXY_URL }}
+          public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
+      - name: clone every branch and tag, bare
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # Same header trick as lockfile-updates.yml: the token travels in an
+          # Authorization header, never in a URL or the log.
+          auth="$(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 -w0)"
+          git -c http.https://github.com/.extraheader="AUTHORIZATION: basic ${auth}" \
+            clone --bare --quiet "https://github.com/${GITHUB_REPOSITORY}.git" mirror.git
+          echo "$(git -C mirror.git for-each-ref | wc -l) refs cloned"
+      - name: rewrite
+        run: |
+          set -euo pipefail
+          # git-filter-repo from the nixpkgs this flake pins, the same way
+          # lockfile-updates.yml gets devenv: pinned, cached, no pip.
+          rev="$(jq -r '.nodes.nixpkgs.locked.rev' flake.lock)"
+          nix shell "github:NixOS/nixpkgs/${rev}#git-filter-repo" -c \
+            .github/scripts/scrub-history.sh mirror.git moved-refs
+          if [ -s moved-refs ]; then
+            echo "refs that move (old new ref):"
+            cat moved-refs
+          else
+            echo "history already clean; nothing to push"
+          fi
+      - name: push the rewritten refs
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DEPLOY_KEY: ${{ secrets.HISTORY_SCRUB_DEPLOY_KEY }}
+        run: |
+          set -euo pipefail
+          if [ ! -s moved-refs ]; then
+            exit 0
+          fi
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "dry run: pushing nothing"
+            exit 0
+          fi
+
+          # One --force-with-lease per ref, pinned to the hash the clone was
+          # taken from; see the header. Branches and tags go separately.
+          branches=() tags=()
+          while read -r old new ref; do
+            case "$ref" in
+              refs/heads/*) branches+=("--force-with-lease=${ref}:${old}" "${new}:${ref}") ;;
+              refs/tags/*)  tags+=("--force-with-lease=${ref}:${old}" "${new}:${ref}") ;;
+              *) echo "unexpected ref ${ref}" >&2; exit 1 ;;
+            esac
+          done <moved-refs
+
+          if [ "${#branches[@]}" -gt 0 ]; then
+            if [ -z "$DEPLOY_KEY" ]; then
+              echo "HISTORY_SCRUB_DEPLOY_KEY is not set; GITHUB_TOKEN cannot push" >&2
+              echo "branches past the ruleset. See the header of this workflow." >&2
+              exit 1
+            fi
+            keyfile="$(mktemp)"
+            known_hosts="$(mktemp)"
+            trap 'rm -f "$keyfile" "$known_hosts"' EXIT
+            printf '%s\n' "$DEPLOY_KEY" >"$keyfile"
+            # GitHub's ed25519 host key, from docs.github.com ("GitHub's SSH
+            # key fingerprints"), pinned rather than scanned on first use.
+            echo 'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl' >"$known_hosts"
+            GIT_SSH_COMMAND="ssh -i ${keyfile} -o IdentitiesOnly=yes -o UserKnownHostsFile=${known_hosts} -o StrictHostKeyChecking=yes" \
+              git -C mirror.git push "git@github.com:${GITHUB_REPOSITORY}.git" "${branches[@]}"
+          fi
+
+          if [ "${#tags[@]}" -gt 0 ]; then
+            auth="$(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 -w0)"
+            git -C mirror.git \
+              -c http.https://github.com/.extraheader="AUTHORIZATION: basic ${auth}" \
+              push "https://github.com/${GITHUB_REPOSITORY}.git" "${tags[@]}"
+          fi

@@ -21,7 +21,6 @@ Reference spec: `docs/superpowers/specs/2026-08-12-lososd-split-design.md`
 - No new Haskell dependencies beyond: `dbus`, `wai`, `warp`, `http-types`. (facade side needs only `dbus`.)
 - Haskell tests run via `cd backend && cabal test` or `nix build .#losos-ctl` (`doCheck` runs the suite).
 - Tahoes' `pkgs.tahoe-lafs` python312 overlay in `modules/overrides.nix`/`configuration.nix` must not be dropped.
-- Every task's commit message ends with `Co-Authored-By: Claude <noreply@anthropic.com>`.
 
 ---
 
