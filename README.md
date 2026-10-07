@@ -29,7 +29,10 @@ survive, on an encrypted `/persist` partition.
    [latest release](https://github.com/dasmatus/losos/releases/latest), or
    build it with
    `nix build .#nixosConfigurations.iso.config.system.build.isoImage`.
-2. Turn Secure Boot off and boot the target in UEFI mode.
+2. Boot the target in UEFI mode, with Secure Boot off or with the LosOS
+   certificate from the release page enrolled: release ISOs are signed and
+   a firmware that trusts the certificate verifies the stick before it
+   runs. The installed box needs Secure Boot off.
 3. Boot the stick with a network connection. The installer wipes every fixed
    disk, encrypts them and installs without prompting.
 

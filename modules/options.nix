@@ -985,6 +985,41 @@ in
       '';
     };
 
+    # ── Secure Boot (the installer medium) ──────────────────────────────────
+    secureBoot.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Build the installer medium so UEFI firmware can verify it under
+        Secure Boot (modules/secure-boot.nix, installer ISO only). The UEFI
+        loader on the medium's EFI system partition is then one unified
+        kernel image (`EFI/BOOT/BOOTX64.EFI`: systemd-stub + kernel + initrd
+        + command line) in place of GRUB, so the firmware's one signature
+        check covers everything that runs before the squashfs is mounted.
+        `nix build` leaves it unsigned; `losos-sign-iso` signs it in place
+        with the LosOS db key, which never enters the Nix store. BIOS boot
+        (syslinux) is unchanged: Secure Boot is a UEFI feature. Off, the
+        medium ships the stock GRUB loader, which no firmware can verify.
+      '';
+    };
+
+    secureBoot.certFile = lib.mkOption {
+      type = lib.types.path;
+      default = ../keys/secure-boot-db.pem;
+      defaultText = lib.literalExpression "../keys/secure-boot-db.pem";
+      description = ''
+        The LosOS Secure Boot signing certificate (X.509, PEM; `#` lines
+        before the block are comments): the public half of the db key
+        `losos-sign-iso` signs the medium with. Shipped on the medium's EFI
+        system partition as `EFI/losos/losos-secure-boot.{cer,pem}` so a
+        firmware's "enroll from file" dialog can take it from the stick, and
+        the certificate `SHA256SUMS.sig` on a release verifies against. The
+        committed file carries no certificate until the key ceremony in
+        provisioning/secure-boot/ has run: then the medium ships no
+        certificate and nothing presents LosOS as a Secure Boot signer.
+      '';
+    };
+
     # ── Master proxy (edge side) ───────────────────────────────────────────
     # Options for the edge system (flake output `nixosModules.edge`), which
     # runs Traefik (master proxy), a rathole server, and losos-registrar
