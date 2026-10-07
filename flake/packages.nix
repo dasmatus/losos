@@ -109,6 +109,41 @@ images
     '';
   };
 
+  # The owner's handbook: the Docusaurus site in handbook/, built once more
+  # here so every box carries its own copy at /handbook/ (served LAN-only by
+  # modules/containers.nix). The same source is published to GitHub Pages by
+  # .github/workflows/handbook.yml with the default base; this build sets
+  # LOSOS_HANDBOOK_BASE so every asset and link is rooted under /handbook/.
+  #
+  # Why on the box at all: the manual is needed most when the box is reachable
+  # from the LAN alone, which is also when the internet copy is not. The
+  # search index is built into the bundle for the same reason.
+  losos-handbook = pkgs.buildNpmPackage {
+    pname = "losos-handbook";
+    version = "0.1.0";
+    src = ./../handbook;
+
+    # SHA256 of the npm dependency cache built from handbook/package-lock.json,
+    # same convention as losos-admin-ui above. After changing the lock file:
+    # `nix run nixpkgs#prefetch-npm-deps -- handbook/package-lock.json`.
+    npmDepsHash = "sha256-LdFN5iy1+ghw5ru+V151pckI5KKY6ZuW/XLeLvD6jJo=";
+
+    npmFlags = [ "--ignore-scripts" ];
+    env.LOSOS_HANDBOOK_BASE = "/handbook/";
+    # Docusaurus reads the git log for "last updated" stamps when asked; the
+    # config does not ask, and there is no .git in the sandbox anyway.
+    env.CI = "true";
+
+    # `npm run build` is `docusaurus build`, which fails on a broken link.
+    # $out is the built site: index.html at the top, hashed assets under
+    # assets/, one directory per page with its own index.html.
+    installPhase = ''
+      runHook preInstall
+      cp -r build $out
+      runHook postInstall
+    '';
+  };
+
   # The LosOS look for Nextcloud and Forgejo — the admin SPA's tokens.css plus
   # each app's mapping onto it. Consumed by modules/nextcloud-stack.nix,
   # modules/services.nix and images.nix through admin-ui/themes/default.nix,

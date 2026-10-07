@@ -1,0 +1,84 @@
+name: handbook
+
+# Builds the owner's handbook (handbook/, Docusaurus) and publishes it to the
+# GitHub Pages site on every push to main. Pull requests only build, which is
+# the gate: `docusaurus build` fails on a broken link.
+#
+# The site is deployed through Actions (actions/deploy-pages), not from a
+# branch: the repository's Pages source has to be set to "GitHub Actions"
+# once, under Settings → Pages. The custom domain (losos.dasmat.us) is kept
+# in the same settings; handbook/static/CNAME repeats it for a branch deploy.
+#
+# The box's own copy at /handbook/ is a separate build of the same source
+# (flake/packages.nix, losos-handbook), built by ci.yml's registrar-and-ui
+# job on every push and pull request, next to the admin UI; this workflow is
+# only the public site.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "handbook/**"
+      - ".github/workflows/handbook.yml"
+      # The two files the handbook's checks read from the admin UI: the error
+      # map (check:links) and the palette (check:tokens).
+      - "admin-ui/app/src/lib/handbook.ts"
+      - "admin-ui/app/src/styles/tokens.css"
+  pull_request:
+    paths:
+      - "handbook/**"
+      - ".github/workflows/handbook.yml"
+      - "admin-ui/app/src/lib/handbook.ts"
+      - "admin-ui/app/src/styles/tokens.css"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: handbook-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: "docusaurus: build"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: handbook
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: handbook/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm run typecheck
+      # The admin UI's "What to do" links must all land on a page, and the
+      # palette must be the admin UI's byte for byte.
+      - run: npm run check
+      - run: npm run build
+      # The public site is rooted at / on losos.dasmat.us; the box's copy is
+      # rooted at /handbook/ and is built by nix, not here.
+      - uses: actions/upload-pages-artifact@v4
+        if: github.event_name != 'pull_request'
+        with:
+          path: handbook/build
+
+  deploy:
+    name: "pages: deploy"
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

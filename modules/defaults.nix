@@ -25,6 +25,8 @@ in
   # SPA the front vhost serves, so the admin endpoint works out of the box.
   losos.backend.package = lib.mkDefault pkgs'.losos-ctl;
   losos.admin.ui = lib.mkDefault pkgs'.losos-admin-ui;
+  # The owner's handbook the same vhost serves at /handbook/.
+  losos.admin.handbook = lib.mkDefault pkgs'.losos-handbook;
 
   # The appliance side of the master proxy.
   losos.proxy.registrar.package = lib.mkDefault pkgs'.losos-registrar;

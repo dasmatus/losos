@@ -136,6 +136,9 @@ export function useMarket(enabled: boolean): MarketData {
           toast.error(
             t("panes.market.actionFailedTitle"),
             said.length > 0 ? said : t("panes.market.actionFailed"),
+            /* The market answers 503 while its edge is out of reach; anything
+             * else has no page of its own yet. */
+            { help: error instanceof ApiError && error.status === 503 ? "edge-not-found" : "index" },
           );
         }
         return null;

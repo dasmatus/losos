@@ -181,6 +181,8 @@ await check('a wrong password is refused and the prompt stays up', async () => {
   const text = await body(page);
   assert.ok(/Unlock this box/i.test(text), 'the prompt closed on a wrong password');
   assert.ok(/was not accepted/i.test(text), `no refusal shown:\n${text}`);
+  // The refusal leads to the handbook's forgotten-password page on this box.
+  assert.equal(await page.getByRole('dialog').locator('a[data-help]').getAttribute('href'), '/handbook/troubleshooting/forgot-password/');
   assert.equal(await page.getByRole('button', { name: 'Sign out' }).count(), 0, 'the app unlocked on a wrong password');
   assert.equal(await page.evaluate(() => sessionStorage.getItem('losos-token')), null);
   await page.close();
@@ -194,6 +196,7 @@ await check('while LosOS cloud is down the prompt says so and points at the spar
   const text = await body(page);
   assert.ok(/LosOS cloud is not running/i.test(text), `the 503 was not explained:\n${text}`);
   assert.ok(/spare admin key/i.test(text), 'the spare key is not offered');
+  assert.equal(await page.getByRole('dialog').locator('a[data-help]').getAttribute('href'), '/handbook/manual/sign-in-and-spare-key/');
   assert.equal(await page.evaluate(() => sessionStorage.getItem('losos-token')), null);
   await page.close();
 });

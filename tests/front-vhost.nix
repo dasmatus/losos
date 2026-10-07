@@ -150,6 +150,7 @@ pkgs.testers.nixosTest {
       imports = [ applianceBase ];
       losos.admin.enable = true;
       losos.admin.ui = lososPkgs.losos-admin-ui;
+      losos.admin.handbook = lososPkgs.losos-handbook;
     };
 
     # Same box with the dashboard switched off. losos.admin.ui stays null,
@@ -335,6 +336,33 @@ pkgs.testers.nixosTest {
         # iframe and it would expose the admin plane to clickjacking instead.
         assert headers(noadmin, "http://appliance/")["x-frame-options"] == "DENY", \
             "X-Frame-Options was loosened; it controls the other direction"
+
+    with subtest("/handbook/ is served LAN-only under its own CSP"):
+        # The handbook is a Docusaurus build rooted at /handbook/, served by
+        # `alias` from a second store path. It inherits the guard (403 from
+        # loopback, where tunnel traffic arrives) and gets the handbook arm
+        # of the header map: inline script and style allowed, because
+        # Docusaurus boots its colour mode inline, but still no remote origin
+        # and no framing. The admin page's own CSP must NOT have gained
+        # 'unsafe-inline' in the process: that would let injected markup read
+        # the token.
+        assert code(noadmin, "http://appliance/handbook/") == "200", \
+            "the handbook does not answer from the LAN"
+        assert code(appliance, "http://127.0.0.1/handbook/") == "403", \
+            "the handbook is served to loopback, i.e. through the tunnel"
+        hb = headers(noadmin, "http://appliance/handbook/")["content-security-policy"]
+        assert "script-src 'self' 'unsafe-inline'" in hb, f"handbook CSP refuses its own inline boot script: {hb}"
+        assert "frame-ancestors 'none'" in hb, f"handbook may be framed: {hb}"
+        assert "https:" not in hb and "http:" not in hb, f"handbook CSP grants a remote origin: {hb}"
+        admin_csp = headers(noadmin, "http://appliance/")["content-security-policy"]
+        assert "'unsafe-inline'" not in admin_csp, f"the admin CSP was loosened with the handbook: {admin_csp}"
+        # A page address, which is a directory with its own index.html, and
+        # a path that is nothing, which gets the site's 404 page, not the
+        # SPA's index.html.
+        assert code(noadmin, "http://appliance/handbook/troubleshooting/") == "200", \
+            "a handbook page address does not resolve to its index.html"
+        assert code(noadmin, "http://appliance/handbook/no-such-page/") == "404", \
+            "an unknown handbook path falls through to something other than 404"
 
     with subtest("/widget-frame/ gets the frame's own policy and nothing else does"):
         # The page a hand-written widget runs in (backend/src/look.rs,
