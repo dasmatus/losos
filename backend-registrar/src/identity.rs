@@ -364,7 +364,7 @@ pub fn run(opts: crate::opts::IdentityOpts) -> Result<()> {
 }
 
 /// Write a key file: created 0600, never over an existing file.
-fn write_private(path: &Path, hex: &str) -> Result<()> {
+pub(crate) fn write_private(path: &Path, hex: &str) -> Result<()> {
     use std::io::Write;
     use std::os::unix::fs::OpenOptionsExt;
     let mut f = std::fs::OpenOptions::new()

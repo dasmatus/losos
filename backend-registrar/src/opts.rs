@@ -7,6 +7,7 @@ use std::time::Duration;
 use miette::{miette, IntoDiagnostic, Result};
 
 use crate::market::{MarketOpts, DEFAULT_FEE_BPS, MAX_FEE_BPS, SUPPORTED_CURRENCIES};
+use crate::provision::{EdgeSpec, ProvisionGithub, GITHUB_API_URL, GITHUB_OAUTH_URL};
 use crate::stripe_gate::GateOpts;
 
 fn arg<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
@@ -208,6 +209,55 @@ pub struct JoinOpts {
     pub expect_server_addr: Option<String>,
 }
 
+/// `provision` options: the key ceremony as the operator runs it, from
+/// their own machine, behind a GitHub sign-in (`crate::provision`). Every
+/// verb but `verify` takes the sign-in flags: `--client-id` (else
+/// `LOSOS_GITHUB_CLIENT_ID`, else operators.json) and, for the tests' fake
+/// GitHub, `--github-oauth-url` / `--github-api-url`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProvisionOpts {
+    /// `provision whoami`: sign in, say who and whether they are listed.
+    Whoami { github: ProvisionGithub },
+    /// `provision root-keygen --out FILE [--publish] [--repo R] [--base B]`:
+    /// the root key, 0600, never overwritten; with `--publish`, the pull
+    /// request that ships the public half (asks for `public_repo`).
+    RootKeygen {
+        github: ProvisionGithub,
+        out: String,
+        publish: bool,
+        repo: String,
+        base: String,
+    },
+    /// `provision publish (--root-key FILE | --root-public HEX) [--repo R]
+    /// [--base B]`: the pull request alone.
+    Publish {
+        github: ProvisionGithub,
+        root_key: Option<String>,
+        root_public: Option<String>,
+        repo: String,
+        base: String,
+    },
+    /// `provision edge --name N --url U --ssh TARGET --root-key FILE
+    /// [--days D] [--key-path P] [--cert-path P] [--ssh-key F]
+    /// [--known-hosts F] [--ssh-command CMD]`: key pair in memory, signed
+    /// certificate, one SSH session, then the four checks.
+    Edge {
+        github: ProvisionGithub,
+        root_key: String,
+        spec: EdgeSpec,
+    },
+    /// `provision verify --url U (--root-key FILE | --root-public HEX)`: the
+    /// four checks alone. No sign-in: anyone may ask an edge who it is.
+    Verify {
+        url: String,
+        root_key: Option<String>,
+        root_public: Option<String>,
+    },
+}
+
+/// The default repository the public key is published to.
+pub const PUBLISH_REPO: &str = "dasmatus/losos";
+
 // Parsed once at startup and matched once; the size spread between the
 // serve options and the one-shot subcommands costs nothing worth a Box.
 #[allow(clippy::large_enum_variant)]
@@ -218,12 +268,13 @@ pub enum Mode {
     Join(JoinOpts),
     StripeGate(GateOpts),
     Identity(IdentityOpts),
+    Provision(ProvisionOpts),
 }
 
 pub fn parse(args: Vec<String>) -> Result<Mode> {
     if args.is_empty() {
         return Err(miette!(
-            "usage: losos-registrar serve|announce|seed|join|stripe-gate|identity ..."
+            "usage: losos-registrar serve|announce|seed|join|stripe-gate|identity|provision ..."
         ));
     }
     let mode = &args[0];
@@ -305,6 +356,7 @@ pub fn parse(args: Vec<String>) -> Result<Mode> {
                 )),
             }
         }
+        "provision" => parse_provision(&rest),
         "announce" => Ok(Mode::Announce(AnnounceOpts {
             registrar_url: req(&rest, "--registrar-url")?.to_string(),
             appliance_id: req(&rest, "--appliance-id")?.to_string(),
@@ -386,6 +438,88 @@ fn valid_currency(c: &str) -> bool {
 /// of the Stripe gate (`stripe-gate`), which alone holds the key and the
 /// webhook secrets; the return URL is then required, because a market that can
 /// take payment but has nowhere to send the buyer back to would be half-made.
+fn parse_provision(args: &[String]) -> Result<Mode> {
+    let verb = args.first().map(String::as_str).unwrap_or("");
+    let rest: Vec<String> = args.iter().skip(1).cloned().collect();
+    let github = ProvisionGithub {
+        oauth_url: arg(&rest, "--github-oauth-url")
+            .unwrap_or(GITHUB_OAUTH_URL)
+            .to_string(),
+        api_url: arg(&rest, "--github-api-url")
+            .unwrap_or(GITHUB_API_URL)
+            .to_string(),
+        client_id: arg(&rest, "--client-id").map(str::to_string),
+    };
+    let repo = arg(&rest, "--repo").unwrap_or(PUBLISH_REPO).to_string();
+    let base = arg(&rest, "--base").unwrap_or("main").to_string();
+    let root_pair = |rest: &[String]| -> Result<(Option<String>, Option<String>)> {
+        let key = arg(rest, "--root-key").map(str::to_string);
+        let public = arg(rest, "--root-public").map(str::to_string);
+        if key.is_none() && public.is_none() {
+            return Err(miette!("need --root-key FILE or --root-public HEX"));
+        }
+        Ok((key, public))
+    };
+    let mode = match verb {
+        "whoami" => ProvisionOpts::Whoami { github },
+        "root-keygen" => ProvisionOpts::RootKeygen {
+            github,
+            out: req(&rest, "--out")?.to_string(),
+            publish: rest.iter().any(|a| a == "--publish"),
+            repo,
+            base,
+        },
+        "publish" => {
+            let (root_key, root_public) = root_pair(&rest)?;
+            ProvisionOpts::Publish {
+                github,
+                root_key,
+                root_public,
+                repo,
+                base,
+            }
+        }
+        "edge" => ProvisionOpts::Edge {
+            github,
+            root_key: req(&rest, "--root-key")?.to_string(),
+            spec: EdgeSpec {
+                name: req(&rest, "--name")?.to_string(),
+                url: req(&rest, "--url")?.to_string(),
+                ssh_target: req(&rest, "--ssh")?.to_string(),
+                days: arg(&rest, "--days")
+                    .unwrap_or("365")
+                    .parse()
+                    .ok()
+                    .filter(|d| (1..=3650).contains(d))
+                    .ok_or_else(|| miette!("bad --days; expected 1..=3650"))?,
+                key_path: arg(&rest, "--key-path")
+                    .unwrap_or("/var/secrets/losos-edge-identity.key")
+                    .to_string(),
+                cert_path: arg(&rest, "--cert-path")
+                    .unwrap_or("/etc/losos/edge-identity.cert.json")
+                    .to_string(),
+                ssh_key: arg(&rest, "--ssh-key").map(str::to_string),
+                known_hosts: arg(&rest, "--known-hosts").map(str::to_string),
+                ssh_command: arg(&rest, "--ssh-command").unwrap_or("ssh").to_string(),
+            },
+        },
+        "verify" => {
+            let (root_key, root_public) = root_pair(&rest)?;
+            ProvisionOpts::Verify {
+                url: req(&rest, "--url")?.to_string(),
+                root_key,
+                root_public,
+            }
+        }
+        _ => {
+            return Err(miette!(
+                "usage: losos-registrar provision whoami|root-keygen|publish|edge|verify ..."
+            ))
+        }
+    };
+    Ok(Mode::Provision(mode))
+}
+
 fn parse_market(args: &[String]) -> Result<Option<Box<MarketOpts>>> {
     let Some(gate_socket) = arg(args, "--market-gate-socket") else {
         return Ok(None);

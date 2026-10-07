@@ -73,11 +73,13 @@ in
       # installer page stays unlocked unless this is set — and that page
       # rewrites the database and the admin credentials.
       security.INSTALL_LOCK = true;
-      # Kept on here regardless of the runner, unlike the container path
-      # (modules/workloads.nix follows losos.forgejo.runner.enable), because
-      # native mode is not published through the tunnel. The runner itself
-      # (modules/git-runner.nix) registers against this instance on :8888.
-      actions.ENABLED = true;
+      # Actions is remote code execution by design and nothing on the box
+      # runs jobs: the on-box runner that existed for the official-edge key
+      # ceremony is gone (the ceremony runs on the operator's machine,
+      # `losos-registrar provision`, behind a GitHub sign-in). Enabled with
+      # no runner it would only expose the runner-registration API. Same
+      # setting as the container path (modules/workloads.nix).
+      actions.ENABLED = false;
     };
   };
 

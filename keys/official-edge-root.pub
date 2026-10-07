@@ -10,8 +10,11 @@
 # repository. Until a key is written below, no edge is official and the market
 # is off on every box built from this tree (fail closed).
 #
-#   losos-registrar identity keygen --out root.key      # prints the public key
-#   losos-registrar identity sign --root-key root.key --public-key <edge.pub> \
-#       --name "LosOS edge Berlin" --url https://register.losos.cfd --days 365
+# Made and published from the operator's own machine, behind a GitHub
+# sign-in against backend-registrar/operators.json:
 #
-# See wiki/Master-Proxy.md, "Official edges".
+#   losos-registrar provision root-keygen --out root.key --publish
+#   losos-registrar provision edge --name "LosOS edge Berlin" \
+#       --url https://register.losos.cfd --ssh root@edge.example --root-key root.key
+#
+# See wiki/Master-Proxy.md, "Official edges", and provisioning/edge-identity/README.md.

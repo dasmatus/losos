@@ -79,6 +79,15 @@ async fn async_main() -> ExitCode {
                 ExitCode::FAILURE
             }
         },
+        // The ceremony: its exit code says "refused" (3) and "not official
+        // yet" (2) apart from a failure, so a script around it can tell.
+        Ok(Mode::Provision(opts)) => match losos_registrar::provision::run(opts).await {
+            Ok(code) => code,
+            Err(e) => {
+                tracing::error!(target: Action::Provision.target(), "provision: {:?}", e);
+                ExitCode::FAILURE
+            }
+        },
         Ok(Mode::StripeGate(opts)) => match losos_registrar::stripe_gate::run(opts).await {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => {
