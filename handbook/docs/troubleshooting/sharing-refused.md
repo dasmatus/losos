@@ -18,12 +18,17 @@ change with a reason.
 
 | What you see                                           | Reason                                                                                      | What to do                                                                 |
 | ------------------------------------------------------ | ------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| Mesh switches off and disabled, "no edge"              | No edge was found. Storage and compute sharing need somewhere to share *to*.                | [No edge found](edge-not-found).                                            |
+| Switch greyed, "Needs an edge proxy in reach."; the Mesh pane says **No edge proxy found** | No edge was found. Storage and compute sharing need somewhere to share *to*. | [No edge found](edge-not-found).                                            |
+| Apply refused: "no edge proxy is reachable from this box, so `losos.sharingMyStorage` cannot be turned on …" | The edge answered when you flipped the switch and had gone by the time you applied. The box refuses to promise room to a pool it cannot reach. | Wait for the Mesh pane to show the edge again (it rechecks every 20 seconds) and apply again. Nothing was changed. |
 | **Market** tab greyed out with "soon", disk sharing with it | The market is not open yet, and disk sharing lives on its pane because lending disk and being paid for it are one decision. | Nothing today. The nightly update turns it on when the market opens.       |
-| Market says this edge is not official                  | The edge is a company's own. Local sharing works; trading is refused by design.              | Use the LosOS edge for trading. See [official or not](../types/official-edge#official-or-not). |
-| "Join the mesh first"                                  | Lending spare time needs the box in the edge's cluster.                                      | Turn **Join the mesh** on, apply, then the hours.                            |
+| The edge's row wears a warning sign; Market says "The edge proxy this box found is not run by LosOS" | The edge is a company's own, or the LosOS root key is not published yet. Sharing through it works; trading is refused by design. | Use the LosOS edge for trading. See [official or not](../types/official-edge#official-or-not). |
+| "Join the mesh first."                                 | Lending spare time needs the box in the edge's cluster.                                      | Turn **Join the mesh** on, then set the hours; both go out in one apply.     |
 | Hours set, nothing is ever lent                        | The window starts and ends at the same minute, or the box is never idle inside it.           | Set a real window; the caption under the hours says how long it is.          |
-| Apply fails on a mesh change                           | The edge was reachable when you flipped the switch and not when the rebuild ran.             | [Apply fails](apply-fails), then try again with the edge up.                 |
+| Apply fails on a mesh change                           | The rebuild itself failed, after the box accepted the change.                                 | [Apply fails](apply-fails), then try again with the edge up.                 |
+
+Only *turning on* is ever refused. A box whose edge went away keeps the
+sharing it already had, can still change every other setting, and can turn
+sharing off at any time.
 
 ## What sharing never does
 
