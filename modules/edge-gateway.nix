@@ -179,8 +179,11 @@ let
               ;;
             clear)
               rm -f "$uplink" ${uplinkToken} ${uplinkBootstrap} ${uplinkNoisePub}
-              systemctl stop losos-rathole-uplink.service 2>/dev/null || true
+              # The rendered config goes first: losos-rathole-uplink.path
+              # starts the service again whenever the file exists and the
+              # service is not running, so stopping before removing races it.
               rm -f ${uplinkToml}
+              systemctl stop losos-rathole-uplink.service 2>/dev/null || true
               echo "uplink cleared: the boxes here are reachable on this LAN only."
               ;;
             *) usage; exit 2 ;;
@@ -303,6 +306,11 @@ in
     # What tty1 shows before anyone logs in: agetty fills `\4` with the
     # machine's IPv4 address and `\n` with its hostname when it prints
     # /etc/issue, so the banner is right without a service of its own.
+    # Only errors reach the console: at the default level the kernel's
+    # informational messages (VLAN filters, regulatory database) land on top
+    # of the banner and the login prompt, and the gateway's console is the
+    # one screen its operator reads.
+    boot.consoleLogLevel = lib.mkDefault 3;
     services.getty = {
       greetingLine = ''<<< LosOS edge gateway: \n.local (\4) >>>'';
       helpLine = ''
@@ -313,8 +321,11 @@ in
       '';
     };
 
+    # The registrar binary is on the shell's PATH too (not only inside the
+    # CLI): lan.openEnrolment's documentation names `losos-registrar enrol`.
     environment.systemPackages = [
       cli
+      edge.registrar.package
       pkgs.jq
       pkgs.avahi
       pkgs.curl

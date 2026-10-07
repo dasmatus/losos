@@ -128,6 +128,11 @@ pkgs.testers.nixosTest {
         # The test framework gives root its own password file; the preset's
         # first password would only draw a precedence warning beside it.
         users.users.root.initialPassword = lib.mkForce null;
+        # The screenshot below is of the banner. The test instrumentation
+        # raises the console log level to 7 (plain assignment, above the
+        # preset's mkDefault 3), so the image's quiet console is restored
+        # here or the kernel's chatter lands across the banner.
+        boot.consoleLogLevel = lib.mkForce 3;
         losos.edge = {
           gateway.enable = true;
           registrarApiPort = 8443;
@@ -396,6 +401,6 @@ pkgs.testers.nixosTest {
     spoke.succeed("losos-edge uplink clear")
     spoke.fail("test -e /var/lib/losos-edge/uplink.json")
     spoke.fail("test -e /etc/rathole/uplink.toml")
-    assert spoke.succeed("systemctl is-active losos-rathole-uplink.service || true").strip() == "inactive"
+    spoke.wait_until_succeeds("test \"$(systemctl is-active losos-rathole-uplink.service)\" = inactive")
   '';
 }
