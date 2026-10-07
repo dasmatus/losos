@@ -42,7 +42,10 @@ let
   testIso =
     (iso.extendModules {
       modules = [
-        "${pkgs.path}/nixos/modules/testing/test-instrumentation.nix"
+        # Path arithmetic, not "${pkgs.path}/…": interpolating copies the
+        # nixpkgs source into a second store path, which CI's evaluator (with
+        # nixpkgs fetched as a github: tarball) then fails to realise.
+        ({ modulesPath, ... }: { imports = [ (modulesPath + "/testing/test-instrumentation.nix") ]; })
         {
           # efi-readvar, to show the certificate the firmware holds in `db`.
           environment.systemPackages = [ pkgs.efitools ];
