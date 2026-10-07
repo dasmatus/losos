@@ -15,7 +15,14 @@ import * as React from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { DashboardSquare01Icon, PlusSignIcon } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
 import { useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
 import {
@@ -121,26 +128,20 @@ export function WidgetBoard({ className, heading }: WidgetBoardProps) {
 function EmptyBoard({ onAdd }: { onAdd: () => void }) {
   const t = useT();
   return (
-    <Card>
-      <CardHeader className="items-start">
-        <span
-          className={cn(
-            "mb-1 flex size-10 items-center justify-center rounded-control",
-            "bg-accent-wash text-accent",
-          )}
-        >
+    <Empty className="items-start text-left">
+      <EmptyHeader className="items-start text-left">
+        <EmptyMedia variant="icon">
           <HugeiconsIcon
             icon={DashboardSquare01Icon}
-            size={22}
             strokeWidth={1.5}
             color="currentColor"
             aria-hidden="true"
           />
-        </span>
-        <CardTitle>{t("widgets.board.emptyTitle")}</CardTitle>
-        <CardDescription>{t("widgets.board.emptyBody")}</CardDescription>
-      </CardHeader>
-      <CardContent>
+        </EmptyMedia>
+        <EmptyTitle>{t("widgets.board.emptyTitle")}</EmptyTitle>
+        <EmptyDescription>{t("widgets.board.emptyBody")}</EmptyDescription>
+      </EmptyHeader>
+      <EmptyContent className="items-start">
         <Button onClick={onAdd}>
           <HugeiconsIcon
             icon={PlusSignIcon}
@@ -151,7 +152,7 @@ function EmptyBoard({ onAdd }: { onAdd: () => void }) {
           />
           {t("widgets.board.add")}
         </Button>
-      </CardContent>
-    </Card>
+      </EmptyContent>
+    </Empty>
   );
 }
