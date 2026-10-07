@@ -61,7 +61,7 @@ software, and describes how the project is documented and tested.
 | 2b. Nainštalujte operačný systém                                                     | [5 Inštalácia](./instalacia.md)                                          |
 | 2c. Vykonajte základnú konfiguráciu                                                  | [6 Základná konfigurácia](./konfiguracia.md)                             |
 | 2d. Overte správnosť konfigurácie a funkčnosť                                        | [7 Overenie](./overenie.md): mesh dvoch boxov s edge aj bez neho, testy, kontrolné zoznamy |
-| 3. Spracujte cenovú ponuku hardvérového a softvérového vybavenia                      | [8 Cenová ponuka](./cenova-ponuka.md)                                    |
+| 3. Spracujte cenovú ponuku hardvérového a softvérového vybavenia (navrhnutý dovetok: *v prípade reálneho nasadenia*, čaká na potvrdenie) | [8 Cenová ponuka](./cenova-ponuka.md): dve konfigurácie reálneho nasadenia |
 | 4. Vypracujte technickú dokumentáciu                                                 | tento dokument a [9 Dokumentácia projektu](./dokumentacia.md)            |
 
 ## Ako čítať
