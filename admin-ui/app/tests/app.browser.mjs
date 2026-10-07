@@ -441,6 +441,11 @@ await check('the plate of salmon replaces the name in the top bar and is the fav
   assert.match(icon, /^\/assets\/losos-[\w-]+\.png$/, `the favicon is not the bundled plate: ${icon}`);
   assert.equal((await page.request.get(origin + icon)).status(), 200);
   assert.equal(await page.locator('header').getByText('LosOS', { exact: true }).count(), 0, 'the name is still drawn as text');
+  // A photo of dinner needs a word of explanation: hovering the plate says
+  // what it means, and the same words are the trigger's accessible name.
+  const trigger = page.locator('header').getByRole('button', { name: /Losos is Slovak for salmon/ });
+  await trigger.hover();
+  await page.locator('[data-slot="tooltip-content"]').filter({ hasText: 'The logo is a plate of it' }).waitFor();
   await page.close();
 });
 

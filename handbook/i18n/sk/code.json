@@ -360,5 +360,9 @@
   "theme.tags.tagsPageTitle": {
     "message": "Značky",
     "description": "The title of the tag list page"
+  },
+  "losos.navbar.logoTip": {
+    "message": "LosOS je pomenovaný po lososovi. Logo je tanier lososa z vlastnej fotky majiteľa.",
+    "description": "The tooltip on the navbar logo, saying what the picture means"
   }
 }

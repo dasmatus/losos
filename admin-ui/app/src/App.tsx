@@ -4,6 +4,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { Compass01Icon, ViewIcon, ViewOffSlashIcon } from "@hugeicons/core-free-icons";
 import logoUrl from "@/assets/losos.png";
 import { AppSidebar } from "@/components/app-sidebar";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -256,8 +257,27 @@ function TopBar({ signedIn }: { signedIn: boolean }) {
         {/* The plate of salmon (losos is Slovak for salmon) in place of the
             name: Matus's own photo, cut out at the plate's rim, so nothing in
             it is anyone else's drawing; its alt text is the name. Bundled, so
-            img-src 'self' holds. */}
-        <img src={logoUrl} alt="LosOS" width={32} height={32} className="size-8" />
+            img-src 'self' holds. A photo of dinner needs a word of
+            explanation, so the plate is a tooltip trigger whose accessible
+            name is that explanation (Base UI shows no tooltip on touch). */}
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <button
+                  type="button"
+                  aria-label={t("shell.logoTip")}
+                  className="inline-flex shrink-0 rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+                />
+              }
+            >
+              <img src={logoUrl} alt="LosOS" width={32} height={32} className="size-8" />
+            </TooltipTrigger>
+            <TooltipContent side="bottom" align="start" className="max-w-[22rem]">
+              {t("shell.logoTip")}
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
         <Badge variant="outline" className="hidden sm:inline-flex">
           {t("shell.thisBox")}
         </Badge>
