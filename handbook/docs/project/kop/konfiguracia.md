@@ -95,6 +95,12 @@ aktualizácií `losos.upgradeFlakeUri`).
 
 ![Panel Mesh: edge nájdený v sieti aj cez internet, prepínače meshu a okno hodín.](./img/mesh-dva-edge.png)
 
+Prepínače meshu a zdieľania disku sú **len na zapnutie s edge v dosahu**
+(*enable-only* brána): kým box edge nenašiel (`GET /api/edge` hlási
+*none*), sú sivé s dôvodom a priame volanie API odpovie 409. Zapnuté
+zdieľanie sa pri strate edge nevypína samo, box ho však znovu ponúkne až
+po jeho návrate. Kapitola 7 to overuje ako scenár A a B.
+
 ## Dve veci, ktoré nie sú súčasťou popisu
 
 **Vzhľad** (pozadie, závoj, ručne písané widgety) drží démon ako dokument

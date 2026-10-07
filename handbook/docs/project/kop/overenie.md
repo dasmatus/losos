@@ -6,9 +6,11 @@ sidebar_position: 7
 # Overenie správnosti konfigurácie a funkčnosti
 
 Bod 2d zadania: *overte správnosť konfigurácie a funkčnosť operačného
-systému.* Overenie má v projekte jednu hlavnú skúšku a tri vrstvy. Hlavná skúška je
-mesh: dva boxy a edge v jednej sieti so spoločným úložiskom, lebo správnosť
-konfigurácie tohto systému znamená, že mesh funguje. Vrstvy sú
+systému.* Overenie má v projekte jednu hlavnú skúšku a tri vrstvy. Hlavná
+skúška je mesh v dvoch scenároch: **bez edge proxy** (box zdieľanie odmietne
+a slúži lokálne) a **s edge proxy** (dva boxy v jednej sieti so spoločným
+úložiskom), lebo správnosť konfigurácie tohto systému znamená, že mesh
+funguje práve vtedy, keď má. Vrstvy sú
 automatizované testy, ktoré bežia pri každej zmene; ručný kontrolný zoznam
 vo virtuálnom stroji, ktorý je zároveň scenárom ukážky; a nezávislá kritická
 recenzia, ktorej nálezy sa opravili a pokryli testami.
@@ -91,50 +93,76 @@ inštalačného ISO a jeho boot** pod OVMF aj SeaBIOS (`tests/iso-boot.py`
 Príručka má vlastný workflow (typová kontrola, kontrola odkazov a tokenov,
 zostavenie, nasadenie na GitHub Pages, zostavenie tohto PDF).
 
-## Hlavná skúška: mesh funguje medzi dvoma boxmi a edge
+## Hlavná skúška: mesh funguje, s edge proxy aj bez neho
 
 Správnosť konfigurácie tohto systému sa nedá overiť na jednom stroji, lebo
 jeho zmysel je v sieti: box musí nájsť edge, pripojiť sa k meshu a zdieľané
-úložisko musí byť vidieť z oboch strán. Hlavné overenie je preto zostava
-**dvoch boxov a jedného edge v jednej sieti**, bez internetu, s úložiskom
-spojeným do poolu a viditeľným na oboch boxoch. Má dve podoby:
+úložisko musí byť vidieť z oboch strán. Rovnako dôležité je však to, čo box
+urobí, keď edge v sieti **nie je**: musí to zistiť sám, zdieľanie odmietnuť
+a ďalej slúžiť svojmu majiteľovi lokálne. Hlavné overenie sú preto **dva
+scenáre na jednej sieti bez internetu**, každý s očakávaným výsledkom, ktoré
+sa predvedú za sebou na tej istej zostave dvoch boxov.
+
+### Scenár A: bez edge proxy
+
+Zostava: dva boxy v jednej sieti, žiadny edge (alebo edge vypnutý).
+
+| #  | Krok                                                   | Očakávaný výsledok                                                                                     |
+| -- | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------ |
+| A1 | spustiť oba boxy a prejsť sprievodcom                  | Nextcloud a adminské rozhranie fungujú na každom boxe samostatne; panel Mesh hlási *Edge proxy: none*  |
+| A2 | pokúsiť sa zapnúť *Join the mesh* alebo zdieľanie disku | prepínače sú sivé s dôvodom; priame volanie API odpovie 409 s vetou, že edge nebol nájdený             |
+| A3 | nechať boxy bežať a sledovať panel Mesh                 | box skenuje sieť ďalej (mDNS `_losos-edge._tcp` a nastavená adresa), stav sa nemení, nič sa nepokazí   |
+| A4 | reštartovať box                                         | po štarte je stav rovnaký: lokálne služby bežia, mesh je vypnutý, nič sa nepokúša pripojiť naslepo    |
+
+Výsledok scenára A: box bez edge je plnohodnotné lokálne úložisko a **nikdy
+nezačne zdieľať disk do siete, v ktorej nie je dôveryhodný edge**. Toto je
+brána *enable-only* z kapitoly 6: zdieľanie sa dá zapnúť len s edge
+v dosahu.
+
+### Scenár B: s edge proxy
+
+Zostava: tie isté dva boxy plus jeden edge v tej istej sieti.
+
+| #  | Krok                                                         | Očakávaný výsledok                                                                                   |
+| -- | ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
+| B1 | spustiť edge (alebo ho zapnúť k zostave zo scenára A)        | do minúty oba boxy ukážu na paneli Mesh *Edge proxy found* so zdrojom *On this network*             |
+| B2 | na oboch boxoch zapnúť *Join the mesh*                       | prestavba prejde; `kubectl get nodes` na edge ukáže oba uzly v stave Ready                            |
+| B3 | na oboch boxoch zapnúť zdieľanie disku                       | Longhorn na edge ukáže dva uzly s pridelenou kapacitou; adresár `/home/shared` je odomknutý (fscrypt) |
+| B4 | vytvoriť zväzok v poole a zapísať doň dáta                   | zväzok má repliky na oboch boxoch; dáta sú čitateľné po odpojení jedného boxu                         |
+| B5 | vypnúť edge                                                   | do minúty oba boxy hlásia *Edge proxy: none*; zapnutie zdieľania odpovie 409; vlastné aplikácie boxov bežia ďalej (návrat do scenára A) |
+| B6 | zapnúť edge späť                                              | brána sa otvorí bez zásahu; uzly sa vrátia do Ready bez opätovného pridania (`/etc/rancher` prežil)   |
+| B7 | nastaviť okno 23:00 až 07:00 a pozrieť uzol na edge mimo okna | uzol má taint NoSchedule; v okne a pri nečinnosti taint zmizne                                        |
+| B8 | pripojiť neoficiálny edge (bez podpisu koreňovým kľúčom)      | zdieľanie je dovolené, trh hlási *noOfficialEdge* a objednávka odpovie 409                            |
+
+Výsledok scenára B: **úložisko dvoch boxov je spojené do jedného poolu
+a vidieť ho z oboch strán**, členstvo prežije výpadok edge aj reštart, a
+obchodovanie sa povolí len oficiálnemu edge.
+
+### Čím sú scenáre doložené
 
 - **Automatizovaný test `tests/edge-lan.nix`** (pripravovaný v PR #75):
   dva virtuálne stroje na jednej sieti, `edge` s modulom edge a ohlasovaním
   služby `_losos-edge._tcp` cez mDNS, `box` s riadiacou rovinou zariadenia.
-  Test tvrdí, čo sľubuje `backend/src/edge.rs`: ohlásenie edge je na drôte
-  a box ho rozlíši; `GET /api/edge` hlási edge ako dosiahnuteľný zo siete
-  s ohlásenou adresou; s edge v dosahu je prepnutie do režimu mesh prijaté;
-  keď edge zmizne, box to do dvoch skenov zbadá a zapnutie zdieľania
-  odmietne s vlastnou vetou; po návrate edge sa brána znovu otvorí.
-  Druhý, nepodpísaný edge v tom istom teste overuje, že obchodovanie sa
-  povolí len oficiálnemu edge.
+  Test prejde oba scenáre v jednom behu: box bez edge zdieľanie odmietne
+  (A2); s edge v dosahu je prepnutie do režimu mesh prijaté (B1, B2); keď
+  edge zmizne, box to do dvoch skenov zbadá a zapnutie zdieľania odmietne
+  s vlastnou vetou (B5); po návrate edge sa brána znovu otvorí (B6). Druhý,
+  nepodpísaný edge v tom istom teste overuje, že obchodovanie sa povolí len
+  oficiálnemu edge (B8).
 - **Ukážka `demo/edge-lan/run.sh`** (ten istý PR): skript postaví edge VM
   ako smerovač virtuálnej siete (VDE prepínač, 10.77.0.1/24, DHCP, NAT),
-  nainštaluje box z inštalačného ISO, zaberie ho, a prevedie scenár cez
-  API: box edge nájde sám, panel Mesh to ukáže a dovolí zdieľať úložisko;
-  edge sa vypne, box to do minúty zbadá a zdieľanie odmietne; edge sa
-  vráti a brána sa otvorí. Nahrávka ukážky je súčasťou materiálov
-  k obhajobe. Skript je zároveň základom reprodukovateľného firemného
-  nasadenia (edge a boxy v jednej sieti), takže overenie konfigurácie a
-  návod pre operátora sú jeden a ten istý postup.
+  nainštaluje box z inštalačného ISO, zaberie ho, a prevedie oba scenáre
+  cez API: box bez edge zdieľanie odmietne; edge sa zapne, box ho nájde
+  sám, panel Mesh to ukáže a dovolí zdieľať úložisko; edge sa vypne, box to
+  do minúty zbadá a zdieľanie odmietne; edge sa vráti a brána sa otvorí.
+  Nahrávka oboch vetiev je súčasťou materiálov k obhajobe. Skript je
+  zároveň základom reprodukovateľného firemného nasadenia (edge a boxy
+  v jednej sieti), takže overenie konfigurácie a návod pre operátora sú
+  jeden a ten istý postup.
 
-Kontrolný zoznam mesh skúšky s očakávaným výsledkom:
-
-| #  | Krok                                                        | Očakávaný výsledok                                                                              |
-| -- | ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| M1 | spustiť edge a dva boxy v jednej sieti bez internetu        | oba boxy ukážu na paneli Mesh *Edge proxy found* so zdrojom *On this network*                  |
-| M2 | na oboch boxoch zapnúť *Join the mesh*                       | prestavba prejde; `kubectl get nodes` na edge ukáže oba uzly v stave Ready                       |
-| M3 | na oboch boxoch zapnúť zdieľanie disku                       | Longhorn na edge ukáže dva uzly s pridelenou kapacitou; adresár `/home/shared` je odomknutý (fscrypt) |
-| M4 | vytvoriť zväzok v poole a zapísať doň dáta                   | zväzok má repliky na oboch boxoch; dáta sú čitateľné po odpojení jedného boxu                     |
-| M5 | vypnúť edge                                                   | do minúty oba boxy hlásia *Edge proxy: none*; zapnutie zdieľania odpovie 409 s vlastnou vetou; vlastné aplikácie boxov bežia ďalej |
-| M6 | zapnúť edge späť                                              | brána sa otvorí bez zásahu; uzly sa vrátia do Ready bez opätovného pridania (`/etc/rancher` prežil) |
-| M7 | nastaviť okno 23:00 až 07:00 a pozrieť uzol na edge mimo okna | uzol má taint NoSchedule; v okne a pri nečinnosti taint zmizne                                   |
-| M8 | pripojiť neoficiálny edge (bez podpisu koreňovým kľúčom)      | zdieľanie je dovolené, trh hlási *noOfficialEdge* a objednávka odpovie 409                        |
-
-Body M1, M2, M5, M6 a M8 pokrýva test `edge-lan.nix` a ukážka; M3, M4 a M7
-sú overené v `cluster-vm.nix` (koexistencia runtime) a na edge ručne, a sú
-to body, ktoré ukážka na obhajobe predvedie naživo.
+Body A1 až A4, B1, B2, B5, B6 a B8 pokrýva test `edge-lan.nix` a ukážka;
+B3, B4 a B7 sú overené v `cluster-vm.nix` (koexistencia runtime) a na edge
+ručne, a sú to body, ktoré ukážka na obhajobe predvedie naživo.
 
 ## Overenie jedného boxu vo virtuálnom stroji
 
@@ -194,5 +222,5 @@ hodiny); ich funkčnosť sa overuje ručne vo VM ukážke a Apache podu
 samostatným testom. Mesh s Longhornom a taintom beží v `cluster-vm.nix`
 len po koexistenciu runtime; objavenie edge a brána zdieľania majú test
 `edge-lan.nix` (PR #75), replikácia a taint sa overujú na edge ručne podľa
-zoznamu M3, M4 a M7. Trh je overený proti náhradám
+zoznamu B3, B4 a B7. Trh je overený proti náhradám
 Stripe a apiservera.
