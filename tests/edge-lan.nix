@@ -222,6 +222,15 @@ pkgs.testers.nixosTest {
         with box.nested(f"waiting for /api/edge reachable={reachable} official={official}"):
             retry(probe, timeout_seconds=90)
 
+    def wait_edges(urls):
+        # A scan probes /health first and challenges /identity after, so a
+        # stop that lands between the two shows the edge reachable but not
+        # official for one period. Wait for the list itself to settle.
+        def probe(_):
+            return [e["url"] for e in edge_doc()["edges"]] == urls
+        with box.nested(f"waiting for /api/edge to list {urls}"):
+            retry(probe, timeout_seconds=90)
+
     wait_edge(True, official=True)
     doc = edge_doc()
     print("edge:", doc)
@@ -269,9 +278,9 @@ pkgs.testers.nixosTest {
     #     market says why and an action is refused before anything leaves
     #     the box.
     edge.succeed("systemctl stop losos-registrar.service")
-    wait_edge(True, official=False)
+    wait_edges(["http://edge.local:8444"])
     doc = edge_doc()
-    assert [e["url"] for e in doc["edges"]] == ["http://edge.local:8444"], doc
+    assert doc["reachable"] is True and doc["official"] is False, doc
     code, body = api("GET", "/api/market")
     assert code == "200", f"/api/market answered {code}: {body!r}"
     assert json.loads(body) == {"available": False, "reason": "noOfficialEdge"}, body
