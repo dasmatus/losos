@@ -135,6 +135,16 @@ pub enum IdentityOpts {
     },
     /// `identity show --key FILE`: print the public key of a key file.
     Show { key: String },
+    /// `identity verify --root-public HEX --url U --nonce HEX --answer FILE`:
+    /// run the box's four checks over a `GET /identity?nonce=` answer saved
+    /// to FILE (`-` for stdin). Exit 0 and name the edge, or exit 1 with the
+    /// reason. What provisioning runs after it deployed an identity.
+    Verify {
+        root_public: String,
+        url: String,
+        nonce: String,
+        answer: String,
+    },
 }
 
 /// `seed` options. Writes the declarative rathole `[server]` base (for zero
@@ -284,8 +294,14 @@ pub fn parse(args: Vec<String>) -> Result<Mode> {
                 "show" => Ok(Mode::Identity(IdentityOpts::Show {
                     key: req(&rest, "--key")?.to_string(),
                 })),
+                "verify" => Ok(Mode::Identity(IdentityOpts::Verify {
+                    root_public: req(&rest, "--root-public")?.to_string(),
+                    url: req(&rest, "--url")?.to_string(),
+                    nonce: req(&rest, "--nonce")?.to_string(),
+                    answer: req(&rest, "--answer")?.to_string(),
+                })),
                 _ => Err(miette!(
-                    "usage: losos-registrar identity keygen|sign|show ..."
+                    "usage: losos-registrar identity keygen|sign|show|verify ..."
                 )),
             }
         }
