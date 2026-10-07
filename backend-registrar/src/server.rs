@@ -2057,21 +2057,17 @@ async fn uplink_once(
             target.token_file
         ));
     }
-    let bootstrap = tokio::fs::read_to_string(&target.bootstrap_token_file)
-        .await
-        .into_diagnostic()
-        .with_context(|| {
-            format!(
-                "read uplink bootstrap token file {}",
-                target.bootstrap_token_file
-            )
-        })?;
-    let noise_public_key = match &target.noise_public_key_file {
+    let bootstrap = match &target.bootstrap_token_file {
         Some(path) => tokio::fs::read_to_string(path)
             .await
-            .ok()
-            .map(|k| k.trim().to_string())
-            .filter(|k| !k.is_empty()),
+            .into_diagnostic()
+            .with_context(|| format!("read uplink bootstrap token file {path}"))?
+            .trim()
+            .to_string(),
+        None => token.clone(),
+    };
+    let noise_public_key = match &target.noise_public_key_file {
+        Some(path) => pin_hub_noise_key(client, &target.registrar_url, path).await,
         None => None,
     };
 
@@ -2141,7 +2137,7 @@ async fn uplink_once(
     let rendered = uplink_config(
         &UplinkTarget {
             rathole_endpoint: target.rathole_endpoint.clone(),
-            bootstrap_token: bootstrap.trim().to_string(),
+            bootstrap_token: bootstrap,
             token,
             noise_public_key,
         },
@@ -2156,6 +2152,70 @@ async fn uplink_once(
         );
     }
     Ok(())
+}
+
+/// The hub's Noise public key for the uplink: the pinned file when it
+/// exists, else one fetch of the hub's `/noise-public-key`, written to the
+/// file (0600, atomically) so the next pass and rathole read the same
+/// bytes. A hub that answers 404 runs plain TCP, and nothing is written, so
+/// a hub that turns Noise on later is pinned on the first pass after. Any
+/// other failure is logged and the uplink waits for the next pass rather
+/// than rendering a config that would connect unpinned.
+async fn pin_hub_noise_key(
+    client: &reqwest::Client,
+    registrar_url: &str,
+    path: &str,
+) -> Option<String> {
+    match tokio::fs::read_to_string(path).await {
+        Ok(k) => {
+            let k = k.trim().to_string();
+            return if k.is_empty() { None } else { Some(k) };
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => {
+            tracing::warn!(target: Action::Uplink.target(), "read {path}: {e}");
+            return None;
+        }
+    }
+    let url = format!("{}/noise-public-key", registrar_url.trim_end_matches('/'));
+    let key = match client.get(&url).send().await {
+        Ok(r) if r.status() == reqwest::StatusCode::NOT_FOUND => return None,
+        Ok(r) if r.status().is_success() => match r.text().await {
+            Ok(t) => t.trim().to_string(),
+            Err(e) => {
+                tracing::warn!(target: Action::Uplink.target(), "{url}: {e}");
+                return None;
+            }
+        },
+        Ok(r) => {
+            tracing::warn!(target: Action::Uplink.target(), "{url} answered {}", r.status());
+            return None;
+        }
+        Err(e) => {
+            tracing::warn!(target: Action::Uplink.target(), "{url}: {e}");
+            return None;
+        }
+    };
+    if key.is_empty() || key.len() > 128 || !key.chars().all(|c| c.is_ascii_graphic()) {
+        tracing::warn!(target: Action::Uplink.target(), "{url}: not a Noise public key");
+        return None;
+    }
+    if let Some(parent) = Path::new(path).parent() {
+        let _ = tokio::fs::create_dir_all(parent).await;
+    }
+    match crate::fsutil::atomic_write(Path::new(path), key.as_bytes(), 0o600).await {
+        Ok(()) => {
+            tracing::info!(
+                target: Action::Uplink.target(),
+                "pinned the hub's Noise public key from {url} into {path}",
+            );
+            Some(key)
+        }
+        Err(e) => {
+            tracing::warn!(target: Action::Uplink.target(), "write {path}: {e}");
+            None
+        }
+    }
 }
 
 async fn write_if_changed(path: &Path, content: &str, mode: u32) -> Result<bool> {

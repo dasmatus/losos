@@ -357,6 +357,7 @@ fn mode_name(mode: &miette::Result<Mode>) -> &'static str {
         Ok(Mode::Join(_)) => "join",
         Ok(Mode::StripeGate(_)) => "stripe-gate",
         Ok(Mode::Identity(_)) => "identity",
+        Ok(Mode::Enrol(_)) => "enrol",
         Err(_) => "error",
     }
 }
@@ -502,4 +503,37 @@ fn federation_flags_are_off_unless_given() {
     let uplink = opts.uplink.expect("uplink on");
     assert_eq!(uplink.rathole_config, "/tmp/up.toml");
     assert_eq!(uplink.interval, std::time::Duration::from_secs(5));
+}
+
+#[test]
+fn enrol_takes_a_dir_and_forget_one_positional_id() {
+    use losos_registrar::opts::EnrolOpts;
+    let args = |a: &[&str]| a.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+    let enrol = |a: &[&str]| match parse(args(a)) {
+        Ok(Mode::Enrol(e)) => Some(e),
+        _ => None,
+    };
+    assert_eq!(
+        enrol(&["enrol", "list", "--dir", "/var/lib/x"]),
+        Some(EnrolOpts::List {
+            dir: "/var/lib/x".into()
+        })
+    );
+    for order in [
+        &["enrol", "forget", "--dir", "/var/lib/x", "mattbox"][..],
+        &["enrol", "forget", "mattbox", "--dir", "/var/lib/x"][..],
+    ] {
+        assert_eq!(
+            enrol(order),
+            Some(EnrolOpts::Forget {
+                dir: "/var/lib/x".into(),
+                id: "mattbox".into()
+            })
+        );
+    }
+    assert_eq!(
+        mode_name(&parse(args(&["enrol", "forget", "--dir", "/x"]))),
+        "error"
+    );
+    assert_eq!(mode_name(&parse(args(&["enrol", "list"]))), "error");
 }

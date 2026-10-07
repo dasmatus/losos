@@ -11,6 +11,7 @@ use common::{Edge, TenantSpec, GOOD_TOKEN, OTHER_TOKEN};
 use serde_json::json;
 
 const ZONE: &str = "acme.losos.cfd";
+const HUB_NOISE_KEY: &str = "hubNoisePublicKeyBase64ForTheUplinkTest00000=";
 /// The spoke's own tenant token on the hub.
 const SPOKE_TOKEN: &str = "5p0ke5p0ke5p0ke5p0ke5p0ke5p0ke5p0ke5p0ke5p0ke5p0ke5p0ke5p0ke5p0k";
 
@@ -162,9 +163,10 @@ async fn narrowing_the_zone_drops_relayed_boxes_on_the_next_tick() {
 /// the spoke. Removing the uplink file switches the uplink off.
 #[tokio::test]
 async fn the_uplink_relays_what_is_live_on_the_spoke() {
-    let hub = Edge::start(
+    let hub = Edge::start_with_noise_public_key(
         "fed-hub",
         &[TenantSpec::new("acme", "acme.losos.cfd", SPOKE_TOKEN).with_relay_zone(ZONE)],
+        HUB_NOISE_KEY,
     )
     .await;
     let hub_base = hub.base.clone();
@@ -178,7 +180,8 @@ async fn the_uplink_relays_what_is_live_on_the_spoke() {
         ],
         move |opts, dir| {
             std::fs::write(dir.join("uplink.token"), SPOKE_TOKEN).unwrap();
-            std::fs::write(dir.join("hub-bootstrap.token"), common::BOOTSTRAP_TOKEN).unwrap();
+            // No bootstrap token file: the spoke token stands in, and the
+            // Noise key is not pinned yet, so the first pass fetches it.
             std::fs::write(
                 dir.join("uplink.json"),
                 serde_json::to_vec(&json!({
@@ -186,7 +189,7 @@ async fn the_uplink_relays_what_is_live_on_the_spoke() {
                     "rathole_endpoint": "hub.losos.cfd:2333",
                     "id": "acme",
                     "token_file": dir.path_str("uplink.token"),
-                    "bootstrap_token_file": dir.path_str("hub-bootstrap.token"),
+                    "noise_public_key_file": dir.path_str("pins/hub-noise.pub"),
                 }))
                 .unwrap(),
             )
@@ -212,6 +215,19 @@ async fn the_uplink_relays_what_is_live_on_the_spoke() {
     );
     assert!(empty.contains("[client.services]"), "{empty}");
     assert!(!empty.contains("acme.mattbox"));
+    assert!(
+        empty.contains(&format!("default_token = \"{SPOKE_TOKEN}\"")),
+        "{empty}"
+    );
+    assert!(
+        empty.contains(&format!("remote_public_key = \"{HUB_NOISE_KEY}\"")),
+        "{empty}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(spoke.dir.join("pins/hub-noise.pub")).unwrap(),
+        HUB_NOISE_KEY,
+        "the hub's key is pinned on first contact"
+    );
 
     let (status, body) = spoke
         .register("mattbox", "mattbox.acme.losos.cfd", GOOD_TOKEN)

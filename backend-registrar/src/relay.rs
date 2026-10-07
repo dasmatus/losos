@@ -132,10 +132,17 @@ pub struct UplinkFile {
     pub id: String,
     /// 0600 file holding this spoke's tenant token on the hub.
     pub token_file: String,
-    /// 0600 file holding the hub's rathole bootstrap token.
-    pub bootstrap_token_file: String,
-    /// The hub's Noise public key, pinned on first contact by the module's
-    /// `losos-rathole-uplink-pin` unit. Absent or empty means plain TCP.
+    /// 0600 file holding the hub's rathole bootstrap token. Optional: every
+    /// relayed service carries the spoke's own token, so rathole's
+    /// `default_token` is never consulted, and the spoke token stands in
+    /// when no bootstrap token was handed out.
+    #[serde(default)]
+    pub bootstrap_token_file: Option<String>,
+    /// Where the hub's Noise public key is pinned. Absent means plain TCP.
+    /// When the file does not exist yet the uplink loop fetches the key once
+    /// from the hub's `/noise-public-key` and writes it here (trust on first
+    /// contact, as a box pins its edge); from then on the file is authority
+    /// and a hub whose key changed is refused by rathole, not re-pinned.
     #[serde(default)]
     pub noise_public_key_file: Option<String>,
 }
@@ -286,6 +293,33 @@ impl Enrolment {
     #[must_use]
     pub fn owns(&self, path: &Path) -> bool {
         path.starts_with(&self.dir)
+    }
+}
+
+/// The `enrol` subcommand (`crate::opts::EnrolOpts`).
+pub async fn run(opts: crate::opts::EnrolOpts) -> miette::Result<()> {
+    use crate::opts::EnrolOpts;
+    use miette::{miette, IntoDiagnostic};
+    match opts {
+        EnrolOpts::List { dir } => {
+            let store = Enrolment::new(dir);
+            for (id, hostname) in store.list().await.into_diagnostic()? {
+                println!("{id} {hostname}");
+            }
+            Ok(())
+        }
+        EnrolOpts::Forget { dir, id } => {
+            if !dns_label(&id) {
+                return Err(miette!("{id} is not an appliance id"));
+            }
+            let store = Enrolment::new(dir);
+            if store.forget(&id).await.into_diagnostic()? {
+                println!("forgot {id}");
+                Ok(())
+            } else {
+                Err(miette!("{id} is not enrolled here"))
+            }
+        }
     }
 }
 
