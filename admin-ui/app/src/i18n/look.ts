@@ -118,6 +118,16 @@ export default defineMessages({
   "look.editor.field.name": { en: "Name", sk: "Názov", de: "Name" },
   "look.editor.field.span": { en: "Width", sk: "Šírka", de: "Breite" },
   "look.editor.field.source": { en: "Source", sk: "Zdroj", de: "Quelltext" },
+  "look.editor.pasted.title": {
+    en: "Pasting something from the internet? Read it first.",
+    sk: "Vkladáte niečo z internetu? Najprv si to prečítajte.",
+    de: "Etwas aus dem Internet eingefügt? Erst lesen.",
+  },
+  "look.editor.pasted.body": {
+    en: "A widget runs its script on every browser that opens this box. Keep only code you understand; anything that asks you to paste a key, a password or a link you do not recognise does not belong here.",
+    sk: "Widget spúšťa svoj skript v každom prehliadači, ktorý otvorí tento box. Nechajte si len kód, ktorému rozumiete; čokoľvek, čo od vás žiada vložiť kľúč, heslo alebo odkaz, ktorý nepoznáte, sem nepatrí.",
+    de: "Ein Widget führt sein Skript in jedem Browser aus, der diese Box öffnet. Behalten Sie nur Code, den Sie verstehen; alles, was Sie auffordert, einen Schlüssel, ein Passwort oder einen unbekannten Link einzufügen, gehört nicht hierher.",
+  },
   "look.editor.sourceHint": {
     en: "{used} of {max} KiB",
     sk: "{used} z {max} KiB",
