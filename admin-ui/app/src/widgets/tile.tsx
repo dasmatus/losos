@@ -38,6 +38,8 @@ import { BarView } from "./render/bar";
 import { HeatmapView } from "./render/heatmap";
 import { ListView } from "./render/list";
 import { NumberView } from "./render/number";
+import { getLookState, getServerLookState, subscribeLook } from "@/lib/look";
+import { HandFrame } from "./hand-frame";
 import { createSandbox } from "./sandbox";
 import { compileSpec } from "./spec";
 import { WidgetError, type WidgetFn, type WidgetResult } from "./types";
@@ -54,6 +56,11 @@ interface Runnable {
 }
 
 function resolve(instance: WidgetInstance): Runnable | { error: string } {
+  if (instance.source.kind === "hand") {
+    // Never reached: WidgetTile hands a hand-written widget to HandTile
+    // before resolving. Kept so the switch stays exhaustive.
+    return { error: t("look.frame.gone") };
+  }
   if (instance.source.kind === "builtin") {
     const entry = catalogueEntry(instance.source.id);
     if (entry === undefined) {
@@ -119,7 +126,15 @@ export interface WidgetTileProps {
   onMove: (id: string, direction: "up" | "down") => void;
 }
 
-export function WidgetTile({ instance, index, total, onRemove, onMove }: WidgetTileProps) {
+/* Two kinds of tile behind one name. A built-in or spec widget RUNS — a
+ * function, a result, a renderer. A widget written by hand does not run
+ * here at all: it is a document the box keeps, drawn by the sandboxed frame
+ * (hand-frame.tsx), so its tile is a different thing with the same chrome. */
+export function WidgetTile(props: WidgetTileProps) {
+  return props.instance.source.kind === "hand" ? <HandTile {...props} /> : <RunTile {...props} />;
+}
+
+function RunTile({ instance, index, total, onRemove, onMove }: WidgetTileProps) {
   const t = useT();
   const locale = useLocale();
   // The locale is a dependency: resolving names a built-in and may produce a
@@ -199,36 +214,15 @@ export function WidgetTile({ instance, index, total, onRemove, onMove }: WidgetT
       className={cn("widget-tile", runnable?.span === "full" && "md:col-span-2")}
     >
       <Card className={cn("flex h-full animate-none flex-col", failed && "bg-sunk")}>
-      <div className="flex items-start gap-2 px-4 pt-4 pb-2">
-        <h3
-          className={cn(
-            "min-w-0 flex-1 truncate text-[13px] font-semibold tracking-wide uppercase",
-            failed ? "text-faint" : "text-muted",
-          )}
-        >
-          {title}
-        </h3>
-
-        <div className="flex shrink-0 items-center gap-0.5">
-          <IconButton
-            label={t("widgets.tile.moveEarlier", { title })}
-            icon={ArrowUp01Icon}
-            disabled={index === 0}
-            onClick={() => onMove(instance.id, "up")}
-          />
-          <IconButton
-            label={t("widgets.tile.moveLater", { title })}
-            icon={ArrowDown01Icon}
-            disabled={index >= total - 1}
-            onClick={() => onMove(instance.id, "down")}
-          />
-          <IconButton
-            label={t("widgets.tile.remove", { title })}
-            icon={Delete02Icon}
-            onClick={() => onRemove(instance.id)}
-          />
-        </div>
-      </div>
+      <TileHeader
+        title={title}
+        failed={failed}
+        instance={instance}
+        index={index}
+        total={total}
+        onRemove={onRemove}
+        onMove={onMove}
+      />
 
       <div className="flex flex-1 flex-col justify-between gap-3 px-4 pb-4">
         {state.status === "loading" && <TileSkeleton />}
@@ -247,6 +241,121 @@ export function WidgetTile({ instance, index, total, onRemove, onMove }: WidgetT
           <p className="text-[11.5px] leading-snug text-faint">{state.result.foot}</p>
         )}
       </div>
+      </Card>
+    </div>
+  );
+}
+
+/* The tile's top row: the title and the three buttons, shared by both kinds
+ * of tile so moving and removing a hand-written widget is the same gesture
+ * as for any other. */
+function TileHeader({
+  title,
+  failed,
+  instance,
+  index,
+  total,
+  onRemove,
+  onMove,
+}: WidgetTileProps & { title: string; failed: boolean }) {
+  const t = useT();
+  return (
+    <div className="flex items-start gap-2 px-4 pt-4 pb-2">
+      <h3
+        className={cn(
+          "min-w-0 flex-1 truncate text-[13px] font-semibold tracking-wide uppercase",
+          failed ? "text-faint" : "text-muted",
+        )}
+      >
+        {title}
+      </h3>
+
+      <div className="flex shrink-0 items-center gap-0.5">
+        <IconButton
+          label={t("widgets.tile.moveEarlier", { title })}
+          icon={ArrowUp01Icon}
+          disabled={index === 0}
+          onClick={() => onMove(instance.id, "up")}
+        />
+        <IconButton
+          label={t("widgets.tile.moveLater", { title })}
+          icon={ArrowDown01Icon}
+          disabled={index >= total - 1}
+          onClick={() => onMove(instance.id, "down")}
+        />
+        <IconButton
+          label={t("widgets.tile.remove", { title })}
+          icon={Delete02Icon}
+          onClick={() => onRemove(instance.id)}
+        />
+      </div>
+    </div>
+  );
+}
+
+/* A hand-written widget's tile.
+ *
+ * The widget is looked up on the box's look (lib/look.ts) by the id the
+ * board keeps; its source goes to the sandboxed frame, which draws it and
+ * reports its height. A widget the box no longer has greys the tile out
+ * with a sentence, like a spec that no longer parses. An error the widget
+ * throws is shown under it rather than replacing it: a tile that painted
+ * something and then threw is still worth seeing. */
+function HandTile({ instance, index, total, onRemove, onMove }: WidgetTileProps) {
+  const t = useT();
+  const look = React.useSyncExternalStore(subscribeLook, getLookState, getServerLookState);
+  const [threw, setThrew] = React.useState<string | null>(null);
+  const [nonce, setNonce] = React.useState(0);
+  const handId = instance.source.kind === "hand" ? instance.source.id : "";
+  const widget = look.look?.widgets.find((w) => w.id === handId);
+
+  const title = instance.title ?? widget?.name ?? t("widgets.tile.fallbackTitle");
+  const waiting = look.look === null && look.status !== "failed";
+  const failed = !waiting && widget === undefined;
+
+  return (
+    <div
+      ref={(element) => {
+        setCssVar(element, "--tile-i", String(index));
+      }}
+      data-testid="hand-tile"
+      className={cn("widget-tile", widget?.span === "full" && "md:col-span-2")}
+    >
+      <Card className={cn("flex h-full animate-none flex-col", failed && "bg-sunk")}>
+        <TileHeader
+          title={title}
+          failed={failed}
+          instance={instance}
+          index={index}
+          total={total}
+          onRemove={onRemove}
+          onMove={onMove}
+        />
+        <div className="flex flex-1 flex-col justify-between gap-3 px-4 pb-4">
+          {waiting && <TileSkeleton />}
+          {failed && (
+            <FailedBody message={t("look.frame.gone")} onRetry={() => setNonce((n) => n + 1)} />
+          )}
+          {widget !== undefined && (
+            <>
+              <HandFrame
+                key={nonce}
+                source={widget.source}
+                name={t("look.frame.title", { name: widget.name })}
+                onError={setThrew}
+              />
+              {threw !== null && (
+                <FailedBody
+                  message={t("look.frame.threw", { message: threw })}
+                  onRetry={() => {
+                    setThrew(null);
+                    setNonce((n) => n + 1);
+                  }}
+                />
+              )}
+            </>
+          )}
+        </div>
       </Card>
     </div>
   );

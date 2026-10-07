@@ -6,6 +6,7 @@
 
 import apps from "./apps";
 import home from "./home";
+import look from "./look";
 import panes from "./panes";
 import settings from "./settings";
 import shell from "./shell";
@@ -22,6 +23,7 @@ export const MESSAGES = {
   ...panes,
   ...widgets,
   ...apps,
+  ...look,
 };
 
 export type MessageKey = keyof typeof MESSAGES;

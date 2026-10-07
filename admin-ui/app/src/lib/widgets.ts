@@ -42,7 +42,12 @@ export function isBuiltinId(value: unknown): value is BuiltinId {
 /** Where a tile's behaviour comes from: compiled in, or written by the owner. */
 export type WidgetSource =
   | { readonly kind: "builtin"; readonly id: BuiltinId }
-  | { readonly kind: "custom"; readonly spec: WidgetSpec };
+  | { readonly kind: "custom"; readonly spec: WidgetSpec }
+  /** A widget written by hand and kept on the box (lib/look.ts); the tile
+   *  looks it up by id and renders it in the sandboxed frame. The board
+   *  keeps only the id: the source is the box's, and editing it there
+   *  changes every browser's tile at once. */
+  | { readonly kind: "hand"; readonly id: string };
 
 export interface WidgetInstance {
   /** Stable for the life of the tile. Not derived from the source: the same
@@ -135,6 +140,14 @@ function reviveInstance(entry: unknown): WidgetInstance | null {
       : { id, title, source: { kind: "builtin", id: builtin } };
   }
 
+  if (kind === "hand") {
+    const hand = (source as Record<string, unknown>)["id"];
+    if (typeof hand !== "string" || hand.length === 0) return null;
+    return title === undefined
+      ? { id, source: { kind: "hand", id: hand } }
+      : { id, title, source: { kind: "hand", id: hand } };
+  }
+
   if (kind === "custom") {
     try {
       const spec = parseSpec((source as Record<string, unknown>)["spec"]);
@@ -224,6 +237,32 @@ export function addCustom(spec: WidgetSpec): string | null {
   const instance: WidgetInstance = { id: makeId(), source: { kind: "custom", spec: parseSpec(spec) } };
   commit([...widgets, instance]);
   return instance.id;
+}
+
+/** Put a widget written by hand on the board, by the id the box gave it.
+ *  Returns the tile's id, or null if the board is full. */
+export function addHand(handId: string): string | null {
+  const widgets = current().widgets;
+  if (widgets.length >= MAX_WIDGETS) return null;
+  const instance: WidgetInstance = { id: makeId(), source: { kind: "hand", id: handId } };
+  commit([...widgets, instance]);
+  return instance.id;
+}
+
+/** Whether a hand-written widget is already on the board. */
+export function hasHand(handId: string): boolean {
+  return current().widgets.some(
+    (widget) => widget.source.kind === "hand" && widget.source.id === handId,
+  );
+}
+
+/** Drop every tile showing a hand-written widget the box no longer has. */
+export function removeHandTiles(handId: string): void {
+  const widgets = current().widgets;
+  const next = widgets.filter(
+    (widget) => !(widget.source.kind === "hand" && widget.source.id === handId),
+  );
+  if (next.length !== widgets.length) commit(next);
 }
 
 export function removeWidget(id: string): void {
