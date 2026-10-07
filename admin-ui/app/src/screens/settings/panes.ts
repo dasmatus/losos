@@ -6,6 +6,7 @@ import {
   HardDriveIcon,
   InformationCircleIcon,
   LayoutGridIcon,
+  PaintBoardIcon,
   Share08Icon,
   ShoppingCart01Icon,
   Shield01Icon,
@@ -38,6 +39,7 @@ export type SettingsPaneId =
   | "market"
   | "apps"
   | "network"
+  | "look"
   | "hardware"
   | "security"
   | "about"
@@ -165,6 +167,25 @@ export const SETTINGS_PANES: readonly [SettingsPane, ...SettingsPane[]] = [
     "remote",
     "internet",
     "outside",
+  ]),
+  /* Look sits right after Network: it is the one pane that changes the
+   * page itself, and the first thing an owner reaches for once the box is
+   * up. Nothing on it rebuilds — a picture and a widget take effect the
+   * moment they are saved, which is why it has no Apply bar. */
+  pane("look", PaintBoardIcon, [
+    "appearance",
+    "background",
+    "wallpaper",
+    "picture",
+    "image",
+    "theme",
+    "widget",
+    "widgets",
+    "custom",
+    "html",
+    "code",
+    "personalise",
+    "personalize",
   ]),
   pane("hardware", CpuIcon, ["gpu", "graphics", "card", "video", "processor", "acceleration"]),
   pane("security", Shield01Icon, [

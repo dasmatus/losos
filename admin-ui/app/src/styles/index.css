@@ -405,3 +405,26 @@
     scroll-behavior: auto !important;
   }
 }
+
+/* ── The owner's wallpaper (lib/look.ts) ───────────────────────────────────
+ * `--losos-bg-image` and `--losos-bg-veil` are set on <html> through CSSOM
+ * and `has-bg` is toggled beside them; nothing here is an inline style. The
+ * veil is the theme's own ground colour at the chosen opacity, laid over
+ * the picture in the same background-image, so the page reads in light and
+ * in dark alike and every card keeps its opaque surface. `fixed` keeps the
+ * picture still while the page scrolls; browsers that cannot (iOS) scroll
+ * it, which is fine. */
+.losos-shell {
+  background-color: var(--ground);
+}
+html.has-bg .losos-shell {
+  background-image:
+    linear-gradient(
+      rgba(var(--ground-rgb), var(--losos-bg-veil, 0.6)),
+      rgba(var(--ground-rgb), var(--losos-bg-veil, 0.6))
+    ),
+    var(--losos-bg-image);
+  background-size: cover;
+  background-position: center;
+  background-attachment: fixed;
+}

@@ -10,7 +10,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "test:browser": "node tests/wizard.browser.mjs && node tests/app.browser.mjs && node tests/toasts.browser.mjs"
+    "test:browser": "node tests/wizard.browser.mjs && node tests/app.browser.mjs && node tests/toasts.browser.mjs && node tests/look.browser.mjs"
   },
   "dependencies": {
     "@base-ui/react": "1.8.0",
