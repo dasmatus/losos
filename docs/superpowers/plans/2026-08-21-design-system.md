@@ -19,9 +19,6 @@
 - All color literals live in `tokens.css` only; `losos.css` contains **zero** hex colors (rgba()/color-mix() allowed). Alpha tints use `color-mix(in srgb, var(--ls-*) N%, transparent)` with the original percentages (12/10/8/60/45) — fine for any 2023+ browser.
 - Token prefix is `--ls-*`. No spacing tokens (deliberate YAGNI).
 - `system.stateVersion` and everything unrelated (backend, daemon, page JS behavior) untouched. Note: six files are already staged in the index with in-progress installer work (`backend/src/Installer.hs`, `backend/test/Spec.hs`, `flake.nix`, `modules/{boot,disko,installer}.nix`) — never `git add -A`; stage files explicitly, and don't touch those six.
-- Every commit message ends with:
-  `Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>` and
-  `Claude-Session: https://claude.ai/code/session_01XL7m53JPidukfkj43LEKrv`
 
 ---
 
