@@ -423,6 +423,8 @@ mod tests {
             state_dir: "/var/lib/losos".into(),
             overrides_file: "/etc/nixos/modules/overrides.nix".into(),
             flake_ref: "/etc/nixos#install".to_string(),
+            config_dir: "/etc/nixos".into(),
+            options_file: "/etc/losos/options.json".into(),
         };
         let args = launch_args(&paths, "20260821-1");
         assert!(args.contains(&"--setenv=PATH".to_string()), "{args:?}");

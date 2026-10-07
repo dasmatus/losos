@@ -84,6 +84,8 @@ in
   # Replace each LosOS-managed tree as a unit before Forgejo starts. This keeps
   # removed or renamed assets from surviving in the persistent custom directory;
   # unrelated custom data, especially conf/ secrets, is untouched.
+  # modules/config-repo.nix appends the LosOS Git bootstrap (mkAfter) to the
+  # same preStart; this half is mkBefore so the order is theirs, not ours.
   systemd.services.forgejo.preStart = lib.mkIf forgejoNative (
     let
       customDir = config.services.forgejo.customDir;

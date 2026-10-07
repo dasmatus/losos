@@ -554,6 +554,10 @@ let
         forgejo admin regenerate hooks
       fi
 
+      ${import ./forgejo-bootstrap.nix {
+        tokenFile = "${forgejoStateDir}/.losos-token";
+      }}
+
       exec forgejo web
     '';
   };
