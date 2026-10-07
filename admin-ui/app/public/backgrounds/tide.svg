@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" preserveAspectRatio="xMidYMid slice">
+  <!-- Tide: soft teal bands, the salmon's water. Shipped background (backend/src/look.rs SHIPPED). -->
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0e6e7d"/>
+      <stop offset="1" stop-color="#1b3b4a"/>
+    </linearGradient>
+  </defs>
+  <rect width="1600" height="1000" fill="url(#g)"/>
+  <g fill="none" stroke="#ffffff" stroke-width="2" opacity="0.18">
+    <path d="M0 180 C 200 120, 400 240, 600 180 S 1000 120, 1200 180 S 1500 240, 1600 180"/>
+    <path d="M0 300 C 200 240, 400 360, 600 300 S 1000 240, 1200 300 S 1500 360, 1600 300"/>
+    <path d="M0 420 C 200 360, 400 480, 600 420 S 1000 360, 1200 420 S 1500 480, 1600 420"/>
+    <path d="M0 540 C 200 480, 400 600, 600 540 S 1000 480, 1200 540 S 1500 600, 1600 540"/>
+    <path d="M0 660 C 200 600, 400 720, 600 660 S 1000 600, 1200 660 S 1500 720, 1600 660"/>
+    <path d="M0 780 C 200 720, 400 840, 600 780 S 1000 720, 1200 780 S 1500 840, 1600 780"/>
+    <path d="M0 900 C 200 840, 400 960, 600 900 S 1000 840, 1200 900 S 1500 960, 1600 900"/>
+  </g>
+  <circle cx="1280" cy="200" r="260" fill="#48b3c0" opacity="0.18"/>
+  <circle cx="260" cy="820" r="320" fill="#48b3c0" opacity="0.12"/>
+</svg>

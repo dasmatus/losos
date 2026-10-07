@@ -492,6 +492,18 @@ A separate `midnight-reboot.timer` reboots unconditionally at 00:07 with
   pretty URLs, and without that it was an Apache 404 straight from the
   admin home. `admin-ui/app/src/lib/apps.ts` uses the long form for that
   reason; don't "tidy" the tiles back to the short one.
+- **Hand-written widgets run in `/widget-frame/`, never in the admin page.**
+  The owner's HTML/script (`backend/src/look.rs`, `GET/POST /api/look*`)
+  is drawn by `<iframe sandbox="allow-scripts" src="/widget-frame/">`
+  (`admin-ui/app/src/widgets/hand-frame.tsx`, page in
+  `admin-ui/app/public/widget-frame/`). Two things are load-bearing: no
+  `allow-same-origin` (the frame is an opaque origin with no token and no
+  API), and the `~^/widget-frame/` arm of nginx's header map in
+  `containers.nix`, the one path served under a permissive CSP. An
+  `<iframe srcdoc>` or a `blob:` document would inherit the admin page's
+  strict policy and refuse the inline script just the same, so don't
+  "simplify" the frame into one. `tests/front-vhost.nix` asserts the arm and
+  that the strict policy still covers everything else.
 - **The admin token is created by lososd, not by NixOS.** `losos.admin.tokenFile`
   (default `/var/secrets/losos-admin-token`, persisted via `/var`) is written
   with a 64-hex-char random value (mode 0600) by lososd on first start if
