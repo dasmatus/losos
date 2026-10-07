@@ -10,12 +10,18 @@
  * SPA, signed in with the box's admin key — waits for the pane to settle on
  * the edge state the step implies, writes <dir>/<nn>-<step>-<box>.png, and
  * acknowledges. The step's caption lands in <dir>/timeline.jsonl for
- * compose.sh. Needs the app's node_modules (admin-ui/app) for playwright;
+ * compose.sh. Needs the app's node_modules (admin-ui/app, after `npm ci`;
+ * LOSOS_APP_DIR points elsewhere) for playwright;
  * LOSOS_CHROMIUM points at a chromium binary when Playwright's own is not
  * installed. */
 import { existsSync, readFileSync, writeFileSync, appendFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { chromium } from 'playwright';
+import { dirname, join } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+
+// playwright comes from the app's node_modules (LOSOS_APP_DIR, default
+// admin-ui/app in this checkout), wherever this script is run from.
+const appDir = process.env.LOSOS_APP_DIR || join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'admin-ui', 'app');
+const { chromium } = await import(pathToFileURL(join(appDir, 'node_modules', 'playwright', 'index.mjs')).href);
 
 const dir = process.env.LOSOS_RECORD_DIR;
 if (!dir) throw new Error('set LOSOS_RECORD_DIR');
