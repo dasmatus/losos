@@ -59,8 +59,9 @@ struct PollForm {
 
 fn user_of(token: &str) -> Option<(u64, &'static str)> {
     match token {
-        "gho_matus" => Some((MATUS_ID, "dichhead")),
-        "gho_renamed" => Some((MATUS_ID, "matus-renamed")),
+        "gho_matus" => Some((MATUS_ID, "dasmatus")),
+        // The login the same account had before 2026-09-30.
+        "gho_renamed" => Some((MATUS_ID, "dichhead")),
         "gho_stranger" => Some((42, "stranger")),
         _ => None,
     }
@@ -221,9 +222,9 @@ async fn the_device_flow_signs_a_listed_operator_in() {
     })
     .await;
     let session = sign_in(&base, None, "").await.expect("Matus is listed");
-    assert_eq!(session.user.login, "dichhead");
+    assert_eq!(session.user.login, "dasmatus");
     assert_eq!(session.user.id, MATUS_ID);
-    assert_eq!(session.operator.github_login, "dichhead");
+    assert_eq!(session.operator.github_login, "dasmatus");
     assert_eq!(session.token, "gho_matus");
     // Two pending answers, one slow_down, then the token: four polls.
     assert_eq!(fake.polls.load(Ordering::SeqCst), 4);
@@ -258,8 +259,8 @@ async fn a_renamed_login_still_passes_because_the_id_is_the_key() {
     })
     .await;
     let session = sign_in(&base, None, "").await.expect("same id, new login");
-    assert_eq!(session.user.login, "matus-renamed");
-    assert_eq!(session.operator.github_login, "dichhead");
+    assert_eq!(session.user.login, "dichhead");
+    assert_eq!(session.operator.github_login, "dasmatus");
 }
 
 #[tokio::test]

@@ -966,7 +966,7 @@ mod tests {
     fn the_committed_list_parses_and_names_the_owner_by_id() {
         let list = Operators::committed().expect("operators.json");
         let matus = list.find(330_471_626).expect("Matus is listed");
-        assert_eq!(matus.github_login, "dichhead");
+        assert_eq!(matus.github_login, "dasmatus");
         assert!(list.find(1).is_none());
     }
 
