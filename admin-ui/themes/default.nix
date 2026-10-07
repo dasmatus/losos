@@ -19,10 +19,11 @@
 # header says what is allowed to live in it so this stays true.
 #
 # The logos are brand/losos-cloud.svg and brand/losos-git.svg, drawn by
-# brand/marks.py from brand/fish.png. Every raster an app asks for (PNG
-# logos, touch icons, the .ico) is rendered from those SVGs here, so the SVGs
-# are the only artwork in the repository and the rasters cannot fall out of
-# step with them.
+# brand/marks.py around brand/plate.png (the plate of salmon cut out of
+# Matus's photo; the SVGs embed it as a data: URI so each stands alone).
+# Every raster an app asks for (PNG logos, touch icons, the .ico) is
+# rendered from those SVGs here, so the rasters cannot fall out of step
+# with them.
 #
 # Layout of the output:
 #
@@ -44,10 +45,9 @@ let
   tokens = ../app/src/styles/tokens.css;
   brand = ./brand;
 
-  # Rasters: <size> <svg> <out>. rsvg-convert keeps the fish's pixels square
-  # (it honours the marks' shape-rendering="crispEdges"); ImageMagick only
-  # packs already-rendered PNGs into the .ico, so its own SVG renderer is
-  # never involved.
+  # Rasters: <size> <svg> <out>. rsvg-convert draws the embedded plate
+  # through gdk-pixbuf; ImageMagick only packs already-rendered PNGs into
+  # the .ico, so its own SVG renderer is never involved.
   render = size: svg: out: ''
     install -d "$(dirname "${out}")"
     rsvg-convert -w ${toString size} -h ${toString size} ${svg} -o "${out}"
