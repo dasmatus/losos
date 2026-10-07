@@ -213,22 +213,20 @@ in
       serviceConfig = {
         Type = "oneshot";
         RemainAfterExit = true;
-        StandardOutput = "journal+console";
-        StandardError = "journal+console";
+        StandardOutput = "journal";
+        StandardError = "journal";
       };
       path = [ pkgs.coreutils ];
       script = ''
-        # The console output goes to /dev/console, which is the last
-        # console= on the command line; where that is a serial port (a VM
-        # test, a headless box) the screen would show nothing, and the
-        # screen is where the owner looks. So say it on tty0 as well,
-        # unless tty0 is /dev/console already.
-        screen=/dev/null
-        active=$(cat /sys/class/tty/console/active 2>/dev/null || true)
-        [ "''${active##* }" = tty0 ] || screen=/dev/tty0
+        # To the journal, and straight to /dev/console: the screen, or
+        # whatever the last console= on the command line names. Not
+        # StandardOutput=journal+console, whose console half is journald's
+        # forwarding and lands wherever journald's TTYPath points (a serial
+        # port under the test instrumentation), leaving the screen blank
+        # at the one moment the owner must read it.
         say() {
           echo "$1"
-          echo "$1" > "$screen" 2>/dev/null || true
+          echo "$1" > /dev/console 2>/dev/null || true
         }
         # No sed in the systemd initrd; bash does the parsing.
         expected=
