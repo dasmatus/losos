@@ -30,6 +30,11 @@ pub struct Paths {
     pub overrides_file: PathBuf,
     /// `$LOSOS_FLAKE`, the flake reference rebuilds are made from.
     pub flake_ref: String,
+    /// `$LOSOS_CONFIG_DIR`, the git repository the flake lives in
+    /// (`crate::config_repo`). `overrides_file` is normally inside it.
+    pub config_dir: PathBuf,
+    /// `$LOSOS_OPTIONS_FILE`, the option document (`crate::options`).
+    pub options_file: PathBuf,
 }
 
 fn env_or(key: &str, default: &str) -> String {
@@ -46,6 +51,14 @@ impl Paths {
                 "/etc/nixos/modules/overrides.nix",
             )),
             flake_ref: env_or("LOSOS_FLAKE", "/etc/nixos#install"),
+            config_dir: PathBuf::from(env_or(
+                "LOSOS_CONFIG_DIR",
+                crate::config_repo::DEFAULT_CONFIG_DIR,
+            )),
+            options_file: PathBuf::from(env_or(
+                "LOSOS_OPTIONS_FILE",
+                crate::options::DEFAULT_OPTIONS_FILE,
+            )),
         }
     }
 
@@ -65,6 +78,23 @@ impl Paths {
     /// The uploaded background picture, raw; its type is in the look.
     pub fn background_file(&self) -> PathBuf {
         self.state_dir.join("background.img")
+    }
+
+    /// How the last configuration sync went (`crate::config_repo`).
+    pub fn sync_report_file(&self) -> PathBuf {
+        self.state_dir.join("config-sync.json")
+    }
+
+    /// The git credential store for LosOS Git, written from the bot token
+    /// before each fetch or push. 0600, in the daemon's 0700 state directory.
+    pub fn git_credentials_file(&self) -> PathBuf {
+        self.state_dir.join("git-credentials")
+    }
+
+    /// The `Authorization` header curl reads for LosOS Git's API, written
+    /// from the bot token before each request so it is in no argv.
+    pub fn forgejo_header_file(&self) -> PathBuf {
+        self.state_dir.join("forgejo-auth")
     }
 }
 
@@ -357,6 +387,175 @@ fn curl_market(
         .parse::<u16>()
         .context("curl returned a status that is not a number")?;
     Ok((status, body.to_string()))
+}
+
+/// The first non-empty line of a subprocess's stderr, for a sentence.
+fn first_line(stderr: &[u8]) -> String {
+    String::from_utf8_lossy(stderr)
+        .lines()
+        .map(str::trim)
+        .find(|l| !l.is_empty())
+        .unwrap_or("")
+        .to_string()
+}
+
+/// One request to LosOS Git's REST API as the bot administrator, by `curl`.
+///
+/// The token goes into a 0600 file as a ready-made `Authorization` header
+/// and curl reads it with `--header @file`; the body — which carries a
+/// password for two of the operations — goes to curl on stdin. Neither is
+/// ever in an argument vector. Loopback and plain HTTP: the request never
+/// leaves the box (`modules/workloads.nix` binds Forgejo to 127.0.0.1).
+///
+/// A curl that could not connect is [`crate::config_repo::NotUp`], the
+/// normal state of a box whose Forgejo pod is still pulling. A reply, any
+/// reply, is handed back with its status for [`crate::config_repo::classify`].
+fn curl_forgejo(
+    paths: &Paths,
+    repo: &crate::config_repo::RepoConfig,
+    op: &crate::config_repo::ForgejoOp,
+    secret: Option<&crate::setup::Secret>,
+) -> anyhow::Result<(u16, String)> {
+    use crate::config_repo::NotUp;
+    const MAX_BYTES: usize = 1024 * 1024;
+
+    let token = read_bot_token(repo)?;
+    let header = format!("Authorization: token {token}\n");
+    atomic_write_secret(&paths.forgejo_header_file(), header.as_bytes())
+        .context("writing the LosOS Git header file")?;
+    let (method, path) = op.route();
+    let body = op.body(secret)?;
+
+    let mut cmd = std::process::Command::new("curl");
+    cmd.args(["--silent", "--show-error"])
+        .args(["--max-time", "20"])
+        .args(["--max-filesize", &MAX_BYTES.to_string()])
+        .args(["--header", "Accept: application/json"])
+        .arg("--header")
+        .arg(format!("@{}", paths.forgejo_header_file().display()))
+        .args(["--write-out", "\n%{http_code}"])
+        .args(["--request", method]);
+    if body.is_some() {
+        cmd.args(["--header", "Content-Type: application/json"])
+            .args(["--data-binary", "@-"]);
+    }
+    cmd.arg(format!("{}{path}", repo.forgejo_url))
+        .stdin(if body.is_some() {
+            std::process::Stdio::piped()
+        } else {
+            std::process::Stdio::null()
+        })
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    let mut child = cmd
+        .spawn()
+        .context("running curl (is it on lososd's unit path? see modules/daemon.nix)")?;
+    if let (Some(body), Some(mut stdin)) = (body, child.stdin.take()) {
+        stdin
+            .write_all(body.as_bytes())
+            .context("sending the LosOS Git request to curl")?;
+    }
+    let out = child.wait_with_output().context("waiting for curl")?;
+    if !out.status.success() {
+        return Err(NotUp(format!(
+            "LosOS Git is not answering yet ({})",
+            first_line(&out.stderr)
+        ))
+        .into());
+    }
+    let text = String::from_utf8(out.stdout).context("LosOS Git returned non-UTF-8")?;
+    let (body, code) = text
+        .rsplit_once('\n')
+        .context("curl returned no status line")?;
+    let status = code
+        .trim()
+        .parse::<u16>()
+        .context("curl returned a status that is not a number")?;
+    Ok((status, body.to_string()))
+}
+
+/// The bot administrator's access token, or [`crate::config_repo::NotUp`]
+/// when the Forgejo bootstrap has not written it yet.
+fn read_bot_token(repo: &crate::config_repo::RepoConfig) -> anyhow::Result<String> {
+    match std::fs::read_to_string(&repo.token_file) {
+        Ok(t) if !t.trim().is_empty() => Ok(t.trim().to_string()),
+        Ok(_) => Err(crate::config_repo::NotUp(
+            "LosOS Git has not finished its first start yet (the access token is empty)"
+                .to_string(),
+        )
+        .into()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Err(crate::config_repo::NotUp(
+            "LosOS Git has not finished its first start yet (no access token at its path)"
+                .to_string(),
+        )
+        .into()),
+        Err(e) => Err(anyhow::Error::new(e).context(format!("reading {}", repo.token_file))),
+    }
+}
+
+/// `git`, in the configuration repository, with the identity and the
+/// settings every invocation here wants.
+///
+/// `HOME` is pointed at the state directory: the unit runs with
+/// `ProtectHome=true`, so `/root` is unreadable and git would warn on every
+/// call about a `.gitconfig` it cannot read. `GIT_TERMINAL_PROMPT=0` is what
+/// keeps a push with no credentials from hanging on a prompt nobody will
+/// answer. `with_auth` adds a credential store written from the bot token,
+/// for the two commands that talk to LosOS Git.
+fn git(paths: &Paths, with_auth: bool, args: &[&str]) -> anyhow::Result<std::process::Output> {
+    let mut cmd = std::process::Command::new("git");
+    cmd.arg("-C")
+        .arg(&paths.config_dir)
+        .args([
+            "-c",
+            &format!("user.name={}", crate::config_repo::COMMITTER_NAME),
+        ])
+        .args([
+            "-c",
+            &format!("user.email={}", crate::config_repo::COMMITTER_EMAIL),
+        ])
+        .env("HOME", &paths.state_dir)
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .env_remove("GIT_ASKPASS")
+        .env_remove("SSH_ASKPASS");
+    if with_auth {
+        if let Some(repo) = crate::config_repo::RepoConfig::from_env().filter(|r| r.via_forgejo()) {
+            let token = read_bot_token(&repo)?;
+            let host = repo
+                .forgejo_url
+                .split_once("://")
+                .map_or(repo.forgejo_url.as_str(), |(_, rest)| rest)
+                .trim_end_matches('/');
+            let scheme = repo
+                .forgejo_url
+                .split_once("://")
+                .map_or("http", |(scheme, _)| scheme);
+            let line = format!(
+                "{scheme}://{}:{token}@{host}\n",
+                crate::config_repo::BOT_USER
+            );
+            let store = paths.git_credentials_file();
+            atomic_write_secret(&store, line.as_bytes())
+                .context("writing the LosOS Git credential store")?;
+            cmd.args([
+                "-c",
+                &format!("credential.helper=store --file={}", store.display()),
+            ]);
+        }
+    }
+    cmd.args(args)
+        .stdin(std::process::Stdio::null())
+        .output()
+        .context("running git (is it on lososd's unit path? see modules/daemon.nix)")
+}
+
+/// `git` that must succeed; the first stderr line is the error.
+fn git_ok(paths: &Paths, with_auth: bool, args: &[&str]) -> anyhow::Result<String> {
+    let out = git(paths, with_auth, args)?;
+    if !out.status.success() {
+        anyhow::bail!("git {}: {}", args.join(" "), first_line(&out.stderr));
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
 
 impl crate::recovery::CodeStore for FileCodeStore {
@@ -962,6 +1161,177 @@ impl Losos for IoLosos {
         };
         let (status, body) = curl_market(&config, op)?;
         crate::market::classify(status, &body)
+    }
+
+    fn read_options_doc(&mut self) -> anyhow::Result<Option<crate::options::OptionsDoc>> {
+        match std::fs::read_to_string(&self.paths.options_file) {
+            Ok(text) => crate::options::parse(&text)
+                .map(Some)
+                .with_context(|| format!("reading {}", self.paths.options_file.display())),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(anyhow::Error::new(e)
+                .context(format!("reading {}", self.paths.options_file.display()))),
+        }
+    }
+
+    fn config_repo(&mut self) -> Option<crate::config_repo::RepoConfig> {
+        crate::config_repo::RepoConfig::from_env()
+    }
+
+    fn config_head(&mut self) -> anyhow::Result<Option<crate::config_repo::Head>> {
+        let out = git(&self.paths, false, &["rev-parse", "--verify", "-q", "HEAD"])?;
+        if !out.status.success() {
+            // Not a repository, or one with no commit yet: both are "none".
+            return Ok(None);
+        }
+        let sha = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        let branch = git_ok(
+            &self.paths,
+            false,
+            &["symbolic-ref", "--short", "-q", "HEAD"],
+        )
+        .unwrap_or_else(|_| "HEAD".to_string());
+        Ok(Some(crate::config_repo::Head { sha, branch }))
+    }
+
+    fn config_commit(&mut self, subject: &str, body: &str) -> anyhow::Result<Option<String>> {
+        git_ok(&self.paths, false, &["add", "-A"])?;
+        let staged = git(&self.paths, false, &["diff", "--cached", "--quiet"])?;
+        // Exit 0 is "nothing staged" — unless there is no HEAD yet, in which
+        // case `diff --cached` compares against the empty tree and a fresh
+        // repository with files reads as dirty, which is right.
+        if staged.status.success() {
+            return Ok(None);
+        }
+        let mut args = vec!["commit", "-q", "-m", subject];
+        if !body.is_empty() {
+            args.extend(["-m", body]);
+        }
+        git_ok(&self.paths, false, &args)?;
+        let sha = git_ok(&self.paths, false, &["rev-parse", "HEAD"])?;
+        tracing::info!(sha = %sha, subject, "committed to the configuration repository");
+        Ok(Some(sha))
+    }
+
+    fn config_fetch(&mut self, url: &str, branch: &str) -> anyhow::Result<Option<String>> {
+        let refspec = format!("refs/heads/{branch}");
+        let out = git(&self.paths, true, &["ls-remote", "--heads", url, &refspec])?;
+        if !out.status.success() {
+            return Err(crate::config_repo::NotUp(format!(
+                "LosOS Git could not be reached ({})",
+                first_line(&out.stderr)
+            ))
+            .into());
+        }
+        if String::from_utf8_lossy(&out.stdout).trim().is_empty() {
+            return Ok(None);
+        }
+        git_ok(&self.paths, true, &["fetch", "-q", url, &refspec])?;
+        Ok(Some(git_ok(
+            &self.paths,
+            false,
+            &["rev-parse", "FETCH_HEAD"],
+        )?))
+    }
+
+    fn config_is_ancestor(&mut self, ancestor: &str, of: &str) -> anyhow::Result<bool> {
+        let out = git(
+            &self.paths,
+            false,
+            &["merge-base", "--is-ancestor", ancestor, of],
+        )?;
+        match out.status.code() {
+            Some(0) => Ok(true),
+            Some(1) => Ok(false),
+            _ => anyhow::bail!(
+                "git merge-base --is-ancestor {ancestor} {of}: {}",
+                first_line(&out.stderr)
+            ),
+        }
+    }
+
+    fn config_fast_forward(&mut self, to: &str) -> anyhow::Result<()> {
+        git_ok(&self.paths, false, &["merge", "-q", "--ff-only", to])?;
+        tracing::info!(sha = to, "fast-forwarded the configuration repository");
+        Ok(())
+    }
+
+    fn config_push(&mut self, url: &str, branch: &str) -> anyhow::Result<()> {
+        let refspec = format!("HEAD:refs/heads/{branch}");
+        git_ok(&self.paths, true, &["push", "-q", url, &refspec])?;
+        Ok(())
+    }
+
+    fn config_show(&mut self, rev: &str, path: &str) -> anyhow::Result<Option<String>> {
+        let spec = format!("{rev}:{path}");
+        let out = git(&self.paths, false, &["show", &spec])?;
+        if out.status.success() {
+            return Ok(Some(String::from_utf8_lossy(&out.stdout).into_owned()));
+        }
+        let why = first_line(&out.stderr);
+        if why.contains("does not exist") || why.contains("exists on disk, but not in") {
+            return Ok(None);
+        }
+        anyhow::bail!("git show {spec}: {why}");
+    }
+
+    fn config_log(&mut self, n: usize) -> anyhow::Result<Vec<crate::config_repo::LogEntry>> {
+        let count = format!("-n{n}");
+        let out = git(
+            &self.paths,
+            false,
+            &["log", &count, "--format=%H%x1f%cI%x1f%s"],
+        )?;
+        if !out.status.success() {
+            // No commits yet, or not a repository: an empty history.
+            return Ok(Vec::new());
+        }
+        Ok(String::from_utf8_lossy(&out.stdout)
+            .lines()
+            .filter_map(|l| {
+                let mut parts = l.splitn(3, '\x1f');
+                Some(crate::config_repo::LogEntry {
+                    sha: parts.next()?.to_string(),
+                    when: parts.next()?.to_string(),
+                    subject: parts.next().unwrap_or("").to_string(),
+                })
+            })
+            .collect())
+    }
+
+    fn forgejo_request(
+        &mut self,
+        op: &crate::config_repo::ForgejoOp,
+        secret: Option<&crate::setup::Secret>,
+    ) -> anyhow::Result<(u16, String)> {
+        let repo = crate::config_repo::RepoConfig::from_env()
+            .context("LOSOS_CONFIG_REPO is not set; see modules/config-repo.nix")?;
+        curl_forgejo(&self.paths, &repo, op, secret)
+    }
+
+    fn mint_secret(&mut self) -> anyhow::Result<crate::setup::Secret> {
+        let mut buf = [0u8; 24];
+        {
+            use std::io::Read;
+            std::fs::File::open("/dev/urandom")
+                .and_then(|mut urandom| urandom.read_exact(&mut buf))
+                .context("reading /dev/urandom")?;
+        }
+        let hex: String = buf.iter().map(|b| format!("{b:02x}")).collect();
+        Ok(crate::setup::Secret::new(&hex))
+    }
+
+    fn load_sync_report(&mut self) -> anyhow::Result<Option<crate::config_repo::SyncReport>> {
+        match std::fs::read_to_string(self.paths.sync_report_file()) {
+            Ok(text) => Ok(serde_json::from_str(&text).ok()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(anyhow::Error::new(e).context("reading the sync report")),
+        }
+    }
+
+    fn save_sync_report(&mut self, report: &crate::config_repo::SyncReport) -> anyhow::Result<()> {
+        let text = serde_json::to_vec_pretty(report)?;
+        atomic_write_secret(&self.paths.sync_report_file(), &text)
     }
 
     fn next_job_id(&mut self) -> anyhow::Result<String> {

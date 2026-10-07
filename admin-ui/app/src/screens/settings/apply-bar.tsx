@@ -44,7 +44,7 @@ export function ApplyBar({ form }: { form: SettingsForm }) {
 
   if (!form.dirty) return null;
 
-  const count = form.changedKeys.length;
+  const count = form.changeCount;
 
   return (
     <div className={cn(BAR, "animate-rise items-center gap-3")}>
