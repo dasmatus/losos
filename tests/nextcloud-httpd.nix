@@ -34,6 +34,8 @@ let
       'request_uri' => $_SERVER['REQUEST_URI'] ?? null,
       'path_info' => $_SERVER['PATH_INFO'] ?? null,
       'front_controller_active' => getenv('front_controller_active'),
+      'auth_user' => $_SERVER['PHP_AUTH_USER'] ?? null,
+      'auth_pw' => $_SERVER['PHP_AUTH_PW'] ?? null,
     ]);
   '';
 
@@ -201,6 +203,21 @@ pkgs.runCommand "losos-nextcloud-httpd"
       */nextcloud/) echo "ok   /nextcloud -> $loc" ;;
       *) echo "FAIL /nextcloud redirects to '$loc'"; failed=1 ;;
     esac
+
+    # Basic credentials reach PHP. mod_proxy_fcgi drops the Authorization
+    # header unless told otherwise, and Nextcloud then answers every
+    # password-authenticated request 401 — the admin sign-in probe
+    # (backend/src/signin.rs), WebDAV clients, the OCS API. A browser session
+    # rides a cookie, so nothing in a click-through ever noticed.
+    for url in /nextcloud/ocs/v2.php/cloud/user /nextcloud/remote.php/dav/files/owner/; do
+      body=$(curl -s -u 'owner:pass word!' "http://127.0.0.1:${toString port}$url")
+      if grep -qF '"auth_user":"owner","auth_pw":"pass word!"' <<<"$body"; then
+        echo "ok   $url sees Basic credentials"
+      else
+        echo "FAIL $url: PHP saw no Basic credentials"; echo "     $body" | head -c 300; echo
+        failed=1
+      fi
+    done
 
     [ "$failed" = 0 ] || exit 1
     touch $out
