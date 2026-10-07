@@ -103,6 +103,12 @@ pub struct FakeLosos {
     pub market_routes: std::collections::BTreeMap<String, (u16, String)>,
     /// Every operation asked for, in order.
     pub market_ops: Vec<crate::market::Op>,
+
+    // ── The owner's look ────────────────────────────────────────────────
+    /// Stands in for `look.json`.
+    pub look: crate::look::Look,
+    /// Stands in for the uploaded picture's file; `None` is no file.
+    pub background: Option<Vec<u8>>,
 }
 
 impl FakeLosos {
@@ -160,6 +166,8 @@ impl FakeLosos {
             catalogue_queries: Vec::new(),
             market_routes: std::collections::BTreeMap::new(),
             market_ops: Vec::new(),
+            look: crate::look::Look::default(),
+            background: None,
         }
     }
 }
@@ -256,6 +264,29 @@ impl Losos for FakeLosos {
             None => Ok(crate::market::Outcome::Unavailable),
             Some((status, body)) => crate::market::classify(*status, body),
         }
+    }
+
+    fn load_look(&mut self) -> anyhow::Result<crate::look::Look> {
+        Ok(self.look.clone())
+    }
+
+    fn save_look(&mut self, look: &crate::look::Look) -> anyhow::Result<()> {
+        self.look = look.clone();
+        Ok(())
+    }
+
+    fn write_background(&mut self, bytes: &[u8]) -> anyhow::Result<()> {
+        self.background = Some(bytes.to_vec());
+        Ok(())
+    }
+
+    fn read_background(&mut self) -> anyhow::Result<Option<Vec<u8>>> {
+        Ok(self.background.clone())
+    }
+
+    fn remove_background(&mut self) -> anyhow::Result<()> {
+        self.background = None;
+        Ok(())
     }
 
     fn vg_free(&mut self) -> anyhow::Result<crate::grow::VgFree> {

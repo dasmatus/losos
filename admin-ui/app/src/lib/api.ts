@@ -194,8 +194,9 @@ export interface RequestOptions {
 }
 
 interface CallOptions extends RequestOptions {
-  method?: "GET" | "POST";
-  body?: string;
+  method?: "GET" | "POST" | "PUT" | "DELETE";
+  /** JSON or Nix as text; a picture upload sends its bytes as a Blob. */
+  body?: string | Blob;
   contentType?: string;
   /** /api/health is the one route that takes no token. */
   anonymous?: boolean;
@@ -754,4 +755,116 @@ export function isValidHostName(value: string): boolean {
 
 export function isValidPort(value: number): boolean {
   return Number.isInteger(value) && value >= 1024 && value <= 65535;
+}
+
+// ── The look ──────────────────────────────────────────────────────────────
+
+/* A background picture and the widgets written by hand (backend/src/look.rs,
+ * `lookResponse` in the schema). Appliance state, like the settings, but it
+ * takes effect the moment it is saved: no rebuild, no Apply bar. The board
+ * itself stays in the browser (lib/widgets.ts); what the box keeps is the
+ * things worth seeing from a second browser. */
+
+export type LookBackground =
+  | { kind: "none" }
+  | { kind: "shipped"; name: string }
+  | { kind: "upload"; version: number; contentType: string; url: string };
+
+export type HandSpan = "half" | "full";
+
+/** One widget the owner wrote: a name, a width, and the HTML it is. */
+export interface HandWidget {
+  id: string;
+  name: string;
+  span: HandSpan;
+  source: string;
+}
+
+export interface LookLimits {
+  widgets: number;
+  nameChars: number;
+  sourceBytes: number;
+  imageBytes: number;
+  veil: { min: number; max: number };
+}
+
+export interface LookResponse {
+  version: number;
+  background: LookBackground;
+  /** Percent of the theme's ground colour laid over the picture. */
+  veil: number;
+  widgets: HandWidget[];
+  /** Names of the pictures the box ships, under /backgrounds/<name>.svg. */
+  shipped: string[];
+  limits: LookLimits;
+}
+
+export type LookBackgroundChoice = { kind: "none" } | { kind: "shipped"; name: string };
+
+export interface LookPatch {
+  background?: LookBackgroundChoice;
+  veil?: number;
+}
+
+export interface HandWidgetDraft {
+  /** Absent for a new widget; the box mints the id. */
+  id?: string;
+  name: string;
+  span: HandSpan;
+  source: string;
+}
+
+/** GET /api/look. */
+export function getLook(options: RequestOptions = {}): Promise<LookResponse> {
+  return call<LookResponse>("/api/look", options);
+}
+
+/** POST /api/look — pick a shipped picture or none, and/or set the veil. */
+export function postLook(patch: LookPatch, options: RequestOptions = {}): Promise<LookResponse> {
+  return call<LookResponse>("/api/look", {
+    ...options,
+    method: "POST",
+    contentType: "application/json",
+    body: JSON.stringify(patch),
+  });
+}
+
+/** PUT /api/look/background — upload a picture, raw. lososd reads the type
+ *  off the bytes, so the content type sent here is a courtesy. */
+export function putBackground(file: Blob, options: RequestOptions = {}): Promise<LookResponse> {
+  return call<LookResponse>("/api/look/background", {
+    ...options,
+    method: "PUT",
+    contentType: file.type.length > 0 ? file.type : "application/octet-stream",
+    body: file,
+  });
+}
+
+/** DELETE /api/look/background — back to the plain ground colour. */
+export function deleteBackground(options: RequestOptions = {}): Promise<LookResponse> {
+  return call<LookResponse>("/api/look/background", { ...options, method: "DELETE" });
+}
+
+/** POST /api/look/widgets — add a widget, or replace the one `id` names. */
+export function postHandWidget(
+  draft: HandWidgetDraft,
+  options: RequestOptions = {},
+): Promise<{ widget: HandWidget }> {
+  return call<{ widget: HandWidget }>("/api/look/widgets", {
+    ...options,
+    method: "POST",
+    contentType: "application/json",
+    body: JSON.stringify(draft),
+  });
+}
+
+/** DELETE /api/look/widgets/{id}. Idempotent on the box's side. */
+export function deleteHandWidget(
+  id: string,
+  options: RequestOptions = {},
+): Promise<{ deleted: boolean }> {
+  return call<{ deleted: boolean }>(`/api/look/widgets/${encodeURIComponent(id)}`, {
+    ...options,
+    method: "DELETE",
+  });
 }

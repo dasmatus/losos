@@ -88,7 +88,8 @@ let
           # Echoes the header the real /nextcloud location sets from
           # $server_addr, so the test below can prove it arrives: the pod's
           # trusted_domains reads it to accept the box's own IP address.
-          locations."/".extraConfig = ''return 200 "stub-nextcloud own-address=$http_x_losos_server_addr\n";'';
+          locations."/".extraConfig =
+            ''return 200 "stub-nextcloud own-address=$http_x_losos_server_addr\n";'';
         };
         "stub-forgejo" = {
           listen = [
@@ -345,9 +346,9 @@ pkgs.testers.nixosTest {
         # and no framing. The admin page's own CSP must NOT have gained
         # 'unsafe-inline' in the process: that would let injected markup read
         # the token.
-        assert code(noadmin, "http://appliance/handbook/") == 200, \
+        assert code(noadmin, "http://appliance/handbook/") == "200", \
             "the handbook does not answer from the LAN"
-        assert code(appliance, "http://127.0.0.1/handbook/") == 403, \
+        assert code(appliance, "http://127.0.0.1/handbook/") == "403", \
             "the handbook is served to loopback, i.e. through the tunnel"
         hb = headers(noadmin, "http://appliance/handbook/")["content-security-policy"]
         assert "script-src 'self' 'unsafe-inline'" in hb, f"handbook CSP refuses its own inline boot script: {hb}"
@@ -358,10 +359,34 @@ pkgs.testers.nixosTest {
         # A page address, which is a directory with its own index.html, and
         # a path that is nothing, which gets the site's 404 page, not the
         # SPA's index.html.
-        assert code(noadmin, "http://appliance/handbook/troubleshooting/") == 200, \
+        assert code(noadmin, "http://appliance/handbook/troubleshooting/") == "200", \
             "a handbook page address does not resolve to its index.html"
-        assert code(noadmin, "http://appliance/handbook/no-such-page/") == 404, \
+        assert code(noadmin, "http://appliance/handbook/no-such-page/") == "404", \
             "an unknown handbook path falls through to something other than 404"
+
+    with subtest("/widget-frame/ gets the frame's own policy and nothing else does"):
+        # The page a hand-written widget runs in (backend/src/look.rs,
+        # admin-ui/app/public/widget-frame/). It needs inline script, which
+        # the admin policy refuses, so the header map has an arm for that one
+        # directory. The frame is sandboxed by the embedding <iframe>, not by
+        # these headers; what the headers must do is keep the loose policy
+        # from leaking to any other path, and let the box's own pages embed it.
+        frame = headers(noadmin, "http://appliance/widget-frame/")
+        fcsp = frame["content-security-policy"]
+        assert "script-src 'unsafe-inline'" in fcsp, f"the frame cannot run a widget: {fcsp}"
+        assert "frame-ancestors 'self'" in fcsp, f"the frame may be embedded by anyone: {fcsp}"
+        assert "x-frame-options" not in frame, \
+            f"X-Frame-Options would block the board's own iframe: {frame['x-frame-options']!r}"
+        assert frame["x-content-type-options"] == "nosniff"
+        # The admin page itself stays strict: no inline script anywhere else.
+        for path in ("/", "/settings/look", "/widget-frame", "/assets/"):
+            hdrs = headers(noadmin, f"http://appliance{path}")
+            got = hdrs.get("content-security-policy", "")
+            assert "'unsafe-inline'" not in got, f"{path}: the frame policy leaked: {got}"
+            assert hdrs.get("x-frame-options") == "DENY", f"{path}: X-Frame-Options lost"
+        # And the loopback guard covers the frame like the rest of the surface.
+        got = code(appliance, "http://127.0.0.1/widget-frame/")
+        assert got == "403", f"loopback /widget-frame/: expected 403, got {got}"
 
     with subtest("the admin CSP is not applied to the two service routes"):
         # Nextcloud and Forgejo ship their own CSP and both need inline script;

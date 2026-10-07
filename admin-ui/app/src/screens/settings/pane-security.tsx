@@ -1,7 +1,6 @@
 import * as React from "react";
-import { Switch } from "@/components/ui/switch";
 import { useT } from "@/lib/i18n-react";
-import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText } from "./rows";
+import { Group, GroupCaption, GroupTitle, PaneSection, SwitchRow } from "./rows";
 import type { SettingsForm } from "./use-settings-form";
 
 /* The four extra protections, and what each one costs.
@@ -35,58 +34,39 @@ export function SecurityPane({ form }: { form: SettingsForm }) {
     <PaneSection>
       <GroupTitle>{t("panes.security.group")}</GroupTitle>
       <Group>
-        <Row>
-          <RowText
-            htmlFor={usbguardId}
-            title={t("panes.security.usbguard.title")}
-            detail={t("panes.security.usbguard.detail")}
-          />
-          <Switch
-            id={usbguardId}
-            checked={form.draft?.hardeningUsbguard ?? false}
-            disabled={disabled}
-            onCheckedChange={(next) => form.set("hardeningUsbguard", next)}
-          />
-        </Row>
-        <Row>
-          <RowText
-            htmlFor={mallocId}
-            title={t("panes.security.malloc.title")}
-            detail={t("panes.security.malloc.detail")}
-          />
-          <Switch
-            id={mallocId}
-            checked={form.draft?.hardeningMalloc ?? false}
-            disabled={disabled}
-            onCheckedChange={(next) => form.set("hardeningMalloc", next)}
-          />
-        </Row>
-        <Row>
-          <RowText
-            htmlFor={apparmorId}
-            title={t("panes.security.apparmor.title")}
-            detail={t("panes.security.apparmor.detail")}
-          />
-          <Switch
-            id={apparmorId}
-            checked={form.draft?.hardeningApparmor ?? false}
-            disabled={disabled}
-            onCheckedChange={(next) => form.set("hardeningApparmor", next)}
-          />
-        </Row>
-        <Row last>
-          <RowText
-            htmlFor={nosmtId}
-            title={t("panes.security.nosmt.title")}
-            detail={t("panes.security.nosmt.detail")}
-          />
-          <Switch
-            id={nosmtId}
-            checked={form.draft?.hardeningNosmt ?? false}
-            disabled={disabled}
-            onCheckedChange={(next) => form.set("hardeningNosmt", next)}
-          />
-        </Row>
+        <SwitchRow
+          id={usbguardId}
+          title={t("panes.security.usbguard.title")}
+          description={t("panes.security.usbguard.detail")}
+          checked={form.draft?.hardeningUsbguard ?? false}
+          disabled={disabled}
+          onCheckedChange={(next) => form.set("hardeningUsbguard", next)}
+        />
+        <SwitchRow
+          id={mallocId}
+          title={t("panes.security.malloc.title")}
+          description={t("panes.security.malloc.detail")}
+          checked={form.draft?.hardeningMalloc ?? false}
+          disabled={disabled}
+          onCheckedChange={(next) => form.set("hardeningMalloc", next)}
+        />
+        <SwitchRow
+          id={apparmorId}
+          title={t("panes.security.apparmor.title")}
+          description={t("panes.security.apparmor.detail")}
+          checked={form.draft?.hardeningApparmor ?? false}
+          disabled={disabled}
+          onCheckedChange={(next) => form.set("hardeningApparmor", next)}
+        />
+        <SwitchRow
+          id={nosmtId}
+          title={t("panes.security.nosmt.title")}
+          description={t("panes.security.nosmt.detail")}
+          checked={form.draft?.hardeningNosmt ?? false}
+          disabled={disabled}
+          onCheckedChange={(next) => form.set("hardeningNosmt", next)}
+          last
+        />
       </Group>
       <GroupCaption>{t("panes.security.caption")}</GroupCaption>
     </PaneSection>

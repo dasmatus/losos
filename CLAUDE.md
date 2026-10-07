@@ -248,13 +248,19 @@ to those, or to `/ds/` or `/common.js`, it is stale. The SPA's primitives
 palette** (`components.json` points the CLI at `src/styles/index.css`, which
 aliases shadcn's colour names onto `tokens.css`; `accent` and `muted` are
 deliberately not aliased because the app already uses both names for
-something else). None of them is Radix: the admin page is served under
-`style-src 'self'`, which (verified in Chromium) allows React `style` props
-and every other CSSOM write but refuses `setAttribute("style")` and any
-`<style>` element a library creates at runtime, so sonner renders unstyled
-unless its shipped `styles.css` is imported into the bundle, and Radix's
-scroll lock (react-remove-scroll) silently does nothing. Dialog stays on the
-native `<dialog>` for that reason. The command layer is written against a `Losos` effect
+something else). Which flavour each one comes from is decided by the admin
+page's `style-src 'self'`, which (verified in Chromium) allows React `style`
+props and every other CSSOM write but refuses `setAttribute("style")` and any
+`<style>` element a library creates at runtime: sonner renders unstyled unless
+its shipped `styles.css` is imported into the bundle, and Radix's scroll lock
+(react-remove-scroll) silently does nothing, so nothing modal is Radix. The
+Sidebar and its sheet, tooltip and folds are shadcn's *base* registry on
+Base UI, whose scroll lock is CSSOM; the Switch is shadcn's React Aria
+flavour (`react-aria-components`), laid into settings rows by `SwitchRow` as
+shadcn's "Switch with a description" Field; only the confirmation Toast is
+Radix, which needs no scroll lock. Dialog stays on the native `<dialog>`.
+`tests/app.browser.mjs` serves the real CSP header and fails on any new
+violation, so a library swap that injects styles turns a check red. The command layer is written against a `Losos` effect
 **trait** with a real (`io_backend`) and an in-memory (`fake`) implementation,
 so the state machine is unit-tested with no filesystem; the installer repeats
 the pattern with `Install` + `plan_install`, whose plan is data, so the
@@ -492,6 +498,18 @@ A separate `midnight-reboot.timer` reboots unconditionally at 00:07 with
   pretty URLs, and without that it was an Apache 404 straight from the
   admin home. `admin-ui/app/src/lib/apps.ts` uses the long form for that
   reason; don't "tidy" the tiles back to the short one.
+- **Hand-written widgets run in `/widget-frame/`, never in the admin page.**
+  The owner's HTML/script (`backend/src/look.rs`, `GET/POST /api/look*`)
+  is drawn by `<iframe sandbox="allow-scripts" src="/widget-frame/">`
+  (`admin-ui/app/src/widgets/hand-frame.tsx`, page in
+  `admin-ui/app/public/widget-frame/`). Two things are load-bearing: no
+  `allow-same-origin` (the frame is an opaque origin with no token and no
+  API), and the `~^/widget-frame/` arm of nginx's header map in
+  `containers.nix`, the one path served under a permissive CSP. An
+  `<iframe srcdoc>` or a `blob:` document would inherit the admin page's
+  strict policy and refuse the inline script just the same, so don't
+  "simplify" the frame into one. `tests/front-vhost.nix` asserts the arm and
+  that the strict policy still covers everything else.
 - **The admin token is created by lososd, not by NixOS.** `losos.admin.tokenFile`
   (default `/var/secrets/losos-admin-token`, persisted via `/var`) is written
   with a 64-hex-char random value (mode 0600) by lososd on first start if

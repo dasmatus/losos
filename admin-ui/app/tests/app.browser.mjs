@@ -436,6 +436,150 @@ await check('under the appliance CSP the rail tooltip, the folds and the phone s
   }
 });
 
+/* Every on/off setting is shadcn's Switch in its React Aria flavour, laid
+ * into the settings row as shadcn's "Switch with a description": a
+ * horizontal Field whose FieldLabel names the switch and whose
+ * FieldDescription, when the row has one, describes it. React Aria's switch
+ * is a real <input type="checkbox" role="switch"> inside a <label>, so the
+ * old hand-made <button role="switch"> must be gone from every pane. */
+const SWITCH_PANES = {
+  '/settings/network': ['Encrypt the connection', 'Reachable from outside your home'],
+  '/settings/hardware': null,
+  '/settings/security': [
+    'Ignore USB devices plugged in later',
+    'Stricter memory handling',
+    'Confine the programs that face the network',
+    'Halve the processor to close a leak between jobs',
+  ],
+  '/mesh': ['Join the mesh', 'Lend this box while I sleep'],
+};
+await check('every settings toggle is a React Aria Switch, named by its row and described by its line', async () => {
+  for (const [path, names] of Object.entries(SWITCH_PANES)) {
+    const { page, errors } = await open({ path, stored: true });
+    await page.getByRole('switch').first().waitFor();
+    assert.equal(await page.locator('button[role="switch"]').count(), 0, `${path} still has a hand-made switch`);
+    const switches = page.getByRole('switch');
+    const shapes = await switches.evaluateAll((els) =>
+      els.map((el) => ({
+        tag: el.tagName,
+        type: el.type,
+        inSlot: el.closest('[data-slot="switch"]') !== null,
+        inField: el.closest('[data-slot="field"][data-orientation="horizontal"]') !== null,
+        label: document.querySelector(`label[for="${CSS.escape(el.id)}"]`)?.getAttribute('data-slot') ?? null,
+        description: el.getAttribute('aria-describedby')
+          ? document.getElementById(el.getAttribute('aria-describedby'))?.getAttribute('data-slot') ?? 'dangling'
+          : null,
+      })),
+    );
+    for (const shape of shapes) {
+      assert.deepEqual(
+        { tag: shape.tag, type: shape.type, inSlot: shape.inSlot, inField: shape.inField, label: shape.label },
+        { tag: 'INPUT', type: 'checkbox', inSlot: true, inField: true, label: 'field-label' },
+        `${path}: ${JSON.stringify(shape)}`,
+      );
+      assert.ok(shape.description === null || shape.description === 'field-description', `${path}: ${JSON.stringify(shape)}`);
+    }
+    if (names !== null) {
+      for (const name of names) {
+        assert.equal(await page.getByRole('switch', { name, exact: true }).count(), 1, `${path}: no switch named "${name}"`);
+      }
+    }
+    assert.deepEqual(errors, []);
+    await page.close();
+  }
+  // The description line is read with the switch: the row's detail is its accessible description.
+  const { page } = await open({ path: '/settings/security', stored: true });
+  const usb = page.getByRole('switch', { name: 'Ignore USB devices plugged in later' });
+  const describedBy = await usb.getAttribute('aria-describedby');
+  assert.match(await page.locator(`[id="${describedBy}"]`).innerText(), /Anything attached after the box starts is refused/);
+  await page.close();
+});
+
+await check('a switch flips from its label, from Space and from its track, and a disabled row reads as disabled', async () => {
+  const { page, errors } = await open({ path: '/settings/security', stored: true });
+  const usb = page.getByRole('switch', { name: 'Ignore USB devices plugged in later' });
+  const track = page.locator('[data-slot="switch"]').filter({ has: usb });
+  // The apply bar is what a change raises. (Apply itself stays off here: the
+  // stub's port 80 is out of range, which this pane cannot fix.)
+  const apply = page.getByRole('button', { name: 'Apply', exact: true });
+  assert.equal(await usb.isChecked(), false);
+  await page.getByText('Ignore USB devices plugged in later', { exact: true }).click();
+  assert.equal(await usb.isChecked(), true, 'clicking the label did not turn it on');
+  assert.equal(await track.getAttribute('data-selected'), 'true', 'the track does not show it on');
+  await apply.waitFor({ timeout: 2000 }).catch(() => assert.fail('turning a switch on raised no apply bar'));
+  await usb.focus();
+  await page.keyboard.press('Space');
+  assert.equal(await usb.isChecked(), false, 'Space did not turn it off');
+  await track.click();
+  assert.equal(await usb.isChecked(), true, 'clicking the track did not turn it on');
+  await page.close();
+
+  // Lending needs the mesh: with it off, the lend row is disabled and says why.
+  const mesh = await open({ path: '/mesh', stored: true });
+  const lend = mesh.page.getByRole('switch', { name: 'Lend this box while I sleep' });
+  await lend.waitFor({ state: 'attached' });
+  assert.ok(await lend.isDisabled(), 'lending is offered without the mesh');
+  const field = mesh.page.locator('[data-slot="field"]').filter({ has: lend });
+  assert.equal(await field.getAttribute('data-disabled'), 'true', 'the lend row does not read as disabled');
+  assert.match(await field.locator('[data-slot="field-description"]').innerText(), /Join the mesh first/);
+  // React Aria's input is visually hidden under its <label>; a pointer lands on the track.
+  const join = mesh.page.getByRole('switch', { name: 'Join the mesh' });
+  await mesh.page.locator('[data-slot="switch"]').filter({ has: join }).click();
+  assert.equal(await join.isChecked(), true, 'clicking the track did not join');
+  assert.ok(await lend.isEnabled(), 'joining did not free the lend switch');
+  assert.equal(await field.locator('[data-slot="field-description"]').count(), 0, 'the "join first" line stayed');
+  assert.deepEqual([...errors, ...mesh.errors], []);
+  await mesh.page.close();
+});
+
+/* React Aria and Base UI side by side, under the real policy: the switches
+ * hide their input through a React style prop (CSSOM, allowed), and React
+ * Aria's one injectable <style> (touch-action for pressables) is shipped in
+ * index.css instead. Flipping every switch on a pane, then working the
+ * sidebar beside them, must add no violation to the ones logged at load. */
+await check('under the appliance CSP the switches and the sidebar beside them add no violation', async () => {
+  const { origin: strict, close } = await serve({ csp: true });
+  try {
+    const page = await browser.newPage({ viewport: { width: 1280, height: 900 }, locale: 'en-US' });
+    await page.addInitScript(() => {
+      window.__violations = [];
+      document.addEventListener('securitypolicyviolation', (e) => window.__violations.push(e.violatedDirective));
+    });
+    const errors = [];
+    page.on('pageerror', (e) => errors.push(String(e)));
+    await page.route('**/api/**', (route) => json(route, 200, {}));
+    await page.route('**/api/setup/claim', (route) => json(route, 200, { claimed: true }));
+    await page.route('**/api/settings', (route) => json(route, 200, SETTINGS));
+    await page.addInitScript((t) => window.sessionStorage.setItem('losos-token', t), TOKEN);
+    await page.goto(strict + '/settings/security', { waitUntil: 'networkidle' });
+    await page.getByRole('switch').first().waitFor();
+    const atLoad = await page.evaluate(() => window.__violations.length);
+    for (const sw of await page.getByRole('switch').all()) {
+      await sw.focus();
+      await page.keyboard.press('Space');
+    }
+    for (const track of await page.locator('[data-slot="switch"]').all()) await track.click();
+    // The pressable rule is the bundle's, not React Aria's refused copy.
+    assert.equal(
+      await page.locator('[data-slot="switch"]').first().evaluate((el) => getComputedStyle(el).touchAction),
+      'manipulation',
+    );
+    await page.keyboard.press('Control+b');
+    await page.waitForTimeout(300);
+    await nav(page).getByRole('link', { name: 'Apps', exact: true }).hover();
+    await page.locator('[data-slot="tooltip-content"]').filter({ hasText: /^Apps$/ }).waitFor({ timeout: 2000 });
+    await page.keyboard.press('Control+b');
+    await page.getByRole('switch', { name: 'Stricter memory handling' }).focus();
+    await page.keyboard.press('Space');
+    const after = await page.evaluate(() => window.__violations);
+    assert.equal(after.length, atLoad, `the switches added CSP violations: ${after.slice(atLoad).join(', ')}`);
+    assert.deepEqual(errors, []);
+    await page.close();
+  } finally {
+    await close();
+  }
+});
+
 for (const path of ['/apps', '/storage', '/mesh', '/settings', '/settings/hardware', '/settings/about', '/settings/reset']) {
   await check(`a deep link to ${path} renders without errors and survives a reload`, async () => {
     const { page, errors } = await open({ path, stored: true });
