@@ -7,14 +7,6 @@
     "message": "LosOS",
     "description": "The alt text of navbar logo"
   },
-  "item.label.Types": {
-    "message": "Typen",
-    "description": "Navbar item with label Types"
-  },
-  "item.label.When something goes wrong": {
-    "message": "Wenn etwas nicht funktioniert",
-    "description": "Navbar item with label When something goes wrong"
-  },
   "item.label.GitHub": {
     "message": "GitHub",
     "description": "Navbar item with label GitHub"
