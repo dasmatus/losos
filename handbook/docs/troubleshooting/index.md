@@ -12,12 +12,11 @@ on the same local network as the box, and that is all you have.** No
 internet, no edge, no shell. Every page is organised by what you see, and
 every page starts with the steps that work from the LAN alone.
 
-The commonest shape of that case is not a fault on the box at all: the
-provider's line is down, remote access and the edge are gone with it, and
-the box keeps serving the house over the LAN. [The internet is down, the
-box is not](./internet-is-down.md) says what still works, what waits, and
-why there is nothing to reconfigure afterwards. Read that first if the box's
-own pages open.
+If the box's own pages open and only the outside is missing, that is not a
+fault on the box: [Only the local network works](./only-the-lan-works.md)
+lists what can cause it (the provider's line, the router's uplink, the edge),
+what still works, what waits, and why there is nothing to reconfigure
+afterwards.
 
 ## The first five minutes
 
@@ -64,7 +63,7 @@ nightly restart will repair on its own, or something that needs a reinstall.
 
 ## The pages
 
-- [The internet is down, the box is not](./internet-is-down.md)
+- [Only the local network works](./only-the-lan-works.md)
 - [Cannot reach the box](./cannot-reach-the-box.md)
 - [The name does not resolve](./name-does-not-resolve.md)
 - [Certificate warning](./certificate-warning.md)
