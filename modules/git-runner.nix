@@ -78,7 +78,7 @@ let
 
   yaml = pkgs.formats.yaml { };
   # `@UUID@` is filled in at start from the secret. forgejo-cli derives the
-  # runner's UUID from the secret's first 16 bytes; the runner side has to
+  # runner's UUID from the secret's first 16 characters; the runner side has to
   # present the same one, which is exactly what the deprecated
   # `create-runner-file` used to compute — `server.connections` is its
   # replacement, and takes the token through a credential file.
@@ -108,10 +108,11 @@ let
     };
   };
 
-  # Runs as root (ExecStartPre's `+` prefix), before the daemon: generates the
-  # secret once, asserts the runner on Forgejo's side, writes the daemon's
-  # config with the matching UUID into the state directory.
-  register = pkgs.writeShellScript "losos-git-runner-register" ''
+  # Its own unit, ordered before the runner, because systemd sets up
+  # LoadCredential= before it spawns ExecStartPre: a secret generated there
+  # comes one step too late and the service dies at "Failed to set up
+  # credentials" forever (seen in tests/git-runner.nix).
+  makeSecret = pkgs.writeShellScript "losos-git-runner-secret" ''
     set -euo pipefail
     secret=${lib.escapeShellArg cfg.secretFile}
     if [ ! -s "$secret" ]; then
@@ -120,6 +121,14 @@ let
       od -An -N20 -tx1 /dev/urandom | tr -d ' \n' > "$secret.tmp"
       mv "$secret.tmp" "$secret"
     fi
+  '';
+
+  # Runs as root (ExecStartPre's `+` prefix), before the daemon: asserts the
+  # runner on Forgejo's side and writes the daemon's config with the matching
+  # UUID into the state directory.
+  register = pkgs.writeShellScript "losos-git-runner-register" ''
+    set -euo pipefail
+    secret=${lib.escapeShellArg cfg.secretFile}
 
     # Forgejo's own configuration must exist before anything can be registered
     # against its database. Native mode writes it in forgejo.service's preStart
@@ -149,8 +158,11 @@ let
       ${forgejoBin} forgejo-cli actions register \
         --secret-file "$tmp/secret" --name ${lib.escapeShellArg cfg.name} --labels losos
 
-    s=$(cat "$secret")
-    uuid="''${s:0:8}-''${s:8:4}-''${s:12:4}-''${s:16:4}-''${s:20:12}"
+    # forgejo-cli takes the first 16 *characters* of the secret as the UUID's
+    # bytes (the hex text itself, not its decoding): "0123…" becomes
+    # 30313233-3435-…, which is what create-runner-file computed as well.
+    h=$(printf '%s' "$(head -c 16 "$secret")" | od -An -tx1 | tr -d ' \n')
+    uuid="''${h:0:8}-''${h:8:4}-''${h:12:4}-''${h:16:4}-''${h:20:12}"
     sed "s/@UUID@/$uuid/" ${configTemplate} > "$STATE_DIRECTORY/config.yaml.tmp"
     chown ${user}:${user} "$STATE_DIRECTORY/config.yaml.tmp"
     chmod 0644 "$STATE_DIRECTORY/config.yaml.tmp"
@@ -167,13 +179,24 @@ in
       description = "LosOS Git Actions runner";
     };
 
+    systemd.services.losos-git-runner-secret = {
+      description = "LosOS Git Actions runner: shared registration secret";
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+        ExecStart = makeSecret;
+      };
+    };
+
     systemd.services.losos-git-runner = {
       description = "LosOS Git Actions runner (host mode, on the box)";
       wantedBy = [ "multi-user.target" ];
       wants = [ "network-online.target" ];
+      requires = [ "losos-git-runner-secret.service" ];
       after = [
         "network-online.target"
         "postgresql.service"
+        "losos-git-runner-secret.service"
       ]
       ++ lib.optional native "forgejo.service"
       ++ lib.optional (!native) "k3s.service";

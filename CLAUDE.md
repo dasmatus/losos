@@ -268,6 +268,39 @@ ordering of destructive steps is asserted without formatting anything. Wire
 contract: `backend/schema.json`. Set `losos.backend.package = null` to run
 without it.
 
+**Every option on one pane, and the configuration in LosOS Git**
+(`flake/options-doc.nix` + `modules/config-repo.nix` + `backend/src/options.rs`
++ `backend/src/config_repo.rs` + `admin-ui/app/src/screens/settings/pane-advanced.tsx`
++ `pane-history.tsx`): the `losos.*` declarations are walked at build time
+into `/etc/losos/options.json` (name, editor kind, default, description, the
+running value, danger and read-only flags); lososd joins the current
+`overrides.nix` into it at `GET /api/options`, and the Advanced pane draws a
+typed editor per row. `classify` in the Nix file is the gate: a declaration
+with a type it does not know is a `throw`, so the eval job goes red rather
+than an empty row landing on the pane, and `tests/advanced.browser.mjs`
+renders the real document (`tests/admin-ui.nix` passes the
+`losos-options-doc` check) and fails on any row the pane cannot draw.
+`POST /api/apply` is now checked line by line against the document
+(`check_body`): undeclared, read-only (installer-fixed, packages) and
+ill-typed values, and any `${`, are refused with the key named. Every
+apply, mode change and reset is a commit in `/etc/nixos` (the repository
+the installer made), and a reconciler thread in lososd polls every 30 s:
+it creates the admin's Forgejo account (`notshared`, the owner password,
+kept in step on sign-in and set-password) and a private `losos-config`
+repository through a bot account the Forgejo start-up script mints a token
+for (`flake/forgejo-bootstrap.nix`, token at `/var/lib/forgejo/.losos-token`),
+pushes when behind, and when a clone has pushed ahead fast-forwards, gates
+the new `overrides.nix` the same way, and rebuilds; a diverged history is
+reported, never touched. There is deliberately **no Forgejo Actions
+runner** behind this. The sixteen settings the other panes own are linked
+from the Advanced pane, not edited twice; `OWNED` in
+`admin-ui/app/src/lib/option-value.ts` and `OWNED_NAMES` in `lib/api.ts`
+are that list, and `buildOverridesNix` filters extras against it so the
+file never carries a key twice. Two parser facts matter here:
+`overrides.rs`'s `parse_line` cuts a value at the first `#` *outside*
+quotes (it used to cut inside them, which mangled the default
+`upgradeFlakeUri`), and a list is one `[ "a" "b" ]` line, strings only.
+
 **Workloads and the single front door** (`modules/containers.nix` +
 `modules/workloads.nix` + `modules/cluster.nix` + `modules/nextcloud-common.nix`):
 rootless Podman is gone, and so is systemd-nspawn. Nextcloud and Forgejo run as
@@ -453,7 +486,12 @@ A separate `midnight-reboot.timer` reboots unconditionally at 00:07 with
   step fails with "No such file or directory". The same applies to `curl`,
   which `GET /api/apps/search` shells out to: `path` **replaces** PATH, so a
   binary left off that list is not on it by accident, and the failure surfaces
-  to the owner as a feature that quietly never works.
+  to the owner as a feature that quietly never works. `nixos-rebuild` is on
+  that list for the same reason: systemd-run resolves a bare command against
+  the *caller's* PATH, so without it every Apply failed before the rebuild
+  unit existed. And lososd must not get `ProcSubset=pid`: it hides
+  `/proc/devices`, and vgs exits 4 without it. `tests/invariants.nix` pins
+  both.
 - **The LUKS keyfile is hex text, and must stay NUL-free.** disko hands
   `passwordFile` to `luksFormat` as `<(echo -n "$(cat FILE)")`, a command
   substitution that drops NUL bytes and a trailing newline, while the initrd
