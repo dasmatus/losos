@@ -78,7 +78,8 @@ losos.edge = {
     ratholeEndpoint = "edge.losos.cfd:2333";       # the hub's tunnel port
     id = "acme";                                   # the tenant row above
     tokenFile = "/var/secrets/losos-uplink-token";
-    bootstrapTokenFile = "/var/secrets/losos-uplink-bootstrap";
+    # bootstrapTokenFile is optional: every relayed service carries the
+    # uplink token, so rathole's default_token is never consulted.
   };
 };
 ```
@@ -88,9 +89,11 @@ files, relays its **live** tenants (registered, whitelisted or enrolled,
 heartbeating) to the hub and renders `/etc/rathole/uplink.toml`: a rathole
 *client* config with one service per relayed box, `local_addr =
 127.0.0.1:<that box's port on this spoke>`, token = the uplink token. A
-second rathole unit, `losos-rathole-uplink`, runs it; rathole hot-reloads the
-file as it does the server's. The hub's Noise public key is pinned on first
-contact (`GET /noise-public-key`), as a box pins its edge's. So a request for
+second rathole unit, `losos-rathole-uplink`, runs it (started by a path unit
+the moment the file exists); rathole hot-reloads the file as it does the
+server's. The hub's Noise public key is pinned on first contact (`GET
+/noise-public-key`, written to `uplink.noisePublicKeyFile` by the registrar
+itself), as a box pins its edge's. So a request for
 `https://mattbox.acme.losos.cfd/` terminates TLS on the hub, enters the
 hub's rathole service `acme.mattbox`, crosses the uplink to the spoke's local
 port for `mattbox`, crosses the box's tunnel, and lands on the box's Nginx.
@@ -102,8 +105,11 @@ that `/register`s is enrolled trust-on-first-use — its token and hostname
 are kept under `/var/lib/losos-registrar/enrolled/`, and every later request
 for that id must match. It grants proxy membership only (never `cluster` or
 `market`), it is refused on an edge that does not advertise on a LAN (a VPS
-must never set it), and a squatted id is the LAN owner's problem to forget
-(`losos-edge forget <id>`). The hub keeps closed enrolment.
+must never set it), and the advert says so (`enrol=open`). `losos-registrar
+enrol list|forget --dir /var/lib/losos-registrar/enrolled` (on the gateway,
+`losos-edge boxes` and `losos-edge forget <id>`) shows and drops enrolled
+boxes; a box that is still heartbeating re-enrols with the token it holds,
+so forgetting is for a box that left. The hub keeps closed enrolment.
 
 ## The box: which edge, and when none
 
@@ -120,15 +126,31 @@ path rule, from Matus (2026-10-07):
    units are stopped, the sharing gate refuses, the market relay refuses.
 
 `GET /api/edge` carries the choice as `path` (`{name, url, rathole,
-source}` or `null`). `lososd` writes it to `/run/losos/edge-path.env` and
-drives the two tunnel units from it: a change of path restarts them, a path
-of none stops them; with the proxy switched off it only records. The box's
-token is the same on every road — the hub has it in its whitelist, a gateway
-learns it on first contact — and its public name is the same too: the
-owner's `losos.proxy.hostname` must be one label under the site's zone
-(`mattbox.acme.losos.cfd`) for the relay to accept it, which is also the
-name Nextcloud trusts. A box that falls back to the official edge keeps the
-same name through its direct tenant row.
+source}` or `null`), beside every edge's `rathole` endpoint. With
+`losos.proxy.enable` on, `lososd` writes the path to
+`/run/losos/edge-path.env` (`LOSOS_EDGE_PATH_URL`, `_RATHOLE`, `_SOURCE`,
+`_NOISE_PUB`) and drives the two tunnel units from it: a change of path
+restarts `losos-rathole-client` and `losos-registrar-announce`, no path
+writes `/run/losos/edge-none` and stops them (both units carry
+`ConditionPathExists=!/run/losos/edge-none`, so nothing restarts them until
+an edge is back). Both files are on `/run`: until the first scan after a
+boot the units dial the configured edge, as they always did. Each edge's
+Noise key is pinned in its own file — the configured edge's at
+`losos.proxy.noisePublicKeyFile`, a LAN edge's under
+`/var/secrets/losos-edge-pins/<host>_<port>.pub` — by the client's own
+`ExecStartPre`, so a second gateway never inherits the first one's key.
+The box's token is the same on every road — the hub has it in its
+whitelist, a gateway learns it on first contact, and `lososd` mints it (and
+the bootstrap token) on first start when the files are missing — and its
+public name is the same too: the owner's `losos.proxy.hostname` must be one
+label under the site's zone (`mattbox.acme.losos.cfd`) for the relay to
+accept it, which is also the name Nextcloud trusts. A box that falls back to
+the official edge keeps the same name through its direct tenant row. The
+market relay needs no extra switch: it is gated on an *official* edge
+answering, and with none in reach it already says `available: false`.
+
+`tests/edge-federation.nix` runs the three machines (hub, gateway, box) and
+walks exactly this: LAN path, enrolment, uplink, fall back, off, back.
 
 ## What stays local
 
@@ -149,17 +171,32 @@ same name through its direct tenant row.
 
 Two forms, one configuration:
 
-1. **A VM image**, `nix build .#losos-edge-qcow2`, attached to every tagged
-   release. It is the edge module as `nixosConfigurations.edge-gateway`:
-   `lan.advertise` and `lan.openEnrolment` on, the uplink read at runtime
-   from `/var/lib/losos-edge/uplink.json` so one image serves every site,
-   a root console (password `losos`, change forced at first login, SSH off
-   until `losos-edge ssh on`), and a tty1 banner with its address. Boot it
-   on Proxmox, libvirt or VirtualBox on the LAN; boxes installed from the
-   stock ISO find it within a minute. Then `losos-edge uplink set --id acme
-   --token-file …` with the tenant row the hub operator gave you.
-2. **An existing NixOS machine**: import `nixosModules.edge` and write the
-   options above, as the two-VM demo and `tests/edge-lan.nix` do.
+1. **A VM image**, `nix build .#losos-disk-edge-qcow2` (`nix run
+   .#losos-disk-edge-qcow2-run` boots it in QEMU), attached to every tagged
+   release as `losos-edge-gateway-<tag>.qcow2`. It is
+   `nixosConfigurations.edge-gateway`: the edge module with
+   `losos.edge.gateway.enable` (`modules/edge-gateway.nix`), which sets
+   `lan.advertise` and `lan.openEnrolment`, reads the uplink at runtime from
+   `/var/lib/losos-edge/uplink.json` so one image serves every site, mints
+   its own bootstrap token on first boot, gives root a console (first
+   password `losos`, change forced at first login; sshd installed but
+   stopped until `losos-edge ssh on`), and prints its address on tty1. Boot
+   it on Proxmox, libvirt or VirtualBox with a NIC on the LAN; boxes
+   installed from the stock ISO find it within a minute. Then, on its
+   console:
+
+   ```sh
+   losos-edge status
+   losos-edge uplink set --id acme --token-file /root/acme.token \
+     --registrar https://register.losos.cfd --rathole edge.losos.cfd:2333
+   losos-edge boxes
+   ```
+
+   with the tenant row the hub operator gave you. `losos-edge uplink
+   clear` stops relaying.
+2. **An existing NixOS machine**: import `nixosModules.edge` and either set
+   `losos.edge.gateway.enable = true` (the image's shape) or write the
+   options above by hand, as the two-VM demo and `tests/edge-lan.nix` do.
 
 The hub side for the official edges is one tenant row per site. The Vercel
 host carries the same `/relay` route and so can *accept* a spoke for a demo,

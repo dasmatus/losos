@@ -334,8 +334,21 @@
         imports = [
           ./modules/options.nix
           ./modules/edge.nix
+          ./modules/edge-gateway.nix
         ];
         _module.args.self = self;
+      };
+      # The edge gateway (wiki/Edge-Federation.md): the edge module with LAN
+      # advertising, open enrolment and a runtime uplink, as a VM image for a
+      # LAN that has no NixOS machine to import nixosModules.edge on.
+      # `nix build .#losos-disk-edge-qcow2` images it (flake/disk-images.nix);
+      # this configuration is what the image boots.
+      nixosConfigurations.edge-gateway = nixpkgs.lib.nixosSystem {
+        inherit system;
+        modules = [
+          self.nixosModules.edge
+          ./flake/edge-gateway-vm.nix
+        ];
       };
 
       # nixos-test-vms. Run with `nix build .#checks.x86_64-linux.<name>`:
@@ -405,6 +418,7 @@
         losos-admin-daemon = import ./tests/admin-vm.nix { inherit pkgs; };
         losos-edge-proxy = import ./tests/edge-vm.nix { inherit pkgs; };
         losos-edge-lan = import ./tests/edge-lan.nix { inherit pkgs; };
+        losos-edge-federation = import ./tests/edge-federation.nix { inherit pkgs; };
         losos-edge-market = import ./tests/market-vm.nix { inherit pkgs; };
         losos-ds-render = import ./tests/design-system.nix { inherit pkgs; };
         losos-front-vhost = import ./tests/front-vhost.nix { inherit pkgs; };

@@ -378,14 +378,17 @@ in
       type = lib.types.nullOr secretPath;
       default = "/var/secrets/losos-rathole-noise-pub";
       description = ''
-        Where the appliance keeps the edge's rathole Noise **public** key
-        (base64). Nothing to provision: on first start losos-rathole-noise-pin
-        fetches it from losos.proxy.registrarUrl and keeps it here, and the
-        tunnel is encrypted to it from then on (trust on first use, over the
+        Where the appliance keeps the configured edge's rathole Noise
+        **public** key (base64). Nothing to provision: before the tunnel
+        first dials, losos-rathole-client fetches it from
+        losos.proxy.registrarUrl and keeps it here, and the tunnel is
+        encrypted to it from then on (trust on first use, over the
         registrar's TLS). A file already present is never overwritten, so a
-        key distributed out of band pins the edge from the start. `null` runs
-        the tunnel in plain TCP; the tunnel carries the admin token, so leave
-        it on.
+        key distributed out of band pins the edge from the start. An edge
+        found on the LAN is pinned the same way into its own file under
+        /var/secrets/losos-edge-pins/ (lososd names it in
+        /run/losos/edge-path.env). `null` runs the tunnel in plain TCP; the
+        tunnel carries the admin token, so leave it on.
       '';
     };
 
@@ -1142,6 +1145,22 @@ in
                 too or it is silently dropped.
               '';
             };
+            relayZone = lib.mkOption {
+              type = lib.types.nullOr lib.types.str;
+              default = null;
+              example = "acme.losos.cfd";
+              description = ''
+                Make this tenant a **spoke** of this edge (wiki/Edge-Federation.md):
+                a user-hosted edge that may `POST /relay` the boxes behind it,
+                each of which must be named exactly one label under this zone
+                (`mattbox.acme.losos.cfd`). Relayed boxes get a Traefik router
+                and a rathole service here, keyed `<id>.<box>` and
+                authenticated with *this tenant's* token; they never get
+                `cluster` or `market`. `null` (the default) is an ordinary
+                tenant that may relay nothing. Rendered into tenants.json as
+                `relay_zone`, like `cluster` and `market`.
+              '';
+            };
           };
         }
       );
@@ -1285,6 +1304,132 @@ in
       '';
     };
 
+    edge.lan.ratholeEndpoint = lib.mkOption {
+      type = lib.types.str;
+      default = "${config.networking.hostName}.local:${toString config.losos.edge.ratholeBindPort}";
+      defaultText = lib.literalExpression ''"''${config.networking.hostName}.local:''${toString config.losos.edge.ratholeBindPort}"'';
+      description = ''
+        The `host:port` a box on the LAN dials its tunnel to, carried by the
+        advertisement as the `rathole=` TXT record beside `url=`. A box that
+        picks this edge as its path (backend/src/edge.rs) points its rathole
+        client here instead of at losos.proxy.edgeRatholeEndpoint. Same
+        default and same caveat as losos.edge.lan.url.
+      '';
+    };
+
+    edge.lan.openEnrolment = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Enrol unknown appliances trust-on-first-use: an id not in
+        losos.edge.tenants that registers is accepted with the token and
+        hostname it presented, both kept under
+        /var/lib/losos-registrar/enrolled/, and every later request for that
+        id must carry the same token. An enrolled box gets a route and
+        nothing else, never `cluster` or `market`. What makes a stock box
+        work with a gateway nobody provisioned tokens for
+        (wiki/Edge-Federation.md), and exactly as dangerous as it sounds on
+        an edge the internet can reach, so it requires losos.edge.lan.advertise
+        and is refused without it. `losos-registrar enrol list|forget --dir
+        /var/lib/losos-registrar/enrolled` on the edge shows and drops
+        enrolled boxes; a box that is still heartbeating re-enrols with the
+        token it holds, so forgetting is for a box that left.
+      '';
+    };
+
+    # ── Uplink: this edge as a spoke of another ─────────────────────────────
+    # wiki/Edge-Federation.md. A spoke keeps everything it has and adds one
+    # outbound tunnel plus one `POST /relay` loop to a hub, which must list it
+    # as a tenant with a relayZone. The registrar reads a JSON file for all of
+    # it (`--uplink-file`), rendered from the options below, or pointed at a
+    # runtime path (`configFile`) so one gateway image can serve every site.
+    edge.uplink.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Relay the boxes registered here to a hub edge: the registrar posts
+        the live tenant list to `<registrarUrl>/relay` every `interval` and
+        keeps /etc/rathole/uplink.toml, a rathole *client* config with one
+        service per relayed box, which `losos-rathole-uplink.service` runs.
+        The hub must name this edge in its losos.edge.tenants with a
+        relayZone; the boxes here must be named one label under that zone.
+      '';
+    };
+
+    edge.uplink.configFile = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      example = "/var/lib/losos-edge/uplink.json";
+      description = ''
+        Read the uplink target from this runtime file instead of rendering
+        one from the options below (fields: registrar_url, rathole_endpoint,
+        id, token_file, optional bootstrap_token_file and
+        noise_public_key_file; paths, never secrets). The registrar re-reads
+        it on every pass, and a missing file means "no uplink yet", so a
+        gateway image can ship with the uplink enabled and let its owner
+        fill the file in later with `losos-edge uplink set`.
+      '';
+    };
+
+    edge.uplink.registrarUrl = lib.mkOption {
+      type = lib.types.str;
+      default = "";
+      example = "https://register.losos.cfd";
+      description = "The hub's registrar API base URL. Required unless configFile is set.";
+    };
+
+    edge.uplink.ratholeEndpoint = lib.mkOption {
+      type = lib.types.str;
+      default = "edge.losos.cfd:2333";
+      description = "The hub's rathole server, `host:port`, that the uplink client dials.";
+    };
+
+    edge.uplink.id = lib.mkOption {
+      type = lib.types.str;
+      default = "";
+      example = "acme";
+      description = "This edge's tenant id on the hub (the attribute name under the hub's losos.edge.tenants). A DNS label. Required unless configFile is set.";
+    };
+
+    edge.uplink.tokenFile = lib.mkOption {
+      type = secretPath;
+      default = "/var/secrets/losos-uplink-token";
+      description = ''
+        0600 file holding this edge's tenant token on the hub (the hub's
+        losos.edge.tenants.<id>.tokenFile). Authenticates `/relay` and is the
+        token of every relayed rathole service. Provision out of band.
+      '';
+    };
+
+    edge.uplink.bootstrapTokenFile = lib.mkOption {
+      type = lib.types.nullOr secretPath;
+      default = null;
+      description = ''
+        0600 file holding the hub's rathole bootstrap token, for the client's
+        `default_token`. Optional: every relayed service carries the uplink
+        token, so `default_token` is never consulted and the uplink token
+        stands in when this is null.
+      '';
+    };
+
+    edge.uplink.noisePublicKeyFile = lib.mkOption {
+      type = lib.types.nullOr secretPath;
+      default = "/var/secrets/losos-uplink-noise-pub";
+      description = ''
+        Where the hub's rathole Noise public key is pinned. Nothing to
+        provision: when the file is absent the registrar fetches
+        `<registrarUrl>/noise-public-key` once and writes it (trust on first
+        contact, as a box pins its edge); a file already there is never
+        overwritten. `null` runs the uplink in plain TCP.
+      '';
+    };
+
+    edge.uplink.interval = lib.mkOption {
+      type = lib.types.str;
+      default = "30s";
+      description = "How often the spoke posts `/relay` to the hub. Must be well under the hub's losos.edge.heartbeatTtl: the hub drops a silent spoke's boxes with the spoke.";
+    };
+
     edge.rathole.package = lib.mkOption {
       type = lib.types.package;
       default = pkgs.rathole;
@@ -1402,6 +1547,10 @@ in
         "losos.edge.cluster.agentTokenFile" = config.losos.edge.cluster.agentTokenFile;
         "losos.edge.market.stripeSecretKeySealed" = config.losos.edge.market.stripeSecretKeySealed;
         "losos.edge.market.webhookSecretSealed" = config.losos.edge.market.webhookSecretSealed;
+        "losos.edge.uplink.tokenFile" = config.losos.edge.uplink.tokenFile;
+      }
+      // lib.optionalAttrs (config.losos.edge.uplink.bootstrapTokenFile != null) {
+        "losos.edge.uplink.bootstrapTokenFile" = config.losos.edge.uplink.bootstrapTokenFile;
       }
       // lib.optionalAttrs (config.losos.edge.noisePrivateKeyFile != null) {
         "losos.edge.noisePrivateKeyFile" = config.losos.edge.noisePrivateKeyFile;
