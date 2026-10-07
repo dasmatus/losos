@@ -4,7 +4,7 @@
   "pkg": "losos-ds",
   "globalName": "LososDS",
   "entry": "admin-ui/design-system/react/dist/index.js",
-  "buildCmd": "nix develop .# --command bash -c \"cd admin-ui/design-system/react && npm ci && npm run build\"",
+  "buildCmd": "cd admin-ui/design-system/react && bun install && bun run build",
   "cssEntry": "dist/styles.css",
   "readmeHeader": ".design-sync/conventions.md",
   "guidelinesGlob": [],

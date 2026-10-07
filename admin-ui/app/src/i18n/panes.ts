@@ -27,9 +27,9 @@ export default defineMessages({
     de: "Über den Namen",
   },
   "panes.about.addressCaption": {
-    en: "The name {name} is found over the local network (mDNS). Where a computer cannot find it, such as the host of a virtual machine, the numeric address on the box's screen works instead, and the box answers to it the same way.",
-    sk: "Názov {name} sa hľadá cez lokálnu sieť (mDNS). Ak ho počítač nenájde, napríklad hostiteľ virtuálneho stroja, funguje číselná adresa z obrazovky zariadenia a zariadenie na ňu odpovedá rovnako.",
-    de: "Der Name {name} wird über das lokale Netz gefunden (mDNS). Findet ein Computer ihn nicht, etwa der Host einer virtuellen Maschine, geht die Zahlenadresse vom Bildschirm der Box; die Box antwortet darauf genauso.",
+    en: "The name {name} is found over the local network, by mDNS. A computer that cannot find it, such as the host of a virtual machine, can use the numeric address on the box's screen instead. The box answers to it the same way.",
+    sk: "Názov {name} sa hľadá cez lokálnu sieť, cez mDNS. Počítač, ktorý ho nenájde, napríklad hostiteľ virtuálneho stroja, môže použiť číselnú adresu z obrazovky zariadenia. Zariadenie na ňu odpovedá rovnako.",
+    de: "Der Name {name} wird über das lokale Netz gefunden, per mDNS. Findet ein Computer ihn nicht, etwa der Host einer virtuellen Maschine, geht die Zahlenadresse vom Bildschirm der Box. Die Box antwortet darauf genauso.",
   },
   "panes.about.storage": {
     en: "Storage",
@@ -314,9 +314,9 @@ export default defineMessages({
     de: "deiner",
   },
   "panes.mesh.windowCaption": {
-    en: "These are the hours on {your} clock, and they travel with the setting. The box that hands out the work is told which time zone you meant, so the window does not slide by an hour when the clocks change. The end is the moment it stops. Set it to 07:00 and seven o'clock is yours again. An end earlier than the start simply runs through midnight, which is what “while I sleep” usually means. Work already running is left to finish; nothing new starts once the window shuts.",
-    sk: "Toto sú hodiny podľa {your} hodín a cestujú spolu s nastavením. Zariadenie, ktoré rozdeľuje prácu, sa dozvie, aké časové pásmo ste mysleli, takže sa okno pri zmene času neposunie o hodinu. Koniec je okamih, keď sa požičiavanie zastaví. Nastavte 07:00 a o siedmej je zariadenie opäť vaše. Koniec skôr ako začiatok jednoducho prechádza cez polnoc, čo „kým spím“ zvyčajne znamená. Práca, ktorá už beží, sa nechá dokončiť; po zatvorení okna sa nič nové nezačne.",
-    de: "Das sind die Stunden nach {your} Uhr, und sie reisen mit der Einstellung. Die Box, die die Arbeit verteilt, erfährt, welche Zeitzone du gemeint hast, deshalb verschiebt sich das Zeitfenster bei der Zeitumstellung nicht um eine Stunde. Das Ende ist der Moment, in dem es aufhört. Stell 07:00 ein, und um sieben gehört die Box wieder dir. Ein Ende vor dem Anfang läuft einfach über Mitternacht, und genau das heißt „während ich schlafe“ meistens. Arbeit, die schon läuft, darf fertig werden; sobald das Zeitfenster zu ist, startet nichts Neues.",
+    en: "These are the hours on {your} clock, and they travel with the setting. The box that hands out the work is told which time zone you meant, so the window does not slide by an hour when the clocks change. The end is the moment it stops. Set it to 07:00 and seven o'clock is yours again. An end earlier than the start runs through midnight, which is what \"while I sleep\" usually means. Work already running is left to finish. Nothing new starts once the window shuts.",
+    sk: "Toto sú hodiny podľa {your} hodín a cestujú spolu s nastavením. Zariadenie, ktoré rozdeľuje prácu, sa dozvie, aké časové pásmo ste mysleli, takže sa okno pri zmene času neposunie o hodinu. Koniec je okamih, keď sa požičiavanie zastaví. Nastavte 07:00 a o siedmej je zariadenie opäť vaše. Koniec skôr ako začiatok prechádza cez polnoc, čo „kým spím“ zvyčajne znamená. Práca, ktorá už beží, sa nechá dokončiť. Po zatvorení okna sa nič nové nezačne.",
+    de: "Das sind die Stunden nach {your} Uhr, und sie reisen mit der Einstellung. Die Box, die die Arbeit verteilt, erfährt, welche Zeitzone du gemeint hast, deshalb verschiebt sich das Zeitfenster bei der Zeitumstellung nicht um eine Stunde. Das Ende ist der Moment, in dem es aufhört. Stell 07:00 ein, und um sieben gehört die Box wieder dir. Ein Ende vor dem Anfang läuft über Mitternacht, und genau das heißt „während ich schlafe“ meistens. Arbeit, die schon läuft, darf fertig werden. Sobald das Zeitfenster zu ist, startet nichts Neues.",
   },
 
   // ── Network ─────────────────────────────────────────────────────────────
@@ -336,9 +336,9 @@ export default defineMessages({
     de: "Im Heimnetz erreichbar unter",
   },
   "panes.network.nameCaption": {
-    en: "Letters, digits and hyphens, starting and ending with a letter or a digit, up to 63 characters. Everything about this box hangs off the name: change it and the address you use to reach it changes with it, along with the addresses the apps hand out. There is no other way into this box, so a name it cannot answer to is a box you cannot reach. The name is found over the local network (mDNS); a computer that cannot find it reaches the box by the numeric address on its screen, which a rename does not change.",
-    sk: "Písmená, číslice a pomlčky, na začiatku aj na konci písmeno alebo číslica, najviac 63 znakov. Všetko na tomto zariadení visí na názve: keď ho zmeníte, zmení sa aj adresa, na ktorej ho nájdete, a s ňou aj adresy, ktoré rozdávajú aplikácie. Do zariadenia sa nedá dostať inak, takže názov, na ktorý nevie odpovedať, znamená zariadenie, na ktoré sa nedostanete. Názov sa hľadá cez lokálnu sieť (mDNS); počítač, ktorý ho nenájde, sa na zariadenie dostane cez číselnú adresu z jeho obrazovky, ktorú premenovanie nemení.",
-    de: "Buchstaben, Ziffern und Bindestriche, am Anfang und Ende ein Buchstabe oder eine Ziffer, höchstens 63 Zeichen. An dem Namen hängt alles auf dieser Box: Änderst du ihn, ändert sich die Adresse, unter der du sie erreichst, und mit ihr die Adressen, die die Apps herausgeben. Es gibt keinen anderen Weg in diese Box, also ist ein Name, auf den sie nicht hören kann, eine Box, die du nicht erreichst. Der Name wird über das lokale Netz gefunden (mDNS); ein Computer, der ihn nicht findet, erreicht die Box über die Zahlenadresse auf ihrem Bildschirm, die eine Umbenennung nicht ändert.",
+    en: "Letters, digits and hyphens, starting and ending with a letter or a digit, up to 63 characters. Everything about this box hangs off the name. Change it and the address you use to reach it changes with it, along with the addresses the apps hand out. There is no other way into this box, so a name it cannot answer to is a box you cannot reach. The name is found over the local network, by mDNS. A computer that cannot find it reaches the box by the numeric address on its screen, which a rename does not change.",
+    sk: "Písmená, číslice a pomlčky, na začiatku aj na konci písmeno alebo číslica, najviac 63 znakov. Všetko na tomto zariadení visí na názve. Keď ho zmeníte, zmení sa aj adresa, na ktorej ho nájdete, a s ňou aj adresy, ktoré rozdávajú aplikácie. Do zariadenia sa nedá dostať inak, takže názov, na ktorý nevie odpovedať, znamená zariadenie, na ktoré sa nedostanete. Názov sa hľadá cez lokálnu sieť, cez mDNS. Počítač, ktorý ho nenájde, sa na zariadenie dostane cez číselnú adresu z jeho obrazovky, ktorú premenovanie nemení.",
+    de: "Buchstaben, Ziffern und Bindestriche, am Anfang und Ende ein Buchstabe oder eine Ziffer, höchstens 63 Zeichen. An dem Namen hängt alles auf dieser Box. Änderst du ihn, ändert sich die Adresse, unter der du sie erreichst, und mit ihr die Adressen, die die Apps herausgeben. Es gibt keinen anderen Weg in diese Box, also ist ein Name, auf den sie nicht hören kann, eine Box, die du nicht erreichst. Der Name wird über das lokale Netz gefunden, per mDNS. Ein Computer, der ihn nicht findet, erreicht die Box über die Zahlenadresse auf ihrem Bildschirm, die eine Umbenennung nicht ändert.",
   },
   "panes.network.reaching": {
     en: "Reaching it",
@@ -366,7 +366,7 @@ export default defineMessages({
     de: "Port der Dateien-App",
   },
   "panes.network.reachCaption": {
-    en: "With “reachable from outside” on, this box opens a way out to a small relay so you can get at it from anywhere. Nothing on your router needs opening. The port is an inside detail. The files app answers on it behind the front door, and there is no reason to change it unless something else on this box already wants that number.",
+    en: "With \"reachable from outside\" on, this box opens a way out to a small relay so you can get at it from anywhere. Nothing on your router needs opening. The port is an inside detail. The files app answers on it behind the front door, and there is no reason to change it unless something else on this box already wants that number.",
     sk: "Keď je zapnuté „dostupné mimo domova“, zariadenie si otvorí cestu von k malému sprostredkovateľovi, aby ste sa k nemu dostali odkiaľkoľvek. Na routeri netreba nič otvárať. Port je vnútorný detail. Aplikácia na súbory na ňom odpovedá za vstupnými dverami a netreba ho meniť, pokiaľ to isté číslo nechce niečo iné na tomto zariadení.",
     de: "Mit „von außerhalb erreichbar“ öffnet diese Box einen Weg nach draußen zu einem kleinen Relay, sodass du von überall an sie herankommst. An deinem Router muss nichts geöffnet werden. Der Port ist ein internes Detail. Die Dateien-App antwortet darauf hinter der Haustür, und es gibt keinen Grund, ihn zu ändern, außer etwas anderes auf dieser Box will dieselbe Nummer.",
   },
@@ -475,14 +475,14 @@ export default defineMessages({
     de: "Prozessor halbieren, um ein Leck zwischen Aufgaben zu schließen",
   },
   "panes.security.nosmt.detail": {
-    en: "Shuts the door two jobs can otherwise listen through. This is the expensive one: roughly half the speed, and you will notice it converting video.",
-    sk: "Zavrie dvere, cez ktoré by sa dve úlohy mohli navzájom počúvať. Toto je tá drahá voľba: zhruba polovičná rýchlosť a pri prevode videa to spoznáte.",
-    de: "Schließt die Tür, durch die zwei Aufgaben sonst mithören können. Das ist die teure Option: ungefähr halbe Geschwindigkeit, und beim Umwandeln von Videos merkst du es.",
+    en: "Shuts the door two jobs can otherwise listen through. This is the expensive one. Roughly half the speed, and you will notice it converting video.",
+    sk: "Zavrie dvere, cez ktoré by sa dve úlohy mohli navzájom počúvať. Toto je tá drahá voľba. Zhruba polovičná rýchlosť a pri prevode videa to spoznáte.",
+    de: "Schließt die Tür, durch die zwei Aufgaben sonst mithören können. Das ist die teure Option. Ungefähr halbe Geschwindigkeit, und beim Umwandeln von Videos merkst du es.",
   },
   "panes.security.caption": {
-    en: "This box already protects itself in the ways that cost nothing, and those are always on and not listed here. The four above are the ones with a price, so they are yours to decide. If you lend spare capacity to the mesh, the middle two are the ones worth reading twice: they are what stands between somebody else’s job and yours.",
-    sk: "Toto zariadenie sa už chráni všetkými spôsobmi, ktoré nič nestoja; tie sú vždy zapnuté a nie sú tu uvedené. Štyri vyššie niečo stoja, preto je rozhodnutie na vás. Ak požičiavate voľný výkon sieti mesh, prostredné dve si prečítajte dvakrát: práve ony stoja medzi úlohou niekoho iného a vašou.",
-    de: "Diese Box schützt sich schon auf alle Arten, die nichts kosten; die sind immer an und hier nicht aufgeführt. Die vier oben haben einen Preis, deshalb entscheidest du. Wenn du freie Rechenleistung ans Mesh verleihst, lohnt es sich, die mittleren beiden zweimal zu lesen: Sie stehen zwischen der Aufgabe von jemand anderem und deiner.",
+    en: "This box already protects itself in the ways that cost nothing, and those are always on and not listed here. The four above are the ones with a price, so they are yours to decide. If you lend spare capacity to the mesh, the middle two are the ones worth reading twice. They are what stands between somebody else's job and yours.",
+    sk: "Toto zariadenie sa už chráni všetkými spôsobmi, ktoré nič nestoja. Tie sú vždy zapnuté a nie sú tu uvedené. Štyri vyššie niečo stoja, preto je rozhodnutie na vás. Ak požičiavate voľný výkon sieti mesh, prostredné dve si prečítajte dvakrát. Práve ony stoja medzi úlohou niekoho iného a vašou.",
+    de: "Diese Box schützt sich schon auf alle Arten, die nichts kosten. Die sind immer an und hier nicht aufgeführt. Die vier oben haben einen Preis, deshalb entscheidest du. Wenn du freie Rechenleistung ans Mesh verleihst, lohnt es sich, die mittleren beiden zweimal zu lesen. Sie stehen zwischen der Aufgabe von jemand anderem und deiner.",
   },
 
   // ── Storage ─────────────────────────────────────────────────────────────
@@ -589,7 +589,7 @@ export default defineMessages({
     de: "Das Mesh",
   },
   "panes.market.share.switch": {
-    en: "Share this box’s disk with the mesh",
+    en: "Share this box's disk with the mesh",
     sk: "Zdieľať disk tohto zariadenia so sieťou mesh",
     de: "Die Festplatte dieser Box mit dem Mesh teilen",
   },
@@ -664,9 +664,9 @@ export default defineMessages({
     de: "Rechenleistung",
   },
   "panes.market.computeBoughtDetail": {
-    en: "Credit only for now: nothing meters or schedules against it yet.",
-    sk: "Zatiaľ len kredit: nič ho ešte nemeria ani podľa neho neplánuje.",
-    de: "Vorerst nur ein Guthaben: Noch misst oder plant nichts dagegen.",
+    en: "Credit only, for now. Nothing meters or schedules against it yet.",
+    sk: "Zatiaľ len kredit. Nič ho ešte nemeria ani podľa neho neplánuje.",
+    de: "Vorerst nur ein Guthaben. Noch misst oder plant nichts dagegen.",
   },
   "panes.market.gib": {
     en: "{count} GiB",
@@ -814,9 +814,9 @@ export default defineMessages({
     de: "Einrichtung fortsetzen",
   },
   "panes.market.nothingShared": {
-    en: "Nothing to sell yet. Join the mesh first (and share compute, to sell compute): the market only sells what you already lend.",
-    sk: "Zatiaľ nie je čo predávať. Najprv sa pripojte k mesh sieti (a na predaj výkonu zdieľajte výpočtový výkon): trh predáva len to, čo už požičiavate.",
-    de: "Noch nichts zu verkaufen. Tritt zuerst dem Mesh bei (und teile Rechenleistung, um sie zu verkaufen): Der Markt verkauft nur, was du ohnehin verleihst.",
+    en: "Nothing to sell yet. The market only sells what you already lend, so join the mesh first. To sell compute, share compute too.",
+    sk: "Zatiaľ nie je čo predávať. Trh predáva len to, čo už požičiavate, preto sa najprv pripojte k mesh sieti. Ak chcete predávať výpočtový výkon, zdieľajte ho tiež.",
+    de: "Noch nichts zu verkaufen. Der Markt verkauft nur, was du ohnehin verleihst, also tritt zuerst dem Mesh bei. Um Rechenleistung zu verkaufen, teile sie auch.",
   },
   "panes.market.kindLabel": {
     en: "What to sell",
@@ -864,9 +864,9 @@ export default defineMessages({
     de: "Nicht mehr verkaufen",
   },
   "panes.market.sellCaption": {
-    en: "The platform keeps {percent}% of each sale to cover running costs; the rest goes to your Stripe account.",
-    sk: "Platforma si z každého predaja necháva {percent} % na pokrytie nákladov; zvyšok ide na váš účet Stripe.",
-    de: "Die Plattform behält {percent} % jedes Verkaufs für die Betriebskosten; der Rest geht an dein Stripe-Konto.",
+    en: "The platform keeps {percent}% of each sale to cover running costs. The rest goes to your Stripe account.",
+    sk: "Platforma si z každého predaja necháva {percent} % na pokrytie nákladov. Zvyšok ide na váš účet Stripe.",
+    de: "Die Plattform behält {percent} % jedes Verkaufs für die Betriebskosten. Der Rest geht an dein Stripe-Konto.",
   },
   "panes.market.youReceive": {
     en: "you receive {amount}",
