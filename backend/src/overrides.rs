@@ -46,35 +46,156 @@ pub const DEFAULT_OVERRIDES_NIX: &str = r#"{ ... }:
 }
 "#;
 
+/// One `losos.<key> = <value>;` line, as `(key, value)`, or `None` when the
+/// line is not an assignment of a `losos.*` option.
+///
+/// The left side must BE an option, not merely contain it: matching on
+/// `contains` made `losos.proxy.enable` also match `losos.proxy.enabled`, and
+/// `losos.gpu.enable = true; # see losos.hostName` match hostName. A compact
+/// one-line body (`{ losos.hostName = "x"; }`) puts a brace before the key,
+/// so that is stripped before the key is read. A trailing comment is dropped
+/// before anything else, or `= 11000; # default` reads back as
+/// `11000; # default`; then the statement terminator, then a closing brace
+/// from a one-line body, then the terminator again in case the brace hid it.
+pub fn parse_line(l: &str) -> Option<(String, String)> {
+    if l.trim_start().starts_with('#') {
+        return None;
+    }
+    let (lhs, rhs) = l.split_once('=')?;
+    let key = lhs
+        .trim()
+        .trim_start_matches('{')
+        .trim()
+        .strip_prefix("losos.")?;
+    if key.is_empty() || !key.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'.') {
+        return None;
+    }
+    let v = strip_comment(rhs);
+    let v = v.trim().trim_end_matches(';').trim();
+    let v = v.trim_end_matches('}').trim().trim_end_matches(';').trim();
+    Some((key.to_string(), v.to_string()))
+}
+
+/// `s` up to its first `#` outside a double-quoted string.
+///
+/// A `#` inside quotes is part of the value: `"git+file:///etc/nixos#install"`
+/// is the default `upgradeFlakeUri`, and cutting it at the `#` left an
+/// unterminated string that the Advanced pane's gate then refused.
+fn strip_comment(s: &str) -> &str {
+    let mut in_string = false;
+    let mut escaped = false;
+    for (i, c) in s.char_indices() {
+        match c {
+            _ if escaped => escaped = false,
+            '\\' if in_string => escaped = true,
+            '"' => in_string = !in_string,
+            '#' if !in_string => return &s[..i],
+            _ => {}
+        }
+    }
+    s
+}
+
 /// Find the value assigned to `losos.<key>`.
 ///
-/// The first line that mentions the key, contains an `=`, and is not commented
-/// out wins. The value is everything after the first `=`, minus surrounding
-/// whitespace and one trailing `;`.
+/// The first line that assigns the key wins (see [`parse_line`] for what
+/// counts as one). The value is everything after the first `=`, minus
+/// surrounding whitespace, a trailing comment and one trailing `;`.
 pub fn lookup_nix(key: &str, content: &str) -> Option<String> {
-    let needle = format!("losos.{key}");
-    content.lines().find_map(|l| {
-        if l.trim_start().starts_with('#') {
-            return None;
+    content
+        .lines()
+        .filter_map(parse_line)
+        .find_map(|(k, v)| (k == key).then_some(v))
+}
+
+/// Every `losos.<key> = <value>;` assignment in `content`, in file order.
+///
+/// What [`crate::options::join`] shows as `set`, what [`crate::options::
+/// check_body`] gates, and what [`describe_changes`] diffs. Deliberately not
+/// a map: the first assignment of a key is the one [`lookup_nix`] reads, so
+/// callers that need one value per key take the first too.
+pub fn assignments(content: &str) -> Vec<(String, String)> {
+    let mut out: Vec<(String, String)> = Vec::new();
+    for (k, v) in content.lines().filter_map(parse_line) {
+        if !out.iter().any(|(seen, _)| *seen == k) {
+            out.push((k, v));
         }
-        let (lhs, rhs) = l.split_once('=')?;
-        // The left side must BE the option, not merely contain it. Matching on
-        // `contains` made `losos.proxy.enable` also match `losos.proxy.enabled`,
-        // and `losos.gpu.enable = true; # see losos.hostName` match hostName.
-        // A compact one-line body (`{ losos.hostName = "x"; }`) puts a brace
-        // before the key, so strip that before comparing.
-        if lhs.trim().trim_start_matches('{').trim() != needle {
-            return None;
+    }
+    out
+}
+
+/// One option whose assignment differs between two `overrides.nix` bodies.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Change {
+    pub key: String,
+    /// `None` is "not assigned", which the module reads as the default.
+    pub before: Option<String>,
+    pub after: Option<String>,
+}
+
+/// The assignments that differ between `old` and `new`, in the order `new`
+/// lists them, with the keys `new` dropped at the end.
+pub fn describe_changes(old: &str, new: &str) -> Vec<Change> {
+    let before = assignments(old);
+    let after = assignments(new);
+    let lookup = |set: &[(String, String)], key: &str| -> Option<String> {
+        set.iter().find(|(k, _)| k == key).map(|(_, v)| v.clone())
+    };
+    let mut out = Vec::new();
+    for (key, value) in &after {
+        let was = lookup(&before, key);
+        if was.as_deref() != Some(value) {
+            out.push(Change {
+                key: key.clone(),
+                before: was,
+                after: Some(value.clone()),
+            });
         }
-        // Drop a trailing comment before anything else, or `= 11000; # default`
-        // reads back as `11000; # default`.
-        let v = rhs.split('#').next().unwrap_or(rhs);
-        // Then the statement terminator, then a closing brace from a one-line
-        // body, then the terminator again in case the brace hid it.
-        let v = v.trim().trim_end_matches(';').trim();
-        let v = v.trim_end_matches('}').trim().trim_end_matches(';').trim();
-        Some(v.to_string())
-    })
+    }
+    for (key, value) in &before {
+        if lookup(&after, key).is_none() {
+            out.push(Change {
+                key: key.clone(),
+                before: Some(value.clone()),
+                after: None,
+            });
+        }
+    }
+    out
+}
+
+/// The commit a change to `overrides.nix` gets in the box's configuration
+/// repository (`crate::config_repo`): a subject naming the settings, and a
+/// body with one `losos.<key>: before -> after` line per change.
+///
+/// `title` is what the caller was asked to do — "Change" for an Apply or a
+/// storage switch, "Reset" for a factory reset — so the subject reads
+/// `Change hostName, cluster.enable` or `Reset settings to the defaults`.
+pub fn commit_message(title: &str, changes: &[Change]) -> (String, String) {
+    const NAMED: usize = 3;
+    let names: Vec<&str> = changes.iter().map(|c| c.key.as_str()).collect();
+    let subject = match names.len() {
+        0 => format!("{title} settings (no assignment changed)"),
+        n if n <= NAMED => format!("{title} {}", names.join(", ")),
+        n => format!(
+            "{title} {} and {} more",
+            names[..NAMED].join(", "),
+            n - NAMED
+        ),
+    };
+    let body = changes
+        .iter()
+        .map(|c| {
+            format!(
+                "losos.{}: {} -> {}",
+                c.key,
+                c.before.as_deref().unwrap_or("(default)"),
+                c.after.as_deref().unwrap_or("(default)")
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    (subject, body)
 }
 
 /// Strip one matching pair of surrounding double quotes, if present.
@@ -306,6 +427,26 @@ pub fn validate_apply(t: &str) -> Result<&str, &'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn hash_inside_a_string_is_part_of_the_value() {
+        let line = r#"  losos.upgradeFlakeUri = "git+file:///etc/nixos#install"; # the default"#;
+        assert_eq!(
+            parse_line(line),
+            Some((
+                "upgradeFlakeUri".to_string(),
+                r#""git+file:///etc/nixos#install""#.to_string()
+            ))
+        );
+        assert_eq!(
+            parse_line(r##"  losos.hostName = "a\"#b"; # c"##),
+            Some(("hostName".to_string(), r##""a\"#b""##.to_string()))
+        );
+        assert_eq!(
+            parse_line("  losos.x = true; # a # b"),
+            Some(("x".to_string(), "true".to_string()))
+        );
+    }
 
     #[test]
     fn parses_the_committed_default_body() {
@@ -597,6 +738,75 @@ mod tests {
                 "{\n  losos.cluster.computeWindow.start = \"23:00\";\n  losos.cluster.computeWindow.end = \"07:00\";\n}\n"
             )
             .is_ok()
+        );
+    }
+
+    #[test]
+    fn assignments_lists_each_key_once_in_file_order() {
+        let body = "{ ... }:\n{\n  losos.a = 1;\n  # losos.b = 2;\n  losos.c = \"x\"; # losos.d = 4\n  losos.a = 5;\n}\n";
+        assert_eq!(
+            assignments(body),
+            vec![
+                ("a".to_string(), "1".to_string()),
+                ("c".to_string(), "\"x\"".to_string())
+            ]
+        );
+    }
+
+    #[test]
+    fn describe_changes_names_changed_added_and_dropped_keys() {
+        let old = "{\n  losos.hostName = \"a\";\n  losos.gpu.enable = true;\n  losos.x = 1;\n}";
+        let new = "{\n  losos.hostName = \"b\";\n  losos.gpu.enable = true;\n  losos.y = 2;\n}";
+        let changes = describe_changes(old, new);
+        assert_eq!(
+            changes,
+            vec![
+                Change {
+                    key: "hostName".into(),
+                    before: Some("\"a\"".into()),
+                    after: Some("\"b\"".into())
+                },
+                Change {
+                    key: "y".into(),
+                    before: None,
+                    after: Some("2".into())
+                },
+                Change {
+                    key: "x".into(),
+                    before: Some("1".into()),
+                    after: None
+                },
+            ]
+        );
+        assert!(describe_changes(old, old).is_empty());
+    }
+
+    #[test]
+    fn commit_messages_name_the_settings() {
+        let changes = describe_changes(
+            "{ losos.hostName = \"a\"; }",
+            "{\n  losos.hostName = \"b\";\n  losos.cluster.enable = true;\n}",
+        );
+        let (subject, body) = commit_message("Change", &changes);
+        assert_eq!(subject, "Change hostName, cluster.enable");
+        assert_eq!(
+            body,
+            "losos.hostName: \"a\" -> \"b\"\nlosos.cluster.enable: (default) -> true"
+        );
+        let many: Vec<Change> = (0..5)
+            .map(|i| Change {
+                key: format!("k{i}"),
+                before: None,
+                after: Some("1".into()),
+            })
+            .collect();
+        assert_eq!(
+            commit_message("Change", &many).0,
+            "Change k0, k1, k2 and 2 more"
+        );
+        assert_eq!(
+            commit_message("Reset", &[]).0,
+            "Reset settings (no assignment changed)"
         );
     }
 }

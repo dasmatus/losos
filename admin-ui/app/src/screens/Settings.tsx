@@ -6,8 +6,10 @@ import { useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
 import { ApplyBar } from "./settings/apply-bar";
 import { AboutPane } from "./settings/pane-about";
+import { AdvancedPane } from "./settings/pane-advanced";
 import { AppsPane } from "./settings/pane-apps";
 import { HardwarePane } from "./settings/pane-hardware";
+import { HistoryPane } from "./settings/pane-history";
 import { LookPane } from "./settings/pane-look";
 import { MarketPane } from "./settings/pane-market";
 import { MeshPane } from "./settings/pane-mesh";
@@ -110,6 +112,11 @@ function Pane({
       return <HardwarePane form={form} />;
     case "security":
       return <SecurityPane form={form} />;
+    case "advanced":
+      return <AdvancedPane form={form} />;
+    case "history":
+      // No draft, no Apply bar: it reads the repository and syncs on request.
+      return <HistoryPane locked={form.locked} />;
     case "about":
       return <AboutPane form={form} />;
     case "reset":
