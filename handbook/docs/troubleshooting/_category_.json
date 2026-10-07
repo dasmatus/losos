@@ -4,5 +4,6 @@
   "link": {
     "type": "doc",
     "id": "troubleshooting/index"
-  }
+  },
+  "className": "hb-icon hb-icon-trouble"
 }

@@ -1,15 +1,11 @@
 {
   "title": {
-    "message": "LosOS-Handbuch",
+    "message": "Handbuch",
     "description": "The title in the navbar"
   },
   "logo.alt": {
     "message": "LosOS",
     "description": "The alt text of navbar logo"
-  },
-  "item.label.Handbook": {
-    "message": "Handbuch",
-    "description": "Navbar item with label Handbook"
   },
   "item.label.Types": {
     "message": "Typen",
