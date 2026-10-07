@@ -646,7 +646,13 @@ A separate `midnight-reboot.timer` reboots unconditionally at 00:07 with
   key stays the whole secret. Forgejo Actions is **off** in both Forgejo
   modes and the box runs no runner: the earlier from-the-box ceremony
   (Actions workflows plus `modules/git-runner.nix`) is gone, and
-  `provisioning/edge-identity/README.md` is the operator runbook.
+  `provisioning/edge-identity/README.md` is the operator runbook. The
+  operator's machine has no Nix store, so `.#losos-registrar-static`
+  (`pkgsStatic`, musl, same `cargoHash`) is the binary for it: CI's
+  `publish-tool` job pushes it to GHCR as `images:<channel>-x86_64`
+  (`losos-registrar` + `SHA256SUMS`, one layer each) and the proxy serves
+  it at `/updates/<channel>/x86_64/<file>`, the one route of the LosOS
+  Desktop proxy that hands out plain files; the runbook has the curl line.
 - **`system.stateVersion = "26.11"` is set-once** — matches the nixos-unstable
   this flake tracks; don't change it.
 - **The `result` symlink is a `nix build` artifact** (pointing into
