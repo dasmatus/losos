@@ -480,9 +480,17 @@
         "name",
         "url",
         "source",
-        "official"
+        "official",
+        "rathole"
       ],
       "properties": {
+        "rathole": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "`host:port` of this edge's rathole server, where the box's tunnel would dial: the advert's `rathole=` TXT record (or the registrar's host on port 2333 for an advert without one) for a LAN edge, losos.proxy.edgeRatholeEndpoint ($LOSOS_EDGE_RATHOLE) for the configured one. null when the box was given none, in which case the edge is found but never chosen as the path."
+        },
         "official": {
           "type": "boolean",
           "description": "This edge proved it is one LosOS runs: on this scan it presented a certificate signed by the LosOS root key (losos.proxy.officialRootKeyFile) that names this URL and is unexpired, and signed the scan's fresh nonce with the certificate's key (`GET <url>/identity?nonce=<hex>`, backend/src/edge.rs). False for an edge a company runs for itself, and for every edge while the box ships no root key. Only official edges may process P2P storage and compute trading; discovery and sharing do not depend on it."
@@ -500,6 +508,32 @@
         }
       }
     },
+    "edgePath": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "url",
+        "source",
+        "rathole"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string",
+          "description": "The chosen edge's registrar API, as in `edges`."
+        },
+        "source": {
+          "$ref": "#/$defs/edgeSource"
+        },
+        "rathole": {
+          "type": "string",
+          "description": "`host:port` the tunnel dials. Never null: an edge without one is not chosen."
+        }
+      }
+    },
     "edgeResponse": {
       "type": "object",
       "additionalProperties": false,
@@ -509,9 +543,21 @@
         "edges",
         "lanSearched",
         "configuredUrl",
-        "checkedAt"
+        "checkedAt",
+        "path"
       ],
       "properties": {
+        "path": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/edgePath"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The edge this box uses, out of `edges` (wiki/Edge-Federation.md): the first LAN edge with a tunnel endpoint, else the configured edge, else null. With losos.proxy.enable on, lososd writes it to /run/losos/edge-path.env and restarts the tunnel and announce units when it changes; null writes /run/losos/edge-none and stops them, so a box with no edge in reach runs no tunnel. The sharing gate (`reachable`) and the market gate (`official`) are the other two bits; this one says where the traffic goes."
+        },
         "official": {
           "type": "boolean",
           "description": "At least one of `edges` is official. The one bit the market gate reads: while false, `GET /api/market` answers `{\"available\":false,\"reason\":\"noOfficialEdge\"}` and every `POST /api/market/*` is refused (HTTP 409, `{\"error\":\"...\",\"officialEdgeRequired\":true}`), whatever edge the box is enrolled with. Sharing storage and joining the mesh are gated on `reachable` only."

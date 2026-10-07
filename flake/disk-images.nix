@@ -396,10 +396,64 @@ let
   # that stops contributing the path at all.
   isoSelf = isoSystem.config.system.build.toplevel;
   carriesItself = builtins.elem isoSelf isoSystem.config.isoImage.storeContents;
+
+  # ── The edge gateway image ─────────────────────────────────────────────
+  #
+  # Unlike the demo qcow2, this one IS the product it images: the edge gateway
+  # (modules/edge-gateway.nix, wiki/Edge-Federation.md) is a LAN machine with
+  # no encrypted layout, no impermanence and no owner data, so a disk image
+  # loses nothing. flake/edge-gateway-vm.nix is its hardware half. Small
+  # enough to be a GitHub release asset, which CI's release job makes it.
+  edgeGateway = self.nixosConfigurations.edge-gateway;
+  edgeImage = import "${nixpkgs}/nixos/lib/make-disk-image.nix" {
+    inherit pkgs lib;
+    inherit (edgeGateway) config;
+    # Same `losos-disk-` prefix contract with devenv.nix as the demo image.
+    name = "losos-disk-edge-qcow2";
+    baseName = "losos-edge-gateway";
+    format = "qcow2";
+    label = "losos-edge";
+    partitionTableType = "efi";
+    bootSize = "512M";
+    # 8 GiB sparse: the closure is around a gigabyte and the registrar's
+    # state is kilobytes; boot.growPartition takes whatever the hypervisor
+    # gives it beyond this.
+    diskSize = 8192;
+    memSize = 2048;
+    copyChannel = false;
+  };
+  edgeRunner = pkgs.writeShellApplication {
+    name = "losos-edge-vm-run";
+    runtimeInputs = [
+      pkgs.qemu
+      pkgs.coreutils
+    ];
+    # User-mode networking is enough to log in and look around, but a
+    # gateway on QEMU's private 10.0.2.0/24 advertises an address no box can
+    # reach; put it on the LAN with a bridge (Proxmox and libvirt do) to use
+    # it for real. The registrar API is forwarded to :8443 on the host.
+    text = ''
+      disk="''${LOSOS_EDGE_VM_DISK:-losos-edge-gateway.qcow2}"
+      vars="''${LOSOS_EDGE_VM_VARS:-losos-edge-gateway-efivars.fd}"
+      if [ ! -e "$disk" ]; then
+        echo "creating $disk (copy-on-write over the read-only store image)"
+        qemu-img create -f qcow2 -F qcow2 -b ${edgeImage}/losos-edge-gateway.qcow2 "$disk"
+      fi
+      if [ ! -e "$vars" ]; then
+        cp ${pkgs.OVMF.fd.variables} "$vars"
+        chmod 0644 "$vars"
+      fi
+      echo "console: root / losos (change it at first login); registrar API on localhost:8443"
+      echo "quit:    Ctrl-a x"
+      exec qemu-system-x86_64         -machine q35,accel=kvm:tcg         -cpu max         -smp "''${LOSOS_EDGE_VM_CPUS:-2}"         -m "''${LOSOS_EDGE_VM_MEM:-2048}"         -drive if=pflash,format=raw,unit=0,readonly=on,file=${pkgs.OVMF.fd.firmware}         -drive if=pflash,format=raw,unit=1,file="$vars"         -drive file="$disk",if=virtio,format=qcow2         -nic user,model=virtio-net-pci,hostfwd=tcp::8443-:8443         -nographic "$@"
+    '';
+  };
 in
 {
   losos-disk-qcow2 = image;
   losos-disk-qcow2-run = runner;
+  losos-disk-edge-qcow2 = edgeImage;
+  losos-disk-edge-qcow2-run = edgeRunner;
 
   # The assert rides on THIS attribute, not on the set. Attached to the set it
   # would be forced by any access to `packages` — including `nix build

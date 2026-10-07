@@ -201,7 +201,9 @@ pkgs.testers.nixosTest {
     edge_pub = edge.succeed("cat /var/secrets/losos-rathole-noise-key.pub").strip()
     assert len(edge_pub) == 44, f"edge public key looks wrong: {edge_pub!r}"
     assert edge.succeed("stat -c %a /var/secrets/losos-rathole-noise-key").strip() == "600"
-    appliance.wait_for_unit("losos-rathole-noise-pin.service")
+    # The pin is the client's own ExecStartPre now (no separate unit): the
+    # key is fetched before the first dial and never again.
+    appliance.wait_for_unit("losos-rathole-client.service")
     pinned = appliance.succeed("cat /var/secrets/losos-rathole-noise-pub").strip()
     assert pinned == edge_pub, f"appliance pinned {pinned!r}, edge has {edge_pub!r}"
     appliance.wait_for_unit("losos-rathole-client.service")

@@ -116,6 +116,13 @@ pub struct ServeOpts {
     /// company edge (sharing, no trading).
     pub identity_key_file: Option<String>,
     pub identity_cert_file: Option<String>,
+    /// Open enrolment (`crate::relay::Enrolment`): the directory this edge
+    /// keeps boxes it accepted on first contact in. `None` keeps enrolment
+    /// closed, which every internet-facing edge must.
+    pub enrol_dir: Option<String>,
+    /// The uplink to a hub (`crate::relay`). `None` and this edge relays
+    /// nothing anywhere.
+    pub uplink: Option<crate::relay::UplinkOpts>,
 }
 
 /// `identity` options: the offline key ceremony (`crate::identity`).
@@ -218,12 +225,26 @@ pub enum Mode {
     Join(JoinOpts),
     StripeGate(GateOpts),
     Identity(IdentityOpts),
+    Enrol(EnrolOpts),
+}
+
+/// `enrol` options: the LAN owner's view of the boxes a `--enrol-dir`
+/// edge took in on first contact (`crate::relay::Enrolment`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EnrolOpts {
+    /// `enrol list --dir DIR`: one `id hostname` line per enrolled box.
+    List { dir: String },
+    /// `enrol forget --dir DIR ID`: drop the box and its token file. The
+    /// running registrar sees the file change on its next lookup; a box
+    /// still heartbeating re-enrols with the token it holds, so this is
+    /// for a box that is gone, not a way to evict one that is present.
+    Forget { dir: String, id: String },
 }
 
 pub fn parse(args: Vec<String>) -> Result<Mode> {
     if args.is_empty() {
         return Err(miette!(
-            "usage: losos-registrar serve|announce|seed|join|stripe-gate|identity ..."
+            "usage: losos-registrar serve|announce|seed|join|stripe-gate|identity|enrol ..."
         ));
     }
     let mode = &args[0];
@@ -270,6 +291,17 @@ pub fn parse(args: Vec<String>) -> Result<Mode> {
                 market: parse_market(&rest)?,
                 identity_key_file: arg(&rest, "--identity-key-file").map(str::to_string),
                 identity_cert_file: arg(&rest, "--identity-cert-file").map(str::to_string),
+                enrol_dir: arg(&rest, "--enrol-dir").map(str::to_string),
+                uplink: match arg(&rest, "--uplink-file") {
+                    None => None,
+                    Some(file) => Some(crate::relay::UplinkOpts {
+                        file: file.to_string(),
+                        rathole_config: arg(&rest, "--uplink-rathole-config")
+                            .unwrap_or("/etc/rathole/uplink.toml")
+                            .to_string(),
+                        interval: parse_dur(arg(&rest, "--uplink-interval").unwrap_or("30s"))?,
+                    }),
+                },
             }))
         }
         "identity" => {
@@ -302,6 +334,32 @@ pub fn parse(args: Vec<String>) -> Result<Mode> {
                 })),
                 _ => Err(miette!(
                     "usage: losos-registrar identity keygen|sign|show|verify ..."
+                )),
+            }
+        }
+        "enrol" => {
+            let verb = rest.first().map(String::as_str).unwrap_or("");
+            let rest: Vec<String> = rest.iter().skip(1).cloned().collect();
+            match verb {
+                "list" => Ok(Mode::Enrol(EnrolOpts::List {
+                    dir: req(&rest, "--dir")?.to_string(),
+                })),
+                "forget" => {
+                    let dir = req(&rest, "--dir")?.to_string();
+                    // The one positional: whatever is neither `--dir` nor
+                    // its value.
+                    let id = rest
+                        .iter()
+                        .enumerate()
+                        .find(|(i, a)| !a.starts_with("--") && (*i == 0 || rest[i - 1] != "--dir"))
+                        .map(|(_, a)| a.clone())
+                        .ok_or_else(|| {
+                            miette!("usage: losos-registrar enrol forget --dir DIR ID")
+                        })?;
+                    Ok(Mode::Enrol(EnrolOpts::Forget { dir, id }))
+                }
+                _ => Err(miette!(
+                    "usage: losos-registrar enrol list|forget --dir DIR ..."
                 )),
             }
         }

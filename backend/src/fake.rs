@@ -220,6 +220,7 @@ impl FakeLosos {
                     url: "http://edge.local:8443".to_string(),
                     source: crate::edge::Source::Lan,
                     official: true,
+                    rathole: Some("edge.local:2333".to_string()),
                 }],
                 true,
                 None,
