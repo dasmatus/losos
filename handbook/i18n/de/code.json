@@ -360,5 +360,9 @@
   "theme.tags.tagsPageTitle": {
     "message": "Schlagwörter",
     "description": "The title of the tag list page"
+  },
+  "losos.navbar.logoTip": {
+    "message": "Losos ist Slowakisch für Lachs. Das Logo ist ein Teller davon, vom eigenen Foto des Besitzers.",
+    "description": "The tooltip on the navbar logo, saying what the picture means"
   }
 }

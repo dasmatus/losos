@@ -15,6 +15,7 @@ const TYPES = {
   '.css': 'text/css; charset=utf-8',
   '.json': 'application/json',
   '.svg': 'image/svg+xml',
+  '.png': 'image/png',
 };
 
 /* The admin vhost's Content-Security-Policy (modules/containers.nix,

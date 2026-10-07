@@ -88,6 +88,14 @@ a separate crate meant to be torn down after the demonstration.
 5. Deploy. `https://losos-edge.dasmat.us/health` answers `ok`, `/` shows the
    page, `/status` the JSON.
 
+Vercel deploys every push of every branch by default, and the free plan
+allows 100 deployments a day, which a busy afternoon of pull requests used
+up ("Resource is limited - try again in 24 hours"). `ignoreCommand` in
+`vercel.json` runs in this directory before each build and skips it when
+neither this crate nor `../backend-registrar` changed since the previous
+commit: exit 0 skips, exit 1 builds. A pull request that touches only the
+appliance therefore makes no deployment and no Vercel check.
+
 The appliance token is the same value on both sides: whatever is in
 `LOSOS_TENANTS` for an id must be the content of that box's
 `losos.proxy.tokenFile`.

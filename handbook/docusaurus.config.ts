@@ -24,7 +24,7 @@ const baseUrl = process.env.LOSOS_HANDBOOK_BASE ?? '/';
 const config: Config = {
   title: 'LosOS handbook',
   tagline: 'A box for your files that looks after itself',
-  favicon: 'img/losos.svg',
+  favicon: 'img/losos.png',
 
   future: {
     v4: true,
@@ -103,7 +103,7 @@ const config: Config = {
   ],
 
   themeConfig: {
-    image: 'img/losos.svg',
+    image: 'img/losos.png',
     colorMode: {
       respectPrefersColorScheme: true,
     },
@@ -114,12 +114,12 @@ const config: Config = {
       },
     },
     navbar: {
-      // The admin UI puts the salmon beside a chip naming the box; here the
+      // The admin UI puts the plate of salmon beside a chip naming the box; here the
       // chip names the handbook (custom.css draws .navbar__title as that chip).
       title: 'Handbook',
       logo: {
         alt: 'LosOS',
-        src: 'img/losos.svg',
+        src: 'img/losos.png',
       },
       // No page links in the bar: the SPA's TopBar carries none (its
       // navigation is the sidebar), so the chapters are reached from the
