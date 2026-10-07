@@ -152,16 +152,34 @@ pub fn rebuild_command(flake_ref: &str) -> [&str; 5] {
     ["nixos-rebuild", "switch", "--flake", flake_ref, "--impure"]
 }
 
+/// The `systemd-run` arguments that start `job`'s transient unit.
+///
+/// `--setenv=PATH` with no value hands the unit lososd's own PATH. Two things
+/// depend on it. systemd-run resolves a bare command against the *caller's*
+/// PATH before it asks PID 1 for anything, so `nixos-rebuild` must be on
+/// lososd's (modules/daemon.nix puts it there) or every Apply fails with
+/// "Failed to find executable nixos-rebuild" before a unit exists. And PID 1
+/// starts the unit with systemd's compiled-in PATH, which on NixOS holds
+/// neither `nix` nor `git`; without this flag the rebuild would get as far as
+/// its first `nix` call and die.
+pub fn launch_args(paths: &Paths, job: &str) -> Vec<String> {
+    let log_str = paths.rebuild_log().to_string_lossy().into_owned();
+    let mut args = vec![
+        format!("--unit={}", unit_name(job)),
+        format!("--description=losos rebuild {job}"),
+        format!("--property=StandardOutput=append:{log_str}"),
+        format!("--property=StandardError=append:{log_str}"),
+        "--setenv=PATH".to_string(),
+    ];
+    args.extend(rebuild_command(&paths.flake_ref).map(str::to_string));
+    args
+}
+
 /// Start the transient unit for `job`. `Err` carries the detail that goes into
 /// the message the admin UI shows.
 fn launch_unit(paths: &Paths, job: &str) -> Result<(), String> {
-    let log_str = paths.rebuild_log().to_string_lossy().into_owned();
     let status = Command::new("systemd-run")
-        .arg(format!("--unit={}", unit_name(job)))
-        .arg(format!("--description=losos rebuild {job}"))
-        .arg(format!("--property=StandardOutput=append:{log_str}"))
-        .arg(format!("--property=StandardError=append:{log_str}"))
-        .args(rebuild_command(&paths.flake_ref))
+        .args(launch_args(paths, job))
         .status();
     match status {
         Ok(s) if s.success() => Ok(()),
@@ -395,6 +413,28 @@ mod tests {
     #[test]
     fn unit_name_matches_the_shipped_contract() {
         assert_eq!(unit_name("20260821-1"), "losos-rebuild-20260821-1");
+    }
+
+    #[test]
+    fn the_rebuild_unit_inherits_the_daemons_path() {
+        // Without it PID 1 starts nixos-rebuild with systemd's compiled-in
+        // PATH, which has no nix and no git on NixOS.
+        let paths = Paths {
+            state_dir: "/var/lib/losos".into(),
+            overrides_file: "/etc/nixos/modules/overrides.nix".into(),
+            flake_ref: "/etc/nixos#install".to_string(),
+        };
+        let args = launch_args(&paths, "20260821-1");
+        assert!(args.contains(&"--setenv=PATH".to_string()), "{args:?}");
+        // Every systemd-run option comes before the command, or systemd-run
+        // would hand it to nixos-rebuild as an argument instead.
+        let command_at = args.iter().position(|a| a == "nixos-rebuild").unwrap();
+        assert!(
+            args[..command_at].iter().all(|a| a.starts_with("--")),
+            "{args:?}"
+        );
+        assert_eq!(args[command_at..], rebuild_command("/etc/nixos#install"));
+        assert!(args.contains(&"--unit=losos-rebuild-20260821-1".to_string()));
     }
 
     #[test]
