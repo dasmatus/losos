@@ -229,6 +229,8 @@ pkgs.testers.nixosTest {
     assert spoke.succeed("chage -l root | grep -i 'last password change'").strip().lower().endswith("password must be changed")
     assert spoke.succeed("systemctl is-active sshd.service || true").strip() == "inactive"
     assert "not set" in spoke.succeed("losos-edge status")
+    # What a person sees on the gateway's tty1 before logging in.
+    spoke.screenshot("edge-gateway-tty1")
 
     box.wait_for_unit("avahi-daemon.service")
     box.wait_for_unit("nginx.service")
