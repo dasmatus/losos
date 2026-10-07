@@ -291,6 +291,12 @@ pre {
   .navbar-sidebar__brand .hb-theme {
     display: none !important;
   }
+  /* While the sheet is open it covers 83vw, and the bar's right-hand
+   * controls showed through the backdrop beside its close button, the
+   * theme control's edge under the search chip reading as an overlap. */
+  .navbar-sidebar--show .navbar__items--right {
+    visibility: hidden;
+  }
   /* Docusaurus pins the phone search button to the bar's right edge with
    * absolute positioning; in the bar's flex row it sits beside the theme
    * control instead of under it. */
