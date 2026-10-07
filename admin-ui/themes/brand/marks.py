@@ -152,12 +152,32 @@ def git_mark(grid):
 """
 
 
+# The admin pages' own logo and favicon: the cooked salmon alone, no badge.
+# It is written into the SPA's source tree rather than referenced from here,
+# because losos-admin-ui's source root is admin-ui/app and nothing outside
+# it reaches the build.
+def bare_mark(grid):
+    n = len(grid)
+    return f"""\
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {n} {n}" width="{n * 4}" height="{n * 4}" shape-rendering="crispEdges">
+  <title>LosOS</title>
+{fish_paths(grid)}
+</svg>
+"""
+
+
 def main():
     grid = fish_grid()
-    for name, svg in (("losos-cloud.svg", cloud_mark(grid)), ("losos-git.svg", git_mark(grid))):
-        with open(os.path.join(HERE, name), "w") as out:
+    app_assets = os.path.join(HERE, "..", "..", "app", "src", "assets")
+    for path, svg in (
+        (os.path.join(HERE, "losos-cloud.svg"), cloud_mark(grid)),
+        (os.path.join(HERE, "losos-git.svg"), git_mark(grid)),
+        (os.path.join(app_assets, "losos.svg"), bare_mark(grid)),
+    ):
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w") as out:
             out.write(svg)
-        print("wrote", name)
+        print("wrote", os.path.relpath(path, HERE))
 
 
 if __name__ == "__main__":

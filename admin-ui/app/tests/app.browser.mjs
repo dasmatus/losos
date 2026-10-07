@@ -369,6 +369,19 @@ await check('on a phone the panel is a sheet from the left, opened from a row na
   await page.close();
 });
 
+await check('the cooked salmon is the logo in the top bar and the favicon, served from the bundle', async () => {
+  const { page } = await open({ path: '/storage', stored: true });
+  const logo = page.locator('header img').first();
+  await logo.waitFor();
+  assert.ok(await logo.evaluate((img) => img.complete && img.naturalWidth > 0), 'the logo did not load');
+  const src = await logo.getAttribute('src');
+  assert.match(src, /^(\/assets\/losos-[\w-]+\.svg|data:image\/svg\+xml)/, `the logo is not the bundled salmon: ${src}`);
+  const icon = await page.locator('link[rel="icon"]').getAttribute('href');
+  assert.match(icon, /^\/assets\/losos-[\w-]+\.svg$/, `the favicon is not the bundled salmon: ${icon}`);
+  assert.equal((await page.request.get(origin + icon)).status(), 200);
+  await page.close();
+});
+
 /* The sidebar's moving parts are Base UI (tooltip positioning, the sheet's
  * slide and scroll lock, the folds' measured height), chosen because Base
  * UI styles through CSSOM, which the appliance CSP allows, and never through
