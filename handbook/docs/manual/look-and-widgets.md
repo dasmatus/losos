@@ -40,7 +40,7 @@ fetch the internet.
 Because it runs in every browser that opens the box, read anything pasted
 from the internet before you keep it, as the note above Source says.
 
-:::info Being merged
+:::info[Being merged]
 Backgrounds and hand-written widgets are in pull request #73. A box without a
 Look pane predates it.
 :::

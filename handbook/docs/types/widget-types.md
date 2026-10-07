@@ -59,7 +59,7 @@ the box's API, and runs in every browser that opens the box, so read anything
 you paste from the internet before you keep it. Up to 24 widgets of 64 KiB
 each.
 
-:::info Being merged
+:::info[Being merged]
 Hand-written widgets and background pictures are the subject of pull request
 #73, which may not be on your box yet. If the gallery shows only the first two
 kinds, the nightly update will bring the third.

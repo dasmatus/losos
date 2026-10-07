@@ -281,6 +281,31 @@ impl Edge {
         Self::start_inner_seeded(tag, tenants, mesh, noise_public_key, stripe_api, &[], None).await
     }
 
+    /// As [`Edge::start`], with `--identity-key-file` / `--identity-cert-file`
+    /// pointing at files a test (or `provision edge`) already wrote, so the
+    /// edge answers `GET /identity`. `listener` lets the test choose the port
+    /// before it starts, because a certificate names the URL it is for.
+    pub async fn start_with_identity_on(
+        tag: &str,
+        tenants: &[TenantSpec],
+        key_file: &str,
+        cert_file: &str,
+        listener: Option<tokio::net::TcpListener>,
+    ) -> Self {
+        Self::start_general(
+            tag,
+            tenants,
+            MeshFixture::default(),
+            None,
+            None,
+            &[],
+            None,
+            Some((key_file, cert_file)),
+            listener,
+        )
+        .await
+    }
+
     async fn start_inner_seeded(
         tag: &str,
         tenants: &[TenantSpec],
@@ -289,6 +314,32 @@ impl Edge {
         stripe_api: Option<String>,
         enrolled: &[(&str, bool)],
         market_state: Option<&serde_json::Value>,
+    ) -> Self {
+        Self::start_general(
+            tag,
+            tenants,
+            mesh,
+            noise_public_key,
+            stripe_api,
+            enrolled,
+            market_state,
+            None,
+            None,
+        )
+        .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn start_general(
+        tag: &str,
+        tenants: &[TenantSpec],
+        mesh: MeshFixture,
+        noise_public_key: Option<&str>,
+        stripe_api: Option<String>,
+        enrolled: &[(&str, bool)],
+        market_state: Option<&serde_json::Value>,
+        identity: Option<(&str, &str)>,
+        listener: Option<tokio::net::TcpListener>,
     ) -> Self {
         let dir = TempDir::new(tag);
         if let Some(market_state) = market_state {
@@ -385,8 +436,8 @@ impl Edge {
             bootstrap_token_file: dir.path_str("bootstrap.token"),
             noise_private_key_file: None,
             noise_public_key_file,
-            identity_key_file: None,
-            identity_cert_file: None,
+            identity_key_file: identity.map(|(k, _)| k.to_string()),
+            identity_cert_file: identity.map(|(_, c)| c.to_string()),
             tenants_file: dir.path_str("tenants.json"),
             reconcile_interval: Duration::from_millis(50),
             heartbeat_ttl: Duration::from_secs(300),
@@ -405,9 +456,12 @@ impl Edge {
             market,
         };
 
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-            .await
-            .expect("bind ephemeral port");
+        let listener = match listener {
+            Some(l) => l,
+            None => tokio::net::TcpListener::bind("127.0.0.1:0")
+                .await
+                .expect("bind ephemeral port"),
+        };
         let port = listener.local_addr().expect("local_addr").port();
         let (stop, rx) = oneshot::channel::<()>();
         let join = tokio::spawn(async move {

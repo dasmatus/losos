@@ -1,0 +1,20 @@
+{
+  "_comment": [
+    "Who may run the official-edge key ceremony (`losos-registrar provision`),",
+    "compiled into the binary. The tool signs the operator in with GitHub's",
+    "OAuth device flow and refuses to make or sign anything unless the",
+    "signed-in account's numeric id is listed here. The id is the key: logins",
+    "can be renamed, ids cannot. Keep the login beside it for readability.",
+    "github_oauth_client_id is the public client id of the project's GitHub",
+    "OAuth App (Settings > Developer settings > OAuth Apps, with Device Flow",
+    "enabled); it is not a secret and no client secret exists for this flow."
+  ],
+  "github_oauth_client_id": "Ov23lix75ALBEqu3AZTg",
+  "operators": [
+    {
+      "github_id": 330471626,
+      "github_login": "dasmatus",
+      "note": "Matus, project owner (the account was dichhead until 2026-09-30)"
+    }
+  ]
+}

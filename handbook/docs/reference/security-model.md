@@ -24,7 +24,10 @@ in the repository.
    key, loaded only while sharing is on.
 5. **An official edge ↔ any edge.** A root public key baked into the box
    lets it tell the LosOS edge from a company's own; trading needs the
-   former, everything else works with either.
+   former, everything else works with either. The private half is made and
+   used only on the project owner's own computer, by a tool that signs the
+   person in with GitHub against a committed allowlist; no box and no edge
+   ever holds it.
 
 ## What the admin key is
 
