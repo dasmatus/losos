@@ -66,6 +66,17 @@ export default defineMessages({
     sk: "názov meno adresa certifikát port vzdialený prístup internet mimo domova",
     de: "Name Adresse Zertifikat Port Fernzugriff Internet außerhalb unterwegs",
   },
+  "settings.panes.look.label": { en: "Look", sk: "Vzhľad", de: "Aussehen" },
+  "settings.panes.look.summary": {
+    en: "A picture behind this page, and widgets you write yourself.",
+    sk: "Obrázok za touto stránkou a widgety, ktoré si napíšete sami.",
+    de: "Ein Bild hinter dieser Seite, und Widgets, die du selbst schreibst.",
+  },
+  "settings.panes.look.keywords": {
+    en: "",
+    sk: "vzhľad pozadie tapeta obrázok téma widget widgety vlastný kód prispôsobiť",
+    de: "Aussehen Hintergrund Hintergrundbild Bild Thema Widget Widgets eigene Code anpassen",
+  },
   "settings.panes.hardware.label": { en: "Hardware", sk: "Hardvér", de: "Hardware" },
   "settings.panes.hardware.summary": {
     en: "What this box is allowed to use inside itself.",

@@ -56,6 +56,16 @@ impl Paths {
     pub fn rebuild_log(&self) -> PathBuf {
         self.state_dir.join("rebuild.log")
     }
+
+    /// The owner's look (`crate::look`), beside the state.
+    pub fn look_file(&self) -> PathBuf {
+        self.state_dir.join("look.json")
+    }
+
+    /// The uploaded background picture, raw; its type is in the look.
+    pub fn background_file(&self) -> PathBuf {
+        self.state_dir.join("background.img")
+    }
 }
 
 /// Distinguishes the temp files of concurrent writers within one process.
@@ -580,6 +590,25 @@ pub fn read_state(path: &Path) -> State {
     }
 }
 
+/// The look document, leniently: absent or unreadable is the default, so a
+/// damaged file costs the owner their wallpaper and not the admin page.
+fn read_look(path: &Path) -> crate::look::Look {
+    match std::fs::read(path) {
+        Ok(bytes) => match serde_json::from_slice::<crate::look::Look>(&bytes) {
+            Ok(look) => look,
+            Err(e) => {
+                tracing::warn!(path = %path.display(), error = %e, "unreadable look file; using the plain look");
+                crate::look::Look::default()
+            }
+        },
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => crate::look::Look::default(),
+        Err(e) => {
+            tracing::warn!(path = %path.display(), error = %e, "look file unreadable; using the plain look");
+            crate::look::Look::default()
+        }
+    }
+}
+
 /// Persist the state atomically.
 pub fn write_state(path: &Path, s: &State) -> anyhow::Result<()> {
     let bytes = serde_json::to_vec(s).context("encoding state")?;
@@ -721,6 +750,38 @@ impl Losos for IoLosos {
 
     fn rebuild_log_tail(&mut self) -> anyhow::Result<String> {
         Ok(supervisor::log_tail(&self.paths.rebuild_log()))
+    }
+
+    // ── The owner's look ────────────────────────────────────────────────
+    fn load_look(&mut self) -> anyhow::Result<crate::look::Look> {
+        Ok(read_look(&self.paths.look_file()))
+    }
+
+    fn save_look(&mut self, look: &crate::look::Look) -> anyhow::Result<()> {
+        let bytes = serde_json::to_vec(look).context("encoding the look")?;
+        atomic_write(&self.paths.look_file(), &bytes)
+    }
+
+    fn write_background(&mut self, bytes: &[u8]) -> anyhow::Result<()> {
+        atomic_write(&self.paths.background_file(), bytes)
+    }
+
+    fn read_background(&mut self) -> anyhow::Result<Option<Vec<u8>>> {
+        let path = self.paths.background_file();
+        match std::fs::read(&path) {
+            Ok(bytes) => Ok(Some(bytes)),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(anyhow::Error::new(e).context(format!("reading {}", path.display()))),
+        }
+    }
+
+    fn remove_background(&mut self) -> anyhow::Result<()> {
+        let path = self.paths.background_file();
+        match std::fs::remove_file(&path) {
+            Ok(()) => Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(anyhow::Error::new(e).context(format!("removing {}", path.display()))),
+        }
     }
 
     // ── Online growth of /persist ───────────────────────────────────────

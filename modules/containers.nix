@@ -193,13 +193,50 @@ let
     "base-uri 'none'"
   ];
 
+  # ── The widget frame ──────────────────────────────────────────────────
+  # Widgets the owner writes by hand (backend/src/look.rs) are HTML with
+  # their own script, and the admin CSP above refuses inline script for
+  # good reason. They run instead inside `/widget-frame/`, one static page
+  # in the SPA bundle that the board embeds as
+  # `<iframe sandbox="allow-scripts">`: no `allow-same-origin`, so the frame
+  # is an opaque origin that cannot read the page's sessionStorage (the
+  # admin token), its DOM, or the API — a fetch to /api from there has no
+  # token and no CORS answer. The page hands it the widget's source and the
+  # box's readings over postMessage, nothing else.
+  #
+  # The frame needs a policy of its own: an `<iframe srcdoc>` or a `blob:`
+  # document INHERITS the embedding page's CSP, so inline script in either is
+  # refused just the same, and that is why the frame is a real URL. Its
+  # policy is permissive for itself and nothing more: inline script and
+  # style, pictures and fetches off the box for a weather tile, and
+  # `frame-ancestors 'self'` so only this origin's own pages may embed it.
+  # It is NOT `default-src 'none'`-strict and must never be served for any
+  # other path — the arm below is anchored to the directory.
+  #
+  # X-Frame-Options is omitted for the same path (`DENY` blocks same-origin
+  # framing too); `frame-ancestors` carries that half of the rule instead.
+  widgetFrameCsp = lib.concatStringsSep "; " [
+    "default-src 'none'"
+    "script-src 'unsafe-inline' 'unsafe-eval'"
+    "style-src 'unsafe-inline'"
+    "img-src data: https: http:"
+    "font-src data: https: http:"
+    "media-src data: https: http:"
+    "connect-src https: http:"
+    "frame-ancestors 'self'"
+    "base-uri 'none'"
+    "form-action 'none'"
+  ];
+
   # One map per header: value on the admin surface, empty (header omitted) on
-  # the two proxied service routes.
-  adminHeaderMap = variable: value: ''
+  # the two proxied service routes, and the frame's own value (or nothing)
+  # under /widget-frame/.
+  adminHeaderMap = variable: value: frameValue: ''
     map $uri ${variable} {
-        default        "${value}";
-        ~^/nextcloud   "";
-        ~^/forgejo     "";
+        default          "${value}";
+        ~^/nextcloud     "";
+        ~^/forgejo       "";
+        ~^/widget-frame/ "${frameValue}";
     }
   '';
 
@@ -208,25 +245,31 @@ let
       name = "Content-Security-Policy";
       variable = "$losos_csp";
       value = adminCsp;
+      frameValue = widgetFrameCsp;
     }
     {
       name = "X-Frame-Options";
       variable = "$losos_frame_options";
       value = "DENY";
+      frameValue = "";
     }
     {
       name = "X-Content-Type-Options";
       variable = "$losos_content_type_options";
       value = "nosniff";
+      frameValue = "nosniff";
     }
     {
       name = "Referrer-Policy";
       variable = "$losos_referrer_policy";
       value = "no-referrer";
+      frameValue = "no-referrer";
     }
   ];
 
-  adminHeaderMaps = lib.concatMapStrings (h: adminHeaderMap h.variable h.value) adminHeaders;
+  adminHeaderMaps = lib.concatMapStrings (
+    h: adminHeaderMap h.variable h.value h.frameValue
+  ) adminHeaders;
 
   # `always` so the headers ride on the 403s the lanOnly guard emits too.
   adminHeaderDirectives = lib.concatMapStrings (

@@ -71,6 +71,12 @@ fn run(
                 &r.message,
             )
         }
+        // A look request the owner can act on — a picture that is not one,
+        // a widget with no name — keeps its sentence, as a 400.
+        Err(e) if e.downcast_ref::<crate::look::Invalid>().is_some() => {
+            let why = e.downcast_ref::<crate::look::Invalid>().expect("checked");
+            err(actix_web::http::StatusCode::BAD_REQUEST, &why.0)
+        }
         // The first boot's one expected failure: Nextcloud is still installing
         // itself, so the first password cannot be set *yet*. 503 with the
         // reason and a Retry-After, so the wizard waits and says why, instead
@@ -731,6 +737,103 @@ async fn post_market_order(
     .await
 }
 
+// ── The owner's look ──────────────────────────────────────────────────────
+// A background picture and the widgets written by hand (`crate::look`).
+// HTTP-only, like the market relay: a CLI for a wallpaper would be surface
+// with no caller. Every change is Bearer-authed and audited; the one read
+// that is not is the picture itself, for the reason given in look.rs.
+
+/// `GET /api/look` — the document the page paints from.
+async fn get_look(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    guarded(&api, &req, "/api/look", false, || {
+        run(&api, crate::look::cmd_look)
+    })
+}
+
+/// `POST /api/look` — the background by choice (none, or a shipped picture
+/// by name) and the veil over it. Each field optional, so one knob at a time.
+async fn post_look(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> HttpResponse {
+    guarded(&api, &req, "/api/look", true, || {
+        let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
+        match crate::look::parse_patch(&doc) {
+            Some(patch) => run(&api, |b| crate::look::cmd_patch_look(b, &patch)),
+            None => err(
+                actix_web::http::StatusCode::BAD_REQUEST,
+                r#"body must be JSON: {"background": {"kind": "none|shipped", "name": "..."}, "veil": 20-90}"#,
+            ),
+        }
+    })
+}
+
+/// `PUT /api/look/background` — the picture, raw. The type is read off the
+/// bytes, never off the request; the size cap is `PayloadConfig` below plus
+/// the command's own check, so an oversized body is refused before it is
+/// read in full.
+async fn put_background(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> HttpResponse {
+    guarded(&api, &req, "/api/look/background", true, || {
+        run(&api, |b| crate::look::cmd_upload_background(b, &body))
+    })
+}
+
+/// `DELETE /api/look/background` — back to the plain ground colour.
+async fn delete_background(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    guarded(&api, &req, "/api/look/background", true, || {
+        let patch = crate::look::LookPatch {
+            background: Some(crate::look::BackgroundChoice::None),
+            veil: None,
+        };
+        run(&api, |b| crate::look::cmd_patch_look(b, &patch))
+    })
+}
+
+/// `GET /api/look/background?v=N` — the uploaded picture, **without a
+/// token**. A CSS `background-image` cannot carry one (look.rs says why
+/// this is the accepted shape). Cached hard, because a replacement is a new
+/// `?v=` and therefore a new URL. 404 when the look has no upload.
+async fn get_background(api: web::Data<Api>) -> HttpResponse {
+    match api.backend.serialized(crate::look::cmd_read_background) {
+        Ok(Some((content_type, bytes))) => HttpResponse::Ok()
+            .content_type(content_type)
+            .insert_header(("Cache-Control", "private, max-age=31536000, immutable"))
+            .insert_header(("X-Content-Type-Options", "nosniff"))
+            .body(bytes),
+        Ok(None) => err(actix_web::http::StatusCode::NOT_FOUND, "no picture"),
+        Err(e) => {
+            tracing::error!(error = ?e, "reading the background picture failed");
+            err(
+                actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
+                "command failed; see the lososd journal",
+            )
+        }
+    }
+}
+
+/// `POST /api/look/widgets` — add a widget written by hand, or replace the
+/// one whose id the body carries.
+async fn post_widget(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> HttpResponse {
+    guarded(&api, &req, "/api/look/widgets", true, || {
+        let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
+        match crate::look::parse_draft(&doc) {
+            Some(draft) => run(&api, |b| crate::look::cmd_put_widget(b, &draft)),
+            None => err(
+                actix_web::http::StatusCode::BAD_REQUEST,
+                r#"body must be JSON: {"id": "..." (optional), "name": "...", "span": "half|full", "source": "..."}"#,
+            ),
+        }
+    })
+}
+
+/// `DELETE /api/look/widgets/{id}`.
+async fn delete_widget(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    id: web::Path<String>,
+) -> HttpResponse {
+    guarded(&api, &req, "/api/look/widgets", true, || {
+        run(&api, |b| crate::look::cmd_delete_widget(b, &id))
+    })
+}
+
 async fn not_found() -> HttpResponse {
     err(actix_web::http::StatusCode::NOT_FOUND, "not found")
 }
@@ -835,6 +938,14 @@ pub fn serve(backend: IoLosos) -> anyhow::Result<()> {
         let server = HttpServer::new(move || {
             App::new()
                 .app_data(api.clone())
+                // actix reads at most 256 KiB into `web::Bytes` by default,
+                // which is plenty for every JSON body here and a quarter of
+                // a wallpaper. The cap is the picture limit plus room for a
+                // widget's JSON; look.rs refuses anything over its own
+                // limits with a sentence.
+                .app_data(web::PayloadConfig::new(
+                    crate::look::MAX_IMAGE_BYTES + 256 * 1024,
+                ))
                 .route("/api/health", web::get().to(health))
                 .route("/api/state", web::get().to(get_state))
                 .route("/api/settings", web::get().to(get_settings))
@@ -855,6 +966,14 @@ pub fn serve(backend: IoLosos) -> anyhow::Result<()> {
                     web::post().to(post_market_close),
                 )
                 .route("/api/market/orders", web::post().to(post_market_order))
+                .route("/api/look", web::get().to(get_look))
+                .route("/api/look", web::post().to(post_look))
+                .route("/api/look/background", web::put().to(put_background))
+                .route("/api/look/background", web::delete().to(delete_background))
+                // The one read without a token: the wallpaper, see look.rs.
+                .route("/api/look/background", web::get().to(get_background))
+                .route("/api/look/widgets", web::post().to(post_widget))
+                .route("/api/look/widgets/{id}", web::delete().to(delete_widget))
                 // The unauthenticated routes besides /api/health. These two
                 // are first-run only: the state read is a single bit, and
                 // the claim refuses once the box has an owner.

@@ -33,6 +33,23 @@ export const ADMIN_CSP = [
   "frame-src 'self'",
 ].join('; ');
 
+/* The widget frame's own policy (modules/containers.nix, `widgetFrameCsp`),
+ * served for /widget-frame/ alone the way nginx's header map does it. A
+ * widget written by hand runs there under `sandbox="allow-scripts"`; the
+ * admin page keeps the strict policy above. Mirror any change here. */
+export const WIDGET_FRAME_CSP = [
+  "default-src 'none'",
+  "script-src 'unsafe-inline' 'unsafe-eval'",
+  "style-src 'unsafe-inline'",
+  "img-src data: https: http:",
+  "font-src data: https: http:",
+  "media-src data: https: http:",
+  "connect-src https: http:",
+  "frame-ancestors 'self'",
+  "base-uri 'none'",
+  "form-action 'none'",
+].join('; ');
+
 /* Serves dist/ with an SPA fallback (`try_files $uri /index.html`). Without it
  * a deep link 404s and the test would be asserting against an error page. */
 export async function serve({ csp = false } = {}) {
@@ -41,13 +58,16 @@ export async function serve({ csp = false } = {}) {
     const rel = normalize(url.pathname).replace(/^(\.\.[/\\])+/, '');
     const send = async (file) => {
       const body = await readFile(join(DIST, file));
+      const policy = file.startsWith('/widget-frame/') ? WIDGET_FRAME_CSP : ADMIN_CSP;
       res.writeHead(200, {
         'Content-Type': TYPES[extname(file)] ?? 'application/octet-stream',
-        ...(csp ? { 'Content-Security-Policy': ADMIN_CSP } : {}),
+        ...(csp ? { 'Content-Security-Policy': policy } : {}),
       });
       res.end(body);
     };
-    send(rel === '/' ? 'index.html' : rel).catch(() =>
+    // A directory gets its index, as nginx's `index` directive gives it.
+    const file = rel === '/' ? 'index.html' : rel.endsWith('/') ? rel + 'index.html' : rel;
+    send(file).catch(() =>
       send('index.html').catch(() => {
         res.writeHead(404);
         res.end('not found');

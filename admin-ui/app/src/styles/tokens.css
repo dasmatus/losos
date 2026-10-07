@@ -43,6 +43,7 @@
   color-scheme: light;
 
   --ground: #f3f5f7;
+  --ground-rgb: 243, 245, 247;
   --surface: #ffffff;
   --surface-rgb: 255, 255, 255;
   --sunk: #eaedf0;
@@ -71,6 +72,8 @@
     color-scheme: dark;
 
     --ground: #0a0e12;
+  --ground-rgb: 10, 14, 18;
+    --ground-rgb: 10, 14, 18;
     --surface: #141b22;
     --surface-rgb: 20, 27, 34;
     --sunk: #10171d;

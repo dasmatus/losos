@@ -1,4 +1,6 @@
 import type * as React from "react";
+import { Field, FieldContent, FieldDescription, FieldLabel } from "@/components/ui/field";
+import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 
 /* The macOS System Settings row vocabulary.
@@ -120,6 +122,69 @@ export function RowText({ title, detail, htmlFor, className, ...props }: RowText
         <p className="mt-0.5 text-[12.5px] leading-snug text-muted">{detail}</p>
       )}
     </div>
+  );
+}
+
+export interface SwitchRowProps {
+  /** The switch's id; the row's label points at it. */
+  id: string;
+  title: React.ReactNode;
+  /** The line under the title. Rendered only when there is something to say,
+   *  and wired to the switch with aria-describedby so it is read with it. */
+  description?: React.ReactNode;
+  checked: boolean;
+  disabled?: boolean;
+  onCheckedChange: (checked: boolean) => void;
+  last?: boolean;
+}
+
+/* A settings row whose control is an on/off switch: shadcn's "Switch with a
+ * description" (a horizontal Field holding FieldContent, FieldLabel,
+ * FieldDescription and the Switch) laid into the row above, so it keeps the
+ * 14px inset hairline and the label-left, control-right reading.
+ *
+ * Two departures from shadcn's example, both to keep the row's look: the
+ * switch is centred on the text rather than pinned to its first line, and the
+ * title is regular weight like every other row label. */
+export function SwitchRow({
+  id,
+  title,
+  description,
+  checked,
+  disabled,
+  onCheckedChange,
+  last,
+}: SwitchRowProps) {
+  const hasDescription = description !== undefined && description !== null && description !== false;
+  const descriptionId = `${id}-description`;
+  return (
+    <Row last={last}>
+      <Field
+        orientation="horizontal"
+        disabled={disabled}
+        className={cn(
+          "gap-4",
+          "has-[>[data-slot=field-content]]:items-center",
+          "has-[>[data-slot=field-content]]:[&>[data-slot=switch]]:mt-0",
+        )}
+      >
+        <FieldContent className="min-w-0">
+          <FieldLabel htmlFor={id} className="w-auto font-normal">
+            {title}
+          </FieldLabel>
+          {hasDescription && (
+            <FieldDescription id={descriptionId}>{description}</FieldDescription>
+          )}
+        </FieldContent>
+        <Switch
+          id={id}
+          aria-describedby={hasDescription ? descriptionId : undefined}
+          isSelected={checked}
+          isDisabled={disabled}
+          onChange={onCheckedChange}
+        />
+      </Field>
+    </Row>
   );
 }
 
