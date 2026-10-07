@@ -257,11 +257,14 @@ let
         INSTALL_LOCK = true;
       };
       actions = {
-        # Actions is remote code execution by design, so this follows the
-        # runner (modules/git-runner.nix): on only while the box registers
-        # one, off otherwise. Enabled with nothing to run jobs, it would only
-        # expose the runner-registration API on an internet-reachable route.
-        ENABLED = config.losos.forgejo.runner.enable;
+        # Actions is remote code execution by design and nothing on the box
+        # runs jobs: the on-box runner that existed for the official-edge
+        # key ceremony is gone (the ceremony runs on the operator's machine,
+        # `losos-registrar provision`, behind a GitHub sign-in). Enabled with
+        # nothing to run jobs, it would only expose the runner-registration
+        # API on an internet-reachable route. Same setting as native mode
+        # (modules/services.nix).
+        ENABLED = false;
       };
     };
   };

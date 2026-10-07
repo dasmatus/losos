@@ -772,38 +772,6 @@ in
       '';
     };
 
-    forgejo.runner.enable = lib.mkOption {
-      type = lib.types.bool;
-      default = true;
-      description = ''
-        Run a Forgejo Actions runner on the box itself (modules/git-runner.nix,
-        host mode, the unprivileged `losos-git-runner` user), so LosOS Git can
-        run workflows — the official-edge key ceremony in
-        provisioning/edge-identity/ is the one it exists for. Takes effect only
-        with losos.forgejo.enable. In container mode this also switches
-        actions.ENABLED in the pod, so the two cannot disagree: Actions is
-        remote code execution by design and is never on without a runner.
-      '';
-    };
-
-    forgejo.runner.name = lib.mkOption {
-      type = lib.types.str;
-      default = "losos-box";
-      description = "The runner's name in LosOS Git's runner list.";
-    };
-
-    forgejo.runner.secretFile = lib.mkOption {
-      type = secretPath;
-      default = "/var/secrets/losos-git-runner-secret";
-      description = ''
-        The 40-hex-character secret shared between Forgejo and the runner
-        (`forgejo-cli actions register --secret-file`). Generated on first
-        start if absent, 0600 root; persisted under /var. The runner's UUID
-        is derived from it, so a new secret means a new runner in Forgejo's
-        list, not a renamed one.
-      '';
-    };
-
     # ── The box's configuration on LosOS Git ──────────────────────────────
     # /etc/nixos is a git repository; every Apply commits there
     # (backend/src/config_repo.rs). With this on, lososd keeps it in step
@@ -1120,8 +1088,10 @@ in
       default = null;
       description = ''
         This edge's identity **private** key (PKCS#8 hex, 0600, persisted via
-        /var, never in the store), made with `losos-registrar identity keygen
-        --out <file>`. With `edge.identity.certFile` it makes the edge
+        /var, never in the store). `losos-registrar provision edge`, run from
+        the operator's machine behind a GitHub sign-in, makes it and installs
+        it here over SSH (the primitive is `losos-registrar identity keygen
+        --out <file>`). With `edge.identity.certFile` it makes the edge
         *official*: the registrar serves `GET /identity?nonce=` and boxes
         whose losos.proxy.officialRootKeyFile matches the signer let it
         process their market traffic. `null` (the default) is an edge that is
@@ -1135,8 +1105,10 @@ in
       default = null;
       description = ''
         The certificate for `edge.identity.keyFile`: the JSON
-        `losos-registrar identity sign` prints, signed by the LosOS root key
-        the project owner holds offline. Public, so a store path is fine.
+        `losos-registrar provision edge` installs beside the key (the
+        primitive is `losos-registrar identity sign`), signed by the LosOS
+        root key the project owner holds offline. Public, so a store path
+        is fine.
         Must name this edge's public URL (the one boxes probe) and be
         unexpired; the registrar refuses to start on a mismatch. Set with
         `keyFile` or not at all.
@@ -1445,7 +1417,6 @@ in
         "losos.proxy.bootstrapTokenFile" = config.losos.proxy.bootstrapTokenFile;
         "losos.edge.bootstrapTokenFile" = config.losos.edge.bootstrapTokenFile;
         "losos.cluster.tokenFile" = config.losos.cluster.tokenFile;
-        "losos.forgejo.runner.secretFile" = config.losos.forgejo.runner.secretFile;
         "losos.shared.fscrypt.keyFile" = config.losos.shared.fscrypt.keyFile;
         "losos.edge.cluster.agentTokenFile" = config.losos.edge.cluster.agentTokenFile;
         "losos.edge.market.stripeSecretKeySealed" = config.losos.edge.market.stripeSecretKeySealed;

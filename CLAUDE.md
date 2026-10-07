@@ -695,19 +695,32 @@ A separate `midnight-reboot.timer` reboots unconditionally at 00:07 with
   file is **empty on purpose** until the owner writes the public key: no
   root, nothing official, market off. The private key lives offline with the
   owner and is never committed; `losos-registrar identity
-  {keygen,sign,show,verify}` is the whole ceremony (`backend-registrar/src/identity.rs`),
-  `losos.edge.identity.{keyFile,certFile}` the edge side. `tests/edge-lan.nix`
-  builds its own root at build time rather than trusting the shipped file.
-  The ceremony is meant to run *from the box*: `provisioning/edge-identity/`
-  is a Forgejo Actions repository (root key made on the box, kept as an
-  Actions secret, edges provisioned over SSH), executed by the on-box runner
-  in `modules/git-runner.nix` — host mode, registered with a shared secret
-  (`forgejo-cli actions register --secret-file`, idempotent per boot, UUID
-  derived from the secret) rather than a one-shot token, and working against
-  the container pod's app.ini on the host filesystem in container mode.
-  `losos.forgejo.runner.enable` also drives the pod's `actions.ENABLED`, so
-  Actions is never on without a runner. `tests/git-runner.nix` covers the
-  native path end to end; the container path shares the script untested.
+  {keygen,sign,show,verify}` are the primitives (`backend-registrar/src/identity.rs`,
+  used by `tests/edge-lan.nix`, which builds its own root at build time
+  rather than trusting the shipped file), `losos.edge.identity.{keyFile,certFile}`
+  the edge side. The ceremony an operator runs is `losos-registrar provision
+  {whoami,root-keygen,publish,edge,verify}` (`backend-registrar/src/provision.rs`),
+  **on the operator's own machine**: every verb that makes or uses the root
+  key first signs the operator in with GitHub's OAuth device flow (public
+  client id only, no secret) and refuses unless the account's *numeric id*
+  is in `backend-registrar/operators.json`, which is compiled into the
+  binary. `provision edge` makes the edge key in memory, signs its
+  certificate, ships both over one SSH session on stdin (the remote script
+  frames them with `read -r`; nothing secret in argv or on the operator's
+  disk) and runs the four checks; `root-keygen --publish` / `publish` open
+  the PR that fills `keys/official-edge-root.pub` with the same sign-in
+  (`public_repo`). `tests/provision.rs` runs all of it against a fake GitHub
+  and a real registrar. The gate decides whom the tooling serves; the root
+  key stays the whole secret. Forgejo Actions is **off** in both Forgejo
+  modes and the box runs no runner: the earlier from-the-box ceremony
+  (Actions workflows plus `modules/git-runner.nix`) is gone, and
+  `provisioning/edge-identity/README.md` is the operator runbook. The
+  operator's machine has no Nix store, so `.#losos-registrar-static`
+  (`pkgsStatic`, musl, same `cargoHash`) is the binary for it: CI's
+  `publish-tool` job pushes it to GHCR as `images:<channel>-x86_64`
+  (`losos-registrar` + `SHA256SUMS`, one layer each) and the proxy serves
+  it at `/updates/<channel>/x86_64/<file>`, the one route of the LosOS
+  Desktop proxy that hands out plain files; the runbook has the curl line.
 - **`system.stateVersion = "26.11"` is set-once** — matches the nixos-unstable
   this flake tracks; don't change it.
 - **The `result` symlink is a `nix build` artifact** (pointing into

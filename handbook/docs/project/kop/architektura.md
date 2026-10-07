@@ -123,7 +123,11 @@ Hranice dôvery (plný text je v `docs/security-model.md`):
 4. **Súbory majiteľa ↔ kópie meshu.** Dva účty, oddelené skupiny, práva 700,
    fscrypt kľúč len počas zdieľania.
 5. **Oficiálny edge ↔ ľubovoľný edge.** Verejný kľúč projektu v systéme;
-   obchodovanie len s oficiálnym.
+   obchodovanie len s oficiálnym. Súkromnú polovicu kľúča vytvára a používa
+   len nástroj na počítači autora projektu (`losos-registrar provision`),
+   ktorý najprv prihlási osobu cez GitHub a odmietne každého, kto nie je na
+   zozname povolených účtov zapísanom v repozitári; žiadny box ani edge
+   kľúč nikdy nedrží.
 
 Administračný kľúč je mocný ako root; vzniká na boxe, box ho vydá raz
 v sprievodcovi a inak ho vydá len prehliadaču, ktorý preukáže heslo

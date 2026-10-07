@@ -52,6 +52,7 @@ pub mod idle;
 pub mod join;
 pub mod market;
 pub mod opts;
+pub mod provision;
 pub mod registry;
 pub mod seed;
 pub mod server;

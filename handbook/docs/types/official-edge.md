@@ -67,11 +67,18 @@ and sharing work, trading does not, and the Market pane says "The edge proxy
 this box found is not run by LosOS." Nothing a company configures can make
 its own edge official, by design.
 
-:::note Until the key is published
+:::note[Until the key is published]
 The root key file every box ships is empty until the project publishes the
 public key. Until then no edge is official, every edge wears the warning sign
 and the market is off on every box. That is the safe direction to fail in.
 :::
+
+The key itself is made on the project owner's own computer, never on a box
+or an edge, with a tool that first signs the person in with GitHub and
+refuses anyone whose account is not on a short list committed with the
+project. The same tool signs each official edge's certificate and installs
+it over SSH. For operators, the steps are in
+[the provisioning runbook](https://github.com/dasmatus/losos/blob/main/provisioning/edge-identity/README.md).
 
 Enrolment at the edge (which box may tunnel through it) is a separate matter:
 the edge keeps an allow-list of boxes, each with a token, and a box is listed
@@ -95,7 +102,7 @@ tunnels (encrypted end to end with a key the box pins on first contact). It
 does not see the admin pages, the owner's password or the disk key. The
 [security model](../reference/security-model) lists the trust boundaries.
 
-:::note The demo edge
+:::note[The demo edge]
 For presentations, the edge's control plane also runs on Vercel at
 `losos-edge.dasmat.us`, with its registry in a small database. That host can
 register boxes and show them on a status page, but it cannot carry a tunnel,

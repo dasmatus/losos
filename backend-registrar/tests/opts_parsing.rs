@@ -357,6 +357,7 @@ fn mode_name(mode: &miette::Result<Mode>) -> &'static str {
         Ok(Mode::Join(_)) => "join",
         Ok(Mode::StripeGate(_)) => "stripe-gate",
         Ok(Mode::Identity(_)) => "identity",
+        Ok(Mode::Provision(_)) => "provision",
         Err(_) => "error",
     }
 }

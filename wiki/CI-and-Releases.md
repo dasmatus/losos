@@ -18,6 +18,8 @@ untrusted clients, and the build silently compiles from source.)
   `tests/iso-boot.py`. A boot passes when the installer sends a DNS query for
   `github.com`. On timeout, the job uploads a screenshot.
 - the Nextcloud image: weekly and on request only
+- `losos-registrar` for the dev machine: a static musl build pushed to GHCR
+  on every push to main and every tag, served by the proxy (below)
 
 ## Releases
 
@@ -52,7 +54,9 @@ Setup:
    `warning: '<url>' does not appear to be a binary cache` in every job and
    builds from source, and the run stays green. `setup-nix` now checks
    `<url>/nix-cache-info` and annotates the run when that happens.
-5. Make the `losos/nix-cache` package public.
+5. Make the `losos/nix-cache` package public, and `losos/images` (below)
+   once the first push to main has created it. GitHub creates a package
+   private; the proxy then answers `502 token: 403` for everything in it.
 6. Keep `losos.cache.substituters` and `losos.cache.trustedPublicKeys` in
    `modules/options.nix` at the same URL and key. Their defaults are
    `https://proxy.losos.dasmat.us` and the `losos-1` public key, so a stock
@@ -75,3 +79,27 @@ Check `<proxy-url>/nix-cache-info` and `nix copy --from <proxy-url>
 <store-path>` before relying on it. An unreachable cache is not fatal: the
 appliance waits 5 s and falls back to `cache.nixos.org` and building. Never
 put the secret key in the flake or on an appliance.
+
+## The dev-machine tool
+
+The key ceremony ([Master Proxy → Official edges](Master-Proxy#official-edges))
+runs `losos-registrar provision` on the operator's own computer, which has
+no Nix store, so `.#losos-registrar-static` is the same crate linked
+statically against musl. The `registrar-and-ui` job builds it and the
+`publish-tool` job pushes it to GHCR as the OCI artifact
+`ghcr.io/dasmatus/losos/images:<channel>-x86_64`, one layer per file:
+`losos-registrar` and `SHA256SUMS`. That is the shape the proxy's
+`/updates/<channel>/<arch>/<file>` route serves: it picks the layer whose
+title is the file name and redirects to GHCR's storage (`SHA256SUMS` it
+serves inline), the same route LosOS Desktop's sysupdate reads. The channel
+is `main` for a push to main, the tag for a release (which also moves
+`stable`), and a cleaned-up branch name for a manual run elsewhere; pull
+requests never publish.
+
+```sh
+curl -fsSLO "https://proxy.losos.dasmat.us/updates/main/x86_64/{losos-registrar,SHA256SUMS}" && sha256sum -c --ignore-missing SHA256SUMS && chmod +x losos-registrar
+```
+
+The job's step summary carries the artifact reference, the URL and the sum.
+`oras pull ghcr.io/dasmatus/losos/images:main-x86_64` fetches the same files
+without the proxy.
