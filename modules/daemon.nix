@@ -89,8 +89,8 @@ in
     # addresses into the audit log.
     #
     # A unix socket with SO_PEERCRED would say the same thing in the daemon,
-    # but the hardening profile gives lososd ProcSubset=pid and no AF_NETLINK,
-    # so it cannot look a TCP peer's uid up itself, and moving nginx to a
+    # but the hardening profile gives lososd no AF_NETLINK, so it cannot ask
+    # the kernel for a TCP peer's uid itself, and moving nginx to a
     # socket changes every test that talks to :8082. An owner match on
     # OUTPUT says it at the kernel instead: a locally generated packet to the
     # port is rejected unless its socket belongs to root (the daemon's own
