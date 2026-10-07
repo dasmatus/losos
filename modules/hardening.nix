@@ -355,8 +355,15 @@ in
             # No ProtectSystem: lososd rewrites /etc/nixos, and the rebuild
             # runs in a systemd-run transient unit that PID 1 starts outside
             # every namespace here.
+            #
+            # No ProcSubset=pid either, though it looks free: it hides
+            # /proc/devices and /proc/mounts, and lvm2 refuses to run without
+            # them ("Failed to set up list of device-mapper major numbers",
+            # vgs exit 4). `losos-ctl grow` starts with vgs, so with it every
+            # "Use reserve" on a hardened box failed at once with an opaque
+            # 500. ProtectProc=invisible still hides every other process.
+            # tests/invariants.nix pins this.
             ProtectProc = "invisible";
-            ProcSubset = "pid";
             MemoryDenyWriteExecute = true;
             RestrictAddressFamilies = [
               "AF_UNIX"
