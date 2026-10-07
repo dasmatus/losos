@@ -410,6 +410,15 @@
       #   losos-nextcloud-httpd — not a VM: the Nextcloud pod's Apache on a
       #                         fixture webroot, asserting the URL map
       #                         (tests/nextcloud-httpd.nix).
+      #   losos-edge-lan-two-boxes — the KOP's verification walkthrough as a
+      #                         check: two boxes with the real admin UI and an
+      #                         edge on one LAN, scenario A (no edge: both
+      #                         refuse sharing, serve locally, survive a reboot)
+      #                         then B (edge on: both find it, the gate opens,
+      #                         edge off/on, an unsigned edge opens sharing but
+      #                         not trading). With LOSOS_RECORD_DIR set the
+      #                         same run is photographed by
+      #                         demo/edge-lan/record.mjs (demo/edge-lan/two-boxes.nix).
       #   losos-git-runner    — boots native Forgejo plus the on-box Actions
       #                         runner and asserts the secret registration end
       #                         to end: one runner row, the UUID the runner
@@ -422,6 +431,7 @@
         losos-edge-proxy = import ./tests/edge-vm.nix { inherit pkgs; };
         losos-edge-lan = import ./tests/edge-lan.nix { inherit pkgs; };
         losos-edge-federation = import ./tests/edge-federation.nix { inherit pkgs; };
+        losos-edge-lan-two-boxes = import ./demo/edge-lan/two-boxes.nix { inherit pkgs; };
         losos-edge-market = import ./tests/market-vm.nix { inherit pkgs; };
         losos-ds-render = import ./tests/design-system.nix { inherit pkgs; };
         losos-front-vhost = import ./tests/front-vhost.nix { inherit pkgs; };
