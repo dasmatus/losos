@@ -199,7 +199,12 @@ function PasswordForm({
       // The box's refusal is a toast: it is about the request, not about a
       // field the owner can fix, which is what the line under the field is
       // for. An error toast stays long enough to read the box's sentence.
-      toast.error(t("wizard.signin.notSet"), describeSetPassword(error));
+      toast.error(t("wizard.signin.notSet"), describeSetPassword(error), {
+        /* A refusal of the password itself is the sign-in page (the rules
+         * are there); a box that is not ready, or has no such route, is the
+         * waiting page. */
+        help: isNotReady(error) || isMissingRoute(error) ? "wizard-waits" : "sign-in-and-spare-key",
+      });
     } finally {
       setBusy(false);
     }
@@ -622,7 +627,7 @@ function AdminKey({ value, boxName }: { value: string; boxName: string }) {
     if (await copyText(value, keyRef.current)) {
       toast.success(t("wizard.signin.key.copiedTitle"), t("wizard.signin.key.copiedBody"));
     } else {
-      toast.error(t("wizard.copyFailedTitle"), t("wizard.signin.key.copyFailed"));
+      toast.error(t("wizard.copyFailedTitle"), t("wizard.signin.key.copyFailed"), { help: "sign-in-and-spare-key" });
     }
   };
 
@@ -774,7 +779,7 @@ function PasskeyPanel({ boxName }: { boxName: string }) {
         // box under it: a second try is one click, and the box's sentence
         // has nothing the owner can fix on this form.
         setAttempt({ kind: "idle" });
-        toast.error(t("wizard.passkey.problem.title"), outcome.message);
+        toast.error(t("wizard.passkey.problem.title"), outcome.message, { help: "sign-in-and-spare-key" });
         return;
       default: {
         const unreachable: never = outcome;

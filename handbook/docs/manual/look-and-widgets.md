@@ -1,6 +1,7 @@
 ---
 title: Look and widgets
 sidebar_position: 5
+slug: /manual/look-and-widgets
 ---
 
 # Look and widgets

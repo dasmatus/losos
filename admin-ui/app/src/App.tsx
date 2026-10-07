@@ -22,6 +22,8 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty";
 import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
+import { HelpLink } from "@/components/ui/help-link";
+import type { HandbookEntry } from "@/lib/handbook";
 import { MonoInput } from "@/components/ui/input";
 import {
   InputGroup,
@@ -317,6 +319,11 @@ function SignInDialog({ open }: { open: boolean }) {
   const [value, setValue] = React.useState("");
   const [visible, setVisible] = React.useState(false);
   const [problem, setProblem] = React.useState<string | null>(null);
+  /* The handbook page the problem leads to, shown as "What to do" under
+   * the sentence: a refused password or key is the forgotten-password page,
+   * LosOS cloud not answering is the spare-key page, no answer at all is
+   * the reachability page. */
+  const [help, setHelp] = React.useState<HandbookEntry>("forgot-password");
   const [busy, setBusy] = React.useState(false);
   const errorId = React.useId();
   const titleId = React.useId();
@@ -332,6 +339,7 @@ function SignInDialog({ open }: { open: boolean }) {
     event.preventDefault();
     const candidate = mode === "key" ? value.trim() : value;
     if (mode === "key" && !isWellFormedToken(candidate)) {
+      setHelp("forgot-password");
       setProblem(t("shell.signIn.badShape"));
       return;
     }
@@ -343,12 +351,20 @@ function SignInDialog({ open }: { open: boolean }) {
       if (accepted) {
         setValue("");
         toast.success(t("shell.signIn.unlocked"), t("shell.signIn.unlockedBody"));
-      } else setProblem(t(mode === "key" ? "shell.signIn.rejected" : "shell.signIn.wrongPassword"));
+      } else {
+        setHelp("forgot-password");
+        setProblem(t(mode === "key" ? "shell.signIn.rejected" : "shell.signIn.wrongPassword"));
+      }
     } catch (error) {
       // LosOS cloud is what checks the password, and it could not be asked.
       // Say so, and point at the spare key rather than at a retry.
-      if (mode === "password" && isNotReady(error)) setProblem(t("shell.signIn.cloudDown"));
-      else setProblem(t("shell.signIn.noAnswer"));
+      if (mode === "password" && isNotReady(error)) {
+        setHelp("sign-in-and-spare-key");
+        setProblem(t("shell.signIn.cloudDown"));
+      } else {
+        setHelp("cannot-reach-the-box");
+        setProblem(t("shell.signIn.noAnswer"));
+      }
     } finally {
       setBusy(false);
     }
@@ -436,6 +452,7 @@ function SignInDialog({ open }: { open: boolean }) {
               </>
             )}
             <FieldError id={errorId}>{problem}</FieldError>
+            {problem !== null && <HelpLink entry={help} />}
             <FieldDescription>{t("shell.signIn.remembered")}</FieldDescription>
           </Field>
           <button

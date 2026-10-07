@@ -304,7 +304,7 @@ function ShelfRow({
     setQuantityProblem(null);
     const checkoutTab = window.open("about:blank", "_blank");
     if (checkoutTab === null) {
-      toast.error(t("panes.market.actionFailedTitle"), t("panes.market.popupBlocked"));
+      toast.error(t("panes.market.actionFailedTitle"), t("panes.market.popupBlocked"), { help: "index" });
       return;
     }
     checkoutTab.opener = null;
@@ -320,7 +320,7 @@ function ShelfRow({
         });
       } else {
         checkoutTab.close();
-        toast.error(t("panes.market.actionFailedTitle"), t("panes.market.noCheckout"));
+        toast.error(t("panes.market.actionFailedTitle"), t("panes.market.noCheckout"), { help: "index" });
       }
     } else {
       checkoutTab.close();
@@ -389,7 +389,7 @@ function SellSection({ market, disabled }: { market: MarketData; disabled: boole
   const onboard = async () => {
     const onboardingTab = window.open("about:blank", "_blank");
     if (onboardingTab === null) {
-      toast.error(t("panes.market.actionFailedTitle"), t("panes.market.popupBlocked"));
+      toast.error(t("panes.market.actionFailedTitle"), t("panes.market.popupBlocked"), { help: "index" });
       return;
     }
     onboardingTab.opener = null;

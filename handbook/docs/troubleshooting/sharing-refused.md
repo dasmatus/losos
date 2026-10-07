@@ -1,6 +1,7 @@
 ---
 title: Sharing is refused
 sidebar_position: 12
+slug: /troubleshooting/sharing-refused
 ---
 
 # Sharing is refused

@@ -1,6 +1,7 @@
 import * as React from "react";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import { Alert02Icon, SquareLock01Icon } from "@hugeicons/core-free-icons";
+import { HelpLink } from "@/components/ui/help-link";
 import { useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
 import { ApplyBar } from "./settings/apply-bar";
@@ -133,6 +134,7 @@ function LoadErrorNotice({ message }: { message: string }) {
   return (
     <Notice icon={Alert02Icon} tone="crit">
       {t("settings.notice.loadError", { message })}
+      <HelpLink entry="cannot-reach-the-box" className="ml-2" />
     </Notice>
   );
 }

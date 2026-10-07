@@ -221,6 +221,7 @@ await check('a failed apply is an error confirmation carrying the box\'s last lo
   await failed.waitFor({ timeout: 10000 });
   assert.equal(await failed.getAttribute('data-tone'), 'error');
   assert.match(await failed.innerText(), /nextcloud\.drv failed/);
+  assert.equal(await failed.locator('a[data-help]').getAttribute('href'), '/handbook/troubleshooting/apply-fails/');
   assert.equal(await statuses(page).count(), 0, 'the "applying" status outlived its failure');
   // Still there when a success would long have gone.
   await page.waitForTimeout(6500);
@@ -237,6 +238,13 @@ await check('an apply that does not start is an error confirmation, not a stuck 
   await toast.waitFor();
   assert.equal(await toast.getAttribute('data-tone'), 'error');
   assert.match(await toast.innerText(), /already running/);
+  /* Every error leads to its handbook page on this box: a "What to do" link
+   * to the apply page, opening in a new tab so the pending change stays. */
+  const help = toast.locator('a[data-help]');
+  assert.equal(await help.count(), 1, 'an error confirmation without a "What to do" link');
+  assert.equal(await help.getAttribute('href'), '/handbook/troubleshooting/apply-fails/');
+  assert.equal(await help.getAttribute('target'), '_blank');
+  assert.equal(await help.innerText(), 'What to do');
   assert.equal(await page.getByRole('progressbar').count(), 0, 'the progress bar stayed up after the refusal');
   assert.equal(await statuses(page).count(), 0, 'an "applying" status is up for a rebuild that never started');
   // Apply is live again: the change is still pending.

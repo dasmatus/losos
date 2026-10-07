@@ -168,7 +168,7 @@ export function useStorage(): Storage {
         record(await postGrow());
       } catch (error) {
         if (isUnauthorized(error)) return;
-        toast.error(t("panes.storage.failed.title"), describe(error));
+        toast.error(t("panes.storage.failed.title"), describe(error), { help: "out-of-room" });
       } finally {
         setGrowing(false);
       }

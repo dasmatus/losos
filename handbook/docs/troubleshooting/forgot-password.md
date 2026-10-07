@@ -1,6 +1,7 @@
 ---
 title: Forgot the password
 sidebar_position: 5
+slug: /troubleshooting/forgot-password
 ---
 
 # Forgot the password
