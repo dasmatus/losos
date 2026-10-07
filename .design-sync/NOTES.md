@@ -96,3 +96,32 @@
 - Verified-state carry-forward lives in the uploaded `_ds_sync.json`, not in
   git. Fetch it to `.design-sync/.cache/remote-sync.json` and pass
   `--remote` on re-syncs (see the driver command in the skill).
+
+## Sync direction (owner's rule, 2026-10-07)
+
+- The tree has precedence over the design system project. A re-sync pushes
+  the repo's built state up and overwrites whatever the project holds;
+  never pull a project-side change (templates, edited files) back into
+  the repo as part of a sync. The "Pull direction" section above describes
+  a manual, owner-driven path, not something a sync does.
+
+## Host and toolchain (2026-10-07)
+
+- The dev host is no longer NixOS: it is Fedora (secureblue) with no `nix`
+  on PATH, and node/npm/bun come from linuxbrew and `~/.bun`. The owner
+  prefers bun. `cfg.buildCmd` is now `bun install && bun run build` in
+  admin-ui/design-system/react; the old `nix develop …` wrapper still works
+  on a NixOS host. bun writes a `bun.lock` beside `package-lock.json`;
+  the repo's lockfile of record stays `package-lock.json` (the flake's
+  `npmDepsHash` pins it), so don't commit `bun.lock`.
+- Playwright: the user cache `~/.cache/ms-playwright` holds chromium-1243,
+  which is playwright 1.63.0's pin (the repo's devDependency). No
+  `PLAYWRIGHT_BROWSERS_PATH` is needed on this host. `.ds-sync` gets
+  `playwright@1.63.0` too.
+- flake.lock now has a single `nixpkgs` node (`.nodes.root.inputs.nixpkgs`
+  is `nixpkgs`); the old `nixpkgs_3` advice above is obsolete.
+- TypeScript 7 (bumped by dependabot in #53) refuses to infer `rootDir`
+  (TS5011), which broke `npm run build`: declarations landed in
+  `dist/src/` and the CSS copy step never ran. Fixed by `"rootDir": "src"`
+  in tsconfig.json and `"rootDir": "."` in tsconfig.test.json (that one
+  includes `tests/`).

@@ -1,10 +1,15 @@
 # Building with losos-ds
 
-losos is a NixOS home-server appliance and this design system is its admin
-UI: one dark topbar, light content on `--ls-bg`, bordered white cards,
-Forgejo-flavored. Components are thin React wrappers that render class-named
-markup only. **All styling comes from `styles.css`** (design tokens plus
-component classes). There is no provider, no theme object, no CSS-in-JS.
+losos is a NixOS home-server appliance and this is the design language of
+its admin UI: one dark topbar, light content on `--ls-bg`, bordered white
+cards, Forgejo-flavored. Build new admin screens, settings panes and wizard
+steps from these components. The appliance ships a separate React SPA
+(`admin-ui/app`) on its own Tailwind token layer with different variable
+names, so a design made here is a reference for that app, not code it
+imports; the tree is the source of truth whenever the two disagree.
+Components are thin React wrappers that render class-named markup only.
+**All styling comes from `styles.css`** (design tokens plus component
+classes). There is no provider, no theme object, no CSS-in-JS.
 Render components directly on a light page and the stylesheet does the rest.
 The stylesheet styles bare `input[type="text"|"number"|"password"]` and
 `select` globally, so use the `Input`/`Select` wrappers and always set an

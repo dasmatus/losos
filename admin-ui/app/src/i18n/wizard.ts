@@ -181,9 +181,9 @@ export default defineMessages({
     de: "Dieser Browser hat einen Passkey geliefert, den diese Box nicht lesen kann.",
   },
   "wizard.passkey.orphan": {
-    en: "{error} Your device may have saved a passkey this box did not keep; remove it from your device's passkey list before trying again.",
-    sk: "{error} Váš prístroj si možno uložil prístupový kľúč, ktorý toto zariadenie neuchovalo; pred ďalším pokusom ho odstráňte zo zoznamu prístupových kľúčov vo svojom prístroji.",
-    de: "{error} Dein Gerät hat vielleicht einen Passkey gespeichert, den diese Box nicht behalten hat; entferne ihn aus der Passkey-Liste deines Geräts, bevor du es noch einmal versuchst.",
+    en: "{error} Your device may have saved a passkey this box did not keep. Remove it from your device's passkey list before trying again.",
+    sk: "{error} Váš prístroj si možno uložil prístupový kľúč, ktorý toto zariadenie neuchovalo. Pred ďalším pokusom ho odstráňte zo zoznamu prístupových kľúčov vo svojom prístroji.",
+    de: "{error} Dein Gerät hat vielleicht einen Passkey gespeichert, den diese Box nicht behalten hat. Entferne ihn aus der Passkey-Liste deines Geräts, bevor du es noch einmal versuchst.",
   },
   "wizard.passkey.duplicate": {
     en: "This device already has a passkey for this box.",
@@ -223,9 +223,9 @@ export default defineMessages({
     de: "Diese Box stellt keine verschlüsselte Adresse bereit, also gibt es kein Zertifikat, dem du vertrauen müsstest. Du kannst weitermachen.",
   },
   "wizard.trust.absentNoPasskey": {
-    en: "This box is not serving an encrypted address, so there is no certificate to trust. You can continue; the passkey option on the next step will not be offered.",
+    en: "This box is not serving an encrypted address, so there is no certificate to trust. You can continue. The next step will not offer a passkey.",
     sk: "Toto zariadenie neposkytuje šifrovanú adresu, takže tu nie je žiadny certifikát, ktorému treba dôverovať. Môžete pokračovať, ale v ďalšom kroku nebude ponúknutá možnosť prístupového kľúča.",
-    de: "Diese Box stellt keine verschlüsselte Adresse bereit, also gibt es kein Zertifikat, dem du vertrauen müsstest. Du kannst weitermachen; die Passkey-Option im nächsten Schritt wird dann nicht angeboten.",
+    de: "Diese Box stellt keine verschlüsselte Adresse bereit, also gibt es kein Zertifikat, dem du vertrauen müsstest. Du kannst weitermachen. Der nächste Schritt bietet dann keinen Passkey an.",
   },
   "wizard.trust.noTls": {
     en: "{name} is not serving an encrypted address, so there is no certificate to trust. You can continue.",
@@ -233,9 +233,9 @@ export default defineMessages({
     de: "{name} stellt keine verschlüsselte Adresse bereit, also gibt es kein Zertifikat, dem du vertrauen müsstest. Du kannst weitermachen.",
   },
   "wizard.trust.noTlsNoPasskey": {
-    en: "{name} is not serving an encrypted address, so there is no certificate to trust. You can continue; the passkey option on the next step will not be offered.",
+    en: "{name} is not serving an encrypted address, so there is no certificate to trust. You can continue. The next step will not offer a passkey.",
     sk: "Zariadenie {name} neposkytuje šifrovanú adresu, takže tu nie je žiadny certifikát, ktorému treba dôverovať. Môžete pokračovať, ale v ďalšom kroku nebude ponúknutá možnosť prístupového kľúča.",
-    de: "{name} stellt keine verschlüsselte Adresse bereit, also gibt es kein Zertifikat, dem du vertrauen müsstest. Du kannst weitermachen; die Passkey-Option im nächsten Schritt wird dann nicht angeboten.",
+    de: "{name} stellt keine verschlüsselte Adresse bereit, also gibt es kein Zertifikat, dem du vertrauen müsstest. Du kannst weitermachen. Der nächste Schritt bietet dann keinen Passkey an.",
   },
   "wizard.trust.failed.title": {
     en: "Could not read the setup details",
@@ -270,14 +270,14 @@ export default defineMessages({
     de: "Öffne auf diesem Computer das Terminal, füge diese Zeile ein und drücke Enter. macOS fragt einmal nach deinem Kontopasswort, um zu ändern, wem dein Schlüsselbund vertraut.",
   },
   "wizard.trust.quick.bodyWindows": {
-    en: "On this computer, open PowerShell (press the Windows key, type PowerShell, press Enter), paste this line and press Enter. Windows then shows its own dialog asking whether to install the certificate.",
-    sk: "Na tomto počítači otvorte PowerShell (stlačte kláves Windows, napíšte PowerShell, stlačte Enter), vložte tento riadok a stlačte Enter. Windows potom zobrazí vlastný dialóg s otázkou, či certifikát nainštalovať.",
-    de: "Öffne auf diesem Computer PowerShell (Windows-Taste drücken, PowerShell tippen, Enter), füge diese Zeile ein und drücke Enter. Windows zeigt dann einen eigenen Dialog, ob das Zertifikat installiert werden soll.",
+    en: "On this computer, press the Windows key, type PowerShell and press Enter. Paste this line into the window that opens and press Enter. Windows then shows its own dialog asking whether to install the certificate.",
+    sk: "Na tomto počítači stlačte kláves Windows, napíšte PowerShell a stlačte Enter. Do okna, ktoré sa otvorí, vložte tento riadok a stlačte Enter. Windows potom zobrazí vlastný dialóg s otázkou, či certifikát nainštalovať.",
+    de: "Drück auf diesem Computer die Windows-Taste, tipp PowerShell und drück Enter. Füge diese Zeile in das Fenster ein, das sich öffnet, und drück Enter. Windows zeigt dann einen eigenen Dialog, ob das Zertifikat installiert werden soll.",
   },
   "wizard.trust.quick.bodyPhone": {
-    en: "Phones have no terminal: on this device, use the certificate download below instead. On a computer, this line does the whole step.",
-    sk: "Telefóny nemajú terminál: na tomto prístroji použite namiesto toho stiahnutie certifikátu nižšie. Na počítači tento riadok urobí celý krok.",
-    de: "Telefone haben kein Terminal: Nimm auf diesem Gerät stattdessen den Zertifikat-Download unten. Auf einem Computer erledigt diese Zeile den ganzen Schritt.",
+    en: "Phones have no terminal. On this device, use the certificate download below instead. On a computer, this line does the whole step.",
+    sk: "Telefóny nemajú terminál. Na tomto prístroji použite namiesto toho stiahnutie certifikátu nižšie. Na počítači tento riadok urobí celý krok.",
+    de: "Telefone haben kein Terminal. Nimm auf diesem Gerät stattdessen den Zertifikat-Download unten. Auf einem Computer erledigt diese Zeile den ganzen Schritt.",
   },
   "wizard.trust.quick.copy": { en: "Copy", sk: "Kopírovať", de: "Kopieren" },
   "wizard.trust.quick.what": {
@@ -306,9 +306,9 @@ export default defineMessages({
     de: "Sie gibt den unten gezeigten Fingerabdruck aus, damit du beide vergleichen kannst. Starte danach deinen Browser neu und öffne diese Seite unter https://{fqdn} erneut.",
   },
   "wizard.trust.byHand": {
-    en: "Or by hand: download the certificate and add it to your browser or system as a trusted authority.",
-    sk: "Alebo ručne: stiahnite certifikát a pridajte ho do prehliadača alebo systému ako dôveryhodnú autoritu.",
-    de: "Oder von Hand: Lade das Zertifikat herunter und füge es deinem Browser oder System als vertrauenswürdige Stelle hinzu.",
+    en: "Or by hand. Download the certificate and add it to your browser or system as a trusted authority.",
+    sk: "Alebo ručne. Stiahnite certifikát a pridajte ho do prehliadača alebo systému ako dôveryhodnú autoritu.",
+    de: "Oder von Hand. Lade das Zertifikat herunter und füge es deinem Browser oder System als vertrauenswürdige Stelle hinzu.",
   },
   "wizard.trust.getCert": {
     en: "Get the certificate",
@@ -331,9 +331,9 @@ export default defineMessages({
     de: "Prüfe diesen Fingerabdruck",
   },
   "wizard.trust.fingerprintBody": {
-    en: "Your browser shows the same fingerprint when it asks whether to trust the certificate. If the two do not match character for character, stop: something between you and {name} is not this box.",
-    sk: "Keď sa váš prehliadač opýta, či certifikátu dôverovať, zobrazí ten istý odtlačok. Ak sa tieto dva nezhodujú znak po znaku, zastavte sa: niečo medzi vami a zariadením {name} nie je toto zariadenie.",
-    de: "Dein Browser zeigt denselben Fingerabdruck, wenn er fragt, ob er dem Zertifikat vertrauen soll. Wenn die beiden nicht Zeichen für Zeichen übereinstimmen, hör auf: Dann ist etwas zwischen dir und {name} nicht diese Box.",
+    en: "Your browser shows the same fingerprint when it asks whether to trust the certificate. If the two do not match character for character, stop. Something between you and {name} is not this box.",
+    sk: "Keď sa váš prehliadač opýta, či certifikátu dôverovať, zobrazí ten istý odtlačok. Ak sa tieto dva nezhodujú znak po znaku, zastavte sa. Niečo medzi vami a zariadením {name} nie je toto zariadenie.",
+    de: "Dein Browser zeigt denselben Fingerabdruck, wenn er fragt, ob er dem Zertifikat vertrauen soll. Wenn die beiden nicht Zeichen für Zeichen übereinstimmen, hör auf. Dann ist etwas zwischen dir und {name} nicht diese Box.",
   },
   "wizard.trust.validUntil": {
     en: "Valid until {date}. This box mints a new one before then on its own.",
@@ -346,9 +346,9 @@ export default defineMessages({
     de: "Diese Seite ist noch nicht verschlüsselt",
   },
   "wizard.trust.unencrypted.body": {
-    en: "You can continue either way. On an unencrypted address no browser will offer to make a passkey, so step 2 will ask you for a password only. If {fqdn} does not open on this computer, stay on the address you are on: the box answers the same there.",
-    sk: "Pokračovať môžete tak či tak. Na nešifrovanej adrese žiadny prehliadač neponúkne vytvorenie prístupového kľúča, takže krok 2 si vypýta iba heslo. Ak sa {fqdn} na tomto počítači neotvorí, zostaňte na adrese, na ktorej ste: zariadenie tam odpovedá rovnako.",
-    de: "Weitermachen kannst du so oder so. Auf einer unverschlüsselten Adresse bietet kein Browser an, einen Passkey zu erstellen, also fragt Schritt 2 nur nach einem Passwort. Öffnet sich {fqdn} auf diesem Computer nicht, bleib auf der Adresse, auf der du bist: die Box antwortet dort genauso.",
+    en: "You can continue either way. On an unencrypted address no browser will offer to make a passkey, so step 2 will ask you for a password only. If {fqdn} does not open on this computer, stay on the address you are on. The box answers the same there.",
+    sk: "Pokračovať môžete tak či tak. Na nešifrovanej adrese žiadny prehliadač neponúkne vytvorenie prístupového kľúča, takže krok 2 si vypýta iba heslo. Ak sa {fqdn} na tomto počítači neotvorí, zostaňte na adrese, na ktorej ste. Zariadenie tam odpovedá rovnako.",
+    de: "Weitermachen kannst du so oder so. Auf einer unverschlüsselten Adresse bietet kein Browser an, einen Passkey zu erstellen, also fragt Schritt 2 nur nach einem Passwort. Öffnet sich {fqdn} auf diesem Computer nicht, bleib auf der Adresse, auf der du bist. Die Box antwortet dort genauso.",
   },
   "wizard.trust.otherName.title": {
     en: "Encrypted, but under another name",
@@ -373,9 +373,9 @@ export default defineMessages({
     de: "Warten, bis diese Box fertig gestartet ist",
   },
   "wizard.signin.waiting.body": {
-    en: "The password can be set as soon as the file service is ready. This page checks every few seconds and lets you continue on its own; there is nothing to click.",
-    sk: "Heslo bude možné nastaviť, hneď ako bude súborová služba pripravená. Táto stránka to kontroluje každých pár sekúnd a sama vás pustí ďalej; nie je potrebné nič stláčať.",
-    de: "Das Passwort kann gesetzt werden, sobald der Dateidienst bereit ist. Diese Seite prüft das alle paar Sekunden und lässt dich von selbst weiter; es gibt nichts zu klicken.",
+    en: "The password can be set as soon as the file service is ready. This page checks every few seconds and lets you continue on its own. There is nothing to click.",
+    sk: "Heslo bude možné nastaviť, hneď ako bude súborová služba pripravená. Táto stránka to kontroluje každých pár sekúnd a sama vás pustí ďalej. Nie je potrebné nič stláčať.",
+    de: "Das Passwort kann gesetzt werden, sobald der Dateidienst bereit ist. Diese Seite prüft das alle paar Sekunden und lässt dich von selbst weiter. Es gibt nichts zu klicken.",
   },
   "wizard.signin.waiting.since": {
     en: {
@@ -508,9 +508,9 @@ export default defineMessages({
     de: "Dein Ersatz-Admin-Schlüssel, nur jetzt zu sehen",
   },
   "wizard.signin.key.body": {
-    en: "From now on your password unlocks these admin pages. This key is the spare: it opens them even while LosOS cloud is not running to check the password. The box shows it only now and keeps no copy a browser can ask for again, so copy it into a password manager, or print it and keep the sheet.",
-    sk: "Odteraz tieto správcovské stránky odomyká vaše heslo. Tento kľúč je náhradný: otvorí ich, aj keď LosOS cloud práve nebeží a heslo sa nedá overiť. Zariadenie ho zobrazí iba teraz a nenecháva si kópiu, o ktorú by prehliadač mohol znova požiadať, preto si ho skopírujte do správcu hesiel alebo si ho vytlačte a hárok odložte.",
-    de: "Ab jetzt entsperrt dein Passwort diese Admin-Seiten. Dieser Schlüssel ist der Ersatz: Er öffnet sie auch, während LosOS cloud nicht läuft und das Passwort nicht prüfen kann. Die Box zeigt ihn nur jetzt und behält keine Kopie, die ein Browser noch einmal abfragen könnte, also kopiere ihn in einen Passwortmanager, oder druck ihn aus und heb das Blatt auf.",
+    en: "From now on your password unlocks these admin pages. This key is the spare. It opens them even while LosOS cloud is not running to check the password. The box shows it only now and keeps no copy a browser can ask for again, so copy it into a password manager, or print it and keep the sheet.",
+    sk: "Odteraz tieto správcovské stránky odomyká vaše heslo. Tento kľúč je náhradný. Otvorí ich, aj keď LosOS cloud práve nebeží a heslo sa nedá overiť. Zariadenie ho zobrazí iba teraz a nenecháva si kópiu, o ktorú by prehliadač mohol znova požiadať, preto si ho skopírujte do správcu hesiel alebo si ho vytlačte a hárok odložte.",
+    de: "Ab jetzt entsperrt dein Passwort diese Admin-Seiten. Dieser Schlüssel ist der Ersatz. Er öffnet sie auch, während LosOS cloud nicht läuft und das Passwort nicht prüfen kann. Die Box zeigt ihn nur jetzt und behält keine Kopie, die ein Browser noch einmal abfragen könnte, also kopiere ihn in einen Passwortmanager, oder druck ihn aus und heb das Blatt auf.",
   },
   "wizard.signin.key.label": {
     en: "Spare admin key",
@@ -545,9 +545,9 @@ export default defineMessages({
     de: "Behandle ihn wie einen Schlüssel zur Box, denn genau das ist er.",
   },
   "wizard.signin.key.copyFailed": {
-    en: "This browser would not copy it. The key is selected; press Ctrl+C, or Cmd+C on a Mac.",
-    sk: "Tento prehliadač ho neskopíroval. Kľúč je označený; stlačte Ctrl+C, na Macu Cmd+C.",
-    de: "Dieser Browser wollte ihn nicht kopieren. Der Schlüssel ist markiert; drück Strg+C, auf dem Mac Cmd+C.",
+    en: "This browser would not copy it. The key is selected. Press Ctrl+C, or Cmd+C on a Mac.",
+    sk: "Tento prehliadač ho neskopíroval. Kľúč je označený. Stlačte Ctrl+C, na Macu Cmd+C.",
+    de: "Dieser Browser wollte ihn nicht kopieren. Der Schlüssel ist markiert. Drück Strg+C, auf dem Mac Cmd+C.",
   },
   "wizard.passkey.label": {
     en: "{name} admin",
@@ -560,9 +560,9 @@ export default defineMessages({
     de: "Zusätzlich einen Passkey hinzufügen",
   },
   "wizard.passkey.body": {
-    en: "A passkey signs you in with your face, your fingerprint or your screen lock, from this browser on this device. It is an addition, not a replacement: the desktop and phone apps still sign in with the password you just set.",
-    sk: "Prístupový kľúč vás prihlási tvárou, odtlačkom prsta alebo zámkou obrazovky, a to v tomto prehliadači na tomto prístroji. Je to doplnok, nie náhrada: aplikácie pre počítač a telefón sa naďalej prihlasujú heslom, ktoré ste práve nastavili.",
-    de: "Ein Passkey meldet dich mit deinem Gesicht, deinem Fingerabdruck oder deiner Bildschirmsperre an, in diesem Browser auf diesem Gerät. Er kommt dazu, er ersetzt nichts: Die Apps für Computer und Handy melden sich weiter mit dem Passwort an, das du gerade festgelegt hast.",
+    en: "A passkey signs you in with your face, your fingerprint or your screen lock, from this browser on this device. It adds to the password rather than replacing it. The desktop and phone apps still sign in with the password you just set.",
+    sk: "Prístupový kľúč vás prihlási tvárou, odtlačkom prsta alebo zámkou obrazovky, a to v tomto prehliadači na tomto prístroji. Heslo dopĺňa, nenahrádza ho. Aplikácie pre počítač a telefón sa naďalej prihlasujú heslom, ktoré ste práve nastavili.",
+    de: "Ein Passkey meldet dich mit deinem Gesicht, deinem Fingerabdruck oder deiner Bildschirmsperre an, in diesem Browser auf diesem Gerät. Er kommt zum Passwort dazu und ersetzt es nicht. Die Apps für Computer und Handy melden sich weiter mit dem Passwort an, das du gerade festgelegt hast.",
   },
   "wizard.passkey.checking": {
     en: "Checking what this browser can do.",
@@ -605,9 +605,9 @@ export default defineMessages({
     de: "Auf dieser Box noch nicht",
   },
   "wizard.passkey.notYet.body": {
-    en: "The software on this box cannot register a passkey yet. The password you set above is enough to sign in; you can add a passkey later, from the security settings inside your files.",
-    sk: "Softvér na tomto zariadení zatiaľ nevie zaregistrovať prístupový kľúč. Na prihlásenie stačí heslo, ktoré ste nastavili vyššie; prístupový kľúč môžete pridať neskôr v nastaveniach zabezpečenia vo svojich súboroch.",
-    de: "Die Software auf dieser Box kann noch keinen Passkey registrieren. Das Passwort, das du oben festgelegt hast, reicht zum Anmelden; einen Passkey kannst du später in den Sicherheitseinstellungen in deinen Dateien hinzufügen.",
+    en: "The software on this box cannot register a passkey yet. The password you set above is enough to sign in. You can add a passkey later, from the security settings inside your files.",
+    sk: "Softvér na tomto zariadení zatiaľ nevie zaregistrovať prístupový kľúč. Na prihlásenie stačí heslo, ktoré ste nastavili vyššie. Prístupový kľúč môžete pridať neskôr v nastaveniach zabezpečenia vo svojich súboroch.",
+    de: "Die Software auf dieser Box kann noch keinen Passkey registrieren. Das Passwort, das du oben festgelegt hast, reicht zum Anmelden. Einen Passkey kannst du später in den Sicherheitseinstellungen in deinen Dateien hinzufügen.",
   },
   "wizard.passkey.problem.title": {
     en: "That did not work",
@@ -654,9 +654,9 @@ export default defineMessages({
     de: "Auf dieser Box gibt es noch keinen Code",
   },
   "wizard.recovery.notYet.body": {
-    en: "The software on this box cannot produce a recovery code yet. You can continue without one; come back to this page after the box has updated itself and write the code down then.",
-    sk: "Softvér na tomto zariadení zatiaľ nevie vytvoriť kód na obnovenie. Môžete pokračovať bez neho; vráťte sa na túto stránku, keď sa zariadenie samo aktualizuje, a kód si zapíšte potom.",
-    de: "Die Software auf dieser Box kann noch keinen Wiederherstellungscode erzeugen. Du kannst ohne weitermachen; komm auf diese Seite zurück, wenn die Box sich aktualisiert hat, und schreib den Code dann auf.",
+    en: "The software on this box cannot produce a recovery code yet. You can continue without one. Come back to this page after the box has updated itself and write the code down then.",
+    sk: "Softvér na tomto zariadení zatiaľ nevie vytvoriť kód na obnovenie. Môžete pokračovať bez neho. Vráťte sa na túto stránku, keď sa zariadenie samo aktualizuje, a kód si zapíšte potom.",
+    de: "Die Software auf dieser Box kann noch keinen Wiederherstellungscode erzeugen. Du kannst ohne weitermachen. Komm auf diese Seite zurück, wenn die Box sich aktualisiert hat, und schreib den Code dann auf.",
   },
   "wizard.recovery.failed.title": {
     en: "Could not read the code",
@@ -768,9 +768,9 @@ export default defineMessages({
     de: "Füg ihn in ein Terminal auf diesem Computer ein.",
   },
   "wizard.trust.quick.copyFailed": {
-    en: "This browser would not copy it. The line is selected; press Ctrl+C, or Cmd+C on a Mac.",
-    sk: "Tento prehliadač ho neskopíroval. Riadok je označený; stlačte Ctrl+C, na Macu Cmd+C.",
-    de: "Dieser Browser wollte ihn nicht kopieren. Die Zeile ist markiert; drück Strg+C, auf dem Mac Cmd+C.",
+    en: "This browser would not copy it. The line is selected. Press Ctrl+C, or Cmd+C on a Mac.",
+    sk: "Tento prehliadač ho neskopíroval. Riadok je označený. Stlačte Ctrl+C, na Macu Cmd+C.",
+    de: "Dieser Browser wollte ihn nicht kopieren. Die Zeile ist markiert. Drück Strg+C, auf dem Mac Cmd+C.",
   },
   "wizard.copyFailedTitle": {
     en: "Not copied",
