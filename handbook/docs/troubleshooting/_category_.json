@@ -1,0 +1,8 @@
+{
+  "label": "When something goes wrong",
+  "position": 4,
+  "link": {
+    "type": "doc",
+    "id": "troubleshooting/index"
+  }
+}

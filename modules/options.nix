@@ -893,6 +893,21 @@ in
       '';
     };
 
+    # Path of the built owner's handbook (handbook/, built by flake/packages.nix
+    # as losos-handbook with its base set to /handbook/; wired in via
+    # modules/defaults.nix). Internal, like admin.ui.
+    admin.handbook = lib.mkOption {
+      type = lib.types.nullOr lib.types.path;
+      default = null;
+      internal = true;
+      description = ''
+        Store path of the built handbook: a Docusaurus `build/` tree rooted at
+        /handbook/, served by the front vhost under that prefix, LAN-only, so
+        the manual is readable from the local network alone. Null serves no
+        handbook.
+      '';
+    };
+
     # ── Installer (the `losos-ctl install` subcommand) ──────────────────────
     installer.package = lib.mkOption {
       type = lib.types.nullOr lib.types.package;

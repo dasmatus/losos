@@ -84,6 +84,32 @@ export function AboutPane({ form }: { form: SettingsForm }) {
       </PaneSection>
 
       <PaneSection>
+        <GroupTitle>{t("panes.about.handbook")}</GroupTitle>
+        <Group>
+          <Row last>
+            <RowText title={t("panes.about.handbook")} />
+            {/* A relative path on purpose: the box serves its own copy of
+                the handbook at /handbook/ (modules/containers.nix), on
+                whichever address this page was opened on, so the link works
+                from the LAN with no internet and under the IP address as
+                well as the name. It opens in a new tab so the admin key this
+                tab holds is not lost to a navigation. */}
+            <RowValue className="text-ink">
+              <a
+                href="/handbook/"
+                target="_blank"
+                rel="noopener"
+                className="text-accent underline-offset-2 hover:underline"
+              >
+                {t("panes.about.handbookLink")}
+              </a>
+            </RowValue>
+          </Row>
+        </Group>
+        <GroupCaption>{t("panes.about.handbookCaption")}</GroupCaption>
+      </PaneSection>
+
+      <PaneSection>
         <GroupTitle>{t("panes.about.spareTime")}</GroupTitle>
         <Group>
           <Row>
