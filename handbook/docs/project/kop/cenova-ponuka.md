@@ -53,9 +53,10 @@ zväzku, a redundanciu rieši mesh, nie RAID.
 
 Edge je modul NixOS a jeho nároky sú malé: registrátor v Ruste, Traefik,
 rathole a voliteľne rke2 server s Longhornom. Pre firemné nasadenie v
-jednej sieti pripadá do úvahy zariadenie triedy Raspberry Pi (ARM64;
-zostavenie modulu pre `aarch64-linux` je položka na overenie), pre verejnú
-adresu z internetu malý VPS. Ponuka uvádza obe možnosti vedľa seba.
+jednej sieti by prichádzalo do úvahy aj zariadenie triedy Raspberry Pi
+(ARM64), flake však dnes zostavuje len pre `x86_64-linux`, takže je to
+položka na overenie, nie hotová možnosť; istá voľba je malý x86-64 stroj
+v sieti alebo, pre verejnú adresu z internetu, malý VPS. Ponuka uvádza obe možnosti vedľa seba.
 
 ## Softvér
 
@@ -87,9 +88,10 @@ ponuka s tým počíta minimom objednávky).
 
 - **Cenu práce autora na vývoji.** Projekt je maturitná práca; ponuka
   oceňuje, čo si zákazník kupuje, nie čo vznik systému stál.
-- **Prémiový hardvér.** Systém beží pohodlne na ľubovoľnom 64-bitovom
-  stroji s dostatkom pamäte a disku; drahší box neprinesie nič, čo by
-  softvér využil.
+- **Prémiový hardvér.** Systém beží pohodlne na ľubovoľnom stroji x86-64
+  s dostatkom pamäte a disku; drahší box neprinesie nič, čo by softvér
+  využil. Jediná tvrdá hranica je architektúra: ARM (vrátane Macov s čipom
+  Apple M) podporovaná nie je.
 - **Zálohovanie.** Box je jedna kópia; druhú si drží majiteľ, kde chce.
 
 ## Výsledok ponuky
