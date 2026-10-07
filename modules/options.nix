@@ -389,6 +389,27 @@ in
       '';
     };
 
+    proxy.officialRootKeyFile = lib.mkOption {
+      type = lib.types.path;
+      default = ../keys/official-edge-root.pub;
+      defaultText = lib.literalExpression "../keys/official-edge-root.pub";
+      description = ''
+        The LosOS root **public** key (Ed25519, 64 hex characters; `#` lines
+        are comments), read by lososd on every edge scan. An edge counts as
+        *official* only if it presents a certificate signed by the matching
+        private key and answers a fresh nonce with the certificate's key
+        (`GET <url>/identity?nonce=`, backend/src/edge.rs); only official
+        edges may process P2P storage and compute trading, so the market
+        relay answers `{available: false, reason: "noOfficialEdge"}` and
+        refuses actions (409, `officialEdgeRequired`) through any other edge.
+        Discovery and storage sharing are not gated on this: a company's own
+        edge keeps working. A file with no key in it (the committed default
+        until the project owner writes the key) makes no edge official, so a
+        tree without the key fails closed. A public key, so a store path is
+        fine here.
+      '';
+    };
+
     proxy.heartbeatInterval = lib.mkOption {
       type = lib.types.str;
       default = "30s";
@@ -1014,6 +1035,34 @@ in
       '';
     };
 
+    edge.identity.keyFile = lib.mkOption {
+      type = lib.types.nullOr secretPath;
+      default = null;
+      description = ''
+        This edge's identity **private** key (PKCS#8 hex, 0600, persisted via
+        /var, never in the store), made with `losos-registrar identity keygen
+        --out <file>`. With `edge.identity.certFile` it makes the edge
+        *official*: the registrar serves `GET /identity?nonce=` and boxes
+        whose losos.proxy.officialRootKeyFile matches the signer let it
+        process their market traffic. `null` (the default) is an edge that is
+        found and shares storage but is never official — the shape of an
+        edge a company runs for itself.
+      '';
+    };
+
+    edge.identity.certFile = lib.mkOption {
+      type = lib.types.nullOr lib.types.path;
+      default = null;
+      description = ''
+        The certificate for `edge.identity.keyFile`: the JSON
+        `losos-registrar identity sign` prints, signed by the LosOS root key
+        the project owner holds offline. Public, so a store path is fine.
+        Must name this edge's public URL (the one boxes probe) and be
+        unexpired; the registrar refuses to start on a mismatch. Set with
+        `keyFile` or not at all.
+      '';
+    };
+
     edge.tenants = lib.mkOption {
       type = lib.types.attrsOf (
         lib.types.submodule {
@@ -1323,6 +1372,9 @@ in
       }
       // lib.optionalAttrs (config.losos.edge.noisePrivateKeyFile != null) {
         "losos.edge.noisePrivateKeyFile" = config.losos.edge.noisePrivateKeyFile;
+      }
+      // lib.optionalAttrs (config.losos.edge.identity.keyFile != null) {
+        "losos.edge.identity.keyFile" = config.losos.edge.identity.keyFile;
       }
       // lib.mapAttrs' (
         id: tenant: lib.nameValuePair "losos.edge.tenants.${id}.tokenFile" tenant.tokenFile

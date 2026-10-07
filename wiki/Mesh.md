@@ -59,6 +59,15 @@ left alone, so a box whose edge went away keeps its configuration and can
 still change anything else, and turning sharing off is always allowed. Your
 own files and apps never depend on the edge.
 
+Finding an edge and *trusting it with money* are two different questions.
+Any edge that answers opens sharing. Trading on the market is allowed only
+through an **official** edge: one that presents a certificate signed by the
+LosOS root key and answers the box's fresh nonce with it, checked on every
+scan. The Mesh pane's second edge row says which kind the box found
+("Trading allowed" or "Sharing only"); a company's own edge is the latter and
+that is not a fault. See [Master proxy — Official
+edges](Master-Proxy#official-edges).
+
 `demo/edge-lan/run.sh` boots an edge and a box on one virtual network and
 walks through exactly this: found, allowed, edge gone, refused.
 

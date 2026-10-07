@@ -96,12 +96,20 @@ export class ApiError extends Error {
   /** The box refused a sharing setting because no edge proxy is in reach:
    *  a 409 whose body carries `edgeRequired: true` (backend/src/edge.rs). */
   readonly edgeRequired: boolean;
+  /** The box refused a market action because no edge in reach is one LosOS
+   *  runs: a 409 with `officialEdgeRequired: true`. */
+  readonly officialEdgeRequired: boolean;
 
-  constructor(status: number, message: string, { edgeRequired = false } = {}) {
+  constructor(
+    status: number,
+    message: string,
+    { edgeRequired = false, officialEdgeRequired = false } = {},
+  ) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.edgeRequired = edgeRequired;
+    this.officialEdgeRequired = officialEdgeRequired;
   }
 
   /** The token this tab holds is not the one lososd minted. Re-prompt. */
@@ -226,25 +234,38 @@ async function call<T>(path: string, options: CallOptions = {}): Promise<T> {
   }
 
   if (!response.ok) {
-    const { message, edgeRequired } = await errorBody(response);
-    throw new ApiError(response.status, message, { edgeRequired });
+    const { message, edgeRequired, officialEdgeRequired } = await errorBody(response);
+    throw new ApiError(response.status, message, { edgeRequired, officialEdgeRequired });
   }
 
   return (await response.json()) as T;
 }
 
-async function errorBody(response: Response): Promise<{ message: string; edgeRequired: boolean }> {
+interface ErrorBody {
+  message: string;
+  edgeRequired: boolean;
+  officialEdgeRequired: boolean;
+}
+
+async function errorBody(response: Response): Promise<ErrorBody> {
   try {
-    const body = (await response.json()) as { error?: unknown; edgeRequired?: unknown };
-    const edgeRequired = body.edgeRequired === true;
+    const body = (await response.json()) as {
+      error?: unknown;
+      edgeRequired?: unknown;
+      officialEdgeRequired?: unknown;
+    };
+    const flags = {
+      edgeRequired: body.edgeRequired === true,
+      officialEdgeRequired: body.officialEdgeRequired === true,
+    };
     if (typeof body.error === "string" && body.error.length > 0) {
-      return { message: body.error, edgeRequired };
+      return { message: body.error, ...flags };
     }
-    return { message: `HTTP ${response.status}`, edgeRequired };
+    return { message: `HTTP ${response.status}`, ...flags };
   } catch {
     /* lososd restarting mid-rebuild answers through nginx, not as JSON */
   }
-  return { message: `HTTP ${response.status}`, edgeRequired: false };
+  return { message: `HTTP ${response.status}`, edgeRequired: false, officialEdgeRequired: false };
 }
 
 // ── Routes ────────────────────────────────────────────────────────────────
@@ -346,6 +367,11 @@ export type EdgeSource = "lan" | "configured";
 export interface EdgeProxy {
   /** The advertised instance name, or the configured URL's host. */
   name: string;
+  /** Proved on this scan to be an edge LosOS runs (a certificate the LosOS
+   *  root signed, a fresh nonce answered). Only official edges may process
+   *  trading; a company's own edge is found and shares storage with this
+   *  false. */
+  official: boolean;
   /** Base URL of its registrar API. */
   url: string;
   source: EdgeSource;
@@ -354,6 +380,8 @@ export interface EdgeProxy {
 export interface EdgeResponse {
   /** At least one edge answered. The one bit the gate reads. */
   reachable: boolean;
+  /** At least one edge is official: the bit the market gate reads. */
+  official: boolean;
   /** Every edge that answered, LAN first. */
   edges: EdgeProxy[];
   /** False when the LAN could not be searched at all (Avahi down). */
@@ -474,7 +502,12 @@ export interface MarketAccount {
 }
 
 export type MarketResponse =
-  | { available: false }
+  | {
+      available: false;
+      /** Why, when the owner can see it on the Mesh pane: the edges in reach
+       *  are none that LosOS runs, so trading is off while sharing works. */
+      reason?: "noOfficialEdge";
+    }
   | {
       available: true;
       listings: MarketShelfListing[];

@@ -123,6 +123,18 @@ fn run(
                 "setting": why.setting,
             }))
         }
+        // Trading asked of a box whose edges are all a company's own: the
+        // sentence, as a 409, with a flag the Market pane can key on.
+        Err(e)
+            if e.downcast_ref::<crate::edge::OfficialEdgeRequired>()
+                .is_some() =>
+        {
+            tracing::warn!("refused: no official edge reachable, trading is off");
+            HttpResponse::build(actix_web::http::StatusCode::CONFLICT).json(serde_json::json!({
+                "error": crate::edge::OfficialEdgeRequired.to_string(),
+                "officialEdgeRequired": true,
+            }))
+        }
         // A second owner, or the first one again after the grace window:
         // the sentence, as a 409 the wizard already knows how to show.
         Err(e) if e.downcast_ref::<crate::setup::AlreadyClaimed>().is_some() => {

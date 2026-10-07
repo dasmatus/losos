@@ -608,7 +608,18 @@ let
     ]
     ++ meshServeArgs
     ++ marketServeArgs
+    ++ identityArgs
   );
+
+  # The official-edge identity (losos.edge.identity.*): both files or neither,
+  # asserted below. The private key is read by the registrar at runtime, like
+  # the Noise key; the certificate is public.
+  identityArgs = lib.optionals (cfg.identity.keyFile != null) [
+    "--identity-key-file"
+    (toString cfg.identity.keyFile)
+    "--identity-cert-file"
+    "${cfg.identity.certFile}"
+  ];
 in
 {
   config = lib.mkIf enabled {
@@ -619,6 +630,14 @@ in
     losos.edge.registrar.package = self.packages.x86_64-linux.losos-registrar;
 
     assertions = [
+      {
+        assertion = (cfg.identity.keyFile == null) == (cfg.identity.certFile == null);
+        message = ''
+          losos.edge.identity.keyFile and losos.edge.identity.certFile go
+          together: the key answers the nonce, the certificate is what the
+          root signed for it. Set both to make this edge official, or neither.
+        '';
+      }
       {
         assertion = cfg.market.enable -> cfg.market.returnUrl != "";
         message = ''

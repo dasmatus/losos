@@ -77,6 +77,69 @@ VMs on a virtual switch — the edge (as the LAN's router too), a box installed
 from the ISO — and walks through found → allowed → edge gone → refused →
 back. Its README says which parts stand in for what on a real site.
 
+## Official edges
+
+Any edge can be found and can relay storage. **Only edges LosOS runs may
+process P2P storage and compute trading** (the [market](Market)); the box
+checks that itself, on every scan, and a company's own edge gets everything
+except the market.
+
+The check is an Ed25519 identity:
+
+- **The LosOS root key.** One keypair. The public half is a file every box
+  ships, `keys/official-edge-root.pub` in this repository
+  (`losos.proxy.officialRootKeyFile`). The private half is held offline by
+  the project owner, never enters the repository or any box, and is used
+  only to sign edge certificates. Until the public key is written into that
+  file, no edge is official and the market is off on every box built from
+  the tree: the default fails closed.
+- **An edge certificate.** Each official edge has its own keypair and a small
+  JSON certificate `{name, url, public_key, not_after, signature}` signed by
+  the root. The registrar serves `GET /identity?nonce=<hex>` with the
+  certificate and a signature over the nonce by the edge's key.
+- **The box's check** (`backend/src/edge.rs`), for every edge whose `/health`
+  answered: the root signed the certificate, the certificate names the URL
+  the box is talking to, it is not expired, and the nonce the box just made
+  up is signed by the certificate's key. Four checks, all four or nothing;
+  the result is `official` on `GET /api/edge` and the second row of the Mesh
+  pane's edge group ("Official LosOS edge · Trading allowed" or "Not an
+  official LosOS edge · Sharing only"). While no official edge is in reach
+  the market relay answers `{available: false, reason: "noOfficialEdge"}`
+  and refuses every action with 409 `officialEdgeRequired`; nothing leaves
+  the box.
+
+The key ceremony is three commands of the registrar binary, run by the owner
+on a machine of their own:
+
+```sh
+# once: the root. Keep root.key offline; the printed public key goes into
+# keys/official-edge-root.pub and ships with the next release.
+losos-registrar identity keygen --out root.key
+
+# per edge: a keypair on the edge (the private key stays there, 0600)...
+losos-registrar identity keygen --out /var/secrets/losos-edge-identity.key
+# ...and a certificate signed by the root, with the edge's PUBLIC key and the
+# URL boxes will probe. --days bounds it; re-sign before it expires.
+losos-registrar identity sign --root-key root.key \
+  --public-key <printed edge public key> \
+  --name "LosOS edge Berlin" --url https://register.losos.cfd --days 365 \
+  > edge.cert.json
+```
+
+On the edge: `losos.edge.identity.keyFile = "/var/secrets/losos-edge-identity.key"`
+and `losos.edge.identity.certFile = ./edge.cert.json`. The registrar refuses
+to start if the certificate is not for that key. An edge with neither option
+(the default, and the shape of a company's own edge, including the one
+`demo/edge-lan/` boots) answers `/identity` with 404 and is simply not
+official.
+
+What this does and does not protect: a company that runs its own edge gets
+a working on-premises deployment and cannot settle trades through it, and a
+stranger who stands up an edge cannot make boxes trade through it, because
+nothing short of the root's private key makes an edge official. It does not
+hide the market protocol, and the owner's private key is the whole secret:
+losing it means re-keying every box's trust anchor with a release.
+
 ## Demo deployment on Vercel
 
 `edge-vercel/` runs the registrar's API — the same router and the same

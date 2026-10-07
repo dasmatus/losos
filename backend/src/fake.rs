@@ -174,6 +174,7 @@ impl FakeLosos {
                     name: "edge".to_string(),
                     url: "http://edge.local:8443".to_string(),
                     source: crate::edge::Source::Lan,
+                    official: true,
                 }],
                 true,
                 None,
@@ -186,6 +187,17 @@ impl FakeLosos {
     #[must_use]
     pub fn without_edge(mut self) -> Self {
         self.edge = crate::edge::EdgeStatus::found(Vec::new(), true, None);
+        self
+    }
+
+    /// An edge in reach that proved no LosOS identity: a company's own.
+    /// Sharing is allowed through it, trading is not.
+    #[must_use]
+    pub fn with_company_edge(mut self) -> Self {
+        for e in &mut self.edge.edges {
+            e.official = false;
+        }
+        self.edge.official = false;
         self
     }
 }

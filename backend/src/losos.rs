@@ -604,6 +604,12 @@ pub fn cmd_apps_search<L: Losos>(l: &mut L, query: &str) -> anyhow::Result<Value
 /// state of most appliances and must not look like a failure.
 pub fn cmd_market<L: Losos>(l: &mut L) -> anyhow::Result<Value> {
     use crate::market::{Op, Outcome};
+    // The official-edge gate (`crate::edge`): trading goes through edges LosOS
+    // runs and no other. With none in reach the market is simply not
+    // available here, with the reason, and the registrar is not even asked.
+    if crate::edge::check_market_gate(&l.edge_status()?).is_err() {
+        return Ok(json!({ "available": false, "reason": "noOfficialEdge" }));
+    }
     let Outcome::Reply(listings) = l.market_request(&Op::Browse)? else {
         return Ok(json!({ "available": false }));
     };
@@ -620,6 +626,9 @@ pub fn cmd_market<L: Losos>(l: &mut L) -> anyhow::Result<Value> {
 /// is not plain `https` is dropped rather than handed to the browser.
 pub fn cmd_market_op<L: Losos>(l: &mut L, op: &crate::market::Op) -> anyhow::Result<Value> {
     use crate::market::{Op, Outcome, Refused};
+    // Same gate as `cmd_market`, as a refusal: an action, unlike a view, has
+    // to say why it did not happen.
+    crate::edge::check_market_gate(&l.edge_status()?)?;
     // Onboarding names this box to Stripe by a UUID derived one-way from the
     // recovery code — the code itself is a credential and never leaves.
     let tagged;
@@ -1201,6 +1210,44 @@ mod tests {
             cmd_market(&mut f).unwrap(),
             serde_json::json!({ "available": false })
         );
+    }
+
+    #[test]
+    fn a_company_edge_gets_sharing_but_never_the_market() {
+        use crate::market::Op;
+        // The same market fixture, reached through an edge the root never
+        // vouched for: the view says why, the action is refused.
+        let mut f = market_fake().with_company_edge();
+        assert_eq!(
+            cmd_market(&mut f).unwrap(),
+            serde_json::json!({ "available": false, "reason": "noOfficialEdge" })
+        );
+        let err = cmd_market_op(
+            &mut f,
+            &Op::Order {
+                listing_id: "lst_1".to_string(),
+                quantity: 1,
+            },
+        )
+        .unwrap_err();
+        assert!(err
+            .downcast_ref::<crate::edge::OfficialEdgeRequired>()
+            .is_some());
+        assert!(
+            f.market_ops.is_empty(),
+            "nothing went to the edge: {:?}",
+            f.market_ops
+        );
+        // Sharing through that edge is still allowed.
+        assert!(crate::edge::check_gate(
+            &crate::model::Settings::default(),
+            &crate::model::Settings {
+                sharing_my_storage: true,
+                ..Default::default()
+            },
+            &f.edge
+        )
+        .is_ok());
     }
 
     #[test]

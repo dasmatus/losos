@@ -22,7 +22,13 @@
 #   5. `POST /api/change {mesh}` is now 409 with `edgeRequired`, an apply
 #      that turns `losos.cluster.enable` on is 409, an apply that changes only
 #      the hostname is accepted, and state.json still says what it said;
-#   6. the edge returns and the gate reopens.
+#   6. the edge returns and the gate reopens;
+#   7. the official-edge identity: the edge carries a certificate a test root
+#      key signed (made at build time with `losos-registrar identity`), so
+#      `/api/edge` says `official`, and `/api/market` is merely unavailable
+#      (no market configured) rather than refused; with the edge gone the
+#      market answers `reason: noOfficialEdge` and an order is 409 with
+#      `officialEdgeRequired`.
 #
 # The configured URL is pointed at a port nothing listens on, so only the
 # LAN road can open the gate here: that is the case the feature exists for
@@ -36,11 +42,31 @@ let
   bootstrapTokenValue = "test-bootstrap-0123456789abcdef0123";
   proxyToken = "/var/secrets/losos-proxy-token";
   bootstrapToken = "/var/secrets/losos-rathole-bootstrap";
+  # A root key and one edge certificate, made the way the project owner makes
+  # the real ones (backend-registrar/src/identity.rs), at build time: the
+  # test's trust anchor is this root, not the committed keys/ file, which
+  # ships empty until the owner writes the production key.
+  identityFixture =
+    pkgs.runCommand "losos-edge-identity-fixture"
+      {
+        nativeBuildInputs = [ lososPkgs.losos-registrar ];
+      }
+      ''
+        mkdir -p $out
+        losos-registrar identity keygen --out $out/root.key > $out/root.pub
+        losos-registrar identity keygen --out $out/edge.key > $out/edge.pub
+        losos-registrar identity sign \
+          --root-key $out/root.key --public-key "$(cat $out/edge.pub)" \
+          --name "losos test edge" --url http://edge.local:8443 --days 30 \
+          > $out/edge.cert.json
+      '';
+  identityKey = "/var/secrets/losos-edge-identity.key";
   secretFiles = {
     systemd.tmpfiles.rules = [
       "d /var/secrets 0700 root root - -"
       "f ${proxyToken} 0600 root root - ${proxyTokenValue}"
       "f ${bootstrapToken} 0600 root root - ${bootstrapTokenValue}"
+      "C ${identityKey} 0600 root root - ${identityFixture}/edge.key"
     ];
   };
 in
@@ -75,6 +101,12 @@ pkgs.testers.nixosTest {
           # The feature under test. The url defaults to the edge's own
           # mDNS name; the box resolves it through nss-mdns.
           lan.advertise = true;
+          # Step 7: this edge is "official" to a box that trusts the fixture's
+          # root. The certificate names the advertised URL, as it must.
+          identity = {
+            keyFile = identityKey;
+            certFile = "${identityFixture}/edge.cert.json";
+          };
         };
         virtualisation = {
           memorySize = 1024;
@@ -93,6 +125,7 @@ pkgs.testers.nixosTest {
         losos.backend.package = lososPkgs.losos-ctl;
         # Nothing at the configured URL: see the header.
         losos.proxy.registrarUrl = "http://127.0.0.1:9";
+        losos.proxy.officialRootKeyFile = "${identityFixture}/root.pub";
         # What modules/configuration.nix gives the real box.
         services.avahi = {
           enable = true;
@@ -174,6 +207,21 @@ pkgs.testers.nixosTest {
     facade = json.loads(box.succeed("losos-ctl edge --json"))
     assert facade["reachable"] is True, facade
 
+    # 7a. The identity: the registrar answers the challenge, the box verified
+    #     it on this scan, and the market gate is open (the market itself is
+    #     not configured here, so "unavailable" with no reason is the answer).
+    answer = json.loads(box.succeed(
+      "curl -fsS 'http://edge.local:8443/identity?nonce=" + "ab" * 32 + "'"
+    ))
+    assert answer["cert"]["url"] == "http://edge.local:8443", answer
+    assert answer["cert"]["name"] == "losos test edge", answer
+    box.fail("curl -fsS 'http://edge.local:8443/identity?nonce=zz'")
+    assert doc["official"] is True, doc
+    assert doc["edges"][0]["official"] is True, doc
+    code, body = api("GET", "/api/market")
+    assert code == "200", f"/api/market answered {code}: {body!r}"
+    assert json.loads(body) == {"available": False}, body
+
     # 3. The gate is open: mesh mode is accepted. The rebuild it queues runs
     #    `nixos-rebuild` against no flake and fails on its own; that is the
     #    supervisor's business and not this test's. Reset the posture after.
@@ -247,10 +295,23 @@ pkgs.testers.nixosTest {
     out = box.fail("losos-ctl change --mode mesh 2>&1")
     assert "no edge proxy is reachable" in out, out
 
+    # 7b. No official edge in reach: the market says why, an action is refused
+    #     before anything leaves the box.
+    assert doc["official"] is False, doc
+    code, body = api("GET", "/api/market")
+    assert code == "200", f"/api/market answered {code}: {body!r}"
+    assert json.loads(body) == {"available": False, "reason": "noOfficialEdge"}, body
+    code, body = api("POST", "/api/market/orders", {"listing_id": "lst_1", "quantity": 1})
+    assert code == "409", f"a market order with no official edge answered {code}: {body!r}"
+    refused = json.loads(body)
+    assert refused["officialEdgeRequired"] is True, refused
+    assert "only edges LosOS runs" in refused["error"], refused
+
     # 6. The edge comes back; the gate reopens.
     edge.succeed("systemctl start losos-registrar.service")
     edge.wait_until_succeeds("curl -fsS http://localhost:8443/health")
     wait_edge(True)
+    assert edge_doc()["official"] is True, edge_doc()
     code, body = api("POST", "/api/change", {"mode": "mesh"})
     assert code == "200", f"change to mesh after the edge returned answered {code}: {body!r}"
   '';

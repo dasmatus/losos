@@ -82,6 +82,11 @@ pub struct Edge {
     /// Base URL of its registrar API, no trailing slash.
     pub url: String,
     pub source: Source,
+    /// The edge proved an identity the LosOS root key signed (see the
+    /// `identity` section below). Only official edges may process trading;
+    /// a company's own edge is `false` here and still shares storage.
+    #[serde(default)]
+    pub official: bool,
 }
 
 /// What the last scan found. The JSON shape is the `GET /api/edge` contract.
@@ -89,6 +94,9 @@ pub struct Edge {
 pub struct EdgeStatus {
     /// At least one edge answered. The one bit the gate reads.
     pub reachable: bool,
+    /// At least one *official* edge answered. The one bit the market reads.
+    #[serde(default)]
+    pub official: bool,
     /// Every edge that answered, LAN first.
     pub edges: Vec<Edge>,
     /// Whether the LAN could be searched at all. False means `avahi-browse`
@@ -110,6 +118,7 @@ impl EdgeStatus {
     pub fn unknown() -> Self {
         EdgeStatus {
             reachable: false,
+            official: false,
             edges: Vec::new(),
             lan_searched: false,
             configured_url: None,
@@ -123,6 +132,7 @@ impl EdgeStatus {
     pub fn found(edges: Vec<Edge>, lan_searched: bool, configured_url: Option<String>) -> Self {
         EdgeStatus {
             reachable: !edges.is_empty(),
+            official: edges.iter().any(|e| e.official),
             edges,
             lan_searched,
             configured_url,
@@ -134,6 +144,7 @@ impl EdgeStatus {
     pub fn to_json(&self) -> Value {
         json!({
             "reachable": self.reachable,
+            "official": self.official,
             "edges": self.edges,
             "lanSearched": self.lan_searched,
             "configuredUrl": self.configured_url,
@@ -342,6 +353,7 @@ pub fn candidates(adverts: &[Advert]) -> Vec<Edge> {
             name: a.name.clone(),
             url,
             source: Source::Lan,
+            official: false,
         });
     }
     out
@@ -364,6 +376,8 @@ pub fn assemble(
     browse: Option<&str>,
     configured_url: Option<&str>,
     answered: impl Fn(&str) -> bool,
+    trust: &Trust<'_>,
+    prove: impl Fn(&str, &str) -> Option<String>,
     now: u64,
 ) -> EdgeStatus {
     let mut edges: Vec<Edge> = Vec::new();
@@ -383,7 +397,16 @@ pub fn assemble(
                 name: host_of(url),
                 url: url.clone(),
                 source: Source::Configured,
+                official: false,
             });
+        }
+    }
+    // Every edge that answered is asked who it is. With no root key there
+    // is no one to vouch, so nothing is official and no request is made.
+    if trust.root_public.is_some() {
+        for edge in &mut edges {
+            edge.official = prove(&edge.url, trust.nonce)
+                .is_some_and(|body| verify_answer(trust, &body, &edge.url, now).is_ok());
         }
     }
     let mut status = EdgeStatus::found(edges, browse.is_some(), configured_url);
@@ -391,9 +414,183 @@ pub fn assemble(
     status
 }
 
+// ── identity: an official edge, or a company's own ─────────────────────────
+//
+// Any company may run an edge beside its boxes; only edges LosOS itself runs
+// may process trading. The box tells them apart with one root key whose
+// public half it carries (`losos.proxy.officialRootKeyFile`): an official
+// edge holds a *certificate* — its name, URL, Ed25519 public key and expiry,
+// signed by the root — and proves on every scan that it holds the certified
+// key by signing the nonce the box sends (`GET /identity?nonce=…`). Four
+// checks: the root's signature, the URL the box is talking to, the clock,
+// the nonce signature. The formats are the contract with
+// `backend-registrar/src/identity.rs`, byte for byte; the tests pin them.
+
+/// Domain separators, versioned. Must match the registrar's.
+pub const CERT_PREFIX: &str = "losos-edge-identity-v1";
+pub const NONCE_PREFIX: &str = "losos-edge-nonce-v1";
+
+/// What the box trusts for one scan: the root public key (hex) and the nonce
+/// it chose for this round.
+pub struct Trust<'a> {
+    pub root_public: Option<&'a str>,
+    pub nonce: &'a str,
+}
+
+/// A certificate as the edge serves it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Cert {
+    pub name: String,
+    pub url: String,
+    pub public_key: String,
+    pub not_after: u64,
+    pub signature: String,
+}
+
+/// The edge's answer to the challenge.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Answer {
+    pub cert: Cert,
+    pub nonce_signature: String,
+}
+
+/// Why an answer was not accepted. Logged, never shown as a failure: a
+/// company edge answering 404 is the ordinary case and is not an error.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Rejected {
+    NotJson,
+    RootSignature,
+    Url,
+    Expired,
+    EdgeSignature,
+}
+
+#[must_use]
+pub fn cert_message(name: &str, url: &str, public_key: &str, not_after: u64) -> Vec<u8> {
+    format!("{CERT_PREFIX}\n{name}\n{url}\n{public_key}\n{not_after}\n").into_bytes()
+}
+
+#[must_use]
+pub fn nonce_message(nonce: &str) -> Vec<u8> {
+    format!("{NONCE_PREFIX}\n{nonce}\n").into_bytes()
+}
+
+fn from_hex(s: &str) -> Option<Vec<u8>> {
+    if !s.len().is_multiple_of(2) {
+        return None;
+    }
+    (0..s.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&s[i..i + 2], 16).ok())
+        .collect()
+}
+
+/// The LosOS root **public** key as the box ships it: one line of 64 hex
+/// characters, in a file that may also carry `#` comment lines and blank
+/// lines, so the committed default can explain itself. `None` when the file
+/// holds no key (the shipped default is empty: no root, nothing is official,
+/// the market stays off), or more than one, or anything that is not a key.
+#[must_use]
+pub fn parse_root_key_file(text: &str) -> Option<String> {
+    let mut keys = text
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty() && !l.starts_with('#'));
+    let key = keys.next()?;
+    if keys.next().is_some() {
+        return None;
+    }
+    (key.len() == 64 && key.bytes().all(|b| b.is_ascii_hexdigit())).then(|| key.to_lowercase())
+}
+
+/// Ed25519 verification; any malformed input is a plain `false`.
+#[must_use]
+pub fn verify(public_hex: &str, msg: &[u8], sig_hex: &str) -> bool {
+    let (Some(public), Some(sig)) = (from_hex(public_hex.trim()), from_hex(sig_hex.trim())) else {
+        return false;
+    };
+    ring::signature::UnparsedPublicKey::new(&ring::signature::ED25519, public)
+        .verify(msg, &sig)
+        .is_ok()
+}
+
+/// The four checks over an `/identity` answer body.
+///
+/// # Errors
+/// The first check that failed.
+pub fn verify_answer(
+    trust: &Trust<'_>,
+    body: &str,
+    url: &str,
+    now: u64,
+) -> Result<Answer, Rejected> {
+    let Some(root) = trust.root_public else {
+        return Err(Rejected::RootSignature);
+    };
+    let answer: Answer = serde_json::from_str(body).map_err(|_| Rejected::NotJson)?;
+    let c = &answer.cert;
+    if !verify(
+        root,
+        &cert_message(&c.name, &c.url, &c.public_key, c.not_after),
+        &c.signature,
+    ) {
+        return Err(Rejected::RootSignature);
+    }
+    if c.url.trim_end_matches('/') != url.trim().trim_end_matches('/') {
+        return Err(Rejected::Url);
+    }
+    if now >= c.not_after {
+        return Err(Rejected::Expired);
+    }
+    if !verify(
+        &c.public_key,
+        &nonce_message(trust.nonce),
+        &answer.nonce_signature,
+    ) {
+        return Err(Rejected::EdgeSignature);
+    }
+    Ok(answer)
+}
+
+/// Refused: trading was asked of a box with no official edge in reach.
+/// Rendered as a 409 by the HTTP layer; the message is the sentence the
+/// owner reads.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OfficialEdgeRequired;
+
+impl fmt::Display for OfficialEdgeRequired {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(
+            "no official LosOS edge is reachable from this box, so trading is off: \
+             only edges LosOS runs may process the market. Sharing storage through \
+             your own edge keeps working.",
+        )
+    }
+}
+
+impl std::error::Error for OfficialEdgeRequired {}
+
+/// The market gate: trading needs an official edge.
+///
+/// # Errors
+/// [`OfficialEdgeRequired`] when none is reachable.
+pub fn check_market_gate(edge: &EdgeStatus) -> Result<(), OfficialEdgeRequired> {
+    if edge.official {
+        Ok(())
+    } else {
+        Err(OfficialEdgeRequired)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// No root key: nothing can be official and no challenge is sent.
+    const NO_TRUST: Trust<'static> = Trust {
+        root_public: None,
+        nonce: "00",
+    };
 
     const BROWSE: &str = "\
 +;eth0;IPv6;edge\\032demo;_losos-edge._tcp;local
@@ -467,6 +664,8 @@ mod tests {
             Some(BROWSE),
             Some("https://losos-edge.example/"),
             |_| false,
+            &NO_TRUST,
+            |_, _| None,
             7,
         );
         assert!(!status.reachable);
@@ -482,6 +681,8 @@ mod tests {
             Some(BROWSE),
             Some("https://losos-edge.example"),
             |url| url == "http://edge.local:8443",
+            &NO_TRUST,
+            |_, _| None,
             8,
         );
         assert!(status.reachable);
@@ -496,19 +697,28 @@ mod tests {
             Some(BROWSE),
             Some("https://losos-edge.example"),
             |_| true,
+            &NO_TRUST,
+            |_, _| None,
             1,
         );
         assert_eq!(status.edges.len(), 2);
         assert_eq!(status.edges[1].name, "losos-edge.example");
         assert_eq!(status.edges[1].source, Source::Configured);
         // The same edge on both roads is one edge.
-        let status = assemble(Some(BROWSE), Some("http://edge.local:8443/"), |_| true, 1);
+        let status = assemble(
+            Some(BROWSE),
+            Some("http://edge.local:8443/"),
+            |_| true,
+            &NO_TRUST,
+            |_, _| None,
+            1,
+        );
         assert_eq!(status.edges.len(), 1);
     }
 
     #[test]
     fn a_lan_that_could_not_be_searched_says_so() {
-        let status = assemble(None, None, |_| true, 1);
+        let status = assemble(None, None, |_| true, &NO_TRUST, |_, _| None, 1);
         assert!(!status.lan_searched);
         assert!(!status.reachable);
         assert_eq!(status.configured_url, None);
@@ -551,6 +761,7 @@ mod tests {
                 name: "edge".into(),
                 url: "http://edge.local:8443".into(),
                 source: Source::Lan,
+                official: false,
             }],
             true,
             None,
@@ -564,5 +775,180 @@ mod tests {
         assert_eq!(unescape("a\\\\b"), "a\\b");
         assert_eq!(unescape("plain"), "plain");
         assert_eq!(unescape("bad\\9"), "bad\\9");
+    }
+
+    // ── identity ───────────────────────────────────────────────────────────
+
+    struct Signer(ring::signature::Ed25519KeyPair, String);
+
+    fn signer() -> Signer {
+        use ring::signature::KeyPair;
+        let rng = ring::rand::SystemRandom::new();
+        let pkcs8 = ring::signature::Ed25519KeyPair::generate_pkcs8(&rng).unwrap();
+        let pair = ring::signature::Ed25519KeyPair::from_pkcs8(pkcs8.as_ref()).unwrap();
+        let public = pair
+            .public_key()
+            .as_ref()
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect();
+        Signer(pair, public)
+    }
+
+    fn hex_sig(pair: &ring::signature::Ed25519KeyPair, msg: &[u8]) -> String {
+        pair.sign(msg)
+            .as_ref()
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect()
+    }
+
+    /// A certificate `root` issued to `edge` for `url`, and its answer to
+    /// `nonce`, as the registrar would serialise them.
+    fn answer_json(root: &Signer, edge: &Signer, url: &str, not_after: u64, nonce: &str) -> String {
+        let cert = Cert {
+            name: "losos edge one".into(),
+            url: url.into(),
+            public_key: edge.1.clone(),
+            not_after,
+            signature: hex_sig(
+                &root.0,
+                &cert_message("losos edge one", url, &edge.1, not_after),
+            ),
+        };
+        serde_json::to_string(&Answer {
+            cert,
+            nonce_signature: hex_sig(&edge.0, &nonce_message(nonce)),
+        })
+        .unwrap()
+    }
+
+    const NONCE: &str = "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff";
+
+    #[test]
+    fn the_root_key_file_may_carry_comments_but_only_one_key() {
+        let key = "ab".repeat(32);
+        assert_eq!(parse_root_key_file(""), None);
+        assert_eq!(parse_root_key_file("# no key yet\n\n"), None);
+        assert_eq!(
+            parse_root_key_file(&format!("# the root\n{}\n", key.to_uppercase())),
+            Some(key.clone())
+        );
+        assert_eq!(parse_root_key_file(&format!("{key}\n{key}\n")), None);
+        assert_eq!(parse_root_key_file("not a key"), None);
+    }
+
+    #[test]
+    fn the_message_formats_are_the_contract_with_the_registrar() {
+        assert_eq!(
+            cert_message("n", "u", "k", 7),
+            b"losos-edge-identity-v1\nn\nu\nk\n7\n".to_vec()
+        );
+        assert_eq!(nonce_message("ab"), b"losos-edge-nonce-v1\nab\n".to_vec());
+    }
+
+    #[test]
+    fn an_edge_the_root_vouched_for_is_official_and_every_other_is_not() {
+        let root = signer();
+        let edge = signer();
+        let url = "http://edge.local:8443";
+        let trust = Trust {
+            root_public: Some(&root.1),
+            nonce: NONCE,
+        };
+        let good = answer_json(&root, &edge, url, 2_000_000_000, NONCE);
+        assert!(verify_answer(&trust, &good, url, 1_900_000_000).is_ok());
+
+        // Signed by someone else's root.
+        let other = signer();
+        let forged = answer_json(&other, &edge, url, 2_000_000_000, NONCE);
+        assert_eq!(
+            verify_answer(&trust, &forged, url, 1_900_000_000),
+            Err(Rejected::RootSignature)
+        );
+        // A real certificate, replayed from another edge's address.
+        assert_eq!(
+            verify_answer(&trust, &good, "http://10.0.0.9:8443", 1_900_000_000),
+            Err(Rejected::Url)
+        );
+        // Expired.
+        assert_eq!(
+            verify_answer(&trust, &good, url, 2_000_000_000),
+            Err(Rejected::Expired)
+        );
+        // A stranger holding the certificate but not the key: the nonce
+        // signature does not verify under the certified key.
+        let stranger = signer();
+        let mut a: Answer = serde_json::from_str(&good).unwrap();
+        a.nonce_signature = hex_sig(&stranger.0, &nonce_message(NONCE));
+        assert_eq!(
+            verify_answer(
+                &trust,
+                &serde_json::to_string(&a).unwrap(),
+                url,
+                1_900_000_000
+            ),
+            Err(Rejected::EdgeSignature)
+        );
+        // Yesterday's answer, replayed under today's nonce.
+        let stale = Trust {
+            root_public: Some(&root.1),
+            nonce: "ffeeddccbbaa99887766554433221100ffeeddccbbaa99887766554433221100",
+        };
+        assert_eq!(
+            verify_answer(&stale, &good, url, 1_900_000_000),
+            Err(Rejected::EdgeSignature)
+        );
+        assert_eq!(
+            verify_answer(&trust, "not json", url, 1_900_000_000),
+            Err(Rejected::NotJson)
+        );
+    }
+
+    #[test]
+    fn the_scan_marks_official_edges_and_asks_nothing_without_a_root_key() {
+        let root = signer();
+        let edge = signer();
+        let url = "http://edge.local:8443";
+        let good = answer_json(&root, &edge, url, 2_000_000_000, NONCE);
+        let trust = Trust {
+            root_public: Some(&root.1),
+            nonce: NONCE,
+        };
+        // The LAN edge proves itself; the configured one answers 404.
+        let status = assemble(
+            Some(BROWSE),
+            Some("https://losos-edge.example"),
+            |_| true,
+            &trust,
+            |u, n| (u == url && n == NONCE).then(|| good.clone()),
+            1_900_000_000,
+        );
+        assert!(status.official);
+        assert!(status.edges[0].official);
+        assert!(!status.edges[1].official);
+        assert_eq!(status.to_json()["official"], true);
+        assert_eq!(status.to_json()["edges"][0]["official"], true);
+        assert!(check_market_gate(&status).is_ok());
+
+        // No root key on this box: nothing is asked and nothing is official.
+        let asked = std::cell::Cell::new(0);
+        let status = assemble(
+            Some(BROWSE),
+            None,
+            |_| true,
+            &NO_TRUST,
+            |_, _| {
+                asked.set(asked.get() + 1);
+                Some(good.clone())
+            },
+            1_900_000_000,
+        );
+        assert_eq!(asked.get(), 0);
+        assert!(status.reachable && !status.official);
+        assert_eq!(check_market_gate(&status), Err(OfficialEdgeRequired));
+        assert!(OfficialEdgeRequired
+            .to_string()
+            .contains("only edges LosOS runs may process the market"));
     }
 }
