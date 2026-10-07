@@ -613,6 +613,33 @@ A separate `midnight-reboot.timer` reboots unconditionally at 00:07 with
   and `/market/*` answers 503. Onboarding writes the box UUID
   (`backend/src/boxid.rs`, a SHA-256 derivative of the recovery code — never the
   code itself) onto the Stripe account.
+- **Any edge opens sharing; only an *official* edge opens the market.**
+  lososd scans for edges (`backend/src/edge.rs`: DNS-SD `_losos-edge._tcp`
+  plus `losos.proxy.registrarUrl`, `/health` probed) and refuses to turn
+  `sharingMyStorage`/`cluster.enable` on with none in reach (409
+  `edgeRequired`; enable-only, so a box can always leave). On top of that,
+  each answering edge is challenged (`GET /identity?nonce=`) and counts as
+  official only if its certificate is signed by the LosOS root key in
+  `keys/official-edge-root.pub` (`losos.proxy.officialRootKeyFile`), names
+  that URL, is unexpired, and the nonce is signed by the certificate's key.
+  The market relay refuses everything else (`{available:false,
+  reason:"noOfficialEdge"}`, 409 `officialEdgeRequired`). The committed key
+  file is **empty on purpose** until the owner writes the public key: no
+  root, nothing official, market off. The private key lives offline with the
+  owner and is never committed; `losos-registrar identity
+  {keygen,sign,show,verify}` is the whole ceremony (`backend-registrar/src/identity.rs`),
+  `losos.edge.identity.{keyFile,certFile}` the edge side. `tests/edge-lan.nix`
+  builds its own root at build time rather than trusting the shipped file.
+  The ceremony is meant to run *from the box*: `provisioning/edge-identity/`
+  is a Forgejo Actions repository (root key made on the box, kept as an
+  Actions secret, edges provisioned over SSH), executed by the on-box runner
+  in `modules/git-runner.nix` — host mode, registered with a shared secret
+  (`forgejo-cli actions register --secret-file`, idempotent per boot, UUID
+  derived from the secret) rather than a one-shot token, and working against
+  the container pod's app.ini on the host filesystem in container mode.
+  `losos.forgejo.runner.enable` also drives the pod's `actions.ENABLED`, so
+  Actions is never on without a runner. `tests/git-runner.nix` covers the
+  native path end to end; the container path shares the script untested.
 - **`system.stateVersion = "26.11"` is set-once** — matches the nixos-unstable
   this flake tracks; don't change it.
 - **The `result` symlink is a `nix build` artifact** (pointing into

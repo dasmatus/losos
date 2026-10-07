@@ -131,6 +131,11 @@ pub trait Losos {
     /// any other error is a fault for the journal.
     fn market_request(&mut self, op: &crate::market::Op) -> anyhow::Result<crate::market::Outcome>;
 
+    // ── Finding an edge proxy ───────────────────────────────────────────
+    /// What the last scan for an edge proxy found (`crate::edge`). The real
+    /// daemon answers from its scanner's cache; the fake answers what a test
+    /// put there. Never an error for "nothing found": that is a status.
+    fn edge_status(&mut self) -> anyhow::Result<crate::edge::EdgeStatus>;
     // ── The owner's look ────────────────────────────────────────────────
     // A background picture and the widgets written by hand
     // (`crate::look`). Appliance state beside `state.json`, never a
@@ -237,6 +242,17 @@ pub fn cmd_settings<L: Losos>(l: &mut L) -> anyhow::Result<Value> {
 /// write the one file the flake evaluates.
 pub fn cmd_change<L: Losos>(l: &mut L, mode: Mode) -> anyhow::Result<Value> {
     let sharing = mode == Mode::Mesh;
+    // The gate (`crate::edge`): mesh mode shares this box's storage through
+    // an edge, so asking for it with no edge in reach is refused with the
+    // reason, before anything is written. Unconditional, unlike `apply`'s
+    // transition rule: `change --mode mesh` *is* the request to share, not a
+    // document that happens to carry the setting. Going local is never gated.
+    if sharing && !l.edge_status()?.reachable {
+        return Err(crate::edge::EdgeRequired {
+            setting: "losos.sharingMyStorage",
+        }
+        .into());
+    }
     let before = l.read_overrides()?;
     let lines: Vec<String> = before.lines().map(str::to_string).collect();
     let mut body = crate::overrides::inject_line(sharing, &lines).join("\n");
@@ -308,6 +324,12 @@ pub fn cmd_apply<L: Losos>(l: &mut L, nix_code: &str) -> anyhow::Result<Value> {
         crate::options::check_body(&doc, nix_code)?;
     }
     let before = l.read_overrides()?;
+    // The gate (`crate::edge`): an apply that turns storage sharing or the
+    // mesh join on needs an edge in reach. Settings already on, and anything
+    // that is not sharing, pass whatever the network looks like.
+    let now = parse_settings(&before);
+    let want = parse_settings(nix_code);
+    crate::edge::check_gate(&now, &want, &l.edge_status()?)?;
     l.write_overrides(nix_code)?;
     let commit = commit_settings(l, "Change", &before, nix_code);
     let job = queue_rebuild(l, MSG_STARTED)?;
@@ -701,6 +723,12 @@ pub fn cmd_apps_search<L: Losos>(l: &mut L, query: &str) -> anyhow::Result<Value
 /// state of most appliances and must not look like a failure.
 pub fn cmd_market<L: Losos>(l: &mut L) -> anyhow::Result<Value> {
     use crate::market::{Op, Outcome};
+    // The official-edge gate (`crate::edge`): trading goes through edges LosOS
+    // runs and no other. With none in reach the market is simply not
+    // available here, with the reason, and the registrar is not even asked.
+    if crate::edge::check_market_gate(&l.edge_status()?).is_err() {
+        return Ok(json!({ "available": false, "reason": "noOfficialEdge" }));
+    }
     let Outcome::Reply(listings) = l.market_request(&Op::Browse)? else {
         return Ok(json!({ "available": false }));
     };
@@ -717,6 +745,9 @@ pub fn cmd_market<L: Losos>(l: &mut L) -> anyhow::Result<Value> {
 /// is not plain `https` is dropped rather than handed to the browser.
 pub fn cmd_market_op<L: Losos>(l: &mut L, op: &crate::market::Op) -> anyhow::Result<Value> {
     use crate::market::{Op, Outcome, Refused};
+    // Same gate as `cmd_market`, as a refusal: an action, unlike a view, has
+    // to say why it did not happen.
+    crate::edge::check_market_gate(&l.edge_status()?)?;
     // Onboarding names this box to Stripe by a UUID derived one-way from the
     // recovery code — the code itself is a credential and never leaves.
     let tagged;
@@ -753,6 +784,11 @@ pub fn cmd_market_op<L: Losos>(l: &mut L, op: &crate::market::Op) -> anyhow::Res
         obj.insert("available".to_string(), json!(true));
     }
     Ok(reply)
+}
+
+/// What the daemon knows about edge proxies: `GET /api/edge`.
+pub fn cmd_edge<L: Losos>(l: &mut L) -> anyhow::Result<Value> {
+    Ok(l.edge_status()?.to_json())
 }
 
 /// Every `losos.*` option the box declares, with what `overrides.nix` sets
@@ -958,14 +994,20 @@ fn try_sync<L: Losos>(
     Ok(report)
 }
 
-/// The two gates an Apply goes through, over a pushed `overrides.nix`.
+/// The gates an Apply goes through, over a pushed `overrides.nix`: the
+/// shape, the option document, and the edge gate (`crate::edge`), so a
+/// commit that turns sharing on with no edge in reach is refused the same
+/// way the Apply button is.
 fn gate_overrides<L: Losos>(l: &mut L, body: &str) -> Result<(), String> {
     crate::overrides::validate_apply(body).map_err(str::to_string)?;
     match l.read_options_doc() {
-        Ok(Some(doc)) => crate::options::check_body(&doc, body).map_err(|e| e.0),
-        Ok(None) => Ok(()),
-        Err(e) => Err(format!("the option document could not be read ({e})")),
+        Ok(Some(doc)) => crate::options::check_body(&doc, body).map_err(|e| e.0)?,
+        Ok(None) => {}
+        Err(e) => return Err(format!("the option document could not be read ({e})")),
     }
+    let now = parse_settings(&l.read_overrides().map_err(|e| e.to_string())?);
+    let edge = l.edge_status().map_err(|e| e.to_string())?;
+    crate::edge::check_gate(&now, &parse_settings(body), &edge).map_err(|e| e.to_string())
 }
 
 fn ask<L: Losos>(
@@ -1492,6 +1534,9 @@ mod tests {
             ) -> anyhow::Result<crate::market::Outcome> {
                 self.0.market_request(op)
             }
+            fn edge_status(&mut self) -> anyhow::Result<crate::edge::EdgeStatus> {
+                self.0.edge_status()
+            }
             fn load_look(&mut self) -> anyhow::Result<crate::look::Look> {
                 self.0.load_look()
             }
@@ -1569,6 +1614,104 @@ mod tests {
         assert_eq!(out["beforeBytes"], out["afterBytes"]);
     }
 
+    // ── The edge gate (crate::edge) ─────────────────────────────────────
+
+    #[test]
+    fn mesh_mode_is_refused_with_no_edge_in_reach_and_nothing_is_written() {
+        let mut fake = FakeLosos::new().without_edge();
+        let before = fake.config.clone();
+        let err = cmd_change(&mut fake, Mode::Mesh).unwrap_err();
+        let why = err
+            .downcast_ref::<crate::edge::EdgeRequired>()
+            .expect("the refusal is typed, so the HTTP layer can map it to a 409");
+        assert_eq!(why.setting, "losos.sharingMyStorage");
+        assert_eq!(fake.config, before, "overrides.nix must be untouched");
+        assert_eq!(fake.state.mode, Mode::Local);
+        assert!(!fake.spawned, "no rebuild may start for a refused change");
+        assert_eq!(fake.edge_asked, 1);
+    }
+
+    #[test]
+    fn going_local_never_asks_about_the_edge() {
+        let mut fake = FakeLosos::new().without_edge();
+        fake.state.mode = Mode::Mesh;
+        fake.state.sharing = true;
+        cmd_change(&mut fake, Mode::Local).unwrap();
+        assert_eq!(fake.state.mode, Mode::Local);
+        assert!(fake.spawned);
+        assert_eq!(fake.edge_asked, 0);
+    }
+
+    #[test]
+    fn an_apply_that_joins_the_mesh_is_refused_without_an_edge() {
+        let mut fake = FakeLosos::new().without_edge();
+        let body = DEFAULT_OVERRIDES_NIX
+            .replace(
+                "losos.cluster.enable = false;",
+                "losos.cluster.enable = true;",
+            )
+            .replace(
+                "losos.sharingMyStorage = true;",
+                "losos.sharingMyStorage = false;",
+            );
+        // The committed default body has sharing ON, so set the current file
+        // to a box that shares nothing, then try to join.
+        fake.config = body
+            .replace(
+                "losos.cluster.enable = true;",
+                "losos.cluster.enable = false;",
+            )
+            .lines()
+            .map(str::to_string)
+            .collect();
+        let err = cmd_apply(&mut fake, &body).unwrap_err();
+        let why = err
+            .downcast_ref::<crate::edge::EdgeRequired>()
+            .expect("typed");
+        assert_eq!(why.setting, "losos.cluster.enable");
+        assert!(!fake.spawned);
+        assert!(fake.state.rebuild.is_none());
+    }
+
+    #[test]
+    fn an_apply_that_leaves_sharing_on_passes_while_the_edge_is_away() {
+        // The default body has sharingMyStorage = true already: a hostname
+        // change during an edge outage is not a sharing decision.
+        let mut fake = FakeLosos::new().without_edge();
+        let body = DEFAULT_OVERRIDES_NIX.replace(
+            "losos.hostName = \"mattbox\";",
+            "losos.hostName = \"salmon\";",
+        );
+        let out = cmd_apply(&mut fake, &body).unwrap();
+        assert!(out["job"].is_string());
+        assert!(fake.spawned);
+        assert_eq!(cmd_settings(&mut fake).unwrap()["hostName"], "salmon");
+    }
+
+    #[test]
+    fn with_an_edge_in_reach_mesh_mode_goes_through_as_before() {
+        let mut fake = FakeLosos::new();
+        cmd_change(&mut fake, Mode::Mesh).unwrap();
+        assert_eq!(fake.state.mode, Mode::Mesh);
+        assert!(fake.spawned);
+    }
+
+    #[test]
+    fn the_edge_document_names_what_was_found_and_what_was_tried() {
+        let mut fake = FakeLosos::new();
+        let doc = cmd_edge(&mut fake).unwrap();
+        assert_eq!(doc["reachable"], true);
+        assert_eq!(doc["edges"][0]["name"], "edge");
+        assert_eq!(doc["edges"][0]["url"], "http://edge.local:8443");
+        assert_eq!(doc["edges"][0]["source"], "lan");
+        assert_eq!(doc["lanSearched"], true);
+
+        let mut fake = FakeLosos::new().without_edge();
+        let doc = cmd_edge(&mut fake).unwrap();
+        assert_eq!(doc["reachable"], false);
+        assert_eq!(doc["edges"], serde_json::json!([]));
+    }
+
     #[test]
     fn state_response_never_carries_the_rebuild_record() {
         let mut f = FakeLosos::new();
@@ -1619,6 +1762,44 @@ mod tests {
             cmd_market(&mut f).unwrap(),
             serde_json::json!({ "available": false })
         );
+    }
+
+    #[test]
+    fn a_company_edge_gets_sharing_but_never_the_market() {
+        use crate::market::Op;
+        // The same market fixture, reached through an edge the root never
+        // vouched for: the view says why, the action is refused.
+        let mut f = market_fake().with_company_edge();
+        assert_eq!(
+            cmd_market(&mut f).unwrap(),
+            serde_json::json!({ "available": false, "reason": "noOfficialEdge" })
+        );
+        let err = cmd_market_op(
+            &mut f,
+            &Op::Order {
+                listing_id: "lst_1".to_string(),
+                quantity: 1,
+            },
+        )
+        .unwrap_err();
+        assert!(err
+            .downcast_ref::<crate::edge::OfficialEdgeRequired>()
+            .is_some());
+        assert!(
+            f.market_ops.is_empty(),
+            "nothing went to the edge: {:?}",
+            f.market_ops
+        );
+        // Sharing through that edge is still allowed.
+        assert!(crate::edge::check_gate(
+            &crate::model::Settings::default(),
+            &crate::model::Settings {
+                sharing_my_storage: true,
+                ..Default::default()
+            },
+            &f.edge
+        )
+        .is_ok());
     }
 
     #[test]

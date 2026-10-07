@@ -29,6 +29,7 @@ pub mod boxid;
 pub mod catalogue;
 pub mod config_repo;
 pub mod dbus;
+pub mod edge;
 pub mod facade;
 pub mod fake;
 pub mod grow;

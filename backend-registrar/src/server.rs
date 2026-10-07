@@ -73,6 +73,7 @@ use tokio::sync::{Mutex, Notify, Semaphore};
 use crate::action::Action;
 use crate::config::{desired_config, EdgeOpts, TenantView};
 use crate::error::ApiError;
+use crate::identity::Identity;
 use crate::market::{
     AccountView, CheckoutView, Market, MarketError, NewListing, NewOrder, OnboardView, Provision,
     PublicListing, Sharing,
@@ -162,6 +163,9 @@ struct AppState {
     last_shed: Arc<std::sync::Mutex<Option<std::time::Instant>>>,
     /// `None` unless `--market-gate-socket` was given.
     market: Option<Arc<Market>>,
+    /// This edge's signed identity (`crate::identity`); `None` makes
+    /// `GET /identity` a 404, i.e. a company edge.
+    identity: Option<Arc<Identity>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -341,6 +345,21 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
         None => None,
     };
 
+    // Loaded before the API opens, like the market store: a certificate that
+    // is not for this key is a misconfiguration to stop on, not a 404 to
+    // discover from a box's Mesh pane.
+    let identity = match (&opts.identity_key_file, &opts.identity_cert_file) {
+        (Some(key), Some(cert)) => Some(Arc::new(
+            Identity::load(Path::new(key), Path::new(cert)).wrap_err("load the edge identity")?,
+        )),
+        (None, None) => None,
+        _ => {
+            return Err(miette!(
+                "--identity-key-file and --identity-cert-file go together; one was given without the other"
+            ))
+        }
+    };
+
     let state = AppState {
         reg,
         opts: Arc::new(opts),
@@ -349,6 +368,7 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
         limiter: Arc::new(Semaphore::new(MAX_INFLIGHT)),
         last_shed: Arc::new(std::sync::Mutex::new(None)),
         market,
+        identity,
     };
 
     // Generate config from whatever we just loaded, so the box is serving
@@ -358,6 +378,7 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
     let router = Router::new()
         .route("/health", get(health))
         .route("/noise-public-key", get(noise_public_key))
+        .route("/identity", get(identity_route))
         .route("/register", post(register))
         .route("/heartbeat", post(heartbeat))
         .route("/deregister", post(deregister))
@@ -458,6 +479,33 @@ async fn noise_public_key(State(st): State<AppState>) -> Response {
         Ok(key) => key.trim().to_string().into_response(),
         Err(_) => StatusCode::NOT_FOUND.into_response(),
     }
+}
+
+/// `GET /identity?nonce=<hex>` — who this edge is, and proof it holds the
+/// certified key (`crate::identity`). Unauthenticated: a box asks before it
+/// trusts anything, and nothing here is secret. 404 for an edge without an
+/// identity (a company edge), 400 for a nonce the edge will not sign.
+async fn identity_route(
+    State(st): State<AppState>,
+    axum::extract::Query(q): axum::extract::Query<IdentityQuery>,
+) -> Response {
+    let Some(id) = &st.identity else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    if !crate::identity::nonce_ok(&q.nonce) {
+        return (
+            StatusCode::BAD_REQUEST,
+            "nonce must be 32 to 128 hex characters",
+        )
+            .into_response();
+    }
+    Json(id.answer(&q.nonce)).into_response()
+}
+
+#[derive(Deserialize)]
+struct IdentityQuery {
+    #[serde(default)]
+    nonce: String,
 }
 
 async fn register(
