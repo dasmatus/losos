@@ -10,17 +10,21 @@ slug: /project
 LosOS is Matúš Maštena's matriculation (maturita) project at SPŠE Hálova,
 Bratislava, defended in April 2027, and the seed of a product: a full setup
 (boxes plus an edge on one network) to offer to companies afterwards. The
-assignment names five requirements. This chapter is where each is answered,
-in the handbook's own words rather than a separate report; the rest of the
-handbook is the documentation the fifth requirement asks for.
+official assignment (received 7 October 2026) names four requirements. This
+chapter is where each is answered, in the handbook's own words rather than a
+separate report; the Slovak hand-in document, the
+[technical documentation (KOP)](./kop/index.md), is built from this handbook
+and adds what the assignment asks for beyond it.
 
-| Requirement                                        | Where it is answered                                                          |
-| -------------------------------------------------- | ----------------------------------------------------------------------------- |
-| 1. Design an OS architecture for mesh storage      | [Architecture](./architecture.md)                                                   |
-| 2. Choose a suitable kernel                         | [The kernel](./kernel.md)                                                           |
-| 3. Install and configure the OS                    | [Install](../start/install.md), [The first run](../start/first-run.md), [Settings and Apply](../manual/settings-and-apply.md); demonstrated in a virtual machine |
-| 4. Prepare a price offer                            | [The price offer](./price-offer.md)                                                 |
-| 5. Write the project documentation                 | This handbook, and the developer [wiki](https://github.com/dasmatus/losos/wiki) |
+| Requirement                                                              | Where it is answered                                                          |
+| ------------------------------------------------------------------------ | ----------------------------------------------------------------------------- |
+| 1. Examine and describe the system's main functions and options           | [Architecture](./architecture.md), [What LosOS is](../start/what-is-losos.md), [Types of setup](../types/index.md); in Slovak, [Funkcionality](./kop/funkcionality.md) and [Architektúra](./kop/architektura.md) |
+| 2a. Choose a suitable kernel                                              | [The kernel](./kernel.md); in Slovak, [Výber kernelu](./kop/kernel.md)        |
+| 2b. Install the system                                                    | [Install](../start/install.md); demonstrated in a virtual machine; in Slovak, [Inštalácia](./kop/instalacia.md) |
+| 2c. Perform the basic configuration                                       | [The first run](../start/first-run.md), [Settings and Apply](../manual/settings-and-apply.md); in Slovak, [Základná konfigurácia](./kop/konfiguracia.md) |
+| 2d. Verify the configuration and that the system works                    | in Slovak, [Overenie](./kop/overenie.md): the test suites, a checklist for the VM demo, the independent review |
+| 3. Prepare a price offer for the hardware and software                    | [The price offer](./price-offer.md); in Slovak, [Cenová ponuka](./kop/cenova-ponuka.md); the priced tables are kept with the project's materials |
+| 4. Write the technical documentation                                      | This handbook, the developer [wiki](https://github.com/dasmatus/losos/wiki), and the [KOP](./kop/index.md) itself |
 
 ## What is done and what is planned
 
