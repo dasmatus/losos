@@ -126,7 +126,7 @@ images
     # SHA256 of the npm dependency cache built from handbook/package-lock.json,
     # same convention as losos-admin-ui above. After changing the lock file:
     # `nix run nixpkgs#prefetch-npm-deps -- handbook/package-lock.json`.
-    npmDepsHash = "sha256-LdFN5iy1+ghw5ru+V151pckI5KKY6ZuW/XLeLvD6jJo=";
+    npmDepsHash = "sha256-OLptgb87kkhvEZsevuS2gTG5RMLGonUMsnCY2eMr9eo=";
 
     npmFlags = [ "--ignore-scripts" ];
     env.LOSOS_HANDBOOK_BASE = "/handbook/";
