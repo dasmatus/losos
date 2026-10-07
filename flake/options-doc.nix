@@ -58,6 +58,10 @@ let
     # The live medium's two: the installed system never consults them.
     "installer.autorun" = "installer";
     "installer.package" = "installer";
+    # The medium's Secure Boot shape is decided when the ISO is built
+    # (modules/secure-boot.nix); the installed system never reads these.
+    "secureBoot.enable" = "installer";
+    "secureBoot.certFile" = "installer";
   };
 
   # Options whose wrong value leaves the box unreachable, unbootable, or

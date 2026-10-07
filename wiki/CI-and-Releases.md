@@ -27,8 +27,20 @@ Push a `v*` tag, or draft a release with a new `v*` tag in the web UI. The
 release job:
 
 1. builds the installer ISO and the demo QCOW2,
-2. attaches the ISO and its `.sha256` to the GitHub release,
-3. pushes both to GHCR (the QCOW2 is over GitHub's 2 GiB asset limit).
+2. signs the ISO's UEFI loader in place with the `SECURE_BOOT_DB_KEY`
+   secret (`losos-sign-iso`; refuses to publish unsigned once
+   `keys/secure-boot-db.pem` carries a certificate) and signs `SHA256SUMS`
+   with the same key,
+3. attaches the ISO, its `.sha256`, `SHA256SUMS`, `SHA256SUMS.sig` and the
+   certificate (`.pem` and `.cer`) to the GitHub release,
+4. pushes both media to GHCR (the QCOW2 is over GitHub's 2 GiB asset limit).
+
+The `iso` job on main does the same signing before its boot legs: OVMF
+with Microsoft's keys must refuse the medium, and OVMF with the committed
+certificate enrolled must boot it (`tests/iso-boot.py --firmware
+uefi-sb-ms|uefi-sb`). A fork's pull request has no key, boots unsigned, and
+skips the enrolled leg. The key is made once on the owner's machine
+(`provisioning/secure-boot/keygen.sh`).
 
 Your release notes are kept. The download section goes between two marker
 comments, and a re-run replaces only that section.
