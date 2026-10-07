@@ -77,10 +77,13 @@ option that still defaults to the public edge, so a site that wants the
 tunnel to terminate on its own edge sets it in its own flake; and the advert
 is mDNS, so the edge and the boxes must share a broadcast domain (one VLAN).
 
-`demo/edge-lan/run.sh` stands this whole arrangement up on one machine as two
-VMs on a virtual switch — the edge (as the LAN's router too), a box installed
-from the ISO — and walks through found → allowed → edge gone → refused →
-back. Its README says which parts stand in for what on a real site.
+`demo/edge-lan/run.sh` stands this whole arrangement up on one machine as
+VMs on a virtual switch — the edge (as the LAN's router too), two boxes
+installed from the ISO — and walks through the verification checklist
+(`demo/edge-lan/CHECKLIST.md`): no edge → refused on both → the edge appears
+→ found and allowed on both → edge gone → refused → back. Its README says
+which parts stand in for what on a real site, and what the pooled-storage
+steps still need.
 
 ## Official edges
 
