@@ -116,6 +116,13 @@ pub struct ServeOpts {
     /// company edge (sharing, no trading).
     pub identity_key_file: Option<String>,
     pub identity_cert_file: Option<String>,
+    /// Open enrolment (`crate::relay::Enrolment`): the directory this edge
+    /// keeps boxes it accepted on first contact in. `None` keeps enrolment
+    /// closed, which every internet-facing edge must.
+    pub enrol_dir: Option<String>,
+    /// The uplink to a hub (`crate::relay`). `None` and this edge relays
+    /// nothing anywhere.
+    pub uplink: Option<crate::relay::UplinkOpts>,
 }
 
 /// `identity` options: the offline key ceremony (`crate::identity`).
@@ -270,6 +277,17 @@ pub fn parse(args: Vec<String>) -> Result<Mode> {
                 market: parse_market(&rest)?,
                 identity_key_file: arg(&rest, "--identity-key-file").map(str::to_string),
                 identity_cert_file: arg(&rest, "--identity-cert-file").map(str::to_string),
+                enrol_dir: arg(&rest, "--enrol-dir").map(str::to_string),
+                uplink: match arg(&rest, "--uplink-file") {
+                    None => None,
+                    Some(file) => Some(crate::relay::UplinkOpts {
+                        file: file.to_string(),
+                        rathole_config: arg(&rest, "--uplink-rathole-config")
+                            .unwrap_or("/etc/rathole/uplink.toml")
+                            .to_string(),
+                        interval: parse_dur(arg(&rest, "--uplink-interval").unwrap_or("30s"))?,
+                    }),
+                },
             }))
         }
         "identity" => {

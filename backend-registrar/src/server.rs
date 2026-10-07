@@ -71,7 +71,9 @@ use tokio::net::TcpListener;
 use tokio::sync::{Mutex, Notify, Semaphore};
 
 use crate::action::Action;
-use crate::config::{desired_config, EdgeOpts, TenantView};
+use crate::config::{
+    desired_config, uplink_config, EdgeOpts, TenantView, UplinkService, UplinkTarget,
+};
 use crate::error::ApiError;
 use crate::identity::Identity;
 use crate::market::{
@@ -80,6 +82,7 @@ use crate::market::{
 };
 use crate::opts::ServeOpts;
 use crate::registry::{Registry, Shared};
+use crate::relay::{self, Enrolment, RelayRefused, RelayReq, RelayResp, UplinkFile};
 use crate::stripe_gate::{GATE_TIMEOUT, MAX_GATE_CALLS_PER_REQUEST};
 use crate::window::{self, valid_hhmm, valid_tz, ComputeWindow};
 
@@ -166,6 +169,11 @@ struct AppState {
     /// This edge's signed identity (`crate::identity`); `None` makes
     /// `GET /identity` a 404, i.e. a company edge.
     identity: Option<Arc<Identity>>,
+    /// Boxes this edge accepted on first contact (`--enrol-dir`,
+    /// `losos.edge.lan.openEnrolment`); `None` keeps enrolment closed.
+    enrolment: Option<Arc<Enrolment>>,
+    /// The enrolled file, memoised like the whitelist.
+    enrolled: Arc<TenantCache>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -264,6 +272,14 @@ where
 {
     let app = build(opts).await?;
     let recon = tokio::spawn(reconciler(app.state.clone()));
+    // The uplink is a loop of its own: it talks to another machine and must
+    // never hold up the local reconcile.
+    let uplink = app
+        .state
+        .opts
+        .uplink
+        .is_some()
+        .then(|| tokio::spawn(uplink_loop(app.state.clone())));
 
     // axum::serve returns when the listener errors or `shutdown` resolves.
     axum::serve(listener, app.router)
@@ -276,6 +292,10 @@ where
     // panic inside it surfaces instead of being silently detached.
     recon.abort();
     let _ = recon.await;
+    if let Some(uplink) = uplink {
+        uplink.abort();
+        let _ = uplink.await;
+    }
     Ok(())
 }
 
@@ -360,6 +380,11 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
         }
     };
 
+    let enrolment = opts
+        .enrol_dir
+        .as_deref()
+        .map(|dir| Arc::new(Enrolment::new(dir)));
+
     let state = AppState {
         reg,
         opts: Arc::new(opts),
@@ -369,6 +394,8 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
         last_shed: Arc::new(std::sync::Mutex::new(None)),
         market,
         identity,
+        enrolment,
+        enrolled: Arc::new(TenantCache::default()),
     };
 
     // Generate config from whatever we just loaded, so the box is serving
@@ -389,6 +416,8 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
         // every other route: Traefik's `register.<domain>` router has no path
         // rule, so this one is on the public internet too.
         .route("/cluster/join", post(cluster_join))
+        // Federation (crate::relay): a spoke lists the boxes it serves.
+        .route("/relay", post(relay_route))
         // The optional Stripe Connect market. Every route answers 503 unless
         // the edge was started with `--market-gate-socket`. Browsing is
         // anonymous and shows no seller identity; everything else takes the
@@ -512,13 +541,24 @@ async fn register(
     State(st): State<AppState>,
     Json(req): Json<RegisterReq>,
 ) -> Result<Json<RegisterResp>, ApiError> {
+    enrol_on_first_contact(&st, &req).await?;
     let tenant = authenticate(&st, &req.appliance_id, &req.token).await?;
     // The registered hostname must match the whitelisted one — a tenant can't
-    // claim an arbitrary public hostname, only its own.
+    // claim an arbitrary public hostname, only its own. A box this edge
+    // enrolled itself has no operator row; it proved its token just now, so
+    // its new name is recorded instead.
     if req.hostname != tenant.hostname {
-        return Err(ApiError::HostnameForbidden);
+        let enrolled_here = match &st.enrolment {
+            Some(e) if e.owns(Path::new(&tenant.token_file)) => {
+                relay::dns_name(&req.hostname) && e.rehost(&req.appliance_id, &req.hostname).await?
+            }
+            _ => false,
+        };
+        if !enrolled_here {
+            return Err(ApiError::HostnameForbidden);
+        }
     }
-    let port = st.reg.register(&req.appliance_id, &tenant.hostname).await?;
+    let port = st.reg.register(&req.appliance_id, &req.hostname).await?;
     tracing::info!(
         target: Action::Register.target(),
         "registered {} -> {} on port {port}",
@@ -527,6 +567,48 @@ async fn register(
     );
     st.notify.notify_one();
     Ok(Json(RegisterResp { rathole_port: port }))
+}
+
+/// Open enrolment (`losos.edge.lan.openEnrolment`): a `/register` for an id
+/// nobody listed, on an edge that enrols on first contact, creates the
+/// tenant with the token it presented. Validated like a whitelist row would
+/// be — a DNS-label id, a DNS hostname, a token that [`token_fault`] would
+/// accept — and never more than proxy membership. A known id, whitelisted or
+/// already enrolled, falls through to the ordinary check, so a second box
+/// claiming an enrolled id is simply unauthorized.
+async fn enrol_on_first_contact(st: &AppState, req: &RegisterReq) -> Result<(), ApiError> {
+    let Some(enrolment) = &st.enrolment else {
+        return Ok(());
+    };
+    let tenants = st.tenants.load(&st.opts.tenants_file).await?;
+    if lookup_tenant(st, &tenants, &req.appliance_id)
+        .await?
+        .is_some()
+    {
+        return Ok(());
+    }
+    let token = req.token.trim();
+    if !relay::dns_label(&req.appliance_id) || !relay::dns_name(&req.hostname) {
+        tracing::warn!(
+            target: Action::Enrol.target(),
+            "refusing to enrol {:?} as {:?}: not a DNS label and a DNS name",
+            req.appliance_id,
+            req.hostname,
+        );
+        return Err(ApiError::Unauthorized);
+    }
+    if let Some(fault) = token_fault(token) {
+        tracing::warn!(
+            target: Action::Enrol.target(),
+            "refusing to enrol {:?}: its token is {fault}",
+            req.appliance_id,
+        );
+        return Err(ApiError::Unauthorized);
+    }
+    enrolment
+        .enrol(&req.appliance_id, &req.hostname, token)
+        .await?;
+    Ok(())
 }
 
 async fn heartbeat(
@@ -654,6 +736,90 @@ async fn cluster_join(
         server_addr: server_addr.clone(),
         token: agent_token.to_string(),
         node_name: req.node_name,
+    }))
+}
+
+/// `POST /relay`: a spoke replaces the list of boxes it relays through this
+/// hub. Authenticated as the spoke's own tenant, which must carry a
+/// `relay_zone`; every listed box is then checked against that zone
+/// ([`relay::refusal`]) and the accepted ones become `<spoke>.<box>` tenants
+/// ([`Registry::relay`]). Refusals are per box and come back in the body, so
+/// the spoke can log which of its boxes is misnamed while the rest route.
+async fn relay_route(
+    State(st): State<AppState>,
+    Json(req): Json<RelayReq>,
+) -> Result<Json<RelayResp>, ApiError> {
+    let spoke = authenticate(&st, &req.appliance_id, &req.token).await?;
+    let Some(zone) = spoke
+        .relay_zone
+        .as_deref()
+        .map(str::trim)
+        .filter(|z| !z.is_empty())
+    else {
+        return Err(ApiError::RelayForbidden);
+    };
+    if !relay::dns_label(&req.appliance_id) {
+        // The spoke's id is half of every relayed key; a dot in it would make
+        // `<spoke>.<box>` ambiguous. An operator fault, loud in the log.
+        tracing::error!(
+            target: Action::Relay.target(),
+            "tenant {:?} has a relay zone but its id is not a DNS label; refusing to relay for it",
+            req.appliance_id,
+        );
+        return Err(ApiError::RelayForbidden);
+    }
+    if req.tenants.len() > relay::MAX_RELAYED {
+        tracing::warn!(
+            target: Action::Relay.target(),
+            "spoke {} listed {} boxes, more than the {} one spoke may relay",
+            req.appliance_id,
+            req.tenants.len(),
+            relay::MAX_RELAYED,
+        );
+        return Err(ApiError::RelayTooMany);
+    }
+    let tenants = st.tenants.load(&st.opts.tenants_file).await?;
+    let mut accepted: Vec<(String, String)> = Vec::new();
+    let mut refused: Vec<RelayRefused> = Vec::new();
+    let mut seen: HashSet<&str> = HashSet::new();
+    for t in &req.tenants {
+        if !seen.insert(t.id.as_str()) {
+            refused.push(RelayRefused {
+                id: t.id.clone(),
+                reason: "listed twice".to_string(),
+            });
+            continue;
+        }
+        let key = format!("{}.{}", req.appliance_id, t.id);
+        match relay::refusal(t, zone, tenants.contains_key(&key)) {
+            Some(reason) => refused.push(RelayRefused {
+                id: t.id.clone(),
+                reason: reason.to_string(),
+            }),
+            None => accepted.push((t.id.clone(), t.hostname.clone())),
+        }
+    }
+    for r in &refused {
+        tracing::warn!(
+            target: Action::Relay.target(),
+            "spoke {}: not relaying {}: {}",
+            req.appliance_id,
+            r.id,
+            r.reason,
+        );
+    }
+    let relayed = st.reg.relay(&req.appliance_id, &accepted).await?;
+    tracing::debug!(
+        target: Action::Relay.target(),
+        "spoke {} relays {} box(es), {} refused",
+        req.appliance_id,
+        relayed.len(),
+        refused.len(),
+    );
+    st.notify.notify_one();
+    Ok(Json(RelayResp {
+        accepted: relayed,
+        refused,
     }))
 }
 
@@ -1260,6 +1426,12 @@ struct TenantEntry {
     /// money with this box.
     #[serde(default)]
     market: bool,
+    /// The DNS zone this tenant may relay other boxes under (`crate::relay`):
+    /// `Some` makes it a spoke of this hub. A fourth bit, absent for a plain
+    /// box, and like the others it reaches the registrar only because
+    /// `modules/edge.nix` renders `relayZone` into tenants.json.
+    #[serde(default)]
+    relay_zone: Option<String>,
 }
 
 /// `tenants.json` memoised behind an mtime+size check.
@@ -1289,6 +1461,21 @@ struct Stamp {
 }
 
 impl TenantCache {
+    /// As [`TenantCache::load`], with an absent file read as an empty list:
+    /// the enrolled file does not exist until the first box arrives.
+    async fn load_optional(
+        &self,
+        path: &str,
+    ) -> Result<Arc<HashMap<String, TenantEntry>>, ApiError> {
+        match self.load(path).await {
+            Ok(map) => Ok(map),
+            Err(ApiError::Io(e)) if e.kind() == std::io::ErrorKind::NotFound => {
+                Ok(Arc::new(HashMap::new()))
+            }
+            Err(e) => Err(e),
+        }
+    }
+
     async fn load(&self, path: &str) -> Result<Arc<HashMap<String, TenantEntry>>, ApiError> {
         let meta = tokio::fs::metadata(path).await?;
         let stamp = Stamp {
@@ -1356,7 +1543,7 @@ async fn authenticate(st: &AppState, id: &str, token: &str) -> Result<TenantEntr
         return Err(ApiError::Unauthorized);
     }
 
-    let Some(entry) = tenants.get(id) else {
+    let Some(entry) = lookup_tenant(st, &tenants, id).await? else {
         decoy_probe(&tenants).await;
         tracing::warn!(target: Action::Authenticate.target(), "unknown appliance id {id:?}");
         return Err(ApiError::Unauthorized);
@@ -1388,7 +1575,28 @@ async fn authenticate(st: &AppState, id: &str, token: &str) -> Result<TenantEntr
         tracing::warn!(target: Action::Authenticate.target(), "token mismatch for {id:?}");
         return Err(ApiError::Unauthorized);
     }
-    Ok(entry.clone())
+    Ok(entry)
+}
+
+/// The whitelist row for `id`, or the enrolled one when this edge enrols
+/// boxes on first contact. The whitelist wins: an operator row for an id a
+/// box also enrolled under is the operator's decision about that id.
+async fn lookup_tenant(
+    st: &AppState,
+    tenants: &HashMap<String, TenantEntry>,
+    id: &str,
+) -> Result<Option<TenantEntry>, ApiError> {
+    if let Some(entry) = tenants.get(id) {
+        return Ok(Some(entry.clone()));
+    }
+    let Some(enrolment) = &st.enrolment else {
+        return Ok(None);
+    };
+    let enrolled = st
+        .enrolled
+        .load_optional(&enrolment.tenants_file().to_string_lossy())
+        .await?;
+    Ok(enrolled.get(id).cloned())
 }
 
 /// Do the token read + compare the known-id path does, and throw the answer
@@ -1485,11 +1693,7 @@ async fn reconcile_once(st: &AppState) -> Result<()> {
         st.reg.prune(ttl).await
     };
     let views = st.reg.views().await;
-    let tenants = st
-        .tenants
-        .load(&st.opts.tenants_file)
-        .await
-        .context("load tenants whitelist")?;
+    let tenants = all_tenants(st).await.context("load tenants whitelist")?;
     let bootstrap = tokio::fs::read_to_string(&st.opts.bootstrap_token_file)
         .await
         .into_diagnostic()
@@ -1559,6 +1763,72 @@ async fn reconcile_once(st: &AppState) -> Result<()> {
             hostname: hostname.to_string(),
             rathole_port: v.rathole_port,
             token: token.to_string(),
+        });
+    }
+    // The relayed half (crate::relay): a `<spoke>.<box>` tenant stays only
+    // while its spoke is still whitelisted with a relay zone the hostname
+    // fits, and it is rendered with the *spoke's* token, read from the
+    // spoke's file like any direct tenant's. The zone is re-checked here and
+    // not only at `/relay` so an operator narrowing or removing a zone takes
+    // effect on the next tick, the same property the whitelist hostname has.
+    let mut spoke_tokens: HashMap<String, Option<String>> = HashMap::new();
+    for r in st.reg.relayed().await {
+        let fits = tenants.get(&r.via).and_then(|spoke| {
+            spoke
+                .relay_zone
+                .as_deref()
+                .filter(|zone| relay::hostname_in_zone(&r.hostname, zone))
+                .map(|_| spoke)
+        });
+        let Some(spoke) = fits else {
+            tracing::info!(
+                target: Action::Reconcile.target(),
+                "dropping relayed {}: its spoke {} no longer relays {}",
+                r.key,
+                r.via,
+                r.hostname,
+            );
+            stale.push(r.key.clone());
+            continue;
+        };
+        let token = match spoke_tokens.get(&r.via) {
+            Some(cached) => cached.clone(),
+            None => {
+                let read = match tokio::fs::read_to_string(&spoke.token_file).await {
+                    Ok(content) => match token_fault(content.trim()) {
+                        None => Some(content.trim().to_string()),
+                        Some(fault) => {
+                            tracing::error!(
+                                target: Action::Reconcile.target(),
+                                "skipping every box of spoke {}: token file {} is {fault}",
+                                r.via,
+                                spoke.token_file,
+                            );
+                            None
+                        }
+                    },
+                    Err(e) => {
+                        tracing::warn!(
+                            target: Action::Reconcile.target(),
+                            "skipping every box of spoke {}: cannot read token file {}: {e}",
+                            r.via,
+                            spoke.token_file,
+                        );
+                        None
+                    }
+                };
+                spoke_tokens.insert(r.via.clone(), read.clone());
+                read
+            }
+        };
+        let Some(token) = token else {
+            continue;
+        };
+        enriched.push(TenantView {
+            id: r.key,
+            hostname: r.hostname,
+            rathole_port: r.rathole_port,
+            token,
         });
     }
     for id in &stale {
@@ -1685,6 +1955,209 @@ async fn reconcile_once(st: &AppState) -> Result<()> {
 /// Write `content` to `path` only if it differs from the current content.
 /// Atomic temp+fsync+rename via the shared blocking helper, with the given
 /// filesystem mode. Returns `true` if the file was (re)written.
+/// The whitelist plus, on an edge that enrols on first contact, the enrolled
+/// boxes: one map, the whitelist winning on a shared id, as
+/// [`lookup_tenant`] decides per request.
+async fn all_tenants(st: &AppState) -> Result<Arc<HashMap<String, TenantEntry>>> {
+    let tenants = st
+        .tenants
+        .load(&st.opts.tenants_file)
+        .await
+        .map_err(|e| miette!("{e}"))?;
+    let Some(enrolment) = &st.enrolment else {
+        return Ok(tenants);
+    };
+    let enrolled = st
+        .enrolled
+        .load_optional(&enrolment.tenants_file().to_string_lossy())
+        .await
+        .map_err(|e| miette!("{e}"))?;
+    if enrolled.is_empty() {
+        return Ok(tenants);
+    }
+    let mut merged: HashMap<String, TenantEntry> = (*enrolled).clone();
+    for (id, entry) in tenants.iter() {
+        merged.insert(id.clone(), entry.clone());
+    }
+    Ok(Arc::new(merged))
+}
+
+/// The spoke's uplink (crate::relay): every `interval`, and whenever the
+/// reconciler was kicked, read the uplink file, tell the hub which boxes are
+/// live here, and rewrite the uplink rathole client config.
+///
+/// The file is re-read on every pass so the gateway image's owner can write
+/// it (or remove it) with no restart; while it is absent the uplink config is
+/// removed and nothing is sent. A hub that refuses the call, or a box it
+/// refuses, is logged and tried again next pass: the hub is another
+/// machine, and nothing about this edge's own LAN waits on it.
+async fn uplink_loop(st: AppState) {
+    let Some(up) = st.opts.uplink.clone() else {
+        return;
+    };
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .connect_timeout(Duration::from_secs(5))
+        .user_agent(concat!("losos-registrar/", env!("CARGO_PKG_VERSION")))
+        .build();
+    let client = match client {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::error!(target: Action::Uplink.target(), "cannot build the uplink client: {e}");
+            return;
+        }
+    };
+    loop {
+        if let Err(e) = uplink_once(&st, &up, &client).await {
+            tracing::warn!(target: Action::Uplink.target(), "uplink pass failed: {e}");
+        }
+        let tick = tokio::time::sleep(up.interval);
+        tokio::pin!(tick);
+        tokio::select! {
+            () = st.notify.notified() => {}
+            () = &mut tick => {}
+        }
+    }
+}
+
+/// One uplink pass. Returns what was accepted, for the log and the tests.
+async fn uplink_once(
+    st: &AppState,
+    up: &relay::UplinkOpts,
+    client: &reqwest::Client,
+) -> Result<()> {
+    let target = match tokio::fs::read(&up.file).await {
+        Ok(bytes) => serde_json::from_slice::<UplinkFile>(&bytes)
+            .into_diagnostic()
+            .with_context(|| format!("parse uplink file {}", up.file))?,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            if remove_if_exists(Path::new(&up.rathole_config)).await? {
+                tracing::info!(
+                    target: Action::Uplink.target(),
+                    "no uplink file at {}; the uplink is off",
+                    up.file,
+                );
+            }
+            return Ok(());
+        }
+        Err(e) => {
+            return Err(e)
+                .into_diagnostic()
+                .with_context(|| format!("read uplink file {}", up.file))
+        }
+    };
+    let token = tokio::fs::read_to_string(&target.token_file)
+        .await
+        .into_diagnostic()
+        .with_context(|| format!("read uplink token file {}", target.token_file))?;
+    let token = token.trim().to_string();
+    if let Some(fault) = token_fault(&token) {
+        return Err(miette!(
+            "uplink token file {} is {fault}",
+            target.token_file
+        ));
+    }
+    let bootstrap = tokio::fs::read_to_string(&target.bootstrap_token_file)
+        .await
+        .into_diagnostic()
+        .with_context(|| {
+            format!(
+                "read uplink bootstrap token file {}",
+                target.bootstrap_token_file
+            )
+        })?;
+    let noise_public_key = match &target.noise_public_key_file {
+        Some(path) => tokio::fs::read_to_string(path)
+            .await
+            .ok()
+            .map(|k| k.trim().to_string())
+            .filter(|k| !k.is_empty()),
+        None => None,
+    };
+
+    // What is live here: the direct tenants whose token file reads, i.e.
+    // exactly the set the local reconcile rendered. Hostnames come from the
+    // whitelist (or the enrolled file), the same authority the local Traefik
+    // router uses, so the hub sees the names this edge actually serves.
+    let tenants = all_tenants(st).await?;
+    let mut listed: Vec<relay::RelayTenant> = Vec::new();
+    let mut services: Vec<UplinkService> = Vec::new();
+    for v in st.reg.views().await {
+        let Some(entry) = tenants.get(&v.id) else {
+            continue;
+        };
+        listed.push(relay::RelayTenant {
+            id: v.id.clone(),
+            hostname: entry.hostname.trim().to_string(),
+        });
+        services.push(UplinkService {
+            name: format!("{}.{}", target.id, v.id),
+            local_port: v.rathole_port,
+        });
+    }
+    if listed.len() > relay::MAX_RELAYED {
+        tracing::warn!(
+            target: Action::Uplink.target(),
+            "{} boxes here but a hub relays at most {}; the rest wait",
+            listed.len(),
+            relay::MAX_RELAYED,
+        );
+        listed.truncate(relay::MAX_RELAYED);
+    }
+
+    let url = format!("{}/relay", target.registrar_url.trim_end_matches('/'));
+    let body = RelayReq {
+        appliance_id: target.id.clone(),
+        token: token.clone(),
+        tenants: listed,
+    };
+    let accepted: HashSet<String> = match client.post(&url).json(&body).send().await {
+        Ok(r) if r.status().is_success() => {
+            let resp: RelayResp = r.json().await.into_diagnostic().context("parse /relay")?;
+            for refused in &resp.refused {
+                tracing::warn!(
+                    target: Action::Uplink.target(),
+                    "the hub does not relay {}: {}",
+                    refused.id,
+                    refused.reason,
+                );
+            }
+            resp.accepted.into_iter().map(|a| a.id).collect()
+        }
+        Ok(r) => {
+            return Err(miette!("hub {url} answered {}", r.status()));
+        }
+        Err(e) => return Err(miette!("hub {url}: {e}")),
+    };
+    // Only what the hub accepted gets a client service: a service the hub
+    // has no matching server entry for makes rathole log an auth failure
+    // every retry, for a box the hub told us it will not route anyway.
+    let prefix = format!("{}.", target.id);
+    services.retain(|s| {
+        s.name
+            .strip_prefix(&prefix)
+            .is_some_and(|id| accepted.contains(id))
+    });
+    let rendered = uplink_config(
+        &UplinkTarget {
+            rathole_endpoint: target.rathole_endpoint.clone(),
+            bootstrap_token: bootstrap.trim().to_string(),
+            token,
+            noise_public_key,
+        },
+        &services,
+    );
+    if write_if_changed(Path::new(&up.rathole_config), &rendered, RATHOLE_FILE_MODE).await? {
+        tracing::info!(
+            target: Action::Uplink.target(),
+            "uplink to {} carries {} box(es)",
+            target.registrar_url,
+            services.len(),
+        );
+    }
+    Ok(())
+}
+
 async fn write_if_changed(path: &Path, content: &str, mode: u32) -> Result<bool> {
     let existing = match tokio::fs::read(path).await {
         Ok(b) => b,

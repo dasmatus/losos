@@ -53,11 +53,14 @@ pub mod join;
 pub mod market;
 pub mod opts;
 pub mod registry;
+pub mod relay;
 pub mod seed;
 pub mod server;
 pub mod stripe_gate;
 pub mod window;
-pub use config::{desired_config, EdgeOpts, Files, TenantView};
+pub use config::{
+    desired_config, uplink_config, EdgeOpts, Files, TenantView, UplinkService, UplinkTarget,
+};
 pub use error::{ApiError, RegistryError};
-pub use registry::{Registry, Snapshot, SnapshotTenant, Tenant};
+pub use registry::{Registry, Relayed, RelayedView, Snapshot, SnapshotTenant, Tenant};
 pub use window::ComputeWindow;

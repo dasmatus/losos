@@ -66,6 +66,12 @@ pub struct Tenant {
     /// re-asserts on its next heartbeat, which is at most `heartbeat_interval`
     /// away, and until then it counts as busy.
     pub idle: Option<(bool, Instant)>,
+    /// The spoke that relayed this tenant (`crate::relay`), or `None` for a
+    /// box that registered here itself. A relayed tenant's key is
+    /// `<spoke>.<box>`; its hostname authority is the spoke's `relay_zone`
+    /// rather than a whitelist row, and it is kept alive by the spoke's
+    /// `/relay` calls rather than its own heartbeats.
+    pub via: Option<String>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Default)]
@@ -82,6 +88,10 @@ struct RegistryFile {
 struct RegistryFileTenant {
     hostname: String,
     port: u16,
+    /// `#[serde(default)]` so a `registry.json` written before federation
+    /// existed still loads; absent means a direct tenant.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    via: Option<String>,
 }
 
 /// The wire form of [`Registry::export`] / [`Registry::import`]. Ages, not
@@ -107,6 +117,28 @@ pub struct SnapshotTenant {
     /// export)`. `None` when the box has not reported since it registered.
     #[serde(default)]
     pub idle: Option<(bool, u64)>,
+    /// The relaying spoke, for a tenant that reached this edge through one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub via: Option<String>,
+}
+
+/// What `/relay` tells the spoke about each box it listed.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Relayed {
+    pub id: String,
+    pub hostname: String,
+    pub rathole_port: u16,
+}
+
+/// A relayed tenant as the reconciler sees it: who relayed it, and the
+/// registry key it lives under.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RelayedView {
+    /// The registry key, `<spoke>.<box>`.
+    pub key: String,
+    pub via: String,
+    pub hostname: String,
+    pub rathole_port: u16,
 }
 
 /// Everything the registry mutates, under one lock. Two `Mutex`es would need a
@@ -195,6 +227,7 @@ impl Registry {
                     rathole_port: t.port,
                     last_seen: now,
                     idle: None,
+                    via: t.via,
                 },
             );
         }
@@ -244,6 +277,7 @@ impl Registry {
                         rathole_port: port,
                         last_seen: Instant::now(),
                         idle: None,
+                        via: None,
                     },
                 );
                 port
@@ -251,6 +285,88 @@ impl Registry {
         };
         self.persist_locked(&st).await?;
         Ok(port)
+    }
+
+    /// Replace the set of tenants `spoke` relays with `tenants`
+    /// (`(box id, hostname)` pairs, already validated by the handler).
+    ///
+    /// Each listed box is upserted under the key `<spoke>.<id>`: a known key
+    /// keeps its port and gets its hostname and `last_seen` refreshed, a new
+    /// one is allocated a port. Every key this spoke relayed before and did
+    /// not list now is removed, so the hub's picture of a site is always the
+    /// spoke's latest list and nothing else — a box that left the site is
+    /// gone on the next reconcile, not after the TTL. A key that belongs to
+    /// a direct tenant (`via == None`) is never touched: the handler refuses
+    /// such an id before it gets here, and this is the second line.
+    ///
+    /// Returns what was accepted, with the ports, in the order given. The lock
+    /// is held across the persist like every other mutation.
+    pub async fn relay(
+        &self,
+        spoke: &str,
+        tenants: &[(String, String)],
+    ) -> Result<Vec<Relayed>, RegistryError> {
+        let mut st = self.inner.lock().await;
+        let now = Instant::now();
+        let listed: HashSet<String> = tenants
+            .iter()
+            .map(|(id, _)| format!("{spoke}.{id}"))
+            .collect();
+        st.tenants
+            .retain(|key, t| t.via.as_deref() != Some(spoke) || listed.contains(key));
+        let mut out = Vec::with_capacity(tenants.len());
+        for (id, hostname) in tenants {
+            let key = format!("{spoke}.{id}");
+            let port = match st.tenants.get_mut(&key) {
+                Some(t) if t.via.as_deref() == Some(spoke) => {
+                    t.hostname.clone_from(hostname);
+                    t.last_seen = now;
+                    t.rathole_port
+                }
+                Some(_) => continue,
+                None => {
+                    let port = alloc_port(&st.tenants, self.port_range)?;
+                    st.tenants.insert(
+                        key,
+                        Tenant {
+                            hostname: hostname.clone(),
+                            rathole_port: port,
+                            last_seen: now,
+                            idle: None,
+                            via: Some(spoke.to_string()),
+                        },
+                    );
+                    port
+                }
+            };
+            out.push(Relayed {
+                id: id.clone(),
+                hostname: hostname.clone(),
+                rathole_port: port,
+            });
+        }
+        self.persist_locked(&st).await?;
+        Ok(out)
+    }
+
+    /// The relayed tenants, sorted by key, for the reconciler.
+    #[must_use]
+    pub async fn relayed(&self) -> Vec<RelayedView> {
+        let st = self.inner.lock().await;
+        let mut v: Vec<RelayedView> = st
+            .tenants
+            .iter()
+            .filter_map(|(key, t)| {
+                t.via.as_ref().map(|via| RelayedView {
+                    key: key.clone(),
+                    via: via.clone(),
+                    hostname: t.hostname.clone(),
+                    rathole_port: t.rathole_port,
+                })
+            })
+            .collect();
+        v.sort_by(|a, b| a.key.cmp(&b.key));
+        v
     }
 
     /// Point a known tenant at `hostname`, persisting the change. Used by the
@@ -394,8 +510,9 @@ impl Registry {
         true
     }
 
-    /// Snapshot the live tenants (sorted by id for determinism) for config
-    /// generation. Tokens are deliberately NOT read here — the reconciler
+    /// Snapshot the live *direct* tenants (sorted by id for determinism) for
+    /// config generation; the relayed ones come from [`Registry::relayed`].
+    /// Tokens are deliberately NOT read here — the reconciler
     /// enriches views from the on-disk token files so the secret stays the
     /// single source of truth.
     #[must_use]
@@ -404,6 +521,7 @@ impl Registry {
         let mut v: Vec<TenantView> = st
             .tenants
             .iter()
+            .filter(|(_, t)| t.via.is_none())
             .map(|(id, t)| TenantView {
                 id: id.clone(),
                 hostname: t.hostname.clone(),
@@ -448,6 +566,7 @@ impl Registry {
                             idle: t
                                 .idle
                                 .map(|(idle, at)| (idle, now.duration_since(at).as_secs())),
+                            via: t.via.clone(),
                         },
                     )
                 })
@@ -528,6 +647,7 @@ impl Registry {
                     rathole_port: t.rathole_port,
                     last_seen: now.checked_sub(age).unwrap_or(now),
                     idle,
+                    via: t.via,
                 },
             );
         }
@@ -563,6 +683,7 @@ impl Registry {
                         RegistryFileTenant {
                             hostname: t.hostname.clone(),
                             port: t.rathole_port,
+                            via: t.via.clone(),
                         },
                     )
                 })
