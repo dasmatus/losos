@@ -332,8 +332,50 @@ fn edge_answers(url: &str) -> bool {
     }
 }
 
+/// `GET {url}/identity?nonce={nonce}`: the body when the edge has an
+/// identity to show, `None` on 404 (a company edge) or any failure. Same
+/// curl discipline as the health probe; the body is bounded by curl's
+/// `--max-filesize` so a hostile edge cannot feed the parser a gigabyte.
+fn edge_identity(url: &str, nonce: &str) -> Option<String> {
+    let out = std::process::Command::new("curl")
+        .args(["--silent", "--show-error", "--fail"])
+        .args(["--max-time", &crate::edge::PROBE_TIMEOUT_SECS.to_string()])
+        .args(["--max-redirs", "0"])
+        .args(["--max-filesize", "65536"])
+        .arg(format!("{url}/identity?nonce={nonce}"))
+        .stdin(std::process::Stdio::null())
+        .output()
+        .ok()?;
+    out.status
+        .success()
+        .then(|| String::from_utf8_lossy(&out.stdout).into_owned())
+}
+
+/// The LosOS root public key this box trusts, from the file
+/// `$LOSOS_EDGE_ROOT_KEY_FILE` names (`losos.proxy.officialRootKeyFile`).
+/// An absent or empty file means no edge can be official: fail closed.
+fn root_public_key() -> Option<String> {
+    let path = std::env::var("LOSOS_EDGE_ROOT_KEY_FILE").ok()?;
+    let text = std::fs::read_to_string(path).ok()?;
+    crate::edge::parse_root_key_file(&text)
+}
+
+/// A fresh 32-byte nonce, hex, for one scan's challenges.
+fn fresh_nonce() -> String {
+    use ring::rand::SecureRandom;
+    let mut bytes = [0u8; 32];
+    if ring::rand::SystemRandom::new().fill(&mut bytes).is_err() {
+        // No randomness means no challenge worth trusting: an all-zero nonce
+        // is still a valid request, and a replayed answer to it would only
+        // ever mark an edge official that the root did sign.
+        tracing::warn!("the system random source failed; this scan's nonce is not fresh");
+    }
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
 /// One complete scan: the LAN browse, the configured URL from
-/// `$LOSOS_EDGE_URL`, and a probe of every candidate.
+/// `$LOSOS_EDGE_URL`, a probe of every candidate, and the identity
+/// challenge for the ones that answered.
 fn scan_edge_now() -> crate::edge::EdgeStatus {
     let configured = std::env::var("LOSOS_EDGE_URL")
         .ok()
@@ -341,10 +383,18 @@ fn scan_edge_now() -> crate::edge::EdgeStatus {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.as_secs());
+    let root = root_public_key();
+    let nonce = fresh_nonce();
+    let trust = crate::edge::Trust {
+        root_public: root.as_deref(),
+        nonce: &nonce,
+    };
     crate::edge::assemble(
         browse_lan().as_deref(),
         configured.as_deref(),
         edge_answers,
+        &trust,
+        edge_identity,
         now,
     )
 }

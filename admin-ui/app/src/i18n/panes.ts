@@ -316,6 +316,37 @@ export default defineMessages({
     sk: "Zdieľanie je vypnuté",
     de: "Teilen ist aus",
   },
+  // The second edge row: is the edge one LosOS runs? Decides trading only.
+  "panes.mesh.edge.official": {
+    en: "Official LosOS edge",
+    sk: "Oficiálny okrajový server LosOS",
+    de: "Offizieller LosOS-Edge",
+  },
+  "panes.mesh.edge.officialDetail": {
+    en: "This edge proved it is run by LosOS, so it may process storage and compute trading for this box.",
+    sk: "Tento okrajový server preukázal, že ho prevádzkuje LosOS, takže môže pre toto zariadenie spracúvať obchodovanie s úložiskom a výpočtami.",
+    de: "Dieser Edge hat nachgewiesen, dass LosOS ihn betreibt; er darf für diese Box den Handel mit Speicher und Rechenleistung abwickeln.",
+  },
+  "panes.mesh.edge.company": {
+    en: "Not an official LosOS edge",
+    sk: "Nie je oficiálny okrajový server LosOS",
+    de: "Kein offizieller LosOS-Edge",
+  },
+  "panes.mesh.edge.companyDetail": {
+    en: "Sharing storage through it works. Trading needs an edge run by LosOS.",
+    sk: "Zdieľanie úložiska cez neho funguje. Obchodovanie vyžaduje okrajový server prevádzkovaný LosOS.",
+    de: "Speicher darüber zu teilen funktioniert. Handel braucht einen von LosOS betriebenen Edge.",
+  },
+  "panes.mesh.edge.tradingOn": {
+    en: "Trading allowed",
+    sk: "Obchodovanie povolené",
+    de: "Handel erlaubt",
+  },
+  "panes.mesh.edge.tradingOff": {
+    en: "Sharing only",
+    sk: "Len zdieľanie",
+    de: "Nur Teilen",
+  },
   "panes.mesh.edge.needed": {
     en: "Needs an edge proxy in reach.",
     sk: "Vyžaduje dostupný okrajový proxy server.",
@@ -705,6 +736,11 @@ export default defineMessages({
     en: "It is optional, and it needs the box to be reachable through a master proxy whose operator has switched it on. Nothing else on the box depends on it.",
     sk: "Je voliteľný a vyžaduje, aby bolo zariadenie dostupné cez hlavný proxy server, ktorého prevádzkovateľ trh zapol. Nič iné na zariadení od neho nezávisí.",
     de: "Er ist optional und setzt voraus, dass die Box über einen Master-Proxy erreichbar ist, dessen Betreiber ihn eingeschaltet hat. Nichts sonst auf der Box hängt davon ab.",
+  },
+  "panes.market.unavailable.noOfficialEdge": {
+    en: "The edge proxy this box found is not run by LosOS. Sharing storage through it works; trading needs an official LosOS edge in reach.",
+    sk: "Okrajový proxy server, ktorý toto zariadenie našlo, neprevádzkuje LosOS. Zdieľanie úložiska cez neho funguje; obchodovanie vyžaduje dostupný oficiálny okrajový server LosOS.",
+    de: "Der Edge-Proxy, den diese Box gefunden hat, wird nicht von LosOS betrieben. Speicher darüber zu teilen funktioniert; Handel braucht einen erreichbaren offiziellen LosOS-Edge.",
   },
   "panes.market.actionFailed": {
     en: "That did not work. Try again in a moment.",

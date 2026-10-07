@@ -163,6 +163,10 @@ in
       # is the `_losos-edge._tcp` browse over the Avahi the box already runs.
       // {
         LOSOS_EDGE_URL = config.losos.proxy.registrarUrl;
+        # The trust anchor for "official" edges (losos.proxy.officialRootKeyFile):
+        # a public key, so a store path. Without a key in it no edge is
+        # official and the market relay stays off.
+        LOSOS_EDGE_ROOT_KEY_FILE = "${config.losos.proxy.officialRootKeyFile}";
       }
       # What `cryptsetup resize` authenticates with during `losos-ctl grow`.
       #

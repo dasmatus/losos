@@ -139,13 +139,21 @@ async function open({
 /* What lososd's scan reports with an edge on the LAN, and with none. */
 const EDGE_FOUND = {
   reachable: true,
-  edges: [{ name: 'edge demo', url: 'http://edge.local:8443', source: 'lan' }],
+  official: true,
+  edges: [{ name: 'edge demo', url: 'http://edge.local:8443', source: 'lan', official: true }],
   lanSearched: true,
   configuredUrl: 'https://losos-edge.dasmat.us',
   checkedAt: 1760000000,
 };
+/* The same edge without the LosOS root's signature: a company's own. */
+const EDGE_COMPANY = {
+  ...EDGE_FOUND,
+  official: false,
+  edges: [{ ...EDGE_FOUND.edges[0], official: false }],
+};
 const EDGE_NONE = {
   reachable: false,
+  official: false,
   edges: [],
   lanSearched: true,
   configuredUrl: 'https://losos-edge.dasmat.us',
@@ -901,6 +909,28 @@ await check('the Mesh pane names the edge proxy the box found, and the join swit
   assert.equal(await join.isDisabled(), false, 'the join switch is greyed with an edge in reach');
   assert.deepEqual(errors, []);
   await page.close();
+});
+
+await check('an official edge is named as such, and a company edge as sharing only', async () => {
+  const { page, errors } = await open({ path: '/mesh', stored: true });
+  const official = page.locator('[data-edge-official="yes"]');
+  await official.waitFor();
+  assert.match(await official.innerText(), /Official LosOS edge/);
+  assert.match(await official.innerText(), /Trading allowed/);
+  await page.close();
+
+  const company = await open({ path: '/mesh', stored: true, edge: EDGE_COMPANY });
+  const row = company.page.locator('[data-edge-official="no"]');
+  await row.waitFor();
+  const text = await row.innerText();
+  assert.match(text, /Not an official LosOS edge/);
+  assert.match(text, /Sharing only/);
+  assert.match(text, /Trading needs an edge run by LosOS/);
+  const join = company.page.getByRole('switch', { name: 'Join the mesh' });
+  assert.equal(await join.isDisabled(), false, 'a company edge greyed the join switch');
+  assert.deepEqual(errors, []);
+  assert.deepEqual(company.errors, []);
+  await company.page.close();
 });
 
 await check('with no edge proxy in reach the Mesh pane says so and the join switch is greyed with the reason', async () => {

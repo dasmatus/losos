@@ -300,7 +300,14 @@
       "properties": {
         "available": {
           "type": "boolean",
-          "description": "False \u2014 and nothing else present \u2014 when the edge runs no market, this box was not cleared for it, or the box has no master proxy configured. That is the normal state of most appliances, so it is a 200 and not an error."
+          "description": "False \u2014 with at most `reason` beside it \u2014 when the edge runs no market, this box was not cleared for it, the box has no master proxy configured, or no official edge is in reach. That is the normal state of most appliances, so it is a 200 and not an error."
+        },
+        "reason": {
+          "type": "string",
+          "enum": [
+            "noOfficialEdge"
+          ],
+          "description": "Present only with `available: false`, and only when the cause is one the owner can see on the Mesh pane: `noOfficialEdge` \u2014 the edges in reach are none that LosOS runs (edgeResponse.official is false), so trading is off while storage sharing through them keeps working."
         },
         "listings": {
           "type": "array",
@@ -418,9 +425,14 @@
       "required": [
         "name",
         "url",
-        "source"
+        "source",
+        "official"
       ],
       "properties": {
+        "official": {
+          "type": "boolean",
+          "description": "This edge proved it is one LosOS runs: on this scan it presented a certificate signed by the LosOS root key (losos.proxy.officialRootKeyFile) that names this URL and is unexpired, and signed the scan's fresh nonce with the certificate's key (`GET <url>/identity?nonce=<hex>`, backend/src/edge.rs). False for an edge a company runs for itself, and for every edge while the box ships no root key. Only official edges may process P2P storage and compute trading; discovery and sharing do not depend on it."
+        },
         "name": {
           "type": "string",
           "description": "The advertised DNS-SD instance name, or the configured URL's host."
@@ -439,12 +451,17 @@
       "additionalProperties": false,
       "required": [
         "reachable",
+        "official",
         "edges",
         "lanSearched",
         "configuredUrl",
         "checkedAt"
       ],
       "properties": {
+        "official": {
+          "type": "boolean",
+          "description": "At least one of `edges` is official. The one bit the market gate reads: while false, `GET /api/market` answers `{\"available\":false,\"reason\":\"noOfficialEdge\"}` and every `POST /api/market/*` is refused (HTTP 409, `{\"error\":\"...\",\"officialEdgeRequired\":true}`), whatever edge the box is enrolled with. Sharing storage and joining the mesh are gated on `reachable` only."
+        },
         "reachable": {
           "type": "boolean",
           "description": "At least one edge answered. The one bit the sharing gate reads: while false, `change --mode mesh` and an `apply` that turns losos.sharingMyStorage or losos.cluster.enable on are refused (HTTP 409, `{\"error\":\"...\",\"edgeRequired\":true,\"setting\":\"losos.<key>\"}`). Settings already on are never refused, so a box whose edge went away keeps its configuration and can still change anything else."

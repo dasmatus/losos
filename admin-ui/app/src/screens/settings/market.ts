@@ -35,7 +35,7 @@ export const ORDER_STATUS = "market-order";
 
 export type MarketState =
   | { kind: "loading" }
-  | { kind: "unavailable" }
+  | { kind: "unavailable"; reason?: "noOfficialEdge" }
   | { kind: "failed"; message: string }
   | { kind: "ready"; listings: MarketShelfListing[]; account: MarketAccount };
 
@@ -107,7 +107,9 @@ export function useMarket(enabled: boolean): MarketData {
           seen.current = statusesOf(reply.account);
         }
         setState(
-          reply.available ? { kind: "ready", listings: reply.listings, account: reply.account } : { kind: "unavailable" },
+          reply.available
+            ? { kind: "ready", listings: reply.listings, account: reply.account }
+            : { kind: "unavailable", reason: reply.reason },
         );
       } catch (error) {
         if (isAbort(error) || isUnauthorized(error)) return;

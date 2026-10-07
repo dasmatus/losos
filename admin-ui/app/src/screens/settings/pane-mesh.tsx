@@ -66,14 +66,35 @@ export function EdgeGroup({ view }: { view: EdgeView }) {
     value = t("panes.mesh.edge.sharingOff");
     tone = "text-danger";
   }
+  /* Second row, only with an edge in reach: whether it is one LosOS runs.
+   * The box checked that itself (a certificate the LosOS root signed, a
+   * fresh nonce answered), and it decides one thing only: trading. A
+   * company's own edge is "sharing only", which is the normal reading on
+   * an on-premises network and not a fault, so its tone is muted, not red. */
+  const found = state.kind === "known" && state.edge.reachable;
+  const official = found && state.edge.official;
   return (
     <PaneSection>
       <GroupTitle>{t("panes.mesh.edge.title")}</GroupTitle>
       <Group>
-        <Row last data-edge={state.kind === "known" ? (state.edge.reachable ? "found" : "none") : state.kind}>
+        <Row
+          last={!found}
+          data-edge={state.kind === "known" ? (state.edge.reachable ? "found" : "none") : state.kind}
+        >
           <RowText title={title} detail={detail} />
           <RowValue className={tone}>{value}</RowValue>
         </Row>
+        {found ? (
+          <Row last data-edge-official={official ? "yes" : "no"}>
+            <RowText
+              title={t(official ? "panes.mesh.edge.official" : "panes.mesh.edge.company")}
+              detail={t(official ? "panes.mesh.edge.officialDetail" : "panes.mesh.edge.companyDetail")}
+            />
+            <RowValue className={official ? "text-ok" : "text-muted"}>
+              {t(official ? "panes.mesh.edge.tradingOn" : "panes.mesh.edge.tradingOff")}
+            </RowValue>
+          </Row>
+        ) : null}
       </Group>
       <GroupCaption>{t("panes.mesh.edge.caption")}</GroupCaption>
     </PaneSection>

@@ -72,6 +72,13 @@ async fn async_main() -> ExitCode {
                 ExitCode::FAILURE
             }
         },
+        Ok(Mode::Identity(opts)) => match losos_registrar::identity::run(opts) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(e) => {
+                tracing::error!(target: Action::Serve.target(), "identity: {:?}", e);
+                ExitCode::FAILURE
+            }
+        },
         Ok(Mode::StripeGate(opts)) => match losos_registrar::stripe_gate::run(opts).await {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => {

@@ -122,7 +122,11 @@ export function MarketPane({ form }: { form: SettingsForm }) {
             <Row last>
               <RowText
                 title={t("panes.market.unavailable.title")}
-                detail={t("panes.market.unavailable.detail")}
+                detail={t(
+                  state.reason === "noOfficialEdge"
+                    ? "panes.market.unavailable.noOfficialEdge"
+                    : "panes.market.unavailable.detail",
+                )}
               />
             </Row>
           </Group>
