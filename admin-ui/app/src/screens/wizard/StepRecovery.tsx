@@ -25,7 +25,6 @@ import * as React from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
   Alert02Icon,
-  CheckmarkCircle02Icon,
   Copy01Icon,
   InformationCircleIcon,
   Key01Icon,
@@ -38,7 +37,9 @@ import { intlTag, t } from "@/lib/i18n";
 import { useT } from "@/lib/i18n-react";
 import { getRecovery, isMissingRoute } from "./api";
 import { copyText } from "./copy";
-import { Callout, StepText } from "./parts";
+import { toast } from "@/components/ui/toast";
+import { StepText } from "./parts";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 export interface StepRecoveryProps {
   boxName: string;
@@ -70,7 +71,6 @@ export function StepRecovery({
   const t = useT();
   const [query, setQuery] = React.useState<CodeQuery>({ kind: "loading" });
   const [attempt, setAttempt] = React.useState(0);
-  const [copyFailed, setCopyFailed] = React.useState(false);
   const codeRef = React.useRef<HTMLElement>(null);
 
   React.useEffect(() => {
@@ -104,10 +104,10 @@ export function StepRecovery({
   const copy = async (): Promise<void> => {
     if (query.kind !== "ready") return;
     if (await copyText(query.code, codeRef.current)) {
-      setCopyFailed(false);
+      toast.success(t("wizard.recovery.savedTitle"), t("wizard.recovery.saved"));
       onSaved();
     } else {
-      setCopyFailed(true);
+      toast.error(t("wizard.recovery.copyFailed.title"), t("wizard.recovery.copyFailed.body"));
     }
   };
 
@@ -172,28 +172,7 @@ export function StepRecovery({
               />
               {t("wizard.recovery.print")}
             </Button>
-            {saved && (
-              <span
-                role="status"
-                className="inline-flex items-center gap-1.5 text-[13px] text-ok"
-              >
-                <HugeiconsIcon
-                  icon={CheckmarkCircle02Icon}
-                  size={18}
-                  strokeWidth={1.5}
-                  color="currentColor"
-                  aria-hidden="true"
-                />
-                {t("wizard.recovery.saved")}
-              </span>
-            )}
           </div>
-
-          {copyFailed && (
-            <Callout tone="warn" icon={Alert02Icon} title={t("wizard.recovery.copyFailed.title")}>
-              <p className="mt-1">{t("wizard.recovery.copyFailed.body")}</p>
-            </Callout>
-          )}
 
           {/* Present in the document at all times, shown only on paper: the
               print rules in ./wizard.css hide everything else on the page and
@@ -203,16 +182,24 @@ export function StepRecovery({
       )}
 
       {query.kind === "not-implemented" && (
-        <Callout tone="info" icon={InformationCircleIcon} title={t("wizard.recovery.notYet.title")}>
-          <p className="mt-1">{t("wizard.recovery.notYet.body")}</p>
-        </Callout>
+        <Alert variant="default">
+          <HugeiconsIcon icon={InformationCircleIcon} size={19} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+          <AlertTitle>{t("wizard.recovery.notYet.title")}</AlertTitle>
+          <AlertDescription>
+            <p>{t("wizard.recovery.notYet.body")}</p>
+          </AlertDescription>
+        </Alert>
       )}
 
       {query.kind === "failed" && (
         <div className="flex flex-col gap-3">
-          <Callout tone="crit" icon={Alert02Icon} title={t("wizard.recovery.failed.title")}>
-            <p className="mt-1 break-words">{query.message}</p>
-          </Callout>
+          <Alert variant="crit">
+            <HugeiconsIcon icon={Alert02Icon} size={19} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+            <AlertTitle>{t("wizard.recovery.failed.title")}</AlertTitle>
+            <AlertDescription>
+              <p className="break-words">{query.message}</p>
+            </AlertDescription>
+          </Alert>
           <div>
             <Button variant="secondary" onClick={() => setAttempt((n) => n + 1)}>
               <HugeiconsIcon

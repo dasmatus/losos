@@ -11,7 +11,13 @@ import { cn } from "@/lib/utils";
  * silently, on a box with no console anyone will ever look at. So the
  * primitives here are plain elements plus Tailwind classes, and the few that
  * need real behaviour (dialog, tabs, switch) implement it against native
- * semantics. `asChild` is not supported; wrap or restyle instead. */
+ * semantics. `asChild` is not supported; wrap or restyle instead. The one
+ * exception is Radix Toast (toast-primitives.tsx), which injects nothing and
+ * sets its swipe offset through React's style prop, a CSSOM write the
+ * policy allows. Where a floating or modal part is needed (the sidebar's
+ * tooltips and phone sheet, its folds), it comes from shadcn's base
+ * registry on Base UI, which styles through CSSOM only: tooltip.tsx,
+ * sheet.tsx, collapsible.tsx. */
 
 export const buttonVariants = cva(
   cn(
@@ -26,6 +32,8 @@ export const buttonVariants = cva(
     variants: {
       variant: {
         primary: "bg-accent text-surface hover:opacity-90",
+        /** shadcn's name for `primary`, so a pasted component resolves. */
+        default: "bg-accent text-surface hover:opacity-90",
         secondary: "border border-line bg-surface text-ink hover:bg-sunk",
         ghost: "text-muted hover:bg-sunk hover:text-ink",
         outline: "border border-accent bg-transparent text-accent hover:bg-accent-wash",
@@ -37,10 +45,15 @@ export const buttonVariants = cva(
         link: "text-accent underline-offset-4 hover:underline",
       },
       size: {
+        xs: "h-6 gap-1 px-2 text-[12px]",
         sm: "h-8 px-3 text-[13px]",
         md: "h-9 px-4",
+        /** shadcn's name for `md`. */
+        default: "h-9 px-4",
         lg: "h-11 px-5 text-base",
         icon: "size-9 p-0",
+        "icon-xs": "size-6 p-0",
+        "icon-sm": "size-8 p-0",
       },
     },
     defaultVariants: { variant: "primary", size: "md" },
@@ -57,6 +70,7 @@ export function Button({ className, variant, size, type, ...props }: ButtonProps
       // Inside a <form> an unset type submits, and the sign-in form is not
       // the only form on this box.
       type={type ?? "button"}
+      data-slot="button"
       className={cn(buttonVariants({ variant, size }), className)}
       {...props}
     />

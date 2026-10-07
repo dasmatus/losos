@@ -2,6 +2,7 @@ import * as React from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { DashboardSquare01Icon } from "@hugeicons/core-free-icons";
 import { AppGrid } from "@/components/AppGrid";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { StatusDot, type DotState } from "@/components/ui/badge";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -225,16 +226,18 @@ function browserHostName(): string {
 function ApplyingChange({ status }: { status: StatusResponse }) {
   const t = useT();
   return (
-    <div className="animate-rise rounded-card border border-line bg-surface px-4 py-3 shadow-card">
-      <p className="flex items-center gap-2 text-[13px] font-medium text-ink">
+    <Alert className="animate-rise border-line bg-surface shadow-card">
+      <AlertTitle className="flex items-center gap-2">
         <StatusDot state="pending" />
         {t("home.applying.title")}
-      </p>
-      {status.message !== "" && (
-        <p className="mt-0.5 truncate text-[12px] text-muted">{status.message}</p>
-      )}
-      <Progress className="mt-2.5" value={null} label={t("home.applying.short")} />
-    </div>
+      </AlertTitle>
+      <AlertDescription>
+        {status.message !== "" && (
+          <p className="w-full truncate text-[12px] text-muted">{status.message}</p>
+        )}
+        <Progress className="mt-1.5" value={null} label={t("home.applying.short")} />
+      </AlertDescription>
+    </Alert>
   );
 }
 

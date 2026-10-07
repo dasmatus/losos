@@ -10,16 +10,19 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "test:browser": "node tests/wizard.browser.mjs && node tests/app.browser.mjs"
+    "test:browser": "node tests/wizard.browser.mjs && node tests/app.browser.mjs && node tests/toasts.browser.mjs"
   },
   "dependencies": {
+    "@base-ui/react": "1.8.0",
     "@hugeicons/core-free-icons": "^4.3.5",
     "@hugeicons/react": "^1.1.1",
+    "@radix-ui/react-toast": "^1.2.24",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-router-dom": "^7.18.4",
+    "sonner": "^2.0.8",
     "tailwind-merge": "^3.7.0"
   },
   "devDependencies": {

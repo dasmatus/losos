@@ -166,7 +166,7 @@ await check('step 1 offers a one-line install command naming the box by its IP a
   const readLink = page.getByRole('link', { name: /Read the script first/i });
   assert.strictEqual(await readLink.getAttribute('href'), `${base}/setup/trust.sh`);
 
-  await page.getByRole('button', { name: 'Windows' }).click();
+  await page.getByRole('radio', { name: 'Windows' }).click();
   assert.strictEqual(
     (await line.innerText()).trim(),
     `irm ${base}/setup/trust.ps1 | iex`,
@@ -610,7 +610,9 @@ await check('step 3 hides the frame and keeps reloading it until the files app a
   assert.ok(await page.getByRole('button', { name: /^Finish/ }).isDisabled(), 'Finish enabled before any sign-in');
   // "Sign in" inside the frame: the app renders a page stamped with the user.
   await page.frameLocator('iframe').first().locator('#go').click();
-  await page.getByText('You are signed in').waitFor({ timeout: 10_000 });
+  // Twice on the page once it happens: the step's callout and the toast.
+  await page.getByRole('region', { name: 'Sign in' }).getByText('You are signed in').waitFor({ timeout: 10_000 });
+  await page.locator('[data-toast]').getByText('You are signed in').waitFor();
   assert.ok(!(await page.getByRole('button', { name: /^Finish/ }).isDisabled()), 'Finish still disabled after signing in');
   await page.close();
 });
@@ -653,6 +655,59 @@ await check('step 3 lets a slow first answer from the files app arrive instead o
   const text = await page.locator('body').innerText();
   assert.ok(!/still starting/.test(text), 'the starting note stayed after the app answered');
   assert.ok(await page.locator('iframe').first().isVisible(), 'the frame stayed hidden after the app answered');
+  await page.close();
+});
+
+/* ── The shadcn conversion ─────────────────────────────────────────────
+ * The notes in the wizard are shadcn Alerts, the OS picker a Toggle Group
+ * and the password form two Fields; see tests/app.browser.mjs for the
+ * same checks on the signed-in half. */
+
+await check('the wizard notes are Alerts, each with a title and an icon', async () => {
+  // The box has a certificate but this page reached it over plain http, which
+  // is what the harness serves: the warning that the page is not encrypted.
+  const { page } = await open({ claimed: false, tls: true });
+  const alerts = page.locator('[data-slot="alert"]');
+  assert.ok((await alerts.count()) >= 1, 'step 1 on an unencrypted page shows no alert');
+  const unencrypted = alerts.filter({ hasText: 'not encrypted yet' });
+  assert.equal(await unencrypted.getAttribute('role'), 'alert');
+  assert.equal(await unencrypted.getAttribute('data-variant'), 'warn');
+  assert.equal(await unencrypted.locator('[data-slot="alert-title"]').count(), 1);
+  assert.equal(await unencrypted.locator('> svg').count(), 1, 'the tone icon is not the alert\'s first child');
+  await page.close();
+});
+
+await check('the OS picker is a Toggle Group: arrow keys switch the command too', async () => {
+  const { page } = await open({ claimed: false, tls: true, at: 'http://mattbox.local' });
+  const picker = page.getByRole('radiogroup', { name: /operating system|which computer/i });
+  await picker.waitFor();
+  const unix = picker.getByRole('radio', { name: /macOS/ });
+  assert.equal(await unix.getAttribute('aria-checked'), 'true');
+  await unix.focus();
+  await page.keyboard.press('ArrowRight');
+  assert.equal(await picker.getByRole('radio', { name: 'Windows' }).getAttribute('aria-checked'), 'true');
+  assert.match((await page.getByTestId('trust-command-line').innerText()).trim(), /^irm .*trust\.ps1 \| iex$/);
+  await page.close();
+});
+
+await check('the password form is two Fields, and a refusal marks both invalid with one announced error', async () => {
+  const { page } = await open({ claimed: false });
+  await page.getByRole('button', { name: /^Continue$/ }).click();
+  const fields = page.locator('form [data-slot="field"]');
+  assert.equal(await fields.count(), 2, 'expected the password and its repeat as two fields');
+  const group = fields.first().locator('[data-slot="input-group"]');
+  assert.equal(await group.locator('input[name="new-password"]').count(), 1, 'the password is not inside the Input Group');
+  assert.equal(await group.getByRole('button', { name: /show the password/i }).count(), 1, 'the eye is not inside the field');
+  assert.equal(await fields.first().locator('[data-testid="password-rules"]').count(), 1, 'the four rules left the field');
+  await page.locator('input[name="new-password"]').fill('correct horse battery staple');
+  await page.locator('input[name="confirm-password"]').fill('correct horse battery staple');
+  await page.getByRole('button', { name: /^Set the password$/ }).click();
+  await page.waitForTimeout(200);
+  assert.equal(await page.locator('form [data-slot="field"][data-invalid="true"]').count(), 2, 'both fields should be marked invalid');
+  const error = page.locator('form [data-slot="field-error"]');
+  assert.equal(await error.count(), 1, 'one error line, not one per field');
+  assert.equal(await error.getAttribute('role'), 'alert');
+  assert.match(await error.innerText(), /upper-case letter/i);
   await page.close();
 });
 

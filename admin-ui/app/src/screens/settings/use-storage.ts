@@ -7,9 +7,10 @@ import {
   subscribeAuth,
   type GrowResponse,
 } from "@/lib/api";
+import { toast } from "@/components/ui/toast";
 import { t } from "@/lib/i18n";
-import { useLocale } from "@/lib/i18n-react";
 import { authedGet, byteCount, isRecord, notPresent } from "./http";
+import { formatBytes } from "./format";
 
 /* Storage: what the box says about its disk, and claiming the reserve.
  *
@@ -62,20 +63,12 @@ const NOTHING_KNOWN: StorageFacts = {
  *  today and is a fact to state, not a failure to report. */
 export type StorageSource = "loading" | "box" | "absent" | "error";
 
-export type GrowOutcome =
-  | { kind: "grew"; beforeBytes: number; afterBytes: number }
-  | { kind: "nothing"; claimedBytes: number }
-  | { kind: "failed"; message: string };
-
 export interface Storage {
   facts: StorageFacts;
   source: StorageSource;
   /** A grow is in flight. It is slow and it cannot be cancelled. */
   growing: boolean;
-  /** The last grow this tab ran, reported from `grew` rather than inferred. */
-  outcome: GrowOutcome | null;
   grow: () => void;
-  dismissOutcome: () => void;
 }
 
 function parseFacts(body: unknown): StorageFacts {
@@ -88,17 +81,11 @@ function parseFacts(body: unknown): StorageFacts {
   };
 }
 
-/* The box's own words when it gave any, else null — resolved to our sentence
- * at render, so it follows a language change made after the failure. */
-function describe(error: unknown): string | null {
+/* The box's own words when it gave any, else our sentence. */
+function describe(error: unknown): string {
   if (error instanceof Error && error.message.length > 0) return error.message;
-  return null;
+  return t("settings.form.noAnswer");
 }
-
-/** What the hook holds: GrowOutcome with the fallback message unresolved. */
-type HeldOutcome =
-  | Exclude<GrowOutcome, { kind: "failed" }>
-  | { kind: "failed"; message: string | null };
 
 export function useStorage(): Storage {
   const signedIn = React.useSyncExternalStore(subscribeAuth, hasToken, () => false);
@@ -106,14 +93,11 @@ export function useStorage(): Storage {
   const [facts, setFacts] = React.useState<StorageFacts>(NOTHING_KNOWN);
   const [source, setSource] = React.useState<StorageSource>("loading");
   const [growing, setGrowing] = React.useState(false);
-  const [held, setOutcome] = React.useState<HeldOutcome | null>(null);
-  const locale = useLocale();
 
   React.useEffect(() => {
     if (!signedIn) {
       setFacts(NOTHING_KNOWN);
       setSource("loading");
-      setOutcome(null);
       return;
     }
 
@@ -143,15 +127,32 @@ export function useStorage(): Storage {
   /* A grow does not start a rebuild, so there is no job to poll: the response
    * IS the outcome, and it arrives when three tools have finished running
    * against a mounted filesystem. Slow, and not cancellable — aborting the
-   * fetch would abandon the answer, not the work. */
+   * fetch would abandon the answer, not the work.
+   *
+   * The outcome is a confirmation. `grew` is the only field worth reporting: the
+   * daemon measured the filesystem on both sides rather than trusting three
+   * exit statuses, because a resize2fs run against an unresized mapping
+   * prints "Nothing to do!" and exits 0. So a false `grew` says nothing
+   * changed, in those words, and never "done". */
   const record = React.useCallback((result: GrowResponse) => {
     if (!result.grew) {
       // Measured, not inferred. Nothing moved, so nothing about the reading
-      // changed either — and the pane says so in those words.
-      setOutcome({ kind: "nothing", claimedBytes: result.claimedBytes });
+      // changed either — and the toast says so in those words.
+      toast.done(
+        t("panes.storage.nothing.title"),
+        result.claimedBytes > 0
+          ? t("panes.storage.nothing.claimed", { size: formatBytes(result.claimedBytes) })
+          : t("panes.storage.nothing.none"),
+      );
       return;
     }
-    setOutcome({ kind: "grew", beforeBytes: result.beforeBytes, afterBytes: result.afterBytes });
+    toast.success(
+      t("panes.storage.grew.title"),
+      t("panes.storage.grew.detail", {
+        before: formatBytes(result.beforeBytes),
+        after: formatBytes(result.afterBytes),
+      }),
+    );
     /* The one place a byte count can be trusted without /api/storage: the
      * daemon just measured the filesystem on both sides of the resize. Fold it
      * in so the meter stops showing the pre-grow total, and zero the reserve,
@@ -162,31 +163,17 @@ export function useStorage(): Storage {
   const grow = React.useCallback(() => {
     if (growing) return;
     setGrowing(true);
-    setOutcome(null);
     void (async () => {
       try {
         record(await postGrow());
       } catch (error) {
-        if (isUnauthorized(error)) {
-          setOutcome(null);
-          return;
-        }
-        setOutcome({ kind: "failed", message: describe(error) });
+        if (isUnauthorized(error)) return;
+        toast.error(t("panes.storage.failed.title"), describe(error));
       } finally {
         setGrowing(false);
       }
     })();
   }, [growing, record]);
 
-  const dismissOutcome = React.useCallback(() => setOutcome(null), []);
-
-  const outcome = React.useMemo<GrowOutcome | null>(
-    () =>
-      held?.kind === "failed"
-        ? { kind: "failed", message: held.message ?? t("settings.form.noAnswer") }
-        : held,
-    [held, locale],
-  );
-
-  return { facts, source, growing, outcome, grow, dismissOutcome };
+  return { facts, source, growing, grow };
 }

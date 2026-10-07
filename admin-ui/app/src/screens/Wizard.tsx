@@ -32,6 +32,7 @@ import { ArrowLeft01Icon, ArrowRight01Icon, CheckmarkCircle02Icon } from "@hugei
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { LanguagePicker } from "@/components/ui/language-picker";
+import { toast } from "@/components/ui/toast";
 import { t } from "@/lib/i18n";
 import { useT } from "@/lib/i18n-react";
 import { StepRail } from "./wizard/StepRail";
@@ -110,6 +111,14 @@ export default function Wizard({ onDone }: WizardProps) {
   const goForward = (): void => {
     if (next === null) {
       setFinished(true);
+      // The shell swaps the wizard for the app on `onDone`, so this is the
+      // one line that says the sequence ended rather than vanished.
+      toast.success(
+        t("wizard.closing.toast"),
+        setup.kind === "ready"
+          ? t("wizard.closing.titleNamed", { name: setup.state.hostName })
+          : t("wizard.closing.titleUnnamed"),
+      );
       onDone?.();
       return;
     }

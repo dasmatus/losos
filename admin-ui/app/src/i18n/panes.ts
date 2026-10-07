@@ -551,11 +551,6 @@ export default defineMessages({
     sk: "Použiť",
     de: "Nutzen",
   },
-  "panes.storage.dismiss": {
-    en: "Dismiss",
-    sk: "Zavrieť",
-    de: "Ausblenden",
-  },
   "panes.storage.grew.title": {
     en: "This box has more room",
     sk: "Zariadenie má viac miesta",
@@ -877,5 +872,83 @@ export default defineMessages({
     en: "you receive {amount}",
     sk: "dostanete {amount}",
     de: "du erhältst {amount}",
+  },
+
+  // ── Toasts the panes raise ────────────────────────────────────────────────
+  "panes.market.actionFailedTitle": {
+    en: "That did not work",
+    sk: "Nepodarilo sa to",
+    de: "Das hat nicht geklappt",
+  },
+  "panes.market.orderPlaced": {
+    en: "Order placed",
+    sk: "Objednávka je vytvorená",
+    de: "Bestellung aufgegeben",
+  },
+  "panes.market.paidTitle": {
+    en: "Payment received",
+    sk: "Platba prijatá",
+    de: "Zahlung eingegangen",
+  },
+  "panes.market.paidBody": {
+    en: "{kind}, {quantity} {unit}, is yours now.",
+    sk: "{kind}, {quantity} {unit}, je teraz vaše.",
+    de: "{kind}, {quantity} {unit}, gehört jetzt dir.",
+  },
+  "panes.market.listedTitle": {
+    en: "Offered for sale",
+    sk: "Ponúknuté na predaj",
+    de: "Zum Verkauf angeboten",
+  },
+  "panes.market.listedBody": {
+    en: "Other boxes on the mesh can buy it from now on.",
+    sk: "Ostatné zariadenia v sieti si to odteraz môžu kúpiť.",
+    de: "Andere Boxen im Mesh können es ab jetzt kaufen.",
+  },
+  "panes.market.closedTitle": {
+    en: "No longer for sale",
+    sk: "Už sa nepredáva",
+    de: "Nicht mehr im Angebot",
+  },
+  "panes.market.payoutsOpened": {
+    en: "Payout setup opened",
+    sk: "Nastavenie výplat je otvorené",
+    de: "Auszahlungs-Einrichtung geöffnet",
+  },
+  "panes.market.payoutsOpenedBody": {
+    en: "Finish it in the other tab, then refresh here.",
+    sk: "Dokončite ho na druhej karte a potom tu obnovte stránku.",
+    de: "Schließ sie im anderen Tab ab und aktualisiere dann hier.",
+  },
+  // ── Table headers (shadcn Table in the apps catalogue and the market) ──
+  "panes.apps.col.app": {
+    en: "App",
+    sk: "Aplikácia",
+    de: "App",
+  },
+  "panes.apps.col.source": {
+    en: "Published by",
+    sk: "Zverejnil",
+    de: "Veröffentlicht von",
+  },
+  "panes.market.col.item": {
+    en: "Bought",
+    sk: "Kúpené",
+    de: "Gekauft",
+  },
+  "panes.market.col.quantity": {
+    en: "Quantity",
+    sk: "Množstvo",
+    de: "Menge",
+  },
+  "panes.market.col.until": {
+    en: "Until",
+    sk: "Do",
+    de: "Bis",
+  },
+  "panes.market.col.status": {
+    en: "Status",
+    sk: "Stav",
+    de: "Status",
   },
 });

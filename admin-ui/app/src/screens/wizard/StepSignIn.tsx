@@ -33,7 +33,6 @@
 import * as React from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
-  Alert02Icon,
   CheckmarkCircle02Icon,
   CircleIcon,
   Copy01Icon,
@@ -49,10 +48,22 @@ import {
   ViewOffSlashIcon,
 } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/ui/button";
-import { FieldError, Input } from "@/components/ui/input";
-import { Label, LabelHint } from "@/components/ui/label";
+import {
+  Field,
+  FieldDescription,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupInput,
+} from "@/components/ui/input-group";
 import { Separator } from "@/components/ui/separator";
-import { Spinner } from "@/components/ui/progress";
+import { Spinner } from "@/components/ui/spinner";
 import {
   ApiError,
   claimBox,
@@ -81,7 +92,13 @@ import {
   probePasskeySupport,
   type PasskeySupport,
 } from "./passkey";
-import { Callout, ReadoutRow, StepText } from "./parts";
+import { toast } from "@/components/ui/toast";
+import { ReadoutRow, StepText } from "./parts";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+
+/* The readiness status ("not ready yet", then "ready"): one id, so the
+ * later replaces the earlier and "Password set" settles whichever is up. */
+const READINESS_STATUS = "readiness";
 
 export interface StepSignInProps {
   /** The box's own name, for the label the passkey is saved under. */
@@ -165,12 +182,24 @@ function PasswordForm({
       setConfirm("");
       setVisible(false);
       onPasswordSet(result.user, result.adminKey);
+      toast.success(
+        t("wizard.signin.done.title"),
+        t("wizard.signin.done.toast", { name: result.user }),
+        { settles: READINESS_STATUS },
+      );
     } catch (error) {
       // Lost the race between the last poll and the submit: lososd says not
       // yet, and changed nothing. Back to waiting, with the reason on screen.
-      if (isNotReady(error))
-        readiness.notYet(error instanceof Error ? error.message : null);
-      setProblem(describeSetPassword(error));
+      if (isNotReady(error)) {
+        const reason = error instanceof Error ? error.message : null;
+        readiness.notYet(reason);
+        toast.status(t("wizard.signin.err.notReady"), reason ?? undefined, { id: READINESS_STATUS });
+        return;
+      }
+      // The box's refusal is a toast: it is about the request, not about a
+      // field the owner can fix, which is what the line under the field is
+      // for. An error toast stays long enough to read the box's sentence.
+      toast.error(t("wizard.signin.notSet"), describeSetPassword(error));
     } finally {
       setBusy(false);
     }
@@ -184,84 +213,86 @@ function PasswordForm({
   // sat greyed out behind the panel that then appeared.
   const waiting = readiness.state.kind !== "ready";
 
+  /* Someone who sat through the waiting panel is told the moment it lifts,
+   * once, as a status (the box reporting on itself; "Password set" is the
+   * confirmation that follows); someone whose box was ready all along hears
+   * nothing. `waited` is on the state so a re-render cannot raise it twice. */
+  const waited = readiness.state.kind === "ready" && readiness.state.waited;
+  React.useEffect(() => {
+    if (waited) {
+      toast.status(t("wizard.signin.readyTitle"), t("wizard.signin.readyBody"), { id: READINESS_STATUS });
+    }
+  }, [waited, t]);
+
   return (
     <form onSubmit={submit} noValidate className="flex flex-col gap-4">
       {readiness.state.kind !== "ready" && (
         <WaitingPanel state={readiness.state} />
       )}
-      {readiness.state.kind === "ready" && readiness.state.waited && (
-        <p
-          role="status"
-          className="flex items-center gap-1.5 text-[13px] text-ok"
-        >
-          <HugeiconsIcon
-            icon={CheckmarkCircle02Icon}
-            size={16}
-            strokeWidth={1.5}
-            color="currentColor"
-            aria-hidden="true"
-          />
-          {t("wizard.signin.ready")}
-        </p>
-      )}
-      <div className="flex flex-col gap-2">
-        <Label htmlFor={passwordId}>{t("wizard.signin.newPassword")}</Label>
-        <div className="flex items-center gap-2">
+      {/* Two shadcn Fields in a FieldGroup. Each field carries its own
+          invalid and disabled state, the eye is an Input Group addon inside
+          the password box, and the four rules are the field's description. */}
+      <FieldGroup>
+        <Field invalid={problem !== null} disabled={busy || waiting}>
+          <FieldLabel htmlFor={passwordId}>{t("wizard.signin.newPassword")}</FieldLabel>
+          <InputGroup>
+            <InputGroupInput
+              id={passwordId}
+              name="new-password"
+              type={visible ? "text" : "password"}
+              autoComplete="new-password"
+              value={password}
+              disabled={busy || waiting}
+              aria-invalid={problem !== null}
+              aria-describedby={problem !== null ? problemId : undefined}
+              onChange={(event) => {
+                setPassword(event.target.value);
+                setProblem(null);
+              }}
+            />
+            <InputGroupAddon align="inline-end">
+              <InputGroupButton
+                size="icon-xs"
+                aria-pressed={visible}
+                aria-label={
+                  visible ? t("wizard.signin.hide") : t("wizard.signin.show")
+                }
+                onClick={() => setVisible((shown) => !shown)}
+              >
+                <HugeiconsIcon
+                  icon={visible ? ViewOffSlashIcon : ViewIcon}
+                  size={16}
+                  strokeWidth={1.5}
+                  color="currentColor"
+                  aria-hidden="true"
+                />
+              </InputGroupButton>
+            </InputGroupAddon>
+          </InputGroup>
+          <FieldDescription>{t("wizard.signin.hint")}</FieldDescription>
+          <PasswordRules password={password} />
+        </Field>
+
+        <Field invalid={problem !== null} disabled={busy || waiting}>
+          <FieldLabel htmlFor={confirmId}>{t("wizard.signin.again")}</FieldLabel>
           <Input
-            id={passwordId}
-            name="new-password"
+            id={confirmId}
+            name="confirm-password"
             type={visible ? "text" : "password"}
             autoComplete="new-password"
-            value={password}
+            value={confirm}
             disabled={busy || waiting}
             aria-invalid={problem !== null}
-            aria-describedby={problem !== null ? problemId : undefined}
             onChange={(event) => {
-              setPassword(event.target.value);
+              setConfirm(event.target.value);
               setProblem(null);
             }}
           />
-          <Button
-            variant="secondary"
-            size="icon"
-            aria-pressed={visible}
-            aria-label={
-              visible ? t("wizard.signin.hide") : t("wizard.signin.show")
-            }
-            onClick={() => setVisible((shown) => !shown)}
-          >
-            <HugeiconsIcon
-              icon={visible ? ViewOffSlashIcon : ViewIcon}
-              size={18}
-              strokeWidth={1.5}
-              color="currentColor"
-              aria-hidden="true"
-            />
-          </Button>
-        </div>
-        <LabelHint>{t("wizard.signin.hint")}</LabelHint>
-        <PasswordRules password={password} />
-      </div>
+          <FieldDescription>{t("wizard.signin.againHint")}</FieldDescription>
+        </Field>
 
-      <div className="flex flex-col gap-2">
-        <Label htmlFor={confirmId}>{t("wizard.signin.again")}</Label>
-        <Input
-          id={confirmId}
-          name="confirm-password"
-          type={visible ? "text" : "password"}
-          autoComplete="new-password"
-          value={confirm}
-          disabled={busy || waiting}
-          aria-invalid={problem !== null}
-          onChange={(event) => {
-            setConfirm(event.target.value);
-            setProblem(null);
-          }}
-        />
-        <LabelHint>{t("wizard.signin.againHint")}</LabelHint>
-      </div>
-
-      <FieldError id={problemId}>{problem}</FieldError>
+        <FieldError id={problemId}>{problem}</FieldError>
+      </FieldGroup>
 
       <div className="flex items-center gap-3">
         <Button
@@ -287,28 +318,28 @@ function PasswordForm({
       </div>
 
       {account !== null && (
-        <Callout
-          tone="ok"
-          icon={CheckmarkCircle02Icon}
-          title={t("wizard.signin.done.title")}
-        >
-          <ReadoutRow label={t("wizard.signin.done.name")} className="mt-2">
-            <code className="numeric text-[13px] text-ink select-all">
-              {account}
-            </code>
-          </ReadoutRow>
-          <p className="mt-2 flex items-start gap-1.5">
-            <HugeiconsIcon
-              icon={UserCircleIcon}
-              size={16}
-              strokeWidth={1.5}
-              color="currentColor"
-              className="mt-px shrink-0"
-              aria-hidden="true"
-            />
-            {t("wizard.signin.done.body")}
-          </p>
-        </Callout>
+        <Alert variant="ok">
+          <HugeiconsIcon icon={CheckmarkCircle02Icon} size={19} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+          <AlertTitle>{t("wizard.signin.done.title")}</AlertTitle>
+          <AlertDescription>
+            <ReadoutRow label={t("wizard.signin.done.name")} className="mt-2">
+              <code className="numeric text-[13px] text-ink select-all">
+                {account}
+              </code>
+            </ReadoutRow>
+            <p className="mt-2 flex items-start gap-1.5">
+              <HugeiconsIcon
+                icon={UserCircleIcon}
+                size={16}
+                strokeWidth={1.5}
+                color="currentColor"
+                className="mt-px shrink-0"
+                aria-hidden="true"
+              />
+              {t("wizard.signin.done.body")}
+            </p>
+          </AlertDescription>
+        </Alert>
       )}
     </form>
   );
@@ -546,30 +577,30 @@ function WaitingPanel({ state }: { state: ReadinessState }) {
   if (state.kind !== "waiting") return null;
   const seconds = Math.max(0, Math.floor((now - state.since) / 1000));
   return (
-    <Callout
-      tone="info"
-      icon={Loading03Icon}
-      title={t("wizard.signin.waiting.title")}
-    >
-      <div
-        role="status"
-        aria-live="polite"
-        className="mt-1 flex flex-col gap-2"
-      >
-        <p>{t("wizard.signin.waiting.body")}</p>
-        {state.reason !== null && <p className="text-ink">{state.reason}</p>}
-        <p className="flex items-center gap-2 text-faint">
-          <Spinner
-            label={t("wizard.signin.waiting.title")}
-            className="text-muted"
-          />
-          {t("wizard.signin.waiting.since", { count: seconds })}
-          {state.unreachable && (
-            <span>{t("wizard.signin.waiting.unreachable")}</span>
-          )}
-        </p>
-      </div>
-    </Callout>
+    <Alert variant="default">
+      <HugeiconsIcon icon={Loading03Icon} size={19} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+      <AlertTitle>{t("wizard.signin.waiting.title")}</AlertTitle>
+      <AlertDescription>
+        <div
+          role="status"
+          aria-live="polite"
+          className="flex flex-col gap-2"
+        >
+          <p>{t("wizard.signin.waiting.body")}</p>
+          {state.reason !== null && <p className="text-ink">{state.reason}</p>}
+          <p className="flex items-center gap-2 text-faint">
+            <Spinner
+              label={t("wizard.signin.waiting.title")}
+              className="text-muted"
+            />
+            {t("wizard.signin.waiting.since", { count: seconds })}
+            {state.unreachable && (
+              <span>{t("wizard.signin.waiting.unreachable")}</span>
+            )}
+          </p>
+        </div>
+      </AlertDescription>
+    </Alert>
   );
 }
 
@@ -585,79 +616,66 @@ function WaitingPanel({ state }: { state: ReadinessState }) {
  * that step is hidden, see ./steps.ts, so the sheet lives here now.) */
 function AdminKey({ value, boxName }: { value: string; boxName: string }) {
   const t = useT();
-  const [copied, setCopied] = React.useState<boolean | null>(null);
   const keyRef = React.useRef<HTMLElement>(null);
 
   const copy = async (): Promise<void> => {
-    setCopied(await copyText(value, keyRef.current));
+    if (await copyText(value, keyRef.current)) {
+      toast.success(t("wizard.signin.key.copiedTitle"), t("wizard.signin.key.copiedBody"));
+    } else {
+      toast.error(t("wizard.copyFailedTitle"), t("wizard.signin.key.copyFailed"));
+    }
   };
 
   // Prints the document; the rules in ./wizard.css narrow that to the sheet.
   const print = (): void => window.print();
 
   return (
-    <Callout tone="info" icon={Key01Icon} title={t("wizard.signin.key.title")}>
-      <p className="mt-1">{t("wizard.signin.key.body")}</p>
-      <div className="mt-3 flex flex-col gap-3 rounded-card border border-line bg-surface px-3.5 py-3">
-        <span className="text-[12px] font-medium tracking-wide text-faint uppercase">
-          {t("wizard.signin.key.label")}
-        </span>
-        {/* select-all: one click takes the whole key, so a manual Ctrl+C works
-            even where the clipboard API is unavailable. */}
-        <code
-          ref={keyRef}
-          className="numeric text-[13px] leading-snug break-all text-ink select-all"
-        >
-          {value}
-        </code>
-      </div>
-      <div className="mt-3 flex flex-wrap items-center gap-2.5">
-        <Button variant="secondary" size="sm" onClick={() => void copy()}>
-          <HugeiconsIcon
-            icon={Copy01Icon}
-            size={16}
-            strokeWidth={1.5}
-            color="currentColor"
-            aria-hidden="true"
-          />
-          {t("wizard.signin.key.copy")}
-        </Button>
-        <Button variant="secondary" size="sm" onClick={print}>
-          <HugeiconsIcon
-            icon={PrinterIcon}
-            size={16}
-            strokeWidth={1.5}
-            color="currentColor"
-            aria-hidden="true"
-          />
-          {t("wizard.signin.key.print")}
-        </Button>
-        {copied === true && (
-          <span
-            role="status"
-            className="inline-flex items-center gap-1.5 text-[13px] text-ok"
+    <Alert variant="default">
+      <HugeiconsIcon icon={Key01Icon} size={19} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+      <AlertTitle>{t("wizard.signin.key.title")}</AlertTitle>
+      <AlertDescription>
+        <p>{t("wizard.signin.key.body")}</p>
+        <div className="mt-3 flex flex-col gap-3 rounded-card border border-line bg-surface px-3.5 py-3">
+          <span className="text-[12px] font-medium tracking-wide text-faint uppercase">
+            {t("wizard.signin.key.label")}
+          </span>
+          {/* select-all: one click takes the whole key, so a manual Ctrl+C works
+              even where the clipboard API is unavailable. */}
+          <code
+            ref={keyRef}
+            className="numeric text-[13px] leading-snug break-all text-ink select-all"
           >
+            {value}
+          </code>
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-2.5">
+          <Button variant="secondary" size="sm" onClick={() => void copy()}>
             <HugeiconsIcon
-              icon={CheckmarkCircle02Icon}
+              icon={Copy01Icon}
               size={16}
               strokeWidth={1.5}
               color="currentColor"
               aria-hidden="true"
             />
-            {t("wizard.signin.key.copied")}
-          </span>
-        )}
-        {copied === false && (
-          <span role="status" className="text-[13px] text-muted">
-            {t("wizard.signin.key.copyFailed")}
-          </span>
-        )}
-      </div>
-      {/* Present in the document at all times, shown only on paper: the
-          print rules in ./wizard.css hide everything else on the page and
-          force this subtree to black on white. */}
-      <KeySheet boxName={boxName} value={value} />
-    </Callout>
+            {t("wizard.signin.key.copy")}
+          </Button>
+          <Button variant="secondary" size="sm" onClick={print}>
+            <HugeiconsIcon
+              icon={PrinterIcon}
+              size={16}
+              strokeWidth={1.5}
+              color="currentColor"
+              aria-hidden="true"
+            />
+            {t("wizard.signin.key.print")}
+          </Button>
+        </div>
+        {/* Present in the document at all times, shown only on paper: the
+            print rules in ./wizard.css hide everything else on the page and
+            force this subtree to black on white. */}
+        <KeySheet boxName={boxName} value={value} />
+      </AlertDescription>
+    </Alert>
   );
 }
 
@@ -714,8 +732,7 @@ type Attempt =
   | { kind: "idle" }
   | { kind: "working" }
   | { kind: "registered"; label: string }
-  | { kind: "not-implemented" }
-  | { kind: "problem"; message: string };
+  | { kind: "not-implemented" };
 
 function PasskeyPanel({ boxName }: { boxName: string }) {
   const t = useT();
@@ -740,6 +757,7 @@ function PasskeyPanel({ boxName }: { boxName: string }) {
     switch (outcome.kind) {
       case "registered":
         setAttempt({ kind: "registered", label: outcome.label });
+        toast.success(t("wizard.passkey.created.title"), outcome.label);
         return;
       case "cancelled":
         setAttempt({ kind: "idle" });
@@ -752,7 +770,11 @@ function PasskeyPanel({ boxName }: { boxName: string }) {
         setAttempt({ kind: "idle" });
         return;
       case "failed":
-        setAttempt({ kind: "problem", message: outcome.message });
+        // Back to the button, with the reason in the stack rather than in a
+        // box under it: a second try is one click, and the box's sentence
+        // has nothing the owner can fix on this form.
+        setAttempt({ kind: "idle" });
+        toast.error(t("wizard.passkey.problem.title"), outcome.message);
         return;
       default: {
         const unreachable: never = outcome;
@@ -788,13 +810,13 @@ function PasskeyPanel({ boxName }: { boxName: string }) {
 
       {/* Visibly unavailable with a reason, never a button that fails. */}
       {support?.kind === "unavailable" && (
-        <Callout
-          tone="info"
-          icon={SecurityLockIcon}
-          title={t("wizard.passkey.unavailable.title")}
-        >
-          <p className="mt-1">{support.reason}</p>
-        </Callout>
+        <Alert variant="default">
+          <HugeiconsIcon icon={SecurityLockIcon} size={19} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+          <AlertTitle>{t("wizard.passkey.unavailable.title")}</AlertTitle>
+          <AlertDescription>
+            <p>{support.reason}</p>
+          </AlertDescription>
+        </Alert>
       )}
 
       {support?.kind === "available" && attempt.kind !== "registered" && (
@@ -830,45 +852,35 @@ function PasskeyPanel({ boxName }: { boxName: string }) {
       )}
 
       {attempt.kind === "registered" && (
-        <Callout
-          tone="ok"
-          icon={CheckmarkCircle02Icon}
-          title={t("wizard.passkey.created.title")}
-        >
-          <p className="mt-1">
-            <Rich
-              k="wizard.passkey.created.body"
-              vars={{
-                label: (
-                  <span className="numeric text-ink">{attempt.label}</span>
-                ),
-              }}
-            />
-          </p>
-        </Callout>
+        <Alert variant="ok">
+          <HugeiconsIcon icon={CheckmarkCircle02Icon} size={19} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+          <AlertTitle>{t("wizard.passkey.created.title")}</AlertTitle>
+          <AlertDescription>
+            <p>
+              <Rich
+                k="wizard.passkey.created.body"
+                vars={{
+                  label: (
+                    <span className="numeric text-ink">{attempt.label}</span>
+                  ),
+                }}
+              />
+            </p>
+          </AlertDescription>
+        </Alert>
       )}
 
       {/* The expected outcome today: the routes in ./passkey.ts are not
           served. Say so plainly rather than showing a transport error — the
           owner has done nothing wrong and there is nothing for them to fix. */}
       {attempt.kind === "not-implemented" && (
-        <Callout
-          tone="info"
-          icon={InformationCircleIcon}
-          title={t("wizard.passkey.notYet.title")}
-        >
-          <p className="mt-1">{t("wizard.passkey.notYet.body")}</p>
-        </Callout>
-      )}
-
-      {attempt.kind === "problem" && (
-        <Callout
-          tone="warn"
-          icon={Alert02Icon}
-          title={t("wizard.passkey.problem.title")}
-        >
-          <p className={cn("mt-1 break-words")}>{attempt.message}</p>
-        </Callout>
+        <Alert variant="default">
+          <HugeiconsIcon icon={InformationCircleIcon} size={19} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+          <AlertTitle>{t("wizard.passkey.notYet.title")}</AlertTitle>
+          <AlertDescription>
+            <p>{t("wizard.passkey.notYet.body")}</p>
+          </AlertDescription>
+        </Alert>
       )}
     </div>
   );

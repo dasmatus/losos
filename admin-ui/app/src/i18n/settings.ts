@@ -112,15 +112,10 @@ export default defineMessages({
   },
 
   // ── Sidebar ───────────────────────────────────────────────────────────────
-  "settings.sidebar.nav": {
-    en: "Settings sections",
-    sk: "Sekcie nastavení",
-    de: "Einstellungsbereiche",
-  },
   "settings.sidebar.searchLabel": {
-    en: "Search settings",
-    sk: "Hľadať v nastaveniach",
-    de: "Einstellungen durchsuchen",
+    en: "Search the sections",
+    sk: "Hľadať v sekciách",
+    de: "Bereiche durchsuchen",
   },
   "settings.sidebar.searchPlaceholder": { en: "Search", sk: "Hľadať", de: "Suchen" },
   "settings.sidebar.clear": { en: "Clear search", sk: "Vymazať hľadanie", de: "Suche leeren" },

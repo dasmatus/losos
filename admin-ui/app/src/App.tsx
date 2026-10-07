@@ -1,18 +1,11 @@
 import * as React from "react";
-import { BrowserRouter, NavLink, Route, Routes, useNavigate, useParams } from "react-router-dom";
-import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
-import {
-  HardDriveIcon,
-  Home01Icon,
-  LayoutGridIcon,
-  Settings01Icon,
-  Share08Icon,
-  ViewIcon,
-  ViewOffSlashIcon,
-} from "@hugeicons/core-free-icons";
+import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { Compass01Icon, ViewIcon, ViewOffSlashIcon } from "@hugeicons/core-free-icons";
+import logoUrl from "@/assets/losos.svg";
+import { AppSidebar } from "@/components/app-sidebar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogBody,
@@ -21,12 +14,26 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { FieldError, Input, MonoInput } from "@/components/ui/input";
-import { Label, LabelHint } from "@/components/ui/label";
-import { Spinner } from "@/components/ui/progress";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
+import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
+import { MonoInput } from "@/components/ui/input";
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupInput,
+} from "@/components/ui/input-group";
+import { Spinner } from "@/components/ui/spinner";
 import { LanguagePicker } from "@/components/ui/language-picker";
+import { SidebarProvider } from "@/components/ui/sidebar";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
-import { Toaster } from "@/components/ui/toast";
+import { toast, Toaster } from "@/components/ui/toast";
 import {
   dropToken,
   getClaimState,
@@ -38,8 +45,8 @@ import {
   subscribeAuth,
   TOKEN_PATTERN,
 } from "@/lib/api";
-import { isSettingsPaneId, type SettingsPaneId } from "@/screens/settings/panes";
-import type { MessageKey } from "@/lib/i18n";
+import type { SettingsPaneId } from "@/screens/settings/panes";
+import { paneFromPath } from "@/lib/routes";
 import { useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
 
@@ -71,32 +78,17 @@ function ScreenFallback() {
  * on the admin location in modules/containers.nix so a deep link survives a
  * reload.
  *
- * Three of the five nav entries are shortcuts into a settings pane rather than
- * screens of their own: storage, mesh and apps are what an owner actually opens
- * this page for, so they get a top-level address, while network, hardware,
- * about and reset live under /settings/<pane>. `paneHref` is the single place
- * that mapping exists, so the sidebar and the URL cannot disagree about where a
- * pane lives.
+ * Every destination is in one sidebar (components/app-sidebar.tsx, shadcn's
+ * Sidebar): Overview, then the settings panes, with storage, mesh and apps at
+ * a top-level address because they are what an owner opens this page for,
+ * and network, hardware, security, about and reset under /settings/<pane>.
+ * lib/routes.ts is the single place that mapping exists, so the sidebar and
+ * the URL cannot disagree about where a pane lives.
  *
  * House rules that hold everywhere below this line: no emoji (icons are
  * @hugeicons, Stroke Rounded, 1.5), no inline style attributes (the CSP
  * refuses them), and nothing a user reads may name a container runtime — it
  * is "an app", and it "runs on this box" or "on the mesh". */
-
-interface NavItem {
-  to: string;
-  label: MessageKey;
-  icon: IconSvgElement;
-  end?: boolean;
-}
-
-const NAV: readonly NavItem[] = [
-  { to: "/", label: "shell.nav.overview", icon: Home01Icon, end: true },
-  { to: "/apps", label: "shell.nav.apps", icon: LayoutGridIcon },
-  { to: "/storage", label: "shell.nav.storage", icon: HardDriveIcon },
-  { to: "/mesh", label: "shell.nav.mesh", icon: Share08Icon },
-  { to: "/settings", label: "shell.nav.settings", icon: Settings01Icon },
-];
 
 export default function App() {
   return (
@@ -185,6 +177,9 @@ function Shell() {
         }
       >
         <Wizard onDone={() => setSetupDone(true)} />
+        {/* The wizard has its own shell, so it gets its own stack: step 2's
+            "ready" and "password set" and step 1's "copied" land here. */}
+        <Toaster />
       </React.Suspense>
     );
   }
@@ -202,13 +197,13 @@ function Shell() {
     <div className="min-h-dvh bg-ground text-ink">
       <TopBar signedIn={signedIn} />
 
-      <div
+      <SidebarProvider
         className={cn(
           "mx-auto flex w-full max-w-6xl px-4 pt-5 pb-12 sm:px-6",
           "max-md:flex-col max-md:gap-3 md:gap-6",
         )}
       >
-        <SectionNav />
+        <AppSidebar />
         <main className="min-w-0 flex-1">
           <React.Suspense fallback={<ScreenFallback />}>
           <Routes>
@@ -234,7 +229,7 @@ function Shell() {
           </Routes>
           </React.Suspense>
         </main>
-      </div>
+      </SidebarProvider>
 
       <SignInDialog open={!signedIn} />
       <Toaster />
@@ -249,7 +244,10 @@ function TopBar({ signedIn }: { signedIn: boolean }) {
   return (
     <header className="sticky top-0 z-40 border-b border-line bg-surface/85 backdrop-blur-sm">
       <div className="mx-auto flex w-full max-w-6xl items-center gap-3 px-4 py-3 sm:px-6">
-        <span className="text-[15px] font-semibold tracking-tight">LosOS</span>
+        {/* The cooked salmon (losos is Slovak for salmon) in place of the
+            name, pixel art kept square-edged at any size; its alt text is the
+            name. Bundled, so img-src 'self' holds. */}
+        <img src={logoUrl} alt="LosOS" width={32} height={32} className="size-8 [image-rendering:pixelated]" />
         <Badge variant="outline" className="hidden sm:inline-flex">
           {t("shell.thisBox")}
         </Badge>
@@ -266,99 +264,31 @@ function TopBar({ signedIn }: { signedIn: boolean }) {
   );
 }
 
-/* One nav, two shapes: a vertical rail beside the content from md up, and a
- * horizontally scrolling row above it on a phone. Not two lists and not a
- * hamburger — five destinations fit on a narrow screen, and the appliance is
- * as likely to be configured from a phone on the same network as from a
- * laptop. */
-function SectionNav() {
-  const t = useT();
-  return (
-    <nav
-      aria-label={t("shell.nav.label")}
-      className={cn(
-        "shrink-0",
-        "max-md:-mx-4 max-md:overflow-x-auto max-md:px-4 max-md:pb-2 sm:max-md:-mx-6 sm:max-md:px-6",
-        "md:w-44",
-      )}
-    >
-      <ul
-        className={cn(
-          "flex gap-1",
-          "max-md:w-max",
-          "md:sticky md:top-20 md:flex-col md:gap-0.5",
-        )}
-      >
-        {NAV.map((item) => (
-          <li key={item.to}>
-            <NavLink
-              to={item.to}
-              end={item.end === true}
-              className={({ isActive }) =>
-                cn(
-                  "flex items-center gap-2.5 rounded-control px-3 py-2 text-[13.5px] whitespace-nowrap",
-                  "transition-colors duration-150",
-                  isActive
-                    ? "bg-accent-wash font-medium text-accent"
-                    : "text-muted hover:bg-sunk hover:text-ink",
-                )
-              }
-            >
-              <HugeiconsIcon
-                icon={item.icon}
-                size={18}
-                strokeWidth={1.5}
-                color="currentColor"
-                aria-hidden="true"
-              />
-              {t(item.label)}
-            </NavLink>
-          </li>
-        ))}
-      </ul>
-    </nav>
-  );
-}
-
 // ── Placeholders ──────────────────────────────────────────────────────────
 
 /* Delete these as the real screens land. Kept deliberately plain: they exist
  * to prove the routing and the palette, not to suggest a layout. */
-/* The one place a settings pane's address is decided.
- *
- * Storage, mesh and apps are what an owner opens this page for, so they get a
- * top-level address; network, hardware, about and reset sit under /settings.
- * Both the sidebar and the router read this, so they cannot disagree about
- * where a pane lives, and a deep link to any of them survives a reload because
- * nginx serves index.html for unknown paths under the admin location.
- */
-const TOP_LEVEL_PANES: readonly SettingsPaneId[] = ["storage", "mesh", "apps"];
-
-function paneHref(pane: SettingsPaneId): string {
-  return TOP_LEVEL_PANES.includes(pane) ? `/${pane}` : `/settings/${pane}`;
-}
-
 function SettingsRoute({ pane }: { pane?: SettingsPaneId }) {
-  const navigate = useNavigate();
-  const params = useParams();
-  // A pane named in the URL wins over the route's own default, so
-  // /settings/hardware opens hardware rather than the first pane.
-  const fromUrl = params["pane"];
-  const selected =
-    pane ?? (typeof fromUrl === "string" && isSettingsPaneId(fromUrl) ? fromUrl : undefined);
-
-  return <Settings pane={selected} onPaneChange={(next) => navigate(paneHref(next))} />;
+  const { pathname } = useLocation();
+  // The route's own pane, else the one the path names (lib/routes.ts), so
+  // /settings/hardware opens hardware and /settings opens Network, the first
+  // entry under Settings in the sidebar.
+  const selected = pane ?? paneFromPath(pathname) ?? undefined;
+  return <Settings pane={selected} />;
 }
 
 function NotFound() {
   const t = useT();
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{t("shell.notFound.title")}</CardTitle>
-        <CardDescription>{t("shell.notFound.body")}</CardDescription>
-      </CardHeader>
-    </Card>
+    <Empty>
+      <EmptyHeader>
+        <EmptyMedia variant="icon">
+          <HugeiconsIcon icon={Compass01Icon} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+        </EmptyMedia>
+        <EmptyTitle>{t("shell.notFound.title")}</EmptyTitle>
+        <EmptyDescription>{t("shell.notFound.body")}</EmptyDescription>
+      </EmptyHeader>
+    </Empty>
   );
 }
 
@@ -410,8 +340,10 @@ function SignInDialog({ open }: { open: boolean }) {
     try {
       const accepted =
         mode === "key" ? await signIn(candidate) : await signInWithPassword(candidate);
-      if (accepted) setValue("");
-      else setProblem(t(mode === "key" ? "shell.signIn.rejected" : "shell.signIn.wrongPassword"));
+      if (accepted) {
+        setValue("");
+        toast.success(t("shell.signIn.unlocked"), t("shell.signIn.unlockedBody"));
+      } else setProblem(t(mode === "key" ? "shell.signIn.rejected" : "shell.signIn.wrongPassword"));
     } catch (error) {
       // LosOS cloud is what checks the password, and it could not be asked.
       // Say so, and point at the spare key rather than at a retry.
@@ -442,16 +374,56 @@ function SignInDialog({ open }: { open: boolean }) {
           </DialogDescription>
         </DialogHeader>
         <DialogBody className="flex flex-col gap-2">
-          {mode === "password" ? (
-            <>
-              <Label htmlFor="owner-password">{t("shell.signIn.passwordLabel")}</Label>
-              <div className="flex items-center gap-2">
-                <Input
-                  id="owner-password"
-                  name="owner-password"
-                  type={visible ? "text" : "password"}
-                  autoComplete="current-password"
+          {/* One shadcn Field: label, control, error and hint share its
+              invalid/disabled state. The show/hide eye sits inside the
+              password box as an Input Group addon rather than beside it. */}
+          <Field invalid={problem !== null} disabled={busy}>
+            {mode === "password" ? (
+              <>
+                <FieldLabel htmlFor="owner-password">{t("shell.signIn.passwordLabel")}</FieldLabel>
+                <InputGroup>
+                  <InputGroupInput
+                    id="owner-password"
+                    name="owner-password"
+                    type={visible ? "text" : "password"}
+                    autoComplete="current-password"
+                    autoFocus
+                    value={value}
+                    disabled={busy}
+                    aria-invalid={problem !== null}
+                    aria-describedby={problem !== null ? errorId : undefined}
+                    onChange={(event) => {
+                      setValue(event.target.value);
+                      setProblem(null);
+                    }}
+                  />
+                  <InputGroupAddon align="inline-end">
+                    <InputGroupButton
+                      size="icon-xs"
+                      aria-pressed={visible}
+                      aria-label={visible ? t("shell.signIn.hide") : t("shell.signIn.show")}
+                      onClick={() => setVisible((shown) => !shown)}
+                    >
+                      <HugeiconsIcon
+                        icon={visible ? ViewOffSlashIcon : ViewIcon}
+                        size={16}
+                        strokeWidth={1.5}
+                        color="currentColor"
+                        aria-hidden="true"
+                      />
+                    </InputGroupButton>
+                  </InputGroupAddon>
+                </InputGroup>
+              </>
+            ) : (
+              <>
+                <FieldLabel htmlFor="admin-key">{t("shell.signIn.label")}</FieldLabel>
+                <MonoInput
+                  id="admin-key"
+                  name="admin-key"
+                  autoComplete="off"
                   autoFocus
+                  pattern={TOKEN_PATTERN.source}
                   value={value}
                   disabled={busy}
                   aria-invalid={problem !== null}
@@ -461,45 +433,11 @@ function SignInDialog({ open }: { open: boolean }) {
                     setProblem(null);
                   }}
                 />
-                <Button
-                  variant="secondary"
-                  size="icon"
-                  aria-pressed={visible}
-                  aria-label={visible ? t("shell.signIn.hide") : t("shell.signIn.show")}
-                  onClick={() => setVisible((shown) => !shown)}
-                >
-                  <HugeiconsIcon
-                    icon={visible ? ViewOffSlashIcon : ViewIcon}
-                    size={18}
-                    strokeWidth={1.5}
-                    color="currentColor"
-                    aria-hidden="true"
-                  />
-                </Button>
-              </div>
-            </>
-          ) : (
-            <>
-              <Label htmlFor="admin-key">{t("shell.signIn.label")}</Label>
-              <MonoInput
-                id="admin-key"
-                name="admin-key"
-                autoComplete="off"
-                autoFocus
-                pattern={TOKEN_PATTERN.source}
-                value={value}
-                disabled={busy}
-                aria-invalid={problem !== null}
-                aria-describedby={problem !== null ? errorId : undefined}
-                onChange={(event) => {
-                  setValue(event.target.value);
-                  setProblem(null);
-                }}
-              />
-            </>
-          )}
-          <FieldError id={errorId}>{problem}</FieldError>
-          <LabelHint>{t("shell.signIn.remembered")}</LabelHint>
+              </>
+            )}
+            <FieldError id={errorId}>{problem}</FieldError>
+            <FieldDescription>{t("shell.signIn.remembered")}</FieldDescription>
+          </Field>
           <button
             type="button"
             className="mt-1 self-start text-[13px] text-accent underline-offset-2 hover:underline"

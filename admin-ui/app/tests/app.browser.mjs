@@ -237,30 +237,200 @@ await check('signing out returns to the prompt and forgets the token', async () 
   await page.close();
 });
 
+/* One sidebar (src/components/app-sidebar.tsx): Overview, Apps, Storage and
+ * Mesh are links at the top; Settings is a fold whose entries are the
+ * settings panes. Every entry, top or folded, must land on its own address
+ * and be the only one marked current there. */
 const DESTINATIONS = [
   ['Overview', '/'],
   ['Apps', '/apps'],
   ['Storage', '/storage'],
   ['Mesh', '/mesh'],
-  ['Settings', '/settings'],
+  ['Network', '/settings/network', 'Settings'],
+  ['Hardware', '/settings/hardware', 'Settings'],
+  ['Security', '/settings/security', 'Settings'],
+  ['About', '/settings/about', 'Settings'],
+  ['Reset', '/settings/reset', 'Settings'],
 ];
-await check('every sidebar entry lands on its own address', async () => {
+/* Open a fold by its name, if it is not open already. */
+async function unfold(page, name) {
+  const fold = nav(page).getByRole('button', { name, exact: true });
+  if ((await fold.getAttribute('aria-expanded')) !== 'true') await fold.click();
+}
+await check('every sidebar entry, folded or not, lands on its own address', async () => {
   const { page } = await open({ stored: true });
-  for (const [label, path] of DESTINATIONS) {
+  for (const [label, path, under] of DESTINATIONS) {
+    if (under !== undefined) await unfold(page, under);
     await nav(page).getByRole('link', { name: label, exact: true }).click();
     await page.waitForURL(origin + path);
-    // aria-current follows the route a render later than the URL changes.
-    await nav(page)
-      .locator('a[aria-current="page"]')
-      .filter({ hasText: label })
-      .waitFor({ timeout: 2000 });
+    await nav(page).locator('a[aria-current="page"]').filter({ hasText: label }).waitFor({ timeout: 2000 });
     assert.equal(
       await nav(page).locator('a[aria-current="page"]').count(),
       1,
       `${label}: expected exactly one entry marked current`,
     );
   }
+  // /settings itself opens the first entry under Settings.
+  await page.goto(origin + '/settings', { waitUntil: 'networkidle' });
+  await page.getByRole('heading', { name: 'Network', exact: true, level: 1 }).waitFor();
+  await nav(page).locator('a[aria-current="page"]').filter({ hasText: 'Network' }).waitFor();
   await page.close();
+});
+
+await check('there is one panel: no second list of panes beside the content', async () => {
+  const { page } = await open({ path: '/settings/hardware', stored: true });
+  await nav(page).waitFor();
+  assert.equal(await page.getByRole('navigation').count(), 1, 'more than one <nav> on a settings page');
+  assert.equal(await page.locator('main').getByRole('link').filter({ hasText: /^(Network|Hardware|Security)$/ }).count(), 0);
+  await page.close();
+});
+
+await check('a fold opens by itself on one of its pages, and folds away from the keyboard', async () => {
+  const { page } = await open({ path: '/settings/security', stored: true });
+  const settings = nav(page).getByRole('button', { name: 'Settings', exact: true });
+  assert.equal(await settings.getAttribute('aria-expanded'), 'true', 'Settings is folded on one of its own pages');
+  const mesh = nav(page).getByRole('button', { name: 'Entries under Mesh', exact: true });
+  assert.equal(await mesh.getAttribute('aria-expanded'), 'false', 'Mesh is unfolded while elsewhere');
+  // Folded entries are hidden: neither a click target nor a Tab stop.
+  const market = nav(page).getByRole('button', { name: 'Market soon(TM)', exact: true });
+  assert.equal(await market.isVisible(), false, 'the folded Market entry is visible');
+  // Fold Settings with the keyboard: its pages leave the Tab order with it.
+  await settings.focus();
+  await page.keyboard.press('Enter');
+  assert.equal(await settings.getAttribute('aria-expanded'), 'false');
+  const hardware = nav(page).getByRole('link', { name: 'Hardware', exact: true, includeHidden: true });
+  await page.waitForTimeout(300);
+  assert.equal(await hardware.isVisible(), false, 'a folded page link is still visible');
+  assert.equal(await hardware.evaluate((el) => el.closest('[hidden]') !== null), true, 'a folded page link is still reachable');
+  await page.keyboard.press('Enter');
+  assert.equal(await settings.getAttribute('aria-expanded'), 'true');
+  await nav(page).getByRole('link', { name: 'Hardware', exact: true }).click();
+  await page.waitForURL(origin + '/settings/hardware');
+  await page.close();
+});
+
+await check('the panel narrows to icons with its trigger or Ctrl+B, and remembers it', async () => {
+  const { page, errors } = await open({ path: '/mesh', stored: true });
+  const panel = nav(page);
+  const wide = (await panel.boundingBox()).width;
+  await panel.getByRole('button', { name: 'Collapse the sidebar' }).click();
+  await page.waitForTimeout(350);
+  const narrow = (await panel.boundingBox()).width;
+  assert.ok(narrow < 70 && wide > 200, `the panel did not narrow to a rail: ${wide} -> ${narrow}`);
+  // On the rail every entry is still a named link, and the current one is marked.
+  await panel.getByRole('link', { name: 'Mesh', exact: true }).waitFor();
+  assert.equal(await panel.getByRole('searchbox').isVisible(), false, 'the search box is still on the rail');
+  // Each icon names itself in a tooltip beside the rail (Base UI Tooltip).
+  await panel.getByRole('link', { name: 'Storage', exact: true }).hover();
+  const tip = page.locator('[data-slot="tooltip-content"]').filter({ hasText: /^Storage$/ });
+  await tip.waitFor({ timeout: 2000 });
+  const tipBox = await tip.boundingBox();
+  assert.ok(tipBox.x >= narrow, `the tooltip is not beside the rail: x=${tipBox.x}`);
+  await panel.getByRole('link', { name: 'Settings', exact: true }).click();
+  await page.waitForURL(origin + '/settings');
+  // The choice survives a reload; Ctrl+B widens it again.
+  await page.reload({ waitUntil: 'networkidle' });
+  assert.ok((await panel.boundingBox()).width < 70, 'the rail was forgotten on reload');
+  await page.keyboard.press('Control+b');
+  await page.waitForTimeout(350);
+  assert.ok((await panel.boundingBox()).width > 200, 'Ctrl+B did not widen the panel');
+  await panel.getByRole('searchbox').waitFor();
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+await check('on a phone the panel is a sheet from the left, opened from a row naming where you are', async () => {
+  const { page, errors } = await open({ path: '/settings/about', stored: true, viewport: { width: 375, height: 800 } });
+  // Closed: one row naming the page, and no panel in the page at all.
+  await page.getByRole('button', { name: 'About', exact: true }).waitFor();
+  assert.equal(await nav(page).count(), 0, 'the closed phone panel is in the page');
+  await page.getByRole('button', { name: 'Expand the sidebar' }).click();
+  const sheet = page.getByRole('dialog', { name: 'Sections' });
+  await sheet.waitFor();
+  await page.waitForTimeout(350);
+  const box = await sheet.boundingBox();
+  assert.ok(box.x <= 1 && box.width < 375, `the sheet is not at the left edge: ${JSON.stringify(box)}`);
+  // Base UI locks the page's scroll behind it through CSSOM, which the CSP
+  // allows (a Radix sheet's injected <style> lock would be refused).
+  assert.equal(await page.evaluate(() => getComputedStyle(document.documentElement).overflow === 'hidden' || getComputedStyle(document.body).overflow === 'hidden'), true, 'the page behind the sheet still scrolls');
+  // The whole tree is in it, the current page marked.
+  await nav(page).locator('a[aria-current="page"]').filter({ hasText: 'About' }).waitFor();
+  await nav(page).getByRole('link', { name: 'Storage', exact: true }).click();
+  await page.waitForURL(origin + '/storage');
+  // Choosing a destination closes the sheet; the row names the new page.
+  await sheet.waitFor({ state: 'detached' });
+  await page.getByRole('button', { name: 'Storage', exact: true }).waitFor();
+  // Escape closes it too.
+  await page.getByRole('button', { name: 'Expand the sidebar' }).click();
+  await sheet.waitFor();
+  await page.keyboard.press('Escape');
+  await sheet.waitFor({ state: 'detached' });
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+await check('the cooked salmon replaces the name in the top bar and is the favicon, served from the bundle', async () => {
+  const { page } = await open({ path: '/storage', stored: true });
+  const logo = page.locator('header').getByRole('img', { name: 'LosOS', exact: true });
+  await logo.waitFor();
+  assert.ok(await logo.evaluate((img) => img.complete && img.naturalWidth > 0), 'the logo did not load');
+  const src = await logo.getAttribute('src');
+  assert.match(src, /^(\/assets\/losos-[\w-]+\.svg|data:image\/svg\+xml)/, `the logo is not the bundled salmon: ${src}`);
+  const icon = await page.locator('link[rel="icon"]').getAttribute('href');
+  assert.match(icon, /^\/assets\/losos-[\w-]+\.svg$/, `the favicon is not the bundled salmon: ${icon}`);
+  assert.equal((await page.request.get(origin + icon)).status(), 200);
+  assert.equal(await page.locator('header').getByText('LosOS', { exact: true }).count(), 0, 'the name is still drawn as text');
+  await page.close();
+});
+
+/* The sidebar's moving parts are Base UI (tooltip positioning, the sheet's
+ * slide and scroll lock, the folds' measured height), chosen because Base
+ * UI styles through CSSOM, which the appliance CSP allows, and never through
+ * an injected <style> element or a style attribute, which it refuses. Under
+ * the real policy, using all of them must add no violation to the ones
+ * already logged at load (Sonner's refused copy of its stylesheet). */
+await check('under the appliance CSP the rail tooltip, the folds and the phone sheet add no violation', async () => {
+  const { origin: strict, close } = await serve({ csp: true });
+  try {
+    for (const viewport of [{ width: 1280, height: 900 }, { width: 375, height: 800 }]) {
+      const page = await browser.newPage({ viewport, locale: 'en-US' });
+      await page.addInitScript(() => {
+        window.__violations = [];
+        document.addEventListener('securitypolicyviolation', (e) => window.__violations.push(e.violatedDirective));
+      });
+      const errors = [];
+      page.on('pageerror', (e) => errors.push(String(e)));
+      await page.route('**/api/**', (route) => json(route, 200, {}));
+      await page.route('**/api/setup/claim', (route) => json(route, 200, { claimed: true }));
+      await page.route('**/api/settings', (route) => json(route, 200, SETTINGS));
+      await page.addInitScript((t) => window.sessionStorage.setItem('losos-token', t), TOKEN);
+      await page.goto(strict + '/mesh', { waitUntil: 'networkidle' });
+      const atLoad = await page.evaluate(() => window.__violations.length);
+      if (viewport.width > 767) {
+        await nav(page).getByRole('button', { name: 'Settings', exact: true }).click();
+        await page.waitForTimeout(300);
+        await page.keyboard.press('Control+b');
+        await page.waitForTimeout(300);
+        await nav(page).getByRole('link', { name: 'Apps', exact: true }).hover();
+        const tip = page.locator('[data-slot="tooltip-content"]').filter({ hasText: /^Apps$/ });
+        await tip.waitFor({ timeout: 2000 });
+        const box = await tip.boundingBox();
+        assert.ok(box.x > 40 && box.y > 60, `the tooltip was not positioned: ${JSON.stringify(box)}`);
+      } else {
+        await page.getByRole('button', { name: 'Expand the sidebar' }).click();
+        await page.getByRole('dialog', { name: 'Sections' }).waitFor();
+        await page.waitForTimeout(350);
+        const box = await page.getByRole('dialog', { name: 'Sections' }).boundingBox();
+        assert.ok(box.x <= 1, `the sheet did not slide in: ${JSON.stringify(box)}`);
+      }
+      const after = await page.evaluate(() => window.__violations);
+      assert.equal(after.length, atLoad, `the sidebar added CSP violations: ${after.slice(atLoad).join(', ')}`);
+      assert.deepEqual(errors, []);
+      await page.close();
+    }
+  } finally {
+    await close();
+  }
 });
 
 for (const path of ['/apps', '/storage', '/mesh', '/settings', '/settings/hardware', '/settings/about', '/settings/reset']) {
@@ -341,23 +511,29 @@ for (const locale of ['sk-SK', 'de-DE']) {
   });
 }
 
-/* The greyed Market row. The Settings screen's own sidebar is the second
- * <nav> on the page ("Sections" is the shell's). */
-const settingsNav = (page, name = 'Settings sections') => page.getByRole('navigation', { name, exact: true });
+/* The greyed Market entry, under Mesh in the one sidebar. */
+const settingsNav = (page, name = 'Sections') => page.getByRole('navigation', { name, exact: true });
 const MARKET_ROW = {
-  en: ['Settings sections', 'Market'],
-  sk: ['Sekcie nastavení', 'Trh'],
-  de: ['Einstellungsbereiche', 'Markt'],
+  en: ['Sections', 'Market', 'Disk sharing'],
+  sk: ['Sekcie', 'Trh', 'Zdieľanie disku'],
+  de: ['Bereiche', 'Markt', 'Festplattenfreigabe'],
 };
 
-for (const [locale, [navName, label]] of Object.entries(MARKET_ROW)) {
-  await whenMarketPlanned(`the Market row is greyed out as soon(TM) and cannot be opened (${locale})`, async () => {
+for (const [locale, [navName, label, sharing]] of Object.entries(MARKET_ROW)) {
+  await whenMarketPlanned(`the Market entry is greyed out as soon(TM) under Mesh, disk sharing with it, and neither opens (${locale})`, async () => {
     const tag = { en: 'en-US', sk: 'sk-SK', de: 'de-DE' }[locale];
-    const { page, errors } = await open({ path: '/settings', stored: true, locale: tag, market: MARKET });
+    // On /mesh the Mesh entry is unfolded, which shows Market under it.
+    const { page, errors } = await open({ path: '/mesh', stored: true, locale: tag, market: MARKET });
     const row = settingsNav(page, navName).getByRole('button', { name: `${label} soon(TM)`, exact: true });
     await row.waitFor();
     assert.equal(await row.isDisabled(), true, 'the row is not disabled');
     assert.equal(await row.getAttribute('aria-disabled'), 'true');
+    const share = settingsNav(page, navName).getByRole('button', { name: sharing, exact: true });
+    await share.waitFor();
+    assert.equal(await share.isDisabled(), true, 'disk sharing is not greyed with the market');
+    // Under Market, not beside it: its row sits further right.
+    const [m, d] = await Promise.all([row.boundingBox(), share.boundingBox()]);
+    assert.ok(d.x > m.x && d.y > m.y, 'disk sharing is not nested under Market');
     // A disabled button is not in the Tab order: Tab from the search field
     // must land on the next open row, never on Market.
     const before = new URL(page.url()).pathname;
@@ -375,7 +551,7 @@ for (const [locale, [navName, label]] of Object.entries(MARKET_ROW)) {
 }
 
 await whenMarketPlanned('the greyed Market row is skipped by the keyboard', async () => {
-  const { page } = await open({ path: '/settings', stored: true });
+  const { page } = await open({ path: '/mesh', stored: true });
   const search = settingsNav(page).getByRole('searchbox');
   await search.fill('m');
   // "m" matches Mesh, Market (keywords) and more; Enter must open the first
@@ -392,7 +568,7 @@ await whenMarketPlanned('the greyed Market row is skipped by the keyboard', asyn
     await page.keyboard.press('Tab');
     const stop = await page.evaluate(() => {
       const el = document.activeElement;
-      return el?.closest('nav[aria-label="Settings sections"]') ? (el.textContent ?? '') : null;
+      return el?.closest('nav[aria-label="Sections"]') ? (el.textContent ?? '') : null;
     });
     if (stop === null) break;
     seen.push(stop);
@@ -402,14 +578,14 @@ await whenMarketPlanned('the greyed Market row is skipped by the keyboard', asyn
   await page.close();
 });
 
-await whenMarketPlanned('a deep link to the planned Market pane lands on the default pane and asks the market nothing', async () => {
+await whenMarketPlanned('a deep link to the planned Market pane lands on the first Settings pane and asks the market nothing', async () => {
   const marketCalls = [];
   const { page, errors } = await open({ path: '/settings/market', stored: true, market: MARKET });
   page.on('request', (request) => {
     if (/\/api\/market/.test(request.url())) marketCalls.push(request.url());
   });
   await page.locator('main').waitFor();
-  await page.getByRole('heading', { name: 'Storage', exact: true, level: 1 }).waitFor();
+  await page.getByRole('heading', { name: 'Network', exact: true, level: 1 }).waitFor();
   assert.ok(!/Nothing here/.test(await body(page)), 'fell through to not-found');
   // The disk-sharing switch moved onto the Market pane, so a planned market
   // means no way to switch sharing on: Storage must not still carry it.
@@ -419,7 +595,7 @@ await whenMarketPlanned('a deep link to the planned Market pane lands on the def
     'the disk-sharing switch is still on the Storage pane',
   );
   await page.reload({ waitUntil: 'networkidle' });
-  await page.getByRole('heading', { name: 'Storage', exact: true, level: 1 }).waitFor();
+  await page.getByRole('heading', { name: 'Network', exact: true, level: 1 }).waitFor();
   assert.deepEqual(marketCalls, [], 'the Market pane was mounted (it asked /api/market)');
   assert.deepEqual(errors, []);
   await page.close();
@@ -541,9 +717,142 @@ await whenMarketOpen('a quantity out of range is tied to its field', async () =>
   await page.close();
 });
 
+/* ── The shadcn conversion ─────────────────────────────────────────────
+ * The admin UI's primitives are shadcn/ui components on the box's palette
+ * (admin-ui/app/components.json). These checks pin the places that changed
+ * shape, by the `data-slot` each component stamps on itself, so a later
+ * "tidy" that drops one back to a bare div fails here and not on a box. */
+
+const RESULTS = {
+  sources: ['nixpkgs', 'flathub'],
+  results: [
+    { id: 'jellyfin', name: 'Jellyfin', version: '10.11.0', summary: 'A media server.', source: 'nixpkgs', homepage: 'https://jellyfin.org' },
+    { id: 'immich', name: 'Immich', version: '2.4.1', summary: 'Photo backup.', source: 'nixpkgs', homepage: 'https://immich.app' },
+    { id: 'vaultwarden', name: 'Vaultwarden', summary: 'A password manager server.', source: 'flathub' },
+  ],
+};
+
+await check('the sign-in prompt is one Field: the eye sits inside the password box and a refusal marks the field invalid', async () => {
+  const { page } = await openGate();
+  const field = page.locator('[role="dialog"] [data-slot="field"], dialog [data-slot="field"]').first();
+  await field.waitFor();
+  const group = field.locator('[data-slot="input-group"]');
+  const input = group.locator('input#owner-password');
+  assert.equal(await input.count(), 1, 'the password input is not inside the Input Group');
+  const eye = group.getByRole('button', { name: /show the password/i });
+  assert.equal(await eye.count(), 1, 'the show/hide button is not an Input Group addon');
+  await eye.click();
+  assert.equal(await input.getAttribute('type'), 'text', 'the eye did not reveal the password');
+  assert.equal(await field.getAttribute('data-invalid'), null, 'the field is invalid before anything was typed');
+  await input.fill('Wrong-horse battery staple 1');
+  await page.getByRole('button', { name: 'Unlock' }).click();
+  await page.waitForTimeout(300);
+  assert.equal(await field.getAttribute('data-invalid'), 'true', 'a refusal did not mark the field invalid');
+  const error = field.locator('[data-slot="field-error"]');
+  assert.equal(await error.getAttribute('role'), 'alert');
+  assert.equal(await input.getAttribute('aria-describedby'), await error.getAttribute('id'), 'the error is not linked to the input');
+  await page.close();
+});
+
+await check('the catalogue lists hits in a Table with the publisher as a column, and shows an Empty state when nothing comes back', async () => {
+  const { page, errors } = await open({ path: '/apps', stored: true });
+  await page.route('**/api/apps/search**', (route) => {
+    const q = new URL(route.request().url()).searchParams.get('q') ?? '';
+    return json(route, 200, q === 'zzz' ? { sources: ['nixpkgs'], results: [] } : RESULTS);
+  });
+  const search = page.getByPlaceholder('Search for an app');
+  assert.equal(await search.locator('xpath=ancestor::*[@data-slot="input-group"]').count(), 1, 'the search is not an Input Group');
+  await search.fill('media');
+  const table = page.locator('[data-slot="table"]');
+  await table.waitFor();
+  const heads = await table.locator('thead th').allInnerTexts();
+  assert.deepEqual(heads.slice(0, 2), ['App', 'Published by']);
+  assert.equal(await table.locator('tbody tr').count(), 3, 'one row per hit');
+  const sources = await table.locator('tbody tr td:nth-child(2)').allInnerTexts();
+  assert.deepEqual(sources, ['nixpkgs', 'nixpkgs', 'flathub'], 'the publisher must be on every row, never abbreviated');
+  assert.equal(await table.getByRole('link', { name: /Look at it/ }).count(), 2, 'a hit without a homepage gets no link');
+  await search.fill('zzz');
+  await page.locator('[data-slot="empty"]').waitFor();
+  assert.match(await body(page), /Nothing came back/i);
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+await check('an empty board and an unknown address are both Empty states', async () => {
+  const { page } = await open({ stored: true });
+  const board = page.locator('[data-slot="empty"]');
+  await board.waitFor();
+  assert.equal(await board.getByRole('button', { name: 'Add a widget' }).count(), 1, 'the invitation lost its button');
+  await page.goto(origin + '/nothing-here', { waitUntil: 'networkidle' });
+  await page.locator('[data-slot="empty"]').waitFor();
+  assert.match(await body(page), /Nothing here/);
+  await page.close();
+});
+
+await check('the gallery offers each widget as an Item with its own action', async () => {
+  const { page } = await open({ stored: true });
+  await page.getByRole('button', { name: 'Add a widget' }).first().click();
+  const dialog = page.getByRole('dialog');
+  await dialog.waitFor();
+  const items = dialog.locator('[data-slot="item"]');
+  const count = await items.count();
+  assert.ok(count >= 3, `expected the catalogue plus the custom card, got ${count}`);
+  for (let i = 0; i < count; i++) {
+    const item = items.nth(i);
+    assert.equal(await item.locator('[data-slot="item-title"]').count(), 1, `item ${i} has no title`);
+    assert.equal(await item.getByRole('button').count(), 1, `item ${i} does not carry exactly one action`);
+  }
+  assert.equal(await items.last().getAttribute('data-variant'), 'dashed', 'the build-your-own card is the dashed one');
+  await page.close();
+});
+
+await check('the theme toggle is a Toggle Group: a radio group the arrow keys move through', async () => {
+  const { page } = await open({ stored: true });
+  const group = page.getByRole('radiogroup', { name: 'Appearance' });
+  assert.equal(await group.getAttribute('data-slot'), 'toggle-group');
+  const auto = group.getByRole('radio', { name: 'Match the browser' });
+  assert.equal(await auto.getAttribute('aria-checked'), 'true');
+  await auto.focus();
+  await page.keyboard.press('ArrowRight');
+  assert.equal(await group.getByRole('radio', { name: 'Light' }).getAttribute('aria-checked'), 'true', 'ArrowRight did not move the choice');
+  assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), 'light');
+  await page.keyboard.press('End');
+  assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), 'dark', 'End did not jump to the last choice');
+  await page.close();
+});
+
+await check('the mesh hours are one Button Group holding both time inputs', async () => {
+  const { page } = await open({ path: '/mesh', stored: true });
+  const group = page.getByRole('group', { name: 'Hours' });
+  await group.waitFor();
+  assert.equal(await group.getAttribute('data-slot'), 'button-group');
+  assert.equal(await group.locator('input[type="time"]').count(), 2);
+  assert.equal(await group.locator('[data-slot="button-group-text"]').innerText(), 'until');
+  await page.close();
+});
+
+await whenMarketOpen('purchases are listed in a Table with a column per fact', async () => {
+  const bought = {
+    ...MARKET,
+    account: {
+      ...MARKET.account,
+      purchases: [
+        { id: 'ord_1', kind: 'storage', amount: 1000, currency: 'eur', quantity: 2, unit: 'GiB-month', status: 'paid', expired: false, expires_at: '2027-01-01T00:00:00Z', volume: 'pvc-1' },
+      ],
+    },
+  };
+  const { page } = await open({ path: '/settings/market', stored: true, market: bought });
+  const table = page.getByTestId('market-purchases');
+  await table.waitFor();
+  assert.deepEqual(await table.locator('thead th').allInnerTexts(), ['Bought', 'Quantity', 'Until', 'Status']);
+  assert.equal(await table.locator('tbody tr').count(), 1);
+  assert.equal(await page.getByLabel('Quantity').locator('xpath=ancestor::*[@data-slot="button-group"]').count(), 1, 'quantity and Order are not one Button Group');
+  await page.close();
+});
+
 await check('a phone-width viewport does not scroll the page sideways', async () => {
   const { page } = await open({ stored: true, viewport: { width: 375, height: 800 } });
-  await nav(page).waitFor();
+  await page.getByRole('button', { name: 'Expand the sidebar' }).waitFor();
   const overflow = await page.evaluate(
     () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
   );

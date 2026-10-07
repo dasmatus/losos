@@ -27,7 +27,14 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "@/components/ui/toast";
 import { useT } from "@/lib/i18n-react";
-import { cn } from "@/lib/utils";
+import {
+  Item,
+  ItemContent,
+  ItemDescription,
+  ItemFooter,
+  ItemMedia,
+  ItemTitle,
+} from "@/components/ui/item";
 import { addBuiltin, addCustom, hasBuiltin, MAX_WIDGETS, type BuiltinId } from "@/lib/widgets";
 import { CATALOGUE } from "./catalogue";
 import type { WidgetSpec } from "./spec";
@@ -95,93 +102,68 @@ export function WidgetGallery({ open, onOpenChange, count }: GalleryProps) {
               const already = hasBuiltin(entry.id);
               const name = t(entry.name);
               return (
-                <li key={entry.id}>
-                  <div
-                    className={cn(
-                      "flex h-full flex-col gap-2 rounded-card border border-line bg-surface p-4",
-                      "transition-colors duration-150 hover:border-accent",
-                    )}
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <span
-                        className={cn(
-                          "flex size-9 shrink-0 items-center justify-center rounded-control",
-                          "bg-accent-wash text-accent",
-                        )}
-                      >
-                        <HugeiconsIcon
-                          icon={entry.icon}
-                          size={21}
-                          strokeWidth={1.5}
-                          color="currentColor"
-                          aria-hidden="true"
-                        />
-                      </span>
-                      <span className="text-[14px] font-semibold">{name}</span>
-                    </div>
-
-                    <p className="flex-1 text-[12.5px] leading-snug text-muted">{t(entry.blurb)}</p>
-
-                    <Button
-                      variant={already ? "ghost" : "secondary"}
-                      size="sm"
-                      className="self-start"
-                      disabled={full}
-                      onClick={() => add(entry.id, name)}
-                    >
+                <li key={entry.id} className="flex">
+                  {/* A shadcn Item: media, title, a sentence, one action. */}
+                  <Item variant="outline" className="h-full content-start">
+                    <ItemMedia variant="icon">
                       <HugeiconsIcon
-                        icon={already ? CheckmarkCircle02Icon : PlusSignIcon}
-                        size={15}
+                        icon={entry.icon}
                         strokeWidth={1.5}
                         color="currentColor"
                         aria-hidden="true"
                       />
-                      {already ? t("widgets.gallery.addAnother") : t("widgets.gallery.add")}
-                    </Button>
-                  </div>
+                    </ItemMedia>
+                    <ItemContent>
+                      <ItemTitle>{name}</ItemTitle>
+                      <ItemDescription>{t(entry.blurb)}</ItemDescription>
+                    </ItemContent>
+                    <ItemFooter className="justify-start">
+                      <Button
+                        variant={already ? "ghost" : "secondary"}
+                        size="sm"
+                        disabled={full}
+                        onClick={() => add(entry.id, name)}
+                      >
+                        <HugeiconsIcon
+                          icon={already ? CheckmarkCircle02Icon : PlusSignIcon}
+                          size={15}
+                          strokeWidth={1.5}
+                          color="currentColor"
+                          aria-hidden="true"
+                        />
+                        {already ? t("widgets.gallery.addAnother") : t("widgets.gallery.add")}
+                      </Button>
+                    </ItemFooter>
+                  </Item>
                 </li>
               );
             })}
 
-            <li>
-              <div
-                className={cn(
-                  "flex h-full flex-col gap-2 rounded-card border border-dashed border-line p-4",
-                  "transition-colors duration-150 hover:border-accent",
-                )}
-              >
-                <div className="flex items-center gap-2.5">
-                  <span
-                    className={cn(
-                      "flex size-9 shrink-0 items-center justify-center rounded-control",
-                      "hatched text-accent",
-                    )}
+            <li className="flex">
+              <Item variant="dashed" className="h-full content-start">
+                <ItemMedia variant="hatched">
+                  <HugeiconsIcon
+                    icon={PuzzleIcon}
+                    strokeWidth={1.5}
+                    color="currentColor"
+                    aria-hidden="true"
+                  />
+                </ItemMedia>
+                <ItemContent>
+                  <ItemTitle>{t("widgets.gallery.custom")}</ItemTitle>
+                  <ItemDescription>{t("widgets.gallery.customBlurb")}</ItemDescription>
+                </ItemContent>
+                <ItemFooter className="justify-start">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={full}
+                    onClick={() => setEditing(true)}
                   >
-                    <HugeiconsIcon
-                      icon={PuzzleIcon}
-                      size={21}
-                      strokeWidth={1.5}
-                      color="currentColor"
-                      aria-hidden="true"
-                    />
-                  </span>
-                  <span className="text-[14px] font-semibold">{t("widgets.gallery.custom")}</span>
-                </div>
-
-                <p className="flex-1 text-[12.5px] leading-snug text-muted">
-                  {t("widgets.gallery.customBlurb")}
-                </p>
-
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="self-start"
-                  disabled={full}
-                  onClick={() => setEditing(true)}
-                >
-                  {t("widgets.gallery.buildOne")}
-                </Button>
-              </div>
+                    {t("widgets.gallery.buildOne")}
+                  </Button>
+                </ItemFooter>
+              </Item>
             </li>
           </ul>
         </DialogBody>

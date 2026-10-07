@@ -15,6 +15,11 @@ export const badgeVariants = cva(
     variants: {
       variant: {
         neutral: "bg-sunk text-muted",
+        /** shadcn's names, so a pasted component resolves: `default` is the
+         *  filled accent, `secondary` the neutral chip, `destructive` is crit. */
+        default: "bg-accent text-surface",
+        secondary: "bg-sunk text-muted",
+        destructive: "bg-crit/12 text-crit",
         outline: "border border-line text-muted",
         /** Runs on this box. */
         local: "bg-accent-wash text-accent",
@@ -34,7 +39,9 @@ export interface BadgeProps
     VariantProps<typeof badgeVariants> {}
 
 export function Badge({ className, variant, ...props }: BadgeProps) {
-  return <span className={cn(badgeVariants({ variant }), className)} {...props} />;
+  return (
+    <span data-slot="badge" className={cn(badgeVariants({ variant }), className)} {...props} />
+  );
 }
 
 export type DotState = "ok" | "warn" | "crit" | "idle" | "pending";

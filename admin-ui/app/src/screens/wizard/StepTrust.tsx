@@ -33,7 +33,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { intlTag } from "@/lib/i18n";
 import { useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
-import { Callout, ReadoutRow, StepText } from "./parts";
+import { ReadoutRow, StepText } from "./parts";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { passkeysPossibleHere } from "./passkey";
 import { TrustCommand } from "./TrustCommand";
 import type { SetupQuery } from "./useSetupState";
@@ -48,38 +49,38 @@ export function StepTrust({ query }: { query: SetupQuery }) {
       {query.kind === "ready" && <ReadyTrust query={query} />}
 
       {query.kind === "blocked" && (
-        <Callout
-          tone="warn"
-          icon={Alert02Icon}
-          title={t("wizard.trust.blocked.title")}
-        >
-          <p className="mt-1">{t("wizard.trust.blocked.body")}</p>
-        </Callout>
+        <Alert variant="warn">
+          <HugeiconsIcon icon={Alert02Icon} size={19} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+          <AlertTitle>{t("wizard.trust.blocked.title")}</AlertTitle>
+          <AlertDescription>
+            <p>{t("wizard.trust.blocked.body")}</p>
+          </AlertDescription>
+        </Alert>
       )}
 
       {query.kind === "absent" && (
-        <Callout
-          tone="info"
-          icon={InformationCircleIcon}
-          title={t("wizard.trust.nothing.title")}
-        >
-          <p className="mt-1">
-            {passkeysPossibleHere()
-              ? t("wizard.trust.absent")
-              : t("wizard.trust.absentNoPasskey")}
-          </p>
-        </Callout>
+        <Alert variant="default">
+          <HugeiconsIcon icon={InformationCircleIcon} size={19} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+          <AlertTitle>{t("wizard.trust.nothing.title")}</AlertTitle>
+          <AlertDescription>
+            <p>
+              {passkeysPossibleHere()
+                ? t("wizard.trust.absent")
+                : t("wizard.trust.absentNoPasskey")}
+            </p>
+          </AlertDescription>
+        </Alert>
       )}
 
       {query.kind === "failed" && (
-        <Callout
-          tone="crit"
-          icon={Alert02Icon}
-          title={t("wizard.trust.failed.title")}
-        >
-          <p className="mt-1 break-words">{query.message}</p>
-          <p className="mt-1">{t("wizard.trust.failed.body")}</p>
-        </Callout>
+        <Alert variant="crit">
+          <HugeiconsIcon icon={Alert02Icon} size={19} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+          <AlertTitle>{t("wizard.trust.failed.title")}</AlertTitle>
+          <AlertDescription>
+            <p className="break-words">{query.message}</p>
+            <p>{t("wizard.trust.failed.body")}</p>
+          </AlertDescription>
+        </Alert>
       )}
     </div>
   );
@@ -107,17 +108,17 @@ function ReadyTrust({
 
   if (!tls || certificate === null) {
     return (
-      <Callout
-        tone="info"
-        icon={InformationCircleIcon}
-        title={t("wizard.trust.nothing.title")}
-      >
-        <p className="mt-1">
-          {passkeysPossibleHere()
-            ? t("wizard.trust.noTls", { name: query.state.hostName })
-            : t("wizard.trust.noTlsNoPasskey", { name: query.state.hostName })}
-        </p>
-      </Callout>
+      <Alert variant="default">
+        <HugeiconsIcon icon={InformationCircleIcon} size={19} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+        <AlertTitle>{t("wizard.trust.nothing.title")}</AlertTitle>
+        <AlertDescription>
+          <p>
+            {passkeysPossibleHere()
+              ? t("wizard.trust.noTls", { name: query.state.hostName })
+              : t("wizard.trust.noTlsNoPasskey", { name: query.state.hostName })}
+          </p>
+        </AlertDescription>
+      </Alert>
     );
   }
 
@@ -217,23 +218,23 @@ function ReadyTrust({
       </div>
 
       {!secure && (
-        <Callout
-          tone="warn"
-          icon={SecurityLockIcon}
-          title={t("wizard.trust.unencrypted.title")}
-        >
-          <p className="mt-1">{t("wizard.trust.unencrypted.body", { fqdn })}</p>
-        </Callout>
+        <Alert variant="warn">
+          <HugeiconsIcon icon={SecurityLockIcon} size={19} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+          <AlertTitle>{t("wizard.trust.unencrypted.title")}</AlertTitle>
+          <AlertDescription>
+            <p>{t("wizard.trust.unencrypted.body", { fqdn })}</p>
+          </AlertDescription>
+        </Alert>
       )}
 
       {secure && !onTheRightName && (
-        <Callout
-          tone="info"
-          icon={GlobeIcon}
-          title={t("wizard.trust.otherName.title")}
-        >
-          <p className="mt-1">{t("wizard.trust.otherName.body", { fqdn })}</p>
-        </Callout>
+        <Alert variant="default">
+          <HugeiconsIcon icon={GlobeIcon} size={19} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+          <AlertTitle>{t("wizard.trust.otherName.title")}</AlertTitle>
+          <AlertDescription>
+            <p>{t("wizard.trust.otherName.body", { fqdn })}</p>
+          </AlertDescription>
+        </Alert>
       )}
     </div>
   );

@@ -1,7 +1,23 @@
 import * as React from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Alert01Icon, LinkSquare02Icon, Search01Icon } from "@hugeicons/core-free-icons";
-import { Select } from "@/components/ui/input";
+import {
+  Alert01Icon,
+  InformationCircleIcon,
+  LinkSquare02Icon,
+  Search01Icon,
+} from "@hugeicons/core-free-icons";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia } from "@/components/ui/empty";
+import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
+import { NativeSelect } from "@/components/ui/native-select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { Spinner } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 import { t as translate, type MessageKey } from "@/lib/i18n";
@@ -85,16 +101,20 @@ export function AppsPane({ form }: { form: SettingsForm }) {
             <label htmlFor={searchId} className="sr-only">
               {t("panes.apps.searchLabel")}
             </label>
-            <div className="relative">
-              <HugeiconsIcon
-                icon={Search01Icon}
-                size={16}
-                strokeWidth={1.5}
-                color="currentColor"
-                className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-faint"
-                aria-hidden="true"
-              />
-              <input
+            {/* A shadcn Input Group: the magnifier is an addon inside the
+                field's border, not an icon floated over a plain input. */}
+            <InputGroup>
+              <InputGroupAddon>
+                <HugeiconsIcon
+                  icon={Search01Icon}
+                  size={16}
+                  strokeWidth={1.5}
+                  color="currentColor"
+                  className="text-faint"
+                  aria-hidden="true"
+                />
+              </InputGroupAddon>
+              <InputGroupInput
                 id={searchId}
                 type="search"
                 value={catalogue.query}
@@ -103,17 +123,9 @@ export function AppsPane({ form }: { form: SettingsForm }) {
                 spellCheck={false}
                 disabled={disabled || catalogue.state.kind === "unsupported"}
                 onChange={(event) => catalogue.setQuery(event.target.value)}
-                className={cn(
-                  "h-9 w-full rounded-control border border-line bg-surface pr-3 pl-8",
-                  "text-sm text-ink placeholder:text-faint",
-                  "transition-[border-color,box-shadow] duration-150",
-                  "focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/35",
-                  "focus-visible:outline-none",
-                  "disabled:cursor-not-allowed disabled:bg-sunk disabled:text-faint",
-                  "[&::-webkit-search-cancel-button]:hidden",
-                )}
+                className="[&::-webkit-search-cancel-button]:hidden"
               />
-            </div>
+            </InputGroup>
           </StackRow>
 
           <CatalogueBody state={catalogue.state} />
@@ -148,7 +160,7 @@ function AppModeRow({ id, title, detail, value, disabled, onChange, last }: AppM
           two badge variants and they mean "on this box" versus "on the mesh";
           both choices here run on this box, so borrowing that pair would
           teach the reader something untrue about the texture. */}
-      <Select
+      <NativeSelect
         id={id}
         value={value}
         disabled={disabled}
@@ -159,7 +171,7 @@ function AppModeRow({ id, title, detail, value, disabled, onChange, last }: AppM
       >
         <option value="container">{t(MODE_LABEL.container)}</option>
         <option value="native">{t(MODE_LABEL.native)}</option>
-      </Select>
+      </NativeSelect>
     </Row>
   );
 }
@@ -185,14 +197,20 @@ function CatalogueBody({ state }: { state: CatalogueState }) {
     case "unsupported":
       return (
         <StackRow last>
-          <Note>{t("panes.apps.unsupported")}</Note>
+          <Alert>
+            <HugeiconsIcon icon={InformationCircleIcon} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+            <AlertDescription>{t("panes.apps.unsupported")}</AlertDescription>
+          </Alert>
         </StackRow>
       );
 
     case "failed":
       return (
         <StackRow last>
-          <Note tone="crit">{t("panes.apps.failed", { message: state.message })}</Note>
+          <Alert variant="crit">
+            <HugeiconsIcon icon={Alert01Icon} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+            <AlertDescription>{t("panes.apps.failed", { message: state.message })}</AlertDescription>
+          </Alert>
         </StackRow>
       );
 
@@ -201,16 +219,37 @@ function CatalogueBody({ state }: { state: CatalogueState }) {
       if (apps.length === 0) {
         return (
           <StackRow last>
-            <Note>{t("panes.apps.empty")}</Note>
+            <Empty className="border-0 p-4 md:p-6">
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <HugeiconsIcon icon={Search01Icon} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+                </EmptyMedia>
+                <EmptyDescription>{t("panes.apps.empty")}</EmptyDescription>
+              </EmptyHeader>
+            </Empty>
           </StackRow>
         );
       }
+      /* A shadcn Table: every hit has the same three facts, and the one that
+         matters most — who published it — gets a column of its own, never
+         abbreviated, rather than a footnote under the name. */
       return (
-        <>
-          {apps.map((app, index) => (
-            <ResultRow key={`${app.source}:${app.id}`} app={app} last={index === apps.length - 1} />
-          ))}
-        </>
+        <Table className="animate-fade-in">
+          <TableHeader>
+            <TableRow className="hover:bg-transparent">
+              <TableHead>{t("panes.apps.col.app")}</TableHead>
+              <TableHead>{t("panes.apps.col.source")}</TableHead>
+              <TableHead>
+                <span className="sr-only">{t("panes.apps.lookAt")}</span>
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {apps.map((app) => (
+              <ResultRow key={`${app.source}:${app.id}`} app={app} />
+            ))}
+          </TableBody>
+        </Table>
       );
     }
 
@@ -221,11 +260,11 @@ function CatalogueBody({ state }: { state: CatalogueState }) {
   }
 }
 
-function ResultRow({ app, last }: { app: CatalogueApp; last: boolean }) {
+function ResultRow({ app }: { app: CatalogueApp }) {
   const t = useT();
   return (
-    <Row last={last} className="animate-fade-in items-start">
-      <div className="min-w-0 flex-1">
+    <TableRow>
+      <TableCell className="whitespace-normal align-top">
         <p className="flex flex-wrap items-baseline gap-x-2 text-sm leading-snug text-ink">
           {app.name}
           {app.version !== null && <span className="numeric text-[12px] text-faint">{app.version}</span>}
@@ -233,54 +272,33 @@ function ResultRow({ app, last }: { app: CatalogueApp; last: boolean }) {
         {app.summary !== null && (
           <p className="mt-0.5 text-[12.5px] leading-snug text-muted">{app.summary}</p>
         )}
-        {/* The source is on every row and never abbreviated. It is the only
-            thing here that says who wrote this and who you would be trusting. */}
-        <p className="mt-1 text-[12px] text-faint">{t("panes.apps.from", { source: app.source })}</p>
-      </div>
-      {app.homepage !== null && (
-        <a
-          href={app.homepage}
-          target="_blank"
-          rel="noreferrer noopener external"
-          className={cn(
-            "mt-0.5 inline-flex shrink-0 items-center gap-1.5 rounded-control px-2 py-1",
-            "text-[12.5px] text-accent transition-colors duration-150 hover:bg-accent-wash",
-          )}
-        >
-          {t("panes.apps.lookAt")}
-          <HugeiconsIcon
-            icon={LinkSquare02Icon}
-            size={13}
-            strokeWidth={1.5}
-            color="currentColor"
-            aria-hidden="true"
-          />
-        </a>
-      )}
-    </Row>
-  );
-}
-
-function Note({ children, tone }: { children: React.ReactNode; tone?: "crit" }) {
-  return (
-    <p
-      className={cn(
-        "flex items-start gap-2 text-[12.5px] leading-snug",
-        tone === "crit" ? "text-crit" : "text-muted",
-      )}
-    >
-      {tone === "crit" && (
-        <HugeiconsIcon
-          icon={Alert01Icon}
-          size={15}
-          strokeWidth={1.5}
-          color="currentColor"
-          className="mt-0.5 shrink-0"
-          aria-hidden="true"
-        />
-      )}
-      {children}
-    </p>
+      </TableCell>
+      {/* The source is on every row and never abbreviated. It is the only
+          thing here that says who wrote this and who you would be trusting. */}
+      <TableCell className="align-top text-[12.5px] text-muted">{app.source}</TableCell>
+      <TableCell className="text-right align-top">
+        {app.homepage !== null && (
+          <a
+            href={app.homepage}
+            target="_blank"
+            rel="noreferrer noopener external"
+            className={cn(
+              "inline-flex shrink-0 items-center gap-1.5 rounded-control px-2 py-1",
+              "text-[12.5px] text-accent transition-colors duration-150 hover:bg-accent-wash",
+            )}
+          >
+            {t("panes.apps.lookAt")}
+            <HugeiconsIcon
+              icon={LinkSquare02Icon}
+              size={13}
+              strokeWidth={1.5}
+              color="currentColor"
+              aria-hidden="true"
+            />
+          </a>
+        )}
+      </TableCell>
+    </TableRow>
   );
 }
 
