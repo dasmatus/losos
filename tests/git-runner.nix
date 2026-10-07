@@ -7,7 +7,8 @@
 #   * the secret is generated on first start — 40 hex characters, 0600 root —
 #     and nothing else writes it;
 #   * `forgejo-cli actions register` wrote exactly one runner row, whose UUID
-#     is the one the runner derives from the same secret;
+#     is the one the runner derives from the same secret (its first sixteen
+#     characters as bytes, a detail the first run of this test corrected);
 #   * the daemon actually connects: Forgejo stamps `last_online` on the row
 #     the first time the runner polls it, and the row carries the `losos`
 #     label the daemon declared. A config that only *looked* right (wrong
@@ -74,7 +75,9 @@ pkgs.testers.nixosTest {
         assert re.fullmatch(r"[0-9a-f]{40}", secret), secret
         assert box.succeed(f"stat -c %a:%U {SECRET}").strip() == "600:root"
 
-    uuid = f"{secret[0:8]}-{secret[8:12]}-{secret[12:16]}-{secret[16:20]}-{secret[20:32]}"
+    # forgejo-cli's derivation: the secret's first 16 characters, as bytes.
+    h = secret[0:16].encode().hex()
+    uuid = f"{h[0:8]}-{h[8:12]}-{h[12:16]}-{h[16:20]}-{h[20:32]}"
 
     with subtest("Forgejo knows exactly one runner, by the secret's UUID"):
         rows = sql("select uuid || ' ' || name from action_runner").splitlines()
