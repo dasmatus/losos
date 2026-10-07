@@ -89,6 +89,8 @@ pub struct TenantSpec {
     pub token: Option<String>,
     pub cluster: bool,
     pub market: bool,
+    /// `losos.edge.tenants.<id>.relayZone` — this tenant is a spoke.
+    pub relay_zone: Option<String>,
 }
 
 impl TenantSpec {
@@ -99,7 +101,15 @@ impl TenantSpec {
             token: Some(token.to_string()),
             cluster: false,
             market: false,
+            relay_zone: None,
         }
+    }
+
+    /// `losos.edge.tenants.<id>.relayZone = zone` — may relay boxes under it.
+    #[must_use]
+    pub fn with_relay_zone(mut self, zone: &str) -> Self {
+        self.relay_zone = Some(zone.to_string());
+        self
     }
 
     /// A tenant whose token file is never created.
@@ -110,6 +120,7 @@ impl TenantSpec {
             token: None,
             cluster: false,
             market: false,
+            relay_zone: None,
         }
     }
 
@@ -164,6 +175,9 @@ impl MeshFixture {
 pub const STRIPE_KEY: &str = "sk_test_0123456789abcdef";
 pub const WEBHOOK_SECRET: &str = "whsec_0123456789abcdef";
 pub const RETURN_URL: &str = "https://losos.example/market";
+
+/// A last-minute change to the options, for flags with no fixture of their own.
+pub type Tweak = Box<dyn FnOnce(&mut ServeOpts, &TempDir) + Send>;
 
 /// A running registrar: its temp state directory, its base URL, and the
 /// handles needed to stop it.
@@ -235,6 +249,7 @@ impl Edge {
             Some(stripe_api.to_string()),
             enrolled,
             None,
+            None,
         )
         .await
     }
@@ -258,6 +273,7 @@ impl Edge {
             Some(stripe_api.to_string()),
             enrolled,
             Some(market_state),
+            None,
         )
         .await
     }
@@ -278,9 +294,41 @@ impl Edge {
         noise_public_key: Option<&str>,
         stripe_api: Option<String>,
     ) -> Self {
-        Self::start_inner_seeded(tag, tenants, mesh, noise_public_key, stripe_api, &[], None).await
+        Self::start_inner_seeded(
+            tag,
+            tenants,
+            mesh,
+            noise_public_key,
+            stripe_api,
+            &[],
+            None,
+            None,
+        )
+        .await
     }
 
+    /// As [`Edge::start`], with `tweak` applied to the options just before
+    /// `serve` starts: how the federation tests turn on the uplink and open
+    /// enrolment, whose flags have no fixture of their own.
+    pub async fn start_custom(
+        tag: &str,
+        tenants: &[TenantSpec],
+        tweak: impl FnOnce(&mut ServeOpts, &TempDir) + Send + 'static,
+    ) -> Self {
+        Self::start_inner_seeded(
+            tag,
+            tenants,
+            MeshFixture::default(),
+            None,
+            None,
+            &[],
+            None,
+            Some(Box::new(tweak)),
+        )
+        .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
     async fn start_inner_seeded(
         tag: &str,
         tenants: &[TenantSpec],
@@ -289,6 +337,7 @@ impl Edge {
         stripe_api: Option<String>,
         enrolled: &[(&str, bool)],
         market_state: Option<&serde_json::Value>,
+        tweak: Option<Tweak>,
     ) -> Self {
         let dir = TempDir::new(tag);
         if let Some(market_state) = market_state {
@@ -374,7 +423,7 @@ impl Edge {
             })
         });
 
-        let opts = ServeOpts {
+        let mut opts = ServeOpts {
             listen: "127.0.0.1:0".to_string(),
             registry_path: dir.path_str("registry.json"),
             traefik_dir: dir.path_str("traefik"),
@@ -403,7 +452,12 @@ impl Edge {
             kube_ca_file: None,
             compute_windows_file: dir.path_str("compute-windows.json"),
             market,
+            enrol_dir: None,
+            uplink: None,
         };
+        if let Some(tweak) = tweak {
+            tweak(&mut opts, &dir);
+        }
 
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
@@ -591,6 +645,7 @@ fn write_tenants(dir: &TempDir, tenants: &[TenantSpec]) {
                 "token_file": token_path.to_string_lossy(),
                 "cluster": spec.cluster,
                 "market": spec.market,
+                "relay_zone": spec.relay_zone,
             }),
         );
     }

@@ -27,6 +27,9 @@ pub enum Action {
     Bind,
     LoadRegistry,
     Market,
+    Relay,
+    Uplink,
+    Enrol,
 }
 
 impl Action {
@@ -49,6 +52,9 @@ impl Action {
             Action::Bind => "losos::bind",
             Action::LoadRegistry => "losos::registry",
             Action::Market => "losos::market",
+            Action::Relay => "losos::relay",
+            Action::Uplink => "losos::uplink",
+            Action::Enrol => "losos::enrol",
         }
     }
 }
@@ -69,6 +75,9 @@ impl Display for Action {
             Action::Bind => f.write_str("[bind]"),
             Action::LoadRegistry => f.write_str("[load registry]"),
             Action::Market => f.write_str("[market]"),
+            Action::Relay => f.write_str("[relay]"),
+            Action::Uplink => f.write_str("[uplink]"),
+            Action::Enrol => f.write_str("[enrol]"),
         }
     }
 }

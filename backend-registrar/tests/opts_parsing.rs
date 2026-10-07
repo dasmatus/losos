@@ -466,3 +466,40 @@ fn the_stripe_gate_subcommand_parses_and_validates() {
     assert!(parse(args(&["--currency", "EUR"])).is_err());
     assert!(parse(args(&[])).is_err(), "the key file is required");
 }
+
+/// Federation flags: absent, an edge neither enrols nor relays — the shape
+/// every internet-facing edge keeps; present, the uplink reads its hub from
+/// a file and the client config path and cadence have defaults.
+#[test]
+fn federation_flags_are_off_unless_given() {
+    let opts = serve_opts(&[]);
+    assert!(opts.enrol_dir.is_none());
+    assert!(opts.uplink.is_none());
+
+    let opts = serve_opts(&[
+        "--enrol-dir",
+        "/var/lib/losos-registrar/enrolled",
+        "--uplink-file",
+        "/var/lib/losos-edge/uplink.json",
+    ]);
+    assert_eq!(
+        opts.enrol_dir.as_deref(),
+        Some("/var/lib/losos-registrar/enrolled")
+    );
+    let uplink = opts.uplink.expect("uplink on");
+    assert_eq!(uplink.file, "/var/lib/losos-edge/uplink.json");
+    assert_eq!(uplink.rathole_config, "/etc/rathole/uplink.toml");
+    assert_eq!(uplink.interval, std::time::Duration::from_secs(30));
+
+    let opts = serve_opts(&[
+        "--uplink-file",
+        "u.json",
+        "--uplink-rathole-config",
+        "/tmp/up.toml",
+        "--uplink-interval",
+        "5s",
+    ]);
+    let uplink = opts.uplink.expect("uplink on");
+    assert_eq!(uplink.rathole_config, "/tmp/up.toml");
+    assert_eq!(uplink.interval, std::time::Duration::from_secs(5));
+}
