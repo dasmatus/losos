@@ -26,7 +26,8 @@ import { Spinner } from "@/components/ui/progress";
 import { toast } from "@/components/ui/toast";
 import { Rich, useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
-import { Callout, StepText } from "./parts";
+import { StepText } from "./parts";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 /** Where the front vhost proxies the files app. */
 const FILES_PATH = "/nextcloud";
@@ -166,13 +167,13 @@ export function StepFirstSignIn({
   return (
     <div className="relative flex flex-col gap-4">
       {signedIn ? (
-        <Callout
-          tone="ok"
-          icon={CheckmarkCircle02Icon}
-          title={t("wizard.first.signedIn.title")}
-        >
-          <p className="mt-1">{t("wizard.first.signedIn.body")}</p>
-        </Callout>
+        <Alert variant="ok">
+          <HugeiconsIcon icon={CheckmarkCircle02Icon} size={19} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+          <AlertTitle>{t("wizard.first.signedIn.title")}</AlertTitle>
+          <AlertDescription>
+            <p>{t("wizard.first.signedIn.body")}</p>
+          </AlertDescription>
+        </Alert>
       ) : (
         <StepText>
           {account === null ? (
@@ -189,13 +190,13 @@ export function StepFirstSignIn({
       )}
 
       {!watchable && !signedIn && (
-        <Callout
-          tone="info"
-          icon={InformationCircleIcon}
-          title={t("wizard.first.lost.title")}
-        >
-          <p className="mt-1">{t("wizard.first.lost.body")}</p>
-        </Callout>
+        <Alert variant="default">
+          <HugeiconsIcon icon={InformationCircleIcon} size={19} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+          <AlertTitle>{t("wizard.first.lost.title")}</AlertTitle>
+          <AlertDescription>
+            <p>{t("wizard.first.lost.body")}</p>
+          </AlertDescription>
+        </Alert>
       )}
 
       {watchable && !showFrame && (

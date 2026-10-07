@@ -1,6 +1,25 @@
 import * as React from "react";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { ShoppingBag02Icon } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/ui/button";
-import { FieldError, Input, Select } from "@/components/ui/input";
+import { ButtonGroup } from "@/components/ui/button-group";
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+} from "@/components/ui/empty";
+import { FieldError, Input } from "@/components/ui/input";
+import { NativeSelect } from "@/components/ui/native-select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { Spinner } from "@/components/ui/progress";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "@/components/ui/toast";
@@ -141,9 +160,23 @@ export function MarketPane({ form }: { form: SettingsForm }) {
         </Group>
         {account.purchases.length > 0 && (
           <Group className="mt-3">
-            {account.purchases.map((order, i) => (
-              <PurchaseRow key={order.id} order={order} last={i === account.purchases.length - 1} />
-            ))}
+            {/* A shadcn Table: every order has the same four facts, and the
+                amount and the date want a column each so they line up. */}
+            <Table data-testid="market-purchases">
+              <TableHeader>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead>{t("panes.market.col.item")}</TableHead>
+                  <TableHead>{t("panes.market.col.quantity")}</TableHead>
+                  <TableHead>{t("panes.market.col.until")}</TableHead>
+                  <TableHead className="text-right">{t("panes.market.col.status")}</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {account.purchases.map((order) => (
+                  <PurchaseRow key={order.id} order={order} />
+                ))}
+              </TableBody>
+            </Table>
           </Group>
         )}
       </PaneSection>
@@ -152,12 +185,19 @@ export function MarketPane({ form }: { form: SettingsForm }) {
         <GroupTitle>{t("panes.market.buy")}</GroupTitle>
         <Group>
           {listings.length === 0 ? (
-            <Row last>
-              <RowText title={t("panes.market.shelfEmpty")} />
-              <Button size="sm" variant="secondary" disabled={disabled} onClick={market.refresh}>
-                {t("panes.market.refresh")}
-              </Button>
-            </Row>
+            <Empty className="border-0 p-5 md:p-8">
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <HugeiconsIcon icon={ShoppingBag02Icon} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+                </EmptyMedia>
+                <EmptyDescription>{t("panes.market.shelfEmpty")}</EmptyDescription>
+              </EmptyHeader>
+              <EmptyContent>
+                <Button size="sm" variant="secondary" disabled={disabled} onClick={market.refresh}>
+                  {t("panes.market.refresh")}
+                </Button>
+              </EmptyContent>
+            </Empty>
           ) : (
             listings.map((listing, i) => (
               <ShelfRow
@@ -210,27 +250,30 @@ function SharingSection({ form }: { form: SettingsForm }) {
   );
 }
 
-function PurchaseRow({ order, last }: { order: MarketOrder; last: boolean }) {
+function PurchaseRow({ order }: { order: MarketOrder }) {
   const t = useT();
   const status =
     order.status === "paid" && order.expired
       ? t("panes.market.status.lapsed")
       : t(`panes.market.status.${order.status}` as MessageKey);
-  const bits = [
-    `${order.quantity} ${unitName(order.unit)}`,
+  const until =
     order.status === "paid" && order.expires_at !== null && !order.expired
-      ? t("panes.market.until", { date: formatDay(order.expires_at) })
-      : null,
-    order.volume !== null ? t("panes.market.volume", { volume: order.volume }) : null,
-  ].filter((x): x is string => x !== null);
+      ? formatDay(order.expires_at)
+      : "–";
   return (
-    <Row last={last}>
-      <RowText
-        title={`${t(KIND_LABEL[order.kind])} · ${formatMoney(order.amount, order.currency)}`}
-        detail={bits.join(" · ")}
-      />
-      <span className="text-[13px] text-muted">{status}</span>
-    </Row>
+    <TableRow>
+      <TableCell>
+        <p>{`${t(KIND_LABEL[order.kind])} · ${formatMoney(order.amount, order.currency)}`}</p>
+        {order.volume !== null && (
+          <p className="numeric mt-0.5 text-[12px] text-faint">
+            {t("panes.market.volume", { volume: order.volume })}
+          </p>
+        )}
+      </TableCell>
+      <TableCell className="numeric">{`${order.quantity} ${unitName(order.unit)}`}</TableCell>
+      <TableCell className="numeric text-muted">{until}</TableCell>
+      <TableCell className="text-right text-muted">{status}</TableCell>
+    </TableRow>
   );
 }
 
@@ -291,24 +334,26 @@ function ShelfRow({
           title={`${t(KIND_LABEL[listing.kind])} · ${formatMoney(listing.unit_price, listing.currency)} / ${unitName(listing.unit)}`}
           detail={t("panes.market.available", { count: listing.available })}
         />
-        <div className="flex items-center gap-2">
+        {/* A shadcn Button Group: the quantity and the Order button are one
+            control, so the number reads as the button's argument. */}
+        <ButtonGroup>
           <label htmlFor={qtyId} className="sr-only">
             {t("panes.market.quantity")}
           </label>
           <Input
             id={qtyId}
             inputMode="numeric"
-            className="w-20"
+            className="numeric w-20"
             value={quantity}
             disabled={disabled}
             aria-invalid={quantityProblem !== null}
             aria-describedby={quantityProblem === null ? undefined : qtyErrorId}
             onChange={(e) => setQuantity(e.target.value)}
           />
-          <Button size="sm" disabled={disabled} onClick={() => void buy()}>
+          <Button disabled={disabled} onClick={() => void buy()}>
             {t("panes.market.buyButton")}
           </Button>
-        </div>
+        </ButtonGroup>
       </div>
       <FieldError id={qtyErrorId}>{quantityProblem}</FieldError>
     </StackRow>
@@ -407,7 +452,7 @@ function SellSection({ market, disabled }: { market: MarketData; disabled: boole
                   <label htmlFor={kindId} className="sr-only">
                     {t("panes.market.kindLabel")}
                   </label>
-                  <Select
+                  <NativeSelect
                     id={kindId}
                     value={effectiveKind}
                     disabled={disabled}
@@ -419,7 +464,7 @@ function SellSection({ market, disabled }: { market: MarketData; disabled: boole
                     <option value="compute" disabled={!canCompute}>
                       {t("panes.market.kind.compute")}
                     </option>
-                  </Select>
+                  </NativeSelect>
                 </div>
                 <div>
                   <label htmlFor={priceId} className="sr-only">

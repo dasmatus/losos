@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 export function Skeleton({ className, ...props }: React.ComponentPropsWithoutRef<"div">) {
   return (
     <div
+      data-slot="skeleton"
       aria-hidden="true"
       className={cn("animate-breathe rounded-control bg-sunk", className)}
       {...props}

@@ -1,11 +1,10 @@
 import * as React from "react";
 import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { ViewIcon, ViewOffSlashIcon } from "@hugeicons/core-free-icons";
+import { Compass01Icon, ViewIcon, ViewOffSlashIcon } from "@hugeicons/core-free-icons";
 import { AppSidebar } from "@/components/app-sidebar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogBody,
@@ -14,9 +13,22 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { FieldError, Input, MonoInput } from "@/components/ui/input";
-import { Label, LabelHint } from "@/components/ui/label";
-import { Spinner } from "@/components/ui/progress";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
+import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
+import { MonoInput } from "@/components/ui/input";
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupInput,
+} from "@/components/ui/input-group";
+import { Spinner } from "@/components/ui/spinner";
 import { LanguagePicker } from "@/components/ui/language-picker";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
@@ -264,12 +276,15 @@ function SettingsRoute({ pane }: { pane?: SettingsPaneId }) {
 function NotFound() {
   const t = useT();
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{t("shell.notFound.title")}</CardTitle>
-        <CardDescription>{t("shell.notFound.body")}</CardDescription>
-      </CardHeader>
-    </Card>
+    <Empty>
+      <EmptyHeader>
+        <EmptyMedia variant="icon">
+          <HugeiconsIcon icon={Compass01Icon} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+        </EmptyMedia>
+        <EmptyTitle>{t("shell.notFound.title")}</EmptyTitle>
+        <EmptyDescription>{t("shell.notFound.body")}</EmptyDescription>
+      </EmptyHeader>
+    </Empty>
   );
 }
 
@@ -355,16 +370,56 @@ function SignInDialog({ open }: { open: boolean }) {
           </DialogDescription>
         </DialogHeader>
         <DialogBody className="flex flex-col gap-2">
-          {mode === "password" ? (
-            <>
-              <Label htmlFor="owner-password">{t("shell.signIn.passwordLabel")}</Label>
-              <div className="flex items-center gap-2">
-                <Input
-                  id="owner-password"
-                  name="owner-password"
-                  type={visible ? "text" : "password"}
-                  autoComplete="current-password"
+          {/* One shadcn Field: label, control, error and hint share its
+              invalid/disabled state. The show/hide eye sits inside the
+              password box as an Input Group addon rather than beside it. */}
+          <Field invalid={problem !== null} disabled={busy}>
+            {mode === "password" ? (
+              <>
+                <FieldLabel htmlFor="owner-password">{t("shell.signIn.passwordLabel")}</FieldLabel>
+                <InputGroup>
+                  <InputGroupInput
+                    id="owner-password"
+                    name="owner-password"
+                    type={visible ? "text" : "password"}
+                    autoComplete="current-password"
+                    autoFocus
+                    value={value}
+                    disabled={busy}
+                    aria-invalid={problem !== null}
+                    aria-describedby={problem !== null ? errorId : undefined}
+                    onChange={(event) => {
+                      setValue(event.target.value);
+                      setProblem(null);
+                    }}
+                  />
+                  <InputGroupAddon align="inline-end">
+                    <InputGroupButton
+                      size="icon-xs"
+                      aria-pressed={visible}
+                      aria-label={visible ? t("shell.signIn.hide") : t("shell.signIn.show")}
+                      onClick={() => setVisible((shown) => !shown)}
+                    >
+                      <HugeiconsIcon
+                        icon={visible ? ViewOffSlashIcon : ViewIcon}
+                        size={16}
+                        strokeWidth={1.5}
+                        color="currentColor"
+                        aria-hidden="true"
+                      />
+                    </InputGroupButton>
+                  </InputGroupAddon>
+                </InputGroup>
+              </>
+            ) : (
+              <>
+                <FieldLabel htmlFor="admin-key">{t("shell.signIn.label")}</FieldLabel>
+                <MonoInput
+                  id="admin-key"
+                  name="admin-key"
+                  autoComplete="off"
                   autoFocus
+                  pattern={TOKEN_PATTERN.source}
                   value={value}
                   disabled={busy}
                   aria-invalid={problem !== null}
@@ -374,45 +429,11 @@ function SignInDialog({ open }: { open: boolean }) {
                     setProblem(null);
                   }}
                 />
-                <Button
-                  variant="secondary"
-                  size="icon"
-                  aria-pressed={visible}
-                  aria-label={visible ? t("shell.signIn.hide") : t("shell.signIn.show")}
-                  onClick={() => setVisible((shown) => !shown)}
-                >
-                  <HugeiconsIcon
-                    icon={visible ? ViewOffSlashIcon : ViewIcon}
-                    size={18}
-                    strokeWidth={1.5}
-                    color="currentColor"
-                    aria-hidden="true"
-                  />
-                </Button>
-              </div>
-            </>
-          ) : (
-            <>
-              <Label htmlFor="admin-key">{t("shell.signIn.label")}</Label>
-              <MonoInput
-                id="admin-key"
-                name="admin-key"
-                autoComplete="off"
-                autoFocus
-                pattern={TOKEN_PATTERN.source}
-                value={value}
-                disabled={busy}
-                aria-invalid={problem !== null}
-                aria-describedby={problem !== null ? errorId : undefined}
-                onChange={(event) => {
-                  setValue(event.target.value);
-                  setProblem(null);
-                }}
-              />
-            </>
-          )}
-          <FieldError id={errorId}>{problem}</FieldError>
-          <LabelHint>{t("shell.signIn.remembered")}</LabelHint>
+              </>
+            )}
+            <FieldError id={errorId}>{problem}</FieldError>
+            <FieldDescription>{t("shell.signIn.remembered")}</FieldDescription>
+          </Field>
           <button
             type="button"
             className="mt-1 self-start text-[13px] text-accent underline-offset-2 hover:underline"

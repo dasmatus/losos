@@ -15,6 +15,8 @@ export function Separator({
 }: SeparatorProps) {
   return (
     <div
+      data-slot="separator"
+      data-orientation={orientation}
       role={decorative ? "none" : "separator"}
       aria-orientation={decorative ? undefined : orientation}
       className={cn(
