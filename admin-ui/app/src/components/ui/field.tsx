@@ -25,7 +25,7 @@ export const fieldVariants = cva("group/field flex w-full gap-2 data-[invalid=tr
       horizontal: cn(
         "flex-row items-center",
         "[&>[data-slot=field-label]]:flex-auto",
-        "has-[>[data-slot=field-content]]:items-start has-[>[data-slot=field-content]]:[&>[role=switch]]:mt-px",
+        "has-[>[data-slot=field-content]]:items-start has-[>[data-slot=field-content]]:[&>[data-slot=switch]]:mt-px",
       ),
       responsive: cn(
         "flex-col [&>*]:w-full [&>.sr-only]:w-auto",

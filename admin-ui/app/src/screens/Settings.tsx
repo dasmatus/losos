@@ -7,6 +7,7 @@ import { ApplyBar } from "./settings/apply-bar";
 import { AboutPane } from "./settings/pane-about";
 import { AppsPane } from "./settings/pane-apps";
 import { HardwarePane } from "./settings/pane-hardware";
+import { LookPane } from "./settings/pane-look";
 import { MarketPane } from "./settings/pane-market";
 import { MeshPane } from "./settings/pane-mesh";
 import { NetworkPane } from "./settings/pane-network";
@@ -22,12 +23,16 @@ import { useStorage, type Storage } from "./settings/use-storage";
  * sidebar's business (components/app-sidebar.tsx), which lists every pane
  * among the page's other destinations; this screen shows the one chosen.
  *
- * ONE FORM, SEVEN PANES. /api/apply takes the whole of modules/overrides.nix,
+ * ONE FORM, SEVEN PANES (and the Look pane, which is the exception below).
+ * /api/apply takes the whole of modules/overrides.nix,
  * not a patch, so every pane edits a slice of a single draft and Apply writes
  * all twelve keys at once. A pane that owned its own save would reset the
  * other eleven to their defaults on a box with no shell to fix it from. The
  * draft, the validation and the rebuild watch all live in useSettingsForm;
- * the panes below are views onto it and nothing more.
+ * the panes below are views onto it and nothing more. The Look pane is the
+ * one that does not: a background picture and the hand-written widgets live
+ * in lososd's look document (lib/look.ts), saved the moment they are picked
+ * and never rebuilt, so it draws no Apply bar and touches no draft.
  *
  * The pane comes in as a prop; the shell reads it from the address. This
  * screen deliberately does not reach for the router itself: a screen that
@@ -97,6 +102,9 @@ function Pane({
       return <AppsPane form={form} />;
     case "network":
       return <NetworkPane form={form} />;
+    case "look":
+      // No draft, no Apply bar: the look is saved the moment it is picked.
+      return <LookPane locked={form.locked} />;
     case "hardware":
       return <HardwarePane form={form} />;
     case "security":

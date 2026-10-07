@@ -220,15 +220,18 @@ in
         # configured edge can open the sharing gate — a box on a LAN with an
         # edge and no internet would then never be allowed to share.
         pkgs.avahi
-        # What every rebuild is started with. `systemd-run` resolves a relative
-        # program name against the *caller's* PATH before it writes the
-        # transient unit, and fails with "Failed to find executable
-        # nixos-rebuild" when it cannot — so with this entry missing, every
-        # `change`, `apply` and factory reset died at the launch with a 500
-        # ("failed to start rebuild: systemd-run exited 1") and nothing was
-        # ever rebuilt from the admin UI. tests/edge-lan.nix drives a mode
-        # change through the daemon and would catch the line going again.
+        # What Apply, a storage-mode change and a factory reset run. The
+        # rebuild is a `systemd-run` transient unit, and systemd-run resolves a
+        # bare command against the caller's PATH before PID 1 sees it: with
+        # nixos-rebuild missing here, every one of them failed with "Failed to
+        # find executable nixos-rebuild" and the admin UI said only "That did
+        # not start". supervisor.rs passes this PATH on to the unit
+        # (--setenv=PATH), which is how nix and git reach the rebuild; PID 1's
+        # own default PATH has neither. The same three autoUpgrade puts on
+        # its unit.
         config.system.build.nixos-rebuild
+        config.nix.package.out
+        pkgs.gitMinimal
       ]
       # crictl, to find and exec into the Nextcloud workload container.
       ++ lib.optional ncContainer pkgs.cri-tools

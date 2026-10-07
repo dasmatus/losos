@@ -125,6 +125,14 @@ pkgs.writeText "httpd.conf" ''
     DirectoryIndex index.php index.html
     # Nextcloud's WebDAV and OCS routes are index.php/PATH/INFO shaped.
     AcceptPathInfo On
+    # Hand the Authorization header to PHP. mod_proxy_fcgi drops it by
+    # default, and upstream's .htaccess puts it back with an env rewrite this
+    # config never transcribed — so every password sent as Basic auth reached
+    # Nextcloud as no password at all, and it answered 401: the admin UI's
+    # sign-in (backend/src/signin.rs probes /ocs/v2.php/cloud/user), WebDAV
+    # sync clients, the OCS API. Browser sessions ride a cookie, which is why
+    # clicking through Nextcloud itself never showed it.
+    CGIPassAuth On
 
     RewriteEngine On
     # Per-directory rewriting strips this directory's filesystem path off the
