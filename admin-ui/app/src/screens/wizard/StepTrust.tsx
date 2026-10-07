@@ -35,6 +35,7 @@ import { useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
 import { ReadoutRow, StepText } from "./parts";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { HelpLink } from "@/components/ui/help-link";
 import { passkeysPossibleHere } from "./passkey";
 import { TrustCommand } from "./TrustCommand";
 import type { SetupQuery } from "./useSetupState";
@@ -54,6 +55,7 @@ export function StepTrust({ query }: { query: SetupQuery }) {
           <AlertTitle>{t("wizard.trust.blocked.title")}</AlertTitle>
           <AlertDescription>
             <p>{t("wizard.trust.blocked.body")}</p>
+            <HelpLink entry="certificate-warning" />
           </AlertDescription>
         </Alert>
       )}
@@ -79,6 +81,7 @@ export function StepTrust({ query }: { query: SetupQuery }) {
           <AlertDescription>
             <p className="break-words">{query.message}</p>
             <p>{t("wizard.trust.failed.body")}</p>
+            <HelpLink entry="certificate-warning" />
           </AlertDescription>
         </Alert>
       )}

@@ -1,6 +1,7 @@
 ---
 title: No edge found
 sidebar_position: 11
+slug: /troubleshooting/edge-not-found
 ---
 
 # No edge found

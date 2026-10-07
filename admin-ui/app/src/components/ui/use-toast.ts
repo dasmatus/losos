@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import type { HandbookEntry } from "@/lib/handbook";
 
 /* The confirmation store behind shadcn's Toast (toaster.tsx): the list of
  * "done" messages on screen, newest first. shadcn's own use-toast.ts is the
@@ -17,6 +18,8 @@ export interface Confirmation {
   description?: string;
   /** Milliseconds before Radix closes it; Infinity never does. */
   duration: number;
+  /** The handbook page an error leads to, as a "What to do" link. */
+  help?: HandbookEntry;
   open: boolean;
 }
 

@@ -1,6 +1,7 @@
 ---
 title: Cannot reach the box
 sidebar_position: 2
+slug: /troubleshooting/cannot-reach-the-box
 ---
 
 # Cannot reach the box

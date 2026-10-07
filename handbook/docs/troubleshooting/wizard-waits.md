@@ -1,6 +1,7 @@
 ---
 title: The wizard keeps waiting
 sidebar_position: 7
+slug: /troubleshooting/wizard-waits
 ---
 
 # The wizard keeps waiting

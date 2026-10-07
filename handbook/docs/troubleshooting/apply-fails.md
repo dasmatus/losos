@@ -1,6 +1,7 @@
 ---
 title: Apply fails
 sidebar_position: 9
+slug: /troubleshooting/apply-fails
 ---
 
 # Apply fails

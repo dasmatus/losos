@@ -1,6 +1,7 @@
 ---
 title: Stuck at a passphrase prompt
 sidebar_position: 6
+slug: /troubleshooting/stuck-at-passphrase
 ---
 
 # Stuck at a passphrase prompt

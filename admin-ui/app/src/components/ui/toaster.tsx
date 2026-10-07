@@ -7,6 +7,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import { useT } from "@/lib/i18n-react";
 import { reportConfirmationsHeight } from "./corner";
+import { HelpLink } from "./help-link";
 import {
   Toast,
   ToastClose,
@@ -68,6 +69,7 @@ export function Confirmations() {
             {item.description !== undefined && item.description.length > 0 ? (
               <ToastDescription>{item.description}</ToastDescription>
             ) : null}
+            {item.help !== undefined ? <HelpLink entry={item.help} className="mt-1.5" /> : null}
           </div>
           <ToastClose aria-label={t("ui.dismiss")} />
         </Toast>

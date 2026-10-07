@@ -1,6 +1,7 @@
 ---
 title: Sign-in and the spare key
 sidebar_position: 2
+slug: /manual/sign-in-and-spare-key
 ---
 
 # Sign-in and the spare key

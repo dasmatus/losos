@@ -1,6 +1,7 @@
 ---
 title: Out of room
 sidebar_position: 10
+slug: /troubleshooting/out-of-room
 ---
 
 # Out of room

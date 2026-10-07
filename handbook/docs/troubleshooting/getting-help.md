@@ -1,6 +1,7 @@
 ---
 title: Getting help
 sidebar_position: 13
+slug: /troubleshooting/getting-help
 ---
 
 # Getting help
