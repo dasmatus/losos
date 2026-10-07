@@ -110,6 +110,28 @@ export default defineMessages({
     sk: "verzia informácie identita kľúč správca aktualizácie",
     de: "Version Info Identität Schlüssel Admin Aktualisierungen",
   },
+  "settings.panes.advanced.label": { en: "Advanced", sk: "Rozšírené", de: "Erweitert" },
+  "settings.panes.advanced.summary": {
+    en: "Every option this box declares, with a typed editor for each — the ones the other panes do not show.",
+    sk: "Každá možnosť, ktorú toto zariadenie deklaruje, s typovaným editorom pre každú — aj tie, ktoré ostatné panely nezobrazujú.",
+    de: "Jede Option, die diese Box deklariert, mit einem passenden Editor — auch die, die die anderen Bereiche nicht zeigen.",
+  },
+  "settings.panes.advanced.keywords": {
+    en: "",
+    sk: "všetky možnosti voľby expert nix konfigurácia overrides",
+    de: "alle Optionen Experte Nix Konfiguration Overrides",
+  },
+  "settings.panes.history.label": { en: "History", sk: "História", de: "Historie" },
+  "settings.panes.history.summary": {
+    en: "Every change to this box’s configuration, committed and kept on LosOS Git.",
+    sk: "Každá zmena konfigurácie tohto zariadenia, uložená a uchovaná na LosOS Git.",
+    de: "Jede Änderung an der Konfiguration dieser Box, festgehalten und auf LosOS Git aufbewahrt.",
+  },
+  "settings.panes.history.keywords": {
+    en: "",
+    sk: "git commit história záznam repozitár klonovať synchronizácia",
+    de: "Git Commit Verlauf Protokoll Repository klonen Abgleich",
+  },
   "settings.panes.reset.label": { en: "Reset", sk: "Reset", de: "Zurücksetzen" },
   "settings.panes.reset.summary": {
     en: "Putting every setting back the way it came.",

@@ -282,6 +282,9 @@
             # different halves of the same problem.
             ./modules/keyring.nix
             ./modules/daemon.nix
+            # The option document and the configuration repository on LosOS
+            # Git (modules/config-repo.nix, backend/src/{options,config_repo}.rs).
+            ./modules/config-repo.nix
             # modules/overrides.nix is imported through onBox below, never here.
             ./modules/updates.nix
             ./modules/defaults.nix
@@ -429,7 +432,19 @@
         losos-tls = import ./tests/tls.nix { inherit pkgs; };
         losos-setup = import ./tests/setup.nix { inherit pkgs; };
         losos-git-runner = import ./tests/git-runner.nix { inherit pkgs; };
-        losos-admin-ui = import ./tests/admin-ui.nix { inherit pkgs; };
+        losos-admin-ui = import ./tests/admin-ui.nix {
+          inherit pkgs;
+          # The real option document, so the Advanced pane is drawn from
+          # every option the install configuration declares and the check
+          # fails on any row it cannot draw (tests/advanced.browser.mjs).
+          optionsJson = self.checks.${system}.losos-options-doc;
+        };
+        # Not a VM: the option document of the install configuration
+        # (flake/options-doc.nix via modules/config-repo.nix), forced here so
+        # `nix flake check --no-build` fails the moment an option is declared
+        # with a type the Advanced pane has no editor for.
+        losos-options-doc =
+          self.nixosConfigurations.install.config.environment.etc."losos/options.json".source;
         losos-keyring = import ./tests/keyring.nix { inherit pkgs; };
         losos-console = import ./tests/console.nix { inherit pkgs; };
         # Not a VM either: starts the Nextcloud pod's httpd and php-fpm in the

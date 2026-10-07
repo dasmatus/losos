@@ -124,15 +124,15 @@
         },
         "proxyEnable": {
           "type": "boolean",
-          "description": "losos.proxy.enable \u2014 expose this appliance through the master proxy (rathole tunnel to the edge Traefik)."
+          "description": "losos.proxy.enable — expose this appliance through the master proxy (rathole tunnel to the edge Traefik)."
         },
         "clusterEnable": {
           "type": "boolean",
-          "description": "losos.cluster.enable \u2014 join the edge's mesh rke2 cluster."
+          "description": "losos.cluster.enable — join the edge's mesh rke2 cluster."
         },
         "shareCompute": {
           "type": "boolean",
-          "description": "losos.cluster.shareCompute \u2014 contribute CPU during the window below."
+          "description": "losos.cluster.shareCompute — contribute CPU during the window below."
         },
         "computeWindowStart": {
           "type": "string",
@@ -166,11 +166,19 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "job"
+        "job",
+        "commit"
       ],
       "properties": {
         "job": {
           "type": "string"
+        },
+        "commit": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The commit the change made in the box's configuration repository (/etc/nixos, see backend/src/config_repo.rs), as a full sha; null when nothing changed on disk or the commit could not be made. The commit is best effort: a rebuild is queued either way, and the next sync commits whatever is uncommitted before it pushes."
         }
       }
     },
@@ -179,7 +187,8 @@
       "additionalProperties": false,
       "required": [
         "job",
-        "reset"
+        "reset",
+        "commit"
       ],
       "properties": {
         "job": {
@@ -189,6 +198,13 @@
         "reset": {
           "type": "boolean",
           "description": "Always true; distinguishes the factory-reset ack from a change ack."
+        },
+        "commit": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The commit the change made in the box's configuration repository (/etc/nixos, see backend/src/config_repo.rs), as a full sha; null when nothing changed on disk or the commit could not be made. The commit is best effort: a rebuild is queued either way, and the next sync commits whatever is uncommitted before it pushes."
         }
       }
     },
@@ -629,23 +645,337 @@
           ]
         }
       }
+    },
+    "optionEditor": {
+      "type": "object",
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "bool",
+            "str",
+            "int",
+            "float",
+            "enum",
+            "list",
+            "nullable",
+            "opaque"
+          ],
+          "description": "The editor the admin UI's Advanced pane draws, decided from the option's Nix type by `classify` in flake/options-doc.nix. A type that file does not know is an evaluation error, so an option with a new type turns the eval check red rather than landing on the pane as an empty row; add it there AND in admin-ui/app/src/lib/option-value.ts."
+        },
+        "min": {
+          "type": "integer",
+          "description": "int: lower bound, inclusive."
+        },
+        "max": {
+          "type": "integer",
+          "description": "int: upper bound, inclusive."
+        },
+        "pattern": {
+          "type": "string",
+          "description": "str: the strMatching regex, when the type has one."
+        },
+        "form": {
+          "type": "string",
+          "description": "str: `path` for the secret-path options (a file on the box, typed as a string)."
+        },
+        "values": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "enum: the allowed values."
+        },
+        "inner": {
+          "$ref": "#/$defs/optionEditor",
+          "description": "nullable: the editor for the non-null value."
+        },
+        "reason": {
+          "type": "string",
+          "description": "opaque: the type's own description, shown on the read-only row."
+        }
+      }
+    },
+    "optionsResponse": {
+      "type": "object",
+      "required": [
+        "available",
+        "version",
+        "options",
+        "stray",
+        "excluded"
+      ],
+      "properties": {
+        "available": {
+          "type": "boolean",
+          "description": "False — with an empty `options` — when the box has no option document at $LOSOS_OPTIONS_FILE (an older build). A 200, not a 404, because the SPA latches a 404 as \"route not served\"."
+        },
+        "version": {
+          "type": "integer",
+          "description": "The document version (1). lososd refuses a document of another version rather than guess at its editor kinds."
+        },
+        "options": {
+          "type": "array",
+          "description": "Every `losos.*` option the box declares, from flake/options-doc.nix evaluated against the box's own configuration at build time and written to /etc/losos/options.json by modules/config-repo.nix. `losos.edge.*` is left out (declared for the VPS side; nothing on the appliance reads it).",
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "group",
+              "editor",
+              "nixType",
+              "description",
+              "default",
+              "defaultText",
+              "current",
+              "danger",
+              "fixed",
+              "readOnly",
+              "set"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Dotted, without the `losos.` prefix: `cluster.enable`."
+              },
+              "group": {
+                "type": "string",
+                "description": "The first path segment, or `general` for a top-level option."
+              },
+              "editor": {
+                "$ref": "#/$defs/optionEditor"
+              },
+              "nixType": {
+                "type": "string",
+                "description": "nixpkgs' description of the type, for the row."
+              },
+              "description": {
+                "type": "string"
+              },
+              "default": {
+                "description": "The declared default as JSON. A package is `{\"package\": \"<name>\"}`, anything JSON cannot carry is `{\"nix\": \"<pretty-printed>\"}`."
+              },
+              "defaultText": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "The declaration's `defaultText`, or the default pretty-printed as Nix."
+              },
+              "current": {
+                "description": "What the last rebuild merged, from the configuration the document was built against; same encoding as `default`."
+              },
+              "danger": {
+                "type": "boolean",
+                "description": "True for the options whose wrong value leaves the box unreachable, unbootable or locked out of the thing that would fix it (the `dangerous` prefixes in flake/options-doc.nix). The pane asks before changing one."
+              },
+              "fixed": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Who sets the value at normal priority, when someone does: `installer` for targetDrives, tpm.enable, bios and the two installer options, which modules/install-target.nix assigns, so a line in overrides.nix would make the next rebuild fail with conflicting definitions. Such an option is shown and refused."
+              },
+              "readOnly": {
+                "type": "boolean",
+                "description": "True when `fixed` is set or the editor is `opaque` (a package, a path, an attribute set — chosen by the flake, not typed into a form). An apply that assigns one is refused with 400."
+              },
+              "set": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "The raw Nix literal overrides.nix currently assigns the option, or null when the file leaves it at its default. The two legacy spellings (`aio.apachePort`, `cfd.enable`) are joined onto the options they became."
+              }
+            }
+          }
+        },
+        "stray": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "key",
+              "value"
+            ],
+            "properties": {
+              "key": {
+                "type": "string"
+              },
+              "value": {
+                "type": "string"
+              }
+            }
+          },
+          "description": "Assignments in overrides.nix that name no declared option (a hand edit, or an option from another build). Listed so the pane can show they exist; an apply that carries one is refused."
+        },
+        "excluded": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Prefixes left out of the document, each with the reason."
+        }
+      }
+    },
+    "configResponse": {
+      "type": "object",
+      "required": [
+        "enabled",
+        "repository",
+        "head",
+        "log",
+        "sync"
+      ],
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Whether the box publishes /etc/nixos to a repository ($LOSOS_CONFIG_REPO or $LOSOS_CONFIG_REMOTE_URL set; modules/config-repo.nix sets the first when losos.configRepo.enable and losos.forgejo.enable are both on). Off, the box still commits every change locally."
+        },
+        "repository": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "required": [
+            "owner",
+            "name",
+            "url",
+            "clone",
+            "viaForgejo"
+          ],
+          "properties": {
+            "owner": {
+              "type": "string",
+              "description": "The Forgejo account the repository belongs to: the owner's (losos.configRepo.owner, default `notshared`). lososd creates it as a site administrator if missing and gives it the owner's password at every claim, set-password and sign-in, so one password opens LosOS Git too."
+            },
+            "name": {
+              "type": "string",
+              "description": "losos.configRepo.name, default `losos-config`. Created private: /forgejo/ is published through the master-proxy tunnel whenever the proxy is on."
+            },
+            "url": {
+              "type": "string",
+              "description": "The repository's page on this box, relative to the front vhost: `/forgejo/<owner>/<name>`."
+            },
+            "clone": {
+              "type": "string",
+              "description": "The URL lososd fetches from and pushes to, without credentials. The owner clones the same repository through /forgejo/ with their own account."
+            },
+            "viaForgejo": {
+              "type": "boolean",
+              "description": "False when $LOSOS_CONFIG_REMOTE_URL names the remote directly (the VM test's bare repository): no account and no repository are created, and no credentials are sent."
+            }
+          },
+          "description": "Null when `enabled` is false."
+        },
+        "head": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "required": [
+            "sha",
+            "branch"
+          ],
+          "properties": {
+            "sha": {
+              "type": "string"
+            },
+            "branch": {
+              "type": "string"
+            }
+          },
+          "description": "The branch head of /etc/nixos; null when nothing is committed (the next sync commits it)."
+        },
+        "log": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "sha",
+              "when",
+              "subject"
+            ],
+            "properties": {
+              "sha": {
+                "type": "string"
+              },
+              "when": {
+                "type": "string",
+                "description": "RFC 3339, the committer date."
+              },
+              "subject": {
+                "type": "string",
+                "description": "`Change hostName, cluster.enable`, `Reset sharingMyStorage`, `losos install`, or whatever a clone pushed."
+              }
+            }
+          },
+          "description": "The last 40 commits, newest first."
+        },
+        "sync": {
+          "type": "object",
+          "required": [
+            "state",
+            "detail",
+            "syncedAt",
+            "remoteHead"
+          ],
+          "properties": {
+            "state": {
+              "type": "string",
+              "enum": [
+                "ok",
+                "unavailable",
+                "refused",
+                "diverged",
+                "waiting",
+                "error",
+                "pending",
+                "off"
+              ],
+              "description": "How the last sync went. `ok`: in step, pushed, or a pushed commit taken (the detail says which). `unavailable`: LosOS Git is not up yet (no token, not answering) — the normal first minutes of a box. `refused`: a commit pushed from a clone failed the gates every Apply goes through (backend/src/overrides.rs validate_apply, then backend/src/options.rs check_body on its modules/overrides.nix); the box keeps its own and the detail says why. `diverged`: both sides moved; the box never force-pushes and never merges, so the owner resets the branch or pushes from a fresh clone. `waiting`: a pushed commit is held until the running rebuild finishes. `error`: anything else, with the sentence. `pending`: no sync has run yet. `off`: `enabled` is false."
+            },
+            "detail": {
+              "type": "string",
+              "description": "One sentence for the owner."
+            },
+            "syncedAt": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "RFC 3339, when the report was made."
+            },
+            "remoteHead": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "The remote branch head after the sync, when there is one."
+            }
+          }
+        }
+      }
     }
   },
   "commands": {
     "state": {
-      "description": "`losos-ctl state --json` \u2014 current mode + sharing flag. stdout: stateResponse.",
+      "description": "`losos-ctl state --json` — current mode + sharing flag. stdout: stateResponse.",
       "stdout": {
         "$ref": "#/$defs/stateResponse"
       }
     },
     "change": {
-      "description": "`losos-ctl change --mode <local|mesh>` \u2014 patch the losos.sharingMyStorage line of modules/overrides.nix in place (the same file `apply` writes whole), mark a rebuild as building, spawn a detached nixos-rebuild. Returns immediately. stdout: changeResponse. Non-zero exit + stderr on invalid mode.",
+      "description": "`losos-ctl change --mode <local|mesh>` — patch the losos.sharingMyStorage line of modules/overrides.nix in place (the same file `apply` writes whole), mark a rebuild as building, spawn a detached nixos-rebuild. Returns immediately. stdout: changeResponse. Non-zero exit + stderr on invalid mode.",
       "stdout": {
         "$ref": "#/$defs/changeResponse"
       }
     },
     "status": {
-      "description": "`losos-ctl status --json` \u2014 rebuild progress, polled by the admin UI ~every 2s. stdout: statusResponse.",
+      "description": "`losos-ctl status --json` — rebuild progress, polled by the admin UI ~every 2s. stdout: statusResponse.",
       "stdout": {
         "$ref": "#/$defs/statusResponse"
       }
@@ -657,13 +987,13 @@
       }
     },
     "settings": {
-      "description": "`losos-ctl settings --json` \u2014 the user-tunable losos.* options parsed from modules/overrides.nix. stdout: settingsResponse.",
+      "description": "`losos-ctl settings --json` — the user-tunable losos.* options parsed from modules/overrides.nix. stdout: settingsResponse.",
       "stdout": {
         "$ref": "#/$defs/settingsResponse"
       }
     },
     "apply": {
-      "description": "`losos-ctl apply` \u2014 read Nix code (a full modules/overrides.nix body) from stdin, validate it references losos.*, is a module body, and carries a well-formed value for any of hostName, computeWindowStart and computeWindowEnd it sets, atomically overwrite modules/overrides.nix, mark a rebuild as building, start a supervised nixos-rebuild switch (systemd transient unit), and emit the job id on stdout. The admin UI generates the Nix code from the form and posts it. Non-zero exit + stderr on validation failure.",
+      "description": "`losos-ctl apply` — read Nix code (a full modules/overrides.nix body) from stdin, validate it references losos.*, is a module body, and carries a well-formed value for any of hostName, computeWindowStart and computeWindowEnd it sets, atomically overwrite modules/overrides.nix, mark a rebuild as building, start a supervised nixos-rebuild switch (systemd transient unit), and emit the job id on stdout. The admin UI generates the Nix code from the form and posts it. Non-zero exit + stderr on validation failure.",
       "stdin": {
         "type": "string",
         "description": "The full overrides.nix body the admin app generated."
@@ -673,7 +1003,7 @@
       }
     },
     "factory-reset": {
-      "description": "`losos-ctl factory-reset` \u2014 soft factory reset: atomically restore modules/overrides.nix to the committed default body, reset the persisted state to defaultState (Local, sharing off), mark a rebuild as building, start a supervised nixos-rebuild, and emit the job id. Non-destructive: it only touches lososd's own state + overrides.nix. The destructive tier (wipe disks + reinstall) is the installer ISO, which auto-runs `losos-install` as root's login shell.",
+      "description": "`losos-ctl factory-reset` — soft factory reset: atomically restore modules/overrides.nix to the committed default body, reset the persisted state to defaultState (Local, sharing off), mark a rebuild as building, start a supervised nixos-rebuild, and emit the job id. Non-destructive: it only touches lososd's own state + overrides.nix. The destructive tier (wipe disks + reinstall) is the installer ISO, which auto-runs `losos-install` as root's login shell.",
       "stdout": {
         "$ref": "#/$defs/factoryResetResponse"
       }
@@ -701,12 +1031,31 @@
       }
     },
     "install": {
-      "description": "`losos-ctl install [flags]` \u2014 the losos auto-installer (was losos-install.sh). Detects fixed disks, merges them into one LVM volume group via disko, runs nixos-install, and lays the flake at /persist/etc/nixos. Flags: --tpm, --drives A,/dev/b,..., --no-install, --disko-script PATH, --emit-target FILE. Drives auto-detection uses `lsblk --json`. Non-zero exit + stderr on failure (no candidate disks, disko/nixos-install failure).",
+      "description": "`losos-ctl install [flags]` — the losos auto-installer (was losos-install.sh). Detects fixed disks, merges them into one LVM volume group via disko, runs nixos-install, and lays the flake at /persist/etc/nixos. Flags: --tpm, --drives A,/dev/b,..., --no-install, --disko-script PATH, --emit-target FILE. Drives auto-detection uses `lsblk --json`. Non-zero exit + stderr on failure (no candidate disks, disko/nixos-install failure).",
       "args": {
         "flags": {
           "type": "string",
           "description": "--tpm | --drives LIST | --no-install | --disko-script PATH | --emit-target FILE"
         }
+      }
+    },
+    "options": {
+      "description": "`losos-ctl options` — print every losos.* option this box declares (from /etc/losos/options.json, written at build time by modules/config-repo.nix from flake/options-doc.nix), with its editor kind, default, current value and what overrides.nix sets. The document the admin UI's Advanced pane is drawn from, and the second gate `apply` goes through: a body that assigns an undeclared or read-only option, or a literal of the wrong kind, is refused by name.",
+      "args": {},
+      "out": {
+        "$ref": "#/$defs/optionsResponse"
+      }
+    },
+    "config": {
+      "description": "`losos-ctl config [--sync]` — the box's configuration repository: /etc/nixos is a git repository (made by the installer), every apply, change and factory-reset commits there with a message naming the settings, and lososd keeps it in step with the owner's private repository on LosOS Git every half minute (backend/src/config_repo.rs). With --sync, one sync now: push what the box has, or take a commit pushed from a clone — after its modules/overrides.nix passes the two apply gates — and rebuild. The repository holds no secrets: the LUKS keyfile is under /etc/keys and every token under /var/secrets.",
+      "args": {
+        "sync": {
+          "type": "boolean",
+          "description": "--sync: sync with LosOS Git now instead of waiting for the next run."
+        }
+      },
+      "out": {
+        "$ref": "#/$defs/configResponse"
       }
     }
   },
@@ -741,7 +1090,8 @@
       "POST /api/apply": {
         "auth": true,
         "in": "raw UTF-8 overrides.nix body",
-        "out": "changeResponse"
+        "out": "changeResponse",
+        "note": "Two gates, in order: validate_apply (backend/src/overrides.rs: a module body naming losos.* options, a hostName that will not brick the box, HH:MM windows), then — on a box carrying /etc/losos/options.json — check_body (backend/src/options.rs): every `losos.<key> = <literal>;` line must name a declared, writable option and fit its editor kind, and no value may carry `${`. A refusal is 400 with a sentence naming the key. The body then replaces overrides.nix, is committed to /etc/nixos with a message naming the changed settings, and a rebuild is queued."
       },
       "POST /api/factory-reset": {
         "auth": true,
@@ -838,6 +1188,20 @@
         "auth": true,
         "out": "{\"deleted\": true|false}",
         "note": "Idempotent; false when there was no such widget."
+      },
+      "GET /api/options": {
+        "auth": true,
+        "out": "optionsResponse",
+        "note": "Every losos.* option with its editor kind and what overrides.nix sets; the Advanced pane is drawn from it. A box without the document answers 200 with available:false, deliberately not 404, which the SPA latches."
+      },
+      "GET /api/config": {
+        "auth": true,
+        "out": "configResponse"
+      },
+      "POST /api/config/sync": {
+        "auth": true,
+        "out": "configResponse",
+        "note": "One sync with LosOS Git now, then the same document as the read. Audited: it can push, fast-forward /etc/nixos and queue a rebuild."
       }
     }
   },
@@ -845,7 +1209,7 @@
     "name": "org.losos1",
     "path": "/org/losos1",
     "interface": "org.losos.Control1",
-    "note": "lososd (systemd system service, root) owns the well-known name. Authorization: shipped system-bus policy \u2014 root always, group 'losos' otherwise. Every method returns a single string 's' carrying the JSON document of the same-named facade subcommand; Change/Apply additionally take their payload as the single input string. Error replies use error name org.losos1.Error.Failed with the message as the first body string.",
+    "note": "lososd (systemd system service, root) owns the well-known name. Authorization: shipped system-bus policy — root always, group 'losos' otherwise. Every method returns a single string 's' carrying the JSON document of the same-named facade subcommand; Change/Apply additionally take their payload as the single input string. Error replies use error name org.losos1.Error.Failed with the message as the first body string.",
     "methods": {
       "State": {
         "in": [],
@@ -889,6 +1253,18 @@
       "Recovery": {
         "in": [],
         "out": "s (recoveryResponse)"
+      },
+      "Options": {
+        "in": [],
+        "out": "s (optionsResponse)"
+      },
+      "Config": {
+        "in": [],
+        "out": "s (configResponse)"
+      },
+      "ConfigSync": {
+        "in": [],
+        "out": "s (configResponse)"
       }
     }
   }

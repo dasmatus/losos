@@ -150,6 +150,50 @@ pub trait Losos {
     fn read_background(&mut self) -> anyhow::Result<Option<Vec<u8>>>;
     /// Delete the uploaded picture. Not an error when there is none.
     fn remove_background(&mut self) -> anyhow::Result<()>;
+
+    // ── The option document and the configuration repository ───────────
+    // `crate::options` is the gate every Apply goes through; `crate::
+    // config_repo` is the git history every change lands in. The git and
+    // Forgejo effects are one method each, named by what they do, so the
+    // sync in [`cmd_config_sync`] reads as the plan it is and the fake can
+    // model a two-sided history in a few lines.
+    /// The document `modules/config-repo.nix` wrote, or `None` when this
+    /// box has none (an older build). A document that is there but
+    /// unreadable is an error: the gate must not silently vanish.
+    fn read_options_doc(&mut self) -> anyhow::Result<Option<crate::options::OptionsDoc>>;
+    /// Where the configuration repository is published, or `None` when it
+    /// is not (the box still commits locally).
+    fn config_repo(&mut self) -> Option<crate::config_repo::RepoConfig>;
+    /// The branch head of `/etc/nixos`, or `None` when nothing is committed.
+    fn config_head(&mut self) -> anyhow::Result<Option<crate::config_repo::Head>>;
+    /// Stage everything and commit. `None` when the tree was clean.
+    fn config_commit(&mut self, subject: &str, body: &str) -> anyhow::Result<Option<String>>;
+    /// The remote branch's head after fetching it, `None` when the remote
+    /// has no such branch yet. A remote that cannot be reached is a
+    /// [`crate::config_repo::NotUp`] error.
+    fn config_fetch(&mut self, url: &str, branch: &str) -> anyhow::Result<Option<String>>;
+    /// Whether `ancestor` is in `of`'s history.
+    fn config_is_ancestor(&mut self, ancestor: &str, of: &str) -> anyhow::Result<bool>;
+    /// Move the branch and the working tree to `to`, fast-forward only.
+    fn config_fast_forward(&mut self, to: &str) -> anyhow::Result<()>;
+    fn config_push(&mut self, url: &str, branch: &str) -> anyhow::Result<()>;
+    /// A file as it is at `rev`, or `None` when that commit has no such file.
+    fn config_show(&mut self, rev: &str, path: &str) -> anyhow::Result<Option<String>>;
+    /// The last `n` commits, newest first.
+    fn config_log(&mut self, n: usize) -> anyhow::Result<Vec<crate::config_repo::LogEntry>>;
+    /// One request to LosOS Git's API as the bot administrator: status and
+    /// body. The password an operation carries travels in `secret`, never in
+    /// an argument vector. [`crate::config_repo::NotUp`] when LosOS Git
+    /// cannot be asked at all.
+    fn forgejo_request(
+        &mut self,
+        op: &crate::config_repo::ForgejoOp,
+        secret: Option<&crate::setup::Secret>,
+    ) -> anyhow::Result<(u16, String)>;
+    /// A random password for an account nobody will type into.
+    fn mint_secret(&mut self) -> anyhow::Result<crate::setup::Secret>;
+    fn load_sync_report(&mut self) -> anyhow::Result<Option<crate::config_repo::SyncReport>>;
+    fn save_sync_report(&mut self, report: &crate::config_repo::SyncReport) -> anyhow::Result<()>;
 }
 
 /// Message stamped on a rebuild the moment it is queued.
@@ -209,10 +253,12 @@ pub fn cmd_change<L: Losos>(l: &mut L, mode: Mode) -> anyhow::Result<Value> {
         }
         .into());
     }
-    let lines: Vec<String> = l.read_overrides()?.lines().map(str::to_string).collect();
+    let before = l.read_overrides()?;
+    let lines: Vec<String> = before.lines().map(str::to_string).collect();
     let mut body = crate::overrides::inject_line(sharing, &lines).join("\n");
     body.push('\n');
     l.write_overrides(&body)?;
+    let commit = commit_settings(l, "Change", &before, &body);
     let job = l.next_job_id()?;
     let mut s = l.load_state()?;
     s.mode = mode;
@@ -220,27 +266,74 @@ pub fn cmd_change<L: Losos>(l: &mut L, mode: Mode) -> anyhow::Result<Value> {
     s.rebuild = Some(building(&job, MSG_STARTED));
     l.save_state(&s)?;
     l.spawn_rebuild(&job)?;
-    Ok(json!({ "job": job }))
+    Ok(json!({ "job": job, "commit": commit }))
+}
+
+/// Record a change to `overrides.nix` in the configuration repository
+/// (`crate::config_repo`), with a message naming the settings that moved.
+///
+/// Best effort, on purpose: the change is already on disk and the rebuild
+/// that makes it real is queued next, so a commit that fails — git missing
+/// from the unit path, a repository the installer never made — is a line in
+/// the journal and a `null` in the reply, not a refused Apply. The sync
+/// (`cmd_config_sync`) commits whatever is uncommitted before it pushes, so
+/// the history catches up on the next run.
+fn commit_settings<L: Losos>(l: &mut L, title: &str, before: &str, after: &str) -> Value {
+    let changes = crate::overrides::describe_changes(before, after);
+    let (subject, body) = crate::overrides::commit_message(title, &changes);
+    match l.config_commit(&subject, &body) {
+        Ok(Some(sha)) => Value::String(sha),
+        Ok(None) => Value::Null,
+        Err(e) => {
+            tracing::warn!(
+                error = ?e,
+                "the change is applied but could not be committed to the configuration repository"
+            );
+            Value::Null
+        }
+    }
+}
+
+/// Queue a rebuild: a fresh job id, `building` in the state, the unit.
+fn queue_rebuild<L: Losos>(l: &mut L, message: &str) -> anyhow::Result<String> {
+    let job = l.next_job_id()?;
+    let mut s = l.load_state()?;
+    s.rebuild = Some(building(&job, message));
+    l.save_state(&s)?;
+    l.spawn_rebuild(&job)?;
+    Ok(job)
 }
 
 /// Overwrite `overrides.nix` with an already-validated body and rebuild.
 ///
 /// Mode and sharing are left exactly as they were: applying settings is not a
 /// posture change.
+///
+/// "Already validated" means [`crate::overrides::validate_apply`], which every
+/// transport runs first. The second gate is here, so it travels with the
+/// command: when the box carries its option document
+/// (`crate::options`), every `losos.<key>` line is checked against the
+/// declared type and refused by name when it does not fit — typed as
+/// [`crate::options::Rejected`], which the HTTP layer answers as a 400 with
+/// the sentence. A box without the document (an older build) keeps the
+/// first gate only.
+///
+/// The body it replaces is read first, so the commit can say what changed.
 pub fn cmd_apply<L: Losos>(l: &mut L, nix_code: &str) -> anyhow::Result<Value> {
+    if let Some(doc) = l.read_options_doc()? {
+        crate::options::check_body(&doc, nix_code)?;
+    }
+    let before = l.read_overrides()?;
     // The gate (`crate::edge`): an apply that turns storage sharing or the
     // mesh join on needs an edge in reach. Settings already on, and anything
     // that is not sharing, pass whatever the network looks like.
-    let now = parse_settings(&l.read_overrides()?);
+    let now = parse_settings(&before);
     let want = parse_settings(nix_code);
     crate::edge::check_gate(&now, &want, &l.edge_status()?)?;
     l.write_overrides(nix_code)?;
-    let job = l.next_job_id()?;
-    let mut s = l.load_state()?;
-    s.rebuild = Some(building(&job, MSG_STARTED));
-    l.save_state(&s)?;
-    l.spawn_rebuild(&job)?;
-    Ok(json!({ "job": job }))
+    let commit = commit_settings(l, "Change", &before, nix_code);
+    let job = queue_rebuild(l, MSG_STARTED)?;
+    Ok(json!({ "job": job, "commit": commit }))
 }
 
 /// Soft factory reset: restore the committed defaults and rebuild.
@@ -252,7 +345,9 @@ pub fn cmd_apply<L: Losos>(l: &mut L, nix_code: &str) -> anyhow::Result<Value> {
 /// destructive tier (wipe the disks, and with them state.json) is the installer
 /// ISO, not this.
 pub fn cmd_factory_reset<L: Losos>(l: &mut L) -> anyhow::Result<Value> {
+    let before = l.read_overrides()?;
     l.write_overrides(DEFAULT_OVERRIDES_NIX)?;
+    let commit = commit_settings(l, "Reset", &before, DEFAULT_OVERRIDES_NIX);
     let job = l.next_job_id()?;
     // `claimed` is carried over rather than reset, and this is the one field of
     // State that a factory reset must not touch. Resetting the settings an
@@ -270,7 +365,7 @@ pub fn cmd_factory_reset<L: Losos>(l: &mut L) -> anyhow::Result<Value> {
     };
     l.save_state(&s)?;
     l.spawn_rebuild(&job)?;
-    Ok(json!({ "job": job, "reset": true }))
+    Ok(json!({ "job": job, "reset": true, "commit": commit }))
 }
 
 /// Extend `/persist` into the volume group's free extents, online.
@@ -357,6 +452,9 @@ pub fn cmd_set_password<L: Losos>(l: &mut L, user: &str, password: &str) -> anyh
         anyhow::bail!("set-password executed no occ command; plan_set_password is broken");
     };
     let message = interpret_occ(&outcome).map_err(|e| anyhow::anyhow!(e))?;
+    if outcome.code == 0 {
+        sync_owner_password(l, user, &secret);
+    }
 
     Ok(json!({
         "user": user,
@@ -564,7 +662,14 @@ pub fn cmd_sign_in<L: Losos>(
         }
     };
     match outcome {
-        LoginOutcome::Accepted => Ok(json!({ "user": user, "token": token })),
+        LoginOutcome::Accepted => {
+            // The owner just proved this password to LosOS cloud; LosOS Git
+            // gets the same one, so one password opens both. Best effort —
+            // LosOS Git may still be starting — and never a reason to refuse
+            // a sign-in that LosOS cloud accepted.
+            sync_owner_password(l, user, &secret);
+            Ok(json!({ "user": user, "token": token }))
+        }
         LoginOutcome::Rejected => Err(WrongPassword.into()),
         LoginOutcome::Throttled => Err(Throttled.into()),
         // Typed as the claim's "not yet", so the HTTP layer answers 503 with
@@ -684,6 +789,370 @@ pub fn cmd_market_op<L: Losos>(l: &mut L, op: &crate::market::Op) -> anyhow::Res
 /// What the daemon knows about edge proxies: `GET /api/edge`.
 pub fn cmd_edge<L: Losos>(l: &mut L) -> anyhow::Result<Value> {
     Ok(l.edge_status()?.to_json())
+}
+
+/// Every `losos.*` option the box declares, with what `overrides.nix` sets
+/// (`GET /api/options`; see `crate::options`).
+///
+/// `available: false` when the box has no option document — an older build
+/// — so the Advanced pane can say so rather than draw nothing. A 200, not a
+/// 404, because the SPA latches a 404 as "route not served".
+pub fn cmd_options<L: Losos>(l: &mut L) -> anyhow::Result<Value> {
+    match l.read_options_doc()? {
+        None => Ok(json!({
+            "available": false,
+            "version": 0,
+            "options": [],
+            "stray": [],
+            "excluded": {},
+        })),
+        Some(doc) => {
+            let content = l.read_overrides()?;
+            Ok(crate::options::join(&doc, &content))
+        }
+    }
+}
+
+/// The configuration repository as the History pane shows it: where it is
+/// on LosOS Git, the branch head, the last commits, and how the last sync
+/// went (`GET /api/config`; see `crate::config_repo`).
+pub fn cmd_config<L: Losos>(l: &mut L) -> anyhow::Result<Value> {
+    let repo = l.config_repo();
+    let head = l.config_head()?;
+    let log = l.config_log(40)?;
+    let sync = match (&repo, l.load_sync_report()?) {
+        (None, _) => crate::config_repo::SyncReport {
+            state: "off".to_string(),
+            detail: "LosOS Git is off on this box; changes are still committed here.".to_string(),
+            synced_at: None,
+            remote_head: None,
+        },
+        (Some(_), Some(r)) => r,
+        (Some(_), None) => crate::config_repo::SyncReport {
+            state: "pending".to_string(),
+            detail: "Not synced with LosOS Git yet.".to_string(),
+            synced_at: None,
+            remote_head: None,
+        },
+    };
+    Ok(json!({
+        "enabled": repo.is_some(),
+        "repository": repo.map(|r| json!({
+            "owner": r.owner,
+            "name": r.name,
+            "url": r.page_url(),
+            "clone": r.remote(),
+            "viaForgejo": r.via_forgejo(),
+        })),
+        "head": head,
+        "log": log,
+        "sync": sync,
+    }))
+}
+
+/// Bring the box and LosOS Git in step, once, and report
+/// (`POST /api/config/sync`, and the daemon's reconciler every half minute).
+///
+/// The decision is [`crate::config_repo::plan_sync`] over the two branch
+/// heads; what happens on each answer is written out in [`try_sync`]. Every
+/// way this can fail is a *report*, not an error: LosOS Git not up yet is the
+/// normal state of a box in its first minutes, and the owner reads the
+/// outcome on the History pane either way.
+pub fn cmd_config_sync<L: Losos>(l: &mut L) -> anyhow::Result<Value> {
+    let report = sync_once(l);
+    l.save_sync_report(&report)?;
+    cmd_config(l)
+}
+
+fn sync_once<L: Losos>(l: &mut L) -> crate::config_repo::SyncReport {
+    use crate::config_repo::{NotUp, SyncReport};
+    let Some(repo) = l.config_repo() else {
+        return SyncReport::new(
+            "off",
+            "LosOS Git is off on this box; changes are still committed here.",
+        );
+    };
+    match try_sync(l, &repo) {
+        Ok(report) => report,
+        Err(e) if e.downcast_ref::<NotUp>().is_some() => {
+            tracing::info!(reason = %e, "configuration sync: LosOS Git is not up");
+            SyncReport::new("unavailable", e.to_string())
+        }
+        Err(e) => {
+            tracing::warn!(error = ?e, "configuration sync failed");
+            SyncReport::new("error", format!("{e:#}"))
+        }
+    }
+}
+
+/// One sync, with every effect spelled out in order.
+///
+///  1. anything uncommitted in `/etc/nixos` is committed, so the push below
+///     carries it (and so a box the installer left with no commit gets one);
+///  2. on Forgejo, the owner's account and the private repository are made
+///     if missing (idempotent: "exists" counts as done);
+///  3. the remote branch is fetched and the plan decided;
+///  4. ahead → push. Behind → the pushed `overrides.nix` goes through the
+///     same two gates an Apply does, then the branch is fast-forwarded and a
+///     rebuild queued, unless one is running, in which case it waits.
+///     Diverged → reported; this box never force-pushes over the owner's
+///     commits and never merges on its own.
+fn try_sync<L: Losos>(
+    l: &mut L,
+    repo: &crate::config_repo::RepoConfig,
+) -> anyhow::Result<crate::config_repo::SyncReport> {
+    use crate::config_repo::{plan_sync, SyncPlan, SyncReport};
+
+    if l.config_head()?.is_none() {
+        l.config_commit("Configuration as installed", "")?;
+    } else {
+        // A hand edit, or a change applied while git was unavailable.
+        l.config_commit("Uncommitted changes", "")?;
+    }
+    let Some(head) = l.config_head()? else {
+        return Ok(SyncReport::new(
+            "error",
+            "the configuration directory is not a git repository",
+        ));
+    };
+
+    if repo.via_forgejo() {
+        ensure_owner(l, repo, None)?;
+        ensure_repo(l, repo, &head.branch)?;
+    }
+
+    let url = repo.remote();
+    let remote = l.config_fetch(&url, &head.branch)?;
+    let (local_in_remote, remote_in_local) = match remote.as_deref() {
+        Some(r) if r != head.sha => (
+            l.config_is_ancestor(&head.sha, r)?,
+            l.config_is_ancestor(r, &head.sha)?,
+        ),
+        _ => (false, false),
+    };
+    let short = |sha: &str| sha.chars().take(10).collect::<String>();
+    let mut report = match plan_sync(
+        Some(&head.sha),
+        remote.as_deref(),
+        local_in_remote,
+        remote_in_local,
+    ) {
+        SyncPlan::Nothing => SyncReport::new("ok", "LosOS Git has this box's configuration."),
+        SyncPlan::Push => {
+            l.config_push(&url, &head.branch)?;
+            let mut r = SyncReport::new("ok", format!("Pushed {} to LosOS Git.", short(&head.sha)));
+            r.remote_head = Some(head.sha.clone());
+            return Ok(r);
+        }
+        SyncPlan::FastForward => {
+            let r = remote.as_deref().expect("a fast-forward has a remote head");
+            let building = l
+                .load_state()?
+                .rebuild
+                .is_some_and(|rb| rb.state == RebuildState::Building);
+            if building {
+                SyncReport::new(
+                    "waiting",
+                    "LosOS Git has a newer configuration; it is picked up when the running rebuild finishes.",
+                )
+            } else {
+                match l.config_show(r, "modules/overrides.nix")? {
+                    None => SyncReport::new(
+                        "refused",
+                        format!(
+                            "The pushed commit {} has no modules/overrides.nix, so it was not taken.",
+                            short(r)
+                        ),
+                    ),
+                    Some(body) => match gate_overrides(l, &body) {
+                        Err(why) => SyncReport::new(
+                            "refused",
+                            format!(
+                                "The pushed configuration {} was not taken: {why}. Fix it and push again.",
+                                short(r)
+                            ),
+                        ),
+                        Ok(()) => {
+                            l.config_fast_forward(r)?;
+                            queue_rebuild(l, MSG_STARTED)?;
+                            SyncReport::new(
+                                "ok",
+                                format!("Took {} from LosOS Git; rebuilding.", short(r)),
+                            )
+                        }
+                    },
+                }
+            }
+        }
+        SyncPlan::Diverged => SyncReport::new(
+            "diverged",
+            "LosOS Git and this box have each moved on, so the box keeps its own configuration. \
+             Reset the branch on LosOS Git to the box's commit, or push again from a fresh clone.",
+        ),
+    };
+    report.remote_head = remote;
+    Ok(report)
+}
+
+/// The gates an Apply goes through, over a pushed `overrides.nix`: the
+/// shape, the option document, and the edge gate (`crate::edge`), so a
+/// commit that turns sharing on with no edge in reach is refused the same
+/// way the Apply button is.
+fn gate_overrides<L: Losos>(l: &mut L, body: &str) -> Result<(), String> {
+    crate::overrides::validate_apply(body).map_err(str::to_string)?;
+    match l.read_options_doc() {
+        Ok(Some(doc)) => crate::options::check_body(&doc, body).map_err(|e| e.0)?,
+        Ok(None) => {}
+        Err(e) => return Err(format!("the option document could not be read ({e})")),
+    }
+    let now = parse_settings(&l.read_overrides().map_err(|e| e.to_string())?);
+    let edge = l.edge_status().map_err(|e| e.to_string())?;
+    crate::edge::check_gate(&now, &parse_settings(body), &edge).map_err(|e| e.to_string())
+}
+
+fn ask<L: Losos>(
+    l: &mut L,
+    op: &crate::config_repo::ForgejoOp,
+    secret: Option<&crate::setup::Secret>,
+) -> anyhow::Result<crate::config_repo::Answer> {
+    let (status, body) = l.forgejo_request(op, secret)?;
+    Ok(crate::config_repo::classify(status, &body))
+}
+
+/// The owner's account on LosOS Git: made if missing (a site administrator,
+/// with `secret` or a minted password), and given `secret` as its password
+/// when one is passed.
+fn ensure_owner<L: Losos>(
+    l: &mut L,
+    repo: &crate::config_repo::RepoConfig,
+    secret: Option<&crate::setup::Secret>,
+) -> anyhow::Result<()> {
+    use crate::config_repo::{Answer, ForgejoOp};
+    let login = repo.owner.clone();
+    match ask(
+        l,
+        &ForgejoOp::GetUser {
+            login: login.clone(),
+        },
+        None,
+    )? {
+        Answer::Ok(_) | Answer::Exists => {
+            if let Some(secret) = secret {
+                match ask(
+                    l,
+                    &ForgejoOp::SetPassword {
+                        login: login.clone(),
+                    },
+                    Some(secret),
+                )? {
+                    Answer::Ok(_) => {}
+                    other => anyhow::bail!("LosOS Git did not take {login}'s password: {other:?}"),
+                }
+            }
+        }
+        Answer::Missing => {
+            let minted;
+            let password = match secret {
+                Some(s) => s,
+                None => {
+                    minted = l.mint_secret()?;
+                    &minted
+                }
+            };
+            match ask(
+                l,
+                &ForgejoOp::CreateUser {
+                    login: login.clone(),
+                },
+                Some(password),
+            )? {
+                Answer::Ok(_) | Answer::Exists => {}
+                Answer::Missing => anyhow::bail!("LosOS Git has no admin API at the expected path"),
+                Answer::Refused { status, message } => {
+                    anyhow::bail!("LosOS Git refused to create {login} ({status}): {message}")
+                }
+            }
+            if let Answer::Refused { status, message } = ask(
+                l,
+                &ForgejoOp::MakeAdmin {
+                    login: login.clone(),
+                },
+                None,
+            )? {
+                tracing::warn!(
+                    status,
+                    message,
+                    "{login} was created on LosOS Git but not made an administrator"
+                );
+            }
+        }
+        Answer::Refused { status, message } => {
+            anyhow::bail!("LosOS Git refused to look up {login} ({status}): {message}")
+        }
+    }
+    Ok(())
+}
+
+/// The private configuration repository under the owner, made if missing.
+fn ensure_repo<L: Losos>(
+    l: &mut L,
+    repo: &crate::config_repo::RepoConfig,
+    branch: &str,
+) -> anyhow::Result<()> {
+    use crate::config_repo::{Answer, ForgejoOp};
+    let (owner, name) = (repo.owner.clone(), repo.name.clone());
+    match ask(
+        l,
+        &ForgejoOp::GetRepo {
+            owner: owner.clone(),
+            name: name.clone(),
+        },
+        None,
+    )? {
+        Answer::Ok(_) | Answer::Exists => return Ok(()),
+        Answer::Missing => {}
+        Answer::Refused { status, message } => {
+            anyhow::bail!("LosOS Git refused to look up {owner}/{name} ({status}): {message}")
+        }
+    }
+    match ask(
+        l,
+        &ForgejoOp::CreateRepo {
+            owner: owner.clone(),
+            name: name.clone(),
+            branch: branch.to_string(),
+        },
+        None,
+    )? {
+        Answer::Ok(_) | Answer::Exists => Ok(()),
+        Answer::Missing => anyhow::bail!("LosOS Git has no admin API at the expected path"),
+        Answer::Refused { status, message } => {
+            anyhow::bail!("LosOS Git refused to create {owner}/{name} ({status}): {message}")
+        }
+    }
+}
+
+/// Give the owner's LosOS Git account the password they just proved.
+///
+/// Called after a successful claim, set-password and sign-in. Best effort:
+/// LosOS Git may be starting, or off, and neither is a reason to refuse the
+/// thing that just succeeded. Only the configured owner's account is
+/// touched; a password set for any other Nextcloud user is none of LosOS
+/// Git's business.
+pub fn sync_owner_password<L: Losos>(l: &mut L, user: &str, secret: &crate::setup::Secret) {
+    let Some(repo) = l.config_repo() else {
+        return;
+    };
+    if !repo.via_forgejo() || repo.owner != user {
+        return;
+    }
+    match ensure_owner(l, &repo, Some(secret)) {
+        Ok(()) => tracing::info!(user, "LosOS Git password kept in step"),
+        Err(e) if e.downcast_ref::<crate::config_repo::NotUp>().is_some() => {
+            tracing::info!(reason = %e, "LosOS Git password not updated: not up yet")
+        }
+        Err(e) => tracing::warn!(error = ?e, "LosOS Git password could not be updated"),
+    }
 }
 
 /// Rebuild progress. Polled by the admin UI roughly every two seconds.
@@ -1083,6 +1552,60 @@ mod tests {
             fn remove_background(&mut self) -> anyhow::Result<()> {
                 self.0.remove_background()
             }
+            fn read_options_doc(&mut self) -> anyhow::Result<Option<crate::options::OptionsDoc>> {
+                self.0.read_options_doc()
+            }
+            fn config_repo(&mut self) -> Option<crate::config_repo::RepoConfig> {
+                self.0.config_repo()
+            }
+            fn config_head(&mut self) -> anyhow::Result<Option<crate::config_repo::Head>> {
+                self.0.config_head()
+            }
+            fn config_commit(&mut self, s: &str, b: &str) -> anyhow::Result<Option<String>> {
+                self.0.config_commit(s, b)
+            }
+            fn config_fetch(&mut self, u: &str, b: &str) -> anyhow::Result<Option<String>> {
+                self.0.config_fetch(u, b)
+            }
+            fn config_is_ancestor(&mut self, a: &str, o: &str) -> anyhow::Result<bool> {
+                self.0.config_is_ancestor(a, o)
+            }
+            fn config_fast_forward(&mut self, t: &str) -> anyhow::Result<()> {
+                self.0.config_fast_forward(t)
+            }
+            fn config_push(&mut self, u: &str, b: &str) -> anyhow::Result<()> {
+                self.0.config_push(u, b)
+            }
+            fn config_show(&mut self, r: &str, p: &str) -> anyhow::Result<Option<String>> {
+                self.0.config_show(r, p)
+            }
+            fn config_log(
+                &mut self,
+                n: usize,
+            ) -> anyhow::Result<Vec<crate::config_repo::LogEntry>> {
+                self.0.config_log(n)
+            }
+            fn forgejo_request(
+                &mut self,
+                op: &crate::config_repo::ForgejoOp,
+                s: Option<&crate::setup::Secret>,
+            ) -> anyhow::Result<(u16, String)> {
+                self.0.forgejo_request(op, s)
+            }
+            fn mint_secret(&mut self) -> anyhow::Result<crate::setup::Secret> {
+                self.0.mint_secret()
+            }
+            fn load_sync_report(
+                &mut self,
+            ) -> anyhow::Result<Option<crate::config_repo::SyncReport>> {
+                self.0.load_sync_report()
+            }
+            fn save_sync_report(
+                &mut self,
+                r: &crate::config_repo::SyncReport,
+            ) -> anyhow::Result<()> {
+                self.0.save_sync_report(r)
+            }
         }
 
         let mut inert = Inert(FakeLosos::new());
@@ -1448,5 +1971,384 @@ mod tests {
         let mut f = FakeLosos::new();
         f.catalogue_body = None;
         assert!(cmd_apps_search(&mut f, "nextcloud").is_err());
+    }
+
+    // ── The option document and the configuration repository ───────────
+
+    fn with_doc(f: FakeLosos) -> FakeLosos {
+        FakeLosos {
+            options_doc: Some(crate::options::tests::sample()),
+            ..f
+        }
+    }
+
+    #[test]
+    fn apply_commits_with_a_message_naming_the_setting() {
+        let mut f = FakeLosos::new();
+        let out = cmd_apply(
+            &mut f,
+            "{ ... }:\n{\n  losos.sharingMyStorage = true;\n  losos.hostName = \"box2\";\n}\n",
+        )
+        .unwrap();
+        assert_eq!(f.commits.len(), 2, "{:?}", f.commits);
+        let c = f.commits.last().unwrap();
+        assert_eq!(out["commit"], c.sha);
+        assert!(
+            c.subject.starts_with("Change hostName"),
+            "the subject names the setting: {}",
+            c.subject
+        );
+        assert!(
+            c.body.contains("losos.hostName: \"mattbox\" -> \"box2\""),
+            "{}",
+            c.body
+        );
+        assert!(!f.dirty);
+    }
+
+    #[test]
+    fn change_and_reset_commit_too() {
+        let mut f = FakeLosos::new();
+        cmd_change(&mut f, Mode::Local).unwrap();
+        assert_eq!(f.commits.last().unwrap().subject, "Change sharingMyStorage");
+        let out = cmd_factory_reset(&mut f).unwrap();
+        assert_eq!(f.commits.last().unwrap().subject, "Reset sharingMyStorage");
+        assert_eq!(out["commit"], f.commits.last().unwrap().sha);
+        // A reset of a box already at the defaults has nothing to commit and
+        // says so, rather than failing.
+        let out = cmd_factory_reset(&mut f).unwrap();
+        assert_eq!(out["commit"], Value::Null);
+    }
+
+    #[test]
+    fn a_failed_commit_does_not_refuse_the_apply() {
+        // The fake cannot fail a commit; the real one can (git missing from the
+        // unit path). `commit_settings` logs and answers null — assert the
+        // contract on the one path the fake does model: nothing to commit.
+        let mut f = FakeLosos::new();
+        f.dirty = false;
+        let body = f.read_overrides().unwrap();
+        let out = cmd_apply(&mut f, &body).unwrap();
+        assert_eq!(out["commit"], Value::Null);
+        assert!(f.spawned, "the rebuild still runs");
+    }
+
+    #[test]
+    fn apply_is_gated_by_the_option_document() {
+        let mut f = with_doc(FakeLosos::new());
+        let err = cmd_apply(&mut f, "{ losos.forgejo.enable = \"yes\"; }").unwrap_err();
+        let rejected = err
+            .downcast_ref::<crate::options::Rejected>()
+            .expect("typed, so the HTTP layer answers 400");
+        assert_eq!(rejected.0, "losos.forgejo.enable must be true or false");
+        assert!(!f.spawned, "a refused apply rebuilds nothing");
+        assert_eq!(f.commits.len(), 1, "and commits nothing");
+
+        let err = cmd_apply(&mut f, "{ losos.tpm.enable = false; }").unwrap_err();
+        assert!(err.downcast_ref::<crate::options::Rejected>().is_some());
+
+        cmd_apply(&mut f, "{ losos.forgejo.enable = false; }").unwrap();
+        assert!(f.spawned);
+    }
+
+    #[test]
+    fn a_box_without_the_document_keeps_the_first_gate_only() {
+        let mut f = FakeLosos::new();
+        cmd_apply(&mut f, "{ losos.anything = \"goes\"; }").unwrap();
+        assert!(f.spawned);
+        let out = cmd_options(&mut f).unwrap();
+        assert_eq!(out["available"], false);
+        assert_eq!(out["options"], json!([]));
+    }
+
+    #[test]
+    fn options_joins_what_overrides_sets() {
+        let mut f = with_doc(FakeLosos::new());
+        cmd_apply(&mut f, "{ losos.forgejo.enable = false; }").unwrap();
+        let out = cmd_options(&mut f).unwrap();
+        assert_eq!(out["available"], true);
+        let opts = out["options"].as_array().unwrap();
+        let fe = opts.iter().find(|o| o["name"] == "forgejo.enable").unwrap();
+        assert_eq!(fe["set"], "false");
+        assert_eq!(fe["editor"]["kind"], "bool");
+        let hn = opts.iter().find(|o| o["name"] == "hostName").unwrap();
+        assert_eq!(hn["set"], Value::Null);
+    }
+
+    #[test]
+    fn config_reports_off_with_no_repository_configured() {
+        let mut f = FakeLosos::new();
+        let out = cmd_config(&mut f).unwrap();
+        assert_eq!(out["enabled"], false);
+        assert_eq!(out["sync"]["state"], "off");
+        assert_eq!(out["head"]["sha"], FakeLosos::sha(0));
+        assert_eq!(out["log"][0]["subject"], "losos install");
+        let out = cmd_config_sync(&mut f).unwrap();
+        assert_eq!(out["sync"]["state"], "off");
+        assert!(f.pushed.is_empty());
+    }
+
+    #[test]
+    fn sync_pushes_when_the_box_is_ahead() {
+        let mut f = FakeLosos::new().with_config_repo();
+        // The remote has nothing yet: first push.
+        let out = cmd_config_sync(&mut f).unwrap();
+        assert_eq!(out["sync"]["state"], "ok", "{}", out["sync"]["detail"]);
+        assert_eq!(
+            f.pushed,
+            vec!["http://127.0.0.1:3000/notshared/losos-config.git"]
+        );
+        assert_eq!(f.remote_commits, vec![FakeLosos::sha(0)]);
+        assert_eq!(out["repository"]["url"], "/forgejo/notshared/losos-config");
+        assert_eq!(out["sync"]["remoteHead"], FakeLosos::sha(0));
+        // In step: nothing to do.
+        cmd_config_sync(&mut f).unwrap();
+        assert_eq!(f.pushed.len(), 1);
+        // An Apply moves the box ahead: pushed on the next run.
+        cmd_apply(&mut f, "{ losos.hostName = \"box2\"; }").unwrap();
+        let out = cmd_config_sync(&mut f).unwrap();
+        assert_eq!(f.pushed.len(), 2);
+        assert_eq!(f.remote_commits.len(), 2);
+        assert!(out["sync"]["detail"]
+            .as_str()
+            .unwrap()
+            .starts_with("Pushed "));
+    }
+
+    #[test]
+    fn sync_commits_what_was_left_uncommitted_before_pushing() {
+        let mut f = FakeLosos::new().with_config_repo();
+        f.dirty = true;
+        cmd_config_sync(&mut f).unwrap();
+        assert_eq!(f.commits.len(), 2);
+        assert_eq!(f.commits.last().unwrap().subject, "Uncommitted changes");
+        assert_eq!(f.remote_commits.len(), 2);
+    }
+
+    /// A clone pushed a commit on top of the box's: it is fetched, gated,
+    /// taken, and the box rebuilds from it.
+    #[test]
+    fn sync_takes_a_pushed_commit_through_the_gates_and_rebuilds() {
+        let mut f = with_doc(FakeLosos::new().with_config_repo());
+        cmd_config_sync(&mut f).unwrap();
+        let pushed = "f".repeat(40);
+        f.remote_commits.push(pushed.clone());
+        f.remote_overrides = Some(
+            "{ ... }:\n{\n  losos.sharingMyStorage = true;\n  losos.forgejo.enable = false;\n}\n"
+                .to_string(),
+        );
+        let out = cmd_config_sync(&mut f).unwrap();
+        assert_eq!(out["sync"]["state"], "ok", "{}", out["sync"]["detail"]);
+        assert!(out["sync"]["detail"]
+            .as_str()
+            .unwrap()
+            .starts_with("Took ffffffffff"));
+        assert_eq!(f.fast_forwarded, vec![pushed.clone()]);
+        assert_eq!(f.commits.last().unwrap().sha, pushed);
+        assert!(f.spawned, "the pushed configuration is rebuilt");
+        assert_eq!(
+            f.state.rebuild.as_ref().unwrap().state,
+            RebuildState::Building
+        );
+        // The working tree now carries the pushed overrides, which is what
+        // `settings` reads.
+        assert_eq!(cmd_settings(&mut f).unwrap()["sharingMyStorage"], true);
+        assert!(f
+            .read_overrides()
+            .unwrap()
+            .contains("losos.forgejo.enable = false;"));
+        // Nothing was pushed back: the remote already has it.
+        assert_eq!(f.pushed.len(), 1);
+    }
+
+    #[test]
+    fn sync_refuses_a_pushed_overrides_that_fails_the_gates() {
+        let mut f = with_doc(FakeLosos::new().with_config_repo());
+        cmd_config_sync(&mut f).unwrap();
+        let before = f.commits.last().unwrap().sha.clone();
+        f.remote_commits.push("e".repeat(40));
+        // A hostname that would brick the box: the first gate.
+        f.remote_overrides = Some("{ losos.hostName = \"my box\"; }".to_string());
+        let out = cmd_config_sync(&mut f).unwrap();
+        assert_eq!(out["sync"]["state"], "refused");
+        assert!(out["sync"]["detail"].as_str().unwrap().contains("hostName"));
+        assert!(f.fast_forwarded.is_empty());
+        assert!(!f.spawned);
+        assert_eq!(f.commits.last().unwrap().sha, before);
+        // A value of the wrong type: the second gate.
+        f.remote_overrides = Some("{ losos.forgejo.enable = \"yes\"; }".to_string());
+        let out = cmd_config_sync(&mut f).unwrap();
+        assert_eq!(out["sync"]["state"], "refused");
+        assert!(out["sync"]["detail"]
+            .as_str()
+            .unwrap()
+            .contains("losos.forgejo.enable must be true or false"));
+        // No overrides.nix at all in the pushed commit.
+        f.remote_overrides = None;
+        let out = cmd_config_sync(&mut f).unwrap();
+        assert_eq!(out["sync"]["state"], "refused");
+        assert!(f.fast_forwarded.is_empty());
+    }
+
+    #[test]
+    fn sync_waits_for_a_running_rebuild_before_taking_a_push() {
+        let mut f = with_doc(FakeLosos::new().with_config_repo());
+        cmd_config_sync(&mut f).unwrap();
+        f.remote_commits.push("d".repeat(40));
+        f.remote_overrides = Some("{ losos.forgejo.enable = false; }".to_string());
+        f.state.rebuild = Some(building("job-9", MSG_STARTED));
+        let out = cmd_config_sync(&mut f).unwrap();
+        assert_eq!(out["sync"]["state"], "waiting");
+        assert!(f.fast_forwarded.is_empty());
+    }
+
+    #[test]
+    fn sync_reports_diverged_and_touches_neither_side() {
+        let mut f = FakeLosos::new().with_config_repo();
+        cmd_config_sync(&mut f).unwrap();
+        cmd_apply(&mut f, "{ losos.hostName = \"box2\"; }").unwrap();
+        f.remote_commits.push("c".repeat(40));
+        let out = cmd_config_sync(&mut f).unwrap();
+        assert_eq!(out["sync"]["state"], "diverged");
+        assert_eq!(f.pushed.len(), 1, "no force-push");
+        assert!(f.fast_forwarded.is_empty());
+        assert_eq!(f.remote_commits.len(), 2);
+    }
+
+    #[test]
+    fn sync_reports_unavailable_while_losos_git_is_not_up() {
+        // No routes at all: the pod is still starting.
+        let mut f = FakeLosos::new();
+        f.repo = FakeLosos::new().with_config_repo().repo;
+        let out = cmd_config_sync(&mut f).unwrap();
+        assert_eq!(out["sync"]["state"], "unavailable");
+        assert!(f.pushed.is_empty());
+        // The API answers but the remote does not.
+        let mut f = FakeLosos::new().with_config_repo();
+        f.fetch_fails = true;
+        let out = cmd_config_sync(&mut f).unwrap();
+        assert_eq!(out["sync"]["state"], "unavailable");
+        assert!(f.pushed.is_empty());
+        assert!(f.sync_report.is_some(), "the report is kept for the pane");
+    }
+
+    #[test]
+    fn sync_creates_the_owner_and_the_repository_when_missing() {
+        let mut f = FakeLosos::new().with_config_repo();
+        f.forgejo_routes.insert(
+            "GET /api/v1/users/notshared".into(),
+            (404, r#"{"message":"user does not exist"}"#.into()),
+        );
+        f.forgejo_routes.insert(
+            "POST /api/v1/admin/users".into(),
+            (201, r#"{"id": 2}"#.into()),
+        );
+        f.forgejo_routes.insert(
+            "GET /api/v1/repos/notshared/losos-config".into(),
+            (404, r#"{"message":"not found"}"#.into()),
+        );
+        f.forgejo_routes.insert(
+            "POST /api/v1/admin/users/notshared/repos".into(),
+            (201, r#"{"id": 1}"#.into()),
+        );
+        let out = cmd_config_sync(&mut f).unwrap();
+        assert_eq!(out["sync"]["state"], "ok", "{}", out["sync"]["detail"]);
+        let calls: Vec<&str> = f.forgejo_calls.iter().map(|(k, _)| k.as_str()).collect();
+        assert_eq!(
+            calls,
+            vec![
+                "GET /api/v1/users/notshared",
+                "POST /api/v1/admin/users",
+                "PATCH /api/v1/admin/users/notshared",
+                "GET /api/v1/repos/notshared/losos-config",
+                "POST /api/v1/admin/users/notshared/repos",
+            ]
+        );
+        // The account was made with a minted password nobody will type, and
+        // nothing but the create carried one.
+        assert_eq!(
+            f.forgejo_calls[1].1.as_deref(),
+            Some("minted-fake-password-0123")
+        );
+        assert!(f.forgejo_calls.iter().filter(|(_, p)| p.is_some()).count() == 1);
+        assert_eq!(f.pushed.len(), 1);
+        // "Exists" is as good as made: a repeat creates nothing twice.
+        f.forgejo_routes.insert(
+            "POST /api/v1/admin/users".into(),
+            (
+                422,
+                r#"{"message":"user already exists [name: notshared]"}"#.into(),
+            ),
+        );
+        f.forgejo_routes.insert(
+            "POST /api/v1/admin/users/notshared/repos".into(),
+            (
+                409,
+                r#"{"message":"The repository with the same name already exists."}"#.into(),
+            ),
+        );
+        let out = cmd_config_sync(&mut f).unwrap();
+        assert_eq!(out["sync"]["state"], "ok");
+    }
+
+    #[test]
+    fn a_refusal_from_losos_git_is_reported_not_raised() {
+        let mut f = FakeLosos::new().with_config_repo();
+        f.forgejo_routes.insert(
+            "GET /api/v1/users/notshared".into(),
+            (
+                403,
+                r#"{"message":"token does not have at least one of required scope(s)"}"#.into(),
+            ),
+        );
+        let out = cmd_config_sync(&mut f).unwrap();
+        assert_eq!(out["sync"]["state"], "error");
+        assert!(out["sync"]["detail"]
+            .as_str()
+            .unwrap()
+            .contains("required scope"));
+    }
+
+    #[test]
+    fn a_sign_in_gives_losos_git_the_same_password() {
+        let mut f = FakeLosos::new().with_config_repo();
+        f.accepted_password = Some("correct horse battery staple".to_string());
+        cmd_sign_in(&mut f, "correct horse battery staple", "tok", "192.168.1.9").unwrap();
+        let set = f
+            .forgejo_calls
+            .iter()
+            .find(|(k, _)| k == "PATCH /api/v1/admin/users/notshared")
+            .expect("the password was set");
+        assert_eq!(set.1.as_deref(), Some("correct horse battery staple"));
+        // A wrong password sets nothing.
+        f.forgejo_calls.clear();
+        assert!(cmd_sign_in(&mut f, "wrong horse", "tok", "192.168.1.9").is_err());
+        assert!(f.forgejo_calls.is_empty());
+    }
+
+    #[test]
+    fn set_password_gives_losos_git_the_same_password() {
+        let mut f = FakeLosos::new().with_config_repo();
+        cmd_set_password(&mut f, "notshared", "Correct-Horse-Battery-9").unwrap();
+        let set = f
+            .forgejo_calls
+            .iter()
+            .find(|(k, _)| k == "PATCH /api/v1/admin/users/notshared")
+            .expect("the password was set");
+        assert_eq!(set.1.as_deref(), Some("Correct-Horse-Battery-9"));
+        // Another Nextcloud user is none of LosOS Git's business.
+        f.forgejo_calls.clear();
+        cmd_set_password(&mut f, "someone", "Correct-Horse-Battery-9").unwrap();
+        assert!(f.forgejo_calls.is_empty());
+    }
+
+    #[test]
+    fn a_sign_in_still_succeeds_while_losos_git_is_down() {
+        let mut f = FakeLosos::new();
+        f.repo = FakeLosos::new().with_config_repo().repo;
+        f.accepted_password = Some("correct horse battery staple".to_string());
+        let out =
+            cmd_sign_in(&mut f, "correct horse battery staple", "tok", "192.168.1.9").unwrap();
+        assert_eq!(out["token"], "tok");
     }
 }
