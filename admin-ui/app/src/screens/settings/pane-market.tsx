@@ -21,12 +21,11 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Spinner } from "@/components/ui/progress";
-import { Switch } from "@/components/ui/switch";
 import { toast } from "@/components/ui/toast";
 import type { MarketKind, MarketOrder, MarketShelfListing } from "@/lib/api";
 import { t as translate, type MessageKey } from "@/lib/i18n";
 import { useT } from "@/lib/i18n-react";
-import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText, RowValue, StackRow } from "./rows";
+import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText, RowValue, StackRow, SwitchRow } from "./rows";
 import {
   formatDay,
   formatMoney,
@@ -229,15 +228,13 @@ function SharingSection({ form }: { form: SettingsForm }) {
     <PaneSection>
       <GroupTitle>{t("panes.market.share.title")}</GroupTitle>
       <Group>
-        <Row>
-          <RowText htmlFor={shareId} title={t("panes.market.share.switch")} />
-          <Switch
-            id={shareId}
-            checked={sharing}
-            disabled={form.locked || !form.ready}
-            onCheckedChange={(next) => form.set("sharingMyStorage", next)}
-          />
-        </Row>
+        <SwitchRow
+          id={shareId}
+          title={t("panes.market.share.switch")}
+          checked={sharing}
+          disabled={form.locked || !form.ready}
+          onCheckedChange={(next) => form.set("sharingMyStorage", next)}
+        />
         <Row last>
           <RowText title={t("panes.market.share.ifDies")} />
           <RowValue className={sharing ? "text-ok" : undefined}>
