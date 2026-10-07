@@ -117,6 +117,46 @@ pub struct FakeLosos {
     pub look: crate::look::Look,
     /// Stands in for the uploaded picture's file; `None` is no file.
     pub background: Option<Vec<u8>>,
+
+    // ── The option document and the configuration repository ───────────
+    /// Stands in for `/etc/losos/options.json`; `None` is a box without it.
+    pub options_doc: Option<crate::options::OptionsDoc>,
+    /// Where the repository is published; `None` is the feature off.
+    pub repo: Option<crate::config_repo::RepoConfig>,
+    pub branch: String,
+    /// The local history, oldest first. A fresh fake has the installer's
+    /// one commit.
+    pub commits: Vec<FakeCommit>,
+    /// Whether the working tree has changes a commit would pick up. Set by
+    /// `write_overrides`, cleared by `config_commit`.
+    pub dirty: bool,
+    /// The remote branch's history, oldest first, by sha. Shas that are not
+    /// in `commits` are commits made elsewhere (a push from a clone).
+    pub remote_commits: Vec<String>,
+    /// What `git show <remote head>:modules/overrides.nix` prints.
+    pub remote_overrides: Option<String>,
+    /// Model a remote that cannot be reached.
+    pub fetch_fails: bool,
+    /// Every push made, by URL.
+    pub pushed: Vec<String>,
+    /// Every fast-forward made, by target sha.
+    pub fast_forwarded: Vec<String>,
+    /// LosOS Git's answers by `METHOD path`; a route with no entry models a
+    /// LosOS Git that is not up.
+    pub forgejo_routes: std::collections::BTreeMap<String, (u16, String)>,
+    /// Every request made, as `METHOD path` and the password it carried.
+    pub forgejo_calls: Vec<(String, Option<String>)>,
+    pub sync_report: Option<crate::config_repo::SyncReport>,
+    /// Numbers the next commit the fake makes.
+    pub commit_seq: u32,
+}
+
+/// One commit in the fake's history.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FakeCommit {
+    pub sha: String,
+    pub subject: String,
+    pub body: String,
 }
 
 impl FakeLosos {
@@ -187,6 +227,24 @@ impl FakeLosos {
             edge_asked: 0,
             look: crate::look::Look::default(),
             background: None,
+            options_doc: None,
+            repo: None,
+            branch: "main".to_string(),
+            commits: vec![FakeCommit {
+                sha: Self::sha(0),
+                subject: "losos install".to_string(),
+                body: String::new(),
+            }],
+            dirty: false,
+            remote_commits: Vec::new(),
+            remote_overrides: None,
+            fetch_fails: false,
+            pushed: Vec::new(),
+            fast_forwarded: Vec::new(),
+            forgejo_routes: std::collections::BTreeMap::new(),
+            forgejo_calls: Vec::new(),
+            sync_report: None,
+            commit_seq: 1,
         }
     }
 
@@ -205,6 +263,48 @@ impl FakeLosos {
             e.official = false;
         }
         self.edge.official = false;
+        self
+    }
+
+    /// A readable 40-character sha for commit number `n`.
+    pub fn sha(n: u32) -> String {
+        format!("{n:040x}")
+    }
+
+    /// The commits a sha has behind it (and itself), from whichever side of
+    /// the fake knows it; empty for a sha nobody has.
+    fn history(&self, sha: &str) -> Vec<String> {
+        if let Some(i) = self.commits.iter().position(|c| c.sha == sha) {
+            return self.commits[..=i].iter().map(|c| c.sha.clone()).collect();
+        }
+        if let Some(i) = self.remote_commits.iter().position(|c| c == sha) {
+            return self.remote_commits[..=i].to_vec();
+        }
+        Vec::new()
+    }
+
+    /// The configuration repository switched on, pointing at a LosOS Git
+    /// that answers "exists" for the owner and the repository.
+    pub fn with_config_repo(mut self) -> Self {
+        self.repo = Some(crate::config_repo::RepoConfig {
+            owner: "notshared".to_string(),
+            name: "losos-config".to_string(),
+            forgejo_url: "http://127.0.0.1:3000".to_string(),
+            token_file: "/var/lib/forgejo/.losos-token".to_string(),
+            remote_url: None,
+        });
+        self.forgejo_routes.insert(
+            "GET /api/v1/users/notshared".to_string(),
+            (200, r#"{"id": 2, "login": "notshared"}"#.to_string()),
+        );
+        self.forgejo_routes.insert(
+            "GET /api/v1/repos/notshared/losos-config".to_string(),
+            (200, r#"{"id": 1, "name": "losos-config"}"#.to_string()),
+        );
+        self.forgejo_routes.insert(
+            "PATCH /api/v1/admin/users/notshared".to_string(),
+            (200, r#"{"id": 2}"#.to_string()),
+        );
         self
     }
 }
@@ -226,7 +326,13 @@ impl Losos for FakeLosos {
     }
 
     fn write_overrides(&mut self, body: &str) -> anyhow::Result<()> {
-        self.config = body.lines().map(str::to_string).collect();
+        let lines: Vec<String> = body.lines().map(str::to_string).collect();
+        // Like a working tree: rewriting a file with the same bytes is not a
+        // change, and a commit of it would be nothing to commit.
+        if lines != self.config {
+            self.dirty = true;
+        }
+        self.config = lines;
         Ok(())
     }
 
@@ -436,5 +542,130 @@ impl Losos for FakeLosos {
     ) -> anyhow::Result<Option<String>> {
         self.last_log_asked += 1;
         Ok(self.last_log.clone())
+    }
+
+    fn read_options_doc(&mut self) -> anyhow::Result<Option<crate::options::OptionsDoc>> {
+        Ok(self.options_doc.clone())
+    }
+
+    fn config_repo(&mut self) -> Option<crate::config_repo::RepoConfig> {
+        self.repo.clone()
+    }
+
+    fn config_head(&mut self) -> anyhow::Result<Option<crate::config_repo::Head>> {
+        Ok(self.commits.last().map(|c| crate::config_repo::Head {
+            sha: c.sha.clone(),
+            branch: self.branch.clone(),
+        }))
+    }
+
+    fn config_commit(&mut self, subject: &str, body: &str) -> anyhow::Result<Option<String>> {
+        if !self.dirty && !self.commits.is_empty() {
+            return Ok(None);
+        }
+        let sha = Self::sha(self.commit_seq);
+        self.commit_seq += 1;
+        self.commits.push(FakeCommit {
+            sha: sha.clone(),
+            subject: subject.to_string(),
+            body: body.to_string(),
+        });
+        self.dirty = false;
+        Ok(Some(sha))
+    }
+
+    fn config_fetch(&mut self, _url: &str, _branch: &str) -> anyhow::Result<Option<String>> {
+        if self.fetch_fails {
+            return Err(crate::config_repo::NotUp("the fake remote is not up".to_string()).into());
+        }
+        Ok(self.remote_commits.last().cloned())
+    }
+
+    fn config_is_ancestor(&mut self, ancestor: &str, of: &str) -> anyhow::Result<bool> {
+        Ok(self.history(of).iter().any(|s| s == ancestor))
+    }
+
+    fn config_fast_forward(&mut self, to: &str) -> anyhow::Result<()> {
+        let history = self.history(to);
+        if history.is_empty() {
+            anyhow::bail!("unknown commit {to}");
+        }
+        let mut commits: Vec<FakeCommit> = Vec::new();
+        for sha in history {
+            match self.commits.iter().find(|c| c.sha == sha) {
+                Some(c) => commits.push(c.clone()),
+                None => commits.push(FakeCommit {
+                    sha,
+                    subject: "(pushed from a clone)".to_string(),
+                    body: String::new(),
+                }),
+            }
+        }
+        self.commits = commits;
+        // The one effect a later step reads back: the fast-forward writes
+        // the pushed overrides.nix into the working tree.
+        if let Some(body) = &self.remote_overrides {
+            self.config = body.lines().map(str::to_string).collect();
+        }
+        self.dirty = false;
+        self.fast_forwarded.push(to.to_string());
+        Ok(())
+    }
+
+    fn config_push(&mut self, url: &str, _branch: &str) -> anyhow::Result<()> {
+        self.remote_commits = self.commits.iter().map(|c| c.sha.clone()).collect();
+        self.pushed.push(url.to_string());
+        Ok(())
+    }
+
+    fn config_show(&mut self, rev: &str, path: &str) -> anyhow::Result<Option<String>> {
+        if path != "modules/overrides.nix" || !self.remote_commits.iter().any(|s| s == rev) {
+            return Ok(None);
+        }
+        Ok(self.remote_overrides.clone())
+    }
+
+    fn config_log(&mut self, n: usize) -> anyhow::Result<Vec<crate::config_repo::LogEntry>> {
+        Ok(self
+            .commits
+            .iter()
+            .rev()
+            .take(n)
+            .map(|c| crate::config_repo::LogEntry {
+                sha: c.sha.clone(),
+                when: "2026-10-07T12:00:00Z".to_string(),
+                subject: c.subject.clone(),
+            })
+            .collect())
+    }
+
+    fn forgejo_request(
+        &mut self,
+        op: &crate::config_repo::ForgejoOp,
+        secret: Option<&crate::setup::Secret>,
+    ) -> anyhow::Result<(u16, String)> {
+        let (method, path) = op.route();
+        let key = format!("{method} {path}");
+        self.forgejo_calls
+            .push((key.clone(), secret.map(|s| s.expose().to_string())));
+        match self.forgejo_routes.get(&key) {
+            Some((status, body)) => Ok((*status, body.clone())),
+            None => {
+                Err(crate::config_repo::NotUp("the fake LosOS Git is not up".to_string()).into())
+            }
+        }
+    }
+
+    fn mint_secret(&mut self) -> anyhow::Result<crate::setup::Secret> {
+        Ok(crate::setup::Secret::new("minted-fake-password-0123"))
+    }
+
+    fn load_sync_report(&mut self) -> anyhow::Result<Option<crate::config_repo::SyncReport>> {
+        Ok(self.sync_report.clone())
+    }
+
+    fn save_sync_report(&mut self, report: &crate::config_repo::SyncReport) -> anyhow::Result<()> {
+        self.sync_report = Some(report.clone());
+        Ok(())
     }
 }

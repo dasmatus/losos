@@ -93,6 +93,16 @@ stays claimable. `GET /api/setup/claim` carries the same `ready` and
 proceed on its own once they flip. On a fresh box this takes a few minutes:
 the Nextcloud pod runs `occ maintenance:install` before it serves anything.
 
+`ready` flips when that install finishes, which is before LosOS cloud
+answers a browser: the pod then enables its 26 apps and only after that
+starts Apache. Measured natively on a 4-core host (2026-10-07), the install
+takes about 11 s, enabling the apps about 13 s, and the first page answers
+27 s after the pod started; the wizard's sign-in step shows "Your files are
+still starting" for that gap. A reboot repeats the same steps against an
+installed instance in about 2 s. In a VM without KVM (QEMU's TCG emulation)
+the same steps take 10 to 30 minutes, so give a demo VM hardware
+virtualisation.
+
 The first-run wizard is that caller. Every later visit to the admin pages
 asks for the **password** the wizard set, the same one that signs in to
 LosOS cloud: `POST /api/sign-in` asks Nextcloud whether it is right and hands
@@ -121,6 +131,75 @@ runs `nixos-rebuild switch`. So:
 - The box can be rebuilt from this repository plus that one file.
 - `apply` replaces `overrides.nix` entirely. A setting the UI does not write
   is reset on the next save.
+
+### Advanced
+
+**Settings → Advanced** lists every `losos.*` option the box declares, read
+from the modules it runs (`flake/options-doc.nix` generates the document at
+build time; lososd serves it at `GET /api/options` with the current
+`overrides.nix` joined in). Each row shows the option's description, its
+default, the value the box is running with, and an editor for its type: a
+switch, a number with its bounds, a choice, a text field, or one item per
+line for a list.
+
+- An option one of the other panes already edits (the name, the apps' run
+  modes, the hardening switches) is shown with its value and a link to that
+  pane, so there is one place to change it.
+- The three the installer writes (`targetDrives`, `tpm.enable`, `bios`) and
+  the packages the build chooses are shown read-only; a line for one of
+  them in `overrides.nix` would fail the next rebuild.
+- Options marked **Careful** (`admin.*`, `cluster.*`, `hostName`,
+  `storage.*`, `tls.*`, `upgradeFlakeUri`, …) ask once before the first
+  change: a wrong value leaves a box with no shell to fix it from.
+- **Use default** removes the line rather than writing the default's value,
+  so a default that moves with an update is followed.
+- A line in `overrides.nix` the box has no option for (a typo, a setting
+  from another version) is shown in its own group and blocks Apply until it
+  is removed. lososd refuses such a body too (`backend/src/options.rs`,
+  `check_body`): every line of an apply is checked against the document —
+  declared, not read-only, a value of the right kind, no `${`.
+
+Everything written here goes through the same Apply and the same rebuild as
+the other panes; `losos.edge.*` is left out because the appliance never
+reads it.
+
+### History and LosOS Git
+
+Every Apply, storage change and factory reset is one commit in `/etc/nixos`
+(the repository `losos-ctl install` made), named after the settings it
+changed: `Change hostName, cluster.enable`, with the before and after of
+each in the body. **Settings → History** lists the last forty.
+
+With `losos.configRepo.enable` (the default) and LosOS Git on, lososd also
+keeps the configuration in a **private repository on LosOS Git**,
+`<owner>/losos-config`, owned by the admin's own account (`notshared`; the
+account is created on the first sync with the admin password, and kept in
+step with it on every password change and sign-in). A reconciler in lososd
+runs every 30 s:
+
+- commits anything uncommitted and pushes the box's branch when LosOS Git
+  is behind;
+- when LosOS Git is ahead — you cloned the repository, edited
+  `modules/overrides.nix` and pushed — fast-forwards to it, checks the new
+  `overrides.nix` line by line the way Apply is checked, and starts a
+  rebuild. A refused push is reported under History and the box stays on
+  its own commit;
+- when the two have diverged (a rewritten history) it does nothing and says
+  so; sort it out from a clone;
+- while a rebuild is running, the push waits for the next tick.
+
+**Sync now** on the History pane runs one tick immediately. `losos-ctl
+config` prints the same document, `losos-ctl config --sync` runs a tick.
+Secrets never enter the repository: `overrides.nix` carries option values
+only, and the token lososd authenticates to LosOS Git with lives in
+`/var/lib/forgejo/.losos-token`, outside `/etc/nixos`. There is no Forgejo
+Actions runner behind this; the box polls.
+
+The clone address is shown on the pane (`http://<box>/forgejo/<owner>/
+losos-config.git`; the repository is private, so it needs the admin's
+password). The daemon talks to Forgejo on loopback with a bot account,
+`losos`, that the Forgejo start-up script creates and mints a token for
+(`flake/forgejo-bootstrap.nix`).
 
 ## Users
 
