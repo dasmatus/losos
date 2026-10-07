@@ -130,7 +130,7 @@ let
           case "''${2:-}" in
             set)
               shift 2
-              id='' token_file='' registrar='' rathole='' bootstrap=''
+              id="" token_file="" registrar="" rathole="" bootstrap=""
               while [ $# -gt 0 ]; do
                 case "$1" in
                   --id) id="''${2:?}"; shift 2 ;;
