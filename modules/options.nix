@@ -389,6 +389,27 @@ in
       '';
     };
 
+    proxy.officialRootKeyFile = lib.mkOption {
+      type = lib.types.path;
+      default = ../keys/official-edge-root.pub;
+      defaultText = lib.literalExpression "../keys/official-edge-root.pub";
+      description = ''
+        The LosOS root **public** key (Ed25519, 64 hex characters; `#` lines
+        are comments), read by lososd on every edge scan. An edge counts as
+        *official* only if it presents a certificate signed by the matching
+        private key and answers a fresh nonce with the certificate's key
+        (`GET <url>/identity?nonce=`, backend/src/edge.rs); only official
+        edges may process P2P storage and compute trading, so the market
+        relay answers `{available: false, reason: "noOfficialEdge"}` and
+        refuses actions (409, `officialEdgeRequired`) through any other edge.
+        Discovery and storage sharing are not gated on this: a company's own
+        edge keeps working. A file with no key in it (the committed default
+        until the project owner writes the key) makes no edge official, so a
+        tree without the key fails closed. A public key, so a store path is
+        fine here.
+      '';
+    };
+
     proxy.heartbeatInterval = lib.mkOption {
       type = lib.types.str;
       default = "30s";
@@ -751,6 +772,38 @@ in
       '';
     };
 
+    forgejo.runner.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Run a Forgejo Actions runner on the box itself (modules/git-runner.nix,
+        host mode, the unprivileged `losos-git-runner` user), so LosOS Git can
+        run workflows — the official-edge key ceremony in
+        provisioning/edge-identity/ is the one it exists for. Takes effect only
+        with losos.forgejo.enable. In container mode this also switches
+        actions.ENABLED in the pod, so the two cannot disagree: Actions is
+        remote code execution by design and is never on without a runner.
+      '';
+    };
+
+    forgejo.runner.name = lib.mkOption {
+      type = lib.types.str;
+      default = "losos-box";
+      description = "The runner's name in LosOS Git's runner list.";
+    };
+
+    forgejo.runner.secretFile = lib.mkOption {
+      type = secretPath;
+      default = "/var/secrets/losos-git-runner-secret";
+      description = ''
+        The 40-hex-character secret shared between Forgejo and the runner
+        (`forgejo-cli actions register --secret-file`). Generated on first
+        start if absent, 0600 root; persisted under /var. The runner's UUID
+        is derived from it, so a new secret means a new runner in Forgejo's
+        list, not a renamed one.
+      '';
+    };
+
     # ── The box's configuration on LosOS Git ──────────────────────────────
     # /etc/nixos is a git repository; every Apply commits there
     # (backend/src/config_repo.rs). With this on, lososd keeps it in step
@@ -1062,6 +1115,34 @@ in
       '';
     };
 
+    edge.identity.keyFile = lib.mkOption {
+      type = lib.types.nullOr secretPath;
+      default = null;
+      description = ''
+        This edge's identity **private** key (PKCS#8 hex, 0600, persisted via
+        /var, never in the store), made with `losos-registrar identity keygen
+        --out <file>`. With `edge.identity.certFile` it makes the edge
+        *official*: the registrar serves `GET /identity?nonce=` and boxes
+        whose losos.proxy.officialRootKeyFile matches the signer let it
+        process their market traffic. `null` (the default) is an edge that is
+        found and shares storage but is never official — the shape of an
+        edge a company runs for itself.
+      '';
+    };
+
+    edge.identity.certFile = lib.mkOption {
+      type = lib.types.nullOr lib.types.path;
+      default = null;
+      description = ''
+        The certificate for `edge.identity.keyFile`: the JSON
+        `losos-registrar identity sign` prints, signed by the LosOS root key
+        the project owner holds offline. Public, so a store path is fine.
+        Must name this edge's public URL (the one boxes probe) and be
+        unexpired; the registrar refuses to start on a mismatch. Set with
+        `keyFile` or not at all.
+      '';
+    };
+
     edge.tenants = lib.mkOption {
       type = lib.types.attrsOf (
         lib.types.submodule {
@@ -1217,6 +1298,41 @@ in
       '';
     };
 
+    # ── Edge on the LAN ─────────────────────────────────────────────────────
+    # The appliance looks for an edge proxy before it lets anyone share
+    # storage (backend/src/edge.rs): at losos.proxy.registrarUrl, and on its
+    # own network by DNS-SD. This is the network half: the edge publishes
+    # `_losos-edge._tcp` over mDNS with a `url=` TXT record naming its
+    # registrar API, and the box's `avahi-browse` finds it. Off by default
+    # because a production edge is a VPS with no LAN to speak of; on for an
+    # edge that sits beside the boxes (a home server, the two-VM demo in
+    # demo/edge-lan/), where it is what lets a box with no internet share.
+    edge.lan.advertise = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Advertise this edge on the local network over mDNS/DNS-SD as
+        `_losos-edge._tcp`, so appliances on the same LAN find it without
+        any configuration. Also opens the registrar API port in the firewall
+        and binds it off-loopback when losos.edge.registrarApiBind is still
+        the loopback default: a box that found the edge dials the advertised
+        URL directly, there being no Traefik hostname on a LAN.
+      '';
+    };
+
+    edge.lan.url = lib.mkOption {
+      type = lib.types.str;
+      default = "http://${config.networking.hostName}.local:${toString config.losos.edge.registrarApiPort}";
+      defaultText = lib.literalExpression ''"http://''${config.networking.hostName}.local:''${toString config.losos.edge.registrarApiPort}"'';
+      description = ''
+        The registrar API URL the advertisement carries (`url=` TXT record).
+        Appliances probe `<url>/health` before they count the edge as found,
+        so it must be reachable from the LAN as written. The default is the
+        edge's own mDNS name, resolvable by every appliance (they run Avahi's
+        NSS module); set an IP literal when the LAN's mDNS is unreliable.
+      '';
+    };
+
     edge.rathole.package = lib.mkOption {
       type = lib.types.package;
       default = pkgs.rathole;
@@ -1329,6 +1445,7 @@ in
         "losos.proxy.bootstrapTokenFile" = config.losos.proxy.bootstrapTokenFile;
         "losos.edge.bootstrapTokenFile" = config.losos.edge.bootstrapTokenFile;
         "losos.cluster.tokenFile" = config.losos.cluster.tokenFile;
+        "losos.forgejo.runner.secretFile" = config.losos.forgejo.runner.secretFile;
         "losos.shared.fscrypt.keyFile" = config.losos.shared.fscrypt.keyFile;
         "losos.edge.cluster.agentTokenFile" = config.losos.edge.cluster.agentTokenFile;
         "losos.edge.market.stripeSecretKeySealed" = config.losos.edge.market.stripeSecretKeySealed;
@@ -1336,6 +1453,9 @@ in
       }
       // lib.optionalAttrs (config.losos.edge.noisePrivateKeyFile != null) {
         "losos.edge.noisePrivateKeyFile" = config.losos.edge.noisePrivateKeyFile;
+      }
+      // lib.optionalAttrs (config.losos.edge.identity.keyFile != null) {
+        "losos.edge.identity.keyFile" = config.losos.edge.identity.keyFile;
       }
       // lib.mapAttrs' (
         id: tenant: lib.nameValuePair "losos.edge.tenants.${id}.tokenFile" tenant.tokenFile

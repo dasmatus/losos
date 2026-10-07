@@ -154,8 +154,19 @@ in
             "http://127.0.0.1:${toString config.losos.nextcloud.apachePort}/nextcloud/ocs/v2.php/cloud/user"
           else
             "http://127.0.0.1:80/ocs/v2.php/cloud/user";
-        LOSOS_NEXTCLOUD_LOGIN_HOST =
-          if ncContainer then "localhost" else config.losos.nextcloud.hostName;
+        LOSOS_NEXTCLOUD_LOGIN_HOST = if ncContainer then "localhost" else config.losos.nextcloud.hostName;
+      }
+      # Where lososd looks for an edge proxy besides the LAN (backend/src/edge.rs):
+      # the configured registrar, probed whether or not the master proxy is on,
+      # because the question is "is there an edge anywhere this box could share
+      # through", not "is this box enrolled". The LAN half needs no setting; it
+      # is the `_losos-edge._tcp` browse over the Avahi the box already runs.
+      // {
+        LOSOS_EDGE_URL = config.losos.proxy.registrarUrl;
+        # The trust anchor for "official" edges (losos.proxy.officialRootKeyFile):
+        # a public key, so a store path. Without a key in it no edge is
+        # official and the market relay stays off.
+        LOSOS_EDGE_ROOT_KEY_FILE = "${config.losos.proxy.officialRootKeyFile}";
       }
       # What `cryptsetup resize` authenticates with during `losos-ctl grow`.
       #
@@ -203,6 +214,12 @@ in
         # shape as the grow binaries above if this line goes: ENOENT at the
         # exec, reported to the owner as a search that will not come back.
         pkgs.curl
+        # What the edge scan browses the LAN with (backend/src/edge.rs):
+        # `avahi-browse` for `_losos-edge._tcp`, under coreutils' `timeout`.
+        # Missing, the scan reports the LAN as unsearched and only the
+        # configured edge can open the sharing gate — a box on a LAN with an
+        # edge and no internet would then never be allowed to share.
+        pkgs.avahi
         # What Apply, a storage-mode change and a factory reset run. The
         # rebuild is a `systemd-run` transient unit, and systemd-run resolves a
         # bare command against the caller's PATH before PID 1 sees it: with

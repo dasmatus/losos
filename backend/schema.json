@@ -354,7 +354,14 @@
       "properties": {
         "available": {
           "type": "boolean",
-          "description": "False — and nothing else present — when the edge runs no market, this box was not cleared for it, or the box has no master proxy configured. That is the normal state of most appliances, so it is a 200 and not an error."
+          "description": "False \u2014 with at most `reason` beside it \u2014 when the edge runs no market, this box was not cleared for it, the box has no master proxy configured, or no official edge is in reach. That is the normal state of most appliances, so it is a 200 and not an error."
+        },
+        "reason": {
+          "type": "string",
+          "enum": [
+            "noOfficialEdge"
+          ],
+          "description": "Present only with `available: false`, and only when the cause is one the owner can see on the Mesh pane: `noOfficialEdge` \u2014 the edges in reach are none that LosOS runs (edgeResponse.official is false), so trading is off while storage sharing through them keeps working."
         },
         "listings": {
           "type": "array",
@@ -455,6 +462,88 @@
               }
             }
           }
+        }
+      }
+    },
+    "edgeSource": {
+      "type": "string",
+      "enum": [
+        "lan",
+        "configured"
+      ],
+      "description": "Where an edge proxy was found: by DNS-SD on the local network (`_losos-edge._tcp`), or at losos.proxy.registrarUrl."
+    },
+    "edgeProxy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "url",
+        "source",
+        "official"
+      ],
+      "properties": {
+        "official": {
+          "type": "boolean",
+          "description": "This edge proved it is one LosOS runs: on this scan it presented a certificate signed by the LosOS root key (losos.proxy.officialRootKeyFile) that names this URL and is unexpired, and signed the scan's fresh nonce with the certificate's key (`GET <url>/identity?nonce=<hex>`, backend/src/edge.rs). False for an edge a company runs for itself, and for every edge while the box ships no root key. Only official edges may process P2P storage and compute trading; discovery and sharing do not depend on it."
+        },
+        "name": {
+          "type": "string",
+          "description": "The advertised DNS-SD instance name, or the configured URL's host."
+        },
+        "url": {
+          "type": "string",
+          "description": "Base URL of the edge's registrar API, no trailing slash. Listed only once its /health answered inside the probe budget."
+        },
+        "source": {
+          "$ref": "#/$defs/edgeSource"
+        }
+      }
+    },
+    "edgeResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reachable",
+        "official",
+        "edges",
+        "lanSearched",
+        "configuredUrl",
+        "checkedAt"
+      ],
+      "properties": {
+        "official": {
+          "type": "boolean",
+          "description": "At least one of `edges` is official. The one bit the market gate reads: while false, `GET /api/market` answers `{\"available\":false,\"reason\":\"noOfficialEdge\"}` and every `POST /api/market/*` is refused (HTTP 409, `{\"error\":\"...\",\"officialEdgeRequired\":true}`), whatever edge the box is enrolled with. Sharing storage and joining the mesh are gated on `reachable` only."
+        },
+        "reachable": {
+          "type": "boolean",
+          "description": "At least one edge answered. The one bit the sharing gate reads: while false, `change --mode mesh` and an `apply` that turns losos.sharingMyStorage or losos.cluster.enable on are refused (HTTP 409, `{\"error\":\"...\",\"edgeRequired\":true,\"setting\":\"losos.<key>\"}`). Settings already on are never refused, so a box whose edge went away keeps its configuration and can still change anything else."
+        },
+        "edges": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/edgeProxy"
+          },
+          "description": "Every edge that answered, LAN first."
+        },
+        "lanSearched": {
+          "type": "boolean",
+          "description": "False when avahi-browse could not run at all (Avahi down, binary missing): the LAN was not searched, as opposed to searched and empty."
+        },
+        "configuredUrl": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "losos.proxy.registrarUrl as probed ($LOSOS_EDGE_URL), or null when none is set. Probed whether or not the master proxy is enabled."
+        },
+        "checkedAt": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "Unix seconds of the scan this document describes; null before the first scan."
         }
       }
     },
@@ -845,6 +934,12 @@
         "$ref": "#/$defs/statusResponse"
       }
     },
+    "edge": {
+      "description": "`losos-ctl edge` \u2014 what lososd found when it last looked for an edge proxy. The daemon scans every 20 s: `avahi-browse --parsable --resolve --terminate _losos-edge._tcp` on the LAN (the edge advertises the service with a `url=` TXT record, losos.edge.lan.advertise), plus the configured registrar URL; every candidate's /health is probed and only the ones that answer are listed. stdout: edgeResponse.",
+      "stdout": {
+        "$ref": "#/$defs/edgeResponse"
+      }
+    },
     "settings": {
       "description": "`losos-ctl settings --json` — the user-tunable losos.* options parsed from modules/overrides.nix. stdout: settingsResponse.",
       "stdout": {
@@ -936,6 +1031,10 @@
       "GET /api/status": {
         "auth": true,
         "out": "statusResponse"
+      },
+      "GET /api/edge": {
+        "auth": true,
+        "out": "edgeResponse"
       },
       "POST /api/change": {
         "auth": true,

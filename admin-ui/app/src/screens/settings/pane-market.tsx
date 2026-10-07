@@ -36,6 +36,7 @@ import {
   type MarketData,
   ORDER_STATUS,
 } from "./market";
+import { useEdge } from "./use-edge";
 import type { SettingsForm } from "./use-settings-form";
 
 /* Sharing this box's disk, and buying and selling what the mesh shares.
@@ -120,7 +121,11 @@ export function MarketPane({ form }: { form: SettingsForm }) {
             <Row last>
               <RowText
                 title={t("panes.market.unavailable.title")}
-                detail={t("panes.market.unavailable.detail")}
+                detail={t(
+                  state.reason === "noOfficialEdge"
+                    ? "panes.market.unavailable.noOfficialEdge"
+                    : "panes.market.unavailable.detail",
+                )}
               />
             </Row>
           </Group>
@@ -222,8 +227,13 @@ export function MarketPane({ form }: { form: SettingsForm }) {
  * value is the draft's, and Apply writes it with the rest. */
 function SharingSection({ form }: { form: SettingsForm }) {
   const t = useT();
+  const edge = useEdge();
   const shareId = React.useId();
   const sharing = form.draft?.sharingMyStorage ?? false;
+  /* Same rule as the Join switch on the Mesh pane: no edge in reach means
+   * the daemon refuses to turn this on, so it is greyed and says why, unless
+   * it is already on, in which case turning it off must stay possible. */
+  const refused = edge.blocked && !(form.saved?.sharingMyStorage ?? false);
   return (
     <PaneSection>
       <GroupTitle>{t("panes.market.share.title")}</GroupTitle>
@@ -231,8 +241,9 @@ function SharingSection({ form }: { form: SettingsForm }) {
         <SwitchRow
           id={shareId}
           title={t("panes.market.share.switch")}
+          description={refused && !form.locked ? t("panes.mesh.edge.needed") : undefined}
           checked={sharing}
-          disabled={form.locked || !form.ready}
+          disabled={form.locked || !form.ready || refused}
           onCheckedChange={(next) => form.set("sharingMyStorage", next)}
         />
         <Row last>

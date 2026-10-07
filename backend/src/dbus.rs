@@ -12,8 +12,8 @@
 use crate::facade::{BUS_NAME, OBJECT_PATH};
 use crate::io_backend::IoLosos;
 use crate::losos::{
-    cmd_apply, cmd_change, cmd_config, cmd_config_sync, cmd_factory_reset, cmd_grow, cmd_options,
-    cmd_recovery, cmd_set_password, cmd_settings, cmd_state, cmd_status,
+    cmd_apply, cmd_change, cmd_config, cmd_config_sync, cmd_edge, cmd_factory_reset, cmd_grow,
+    cmd_options, cmd_recovery, cmd_set_password, cmd_settings, cmd_state, cmd_status,
 };
 use crate::model::Mode;
 use crate::overrides::validate_apply;
@@ -60,6 +60,11 @@ impl Control {
     /// Rebuild progress.
     fn status(&self) -> fdo::Result<String> {
         reply(&self.backend, cmd_status)
+    }
+
+    /// What the last scan for an edge proxy found.
+    fn edge(&self) -> fdo::Result<String> {
+        reply(&self.backend, cmd_edge)
     }
 
     /// Switch sharing posture and rebuild.
