@@ -883,10 +883,7 @@ pub async fn run(opts: ProvisionOpts) -> Result<ExitCode> {
                 )?;
                 let cert_json = serde_json::to_string(&cert).into_diagnostic()?;
                 eprintln!("  edge public key {edge_public}");
-                eprintln!(
-                    "  certificate for {:?} at {} until {} ({} days)",
-                    cert.name, cert.url, cert.not_after, spec.days
-                );
+                eprintln!("  certificate issued ({} days)", spec.days);
                 ship(&spec, &edge_pkcs8, &cert_json)?;
                 drop(edge_pkcs8);
 
