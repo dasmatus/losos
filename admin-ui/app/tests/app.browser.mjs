@@ -291,7 +291,7 @@ await check('a fold opens by itself on one of its pages, and folds away from the
   assert.equal(await settings.getAttribute('aria-expanded'), 'true', 'Settings is folded on one of its own pages');
   const mesh = nav(page).getByRole('button', { name: 'Entries under Mesh', exact: true });
   assert.equal(await mesh.getAttribute('aria-expanded'), 'false', 'Mesh is unfolded while elsewhere');
-  // Folded entries are inert: neither a click target nor a Tab stop.
+  // Folded entries are hidden: neither a click target nor a Tab stop.
   const market = nav(page).getByRole('button', { name: 'Market soon(TM)', exact: true });
   assert.equal(await market.isVisible(), false, 'the folded Market entry is visible');
   // Fold Settings with the keyboard: its pages leave the Tab order with it.
@@ -301,7 +301,7 @@ await check('a fold opens by itself on one of its pages, and folds away from the
   const hardware = nav(page).getByRole('link', { name: 'Hardware', exact: true, includeHidden: true });
   await page.waitForTimeout(300);
   assert.equal(await hardware.isVisible(), false, 'a folded page link is still visible');
-  assert.equal(await hardware.evaluate((el) => el.closest('[inert]') !== null), true, 'a folded page link is still reachable');
+  assert.equal(await hardware.evaluate((el) => el.closest('[hidden]') !== null), true, 'a folded page link is still reachable');
   await page.keyboard.press('Enter');
   assert.equal(await settings.getAttribute('aria-expanded'), 'true');
   await nav(page).getByRole('link', { name: 'Hardware', exact: true }).click();
@@ -320,6 +320,12 @@ await check('the panel narrows to icons with its trigger or Ctrl+B, and remember
   // On the rail every entry is still a named link, and the current one is marked.
   await panel.getByRole('link', { name: 'Mesh', exact: true }).waitFor();
   assert.equal(await panel.getByRole('searchbox').isVisible(), false, 'the search box is still on the rail');
+  // Each icon names itself in a tooltip beside the rail (Base UI Tooltip).
+  await panel.getByRole('link', { name: 'Storage', exact: true }).hover();
+  const tip = page.locator('[data-slot="tooltip-content"]').filter({ hasText: /^Storage$/ });
+  await tip.waitFor({ timeout: 2000 });
+  const tipBox = await tip.boundingBox();
+  assert.ok(tipBox.x >= narrow, `the tooltip is not beside the rail: x=${tipBox.x}`);
   await panel.getByRole('link', { name: 'Settings', exact: true }).click();
   await page.waitForURL(origin + '/settings');
   // The choice survives a reload; Ctrl+B widens it again.
@@ -333,18 +339,84 @@ await check('the panel narrows to icons with its trigger or Ctrl+B, and remember
   await page.close();
 });
 
-await check('on a phone the panel is one row naming where you are, and opens in place', async () => {
-  const { page } = await open({ path: '/settings/about', stored: true, viewport: { width: 375, height: 800 } });
-  const panel = nav(page);
-  await panel.getByRole('button', { name: 'About', exact: true }).waitFor();
-  assert.equal(await panel.getByRole('link').count(), 0, 'the folded phone panel shows its entries');
-  await panel.getByRole('button', { name: 'Expand the sidebar' }).click();
-  await panel.getByRole('link', { name: 'Storage', exact: true }).click();
+await check('on a phone the panel is a sheet from the left, opened from a row naming where you are', async () => {
+  const { page, errors } = await open({ path: '/settings/about', stored: true, viewport: { width: 375, height: 800 } });
+  // Closed: one row naming the page, and no panel in the page at all.
+  await page.getByRole('button', { name: 'About', exact: true }).waitFor();
+  assert.equal(await nav(page).count(), 0, 'the closed phone panel is in the page');
+  await page.getByRole('button', { name: 'Expand the sidebar' }).click();
+  const sheet = page.getByRole('dialog', { name: 'Sections' });
+  await sheet.waitFor();
+  await page.waitForTimeout(350);
+  const box = await sheet.boundingBox();
+  assert.ok(box.x <= 1 && box.width < 375, `the sheet is not at the left edge: ${JSON.stringify(box)}`);
+  // Base UI locks the page's scroll behind it through CSSOM, which the CSP
+  // allows (a Radix sheet's injected <style> lock would be refused).
+  assert.equal(await page.evaluate(() => getComputedStyle(document.documentElement).overflow === 'hidden' || getComputedStyle(document.body).overflow === 'hidden'), true, 'the page behind the sheet still scrolls');
+  // The whole tree is in it, the current page marked.
+  await nav(page).locator('a[aria-current="page"]').filter({ hasText: 'About' }).waitFor();
+  await nav(page).getByRole('link', { name: 'Storage', exact: true }).click();
   await page.waitForURL(origin + '/storage');
-  // Choosing a destination folds the panel back to its one row.
-  await panel.getByRole('button', { name: 'Storage', exact: true }).waitFor();
-  assert.equal(await panel.getByRole('link').count(), 0);
+  // Choosing a destination closes the sheet; the row names the new page.
+  await sheet.waitFor({ state: 'detached' });
+  await page.getByRole('button', { name: 'Storage', exact: true }).waitFor();
+  // Escape closes it too.
+  await page.getByRole('button', { name: 'Expand the sidebar' }).click();
+  await sheet.waitFor();
+  await page.keyboard.press('Escape');
+  await sheet.waitFor({ state: 'detached' });
+  assert.deepEqual(errors, []);
   await page.close();
+});
+
+/* The sidebar's moving parts are Base UI (tooltip positioning, the sheet's
+ * slide and scroll lock, the folds' measured height), chosen because Base
+ * UI styles through CSSOM, which the appliance CSP allows, and never through
+ * an injected <style> element or a style attribute, which it refuses. Under
+ * the real policy, using all of them must add no violation to the ones
+ * already logged at load (Sonner's refused copy of its stylesheet). */
+await check('under the appliance CSP the rail tooltip, the folds and the phone sheet add no violation', async () => {
+  const { origin: strict, close } = await serve({ csp: true });
+  try {
+    for (const viewport of [{ width: 1280, height: 900 }, { width: 375, height: 800 }]) {
+      const page = await browser.newPage({ viewport, locale: 'en-US' });
+      await page.addInitScript(() => {
+        window.__violations = [];
+        document.addEventListener('securitypolicyviolation', (e) => window.__violations.push(e.violatedDirective));
+      });
+      const errors = [];
+      page.on('pageerror', (e) => errors.push(String(e)));
+      await page.route('**/api/**', (route) => json(route, 200, {}));
+      await page.route('**/api/setup/claim', (route) => json(route, 200, { claimed: true }));
+      await page.route('**/api/settings', (route) => json(route, 200, SETTINGS));
+      await page.addInitScript((t) => window.sessionStorage.setItem('losos-token', t), TOKEN);
+      await page.goto(strict + '/mesh', { waitUntil: 'networkidle' });
+      const atLoad = await page.evaluate(() => window.__violations.length);
+      if (viewport.width > 767) {
+        await nav(page).getByRole('button', { name: 'Settings', exact: true }).click();
+        await page.waitForTimeout(300);
+        await page.keyboard.press('Control+b');
+        await page.waitForTimeout(300);
+        await nav(page).getByRole('link', { name: 'Apps', exact: true }).hover();
+        const tip = page.locator('[data-slot="tooltip-content"]').filter({ hasText: /^Apps$/ });
+        await tip.waitFor({ timeout: 2000 });
+        const box = await tip.boundingBox();
+        assert.ok(box.x > 40 && box.y > 60, `the tooltip was not positioned: ${JSON.stringify(box)}`);
+      } else {
+        await page.getByRole('button', { name: 'Expand the sidebar' }).click();
+        await page.getByRole('dialog', { name: 'Sections' }).waitFor();
+        await page.waitForTimeout(350);
+        const box = await page.getByRole('dialog', { name: 'Sections' }).boundingBox();
+        assert.ok(box.x <= 1, `the sheet did not slide in: ${JSON.stringify(box)}`);
+      }
+      const after = await page.evaluate(() => window.__violations);
+      assert.equal(after.length, atLoad, `the sidebar added CSP violations: ${after.slice(atLoad).join(', ')}`);
+      assert.deepEqual(errors, []);
+      await page.close();
+    }
+  } finally {
+    await close();
+  }
 });
 
 for (const path of ['/apps', '/storage', '/mesh', '/settings', '/settings/hardware', '/settings/about', '/settings/reset']) {
@@ -766,7 +838,7 @@ await whenMarketOpen('purchases are listed in a Table with a column per fact', a
 
 await check('a phone-width viewport does not scroll the page sideways', async () => {
   const { page } = await open({ stored: true, viewport: { width: 375, height: 800 } });
-  await nav(page).waitFor();
+  await page.getByRole('button', { name: 'Expand the sidebar' }).waitFor();
   const overflow = await page.evaluate(
     () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
   );

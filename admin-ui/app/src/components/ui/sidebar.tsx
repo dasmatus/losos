@@ -1,38 +1,47 @@
 import * as React from "react";
+import { mergeProps } from "@base-ui/react/merge-props";
+import { useRender } from "@base-ui/react/use-render";
 import { cva, type VariantProps } from "class-variance-authority";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { PanelLeftIcon } from "@hugeicons/core-free-icons";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
-/* shadcn/ui's Sidebar, on LosOS tokens and the appliance CSP.
+/* shadcn/ui's Sidebar from its base registry (Base UI), on the LosOS tokens
+ * and the appliance CSP.
  *
- * The parts and their names are shadcn's (SidebarProvider, Sidebar,
- * SidebarHeader, SidebarContent, SidebarMenu, SidebarMenuItem,
- * SidebarMenuButton, SidebarMenuAction, SidebarMenuBadge, SidebarMenuSub,
- * SidebarTrigger, useSidebar) and so is the behaviour that matters: one
- * panel, entries that fold their sub-entries away (with Collapsible), and
- * `collapsible="icon"`, where the whole panel narrows to a rail of icons and
- * Ctrl/Cmd+B toggles it. Four things differ, each for a reason:
+ * The parts, their names and their behaviour are shadcn's: SidebarProvider
+ * (state, Ctrl/Cmd+B, the two widths as --sidebar-width and
+ * --sidebar-width-icon), Sidebar with `collapsible="icon"` (the panel
+ * narrows to a rail of icons and each entry's name moves into a Tooltip),
+ * SidebarMenuButton/SidebarMenuSubButton/SidebarMenuAction with Base UI's
+ * `render` prop (so a route <Link> takes the entry's look and behaviour),
+ * Collapsible sub-menus, and a Sheet sliding in from the left on a phone.
+ * All of it is Base UI, which positions, measures and locks scroll through
+ * CSSOM writes the admin CSP allows and never injects a <style> element,
+ * which it refuses; the widths reach the page the same way, as a React
+ * style prop.
  *
- *   - The panel is the recessed box the old settings list was (--sunk, a
- *     line, the card radius) and sits in the page's flow beside the
- *     content, not fixed to the viewport edge: this is a settings page on a
- *     box, not an application frame.
- *   - The width is a class per state, not shadcn's --sidebar-width through
- *     a style prop. That prop would be allowed (a CSSOM write), but there is
- *     nothing to configure, so there is nothing to pass.
- *   - On a phone the panel is not a Sheet (Radix Dialog, whose scroll lock
- *     injects a <style> element the CSP refuses); it stays in the flow above
- *     the content, folded to one row naming where you are, and opens in
- *     place.
+ * What is LosOS rather than shadcn, each for a reason:
+ *   - The panel is the recessed box (--sunk, a hairline, the card radius)
+ *     and sits in the page's flow beside the content, sticky under the
+ *     header, not fixed to the viewport edge: shadcn's "floating" variant
+ *     in spirit, because this is a settings page on a box, not an
+ *     application frame.
+ *   - A selected entry is FILLED with the accent and its text is --surface,
+ *     the macOS System Settings look, and every entry starts with a small
+ *     glyph tile (SidebarMenuIcon).
+ *   - An entry can be `planned`: greyed, disabled, not a target.
  *   - The expanded/collapsed choice is kept in localStorage, not a cookie:
  *     there is no server render to read it. A browser that refuses storage
- *     gets the default every time, which is fine.
- *
- * Links: SidebarMenuButton is a button. A route link takes the same look
- * from `sidebarMenuButtonVariants` (and the sub-entry one from
- * `sidebarMenuSubButtonVariants`), since `asChild` is not supported here
- * (button.tsx). */
+ *     gets the default every time, which is fine. */
+
+const SIDEBAR_WIDTH = "15rem";
+const SIDEBAR_WIDTH_ICON = "3.25rem";
+const SIDEBAR_KEYBOARD_SHORTCUT = "b";
+const STORAGE_KEY = "losos-sidebar";
+const MOBILE_QUERY = "(max-width: 767px)";
 
 type SidebarState = "expanded" | "collapsed";
 
@@ -53,9 +62,6 @@ export function useSidebar(): SidebarContextValue {
   if (context === null) throw new Error("useSidebar must be used inside <SidebarProvider>");
   return context;
 }
-
-const STORAGE_KEY = "losos-sidebar";
-const MOBILE_QUERY = "(max-width: 767px)";
 
 function readStored(fallback: boolean): boolean {
   try {
@@ -81,6 +87,7 @@ function useIsMobile(): boolean {
 function SidebarProvider({
   defaultOpen = true,
   className,
+  style,
   children,
   ...props
 }: React.ComponentProps<"div"> & { defaultOpen?: boolean }) {
@@ -105,7 +112,11 @@ function SidebarProvider({
   // shadcn's shortcut: Ctrl+B, or Cmd+B on a Mac.
   React.useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
-      if (event.key.toLowerCase() === "b" && (event.metaKey || event.ctrlKey) && !event.altKey) {
+      if (
+        event.key.toLowerCase() === SIDEBAR_KEYBOARD_SHORTCUT &&
+        (event.metaKey || event.ctrlKey) &&
+        !event.altKey
+      ) {
         event.preventDefault();
         toggleSidebar();
       }
@@ -129,34 +140,81 @@ function SidebarProvider({
 
   return (
     <SidebarContext.Provider value={value}>
-      <div data-slot="sidebar-wrapper" className={cn("group/sidebar-wrapper", className)} {...props}>
-        {children}
-      </div>
+      <TooltipProvider>
+        <div
+          data-slot="sidebar-wrapper"
+          // A CSSOM write (React sets each property on element.style), which
+          // style-src 'self' allows; a style="" attribute would be refused.
+          style={
+            {
+              "--sidebar-width": SIDEBAR_WIDTH,
+              "--sidebar-width-icon": SIDEBAR_WIDTH_ICON,
+              ...style,
+            } as React.CSSProperties
+          }
+          className={cn("group/sidebar-wrapper", className)}
+          {...props}
+        >
+          {children}
+        </div>
+      </TooltipProvider>
     </SidebarContext.Provider>
   );
 }
 
-/* The panel. `collapsible="icon"` lets it narrow to a rail; "none" pins it
- * open. Rendered as <nav> because every entry in it is a destination. */
+/* The panel. `collapsible="icon"` lets it narrow to the rail; "none" pins it
+ * open. Rendered as <nav> because every entry in it is a destination. On a
+ * phone the same children go into a Sheet from the left, opened by a
+ * SidebarTrigger placed outside it; `mobileTitle` names that sheet. */
 function Sidebar({
   collapsible = "icon",
+  mobileTitle,
+  mobileDescription,
+  closeLabel,
   className,
   children,
   ...props
-}: React.ComponentProps<"nav"> & { collapsible?: "icon" | "none" }) {
-  const { state, isMobile, openMobile } = useSidebar();
-  const rail = !isMobile && collapsible === "icon" && state === "collapsed";
+}: React.ComponentProps<"nav"> & {
+  collapsible?: "icon" | "none";
+  mobileTitle: string;
+  mobileDescription?: string;
+  closeLabel: string;
+}) {
+  const { state, isMobile, openMobile, setOpenMobile } = useSidebar();
+
+  if (isMobile) {
+    return (
+      <Sheet open={openMobile} onOpenChange={setOpenMobile}>
+        <SheetContent side="left" closeLabel={closeLabel} data-sidebar="sidebar" data-mobile="true">
+          <SheetHeader className="sr-only">
+            <SheetTitle>{mobileTitle}</SheetTitle>
+            {mobileDescription !== undefined && <SheetDescription>{mobileDescription}</SheetDescription>}
+          </SheetHeader>
+          <nav
+            data-slot="sidebar"
+            data-state="expanded"
+            data-collapsible=""
+            className={cn("group/sidebar flex min-h-0 flex-1 flex-col overflow-y-auto", className)}
+            {...props}
+          >
+            {children}
+          </nav>
+        </SheetContent>
+      </Sheet>
+    );
+  }
+
+  const rail = collapsible === "icon" && state === "collapsed";
   return (
     <nav
       data-slot="sidebar"
-      data-state={isMobile ? (openMobile ? "expanded" : "collapsed") : state}
+      data-state={state}
       data-collapsible={rail ? "icon" : ""}
-      data-mobile={isMobile ? "true" : undefined}
       className={cn(
-        "group/sidebar shrink-0 rounded-card border border-line bg-sunk p-2",
-        "md:sticky md:top-20 md:self-start md:max-h-[calc(100dvh-6rem)] md:overflow-y-auto",
-        "transition-[width] duration-200 ease-out",
-        rail ? "md:w-[52px]" : "md:w-[228px]",
+        "group/sidebar flex shrink-0 flex-col rounded-card border border-line bg-sunk p-2",
+        "sticky top-20 max-h-[calc(100dvh-6rem)] self-start overflow-x-hidden overflow-y-auto",
+        "w-(--sidebar-width) transition-[width] duration-200 ease-out",
+        "data-[collapsible=icon]:w-(--sidebar-width-icon)",
         className,
       )}
       {...props}
@@ -166,32 +224,45 @@ function Sidebar({
   );
 }
 
+function SidebarTrigger({ className, label, onClick, ...props }: React.ComponentProps<"button"> & { label: string }) {
+  const { toggleSidebar, state, isMobile, openMobile } = useSidebar();
+  const expanded = isMobile ? openMobile : state === "expanded";
+  return (
+    <button
+      type="button"
+      data-slot="sidebar-trigger"
+      aria-label={label}
+      title={label}
+      aria-expanded={expanded}
+      onClick={(event) => {
+        onClick?.(event);
+        toggleSidebar();
+      }}
+      className={cn(
+        "flex size-8 shrink-0 items-center justify-center rounded-control text-muted",
+        "transition-colors duration-150 hover:bg-surface hover:text-ink",
+        "focus-visible:ring-2 focus-visible:ring-accent/40 focus-visible:outline-none",
+        className,
+      )}
+      {...props}
+    >
+      <HugeiconsIcon icon={PanelLeftIcon} size={17} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+    </button>
+  );
+}
+
 function SidebarHeader({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="sidebar-header"
-      className={cn(
-        "flex items-center gap-1.5",
-        "group-data-[collapsible=icon]/sidebar:flex-col",
-        className,
-      )}
+      className={cn("flex items-center gap-1.5 group-data-[collapsible=icon]/sidebar:flex-col", className)}
       {...props}
     />
   );
 }
 
-/* Hidden on a phone until the panel is opened, and never hidden on a wider
- * screen (there the rail is the collapsed form). */
 function SidebarContent({ className, ...props }: React.ComponentProps<"div">) {
-  const { isMobile, openMobile } = useSidebar();
-  return (
-    <div
-      data-slot="sidebar-content"
-      hidden={isMobile && !openMobile}
-      className={cn("mt-2 flex min-h-0 flex-col gap-2", className)}
-      {...props}
-    />
-  );
+  return <div data-slot="sidebar-content" className={cn("mt-2 flex min-h-0 flex-col gap-2", className)} {...props} />;
 }
 
 function SidebarFooter({ className, ...props }: React.ComponentProps<"div">) {
@@ -243,15 +314,11 @@ function SidebarMenuItem({ className, ...props }: React.ComponentProps<"li">) {
   return <li data-slot="sidebar-menu-item" className={cn("group/menu-item relative", className)} {...props} />;
 }
 
-/* An entry. Selected is FILLED with the accent and the text on it is
- * --surface, the macOS System Settings look the old list had; a planned
- * entry is greyed and not a target. On the rail only the 21px glyph tile
- * stays, centred. */
 const sidebarMenuButtonVariants = cva(
   cn(
-    "peer/menu-button flex w-full min-w-0 items-center gap-2 rounded-control px-2 py-1.5 text-left",
+    "peer/menu-button flex w-full min-w-0 items-center gap-2 overflow-hidden rounded-control px-2 py-1.5 text-left",
     "text-[13px] whitespace-nowrap outline-none",
-    "transition-colors duration-150",
+    "transition-[background-color,color,width,padding] duration-150",
     "focus-visible:ring-2 focus-visible:ring-accent/40",
     "[&>span:last-child]:truncate",
     "group-data-[collapsible=icon]/sidebar:size-9 group-data-[collapsible=icon]/sidebar:justify-center group-data-[collapsible=icon]/sidebar:px-0",
@@ -272,20 +339,46 @@ const sidebarMenuButtonVariants = cva(
   },
 );
 
+/* An entry. A button by default; `render={<Link to=… />}` makes it a route
+ * link with the same look. `tooltip` is the name shown beside the icon on
+ * the rail; it never shows while the panel is expanded or on a phone. */
 function SidebarMenuButton({
+  render,
   isActive = false,
   planned = false,
+  tooltip,
   className,
   ...props
-}: React.ComponentProps<"button"> & VariantProps<typeof sidebarMenuButtonVariants>) {
+}: useRender.ComponentProps<"button"> &
+  VariantProps<typeof sidebarMenuButtonVariants> & {
+    tooltip?: React.ReactNode;
+  }) {
+  const { isMobile, state } = useSidebar();
+  const element = useRender({
+    defaultTagName: "button",
+    render,
+    props: mergeProps<"button">(
+      {
+        type: render === undefined ? "button" : undefined,
+        className: cn(sidebarMenuButtonVariants({ isActive, planned }), className),
+      },
+      {
+        ...props,
+        // Data attributes after the caller's props, so they always reflect
+        // the variants the entry was drawn with.
+        ...({ "data-slot": "sidebar-menu-button", "data-active": isActive ? "true" : undefined } as object),
+      },
+    ),
+  });
+
+  if (tooltip === undefined || tooltip === null) return element;
   return (
-    <button
-      type="button"
-      data-slot="sidebar-menu-button"
-      data-active={isActive ? "true" : undefined}
-      className={cn(sidebarMenuButtonVariants({ isActive, planned }), className)}
-      {...props}
-    />
+    <Tooltip disabled={state !== "collapsed" || isMobile}>
+      <TooltipTrigger render={element} />
+      <TooltipContent side="right" align="center" sideOffset={10}>
+        {tooltip}
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -316,26 +409,28 @@ function SidebarMenuIcon({
   );
 }
 
-/* The fold toggle on an entry that is also a link (shadcn's
- * SidebarMenuAction): a separate button at the right edge, so the label
- * still navigates. Gone on the rail, where there is nothing to unfold. */
-const sidebarMenuActionClassName = cn(
-  "absolute top-1 right-1 flex size-6 items-center justify-center rounded-[6px]",
-  "text-muted transition-[background-color,color,transform] duration-150 hover:bg-surface hover:text-ink",
-  "focus-visible:ring-2 focus-visible:ring-accent/40 focus-visible:outline-none",
-  "peer-data-[active=true]/menu-button:text-surface peer-data-[active=true]/menu-button:hover:bg-accent-wash peer-data-[active=true]/menu-button:hover:text-accent",
-  "group-data-[collapsible=icon]/sidebar:hidden",
-);
-
-function SidebarMenuAction({ className, ...props }: React.ComponentProps<"button">) {
-  return (
-    <button
-      type="button"
-      data-slot="sidebar-menu-action"
-      className={cn(sidebarMenuActionClassName, className)}
-      {...props}
-    />
-  );
+/* A second button on an entry (shadcn's SidebarMenuAction), at its right
+ * edge, so the entry's label still navigates; used as the fold toggle of an
+ * entry that is also a link. Gone on the rail. */
+function SidebarMenuAction({ render, className, ...props }: useRender.ComponentProps<"button">) {
+  return useRender({
+    defaultTagName: "button",
+    render,
+    props: mergeProps<"button">(
+      {
+        type: render === undefined ? "button" : undefined,
+        className: cn(
+          "absolute top-1 right-1 flex size-6 items-center justify-center rounded-[6px]",
+          "text-muted transition-[background-color,color] duration-150 hover:bg-surface hover:text-ink",
+          "focus-visible:ring-2 focus-visible:ring-accent/40 focus-visible:outline-none",
+          "peer-data-[active=true]/menu-button:text-surface peer-data-[active=true]/menu-button:hover:bg-accent-wash peer-data-[active=true]/menu-button:hover:text-accent",
+          "group-data-[collapsible=icon]/sidebar:hidden",
+          className,
+        ),
+      },
+      { ...props, ...({ "data-slot": "sidebar-menu-action" } as object) },
+    ),
+  });
 }
 
 function SidebarMenuBadge({ className, ...props }: React.ComponentProps<"span">) {
@@ -369,7 +464,9 @@ function SidebarMenuSub({ className, ...props }: React.ComponentProps<"ul">) {
 }
 
 function SidebarMenuSubItem({ className, ...props }: React.ComponentProps<"li">) {
-  return <li data-slot="sidebar-menu-sub-item" className={cn("group/menu-sub-item relative", className)} {...props} />;
+  return (
+    <li data-slot="sidebar-menu-sub-item" className={cn("group/menu-sub-item relative", className)} {...props} />
+  );
 }
 
 const sidebarMenuSubButtonVariants = cva(
@@ -394,48 +491,32 @@ const sidebarMenuSubButtonVariants = cva(
 );
 
 function SidebarMenuSubButton({
+  render,
   isActive = false,
   planned = false,
   className,
   ...props
-}: React.ComponentProps<"button"> & VariantProps<typeof sidebarMenuSubButtonVariants>) {
-  return (
-    <button
-      type="button"
-      data-slot="sidebar-menu-sub-button"
-      className={cn(sidebarMenuSubButtonVariants({ isActive, planned }), className)}
-      {...props}
-    />
-  );
-}
-
-function SidebarTrigger({ className, label, ...props }: React.ComponentProps<"button"> & { label: string }) {
-  const { toggleSidebar, state, isMobile, openMobile } = useSidebar();
-  const expanded = isMobile ? openMobile : state === "expanded";
-  return (
-    <button
-      type="button"
-      data-slot="sidebar-trigger"
-      aria-label={label}
-      title={label}
-      aria-expanded={expanded}
-      onClick={toggleSidebar}
-      className={cn(
-        "flex size-8 shrink-0 items-center justify-center rounded-control text-muted",
-        "transition-colors duration-150 hover:bg-surface hover:text-ink",
-        "focus-visible:ring-2 focus-visible:ring-accent/40 focus-visible:outline-none",
-        className,
-      )}
-      {...props}
-    >
-      <HugeiconsIcon icon={PanelLeftIcon} size={17} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
-    </button>
-  );
+}: useRender.ComponentProps<"button"> & VariantProps<typeof sidebarMenuSubButtonVariants>) {
+  return useRender({
+    defaultTagName: "button",
+    render,
+    props: mergeProps<"button">(
+      {
+        type: render === undefined ? "button" : undefined,
+        className: cn(sidebarMenuSubButtonVariants({ isActive, planned }), className),
+      },
+      {
+        ...props,
+        ...({ "data-slot": "sidebar-menu-sub-button", "data-active": isActive ? "true" : undefined } as object),
+      },
+    ),
+  });
 }
 
 export {
   SidebarProvider,
   Sidebar,
+  SidebarTrigger,
   SidebarHeader,
   SidebarContent,
   SidebarFooter,
@@ -451,8 +532,6 @@ export {
   SidebarMenuSub,
   SidebarMenuSubItem,
   SidebarMenuSubButton,
-  SidebarTrigger,
-  sidebarMenuActionClassName,
   sidebarMenuButtonVariants,
   sidebarMenuSubButtonVariants,
 };
