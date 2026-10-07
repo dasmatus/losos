@@ -8,11 +8,11 @@ sidebar_position: 8
 Bod 3 zadania: *spracujte cenovú ponuku hardvérového a softvérového
 vybavenia potrebného na realizáciu projektu.* Táto kapitola hovorí, z čoho
 sa ponuka skladá a prečo; konkrétne položky s cenami a zdrojmi sú
-v samostatnom dokumente **Cenová ponuka** a tabuľke *cenova-ponuka.xlsx*,
-ktoré sú súčasťou materiálov k obhajobe (autor sa rozhodol udržiavať ich
-mimo repozitára kódu, lebo ceny sa menia a repozitár nesie len kód,
-Markdown a obrázky). Pri odovzdaní sa dokument s cenami prikladá za touto
-kapitolou.
+v samostatnom dokumente **Cenová ponuka LosOS** a tabuľke
+*cenova-ponuka.xlsx*, ktoré sú súčasťou materiálov k obhajobe (autor sa
+rozhodol udržiavať ich mimo repozitára kódu, lebo ceny sa menia a repozitár
+nesie len kód, Markdown a obrázky). Pri odovzdaní sa dokument s cenami
+prikladá za touto kapitolou; jeho výsledok je zhrnutý na konci kapitoly.
 
 ## Z čoho sa realizácia skladá
 
@@ -91,3 +91,23 @@ ponuka s tým počíta minimom objednávky).
   stroji s dostatkom pamäte a disku; drahší box neprinesie nič, čo by
   softvér využil.
 - **Zálohovanie.** Box je jedna kópia; druhú si drží majiteľ, kde chce.
+
+## Výsledok ponuky
+
+Dokument s cenami (stav k 7. októbru 2026, slovenské maloobchodné ceny
+s DPH 23 %, zdroj a dátum pri každej položke) počíta dve konfigurácie:
+
+| Konfigurácia                                   | Z čoho sa skladá                                                           | Jednorazovo   | Ročne        |
+| ---------------------------- | ---------------------------------------------------------- | ------------------ | ---------------- |
+| **A: maturitná ukážka**                        | jeden box (Acer Veriton N150), doména (Namecheap, 7,79 € ročne), elektrina | 452,59 €      | 25,31 €      |
+| A + voliteľný edge v cloude                    | k tomu Hetzner CX23 ako edge                                               | 452,59 €      | 113,72 €     |
+| **B: nasadenie vo firme**                      | tri boxy, lokálny x86 edge, prepínač, doména, elektrina                    | 1 795,59 €    | 74,37 €      |
+
+Softvér nestojí nič: každý komponent je slobodný (tabuľka licencií vyššie),
+takže softvérová časť ponuky sú len prevádzkové služby (doména, prípadne
+VPS). Predpoklady: elektrina 0,20 € za kWh, práca autora neocenená (pozri
+predchádzajúcu časť), Raspberry Pi ako edge je uvedené len orientačne a označené *na
+overenie*, lebo flake zatiaľ zostavuje len x86_64. Konfigurácia A je to,
+čo sa predvádza na obhajobe (vo virtuálnom stroji, so schváleným nahradením
+fyzického boxu); konfigurácia B je ponuka, s ktorou chce autor po maturite
+osloviť firmy.
