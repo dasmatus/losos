@@ -265,6 +265,7 @@
             # which address to open in a browser.
             ./modules/console.nix
             ./modules/services.nix
+            ./modules/git-runner.nix
             ./modules/nextcloud-common.nix
             ./modules/containers.nix
             # The local k3s cluster + the mesh rke2 agent, and the workload
@@ -325,6 +326,18 @@
       # nixosConfiguration would fail the root-fs/bootloader assertions and
       # could not be configured from outside anyway). `self` is baked in so
       # losos.edge.registrar.package resolves to this flake's registrar.
+      # The edge of the two-VM LAN demo (demo/edge-lan/): the edge module on a
+      # QEMU VM that is also the LAN's router. `nix build
+      # .#nixosConfigurations.edge-demo.config.system.build.vm` makes the
+      # run script; demo/edge-lan/run.sh drives it beside the installer ISO.
+      nixosConfigurations.edge-demo = nixpkgs.lib.nixosSystem {
+        inherit system;
+        modules = [
+          self.nixosModules.edge
+          "${nixpkgs}/nixos/modules/virtualisation/qemu-vm.nix"
+          ./demo/edge-lan/edge-vm.nix
+        ];
+      };
       nixosModules.edge = {
         imports = [
           ./modules/options.nix
@@ -389,11 +402,27 @@
       #   losos-nextcloud-httpd — not a VM: the Nextcloud pod's Apache on a
       #                         fixture webroot, asserting the URL map
       #                         (tests/nextcloud-httpd.nix).
+      #   losos-edge-lan-two-boxes — the KOP's verification walkthrough as a
+      #                         check: two boxes with the real admin UI and an
+      #                         edge on one LAN, scenario A (no edge: both
+      #                         refuse sharing, serve locally, survive a reboot)
+      #                         then B (edge on: both find it, the gate opens,
+      #                         edge off/on, an unsigned edge opens sharing but
+      #                         not trading). With LOSOS_RECORD_DIR set the
+      #                         same run is photographed by
+      #                         demo/edge-lan/record.mjs (demo/edge-lan/two-boxes.nix).
+      #   losos-git-runner    — boots native Forgejo plus the on-box Actions
+      #                         runner and asserts the secret registration end
+      #                         to end: one runner row, the UUID the runner
+      #                         derives from the same secret, the daemon seen
+      #                         online, idempotent on restart (tests/git-runner.nix).
       checks.${system} = {
         losos-install = import ./tests/install.nix { inherit pkgs disko; };
         losos-tpm-unlock = import ./tests/tpm.nix { inherit pkgs disko; };
         losos-admin-daemon = import ./tests/admin-vm.nix { inherit pkgs; };
         losos-edge-proxy = import ./tests/edge-vm.nix { inherit pkgs; };
+        losos-edge-lan = import ./tests/edge-lan.nix { inherit pkgs; };
+        losos-edge-lan-two-boxes = import ./demo/edge-lan/two-boxes.nix { inherit pkgs; };
         losos-edge-market = import ./tests/market-vm.nix { inherit pkgs; };
         losos-ds-render = import ./tests/design-system.nix { inherit pkgs; };
         losos-front-vhost = import ./tests/front-vhost.nix { inherit pkgs; };
@@ -403,6 +432,7 @@
         losos-resize = import ./tests/resize.nix { inherit pkgs; };
         losos-tls = import ./tests/tls.nix { inherit pkgs; };
         losos-setup = import ./tests/setup.nix { inherit pkgs; };
+        losos-git-runner = import ./tests/git-runner.nix { inherit pkgs; };
         losos-admin-ui = import ./tests/admin-ui.nix {
           inherit pkgs;
           # The real option document, so the Advanced pane is drawn from

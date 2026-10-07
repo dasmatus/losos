@@ -60,6 +60,20 @@ jobs:
       # palette must be the admin UI's byte for byte.
       - run: npm run check
       - run: npm run build
+      # The hand-in PDF of the KOP (docs/project/kop, the Slovak technical
+      # documentation) is built from the same pages by pandoc and Typst, both
+      # from the flake's own nixpkgs pin, and published next to the site as
+      # /kop/LosOS-KOP.pdf. The PDF is never committed: the pages are.
+      - uses: ./.github/actions/setup-nix
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          cache-url: ${{ vars.LOSOS_PROXY_URL }}
+          public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
+      - run: nix shell --inputs-from .. nixpkgs#pandoc nixpkgs#typst -c scripts/build-kop.sh build/kop/LosOS-KOP.pdf
+      - uses: actions/upload-artifact@v7
+        with:
+          name: LosOS-KOP
+          path: handbook/build/kop/LosOS-KOP.pdf
       # The public site is rooted at / on losos.dasmat.us; the box's copy is
       # rooted at /handbook/ and is built by nix, not here.
       - uses: actions/upload-pages-artifact@v4

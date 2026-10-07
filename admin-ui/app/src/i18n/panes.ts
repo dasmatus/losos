@@ -273,6 +273,91 @@ export default defineMessages({
   },
 
   // ── Mesh ────────────────────────────────────────────────────────────────
+  // The edge proxy group: what lososd found when it last looked (GET
+  // /api/edge). The box refuses to turn sharing on without one, so the words
+  // here are the words of that refusal, ahead of it.
+  "panes.mesh.edge.title": {
+    en: "Edge proxy",
+    sk: "Okrajový proxy server",
+    de: "Edge-Proxy",
+  },
+  "panes.mesh.edge.looking": {
+    en: "Looking for an edge proxy…",
+    sk: "Hľadá sa okrajový proxy server…",
+    de: "Suche nach einem Edge-Proxy…",
+  },
+  "panes.mesh.edge.unknown": {
+    en: "This box could not say whether an edge proxy is in reach.",
+    sk: "Zariadenie nevie povedať, či je okrajový proxy server dostupný.",
+    de: "Diese Box konnte nicht sagen, ob ein Edge-Proxy erreichbar ist.",
+  },
+  "panes.mesh.edge.found": {
+    en: "Edge proxy found: {name}",
+    sk: "Okrajový proxy server nájdený: {name}",
+    de: "Edge-Proxy gefunden: {name}",
+  },
+  "panes.mesh.edge.viaLan": {
+    en: "On this network",
+    sk: "V tejto sieti",
+    de: "In diesem Netzwerk",
+  },
+  "panes.mesh.edge.viaInternet": {
+    en: "Over the internet",
+    sk: "Cez internet",
+    de: "Über das Internet",
+  },
+  "panes.mesh.edge.none": {
+    en: "No edge proxy found",
+    sk: "Žiadny okrajový proxy server sa nenašiel",
+    de: "Kein Edge-Proxy gefunden",
+  },
+  "panes.mesh.edge.noneDetail": {
+    en: "This box searched its network and nothing answered.",
+    sk: "Zariadenie prehľadalo svoju sieť a nič neodpovedalo.",
+    de: "Diese Box hat ihr Netzwerk durchsucht, und nichts hat geantwortet.",
+  },
+  "panes.mesh.edge.noneTried": {
+    en: "This box searched its network and asked {url}; nothing answered.",
+    sk: "Zariadenie prehľadalo svoju sieť a oslovilo {url}; nič neodpovedalo.",
+    de: "Diese Box hat ihr Netzwerk durchsucht und {url} gefragt; nichts hat geantwortet.",
+  },
+  "panes.mesh.edge.lanUnsearched": {
+    en: "This box could not search its network, and nothing answered elsewhere.",
+    sk: "Zariadenie nemohlo prehľadať svoju sieť a inde nič neodpovedalo.",
+    de: "Diese Box konnte ihr Netzwerk nicht durchsuchen, und anderswo hat nichts geantwortet.",
+  },
+  "panes.mesh.edge.sharingOff": {
+    en: "Sharing is off",
+    sk: "Zdieľanie je vypnuté",
+    de: "Teilen ist aus",
+  },
+  // The sign beside each edge's name: is this edge one LosOS runs? It
+  // decides trading only; the words are the tooltip and the button's name.
+  "panes.mesh.edge.officialTip": {
+    en: "Official LosOS edge. It proved it is run by LosOS, so it may process storage and compute trading for this box.",
+    sk: "Oficiálny okrajový server LosOS. Preukázal, že ho prevádzkuje LosOS, takže môže pre toto zariadenie spracúvať obchodovanie s úložiskom a výpočtami.",
+    de: "Offizieller LosOS-Edge. Er hat nachgewiesen, dass LosOS ihn betreibt; er darf für diese Box den Handel mit Speicher und Rechenleistung abwickeln.",
+  },
+  "panes.mesh.edge.companyTip": {
+    en: "Not an official LosOS edge. What you are missing through it:\n• buying storage or compute on the market\n• selling this box's spare storage and compute\nSharing storage through it works.",
+    sk: "Nie je oficiálny okrajový server LosOS. Čo cez neho chýba:\n• nákup úložiska alebo výpočtov na trhu\n• predaj voľného úložiska a výpočtov tohto zariadenia\nZdieľanie úložiska cez neho funguje.",
+    de: "Kein offizieller LosOS-Edge. Was dir darüber fehlt:\n• Speicher oder Rechenleistung auf dem Markt kaufen\n• freien Speicher und Rechenleistung dieser Box verkaufen\nSpeicher darüber zu teilen funktioniert.",
+  },
+  "panes.mesh.edge.captionCompany": {
+    en: "The edge proxy is the box in the middle: it holds the mesh together and makes yours reachable from outside. Several can be in reach at once; sharing works through any of them. None of these is run by LosOS, so the market (buying and selling storage and compute) stays off until an official edge answers. Your own files and apps work either way.",
+    sk: "Okrajový proxy server je zariadenie uprostred: drží sieť mesh pohromade a sprístupňuje to vaše zvonku. Dostupných ich môže byť viac naraz; zdieľanie funguje cez ktorýkoľvek. Žiadny z týchto neprevádzkuje LosOS, takže trh (nákup a predaj úložiska a výpočtov) zostane vypnutý, kým sa neozve oficiálny. Vaše vlastné súbory a aplikácie fungujú tak či tak.",
+    de: "Der Edge-Proxy ist die Box in der Mitte: Er hält das Mesh zusammen und macht deine von außen erreichbar. Mehrere können zugleich erreichbar sein; Teilen funktioniert über jeden davon. Keiner davon wird von LosOS betrieben, darum bleibt der Markt (Speicher und Rechenleistung kaufen und verkaufen) aus, bis ein offizieller antwortet. Deine eigenen Dateien und Apps laufen so oder so.",
+  },
+  "panes.mesh.edge.needed": {
+    en: "Needs an edge proxy in reach.",
+    sk: "Vyžaduje dostupný okrajový proxy server.",
+    de: "Braucht einen erreichbaren Edge-Proxy.",
+  },
+  "panes.mesh.edge.caption": {
+    en: "The edge proxy is the box in the middle: it holds the mesh together and makes yours reachable from outside. This box looks for one on its own network and at its usual address every few seconds, and anything that shares your storage over the network stays off until one answers. Your own files and apps work either way.",
+    sk: "Okrajový proxy server je zariadenie uprostred: drží sieť mesh pohromade a sprístupňuje to vaše zvonku. Toto zariadenie ho každých pár sekúnd hľadá vo vlastnej sieti aj na svojej obvyklej adrese, a čokoľvek, čo zdieľa vaše úložisko cez sieť, zostane vypnuté, kým sa niektorý neozve. Vaše vlastné súbory a aplikácie fungujú tak či tak.",
+    de: "Der Edge-Proxy ist die Box in der Mitte: Er hält das Mesh zusammen und macht deine von außen erreichbar. Diese Box sucht alle paar Sekunden in ihrem eigenen Netzwerk und an ihrer üblichen Adresse nach einem, und alles, was deinen Speicher über das Netzwerk teilt, bleibt aus, bis einer antwortet. Deine eigenen Dateien und Apps laufen so oder so.",
+  },
   "panes.mesh.otherBoxes": {
     en: "Other boxes",
     sk: "Iné zariadenia",
@@ -652,6 +737,11 @@ export default defineMessages({
     en: "It is optional, and it needs the box to be reachable through a master proxy whose operator has switched it on. Nothing else on the box depends on it.",
     sk: "Je voliteľný a vyžaduje, aby bolo zariadenie dostupné cez hlavný proxy server, ktorého prevádzkovateľ trh zapol. Nič iné na zariadení od neho nezávisí.",
     de: "Er ist optional und setzt voraus, dass die Box über einen Master-Proxy erreichbar ist, dessen Betreiber ihn eingeschaltet hat. Nichts sonst auf der Box hängt davon ab.",
+  },
+  "panes.market.unavailable.noOfficialEdge": {
+    en: "The edge proxy this box found is not run by LosOS. Sharing storage through it works; trading needs an official LosOS edge in reach.",
+    sk: "Okrajový proxy server, ktorý toto zariadenie našlo, neprevádzkuje LosOS. Zdieľanie úložiska cez neho funguje; obchodovanie vyžaduje dostupný oficiálny okrajový server LosOS.",
+    de: "Der Edge-Proxy, den diese Box gefunden hat, wird nicht von LosOS betrieben. Speicher darüber zu teilen funktioniert; Handel braucht einen erreichbaren offiziellen LosOS-Edge.",
   },
   "panes.market.actionFailed": {
     en: "That did not work. Try again in a moment.",

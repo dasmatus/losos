@@ -110,6 +110,41 @@ pub struct ServeOpts {
     /// The Stripe Connect market. `None` — no `--market-gate-socket` — and
     /// every `/market/*` route answers 503; the rest of the API is unchanged.
     pub market: Option<Box<MarketOpts>>,
+    /// This edge's identity (`crate::identity`): the 0600 key file and the
+    /// certificate the LosOS root signed for it. Both or neither; with
+    /// neither, `GET /identity` answers 404 and boxes treat the edge as a
+    /// company edge (sharing, no trading).
+    pub identity_key_file: Option<String>,
+    pub identity_cert_file: Option<String>,
+}
+
+/// `identity` options: the offline key ceremony (`crate::identity`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum IdentityOpts {
+    /// `identity keygen --out FILE`: a new Ed25519 key, written 0600 to FILE;
+    /// the public key is printed. Used for the root key and for each edge.
+    Keygen { out: String },
+    /// `identity sign --root-key FILE --public-key HEX --name N --url U
+    /// --days D`: the root issues an edge certificate, printed as JSON.
+    Sign {
+        root_key: String,
+        public_key: String,
+        name: String,
+        url: String,
+        days: u64,
+    },
+    /// `identity show --key FILE`: print the public key of a key file.
+    Show { key: String },
+    /// `identity verify --root-public HEX --url U --nonce HEX --answer FILE`:
+    /// run the box's four checks over a `GET /identity?nonce=` answer saved
+    /// to FILE (`-` for stdin). Exit 0 and name the edge, or exit 1 with the
+    /// reason. What provisioning runs after it deployed an identity.
+    Verify {
+        root_public: String,
+        url: String,
+        nonce: String,
+        answer: String,
+    },
 }
 
 /// `seed` options. Writes the declarative rathole `[server]` base (for zero
@@ -173,18 +208,22 @@ pub struct JoinOpts {
     pub expect_server_addr: Option<String>,
 }
 
+// Parsed once at startup and matched once; the size spread between the
+// serve options and the one-shot subcommands costs nothing worth a Box.
+#[allow(clippy::large_enum_variant)]
 pub enum Mode {
     Serve(ServeOpts),
     Announce(AnnounceOpts),
     Seed(SeedOpts),
     Join(JoinOpts),
     StripeGate(GateOpts),
+    Identity(IdentityOpts),
 }
 
 pub fn parse(args: Vec<String>) -> Result<Mode> {
     if args.is_empty() {
         return Err(miette!(
-            "usage: losos-registrar serve|announce|seed|join|stripe-gate ..."
+            "usage: losos-registrar serve|announce|seed|join|stripe-gate|identity ..."
         ));
     }
     let mode = &args[0];
@@ -229,7 +268,42 @@ pub fn parse(args: Vec<String>) -> Result<Mode> {
                     .unwrap_or("/var/lib/losos-registrar/compute-windows.json")
                     .to_string(),
                 market: parse_market(&rest)?,
+                identity_key_file: arg(&rest, "--identity-key-file").map(str::to_string),
+                identity_cert_file: arg(&rest, "--identity-cert-file").map(str::to_string),
             }))
+        }
+        "identity" => {
+            let verb = rest.first().map(String::as_str).unwrap_or("");
+            let rest: Vec<String> = rest.iter().skip(1).cloned().collect();
+            match verb {
+                "keygen" => Ok(Mode::Identity(IdentityOpts::Keygen {
+                    out: req(&rest, "--out")?.to_string(),
+                })),
+                "sign" => Ok(Mode::Identity(IdentityOpts::Sign {
+                    root_key: req(&rest, "--root-key")?.to_string(),
+                    public_key: req(&rest, "--public-key")?.to_string(),
+                    name: req(&rest, "--name")?.to_string(),
+                    url: req(&rest, "--url")?.to_string(),
+                    days: arg(&rest, "--days")
+                        .unwrap_or("365")
+                        .parse()
+                        .ok()
+                        .filter(|d| (1..=3650).contains(d))
+                        .ok_or_else(|| miette!("bad --days; expected 1..=3650"))?,
+                })),
+                "show" => Ok(Mode::Identity(IdentityOpts::Show {
+                    key: req(&rest, "--key")?.to_string(),
+                })),
+                "verify" => Ok(Mode::Identity(IdentityOpts::Verify {
+                    root_public: req(&rest, "--root-public")?.to_string(),
+                    url: req(&rest, "--url")?.to_string(),
+                    nonce: req(&rest, "--nonce")?.to_string(),
+                    answer: req(&rest, "--answer")?.to_string(),
+                })),
+                _ => Err(miette!(
+                    "usage: losos-registrar identity keygen|sign|show|verify ..."
+                )),
+            }
         }
         "announce" => Ok(Mode::Announce(AnnounceOpts {
             registrar_url: req(&rest, "--registrar-url")?.to_string(),
