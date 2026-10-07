@@ -9,7 +9,7 @@
     "OAuth App (Settings > Developer settings > OAuth Apps, with Device Flow",
     "enabled); it is not a secret and no client secret exists for this flow."
   ],
-  "github_oauth_client_id": "",
+  "github_oauth_client_id": "Ov23lix75ALBEqu3AZTg",
   "operators": [
     {
       "github_id": 330471626,
