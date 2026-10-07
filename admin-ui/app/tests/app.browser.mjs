@@ -1127,7 +1127,7 @@ await check('a box already joined keeps its join switch live while the edge is a
   await page.reload({ waitUntil: 'networkidle' });
   await page.locator('[data-edge="none"]').waitFor();
   const join = page.getByRole('switch', { name: 'Join the mesh', exact: true });
-  assert.equal(await join.getAttribute('aria-checked'), 'true');
+  assert.equal(await join.isChecked(), true);
   assert.equal(await join.isDisabled(), false, 'a joined box cannot leave while the edge is away');
   await page.close();
 });
@@ -1141,8 +1141,8 @@ await check('the daemon\'s refusal reaches the owner in the daemon\'s own words'
   const { page, applies } = await open({ path: '/mesh', stored: true, settings: { ...SETTINGS, apachePort: 11000 } });
   await page.locator('[data-edge="found"]').waitFor();
   const join = page.getByRole('switch', { name: 'Join the mesh', exact: true });
-  await join.click();
-  assert.equal(await join.getAttribute('aria-checked'), 'true', 'the join switch did not flip');
+  await page.locator('[data-slot="switch"]').filter({ has: join }).click();
+  assert.equal(await join.isChecked(), true, 'the join switch did not flip');
   await page.getByRole('button', { name: 'Apply', exact: true }).waitFor();
   await page.unroute('**/api/edge');
   await page.unroute('**/api/apply');
