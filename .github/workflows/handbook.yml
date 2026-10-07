@@ -10,15 +10,26 @@ name: handbook
 # in the same settings; handbook/static/CNAME repeats it for a branch deploy.
 #
 # The box's own copy at /handbook/ is a separate build of the same source
-# (flake/packages.nix, losos-handbook) in ci.yml; this workflow is only the
-# public site.
+# (flake/packages.nix, losos-handbook), built by ci.yml's registrar-and-ui
+# job on every push and pull request, next to the admin UI; this workflow is
+# only the public site.
 
 on:
   push:
     branches: [main]
-    paths: ["handbook/**", ".github/workflows/handbook.yml"]
+    paths:
+      - "handbook/**"
+      - ".github/workflows/handbook.yml"
+      # The two files the handbook's checks read from the admin UI: the error
+      # map (check:links) and the palette (check:tokens).
+      - "admin-ui/app/src/lib/handbook.ts"
+      - "admin-ui/app/src/styles/tokens.css"
   pull_request:
-    paths: ["handbook/**", ".github/workflows/handbook.yml"]
+    paths:
+      - "handbook/**"
+      - ".github/workflows/handbook.yml"
+      - "admin-ui/app/src/lib/handbook.ts"
+      - "admin-ui/app/src/styles/tokens.css"
   workflow_dispatch:
 
 permissions:
@@ -45,8 +56,9 @@ jobs:
           cache-dependency-path: handbook/package-lock.json
       - run: npm ci --no-audit --no-fund
       - run: npm run typecheck
-      # The admin UI's "What to do" links must all land on a page.
-      - run: npm run check:links
+      # The admin UI's "What to do" links must all land on a page, and the
+      # palette must be the admin UI's byte for byte.
+      - run: npm run check
       - run: npm run build
       # The public site is rooted at / on losos.dasmat.us; the box's copy is
       # rooted at /handbook/ and is built by nix, not here.

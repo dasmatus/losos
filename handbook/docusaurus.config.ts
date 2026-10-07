@@ -91,6 +91,9 @@ const config: Config = {
       '@easyops-cn/docusaurus-search-local',
       {
         hashed: true,
+        // The box lives in the sidebar panel (src/theme/DocSidebar), at the
+        // page's left edge, so its result list opens to the right.
+        searchBarPosition: 'left',
         docsRouteBasePath: '/',
         indexBlog: false,
         language: ['en', 'de'],
@@ -111,13 +114,14 @@ const config: Config = {
       },
     },
     navbar: {
-      title: 'LosOS handbook',
+      // The admin UI puts the salmon beside a chip naming the box; here the
+      // chip names the handbook (custom.css draws .navbar__title as that chip).
+      title: 'Handbook',
       logo: {
         alt: 'LosOS',
         src: 'img/losos.svg',
       },
       items: [
-        {type: 'docSidebar', sidebarId: 'handbook', position: 'left', label: 'Handbook'},
         {to: '/types', position: 'left', label: 'Types'},
         {to: '/troubleshooting', position: 'left', label: 'When something goes wrong'},
         {type: 'localeDropdown', position: 'right'},
@@ -129,7 +133,7 @@ const config: Config = {
       ],
     },
     footer: {
-      style: 'dark',
+      style: 'light',
       links: [
         {
           title: 'This handbook',
