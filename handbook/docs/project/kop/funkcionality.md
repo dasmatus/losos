@@ -135,7 +135,10 @@ Na stroji s čipom **TPM 2.0** sa kľúč zapečatí do čipu a na boot oddiele 
 je žiadne tajomstvo; bez čipu (alebo s `--no-tpm`) sa kľúč vloží do initrd
 na nešifrovanom boot oddiele, čo je slabšia, ale funkčná konfigurácia pre
 virtuálne stroje a testy. Inštalátor podporuje **UEFI** (systemd-boot) aj
-**BIOS** (GRUB) a vie režim rozpoznať sám.
+**BIOS** (GRUB) a vie režim rozpoznať sám. Jediná podporovaná architektúra
+je **x86-64**: flake zostavuje len `x86_64-linux`, takže počítače s ARM,
+vrátane Macov s čipom Apple M, LosOS nespustia ani ako hostiteľ virtuálneho
+stroja bez pomalej emulácie.
 
 ### Režim aplikácií
 

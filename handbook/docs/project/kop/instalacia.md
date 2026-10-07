@@ -24,8 +24,13 @@ overená skutočným štartom média.
 
 ## Požiadavky
 
-- 64-bitový procesor Intel alebo AMD, aspoň 4 GiB pamäte a disk 40 GiB
+- Procesor **x86-64** (Intel alebo AMD), aspoň 4 GiB pamäte a disk 40 GiB
   alebo väčší. Väčšina kancelárskych mini-PC má firmvérový TPM 2.0.
+  Flake zostavuje výlučne pre `x86_64-linux`: na počítači s procesorom ARM,
+  teda ani na Macu s čipom Apple M, sa LosOS nainštalovať nedá; aj ukážka
+  vo virtuálnom stroji na takom hostiteľovi beží len s emuláciou x86-64,
+  ktorá je rádovo pomalšia. Inak platí, že čokoľvek s x86-64 a dostatkom
+  pamäte a disku systém pohodlne utiahne, aj vyradený kancelársky stroj.
 - USB kľúč 2 GiB alebo väčší.
 - Káblové pripojenie k sieti s prístupom na internet: inštalátor sťahuje
   systém, ktorý inštaluje (z cache, nie kompilovaním).
@@ -109,6 +114,12 @@ qemu-system-x86_64 -m 4096 -smp 2 -enable-kvm -machine q35 \
   -device tpm-tis,tpmdev=tpm0 \
   -nic user,hostfwd=tcp:127.0.0.1:80-:80
 ```
+
+`-enable-kvm` predpokladá hostiteľa s procesorom x86-64 a zapnutou
+virtualizáciou. Na hostiteľovi ARM (Mac s čipom Apple M) treba prepínač
+vynechať a QEMU emuluje x86-64 softvérovo (TCG); inštalácia potom trvá
+desiatky minút namiesto jednotiek a hodí sa len na overenie, nie na
+predvádzanie.
 
 Bez `-bios` bootuje QEMU SeaBIOS, takže inštalátor zvolí GRUB; druhý štart
 ide bez riadku s `media=cdrom`. Záznamy ukážok (inštalácia od ISO po prvé
