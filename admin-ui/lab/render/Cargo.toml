@@ -1,0 +1,92 @@
+# LosOS Lab's canvas: the logical and physical views drawn by Bevy on the
+# GPU, as a 3D scene seen from straight above, compiled to
+# WebAssembly together with the Lab's core (../core), so the page has one
+# module and one `Lab`. React keeps everything around the canvas.
+#
+# A crate of its own outside any workspace, like ../core. Bevy is a
+# wasm32-only dependency: the drawing, hit testing and pointer handling are
+# plain Rust over the core and are unit-tested natively with no GPU and no
+# Bevy build; only src/app/ and src/web.rs need the browser.
+# `wasm-bindgen` is pinned to exactly nixpkgs' `wasm-bindgen-cli` (0.2.127),
+# which Bevy 0.19.1 accepts; README.md says what to change together.
+[package]
+name = "losos-lab-render"
+version = "0.1.0"
+edition = "2021"
+publish = false
+authors = ["Matus Mastena <shadiness9530+ou1rlygj@pm.me>"]
+description = "LosOS Lab's canvas, drawn by Bevy on the GPU and compiled to WebAssembly with the Lab's core"
+license = "AGPL-3.0-or-later"
+
+[lib]
+crate-type = ["cdylib"]
+
+[features]
+# Exactly one of the two. Bevy picks its WebGL2 or WebGPU code paths at
+# compile time (`webgpu` wins when both are on, and that build cannot run
+# on WebGL2), so the page gets two modules and its loader picks one:
+#   cargo build --release --target wasm32-unknown-unknown
+#   cargo build --release --target wasm32-unknown-unknown \
+#     --no-default-features --features webgpu
+default = ["webgl2"]
+webgl2 = ["bevy/webgl2"]
+webgpu = ["bevy/webgpu"]
+
+[dependencies]
+losos-lab-core = { path = "../core" }
+serde_json = { version = "1", features = ["preserve_order"] }
+wasm-bindgen = "=0.2.127"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+bevy = { version = "=0.19.1", default-features = false, features = [
+  "std",
+  "bevy_winit",
+  "bevy_window",
+  "bevy_render",
+  "bevy_core_pipeline",
+  "bevy_sprite",
+  "bevy_sprite_render",
+  "bevy_text",
+  "bevy_asset",
+  "bevy_mesh",
+  "bevy_color",
+  "bevy_camera",
+  "bevy_shader",
+  "bevy_image",
+  "bevy_pbr",
+  "mesh_picking",
+] }
+js-sys = "0.3"
+web-sys = { version = "0.3", features = [
+  "AddEventListenerOptions",
+  "console",
+  "CssStyleDeclaration",
+  "Document",
+  "DomRect",
+  "Element",
+  "EventTarget",
+  "HtmlCanvasElement",
+  "HtmlElement",
+  "MouseEvent",
+  "Performance",
+  "PointerEvent",
+  "WebGl2RenderingContext",
+  "WheelEvent",
+  "Window",
+] }
+
+# Debug builds: this crate a little optimised, every dependency fully, so
+# a dev build of Bevy draws at a usable frame rate and this crate still
+# rebuilds fast.
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"

@@ -535,6 +535,21 @@ impl LabCore {
         })
     }
 
+    // ── for a renderer in the same module (admin-ui/lab/render) ────────────
+    /// The devices and links, read in place.
+    pub fn world(&self) -> &World {
+        &self.world
+    }
+    /// The last evaluation of the world: segments, addresses, LosOS states.
+    pub fn net(&self) -> &Net {
+        &self.net
+    }
+    /// What `tick()` would answer as `packets` right now, without advancing
+    /// anything: the renderer reads it every frame between the page's ticks.
+    pub fn packets_now(&self) -> Vec<Value> {
+        self.packets()
+    }
+
     pub fn suggest_urls(&self, _id: &str) -> Value {
         let mut out: Vec<String> = Vec::new();
         for b in self.world.devices.iter().filter(|x| x.kind == "box") {

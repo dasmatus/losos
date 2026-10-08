@@ -43,6 +43,9 @@
   # (losos-admin-ui.labVirtPkg); the page imports it lazily, but `tsc` and
   # Vite resolve the import either way.
   labVirtPkg ? "",
+  # The same for the GPU canvas's two modules into src/lab/render-pkg
+  # (losos-admin-ui.labRenderPkg), imported lazily too.
+  labRenderPkg ? "",
 }:
 let
   inherit (pkgs) lib;
@@ -65,7 +68,7 @@ pkgs.buildNpmPackage {
   # no network here, and the ones it would fetch are not the ones this runs
   # against), and esbuild's binary arrives through its platform package.
   npmFlags = [ "--ignore-scripts" ];
-  preBuild = labCorePkg + labVirtPkg;
+  preBuild = labCorePkg + labVirtPkg + labRenderPkg;
 
   env = {
     # Chromium only: that is all the suite launches. The full set also builds

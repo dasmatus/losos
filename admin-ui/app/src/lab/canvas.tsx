@@ -2,11 +2,12 @@
  * intents out as actions, and the chrome that sits over any canvas (the
  * tool hint with the port picker, the zoom buttons, the legend).
  *
- * The canvas itself is behind the boundary in lab-canvas.ts. Today that is
- * the SVG one (svg-canvas.tsx); a Bevy one (admin-ui/lab/render, WebGL2)
- * will take the same props, with the SVG one as its fallback where WebGL2
- * is missing and as the first paint while the Bevy module loads. Choosing
- * between them is `CANVAS` below. */
+ * The canvas itself is behind the boundary in lab-canvas.ts. Two take the
+ * same props. The SVG one (svg-canvas.tsx) paints first and stays where no
+ * GPU canvas can run. The GPU one (bevy-canvas.tsx, Bevy on WebGPU or
+ * WebGL2) replaces it once render.ts has loaded its module and moved the
+ * core onto it. While the GPU canvas starts, it sits under the SVG one, and
+ * the SVG one leaves when the first GPU frame is drawn. */
 
 import * as React from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -16,12 +17,11 @@ import { useT } from "@/lib/i18n-react";
 import { getResolvedTheme, subscribeTheme } from "@/lib/theme";
 import { actions } from "./actions";
 import { useEngine } from "./engine-hook";
-import type { CanvasTool, LabCanvasComponent, LabCanvasProps, Palette } from "./lab-canvas";
+import type { CanvasTool, LabCanvasProps, Palette } from "./lab-canvas";
+import { BevyCanvas } from "./bevy-canvas";
+import { gpuDrew, gpuFailed } from "./render";
 import { store, useLab } from "./store";
 import { SvgCanvas } from "./svg-canvas";
-
-/** The implementation behind <LabCanvas>. */
-const CANVAS: LabCanvasComponent = SvgCanvas;
 
 /* The tokens a canvas draws with, resolved: a WebGL canvas cannot read CSS
  * variables, so it gets the values (the SVG one uses the variables). */
@@ -29,7 +29,8 @@ const PALETTE_TOKENS = [
   "ground", "surface", "sunk", "ink", "muted", "faint", "line", "hair", "accent", "accent-wash", "ok", "warn", "crit",
   "lab-copper", "lab-fiber", "lab-wan", "lab-wifi", "lab-grid", "lab-room", "lab-room-edge", "lab-mark", "lab-led-off",
   "lab-p-dhcp", "lab-p-arp", "lab-p-mdns", "lab-p-dns", "lab-p-http", "lab-p-icmp", "lab-p-rathole", "lab-p-rke2", "lab-p-lososd",
-  "lab-kit", "lab-kit-face", "lab-kit-edge", "lab-hole", "lab-rack", "lab-rack-edge", "lab-rack-face", "lab-screen",
+  "lab-kit", "lab-kit-face", "lab-kit-edge", "lab-hole", "lab-rack", "lab-rack-edge", "lab-rack-face", "lab-rack-bay", "lab-rack-ink",
+  "lab-screen", "lab-screen-off", "lab-screen-tile",
 ];
 
 function useThemeAndPalette(): { theme: "light" | "dark"; palette: Palette } {
@@ -207,6 +208,8 @@ export function Canvas() {
     onPower: (id) => actions().togglePower(id),
     onCamera: (cam) => s.setCam(cam),
     onViewport: ({ width, height }) => {
+      // The other canvas reporting the same size (the swap) is no resize.
+      if (fitted.current && width === s.viewport.width && height === s.viewport.height) return;
       s.viewport = { width, height };
       if (!width) return;
       if (!fitted.current) {
@@ -219,10 +222,20 @@ export function Canvas() {
     },
   };
 
+  const gpu = s.gpu;
   const zoomBy = (f: number) => s.zoomAt(s.viewport.width / 2, s.viewport.height / 2, f);
   return (
-    <div className="relative min-h-0 overflow-hidden">
-      <CANVAS {...props} />
+    <div className="relative min-h-0 overflow-hidden" data-canvas={gpu.state === "gpu" ? (gpu.backend ?? "gpu") : "svg"}>
+      {gpu.mod && gpu.lab && (gpu.state === "starting" || gpu.state === "gpu") && (
+        <BevyCanvas
+          {...props}
+          mod={gpu.mod}
+          lab={gpu.lab}
+          onDrew={(adapter) => gpuDrew(s, adapter)}
+          onLost={(why) => gpuFailed(s, why, true)}
+        />
+      )}
+      {gpu.state !== "gpu" && <SvgCanvas {...props} />}
       <Hint />
       <div className="absolute top-3 right-3 z-10 flex flex-col gap-1">
         <Button variant="secondary" size="icon-sm" aria-label={t("lab.zoom.in")} onClick={() => zoomBy(1.2)}>

@@ -49,6 +49,14 @@ export function TopBar({ phone, onDetails }: { phone: boolean; onDetails: () => 
   const scenario = s.snap.scenario;
   const known = new Set([...s.scenarios.map((x) => x.key), ...s.extras.map((x) => x.key)]);
 
+  // Which canvas draws: the GPU one once it has drawn, SVG before or instead.
+  const gpu = s.gpu;
+  const canvasLine =
+    gpu.state === "gpu"
+      ? t("lab.canvas.gpu", { backend: gpu.backend === "webgpu" ? "WebGPU" : "WebGL2" })
+      : gpu.state === "loading" || gpu.state === "starting"
+        ? t("lab.canvas.loading")
+        : t("lab.canvas.svg");
   const badge = (
     <span
       className="inline-flex max-w-full min-w-0 items-center gap-1.5 truncate rounded-full border border-line bg-sunk px-2.5 py-1 text-[12px] text-muted"
@@ -163,6 +171,8 @@ export function TopBar({ phone, onDetails }: { phone: boolean; onDetails: () => 
         </TooltipTrigger>
         <TooltipContent side="bottom" align="end" className="max-w-[360px]">
           {engine.available ? emulatedTip(engine.kinds) : engine.probe.reason}
+          <br />
+          {canvasLine}
         </TooltipContent>
       </Tooltip>
       {phone && (

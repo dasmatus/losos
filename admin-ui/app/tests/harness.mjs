@@ -111,9 +111,9 @@ export async function serve({ csp = false } = {}) {
  * expects are not installed (a dev machine or CI image with a different
  * revision). Unset, Playwright uses PLAYWRIGHT_BROWSERS_PATH as before, which
  * is what tests/admin-ui.nix relies on. */
-export function launch() {
+export function launch({ args = [] } = {}) {
   const executablePath = process.env.LOSOS_CHROMIUM || undefined;
-  return chromium.launch({ chromiumSandbox: false, executablePath });
+  return chromium.launch({ chromiumSandbox: false, executablePath, args });
 }
 
 export function runner() {

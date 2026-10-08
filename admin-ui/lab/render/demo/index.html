@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lab canvas test</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="style.css">
+<script type="module" src="main.js"></script>
+</head>
+<body>
+<header class="bar">
+  <strong>Lab canvas</strong>
+  <span id="backend" class="badge">probing</span>
+  <select id="setup" aria-label="Setup">
+    <option value="two-sites">Two sites</option>
+    <option value="web">Web</option>
+    <option value="star">Star</option>
+    <option value="bus">Bus</option>
+    <option value="office">Office</option>
+    <option value="three">Three setups at once</option>
+  </select>
+  <span class="seg" role="group" aria-label="View">
+    <button data-view="logical" aria-pressed="true">Logical</button>
+    <button data-view="physical" aria-pressed="false">Physical</button>
+  </span>
+  <span class="seg" role="group" aria-label="Tool">
+    <button data-tool="select" aria-pressed="true">Select</button>
+    <button data-tool="place:box">Place box</button>
+    <button data-tool="connect:copper">Copper</button>
+    <button data-tool="delete">Delete</button>
+  </span>
+  <button id="fit">Fit</button>
+  <button id="zin">+</button>
+  <button id="zout">&minus;</button>
+  <button id="theme">Dark</button>
+  <button id="load" hidden>Load the GPU canvas</button>
+  <span id="status" class="muted">loading</span>
+</header>
+<main class="work">
+  <div class="wrap"><canvas id="lab-canvas"></canvas></div>
+  <pre id="log" class="log" aria-live="polite"></pre>
+</main>
+</body>
+</html>

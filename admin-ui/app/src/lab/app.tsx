@@ -21,6 +21,7 @@ import { QemuBackend } from "./engine/qemu";
 import { VirtRpcBackend } from "./engine/virt-rpc";
 import { readLast } from "./files";
 import { logoUrl } from "./icons";
+import { gpuFailed, startGpu } from "./render";
 import { Inspector } from "./inspector";
 import { BOX_COPY } from "./shape";
 import { Splash, type SplashStep } from "./splash";
@@ -114,6 +115,11 @@ async function bootOnce(step: (s: SplashStep) => void): Promise<void> {
 
   window.setInterval(() => a.keepLast(), 2000);
   window.addEventListener("pagehide", () => a.keepLast());
+
+  // The SVG canvas has painted by the next frame; then try the GPU one.
+  requestAnimationFrame(() => {
+    startGpu(s).catch((e: unknown) => gpuFailed(s, e instanceof Error ? e.message : String(e)));
+  });
 }
 
 function usePhone(): boolean {
