@@ -31,6 +31,8 @@ in the repository.
    the edge checks the pusher's GitHub account against the same list before
    it installs it.
 
+![The box's boundaries: one front door, a control API on loopback only, the tunnel opened outwards to the edge, and one encrypted volume.](../img/box-architecture.svg)
+
 ## What the admin key is
 
 The 64-character spare key is as powerful as root: it can write any setting
@@ -47,6 +49,8 @@ On by default: kernel hardening parameters and sysctls, a kernel-module
 blacklist, a tmpfs `/tmp`, systemd sandboxing of the web server, mDNS and the
 control daemon. Four protections that can break something are opt-in on the
 Security pane: AppArmor, a hardened memory allocator, no SMT, USBGuard.
+
+![Settings, Security: the four extra protections that are off by default, each with what it costs.](../img/settings-security.png)
 
 ## Known limitations, stated plainly
 

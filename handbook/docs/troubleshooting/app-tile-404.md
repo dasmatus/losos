@@ -14,6 +14,8 @@ through untrusted domain".
 
 </div>
 
+![The Apps pane with LosOS cloud and LosOS Git; the Overview's app tiles open the same apps.](../img/apps.png)
+
 ## "Not Found" from an app tile
 
 Two causes, both fixed on 6 October 2026 (pull requests #65 and #66), both

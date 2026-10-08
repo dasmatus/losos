@@ -48,6 +48,12 @@ own. **It wipes every fixed disk in the machine.**
    banner with the box's address. Open that address in a browser on any
    computer on the same network and follow [The first run](first-run).
 
+![The blue banner on the box's screen after the first boot: LosOS is ready, with the box's address and its .local name.](../img/tty1-banner.png)
+
+![The end of an install: the disk key sealed to the TPM, the boot loader installed, and the line losos-install: done.](../img/install-done.png)
+
+![The installer on the screen: Secure Boot enabled, the firmware verified the medium, and the menu offering BIOS, UEFI or autodetect, chosen automatically after 30 seconds.](../img/installer-menu.png)
+
 ## Trying it in a virtual machine
 
 The box runs fine in QEMU, virt-manager or VirtualBox, and the maturita demo

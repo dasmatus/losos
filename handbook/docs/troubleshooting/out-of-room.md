@@ -13,6 +13,8 @@ uploads to LosOS cloud fail; an Apply or the nightly update fails.
 
 </div>
 
+![The Overview on a box that is almost full.](../img/overview-almost-full.png)
+
 ## Why it matters more than on a laptop
 
 The box's own software lives on the same volume as your files, and each
@@ -21,6 +23,8 @@ than 14 days. A full disk therefore blocks the one thing that repairs the
 box, so act before **Out of room**.
 
 ## What to do, in order
+
+![Use the reserve, the first thing to try: the dialog says how much room it adds.](../img/storage-use-reserve.png)
 
 1. **Claim the reserve.** Storage pane → **Use the reserve**. The installer
    held back 10 % of the disk for exactly this; claiming it takes a minute

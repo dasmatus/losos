@@ -19,23 +19,7 @@ the owner is not using.
 
 ## The box
 
-```text
-                 browser on the LAN              edge (internet or LAN)
-                        │                               ▲ tunnel (Noise), outwards only
-                        ▼                               │
-   ┌───────────── nginx, the one front door ─────────────┐
-   │  /  admin pages (LAN only)      /nextcloud  LosOS cloud │
-   │  /api → lososd (loopback)       /forgejo/   LosOS Git   │
-   │  /handbook/ (LAN only)                                 │
-   └────────────────────────────────────────────────────────┘
-          │                      │                      │
-     lososd (root daemon)   k3s: the box's own    rke2 agent: the mesh,
-     state, settings,       cluster, runs the     joined to the edge's
-     rebuilds, D-Bus        two apps as pods      server; Longhorn pool
-          │
-   /persist (LUKS, key in the TPM) ◄── the only thing that survives a boot
-   /       tmpfs, rebuilt every boot from the box's Nix description
-```
+![Inside a box: nginx is the one front door, with the admin pages and the handbook for the LAN only; behind it lososd, the box's own k3s cluster running LosOS cloud and LosOS Git, and the rke2 agent of the mesh, whose server is the edge; under them a RAM system disk and one encrypted volume unlocked by the TPM.](../img/box-architecture.svg)
 
 Six decisions carry the design:
 
@@ -67,6 +51,8 @@ Six decisions carry the design:
 
 ## The mesh
 
+![The mesh: each box keeps its owner's files and lends the room it is not using to one replicated pool; spare time is lent inside the owner's window, only while idle.](../img/mesh.svg)
+
 - **Storage**: Longhorn on the edge's cluster replicates volumes across the
   boxes that share room. A box shares only the room it is not using, in its
   `shared` domain; stopping sharing withdraws the node and its copies are
@@ -81,6 +67,8 @@ Six decisions carry the design:
   other edge gets discovery, remote access and local sharing, not trading.
 
 ## The edge
+
+![How a box finds an edge and decides whether it is official.](../img/edge-discovery.svg)
 
 A NixOS module (`nixosModules.edge`): Traefik with automatic TLS in front, a
 rathole tunnel server behind it, the registrar (`losos-registrar`, Rust)

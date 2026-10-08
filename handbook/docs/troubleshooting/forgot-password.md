@@ -28,6 +28,8 @@ on LosOS cloud's sign-in page.
 
 ## You have the spare admin key
 
+![The unlock dialog asking for the spare admin key.](../img/unlock-spare-key.png)
+
 On the unlock dialog, choose **Use the spare admin key instead** and paste
 the 64-character key from the printed sheet. The admin pages open.
 

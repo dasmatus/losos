@@ -16,6 +16,10 @@ its original name, so the address you use to reach it changes back too (the
 IP address does not). The dialog spells out what goes and what stays and
 needs a second press.
 
+![The reset dialog spelling out what is reset and what is kept, with Keep my settings first.](../img/settings-reset-dialog.png)
+
+![Settings, Reset: Put every setting back, with what goes and what stays.](../img/settings-reset.png)
+
 A reset does not change the owner's password or the spare key, and does not
 re-open the claim window.
 

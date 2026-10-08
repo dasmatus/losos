@@ -48,7 +48,7 @@ Sprievodca otvorí LosOS cloud vo vlastnej stránke, majiteľ sa prihlási
 práve nastaveným heslom a sprievodca ho prevedie na prehľad
 administračných stránok.
 
-![Posledný krok sprievodcu: prihlásenie do LosOS cloudu priamo na stránke sprievodcu.](./img/sprievodca-prihlasenie.png)
+![Posledný krok sprievodcu: po prihlásení do LosOS cloudu priamo na stránke sprievodcu stránka potvrdí, že je hotovo.](./img/sprievodca-prihlasenie.png)
 
 ## Administračné stránky: panely a Použiť
 

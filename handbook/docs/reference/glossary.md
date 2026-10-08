@@ -5,6 +5,8 @@ sidebar_position: 5
 
 # Glossary
 
+![Where the words fit: boxes, the edge, the official LosOS edge, a company edge and the pool of the mesh.](../img/setup-types.svg)
+
 **Admin pages.** The box's own web page at `/`, LAN-only, where the box is
 set up and looked after. Built as a single-page app the box serves itself.
 

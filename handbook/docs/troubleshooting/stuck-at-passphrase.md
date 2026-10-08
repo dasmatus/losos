@@ -14,6 +14,8 @@ never asks for a passphrase on a normal boot.
 
 </div>
 
+![A box stopped at boot with Please enter passphrase for disk persist, from the installer bug fixed on 2 October 2026.](../img/passphrase-prompt.png)
+
 ## Why it happens
 
 The encrypted volume could not be unlocked the way the box was installed to

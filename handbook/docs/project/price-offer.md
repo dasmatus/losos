@@ -25,6 +25,8 @@ leaves the shelf.
 
 ## How the money moves
 
+![The Market pane as it will look once it opens: buying storage and compute, and payouts through Stripe with the 4 % platform fee.](../img/market-open.png)
+
 1. A seller onboards: the edge creates a Stripe Express account for the box,
    tagged with the box's identifier, and returns Stripe's hosted onboarding.
 2. Stripe reports the account can receive transfers; only then can the

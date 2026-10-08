@@ -28,6 +28,8 @@ that network and from nowhere else.
   edge is reachable, so the switch cannot be turned on by mistake.
 - **No market.**
 
+![The Mesh pane on a box with no edge: No edge proxy found, with what the box tried, and the mesh switches greyed with Needs an edge proxy in reach.](../img/mesh-none.png)
+
 ## When this is the right type
 
 Most homes. A box on its own has the smallest surface: the only way in is a

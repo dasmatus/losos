@@ -16,6 +16,8 @@ separate report; the Slovak hand-in document, the
 [technical documentation (KOP)](./kop/index.md), is built from this handbook
 and adds what the assignment asks for beyond it.
 
+![A box's admin pages in October 2026, with the Tide background and a hand-written widget.](../img/overview-tide.png)
+
 | Requirement                                                              | Where it is answered                                                          |
 | ------------------------------------------------------------------------ | ----------------------------------------------------------------------------- |
 | 1. Examine and describe the system's main functions and options           | [Architecture](./architecture.md), [What LosOS is](../start/what-is-losos.md), [Types of setup](../types/index.md); in Slovak, [Funkcionality](./kop/funkcionality.md) and [Architektúra](./kop/architektura.md) |

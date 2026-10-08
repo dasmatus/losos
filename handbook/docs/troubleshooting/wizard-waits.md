@@ -13,6 +13,8 @@ finish starting", and stays there.
 
 </div>
 
+<img src={require("../img/wizard-step2-waiting.png").default} alt="Step 2 of the wizard waiting for LosOS cloud, with what it is waiting for." width="520" />
+
 ## Why
 
 The password lives in LosOS cloud, so it cannot be set until LosOS cloud has

@@ -44,6 +44,8 @@ Do these in order; most problems stop at one of them.
 
 ## What the box can tell you from the LAN
 
+![The Overview when the box does not answer its health check: the status under the name turns from Answering to not answering.](../img/overview-not-answering.png)
+
 | Where                                   | What                                                                                         |
 | --------------------------------------- | -------------------------------------------------------------------------------------------- |
 | The screen (tty1)                       | The IP address and the `.local` name. Redraws when they change.                              |

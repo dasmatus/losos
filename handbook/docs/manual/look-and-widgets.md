@@ -16,10 +16,14 @@ arranged it in: another computer sees its own board. Adding a built-in or a
 widget built from readings changes nothing on the box and starts nothing
 running.
 
+![The Overview with the Tide background and a hand-written Greeting widget at the top of the board.](../img/overview-tide.png)
+
 ## Settings → Look
 
 Changes how the admin pages look, for every browser that opens the box, and
 takes effect the moment it is saved; no rebuild.
+
+![Settings, Look: the backgrounds Plain, Tide, Grid, Dusk and your own picture, the veil slider, and the hand-written widgets kept on this box.](../img/settings-look.png)
 
 - **Background**: one of three shipped pictures (Tide, Grid, Dusk), an
   upload of your own (PNG, JPEG, WebP, GIF or SVG, up to 8 MiB), or Plain.
@@ -37,10 +41,8 @@ on the [widget types](../types/widget-types#written-by-hand) page, and
 nothing else: no admin key, no API, no access to the page around it. It may
 fetch the internet.
 
+![The widget editor: Source on the left, the live preview in the real sandboxed frame on the right, and the Help tab.](../img/widget-write-one.png)
+
 Because it runs in every browser that opens the box, read anything pasted
 from the internet before you keep it, as the note above Source says.
 
-:::info[Being merged]
-Backgrounds and hand-written widgets are in pull request #73. A box without a
-Look pane predates it.
-:::

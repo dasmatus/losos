@@ -11,6 +11,8 @@ slug: /types
 shaped along five independent lines. This page is the map; each line has its
 own page.
 
+![The three deployment types side by side: a box on its own on a home network; a box that opens a tunnel to the official LosOS edge; several boxes on an office network sharing one pool through the company's own edge.](../img/setup-types.svg)
+
 ## 1. How the box is deployed
 
 | Type                                   | Who it is for                                   | Remote access | Mesh                | Market |

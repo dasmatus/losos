@@ -17,6 +17,8 @@ this box"; the public name of the box stops answering.
 
 ## What the box looks for
 
+![What the box tries every 20 seconds: the LAN by DNS-SD and the configured address; no answer from either means No edge proxy found.](../img/edge-discovery.svg)
+
 Every 20 seconds the box looks for an edge in two places: an announcement on
 the local network (for a [company edge](../types/company-edge) on the same
 LAN) and the configured address (for the [LosOS edge](../types/official-edge)
@@ -32,6 +34,8 @@ tried:
 | "This box could not search its network, and nothing answered elsewhere."   | The box's mDNS service was not running, so a LAN edge could not be found even if present. A reboot brings it back. |
 
 ## From the LAN
+
+![The Mesh pane saying No edge proxy found, with what the box searched and asked.](../img/mesh-none.png)
 
 1. **Does the box have the internet?** An edge on the internet needs it; a
    company edge on the LAN does not. The Overview says whether the box is
