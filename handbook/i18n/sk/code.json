@@ -375,25 +375,25 @@
     "message": "LosOS Git"
   },
   "losos.home.feature.git.body": {
-    "message": "Vaše repozitáre kódu na tom istom boxe a za tým istým heslom. Postavené na Forgejo."
+    "message": "Vaše repozitáre na tom istom boxe a za tým istým heslom. Postavené na Forgejo."
   },
   "losos.home.feature.self.title": {
     "message": "Každé ráno čistý systém"
   },
   "losos.home.feature.self.body": {
-    "message": "Box sa reštartuje o 00:07 a pri každom štarte si postaví systémový disk odznova. Vaše dáta a nastavenia zostávajú na šifrovanom zväzku. Náhodná zmena kdekoľvek inde v systéme je ráno preč."
+    "message": "Zachováva si svoj stav po reštartoch."
   },
   "losos.home.feature.disk.title": {
     "message": "Šifrovaný disk"
   },
   "losos.home.feature.disk.body": {
-    "message": "Kľúč k disku zostáva vo vlastnom čipe TPM počítača. Disk vybratý a zapojený do iného počítača sa nedá prečítať."
+    "message": "Vaše dáta sú na šifrovanom zväzku. Na počítači s čipom TPM zostáva kľúč v čipe."
   },
   "losos.home.feature.password.title": {
     "message": "Jedno heslo, žiadny shell"
   },
   "losos.home.feature.password.body": {
-    "message": "Nemá prihlasovacie okno ani SSH. Box používate z webového prehliadača a heslo, ktoré si nastavíte pre LosOS cloud, otvára aj správu boxu."
+    "message": "Nemá prihlasovacie okno ani SSH. Box sa používa z prehliadača a heslo, ktoré si nastavíte pre LosOS cloud, otvára aj správu boxu."
   },
   "losos.home.feature.lan.title": {
     "message": "Funguje aj bez internetu"
