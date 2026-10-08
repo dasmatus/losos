@@ -127,7 +127,9 @@ Hranice dôvery (plný text je v `docs/security-model.md`):
    len nástroj na počítači autora projektu (`losos-registrar provision`),
    ktorý najprv prihlási osobu cez GitHub a odmietne každého, kto nie je na
    zozname povolených účtov zapísanom v repozitári; žiadny box ani edge
-   kľúč nikdy nedrží.
+   kľúč nikdy nedrží. Podpísaný certifikát nástroj odošle na edge cez web
+   a edge pred jeho inštaláciou znova overí, že odosielateľ je na tom istom
+   zozname.
 
 Administračný kľúč je mocný ako root; vzniká na boxe, box ho vydá raz
 v sprievodcovi a inak ho vydá len prehliadaču, ktorý preukáže heslo

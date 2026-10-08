@@ -28,6 +28,7 @@ pub enum Action {
     LoadRegistry,
     Market,
     Provision,
+    Identity,
 }
 
 impl Action {
@@ -51,6 +52,7 @@ impl Action {
             Action::LoadRegistry => "losos::registry",
             Action::Market => "losos::market",
             Action::Provision => "losos::provision",
+            Action::Identity => "losos::identity",
         }
     }
 }
@@ -72,6 +74,7 @@ impl Display for Action {
             Action::LoadRegistry => f.write_str("[load registry]"),
             Action::Market => f.write_str("[market]"),
             Action::Provision => f.write_str("[provision]"),
+            Action::Identity => f.write_str("[identity]"),
         }
     }
 }

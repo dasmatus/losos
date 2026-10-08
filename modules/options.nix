@@ -1120,33 +1120,38 @@ in
 
     edge.identity.keyFile = lib.mkOption {
       type = lib.types.nullOr secretPath;
-      default = null;
+      default = "/var/lib/losos-registrar/identity.key";
       description = ''
         This edge's identity **private** key (PKCS#8 hex, 0600, persisted via
-        /var, never in the store). `losos-registrar provision edge`, run from
-        the operator's machine behind a GitHub sign-in, makes it and installs
-        it here over SSH (the primitive is `losos-registrar identity keygen
-        --out <file>`). With `edge.identity.certFile` it makes the edge
-        *official*: the registrar serves `GET /identity?nonce=` and boxes
-        whose losos.proxy.officialRootKeyFile matches the signer let it
-        process their market traffic. `null` (the default) is an edge that is
-        found and shares storage but is never official — the shape of an
-        edge a company runs for itself.
+        /var, never in the store). The registrar makes it on its first start
+        if the file is missing, so the private half never leaves the edge;
+        `GET /identity/public-key` serves the public half. Together with
+        `edge.identity.certFile` it is what can make the edge *official*:
+        once an operator has pushed a certificate the LosOS root signed for
+        this key (`losos-registrar provision edge`, from their own machine,
+        behind a GitHub sign-in that the edge checks too), the registrar
+        serves `GET /identity?nonce=` and boxes whose
+        losos.proxy.officialRootKeyFile matches the signer let it process
+        their market traffic. Until then the edge is found and shares
+        storage but is not official — the shape of an edge a company runs
+        for itself. `null` (with `certFile = null`) runs an edge that
+        cannot become official at all: every `/identity*` route is 404.
       '';
     };
 
     edge.identity.certFile = lib.mkOption {
       type = lib.types.nullOr lib.types.path;
-      default = null;
+      default = "/var/lib/losos-registrar/identity.cert.json";
       description = ''
-        The certificate for `edge.identity.keyFile`: the JSON
-        `losos-registrar provision edge` installs beside the key (the
-        primitive is `losos-registrar identity sign`), signed by the LosOS
-        root key the project owner holds offline. Public, so a store path
-        is fine.
-        Must name this edge's public URL (the one boxes probe) and be
-        unexpired; the registrar refuses to start on a mismatch. Set with
-        `keyFile` or not at all.
+        Where the certificate for `edge.identity.keyFile` lives: the JSON
+        `POST /identity/cert` installs (the primitive is `losos-registrar
+        identity sign`), signed by the LosOS root key the project owner
+        holds offline. Public, and the registrar writes it, so it must be a
+        writable runtime path for the push to work; a store path is read
+        but can never be replaced by a push. Must name this edge's public
+        URL (the one boxes probe) and be unexpired, or boxes reject it; a
+        certificate that is not for the key is logged and ignored. Set
+        with `keyFile` or not at all.
       '';
     };
 
