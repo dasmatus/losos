@@ -13,7 +13,9 @@
 use clap::{Args, Parser, Subcommand};
 use losos_ctl::facade::{call_backend, BackendFailure};
 use losos_ctl::installer::resolve_tpm;
-use losos_ctl::installer_io::{booted_in_bios, options_from_env, run_install, tpm_present};
+use losos_ctl::installer_io::{
+    booted_in_bios, options_from_env, run_install, secure_boot_state, tpm_present,
+};
 use losos_ctl::model::Mode;
 use losos_ctl::overrides::validate_apply;
 use std::io::{IsTerminal, Read, Write};
@@ -349,6 +351,12 @@ fn main() -> ExitCode {
             && std::io::stdin().is_terminal()
             && std::io::stdout().is_terminal()
             && args.emit_target.is_none();
+        // Whether the firmware verified this medium before starting it, on
+        // the screen before anything else: it is the one place the person
+        // who booted the stick can read it (modules/secure-boot.nix).
+        if on_installer_iso {
+            println!("{}", secure_boot_state().banner());
+        }
         let bios = match select_firmware(explicit_bios, interactive) {
             Ok(bios) => bios,
             Err(e) => {

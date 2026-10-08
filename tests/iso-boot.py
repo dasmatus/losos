@@ -25,12 +25,18 @@ repo. The disk it would format is a sparse temp file thrown away afterwards.
 Firmware:
   uefi       OVMF with Secure Boot off
   bios       SeaBIOS (QEMU's default)
-  uefi-sb    OVMF with Secure Boot on and Microsoft's keys enrolled. The ISO is
-             not signed, so this is expected to fail until it is; it is here so
-             the failure can be shown rather than described.
+  uefi-sb-ms OVMF's Secure Boot build with Microsoft's keys and nothing else:
+             a stock PC. It must refuse the medium, signed or not, with
+             `--expect refused`; the script then passes on the firmware's
+             "Access Denied" on the serial console.
+  uefi-sb    OVMF's Secure Boot build with a fresh variable store into which
+             `--enroll CERT` puts the given certificate as PK, KEK and db
+             (virt-fw-vars, from the virt-firmware package). A medium signed
+             by that certificate boots; anything else is refused.
 
-On timeout it saves a screenshot next to the pcap so CI can upload what the
-screen showed.
+`--expect boot` (the default) passes on the installer's DNS query; `--expect
+refused` passes on the refusal and fails if the medium boots. On timeout it
+saves a screenshot next to the pcap so CI can upload what the screen showed.
 """
 
 import argparse
@@ -48,9 +54,30 @@ import zlib
 OVMF_DIR = os.environ.get("OVMF_DIR", "/usr/share/OVMF")
 FIRMWARE = {
     "uefi": ("OVMF_CODE_4M.fd", "OVMF_VARS_4M.fd"),
-    "uefi-sb": ("OVMF_CODE_4M.secboot.fd", "OVMF_VARS_4M.ms.fd"),
+    "uefi-sb-ms": ("OVMF_CODE_4M.secboot.fd", "OVMF_VARS_4M.ms.fd"),
+    "uefi-sb": ("OVMF_CODE_4M.secboot.fd", "OVMF_VARS_4M.fd"),
     "bios": None,
 }
+# What OVMF's boot manager prints on the console when its image verification
+# rejects a loader ("Access Denied -- rejected probably by Secure Boot" in
+# current builds; the first two words are the stable part).
+REFUSED = b"Access Denied"
+# Owner GUID for the enrolled certificate; any fixed value works.
+ENROLL_GUID = "77fa9abd-0359-4d32-bd60-28f4e78f784b"
+
+
+def enroll(template: str, cert: str, out: str) -> None:
+    """Write a variable store with `cert` as PK, KEK and db and Secure Boot on."""
+    subprocess.run(
+        [
+            "virt-fw-vars", "--input", template, "--output", out,
+            "--set-pk", ENROLL_GUID, cert,
+            "--add-kek", ENROLL_GUID, cert,
+            "--add-db", ENROLL_GUID, cert,
+            "--secure-boot",
+        ],
+        check=True,
+    )
 
 
 def dns_queries(pcap: bytes):
@@ -124,12 +151,17 @@ def main() -> int:
     ap.add_argument("--host", default="github.com", help="the flake host the installer resolves")
     ap.add_argument("--timeout", type=int, default=600, help="seconds")
     ap.add_argument("--out", default=".", help="where the pcap and a failure screenshot go")
+    ap.add_argument("--expect", choices=["boot", "refused"], default="boot")
+    ap.add_argument("--enroll", metavar="CERT", help="uefi-sb: the certificate to enrol as PK, KEK and db")
     args = ap.parse_args()
+    if (args.firmware == "uefi-sb") != (args.enroll is not None):
+        ap.error("--enroll CERT goes with --firmware uefi-sb, and only with it")
 
     name = f"{args.firmware}-{args.media}"
     os.makedirs(args.out, exist_ok=True)
     pcap = os.path.join(args.out, f"{name}.pcap")
     shot = os.path.join(args.out, f"{name}.png")
+    serial = os.path.join(args.out, f"{name}.serial.log")
     work = tempfile.mkdtemp(prefix=f"iso-boot-{name}-")
     monitor = os.path.join(work, "monitor.sock")
     disk = os.path.join(work, "scratch.img")
@@ -147,7 +179,10 @@ def main() -> int:
     else:
         code, vars_ = (os.path.join(OVMF_DIR, f) for f in fw)
         local_vars = os.path.join(work, "vars.fd")
-        shutil.copyfile(vars_, local_vars)
+        if args.enroll:
+            enroll(vars_, args.enroll, local_vars)
+        else:
+            shutil.copyfile(vars_, local_vars)
         # Secure Boot in OVMF needs SMM, and SMM needs the flash marked secure.
         cmd += ["-machine", "q35,smm=on", "-global", "driver=cfi.pflash01,property=secure,value=on"]
         cmd += ["-drive", f"if=pflash,format=raw,readonly=on,file={code}"]
@@ -162,8 +197,11 @@ def main() -> int:
     cmd += ["-netdev", "user,id=n0", "-device", "virtio-net-pci,netdev=n0"]
     cmd += ["-object", f"filter-dump,id=f0,netdev=n0,file={pcap}"]
     cmd += ["-monitor", f"unix:{monitor},server,nowait"]
+    # The firmware's console goes to the serial port too; that is where a
+    # Secure Boot refusal is read from.
+    cmd += ["-serial", f"file:{serial}"]
 
-    print(f"{name}: booting {args.iso} ({'kvm' if kvm else 'tcg, slow'})", flush=True)
+    print(f"{name}: booting {args.iso} ({'kvm' if kvm else 'tcg, slow'}), expecting {args.expect}", flush=True)
     qemu = subprocess.Popen(cmd)
     start = time.monotonic()
     want = args.host.lower()
@@ -173,13 +211,27 @@ def main() -> int:
             if qemu.poll() is not None:
                 print(f"{name}: qemu exited with {qemu.returncode} before the installer ran", file=sys.stderr)
                 return 1
+            if os.path.exists(serial) and REFUSED in open(serial, "rb").read():
+                took = time.monotonic() - start
+                if args.expect == "refused":
+                    print(f"{name}: OK, the firmware refused the medium ({REFUSED.decode()}) {took:.0f}s after power-on")
+                    return 0
+                print(f"{name}: the firmware refused the medium ({REFUSED.decode()}); screenshot in {shot}", file=sys.stderr)
+                screendump(monitor, shot)
+                return 1
             if os.path.exists(pcap):
                 seen = set(dns_queries(open(pcap, "rb").read()))
                 if want in seen:
                     took = time.monotonic() - start
-                    print(f"{name}: OK, the installer resolved {want} {took:.0f}s after power-on")
-                    return 0
-        print(f"{name}: no DNS query for {want} within {args.timeout}s; screenshot in {shot}", file=sys.stderr)
+                    if args.expect == "boot":
+                        print(f"{name}: OK, the installer resolved {want} {took:.0f}s after power-on")
+                        return 0
+                    print(f"{name}: the medium booted (resolved {want}) but was expected to be refused", file=sys.stderr)
+                    return 1
+        if args.expect == "refused":
+            print(f"{name}: neither a refusal nor a boot within {args.timeout}s; screenshot in {shot}", file=sys.stderr)
+        else:
+            print(f"{name}: no DNS query for {want} within {args.timeout}s; screenshot in {shot}", file=sys.stderr)
         try:
             screendump(monitor, shot)
         except OSError as e:

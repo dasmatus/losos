@@ -28,8 +28,12 @@ own. **It wipes every fixed disk in the machine.**
 1. Download the installer ISO and its `.sha256` from the
    [latest release](https://github.com/dasmatus/losos/releases/latest) and
    write it to the stick (balenaEtcher, Rufus in DD mode, or `dd`).
-2. In the machine's firmware, **turn Secure Boot off**. Nothing in LosOS is
-   signed, so with Secure Boot on the stick is refused, sometimes silently.
+2. In the machine's firmware, either **turn Secure Boot off** or enrol the
+   LosOS certificate so the firmware can verify the stick: see
+   [Secure Boot and signed media](secure-boot). A PC trusts only
+   Microsoft's keys out of the box, so with Secure Boot on and nothing
+   enrolled the stick is refused, sometimes silently. The installed box
+   needs Secure Boot off either way (its own loader is not signed).
 3. Boot from the stick. A menu offers **UEFI**, **BIOS** or **autodetect**
    and takes autodetect after 30 seconds, so an unattended boot still
    installs. Autodetect picks the mode the stick itself was booted in, which

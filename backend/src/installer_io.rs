@@ -411,6 +411,58 @@ pub fn booted_in_bios() -> bool {
     !Path::new("/sys/firmware/efi").exists()
 }
 
+/// The EFI variable that says whether the firmware enforced Secure Boot
+/// when it started this medium's loader: four attribute bytes, then one
+/// byte, 1 for enabled.
+const SECURE_BOOT_VAR: &str =
+    "/sys/firmware/efi/efivars/SecureBoot-8be4df61-93ca-11d2-aa0d-00e098032b8c";
+
+/// What the firmware did about Secure Boot before this medium ran.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SecureBoot {
+    /// UEFI, SecureBoot = 1: the firmware verified the medium's loader
+    /// against its `db` before starting it, so the kernel, initrd and
+    /// command line now running are the ones that were signed.
+    Enabled,
+    /// UEFI, SecureBoot = 0 (or no variable): nothing was verified.
+    Disabled,
+    /// Legacy BIOS: the feature does not exist there.
+    Bios,
+}
+
+impl SecureBoot {
+    /// Decode the variable's contents as the kernel exposes them in efivarfs.
+    pub fn from_efivar(bios: bool, var: Option<&[u8]>) -> Self {
+        if bios {
+            return SecureBoot::Bios;
+        }
+        match var {
+            Some(bytes) if bytes.len() >= 5 && bytes[4] == 1 => SecureBoot::Enabled,
+            _ => SecureBoot::Disabled,
+        }
+    }
+
+    /// The line the installer prints above its firmware menu, so the person
+    /// at the screen sees whether the medium they booted was verified.
+    pub fn banner(self) -> &'static str {
+        match self {
+            SecureBoot::Enabled => {
+                "Secure Boot: enabled. The firmware verified this medium's signature."
+            }
+            SecureBoot::Disabled => {
+                "Secure Boot: disabled. The firmware did not check this medium's signature."
+            }
+            SecureBoot::Bios => "Secure Boot: not available (legacy BIOS boot).",
+        }
+    }
+}
+
+/// Read the firmware's Secure Boot state for this boot.
+pub fn secure_boot_state() -> SecureBoot {
+    let var = std::fs::read(SECURE_BOOT_VAR).ok();
+    SecureBoot::from_efivar(booted_in_bios(), var.as_deref())
+}
+
 /// Whether the installer medium can see a TPM2 chip.
 ///
 /// `/dev/tpmrm0` is the kernel's resource-managed interface, which is what
@@ -508,6 +560,38 @@ mod tests {
         IoInstall.ensure_keyfile(&path).unwrap();
         assert_eq!(std::fs::read_to_string(&path).unwrap(), text);
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn secure_boot_state_is_read_from_the_variable_or_absent_under_bios() {
+        use super::SecureBoot;
+        // Four attribute bytes (NV+BS+RT), then the value.
+        let on = [7, 0, 0, 0, 1];
+        let off = [7, 0, 0, 0, 0];
+        assert_eq!(
+            SecureBoot::from_efivar(false, Some(&on)),
+            SecureBoot::Enabled
+        );
+        assert_eq!(
+            SecureBoot::from_efivar(false, Some(&off)),
+            SecureBoot::Disabled
+        );
+        // No variable at all (firmware without Secure Boot support) is off.
+        assert_eq!(SecureBoot::from_efivar(false, None), SecureBoot::Disabled);
+        // A truncated variable never counts as enabled.
+        assert_eq!(
+            SecureBoot::from_efivar(false, Some(&[7, 0])),
+            SecureBoot::Disabled
+        );
+        // Under BIOS the variable cannot exist and the answer is neither.
+        assert_eq!(SecureBoot::from_efivar(true, Some(&on)), SecureBoot::Bios);
+        assert!(SecureBoot::Enabled
+            .banner()
+            .starts_with("Secure Boot: enabled"));
+        assert!(SecureBoot::Disabled
+            .banner()
+            .starts_with("Secure Boot: disabled"));
+        assert!(SecureBoot::Bios.banner().contains("BIOS"));
     }
 
     #[test]

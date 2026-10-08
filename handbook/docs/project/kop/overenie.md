@@ -42,7 +42,7 @@ warnings` a `rustfmt`.
 
 ### Testy vo virtuálnych strojoch (NixOS)
 
-Sedemnásť testov v `tests/` bootuje skutočné systémy z tých istých modulov,
+Osemnásť testov v `tests/` bootuje skutočné systémy z tých istých modulov,
 z ktorých sa inštaluje. Prehľad:
 
 | Test                    | Čo overuje                                                                                                      |
@@ -64,6 +64,7 @@ z ktorých sa inštaluje. Prehľad:
 | `nextcloud-httpd.nix`   | Apache v pode Nextcloudu proti fixtúre webroot (front-controller rewrite)                                        |
 | `admin-ui.nix`          | produkčný zväzok SPA v prehliadači so skutočnou hlavičkou CSP                                                    |
 | `design-system.nix`     | render React obalu dizajnového systému (len vývoj)                                                               |
+| `secure-boot.nix`       | podpísané inštalačné médium pod OVMF so Secure Boot: nabootuje a zvnútra ukáže *Secure Boot: enabled*; firmvér len s kľúčmi Microsoftu, pozmenená kópia aj nepodpísané zostavenie sú odmietnuté; pozmenený systémový obraz zastaví stage 1 |
 
 `tests/invariants.nix` nie je VM: pri vyhodnotení konfigurácie `install`
 pripína hodnoty, ktoré si box nemôže dovoliť stratiť driftom predvolenej
@@ -88,8 +89,12 @@ na červeno.
 (`flake.lock` = `devenv.yaml` = `devenv.lock`), clippy a rustfmt, testy
 oboch crate, `nix flake check` s invariantmi, zostavenie balíkov (lososd,
 registrátor, administračné UI, príručka, OCI obrazy), **zostavenie
-inštalačného ISO a jeho boot** pod OVMF aj SeaBIOS (`tests/iso-boot.py`
-čaká na DNS dotaz inštalátora), publikovanie zostavených ciest do cache.
+inštalačného ISO, podpis jeho zavádzača UEFI** kľúčom z tajomstva
+repozitára a **jeho boot** pod OVMF aj SeaBIOS (`tests/iso-boot.py` čaká
+na DNS dotaz inštalátora), plus dve vetvy Secure Boot: OVMF len s kľúčmi
+Microsoftu musí médium odmietnuť a OVMF so zapísaným certifikátom LosOS ho
+musí spustiť; publikovanie zostavených ciest do cache. Vydanie (tag) pridá
+k ISO `SHA256SUMS` s odpojeným podpisom tým istým kľúčom a certifikát.
 Príručka má vlastný workflow (typová kontrola, kontrola odkazov a tokenov,
 zostavenie, nasadenie na GitHub Pages, zostavenie tohto PDF).
 
@@ -164,6 +169,28 @@ Body A1 až A4, B1, B2, B5, B6 a B8 pokrýva test `edge-lan.nix` a ukážka;
 B3, B4 a B7 sú overené v `cluster-vm.nix` (koexistencia runtime) a na edge
 ručne, a sú to body, ktoré ukážka na obhajobe predvedie naživo.
 
+### Scenár C: podpísané médium a Secure Boot
+
+Inštalačné médium je podpísané (zavádzač UEFI je jeden zjednotený obraz
+jadra podpísaný certifikátom LosOS a pred pripojením systémového obrazu
+overí jeho odtlačok z podpísaného príkazového riadku). Overenie beží vo
+virtuálnom stroji s OVMF v zostave so Secure Boot (SMM), s dočasným
+testovacím kľúčom, ktorý test vytvorí a zahodí; produkčný kľúč vzniká len
+na počítači autora (`provisioning/secure-boot/keygen.sh`).
+
+| #  | Krok                                                                 | Očakávaný výsledok                                                                                                   |
+| -- | -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| C1 | nabootovať podpísané médium vo firmvéri so zapísaným certifikátom    | inštalátor beží; nad menu firmvéru vypíše *Secure Boot: enabled*; `bootctl status` hlási *Secure Boot: enabled (user)*, premenná `SecureBoot` je 1, `db` obsahuje certifikát, ktorým bolo médium podpísané; stage 1 zapísal, že systémový obraz sedí s podpísaným odtlačkom |
+| C2 | to isté médium vo firmvéri len s kľúčmi Microsoftu (bežné PC)        | firmvér médium odmietne: *Access Denied -- rejected probably by Secure Boot*, boot sa nezačne                           |
+| C3 | kópia média s jedným zmeneným bajtom zavádzača                       | odmietnuté rovnako: podpis pokrýva celý obraz zavádzača                                                               |
+| C4 | nepodpísaný výstup `nix build`                                       | odmietnutý rovnako                                                                                                    |
+| C5 | podpísané médium s jedným zmeneným bitom v systémovom obraze          | firmvér zavádzač spustí (je nedotknutý), stage 1 vypíše *THE MEDIUM HAS BEEN ALTERED* a stroj vypne                    |
+
+Všetkých päť bodov vykonáva test `tests/secure-boot.nix` v jednom behu a
+ku každému uloží snímku obrazovky do výstupu kontroly; CI opakuje C1 a C2
+na skutočnom vydanom ISO (`tests/iso-boot.py`). Snímky z behu sú v
+materiáloch k obhajobe.
+
 ## Overenie jedného boxu vo virtuálnom stroji
 
 Kontrolný zoznam po inštalácii, s očakávaným výsledkom. Je to zároveň
@@ -186,6 +213,7 @@ dokladá.
 | 12 | Panel Úložisko → Použiť rezervu                                           | zväzok narastie za behu, `df` ukáže viac miesta                                                                        | 2d      |
 | 13 | Panel Mesh bez edge                                                       | *Edge proxy: none*, prepínače zdieľania sivé s dôvodom                                                                 | 2d      |
 | 14 | `curl http://127.0.0.1/` na boxe                                          | 403 (guard len pre LAN), kým `curl http://127.0.0.1:8082/api/health` odpovie                                           | 2d      |
+| 15 | Nabootovať ISO s OVMF so Secure Boot a zapísaným certifikátom LosOS      | prvý riadok inštalátora *Secure Boot: enabled*; s kľúčmi Microsoftu *Access Denied* (scenár C)                         | 2b      |
 
 Body 10, 11 a 14 vyžadujú konzolu, ktorú nainštalovaný box nemá; v ukážke
 sa robia z inštalačného média alebo z VM testu, nie z boxu. Body 1 až 9 sú

@@ -226,6 +226,12 @@
             ./modules/cache.nix
             ./modules/disko.nix
             ./modules/installer.nix
+            # The medium's UEFI loader as one signable unified kernel image
+            # in place of GRUB, so a firmware under Secure Boot can verify
+            # it. `nix build` leaves it unsigned; CI and the release job
+            # sign it in place with `losos-sign-iso` (see that module's
+            # header and tests/secure-boot.nix).
+            ./modules/secure-boot.nix
           ];
         };
         # The target system installed onto the machine.
@@ -401,6 +407,11 @@
       #   losos-nextcloud-httpd — not a VM: the Nextcloud pod's Apache on a
       #                         fixture webroot, asserting the URL map
       #                         (tests/nextcloud-httpd.nix).
+      #   losos-secure-boot   — the signed installer ISO under OVMF Secure Boot
+      #                         with a throwaway key enrolled: boots and proves
+      #                         it from inside; Microsoft-only keys, a tampered
+      #                         copy and the unsigned build are refused
+      #                         (tests/secure-boot.nix).
       #   losos-edge-lan-two-boxes — the KOP's verification walkthrough as a
       #                         check: two boxes with the real admin UI and an
       #                         edge on one LAN, scenario A (no edge: both
@@ -441,6 +452,18 @@
           self.nixosConfigurations.install.config.environment.etc."losos/options.json".source;
         losos-keyring = import ./tests/keyring.nix { inherit pkgs; };
         losos-console = import ./tests/console.nix { inherit pkgs; };
+        # The signed installer medium under OVMF's Secure Boot build: the
+        # real ISO (plus the test backdoor) signed with a throwaway key the
+        # sandbox makes, boots with that key enrolled and proves it from
+        # inside; the same medium is refused by a firmware holding only
+        # Microsoft's keys, a tampered copy is refused, and so is the
+        # unsigned build (tests/secure-boot.nix). Builds the ISO, so it is
+        # the slowest check here.
+        losos-secure-boot = import ./tests/secure-boot.nix {
+          inherit pkgs;
+          iso = self.nixosConfigurations.iso;
+          inherit (self.packages.${system}) losos-sign-iso;
+        };
         # Not a VM either: starts the Nextcloud pod's httpd and php-fpm in the
         # build sandbox on the config text flake/images.nix bakes, against a
         # fixture webroot, and asserts which entry point every URL shape
