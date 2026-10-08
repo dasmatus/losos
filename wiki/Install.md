@@ -11,8 +11,11 @@ nix build .#nixosConfigurations.iso.config.system.build.isoImage
 
 Write it to a USB stick and boot the target machine. The stick's volume
 label is `LOSOS_INSTALLER`. The BIOS boot menu, the UEFI splash and the
-console banner say LosOS, and the host name is `losos-installer`.
-Underneath it is NixOS, and os-release says so with `ID_LIKE=nixos`.
+console banner say LosOS and the release tag, and the host name is
+`losos-installer`. Underneath it is NixOS, and os-release says so with
+`ID_LIKE=nixos`. The installed box carries the same name and tag in its
+boot menu, its console banners and os-release (`NAME=LosOS`,
+`IMAGE_VERSION`), and keeps `ID=nixos`.
 
 ## Before you boot
 

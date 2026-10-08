@@ -22,7 +22,7 @@ reconfigure afterwards.
 
 Do these in order. Most problems end at one of them.
 
-1. **Look at the box's screen.** A blue banner with `LosOS is ready` and an
+1. **Look at the box's screen.** A banner with `LosOS <version> is ready` and an
    `http://` address means the box has booted and has a network. No banner,
    a text login prompt or a passphrase prompt means a different problem.
    See [Stuck at a passphrase prompt](./stuck-at-passphrase.md), or
