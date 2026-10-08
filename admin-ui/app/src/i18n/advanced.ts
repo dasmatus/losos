@@ -91,6 +91,21 @@ export default defineMessages({
     sk: "Tu nie je možnosťou",
     de: "Hier keine Option",
   },
+  "advanced.badge.needs": {
+    en: "Unavailable",
+    sk: "Nedostupné",
+    de: "Nicht verfügbar",
+  },
+  "advanced.needs": {
+    en: "Takes effect only while losos.{name} is on, and it is off.",
+    sk: "Platí len vtedy, keď je losos.{name} zapnuté, a to je vypnuté.",
+    de: "Wirkt nur, solange losos.{name} an ist, und das ist aus.",
+  },
+  "advanced.needs.sharingMyStorage": {
+    en: "Federation runs only while this box shares its disk (losos.sharingMyStorage), which unlocks the shared data pool. Sharing is off, so this does nothing for now.",
+    sk: "Federácia beží len vtedy, keď toto zariadenie zdieľa svoj disk (losos.sharingMyStorage), čím sa odomkne zdieľaný dátový priestor. Zdieľanie je vypnuté, takže toto nastavenie zatiaľ nič nerobí.",
+    de: "Föderation läuft nur, solange diese Box ihre Festplatte teilt (losos.sharingMyStorage), was den geteilten Datenbereich entsperrt. Teilen ist aus, also bewirkt das vorerst nichts.",
+  },
   "advanced.owned.changeIn": {
     en: "Change under {pane}",
     sk: "Zmeniť v časti {pane}",

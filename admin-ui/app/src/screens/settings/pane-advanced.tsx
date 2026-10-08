@@ -53,6 +53,11 @@ import type { SettingsForm } from "./use-settings-form";
  * (lib/option-value.ts), and tests/advanced.browser.mjs renders the real
  * document and fails on any row it cannot draw.
  *
+ * A row whose option takes effect only under another (`needs` in the
+ * document: the two federation switches need disk sharing) is greyed while
+ * that one is off in the draft, with a line saying why. It turns back on the
+ * moment the draft turns the other one on, before Apply.
+ *
  * Three kinds of row:
  *   - an option one of the other panes owns (lib/option-value.ts, OWNED)
  *     shows its value and links to that pane, so there is one editor per
@@ -317,6 +322,7 @@ function OptionRow({
   };
 
   const editable = !option.readOnly && (owned === undefined || ownerPlanned);
+  const gated = option.needs !== undefined && !draftOn(form, option.needs);
 
   const badges = (
     <span className="mt-1 flex flex-wrap gap-1.5">
@@ -330,6 +336,7 @@ function OptionRow({
       )}
       {option.editor.kind === "opaque" && <Badge variant="outline">{t("advanced.badge.flake")}</Badge>}
       {editable && isSet && owned === undefined && <Badge variant="local">{t("advanced.badge.set")}</Badge>}
+      {gated && <Badge variant="warn">{t("advanced.badge.needs")}</Badge>}
     </span>
   );
 
@@ -343,6 +350,13 @@ function OptionRow({
         {" · "}
         {t("advanced.row.running", { text: describe(option.editor, option.current, t) })}
       </span>
+      {gated && option.needs !== undefined && (
+        <span className="mt-1 block text-[12.5px] text-warn" data-testid="option-needs">
+          {option.needs === "sharingMyStorage"
+            ? t("advanced.needs.sharingMyStorage")
+            : t("advanced.needs", { name: option.needs })}
+        </span>
+      )}
       {badges}
     </>
   );
@@ -354,6 +368,7 @@ function OptionRow({
       data-option={option.name}
       data-kind={option.editor.kind}
       data-set={isSet ? "true" : "false"}
+      data-gated={gated ? "true" : undefined}
     >
       <RowText
         htmlFor={editable ? controlId : undefined}
@@ -380,7 +395,7 @@ function OptionRow({
               editor={option.editor}
               raw={raw}
               defaultRaw={defaultRaw}
-              disabled={disabled}
+              disabled={disabled || gated}
               invalid={problem !== null}
               errorId={errorId}
               onChange={(next) => guard(option, () => commit(next))}
@@ -389,7 +404,7 @@ function OptionRow({
               <Button
                 variant="ghost"
                 size="xs"
-                disabled={disabled}
+                disabled={disabled || gated}
                 onClick={() => guard(option, () => commit(null))}
               >
                 <HugeiconsIcon icon={Cancel01Icon} size={13} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
@@ -402,6 +417,19 @@ function OptionRow({
       </div>
     </Row>
   );
+}
+
+/* Whether bool option `name` is on in the draft: the form's field when a
+ * pane owns it, else the line overrides.nix will carry, else what the box
+ * runs with. An option the document does not have counts as on, so a stale
+ * `needs` never locks a row. */
+function draftOn(form: SettingsForm, name: string): boolean {
+  const owned = OWNED[name];
+  if (owned !== undefined && form.draft !== null) return form.draft[owned.key] === true;
+  const raw = form.extra[name];
+  if (raw === "true" || raw === "false") return raw === "true";
+  const option = form.options?.options.find((candidate) => candidate.name === name);
+  return option === undefined || option.current !== false;
 }
 
 function draftValue(form: SettingsForm, key: keyof SettingsResponse): OptionValue {

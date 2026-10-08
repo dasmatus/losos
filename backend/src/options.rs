@@ -96,6 +96,11 @@ pub struct OptionDoc {
     /// takes it.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub hidden: bool,
+    /// The bool option this one takes effect under (`sharingMyStorage` for
+    /// the two federation switches): while that is off, the pane shows this
+    /// one as unavailable and says why.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub needs: Option<String>,
 }
 
 /// The whole document.
@@ -427,6 +432,8 @@ pub(crate) mod tests {
                  "default":true,"current":true,"danger":false,"fixed":null,"readOnly":false},
                 {"name":"forgejo.mode","group":"forgejo","editor":{"kind":"enum","values":["native","container"]},"nixType":"one of",
                  "default":"container","current":"container","danger":true,"fixed":null,"readOnly":false},
+                {"name":"forgejo.federation.enable","group":"forgejo","editor":{"kind":"bool"},"nixType":"boolean",
+                 "default":true,"current":true,"danger":false,"fixed":null,"readOnly":false,"needs":"sharingMyStorage"},
                 {"name":"storage.fillPercent","group":"storage","editor":{"kind":"int","min":50,"max":100},"nixType":"integer",
                  "default":90,"current":90,"danger":true,"fixed":null,"readOnly":false},
                 {"name":"cluster.idleLoadThreshold","group":"cluster","editor":{"kind":"float"},"nixType":"float",
@@ -498,6 +505,16 @@ pub(crate) mod tests {
         assert_eq!(by("nextcloud.apachePort")["set"], "12000");
         assert_eq!(out["stray"], json!([{"key": "ghost", "value": "1"}]));
         assert_eq!(out["available"], true);
+    }
+
+    #[test]
+    fn join_keeps_needs_and_leaves_it_off_the_rest() {
+        let doc = sample();
+        let out = join(&doc, "{ ... }:\n{\n}\n");
+        let opts = out["options"].as_array().unwrap();
+        let by = |n: &str| opts.iter().find(|o| o["name"] == n).unwrap().clone();
+        assert_eq!(by("forgejo.federation.enable")["needs"], "sharingMyStorage");
+        assert!(by("forgejo.enable").get("needs").is_none());
     }
 
     #[test]

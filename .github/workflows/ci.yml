@@ -770,9 +770,10 @@ jobs:
       # Secure Boot has two legs. `uefi-sb-ms` is a stock PC: OVMF with only
       # Microsoft's keys must refuse the medium whether it is signed or not,
       # and the script passes on the firmware's "Access Denied". `uefi-sb`
-      # enrols the committed LosOS certificate into a fresh variable store
-      # and must boot — only meaningful once the loader is signed, so it runs
-      # on main and tags and is skipped on a fork's pull request.
+      # adds the committed LosOS certificate to that same store, beside
+      # Microsoft's certificates, as the handbook tells an owner to, and must
+      # boot — only meaningful once the loader is signed, so it runs on main
+      # and tags and is skipped on a fork's pull request.
       #
       # KVM: hosted Linux runners expose /dev/kvm but only to root until a
       # udev rule opens it. Without it the script falls back to TCG, which

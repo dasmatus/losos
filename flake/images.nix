@@ -378,6 +378,18 @@ let
       occ app:disable firstrunwizard ||
         echo "losos-nextcloud: could not disable firstrunwizard; expect its modal inside the setup wizard." >&2
 
+      # Federation, on or off as the host says (modules/workloads.nix renders
+      # the file from losos.nextcloud.federation.enable and the sharing gate;
+      # modules/nextcloud-stack.nix says what each value sets). Applied on
+      # every start because a changed value changes the manifest and so
+      # restarts this pod. A host config without the file predates the
+      # switch: Nextcloud is left as it is.
+      if [ -r "$conf_dir/federation" ]; then
+        ${nc.federation.occ "occ" ''"$(cat "$conf_dir/federation")"''}
+      else
+        echo "losos-nextcloud: $conf_dir/federation is missing; federation settings left unchanged." >&2
+      fi
+
       ${nc.php}/bin/php-fpm --nodaemonize --fpm-config ${nextcloudFpmConf} &
 
       # Apache connects to the pool per request, so starting it first only

@@ -192,6 +192,63 @@ in
   }
   // themes.nextcloud.settings;
 
+  # Federation, the facts both modes need to switch it as one thing
+  # (losos.nextcloud.federation.enable, gated on losos.sharingMyStorage in
+  # modules/options.nix). Two halves, because neither is enough alone:
+  #
+  #   locations  the addresses other servers call, as nginx regex locations
+  #              under `prefix` ("/nextcloud" behind the front vhost, "" on
+  #              the native vhost). The vhost answers 404 there while
+  #              federation is off. OCM discovery (/ocm-provider/ and
+  #              /.well-known/ocm) answers `enabled: true` whatever the
+  #              settings below say, and the share endpoints of
+  #              cloud_federation_api and federatedfilesharing exist on every
+  #              instance: both apps are in core/shipped.json's alwaysEnabled
+  #              list, so `app:disable` cannot remove them.
+  #   occ        the settings that stop the box itself: no federated share
+  #              out or in (files_sharing's four server2server keys; the two
+  #              group ones default to no and are only ever forced to no), no
+  #              calendar federation, and the trusted-servers app
+  #              (`federation`, defaultEnabled, so it can go) disabled. Without
+  #              these an owner could still share a folder *to* another server,
+  #              which then reads it through public.php like any public link,
+  #              a path the vhost cannot tell apart from a link share.
+  #
+  # `occ` takes the command to run occ with and a shell word that expands to
+  # yes or no (anything else counts as no), because the image decides at start from a mounted file and the
+  # native path at eval time. Non-fatal, like the app list in the entrypoint:
+  # a Nextcloud that will not take a setting still serves the owner's files,
+  # and the vhost half holds either way.
+  federation = {
+    locations = prefix: [
+      "~* ^${prefix}/(?:index\\.php/)?(?:ocm-provider|ocs-provider|ocm|\\.well-known/ocm|apps/federation|apps/federatedfilesharing)(?:$|/)"
+      "~* ^${prefix}/ocs/v[12]\\.php/(?:cloud/shares|apps/federation|apps/federatedfilesharing)(?:$|/)"
+    ];
+    occ = occ: yes: ''
+      losos_federation=${yes}
+      if [ "$losos_federation" = yes ]; then
+        ${occ} app:enable federation ||
+          echo "losos-nextcloud: could not enable the federation app" >&2
+        losos_calendar=true
+      else
+        losos_federation=no
+        ${occ} app:disable federation ||
+          echo "losos-nextcloud: could not disable the federation app" >&2
+        for key in outgoing_server2server_group_share_enabled incoming_server2server_group_share_enabled; do
+          ${occ} config:app:set files_sharing "$key" --value=no >/dev/null ||
+            echo "losos-nextcloud: could not set files_sharing $key to no" >&2
+        done
+        losos_calendar=false
+      fi
+      for key in outgoing_server2server_share_enabled incoming_server2server_share_enabled; do
+        ${occ} config:app:set files_sharing "$key" --value="$losos_federation" >/dev/null ||
+          echo "losos-nextcloud: could not set files_sharing $key to $losos_federation" >&2
+      done
+      ${occ} config:app:set dav enableCalendarFederation --value="$losos_calendar" --type=boolean >/dev/null ||
+        echo "losos-nextcloud: could not set dav enableCalendarFederation to $losos_calendar" >&2
+    '';
+  };
+
   # The `notshared` user owns this instance — see modules/configuration.nix for
   # the two-domain split.
   adminUser = "notshared";

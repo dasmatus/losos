@@ -44,6 +44,15 @@ To take part, list the other servers whose stars count on a repository's
 **Settings → Federation** page. To turn federation off entirely, use
 `losos.forgejo.federation.enable` on the **Advanced** pane.
 
+LosOS cloud federates too: you can share files and calendars with people
+whose accounts are on other Nextcloud servers, by their `user@server`
+address. `losos.nextcloud.federation.enable` turns that off.
+
+Both kinds of federation work only while the box shares its disk
+(`losos.sharingMyStorage`), because that is when the shared part of the
+disk is unlocked. With sharing off, the box talks to no other server, and
+the **Advanced** pane shows both federation switches as unavailable.
+
 ## The Apps pane
 
 For each app the pane shows whether it is on, which

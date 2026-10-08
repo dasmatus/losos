@@ -28,8 +28,9 @@ own. **It wipes every fixed disk in the machine.**
 1. Download the installer ISO and its `.sha256` from the
    [latest release](https://github.com/dasmatus/losos/releases/latest) and
    write it to the stick with balenaEtcher, Rufus in DD mode, or `dd`.
-2. In the machine's firmware, either **turn Secure Boot off** or enrol the
-   LosOS certificate so the firmware can verify the stick.
+2. In the machine's firmware, either **turn Secure Boot off** or add the
+   LosOS certificate next to Microsoft's, so the firmware can verify the
+   stick. Don't delete Microsoft's certificates to make room.
    [Secure Boot and signed media](secure-boot) shows how. A new PC trusts
    only Microsoft's keys, so with Secure Boot on and nothing enrolled the
    firmware refuses the stick, sometimes without a message. The installed

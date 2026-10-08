@@ -442,9 +442,11 @@
       #                         fixture webroot, asserting the URL map
       #                         (tests/nextcloud-httpd.nix).
       #   losos-secure-boot   — the signed installer ISO under OVMF Secure Boot
-      #                         with a throwaway key enrolled: boots and proves
-      #                         it from inside; Microsoft-only keys, a tampered
-      #                         copy and the unsigned build are refused
+      #                         with a throwaway key enrolled beside Microsoft's
+      #                         keys: boots and proves it from inside, and a
+      #                         Microsoft-signed shim still starts; Microsoft-only
+      #                         keys, a tampered copy and the unsigned build are
+      #                         refused
       #                         (tests/secure-boot.nix).
       #   losos-edge-lan-two-boxes — the mesh verification walkthrough as a
       #                         check: two boxes with the real admin UI and an
@@ -504,8 +506,9 @@
         losos-forgejo-federation = import ./tests/forgejo-federation.nix { inherit pkgs; };
         # The signed installer medium under OVMF's Secure Boot build: the
         # real ISO (plus the test backdoor) signed with a throwaway key the
-        # sandbox makes, boots with that key enrolled and proves it from
-        # inside; the same medium is refused by a firmware holding only
+        # sandbox makes, boots with that key enrolled beside Microsoft's and
+        # proves it from inside, and Ubuntu's Microsoft-signed shim starts on
+        # the same firmware; the same medium is refused by a firmware holding only
         # Microsoft's keys, a tampered copy is refused, and so is the
         # unsigned build (tests/secure-boot.nix). Builds the ISO, so it is
         # the slowest check here.
@@ -527,6 +530,13 @@
           inherit pkgs;
           inherit (nixpkgs) lib;
           inherit (self.nixosConfigurations.install) config;
+          # The same configuration with disk sharing forced each way, for
+          # the federation gate (losos.sharingMyStorage).
+          sharing =
+            on:
+            (self.nixosConfigurations.install.extendModules {
+              modules = [ { losos.sharingMyStorage = nixpkgs.lib.mkForce on; } ];
+            }).config;
         };
       };
     };
