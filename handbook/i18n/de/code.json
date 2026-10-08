@@ -364,5 +364,189 @@
   "losos.navbar.logoTip": {
     "message": "Losos ist Slowakisch für Lachs. Das Logo ist ein Teller davon, vom eigenen Foto des Besitzers.",
     "description": "The tooltip on the navbar logo, saying what the picture means"
+  },
+  "losos.home.feature.cloud.title": {
+    "message": "LosOS cloud"
+  },
+  "losos.home.feature.cloud.body": {
+    "message": "Ihre Dateien, Fotos, Kalender, Kontakte, Notizen und Aufgaben, mit Apps für Computer und Telefon. Gebaut auf Nextcloud."
+  },
+  "losos.home.feature.git.title": {
+    "message": "LosOS Git"
+  },
+  "losos.home.feature.git.body": {
+    "message": "Ihre Code-Repositorys, auf derselben Box und hinter demselben Passwort. Gebaut auf Forgejo."
+  },
+  "losos.home.feature.self.title": {
+    "message": "Jeden Morgen ein frisches System"
+  },
+  "losos.home.feature.self.body": {
+    "message": "Sie behält ihren Zustand über Neustarts hinweg."
+  },
+  "losos.home.feature.disk.title": {
+    "message": "Eine verschlüsselte Platte"
+  },
+  "losos.home.feature.disk.body": {
+    "message": "Ihre Daten liegen auf einem verschlüsselten Laufwerk. Auf einem Rechner mit TPM-Chip bleibt der Schlüssel im Chip."
+  },
+  "losos.home.feature.password.title": {
+    "message": "Ein Passwort, keine Shell"
+  },
+  "losos.home.feature.password.body": {
+    "message": "Es gibt keine Anmeldekonsole und kein SSH. Sie bedienen die Box im Webbrowser, und das Passwort für LosOS cloud öffnet auch die Verwaltung."
+  },
+  "losos.home.feature.lan.title": {
+    "message": "Läuft auch ohne Internet"
+  },
+  "losos.home.feature.lan.body": {
+    "message": "Dateien, Apps und Verwaltung laufen im lokalen Netz weiter, wenn das Internet ausfällt. Die Box liefert außerdem ihre eigene Kopie dieses Handbuchs aus, mit Suche."
+  },
+  "losos.home.step.install.title": {
+    "message": "Installieren"
+  },
+  "losos.home.step.install.body": {
+    "message": "Schreiben Sie das Installationsprogramm auf einen USB-Stick und starten Sie den Rechner davon. Es stellt eine Frage, löscht die Platten und installiert in etwa einer halben Stunde."
+  },
+  "losos.home.step.install.link": {
+    "message": "Installation"
+  },
+  "losos.home.step.first.title": {
+    "message": "Im Browser öffnen"
+  },
+  "losos.home.step.first.body": {
+    "message": "Der Bildschirm der Box zeigt ihre Adresse. Öffnen Sie sie auf einem beliebigen Computer im selben Netz, und ein Assistent in drei Schritten setzt Ihr Passwort."
+  },
+  "losos.home.step.first.link": {
+    "message": "Der erste Start"
+  },
+  "losos.home.step.use.title": {
+    "message": "Benutzen"
+  },
+  "losos.home.step.use.body": {
+    "message": "Legen Sie Ihre Dateien ab und verbinden Sie Telefon und Computer. Danach braucht die Box weder Bildschirm noch Tastatur."
+  },
+  "losos.home.step.use.link": {
+    "message": "Die Verwaltung"
+  },
+  "losos.home.eyebrow": {
+    "message": "Für einen kleinen Computer zu Hause oder im Büro"
+  },
+  "losos.home.lead": {
+    "message": "Eine Box für Ihre Dateien, die sich selbst pflegt."
+  },
+  "losos.home.body": {
+    "message": "LosOS macht aus einem alten Büro-Mini-PC oder einem anderen kleinen 64-Bit-PC Ihre eigene Cloud. Sie installieren es einmal von einem USB-Stick und bedienen es danach im Webbrowser. Es startet jede Nacht neu und spielt seine Updates selbst ein."
+  },
+  "losos.home.cta.install": {
+    "message": "LosOS installieren"
+  },
+  "losos.home.cta.handbook": {
+    "message": "Handbuch lesen"
+  },
+  "losos.home.fine": {
+    "message": "Freie Software unter der AGPL. Läuft auf 64-Bit-Rechnern mit Intel oder AMD."
+  },
+  "losos.home.screen.alt": {
+    "message": "Die Verwaltung einer Box: die App-Kacheln für LosOS cloud und LosOS Git, die Speicherkarte und eine Tafel mit Widgets."
+  },
+  "losos.home.screen.caption": {
+    "message": "Die Verwaltung, in der Sie die Box einrichten und pflegen."
+  },
+  "losos.home.features.title": {
+    "message": "Was Sie bekommen"
+  },
+  "losos.home.steps.title": {
+    "message": "In drei Schritten zur laufenden Box"
+  },
+  "losos.home.setups.title": {
+    "message": "Von einer Box bis zur Firma"
+  },
+  "losos.home.setups.body": {
+    "message": "Jede Box beginnt allein, in einem Heimnetz. Später kann sie über einen Edge-Server eine öffentliche Adresse bekommen, ohne dass zu Hause ein Port offen ist. Sie kann auch freien Speicher und Rechenzeit an andere Boxen verleihen, nur in den Stunden, die Sie wählen. Eine Firma kann mehrere Boxen hinter einem eigenen Edge betreiben. Für jeden dieser Schritte ändern Sie Einstellungen und installieren nichts neu."
+  },
+  "losos.home.setups.link": {
+    "message": "Arten der Einrichtung"
+  },
+  "losos.home.setups.alt": {
+    "message": "Drei Arten der Einrichtung nebeneinander: eine Box allein, eine Box mit dem LosOS-Edge und eine Firma mit eigenem Edge."
+  },
+  "losos.home.needs.title": {
+    "message": "Was Sie brauchen"
+  },
+  "losos.home.needs.cpu": {
+    "message": "Einen Rechner mit 64-Bit-Prozessor von Intel oder AMD (x86_64) und UEFI- oder BIOS-Firmware."
+  },
+  "losos.home.needs.memory": {
+    "message": "Mindestens 4 GiB Arbeitsspeicher und eine Platte mit 40 GiB oder mehr."
+  },
+  "losos.home.needs.tpm": {
+    "message": "Am besten einen TPM-2.0-Chip, den die meisten Büro-Mini-PCs haben. Ohne ihn installiert sich die Box trotzdem und entsperrt sich mit einer Schlüsseldatei."
+  },
+  "losos.home.needs.install": {
+    "message": "Nur für die Installation: einen USB-Stick mit 2 GiB, ein kabelgebundenes Netz mit Internetzugang, einen Bildschirm und eine Tastatur."
+  },
+  "losos.home.needs.arm": {
+    "message": "LosOS läuft nur auf x86_64. Es lässt sich nicht auf ARM-Rechnern installieren, insbesondere nicht auf Macs mit Apple Silicon (M-Serie)."
+  },
+  "losos.home.needs.vm": {
+    "message": "Sie können es zuerst in einer virtuellen Maschine ausprobieren. QEMU, virt-manager und VirtualBox funktionieren."
+  },
+  "losos.home.closing.title": {
+    "message": "Das Installationsprogramm holen"
+  },
+  "losos.home.closing.body": {
+    "message": "Jede Veröffentlichung enthält das Installations-ISO und seine Prüfsumme. Wie Sie es auf einen USB-Stick schreiben, zeigt die Seite Installation im Handbuch."
+  },
+  "losos.home.closing.download": {
+    "message": "Neueste Version herunterladen"
+  },
+  "losos.home.closing.source": {
+    "message": "Quellcode auf GitHub"
+  },
+  "losos.home.pageTitle": {
+    "message": "Eine Box für Ihre Dateien, die sich selbst pflegt"
+  },
+  "losos.home.description": {
+    "message": "LosOS macht aus einem kleinen 64-Bit-PC Ihre eigene Cloud für Dateien, Fotos, Kalender und Code. Es startet jede Nacht neu und spielt seine Updates selbst ein."
+  },
+  "theme.colorToggle.ariaLabel.group": {
+    "message": "Appearance",
+    "description": "The label of the colour-mode segmented control"
+  },
+  "losos.home.soon.market.title": {
+    "message": "Der Marktplatz"
+  },
+  "losos.home.soon.market.body": {
+    "message": "Sie werden für den Speicher und die Rechenzeit bezahlt, die Ihre Box verleiht, und können Platz bei anderen Boxen kaufen. Der Marktplatz ist fertig und im Testmodus von Stripe geprüft. Er öffnet, sobald ein eingetragenes Unternehmen dahintersteht."
+  },
+  "losos.home.soon.pool.title": {
+    "message": "Ein Speicherpool über mehrere Boxen"
+  },
+  "losos.home.soon.pool.body": {
+    "message": "Boxen hinter einem Edge werden ihren ungenutzten Speicher in einen gemeinsamen, replizierten Pool geben. Der verschlüsselte Anteil auf jeder Box ist fertig. Der Edge betreibt den Speicherdienst des Pools noch nicht, und der Schalter wartet auf den Marktplatz."
+  },
+  "losos.home.soon.secureboot.title": {
+    "message": "Ein signiertes Installationsprogramm"
+  },
+  "losos.home.soon.secureboot.body": {
+    "message": "Das Installationsprogramm ist bereit für eine Secure-Boot-Signatur. Sobald der Signaturschlüssel von LosOS existiert, wird jede Version signiert, und eine Firmware, die dem LosOS-Zertifikat vertraut, startet sie mit eingeschaltetem Secure Boot."
+  },
+  "losos.home.soon.company.title": {
+    "message": "Fertige Lösungen für Firmen"
+  },
+  "losos.home.soon.company.body": {
+    "message": "Eine Box für jedes Team, ein Edge für das Büro und die Installation erledigt. Die Firmeneinrichtung funktioniert heute schon. Als Nächstes kommt der Verkauf als fertiges Paket."
+  },
+  "losos.home.soon.translations.title": {
+    "message": "Das Handbuch auf Slowakisch und Deutsch"
+  },
+  "losos.home.soon.translations.body": {
+    "message": "Menüs und diese Seite sind schon übersetzt. Die Seiten des Handbuchs folgen eine nach der anderen."
+  },
+  "losos.home.soon.title": {
+    "message": "Demnächst"
+  },
+  "losos.home.soon.chip": {
+    "message": "Bald"
   }
 }
