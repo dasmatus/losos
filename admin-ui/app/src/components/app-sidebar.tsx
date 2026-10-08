@@ -7,6 +7,7 @@ import {
   HardDriveIcon,
   Home01Icon,
   LayoutGridIcon,
+  NetworkIcon,
   Search01Icon,
   Settings01Icon,
   Share08Icon,
@@ -50,6 +51,7 @@ import { paneById, paneMatches, type SettingsPaneId } from "@/screens/settings/p
  *   Mesh                ▾   (the link opens Mesh; the chevron folds)
  *     Market   soon(TM)     greyed: planned, not open
  *       Disk sharing        greyed with it (its switch is on the Market pane)
+ *   Lab                     (LosOS Lab at /lab/, a page of its own)
  *   Settings            ▾   (a fold only; /settings opens Network)
  *     Network, Hardware, Security, About, Reset
  *
@@ -75,6 +77,9 @@ interface LinkEntry {
   pane?: SettingsPaneId;
   /** Extra English search words, for an entry with no pane. */
   keywords?: readonly string[];
+  /** A page outside this app (the lab at /lab/): a plain link that loads it,
+   * not a router link that would draw this app's 404 at that address. */
+  external?: boolean;
   children?: readonly Entry[];
 }
 
@@ -155,6 +160,15 @@ const TREE: readonly Entry[] = [
     icon: Share08Icon,
     pane: "mesh",
     children: [marketEntry()],
+  },
+  {
+    kind: "link",
+    key: "lab",
+    to: "/lab/",
+    label: "shell.nav.lab",
+    icon: NetworkIcon,
+    keywords: ["lab", "simulator", "topology", "diagram", "network", "map", "packet", "visualize"],
+    external: true,
   },
   {
     kind: "fold",
@@ -262,7 +276,8 @@ export function AppSidebar() {
     event.preventDefault();
     const first = firstOpenLink(tree);
     if (first !== null) {
-      navigate(first.to);
+      if (first.external === true) window.location.assign(first.to);
+      else navigate(first.to);
       setSearch("");
     }
   };
@@ -447,7 +462,13 @@ function TopEntry({ entry, pathname, rail, open, onOpenChange, isOpen, setOpen }
     <SidebarMenuButton
       isActive={active}
       tooltip={label}
-      render={<Link to={entry.to} aria-current={active ? "page" : undefined} />}
+      render={
+        entry.external === true ? (
+          <a href={entry.to} />
+        ) : (
+          <Link to={entry.to} aria-current={active ? "page" : undefined} />
+        )
+      }
     >
       <Glyph icon={entry.icon} active={active} />
       <span className="group-data-[collapsible=icon]/sidebar:sr-only">{label}</span>

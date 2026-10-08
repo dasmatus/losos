@@ -1,0 +1,12 @@
+#!/bin/sh
+# A tiny stand-in for losos-ctl: it reads what this guest really has.
+H=$(cat /run/losos/host); R=$(cat /run/losos/role)
+IP=$(ip -4 -o addr show dev eth0 2>/dev/null | awk '{split($4,a,"/"); print a[1]}')
+GW=$(ip route 2>/dev/null | awk '/default/ {print $3}')
+case "$1" in
+  status|"")
+    printf '{"host":"%s","role":"%s","address":"%s","gateway":"%s","kernel":"%s","uptime_s":%s}\n' \
+      "$H" "$R" "${IP:-none}" "${GW:-none}" "$(uname -r)" "$(cut -d. -f1 /proc/uptime)" ;;
+  banner) losos-banner ;;
+  *) echo "losos-ctl (simulator stand-in): status | banner"; exit 2 ;;
+esac

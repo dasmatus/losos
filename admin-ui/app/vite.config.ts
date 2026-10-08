@@ -2,6 +2,9 @@ import { defineConfig, type Plugin, type ResolvedConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { build as esbuild } from "esbuild";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 /* The theme has to be on the <html> element BEFORE the first paint, or a box
  * whose owner picked Dark while the browser reports Light flashes white for a
@@ -70,8 +73,39 @@ function themeBoot(): Plugin {
   };
 }
 
+/* LosOS Lab's splash can carry a two-panel meme: LOSOS_LAB_MEME names a
+ * folder with no.jpg and yes.jpg, which are copied beside dist/lab/index.html
+ * as meme-no.jpg and meme-yes.jpg, and __LAB_MEME__ tells the page they are
+ * there. The repository carries no such folder (admin-ui/lab/build.py reads
+ * the same variable for the old page). */
+function labMeme(): Plugin {
+  const dir = process.env["LOSOS_LAB_MEME"] || "";
+  const files = { "meme-no.jpg": "no.jpg", "meme-yes.jpg": "yes.jpg" } as const;
+  return {
+    name: "losos:lab-meme",
+    config: () => ({ define: { __LAB_MEME__: JSON.stringify(dir !== "") } }),
+    configureServer(server) {
+      if (!dir) return;
+      for (const [name, src] of Object.entries(files)) {
+        server.middlewares.use(`/lab/${name}`, (_req, res) => {
+          res.setHeader("Content-Type", "image/jpeg");
+          res.end(readFileSync(join(dir, src)));
+        });
+      }
+    },
+    buildStart() {
+      if (!dir) return;
+      for (const [name, src] of Object.entries(files)) {
+        this.emitFile({ type: "asset", fileName: `lab/${name}`, source: readFileSync(join(dir, src)) });
+      }
+    },
+  };
+}
+
+const root = fileURLToPath(new URL(".", import.meta.url));
+
 export default defineConfig({
-  plugins: [react(), tailwindcss(), themeBoot()],
+  plugins: [react(), tailwindcss(), themeBoot(), labMeme()],
   // Served from the vhost root by nginx.
   base: "/",
   resolve: {
@@ -85,6 +119,14 @@ export default defineConfig({
     sourcemap: false,
     // The appliance has no external hosts and no CDN: one origin, one bundle.
     modulePreload: { polyfill: false },
+    // Two pages: the admin SPA at / and LosOS Lab at /lab/ (nginx serves
+    // dist/lab/index.html there under the Lab's own CSP). They share chunks.
+    rolldownOptions: {
+      input: {
+        main: join(root, "index.html"),
+        lab: join(root, "lab/index.html"),
+      },
+    },
   },
   server: {
     port: 5173,

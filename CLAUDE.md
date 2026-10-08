@@ -30,8 +30,9 @@ nix build .#checks.x86_64-linux.losos-tpm-unlock    # installer, swtpm unlock
 npm run dev | typecheck | test:browser              # in admin-ui/app
 ```
 
-Three Rust crates: `backend/` (lososd + losos-ctl), `backend-registrar/`,
-`edge-vercel/` (outside the flake). All three must pass clippy with
+Five Rust crates: `backend/` (lososd + losos-ctl), `backend-registrar/`,
+`edge-vercel/` (outside the flake), and the Lab's `admin-ui/lab/core` and
+`admin-ui/lab/virt-rpc` (built for wasm32). All five must pass clippy with
 `-D warnings` and rustfmt; the devenv pre-commit hooks, `lint` and CI each
 check it. `nix develop` is a toolchain-only shell for people without devenv.
 Inside the shell `bcd` and `rcd` cd into the two in-flake crates.
@@ -66,6 +67,16 @@ and is never served or built by nix.
 - `admin-ui/app`: React 19 + Vite + Tailwind SPA on real paths. Its `dist/`
   is the front nginx vhost's root (`try_files … /index.html`), `/api/*` is
   proxied to lososd. Palette in `src/styles/tokens.css`.
+- LosOS Lab, the setup visualizer at `/lab/` (sidebar entry Lab): the
+  admin UI's second Vite page (`admin-ui/app/lab/`, `src/lab/`) over a Rust
+  core in WebAssembly (`admin-ui/lab/core`, `losos-lab-core`, contract in
+  its README), under its own CSP arm (the admin one plus
+  `'wasm-unsafe-eval'`). The box copy has simulated consoles, or libvirt
+  guests through `losos-registrar lab` with `losos.lab.libvirt.enable`;
+  `admin-ui/lab/engine/build.sh` and `lab.yml` build the hosted copy with
+  qemu-wasm guests and deploy it to Vercel when the secrets exist.
+  `admin-ui/lab/virt-rpc` is a WebAssembly libvirt client for the helper's
+  relay. No Python in the Lab.
 - `containers.nix`, `workloads.nix`, `cluster.nix`, `nextcloud-common.nix`:
   Nextcloud and Forgejo run as hostNetwork pods in the box's own k3s server;
   `services.rke2` (agent) joins the edge's mesh. Nginx is the only public

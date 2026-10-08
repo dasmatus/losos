@@ -1,0 +1,20 @@
+#!/bin/sh
+H=$(cat /run/losos/host); R=$(cat /run/losos/role)
+IP=$(ip -4 -o addr show dev eth0 2>/dev/null | awk '{split($4,a,"/"); print a[1]}')
+b() { printf '\033[44;97m %-58s \033[0m\n' "$1"; }
+b ""
+case "$R" in
+  box)  b "LosOS is ready" ;;
+  edge-local) b "LosOS edge gateway ($H) is ready" ;;
+  edge-official) b "LosOS official edge ($H) is ready" ;;
+esac
+b ""
+if [ -n "$IP" ]; then
+  b "On any computer on this network, open a web browser at:"
+  b "  http://$IP"
+  b "or, on computers that find the box by name:"
+  b "  http://$H.local"
+else
+  b "No network address yet. Plug in an Ethernet cable."
+fi
+b ""

@@ -21,6 +21,10 @@
 //!     [`stripe_gate`].)
 //!   * `stripe-gate` — the separate process that holds the Stripe key and does
 //!     the few Stripe calls the market needs, for `serve`, over a Unix socket.
+//!   * `lab` — runs on the machine a LosOS Lab page is open on (or on a box
+//!     with `losos.lab.libvirt.enable`): boots the Lab's guests under
+//!     libvirt through `virsh` and bridges their consoles and network cards
+//!     to the browser. See [`lab`].
 //!   * `join` — runs once per boot on the appliance, before the rke2 agent.
 //!     POSTs `/cluster/join` with the same per-appliance token `announce`
 //!     uses, and writes the mesh node token the edge returns. Bounded retry,
@@ -51,6 +55,7 @@ mod fsutil;
 pub mod identity;
 pub mod idle;
 pub mod join;
+pub mod lab;
 pub mod market;
 pub mod opts;
 pub mod provision;

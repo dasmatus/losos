@@ -112,6 +112,13 @@ async fn async_main() -> ExitCode {
                 ExitCode::FAILURE
             }
         },
+        Ok(Mode::Lab(opts)) => match losos_registrar::lab::run(opts).await {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(e) => {
+                tracing::error!(target: Action::Lab.target(), "{:?}", e);
+                ExitCode::FAILURE
+            }
+        },
         Ok(Mode::Seed(opts)) => match losos_registrar::seed::run(opts).await {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => {

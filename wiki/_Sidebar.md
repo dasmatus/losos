@@ -5,6 +5,7 @@
 - [Market](Market) (planned)
 - [Master proxy](Master-Proxy)
 - [Edge federation](Edge-Federation)
+- [Lab](Lab)
 - [Hardening](Hardening)
 - [Security model](Security-Model)
 - [Architecture](Architecture)
