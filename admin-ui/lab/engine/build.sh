@@ -25,7 +25,9 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 LAB=$(dirname "$HERE")
 ROOT=$(git -C "$HERE" rev-parse --show-toplevel)
 WORK=$(mktemp -d)
-trap 'docker rm -f losos-lab-qemu >/dev/null 2>&1 || true; rm -rf "$WORK"' EXIT
+# The container writes into $WORK as root (meson's subprojects), so the
+# cleanup must not fail the run over files the runner user cannot remove.
+trap 'docker rm -f losos-lab-qemu >/dev/null 2>&1 || true; rm -rf "$WORK" 2>/dev/null || sudo -n rm -rf "$WORK" 2>/dev/null || true' EXIT
 
 # Pinned: the revision the simulator was written and tested against.
 QEMU_WASM_REV=0ef7b4e2814b231705d8371dd7997f5b72e70baf
@@ -48,7 +50,9 @@ sed -i 's|https://zlib.net/zlib-\$ZLIB_VERSION.tar.xz|https://github.com/madler/
   "$WORK/qemu-wasm/Dockerfile"
 grep -q 'madler/zlib/releases' "$WORK/qemu-wasm/Dockerfile"
 docker build -q -t losos-lab-qemu-env - < "$WORK/qemu-wasm/Dockerfile"
-docker run -d --name losos-lab-qemu -v "$WORK/qemu-wasm":/qemu/:ro losos-lab-qemu-env >/dev/null
+# Writable: configure clones the dtc, keycodemapdb and softfloat wraps into
+# /qemu/subprojects on first use.
+docker run -d --name losos-lab-qemu -v "$WORK/qemu-wasm":/qemu/ losos-lab-qemu-env >/dev/null
 EXTRA_CFLAGS="-O3 -Wno-error=unused-command-line-argument -matomics -mbulk-memory -DNDEBUG -DG_DISABLE_ASSERT -D_GNU_SOURCE -sASYNCIFY=1 -pthread -sPROXY_TO_PTHREAD=1 -sFORCE_FILESYSTEM -sALLOW_TABLE_GROWTH -sTOTAL_MEMORY=1024MB -sWASM_BIGINT -sMALLOC=mimalloc --js-library=/build/node_modules/xterm-pty/emscripten-pty.js -sEXPORT_ES6=1 -sASYNCIFY_IMPORTS=ffi_call_js"
 docker exec losos-lab-qemu emconfigure /qemu/configure --static --target-list=x86_64-softmmu --cpu=wasm32 --cross-prefix= \
   --without-default-features --enable-system --with-coroutine=fiber \
