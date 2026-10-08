@@ -364,5 +364,153 @@
   "losos.navbar.logoTip": {
     "message": "LosOS je pomenovaný po lososovi. Logo je tanier lososa z vlastnej fotky majiteľa.",
     "description": "The tooltip on the navbar logo, saying what the picture means"
+  },
+  "losos.home.feature.cloud.title": {
+    "message": "LosOS cloud"
+  },
+  "losos.home.feature.cloud.body": {
+    "message": "Vaše súbory, fotky, kalendár, kontakty, poznámky a úlohy, s aplikáciami pre počítač aj telefón. Postavené na Nextcloude."
+  },
+  "losos.home.feature.git.title": {
+    "message": "LosOS Git"
+  },
+  "losos.home.feature.git.body": {
+    "message": "Vaše repozitáre kódu na tom istom boxe a za tým istým heslom. Postavené na Forgejo."
+  },
+  "losos.home.feature.self.title": {
+    "message": "Stará sa o seba sám"
+  },
+  "losos.home.feature.self.body": {
+    "message": "V noci sa sám aktualizuje a pri každom štarte si postaví systémový disk odznova. Čokoľvek sa včera pokazilo, ráno je preč."
+  },
+  "losos.home.feature.disk.title": {
+    "message": "Šifrovaný disk"
+  },
+  "losos.home.feature.disk.body": {
+    "message": "Kľúč k disku zostáva vo vlastnom čipe TPM počítača. Disk vybratý a zapojený do iného počítača sa nedá prečítať."
+  },
+  "losos.home.feature.password.title": {
+    "message": "Jedno heslo, žiadny shell"
+  },
+  "losos.home.feature.password.body": {
+    "message": "Žiadne prihlasovacie okno a žiadne SSH. Box používate z webového prehliadača a heslo vášho cloudu otvára aj jeho správu."
+  },
+  "losos.home.feature.lan.title": {
+    "message": "Funguje aj bez internetu"
+  },
+  "losos.home.feature.lan.body": {
+    "message": "Všetko odpovedá vo vašej lokálnej sieti. Box nosí aj túto príručku aj s vyhľadávaním, pre deň, keď nič iné neodpovedá."
+  },
+  "losos.home.step.install.title": {
+    "message": "Nainštalujte ho"
+  },
+  "losos.home.step.install.body": {
+    "message": "Zapíšte inštalátor na USB kľúč a spustite z neho počítač. Položí jednu otázku, zmaže disky a nainštaluje sa asi za pol hodiny."
+  },
+  "losos.home.step.install.link": {
+    "message": "Inštalácia"
+  },
+  "losos.home.step.first.title": {
+    "message": "Otvorte ho v prehliadači"
+  },
+  "losos.home.step.first.body": {
+    "message": "Obrazovka boxu ukazuje jeho adresu. Otvorte ju na ľubovoľnom počítači v tej istej sieti a sprievodca v troch krokoch nastaví vaše heslo."
+  },
+  "losos.home.step.first.link": {
+    "message": "Prvé spustenie"
+  },
+  "losos.home.step.use.title": {
+    "message": "Používajte ho"
+  },
+  "losos.home.step.use.body": {
+    "message": "Nahrajte súbory a pripojte telefón aj počítač. Odvtedy box nepotrebuje obrazovku ani klávesnicu."
+  },
+  "losos.home.step.use.link": {
+    "message": "Správa boxu"
+  },
+  "losos.home.eyebrow": {
+    "message": "Slobodný softvér pre malý počítač doma alebo v práci"
+  },
+  "losos.home.lead": {
+    "message": "Box na vaše súbory, ktorý sa stará sám o seba."
+  },
+  "losos.home.body": {
+    "message": "LosOS urobí z malého počítača, napríklad zo starého kancelárskeho mini-PC, váš vlastný cloud. Nainštalujete ho raz z USB kľúča. Potom ho používate z webového prehliadača a každú noc sa sám aktualizuje, opraví a reštartuje."
+  },
+  "losos.home.cta.install": {
+    "message": "Nainštalovať LosOS"
+  },
+  "losos.home.cta.handbook": {
+    "message": "Čítať príručku"
+  },
+  "losos.home.fine": {
+    "message": "Licencia AGPL. Beží na 64-bitových počítačoch Intel a AMD."
+  },
+  "losos.home.screen.alt": {
+    "message": "Správa boxu: dlaždice aplikácií LosOS cloud a LosOS Git, karta úložiska a tabuľa widgetov."
+  },
+  "losos.home.screen.caption": {
+    "message": "Správa boxu, kde box nastavujete a staráte sa oň."
+  },
+  "losos.home.features.title": {
+    "message": "Čo dostanete"
+  },
+  "losos.home.steps.title": {
+    "message": "Tri kroky k bežiacemu boxu"
+  },
+  "losos.home.setups.title": {
+    "message": "Od jedného boxu po firmu"
+  },
+  "losos.home.setups.body": {
+    "message": "Každý box začína sám, v domácej sieti. Neskôr môže dostať verejnú adresu cez edge server bez otvárania portu doma a v hodinách, ktoré si zvolíte, požičiavať voľný disk a procesor iným boxom. Firma môže prevádzkovať viac boxov za vlastným edge serverom. Dostanete sa tam zmenou nastavení, nie preinštalovaním."
+  },
+  "losos.home.setups.link": {
+    "message": "Typy nasadenia"
+  },
+  "losos.home.setups.alt": {
+    "message": "Tri typy nasadenia vedľa seba: box sám, box s edge serverom LosOS a firma s vlastným edge serverom."
+  },
+  "losos.home.needs.title": {
+    "message": "Čo potrebujete"
+  },
+  "losos.home.needs.cpu": {
+    "message": "Počítač so 64-bitovým procesorom Intel alebo AMD (x86_64) a firmvérom UEFI alebo BIOS."
+  },
+  "losos.home.needs.memory": {
+    "message": "Aspoň 4 GiB pamäte a jeden disk s kapacitou 40 GiB alebo viac."
+  },
+  "losos.home.needs.tpm": {
+    "message": "Ideálne čip TPM 2.0, ktorý má väčšina kancelárskych mini-PC. Bez neho sa box aj tak nainštaluje a odomyká sa súborom s kľúčom."
+  },
+  "losos.home.needs.install": {
+    "message": "Len na inštaláciu: USB kľúč s 2 GiB, káblová sieť s prístupom na internet, obrazovka a klávesnica."
+  },
+  "losos.home.needs.arm": {
+    "message": "LosOS beží iba na x86_64. Nenainštalujete ho na počítače s ARM, a teda ani na Macy s Apple Silicon (rad M)."
+  },
+  "losos.home.needs.vm": {
+    "message": "Ak ho chcete najprv vyskúšať, spustite ho vo virtuálnom stroji: funguje QEMU, virt-manager aj VirtualBox."
+  },
+  "losos.home.closing.title": {
+    "message": "Stiahnite si inštalátor"
+  },
+  "losos.home.closing.body": {
+    "message": "Každé vydanie obsahuje ISO inštalátora a jeho kontrolný súčet. Príručka vás prevedie od stiahnutia po bežiaci box."
+  },
+  "losos.home.closing.download": {
+    "message": "Stiahnuť najnovšie vydanie"
+  },
+  "losos.home.closing.source": {
+    "message": "Zdrojový kód na GitHube"
+  },
+  "losos.home.pageTitle": {
+    "message": "Box na vaše súbory, ktorý sa stará sám o seba"
+  },
+  "losos.home.description": {
+    "message": "LosOS urobí z malého počítača x86_64 váš vlastný cloud na súbory, fotky, kalendár a kód. Každú noc sa sám aktualizuje, opraví a reštartuje."
+  },
+  "theme.colorToggle.ariaLabel.group": {
+    "message": "Appearance",
+    "description": "The label of the colour-mode segmented control"
   }
 }

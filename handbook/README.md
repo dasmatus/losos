@@ -18,6 +18,11 @@ LOSOS_HANDBOOK_BASE=/handbook/ npm run build   # what the box serves
 npm run typecheck
 ```
 
+The public site opens on a landing page, `src/pages/index.tsx`, and moves
+the Welcome page to `/welcome`. The box's copy has no landing page and keeps
+the Welcome page at its root (`docusaurus.config.ts` decides by the base).
+Its strings are `losos.home.*` in each locale's `code.json`.
+
 Pages live in `docs/`; the sidebar is generated from the folder tree, with
 `_category_.json` naming each folder. `onBrokenLinks` is `throw`, so a dead
 link fails the build. Translations go in `i18n/<locale>/`; see the handbook's
