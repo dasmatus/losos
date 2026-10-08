@@ -47,6 +47,9 @@
 #                assembled by build.py with python3 alone, no npm. The
 #                qemu-wasm engine that boots real guests is not in it; that
 #                build is the hosted copy's (admin-ui/lab/engine/build.sh).
+#   losos-lab-core — the Lab's core in Rust (admin-ui/lab/core/), built for
+#                wasm32 and run through wasm-bindgen: the package the Lab
+#                page imports.
 #   losos-sign-iso — signs the installer ISO's UEFI loader in place with the
 #                Secure Boot db key, after `nix build`, so the key never
 #                enters a store (modules/secure-boot.nix, flake/sign-iso.sh).
@@ -176,6 +179,35 @@ images
       ''
         python3 $src/lab/build.py box $out
       '';
+
+  # LosOS Lab's core (admin-ui/lab/core/README.md) as the wasm-bindgen web
+  # package the Lab page imports: losos_lab_core.js, its .d.ts and the .wasm.
+  # Plain rustPlatform rather than fast-build.nix's: mold and ccache are
+  # composed for the native toolchain, and rustc links wasm32 with its own
+  # rust-lld. wasm-bindgen-cli must be the version the crate pins (=0.2.127);
+  # the CLI refuses a module built against another one.
+  losos-lab-core = pkgs.rustPlatform.buildRustPackage {
+    pname = "losos-lab-core";
+    version = "0.1.0";
+    src = lib.cleanSource ./../admin-ui/lab/core;
+    cargoHash = "sha256-TXH+ZimT0PygfRRnjOCNpFgi3Acmb4kxN0S7vcL9Pxk=";
+    nativeBuildInputs = [
+      pkgs.wasm-bindgen-cli
+      pkgs.lld
+    ];
+    buildPhase = ''
+      runHook preBuild
+      cargo build --release --offline --target wasm32-unknown-unknown
+      runHook postBuild
+    '';
+    doCheck = false;
+    installPhase = ''
+      runHook preInstall
+      wasm-bindgen --target web --out-dir $out \
+        target/wasm32-unknown-unknown/release/losos_lab_core.wasm
+      runHook postInstall
+    '';
+  };
 
   # The LosOS look for Nextcloud and Forgejo — the admin SPA's tokens.css plus
   # each app's mapping onto it. Consumed by modules/nextcloud-stack.nix,

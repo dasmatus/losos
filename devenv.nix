@@ -12,7 +12,7 @@
 { pkgs, lib, ... }:
 
 let
-  # Both crates, since this repo is deliberately not a Cargo workspace: each
+  # Every crate, since this repo is deliberately not a Cargo workspace: each
   # has its own Cargo.lock and its own pinned cargoHash in flake/packages.nix.
   # Every Rust command therefore has to be run twice with --manifest-path.
   crates = [
@@ -21,6 +21,9 @@ let
     # The Vercel host for the registrar (edge-vercel/README.md). Not built by
     # nix — Vercel builds it — but linted and tested with the other two.
     "edge-vercel"
+    # LosOS Lab's core (admin-ui/lab/core/README.md), compiled to wasm for
+    # the Lab page. Linted and tested natively like the others.
+    "admin-ui/lab/core"
   ];
   forEachCrate = cmd: lib.concatMapStringsSep "\n" (c: ''echo "── ${c}"; ${cmd c}'') crates;
 
