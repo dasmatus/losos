@@ -94,6 +94,10 @@ const config: Config = {
         // The box lives in the sidebar panel (src/theme/DocSidebar), at the
         // page's left edge, so its result list opens to the right.
         searchBarPosition: 'left',
+        // No Ctrl+K: neither the hint in the box nor the key itself. The
+        // admin UI's search box has no shortcut either.
+        searchBarShortcut: false,
+        searchBarShortcutHint: false,
         docsRouteBasePath: '/',
         indexBlog: false,
         language: ['en', 'de'],
@@ -109,7 +113,9 @@ const config: Config = {
     },
     docs: {
       sidebar: {
-        hideable: true,
+        // No hide button under the menu: the page is 72rem wide at most and
+        // the panel is part of its shape, as the SPA's is.
+        hideable: false,
         autoCollapseCategories: false,
       },
     },
