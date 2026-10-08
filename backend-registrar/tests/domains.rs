@@ -441,97 +441,8 @@ async fn without_a_ready_stripe_account_a_box_is_told_why_and_cannot_add() {
 
 // ── Boxes behind a local edge (crate::routes) ───────────────────────────
 
-/// A stand-in for etcd's v3 JSON gateway: the three calls the registrar
-/// makes, over one ordered map, with keys and values in base64 as the real
-/// gateway writes them.
-struct FakeEtcd {
-    url: String,
-    kv: Arc<Mutex<std::collections::BTreeMap<Vec<u8>, Vec<u8>>>>,
-    stop: Option<oneshot::Sender<()>>,
-}
-
-type Kv = Arc<Mutex<std::collections::BTreeMap<Vec<u8>, Vec<u8>>>>;
-
-impl FakeEtcd {
-    async fn start() -> Self {
-        use axum::routing::post;
-        let kv: Kv = Arc::default();
-        let app = Router::new()
-            .route("/v3/kv/range", post(etcd_range))
-            .route("/v3/kv/put", post(etcd_put))
-            .route("/v3/kv/deleterange", post(etcd_delete))
-            .with_state(kv.clone());
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let port = listener.local_addr().unwrap().port();
-        let (stop, rx) = oneshot::channel::<()>();
-        tokio::spawn(async move {
-            let _ = axum::serve(listener, app)
-                .with_graceful_shutdown(async move {
-                    let _ = rx.await;
-                })
-                .await;
-        });
-        Self {
-            url: format!("http://127.0.0.1:{port}"),
-            kv,
-            stop: Some(stop),
-        }
-    }
-
-    fn keys(&self) -> Vec<String> {
-        self.kv
-            .lock()
-            .unwrap()
-            .keys()
-            .map(|k| String::from_utf8(k.clone()).unwrap())
-            .collect()
-    }
-}
-
-impl Drop for FakeEtcd {
-    fn drop(&mut self) {
-        if let Some(stop) = self.stop.take() {
-            let _ = stop.send(());
-        }
-    }
-}
-
-fn field(body: &Value, name: &str) -> Vec<u8> {
-    losos_registrar::routes::unb64(body[name].as_str().unwrap_or("")).unwrap()
-}
-
-async fn etcd_range(State(kv): State<Kv>, Json(body): Json<Value>) -> Json<Value> {
-    use losos_registrar::routes::b64;
-    let (start, end) = (field(&body, "key"), field(&body, "range_end"));
-    let kvs: Vec<Value> = kv
-        .lock()
-        .unwrap()
-        .range(start..end)
-        .map(|(k, v)| json!({ "key": b64(k), "value": b64(v) }))
-        .collect();
-    if kvs.is_empty() {
-        // The real gateway leaves `kvs` out of an empty range.
-        Json(json!({ "header": {} }))
-    } else {
-        Json(json!({ "header": {}, "kvs": kvs, "count": kvs.len().to_string() }))
-    }
-}
-
-async fn etcd_put(State(kv): State<Kv>, Json(body): Json<Value>) -> Json<Value> {
-    kv.lock()
-        .unwrap()
-        .insert(field(&body, "key"), field(&body, "value"));
-    Json(json!({ "header": {} }))
-}
-
-async fn etcd_delete(State(kv): State<Kv>, Json(body): Json<Value>) -> Json<Value> {
-    let gone = kv.lock().unwrap().remove(&field(&body, "key")).is_some();
-    Json(json!({ "header": {}, "deleted": if gone { "1" } else { "0" } }))
-}
-
 const SPOKE_TOKEN: &str = "5p0ke5p0ke5p0ke5p0ke5p0ke5p0ke5p0ke5p0ke5p0ke5p0ke5p0ke5p0ke5p0k";
 const RELAY_ZONE: &str = "acme.example.test";
-const ROUTE_KEY: &str = "/losos/routes/acme/mattbox/cloud.example.org";
 
 fn hub_tenants() -> Vec<TenantSpec> {
     let mut t = tenants();
@@ -539,16 +450,8 @@ fn hub_tenants() -> Vec<TenantSpec> {
     t
 }
 
-/// The official hub with a route table in `etcd`, `mesh` boxes enrolled.
-async fn hub(
-    tag: &str,
-    doh: &Doh,
-    etcd: &FakeEtcd,
-    mesh: &[(&str, bool)],
-    key: &str,
-    cert: &str,
-) -> Edge {
-    let etcd_url = etcd.url.clone();
+/// The official hub with a route table, `mesh` boxes enrolled.
+async fn hub(tag: &str, doh: &Doh, mesh: &[(&str, bool)], key: &str, cert: &str) -> Edge {
     Edge::start_official_hub(
         tag,
         &hub_tenants(),
@@ -558,8 +461,7 @@ async fn hub(
         mesh,
         move |opts, dir| {
             opts.routes = Some(losos_registrar::opts::RoutesOpts {
-                etcd_url,
-                prefix: losos_registrar::routes::DEFAULT_PREFIX.to_string(),
+                table_file: dir.path_str("relay-routes.json"),
                 pass_key_file: dir.path_str("relay-pass.key"),
             });
         },
@@ -638,6 +540,15 @@ async fn prove_domain(hub: &Edge, doh: &Doh) -> String {
     pass.to_string()
 }
 
+/// The rows in the hub's `relay-routes.json`; none before its first write.
+fn table_rows(hub: &Edge) -> Vec<Value> {
+    std::fs::read(hub.dir.join("relay-routes.json"))
+        .ok()
+        .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
+        .and_then(|v| v["routes"].as_array().cloned())
+        .unwrap_or_default()
+}
+
 /// The router a hostname got in the hub's Traefik file, and its service.
 fn router_service(yaml: &str, host: &str) -> Option<String> {
     let doc: serde_yaml::Value = serde_yaml::from_str(yaml).ok()?;
@@ -651,17 +562,16 @@ fn router_service(yaml: &str, host: &str) -> Option<String> {
 
 /// The whole path: the box proves a domain with the official hub, takes its
 /// relay pass to the gateway it sits behind, the gateway forwards it, and the
-/// hub writes the route to etcd and routes the domain (and the box's zone
+/// hub keeps the route in its table and routes the domain (and the box's zone
 /// name) to the relayed tenant. The gateway is told, and gets no route for
 /// a box that has no pass. When the box registers with the hub itself, the
 /// direct path wins and the row goes.
 #[tokio::test]
-async fn a_mesh_box_behind_a_gateway_gets_its_domain_routed_through_etcd() {
+async fn a_mesh_box_behind_a_gateway_gets_its_domain_routed() {
     let doh = Doh::start().await;
-    let etcd = FakeEtcd::start().await;
     let scratch = scratch("relayed");
     let (key, cert) = official_identity(&scratch);
-    let hub = hub("rt-hub", &doh, &etcd, &[("mattbox", true)], &key, &cert).await;
+    let hub = hub("rt-hub", &doh, &[("mattbox", true)], &key, &cert).await;
     let pass = prove_domain(&hub, &doh).await;
     let spoke = spoke("rt-spoke", &hub).await;
 
@@ -679,7 +589,7 @@ async fn a_mesh_box_behind_a_gateway_gets_its_domain_routed_through_etcd() {
     tokio::time::sleep(Duration::from_millis(300)).await;
     let y = hub.traefik_yaml().unwrap();
     assert_eq!(router_service(&y, "cloud.example.org"), None, "{y}");
-    assert!(etcd.keys().is_empty(), "{:?}", etcd.keys());
+    assert!(table_rows(&hub).is_empty(), "{:?}", table_rows(&hub));
 
     // The box's next heartbeat carries the pass.
     let (status, body) = spoke
@@ -706,13 +616,14 @@ async fn a_mesh_box_behind_a_gateway_gets_its_domain_routed_through_etcd() {
         Some("acme.mattbox"),
         "the box's zone name follows it too"
     );
-    let keys = etcd.keys();
-    assert!(keys.contains(&ROUTE_KEY.to_string()), "{keys:?}");
-    let row: Value =
-        serde_json::from_slice(etcd.kv.lock().unwrap().get(ROUTE_KEY.as_bytes()).unwrap()).unwrap();
-    assert_eq!(
-        row,
-        json!({ "domain": "cloud.example.org", "tenant": "mattbox", "spoke": "acme", "service": "acme.mattbox" })
+    assert!(
+        hub.wait_for(|| table_rows(&hub).contains(&json!({
+            "domain": "cloud.example.org", "tenant": "mattbox",
+            "spoke": "acme", "service": "acme.mattbox"
+        })))
+        .await,
+        "{:?}",
+        table_rows(&hub)
     );
 
     // The gateway hears which names the hub routes through it.
@@ -741,9 +652,9 @@ async fn a_mesh_box_behind_a_gateway_gets_its_domain_routed_through_etcd() {
         hub.traefik_yaml()
     );
     assert!(
-        hub.wait_for(|| etcd.keys().is_empty()).await,
+        hub.wait_for(|| table_rows(&hub).is_empty()).await,
         "{:?}",
-        etcd.keys()
+        table_rows(&hub)
     );
 
     spoke.shutdown().await;
@@ -756,10 +667,9 @@ async fn a_mesh_box_behind_a_gateway_gets_its_domain_routed_through_etcd() {
 #[tokio::test]
 async fn a_box_outside_the_mesh_gets_no_route_through_a_gateway() {
     let doh = Doh::start().await;
-    let etcd = FakeEtcd::start().await;
     let scratch = scratch("nomesh");
     let (key, cert) = official_identity(&scratch);
-    let hub = hub("rt-nomesh-hub", &doh, &etcd, &[], &key, &cert).await;
+    let hub = hub("rt-nomesh-hub", &doh, &[], &key, &cert).await;
     let pass = prove_domain(&hub, &doh).await;
     let spoke = spoke("rt-nomesh-spoke", &hub).await;
     let (status, body) = spoke
@@ -781,7 +691,7 @@ async fn a_box_outside_the_mesh_gets_no_route_through_a_gateway() {
         router_service(&hub.traefik_yaml().unwrap(), "cloud.example.org"),
         None
     );
-    assert!(etcd.keys().is_empty(), "{:?}", etcd.keys());
+    assert!(table_rows(&hub).is_empty(), "{:?}", table_rows(&hub));
 
     spoke.shutdown().await;
     hub.shutdown().await;
@@ -789,22 +699,13 @@ async fn a_box_outside_the_mesh_gets_no_route_through_a_gateway() {
 }
 
 /// A gateway cannot make a pass up, reuse another box's, or bring one from
-/// another hub: the domain stays unrouted and etcd stays empty.
+/// another hub: the domain stays unrouted and the table stays empty.
 #[tokio::test]
 async fn a_gateway_cannot_forge_a_relay_pass() {
     let doh = Doh::start().await;
-    let etcd = FakeEtcd::start().await;
     let scratch = scratch("forged");
     let (key, cert) = official_identity(&scratch);
-    let hub = hub(
-        "rt-forge-hub",
-        &doh,
-        &etcd,
-        &[("mattbox", true)],
-        &key,
-        &cert,
-    )
-    .await;
+    let hub = hub("rt-forge-hub", &doh, &[("mattbox", true)], &key, &cert).await;
     let real = prove_domain(&hub, &doh).await;
     // Another box's pass from the same hub.
     let third = list(&hub, "thirdbox", THIRD_TOKEN).await["relay_pass"]
@@ -841,7 +742,7 @@ async fn a_gateway_cannot_forge_a_relay_pass() {
             None,
             "pass {i} routed"
         );
-        assert!(etcd.keys().is_empty(), "{:?}", etcd.keys());
+        assert!(table_rows(&hub).is_empty(), "{:?}", table_rows(&hub));
         spoke.shutdown().await;
     }
     hub.shutdown().await;

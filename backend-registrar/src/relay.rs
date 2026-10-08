@@ -63,7 +63,7 @@ pub struct RelayResp {
     pub accepted: Vec<crate::registry::Relayed>,
     pub refused: Vec<RelayRefused>,
     /// The custom domains the hub routes to this spoke's boxes, from its
-    /// route table in etcd (`crate::routes`). Informational: the hub's
+    /// route table (`crate::routes`). Informational: the hub's
     /// traffic for them arrives on the box's relayed service like the box's
     /// own hostname, so the spoke routes nothing by name.
     #[serde(default)]
