@@ -13,12 +13,16 @@
                         viewer that serves nothing else.
 
 Python's standard library only, so the nix derivation needs no npm.
+
+LOSOS_LAB_MEME names a folder with no.jpg and yes.jpg: the splash then
+draws them left of its two halves. The repository carries no such folder.
 """
-import base64, json, pathlib, shutil, sys
+import base64, json, os, pathlib, shutil, sys
 
 here = pathlib.Path(__file__).resolve().parent
 src = here / 'src'
 plate = here.parent / 'themes' / 'brand' / 'plate-128.png'
+meme = pathlib.Path(os.environ['LOSOS_LAB_MEME']) if os.environ.get('LOSOS_LAB_MEME') else None
 ORDER = ['icons.js', 'model.js', 'sim.js', 'pages.js', 'term.js', 'scenarios.js',
          'thisbox.js', 'app.js', 'side.js', 'engine.js', 'main.js']
 
@@ -40,9 +44,13 @@ def page(head: str, body_end: str) -> str:
 
 def split(out: pathlib.Path, config: dict) -> None:
     out.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(plate, out / 'plate.png')
+    if meme:
+        for f in ('no.jpg', 'yes.jpg'):
+            shutil.copyfile(meme / f, out / ('meme-' + f))
+        config['meme'] = ['meme-no.jpg', 'meme-yes.jpg']
     (out / 'lab.css').write_text((src / 'style.css').read_text())
     (out / 'lab.js').write_text(script(config))
-    shutil.copyfile(plate, out / 'plate.png')
     (out / 'index.html').write_text(page(
         '<link rel="stylesheet" href="lab.css">',
         '<script src="lab.js"></script>'))
@@ -50,7 +58,10 @@ def split(out: pathlib.Path, config: dict) -> None:
 
 def single(out: pathlib.Path) -> None:
     uri = 'data:image/png;base64,' + base64.b64encode(plate.read_bytes()).decode()
-    js = script({'box': False, 'engine': False, 'plate': uri}).replace('</script', '<\\/script')
+    config = {'box': False, 'engine': False, 'plate': uri}
+    if meme:
+        config['meme'] = ['data:image/jpeg;base64,' + base64.b64encode((meme / f).read_bytes()).decode() for f in ('no.jpg', 'yes.jpg')]
+    js = script(config).replace('</script', '<\\/script')
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(page(
         '<style>' + (src / 'style.css').read_text() + '</style>',

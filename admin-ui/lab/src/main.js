@@ -3,6 +3,7 @@ PLATE = LAB.plate;
 if (LAB.box) $('#back').hidden = false;
 $('#logo').src = PLATE;
 $('#splashLogo').src = PLATE;
+if (LAB.meme) { $('#memeNo').src = LAB.meme[0]; $('#memeYes').src = LAB.meme[1]; $('#memeNo').hidden = $('#memeYes').hidden = false; }
 const splashShown = performance.now();
 function splashSay(t) { const m = document.getElementById('splashMsg'); if (m) m.textContent = t; }
 function splashDone() {
