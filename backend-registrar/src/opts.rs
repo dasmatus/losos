@@ -58,6 +58,18 @@ fn parse_dur(s: &str) -> Result<Duration> {
     }
 }
 
+/// `serve --routes-etcd-url ...`: where the official edge keeps the route
+/// table of boxes behind local edges, and the key it signs relay passes with.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RoutesOpts {
+    /// etcd's v3 JSON gateway, `http://127.0.0.1:2379`.
+    pub etcd_url: String,
+    /// Key prefix of the table, no trailing slash.
+    pub prefix: String,
+    /// 64 hex characters, made on first start when absent.
+    pub pass_key_file: String,
+}
+
 /// `serve` options. The registrar is the sole writer of `traefik_dir`'s
 /// `losos.yml` and `rathole_config`; rathole hot-reloads the latter via its
 /// `notify` file-watcher (no signal needed), so there is no rathole-service
@@ -133,6 +145,10 @@ pub struct ServeOpts {
     /// The uplink to a hub (`crate::relay`). `None` and this edge relays
     /// nothing anywhere.
     pub uplink: Option<crate::relay::UplinkOpts>,
+    /// The route table for boxes behind a local edge (`crate::routes`).
+    /// `None` unless `--routes-etcd-url` was given, which needs `--dns-zone`:
+    /// only an edge that routes domains keeps the table.
+    pub routes: Option<RoutesOpts>,
 }
 
 /// `identity` options: the offline key ceremony (`crate::identity`).
@@ -195,6 +211,11 @@ pub struct AnnounceOpts {
     /// and a PHP-FPM pool, so a threshold near zero would mean "never idle"
     /// and the feature would quietly never fire.
     pub idle_load_threshold: f64,
+    /// `--relay-pass-file`: where lososd keeps the relay pass its official
+    /// edge issued (`crate::routes`), re-read on every register and
+    /// heartbeat and sent along so a local edge can forward it. Missing or
+    /// empty sends none.
+    pub relay_pass_file: Option<String>,
 }
 
 /// `join` options. Runs once per boot on the appliance, from
@@ -356,6 +377,7 @@ pub fn parse(args: Vec<String>) -> Result<Mode> {
                     .trim_end_matches('/')
                     .to_string(),
                 domains: parse_domains(&rest)?,
+                routes: parse_routes(&rest)?,
                 enrol_dir: arg(&rest, "--enrol-dir").map(str::to_string),
                 uplink: match arg(&rest, "--uplink-file") {
                     None => None,
@@ -438,6 +460,7 @@ pub fn parse(args: Vec<String>) -> Result<Mode> {
             idle_load_threshold: parse_threshold(
                 arg(&rest, "--idle-load-threshold").unwrap_or("0.25"),
             )?,
+            relay_pass_file: arg(&rest, "--relay-pass-file").map(str::to_string),
         })),
         "seed" => Ok(Mode::Seed(SeedOpts {
             rathole_config: req(&rest, "--rathole-config")?.to_string(),
@@ -630,6 +653,48 @@ fn parse_market(args: &[String]) -> Result<Option<Box<MarketOpts>>> {
 
 /// The DNS half of `serve`: `--dns-zone` turns it on, and then the edge must
 /// say which addresses its names resolve to.
+fn parse_routes(args: &[String]) -> Result<Option<RoutesOpts>> {
+    let Some(url) = arg(args, "--routes-etcd-url") else {
+        return Ok(None);
+    };
+    if arg(args, "--dns-zone").is_none() {
+        return Err(miette!(
+            "--routes-etcd-url needs --dns-zone: only an edge that routes custom domains keeps the route table"
+        ));
+    }
+    let url = url.trim().trim_end_matches('/');
+    if !(url.starts_with("http://") || url.starts_with("https://")) {
+        return Err(miette!(
+            "bad --routes-etcd-url {url:?}; expected etcd's client URL, such as http://127.0.0.1:2379"
+        ));
+    }
+    let prefix = arg(args, "--routes-prefix")
+        .unwrap_or(crate::routes::DEFAULT_PREFIX)
+        .trim()
+        .trim_end_matches('/')
+        .to_string();
+    if !prefix.starts_with('/') || prefix.len() < 2 {
+        return Err(miette!(
+            "bad --routes-prefix {prefix:?}; expected an etcd key prefix such as /losos/routes"
+        ));
+    }
+    let pass_key_file = match arg(args, "--relay-pass-key-file") {
+        Some(f) => f.to_string(),
+        None => {
+            let registry = req(args, "--registry")?;
+            std::path::Path::new(registry)
+                .with_file_name("relay-pass.key")
+                .to_string_lossy()
+                .into_owned()
+        }
+    };
+    Ok(Some(RoutesOpts {
+        etcd_url: url.to_string(),
+        prefix,
+        pass_key_file,
+    }))
+}
+
 fn parse_domains(args: &[String]) -> Result<Option<Box<DomainsOpts>>> {
     let Some(zone) = arg(args, "--dns-zone") else {
         return Ok(None);

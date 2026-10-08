@@ -611,6 +611,11 @@ pub fn start_edge_scanner(backend: &IoLosos) {
 /// every request. The names are public anyway; they are in public DNS.
 pub const DEFAULT_PUBLIC_NAMES_FILE: &str = "/var/lib/losos-public-names/domains.json";
 
+/// Where the relay pass goes for `losos-registrar announce --relay-pass-file`
+/// (modules/proxy.nix). On `/run`: a pass is good for hours, so there is
+/// nothing to keep across a reboot, and the next sync writes a fresh one.
+pub const DEFAULT_RELAY_PASS_FILE: &str = "/run/losos/relay-pass";
+
 /// How often the daemon asks the edge which custom domains are live, besides
 /// every time the owner opens or changes them. A domain the edge turns live
 /// on its own (the owner's DNS records appeared) reaches LosOS cloud within
@@ -1534,6 +1539,26 @@ impl Losos for IoLosos {
             return Ok(());
         }
         atomic_write(&path, body.as_bytes()).with_context(|| format!("writing {}", path.display()))
+    }
+
+    fn write_relay_pass(&mut self, pass: Option<&str>) -> anyhow::Result<()> {
+        let path =
+            std::path::PathBuf::from(env_or("LOSOS_RELAY_PASS_FILE", DEFAULT_RELAY_PASS_FILE));
+        match pass {
+            None => match std::fs::remove_file(&path) {
+                Ok(()) => Ok(()),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+                Err(e) => Err(e).with_context(|| format!("removing {}", path.display())),
+            },
+            Some(pass) => {
+                let body = format!("{pass}\n");
+                if std::fs::read_to_string(&path).is_ok_and(|old| old == body) {
+                    return Ok(());
+                }
+                atomic_write_secret(&path, body.as_bytes())
+                    .with_context(|| format!("writing {}", path.display()))
+            }
+        }
     }
 
     fn market_request(&mut self, op: &crate::market::Op) -> anyhow::Result<crate::market::Outcome> {

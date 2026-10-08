@@ -133,6 +133,12 @@ let
     # and nothing reads it, which costs one boolean per heartbeat.
     "--idle-load-threshold"
     (lib.escapeShellArg (toString config.losos.cluster.idleLoadThreshold))
+    # The relay pass lososd fetches from the official edge with the domains
+    # view (backend/src/losos.rs, record_view): a local edge forwards it so
+    # the official edge routes this box's custom domains through it. Read on
+    # every heartbeat; no file sends none.
+    "--relay-pass-file"
+    "/run/losos/relay-pass"
   ];
 in
 {

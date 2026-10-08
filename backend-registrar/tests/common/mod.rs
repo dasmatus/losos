@@ -318,6 +318,37 @@ impl Edge {
         .await
     }
 
+    /// An official hub for the relayed-domain tests: as
+    /// [`Edge::start_with_domains`], with `enrolled` boxes already in the
+    /// mesh and `tweak` applied last (how a test points `--routes-etcd-url`
+    /// at its stand-in etcd).
+    #[allow(clippy::too_many_arguments)]
+    pub async fn start_official_hub(
+        tag: &str,
+        tenants: &[TenantSpec],
+        market_state: &serde_json::Value,
+        identity: (&str, &str),
+        doh_url: &str,
+        enrolled: &[(&str, bool)],
+        tweak: impl FnOnce(&mut ServeOpts, &TempDir) + Send + 'static,
+    ) -> Self {
+        Self::start_general(
+            tag,
+            tenants,
+            MeshFixture::default(),
+            None,
+            Some("http://127.0.0.1:9".to_string()),
+            enrolled,
+            Some(market_state),
+            Some(identity),
+            None,
+            None,
+            Some(doh_url),
+            Some(Box::new(tweak)),
+        )
+        .await
+    }
+
     async fn start_inner(
         tag: &str,
         tenants: &[TenantSpec],
@@ -587,6 +618,7 @@ impl Edge {
             }),
             enrol_dir: None,
             uplink: None,
+            routes: None,
         };
         if let Some(tweak) = tweak {
             tweak(&mut opts, &dir);

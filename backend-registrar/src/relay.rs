@@ -47,6 +47,12 @@ pub struct RelayReq {
 pub struct RelayTenant {
     pub id: String,
     pub hostname: String,
+    /// The relay pass the box got from this hub and gave its spoke
+    /// (`crate::routes`): the box's own word that it is behind this spoke,
+    /// which is what lets its custom domains route here. Absent for a box
+    /// that has none (no custom domains, or a hub without a route table).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pass: Option<String>,
 }
 
 /// The hub's answer: what it will route, and what it refused and why. A
@@ -56,6 +62,20 @@ pub struct RelayTenant {
 pub struct RelayResp {
     pub accepted: Vec<crate::registry::Relayed>,
     pub refused: Vec<RelayRefused>,
+    /// The custom domains the hub routes to this spoke's boxes, from its
+    /// route table in etcd (`crate::routes`). Informational: the hub's
+    /// traffic for them arrives on the box's relayed service like the box's
+    /// own hostname, so the spoke routes nothing by name.
+    #[serde(default)]
+    pub routes: Vec<RelayRoute>,
+}
+
+/// One row of the hub's route table, as the spoke is told it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RelayRoute {
+    /// The box id as the spoke knows it.
+    pub id: String,
+    pub domain: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -361,6 +381,7 @@ mod tests {
         let ok = RelayTenant {
             id: "mattbox".into(),
             hostname: "mattbox.acme.losos.cfd".into(),
+            pass: None,
         };
         assert_eq!(refusal(&ok, "acme.losos.cfd", false), None);
         assert!(refusal(&ok, "acme.losos.cfd", true)

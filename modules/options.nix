@@ -1478,6 +1478,51 @@ in
       '';
     };
 
+    # Custom domains for boxes behind a local edge (wiki/Edge-Federation.md,
+    # "Custom domains behind a local edge"). The official edge keeps a route
+    # table in etcd and sends a domain to the local edge whose box proved it,
+    # once the box has vouched for that local edge with a relay pass and
+    # joined this edge's mesh. See backend-registrar/src/routes.rs.
+    edge.dns.relayRoutes.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Route custom domains to boxes that reach this edge through a local
+        edge (a spoke relaying under losos.edge.tenants.<id>.relayZone).
+        The route table lives in etcd, one key per route under
+        `edge.dns.relayRoutes.prefix`. Only a box in this edge's mesh is
+        routed, and only through the local edge it named with its relay
+        pass. Needs edge.dns.enable.
+      '';
+    };
+
+    edge.dns.relayRoutes.localEtcd = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Run a single-node etcd for the route table on this edge, on loopback
+        ports 2479 (client) and 2480 (peer), clear of the 2379/2380 the mesh's
+        rke2 server takes for its own etcd. Set to false and point
+        `etcdUrl` at an etcd cluster the official edges share.
+      '';
+    };
+
+    edge.dns.relayRoutes.etcdUrl = lib.mkOption {
+      type = lib.types.str;
+      default = "http://127.0.0.1:2479";
+      description = ''
+        etcd's client URL. The registrar speaks its v3 JSON gateway
+        (`/v3/kv/*`), so plain HTTP on loopback or a TLS-terminating
+        sidecar; it presents no client certificate.
+      '';
+    };
+
+    edge.dns.relayRoutes.prefix = lib.mkOption {
+      type = lib.types.str;
+      default = "/losos/routes";
+      description = "etcd key prefix of the route table. Each route is `<prefix>/<local edge>/<box>/<domain>`.";
+    };
+
     edge.lan.ratholeEndpoint = lib.mkOption {
       type = lib.types.str;
       default = "${config.networking.hostName}.local:${toString config.losos.edge.ratholeBindPort}";
