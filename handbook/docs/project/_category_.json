@@ -1,9 +1,0 @@
-{
-  "label": "The project",
-  "position": 6,
-  "link": {
-    "type": "doc",
-    "id": "project/index"
-  },
-  "className": "hb-icon hb-icon-project"
-}

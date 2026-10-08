@@ -89,6 +89,16 @@ const config: Config = {
           // The docs sit at the root, beside the landing page rather than
           // under it, so every address is short enough to read off a screen.
           routeBasePath: '/',
+          // Nothing under docs/project/ is published by either build: the
+          // site is the product's, not a school report. The first four globs
+          // are Docusaurus's own defaults, which an explicit list replaces.
+          exclude: [
+            '**/_*.{js,jsx,ts,tsx,md,mdx}',
+            '**/_*/**',
+            '**/*.test.{js,jsx,ts,tsx}',
+            '**/__tests__/**',
+            'project/**',
+          ],
           sidebarPath: './sidebars.ts',
           editUrl: 'https://github.com/dasmatus/losos/tree/main/handbook/',
           showLastUpdateTime: false,

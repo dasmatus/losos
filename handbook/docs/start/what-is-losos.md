@@ -50,5 +50,5 @@ USB stick, and after that you only use it through a web browser.
   into a state that nobody wrote down.
 - Not a backup. The box is one copy. Keep another copy of anything you cannot
   lose. LosOS cloud's desktop and phone clients are one way to keep it.
-- Not finished. The [project page](../project) says what is done and what is
-  planned.
+- Not finished. The market, one storage pool across boxes and a signed
+  installer are still to come.
