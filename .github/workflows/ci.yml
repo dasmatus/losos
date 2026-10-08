@@ -156,6 +156,7 @@ jobs:
             cargo clippy --manifest-path backend/Cargo.toml --all-targets -- -D warnings
             cargo clippy --manifest-path backend-registrar/Cargo.toml --all-targets -- -D warnings
             cargo clippy --manifest-path edge-vercel/Cargo.toml --all-targets -- -D warnings
+            cargo clippy --manifest-path admin-ui/lab/core/Cargo.toml --all-targets -- -D warnings
           '
       # rustfmt is only *checked* on pull requests. On a push to main fmt-bot
       # fixes it instead — checking it here too would mean this job goes red
@@ -168,6 +169,7 @@ jobs:
             cargo fmt --manifest-path backend/Cargo.toml --check
             cargo fmt --manifest-path backend-registrar/Cargo.toml --check
             cargo fmt --manifest-path edge-vercel/Cargo.toml --check
+            cargo fmt --manifest-path admin-ui/lab/core/Cargo.toml --check
           '
       # The hit rate, so a cache that stopped being taken is visible in the
       # log rather than as a job that quietly got slower.
@@ -224,6 +226,7 @@ jobs:
             cargo test --manifest-path backend/Cargo.toml
             cargo test --manifest-path backend-registrar/Cargo.toml
             cargo test --manifest-path edge-vercel/Cargo.toml
+            cargo test --manifest-path admin-ui/lab/core/Cargo.toml
           '
       # The hit rate, so a cache that stopped being taken is visible in the
       # log rather than as a job that quietly got slower.
@@ -630,6 +633,7 @@ jobs:
             cargo fmt --manifest-path backend/Cargo.toml
             cargo fmt --manifest-path backend-registrar/Cargo.toml
             cargo fmt --manifest-path edge-vercel/Cargo.toml
+            cargo fmt --manifest-path admin-ui/lab/core/Cargo.toml
           '
       - name: commit and push if anything changed
         run: |

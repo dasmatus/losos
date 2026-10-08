@@ -1,0 +1,28 @@
+# LosOS Lab's model and simulator, compiled to WebAssembly for the browser.
+# A crate of its own, outside the flake's other crates and outside any
+# workspace: the Lab page loads it through the bindings wasm-bindgen writes.
+# `wasm-bindgen` is pinned to exactly the version of nixpkgs'
+# `wasm-bindgen-cli`, because the CLI refuses a module built against any other.
+[package]
+name = "losos-lab-core"
+version = "0.1.0"
+edition = "2021"
+publish = false
+authors = ["Matus Mastena <shadiness9530+ou1rlygj@pm.me>"]
+description = "LosOS Lab's non-DOM half: topology evaluation, the packet simulator and lab clock, simulated consoles and pages, built-in setups and setup files"
+license = "AGPL-3.0-or-later"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+# preserve_order: object keys come out in the order the JS inserted them.
+serde_json = { version = "1", features = ["preserve_order"] }
+wasm-bindgen = "=0.2.127"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = true
