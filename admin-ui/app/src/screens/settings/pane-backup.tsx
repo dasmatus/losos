@@ -11,6 +11,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input, MonoInput } from "@/components/ui/input";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Spinner } from "@/components/ui/progress";
 import {
   getRecoveryCode,
@@ -18,8 +19,9 @@ import {
   type BackupResponse,
   type BackupTarget,
   type BackupTargetInput,
+  type StorageClass,
 } from "@/lib/api";
-import { intlTag } from "@/lib/i18n";
+import { intlTag, type MessageKey } from "@/lib/i18n";
 import { useLocale, useT } from "@/lib/i18n-react";
 import { formatBytes } from "./format";
 import {
@@ -45,7 +47,11 @@ import { useBackup, type BackupData } from "./use-backup";
  * Nothing here is a setting of the box's configuration, so the pane sits
  * outside the Apply bar: every button is its own request to lososd. The
  * secret key goes in and never comes back out; the form shows that one is
- * stored and leaves the field empty to keep it. */
+ * stored and leaves the field empty to keep it.
+ *
+ * On Amazon S3 the owner can put the backups in Glacier. The two cold
+ * classes make a restore wait hours while AWS thaws the data, so the pane
+ * says so beside the choice and again before and during a restore. */
 
 export function BackupPane({ locked }: { locked: boolean }) {
   const t = useT();
@@ -94,6 +100,41 @@ export function BackupPane({ locked }: { locked: boolean }) {
 
 // ── The bucket ──────────────────────────────────────────────────────────
 
+/* AWS's own names for the Glacier classes are product names and stay in
+ * English; only Standard is translated. */
+const CLASSES: { id: StorageClass; name?: string; detail: MessageKey }[] = [
+  { id: "standard", detail: "panes.backup.target.classStandardDetail" },
+  {
+    id: "glacierInstant",
+    name: "Glacier Instant Retrieval",
+    detail: "panes.backup.target.classInstantDetail",
+  },
+  {
+    id: "glacier",
+    name: "Glacier Flexible Retrieval",
+    detail: "panes.backup.target.classGlacierDetail",
+  },
+  { id: "deepArchive", name: "Glacier Deep Archive", detail: "panes.backup.target.classDeepDetail" },
+];
+
+/* The same test lososd makes (backup.rs, `is_aws`): only AWS's own S3 has
+ * the Glacier classes. */
+const AWS_ENDPOINT = /^https:\/\/s3[^/:]*\.amazonaws\.com(:\d+)?\/*$/;
+
+function classOf(target: BackupTarget | null): StorageClass {
+  return target?.storageClass ?? "standard";
+}
+
+function needsThaw(target: BackupTarget | null): boolean {
+  const c = classOf(target);
+  return c === "glacier" || c === "deepArchive";
+}
+
+function useClassName(): (id: StorageClass) => string {
+  const t = useT();
+  return (id) => CLASSES.find((c) => c.id === id)?.name ?? t("panes.backup.target.classStandard");
+}
+
 const EMPTY: BackupTargetInput = {
   endpoint: "",
   bucket: "",
@@ -101,11 +142,12 @@ const EMPTY: BackupTargetInput = {
   region: "",
   accessKeyId: "",
   secretAccessKey: "",
+  storageClass: "standard",
 };
 
 function draftOf(target: BackupTarget | null): BackupTargetInput {
   if (target === null) return EMPTY;
-  return { ...target, secretAccessKey: "" };
+  return { ...target, secretAccessKey: "", storageClass: classOf(target) };
 }
 
 function TargetSection({
@@ -127,7 +169,9 @@ function TargetSection({
     region: React.useId(),
     key: React.useId(),
     secret: React.useId(),
+    class: React.useId(),
   };
+  const className = useClassName();
 
   const set = (field: keyof BackupTargetInput) => (event: React.ChangeEvent<HTMLInputElement>) =>
     setDraft((d) => ({ ...d, [field]: event.target.value }));
@@ -147,6 +191,10 @@ function TargetSection({
             <RowValue className="truncate select-all">
               {target.prefix.length > 0 ? `${target.bucket}/${target.prefix}` : target.bucket}
             </RowValue>
+          </Row>
+          <Row>
+            <RowText title={t("panes.backup.target.class")} />
+            <RowValue data-testid="backup-class">{className(classOf(target))}</RowValue>
           </Row>
           <Row last>
             <RowText title={t("panes.backup.target.key")} />
@@ -178,6 +226,13 @@ function TargetSection({
     draft.bucket.trim().length === 0 ||
     draft.accessKeyId.trim().length === 0 ||
     secretMissing;
+  const aws = AWS_ENDPOINT.test(draft.endpoint.trim());
+  // Off AWS the choice is Standard whatever was picked before the address
+  // changed, so the box is never sent a class it would refuse.
+  const chosen: StorageClass = aws ? (draft.storageClass ?? "standard") : "standard";
+  const classDetail = aws
+    ? t(CLASSES.find((c) => c.id === chosen)?.detail ?? "panes.backup.target.classStandardDetail")
+    : t("panes.backup.target.classAwsOnly");
 
   const submit = async () => {
     const secret = (draft.secretAccessKey ?? "").trim();
@@ -188,6 +243,7 @@ function TargetSection({
       region: draft.region.trim(),
       accessKeyId: draft.accessKeyId.trim(),
       ...(secret.length > 0 ? { secretAccessKey: secret } : {}),
+      storageClass: chosen,
     };
     if (await backup.saveTarget(input)) setEditing(false);
   };
@@ -280,6 +336,24 @@ function TargetSection({
               disabled={disabled}
               onChange={set("secretAccessKey")}
             />
+          </FieldRow>
+          <FieldRow id={ids.class} title={t("panes.backup.target.class")} detail={classDetail}>
+            <NativeSelect
+              id={ids.class}
+              className="w-full"
+              value={chosen}
+              disabled={disabled || !aws}
+              data-testid="backup-class-select"
+              onChange={(event) =>
+                setDraft((d) => ({ ...d, storageClass: event.target.value as StorageClass }))
+              }
+            >
+              {CLASSES.map((c) => (
+                <NativeSelectOption key={c.id} value={c.id}>
+                  {c.name ?? t("panes.backup.target.classStandard")}
+                </NativeSelectOption>
+              ))}
+            </NativeSelect>
           </FieldRow>
           <Row last className="justify-end">
             {target !== null && (
@@ -480,6 +554,7 @@ function RestoreSection({
   const titleId = React.useId();
   const bodyId = React.useId();
   const job = view.job?.kind === "restore" ? view.job : null;
+  const thaw = needsThaw(view.target);
   const shaped = CODE_SHAPE.test(code.trim().toLowerCase());
 
   return (
@@ -490,7 +565,7 @@ function RestoreSection({
           <Row data-testid="restore-running">
             <RowText
               title={t("panes.backup.restore.running")}
-              detail={t("panes.backup.restore.runningDetail")}
+              detail={t(thaw ? "panes.backup.restore.runningThaw" : "panes.backup.restore.runningDetail")}
             />
             <Spinner size={16} />
           </Row>
@@ -565,6 +640,12 @@ function RestoreSection({
               <span aria-hidden="true" className="mt-2 size-1.5 shrink-0 rounded-full bg-warn" />
               {t("panes.backup.restore.replaces")}
             </li>
+            {thaw && (
+              <li className="flex gap-2" data-testid="restore-thaw">
+                <span aria-hidden="true" className="mt-2 size-1.5 shrink-0 rounded-full bg-warn" />
+                {t("panes.backup.restore.thaw")}
+              </li>
+            )}
             <li className="flex gap-2">
               <span aria-hidden="true" className="mt-2 size-1.5 shrink-0 rounded-full bg-faint" />
               {t("panes.backup.restore.codeStays")}

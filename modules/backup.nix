@@ -128,6 +128,23 @@ let
         close_domain() { :; }
       '';
 
+  # restic's S3 options from the two variables lososd writes beside the keys
+  # (backup.rs, `Target::env_file`). Only the data packs take a Glacier
+  # class; restic keeps its own metadata in Standard, so opening the
+  # repository and checking a code stay instant. GLACIER and DEEP_ARCHIVE
+  # packs are not readable until AWS thaws them: a restore turns on restic's
+  # `s3-restore` feature, which asks for the thaw at AWS's Standard tier
+  # (3 to 5 hours for Flexible Retrieval, up to 12 for Deep Archive) and
+  # waits up to 48 hours, and tidying old backups never repacks,
+  # which would need a thaw as well.
+  s3Fns = ''
+    s3opts=()
+    if [ -n "''${LOSOS_S3_STORAGE_CLASS:-}" ]; then
+      s3opts+=(-o "s3.storage-class=$LOSOS_S3_STORAGE_CLASS")
+    fi
+    thaw=''${LOSOS_S3_THAW:-0}
+  '';
+
   common = [
     pkgs.restic
     pkgs.coreutils
@@ -151,6 +168,7 @@ let
       umask 077
       # A transient unit has no HOME, and restic wants a cache directory.
       export RESTIC_CACHE_DIR="$dir/cache"
+      ${s3Fns}
       ${domainFns}
       # The staging copy holds database dumps: it never outlives the run.
       trap 'close_domain; rm -rf "$stage"' EXIT
@@ -160,7 +178,7 @@ let
         case "$probe" in
           *"Is there a repository"* | *"unable to open config file"*)
             echo "backup: first backup to this bucket, creating the repository"
-            restic init
+            restic "''${s3opts[@]}" init
             ;;
           *)
             echo "$probe" >&2
@@ -205,7 +223,7 @@ let
       fi
 
       echo "backup: copying ''${#paths[@]} folders"
-      summary=$(restic backup --json --quiet --tag losos \
+      summary=$(restic "''${s3opts[@]}" backup --json --quiet --tag losos \
         --exclude '/var/lib/nextcloud/data/data/appdata_*/preview' \
         "''${paths[@]}" | jq -c 'select(.message_type == "summary")')
       close_domain
@@ -219,7 +237,12 @@ let
       echo "backup: done, snapshot $(jq -r .snapshot_id <<<"$summary" | cut -c1-8)"
 
       # Keep the last seven. A failure here leaves the new snapshot safe.
-      restic forget --quiet --tag losos --keep-last 7 --prune \
+      # In a class that needs a thaw, only packs nothing uses are deleted.
+      tidy=()
+      if [ "$thaw" = 1 ]; then
+        tidy+=(--max-repack-size 0)
+      fi
+      restic "''${s3opts[@]}" forget --quiet --tag losos --keep-last 7 --prune "''${tidy[@]}" \
         || echo "backup: older backups could not be tidied away this time" >&2
     '';
   };
@@ -232,6 +255,7 @@ let
       out="$dir/restore"
       umask 077
       export RESTIC_CACHE_DIR="$dir/cache"
+      ${s3Fns}
       ${domainFns}
 
       stopped=0
@@ -256,8 +280,13 @@ let
 
       rm -rf "$out"
       mkdir -p "$out"
+      if [ "$thaw" = 1 ]; then
+        export RESTIC_FEATURES=s3-restore
+        s3opts+=(-o s3.enable-restore=true -o s3.restore-timeout=48h)
+        echo "restore: asking AWS to thaw the backup; this takes hours"
+      fi
       echo "restore: fetching the latest backup"
-      restic restore latest --tag losos --target "$out"
+      restic "''${s3opts[@]}" restore latest --tag losos --target "$out"
       staged="$out$dir/stage"
 
       echo "restore: stopping the apps"

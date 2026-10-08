@@ -716,6 +716,33 @@ export default defineMessages({
     de: "Gespeichert. Leer lassen, um ihn zu behalten.",
   },
   "panes.backup.target.optional": { en: "Optional", sk: "Nepovinné", de: "Optional" },
+  "panes.backup.target.class": { en: "Storage", sk: "Úložisko", de: "Speicherklasse" },
+  "panes.backup.target.classStandard": { en: "Standard", sk: "Štandardné", de: "Standard" },
+  "panes.backup.target.classStandardDetail": {
+    en: "The bucket's own default.",
+    sk: "Predvolené nastavenie bucketu.",
+    de: "Die Voreinstellung des Buckets.",
+  },
+  "panes.backup.target.classInstantDetail": {
+    en: "Cheaper to keep. A restore starts at once, and AWS charges for each read.",
+    sk: "Lacnejšie uloženie. Obnova začne hneď a AWS si účtuje každé čítanie.",
+    de: "Günstiger zu lagern. Eine Wiederherstellung beginnt sofort, und AWS berechnet jeden Abruf.",
+  },
+  "panes.backup.target.classGlacierDetail": {
+    en: "Cheaper still. A restore waits 3 to 5 hours while AWS thaws the backup, and AWS charges for it.",
+    sk: "Ešte lacnejšie. Obnova čaká 3 až 5 hodín, kým AWS zálohu sprístupní, a AWS si to účtuje.",
+    de: "Noch günstiger. Eine Wiederherstellung wartet 3 bis 5 Stunden, bis AWS die Sicherung bereitstellt, und AWS berechnet das.",
+  },
+  "panes.backup.target.classDeepDetail": {
+    en: "The cheapest. A restore waits up to 12 hours while AWS thaws the backup, and AWS charges for it.",
+    sk: "Najlacnejšie. Obnova čaká až 12 hodín, kým AWS zálohu sprístupní, a AWS si to účtuje.",
+    de: "Am günstigsten. Eine Wiederherstellung wartet bis zu 12 Stunden, bis AWS die Sicherung bereitstellt, und AWS berechnet das.",
+  },
+  "panes.backup.target.classAwsOnly": {
+    en: "Glacier is on Amazon S3 only. Enter an amazonaws.com address to choose it.",
+    sk: "Glacier je len na Amazon S3. Ak ho chcete zvoliť, zadajte adresu amazonaws.com.",
+    de: "Glacier gibt es nur bei Amazon S3. Gib dafür eine amazonaws.com-Adresse ein.",
+  },
   "panes.backup.target.change": { en: "Change…", sk: "Zmeniť…", de: "Ändern…" },
   "panes.backup.target.forget": {
     en: "Forget this bucket",
@@ -725,9 +752,9 @@ export default defineMessages({
   "panes.backup.target.cancel": { en: "Cancel", sk: "Zrušiť", de: "Abbrechen" },
   "panes.backup.target.save": { en: "Save", sk: "Uložiť", de: "Speichern" },
   "panes.backup.target.caption": {
-    en: "Any S3-compatible bucket works: Amazon S3, Backblaze B2, Wasabi, or a MinIO on your own network. The box encrypts every backup before it leaves, so the bucket holds only data nobody can read without your recovery code. The secret key is never shown again once saved.",
-    sk: "Funguje akýkoľvek bucket kompatibilný s S3: Amazon S3, Backblaze B2, Wasabi alebo MinIO vo vašej vlastnej sieti. Zariadenie každú zálohu pred odoslaním zašifruje, takže v buckete sú len dáta, ktoré bez vášho kódu obnovy nikto neprečíta. Tajný kľúč sa po uložení už nikdy nezobrazí.",
-    de: "Jeder S3-kompatible Bucket geht: Amazon S3, Backblaze B2, Wasabi oder ein MinIO im eigenen Netz. Die Box verschlüsselt jede Sicherung, bevor sie hinausgeht, also liegen im Bucket nur Daten, die ohne deinen Wiederherstellungscode niemand lesen kann. Der geheime Schlüssel wird nach dem Speichern nie wieder angezeigt.",
+    en: "Any S3-compatible bucket works: Amazon S3 (including Glacier), Backblaze B2, Wasabi, or a MinIO on your own network. On Amazon S3 the address is https://s3.<region>.amazonaws.com. The box encrypts every backup before it leaves, so the bucket holds only data nobody can read without your recovery code. The secret key is never shown again once saved.",
+    sk: "Funguje akýkoľvek bucket kompatibilný s S3: Amazon S3 (aj Glacier), Backblaze B2, Wasabi alebo MinIO vo vašej vlastnej sieti. Na Amazon S3 je adresa https://s3.<región>.amazonaws.com. Zariadenie každú zálohu pred odoslaním zašifruje, takže v buckete sú len dáta, ktoré bez vášho kódu obnovy nikto neprečíta. Tajný kľúč sa po uložení už nikdy nezobrazí.",
+    de: "Jeder S3-kompatible Bucket geht: Amazon S3 (auch Glacier), Backblaze B2, Wasabi oder ein MinIO im eigenen Netz. Bei Amazon S3 lautet die Adresse https://s3.<region>.amazonaws.com. Die Box verschlüsselt jede Sicherung, bevor sie hinausgeht, also liegen im Bucket nur Daten, die ohne deinen Wiederherstellungscode niemand lesen kann. Der geheime Schlüssel wird nach dem Speichern nie wieder angezeigt.",
   },
   "panes.backup.code.title": {
     en: "The key to your backups",
@@ -811,6 +838,11 @@ export default defineMessages({
     sk: "LosOS cloud a LosOS Git sú dovtedy zastavené.",
     de: "LosOS cloud und LosOS Git sind bis dahin angehalten.",
   },
+  "panes.backup.restore.runningThaw": {
+    en: "AWS is thawing the backup first, which takes hours. LosOS cloud and LosOS Git keep running until the files come back.",
+    sk: "AWS najprv zálohu sprístupňuje, čo trvá hodiny. LosOS cloud a LosOS Git bežia, kým sa súbory nevrátia.",
+    de: "AWS stellt die Sicherung zuerst bereit, das dauert Stunden. LosOS cloud und LosOS Git laufen weiter, bis die Dateien zurück sind.",
+  },
   "panes.backup.restore.done": {
     en: "Restored",
     sk: "Obnovené",
@@ -851,6 +883,11 @@ export default defineMessages({
     en: "Files, repositories, the shared folder and settings made since the backup are lost.",
     sk: "Súbory, repozitáre, zdieľaný priečinok a nastavenia od vytvorenia zálohy sa stratia.",
     de: "Dateien, Repositorys, der geteilte Ordner und Einstellungen seit der Sicherung gehen verloren.",
+  },
+  "panes.backup.restore.thaw": {
+    en: "The backup is in Glacier. AWS needs hours to thaw it and charges for the retrieval.",
+    sk: "Záloha je v Glacieri. AWS ju sprístupní až o niekoľko hodín a za vyžiadanie si účtuje poplatok.",
+    de: "Die Sicherung liegt in Glacier. AWS braucht Stunden, um sie bereitzustellen, und berechnet den Abruf.",
   },
   "panes.backup.restore.codeStays": {
     en: "The box keeps the recovery code you typed from now on. Its own code stops working.",

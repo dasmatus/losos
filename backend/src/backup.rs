@@ -39,6 +39,19 @@
 //! written into the new box's own policy, under its own key. At no point is
 //! the domain stored anywhere in plain text.
 //!
+//! # Glacier
+//!
+//! On AWS the owner can pick a storage class ([`StorageClass`]). restic
+//! stores only the data packs in it; its own metadata (the config, keys,
+//! index, snapshots and tree packs) stays in S3 Standard whatever the class,
+//! so listing, checking a code and tidying old backups stay instant. Glacier
+//! Instant Retrieval reads back like Standard. Glacier Flexible Retrieval and
+//! Deep Archive objects must be thawed before they can be read, so a restore
+//! from them asks AWS to thaw each pack and waits (restic's `s3-restore`
+//! feature): hours, not minutes, and AWS charges for the retrieval. Pruning
+//! there deletes only packs nothing uses any more and never repacks, which
+//! would need a thaw too.
+//!
 //! # Secrets
 //!
 //! The bucket's secret key is written to a 0600 file under `/var/secrets`
@@ -56,6 +69,41 @@ const MAX_PREFIX: usize = 100;
 /// Longest access key id or secret accepted. AWS uses 20 and 40; other
 /// providers use more, none this many.
 const MAX_KEY: usize = 128;
+
+/// How AWS stores the data. Only AWS knows the Glacier classes; every other
+/// provider gets [`StorageClass::Standard`], which sends no class at all.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum StorageClass {
+    /// Whatever the bucket's default is: S3 Standard on AWS.
+    #[default]
+    Standard,
+    /// `GLACIER_IR`: cheaper to keep, read back at once, billed per read.
+    GlacierInstant,
+    /// `GLACIER`: Glacier Flexible Retrieval, thawed in hours.
+    Glacier,
+    /// `DEEP_ARCHIVE`: the cheapest, thawed in up to two days.
+    DeepArchive,
+}
+
+impl StorageClass {
+    /// The name AWS and restic use, or `None` for the bucket's default.
+    #[must_use]
+    pub fn aws_name(self) -> Option<&'static str> {
+        match self {
+            Self::Standard => None,
+            Self::GlacierInstant => Some("GLACIER_IR"),
+            Self::Glacier => Some("GLACIER"),
+            Self::DeepArchive => Some("DEEP_ARCHIVE"),
+        }
+    }
+
+    /// Whether a read has to wait for AWS to thaw the data first.
+    #[must_use]
+    pub fn needs_thaw(self) -> bool {
+        matches!(self, Self::Glacier | Self::DeepArchive)
+    }
+}
 
 /// Where backups go. Serialised whole only into the 0600 file; the browser
 /// gets [`Target::public`].
@@ -75,6 +123,10 @@ pub struct Target {
     pub region: String,
     pub access_key_id: String,
     pub secret_access_key: String,
+    /// The storage class of the data packs; targets saved before there was a
+    /// choice read as Standard.
+    #[serde(default)]
+    pub storage_class: StorageClass,
 }
 
 impl fmt::Debug for Target {
@@ -86,6 +138,7 @@ impl fmt::Debug for Target {
             .field("prefix", &self.prefix)
             .field("region", &self.region)
             .field("access_key_id", &self.access_key_id)
+            .field("storage_class", &self.storage_class)
             .finish_non_exhaustive()
     }
 }
@@ -104,6 +157,8 @@ pub struct TargetInput {
     pub access_key_id: String,
     #[serde(default)]
     pub secret_access_key: Option<String>,
+    #[serde(default)]
+    pub storage_class: StorageClass,
 }
 
 /// A target the owner can fix: the sentence names the field. Answered as a
@@ -178,6 +233,11 @@ impl TargetInput {
         if !valid_key(&secret_access_key) {
             return Err(Invalid("the secret key has characters no provider uses"));
         }
+        if self.storage_class != StorageClass::Standard && !is_aws(&endpoint) {
+            return Err(Invalid(
+                "the Glacier storage classes are AWS's; other providers take Standard",
+            ));
+        }
         Ok(Target {
             endpoint,
             bucket,
@@ -185,6 +245,7 @@ impl TargetInput {
             region,
             access_key_id,
             secret_access_key,
+            storage_class: self.storage_class,
         })
     }
 }
@@ -216,6 +277,13 @@ impl Target {
         if !self.region.is_empty() {
             out.push_str(&format!("AWS_DEFAULT_REGION={}\n", self.region));
         }
+        // The scripts turn these into restic's `-o s3.*` options.
+        if let Some(class) = self.storage_class.aws_name() {
+            out.push_str(&format!("LOSOS_S3_STORAGE_CLASS={class}\n"));
+        }
+        if self.storage_class.needs_thaw() {
+            out.push_str("LOSOS_S3_THAW=1\n");
+        }
         out
     }
 
@@ -230,8 +298,19 @@ impl Target {
             "region": self.region,
             "accessKeyId": self.access_key_id,
             "hasSecret": !self.secret_access_key.is_empty(),
+            "storageClass": self.storage_class,
         })
     }
+}
+
+/// Whether the endpoint is AWS's own S3, the only place the Glacier classes
+/// exist: `https://s3.amazonaws.com` or a regional `https://s3.<region>.amazonaws.com`
+/// (and the dual-stack and FIPS forms, which share the suffix).
+fn is_aws(endpoint: &str) -> bool {
+    endpoint
+        .strip_prefix("https://")
+        .and_then(|host| host.split(['/', ':']).next())
+        .is_some_and(|host| host.starts_with("s3") && host.ends_with(".amazonaws.com"))
 }
 
 fn valid_endpoint(url: &str) -> bool {
@@ -452,7 +531,82 @@ mod tests {
             region: "eu-central-1".into(),
             access_key_id: "AKIAIOSFODNN7EXAMPLE".into(),
             secret_access_key: Some("wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY".into()),
+            storage_class: StorageClass::Standard,
         }
+    }
+
+    #[test]
+    fn standard_sends_no_class_and_no_thaw() {
+        let env = input().into_target(None).unwrap().env_file();
+        assert!(!env.contains("LOSOS_S3_STORAGE_CLASS"), "{env}");
+        assert!(!env.contains("LOSOS_S3_THAW"), "{env}");
+    }
+
+    #[test]
+    fn a_glacier_class_reaches_restic_and_the_browser() {
+        for (class, name, thaw) in [
+            (StorageClass::GlacierInstant, "GLACIER_IR", false),
+            (StorageClass::Glacier, "GLACIER", true),
+            (StorageClass::DeepArchive, "DEEP_ARCHIVE", true),
+        ] {
+            let t = TargetInput {
+                storage_class: class,
+                ..input()
+            }
+            .into_target(None)
+            .unwrap();
+            let env = t.env_file();
+            assert!(
+                env.contains(&format!("LOSOS_S3_STORAGE_CLASS={name}\n")),
+                "{env}"
+            );
+            assert_eq!(env.contains("LOSOS_S3_THAW=1\n"), thaw, "{env}");
+            assert_eq!(
+                t.public()["storageClass"],
+                serde_json::to_value(class).unwrap()
+            );
+        }
+    }
+
+    #[test]
+    fn glacier_only_on_aws() {
+        for ok in [
+            "https://s3.amazonaws.com",
+            "https://s3.eu-central-1.amazonaws.com",
+            "https://s3.dualstack.us-east-1.amazonaws.com",
+        ] {
+            let t = TargetInput {
+                endpoint: ok.into(),
+                storage_class: StorageClass::DeepArchive,
+                ..input()
+            };
+            assert!(t.into_target(None).is_ok(), "{ok}");
+        }
+        for bad in [
+            "https://minio.example.org:9000",
+            "http://192.168.1.20:9000",
+            "https://s3.amazonaws.com.attacker.example",
+            "https://fakes3.example.org",
+        ] {
+            let t = TargetInput {
+                endpoint: bad.into(),
+                storage_class: StorageClass::Glacier,
+                ..input()
+            };
+            assert!(t.into_target(None).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn a_target_saved_before_the_choice_reads_as_standard() {
+        let old = r#"{"endpoint":"https://s3.example.org","bucket":"b-1","accessKeyId":"AKID","secretAccessKey":"s"}"#;
+        let t: Target = serde_json::from_str(old).unwrap();
+        assert_eq!(t.storage_class, StorageClass::Standard);
+        let input: TargetInput = serde_json::from_str(
+            r#"{"endpoint":"https://s3.amazonaws.com","bucket":"b-1","accessKeyId":"AKID","storageClass":"deepArchive"}"#,
+        )
+        .unwrap();
+        assert_eq!(input.storage_class, StorageClass::DeepArchive);
     }
 
     #[test]

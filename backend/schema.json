@@ -536,7 +536,7 @@
             "object",
             "null"
           ],
-          "description": "endpoint, bucket, prefix, region, accessKeyId and hasSecret; never the secret."
+          "description": "endpoint, bucket, prefix, region, accessKeyId, hasSecret and storageClass; never the secret."
         },
         "last": {
           "type": [
@@ -1380,9 +1380,9 @@
       },
       "POST /api/backup/target": {
         "auth": true,
-        "in": "{\"endpoint\": \"https://s3.example.com\", \"bucket\": \"box-backups\", \"prefix\": \"\", \"region\": \"\", \"accessKeyId\": \"...\", \"secretAccessKey\": \"...\" (optional when one is stored)}",
+        "in": "{\"endpoint\": \"https://s3.example.com\", \"bucket\": \"box-backups\", \"prefix\": \"\", \"region\": \"\", \"accessKeyId\": \"...\", \"secretAccessKey\": \"...\" (optional when one is stored), \"storageClass\": \"standard\" | \"glacierInstant\" | \"glacier\" | \"deepArchive\" (optional, standard)}",
         "out": "{\"target\": <the bucket without its secret>}",
-        "note": "Set the S3 bucket backups go to (backend/src/backup.rs). https, or http only for a LAN address; bucket, folder, region and keys checked by shape. 400 with the field named; 409 while a backup or restore runs. The secret is written to /var/secrets (0600) and never answered. Audited."
+        "note": "Set the S3 bucket backups go to (backend/src/backup.rs). https, or http only for a LAN address; bucket, folder, region and keys checked by shape; a Glacier storage class only on an amazonaws.com address. 400 with the field named; 409 while a backup or restore runs. The secret is written to /var/secrets (0600) and never answered. Audited."
       },
       "DELETE /api/backup/target": {
         "auth": true,

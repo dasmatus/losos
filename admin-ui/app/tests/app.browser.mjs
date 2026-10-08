@@ -1463,6 +1463,7 @@ await check('the Backup pane saves a bucket without echoing the secret, backs up
       region: '',
       accessKeyId: 'AKIAEXAMPLE1234',
       secretAccessKey: 's3cr3t/Key+value',
+      storageClass: 'standard',
     },
   ]);
   assert.doesNotMatch(await page.locator('main').innerText(), /s3cr3t/, 'the secret is on the screen');
@@ -1499,6 +1500,50 @@ await check('the Backup pane saves a bucket without echoing the secret, backs up
   assert.deepEqual(again.backupPosts, [['POST', '/api/backup/restore', { code: OLD_CODE.toUpperCase() }]]);
   assert.deepEqual([...errors, ...again.errors], []);
   await again.page.close();
+});
+
+await check('Glacier is offered on Amazon S3 only, and a restore from it warns that it takes hours', async () => {
+  const { page, errors, backupPosts } = await open({ path: '/settings/backup', stored: true });
+  const form = page.getByTestId('backup-target-form');
+  const select = form.getByLabel('Storage');
+  await form.getByLabel('Address').fill('https://minio.example.org:9000');
+  assert.ok(await select.isDisabled(), 'Glacier is offered off Amazon S3');
+  await form.getByText('Glacier is on Amazon S3 only.', { exact: false }).waitFor();
+  await form.getByLabel('Address').fill('https://s3.eu-central-1.amazonaws.com');
+  assert.ok(await select.isEnabled(), 'Glacier is not offered on Amazon S3');
+  await select.selectOption('deepArchive');
+  await form.getByText('A restore waits up to 12 hours', { exact: false }).waitFor();
+  await form.getByLabel('Bucket').fill('mattbox-backups');
+  await form.getByLabel('Access key').fill('AKIAEXAMPLE1234');
+  await form.getByLabel('Secret key').fill('s3cr3t/Key+value');
+  await form.getByRole('button', { name: 'Save', exact: true }).click();
+  await page.getByTestId('backup-class').getByText('Glacier Deep Archive', { exact: true }).waitFor();
+  assert.equal(backupPosts[0][2].storageClass, 'deepArchive');
+
+  // Switching the address away from AWS sends Standard, whatever was picked.
+  await page.getByTestId('backup-target').getByRole('button', { name: 'Change…' }).click();
+  const again = page.getByTestId('backup-target-form');
+  assert.equal(await again.getByLabel('Storage').inputValue(), 'deepArchive');
+  await again.getByLabel('Address').fill('http://192.168.1.20:9000');
+  await again.getByRole('button', { name: 'Save', exact: true }).click();
+  await page.getByTestId('backup-class').getByText('Standard', { exact: true }).waitFor();
+  assert.equal(backupPosts[1][2].storageClass, 'standard');
+  await page.close();
+
+  const cold = await open({
+    path: '/settings/backup',
+    stored: true,
+    backup: { ...BACKUP_SET, target: { ...BACKUP_SET.target, storageClass: 'glacier' } },
+  });
+  const restore = cold.page.getByTestId('backup-restore');
+  await restore.getByLabel('Recovery code').fill(OLD_CODE);
+  await restore.getByRole('button', { name: 'Restore…' }).click();
+  const dialog = cold.page.getByRole('dialog');
+  await dialog.getByTestId('restore-thaw').waitFor();
+  await dialog.getByRole('button', { name: 'Restore', exact: true }).click();
+  await cold.page.getByTestId('restore-running').getByText('AWS is thawing the backup first', { exact: false }).waitFor();
+  assert.deepEqual([...errors, ...cold.errors], []);
+  await cold.page.close();
 });
 
 await check('the Reset pane starts an erase with a backup, counts down and cancels it', async () => {

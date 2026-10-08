@@ -12,9 +12,9 @@ recovery code brings it all back, on the same box or on a new one.
 
 ## The bucket
 
-**Settings → Backup** takes any S3-compatible bucket: Amazon S3, Backblaze
-B2, Wasabi, Cloudflare R2, or a MinIO on your own network. You need five
-things from the provider:
+**Settings → Backup** takes any S3-compatible bucket: Amazon S3 (Glacier
+included), Backblaze B2, Wasabi, Cloudflare R2, or a MinIO on your own
+network. You need five things from the provider:
 
 - the **address**, such as `https://s3.eu-central-1.amazonaws.com`;
 - the **bucket** name;
@@ -29,6 +29,32 @@ never shown again. To change the bucket later, leave the secret field empty
 and the stored one is kept.
 
 ![Settings, Backup: the bucket, the recovery code behind Show, the last backup and the restore field.](../img/settings-backup.png)
+
+### Glacier on Amazon S3
+
+With an Amazon S3 address (`https://s3.<region>.amazonaws.com`), **Storage**
+puts the backups in one of the Glacier storage classes. They cost less to keep
+and more to read back:
+
+| Storage | A restore starts | Good for |
+|---|---|---|
+| Standard | at once | backups you may need any day |
+| Glacier Instant Retrieval | at once, AWS charges per read | a cheaper copy you rarely read |
+| Glacier Flexible Retrieval | after 3 to 5 hours | a copy for when the box is gone |
+| Glacier Deep Archive | after up to 12 hours | the cheapest copy, for the worst day |
+
+![Settings, Backup: the bucket form with Glacier Deep Archive chosen under Storage.](../img/settings-backup-glacier.png)
+
+Only the files go into Glacier. The small index that lists the backups stays
+in Standard, so the box can still check a recovery code and tidy old backups
+at once. With Flexible Retrieval and Deep Archive a restore first asks AWS to
+thaw the backup and waits; LosOS cloud and LosOS Git keep running until the
+files come back. AWS charges for the thaw, and Glacier classes also have a
+minimum storage time, so a backup tidied away early is still billed for it.
+
+Choose the class here rather than with a lifecycle rule on the bucket. A rule
+over the whole bucket moves the index into Glacier too, and then no backup
+can be listed or opened until AWS thaws it.
 
 ## The recovery code
 
@@ -58,7 +84,8 @@ press **Restore…**. The newest backup in the bucket comes back:
 
 - what is on the box now is replaced by what is in the backup;
 - LosOS cloud and LosOS Git stop while the files are put back, then start
-  again;
+  again. From Glacier Flexible Retrieval or Deep Archive the backup is
+  thawed first, which takes hours;
 - the settings in the backup are applied, which rebuilds the box;
 - the box keeps the code you typed from then on, so its next backup goes to
   the same place.

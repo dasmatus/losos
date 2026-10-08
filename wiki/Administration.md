@@ -250,7 +250,8 @@ eval time.
 ## Backup, restore and erase
 
 **Settings, Backup** sends the box's data to an S3-compatible bucket the
-owner rents (Amazon S3, Backblaze B2, Wasabi, Cloudflare R2, MinIO).
+owner rents (Amazon S3, Glacier included, Backblaze B2, Wasabi, Cloudflare
+R2, MinIO).
 [restic](https://restic.net) does the copying and encrypts on the box before
 anything leaves it, so the bucket holds ciphertext. The repository password
 is the box's recovery code (`/var/secrets/losos-recovery-code`), which the
@@ -265,6 +266,16 @@ A backup holds:
   policy for the copy and locks it again afterwards. restic's encryption
   covers it in the bucket;
 - `modules/overrides.nix`, the home page's look and the proxy token.
+
+On an `amazonaws.com` address the owner can pick a storage class: Glacier
+Instant Retrieval, Glacier Flexible Retrieval or Glacier Deep Archive.
+restic puts only the data packs in that class and keeps its own metadata in
+S3 Standard, so checking a code and tidying stay instant. A restore from
+Flexible Retrieval or Deep Archive turns on restic's `s3-restore` feature,
+which asks AWS to thaw the packs and waits up to 48 hours; tidying there
+never repacks (`--max-repack-size 0`), since a repack would need a thaw too.
+A lifecycle rule that moves the bucket to Glacier would take restic's
+metadata with it, so the class is chosen on the pane instead.
 
 The bucket keeps the last seven. lososd runs each backup and restore as a
 transient unit, `losos-backup-<job>`, started by systemd outside lososd's

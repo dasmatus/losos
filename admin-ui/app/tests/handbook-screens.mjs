@@ -71,6 +71,7 @@ const BACKUP_SET = {
     region: 'eu-central-1',
     accessKeyId: 'AKIAIOSFODNN7EXAMPLE',
     hasSecret: true,
+    storageClass: 'glacier',
   },
   last: { time: NOW / 1000 - 6 * 3600, snapshot: '9f2c'.repeat(16), files: 18324, bytes: 47_244_640_256 },
   job: null,
@@ -493,6 +494,15 @@ const SHOTS = [
     },
   },
   { name: 'settings-backup', path: '/settings/backup' },
+  {
+    name: 'settings-backup-glacier',
+    path: '/settings/backup',
+    act: async (page) => {
+      await page.getByTestId('backup-target').getByRole('button', { name: 'Change…' }).click();
+      await page.getByTestId('backup-target-form').getByLabel('Storage').selectOption('deepArchive');
+      await settle(page);
+    },
+  },
   {
     name: 'settings-erase-dialog',
     path: '/settings/reset',

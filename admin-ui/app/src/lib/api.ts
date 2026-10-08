@@ -649,6 +649,9 @@ export function postDomainRemove(
 // ── Backups and erasing the box ───────────────────────────────────────────
 
 /** The bucket backups go to, as lososd shows it: never the secret key. */
+/** How AWS keeps the data; anything but `standard` is Amazon S3 only. */
+export type StorageClass = "standard" | "glacierInstant" | "glacier" | "deepArchive";
+
 export interface BackupTarget {
   endpoint: string;
   bucket: string;
@@ -656,6 +659,8 @@ export interface BackupTarget {
   region: string;
   accessKeyId: string;
   hasSecret: boolean;
+  /** Missing from a box older than the choice: read it as `standard`. */
+  storageClass?: StorageClass;
 }
 
 /** What the owner types. Leave `secretAccessKey` out to keep the stored one. */
@@ -666,6 +671,7 @@ export interface BackupTargetInput {
   region: string;
   accessKeyId: string;
   secretAccessKey?: string;
+  storageClass?: StorageClass;
 }
 
 export interface BackupReport {
