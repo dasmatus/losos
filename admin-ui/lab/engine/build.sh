@@ -42,6 +42,11 @@ git -C "$WORK/qemu-wasm" fetch -q --depth 1 https://github.com/ktock/qemu-wasm "
 git -C "$WORK/qemu-wasm" checkout -q FETCH_HEAD
 # Upstream's own Dockerfile: emsdk plus zlib, glib, libffi, pixman and
 # xterm-pty built for wasm32. Its README configures and makes inside it.
+# zlib.net keeps only the newest release, so the pinned zlib comes from the
+# project's GitHub release instead.
+sed -i 's|https://zlib.net/zlib-\$ZLIB_VERSION.tar.xz|https://github.com/madler/zlib/releases/download/v$ZLIB_VERSION/zlib-$ZLIB_VERSION.tar.xz|' \
+  "$WORK/qemu-wasm/Dockerfile"
+grep -q 'madler/zlib/releases' "$WORK/qemu-wasm/Dockerfile"
 docker build -q -t losos-lab-qemu-env - < "$WORK/qemu-wasm/Dockerfile"
 docker run -d --name losos-lab-qemu -v "$WORK/qemu-wasm":/qemu/:ro losos-lab-qemu-env >/dev/null
 EXTRA_CFLAGS="-O3 -Wno-error=unused-command-line-argument -matomics -mbulk-memory -DNDEBUG -DG_DISABLE_ASSERT -D_GNU_SOURCE -sASYNCIFY=1 -pthread -sPROXY_TO_PTHREAD=1 -sFORCE_FILESYSTEM -sALLOW_TABLE_GROWTH -sTOTAL_MEMORY=1024MB -sWASM_BIGINT -sMALLOC=mimalloc --js-library=/build/node_modules/xterm-pty/emscripten-pty.js -sEXPORT_ES6=1 -sASYNCIFY_IMPORTS=ffi_call_js"
