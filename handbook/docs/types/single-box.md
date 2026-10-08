@@ -5,9 +5,9 @@ sidebar_position: 1
 
 # A box on its own
 
-The simplest LosOS, and what every box is right after the first run: one
-machine on one local network, reachable from the computers and phones on
-that network and from nowhere else.
+This is the simplest LosOS, and every box starts here after the first run.
+It is one machine on one local network. The computers and phones on that
+network can reach it, and nothing else can.
 
 ## What you get
 
@@ -20,21 +20,21 @@ that network and from nowhere else.
 
 ## What you do not get
 
-- **No access from outside.** Nothing is published; no port is opened on your
-  router. To reach your files from a café you would need the
+- **No access from outside.** The box publishes nothing and opens no port on
+  your router. To reach your files from a café, you need the
   [LosOS edge](official-edge) or a VPN of your own into the home network.
 - **No mesh.** The box has nobody to lend disk or CPU to, and the Mesh pane's
-  switches stay off. Network-dependent storage sharing is refused when no
-  edge is reachable, so the switch cannot be turned on by mistake.
+  switches stay off. With no edge in reach, the box refuses network-dependent
+  storage sharing, so you cannot turn the switch on by mistake.
 - **No market.**
 
 ![The Mesh pane on a box with no edge: No edge proxy found, with what the box tried, and the mesh switches greyed with Needs an edge proxy in reach.](../img/mesh-none.png)
 
 ## When this is the right type
 
-Most homes. A box on its own has the smallest surface: the only way in is a
+Most homes. A box on its own has the fewest ways in. The only one is a
 browser on your LAN. Updates still arrive, because the box fetches them
-itself; nothing about the update path needs an edge.
+itself, and the update path needs no edge.
 
 ## Settings that matter
 
@@ -42,10 +42,10 @@ itself; nothing about the update path needs an edge.
 | ------------ | --------------------------- | ------------------------------------------------ |
 | Network      | Name                        | `losos` until you set one in the wizard           |
 | Network      | Encrypt the connection      | on; the certificate is the box's own              |
-| Network      | Reachable from outside      | off (this is what makes it a box on its own)      |
+| Network      | Reachable from outside      | off, which is what makes it a box on its own      |
 | Apps         | LosOS Git                   | on                                                |
 | Hardware     | Graphics                    | off unless the box has a GPU you want pods to use |
 | Security     | the four extra protections  | off; each one costs something                     |
 
-Changing **Reachable from outside** to on, with an edge to talk to, turns the
-box into the next type. Nothing is reinstalled.
+Switch **Reachable from outside** on while an edge is in reach, and the box
+becomes the next type. Nothing is reinstalled.

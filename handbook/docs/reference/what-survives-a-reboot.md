@@ -5,19 +5,19 @@ sidebar_position: 2
 
 # What survives a reboot
 
-The system disk is a blank slate rebuilt at every boot. Only these
-directories are kept, on the encrypted volume, and bind-mounted back into
+The box rebuilds its system disk from nothing at every boot. It keeps only
+these directories, on the encrypted volume, and bind-mounts them back into
 place:
 
 | Kept                       | Holds                                                                 |
 | -------------------------- | --------------------------------------------------------------------- |
 | `/home/notshared`          | LosOS cloud's data: your files, photos, database                      |
-| `/home/shared`             | Room lent to the mesh (encrypted separately, unreadable while sharing is off) |
+| `/home/shared`             | Room lent to the mesh, encrypted separately and unreadable while sharing is off |
 | `/var`                     | LosOS Git's data, the box's state and secrets, the two clusters' state, logs |
 | `/nix`                     | The system itself, every version kept for the boot menu               |
 | `/etc/nixos`               | The box's own description: its disks, firmware mode, unlock mode, your settings |
 | `/etc/keys`                | The disk key's recovery copy                                          |
-| `/etc/ssh`                 | Host keys (there is no SSH server; the keys identify the box)         |
+| `/etc/ssh`                 | Host keys, which identify the box. There is no SSH server.            |
 | `/etc/rancher`             | The mesh membership's node password                                   |
 | `/etc/machine-id`          | The box's identity                                                    |
 
@@ -28,10 +28,10 @@ else, is gone at 00:07.
 
 ## Two things that are documents, not settings
 
-The **Look** (background, veil, hand-written widgets) and the board layout
-are kept under `/var` and in your browser respectively, so both survive, but
-neither is part of the box's description and neither needs a rebuild to
-change.
+The box keeps the **Look**, meaning the background, the veil and the
+hand-written widgets, under `/var`. Your browser keeps the board layout. Both survive a
+reboot, but neither is part of the box's description, and you can change
+either without a rebuild.
 
 ## What a reinstall does
 
