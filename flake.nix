@@ -232,8 +232,10 @@
             # sign it in place with `losos-sign-iso` (see that module's
             # header and tests/secure-boot.nix).
             ./modules/secure-boot.nix
-            # LosOS, not NixOS, on everything the medium shows: boot menu,
-            # splash, volume label, console banner, host name, os-release.
+            # LosOS and its release tag, not NixOS, on everything the medium
+            # shows: boot menu, splash, volume label, console banner, host
+            # name, os-release.
+            ./modules/branding.nix
             ./modules/live-branding.nix
           ];
         };
@@ -270,6 +272,9 @@
             ./modules/impermanence.nix
             ./modules/disko.nix
             ./modules/boot.nix
+            # LosOS and its release tag in the boot menu, os-release and the
+            # console banners.
+            ./modules/branding.nix
             # The banner on tty1 that tells whoever is standing at the box
             # which address to open in a browser.
             ./modules/console.nix

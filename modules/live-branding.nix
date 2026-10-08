@@ -13,15 +13,8 @@
 # version string and the boot units nixpkgs names after itself ("NixOS
 # Activation").
 #
-# The pictures are drawn at build time from the brand logo
-# (admin-ui/themes/brand/salmon.png) on the dark palette of
-# admin-ui/app/src/styles/tokens.css, so replacing the logo file replaces
-# them too:
-#
-#   bios-background.png   800x600, behind the syslinux menu (BIOS boot)
-#   uefi-splash.bmp       shown by systemd-stub while the kernel loads
-#                         (UEFI boot; modules/secure-boot.nix puts it into
-#                         the UKI as its .splash section)
+# The shared half, the name, the release tag and the boot pictures, is in
+# modules/branding.nix and modules/brand-art.nix.
 {
   config,
   lib,
@@ -31,68 +24,13 @@
 
 let
   inherit (config.system.nixos) release label;
-
-  # The everyday salmon. The plate is the admin pages' Halloween logo, picked
-  # by the viewer's date; a medium is built once, so it carries the salmon.
-  logo = ../admin-ui/themes/brand/salmon.png;
-
-  # tokens.css, dark scheme.
-  ground = "#0a0e12";
-  ink = "#e2e8ee";
-  muted = "#94a2b0";
-  accent = "#48b3c0";
-
-  # The logo without its transparent margin, scaled to fit a box of that
-  # size and centred in it, so a logo of another shape lands in the same
-  # place.
-  fit = box: "${logo} -trim +repage -resize ${box} -background none -gravity center -extent ${box}";
-
-  bold = "${pkgs.dejavu_fonts}/share/fonts/truetype/DejaVuSans-Bold.ttf";
-  regular = "${pkgs.dejavu_fonts}/share/fonts/truetype/DejaVuSans.ttf";
-
-  art =
-    pkgs.runCommand "losos-boot-art"
-      {
-        nativeBuildInputs = [ pkgs.imagemagick ];
-      }
-      ''
-        mkdir $out
-
-        # The syslinux menu draws its rows over the lower half; the logo
-        # and the name sit above them.
-        magick -size 800x600 xc:'${ground}' \
-          \( ${fit "220x150"} \) -gravity north -geometry +0+52 -composite \
-          -font ${bold} -fill '${ink}' -pointsize 46 -annotate +0+218 'LosOS' \
-          -font ${regular} -fill '${muted}' -pointsize 17 -annotate +0+282 'installer' \
-          -strip PNG24:$out/bios-background.png
-
-        # systemd-stub centres this on a black screen, so the ground is black
-        # and nothing frames it.
-        magick -size 480x360 xc:black \
-          \( ${fit "260x180"} \) -gravity north -geometry +0+44 -composite \
-          -font ${bold} -fill '${ink}' -pointsize 46 -annotate +0+246 'LosOS' \
-          -type TrueColor BMP3:$out/uefi-splash.bmp
-      '';
-
-  # "#rrggbb" as the "r;g;b" a terminal escape wants.
-  rgb =
-    hex:
-    lib.concatMapStringsSep ";" (i: toString (lib.fromHexString (builtins.substring i 2 hex))) [
-      1
-      3
-      5
-    ];
+  art = config.system.build.lososBootArt;
 in
 {
-  system.nixos.distroName = "LosOS";
-  # ID=losos, and nixpkgs then adds ID_LIKE=nixos.
+  # ID=losos, and nixpkgs then adds ID_LIKE=nixos. The installed box keeps
+  # ID=nixos (modules/branding.nix); nothing ever switches this system.
   system.nixos.distroId = "losos";
-  system.nixos.extraOSReleaseArgs = {
-    PRETTY_NAME = "LosOS installer, built on NixOS ${release}";
-    # The name in systemd's "Welcome to …" line, in the accent colour.
-    ANSI_COLOR = "1;38;2;${rgb accent}";
-    HOME_URL = "https://github.com/dasmatus/losos";
-  };
+  system.nixos.extraOSReleaseArgs.PRETTY_NAME = "LosOS installer ${label}, built on NixOS ${release}";
 
   # Apart from the installed boxes, which are called `losos` on the LAN.
   networking.hostName = "losos-installer";
@@ -106,8 +44,8 @@ in
   image.baseName = lib.mkOverride 60 "losos-installer-${label}-${pkgs.stdenv.hostPlatform.system}";
 
   # BIOS boot menu (syslinux). The entry itself reads
-  # "LosOS <version> Installer" from distroName.
-  isoImage.splashImage = "${art}/bios-background.png";
+  # "LosOS <tag> Installer" from distroName and the label.
+  isoImage.splashImage = "${art}/installer-background.png";
   # VSHIFT moves the menu below the logo, and every *ROW below counts from
   # the shifted top, so 14 and 15 land on screen rows 33 and 34.
   isoImage.syslinuxTheme = ''
@@ -140,10 +78,10 @@ in
   # UEFI boots the UKI straight away, with no GRUB and so no GRUB theme;
   # without this the medium still carries NixOS's theme in /EFI/BOOT.
   isoImage.grubTheme = null;
-  system.build.bootSplash = "${art}/uefi-splash.bmp";
+  system.build.bootSplash = "${art}/installer-splash.bmp";
 
   # The banner agetty prints above the login on every console.
-  services.getty.greetingLine = ''<<< LosOS installer, built on NixOS ${label} (\m) - \l >>>'';
+  services.getty.greetingLine = ''<<< LosOS installer ${label}, built on NixOS ${release} (\m) - \l >>>'';
   services.getty.helpLine = lib.mkForce ''
     This stick installs LosOS and erases every fixed disk in the machine.
     The installer starts by itself on this console.

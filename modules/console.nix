@@ -9,7 +9,8 @@
 # changes (DHCP arrives some seconds after boot, and a lease can move).
 #
 # It replaces getty on tty1 only. tty2..tty6 keep their login prompts, which
-# are as useless as before but also as harmless.
+# are as useless as before but also as harmless; their help line points
+# back here instead of at a manual no one can log in to read.
 #
 # The URL is plain http:// on purpose: the self-signed certificate
 # modules/tls.nix makes is issued for `<hostName>.local`, so https://<ip> would
@@ -24,6 +25,13 @@
 
 let
   fqdn = "${config.losos.hostName}.local";
+
+  # "LosOS v0.1.8 is ready", with the release tag modules/branding.nix sets.
+  ready = lib.concatStringsSep " " (
+    [ "LosOS" ]
+    ++ lib.optional (config.system.image.version != null) config.system.image.version
+    ++ [ "is ready" ]
+  );
 
   # A keyfile box says what that costs on the one screen every owner sees
   # (wiki/TPM.md has the long form). The admin pages say the same.
@@ -68,7 +76,7 @@ let
         (( cols > 0 )) || cols=80
         (( lines > 0 )) || lines=25
 
-        local -a body=("" "LosOS is ready" "")
+        local -a body=("" ${lib.escapeShellArg ready} "")
         local ips
         ips=$(addresses)
         if [ -n "$ips" ]; then
@@ -116,7 +124,7 @@ let
         for text in "''${body[@]}"; do
           case $text in
             http://*) line "$text" "$width" $'\033[1m' ;;
-            "LosOS is ready" | "This box has no TPM chip.") line "$text" "$width" $'\033[1m' ;;
+            ${lib.escapeShellArg ready} | "This box has no TPM chip.") line "$text" "$width" $'\033[1m' ;;
             *) line "$text" "$width" ;;
           esac
         done
@@ -141,6 +149,10 @@ let
   };
 in
 {
+  # Printed under the banner of every other console's login prompt. No one
+  # can log in there: neither user has a password.
+  services.getty.helpLine = lib.mkForce "\nThis box has no console login. Its address is on tty1 (Alt+F1).";
+
   # Same pattern services.cage uses to take over a VT.
   systemd.services."getty@tty1".enable = false;
   systemd.services."autovt@tty1".enable = false;
