@@ -378,10 +378,10 @@
     "message": "Ihre Code-Repositorys, auf derselben Box und hinter demselben Passwort. Gebaut auf Forgejo."
   },
   "losos.home.feature.self.title": {
-    "message": "Sie kümmert sich selbst"
+    "message": "Jeden Morgen ein frisches System"
   },
   "losos.home.feature.self.body": {
-    "message": "Sie aktualisiert sich nachts und baut ihre Systemplatte bei jedem Start neu auf. Was gestern schiefging, ist am Morgen verschwunden."
+    "message": "Die Box startet um 00:07 neu und baut ihre Systemplatte bei jedem Start von Grund auf neu. Ihre Daten und Einstellungen bleiben auf dem verschlüsselten Laufwerk. Eine verirrte Änderung irgendwo sonst im System ist am Morgen weg."
   },
   "losos.home.feature.disk.title": {
     "message": "Eine verschlüsselte Platte"
@@ -393,13 +393,13 @@
     "message": "Ein Passwort, keine Shell"
   },
   "losos.home.feature.password.body": {
-    "message": "Keine Anmeldekonsole und kein SSH. Sie bedienen die Box im Webbrowser, und das Passwort Ihrer Cloud öffnet auch ihre Verwaltung."
+    "message": "Es gibt keine Anmeldekonsole und kein SSH. Sie bedienen die Box im Webbrowser, und das Passwort für LosOS cloud öffnet auch die Verwaltung."
   },
   "losos.home.feature.lan.title": {
     "message": "Läuft auch ohne Internet"
   },
   "losos.home.feature.lan.body": {
-    "message": "Alles antwortet in Ihrem lokalen Netz. Die Box trägt sogar dieses Handbuch samt Suche bei sich, für den Tag, an dem sonst nichts antwortet."
+    "message": "Dateien, Apps und Verwaltung laufen im lokalen Netz weiter, wenn das Internet ausfällt. Die Box liefert außerdem ihre eigene Kopie dieses Handbuchs aus, mit Suche."
   },
   "losos.home.step.install.title": {
     "message": "Installieren"
@@ -429,13 +429,13 @@
     "message": "Die Verwaltung"
   },
   "losos.home.eyebrow": {
-    "message": "Freie Software für einen kleinen Computer zu Hause oder im Büro"
+    "message": "Für einen kleinen Computer zu Hause oder im Büro"
   },
   "losos.home.lead": {
     "message": "Eine Box für Ihre Dateien, die sich selbst pflegt."
   },
   "losos.home.body": {
-    "message": "LosOS macht aus einem kleinen Computer, etwa einem alten Büro-Mini-PC, Ihre eigene Cloud. Sie installieren es einmal von einem USB-Stick. Danach bedienen Sie es im Webbrowser, und es aktualisiert, repariert und startet sich jede Nacht selbst neu."
+    "message": "LosOS macht aus einem alten Büro-Mini-PC oder einem anderen kleinen 64-Bit-PC Ihre eigene Cloud. Sie installieren es einmal von einem USB-Stick und bedienen es danach im Webbrowser. Es startet jede Nacht neu und spielt seine Updates selbst ein."
   },
   "losos.home.cta.install": {
     "message": "LosOS installieren"
@@ -444,7 +444,7 @@
     "message": "Handbuch lesen"
   },
   "losos.home.fine": {
-    "message": "Unter der AGPL. Läuft auf 64-Bit-Rechnern mit Intel oder AMD."
+    "message": "Freie Software unter der AGPL. Läuft auf 64-Bit-Rechnern mit Intel oder AMD."
   },
   "losos.home.screen.alt": {
     "message": "Die Verwaltung einer Box: die App-Kacheln für LosOS cloud und LosOS Git, die Speicherkarte und eine Tafel mit Widgets."
@@ -462,7 +462,7 @@
     "message": "Von einer Box bis zur Firma"
   },
   "losos.home.setups.body": {
-    "message": "Jede Box beginnt allein, in einem Heimnetz. Später kann sie über einen Edge-Server eine öffentliche Adresse bekommen, ohne dass zu Hause ein Port geöffnet wird, und in den Stunden, die Sie wählen, freien Speicher und Rechenzeit an andere Boxen verleihen. Eine Firma kann mehrere Boxen hinter einem eigenen Edge betreiben. Dorthin kommen Sie durch Einstellungen, nicht durch Neuinstallation."
+    "message": "Jede Box beginnt allein, in einem Heimnetz. Später kann sie über einen Edge-Server eine öffentliche Adresse bekommen, ohne dass zu Hause ein Port offen ist. Sie kann auch freien Speicher und Rechenzeit an andere Boxen verleihen, nur in den Stunden, die Sie wählen. Eine Firma kann mehrere Boxen hinter einem eigenen Edge betreiben. Für jeden dieser Schritte ändern Sie Einstellungen und installieren nichts neu."
   },
   "losos.home.setups.link": {
     "message": "Arten der Einrichtung"
@@ -489,13 +489,13 @@
     "message": "LosOS läuft nur auf x86_64. Es lässt sich nicht auf ARM-Rechnern installieren, insbesondere nicht auf Macs mit Apple Silicon (M-Serie)."
   },
   "losos.home.needs.vm": {
-    "message": "Zum Ausprobieren läuft es auch in einer virtuellen Maschine: QEMU, virt-manager und VirtualBox funktionieren."
+    "message": "Sie können es zuerst in einer virtuellen Maschine ausprobieren. QEMU, virt-manager und VirtualBox funktionieren."
   },
   "losos.home.closing.title": {
     "message": "Das Installationsprogramm holen"
   },
   "losos.home.closing.body": {
-    "message": "Jede Veröffentlichung enthält das Installations-ISO und seine Prüfsumme. Das Handbuch führt Sie vom Download bis zur laufenden Box."
+    "message": "Jede Veröffentlichung enthält das Installations-ISO und seine Prüfsumme. Wie Sie es auf einen USB-Stick schreiben, zeigt die Seite Installation im Handbuch."
   },
   "losos.home.closing.download": {
     "message": "Neueste Version herunterladen"
@@ -507,7 +507,7 @@
     "message": "Eine Box für Ihre Dateien, die sich selbst pflegt"
   },
   "losos.home.description": {
-    "message": "LosOS macht aus einem kleinen x86_64-Computer Ihre eigene Cloud für Dateien, Fotos, Kalender und Code. Es aktualisiert, repariert und startet sich jede Nacht selbst neu."
+    "message": "LosOS macht aus einem kleinen 64-Bit-PC Ihre eigene Cloud für Dateien, Fotos, Kalender und Code. Es startet jede Nacht neu und spielt seine Updates selbst ein."
   },
   "theme.colorToggle.ariaLabel.group": {
     "message": "Appearance",

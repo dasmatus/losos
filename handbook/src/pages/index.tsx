@@ -48,12 +48,13 @@ const FEATURES: Feature[] = [
   },
   {
     title: (
-      <Translate id="losos.home.feature.self.title">It looks after itself</Translate>
+      <Translate id="losos.home.feature.self.title">A fresh system every morning</Translate>
     ),
     body: (
       <Translate id="losos.home.feature.self.body">
-        It updates itself at night and builds its system disk from scratch on
-        every boot. Whatever went wrong yesterday is gone by the morning.
+        The box restarts at 00:07 and rebuilds its system disk from scratch on
+        every boot. Your data and settings carry over on the encrypted volume.
+        A stray change anywhere else in the system is gone by morning.
       </Translate>
     ),
     to: '/manual/updates-and-reboots',
@@ -76,8 +77,9 @@ const FEATURES: Feature[] = [
     ),
     body: (
       <Translate id="losos.home.feature.password.body">
-        No login prompt and no SSH. You use the box from a web browser, and
-        the password of your cloud also opens its admin pages.
+        There is no login prompt and no SSH. You use the box from a web
+        browser, and the password you set for LosOS cloud also opens the admin
+        pages.
       </Translate>
     ),
     to: '/manual/sign-in-and-spare-key',
@@ -88,8 +90,9 @@ const FEATURES: Feature[] = [
     ),
     body: (
       <Translate id="losos.home.feature.lan.body">
-        Everything answers on your local network. The box even carries this
-        handbook, search included, for the day nothing else does.
+        Your files, your apps and the admin pages keep working over the local
+        network when the internet is down. The box also serves its own copy of
+        this handbook, with search.
       </Translate>
     ),
     to: '/troubleshooting/only-the-lan-works',
@@ -146,7 +149,7 @@ function Hero(): ReactNode {
       <div className={styles.heroText}>
         <p className={styles.eyebrow}>
           <Translate id="losos.home.eyebrow">
-            Free software for a small computer at home or at work
+            For a small computer at home or in the office
           </Translate>
         </p>
         <h1 className={styles.heroTitle}>LosOS</h1>
@@ -157,10 +160,10 @@ function Hero(): ReactNode {
         </p>
         <p className={styles.heroBody}>
           <Translate id="losos.home.body">
-            LosOS turns a small computer, such as an old office mini-PC, into
-            your own cloud. You install it once from a USB stick. After that
-            you use it from a web browser, and it updates, repairs and
-            restarts itself every night.
+            LosOS turns an old office mini-PC, or any small 64-bit PC, into
+            your own cloud. You install it once from a USB stick and then use
+            it from a web browser. It restarts every night and installs its
+            own updates.
           </Translate>
         </p>
         <div className={styles.actions}>
@@ -173,7 +176,8 @@ function Hero(): ReactNode {
         </div>
         <p className={styles.fine}>
           <Translate id="losos.home.fine">
-            AGPL licensed. Runs on 64-bit Intel and AMD machines.
+            Free software under the AGPL. Runs on 64-bit Intel and AMD
+            computers.
           </Translate>
         </p>
       </div>
@@ -264,11 +268,12 @@ function Setups(): ReactNode {
           </h2>
           <p className={styles.prose}>
             <Translate id="losos.home.setups.body">
-              Every box starts on its own, on a home network. Later it can get a
-              public address through an edge server, without opening a port at
-              home, and lend its spare disk and CPU to other boxes in the hours
-              you choose. A company can run several boxes behind its own edge.
-              You get there by changing settings, not by reinstalling.
+              Every box starts on its own, on a home network. Later it can get
+              a public address through an edge server, with no port opened at
+              home. It can also lend its spare disk and CPU to other boxes,
+              only in the hours you choose. A company can run several boxes
+              behind its own edge. Each of these is a change of settings, not
+              a reinstall.
             </Translate>
           </p>
           <Link className={styles.more} to="/types">
@@ -329,8 +334,8 @@ function Requirements(): ReactNode {
         </p>
         <p className={styles.prose}>
           <Translate id="losos.home.needs.vm">
-            To try it first, run it in a virtual machine: QEMU, virt-manager
-            and VirtualBox all work.
+            You can try it in a virtual machine first. QEMU, virt-manager and
+            VirtualBox all work.
           </Translate>
         </p>
       </div>
@@ -347,7 +352,7 @@ function Closing(): ReactNode {
       <p className={styles.prose}>
         <Translate id="losos.home.closing.body">
           Each release carries the installer ISO and its checksum. The
-          handbook takes you from the download to a running box.
+          handbook's Install page shows how to write it to a USB stick.
         </Translate>
       </p>
       <div className={styles.actions}>
@@ -369,7 +374,7 @@ export default function Home(): ReactNode {
       description={translate({
         id: 'losos.home.description',
         message:
-          'LosOS turns a small x86_64 computer into your own cloud for files, photos, calendar and code. It updates, repairs and restarts itself every night.',
+          'LosOS turns a small 64-bit PC into your own cloud for files, photos, calendar and code. It restarts every night and installs its own updates.',
       })}>
       <main className={styles.page}>
         <Hero />

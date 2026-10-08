@@ -378,10 +378,10 @@
     "message": "Vaše repozitáre kódu na tom istom boxe a za tým istým heslom. Postavené na Forgejo."
   },
   "losos.home.feature.self.title": {
-    "message": "Stará sa o seba sám"
+    "message": "Každé ráno čistý systém"
   },
   "losos.home.feature.self.body": {
-    "message": "V noci sa sám aktualizuje a pri každom štarte si postaví systémový disk odznova. Čokoľvek sa včera pokazilo, ráno je preč."
+    "message": "Box sa reštartuje o 00:07 a pri každom štarte si postaví systémový disk odznova. Vaše dáta a nastavenia zostávajú na šifrovanom zväzku. Náhodná zmena kdekoľvek inde v systéme je ráno preč."
   },
   "losos.home.feature.disk.title": {
     "message": "Šifrovaný disk"
@@ -393,13 +393,13 @@
     "message": "Jedno heslo, žiadny shell"
   },
   "losos.home.feature.password.body": {
-    "message": "Žiadne prihlasovacie okno a žiadne SSH. Box používate z webového prehliadača a heslo vášho cloudu otvára aj jeho správu."
+    "message": "Nemá prihlasovacie okno ani SSH. Box používate z webového prehliadača a heslo, ktoré si nastavíte pre LosOS cloud, otvára aj správu boxu."
   },
   "losos.home.feature.lan.title": {
     "message": "Funguje aj bez internetu"
   },
   "losos.home.feature.lan.body": {
-    "message": "Všetko odpovedá vo vašej lokálnej sieti. Box nosí aj túto príručku aj s vyhľadávaním, pre deň, keď nič iné neodpovedá."
+    "message": "Súbory, aplikácie aj správa boxu fungujú v lokálnej sieti aj vtedy, keď nejde internet. Box navyše ponúka vlastnú kópiu tejto príručky aj s vyhľadávaním."
   },
   "losos.home.step.install.title": {
     "message": "Nainštalujte ho"
@@ -429,13 +429,13 @@
     "message": "Správa boxu"
   },
   "losos.home.eyebrow": {
-    "message": "Slobodný softvér pre malý počítač doma alebo v práci"
+    "message": "Pre malý počítač doma alebo v kancelárii"
   },
   "losos.home.lead": {
     "message": "Box na vaše súbory, ktorý sa stará sám o seba."
   },
   "losos.home.body": {
-    "message": "LosOS urobí z malého počítača, napríklad zo starého kancelárskeho mini-PC, váš vlastný cloud. Nainštalujete ho raz z USB kľúča. Potom ho používate z webového prehliadača a každú noc sa sám aktualizuje, opraví a reštartuje."
+    "message": "LosOS urobí zo starého kancelárskeho mini-PC alebo z iného malého 64-bitového počítača váš vlastný cloud. Nainštalujete ho raz z USB kľúča a potom ho používate z webového prehliadača. Každú noc sa reštartuje a sám si nainštaluje aktualizácie."
   },
   "losos.home.cta.install": {
     "message": "Nainštalovať LosOS"
@@ -444,7 +444,7 @@
     "message": "Čítať príručku"
   },
   "losos.home.fine": {
-    "message": "Licencia AGPL. Beží na 64-bitových počítačoch Intel a AMD."
+    "message": "Slobodný softvér pod licenciou AGPL. Beží na 64-bitových počítačoch Intel a AMD."
   },
   "losos.home.screen.alt": {
     "message": "Správa boxu: dlaždice aplikácií LosOS cloud a LosOS Git, karta úložiska a tabuľa widgetov."
@@ -462,7 +462,7 @@
     "message": "Od jedného boxu po firmu"
   },
   "losos.home.setups.body": {
-    "message": "Každý box začína sám, v domácej sieti. Neskôr môže dostať verejnú adresu cez edge server bez otvárania portu doma a v hodinách, ktoré si zvolíte, požičiavať voľný disk a procesor iným boxom. Firma môže prevádzkovať viac boxov za vlastným edge serverom. Dostanete sa tam zmenou nastavení, nie preinštalovaním."
+    "message": "Každý box začína sám, v domácej sieti. Neskôr môže dostať verejnú adresu cez edge server bez otvárania portu doma. Môže aj požičiavať voľný disk a procesor iným boxom, len v hodinách, ktoré si zvolíte. Firma môže prevádzkovať viac boxov za vlastným edge serverom. Na každú z týchto zmien stačí zmeniť nastavenia, netreba preinštalovať."
   },
   "losos.home.setups.link": {
     "message": "Typy nasadenia"
@@ -489,13 +489,13 @@
     "message": "LosOS beží iba na x86_64. Nenainštalujete ho na počítače s ARM, a teda ani na Macy s Apple Silicon (rad M)."
   },
   "losos.home.needs.vm": {
-    "message": "Ak ho chcete najprv vyskúšať, spustite ho vo virtuálnom stroji: funguje QEMU, virt-manager aj VirtualBox."
+    "message": "Najprv ho môžete vyskúšať vo virtuálnom stroji. Funguje QEMU, virt-manager aj VirtualBox."
   },
   "losos.home.closing.title": {
     "message": "Stiahnite si inštalátor"
   },
   "losos.home.closing.body": {
-    "message": "Každé vydanie obsahuje ISO inštalátora a jeho kontrolný súčet. Príručka vás prevedie od stiahnutia po bežiaci box."
+    "message": "Každé vydanie obsahuje ISO inštalátora a jeho kontrolný súčet. Ako ho zapísať na USB kľúč, opisuje stránka Inštalácia v príručke."
   },
   "losos.home.closing.download": {
     "message": "Stiahnuť najnovšie vydanie"
@@ -507,7 +507,7 @@
     "message": "Box na vaše súbory, ktorý sa stará sám o seba"
   },
   "losos.home.description": {
-    "message": "LosOS urobí z malého počítača x86_64 váš vlastný cloud na súbory, fotky, kalendár a kód. Každú noc sa sám aktualizuje, opraví a reštartuje."
+    "message": "LosOS urobí z malého 64-bitového počítača váš vlastný cloud na súbory, fotky, kalendár a kód. Každú noc sa reštartuje a sám si nainštaluje aktualizácie."
   },
   "theme.colorToggle.ariaLabel.group": {
     "message": "Appearance",
