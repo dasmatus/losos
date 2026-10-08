@@ -647,19 +647,17 @@ let
       (lib.concatStringsSep "," dnsCfg.ipv6)
     ]
     ++ lib.optionals relayRoutes [
-      "--routes-etcd-url"
-      dnsCfg.relayRoutes.etcdUrl
-      "--routes-prefix"
-      dnsCfg.relayRoutes.prefix
+      "--relay-routes"
+      "--relay-routes-file"
+      "/var/lib/losos-registrar/relay-routes.json"
       "--relay-pass-key-file"
       "/var/lib/losos-registrar/relay-pass.key"
     ]
   );
   # Custom domains for boxes behind a local edge (backend-registrar's
-  # routes.rs): the route table in etcd, and the key relay passes are
-  # signed with, which the registrar makes on its first start.
+  # routes.rs): the route table and the key relay passes are signed with,
+  # both in the registrar's StateDirectory, the key made on its first start.
   relayRoutes = dnsCfg.enable && dnsCfg.relayRoutes.enable;
-  localEtcd = relayRoutes && dnsCfg.relayRoutes.localEtcd;
 
   serveArgs = utils.escapeSystemdExecArgs (
     [
@@ -867,8 +865,7 @@ in
         "losos-rathole-seed.service"
       ]
       ++ lib.optional meshEnabled "losos-mesh-rbac.service"
-      ++ lib.optional cfg.market.enable "losos-stripe-gate.service"
-      ++ lib.optional localEtcd "etcd.service";
+      ++ lib.optional cfg.market.enable "losos-stripe-gate.service";
       # Wants, not Requires, on the RBAC extractor: the master-proxy half must
       # keep serving /register and rewriting Traefik on an edge whose mesh
       # apiserver is down or not yet up. A failed extraction costs the join
@@ -877,10 +874,7 @@ in
         "network-online.target"
       ]
       ++ lib.optional meshEnabled "losos-mesh-rbac.service"
-      ++ lib.optional cfg.market.enable "losos-stripe-gate.service"
-      # Wants, like the rest: an etcd that is down costs the relayed
-      # domains' new routes (the last table keeps routing), nothing else.
-      ++ lib.optional localEtcd "etcd.service";
+      ++ lib.optional cfg.market.enable "losos-stripe-gate.service";
       serviceConfig = {
         ExecStart = serveArgs;
         StateDirectory = "losos-registrar";
@@ -920,18 +914,6 @@ in
           journal-content = "none";
         };
       };
-    };
-
-    # The route table's etcd: one member, loopback only, on ports clear of
-    # the mesh's rke2 server, whose embedded etcd takes 2379 and 2380 on an
-    # edge that runs both.
-    services.etcd = lib.mkIf localEtcd {
-      enable = true;
-      name = "losos-routes";
-      listenClientUrls = [ "http://127.0.0.1:2479" ];
-      listenPeerUrls = [ "http://127.0.0.1:2480" ];
-      initialCluster = [ "losos-routes=http://127.0.0.1:2480" ];
-      dataDir = "/var/lib/losos-routes-etcd";
     };
 
     systemd.paths.losos-dns-reload = lib.mkIf dnsCfg.enable {

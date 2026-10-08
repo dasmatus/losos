@@ -185,8 +185,6 @@ jobs:
     # 7.7-10.3 minutes. Mirrors devenv.nix's `test-rust`, plus a Postgres for
     # edge-vercel's gated store suite (tests/postgres.rs), which devenv does
     # not start: without LOSOS_TEST_DATABASE_URL that suite passes trivially.
-    # Likewise an etcd for backend-registrar's tests/etcd.rs, the route table
-    # against the real v3 JSON gateway (LOSOS_TEST_ETCD_URL).
     services:
       postgres:
         image: postgres:17-alpine
@@ -201,17 +199,8 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
-      etcd:
-        image: quay.io/coreos/etcd:v3.5.17
-        env:
-          ETCD_NAME: losos-test
-          ETCD_LISTEN_CLIENT_URLS: http://0.0.0.0:2379
-          ETCD_ADVERTISE_CLIENT_URLS: http://127.0.0.1:2379
-        ports:
-          - 2379:2379
     env:
       LOSOS_TEST_DATABASE_URL: postgres://losos:losos@127.0.0.1:5432/losos?sslmode=disable
-      LOSOS_TEST_ETCD_URL: http://127.0.0.1:2379
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-nix
