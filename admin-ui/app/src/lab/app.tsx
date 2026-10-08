@@ -20,7 +20,7 @@ import { LibvirtBackend } from "./engine/libvirt";
 import { QemuBackend } from "./engine/qemu";
 import { VirtRpcBackend } from "./engine/virt-rpc";
 import { readLast } from "./files";
-import { plateUrl } from "./icons";
+import { logoUrl } from "./icons";
 import { Inspector } from "./inspector";
 import { BOX_COPY } from "./shape";
 import { Splash, type SplashStep } from "./splash";
@@ -53,7 +53,7 @@ function boot(step: (s: SplashStep) => void): Promise<void> {
 
 async function bootOnce(step: (s: SplashStep) => void): Promise<void> {
   const core = await Core.load();
-  core.setPlate(plateUrl);
+  core.setPlate(logoUrl);
   const s = new LabStore(core);
   setStore(s);
   const engine = new Engine(s);

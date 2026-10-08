@@ -257,10 +257,13 @@ until its owner switches.
 Owners see the two apps as **LosOS cloud** and **LosOS Git**. The theme
 folder's `defaults.php` names Nextcloud and Forgejo's `APP_NAME` names
 Forgejo. Both get logos drawn from `admin-ui/themes/brand/`. `marks.py` wraps
-`plate.png`, the plate of salmon cut out of Matus's own photo, into the SVGs
-and copies it to the SPA and the handbook. The build renders every PNG and
-the `.ico` from those. The old pixel-art fish was dropped over a copyright
-worry, and nothing drawn by anyone else goes back in. The rest of the
+`salmon.png`, a live coho salmon cut out of a NOAA Fisheries photo, into the
+SVGs and copies it to the SPA and the handbook. The build renders every PNG
+and the `.ico` from those. On 31 October, by the viewer's own date, the admin
+pages and the handbook show `plate.png` instead, a plate of salmon from
+Matus's own photo. `brand/CREDITS.md` says where both pictures come from.
+The old pixel-art fish was dropped over a copyright worry and does not go
+back in. The rest of the
 upstream branding goes by config (no skeleton files, no help or sign-up
 links, no "Powered by") and two Forgejo template overrides.
 

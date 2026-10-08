@@ -189,7 +189,7 @@ pre {
   width: 32px;
   margin: 0;
 }
-/* The site's name, in the chip the SPA puts beside its plate of salmon. */
+/* The site's name, in the chip the SPA puts beside its logo. */
 .navbar__title {
   display: inline-flex;
   align-items: center;
