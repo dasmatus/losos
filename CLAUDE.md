@@ -180,6 +180,14 @@ and is never served or built by nix.
     rewrites what gets through. After a rewrite, `git pull --rebase`.
 24. Match `.github/workflows/ci.yml` and `devenv.nix` by hand when adding a
     gate. Neither calls the other.
+25. PR descriptions follow `.github/pull_request_template.md`, every section
+    filled: Before / After prose, a screenshots table (one Before and one
+    After per screen, same window size and state) for anything a person can
+    see, or "No visible change." and why; under Tested, name what did not
+    run (a session has no KVM, so the VM tests are usually "not run").
+    Sessions keep their screenshots under `/mnt/project-files/demo/<topic>/`
+    and name the folder in the table; the project's attribution block goes
+    above the template as the first two lines.
 
 ## Rationalizations to reject
 
@@ -197,7 +205,6 @@ and is never served or built by nix.
 
 ## Before you finish
 
-<<<<<<< HEAD
 One flake check is not a VM: `losos-invariants` (`tests/invariants.nix`)
 evaluates the published `install` configuration and asserts the option values
 the appliance cannot afford to lose by a default drifting (garbage collection,
@@ -742,7 +749,6 @@ A separate `midnight-reboot.timer` reboots unconditionally at 00:07 with
   this flake tracks; don't change it.
 - **The `result` symlink is a `nix build` artifact** (pointing into
   `/nix/store`), gitignored, never committed.
-=======
 - [ ] `devenv test` passed, not only `nix build`?
 - [ ] New persistent path listed in `impermanence.nix`?
 - [ ] New option declared under `options.losos`, default in `defaults.nix`?
@@ -751,4 +757,4 @@ A separate `midnight-reboot.timer` reboots unconditionally at 00:07 with
 - [ ] CI and `devenv.nix` still in step; the three nixpkgs pins agree?
 - [ ] Docs changed in `wiki/`, not the web wiki?
 - [ ] Commit message carries no trailer and no session link?
->>>>>>> 299f9f2 (CLAUDE.md: a third of the length, in the skill-template shape)
+- [ ] PR body follows the template; screenshots, or "No visible change." and why?
