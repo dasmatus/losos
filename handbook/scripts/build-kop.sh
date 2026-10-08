@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # Builds the hand-in PDF of the KOP (the Slovak technical documentation) from
-# its Markdown pages under docs/project/kop/. Docusaurus leaves docs/project/
-# out of both builds of the site (docusaurus.config.ts), so this PDF is the
-# only thing made from them.
+# its Markdown pages under docs/project/kop/, the same pages Docusaurus
+# publishes as a chapter of the handbook.
 #
 #   scripts/build-kop.sh [OUTPUT.pdf]        (default: build/kop/LosOS-KOP.pdf)
 #
