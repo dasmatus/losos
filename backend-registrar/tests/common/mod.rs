@@ -175,6 +175,10 @@ impl MeshFixture {
 pub const STRIPE_KEY: &str = "sk_test_0123456789abcdef";
 pub const WEBHOOK_SECRET: &str = "whsec_0123456789abcdef";
 pub const RETURN_URL: &str = "https://losos.example/market";
+/// What the test edge sells, for the hardware routes.
+pub const HARDWARE_CATALOGUE: &str = r#"{"currency":"eur","countries":["SK","DE"],"items":[
+    {"sku":"box","name":"LosOS box","detail":"x86_64 mini PC, 16 GB, 1 TB","unit_amount":44900},
+    {"sku":"gateway","name":"LosOS edge gateway","detail":"x86_64 mini PC, 16 GB, 1 TB","unit_amount":39900}]}"#;
 /// The zone and address the domains fixture serves.
 pub const DNS_ZONE: &str = "boxes.example.test";
 pub const EDGE_IPV4: &str = "203.0.113.7";
@@ -541,6 +545,7 @@ impl Edge {
         let market = stripe_api.map(|stripe_api| {
             std::fs::write(dir.join("stripe.key"), STRIPE_KEY).expect("write stripe key");
             std::fs::write(dir.join("webhook.secret"), WEBHOOK_SECRET).expect("write webhook");
+            std::fs::write(dir.join("hardware.json"), HARDWARE_CATALOGUE).expect("write catalogue");
             let gate = losos_registrar::stripe_gate::GateOpts {
                 socket: dir.path_str("gate.sock"),
                 stripe_key_file: dir.path_str("stripe.key"),
@@ -549,6 +554,7 @@ impl Edge {
                 currency: "eur".to_string(),
                 fee_bps: Some(losos_registrar::market::DEFAULT_FEE_BPS),
                 return_url: Some(RETURN_URL.to_string()),
+                hardware_catalogue: Some(dir.path_str("hardware.json")),
             };
             let listener = losos_registrar::stripe_gate::bind(&gate.socket).expect("bind gate");
             let (stop, rx) = oneshot::channel::<()>();
@@ -567,6 +573,7 @@ impl Edge {
                 currency: "eur".to_string(),
                 fee_bps: losos_registrar::market::DEFAULT_FEE_BPS,
                 storage_class: losos_registrar::market::DEFAULT_STORAGE_CLASS.to_string(),
+                hardware_catalogue: Some(dir.path_str("hardware.json")),
             })
         });
 

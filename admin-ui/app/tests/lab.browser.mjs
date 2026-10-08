@@ -123,6 +123,68 @@ await check('This box: signed in, the lab draws this box from /api', async () =>
   await page.close();
 });
 
+const CATALOGUE = {
+  currency: 'eur',
+  countries: ['SK', 'DE'],
+  items: [
+    { sku: 'box', name: 'LosOS box', detail: 'x86_64 mini PC, 16 GB RAM, 1 TB SSD, LosOS installed', unit_amount: 44900 },
+    { sku: 'gateway', name: 'LosOS edge gateway', detail: 'x86_64 mini PC, 16 GB RAM, 1 TB SSD, edge gateway installed', unit_amount: 44900 },
+  ],
+};
+const ordering = (answer, posted = []) => async (page, authed) => {
+  await page.route('**/api/lab/order', async (route) => {
+    if (!authed(route)) return json(route, 401, {});
+    if (route.request().method() === 'POST') {
+      posted.push(JSON.parse(route.request().postData() ?? '{}'));
+      return json(route, 200, { available: true, order_id: 'hw_1', checkout_url: 'https://checkout.stripe.com/c/pay/cs_test_1', amount: 89800, currency: 'eur' });
+    }
+    return json(route, 200, answer);
+  });
+};
+
+await check('ordering: off unless the box says so', async () => {
+  for (const routes of [null, ordering({ enabled: false })]) {
+    const { page, clean } = await open({ signedIn: true, routes });
+    assert.strictEqual(await page.getByTestId('order-open').count(), 0, 'no order button');
+    await clean();
+    await page.close();
+  }
+});
+
+await check('ordering: the cart starts from the canvas and checks out on Stripe', async () => {
+  const posted = [];
+  const { page, clean } = await open({ signedIn: true, routes: ordering({ enabled: true, available: true, catalogue: CATALOGUE }, posted) });
+  await page.route('https://checkout.stripe.com/**', (route) => route.fulfill({ status: 200, contentType: 'text/html', body: '<title>Stripe Checkout</title>' }));
+  await page.getByTestId('order-open').click();
+  const dialog = page.getByRole('dialog', { name: 'Order this setup' });
+  await dialog.waitFor();
+  // This box's setup: the box, and the edge it found on its LAN.
+  assert.strictEqual(await page.getByTestId('order-qty-box').innerText(), '1');
+  assert.strictEqual(await page.getByTestId('order-qty-gateway').innerText(), '1');
+  await dialog.getByText('1 box and 1 edge gateway').waitFor();
+  await dialog.getByRole('button', { name: 'More: LosOS edge gateway' }).click();
+  await dialog.getByRole('button', { name: 'More: LosOS box' }).click();
+  assert.strictEqual(await page.getByTestId('order-qty-box').innerText(), '2');
+  assert.match(await page.getByTestId('order-total').innerText(), /1,796\.00/);
+  await dialog.getByText('Ships to Slovakia, Germany.').waitFor();
+  await clean();
+  await page.getByTestId('order-pay').click();
+  await page.waitForURL('https://checkout.stripe.com/c/pay/cs_test_1');
+  assert.deepStrictEqual(posted, [{ items: [ { sku: 'box', quantity: 2 }, { sku: 'gateway', quantity: 2 } ] }]);
+  await page.close();
+});
+
+await check('ordering: with no official edge the dialog says why and offers no payment', async () => {
+  const { page, clean } = await open({ signedIn: true, routes: ordering({ enabled: true, available: false, reason: 'noOfficialEdge' }) });
+  await page.getByTestId('order-open').click();
+  await page.getByTestId('order-unavailable').getByText('Ordering goes through an official edge').waitFor();
+  assert.strictEqual(await page.getByTestId('order-pay').count(), 0);
+  await page.keyboard.press('Escape');
+  await page.getByRole('dialog').waitFor({ state: 'hidden' });
+  await clean();
+  await page.close();
+});
+
 await check('place from the tray, drag, connect, delete with the keyboard', async () => {
   const { page, clean } = await open();
   const wrap = await page.getByTestId('lab-canvas-wrap').boundingBox();

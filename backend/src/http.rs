@@ -772,6 +772,46 @@ async fn delete_lab_guest(
     })
 }
 
+/// `losos.lab.ordering.enable`, which modules/daemon.nix passes as
+/// `LOSOS_LAB_ORDERING=1`.
+fn lab_ordering() -> bool {
+    std::env::var("LOSOS_LAB_ORDERING").is_ok_and(|v| v == "1")
+}
+
+/// `GET /api/lab/order` — whether the Lab shows its order button, and the
+/// official edge's catalogue when it does. A 200 in every case.
+async fn get_lab_order(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    guarded(&api, &req, "/api/lab/order", false, || {
+        run(&api, |b| crate::losos::cmd_lab_order(b, lab_ordering()))
+    })
+}
+
+/// `POST /api/lab/order` — `{"items":[{"sku","quantity"}]}` to a Stripe
+/// Checkout on the official edge.
+async fn post_lab_order(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> HttpResponse {
+    guarded(&api, &req, "/api/lab/order", true, || {
+        let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
+        let items: Option<Vec<(String, u64)>> = doc
+            .get("items")
+            .and_then(serde_json::Value::as_array)
+            .and_then(|lines| {
+                lines
+                    .iter()
+                    .map(|l| Some((field_str(l, "sku")?, field_u64(l, "quantity")?)))
+                    .collect()
+            });
+        match items {
+            Some(items) => run(&api, |b| {
+                crate::losos::cmd_lab_order_op(b, lab_ordering(), items)
+            }),
+            None => err(
+                actix_web::http::StatusCode::BAD_REQUEST,
+                "the request body is missing a required field",
+            ),
+        }
+    })
+}
+
 /// `GET /api/market` — the market as this box sees it: the shelf and its own
 /// account, or `{"available": false}` when it is not offered here.
 ///
@@ -1176,6 +1216,8 @@ pub fn serve(backend: IoLosos) -> anyhow::Result<()> {
                 )
                 .route("/api/market/orders", web::post().to(post_market_order))
                 .route("/api/lab/hello", web::get().to(get_lab_hello))
+                .route("/api/lab/order", web::get().to(get_lab_order))
+                .route("/api/lab/order", web::post().to(post_lab_order))
                 .route("/api/lab/guests", web::post().to(post_lab_guest))
                 .route("/api/lab/guests/{key}", web::delete().to(delete_lab_guest))
                 .route("/api/lab/virt-ticket", web::post().to(post_lab_virt_ticket))

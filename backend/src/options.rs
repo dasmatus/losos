@@ -92,6 +92,10 @@ pub struct OptionDoc {
     pub fixed: Option<String>,
     #[serde(default)]
     pub read_only: bool,
+    /// Declared `visible = false`: the pane does not draw it, the gate still
+    /// takes it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub hidden: bool,
 }
 
 /// The whole document.
