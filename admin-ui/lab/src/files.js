@@ -78,7 +78,7 @@ function setFileOption(key, name) {
 async function saveSetup() {
   const doc = setupDoc();
   const blob = new Blob([JSON.stringify(doc, null, 2) + '\n'], { type: 'application/json' });
-  const filename = deviceName(doc.name, 'setup').slice(0, 32).replace(/-+$/, '') + '.losos-lab.json';
+  const filename = deviceName(doc.name, 'setup').slice(0, 32).replace(/-+$/, '') + '.llf';
   // Inside a claude.ai artifact a plain download link does nothing; the
   // viewer's own save prompt does. Everywhere else (the box) the link.
   const dl = window.claude && typeof window.claude.use === 'function' ? await window.claude.use('downloads').catch(() => null) : null;
@@ -101,7 +101,7 @@ function openSetupFile(file) {
   file.text().then(text => {
     let doc;
     try { doc = JSON.parse(text); } catch { toast('This is not a LosOS Lab setup file.', 6000); return; }
-    const skipped = openDoc(doc, 'file', file.name.replace(/\.losos-lab\.json$|\.json$/, ''));
+    const skipped = openDoc(doc, 'file', file.name.replace(/\.(llf|losos-lab\.json|json)$/i, ''));
     if (skipped !== null) {
       OPENED = doc;
       if (!skipped) toast(`Opened ${UI.fileName}.`);
