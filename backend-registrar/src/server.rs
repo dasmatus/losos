@@ -53,7 +53,7 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::future::Future;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
@@ -84,7 +84,7 @@ use crate::market::{
 use crate::opts::ServeOpts;
 use crate::registry::{Registry, Shared};
 use crate::relay::{self, Enrolment, RelayRefused, RelayReq, RelayResp, RelayRoute, UplinkFile};
-use crate::routes::{self, Bindings, Etcd, PassKey, PlanInput, RouteRow};
+use crate::routes::{self, Bindings, PassKey, PlanInput, RouteRow, TableFile};
 use crate::stripe_gate::{GATE_TIMEOUT, MAX_GATE_CALLS_PER_REQUEST};
 use crate::window::{self, valid_hhmm, valid_tz, ComputeWindow};
 use crate::zone::{self, ZoneNames};
@@ -155,6 +155,10 @@ const DECOY_TOKEN: &str = "\0decoy\0";
 /// nothing here and keeps the narrow default.
 const COMPUTE_WINDOWS_FILE_MODE: u32 = 0o600;
 
+/// `relay-routes.json` names boxes, their local edges and their domains, the
+/// same operator-only inventory `registry.json` holds.
+const ROUTE_TABLE_FILE_MODE: u32 = 0o600;
+
 /// Budget for one request to the mesh apiserver. Two of these (the `Node`
 /// delete and the node-password `Secret` delete) plus a TLS handshake have to
 /// fit inside [`REQUEST_TIMEOUT`], or the join comes back as the guard's 504
@@ -169,12 +173,12 @@ const MAX_NODE_NAME_LEN: usize = 253;
 
 /// An official edge's route table for boxes behind local edges.
 struct RouteTable {
-    etcd: Etcd,
-    prefix: String,
+    /// `relay-routes.json`, rewritten when the table changes.
+    file: PathBuf,
     key: PassKey,
     /// Which spoke vouched for which box, as `/relay` verified it.
     bindings: std::sync::Mutex<Bindings>,
-    /// What etcd held after the last pass that reached it.
+    /// The table the last reconcile pass planned.
     last: std::sync::Mutex<BTreeMap<String, RouteRow>>,
 }
 
@@ -210,7 +214,7 @@ struct AppState {
     enrolment: Option<Arc<Enrolment>>,
     /// The enrolled file, memoised like the whitelist.
     enrolled: Arc<TenantCache>,
-    /// `None` unless `--routes-etcd-url` was given (see `crate::routes`).
+    /// `None` unless `--relay-routes` was given (see `crate::routes`).
     routes: Option<Arc<RouteTable>>,
     /// The relay passes this edge's own boxes handed it, by box id, for the
     /// uplink to forward to the hub. Live state only: every box repeats its
@@ -455,21 +459,31 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
         None => None,
         Some(_) if domains.is_none() => {
             return Err(miette!(
-                "--routes-etcd-url needs --dns-zone: only an edge that routes custom domains keeps the route table"
+                "--relay-routes needs --dns-zone: only an edge that routes custom domains keeps the route table"
             ))
         }
-        Some(r) => Some(Arc::new(RouteTable {
-            etcd: Etcd::new(&r.etcd_url)
-                .into_diagnostic()
-                .wrap_err("build the etcd client")?,
-            prefix: r.prefix.clone(),
-            key: PassKey::load_or_create(Path::new(&r.pass_key_file))
-                .await
-                .into_diagnostic()
-                .with_context(|| format!("relay pass key {}", r.pass_key_file))?,
-            bindings: std::sync::Mutex::new(Bindings::default()),
-            last: std::sync::Mutex::new(BTreeMap::new()),
-        })),
+        Some(r) => {
+            let file = PathBuf::from(&r.table_file);
+            // A table file that does not parse costs the routes until each
+            // spoke's next /relay, not the edge: start empty and say so.
+            let bindings = TableFile::load_bindings(&file).await.unwrap_or_else(|e| {
+                tracing::warn!(
+                    target: Action::Relay.target(),
+                    "route table {}: {e}; starting empty, spokes refill it on their next /relay",
+                    file.display(),
+                );
+                Bindings::default()
+            });
+            Some(Arc::new(RouteTable {
+                file,
+                key: PassKey::load_or_create(Path::new(&r.pass_key_file))
+                    .await
+                    .into_diagnostic()
+                    .with_context(|| format!("relay pass key {}", r.pass_key_file))?,
+                bindings: std::sync::Mutex::new(bindings),
+                last: std::sync::Mutex::new(BTreeMap::new()),
+            }))
+        }
     };
 
     let state = AppState {
@@ -2566,7 +2580,7 @@ async fn domain_hosts(
         hosts.entry(tenant).or_default().extend(domains);
     }
     // A box behind a local edge: its names go to its relayed tenant, as the
-    // route table in etcd says (crate::routes).
+    // route table says (crate::routes).
     if let Some(rt) = &st.routes {
         for row in relayed_routes(st, rt, live, &hosts).await {
             hosts.entry(row.service).or_default().push(row.domain);
@@ -2578,11 +2592,10 @@ async fn domain_hosts(
     (hosts, names)
 }
 
-/// Plan the route table, write it to etcd, and return the rows to route:
-/// those etcd holds that the plan also allows. Reading back keeps etcd the
-/// table that routes; intersecting with the plan keeps a row a box no
-/// longer qualifies for from routing while etcd is unreachable (new rows
-/// then wait for it, and the rest keep routing from the last good read).
+/// Plan the route table, keep it, and return the rows to route. The file
+/// beside the registry follows the table; failing to write it is logged and
+/// costs nothing until the next restart, which would then start from older
+/// bindings.
 async fn relayed_routes(
     st: &AppState,
     rt: &RouteTable,
@@ -2600,46 +2613,51 @@ async fn relayed_routes(
         .collect();
     let direct_live: HashSet<String> = live_ids.difference(&relayed_live).cloned().collect();
     let mesh: HashSet<String> = st.reg.compute_windows().await.into_keys().collect();
-    let desired = {
+    let (table, text) = {
         let bindings = rt
             .bindings
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        routes::plan(
-            &rt.prefix,
-            &PlanInput {
-                hosts,
-                direct_live: &direct_live,
-                relayed_live: &relayed_live,
-                mesh: &mesh,
-                bindings: &bindings,
-                now: crate::market::now_secs(),
-            },
-        )
+        let table = routes::plan(&PlanInput {
+            hosts,
+            direct_live: &direct_live,
+            relayed_live: &relayed_live,
+            mesh: &mesh,
+            bindings: &bindings,
+            now: crate::market::now_secs(),
+        });
+        let text = TableFile::render(&bindings, &table);
+        (table, text)
     };
-    let table = match rt.etcd.sync(&rt.prefix, &desired).await {
-        Ok(table) => {
-            *rt.last
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner) = table.clone();
-            table
+    {
+        let mut last = rt
+            .last
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        for key in last.keys().filter(|k| !table.contains_key(*k)) {
+            tracing::info!(target: Action::Domains.target(), "route table: removing {key}");
         }
-        Err(e) => {
-            tracing::warn!(
-                target: Action::Domains.target(),
-                "route table not written: {e}; routing from the last table etcd gave",
-            );
-            rt.last
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .clone()
+        for (key, row) in &table {
+            if last.get(key) != Some(row) {
+                tracing::info!(
+                    target: Action::Domains.target(),
+                    "route table: {} goes to {} through {}",
+                    row.domain,
+                    row.tenant,
+                    row.spoke,
+                );
+            }
         }
-    };
-    table
-        .into_iter()
-        .filter(|(key, row)| desired.get(key) == Some(row))
-        .map(|(_, row)| row)
-        .collect()
+        last.clone_from(&table);
+    }
+    if let Err(e) = write_if_changed(&rt.file, &text, ROUTE_TABLE_FILE_MODE).await {
+        tracing::warn!(
+            target: Action::Domains.target(),
+            "route table {} not written: {e:#}",
+            rt.file.display(),
+        );
+    }
+    table.into_values().collect()
 }
 
 /// Render the zone and replace the file when it says something new.

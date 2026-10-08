@@ -20,12 +20,11 @@
 #      domain: the edge runs no market, so there is no Stripe account to
 #      vouch for it. It carries the box's relay pass, because the edge keeps
 #      a route table (losos.edge.dns.relayRoutes).
-#   4. The route table's wiring: etcd runs on loopback 2479, clear of the
-#      2379 the mesh's rke2 server would take; the registrar made its relay
-#      pass key (0600); a spoke forwarding that pass on `/relay` is answered
-#      with no routes (nothing is vouched for here); and a key under
-#      /losos/routes/ the registrar did not write is removed on its next
-#      pass, so the registrar reads and writes the real etcd.
+#   4. The route table's wiring: the registrar made its relay pass key
+#      (0600); a spoke forwarding that pass on `/relay` is answered with no
+#      routes (the box is not in this edge's mesh), but the binding is kept
+#      in relay-routes.json (0600) beside the registry, and is still there
+#      after the registrar restarts.
 #
 # The box labels and the custom-domain checks themselves (Stripe data, the
 # TXT token, the CNAME, Traefik routers) are covered against a real
@@ -92,10 +91,7 @@ pkgs.testers.nixosTest {
           };
         };
         networking.firewall.allowedTCPPorts = [ 8443 ];
-        environment.systemPackages = [
-          pkgs.jq
-          pkgs.etcd
-        ];
+        environment.systemPackages = [ pkgs.jq ];
         virtualisation.memorySize = 1024;
       };
 
@@ -179,10 +175,7 @@ pkgs.testers.nixosTest {
           assert view["relay_pass"].startswith("v1."), view
           print(json.dumps(view, indent=2))
 
-      with subtest("the route table: etcd on 2479, the pass key, /relay, and the registrar's writes"):
-          edge.wait_for_unit("etcd.service")
-          edge.wait_for_open_port(2479)
-          edge.fail("ss -ltnH | grep -q ':2379 '")
+      with subtest("the route table: the pass key, /relay, and the table file"):
           edge.succeed("stat -c %a /var/lib/losos-registrar/relay-pass.key | grep -qx 600")
           edge.succeed("grep -Eqx '[0-9a-f]{64}' /var/lib/losos-registrar/relay-pass.key")
           relay = {
@@ -201,11 +194,18 @@ pkgs.testers.nixosTest {
           resp = json.loads(out)
           assert [a["id"] for a in resp["accepted"]] == ["mattbox"], resp
           assert resp["routes"] == [], resp
-          etcdctl = "ETCDCTL_API=3 etcdctl --endpoints=http://127.0.0.1:2479"
-          edge.succeed(f"{etcdctl} put /losos/routes/acme/mattbox/junk.example.org not-a-row")
+          table = "/var/lib/losos-registrar/relay-routes.json"
           edge.wait_until_succeeds(
-              f"test -z \"$({etcdctl} get --prefix /losos/routes/ --keys-only)\"", timeout=60
+              f"jq -e '.bindings.mattbox.spoke == \"acme\" and .routes == []' {table}",
+              timeout=60,
           )
-          edge.succeed("journalctl -u losos-registrar.service | grep -q 'etcd: removing route /losos/routes/acme/mattbox/junk.example.org'")
+          edge.succeed(f"stat -c %a {table} | grep -qx 600")
+          # The registrar's first pass runs before its API opens and rewrites
+          # the file from the bindings it loaded, so an open port after the
+          # restart means the file below is the new process's.
+          edge.systemctl("restart losos-registrar.service")
+          edge.wait_for_open_port(8443)
+          edge.succeed(f"jq -e '.bindings.mattbox.spoke == \"acme\"' {table}")
+          print(edge.succeed(f"cat {table}"))
     '';
 }
