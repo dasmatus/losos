@@ -25,11 +25,13 @@
 //! `backend/schema.json` is the normative wire specification for every JSON
 //! document, D-Bus method and HTTP route here.
 
+pub mod backup;
 pub mod boxid;
 pub mod catalogue;
 pub mod config_repo;
 pub mod dbus;
 pub mod edge;
+pub mod erase;
 pub mod facade;
 pub mod fake;
 pub mod grow;

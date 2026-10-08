@@ -82,12 +82,18 @@ let
   # /nix/store entry.
   policyDirExpr = ''"${sharedRoot}/$(cat /etc/machine-id)/shared"'';
 
-  # Materialise the plaintext key at $runKey, minting it on first use.
+  # Materialise the plaintext key at `dest`, minting it on first use.
   #
   # Idempotent by construction: the sealed blob (TPM) or the keyfile (no-TPM) is
   # generated only when absent, and every later boot just unseals or copies it.
   # 32 bytes because that is fscrypt's raw_key protector length.
-  materialiseKey =
+  #
+  # A function of the destination because modules/backup.nix needs the same
+  # key at a path of its own: a backup or restore that finds the domain locked
+  # opens it for the length of the copy.
+  materialiseKey = materialiseKeyTo runKey;
+  materialiseKeyTo =
+    runKey:
     if useTpm then
       ''
         if [ ! -s ${sealedFile} ]; then
@@ -115,7 +121,27 @@ let
       '';
 in
 {
-  config = lib.mkIf cfg.enable {
+  options.lososInternal.fscrypt = lib.mkOption {
+    type = lib.types.attrs;
+    internal = true;
+    readOnly = true;
+    description = ''
+      What modules/backup.nix needs to reach the shared domain the way this
+      module does: the shell expression for the policy directory, and a
+      function from a destination path to the snippet that puts the
+      protector key there.
+    '';
+  };
+
+  config = lib.mkMerge [
+  {
+    lososInternal.fscrypt = {
+      inherit policyDirExpr materialiseKeyTo protector;
+      package = pkgs.fscrypt-experimental;
+    };
+  }
+
+  (lib.mkIf cfg.enable {
     assertions = [
       {
         # fscrypt is a filesystem feature, not a userspace overlay: without
@@ -257,5 +283,6 @@ in
         rm -f ${runKey}
       '';
     };
-  };
+  })
+  ];
 }

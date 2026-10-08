@@ -124,6 +124,13 @@ pub struct State {
         deserialize_with = "claimed_when_on_disk"
     )]
     pub claimed: bool,
+    /// The last or current backup or restore (`crate::backup`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub backup_job: Option<crate::backup::Job>,
+    /// A full erase under way (`crate::erase`). The file this lives in is
+    /// itself erased at the end, which is how a finished erase clears it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub erase: Option<crate::erase::Erase>,
 }
 
 /// See [`State::claimed`]: a state file without the field predates it.
@@ -155,6 +162,8 @@ impl Default for State {
             sharing: false,
             rebuild: None,
             claimed: false,
+            backup_job: None,
+            erase: None,
         }
     }
 }

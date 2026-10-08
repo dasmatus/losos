@@ -115,6 +115,10 @@ pub enum Op {
     DomainRemove {
         domain: String,
     },
+    /// Take this box off the edge's registry (`/deregister`), so the edge
+    /// stops routing to it. What a full erase does last, after the domains
+    /// and listings are gone (`crate::erase`).
+    Deregister,
 }
 
 /// Longest domain name relayed. The registrar's own check is the
@@ -146,7 +150,7 @@ impl Op {
     /// A sentence naming what was wrong, suitable for a 400.
     pub fn validate(&self) -> Result<(), &'static str> {
         match self {
-            Op::Browse | Op::Account | Op::Domains => Ok(()),
+            Op::Browse | Op::Account | Op::Domains | Op::Deregister => Ok(()),
             Op::DomainAdd { domain } | Op::DomainRemove { domain } => {
                 if valid_domain(domain) {
                     Ok(())
@@ -208,6 +212,7 @@ impl Op {
             Op::Domains => ("POST", "/domains/list"),
             Op::DomainAdd { .. } => ("POST", "/domains/add"),
             Op::DomainRemove { .. } => ("POST", "/domains/remove"),
+            Op::Deregister => ("POST", "/deregister"),
         }
     }
 
@@ -220,7 +225,7 @@ impl Op {
         let mut doc = json!({ "appliance_id": appliance_id, "token": token });
         let extra = match self {
             Op::Browse => return None,
-            Op::Account | Op::Domains => json!({}),
+            Op::Account | Op::Domains | Op::Deregister => json!({}),
             Op::DomainAdd { domain } | Op::DomainRemove { domain } => json!({ "domain": domain }),
             Op::Onboard { box_uuid } => match box_uuid {
                 Some(u) => json!({ "box_uuid": u }),
@@ -471,6 +476,7 @@ mod tests {
             .route(),
             ("POST", "/market/listings/close")
         );
+        assert_eq!(Op::Deregister.route(), ("POST", "/deregister"));
     }
 
     #[test]

@@ -6,6 +6,7 @@
 //!      interface for `losos-ctl`,
 //!   2. re-attaches a watcher to any rebuild still recorded as in flight,
 //!   3. starts the thread that keeps /etc/nixos in step with LosOS Git, and
+//!      the one that drives backups, restores and an erase, and
 //!   4. serves the Bearer-authed loopback HTTP API the admin UI talks to.
 //!
 //! Step 2 must not be dropped: `nixos-rebuild switch` restarts this daemon
@@ -98,6 +99,9 @@ fn run() -> anyhow::Result<()> {
         losos_ctl::io_backend::start_edge_scanner(&backend);
         losos_ctl::io_backend::start_domain_sync(&backend);
         config_repo::start_reconciler(&backend);
+        // Follows backups and restores to their end, and walks an erase
+        // through its countdown. See backend/src/erase.rs.
+        losos_ctl::io_backend::start_erase_driver(&backend);
 
         // The bus connection and the HTTP thread carry the load from here; this
         // task waits for whichever comes first, a stop signal or the HTTP

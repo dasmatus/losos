@@ -150,6 +150,17 @@ fn run(
                 "officialEdgeRequired": true,
             }))
         }
+        // A bucket the owner can fix, or a recovery code that is not one.
+        Err(e) if e.downcast_ref::<crate::backup::Invalid>().is_some() => {
+            let why = e.downcast_ref::<crate::backup::Invalid>().expect("checked");
+            err(actix_web::http::StatusCode::BAD_REQUEST, why.0)
+        }
+        // A backup, restore or erase asked for while something it would
+        // collide with is running.
+        Err(e) if e.downcast_ref::<crate::backup::Busy>().is_some() => {
+            let why = e.downcast_ref::<crate::backup::Busy>().expect("checked");
+            err(actix_web::http::StatusCode::CONFLICT, why.0)
+        }
         // A second owner, or the first one again after the grace window:
         // the sentence, as a 409 the wizard already knows how to show.
         Err(e) if e.downcast_ref::<crate::setup::AlreadyClaimed>().is_some() => {
@@ -340,6 +351,99 @@ fn post_apply_inner(api: &Api, body: &[u8]) -> HttpResponse {
 async fn post_factory_reset(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
     guarded(&api, &req, "/api/factory-reset", true, || {
         run(&api, cmd_factory_reset)
+    })
+}
+
+// ── Backups and erasing the box (crate::backup, crate::erase) ──────────
+
+/// `GET /api/backup`: the bucket without its secret, the last backup, the
+/// job running now, and an erase under way.
+async fn get_backup(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    guarded(&api, &req, "/api/backup", false, || {
+        run(&api, crate::erase::cmd_backup)
+    })
+}
+
+/// `POST /api/backup/target`: set the bucket.
+///
+/// Raw bytes rather than actix's JSON extractor, for the reason
+/// `post_set_password` gives: the extractor's rejection would render the
+/// body, and this body carries the bucket's secret key.
+async fn post_backup_target(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    guarded(
+        &api,
+        &req,
+        "/api/backup/target",
+        true,
+        || match serde_json::from_slice::<crate::backup::TargetInput>(&body) {
+            Ok(input) => run(&api, |b| crate::erase::cmd_backup_target(b, input)),
+            Err(_) => err(
+                actix_web::http::StatusCode::BAD_REQUEST,
+                r#"body must be JSON: {"endpoint", "bucket", "prefix", "region", "accessKeyId", "secretAccessKey"}"#,
+            ),
+        },
+    )
+}
+
+/// `DELETE /api/backup/target`: forget the bucket; the backups in it stay.
+async fn delete_backup_target(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    guarded(&api, &req, "/api/backup/target", true, || {
+        run(&api, crate::erase::cmd_backup_target_clear)
+    })
+}
+
+/// `POST /api/backup/run`: back up now.
+async fn post_backup_run(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    guarded(&api, &req, "/api/backup/run", true, || {
+        run(&api, crate::erase::cmd_backup_run)
+    })
+}
+
+/// `POST /api/backup/restore` `{"code": "<recovery code>"}`: pull the
+/// latest backup back. Raw bytes for the same reason as the target.
+async fn post_backup_restore(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    guarded(&api, &req, "/api/backup/restore", true, || {
+        let code = serde_json::from_slice::<serde_json::Value>(&body)
+            .ok()
+            .and_then(|v| v.get("code").and_then(|c| c.as_str()).map(str::to_string));
+        match code {
+            Some(code) => run(&api, |b| crate::erase::cmd_restore(b, &code)),
+            None => err(
+                actix_web::http::StatusCode::BAD_REQUEST,
+                r#"body must be JSON: {"code": "<recovery code>"}"#,
+            ),
+        }
+    })
+}
+
+/// `POST /api/erase` `{"backup": true|false}`: start erasing the box.
+async fn post_erase(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> HttpResponse {
+    guarded(&api, &req, "/api/erase", true, || {
+        let backup = serde_json::from_slice::<serde_json::Value>(&body)
+            .ok()
+            .and_then(|v| v.get("backup").and_then(serde_json::Value::as_bool));
+        match backup {
+            Some(backup) => run(&api, |b| crate::erase::cmd_erase(b, backup)),
+            None => err(
+                actix_web::http::StatusCode::BAD_REQUEST,
+                r#"body must be JSON: {"backup": true|false}"#,
+            ),
+        }
+    })
+}
+
+/// `POST /api/erase/cancel`: stop an erase before it reaches the edge.
+async fn post_erase_cancel(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    guarded(&api, &req, "/api/erase/cancel", true, || {
+        run(&api, crate::erase::cmd_erase_cancel)
     })
 }
 
@@ -1163,6 +1267,13 @@ pub fn serve(backend: IoLosos) -> anyhow::Result<()> {
                 .route("/api/change", web::post().to(post_change))
                 .route("/api/apply", web::post().to(post_apply))
                 .route("/api/factory-reset", web::post().to(post_factory_reset))
+                .route("/api/backup", web::get().to(get_backup))
+                .route("/api/backup/target", web::post().to(post_backup_target))
+                .route("/api/backup/target", web::delete().to(delete_backup_target))
+                .route("/api/backup/run", web::post().to(post_backup_run))
+                .route("/api/backup/restore", web::post().to(post_backup_restore))
+                .route("/api/erase", web::post().to(post_erase))
+                .route("/api/erase/cancel", web::post().to(post_erase_cancel))
                 .route("/api/grow", web::post().to(post_grow))
                 .route("/api/set-password", web::post().to(post_set_password))
                 .route("/api/recovery", web::get().to(get_recovery))

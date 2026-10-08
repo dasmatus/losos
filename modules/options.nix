@@ -692,6 +692,20 @@ in
       '';
     };
 
+    # ── Erasing the box (modules/backup.nix, backend/src/erase.rs) ──────────
+    reset.graceMinutes = lib.mkOption {
+      type = lib.types.ints.between 1 1440;
+      default = 15;
+      description = ''
+        How long an erase counts down before it changes anything. Started
+        from the Reset pane, an erase first finishes its backup (when one was
+        asked for), then waits this long, and only then removes the box's
+        custom domains and listings from its edge, resets the settings and
+        restarts into the wipe. Until the countdown ends it can be cancelled
+        from any page of the admin UI, and nothing has changed.
+      '';
+    };
+
     hostName = lib.mkOption {
       type = lib.types.str;
       default = "mattbox";
