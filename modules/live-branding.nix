@@ -14,7 +14,7 @@
 # Activation").
 #
 # The pictures are drawn at build time from the brand logo
-# (admin-ui/themes/brand/plate.png) on the dark palette of
+# (admin-ui/themes/brand/salmon.png) on the dark palette of
 # admin-ui/app/src/styles/tokens.css, so replacing the logo file replaces
 # them too:
 #
@@ -32,7 +32,9 @@
 let
   inherit (config.system.nixos) release label;
 
-  logo = ../admin-ui/themes/brand/plate.png;
+  # The everyday salmon. The plate is the admin pages' Halloween logo, picked
+  # by the viewer's date; a medium is built once, so it carries the salmon.
+  logo = ../admin-ui/themes/brand/salmon.png;
 
   # tokens.css, dark scheme.
   ground = "#0a0e12";
