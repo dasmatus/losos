@@ -105,10 +105,12 @@ There are three ways a guest can run, in order of preference:
    there, and the guest images in a folder the helper can read.
 2. **The page drives libvirt itself, through the helper's relay.** The
    helper also offers a WebSocket that it copies, byte for byte, to
-   libvirt's own socket. A page that carries the WebAssembly libvirt client
-   (`admin-ui/lab/virt-rpc`, the package `losos-lab-virt`) speaks libvirt's
-   protocol over it, so this path needs the helper and a running libvirt
-   daemon but no `virsh` and no libvirt client library on the computer.
+   libvirt's own socket. The Lab page carries the WebAssembly libvirt
+   client (`admin-ui/lab/virt-rpc`, the package `losos-lab-virt`) and
+   speaks libvirt's protocol over it, so this path needs the helper and a
+   running libvirt daemon but no `virsh` and no libvirt client library on
+   the computer. The page uses it when the helper's `virsh` is missing,
+   and for any guest the first way could not start.
 3. **qemu-wasm in the tab.** Nothing on the computer at all, only the
    hosted Lab's engine. This is the slow path, and the fallback for any
    guest the first two cannot start.
@@ -189,12 +191,36 @@ helper does not start a session daemon the way `virsh` does, so with
 `qemu:///session` the daemon must already be running or started by its
 systemd socket.
 
+The Lab page uses this path by itself (`engine/virt-rpc.ts`). For each
+guest it asks for a ticket, opens one relayed connection, creates the
+domain paused, opens its console, and then resumes it, so the console sees
+the first byte the guest prints. The domain is the one the helper would
+have written for `virsh`, except that the serial port is a pseudo terminal
+the client reads as the domain's console. The client's module, about
+220 KB, is loaded only when the first guest starts on this path. The
+console header says "KVM via libvirt from WebAssembly", or "QEMU via
+libvirt from WebAssembly (no KVM)". Without KVM the first domain is refused
+and the page asks again for plain QEMU.
+
+Each ticket also comes with a network card: the helper binds the same kind
+of UDP tunnel it gives its own guests and answers with its two ports, a
+name for the domain (`losos-lab-virt-...`) and a second ticket. The page
+writes the tunnel into the domain and opens the card at
+`guests/<key>/nic/0`, so these guests are on the Lab's cables like the
+others, and a guest of either path can ping one of the other. The card
+counts against `--max-guests`; a helper that is full still hands out the
+relay ticket but no card, and the guest then boots with no network, which
+its console header says.
+
 The client creates its guests with libvirt's autodestroy flag, so they end
 when the connection does: when the tab closes, and when the helper stops,
-because the helper closes every relayed socket on Ctrl-C or SIGTERM. The
-helper does not count, sweep or destroy these guests; they belong to the
-page. To try the path, `admin-ui/lab/virt-rpc/README.md` shows how to open
-its demo page through the helper.
+because the helper closes every relayed socket on Ctrl-C or SIGTERM. When
+the page powers a guest off, it destroys the domain itself and hands the
+card back with `DELETE guests/<key>`. A card no page watches is ended
+after `--idle`, like a guest of the helper's own, and because the Lab
+names its domain the way the helper does, the helper's sweep and idle
+check reach that domain too. `admin-ui/lab/virt-rpc/README.md` shows the
+client on its own, through its demo page.
 
 ### Security
 
@@ -239,12 +265,15 @@ LosOS Desktop, not the desktop itself.
 ## Changing it
 
 - The page and its parts are in `admin-ui/app/src/lab/`. `npm run lab:core`
-  builds the core into `src/lab/core-pkg/` (gitignored; it needs cargo with
-  the `wasm32-unknown-unknown` target and `wasm-bindgen` 0.2.127), and then
-  `npm run dev` serves the page at `/lab/`. `tests/lab.browser.mjs` checks
-  it under the Lab's own policy.
+  builds the core into `src/lab/core-pkg/` and `npm run lab:virt` the
+  libvirt client into `src/lab/virt-pkg/` (both gitignored; they need cargo
+  with the `wasm32-unknown-unknown` target and `wasm-bindgen` 0.2.127), and
+  then `npm run dev` serves the page at `/lab/`. `tests/lab.browser.mjs`
+  checks it under the Lab's own policy, the relay path against a fake
+  libvirt daemon.
 - The core's contract is `admin-ui/lab/core/README.md`. Its tests compare
   every built-in setup against the behaviour of the JavaScript Lab it
   replaced.
-- Guests: `admin-ui/app/src/lab/engine/` tries libvirt through the helper,
-  then qemu-wasm, in that order.
+- Guests: `admin-ui/app/src/lab/engine/` tries libvirt through the helper's
+  `virsh`, then libvirt through the page's own client and the helper's
+  relay, then qemu-wasm, in that order.

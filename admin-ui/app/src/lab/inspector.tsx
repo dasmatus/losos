@@ -623,7 +623,10 @@ function ConsolePane({ s, d }: { s: LabStore; d: Device }) {
             {running ? "" : " · " + t("lab.console.notRunning")}
           </span>
         </div>
-        <div ref={host} className="lab-xterm min-h-[300px] flex-1 p-1">
+        {/* A host per device and per run: the guest's terminal is moved in
+            by attach(), outside React, so a host kept across devices
+            stacked one guest's console above the next one's. */}
+        <div key={d.id + (running ? ":on" : ":off")} ref={host} className="lab-xterm min-h-[300px] flex-1 p-1">
           {!running && (
             <div className="p-3.5 font-mono text-[12.5px] leading-normal text-ink">
               {d.power ? t("lab.console.notYet") : t("lab.console.off")}

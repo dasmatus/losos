@@ -110,10 +110,46 @@ let
     cp ${losos-lab-core}/* src/lab/core-pkg/
     chmod -R u+w src/lab/core-pkg
   '';
+
+  # The Lab's libvirt client (admin-ui/lab/virt-rpc/README.md) as a
+  # wasm-bindgen web package: losos_lab_virt.js, its .d.ts and the .wasm.
+  # Built the same way as losos-lab-core, for the same reasons, and pinned
+  # to the same wasm-bindgen.
+  losos-lab-virt = pkgs.rustPlatform.buildRustPackage {
+    pname = "losos-lab-virt";
+    version = "0.1.0";
+    src = lib.cleanSource ./../admin-ui/lab/virt-rpc;
+    cargoHash = "sha256-m5B7NE6dWVgI1bu31+OQ0Kf71AvmrI5L9MeqldQAvlE=";
+    nativeBuildInputs = [
+      pkgs.wasm-bindgen-cli
+      pkgs.lld
+    ];
+    buildPhase = ''
+      runHook preBuild
+      cargo build --release --offline --target wasm32-unknown-unknown
+      runHook postBuild
+    '';
+    doCheck = false;
+    installPhase = ''
+      runHook preInstall
+      wasm-bindgen --target web --out-dir $out \
+        target/wasm32-unknown-unknown/release/losos_lab_virt.wasm
+      runHook postInstall
+    '';
+  };
+
+  # The Lab page imports the client from src/lab/virt-pkg (gitignored; `npm
+  # run lab:virt` writes it in a checkout), lazily, when a guest starts on
+  # that path. Copied in beside the core by the same two npm builds.
+  labVirtPkg = ''
+    mkdir -p src/lab/virt-pkg
+    cp ${losos-lab-virt}/* src/lab/virt-pkg/
+    chmod -R u+w src/lab/virt-pkg
+  '';
 in
 images
 // {
-  inherit losos-lab-core;
+  inherit losos-lab-core losos-lab-virt;
 
   losos-admin-ui = pkgs.buildNpmPackage {
     pname = "losos-admin-ui";
@@ -144,9 +180,10 @@ images
     # nothing else needs a script to run.
     npmFlags = [ "--ignore-scripts" ];
     env.PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1";
-    # LosOS Lab (lab/index.html, the second Vite entry) imports the Rust core.
-    preBuild = labCorePkg;
-    passthru = { inherit labCorePkg; };
+    # LosOS Lab (lab/index.html, the second Vite entry) imports the Rust core
+    # and, for guests on the relay path, the libvirt client.
+    preBuild = labCorePkg + labVirtPkg;
+    passthru = { inherit labCorePkg labVirtPkg; };
 
     # The default npmBuildScript is `npm run build`, which here is
     # `tsc --noEmit && vite build` — so unlike the Rust crates (doCheck = off,
@@ -196,33 +233,6 @@ images
     installPhase = ''
       runHook preInstall
       cp -r build $out
-      runHook postInstall
-    '';
-  };
-
-  # The Lab's libvirt client (admin-ui/lab/virt-rpc/README.md) as a
-  # wasm-bindgen web package: losos_lab_virt.js, its .d.ts and the .wasm.
-  # Built the same way as losos-lab-core, for the same reasons, and pinned
-  # to the same wasm-bindgen.
-  losos-lab-virt = pkgs.rustPlatform.buildRustPackage {
-    pname = "losos-lab-virt";
-    version = "0.1.0";
-    src = lib.cleanSource ./../admin-ui/lab/virt-rpc;
-    cargoHash = "sha256-m5B7NE6dWVgI1bu31+OQ0Kf71AvmrI5L9MeqldQAvlE=";
-    nativeBuildInputs = [
-      pkgs.wasm-bindgen-cli
-      pkgs.lld
-    ];
-    buildPhase = ''
-      runHook preBuild
-      cargo build --release --offline --target wasm32-unknown-unknown
-      runHook postBuild
-    '';
-    doCheck = false;
-    installPhase = ''
-      runHook preInstall
-      wasm-bindgen --target web --out-dir $out \
-        target/wasm32-unknown-unknown/release/losos_lab_virt.wasm
       runHook postInstall
     '';
   };
