@@ -108,6 +108,10 @@ let
     PRETTY_NAME="LosOS installer ${config.system.nixos.label}"
   '';
 
+  # The picture systemd-stub shows while the kernel loads, from
+  # modules/live-branding.nix; signed with the rest of the UKI.
+  splash = config.system.build.bootSplash or null;
+
   uki =
     pkgs.runCommand "losos-installer-uki"
       {
@@ -125,6 +129,7 @@ let
           --initrd=${initrdFile} \
           --cmdline=${lib.escapeShellArg cmdline}" ${mediumHashParam}=$hash" \
           --os-release=@${osRelease} \
+          ${lib.optionalString (splash != null) "--splash=${splash}"} \
           --uname=${config.boot.kernelPackages.kernel.modDirVersion} \
           --output=$out
       '';

@@ -9,7 +9,10 @@ Download the ISO and its `.sha256` from the
 nix build .#nixosConfigurations.iso.config.system.build.isoImage
 ```
 
-Write it to a USB stick and boot the target machine.
+Write it to a USB stick and boot the target machine. The stick's volume
+label is `LOSOS_INSTALLER`. The BIOS boot menu, the UEFI splash and the
+console banner say LosOS, and the host name is `losos-installer`.
+Underneath it is NixOS, and os-release says so with `ID_LIKE=nixos`.
 
 ## Before you boot
 
