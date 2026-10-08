@@ -11,12 +11,12 @@
 - systemd sandboxing for `nginx`, `avahi-daemon` and `lososd`
 
 NixOS removed its hardened profile in 26.05 and `linux_hardened` no longer
-exists, so these are set directly in `modules/hardening.nix`.
+exists, so `modules/hardening.nix` sets these directly.
 
 ## Opt-in
 
-Each can break something, so each is off by default. Turn them on in the
-Security pane of the settings page, or in Nix:
+Each of these can break something, so each is off by default. Turn them on in
+the Security pane of the settings page, or in Nix:
 
 ```nix
 losos.hardening.apparmor = true;   # mandatory access control
@@ -25,8 +25,8 @@ losos.hardening.nosmt    = true;   # disable SMT; about half the cores
 losos.hardening.usbguard = true;   # block USB devices not present at boot
 ```
 
-`hardened_malloc` works by preloading, so it does not apply to k3s, rke2,
-containerd (static Go binaries) or anything inside a pod.
+`hardened_malloc` works by preloading, so it does not reach k3s, rke2 or
+containerd, which are static Go binaries, nor anything inside a pod.
 
 ## Left out on purpose
 
