@@ -49,6 +49,8 @@ and a link. Below that, **Find more** searches LosOS cloud's app catalogue
 (the box fetches the catalogue; the search needs the internet). An app you
 like is installed from inside LosOS cloud, by its owner account.
 
+[![The Apps pane: both apps kept separate, and Find more with results for media, each naming who published it.](./img/apps-search.png)](./img/apps-search.png)
+
 ## Trusted addresses
 
 LosOS cloud answers on the box's name and on whichever address the request

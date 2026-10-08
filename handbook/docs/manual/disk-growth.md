@@ -10,6 +10,8 @@ own software on the same encrypted volume as your files, and that software
 grows with every update, so a volume that could never be grown would one day
 fill up on a box nobody can open a shell on.
 
+[![The Storage pane: the disk with the room in use and the free room, and 178 GB held back for later.](./img/storage.png)](./img/storage.png)
+
 ## Claiming the reserve
 
 **Storage pane → Use the reserve.** A dialog says how much this adds. The
@@ -17,6 +19,8 @@ box grows the volume, the encryption layer and the filesystem, in that order,
 with everything still mounted; nothing stops and nothing is unmounted. The
 pane's capacity meter shows the reserve as a hatched slice until it is
 claimed.
+
+[![The dialog before claiming the reserve: how much it adds, and that it only goes one way.](./img/reserve-dialog.png)](./img/reserve-dialog.png)
 
 Once the reserve is used up, the button says there is nothing left to claim.
 

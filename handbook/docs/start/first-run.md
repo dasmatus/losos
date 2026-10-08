@@ -16,6 +16,8 @@ never seen it and will not trust it yet. Everything after this step, the
 password you are about to set included, should travel over that encrypted
 connection, so the wizard asks you to install the certificate first.
 
+[![Step 1 of the wizard: the one-line installer for this computer, the manual download, and the fingerprint to compare.](./img/wizard-trust.png)](./img/wizard-trust.png)
+
 The quick way is one line in a terminal, shown for the computer you are on:
 
 ```bash title="macOS and Linux"
@@ -56,6 +58,8 @@ letter, an upper-case letter, a digit and a symbol such as `-` or `!`; the
 wizard ticks each rule as you type. This one password opens LosOS cloud, LosOS
 Git and the admin pages.
 
+[![Step 2 of the wizard: the new password, with each of the four rules ticked as it is met.](./img/wizard-password.png)](./img/wizard-password.png)
+
 The step waits until LosOS cloud has finished its own first start, which takes
 a few minutes on a fresh box ("waiting for" is shown with the reason). It
 continues on its own.
@@ -66,6 +70,8 @@ keep it away from the box. It is for the one situation the password cannot
 cover, LosOS cloud not running, and it cannot be shown again. See
 [Sign-in and the spare key](../manual/sign-in-and-spare-key).
 
+[![The password is set: the account name to sign in with, and the spare admin key, shown once, with Copy and Print.](./img/wizard-spare-key.png)](./img/wizard-spare-key.png)
+
 On an HTTPS connection the step also offers a **passkey**, so a phone or a
 laptop can sign in without typing the password.
 
@@ -74,3 +80,5 @@ laptop can sign in without typing the password.
 The wizard opens LosOS cloud inside the page so you can sign in with the
 password you just set, and then takes you to the admin pages' overview. From
 here on, see [The admin pages](../manual/admin-pages).
+
+[![Step 3 of the wizard: LosOS cloud's sign-in, inside the page, with the account name filled in.](./img/wizard-sign-in.png)](./img/wizard-sign-in.png)

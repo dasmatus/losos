@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="340" viewBox="0 0 640 340" font-family="Inter, 'DejaVu Sans', Arial, sans-serif" font-size="15">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#355"/></marker>
+  </defs>
+  <rect width="640" height="340" fill="#fff"/>
+  <line x1="20" y1="140" x2="620" y2="140" stroke="#9ab" stroke-width="2"/>
+  <line x1="20.0" y1="134" x2="20.0" y2="146" stroke="#9ab" stroke-width="1.5"/>
+  <text x="20.0" y="164" text-anchor="middle" fill="#8c98a4" font-size="11" font-family="'JetBrains Mono', 'DejaVu Sans Mono', Menlo, monospace">23:00</text>
+  <line x1="105.71428571428571" y1="134" x2="105.71428571428571" y2="146" stroke="#9ab" stroke-width="1.5"/>
+  <text x="105.71428571428571" y="164" text-anchor="middle" fill="#8c98a4" font-size="11" font-family="'JetBrains Mono', 'DejaVu Sans Mono', Menlo, monospace">00:00</text>
+  <line x1="191.42857142857142" y1="134" x2="191.42857142857142" y2="146" stroke="#9ab" stroke-width="1.5"/>
+  <text x="191.42857142857142" y="164" text-anchor="middle" fill="#8c98a4" font-size="11" font-family="'JetBrains Mono', 'DejaVu Sans Mono', Menlo, monospace">01:00</text>
+  <line x1="277.1428571428571" y1="134" x2="277.1428571428571" y2="146" stroke="#9ab" stroke-width="1.5"/>
+  <text x="277.1428571428571" y="164" text-anchor="middle" fill="#8c98a4" font-size="11" font-family="'JetBrains Mono', 'DejaVu Sans Mono', Menlo, monospace">02:00</text>
+  <line x1="362.85714285714283" y1="134" x2="362.85714285714283" y2="146" stroke="#9ab" stroke-width="1.5"/>
+  <line x1="448.57142857142856" y1="134" x2="448.57142857142856" y2="146" stroke="#9ab" stroke-width="1.5"/>
+  <text x="448.57142857142856" y="164" text-anchor="middle" fill="#8c98a4" font-size="11" font-family="'JetBrains Mono', 'DejaVu Sans Mono', Menlo, monospace">04:00</text>
+  <line x1="534.2857142857142" y1="134" x2="534.2857142857142" y2="146" stroke="#9ab" stroke-width="1.5"/>
+  <text x="534.2857142857142" y="164" text-anchor="middle" fill="#8c98a4" font-size="11" font-family="'JetBrains Mono', 'DejaVu Sans Mono', Menlo, monospace">05:00</text>
+  <line x1="620.0" y1="134" x2="620.0" y2="146" stroke="#9ab" stroke-width="1.5"/>
+  <text x="620.0" y="164" text-anchor="middle" fill="#8c98a4" font-size="11" font-family="'JetBrains Mono', 'DejaVu Sans Mono', Menlo, monospace">06:00</text>
+  <rect x="35.71428571428571" y="20" width="160" height="84" rx="8" fill="#e6f2f3" stroke="#0e6e7d" stroke-width="1"/>
+  <text x="115.71428571428571" y="44" text-anchor="middle" fill="#18212a" font-size="13" font-weight="600">00:07 Restart</text>
+  <text x="115.71428571428571" y="64" text-anchor="middle" fill="#5c6a77" font-size="13">root rebuilt blank,</text>
+  <text x="115.71428571428571" y="82" text-anchor="middle" fill="#5c6a77" font-size="13">/persist back</text>
+  <line x1="115.71428571428571" y1="104" x2="115.71428571428571" y2="140" stroke="#0e6e7d" stroke-width="1.5"/>
+  <circle cx="115.71428571428571" cy="140" r="6" fill="#0e6e7d"/>
+  <rect x="411.4285714285714" y="20" width="160" height="84" rx="8" fill="#fff" stroke="#0e6e7d" stroke-width="1"/>
+  <text x="491.4285714285714" y="44" text-anchor="middle" fill="#18212a" font-size="13" font-weight="600">04:30 Clean-up</text>
+  <text x="491.4285714285714" y="64" text-anchor="middle" fill="#5c6a77" font-size="13">over 14 days go,</text>
+  <text x="491.4285714285714" y="82" text-anchor="middle" fill="#5c6a77" font-size="13">boot menu keeps 5</text>
+  <line x1="491.4285714285714" y1="104" x2="491.4285714285714" y2="140" stroke="#0e6e7d" stroke-width="1.5"/>
+  <circle cx="491.4285714285714" cy="140" r="6" fill="#0e6e7d"/>
+  <rect x="282.85714285714283" y="184" width="160" height="84" rx="8" fill="#fff" stroke="#0e6e7d" stroke-width="1"/>
+  <text x="362.85714285714283" y="208" text-anchor="middle" fill="#18212a" font-size="13" font-weight="600">03:00 Update</text>
+  <text x="362.85714285714283" y="228" text-anchor="middle" fill="#5c6a77" font-size="13">rebuild from the</text>
+  <text x="362.85714285714283" y="246" text-anchor="middle" fill="#5c6a77" font-size="13">upgrade source</text>
+  <line x1="362.85714285714283" y1="140" x2="362.85714285714283" y2="184" stroke="#0e6e7d" stroke-width="1.5"/>
+  <circle cx="362.85714285714283" cy="140" r="6" fill="#0e6e7d"/>
+  <text x="320" y="300" text-anchor="middle" fill="#5c6a77" font-size="13">A box that was off at 00:07 restarts as soon as it is on.</text>
+  <text x="320" y="322" text-anchor="middle" fill="#5c6a77" font-size="13">A failed update leaves the running system; the next night tries again.</text>
+</svg>

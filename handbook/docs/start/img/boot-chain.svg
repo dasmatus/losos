@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="520" viewBox="0 0 640 520" font-family="Inter, 'DejaVu Sans', Arial, sans-serif" font-size="15">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#355"/></marker>
+  </defs>
+  <rect width="640" height="520" fill="#fff"/>
+  <text x="20" y="26" text-anchor="start" fill="#0e6e7d" font-size="12" font-weight="700">THE INSTALLER STICK, UNDER SECURE BOOT</text>
+  <rect x="20" y="40" width="270" height="76" rx="8" fill="#f3f6f6" stroke="#0e6e7d" stroke-width="1"/>
+  <text x="155.0" y="64" text-anchor="middle" fill="#18212a" font-size="13" font-weight="600">Firmware</text>
+  <text x="155.0" y="84" text-anchor="middle" fill="#5c6a77" font-size="13">Secure Boot on, the LosOS</text>
+  <text x="155.0" y="102" text-anchor="middle" fill="#5c6a77" font-size="13">certificate in its db</text>
+  <line x1="155" y1="116" x2="155" y2="138" stroke="#355" stroke-width="2" marker-end="url(#a)"/>
+  <rect x="20" y="140" width="270" height="76" rx="8" fill="#e6f2f3" stroke="#0e6e7d" stroke-width="1"/>
+  <text x="155.0" y="164" text-anchor="middle" fill="#18212a" font-size="13" font-weight="600">Loader on the stick</text>
+  <text x="155.0" y="184" text-anchor="middle" fill="#5c6a77" font-size="13">kernel, initrd and command</text>
+  <text x="155.0" y="202" text-anchor="middle" fill="#5c6a77" font-size="13">line, signed as one file</text>
+  <line x1="155" y1="216" x2="155" y2="238" stroke="#355" stroke-width="2" marker-end="url(#a)"/>
+  <rect x="20" y="240" width="270" height="76" rx="8" fill="#fff" stroke="#0e6e7d" stroke-width="1"/>
+  <text x="155.0" y="264" text-anchor="middle" fill="#18212a" font-size="13" font-weight="600">System image</text>
+  <text x="155.0" y="284" text-anchor="middle" fill="#5c6a77" font-size="13">nix-store.squashfs, its hash</text>
+  <text x="155.0" y="302" text-anchor="middle" fill="#5c6a77" font-size="13">on the signed command line</text>
+  <line x1="155" y1="316" x2="155" y2="338" stroke="#355" stroke-width="2" marker-end="url(#a)"/>
+  <rect x="20" y="340" width="270" height="60" rx="8" fill="#fff" stroke="#0e6e7d" stroke-width="1"/>
+  <text x="155.0" y="364" text-anchor="middle" fill="#18212a" font-size="13" font-weight="600">Installer</text>
+  <text x="155.0" y="384" text-anchor="middle" fill="#5c6a77" font-size="13">Secure Boot: enabled</text>
+  <line x1="155" y1="127" x2="330" y2="127" stroke="#a8443c" stroke-width="1.5" stroke-dasharray="4 3"/>
+  <rect x="330" y="94" width="290" height="70" rx="8" fill="#f9e9e7" stroke="#a8443c" stroke-width="1"/>
+  <circle cx="350" cy="114" r="9" fill="#a8443c"/>
+  <path d="M346 110l8 8M354 110l-8 8" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
+  <text x="368" y="119" text-anchor="start" fill="#a8443c" font-size="12" font-weight="600">The firmware checks the signature</text>
+  <text x="350" y="140" text-anchor="start" fill="#5c6a77" font-size="12">unsigned, or only Microsoft keys:</text>
+  <text x="350" y="157" text-anchor="start" fill="#5c6a77" font-size="12">Access Denied, or skipped</text>
+  <line x1="155" y1="227" x2="330" y2="227" stroke="#a8443c" stroke-width="1.5" stroke-dasharray="4 3"/>
+  <rect x="330" y="194" width="290" height="70" rx="8" fill="#f9e9e7" stroke="#a8443c" stroke-width="1"/>
+  <circle cx="350" cy="214" r="9" fill="#a8443c"/>
+  <path d="M346 210l8 8M354 210l-8 8" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
+  <text x="368" y="219" text-anchor="start" fill="#a8443c" font-size="12" font-weight="600">The loader checks the hash</text>
+  <text x="350" y="240" text-anchor="start" fill="#5c6a77" font-size="12">changed: THE MEDIUM HAS BEEN</text>
+  <text x="350" y="257" text-anchor="start" fill="#5c6a77" font-size="12">ALTERED, and the power goes off</text>
+  <text x="20" y="432" text-anchor="start" fill="#0e6e7d" font-size="12" font-weight="700">THE INSTALLED BOX</text>
+  <rect x="20" y="444" width="600" height="66" rx="8" fill="#fbf4e4" stroke="#8c6512" stroke-width="1"/>
+  <path d="M42 459l10 17h-20z" fill="#8c6512" stroke="none"/><line x1="42" y1="465" x2="42" y2="470" stroke="#fff" stroke-width="2" stroke-linecap="round"/><circle cx="42" cy="473.2" r="1.1" fill="#fff"/>
+  <text x="60" y="472" text-anchor="start" fill="#18212a" font-size="13">systemd-boot and the nightly kernels are not signed,</text>
+  <text x="60" y="493" text-anchor="start" fill="#18212a" font-size="13">so the installed box boots with Secure Boot off.</text>
+</svg>

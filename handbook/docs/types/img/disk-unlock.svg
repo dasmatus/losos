@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="470" viewBox="0 0 640 470" font-family="Inter, 'DejaVu Sans', Arial, sans-serif" font-size="15">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#355"/></marker>
+  </defs>
+  <rect width="640" height="470" fill="#fff"/>
+  <rect x="20" y="16" width="600" height="210" rx="10" fill="#e6f2f3" stroke="#0e6e7d" stroke-width="1"/>
+  <text x="40" y="44" text-anchor="start" fill="#18212a" font-weight="600">TPM, the default</text>
+  <text x="40" y="64" text-anchor="start" fill="#5c6a77" font-size="12">the installer found a TPM 2.0 chip</text>
+  <rect x="40" y="82" width="170" height="66" rx="8" fill="#fff" stroke="#9ab" stroke-width="1"/>
+  <text x="125.0" y="106" text-anchor="middle" fill="#18212a" font-size="12" font-weight="600">boot partition</text>
+  <text x="125.0" y="125" text-anchor="middle" fill="#5c6a77" font-size="12">no secret</text>
+  <path d="M430 86 a85.0 10 0 0 1 170 0 v56 a85.0 10 0 0 1 -170 0 z" fill="#fff" stroke="#0e6e7d"/><ellipse cx="515.0" cy="86" rx="85.0" ry="10" fill="#fff" stroke="#0e6e7d"/>
+  <text x="515" y="116" text-anchor="middle" fill="#18212a" font-weight="600">/persist</text>
+  <text x="515" y="136" text-anchor="middle" fill="#5c6a77" font-size="12">encrypted (LUKS)</text>
+  <rect x="20" y="246" width="600" height="210" rx="10" fill="#f3f6f6" stroke="#9ab" stroke-width="1"/>
+  <text x="40" y="274" text-anchor="start" fill="#18212a" font-weight="600">Keyfile</text>
+  <text x="40" y="294" text-anchor="start" fill="#5c6a77" font-size="12">no chip, or installed with --no-tpm</text>
+  <rect x="40" y="312" width="170" height="66" rx="8" fill="#fff" stroke="#9ab" stroke-width="1"/>
+  <text x="125.0" y="336" text-anchor="middle" fill="#18212a" font-size="12" font-weight="600">boot partition</text>
+  <text x="125.0" y="355" text-anchor="middle" fill="#5c6a77" font-size="12">holds the key file</text>
+  <path d="M430 316 a85.0 10 0 0 1 170 0 v56 a85.0 10 0 0 1 -170 0 z" fill="#fff" stroke="#0e6e7d"/><ellipse cx="515.0" cy="316" rx="85.0" ry="10" fill="#fff" stroke="#0e6e7d"/>
+  <text x="515" y="346" text-anchor="middle" fill="#18212a" font-weight="600">/persist</text>
+  <text x="515" y="366" text-anchor="middle" fill="#5c6a77" font-size="12">encrypted (LUKS)</text>
+  <rect x="260" y="90" width="52" height="38" rx="4" fill="#18212a" stroke="#18212a" stroke-width="1"/>
+  <line x1="268" y1="84" x2="268" y2="90" stroke="#18212a" stroke-width="2"/>
+  <line x1="268" y1="128" x2="268" y2="134" stroke="#18212a" stroke-width="2"/>
+  <line x1="280" y1="84" x2="280" y2="90" stroke="#18212a" stroke-width="2"/>
+  <line x1="280" y1="128" x2="280" y2="134" stroke="#18212a" stroke-width="2"/>
+  <line x1="292" y1="84" x2="292" y2="90" stroke="#18212a" stroke-width="2"/>
+  <line x1="292" y1="128" x2="292" y2="134" stroke="#18212a" stroke-width="2"/>
+  <line x1="304" y1="84" x2="304" y2="90" stroke="#18212a" stroke-width="2"/>
+  <line x1="304" y1="128" x2="304" y2="134" stroke="#18212a" stroke-width="2"/>
+  <text x="286" y="114" text-anchor="middle" fill="#fff" font-size="12" font-weight="700">TPM</text>
+  <circle cx="330" cy="110" r="7" fill="none" stroke="#0e6e7d" stroke-width="2.5"/><path d="M337 110h18m-6 0v6m-6-6v5" fill="none" stroke="#0e6e7d" stroke-width="2.5" stroke-linecap="round"/>
+  <text x="320" y="158" text-anchor="middle" fill="#5c6a77" font-size="12">the key is sealed in the chip</text>
+  <circle cx="40" cy="186" r="9" fill="#2e7357"/>
+  <path d="M35.5 186l3 3 6-6" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="58" y="191" text-anchor="start" fill="#18212a" font-size="13">The disk alone, pulled or cloned: unreadable.</text>
+  <text x="58" y="206" text-anchor="start" fill="#18212a" font-size="13">The whole box still boots unattended.</text>
+  <circle cx="240" cy="344" r="7" fill="none" stroke="#0e6e7d" stroke-width="2.5"/><path d="M247 344h18m-6 0v6m-6-6v5" fill="none" stroke="#0e6e7d" stroke-width="2.5" stroke-linecap="round"/>
+  <text x="282" y="340" text-anchor="start" fill="#5c6a77" font-size="12">rides in the initrd,</text>
+  <text x="282" y="356" text-anchor="start" fill="#5c6a77" font-size="12">unencrypted</text>
+  <path d="M40 407l10 17h-20z" fill="#8c6512" stroke="none"/><line x1="40" y1="413" x2="40" y2="418" stroke="#fff" stroke-width="2" stroke-linecap="round"/><circle cx="40" cy="421.2" r="1.1" fill="#fff"/>
+  <text x="58" y="421" text-anchor="start" fill="#18212a" font-size="13">Whoever takes the disk has the data.</text>
+  <text x="58" y="436" text-anchor="start" fill="#18212a" font-size="13">Fine for a VM or a test box.</text>
+</svg>

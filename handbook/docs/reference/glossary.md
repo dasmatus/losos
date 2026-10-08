@@ -5,6 +5,8 @@ sidebar_position: 5
 
 # Glossary
 
+[![The parts of a box the glossary names, in one picture.](../project/img/architecture.svg)](../project/img/architecture.svg)
+
 **Admin pages.** The box's own web page at `/`, LAN-only, where the box is
 set up and looked after. Built as a single-page app the box serves itself.
 

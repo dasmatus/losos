@@ -13,12 +13,16 @@ Two timers run on every box. The About pane shows both.
 | **03:00** | **Update.** The box rebuilds itself from its upgrade source. With the default source it only re-applies its own description; with a published source (a `github:` address) it also fetches new software. |
 | **04:30** | **Clean-up.** Old versions of the system older than 14 days are deleted, and the boot menu keeps the last five, so the disk and the boot partition do not fill up. |
 
+[![A night on the box: the restart at 00:07, the update at 03:00 and the clean-up at 04:30.](./img/nightly.svg)](./img/nightly.svg)
+
 ## What survives
 
 Only what is on a short list: your files and LosOS Git's data, the system's
 own store, the settings you chose, the box's keys and identity, the mesh
 membership. Everything else is gone at 00:07. The
 [reference page](../reference/what-survives-a-reboot) has the list.
+
+[![What the 00:07 restart keeps and what it forgets.](../reference/img/what-survives.svg)](../reference/img/what-survives.svg)
 
 ## While it works
 

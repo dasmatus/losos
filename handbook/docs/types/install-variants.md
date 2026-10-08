@@ -14,6 +14,8 @@ same medium repeats them and a nightly update never undoes them.
 Every box has an encrypted disk, formatted unattended from a random key the
 installer generates. What differs is where that key lives at boot.
 
+[![TPM and keyfile side by side: where the disk key lives at boot, and what someone holding only the disk can read.](./img/disk-unlock.svg)](./img/disk-unlock.svg)
+
 | Variant                    | When                                                     | What it means                                                                                                                         |
 | -------------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
 | **TPM** (the default)      | The installer found a TPM 2.0 chip                        | The key is sealed into the chip. The boot partition carries no secret. The disk on its own, pulled or cloned, is unreadable. The box still boots unattended. |
@@ -25,6 +27,8 @@ measurements: the box updates its firmware, bootloader and kernel on its own
 and has no shell to recover a lockout from, so a thief who takes the whole
 box with its chip can still boot it. The [security model](../reference/security-model)
 is frank about that.
+
+[![A TPM install, checked in a VM: the encrypted volume's header has a systemd-tpm2 token, and the keyfile stays inside the encrypted volume.](../img/install-done-tpm.png)](../img/install-done-tpm.png)
 
 A box never asks for a passphrase at boot. If yours does, something is
 wrong: see [Stuck at a passphrase prompt](../troubleshooting/stuck-at-passphrase).
@@ -40,6 +44,8 @@ disk. BIOS is mainly for virtual machines. Under UEFI the stick is signed
 and a firmware that has the LosOS certificate enrolled verifies it; the
 installed box's own loader is not signed, so it needs Secure Boot off. See
 [Secure Boot and signed media](../start/secure-boot).
+
+[![The installer's one question: BIOS, UEFI or autodetect, taken automatically after 30 seconds.](../start/img/installer-secure-boot.png)](../start/img/installer-secure-boot.png)
 
 ## The three media
 

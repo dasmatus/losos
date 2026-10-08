@@ -25,6 +25,8 @@ yet*, with **Discard** and **Apply**. A field that fails its check (a name
 with a space, a port out of range) is marked, and Apply waits until it is
 fixed. Nothing reaches the box until you press Apply.
 
+[![The Network pane with the name changed to matt-box: the apply bar says one change is not applied yet.](./img/apply-bar.png)](./img/apply-bar.png)
+
 ## What Apply does
 
 1. The box writes your choices into its overrides file.
@@ -34,6 +36,12 @@ fixed. Nothing reaches the box until you press Apply.
    daemon mid-way; it picks the job back up on its own.
 4. A notification says *Changes applied* or *The changes could not be
    applied* with the reason the box gave.
+
+[![One path for every change: edit, apply, rebuild, switch; a failed build leaves the previous system running.](./img/apply-flow.svg)](./img/apply-flow.svg)
+
+[![Apply pressed: the box is rebuilding itself and says so, and stays reachable.](./img/apply-building.png)](./img/apply-building.png)
+
+[![The rebuild finished: Changes applied, and the box now answers to matt-box.local.](./img/apply-done.png)](./img/apply-done.png)
 
 ## Two settings that change the address
 

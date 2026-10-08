@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="380" viewBox="0 0 640 380" font-family="Inter, 'DejaVu Sans', Arial, sans-serif" font-size="15">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#355"/></marker>
+  </defs>
+  <rect width="640" height="380" fill="#fff"/>
+  <rect x="20" y="16" width="600" height="176" rx="10" fill="#fff" stroke="#0e6e7d" stroke-width="1"/>
+  <text x="40" y="42" text-anchor="start" fill="#18212a" font-size="14" font-weight="600">On every scan, the edge must pass all four:</text>
+  <circle cx="48" cy="70" r="11" fill="#0e6e7d"/>
+  <text x="48" y="75" text-anchor="middle" fill="#fff" font-size="12" font-weight="700">1</text>
+  <text x="70" y="74" text-anchor="start" fill="#18212a" font-size="13">its certificate is signed by the LosOS root key</text>
+  <circle cx="48" cy="100" r="11" fill="#0e6e7d"/>
+  <text x="48" y="105" text-anchor="middle" fill="#fff" font-size="12" font-weight="700">2</text>
+  <text x="70" y="104" text-anchor="start" fill="#18212a" font-size="13">the certificate names this edge&#x27;s address</text>
+  <circle cx="48" cy="130" r="11" fill="#0e6e7d"/>
+  <text x="48" y="135" text-anchor="middle" fill="#fff" font-size="12" font-weight="700">3</text>
+  <text x="70" y="134" text-anchor="start" fill="#18212a" font-size="13">the certificate has not expired</text>
+  <circle cx="48" cy="160" r="11" fill="#0e6e7d"/>
+  <text x="48" y="165" text-anchor="middle" fill="#fff" font-size="12" font-weight="700">4</text>
+  <text x="70" y="164" text-anchor="start" fill="#18212a" font-size="13">it signs a fresh challenge the box just made up</text>
+  <rect x="20" y="240" width="290" height="120" rx="8" fill="#e7f2ec" stroke="#2e7357" stroke-width="1"/>
+  <circle cx="40" cy="268" r="9" fill="#2e7357"/>
+  <path d="M35.5 268l3 3 6-6" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="58" y="273" text-anchor="start" fill="#18212a" font-size="14" font-weight="600">Official: the LosOS edge</text>
+  <text x="40" y="300" text-anchor="start" fill="#5c6a77" font-size="13">sharing, remote access</text>
+  <text x="40" y="320" text-anchor="start" fill="#5c6a77" font-size="13">and the market</text>
+  <rect x="330" y="240" width="290" height="120" rx="8" fill="#fbf4e4" stroke="#8c6512" stroke-width="1"/>
+  <path d="M350 259l10 17h-20z" fill="#8c6512" stroke="none"/><line x1="350" y1="265" x2="350" y2="270" stroke="#fff" stroke-width="2" stroke-linecap="round"/><circle cx="350" cy="273.2" r="1.1" fill="#fff"/>
+  <text x="368" y="273" text-anchor="start" fill="#18212a" font-size="14" font-weight="600">Any other edge</text>
+  <text x="350" y="300" text-anchor="start" fill="#5c6a77" font-size="13">sharing and remote access</text>
+  <text x="350" y="320" text-anchor="start" fill="#5c6a77" font-size="13">work; trading is refused</text>
+  <line x1="165" y1="192" x2="165" y2="238" stroke="#355" stroke-width="2" marker-end="url(#a)"/>
+  <line x1="475" y1="192" x2="475" y2="238" stroke="#355" stroke-width="2" marker-end="url(#a)" stroke-dasharray="5 4"/>
+  <text x="175" y="220" text-anchor="start" fill="#5c6a77" font-size="12">all four pass</text>
+  <text x="485" y="220" text-anchor="start" fill="#5c6a77" font-size="12">any one fails</text>
+</svg>

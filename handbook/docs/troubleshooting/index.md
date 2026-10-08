@@ -22,6 +22,8 @@ afterwards.
 
 Do these in order; most problems stop at one of them.
 
+[![The first five minutes in order, and which page to open when a step fails.](./img/first-five-minutes.svg)](./img/first-five-minutes.svg)
+
 1. **Look at the box's screen.** A blue banner with `LosOS is ready` and an
    `http://` address means the box has booted and has a network. No banner,
    or a text login prompt, or a passphrase prompt, is a different problem:

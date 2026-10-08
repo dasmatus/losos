@@ -10,6 +10,8 @@ reachable from your local network only, even on a box that is published
 through an edge, and every tab asks for the owner's password before it shows
 anything that can be changed.
 
+[![The admin pages: the sidebar on the left, the Overview on the right.](../start/img/overview.png)](../start/img/overview.png)
+
 ## The sections
 
 The sidebar on the left (an icon rail when collapsed, a sheet on a phone)
@@ -34,6 +36,8 @@ box? use the reserve?) opens a dialog instead, with the safe choice first.
 The footer of the sidebar switches between light, dark and "match the
 browser", and between English, Slovak and German. Both are kept in this
 browser.
+
+[![The same Overview in the dark theme and in Slovak.](./img/dark-slovak.png)](./img/dark-slovak.png)
 
 ## Sign out
 

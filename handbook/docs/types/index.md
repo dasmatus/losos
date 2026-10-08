@@ -11,6 +11,8 @@ slug: /types
 shaped along five independent lines. This page is the map; each line has its
 own page.
 
+[![The five lines a LosOS box is shaped along, with what every box starts as on each.](./img/setup-map.svg)](./img/setup-map.svg)
+
 ## 1. How the box is deployed
 
 | Type                                   | Who it is for                                   | Remote access | Mesh                | Market |

@@ -39,6 +39,8 @@ The script adds one certificate to your user's browser stores and prints its
 fingerprint; compare it with `http://<address>/setup/state.json`. Then
 **restart the browser** and open `https://<name>.local`.
 
+[![The wizard's first step: the one-line installer, the certificate download and the fingerprint.](../start/img/wizard-trust.png)](../start/img/wizard-trust.png)
+
 By hand: download `http://<address>/setup/losos-ca.crt` and add it as a
 trusted certificate authority (Keychain Access on macOS, `certmgr.msc` →
 Trusted Root Certification Authorities on Windows, the browser's own

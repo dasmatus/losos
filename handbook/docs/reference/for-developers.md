@@ -38,6 +38,8 @@ Every push to `main` publishes the site to [losos.dasmat.us](https://losos.dasma
 nix run nixpkgs#prefetch-npm-deps -- handbook/package-lock.json
 ```
 
+[![One source, two copies: handbook/docs is built into the website on every push and into every box's /handbook/.](./img/handbook-pipeline.svg)](./img/handbook-pipeline.svg)
+
 ## Translating
 
 Slovak and German are wired in. The interface strings live in

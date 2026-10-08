@@ -28,6 +28,8 @@ Linux desktops do. These do not:
 - **Linux without an mDNS resolver** (no Avahi, or `.local` not in
   `nsswitch.conf`).
 
+[![The IP address works from every computer; the .local name fails on a VM host and on another network.](../start/img/reaching.svg)](../start/img/reaching.svg)
+
 ## What to do
 
 - **Use the address.** Everything answers on it, the apps included; the

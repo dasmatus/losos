@@ -48,6 +48,10 @@ own. **It wipes every fixed disk in the machine.**
    banner with the box's address. Open that address in a browser on any
    computer on the same network and follow [The first run](first-run).
 
+[![The installer's screen: the Secure Boot line, then the firmware menu with BIOS, UEFI and autodetect, which it takes after 30 seconds.](./img/installer-secure-boot.png)](./img/installer-secure-boot.png)
+
+[![The installed box's screen: the blue banner with the address to open in a browser.](../img/tty1-banner.png)](../img/tty1-banner.png)
+
 ## Trying it in a virtual machine
 
 The box runs fine in QEMU, virt-manager or VirtualBox. Two things to know:

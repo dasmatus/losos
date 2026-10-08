@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="450" viewBox="0 0 640 450" font-family="Inter, 'DejaVu Sans', Arial, sans-serif" font-size="15">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#355"/></marker>
+  </defs>
+  <rect width="640" height="450" fill="#fff"/>
+  <rect x="20" y="16" width="600" height="86" rx="8" fill="#f3f6f6" stroke="none" stroke-width="1"/>
+  <text x="36" y="42" text-anchor="start" fill="#0e6e7d" font-weight="600" font-family="'JetBrains Mono', 'DejaVu Sans Mono', Menlo, monospace">http://192.168.1.23</text>
+  <text x="36" y="62" text-anchor="start" fill="#5c6a77" font-size="12">the address on the box&#x27;s screen</text>
+  <circle cx="40" cy="86" r="9" fill="#2e7357"/>
+  <path d="M35.5 86l3 3 6-6" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="58" y="91" text-anchor="start" fill="#18212a" font-size="13">every computer on the network</text>
+  <rect x="20" y="114" width="600" height="110" rx="8" fill="#fff" stroke="#9ab" stroke-width="1"/>
+  <text x="36" y="140" text-anchor="start" fill="#0e6e7d" font-weight="600" font-family="'JetBrains Mono', 'DejaVu Sans Mono', Menlo, monospace">http://mattbox.local</text>
+  <text x="36" y="160" text-anchor="start" fill="#5c6a77" font-size="12">the name, found over mDNS</text>
+  <circle cx="40" cy="184" r="9" fill="#2e7357"/>
+  <path d="M35.5 184l3 3 6-6" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="58" y="189" text-anchor="start" fill="#18212a" font-size="13">most computers and phones</text>
+  <circle cx="40" cy="208" r="9" fill="#a8443c"/>
+  <path d="M36 204l8 8M44 204l-8 8" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
+  <text x="58" y="213" text-anchor="start" fill="#18212a" font-size="13">a VM host on NAT, another network</text>
+  <rect x="20" y="236" width="600" height="86" rx="8" fill="#f3f6f6" stroke="none" stroke-width="1"/>
+  <text x="36" y="262" text-anchor="start" fill="#0e6e7d" font-weight="600" font-family="'JetBrains Mono', 'DejaVu Sans Mono', Menlo, monospace">https://mattbox.local</text>
+  <text x="36" y="282" text-anchor="start" fill="#5c6a77" font-size="12">the name, with the box&#x27;s certificate</text>
+  <circle cx="40" cy="306" r="9" fill="#2e7357"/>
+  <path d="M35.5 306l3 3 6-6" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="58" y="311" text-anchor="start" fill="#18212a" font-size="13">once the certificate is installed</text>
+  <rect x="20" y="334" width="600" height="86" rx="8" fill="#fff" stroke="#9ab" stroke-width="1"/>
+  <text x="36" y="360" text-anchor="start" fill="#0e6e7d" font-weight="600" font-family="'JetBrains Mono', 'DejaVu Sans Mono', Menlo, monospace">https://192.168.1.23</text>
+  <text x="36" y="380" text-anchor="start" fill="#5c6a77" font-size="12">the address, over HTTPS</text>
+  <circle cx="40" cy="404" r="9" fill="#a8443c"/>
+  <path d="M36 400l8 8M44 400l-8 8" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
+  <text x="58" y="409" text-anchor="start" fill="#18212a" font-size="13">always warns: it is not in the certificate</text>
+</svg>
