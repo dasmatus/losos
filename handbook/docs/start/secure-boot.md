@@ -59,7 +59,7 @@ A PC ships trusting Microsoft's certificates and nothing else, so with
 Secure Boot on it refuses the LosOS stick. OVMF and most firmware print
 *Access Denied*, and some skip the stick without a message. That refusal
 means the signature check works. To boot the stick with Secure Boot on,
-enrol the LosOS certificate into the firmware's `db`:
+add the LosOS certificate to the firmware's `db`, next to Microsoft's:
 
 ![Firmware that trusts only Microsoft's keys refusing the LosOS stick: Access Denied, rejected probably by Secure Boot.](../img/secure-boot-refused-microsoft-keys.png)
 
@@ -70,17 +70,50 @@ enrol the LosOS certificate into the firmware's `db`:
    fingerprint, and `openssl x509 -in losos-secure-boot-db.pem -noout
    -fingerprint -sha256` prints the same for the file you have.
 2. In the firmware's Secure Boot settings, switch from *Standard* to
-   *Custom* or *Setup* mode. Choose *Enroll key*, *Append to db* or *Add
-   signature from file*, and pick the `.cer` from the stick's EFI partition.
-   The wording differs by vendor. The stick's EFI partition is a plain FAT
+   *Custom* mode. Choose *Append to db*, *Enroll key* or *Add signature
+   from file*, and pick the `.cer` from the stick's EFI partition. The
+   wording differs by vendor. The stick's EFI partition is a plain FAT
    volume every firmware can browse.
 3. Boot the stick. The installer's first line says *Secure Boot: enabled*.
 
-If the firmware has no such dialog, use the standard tools from any Linux in
-*Setup* mode. Run `efi-updatevar -a -c losos-secure-boot-db.pem db` from
-efitools, or `sbctl enroll-keys` with the certificate added to its db.
-Enrolment is a one-time change to that machine. Microsoft's certificates
-stay in place, so Windows and other systems on it boot as before.
+### Keep Microsoft's certificates
+
+Add LosOS to the list. Don't replace the list with LosOS. Three things on a
+normal PC are signed under Microsoft's certificates and stop booting the
+moment those certificates leave `db`:
+
+- Windows' own boot manager.
+- Other Linux distributions, whose first-stage loader (shim) Microsoft signs.
+- The firmware drivers on graphics and network cards, called option ROMs.
+  On a desktop with a separate graphics card, losing these can mean no
+  picture at all, including in the firmware's setup screen.
+
+So avoid *Delete all keys*, *Clear Secure Boot keys* and *Reset to Setup
+Mode* unless the next step is *Restore factory keys*. If your firmware
+can only add a key after clearing them, restore the factory keys first and
+then append the LosOS certificate.
+
+From a running Linux in *Setup* mode, `efi-updatevar -a -c
+losos-secure-boot-db.pem db` from efitools appends. With sbctl, pass
+`--microsoft`: `sbctl enroll-keys --microsoft` keeps Microsoft's
+certificates beside the ones sbctl enrols, and without the flag it drops
+them. Then add the LosOS certificate to sbctl's db.
+
+The test suite checks this exact state. Its firmware holds the LosOS
+certificate and Microsoft's five `db` certificates and two `KEK`
+certificates side by side. The LosOS stick boots, and so does Ubuntu's
+Microsoft-signed shim. Take Microsoft's certificates away and the same
+shim is refused:
+
+![The firmware with LosOS and Microsoft's certificates enrolled: from inside the booted LosOS stick, KEK lists the LosOS test KEK and Microsoft's two KEK CAs, and db lists the LosOS test certificate and Microsoft's five CAs.](../img/secure-boot-cosigned-db.png)
+
+Enrolment is a one-time change to that machine.
+
+The LosOS loader is signed by LosOS, not by Microsoft. A stick that boots
+on a stock PC with nothing enrolled would need a shim that Microsoft signed
+for LosOS, after the public shim review and Microsoft's signing process,
+which LosOS has not been through. Until then, every machine enrols the
+LosOS certificate once.
 
 ## Verifying a download by hand
 
@@ -109,7 +142,7 @@ file.
 
 ## Where the key lives
 
-The private key never enters a build, a session or a box. The owner makes it
+The private key never enters a Nix build or a box. The owner makes it
 once, on their own computer, with `provisioning/secure-boot/keygen.sh`, and
 keeps it offline. The only other copy is the repository secret CI signs
 with. The certificate is committed as `keys/secure-boot-db.pem`. Until that
@@ -117,5 +150,8 @@ file carries one, releases say *Not signed* and the stick needs Secure Boot
 off. The test suite checks the mechanism with a throwaway key it generates
 and discards. `tests/secure-boot.nix` boots the signed medium under OVMF's
 Secure Boot build and shows the firmware's own *enabled* flag from inside.
-It also watches the firmware refuse the same medium under Microsoft-only
-keys, a tampered copy, and the unsigned build.
+The firmware in that test holds Microsoft's certificates beside the test
+key, and a Microsoft-signed shim still starts on it. It also watches the
+firmware refuse the same medium under Microsoft-only keys, a tampered copy,
+and the unsigned build, and refuse the shim once Microsoft's certificates
+are gone.
