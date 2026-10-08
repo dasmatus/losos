@@ -22,6 +22,6 @@ in the repository, versioned with the code. The short version:
   to the TPM without PCR binding, so the chip releases it to any software
   that runs on that machine. Only the disk on its own is unreadable. On a
   machine without a TPM the keyfile sits on an unencrypted ESP, and even the
-  disk alone is readable.
+  disk alone is readable. [TPM and disk unlock](TPM) has the details.
 - **The audit log is not tamper-evident** and does not rotate.
 - **Throttling is per address**, so address spoofing on the LAN bypasses it.
