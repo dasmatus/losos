@@ -81,8 +81,10 @@ async function open({
   options = null,
   checkoutUrl = 'https://checkout.stripe.com/c/pay/cs_test_1',
   onboardUrl = 'https://connect.stripe.com/setup/e/acct_test/abc',
+  now = null,
 } = {}) {
   const page = await browser.newPage({ viewport, locale });
+  if (now !== null) await page.clock.setFixedTime(now);
   const errors = [];
   page.on('pageerror', (e) => errors.push(String(e)));
 
@@ -526,24 +528,32 @@ await check('on a phone the panel is a sheet from the left, opened from a row na
   await page.close();
 });
 
-await check('the plate of salmon replaces the name in the top bar and is the favicon, served from the bundle', async () => {
-  const { page } = await open({ path: '/storage', stored: true });
-  const logo = page.locator('header').getByRole('img', { name: 'LosOS', exact: true });
-  await logo.waitFor();
-  assert.ok(await logo.evaluate((img) => img.complete && img.naturalWidth > 0), 'the logo did not load');
-  const src = await logo.getAttribute('src');
-  assert.match(src, /^(\/assets\/losos-[\w-]+\.png|data:image\/png)/, `the logo is not the bundled plate: ${src}`);
-  const icon = await page.locator('link[rel="icon"]').getAttribute('href');
-  assert.match(icon, /^\/assets\/losos-[\w-]+\.png$/, `the favicon is not the bundled plate: ${icon}`);
-  assert.equal((await page.request.get(origin + icon)).status(), 200);
-  assert.equal(await page.locator('header').getByText('LosOS', { exact: true }).count(), 0, 'the name is still drawn as text');
-  // A photo of dinner needs a word of explanation: hovering the plate says
-  // what it means, and the same words are the trigger's accessible name.
-  const trigger = page.locator('header').getByRole('button', { name: /Losos is Slovak for salmon/ });
-  await trigger.hover();
-  await page.locator('[data-slot="tooltip-content"]').filter({ hasText: 'The logo is a plate of it' }).waitFor();
-  await page.close();
-});
+for (const { name, now, file, tip } of [
+  { name: 'a live salmon', now: new Date(2026, 9, 8, 12), file: 'losos', tip: 'The logo is a live coho salmon' },
+  { name: 'on Halloween, the plate of salmon', now: new Date(2026, 9, 31, 12), file: 'losos-halloween', tip: 'For Halloween, the logo is a plate of it' },
+]) {
+  await check(`${name} replaces the name in the top bar and is the favicon, served from the bundle`, async () => {
+    const { page } = await open({ path: '/storage', stored: true, now });
+    const logo = page.locator('header').getByRole('img', { name: 'LosOS', exact: true });
+    await logo.waitFor();
+    assert.ok(await logo.evaluate((img) => img.complete && img.naturalWidth > 0), 'the logo did not load');
+    // Vite names a bundled file <name>-<hash>.png, the hash eight letters,
+    // digits, _ or -, so losos-<hash> cannot match losos-halloween-<hash>.
+    const bundled = new RegExp(`^/assets/${file}-[\\w-]{8}\\.png$`);
+    const src = await logo.getAttribute('src');
+    assert.match(src, bundled, `the logo is not the bundled ${file}.png: ${src}`);
+    const icon = await page.locator('link[rel="icon"]').evaluate((link) => new URL(link.href).pathname);
+    assert.match(icon, bundled, `the favicon is not the bundled ${file}.png: ${icon}`);
+    assert.equal((await page.request.get(origin + icon)).status(), 200);
+    assert.equal(await page.locator('header').getByText('LosOS', { exact: true }).count(), 0, 'the name is still drawn as text');
+    // A photo needs a word of explanation: hovering the logo says what it
+    // is, and the same words are the trigger's accessible name.
+    const trigger = page.locator('header').getByRole('button', { name: /Losos is Slovak for salmon/ });
+    await trigger.hover();
+    await page.locator('[data-slot="tooltip-content"]').filter({ hasText: tip }).waitFor();
+    await page.close();
+  });
+}
 
 /* The sidebar's moving parts are Base UI (tooltip positioning, the sheet's
  * slide and scroll lock, the folds' measured height), chosen because Base

@@ -362,8 +362,12 @@
     "description": "The title of the tag list page"
   },
   "losos.navbar.logoTip": {
-    "message": "Losos ist Slowakisch für Lachs. Das Logo ist ein Teller davon, vom eigenen Foto des Besitzers.",
+    "message": "Losos ist Slowakisch für Lachs. Das Logo ist ein lebender Silberlachs, unter Wasser fotografiert.",
     "description": "The tooltip on the navbar logo, saying what the picture means"
+  },
+  "losos.navbar.logoTipHalloween": {
+    "message": "Losos ist Slowakisch für Lachs. An Halloween ist das Logo ein Teller davon.",
+    "description": "The tooltip on the logo on 31 October, when it is a plate of salmon"
   },
   "losos.home.feature.cloud.title": {
     "message": "LosOS cloud"

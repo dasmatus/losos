@@ -2,7 +2,6 @@ import * as React from "react";
 import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Compass01Icon, ViewIcon, ViewOffSlashIcon } from "@hugeicons/core-free-icons";
-import logoUrl from "@/assets/losos.png";
 import { AppSidebar } from "@/components/app-sidebar";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Badge } from "@/components/ui/badge";
@@ -49,6 +48,7 @@ import {
   TOKEN_PATTERN,
 } from "@/lib/api";
 import { followAuth } from "@/lib/look";
+import { logoFor } from "@/lib/logo";
 import type { SettingsPaneId } from "@/screens/settings/panes";
 import { paneFromPath } from "@/lib/routes";
 import { useT } from "@/lib/i18n-react";
@@ -251,30 +251,30 @@ function Shell() {
 
 function TopBar({ signedIn }: { signedIn: boolean }) {
   const t = useT();
+  const logo = logoFor();
   return (
     <header className="sticky top-0 z-40 border-b border-line bg-surface/85 backdrop-blur-sm">
       <div className="mx-auto flex w-full max-w-6xl items-center gap-3 px-4 py-3 sm:px-6">
-        {/* The plate of salmon (losos is Slovak for salmon) in place of the
-            name: Matus's own photo, cut out at the plate's rim, so nothing in
-            it is anyone else's drawing; its alt text is the name. Bundled, so
-            img-src 'self' holds. A photo of dinner needs a word of
-            explanation, so the plate is a tooltip trigger whose accessible
-            name is that explanation (Base UI shows no tooltip on touch). */}
+        {/* The logo in place of the name, a live salmon (a plate of it on
+            Halloween; lib/logo.ts picks); its alt text is the name. A photo
+            needs a word of explanation, so the logo is a tooltip trigger
+            whose accessible name is that explanation (Base UI shows no
+            tooltip on touch). */}
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger
               render={
                 <button
                   type="button"
-                  aria-label={t("shell.logoTip")}
+                  aria-label={t(logo.tip)}
                   className="inline-flex shrink-0 rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
                 />
               }
             >
-              <img src={logoUrl} alt="LosOS" width={32} height={32} className="size-8" />
+              <img src={logo.url} alt="LosOS" width={32} height={32} className="size-8" />
             </TooltipTrigger>
             <TooltipContent side="bottom" align="start" className="max-w-[22rem]">
-              {t("shell.logoTip")}
+              {t(logo.tip)}
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
