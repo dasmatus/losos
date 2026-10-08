@@ -320,8 +320,7 @@ impl Edge {
 
     /// An official hub for the relayed-domain tests: as
     /// [`Edge::start_with_domains`], with `enrolled` boxes already in the
-    /// mesh and `tweak` applied last (how a test points `--routes-etcd-url`
-    /// at its stand-in etcd).
+    /// mesh and `tweak` applied last (how a test turns `--relay-routes` on).
     #[allow(clippy::too_many_arguments)]
     pub async fn start_official_hub(
         tag: &str,
