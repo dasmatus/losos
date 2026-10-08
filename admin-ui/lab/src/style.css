@@ -298,13 +298,21 @@ svg.canvas { width: 100%; height: 100%; display: block; touch-action: none; user
 /* Splash: a Packet Tracer look-alike above, LosOS below */
 #splash { position: fixed; inset: 0; z-index: 100; display: grid; grid-template-rows: 1fr 1fr; background: var(--surface); transition: opacity .45s ease; }
 #splash.gone { opacity: 0; pointer-events: none; }
-#splash .sp-top { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 10px; padding-bottom: 28px; color: #fff;
+#splash .sp-top, #splash .sp-bottom { display: flex; min-height: 0; }
+#splash .sp-pane { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+#splash .sp-top .sp-pane { justify-content: flex-end; padding-bottom: 28px; }
+#splash .sp-bottom .sp-pane { justify-content: flex-start; padding-top: 30px; }
+/* The two-panel meme: no to the left of the top half, yes
+   to the left of the bottom one. Only when the build carries the pictures. */
+#splash .sp-meme { height: 100%; max-width: 38%; aspect-ratio: 120 / 124; object-fit: cover; flex: none; }
+#splash .sp-meme[hidden] { display: none; }
+#splash .sp-top { color: #fff;
   background: radial-gradient(120% 140% at 50% 0%, #1b5fa8 0%, #0b3566 55%, #071f3f 100%); }
 #splash .sp-mark { width: 116px; height: 116px; filter: drop-shadow(0 6px 18px rgba(0,0,0,.35)); }
 #splash .sp-word { font: 300 40px/1 var(--f-ui); letter-spacing: .01em; }
 #splash .sp-word .sp-bold { font-weight: 600; }
 #splash .sp-sub { font-size: 13px; letter-spacing: .14em; text-transform: uppercase; opacity: .7; }
-#splash .sp-bottom { display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 10px; padding-top: 30px; border-top: 4px solid var(--salmon); }
+#splash .sp-bottom { border-top: 4px solid var(--salmon); }
 #splash .sp-los { font: 600 30px/1 var(--f-ui); color: var(--ink); }
 #splash .sp-los span { color: var(--accent); }
 #splash .sp-load { display: flex; flex-direction: column; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); margin-top: 6px; }
@@ -331,3 +339,5 @@ svg.canvas { width: 100%; height: 100%; display: block; touch-action: none; user
 .back::before { content: "‹"; font-size: 16px; line-height: 1; color: var(--muted); }
 .back:hover { background: var(--accent-wash); }
 .back[hidden] { display: none; }
+/* Beside the meme each half reads as one panel: its content in the middle. */
+#splash:has(.sp-meme:not([hidden])) .sp-pane { justify-content: center; padding: 0 12px; }
