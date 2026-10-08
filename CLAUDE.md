@@ -718,10 +718,13 @@ A separate `midnight-reboot.timer` reboots unconditionally at 00:07 with
   key first signs the operator in with GitHub's OAuth device flow (public
   client id only, no secret) and refuses unless the account's *numeric id*
   is in `backend-registrar/operators.json`, which is compiled into the
-  binary. `provision edge` makes the edge key in memory, signs its
-  certificate, ships both over one SSH session on stdin (the remote script
-  frames them with `read -r`; nothing secret in argv or on the operator's
-  disk) and runs the four checks; `root-keygen --publish` / `publish` open
+  binary. `provision edge` reads the edge's own public key from
+  `GET /identity/public-key` (the registrar makes the key on its first
+  start; the private half never leaves the edge), signs the certificate
+  and pushes it to `POST /identity/cert` with the sign-in's GitHub token,
+  which the edge resolves against the same compiled-in allowlist before it
+  installs anything (`server::identity_push`), then runs the four checks;
+  no SSH; `root-keygen --publish` / `publish` open
   the PR that fills `keys/official-edge-root.pub` with the same sign-in
   (`public_repo`). `tests/provision.rs` runs all of it against a fake GitHub
   and a real registrar. The gate decides whom the tooling serves; the root
