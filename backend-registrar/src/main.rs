@@ -88,6 +88,13 @@ async fn async_main() -> ExitCode {
                 ExitCode::FAILURE
             }
         },
+        Ok(Mode::Enrol(opts)) => match losos_registrar::relay::run(opts).await {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(e) => {
+                tracing::error!(target: Action::Enrol.target(), "{:?}", e);
+                ExitCode::FAILURE
+            }
+        },
         Ok(Mode::StripeGate(opts)) => match losos_registrar::stripe_gate::run(opts).await {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => {

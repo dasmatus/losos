@@ -163,6 +163,9 @@ in
       # is the `_losos-edge._tcp` browse over the Avahi the box already runs.
       // {
         LOSOS_EDGE_URL = config.losos.proxy.registrarUrl;
+        # Where the tunnel goes when that configured edge is the path. An
+        # edge found on the LAN carries its own in the advert (`rathole=`).
+        LOSOS_EDGE_RATHOLE = config.losos.proxy.edgeRatholeEndpoint;
         # The trust anchor for "official" edges (losos.proxy.officialRootKeyFile):
         # a public key, so a store path. Without a key in it no edge is
         # official and the market relay stays off.
@@ -188,6 +191,25 @@ in
         LOSOS_REGISTRAR_URL = config.losos.proxy.registrarUrl;
         LOSOS_APPLIANCE_ID = config.losos.proxy.applianceId;
         LOSOS_PROXY_TOKEN_FILE = toString config.losos.proxy.tokenFile;
+        # The path (wiki/Edge-Federation.md, "The box"): with the master proxy
+        # on, every scan ends by telling modules/proxy.nix's two units which
+        # edge to dial. The env file carries the chosen edge, the marker says
+        # there is none, and the daemon restarts or stops the units on a
+        # change. Both files are on /run, so a boot starts clean. Only with
+        # the proxy on: without it there are no units to drive, and the scan
+        # only answers GET /api/edge.
+        LOSOS_EDGE_PATH_FILE = "/run/losos/edge-path.env";
+        LOSOS_EDGE_NONE_FILE = "/run/losos/edge-none";
+        LOSOS_EDGE_PIN_DIR = "/var/secrets/losos-edge-pins";
+        # The token files the tunnel and announce read. lososd mints both
+        # (64 hex characters, 0600) when absent, so a stock box can enrol
+        # with a LAN gateway that takes any box on first contact; an
+        # official edge still has to be given the proxy token out of band.
+        LOSOS_PROXY_BOOTSTRAP_FILE = toString config.losos.proxy.bootstrapTokenFile;
+      }
+      // lib.optionalAttrs (config.losos.proxy.enable && config.losos.proxy.noisePublicKeyFile != null) {
+        # The configured edge's pin; a LAN edge's goes under LOSOS_EDGE_PIN_DIR.
+        LOSOS_EDGE_NOISE_PUB_FILE = toString config.losos.proxy.noisePublicKeyFile;
       };
       # What `losos-ctl grow` shells out to. A systemd unit's default PATH does
       # not include these, and the failure is the unhelpful kind: the grow
