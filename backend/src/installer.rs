@@ -204,6 +204,11 @@ pub enum InstallAction {
     EnrollTpm(PathBuf, PathBuf),
 }
 
+/// What a keyfile install costs, in one line the owner sees on the console.
+/// The wiki page says the rest; the admin pages and the box's own screen say
+/// the same thing after the first boot.
+pub const NO_TPM_WARNING: &str = "losos-install: warning: no TPM, so the disk key is on the unencrypted boot partition and anyone with this disk can read it. See https://github.com/dasmatus/losos/wiki/TPM";
+
 /// `--tpm` / `--no-tpm` against what the installer medium can see.
 ///
 /// Neither flag means "use the chip if there is one": TPM2 is the default
@@ -249,6 +254,9 @@ pub fn plan_install(opts: &Options, devs: &[BlockDev]) -> Result<Vec<InstallActi
     } else {
         "losos-install: unlock: keyfile in the initrd (no TPM2 chip, or --no-tpm)".to_string()
     }));
+    if !opts.tpm {
+        acts.push(InstallAction::Log(NO_TPM_WARNING.to_string()));
+    }
 
     // The keyfile must exist before disko runs: it is the LUKS passwordFile in
     // both modes. The TPM path formats with it too and enrols the chip from
@@ -337,6 +345,11 @@ fn install_tail(opts: &Options, work: &Path) -> Vec<InstallAction> {
         work.to_path_buf(),
         PathBuf::from("/mnt/persist/etc/nixos"),
     ));
+    // Said again as the last thing before `done`, because that is what stays
+    // on the screen: the line at the top has scrolled away by then.
+    if !opts.tpm {
+        acts.push(InstallAction::Log(NO_TPM_WARNING.to_string()));
+    }
     acts.push(InstallAction::Log(
         "losos-install: done. Remove the install medium and reboot into the installed system."
             .to_string(),
@@ -769,6 +782,27 @@ mod tests {
                 tpm,
                 "{logs:?}"
             );
+        }
+    }
+
+    #[test]
+    fn a_keyfile_install_warns_and_the_warning_is_the_last_line_before_done() {
+        for tpm in [false, true] {
+            let acts = plan_install(&Options { tpm, ..opts() }, &targets()).unwrap();
+            let logs: Vec<&String> = acts
+                .iter()
+                .filter_map(|a| match a {
+                    InstallAction::Log(t) => Some(t),
+                    _ => None,
+                })
+                .collect();
+            let warned = logs.iter().filter(|l| l.as_str() == NO_TPM_WARNING).count();
+            assert_eq!(warned, if tpm { 0 } else { 2 }, "{logs:?}");
+            if !tpm {
+                let n = logs.len();
+                assert_eq!(logs[n - 2].as_str(), NO_TPM_WARNING, "{logs:?}");
+                assert!(logs[n - 1].contains("done"), "{logs:?}");
+            }
         }
     }
 

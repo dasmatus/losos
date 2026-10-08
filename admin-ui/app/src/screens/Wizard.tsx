@@ -32,6 +32,7 @@ import { ArrowLeft01Icon, ArrowRight01Icon, CheckmarkCircle02Icon } from "@hugei
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { LanguagePicker } from "@/components/ui/language-picker";
+import { NoTpmNotice, useRunsWithoutTpm } from "@/components/no-tpm-notice";
 import { toast } from "@/components/ui/toast";
 import { t } from "@/lib/i18n";
 import { useT } from "@/lib/i18n-react";
@@ -98,6 +99,12 @@ export default function Wizard({ onDone }: WizardProps) {
   }, []);
   const onSignedIn = React.useCallback(() => setSignedIn(true), []);
 
+  /* A box installed without a TPM says so here, once the password is set:
+   * the claim is what puts the token in this tab, and the owner has just
+   * decided how to guard the box, which is when its weak spot belongs on
+   * screen. Above the card, so it stays through the last step. */
+  const noTpm = useRunsWithoutTpm(account !== null);
+
   const previous = previousStep(step);
   const next = nextStep(step);
   const gate = gateFor(step, { account, signedIn });
@@ -144,6 +151,8 @@ export default function Wizard({ onDone }: WizardProps) {
         </div>
         <StepRail current={step} />
       </div>
+
+      {noTpm && <NoTpmNotice />}
 
       <Card className="overflow-hidden">
         {/* Keyed by step so React remounts the subtree and the enter animation
