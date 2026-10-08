@@ -458,6 +458,45 @@ pub fn start_edge_scanner(backend: &IoLosos) {
     }
 }
 
+/// Where the live custom domains go for LosOS cloud
+/// (`$LOSOS_PUBLIC_NAMES_FILE`). Its directory is world-readable on purpose
+/// and outside the daemon's 0700 state directory: the Nextcloud pod mounts it
+/// read-only (modules/workloads.nix) and its PHP config reads the file on
+/// every request. The names are public anyway; they are in public DNS.
+pub const DEFAULT_PUBLIC_NAMES_FILE: &str = "/var/lib/losos-public-names/domains.json";
+
+/// How often the daemon asks the edge which custom domains are live, besides
+/// every time the owner opens or changes them. A domain the edge turns live
+/// on its own (the owner's DNS records appeared) reaches LosOS cloud within
+/// this, so it is short enough that an owner who just added the records is
+/// not left at "Untrusted domain" for long, and long enough to be one small
+/// request in a quiet hour.
+pub const DOMAIN_SYNC_INTERVAL: std::time::Duration = std::time::Duration::from_secs(120);
+
+/// Keep the live custom domains fresh for LosOS cloud: ask the edge once now
+/// and then every [`DOMAIN_SYNC_INTERVAL`]. Only an official edge is asked
+/// (the same gate as the Network pane), and an answer that does not come
+/// leaves the last one in place.
+pub fn start_domain_sync(backend: &IoLosos) {
+    let backend = backend.clone();
+    let spawned = std::thread::Builder::new()
+        .name("lososd-domain-sync".into())
+        .spawn(move || {
+            // Give the edge scanner its first pass, so the gate has a reading.
+            std::thread::sleep(crate::edge::SCAN_INTERVAL);
+            loop {
+                let mut b = backend.clone();
+                if let Err(e) = crate::losos::cmd_domains(&mut b) {
+                    tracing::debug!(error = %e, "custom domains not refreshed");
+                }
+                std::thread::sleep(DOMAIN_SYNC_INTERVAL);
+            }
+        });
+    if let Err(e) = spawned {
+        tracing::error!(error = %e, "could not start the custom-domain sync; domains refresh only when the Network pane asks");
+    }
+}
+
 /// One request to the registrar's market, by `curl`.
 ///
 /// The body — which carries the appliance's proxy token — goes to curl on
@@ -1336,6 +1375,18 @@ impl Losos for IoLosos {
         let url = crate::catalogue::search_url(query);
         let body = crate::catalogue::Fetch::get(&mut fetch, &url)?;
         crate::catalogue::parse_results(&body)
+    }
+
+    fn write_public_names(&mut self, names: &[String]) -> anyhow::Result<()> {
+        let path =
+            std::path::PathBuf::from(env_or("LOSOS_PUBLIC_NAMES_FILE", DEFAULT_PUBLIC_NAMES_FILE));
+        let body = format!("{}\n", serde_json::to_string(names)?);
+        // Unchanged is the common case (every sync, most page loads); leave
+        // the file and its mtime alone then.
+        if std::fs::read_to_string(&path).is_ok_and(|old| old == body) {
+            return Ok(());
+        }
+        atomic_write(&path, body.as_bytes()).with_context(|| format!("writing {}", path.display()))
     }
 
     fn market_request(&mut self, op: &crate::market::Op) -> anyhow::Result<crate::market::Outcome> {

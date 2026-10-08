@@ -998,6 +998,17 @@ impl Market {
         GateClient::new(&self.opts.gate_socket)
     }
 
+    /// The tenant's Stripe connected account as last recorded, if it has one.
+    /// Read by [`crate::domains`]: a box's public names hang off it.
+    pub async fn seller(&self, id: &str) -> Option<Seller> {
+        self.state.lock().await.sellers.get(id).cloned()
+    }
+
+    /// Every recorded seller, for the reconciler's zone pass.
+    pub async fn sellers(&self) -> BTreeMap<String, Seller> {
+        self.state.lock().await.sellers.clone()
+    }
+
     /// Everything one appliance may see about its own market activity.
     pub async fn account(&self, id: &str, sharing: &Sharing) -> AccountView {
         let now = now_secs();

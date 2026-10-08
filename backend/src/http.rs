@@ -746,6 +746,59 @@ async fn post_market_order(
     .await
 }
 
+/// `GET /api/domains` — this box's own domains on the edge, and the records
+/// to create for them; `{"available": false}` when no official edge offers
+/// them. Relayed like the market, for the same reasons.
+async fn get_domains(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    guarded(&api, &req, "/api/domains", false, || {
+        run(&api, crate::losos::cmd_domains)
+    })
+}
+
+async fn post_domain(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+    route: &'static str,
+    build: fn(String) -> crate::market::Op,
+) -> HttpResponse {
+    guarded(&api, &req, route, true, || {
+        let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
+        // Lowercased and trimmed here so "Cloud.Example.org " is not a 400.
+        match field_str(&doc, "domain") {
+            Some(d) => {
+                let d = d.trim().trim_end_matches('.').to_ascii_lowercase();
+                let op = build(d);
+                run(&api, |b| crate::losos::cmd_domain_op(b, &op))
+            }
+            None => err(
+                actix_web::http::StatusCode::BAD_REQUEST,
+                "the request body is missing a required field",
+            ),
+        }
+    })
+}
+
+/// `POST /api/domains` `{"domain": ...}` — claim a domain for this box.
+async fn post_domain_add(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> HttpResponse {
+    post_domain(api, req, body, "/api/domains", |domain| {
+        crate::market::Op::DomainAdd { domain }
+    })
+    .await
+}
+
+/// `POST /api/domains/remove` `{"domain": ...}` — give one up.
+async fn post_domain_remove(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    post_domain(api, req, body, "/api/domains/remove", |domain| {
+        crate::market::Op::DomainRemove { domain }
+    })
+    .await
+}
+
 // ── The owner's look ──────────────────────────────────────────────────────
 // A background picture and the widgets written by hand (`crate::look`).
 // HTTP-only, like the market relay: a CLI for a wallpaper would be surface
@@ -1000,6 +1053,9 @@ pub fn serve(backend: IoLosos) -> anyhow::Result<()> {
                     web::post().to(post_market_close),
                 )
                 .route("/api/market/orders", web::post().to(post_market_order))
+                .route("/api/domains", web::get().to(get_domains))
+                .route("/api/domains", web::post().to(post_domain_add))
+                .route("/api/domains/remove", web::post().to(post_domain_remove))
                 .route("/api/options", web::get().to(get_options))
                 .route("/api/config", web::get().to(get_config))
                 .route("/api/config/sync", web::post().to(post_config_sync))

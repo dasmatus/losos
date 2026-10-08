@@ -103,6 +103,9 @@ pub struct FakeLosos {
     pub market_routes: std::collections::BTreeMap<String, (u16, String)>,
     /// Every operation asked for, in order.
     pub market_ops: Vec<crate::market::Op>,
+    /// The live custom domains last handed to LosOS cloud; `None` until the
+    /// first write.
+    pub public_names: Option<Vec<String>>,
 
     // ── Finding an edge proxy ───────────────────────────────────────────
     /// What the fake scanner last found. The default has one LAN edge in
@@ -214,6 +217,7 @@ impl FakeLosos {
             catalogue_queries: Vec::new(),
             market_routes: std::collections::BTreeMap::new(),
             market_ops: Vec::new(),
+            public_names: None,
             edge: crate::edge::EdgeStatus::found(
                 vec![crate::edge::Edge {
                     name: "edge".to_string(),
@@ -412,6 +416,11 @@ impl Losos for FakeLosos {
             None => Ok(crate::market::Outcome::Unavailable),
             Some((status, body)) => crate::market::classify(*status, body),
         }
+    }
+
+    fn write_public_names(&mut self, names: &[String]) -> anyhow::Result<()> {
+        self.public_names = Some(names.to_vec());
+        Ok(())
     }
 
     fn load_look(&mut self) -> anyhow::Result<crate::look::Look> {

@@ -574,6 +574,37 @@ let
     cfg.market.storageClass
   ];
 
+  # The DNS half of `serve` (losos.edge.dns.*). Without --dns-zone every
+  # /domains/* route answers 503 and no zone file is written.
+  dnsCfg = cfg.dns;
+  dnsZoneFile = "/var/lib/losos-dns/${dnsCfg.zone}.zone";
+  dnsServeArgs = lib.optionals dnsCfg.enable (
+    [
+      "--dns-zone"
+      dnsCfg.zone
+      "--dns-zone-file"
+      dnsZoneFile
+      "--dns-nameservers"
+      (lib.concatStringsSep "," dnsCfg.nameservers)
+      "--dns-hostmaster"
+      dnsCfg.hostmaster
+      "--dns-check-url"
+      dnsCfg.checkUrl
+      "--public-domain"
+      cfg.publicDomain
+      "--domains-state-file"
+      "/var/lib/losos-registrar/domains.json"
+    ]
+    ++ lib.optionals (dnsCfg.ipv4 != [ ]) [
+      "--dns-ipv4"
+      (lib.concatStringsSep "," dnsCfg.ipv4)
+    ]
+    ++ lib.optionals (dnsCfg.ipv6 != [ ]) [
+      "--dns-ipv6"
+      (lib.concatStringsSep "," dnsCfg.ipv6)
+    ]
+  );
+
   serveArgs = utils.escapeSystemdExecArgs (
     [
       "${registrar}/bin/losos-registrar"
@@ -609,6 +640,7 @@ let
     ++ meshServeArgs
     ++ marketServeArgs
     ++ identityArgs
+    ++ dnsServeArgs
   );
 
   # The official-edge identity (losos.edge.identity.*): both files or neither,
@@ -639,6 +671,22 @@ in
           together: the key answers the nonce, the certificate is what the
           root signed for it. Both are set by default; set both to null for
           an edge that can never become official.
+        '';
+      }
+      {
+        assertion = dnsCfg.enable -> (dnsCfg.ipv4 != [ ] || dnsCfg.ipv6 != [ ]);
+        message = ''
+          losos.edge.dns.enable requires losos.edge.dns.ipv4 and/or
+          losos.edge.dns.ipv6: the edge's public addresses, which every name
+          in the zone resolves to.
+        '';
+      }
+      {
+        assertion = dnsCfg.enable -> cfg.identity.keyFile != null;
+        message = ''
+          losos.edge.dns.enable requires losos.edge.identity.keyFile: only an
+          edge that can become official hands out names, and the domain routes
+          answer 503 until its certificate is installed.
         '';
       }
       {
@@ -708,6 +756,10 @@ in
     systemd.tmpfiles.rules = [
       "d /etc/traefik/dynamic 0755 root root - -"
       "L+ /etc/traefik/dynamic/register.yml - - - - ${toString registerYml}"
+    ]
+    # The zone directory: root writes (the registrar), knot reads.
+    ++ lib.optionals dnsCfg.enable [
+      "d /var/lib/losos-dns 0755 root root - -"
     ];
 
     # ── losos-registrar (registration API + reconciler) ─────────────────
@@ -746,6 +798,45 @@ in
         InaccessiblePaths = map (path: "-${path}") gateSealed ++ [
           "-/run/credentials/losos-stripe-gate.service"
         ];
+      };
+    };
+
+    # ── DNS: the edge's own zone, served by Knot ─────────────────────────
+    # losos-registrar renders the zone (backend-registrar/src/zone.rs) into
+    # /var/lib/losos-dns, world-readable, with a fresh serial whenever it
+    # says something new; Knot loads it whole and keeps no journal, so the
+    # file is the whole truth. The path unit below reloads the zone when the
+    # registrar replaces the file. Before the first reconcile the file does
+    # not exist and Knot answers REFUSED for the zone; that lasts until the
+    # registrar's first pass, which runs before its API opens.
+    services.knot = lib.mkIf dnsCfg.enable {
+      enable = true;
+      settings = {
+        server.listen = dnsCfg.listen;
+        zone.${dnsCfg.zone} = {
+          file = dnsZoneFile;
+          zonefile-load = "whole";
+          zonefile-sync = "-1";
+          journal-content = "none";
+        };
+      };
+    };
+
+    systemd.paths.losos-dns-reload = lib.mkIf dnsCfg.enable {
+      description = "Reload the edge's zone when losos-registrar rewrites it";
+      wantedBy = [ "multi-user.target" ];
+      pathConfig.PathChanged = dnsZoneFile;
+    };
+
+    systemd.services.losos-dns-reload = lib.mkIf dnsCfg.enable {
+      description = "Reload the edge's zone in Knot";
+      after = [ "knot.service" ];
+      # Nothing to reload into when Knot is not running; it reads the file
+      # when it starts.
+      unitConfig.ConditionPathExists = "/run/knot/knot.sock";
+      serviceConfig = {
+        Type = "oneshot";
+        ExecStart = "${config.services.knot.package}/bin/knotc --socket=/run/knot/knot.sock zone-reload ${dnsCfg.zone}";
       };
     };
 
@@ -1061,6 +1152,9 @@ in
     ++ lib.optionals meshEnabled [
       cfg.cluster.apiPort
       cfg.cluster.supervisorPort
-    ];
+    ]
+    # DNS answers over TCP too: large responses and zone checks need it.
+    ++ lib.optional dnsCfg.enable 53;
+    networking.firewall.allowedUDPPorts = lib.optional dnsCfg.enable 53;
   };
 }
