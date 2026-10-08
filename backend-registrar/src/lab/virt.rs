@@ -24,11 +24,14 @@
 //! anywhere: a WebSocket is not bound by CORS, so any site open in the same
 //! browser can try `ws://127.0.0.1:8095`.
 //!
-//! Domains made through the relay are the page's, not the helper's: the
-//! helper does not name, count, sweep or destroy them. The client creates
-//! them with `AUTODESTROY`, so libvirt ends them when the relayed connection
-//! closes, and the helper closes it when the WebSocket goes or the helper
-//! stops.
+//! Domains made through the relay are the page's, not the helper's. The
+//! client creates them with `AUTODESTROY`, so libvirt ends them when the
+//! relayed connection closes, and the helper closes it when the WebSocket
+//! goes or the helper stops. Each ticket comes with a network card for the
+//! page's domain (`page_nic` in the module above) and the name the helper
+//! would give it, `losos-lab-<key>`; a page that uses that name (the Lab
+//! does) has its domain swept and reaped like the helper's own, and a page
+//! that does not is still bounded by `AUTODESTROY`.
 
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;

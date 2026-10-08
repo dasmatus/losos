@@ -9,8 +9,9 @@
 //! relay the page's WebAssembly client uses) do not come through here;
 //! nginx proxies `/api/lab/ws/` and `/api/lab/virt` straight to the
 //! helper, which admits a socket only with a ticket: the per-guest one a
-//! create answered with, or a single-use one from `POST
-//! /api/lab/virt-ticket`. Both need the admin token.
+//! create answered with, or the ones `POST /api/lab/virt-ticket` answers
+//! with (single-use for the relay, and one for the network card of the
+//! domain the page creates). Both need the admin token.
 //!
 //! Off or not running is a 200 `{"available": false, "reason": ...}` on
 //! `hello`, never a 404, for the same reason as the market relay: a page

@@ -108,7 +108,7 @@ export function Tray() {
                 <small className="text-[10.5px] text-muted [text-wrap:balance]">
                   {T.cat === "losos"
                     ? engine.available
-                      ? engine.kinds[0] === "libvirt"
+                      ? engine.kinds[0] === "libvirt" || engine.kinds[0] === "virt-rpc"
                         ? t("lab.tray.bootsLibvirt")
                         : t("lab.tray.bootsQemu")
                       : t("lab.tray.lososDevice")

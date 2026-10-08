@@ -18,6 +18,7 @@ import { Engine } from "./engine";
 import { setEngine } from "./engine-hook";
 import { LibvirtBackend } from "./engine/libvirt";
 import { QemuBackend } from "./engine/qemu";
+import { VirtRpcBackend } from "./engine/virt-rpc";
 import { readLast } from "./files";
 import { plateUrl } from "./icons";
 import { Inspector } from "./inspector";
@@ -61,9 +62,13 @@ async function bootOnce(step: (s: SplashStep) => void): Promise<void> {
   s.onRefresh = () => engine.reconcile();
   s.onToast = (text) => say(text, text.length > 90 ? 6000 : 3600);
 
-  // An ordered probe: libvirt through the helper, then (once it lands) the
+  // An ordered probe: libvirt through the helper and its virsh, then the
   // WASM libvirt client through the helper's relay, then qemu-wasm in the tab.
-  const probe = engine.init([new LibvirtBackend(BOX_COPY), new QemuBackend(BOX_COPY, () => step("qemu"))]);
+  const probe = engine.init([
+    new LibvirtBackend(BOX_COPY),
+    new VirtRpcBackend(BOX_COPY),
+    new QemuBackend(BOX_COPY, () => step("qemu")),
+  ]);
   const box = BOX_COPY ? readThisBox() : Promise.resolve(null);
   await Promise.allSettled([probe, box]);
 

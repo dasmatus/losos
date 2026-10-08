@@ -11,7 +11,11 @@
  *
  * The libvirt checks stand a fake `losos-registrar lab` behind /api/lab/
  * (page.route for the HTTP half, page.routeWebSocket for the console and
- * NIC sockets), the way lososd relays the real one on a box.
+ * NIC sockets), the way lososd relays the real one on a box. The virt-rpc
+ * checks add the relay path: a ticket, and a fake libvirt daemon behind the
+ * relay socket that the page's WebAssembly client really drives, under the
+ * same CSP (so the client's own module and its 'wasm-unsafe-eval' are
+ * covered too).
  */
 
 import assert from 'node:assert';
@@ -301,16 +305,104 @@ await check('phone width: no sideways scroll, the inspector is a sheet', async (
   await page.close();
 });
 
+/* libvirt's remote protocol as far as the page's client drives it (program
+ * 0x20008086: AUTH_LIST, CONNECT_OPEN, DOMAIN_CREATE_XML, LOOKUP_BY_NAME,
+ * OPEN_CONSOLE, RESUME, DESTROY, CONNECT_CLOSE), behind the relay socket.
+ * A KVM domain is refused the way a machine without KVM refuses it, so the
+ * client's fallback to plain QEMU is walked too. */
+function fakeLibvirt(ws, seen) {
+  const PROG = 0x20008086;
+  const u32 = (...v) => {
+    const b = Buffer.alloc(4 * v.length);
+    v.forEach((x, i) => b.writeUInt32BE(x >>> 0, 4 * i));
+    return b;
+  };
+  const str = (s) => {
+    const b = Buffer.from(s);
+    return Buffer.concat([u32(b.length), b, Buffer.alloc((4 - (b.length % 4)) % 4)]);
+  };
+  const readStr = (p, off) => {
+    const n = p.readUInt32BE(off);
+    return [p.subarray(off + 4, off + 4 + n).toString(), off + 4 + n + ((4 - (n % 4)) % 4)];
+  };
+  const packet = (proc, type, serial, status, body = Buffer.alloc(0)) =>
+    Buffer.concat([u32(28 + body.length, PROG, 1, proc, type, serial, status), body]);
+  const dom = (name) => Buffer.concat([str(name), Buffer.alloc(16, 0xab), u32(1)]);
+  // virNetMessageError: code, domain, message, level, dom, str1..3, int1, int2, net
+  const error = (message) => Buffer.concat([u32(1, 10, 1), str(message), u32(2, 0, 0, 0, 0, 0, 0, 0)]);
+  let buf = Buffer.alloc(0);
+  let consoleSerial = 0;
+  ws.onMessage((m) => {
+    buf = Buffer.concat([buf, typeof m === 'string' ? Buffer.from(m) : Buffer.from(m)]);
+    while (buf.length >= 4 && buf.length >= buf.readUInt32BE(0)) {
+      const p = buf.subarray(0, buf.readUInt32BE(0));
+      buf = buf.subarray(p.length);
+      if (p.readUInt32BE(4) !== PROG) continue;
+      const proc = p.readInt32BE(12);
+      const type = p.readUInt32BE(16);
+      const serial = p.readUInt32BE(20);
+      const body = p.subarray(28);
+      if (type === 3) {
+        seen.typed += body.toString();
+        continue;
+      }
+      seen.procs.push(proc);
+      let ret = Buffer.alloc(0);
+      if (proc === 66) ret = u32(1, 0); // AUTH_LIST: none
+      if (proc === 1) seen.uri = body.readUInt32BE(0) ? readStr(body, 4)[0] : null;
+      if (proc === 10) {
+        const [xml, off] = readStr(body, 0);
+        seen.xmls.push(xml);
+        seen.flags = body.readUInt32BE(off);
+        if (xml.startsWith("<domain type='kvm'>")) {
+          ws.send(packet(proc, 1, serial, 1, error("unsupported configuration: domain type 'kvm' is not available here")));
+          continue;
+        }
+        seen.name = /<name>([^<]*)<\/name>/.exec(xml)[1];
+        ret = dom(seen.name);
+      }
+      if (proc === 23) ret = dom(readStr(body, 0)[0]);
+      if (proc === 201) consoleSerial = serial;
+      ws.send(packet(proc, 1, serial, 0, ret));
+      if (proc === 28) ws.send(packet(201, 3, consoleSerial, 2, Buffer.from('Welcome to the LosOS stand-in\r\n\x1b[32mmattbox is ready\x1b[0m\r\n# ')));
+    }
+  });
+}
+
 /* A fake helper: hello, guests, and the two sockets per guest. `refuse`
- * makes POST /guests answer as libvirt refusing the domain. */
-function fakeHelper({ refuse = false, gear = false } = {}) {
-  const seen = { posts: [], protocols: [], typed: '', deleted: [] };
+ * makes POST /guests answer as libvirt refusing the domain. `virsh: false`
+ * is a helper whose virsh is missing, and `virt` adds the relay path: the
+ * ticket, the relay socket (fakeLibvirt) and the page guest's NIC socket. */
+function fakeHelper({ refuse = false, gear = false, virsh = true, virt = false } = {}) {
+  const seen = { posts: [], protocols: [], typed: '', deleted: [], tickets: 0, procs: [], xmls: [], nicOpened: false };
   const routes = async (page, authed) => {
+    const hello = virsh
+      ? { available: true, virsh: true, domainType: 'kvm', label: 'KVM via libvirt', reason: null }
+      : { available: false, virsh: false, domainType: 'qemu', label: 'QEMU via libvirt (no KVM)', reason: 'libvirt did not answer: virsh: No such file or directory' };
     await page.route('**/api/lab/hello', (route) =>
       authed(route)
-        ? json(route, 200, { available: true, label: 'KVM via libvirt', images: { kernel: true, rootfs: true, gear }, maxGuests: 8, reason: null })
+        ? json(route, 200, {
+            ...hello,
+            images: { kernel: true, rootfs: true, gear, dir: '/srv/lab guest' },
+            maxGuests: 8,
+            memoryMiB: 96,
+            ...(virt ? { virt: { available: true, socket: '/run/libvirt/virtqemud-sock', reason: null } } : {}),
+          })
         : json(route, 401, {}),
     );
+    if (virt) {
+      await page.route('**/api/lab/virt-ticket', (route) => {
+        if (!authed(route) || route.request().method() !== 'POST') return json(route, 401, {});
+        seen.tickets++;
+        return json(route, 200, {
+          ticket: 'aa'.repeat(16),
+          expiresIn: 30,
+          uri: 'qemu:///system?socket=/run/libvirt/virtqemud-sock',
+          nic: { guest: 'virt-c0ffee', domain: 'losos-lab-virt-c0ffee', ticket: '11ff', helperPort: 40001, qemuPort: 40002 },
+        });
+      });
+      await page.routeWebSocket(/\/api\/lab\/virt$/, (ws) => fakeLibvirt(ws, seen));
+    }
     await page.route('**/api/lab/guests', (route) => {
       if (!authed(route)) return json(route, 401, {});
       seen.posts.push(route.request().postDataJSON());
@@ -401,7 +493,8 @@ await check('libvirt: a refused guest says so once and keeps the simulated conso
   await node(page, 'mattbox').click();
   await page.getByRole('tab', { name: 'Console' }).click();
   await page.getByRole('button', { name: /^Boot the x86_64 guest/ }).click();
-  await page.getByText('KVM via libvirt could not start mattbox: libvirt refused the guest: no KVM here. Its console stays simulated.').waitFor();
+  // .first(): the toast's live region repeats the words for a moment
+  await page.getByText('KVM via libvirt could not start mattbox: libvirt refused the guest: no KVM here. Its console stays simulated.').first().waitFor();
   await page.getByTestId('sim-terminal').waitFor();
   assert.strictEqual(helper.seen.posts.length, 1);
   await clean();
@@ -424,6 +517,102 @@ await check('libvirt: signed out, the box copy does not ask the helper', async (
   assert.match(await page.getByTestId('engine-badge').innerText(), /Simulated consoles/);
   const tip = await page.getByTestId('engine-badge').locator('xpath=..').getAttribute('aria-label');
   assert.match(tip ?? '', /libvirt: sign in on the admin page first\./);
+  await clean();
+  await page.close();
+});
+
+await check('virt-rpc: no virsh, the page drives libvirt through the relay; the client loads only then', async () => {
+  const helper = fakeHelper({ virsh: false, virt: true });
+  const fetched = [];
+  const { page, clean } = await open({
+    signedIn: true,
+    routes: async (p, authed) => {
+      p.on('request', (r) => fetched.push(new URL(r.url()).pathname));
+      await helper.routes(p, authed);
+    },
+  });
+  assert.match(await page.getByTestId('engine-badge').innerText(), /Emulated.*libvirt via WebAssembly/s);
+  assert.match(await page.locator('[data-testid=tray-items] [data-type=box]').innerText(), /boots under libvirt/);
+  assert.deepStrictEqual(fetched.filter((u) => /losos_lab_virt/.test(u)), [], 'the client is not fetched with the page');
+
+  await node(page, 'mattbox').click();
+  await page.getByRole('tab', { name: 'Console' }).click();
+  assert.match(await page.getByTestId('console-head').innerText(), /libvirt via WebAssembly/);
+  await page.getByRole('button', { name: 'Boot the x86_64 guest (libvirt via WebAssembly)' }).click();
+  const term = page.getByTestId('guest-terminal');
+  await term.waitFor();
+  await page.waitForFunction(() => /mattbox is ready/.test(document.querySelector('[data-testid=guest-terminal]')?.textContent ?? ''));
+  assert.ok(fetched.some((u) => /losos_lab_virt.*\.wasm$/.test(u)), 'the client came when the guest started');
+
+  // the ticket, then one relayed connection: open, KVM refused, QEMU created
+  // paused and autodestroy, its console, resume
+  assert.strictEqual(helper.seen.tickets, 1);
+  assert.strictEqual(helper.seen.uri, 'qemu:///system', 'the socket parameter stays with the helper');
+  assert.deepStrictEqual(helper.seen.procs, [66, 1, 10, 10, 23, 201, 23, 28]);
+  assert.strictEqual(helper.seen.flags, 3, 'PAUSED | AUTODESTROY');
+  const xml = helper.seen.xmls[1];
+  assert.match(helper.seen.xmls[0], /^<domain type='kvm'>/);
+  assert.match(xml, /^<domain type='qemu'>/);
+  assert.strictEqual(helper.seen.name, 'losos-lab-virt-c0ffee', 'the name the helper handed out');
+  assert.match(xml, /<kernel>\/srv\/lab guest\/bzImage<\/kernel>/);
+  assert.match(xml, /<source file='\/srv\/lab guest\/rootfs.bin'\/>/);
+  assert.match(xml, /<cmdline>console=ttyS0 .*losos\.host=mattbox/);
+  assert.match(xml, /<mac address='[0-9a-f:]{17}'\/>\n\s*<source address='127.0.0.1' port='40001'>\n\s*<local address='127.0.0.1' port='40002'\/>/);
+  assert.match(xml, /<serial type='pty'>/);
+  assert.doesNotMatch(xml, /<serial type='tcp'>/);
+  const protocols = await page.evaluate(() => window.__wsProtocols);
+  assert.deepStrictEqual(
+    protocols.map(([u, p]) => [new URL(u).pathname, p]),
+    [
+      ['/api/lab/virt', ['losos-lab', 'ticket.' + 'aa'.repeat(16)]],
+      ['/api/lab/ws/virt-c0ffee/nic/0', ['losos-lab', 'ticket.11ff']],
+    ],
+  );
+  assert.match(await page.getByTestId('console-head').innerText(), /QEMU via libvirt from WebAssembly \(no KVM\)/);
+
+  // typing goes down the console stream
+  await term.click();
+  await page.keyboard.type('ls');
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(150);
+  assert.strictEqual(helper.seen.typed, 'ls\r');
+
+  // powering off destroys the domain over the relay and hands back the card
+  await page.getByTestId('setup-picker').selectOption('two-sites');
+  await page.waitForTimeout(300);
+  assert.ok(helper.seen.procs.includes(12), `DOMAIN_DESTROY sent: ${helper.seen.procs}`);
+  assert.deepStrictEqual(helper.seen.deleted, ['DELETE /api/lab/guests/virt-c0ffee']);
+  await clean();
+  await page.close();
+});
+
+await check('virt-rpc: beside virsh it is the fallback, and a helper without the relay leaves it out quietly', async () => {
+  const both = fakeHelper({ virt: true });
+  let { page, clean } = await open({ signedIn: true, routes: both.routes });
+  assert.match(await page.getByTestId('engine-badge').innerText(), /KVM via libvirt, libvirt via WebAssembly as the fallback/);
+  await clean();
+  await page.close();
+
+  // an older helper (no `virt` in hello): only the virsh path, no complaint
+  const old = fakeHelper();
+  ({ page, clean } = await open({ signedIn: true, routes: old.routes }));
+  const badge = await page.getByTestId('engine-badge').innerText();
+  assert.match(badge, /KVM via libvirt/);
+  assert.doesNotMatch(badge, /WebAssembly/);
+  await clean();
+  await page.close();
+
+  // no helper answering at all: simulated, and the reason is said once
+  ({ page, clean } = await open({
+    signedIn: true,
+    routes: async (p) => {
+      await p.route('**/api/lab/hello', (route) => route.abort());
+    },
+  }));
+  assert.match(await page.getByTestId('engine-badge').innerText(), /Simulated consoles/);
+  const tip = (await page.getByTestId('engine-badge').locator('xpath=..').getAttribute('aria-label')) ?? '';
+  assert.match(tip, /libvirt: the box did not answer\./);
+  assert.doesNotMatch(tip, /virt-rpc/);
   await clean();
   await page.close();
 });

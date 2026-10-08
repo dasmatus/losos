@@ -4,11 +4,15 @@
  * them in order and keeps every one that answers, so a guest one backend
  * cannot start falls through to the next:
  *
- *   1. libvirt through the helper `losos-registrar lab` (libvirt.ts): KVM on
- *      the viewer's machine, or on the box through lososd's /api/lab
- *   2. (later) libvirt spoken directly by a WASM client (admin-ui/lab/virt-rpc)
- *      through the helper's relay route
+ *   1. libvirt through the helper `losos-registrar lab` and its virsh
+ *      (libvirt.ts): KVM on the viewer's machine, or on the box through
+ *      lososd's /api/lab
+ *   2. libvirt spoken directly by the page's WASM client (virt-rpc.ts,
+ *      admin-ui/lab/virt-rpc) through the helper's relay route: the same
+ *      helper with no virsh behind it
  *   3. qemu-wasm in this tab (qemu.ts)
+ *
+ * The two libvirt backends find the helper the same way (helper.ts).
  *
  * The rest of the Lab never sees which: it starts a guest per powered device
  * with the kernel command line the model implies, and gets back the guest's

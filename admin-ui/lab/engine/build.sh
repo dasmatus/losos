@@ -93,15 +93,17 @@ cp "$WORK/xterm/package/lib/xterm.js" "$WORK/xterm/package/css/xterm.css" "$ENG/
 cp "$WORK/xterm-pty/package/index.js" "$ENG/vendor/xterm-pty.js"
 
 echo "== the page"
-# The Lab page is admin-ui/app's second Vite entry. Its Rust core comes
-# from nix (the same derivation the box's build copies in), so the runner
-# needs no wasm32 toolchain.
+# The Lab page is admin-ui/app's second Vite entry. Its Rust core and its
+# libvirt client come from nix (the same derivations the box's build copies
+# in), so the runner needs no wasm32 toolchain.
 APP="$ROOT/admin-ui/app"
-nix build "$ROOT#losos-lab-core" --out-link "$WORK/lab-core"
-rm -rf "$APP/src/lab/core-pkg"
-mkdir -p "$APP/src/lab/core-pkg"
-cp "$WORK/lab-core"/* "$APP/src/lab/core-pkg/"
-chmod -R u+w "$APP/src/lab/core-pkg"
+for pkg in core virt; do
+  nix build "$ROOT#losos-lab-$pkg" --out-link "$WORK/lab-$pkg"
+  rm -rf "$APP/src/lab/$pkg-pkg"
+  mkdir -p "$APP/src/lab/$pkg-pkg"
+  cp "$WORK/lab-$pkg"/* "$APP/src/lab/$pkg-pkg/"
+  chmod -R u+w "$APP/src/lab/$pkg-pkg"
+done
 (cd "$APP" && npm ci --ignore-scripts && VITE_LAB_HOSTED=1 npm run build -- --outDir "$WORK/dist" --emptyOutDir)
 cp -r "$WORK/dist/lab/." "$OUT/lab/"
 cp -r "$WORK/dist/assets" "$WORK/dist/theme-boot.js" "$OUT/"

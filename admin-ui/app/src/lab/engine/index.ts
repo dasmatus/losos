@@ -4,10 +4,11 @@
  * and mount a running guest's console.
  *
  * Backends are probed in the order given (app.tsx: libvirt through the
- * helper, then qemu-wasm) and every one that answers is kept. A guest goes
- * to the first that can run its device; when that one refuses, it falls
- * through to the next, and the Lab says so once. A device whose start every
- * backend refused keeps its simulated console.
+ * helper's virsh, then libvirt through the page's WebAssembly client and
+ * the helper's relay, then qemu-wasm) and every one that answers is kept.
+ * A guest goes to the first that can run its device; when that one
+ * refuses, it falls through to the next, and the Lab says so once. A
+ * device whose start every backend refused keeps its simulated console.
  *
  * Guests start one after another: two emscripten instances initialising at
  * the same moment raced each other and one never printed. At most `max` of
@@ -87,7 +88,7 @@ export class Engine {
   get available(): boolean {
     return this.backends.length > 0;
   }
-  /** The kinds that answered, first first ("libvirt", "qemu-wasm"). */
+  /** The kinds that answered, first first ("libvirt", "virt-rpc", "qemu-wasm"). */
   get kinds(): string[] {
     return this.backends.map((b) => b.backend.kind);
   }

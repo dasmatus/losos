@@ -651,3 +651,101 @@ async fn with_a_token_file_a_relay_ticket_wants_the_token() {
     h.stop().await;
     server.abort();
 }
+
+#[tokio::test]
+async fn a_relay_ticket_brings_a_network_card_for_the_pages_domain() {
+    let sock_dir = common::TempDir::new("virt");
+    let sock = sock_dir.path().join("virtqemud-sock");
+    let (server, _) = fake_libvirtd(&sock);
+    let uri = socket_uri(&sock);
+    let h = helper_with(Duration::from_secs(60), |o, _| {
+        o.connect = uri;
+        o.max_guests = 1;
+    })
+    .await;
+    let hello = hello_of(&h).await;
+    assert!(
+        hello["images"]["dir"]
+            .as_str()
+            .is_some_and(|d| d.ends_with("/guest")),
+        "the page writes its own XML from this: {hello}"
+    );
+
+    let t: serde_json::Value = virt_ticket(&h, ORIGIN, None)
+        .await
+        .json()
+        .await
+        .expect("json");
+    let nic = &t["nic"];
+    let key = nic["guest"].as_str().expect("key").to_string();
+    let ticket = nic["ticket"].as_str().expect("nic ticket").to_string();
+    assert!(key.starts_with("virt-"), "{nic}");
+    assert_eq!(nic["domain"], format!("losos-lab-{key}"));
+    assert_ne!(ticket, t["ticket"].as_str().expect("relay ticket"));
+    let helper_port = u16::try_from(nic["helperPort"].as_u64().expect("port")).expect("u16");
+    let qemu_port = u16::try_from(nic["qemuPort"].as_u64().expect("port")).expect("u16");
+
+    // The card is a guest with no console: the page reads that over libvirt.
+    match ws_connect(&format!("{}{key}/console", h.ws), &ticket).await {
+        Err(tokio_tungstenite::tungstenite::Error::Http(r)) => assert_eq!(r.status(), 404),
+        other => panic!("expected a 404, got {other:?}"),
+    }
+    assert!(ws_connect(&format!("{}{key}/nic/0", h.ws), "00ff")
+        .await
+        .is_err());
+
+    // Play QEMU, as the page's XML tells it to: frames both ways.
+    let qemu = UdpSocket::bind(("127.0.0.1", qemu_port))
+        .await
+        .expect("qemu end");
+    let mut ws = ws_connect(&format!("{}{key}/nic/0", h.ws), &ticket)
+        .await
+        .expect("nic");
+    let frame: Vec<u8> = (0u8..60).collect();
+    let got = loop {
+        qemu.send_to(&frame, ("127.0.0.1", helper_port))
+            .await
+            .expect("send");
+        match tokio::time::timeout(Duration::from_millis(200), ws.next()).await {
+            Ok(Some(Ok(Message::Binary(b)))) => break b,
+            Ok(other) => panic!("nic said {other:?}"),
+            Err(_) => continue,
+        }
+    };
+    assert_eq!(&got[..], &frame[..]);
+    let back: Vec<u8> = (100u8..164).collect();
+    ws.send(Message::binary(back.clone())).await.expect("send");
+    let mut buf = [0u8; 2048];
+    let (n, _) = tokio::time::timeout(Duration::from_secs(5), qemu.recv_from(&mut buf))
+        .await
+        .expect("in time")
+        .expect("recv");
+    assert_eq!(&buf[..n], &back[..]);
+
+    // It counts against --max-guests: a full helper still hands out the
+    // relay ticket, with no card.
+    let full: serde_json::Value = virt_ticket(&h, ORIGIN, None)
+        .await
+        .json()
+        .await
+        .expect("json");
+    assert!(full["ticket"].is_string());
+    assert!(full["nic"].is_null(), "{full}");
+    assert_eq!(h.create(guest("d8", "box")).await.status(), 409);
+
+    // DELETE hands the card back.
+    let gone = reqwest::Client::new()
+        .delete(format!("{}guests/{key}", h.base))
+        .send()
+        .await
+        .expect("delete");
+    assert_eq!(gone.status(), 204);
+    let again: serde_json::Value = virt_ticket(&h, ORIGIN, None)
+        .await
+        .json()
+        .await
+        .expect("json");
+    assert!(again["nic"].is_object(), "{again}");
+    h.stop().await;
+    server.abort();
+}

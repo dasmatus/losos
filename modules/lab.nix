@@ -13,8 +13,9 @@
 #   * /api/lab/ws/<guest>/{console,nic/<n>} and /api/lab/virt go nginx ->
 #     the helper directly (modules/containers.nix): a WebSocket through
 #     actix would be a second relay for no gain. The helper admits a socket
-#     only with a ticket: the per-guest one a create answered with, or a
-#     single-use one from virt-ticket, and only a token holder gets either.
+#     only with a ticket: the per-guest one a create answered with, or one
+#     of the two from virt-ticket (the relay's, single-use, and the network
+#     card's for the page's own domain), and only a token holder gets any.
 #     /api/lab/virt is a raw byte relay to libvirtd's socket for the Lab's
 #     WebAssembly libvirt client, so it hands out libvirt at this unit's
 #     uid; in the libvirtd group that is root-equivalent, no more than the

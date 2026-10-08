@@ -24,6 +24,11 @@ function emulatedTip(kinds: string[]): string {
     (kinds.includes("libvirt")
       ? "Guests run under libvirt on this computer through losos-registrar lab, one transient domain per powered device. "
       : "") +
+    (kinds.includes("virt-rpc")
+      ? kinds.includes("libvirt")
+        ? "This page's own libvirt client, compiled to WebAssembly, starts any guest the helper's virsh cannot, through the helper's relay. "
+        : "This page's own libvirt client, compiled to WebAssembly, runs the guests under libvirt on this computer through losos-registrar lab's relay, one transient domain per powered device. "
+      : "") +
     (kinds.includes("qemu-wasm")
       ? kinds.length > 1
         ? "qemu-system-x86_64 compiled to WebAssembly (ktock/qemu-wasm) runs any guest libvirt cannot. "

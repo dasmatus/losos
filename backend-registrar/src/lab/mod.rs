@@ -37,7 +37,10 @@
 //!     query string ends up in access logs).
 //!   * `POST virt-ticket` and `GET virt`: a single-use ticket, then a
 //!     WebSocket relayed raw to libvirt's socket ([`virt`]). Whoever holds
-//!     that socket has libvirt at this helper's uid; see [`virt`].
+//!     that socket has libvirt at this helper's uid; see [`virt`]. The
+//!     ticket comes with a network card for the domain the page creates
+//!     ([`page_nic`]), bridged like a helper guest's at
+//!     `guests/{key}/nic/0`, so those guests join the Lab's fabric too.
 //!
 //! Who may call: a request with an `Origin` must come from one of the
 //! `--origin` values or from the same origin it is addressed to; preflights
@@ -188,13 +191,17 @@ struct NicPort {
     generation: AtomicUsize,
 }
 
+/// A guest the helper bridges. Its own guests have a role and a console; a
+/// page's (a network card handed out with a relay ticket, for a domain the
+/// page creates itself) has neither, because the page holds the console on
+/// its own libvirt connection.
 struct Guest {
     key: String,
     domain: String,
     ticket: String,
     name: String,
-    role: Role,
-    console: Arc<Console>,
+    role: Option<Role>,
+    console: Option<Arc<Console>>,
     nics: Vec<Arc<NicPort>>,
     watchers: AtomicUsize,
     idle_since: Mutex<Instant>,
@@ -368,8 +375,14 @@ impl Lab {
             return false;
         };
         g.finish();
+        // A page's domain is usually gone already (it destroys its own, and
+        // AUTODESTROY ends it with the relayed connection), often on a
+        // machine with no virsh at all; only the helper's own failing is news.
         match self.virsh.destroy(&g.domain).await {
             Ok(()) => tracing::info!(target: TARGET, domain = g.domain, "destroyed"),
+            Err(e) if g.role.is_none() => {
+                tracing::debug!(target: TARGET, domain = g.domain, "destroy: {e}");
+            }
             Err(e) => tracing::warn!(target: TARGET, domain = g.domain, "destroy: {e}"),
         }
         true
@@ -555,7 +568,13 @@ async fn hello(State(lab): State<Arc<Lab>>, headers: HeaderMap) -> Response {
         "virsh": p.uri.is_ok(),
         "domainType": p.domain_type.as_str(),
         "label": p.domain_type.label(),
-        "images": { "kernel": kernel, "rootfs": rootfs, "gear": lab.has(spec::Image::Gear.file()) },
+        // `dir` is for a page that writes its own domain XML (the relay path).
+        "images": {
+            "kernel": kernel,
+            "rootfs": rootfs,
+            "gear": lab.has(spec::Image::Gear.file()),
+            "dir": lab.images.display().to_string(),
+        },
         "maxGuests": lab.opts.max_guests,
         "memoryMiB": lab.opts.memory_mib,
         "guests": lock(&lab.guests).len(),
@@ -571,7 +590,7 @@ async fn list(State(lab): State<Arc<Lab>>, headers: HeaderMap) -> Response {
     }
     let guests: Vec<_> = lock(&lab.guests)
         .values()
-        .map(|g| json!({ "guest": g.key, "domain": g.domain, "name": g.name, "role": g.role.as_str() }))
+        .map(|g| json!({ "guest": g.key, "domain": g.domain, "name": g.name, "role": g.role.map(Role::as_str) }))
         .collect();
     Json(json!({ "guests": guests })).into_response()
 }
@@ -730,8 +749,8 @@ async fn start(
         domain,
         ticket,
         name: c.name.clone(),
-        role: c.role,
-        console,
+        role: Some(c.role),
+        console: Some(console),
         nics: ports,
         watchers: AtomicUsize::new(0),
         idle_since: Mutex::new(Instant::now()),
@@ -822,20 +841,26 @@ async fn console_ws(
     ws: WebSocketUpgrade,
 ) -> Response {
     match lab.ticketed(&key, &headers) {
-        Ok(g) => ws
-            .protocols([PROTOCOL])
-            .on_upgrade(move |s| console_session(g, s)),
+        Ok(g) => match g.console.clone() {
+            Some(console) => ws
+                .protocols([PROTOCOL])
+                .on_upgrade(move |s| console_session(g, console, s)),
+            None => answer(
+                StatusCode::NOT_FOUND,
+                "this guest's console is on the page's own libvirt connection",
+            ),
+        },
         Err((status, why)) => answer(status, why),
     }
 }
 
-async fn console_session(g: Arc<Guest>, mut ws: WebSocket) {
+async fn console_session(g: Arc<Guest>, console: Arc<Console>, mut ws: WebSocket) {
     let _watching = g.watch();
     let mut gone = g.gone.subscribe();
     if *gone.borrow_and_update() {
         return;
     }
-    let (backlog, mut rx) = g.console.subscribe();
+    let (backlog, mut rx) = console.subscribe();
     if !backlog.is_empty() && ws.send(Message::Binary(backlog.into())).await.is_err() {
         return;
     }
@@ -847,9 +872,9 @@ async fn console_session(g: Arc<Guest>, mut ws: WebSocket) {
                 Err(broadcast::error::RecvError::Closed) => break,
             },
             m = ws.recv() => match m {
-                Some(Ok(Message::Binary(b))) if b.len() <= MAX_INPUT => { let _ = g.console.input.send(b).await; }
+                Some(Ok(Message::Binary(b))) if b.len() <= MAX_INPUT => { let _ = console.input.send(b).await; }
                 Some(Ok(Message::Text(t))) if t.len() <= MAX_INPUT => {
-                    let _ = g.console.input.send(Bytes::copy_from_slice(t.as_str().as_bytes())).await;
+                    let _ = console.input.send(Bytes::copy_from_slice(t.as_str().as_bytes())).await;
                 }
                 Some(Ok(Message::Close(_)) | Err(_)) | None => break,
                 Some(Ok(_)) => {}
@@ -925,12 +950,76 @@ async fn virt_ticket(State(lab): State<Arc<Lab>>, headers: HeaderMap) -> Respons
         }
     };
     lab.virt_tickets.issue(ticket.clone());
+    let nic = match page_nic(&lab).await {
+        Ok(Some(g)) => {
+            let port = &g.nics[0];
+            json!({
+                "guest": g.key,
+                "domain": g.domain,
+                "ticket": g.ticket,
+                "helperPort": port.sock.local_addr().map(|a| a.port()).unwrap_or(0),
+                "qemuPort": port.qemu.port(),
+            })
+        }
+        Ok(None) => serde_json::Value::Null,
+        Err(e) => {
+            tracing::warn!(target: TARGET, "a network card for a page's guest: {e:?}");
+            serde_json::Value::Null
+        }
+    };
     Json(json!({
         "ticket": ticket,
         "expiresIn": virt::TICKET_TTL.as_secs(),
         "uri": lab.opts.connect,
+        "nic": nic,
     }))
     .into_response()
+}
+
+/// A network card for the domain a page is about to create over the relay:
+/// the same UDP tunnel a helper guest's card is, which the page names in its
+/// own XML (`<interface type='udp'>`, QEMU on `qemuPort`, the helper on
+/// `helperPort`), and a guest entry with no console around it, so the card
+/// is bridged at `guests/{key}/nic/0` with its own ticket, counts against
+/// `--max-guests`, and is ended by the idle reaper once no socket watches it.
+///
+/// The helper suggests the domain's name (`losos-lab-<key>`) so the sweep
+/// and the reaper find it, but cannot hold the page to it, or to this card:
+/// the relay already gives the page all of libvirt at the helper's uid, and
+/// a loopback UDP port adds nothing to that. `None` when the helper is full.
+async fn page_nic(lab: &Arc<Lab>) -> Result<Option<Arc<Guest>>> {
+    let sock = UdpSocket::bind("127.0.0.1:0").await.into_diagnostic()?;
+    let helper_port = sock.local_addr().into_diagnostic()?.port();
+    let qemu_port = free_udp_port(helper_port).into_diagnostic()?;
+    let key = format!("virt-{}", random_hex(3)?);
+    let port = Arc::new(NicPort {
+        sock,
+        qemu: SocketAddr::from(([127, 0, 0, 1], qemu_port)),
+        out: Mutex::new(None),
+        generation: AtomicUsize::new(0),
+    });
+    let g = Arc::new(Guest {
+        domain: format!("{PREFIX}{key}"),
+        key: key.clone(),
+        ticket: random_hex(16)?,
+        name: "page".to_string(),
+        role: None,
+        console: None,
+        nics: vec![port.clone()],
+        watchers: AtomicUsize::new(0),
+        idle_since: Mutex::new(Instant::now()),
+        gone: watch::channel(false).0,
+        tasks: Mutex::new(Vec::new()),
+    });
+    {
+        let mut guests = lock(&lab.guests);
+        if guests.len() >= lab.opts.max_guests {
+            return Ok(None);
+        }
+        guests.insert(key, g.clone());
+    }
+    lock(&g.tasks).push(tokio::spawn(nic_bridge(port)));
+    Ok(Some(g))
 }
 
 /// One relayed socket open; the count drops with it.

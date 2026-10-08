@@ -327,9 +327,9 @@ jobs:
       # /handbook/ for the box (the public site is handbook.yml's build of the
       # same source), and it fails on a broken link. LosOS Lab is the admin
       # UI's second page, so losos-admin-ui builds its Rust core for wasm32
-      # (losos-lab-core) first. losos-lab-virt is the Lab's libvirt client,
-      # built the same way. lab.yml builds the hosted copy with the qemu-wasm
-      # engine.
+      # (losos-lab-core) first, and copies in the Lab's libvirt client
+      # (losos-lab-virt), built the same way. lab.yml builds the hosted copy
+      # with the qemu-wasm engine.
       - run: nix build .#losos-registrar .#losos-admin-ui .#losos-handbook .#losos-lab-virt -L
       # The same crate linked statically against musl, for the operator's own
       # machine (the key ceremony, provisioning/edge-identity/README.md): the
