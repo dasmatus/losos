@@ -66,6 +66,14 @@ pub enum ApiError {
     /// out to boxes the operator only ever meant to publish a website for.
     #[error("cluster enrolment not permitted for this id")]
     ClusterForbidden,
+    /// An authenticated tenant posted `/relay` without
+    /// `losos.edge.tenants.<id>.relayZone`. Relaying is a fourth, separate
+    /// bit: a tenant that may publish its own site may not vouch for others.
+    #[error("relaying not permitted for this id")]
+    RelayForbidden,
+    /// A spoke listed more boxes than one spoke may relay.
+    #[error("too many boxes in one relay; at most 64")]
+    RelayTooMany,
     /// A join asked for a node name other than the caller's own appliance id.
     /// This is what makes the handler's stale-node delete safe: the node object
     /// it removes is always the caller's own, so a tenant cannot evict a
@@ -129,9 +137,10 @@ impl ApiError {
             ApiError::Unauthorized => StatusCode::UNAUTHORIZED,
             ApiError::HostnameForbidden
             | ApiError::ClusterForbidden
+            | ApiError::RelayForbidden
             | ApiError::NodeNameForbidden => StatusCode::FORBIDDEN,
             ApiError::UnknownAppliance => StatusCode::NOT_FOUND,
-            ApiError::InvalidWindow => StatusCode::BAD_REQUEST,
+            ApiError::InvalidWindow | ApiError::RelayTooMany => StatusCode::BAD_REQUEST,
             ApiError::Market(e) => match e {
                 MarketError::Unconfigured => StatusCode::SERVICE_UNAVAILABLE,
                 MarketError::Forbidden => StatusCode::FORBIDDEN,
@@ -171,8 +180,10 @@ impl ApiError {
             | ApiError::HostnameForbidden
             | ApiError::UnknownAppliance
             | ApiError::ClusterForbidden
+            | ApiError::RelayForbidden
             | ApiError::NodeNameForbidden
             | ApiError::MeshUnconfigured
+            | ApiError::RelayTooMany
             | ApiError::InvalidWindow => Cow::Owned(self.to_string()),
             ApiError::Io(_) | ApiError::Serde(_) => Cow::Borrowed("internal error"),
             ApiError::Market(e) => match e {
@@ -229,7 +240,11 @@ impl axum::response::IntoResponse for ApiError {
             ApiError::ClusterForbidden | ApiError::NodeNameForbidden | ApiError::InvalidWindow => {
                 tracing::warn!(target: Action::Join.target(), "join rejected: {self}");
             }
-            ApiError::Unauthorized | ApiError::HostnameForbidden | ApiError::UnknownAppliance => {
+            ApiError::Unauthorized
+            | ApiError::HostnameForbidden
+            | ApiError::RelayForbidden
+            | ApiError::RelayTooMany
+            | ApiError::UnknownAppliance => {
                 tracing::debug!(target: Action::Serve.target(), "request rejected: {self}");
             }
         }

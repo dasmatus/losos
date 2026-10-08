@@ -30,6 +30,9 @@ pub enum Action {
     Provision,
     Identity,
     Domains,
+    Relay,
+    Uplink,
+    Enrol,
 }
 
 impl Action {
@@ -55,6 +58,9 @@ impl Action {
             Action::Provision => "losos::provision",
             Action::Identity => "losos::identity",
             Action::Domains => "losos::domains",
+            Action::Relay => "losos::relay",
+            Action::Uplink => "losos::uplink",
+            Action::Enrol => "losos::enrol",
         }
     }
 }
@@ -78,6 +84,9 @@ impl Display for Action {
             Action::Provision => f.write_str("[provision]"),
             Action::Identity => f.write_str("[identity]"),
             Action::Domains => f.write_str("[domains]"),
+            Action::Relay => f.write_str("[relay]"),
+            Action::Uplink => f.write_str("[uplink]"),
+            Action::Enrol => f.write_str("[enrol]"),
         }
     }
 }

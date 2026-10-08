@@ -420,6 +420,9 @@ fn scan_edge_now() -> crate::edge::EdgeStatus {
     let configured = std::env::var("LOSOS_EDGE_URL")
         .ok()
         .filter(|v| !v.trim().is_empty());
+    let configured_rathole = std::env::var("LOSOS_EDGE_RATHOLE")
+        .ok()
+        .filter(|v| !v.trim().is_empty());
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.as_secs());
@@ -429,14 +432,154 @@ fn scan_edge_now() -> crate::edge::EdgeStatus {
         root_public: root.as_deref(),
         nonce: &nonce,
     };
-    crate::edge::assemble(
+    crate::edge::assemble_with(
         browse_lan().as_deref(),
         configured.as_deref(),
+        configured_rathole.as_deref(),
         edge_answers,
         &trust,
         edge_identity,
         now,
     )
+}
+
+/// Tell the tunnel units which edge the scan chose (modules/proxy.nix reads
+/// `$LOSOS_EDGE_PATH_FILE`), and start, restart or stop them on a change.
+///
+/// Only when `LOSOS_EDGE_PATH_FILE` is set, which modules/daemon.nix does
+/// with the master proxy on: without it there are no units to drive. The
+/// decision is [`crate::edge::drive`], from what the previous scan left on
+/// disk; both files are on /run, so a boot starts clean and the units dial
+/// the configured edge until the first scan. `systemctl` is asked not to
+/// block: this runs on the scanner thread, and a unit that takes a while
+/// to stop must not delay the next scan.
+fn drive_edge_path(status: &crate::edge::EdgeStatus) {
+    let Some(path_file) = std::env::var("LOSOS_EDGE_PATH_FILE")
+        .ok()
+        .filter(|v| !v.is_empty())
+    else {
+        return;
+    };
+    let path_file = PathBuf::from(path_file);
+    let none_file = std::env::var("LOSOS_EDGE_NONE_FILE")
+        .ok()
+        .filter(|v| !v.is_empty())
+        .map_or_else(|| path_file.with_file_name("edge-none"), PathBuf::from);
+    let pin_dir = std::env::var("LOSOS_EDGE_PIN_DIR")
+        .ok()
+        .filter(|v| !v.is_empty());
+    let configured_pin = std::env::var("LOSOS_EDGE_NOISE_PUB_FILE")
+        .ok()
+        .filter(|v| !v.is_empty());
+
+    let next = status.path.as_ref().map(|p| {
+        // The pin lives with the edge it belongs to: the configured one at
+        // losos.proxy.noisePublicKeyFile, a LAN edge under the pin dir by
+        // its host, so a second gateway never inherits the first's key.
+        // Noise is on for every edge or none (the configured file is unset
+        // only when the module runs plain TCP).
+        let pin = configured_pin.as_ref().map(|configured| match p.source {
+            crate::edge::Source::Configured => configured.clone(),
+            crate::edge::Source::Lan => match &pin_dir {
+                Some(dir) => format!("{dir}/{}", crate::edge::pin_file_name(&p.url)),
+                None => configured.clone(),
+            },
+        });
+        crate::edge::path_env(p, pin.as_deref())
+    });
+    let prev = std::fs::read_to_string(&path_file).ok();
+    let had_none = none_file.exists();
+
+    let action = crate::edge::drive(prev.as_deref(), had_none, next.as_deref());
+    let written = match &next {
+        Some(env) => {
+            let mut ok = true;
+            if had_none {
+                if let Err(e) = std::fs::remove_file(&none_file) {
+                    tracing::error!(error = %e, path = %none_file.display(), "could not clear the no-edge marker");
+                    ok = false;
+                }
+            }
+            if prev.as_deref() != Some(env.as_str()) {
+                if let Err(e) = atomic_write(&path_file, env.as_bytes()) {
+                    tracing::error!(error = %e, path = %path_file.display(), "could not write the edge path");
+                    ok = false;
+                }
+            }
+            ok
+        }
+        None => {
+            let mut ok = true;
+            if !had_none {
+                if let Err(e) = atomic_write(&none_file, b"") {
+                    tracing::error!(error = %e, path = %none_file.display(), "could not write the no-edge marker");
+                    ok = false;
+                }
+            }
+            if prev.is_some() {
+                let _ = std::fs::remove_file(&path_file);
+            }
+            ok
+        }
+    };
+    if !written {
+        return;
+    }
+    let verb = match action {
+        crate::edge::Drive::Restart => "restart",
+        crate::edge::Drive::Stop => "stop",
+        crate::edge::Drive::Nothing => return,
+    };
+    match &status.path {
+        Some(p) => {
+            tracing::info!(edge = %p.url, rathole = %p.rathole, source = ?p.source, "edge path: {verb} the tunnel units")
+        }
+        None => tracing::info!("no edge in reach: {verb} the tunnel units"),
+    }
+    let out = std::process::Command::new("systemctl")
+        .args([verb, "--no-block"])
+        .args(crate::edge::PATH_UNITS)
+        .output();
+    match out {
+        Ok(o) if o.status.success() => {}
+        Ok(o) => tracing::error!(
+            stderr = %String::from_utf8_lossy(&o.stderr).trim(),
+            "systemctl {verb} of the tunnel units failed"
+        ),
+        Err(e) => tracing::error!(error = %e, "could not run systemctl for the tunnel units"),
+    }
+}
+
+/// Mint the box's proxy token and rathole bootstrap token when the files
+/// are absent (`LOSOS_PROXY_TOKEN_FILE`, `LOSOS_PROXY_BOOTSTRAP_FILE`; 64
+/// hex characters, 0600, atomically), so a stock box can enrol with a LAN
+/// gateway that takes any box on first contact. A file that exists is never
+/// touched, whatever it holds: an official edge was given that token out of
+/// band, and replacing it would lock the box out of its own tenant row.
+fn ensure_proxy_secrets() {
+    for var in ["LOSOS_PROXY_TOKEN_FILE", "LOSOS_PROXY_BOOTSTRAP_FILE"] {
+        let Some(path) = std::env::var(var).ok().filter(|v| !v.is_empty()) else {
+            continue;
+        };
+        let path = Path::new(&path);
+        if path.exists() {
+            continue;
+        }
+        let mut buf = [0u8; 32];
+        let read = std::fs::File::open("/dev/urandom").and_then(|mut f| {
+            use std::io::Read;
+            f.read_exact(&mut buf)
+        });
+        if let Err(e) = read {
+            tracing::error!(error = %e, "could not read /dev/urandom to mint {var}");
+            continue;
+        }
+        let token: String = buf.iter().map(|b| format!("{b:02x}")).collect();
+        match atomic_write_secret(path, token.as_bytes()) {
+            Ok(()) => tracing::info!(path = %path.display(), "minted the {var} secret"),
+            Err(e) => tracing::error!(error = %e, path = %path.display(), "could not mint {var}"),
+        }
+    }
 }
 
 /// Keep the edge scan fresh: one pass now, then one every
@@ -449,9 +592,12 @@ pub fn start_edge_scanner(backend: &IoLosos) {
     let backend = backend.clone();
     let spawned = std::thread::Builder::new()
         .name("lososd-edge-scan".into())
-        .spawn(move || loop {
-            backend.scan_edge();
-            std::thread::sleep(crate::edge::SCAN_INTERVAL);
+        .spawn(move || {
+            ensure_proxy_secrets();
+            loop {
+                backend.scan_edge();
+                std::thread::sleep(crate::edge::SCAN_INTERVAL);
+            }
         });
     if let Err(e) = spawned {
         tracing::error!(error = %e, "could not start the edge scanner; sharing stays gated on inline scans");
@@ -464,6 +610,11 @@ pub fn start_edge_scanner(backend: &IoLosos) {
 /// read-only (modules/workloads.nix) and its PHP config reads the file on
 /// every request. The names are public anyway; they are in public DNS.
 pub const DEFAULT_PUBLIC_NAMES_FILE: &str = "/var/lib/losos-public-names/domains.json";
+
+/// Where the relay pass goes for `losos-registrar announce --relay-pass-file`
+/// (modules/proxy.nix). On `/run`: a pass is good for hours, so there is
+/// nothing to keep across a reboot, and the next sync writes a fresh one.
+pub const DEFAULT_RELAY_PASS_FILE: &str = "/run/losos/relay-pass";
 
 /// How often the daemon asks the edge which custom domains are live, besides
 /// every time the owner opens or changes them. A domain the edge turns live
@@ -896,6 +1047,7 @@ impl IoLosos {
             "edge scan"
         );
         *self.edge.lock().unwrap_or_else(|p| p.into_inner()) = Some(status.clone());
+        drive_edge_path(&status);
         status
     }
 
@@ -1387,6 +1539,26 @@ impl Losos for IoLosos {
             return Ok(());
         }
         atomic_write(&path, body.as_bytes()).with_context(|| format!("writing {}", path.display()))
+    }
+
+    fn write_relay_pass(&mut self, pass: Option<&str>) -> anyhow::Result<()> {
+        let path =
+            std::path::PathBuf::from(env_or("LOSOS_RELAY_PASS_FILE", DEFAULT_RELAY_PASS_FILE));
+        match pass {
+            None => match std::fs::remove_file(&path) {
+                Ok(()) => Ok(()),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+                Err(e) => Err(e).with_context(|| format!("removing {}", path.display())),
+            },
+            Some(pass) => {
+                let body = format!("{pass}\n");
+                if std::fs::read_to_string(&path).is_ok_and(|old| old == body) {
+                    return Ok(());
+                }
+                atomic_write_secret(&path, body.as_bytes())
+                    .with_context(|| format!("writing {}", path.display()))
+            }
+        }
     }
 
     fn market_request(&mut self, op: &crate::market::Op) -> anyhow::Result<crate::market::Outcome> {

@@ -99,6 +99,10 @@ and is never served or built by nix.
   TXT token and CNAME check out, only for a box with a ready Stripe account.
   lososd writes the live names to `/var/lib/losos-public-names`, which the
   Nextcloud pod reads for `trusted_domains`.
+- `backend-registrar/src/routes.rs`: custom domains of mesh boxes behind a
+  local edge. The official edge keeps the routes in its own etcd (loopback
+  2479, never rke2's 2379) and binds a box to a local edge only by the box's
+  relay pass, an HMAC the local edge forwards but cannot make.
 - `backend-registrar/src/market.rs`: Stripe Connect, third opt-in of the
   registrar. The key lives only in the `losos-stripe-gate` unit, reached over
   `/run/losos-stripe-gate/gate.sock`.
@@ -462,6 +466,23 @@ permission lets it read a box's `/setup/state.json` from the public origin,
 which `modules/setup.nix` allows for exactly the origins in
 `losos.setup.finderOrigins` (an nginx map, asserted by `tests/setup.nix`),
 never `*` — the document is LAN inventory.
+
+**Edge federation and the box's path rule** (`wiki/Edge-Federation.md`,
+`backend-registrar/src/relay.rs`, `modules/edge-gateway.nix`,
+`modules/proxy.nix`): a user-hosted edge (a *spoke*) relays its boxes to an
+official edge (a *hub*) with `POST /relay`; the hub lists the spoke as a
+tenant with a `relayZone` and routes `<spoke>.<box>` with the spoke's token.
+A spoke with `losos.edge.lan.openEnrolment` enrols unknown boxes
+trust-on-first-use under `/var/lib/losos-registrar/enrolled/`; the option
+asserts `lan.advertise`, never set it on a VPS. `losos.edge.gateway.enable`
+is the preset the `losos-disk-edge-qcow2` image boots. On the box, `lososd`
+picks the path (LAN edge, else the configured one, else none) and drives
+`losos-rathole-client` + `losos-registrar-announce` through
+`/run/losos/edge-path.env` and the `/run/losos/edge-none` marker, so a box
+with no edge in reach runs no tunnel; both files are on `/run`, so the
+units dial the configured edge until the first scan, which is what
+`tests/edge-vm.nix` (no lososd) relies on. `tests/edge-federation.nix` is the
+three-VM acceptance test; it is not run by CI.
 
 **The `losos.*` option namespace** (`options.nix`): all project-specific
 knobs (`targetDrive`, `tpm.enable`, `sharingMyStorage`, `forgejo.enable`,

@@ -309,6 +309,7 @@ async fn import_drops_what_load_would_drop() {
             rathole_port: 1,
             seen_ago_secs: 0,
             idle: None,
+            via: None,
         },
     );
     snapshot.tenants.insert(
@@ -318,6 +319,7 @@ async fn import_drops_what_load_would_drop() {
             rathole_port: 50007,
             seen_ago_secs: 0,
             idle: Some((true, 0)),
+            via: None,
         },
     );
     snapshot.compute_windows.insert(

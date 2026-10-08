@@ -193,9 +193,52 @@ let
       lib.mapAttrs (_: v: {
         inherit (v) hostname cluster market;
         token_file = toString v.tokenFile;
+        relay_zone = v.relayZone;
       }) cfg.tenants
     )
   );
+
+  # ── Federation (wiki/Edge-Federation.md) ────────────────────────────────
+  # Where TOFU-enrolled boxes are kept (losos.edge.lan.openEnrolment): a
+  # second whitelist-shaped file plus one token file per box, under the
+  # registrar's StateDirectory so it survives a restart like the registry.
+  enrolDir = "/var/lib/losos-registrar/enrolled";
+  enrolArgs = lib.optionals cfg.lan.openEnrolment [
+    "--enrol-dir"
+    enrolDir
+  ];
+
+  # The uplink target the registrar reads (`relay::UplinkFile`): paths, never
+  # secrets, so the rendered copy may live in the store. A `configFile`
+  # points at a runtime path instead; the registrar re-reads either on every
+  # pass and treats a missing file as "no uplink yet".
+  uplinkRendered = pkgs.writeText "losos-uplink.json" (
+    builtins.toJSON (
+      {
+        registrar_url = cfg.uplink.registrarUrl;
+        rathole_endpoint = cfg.uplink.ratholeEndpoint;
+        inherit (cfg.uplink) id;
+        token_file = toString cfg.uplink.tokenFile;
+      }
+      // lib.optionalAttrs (cfg.uplink.bootstrapTokenFile != null) {
+        bootstrap_token_file = toString cfg.uplink.bootstrapTokenFile;
+      }
+      // lib.optionalAttrs (cfg.uplink.noisePublicKeyFile != null) {
+        noise_public_key_file = toString cfg.uplink.noisePublicKeyFile;
+      }
+    )
+  );
+  uplinkFile =
+    if cfg.uplink.configFile != null then cfg.uplink.configFile else toString uplinkRendered;
+  uplinkRatholeConfig = "/etc/rathole/uplink.toml";
+  uplinkArgs = lib.optionals cfg.uplink.enable [
+    "--uplink-file"
+    uplinkFile
+    "--uplink-rathole-config"
+    uplinkRatholeConfig
+    "--uplink-interval"
+    cfg.uplink.interval
+  ];
 
   # RBAC for the registrar's stale-node cleanup, shipped as an rke2
   # auto-deploy manifest so the cluster brings its own credentials up rather
@@ -603,7 +646,20 @@ let
       "--dns-ipv6"
       (lib.concatStringsSep "," dnsCfg.ipv6)
     ]
+    ++ lib.optionals relayRoutes [
+      "--routes-etcd-url"
+      dnsCfg.relayRoutes.etcdUrl
+      "--routes-prefix"
+      dnsCfg.relayRoutes.prefix
+      "--relay-pass-key-file"
+      "/var/lib/losos-registrar/relay-pass.key"
+    ]
   );
+  # Custom domains for boxes behind a local edge (backend-registrar's
+  # routes.rs): the route table in etcd, and the key relay passes are
+  # signed with, which the registrar makes on its first start.
+  relayRoutes = dnsCfg.enable && dnsCfg.relayRoutes.enable;
+  localEtcd = relayRoutes && dnsCfg.relayRoutes.localEtcd;
 
   serveArgs = utils.escapeSystemdExecArgs (
     [
@@ -641,6 +697,8 @@ let
     ++ marketServeArgs
     ++ identityArgs
     ++ dnsServeArgs
+    ++ enrolArgs
+    ++ uplinkArgs
   );
 
   # The official-edge identity (losos.edge.identity.*): both files or neither,
@@ -682,6 +740,13 @@ in
         '';
       }
       {
+        assertion = dnsCfg.relayRoutes.enable -> dnsCfg.enable;
+        message = ''
+          losos.edge.dns.relayRoutes.enable requires losos.edge.dns.enable:
+          only an edge that routes custom domains keeps the route table.
+        '';
+      }
+      {
         assertion = dnsCfg.enable -> cfg.identity.keyFile != null;
         message = ''
           losos.edge.dns.enable requires losos.edge.identity.keyFile: only an
@@ -707,6 +772,37 @@ in
       {
         assertion = cfg.acmeEmail != null;
         message = "losos.edge.enable requires losos.edge.acmeEmail (Let's Encrypt account email).";
+      }
+      {
+        assertion = cfg.lan.openEnrolment -> cfg.lan.advertise;
+        message = ''
+          losos.edge.lan.openEnrolment requires losos.edge.lan.advertise: open
+          enrolment accepts any box that can reach the registrar with the
+          token it brought, which is a LAN posture. On an edge the internet
+          reaches it would let anyone publish a hostname through it.
+        '';
+      }
+      {
+        assertion =
+          cfg.uplink.enable
+          -> (cfg.uplink.configFile != null || (cfg.uplink.registrarUrl != "" && cfg.uplink.id != ""));
+        message = ''
+          losos.edge.uplink.enable needs the hub: either
+          losos.edge.uplink.configFile (a runtime JSON the owner fills in) or
+          both losos.edge.uplink.registrarUrl and losos.edge.uplink.id.
+        '';
+      }
+      {
+        assertion =
+          cfg.uplink.enable
+          -> (
+            cfg.uplink.id == "" || builtins.match "[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?" cfg.uplink.id != null
+          );
+        message = ''
+          losos.edge.uplink.id must be a DNS label (lowercase letters, digits
+          and hyphens): it is this edge's tenant id on the hub and the prefix
+          of every relayed service name.
+        '';
       }
       {
         assertion = meshEnabled -> cfg.cluster.advertiseAddr != "";
@@ -771,7 +867,8 @@ in
         "losos-rathole-seed.service"
       ]
       ++ lib.optional meshEnabled "losos-mesh-rbac.service"
-      ++ lib.optional cfg.market.enable "losos-stripe-gate.service";
+      ++ lib.optional cfg.market.enable "losos-stripe-gate.service"
+      ++ lib.optional localEtcd "etcd.service";
       # Wants, not Requires, on the RBAC extractor: the master-proxy half must
       # keep serving /register and rewriting Traefik on an edge whose mesh
       # apiserver is down or not yet up. A failed extraction costs the join
@@ -780,7 +877,10 @@ in
         "network-online.target"
       ]
       ++ lib.optional meshEnabled "losos-mesh-rbac.service"
-      ++ lib.optional cfg.market.enable "losos-stripe-gate.service";
+      ++ lib.optional cfg.market.enable "losos-stripe-gate.service"
+      # Wants, like the rest: an etcd that is down costs the relayed
+      # domains' new routes (the last table keeps routing), nothing else.
+      ++ lib.optional localEtcd "etcd.service";
       serviceConfig = {
         ExecStart = serveArgs;
         StateDirectory = "losos-registrar";
@@ -820,6 +920,18 @@ in
           journal-content = "none";
         };
       };
+    };
+
+    # The route table's etcd: one member, loopback only, on ports clear of
+    # the mesh's rke2 server, whose embedded etcd takes 2379 and 2380 on an
+    # edge that runs both.
+    services.etcd = lib.mkIf localEtcd {
+      enable = true;
+      name = "losos-routes";
+      listenClientUrls = [ "http://127.0.0.1:2479" ];
+      listenPeerUrls = [ "http://127.0.0.1:2480" ];
+      initialCluster = [ "losos-routes=http://127.0.0.1:2480" ];
+      dataDir = "/var/lib/losos-routes-etcd";
     };
 
     systemd.paths.losos-dns-reload = lib.mkIf dnsCfg.enable {
@@ -985,6 +1097,38 @@ in
       };
     };
 
+    # ── The uplink: this edge as a spoke (losos.edge.uplink) ─────────────
+    # A second rathole, in *client* mode, on the config the registrar's
+    # uplink loop keeps at /etc/rathole/uplink.toml: one service per box the
+    # hub accepted, each pointed at that box's local rathole port here, so a
+    # request that enters the hub crosses two tunnels to reach the box.
+    # rathole hot-reloads the file as the server does its own. The unit is
+    # conditioned on the file and started by a path unit when it appears,
+    # because the file exists only once the owner has given the registrar a
+    # hub (a gateway image ships with none) and the loop has rendered it.
+    systemd.services.losos-rathole-uplink = lib.mkIf cfg.uplink.enable {
+      description = "losos rathole uplink — this edge's outbound tunnel to its hub";
+      wantedBy = [ "multi-user.target" ];
+      after = [
+        "network-online.target"
+        "losos-registrar.service"
+      ];
+      wants = [ "network-online.target" ];
+      unitConfig.ConditionPathExists = uplinkRatholeConfig;
+      serviceConfig = {
+        ExecStart = "${rathole}/bin/rathole -c ${uplinkRatholeConfig}";
+        Restart = "always";
+        RestartSec = 5;
+        PrivateTmp = true;
+        NoNewPrivileges = true;
+      };
+    };
+    systemd.paths.losos-rathole-uplink = lib.mkIf cfg.uplink.enable {
+      description = "start the uplink tunnel when the registrar has rendered its config";
+      wantedBy = [ "multi-user.target" ];
+      pathConfig.PathExists = uplinkRatholeConfig;
+    };
+
     # ── Mesh control plane (rke2 server) ─────────────────────────────────
     # The appliance runs the SAME nixpkgs module with role = "agent"
     # (modules/cluster.nix) — one name-parameterized generator, two
@@ -1105,6 +1249,10 @@ in
     # file carries the registrar API port and a `url=` record; the appliance
     # side (backend/src/edge.rs) prefers the record and falls back to the
     # resolved address and port, then probes /health before believing either.
+    # `rathole=` is where a box that picks this edge dials its tunnel, and
+    # `enrol=` tells it (and a person reading `avahi-browse`) whether an
+    # unprovisioned box can expect to be let in; neither is trusted for
+    # anything the box would not have done anyway.
     # Off-loopback binding is forced here only when the operator left the
     # bind at its loopback default, because an advertised edge nobody can
     # dial is worse than none: the box would show "found" and then refuse.
@@ -1126,6 +1274,8 @@ in
             <type>_losos-edge._tcp</type>
             <port>${toString cfg.registrarApiPort}</port>
             <txt-record>url=${cfg.lan.url}</txt-record>
+            <txt-record>rathole=${cfg.lan.ratholeEndpoint}</txt-record>
+            <txt-record>enrol=${if cfg.lan.openEnrolment then "open" else "closed"}</txt-record>
             <txt-record>txtvers=1</txt-record>
           </service>
         </service-group>
