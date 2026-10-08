@@ -18,8 +18,10 @@ Write it to a USB stick and boot the target machine.
   initrd, command line) signed with the LosOS db certificate, and that
   loader checks the system image's hash before mounting it. A firmware that
   trusts only Microsoft's keys refuses the stick until the certificate from
-  the stick's `EFI/losos/` or the release page is enrolled in its `db`. OVMF
-  shows "Access Denied"; other firmware may skip the stick without a word.
+  the stick's `EFI/losos/` or the release page is added to its `db`, next
+  to Microsoft's certificates, never in place of them: Windows, other
+  distributions' shim and graphics-card option ROMs need those. OVMF shows
+  "Access Denied"; other firmware may skip the stick without a word.
   The installed box's loader is not signed, so the box itself needs Secure
   Boot off. The handbook's *Secure Boot and signed media* page has the steps
   and the `SHA256SUMS.sig` check. `tests/secure-boot.nix` is the proof.

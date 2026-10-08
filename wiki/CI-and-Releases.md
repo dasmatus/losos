@@ -38,8 +38,8 @@ release job:
    limit.
 
 The `iso` job on main does the same signing before its boot legs. OVMF with
-Microsoft's keys must refuse the medium, and OVMF with the committed
-certificate enrolled must boot it (`tests/iso-boot.py --firmware
+Microsoft's keys must refuse the medium, and the same OVMF store with the
+committed certificate added beside Microsoft's must boot it (`tests/iso-boot.py --firmware
 uefi-sb-ms|uefi-sb`). A fork's pull request has no key, so it boots unsigned
 and skips the enrolled leg. The key is made once on the owner's machine with
 `provisioning/secure-boot/keygen.sh`.
