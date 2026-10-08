@@ -302,6 +302,31 @@ impl Edge {
             None,
             Some((key_file, cert_file)),
             listener,
+            None,
+        )
+        .await
+    }
+
+    /// As [`Edge::start_with_identity_on`], with `POST /identity/cert`
+    /// resolving GitHub tokens against `github_api_url` (a test's fake).
+    pub async fn start_with_identity_and_github(
+        tag: &str,
+        key_file: &str,
+        cert_file: &str,
+        listener: Option<tokio::net::TcpListener>,
+        github_api_url: &str,
+    ) -> Self {
+        Self::start_general(
+            tag,
+            &[],
+            MeshFixture::default(),
+            None,
+            None,
+            &[],
+            None,
+            Some((key_file, cert_file)),
+            listener,
+            Some(github_api_url),
         )
         .await
     }
@@ -325,6 +350,7 @@ impl Edge {
             market_state,
             None,
             None,
+            None,
         )
         .await
     }
@@ -340,6 +366,7 @@ impl Edge {
         market_state: Option<&serde_json::Value>,
         identity: Option<(&str, &str)>,
         listener: Option<tokio::net::TcpListener>,
+        github_api_url: Option<&str>,
     ) -> Self {
         let dir = TempDir::new(tag);
         if let Some(market_state) = market_state {
@@ -454,6 +481,9 @@ impl Edge {
             kube_ca_file: None,
             compute_windows_file: dir.path_str("compute-windows.json"),
             market,
+            github_api_url: github_api_url
+                .unwrap_or(losos_registrar::provision::GITHUB_API_URL)
+                .to_string(),
         };
 
         let listener = match listener {

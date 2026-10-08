@@ -28,18 +28,21 @@
 //!    request that writes the public half into `keys/official-edge-root.pub`
 //!    using the same sign-in (scope `public_repo`; the default sign-in asks
 //!    for no scope at all).
-//! 2. `provision edge --name … --url … --ssh root@edge --root-key root.key`:
-//!    makes the edge's key pair *in memory*, signs its certificate, ships
-//!    both over one SSH session on stdin (nothing secret in argv, nothing
-//!    written to this machine's disk), restarts the registrar, and runs the
-//!    box's four checks against `GET /identity?nonce=`.
-//! 3. `provision verify --url … --root-key root.key`: the checks alone,
-//!    after the edge's configuration names the two files.
+//! 2. `provision edge --name … --url … --root-key root.key`: reads the
+//!    edge's public key (`GET <url>/identity/public-key`; the edge made its
+//!    own key on its first start and the private half never leaves it),
+//!    signs its certificate, pushes it to `POST <url>/identity/cert` with
+//!    the GitHub token the sign-in produced, and runs the box's four checks
+//!    against `GET /identity?nonce=`. The edge checks the same token
+//!    against the same allowlist before it installs anything
+//!    (`crate::server::identity_push`), so the gate holds at both ends and
+//!    no SSH access to the edge is needed.
+//! 3. `provision verify --url … --root-key root.key`: the checks alone.
 //!
-//! Previously this was a pair of Forgejo Actions workflows on the box with an
-//! on-box runner; that put the root key inside the appliance's `/var`, where
-//! a reinstall lost it, and let anyone with a LosOS Git account run code on
-//! the box. Both are gone.
+//! Previously the edge's key pair was made here and shipped with the
+//! certificate over one SSH session (and before that, by a pair of Forgejo
+//! Actions workflows on the box, which put the root key inside the
+//! appliance's `/var`). Both are gone: the tool needs no shell on the edge.
 
 use std::path::Path;
 use std::process::ExitCode;
@@ -65,8 +68,9 @@ pub const GITHUB_API_URL: &str = "https://api.github.com";
 /// Exit code of a refused sign-in (not on the list, or denied on GitHub),
 /// distinct from a plain failure so a script can tell the two apart.
 pub const EXIT_REFUSED: u8 = 3;
-/// Exit code of `provision edge` when the files are installed but the edge
-/// does not answer `/identity` yet (its configuration has to name them).
+/// Exit code of `provision edge` when the push was accepted but `/identity`
+/// does not answer with the certificate yet (a load balancer in front of
+/// more than one registrar, say).
 pub const EXIT_NOT_YET: u8 = 2;
 
 const HTTP_TIMEOUT: Duration = Duration::from_secs(20);
@@ -198,6 +202,8 @@ pub enum Refused {
     Denied,
     #[error("the device code expired before the sign-in was completed")]
     Expired,
+    #[error("the edge refused the push: {0}")]
+    EdgeRefused(String),
 }
 
 #[derive(Debug, Deserialize)]
@@ -368,98 +374,90 @@ pub async fn sign_in(
     })
 }
 
-// ── the edge: ship an identity over SSH ────────────────────────────────────
+// ── the edge: push a certificate over HTTP ────────────────────────────────
 
-/// Everything `provision edge` needs besides the root key.
+/// Everything `provision edge` needs besides the root key and the sign-in.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EdgeSpec {
     pub name: String,
     pub url: String,
-    pub ssh_target: String,
     pub days: u64,
-    pub key_path: String,
-    pub cert_path: String,
-    pub ssh_key: Option<String>,
-    pub known_hosts: Option<String>,
-    /// The `ssh` binary; the tests point it at a script.
-    pub ssh_command: String,
 }
 
-/// A path that is safe inside the single quotes of the remote script.
-fn remote_path_ok(p: &str) -> Result<()> {
-    if !p.starts_with('/') || p.contains('\'') || p.contains('\n') || p.ends_with('/') {
+/// What the edge said to the push.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Pushed {
+    /// 200: the certificate is installed and `/identity` answers with it.
+    Installed,
+    /// 404: the edge serves no identity key (`losos.edge.identity.keyFile`
+    /// unset, or a registrar older than the route).
+    NoIdentity,
+    /// 403: the edge's copy of the allowlist does not list the signed-in
+    /// account (a newer list than the edge was built with, most likely).
+    NotListed(String),
+    /// 401: the edge, asking GitHub, could not resolve the token.
+    BadToken(String),
+    /// Anything else, with the status and what the edge said.
+    Other(u16, String),
+}
+
+/// `GET <url>/identity/public-key`: the key the root is about to sign.
+/// `None` for 404, the edge without an identity key.
+pub async fn edge_public_key(client: &reqwest::Client, url: &str) -> Result<Option<String>> {
+    let url = url.trim().trim_end_matches('/');
+    let resp = client
+        .get(format!("{url}/identity/public-key"))
+        .timeout(Duration::from_secs(10))
+        .send()
+        .await
+        .into_diagnostic()
+        .wrap_err_with(|| format!("reach {url}"))?;
+    if resp.status() == reqwest::StatusCode::NOT_FOUND {
+        return Ok(None);
+    }
+    let status = resp.status();
+    let text = resp.text().await.into_diagnostic()?;
+    if !status.is_success() {
         return Err(miette!(
-            "{p:?} is not an absolute path without quotes or newlines"
+            "{url}/identity/public-key answered {status}: {text}"
         ));
     }
-    Ok(())
+    let key = text.trim().to_ascii_lowercase();
+    if identity::from_hex(&key).map(|k| k.len()) != Some(32) {
+        return Err(miette!(
+            "{url}/identity/public-key did not answer with a 64-hex-character key"
+        ));
+    }
+    Ok(Some(key))
 }
 
-/// The script the remote shell runs. The two files arrive on stdin as two
-/// lines, the key's hex and the certificate's one-line JSON, which is why
-/// `read -r` (one byte at a time on a pipe, by POSIX) is enough and no
-/// archive format is needed. Nothing secret is in argv; only the two
-/// installation paths are interpolated, single-quoted, and checked above.
-#[must_use]
-pub fn remote_script(key_path: &str, cert_path: &str) -> String {
-    format!(
-        "set -e\n\
-         if [ \"$(id -u)\" != 0 ] && command -v sudo >/dev/null 2>&1; then sudo=sudo; else sudo=; fi\n\
-         d=$(mktemp -d)\n\
-         umask 077\n\
-         IFS= read -r key\n\
-         IFS= read -r cert\n\
-         printf '%s\\n' \"$key\" > \"$d/edge.key\"\n\
-         printf '%s\\n' \"$cert\" > \"$d/edge.cert.json\"\n\
-         $sudo install -D -m 0600 \"$d/edge.key\" '{key_path}'\n\
-         $sudo install -D -m 0644 \"$d/edge.cert.json\" '{cert_path}'\n\
-         rm -rf \"$d\"\n\
-         if command -v systemctl >/dev/null 2>&1; then $sudo systemctl try-restart losos-registrar.service || true; fi\n\
-         echo \"installed {key_path} and {cert_path}\"\n"
-    )
-}
-
-/// Run one SSH session with the two lines on its stdin.
-fn ship(spec: &EdgeSpec, key_hex: &str, cert_json: &str) -> Result<()> {
-    use std::io::Write;
-    use std::process::{Command, Stdio};
-    remote_path_ok(&spec.key_path)?;
-    remote_path_ok(&spec.cert_path)?;
-    let mut cmd = Command::new(&spec.ssh_command);
-    cmd.arg("-o").arg("BatchMode=yes");
-    if let Some(k) = &spec.ssh_key {
-        cmd.arg("-i").arg(k);
-    }
-    if let Some(kh) = &spec.known_hosts {
-        cmd.arg("-o")
-            .arg(format!("UserKnownHostsFile={kh}"))
-            .arg("-o")
-            .arg("StrictHostKeyChecking=yes");
-    }
-    cmd.arg(&spec.ssh_target)
-        .arg(remote_script(&spec.key_path, &spec.cert_path))
-        .stdin(Stdio::piped())
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit());
-    let mut child = cmd
-        .spawn()
+/// `POST <url>/identity/cert` with the GitHub token: the push itself.
+pub async fn push_cert(
+    client: &reqwest::Client,
+    url: &str,
+    token: &str,
+    cert: &Cert,
+) -> Result<Pushed> {
+    let url = url.trim().trim_end_matches('/');
+    let resp = client
+        .post(format!("{url}/identity/cert"))
+        .bearer_auth(token)
+        .header("Content-Type", "application/json")
+        .body(serde_json::to_string(cert).into_diagnostic()?)
+        .timeout(Duration::from_secs(20))
+        .send()
+        .await
         .into_diagnostic()
-        .wrap_err_with(|| format!("run {}", spec.ssh_command))?;
-    {
-        let mut stdin = child
-            .stdin
-            .take()
-            .ok_or_else(|| miette!("no stdin on ssh"))?;
-        stdin
-            .write_all(format!("{key_hex}\n{cert_json}\n").as_bytes())
-            .into_diagnostic()
-            .wrap_err("write the identity to ssh's stdin")?;
-    }
-    let status = child.wait().into_diagnostic().wrap_err("wait for ssh")?;
-    if !status.success() {
-        return Err(miette!("ssh to {} exited with {status}", spec.ssh_target));
-    }
-    Ok(())
+        .wrap_err_with(|| format!("push the certificate to {url}"))?;
+    let status = resp.status();
+    let text = resp.text().await.unwrap_or_default();
+    Ok(match status.as_u16() {
+        200 => Pushed::Installed,
+        404 => Pushed::NoIdentity,
+        403 => Pushed::NotListed(text),
+        401 => Pushed::BadToken(text),
+        code => Pushed::Other(code, text),
+    })
 }
 
 /// What `GET /identity` said: the edge is official, it answered but failed
@@ -867,9 +865,18 @@ pub async fn run(opts: ProvisionOpts) -> Result<ExitCode> {
                     .wrap_err_with(|| format!("reading the root key {root_key}"))?;
                 let root = identity::load_key(&hex)?;
                 let root_public = identity::to_hex(ring::signature::KeyPair::public_key(&root).as_ref());
-                let (_, _session) = gate(&github, "").await?;
+                let (_, session) = gate(&github, "").await?;
 
-                let (edge_pkcs8, edge_public) = identity::keygen()?;
+                let Some(edge_public) = edge_public_key(&client, &spec.url).await? else {
+                    return Err(miette!(
+                        "{} serves no identity key (GET /identity/public-key is 404): the edge's \
+                         configuration has losos.edge.identity.keyFile unset, or its registrar \
+                         predates the push route; set the two identity options (they are on by \
+                         default), rebuild, and run this again",
+                        spec.url.trim_end_matches('/')
+                    ));
+                };
+                eprintln!("  edge public key {edge_public}");
                 let now = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .map_err(|_| miette!("the clock is before 1970"))?
@@ -881,11 +888,30 @@ pub async fn run(opts: ProvisionOpts) -> Result<ExitCode> {
                     &edge_public,
                     now + spec.days * 86_400,
                 )?;
-                let cert_json = serde_json::to_string(&cert).into_diagnostic()?;
-                eprintln!("  edge public key {edge_public}");
                 eprintln!("  certificate issued ({} days)", spec.days);
-                ship(&spec, &edge_pkcs8, &cert_json)?;
-                drop(edge_pkcs8);
+                match push_cert(&client, &spec.url, &session.token, &cert).await? {
+                    Pushed::Installed => eprintln!("  certificate installed on the edge"),
+                    Pushed::NoIdentity => {
+                        return Err(miette!(
+                            "the edge answered the push with 404: it serves no identity key"
+                        ))
+                    }
+                    Pushed::NotListed(what) => {
+                        return Err(Refused::EdgeRefused(what.trim().to_string()).into())
+                    }
+                    Pushed::BadToken(what) => {
+                        return Err(miette!(
+                            "the edge could not resolve the GitHub token: {}",
+                            what.trim()
+                        ))
+                    }
+                    Pushed::Other(code, what) => {
+                        return Err(miette!(
+                            "the edge answered the push with {code}: {}",
+                            what.trim()
+                        ))
+                    }
+                }
 
                 match probe(&client, &spec.url, &root_public).await? {
                     Probe::Official(c) => {
@@ -893,14 +919,13 @@ pub async fn run(opts: ProvisionOpts) -> Result<ExitCode> {
                         Ok(ExitCode::SUCCESS)
                     }
                     Probe::Rejected(why) => Err(miette!(
-                        "the edge answered /identity but failed a check: {why}"
+                        "the certificate is installed but the edge failed a check: {why}"
                     )),
                     Probe::NotServing(what) => {
                         eprintln!(
-                            "  files are in place; the edge is not official yet ({what}).\n  \
-                             Set losos.edge.identity.keyFile = \"{}\" and certFile = \"{}\" on it, \
-                             rebuild, then run: losos-registrar provision verify --url {} --root-key {root_key}",
-                            spec.key_path, spec.cert_path, spec.url
+                            "  the certificate is installed but /identity does not answer with it yet ({what}).\n  \
+                             Check with: losos-registrar provision verify --url {} --root-key {root_key}",
+                            spec.url
                         );
                         Ok(ExitCode::from(EXIT_NOT_YET))
                     }
@@ -1007,17 +1032,5 @@ mod tests {
             with_key_line("# only\n", &new),
             format!("# only\n{}\n", "b".repeat(64))
         );
-    }
-
-    #[test]
-    fn remote_paths_are_checked_before_they_are_quoted() {
-        assert!(remote_path_ok("/var/secrets/x.key").is_ok());
-        assert!(remote_path_ok("relative").is_err());
-        assert!(remote_path_ok("/a'b").is_err());
-        assert!(remote_path_ok("/a\nb").is_err());
-        assert!(remote_path_ok("/dir/").is_err());
-        let s = remote_script("/k", "/c");
-        assert!(s.contains("install -D -m 0600 \"$d/edge.key\" '/k'"));
-        assert!(s.contains("IFS= read -r key"));
     }
 }
