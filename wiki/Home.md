@@ -22,6 +22,7 @@ and run the project.
 - [Mesh](Mesh). Contributing storage and compute to other boxes.
 - [Master proxy](Master-Proxy). Reaching the box from the internet without
   opening a port.
+- [Edge federation](Edge-Federation). Your own edge on the LAN, relayed through the official ones.
 - [Hardening](Hardening). The default hardening baseline and the opt-in flags.
 - [Security model](Security-Model). What is and is not defended.
 - [Architecture](Architecture). How the pieces fit together.

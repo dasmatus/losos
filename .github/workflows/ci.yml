@@ -255,10 +255,13 @@ jobs:
       # the merge.
       - run: nix eval --raw .#nixosConfigurations.install.config.system.build.toplevel.drvPath
       - run: nix eval --raw .#nixosConfigurations.iso.config.system.build.toplevel.drvPath
+      - run: nix eval --raw .#nixosConfigurations.edge-gateway.config.system.build.toplevel.drvPath
       # `flake check` does not reach the ISO *image* derivation, so without this
       # an eval-reachable regression in the iso block or isoImage.* would
       # surface only in the ISO build.
       - run: nix path-info --derivation .#nixosConfigurations.iso.config.system.build.isoImage
+      # The edge gateway image (flake/disk-images.nix), for the same reason.
+      - run: nix path-info --derivation .#losos-disk-edge-qcow2
 
   losos-ctl:
     name: "rust: lososd + losos-ctl build"
@@ -793,7 +796,7 @@ jobs:
           if-no-files-found: ignore
 
   release-media:
-    name: "release: publish installer ISO and demo QCOW2"
+    name: "release: publish installer ISO, demo QCOW2 and edge gateway QCOW2"
     runs-on: ubuntu-latest
     timeout-minutes: 120
     if: ${{ startsWith(github.ref, 'refs/tags/') }}
@@ -834,6 +837,11 @@ jobs:
       - run: mv result result-iso
       - run: nix build .#losos-disk-qcow2 -L
       - run: mv result result-qcow2
+      # The edge gateway (wiki/Edge-Federation.md): small enough to be a
+      # release asset, compressed here because make-disk-image writes a
+      # sparse, uncompressed qcow2 and a download is neither.
+      - run: nix build .#losos-disk-edge-qcow2 -L
+      - run: mv result result-edge
       # A release is signed or it is not a release: once the certificate is
       # committed, a missing secret fails the job rather than publishing an
       # unsigned medium under a page that says to verify it. Before the key
@@ -852,12 +860,14 @@ jobs:
           set -euo pipefail
           iso="losos-installer-${TAG}.iso"
           qcow2="losos-demo-${TAG}.qcow2"
+          edge="losos-edge-gateway-${TAG}.qcow2"
           cp -L result-iso/iso/*.iso "./${iso}"
           chmod u+w "./${iso}"
           cp -L result-qcow2/*.qcow2 "./${qcow2}"
+          nix run nixpkgs#qemu -- qemu-img convert -c -O qcow2 result-edge/*.qcow2 "./${edge}"
           if ! grep -q '^-----BEGIN CERTIFICATE-----' keys/secure-boot-db.pem; then
             echo "::warning::keys/secure-boot-db.pem carries no certificate: this release is unsigned (run provisioning/secure-boot/keygen.sh)"
-            sha256sum "$iso" "$qcow2" | tee SHA256SUMS
+            sha256sum "$iso" "$qcow2" "$edge" | tee SHA256SUMS
             echo "signed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -870,7 +880,7 @@ jobs:
           printf '%s\n' "$SECURE_BOOT_DB_KEY" > "$key"
           nix run .#losos-sign-iso -- sign --key "$key" --cert keys/secure-boot-db.pem "./${iso}"
           nix run .#losos-sign-iso -- verify --cert keys/secure-boot-db.pem "./${iso}"
-          sha256sum "$iso" "$qcow2" | tee SHA256SUMS
+          sha256sum "$iso" "$qcow2" "$edge" | tee SHA256SUMS
           openssl dgst -sha256 -sign "$key" -out SHA256SUMS.sig SHA256SUMS
           rm -f "$key"
           openssl x509 -in keys/secure-boot-db.pem -out losos-secure-boot-db.pem
@@ -887,6 +897,14 @@ jobs:
           set -euo pipefail
           iso="losos-installer-${TAG}.iso"
           qcow2="losos-demo-${TAG}.qcow2"
+          edge="losos-edge-gateway-${TAG}.qcow2"
+          sha256sum "$edge" | tee "${edge}.sha256"
+          {
+            echo "edgeName=${edge}"
+            echo "edgeSize=$(stat -c%s "$edge")"
+            echo "edgeSha256=$(cut -d' ' -f1 < "${edge}.sha256")"
+            echo "edgeStorePath=$(readlink -f result-edge)"
+          } >> "$GITHUB_OUTPUT"
           sha256sum "$iso" | tee "${iso}.sha256"
           sha256sum "$qcow2" | tee "${qcow2}.sha256"
           {
@@ -905,6 +923,7 @@ jobs:
           TAG: ${{ github.ref_name }}
           ISO_NAME: ${{ steps.stage.outputs.isoName }}
           QCOW2_NAME: ${{ steps.stage.outputs.qcow2Name }}
+          EDGE_NAME: ${{ steps.stage.outputs.edgeName }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ACTOR: ${{ github.actor }}
           REPO: ${{ github.repository }}
@@ -927,9 +946,11 @@ jobs:
           }
           push installer-iso "$ISO_NAME" application/vnd.losos.installer.iso.v1
           push demo-qcow2 "$QCOW2_NAME" application/vnd.losos.demo.qcow2.v1
+          push edge-gateway-qcow2 "$EDGE_NAME" application/vnd.losos.edge-gateway.qcow2.v1
           {
             echo "isoRef=${base}-installer-iso:${TAG}"
             echo "qcow2Ref=${base}-demo-qcow2:${TAG}"
+            echo "edgeRef=${base}-edge-gateway-qcow2:${TAG}"
           } >> "$GITHUB_OUTPUT"
       # The ISO's download is the GitHub release asset: at ~1.5 GB it fits under
       # GitHub's 2 GiB per-asset limit, which github-release checks before
@@ -950,9 +971,15 @@ jobs:
           QCOW2_SHA256: ${{ steps.stage.outputs.qcow2Sha256 }}
           QCOW2_STORE_PATH: ${{ steps.stage.outputs.qcow2StorePath }}
           QCOW2_REF: ${{ steps.ghcr.outputs.qcow2Ref }}
+          EDGE_NAME: ${{ steps.stage.outputs.edgeName }}
+          EDGE_SIZE: ${{ steps.stage.outputs.edgeSize }}
+          EDGE_SHA256: ${{ steps.stage.outputs.edgeSha256 }}
+          EDGE_STORE_PATH: ${{ steps.stage.outputs.edgeStorePath }}
+          EDGE_REF: ${{ steps.ghcr.outputs.edgeRef }}
         run: |
           set -euo pipefail
           iso_url="${GITHUB_SERVER_URL}/${REPO}/releases/download/${TAG}/${ISO_NAME}"
+          edge_url="${GITHUB_SERVER_URL}/${REPO}/releases/download/${TAG}/${EDGE_NAME}"
 
           jq -n \
             --arg version "$TAG" \
@@ -967,15 +994,24 @@ jobs:
             --argjson qcow2Size "$QCOW2_SIZE" \
             --arg qcow2Path "$QCOW2_STORE_PATH" \
             --arg qcow2Ref "$QCOW2_REF" \
+            --arg edge "$EDGE_NAME" \
+            --arg edgeSha "$EDGE_SHA256" \
+            --argjson edgeSize "$EDGE_SIZE" \
+            --arg edgePath "$EDGE_STORE_PATH" \
+            --arg edgeUrl "$edge_url" \
+            --arg edgeRef "$EDGE_REF" \
             '{
                version:$version,
                iso:{name:$iso, sha256:$isoSha, size:$isoSize, storePath:$isoPath,
                     url:$isoUrl, oci:$isoRef},
                qcow2:{name:$qcow2, sha256:$qcow2Sha, size:$qcow2Size, storePath:$qcow2Path,
-                      oci:$qcow2Ref}
+                      oci:$qcow2Ref},
+               edgeGateway:{name:$edge, sha256:$edgeSha, size:$edgeSize, storePath:$edgePath,
+                            url:$edgeUrl, oci:$edgeRef}
              }' > release.json
           cat release.json
           echo "isoUrl=${iso_url}" >> "$GITHUB_OUTPUT"
+          echo "edgeUrl=${edge_url}" >> "$GITHUB_OUTPUT"
       - name: compose the release body
         id: body
         env:
@@ -992,6 +1028,11 @@ jobs:
           QCOW2_SUM: ${{ steps.stage.outputs.qcow2Sha256 }}
           QCOW2_SIZE: ${{ steps.stage.outputs.qcow2Size }}
           QCOW2_STORE_PATH: ${{ steps.stage.outputs.qcow2StorePath }}
+          EDGE_NAME: ${{ steps.stage.outputs.edgeName }}
+          EDGE_URL: ${{ steps.meta.outputs.edgeUrl }}
+          EDGE_SUM: ${{ steps.stage.outputs.edgeSha256 }}
+          EDGE_SIZE: ${{ steps.stage.outputs.edgeSize }}
+          EDGE_REF: ${{ steps.ghcr.outputs.edgeRef }}
           REPO: ${{ github.repository }}
           SHA: ${{ github.sha }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
@@ -1044,6 +1085,7 @@ jobs:
           UNSIGNED_EOF
           )
           fi
+          edge_human=$(awk -v b="$EDGE_SIZE" 'BEGIN { printf "%.2f GiB", b/1073741824 }')
           {
             echo "body<<RELEASE_BODY_EOF"
             cat <<BODY
@@ -1104,6 +1146,23 @@ jobs:
           The installer ISO is on GHCR too ([package page](${iso_pkg})):
           \`oras pull ${ISO_REF}\`
 
+          ### Edge gateway QCOW2
+
+          **[${EDGE_NAME}](${EDGE_URL})** — ${edge_human}
+
+          \`\`\`
+          sha256  ${EDGE_SUM}
+          \`\`\`
+
+          A LosOS edge for your own network: boot it on Proxmox, libvirt or
+          VirtualBox with a NIC on the LAN, and boxes installed from the ISO
+          find it on their own and are reachable through it. Log in on its
+          console as \`root\` (first password \`losos\`, changed at first
+          login) and run \`losos-edge uplink set ...\` with the tenant row an
+          official edge gave you to reach them from anywhere. See the
+          [Edge federation](https://github.com/${REPO}/wiki/Edge-Federation)
+          page. Also on GHCR: \`oras pull ${EDGE_REF}\`.
+
           ---
 
           Build the installer ISO from this tag instead:
@@ -1116,6 +1175,12 @@ jobs:
 
           \`\`\`sh
           nix build .#losos-disk-qcow2
+          \`\`\`
+
+          Build the edge gateway QCOW2 instead:
+
+          \`\`\`sh
+          nix build .#losos-disk-edge-qcow2
           \`\`\`
 
           BODY
@@ -1136,6 +1201,8 @@ jobs:
             ${{ steps.sign.outputs.signed == 'true' && 'SHA256SUMS.sig' || '' }}
             ${{ steps.sign.outputs.signed == 'true' && 'losos-secure-boot-db.pem' || '' }}
             ${{ steps.sign.outputs.signed == 'true' && 'losos-secure-boot-db.cer' || '' }}
+            ${{ steps.stage.outputs.edgeName }}
+            ${{ steps.stage.outputs.edgeName }}.sha256
             release.json
           token: ${{ secrets.GITHUB_TOKEN }}
       # The curl download in the release notes only works once the GHCR

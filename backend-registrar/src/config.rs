@@ -304,6 +304,65 @@ pub fn desired_config_with_hosts(
     }
 }
 
+/// The hub a spoke relays through, as the uplink renderer needs it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UplinkTarget {
+    /// rathole `[client] remote_addr` — the hub's tunnel port.
+    pub rathole_endpoint: String,
+    /// The hub's rathole `default_token` (its bootstrap token).
+    pub bootstrap_token: String,
+    /// This spoke's own tenant token on the hub: every relayed service
+    /// authenticates with it, because the spoke is the authenticated party.
+    pub token: String,
+    /// The hub's Noise public key, pinned; `None` leaves the uplink plain TCP.
+    pub noise_public_key: Option<String>,
+}
+
+/// One relayed box as the uplink carries it: the service name the hub
+/// expects (`<spoke>.<box>`) and the spoke-local rathole port that reaches
+/// the box's own tunnel.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UplinkService {
+    pub name: String,
+    pub local_port: u16,
+}
+
+/// Render the rathole *client* config of a spoke's uplink: one
+/// `[client.services.<spoke>.<box>]` per relayed box, `local_addr` the
+/// spoke-local port the hub's traffic is to be delivered to, token the
+/// spoke's own. Deterministic (services sorted by name), so the reconciler's
+/// byte-compare is stable, and always a complete file: with no services
+/// rathole keeps the connection and idles, which is what a site with no box
+/// registered yet wants.
+#[must_use]
+pub fn uplink_config(target: &UplinkTarget, services: &[UplinkService]) -> String {
+    let mut toml = format!(
+        "[client]\nremote_addr = \"{addr}\"\ndefault_token = \"{tok}\"\n",
+        addr = toml_escape(&target.rathole_endpoint),
+        tok = toml_escape(&target.bootstrap_token),
+    );
+    if let Some(key) = &target.noise_public_key {
+        toml.push_str(&format!(
+            "\n[client.transport]\ntype = \"noise\"\n\n[client.transport.noise]\nremote_public_key = \"{}\"\n",
+            toml_escape(key)
+        ));
+    }
+    let mut sorted: Vec<&UplinkService> = services.iter().collect();
+    sorted.sort_by(|a, b| a.name.cmp(&b.name));
+    if sorted.is_empty() {
+        toml.push_str("\n[client.services]\n");
+    }
+    for s in sorted {
+        toml.push_str(&format!(
+            "\n[client.services.{name}]\ntoken = \"{tok}\"\nlocal_addr = \"127.0.0.1:{port}\"\n",
+            name = toml_key(&s.name),
+            tok = toml_escape(&target.token),
+            port = s.local_port,
+        ));
+    }
+    toml
+}
+
 /// Format a `host:port` socket string for rathole's `bind_addr`, bracketing
 /// IPv6 literals: `::` → `[::]:2333`, `0.0.0.0` → `0.0.0.0:2333`. rathole
 /// parses `bind_addr` as a `SocketAddr`, so an unbracketed IPv6 literal

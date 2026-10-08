@@ -89,6 +89,15 @@ appears, and both find it and allow sharing. The edge goes away, they refuse
 again, and it comes back. Its README says which parts stand in for what on a
 real site, and what the pooled-storage steps still need.
 
+## Several edges: federation
+
+A user-hosted edge can relay its boxes through an official edge, so two sites
+each behind their own local edge reach each other over the internet, and a
+box prefers its local edge, falls back to the official one and switches its
+edge-dependent features off when neither answers. The design, the hub-side
+tenant attribute (`relayZone`), the spoke-side `losos.edge.uplink.*`, open
+LAN enrolment and the gateway VM image are on [Edge federation](Edge-Federation).
+
 ## Official edges
 
 Any edge can be found and can relay storage. Only edges LosOS runs may

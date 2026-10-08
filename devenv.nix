@@ -297,14 +297,14 @@ in
   # option conflicts, type errors and failed assertions.
   scripts.check-eval.exec = ''
     set -e
-    for cfg in install iso; do
+    for cfg in install iso edge-gateway; do
       echo "── evaluating nixosConfigurations.$cfg"
       command nix eval --raw \
         ".#nixosConfigurations.$cfg.config.system.build.toplevel.drvPath"
       echo
     done
   '';
-  scripts.check-eval.description = "Force the full NixOS module merge for both systems.";
+  scripts.check-eval.description = "Force the full NixOS module merge for the three systems.";
 
   # Every flake package except the OCI images and the bootable media, which
   # are their own scripts below because they are their own order of magnitude.

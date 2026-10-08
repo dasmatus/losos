@@ -212,3 +212,49 @@ fn noise_key_renders_the_server_transport_and_absence_stays_plain_tcp() {
         noisy.rathole_toml
     );
 }
+
+/// The spoke's uplink client config: the hub's endpoint and bootstrap token,
+/// one service per relayed box named `<spoke>.<box>` with the spoke's own
+/// token and the spoke-local port, sorted; Noise when a key is pinned; an
+/// empty but complete `[client.services]` table when nothing is relayed.
+#[test]
+fn uplink_config_renders_the_relayed_services() {
+    use losos_registrar::{uplink_config, UplinkService, UplinkTarget};
+    let target = UplinkTarget {
+        rathole_endpoint: "hub.losos.cfd:2333".to_string(),
+        bootstrap_token: "boot\"strap".to_string(),
+        token: "spoke-token".to_string(),
+        noise_public_key: None,
+    };
+    let empty = uplink_config(&target, &[]);
+    assert_eq!(
+        empty,
+        "[client]\nremote_addr = \"hub.losos.cfd:2333\"\ndefault_token = \"boot\\\"strap\"\n\n[client.services]\n"
+    );
+    let two = uplink_config(
+        &target,
+        &[
+            UplinkService {
+                name: "acme.zed".to_string(),
+                local_port: 50002,
+            },
+            UplinkService {
+                name: "acme.alpha".to_string(),
+                local_port: 50001,
+            },
+        ],
+    );
+    let alpha = two.find("[client.services.\"acme.alpha\"]").unwrap();
+    let zed = two.find("[client.services.\"acme.zed\"]").unwrap();
+    assert!(alpha < zed, "{two}");
+    assert!(two.contains("token = \"spoke-token\"\nlocal_addr = \"127.0.0.1:50001\"\n"));
+    assert!(!two.contains("[client.services]\n"), "{two}");
+    let noise = uplink_config(
+        &UplinkTarget {
+            noise_public_key: Some("AAAA".to_string()),
+            ..target
+        },
+        &[],
+    );
+    assert!(noise.contains("[client.transport]\ntype = \"noise\"\n\n[client.transport.noise]\nremote_public_key = \"AAAA\"\n"));
+}
