@@ -34,6 +34,7 @@ export const HANDBOOK_ENTRIES = {
   "getting-help": "troubleshooting/getting-help/",
   "sign-in-and-spare-key": "manual/sign-in-and-spare-key/",
   "look-and-widgets": "manual/look-and-widgets/",
+  "custom-domain": "types/official-edge/",
 } as const;
 
 export type HandbookEntry = keyof typeof HANDBOOK_ENTRIES;

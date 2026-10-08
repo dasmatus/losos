@@ -159,6 +159,25 @@ struct TraefikServer {
 /// compare sees no change.
 #[must_use]
 pub fn desired_config(tenants: &[TenantView], opts: &EdgeOpts) -> Files {
+    desired_config_with_hosts(tenants, opts, &BTreeMap::new())
+}
+
+/// [`desired_config`], plus more hostnames for some tenants: the box's name
+/// in the edge's own zone and the custom domains its owner proved
+/// ([`crate::domains`]), keyed by tenant id.
+///
+/// Each extra hostname is a router of its own, `<id>-host-<n>` in sorted
+/// order, pointing at the tenant's one service, with its own certificate.
+/// One router per name rather than one `Host(a) || Host(b)` rule keeps a name
+/// whose certificate cannot be issued from touching the others. Hosts for an
+/// id that is not among `tenants` (not live) are ignored: no router may point
+/// at a service that does not exist.
+#[must_use]
+pub fn desired_config_with_hosts(
+    tenants: &[TenantView],
+    opts: &EdgeOpts,
+    extra_hosts: &BTreeMap<String, Vec<String>>,
+) -> Files {
     // rathole [server] base. The [server.services] table is appended below —
     // either empty (zero tenants) or one [server.services.<id>] per tenant.
     // For zero tenants this is exactly what `seed::run` writes to disk on
@@ -230,6 +249,27 @@ pub fn desired_config(tenants: &[TenantView], opts: &EdgeOpts) -> Files {
                 },
             },
         );
+        if let Some(hosts) = extra_hosts.get(&t.id) {
+            let mut hosts: Vec<&String> = hosts.iter().filter(|h| **h != host).collect();
+            hosts.sort();
+            hosts.dedup();
+            for (n, extra) in hosts.into_iter().enumerate() {
+                routers.insert(
+                    format!("{id}-host-{n}"),
+                    TraefikRouter {
+                        rule: format!("Host(`{extra}`)"),
+                        service: id.clone(),
+                        entry_points: vec!["websecure".to_string()],
+                        tls: TraefikTls {
+                            cert_resolver: "le".to_string(),
+                            domains: vec![TraefikDomain {
+                                main: extra.clone(),
+                            }],
+                        },
+                    },
+                );
+            }
+        }
         services.insert(
             id.clone(),
             TraefikService {

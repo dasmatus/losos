@@ -21,6 +21,7 @@ use std::io;
 use axum::http::StatusCode;
 
 use crate::action::Action;
+use crate::domains::DomainError;
 use crate::market::MarketError;
 
 /// Registry-layer failures: persistence IO, JSON parse, or the rathole port
@@ -92,6 +93,9 @@ pub enum ApiError {
     /// [`ApiError::status`] for their statuses.
     #[error(transparent)]
     Market(#[from] MarketError),
+    /// A custom-domain route failed; see [`DomainError`].
+    #[error(transparent)]
+    Domains(#[from] DomainError),
     /// A filesystem operation backing a request failed (token/tenants read).
     #[error(transparent)]
     Io(#[from] io::Error),
@@ -137,6 +141,13 @@ impl ApiError {
                 MarketError::Stripe(_) => StatusCode::BAD_GATEWAY,
                 MarketError::Store(_) => StatusCode::INTERNAL_SERVER_ERROR,
             },
+            ApiError::Domains(e) => match e {
+                DomainError::Unconfigured => StatusCode::SERVICE_UNAVAILABLE,
+                DomainError::Invalid(_) => StatusCode::BAD_REQUEST,
+                DomainError::Conflict(_) => StatusCode::CONFLICT,
+                DomainError::NotFound => StatusCode::NOT_FOUND,
+                DomainError::Store(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            },
             ApiError::Io(_) | ApiError::Serde(_) => StatusCode::INTERNAL_SERVER_ERROR,
             ApiError::Registry(_) | ApiError::MeshUnconfigured | ApiError::KubeApi(_) => {
                 StatusCode::SERVICE_UNAVAILABLE
@@ -177,6 +188,10 @@ impl ApiError {
                 }
                 MarketError::Store(_) => Cow::Borrowed("internal error"),
             },
+            ApiError::Domains(e) => match e {
+                DomainError::Store(_) => Cow::Borrowed("internal error"),
+                _ => Cow::Owned(e.to_string()),
+            },
             ApiError::Registry(_) => Cow::Borrowed("registry unavailable; retry later"),
             // Deliberately *not* `self.to_string()`: the payload carries the
             // apiserver URL and the status it returned, which tells an
@@ -204,6 +219,12 @@ impl axum::response::IntoResponse for ApiError {
             }
             ApiError::Market(_) => {
                 tracing::warn!(target: Action::Market.target(), "market request rejected: {self}");
+            }
+            ApiError::Domains(DomainError::Store(_)) => {
+                tracing::error!(target: Action::Domains.target(), "domain request failed: {self}");
+            }
+            ApiError::Domains(_) => {
+                tracing::debug!(target: Action::Domains.target(), "domain request rejected: {self}");
             }
             ApiError::ClusterForbidden | ApiError::NodeNameForbidden | ApiError::InvalidWindow => {
                 tracing::warn!(target: Action::Join.target(), "join rejected: {self}");

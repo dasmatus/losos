@@ -164,6 +164,9 @@ impl MeshFixture {
 pub const STRIPE_KEY: &str = "sk_test_0123456789abcdef";
 pub const WEBHOOK_SECRET: &str = "whsec_0123456789abcdef";
 pub const RETURN_URL: &str = "https://losos.example/market";
+/// The zone and address the domains fixture serves.
+pub const DNS_ZONE: &str = "boxes.example.test";
+pub const EDGE_IPV4: &str = "203.0.113.7";
 
 /// A running registrar: its temp state directory, its base URL, and the
 /// handles needed to stop it.
@@ -271,6 +274,33 @@ impl Edge {
         Self::start_inner(tag, tenants, MeshFixture::default(), Some(public_key), None).await
     }
 
+    /// An official edge (identity key and certificate in place) with a
+    /// market store seeded from `market_state` and the domains half on,
+    /// looking records up at `doh_url`. The market's gate points nowhere:
+    /// domains read the store and never ask Stripe.
+    pub async fn start_with_domains(
+        tag: &str,
+        tenants: &[TenantSpec],
+        market_state: &serde_json::Value,
+        identity: Option<(&str, &str)>,
+        doh_url: &str,
+    ) -> Self {
+        Self::start_general(
+            tag,
+            tenants,
+            MeshFixture::default(),
+            None,
+            Some("http://127.0.0.1:9".to_string()),
+            &[],
+            Some(market_state),
+            identity,
+            None,
+            None,
+            Some(doh_url),
+        )
+        .await
+    }
+
     async fn start_inner(
         tag: &str,
         tenants: &[TenantSpec],
@@ -303,6 +333,7 @@ impl Edge {
             Some((key_file, cert_file)),
             listener,
             None,
+            None,
         )
         .await
     }
@@ -327,6 +358,7 @@ impl Edge {
             Some((key_file, cert_file)),
             listener,
             Some(github_api_url),
+            None,
         )
         .await
     }
@@ -351,6 +383,7 @@ impl Edge {
             None,
             None,
             None,
+            None,
         )
         .await
     }
@@ -367,6 +400,7 @@ impl Edge {
         identity: Option<(&str, &str)>,
         listener: Option<tokio::net::TcpListener>,
         github_api_url: Option<&str>,
+        doh_url: Option<&str>,
     ) -> Self {
         let dir = TempDir::new(tag);
         if let Some(market_state) = market_state {
@@ -484,6 +518,19 @@ impl Edge {
             github_api_url: github_api_url
                 .unwrap_or(losos_registrar::provision::GITHUB_API_URL)
                 .to_string(),
+            domains: doh_url.map(|doh_url| {
+                Box::new(losos_registrar::domains::DomainsOpts {
+                    state_file: dir.path_str("domains.json"),
+                    zone: DNS_ZONE.to_string(),
+                    zone_file: dir.path_str("dns/boxes.example.test.zone"),
+                    nameservers: vec![format!("ns1.{DNS_ZONE}")],
+                    hostmaster: format!("hostmaster.{DNS_ZONE}"),
+                    ipv4: vec![EDGE_IPV4.parse().expect("edge ipv4")],
+                    ipv6: Vec::new(),
+                    doh_url: doh_url.to_string(),
+                    public_domain: "example.test".to_string(),
+                })
+            }),
         };
 
         let listener = match listener {

@@ -400,6 +400,52 @@
       },
       "description": "The registrar's own reply to the action, plus `available`."
     },
+    "domainsResponse": {
+      "type": "object",
+      "required": [
+        "available"
+      ],
+      "properties": {
+        "available": {
+          "type": "boolean",
+          "description": "False, with at most `reason` beside it, when no official edge is in reach, the box has no master proxy configured, or the edge serves no DNS zone or holds no identity certificate (its /domains routes answer 503). A 200 either way."
+        },
+        "reason": {
+          "type": "string",
+          "enum": [
+            "noOfficialEdge",
+            "stripeAccount"
+          ],
+          "description": "With `available: false`, `noOfficialEdge`: the edges in reach are none that LosOS runs. With `eligible: false`, `stripeAccount`: this box has no Stripe connected account that is ready and carries its UUID."
+        },
+        "eligible": {
+          "type": "boolean",
+          "description": "Whether this box may add a domain: its Stripe connected account is ready (details submitted, payouts enabled, transfers active) and carries this box's UUID."
+        },
+        "target": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "`<label>.<zone>`, this box's name in the edge's zone, where a CNAME points. Null until `eligible`."
+        },
+        "addresses": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "The edge's public addresses, for a domain at a zone apex, where a CNAME is not allowed."
+        },
+        "max_domains": {
+          "type": "integer"
+        },
+        "domains": {
+          "type": "array",
+          "description": "This box's claims, each {domain, status: live|waiting, txt_name, txt_value (null until eligible), txt_found, points_here, problem: null|stripeAccount|txtMissing|txtWrong|notPointing|takenElsewhere|lookupFailed, checked_at, verified_at}."
+        }
+      },
+      "description": "The edge's view of this box's custom domains (backend-registrar/src/domains.rs), plus `available`. The same document answers GET, add and remove."
+    },
     "appsSearchResponse": {
       "type": "object",
       "additionalProperties": false,
@@ -1104,6 +1150,23 @@
         "in": "{\"listing_id\": \"...\", \"quantity\": <units>}",
         "out": "marketActionResponse",
         "note": "Buy units. Returns a Stripe Checkout URL for the page to open. Audited. Owner-actionable refusals are 400/409 carrying the registrar's own sentence."
+      },
+      "GET /api/domains": {
+        "auth": true,
+        "out": "domainsResponse",
+        "note": "This box's custom domains on an official edge, relayed to the registrar's POST /domains/list like the market (backend/src/market.rs `Op::Domains`). Asked only of an official edge. Not-offered is 200 with available:false."
+      },
+      "POST /api/domains": {
+        "auth": true,
+        "in": "{\"domain\": \"cloud.example.org\"}",
+        "out": "domainsResponse",
+        "note": "Claim a domain. The edge looks the owner's TXT and CNAME records up itself and routes the domain once both are there. 400 for a name that is not one, 409 with the edge's sentence when the box has no ready Stripe account, has five domains already, or the domain is live for another box. Audited."
+      },
+      "POST /api/domains/remove": {
+        "auth": true,
+        "in": "{\"domain\": \"cloud.example.org\"}",
+        "out": "domainsResponse",
+        "note": "Give a domain up; its route and certificate go at the next reconcile. Audited."
       },
       "GET /api/look": {
         "auth": true,

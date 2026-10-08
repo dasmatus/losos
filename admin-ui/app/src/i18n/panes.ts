@@ -470,6 +470,161 @@ export default defineMessages({
     sk: "Keď je zapnuté „dostupné mimo domova“, zariadenie si otvorí cestu von k malému sprostredkovateľovi, aby ste sa k nemu dostali odkiaľkoľvek. Na routeri netreba nič otvárať. Port je vnútorný detail. Aplikácia na súbory na ňom odpovedá za vstupnými dverami a netreba ho meniť, pokiaľ to isté číslo nechce niečo iné na tomto zariadení.",
     de: "Mit „von außerhalb erreichbar“ öffnet diese Box einen Weg nach draußen zu einem kleinen Relay, sodass du von überall an sie herankommst. An deinem Router muss nichts geöffnet werden. Der Port ist ein internes Detail. Die Dateien-App antwortet darauf hinter der Haustür, und es gibt keinen Grund, ihn zu ändern, außer etwas anderes auf dieser Box will dieselbe Nummer.",
   },
+  "panes.network.domains.title": {
+    en: "Your own domain",
+    sk: "Vlastná doména",
+    de: "Eigene Domain",
+  },
+  "panes.network.domains.loading": {
+    en: "Asking the edge…",
+    sk: "Pýtam sa okrajového servera…",
+    de: "Frage den Edge…",
+  },
+  "panes.network.domains.unreachable": {
+    en: "The edge did not answer",
+    sk: "Okrajový server neodpovedal",
+    de: "Der Edge hat nicht geantwortet",
+  },
+  "panes.network.domains.unavailable": {
+    en: "Not offered to this box",
+    sk: "Pre toto zariadenie nie je k dispozícii",
+    de: "Für diese Box nicht verfügbar",
+  },
+  "panes.network.domains.noOfficialEdge": {
+    en: "Custom domains come from an official LosOS edge, and none is in reach.",
+    sk: "Vlastné domény poskytuje oficiálny okrajový server LosOS a žiadny nie je dostupný.",
+    de: "Eigene Domains kommen von einem offiziellen LosOS-Edge, und keiner ist erreichbar.",
+  },
+  "panes.network.domains.notOffered": {
+    en: "Turn on \"Reachable from outside your home\" first. If it is on, the edge this box uses does not hand out domain names.",
+    sk: "Najprv zapnite „Dostupné aj mimo domova“. Ak je zapnuté, okrajový server tohto zariadenia doménové mená neprideľuje.",
+    de: "Schalte zuerst „Auch von außerhalb erreichbar“ ein. Ist es an, vergibt der Edge dieser Box keine Domainnamen.",
+  },
+  "panes.network.domains.needsStripe": {
+    en: "Needs a Stripe account that Stripe has checked",
+    sk: "Vyžaduje účet Stripe overený spoločnosťou Stripe",
+    de: "Braucht ein von Stripe geprüftes Stripe-Konto",
+  },
+  "panes.network.domains.needsStripeDetail": {
+    en: "The edge gives a domain only to a box whose payout account at Stripe is fully set up. That account is made on the Market pane once the market opens.",
+    sk: "Okrajový server pridelí doménu len zariadeniu, ktoré má v Stripe úplne nastavený účet na výplaty. Ten sa zakladá na paneli Trh, keď sa trh otvorí.",
+    de: "Der Edge vergibt eine Domain nur an eine Box, deren Auszahlungskonto bei Stripe vollständig eingerichtet ist. Dieses Konto wird im Bereich Markt angelegt, sobald der Markt öffnet.",
+  },
+  "panes.network.domains.target": {
+    en: "This box's name on the edge",
+    sk: "Názov tohto zariadenia na okrajovom serveri",
+    de: "Name dieser Box auf dem Edge",
+  },
+  "panes.network.domains.targetDetail": {
+    en: "Point your domain here with a CNAME record.",
+    sk: "Nasmerujte sem svoju doménu záznamom CNAME.",
+    de: "Richte deine Domain mit einem CNAME-Eintrag hierher.",
+  },
+  "panes.network.domains.add": {
+    en: "Add a domain you own",
+    sk: "Pridať doménu, ktorú vlastníte",
+    de: "Eine eigene Domain hinzufügen",
+  },
+  "panes.network.domains.addButton": {
+    en: "Add",
+    sk: "Pridať",
+    de: "Hinzufügen",
+  },
+  "panes.network.domains.full": {
+    en: "This box already has {count} domains, the most an edge allows.",
+    sk: "Toto zariadenie už má {count} domén, viac okrajový server nedovolí.",
+    de: "Diese Box hat schon {count} Domains, mehr erlaubt der Edge nicht.",
+  },
+  "panes.network.domains.live": {
+    en: "Live",
+    sk: "Funguje",
+    de: "Aktiv",
+  },
+  "panes.network.domains.waiting": {
+    en: "Waiting for DNS",
+    sk: "Čaká na DNS",
+    de: "Wartet auf DNS",
+  },
+  "panes.network.domains.remove": {
+    en: "Remove",
+    sk: "Odstrániť",
+    de: "Entfernen",
+  },
+  "panes.network.domains.seen": {
+    en: "✓ seen",
+    sk: "✓ nájdené",
+    de: "✓ gefunden",
+  },
+  "panes.network.domains.notSeen": {
+    en: "not seen yet",
+    sk: "zatiaľ nenájdené",
+    de: "noch nicht gefunden",
+  },
+  "panes.network.domains.apex": {
+    en: "For a domain with nothing in front of it, such as example.org itself, a CNAME is not allowed. Use A or AAAA records to {addresses} there instead.",
+    sk: "Pri doméne, pred ktorou nič nie je, napríklad samotnej example.org, CNAME nie je dovolený. Použite tam namiesto neho záznamy A alebo AAAA na {addresses}.",
+    de: "Für eine Domain, vor der nichts steht, etwa example.org selbst, ist kein CNAME erlaubt. Nimm dort stattdessen A- oder AAAA-Einträge auf {addresses}.",
+  },
+  "panes.network.domains.caption": {
+    en: "Add the two records shown under a domain at the company you bought it from. The edge looks them up itself every half minute and switches the domain on as soon as both are right, with a certificate of its own. LosOS cloud then answers on it from anywhere, at /nextcloud. The TXT value proves the domain is yours. It is made from this box's identity and its Stripe account without revealing either.",
+    sk: "Pridajte dva záznamy uvedené pod doménou u firmy, od ktorej ste ju kúpili. Okrajový server si ich každú pol minútu sám overí a doménu zapne, hneď ako sú oba správne, aj s vlastným certifikátom. LosOS cloud potom na nej odpovedá odkiaľkoľvek, na adrese /nextcloud. Hodnota TXT dokazuje, že doména je vaša. Vzniká z identity tohto zariadenia a jeho účtu Stripe bez toho, aby jedno či druhé prezradila.",
+    de: "Trage die zwei Einträge unter einer Domain bei der Firma ein, bei der du sie gekauft hast. Der Edge prüft sie jede halbe Minute selbst und schaltet die Domain ein, sobald beide stimmen, mit eigenem Zertifikat. LosOS cloud antwortet dann von überall darauf, unter /nextcloud. Der TXT-Wert beweist, dass die Domain dir gehört. Er entsteht aus der Identität dieser Box und ihrem Stripe-Konto, ohne eines davon preiszugeben.",
+  },
+  "panes.network.domains.failedTitle": {
+    en: "The edge refused",
+    sk: "Okrajový server odmietol",
+    de: "Der Edge hat abgelehnt",
+  },
+  "panes.network.domains.failed": {
+    en: "The edge did not take the change. Try again in a moment.",
+    sk: "Okrajový server zmenu neprijal. Skúste to o chvíľu znova.",
+    de: "Der Edge hat die Änderung nicht angenommen. Versuch es gleich noch einmal.",
+  },
+  "panes.network.domains.addedTitle": {
+    en: "Domain added",
+    sk: "Doména pridaná",
+    de: "Domain hinzugefügt",
+  },
+  "panes.network.domains.addedBody": {
+    en: "Add the two records shown under it at your DNS provider.",
+    sk: "Pridajte u poskytovateľa DNS dva záznamy uvedené pod ňou.",
+    de: "Trage die zwei Einträge darunter bei deinem DNS-Anbieter ein.",
+  },
+  "panes.network.domains.removedTitle": {
+    en: "{domain} removed",
+    sk: "{domain} odstránená",
+    de: "{domain} entfernt",
+  },
+  "panes.network.domains.problem.stripeAccount": {
+    en: "The Stripe account behind this domain is no longer ready, so the edge stopped serving it.",
+    sk: "Účet Stripe za touto doménou už nie je pripravený, preto ju okrajový server prestal obsluhovať.",
+    de: "Das Stripe-Konto hinter dieser Domain ist nicht mehr bereit, deshalb bedient der Edge sie nicht mehr.",
+  },
+  "panes.network.domains.problem.txtMissing": {
+    en: "The TXT record is not there yet. New records can take a few minutes to appear.",
+    sk: "Záznam TXT tam ešte nie je. Nové záznamy sa môžu objaviť až o pár minút.",
+    de: "Der TXT-Eintrag ist noch nicht da. Neue Einträge können ein paar Minuten brauchen.",
+  },
+  "panes.network.domains.problem.txtWrong": {
+    en: "A TXT record is there, but its value is not the one shown here.",
+    sk: "Záznam TXT tam je, ale jeho hodnota nie je tá, ktorá je uvedená tu.",
+    de: "Ein TXT-Eintrag ist da, aber sein Wert ist nicht der hier gezeigte.",
+  },
+  "panes.network.domains.problem.notPointing": {
+    en: "The TXT record is right. The domain does not point at this box's name yet.",
+    sk: "Záznam TXT je správny. Doména ešte nesmeruje na názov tohto zariadenia.",
+    de: "Der TXT-Eintrag stimmt. Die Domain zeigt noch nicht auf den Namen dieser Box.",
+  },
+  "panes.network.domains.problem.takenElsewhere": {
+    en: "Another box already uses this domain on the edge.",
+    sk: "Túto doménu už na okrajovom serveri používa iné zariadenie.",
+    de: "Eine andere Box nutzt diese Domain schon auf dem Edge.",
+  },
+  "panes.network.domains.problem.lookupFailed": {
+    en: "The edge could not look the domain up. It tries again by itself.",
+    sk: "Okrajový server nevedel doménu vyhľadať. Skúsi to znova sám.",
+    de: "Der Edge konnte die Domain nicht nachschlagen. Er versucht es von selbst erneut.",
+  },
 
   // ── Reset ───────────────────────────────────────────────────────────────
   "panes.reset.startOver": {

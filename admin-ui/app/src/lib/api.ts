@@ -573,6 +573,79 @@ export function postMarketOrder(
   return marketPost("/api/market/orders", { listing_id: listingId, quantity }, options);
 }
 
+// ── Custom domains ────────────────────────────────────────────────────────
+
+/* A domain the owner already has, pointed at this box through an official
+ * edge (backend-registrar/src/domains.rs). lososd relays it like the market
+ * and asks only an official edge. The edge gives the box a name in its own
+ * DNS zone (`target`) once the box's Stripe account is ready, the owner
+ * points a CNAME there and publishes the TXT value, and the edge routes the
+ * domain when it sees both. Shape: backend/schema.json's domainsResponse. */
+
+export type DomainProblem =
+  | "stripeAccount"
+  | "txtMissing"
+  | "txtWrong"
+  | "notPointing"
+  | "takenElsewhere"
+  | "lookupFailed";
+
+export interface CustomDomain {
+  domain: string;
+  status: "live" | "waiting";
+  /** `_losos-challenge.<domain>`. */
+  txt_name: string;
+  /** Null while the box's Stripe account is not ready. */
+  txt_value: string | null;
+  txt_found: boolean;
+  points_here: boolean;
+  problem: DomainProblem | null;
+  checked_at: number | null;
+  verified_at: number | null;
+}
+
+export type DomainsResponse =
+  | { available: false; reason?: "noOfficialEdge" }
+  | {
+      available: true;
+      eligible: boolean;
+      reason: "stripeAccount" | null;
+      /** `<label>.<zone>`: what a CNAME points at. Null until eligible. */
+      target: string | null;
+      /** The edge's addresses, for a domain at a zone apex. */
+      addresses: string[];
+      max_domains: number;
+      domains: CustomDomain[];
+    };
+
+/** GET /api/domains — this box's domains on the edge. */
+export function getDomains(options: RequestOptions = {}): Promise<DomainsResponse> {
+  return call<DomainsResponse>("/api/domains", options);
+}
+
+/** POST /api/domains — claim a domain; the reply is the whole view. */
+export function postDomainAdd(domain: string, options: RequestOptions = {}): Promise<DomainsResponse> {
+  return call<DomainsResponse>("/api/domains", {
+    ...options,
+    method: "POST",
+    contentType: "application/json",
+    body: JSON.stringify({ domain }),
+  });
+}
+
+/** POST /api/domains/remove — give a domain up. */
+export function postDomainRemove(
+  domain: string,
+  options: RequestOptions = {},
+): Promise<DomainsResponse> {
+  return call<DomainsResponse>("/api/domains/remove", {
+    ...options,
+    method: "POST",
+    contentType: "application/json",
+    body: JSON.stringify({ domain }),
+  });
+}
+
 // ── Sign-in ───────────────────────────────────────────────────────────────
 
 export interface SignInResponse {
