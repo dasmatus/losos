@@ -76,8 +76,10 @@ and the market is off on every box. That is the safe direction to fail in.
 The key itself is made on the project owner's own computer, never on a box
 or an edge, with a tool that first signs the person in with GitHub and
 refuses anyone whose account is not on a short list committed with the
-project. The same tool signs each official edge's certificate and installs
-it over SSH. For operators, the steps are in
+project. The same tool signs each official edge's certificate and pushes it to the
+edge over the web, where the edge checks the same short list before it
+accepts; the edge's own key never leaves the edge. For operators, the steps
+are in
 [the provisioning runbook](https://github.com/dasmatus/losos/blob/main/provisioning/edge-identity/README.md).
 
 Enrolment at the edge (which box may tunnel through it) is a separate matter:

@@ -20,6 +20,7 @@ status page an audience can watch. It is **not** a replacement for the edge VPS
 | rke2 mesh control plane, `/cluster/join` | optional | **no** (`/cluster/join` → 503, as on a proxy-only edge) |
 | Stripe gate, `/market/*` | optional | **no** (`/market/*` → 503, as on an edge with the market off) |
 | `/noise-public-key` | yes | 404 (no tunnel to pin a key for) |
+| `/identity`, `/identity/public-key`, `/identity/cert` | yes | 404 (no disk to keep an identity key on; this host is never official) |
 | `/status`, `/status/traefik`, the page at `/` | — | **demo only**; the real edge has no public listing |
 
 So the demo shows the **control plane**: an appliance (a VM, or any machine

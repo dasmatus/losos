@@ -111,12 +111,17 @@ pub struct ServeOpts {
     /// The Stripe Connect market. `None` — no `--market-gate-socket` — and
     /// every `/market/*` route answers 503; the rest of the API is unchanged.
     pub market: Option<Box<MarketOpts>>,
-    /// This edge's identity (`crate::identity`): the 0600 key file and the
-    /// certificate the LosOS root signed for it. Both or neither; with
-    /// neither, `GET /identity` answers 404 and boxes treat the edge as a
-    /// company edge (sharing, no trading).
+    /// This edge's identity (`crate::identity`): the 0600 key file (made on
+    /// the first start if missing) and the certificate the LosOS root signed
+    /// for it (installed by `POST /identity/cert`). Both or neither; with
+    /// neither, every `/identity*` route answers 404 and boxes treat the
+    /// edge as a company edge (sharing, no trading).
     pub identity_key_file: Option<String>,
     pub identity_cert_file: Option<String>,
+    /// Where `POST /identity/cert` asks who a GitHub token belongs to.
+    /// `--github-api-url`; the default is api.github.com, the override is
+    /// for the tests' fake GitHub.
+    pub github_api_url: String,
 }
 
 /// `identity` options: the offline key ceremony (`crate::identity`).
@@ -237,10 +242,10 @@ pub enum ProvisionOpts {
         repo: String,
         base: String,
     },
-    /// `provision edge --name N --url U --ssh TARGET --root-key FILE
-    /// [--days D] [--key-path P] [--cert-path P] [--ssh-key F]
-    /// [--known-hosts F] [--ssh-command CMD]`: key pair in memory, signed
-    /// certificate, one SSH session, then the four checks.
+    /// `provision edge --name N --url U --root-key FILE [--days D]`: read
+    /// the edge's public key from `GET <U>/identity/public-key`, sign its
+    /// certificate, push it to `POST <U>/identity/cert` with the GitHub
+    /// token of the sign-in, then the four checks.
     Edge {
         github: ProvisionGithub,
         root_key: String,
@@ -321,6 +326,10 @@ pub fn parse(args: Vec<String>) -> Result<Mode> {
                 market: parse_market(&rest)?,
                 identity_key_file: arg(&rest, "--identity-key-file").map(str::to_string),
                 identity_cert_file: arg(&rest, "--identity-cert-file").map(str::to_string),
+                github_api_url: arg(&rest, "--github-api-url")
+                    .unwrap_or(GITHUB_API_URL)
+                    .trim_end_matches('/')
+                    .to_string(),
             }))
         }
         "identity" => {
@@ -485,22 +494,12 @@ fn parse_provision(args: &[String]) -> Result<Mode> {
             spec: EdgeSpec {
                 name: req(&rest, "--name")?.to_string(),
                 url: req(&rest, "--url")?.to_string(),
-                ssh_target: req(&rest, "--ssh")?.to_string(),
                 days: arg(&rest, "--days")
                     .unwrap_or("365")
                     .parse()
                     .ok()
                     .filter(|d| (1..=3650).contains(d))
                     .ok_or_else(|| miette!("bad --days; expected 1..=3650"))?,
-                key_path: arg(&rest, "--key-path")
-                    .unwrap_or("/var/secrets/losos-edge-identity.key")
-                    .to_string(),
-                cert_path: arg(&rest, "--cert-path")
-                    .unwrap_or("/etc/losos/edge-identity.cert.json")
-                    .to_string(),
-                ssh_key: arg(&rest, "--ssh-key").map(str::to_string),
-                known_hosts: arg(&rest, "--known-hosts").map(str::to_string),
-                ssh_command: arg(&rest, "--ssh-command").unwrap_or("ssh").to_string(),
             },
         },
         "verify" => {
