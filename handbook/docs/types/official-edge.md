@@ -97,11 +97,55 @@ Enrolment at the edge, which decides which box may tunnel through it, is a
 separate matter. The edge keeps an allow-list of boxes, each with a token,
 and whoever runs the edge adds a box to it.
 
+## Your own domain
+
+A box behind the LosOS edge can also answer on a domain its owner already
+has, such as `cloud.novak-family.eu`. The edge does the work that needs the
+internet. It runs a small DNS server for its own zone, gives the box a name
+there, checks the owner's records, and gets the certificate.
+
+Only an official edge hands out domains, and only to a box whose Stripe
+account Stripe has fully checked. That is the account the market pays out to.
+It ties the box to a person Stripe has verified, and a stranger cannot borrow
+the edge's certificates without one. While the market is not open, no box
+has such an account, so the section on the Network pane says what is missing
+and offers nothing to fill in.
+
+![The Your own domain section of the Network pane: the box's name on the edge, one domain live, one waiting for its CNAME with the two records to publish, and the field for adding another.](../img/custom-domain.png)
+
+Once the account is ready, the Network pane shows **This box's name on the
+edge**, something like `3f9a1c0e7b2d4a55.boxes.losos.dasmat.us`. The name is
+made from the box's identity but does not reveal it. To add a domain:
+
+1. Type the domain under **Add a domain you own** and press **Add**.
+2. At the company you bought the domain from, add the two records the pane
+   shows under it. One is a **CNAME** from your domain to the box's name on
+   the edge. The other is a **TXT** record at
+   `_losos-challenge.<your domain>` with the value shown. That value proves
+   the domain is yours. It is made from the domain, the box's identity and
+   its Stripe account, and gives away none of them.
+3. Wait. The edge looks the records up itself every half minute and marks
+   each one **✓ seen** as it finds it. When both are right the domain turns
+   **Live**, the edge fetches a certificate for it, and LosOS cloud answers at
+   `https://<your domain>/nextcloud`.
+
+A domain with nothing in front of it, such as `novak-family.eu` itself,
+cannot carry a CNAME. Use the A and AAAA addresses the pane lists instead.
+
+A box can have up to five domains, and a domain belongs to one box at a time.
+Removing it in the pane stops the edge serving it at the next pass. The edge
+rechecks a live domain every hour. If the records disappear, it stops serving
+the domain after three failed checks in a row, so one DNS hiccup does not
+take a site down. If the Stripe account stops being ready, it stops at once.
+Either way the pane says why.
+LosOS Git still builds its links with the box's edge name.
+
 ## Settings that matter
 
 | Pane     | Setting                                | What it does                                                            |
 | -------- | -------------------------------------- | ----------------------------------------------------------------------- |
 | Network  | Reachable from outside your home       | opens the tunnel to the edge                                            |
+| Network  | Your own domain                        | adds a domain you own; needs an official edge and a Stripe account Stripe has checked |
 | Advanced | `losos.proxy.registrarUrl`             | the edge address asked over the internet, besides the local network     |
 | Mesh     | Join the mesh                          | enrols this box in the edge's cluster; needs an edge in reach           |
 | Mesh     | Lend this box while I sleep            | lends CPU inside the hours below, while idle; needs the mesh joined     |

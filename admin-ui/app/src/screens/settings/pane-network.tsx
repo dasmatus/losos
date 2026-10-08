@@ -1,6 +1,7 @@
 import * as React from "react";
 import { FieldError, Input } from "@/components/ui/input";
 import { useT } from "@/lib/i18n-react";
+import { DomainsSection } from "./domains-section";
 import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText, RowValue, SwitchRow } from "./rows";
 import type { SettingsForm } from "./use-settings-form";
 
@@ -109,6 +110,8 @@ export function NetworkPane({ form }: { form: SettingsForm }) {
 
         <GroupCaption>{t("panes.network.reachCaption")}</GroupCaption>
       </PaneSection>
+
+      <DomainsSection locked={form.locked} />
     </>
   );
 }

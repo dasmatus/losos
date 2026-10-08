@@ -45,6 +45,7 @@
 pub mod action;
 pub mod announce;
 pub mod config;
+pub mod domains;
 pub mod error;
 mod fsutil;
 pub mod identity;
@@ -58,6 +59,7 @@ pub mod seed;
 pub mod server;
 pub mod stripe_gate;
 pub mod window;
+pub mod zone;
 pub use config::{desired_config, EdgeOpts, Files, TenantView};
 pub use error::{ApiError, RegistryError};
 pub use registry::{Registry, Snapshot, SnapshotTenant, Tenant};

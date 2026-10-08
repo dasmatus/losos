@@ -104,6 +104,31 @@ pub enum Op {
         listing_id: String,
         quantity: u64,
     },
+    /// This box's custom domains on the edge, and whether it may add one
+    /// (`backend-registrar/src/domains.rs`). Not the market, but the same
+    /// relay: the edge wants the proxy token, and only an official edge is
+    /// asked.
+    Domains,
+    DomainAdd {
+        domain: String,
+    },
+    DomainRemove {
+        domain: String,
+    },
+}
+
+/// Longest domain name relayed. The registrar's own check is the
+/// authoritative one; this only stops nonsense leaving the box.
+const MAX_DOMAIN_LEN: usize = 253;
+
+/// A plausible domain name, lowercase: letters, digits, hyphens, dots. The
+/// edge refuses the rest with a sentence of its own.
+pub(crate) fn valid_domain(d: &str) -> bool {
+    !d.is_empty()
+        && d.len() <= MAX_DOMAIN_LEN
+        && d.contains('.')
+        && d.bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-' || b == b'.')
 }
 
 fn valid_id(id: &str) -> bool {
@@ -121,7 +146,14 @@ impl Op {
     /// A sentence naming what was wrong, suitable for a 400.
     pub fn validate(&self) -> Result<(), &'static str> {
         match self {
-            Op::Browse | Op::Account => Ok(()),
+            Op::Browse | Op::Account | Op::Domains => Ok(()),
+            Op::DomainAdd { domain } | Op::DomainRemove { domain } => {
+                if valid_domain(domain) {
+                    Ok(())
+                } else {
+                    Err("a domain name has only letters, digits, hyphens and dots, such as cloud.example.org")
+                }
+            }
             Op::Onboard { box_uuid } => match box_uuid {
                 Some(u) if !crate::recovery::is_well_formed(u) => Err("box_uuid is not a UUID"),
                 _ => Ok(()),
@@ -173,6 +205,9 @@ impl Op {
             Op::List { .. } => ("POST", "/market/listings"),
             Op::Close { .. } => ("POST", "/market/listings/close"),
             Op::Order { .. } => ("POST", "/market/orders"),
+            Op::Domains => ("POST", "/domains/list"),
+            Op::DomainAdd { .. } => ("POST", "/domains/add"),
+            Op::DomainRemove { .. } => ("POST", "/domains/remove"),
         }
     }
 
@@ -185,7 +220,8 @@ impl Op {
         let mut doc = json!({ "appliance_id": appliance_id, "token": token });
         let extra = match self {
             Op::Browse => return None,
-            Op::Account => json!({}),
+            Op::Account | Op::Domains => json!({}),
+            Op::DomainAdd { domain } | Op::DomainRemove { domain } => json!({ "domain": domain }),
             Op::Onboard { box_uuid } => match box_uuid {
                 Some(u) => json!({ "box_uuid": u }),
                 None => json!({}),
@@ -344,6 +380,40 @@ mod tests {
         }
         .validate()
         .is_err());
+    }
+
+    #[test]
+    fn domain_operations_relay_to_the_domain_routes_with_the_name_in_the_body() {
+        let add = Op::DomainAdd {
+            domain: "cloud.example.org".to_string(),
+        };
+        assert!(add.validate().is_ok());
+        assert_eq!(add.route(), ("POST", "/domains/add"));
+        let body: Value = serde_json::from_str(&add.body("box", "tok").unwrap()).unwrap();
+        assert_eq!(
+            body,
+            json!({ "appliance_id": "box", "token": "tok", "domain": "cloud.example.org" })
+        );
+        assert_eq!(Op::Domains.route(), ("POST", "/domains/list"));
+        for bad in [
+            "",
+            "localhost",
+            "Cloud.example.org",
+            "a b.org",
+            "x.org/../y",
+            "é.org",
+        ] {
+            assert!(
+                Op::DomainRemove {
+                    domain: bad.to_string()
+                }
+                .validate()
+                .is_err(),
+                "{bad:?}"
+            );
+        }
+        let long = format!("{}.org", "a".repeat(250));
+        assert!(Op::DomainAdd { domain: long }.validate().is_err());
     }
 
     #[test]

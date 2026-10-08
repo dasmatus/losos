@@ -96,6 +96,7 @@ fn run() -> anyhow::Result<()> {
         // Looks for an edge proxy (LAN DNS-SD + the configured URL) every
         // few seconds; what it finds gates storage sharing. See backend/src/edge.rs.
         losos_ctl::io_backend::start_edge_scanner(&backend);
+        losos_ctl::io_backend::start_domain_sync(&backend);
         config_repo::start_reconciler(&backend);
 
         // The bus connection and the HTTP thread carry the load from here; this

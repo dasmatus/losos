@@ -372,6 +372,12 @@
       #                         registrar, a signed webhook through the gate, and a
       #                         missing blob that darkens only the market
       #                         (tests/market-vm.nix).
+      #   losos-edge-dns      — boots an edge with losos.edge.dns on and a
+      #                         client that queries it: Knot serves the zone the
+      #                         registrar renders, names appear only once the
+      #                         edge holds a certificate, the path unit reloads
+      #                         the zone, and the domain routes answer
+      #                         (tests/edge-dns.nix).
       #   losos-ds-render     — builds the losos-ds npm package and renders every
       #                         design-system component in headless chromium
       #                         (playwright-driver.browsers), asserting computed
@@ -437,6 +443,7 @@
         losos-edge-lan = import ./tests/edge-lan.nix { inherit pkgs; };
         losos-edge-lan-two-boxes = import ./demo/edge-lan/two-boxes.nix { inherit pkgs; };
         losos-edge-market = import ./tests/market-vm.nix { inherit pkgs; };
+        losos-edge-dns = import ./tests/edge-dns.nix { inherit pkgs; };
         losos-ds-render = import ./tests/design-system.nix { inherit pkgs; };
         losos-front-vhost = import ./tests/front-vhost.nix { inherit pkgs; };
         losos-impermanence = import ./tests/impermanence.nix { inherit pkgs impermanence; };

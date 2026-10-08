@@ -86,6 +86,50 @@ const HAND_WIDGET = {
 const LOOK_PLAIN = { version: 1, background: { kind: 'none' }, veil: 60, widgets: [], shipped: ['tide', 'grid', 'dusk'], limits: LIMITS };
 const LOOK_TIDE = { ...LOOK_PLAIN, background: { kind: 'shipped', name: 'tide' }, widgets: [HAND_WIDGET] };
 
+/* GET /api/domains: no official edge in reach (the default, matching
+ * EDGE_NONE), an official edge and a box Stripe has not checked, and a
+ * checked box with one domain live and one waiting for its CNAME. */
+const DOMAINS_OFF = { available: false, reason: 'noOfficialEdge' };
+const DOMAINS_UNVOUCHED = {
+  available: true,
+  eligible: false,
+  reason: 'stripeAccount',
+  target: null,
+  addresses: ['203.0.113.7', '2001:db8::7'],
+  max_domains: 5,
+  domains: [],
+};
+const DOMAINS_READY = {
+  ...DOMAINS_UNVOUCHED,
+  eligible: true,
+  reason: null,
+  target: '3f9a1c0e7b2d4a55.boxes.losos.dasmat.us',
+  domains: [
+    {
+      domain: 'cloud.novak-family.eu',
+      status: 'live',
+      txt_name: '_losos-challenge.cloud.novak-family.eu',
+      txt_value: 'losos-domain-v1=6b0d2f9e41c7a83d5e12f04b9a7c6d18',
+      txt_found: true,
+      points_here: true,
+      problem: null,
+      checked_at: 1791451800,
+      verified_at: 1791448200,
+    },
+    {
+      domain: 'git.novak-family.eu',
+      status: 'waiting',
+      txt_name: '_losos-challenge.git.novak-family.eu',
+      txt_value: 'losos-domain-v1=6b0d2f9e41c7a83d5e12f04b9a7c6d18',
+      txt_found: true,
+      points_here: false,
+      problem: 'notPointing',
+      checked_at: 1791451800,
+      verified_at: null,
+    },
+  ],
+};
+
 const MARKET_OFF = { available: false };
 const MARKET_UNOFFICIAL = { available: false, reason: 'noOfficialEdge' };
 const MARKET_OPEN = {
@@ -195,6 +239,7 @@ async function open({
   storage = STORAGE,
   look = LOOK_PLAIN,
   market = MARKET_OFF,
+  domains = DOMAINS_OFF,
   board = BOARD,
   health = true,
   cloudDown = false,
@@ -253,6 +298,7 @@ async function open({
   await page.route('**/api/edge', (route) => json(route, 200, edge));
   await page.route('**/api/storage', (route) => json(route, 200, storage));
   await page.route('**/api/market', (route) => json(route, 200, market));
+  await page.route('**/api/domains', (route) => json(route, 200, domains));
   await page.route('**/api/config', (route) => json(route, 200, CONFIG));
   await page.route('**/api/options', (route) => json(route, 200, OPTIONS));
   await page.route('**/api/apply', (route) => json(route, 200, apply));
@@ -376,6 +422,16 @@ const SHOTS = [
   },
   { name: 'market-soon', path: '/mesh', edge: EDGE_OFFICIAL },
   { name: 'settings-network', path: '/settings/network' },
+  { name: 'settings-network-full', path: '/settings/network', full: true },
+  { name: 'settings-domain-stripe', path: '/settings/network', full: true, edge: EDGE_OFFICIAL, domains: DOMAINS_UNVOUCHED },
+  {
+    name: 'settings-domain-ready',
+    path: '/settings/network',
+    full: true,
+    edge: EDGE_OFFICIAL,
+    settings: { ...SETTINGS, proxyEnable: true },
+    domains: DOMAINS_READY,
+  },
   {
     name: 'settings-apply-bar',
     path: '/settings/network',

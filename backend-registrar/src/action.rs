@@ -29,6 +29,7 @@ pub enum Action {
     Market,
     Provision,
     Identity,
+    Domains,
 }
 
 impl Action {
@@ -53,6 +54,7 @@ impl Action {
             Action::Market => "losos::market",
             Action::Provision => "losos::provision",
             Action::Identity => "losos::identity",
+            Action::Domains => "losos::domains",
         }
     }
 }
@@ -75,6 +77,7 @@ impl Display for Action {
             Action::Market => f.write_str("[market]"),
             Action::Provision => f.write_str("[provision]"),
             Action::Identity => f.write_str("[identity]"),
+            Action::Domains => f.write_str("[domains]"),
         }
     }
 }
