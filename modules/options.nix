@@ -332,7 +332,7 @@ in
       type = lib.types.str;
       # The demo edge (edge-vercel/, the registrar as a Vercel Function at the
       # owner's domain). Not proxy.losos.dasmat.us: that name is the Nix binary
-      # cache proxy (`losos.cache.substituters`), decided 2026-10-05. A
+      # cache proxy (`losos.cache.substituters`). A
       # self-hosted edge is register.<losos.edge.publicDomain>, e.g.
       # https://register.losos.cfd; set this to that when one exists.
       default = "https://losos-edge.dasmat.us";
@@ -1067,6 +1067,13 @@ in
       description = "Memory of each Lab guest, in MiB. The guests are busybox systems; 96 is what the in-browser engine gives them.";
     };
 
+    lab.ordering.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      visible = false;
+      description = "Show the order button in LosOS Lab.";
+    };
+
     # ── Installer (the `losos-ctl install` subcommand) ──────────────────────
     installer.package = lib.mkOption {
       type = lib.types.nullOr lib.types.package;
@@ -1429,6 +1436,60 @@ in
         after onboarding. `?order=<id>&status=paid|cancelled` is appended for
         Checkout. Required when the market is enabled.
       '';
+    };
+
+    edge.market.hardware.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      visible = false;
+      description = "Sell `hardware.items` through the market's Stripe account.";
+    };
+
+    edge.market.hardware.countries = lib.mkOption {
+      type = lib.types.listOf (lib.types.strMatching "[A-Z]{2}");
+      default = [
+        "SK"
+        "CZ"
+        "AT"
+        "DE"
+        "PL"
+        "HU"
+      ];
+      visible = false;
+      description = "Countries a hardware order may ship to (ISO 3166-1 alpha-2).";
+    };
+
+    edge.market.hardware.items = lib.mkOption {
+      type = lib.types.attrsOf (
+        lib.types.submodule {
+          options = {
+            name = lib.mkOption { type = lib.types.str; };
+            detail = lib.mkOption {
+              type = lib.types.str;
+              default = "";
+            };
+            unitAmount = lib.mkOption {
+              type = lib.types.ints.between 50 1000000;
+              description = "Price in minor units of `market.currency`.";
+            };
+          };
+        }
+      );
+      # Placeholder prices. The Lab counts `box` and `gateway` in a setup.
+      default = {
+        box = {
+          name = "LosOS box";
+          detail = "x86_64 mini PC, 16 GB RAM, 1 TB SSD, LosOS installed";
+          unitAmount = 44900;
+        };
+        gateway = {
+          name = "LosOS edge gateway";
+          detail = "x86_64 mini PC, 16 GB RAM, 1 TB SSD, edge gateway installed";
+          unitAmount = 44900;
+        };
+      };
+      visible = false;
+      description = "What the edge sells, by sku.";
     };
 
     # ── Edge on the LAN ─────────────────────────────────────────────────────

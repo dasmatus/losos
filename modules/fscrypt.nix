@@ -48,7 +48,7 @@ let
   sharing = config.losos.sharingMyStorage;
   useTpm = config.losos.tpm.enable;
 
-  fscrypt = "${pkgs.fscrypt-experimental}/bin/fscrypt";
+  fscrypt = "${pkgs.fscrypt}/bin/fscrypt";
 
   # The real filesystem, not the bind-mounted view — see the header.
   persistRoot = "/persist";
@@ -137,7 +137,7 @@ in
   {
     lososInternal.fscrypt = {
       inherit policyDirExpr materialiseKeyTo protector;
-      package = pkgs.fscrypt-experimental;
+      package = pkgs.fscrypt;
     };
   }
 
@@ -156,7 +156,7 @@ in
       }
     ];
 
-    environment.systemPackages = [ pkgs.fscrypt-experimental ];
+    environment.systemPackages = [ pkgs.fscrypt ];
 
     # ── One-time filesystem preparation ──────────────────────────────────────
     # `fscrypt setup` writes /etc/fscrypt.conf and then per-mountpoint metadata
@@ -177,7 +177,7 @@ in
         RemainAfterExit = true;
       };
       path = [
-        pkgs.fscrypt-experimental
+        pkgs.fscrypt
         pkgs.coreutils
       ];
       script = ''
@@ -217,7 +217,7 @@ in
         RuntimeDirectoryMode = "0700";
       };
       path = [
-        pkgs.fscrypt-experimental
+        pkgs.fscrypt
         pkgs.coreutils
         pkgs.systemd
       ];

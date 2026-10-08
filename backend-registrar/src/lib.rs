@@ -52,6 +52,7 @@ pub mod config;
 pub mod domains;
 pub mod error;
 mod fsutil;
+pub mod hardware;
 pub mod identity;
 pub mod idle;
 pub mod join;

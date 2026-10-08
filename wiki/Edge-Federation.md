@@ -70,7 +70,7 @@ site on the official edge.
 # on the local edge
 losos.edge = {
   enable = true;
-  lan.advertise = true;                     # boxes find it (PR #75)
+  lan.advertise = true;                     # boxes find it by DNS-SD
   lan.openEnrolment = true;                 # boxes on the LAN enrol themselves
   uplink = {
     enable = true;
@@ -114,8 +114,8 @@ so forgetting is for a box that left. The hub keeps closed enrolment.
 ## The box: which edge, and when none
 
 `lososd` already finds every edge in reach (LAN by DNS-SD, the configured
-official one by URL) and refuses to turn sharing on when there is none. The
-path rule, from Matus (2026-10-07):
+official one by URL) and refuses to turn sharing on when there is none. It
+picks one path by this rule:
 
 1. **a local edge first** — the first LAN advert whose `/health` answers; the
    advert now also carries `rathole=<host:port>` so the box knows where its

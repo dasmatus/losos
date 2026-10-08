@@ -3,12 +3,12 @@
 //! `crictl ps --state Running` is true from the first line of the pod's
 //! entrypoint, and that entrypoint runs `occ maintenance:install` before it
 //! serves anything — minutes on a mini-PC, most of an hour under emulation.
-//! The recorded install demo caught what that meant for the owner: a correct
-//! password typed into step 2 of the wizard answered "command failed; see the
-//! lososd journal", on a box with no shell to read a journal from. These
-//! tests pin the replacement: `GET /api/setup/claim` says whether the box is
-//! ready and why not, and `POST` refuses with a typed, retryable error while
-//! it is not — running no `occ`, staging no secret, changing nothing.
+//! For the owner that meant a correct password typed into step 2 of the wizard
+//! answered "command failed; see the lososd journal", on a box with no shell
+//! to read a journal from. These tests pin the replacement:
+//! `GET /api/setup/claim` says whether the box is ready and why not, and
+//! `POST` refuses with a typed, retryable error while it is not — running no
+//! `occ`, staging no secret, changing nothing.
 
 use losos_ctl::fake::FakeLosos;
 use losos_ctl::losos::{cmd_claim, cmd_claim_state, nextcloud_readiness, Losos};
@@ -110,8 +110,8 @@ fn a_not_installed_exit_is_the_same_window() {
 #[test]
 fn a_container_that_exists_but_is_not_running_is_starting_not_an_error() {
     // crictl's own failure on the first boot, before the pod's process is up
-    // (recorded 2026-10-05 from the install demo): the owner gets a sentence,
-    // not the rpc error.
+    // (copied from a real install): the owner gets a sentence, not the rpc
+    // error.
     let out = OccOutcome {
         code: 1,
         stdout: String::new(),
@@ -390,9 +390,9 @@ fn the_last_container_lookup_is_any_state_latest_only_and_logs_take_a_tail() {
 
 // ── A reply lost in transit can be asked for again ───────────────────────────
 
-/* Take 6 of the recorded install demo (2026-10-05): the claim's occ run
- * outlived the proxy's timeout, the browser saw a 504, lososd finished anyway,
- * and the admin key — in that one reply — reached nobody. */
+/* On a box still warming up the claim's occ run once outlived the proxy's
+ * timeout: the browser saw a 504, lososd finished anyway, and the admin key —
+ * in that one reply — reached nobody. */
 
 #[test]
 fn the_same_password_asked_again_gets_the_same_reply_without_a_second_occ() {

@@ -149,7 +149,7 @@ pub struct EdgeStatus {
     pub path: Option<EdgePath>,
 }
 
-/// The path rule, from Matus (2026-10-07): the first LAN edge that answered
+/// The path rule: the first LAN edge that answered
 /// and can be tunnelled to, else the configured edge, else none. `edges` is
 /// LAN first as [`assemble`] builds it, so the first edge with an endpoint
 /// in list order is the answer.

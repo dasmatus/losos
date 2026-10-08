@@ -850,6 +850,44 @@ pub fn cmd_market_op<L: Losos>(l: &mut L, op: &crate::market::Op) -> anyhow::Res
     Ok(reply)
 }
 
+/// LosOS Lab's order button: `GET /api/lab/order`. `enabled` is
+/// `losos.lab.ordering.enable`; while it is off the answer says only that,
+/// and no edge is asked. On, the catalogue comes from the official edge.
+pub fn cmd_lab_order<L: Losos>(l: &mut L, enabled: bool) -> anyhow::Result<Value> {
+    use crate::market::{Op, Outcome};
+    if !enabled {
+        return Ok(json!({ "enabled": false }));
+    }
+    if crate::edge::check_market_gate(&l.edge_status()?).is_err() {
+        return Ok(json!({ "enabled": true, "available": false, "reason": "noOfficialEdge" }));
+    }
+    match l.market_request(&Op::Hardware)? {
+        Outcome::Reply(catalogue) => {
+            Ok(json!({ "enabled": true, "available": true, "catalogue": catalogue }))
+        }
+        Outcome::Unavailable => {
+            Ok(json!({ "enabled": true, "available": false, "reason": "notSold" }))
+        }
+    }
+}
+
+/// Check out the Lab's cart: `POST /api/lab/order`. The reply carries the
+/// Stripe-hosted `checkout_url`, checked like every other one.
+pub fn cmd_lab_order_op<L: Losos>(
+    l: &mut L,
+    enabled: bool,
+    items: Vec<(String, u64)>,
+) -> anyhow::Result<Value> {
+    if !enabled {
+        return Err(crate::market::Refused {
+            status: 409,
+            message: "ordering is not switched on for this box".to_string(),
+        }
+        .into());
+    }
+    cmd_market_op(l, &crate::market::Op::HardwareCheckout { items })
+}
+
 /// This box's custom domains: `GET /api/domains`.
 ///
 /// Gated like the market, on an official edge in reach, because only an
@@ -2091,6 +2129,62 @@ mod tests {
         };
         cmd_market_op(&mut f, &forged).unwrap();
         assert_ne!(f.market_ops.last(), Some(&forged));
+    }
+
+    #[test]
+    fn the_lab_order_button_asks_nothing_while_it_is_off() {
+        let mut f = market_fake();
+        f.market_routes.insert(
+            "GET /market/hardware".to_string(),
+            (200, r#"{"currency":"eur","items":[]}"#.to_string()),
+        );
+        assert_eq!(
+            cmd_lab_order(&mut f, false).unwrap(),
+            serde_json::json!({ "enabled": false })
+        );
+        let e = cmd_lab_order_op(&mut f, false, vec![("box".to_string(), 1)]).unwrap_err();
+        assert_eq!(
+            e.downcast_ref::<crate::market::Refused>().unwrap().status,
+            409
+        );
+        assert!(f.market_ops.is_empty());
+
+        let out = cmd_lab_order(&mut f, true).unwrap();
+        assert_eq!(out["available"], true);
+        assert_eq!(out["catalogue"]["currency"], "eur");
+        let mut f = market_fake();
+        assert_eq!(cmd_lab_order(&mut f, true).unwrap()["reason"], "notSold");
+        let mut f = market_fake().with_company_edge();
+        assert_eq!(
+            cmd_lab_order(&mut f, true).unwrap()["reason"],
+            "noOfficialEdge"
+        );
+    }
+
+    #[test]
+    fn a_lab_checkout_follows_only_a_stripe_hosted_page() {
+        let mut f = market_fake();
+        f.market_routes.insert(
+            "POST /market/hardware/checkout".to_string(),
+            (
+                201,
+                r#"{"order_id":"hw_1","checkout_url":"https://checkout.stripe.com/c/pay/cs_1","amount":89800,"currency":"eur"}"#
+                    .to_string(),
+            ),
+        );
+        let out = cmd_lab_order_op(&mut f, true, vec![("box".to_string(), 2)]).unwrap();
+        assert_eq!(
+            out["checkout_url"],
+            "https://checkout.stripe.com/c/pay/cs_1"
+        );
+        f.market_routes.insert(
+            "POST /market/hardware/checkout".to_string(),
+            (
+                201,
+                r#"{"checkout_url":"https://evil.example/pay"}"#.to_string(),
+            ),
+        );
+        assert!(cmd_lab_order_op(&mut f, true, vec![("box".to_string(), 2)]).is_err());
     }
 
     #[test]

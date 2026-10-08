@@ -48,7 +48,7 @@ Pictures live in `handbook/docs/img/`. There are three kinds:
   handbook downscaled to 1600 px wide and reduced to 256 colours.
 - **Screens of a real machine.** The installer, the tty1 banner, the
   passphrase prompt and the Secure Boot refusals come from VM runs
-  (`tests/secure-boot.nix`, the install demos). No script retakes them.
+  (`tests/secure-boot.nix` and installs into a VM). No script retakes them.
 - **Diagrams.** These are hand-written SVG on a white card, in the palette
   of the admin UI (`admin-ui/app/src/styles/tokens.css`), so they read the
   same in the light and the dark theme. Edit them as text.

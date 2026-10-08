@@ -51,7 +51,8 @@ use tokio::sync::Mutex;
 
 use crate::action::Action;
 use crate::fsutil::atomic_write;
-use crate::stripe_gate::{CheckoutRequest, GateClient};
+use crate::hardware::{total, Catalogue, Line};
+use crate::stripe_gate::{CheckoutRequest, GateClient, HardwareRequest};
 
 /// The cut kept by the platform, in basis points of the gross amount: 4%.
 pub const DEFAULT_FEE_BPS: u32 = 400;
@@ -891,6 +892,15 @@ pub struct CheckoutView {
     pub currency: String,
 }
 
+/// A hardware Checkout, as the box that asked for it sees it.
+#[derive(Debug, Serialize)]
+pub struct HardwareCheckoutView {
+    pub order_id: String,
+    pub checkout_url: String,
+    pub amount: u64,
+    pub currency: String,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct NewListing {
     pub kind: Kind,
@@ -923,6 +933,9 @@ pub struct MarketOpts {
     pub fee_bps: u32,
     /// `StorageClass` purchased volumes are claimed from.
     pub storage_class: String,
+    /// The hardware catalogue (`crate::hardware`), when the edge sells boxes
+    /// and gateways. Unset, `/market/hardware*` answers 503.
+    pub hardware_catalogue: Option<String>,
 }
 
 pub struct Market {
@@ -1232,6 +1245,72 @@ impl Market {
     /// reservation is written first and under the lock, so two buyers racing
     /// for the last units cannot both get a session; a Stripe failure releases
     /// it again.
+    /// The hardware catalogue, read per call so the operator's next rebuild
+    /// needs no restart.
+    ///
+    /// # Errors
+    /// [`MarketError::Unconfigured`] when the edge sells no hardware or its
+    /// catalogue does not load.
+    pub fn hardware(&self) -> Result<Catalogue, MarketError> {
+        let path = self
+            .opts
+            .hardware_catalogue
+            .as_deref()
+            .ok_or(MarketError::Unconfigured)?;
+        let catalogue = Catalogue::load(path).map_err(|e| {
+            tracing::error!(target: Action::Market.target(), "hardware catalogue: {e}");
+            MarketError::Unconfigured
+        })?;
+        if catalogue.currency != self.opts.currency {
+            tracing::error!(
+                target: Action::Market.target(),
+                "hardware catalogue is in {}, the market in {}",
+                catalogue.currency,
+                self.opts.currency,
+            );
+            return Err(MarketError::Unconfigured);
+        }
+        Ok(catalogue)
+    }
+
+    /// Start a Checkout for hardware the platform sells. Nothing is stored:
+    /// the session's metadata names the box, and the operator ships from the
+    /// Stripe dashboard.
+    ///
+    /// # Errors
+    /// [`MarketError::Invalid`] for a cart the catalogue refuses; the gate's
+    /// and Stripe's faults otherwise.
+    pub async fn hardware_checkout(
+        &self,
+        buyer: &str,
+        lines: Vec<Line>,
+    ) -> Result<HardwareCheckoutView, MarketError> {
+        let catalogue = self.hardware()?;
+        let amount = total(&catalogue.price(&lines).map_err(MarketError::Invalid)?);
+        let order_id = random_id("hw")?;
+        let (_, checkout_url) = self
+            .stripe()
+            .hardware_checkout(HardwareRequest {
+                order_id: order_id.clone(),
+                appliance_id: buyer.to_string(),
+                lines,
+                return_url: self.opts.return_url.clone(),
+                expires_at: now_secs() + CHECKOUT_TTL_SECS,
+            })
+            .await?;
+        tracing::info!(
+            target: Action::Market.target(),
+            "hardware checkout {order_id} for {buyer}: {amount} {}",
+            catalogue.currency,
+        );
+        Ok(HardwareCheckoutView {
+            order_id,
+            checkout_url,
+            amount,
+            currency: catalogue.currency,
+        })
+    }
+
     pub async fn create_order(
         &self,
         buyer: &str,
@@ -1840,6 +1919,7 @@ mod tests {
             currency: "eur".into(),
             fee_bps: DEFAULT_FEE_BPS,
             storage_class: DEFAULT_STORAGE_CLASS.into(),
+            hardware_catalogue: None,
         })
         .await
         .unwrap();

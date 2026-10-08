@@ -1109,6 +1109,8 @@ export interface OptionDoc {
   /** Who sets it at normal priority ("installer"), or null. */
   fixed: string | null;
   readOnly: boolean;
+  /** Declared `visible = false`: settable, but not drawn on the pane. */
+  hidden?: boolean;
   /** The literal modules/overrides.nix assigns it, or null for none. */
   set: string | null;
 }

@@ -3,13 +3,12 @@
 //! `POST /api/setup/claim` sets the owner's first password and hands back the
 //! admin key — once, to the caller who set it, because after that call the
 //! route refuses everything ([`crate::losos::cmd_claim`]). That "once" has a
-//! hole the recorded install demo of 2026-10-05 (take 6) fell straight into:
-//! on a box still warming up, `occ user:resetpassword` took longer than the
-//! proxy in front of lososd was willing to wait, the browser got a 504 and the
-//! connection was gone when the reply was ready. lososd had done its work —
-//! password set, box claimed — and the one copy of the admin key went to
-//! nobody. On a box with no shell that owner is locked out of the admin UI
-//! for good, with a password that works.
+//! hole: on a box still warming up, `occ user:resetpassword` took longer than
+//! the proxy in front of lososd was willing to wait, the browser got a 504 and
+//! the connection was gone when the reply was ready. lososd had done its work
+//! — password set, box claimed — and the one copy of the admin key went to
+//! nobody. On a box with no shell that owner is locked out of the admin UI for
+//! good, with a password that works.
 //!
 //! So the daemon remembers the claim it just answered: a salted digest of
 //! the password, the account it set, and when. A second claim within
