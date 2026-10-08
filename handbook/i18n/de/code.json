@@ -512,5 +512,41 @@
   "theme.colorToggle.ariaLabel.group": {
     "message": "Appearance",
     "description": "The label of the colour-mode segmented control"
+  },
+  "losos.home.soon.market.title": {
+    "message": "Der Marktplatz"
+  },
+  "losos.home.soon.market.body": {
+    "message": "Sie werden für den Speicher und die Rechenzeit bezahlt, die Ihre Box verleiht, und können Platz bei anderen Boxen kaufen. Der Marktplatz ist fertig und im Testmodus von Stripe geprüft. Er öffnet, sobald ein eingetragenes Unternehmen dahintersteht."
+  },
+  "losos.home.soon.pool.title": {
+    "message": "Ein Speicherpool über mehrere Boxen"
+  },
+  "losos.home.soon.pool.body": {
+    "message": "Boxen hinter einem Edge werden ihren ungenutzten Speicher in einen gemeinsamen, replizierten Pool geben. Der verschlüsselte Anteil auf jeder Box ist fertig. Der Edge betreibt den Speicherdienst des Pools noch nicht, und der Schalter wartet auf den Marktplatz."
+  },
+  "losos.home.soon.secureboot.title": {
+    "message": "Ein signiertes Installationsprogramm"
+  },
+  "losos.home.soon.secureboot.body": {
+    "message": "Das Installationsprogramm ist bereit für eine Secure-Boot-Signatur. Sobald der Signaturschlüssel von LosOS existiert, wird jede Version signiert, und eine Firmware, die dem LosOS-Zertifikat vertraut, startet sie mit eingeschaltetem Secure Boot."
+  },
+  "losos.home.soon.company.title": {
+    "message": "Fertige Lösungen für Firmen"
+  },
+  "losos.home.soon.company.body": {
+    "message": "Eine Box für jedes Team, ein Edge für das Büro und die Installation erledigt. Die Firmeneinrichtung funktioniert heute schon. Als Nächstes kommt der Verkauf als fertiges Paket."
+  },
+  "losos.home.soon.translations.title": {
+    "message": "Das Handbuch auf Slowakisch und Deutsch"
+  },
+  "losos.home.soon.translations.body": {
+    "message": "Menüs und diese Seite sind schon übersetzt. Die Seiten des Handbuchs folgen eine nach der anderen."
+  },
+  "losos.home.soon.title": {
+    "message": "Demnächst"
+  },
+  "losos.home.soon.chip": {
+    "message": "Bald"
   }
 }
