@@ -66,6 +66,11 @@ and is never served or built by nix.
 - `admin-ui/app`: React 19 + Vite + Tailwind SPA on real paths. Its `dist/`
   is the front nginx vhost's root (`try_files … /index.html`), `/api/*` is
   proxied to lososd. Palette in `src/styles/tokens.css`.
+- `admin-ui/lab/`: LosOS Lab, the setup visualizer at `/lab/` (sidebar
+  entry Lab). Plain JS joined by `build.py` with python3, no npm, under its
+  own CSP arm (inline style, script from `'self'` only). The box copy has
+  simulated consoles; `engine/build.sh` and `lab.yml` build the hosted copy
+  with qemu-wasm guests and deploy it to Vercel when the secrets exist.
 - `containers.nix`, `workloads.nix`, `cluster.nix`, `nextcloud-common.nix`:
   Nextcloud and Forgejo run as hostNetwork pods in the box's own k3s server;
   `services.rke2` (agent) joins the edge's mesh. Nginx is the only public

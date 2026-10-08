@@ -196,6 +196,8 @@
                   # Same argument: the handbook is a Docusaurus build, npm and
                   # all, and belongs on the medium rather than on the target.
                   self.packages.${system}.losos-handbook
+                  # And the lab, which is small but still a python3 build.
+                  self.packages.${system}.losos-lab
                 ];
                 # The default (zstd level 19, cache sized off host RAM) gets
                 # OOM-killed on the former Codeberg CI runners (exit 137): the

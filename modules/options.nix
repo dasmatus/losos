@@ -994,6 +994,20 @@ in
       '';
     };
 
+    # Path of the built LosOS Lab (admin-ui/lab/, built by flake/packages.nix
+    # as losos-lab; wired in via modules/defaults.nix). Internal, like
+    # admin.ui.
+    admin.lab = lib.mkOption {
+      type = lib.types.nullOr lib.types.path;
+      default = null;
+      internal = true;
+      description = ''
+        Store path of LosOS Lab, the setup visualizer: index.html, lab.js,
+        lab.css and the logo, served by the front vhost at /lab/, LAN-only,
+        under its own content security policy. Null serves no lab.
+      '';
+    };
+
     # ── Installer (the `losos-ctl install` subcommand) ──────────────────────
     installer.package = lib.mkOption {
       type = lib.types.nullOr lib.types.package;

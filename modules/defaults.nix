@@ -27,6 +27,8 @@ in
   losos.admin.ui = lib.mkDefault pkgs'.losos-admin-ui;
   # The owner's handbook the same vhost serves at /handbook/.
   losos.admin.handbook = lib.mkDefault pkgs'.losos-handbook;
+  # LosOS Lab, the setup visualizer the same vhost serves at /lab/.
+  losos.admin.lab = lib.mkDefault pkgs'.losos-lab;
 
   # The appliance side of the master proxy.
   losos.proxy.registrar.package = lib.mkDefault pkgs'.losos-registrar;
