@@ -1289,9 +1289,9 @@ await check('a vouched box lists its domains with the records to publish, adds o
   assert.equal(await section.getByRole('textbox').inputValue(), 'taken.example.org', 'a refused name was cleared');
 
   await rows.nth(0).getByRole('button', { name: 'Remove', exact: true }).click();
-  await page.waitForFunction(
-    () => !document.querySelector('[data-testid="custom-domains"]').innerText.includes('cloud.example.org'),
-  );
+  // Three rows before (two fixtures and the added one), two after.
+  await page.waitForFunction(() => document.querySelectorAll('[data-testid="custom-domain"]').length === 2);
+  assert.match(await rows.nth(0).innerText(), /^files\.example\.net/);
   assert.deepEqual(domainPosts.at(-1), ['/api/domains/remove', { domain: 'cloud.example.org' }]);
   assert.deepEqual(errors, []);
   await page.close();
