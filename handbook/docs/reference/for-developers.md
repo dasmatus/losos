@@ -40,8 +40,7 @@ nix run nixpkgs#prefetch-npm-deps -- handbook/package-lock.json
 
 ### Pictures
 
-Pictures live in `handbook/docs/img/`, and the Slovak KOP's in
-`handbook/docs/project/kop/img/`. There are three kinds:
+Pictures live in `handbook/docs/img/`. There are three kinds:
 
 - **Admin pages and wizard.** `admin-ui/app/tests/handbook-screens.mjs`
   takes them from the built SPA against a stubbed lososd, so they show the
