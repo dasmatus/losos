@@ -266,6 +266,19 @@ let
         # (modules/services.nix).
         ENABLED = false;
       };
+      federation = {
+        # ActivityPub: nodeinfo, one actor per account and repository,
+        # federated stars and follows (modules/options.nix says what the
+        # shipped Forgejo does with it). The front vhost adds the two
+        # /.well-known routes other servers discover the box by
+        # (modules/containers.nix); Forgejo serves everything else under
+        # ROOT_URL. Same two lines as native mode (modules/services.nix).
+        ENABLED = config.losos.forgejo.federation.enable;
+        # nodeinfo's `usage` block: account totals and activity counts of a
+        # household's box, published to anyone who asks. Off. Forgejo's own
+        # default is on.
+        SHARE_USER_STATISTICS = false;
+      };
     };
   };
 

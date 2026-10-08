@@ -80,6 +80,13 @@ in
       # no runner it would only expose the runner-registration API. Same
       # setting as the container path (modules/workloads.nix).
       actions.ENABLED = false;
+      # ActivityPub, the same two lines as the container path
+      # (modules/workloads.nix explains both). Native mode is LAN-only,
+      # so this federates with other boxes on the LAN and nothing further.
+      federation = {
+        ENABLED = config.losos.forgejo.federation.enable;
+        SHARE_USER_STATISTICS = false;
+      };
     };
   };
 

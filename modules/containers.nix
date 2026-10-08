@@ -487,6 +487,24 @@ in
             proxyWebsockets = true;
           };
         })
+        (lib.mkIf (forgejoWorkload && config.losos.forgejo.federation.enable) {
+          # The two addresses the fediverse discovers a server by, and the
+          # only two Forgejo serves at the host's root rather than under
+          # ROOT_URL: a server that wants to federate with this box asks
+          # https://<host>/.well-known/nodeinfo, never
+          # /forgejo/.well-known/nodeinfo. Exact matches, so nothing else
+          # under /.well-known/ leaves the admin SPA's `/` location, and not
+          # LAN-guarded for the same reason /forgejo/ is not: the peers
+          # arrive through the tunnel, from loopback. Everything Forgejo
+          # answers with is a URL under ROOT_URL, so the rest of federation
+          # rides the /forgejo/ route above.
+          "= /.well-known/nodeinfo" = {
+            proxyPass = "http://127.0.0.1:${toString forgejoPort}";
+          };
+          "= /.well-known/webfinger" = {
+            proxyPass = "http://127.0.0.1:${toString forgejoPort}";
+          };
+        })
       ];
     };
   };
