@@ -16,9 +16,9 @@
 #
 # Refuses to overwrite an existing key: a second key means media signed with
 # the first one stop booting on machines that enrolled it. Needs only openssl.
-# Nothing here touches the network, and nothing is ever run in a CI job or a
-# Claude session: the whole point is that the private key exists on one
-# computer a person owns.
+# Nothing here touches the network, and nothing is ever run in a CI job or
+# any other automated run: the whole point is that the private key exists
+# on one computer a person owns.
 set -euo pipefail
 
 dir=${1:-./losos-secure-boot}

@@ -332,7 +332,7 @@ in
       type = lib.types.str;
       # The demo edge (edge-vercel/, the registrar as a Vercel Function at the
       # owner's domain). Not proxy.losos.dasmat.us: that name is the Nix binary
-      # cache proxy (`losos.cache.substituters`), decided 2026-10-05. A
+      # cache proxy (`losos.cache.substituters`). A
       # self-hosted edge is register.<losos.edge.publicDomain>, e.g.
       # https://register.losos.cfd; set this to that when one exists.
       default = "https://losos-edge.dasmat.us";

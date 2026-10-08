@@ -4,8 +4,8 @@
 # and asserts on the merged option values, so `nix flake check --no-build`
 # (CI's eval job) fails the moment one of them drifts, at zero build cost.
 #
-# Each entry here is a finding from the 2026-10-05 critical review that was
-# true on main for weeks without a test turning red. They are asserted
+# Each entry here is a bug that was once true on main for weeks without a
+# test turning red. They are asserted
 # against the *published* flake — the one with no modules/install-target.nix
 # — because that is the shape in which the defaults are load-bearing: it is
 # what a `github:` upgrade URI evaluates on a box whose live files could not

@@ -68,8 +68,7 @@ pub const DEFAULT_ADMIN_USER: &str = "notshared";
 /// Length is no longer the only rule. Since `crate::signin` the one password
 /// opens the admin pages too — `POST /api/apply` and a factory reset sit
 /// behind it, not only the owner's files — so [`validate_password`] also
-/// wants both letter cases, a digit and a symbol (the owner asked for the
-/// digit and symbol rules by name, 2026-10-06). Four rules, all shown up
+/// wants both letter cases, a digit and a symbol. Four rules, all shown up
 /// front by the wizard with a tick each, and nothing hidden: an owner who
 /// meets what is on screen is never refused by a rule they did not see. A
 /// symbol here is any character that is not a letter, a digit or
@@ -362,9 +361,9 @@ pub fn container_log_argv(socket: &str, id: &str) -> Vec<String> {
 /// Word a stopped container's last log line for the waiting panel, or `None`
 /// when there is nothing to show (no container yet, or an empty log).
 ///
-/// This exists because the alternative was discovered the hard way: the
-/// recorded install demo of 2026-10-05 sat on "Nextcloud has not started yet"
-/// for an hour while the pod was in CrashLoopBackOff over a one-line
+/// This exists because the alternative was discovered the hard way: an
+/// install sat on "Nextcloud has not started yet" for an hour while the pod
+/// was in CrashLoopBackOff over a one-line
 /// `mkdir: cannot create directory '/run/nextcloud': Permission denied`, and
 /// the only way to read that line was to boot the live ISO and mount the
 /// encrypted volume by hand. The line is what the owner (or whoever they ask)
@@ -374,9 +373,9 @@ pub fn describe_stopped(log_tail: &str) -> Option<String> {
     // The line to show is the last one that reads as a complaint, and only
     // failing that the last line of all. A tool that fails on its arguments
     // prints the complaint first and its usage after (Symfony's console,
-    // behind `occ`, does exactly that, and take 7 of the recorded install
-    // demo surfaced a `maintenance:install [--database DATABASE] …` usage
-    // line here with the reason scrolled off above it). Not `last_line`
+    // behind `occ`, does exactly that: a failed install once surfaced a
+    // `maintenance:install [--database DATABASE] …` usage line here with the
+    // reason scrolled off above it). Not `last_line`
     // either way: that one caps silently, and a cut here should be visible,
     // so the owner knows the message goes on.
     let lines: Vec<&str> = log_tail

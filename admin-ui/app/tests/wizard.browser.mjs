@@ -367,11 +367,11 @@ await check('claiming the box mid-wizard does not end the wizard', async () => {
 });
 
 
-/* What the recorded install demo showed: on a fresh box the Nextcloud pod is
- * still running `occ maintenance:install` when the owner reaches step 2, and
- * the claim failed into "command failed; see the lososd journal". lososd now
- * says `ready: false` with a reason, and the step must wait on that rather
- * than let the owner submit into it. */
+/* On a fresh box the Nextcloud pod is still running `occ maintenance:install`
+ * when the owner reaches step 2, and the claim used to fail into "command
+ * failed; see the lososd journal". lososd now says `ready: false` with a
+ * reason, and the step must wait on that rather than let the owner submit into
+ * it. */
 await check('step 2 waits with the reason on screen while the box is not ready, and never submits', async () => {
   const { page, errors } = await open({
     claimed: false,
@@ -425,11 +425,11 @@ await check('step 2 opens on its own once the box reports ready, then claims', a
 /* The race: the last poll said ready, the submit landed a moment after the
  * pod went into maintenance. lososd answers 503 with the reason; the step
  * must read that as "not yet", not as a failure that stops the wizard. */
-/* Take 9 of the recorded install demo (2026-10-06): on a busy box the first
- * GET /api/setup/claim took twelve seconds, and until it answered step 2's
- * form was open, with no panel, as if the box were ready. A password typed
- * then sat greyed out behind the waiting panel that followed. Before the
- * first answer the form is disabled and nothing is shown. */
+/* On a busy box the first GET /api/setup/claim can take twelve seconds, and
+ * until it answered step 2's form used to be open, with no panel, as if the
+ * box were ready. A password typed then sat greyed out behind the waiting
+ * panel that followed. Before the first answer the form is disabled and
+ * nothing is shown. */
 await check('step 2 keeps the form disabled until the first readiness answer, without flashing the panel', async () => {
   const { page } = await open({ claimed: false, ready: true });
   let release;
@@ -479,12 +479,12 @@ await check('a 503 from the claim itself sends step 2 back to waiting', async ()
   await page.close();
 });
 
-/* Take 6 of the recorded install demo (2026-10-05): the claim's occ run
- * outlived the proxy's 60 s, the browser got a 504 with an HTML body, and
- * lososd finished anyway — box claimed, admin key in a reply nobody received.
- * lososd now answers the same password again for a while after a claim; the
- * step has to ask again on a lost reply rather than show "HTTP 504" over a
- * box the owner in fact just claimed. */
+/* On a box still warming up the claim's occ run once outlived the proxy's
+ * 60 s: the browser got a 504 with an HTML body, and lososd finished
+ * anyway — box claimed, admin key in a reply nobody received. lososd now
+ * answers the same password again for a while after a claim; the step has to
+ * ask again on a lost reply rather than show "HTTP 504" over a box the owner
+ * in fact just claimed. */
 await check('a claim whose reply was lost is asked again, and the second answer is kept', async () => {
   const { page } = await open({ claimed: false, ready: true });
   let posts = 0;
@@ -550,15 +550,13 @@ await check('a 409 from the claim is shown and not asked again', async () => {
   await page.close();
 });
 
-/* Step 3 on a new box, take 7 of the recorded install demo (2026-10-05): the
- * frame is opened a minute or two before the files app's web server is up,
- * so what it shows is nginx's "502 Bad Gateway" page. The old watcher read
- * "/nextcloud, not the login page" as a session and said "You are signed in"
- * over an error page nothing ever reloaded. The step now reloads the frame
- * until the files app answers, and counts only a page the app stamps with a
- * user as signed in. Take 8 then showed that 502 page in the frame for six
- * minutes; now the frame stays hidden, loading in the background behind a
- * quiet panel, until it holds a page of the app. */
+/* Step 3 on a new box: the frame is opened a minute or two before the files
+ * app's web server is up, so what it shows is nginx's "502 Bad Gateway" page.
+ * The old watcher read "/nextcloud, not the login page" as a session and said
+ * "You are signed in" over an error page nothing ever reloaded. The step now
+ * reloads the frame until the files app answers, and counts only a page the
+ * app stamps with a user as signed in. The frame also stays hidden, loading in
+ * the background behind a quiet panel, until it holds a page of the app. */
 await check('step 3 hides the frame and keeps reloading it until the files app answers, and signs in only on a real session', async () => {
   const { page } = await open({ claimed: false, ready: true });
   let hits = 0;
@@ -619,13 +617,12 @@ await check('step 3 hides the frame and keeps reloading it until the files app a
 
 await check('step 3 lets a slow first answer from the files app arrive instead of cancelling it with the next reload', async () => {
   const { page } = await open({ claimed: false, ready: true });
-  // One nginx error page, then the app answers, but slowly: the first
-  // request after the claim can take longer than the reload period on a
-  // busy box (take 9 of the recorded demo, 2026-10-06: Apache was up, yet the
-  // step sat on "still starting" for nine minutes, because every 5 s the
-  // frame was told to load /nextcloud again while the previous load was
-  // still waiting for its first byte, and a navigation that never commits
-  // never replaces the error page the watcher keeps reading).
+  // One nginx error page, then the app answers, but slowly: the first request
+  // after the claim can take longer than the reload period on a busy box
+  // (Apache was up, yet the step used to sit on "still starting" for minutes,
+  // because every 5 s the frame was told to load /nextcloud again while the
+  // previous load was still waiting for its first byte, and a navigation that
+  // never commits never replaces the error page the watcher keeps reading).
   let hits = 0;
   await page.route('**/nextcloud', async (route) => {
     hits += 1;
