@@ -98,7 +98,10 @@ let
               port = 3000;
             }
           ];
-          locations."/".extraConfig = ''return 200 "stub-forgejo\n";'';
+          # Echoes the path it received, so the test below can prove which
+          # prefix the vhost strips (/forgejo/) and which it keeps
+          # (/.well-known/nodeinfo).
+          locations."/".extraConfig = ''return 200 "stub-forgejo $request_uri\n";'';
         };
         "stub-lososd" = {
           listen = [
@@ -294,6 +297,26 @@ pkgs.testers.nixosTest {
         lan = noadmin.succeed(f"curl -s http://{LAN}/nextcloud")
         assert f"own-address={LAN}" in lan, f"LAN address not forwarded: {lan!r}"
         assert "stub-forgejo" in appliance.succeed("curl -s http://127.0.0.1/forgejo/")
+
+    with subtest("federation's two /.well-known addresses reach Forgejo, nothing else does"):
+        # Other Forgejo servers discover this one at the host's root, not
+        # under /forgejo/, so the vhost carries exactly those two paths to
+        # the pod with the path kept (Forgejo serves them at its own root)
+        # and, like /forgejo/, not LAN-guarded: the peers arrive through the
+        # tunnel, from loopback. The /forgejo/ prefix is stripped, as before.
+        for path in ["/.well-known/nodeinfo", "/.well-known/webfinger?resource=acct:x@appliance"]:
+            got = appliance.succeed(f"curl -s 'http://127.0.0.1{path}'")
+            assert got.startswith(f"stub-forgejo {path}"), f"loopback {path}: {got!r}"
+            got = noadmin.succeed(f"curl -s 'http://appliance{path}'")
+            assert got.startswith(f"stub-forgejo {path}"), f"LAN {path}: {got!r}"
+        stripped = appliance.succeed("curl -s http://127.0.0.1/forgejo/api/v1/nodeinfo")
+        assert stripped.startswith("stub-forgejo /api/v1/nodeinfo"), f"/forgejo/ prefix not stripped: {stripped!r}"
+        # Exact matches: a third /.well-known path is still the admin SPA's,
+        # LAN-only, and a prefix match on /.well-known/ would have opened it.
+        got = code(appliance, "http://127.0.0.1/.well-known/openid-configuration")
+        assert got == "403", f"loopback /.well-known/openid-configuration: expected 403, got {got}"
+        got = code(noadmin, "http://appliance/.well-known/openid-configuration")
+        assert got == "200", f"LAN /.well-known/openid-configuration: expected 200 (the SPA), got {got}"
 
     with subtest("security headers ride on admin responses, including the 403s"):
         want = {

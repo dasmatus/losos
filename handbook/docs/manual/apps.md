@@ -27,6 +27,21 @@ URLs use the box's name, so a computer that does not resolve `.local` should
 use the address instead. Turn it off in the **Apps** pane if the box is not
 for code.
 
+### Federation
+
+LosOS Git speaks ActivityPub with other Forgejo servers (Forgejo still calls
+this experimental): stars given to your repositories from another server are
+counted here, people on other servers can follow an account on your box and
+see what it does, and the box answers the fediverse's discovery address,
+`/.well-known/nodeinfo`. How far that reaches is how far the box is reachable:
+through an [edge](../types/official-edge) it is the internet, on a box that
+is only on your local network it is other boxes on that network. The box never
+publishes how many accounts it has or how active they are.
+
+To take part, a repository's **Settings → Federation** page lists the other
+servers whose stars count. Turn the whole thing off with
+`losos.forgejo.federation.enable` on the **Advanced** pane.
+
 ## The Apps pane
 
 For each app: whether it is on, which [mode](../types/app-modes) it runs in,

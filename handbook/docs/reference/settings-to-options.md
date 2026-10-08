@@ -38,6 +38,7 @@ documents in full.
 | ------------------------------------ | ---------------------------------- | ------------------------------------------ |
 | Where updates come from              | `losos.upgradeFlakeUri`            | `git+file:///etc/nixos#install` (no new software) |
 | The hardening baseline               | `losos.hardening.enable`           | on                                         |
+| LosOS Git federation (ActivityPub)   | `losos.forgejo.federation.enable`  | on                                         |
 | The disk unlock mode                 | `losos.tpm.enable`                 | what the installer found                    |
 | UEFI or BIOS                         | `losos.bios`                       | what the installer found                    |
 | The disks                            | `losos.targetDrives`               | what the installer found                    |
