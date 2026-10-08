@@ -27,7 +27,9 @@ in the repository.
    former, everything else works with either. The private half is made and
    used only on the project owner's own computer, by a tool that signs the
    person in with GitHub against a committed allowlist; no box and no edge
-   ever holds it.
+   ever holds it. The signed certificate reaches the edge over the web, and
+   the edge checks the pusher's GitHub account against the same list before
+   it installs it.
 
 ## What the admin key is
 

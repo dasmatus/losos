@@ -11,14 +11,18 @@ it is in the wiki,
 - the root private key is made **on your machine**, written once to a file
   you keep offline (0600, never overwritten), and leaves it only as signed
   certificates;
-- each edge gets its own key pair, made **in memory** and shipped together
-  with its certificate to the VPS over one SSH session on stdin: nothing
-  secret in a command line, nothing written to your disk;
+- each edge makes its **own** key pair on its first start and never lets
+  the private half out; the tool reads the public half from the edge,
+  signs the certificate, and pushes it back to the edge's registrar over
+  HTTPS, where the same allowlist is checked a second time before anything
+  is installed. No SSH access to the edge, nothing secret on your disk;
 - the root **public** key is published by the same tool as a pull request
   that fills `keys/official-edge-root.pub`, using the same sign-in;
 - who may do any of this is `backend-registrar/operators.json`: GitHub
   accounts by numeric id, with the login beside it for reading. The tool
-  compares the id, because logins can be renamed and ids cannot.
+  compares the id, because logins can be renamed and ids cannot, and the
+  edge compares it again when the certificate arrives: the list is
+  compiled into the one binary both of them run.
 
 The gate decides whom the tooling serves and makes each signing a named
 act. The root key stays the whole secret: keep `root.key` offline.
@@ -75,10 +79,10 @@ which `oras pull` fetches too; the proxy only redirects to GHCR's storage
 
 ## Operator steps
 
-You need: `losos-registrar` on your machine (above), `ssh`, a VPS running
-the edge module (`nixosModules.edge`, see the wiki) that you can SSH into
-as root or as a user with passwordless `sudo`, and a browser signed in to a
-GitHub account on the allowlist.
+You need: `losos-registrar` on your machine (above), a VPS running the
+edge module (`nixosModules.edge`, see the wiki) built from a tree that has
+the push route (any build after this page says so), and a browser signed
+in to a GitHub account on the allowlist. No shell on the edge is needed.
 
 1. **Check the sign-in.** `losos-registrar provision whoami` prints the code,
    waits for you to enter it, and ends with your login and id and the
@@ -105,30 +109,27 @@ GitHub account on the allowlist.
 
    ```sh
    losos-registrar provision edge --name "LosOS edge Berlin" \
-     --url https://register.example --ssh root@edge.example \
-     --root-key root.key --days 365
+     --url https://register.example --root-key root.key --days 365
    ```
 
    `--name` is what the Mesh pane will show, `--url` the registrar URL
-   boxes probe, `--ssh` the target (`-i deploy-key` and a pinned
-   `known_hosts` go through `--ssh-key` and `--known-hosts`; `ssh` runs in
-   batch mode, so an agent or key file must be in place). The first run on
-   a new edge installs `/var/secrets/losos-edge-identity.key` (0600) and
-   `/etc/losos/edge-identity.cert.json`, restarts the registrar, and ends
-   with **"not official yet"** (exit 2): the registrar serves `/identity`
-   only once its configuration names the two files.
-5. **On the VPS**, add to the edge's NixOS configuration and rebuild:
+   boxes probe. The tool signs you in, asks the edge for its public key
+   (`GET <url>/identity/public-key`; the edge made the key on its first
+   start), signs the certificate with `root.key`, and pushes it
+   (`POST <url>/identity/cert`, with the GitHub token of the sign-in in
+   the `Authorization` header). The edge asks GitHub whose token that is
+   and installs the certificate only if the account's id is on its own
+   copy of the allowlist; then it answers `/identity` with it, no restart
+   needed. The tool ends by running the box's four checks and printing
+   `official: <name> at <url>`.
 
-   ```nix
-   losos.edge.identity.keyFile = "/var/secrets/losos-edge-identity.key";
-   losos.edge.identity.certFile = "/etc/losos/edge-identity.cert.json";
-   ```
-
-   Strings, not path literals: a path literal would copy the file into the
-   Nix store at evaluation time, which is fine for the certificate and
-   wrong for the key, and would fail when evaluating anywhere but on the
-   VPS.
-6. **Verify.**
+   What the edge answers when it refuses: `403` for an account that is
+   not listed (exit 3 on this side; the tool itself refuses a stranger
+   before it asks the edge for anything), `401` for a token GitHub does
+   not accept, `400` for a certificate that is not for the edge's key,
+   `404` for an edge that serves no identity key at all (see the note
+   below). Nothing is written on a refusal.
+5. **Verify**, any time, from anywhere:
 
    ```sh
    losos-registrar provision verify --url https://register.example --root-key root.key
@@ -140,15 +141,30 @@ GitHub account on the allowlist.
    check sign on its Mesh pane within one scan (20 s) and the market
    opens.
 
+The edge side needs nothing configured: `losos.edge.identity.keyFile` and
+`certFile` default to `/var/lib/losos-registrar/identity.key` and
+`identity.cert.json`, the registrar's own state directory, which is why it
+can make the key and write the certificate there. An edge whose
+configuration sets both to `null` serves no identity at all (every
+`/identity*` route is 404) and cannot be made official by anyone.
+
 Renewal is step 4 again before the certificate expires (`--days`, default
-365): a fresh edge key and certificate, which the registrar picks up on
-the restart the tool triggers. Against a live official edge the run ends
-with `official:` straight away.
+365): a fresh certificate for the same key, taken up the moment it lands.
+Re-keying an edge is deleting its `identity.key` and restarting the
+registrar, then step 4 (the old certificate is ignored, with a log line,
+until the new one arrives).
 
 Scripting: `LOSOS_GITHUB_TOKEN` (for example `$(gh auth token)`) skips the
 browser; the token is still resolved to an account and checked against the
-list. Exit codes: 0 done, 1 failed, 2 files installed but the edge not
-official yet, 3 refused.
+list, on both ends. Exit codes: 0 done, 1 failed, 2 certificate installed
+but `/identity` not answering with it yet, 3 refused (by the tool or by
+the edge). The push itself is one request, so a different tool can make
+it too:
+
+```sh
+curl -fsS -X POST -H "Authorization: Bearer $(gh auth token)" \
+  --data @edge.cert.json https://register.example/identity/cert
+```
 
 ## What stays manual
 
@@ -157,10 +173,6 @@ official yet, 3 refused.
   with its first push to main: GitHub creates a package private, and the
   proxy answers `502 token: 403` for a private one. Same as `losos/nix-cache`
   before it, see the wiki's CI page.
-- The SSH access to the VPS: a key `ssh` finds (agent or `--ssh-key`), the
-  host in `known_hosts` (or `--known-hosts`), root or passwordless `sudo`.
-- The two lines in the VPS's configuration and its rebuild (step 5): the
-  edge's configuration is yours, not the tool's.
 - Merging the GitHub pull request (step 3), which is what turns the key on
   for every box.
 - Keeping `root.key`. It exists in exactly one place, the file you chose.

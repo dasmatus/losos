@@ -612,8 +612,10 @@ let
   );
 
   # The official-edge identity (losos.edge.identity.*): both files or neither,
-  # asserted below. The private key is read by the registrar at runtime, like
-  # the Noise key; the certificate is public.
+  # asserted below. The private key is made and read by the registrar at
+  # runtime, like the Noise key; the certificate is public and arrives by
+  # `POST /identity/cert` from an allowlisted operator, so both default to
+  # the registrar's own StateDirectory, where it can write them.
   identityArgs = lib.optionals (cfg.identity.keyFile != null) [
     "--identity-key-file"
     (toString cfg.identity.keyFile)
@@ -635,7 +637,8 @@ in
         message = ''
           losos.edge.identity.keyFile and losos.edge.identity.certFile go
           together: the key answers the nonce, the certificate is what the
-          root signed for it. Set both to make this edge official, or neither.
+          root signed for it. Both are set by default; set both to null for
+          an edge that can never become official.
         '';
       }
       {
