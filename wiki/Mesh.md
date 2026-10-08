@@ -2,9 +2,9 @@
 
 A box can lend spare disk and CPU to other losos boxes. Joining is off by
 default. The Mesh pane has two switches: join the mesh, and share compute. The
-third, sharing this box's disk, sits on the [Market](Market) pane, because
-lending disk and being paid for it are one decision; while the market is
-planned, that switch is out of reach with it.
+third switch, sharing this box's disk, sits on the [Market](Market) pane,
+because lending disk and being paid for it are one decision. While the market
+is planned, that switch is out of reach with it.
 
 ## Two clusters
 
@@ -36,67 +36,69 @@ time zone.
 
 ## Finding the edge
 
-The mesh is other boxes behind an edge, so a box with no edge in reach cannot
-share anything, whatever its switches say. `lososd` therefore looks for one
-every 20 seconds, on two roads:
+The mesh is other boxes behind an edge. A box with no edge in reach cannot
+share anything, whatever its switches say, so `lososd` looks for one every
+20 seconds, in two places:
 
-- **on the local network**, by DNS-SD: an edge configured with
+- **on the local network**, by DNS-SD. An edge configured with
   `losos.edge.lan.advertise = true` publishes `_losos-edge._tcp` over mDNS
-  with a `url=` record naming its registrar API, and the box's Avahi finds it;
+  with a `url=` record naming its registrar API, and the box's Avahi finds it.
 - **at the configured address**, `losos.proxy.registrarUrl`, which on a box
-  with internet is the public edge. It is probed whether or not the master
-  proxy is switched on.
+  with internet is the public edge. The box probes it whether or not the
+  master proxy is switched on.
 
-A candidate counts only once its `/health` answers, and several can be in
-reach at once (a company's edge on the LAN and the public one over the
-internet, say): `GET /api/edge` lists them all, LAN first, and the Mesh pane
-shows one row per edge, or "No edge proxy found" with what was tried.
-Sharing is allowed while any of them answers. Growing a box's own disk
-needs no edge at all; pooling across boxes does, because the mesh's control
-plane runs on the edge, and on a LAN with no internet that edge is one
-always-on PC running the edge module ([Master proxy — Edge on the same
-LAN](Master-Proxy#edge-on-the-same-lan)).
+A candidate counts only once its `/health` answers. Several can be in reach
+at once, say a company's edge on the LAN and the public one over the
+internet. `GET /api/edge` lists them all, LAN first, and the Mesh pane shows
+one row per edge, or "No edge proxy found" with what it tried. Sharing is
+allowed while any of them answers. Growing a box's own disk needs no edge at
+all. Pooling across boxes does, because the mesh's control plane runs on the
+edge. On a LAN with no internet, that edge is one always-on PC running the
+edge module, see [Master proxy, Edge on the same
+LAN](Master-Proxy#edge-on-the-same-lan).
 
-While nothing answers, the box **refuses to turn network-dependent sharing
-on**: switching to mesh mode, and any apply that turns `losos.sharingMyStorage`
-or `losos.cluster.enable` on, is answered 409 with the reason, and the
-switches are greyed with the same sentence. Settings that are already on are
-left alone, so a box whose edge went away keeps its configuration and can
-still change anything else, and turning sharing off is always allowed. Your
-own files and apps never depend on the edge.
+While nothing answers, the box refuses to turn network-dependent sharing on.
+Switching to mesh mode, and any apply that turns `losos.sharingMyStorage` or
+`losos.cluster.enable` on, is answered 409 with the reason, and the switches
+are greyed with the same sentence. Settings that are already on are left
+alone, so a box whose edge went away keeps its configuration and can still
+change anything else. Turning sharing off is always allowed. Your own files
+and apps never depend on the edge.
 
-Finding an edge and *trusting it with money* are two different questions.
-Any edge that answers opens sharing. Trading on the market is allowed only
-through an **official** edge: one that presents a certificate signed by the
-LosOS root key and answers the box's fresh nonce with it, checked on every
-scan. Each edge's row carries a sign beside its name: a check for an
-official edge, a warning for any other, whose tooltip lists what that edge
-cannot do for this box (buying on the market, selling this box's spare
-storage and compute). A company's own edge wears the warning, and that is
-not a fault. See [Master proxy — Official edges](Master-Proxy#official-edges).
+Finding an edge and trusting it with money are two different questions. Any
+edge that answers opens sharing. Trading on the market is allowed only
+through an **official** edge, one that presents a certificate signed by the
+LosOS root key and answers the box's fresh nonce with it. The box checks this
+on every scan. Each edge's row carries a sign beside its name, a check for an
+official edge and a warning for any other. The warning's tooltip lists what
+that edge cannot do for this box: buying on the market, and selling this
+box's spare storage and compute. A company's own edge wears the warning, and
+that is not a fault. See [Master proxy, Official
+edges](Master-Proxy#official-edges).
 
-`demo/edge-lan/run.sh` boots two boxes and an edge on one virtual network
-and walks through exactly this in the verification checklist's order
-(`demo/edge-lan/CHECKLIST.md`): first with no edge anywhere (nothing found,
-sharing refused, local use intact, a reboot changes nothing), then with the
-edge on (found on both boxes within a scan, allowed, edge gone, refused,
-back). `demo/edge-lan/record.sh` records the same walk from the boxes' admin
+`demo/edge-lan/run.sh` boots two boxes and an edge on one virtual network and
+walks through exactly this in the order of the verification checklist
+(`demo/edge-lan/CHECKLIST.md`). First with no edge anywhere: nothing found,
+sharing refused, local use intact, a reboot changes nothing. Then with the
+edge on: found on both boxes within a scan, allowed, edge gone, refused,
+back. `demo/edge-lan/record.sh` records the same walk from the boxes' admin
 UI.
 
 ## Sharing storage
 
-Contributed storage lives in the `shared` user's home under an fscrypt policy.
-The key is sealed to the TPM. When sharing is off, the key is not loaded and
-the directory is unreadable, even to root on the running box. LUKS protects
-the box when it is off; fscrypt protects this directory while it is on.
+Contributed storage lives in the `shared` user's home under an fscrypt
+policy. The key is sealed to the TPM. When sharing is off, the key is not
+loaded and the directory is unreadable, even to root on the running box. LUKS
+protects the box while it is off; fscrypt protects this directory while it is
+on.
 
 Contributed files are namespaced per machine.
 
 ## Selling
 
 Storage and compute will also be sellable to other boxes through the optional
-Stripe Connect market, which is built but not open yet (the admin UI shows its
-tab greyed out as "soon(TM)"). See [Market](Market).
+Stripe Connect market. It is built but not open yet, and the admin UI shows
+its tab greyed out as "soon(TM)". See [Market](Market).
 
 ## Persistence
 
