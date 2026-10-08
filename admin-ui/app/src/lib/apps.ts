@@ -104,7 +104,7 @@ export interface AppDefinition {
  * Nextcloud without its pretty-URL rewrites (flake/images.nix transcribes
  * upstream's .htaccess minus that block, and never sets
  * `front_controller_active`), so `/nextcloud/apps/tasks/` is an Apache 404
- * — which is exactly what the owner saw on 2026-10-06 — while
+ * (the short form is what the tiles used to link) while
  * `/nextcloud/index.php/apps/tasks/` is the URL Nextcloud itself generates
  * on this box. */
 export const FILES_BASE = "/nextcloud";

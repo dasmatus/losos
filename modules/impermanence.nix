@@ -110,12 +110,12 @@ in
   # "Source directory does not exist" warning followed by
   # `chown: invalid user: 'root:root'` and
   # `Activation script snippet 'createPersistentStorageDirs' failed (1)`,
-  # in the middle of the install's own output (the recorded install demo of
-  # 2026-10-05 has it on screen). The directories were still created, by the
-  # `mkdir --mode` that precedes the failed chown, as whatever the chroot's
-  # root was: the right owner only by accident, and a script marked failed
-  # on every install. With the sources already there, impermanence's script
-  # has nothing to create and nothing to chown by name; what it still does
+  # in the middle of the install's own output. The directories were still
+  # created, by the `mkdir --mode` that precedes the failed chown, as
+  # whatever the chroot's root was: the right owner only by accident, and a
+  # script marked failed on every install. With the sources already there,
+  # impermanence's script has nothing to create and nothing to chown by
+  # name; what it still does
   # — `chown --reference`, `chmod --reference` from source to target — needs
   # no name lookup at all. `deps = [ ]` so this runs before `users`, which
   # under userborn is not an activation step anyway; the list of what to
