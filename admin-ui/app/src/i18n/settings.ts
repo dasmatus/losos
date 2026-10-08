@@ -132,11 +132,22 @@ export default defineMessages({
     sk: "git commit história záznam repozitár klonovať synchronizácia",
     de: "Git Commit Verlauf Protokoll Repository klonen Abgleich",
   },
+  "settings.panes.backup.label": { en: "Backup", sk: "Záloha", de: "Sicherung" },
+  "settings.panes.backup.summary": {
+    en: "Copies of your files and settings in a bucket you rent, encrypted before they leave the box.",
+    sk: "Kópie vašich súborov a nastavení v úložisku, ktoré si prenajímate, zašifrované ešte pred odoslaním zo zariadenia.",
+    de: "Kopien deiner Dateien und Einstellungen in einem Bucket, den du mietest, verschlüsselt, bevor sie die Box verlassen.",
+  },
+  "settings.panes.backup.keywords": {
+    en: "",
+    sk: "záloha zálohovať obnoviť obnova úložisko bucket s3 šifrovanie kópia kód obnovy",
+    de: "Sicherung Backup sichern wiederherstellen Bucket S3 verschlüsseln Kopie Wiederherstellungscode",
+  },
   "settings.panes.reset.label": { en: "Reset", sk: "Reset", de: "Zurücksetzen" },
   "settings.panes.reset.summary": {
-    en: "Putting every setting back the way it came.",
-    sk: "Vrátenie všetkých nastavení do pôvodného stavu.",
-    de: "Alle Einstellungen so zurücksetzen, wie sie ab Werk waren.",
+    en: "Putting every setting back the way it came, or erasing the box altogether.",
+    sk: "Vrátenie všetkých nastavení do pôvodného stavu alebo úplné vymazanie zariadenia.",
+    de: "Alle Einstellungen so zurücksetzen, wie sie ab Werk waren, oder die Box ganz löschen.",
   },
   "settings.panes.reset.keywords": {
     en: "",

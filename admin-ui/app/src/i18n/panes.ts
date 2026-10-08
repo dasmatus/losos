@@ -1,6 +1,6 @@
 import { defineMessages } from "./define";
 
-/* The settings panes: About, Apps, Hardware, Mesh, Network, Reset, Security
+/* The settings panes: About, Apps, Backup, Hardware, Mesh, Network, Reset, Security
  * and Storage. The shared settings helpers (rows, window, format, the apply
  * bar, the capacity meter) keep their text in settings.ts. */
 
@@ -686,6 +686,410 @@ export default defineMessages({
     en: "Put everything back",
     sk: "Vrátiť všetko",
     de: "Alles zurücksetzen",
+  },
+
+  // ── Backup ──────────────────────────────────────────────────────────────
+  "panes.backup.loading": {
+    en: "Reading the backup settings…",
+    sk: "Načítavam nastavenia zálohy…",
+    de: "Lese die Sicherungseinstellungen…",
+  },
+  "panes.backup.unreachable": {
+    en: "The box did not answer about its backups.",
+    sk: "Zariadenie neodpovedalo na otázku o zálohách.",
+    de: "Die Box hat zu ihren Sicherungen nicht geantwortet.",
+  },
+  "panes.backup.target.title": {
+    en: "Where backups go",
+    sk: "Kam idú zálohy",
+    de: "Wohin Sicherungen gehen",
+  },
+  "panes.backup.target.endpoint": { en: "Address", sk: "Adresa", de: "Adresse" },
+  "panes.backup.target.bucket": { en: "Bucket", sk: "Bucket", de: "Bucket" },
+  "panes.backup.target.prefix": { en: "Folder", sk: "Priečinok", de: "Ordner" },
+  "panes.backup.target.region": { en: "Region", sk: "Región", de: "Region" },
+  "panes.backup.target.key": { en: "Access key", sk: "Prístupový kľúč", de: "Zugriffsschlüssel" },
+  "panes.backup.target.secret": { en: "Secret key", sk: "Tajný kľúč", de: "Geheimer Schlüssel" },
+  "panes.backup.target.secretKept": {
+    en: "Stored. Leave it empty to keep it.",
+    sk: "Uložený. Nechajte prázdne, ak ho chcete ponechať.",
+    de: "Gespeichert. Leer lassen, um ihn zu behalten.",
+  },
+  "panes.backup.target.optional": { en: "Optional", sk: "Nepovinné", de: "Optional" },
+  "panes.backup.target.change": { en: "Change…", sk: "Zmeniť…", de: "Ändern…" },
+  "panes.backup.target.forget": {
+    en: "Forget this bucket",
+    sk: "Zabudnúť tento bucket",
+    de: "Diesen Bucket vergessen",
+  },
+  "panes.backup.target.cancel": { en: "Cancel", sk: "Zrušiť", de: "Abbrechen" },
+  "panes.backup.target.save": { en: "Save", sk: "Uložiť", de: "Speichern" },
+  "panes.backup.target.caption": {
+    en: "Any S3-compatible bucket works: Amazon S3, Backblaze B2, Wasabi, or a MinIO on your own network. The box encrypts every backup before it leaves, so the bucket holds only data nobody can read without your recovery code. The secret key is never shown again once saved.",
+    sk: "Funguje akýkoľvek bucket kompatibilný s S3: Amazon S3, Backblaze B2, Wasabi alebo MinIO vo vašej vlastnej sieti. Zariadenie každú zálohu pred odoslaním zašifruje, takže v buckete sú len dáta, ktoré bez vášho kódu obnovy nikto neprečíta. Tajný kľúč sa po uložení už nikdy nezobrazí.",
+    de: "Jeder S3-kompatible Bucket geht: Amazon S3, Backblaze B2, Wasabi oder ein MinIO im eigenen Netz. Die Box verschlüsselt jede Sicherung, bevor sie hinausgeht, also liegen im Bucket nur Daten, die ohne deinen Wiederherstellungscode niemand lesen kann. Der geheime Schlüssel wird nach dem Speichern nie wieder angezeigt.",
+  },
+  "panes.backup.code.title": {
+    en: "The key to your backups",
+    sk: "Kľúč k vašim zálohám",
+    de: "Der Schlüssel zu deinen Sicherungen",
+  },
+  "panes.backup.code.row": { en: "Recovery code", sk: "Kód obnovy", de: "Wiederherstellungscode" },
+  "panes.backup.code.detail": {
+    en: "Write it down somewhere other than this box.",
+    sk: "Zapíšte si ho niekam mimo tohto zariadenia.",
+    de: "Schreib ihn irgendwo außerhalb dieser Box auf.",
+  },
+  "panes.backup.code.failed": {
+    en: "The box did not hand out the code. Try again in a moment.",
+    sk: "Zariadenie kód nevydalo. Skúste to o chvíľu znova.",
+    de: "Die Box hat den Code nicht herausgegeben. Versuch es gleich noch einmal.",
+  },
+  "panes.backup.code.show": { en: "Show", sk: "Zobraziť", de: "Anzeigen" },
+  "panes.backup.code.hide": { en: "Hide", sk: "Skryť", de: "Verbergen" },
+  "panes.backup.code.caption": {
+    en: "Every backup is encrypted with this code, and nobody can open one without it, LosOS included. Keep it on paper or in a password manager. After a restore the box keeps the code of the backup it came from.",
+    sk: "Každá záloha je zašifrovaná týmto kódom a bez neho ju nikto neotvorí, ani LosOS. Uschovajte si ho na papieri alebo v správcovi hesiel. Po obnove si zariadenie ponechá kód zálohy, z ktorej pochádza.",
+    de: "Jede Sicherung ist mit diesem Code verschlüsselt, und ohne ihn kann niemand sie öffnen, auch LosOS nicht. Bewahre ihn auf Papier oder in einem Passwortmanager auf. Nach einer Wiederherstellung behält die Box den Code der Sicherung, aus der sie kam.",
+  },
+  "panes.backup.runs.title": { en: "Backups", sk: "Zálohy", de: "Sicherungen" },
+  "panes.backup.runs.last": { en: "Last backup", sk: "Posledná záloha", de: "Letzte Sicherung" },
+  "panes.backup.runs.never": {
+    en: "None yet.",
+    sk: "Zatiaľ žiadna.",
+    de: "Noch keine.",
+  },
+  "panes.backup.runs.lastDetail": {
+    en: { one: "{size}, {count} file", other: "{size}, {count} files" },
+    sk: {
+      one: "{size}, {count} súbor",
+      few: "{size}, {count} súbory",
+      many: "{size}, {count} súborov",
+      other: "{size}, {count} súborov",
+    },
+    de: { one: "{size}, {count} Datei", other: "{size}, {count} Dateien" },
+  },
+  "panes.backup.runs.running": {
+    en: "Backing up…",
+    sk: "Zálohujem…",
+    de: "Sichere…",
+  },
+  "panes.backup.runs.runningDetail": {
+    en: "The first backup copies everything. Later ones send only what changed.",
+    sk: "Prvá záloha skopíruje všetko. Ďalšie posielajú len to, čo sa zmenilo.",
+    de: "Die erste Sicherung kopiert alles. Spätere schicken nur, was sich geändert hat.",
+  },
+  "panes.backup.runs.failed": {
+    en: "The last backup did not finish.",
+    sk: "Posledná záloha sa nedokončila.",
+    de: "Die letzte Sicherung wurde nicht fertig.",
+  },
+  "panes.backup.runs.now": { en: "Back up now", sk: "Zálohovať teraz", de: "Jetzt sichern" },
+  "panes.backup.runs.needsTarget": {
+    en: "Set up a bucket first.",
+    sk: "Najprv nastavte bucket.",
+    de: "Richte zuerst einen Bucket ein.",
+  },
+  "panes.backup.runs.button": { en: "Back up", sk: "Zálohovať", de: "Sichern" },
+  "panes.backup.runs.caption": {
+    en: "A backup holds LosOS cloud's files and database, LosOS Git's repositories, the folder you share with the mesh, your settings and the look of the home page. The bucket keeps the last seven.",
+    sk: "Záloha obsahuje súbory a databázu LosOS cloud, repozitáre LosOS Git, priečinok, ktorý zdieľate s mesh sieťou, vaše nastavenia a vzhľad domovskej stránky. Bucket uchováva posledných sedem.",
+    de: "Eine Sicherung enthält die Dateien und die Datenbank von LosOS cloud, die Repositorys von LosOS Git, den Ordner, den du mit dem Mesh teilst, deine Einstellungen und das Aussehen der Startseite. Der Bucket behält die letzten sieben.",
+  },
+  "panes.backup.restore.title": {
+    en: "Restore",
+    sk: "Obnova",
+    de: "Wiederherstellen",
+  },
+  "panes.backup.restore.running": {
+    en: "Restoring…",
+    sk: "Obnovujem…",
+    de: "Stelle wieder her…",
+  },
+  "panes.backup.restore.runningDetail": {
+    en: "LosOS cloud and LosOS Git are stopped until it is done.",
+    sk: "LosOS cloud a LosOS Git sú dovtedy zastavené.",
+    de: "LosOS cloud und LosOS Git sind bis dahin angehalten.",
+  },
+  "panes.backup.restore.done": {
+    en: "Restored",
+    sk: "Obnovené",
+    de: "Wiederhergestellt",
+  },
+  "panes.backup.restore.doneDetail": {
+    en: "The box now keeps the recovery code you typed. The restored settings are applied by themselves.",
+    sk: "Zariadenie si teraz ponecháva kód obnovy, ktorý ste zadali. Obnovené nastavenia sa použijú samy.",
+    de: "Die Box behält jetzt den Wiederherstellungscode, den du eingegeben hast. Die wiederhergestellten Einstellungen werden von selbst übernommen.",
+  },
+  "panes.backup.restore.failed": {
+    en: "The restore did not finish.",
+    sk: "Obnova sa nedokončila.",
+    de: "Die Wiederherstellung wurde nicht fertig.",
+  },
+  "panes.backup.restore.code": {
+    en: "Recovery code",
+    sk: "Kód obnovy",
+    de: "Wiederherstellungscode",
+  },
+  "panes.backup.restore.button": { en: "Restore…", sk: "Obnoviť…", de: "Wiederherstellen…" },
+  "panes.backup.restore.caption": {
+    en: "Type the recovery code of the box that made the backup, the one you wrote down from its Backup page. After an erase or a new install, set up the same bucket above first. The newest backup in it comes back.",
+    sk: "Zadajte kód obnovy zariadenia, ktoré zálohu vytvorilo, ten, ktorý ste si zapísali z jeho stránky Záloha. Po vymazaní alebo novej inštalácii najprv vyššie nastavte ten istý bucket. Vráti sa najnovšia záloha v ňom.",
+    de: "Gib den Wiederherstellungscode der Box ein, die die Sicherung gemacht hat, den du dir auf ihrer Seite Sicherung notiert hast. Nach einem Löschen oder einer Neuinstallation richte oben zuerst denselben Bucket ein. Zurück kommt die neueste Sicherung darin.",
+  },
+  "panes.backup.restore.dialogTitle": {
+    en: "Restore the newest backup?",
+    sk: "Obnoviť najnovšiu zálohu?",
+    de: "Die neueste Sicherung wiederherstellen?",
+  },
+  "panes.backup.restore.dialogBody": {
+    en: "What is on this box now is replaced by what is in the backup.",
+    sk: "To, čo je teraz na zariadení, nahradí obsah zálohy.",
+    de: "Was jetzt auf der Box ist, wird durch den Inhalt der Sicherung ersetzt.",
+  },
+  "panes.backup.restore.replaces": {
+    en: "Files, repositories, the shared folder and settings made since the backup are lost.",
+    sk: "Súbory, repozitáre, zdieľaný priečinok a nastavenia od vytvorenia zálohy sa stratia.",
+    de: "Dateien, Repositorys, der geteilte Ordner und Einstellungen seit der Sicherung gehen verloren.",
+  },
+  "panes.backup.restore.codeStays": {
+    en: "The box keeps the recovery code you typed from now on. Its own code stops working.",
+    sk: "Zariadenie si odteraz ponechá kód obnovy, ktorý ste zadali. Jeho vlastný kód prestane platiť.",
+    de: "Die Box behält ab jetzt den eingegebenen Wiederherstellungscode. Ihr eigener Code gilt nicht mehr.",
+  },
+  "panes.backup.restore.password": {
+    en: "Sign in afterwards with the password you had when the backup was made.",
+    sk: "Potom sa prihláste heslom, ktoré ste mali pri vytvorení zálohy.",
+    de: "Melde dich danach mit dem Passwort an, das du beim Erstellen der Sicherung hattest.",
+  },
+  "panes.backup.restore.keep": {
+    en: "Keep this box as it is",
+    sk: "Ponechať zariadenie, ako je",
+    de: "Box so lassen",
+  },
+  "panes.backup.restore.confirm": { en: "Restore", sk: "Obnoviť", de: "Wiederherstellen" },
+  "panes.backup.toast.targetSaved": {
+    en: "Bucket saved",
+    sk: "Bucket uložený",
+    de: "Bucket gespeichert",
+  },
+  "panes.backup.toast.targetForgotten": {
+    en: "Bucket forgotten. The backups in it are still there.",
+    sk: "Bucket zabudnutý. Zálohy v ňom zostali.",
+    de: "Bucket vergessen. Die Sicherungen darin sind noch da.",
+  },
+  "panes.backup.toast.targetFailed": {
+    en: "The bucket was not saved",
+    sk: "Bucket sa neuložil",
+    de: "Der Bucket wurde nicht gespeichert",
+  },
+  "panes.backup.toast.backupFailed": {
+    en: "The backup did not start",
+    sk: "Záloha sa nespustila",
+    de: "Die Sicherung ist nicht gestartet",
+  },
+  "panes.backup.toast.restoreFailed": {
+    en: "The restore did not start",
+    sk: "Obnova sa nespustila",
+    de: "Die Wiederherstellung ist nicht gestartet",
+  },
+
+  // ── Erase ───────────────────────────────────────────────────────────────
+  "panes.erase.title": {
+    en: "Erase everything",
+    sk: "Vymazať všetko",
+    de: "Alles löschen",
+  },
+  "panes.erase.row": {
+    en: "Erase this box",
+    sk: "Vymazať toto zariadenie",
+    de: "Diese Box löschen",
+  },
+  "panes.erase.rowDetail": {
+    en: "Your files, repositories, settings and password. The box stays installed and greets the next owner with the setup wizard.",
+    sk: "Vaše súbory, repozitáre, nastavenia a heslo. Zariadenie zostane nainštalované a ďalšieho majiteľa privíta sprievodcom nastavením.",
+    de: "Deine Dateien, Repositorys, Einstellungen und dein Passwort. Die Box bleibt installiert und begrüßt den nächsten Besitzer mit dem Einrichtungsassistenten.",
+  },
+  "panes.erase.button": { en: "Erase…", sk: "Vymazať…", de: "Löschen…" },
+  "panes.erase.caption": {
+    en: "The erase waits {grace} before it starts, and Cancel stops it until then. The box then gives up its custom domains, its market listings and its place on the edge, and erases the data when it restarts. With a bucket set up under Backup it backs up first, so your recovery code can bring everything back.",
+    sk: "Vymazanie počká {grace}, kým sa začne, a dovtedy ho tlačidlo Zrušiť zastaví. Zariadenie potom uvoľní svoje vlastné domény, ponuky na trhu a miesto na okrajovom serveri a pri reštarte vymaže dáta. Ak máte v sekcii Záloha nastavený bucket, najprv sa zálohuje, takže váš kód obnovy vráti všetko späť.",
+    de: "Das Löschen wartet {grace}, bevor es beginnt, und bis dahin hält Abbrechen es auf. Danach gibt die Box ihre eigenen Domains, ihre Marktangebote und ihren Platz auf dem Edge auf und löscht die Daten beim Neustart. Mit einem Bucket unter Sicherung sichert sie vorher, also bringt dein Wiederherstellungscode alles zurück.",
+  },
+  "panes.erase.countdown": {
+    en: "Erasing soon",
+    sk: "Čoskoro sa vymaže",
+    de: "Wird bald gelöscht",
+  },
+  "panes.erase.countdownDetail": {
+    en: "Nothing has changed yet. Cancel keeps everything as it is.",
+    sk: "Zatiaľ sa nič nezmenilo. Zrušiť ponechá všetko, ako je.",
+    de: "Noch hat sich nichts geändert. Abbrechen lässt alles, wie es ist.",
+  },
+  "panes.erase.countdownBackedUp": {
+    en: "The backup is in the bucket. Nothing else has changed yet, and Cancel keeps everything as it is.",
+    sk: "Záloha je v buckete. Nič iné sa zatiaľ nezmenilo a Zrušiť ponechá všetko, ako je.",
+    de: "Die Sicherung liegt im Bucket. Sonst hat sich noch nichts geändert, und Abbrechen lässt alles, wie es ist.",
+  },
+  "panes.erase.cancel": { en: "Cancel erase", sk: "Zrušiť vymazanie", de: "Löschen abbrechen" },
+  "panes.erase.dismiss": { en: "Dismiss", sk: "Zavrieť", de: "Schließen" },
+  "panes.erase.phase.backingUp": {
+    en: "Backing up before the erase",
+    sk: "Zálohujem pred vymazaním",
+    de: "Sichere vor dem Löschen",
+  },
+  "panes.erase.phase.backingUpDetail": {
+    en: "The countdown starts when the backup is in the bucket.",
+    sk: "Odpočet sa začne, keď bude záloha v buckete.",
+    de: "Der Countdown beginnt, wenn die Sicherung im Bucket liegt.",
+  },
+  "panes.erase.phase.leaving": {
+    en: "Leaving the edge",
+    sk: "Odchádzam z okrajového servera",
+    de: "Verlasse den Edge",
+  },
+  "panes.erase.phase.noStopping": {
+    en: "This can no longer be stopped.",
+    sk: "Toto sa už nedá zastaviť.",
+    de: "Das lässt sich nicht mehr aufhalten.",
+  },
+  "panes.erase.phase.resetting": {
+    en: "Putting the settings back",
+    sk: "Vraciam nastavenia",
+    de: "Setze die Einstellungen zurück",
+  },
+  "panes.erase.phase.restarting": {
+    en: "Restarting to erase the data",
+    sk: "Reštartujem a mažem dáta",
+    de: "Starte neu, um die Daten zu löschen",
+  },
+  "panes.erase.phase.restartingDetail": {
+    en: "This page stops answering while the box restarts.",
+    sk: "Počas reštartu táto stránka prestane odpovedať.",
+    de: "Während des Neustarts antwortet diese Seite nicht.",
+  },
+  "panes.erase.phase.gone": {
+    en: "The box is restarting",
+    sk: "Zariadenie sa reštartuje",
+    de: "Die Box startet neu",
+  },
+  "panes.erase.phase.goneDetail": {
+    en: "When it comes back it is empty and opens the setup wizard.",
+    sk: "Keď sa vráti, bude prázdne a otvorí sprievodcu nastavením.",
+    de: "Wenn sie zurück ist, ist sie leer und öffnet den Einrichtungsassistenten.",
+  },
+  "panes.erase.phase.failed": {
+    en: "The backup before the erase failed",
+    sk: "Záloha pred vymazaním zlyhala",
+    de: "Die Sicherung vor dem Löschen ist fehlgeschlagen",
+  },
+  "panes.erase.phase.failedDetail": {
+    en: "Nothing was erased. Check the bucket under Backup, or erase without a backup.",
+    sk: "Nič sa nevymazalo. Skontrolujte bucket v sekcii Záloha alebo vymažte bez zálohy.",
+    de: "Es wurde nichts gelöscht. Prüfe den Bucket unter Sicherung oder lösche ohne Sicherung.",
+  },
+  "panes.erase.dialogTitle": {
+    en: "Erase everything on this box?",
+    sk: "Vymazať všetko na tomto zariadení?",
+    de: "Alles auf dieser Box löschen?",
+  },
+  "panes.erase.dialogBody": {
+    en: "You have {grace} to change your mind. After that it cannot be stopped.",
+    sk: "Máte {grace} na rozmyslenie. Potom sa to už nedá zastaviť.",
+    de: "Du hast {grace}, es dir anders zu überlegen. Danach lässt es sich nicht mehr aufhalten.",
+  },
+  "panes.erase.goes": {
+    en: "Your files, repositories, the shared folder, every setting, the password, the spare key and the recovery code are erased.",
+    sk: "Vymažú sa vaše súbory, repozitáre, zdieľaný priečinok, všetky nastavenia, heslo, náhradný kľúč a kód obnovy.",
+    de: "Gelöscht werden deine Dateien, Repositorys, der geteilte Ordner, jede Einstellung, das Passwort, der Ersatzschlüssel und der Wiederherstellungscode.",
+  },
+  "panes.erase.outside": {
+    en: "Your custom domains, market listings and the box's place on the edge are given up.",
+    sk: "Vaše vlastné domény, ponuky na trhu a miesto zariadenia na okrajovom serveri sa uvoľnia.",
+    de: "Deine eigenen Domains, Marktangebote und der Platz der Box auf dem Edge werden aufgegeben.",
+  },
+  "panes.erase.stays": {
+    en: "LosOS stays installed. Backups already in your bucket stay there.",
+    sk: "LosOS zostane nainštalovaný. Zálohy, ktoré už sú vo vašom buckete, tam zostanú.",
+    de: "LosOS bleibt installiert. Sicherungen, die schon in deinem Bucket liegen, bleiben dort.",
+  },
+  "panes.erase.backupFirst": {
+    en: "Back up first",
+    sk: "Najprv zálohovať",
+    de: "Vorher sichern",
+  },
+  "panes.erase.backupFirstDetail": {
+    en: "Write down the recovery code from Backup first. It is the only key to this backup.",
+    sk: "Najprv si zapíšte kód obnovy zo sekcie Záloha. Je to jediný kľúč k tejto zálohe.",
+    de: "Notiere dir vorher den Wiederherstellungscode unter Sicherung. Er ist der einzige Schlüssel zu dieser Sicherung.",
+  },
+  "panes.erase.noTarget": {
+    en: "No bucket is set up under Backup, so nothing can be brought back after this erase.",
+    sk: "V sekcii Záloha nie je nastavený žiadny bucket, takže po tomto vymazaní sa nič nedá vrátiť.",
+    de: "Unter Sicherung ist kein Bucket eingerichtet, also lässt sich nach diesem Löschen nichts zurückholen.",
+  },
+  "panes.erase.keep": {
+    en: "Keep everything",
+    sk: "Ponechať všetko",
+    de: "Alles behalten",
+  },
+  "panes.erase.confirm": {
+    en: "Start the countdown",
+    sk: "Spustiť odpočet",
+    de: "Countdown starten",
+  },
+  "panes.erase.report.title": {
+    en: "The last erase",
+    sk: "Posledné vymazanie",
+    de: "Das letzte Löschen",
+  },
+  "panes.erase.report.when": { en: "Erased", sk: "Vymazané", de: "Gelöscht" },
+  "panes.erase.report.domains": {
+    en: "Custom domains removed",
+    sk: "Odstránené vlastné domény",
+    de: "Entfernte eigene Domains",
+  },
+  "panes.erase.report.listings": {
+    en: "Market listings closed",
+    sk: "Zrušené ponuky na trhu",
+    de: "Geschlossene Marktangebote",
+  },
+  "panes.erase.report.edge": {
+    en: "Left the edge",
+    sk: "Odišlo z okrajového servera",
+    de: "Edge verlassen",
+  },
+  "panes.erase.report.yes": { en: "Yes", sk: "Áno", de: "Ja" },
+  "panes.erase.report.no": { en: "No", sk: "Nie", de: "Nein" },
+  "panes.erase.report.problems": {
+    en: "The edge did not confirm every step, so something may still be listed there under this box.",
+    sk: "Okrajový server nepotvrdil každý krok, takže tam pod týmto zariadením môže ešte niečo zostať.",
+    de: "Der Edge hat nicht jeden Schritt bestätigt, also kann dort unter dieser Box noch etwas eingetragen sein.",
+  },
+  "panes.erase.report.noEdge": {
+    en: "The box had no edge, so it had nothing to give up outside itself.",
+    sk: "Zariadenie nemalo okrajový server, takže mimo seba nemalo čo uvoľniť.",
+    de: "Die Box hatte keinen Edge, also gab es außerhalb nichts aufzugeben.",
+  },
+  "panes.erase.toast.failed": {
+    en: "The erase did not start",
+    sk: "Vymazanie sa nespustilo",
+    de: "Das Löschen ist nicht gestartet",
+  },
+  "panes.erase.toast.cancelFailed": {
+    en: "The erase could not be cancelled",
+    sk: "Vymazanie sa nedalo zrušiť",
+    de: "Das Löschen ließ sich nicht abbrechen",
+  },
+  "panes.erase.toast.cancelled": {
+    en: "Erase cancelled",
+    sk: "Vymazanie zrušené",
+    de: "Löschen abgebrochen",
+  },
+  "panes.erase.toast.cancelledBody": {
+    en: "Nothing on the box or outside it was changed.",
+    sk: "Na zariadení ani mimo neho sa nič nezmenilo.",
+    de: "Weder auf der Box noch außerhalb wurde etwas geändert.",
   },
 
   // ── Security ────────────────────────────────────────────────────────────

@@ -646,6 +646,150 @@ export function postDomainRemove(
   });
 }
 
+// ── Backups and erasing the box ───────────────────────────────────────────
+
+/** The bucket backups go to, as lososd shows it: never the secret key. */
+export interface BackupTarget {
+  endpoint: string;
+  bucket: string;
+  prefix: string;
+  region: string;
+  accessKeyId: string;
+  hasSecret: boolean;
+}
+
+/** What the owner types. Leave `secretAccessKey` out to keep the stored one. */
+export interface BackupTargetInput {
+  endpoint: string;
+  bucket: string;
+  prefix: string;
+  region: string;
+  accessKeyId: string;
+  secretAccessKey?: string;
+}
+
+export interface BackupReport {
+  /** Unix seconds. */
+  time: number;
+  snapshot: string;
+  files: number;
+  bytes: number;
+}
+
+export interface BackupJob {
+  kind: "backup" | "restore";
+  job: string;
+  state: "running" | "done" | "failed" | "cancelled";
+  startedAt: number;
+  finishedAt?: number;
+  /** Why it failed, in lososd's words. */
+  message: string;
+}
+
+export type ErasePhase =
+  | "backingUp"
+  | "waiting"
+  | "leaving"
+  | "resetting"
+  | "restarting"
+  | "failed";
+
+/** What the box gave up outside itself. Counts only. */
+export interface EraseOutside {
+  hadEdge: boolean;
+  domainsRemoved: number;
+  listingsClosed: number;
+  leftEdge: boolean;
+  problems: string[];
+  /** Unix seconds; 0 until the erase reached the wipe. */
+  erasedAt: number;
+}
+
+export interface Erase {
+  phase: ErasePhase;
+  backup: boolean;
+  startedAt: number;
+  /** Set once the countdown starts. */
+  deadline?: number;
+  secondsLeft?: number;
+  cancellable: boolean;
+  message: string;
+  outside: EraseOutside;
+}
+
+export interface BackupResponse {
+  target: BackupTarget | null;
+  last: BackupReport | null;
+  job: BackupJob | null;
+  erase: Erase | null;
+  /** The report the last erase left behind, kept past the wipe. */
+  lastErase: EraseOutside | null;
+  graceSeconds: number;
+}
+
+/** GET /api/backup — the bucket, the last backup, the job, any erase. */
+export function getBackup(options: RequestOptions = {}): Promise<BackupResponse> {
+  return call<BackupResponse>("/api/backup", options);
+}
+
+/** POST /api/backup/target — set the bucket. */
+export function postBackupTarget(
+  target: BackupTargetInput,
+  options: RequestOptions = {},
+): Promise<{ target: BackupTarget }> {
+  return call<{ target: BackupTarget }>("/api/backup/target", {
+    ...options,
+    method: "POST",
+    contentType: "application/json",
+    body: JSON.stringify(target),
+  });
+}
+
+/** DELETE /api/backup/target — forget the bucket. The backups stay in it. */
+export function deleteBackupTarget(options: RequestOptions = {}): Promise<{ target: null }> {
+  return call<{ target: null }>("/api/backup/target", { ...options, method: "DELETE" });
+}
+
+/** POST /api/backup/run — back up now. */
+export function postBackupRun(options: RequestOptions = {}): Promise<{ job: string }> {
+  return call<{ job: string }>("/api/backup/run", { ...options, method: "POST" });
+}
+
+/** POST /api/backup/restore — pull the latest backup back with the
+ *  recovery code of the box that made it. */
+export function postBackupRestore(
+  code: string,
+  options: RequestOptions = {},
+): Promise<{ job: string }> {
+  return call<{ job: string }>("/api/backup/restore", {
+    ...options,
+    method: "POST",
+    contentType: "application/json",
+    body: JSON.stringify({ code }),
+  });
+}
+
+/** GET /api/recovery — the box's recovery code, which is also the key to
+ *  its backups. */
+export function getRecoveryCode(options: RequestOptions = {}): Promise<{ code: string }> {
+  return call<{ code: string }>("/api/recovery", options);
+}
+
+/** POST /api/erase — start erasing the box, with or without a backup first. */
+export function postErase(backup: boolean, options: RequestOptions = {}): Promise<{ erase: Erase }> {
+  return call<{ erase: Erase }>("/api/erase", {
+    ...options,
+    method: "POST",
+    contentType: "application/json",
+    body: JSON.stringify({ backup }),
+  });
+}
+
+/** POST /api/erase/cancel — stop an erase before it reaches the edge. */
+export function postEraseCancel(options: RequestOptions = {}): Promise<unknown> {
+  return call<unknown>("/api/erase/cancel", { ...options, method: "POST" });
+}
+
 // ── Sign-in ───────────────────────────────────────────────────────────────
 
 export interface SignInResponse {

@@ -63,6 +63,35 @@ const STORAGE = { totalBytes: 480 * 1024 ** 3, usedBytes: 131 * 1024 ** 3, lentB
 const STORAGE_SHARED = { ...STORAGE, lentBytes: 96 * 1024 ** 3 };
 const STORAGE_FULL = { ...STORAGE, usedBytes: 421 * 1024 ** 3 };
 
+const BACKUP_SET = {
+  target: {
+    endpoint: 'https://s3.eu-central-1.amazonaws.com',
+    bucket: 'mattbox-backups',
+    prefix: 'losos',
+    region: 'eu-central-1',
+    accessKeyId: 'AKIAIOSFODNN7EXAMPLE',
+    hasSecret: true,
+  },
+  last: { time: NOW / 1000 - 6 * 3600, snapshot: '9f2c'.repeat(16), files: 18324, bytes: 47_244_640_256 },
+  job: null,
+  erase: null,
+  lastErase: null,
+  graceSeconds: 900,
+};
+const BACKUP_COUNTDOWN = {
+  ...BACKUP_SET,
+  erase: {
+    phase: 'waiting',
+    backup: true,
+    startedAt: NOW / 1000 - 400,
+    deadline: NOW / 1000 + 731,
+    secondsLeft: 731,
+    cancellable: true,
+    message: '',
+    outside: { hadEdge: false, domainsRemoved: 0, listingsClosed: 0, leftEdge: false, problems: [], erasedAt: 0 },
+  },
+};
+
 const LIMITS = { widgets: 24, nameChars: 60, sourceBytes: 65536, imageBytes: 8388608, veil: { min: 20, max: 90 } };
 const HAND_WIDGET = {
   id: 'w1',
@@ -240,6 +269,7 @@ async function open({
   look = LOOK_PLAIN,
   market = MARKET_OFF,
   domains = DOMAINS_OFF,
+  backup = BACKUP_SET,
   board = BOARD,
   health = true,
   cloudDown = false,
@@ -299,6 +329,7 @@ async function open({
   await page.route('**/api/storage', (route) => json(route, 200, storage));
   await page.route('**/api/market', (route) => json(route, 200, market));
   await page.route('**/api/domains', (route) => json(route, 200, domains));
+  await page.route('**/api/backup', (route) => json(route, 200, backup));
   await page.route('**/api/config', (route) => json(route, 200, CONFIG));
   await page.route('**/api/options', (route) => json(route, 200, OPTIONS));
   await page.route('**/api/apply', (route) => json(route, 200, apply));
@@ -461,6 +492,16 @@ const SHOTS = [
       await settle(page);
     },
   },
+  { name: 'settings-backup', path: '/settings/backup' },
+  {
+    name: 'settings-erase-dialog',
+    path: '/settings/reset',
+    act: async (page) => {
+      await page.getByRole('button', { name: 'Erase…' }).click();
+      await settle(page);
+    },
+  },
+  { name: 'settings-erase-countdown', path: '/settings/reset', backup: BACKUP_COUNTDOWN },
   { name: 'settings-advanced', path: '/settings/advanced' },
   { name: 'settings-history', path: '/settings/history' },
   {

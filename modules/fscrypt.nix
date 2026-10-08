@@ -134,155 +134,155 @@ in
   };
 
   config = lib.mkMerge [
-  {
-    lososInternal.fscrypt = {
-      inherit policyDirExpr materialiseKeyTo protector;
-      package = pkgs.fscrypt;
-    };
-  }
-
-  (lib.mkIf cfg.enable {
-    assertions = [
-      {
-        # fscrypt is a filesystem feature, not a userspace overlay: without
-        # `-O encrypt` at mkfs time every command below fails at run time, on a
-        # box with no shell to read the error from. modules/disko.nix sets it;
-        # this catches anyone who changes the format without reading why.
-        assertion = cfg.enable -> config.losos.shared.fscrypt.keyFile != "";
-        message = ''
-          losos.shared.fscrypt.enable requires losos.shared.fscrypt.keyFile.
-          The domain cannot be locked or unlocked without a protector key.
-        '';
-      }
-    ];
-
-    environment.systemPackages = [ pkgs.fscrypt ];
-
-    # ── One-time filesystem preparation ──────────────────────────────────────
-    # `fscrypt setup` writes /etc/fscrypt.conf and then per-mountpoint metadata
-    # at <mountpoint>/.fscrypt. Both are one-time: the ConditionPathExists makes
-    # this a no-op on every later boot, the same shape as the adminpass
-    # generator in modules/nextcloud-common.nix.
-    #
-    # /etc is tmpfs here, so fscrypt.conf is regenerated each boot and only the
-    # /persist metadata is durable — which is the half that matters, and the
-    # reason the condition tests the persistent path rather than the config.
-    systemd.services.losos-fscrypt-setup = {
-      description = "Prepare /persist for fscrypt (one-time)";
-      wantedBy = [ "multi-user.target" ];
-      after = [ "persist.mount" ];
-      unitConfig.ConditionPathExists = "!${persistRoot}/.fscrypt";
-      serviceConfig = {
-        Type = "oneshot";
-        RemainAfterExit = true;
+    {
+      lososInternal.fscrypt = {
+        inherit policyDirExpr materialiseKeyTo protector;
+        package = pkgs.fscrypt;
       };
-      path = [
-        pkgs.fscrypt
-        pkgs.coreutils
-      ];
-      script = ''
-        set -eu
-        # --force: no TTY on this box to answer the prompt with.
-        ${fscrypt} setup --quiet --force || true
-        ${fscrypt} setup ${persistRoot} --quiet --force
-      '';
-    };
+    }
 
-    # ── Lock / unlock, driven by the sharing toggle ──────────────────────────
-    # This is the unit the whole layer exists for. It runs on every boot and on
-    # every `nixos-rebuild switch` (its script text changes with
-    # losos.sharingMyStorage, so systemd restarts it), and it drives the domain
-    # to whichever state the toggle now says.
-    #
-    # Ordered before both Kubernetes instances: the local cluster's pods and
-    # Longhorn on the mesh both mount this domain, and a pod that starts against
-    # a locked directory sees an empty encrypted view rather than an error.
-    systemd.services.losos-fscrypt-shared = {
-      description = "Unlock or lock the shared data domain (fscrypt)";
-      wantedBy = [ "multi-user.target" ];
-      after = [
-        "losos-fscrypt-setup.service"
-        "persist.mount"
-      ];
-      requires = [ "losos-fscrypt-setup.service" ];
-      before = [
-        "k3s.service"
-        "rke2-agent.service"
-      ];
-      serviceConfig = {
-        Type = "oneshot";
-        RemainAfterExit = true;
-        UMask = "0077";
-        RuntimeDirectory = "losos-fscrypt";
-        RuntimeDirectoryMode = "0700";
-      };
-      path = [
-        pkgs.fscrypt
-        pkgs.coreutils
-        pkgs.systemd
-      ];
-      script = ''
-        set -eu
-        policy=${policyDirExpr}
-
-        ${materialiseKey}
-
-        install -d -m 0700 "$(dirname "$policy")"
-
-        if [ ! -d "$policy" ]; then
-          # First time on this box: create the directory and encrypt it while
-          # it is still empty. fscrypt refuses to encrypt a non-empty directory
-          # and we never work around that — see the else-branch below.
-          install -d -m 0700 "$policy"
-          ${fscrypt} encrypt "$policy" \
-            --quiet \
-            --source=raw_key \
-            --key=${runKey} \
-            --name=${protector} \
-            --no-recovery
-          chown shared:shared "$policy"
-        elif ! ${fscrypt} status "$policy" >/dev/null 2>&1; then
-          # The directory exists but carries no policy. Encrypting it would
-          # require it to be empty, and fscrypt does not encrypt in place — so
-          # doing anything clever here means destroying data. Refuse, loudly,
-          # and leave the box running with the domain unprotected rather than
-          # empty. There is no shell to recover from a wrong guess.
-          echo "fscrypt: $policy exists but is not encrypted; refusing to touch it." >&2
-          echo "fscrypt: the shared domain is NOT protected. Move the data aside" >&2
-          echo "fscrypt: and let this unit recreate the directory to fix it." >&2
-          exit 0
-        fi
-
-        ${
-          if sharing then
-            ''
-              # Sharing is on: put the key in the kernel keyring so Longhorn and
-              # the pods can read the domain. Unlocking an already-unlocked
-              # policy is not an error worth failing the unit over.
-              ${fscrypt} unlock "$policy" --key=${runKey} --quiet || true
-            ''
-          else
-            ''
-              # Sharing is off: drop the key. From here the directory is opaque
-              # to every process on this machine, root included, until the
-              # toggle is turned back on and this unit re-runs.
-              #
-              # `fscrypt lock` fails if anything still holds a file open in the
-              # domain, which after a rebuild is the normal case, so the failure
-              # is tolerated and the domain locks on the next boot. It is not
-              # tolerated silently: say so in the journal.
-              ${fscrypt} lock "$policy" --quiet \
-                || echo "fscrypt: could not lock $policy now (files still open); it locks on next boot" >&2
-            ''
+    (lib.mkIf cfg.enable {
+      assertions = [
+        {
+          # fscrypt is a filesystem feature, not a userspace overlay: without
+          # `-O encrypt` at mkfs time every command below fails at run time, on a
+          # box with no shell to read the error from. modules/disko.nix sets it;
+          # this catches anyone who changes the format without reading why.
+          assertion = cfg.enable -> config.losos.shared.fscrypt.keyFile != "";
+          message = ''
+            losos.shared.fscrypt.enable requires losos.shared.fscrypt.keyFile.
+            The domain cannot be locked or unlocked without a protector key.
+          '';
         }
+      ];
 
-        # The plaintext key never outlives the unit. RuntimeDirectory would
-        # remove it anyway when the unit stops, but RemainAfterExit means that
-        # is not until shutdown, and there is no reason to leave it readable
-        # for the life of the boot.
-        rm -f ${runKey}
-      '';
-    };
-  })
+      environment.systemPackages = [ pkgs.fscrypt ];
+
+      # ── One-time filesystem preparation ──────────────────────────────────────
+      # `fscrypt setup` writes /etc/fscrypt.conf and then per-mountpoint metadata
+      # at <mountpoint>/.fscrypt. Both are one-time: the ConditionPathExists makes
+      # this a no-op on every later boot, the same shape as the adminpass
+      # generator in modules/nextcloud-common.nix.
+      #
+      # /etc is tmpfs here, so fscrypt.conf is regenerated each boot and only the
+      # /persist metadata is durable — which is the half that matters, and the
+      # reason the condition tests the persistent path rather than the config.
+      systemd.services.losos-fscrypt-setup = {
+        description = "Prepare /persist for fscrypt (one-time)";
+        wantedBy = [ "multi-user.target" ];
+        after = [ "persist.mount" ];
+        unitConfig.ConditionPathExists = "!${persistRoot}/.fscrypt";
+        serviceConfig = {
+          Type = "oneshot";
+          RemainAfterExit = true;
+        };
+        path = [
+          pkgs.fscrypt
+          pkgs.coreutils
+        ];
+        script = ''
+          set -eu
+          # --force: no TTY on this box to answer the prompt with.
+          ${fscrypt} setup --quiet --force || true
+          ${fscrypt} setup ${persistRoot} --quiet --force
+        '';
+      };
+
+      # ── Lock / unlock, driven by the sharing toggle ──────────────────────────
+      # This is the unit the whole layer exists for. It runs on every boot and on
+      # every `nixos-rebuild switch` (its script text changes with
+      # losos.sharingMyStorage, so systemd restarts it), and it drives the domain
+      # to whichever state the toggle now says.
+      #
+      # Ordered before both Kubernetes instances: the local cluster's pods and
+      # Longhorn on the mesh both mount this domain, and a pod that starts against
+      # a locked directory sees an empty encrypted view rather than an error.
+      systemd.services.losos-fscrypt-shared = {
+        description = "Unlock or lock the shared data domain (fscrypt)";
+        wantedBy = [ "multi-user.target" ];
+        after = [
+          "losos-fscrypt-setup.service"
+          "persist.mount"
+        ];
+        requires = [ "losos-fscrypt-setup.service" ];
+        before = [
+          "k3s.service"
+          "rke2-agent.service"
+        ];
+        serviceConfig = {
+          Type = "oneshot";
+          RemainAfterExit = true;
+          UMask = "0077";
+          RuntimeDirectory = "losos-fscrypt";
+          RuntimeDirectoryMode = "0700";
+        };
+        path = [
+          pkgs.fscrypt
+          pkgs.coreutils
+          pkgs.systemd
+        ];
+        script = ''
+          set -eu
+          policy=${policyDirExpr}
+
+          ${materialiseKey}
+
+          install -d -m 0700 "$(dirname "$policy")"
+
+          if [ ! -d "$policy" ]; then
+            # First time on this box: create the directory and encrypt it while
+            # it is still empty. fscrypt refuses to encrypt a non-empty directory
+            # and we never work around that — see the else-branch below.
+            install -d -m 0700 "$policy"
+            ${fscrypt} encrypt "$policy" \
+              --quiet \
+              --source=raw_key \
+              --key=${runKey} \
+              --name=${protector} \
+              --no-recovery
+            chown shared:shared "$policy"
+          elif ! ${fscrypt} status "$policy" >/dev/null 2>&1; then
+            # The directory exists but carries no policy. Encrypting it would
+            # require it to be empty, and fscrypt does not encrypt in place — so
+            # doing anything clever here means destroying data. Refuse, loudly,
+            # and leave the box running with the domain unprotected rather than
+            # empty. There is no shell to recover from a wrong guess.
+            echo "fscrypt: $policy exists but is not encrypted; refusing to touch it." >&2
+            echo "fscrypt: the shared domain is NOT protected. Move the data aside" >&2
+            echo "fscrypt: and let this unit recreate the directory to fix it." >&2
+            exit 0
+          fi
+
+          ${
+            if sharing then
+              ''
+                # Sharing is on: put the key in the kernel keyring so Longhorn and
+                # the pods can read the domain. Unlocking an already-unlocked
+                # policy is not an error worth failing the unit over.
+                ${fscrypt} unlock "$policy" --key=${runKey} --quiet || true
+              ''
+            else
+              ''
+                # Sharing is off: drop the key. From here the directory is opaque
+                # to every process on this machine, root included, until the
+                # toggle is turned back on and this unit re-runs.
+                #
+                # `fscrypt lock` fails if anything still holds a file open in the
+                # domain, which after a rebuild is the normal case, so the failure
+                # is tolerated and the domain locks on the next boot. It is not
+                # tolerated silently: say so in the journal.
+                ${fscrypt} lock "$policy" --quiet \
+                  || echo "fscrypt: could not lock $policy now (files still open); it locks on next boot" >&2
+              ''
+          }
+
+          # The plaintext key never outlives the unit. RuntimeDirectory would
+          # remove it anyway when the unit stops, but RemainAfterExit means that
+          # is not until shutdown, and there is no reason to leave it readable
+          # for the life of the boot.
+          rm -f ${runKey}
+        '';
+      };
+    })
   ];
 }

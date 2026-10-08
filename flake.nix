@@ -292,6 +292,9 @@
             # different halves of the same problem.
             ./modules/keyring.nix
             ./modules/daemon.nix
+            # Backups to the owner's S3 bucket, restoring them, and the
+            # boot-time wipe of an erase (backend/src/{backup,erase}.rs).
+            ./modules/backup.nix
             # LosOS Lab's guests under libvirt on the box (losos.lab.libvirt,
             # off by default): the `losos-registrar lab` helper lososd relays
             # /api/lab to.
@@ -452,6 +455,12 @@
       #                         not trading). With LOSOS_RECORD_DIR set the
       #                         same run is photographed by
       #                         demo/edge-lan/record.mjs (demo/edge-lan/two-boxes.nix).
+      #   losos-erase         — a backup through lososd to a MinIO bucket holds
+      #                         only ciphertext; an erase can be cancelled, and
+      #                         one that runs out wipes the box at boot; a
+      #                         restore with the recovery code brings files,
+      #                         database rows and the fscrypt folder back
+      #                         (tests/erase.nix).
       checks.${system} = {
         losos-install = import ./tests/install.nix { inherit pkgs disko; };
         losos-tpm-unlock = import ./tests/tpm.nix { inherit pkgs disko; };
@@ -487,6 +496,7 @@
         losos-options-doc =
           self.nixosConfigurations.install.config.environment.etc."losos/options.json".source;
         losos-keyring = import ./tests/keyring.nix { inherit pkgs; };
+        losos-erase = import ./tests/erase.nix { inherit pkgs impermanence; };
         losos-console = import ./tests/console.nix { inherit pkgs; };
         # The real Forgejo with losos.forgejo.federation on, asked what another
         # server would ask, in both deployment modes; then off, and gone

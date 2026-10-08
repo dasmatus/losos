@@ -11,8 +11,9 @@
 //!
 //! `losos-ctl factory-reset` does **not** do that, whatever an earlier draft of
 //! this comment said. It restores the committed defaults and rebuilds; see
-//! [`crate::losos::cmd_factory_reset`], which is explicit that the destructive
-//! tier is the installer ISO, not the command.
+//! [`crate::losos::cmd_factory_reset`]. The erase (`POST /api/erase`,
+//! [`crate::erase`]) deletes the data but keeps the installation, and with it
+//! this module's file goes too: the box mints a new code on the next start.
 //!
 //! # What it does not solve — read this before wiring an edge half
 //!
@@ -37,11 +38,15 @@
 //! credential. It is not what this module's text used to claim, and it should
 //! be decided on its own merits.
 //!
-//! Until that decision is made, this module has exactly one job — make a code,
-//! keep it stable for the life of the installation, and hand it back when the
-//! first-run wizard asks. **Nothing consumes it**, and the wizard step that
-//! shows it still tells the owner it is "the only proof that the new box is the
-//! old one", which is the claim `modules/recovery.nix` warns against.
+//! Until that decision is made, this module has one job: make a code, keep it
+//! stable for the life of the installation, and hand it back when asked. Its
+//! one consumer is backups: the code is the restic repository password
+//! (`modules/backup.nix`, `backend/src/backup.rs`), so it is what opens a
+//! backup on an erased or reinstalled box, and a restore installs the code the
+//! backup was made with. The Backup pane shows it on request. The hidden
+//! wizard step that also shows it still tells the owner it is "the only proof
+//! that the new box is the old one", which is the claim `modules/recovery.nix`
+//! warns against.
 //!
 //! # Why the durable copy is not on the box
 //!

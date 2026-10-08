@@ -34,6 +34,7 @@ export const HANDBOOK_ENTRIES = {
   "getting-help": "troubleshooting/getting-help/",
   "sign-in-and-spare-key": "manual/sign-in-and-spare-key/",
   "look-and-widgets": "manual/look-and-widgets/",
+  "backup-and-erase": "manual/backup-and-erase/",
   "custom-domain": "types/official-edge/",
 } as const;
 
