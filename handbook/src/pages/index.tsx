@@ -1,4 +1,5 @@
 import React, {type ReactNode} from 'react';
+import clsx from 'clsx';
 import Link from '@docusaurus/Link';
 import Layout from '@theme/Layout';
 import ThemedImage from '@theme/ThemedImage';
@@ -96,6 +97,78 @@ const FEATURES: Feature[] = [
       </Translate>
     ),
     to: '/troubleshooting/only-the-lan-works',
+  },
+];
+
+/* Planned, each with the page that says how far along it is. The list is
+ * the project page's "What is done and what is planned" plus what the code
+ * shows unfinished: the Market pane is `planned: true` in the admin UI's
+ * panes.ts, and no edge deploys Longhorn while
+ * losos.edge.cluster.longhornChart defaults to null. Nothing goes here
+ * that is not built or started. */
+const SOON: Feature[] = [
+  {
+    title: <Translate id="losos.home.soon.market.title">The market</Translate>,
+    body: (
+      <Translate id="losos.home.soon.market.body">
+        Get paid for the disk and CPU your box lends, and buy room from other
+        boxes. It is built and tested against Stripe's test mode. It opens
+        once a registered business stands behind it.
+      </Translate>
+    ),
+    to: '/types/official-edge',
+  },
+  {
+    title: (
+      <Translate id="losos.home.soon.pool.title">One storage pool across boxes</Translate>
+    ),
+    body: (
+      <Translate id="losos.home.soon.pool.body">
+        Boxes behind one edge will lend their unused disk to a single
+        replicated pool. The encrypted share on each box is built. The edge
+        does not run the pool's storage service yet, and the switch waits for
+        the market.
+      </Translate>
+    ),
+    to: '/types/storage-modes',
+  },
+  {
+    title: (
+      <Translate id="losos.home.soon.secureboot.title">A signed installer</Translate>
+    ),
+    body: (
+      <Translate id="losos.home.soon.secureboot.body">
+        The installer is ready to be signed for Secure Boot. Once the LosOS
+        signing key exists, every release is signed, and a firmware that
+        trusts the LosOS certificate boots it with Secure Boot on.
+      </Translate>
+    ),
+    to: '/start/secure-boot',
+  },
+  {
+    title: (
+      <Translate id="losos.home.soon.company.title">Ready setups for companies</Translate>
+    ),
+    body: (
+      <Translate id="losos.home.soon.company.body">
+        Boxes for each team, one edge for the office and the install done for
+        you. The company setup works today. Selling it as a package comes
+        next.
+      </Translate>
+    ),
+    to: '/types/company-edge',
+  },
+  {
+    title: (
+      <Translate id="losos.home.soon.translations.title">The handbook in Slovak and German</Translate>
+    ),
+    body: (
+      <Translate id="losos.home.soon.translations.body">
+        The menus and this page are translated already. The handbook's pages
+        follow one at a time.
+      </Translate>
+    ),
+    to: '/reference/for-developers#translating',
   },
 ];
 
@@ -294,6 +367,27 @@ function Setups(): ReactNode {
   );
 }
 
+function Soon(): ReactNode {
+  return (
+    <section className={styles.section}>
+      <h2 className={styles.sectionTitle}>
+        <Translate id="losos.home.soon.title">Coming soon</Translate>
+      </h2>
+      <div className={styles.soonGrid}>
+        {SOON.map((f, i) => (
+          <Link key={i} to={f.to} className={clsx(styles.tile, styles.soon)}>
+            <span className={styles.soonChip}>
+              <Translate id="losos.home.soon.chip">Soon</Translate>
+            </span>
+            <h3 className={styles.itemTitle}>{f.title}</h3>
+            <p className={styles.itemBody}>{f.body}</p>
+          </Link>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function Requirements(): ReactNode {
   return (
     <section className={styles.section}>
@@ -382,6 +476,7 @@ export default function Home(): ReactNode {
         <Features />
         <Steps />
         <Setups />
+        <Soon />
         <Requirements />
         <Closing />
       </main>
