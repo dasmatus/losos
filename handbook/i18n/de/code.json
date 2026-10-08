@@ -381,13 +381,13 @@
     "message": "Jeden Morgen ein frisches System"
   },
   "losos.home.feature.self.body": {
-    "message": "Die Box startet um 00:07 neu und baut ihre Systemplatte bei jedem Start von Grund auf neu. Ihre Daten und Einstellungen bleiben auf dem verschlüsselten Laufwerk. Eine verirrte Änderung irgendwo sonst im System ist am Morgen weg."
+    "message": "Sie behält ihren Zustand über Neustarts hinweg."
   },
   "losos.home.feature.disk.title": {
     "message": "Eine verschlüsselte Platte"
   },
   "losos.home.feature.disk.body": {
-    "message": "Der Schlüssel bleibt im TPM-Chip des Rechners. Eine ausgebaute Platte lässt sich an einem anderen Computer nicht lesen."
+    "message": "Ihre Daten liegen auf einem verschlüsselten Laufwerk. Auf einem Rechner mit TPM-Chip bleibt der Schlüssel im Chip."
   },
   "losos.home.feature.password.title": {
     "message": "Ein Passwort, keine Shell"

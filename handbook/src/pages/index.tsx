@@ -53,9 +53,7 @@ const FEATURES: Feature[] = [
     ),
     body: (
       <Translate id="losos.home.feature.self.body">
-        The box restarts at 00:07 and rebuilds its system disk from scratch on
-        every boot. Your data and settings carry over on the encrypted volume.
-        A stray change anywhere else in the system is gone by morning.
+        It keeps its state across restarts.
       </Translate>
     ),
     to: '/manual/updates-and-reboots',
@@ -66,8 +64,8 @@ const FEATURES: Feature[] = [
     ),
     body: (
       <Translate id="losos.home.feature.disk.body">
-        The disk key stays in the machine's own TPM chip. A disk pulled out
-        and plugged into another computer cannot be read.
+        Your data is on an encrypted volume. On a machine with a TPM chip, the
+        key stays in the chip.
       </Translate>
     ),
     to: '/types/install-variants',
