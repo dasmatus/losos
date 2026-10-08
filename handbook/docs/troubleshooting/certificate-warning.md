@@ -16,16 +16,18 @@ line through it, on an `https://` address of the box.
 
 ## Why
 
-The box signs its own certificate; no public authority can issue one for a
-`.local` name. Until your browser is told to trust that certificate, every
-`https://` page warns. Plain `http://<address>` never warns and is fine on
-your own LAN; HTTPS matters for passkeys and for not sending the password in
-the clear.
+The box signs its own certificate, because no public authority can issue
+one for a `.local` name. Until you tell your browser to trust that
+certificate, every `https://` page warns. Plain `http://<address>` never
+warns and is fine on your own LAN. HTTPS matters for passkeys, and it keeps
+the password from crossing the network in the clear.
 
 ## The fix: install the certificate once per computer
 
-The wizard's first step shows the one-line installer; after setup the same
-files are still served by the box, LAN-only:
+The wizard's first step shows the one-line installer. After setup the box
+still serves the same files, to the LAN only:
+
+<img src={require("../img/wizard-step1-trust.png").default} alt="The wizard's certificate step, where the one-line installers and the fingerprint are." width="520" />
 
 ```bash title="macOS and Linux"
 curl -fsSL http://<address>/setup/trust.sh | sh
@@ -36,26 +38,26 @@ irm http://<address>/setup/trust.ps1 | iex
 ```
 
 The script adds one certificate to your user's browser stores and prints its
-fingerprint; compare it with `http://<address>/setup/state.json`. Then
+fingerprint. Compare it with `http://<address>/setup/state.json`. Then
 **restart the browser** and open `https://<name>.local`.
 
-By hand: download `http://<address>/setup/losos-ca.crt` and add it as a
-trusted certificate authority (Keychain Access on macOS, `certmgr.msc` →
-Trusted Root Certification Authorities on Windows, the browser's own
-certificate settings in Firefox, the phone's security settings).
+To do it by hand, download `http://<address>/setup/losos-ca.crt` and add it
+as a trusted certificate authority. On macOS that is Keychain Access. On
+Windows it is `certmgr.msc` → Trusted Root Certification Authorities. Firefox
+has its own certificate settings, and a phone has its security settings.
 
 ## Still warning after installing
 
 - **You opened `https://<address>`.** The certificate is for `<name>.local`
-  only; an IP address always warns. Use the name, or plain `http://` with the
-  address.
-- **Firefox on Linux** keeps its own store per profile; the script covers
-  every profile it finds, but a profile created later needs the script run
-  again.
-- **The box was reinstalled** or its name changed: it has a new certificate.
-  Run the script again; the old entry does no harm.
-- **The certificate expired.** It is valid for two years from the install;
-  the box mints a new one when it runs out, and the script installs the new
+  only, so an IP address always warns. Use the name, or plain `http://` with
+  the address.
+- **Firefox on Linux** keeps its own store per profile. The script covers
+  every profile it finds, but you need to run it again for a profile you
+  create later.
+- **The box was reinstalled** or its name changed, so it has a new
+  certificate. Run the script again. The old entry does no harm.
+- **The certificate expired.** It is valid for two years from the install.
+  The box makes a new one when it runs out, and the script installs the new
   one.
 - **Chrome says the certificate is "not valid for this name"** after a
   rename: same cause, same fix.
@@ -63,6 +65,6 @@ certificate settings in Firefox, the phone's security settings).
 ## Should I just click through?
 
 On your own LAN, for a box you installed yourself, clicking through once is
-not dangerous. But a browser that was told to ignore the warning will also
-ignore a real attacker on the same Wi-Fi, and passkeys will not be offered.
-Install the certificate instead; it takes one line.
+not dangerous. But once you tell a browser to ignore the warning, it also
+ignores a real attacker on the same Wi-Fi, and it does not offer passkeys.
+Install the certificate instead. It takes one line.

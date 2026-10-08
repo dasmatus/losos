@@ -18,8 +18,8 @@ LosOS is in two other places:
 ## Changing this handbook
 
 The source is `handbook/` in the repository, a [Docusaurus](https://docusaurus.io/)
-site. Pages are Markdown under `handbook/docs/`; the sidebar follows the
-folder tree, each folder named by its `_category_.json`.
+site. Pages are Markdown under `handbook/docs/`. The sidebar follows the
+folder tree, and each folder takes its name from its `_category_.json`.
 
 ```sh
 cd handbook
@@ -38,13 +38,44 @@ Every push to `main` publishes the site to [losos.dasmat.us](https://losos.dasma
 nix run nixpkgs#prefetch-npm-deps -- handbook/package-lock.json
 ```
 
+### Pictures
+
+Pictures live in `handbook/docs/img/`, and the Slovak KOP's in
+`handbook/docs/project/kop/img/`. There are three kinds:
+
+- **Admin pages and wizard.** `admin-ui/app/tests/handbook-screens.mjs`
+  takes them from the built SPA against a stubbed lososd, so they show the
+  current UI and logo without a box. It writes 2x PNGs, which go into the
+  handbook downscaled to 1600 px wide and reduced to 256 colours.
+- **Screens of a real machine.** The installer, the tty1 banner, the
+  passphrase prompt and the Secure Boot refusals come from VM runs
+  (`tests/secure-boot.nix`, the install demos). No script retakes them.
+- **Diagrams.** These are hand-written SVG on a white card, in the palette
+  of the admin UI (`admin-ui/app/src/styles/tokens.css`), so they read the
+  same in the light and the dark theme. Edit them as text.
+
+```sh
+cd admin-ui/app
+npm run build
+node tests/handbook-screens.mjs /tmp/handbook-screens          # every shot
+node tests/handbook-screens.mjs /tmp/handbook-screens mesh     # names containing "mesh"
+```
+
+Set `LOSOS_CHROMIUM` to a Chromium binary if Playwright's own is missing.
+The Market pane is planned and its route falls back, so the two market
+shots run only with `LOSOS_SHOOT_MARKET=1` against a build with
+`planned: false` in `src/screens/settings/panes.ts`. Never commit that
+change.
+
+Write alt text that says what the picture shows, not what the page says.
+
 ## Translating
 
 Slovak and German are wired in. The interface strings live in
-`handbook/i18n/<locale>/code.json`; a page is translated by copying it to
+`handbook/i18n/<locale>/code.json`. To translate a page, copy it to
 `handbook/i18n/<locale>/docusaurus-plugin-content-docs/current/<same path>`
-and translating the copy. A page without a translation shows in English under
-the translated chrome, so the work can be done one page at a time.
+and translate the copy. A page without a translation shows in English under
+the translated chrome, so you can translate one page at a time.
 
 ```sh
 npm run write-translations -- --locale sk   # refresh the string files

@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="420" viewBox="0 0 1000 420" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'DejaVu Sans', sans-serif" font-size="14" fill="#18212a">
+  <title>Use the reserve: grow the volume, then the encryption layer, then the filesystem</title>
+  <defs><pattern id="h" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="7" height="7" fill="#f3f5f7"/><line x1="0" y1="0" x2="0" y2="7" stroke="#c4ccd3" stroke-width="2.5"/></pattern>
+  <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#0e6e7d"/></marker></defs>
+  <rect x="0.5" y="0.5" width="999" height="419" rx="12" fill="#ffffff" stroke="#dce1e6"/>
+  <text x="40" y="40" font-weight="650">The disk, from the outside in</text>
+  <text x="40" y="62" fill="#5c6a77" font-size="13">The installer leaves 10 % of the disk unused. The Storage pane's "Use the reserve" claims it with everything still running.</text>
+  <rect x="40" y="84" width="920" height="168" rx="10" fill="#f3f5f7" stroke="#5c6a77"/>
+  <text x="56" y="106" font-size="13" fill="#5c6a77">The disks, as one LVM volume group</text>
+  <rect x="56" y="116" width="770" height="122" rx="8" fill="#e2eff1" stroke="#0e6e7d" stroke-width="1.5"/>
+  <text x="72" y="138" font-size="13" fill="#0e6e7d">1. the logical volume</text>
+  <rect x="72" y="146" width="738" height="80" rx="6" fill="#ffffff" stroke="#0e6e7d"/>
+  <text x="88" y="168" font-size="13" fill="#0e6e7d">2. LUKS, the encryption layer</text>
+  <rect x="88" y="176" width="706" height="40" rx="5" fill="#0e6e7d"/>
+  <text x="104" y="201" font-size="13" fill="#ffffff" font-weight="650">3. ext4: /persist, your files and the system</text>
+  <rect x="834" y="116" width="110" height="122" rx="8" fill="url(#h)" stroke="#8c98a4" stroke-dasharray="4 3"/>
+  <text x="889" y="172" text-anchor="middle" font-size="13" font-weight="650">reserve</text>
+  <text x="889" y="191" text-anchor="middle" font-size="13" fill="#5c6a77">10 %</text>
+  <line x1="800" y1="262" x2="900" y2="262" stroke="#0e6e7d" stroke-width="2" marker-end="url(#ar)"/>
+  <text x="790" y="267" text-anchor="end" font-size="13" fill="#0e6e7d">each layer grows to the right, in this order</text>
+
+  <rect x="40" y="292" width="290" height="96" rx="8" fill="#f3f5f7" stroke="#dce1e6"/>
+  <circle cx="68" cy="322" r="14" fill="#0e6e7d"/><text x="68" y="327" text-anchor="middle" fill="#ffffff" font-weight="650" font-size="13">1</text>
+  <text x="92" y="327" font-weight="650">Grow the volume</text>
+  <text x="58" y="360" font-size="13" fill="#5c6a77">by the reserve, added to its size</text>
+  <line x1="332" y1="340" x2="353" y2="340" stroke="#0e6e7d" stroke-width="1.5" marker-end="url(#ar)"/>
+  <rect x="355" y="292" width="290" height="96" rx="8" fill="#f3f5f7" stroke="#dce1e6"/>
+  <circle cx="383" cy="322" r="14" fill="#0e6e7d"/><text x="383" y="327" text-anchor="middle" fill="#ffffff" font-weight="650" font-size="13">2</text>
+  <text x="407" y="327" font-weight="650">Grow the encryption layer</text>
+  <text x="373" y="360" font-size="13" fill="#5c6a77">to fill the larger volume</text>
+  <line x1="647" y1="340" x2="668" y2="340" stroke="#0e6e7d" stroke-width="1.5" marker-end="url(#ar)"/>
+  <rect x="670" y="292" width="290" height="96" rx="8" fill="#f3f5f7" stroke="#dce1e6"/>
+  <circle cx="698" cy="322" r="14" fill="#0e6e7d"/><text x="698" y="327" text-anchor="middle" fill="#ffffff" font-weight="650" font-size="13">3</text>
+  <text x="722" y="327" font-weight="650">Grow the filesystem</text>
+  <text x="688" y="360" font-size="13" fill="#5c6a77">to fill the larger encryption layer</text>
+  <text x="40" y="410" font-size="12" fill="#5c6a77">The order matters: grown the other way round, the filesystem sees the old size and nothing grows.</text>
+  </svg>
