@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lab libvirt over wasm</title>
+<style>
+  :root { --bg: #f6f3ee; --fg: #1d1b19; --muted: #6b645c; --ok: #2f7a3e; --bad: #b3261e; --term: #0d0d0d; --termfg: #e6e6e6; }
+  body { margin: 0; padding: 16px; background: var(--bg); color: var(--fg); font: 14px/1.45 system-ui, sans-serif; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  p.sub { margin: 0 0 12px; color: var(--muted); }
+  ol { margin: 0 0 12px; padding-left: 20px; font: 12.5px/1.5 ui-monospace, Menlo, monospace; }
+  li.ok::marker { color: var(--ok); } li.bad { color: var(--bad); }
+  pre { margin: 0; padding: 10px 12px; background: var(--term); color: var(--termfg); font: 12px/1.35 ui-monospace, Menlo, monospace; white-space: pre-wrap; word-break: break-all; border-radius: 6px; min-height: 160px; }
+  #verdict { font-weight: 600; margin: 8px 0; }
+</style>
+</head>
+<body>
+<h1>LosOS Lab: libvirt from the page</h1>
+<p class="sub">The libvirt client is WebAssembly (losos-lab-virt). The host runs only a byte relay; no virsh, no libvirt client library.</p>
+<ol id="log"></ol>
+<div id="verdict">running…</div>
+<pre id="term"></pre>
+<script type="module" src="demo.js"></script>
+</body>
+</html>

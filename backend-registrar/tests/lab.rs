@@ -5,17 +5,21 @@
 //! "running" domains. The test then plays QEMU's part: it connects to the
 //! serial port the XML names and binds the UDP port QEMU would, so the
 //! console and NIC bridges are exercised byte for byte.
+//!
+//! The libvirt relay (`/lab/v1/virt`) is tested against a unix-socket echo
+//! server standing in for libvirtd: the relay parses nothing, so what comes
+//! back must be exactly what went in.
 
 mod common;
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use futures_util::{SinkExt, StreamExt};
 use losos_registrar::lab::{serve, LabOpts};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::{TcpListener, TcpStream, UdpSocket};
-use tokio::sync::oneshot;
+use tokio::net::{TcpListener, TcpStream, UdpSocket, UnixListener};
+use tokio::sync::{mpsc, oneshot};
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::Message;
 
@@ -61,6 +65,11 @@ struct Helper {
 }
 
 async fn helper(idle: Duration) -> Helper {
+    helper_with(idle, |_, _| {}).await
+}
+
+/// A helper whose options `tweak` may change; it gets the test's directory.
+async fn helper_with(idle: Duration, tweak: impl FnOnce(&mut LabOpts, &Path)) -> Helper {
     let dir = common::TempDir::new("lab");
     let images = dir.path().join("guest");
     std::fs::create_dir_all(&images).expect("images");
@@ -75,7 +84,7 @@ async fn helper(idle: Duration) -> Helper {
     let virsh = fake_virsh(dir.path());
     let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
     let addr = listener.local_addr().expect("addr");
-    let opts = LabOpts {
+    let mut opts = LabOpts {
         listen: addr.to_string(),
         images,
         origins: vec![ORIGIN.to_string()],
@@ -83,6 +92,7 @@ async fn helper(idle: Duration) -> Helper {
         idle,
         ..LabOpts::defaults()
     };
+    tweak(&mut opts, dir.path());
     let (tx, rx) = oneshot::channel::<()>();
     let task = tokio::spawn(serve(listener, opts, async {
         let _ = rx.await;
@@ -158,6 +168,17 @@ async fn ws_connect(
     tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<TcpStream>>,
     tokio_tungstenite::tungstenite::Error,
 > {
+    ws_connect_from(url, ticket, ORIGIN).await
+}
+
+async fn ws_connect_from(
+    url: &str,
+    ticket: &str,
+    origin: &str,
+) -> Result<
+    tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<TcpStream>>,
+    tokio_tungstenite::tungstenite::Error,
+> {
     let mut req = url.into_client_request().expect("request");
     req.headers_mut().insert(
         "Sec-WebSocket-Protocol",
@@ -166,7 +187,7 @@ async fn ws_connect(
             .expect("header"),
     );
     req.headers_mut()
-        .insert("Origin", ORIGIN.parse().expect("origin"));
+        .insert("Origin", origin.parse().expect("origin"));
     tokio_tungstenite::connect_async(req)
         .await
         .map(|(ws, _)| ws)
@@ -394,4 +415,239 @@ async fn preflights_answer_private_network_access_and_foreign_hosts_are_refused(
     s.read_to_string(&mut out).await.expect("read");
     assert!(out.starts_with("HTTP/1.1 403"), "{out}");
     h.stop().await;
+}
+
+/// libvirtd as far as the relay can tell: a unix socket that echoes what it
+/// reads. Each connection reports how many bytes it carried when it ends, so
+/// hello's probes (zero bytes) are told apart from relayed sessions.
+fn fake_libvirtd(path: &Path) -> (tokio::task::JoinHandle<()>, mpsc::UnboundedReceiver<usize>) {
+    let listener = UnixListener::bind(path).expect("bind the fake libvirtd");
+    let (tx, rx) = mpsc::unbounded_channel();
+    let task = tokio::spawn(async move {
+        loop {
+            let Ok((mut s, _)) = listener.accept().await else {
+                return;
+            };
+            let tx = tx.clone();
+            tokio::spawn(async move {
+                let mut carried = 0;
+                let mut buf = vec![0u8; 8192];
+                loop {
+                    match s.read(&mut buf).await {
+                        Ok(0) | Err(_) => break,
+                        Ok(n) => {
+                            carried += n;
+                            if s.write_all(&buf[..n]).await.is_err() {
+                                break;
+                            }
+                        }
+                    }
+                }
+                let _ = tx.send(carried);
+            });
+        }
+    });
+    (task, rx)
+}
+
+fn socket_uri(sock: &Path) -> String {
+    format!("qemu:///session?socket={}", sock.display())
+}
+
+async fn hello_of(h: &Helper) -> serde_json::Value {
+    reqwest::get(format!("{}hello", h.base))
+        .await
+        .expect("hello")
+        .json()
+        .await
+        .expect("json")
+}
+
+async fn virt_ticket(h: &Helper, origin: &str, bearer: Option<&str>) -> reqwest::Response {
+    let mut r = reqwest::Client::new()
+        .post(format!("{}virt-ticket", h.base))
+        .header("Origin", origin);
+    if let Some(t) = bearer {
+        r = r.bearer_auth(t);
+    }
+    r.send().await.expect("post virt-ticket")
+}
+
+fn virt_url(h: &Helper) -> String {
+    h.ws.replace("/lab/v1/guests/", "/lab/v1/virt")
+}
+
+/// Read binary messages until `want` bytes have come back.
+async fn read_back<S>(ws: &mut S, want: usize) -> Vec<u8>
+where
+    S: StreamExt<Item = Result<Message, tokio_tungstenite::tungstenite::Error>> + Unpin,
+{
+    let mut got = Vec::new();
+    while got.len() < want {
+        match tokio::time::timeout(Duration::from_secs(5), ws.next()).await {
+            Ok(Some(Ok(Message::Binary(b)))) => got.extend_from_slice(&b),
+            other => panic!("relay said {other:?} after {} bytes", got.len()),
+        }
+    }
+    got
+}
+
+#[tokio::test]
+async fn the_relay_carries_bytes_to_libvirts_socket_and_back() {
+    let sock_dir = common::TempDir::new("virt");
+    let sock: PathBuf = sock_dir.path().join("virtqemud-sock");
+    let (server, mut ended) = fake_libvirtd(&sock);
+    let uri = socket_uri(&sock);
+    let h = helper_with(Duration::from_secs(60), |o, _| o.connect = uri).await;
+
+    let hello = hello_of(&h).await;
+    assert_eq!(hello["virt"]["available"], true, "{hello}");
+    assert_eq!(hello["virt"]["socket"], sock.display().to_string());
+
+    // A page from elsewhere gets no ticket, and no socket without one.
+    assert_eq!(
+        virt_ticket(&h, "https://evil.example", None).await.status(),
+        403
+    );
+    assert!(ws_connect(&virt_url(&h), "").await.is_err());
+
+    let t: serde_json::Value = virt_ticket(&h, ORIGIN, None)
+        .await
+        .json()
+        .await
+        .expect("json");
+    let ticket = t["ticket"].as_str().expect("ticket").to_string();
+    assert_eq!(ticket.len(), 32);
+    assert_eq!(t["expiresIn"], 30);
+
+    // A foreign Origin is refused before the ticket is looked at, so the
+    // ticket is still good for the page it was minted for.
+    assert!(
+        ws_connect_from(&virt_url(&h), &ticket, "https://evil.example")
+            .await
+            .is_err()
+    );
+    let mut ws = ws_connect(&virt_url(&h), &ticket)
+        .await
+        .expect("relay socket");
+
+    // Small, then bigger than any one read: the relay copies, never frames.
+    let hello_bytes: Vec<u8> = (0u8..=255).collect();
+    ws.send(Message::binary(hello_bytes.clone()))
+        .await
+        .expect("send");
+    assert_eq!(read_back(&mut ws, hello_bytes.len()).await, hello_bytes);
+    let big: Vec<u8> = (0..200_000u32).map(|i| (i % 251) as u8).collect();
+    ws.send(Message::binary(big.clone())).await.expect("send");
+    assert_eq!(read_back(&mut ws, big.len()).await, big);
+
+    // One use only.
+    assert!(ws_connect(&virt_url(&h), &ticket).await.is_err());
+
+    // Closing the WebSocket closes libvirt's connection, which is what ends
+    // the page's AUTODESTROY guests.
+    ws.close(None).await.expect("close");
+    let carried = loop {
+        match tokio::time::timeout(Duration::from_secs(5), ended.recv()).await {
+            Ok(Some(0)) => continue,
+            Ok(Some(n)) => break n,
+            other => panic!("libvirt's side never closed: {other:?}"),
+        }
+    };
+    assert_eq!(carried, hello_bytes.len() + big.len());
+
+    // A session still open when the helper stops does not hold it up.
+    let t: serde_json::Value = virt_ticket(&h, ORIGIN, None)
+        .await
+        .json()
+        .await
+        .expect("json");
+    let mut open = ws_connect(&virt_url(&h), t["ticket"].as_str().expect("ticket"))
+        .await
+        .expect("second socket");
+    open.send(Message::binary(vec![7u8; 10]))
+        .await
+        .expect("send");
+    assert_eq!(read_back(&mut open, 10).await, vec![7u8; 10]);
+    tokio::time::timeout(Duration::from_secs(10), h.stop())
+        .await
+        .expect("the helper stopped with a relay open");
+    server.abort();
+}
+
+#[tokio::test]
+async fn hello_reports_the_relay_apart_from_virsh() {
+    let sock_dir = common::TempDir::new("virt");
+    let sock = sock_dir.path().join("virtqemud-sock");
+    let uri = socket_uri(&sock);
+    // No virsh on this machine at all.
+    let h = helper_with(Duration::from_secs(60), |o, _| {
+        o.connect = uri;
+        o.virsh = "/nonexistent/virsh".into();
+    })
+    .await;
+
+    let hello = hello_of(&h).await;
+    assert_eq!(hello["available"], false, "{hello}");
+    assert_eq!(hello["virsh"], false);
+    assert_eq!(hello["virt"]["available"], false, "no socket yet: {hello}");
+    assert_eq!(hello["virt"]["socket"], sock.display().to_string());
+    assert!(hello["virt"]["reason"]
+        .as_str()
+        .is_some_and(|r| r.contains("did not answer")));
+
+    // A ticket is cheap; spending it on a socket nobody listens on is a 503
+    // before any upgrade.
+    let t: serde_json::Value = virt_ticket(&h, ORIGIN, None)
+        .await
+        .json()
+        .await
+        .expect("json");
+    match ws_connect(&virt_url(&h), t["ticket"].as_str().expect("ticket")).await {
+        Err(tokio_tungstenite::tungstenite::Error::Http(r)) => assert_eq!(r.status(), 503),
+        other => panic!("expected a 503, got {other:?}"),
+    }
+
+    // libvirt comes up: the relay is available although virsh still is not.
+    let (server, _) = fake_libvirtd(&sock);
+    let hello = hello_of(&h).await;
+    assert_eq!(hello["available"], false);
+    assert_eq!(hello["virt"]["available"], true, "{hello}");
+    assert!(hello["virt"]["reason"].is_null());
+    h.stop().await;
+    server.abort();
+}
+
+#[tokio::test]
+async fn with_a_token_file_a_relay_ticket_wants_the_token() {
+    let sock_dir = common::TempDir::new("virt");
+    let sock = sock_dir.path().join("virtqemud-sock");
+    let (server, _) = fake_libvirtd(&sock);
+    let uri = socket_uri(&sock);
+    let h = helper_with(Duration::from_secs(60), |o, dir| {
+        let f = dir.join("token");
+        std::fs::write(&f, format!("{}\n", common::GOOD_TOKEN)).expect("token");
+        o.token_file = Some(f.display().to_string());
+        o.connect = uri;
+    })
+    .await;
+    assert_eq!(virt_ticket(&h, ORIGIN, None).await.status(), 401);
+    assert_eq!(
+        virt_ticket(&h, ORIGIN, Some(common::OTHER_TOKEN))
+            .await
+            .status(),
+        401
+    );
+    let t = virt_ticket(&h, ORIGIN, Some(common::GOOD_TOKEN)).await;
+    assert_eq!(t.status(), 200);
+    let t: serde_json::Value = t.json().await.expect("json");
+    let mut ws = ws_connect(&virt_url(&h), t["ticket"].as_str().expect("ticket"))
+        .await
+        .expect("relay socket");
+    ws.send(Message::binary(b"ping".to_vec()))
+        .await
+        .expect("send");
+    assert_eq!(read_back(&mut ws, 4).await, b"ping");
+    h.stop().await;
+    server.abort();
 }

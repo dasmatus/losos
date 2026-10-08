@@ -88,20 +88,37 @@ to `main` it also deploys the copy to Vercel, if the repository has the
 
 qemu-wasm is slow: a guest takes a minute or more to boot in a tab, and a
 tab runs three. If the computer the Lab is open on has libvirt (the thing
-virt-manager drives), the Lab runs its guests there instead, under KVM when
-the CPU has it. They boot in a few seconds, and up to eight run at once.
+virt-manager drives), the Lab can run its guests there instead, under KVM
+when the CPU has it. They boot in a few seconds, and up to eight run at once.
 
-The bridge is a subcommand of the edge registrar, `losos-registrar lab`. It
-talks to libvirt only through the `virsh` command, and starts each guest as
-a transient domain named `losos-lab-...`. Transient means libvirt never
-saves it, so nothing outlives the helper: Ctrl-C or SIGTERM destroys every
-guest it started, a guest no Lab page has watched for a minute is destroyed
-too, and on start it removes any `losos-lab-` domain a killed helper left
-behind. A guest is on no libvirt network and no bridge. Its serial console
-and its network card are connected to the helper on 127.0.0.1, and the
-helper hands both to the page over WebSockets. The page is still the switch,
-so a libvirt guest and a qemu-wasm guest can share a cable, and DHCP, ARP
-and ping between them work as before.
+There are three ways a guest can run, in order of preference:
+
+1. **The helper drives libvirt through `virsh`.** The helper is a
+   subcommand of the edge registrar, `losos-registrar lab`, running on the
+   same computer as libvirt. It needs libvirt, QEMU and the `virsh` command
+   there, and the guest images in a folder the helper can read.
+2. **The page drives libvirt itself, through the helper's relay.** The
+   helper also offers a WebSocket that it copies, byte for byte, to
+   libvirt's own socket. A page that carries the WebAssembly libvirt client
+   (`admin-ui/lab/virt-rpc`, the package `losos-lab-virt`) speaks libvirt's
+   protocol over it, so this path needs the helper and a running libvirt
+   daemon but no `virsh` and no libvirt client library on the computer.
+3. **qemu-wasm in the tab.** Nothing on the computer at all, only the
+   hosted Lab's engine. This is the slow path, and the fallback for any
+   guest the first two cannot start.
+
+### The helper and `virsh`
+
+The helper starts each guest as a transient domain named `losos-lab-...`
+with `virsh create`. Transient means libvirt never saves it, so nothing
+outlives the helper: Ctrl-C or SIGTERM destroys every guest it started, a
+guest no Lab page has watched for a minute is destroyed too, and on start
+it removes any `losos-lab-` domain a killed helper left behind. A guest is
+on no libvirt network and no bridge. Its serial console and its network
+card are connected to the helper on 127.0.0.1, and the helper hands both to
+the page over WebSockets. The page is still the switch, so a libvirt guest
+and a qemu-wasm guest can share a cable, and DHCP, ARP and ping between
+them work as before.
 
 To use it next to virt-manager on your own PC:
 
@@ -143,11 +160,68 @@ libvirt refuses a guest, that guest boots under qemu-wasm as before, and the
 Lab says so once. The box's own copy has no qemu-wasm, so there it keeps the
 simulated console.
 
-On a box, `losos.lab.libvirt.enable` (off by default) turns on libvirtd and
-runs the same helper as a service. lososd relays the Lab's requests to it
-under `/api/lab/` with the admin key, and the guests' consoles and network
-cards go through nginx with a ticket only that key can get. Put the three
-images in `/var/lib/losos-lab/images` (`losos.lab.libvirt.images`).
+### The WebAssembly client and the relay
+
+A web page cannot open libvirt's socket: browsers offer no raw TCP and no
+unix sockets to a normal page, and libvirt has no WebSocket listener of its
+own. So the helper relays. The page asks `POST /lab/v1/virt-ticket` for a
+ticket, then opens the WebSocket `/lab/v1/virt` with the subprotocols
+`losos-lab` and `ticket.<ticket>`. The ticket is good once, for 30 seconds.
+The helper connects to the socket of its `--connect` URI and copies bytes
+both ways without reading them. For `qemu:///session` that socket is
+`$XDG_RUNTIME_DIR/libvirt/virtqemud-sock`, or `libvirt-sock` beside it for a
+monolithic libvirtd. For `qemu:///system` it is
+`/run/libvirt/virtqemud-sock`, then `/run/libvirt/libvirt-sock`. A
+`?socket=PATH` in the URI names the socket directly, as it does for
+`virsh`. The helper keeps at most `--max-guests` relayed sockets open at
+once.
+
+`GET /lab/v1/hello` reports this path on its own, as
+`virt: {available, socket}`. `available` is true when the socket accepts a
+connection right now, so it can be true while `virsh` is missing. The
+helper does not start a session daemon the way `virsh` does, so with
+`qemu:///session` the daemon must already be running or started by its
+systemd socket.
+
+The client creates its guests with libvirt's autodestroy flag, so they end
+when the connection does: when the tab closes, and when the helper stops,
+because the helper closes every relayed socket on Ctrl-C or SIGTERM. The
+helper does not count, sweep or destroy these guests; they belong to the
+page. To try the path, `admin-ui/lab/virt-rpc/README.md` shows how to open
+its demo page through the helper.
+
+### Security
+
+Whoever holds a relayed socket has libvirt with the helper's rights.
+libvirt identifies a socket's peer by its user id, so it sees the helper and
+never the page, and polkit asks about the helper too. With
+`qemu:///system` that is as good as root on the computer, because a page can
+create a domain that attaches any host file or disk, and the relay cannot
+refuse such a domain without parsing libvirt's protocol. Prefer
+`qemu:///session` on your own PC: then the worst case is your own user's
+files. The Lab's guests need nothing from the system instance.
+
+The helper therefore admits the relay socket only with a ticket, and a
+ticket costs the same as starting a guest: the bearer token when the helper
+has `--token-file`, and otherwise a request addressed to `127.0.0.1` or
+`localhost` from an allowed page. The `--origin` list matters most here.
+A WebSocket is not bound by CORS, so any site open in the same browser can
+try to reach `ws://127.0.0.1:8095`, and the helper refuses every request
+whose Origin is not on the list or the helper's own address.
+
+### On a box
+
+`losos.lab.libvirt.enable` (off by default) turns on libvirtd and runs the
+same helper as a service, with `qemu:///system`. lososd relays the Lab's
+requests to it under `/api/lab/` with the admin key, including
+`POST /api/lab/virt-ticket`. The guests' consoles and network cards
+(`/api/lab/ws/`) and the libvirt relay (`/api/lab/virt`) go through nginx
+straight to the helper, from the local network only, and each needs a
+ticket only that key can get. The relay hands out libvirt as the helper's
+user, which is in the `libvirtd` group, so it is root-equivalent on the box;
+the admin key can already rebuild the whole system, so it gives away nothing
+the key did not have. Put the three images in `/var/lib/losos-lab/images`
+(`losos.lab.libvirt.images`).
 
 ## What is not real
 

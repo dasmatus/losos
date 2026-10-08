@@ -24,6 +24,10 @@ let
     # LosOS Lab's core (admin-ui/lab/core/README.md), compiled to wasm for
     # the Lab page. Linted and tested natively like the others.
     "admin-ui/lab/core"
+    # The Lab's libvirt client (admin-ui/lab/virt-rpc/README.md), compiled
+    # to wasm for the page. Its live tests need a running libvirt daemon and
+    # are skipped unless LOSOS_VIRT_SOCK or LOSOS_VIRT_TCP is set.
+    "admin-ui/lab/virt-rpc"
   ];
   forEachCrate = cmd: lib.concatMapStringsSep "\n" (c: ''echo "── ${c}"; ${cmd c}'') crates;
 

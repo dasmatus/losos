@@ -50,6 +50,10 @@
 #   losos-lab-core — the Lab's core in Rust (admin-ui/lab/core/), built for
 #                wasm32 and run through wasm-bindgen: the package the Lab
 #                page imports.
+#   losos-lab-virt — the Lab's libvirt client (admin-ui/lab/virt-rpc/):
+#                libvirt's remote protocol for wasm32, through wasm-bindgen,
+#                for a page that drives libvirt over `losos-registrar lab`'s
+#                byte relay with no virsh on the host.
 #   losos-sign-iso — signs the installer ISO's UEFI loader in place with the
 #                Secure Boot db key, after `nix build`, so the key never
 #                enters a store (modules/secure-boot.nix, flake/sign-iso.sh).
@@ -205,6 +209,33 @@ images
       runHook preInstall
       wasm-bindgen --target web --out-dir $out \
         target/wasm32-unknown-unknown/release/losos_lab_core.wasm
+      runHook postInstall
+    '';
+  };
+
+  # The Lab's libvirt client (admin-ui/lab/virt-rpc/README.md) as a
+  # wasm-bindgen web package: losos_lab_virt.js, its .d.ts and the .wasm.
+  # Built the same way as losos-lab-core, for the same reasons, and pinned
+  # to the same wasm-bindgen.
+  losos-lab-virt = pkgs.rustPlatform.buildRustPackage {
+    pname = "losos-lab-virt";
+    version = "0.1.0";
+    src = lib.cleanSource ./../admin-ui/lab/virt-rpc;
+    cargoHash = "sha256-m5B7NE6dWVgI1bu31+OQ0Kf71AvmrI5L9MeqldQAvlE=";
+    nativeBuildInputs = [
+      pkgs.wasm-bindgen-cli
+      pkgs.lld
+    ];
+    buildPhase = ''
+      runHook preBuild
+      cargo build --release --offline --target wasm32-unknown-unknown
+      runHook postBuild
+    '';
+    doCheck = false;
+    installPhase = ''
+      runHook preInstall
+      wasm-bindgen --target web --out-dir $out \
+        target/wasm32-unknown-unknown/release/losos_lab_virt.wasm
       runHook postInstall
     '';
   };

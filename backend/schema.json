@@ -450,6 +450,27 @@
         },
         "guests": {
           "type": "integer"
+        },
+        "virt": {
+          "type": "object",
+          "description": "The second path: a raw byte relay from the WebSocket at /api/lab/virt to libvirt's unix socket for the helper's URI, for the page's own libvirt client (admin-ui/lab/virt-rpc). `available` is true when that socket accepts a connection now, whether or not `virsh` works; `socket` is its path (or the first one tried); `reason` says why not.",
+          "properties": {
+            "available": {
+              "type": "boolean"
+            },
+            "socket": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "reason": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
         }
       }
     },
@@ -1265,6 +1286,11 @@
       "auth": true,
       "out": "204, or the helper's {error}",
       "note": "Destroy one Lab guest. Audited."
+    },
+    "POST /api/lab/virt-ticket": {
+      "auth": true,
+      "out": "{\"ticket\": \"<32 hex>\", \"expiresIn\": 30, \"uri\": \"qemu:///system\"}",
+      "note": "A single-use ticket, good for 30 seconds, for the WebSocket at /api/lab/virt, which nginx proxies straight to the helper's GET /lab/v1/virt: a byte relay to libvirt's unix socket with no parsing, sent `ticket.<ticket>` as a subprotocol beside `losos-lab`. Whoever holds the socket has libvirt at the helper's uid (root-equivalent under qemu:///system), hence the admin token here. 503 when no helper runs or the URI has no local socket. Audited."
     },
     "GET /api/domains": {
         "auth": true,

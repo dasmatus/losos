@@ -466,6 +466,23 @@ in
               proxy_send_timeout 1h;
             '';
           };
+          # The libvirt relay for the Lab's WebAssembly libvirt client
+          # (admin-ui/lab/virt-rpc): bytes between this WebSocket and
+          # libvirt's socket, at the helper's uid. Admitted by the helper
+          # only with a single-use ticket from POST /api/lab/virt-ticket,
+          # which lososd hands out under the admin token. An exact match,
+          # because a prefix would also take /api/lab/virt-ticket from
+          # lososd.
+          "= /api/lab/virt" = {
+            proxyPass = "http://127.0.0.1:${toString config.losos.lab.libvirt.port}/lab/v1/virt";
+            proxyWebsockets = true;
+            extraConfig = ''
+              ${lanOnly}
+              proxy_set_header Host $http_host;
+              proxy_read_timeout 1h;
+              proxy_send_timeout 1h;
+            '';
+          };
         })
         (lib.mkIf handbookEnabled {
           # The owner's handbook, a second static tree beside the SPA's. It is
