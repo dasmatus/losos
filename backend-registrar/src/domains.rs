@@ -469,6 +469,10 @@ pub struct DomainsView {
     pub addresses: Vec<String>,
     pub max_domains: usize,
     pub domains: Vec<DomainView>,
+    /// The box's relay pass, on an edge with a route table
+    /// (`crate::routes`); set by the handler, never by [`view`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub relay_pass: Option<String>,
 }
 
 /// Build a box's view. Pure.
@@ -513,6 +517,7 @@ pub fn view(
         addresses,
         max_domains: MAX_PER_TENANT,
         domains,
+        relay_pass: None,
     }
 }
 

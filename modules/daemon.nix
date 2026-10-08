@@ -200,6 +200,10 @@ in
         # only answers GET /api/edge.
         LOSOS_EDGE_PATH_FILE = "/run/losos/edge-path.env";
         LOSOS_EDGE_NONE_FILE = "/run/losos/edge-none";
+        # The relay pass the official edge issues with the domains view, for
+        # announce to hand a local edge (modules/proxy.nix reads the same
+        # path). Root-only, on /run: it is good for hours, not across a boot.
+        LOSOS_RELAY_PASS_FILE = "/run/losos/relay-pass";
         LOSOS_EDGE_PIN_DIR = "/var/secrets/losos-edge-pins";
         # The token files the tunnel and announce read. lososd mints both
         # (64 hex characters, 0600) when absent, so a stock box can enrol

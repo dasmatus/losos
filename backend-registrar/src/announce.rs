@@ -34,6 +34,10 @@ struct RegisterReq<'a> {
     appliance_id: &'a str,
     token: &'a str,
     hostname: &'a str,
+    /// The relay pass from this box's official edge (`crate::routes`), for a
+    /// local edge to forward. Left out when there is none.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    relay_pass: Option<&'a str>,
 }
 
 #[derive(Serialize)]
@@ -48,6 +52,17 @@ struct HeartbeatReq<'a> {
     /// box that goes quiet stops being scheduled onto without anyone having to
     /// notice it went quiet.
     idle: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    relay_pass: Option<&'a str>,
+}
+
+/// The pass in `file`, re-read every time: lososd refreshes it every few
+/// minutes. A missing, unreadable or empty file is no pass, quietly; the
+/// edge only uses it for custom domains behind a local edge.
+async fn read_pass(file: Option<&str>) -> Option<String> {
+    let text = tokio::fs::read_to_string(file?).await.ok()?;
+    let text = text.trim();
+    crate::routes::well_formed_pass(text).then(|| text.to_string())
 }
 
 pub async fn run(opts: AnnounceOpts) -> Result<()> {
@@ -101,11 +116,13 @@ pub async fn run(opts: AnnounceOpts) -> Result<()> {
     let mut healthy = false;
 
     loop {
+        let pass = read_pass(opts.relay_pass_file.as_deref()).await;
         if !registered {
             let req = RegisterReq {
                 appliance_id: &opts.appliance_id,
                 token: &token,
                 hostname: &opts.hostname,
+                relay_pass: pass.as_deref(),
             };
             match client.post(&register_url).json(&req).send().await {
                 Ok(r) if r.status().is_success() => {
@@ -143,6 +160,7 @@ pub async fn run(opts: AnnounceOpts) -> Result<()> {
                 appliance_id: &opts.appliance_id,
                 token: &token,
                 idle,
+                relay_pass: pass.as_deref(),
             };
             match client.post(&heartbeat_url).json(&req).send().await {
                 Ok(r) if r.status().is_success() => {

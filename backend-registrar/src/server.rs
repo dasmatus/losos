@@ -83,7 +83,8 @@ use crate::market::{
 };
 use crate::opts::ServeOpts;
 use crate::registry::{Registry, Shared};
-use crate::relay::{self, Enrolment, RelayRefused, RelayReq, RelayResp, UplinkFile};
+use crate::relay::{self, Enrolment, RelayRefused, RelayReq, RelayResp, RelayRoute, UplinkFile};
+use crate::routes::{self, Bindings, Etcd, PassKey, PlanInput, RouteRow};
 use crate::stripe_gate::{GATE_TIMEOUT, MAX_GATE_CALLS_PER_REQUEST};
 use crate::window::{self, valid_hhmm, valid_tz, ComputeWindow};
 use crate::zone::{self, ZoneNames};
@@ -166,6 +167,17 @@ const KUBE_TIMEOUT: Duration = Duration::from_secs(2);
 /// names are DNS subdomains, capped at 253 characters.
 const MAX_NODE_NAME_LEN: usize = 253;
 
+/// An official edge's route table for boxes behind local edges.
+struct RouteTable {
+    etcd: Etcd,
+    prefix: String,
+    key: PassKey,
+    /// Which spoke vouched for which box, as `/relay` verified it.
+    bindings: std::sync::Mutex<Bindings>,
+    /// What etcd held after the last pass that reached it.
+    last: std::sync::Mutex<BTreeMap<String, RouteRow>>,
+}
+
 #[derive(Clone)]
 struct AppState {
     reg: Shared,
@@ -198,6 +210,12 @@ struct AppState {
     enrolment: Option<Arc<Enrolment>>,
     /// The enrolled file, memoised like the whitelist.
     enrolled: Arc<TenantCache>,
+    /// `None` unless `--routes-etcd-url` was given (see `crate::routes`).
+    routes: Option<Arc<RouteTable>>,
+    /// The relay passes this edge's own boxes handed it, by box id, for the
+    /// uplink to forward to the hub. Live state only: every box repeats its
+    /// pass on each heartbeat.
+    passes: Arc<std::sync::Mutex<HashMap<String, String>>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -205,6 +223,10 @@ struct RegisterReq {
     appliance_id: String,
     token: String,
     hostname: String,
+    /// The box's relay pass from its official edge, for a spoke to forward
+    /// (`crate::routes`). Optional: most boxes have none.
+    #[serde(default)]
+    relay_pass: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -219,6 +241,9 @@ struct HeartbeatReq {
     /// unknown resolves that way.
     #[serde(default)]
     idle: Option<bool>,
+    /// As on [`RegisterReq`].
+    #[serde(default)]
+    relay_pass: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -426,6 +451,26 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
         .enrol_dir
         .as_deref()
         .map(|dir| Arc::new(Enrolment::new(dir)));
+    let routes = match &opts.routes {
+        None => None,
+        Some(_) if domains.is_none() => {
+            return Err(miette!(
+                "--routes-etcd-url needs --dns-zone: only an edge that routes custom domains keeps the route table"
+            ))
+        }
+        Some(r) => Some(Arc::new(RouteTable {
+            etcd: Etcd::new(&r.etcd_url)
+                .into_diagnostic()
+                .wrap_err("build the etcd client")?,
+            prefix: r.prefix.clone(),
+            key: PassKey::load_or_create(Path::new(&r.pass_key_file))
+                .await
+                .into_diagnostic()
+                .with_context(|| format!("relay pass key {}", r.pass_key_file))?,
+            bindings: std::sync::Mutex::new(Bindings::default()),
+            last: std::sync::Mutex::new(BTreeMap::new()),
+        })),
+    };
 
     let state = AppState {
         reg,
@@ -447,6 +492,8 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
         doh,
         enrolment,
         enrolled: Arc::new(TenantCache::default()),
+        routes,
+        passes: Arc::new(std::sync::Mutex::new(HashMap::new())),
     };
 
     // Generate config from whatever we just loaded, so the box is serving
@@ -770,6 +817,7 @@ async fn register(
         }
     }
     let port = st.reg.register(&req.appliance_id, &req.hostname).await?;
+    remember_pass(&st, &req.appliance_id, req.relay_pass.as_deref());
     tracing::info!(
         target: Action::Register.target(),
         "registered {} -> {} on port {port}",
@@ -822,6 +870,25 @@ async fn enrol_on_first_contact(st: &AppState, req: &RegisterReq) -> Result<(), 
     Ok(())
 }
 
+/// Keep (or forget) the relay pass a box of this edge just sent, for the
+/// uplink. Only a pass-shaped string is kept, so a heartbeat cannot park
+/// anything else in memory; this edge cannot check the pass itself, only the
+/// hub that issued it can.
+fn remember_pass(st: &AppState, id: &str, pass: Option<&str>) {
+    let mut passes = st
+        .passes
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    match pass.map(str::trim).filter(|p| routes::well_formed_pass(p)) {
+        Some(p) => {
+            passes.insert(id.to_string(), p.to_string());
+        }
+        None => {
+            passes.remove(id);
+        }
+    }
+}
+
 async fn heartbeat(
     State(st): State<AppState>,
     Json(req): Json<HeartbeatReq>,
@@ -833,6 +900,7 @@ async fn heartbeat(
         .record_idle(&req.appliance_id, req.idle.unwrap_or(false))
         .await;
     if st.reg.heartbeat(&req.appliance_id).await {
+        remember_pass(&st, &req.appliance_id, req.relay_pass.as_deref());
         Ok(StatusCode::NO_CONTENT)
     } else {
         // Unknown id mid-run: tell the appliance to re-register. (It will, on
@@ -1020,6 +1088,47 @@ async fn relay_route(
         );
     }
     let relayed = st.reg.relay(&req.appliance_id, &accepted).await?;
+    let routes = match &st.routes {
+        None => Vec::new(),
+        Some(rt) => {
+            let now = crate::market::now_secs();
+            let accepted_ids: HashSet<&str> = accepted.iter().map(|(id, _)| id.as_str()).collect();
+            let vouched: HashMap<String, u64> = req
+                .tenants
+                .iter()
+                .filter(|t| accepted_ids.contains(t.id.as_str()))
+                .filter_map(|t| {
+                    let pass = t.pass.as_deref()?;
+                    match rt.key.verify(&t.id, pass, now) {
+                        Some(epoch) => Some((t.id.clone(), epoch)),
+                        None => {
+                            tracing::info!(
+                                target: Action::Relay.target(),
+                                "spoke {}: the relay pass for {} is not good here (expired, or not this edge's)",
+                                req.appliance_id,
+                                t.id,
+                            );
+                            None
+                        }
+                    }
+                })
+                .collect();
+            rt.bindings
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .record(&req.appliance_id, &vouched);
+            rt.last
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .values()
+                .filter(|row| row.spoke == req.appliance_id)
+                .map(|row| RelayRoute {
+                    id: row.tenant.clone(),
+                    domain: row.domain.clone(),
+                })
+                .collect()
+        }
+    };
     tracing::debug!(
         target: Action::Relay.target(),
         "spoke {} relays {} box(es), {} refused",
@@ -1031,6 +1140,7 @@ async fn relay_route(
     Ok(Json(RelayResp {
         accepted: relayed,
         refused,
+        routes,
     }))
 }
 
@@ -1223,17 +1333,26 @@ async fn domains_tenant(
     Ok((domains, vouched))
 }
 
+/// A box's view with its relay pass, on an edge that keeps a route table.
+/// The box hands the pass to a local edge, if it is behind one, and that is
+/// how its domains follow it there (`crate::routes`).
+fn with_pass(st: &AppState, tenant: &str, mut view: DomainsView) -> DomainsView {
+    if let Some(rt) = &st.routes {
+        view.relay_pass = Some(rt.key.issue(tenant, crate::market::now_secs()));
+    }
+    view
+}
+
 async fn domains_list(
     State(st): State<AppState>,
     Json(req): Json<MarketAuth>,
 ) -> Result<Json<DomainsView>, ApiError> {
     let (store, vouched) = domains_tenant(&st, &req).await?;
     let state = store.snapshot().await;
-    Ok(Json(domains::view(
-        &state,
+    Ok(Json(with_pass(
+        &st,
         &req.appliance_id,
-        vouched.as_ref(),
-        &store.opts,
+        domains::view(&state, &req.appliance_id, vouched.as_ref(), &store.opts),
     )))
 }
 
@@ -1261,11 +1380,15 @@ async fn domains_add(
     st.notify.notify_one();
     Ok((
         StatusCode::CREATED,
-        Json(domains::view(
-            &state,
+        Json(with_pass(
+            &st,
             &req.auth.appliance_id,
-            vouched.as_ref(),
-            &store.opts,
+            domains::view(
+                &state,
+                &req.auth.appliance_id,
+                vouched.as_ref(),
+                &store.opts,
+            ),
         )),
     ))
 }
@@ -1288,11 +1411,15 @@ async fn domains_remove(
     );
     // Its router goes at once.
     st.notify.notify_one();
-    Ok(Json(domains::view(
-        &state,
+    Ok(Json(with_pass(
+        &st,
         &req.auth.appliance_id,
-        vouched.as_ref(),
-        &store.opts,
+        domains::view(
+            &state,
+            &req.auth.appliance_id,
+            vouched.as_ref(),
+            &store.opts,
+        ),
     )))
 }
 
@@ -2438,10 +2565,81 @@ async fn domain_hosts(
     for (tenant, domains) in domains::live_routes(&store.snapshot().await) {
         hosts.entry(tenant).or_default().extend(domains);
     }
+    // A box behind a local edge: its names go to its relayed tenant, as the
+    // route table in etcd says (crate::routes).
+    if let Some(rt) = &st.routes {
+        for row in relayed_routes(st, rt, live, &hosts).await {
+            hosts.entry(row.service).or_default().push(row.domain);
+        }
+    }
     // Routers only for tenants that are live right now.
     let live_ids: HashSet<&str> = live.iter().map(|t| t.id.as_str()).collect();
     hosts.retain(|id, _| live_ids.contains(id.as_str()));
     (hosts, names)
+}
+
+/// Plan the route table, write it to etcd, and return the rows to route:
+/// those etcd holds that the plan also allows. Reading back keeps etcd the
+/// table that routes; intersecting with the plan keeps a row a box no
+/// longer qualifies for from routing while etcd is unreachable (new rows
+/// then wait for it, and the rest keep routing from the last good read).
+async fn relayed_routes(
+    st: &AppState,
+    rt: &RouteTable,
+    live: &[TenantView],
+    hosts: &BTreeMap<String, Vec<String>>,
+) -> Vec<RouteRow> {
+    let live_ids: HashSet<String> = live.iter().map(|t| t.id.clone()).collect();
+    let relayed_live: HashSet<String> = st
+        .reg
+        .relayed()
+        .await
+        .into_iter()
+        .map(|r| r.key)
+        .filter(|k| live_ids.contains(k))
+        .collect();
+    let direct_live: HashSet<String> = live_ids.difference(&relayed_live).cloned().collect();
+    let mesh: HashSet<String> = st.reg.compute_windows().await.into_keys().collect();
+    let desired = {
+        let bindings = rt
+            .bindings
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        routes::plan(
+            &rt.prefix,
+            &PlanInput {
+                hosts,
+                direct_live: &direct_live,
+                relayed_live: &relayed_live,
+                mesh: &mesh,
+                bindings: &bindings,
+                now: crate::market::now_secs(),
+            },
+        )
+    };
+    let table = match rt.etcd.sync(&rt.prefix, &desired).await {
+        Ok(table) => {
+            *rt.last
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = table.clone();
+            table
+        }
+        Err(e) => {
+            tracing::warn!(
+                target: Action::Domains.target(),
+                "route table not written: {e}; routing from the last table etcd gave",
+            );
+            rt.last
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .clone()
+        }
+    };
+    table
+        .into_iter()
+        .filter(|(key, row)| desired.get(key) == Some(row))
+        .map(|(_, row)| row)
+        .collect()
 }
 
 /// Render the zone and replace the file when it says something new.
@@ -2601,9 +2799,16 @@ async fn uplink_once(
         let Some(entry) = tenants.get(&v.id) else {
             continue;
         };
+        let pass = st
+            .passes
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get(&v.id)
+            .cloned();
         listed.push(relay::RelayTenant {
             id: v.id.clone(),
             hostname: entry.hostname.trim().to_string(),
+            pass,
         });
         services.push(UplinkService {
             name: format!("{}.{}", target.id, v.id),
@@ -2637,6 +2842,7 @@ async fn uplink_once(
                     refused.reason,
                 );
             }
+            record_hub_routes(st, &resp.routes).await;
             resp.accepted.into_iter().map(|a| a.id).collect()
         }
         Ok(r) => {
@@ -2671,6 +2877,36 @@ async fn uplink_once(
         );
     }
     Ok(())
+}
+
+/// Keep the hub's word on which custom domains it routes to our boxes in
+/// `hub-routes.json` beside the registry, so the site's owner can see it on
+/// the gateway, and say so in the log when it changes. The hub's traffic for
+/// these names arrives on each box's relayed service, so nothing here routes
+/// by them.
+async fn record_hub_routes(st: &AppState, routes: &[RelayRoute]) {
+    let mut sorted = routes.to_vec();
+    sorted.sort_by(|a, b| (&a.id, &a.domain).cmp(&(&b.id, &b.domain)));
+    let path = Path::new(&st.opts.registry_path).with_file_name("hub-routes.json");
+    let mut text = serde_json::to_string_pretty(&sorted).expect("routes serialize");
+    text.push('\n');
+    match write_if_changed(&path, &text, TRAEFIK_FILE_MODE).await {
+        Ok(true) => {
+            for r in &sorted {
+                tracing::info!(
+                    target: Action::Uplink.target(),
+                    "the hub routes {} to {} through this edge",
+                    r.domain,
+                    r.id,
+                );
+            }
+            if sorted.is_empty() {
+                tracing::info!(target: Action::Uplink.target(), "the hub routes no custom domain through this edge");
+            }
+        }
+        Ok(false) => {}
+        Err(e) => tracing::warn!(target: Action::Uplink.target(), "{}: {e}", path.display()),
+    }
 }
 
 /// The hub's Noise public key for the uplink: the pinned file when it

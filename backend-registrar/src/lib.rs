@@ -56,6 +56,7 @@ pub mod opts;
 pub mod provision;
 pub mod registry;
 pub mod relay;
+pub mod routes;
 pub mod seed;
 pub mod server;
 pub mod stripe_gate;
