@@ -154,6 +154,7 @@ pkgs.testers.nixosTest {
       losos.admin.enable = true;
       losos.admin.ui = lososPkgs.losos-admin-ui;
       losos.admin.handbook = lososPkgs.losos-handbook;
+      losos.admin.lab = lososPkgs.losos-lab;
     };
 
     # Same box with the dashboard switched off. losos.admin.ui stays null,
@@ -386,6 +387,27 @@ pkgs.testers.nixosTest {
             "a handbook page address does not resolve to its index.html"
         assert code(noadmin, "http://appliance/handbook/no-such-page/") == "404", \
             "an unknown handbook path falls through to something other than 404"
+
+    with subtest("/lab/ is served LAN-only under its own CSP"):
+        # LosOS Lab (admin-ui/lab/): index.html, lab.js, lab.css, plate.png
+        # by `alias`. Its arm allows inline *style* (the canvas positions
+        # everything with style attributes) and nothing else the admin arm
+        # refuses: script stays 'self', because the lab reads the admin
+        # token from sessionStorage to draw this box.
+        assert code(noadmin, "http://appliance/lab/") == "200", \
+            "the lab does not answer from the LAN"
+        assert code(noadmin, "http://appliance/lab/lab.js") == "200", \
+            "the lab's script is not served beside its page"
+        assert code(appliance, "http://127.0.0.1/lab/") == "403", \
+            "the lab is served to loopback, i.e. through the tunnel"
+        lab = headers(noadmin, "http://appliance/lab/")
+        lcsp = lab["content-security-policy"]
+        assert "style-src 'self' 'unsafe-inline'" in lcsp, f"lab CSP refuses its own style attributes: {lcsp}"
+        assert "script-src 'self';" in lcsp, f"lab CSP lets script run from anywhere but its files: {lcsp}"
+        assert "https:" not in lcsp and "http:" not in lcsp, f"lab CSP grants a remote origin: {lcsp}"
+        assert lab["x-frame-options"] == "DENY", "the lab may be framed"
+        assert code(noadmin, "http://appliance/lab/no-such-file") == "404", \
+            "an unknown lab path falls through to something other than 404"
 
     with subtest("/widget-frame/ gets the frame's own policy and nothing else does"):
         # The page a hand-written widget runs in (backend/src/look.rs,

@@ -319,8 +319,10 @@ jobs:
       # proves the npm dependency fetch still resolves. losos-handbook is the
       # same shape: `npm ci` then `docusaurus build` of handbook/, rooted at
       # /handbook/ for the box (the public site is handbook.yml's build of the
-      # same source), and it fails on a broken link.
-      - run: nix build .#losos-registrar .#losos-admin-ui .#losos-handbook -L
+      # same source), and it fails on a broken link. losos-lab is LosOS Lab
+      # as the box serves it at /lab/: admin-ui/lab/build.py under python3,
+      # no npm. lab.yml builds the hosted copy with the qemu-wasm engine.
+      - run: nix build .#losos-registrar .#losos-admin-ui .#losos-handbook .#losos-lab -L
       # The same crate linked statically against musl, for the operator's own
       # machine (the key ceremony, provisioning/edge-identity/README.md): the
       # glibc build above only runs where /nix/store exists. It is built here,
@@ -364,8 +366,8 @@ jobs:
           include-hidden-files: true
       - name: export the admin UI and the handbook for the iso job
         run: |
-          nix copy --to "file://$PWD/ui-cache" --no-check-sigs .#losos-admin-ui .#losos-handbook
-          nix path-info .#losos-admin-ui .#losos-handbook > ui-cache/store-paths
+          nix copy --to "file://$PWD/ui-cache" --no-check-sigs .#losos-admin-ui .#losos-handbook .#losos-lab
+          nix path-info .#losos-admin-ui .#losos-handbook .#losos-lab > ui-cache/store-paths
       - uses: actions/upload-artifact@v7
         with:
           name: losos-admin-ui-store
@@ -459,7 +461,7 @@ jobs:
           xargs -r nix copy --from "file://$PWD/images-cache" --no-check-sigs < images-cache/store-paths
       - uses: ./.github/actions/proxy-push
         with:
-          installables: ".#losos-ctl .#losos-registrar .#losos-admin-ui .#losos-handbook .#losos-image-pause .#losos-image-forgejo"
+          installables: ".#losos-ctl .#losos-registrar .#losos-admin-ui .#losos-handbook .#losos-lab .#losos-image-pause .#losos-image-forgejo"
           signing-key: ${{ secrets.NIX_CACHE_SIGNING_KEY }}
 
   # ── The dev-machine tool ───────────────────────────────────────────────────

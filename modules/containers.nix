@@ -65,6 +65,11 @@ let
   # hand out its manual any more than its settings.
   handbook = config.losos.admin.handbook;
   handbookEnabled = adminEnabled && handbook != null;
+  # LosOS Lab, the setup visualizer (admin-ui/lab/, built as losos-lab).
+  # Under the admin guard for the same reason as the handbook, and more so:
+  # it reads this box's settings with the owner's token.
+  lab = config.losos.admin.lab;
+  labEnabled = adminEnabled && lab != null;
 
   # Access guard for the admin surface (the SPA, its assets, the setup routes,
   # the lososd API): local network only. Master-proxy traffic must never reach
@@ -221,6 +226,26 @@ let
     "form-action 'none'"
   ];
 
+  # LosOS Lab's policy. The lab draws its canvas and inspector with inline
+  # style attributes (positions, colours, the packet dots), which the admin
+  # policy refuses, so style-src carries 'unsafe-inline'. Script stays
+  # 'self' only: lab.js is a file in the store, there is no inline script,
+  # and the lab reads the admin token from this tab's sessionStorage, so
+  # injected markup must stay inert. Styles alone cannot read storage. No
+  # remote origin: the shipped copy has no qemu-wasm engine, fetches nothing
+  # but /api/ and its own files, and needs no internet.
+  labCsp = lib.concatStringsSep "; " [
+    "default-src 'none'"
+    "script-src 'self'"
+    "style-src 'self' 'unsafe-inline'"
+    "img-src 'self' data:"
+    "font-src 'self'"
+    "connect-src 'self'"
+    "frame-ancestors 'none'"
+    "base-uri 'none'"
+    "form-action 'none'"
+  ];
+
   # ── The widget frame ──────────────────────────────────────────────────
   # Widgets the owner writes by hand (backend/src/look.rs) are HTML with
   # their own script, and the admin CSP above refuses inline script for
@@ -257,15 +282,17 @@ let
   ];
 
   # One map per header: value on the admin surface, empty (header omitted) on
-  # the two proxied service routes, the handbook's own value (or the admin
-  # value, for the headers it shares) under /handbook/, and the widget
-  # frame's own value (or nothing) under /widget-frame/.
-  adminHeaderMap = variable: value: handbookValue: frameValue: ''
+  # the two proxied service routes, the handbook's and the lab's own values
+  # (or the admin value, for the headers they share) under /handbook/ and
+  # /lab/, and the widget frame's own value (or nothing) under
+  # /widget-frame/.
+  adminHeaderMap = variable: value: handbookValue: labValue: frameValue: ''
     map $uri ${variable} {
         default          "${value}";
         ~^/nextcloud     "";
         ~^/forgejo       "";
         ~^/handbook/     "${handbookValue}";
+        ~^/lab/          "${labValue}";
         ~^/widget-frame/ "${frameValue}";
     }
   '';
@@ -276,6 +303,7 @@ let
       variable = "$losos_csp";
       value = adminCsp;
       handbookValue = handbookCsp;
+      labValue = labCsp;
       frameValue = widgetFrameCsp;
     }
     {
@@ -299,7 +327,8 @@ let
   ];
 
   adminHeaderMaps = lib.concatMapStrings (
-    h: adminHeaderMap h.variable h.value (h.handbookValue or h.value) h.frameValue
+    h:
+    adminHeaderMap h.variable h.value (h.handbookValue or h.value) (h.labValue or h.value) h.frameValue
   ) adminHeaders;
 
   # `always` so the headers ride on the 403s the lanOnly guard emits too.
@@ -401,6 +430,18 @@ in
           # — instead of an HTML document it would try to parse as JSON.
           "/setup/" = {
             tryFiles = "$uri =404";
+            extraConfig = lanOnly;
+          };
+        })
+        (lib.mkIf labEnabled {
+          # LosOS Lab: four static files under a prefix, so `alias` like the
+          # handbook. No SPA fallback: a path that is not one of the files is
+          # a plain 404. LAN-only like the rest of the admin surface; the
+          # header map above gives this prefix its own CSP.
+          "/lab/" = {
+            alias = "${lab}/";
+            index = "index.html";
+            tryFiles = "$uri $uri/ =404";
             extraConfig = lanOnly;
           };
         })

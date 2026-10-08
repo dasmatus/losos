@@ -400,6 +400,21 @@ await check('every sidebar entry, folded or not, lands on its own address', asyn
   await page.close();
 });
 
+/* Lab is a page of its own that nginx serves at /lab/ (admin-ui/lab/), not
+ * a route of this app, so its entry must be a plain link that loads the
+ * page. A router link would draw this app's "nothing here" at /lab/. */
+await check('the Lab entry is a plain link that loads /lab/', async () => {
+  const { page } = await open({ stored: true });
+  const lab = nav(page).getByRole('link', { name: 'Lab', exact: true });
+  assert.equal(await lab.getAttribute('href'), '/lab/');
+  const [request] = await Promise.all([
+    page.waitForRequest((r) => r.isNavigationRequest() && r.url() === origin + '/lab/'),
+    lab.click(),
+  ]);
+  assert.ok(request, 'clicking Lab loaded no page');
+  await page.close();
+});
+
 await check('there is one panel: no second list of panes beside the content', async () => {
   const { page } = await open({ path: '/settings/hardware', stored: true });
   await nav(page).waitFor();

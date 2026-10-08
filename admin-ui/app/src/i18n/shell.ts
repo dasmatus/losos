@@ -6,6 +6,8 @@ export default defineMessages({
   "shell.nav.apps": { en: "Apps", sk: "Aplikácie", de: "Apps" },
   "shell.nav.storage": { en: "Storage", sk: "Úložisko", de: "Speicher" },
   "shell.nav.mesh": { en: "Mesh", sk: "Mesh", de: "Mesh" },
+  /* LosOS Lab, the setup visualizer at /lab/ (admin-ui/lab/). */
+  "shell.nav.lab": { en: "Lab", sk: "Laboratórium", de: "Labor" },
   "shell.nav.settings": { en: "Settings", sk: "Nastavenia", de: "Einstellungen" },
   "shell.nav.label": { en: "Sections", sk: "Sekcie", de: "Bereiche" },
   /* Under Market in the sidebar, greyed with it: the disk-sharing switch

@@ -41,6 +41,12 @@
 #                because that is how they reach a binary cache: the appliance
 #                substitutes them, it never builds them (see the header of
 #                flake/images.nix).
+#   losos-lab  — LosOS Lab, the setup visualizer the front vhost serves at
+#                /lab/ (admin-ui/lab/): a canvas of the box, its router, the
+#                edges and the mesh, with the traffic between them. Plain JS
+#                assembled by build.py with python3 alone, no npm. The
+#                qemu-wasm engine that boots real guests is not in it; that
+#                build is the hosted copy's (admin-ui/lab/engine/build.sh).
 #   losos-sign-iso — signs the installer ISO's UEFI loader in place with the
 #                Secure Boot db key, after `nix build`, so the key never
 #                enters a store (modules/secure-boot.nix, flake/sign-iso.sh).
@@ -148,6 +154,28 @@ images
       runHook postInstall
     '';
   };
+
+  # LosOS Lab as the box serves it: index.html, lab.js, lab.css and the
+  # plate, no inline script (the /lab/ CSP arm in modules/containers.nix
+  # allows scripts from 'self' only). build.py reads the plate from
+  # admin-ui/themes/brand, so the source is those two pieces and nothing else
+  # under admin-ui/: engine/ is CI-only and stays out of the closure.
+  losos-lab =
+    pkgs.runCommand "losos-lab"
+      {
+        src = lib.fileset.toSource {
+          root = ./../admin-ui;
+          fileset = lib.fileset.unions [
+            ./../admin-ui/lab/build.py
+            ./../admin-ui/lab/src
+            ./../admin-ui/themes/brand/plate-128.png
+          ];
+        };
+        nativeBuildInputs = [ pkgs.python3 ];
+      }
+      ''
+        python3 $src/lab/build.py box $out
+      '';
 
   # The LosOS look for Nextcloud and Forgejo — the admin SPA's tokens.css plus
   # each app's mapping onto it. Consumed by modules/nextcloud-stack.nix,
