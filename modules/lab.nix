@@ -7,13 +7,18 @@
 # transient libvirt domain, under KVM when the CPU has it.
 #
 # Three hops, each with its own guard:
-#   * /api/lab/{hello,guests} go nginx -> lososd (the admin token, the
-#     throttle, the audit log) -> the helper, which lososd calls with the
-#     same token. The helper reads it from the credential below.
-#   * /api/lab/ws/<guest>/{console,nic/<n>} go nginx -> the helper directly
-#     (modules/containers.nix): a WebSocket through actix would be a second
-#     relay for no gain. The helper admits a socket only with the per-guest
-#     ticket a create answered with, and only a token holder can create.
+#   * /api/lab/{hello,guests,virt-ticket} go nginx -> lososd (the admin
+#     token, the throttle, the audit log) -> the helper, which lososd calls
+#     with the same token. The helper reads it from the credential below.
+#   * /api/lab/ws/<guest>/{console,nic/<n>} and /api/lab/virt go nginx ->
+#     the helper directly (modules/containers.nix): a WebSocket through
+#     actix would be a second relay for no gain. The helper admits a socket
+#     only with a ticket: the per-guest one a create answered with, or a
+#     single-use one from virt-ticket, and only a token holder gets either.
+#     /api/lab/virt is a raw byte relay to libvirtd's socket for the Lab's
+#     WebAssembly libvirt client, so it hands out libvirt at this unit's
+#     uid; in the libvirtd group that is root-equivalent, no more than the
+#     admin token already is.
 #   * The helper's port gets the same owner match lososd's has
 #     (modules/daemon.nix): the Nextcloud and Forgejo pods share this
 #     loopback, and only root (lososd) and nginx may reach it.

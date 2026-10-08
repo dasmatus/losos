@@ -7,8 +7,12 @@
 //! instead (KVM when the machine has it), and the Lab falls back to
 //! qemu-wasm for any guest it cannot start here.
 //!
-//! libvirt is reached only through the `virsh` CLI ([`virsh`]). Each guest
-//! is a *transient* domain (`virsh create`, never `define`) named
+//! The helper reaches libvirt in two ways. Its own guests go through the
+//! `virsh` CLI ([`virsh`]). And for a page that carries its own libvirt
+//! client (`admin-ui/lab/virt-rpc`, WebAssembly), it relays a WebSocket to
+//! libvirt's unix socket byte for byte ([`virt`]); that path needs no
+//! `virsh` on the machine at all. Each guest the helper starts is a
+//! *transient* domain (`virsh create`, never `define`) named
 //! `losos-lab-<key>`, so nothing outlives the helper: it destroys every
 //! guest it made on SIGTERM or Ctrl-C, sweeps `losos-lab-*` leftovers of a
 //! killed predecessor when it starts, and destroys a guest no browser has
@@ -31,6 +35,9 @@
 //!     answered with, sent as the `ticket.<hex>` WebSocket subprotocol (a
 //!     browser cannot set an Authorization header on a WebSocket, and a
 //!     query string ends up in access logs).
+//!   * `POST virt-ticket` and `GET virt`: a single-use ticket, then a
+//!     WebSocket relayed raw to libvirt's socket ([`virt`]). Whoever holds
+//!     that socket has libvirt at this helper's uid; see [`virt`].
 //!
 //! Who may call: a request with an `Origin` must come from one of the
 //! `--origin` values or from the same origin it is addressed to; preflights
@@ -42,6 +49,7 @@
 
 pub mod spec;
 pub mod virsh;
+pub mod virt;
 
 use std::collections::HashMap;
 use std::future::Future;
@@ -57,7 +65,7 @@ use axum::extract::{DefaultBodyLimit, Path as UrlPath, Request, State};
 use axum::http::{header, HeaderMap, HeaderValue, Method, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{delete, get};
+use axum::routing::{delete, get, post};
 use axum::{Json, Router};
 use miette::{miette, IntoDiagnostic, Result, WrapErr};
 use ring::rand::{SecureRandom, SystemRandom};
@@ -78,6 +86,10 @@ const BACKLOG: usize = 64 * 1024;
 const MAX_INPUT: usize = 4096;
 /// The WebSocket subprotocol the helper answers with.
 const PROTOCOL: &str = "losos-lab";
+/// Largest WebSocket message the libvirt relay takes from a page. A domain's
+/// XML is a few KiB and console input a keystroke; libvirt's own ceiling is
+/// 32 MiB, which a page has no business sending through here.
+const MAX_VIRT_MESSAGE: usize = 4 * 1024 * 1024;
 
 /// How the guests run: hardware virtualisation, plain emulation, or
 /// whichever libvirt offers.
@@ -230,6 +242,13 @@ struct Lab {
     guests: Mutex<HashMap<String, Arc<Guest>>>,
     create_lock: tokio::sync::Mutex<()>,
     probe: tokio::sync::Mutex<Option<(Instant, Probe)>>,
+    /// The sockets the libvirt relay may use for `--connect`, or why none.
+    virt_sockets: std::result::Result<Vec<PathBuf>, String>,
+    virt_tickets: virt::Tickets,
+    relays: AtomicUsize,
+    /// Set when the helper stops, so relayed sockets let go of the
+    /// graceful shutdown.
+    stopping: watch::Sender<bool>,
 }
 
 /// A refusal before any work: the status and its sentence.
@@ -260,11 +279,21 @@ impl Lab {
                 Some(t)
             }
         };
+        let runtime_dir = std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from);
+        let home = std::env::var_os("HOME").map(PathBuf::from);
         Ok(Self {
             virsh: Virsh {
                 bin: opts.virsh.clone(),
                 uri: opts.connect.clone(),
             },
+            virt_sockets: virt::socket_candidates(
+                &opts.connect,
+                runtime_dir.as_deref(),
+                home.as_deref(),
+            ),
+            virt_tickets: virt::Tickets::default(),
+            relays: AtomicUsize::new(0),
+            stopping: watch::channel(false).0,
             images,
             token,
             opts,
@@ -365,6 +394,14 @@ impl Lab {
                 }
             }
             Err(e) => tracing::warn!(target: TARGET, "libvirt did not answer yet: {e}"),
+        }
+    }
+
+    /// A fresh connection to libvirt's socket for `--connect`, and its path.
+    async fn virt_connect(&self) -> std::result::Result<(PathBuf, tokio::net::UnixStream), String> {
+        match &self.virt_sockets {
+            Ok(c) => virt::connect(c).await,
+            Err(e) => Err(e.clone()),
         }
     }
 
@@ -489,6 +526,18 @@ async fn hello(State(lab): State<Arc<Lab>>, headers: HeaderMap) -> Response {
         return answer(status, why);
     }
     let p = lab.probe().await;
+    // The relay is available when the socket accepts a connection now; the
+    // probe connection is closed at once.
+    let virt = match lab.virt_connect().await {
+        Ok((path, _)) => {
+            json!({ "available": true, "socket": path.display().to_string(), "reason": null })
+        }
+        Err(e) => json!({
+            "available": false,
+            "socket": lab.virt_sockets.as_ref().ok().and_then(|c| c.first()).map(|p| p.display().to_string()),
+            "reason": format!("libvirt's socket did not answer: {e}"),
+        }),
+    };
     let kernel = lab.has(spec::KERNEL);
     let rootfs = lab.has(spec::Image::Rootfs.file());
     let reason = match &p.uri {
@@ -511,6 +560,7 @@ async fn hello(State(lab): State<Arc<Lab>>, headers: HeaderMap) -> Response {
         "memoryMiB": lab.opts.memory_mib,
         "guests": lock(&lab.guests).len(),
         "reason": reason,
+        "virt": virt,
     }))
     .into_response()
 }
@@ -858,6 +908,108 @@ async fn nic_session(g: Arc<Guest>, n: usize, mut ws: WebSocket) {
     }
 }
 
+/// `POST virt-ticket`: one ticket for one relayed libvirt socket, good for
+/// [`virt::TICKET_TTL`]. The same authorisation as creating a guest.
+async fn virt_ticket(State(lab): State<Arc<Lab>>, headers: HeaderMap) -> Response {
+    if let Err((status, why)) = lab.authorize(&headers) {
+        return answer(status, why);
+    }
+    if let Err(e) = &lab.virt_sockets {
+        return answer(StatusCode::SERVICE_UNAVAILABLE, e);
+    }
+    let ticket = match random_hex(16) {
+        Ok(t) => t,
+        Err(e) => {
+            tracing::warn!(target: TARGET, "minting a relay ticket: {e:?}");
+            return answer(StatusCode::INTERNAL_SERVER_ERROR, "no ticket");
+        }
+    };
+    lab.virt_tickets.issue(ticket.clone());
+    Json(json!({
+        "ticket": ticket,
+        "expiresIn": virt::TICKET_TTL.as_secs(),
+        "uri": lab.opts.connect,
+    }))
+    .into_response()
+}
+
+/// One relayed socket open; the count drops with it.
+struct Relaying(Arc<Lab>);
+
+impl Drop for Relaying {
+    fn drop(&mut self) {
+        self.0.relays.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
+/// `GET virt`: spend the ticket, connect to libvirt, then upgrade. A socket
+/// that does not answer is a 503 before the upgrade, not a WebSocket that
+/// opens and closes.
+async fn virt_ws(
+    State(lab): State<Arc<Lab>>,
+    headers: HeaderMap,
+    ws: WebSocketUpgrade,
+) -> Response {
+    if !lab.virt_tickets.take(ticket_of(&headers).unwrap_or("")) {
+        return answer(StatusCode::UNAUTHORIZED, "wrong, spent or expired ticket");
+    }
+    let held = Relaying(lab.clone());
+    if lab.relays.fetch_add(1, Ordering::SeqCst) >= lab.opts.max_guests {
+        return answer(
+            StatusCode::CONFLICT,
+            &format!(
+                "{} libvirt sockets are open, as many as this helper relays",
+                lab.opts.max_guests
+            ),
+        );
+    }
+    let (path, stream) = match lab.virt_connect().await {
+        Ok(c) => c,
+        Err(e) => {
+            return answer(
+                StatusCode::SERVICE_UNAVAILABLE,
+                &format!("libvirt's socket did not answer: {e}"),
+            )
+        }
+    };
+    tracing::info!(target: TARGET, socket = %path.display(), "relaying a page to libvirt");
+    let stop = lab.stopping.subscribe();
+    ws.protocols([PROTOCOL])
+        .max_message_size(MAX_VIRT_MESSAGE)
+        .on_upgrade(move |s| virt_session(stream, s, stop, held))
+}
+
+/// Bytes both ways until either side hangs up or the helper stops.
+async fn virt_session(
+    stream: tokio::net::UnixStream,
+    mut ws: WebSocket,
+    mut stop: watch::Receiver<bool>,
+    _held: Relaying,
+) {
+    if *stop.borrow_and_update() {
+        return;
+    }
+    let (mut rd, mut wr) = stream.into_split();
+    let mut buf = vec![0u8; 64 * 1024];
+    loop {
+        tokio::select! {
+            r = rd.read(&mut buf) => match r {
+                Ok(0) | Err(_) => break,
+                Ok(n) => if ws.send(Message::Binary(Bytes::copy_from_slice(&buf[..n]))).await.is_err() { break },
+            },
+            m = ws.recv() => match m {
+                Some(Ok(Message::Binary(b))) => if wr.write_all(&b).await.is_err() { break },
+                Some(Ok(Message::Close(_)) | Err(_)) | None => break,
+                // Text, ping and pong carry nothing for libvirt.
+                Some(Ok(_)) => {}
+            },
+            _ = stop.changed() => break,
+        }
+    }
+    let _ = ws.send(Message::Close(None)).await;
+    tracing::info!(target: TARGET, "a relayed libvirt socket closed");
+}
+
 /// Destroy guests no console or NIC socket has watched for `--idle`.
 async fn reaper(lab: Arc<Lab>) {
     let mut tick = tokio::time::interval(Duration::from_secs(5).min(lab.opts.idle));
@@ -885,6 +1037,8 @@ fn router(lab: Arc<Lab>) -> Router {
         .route("/lab/v1/guests/{key}", delete(remove))
         .route("/lab/v1/guests/{key}/console", get(console_ws))
         .route("/lab/v1/guests/{key}/nic/{n}", get(nic_ws))
+        .route("/lab/v1/virt-ticket", post(virt_ticket))
+        .route("/lab/v1/virt", get(virt_ws))
         .layer(DefaultBodyLimit::max(8 * 1024))
         .layer(middleware::from_fn_with_state(lab.clone(), gate))
         .with_state(lab)
@@ -931,6 +1085,7 @@ where
     // graceful shutdown open.
     let stop = async move {
         shutdown.await;
+        let _ = closing.stopping.send(true);
         closing.end_all().await;
     };
     let served = axum::serve(listener, router(lab.clone()))
@@ -938,6 +1093,7 @@ where
         .await
         .into_diagnostic();
     reap.abort();
+    let _ = lab.stopping.send(true);
     lab.end_all().await;
     tracing::info!(target: TARGET, "stopped; no guest left running");
     served

@@ -719,6 +719,28 @@ async fn post_lab_guest(api: web::Data<Api>, req: HttpRequest, body: web::Bytes)
     })
 }
 
+/// `POST /api/lab/virt-ticket` — a single-use ticket for the libvirt relay
+/// socket at `/api/lab/virt`, which nginx proxies to the helper directly.
+/// The ticket opens libvirt at the helper's uid, so it wants the admin token
+/// like a create, and the request is audited. No body.
+async fn post_lab_virt_ticket(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    guarded(&api, &req, "/api/lab/virt-ticket", true, || {
+        let Some(addr) = lab_helper() else {
+            return err(
+                actix_web::http::StatusCode::SERVICE_UNAVAILABLE,
+                LAB_NOT_RUNNING,
+            );
+        };
+        match crate::lab::relay(addr, "POST", "/lab/v1/virt-ticket", &api.token, b"") {
+            Ok((status, body)) => lab_answer(status, body),
+            Err(_) => err(
+                actix_web::http::StatusCode::SERVICE_UNAVAILABLE,
+                LAB_NOT_RUNNING,
+            ),
+        }
+    })
+}
+
 /// `DELETE /api/lab/guests/{key}` — stop a guest.
 async fn delete_lab_guest(
     api: web::Data<Api>,
@@ -1156,6 +1178,7 @@ pub fn serve(backend: IoLosos) -> anyhow::Result<()> {
                 .route("/api/lab/hello", web::get().to(get_lab_hello))
                 .route("/api/lab/guests", web::post().to(post_lab_guest))
                 .route("/api/lab/guests/{key}", web::delete().to(delete_lab_guest))
+                .route("/api/lab/virt-ticket", web::post().to(post_lab_virt_ticket))
                 .route("/api/domains", web::get().to(get_domains))
                 .route("/api/domains", web::post().to(post_domain_add))
                 .route("/api/domains/remove", web::post().to(post_domain_remove))

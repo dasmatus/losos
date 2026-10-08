@@ -3,12 +3,14 @@
 //! With `losos.lab.libvirt.enable` the box runs the Lab's libvirt helper
 //! (`backend-registrar/src/lab/`) on a loopback port, and the Lab page asks
 //! for its guests here, under the admin token like every other page. lososd
-//! holds no libvirt code: it checks the token, forwards the three JSON
-//! routes with the same token, and passes the helper's answer back. The two
-//! WebSockets (a guest's console and network cards) do not come through
-//! here; nginx proxies `/api/lab/ws/` straight to the helper, which admits
-//! a socket only with the per-guest ticket its create answered with, and a
-//! create needs the admin token.
+//! holds no libvirt code: it checks the token, forwards the four JSON
+//! routes with the same token, and passes the helper's answer back. The
+//! WebSockets (a guest's console and network cards, and the raw libvirt
+//! relay the page's WebAssembly client uses) do not come through here;
+//! nginx proxies `/api/lab/ws/` and `/api/lab/virt` straight to the
+//! helper, which admits a socket only with a ticket: the per-guest one a
+//! create answered with, or a single-use one from `POST
+//! /api/lab/virt-ticket`. Both need the admin token.
 //!
 //! Off or not running is a 200 `{"available": false, "reason": ...}` on
 //! `hello`, never a 404, for the same reason as the market relay: a page

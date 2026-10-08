@@ -1017,7 +1017,9 @@ in
         has it) instead of simulating their consoles. Turns on libvirtd and
         a `losos-registrar lab` helper on a loopback port; lososd relays
         /api/lab/ to it and nginx proxies the guests' console and network
-        sockets. The guest images (bzImage, rootfs.bin, gear.bin from
+        sockets, and the byte relay to libvirtd's socket that the Lab's
+        WebAssembly libvirt client uses (one ticket per socket, minted
+        under the admin token). The guest images (bzImage, rootfs.bin, gear.bin from
         admin-ui/lab/engine/build.sh) go in `lab.libvirt.images`. Off by
         default: the appliance does not need libvirtd for anything else.
       '';
