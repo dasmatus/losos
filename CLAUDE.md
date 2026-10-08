@@ -94,6 +94,11 @@ and is never served or built by nix.
   online, asserted against the plan and in `tests/resize.nix`.
 - `edge-vercel/`: the registrar's router as one Vercel Function over Neon
   Postgres, for demos. `/cluster/join` and `/market/*` answer 503 there.
+- `backend-registrar/src/{domains,zone}.rs` + `losos.edge.dns`: an official
+  edge serves its own zone with Knot and routes an owner's domain once its
+  TXT token and CNAME check out, only for a box with a ready Stripe account.
+  lososd writes the live names to `/var/lib/losos-public-names`, which the
+  Nextcloud pod reads for `trusted_domains`.
 - `backend-registrar/src/market.rs`: Stripe Connect, third opt-in of the
   registrar. The key lives only in the `losos-stripe-gate` unit, reached over
   `/run/losos-stripe-gate/gate.sock`.

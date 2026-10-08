@@ -51,7 +51,7 @@
 //! `Result<T, E: Diagnostic>`, not for plain `std::error::Error`). It logs and
 //! continues rather than killing the server.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::future::Future;
 use std::path::Path;
 use std::sync::Arc;
@@ -71,7 +71,8 @@ use tokio::net::TcpListener;
 use tokio::sync::{Mutex, Notify, Semaphore};
 
 use crate::action::Action;
-use crate::config::{desired_config, EdgeOpts, TenantView};
+use crate::config::{desired_config_with_hosts, EdgeOpts, TenantView};
+use crate::domains::{self, Doh, DomainError, Domains, DomainsView, Vouched};
 use crate::error::ApiError;
 use crate::identity::Identity;
 use crate::market::{
@@ -82,6 +83,10 @@ use crate::opts::ServeOpts;
 use crate::registry::{Registry, Shared};
 use crate::stripe_gate::{GATE_TIMEOUT, MAX_GATE_CALLS_PER_REQUEST};
 use crate::window::{self, valid_hhmm, valid_tz, ComputeWindow};
+use crate::zone::{self, ZoneNames};
+
+/// The zone file is public DNS data, read by the `knot` user.
+const ZONE_FILE_MODE: u32 = 0o644;
 
 /// Per-tenant Traefik router config is public (hostnames only, no secrets) →
 /// world-readable so the `traefik` user can read it.
@@ -181,6 +186,10 @@ struct AppState {
     push_lock: Arc<Mutex<()>>,
     /// The client the push handler asks GitHub with.
     http: reqwest::Client,
+    /// `None` unless `--dns-zone` was given (see `crate::domains`).
+    domains: Option<Arc<Domains>>,
+    /// The DNS-over-HTTPS client the domain checks look records up with.
+    doh: Option<Doh>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -332,6 +341,7 @@ impl App {
     /// Traefik and rathole files if anything changed, publish the compute
     /// windows, then fulfil paid market orders.
     pub async fn reconcile(&self) -> Result<()> {
+        check_domains(&self.state).await;
         reconcile_once(&self.state).await?;
         fulfil_market(&self.state).await;
         Ok(())
@@ -375,6 +385,24 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
         }
     };
 
+    // Opened before the API accepts, like the market: an unreadable
+    // `domains.json` stops the edge rather than dropping every live domain.
+    let (domains, doh) = match &opts.domains {
+        Some(d) => (
+            Some(Arc::new(
+                Domains::open((**d).clone())
+                    .await
+                    .map_err(|e| miette!("open domains store: {e}"))?,
+            )),
+            Some(
+                Doh::new(&d.doh_url)
+                    .into_diagnostic()
+                    .wrap_err("build the DNS-over-HTTPS client")?,
+            ),
+        ),
+        None => (None, None),
+    };
+
     let state = AppState {
         reg,
         opts: Arc::new(opts),
@@ -391,6 +419,8 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
             .build()
             .into_diagnostic()
             .wrap_err("build the HTTP client")?,
+        domains,
+        doh,
     };
 
     // Generate config from whatever we just loaded, so the box is serving
@@ -431,6 +461,13 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
             "/market/webhook",
             post(market_webhook).layer(DefaultBodyLimit::max(MAX_WEBHOOK_BYTES)),
         )
+        // Custom domains (crate::domains). 503 unless the edge serves a zone
+        // and holds an installed identity certificate; appliance token like
+        // the market. None of them looks anything up in DNS: an add kicks
+        // the reconciler, which does, outside the request's 5 s budget.
+        .route("/domains/list", post(domains_list))
+        .route("/domains/add", post(domains_add))
+        .route("/domains/remove", post(domains_remove))
         // Bound at the router so an oversized body never materialises.
         .layer(DefaultBodyLimit::max(MAX_BODY_BYTES))
         // Added last, so outermost: the timeout and the concurrency cap cover
@@ -970,6 +1007,223 @@ async fn market_order(
         .create_order(&req.auth.appliance_id, req.order, &sharing)
         .await?;
     Ok((StatusCode::CREATED, Json(checkout)))
+}
+
+/// Body of the domain routes that name one domain.
+#[derive(Debug, Deserialize)]
+struct DomainReq {
+    #[serde(flatten)]
+    auth: MarketAuth,
+    domain: String,
+}
+
+/// The domain store, but only on an edge that may hand out names: one that
+/// serves a zone and holds an unexpired identity certificate an operator
+/// pushed (`POST /identity/cert`, gated by the GitHub allowlist). The root
+/// signature is checked by the boxes, which also refuse to relay domain
+/// requests to an edge that is not official; this is the edge's own half.
+fn domains_of(st: &AppState) -> Result<&Arc<Domains>, ApiError> {
+    let domains = st
+        .domains
+        .as_ref()
+        .ok_or(ApiError::Domains(DomainError::Unconfigured))?;
+    let official = st
+        .identity
+        .as_ref()
+        .and_then(|i| i.cert())
+        .is_some_and(|c| c.not_after > crate::market::now_secs());
+    if !official {
+        return Err(ApiError::Domains(DomainError::Unconfigured));
+    }
+    Ok(domains)
+}
+
+/// The tenant's Stripe data as the domain module reads it: `None` on an edge
+/// with no market, for a box with no account, and for one Stripe has not
+/// finished checking.
+async fn vouched_for(st: &AppState, tenant: &str) -> Option<Vouched> {
+    let market = st.market.as_ref()?;
+    Vouched::from_seller(market.seller(tenant).await.as_ref())
+}
+
+/// Authenticate first, so a caller without a token learns nothing about
+/// whether this edge offers domains.
+async fn domains_tenant(
+    st: &AppState,
+    auth: &MarketAuth,
+) -> Result<(Arc<Domains>, Option<Vouched>), ApiError> {
+    authenticate(st, &auth.appliance_id, &auth.token).await?;
+    let domains = Arc::clone(domains_of(st)?);
+    let vouched = vouched_for(st, &auth.appliance_id).await;
+    Ok((domains, vouched))
+}
+
+async fn domains_list(
+    State(st): State<AppState>,
+    Json(req): Json<MarketAuth>,
+) -> Result<Json<DomainsView>, ApiError> {
+    let (store, vouched) = domains_tenant(&st, &req).await?;
+    let state = store.snapshot().await;
+    Ok(Json(domains::view(
+        &state,
+        &req.appliance_id,
+        vouched.as_ref(),
+        &store.opts,
+    )))
+}
+
+async fn domains_add(
+    State(st): State<AppState>,
+    Json(req): Json<DomainReq>,
+) -> Result<(StatusCode, Json<DomainsView>), ApiError> {
+    let (store, vouched) = domains_tenant(&st, &req.auth).await?;
+    if vouched.is_none() {
+        return Err(ApiError::Domains(DomainError::Conflict(
+            "a custom domain needs this box's Stripe account, checked by Stripe; finish it on the Market pane first",
+        )));
+    }
+    let domain = domains::normalize_domain(&req.domain, &store.opts)?;
+    let now = crate::market::now_secs();
+    let state = store
+        .update(|s| domains::add(s, &req.auth.appliance_id, &domain, now))
+        .await?;
+    tracing::info!(
+        target: Action::Domains.target(),
+        "{} claimed {domain}",
+        req.auth.appliance_id,
+    );
+    // Look it up now rather than at the next tick.
+    st.notify.notify_one();
+    Ok((
+        StatusCode::CREATED,
+        Json(domains::view(
+            &state,
+            &req.auth.appliance_id,
+            vouched.as_ref(),
+            &store.opts,
+        )),
+    ))
+}
+
+async fn domains_remove(
+    State(st): State<AppState>,
+    Json(req): Json<DomainReq>,
+) -> Result<Json<DomainsView>, ApiError> {
+    let (store, vouched) = domains_tenant(&st, &req.auth).await?;
+    // Not normalised through the full check: a claim made under rules that
+    // have since tightened must still be removable.
+    let domain = req.domain.trim().trim_end_matches('.').to_ascii_lowercase();
+    let state = store
+        .update(|s| domains::remove(s, &req.auth.appliance_id, &domain))
+        .await?;
+    tracing::info!(
+        target: Action::Domains.target(),
+        "{} released {domain}",
+        req.auth.appliance_id,
+    );
+    // Its router goes at once.
+    st.notify.notify_one();
+    Ok(Json(domains::view(
+        &state,
+        &req.auth.appliance_id,
+        vouched.as_ref(),
+        &store.opts,
+    )))
+}
+
+/// Look up the claims that are due ([`domains::Claim::due`]), at most
+/// [`domains::CHECKS_PER_PASS`] of them, and record what DNS said.
+///
+/// The lookups run with no lock held; the results are applied afterwards to
+/// whatever the store holds then, so a claim removed meanwhile stays removed.
+/// Never fatal: a failure here costs domains, not tunnels.
+async fn check_domains(st: &AppState) {
+    let (Some(store), Some(doh)) = (&st.domains, &st.doh) else {
+        return;
+    };
+    let now = crate::market::now_secs();
+    let tenants = match st.tenants.load(&st.opts.tenants_file).await {
+        Ok(t) => t,
+        Err(e) => {
+            tracing::warn!(target: Action::Domains.target(), "not checking domains: {e}");
+            return;
+        }
+    };
+    // Prune first: removed tenants and week-old waiting claims.
+    if let Err(e) = store
+        .update(|s| {
+            let mut next = s.clone();
+            domains::prune(&mut next, |t| tenants.contains_key(t), now);
+            Ok(next)
+        })
+        .await
+    {
+        tracing::error!(target: Action::Domains.target(), "pruning domains failed: {e}");
+    }
+    let snapshot = store.snapshot().await;
+    let due: Vec<domains::Claim> = snapshot
+        .claims
+        .iter()
+        .filter(|c| c.due(now))
+        .take(domains::CHECKS_PER_PASS)
+        .cloned()
+        .collect();
+    if due.is_empty() {
+        return;
+    }
+    let mut results = Vec::with_capacity(due.len());
+    for claim in due {
+        let vouched = vouched_for(st, &claim.tenant).await;
+        // No Stripe data: nothing to look up, the answer is already known.
+        let observed = if vouched.is_some() {
+            doh.observe(&claim.domain).await
+        } else {
+            domains::Observed {
+                txt: Ok(Vec::new()),
+                addrs: Ok(Vec::new()),
+            }
+        };
+        results.push((claim, vouched, observed));
+    }
+    let outcome = store
+        .update(|s| {
+            let mut next = s.clone();
+            for (claim, vouched, observed) in &results {
+                let taken = next
+                    .claims
+                    .iter()
+                    .any(|c| c.domain == claim.domain && c.tenant != claim.tenant && c.live());
+                if let Some(slot) = next
+                    .claims
+                    .iter_mut()
+                    .find(|c| c.domain == claim.domain && c.tenant == claim.tenant)
+                {
+                    let was_live = slot.live();
+                    *slot = domains::evaluate(
+                        slot,
+                        vouched.as_ref(),
+                        &store.opts,
+                        taken,
+                        observed,
+                        now,
+                    );
+                    if slot.live() != was_live {
+                        tracing::info!(
+                            target: Action::Domains.target(),
+                            "{} for {}: {}",
+                            slot.domain,
+                            slot.tenant,
+                            if slot.live() { "live" } else { "offline" },
+                        );
+                    }
+                }
+            }
+            Ok(next)
+        })
+        .await;
+    if let Err(e) = outcome {
+        tracing::error!(target: Action::Domains.target(), "recording domain checks failed: {e}");
+    }
 }
 
 /// Stripe's event delivery. No appliance token: the signature over the raw body
@@ -1598,6 +1852,7 @@ async fn reconciler(st: AppState) {
             () = st.notify.notified() => {}
             () = &mut tick => {}
         }
+        check_domains(&st).await;
         if let Err(e) = reconcile_once(&st).await {
             // Log and continue — the reconciler must not kill the server on a
             // single failed pass; the next tick retries.
@@ -1779,7 +2034,11 @@ async fn reconcile_once(st: &AppState) -> Result<()> {
             ),
         },
     };
-    let files = desired_config(&enriched, &opts);
+    // The domain half: a name in the edge's zone for each box Stripe vouches
+    // for, every proved custom domain, and the zone file itself. Computed
+    // before the Traefik file so both describe the same moment.
+    let (extra_hosts, zone_names) = domain_hosts(st, &enriched, &tenants).await;
+    let files = desired_config_with_hosts(&enriched, &opts, &extra_hosts);
 
     let traefik_path = Path::new(&st.opts.traefik_dir).join("losos.yml");
     // `None` means "no live tenants": Traefik's file provider rejects an empty
@@ -1809,6 +2068,16 @@ async fn reconcile_once(st: &AppState) -> Result<()> {
     // Restart=always would resurrect it ~5s later, a needless tunnel outage
     // on every tenant change. The atomic temp+rename above is the only
     // signal rathole needs.
+    // Never fatal, like the windows below: a zone that cannot be written
+    // costs DNS answers, not tunnels.
+    let changed_zone = match write_zone(st, &zone_names).await {
+        Ok(changed) => changed,
+        Err(e) => {
+            tracing::error!(target: Action::Domains.target(), "writing the zone failed: {e:?}");
+            false
+        }
+    };
+
     // Published last and never fatal: this is the mesh half. `write_if_changed`
     // creates the parent directory, so on an edge that has never seen a join
     // the steady state is one small `{"nodes": []}` — a truthful statement that
@@ -1843,6 +2112,7 @@ async fn reconcile_once(st: &AppState) -> Result<()> {
         || changed_rathole
         || dropped_windows
         || changed_windows
+        || changed_zone
     {
         tracing::info!(
             target: Action::Reconcile.target(),
@@ -1855,6 +2125,81 @@ async fn reconcile_once(st: &AppState) -> Result<()> {
         );
     }
     Ok(())
+}
+
+/// Extra Traefik hostnames per live tenant, and the names for the zone.
+///
+/// Empty on an edge with no zone, and on one that is not (or no longer)
+/// official: an edge that loses its certificate stops serving the names it
+/// handed out, the same way its boxes stop trusting it.
+async fn domain_hosts(
+    st: &AppState,
+    live: &[TenantView],
+    tenants: &HashMap<String, TenantEntry>,
+) -> (BTreeMap<String, Vec<String>>, ZoneNames) {
+    let mut hosts: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    let mut names = ZoneNames::default();
+    let Ok(store) = domains_of(st) else {
+        return (hosts, names);
+    };
+    let zone = &store.opts.zone;
+    // Tenant hostnames inside the zone: every whitelisted one, live or not,
+    // so a box that reboots keeps its name and only its router comes and goes.
+    for entry in tenants.values() {
+        names.add_fqdn(&entry.hostname, zone);
+    }
+    // And the registrar's own name, when the zone is the whole public domain.
+    if !store.opts.public_domain.is_empty() {
+        names.add_fqdn(&format!("register.{}", store.opts.public_domain), zone);
+    }
+    // One name per vouched box. Also whitelisted-only: a seller the operator
+    // has removed gets nothing.
+    if let Some(market) = &st.market {
+        for (tenant, seller) in market.sellers().await {
+            if !tenants.contains_key(&tenant) {
+                continue;
+            }
+            if let Some(v) = Vouched::from_seller(Some(&seller)) {
+                let target = store.opts.target_for(&v.box_uuid);
+                names.add_fqdn(&target, zone);
+                hosts.entry(tenant).or_default().push(target);
+            }
+        }
+    }
+    for (tenant, domains) in domains::live_routes(&store.snapshot().await) {
+        hosts.entry(tenant).or_default().extend(domains);
+    }
+    // Routers only for tenants that are live right now.
+    let live_ids: HashSet<&str> = live.iter().map(|t| t.id.as_str()).collect();
+    hosts.retain(|id, _| live_ids.contains(id.as_str()));
+    (hosts, names)
+}
+
+/// Render the zone and replace the file when it says something new.
+async fn write_zone(st: &AppState, names: &ZoneNames) -> Result<bool> {
+    let Some(store) = &st.domains else {
+        return Ok(false);
+    };
+    let path = Path::new(&store.opts.zone_file);
+    let existing = match tokio::fs::read_to_string(path).await {
+        Ok(s) => Some(s),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+        Err(e) => {
+            return Err(e)
+                .into_diagnostic()
+                .with_context(|| format!("read {}", path.display()))
+        }
+    };
+    match zone::next_zone(
+        &store.opts,
+        names,
+        existing.as_deref(),
+        crate::market::now_secs(),
+    ) {
+        None => Ok(false),
+        // World-readable: Knot runs as its own user and the zone is public.
+        Some(text) => write_if_changed(path, &text, ZONE_FILE_MODE).await,
+    }
 }
 
 /// Write `content` to `path` only if it differs from the current content.

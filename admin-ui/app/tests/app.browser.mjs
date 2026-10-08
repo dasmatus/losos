@@ -62,6 +62,7 @@ async function open({
   viewport = { width: 1280, height: 900 },
   locale = 'en-US',
   market = { available: false },
+  domains = { available: false },
   edge = EDGE_FOUND,
   settings = SETTINGS,
   checkoutUrl = 'https://checkout.stripe.com/c/pay/cs_test_1',
@@ -122,6 +123,31 @@ async function open({
     if (path === '/api/market/orders') return json(route, 201, { available: true, checkout_url: checkoutUrl });
     return json(route, 201, { available: true });
   });
+  // The custom-domain relay: GET answers `domains`; an add or a remove is
+  // recorded and answered with the view the edge would send back.
+  const domainPosts = [];
+  let domainsView = domains;
+  await page.route('**/api/domains', (route) => {
+    if (!authed(route)) return json(route, 401, { error: 'unauthorized' });
+    if (route.request().method() === 'GET') return json(route, 200, domainsView);
+    const sent = route.request().postDataJSON();
+    domainPosts.push(['/api/domains', sent]);
+    if (sent.domain === 'taken.example.org') {
+      return json(route, 409, { error: 'taken.example.org is live for another box' });
+    }
+    domainsView = {
+      ...domainsView,
+      domains: [...domainsView.domains, { ...WAITING_DOMAIN, domain: sent.domain, txt_name: `_losos-challenge.${sent.domain}` }],
+    };
+    return json(route, 201, domainsView);
+  });
+  await page.route('**/api/domains/remove', (route) => {
+    if (!authed(route)) return json(route, 401, { error: 'unauthorized' });
+    const sent = route.request().postDataJSON();
+    domainPosts.push(['/api/domains/remove', sent]);
+    domainsView = { ...domainsView, domains: domainsView.domains.filter((d) => d.domain !== sent.domain) };
+    return json(route, 200, domainsView);
+  });
   // Stripe's own pages, so a tab sent there has something to land on.
   for (const host of ['checkout.stripe.com', 'connect.stripe.com']) {
     await page.context().route(`https://${host}/**`, (route) =>
@@ -133,8 +159,44 @@ async function open({
     await page.addInitScript((t) => window.sessionStorage.setItem('losos-token', t), TOKEN);
   }
   await page.goto(origin + path, { waitUntil: 'networkidle' });
-  return { page, errors, marketPosts, applies };
+  return { page, errors, marketPosts, applies, domainPosts };
 }
+
+/* GET /api/domains on an official edge, for a box Stripe has checked: one
+ * domain live, one still waiting for its CNAME. */
+const WAITING_DOMAIN = {
+  domain: 'files.example.net',
+  status: 'waiting',
+  txt_name: '_losos-challenge.files.example.net',
+  txt_value: 'losos-domain-v1=0f3c9a51d2e84b7d6a1c93e0b5f2d470',
+  txt_found: true,
+  points_here: false,
+  problem: 'notPointing',
+  checked_at: 1791450000,
+  verified_at: null,
+};
+const DOMAINS_READY = {
+  available: true,
+  eligible: true,
+  reason: null,
+  target: '3f9a1c0e7b2d4a55.boxes.losos.dasmat.us',
+  addresses: ['203.0.113.7', '2001:db8::7'],
+  max_domains: 5,
+  domains: [
+    {
+      domain: 'cloud.example.org',
+      status: 'live',
+      txt_name: '_losos-challenge.cloud.example.org',
+      txt_value: 'losos-domain-v1=0f3c9a51d2e84b7d6a1c93e0b5f2d470',
+      txt_found: true,
+      points_here: true,
+      problem: null,
+      checked_at: 1791450000,
+      verified_at: 1791440000,
+    },
+    WAITING_DOMAIN,
+  ],
+};
 
 /* What lososd's scan reports with an edge on the LAN, and with none. */
 const EDGE_FOUND = {
@@ -1173,6 +1235,65 @@ await check('the daemon\'s refusal reaches the owner in the daemon\'s own words'
   assert.match(applies[0], /losos\.cluster\.enable = true;/);
   // Nothing is applying: the bar is back with Apply armed.
   await page.getByRole('button', { name: 'Apply', exact: true }).waitFor();
+  await page.close();
+});
+
+await check('the Network pane says why a box gets no custom domain', async () => {
+  const none = await open({ path: '/settings/network', stored: true, domains: { available: false, reason: 'noOfficialEdge' } });
+  const section = none.page.getByTestId('custom-domains');
+  await section.getByText('Not offered to this box').waitFor();
+  assert.match(await section.innerText(), /official LosOS edge, and none is in reach/);
+  assert.equal(await section.getByRole('textbox').count(), 0, 'a box with no official edge got a domain field');
+  assert.deepEqual(none.errors, []);
+  await none.page.close();
+
+  const unvouched = await open({
+    path: '/settings/network',
+    stored: true,
+    domains: { ...DOMAINS_READY, eligible: false, reason: 'stripeAccount', target: null, domains: [] },
+  });
+  const s2 = unvouched.page.getByTestId('custom-domains');
+  await s2.getByText('Needs a Stripe account that Stripe has checked').waitFor();
+  assert.equal(await s2.getByRole('textbox').count(), 0, 'an unvouched box got a domain field');
+  assert.deepEqual(unvouched.errors, []);
+  await unvouched.page.close();
+});
+
+await check('a vouched box lists its domains with the records to publish, adds one and removes one', async () => {
+  const { page, errors, domainPosts } = await open({ path: '/settings/network', stored: true, domains: DOMAINS_READY });
+  const section = page.getByTestId('custom-domains');
+  await section.getByText('3f9a1c0e7b2d4a55.boxes.losos.dasmat.us', { exact: true }).waitFor();
+  const rows = section.getByTestId('custom-domain');
+  assert.equal(await rows.count(), 2);
+  const live = await rows.nth(0).innerText();
+  assert.match(live, /cloud\.example\.org/);
+  assert.match(live, /Live/);
+  assert.doesNotMatch(live, /CNAME/, 'a live domain still lists the records');
+  const waiting = await rows.nth(1).innerText();
+  assert.match(waiting, /Waiting for DNS/);
+  assert.match(waiting, /does not point at this box's name yet/);
+  assert.match(waiting, /CNAME\s+files\.example\.net\s+3f9a1c0e7b2d4a55\.boxes\.losos\.dasmat\.us\. not seen yet/);
+  assert.match(waiting, /TXT\s+_losos-challenge\.files\.example\.net\s+"losos-domain-v1=0f3c9a51d2e84b7d6a1c93e0b5f2d470" ✓ seen/);
+  assert.match(waiting, /203\.0\.113\.7, 2001:db8::7/);
+
+  await section.getByRole('textbox').fill('  Shop.Example.COM. ');
+  await section.getByRole('button', { name: 'Add', exact: true }).click();
+  await section.getByTestId('custom-domain').filter({ hasText: 'shop.example.com' }).waitFor();
+  assert.deepEqual(domainPosts, [['/api/domains', { domain: 'shop.example.com' }]]);
+  assert.equal(await section.getByRole('textbox').inputValue(), '', 'the field kept the added name');
+
+  await section.getByRole('textbox').fill('taken.example.org');
+  await section.getByRole('button', { name: 'Add', exact: true }).click();
+  const refused = page.locator('[data-toast]').filter({ hasText: /live for another box/ });
+  await refused.waitFor({ timeout: 5000 });
+  assert.equal(await section.getByRole('textbox').inputValue(), 'taken.example.org', 'a refused name was cleared');
+
+  await rows.nth(0).getByRole('button', { name: 'Remove', exact: true }).click();
+  await page.waitForFunction(
+    () => !document.querySelector('[data-testid="custom-domains"]').innerText.includes('cloud.example.org'),
+  );
+  assert.deepEqual(domainPosts.at(-1), ['/api/domains/remove', { domain: 'cloud.example.org' }]);
+  assert.deepEqual(errors, []);
   await page.close();
 });
 

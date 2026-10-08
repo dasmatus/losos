@@ -6,6 +6,7 @@ use std::time::Duration;
 
 use miette::{miette, IntoDiagnostic, Result};
 
+use crate::domains::{DomainsOpts, DEFAULT_DOH_URL};
 use crate::market::{MarketOpts, DEFAULT_FEE_BPS, MAX_FEE_BPS, SUPPORTED_CURRENCIES};
 use crate::provision::{EdgeSpec, ProvisionGithub, GITHUB_API_URL, GITHUB_OAUTH_URL};
 use crate::stripe_gate::GateOpts;
@@ -122,6 +123,9 @@ pub struct ServeOpts {
     /// `--github-api-url`; the default is api.github.com, the override is
     /// for the tests' fake GitHub.
     pub github_api_url: String,
+    /// `None` unless `--dns-zone` was given: no zone, no custom domains, and
+    /// every `/domains/*` route answers 503.
+    pub domains: Option<Box<DomainsOpts>>,
 }
 
 /// `identity` options: the offline key ceremony (`crate::identity`).
@@ -330,6 +334,7 @@ pub fn parse(args: Vec<String>) -> Result<Mode> {
                     .unwrap_or(GITHUB_API_URL)
                     .trim_end_matches('/')
                     .to_string(),
+                domains: parse_domains(&rest)?,
             }))
         }
         "identity" => {
@@ -562,6 +567,85 @@ fn parse_market(args: &[String]) -> Result<Option<Box<MarketOpts>>> {
         currency: currency.to_string(),
         fee_bps,
         storage_class: storage_class.to_string(),
+    })))
+}
+
+/// The DNS half of `serve`: `--dns-zone` turns it on, and then the edge must
+/// say which addresses its names resolve to.
+fn parse_domains(args: &[String]) -> Result<Option<Box<DomainsOpts>>> {
+    let Some(zone) = arg(args, "--dns-zone") else {
+        return Ok(None);
+    };
+    let zone = zone.trim().trim_end_matches('.').to_ascii_lowercase();
+    if zone.split('.').count() < 2 || !dns_subdomain(&zone) {
+        return Err(miette!(
+            "bad --dns-zone {zone:?}; expected a domain such as boxes.losos.cfd"
+        ));
+    }
+    let list = |flag: &str| -> Vec<String> {
+        arg(args, flag)
+            .unwrap_or("")
+            .split(',')
+            .map(|s| s.trim().trim_end_matches('.').to_ascii_lowercase())
+            .filter(|s| !s.is_empty())
+            .collect()
+    };
+    let ipv4 = list("--dns-ipv4")
+        .iter()
+        .map(|a| {
+            a.parse()
+                .map_err(|_| miette!("bad --dns-ipv4 address {a:?}"))
+        })
+        .collect::<Result<Vec<std::net::Ipv4Addr>>>()?;
+    let ipv6 = list("--dns-ipv6")
+        .iter()
+        .map(|a| {
+            a.parse()
+                .map_err(|_| miette!("bad --dns-ipv6 address {a:?}"))
+        })
+        .collect::<Result<Vec<std::net::Ipv6Addr>>>()?;
+    if ipv4.is_empty() && ipv6.is_empty() {
+        return Err(miette!(
+            "--dns-zone needs --dns-ipv4 and/or --dns-ipv6: the edge's public addresses, which every box name resolves to"
+        ));
+    }
+    let mut nameservers = list("--dns-nameservers");
+    if nameservers.is_empty() {
+        nameservers.push(format!("ns1.{zone}"));
+    }
+    if let Some(bad) = nameservers.iter().find(|n| !dns_subdomain(n)) {
+        return Err(miette!("bad --dns-nameservers entry {bad:?}"));
+    }
+    let hostmaster = arg(args, "--dns-hostmaster").map_or_else(
+        || format!("hostmaster.{zone}"),
+        |h| h.trim().trim_end_matches('.').to_string(),
+    );
+    if !dns_subdomain(&hostmaster) {
+        return Err(miette!("bad --dns-hostmaster {hostmaster:?}; write the mailbox as a domain (hostmaster.example.org)"));
+    }
+    let doh_url = arg(args, "--dns-check-url").unwrap_or(DEFAULT_DOH_URL);
+    if !(doh_url.starts_with("https://") || doh_url.starts_with("http://")) {
+        return Err(miette!(
+            "bad --dns-check-url {doh_url:?}; expected a DNS-over-HTTPS JSON endpoint"
+        ));
+    }
+    Ok(Some(Box::new(DomainsOpts {
+        state_file: arg(args, "--domains-state-file")
+            .unwrap_or("/var/lib/losos-registrar/domains.json")
+            .to_string(),
+        zone_file: arg(args, "--dns-zone-file")
+            .map_or_else(|| format!("/var/lib/losos-dns/{zone}.zone"), str::to_string),
+        public_domain: arg(args, "--public-domain")
+            .unwrap_or("")
+            .trim()
+            .trim_end_matches('.')
+            .to_ascii_lowercase(),
+        zone,
+        nameservers,
+        hostmaster,
+        ipv4,
+        ipv6,
+        doh_url: doh_url.to_string(),
     })))
 }
 

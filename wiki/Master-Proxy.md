@@ -196,6 +196,80 @@ market protocol is not hidden, and the owner's private key is the whole
 secret. Losing it means shipping a release that re-keys every box's trust
 anchor.
 
+## DNS zone and custom domains
+
+An official edge can serve a DNS zone of its own and route domains that box
+owners already have. It is off unless `losos.edge.dns.enable` is set.
+
+```nix
+losos.edge.dns = {
+  enable = true;
+  zone = "boxes.losos.dasmat.us";   # default: "boxes.${publicDomain}"
+  ipv4 = [ "203.0.113.7" ];         # the edge's public addresses; one family at least
+  ipv6 = [ "2001:db8::7" ];
+  # nameservers defaults to [ "ns1.<zone>" ], served with glue from ipv4/ipv6.
+};
+```
+
+The registrar renders the zone file on every reconcile and Knot serves it on
+port 53, which the module opens. A path unit reloads Knot when the file
+changes. The zone carries SOA, NS and glue, every tenant hostname that falls
+inside the zone, and one name per box whose Stripe account is vouched for:
+16 hex characters of a SHA-256 of the box UUID. Every name resolves to the
+edge, because that is where Traefik and the tunnel are. A box's own address
+never appears in public DNS, and neither does a Stripe account id or a UUID.
+The serial is the Unix time of the change, or one more than the previous
+serial if that is larger.
+
+The operator delegates the zone once, at the registrar of the parent domain:
+
+```
+boxes.losos.dasmat.us.      NS  ns1.boxes.losos.dasmat.us.
+ns1.boxes.losos.dasmat.us.  A   203.0.113.7
+ns1.boxes.losos.dasmat.us.  AAAA 2001:db8::7
+```
+
+Nothing is handed out until the edge holds an unexpired identity certificate
+([Official edges](#official-edges)). Before that the zone is only SOA, NS and
+glue, and `/domains/*` answers 503.
+
+### Custom domains
+
+A box adds a domain over `POST /domains/add` (authenticated with its tunnel
+token, relayed by lososd from Settings → Network). The edge accepts it only
+when the box's Stripe connected account is ready and carries the box UUID,
+the same check the market makes before paying out. Then the owner publishes
+two records:
+
+- `_losos-challenge.<domain> TXT "losos-domain-v1=<32 hex>"`, where the hex
+  is a SHA-256 over the domain, the box UUID and the Stripe account id. It
+  proves control of the domain and binds it to that box and that account.
+  A record left behind by a previous owner proves nothing.
+- `<domain> CNAME <label>.<zone>`, or A/AAAA records with the edge's
+  addresses at a zone apex.
+
+The registrar looks both up over DNS-over-HTTPS (`losos.edge.dns.checkUrl`,
+Cloudflare's JSON API by default), at most 16 per pass, every 30 s while a
+claim waits and hourly once it is live. Only when both records are right does
+the domain get a Traefik router with Let's Encrypt, routed through the
+box's tunnel. Waiting for the CNAME too keeps Traefik from asking Let's
+Encrypt for a name that does not reach the edge. A live domain lapses after
+three failed rechecks in a row, or at once when the Stripe account stops
+being ready. A box may hold five domains, a domain belongs to one box, and an
+unverified claim is dropped after seven days. Claims live in
+`/var/lib/losos-registrar/domains.json`.
+
+On the box, lososd keeps the live domains in
+`/var/lib/losos-public-names/domains.json`. It refreshes the file every two
+minutes and whenever the Network pane asks. The Nextcloud pod mounts that
+directory read-only, adds the names to `trusted_domains` per request, and
+uses a request's own domain for `overwritehost` when it is one of them. Only
+container mode does this. LosOS Git keeps its edge-name `ROOT_URL`.
+
+`tests/edge-dns.nix` (`losos-edge-dns`) boots an edge and a client and asks
+Knot over UDP and TCP. `backend-registrar/tests/domains.rs` drives the claim
+flow against a real registrar and a fake DNS-over-HTTPS server.
+
 ## Demo deployment on Vercel
 
 `edge-vercel/` runs the registrar's API, the same router and the same token

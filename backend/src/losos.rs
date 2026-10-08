@@ -136,6 +136,12 @@ pub trait Losos {
     /// daemon answers from its scanner's cache; the fake answers what a test
     /// put there. Never an error for "nothing found": that is a status.
     fn edge_status(&mut self) -> anyhow::Result<crate::edge::EdgeStatus>;
+
+    /// Record the custom domains that are live for this box on its edge, for
+    /// LosOS cloud to trust (`trusted_domains`) and to build its links from
+    /// when a request arrives on one. The edge verified each of them; this is
+    /// only the box learning the answer. Sorted, lowercase, deduplicated.
+    fn write_public_names(&mut self, names: &[String]) -> anyhow::Result<()>;
     // ── The owner's look ────────────────────────────────────────────────
     // A background picture and the widgets written by hand
     // (`crate::look`). Appliance state beside `state.json`, never a
@@ -784,6 +790,85 @@ pub fn cmd_market_op<L: Losos>(l: &mut L, op: &crate::market::Op) -> anyhow::Res
         obj.insert("available".to_string(), json!(true));
     }
     Ok(reply)
+}
+
+/// This box's custom domains: `GET /api/domains`.
+///
+/// Gated like the market, on an official edge in reach, because only an
+/// official edge hands out names and this box's proxy token should go to no
+/// other. `{"available": false}` (with a reason when there is one) is the
+/// common case and a 200.
+pub fn cmd_domains<L: Losos>(l: &mut L) -> anyhow::Result<Value> {
+    use crate::market::{Op, Outcome};
+    if crate::edge::check_market_gate(&l.edge_status()?).is_err() {
+        return Ok(json!({ "available": false, "reason": "noOfficialEdge" }));
+    }
+    match l.market_request(&Op::Domains)? {
+        Outcome::Reply(mut view) => {
+            record_public_names(l, &view);
+            if let Some(obj) = view.as_object_mut() {
+                obj.insert("available".to_string(), json!(true));
+            }
+            Ok(view)
+        }
+        Outcome::Unavailable => Ok(json!({ "available": false })),
+    }
+}
+
+/// Add or remove a custom domain. The reply is the edge's whole view, so the
+/// page redraws from one answer.
+pub fn cmd_domain_op<L: Losos>(l: &mut L, op: &crate::market::Op) -> anyhow::Result<Value> {
+    use crate::market::{Op, Outcome, Refused};
+    if !matches!(op, Op::DomainAdd { .. } | Op::DomainRemove { .. }) {
+        anyhow::bail!("not a domain operation");
+    }
+    crate::edge::check_market_gate(&l.edge_status()?)?;
+    op.validate().map_err(|e| {
+        anyhow::Error::from(Refused {
+            status: 400,
+            message: e.to_string(),
+        })
+    })?;
+    let Outcome::Reply(mut view) = l.market_request(op)? else {
+        return Err(Refused {
+            status: 409,
+            message: "the edge does not offer custom domains to this box".to_string(),
+        }
+        .into());
+    };
+    record_public_names(l, &view);
+    if let Some(obj) = view.as_object_mut() {
+        obj.insert("available".to_string(), json!(true));
+    }
+    Ok(view)
+}
+
+/// The live domains in an edge's domains view, as LosOS cloud should trust
+/// them: lowercase, a plain host name each, sorted, no duplicates. Anything
+/// that is not a host name is dropped rather than trusted, whatever the edge
+/// sent.
+#[must_use]
+pub fn live_public_names(view: &Value) -> Vec<String> {
+    let mut names: Vec<String> = view["domains"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|d| d["status"] == "live")
+        .filter_map(|d| d["domain"].as_str())
+        .map(str::to_ascii_lowercase)
+        .filter(|d| crate::market::valid_domain(d))
+        .collect();
+    names.sort();
+    names.dedup();
+    names
+}
+
+/// Hand the live names to LosOS cloud. A failure is logged, not returned:
+/// the owner asked to see or change their domains, and that worked.
+fn record_public_names<L: Losos>(l: &mut L, view: &Value) {
+    if let Err(e) = l.write_public_names(&live_public_names(view)) {
+        tracing::warn!(error = %e, "could not record this box's live custom domains");
+    }
 }
 
 /// What the daemon knows about edge proxies: `GET /api/edge`.
@@ -1537,6 +1622,9 @@ mod tests {
             fn edge_status(&mut self) -> anyhow::Result<crate::edge::EdgeStatus> {
                 self.0.edge_status()
             }
+            fn write_public_names(&mut self, names: &[String]) -> anyhow::Result<()> {
+                self.0.write_public_names(names)
+            }
             fn load_look(&mut self) -> anyhow::Result<crate::look::Look> {
                 self.0.load_look()
             }
@@ -1906,6 +1994,131 @@ mod tests {
         let r = e.downcast_ref::<Refused>().unwrap();
         assert_eq!(r.status, 409);
         assert!(r.message.contains("sharing its compute"));
+    }
+
+    // ── Custom domains ──────────────────────────────────────────────────
+
+    #[test]
+    fn the_domains_view_comes_from_the_edge_and_says_available() {
+        let mut f = FakeLosos::new();
+        f.market_routes.insert(
+            "POST /domains/list".to_string(),
+            (
+                200,
+                r#"{"eligible":true,"target":"3f9a1c0e7b2d4a55.boxes.losos.cfd","domains":[]}"#
+                    .to_string(),
+            ),
+        );
+        let out = cmd_domains(&mut f).unwrap();
+        assert_eq!(out["available"], true);
+        assert_eq!(out["target"], "3f9a1c0e7b2d4a55.boxes.losos.cfd");
+        assert_eq!(f.public_names, Some(Vec::new()));
+        // An edge with no zone, or one that is not official yet, is a 503
+        // there and "not available" here.
+        f.market_routes
+            .insert("POST /domains/list".to_string(), (503, String::new()));
+        assert_eq!(
+            cmd_domains(&mut f).unwrap(),
+            serde_json::json!({ "available": false })
+        );
+        // An edge that did not answer leaves the last answer in place: the
+        // names stop reaching the box when the edge stops routing them.
+        assert_eq!(f.public_names, Some(Vec::new()));
+    }
+
+    #[test]
+    fn only_live_domains_reach_the_files_app_and_never_a_non_name() {
+        let mut f = FakeLosos::new();
+        f.market_routes.insert(
+            "POST /domains/list".to_string(),
+            (
+                200,
+                r#"{"eligible":true,"domains":[
+                    {"domain":"Cloud.Example.org","status":"live"},
+                    {"domain":"cloud.example.org","status":"live"},
+                    {"domain":"git.example.org","status":"waiting"},
+                    {"domain":"a.example.org","status":"live"},
+                    {"domain":"evil'];phpinfo();//","status":"live"},
+                    {"status":"live"}
+                ]}"#
+                .to_string(),
+            ),
+        );
+        cmd_domains(&mut f).unwrap();
+        assert_eq!(
+            f.public_names,
+            Some(vec![
+                "a.example.org".to_string(),
+                "cloud.example.org".to_string()
+            ])
+        );
+        // An add answers with the whole view, which is recorded the same way.
+        f.market_routes.insert(
+            "POST /domains/add".to_string(),
+            (201, r#"{"eligible":true,"domains":[]}"#.to_string()),
+        );
+        cmd_domain_op(
+            &mut f,
+            &crate::market::Op::DomainAdd {
+                domain: "new.example.org".to_string(),
+            },
+        )
+        .unwrap();
+        assert_eq!(f.public_names, Some(Vec::new()));
+    }
+
+    #[test]
+    fn only_an_official_edge_is_asked_about_domains() {
+        use crate::market::Op;
+        let mut f = FakeLosos::new().with_company_edge();
+        assert_eq!(
+            cmd_domains(&mut f).unwrap(),
+            serde_json::json!({ "available": false, "reason": "noOfficialEdge" })
+        );
+        let err = cmd_domain_op(
+            &mut f,
+            &Op::DomainAdd {
+                domain: "cloud.example.org".to_string(),
+            },
+        )
+        .unwrap_err();
+        assert!(err
+            .downcast_ref::<crate::edge::OfficialEdgeRequired>()
+            .is_some());
+        assert!(f.market_ops.is_empty(), "{:?}", f.market_ops);
+    }
+
+    #[test]
+    fn adding_a_domain_passes_the_edges_refusal_through_in_its_words() {
+        use crate::market::{Op, Refused};
+        let mut f = FakeLosos::new();
+        f.market_routes.insert(
+            "POST /domains/add".to_string(),
+            (
+                409,
+                "a custom domain needs this box's Stripe account, checked by Stripe; finish it on the Market pane first"
+                    .to_string(),
+            ),
+        );
+        let add = Op::DomainAdd {
+            domain: "cloud.example.org".to_string(),
+        };
+        let e = cmd_domain_op(&mut f, &add).unwrap_err();
+        let r = e.downcast_ref::<Refused>().unwrap();
+        assert_eq!(r.status, 409);
+        assert!(r.message.contains("Stripe"));
+        // A bad name never leaves the box, and a non-domain op is refused.
+        let mut f = FakeLosos::new();
+        let e = cmd_domain_op(
+            &mut f,
+            &Op::DomainAdd {
+                domain: "not a name".to_string(),
+            },
+        )
+        .unwrap_err();
+        assert_eq!(e.downcast_ref::<Refused>().unwrap().status, 400);
+        assert!(cmd_domain_op(&mut f, &Op::Account).is_err());
+        assert!(f.market_ops.is_empty());
     }
 
     // ── Searching the app catalogue ─────────────────────────────────────
