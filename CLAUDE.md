@@ -440,10 +440,15 @@ an existing account keeps its old theme until its owner switches.
 Owners see the two apps as **LosOS cloud** and **LosOS Git**: the theme
 folder's `defaults.php` names Nextcloud, Forgejo's `APP_NAME` names it, and
 both get logos drawn from `admin-ui/themes/brand/` (`marks.py` wraps
-`plate.png`, the plate of salmon cut out of Matus's own photo, into the
-SVGs and copies it to the SPA and the handbook; every PNG and the `.ico` is
-rendered from those at build time). The old pixel-art fish was dropped over
-a copyright worry; nothing drawn by anyone else goes back in. The rest of the upstream marketing goes by config (no skeleton
+`salmon.png`, a live coho salmon cut out of a NOAA Fisheries photo, into
+the SVGs and copies it to the SPA and the handbook; every PNG and the
+`.ico` is rendered from those at build time). `plate.png`, the plate of
+salmon from Matus's own photo, is the Halloween logo. The SPA and the
+handbook each swap it in on 31 October by the viewer's local date, in their
+own `src/lib/logo.ts`. The apps' marks never change. `brand/CREDITS.md`
+records both sources. A new picture needs a licence that allows use in a
+logo, and Pixabay's does not. The old
+pixel-art fish was dropped over a copyright worry and does not go back in. The rest of the upstream marketing goes by config (no skeleton
 files, no help or sign-up links, no "Powered by") and two Forgejo template
 overrides. Two non-obvious bits: Nextcloud's header filter inverts any logo
 it thinks is its own white one, so `server.css` sets

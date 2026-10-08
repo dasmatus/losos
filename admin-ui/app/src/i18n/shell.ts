@@ -24,9 +24,14 @@ export default defineMessages({
   },
   "shell.thisBox": { en: "this box", sk: "toto zariadenie", de: "diese Box" },
   "shell.logoTip": {
-    en: "Losos is Slovak for salmon. The logo is a plate of it, from the owner's own photo.",
-    sk: "LosOS je pomenovaný po lososovi. Logo je tanier lososa z vlastnej fotky majiteľa.",
-    de: "Losos ist Slowakisch für Lachs. Das Logo ist ein Teller davon, vom eigenen Foto des Besitzers.",
+    en: "Losos is Slovak for salmon. The logo is a live coho salmon, photographed underwater.",
+    sk: "LosOS je pomenovaný po lososovi. Logo je živý losos kisuč, odfotený pod vodou.",
+    de: "Losos ist Slowakisch für Lachs. Das Logo ist ein lebender Silberlachs, unter Wasser fotografiert.",
+  },
+  "shell.logoTipHalloween": {
+    en: "Losos is Slovak for salmon. For Halloween, the logo is a plate of it.",
+    sk: "LosOS je pomenovaný po lososovi. Na Halloween je logo tanier lososa.",
+    de: "Losos ist Slowakisch für Lachs. An Halloween ist das Logo ein Teller davon.",
   },
   "shell.signOut": { en: "Sign out", sk: "Odhlásiť sa", de: "Abmelden" },
   "shell.notFound.title": { en: "Nothing here", sk: "Nič tu nie je", de: "Hier ist nichts" },

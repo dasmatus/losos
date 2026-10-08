@@ -362,8 +362,12 @@
     "description": "The title of the tag list page"
   },
   "losos.navbar.logoTip": {
-    "message": "LosOS je pomenovaný po lososovi. Logo je tanier lososa z vlastnej fotky majiteľa.",
+    "message": "LosOS je pomenovaný po lososovi. Logo je živý losos kisuč, odfotený pod vodou.",
     "description": "The tooltip on the navbar logo, saying what the picture means"
+  },
+  "losos.navbar.logoTipHalloween": {
+    "message": "LosOS je pomenovaný po lososovi. Na Halloween je logo tanier lososa.",
+    "description": "The tooltip on the logo on 31 October, when it is a plate of salmon"
   },
   "losos.home.feature.cloud.title": {
     "message": "LosOS cloud"
