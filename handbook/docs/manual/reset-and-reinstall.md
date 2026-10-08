@@ -5,16 +5,16 @@ sidebar_position: 8
 
 # Reset and reinstall
 
-Two very different things, in two very different places.
+Reset and reinstall are different things, done from different places.
 
 ## Reset: put every setting back
 
 **Settings → Reset → Reset…** puts every setting back the way the box came:
-the name, the network, the mesh, the apps. Your files, photos and
-repositories are not touched. The box rebuilds itself and comes back under
-its original name, so the address you use to reach it changes back too (the
-IP address does not). The dialog spells out what goes and what stays and
-needs a second press.
+the name, the network, the mesh, the apps. It does not touch your files,
+photos or repositories. The box rebuilds itself and comes back under its
+original name, so the name you reach it by changes back too. The IP address
+stays the same. The dialog lists what goes and what stays, and you have to
+press a second time.
 
 ![The reset dialog spelling out what is reset and what is kept, with Keep my settings first.](../img/settings-reset-dialog.png)
 
@@ -25,18 +25,18 @@ re-open the claim window.
 
 ## Reinstall: wipe and start over
 
-Booting the installer stick again does the install from scratch: **every
-disk is wiped**, including your files, the password, the spare key, the
-box's identity in the mesh and its keys. There is no "keep my data" option by
-design; the box is one copy, and your other copy is where your data is safe.
+Booting the installer stick again installs from scratch. It **wipes every
+disk**, including your files, the password, the spare key, the box's
+identity in the mesh and its keys. There is no "keep my data" option, by
+design. The box is one copy, and your other copy is where your data is safe.
 
-After a reinstall the box is a new box: run the wizard again, print a new
-spare key, trust the new certificate, and (with an edge) have it enrolled
+After a reinstall the box is a new box. Run the wizard again, print a new
+spare key and trust the new certificate. With an edge, have the box enrolled
 again under its new identity.
 
 ## What a reinstall does not need
 
-A machine that boots the installer stick. That is all. The box's firmware
-settings (Secure Boot off for the installed box, or the LosOS certificate
-enrolled for the stick: [Secure Boot](../start/secure-boot)) are the only
-thing to keep.
+A machine that boots the installer stick. That is all. The only thing to keep
+is the box's firmware settings: Secure Boot off for the installed box, or the
+LosOS certificate enrolled for the stick. [Secure Boot](../start/secure-boot)
+explains both.

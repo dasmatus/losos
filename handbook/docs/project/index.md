@@ -8,11 +8,11 @@ slug: /project
 # The project
 
 LosOS is Matúš Maštena's matriculation (maturita) project at SPŠE Hálova,
-Bratislava, defended in April 2027, and the seed of a product: a full setup
-(boxes plus an edge on one network) to offer to companies afterwards. The
-official assignment (received 7 October 2026) names four requirements. This
-chapter is where each is answered, in the handbook's own words rather than a
-separate report; the Slovak hand-in document, the
+Bratislava, defended in April 2027. Afterwards it is meant to become a
+product: a full setup of boxes plus an edge on one network, offered to
+companies. The official assignment, received on 7 October 2026, names four
+requirements. This chapter answers each one in the handbook's own words
+rather than in a separate report. The Slovak hand-in document, the
 [technical documentation (KOP)](./kop/index.md), is built from this handbook
 and adds what the assignment asks for beyond it.
 
@@ -39,8 +39,8 @@ end to end against Stripe's test mode, the edge's control plane on Vercel for
 demonstrations, and this handbook on every box.
 
 **Planned**: opening the market once a business exists to be the Stripe
-platform; edge discovery with the official-edge trust anchor (in progress
-as this is written); Slovak and German translations of this handbook; a
+platform; edge discovery with the official-edge trust anchor, in progress
+as this is written; Slovak and German translations of this handbook; a
 packaged company deployment with a reproducible demo script.
 
 ## Source and licence
@@ -48,4 +48,5 @@ packaged company deployment with a reproducible demo script.
 The whole project, this handbook included, is at
 [github.com/dasmatus/losos](https://github.com/dasmatus/losos). Every design
 choice carries its reasoning in a comment at the top of the file that makes
-it, which is where the examiner's "why" questions are answered first.
+it. Those comments are the first place to look for the answer to an
+examiner's "why" question.

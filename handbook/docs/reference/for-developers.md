@@ -18,8 +18,8 @@ LosOS is in two other places:
 ## Changing this handbook
 
 The source is `handbook/` in the repository, a [Docusaurus](https://docusaurus.io/)
-site. Pages are Markdown under `handbook/docs/`; the sidebar follows the
-folder tree, each folder named by its `_category_.json`.
+site. Pages are Markdown under `handbook/docs/`. The sidebar follows the
+folder tree, and each folder takes its name from its `_category_.json`.
 
 ```sh
 cd handbook
@@ -49,8 +49,7 @@ Pictures live in `handbook/docs/img/`, and the Slovak KOP's in
   handbook downscaled to 1600 px wide and reduced to 256 colours.
 - **Screens of a real machine.** The installer, the tty1 banner, the
   passphrase prompt and the Secure Boot refusals come from VM runs
-  (`tests/secure-boot.nix`, the install demos). They are not retaken by a
-  script.
+  (`tests/secure-boot.nix`, the install demos). No script retakes them.
 - **Diagrams.** These are hand-written SVG on a white card, in the palette
   of the admin UI (`admin-ui/app/src/styles/tokens.css`), so they read the
   same in the light and the dark theme. Edit them as text.
@@ -73,10 +72,10 @@ Write alt text that says what the picture shows, not what the page says.
 ## Translating
 
 Slovak and German are wired in. The interface strings live in
-`handbook/i18n/<locale>/code.json`; a page is translated by copying it to
+`handbook/i18n/<locale>/code.json`. To translate a page, copy it to
 `handbook/i18n/<locale>/docusaurus-plugin-content-docs/current/<same path>`
-and translating the copy. A page without a translation shows in English under
-the translated chrome, so the work can be done one page at a time.
+and translate the copy. A page without a translation shows in English under
+the translated chrome, so you can translate one page at a time.
 
 ```sh
 npm run write-translations -- --locale sk   # refresh the string files
