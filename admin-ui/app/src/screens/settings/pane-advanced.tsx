@@ -136,7 +136,7 @@ export function AdvancedPane({ form }: { form: SettingsForm }) {
   }
 
   const query = fold(search.trim());
-  const shown = options.options.filter((option) => matches(option, query));
+  const shown = options.options.filter((option) => !option.hidden && matches(option, query));
   const groups = groupBy(shown);
   const strays = options.stray.filter((stray) => stray.key in form.extra);
 

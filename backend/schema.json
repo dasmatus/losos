@@ -1271,6 +1271,17 @@
         "out": "marketActionResponse",
         "note": "Buy units. Returns a Stripe Checkout URL for the page to open. Audited. Owner-actionable refusals are 400/409 carrying the registrar's own sentence."
       },
+      "GET /api/lab/order": {
+      "auth": true,
+      "out": "{\"enabled\": false} | {\"enabled\": true, \"available\": false, \"reason\": \"noOfficialEdge|notSold\"} | {\"enabled\": true, \"available\": true, \"catalogue\": {\"currency\", \"countries\", \"items\": [{\"sku\", \"name\", \"detail\", \"unit_amount\"}]}}",
+      "note": "losos.lab.ordering.enable. A 200 in every case."
+    },
+    "POST /api/lab/order": {
+      "auth": true,
+      "in": "{\"items\": [{\"sku\": \"box\", \"quantity\": 1}]}",
+      "out": "{\"available\": true, \"order_id\", \"checkout_url\", \"amount\", \"currency\"}",
+      "note": "409 while losos.lab.ordering.enable is off. Audited."
+    },
       "GET /api/lab/hello": {
       "auth": true,
       "out": "labHelloResponse",

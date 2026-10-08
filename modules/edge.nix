@@ -599,23 +599,45 @@ let
     (toString cfg.market.webhookSecretSealed)
   ];
 
+  # The hardware the edge sells, read by both the registrar and the gate.
+  hardwareOn = cfg.market.enable && cfg.market.hardware.enable;
+  hardwareCatalogue = pkgs.writeText "losos-hardware.json" (
+    builtins.toJSON {
+      inherit (cfg.market) currency;
+      inherit (cfg.market.hardware) countries;
+      items = lib.mapAttrsToList (sku: i: {
+        inherit sku;
+        inherit (i) name detail;
+        unit_amount = i.unitAmount;
+      }) cfg.market.hardware.items;
+    }
+  );
+  hardwareArgs =
+    flag:
+    lib.optionals hardwareOn [
+      flag
+      "${hardwareCatalogue}"
+    ];
+
   # Market half of `serve`. Without --market-gate-socket every /market/*
   # route answers 503, so an edge that leaves the market off parses exactly the
   # arguments it always did.
-  marketServeArgs = lib.optionals cfg.market.enable [
-    "--market-gate-socket"
-    gateSocket
-    "--market-state-file"
-    "/var/lib/losos-registrar/market.json"
-    "--market-fee-bps"
-    (toString cfg.market.feeBps)
-    "--market-currency"
-    cfg.market.currency
-    "--market-return-url"
-    cfg.market.returnUrl
-    "--market-storage-class"
-    cfg.market.storageClass
-  ];
+  marketServeArgs =
+    lib.optionals cfg.market.enable [
+      "--market-gate-socket"
+      gateSocket
+      "--market-state-file"
+      "/var/lib/losos-registrar/market.json"
+      "--market-fee-bps"
+      (toString cfg.market.feeBps)
+      "--market-currency"
+      cfg.market.currency
+      "--market-return-url"
+      cfg.market.returnUrl
+      "--market-storage-class"
+      cfg.market.storageClass
+    ]
+    ++ hardwareArgs "--market-hardware-catalogue";
 
   # The DNS half of `serve` (losos.edge.dns.*). Without --dns-zone every
   # /domains/* route answers 503 and no zone file is written.
@@ -942,26 +964,29 @@ in
       # The registrar wants, not requires, the gate: see `gateSocket`.
       unitConfig.ConditionPathExists = gateSealed;
       serviceConfig = {
-        ExecStart = lib.concatStringsSep " " [
-          "${registrar}/bin/losos-registrar"
-          "stripe-gate"
-          "--socket"
-          gateSocket
-          "--stripe-key-file"
-          "%d/stripe-secret-key"
-          "--webhook-secret-file"
-          "%d/stripe-webhook-secret"
-          "--currency"
-          cfg.market.currency
-          # The same two values the registrar is given. The gate holds every
-          # Checkout and onboarding link to them exactly, so a compromised
-          # registrar can neither raise the platform's cut past what the
-          # operator set nor send buyers and sellers to a page of its choosing.
-          "--fee-bps"
-          (toString cfg.market.feeBps)
-          "--return-url"
-          (utils.escapeSystemdExecArg cfg.market.returnUrl)
-        ];
+        ExecStart = lib.concatStringsSep " " (
+          [
+            "${registrar}/bin/losos-registrar"
+            "stripe-gate"
+            "--socket"
+            gateSocket
+            "--stripe-key-file"
+            "%d/stripe-secret-key"
+            "--webhook-secret-file"
+            "%d/stripe-webhook-secret"
+            "--currency"
+            cfg.market.currency
+            # The same two values the registrar is given. The gate holds every
+            # Checkout and onboarding link to them exactly, so a compromised
+            # registrar can neither raise the platform's cut past what the
+            # operator set nor send buyers and sellers to a page of its choosing.
+            "--fee-bps"
+            (toString cfg.market.feeBps)
+            "--return-url"
+            (utils.escapeSystemdExecArg cfg.market.returnUrl)
+          ]
+          ++ hardwareArgs "--hardware-catalogue"
+        );
         LoadCredentialEncrypted = [
           "stripe-secret-key:${toString cfg.market.stripeSecretKeySealed}"
           "stripe-webhook-secret:${toString cfg.market.webhookSecretSealed}"
