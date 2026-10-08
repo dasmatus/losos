@@ -43,7 +43,9 @@ let
     "templates"
   ];
 
+  nextcloudNative = config.losos.nextcloud.mode == "native";
   nextcloudWorkload = config.losos.nextcloud.mode == "container";
+  nextcloudFederates = config.lososInternal.federation.nextcloud;
   forgejoWorkload = config.losos.forgejo.mode == "container" && config.losos.forgejo.enable;
 in
 {
@@ -82,9 +84,10 @@ in
       actions.ENABLED = false;
       # ActivityPub, the same two lines as the container path
       # (modules/workloads.nix explains both). Native mode is LAN-only,
-      # so this federates with other boxes on the LAN and nothing further.
+      # so this federates with other boxes on the LAN and nothing further,
+      # and only while the box shares its disk (lososInternal.federation).
       federation = {
-        ENABLED = config.losos.forgejo.federation.enable;
+        ENABLED = config.lososInternal.federation.forgejo;
         SHARE_USER_STATISTICS = false;
       };
     };
@@ -114,9 +117,34 @@ in
   # the same stack runs as the containerised workload and is reached through
   # the front vhost's /nextcloud route (modules/containers.nix). The lone
   # source of truth for the stack is modules/nextcloud-common.nix.
-  services.nextcloud = lib.mkIf (
-    config.losos.nextcloud.mode == "native"
-  ) config.lososInternal.nextcloudStack;
+  services.nextcloud = lib.mkIf nextcloudNative config.lososInternal.nextcloudStack;
+
+  # Federation follows losos.nextcloud.federation.enable and the sharing gate
+  # (lososInternal.federation), the same two halves as the pod
+  # (modules/nextcloud-stack.nix, `federation`): Nextcloud's own switches,
+  # set after every nextcloud-setup run, and the addresses other servers call
+  # answered with 404 by the vhost while it is off. The regexes sort before
+  # the module's `\.php` location (priority 500), which would otherwise hand
+  # /index.php/ocm/... to php-fpm, and the exact /.well-known/ocm beats the
+  # module's `^~ /.well-known` redirect to the same handler.
+  systemd.services.nextcloud-setup.script = lib.mkIf nextcloudNative (
+    lib.mkAfter (
+      nc.federation.occ "${config.services.nextcloud.occ}/bin/nextcloud-occ" (
+        if nextcloudFederates then "yes" else "no"
+      )
+    )
+  );
+  services.nginx.virtualHosts.${config.losos.nextcloud.hostName}.locations =
+    lib.mkIf (nextcloudNative && !nextcloudFederates)
+      (
+        lib.genAttrs (nc.federation.locations "") (_: {
+          priority = 200;
+          return = "404";
+        })
+        // {
+          "= /.well-known/ocm".return = "404";
+        }
+      );
 
   # ── The database and cache the workload pods talk to ──────────────────────
   # These are deliberately gated on *workload* mode and nothing else.

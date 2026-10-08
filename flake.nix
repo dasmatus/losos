@@ -520,6 +520,13 @@
           inherit pkgs;
           inherit (nixpkgs) lib;
           inherit (self.nixosConfigurations.install) config;
+          # The same configuration with disk sharing forced each way, for
+          # the federation gate (losos.sharingMyStorage).
+          sharing =
+            on:
+            (self.nixosConfigurations.install.extendModules {
+              modules = [ { losos.sharingMyStorage = nixpkgs.lib.mkForce on; } ];
+            }).config;
         };
       };
     };

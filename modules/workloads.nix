@@ -240,6 +240,15 @@ let
     # load-bearing under hostNetwork: httpd would otherwise bind every address
     # on the box, including the LAN one, behind Nginx's back.
     "listen.conf" = pkgs.writeText "listen.conf" "Listen 127.0.0.1:${toString apachePort}\n";
+    # yes or no: whether the entrypoint (flake/images.nix) switches
+    # Nextcloud's federation on or off at start. losos.nextcloud.federation
+    # .enable gated on losos.sharingMyStorage (lososInternal.federation); the
+    # front vhost refuses the federation addresses on the same value
+    # (modules/containers.nix). A change here changes the manifest, so the
+    # kubelet restarts the pod and the new value is applied.
+    "federation" = pkgs.writeText "federation" (
+      if config.lososInternal.federation.nextcloud then "yes\n" else "no\n"
+    );
     "losos.config.php" = pkgs.writeText "losos.config.php" ''
       <?php
       // Rendered by modules/workloads.nix and bind-mounted read-only from the
@@ -315,7 +324,8 @@ let
         # /.well-known routes other servers discover the box by
         # (modules/containers.nix); Forgejo serves everything else under
         # ROOT_URL. Same two lines as native mode (modules/services.nix).
-        ENABLED = config.losos.forgejo.federation.enable;
+        # On only while the box shares its disk (lososInternal.federation).
+        ENABLED = config.lososInternal.federation.forgejo;
         # nodeinfo's `usage` block: account totals and activity counts of a
         # household's box, published to anyone who asks. Off. Forgejo's own
         # default is on.

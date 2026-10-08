@@ -87,6 +87,16 @@ let
 
   isDangerous = name: lib.any (p: name == p || lib.hasPrefix "${p}." name) dangerous;
 
+  # Options that take effect only while another (a bool) is on. The pane
+  # greys the row and says so while that one is off in the draft. The value
+  # still saves; it just does nothing until the gate opens. Each pair is
+  # enforced in the modules, not here (lososInternal.federation in
+  # modules/options.nix for the two below).
+  needs = {
+    "forgejo.federation.enable" = "sharingMyStorage";
+    "nextcloud.federation.enable" = "sharingMyStorage";
+  };
+
   # The two integer bounds a NixOS int type carries only in its description.
   # `ints.between 50 100` says "integer between 50 and 100 (both inclusive)".
   betweenBounds =
@@ -244,7 +254,8 @@ let
       # `visible = false`: still in the document, so /api/apply and a push to
       # LosOS Git accept it, but the pane does not draw a row for it.
       hidden = (opt.visible or true) == false;
-    };
+    }
+    // lib.optionalAttrs (needs ? ${name}) { needs = needs.${name}; };
 
   walk =
     path: v:

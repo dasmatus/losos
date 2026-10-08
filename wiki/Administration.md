@@ -205,6 +205,13 @@ password. The daemon talks to Forgejo on loopback with a bot account,
 
 ### Federation
 
+Federation runs only while the box shares its disk. Both federation options
+below are ANDed with `losos.sharingMyStorage`, the setting that unlocks the
+shared data pool (`lososInternal.federation` in `modules/options.nix`). With
+sharing off, neither LosOS Git nor LosOS cloud talks to other servers,
+whatever its own option says, and the Advanced pane shows both rows as
+unavailable with the reason.
+
 `losos.forgejo.federation.enable` (default on) turns Forgejo's ActivityPub
 side on in both modes: `[federation] ENABLED` in app.ini, with
 `SHARE_USER_STATISTICS = false` so nodeinfo publishes no account or activity
@@ -220,7 +227,25 @@ are not LAN-guarded, like `/forgejo/`. Reach follows `ROOT_URL`: through the
 edge it is `https://<proxy hostname>/forgejo/` and any server can federate
 with the box; on a LAN-only box it is `http://<host>.local/forgejo/`, so only
 other boxes on the same LAN can. `tests/forgejo-federation.nix` boots the
-real Forgejo and asks it.
+real Forgejo and asks it, with sharing on and then off.
+
+`losos.nextcloud.federation.enable` (default on) is LosOS cloud's side:
+Federated Cloud Sharing (sharing with `user@host` accounts on other Nextcloud
+servers), calendar federation and the trusted-servers app. Off, two things
+happen. Nextcloud's own switches are set on every start: `files_sharing`'s
+`outgoing_server2server_share_enabled` and
+`incoming_server2server_share_enabled` (and the two group variants) to `no`,
+`dav`'s `enableCalendarFederation` to false, and the `federation` app
+disabled. The pod's entrypoint does this from a `federation` file the host
+mounts; native mode appends it to `nextcloud-setup`. And the vhost answers
+404 for the addresses other servers call: `ocm-provider`, `ocs-provider`,
+`ocm/`, `.well-known/ocm`, `ocs/v[12].php/cloud/shares` and the
+`federation` and `federatedfilesharing` app routes. The vhost half is needed
+because OCM discovery reports itself enabled whatever the settings say, and
+`cloud_federation_api` and `federatedfilesharing` are always-enabled apps
+that cannot be switched off. `tests/front-vhost.nix` checks both services'
+routes with sharing on and off; `tests/invariants.nix` checks the gate at
+eval time.
 
 ## Users
 

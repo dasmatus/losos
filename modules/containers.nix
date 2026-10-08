@@ -31,10 +31,15 @@
 {
   lib,
   config,
+  pkgs,
   ...
 }:
 
 let
+  # Plain data about the Nextcloud stack; only the federation addresses are
+  # read here.
+  nc = import ./nextcloud-stack.nix { inherit pkgs lib; };
+
   nextcloudWorkload = config.losos.nextcloud.mode == "container";
   # losos.forgejo.enable is consulted in *both* modes. It used to be read only
   # by the native path (modules/services.nix), so with the default
@@ -566,7 +571,21 @@ in
             proxyWebsockets = true;
           };
         })
-        (lib.mkIf (forgejoWorkload && config.losos.forgejo.federation.enable) {
+        (lib.mkIf (nextcloudWorkload && !config.lososInternal.federation.nextcloud) (
+          # Federation off (losos.nextcloud.federation.enable, gated on
+          # losos.sharingMyStorage): the addresses other Nextcloud servers
+          # call answer 404 here and never reach the pod. Regex locations, so
+          # they win over the `/nextcloud` prefix above; nginx matches them
+          # against the normalised path, so an escaped or doubled slash does
+          # not slip past. modules/nextcloud-stack.nix lists them and says why
+          # Nextcloud's own switches alone are not enough.
+          lib.genAttrs (nc.federation.locations "/nextcloud") (_: {
+            return = "404";
+          })
+        ))
+        # Only while the box shares its disk: lososInternal.federation.forgejo
+        # is losos.forgejo.federation.enable gated on losos.sharingMyStorage.
+        (lib.mkIf (forgejoWorkload && config.lososInternal.federation.forgejo) {
           # The two addresses the fediverse discovers a server by, and the
           # only two Forgejo serves at the host's root rather than under
           # ROOT_URL: a server that wants to federate with this box asks
