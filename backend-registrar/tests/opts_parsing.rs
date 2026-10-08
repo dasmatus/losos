@@ -359,6 +359,7 @@ fn mode_name(mode: &miette::Result<Mode>) -> &'static str {
         Ok(Mode::Identity(_)) => "identity",
         Ok(Mode::Provision(_)) => "provision",
         Ok(Mode::Enrol(_)) => "enrol",
+        Ok(Mode::Lab(_)) => "lab",
         Err(_) => "error",
     }
 }
@@ -537,4 +538,59 @@ fn enrol_takes_a_dir_and_forget_one_positional_id() {
         "error"
     );
     assert_eq!(mode_name(&parse(args(&["enrol", "list"]))), "error");
+}
+
+fn lab(flags: &[&str]) -> miette::Result<losos_registrar::lab::LabOpts> {
+    let args: Vec<String> = std::iter::once("lab")
+        .chain(flags.iter().copied())
+        .map(str::to_string)
+        .collect();
+    match parse(args) {
+        Ok(Mode::Lab(o)) => Ok(o),
+        Ok(other) => panic!("expected lab, got {}", mode_name(&Ok(other))),
+        Err(e) => Err(e),
+    }
+}
+
+#[test]
+fn lab_with_no_flags_listens_on_loopback_and_uses_the_session_uri() {
+    let o = lab(&[]).expect("parses");
+    assert_eq!(o.listen, "127.0.0.1:8095");
+    assert_eq!(o.connect, "qemu:///session");
+    assert_eq!(o.max_guests, 8);
+    assert_eq!(o.memory_mib, 96);
+    assert_eq!(o.virt_type, losos_registrar::lab::VirtType::Auto);
+    assert!(o.origins.iter().any(|x| x == "http://localhost:8080"));
+}
+
+#[test]
+fn lab_takes_several_origins_and_refuses_paths_in_them() {
+    let o = lab(&[
+        "--origin",
+        "https://lab.example.org/",
+        "--origin",
+        "http://mattbox.local",
+        "--connect",
+        "qemu:///system",
+        "--virt-type",
+        "qemu",
+    ])
+    .expect("parses");
+    assert!(o.origins.iter().any(|x| x == "https://lab.example.org"));
+    assert!(o.origins.iter().any(|x| x == "http://mattbox.local"));
+    assert_eq!(o.connect, "qemu:///system");
+    for bad in ["lab.example.org", "https://a/b", "ftp://a", "https://"] {
+        assert!(lab(&["--origin", bad]).is_err(), "{bad}");
+    }
+}
+
+#[test]
+fn lab_bounds_its_numbers_and_its_uri() {
+    assert!(lab(&["--max-guests", "0"]).is_err());
+    assert!(lab(&["--max-guests", "65"]).is_err());
+    assert!(lab(&["--memory", "16"]).is_err());
+    assert!(lab(&["--memory", "128"]).is_ok());
+    assert!(lab(&["--virt-type", "xen"]).is_err());
+    assert!(lab(&["--connect", "xen:///system"]).is_err());
+    assert!(lab(&["--idle", "0"]).is_err());
 }

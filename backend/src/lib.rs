@@ -38,6 +38,7 @@ pub mod http;
 pub mod installer;
 pub mod installer_io;
 pub mod io_backend;
+pub mod lab;
 pub mod look;
 pub mod losos;
 pub mod market;

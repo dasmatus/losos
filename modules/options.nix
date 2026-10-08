@@ -1008,6 +1008,50 @@ in
       '';
     };
 
+    # ── LosOS Lab's guests under libvirt (modules/lab.nix) ───────────────────
+    lab.libvirt.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Run LosOS Lab's guests under libvirt on this box (KVM when the CPU
+        has it) instead of simulating their consoles. Turns on libvirtd and
+        a `losos-registrar lab` helper on a loopback port; lososd relays
+        /api/lab/ to it and nginx proxies the guests' console and network
+        sockets. The guest images (bzImage, rootfs.bin, gear.bin from
+        admin-ui/lab/engine/build.sh) go in `lab.libvirt.images`. Off by
+        default: the appliance does not need libvirtd for anything else.
+      '';
+    };
+
+    lab.libvirt.port = lib.mkOption {
+      type = lib.types.port;
+      default = 8095;
+      description = "Loopback port the Lab's libvirt helper listens on.";
+    };
+
+    lab.libvirt.images = lib.mkOption {
+      type = lib.types.str;
+      default = "/var/lib/losos-lab/images";
+      description = ''
+        Folder holding the Lab's guest images: bzImage and rootfs.bin, and
+        gear.bin for routers, switches and access points. A guest whose
+        image is missing boots nowhere on the box and keeps its simulated
+        console. Persisted via /var.
+      '';
+    };
+
+    lab.libvirt.maxGuests = lib.mkOption {
+      type = lib.types.ints.between 1 64;
+      default = 8;
+      description = "Most Lab guests the helper runs at once.";
+    };
+
+    lab.libvirt.memoryMiB = lib.mkOption {
+      type = lib.types.ints.between 32 4096;
+      default = 96;
+      description = "Memory of each Lab guest, in MiB. The guests are busybox systems; 96 is what the in-browser engine gives them.";
+    };
+
     # ── Installer (the `losos-ctl install` subcommand) ──────────────────────
     installer.package = lib.mkOption {
       type = lib.types.nullOr lib.types.package;

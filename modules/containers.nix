@@ -70,6 +70,10 @@ let
   # it reads this box's settings with the owner's token.
   lab = config.losos.admin.lab;
   labEnabled = adminEnabled && lab != null;
+  # The Lab's guests under libvirt (modules/lab.nix): their console and NIC
+  # WebSockets skip lososd and go to the helper, which checks a per-guest
+  # ticket only a token holder can get.
+  labLibvirt = labEnabled && config.losos.lab.libvirt.enable;
 
   # Access guard for the admin surface (the SPA, its assets, the setup routes,
   # the lososd API): local network only. Master-proxy traffic must never reach
@@ -443,6 +447,24 @@ in
             index = "index.html";
             tryFiles = "$uri $uri/ =404";
             extraConfig = lanOnly;
+          };
+        })
+        (lib.mkIf labLibvirt {
+          # The Lab guests' serial consoles and network cards, as WebSockets
+          # straight to `losos-registrar lab`. Longer than /api/ so it wins
+          # the prefix match. Same LAN-only guard. The page's own origin is
+          # what the helper checks the Origin header against, so the Host
+          # goes through as the browser sent it, port included. `connect-src
+          # 'self'` in labCsp covers ws:// and wss:// to the same host.
+          "/api/lab/ws/" = {
+            proxyPass = "http://127.0.0.1:${toString config.losos.lab.libvirt.port}/lab/v1/guests/";
+            proxyWebsockets = true;
+            extraConfig = ''
+              ${lanOnly}
+              proxy_set_header Host $http_host;
+              proxy_read_timeout 1h;
+              proxy_send_timeout 1h;
+            '';
           };
         })
         (lib.mkIf handbookEnabled {

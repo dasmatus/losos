@@ -52,7 +52,7 @@ takes unknown boxes on first use; and the admin routes refuse loopback.
 | | On the box (`/lab/`) | Hosted |
 | --- | --- | --- |
 | Built by | `nix build .#losos-lab` | `admin-ui/lab/engine/build.sh` in `lab.yml` |
-| Consoles | simulated | real x86_64 guests under qemu-wasm |
+| Consoles | simulated, or real guests under libvirt when the box runs the helper | real x86_64 guests under libvirt on your computer, else qemu-wasm |
 | Needs | nothing beyond the box | a cross-origin isolated host (COOP + COEP) |
 
 The box's copy is four files: `index.html`, `lab.js`, `lab.css` and the
@@ -83,6 +83,71 @@ cp admin-ui/lab/serve.py /tmp/lab/ && python3 /tmp/lab/serve.py
 `admin-ui/lab/` and uploads it as the `losos-lab-hosted` artifact. On a push
 to `main` it also deploys the copy to Vercel, if the repository has the
 `VERCEL_TOKEN`, `VERCEL_ORG_ID` and `VERCEL_PROJECT_ID` secrets.
+
+## Guests under libvirt
+
+qemu-wasm is slow: a guest takes a minute or more to boot in a tab, and a
+tab runs three. If the computer the Lab is open on has libvirt (the thing
+virt-manager drives), the Lab runs its guests there instead, under KVM when
+the CPU has it. They boot in a few seconds, and up to eight run at once.
+
+The bridge is a subcommand of the edge registrar, `losos-registrar lab`. It
+talks to libvirt only through the `virsh` command, and starts each guest as
+a transient domain named `losos-lab-...`. Transient means libvirt never
+saves it, so nothing outlives the helper: Ctrl-C or SIGTERM destroys every
+guest it started, a guest no Lab page has watched for a minute is destroyed
+too, and on start it removes any `losos-lab-` domain a killed helper left
+behind. A guest is on no libvirt network and no bridge. Its serial console
+and its network card are connected to the helper on 127.0.0.1, and the
+helper hands both to the page over WebSockets. The page is still the switch,
+so a libvirt guest and a qemu-wasm guest can share a cable, and DHCP, ARP
+and ping between them work as before.
+
+To use it next to virt-manager on your own PC:
+
+1. Install libvirt and QEMU (on most distributions, the packages virt-manager
+   already pulled in) and the `losos-registrar` binary
+   (`nix build .#losos-registrar`, or the static one the runbook in
+   `provisioning/edge-identity/README.md` downloads).
+2. Put the guest images in a folder named `guest`: `bzImage`, `rootfs.bin`
+   and, for routers, switches and access points, `gear.bin`.
+   `admin-ui/lab/engine/build.sh` makes all three, and the hosted Lab serves
+   them under `/guest/`, so you can download them from there.
+3. Start the helper in the folder above `guest`:
+
+   ```sh
+   losos-registrar lab --origin https://your-lab.example.org
+   ```
+
+   It listens on `127.0.0.1:8095` and uses `qemu:///session`, which needs no
+   root. Pass `--connect qemu:///system` to have the guests show up beside
+   your other VMs in virt-manager (your user must be in the `libvirt` group,
+   and libvirt's own qemu user must be able to read the images folder).
+   `--origin` names the address of the Lab page you open; the copy
+   `serve.py` serves on `localhost:8080` is allowed without it. The other
+   flags are `--images DIR`, `--max-guests N` (8), `--memory MiB` (96),
+   `--virt-type auto|kvm|qemu`, `--idle 60s`, `--virsh PATH` and
+   `--token-file FILE`. Without a token file the helper refuses to listen on
+   anything but loopback, and answers only requests addressed to
+   `127.0.0.1` or `localhost`.
+4. Open the Lab. A copy on `localhost` looks for the helper by itself. A
+   hosted copy looks only once you open it with `?libvirt` at the end of the
+   address, because Chrome asks every visitor of a public page for local
+   network access the moment it touches `127.0.0.1`. The Lab remembers the
+   choice; `?libvirt=0` forgets it.
+
+The badge in the top bar then says "KVM via libvirt" (or "QEMU via libvirt
+(no KVM)" on a computer without it), and each console says what runs its
+guest: libvirt, or "QEMU in this tab". If the helper is not running, or
+libvirt refuses a guest, that guest boots under qemu-wasm as before, and the
+Lab says so once. The box's own copy has no qemu-wasm, so there it keeps the
+simulated console.
+
+On a box, `losos.lab.libvirt.enable` (off by default) turns on libvirtd and
+runs the same helper as a service. lososd relays the Lab's requests to it
+under `/api/lab/` with the admin key, and the guests' consoles and network
+cards go through nginx with a ticket only that key can get. Put the three
+images in `/var/lib/losos-lab/images` (`losos.lab.libvirt.images`).
 
 ## What is not real
 

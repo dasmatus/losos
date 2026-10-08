@@ -212,3 +212,76 @@ function gearShow(d, args) {
   if (what.startsWith('ver')) return 'NAME="Netzgeräte Betriebssystem"\nPRETTY_NAME="Netzgeräte Betriebssystem 1.0"\nID=netzgeraete\nVERSION_ID=1.0\nLinux ' + d.name + ' 6.1.0 #1 SMP PREEMPT_DYNAMIC x86_64 GNU/Linux';
   return 'usage: show interfaces | ip route | arp | dhcp | version';
 }
+
+// ── A byte-stream terminal for real guests where xterm is not shipped ────
+// The box's copy carries no xterm.js, but a guest under libvirt is a real
+// serial console: bytes in, keystrokes out. This draws what a busybox shell
+// sends (text, CR, backspace, colours, erasing and cursor left/right),
+// which is all the Lab's guests use, and sends keys as a terminal would.
+class ByteTerm {
+  constructor(label) { this.label = label; this.lines = [[]]; this.row = 0; this.col = 0; this.sgr = ''; this.esc = null; this.dec = new TextDecoder(); this.el = null; this.send = () => {}; this.queued = false; }
+  write(bytes) {
+    for (const ch of this.dec.decode(bytes, { stream: true })) this.put(ch);
+    if (this.lines.length > 2000) { const cut = this.lines.length - 2000; this.lines.splice(0, cut); this.row -= cut; }
+    if (!this.queued) { this.queued = true; requestAnimationFrame(() => { this.queued = false; this.render(); }); }
+  }
+  put(ch) {
+    if (this.esc !== null) {
+      this.esc += ch;
+      if (this.esc === '[' || this.esc === ']') return;
+      if (this.esc[0] === ']') { if (ch === '\x07' || this.esc.endsWith('\x1b\\')) this.esc = null; return; }
+      if (this.esc[0] !== '[') { this.esc = null; return; }
+      if (!/[@-~]/.test(ch)) return;
+      const params = this.esc.slice(1, -1), n = parseInt(params, 10) || 1, line = this.lines[this.row];
+      if (ch === 'm') this.sgr = params === '0' || params === '' ? '' : params;
+      else if (ch === 'K') line.length = Math.min(line.length, this.col);
+      else if (ch === 'D') this.col = Math.max(0, this.col - n);
+      else if (ch === 'C') this.col += n;
+      else if (ch === 'J' && params === '2') { this.lines = [[]]; this.row = 0; this.col = 0; }
+      else if (ch === 'J') { line.length = Math.min(line.length, this.col); this.lines.length = this.row + 1; }
+      else if (ch === 'H') this.col = 0;
+      this.esc = null; return;
+    }
+    if (ch === '\x1b') { this.esc = ''; return; }
+    if (ch === '\r') { this.col = 0; return; }
+    if (ch === '\n') { this.row++; if (!this.lines[this.row]) this.lines[this.row] = []; this.col = 0; return; }
+    if (ch === '\b') { this.col = Math.max(0, this.col - 1); return; }
+    if (ch < ' ' || ch === '\x7f') return;
+    const line = this.lines[this.row];
+    while (line.length < this.col) line.push({ ch: ' ', sgr: '' });
+    line[this.col++] = { ch, sgr: this.sgr };
+  }
+  text(last = 40) { return this.lines.slice(-last).map(l => l.map(c => c.ch).join('')).join('\n'); }
+  render() {
+    if (!this.el || !this.el.isConnected) return;
+    const html = this.lines.map((l, r) => {
+      let s = '', cur = '';
+      l.forEach((c, i) => {
+        if (c.sgr !== cur) { s += '\x1b[0m' + (c.sgr ? '\x1b[' + c.sgr + 'm' : ''); cur = c.sgr; }
+        s += r === this.row && i === this.col ? '\x00' + c.ch + '\x01' : c.ch;
+      });
+      if (r === this.row && this.col >= l.length) s += '\x1b[0m' + ' '.repeat(this.col - l.length) + '\x00 \x01';
+      return ansiToHtml(s + '\x1b[0m');
+    }).join('\n').replace(/\x00/g, '<span class="cur">').replace(/\x01/g, '</span>');
+    this.el.innerHTML = html;
+    this.el.scrollTop = this.el.scrollHeight;
+  }
+  attach(host) {
+    this.el = document.createElement('div');
+    this.el.className = 'term'; this.el.tabIndex = 0;
+    this.el.setAttribute('role', 'textbox'); this.el.setAttribute('aria-label', this.label);
+    this.el.addEventListener('keydown', (e) => this.key(e));
+    this.el.addEventListener('paste', (e) => { this.send((e.clipboardData.getData('text') || '').replace(/\n/g, '\r')); e.preventDefault(); });
+    host.appendChild(this.el);
+    this.render();
+    setTimeout(() => this.el && this.el.focus({ preventScroll: true }), 30);
+  }
+  key(e) {
+    const keys = { Enter: '\r', Backspace: '\x7f', Tab: '\t', Escape: '\x1b', ArrowUp: '\x1b[A', ArrowDown: '\x1b[B', ArrowRight: '\x1b[C', ArrowLeft: '\x1b[D', Home: '\x1b[H', End: '\x1b[F', Delete: '\x1b[3~' };
+    let out = keys[e.key];
+    if (!out && e.ctrlKey && /^[a-z]$/i.test(e.key)) out = String.fromCharCode(e.key.toUpperCase().charCodeAt(0) - 64);
+    if (!out && e.key.length === 1 && !e.ctrlKey && !e.metaKey) out = e.key;
+    if (!out) return;
+    this.send(out); e.preventDefault();
+  }
+}
