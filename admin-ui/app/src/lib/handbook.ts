@@ -35,6 +35,7 @@ export const HANDBOOK_ENTRIES = {
   "sign-in-and-spare-key": "manual/sign-in-and-spare-key/",
   "look-and-widgets": "manual/look-and-widgets/",
   "custom-domain": "types/official-edge/",
+  tpm: "reference/tpm/",
 } as const;
 
 export type HandbookEntry = keyof typeof HANDBOOK_ENTRIES;

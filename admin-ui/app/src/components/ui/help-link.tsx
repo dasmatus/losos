@@ -8,7 +8,16 @@ import { cn } from "@/lib/utils";
  * foot of an error toast (toaster.tsx) and inside the alerts and field
  * errors that stay on screen. A new tab, so the error and whatever the owner
  * was doing stay put; a relative path, so it is the copy on this box. */
-export function HelpLink({ entry, className }: { entry: HandbookEntry; className?: string }) {
+export function HelpLink({
+  entry,
+  label,
+  className,
+}: {
+  entry: HandbookEntry;
+  /** What the link says, when the page explains rather than fixes. */
+  label?: string;
+  className?: string;
+}) {
   const t = useT();
   return (
     <a
@@ -22,7 +31,7 @@ export function HelpLink({ entry, className }: { entry: HandbookEntry; className
       )}
     >
       <HugeiconsIcon icon={BookOpen01Icon} size={14} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
-      {t("ui.whatToDo")}
+      {label ?? t("ui.whatToDo")}
     </a>
   );
 }

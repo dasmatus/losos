@@ -1,4 +1,5 @@
 import * as React from "react";
+import { NoTpmNotice, runsWithoutTpm } from "@/components/no-tpm-notice";
 import { useT } from "@/lib/i18n-react";
 import { Group, GroupCaption, GroupTitle, PaneSection, SwitchRow } from "./rows";
 import type { SettingsForm } from "./use-settings-form";
@@ -20,6 +21,11 @@ import type { SettingsForm } from "./use-settings-form";
  * House style, same as every other pane: no emoji, nothing names a container
  * runtime, and every change here waits for the Apply bar like all the rest.
  * Nothing on this screen takes effect until the box rebuilds.
+ *
+ * Above the four sits the one protection no switch can add: a box the
+ * installer put in keyfile mode says here that its disk key is on the boot
+ * partition. The installer decided that, so the notice offers a page to read
+ * and not a control.
  */
 
 export function SecurityPane({ form }: { form: SettingsForm }) {
@@ -32,6 +38,7 @@ export function SecurityPane({ form }: { form: SettingsForm }) {
 
   return (
     <PaneSection>
+      {runsWithoutTpm(form.options) && <NoTpmNotice className="mb-5" />}
       <GroupTitle>{t("panes.security.group")}</GroupTitle>
       <Group>
         <SwitchRow

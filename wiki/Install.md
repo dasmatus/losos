@@ -58,6 +58,8 @@ disk, puts them in one LVM volume group, encrypts it with LUKS, formats
   unencrypted ESP, and anyone who takes the disk can read the data. The
   installer prints which of the two it chose. `--tpm` makes a missing chip
   an error rather than a silent keyfile install.
+  [TPM and disk unlock](TPM) explains what the chip is for and what a box
+  without one gives up.
 - In a VM, give it a TPM (swtpm, see below) or it installs in keyfile mode.
 
 `/persist` is ext4 with the `encrypt` feature because fscrypt needs it and

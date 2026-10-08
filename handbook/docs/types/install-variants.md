@@ -26,6 +26,8 @@ on purpose. The box updates its firmware, bootloader and kernel on its own
 and has no shell to recover from a lockout. The cost is that a thief who
 takes the whole box, chip included, can still boot it. The
 [security model](../reference/security-model) says so plainly.
+[TPM and the disk key](../reference/tpm) explains what a box without a chip
+gives up, and how to move it to one.
 
 ![Proof from an install in a virtual machine with an emulated TPM: the encrypted volume has a systemd-tpm2 token in key slot 1, and the key file stays on the encrypted volume only.](../img/install-done-tpm.png)
 

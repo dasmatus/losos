@@ -20,7 +20,22 @@ pkgs.testers.nixosTest {
       losos.hostName = "consolebox";
     };
 
+  # The same banner on a box the installer put in keyfile mode, which has to
+  # say what that costs (wiki/TPM.md). `machine` keeps the default TPM and
+  # must not.
+  nodes.keyfile =
+    { ... }:
+    {
+      imports = [
+        ../modules/options.nix
+        ../modules/console.nix
+      ];
+      losos.hostName = "keyfilebox";
+      losos.tpm.enable = false;
+    };
+
   testScript = ''
+    start_all()
     machine.wait_for_unit("losos-console.service")
 
     # tty1 belongs to the banner. If getty also ran there, its login prompt
@@ -33,6 +48,12 @@ pkgs.testers.nixosTest {
     machine.wait_until_tty_matches("1", r"http://192\.168\.1\.\d+")
     machine.wait_until_tty_matches("1", r"http://consolebox\.local")
     machine.wait_until_tty_matches("1", "LosOS is ready")
+    assert "no TPM chip" not in machine.get_tty_text("1")
+
+    keyfile.wait_for_unit("losos-console.service")
+    keyfile.wait_until_tty_matches("1", r"http://keyfilebox\.local")
+    keyfile.wait_until_tty_matches("1", "This box has no TPM chip")
+    keyfile.wait_until_tty_matches("1", "anyone who takes the disk can read your files")
 
     # The other VTs keep their login prompts.
     machine.succeed("chvt 2")
