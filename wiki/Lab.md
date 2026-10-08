@@ -51,43 +51,49 @@ takes unknown boxes on first use; and the admin routes refuse loopback.
 
 | | On the box (`/lab/`) | Hosted |
 | --- | --- | --- |
-| Built by | `nix build .#losos-lab` | `admin-ui/lab/engine/build.sh` in `lab.yml` |
+| Built by | `nix build .#losos-admin-ui` (the Lab is its second page) | `admin-ui/lab/engine/build.sh` in `lab.yml` |
 | Consoles | simulated, or real guests under libvirt when the box runs the helper | real x86_64 guests under libvirt on your computer, else qemu-wasm |
 | Needs | nothing beyond the box | a cross-origin isolated host (COOP + COEP) |
 
-The box's copy is four files: `index.html`, `lab.js`, `lab.css` and the
-plate. `build.py` assembles them with nothing but python3, so nix needs no
-npm for it. It runs under a content security policy of its own, which allows
-inline style attributes and scripts from the box only.
+The Lab is part of the admin UI: `admin-ui/app/lab/index.html` is a second
+Vite page beside the admin pages, built from the same components, palette,
+icons and languages, and served at `/lab/`. Everything that is not drawing
+runs in WebAssembly: the model, the simulator, the clock, the consoles and
+the pages are a Rust crate, `admin-ui/lab/core` (`losos-lab-core`), which
+nix builds for wasm32 before the admin UI's own build. The page runs under
+a content security policy of its own: the admin page's, plus
+`'wasm-unsafe-eval'` so the browser may compile the core.
 
-The hosted copy adds [qemu-wasm](https://github.com/ktock/qemu-wasm): QEMU
-compiled to WebAssembly, so every console is a real Linux guest in the
-browser tab. Boxes and edges boot a busybox stand-in for LosOS, and the
-network gear boots Netzgeräte Betriebssystem, built by nix from
+The hosted copy is the same page built with `VITE_LAB_HOSTED=1`, plus
+[qemu-wasm](https://github.com/ktock/qemu-wasm): QEMU compiled to
+WebAssembly, so every console is a real Linux guest in the browser tab.
+Boxes and edges boot a busybox stand-in for LosOS, and the network gear
+boots Netzgeräte Betriebssystem, built by nix from
 `admin-ui/lab/engine/gear/netzgeraete.nix`. The lab joins the guests'
 network cards into the diagram, so DHCP, ARP, ping and HTTP between guests
 travel the cables you drew. A router guest hands out leases with its own
-`udhcpd`. A tab runs up to three guests at once. With a fourth, the
-guests ran out of cores and stalled, so the lab refuses to boot one. qemu-wasm runs QEMU's threads as Web Workers that share memory,
-and browsers allow that only on a page served with
-`Cross-Origin-Opener-Policy: same-origin` and
-`Cross-Origin-Embedder-Policy: require-corp`. `vercel.json` sets both
-headers. `serve.py` does the same on your own machine:
+`udhcpd`. A tab runs up to three guests at once. With a fourth, the guests
+ran out of cores and stalled, so the lab refuses to boot one. qemu-wasm
+runs QEMU's threads as Web Workers that share memory, and browsers allow
+that only on a page served with `Cross-Origin-Opener-Policy: same-origin`
+and `Cross-Origin-Embedder-Policy: require-corp`. `vercel.json` sets both
+headers on Vercel, and `serve.json` does the same for `serve` on your own
+machine:
 
 ```sh
-admin-ui/lab/engine/build.sh /tmp/lab     # docker, nix, node, python3
-cp admin-ui/lab/serve.py /tmp/lab/ && python3 /tmp/lab/serve.py
+admin-ui/lab/engine/build.sh /tmp/lab     # docker, nix, node
+npx --yes serve@14.2.4 -l 8080 /tmp/lab   # then open http://localhost:8080/lab/
 ```
 
 `lab.yml` builds the hosted copy for every pull request that touches
-`admin-ui/lab/` and uploads it as the `losos-lab-hosted` artifact. On a push
+`admin-ui/lab/` or the Lab's page in `admin-ui/app/` and uploads it as the `losos-lab-hosted` artifact. On a push
 to `main` it also deploys the copy to Vercel, if the repository has the
 `VERCEL_TOKEN`, `VERCEL_ORG_ID` and `VERCEL_PROJECT_ID` secrets.
 
 ## Guests under libvirt
 
-qemu-wasm is slow: a guest takes a minute or more to boot in a tab, and a
-tab runs three. If the computer the Lab is open on has libvirt (the thing
+qemu-wasm is slow: it emulates every instruction with no KVM, each guest
+costs the tab about 450 MB, and a tab runs three. If the computer the Lab is open on has libvirt (the thing
 virt-manager drives), the Lab can run its guests there instead, under KVM
 when the CPU has it. They boot in a few seconds, and up to eight run at once.
 
@@ -129,7 +135,7 @@ To use it next to virt-manager on your own PC:
 2. Put the guest images in a folder named `guest`: `bzImage`, `rootfs.bin`
    and, for routers, switches and access points, `gear.bin`.
    `admin-ui/lab/engine/build.sh` makes all three, and the hosted Lab serves
-   them under `/guest/`, so you can download them from there.
+   them under `/lab/guest/`, so you can download them from there.
 3. Start the helper in the folder above `guest`:
 
    ```sh
@@ -140,8 +146,8 @@ To use it next to virt-manager on your own PC:
    root. Pass `--connect qemu:///system` to have the guests show up beside
    your other VMs in virt-manager (your user must be in the `libvirt` group,
    and libvirt's own qemu user must be able to read the images folder).
-   `--origin` names the address of the Lab page you open; the copy
-   `serve.py` serves on `localhost:8080` is allowed without it. The other
+   `--origin` names the address of the Lab page you open; a copy served on
+   `localhost:8080`, as above, is allowed without it. The other
    flags are `--images DIR`, `--max-guests N` (8), `--memory MiB` (96),
    `--virt-type auto|kvm|qemu`, `--idle 60s`, `--virsh PATH` and
    `--token-file FILE`. Without a token file the helper refuses to listen on
@@ -225,15 +231,20 @@ the key did not have. Put the three images in `/var/lib/losos-lab/images`
 
 ## What is not real
 
-The guests are stand-ins: busybox and a 4 MiB image, not NixOS. Booting the
-real appliance under TCG in a browser would take far too long. The edges,
-the tunnel, the mesh and the market are modelled in JavaScript from the
+The guests are stand-ins: busybox and a 4 MiB image, not NixOS. The edges,
+the tunnel, the mesh and the market are modelled in the Rust core from the
 rules above; they are not running code. The laptop's desktop is a picture of
 LosOS Desktop, not the desktop itself.
 
 ## Changing it
 
-The sources are plain JavaScript in `admin-ui/lab/src/`, concatenated in the
-order `build.py` lists. Run `python3 admin-ui/lab/build.py box /tmp/lab` and
-open the files through any static server. `build.py single FILE` writes one
-self-contained page.
+- The page and its parts are in `admin-ui/app/src/lab/`. `npm run lab:core`
+  builds the core into `src/lab/core-pkg/` (gitignored; it needs cargo with
+  the `wasm32-unknown-unknown` target and `wasm-bindgen` 0.2.127), and then
+  `npm run dev` serves the page at `/lab/`. `tests/lab.browser.mjs` checks
+  it under the Lab's own policy.
+- The core's contract is `admin-ui/lab/core/README.md`. Its tests compare
+  every built-in setup against the behaviour of the JavaScript Lab it
+  replaced.
+- Guests: `admin-ui/app/src/lab/engine/` tries libvirt through the helper,
+  then qemu-wasm, in that order.

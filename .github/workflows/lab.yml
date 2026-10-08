@@ -1,7 +1,8 @@
 name: lab
 
-# Builds the hosted copy of LosOS Lab (admin-ui/lab/): the page plus the
-# qemu-wasm engine and the guest images, so its consoles are real x86_64
+# Builds the hosted copy of LosOS Lab: the admin UI's Lab page
+# (admin-ui/app/lab/, VITE_LAB_HOSTED=1) plus the qemu-wasm engine and the
+# guest images (admin-ui/lab/engine/), so its consoles are real x86_64
 # guests. Every run uploads the result as the `losos-lab-hosted` artifact;
 # a push to main also deploys it to Vercel when the three secrets below
 # exist, and skips that step (green) when they do not.
@@ -11,21 +12,25 @@ name: lab
 #   VERCEL_PROJECT_ID  a project of its own, framework "Other", no git
 #                      integration: this workflow is its only deployer
 #
-# The copy the box serves at /lab/ is a separate build of the same source
-# (flake/packages.nix, losos-lab) without the engine, built by ci.yml's
-# registrar-and-ui job; this workflow is only the hosted copy.
+# The copy the box serves at /lab/ is the same page inside losos-admin-ui,
+# without the engine, built by ci.yml's registrar-and-ui job; this workflow
+# is only the hosted copy.
 
 on:
   push:
     branches: [main]
     paths:
       - "admin-ui/lab/**"
-      - "admin-ui/themes/brand/plate-128.png"
+      - "admin-ui/app/lab/**"
+      - "admin-ui/app/src/lab/**"
+      - "admin-ui/app/package-lock.json"
       - ".github/workflows/lab.yml"
   pull_request:
     paths:
       - "admin-ui/lab/**"
-      - "admin-ui/themes/brand/plate-128.png"
+      - "admin-ui/app/lab/**"
+      - "admin-ui/app/src/lab/**"
+      - "admin-ui/app/package-lock.json"
       - ".github/workflows/lab.yml"
   workflow_dispatch:
 

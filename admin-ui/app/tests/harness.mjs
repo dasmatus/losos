@@ -16,6 +16,8 @@ const TYPES = {
   '.json': 'application/json',
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.wasm': 'application/wasm',
 };
 
 /* The admin vhost's Content-Security-Policy (modules/containers.nix,
@@ -51,6 +53,23 @@ export const WIDGET_FRAME_CSP = [
   "form-action 'none'",
 ].join('; ');
 
+/* LosOS Lab's policy (/lab/, a second page of the same bundle). It differs
+ * from the admin page's in 'wasm-unsafe-eval' (the simulator is a
+ * WebAssembly module), blob: workers and images, and the closing
+ * frame-ancestors/base-uri/form-action. Mirror nginx's /lab/ arm here. */
+export const LAB_CSP = [
+  "default-src 'none'",
+  "script-src 'self' 'wasm-unsafe-eval'",
+  "style-src 'self'",
+  "img-src 'self' data: blob:",
+  "font-src 'self'",
+  "connect-src 'self'",
+  "worker-src 'self' blob:",
+  "frame-ancestors 'none'",
+  "base-uri 'none'",
+  "form-action 'none'",
+].join('; ');
+
 /* Serves dist/ with an SPA fallback (`try_files $uri /index.html`). Without it
  * a deep link 404s and the test would be asserting against an error page. */
 export async function serve({ csp = false } = {}) {
@@ -59,7 +78,11 @@ export async function serve({ csp = false } = {}) {
     const rel = normalize(url.pathname).replace(/^(\.\.[/\\])+/, '');
     const send = async (file) => {
       const body = await readFile(join(DIST, file));
-      const policy = file.startsWith('/widget-frame/') ? WIDGET_FRAME_CSP : ADMIN_CSP;
+      const policy = file.startsWith('/widget-frame/')
+        ? WIDGET_FRAME_CSP
+        : file.startsWith('/lab/') || file === 'lab/index.html'
+          ? LAB_CSP
+          : ADMIN_CSP;
       res.writeHead(200, {
         'Content-Type': TYPES[extname(file)] ?? 'application/octet-stream',
         ...(csp ? { 'Content-Security-Policy': policy } : {}),
@@ -68,8 +91,10 @@ export async function serve({ csp = false } = {}) {
     };
     // A directory gets its index, as nginx's `index` directive gives it.
     const file = rel === '/' ? 'index.html' : rel.endsWith('/') ? rel + 'index.html' : rel;
+    // /lab/ is its own page with its own fallback, as its nginx location is.
+    const fallback = rel.startsWith('/lab/') || rel === '/lab' ? 'lab/index.html' : 'index.html';
     send(file).catch(() =>
-      send('index.html').catch(() => {
+      send(fallback).catch(() => {
         res.writeHead(404);
         res.end('not found');
       }),

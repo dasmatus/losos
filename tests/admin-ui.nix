@@ -35,6 +35,10 @@
   # it, tests/advanced.browser.mjs renders every option the install
   # configuration declares; without it the test falls back to its fixture.
   optionsJson ? null,
+  # The shell lines that copy LosOS Lab's Rust core into src/lab/core-pkg
+  # (flake/packages.nix, losos-admin-ui.labCorePkg). Without it the Lab
+  # page's imports do not resolve and `tsc` fails.
+  labCorePkg ? "",
 }:
 let
   inherit (pkgs) lib;
@@ -57,6 +61,7 @@ pkgs.buildNpmPackage {
   # no network here, and the ones it would fetch are not the ones this runs
   # against), and esbuild's binary arrives through its platform package.
   npmFlags = [ "--ignore-scripts" ];
+  preBuild = labCorePkg;
 
   env = {
     # Chromium only: that is all the suite launches. The full set also builds

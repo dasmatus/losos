@@ -196,8 +196,6 @@
                   # Same argument: the handbook is a Docusaurus build, npm and
                   # all, and belongs on the medium rather than on the target.
                   self.packages.${system}.losos-handbook
-                  # And the lab, which is small but still a python3 build.
-                  self.packages.${system}.losos-lab
                 ];
                 # The default (zstd level 19, cache sized off host RAM) gets
                 # OOM-killed on the former Codeberg CI runners (exit 137): the
@@ -478,6 +476,9 @@
           # every option the install configuration declares and the check
           # fails on any row it cannot draw (tests/advanced.browser.mjs).
           optionsJson = self.checks.${system}.losos-options-doc;
+          # LosOS Lab's page imports the Rust core; the bundle under test
+          # copies it in the same way the shipped one does.
+          inherit (self.packages.${system}.losos-admin-ui) labCorePkg;
         };
         # Not a VM: the option document of the install configuration
         # (flake/options-doc.nix via modules/config-repo.nix), forced here so
