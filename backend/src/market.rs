@@ -115,6 +115,25 @@ pub enum Op {
     DomainRemove {
         domain: String,
     },
+    /// What the edge's operator sells (boxes, gateways). Anonymous.
+    Hardware,
+    /// A Stripe Checkout for hardware: `(sku, quantity)` lines. The edge's
+    /// gate prices them from its own catalogue.
+    HardwareCheckout {
+        items: Vec<(String, u64)>,
+    },
+}
+
+/// Most lines and most of one item in a hardware order; the edge's own
+/// limits are the same.
+pub const MAX_HARDWARE_LINES: usize = 8;
+pub const MAX_HARDWARE_QUANTITY: u64 = 20;
+
+fn valid_sku(s: &str) -> bool {
+    !s.is_empty()
+        && s.len() <= 32
+        && s.bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
 }
 
 /// Longest domain name relayed. The registrar's own check is the
@@ -146,7 +165,21 @@ impl Op {
     /// A sentence naming what was wrong, suitable for a 400.
     pub fn validate(&self) -> Result<(), &'static str> {
         match self {
-            Op::Browse | Op::Account | Op::Domains => Ok(()),
+            Op::Browse | Op::Account | Op::Domains | Op::Hardware => Ok(()),
+            Op::HardwareCheckout { items } => {
+                if items.is_empty() || items.len() > MAX_HARDWARE_LINES {
+                    Err("the order needs 1 to 8 lines")
+                } else if items.iter().any(|(sku, _)| !valid_sku(sku)) {
+                    Err("an item in the order is not valid")
+                } else if items
+                    .iter()
+                    .any(|(_, q)| *q == 0 || *q > MAX_HARDWARE_QUANTITY)
+                {
+                    Err("a quantity is out of range (1 to 20)")
+                } else {
+                    Ok(())
+                }
+            }
             Op::DomainAdd { domain } | Op::DomainRemove { domain } => {
                 if valid_domain(domain) {
                     Ok(())
@@ -208,6 +241,8 @@ impl Op {
             Op::Domains => ("POST", "/domains/list"),
             Op::DomainAdd { .. } => ("POST", "/domains/add"),
             Op::DomainRemove { .. } => ("POST", "/domains/remove"),
+            Op::Hardware => ("GET", "/market/hardware"),
+            Op::HardwareCheckout { .. } => ("POST", "/market/hardware/checkout"),
         }
     }
 
@@ -219,7 +254,13 @@ impl Op {
     pub fn body(&self, appliance_id: &str, token: &str) -> Option<String> {
         let mut doc = json!({ "appliance_id": appliance_id, "token": token });
         let extra = match self {
-            Op::Browse => return None,
+            Op::Browse | Op::Hardware => return None,
+            Op::HardwareCheckout { items } => json!({
+                "items": items
+                    .iter()
+                    .map(|(sku, quantity)| json!({ "sku": sku, "quantity": quantity }))
+                    .collect::<Vec<_>>(),
+            }),
             Op::Account | Op::Domains => json!({}),
             Op::DomainAdd { domain } | Op::DomainRemove { domain } => json!({ "domain": domain }),
             Op::Onboard { box_uuid } => match box_uuid {
@@ -455,6 +496,36 @@ mod tests {
         }
         .validate()
         .is_err());
+    }
+
+    #[test]
+    fn a_hardware_order_carries_skus_and_quantities_only() {
+        let op = Op::HardwareCheckout {
+            items: vec![("box".to_string(), 3), ("gateway".to_string(), 1)],
+        };
+        assert!(op.validate().is_ok());
+        assert_eq!(op.route(), ("POST", "/market/hardware/checkout"));
+        let body: Value = serde_json::from_str(&op.body("box", "tok").unwrap()).unwrap();
+        assert_eq!(
+            body,
+            json!({ "appliance_id": "box", "token": "tok", "items": [
+                { "sku": "box", "quantity": 3 }, { "sku": "gateway", "quantity": 1 } ] })
+        );
+        assert_eq!(Op::Hardware.route(), ("GET", "/market/hardware"));
+        assert_eq!(Op::Hardware.body("box", "tok"), None);
+        let bad = |items: Vec<(&str, u64)>| {
+            Op::HardwareCheckout {
+                items: items.into_iter().map(|(s, q)| (s.to_string(), q)).collect(),
+            }
+            .validate()
+            .is_err()
+        };
+        assert!(bad(vec![]));
+        assert!(bad(vec![("box", 0)]));
+        assert!(bad(vec![("box", 21)]));
+        assert!(bad(vec![("Box", 1)]));
+        assert!(bad(vec![("../x", 1)]));
+        assert!(bad(vec![("box", 1); 9]));
     }
 
     #[test]

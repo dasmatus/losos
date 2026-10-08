@@ -73,6 +73,7 @@ pkgs.testers.nixosTest {
           returnUrl = "https://losos.cfd/market";
           stripeSecretKeySealed = keySealed;
           webhookSecretSealed = webhookSealed;
+          hardware.enable = true;
         };
       };
 
@@ -182,6 +183,11 @@ pkgs.testers.nixosTest {
         assert status == "200", f"genuine webhook answered {status}"
         status = webhook(signed(body, "whsec_not_the_sealed_one_0123456789"))
         assert status == "400", f"forged webhook answered {status}"
+
+    with subtest("both units load the hardware catalogue from the store"):
+        catalogue = json.loads(edge.succeed(f"curl -sf {API}/market/hardware"))
+        assert [i["sku"] for i in catalogue["items"]] == ["box", "gateway"], catalogue
+        assert catalogue["currency"] == "eur", catalogue
 
     with subtest("without a blob the gate is skipped and only the market goes dark"):
         edge.succeed(f"systemctl stop {GATE}")

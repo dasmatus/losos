@@ -181,6 +181,9 @@ in
       // {
         LOSOS_LUKS_KEYFILE = "/etc/keys/persist-keyfile";
       }
+      // lib.optionalAttrs config.losos.lab.ordering.enable {
+        LOSOS_LAB_ORDERING = "1";
+      }
       # How `/api/market*` reaches the edge's market (backend/src/market.rs).
       # Only with the master proxy on: without a registrar the daemon finds
       # none of these and answers `available: false`, which is the right

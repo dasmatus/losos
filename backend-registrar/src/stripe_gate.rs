@@ -1,10 +1,10 @@
 //! The Stripe gate: the one process on the edge that holds the Stripe key.
 //!
 //! `losos-registrar serve` is internet-reachable and runs as root next to
-//! Traefik and rathole. The market only needs six things from Stripe, so the
+//! Traefik and rathole. The market only needs a few things from Stripe, so the
 //! key lives in a second, small process (`losos-registrar stripe-gate`, its
 //! own systemd unit and its own dynamic user) and the registrar asks it for
-//! those six things over a Unix socket. The registrar never reads the key or
+//! those few things over a Unix socket. The registrar never reads the key or
 //! the webhook secrets, never opens a connection to Stripe, and cannot ask for
 //! anything outside the list.
 //!
@@ -15,7 +15,8 @@
 //! compromised registrar asking the gate to create a Checkout Session, so the
 //! gate also bounds what that request may say (the currency, the destination
 //! being an `acct_` id, the platform fee within [`MAX_FEE_BPS`], the session's
-//! lifetime). Both processes still run on one machine and the registrar is
+//! lifetime), and prices a hardware order from its own copy of the catalogue
+//! (`crate::hardware`) rather than from the request. Both processes still run on one machine and the registrar is
 //! root; `modules/edge.nix` hides the key's files and credentials directory
 //! from the registrar's mount namespace as a second layer, not a boundary a
 //! determined root process could not cross.
@@ -35,6 +36,7 @@ use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{UnixListener, UnixStream};
 
 use crate::action::Action;
+use crate::hardware::{Catalogue, Line};
 use crate::market::{
     account_ready, decode_hex, now_secs, valid_box_uuid, verify_signature, Kind, MarketError,
     MAX_FEE_BPS,
@@ -297,6 +299,101 @@ impl StripeClient {
     }
 }
 
+impl StripeClient {
+    /// A Checkout Session for hardware the platform sells itself: a plain
+    /// charge, no destination and no fee, with Stripe collecting where to
+    /// ship. `lines` were priced by the gate from its own catalogue.
+    async fn hardware_checkout(
+        &self,
+        key: &str,
+        h: &HardwareRequest,
+        currency: &str,
+        countries: &[String],
+        lines: &[crate::hardware::Priced<'_>],
+    ) -> Result<(String, String), MarketError> {
+        let owned = hardware_form(h, currency, countries, lines);
+        let form: Vec<(&str, String)> =
+            owned.iter().map(|(k, v)| (k.as_str(), v.clone())).collect();
+        let body = self
+            .post(
+                key,
+                &["v1", "checkout", "sessions"],
+                &form,
+                Some(&format!("losos-hardware-{}", h.order_id)),
+            )
+            .await?;
+        match (body["id"].as_str(), body["url"].as_str()) {
+            (Some(id), Some(url)) => Ok((id.to_string(), url.to_string())),
+            _ => Err(MarketError::Stripe(
+                "checkout session had no id or url".to_string(),
+            )),
+        }
+    }
+}
+
+/// The form a hardware Checkout Session is created with. Pure, so the exact
+/// fields Stripe sees are asserted in a test.
+fn hardware_form(
+    h: &HardwareRequest,
+    currency: &str,
+    countries: &[String],
+    lines: &[crate::hardware::Priced<'_>],
+) -> Vec<(String, String)> {
+    let return_url = &h.return_url;
+    let sep = if return_url.contains('?') { '&' } else { '?' };
+    let mut form: Vec<(String, String)> = vec![
+        ("mode".into(), "payment".into()),
+        ("payment_method_types[]".into(), "card".into()),
+        ("client_reference_id".into(), h.order_id.clone()),
+        (
+            "success_url".into(),
+            format!("{return_url}{sep}order={}&status=paid", h.order_id),
+        ),
+        (
+            "cancel_url".into(),
+            format!("{return_url}{sep}order={}&status=cancelled", h.order_id),
+        ),
+        ("expires_at".into(), h.expires_at.to_string()),
+        ("metadata[order_id]".into(), h.order_id.clone()),
+        ("metadata[losos_kind]".into(), "hardware".into()),
+        (
+            "metadata[losos_appliance_id]".into(),
+            h.appliance_id.clone(),
+        ),
+        ("phone_number_collection[enabled]".into(), "true".into()),
+    ];
+    for (i, c) in countries.iter().enumerate() {
+        form.push((
+            format!("shipping_address_collection[allowed_countries][{i}]"),
+            c.clone(),
+        ));
+    }
+    for (i, l) in lines.iter().enumerate() {
+        let p = format!("line_items[{i}]");
+        form.push((format!("{p}[quantity]"), l.quantity.to_string()));
+        form.push((format!("{p}[price_data][currency]"), currency.to_string()));
+        form.push((
+            format!("{p}[price_data][unit_amount]"),
+            l.item.unit_amount.to_string(),
+        ));
+        form.push((
+            format!("{p}[price_data][product_data][name]"),
+            l.item.name.clone(),
+        ));
+        if !l.item.detail.is_empty() {
+            form.push((
+                format!("{p}[price_data][product_data][description]"),
+                l.item.detail.clone(),
+            ));
+        }
+        form.push((
+            format!("{p}[price_data][product_data][metadata][sku]"),
+            l.item.sku.clone(),
+        ));
+    }
+    form
+}
+
 /// Why a secret file is unusable, or `None`. These are hand-placed under
 /// `/var/secrets`, so a wrong file must fail loudly rather than be sent to
 /// Stripe, or worse, accepted by the webhook check.
@@ -389,6 +486,10 @@ pub struct GateOpts {
     /// [`url_ok`], which let a compromised registrar send buyers and sellers
     /// anywhere once Stripe was done with them.
     pub return_url: Option<String>,
+    /// The operator's hardware catalogue (`crate::hardware`), when the edge
+    /// sells boxes and gateways. Read per request, like the key. Unset, the
+    /// gate refuses every hardware checkout.
+    pub hardware_catalogue: Option<String>,
 }
 
 // ── wire protocol ────────────────────────────────────────────────────────
@@ -403,6 +504,17 @@ pub(crate) struct CheckoutRequest {
     pub(crate) currency: String,
     pub(crate) fee: u64,
     pub(crate) destination: String,
+    pub(crate) return_url: String,
+    pub(crate) expires_at: u64,
+}
+
+/// A hardware Checkout. Carries skus and quantities only: the gate prices
+/// every line from its own copy of the catalogue.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct HardwareRequest {
+    pub(crate) order_id: String,
+    pub(crate) appliance_id: String,
+    pub(crate) lines: Vec<Line>,
     pub(crate) return_url: String,
     pub(crate) expires_at: u64,
 }
@@ -430,6 +542,7 @@ pub(crate) enum Request {
         return_url: String,
     },
     Checkout(CheckoutRequest),
+    HardwareCheckout(HardwareRequest),
     VerifyWebhook {
         signature: String,
         body_hex: String,
@@ -583,6 +696,47 @@ fn checkout_fault(
     None
 }
 
+/// Why a hardware Checkout is outside what the gate allows, or `None`. The
+/// lines themselves are checked when they are priced.
+fn hardware_fault(
+    h: &HardwareRequest,
+    catalogue: &Catalogue,
+    currency: &str,
+    return_url: Option<&str>,
+    now: u64,
+) -> Option<&'static str> {
+    if !token_ok(&h.order_id, 64) || !h.order_id.starts_with("hw_") {
+        return Some("bad order id");
+    }
+    if !token_ok(&h.appliance_id, 64) {
+        return Some("bad appliance id");
+    }
+    if !url_ok(&h.return_url) || return_url.is_some_and(|want| h.return_url != want) {
+        return Some("bad return url");
+    }
+    if catalogue.currency != currency {
+        return Some("the catalogue's currency is not the one this edge sells in");
+    }
+    if h.expires_at <= now || h.expires_at > now + MAX_SESSION_SECS {
+        return Some("session lifetime is outside the allowed range");
+    }
+    None
+}
+
+async fn hardware_catalogue(opts: &GateOpts) -> Result<Catalogue, Reply> {
+    let Some(path) = opts.hardware_catalogue.as_deref() else {
+        return Err(refuse("this edge sells no hardware"));
+    };
+    let bytes = tokio::fs::read(path).await.map_err(|e| {
+        tracing::error!(target: Action::Market.target(), "hardware catalogue {path}: {e}");
+        Reply::from(MarketError::Unconfigured)
+    })?;
+    Catalogue::parse(&bytes).map_err(|e| {
+        tracing::error!(target: Action::Market.target(), "hardware catalogue {path}: {e}");
+        Reply::from(MarketError::Unconfigured)
+    })
+}
+
 fn encode_hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
@@ -705,6 +859,37 @@ async fn handle(opts: &GateOpts, request: Request) -> Reply {
             }
             stripe_or_reply!(opts, key, s);
             match s.checkout(&key, &c).await {
+                Ok((id, url)) => Reply {
+                    id: Some(id),
+                    url: Some(url),
+                    ..Reply::default()
+                },
+                Err(e) => e.into(),
+            }
+        }
+        Request::HardwareCheckout(h) => {
+            let catalogue = match hardware_catalogue(opts).await {
+                Ok(c) => c,
+                Err(reply) => return reply,
+            };
+            if let Some(why) = hardware_fault(
+                &h,
+                &catalogue,
+                &opts.currency,
+                opts.return_url.as_deref(),
+                now_secs(),
+            ) {
+                return refuse(why);
+            }
+            let lines = match catalogue.price(&h.lines) {
+                Ok(lines) => lines,
+                Err(why) => return refuse(why),
+            };
+            stripe_or_reply!(opts, key, s);
+            match s
+                .hardware_checkout(&key, &h, &catalogue.currency, &catalogue.countries, &lines)
+                .await
+            {
                 Ok((id, url)) => Reply {
                     id: Some(id),
                     url: Some(url),
@@ -974,6 +1159,23 @@ impl GateClient {
         }
     }
 
+    /// A hardware Checkout Session; returns its id and hosted URL.
+    ///
+    /// # Errors
+    /// If the gate is unavailable, refuses the request, or Stripe refuses.
+    pub(crate) async fn hardware_checkout(
+        &self,
+        request: HardwareRequest,
+    ) -> Result<(String, String), MarketError> {
+        let reply = self.call(&Request::HardwareCheckout(request)).await?;
+        match (reply.id, reply.url) {
+            (Some(id), Some(url)) => Ok((id, url)),
+            _ => Err(MarketError::Stripe(
+                "checkout session had no id or url".to_string(),
+            )),
+        }
+    }
+
     /// Whether `signature` is a valid `Stripe-Signature` for `body` under any
     /// of the webhook secrets the gate holds.
     ///
@@ -1176,5 +1378,70 @@ mod tests {
         ] {
             assert!(serde_json::from_str::<Request>(bad).is_err(), "{bad}");
         }
+    }
+
+    fn hardware() -> (HardwareRequest, Catalogue) {
+        let catalogue = Catalogue::parse(
+            br#"{"currency":"eur","countries":["SK"],"items":[
+                {"sku":"box","name":"LosOS box","detail":"16 GB, 1 TB","unit_amount":44900}]}"#,
+        )
+        .unwrap();
+        let request = HardwareRequest {
+            order_id: "hw_0123abcd".to_string(),
+            appliance_id: "mattbox".to_string(),
+            lines: vec![Line {
+                sku: "box".to_string(),
+                quantity: 2,
+            }],
+            return_url: "https://losos.example/market".to_string(),
+            expires_at: NOW + 1800,
+        };
+        (request, catalogue)
+    }
+
+    #[test]
+    fn a_hardware_checkout_is_held_to_the_operators_settings() {
+        let (ok, c) = hardware();
+        let ret = Some("https://losos.example/market");
+        assert_eq!(hardware_fault(&ok, &c, "eur", ret, NOW), None);
+        let bad = |f: &dyn Fn(&mut HardwareRequest)| {
+            let mut h = ok.clone();
+            f(&mut h);
+            hardware_fault(&h, &c, "eur", ret, NOW)
+        };
+        assert!(bad(&|h| h.order_id = "ord_0123".to_string()).is_some());
+        assert!(bad(&|h| h.appliance_id = "a b".to_string()).is_some());
+        assert!(bad(&|h| h.return_url = "https://evil.example/".to_string()).is_some());
+        assert!(bad(&|h| h.expires_at = NOW).is_some());
+        assert!(bad(&|h| h.expires_at = NOW + MAX_SESSION_SECS + 1).is_some());
+        assert!(hardware_fault(&ok, &c, "usd", ret, NOW).is_some());
+    }
+
+    #[test]
+    fn the_hardware_session_ships_and_carries_no_destination_or_fee() {
+        let (h, c) = hardware();
+        let lines = c.price(&h.lines).unwrap();
+        let form: std::collections::HashMap<String, String> =
+            hardware_form(&h, &c.currency, &c.countries, &lines)
+                .into_iter()
+                .collect();
+        assert_eq!(form["line_items[0][price_data][unit_amount]"], "44900");
+        assert_eq!(form["line_items[0][quantity]"], "2");
+        assert_eq!(
+            form["line_items[0][price_data][product_data][description]"],
+            "16 GB, 1 TB"
+        );
+        assert_eq!(
+            form["shipping_address_collection[allowed_countries][0]"],
+            "SK"
+        );
+        assert_eq!(form["metadata[losos_kind]"], "hardware");
+        assert_eq!(
+            form["success_url"],
+            "https://losos.example/market?order=hw_0123abcd&status=paid"
+        );
+        assert!(!form
+            .keys()
+            .any(|k| k.contains("transfer_data") || k.contains("application_fee")));
     }
 }
