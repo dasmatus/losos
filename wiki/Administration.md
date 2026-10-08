@@ -201,6 +201,25 @@ password. The daemon talks to Forgejo on loopback with a bot account,
 `losos`, that the Forgejo start-up script creates and mints a token for
 (`flake/forgejo-bootstrap.nix`).
 
+### Federation
+
+`losos.forgejo.federation.enable` (default on) turns Forgejo's ActivityPub
+side on in both modes: `[federation] ENABLED` in app.ini, with
+`SHARE_USER_STATISTICS = false` so nodeinfo publishes no account or activity
+totals. The shipped Forgejo (16.x) federates stars (a repository's
+Settings → Federation lists the servers whose stars count), lets accounts be
+followed from other servers, and serves nodeinfo and one ActivityPub actor
+per account and repository under `/api/v1/activitypub/`; every inbound
+request must carry a valid HTTP signature. In container mode the front vhost
+adds exact-match routes for `/.well-known/nodeinfo` and
+`/.well-known/webfinger`, the two addresses other servers discover a box by,
+which Forgejo serves at the host's root rather than under `ROOT_URL`; they
+are not LAN-guarded, like `/forgejo/`. Reach follows `ROOT_URL`: through the
+edge it is `https://<proxy hostname>/forgejo/` and any server can federate
+with the box; on a LAN-only box it is `http://<host>.local/forgejo/`, so only
+other boxes on the same LAN can. `tests/forgejo-federation.nix` boots the
+real Forgejo and asks it.
+
 ## Users
 
 Two data users, both without passwords or shells:

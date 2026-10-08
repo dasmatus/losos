@@ -404,6 +404,14 @@
       #   losos-console       — boots one VM and asserts the address banner owns
       #                         tty1 instead of getty and shows the LAN address
       #                         and the .local name (tests/console.nix).
+      #   losos-forgejo-federation — boots the real Forgejo in native mode with
+      #                         losos.forgejo.federation on and asks it what the
+      #                         fediverse would (nodeinfo, the server actor, an
+      #                         account actor refusing an unsigned request), reads
+      #                         the same section off the container manifest's
+      #                         losos.ini, then switches federation off and
+      #                         asserts the endpoints are gone
+      #                         (tests/forgejo-federation.nix).
       #   losos-nextcloud-httpd — not a VM: the Nextcloud pod's Apache on a
       #                         fixture webroot, asserting the URL map
       #                         (tests/nextcloud-httpd.nix).
@@ -452,6 +460,10 @@
           self.nixosConfigurations.install.config.environment.etc."losos/options.json".source;
         losos-keyring = import ./tests/keyring.nix { inherit pkgs; };
         losos-console = import ./tests/console.nix { inherit pkgs; };
+        # The real Forgejo with losos.forgejo.federation on, asked what another
+        # server would ask, in both deployment modes; then off, and gone
+        # (tests/forgejo-federation.nix).
+        losos-forgejo-federation = import ./tests/forgejo-federation.nix { inherit pkgs; };
         # The signed installer medium under OVMF's Secure Boot build: the
         # real ISO (plus the test backdoor) signed with a throwaway key the
         # sandbox makes, boots with that key enrolled and proves it from
