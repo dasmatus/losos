@@ -772,6 +772,35 @@ in
       '';
     };
 
+    # Forgejo's ActivityPub side. Upstream labels it experimental, and in the
+    # shipped Forgejo (16.x) it amounts to: nodeinfo at
+    # /.well-known/nodeinfo and /api/v1/nodeinfo, one ActivityPub actor per
+    # account and per repository under /api/v1/activitypub/, stars given from
+    # another Forgejo counted on repositories that list that server, and
+    # accounts here followable from other servers (their activity goes out as
+    # notes). Every inbound request has to carry a valid HTTP signature
+    # (Forgejo's SIGNATURE_ENFORCED default); nothing is accepted unsigned.
+    #
+    # Reach decides what it does: Forgejo advertises itself under ROOT_URL,
+    # which modules/workloads.nix builds from losos.proxy.{enable,hostname}.
+    # Through an edge that is a public https address and any server can
+    # federate with the box; on a LAN-only box it is http://<name>.local/,
+    # which only the LAN resolves, so federation reaches other boxes on the
+    # same LAN and nothing further. The endpoints answer either way.
+    forgejo.federation.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Let LosOS Git federate over ActivityPub with other Forgejo servers:
+        stars from other servers count on your repositories, accounts here
+        can be followed from elsewhere, and the box publishes nodeinfo.
+        Forgejo calls this experimental. Other servers reach the box at the
+        address it is served on, so through an edge this is the internet
+        and on a LAN-only box it is the LAN. Usage statistics (how many
+        accounts, how active) are never published.
+      '';
+    };
+
     # ── The box's configuration on LosOS Git ──────────────────────────────
     # /etc/nixos is a git repository; every Apply commits there
     # (backend/src/config_repo.rs). With this on, lososd keeps it in step
