@@ -1,14 +1,15 @@
 //! The key ceremony end to end, against a fake GitHub on loopback.
 //!
-//! What is real: the device-flow client, the allowlist check, the edge key
-//! and certificate, the SSH shipment (an `ssh` stand-in that executes the
-//! remote script locally, so the script's `read -r` framing is what is
-//! tested), the registrar that loads what landed, and the four checks over
-//! `GET /identity`. What is fake: GitHub, which here is a small axum app
-//! that hands out a device code, answers the poll with `authorization_pending`
-//! and `slow_down` before the token, and maps tokens to accounts. The allowlist
-//! under test is the committed one, so this also pins that Matus's id is on it
-//! and that a stranger's is not.
+//! What is real: the device-flow client, the allowlist check at both ends,
+//! the registrar that makes its own key on first start and serves its
+//! public key, the certificate the tool signs for it, the push over
+//! `POST /identity/cert` (the registrar asks the same fake GitHub who the
+//! token belongs to), and the four checks over `GET /identity`. What is
+//! fake: GitHub, which here is a small axum app that hands out a device
+//! code, answers the poll with `authorization_pending` and `slow_down`
+//! before the token, and maps tokens to accounts. The allowlist under test
+//! is the committed one, so this also pins that Matus's id is on it and
+//! that a stranger's is not.
 
 mod common;
 
@@ -36,6 +37,9 @@ struct Fake {
     /// The token the flow ends in; `None` answers `access_denied`.
     token: Option<&'static str>,
     polls: AtomicUsize,
+    /// `GET /user` calls: the push route must not make one for a body it
+    /// can refuse on its own.
+    user_calls: AtomicUsize,
     scopes_asked: Mutex<Vec<String>>,
     /// The contents API: the file on each branch, and the open PRs.
     file: Mutex<String>,
@@ -110,7 +114,8 @@ async fn start_fake(fake: Fake) -> (String, Arc<Fake>) {
         )
         .route(
             "/user",
-            get(|headers: HeaderMap| async move {
+            get(|State(f): State<Arc<Fake>>, headers: HeaderMap| async move {
+                f.user_calls.fetch_add(1, Ordering::SeqCst);
                 let auth = headers
                     .get("authorization")
                     .and_then(|v| v.to_str().ok())
@@ -301,40 +306,16 @@ async fn a_given_token_skips_the_browser_but_not_the_list() {
     );
 }
 
-/// A stand-in for `ssh`: records its arguments, then runs the remote script
-/// (its last argument) locally with stdin passed through, under a `sudo`
-/// shim so the script's privilege step is exercised without privileges.
-fn fake_ssh(dir: &common::TempDir) -> String {
-    use std::os::unix::fs::PermissionsExt;
-    let bin = dir.join("bin");
-    std::fs::create_dir_all(&bin).unwrap();
-    std::fs::write(bin.join("sudo"), "#!/bin/sh\nexec \"$@\"\n").unwrap();
-    std::fs::set_permissions(bin.join("sudo"), std::fs::Permissions::from_mode(0o755)).unwrap();
-    let script = dir.join("ssh");
-    std::fs::write(
-        &script,
-        format!(
-            "#!/bin/sh\nprintf '%s\\n' \"$@\" > {args}\nfor last; do :; done\nexport PATH={bin}:$PATH\nexec sh -c \"$last\"\n",
-            args = dir.path_str("ssh.args"),
-            bin = bin.display(),
-        ),
-    )
-    .unwrap();
-    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
-    script.to_string_lossy().into_owned()
-}
-
 #[tokio::test]
-async fn provision_edge_ships_an_identity_the_registrar_serves_as_official() {
+async fn provision_edge_pushes_a_certificate_the_registrar_serves_as_official() {
     let (base, _) = start_fake(Fake {
         token: Some("gho_matus"),
         ..Fake::default()
     })
     .await;
     let dir = common::TempDir::new("provision-edge");
-    let ssh = fake_ssh(&dir);
-    let key_path = dir.path_str("installed/edge.key");
-    let cert_path = dir.path_str("installed/edge.cert.json");
+    let key_path = dir.path_str("identity/edge.key");
+    let cert_path = dir.path_str("identity/edge.cert.json");
     let gh_flags = [
         "--github-oauth-url",
         &base,
@@ -372,81 +353,99 @@ async fn provision_edge_ships_an_identity_the_registrar_serves_as_official() {
         "a second keygen over the same file must refuse"
     );
 
-    // The edge's URL is chosen before anything listens there: the first run
-    // installs the files and reports "not official yet" (exit 2).
-    let free = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let addr = free.local_addr().unwrap();
-    drop(free);
-    let url = format!("http://{addr}");
-    let code = run(&[
-        "provision",
-        "edge",
-        "--name",
-        "LosOS edge test",
-        "--url",
-        &url,
-        "--ssh",
-        "root@edge.test",
-        "--root-key",
-        &root_out,
-        "--days",
-        "30",
-        "--key-path",
+    // The edge starts with neither file: it makes its own key (0600) and
+    // serves the public half; /identity is 404 until a certificate lands.
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let edge = common::Edge::start_with_identity_and_github(
+        "provision-edge-reg",
         &key_path,
-        "--cert-path",
         &cert_path,
-        "--ssh-key",
-        "/nonexistent/deploy",
-        "--known-hosts",
-        "/nonexistent/known_hosts",
-        "--ssh-command",
-        &ssh,
-    ])
-    .await
-    .unwrap();
-    assert_eq!(code, std::process::ExitCode::from(provision::EXIT_NOT_YET));
-
-    // ssh was called the careful way: batch mode, the deploy key, a pinned
-    // known_hosts, the target, and nothing secret in argv.
-    let argv = std::fs::read_to_string(dir.join("ssh.args")).unwrap();
-    for expected in [
-        "BatchMode=yes",
-        "/nonexistent/deploy",
-        "UserKnownHostsFile=/nonexistent/known_hosts",
-        "StrictHostKeyChecking=yes",
-        "root@edge.test",
-    ] {
-        assert!(argv.contains(expected), "ssh argv lacks {expected}: {argv}");
-    }
-    let key_hex = std::fs::read_to_string(&key_path).unwrap();
-    assert!(!argv.contains(key_hex.trim()), "the key travelled in argv");
+        Some(listener),
+        &base,
+    )
+    .await;
+    assert_eq!(edge.base, url);
     use std::os::unix::fs::PermissionsExt;
     assert_eq!(
         std::fs::metadata(&key_path).unwrap().permissions().mode() & 0o777,
-        0o600
+        0o600,
+        "the edge made its key 0600"
+    );
+    assert!(!std::path::Path::new(&cert_path).exists());
+    let key_hex = std::fs::read_to_string(&key_path).unwrap();
+    let edge_public = losos_registrar::identity::to_hex(
+        ring::signature::KeyPair::public_key(
+            &losos_registrar::identity::load_key(&key_hex).unwrap(),
+        )
+        .as_ref(),
+    );
+    let http = client();
+    assert_eq!(
+        http.get(format!("{url}/identity/public-key"))
+            .send()
+            .await
+            .unwrap()
+            .text()
+            .await
+            .unwrap(),
+        edge_public
+    );
+    assert_eq!(
+        http.get(format!("{url}/identity?nonce={}", "ab".repeat(16)))
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        404,
+        "no certificate yet"
+    );
+    let err = run(&[
+        "provision",
+        "verify",
+        "--url",
+        &url,
+        "--root-key",
+        &root_out,
+    ])
+    .await
+    .expect_err("not official yet");
+    assert!(
+        format!("{err:?}").contains("does not answer /identity"),
+        "{err:?}"
+    );
+
+    // The push: sign-in, the edge's public key, a certificate, POST, probe.
+    assert_eq!(
+        run(&[
+            "provision",
+            "edge",
+            "--name",
+            "LosOS edge test",
+            "--url",
+            &url,
+            "--root-key",
+            &root_out,
+            "--days",
+            "30",
+        ])
+        .await
+        .unwrap(),
+        std::process::ExitCode::SUCCESS
     );
     let cert: losos_registrar::identity::Cert =
         serde_json::from_str(&std::fs::read_to_string(&cert_path).unwrap()).unwrap();
     assert_eq!(cert.name, "LosOS edge test");
     assert_eq!(cert.url, url);
-    assert!(
-        losos_registrar::identity::load_key(&key_hex).is_ok(),
-        "the shipped key loads"
+    assert_eq!(
+        cert.public_key, edge_public,
+        "signed for the edge's own key"
     );
-
-    // Now the edge's configuration names the files and the registrar is
-    // (re)started: the four checks pass, from `verify` and from a renewal
-    // run of `edge` alike.
-    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
-    let edge = common::Edge::start_with_identity_on(
-        "provision-edge-reg",
-        &[],
-        &key_path,
-        &cert_path,
-        Some(listener),
-    )
-    .await;
-    assert_eq!(edge.base, url);
+    assert_eq!(
+        std::fs::read_to_string(&key_path).unwrap(),
+        key_hex,
+        "the key never changed: it was born on the edge and stayed there"
+    );
     assert_eq!(
         run(&[
             "provision",
@@ -460,33 +459,37 @@ async fn provision_edge_ships_an_identity_the_registrar_serves_as_official() {
         .unwrap(),
         std::process::ExitCode::SUCCESS
     );
-    let code = run(&[
-        "provision",
-        "edge",
-        "--name",
-        "LosOS edge test",
-        "--url",
-        &url,
-        "--ssh",
-        "root@edge.test",
-        "--root-key",
-        &root_out,
-        "--key-path",
-        &key_path,
-        "--cert-path",
-        &cert_path,
-        "--ssh-command",
-        &ssh,
-    ])
-    .await
-    .unwrap();
+
+    // Renewal: the same command, a fresh certificate for the same key,
+    // taken up without a restart.
     assert_eq!(
-        code,
-        std::process::ExitCode::SUCCESS,
-        "renewal: the live edge is still official"
+        run(&[
+            "provision",
+            "edge",
+            "--name",
+            "LosOS edge test, renewed",
+            "--url",
+            &url,
+            "--root-key",
+            &root_out,
+        ])
+        .await
+        .unwrap(),
+        std::process::ExitCode::SUCCESS
     );
-    let renewed = std::fs::read_to_string(&key_path).unwrap();
-    assert_ne!(renewed, key_hex, "renewal issued a fresh key");
+    let renewed: losos_registrar::identity::Cert =
+        serde_json::from_str(&std::fs::read_to_string(&cert_path).unwrap()).unwrap();
+    assert_eq!(renewed.name, "LosOS edge test, renewed");
+    assert_ne!(renewed.signature, cert.signature);
+    let answer: losos_registrar::identity::Answer = http
+        .get(format!("{url}/identity?nonce={}", "cd".repeat(16)))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(answer.cert, renewed, "/identity serves the renewed one");
 
     // Someone else's root cannot verify it.
     let (_, other_public) = losos_registrar::identity::keygen().unwrap();
@@ -503,6 +506,169 @@ async fn provision_edge_ships_an_identity_the_registrar_serves_as_official() {
     assert!(
         format!("{err:?}").contains("not signed by the LosOS root key"),
         "{err:?}"
+    );
+    edge.shutdown().await;
+}
+
+/// The endpoint on its own, with the tool's local gate out of the way: the
+/// edge is the one that has to refuse a stranger, since anyone can send a
+/// POST. Each refusal leaves the certificate file untouched.
+#[tokio::test]
+async fn the_push_route_admits_listed_operators_only_and_checks_the_key_first() {
+    let (base, fake) = start_fake(Fake::default()).await;
+    let dir = common::TempDir::new("push-route");
+    let key_path = dir.path_str("edge.key");
+    let cert_path = dir.path_str("edge.cert.json");
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let edge = common::Edge::start_with_identity_and_github(
+        "push-route-reg",
+        &key_path,
+        &cert_path,
+        Some(listener),
+        &base,
+    )
+    .await;
+    let http = client();
+    let edge_public = http
+        .get(format!("{url}/identity/public-key"))
+        .send()
+        .await
+        .unwrap()
+        .text()
+        .await
+        .unwrap();
+
+    let (root_pkcs8, root_public) = losos_registrar::identity::keygen().unwrap();
+    let root = losos_registrar::identity::load_key(&root_pkcs8).unwrap();
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let good =
+        losos_registrar::identity::issue(&root, "LosOS edge test", &url, &edge_public, now + 3600)
+            .unwrap();
+    let push = |token: Option<&str>, body: String| {
+        let mut req = http
+            .post(format!("{url}/identity/cert"))
+            .header("Content-Type", "application/json")
+            .body(body);
+        if let Some(t) = token {
+            req = req.bearer_auth(t);
+        }
+        req.send()
+    };
+    let json = |c: &losos_registrar::identity::Cert| serde_json::to_string(c).unwrap();
+    let no_cert = || !std::path::Path::new(&cert_path).exists();
+
+    // A stranger: GitHub knows the token, the list does not know the id.
+    let r = push(Some("gho_stranger"), json(&good)).await.unwrap();
+    assert_eq!(r.status(), 403);
+    assert!(r
+        .text()
+        .await
+        .unwrap()
+        .contains("not on the operator allowlist"));
+    assert!(no_cert());
+
+    // A token GitHub does not accept, and no token at all.
+    let r = push(Some("gho_nobody"), json(&good)).await.unwrap();
+    assert_eq!(r.status(), 401);
+    assert!(no_cert());
+    let r = push(None, json(&good)).await.unwrap();
+    assert_eq!(r.status(), 401);
+    assert!(no_cert());
+    let asked_github = fake.user_calls.load(Ordering::SeqCst);
+
+    // A certificate for another key is refused before GitHub is asked at
+    // all, so a flood of mis-addressed pushes costs GitHub nothing.
+    let (_, other_public) = losos_registrar::identity::keygen().unwrap();
+    let other =
+        losos_registrar::identity::issue(&root, "x", &url, &other_public, now + 3600).unwrap();
+    let r = push(Some("gho_matus"), json(&other)).await.unwrap();
+    assert_eq!(r.status(), 400);
+    assert!(r.text().await.unwrap().contains("another key"));
+    let r = push(Some("gho_matus"), "not json".to_string())
+        .await
+        .unwrap();
+    assert_eq!(r.status(), 400);
+    assert_eq!(fake.user_calls.load(Ordering::SeqCst), asked_github);
+    assert!(no_cert());
+
+    // The listed operator: installed, and /identity answers with it.
+    let r = push(Some("gho_matus"), json(&good)).await.unwrap();
+    assert_eq!(r.status(), 200);
+    let body: serde_json::Value = r.json().await.unwrap();
+    assert_eq!(body["installed"], true);
+    assert_eq!(body["operator"], "dasmatus");
+    let on_disk: losos_registrar::identity::Cert =
+        serde_json::from_str(&std::fs::read_to_string(&cert_path).unwrap()).unwrap();
+    assert_eq!(on_disk, good);
+    let nonce = "ef".repeat(16);
+    let answer: losos_registrar::identity::Answer = http
+        .get(format!("{url}/identity?nonce={nonce}"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(
+        losos_registrar::identity::check_answer(&root_public, &answer, &url, &nonce, now),
+        Ok(())
+    );
+
+    // The renamed login still passes: the id is the key, on the edge too.
+    let r = push(Some("gho_renamed"), json(&good)).await.unwrap();
+    assert_eq!(r.status(), 200);
+
+    // A stranger's push after that leaves the installed certificate alone.
+    let r = push(Some("gho_stranger"), json(&other)).await.unwrap();
+    assert_eq!(r.status(), 400, "wrong key is refused first");
+    let r = push(Some("gho_stranger"), json(&good)).await.unwrap();
+    assert_eq!(r.status(), 403);
+    assert_eq!(
+        serde_json::from_str::<losos_registrar::identity::Cert>(
+            &std::fs::read_to_string(&cert_path).unwrap()
+        )
+        .unwrap(),
+        good
+    );
+
+    // The tool, signed in as a stranger, stops on its own gate (exit 3)
+    // before it asks the edge for anything.
+    let (stranger_base, _) = start_fake(Fake {
+        token: Some("gho_stranger"),
+        ..Fake::default()
+    })
+    .await;
+    let root_file = dir.path_str("root.key");
+    std::fs::write(&root_file, format!("{root_pkcs8}\n")).unwrap();
+    let args: Vec<String> = [
+        "provision",
+        "edge",
+        "--name",
+        "n",
+        "--url",
+        &url,
+        "--root-key",
+        &root_file,
+        "--github-oauth-url",
+        &stranger_base,
+        "--github-api-url",
+        &stranger_base,
+        "--client-id",
+        "Iv1.test",
+    ]
+    .iter()
+    .map(|s| s.to_string())
+    .collect();
+    let Mode::Provision(opts) = parse(args).unwrap() else {
+        panic!("parse")
+    };
+    assert_eq!(
+        provision::run(opts).await.unwrap(),
+        std::process::ExitCode::from(provision::EXIT_REFUSED)
     );
     edge.shutdown().await;
 }
@@ -751,18 +917,12 @@ fn provision_parsing_requires_what_each_verb_needs() {
         "no root"
     );
     assert!(
-        p(&[
-            "provision",
-            "edge",
-            "--name",
-            "n",
-            "--url",
-            "http://e",
-            "--root-key",
-            "r"
-        ])
-        .is_err(),
-        "no --ssh"
+        p(&["provision", "edge", "--name", "n", "--url", "http://e"]).is_err(),
+        "no --root-key"
+    );
+    assert!(
+        p(&["provision", "edge", "--name", "n", "--root-key", "r"]).is_err(),
+        "no --url"
     );
     assert!(p(&[
         "provision",
@@ -773,8 +933,6 @@ fn provision_parsing_requires_what_each_verb_needs() {
         "http://e",
         "--root-key",
         "r",
-        "--ssh",
-        "t",
         "--days",
         "0"
     ])
@@ -788,8 +946,6 @@ fn provision_parsing_requires_what_each_verb_needs() {
         "http://e",
         "--root-key",
         "r",
-        "--ssh",
-        "root@e",
     ]) {
         Ok(Mode::Provision(ProvisionOpts::Edge {
             spec,
@@ -797,10 +953,9 @@ fn provision_parsing_requires_what_each_verb_needs() {
             github,
         })) => {
             assert_eq!(root_key, "r");
+            assert_eq!(spec.name, "n");
+            assert_eq!(spec.url, "http://e");
             assert_eq!(spec.days, 365);
-            assert_eq!(spec.key_path, "/var/secrets/losos-edge-identity.key");
-            assert_eq!(spec.cert_path, "/etc/losos/edge-identity.cert.json");
-            assert_eq!(spec.ssh_command, "ssh");
             assert_eq!(github, ProvisionGithub::default());
         }
         Ok(_) => panic!("parsed as another mode"),

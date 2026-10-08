@@ -127,24 +127,32 @@ the owner in with GitHub:
 # that writes the public key into keys/official-edge-root.pub.
 losos-registrar provision root-keygen --out root.key --publish
 
-# per edge: a key pair made in memory, a certificate signed by the root for
-# the URL boxes will probe, both shipped to the VPS over one SSH session,
-# the registrar restarted, and the box's four checks run against it.
+# per edge: the edge's own public key read from GET /identity/public-key,
+# a certificate signed by the root for the URL boxes will probe, pushed to
+# POST /identity/cert with the sign-in's GitHub token, and the box's four
+# checks run against the result. No SSH.
 losos-registrar provision edge --name "LosOS edge Berlin" \
-  --url https://register.losos.cfd --ssh root@edge.example \
-  --root-key root.key --days 365
+  --url https://register.losos.cfd --root-key root.key --days 365
 
-# after the edge's configuration names the two files (below): the checks alone.
+# any time: the checks alone.
 losos-registrar provision verify --url https://register.losos.cfd --root-key root.key
 ```
 
-On the edge: `losos.edge.identity.keyFile = "/var/secrets/losos-edge-identity.key"`
-and `losos.edge.identity.certFile = "/etc/losos/edge-identity.cert.json"`,
-the two paths `provision edge` installs. The registrar refuses to start if
-the certificate is not for that key. An edge with neither option (the
-default, and the shape of a company's own edge, including the one
-`demo/edge-lan/` boots) answers `/identity` with 404 and is simply not
-official. The primitives behind `provision` (`losos-registrar identity
+On the edge, nothing: the registrar makes its identity key on its first
+start (`losos.edge.identity.keyFile`, default
+`/var/lib/losos-registrar/identity.key`; the private half never leaves the
+edge) and writes the pushed certificate beside it
+(`losos.edge.identity.certFile`). `POST /identity/cert` is the one route
+authenticated by a GitHub account rather than an appliance token: the edge
+asks GitHub whose token it was handed and installs the certificate only if
+that account's numeric id is on the operator allowlist compiled into the
+binary, the same list the tool checked before pushing. A certificate for
+another key is refused before GitHub is asked, pushes are taken one at a
+time, and a refusal writes nothing. Until a certificate has been pushed the
+edge answers `/identity` with 404 and is simply not official, which is the
+shape of a company's own edge, including the one `demo/edge-lan/` boots;
+an edge with both options set to `null` serves no identity at all. The
+primitives behind `provision` (`losos-registrar identity
 keygen|sign|show|verify`) are what the tests use to build a root of their
 own at build time.
 
@@ -163,9 +171,11 @@ browser; it is checked the same way. Changing who is allowed is a pull
 request against that file, reviewed like the key itself.
 
 The gate decides whom the tooling serves and makes each signing a named
-act; the root key stays the whole secret, and anyone holding `root.key`
-could sign with any Ed25519 tool. The operator steps, including creating
-the OAuth App, are in
+act, and since the edge checks the same list on the push, it also decides
+who can change what an edge serves; the root key stays the whole secret,
+and anyone holding `root.key` could sign with any Ed25519 tool, but could
+not install the result on an edge without a listed account. The operator
+steps, including creating the OAuth App, are in
 [provisioning/edge-identity/README.md](https://github.com/dasmatus/losos/blob/main/provisioning/edge-identity/README.md).
 There is no Forgejo Actions runner on the box and Actions is off in LosOS
 Git: the ceremony used to be two workflows there, which put the root key

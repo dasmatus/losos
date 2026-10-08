@@ -180,6 +180,14 @@ and is never served or built by nix.
     rewrites what gets through. After a rewrite, `git pull --rebase`.
 24. Match `.github/workflows/ci.yml` and `devenv.nix` by hand when adding a
     gate. Neither calls the other.
+25. PR descriptions follow `.github/pull_request_template.md`, every section
+    filled: Before / After prose, a screenshots table (one Before and one
+    After per screen, same window size and state) for anything a person can
+    see, or "No visible change." and why; under Tested, name what did not
+    run (a session has no KVM, so the VM tests are usually "not run").
+    Sessions keep their screenshots under `/mnt/project-files/demo/<topic>/`
+    and name the folder in the table; the project's attribution block goes
+    above the template as the first two lines.
 
 ## Rationalizations to reject
 
@@ -197,7 +205,6 @@ and is never served or built by nix.
 
 ## Before you finish
 
-<<<<<<< HEAD
 One flake check is not a VM: `losos-invariants` (`tests/invariants.nix`)
 evaluates the published `install` configuration and asserts the option values
 the appliance cannot afford to lose by a default drifting (garbage collection,
@@ -718,10 +725,13 @@ A separate `midnight-reboot.timer` reboots unconditionally at 00:07 with
   key first signs the operator in with GitHub's OAuth device flow (public
   client id only, no secret) and refuses unless the account's *numeric id*
   is in `backend-registrar/operators.json`, which is compiled into the
-  binary. `provision edge` makes the edge key in memory, signs its
-  certificate, ships both over one SSH session on stdin (the remote script
-  frames them with `read -r`; nothing secret in argv or on the operator's
-  disk) and runs the four checks; `root-keygen --publish` / `publish` open
+  binary. `provision edge` reads the edge's own public key from
+  `GET /identity/public-key` (the registrar makes the key on its first
+  start; the private half never leaves the edge), signs the certificate
+  and pushes it to `POST /identity/cert` with the sign-in's GitHub token,
+  which the edge resolves against the same compiled-in allowlist before it
+  installs anything (`server::identity_push`), then runs the four checks;
+  no SSH; `root-keygen --publish` / `publish` open
   the PR that fills `keys/official-edge-root.pub` with the same sign-in
   (`public_repo`). `tests/provision.rs` runs all of it against a fake GitHub
   and a real registrar. The gate decides whom the tooling serves; the root
@@ -739,7 +749,6 @@ A separate `midnight-reboot.timer` reboots unconditionally at 00:07 with
   this flake tracks; don't change it.
 - **The `result` symlink is a `nix build` artifact** (pointing into
   `/nix/store`), gitignored, never committed.
-=======
 - [ ] `devenv test` passed, not only `nix build`?
 - [ ] New persistent path listed in `impermanence.nix`?
 - [ ] New option declared under `options.losos`, default in `defaults.nix`?
@@ -748,4 +757,4 @@ A separate `midnight-reboot.timer` reboots unconditionally at 00:07 with
 - [ ] CI and `devenv.nix` still in step; the three nixpkgs pins agree?
 - [ ] Docs changed in `wiki/`, not the web wiki?
 - [ ] Commit message carries no trailer and no session link?
->>>>>>> 299f9f2 (CLAUDE.md: a third of the length, in the skill-template shape)
+- [ ] PR body follows the template; screenshots, or "No visible change." and why?

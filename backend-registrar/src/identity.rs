@@ -241,49 +241,184 @@ pub fn check_answer(
 
 // ── the edge's own identity, as the server holds it ────────────────────────
 
-/// The edge's key and certificate, loaded once at startup.
+/// The edge's key, and the certificate for it if one has been installed.
+///
+/// The key is born on the edge: [`Identity::open`] makes it on the first
+/// start when the key file is missing, so the private half never travels.
+/// The certificate arrives later, pushed by an operator through
+/// `POST /identity/cert` ([`Identity::install`]) once the root has signed
+/// the edge's public key; until then the edge answers `/identity` with 404
+/// and is not official. Both halves are read once at startup and the
+/// certificate swapped in place on a push, so a push needs no restart.
 pub struct Identity {
     key: Ed25519KeyPair,
-    cert: Cert,
+    public_hex: String,
+    cert_path: std::path::PathBuf,
+    cert: std::sync::RwLock<Option<Cert>>,
 }
 
 impl Identity {
-    /// Load from the two files `--identity-key-file` / `--identity-cert-file`
-    /// name. The certificate must be for this key, or the edge would answer
-    /// challenges it cannot pass; that is caught here, at startup, with a
-    /// message, rather than on every box's scan with a silent `false`.
-    pub fn load(key_file: &Path, cert_file: &Path) -> Result<Self> {
-        let key_hex = std::fs::read_to_string(key_file)
-            .into_diagnostic()
-            .wrap_err_with(|| format!("reading the identity key {}", key_file.display()))?;
-        let key = load_key(&key_hex)?;
-        let cert_json = std::fs::read_to_string(cert_file)
-            .into_diagnostic()
-            .wrap_err_with(|| {
-                format!("reading the identity certificate {}", cert_file.display())
-            })?;
-        let cert: Cert = serde_json::from_str(&cert_json)
-            .into_diagnostic()
-            .wrap_err("the identity certificate is not the JSON `identity sign` writes")?;
-        if cert.public_key != to_hex(key.public_key().as_ref()) {
-            return Err(miette!(
-                "the identity certificate is for another key (its public key is not this key's)"
-            ));
+    /// Open the two files `--identity-key-file` / `--identity-cert-file`
+    /// name. A missing key file is made (0600) and logged; a missing
+    /// certificate is simply "not official yet". A certificate that is not
+    /// for this key is logged and ignored rather than refused at startup:
+    /// the edge has to be up to accept the push that replaces it, and a 404
+    /// on `/identity` is as visible as a refusal to start and costs no box
+    /// its tunnel.
+    pub fn open(key_file: &Path, cert_file: &Path) -> Result<Self> {
+        let key = match std::fs::read_to_string(key_file) {
+            Ok(hex) => load_key(&hex)
+                .wrap_err_with(|| format!("the identity key {}", key_file.display()))?,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                let (pkcs8_hex, public_hex) = keygen()?;
+                if let Some(dir) = key_file.parent() {
+                    std::fs::create_dir_all(dir)
+                        .into_diagnostic()
+                        .wrap_err_with(|| format!("creating {}", dir.display()))?;
+                }
+                write_private(key_file, &pkcs8_hex)?;
+                tracing::info!(
+                    target: crate::action::Action::Identity.target(),
+                    "made this edge's identity key at {} (public key {public_hex}); \
+                     not official until a certificate for it is pushed",
+                    key_file.display()
+                );
+                load_key(&pkcs8_hex)?
+            }
+            Err(e) => {
+                return Err(e)
+                    .into_diagnostic()
+                    .wrap_err_with(|| format!("reading the identity key {}", key_file.display()))
+            }
+        };
+        let public_hex = to_hex(key.public_key().as_ref());
+        let cert = match std::fs::read_to_string(cert_file) {
+            Ok(json) => match serde_json::from_str::<Cert>(&json) {
+                Ok(c) if c.public_key == public_hex => Some(c),
+                Ok(_) => {
+                    tracing::warn!(
+                        target: crate::action::Action::Identity.target(),
+                        "ignoring {}: the certificate is for another key (not this edge's); \
+                         push a new one with `losos-registrar provision edge`",
+                        cert_file.display()
+                    );
+                    None
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        target: crate::action::Action::Identity.target(),
+                        "ignoring {}: not the JSON a certificate is ({e})",
+                        cert_file.display()
+                    );
+                    None
+                }
+            },
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+            Err(e) => {
+                return Err(e).into_diagnostic().wrap_err_with(|| {
+                    format!("reading the identity certificate {}", cert_file.display())
+                })
+            }
+        };
+        match &cert {
+            Some(c) => tracing::info!(
+                target: crate::action::Action::Identity.target(),
+                "identity: {} at {} (certificate until {})", c.name, c.url, c.not_after
+            ),
+            None => tracing::info!(
+                target: crate::action::Action::Identity.target(),
+                "identity key {public_hex}, no certificate yet: /identity answers 404"
+            ),
         }
-        Ok(Identity { key, cert })
+        Ok(Identity {
+            key,
+            public_hex,
+            cert_path: cert_file.to_path_buf(),
+            cert: std::sync::RwLock::new(cert),
+        })
     }
 
+    /// This edge's public key, 64 hex characters: what the root signs.
     #[must_use]
-    pub fn cert(&self) -> &Cert {
-        &self.cert
+    pub fn public_key(&self) -> &str {
+        &self.public_hex
     }
 
-    /// Answer a challenge. The caller has checked [`nonce_ok`].
+    /// The installed certificate, if any.
     #[must_use]
-    pub fn answer(&self, nonce: &str) -> Answer {
-        Answer {
-            cert: self.cert.clone(),
+    pub fn cert(&self) -> Option<Cert> {
+        self.cert.read().map(|c| c.clone()).unwrap_or(None)
+    }
+
+    /// Answer a challenge, or `None` while no certificate is installed. The
+    /// caller has checked [`nonce_ok`].
+    #[must_use]
+    pub fn answer(&self, nonce: &str) -> Option<Answer> {
+        let cert = self.cert()?;
+        Some(Answer {
+            cert,
             nonce_signature: sign(&self.key, &nonce_message(nonce)),
+        })
+    }
+
+    /// Install a certificate an operator pushed: it must be for this key,
+    /// shaped like one the root issues, and not already dead. Written to
+    /// the certificate file (temp + rename, world-readable: it is public)
+    /// and swapped in, so the next `/identity` answers with it. Who may
+    /// call this is the server's business ([`crate::server`]); the root's
+    /// signature is the boxes' to check, and `provision edge` probes it
+    /// right after.
+    pub fn install(&self, cert: Cert, now: u64) -> Result<(), Pushed> {
+        if cert.public_key != self.public_hex {
+            return Err(Pushed::OtherKey);
+        }
+        if cert.name.trim().is_empty() || cert.name.contains('\n') || cert.url.contains('\n') {
+            return Err(Pushed::Malformed("name and url must be one non-empty line"));
+        }
+        if !(cert.url.starts_with("http://") || cert.url.starts_with("https://")) {
+            return Err(Pushed::Malformed("url must start with http:// or https://"));
+        }
+        if from_hex(&cert.signature).map(|s| s.len()) != Some(64) {
+            return Err(Pushed::Malformed("signature must be 128 hex characters"));
+        }
+        if now >= cert.not_after {
+            return Err(Pushed::Malformed("the certificate has already expired"));
+        }
+        let json = serde_json::to_string_pretty(&cert).map_err(|e| Pushed::Write(e.to_string()))?;
+        let tmp = self.cert_path.with_extension("json.tmp");
+        if let Some(dir) = self.cert_path.parent() {
+            std::fs::create_dir_all(dir)
+                .map_err(|e| Pushed::Write(format!("{}: {e}", dir.display())))?;
+        }
+        std::fs::write(&tmp, format!("{json}\n"))
+            .and_then(|()| std::fs::rename(&tmp, &self.cert_path))
+            .map_err(|e| Pushed::Write(format!("{}: {e}", self.cert_path.display())))?;
+        if let Ok(mut slot) = self.cert.write() {
+            *slot = Some(cert);
+        }
+        Ok(())
+    }
+}
+
+/// Why a pushed certificate was not installed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Pushed {
+    /// The certificate names another public key: it is not for this edge.
+    OtherKey,
+    /// Not shaped like a certificate the root issues.
+    Malformed(&'static str),
+    /// The certificate file could not be written (a read-only path, for one).
+    Write(String),
+}
+
+impl std::fmt::Display for Pushed {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Pushed::OtherKey => f.write_str(
+                "the certificate is for another key; sign this edge's public key (GET /identity/public-key)",
+            ),
+            Pushed::Malformed(why) => write!(f, "not a certificate: {why}"),
+            Pushed::Write(why) => write!(f, "could not write the certificate file: {why}"),
         }
     }
 }
@@ -511,6 +646,85 @@ mod tests {
         assert!(!nonce_ok(&"ab".repeat(15)));
         assert!(!nonce_ok(&"ab".repeat(65)));
         assert!(!nonce_ok(&"zz".repeat(16)));
+    }
+
+    #[test]
+    fn an_identity_makes_its_key_once_and_installs_only_certificates_for_it() {
+        let dir = std::env::temp_dir().join(format!(
+            "losos-identity-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let key_file = dir.join("sub").join("edge.key");
+        let cert_file = dir.join("sub").join("edge.cert.json");
+
+        // First start: the key is made, nothing is official.
+        let id = Identity::open(&key_file, &cert_file).unwrap();
+        let public = id.public_key().to_string();
+        assert_eq!(from_hex(&public).map(|k| k.len()), Some(32));
+        assert!(id.cert().is_none());
+        assert!(id.answer("ab").is_none());
+        use std::os::unix::fs::PermissionsExt;
+        assert_eq!(
+            std::fs::metadata(&key_file).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+
+        // A certificate for another key is refused and nothing is written.
+        let (root, root_pub) = pair();
+        let (_, other_pub) = pair();
+        let other = issue(&root, "e", "https://e", &other_pub, 2_000_000_000).unwrap();
+        assert_eq!(id.install(other, 1_900_000_000), Err(Pushed::OtherKey));
+        assert!(!cert_file.exists());
+
+        // A dead one, and a malformed one, are refused too.
+        let dead = issue(&root, "e", "https://e", &public, 1_000).unwrap();
+        assert!(matches!(
+            id.install(dead, 1_900_000_000),
+            Err(Pushed::Malformed(_))
+        ));
+        let mut bad_sig = issue(&root, "e", "https://e", &public, 2_000_000_000).unwrap();
+        bad_sig.signature = "zz".into();
+        assert!(matches!(
+            id.install(bad_sig, 1_900_000_000),
+            Err(Pushed::Malformed(_))
+        ));
+
+        // The right one: written, served, and the challenge is answered.
+        let good = issue(&root, "e", "https://e", &public, 2_000_000_000).unwrap();
+        assert_eq!(id.install(good.clone(), 1_900_000_000), Ok(()));
+        let on_disk: Cert =
+            serde_json::from_str(&std::fs::read_to_string(&cert_file).unwrap()).unwrap();
+        assert_eq!(on_disk, good);
+        let nonce = "00112233445566778899aabbccddeeff";
+        let answer = id.answer(nonce).unwrap();
+        assert_eq!(
+            check_answer(&root_pub, &answer, "https://e", nonce, 1_900_000_000),
+            Ok(())
+        );
+
+        // Second start: the same key is loaded, the certificate with it.
+        let again = Identity::open(&key_file, &cert_file).unwrap();
+        assert_eq!(again.public_key(), public);
+        assert_eq!(again.cert(), Some(good));
+
+        // A certificate on disk for another key is ignored, not fatal: the
+        // edge stays up to take the push that replaces it.
+        let (_, stray_pub) = pair();
+        let stray = issue(&root, "e", "https://e", &stray_pub, 2_000_000_000).unwrap();
+        std::fs::write(&cert_file, serde_json::to_string(&stray).unwrap()).unwrap();
+        let third = Identity::open(&key_file, &cert_file).unwrap();
+        assert_eq!(third.public_key(), public);
+        assert!(third.cert().is_none());
+
+        // A key file that is not a key is fatal: the edge would otherwise
+        // silently make a new identity and orphan its certificate.
+        std::fs::write(&key_file, "not hex\n").unwrap();
+        assert!(Identity::open(&key_file, &cert_file).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
