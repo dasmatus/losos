@@ -13,7 +13,7 @@ name. Sign in with the owner's password. LosOS cloud does everything
 Nextcloud does. The desktop client syncs a folder on your computer, the phone
 apps upload photos, and calendars and contacts sync over CalDAV and CardDAV.
 
-![The marks of LosOS cloud and LosOS Git in the light and the dark theme, drawn from the plate of salmon.](../img/cloud-and-git-marks.png)
+![The marks of LosOS cloud and LosOS Git in the light and the dark theme, drawn around a live salmon.](../img/cloud-and-git-marks.png)
 
 The app tiles on the Overview open each app. Their links go through
 `index.php` on purpose, because every configuration answers that path.

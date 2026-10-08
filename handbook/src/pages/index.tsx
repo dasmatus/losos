@@ -10,6 +10,7 @@ import overviewLight from '@site/docs/img/overview.png';
 import overviewDark from '@site/docs/img/overview-dark.png';
 import SetupTypes from '@site/docs/img/setup-types.svg';
 
+import {logoTip, useHalloween} from '@site/src/lib/logo';
 import styles from './index.module.css';
 
 /* The public site's front page: what LosOS is, for someone who has never
@@ -209,12 +210,11 @@ const STEPS: Step[] = [
 ];
 
 function Hero(): ReactNode {
+  const halloween = useHalloween();
+  const salmon = useBaseUrl('/img/salmon.png');
   const plate = useBaseUrl('/img/plate.png');
-  const plateTip = translate({
-    id: 'losos.navbar.logoTip',
-    message: "Losos is Slovak for salmon. The logo is a plate of it, from the owner's own photo.",
-    description: 'The tooltip on the navbar logo, saying what the picture means',
-  });
+  const logo = halloween ? plate : salmon;
+  const tip = logoTip(halloween);
   return (
     <header className={styles.hero}>
       <div className={styles.heroText}>
@@ -253,12 +253,12 @@ function Hero(): ReactNode {
         </p>
       </div>
       <img
-        className={styles.plate}
-        src={plate}
+        className={styles.logo}
+        src={logo}
         width={240}
         height={240}
-        alt={plateTip}
-        title={plateTip}
+        alt={tip}
+        title={tip}
       />
     </header>
   );

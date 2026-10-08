@@ -14,7 +14,7 @@ import { useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
 import { actions } from "./actions";
 import { useEngine } from "./engine-hook";
-import { plateUrl } from "./icons";
+import { logoUrl } from "./icons";
 import { OrderDialog } from "./order-dialog";
 import { BOX_COPY } from "./shape";
 import { useLab } from "./store";
@@ -78,7 +78,7 @@ export function TopBar({ phone, onDetails }: { phone: boolean; onDetails: () => 
         </a>
       )}
       <div className="flex shrink-0 items-center gap-2 text-[17px] font-semibold whitespace-nowrap">
-        <img src={plateUrl} alt="" width={26} height={26} className="size-[26px]" />
+        <img src={logoUrl} alt="" width={26} height={26} className="size-[26px]" />
         LosOS Lab
       </div>
       <ToggleGroup

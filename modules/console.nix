@@ -25,6 +25,10 @@
 let
   fqdn = "${config.losos.hostName}.local";
 
+  # A keyfile box says what that costs on the one screen every owner sees
+  # (wiki/TPM.md has the long form). The admin pages say the same.
+  noTpm = !config.losos.tpm.enable;
+
   banner = pkgs.writeShellApplication {
     name = "losos-console-banner";
     runtimeInputs = [
@@ -88,6 +92,14 @@ let
             ""
           )
         fi
+        ${lib.optionalString noTpm ''
+          body+=(
+            "This box has no TPM chip."
+            "Its disk key is on the unencrypted boot partition,"
+            "so anyone who takes the disk can read your files."
+            ""
+          )
+        ''}
 
         # Vertically centred, and a little narrower than the screen so the
         # blue block reads as a panel rather than a background.
@@ -104,7 +116,7 @@ let
         for text in "''${body[@]}"; do
           case $text in
             http://*) line "$text" "$width" $'\033[1m' ;;
-            "LosOS is ready") line "$text" "$width" $'\033[1m' ;;
+            "LosOS is ready" | "This box has no TPM chip.") line "$text" "$width" $'\033[1m' ;;
             *) line "$text" "$width" ;;
           esac
         done

@@ -36,6 +36,7 @@ export const HANDBOOK_ENTRIES = {
   "look-and-widgets": "manual/look-and-widgets/",
   "backup-and-erase": "manual/backup-and-erase/",
   "custom-domain": "types/official-edge/",
+  tpm: "reference/tpm/",
 } as const;
 
 export type HandbookEntry = keyof typeof HANDBOOK_ENTRIES;

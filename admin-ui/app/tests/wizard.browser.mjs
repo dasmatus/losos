@@ -40,6 +40,9 @@ async function open({
    * with a port, and some of what the wizard shows depends on the page NOT
    * having one — a port is what a VM's forward looks like. */
   at = null,
+  /* `tpm.enable`'s running value in GET /api/options, or null to leave the
+   * route to the catch-all (no document). */
+  tpm = null,
 }) {
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 }, locale: 'en-US' });
   const errors = [];
@@ -83,6 +86,36 @@ async function open({
       body: JSON.stringify({ claimed, ready: isReady, waitingFor: isReady ? null : waitingFor }),
     });
   });
+
+  if (tpm !== null) {
+    await page.route('**/api/options', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          available: true,
+          version: 1,
+          stray: [],
+          excluded: {},
+          options: [
+            {
+              name: 'tpm.enable',
+              group: 'tpm',
+              editor: { kind: 'bool' },
+              nixType: 'boolean',
+              description: '',
+              default: true,
+              defaultText: 'true',
+              current: tpm,
+              danger: false,
+              fixed: 'installer',
+              readOnly: true,
+            },
+          ],
+        }),
+      }),
+    );
+  }
 
   await page.route('**/setup/state.json', (route) =>
     route.fulfill({
@@ -275,8 +308,8 @@ for (const path of ['/settings', '/settings/reset', '/storage', '/mesh', '/apps'
 /* Walk step 2 for real: Continue past the certificate, type a password twice,
  * submit. Returns the page, every request the page sent, and the body text
  * after lososd (stubbed) has answered. */
-async function claimThroughStepTwo(password = 'Correct-horse battery staple 1') {
-  const { page, errors } = await open({ claimed: false });
+async function claimThroughStepTwo(password = 'Correct-horse battery staple 1', { tpm = null } = {}) {
+  const { page, errors } = await open({ claimed: false, tpm });
   const requests = [];
   page.on('request', (req) => requests.push({ method: req.method(), url: new URL(req.url()).pathname }));
 
@@ -289,6 +322,35 @@ async function claimThroughStepTwo(password = 'Correct-horse battery staple 1') 
   const text = await page.locator('body').innerText();
   return { page, errors, requests, text };
 }
+
+/* A box installed without a TPM keeps its disk key on the boot partition.
+ * The wizard says so once the claim has given it a token to ask with, and
+ * not before; a box with a TPM, or one serving no option document, says
+ * nothing. */
+await check('the wizard warns about a missing TPM once the password is set', async () => {
+  const notice = (page) => page.locator('[data-notice="no-tpm"]');
+  const before = await open({ claimed: false, tpm: false });
+  await before.page.getByRole('button', { name: /^Continue$/ }).waitFor();
+  assert.equal(await notice(before.page).count(), 0, 'a TPM warning before the claim');
+  await before.page.close();
+
+  const keyfile = await claimThroughStepTwo(undefined, { tpm: false });
+  await notice(keyfile.page).waitFor({ timeout: 3000 }).catch(() => assert.fail('no TPM warning after the claim on a keyfile box'));
+  assert.match(await notice(keyfile.page).innerText(), /This box has no TPM chip/);
+  assert.equal(
+    await notice(keyfile.page).getByRole('link', { name: 'What a TPM does' }).getAttribute('href'),
+    '/handbook/reference/tpm/',
+  );
+  assert.deepEqual(keyfile.errors, []);
+  await keyfile.page.close();
+
+  for (const tpm of [true, null]) {
+    const { page } = await claimThroughStepTwo(undefined, { tpm });
+    await page.waitForTimeout(300);
+    assert.equal(await notice(page).count(), 0, `a TPM warning with tpm ${tpm}`);
+    await page.close();
+  }
+});
 
 /* The bug the wizard shipped with: step 2 posted the first password to the
  * token-gated /api/set-password, and on a fresh box nothing holds a token, so
