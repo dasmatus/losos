@@ -277,7 +277,8 @@ container mode does this. LosOS Git keeps its edge-name `ROOT_URL`.
 
 A box behind a local edge gets its domains routed too, through that local
 edge, once it has vouched for the local edge with a relay pass and joined
-this edge's mesh. The routes live in etcd. [Edge
+this edge's mesh. The registrar keeps those routes itself, in
+`relay-routes.json` beside its registry. [Edge
 federation](Edge-Federation#custom-domains-behind-a-local-edge) has the
 details and `losos.edge.dns.relayRoutes`.
 

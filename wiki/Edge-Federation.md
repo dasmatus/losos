@@ -212,30 +212,38 @@ compute window under its own id. A box with only a tunnel gets its hostname
 and nothing more. And if the box is also registered with the official edge
 directly, the direct path wins and the local edge is not used.
 
-### The route table in etcd
+### The route table
 
-The official edge keeps the result in etcd, one key per route:
+The registrar keeps the table itself, the same way it keeps its registry.
+There is no database to run. Each reconciler pass works out which routes
+should exist and builds the Traefik routers from that. When the table
+changes, the registrar rewrites `/var/lib/losos-registrar/relay-routes.json`
+beside `registry.json` and logs each route it adds or removes:
 
+```json
+{
+  "bindings": {
+    "mattbox": { "spoke": "acme", "epoch": 493281 }
+  },
+  "routes": [
+    { "domain": "cloud.example.org", "tenant": "mattbox", "spoke": "acme", "service": "acme.mattbox" }
+  ]
+}
 ```
-/losos/routes/<local edge>/<box>/<domain>
-  {"domain":"cloud.example.org","tenant":"mattbox","spoke":"acme","service":"acme.mattbox"}
-```
 
-Each reconciler pass works out which routes should exist, writes the
-difference to etcd, reads the prefix back and builds the Traefik routers
-from what etcd returned. So the table you can read with
-`etcdctl --endpoints=http://127.0.0.1:2479 get --prefix /losos/routes/` is
-the table that routes. A key under the prefix that is not a route row gets
-deleted. If etcd is down, routes keep working from the last table it gave,
-minus anything the box no longer qualifies for, and new routes wait until
-etcd is back. The box's name in the edge's zone, `<label>.<zone>`, follows
-the same path as its domains, so the CNAME target reaches it too.
+`bindings` records which local edge each box vouched for, and with a pass
+from which hour. That part is what a restart reads back, so the routes come
+back on the registrar's first pass instead of waiting for every local edge
+to call `/relay` again. A binding whose pass has expired is ignored. `routes`
+is the table those bindings produced, written for you to read. The registrar
+plans it again from the bindings and never loads it. The box's name in the
+edge's zone, `<label>.<zone>`, goes the same way as its domains, so the
+CNAME target reaches it too.
 
-The local edge never talks to etcd. The official edge sends it its own rows
-in the `/relay` answer, and the gateway writes them to
-`/var/lib/losos-registrar/hub-routes.json` and logs each change. That file
-only tells you what the official edge routes your way. Nothing on the local
-edge routes by it.
+The local edge gets its own rows back in the `/relay` answer. The gateway
+writes them to `/var/lib/losos-registrar/hub-routes.json` and logs each
+change. That file only tells you what the official edge routes your way.
+Nothing on the local edge routes by it.
 
 ### Turning it on
 
@@ -248,22 +256,16 @@ losos.edge.dns = {
 };
 ```
 
-That runs a single-node etcd on loopback, client port 2479 and peer port
-2480. The mesh's rke2 server already takes 2379 and 2380 for its own etcd,
-and nothing of ours goes into that one. To share one etcd cluster between
-official edges, set `relayRoutes.localEtcd = false` and point
-`relayRoutes.etcdUrl` at it. The registrar speaks etcd's v3 JSON gateway and
-presents no client certificate, so put TLS in front of a remote cluster
-yourself. Nothing changes on the local edge or the box. Both pick the pass
-up from a build with this change.
+Nothing else runs for it. The table file and the pass key both live in the
+registrar's state directory. Nothing changes on the local edge or the box.
+Both pick the pass up from a build with this change.
 
-`backend-registrar/tests/domains.rs` runs the whole path with a stand-in
-etcd. It covers a box behind a gateway getting its domain, a box outside the
-mesh getting nothing, and three forged passes getting nothing.
-`tests/etcd.rs` runs the table against a real etcd when
-`LOSOS_TEST_ETCD_URL` is set, as CI does. `tests/edge-dns.nix` boots the
-NixOS wiring: etcd on 2479, the key file, `/relay` with a pass, and the
-registrar removing a key it did not write.
+`backend-registrar/tests/domains.rs` runs the whole path against real
+registrars. A box behind a gateway gets its domain, a box outside the mesh
+gets nothing, and three forged passes get nothing. `tests/edge-dns.nix`
+boots the NixOS wiring. It checks the key file, `/relay` with a pass, the
+binding landing in `relay-routes.json`, and the binding still being there
+after the registrar restarts.
 
 ## Delivery: the gateway, without an ISO
 

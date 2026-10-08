@@ -58,14 +58,13 @@ fn parse_dur(s: &str) -> Result<Duration> {
     }
 }
 
-/// `serve --routes-etcd-url ...`: where the official edge keeps the route
-/// table of boxes behind local edges, and the key it signs relay passes with.
+/// `serve --relay-routes`: where the official edge keeps the route table
+/// of boxes behind local edges, and the key it signs relay passes with.
+/// Both default to files beside the registry.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RoutesOpts {
-    /// etcd's v3 JSON gateway, `http://127.0.0.1:2379`.
-    pub etcd_url: String,
-    /// Key prefix of the table, no trailing slash.
-    pub prefix: String,
+    /// `relay-routes.json` (`crate::routes::TableFile`).
+    pub table_file: String,
     /// 64 hex characters, made on first start when absent.
     pub pass_key_file: String,
 }
@@ -146,7 +145,7 @@ pub struct ServeOpts {
     /// nothing anywhere.
     pub uplink: Option<crate::relay::UplinkOpts>,
     /// The route table for boxes behind a local edge (`crate::routes`).
-    /// `None` unless `--routes-etcd-url` was given, which needs `--dns-zone`:
+    /// `None` unless `--relay-routes` was given, which needs `--dns-zone`:
     /// only an edge that routes domains keeps the table.
     pub routes: Option<RoutesOpts>,
 }
@@ -651,50 +650,39 @@ fn parse_market(args: &[String]) -> Result<Option<Box<MarketOpts>>> {
     })))
 }
 
-/// The DNS half of `serve`: `--dns-zone` turns it on, and then the edge must
-/// say which addresses its names resolve to.
+/// The route table for boxes behind local edges: `--relay-routes` turns it
+/// on, on an edge that already routes custom domains.
 fn parse_routes(args: &[String]) -> Result<Option<RoutesOpts>> {
-    let Some(url) = arg(args, "--routes-etcd-url") else {
+    if !args.iter().any(|a| a == "--relay-routes") {
         return Ok(None);
-    };
+    }
     if arg(args, "--dns-zone").is_none() {
         return Err(miette!(
-            "--routes-etcd-url needs --dns-zone: only an edge that routes custom domains keeps the route table"
+            "--relay-routes needs --dns-zone: only an edge that routes custom domains keeps the route table"
         ));
     }
-    let url = url.trim().trim_end_matches('/');
-    if !(url.starts_with("http://") || url.starts_with("https://")) {
-        return Err(miette!(
-            "bad --routes-etcd-url {url:?}; expected etcd's client URL, such as http://127.0.0.1:2379"
-        ));
-    }
-    let prefix = arg(args, "--routes-prefix")
-        .unwrap_or(crate::routes::DEFAULT_PREFIX)
-        .trim()
-        .trim_end_matches('/')
-        .to_string();
-    if !prefix.starts_with('/') || prefix.len() < 2 {
-        return Err(miette!(
-            "bad --routes-prefix {prefix:?}; expected an etcd key prefix such as /losos/routes"
-        ));
-    }
+    let beside_registry = |name: &str| -> Result<String> {
+        Ok(std::path::Path::new(req(args, "--registry")?)
+            .with_file_name(name)
+            .to_string_lossy()
+            .into_owned())
+    };
+    let table_file = match arg(args, "--relay-routes-file") {
+        Some(f) => f.to_string(),
+        None => beside_registry("relay-routes.json")?,
+    };
     let pass_key_file = match arg(args, "--relay-pass-key-file") {
         Some(f) => f.to_string(),
-        None => {
-            let registry = req(args, "--registry")?;
-            std::path::Path::new(registry)
-                .with_file_name("relay-pass.key")
-                .to_string_lossy()
-                .into_owned()
-        }
+        None => beside_registry("relay-pass.key")?,
     };
     Ok(Some(RoutesOpts {
-        etcd_url: url.to_string(),
-        prefix,
+        table_file,
         pass_key_file,
     }))
 }
 
+/// The DNS half of `serve`: `--dns-zone` turns it on, and then the edge must
+/// say which addresses its names resolve to.
 fn parse_domains(args: &[String]) -> Result<Option<Box<DomainsOpts>>> {
     let Some(zone) = arg(args, "--dns-zone") else {
         return Ok(None);
