@@ -50,8 +50,11 @@
 # rides on the ESP as `EFI/losos/losos-secure-boot.{cer,pem}` when the
 # committed file carries one, so a firmware's "enroll key from file" dialog
 # can take it straight from the stick: a machine with only the stock
-# Microsoft keys refuses the medium until its owner enrols this certificate
-# in `db` (or turns Secure Boot off), and that refusal is the feature.
+# Microsoft keys refuses the medium until its owner adds this certificate
+# to `db` beside Microsoft's (or turns Secure Boot off), and that refusal is
+# the feature. Beside, not instead: Windows, other distributions' shim and
+# option ROMs are signed under Microsoft's certificates, and
+# tests/secure-boot.nix boots on a store holding both.
 #
 # `system.build.isoImage` is forced here because iso-image.nix offers no seam
 # for the EFI image: its `efiImg` is a `let` binding, and the only way to
