@@ -25,7 +25,7 @@ is signed in, it says so and opens the built-in setups.
   hop with its protocol.
 - **Your own setups.** Start from Empty canvas or any built-in setup, drag
   devices up from the tray, and pull copper, fiber or Wi-Fi between their
-  ports. **Save** downloads the setup as a `.losos-lab.json` file and
+  ports. **Save** downloads the setup as an `.llf` file (LosOS Lab file, JSON inside) and
   **Open** loads one back. The last setup you changed is also kept in the
   browser and listed as "Last setup" in the picker. An opened file is
   rebuilt with the same tools as the tray, so anything in it the tray could
