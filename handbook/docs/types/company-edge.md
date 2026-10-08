@@ -74,5 +74,4 @@ In short:
 
 Small companies that want the "one box per team, one pool for all" setup
 with nothing leaving the building. They need someone who can run one NixOS
-server. LosOS is meant to be sold in this shape once the project's author
-has passed the maturita.
+server. LosOS is meant to be sold in this shape.
