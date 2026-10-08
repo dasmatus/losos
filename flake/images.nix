@@ -546,7 +546,7 @@ let
       # baked into every repository's git hooks, which change on every rebuild.
       # Forgejo 16 no longer has the `hooks` subcommand (`admin regenerate`
       # lists only `keys`; it prints its usage and exits 0 when asked for
-      # hooks, which is what the pod log of 2026-10-05 showed), so ask before
+      # hooks, which is what the pod log showed), so ask before
       # calling: on a version that has it the hooks are rewritten, on one that
       # does not the hooks are Forgejo's own business.
       forgejo migrate
@@ -616,8 +616,7 @@ in
     # drops every capability and runs as nc.uid, and the image's /run is
     # root's, so the entrypoint's `mkdir -p /run/nextcloud` failed with
     # "Permission denied" on every start and the pod sat in CrashLoopBackOff
-    # for as long as the box was up — found on the recorded install demo of
-    # 2026-10-05, where it was the whole reason Nextcloud never answered.
+    # for as long as the box was up, and Nextcloud never answered.
     # extraCommands runs unprivileged and cannot chown; this runs under
     # fakeroot, so the ownership is recorded in the layer.
     fakeRootCommands = ''

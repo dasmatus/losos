@@ -1,6 +1,6 @@
 /* The recovery-code step — NOT in the wizard at the moment.
  *
- * Hidden on 2026-10-06 (see ./steps.ts): nothing can accept the code after a
+ * Hidden (see ./steps.ts): nothing can accept the code after a
  * reinstall yet, so the step asked for a piece of paper that proves nothing.
  * The file stays as it was so the step can be put back by re-listing it in
  * STEP_IDS and re-wiring Wizard.tsx; its i18n keys and GET /api/recovery

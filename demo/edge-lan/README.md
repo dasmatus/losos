@@ -55,8 +55,7 @@ nothing to pool into without one. For a site with no internet, the edge is
 one always-on PC on the LAN running `nixosModules.edge` with
 `losos.edge.lan.advertise = true`, exactly as `edge-vm.nix` does here: the
 boxes find it over mDNS and pooling works with the WAN cable unplugged. That
-is the decided shape (2026-10-07); a box acting as its own LAN's edge is not
-planned.
+is the intended shape; a box acting as its own LAN's edge is not planned.
 
 ## What the pieces are
 
