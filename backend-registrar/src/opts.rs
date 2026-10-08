@@ -17,6 +17,73 @@ fn arg<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
         .and_then(|i| args.get(i + 1).map(std::string::String::as_str))
 }
 
+/// Every value of a flag that may be given more than once.
+fn args_all<'a>(args: &'a [String], flag: &str) -> Vec<&'a str> {
+    args.windows(2)
+        .filter(|w| w[0] == flag)
+        .map(|w| w[1].as_str())
+        .collect()
+}
+
+/// `lab`: LosOS Lab's guests under libvirt (`crate::lab`).
+fn parse_lab(rest: &[String]) -> Result<crate::lab::LabOpts> {
+    use crate::lab::{LabOpts, VirtType};
+    let d = LabOpts::defaults();
+    let mut origins = d.origins.clone();
+    for o in args_all(rest, "--origin") {
+        let o = o.trim_end_matches('/');
+        let ok = crate::lab::authority(o).is_some() && o.bytes().all(|b| b.is_ascii_graphic());
+        if !ok {
+            return Err(miette!(
+                "bad --origin {o:?}; expected scheme://host[:port], like https://lab.example.org"
+            ));
+        }
+        origins.push(o.to_string());
+    }
+    let connect = arg(rest, "--connect").unwrap_or(&d.connect);
+    if !connect.starts_with("qemu") {
+        return Err(miette!("bad --connect {connect:?}; expected a qemu URI such as qemu:///session or qemu:///system"));
+    }
+    Ok(LabOpts {
+        listen: arg(rest, "--listen").unwrap_or(&d.listen).to_string(),
+        connect: connect.to_string(),
+        images: arg(rest, "--images").map_or(d.images.clone(), std::path::PathBuf::from),
+        origins,
+        token_file: arg(rest, "--token-file").map(str::to_string),
+        virsh: arg(rest, "--virsh").unwrap_or(&d.virsh).to_string(),
+        max_guests: match arg(rest, "--max-guests") {
+            None => d.max_guests,
+            Some(raw) => raw
+                .parse()
+                .ok()
+                .filter(|n| (1..=64).contains(n))
+                .ok_or_else(|| miette!("bad --max-guests {raw:?}; expected 1..=64"))?,
+        },
+        memory_mib: match arg(rest, "--memory") {
+            None => d.memory_mib,
+            Some(raw) => raw
+                .parse()
+                .ok()
+                .filter(|n| (32..=4096).contains(n))
+                .ok_or_else(|| miette!("bad --memory {raw:?}; expected 32..=4096 (MiB)"))?,
+        },
+        virt_type: match arg(rest, "--virt-type").unwrap_or("auto") {
+            "auto" => VirtType::Auto,
+            "kvm" => VirtType::Kvm,
+            "qemu" => VirtType::Qemu,
+            other => {
+                return Err(miette!(
+                    "bad --virt-type {other:?}; expected auto, kvm or qemu"
+                ))
+            }
+        },
+        idle: match arg(rest, "--idle") {
+            None => d.idle,
+            Some(raw) => parse_dur(raw)?,
+        },
+    })
+}
+
 fn req<'a>(args: &'a [String], flag: &str) -> Result<&'a str> {
     arg(args, flag).ok_or_else(|| miette!("missing required flag {flag}"))
 }
@@ -306,6 +373,7 @@ pub enum Mode {
     Identity(IdentityOpts),
     Provision(ProvisionOpts),
     Enrol(EnrolOpts),
+    Lab(crate::lab::LabOpts),
 }
 
 /// `enrol` options: the LAN owner's view of the boxes a `--enrol-dir`
@@ -324,7 +392,7 @@ pub enum EnrolOpts {
 pub fn parse(args: Vec<String>) -> Result<Mode> {
     if args.is_empty() {
         return Err(miette!(
-            "usage: losos-registrar serve|announce|seed|join|stripe-gate|identity|provision|enrol ..."
+            "usage: losos-registrar serve|announce|seed|join|stripe-gate|identity|provision|enrol|lab ..."
         ));
     }
     let mode = &args[0];
@@ -424,6 +492,7 @@ pub fn parse(args: Vec<String>) -> Result<Mode> {
             }
         }
         "provision" => parse_provision(&rest),
+        "lab" => parse_lab(&rest).map(Mode::Lab),
         "enrol" => {
             let verb = rest.first().map(String::as_str).unwrap_or("");
             let rest: Vec<String> = rest.iter().skip(1).cloned().collect();

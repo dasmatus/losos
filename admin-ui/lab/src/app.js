@@ -35,12 +35,14 @@ function renderTop() {
   const E = typeof ENGINE !== 'undefined' ? ENGINE : { available: false, reason: 'not loaded' };
   // The badge names the engine; the why is in its tooltip, so the bar never
   // squeezes the view and mode switches beside it.
+  const where = E.libvirt ? esc(E.libvirt.label) + (E.wasm ? ', qemu-wasm as the fallback' : '') : 'x86_64 guests in qemu-wasm';
   eng.innerHTML = E.available
-    ? `<span class="dot ok"></span> <b>Emulated</b> · x86_64 guests in qemu-wasm`
+    ? `<span class="dot ok"></span> <b>Emulated</b> · ${where}`
     : `<span class="dot warn"></span> <b>Simulated consoles</b>`;
-  eng.title = E.available
-    ? 'qemu-system-x86_64 compiled to WebAssembly (ktock/qemu-wasm), one instance per powered device. LosOS devices boot the LosOS stand-in guest; routers, switches and access points boot Netzgeräte Betriebssystem.'
-    : E.reason;
+  eng.title = !E.available ? E.reason
+    : (E.libvirt ? 'Guests run under libvirt on this computer through losos-registrar lab, one transient domain per powered device. ' : '')
+      + (E.wasm ? 'qemu-system-x86_64 compiled to WebAssembly (ktock/qemu-wasm) runs any guest libvirt cannot. ' : '')
+      + 'LosOS devices boot the LosOS stand-in guest; routers, switches and access points boot Netzgeräte Betriebssystem.';
 }
 
 // ── Canvas: shared camera, logical and physical renderers ───────────────
@@ -407,7 +409,7 @@ function renderTray() {
   for (const [k, T] of Object.entries(TYPES)) {
     if (T.cat !== UI.cat) continue;
     const b = document.createElement('button'); b.className = 'titem'; b.setAttribute('aria-pressed', String(UI.tool === 'place' && UI.placeType === k));
-    b.innerHTML = `${iconSvg(k, 48)}<span>${T.short}</span><small>${T.cat === 'losos' ? (typeof ENGINE !== 'undefined' && ENGINE.available ? 'boots in qemu-wasm' : 'LosOS device') : T.cat === 'end' ? 'LosOS Desktop' : 'generic gear'}</small>`;
+    b.innerHTML = `${iconSvg(k, 48)}<span>${T.short}</span><small>${T.cat === 'losos' ? (typeof ENGINE !== 'undefined' && ENGINE.available ? (ENGINE.libvirt ? 'boots under libvirt' : 'boots in qemu-wasm') : 'LosOS device') : T.cat === 'end' ? 'LosOS Desktop' : 'generic gear'}</small>`;
     b.title = T.blurb;
     b.onclick = () => { UI.tool = 'place'; UI.placeType = k; UI.connectFrom = null; renderTray(); renderCanvas(); };
     items.appendChild(b);

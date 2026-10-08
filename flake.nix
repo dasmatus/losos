@@ -294,6 +294,10 @@
             # different halves of the same problem.
             ./modules/keyring.nix
             ./modules/daemon.nix
+            # LosOS Lab's guests under libvirt on the box (losos.lab.libvirt,
+            # off by default): the `losos-registrar lab` helper lososd relays
+            # /api/lab to.
+            ./modules/lab.nix
             # The option document and the configuration repository on LosOS
             # Git (modules/config-repo.nix, backend/src/{options,config_repo}.rs).
             ./modules/config-repo.nix

@@ -41,7 +41,7 @@ function emptySide() {
   <li>Open the laptop's <b>Desktop</b> tab and browse to a box by its <code>.local</code> name, or by its public name from another site.</li>
   <li>Switch to <b>Simulation</b> to step through every DHCP, mDNS, HTTP and tunnel packet, like Packet Tracer's event list.</li>
   <li>Pull a cable, power off the gateway or the official edge, and watch the boxes pick a new path.</li></ol>
-  <p><b>What is real here.</b> ${typeof ENGINE !== 'undefined' && ENGINE.available ? 'Each powered box and edge boots a real x86_64 Linux guest under qemu-wasm; its Ethernet frames cross the simulated switches, and the routers answer DHCP, ARP and ping.' : 'In this viewer the consoles are simulated, because qemu-wasm needs a cross-origin isolated page. The standalone build boots a real x86_64 guest per device.'} The LosOS behaviour (edge discovery, the path rule, enrolment, relaying, the lanOnly guard) is modelled on the rules in the LosOS wiki.</p>`;
+  <p><b>What is real here.</b> ${typeof ENGINE !== 'undefined' && ENGINE.available ? `Each powered box and edge boots a real x86_64 Linux guest ${ENGINE.libvirt ? 'under libvirt (' + esc(ENGINE.libvirt.label) + ')' : 'under qemu-wasm'}; its Ethernet frames cross the simulated switches, and the routers answer DHCP, ARP and ping.` : 'In this viewer the consoles are simulated, because qemu-wasm needs a cross-origin isolated page. The standalone build boots a real x86_64 guest per device.'} The LosOS behaviour (edge discovery, the path rule, enrolment, relaying, the lanOnly guard) is modelled on the rules in the LosOS wiki.</p>`;
   return e;
 }
 function linkSide(l) {
@@ -65,7 +65,7 @@ function statusPane(p, d) {
     if (a?.gw) h += `<dt>Gateway</dt><dd class="mono">${esc(a.gw)}</dd>`;
     h += `<dt>Internet</dt><dd>${NET.internet.get(d.id) ? '<span class="tag ok">yes</span>' : '<span class="tag">no</span>'}</dd>`;
     if (a && a.src !== 'public') h += `<dt>mDNS name</dt><dd class="mono">${esc(d.name)}.local</dd>`;
-    if (typeof ENGINE !== 'undefined' && ENGINE.available && TYPES[d.type].emulate) h += `<dt>Guest</dt><dd>${ENGINE.running(d.id) ? '<span class="tag ok">qemu-wasm running</span>' : 'not running'}</dd>`;
+    if (typeof ENGINE !== 'undefined' && ENGINE.available && TYPES[d.type].emulate) h += `<dt>Guest</dt><dd>${ENGINE.running(d.id) ? `<span class="tag ok">${esc(ENGINE.backend(d.id))}, running</span>` : 'not running'}</dd>`;
   } else {
     h += `<dt>Ports</dt><dd>${TYPES[d.type].ports.length}</dd><dt>In use</dt><dd>${linksOf(d).length}</dd>`;
   }
@@ -158,8 +158,9 @@ function consolePane(p, d) {
   p.classList.add('flush');
   const head = document.createElement('div'); head.className = 'term-head';
   const emu = typeof ENGINE !== 'undefined' && ENGINE.available;
-  head.innerHTML = emu
-    ? `<span class="dot ${ENGINE.running(d.id) ? 'ok' : ''}"></span><b>qemu-wasm</b><span>x86_64 guest, serial console${ENGINE.running(d.id) ? '' : ' · powered off'}</span>`
+  const backend = emu ? ENGINE.backend(d.id) : '';
+  head.innerHTML = backend
+    ? `<span class="dot ${ENGINE.running(d.id) ? 'ok' : ''}"></span><b>${esc(backend)}</b><span>x86_64 guest, serial console${ENGINE.running(d.id) ? '' : ' · not running'}</span>`
     : `<span class="dot warn"></span><b>Simulated console</b><span>answers from the model</span>`;
   p.appendChild(head);
   if (emu) { ENGINE.attach(d.id, p); return; }

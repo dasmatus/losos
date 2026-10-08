@@ -29,6 +29,9 @@ in
   losos.admin.handbook = lib.mkDefault pkgs'.losos-handbook;
   # LosOS Lab, the setup visualizer the same vhost serves at /lab/.
   losos.admin.lab = lib.mkDefault pkgs'.losos-lab;
+  # Its guests run under libvirt only when the owner asks for it: libvirtd is
+  # a daemon the appliance otherwise has no use for (modules/lab.nix).
+  losos.lab.libvirt.enable = lib.mkDefault false;
 
   # The appliance side of the master proxy.
   losos.proxy.registrar.package = lib.mkDefault pkgs'.losos-registrar;

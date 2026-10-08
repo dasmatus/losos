@@ -5,13 +5,26 @@
 // plugs into the simulated switches. Routers answer DHCP, ARP and ping in
 // JavaScript; frames between two guests on one segment are passed through
 // untouched.
+//
+// A guest runs under libvirt instead whenever `losos-registrar lab` answers
+// (engine-libvirt.js): KVM on the viewer's machine, or on the box. Its frames
+// enter the same fabric, so the two kinds of guest share segments. A guest
+// libvirt cannot start falls back to qemu-wasm here, and the lab says so
+// once.
 const ENGINE = (() => {
-  const E = { available: false, reason: '', vms: new Map(), stats: { sockets: 0, framesIn: 0, framesOut: 0, last: '' } };
+  const E = { available: false, wasm: false, libvirt: null, reason: '', vms: new Map(), stats: { sockets: 0, framesIn: 0, framesOut: 0, last: '' } };
   const BASE = 'qemu/';
   const FILES = { 'bzImage': 'guest/bzImage', 'rootfs.bin': 'guest/rootfs.bin', 'bios-256k.bin': 'qemu/pc-bios/bios-256k.bin', 'kvmvapic.bin': 'qemu/pc-bios/kvmvapic.bin', 'linuxboot_dma.bin': 'qemu/pc-bios/linuxboot_dma.bin', 'vgabios-stdvga.bin': 'qemu/pc-bios/vgabios-stdvga.bin', 'efi-virtio.rom': 'qemu/pc-bios/efi-virtio.rom', 'gear.bin': 'guest/gear.bin' };
   let blobs = null, factory = null;
   const loadScript = (src) => new Promise((ok, bad) => { const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = () => bad(new Error('could not load ' + src)); document.head.appendChild(s); });
   E.init = async () => {
+    const lv = typeof LIBVIRT !== 'undefined' ? await LIBVIRT.probe() : { available: false, reason: '' };
+    if (lv.available) E.libvirt = lv;
+    await initWasm();
+    E.available = E.wasm || !!E.libvirt;
+    if (!E.available && lv.reason) E.reason += ' libvirt: ' + lv.reason + '.';
+  };
+  const initWasm = async () => {
     if (!LAB.engine) { E.reason = LAB.box ? 'This copy of the lab ships without the qemu-wasm engine, so consoles are simulated. The hosted copy boots real guests.' : 'This viewer is not cross-origin isolated, so qemu-wasm cannot start its threads here.'; return; }
     if (!self.crossOriginIsolated) { E.reason = 'This page is served without COOP/COEP headers, so qemu-wasm cannot start its threads. Use serve.py.'; return; }
     try {
@@ -26,7 +39,7 @@ const ENGINE = (() => {
       factory = (await import(new URL(BASE + 'out.js', location.href).href)).default;
       blobs = {};
       await Promise.all(Object.entries(FILES).map(async ([name, url]) => { const r = await fetch(url); if (!r.ok) throw new Error(url); blobs[name] = new Uint8Array(await r.arrayBuffer()); }));
-      E.available = true;
+      E.wasm = true;
       installSocketShim();
       trackWorkers();
     } catch (e) { E.reason = 'qemu-wasm failed to load: ' + e.message; }
@@ -85,7 +98,9 @@ const ENGINE = (() => {
     Object.assign(window.WebSocket, { CONNECTING: 0, OPEN: 1, CLOSING: 2, CLOSED: 3 });
   }
   function deliver(devId, frame) {
-    const p = ports.get(devId); if (!p || p.sock.readyState !== 1) return;
+    const p = ports.get(devId); if (!p) return;
+    if (p.send) { E.stats.framesOut++; p.send(frame); return; }
+    if (p.sock.readyState !== 1) return;
     const out = new Uint8Array(4 + frame.length);
     out[0] = frame.length >>> 24; out[1] = (frame.length >>> 16) & 255; out[2] = (frame.length >>> 8) & 255; out[3] = frame.length & 255;
     out.set(frame, 4); E.stats.framesOut++; E.stats.lastOut = Array.from(frame, x => x.toString(16).padStart(2, '0')).join('');
@@ -183,13 +198,22 @@ const ENGINE = (() => {
   // and with a fourth the tab ran out of cores and every guest stalled
   // (a kernel panic in the timer check, or no output at all).
   E.MAX = 3;
-  E.full = () => E.vms.size >= E.MAX;
+  E.full = () => [...E.vms.values()].filter(v => !v.libvirt).length >= E.MAX;
+  // Can libvirt boot this device? Network gear needs gear.bin beside the kernel.
+  const viaLibvirt = (d) => !!E.libvirt && !!TYPES[d.type].emulate && !E.lvFailed.has(d.id) && (!isGear(d) || !!E.libvirt.images.gear);
+  E.lvFailed = new Set();
+  // What runs (or would run) a device's guest, for the console header.
+  E.backend = (id) => {
+    const vm = E.vms.get(id); if (vm) return vm.libvirt ? vm.label : 'QEMU in this tab';
+    const d = dev(id); return viaLibvirt(d) ? E.libvirt.label : E.wasm ? 'QEMU in this tab' : '';
+  };
+  E.canBoot = (id) => E.vms.has(id) || viaLibvirt(dev(id)) || (E.wasm && !!TYPES[dev(id).type].emulate);
+  let toldFallback = false;
   const FULL = `${E.MAX} guests are running, as many as one tab runs well. Power one off to boot this one.`;
   let startChain = Promise.resolve();
   E.start = (id) => { const p = startChain.then(() => startNow(id)).then(() => new Promise(r => setTimeout(r, 400))); startChain = p.catch(() => {}); return p; };
   const startNow = async (id) => {
     if (!E.available || E.vms.has(id)) return;
-    if (E.full()) { toast(FULL, 6000); return; }
     const d = dev(id); evaluate();
     const a = NET.addr.get(id);
     const seg = NET.segOf(id) ? NET.segs.get(NET.segOf(id)) : null;
@@ -206,10 +230,20 @@ const ENGINE = (() => {
         if (leases.length) append.push('losos.leases=' + leases.join(','));
       }
     } else if (a && !(seg && seg.kind === 'lan')) append.push(`losos.ip=${a.ip}/${a.mask}`);
+    const mac = d.type === 'router' ? ROUTER_MAC(id) : d.mac;
+    if (viaLibvirt(d)) {
+      try { await startLibvirt(id, d, append.join(' '), mac); return; } catch (e) {
+        E.lvFailed.add(id);
+        if (!toldFallback) { toldFallback = true; toast(`libvirt could not start ${d.name}: ${e.message}. ${E.wasm ? 'It runs in this tab under qemu-wasm instead.' : 'Its console stays simulated.'}`, 8000); }
+        if (!E.wasm) { renderCanvas(); if (UI.sel?.id === id) renderSide(); return; }
+      }
+    }
+    if (!E.wasm) return;
+    if (E.full()) { toast(FULL, 6000); return; }
     const { master, slave } = openpty();
     const term = new Terminal({ fontSize: 12, fontFamily: 'IBM Plex Mono, Menlo, monospace', theme: { background: '#000000' }, convertEol: false, scrollback: 2000 });
     term.loadAddon(master);
-    const vm = { term, slave, started: performance.now(), mac: d.type === 'router' ? ROUTER_MAC(id) : d.mac };
+    const vm = { term, slave, started: performance.now(), mac };
     E.vms.set(id, vm);
     const Module = {
       arguments: ['-nographic', '-M', 'pc', '-m', '96M', '-accel', 'tcg,tb-size=64', '-L', '/pack/', '-vga', 'none', '-nic', 'none',
@@ -226,19 +260,54 @@ const ENGINE = (() => {
     vm.module = Module;
     try {
       await factory(Module);
-      vm.readyPoll = setInterval(() => {
-        const b = term.buffer.active; let txt = '';
-        for (let i = Math.max(0, b.length - 40); i < b.length; i++) txt += b.getLine(i).translateToString(true) + '\n';
-        if (/is ready/.test(txt) && /# *$/m.test(txt)) { vm.ready = true; clearInterval(vm.readyPoll); renderCanvas(); if (UI.sel?.id === id) renderSide(); }
-      }, 1000);
+      watchReady(id, vm);
       const pty = Module.pty, oldPoll = Module.TTY.stream_ops.poll;
       Module.TTY.stream_ops.poll = function (stream, timeout) { if (!pty.readable) return (pty.readable ? 1 : 0) | (pty.writable ? 4 : 0); return oldPoll.call(stream, timeout); };
     } catch (e) { term.write('\r\nqemu-wasm failed: ' + e.message + '\r\n'); }
     renderCanvas(); if (UI.sel?.id === id) renderSide();
   };
+  // A guest is ready once its console says so and shows a prompt; a
+  // router's guest then takes over DHCP, ARP and ping from the simulator.
+  function watchReady(id, vm) {
+    vm.readyPoll = setInterval(() => {
+      let txt = '';
+      if (vm.raw) txt = vm.raw.text();
+      else {
+        // up to the cursor: an opened terminal has blank rows below it
+        const b = vm.term.buffer.active, end = b.baseY + b.cursorY + 1;
+        for (let i = Math.max(0, end - 40); i < end; i++) txt += b.getLine(i).translateToString(true) + '\n';
+      }
+      if (/is ready/.test(txt) && /# *$/m.test(txt)) { vm.ready = true; clearInterval(vm.readyPoll); renderCanvas(); if (UI.sel?.id === id) renderSide(); }
+    }, 1000);
+  }
+  async function startLibvirt(id, d, cmdline, mac) {
+    const h = await LIBVIRT.start({ id, name: d.name, role: TYPES[d.type].emulate }, cmdline, [mac]);
+    // xterm where the copy ships it (hosted), the lab's own terminal on the box.
+    const vm = { libvirt: true, handle: h, label: h.label, started: performance.now(), mac };
+    if (typeof Terminal !== 'undefined') {
+      vm.term = new Terminal({ fontSize: 12, fontFamily: 'IBM Plex Mono, Menlo, monospace', theme: { background: '#000000' }, scrollback: 2000 });
+      vm.term.onData((s) => h.console.send(s));
+      h.console.onData((b) => vm.term.write(b));
+    } else {
+      vm.raw = new ByteTerm('Console of ' + d.name);
+      vm.raw.send = (s) => h.console.send(s);
+      h.console.onData((b) => vm.raw.write(b));
+    }
+    E.vms.set(id, vm);
+    ports.set(id, { send: (f) => h.nics[0].send(f) });
+    h.nics[0].onFrame((f) => { E.stats.framesIn++; try { fabricIn(id, f); } catch (e) { console.warn('fabric', e); } });
+    h.onClose = () => { if (E.vms.get(id) === vm) { E.stop(id); renderCanvas(); if (UI.sel?.id === id) renderSide(); } };
+    watchReady(id, vm);
+    renderCanvas(); if (UI.sel?.id === id) renderSide();
+  }
   E.stop = (id) => {
     const vm = E.vms.get(id); if (!vm) return;
     clearInterval(vm.readyPoll);
+    if (vm.libvirt) {
+      vm.handle.stop(); ports.delete(id);
+      try { if (vm.term) vm.term.dispose(); } catch {}
+      E.vms.delete(id); return;
+    }
     for (const w of workersByVm.get(id) || []) w.terminate();
     workersByVm.delete(id);
     const p = ports.get(id); if (p) { p.sock.readyState = 3; ports.delete(id); }
@@ -248,9 +317,11 @@ const ENGINE = (() => {
   E.attach = (id, host) => {
     const vm = E.vms.get(id);
     const box = document.createElement('div'); box.className = 'xterm-host'; host.appendChild(box);
+    if (!vm && !E.canBoot(id)) { box.remove(); termFor(id).attach(host); return; }
+    if (vm && vm.raw) { vm.raw.attach(box); return; }
     if (!vm) {
       const d = dev(id);
-      box.innerHTML = `<div style="color:#c9d1d9;padding:14px;font:12.5px/1.5 var(--f-mono)">${d.power ? 'The device is on in the simulation, but its guest is not running yet.' : 'Powered off.'}<br><br>${d.power && E.full() ? esc(FULL) : '<button class="btn" id="bootVm">Boot the x86_64 guest</button>'}</div>`;
+      box.innerHTML = `<div style="color:#c9d1d9;padding:14px;font:12.5px/1.5 var(--f-mono)">${d.power ? 'The device is on in the simulation, but its guest is not running yet.' : 'Powered off.'}<br><br>${d.power && !viaLibvirt(d) && E.full() ? esc(FULL) : `<button class="btn" id="bootVm">Boot the x86_64 guest${E.backend(id) ? ' (' + esc(E.backend(id)) + ')' : ''}</button>`}</div>`;
       const boot = box.querySelector('#bootVm');
       if (boot) boot.onclick = () => { if (!d.power) { togglePower(id); } else { E.start(id).then(() => renderSide()); renderSide(); } };
       return;
