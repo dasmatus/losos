@@ -23,5 +23,10 @@ Pages live in `docs/`; the sidebar is generated from the folder tree, with
 link fails the build. Translations go in `i18n/<locale>/`; see the handbook's
 own "For developers" page for the two commands.
 
+The colours, fonts and radii are the LosOS desktop's theme:
+`src/css/derisk-theme.css` is generated from an mcsapi checkout by
+`npm run theme -- /path/to/mcsapi` (needs cargo), and `src/css/palette.css`
+names its values for `custom.css`.
+
 After changing `package-lock.json`, refresh `npmDepsHash` in
 `flake/packages.nix` (`nix run nixpkgs#prefetch-npm-deps -- handbook/package-lock.json`).

@@ -1,0 +1,63 @@
+/* The handbook's palette, on the LosOS desktop's theme.
+ *
+ * derisk-theme.css is the desktop's own theme (derisk-light and
+ * derisk-dark, generated from mcsapi-theme); this file names its values the
+ * way custom.css reads them, so a colour changed in the desktop theme moves
+ * the handbook too once the generator runs. Everything here is var() on
+ * :root, and the derisk variables switch between light and dark on :root,
+ * so one block covers both schemes and the reader's Auto/Light/Dark choice.
+ *
+ * The names are the ones the handbook used when it carried the admin UI's
+ * tokens.css, kept so custom.css did not have to change with the palette.
+ * The handbook used to be on that file byte for byte; it follows the desktop
+ * now, because the owner asked for the handbook to look like LosOS itself. */
+
+:root {
+  /* Page, cards and the recessed panel: the desktop's window background,
+   * its cards, and the inset fill its fields use. */
+  --ground: var(--derisk-background);
+  --surface: var(--derisk-card);
+  --sunk: var(--derisk-field);
+
+  /* Text. The theme has two inks; the third, for hints and captions, is the
+   * muted ink taken a third of the way into the page. */
+  --ink: var(--derisk-foreground);
+  --muted: var(--derisk-muted-foreground);
+  --faint: color-mix(in srgb, var(--derisk-muted-foreground) 67%, var(--derisk-background));
+
+  /* Rules: borders as the theme draws them, and its muted fill for the
+   * lighter dividers inside a card. */
+  --line: var(--derisk-border);
+  --hair: var(--derisk-muted);
+
+  --accent: var(--derisk-primary);
+  --accent-wash: color-mix(in srgb, var(--derisk-primary) 15%, var(--derisk-background));
+
+  /* The theme names one status colour, destructive. Success and warning
+   * are the admonitions' only other tones and have no token, so they are
+   * fixed hues pulled a fifth of the way to the ink, which keeps them
+   * readable on both schemes. */
+  --ok: color-mix(in srgb, #3f9e77 80%, var(--derisk-foreground));
+  --warn: color-mix(in srgb, #c48a1c 80%, var(--derisk-foreground));
+  --crit: var(--derisk-destructive);
+
+  /* The desktop draws cards with a border and a soft shadow; one shadow,
+   * from the theme's overlay colour, serves both schemes. */
+  --elev-card: 0 1px 2px color-mix(in srgb, var(--derisk-overlay) 25%, transparent);
+  --elev-pop: 0 12px 40px color-mix(in srgb, var(--derisk-overlay) 60%, transparent);
+
+  /* Two radii, as on the desktop: controls, and cards two pixels rounder. */
+  --card-radius: var(--derisk-radius);
+  --control-radius: var(--derisk-radius-control);
+
+  /* The desktop's fonts first; a reader without them installed gets the
+   * system's, as before. */
+  --font-ui:
+    var(--derisk-font-sans), ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-code:
+    var(--derisk-font-mono), ui-monospace, SFMono-Regular, "SF Mono", Menlo,
+    Consolas, "Liberation Mono", monospace;
+  --font-ui-weight: var(--derisk-font-sans-weight);
+  --text-ui: var(--derisk-text-sm);
+}
