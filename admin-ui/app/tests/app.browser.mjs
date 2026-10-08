@@ -12,6 +12,7 @@
  */
 
 import assert from 'node:assert';
+import { readFile } from 'node:fs/promises';
 import { launch, runner, serve } from './harness.mjs';
 
 const TOKEN = 'a'.repeat(64);
@@ -51,6 +52,18 @@ const SETTINGS = {
   hardeningUsbguard: false,
 };
 
+/* GET /api/options for a box installed with or without a TPM: the real
+ * document (the fixture advanced.browser.mjs reads too), with `tpm.enable`'s
+ * running value set. Without `options` the catch-all answers `{}`, which the
+ * form reads as "no document served". */
+const OPTIONS_DOC = JSON.parse(await readFile(process.env.LOSOS_OPTIONS_JSON ?? 'tests/fixtures/options.json', 'utf8'));
+const optionsWithTpm = (tpm) => ({
+  available: true,
+  ...OPTIONS_DOC,
+  stray: [],
+  options: OPTIONS_DOC.options.map((o) => ({ ...o, set: null, ...(o.name === 'tpm.enable' ? { current: tpm } : {}) })),
+});
+
 const json = (route, status, body) =>
   route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
 
@@ -65,6 +78,7 @@ async function open({
   domains = { available: false },
   edge = EDGE_FOUND,
   settings = SETTINGS,
+  options = null,
   checkoutUrl = 'https://checkout.stripe.com/c/pay/cs_test_1',
   onboardUrl = 'https://connect.stripe.com/setup/e/acct_test/abc',
 } = {}) {
@@ -88,6 +102,11 @@ async function open({
       ? json(route, 200, { state: 'idle', progress: 0, message: '' })
       : json(route, 401, { error: 'unauthorized' }),
   );
+  if (options !== null) {
+    await page.route('**/api/options', (route) =>
+      authed(route) ? json(route, 200, options) : json(route, 401, { error: 'unauthorized' }),
+    );
+  }
   // The edge scan: GET /api/edge's document, and the gate it implies. An
   // apply that turns sharing on while `edge.reachable` is false is answered
   // the way lososd answers it: 409 with the sentence and `edgeRequired`.
@@ -633,6 +652,28 @@ await check('every settings toggle is a React Aria Switch, named by its row and 
   const describedBy = await usb.getAttribute('aria-describedby');
   assert.match(await page.locator(`[id="${describedBy}"]`).innerText(), /Anything attached after the box starts is refused/);
   await page.close();
+});
+
+/* A box the installer put in keyfile mode keeps its disk key on the boot
+ * partition. The Security pane says so, links the handbook page, and says
+ * nothing on a box with a TPM or one that serves no option document. */
+await check('the Security pane warns on a box without a TPM, and only there', async () => {
+  const notice = (page) => page.locator('[data-notice="no-tpm"]');
+  const keyfile = await open({ path: '/settings/security', stored: true, options: optionsWithTpm(false) });
+  await notice(keyfile.page).waitFor({ timeout: 3000 }).catch(() => assert.fail('no TPM warning on a keyfile box'));
+  assert.match(await notice(keyfile.page).innerText(), /This box has no TPM chip/);
+  assert.match(await notice(keyfile.page).innerText(), /anyone who gets hold of the disk can read your files/i);
+  const link = notice(keyfile.page).getByRole('link', { name: 'What a TPM does' });
+  assert.equal(await link.getAttribute('href'), '/handbook/reference/tpm/');
+  assert.deepEqual(keyfile.errors, []);
+  await keyfile.page.close();
+
+  for (const options of [optionsWithTpm(true), null]) {
+    const { page } = await open({ path: '/settings/security', stored: true, options });
+    await page.getByRole('switch', { name: 'Ignore USB devices plugged in later' }).waitFor();
+    assert.equal(await notice(page).count(), 0, `a TPM warning with options ${options === null ? 'absent' : 'tpm on'}`);
+    await page.close();
+  }
 });
 
 await check('a switch flips from its label, from Space and from its track, and a disabled row reads as disabled', async () => {

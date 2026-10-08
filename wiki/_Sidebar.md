@@ -7,6 +7,7 @@
 - [Edge federation](Edge-Federation)
 - [Lab](Lab)
 - [Hardening](Hardening)
+- [TPM and disk unlock](TPM)
 - [Security model](Security-Model)
 - [Architecture](Architecture)
 - [Development](Development)

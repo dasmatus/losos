@@ -24,6 +24,8 @@ and run the project.
   opening a port.
 - [Edge federation](Edge-Federation). Your own edge on the LAN, relayed through the official ones.
 - [Hardening](Hardening). The default hardening baseline and the opt-in flags.
+- [TPM and disk unlock](TPM). What the chip does, and what a box without
+  one gives up.
 - [Security model](Security-Model). What is and is not defended.
 - [Architecture](Architecture). How the pieces fit together.
 - [Development](Development). The dev shell, tests, lock files.
