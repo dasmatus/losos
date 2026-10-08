@@ -105,8 +105,17 @@ jobs:
             clone --bare --quiet "https://github.com/${GITHUB_REPOSITORY}.git" mirror.git
           echo "$(git -C mirror.git for-each-ref | wc -l) refs cloned"
       - name: rewrite
+        env:
+          # Optional rules that must not be read in the public tree, because
+          # a rule names what it removes; see the header of
+          # scrub-history.sh. Unset, the rewrite is the public rules alone.
+          PRIVATE_RULES: ${{ secrets.HISTORY_SCRUB_PRIVATE_RULES }}
         run: |
           set -euo pipefail
+          if [ -n "$PRIVATE_RULES" ]; then
+            export SCRUB_PRIVATE_RULES="$RUNNER_TEMP/private-rules.conf"
+            printf '%s\n' "$PRIVATE_RULES" >"$SCRUB_PRIVATE_RULES"
+          fi
           # git-filter-repo from the nixpkgs this flake pins, the same way
           # lockfile-updates.yml gets devenv: pinned, cached, no pip.
           rev="$(jq -r '.nodes.nixpkgs.locked.rev' flake.lock)"
@@ -133,12 +142,17 @@ jobs:
           fi
 
           # One --force-with-lease per ref, pinned to the hash the clone was
-          # taken from; see the header. Branches and tags go separately.
+          # taken from; see the header. Branches and tags go separately. An
+          # all-zero new hash is a ref whose every commit the private rules
+          # pruned, and it is deleted.
           branches=() tags=()
+          zero=0000000000000000000000000000000000000000
           while read -r old new ref; do
+            src=$new
+            if [ "$new" = "$zero" ]; then src=""; fi
             case "$ref" in
-              refs/heads/*) branches+=("--force-with-lease=${ref}:${old}" "${new}:${ref}") ;;
-              refs/tags/*)  tags+=("--force-with-lease=${ref}:${old}" "${new}:${ref}") ;;
+              refs/heads/*) branches+=("--force-with-lease=${ref}:${old}" "${src}:${ref}") ;;
+              refs/tags/*)  tags+=("--force-with-lease=${ref}:${old}" "${src}:${ref}") ;;
               *) echo "unexpected ref ${ref}" >&2; exit 1 ;;
             esac
           done <moved-refs
