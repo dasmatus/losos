@@ -121,6 +121,14 @@ const STRIPE_ROUTE_TIMEOUT: Duration =
 /// The routes [`STRIPE_ROUTE_TIMEOUT`] applies to.
 const STRIPE_ROUTES: [&str; 2] = ["/market/seller/onboard", "/market/orders"];
 
+/// Budget for `POST /identity/cert`, which asks GitHub who the pusher is
+/// before it looks at the list: one round trip to api.github.com, bounded
+/// by [`GITHUB_TIMEOUT`], plus the file write.
+const IDENTITY_PUSH_TIMEOUT: Duration = Duration::from_secs(GITHUB_TIMEOUT.as_secs() + 3);
+const IDENTITY_PUSH_ROUTE: &str = "/identity/cert";
+/// How long the edge waits on GitHub's `GET /user` for one push.
+const GITHUB_TIMEOUT: Duration = Duration::from_secs(10);
+
 /// Requests allowed in flight at once. Every authenticated *and*
 /// unauthenticated request costs a `tenants.json` stat and (for a known id) a
 /// token-file read, so an unbounded arrival rate is an unbounded IO rate on
@@ -163,9 +171,16 @@ struct AppState {
     last_shed: Arc<std::sync::Mutex<Option<std::time::Instant>>>,
     /// `None` unless `--market-gate-socket` was given.
     market: Option<Arc<Market>>,
-    /// This edge's signed identity (`crate::identity`); `None` makes
-    /// `GET /identity` a 404, i.e. a company edge.
+    /// This edge's identity key and, once pushed, its certificate
+    /// (`crate::identity`); `None` (no `--identity-key-file`) makes every
+    /// `/identity*` route a 404, i.e. an edge that cannot become official.
     identity: Option<Arc<Identity>>,
+    /// One push at a time: the handler holds this across its GitHub round
+    /// trip, so a flood of bogus pushes costs GitHub one request at a time
+    /// rather than [`MAX_INFLIGHT`] of them.
+    push_lock: Arc<Mutex<()>>,
+    /// The client the push handler asks GitHub with.
+    http: reqwest::Client,
 }
 
 #[derive(Debug, Deserialize)]
@@ -345,12 +360,12 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
         None => None,
     };
 
-    // Loaded before the API opens, like the market store: a certificate that
-    // is not for this key is a misconfiguration to stop on, not a 404 to
-    // discover from a box's Mesh pane.
+    // Opened before the API accepts: the key is made here on the first start
+    // if the file is missing (the private half never travels), and the
+    // certificate, if one has been pushed, is checked to be for that key.
     let identity = match (&opts.identity_key_file, &opts.identity_cert_file) {
         (Some(key), Some(cert)) => Some(Arc::new(
-            Identity::load(Path::new(key), Path::new(cert)).wrap_err("load the edge identity")?,
+            Identity::open(Path::new(key), Path::new(cert)).wrap_err("open the edge identity")?,
         )),
         (None, None) => None,
         _ => {
@@ -369,6 +384,13 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
         last_shed: Arc::new(std::sync::Mutex::new(None)),
         market,
         identity,
+        push_lock: Arc::new(Mutex::new(())),
+        http: reqwest::Client::builder()
+            .timeout(GITHUB_TIMEOUT)
+            .user_agent(concat!("losos-registrar/", env!("CARGO_PKG_VERSION")))
+            .build()
+            .into_diagnostic()
+            .wrap_err("build the HTTP client")?,
     };
 
     // Generate config from whatever we just loaded, so the box is serving
@@ -379,6 +401,12 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
         .route("/health", get(health))
         .route("/noise-public-key", get(noise_public_key))
         .route("/identity", get(identity_route))
+        // The identity's other half: the public key an operator signs, and
+        // the push that installs the signed certificate. The push is the one
+        // route authenticated by a GitHub account rather than an appliance
+        // token: see `identity_push`.
+        .route("/identity/public-key", get(identity_public_key))
+        .route(IDENTITY_PUSH_ROUTE, post(identity_push))
         .route("/register", post(register))
         .route("/heartbeat", post(heartbeat))
         .route("/deregister", post(deregister))
@@ -450,6 +478,8 @@ async fn guard(State(st): State<AppState>, req: Request, next: Next) -> Response
     };
     let budget = if STRIPE_ROUTES.contains(&req.uri().path()) {
         STRIPE_ROUTE_TIMEOUT
+    } else if req.uri().path() == IDENTITY_PUSH_ROUTE {
+        IDENTITY_PUSH_TIMEOUT
     } else {
         REQUEST_TIMEOUT
     };
@@ -484,7 +514,9 @@ async fn noise_public_key(State(st): State<AppState>) -> Response {
 /// `GET /identity?nonce=<hex>` — who this edge is, and proof it holds the
 /// certified key (`crate::identity`). Unauthenticated: a box asks before it
 /// trusts anything, and nothing here is secret. 404 for an edge without an
-/// identity (a company edge), 400 for a nonce the edge will not sign.
+/// identity key, or with a key but no certificate yet (a company edge, or
+/// one whose certificate has not been pushed), 400 for a nonce the edge
+/// will not sign.
 async fn identity_route(
     State(st): State<AppState>,
     axum::extract::Query(q): axum::extract::Query<IdentityQuery>,
@@ -499,13 +531,156 @@ async fn identity_route(
         )
             .into_response();
     }
-    Json(id.answer(&q.nonce)).into_response()
+    match id.answer(&q.nonce) {
+        Some(answer) => Json(answer).into_response(),
+        None => StatusCode::NOT_FOUND.into_response(),
+    }
 }
 
 #[derive(Deserialize)]
 struct IdentityQuery {
     #[serde(default)]
     nonce: String,
+}
+
+/// `GET /identity/public-key` — this edge's Ed25519 public key, 64 hex
+/// characters, the thing the root signs. Unauthenticated, like
+/// `/noise-public-key`: a public key is public, and `provision edge` reads
+/// it before it can issue anything. 404 for an edge with no identity key.
+async fn identity_public_key(State(st): State<AppState>) -> Response {
+    match &st.identity {
+        Some(id) => id.public_key().to_string().into_response(),
+        None => StatusCode::NOT_FOUND.into_response(),
+    }
+}
+
+/// `POST /identity/cert` — install the certificate the root signed for this
+/// edge's key. The body is the certificate JSON (`crate::identity::Cert`);
+/// the `Authorization: Bearer` header is a **GitHub token**, not an
+/// appliance token: the edge asks GitHub whose it is and admits the push
+/// only if that account's numeric id is on the operator allowlist compiled
+/// into this binary (`operators.json`, the same list `provision` checks on
+/// the operator's machine). The checks run cheapest first, so a flood of
+/// unauthenticated or mis-addressed pushes never reaches GitHub: the body
+/// must parse and name *this* key before the token is looked at, and one
+/// push holds [`AppState::push_lock`] across the round trip.
+///
+/// Answers: 200 with `{installed, name, url, not_after, operator}`; 400 a
+/// body that is not a certificate for this key; 401 no token, or one GitHub
+/// does not accept; 403 an account that is not listed; 404 no identity
+/// key on this edge; 502 GitHub unreachable; 507 the file could not be
+/// written. The root's signature is not checked here (the edge need not
+/// hold the root public key): the boxes check it, and `provision edge`
+/// probes `/identity` right after the push and says so.
+async fn identity_push(State(st): State<AppState>, headers: HeaderMap, body: Bytes) -> Response {
+    let Some(id) = &st.identity else {
+        return (
+            StatusCode::NOT_FOUND,
+            "this edge has no identity key (losos.edge.identity.keyFile)",
+        )
+            .into_response();
+    };
+    let cert: crate::identity::Cert = match serde_json::from_slice(&body) {
+        Ok(c) => c,
+        Err(e) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                format!("the body is not a certificate: {e}"),
+            )
+                .into_response()
+        }
+    };
+    if cert.public_key != id.public_key() {
+        return (
+            StatusCode::BAD_REQUEST,
+            crate::identity::Pushed::OtherKey.to_string(),
+        )
+            .into_response();
+    }
+    let token = headers
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+        .map(str::trim)
+        .filter(|t| !t.is_empty() && t.len() <= 512 && t.bytes().all(|b| b.is_ascii_graphic()));
+    let Some(token) = token else {
+        return (
+            StatusCode::UNAUTHORIZED,
+            "Authorization: Bearer <GitHub token> is required",
+        )
+            .into_response();
+    };
+
+    let _one_at_a_time = st.push_lock.lock().await;
+    let operators = match crate::provision::Operators::committed() {
+        Ok(o) => o,
+        Err(e) => {
+            tracing::error!(target: Action::Identity.target(), "operators.json: {e}");
+            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+        }
+    };
+    let gh = crate::provision::Github {
+        oauth_url: String::new(),
+        api_url: st.opts.github_api_url.clone(),
+        client_id: String::new(),
+    };
+    let user = match crate::provision::whoami(&st.http, &gh, token).await {
+        Ok(u) => u,
+        Err(e) => {
+            // `whoami` wraps GitHub's refusal of the token in its own words;
+            // tell a bad token from an unreachable GitHub by the cause.
+            let text = format!("{e:?}");
+            let status = if text.contains("did not accept the token") {
+                StatusCode::UNAUTHORIZED
+            } else {
+                StatusCode::BAD_GATEWAY
+            };
+            tracing::warn!(target: Action::Identity.target(), "push refused: {e}");
+            return (status, format!("GitHub: {e}")).into_response();
+        }
+    };
+    let Some(operator) = operators.find(user.id) else {
+        tracing::warn!(
+            target: Action::Identity.target(),
+            "push refused: {} (GitHub id {}) is not on the operator allowlist",
+            user.login, user.id
+        );
+        return (
+            StatusCode::FORBIDDEN,
+            format!(
+                "{} (GitHub id {}) is not on the operator allowlist",
+                user.login, user.id
+            ),
+        )
+            .into_response();
+    };
+
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    match id.install(cert.clone(), now) {
+        Ok(()) => {
+            tracing::info!(
+                target: Action::Identity.target(),
+                "certificate installed by {} (GitHub id {}, listed as {}): {} at {}, until {}",
+                user.login, user.id, operator.github_login, cert.name, cert.url, cert.not_after
+            );
+            Json(serde_json::json!({
+                "installed": true,
+                "name": cert.name,
+                "url": cert.url,
+                "not_after": cert.not_after,
+                "operator": user.login,
+            }))
+            .into_response()
+        }
+        Err(e @ crate::identity::Pushed::Write(_)) => {
+            tracing::error!(target: Action::Identity.target(), "push by {}: {e}", user.login);
+            (StatusCode::INSUFFICIENT_STORAGE, e.to_string()).into_response()
+        }
+        Err(e) => (StatusCode::BAD_REQUEST, e.to_string()).into_response(),
+    }
 }
 
 async fn register(
