@@ -51,8 +51,8 @@ Pictures live in `handbook/docs/img/`. There are three kinds:
   (`tests/secure-boot.nix`, the install demos). They are not retaken by a
   script.
 - **Diagrams.** These are hand-written SVG on a white card, in the palette
-  of `src/css/tokens.css`, so they read the same in the light and the dark
-  theme. Edit them as text.
+  of the admin UI (`admin-ui/app/src/styles/tokens.css`), so they read the
+  same in the light and the dark theme. Edit them as text.
 
 ```sh
 cd admin-ui/app
