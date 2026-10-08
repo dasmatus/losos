@@ -12,6 +12,7 @@
  */
 
 import assert from 'node:assert';
+import { readFile } from 'node:fs/promises';
 import { launch, runner, serve } from './harness.mjs';
 
 const TOKEN = 'a'.repeat(64);
@@ -51,6 +52,18 @@ const SETTINGS = {
   hardeningUsbguard: false,
 };
 
+/* GET /api/options for a box installed with or without a TPM: the real
+ * document (the fixture advanced.browser.mjs reads too), with `tpm.enable`'s
+ * running value set. Without `options` the catch-all answers `{}`, which the
+ * form reads as "no document served". */
+const OPTIONS_DOC = JSON.parse(await readFile(process.env.LOSOS_OPTIONS_JSON ?? 'tests/fixtures/options.json', 'utf8'));
+const optionsWithTpm = (tpm) => ({
+  available: true,
+  ...OPTIONS_DOC,
+  stray: [],
+  options: OPTIONS_DOC.options.map((o) => ({ ...o, set: null, ...(o.name === 'tpm.enable' ? { current: tpm } : {}) })),
+});
+
 const json = (route, status, body) =>
   route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
 
@@ -65,10 +78,13 @@ async function open({
   domains = { available: false },
   edge = EDGE_FOUND,
   settings = SETTINGS,
+  options = null,
   checkoutUrl = 'https://checkout.stripe.com/c/pay/cs_test_1',
   onboardUrl = 'https://connect.stripe.com/setup/e/acct_test/abc',
+  now = null,
 } = {}) {
   const page = await browser.newPage({ viewport, locale });
+  if (now !== null) await page.clock.setFixedTime(now);
   const errors = [];
   page.on('pageerror', (e) => errors.push(String(e)));
 
@@ -88,6 +104,11 @@ async function open({
       ? json(route, 200, { state: 'idle', progress: 0, message: '' })
       : json(route, 401, { error: 'unauthorized' }),
   );
+  if (options !== null) {
+    await page.route('**/api/options', (route) =>
+      authed(route) ? json(route, 200, options) : json(route, 401, { error: 'unauthorized' }),
+    );
+  }
   // The edge scan: GET /api/edge's document, and the gate it implies. An
   // apply that turns sharing on while `edge.reachable` is false is answered
   // the way lososd answers it: 409 with the sentence and `edgeRequired`.
@@ -507,24 +528,32 @@ await check('on a phone the panel is a sheet from the left, opened from a row na
   await page.close();
 });
 
-await check('the plate of salmon replaces the name in the top bar and is the favicon, served from the bundle', async () => {
-  const { page } = await open({ path: '/storage', stored: true });
-  const logo = page.locator('header').getByRole('img', { name: 'LosOS', exact: true });
-  await logo.waitFor();
-  assert.ok(await logo.evaluate((img) => img.complete && img.naturalWidth > 0), 'the logo did not load');
-  const src = await logo.getAttribute('src');
-  assert.match(src, /^(\/assets\/losos-[\w-]+\.png|data:image\/png)/, `the logo is not the bundled plate: ${src}`);
-  const icon = await page.locator('link[rel="icon"]').getAttribute('href');
-  assert.match(icon, /^\/assets\/losos-[\w-]+\.png$/, `the favicon is not the bundled plate: ${icon}`);
-  assert.equal((await page.request.get(origin + icon)).status(), 200);
-  assert.equal(await page.locator('header').getByText('LosOS', { exact: true }).count(), 0, 'the name is still drawn as text');
-  // A photo of dinner needs a word of explanation: hovering the plate says
-  // what it means, and the same words are the trigger's accessible name.
-  const trigger = page.locator('header').getByRole('button', { name: /Losos is Slovak for salmon/ });
-  await trigger.hover();
-  await page.locator('[data-slot="tooltip-content"]').filter({ hasText: 'The logo is a plate of it' }).waitFor();
-  await page.close();
-});
+for (const { name, now, file, tip } of [
+  { name: 'a live salmon', now: new Date(2026, 9, 8, 12), file: 'losos', tip: 'The logo is a live coho salmon' },
+  { name: 'on Halloween, the plate of salmon', now: new Date(2026, 9, 31, 12), file: 'losos-halloween', tip: 'For Halloween, the logo is a plate of it' },
+]) {
+  await check(`${name} replaces the name in the top bar and is the favicon, served from the bundle`, async () => {
+    const { page } = await open({ path: '/storage', stored: true, now });
+    const logo = page.locator('header').getByRole('img', { name: 'LosOS', exact: true });
+    await logo.waitFor();
+    assert.ok(await logo.evaluate((img) => img.complete && img.naturalWidth > 0), 'the logo did not load');
+    // Vite names a bundled file <name>-<hash>.png, the hash eight letters,
+    // digits, _ or -, so losos-<hash> cannot match losos-halloween-<hash>.
+    const bundled = new RegExp(`^/assets/${file}-[\\w-]{8}\\.png$`);
+    const src = await logo.getAttribute('src');
+    assert.match(src, bundled, `the logo is not the bundled ${file}.png: ${src}`);
+    const icon = await page.locator('link[rel="icon"]').evaluate((link) => new URL(link.href).pathname);
+    assert.match(icon, bundled, `the favicon is not the bundled ${file}.png: ${icon}`);
+    assert.equal((await page.request.get(origin + icon)).status(), 200);
+    assert.equal(await page.locator('header').getByText('LosOS', { exact: true }).count(), 0, 'the name is still drawn as text');
+    // A photo needs a word of explanation: hovering the logo says what it
+    // is, and the same words are the trigger's accessible name.
+    const trigger = page.locator('header').getByRole('button', { name: /Losos is Slovak for salmon/ });
+    await trigger.hover();
+    await page.locator('[data-slot="tooltip-content"]').filter({ hasText: tip }).waitFor();
+    await page.close();
+  });
+}
 
 /* The sidebar's moving parts are Base UI (tooltip positioning, the sheet's
  * slide and scroll lock, the folds' measured height), chosen because Base
@@ -633,6 +662,28 @@ await check('every settings toggle is a React Aria Switch, named by its row and 
   const describedBy = await usb.getAttribute('aria-describedby');
   assert.match(await page.locator(`[id="${describedBy}"]`).innerText(), /Anything attached after the box starts is refused/);
   await page.close();
+});
+
+/* A box the installer put in keyfile mode keeps its disk key on the boot
+ * partition. The Security pane says so, links the handbook page, and says
+ * nothing on a box with a TPM or one that serves no option document. */
+await check('the Security pane warns on a box without a TPM, and only there', async () => {
+  const notice = (page) => page.locator('[data-notice="no-tpm"]');
+  const keyfile = await open({ path: '/settings/security', stored: true, options: optionsWithTpm(false) });
+  await notice(keyfile.page).waitFor({ timeout: 3000 }).catch(() => assert.fail('no TPM warning on a keyfile box'));
+  assert.match(await notice(keyfile.page).innerText(), /This box has no TPM chip/);
+  assert.match(await notice(keyfile.page).innerText(), /anyone who gets hold of the disk can read your files/i);
+  const link = notice(keyfile.page).getByRole('link', { name: 'What a TPM does' });
+  assert.equal(await link.getAttribute('href'), '/handbook/reference/tpm/');
+  assert.deepEqual(keyfile.errors, []);
+  await keyfile.page.close();
+
+  for (const options of [optionsWithTpm(true), null]) {
+    const { page } = await open({ path: '/settings/security', stored: true, options });
+    await page.getByRole('switch', { name: 'Ignore USB devices plugged in later' }).waitFor();
+    assert.equal(await notice(page).count(), 0, `a TPM warning with options ${options === null ? 'absent' : 'tpm on'}`);
+    await page.close();
+  }
 });
 
 await check('a switch flips from its label, from Space and from its track, and a disabled row reads as disabled', async () => {

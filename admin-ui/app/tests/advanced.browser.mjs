@@ -155,21 +155,23 @@ console.log('admin-ui advanced + history browser checks');
 
 await check('every option in the document is drawn, with an editor kind the pane knows', async () => {
   const { page, errors } = await open();
+  // visible = false options (losos.lab.ordering.enable) stay off the pane;
+  // /api/apply and LosOS Git still take them.
+  const SHOWN = DOC.options.filter((option) => !option.hidden);
   await main(page).getByTestId('advanced-count').waitFor();
-  // `visible = false` options stay in the document (the gate takes them)
-  // but get no row.
-  const shown = DOC.options.filter((option) => !option.hidden);
-  assert.equal(await main(page).getByTestId('advanced-count').innerText(), `${shown.length} options`);
+  assert.equal(await main(page).getByTestId('advanced-count').innerText(), `${SHOWN.length} options`);
   const rows = await page.locator('[data-option][data-kind]').evaluateAll((nodes) =>
     nodes.map((n) => [n.dataset.option, n.dataset.kind]),
   );
-  assert.equal(rows.length, shown.length, 'one row per option');
+  assert.equal(rows.length, SHOWN.length, 'one row per shown option');
   for (const [name, kind] of rows) {
     assert.ok(KINDS.has(kind), `losos.${name} has editor kind ${kind}, which the pane cannot draw`);
   }
   const drawn = new Set(rows.map(([name]) => name));
-  for (const option of shown) assert.ok(drawn.has(option.name), `losos.${option.name} is not on the pane`);
-  for (const option of shown) {
+  for (const option of DOC.options) {
+    assert.equal(drawn.has(option.name), !option.hidden, `losos.${option.name} ${option.hidden ? 'is hidden but drawn' : 'is not on the pane'}`);
+  }
+  for (const option of SHOWN) {
     const r = row(page, option.name);
     const controls = await r.locator('input, select, textarea').count();
     if (option.readOnly) {

@@ -140,7 +140,7 @@ const config: Config = {
       },
     },
     navbar: {
-      // The admin UI puts the plate of salmon beside a chip naming the box; here the
+      // The admin UI puts its logo beside a chip naming the box; here the
       // chip names the handbook (custom.css draws .navbar__title as that chip).
       title: 'Handbook',
       logo: {

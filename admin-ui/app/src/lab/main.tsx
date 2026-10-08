@@ -5,6 +5,7 @@
  * components, palette, theme and language. */
 
 import { createRoot } from "react-dom/client";
+import { applyFavicon } from "@/lib/logo";
 import { applyStoredTheme } from "@/lib/theme";
 /* The same two stylesheets in the same order as src/main.tsx. Both pages
  * import them, so the bundler moves them into one shared CSS chunk, and it
@@ -19,6 +20,7 @@ import "./lab.css";
 import { LabRoot } from "./app";
 
 applyStoredTheme();
+applyFavicon();
 document.body.classList.add("lab-body");
 
 const container = document.getElementById("lab");

@@ -162,7 +162,7 @@
  * Nextcloud's stock logo is white, so it inverts the header and login logo
  * on a bright ground (filter: --background-image-invert-if-bright, which is
  * invert(100%) above). The LosOS cloud mark is in colour and reads on both
- * grounds, and inverted it is a black cloud with a blue plate. Setting
+ * grounds, and inverted it is a black cloud with an inverted fish. Setting
  * --image-logoheader-custom is the theming app's own switch for "this logo
  * brings its own colours"; it is what an uploaded logo sets. Outside the
  * contrast guard, because high contrast must not invert it either. */

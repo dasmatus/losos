@@ -4,7 +4,7 @@
 
 import { useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
-import { plateUrl } from "./icons";
+import { logoUrl } from "./icons";
 import { MEME } from "./shape";
 
 export type SplashStep = "canvas" | "qemu" | "placing" | "failed";
@@ -43,7 +43,7 @@ export function Splash({ step, gone, error }: { step: SplashStep; gone: boolean;
       <div className="sp-bottom">
         {MEME && <img className="sp-meme" src="meme-yes.jpg" alt="" />}
         <div className="sp-pane">
-          <img src={plateUrl} alt="" width={84} height={84} />
+          <img src={logoUrl} alt="" width={84} height={84} />
           <div className="sp-los">
             LosOS <span>Lab</span>
           </div>

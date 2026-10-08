@@ -1,6 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "@/App";
+import { applyFavicon } from "@/lib/logo";
 import { applyStoredTheme } from "@/lib/theme";
 /* Sonner's stylesheet, as a file in the bundle: the library also injects it
  * as a <style> element at load, which the appliance CSP (style-src 'self')
@@ -14,6 +15,7 @@ import "@/styles/index.css";
  * pair of braces: if the boot script ever fails to load, the app still comes
  * up in the stored theme, one frame late instead of not at all. */
 applyStoredTheme();
+applyFavicon();
 
 const container = document.getElementById("root");
 if (container === null) throw new Error("#root is missing from index.html");
