@@ -76,10 +76,11 @@ use crate::config::{
 };
 use crate::domains::{self, Doh, DomainError, Domains, DomainsView, Vouched};
 use crate::error::ApiError;
+use crate::hardware::{Catalogue, Line};
 use crate::identity::Identity;
 use crate::market::{
-    AccountView, CheckoutView, Market, MarketError, NewListing, NewOrder, OnboardView, Provision,
-    PublicListing, Sharing,
+    AccountView, CheckoutView, HardwareCheckoutView, Market, MarketError, NewListing, NewOrder,
+    OnboardView, Provision, PublicListing, Sharing,
 };
 use crate::opts::ServeOpts;
 use crate::registry::{Registry, Shared};
@@ -128,7 +129,11 @@ const STRIPE_ROUTE_TIMEOUT: Duration =
     Duration::from_secs(GATE_TIMEOUT.as_secs() * MAX_GATE_CALLS_PER_REQUEST as u64 + 2);
 
 /// The routes [`STRIPE_ROUTE_TIMEOUT`] applies to.
-const STRIPE_ROUTES: [&str; 2] = ["/market/seller/onboard", "/market/orders"];
+const STRIPE_ROUTES: [&str; 3] = [
+    "/market/seller/onboard",
+    "/market/orders",
+    "/market/hardware/checkout",
+];
 
 /// Budget for `POST /identity/cert`, which asks GitHub who the pusher is
 /// before it looks at the list: one round trip to api.github.com, bounded
@@ -546,6 +551,8 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
         .route("/market/seller/onboard", post(market_onboard))
         .route("/market/orders", post(market_order))
         .route("/market/account", post(market_account))
+        .route("/market/hardware", get(market_hardware))
+        .route("/market/hardware/checkout", post(market_hardware_checkout))
         .route(
             "/market/webhook",
             post(market_webhook).layer(DefaultBodyLimit::max(MAX_WEBHOOK_BYTES)),
@@ -1294,6 +1301,35 @@ async fn market_order(
     let sharing = sharing_of(&st).await?;
     let checkout = market
         .create_order(&req.auth.appliance_id, req.order, &sharing)
+        .await?;
+    Ok((StatusCode::CREATED, Json(checkout)))
+}
+
+/// `GET /market/hardware`: what the operator sells, anonymous like the shelf.
+/// 503 unless the edge runs the market and was given a catalogue.
+async fn market_hardware(State(st): State<AppState>) -> Result<Json<Catalogue>, ApiError> {
+    let market = market_of(&st).await?;
+    Ok(Json(market.hardware()?))
+}
+
+#[derive(Debug, Deserialize)]
+struct HardwareCheckoutReq {
+    #[serde(flatten)]
+    auth: MarketAuth,
+    items: Vec<Line>,
+}
+
+/// `POST /market/hardware/checkout`: a Stripe Checkout for boxes and
+/// gateways. Any tenant may buy; the `market` bit is about trading with
+/// other tenants, and this is a sale by the operator.
+async fn market_hardware_checkout(
+    State(st): State<AppState>,
+    Json(req): Json<HardwareCheckoutReq>,
+) -> Result<(StatusCode, Json<HardwareCheckoutView>), ApiError> {
+    authenticate(&st, &req.auth.appliance_id, &req.auth.token).await?;
+    let market = market_of(&st).await?;
+    let checkout = market
+        .hardware_checkout(&req.auth.appliance_id, req.items)
         .await?;
     Ok((StatusCode::CREATED, Json(checkout)))
 }

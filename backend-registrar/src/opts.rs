@@ -585,6 +585,7 @@ pub fn parse(args: Vec<String>) -> Result<Mode> {
                     Some(u) if crate::stripe_gate::url_ok(u) => Some(u.to_string()),
                     Some(u) => return Err(miette!("bad --return-url {u:?}")),
                 },
+                hardware_catalogue: hardware_catalogue(&rest, "--hardware-catalogue", currency)?,
             }))
         }
         other => Err(miette!(
@@ -716,7 +717,25 @@ fn parse_market(args: &[String]) -> Result<Option<Box<MarketOpts>>> {
         currency: currency.to_string(),
         fee_bps,
         storage_class: storage_class.to_string(),
+        hardware_catalogue: hardware_catalogue(args, "--market-hardware-catalogue", currency)?,
     })))
+}
+
+/// A hardware catalogue flag: the file must load, in the edge's currency, so
+/// a typo stops the unit at start rather than at the first order.
+fn hardware_catalogue(args: &[String], flag: &str, currency: &str) -> Result<Option<String>> {
+    let Some(path) = arg(args, flag) else {
+        return Ok(None);
+    };
+    let catalogue =
+        crate::hardware::Catalogue::load(path).map_err(|e| miette!("bad {flag}: {e}"))?;
+    if catalogue.currency != currency {
+        return Err(miette!(
+            "bad {flag}: the catalogue is in {}, the market in {currency}",
+            catalogue.currency
+        ));
+    }
+    Ok(Some(path.to_string()))
 }
 
 /// The route table for boxes behind local edges: `--relay-routes` turns it

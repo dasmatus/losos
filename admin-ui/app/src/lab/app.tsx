@@ -25,6 +25,7 @@ import { Inspector } from "./inspector";
 import { BOX_COPY } from "./shape";
 import { Splash, type SplashStep } from "./splash";
 import { LabStore, setStore, store, useLab } from "./store";
+import { readOrdering } from "./order";
 import { readThisBox } from "./thisbox";
 import { TopBar } from "./topbar";
 import { EventList, SimBar } from "./traffic";
@@ -70,7 +71,9 @@ async function bootOnce(step: (s: SplashStep) => void): Promise<void> {
     new QemuBackend(BOX_COPY, () => step("qemu")),
   ]);
   const box = BOX_COPY ? readThisBox() : Promise.resolve(null);
-  await Promise.allSettled([probe, box]);
+  const ordering = BOX_COPY ? readOrdering() : Promise.resolve(null);
+  await Promise.allSettled([probe, box, ordering]);
+  s.ordering = await ordering;
 
   const last = readLast();
   if (last !== null) {
