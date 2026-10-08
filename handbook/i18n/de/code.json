@@ -364,5 +364,153 @@
   "losos.navbar.logoTip": {
     "message": "Losos ist Slowakisch für Lachs. Das Logo ist ein Teller davon, vom eigenen Foto des Besitzers.",
     "description": "The tooltip on the navbar logo, saying what the picture means"
+  },
+  "losos.home.feature.cloud.title": {
+    "message": "LosOS cloud"
+  },
+  "losos.home.feature.cloud.body": {
+    "message": "Ihre Dateien, Fotos, Kalender, Kontakte, Notizen und Aufgaben, mit Apps für Computer und Telefon. Gebaut auf Nextcloud."
+  },
+  "losos.home.feature.git.title": {
+    "message": "LosOS Git"
+  },
+  "losos.home.feature.git.body": {
+    "message": "Ihre Code-Repositorys, auf derselben Box und hinter demselben Passwort. Gebaut auf Forgejo."
+  },
+  "losos.home.feature.self.title": {
+    "message": "Sie kümmert sich selbst"
+  },
+  "losos.home.feature.self.body": {
+    "message": "Sie aktualisiert sich nachts und baut ihre Systemplatte bei jedem Start neu auf. Was gestern schiefging, ist am Morgen verschwunden."
+  },
+  "losos.home.feature.disk.title": {
+    "message": "Eine verschlüsselte Platte"
+  },
+  "losos.home.feature.disk.body": {
+    "message": "Der Schlüssel bleibt im TPM-Chip des Rechners. Eine ausgebaute Platte lässt sich an einem anderen Computer nicht lesen."
+  },
+  "losos.home.feature.password.title": {
+    "message": "Ein Passwort, keine Shell"
+  },
+  "losos.home.feature.password.body": {
+    "message": "Keine Anmeldekonsole und kein SSH. Sie bedienen die Box im Webbrowser, und das Passwort Ihrer Cloud öffnet auch ihre Verwaltung."
+  },
+  "losos.home.feature.lan.title": {
+    "message": "Läuft auch ohne Internet"
+  },
+  "losos.home.feature.lan.body": {
+    "message": "Alles antwortet in Ihrem lokalen Netz. Die Box trägt sogar dieses Handbuch samt Suche bei sich, für den Tag, an dem sonst nichts antwortet."
+  },
+  "losos.home.step.install.title": {
+    "message": "Installieren"
+  },
+  "losos.home.step.install.body": {
+    "message": "Schreiben Sie das Installationsprogramm auf einen USB-Stick und starten Sie den Rechner davon. Es stellt eine Frage, löscht die Platten und installiert in etwa einer halben Stunde."
+  },
+  "losos.home.step.install.link": {
+    "message": "Installation"
+  },
+  "losos.home.step.first.title": {
+    "message": "Im Browser öffnen"
+  },
+  "losos.home.step.first.body": {
+    "message": "Der Bildschirm der Box zeigt ihre Adresse. Öffnen Sie sie auf einem beliebigen Computer im selben Netz, und ein Assistent in drei Schritten setzt Ihr Passwort."
+  },
+  "losos.home.step.first.link": {
+    "message": "Der erste Start"
+  },
+  "losos.home.step.use.title": {
+    "message": "Benutzen"
+  },
+  "losos.home.step.use.body": {
+    "message": "Legen Sie Ihre Dateien ab und verbinden Sie Telefon und Computer. Danach braucht die Box weder Bildschirm noch Tastatur."
+  },
+  "losos.home.step.use.link": {
+    "message": "Die Verwaltung"
+  },
+  "losos.home.eyebrow": {
+    "message": "Freie Software für einen kleinen Computer zu Hause oder im Büro"
+  },
+  "losos.home.lead": {
+    "message": "Eine Box für Ihre Dateien, die sich selbst pflegt."
+  },
+  "losos.home.body": {
+    "message": "LosOS macht aus einem kleinen Computer, etwa einem alten Büro-Mini-PC, Ihre eigene Cloud. Sie installieren es einmal von einem USB-Stick. Danach bedienen Sie es im Webbrowser, und es aktualisiert, repariert und startet sich jede Nacht selbst neu."
+  },
+  "losos.home.cta.install": {
+    "message": "LosOS installieren"
+  },
+  "losos.home.cta.handbook": {
+    "message": "Handbuch lesen"
+  },
+  "losos.home.fine": {
+    "message": "Unter der AGPL. Läuft auf 64-Bit-Rechnern mit Intel oder AMD."
+  },
+  "losos.home.screen.alt": {
+    "message": "Die Verwaltung einer Box: die App-Kacheln für LosOS cloud und LosOS Git, die Speicherkarte und eine Tafel mit Widgets."
+  },
+  "losos.home.screen.caption": {
+    "message": "Die Verwaltung, in der Sie die Box einrichten und pflegen."
+  },
+  "losos.home.features.title": {
+    "message": "Was Sie bekommen"
+  },
+  "losos.home.steps.title": {
+    "message": "In drei Schritten zur laufenden Box"
+  },
+  "losos.home.setups.title": {
+    "message": "Von einer Box bis zur Firma"
+  },
+  "losos.home.setups.body": {
+    "message": "Jede Box beginnt allein, in einem Heimnetz. Später kann sie über einen Edge-Server eine öffentliche Adresse bekommen, ohne dass zu Hause ein Port geöffnet wird, und in den Stunden, die Sie wählen, freien Speicher und Rechenzeit an andere Boxen verleihen. Eine Firma kann mehrere Boxen hinter einem eigenen Edge betreiben. Dorthin kommen Sie durch Einstellungen, nicht durch Neuinstallation."
+  },
+  "losos.home.setups.link": {
+    "message": "Arten der Einrichtung"
+  },
+  "losos.home.setups.alt": {
+    "message": "Drei Arten der Einrichtung nebeneinander: eine Box allein, eine Box mit dem LosOS-Edge und eine Firma mit eigenem Edge."
+  },
+  "losos.home.needs.title": {
+    "message": "Was Sie brauchen"
+  },
+  "losos.home.needs.cpu": {
+    "message": "Einen Rechner mit 64-Bit-Prozessor von Intel oder AMD (x86_64) und UEFI- oder BIOS-Firmware."
+  },
+  "losos.home.needs.memory": {
+    "message": "Mindestens 4 GiB Arbeitsspeicher und eine Platte mit 40 GiB oder mehr."
+  },
+  "losos.home.needs.tpm": {
+    "message": "Am besten einen TPM-2.0-Chip, den die meisten Büro-Mini-PCs haben. Ohne ihn installiert sich die Box trotzdem und entsperrt sich mit einer Schlüsseldatei."
+  },
+  "losos.home.needs.install": {
+    "message": "Nur für die Installation: einen USB-Stick mit 2 GiB, ein kabelgebundenes Netz mit Internetzugang, einen Bildschirm und eine Tastatur."
+  },
+  "losos.home.needs.arm": {
+    "message": "LosOS läuft nur auf x86_64. Es lässt sich nicht auf ARM-Rechnern installieren, insbesondere nicht auf Macs mit Apple Silicon (M-Serie)."
+  },
+  "losos.home.needs.vm": {
+    "message": "Zum Ausprobieren läuft es auch in einer virtuellen Maschine: QEMU, virt-manager und VirtualBox funktionieren."
+  },
+  "losos.home.closing.title": {
+    "message": "Das Installationsprogramm holen"
+  },
+  "losos.home.closing.body": {
+    "message": "Jede Veröffentlichung enthält das Installations-ISO und seine Prüfsumme. Das Handbuch führt Sie vom Download bis zur laufenden Box."
+  },
+  "losos.home.closing.download": {
+    "message": "Neueste Version herunterladen"
+  },
+  "losos.home.closing.source": {
+    "message": "Quellcode auf GitHub"
+  },
+  "losos.home.pageTitle": {
+    "message": "Eine Box für Ihre Dateien, die sich selbst pflegt"
+  },
+  "losos.home.description": {
+    "message": "LosOS macht aus einem kleinen x86_64-Computer Ihre eigene Cloud für Dateien, Fotos, Kalender und Code. Es aktualisiert, repariert und startet sich jede Nacht selbst neu."
+  },
+  "theme.colorToggle.ariaLabel.group": {
+    "message": "Appearance",
+    "description": "The label of the colour-mode segmented control"
   }
 }
