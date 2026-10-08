@@ -341,3 +341,4 @@ svg.canvas { width: 100%; height: 100%; display: block; touch-action: none; user
 .back[hidden] { display: none; }
 /* Beside the meme each half reads as one panel: its content in the middle. */
 #splash:has(.sp-meme:not([hidden])) .sp-pane { justify-content: center; padding: 0 12px; }
+.top .files { display: inline-flex; gap: 6px; flex-shrink: 0; }

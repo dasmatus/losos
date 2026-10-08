@@ -35,7 +35,7 @@ function renderSide() {
 function refreshSideLive() { if (UI.sel?.kind === 'dev' && UI.tab === 'status') { const p = $('#pane'); if (p) { p.innerHTML = ''; statusPane(p, dev(UI.sel.id)); } } else if (UI.tab !== 'console' && UI.tab !== 'desktop') renderSide(); }
 function emptySide() {
   const e = document.createElement('div'); e.className = 'empty';
-  const sc = SCENARIOS[UI.scenario];
+  const sc = SCENARIOS[UI.scenario] || { name: UI.fileName || 'My setup', blurb: 'Opened from a setup file. Save downloads it again with your changes.' };
   e.innerHTML = `<h3>${esc(sc.name)}</h3><p>${esc(sc.blurb)}</p>
   <ol><li>Click a device to see what LosOS made of the network: its address, the edges it found, its tunnel and public name.</li>
   <li>Open the laptop's <b>Desktop</b> tab and browse to a box by its <code>.local</code> name, or by its public name from another site.</li>
@@ -210,7 +210,7 @@ function desktopPane(p, d) {
     const pw = $('#dPw', wrap);
     pw.onkeydown = (e) => { if (e.key !== 'Enter') return; if (!pw.value) { s.err = 'empty'; renderSide(); return; } s.err = ''; s.signedIn = true; renderSide(); };
     $('#dWide', wrap).onclick = toggleDeskWide;
-    setTimeout(() => pw.focus(), 30);
+    setTimeout(() => pw.focus({ preventScroll: true }), 30);
     return;
   }
   const app = DESK_APPS[s.app];

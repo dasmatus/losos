@@ -24,7 +24,7 @@ src = here / 'src'
 plate = here.parent / 'themes' / 'brand' / 'plate-128.png'
 meme = pathlib.Path(os.environ['LOSOS_LAB_MEME']) if os.environ.get('LOSOS_LAB_MEME') else None
 ORDER = ['icons.js', 'model.js', 'sim.js', 'pages.js', 'term.js', 'scenarios.js',
-         'thisbox.js', 'app.js', 'side.js', 'engine.js', 'main.js']
+         'thisbox.js', 'app.js', 'side.js', 'engine.js', 'files.js', 'main.js']
 
 
 def script(config: dict) -> str:

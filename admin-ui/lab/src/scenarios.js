@@ -133,12 +133,15 @@ const SCENARIOS = {
   },
   empty: { name: 'Empty canvas', blurb: 'Start from nothing: drag devices up from the tray.', build() { return null; } },
 };
-function loadScenario(key) {
+function loadScenario(key) { startWorld(key, () => SCENARIOS[key].build()); }
+// A fresh world from `build`, which places the devices and returns the one
+// to select; a built-in setup and an opened file both come through here.
+function startWorld(key, build) {
   world = { devices: [], links: [], seq: 1 };
   TERMS.clear(); DESK.clear();
   if (typeof ENGINE !== 'undefined') ENGINE.stopAll();
   simReset();
-  const focus = SCENARIOS[key].build();
+  const focus = build();
   UI.scenario = key;
   evaluate(); PREV = null; trafficForChange();
   // power-on traffic for the whole scene, in boot order

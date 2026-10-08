@@ -15,6 +15,7 @@ function toast(msg, ms = 3600) {
   t.textContent = msg; t.hidden = false; clearTimeout(t._h); t._h = setTimeout(() => (t.hidden = true), ms);
 }
 function changed(opts = {}) {
+  UI.dirty = true;
   evaluate();
   trafficForChange();
   renderAll(opts);
@@ -362,6 +363,7 @@ function onUp(ev) {
     const R = ROOMS[d.site]; d.px = Math.max(0, Math.min(R.w - 60, d.px)); d.py = Math.max(30, Math.min(R.h - 40, d.py));
     renderCanvas();
   }
+  if (drag && drag.kind === 'node' && drag.moved) UI.dirty = true;
   if (drag && drag.kind === 'pan' && !drag.moved && UI.tool === 'select') { UI.sel = null; renderCanvas(); renderSide(); }
   drag = null;
 }
