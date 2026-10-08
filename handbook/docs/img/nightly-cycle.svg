@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="320" viewBox="0 0 1000 320" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'DejaVu Sans', sans-serif" font-size="14" fill="#18212a">
+  <title>A LosOS night: restart at 00:07, update at 03:00, clean-up at 04:30</title>
+  <rect x="0.5" y="0.5" width="999" height="319" rx="12" fill="#ffffff" stroke="#dce1e6"/>
+  <text x="40" y="40" font-weight="650">Every night, on every box</text>
+  <text x="40" y="62" fill="#5c6a77" font-size="13">Nothing else restarts during the day. A box that was off at 00:07 restarts as soon as it is switched on.</text>
+  <rect x="40" y="174" width="920" height="12" rx="6" fill="#eaedf0"/>
+  <line x1="40.0" y1="190" x2="40.0" y2="198" stroke="#8c98a4"/>
+  <text x="40.0" y="216" text-anchor="middle" fill="#5c6a77" font-size="12">22:00</text>
+  <line x1="155.0" y1="190" x2="155.0" y2="198" stroke="#8c98a4"/>
+  <text x="155.0" y="216" text-anchor="middle" fill="#5c6a77" font-size="12">23:00</text>
+  <line x1="270.0" y1="190" x2="270.0" y2="198" stroke="#8c98a4"/>
+  <text x="270.0" y="216" text-anchor="middle" fill="#5c6a77" font-size="12">00:00</text>
+  <line x1="385.0" y1="190" x2="385.0" y2="198" stroke="#8c98a4"/>
+  <text x="385.0" y="216" text-anchor="middle" fill="#5c6a77" font-size="12">01:00</text>
+  <line x1="500.0" y1="190" x2="500.0" y2="198" stroke="#8c98a4"/>
+  <text x="500.0" y="216" text-anchor="middle" fill="#5c6a77" font-size="12">02:00</text>
+  <line x1="615.0" y1="190" x2="615.0" y2="198" stroke="#8c98a4"/>
+  <text x="615.0" y="216" text-anchor="middle" fill="#5c6a77" font-size="12">03:00</text>
+  <line x1="730.0" y1="190" x2="730.0" y2="198" stroke="#8c98a4"/>
+  <text x="730.0" y="216" text-anchor="middle" fill="#5c6a77" font-size="12">04:00</text>
+  <line x1="845.0" y1="190" x2="845.0" y2="198" stroke="#8c98a4"/>
+  <text x="845.0" y="216" text-anchor="middle" fill="#5c6a77" font-size="12">05:00</text>
+  <line x1="960.0" y1="190" x2="960.0" y2="198" stroke="#8c98a4"/>
+  <text x="960.0" y="216" text-anchor="middle" fill="#5c6a77" font-size="12">06:00</text>
+  <line x1="283.4" y1="92" x2="283.4" y2="170" stroke="#0e6e7d" stroke-width="1.5"/>
+  <circle cx="283.4" cy="180" r="8" fill="#ffffff" stroke="#0e6e7d" stroke-width="3"/>
+  <text x="293.4" y="104" font-weight="650" text-anchor="start">00:07  Restart</text>
+  <text x="293.4" y="126" fill="#5c6a77" font-size="13" text-anchor="start">The system disk is rebuilt</text>
+  <text x="293.4" y="144" fill="#5c6a77" font-size="13" text-anchor="start">from the box's own description.</text>
+  <line x1="615.0" y1="92" x2="615.0" y2="170" stroke="#0e6e7d" stroke-width="1.5"/>
+  <circle cx="615.0" cy="180" r="8" fill="#ffffff" stroke="#0e6e7d" stroke-width="3"/>
+  <text x="625.0" y="104" font-weight="650" text-anchor="start">03:00  Update</text>
+  <text x="625.0" y="126" fill="#5c6a77" font-size="13" text-anchor="start">Rebuild from the upgrade source.</text>
+  <text x="625.0" y="144" fill="#5c6a77" font-size="13" text-anchor="start">A failed update keeps the old system.</text>
+  <line x1="787.5" y1="190" x2="787.5" y2="296" stroke="#0e6e7d" stroke-width="1.5"/>
+  <circle cx="787.5" cy="180" r="8" fill="#ffffff" stroke="#0e6e7d" stroke-width="3"/>
+  <text x="777.5" y="258" font-weight="650" text-anchor="end">04:30  Clean-up</text>
+  <text x="777.5" y="280" fill="#5c6a77" font-size="13" text-anchor="end">Versions over 14 days old are deleted;</text>
+  <text x="777.5" y="298" fill="#5c6a77" font-size="13" text-anchor="end">the boot menu keeps the last five.</text>
+  </svg>

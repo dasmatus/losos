@@ -7,6 +7,8 @@ sidebar_position: 1
 
 ## On the box
 
+![Inside a box: nginx holds ports 80 and 443 and routes by path to the admin pages, the control API, LosOS cloud, LosOS Git and this handbook.](../img/box-architecture.svg)
+
 | Path                          | What                                               | Who may open it                     |
 | ----------------------------- | -------------------------------------------------- | ----------------------------------- |
 | `/`                           | The admin pages                                     | the local network only              |
@@ -34,9 +36,9 @@ arriving through an edge's tunnel, gets **403**.
 | 5353    | mDNS     | Announcing `<name>.local`                               |
 | 8082    | HTTP     | The control API, on the box's loopback only; nginx proxies `/api/` to it |
 
-Nothing else is open. The mesh and the edge are reached **outwards**: the
-box opens the tunnel and joins the cluster; no inbound port is needed at
-home.
+Nothing else is open. The box reaches the mesh and the edge outwards. It
+opens the tunnel and joins the cluster itself, so you open no inbound port
+at home.
 
 ## Names
 

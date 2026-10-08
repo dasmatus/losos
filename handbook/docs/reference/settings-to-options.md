@@ -6,10 +6,10 @@ sidebar_position: 3
 # Settings to options
 
 Every field on the settings panes writes one option in the box's Nix
-description (`losos.*`). This table is for the day you want something the
-panes do not offer: the option names are what a maintainer would set in
-`modules/overrides.nix`, and what the [wiki](https://github.com/dasmatus/losos/wiki/Administration)
-documents in full.
+description (`losos.*`). Use this table when you want something the panes
+do not offer. A maintainer sets these options in `modules/overrides.nix`,
+and the [wiki](https://github.com/dasmatus/losos/wiki/Administration)
+documents them in full.
 
 ## On the panes
 
@@ -21,7 +21,7 @@ documents in full.
 | Network  | Edge address                | `losos.proxy.registrarUrl`                          | the LosOS edge          |
 | Apps     | LosOS Git                   | `losos.forgejo.enable`                              | on                      |
 | Apps     | mode (read-only)            | `losos.nextcloud.mode`, `losos.forgejo.mode`        | `container`             |
-| Storage  | Use the reserve             | (runs `losos-ctl grow`; the reserve is `losos.storage.fillPercent`) | 90 %  |
+| Storage  | Use the reserve             | runs `losos-ctl grow`, and the reserve is `losos.storage.fillPercent` | 90 %  |
 | Mesh     | Join the mesh               | `losos.cluster.enable`                              | off                     |
 | Mesh     | Share my spare time         | `losos.cluster.shareCompute`                        | off                     |
 | Mesh     | Hours                       | `losos.cluster.computeWindow.{start,end}`           | unset                   |
@@ -36,7 +36,7 @@ documents in full.
 
 | What                                 | Option                             | Default                                    |
 | ------------------------------------ | ---------------------------------- | ------------------------------------------ |
-| Where updates come from              | `losos.upgradeFlakeUri`            | `git+file:///etc/nixos#install` (no new software) |
+| Where updates come from              | `losos.upgradeFlakeUri`            | `git+file:///etc/nixos#install`, which brings no new software |
 | The hardening baseline               | `losos.hardening.enable`           | on                                         |
 | LosOS Git federation (ActivityPub)   | `losos.forgejo.federation.enable`  | on                                         |
 | The disk unlock mode                 | `losos.tpm.enable`                 | what the installer found                    |
@@ -47,10 +47,12 @@ documents in full.
 | The binary cache                     | `losos.cache.substituters`         | `https://proxy.losos.dasmat.us`             |
 | Who may read `/setup/state.json` from a web page | `losos.setup.finderOrigins` | the LosOS edge's find page             |
 
+![The Advanced pane, where the options not on the other panes are edited, each checked before Apply.](../img/settings-advanced.png)
+
 ## Rules the panes enforce
 
 - A name is letters, digits and hyphens, starting and ending with a letter
   or a digit, up to 63 characters.
 - A port is between 1024 and 65535.
-- The hours are two 24-hour times, `HH:MM`, in the box's own time zone; the
+- The hours are two 24-hour times, `HH:MM`, in the box's own time zone. The
   window may cross midnight.

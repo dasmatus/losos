@@ -14,33 +14,35 @@ never asks for a passphrase on a normal boot.
 
 </div>
 
+![A box stopped at boot with Please enter passphrase for disk persist, from the installer bug fixed on 2 October 2026.](../img/passphrase-prompt.png)
+
 ## Why it happens
 
-The encrypted volume could not be unlocked the way the box was installed to
+The box could not unlock the encrypted volume the way it was installed to
 unlock it:
 
 | Install              | What went wrong                                                                                                           |
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| **TPM**              | The chip no longer holds, or no longer releases, the key: the firmware's TPM was cleared or reset, the chip was replaced, the disk was moved to another machine, or (in a VM) the emulated TPM was started with a different state directory than at install time. |
+| **TPM**              | The chip no longer holds the key, or no longer releases it. The firmware's TPM was cleared or reset, the chip was replaced, or the disk was moved to another machine. In a VM, the emulated TPM started with a different state directory than at install time. |
 | **Keyfile**          | The boot partition lost or damaged the key file, or the disk was partially cloned.                                         |
-| **Any, before 2 October 2026** | A bug in older installers formatted the volume with one key and tried to unlock it with another (a stray byte was stripped on the way in). Every such box stopped at this prompt on its first boot. Fixed in pull request #47; install from a current ISO. |
+| **Any, before 2 October 2026** | A bug in older installers formatted the volume with one key and tried to unlock it with another, because a stray byte was stripped on the way in. Every such box stopped at this prompt on its first boot. Pull request #47 fixed it. Install from a current ISO. |
 
 ## What you can do
 
-There is no passphrase to type: the key is a random 4096-character string
-that was never shown to anyone. The copy kept for recovery lives *inside* the
-encrypted volume, so it cannot be used to open that volume.
+There is no passphrase to type. The key is a random 4096-character string
+that no one has ever seen. The recovery copy lives *inside* the encrypted
+volume, so it cannot open that volume.
 
 1. **Power off and on once.** A TPM that failed to answer during a hurried
    boot sometimes answers the next time.
 2. **In a VM**, start the emulated TPM with the same state directory used
    at install time, before starting the VM.
-3. **On hardware**, check that the firmware's TPM is still enabled (Intel
-   PTT or AMD fTPM) and was not cleared by a firmware update or a "reset to
-   defaults".
-4. Otherwise, **reinstall**. The data on the volume is unreadable without the
-   key, which is exactly what the encryption promised; the copy you keep
-   elsewhere is where your files are.
+3. **On hardware**, check that the firmware's TPM, Intel PTT or AMD fTPM,
+   is still enabled, and that no firmware update or "reset to defaults"
+   cleared it.
+4. Otherwise, **reinstall**. Without the key the data on the volume is
+   unreadable, which is what the encryption promised. Your files are in the
+   copy you keep elsewhere.
 
 ## Preventing the next time
 

@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="530" viewBox="0 0 1000 530" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'DejaVu Sans', sans-serif" font-size="14" fill="#18212a">
+  <title>How a box finds an edge and decides whether it is official</title>
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#5c6a77"/></marker>
+  </defs>
+  <rect x="0.5" y="0.5" width="999" height="529" rx="12" fill="#ffffff" stroke="#dce1e6"/>
+  <g fill="none" stroke="#5c6a77" stroke-width="1.5">
+    <line x1="282" y1="125" x2="318" y2="125" marker-end="url(#ar)"/>
+    <line x1="522" y1="125" x2="543" y2="125" marker-end="url(#ar)"/>
+    <line x1="697" y1="125" x2="738" y2="125" marker-end="url(#ar)"/>
+    <polyline points="620,177 620,215 170,215 170,398" marker-end="url(#ar)"/>
+    <line x1="855" y1="182" x2="855" y2="223" marker-end="url(#ar)"/>
+    <line x1="830" y1="357" x2="830" y2="398" marker-end="url(#ar)"/>
+    <polyline points="688,290 500,290 500,398" marker-end="url(#ar)"/>
+  </g>
+  <text x="712" y="116" fill="#5c6a77" font-size="12">yes</text>
+  <text x="628" y="203" fill="#5c6a77" font-size="12">no</text>
+  <text x="840" y="383" fill="#5c6a77" font-size="12">all four pass</text>
+  <text x="510" y="383" fill="#5c6a77" font-size="12">any one fails</text>
+
+  <rect x="30" y="66" width="252" height="118" rx="8" fill="#f3f5f7" stroke="#dce1e6"/>
+  <text x="46" y="92" font-weight="650">Look for edges</text>
+  <text x="46" y="113" fill="#5c6a77" font-size="13">every 20 seconds, on two roads:</text>
+  <text x="46" y="138" font-size="13">on the LAN, by DNS-SD</text>
+  <text x="46" y="156" font-size="13">at the configured address,</text>
+  <text x="46" y="174" font-size="13">over the internet</text>
+
+  <rect x="320" y="90" width="202" height="70" rx="8" fill="#f3f5f7" stroke="#dce1e6"/>
+  <text x="421" y="119" text-anchor="middle" font-weight="650">Ask each one</text>
+  <text x="421" y="140" text-anchor="middle" fill="#5c6a77" font-size="13">does /health answer?</text>
+
+  <polygon points="545,125 620,75 695,125 620,175" fill="#ffffff" stroke="#5c6a77" stroke-width="1.5"/>
+  <text x="620" y="121" text-anchor="middle" font-size="13">Did any</text>
+  <text x="620" y="139" text-anchor="middle" font-size="13">answer?</text>
+
+  <rect x="740" y="66" width="230" height="116" rx="8" fill="#f3f5f7" stroke="#dce1e6"/>
+  <text x="756" y="92" font-weight="650">Challenge each edge</text>
+  <text x="756" y="114" fill="#5c6a77" font-size="13">the box makes up a fresh</text>
+  <text x="756" y="132" fill="#5c6a77" font-size="13">nonce; the edge returns its</text>
+  <text x="756" y="150" fill="#5c6a77" font-size="13">certificate and signs the</text>
+  <text x="756" y="168" fill="#5c6a77" font-size="13">nonce with its own key</text>
+
+  <rect x="690" y="225" width="280" height="132" rx="8" fill="#f3f5f7" stroke="#dce1e6"/>
+  <text x="706" y="250" font-weight="650">Four checks, all or nothing</text>
+  <text x="706" y="274" font-size="13">1. signed by the LosOS root key</text>
+  <text x="706" y="294" font-size="13">2. names the address that was asked</text>
+  <text x="706" y="314" font-size="13">3. not expired</text>
+  <text x="706" y="334" font-size="13">4. the nonce signature is valid</text>
+
+  <text x="230" y="255" fill="#5c6a77" font-size="13">The box keeps asking, so an edge that comes back</text>
+  <text x="230" y="274" fill="#5c6a77" font-size="13">is found again on its own. Nothing needs a restart.</text>
+
+  <rect x="30" y="400" width="280" height="104" rx="8" fill="#f8ecea" stroke="#a8443c" stroke-width="1.5"/>
+  <text x="46" y="426" font-weight="650" fill="#a8443c">No edge proxy found</text>
+  <text x="46" y="449" font-size="13">Turning sharing on is refused:</text>
+  <text x="46" y="468" font-size="13">"Needs an edge proxy in reach."</text>
+  <text x="46" y="487" font-size="13">Turning it off always works.</text>
+
+  <rect x="345" y="400" width="310" height="104" rx="8" fill="#f7f0e1" stroke="#8c6512" stroke-width="1.5"/>
+  <text x="361" y="426" font-weight="650" fill="#8c6512">⚠ Edge, not official</text>
+  <text x="361" y="449" font-size="13">A company's edge, or any other.</text>
+  <text x="361" y="468" font-size="13">Sharing and remote access work.</text>
+  <text x="361" y="487" font-size="13">The market does not.</text>
+
+  <rect x="690" y="400" width="280" height="104" rx="8" fill="#e5f1ec" stroke="#2e7357" stroke-width="1.5"/>
+  <text x="706" y="426" font-weight="650" fill="#2e7357">✓ Official LosOS edge</text>
+  <text x="706" y="449" font-size="13">Sharing and remote access work.</text>
+  <text x="706" y="468" font-size="13">The market may run, once it</text>
+  <text x="706" y="487" font-size="13">opens.</text>
+</svg>

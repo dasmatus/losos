@@ -7,42 +7,44 @@ slug: /troubleshooting
 
 # When something goes wrong
 
-This chapter assumes the worst case that is still worth anything: **you are
-on the same local network as the box, and that is all you have.** No
-internet, no edge, no shell. Every page is organised by what you see, and
-every page starts with the steps that work from the LAN alone.
+This chapter assumes the worst case you can still work with. **You are on
+the same local network as the box, and that is all you have.** No internet,
+no edge, no shell. Each page is organised by what you see, and each starts
+with the steps that work from the LAN alone.
 
-If the box's own pages open and only the outside is missing, that is not a
-fault on the box: [Only the local network works](./only-the-lan-works.md)
-lists what can cause it (the provider's line, the router's uplink, the edge),
-what still works, what waits, and why there is nothing to reconfigure
-afterwards.
+If the box's own pages open and only the outside is missing, the box is not
+at fault. [Only the local network works](./only-the-lan-works.md) lists the
+causes, such as the provider's line, the router's uplink or the edge. It
+also says what still works, what waits, and why you have nothing to
+reconfigure afterwards.
 
 ## The first five minutes
 
-Do these in order; most problems stop at one of them.
+Do these in order. Most problems end at one of them.
 
 1. **Look at the box's screen.** A blue banner with `LosOS is ready` and an
    `http://` address means the box has booted and has a network. No banner,
-   or a text login prompt, or a passphrase prompt, is a different problem:
-   [Stuck at a passphrase prompt](./stuck-at-passphrase.md), or
+   a text login prompt or a passphrase prompt means a different problem.
+   See [Stuck at a passphrase prompt](./stuck-at-passphrase.md), or
    [Cannot reach the box](./cannot-reach-the-box.md) for a black screen.
 2. **Use the IP address, not the name.** Type the `http://192.168.…` from
    the banner into a browser on the same network. Half of all "the box is
-   down" reports are a computer that does not resolve `.local`:
+   down" reports come from a computer that does not resolve `.local`. See
    [The name does not resolve](./name-does-not-resolve.md).
 3. **Try plain `http://`.** An `https://` address with a certificate
-   warning is not an outage: [Certificate warning](./certificate-warning.md).
+   warning is not an outage. See [Certificate warning](./certificate-warning.md).
 4. **Ask the box whether it is alive.** Open `http://<address>/api/health`.
    The answer `{"ok":true}` means the control daemon is up. Open
    `http://<address>/setup/state.json` for the box's name and address as it
    sees them.
 5. **Wait for the next restart, or cause one.** The box restarts itself at
    00:07 and rebuilds its system disk from scratch when it does. Pulling the
-   power and plugging it back in does the same thing now. Your files are on
-   the encrypted volume and are not touched by a restart.
+   power and plugging it back in does the same thing now. A restart does not
+   touch your files, which are on the encrypted volume.
 
 ## What the box can tell you from the LAN
+
+![The Overview when the box does not answer its health check: the status under the name turns from Answering to not answering.](../img/overview-not-answering.png)
 
 | Where                                   | What                                                                                         |
 | --------------------------------------- | -------------------------------------------------------------------------------------------- |
@@ -56,9 +58,9 @@ Do these in order; most problems stop at one of them.
 
 ## What it cannot tell you
 
-There is no log viewer and no terminal, because there is no shell. A problem
-that none of these surfaces explain is one of two things: something the
-nightly restart will repair on its own, or something that needs a reinstall.
+There is no log viewer and no terminal, because there is no shell. If none
+of these explain a problem, one of two things is true. Either the nightly
+restart repairs it on its own, or it needs a reinstall.
 [Getting help](./getting-help.md) says what to collect before asking.
 
 ## The pages

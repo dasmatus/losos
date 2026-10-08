@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="590" viewBox="0 0 1000 590" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'DejaVu Sans', sans-serif" font-size="14" fill="#18212a">
+  <title>Inside a LosOS box: nginx in front, lososd, the two clusters, and the two disks</title>
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#5c6a77"/></marker>
+    <marker id="ac" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#0e6e7d"/></marker>
+  </defs>
+  <rect x="0.5" y="0.5" width="999" height="589" rx="12" fill="#ffffff" stroke="#dce1e6"/>
+
+  <rect x="40" y="22" width="260" height="58" rx="8" fill="#f3f5f7" stroke="#dce1e6"/>
+  <text x="170" y="46" text-anchor="middle" font-weight="650">Browser on the LAN</text>
+  <text x="170" y="66" text-anchor="middle" fill="#5c6a77" font-size="13">http(s)://&lt;box&gt;/</text>
+  <rect x="700" y="22" width="260" height="58" rx="8" fill="#f3f5f7" stroke="#dce1e6"/>
+  <text x="830" y="46" text-anchor="middle" font-weight="650">Edge (internet or LAN)</text>
+  <text x="830" y="66" text-anchor="middle" fill="#5c6a77" font-size="13">tunnel · the mesh's server</text>
+
+  <rect x="20" y="104" width="960" height="470" rx="12" fill="none" stroke="#0e6e7d" stroke-width="1.5" stroke-dasharray="6 4"/>
+  <text x="36" y="128" fill="#0e6e7d" font-weight="650">The box: LosOS, built on NixOS</text>
+
+  <line x1="285" y1="82" x2="285" y2="144" stroke="#5c6a77" stroke-width="1.5" marker-end="url(#ar)"/>
+  <line x1="770" y1="146" x2="770" y2="84" stroke="#0e6e7d" stroke-width="1.5" marker-end="url(#ac)"/>
+  <text x="762" y="120" text-anchor="end" fill="#0e6e7d" font-size="12">tunnel, opened outwards</text>
+
+  <rect x="40" y="146" width="920" height="72" rx="8" fill="#e2eff1" stroke="#0e6e7d"/>
+  <text x="500" y="172" text-anchor="middle" font-weight="650">nginx, the one front door</text>
+  <text x="500" y="196" text-anchor="middle" font-size="13" fill="#37444f">/ admin pages (LAN only)   ·   /api → lososd   ·   /nextcloud LosOS cloud   ·   /forgejo/ LosOS Git   ·   /handbook/ (LAN only)</text>
+
+  <g stroke="#5c6a77" stroke-width="1.5">
+    <line x1="185" y1="220" x2="185" y2="250" marker-end="url(#ar)"/>
+    <line x1="500" y1="220" x2="500" y2="250" marker-end="url(#ar)"/>
+  </g>
+  <polyline points="930,252 930,232 975,232 975,92 850,92 850,84" fill="none" stroke="#5c6a77" stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#ar)"/>
+
+  <rect x="40" y="252" width="290" height="160" rx="8" fill="#ffffff" stroke="#0e6e7d" stroke-width="1.5"/>
+  <text x="56" y="278" font-weight="650">lososd, the root daemon</text>
+  <text x="56" y="304" font-size="13">the box's state and settings</text>
+  <text x="56" y="326" font-size="13">one D-Bus method per operation</text>
+  <text x="56" y="348" font-size="13">a JSON API on loopback only</text>
+  <text x="56" y="370" font-size="13">runs every rebuild, and finds it</text>
+  <text x="56" y="390" font-size="13">again after its own restart</text>
+
+  <rect x="355" y="252" width="290" height="160" rx="8" fill="#ffffff" stroke="#0e6e7d" stroke-width="1.5"/>
+  <text x="371" y="278" font-weight="650">k3s: the box's own cluster</text>
+  <text x="371" y="304" font-size="13">LosOS cloud (Nextcloud)</text>
+  <text x="371" y="326" font-size="13">LosOS Git (Forgejo)</text>
+  <text x="371" y="348" font-size="13">pods on the host's network</text>
+  <text x="371" y="370" font-size="13">keeps running when the edge</text>
+  <text x="371" y="390" font-size="13">is down</text>
+
+  <rect x="670" y="252" width="290" height="160" rx="8" fill="#ffffff" stroke="#0e6e7d" stroke-width="1.5"/>
+  <text x="686" y="278" font-weight="650">rke2 agent: the mesh</text>
+  <text x="686" y="304" font-size="13">a different cluster, whose</text>
+  <text x="686" y="326" font-size="13">server runs on the edge</text>
+  <text x="686" y="348" font-size="13">spare room in the pool</text>
+  <text x="686" y="370" font-size="13">spare time inside the</text>
+  <text x="686" y="390" font-size="13">owner's hours</text>
+
+  <rect x="40" y="436" width="920" height="54" rx="8" fill="#f3f5f7" stroke="#dce1e6"/>
+  <text x="56" y="460" font-weight="650">/   a RAM disk (tmpfs)</text>
+  <text x="56" y="479" font-size="13" fill="#5c6a77">rebuilt at every boot from the box's Nix description; anything written here is gone at the next restart</text>
+  <rect x="40" y="500" width="920" height="54" rx="8" fill="#0e6e7d"/>
+  <text x="56" y="524" font-weight="650" fill="#ffffff">/persist   encrypted (LUKS), unlocked by the TPM</text>
+  <text x="56" y="543" font-size="13" fill="#e2eff1">the only thing that survives a boot: files, Git, the system store, settings, keys, mesh membership</text>
+</svg>
