@@ -41,6 +41,11 @@
 #                because that is how they reach a binary cache: the appliance
 #                substitutes them, it never builds them (see the header of
 #                flake/images.nix).
+#   losos-sign-iso — signs the installer ISO's UEFI loader in place with the
+#                Secure Boot db key, after `nix build`, so the key never
+#                enters a store (modules/secure-boot.nix, flake/sign-iso.sh).
+#                CI runs it with the SECURE_BOOT_DB_KEY secret;
+#                tests/secure-boot.nix with a throwaway key.
 { pkgs, ... }:
 
 let
@@ -209,5 +214,18 @@ images
     src = lib.cleanSource ./../backend-registrar;
     cargoHash = "sha256-rQUbDQbmVnb9QRXocozg8oOGp91o2sKtQ8CAhqjnUAE=";
     doCheck = false;
+  };
+
+  losos-sign-iso = pkgs.writeShellApplication {
+    name = "losos-sign-iso";
+    runtimeInputs = [
+      pkgs.xorriso
+      pkgs.mtools
+      pkgs.sbsigntool
+      pkgs.coreutils
+      pkgs.gawk
+      pkgs.gnused
+    ];
+    text = builtins.readFile ./sign-iso.sh;
   };
 }

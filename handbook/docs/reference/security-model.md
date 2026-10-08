@@ -48,6 +48,15 @@ Security pane: AppArmor, a hardened memory allocator, no SMT, USBGuard.
 
 ## Known limitations, stated plainly
 
+- **The installer medium is signed; the installed system is not.** A
+  firmware with the LosOS certificate enrolled verifies the stick's loader
+  (kernel, initrd, command line in one signed image), and that loader
+  verifies the system image's hash before mounting it, so an altered stick
+  does not start. The box's own loader and nightly kernels are unsigned, so
+  the box runs with Secure Boot off and its boot chain is protected by
+  nothing but physical possession. [Secure Boot and signed
+  media](../start/secure-boot) has the details.
+
 - **One origin.** The admin pages, LosOS cloud and LosOS Git share one
   address. A cross-site scripting hole in either app could read the admin
   key from a tab that has it. The strict content-security policy on the

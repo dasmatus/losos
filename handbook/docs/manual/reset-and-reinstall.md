@@ -33,4 +33,6 @@ again under its new identity.
 ## What a reinstall does not need
 
 A machine that boots the installer stick. That is all. The box's firmware
-settings (Secure Boot off) are the only thing to keep.
+settings (Secure Boot off for the installed box, or the LosOS certificate
+enrolled for the stick: [Secure Boot](../start/secure-boot)) are the only
+thing to keep.

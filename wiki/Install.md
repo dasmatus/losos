@@ -13,9 +13,16 @@ Write it to a USB stick and boot the target machine.
 
 ## Before you boot
 
-- **Turn Secure Boot off.** Nothing is signed. With Secure Boot on, the
-  firmware refuses the stick (OVMF shows "Access Denied"; other firmware may
-  skip it silently).
+- **Secure Boot: off, or enrol the LosOS certificate.** Release ISOs are
+  signed: the stick's UEFI loader is one unified kernel image (kernel,
+  initrd, command line) signed with the LosOS db certificate, and that
+  loader checks the system image's hash before mounting it. A firmware that
+  trusts only Microsoft's keys refuses the stick (OVMF shows "Access Denied";
+  other firmware may skip it silently) until the certificate from the
+  stick's `EFI/losos/` or the release page is enrolled in its `db`. The
+  installed box's loader is not signed, so the box itself needs Secure Boot
+  off. The handbook's *Secure Boot and signed media* page has the steps and
+  the `SHA256SUMS.sig` check; `tests/secure-boot.nix` is the proof.
 - **UEFI or BIOS, both work.** On the installer ISO, a terminal menu lets you
   choose BIOS, UEFI, or autodetect (the firmware that booted the ISO). UEFI gets
   systemd-boot; legacy BIOS gets GRUB plus a 1 MiB BIOS boot partition on the
