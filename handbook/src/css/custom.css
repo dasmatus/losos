@@ -87,7 +87,10 @@
   --ifm-spacing-horizontal: 1rem;
   --docusaurus-highlighted-code-line-bg: var(--accent-wash);
   --doc-sidebar-width: 15rem;
-  --doc-sidebar-hidden-width: 2.5rem;
+  /* The gap between the sidebar card and the content card, and between the
+   * content card and the outline: the SPA's gap-6. One token, so a restyle
+   * moves both at once. */
+  --hb-column-gap: 1.5rem;
 }
 
 /* Infima declares its dark palette under [data-theme='dark'] with the same
@@ -374,19 +377,34 @@ html:not([data-theme-choice]) .hb-theme__item[data-choice='system'] {
   max-width: 72rem;
   margin: 0 auto;
   padding: 1.25rem 1.5rem 3rem;
-  gap: 1.5rem;
   width: 100%;
+}
+/* The sidebar and the content sit side by side in Docusaurus's docRoot, the
+ * flex row one level below docsWrapper, so the gap between the two cards
+ * goes here: on the wrapper it had nothing to space (the row is its only
+ * child) and the sidebar card ran into the content card. The row's gap is
+ * the SPA's gap-6 between its panel and its page. */
+[class*='docRoot'] {
+  gap: var(--hb-column-gap);
+}
+/* From the width the sidebar shows at, Docusaurus caps the content at the
+ * row minus the sidebar; take the gap off too, or the cap is wider than the
+ * space left and only flex shrink keeps the content inside the row. Only at
+ * that width: below it the sidebar is a sheet and the content has the row. */
+@media (min-width: 997px) {
+  main[class*='docMainContainer'] {
+    max-width: calc(100% - var(--doc-sidebar-width) - var(--hb-column-gap)) !important;
+  }
 }
 /* The sidebar is the SPA's panel: a recessed card, sticky under the bar. */
 .theme-doc-sidebar-container {
   border-right: 0 !important;
   margin-top: 0 !important;
-  /* Docusaurus clips the container for its hide animation; the search's
-   * result list has to be able to hang over the card's edge. */
+  /* Docusaurus clips the container (a leftover of its hide animation); the
+   * search's result list has to be able to hang over the card's edge. */
   clip-path: none !important;
   width: var(--doc-sidebar-width);
   flex: 0 0 var(--doc-sidebar-width);
-  transition: width 200ms ease-out, flex-basis 200ms ease-out;
 }
 .theme-doc-sidebar-container > div {
   top: calc(var(--ifm-navbar-height) + 1.25rem) !important;
@@ -580,35 +598,12 @@ html:not([data-theme-choice]) .hb-theme__item[data-choice='system'] {
 .hb-icon-reference { --hb-icon: var(--hb-icon-reference); }
 .hb-icon-project { --hb-icon: var(--hb-icon-project); }
 
-/* The hide-sidebar button (the SPA's SidebarTrigger) and the expand stub. */
-[class*='collapseSidebarButton'] {
-  border: 0 !important;
-  border-top: 1px solid var(--line) !important;
-  border-radius: 0 0 var(--card-radius) var(--card-radius) !important;
-  background: transparent !important;
-  color: var(--muted);
-  height: 36px !important;
-  margin: 0.5rem -0.5rem -0.5rem !important;
-  position: static !important;
-}
-[class*='collapseSidebarButton']:hover {
-  background: var(--surface) !important;
-  color: var(--ink);
-}
-[class*='expandButton'] {
-  background: var(--sunk) !important;
-  border: 1px solid var(--line);
-  border-radius: var(--card-radius);
-  color: var(--muted);
-  position: sticky;
-  top: calc(var(--ifm-navbar-height) + 1.25rem);
-  height: 40px;
-}
-.theme-doc-sidebar-container[class*='docSidebarContainerHidden'] {
-  width: var(--doc-sidebar-hidden-width);
-  flex-basis: var(--doc-sidebar-hidden-width);
-  cursor: default;
-}
+/* There is no hide-sidebar button. Docusaurus's "Collapse sidebar" chevron
+ * (sidebar.hideable in docusaurus.config.ts) used to sit at the bottom of
+ * the panel as a floating control the SPA has no counterpart to, so it is
+ * off and the rules that drew it, its expand stub and the hidden state's
+ * narrow column are gone with it; a reader on a phone gets the sheet, a
+ * reader on a desktop gets the panel, and neither can lose it. */
 
 /* ── Content: the SPA's Card ──────────────────────────────────────────── */
 main[class*='docMainContainer'] > .container {
@@ -623,6 +618,17 @@ main[class*='docMainContainer'] > .container.padding-top--md {
 }
 main[class*='docMainContainer'] > .container.padding-bottom--lg {
   padding-bottom: 0 !important;
+}
+/* Infima's grid spaces the content column and the outline column with a
+ * negative row margin and column padding; the same token as the sidebar's
+ * gap instead, so the three columns are spaced alike. */
+main[class*='docMainContainer'] > .container > .row {
+  margin: 0;
+  gap: var(--hb-column-gap);
+}
+main[class*='docMainContainer'] > .container > .row > .col {
+  padding-left: 0;
+  padding-right: 0;
 }
 [class*='docItemContainer'] {
   padding: 0;

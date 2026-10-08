@@ -109,7 +109,10 @@ const config: Config = {
     },
     docs: {
       sidebar: {
-        hideable: true,
+        // Not hideable: the SPA's panel has no collapse control, and the
+        // chevron Docusaurus floats at the bottom of the sidebar for it was
+        // the one thing on the page with no counterpart there.
+        hideable: false,
         autoCollapseCategories: false,
       },
     },
