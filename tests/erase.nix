@@ -298,8 +298,13 @@ pkgs.testers.nixosTest {
         machine.fail(f"test -e {policy()}/lent.txt")
         report = json.loads(machine.succeed("cat /var/lib/losos-erase/report.json"))
         assert report["hadEdge"] is False and report["erasedAt"] > 0, report
-        # The bucket is somewhere the wipe does not reach.
-        machine.succeed("mc ls local/box-backups | grep -c .")
+        # The bucket is somewhere the wipe does not reach. mc keeps its alias
+        # under /root, which is the tmpfs root, so it is set again.
+        machine.wait_for_unit("minio.service")
+        machine.succeed(
+            "mc alias set local http://127.0.0.1:9000 boxbackup boxbackup-secret-123",
+            "mc ls local/box-backups | grep -c .",
+        )
         assert api("GET", "/api/recovery")["code"] != old_code
 
     with subtest("a restore with the wrong code is refused in plain words"):
