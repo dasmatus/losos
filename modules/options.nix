@@ -1374,6 +1374,91 @@ in
       '';
     };
 
+    # ── DNS and custom domains (official edges) ──────────────────────────
+    # The edge serves one zone itself (Knot), and losos-registrar writes it:
+    # one name per box whose Stripe connected account is ready and carries
+    # the box's UUID, plus every tenant hostname that falls inside the zone.
+    # An owner points a domain of their own at that name and proves it with a
+    # TXT record; the edge then routes and certifies the domain. The whole of
+    # it only on an edge that holds an identity certificate, and the box
+    # names only with the market on (that is where the Stripe data lives).
+    # See backend-registrar/src/domains.rs and wiki/Master-Proxy.md.
+    edge.dns.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Serve the zone `edge.dns.zone` from this edge (Knot on port 53) and
+        let boxes bring their own domains (`/domains/*` on the registrar).
+        Needs `edge.dns.ipv4` and/or `edge.dns.ipv6`, an identity
+        certificate (the routes answer 503 until one is installed), and the
+        parent zone delegating `edge.dns.zone` to `edge.dns.nameservers`.
+      '';
+    };
+
+    edge.dns.zone = lib.mkOption {
+      type = lib.types.str;
+      default = "boxes.${config.losos.edge.publicDomain}";
+      defaultText = lib.literalExpression ''"boxes.''${config.losos.edge.publicDomain}"'';
+      description = ''
+        The zone this edge is authoritative for. Each box Stripe has checked
+        gets `<label>.<zone>`, a 16-hex-character label derived from its box
+        UUID; owners point their own domain at it. Set it to `publicDomain`
+        itself to have the edge assign every tenant hostname as well, in
+        place of a hand-made wildcard record.
+      '';
+    };
+
+    edge.dns.nameservers = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ "ns1.${config.losos.edge.dns.zone}" ];
+      defaultText = lib.literalExpression ''[ "ns1.''${config.losos.edge.dns.zone}" ]'';
+      description = ''
+        The zone's NS names. One inside the zone gets the edge's addresses as
+        glue; the parent zone needs the same NS records (and glue) to
+        delegate to this edge.
+      '';
+    };
+
+    edge.dns.hostmaster = lib.mkOption {
+      type = lib.types.str;
+      default = "hostmaster.${config.losos.edge.dns.zone}";
+      defaultText = lib.literalExpression ''"hostmaster.''${config.losos.edge.dns.zone}"'';
+      description = "SOA contact mailbox, written as a domain (`hostmaster.example.org` for hostmaster@example.org).";
+    };
+
+    edge.dns.ipv4 = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+      example = [ "203.0.113.7" ];
+      description = "The edge's public IPv4 addresses. Every name in the zone resolves to these.";
+    };
+
+    edge.dns.ipv6 = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+      example = [ "2001:db8::7" ];
+      description = "The edge's public IPv6 addresses. Every name in the zone resolves to these.";
+    };
+
+    edge.dns.listen = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [
+        "0.0.0.0@53"
+        "::@53"
+      ];
+      description = "Knot `server.listen` addresses (`address@port`).";
+    };
+
+    edge.dns.checkUrl = lib.mkOption {
+      type = lib.types.str;
+      default = "https://cloudflare-dns.com/dns-query";
+      description = ''
+        DNS-over-HTTPS endpoint (JSON API) the registrar looks an owner's
+        TXT and CNAME records up with. A public resolver sees the domain
+        names being checked; point this at your own if that matters.
+      '';
+    };
+
     edge.rathole.package = lib.mkOption {
       type = lib.types.package;
       default = pkgs.rathole;

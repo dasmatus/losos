@@ -72,6 +72,11 @@ let
   proxyHostName = config.losos.proxy.hostname;
   apachePort = config.losos.nextcloud.apachePort;
   adminpassFile = toString config.losos.nextcloud.adminpassFile;
+  # The custom domains that are live for this box on its edge, as JSON, kept
+  # by lososd (DEFAULT_PUBLIC_NAMES_FILE in backend/src/io_backend.rs; the
+  # same literal there). World-readable on purpose: the pod reads it and the
+  # names are in public DNS anyway.
+  publicNamesDir = "/var/lib/losos-public-names";
   gpu = config.losos.gpu.enable;
 
   nextcloudImage = config.losos.workloads.nextcloudImage;
@@ -181,9 +186,23 @@ let
     # box anyway — never a name. `occ` runs with no $_SERVER entry and gets
     # the static list. Not a wildcard like `192.168.*`: that trusts
     # `192.168.attacker.example` too.
+    #
+    # The owner's own domains (Settings -> Network -> Your own domain) are
+    # trusted too, read per request from the list lososd keeps
+    # ($losos_public_names, set before $CONFIG below). The official edge
+    # verified each one against the owner's DNS before routing it here.
     trusted_domains = ''
       array_values(array_filter(array_merge(
-        ${phpList ([ "${hostName}.local" hostName ] ++ lib.optional proxied proxyHostName)},
+        ${
+          phpList (
+            [
+              "${hostName}.local"
+              hostName
+            ]
+            ++ lib.optional proxied proxyHostName
+          )
+        },
+        $losos_public_names,
         (function () {
           $own = $_SERVER['HTTP_X_LOSOS_SERVER_ADDR'] ?? null;
           if (!is_string($own) || filter_var($own, FILTER_VALIDATE_IP) === false) {
@@ -206,7 +225,14 @@ let
   # clients redirected back to http.
   // lib.optionalAttrs proxied {
     overwriteprotocol = phpStr "https";
-    overwritehost = phpStr proxyHostName;
+    # The edge name, unless the request came in on one of the owner's own
+    # domains: then that one, so a page opened at https://cloud.example.org
+    # keeps its links there instead of bouncing to the edge name.
+    overwritehost = ''
+      (function () use ($losos_public_names) {
+        $host = strtolower(preg_replace('/:[0-9]+$/', "", (string) ($_SERVER['HTTP_X_FORWARDED_HOST'] ?? $_SERVER['HTTP_HOST'] ?? "")));
+        return in_array($host, $losos_public_names, true) ? $host : ${phpStr proxyHostName};
+      })()'';
   };
 
   nextcloudConf = confDir "losos-nextcloud-conf" {
@@ -218,6 +244,22 @@ let
       <?php
       // Rendered by modules/workloads.nix and bind-mounted read-only from the
       // store. Editing it on the box is pointless: the next rebuild replaces it.
+
+      // The owner's live custom domains: a JSON list of host names lososd
+      // writes. Read per request; anything that is not a plain host name is
+      // dropped, whatever the file says.
+      $losos_public_names = (function () {
+        $raw = @file_get_contents('/etc/losos/public-names/domains.json');
+        $list = is_string($raw) ? json_decode($raw, true) : null;
+        if (!is_array($list)) {
+          return [];
+        }
+        return array_values(array_filter($list, function ($n) {
+          return is_string($n) && strlen($n) <= 253
+            && preg_match('/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/', $n) === 1;
+        }));
+      })();
+
       $CONFIG = [
       ${
         lib.concatStrings (
@@ -361,6 +403,11 @@ let
         readOnly = true;
       }
       {
+        name = "publicnames";
+        mountPath = "/etc/losos/public-names";
+        readOnly = true;
+      }
+      {
         name = "pgsock";
         mountPath = pgSocketDir;
       }
@@ -395,6 +442,15 @@ let
         hostPath = {
           path = adminpassFile;
           type = "File";
+        };
+      }
+      {
+        # A directory, not the file: lososd replaces the file by rename, and
+        # a file bind mount would keep showing the pod the old inode.
+        name = "publicnames";
+        hostPath = {
+          path = publicNamesDir;
+          type = "Directory";
         };
       }
       {
@@ -535,6 +591,7 @@ in
           # the ExecStartPost below covers the first boot, where the file is
           # created at multi-user.target, long after tmpfiles has run.
           "z ${adminpassFile} 0600 ${toString nextcloudUid} ${toString nextcloudUid} -"
+          "d ${publicNamesDir} 0755 root root -"
           "L+ ${staticPodDir}/nextcloud.yaml - - - - ${nextcloudPod}"
         ]
       else
