@@ -112,6 +112,11 @@ def main():
         os.makedirs(os.path.dirname(path), exist_ok=True)
         shutil.copyfile(small, path)
         print("wrote", os.path.relpath(path, HERE))
+    # The public site's landing page shows the plate large, at 240 CSS px,
+    # so it gets the 512 px cut-out itself.
+    hero = os.path.join(HERE, "..", "..", "..", "handbook", "static", "img", "plate.png")
+    shutil.copyfile(os.path.join(HERE, "plate.png"), hero)
+    print("wrote", os.path.relpath(hero, HERE))
 
 
 if __name__ == "__main__":
