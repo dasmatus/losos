@@ -16,6 +16,8 @@ never seen it and will not trust it yet. Everything after this step, the
 password you are about to set included, should travel over that encrypted
 connection, so the wizard asks you to install the certificate first.
 
+<img src={require("../img/wizard-step1-trust.png").default} alt="Step 1 of the wizard: the one-line installers for macOS, Linux and Windows, the certificate download and the fingerprint to compare." width="520" />
+
 The quick way is one line in a terminal, shown for the computer you are on:
 
 ```bash title="macOS and Linux"
@@ -56,15 +58,21 @@ letter, an upper-case letter, a digit and a symbol such as `-` or `!`; the
 wizard ticks each rule as you type. This one password opens LosOS cloud, LosOS
 Git and the admin pages.
 
+<img src={require("../img/wizard-step2-password.png").default} alt="Step 2 with a password typed in: each of the four rules is ticked as it is met." width="520" />
+
 The step waits until LosOS cloud has finished its own first start, which takes
 a few minutes on a fresh box ("waiting for" is shown with the reason). It
 continues on its own.
+
+<img src={require("../img/wizard-step2-waiting.png").default} alt="Step 2 while LosOS cloud is still installing itself: the page says what it is waiting for and continues on its own." width="520" />
 
 When the password is set, the page shows the **spare admin key** once: 64
 characters, with **Copy** and **Print** buttons. Print it or write it down and
 keep it away from the box. It is for the one situation the password cannot
 cover, LosOS cloud not running, and it cannot be shown again. See
 [Sign-in and the spare key](../manual/sign-in-and-spare-key).
+
+<img src={require("../img/wizard-step2-spare-key.png").default} alt="Step 2 after the password is set: the sign-in name, and the spare admin key shown once with Copy and Print." width="520" />
 
 On an HTTPS connection the step also offers a **passkey**, so a phone or a
 laptop can sign in without typing the password.
@@ -74,3 +82,5 @@ laptop can sign in without typing the password.
 The wizard opens LosOS cloud inside the page so you can sign in with the
 password you just set, and then takes you to the admin pages' overview. From
 here on, see [The admin pages](../manual/admin-pages).
+
+![Step 3: You are signed in. That was the last step.](../img/wizard-step3-sign-in.png)

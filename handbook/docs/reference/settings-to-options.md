@@ -47,6 +47,8 @@ documents in full.
 | The binary cache                     | `losos.cache.substituters`         | `https://proxy.losos.dasmat.us`             |
 | Who may read `/setup/state.json` from a web page | `losos.setup.finderOrigins` | the LosOS edge's find page             |
 
+![The Advanced pane, where the options not on the other panes are edited, each checked before Apply.](../img/settings-advanced.png)
+
 ## Rules the panes enforce
 
 - A name is letters, digits and hyphens, starting and ending with a letter

@@ -13,6 +13,8 @@ photos, calendar and code, and that looks after itself. It has no screen to
 log in to, no shell and no SSH: you reach it from a web browser on the same
 network, and once a night it rebuilds and restarts itself.
 
+![The admin pages of a box called mattbox: the app tiles, the storage card and the board of widgets.](./img/overview.png)
+
 This handbook is the owner's manual. It is written for the person who has the
 box on their desk, not for the people who build it (they have the
 [wiki](https://github.com/dasmatus/losos/wiki)).

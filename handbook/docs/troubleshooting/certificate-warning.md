@@ -27,6 +27,8 @@ the clear.
 The wizard's first step shows the one-line installer; after setup the same
 files are still served by the box, LAN-only:
 
+<img src={require("../img/wizard-step1-trust.png").default} alt="The wizard's certificate step, where the one-line installers and the fingerprint are." width="520" />
+
 ```bash title="macOS and Linux"
 curl -fsSL http://<address>/setup/trust.sh | sh
 ```

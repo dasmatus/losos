@@ -24,6 +24,8 @@ just now) and **Changes** (settings changes applied, newest first). Each draws
 in one of four shapes: heatmap, number, bar or list. Built-ins are written in
 the admin page's own code and arrive with system updates.
 
+![The widget gallery: the built-in widgets, Build one and Write one.](../img/widget-gallery.png)
+
 ## Built from readings
 
 **Build one** composes a widget without code: pick a reading the box
@@ -34,11 +36,15 @@ lives in the browser you made it in, changes nothing on the box and cannot
 reach the network, the page or anything but its one reading. That is also
 its limit: no branching across readings, no loops, no memory between runs.
 
+![Build one: a reading, a shape, the expression to show and a preview of the tile.](../img/widget-build-one.png)
+
 ## Written by hand
 
 **Write one** takes HTML, style and script of your own. The widget is kept on
 the box, so every browser that opens the box sees it, and it is listed on
 **Settings → Look**, where it can be edited and deleted.
+
+![Write one: the source of a hand-written widget beside its live preview in the sandboxed frame.](../img/widget-write-one.png)
 
 A hand-written widget runs inside a **sandboxed frame**: an origin of its
 own with no access to the admin pages, the admin key or the box's API. It
@@ -59,11 +65,6 @@ the box's API, and runs in every browser that opens the box, so read anything
 you paste from the internet before you keep it. Up to 24 widgets of 64 KiB
 each.
 
-:::info[Being merged]
-Hand-written widgets and background pictures are the subject of pull request
-#73, which may not be on your box yet. If the gallery shows only the first two
-kinds, the nightly update will bring the third.
-:::
 
 See [Look and widgets](../manual/look-and-widgets) for the board itself,
 backgrounds and the veil.

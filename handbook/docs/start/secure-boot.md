@@ -28,6 +28,8 @@ check cover the whole boot:
    stick before mounting it. An altered image is refused with *THE MEDIUM
    HAS BEEN ALTERED* on the screen and the machine powers off.
 
+![A stick whose system image was changed after signing: the loader refuses it with THE MEDIUM HAS BEEN ALTERED and prints the expected and the found hash.](../img/secure-boot-refused-tampered.png)
+
 The installer then prints what happened, above its firmware menu:
 
 ```
@@ -38,6 +40,8 @@ or `Secure Boot: disabled ...` when the firmware checked nothing, or
 `Secure Boot: not available (legacy BIOS boot)`. Secure Boot is a UEFI
 feature; a stick booted in BIOS mode is verified by nothing, exactly as any
 other BIOS boot.
+
+![The installer's first screen on a signed stick: Secure Boot enabled, the firmware verified this medium's signature.](../img/installer-menu.png)
 
 What is **not** covered: the installed system. The box boots with
 systemd-boot from its own disk, and neither that loader nor the kernels its
@@ -56,6 +60,8 @@ Secure Boot on it refuses the LosOS stick: OVMF and most firmware print
 *Access Denied*; some skip the stick silently. That refusal is the
 signature working. To boot the stick with Secure Boot on, enrol the LosOS
 certificate into the firmware's `db`:
+
+![Firmware that trusts only Microsoft's keys refusing the LosOS stick: Access Denied, rejected probably by Secure Boot.](../img/secure-boot-refused-microsoft-keys.png)
 
 1. Get the certificate. It is on the stick itself at
    `EFI/losos/losos-secure-boot.cer` (DER) and `.pem`, and on every

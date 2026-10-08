@@ -20,9 +20,13 @@ pays out.
 | **The market**         | Being paid for the disk and CPU you share, and buying some from others. Payment is by card through Stripe; the edge keeps a 4 % fee. Built end to end, not open yet: a platform needs a registered business behind it. The Market tab shows as "soon" until then. |
 | **Find my box**        | The edge hosts the page that finds a box on your LAN from a browser.                                        |
 
+![The Market pane as it will look once it opens: what this box has bought, storage and compute to buy from other boxes, and payouts through Stripe. On a box today the pane is greyed with soon.](../img/market-open.png)
+
 ## How a box finds its edge
 
 Every 20 seconds the box looks for an edge on two roads:
+
+![How a box finds an edge: it looks on the LAN and at the configured address every 20 seconds, challenges each edge that answers, and four checks decide whether the edge is official; no answer means sharing stays refused.](../img/edge-discovery.svg)
 
 - **on the local network**, by DNS-SD: an edge set up to announce itself
   publishes `_losos-edge._tcp` over mDNS with the address of its API, and the
@@ -37,6 +41,8 @@ say. The **Mesh pane** shows one row per edge, **On this network** or **Over
 the internet**, each with a sign saying whether it is official (below), or
 **No edge proxy found** with what the box tried: "This box searched its
 network and asked `<address>`; nothing answered."
+
+![The Mesh pane with the official LosOS edge found over the internet, marked with a check.](../img/mesh-official.png)
 
 While nothing answers, the box **refuses to turn network-dependent sharing
 on**. Switching storage to mesh mode, **Join the mesh** and **Share this
@@ -66,6 +72,8 @@ treats the edge as a [company edge](company-edge): discovery, remote access
 and sharing work, trading does not, and the Market pane says "The edge proxy
 this box found is not run by LosOS." Nothing a company configures can make
 its own edge official, by design.
+
+![The warning sign beside an edge that is not official, with its tooltip listing what that edge cannot do for this box.](../img/mesh-warning-tooltip.png)
 
 :::note[Until the key is published]
 The root key file every box ships is empty until the project publishes the

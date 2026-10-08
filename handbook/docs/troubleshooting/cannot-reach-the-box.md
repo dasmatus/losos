@@ -16,6 +16,8 @@ answers.
 
 ## From the LAN
 
+![The banner the box shows when it has booted and has a network, with the address to type.](../img/tty1-banner.png)
+
 1. **Read the screen.** The banner shows the address the box has *now*. A
    router that restarted may have given it a new one; the banner redraws by
    itself. Type that address, as `http://`, not the name and not `https://`.

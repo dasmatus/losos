@@ -30,6 +30,8 @@ Linux desktops do. These do not:
 
 ## What to do
 
+![The banner on the box's screen: the IP address works where the .local name does not.](../img/tty1-banner.png)
+
 - **Use the address.** Everything answers on it, the apps included; the
   About pane shows which address your browser is using. Only two things
   care about the name: the `https://` certificate, which is issued for the

@@ -26,6 +26,8 @@ and has no shell to recover a lockout from, so a thief who takes the whole
 box with its chip can still boot it. The [security model](../reference/security-model)
 is frank about that.
 
+![Proof from an install in a virtual machine with an emulated TPM: the encrypted volume has a systemd-tpm2 token in key slot 1, and the key file stays on the encrypted volume only.](../img/install-done-tpm.png)
+
 A box never asks for a passphrase at boot. If yours does, something is
 wrong: see [Stuck at a passphrase prompt](../troubleshooting/stuck-at-passphrase).
 
@@ -41,6 +43,8 @@ and a firmware that has the LosOS certificate enrolled verifies it; the
 installed box's own loader is not signed, so it needs Secure Boot off. See
 [Secure Boot and signed media](../start/secure-boot).
 
+![The installer's firmware menu: 1 BIOS, 2 UEFI, 3 Autodetect, chosen automatically after 30 seconds.](../img/installer-menu.png)
+
 ## The three media
 
 | Medium                       | Size      | Use                                                                                          |
@@ -54,3 +58,5 @@ installed box's own loader is not signed, so it needs Secure Boot off. See
 The installer deliberately leaves 10 % of the disk unused, as a reserve the
 box can grow into later without being opened. The Storage pane's **Use the
 reserve** button claims it; see [Disk growth](../manual/disk-growth).
+
+![The disk from the outside in: one volume group holding the logical volume, the encryption layer inside it and the filesystem inside that, with a 10 % reserve beside them.](../img/disk-growth.svg)

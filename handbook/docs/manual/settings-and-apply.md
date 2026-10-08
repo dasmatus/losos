@@ -25,6 +25,10 @@ yet*, with **Discard** and **Apply**. A field that fails its check (a name
 with a space, a port out of range) is marked, and Apply waits until it is
 fixed. Nothing reaches the box until you press Apply.
 
+![A name with a space in it: the field is marked and Apply waits until it is fixed.](../img/settings-apply-invalid.png)
+
+![The Network pane with a new name typed in: the apply bar says one change is not applied yet.](../img/settings-apply-bar.png)
+
 ## What Apply does
 
 1. The box writes your choices into its overrides file.
@@ -36,6 +40,8 @@ fixed. Nothing reaches the box until you press Apply.
    applied* with the reason the box gave.
 
 ## Two settings that change the address
+
+![The History pane: every applied change, mode change and reset is a commit in the box's own description, newest first.](../img/settings-history.png)
 
 - **Name**: the box answers to `<name>.local`, and the apps hand out links on
   that name. After renaming, reach the box at its IP address (unchanged) or
@@ -58,3 +64,5 @@ description:
 The [settings-to-options table](../reference/settings-to-options) maps every
 pane field to the Nix option behind it, for the day you want to change
 something the panes do not offer.
+
+![The Advanced pane: every losos option with its current value and a typed editor, and links to the panes that own the common ones.](../img/settings-advanced.png)

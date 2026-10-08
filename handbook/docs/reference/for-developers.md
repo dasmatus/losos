@@ -38,6 +38,37 @@ Every push to `main` publishes the site to [losos.dasmat.us](https://losos.dasma
 nix run nixpkgs#prefetch-npm-deps -- handbook/package-lock.json
 ```
 
+### Pictures
+
+Pictures live in `handbook/docs/img/`. There are three kinds:
+
+- **Admin pages and wizard.** `admin-ui/app/tests/handbook-screens.mjs`
+  takes them from the built SPA against a stubbed lososd, so they show the
+  current UI and logo without a box. It writes 2x PNGs, which go into the
+  handbook downscaled to 1600 px wide and reduced to 256 colours.
+- **Screens of a real machine.** The installer, the tty1 banner, the
+  passphrase prompt and the Secure Boot refusals come from VM runs
+  (`tests/secure-boot.nix`, the install demos). They are not retaken by a
+  script.
+- **Diagrams.** These are hand-written SVG on a white card, in the palette
+  of `src/css/tokens.css`, so they read the same in the light and the dark
+  theme. Edit them as text.
+
+```sh
+cd admin-ui/app
+npm run build
+node tests/handbook-screens.mjs /tmp/handbook-screens          # every shot
+node tests/handbook-screens.mjs /tmp/handbook-screens mesh     # names containing "mesh"
+```
+
+Set `LOSOS_CHROMIUM` to a Chromium binary if Playwright's own is missing.
+The Market pane is planned and its route falls back, so the two market
+shots run only with `LOSOS_SHOOT_MARKET=1` against a build with
+`planned: false` in `src/screens/settings/panes.ts`. Never commit that
+change.
+
+Write alt text that says what the picture shows, not what the page says.
+
 ## Translating
 
 Slovak and German are wired in. The interface strings live in

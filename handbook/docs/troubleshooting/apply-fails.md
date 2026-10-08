@@ -14,6 +14,8 @@ widget lists the job as failed. The box keeps running its old settings.
 
 </div>
 
+![The Overview after a failed Apply: the Settings tile carries a red dot and A change failed.](../img/overview-apply-failed.png)
+
 ## What a failed Apply means
 
 Nothing changed. A rebuild either completes and is switched in, or fails and

@@ -23,6 +23,8 @@ it on their own.
   it as **On this network**.
 - The admin pages of every box stay LAN-only.
 
+![The Mesh pane on a company network: the office edge found On this network, with the warning sign because it is not official.](../img/mesh-company.png)
+
 ## What is different
 
 - **No market.** A company's edge cannot present the LosOS signature (see
@@ -50,6 +52,8 @@ operator's walkthrough is on the
 repository carries a demonstration of exactly this setup, two boxes and an
 edge on one virtual network, under `demo/edge-lan/` (`run.sh` boots it,
 `CHECKLIST.md` is the order it walks through).
+
+![The screen of an edge gateway machine from the demonstration: it announces itself on the network, and the boxes on that network find it on their own.](../img/edge-gateway-tty1.png)
 
 In short:
 

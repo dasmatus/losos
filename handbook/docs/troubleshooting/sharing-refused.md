@@ -16,6 +16,8 @@ change with a reason.
 
 ## The reasons, and which one you have
 
+![The Mesh pane with no edge in reach: the sharing switches are greyed with Needs an edge proxy in reach.](../img/mesh-none.png)
+
 | What you see                                           | Reason                                                                                      | What to do                                                                 |
 | ------------------------------------------------------ | ------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
 | Switch greyed, "Needs an edge proxy in reach."; the Mesh pane says **No edge proxy found** | No edge was found. Storage and compute sharing need somewhere to share *to*. | [No edge found](edge-not-found).                                            |

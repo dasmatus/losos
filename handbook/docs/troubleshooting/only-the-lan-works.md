@@ -36,6 +36,8 @@ it.
 
 ## What still works
 
+![A box whose internet is down but whose company edge on the LAN still answers: the Mesh pane lists it On this network.](../img/mesh-company.png)
+
 | What                                | Why it does not need the internet                                                                                |
 | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
 | Signing in to the admin pages       | The password is checked against LosOS cloud on the box itself, over the box's own loopback. The printed spare key works too. |

@@ -17,9 +17,13 @@ loopback connection. The box keeps no second copy, so changing the password
 inside LosOS cloud (Settings → Personal → Security) changes it for the admin
 pages too, at once.
 
+![The Unlock this box dialog asking for the owner's password, with the link to use the spare admin key.](../img/unlock-dialog.png)
+
 A new password needs at least 12 characters, a lower-case letter, an
 upper-case letter, a digit and a symbol. A password set before that rule
 existed still signs in.
+
+![A wrong password: the dialog says the password was not accepted and stays open.](../img/unlock-refused.png)
 
 The tab stays unlocked until it is closed. Ten wrong attempts from one
 computer lock that computer out for a growing while (one second, doubling, up
@@ -34,10 +38,14 @@ and **Print** buttons. It is the spare, for the one case the password cannot
 cover: LosOS cloud not running, so nothing can check the password. The
 unlock dialog then says so and offers **Use the spare admin key instead**.
 
+![The unlock dialog while LosOS cloud is not running: nothing can check the password, so the dialog offers the spare admin key.](../img/unlock-dialog-cloud-down.png)
+
 Keep the printed sheet away from the box. Anyone with the key can change
 every setting, which is as much as root. There is no way to see it again or
 to rotate it from the box, because the box has no shell. Losing the password
 *and* the spare key means reinstalling from the stick, which wipes the disk.
+
+![The unlock dialog asking for the 64-character spare admin key.](../img/unlock-spare-key.png)
 
 ## Passkeys
 

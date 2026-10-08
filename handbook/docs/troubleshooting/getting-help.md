@@ -13,6 +13,8 @@ maintainer can ask for, so collect it first.
 
 ## What to include
 
+![The About pane, whose rows go into a report: name, address, storage mode and mesh state.](../img/settings-about.png)
+
 1. **What you did and what you saw**, with the exact text of any message
    and a screenshot if there was one.
 2. **The banner's text**: the address and the `.local` name.

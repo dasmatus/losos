@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="430" viewBox="0 0 1000 430" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'DejaVu Sans', sans-serif" font-size="14" fill="#18212a">
+  <title>Three setup types: a box on its own, a box with the LosOS edge, a company with its own edge</title>
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#5c6a77"/></marker>
+    <pattern id="h" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="7" height="7" fill="#e2eff1"/><line x1="0" y1="0" x2="0" y2="7" stroke="#9cc5cc" stroke-width="2.5"/></pattern>
+  </defs>
+  <rect x="0.5" y="0.5" width="999" height="429" rx="12" fill="#ffffff" stroke="#dce1e6"/>
+
+  <!-- 1. on its own -->
+  <text x="30" y="40" font-size="16" font-weight="650">1. A box on its own</text>
+  <rect x="30" y="64" width="290" height="250" rx="10" fill="#f3f5f7" stroke="#dce1e6" stroke-dasharray="5 4"/>
+  <text x="44" y="86" fill="#5c6a77" font-size="13">Home network</text>
+  <rect x="70" y="110" width="210" height="46" rx="8" fill="#ffffff" stroke="#dce1e6"/>
+  <text x="175" y="138" text-anchor="middle">Laptop or phone</text>
+  <line x1="175" y1="158" x2="175" y2="216" stroke="#5c6a77" stroke-width="1.5" marker-end="url(#ar)"/>
+  <rect x="70" y="220" width="210" height="62" rx="8" fill="#e2eff1" stroke="#0e6e7d" stroke-width="1.5"/>
+  <text x="175" y="245" text-anchor="middle" font-weight="650">LosOS box</text>
+  <text x="175" y="266" text-anchor="middle" fill="#5c6a77" font-size="13">cloud · Git · admin pages</text>
+  <text x="30" y="346" fill="#5c6a77" font-size="13">Works with nothing else running.</text>
+  <text x="30" y="366" fill="#5c6a77" font-size="13">Reachable on the home network only.</text>
+  <text x="30" y="386" fill="#5c6a77" font-size="13">No mesh, no market.</text>
+
+  <!-- 2. with the LosOS edge -->
+  <text x="355" y="40" font-size="16" font-weight="650">2. A box with the LosOS edge</text>
+  <rect x="355" y="64" width="290" height="104" rx="10" fill="#f3f5f7" stroke="#dce1e6" stroke-dasharray="5 4"/>
+  <text x="369" y="86" fill="#5c6a77" font-size="13">Internet</text>
+  <rect x="395" y="96" width="210" height="58" rx="8" fill="#ffffff" stroke="#2e7357" stroke-width="1.5"/>
+  <text x="500" y="119" text-anchor="middle" font-weight="650">LosOS edge</text>
+  <text x="500" y="139" text-anchor="middle" fill="#2e7357" font-size="13">official: signed by LosOS</text>
+  <rect x="355" y="210" width="290" height="104" rx="10" fill="#f3f5f7" stroke="#dce1e6" stroke-dasharray="5 4"/>
+  <text x="369" y="232" fill="#5c6a77" font-size="13">Home network</text>
+  <rect x="395" y="244" width="210" height="56" rx="8" fill="#e2eff1" stroke="#0e6e7d" stroke-width="1.5"/>
+  <text x="500" y="268" text-anchor="middle" font-weight="650">LosOS box</text>
+  <text x="500" y="288" text-anchor="middle" fill="#5c6a77" font-size="13">opens the tunnel outwards</text>
+  <line x1="470" y1="242" x2="470" y2="158" stroke="#0e6e7d" stroke-width="1.5" marker-end="url(#ar)"/>
+  <text x="462" y="196" text-anchor="end" fill="#0e6e7d" font-size="12">tunnel</text>
+  <line x1="530" y1="158" x2="530" y2="242" stroke="#5c6a77" stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#ar)"/>
+  <text x="538" y="196" fill="#5c6a77" font-size="12">you, from anywhere</text>
+  <text x="355" y="346" fill="#5c6a77" font-size="13">Cloud and Git from anywhere.</text>
+  <text x="355" y="366" fill="#5c6a77" font-size="13">The mesh with other owners' boxes.</text>
+  <text x="355" y="386" fill="#5c6a77" font-size="13">The market, once it opens.</text>
+
+  <!-- 3. company edge -->
+  <text x="680" y="40" font-size="16" font-weight="650">3. A company with its own edge</text>
+  <rect x="680" y="64" width="290" height="250" rx="10" fill="#f3f5f7" stroke="#dce1e6" stroke-dasharray="5 4"/>
+  <text x="694" y="86" fill="#5c6a77" font-size="13">Office network</text>
+  <rect x="720" y="100" width="210" height="58" rx="8" fill="#ffffff" stroke="#8c6512" stroke-width="1.5"/>
+  <text x="825" y="123" text-anchor="middle" font-weight="650">Office edge</text>
+  <text x="825" y="143" text-anchor="middle" fill="#8c6512" font-size="13">found on the LAN, not official</text>
+  <rect x="700" y="240" width="76" height="52" rx="8" fill="#e2eff1" stroke="#0e6e7d" stroke-width="1.5"/>
+  <text x="738" y="271" text-anchor="middle" font-size="13" font-weight="650">box</text>
+  <rect x="787" y="240" width="76" height="52" rx="8" fill="#e2eff1" stroke="#0e6e7d" stroke-width="1.5"/>
+  <text x="825" y="271" text-anchor="middle" font-size="13" font-weight="650">box</text>
+  <rect x="874" y="240" width="76" height="52" rx="8" fill="#e2eff1" stroke="#0e6e7d" stroke-width="1.5"/>
+  <text x="912" y="271" text-anchor="middle" font-size="13" font-weight="650">box</text>
+  <line x1="738" y1="238" x2="790" y2="162" stroke="#5c6a77" stroke-width="1.5" marker-end="url(#ar)"/>
+  <line x1="825" y1="238" x2="825" y2="162" stroke="#5c6a77" stroke-width="1.5" marker-end="url(#ar)"/>
+  <line x1="912" y1="238" x2="860" y2="162" stroke="#5c6a77" stroke-width="1.5" marker-end="url(#ar)"/>
+  <rect x="700" y="190" width="250" height="24" rx="6" fill="url(#h)" stroke="#9cc5cc"/>
+  <text x="825" y="207" text-anchor="middle" font-size="12">one pool of the boxes' spare room</text>
+  <text x="680" y="346" fill="#5c6a77" font-size="13">The mesh stays inside the company.</text>
+  <text x="680" y="366" fill="#5c6a77" font-size="13">Remote access through the company's edge.</text>
+  <text x="680" y="386" fill="#5c6a77" font-size="13">No market: only the LosOS edge trades.</text>
+</svg>

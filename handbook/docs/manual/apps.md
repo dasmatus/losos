@@ -13,6 +13,8 @@ name. Sign in with the owner's password. Everything Nextcloud can do, LosOS
 cloud can: the desktop client syncs a folder on your computer, the phone apps
 upload photos, calendars and contacts sync over CalDAV and CardDAV.
 
+![The marks of LosOS cloud and LosOS Git in the light and the dark theme, drawn from the plate of salmon.](../img/cloud-and-git-marks.png)
+
 The Overview's **app tiles** open each of these directly. They go through
 `index.php` on purpose, which every configuration answers.
 
@@ -48,6 +50,8 @@ For each app: whether it is on, which [mode](../types/app-modes) it runs in,
 and a link. Below that, **Find more** searches LosOS cloud's app catalogue
 (the box fetches the catalogue; the search needs the internet). An app you
 like is installed from inside LosOS cloud, by its owner account.
+
+![The Apps pane with Find more: a search of LosOS cloud's app catalogue and the results with where each comes from.](../img/apps-find-more.png)
 
 ## Trusted addresses
 

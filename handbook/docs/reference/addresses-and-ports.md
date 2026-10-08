@@ -7,6 +7,8 @@ sidebar_position: 1
 
 ## On the box
 
+![Inside a box: nginx holds ports 80 and 443 and routes by path to the admin pages, the control API, LosOS cloud, LosOS Git and this handbook.](../img/box-architecture.svg)
+
 | Path                          | What                                               | Who may open it                     |
 | ----------------------------- | -------------------------------------------------- | ----------------------------------- |
 | `/`                           | The admin pages                                     | the local network only              |

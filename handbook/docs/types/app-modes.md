@@ -37,7 +37,11 @@ in the mesh cluster, because a cluster member cannot start while its server
 is unreachable, and the box restarts every night at 00:07: an edge outage
 over midnight would otherwise take your own files offline.
 
+![Inside a box: the box's own cluster runs LosOS cloud and LosOS Git, the mesh agent belongs to a different cluster whose server is the edge.](../img/box-architecture.svg)
+
 ## Where the apps are
+
+![The Apps pane: LosOS cloud and LosOS Git, each with its mode and whether it is on, and Find more below.](../img/apps.png)
 
 | App          | Address             | Note                                                                                      |
 | ------------ | ------------------- | ----------------------------------------------------------------------------------------- |
