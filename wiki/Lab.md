@@ -23,9 +23,17 @@ is signed in, it says so and opens the built-in setups.
   04:30 garbage collection, and the start and end of the compute window.
   Simulation holds every packet until you press Play or Step, and lists each
   hop with its protocol.
+- **Your own setups.** Start from Empty canvas or any built-in setup, drag
+  devices up from the tray, and pull copper, fiber or Wi-Fi between their
+  ports. **Save** downloads the setup as a `.losos-lab.json` file and
+  **Open** loads one back. The last setup you changed is also kept in the
+  browser and listed as "Last setup" in the picker. An opened file is
+  rebuilt with the same tools as the tray, so anything in it the tray could
+  not make is left out, and the Lab says how many parts it dropped.
 - **Built-in setups.** Two sites behind one official edge, a single home box,
   a company with its own gateway, a LAN with no internet, and three textbook
-  shapes: star, bus and web.
+  shapes: star, bus and web. They are only starting points, built with the
+  same tray.
 - **A laptop running LosOS Desktop.** It has the sign-in screen, the
   overview, and the browser you can point at any box or edge in the diagram.
 - **Network gear** (routers, switches, Wi-Fi access points and a coax bus)

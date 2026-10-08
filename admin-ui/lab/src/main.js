@@ -10,7 +10,7 @@ function splashDone() {
   const s = document.getElementById('splash'); if (!s) return;
   setTimeout(() => { s.classList.add('gone'); setTimeout(() => s.remove(), 500); }, Math.max(0, 1400 - (performance.now() - splashShown)));
 }
-$('#scenario').onchange = (e) => loadScenario(e.target.value);
+$('#scenario').onchange = (e) => pickScenario(e.target.value);
 document.querySelectorAll('[data-view]').forEach(b => b.onclick = () => { UI.view = b.dataset.view; fitView(); renderAll({ keepSide: true }); });
 document.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => {
   SIM.mode = b.dataset.mode; SIM.playing = false;
@@ -37,6 +37,7 @@ Promise.allSettled([startEngine, readBox]).then(async () => {
   // Signed out, "This box" stays in the list, greyed, saying what it needs.
   const signedOut = box && box.error ? `<option disabled>This box: ${esc(box.error.startsWith('Sign in') ? 'sign in on the admin page first' : 'not answering')}</option>` : '';
   $('#scenario').innerHTML = signedOut + keys.map(k => `<option value="${k}">${esc(SCENARIOS[k].name)}</option>`).join('');
+  initFiles();
   splashSay('Placing the devices');
   loadScenario(keys[0] === 'this-box' ? 'this-box' : 'two-sites');
   $('#scenario').value = UI.scenario;
