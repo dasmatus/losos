@@ -21,9 +21,9 @@
  * carries `ready` and `waitingFor`, so the form stays disabled behind a
  * waiting panel that polls every few seconds and opens on its own, and a 503
  * from the claim itself (the race between the last poll and the submit) goes
- * back to waiting rather than reading as an error. The recorded install demo
- * showed what this replaces: an owner typing a good password into a bare
- * "command failed; see the lososd journal".
+ * back to waiting rather than reading as an error. Before that, an owner
+ * who typed a good password in that window got a bare "command failed; see
+ * the lososd journal".
  *
  * A password is collected whatever else happens. The passkey is an addition,
  * never a substitute: the desktop and phone sync clients authenticate with a
@@ -212,10 +212,9 @@ function PasswordForm({
 
   // The form is open only once lososd has said the box is ready. Before the
   // first answer (`unknown`) nothing is shown, so a ready box never flashes a
-  // waiting panel, but the fields are already disabled: on take 9 of the
-  // recorded install demo (2026-10-06) that first answer took twelve seconds
-  // on a busy box, the form was open meanwhile, and a password typed into it
-  // sat greyed out behind the panel that then appeared.
+  // waiting panel, but the fields are already disabled: on a busy box that
+  // first answer can take twelve seconds, and a form left open meanwhile let
+  // a password be typed that then sat greyed out behind the panel.
   const waiting = readiness.state.kind !== "ready";
 
   /* Someone who sat through the waiting panel is told the moment it lifts,
@@ -426,15 +425,15 @@ const LOST_REPLY_PAUSE_MS = 5000;
 
 /* A claim whose answer was lost on the way, as opposed to one lososd refused.
  *
- * Take 6 of the recorded install demo (2026-10-05): on a box still warming
- * up, setting the password took longer than the proxy in front of lososd
- * waited, the browser got "HTTP 504", and lososd finished anyway — password
- * set, box claimed, and the admin key, which that reply carries exactly once,
- * delivered to nobody. The step showed an error over a box that was in fact
- * owned by the person reading it. lososd now answers the same reply again to
- * the same password for a few minutes after a claim (backend/src/receipt.rs),
- * so the right move on a lost reply is to ask again, with the same password,
- * rather than to report a failure the owner cannot act on.
+ * On a box still warming up, setting the password once took longer than the
+ * proxy in front of lososd waited, the browser got "HTTP 504", and lososd
+ * finished anyway — password set, box claimed, and the admin key, which that
+ * reply carries exactly once, delivered to nobody. The step showed an error
+ * over a box that was in fact owned by the person reading it. lososd now
+ * answers the same reply again to the same password for a few minutes after a
+ * claim (backend/src/receipt.rs), so the right move on a lost reply is to ask
+ * again, with the same password, rather than to report a failure the owner
+ * cannot act on.
  *
  * 504 and 502 are the proxy speaking for a lososd that did not answer in
  * time or is restarting; 408 is the proxy giving up on the request; a fetch

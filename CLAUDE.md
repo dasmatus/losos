@@ -206,9 +206,9 @@ and is never served or built by nix.
     After per screen, same window size and state) for anything a person can
     see, or "No visible change." and why; under Tested, name what did not
     run (a session has no KVM, so the VM tests are usually "not run").
-    Sessions keep their screenshots under `/mnt/project-files/demo/<topic>/`
-    and name the folder in the table; the project's attribution block goes
-    above the template as the first two lines.
+    Screenshots are committed under `.github/screenshots/<topic>/` and
+    embedded by a short-SHA raw URL; an attribution block, when one is
+    required, goes above the template as the first two lines.
 
 ## Rationalizations to reject
 
@@ -265,12 +265,12 @@ screens, the two app themes, the wiki and docs pages — one Before and one
 After per screen, taken at the same window size and in the same state so
 the only difference is the change. A change with nothing visible says
 "No visible change." under that heading and why, instead of the table.
-Sessions working from a project thread keep their screenshots in the
-project folder under `/mnt/project-files/demo/<topic>/` and name that folder
-in the table (the project folder is not reachable from GitHub, so the owner
-drops the images into the body if they should live on the PR); the
-attribution block the project requires goes above the template, as the
-first two lines. Under Tested, say what did not run and why — a session
+Commit the PNGs under `.github/screenshots/<topic>/{before,after}/` and
+embed them in the table by
+`raw.githubusercontent.com/dasmatus/losos/<short-sha>/…` URLs, pinned to a
+commit so they outlive the branch; images and Markdown are the only
+non-code files that go into the repository. An attribution block, when one
+is required, goes above the template as the first two lines. Under Tested, say what did not run and why — a session
 has no KVM, so the VM tests are usually "not run" rather than silently
 missing.
 

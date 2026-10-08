@@ -70,8 +70,8 @@ in
   # driver for the virtio disk the volume group lives on. Found by recording
   # a real install-and-reboot under QEMU/SeaBIOS; tests/install.nix never
   # sees it because its boot leg stops at GRUB. Real mini-PCs never load
-  # these, so they cost nothing there, and a VM is the agreed way to show
-  # this system without putting the box on a network.
+  # these, so they cost nothing there, and a VM is a supported way to try
+  # this system without putting a box on a network.
   boot.initrd.availableKernelModules = lib.optional useTpm "tpm_tis" ++ [
     "dm_mod"
     "dm-snapshot"

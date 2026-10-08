@@ -514,9 +514,8 @@ in
               proxy_set_header X-Real-IP $remote_addr;
               # lososd answers most calls in milliseconds, but the first
               # claim runs `occ user:resetpassword` inside a pod that is
-              # still warming up, and on the recorded install demo of
-              # 2026-10-05 (take 6, under emulation) that outlived the 60 s
-              # nginx defaults to. nginx answered 504 and closed the
+              # still warming up, and under emulation that outlived the
+              # 60 s nginx defaults to. nginx answered 504 and closed the
               # connection while lososd went on to finish: password set, box
               # claimed, and the admin key — handed out exactly once, in
               # that reply — delivered to nobody. Ten minutes is longer than

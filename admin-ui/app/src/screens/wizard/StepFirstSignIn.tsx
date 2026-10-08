@@ -46,22 +46,22 @@ const WATCH_PERIOD_MS = 700;
  * app at all. On a new box this step is reached a few minutes before the
  * app's web server is up (occ finishes installing first, Apache follows), and
  * what the frame gets in between is nginx's own "502 Bad Gateway" page, which
- * nothing ever reloads. Take 7 of the recorded install demo (2026-10-05) sat
- * on that page for fifteen minutes with the step saying "You are signed in". */
+ * nothing ever reloads. Without the reload a slow first start left the frame
+ * on that page for many minutes while the step said "You are signed in". */
 const RELOAD_PERIOD_MS = 5000;
 
-/* How long one of those loads may stay in flight before it is given up on
- * and asked for again. A load that is still waiting for its first byte must
- * not be interrupted by the next reload: the frame keeps showing (and the
- * watcher keeps reading) the old error page until the new document commits,
- * so a reload issued every RELOAD_PERIOD_MS on top of a load that needs
- * longer than that to answer cancels it every time, and the app's page never
- * arrives at all. That is what take 9 of the recorded demo did (2026-10-06):
- * Apache was up, its first answer after the claim took longer than five
- * seconds on the busy box, and the step sat on "still starting" for nine
- * minutes. nginx answers for a web server that is down at once (502) and
- * for one that hangs after its own proxy timeout (504), both of which end
- * the load; this bound only covers a connection that stalls short of either. */
+/* How long one of those loads may stay in flight before it is given up on and
+ * asked for again. A load that is still waiting for its first byte must not be
+ * interrupted by the next reload: the frame keeps showing (and the watcher
+ * keeps reading) the old error page until the new document commits, so a
+ * reload issued every RELOAD_PERIOD_MS on top of a load that needs longer than
+ * that to answer cancels it every time, and the app's page never arrives at
+ * all. On a busy box Apache can be up and still take longer than five seconds
+ * for its first answer after the claim, and the step then sat on "still
+ * starting" for minutes. nginx answers for a web server that is down at once
+ * (502) and for one that hangs after its own proxy timeout (504), both of
+ * which end the load; this bound only covers a connection that stalls short of
+ * either. */
 const RELOAD_GIVE_UP_MS = 60_000;
 
 /* What the frame is known to hold. It starts out `loading` (nothing has
@@ -70,9 +70,8 @@ const RELOAD_GIVE_UP_MS = 60_000;
  * page of the files app itself rendered. Only `app` is shown: until then the
  * frame loads in the background and a quiet panel stands in its place, so
  * the owner never sees a raw "502 Bad Gateway" where their sign-in form
- * should be (take 8 of the recorded demo showed that page for six minutes;
- * an error page as the first thing after setting a password reads as
- * something broke, not as something starting). */
+ * should be (an error page as the first thing after setting a password
+ * reads as something broke, not as something starting). */
 type FrameState = "loading" | "starting" | "app";
 
 /* Whether the document in the frame is one of the files app's own pages.

@@ -84,8 +84,8 @@ pkgs.testers.nixosTest {
         ];
 
         # initdb under emulation on a loaded host has overrun systemd's
-        # default start timeout once (2026-10-08); the default is for a box
-        # with KVM, which the sessions that run this check do not have.
+        # default start timeout; the default is for a box with KVM, and this
+        # check also has to pass without it.
         systemd.services.postgresql.serviceConfig.TimeoutStartSec = "15min";
 
         virtualisation = {

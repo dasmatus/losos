@@ -16,8 +16,8 @@ import { t, type MessageKey } from "@/lib/i18n";
  * GET /api/recovery all still exist, and lososd keeps minting the code (the
  * market's box ID is derived from it), but nothing can *use* the code yet —
  * the edge half that would accept it after a reinstall is not built — so the
- * step asked owners to keep a piece of paper that proves nothing. Matus
- * chose to hide it (2026-10-06) rather than demo a promise. To bring it back:
+ * step asked owners to keep a piece of paper that proves nothing. It is
+ * hidden rather than shown as a promise. To bring it back:
  * add "recovery" between "signin" and "finish" here, restore its STEPS entry,
  * and re-wire the `recovery` case in Wizard.tsx (StepBody and gateFor). */
 export const STEP_IDS = ["trust", "signin", "finish"] as const;

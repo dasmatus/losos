@@ -38,6 +38,6 @@ can take fifteen. The page checks every few seconds and continues on its own.
 
 ## A known bug
 
-Take 9 of the demo, on 6 October 2026, found the panel staying on
-"starting" after LosOS cloud was ready. That is pull request #62. If you reload
-the page and it goes straight on, you hit it.
+Builds from before 6 October 2026 could leave the panel on "starting" after
+LosOS cloud was ready. Pull request #62 fixed it. If you reload the page and
+it goes straight on, you hit it.
