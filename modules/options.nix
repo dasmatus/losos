@@ -718,6 +718,10 @@ in
         contribution, and a domain left unlocked while nothing is shared is a
         standing liability on a box with no shell to lock it from.
 
+        It is also the gate for federation: LosOS Git and LosOS cloud talk
+        to other servers only while this is on
+        (losos.forgejo.federation.enable, losos.nextcloud.federation.enable).
+
         This used to read "expose local storage to the Tahoe-LAFS grid as a
         storage server". Tahoe-LAFS is gone; the option name is unchanged
         because persisted state files and the admin SPA carry it.
@@ -789,7 +793,14 @@ in
     # Through an edge that is a public https address and any server can
     # federate with the box; on a LAN-only box it is http://<name>.local/,
     # which only the LAN resolves, so federation reaches other boxes on the
-    # same LAN and nothing further. The endpoints answer either way.
+    # same LAN and nothing further.
+    #
+    # Federation is the box talking to servers it does not know, so it runs
+    # only while the box shares at all: the switch below is ANDed with
+    # losos.sharingMyStorage (lososInternal.federation, near the end of this
+    # file), the one setting that unlocks the shared data pool. With sharing
+    # off, Forgejo runs with [federation] off and the front vhost carries no
+    # discovery routes, whatever this option says.
     forgejo.federation.enable = lib.mkOption {
       type = lib.types.bool;
       default = true;
@@ -801,6 +812,10 @@ in
         address it is served on, so through an edge this is the internet
         and on a LAN-only box it is the LAN. Usage statistics (how many
         accounts, how active) are never published.
+
+        Takes effect only while losos.sharingMyStorage is on. With disk
+        sharing off the shared data pool is locked and LosOS Git does not
+        federate, whatever this says.
       '';
     };
 
@@ -851,6 +866,31 @@ in
         mode 0600 on first boot by the losos-nextcloud-adminpass oneshot in
         modules/nextcloud-common.nix if absent; persisted via /var. Must be a
         runtime path: a store path is world-readable and gets warned about.
+      '';
+    };
+
+    # Nextcloud's side of federation: Federated Cloud Sharing (files shared
+    # with accounts on other Nextcloud servers, user@host addresses), the
+    # trusted-servers app (`federation`), calendar federation, and the OCM
+    # discovery and share endpoints other servers call. Gated on
+    # losos.sharingMyStorage like LosOS Git's (lososInternal.federation).
+    # Off, the front vhost answers 404 for those endpoints and Nextcloud's
+    # own switches are set to no on every start (flake/images.nix in
+    # container mode, modules/services.nix natively), so neither an inbound
+    # share nor an outbound one can be made.
+    nextcloud.federation.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Let LosOS cloud share files and calendars with accounts on other
+        Nextcloud servers (Federated Cloud Sharing), and answer the
+        discovery and share addresses those servers call. Other servers
+        reach the box at the address it is served on, so through an edge
+        this is the internet and on a LAN-only box it is the LAN.
+
+        Takes effect only while losos.sharingMyStorage is on. With disk
+        sharing off the shared data pool is locked and LosOS cloud does not
+        federate, whatever this says.
       '';
     };
 
@@ -1846,6 +1886,29 @@ in
   # an escape hatch is a switch someone eventually sets for the wrong reason,
   # and the point is to make the mistake visible on every rebuild, not to
   # invent a supported way of doing it.
+  # ── Federation, as it actually runs ─────────────────────────────────────
+  # The one place the per-service switch meets the sharing gate, so the
+  # modules that act on it (services.nix, workloads.nix, containers.nix,
+  # flake/images.nix through the rendered config) cannot disagree about
+  # whether a box federates. Read-only: set losos.<service>.federation.enable
+  # or losos.sharingMyStorage instead.
+  options.lososInternal.federation = {
+    forgejo = lib.mkOption {
+      type = lib.types.bool;
+      internal = true;
+      readOnly = true;
+      default = config.losos.forgejo.federation.enable && config.losos.sharingMyStorage;
+      description = "LosOS Git federates: losos.forgejo.federation.enable and losos.sharingMyStorage.";
+    };
+    nextcloud = lib.mkOption {
+      type = lib.types.bool;
+      internal = true;
+      readOnly = true;
+      default = config.losos.nextcloud.federation.enable && config.losos.sharingMyStorage;
+      description = "LosOS cloud federates: losos.nextcloud.federation.enable and losos.sharingMyStorage.";
+    };
+  };
+
   config.warnings =
     let
       secrets = {

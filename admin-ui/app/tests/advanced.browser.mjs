@@ -156,17 +156,20 @@ console.log('admin-ui advanced + history browser checks');
 await check('every option in the document is drawn, with an editor kind the pane knows', async () => {
   const { page, errors } = await open();
   await main(page).getByTestId('advanced-count').waitFor();
-  assert.equal(await main(page).getByTestId('advanced-count').innerText(), `${DOC.options.length} options`);
+  // `visible = false` options stay in the document (the gate takes them)
+  // but get no row.
+  const shown = DOC.options.filter((option) => !option.hidden);
+  assert.equal(await main(page).getByTestId('advanced-count').innerText(), `${shown.length} options`);
   const rows = await page.locator('[data-option][data-kind]').evaluateAll((nodes) =>
     nodes.map((n) => [n.dataset.option, n.dataset.kind]),
   );
-  assert.equal(rows.length, DOC.options.length, 'one row per option');
+  assert.equal(rows.length, shown.length, 'one row per option');
   for (const [name, kind] of rows) {
     assert.ok(KINDS.has(kind), `losos.${name} has editor kind ${kind}, which the pane cannot draw`);
   }
   const drawn = new Set(rows.map(([name]) => name));
-  for (const option of DOC.options) assert.ok(drawn.has(option.name), `losos.${option.name} is not on the pane`);
-  for (const option of DOC.options) {
+  for (const option of shown) assert.ok(drawn.has(option.name), `losos.${option.name} is not on the pane`);
+  for (const option of shown) {
     const r = row(page, option.name);
     const controls = await r.locator('input, select, textarea').count();
     if (option.readOnly) {
@@ -186,6 +189,42 @@ await check('every option in the document is drawn, with an editor kind the pane
   await noViolations(page);
   assert.deepEqual(errors, []);
   await page.close();
+});
+
+await check('federation is unavailable while disk sharing is off, and opens when the draft turns it on', async () => {
+  const FEDERATION = ['forgejo.federation.enable', 'nextcloud.federation.enable'];
+  for (const name of FEDERATION) {
+    assert.equal(DOC.options.find((o) => o.name === name)?.needs, 'sharingMyStorage', `losos.${name} does not name its gate`);
+  }
+  const { page, errors } = await open();
+  for (const name of FEDERATION) {
+    const r = row(page, name);
+    assert.equal(await r.getAttribute('data-gated'), 'true', `losos.${name} is not greyed with sharing off`);
+    await r.getByText('Unavailable', { exact: true }).waitFor();
+    await r.getByTestId('option-needs').getByText('Federation runs only while this box shares its disk', { exact: false }).waitFor();
+    assert.ok(await r.locator('input').isDisabled(), `losos.${name} can still be switched`);
+  }
+  // The sharing row edits the form's own field while the Market pane is
+  // planned, so turning it on here opens both rows before Apply.
+  await flip(row(page, 'sharingMyStorage'));
+  await page.waitForTimeout(200);
+  for (const name of FEDERATION) {
+    const r = row(page, name);
+    assert.equal(await r.getAttribute('data-gated'), null, `losos.${name} stayed greyed with sharing on`);
+    assert.equal(await r.getByTestId('option-needs').count(), 0);
+    assert.ok(!(await r.locator('input').isDisabled()), `losos.${name} is still disabled`);
+  }
+  await noViolations(page);
+  assert.deepEqual(errors, []);
+  await page.close();
+
+  // The reason reads in the owner's language.
+  const sk = await open({ locale: 'sk-SK' });
+  await row(sk.page, 'nextcloud.federation.enable').getByText('Federácia beží len vtedy', { exact: false }).waitFor();
+  await sk.page.close();
+  const de = await open({ locale: 'de-DE' });
+  await row(de.page, 'nextcloud.federation.enable').getByText('Föderation läuft nur', { exact: false }).waitFor();
+  await de.page.close();
 });
 
 await check('a plain switch writes one more line after the sixteen, and Apply sends it', async () => {

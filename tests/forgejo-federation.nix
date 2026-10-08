@@ -13,11 +13,14 @@
 # Two VMs:
 #
 #   box   losos.forgejo.mode = "native": the real Forgejo from nixpkgs, on
-#         its native port, with federation on (the default). The test
-#         asks it for what the fediverse would: nodeinfo discovery, the
-#         server actor, an account actor. A specialisation with the option
-#         off is switched into afterwards, and the same addresses have to
-#         answer 404 — the toggle is real in both directions.
+#         its native port, with federation on (the default) and disk
+#         sharing on, which federation needs (lososInternal.federation in
+#         modules/options.nix). The test asks it for what the fediverse
+#         would: nodeinfo discovery, the server actor, an account actor. A
+#         specialisation with disk sharing off is switched into afterwards,
+#         and the same addresses have to answer 404: the gate is real in
+#         both directions. That the option itself and the gate are ANDed is
+#         asserted at eval time by tests/invariants.nix.
 #   pod   losos.forgejo.mode = "container" (the shipped default), with a
 #         stand-in image so that modules/workloads.nix renders the static
 #         pod and the losos.ini it mounts without a cluster running. The
@@ -66,16 +69,19 @@ pkgs.testers.nixosTest {
           hostName = "mattbox";
           forgejo.enable = true;
           forgejo.mode = "native";
+          # Federation runs only while the box shares its disk.
+          sharingMyStorage = true;
           # Keeps services.nix from enabling the native Nextcloud stack; only
           # Forgejo is under test. The Nextcloud pod is not run here either.
           nextcloud.mode = "container";
         };
 
-        # The other half of the toggle, switched into from the test script.
+        # The other half of the gate, switched into from the test script:
+        # disk sharing off, federation's own switch left on.
         # `switch-to-configuration test` restarts forgejo.service because its
-        # generated app.ini changed; Forgejo then runs without the section.
-        specialisation.federation-off.configuration = {
-          losos.forgejo.federation.enable = false;
+        # generated app.ini changed; Forgejo then runs with federation off.
+        specialisation.unshared.configuration = {
+          losos.sharingMyStorage = pkgs.lib.mkForce false;
         };
 
         environment.systemPackages = [
@@ -106,6 +112,7 @@ pkgs.testers.nixosTest {
           hostName = "mattbox";
           forgejo.enable = true;
           forgejo.mode = "container";
+          sharingMyStorage = true;
           # No Nextcloud pod: nothing here needs it, and its manifest would
           # want the real image.
           nextcloud.mode = "native";
@@ -212,15 +219,15 @@ pkgs.testers.nixosTest {
           for line in ${builtins.toJSON wantIni}:
               assert line in ini.splitlines(), f"{line!r} missing from losos.ini:\n{ini}"
 
-      with subtest("with losos.forgejo.federation.enable = false the endpoints are gone"):
+      with subtest("with disk sharing off the endpoints are gone"):
           box.succeed(
-              "/run/booted-system/specialisation/federation-off/bin/switch-to-configuration test"
+              "/run/booted-system/specialisation/unshared/bin/switch-to-configuration test"
           )
           box.wait_for_unit("forgejo.service")
           box.wait_for_open_port(PORT)
           box.wait_until_succeeds(f"curl -sf http://127.0.0.1:{PORT}/ | grep -q 'LosOS Git'")
           for path in ["/.well-known/nodeinfo", "/api/v1/nodeinfo", "/api/v1/activitypub/actor", actor_path]:
               code, body = get(path)
-              assert code == "404", f"federation off, {path}: expected 404, got {code} {body!r}"
+              assert code == "404", f"sharing off, {path}: expected 404, got {code} {body!r}"
     '';
 }

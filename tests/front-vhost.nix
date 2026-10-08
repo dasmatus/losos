@@ -132,6 +132,10 @@ let
       nextcloud.apachePort = 11007;
       forgejo.mode = "container";
       forgejo.enable = true;
+      # Federation runs only while the box shares its disk
+      # (lososInternal.federation), so the federation subtests start with
+      # sharing on and end by switching into a specialisation with it off.
+      sharingMyStorage = true;
       # No lososd: /api/ is answered by the stub above. The escape hatch only
       # works because modules/defaults.nix wires the real package with
       # lib.mkDefault — at normal priority this was a conflict, not an opt-out.
@@ -154,6 +158,11 @@ pkgs.testers.nixosTest {
       losos.admin.enable = true;
       losos.admin.ui = lososPkgs.losos-admin-ui;
       losos.admin.handbook = lososPkgs.losos-handbook;
+      # Disk sharing off: the shared data pool locked, so neither service
+      # federates. Switched into by the last subtest; only nginx changes.
+      specialisation.unshared.configuration = {
+        losos.sharingMyStorage = pkgs.lib.mkForce false;
+      };
     };
 
     # Same box with the dashboard switched off. losos.admin.ui stays null,
@@ -197,6 +206,35 @@ pkgs.testers.nixosTest {
     # this file exists to tell apart. From the other node the name resolves only
     # to the LAN address, so the cross-node subtests keep using it.
     LAN = "192.168.1.1"
+
+    # LosOS cloud's federation addresses (modules/nextcloud-stack.nix,
+    # `federation`), plus the spellings nginx normalises before it matches a
+    # location: letter case, a doubled slash, an escaped letter.
+    NC_FEDERATION = [
+        "/nextcloud/ocm-provider/",
+        "/nextcloud/index.php/ocm-provider/",
+        "/nextcloud/ocs-provider/",
+        "/nextcloud/ocm/shares",
+        "/nextcloud/index.php/ocm/shares",
+        "/nextcloud/index.php/.well-known/ocm",
+        "/nextcloud/ocs/v2.php/cloud/shares/7/accept",
+        "/nextcloud/ocs/v1.php/cloud/shares/7/unshare",
+        "/nextcloud/ocs/v2.php/apps/federation/api/v1/shared-secret",
+        "/nextcloud/index.php/apps/federation/trusted-servers",
+        "/nextcloud/index.php/apps/federatedfilesharing/createFederatedShare",
+        "/nextcloud/OCM-Provider/",
+        "/nextcloud//ocm-provider/",
+        "/nextcloud/oc%6D-provider/",
+    ]
+    # What the owner and their apps use, which must keep working with
+    # federation off: ordinary link and user shares included.
+    NC_EVERYDAY = [
+        "/nextcloud/",
+        "/nextcloud/index.php/apps/files/",
+        "/nextcloud/ocs/v2.php/apps/files_sharing/api/v1/shares",
+        "/nextcloud/remote.php/dav/files/notshared/",
+    ]
+    FORGEJO_DISCOVERY = ["/.well-known/nodeinfo", "/.well-known/webfinger?resource=acct:x@appliance"]
 
     def code(node, url, source=None):
         src = f"--interface {source} " if source else ""
@@ -317,6 +355,11 @@ pkgs.testers.nixosTest {
         assert got == "403", f"loopback /.well-known/openid-configuration: expected 403, got {got}"
         got = code(noadmin, "http://appliance/.well-known/openid-configuration")
         assert got == "200", f"LAN /.well-known/openid-configuration: expected 200 (the SPA), got {got}"
+
+    with subtest("with disk sharing on, LosOS cloud's federation addresses reach the pod"):
+        for path in NC_FEDERATION + NC_EVERYDAY:
+            got = appliance.succeed(f"curl -s 'http://127.0.0.1{path}'")
+            assert got.startswith("stub-nextcloud"), f"sharing on, {path}: {got!r}"
 
     with subtest("security headers ride on admin responses, including the 403s"):
         want = {
@@ -471,5 +514,39 @@ pkgs.testers.nixosTest {
         # appears nowhere except the document this test is checking for.
         body = appliance.succeed("curl -s http://noadmin/")
         assert '<div id="root">' not in body, f"noadmin / still serving the admin SPA: {body!r}"
+
+    with subtest("with disk sharing off, neither service federates"):
+        # The specialisation sets losos.sharingMyStorage = false and nothing
+        # else; `test` reloads nginx with the new vhost.
+        appliance.succeed(
+            "/run/booted-system/specialisation/unshared/bin/switch-to-configuration test"
+        )
+        appliance.wait_for_unit("nginx.service")
+        appliance.wait_for_open_port(80)
+        # LosOS cloud: every federation address is a 404 from nginx, from the
+        # tunnel's loopback and from the LAN alike, and never reaches the pod.
+        for path in NC_FEDERATION:
+            got = appliance.succeed(
+                f"curl -s -o /tmp/body -w '%{{http_code}}' 'http://127.0.0.1{path}'; echo; cat /tmp/body"
+            )
+            status, body = got.split("\n", 1)
+            assert status == "404" and "stub-nextcloud" not in body, \
+                f"sharing off, loopback {path}: {status} {body!r}"
+            got = code(noadmin, f"'http://appliance{path}'")
+            assert got == "404", f"sharing off, LAN {path}: expected 404, got {got}"
+        # Everything else under /nextcloud is untouched.
+        for path in NC_EVERYDAY:
+            got = appliance.succeed(f"curl -s 'http://127.0.0.1{path}'")
+            assert got.startswith("stub-nextcloud"), f"sharing off, {path} no longer reaches the pod: {got!r}"
+        # LosOS Git: the discovery routes are gone, so the two paths fall to
+        # the admin SPA's `/` location like any other: 403 through the tunnel,
+        # the SPA's own page on the LAN, Forgejo in neither case.
+        for path in FORGEJO_DISCOVERY:
+            got = code(appliance, f"'http://127.0.0.1{path}'")
+            assert got == "403", f"sharing off, loopback {path}: expected 403, got {got}"
+            body = noadmin.succeed(f"curl -s 'http://appliance{path}'")
+            assert "stub-forgejo" not in body and '<div id="root">' in body, \
+                f"sharing off, LAN {path} still reaches Forgejo: {body!r}"
+        assert "stub-forgejo" in appliance.succeed("curl -s http://127.0.0.1/forgejo/")
   '';
 }

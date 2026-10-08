@@ -1113,6 +1113,9 @@ export interface OptionDoc {
   hidden?: boolean;
   /** The literal modules/overrides.nix assigns it, or null for none. */
   set: string | null;
+  /** The bool option this one takes effect under; while that is off the
+   *  pane shows this row as unavailable. */
+  needs?: string;
 }
 
 export interface OptionsResponse {

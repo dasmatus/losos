@@ -22,10 +22,22 @@
   pkgs,
   lib,
   config,
+  # on -> the install configuration with losos.sharingMyStorage forced to `on`.
+  sharing,
 }:
 
 let
   must = cond: msg: if cond then true else throw "tests/invariants.nix: ${msg}";
+
+  # Federation runs only while the box shares its disk (modules/options.nix,
+  # lososInternal.federation). Asserted on both sides, with the per-service
+  # switches at their defaults (on), because each half fails quietly: a gate
+  # that never opens looks like a server nobody federates with, and one that
+  # never closes publishes the box to every server that asks.
+  shared = sharing true;
+  unshared = sharing false;
+  frontRoutes = c: builtins.attrNames c.services.nginx.virtualHosts."losos-front".locations;
+  ncRefused = c: builtins.filter (lib.hasInfix "ocm-provider") (frontRoutes c);
 
   gc = config.nix.gc;
   loader = config.boot.loader;
@@ -68,6 +80,16 @@ assert must (lib.elem config.system.build.nixos-rebuild config.systemd.services.
   "nixos-rebuild is not on lososd's unit path: systemd-run resolves the rebuild command against the caller's PATH, so every Apply, storage-mode change and factory reset fails before the rebuild unit exists";
 assert must ((config.systemd.services.lososd.serviceConfig.ProcSubset or "all") != "pid")
   "lososd runs with ProcSubset=pid: that hides /proc/devices and /proc/mounts, lvm2's vgs exits 4 without them, and every `losos-ctl grow` (the Storage pane's Use reserve) fails at its first step";
+assert must (shared.lososInternal.federation.forgejo && shared.lososInternal.federation.nextcloud)
+  "with losos.sharingMyStorage on and both federation switches at their defaults, lososInternal.federation is not on for both services";
+assert must (lib.elem "= /.well-known/nodeinfo" (frontRoutes shared) && ncRefused shared == [ ])
+  "with disk sharing on, the front vhost lacks LosOS Git's /.well-known/nodeinfo route or still refuses LosOS cloud's federation addresses";
+assert must
+  (!unshared.lososInternal.federation.forgejo && !unshared.lososInternal.federation.nextcloud)
+  "with losos.sharingMyStorage off, lososInternal.federation still says a service federates: the shared data pool is locked and nothing may talk to other servers";
+assert must
+  (!(lib.elem "= /.well-known/nodeinfo" (frontRoutes unshared)) && ncRefused unshared != [ ])
+  "with disk sharing off, the front vhost still routes /.well-known/nodeinfo to LosOS Git or no longer refuses LosOS cloud's federation addresses";
 # GRUB's limit is only set under `losos.bios`, which the published flake has
 # off; asserting it here would read the module's default. tests/install.nix
 # boots the BIOS path and is where that half is exercised.
