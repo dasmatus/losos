@@ -89,6 +89,8 @@ pub struct TenantSpec {
     pub token: Option<String>,
     pub cluster: bool,
     pub market: bool,
+    /// `losos.edge.tenants.<id>.relayZone` — this tenant is a spoke.
+    pub relay_zone: Option<String>,
 }
 
 impl TenantSpec {
@@ -99,7 +101,15 @@ impl TenantSpec {
             token: Some(token.to_string()),
             cluster: false,
             market: false,
+            relay_zone: None,
         }
+    }
+
+    /// `losos.edge.tenants.<id>.relayZone = zone` — may relay boxes under it.
+    #[must_use]
+    pub fn with_relay_zone(mut self, zone: &str) -> Self {
+        self.relay_zone = Some(zone.to_string());
+        self
     }
 
     /// A tenant whose token file is never created.
@@ -110,6 +120,7 @@ impl TenantSpec {
             token: None,
             cluster: false,
             market: false,
+            relay_zone: None,
         }
     }
 
@@ -167,6 +178,9 @@ pub const RETURN_URL: &str = "https://losos.example/market";
 /// The zone and address the domains fixture serves.
 pub const DNS_ZONE: &str = "boxes.example.test";
 pub const EDGE_IPV4: &str = "203.0.113.7";
+
+/// A last-minute change to the options, for flags with no fixture of their own.
+pub type Tweak = Box<dyn FnOnce(&mut ServeOpts, &TempDir) + Send>;
 
 /// A running registrar: its temp state directory, its base URL, and the
 /// handles needed to stop it.
@@ -238,6 +252,7 @@ impl Edge {
             Some(stripe_api.to_string()),
             enrolled,
             None,
+            None,
         )
         .await
     }
@@ -261,6 +276,7 @@ impl Edge {
             Some(stripe_api.to_string()),
             enrolled,
             Some(market_state),
+            None,
         )
         .await
     }
@@ -297,6 +313,38 @@ impl Edge {
             None,
             None,
             Some(doh_url),
+            None,
+        )
+        .await
+    }
+
+    /// An official hub for the relayed-domain tests: as
+    /// [`Edge::start_with_domains`], with `enrolled` boxes already in the
+    /// mesh and `tweak` applied last (how a test points `--routes-etcd-url`
+    /// at its stand-in etcd).
+    #[allow(clippy::too_many_arguments)]
+    pub async fn start_official_hub(
+        tag: &str,
+        tenants: &[TenantSpec],
+        market_state: &serde_json::Value,
+        identity: (&str, &str),
+        doh_url: &str,
+        enrolled: &[(&str, bool)],
+        tweak: impl FnOnce(&mut ServeOpts, &TempDir) + Send + 'static,
+    ) -> Self {
+        Self::start_general(
+            tag,
+            tenants,
+            MeshFixture::default(),
+            None,
+            Some("http://127.0.0.1:9".to_string()),
+            enrolled,
+            Some(market_state),
+            Some(identity),
+            None,
+            None,
+            Some(doh_url),
+            Some(Box::new(tweak)),
         )
         .await
     }
@@ -308,7 +356,17 @@ impl Edge {
         noise_public_key: Option<&str>,
         stripe_api: Option<String>,
     ) -> Self {
-        Self::start_inner_seeded(tag, tenants, mesh, noise_public_key, stripe_api, &[], None).await
+        Self::start_inner_seeded(
+            tag,
+            tenants,
+            mesh,
+            noise_public_key,
+            stripe_api,
+            &[],
+            None,
+            None,
+        )
+        .await
     }
 
     /// As [`Edge::start`], with `--identity-key-file` / `--identity-cert-file`
@@ -332,6 +390,7 @@ impl Edge {
             None,
             Some((key_file, cert_file)),
             listener,
+            None,
             None,
             None,
         )
@@ -359,10 +418,33 @@ impl Edge {
             listener,
             Some(github_api_url),
             None,
+            None,
         )
         .await
     }
 
+    /// As [`Edge::start`], with `tweak` applied to the options just before
+    /// `serve` starts: how the federation tests turn on the uplink and open
+    /// enrolment, whose flags have no fixture of their own.
+    pub async fn start_custom(
+        tag: &str,
+        tenants: &[TenantSpec],
+        tweak: impl FnOnce(&mut ServeOpts, &TempDir) + Send + 'static,
+    ) -> Self {
+        Self::start_inner_seeded(
+            tag,
+            tenants,
+            MeshFixture::default(),
+            None,
+            None,
+            &[],
+            None,
+            Some(Box::new(tweak)),
+        )
+        .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
     async fn start_inner_seeded(
         tag: &str,
         tenants: &[TenantSpec],
@@ -371,6 +453,7 @@ impl Edge {
         stripe_api: Option<String>,
         enrolled: &[(&str, bool)],
         market_state: Option<&serde_json::Value>,
+        tweak: Option<Tweak>,
     ) -> Self {
         Self::start_general(
             tag,
@@ -384,6 +467,7 @@ impl Edge {
             None,
             None,
             None,
+            tweak,
         )
         .await
     }
@@ -401,6 +485,7 @@ impl Edge {
         listener: Option<tokio::net::TcpListener>,
         github_api_url: Option<&str>,
         doh_url: Option<&str>,
+        tweak: Option<Tweak>,
     ) -> Self {
         let dir = TempDir::new(tag);
         if let Some(market_state) = market_state {
@@ -486,7 +571,7 @@ impl Edge {
             })
         });
 
-        let opts = ServeOpts {
+        let mut opts = ServeOpts {
             listen: "127.0.0.1:0".to_string(),
             registry_path: dir.path_str("registry.json"),
             traefik_dir: dir.path_str("traefik"),
@@ -531,7 +616,13 @@ impl Edge {
                     public_domain: "example.test".to_string(),
                 })
             }),
+            enrol_dir: None,
+            uplink: None,
+            routes: None,
         };
+        if let Some(tweak) = tweak {
+            tweak(&mut opts, &dir);
+        }
 
         let listener = match listener {
             Some(l) => l,
@@ -722,6 +813,7 @@ fn write_tenants(dir: &TempDir, tenants: &[TenantSpec]) {
                 "token_file": token_path.to_string_lossy(),
                 "cluster": spec.cluster,
                 "market": spec.market,
+                "relay_zone": spec.relay_zone,
             }),
         );
     }

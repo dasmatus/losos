@@ -142,6 +142,11 @@ pub trait Losos {
     /// when a request arrives on one. The edge verified each of them; this is
     /// only the box learning the answer. Sorted, lowercase, deduplicated.
     fn write_public_names(&mut self, names: &[String]) -> anyhow::Result<()>;
+    /// Keep the relay pass the official edge issued (`None`: forget it), for
+    /// the announce loop to hand a local edge (backend-registrar's
+    /// `routes.rs`). Root-only: it lets a local edge route this box's
+    /// custom domains for a few hours.
+    fn write_relay_pass(&mut self, pass: Option<&str>) -> anyhow::Result<()>;
     // ── The owner's look ────────────────────────────────────────────────
     // A background picture and the widgets written by hand
     // (`crate::look`). Appliance state beside `state.json`, never a
@@ -805,7 +810,7 @@ pub fn cmd_domains<L: Losos>(l: &mut L) -> anyhow::Result<Value> {
     }
     match l.market_request(&Op::Domains)? {
         Outcome::Reply(mut view) => {
-            record_public_names(l, &view);
+            record_view(l, &mut view);
             if let Some(obj) = view.as_object_mut() {
                 obj.insert("available".to_string(), json!(true));
             }
@@ -836,7 +841,7 @@ pub fn cmd_domain_op<L: Losos>(l: &mut L, op: &crate::market::Op) -> anyhow::Res
         }
         .into());
     };
-    record_public_names(l, &view);
+    record_view(l, &mut view);
     if let Some(obj) = view.as_object_mut() {
         obj.insert("available".to_string(), json!(true));
     }
@@ -863,12 +868,40 @@ pub fn live_public_names(view: &Value) -> Vec<String> {
     names
 }
 
-/// Hand the live names to LosOS cloud. A failure is logged, not returned:
-/// the owner asked to see or change their domains, and that worked.
-fn record_public_names<L: Losos>(l: &mut L, view: &Value) {
+/// Hand the live names to LosOS cloud and the relay pass to the announce
+/// loop, and take the pass out of the view: the admin page has no use for
+/// it. A failure is logged, not returned: the owner asked to see or change
+/// their domains, and that worked.
+fn record_view<L: Losos>(l: &mut L, view: &mut Value) {
     if let Err(e) = l.write_public_names(&live_public_names(view)) {
         tracing::warn!(error = %e, "could not record this box's live custom domains");
     }
+    let pass = view
+        .as_object_mut()
+        .and_then(|o| o.remove("relay_pass"))
+        .and_then(|p| p.as_str().map(str::to_string))
+        .filter(|p| valid_relay_pass(p));
+    if let Err(e) = l.write_relay_pass(pass.as_deref()) {
+        tracing::warn!(error = %e, "could not record this box's relay pass");
+    }
+}
+
+/// The shape backend-registrar's `routes::well_formed_pass` accepts:
+/// `v1.<digits>.<64 lowercase hex>`. Anything else from the edge is dropped
+/// rather than written to a file the announce loop sends on.
+#[must_use]
+pub fn valid_relay_pass(s: &str) -> bool {
+    let mut parts = s.splitn(3, '.');
+    let (Some(v), Some(epoch), Some(tag)) = (parts.next(), parts.next(), parts.next()) else {
+        return false;
+    };
+    v == "v1"
+        && (1..=20).contains(&epoch.len())
+        && epoch.bytes().all(|b| b.is_ascii_digit())
+        && tag.len() == 64
+        && tag
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
 
 /// What the daemon knows about edge proxies: `GET /api/edge`.
@@ -1625,6 +1658,9 @@ mod tests {
             fn write_public_names(&mut self, names: &[String]) -> anyhow::Result<()> {
                 self.0.write_public_names(names)
             }
+            fn write_relay_pass(&mut self, pass: Option<&str>) -> anyhow::Result<()> {
+                self.0.write_relay_pass(pass)
+            }
             fn load_look(&mut self) -> anyhow::Result<crate::look::Look> {
                 self.0.load_look()
             }
@@ -2065,6 +2101,39 @@ mod tests {
         )
         .unwrap();
         assert_eq!(f.public_names, Some(Vec::new()));
+    }
+
+    #[test]
+    fn the_relay_pass_goes_to_its_file_and_never_to_the_page() {
+        let pass = format!("v1.494712.{}", "ab".repeat(32));
+        let mut f = FakeLosos::new();
+        f.market_routes.insert(
+            "POST /domains/list".to_string(),
+            (
+                200,
+                format!(r#"{{"eligible":true,"domains":[],"relay_pass":"{pass}"}}"#),
+            ),
+        );
+        let view = cmd_domains(&mut f).unwrap();
+        assert!(view.get("relay_pass").is_none(), "{view}");
+        assert_eq!(f.relay_pass, Some(Some(pass)));
+        // An edge without a route table sends none, and the file goes.
+        f.market_routes.insert(
+            "POST /domains/list".to_string(),
+            (200, r#"{"eligible":true,"domains":[]}"#.to_string()),
+        );
+        cmd_domains(&mut f).unwrap();
+        assert_eq!(f.relay_pass, Some(None));
+        // Nothing that is not a pass is written.
+        f.market_routes.insert(
+            "POST /domains/list".to_string(),
+            (
+                200,
+                r#"{"eligible":true,"domains":[],"relay_pass":"v1.1.x\nrm -rf"}"#.to_string(),
+            ),
+        );
+        cmd_domains(&mut f).unwrap();
+        assert_eq!(f.relay_pass, Some(None));
     }
 
     #[test]

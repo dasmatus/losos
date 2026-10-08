@@ -55,6 +55,19 @@ pub const SERVICE_TYPE: &str = "_losos-edge._tcp";
 /// two probes per cycle is nothing.
 pub const SCAN_INTERVAL: Duration = Duration::from_secs(20);
 
+/// The rathole port an edge binds unless its advert says otherwise
+/// (`losos.edge.ratholeBindPort`'s default). Used for a LAN edge whose
+/// advert predates the `rathole=` record.
+pub const DEFAULT_RATHOLE_PORT: u16 = 2333;
+
+/// The two units modules/proxy.nix runs against the chosen edge, in the
+/// order they are restarted: the tunnel first, then the announce that asks
+/// the edge to route to it.
+pub const PATH_UNITS: [&str; 2] = [
+    "losos-rathole-client.service",
+    "losos-registrar-announce.service",
+];
+
 /// Budget for one `avahi-browse --terminate`. The browse itself settles in
 /// about a second; the ceiling is for an Avahi that is not answering at all.
 pub const BROWSE_TIMEOUT_SECS: u64 = 10;
@@ -87,6 +100,27 @@ pub struct Edge {
     /// a company's own edge is `false` here and still shares storage.
     #[serde(default)]
     pub official: bool,
+    /// Where this edge's rathole server listens, `host:port`: the advert's
+    /// `rathole=` record (or its host on the default port) for a LAN edge,
+    /// `losos.proxy.edgeRatholeEndpoint` for the configured one. `None` when
+    /// the box was given no endpoint for it, in which case it can be found
+    /// but not tunnelled to.
+    #[serde(default)]
+    pub rathole: Option<String>,
+}
+
+/// The edge this box uses, out of everything the scan found: the path
+/// (wiki/Edge-Federation.md, "The box"). A LAN edge first, the configured
+/// official one when the LAN has none, and `None` when neither answered,
+/// which is what switches every edge-dependent feature off.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EdgePath {
+    pub name: String,
+    pub url: String,
+    pub source: Source,
+    /// `host:port` the tunnel dials. Always present: an edge with no
+    /// endpoint is never chosen as the path.
+    pub rathole: String,
 }
 
 /// What the last scan found. The JSON shape is the `GET /api/edge` contract.
@@ -110,6 +144,30 @@ pub struct EdgeStatus {
     /// Unix seconds of the scan this describes. `None` before the first.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub checked_at: Option<u64>,
+    /// The edge the box uses, derived from `edges` by [`choose_path`].
+    #[serde(default)]
+    pub path: Option<EdgePath>,
+}
+
+/// The path rule, from Matus (2026-10-07): the first LAN edge that answered
+/// and can be tunnelled to, else the configured edge, else none. `edges` is
+/// LAN first as [`assemble`] builds it, so the first edge with an endpoint
+/// in list order is the answer.
+#[must_use]
+pub fn choose_path(edges: &[Edge]) -> Option<EdgePath> {
+    let pick = |source: Source| {
+        edges
+            .iter()
+            .find(|e| e.source == source && e.rathole.is_some())
+    };
+    pick(Source::Lan)
+        .or_else(|| pick(Source::Configured))
+        .map(|e| EdgePath {
+            name: e.name.clone(),
+            url: e.url.clone(),
+            source: e.source,
+            rathole: e.rathole.clone().unwrap_or_default(),
+        })
 }
 
 impl EdgeStatus {
@@ -123,6 +181,7 @@ impl EdgeStatus {
             lan_searched: false,
             configured_url: None,
             checked_at: None,
+            path: None,
         }
     }
 
@@ -133,6 +192,7 @@ impl EdgeStatus {
         EdgeStatus {
             reachable: !edges.is_empty(),
             official: edges.iter().any(|e| e.official),
+            path: choose_path(&edges),
             edges,
             lan_searched,
             configured_url,
@@ -149,6 +209,7 @@ impl EdgeStatus {
             "lanSearched": self.lan_searched,
             "configuredUrl": self.configured_url,
             "checkedAt": self.checked_at,
+            "path": self.path,
         })
     }
 }
@@ -215,6 +276,8 @@ pub struct Advert {
     pub port: u16,
     /// The `url=` TXT value, when the edge published one.
     pub url: Option<String>,
+    /// The `rathole=` TXT value, when the edge published one.
+    pub rathole: Option<String>,
 }
 
 impl Advert {
@@ -313,16 +376,18 @@ pub fn parse_browse(output: &str) -> Vec<Advert> {
             continue;
         };
         let txt = cols.get(9).copied().unwrap_or("");
-        let url = txt
-            .split('"')
-            .filter(|s| !s.trim().is_empty())
-            .find_map(|s| s.strip_prefix("url=").map(str::to_string));
+        let record = |key: &str| {
+            txt.split('"')
+                .filter(|s| !s.trim().is_empty())
+                .find_map(|s| s.strip_prefix(key).map(str::to_string))
+        };
         let advert = Advert {
             name: unescape(cols[3]),
             host: cols[6].to_string(),
             address: cols[7].to_string(),
             port,
-            url,
+            url: record("url="),
+            rathole: record("rathole="),
         };
         if cols[2] == "IPv4" {
             v4.push(advert);
@@ -349,14 +414,58 @@ pub fn candidates(adverts: &[Advert]) -> Vec<Edge> {
         if out.iter().any(|e| e.url == url) {
             continue;
         }
+        // The advertised tunnel endpoint when it is well formed, else the
+        // registrar's host on the default port: an edge from before the
+        // record existed still has a rathole there.
+        let rathole = a
+            .rathole
+            .as_deref()
+            .filter(|r| plain_endpoint(r))
+            .map(str::to_string)
+            .unwrap_or_else(|| format!("{}:{DEFAULT_RATHOLE_PORT}", bracketed_host(&url)));
         out.push(Edge {
             name: a.name.clone(),
             url,
             source: Source::Lan,
             official: false,
+            rathole: Some(rathole),
         });
     }
     out
+}
+
+/// `host:port` as rathole takes it: a hostname or IP literal (IPv6 in
+/// brackets) and a port, nothing a shell or a TOML string would read as
+/// something else. The value goes into client.toml between quotes.
+#[must_use]
+pub fn plain_endpoint(s: &str) -> bool {
+    let Some((host, port)) = s.rsplit_once(':') else {
+        return false;
+    };
+    let host = host
+        .strip_prefix('[')
+        .and_then(|h| h.strip_suffix(']'))
+        .unwrap_or(host);
+    !host.is_empty()
+        && host.len() <= 253
+        && host
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b":.-_".contains(&b))
+        && port.parse::<u16>().is_ok_and(|p| p != 0)
+}
+
+/// The host of a URL with its port removed and an IPv6 literal kept in its
+/// brackets, so a port can be appended to it.
+#[must_use]
+pub fn bracketed_host(url: &str) -> String {
+    let hostport = host_of(url);
+    if let Some(end) = hostport.strip_prefix('[').and_then(|h| h.find(']')) {
+        return hostport[..end + 2].to_string();
+    }
+    match hostport.rsplit_once(':') {
+        Some((host, port)) if port.parse::<u16>().is_ok() => host.to_string(),
+        _ => hostport,
+    }
 }
 
 /// The host part of a URL, for naming the configured edge.
@@ -380,6 +489,21 @@ pub fn assemble(
     prove: impl Fn(&str, &str) -> Option<String>,
     now: u64,
 ) -> EdgeStatus {
+    assemble_with(browse, configured_url, None, answered, trust, prove, now)
+}
+
+/// [`assemble`] with the configured edge's tunnel endpoint
+/// (`losos.proxy.edgeRatholeEndpoint`), which is what lets that edge be the
+/// path when the LAN has none.
+pub fn assemble_with(
+    browse: Option<&str>,
+    configured_url: Option<&str>,
+    configured_rathole: Option<&str>,
+    answered: impl Fn(&str) -> bool,
+    trust: &Trust<'_>,
+    prove: impl Fn(&str, &str) -> Option<String>,
+    now: u64,
+) -> EdgeStatus {
     let mut edges: Vec<Edge> = Vec::new();
     if let Some(output) = browse {
         for edge in candidates(&parse_browse(output)) {
@@ -398,6 +522,10 @@ pub fn assemble(
                 url: url.clone(),
                 source: Source::Configured,
                 official: false,
+                rathole: configured_rathole
+                    .map(str::trim)
+                    .filter(|r| plain_endpoint(r))
+                    .map(str::to_string),
             });
         }
     }
@@ -412,6 +540,78 @@ pub fn assemble(
     let mut status = EdgeStatus::found(edges, browse.is_some(), configured_url);
     status.checked_at = Some(now);
     status
+}
+
+// ── the path, as the tunnel units read it ──────────────────────────────────
+//
+// lososd tells modules/proxy.nix's two units which edge to dial through one
+// file on /run, in systemd EnvironmentFile= syntax, and drives the units when
+// it changes. The rendering and the decision are here so they can be tested
+// without a systemd; the file writes and `systemctl` calls are in
+// io_backend.rs.
+
+/// The env file for a chosen path. Every value is one the box constructed
+/// from a validated URL or endpoint (`plain_http_url`, `plain_endpoint`) or
+/// a path it named itself, so none needs quoting under systemd's rules.
+#[must_use]
+pub fn path_env(path: &EdgePath, noise_pin: Option<&str>) -> String {
+    let mut out = format!(
+        "LOSOS_EDGE_PATH_URL={}\nLOSOS_EDGE_PATH_RATHOLE={}\nLOSOS_EDGE_PATH_SOURCE={}\n",
+        path.url,
+        path.rathole,
+        match path.source {
+            Source::Lan => "lan",
+            Source::Configured => "configured",
+        }
+    );
+    if let Some(pin) = noise_pin {
+        out.push_str(&format!("LOSOS_EDGE_PATH_NOISE_PUB={pin}\n"));
+    }
+    out
+}
+
+/// The file name a LAN edge's Noise key is pinned under: its registrar's
+/// host and port with anything outside `[A-Za-z0-9.-]` replaced, so two
+/// edges never share a pin and the name is safe in a shell.
+#[must_use]
+pub fn pin_file_name(url: &str) -> String {
+    let host = host_of(url);
+    let safe: String = host
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '.' || c == '-' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    format!("{}.pub", safe.trim_matches('_'))
+}
+
+/// What to do to the tunnel units after a scan.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Drive {
+    /// A path is set and it is new, or the units were stopped: start them
+    /// against it (a restart starts a stopped unit too).
+    Restart,
+    /// No edge in reach and the units have not been told yet: stop them.
+    Stop,
+    /// Nothing changed since the last scan.
+    Nothing,
+}
+
+/// The decision, from what the previous scan left on disk (`prev_env`, the
+/// env file's content if it existed; `had_none`, whether the marker was
+/// there) and what this scan rendered (`next_env`, `None` for no path).
+#[must_use]
+pub fn drive(prev_env: Option<&str>, had_none: bool, next_env: Option<&str>) -> Drive {
+    match next_env {
+        Some(next) if had_none || prev_env != Some(next) => Drive::Restart,
+        Some(_) => Drive::Nothing,
+        None if had_none => Drive::Nothing,
+        None => Drive::Stop,
+    }
 }
 
 // ── identity: an official edge, or a company's own ─────────────────────────
@@ -762,6 +962,7 @@ mod tests {
                 url: "http://edge.local:8443".into(),
                 source: Source::Lan,
                 official: false,
+                rathole: Some("edge.local:2333".into()),
             }],
             true,
             None,
@@ -950,5 +1151,111 @@ mod tests {
         assert!(OfficialEdgeRequired
             .to_string()
             .contains("only edges LosOS runs may process the market"));
+    }
+
+    const BROWSE_WITH_RATHOLE: &str = "\
+=;eth0;IPv4;gateway;_losos-edge._tcp;local;gw.local;192.168.1.2;8443;\"url=http://gw.local:8443\" \"rathole=gw.local:2333\" \"enrol=open\" \"txtvers=1\"
+";
+
+    #[test]
+    fn the_advert_carries_the_tunnel_endpoint_and_an_old_one_gets_the_default_port() {
+        let c = candidates(&parse_browse(BROWSE_WITH_RATHOLE));
+        assert_eq!(c[0].rathole.as_deref(), Some("gw.local:2333"));
+        let c = candidates(&parse_browse(BROWSE));
+        assert_eq!(c[0].rathole.as_deref(), Some("edge.local:2333"));
+        // A malformed record is ignored, not dialled.
+        let bad = BROWSE_WITH_RATHOLE.replace("rathole=gw.local:2333", "rathole=gw.local:2333;rm");
+        let c = candidates(&parse_browse(&bad));
+        assert_eq!(c[0].rathole.as_deref(), Some("gw.local:2333"));
+        assert!(plain_endpoint("[fe80::1]:2333"));
+        assert!(!plain_endpoint("gw.local"));
+        assert!(!plain_endpoint("gw.local:0"));
+        assert!(!plain_endpoint("gw local:2333"));
+        assert_eq!(bracketed_host("http://[fe80::1]:8443"), "[fe80::1]");
+        assert_eq!(bracketed_host("https://edge.example"), "edge.example");
+    }
+
+    #[test]
+    fn the_path_is_the_lan_edge_then_the_configured_one_then_none() {
+        let both = assemble_with(
+            Some(BROWSE_WITH_RATHOLE),
+            Some("https://losos-edge.example"),
+            Some("edge.losos.cfd:2333"),
+            |_| true,
+            &NO_TRUST,
+            |_, _| None,
+            1,
+        );
+        let path = both.path.clone().expect("a path");
+        assert_eq!(path.source, Source::Lan);
+        assert_eq!(path.url, "http://gw.local:8443");
+        assert_eq!(path.rathole, "gw.local:2333");
+        assert_eq!(both.to_json()["path"]["rathole"], "gw.local:2333");
+
+        let official_only = assemble_with(
+            Some(BROWSE_WITH_RATHOLE),
+            Some("https://losos-edge.example"),
+            Some("edge.losos.cfd:2333"),
+            |url| url.starts_with("https://"),
+            &NO_TRUST,
+            |_, _| None,
+            1,
+        );
+        let path = official_only.path.expect("a path");
+        assert_eq!(path.source, Source::Configured);
+        assert_eq!(path.rathole, "edge.losos.cfd:2333");
+
+        // A configured edge the box has no tunnel endpoint for can be found
+        // but is not a path.
+        let no_endpoint = assemble(
+            None,
+            Some("https://losos-edge.example"),
+            |_| true,
+            &NO_TRUST,
+            |_, _| None,
+            1,
+        );
+        assert!(no_endpoint.reachable);
+        assert_eq!(no_endpoint.path, None);
+
+        let none = assemble(Some(BROWSE), None, |_| false, &NO_TRUST, |_, _| None, 1);
+        assert_eq!(none.path, None);
+        assert_eq!(none.to_json()["path"], Value::Null);
+    }
+
+    #[test]
+    fn the_env_file_and_the_drive_decision() {
+        let path = EdgePath {
+            name: "gateway".into(),
+            url: "http://gw.local:8443".into(),
+            source: Source::Lan,
+            rathole: "gw.local:2333".into(),
+        };
+        let env = path_env(
+            &path,
+            Some("/var/secrets/losos-edge-pins/gw.local_8443.pub"),
+        );
+        assert_eq!(
+            env,
+            "LOSOS_EDGE_PATH_URL=http://gw.local:8443\n\
+             LOSOS_EDGE_PATH_RATHOLE=gw.local:2333\n\
+             LOSOS_EDGE_PATH_SOURCE=lan\n\
+             LOSOS_EDGE_PATH_NOISE_PUB=/var/secrets/losos-edge-pins/gw.local_8443.pub\n"
+        );
+        assert!(!path_env(&path, None).contains("NOISE"));
+        assert_eq!(pin_file_name("http://gw.local:8443"), "gw.local_8443.pub");
+        assert_eq!(pin_file_name("http://[fe80::1]:8443"), "fe80__1__8443.pub");
+
+        // First scan after boot with a path: start the units against it.
+        assert_eq!(drive(None, false, Some(&env)), Drive::Restart);
+        // Same path again (a daemon restart mid-rebuild included): nothing.
+        assert_eq!(drive(Some(&env), false, Some(&env)), Drive::Nothing);
+        // The path moved: restart.
+        assert_eq!(drive(Some("other"), false, Some(&env)), Drive::Restart);
+        // The edge went away: stop once, then nothing while it stays away.
+        assert_eq!(drive(Some(&env), false, None), Drive::Stop);
+        assert_eq!(drive(None, true, None), Drive::Nothing);
+        // It came back: the units were stopped, so start them.
+        assert_eq!(drive(None, true, Some(&env)), Drive::Restart);
     }
 }

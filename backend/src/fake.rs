@@ -106,6 +106,9 @@ pub struct FakeLosos {
     /// The live custom domains last handed to LosOS cloud; `None` until the
     /// first write.
     pub public_names: Option<Vec<String>>,
+    /// The last relay pass written: `None` never written, `Some(None)`
+    /// removed.
+    pub relay_pass: Option<Option<String>>,
 
     // ── Finding an edge proxy ───────────────────────────────────────────
     /// What the fake scanner last found. The default has one LAN edge in
@@ -218,12 +221,14 @@ impl FakeLosos {
             market_routes: std::collections::BTreeMap::new(),
             market_ops: Vec::new(),
             public_names: None,
+            relay_pass: None,
             edge: crate::edge::EdgeStatus::found(
                 vec![crate::edge::Edge {
                     name: "edge".to_string(),
                     url: "http://edge.local:8443".to_string(),
                     source: crate::edge::Source::Lan,
                     official: true,
+                    rathole: Some("edge.local:2333".to_string()),
                 }],
                 true,
                 None,
@@ -416,6 +421,11 @@ impl Losos for FakeLosos {
             None => Ok(crate::market::Outcome::Unavailable),
             Some((status, body)) => crate::market::classify(*status, body),
         }
+    }
+
+    fn write_relay_pass(&mut self, pass: Option<&str>) -> anyhow::Result<()> {
+        self.relay_pass = Some(pass.map(str::to_string));
+        Ok(())
     }
 
     fn write_public_names(&mut self, names: &[String]) -> anyhow::Result<()> {
