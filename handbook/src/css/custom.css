@@ -723,6 +723,17 @@ article {
 .markdown table tr:nth-child(2n) {
   background: transparent;
 }
+/* On a phone a five-column table is wider than the card. Infima's default
+ * (a scrolling block) comes back at that width: the table takes its natural
+ * width, is capped at the card's, and scrolls sideways inside its border. */
+@media (max-width: 996px) {
+  .markdown table {
+    display: block;
+    width: max-content;
+    max-width: 100%;
+    overflow-x: auto;
+  }
+}
 .markdown blockquote {
   border-left: 3px solid var(--line);
   color: var(--muted);
@@ -971,6 +982,11 @@ article {
     border-radius: var(--control-radius);
     background: var(--sunk) var(--hb-icon-search) center / 16px 16px no-repeat !important;
     padding: 0;
+  }
+  /* Folded, the chip shows only the glyph: the "Search" placeholder would
+   * otherwise show through it. */
+  .navbar .navbar__search-input:not(:focus)::placeholder {
+    color: transparent;
   }
   .navbar .navbar__search-input:focus {
     width: 12rem;
