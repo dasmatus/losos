@@ -512,5 +512,41 @@
   "theme.colorToggle.ariaLabel.group": {
     "message": "Appearance",
     "description": "The label of the colour-mode segmented control"
+  },
+  "losos.home.soon.market.title": {
+    "message": "Trh"
+  },
+  "losos.home.soon.market.body": {
+    "message": "Dostanete zaplatené za disk a procesor, ktoré váš box požičiava, a miesto si môžete kúpiť od iných boxov. Trh je hotový a otestovaný v testovacom režime Stripe. Otvorí sa, keď za ním bude stáť registrovaná firma."
+  },
+  "losos.home.soon.pool.title": {
+    "message": "Jedno úložisko pre viac boxov"
+  },
+  "losos.home.soon.pool.body": {
+    "message": "Boxy za jedným edge serverom budú požičiavať nevyužitý disk do jedného replikovaného úložiska. Šifrovaný podiel na každom boxe je hotový. Edge server zatiaľ nespúšťa službu, ktorá úložisko poskytuje, a prepínač čaká na trh."
+  },
+  "losos.home.soon.secureboot.title": {
+    "message": "Podpísaný inštalátor"
+  },
+  "losos.home.soon.secureboot.body": {
+    "message": "Inštalátor je pripravený na podpis pre Secure Boot. Keď bude existovať podpisový kľúč LosOS, každé vydanie bude podpísané a firmvér, ktorý dôveruje certifikátu LosOS, ho spustí so zapnutým Secure Boot."
+  },
+  "losos.home.soon.company.title": {
+    "message": "Hotové riešenia pre firmy"
+  },
+  "losos.home.soon.company.body": {
+    "message": "Box pre každý tím, jeden edge server pre kanceláriu a inštalácia urobená za vás. Firemné nasadenie funguje už dnes. Ako ďalší krok príde jeho predaj ako hotového balíka."
+  },
+  "losos.home.soon.translations.title": {
+    "message": "Príručka po slovensky a po nemecky"
+  },
+  "losos.home.soon.translations.body": {
+    "message": "Ponuky a táto stránka sú už preložené. Stránky príručky budú nasledovať jedna po druhej."
+  },
+  "losos.home.soon.title": {
+    "message": "Čoskoro"
+  },
+  "losos.home.soon.chip": {
+    "message": "Čoskoro"
   }
 }
