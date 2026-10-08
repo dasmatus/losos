@@ -29,10 +29,12 @@ Firmware:
              a stock PC. It must refuse the medium, signed or not, with
              `--expect refused`; the script then passes on the firmware's
              "Access Denied" on the serial console.
-  uefi-sb    OVMF's Secure Boot build with a fresh variable store into which
-             `--enroll CERT` puts the given certificate as PK, KEK and db
-             (virt-fw-vars, from the virt-firmware package). A medium signed
-             by that certificate boots; anything else is refused.
+  uefi-sb    OVMF's Secure Boot build with Microsoft's keys, into which
+             `--enroll CERT` adds the given certificate to KEK and db beside
+             Microsoft's and makes it the PK (virt-fw-vars, from the
+             virt-firmware package): a PC whose owner enrolled LosOS the way
+             the handbook says, keeping Microsoft's certificates. A medium
+             signed by that certificate boots; anything else is refused.
 
 `--expect boot` (the default) passes on the installer's DNS query; `--expect
 refused` passes on the refusal and fails if the medium boots. On timeout it
@@ -55,19 +57,23 @@ OVMF_DIR = os.environ.get("OVMF_DIR", "/usr/share/OVMF")
 FIRMWARE = {
     "uefi": ("OVMF_CODE_4M.fd", "OVMF_VARS_4M.fd"),
     "uefi-sb-ms": ("OVMF_CODE_4M.secboot.fd", "OVMF_VARS_4M.ms.fd"),
-    "uefi-sb": ("OVMF_CODE_4M.secboot.fd", "OVMF_VARS_4M.fd"),
+    "uefi-sb": ("OVMF_CODE_4M.secboot.fd", "OVMF_VARS_4M.ms.fd"),
     "bios": None,
 }
 # What OVMF's boot manager prints on the console when its image verification
 # rejects a loader ("Access Denied -- rejected probably by Secure Boot" in
 # current builds; the first two words are the stable part).
 REFUSED = b"Access Denied"
-# Owner GUID for the enrolled certificate; any fixed value works.
-ENROLL_GUID = "77fa9abd-0359-4d32-bd60-28f4e78f784b"
+# Owner GUID for the enrolled certificate. Any fixed value works except
+# Microsoft's (77fa9abd-...), which their certificates in the template carry.
+ENROLL_GUID = "a58ba000-6821-482f-acda-601cb601d98e"
 
 
 def enroll(template: str, cert: str, out: str) -> None:
-    """Write a variable store with `cert` as PK, KEK and db and Secure Boot on."""
+    """Write a copy of `template` with `cert` as PK and added to KEK and db.
+
+    --set-pk replaces the template's PK; --add-kek and --add-db append, so
+    Microsoft's certificates stay beside LosOS's."""
     subprocess.run(
         [
             "virt-fw-vars", "--input", template, "--output", out,
@@ -152,7 +158,7 @@ def main() -> int:
     ap.add_argument("--timeout", type=int, default=600, help="seconds")
     ap.add_argument("--out", default=".", help="where the pcap and a failure screenshot go")
     ap.add_argument("--expect", choices=["boot", "refused"], default="boot")
-    ap.add_argument("--enroll", metavar="CERT", help="uefi-sb: the certificate to enrol as PK, KEK and db")
+    ap.add_argument("--enroll", metavar="CERT", help="uefi-sb: the certificate to add to KEK and db (and make the PK)")
     args = ap.parse_args()
     if (args.firmware == "uefi-sb") != (args.enroll is not None):
         ap.error("--enroll CERT goes with --firmware uefi-sb, and only with it")
