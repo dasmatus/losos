@@ -99,6 +99,10 @@ and is never served or built by nix.
   TXT token and CNAME check out, only for a box with a ready Stripe account.
   lososd writes the live names to `/var/lib/losos-public-names`, which the
   Nextcloud pod reads for `trusted_domains`.
+- `backend-registrar/src/routes.rs`: custom domains of mesh boxes behind a
+  local edge. The official edge keeps the routes in its own etcd (loopback
+  2479, never rke2's 2379) and binds a box to a local edge only by the box's
+  relay pass, an HMAC the local edge forwards but cannot make.
 - `backend-registrar/src/market.rs`: Stripe Connect, third opt-in of the
   registrar. The key lives only in the `losos-stripe-gate` unit, reached over
   `/run/losos-stripe-gate/gate.sock`.
