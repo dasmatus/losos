@@ -8,6 +8,7 @@
  * one (lab.css), so the drawings follow the light and dark themes. */
 
 import type * as React from "react";
+import { logoFor } from "@/lib/logo";
 import type { Device } from "./core";
 
 const surface = "var(--surface)";
@@ -333,5 +334,7 @@ export function hwDrawing(dev: Device, portState: (port: string) => PortState): 
   return { w: 60, h: 40, ports: {}, node: null };
 }
 
-/* The logo plate, drawn on the splash and the top bar. */
-export { default as plateUrl } from "@/assets/losos.png";
+/* The logo, drawn on the splash, the top bar and the simulated pages:
+ * today's, as on the admin pages (a live salmon, a plate of it on
+ * Halloween; see lib/logo.ts). */
+export const logoUrl: string = logoFor().url;
