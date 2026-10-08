@@ -36,10 +36,11 @@ own. **It wipes every fixed disk in the machine.**
    firmware refuses the stick, sometimes without a message. The installed
    box needs Secure Boot off either way, because its own loader is not
    signed.
-3. Boot from the stick. A menu offers **UEFI**, **BIOS** or **autodetect**
-   and takes autodetect after 30 seconds, so an unattended boot still
-   installs. Autodetect picks the mode the stick itself was booted in, which
-   is right for almost everyone. [Install variants](../types/install-variants)
+3. Boot from the stick. While it starts it shows the LosOS logo, above the
+   boot menu on a BIOS machine and alone on a UEFI one. Then a menu offers
+   **UEFI**, **BIOS** or **autodetect** and takes autodetect after 30
+   seconds, so an unattended boot still installs. Autodetect picks the mode
+   the stick itself was booted in, which is right for almost everyone. [Install variants](../types/install-variants)
    explains the choice.
 4. Wait. The installer finds every fixed disk, puts them in one encrypted
    volume, downloads the system and installs it. Near the end it prints

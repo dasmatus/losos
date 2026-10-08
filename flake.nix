@@ -232,6 +232,9 @@
             # sign it in place with `losos-sign-iso` (see that module's
             # header and tests/secure-boot.nix).
             ./modules/secure-boot.nix
+            # LosOS, not NixOS, on everything the medium shows: boot menu,
+            # splash, volume label, console banner, host name, os-release.
+            ./modules/live-branding.nix
           ];
         };
         # The target system installed onto the machine.
