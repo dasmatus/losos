@@ -9,7 +9,7 @@ page is the owner-facing half; this is the operator's.
 
 The private key follows the same rule as the official-edge root key
 (`../edge-identity/`): it is made **on the operator's own computer**, never
-on a box, in CI, or in a session, and it leaves that computer exactly once,
+on a box or in CI, and it leaves that computer exactly once,
 into the repository secret CI signs with. There is no sign-in gate here,
 because GitHub itself is the gate: only someone who can set the repository
 secret and merge the certificate into `main` can make a key count.
@@ -53,6 +53,26 @@ Then:
    sign a medium those machines trust, and the only remedy is the same new
    key plus asking every owner to remove the old certificate from `db`.
 
+## Microsoft's certificates stay
+
+Owners add the LosOS certificate to `db`; they do not replace Microsoft's.
+Windows' boot manager, other distributions' shim and the option ROMs on
+graphics and network cards are signed under Microsoft's certificates, and a
+`db` without them stops all three. The handbook page says so and names the
+firmware buttons and the `sbctl enroll-keys --microsoft` flag that keep them.
+CI's enrolled leg (`tests/iso-boot.py --firmware uefi-sb`) starts from
+OVMF's Microsoft variable store and adds the LosOS certificate to it, and
+`tests/secure-boot.nix` boots both the LosOS medium and Ubuntu's
+Microsoft-signed shim on that combined store.
+
+What this does not do is make Microsoft sign the LosOS loader. A stick that
+boots on a stock PC with nothing enrolled needs a shim signed with
+Microsoft's third-party UEFI CA, which means passing the public review at
+`github.com/rhboot/shim-review` and submitting the shim through Microsoft's
+Partner Center with an EV code-signing certificate. Only the project's owner
+can do that, and shim would then load the UKI against a LosOS certificate
+built into it. Nothing in the repository depends on it.
+
 ## Rotation
 
 Run the ceremony into a new directory, replace the secret, replace the
@@ -78,13 +98,15 @@ openssl x509 -in losos-secure-boot-db.pem -noout -fingerprint -sha256   # matche
 
 `tests/secure-boot.nix` (`nix build .#checks.x86_64-linux.losos-secure-boot`,
 needs KVM to be quick) generates a throwaway PK, KEK and db in the build
-sandbox, enrols them into OVMF's variable store with `virt-fw-vars`, signs
+sandbox, enrols them into OVMF's variable store with `virt-fw-vars` beside
+Microsoft's two KEK and five db certificates, signs
 the real ISO with the throwaway db key through the same `losos-sign-iso`,
 and boots it under OVMF's Secure Boot build: the installer's first line
 reads *Secure Boot: enabled*, `bootctl status` says *enabled (user)*, the
-firmware's `SecureBoot` variable is 1, and `db` holds the test certificate.
-It then watches the same firmware refuse the medium under Microsoft-only
-keys, refuse a copy with one byte of the loader changed, refuse the unsigned
+firmware's `SecureBoot` variable is 1, and `db` holds the test certificate
+next to Microsoft's. Ubuntu's Microsoft-signed shim starts on the same
+firmware and is refused once Microsoft's certificates are removed. It then
+watches the firmware refuse the medium under Microsoft-only keys, refuse a copy with one byte of the loader changed, refuse the unsigned
 build, and watches stage 1 stop a copy with one bit of the system image
 changed. The screenshots land in the check's output. None of that key
 material is the production key, and none of it is committed.

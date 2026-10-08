@@ -3,25 +3,37 @@
 #
 # Boots the real installer ISO — the same `nixosConfigurations.iso` the
 # release ships, extended only with the test backdoor so the script can look
-# inside — from a virtual USB stick, under OVMF's Secure Boot build with SMM,
-# four times:
+# inside — from a virtual USB stick, under OVMF's Secure Boot build with SMM.
 #
-#   1. signed, firmware trusts the signing key      → boots; from inside, the
-#      firmware says Secure Boot is on and the loader was systemd-stub, and
-#      the certificate in `db` is the one the ISO was signed with;
-#   2. signed, firmware holds only Microsoft's keys → refused ("Access
+# The firmware under test holds the LosOS certificate *and* Microsoft's: its
+# KEK has the test KEK beside Microsoft's two KEK CAs, its db the test db
+# certificate beside Microsoft's five (the two Windows CAs, the two
+# third-party UEFI CAs, the 2023 option ROM CA). That is the state the
+# handbook tells an owner to leave their PC in, because Windows, other
+# distributions' shim and the option ROMs on graphics and network cards are
+# signed under Microsoft's certificates, and a db without them stops those.
+#
+#   1. signed, firmware trusts both                  → boots; from inside, the
+#      firmware says Secure Boot is on, the loader was systemd-stub, and db
+#      and KEK list the test certificates beside Microsoft's;
+#   2. a Microsoft-signed loader (Ubuntu's shim)     → the same firmware
+#      starts it: enrolling LosOS took nothing away;
+#   3. the same shim, firmware with LosOS keys only  → refused, which is
+#      what replacing Microsoft's keys instead of adding to them costs;
+#   4. signed, firmware holds only Microsoft's keys  → refused ("Access
 #      Denied"), which is what a stock PC does before its owner enrols the
 #      LosOS certificate;
-#   3. signed, one byte of the loader changed        → refused: the signature
+#   5. signed, one byte of the loader changed        → refused: the signature
 #      covers the whole image, so a tampered medium does not start;
-#   4. unsigned (the plain `nix build` output)       → refused;
-#   5. signed, one byte of the system image changed  → the firmware starts
+#   6. unsigned (the plain `nix build` output)       → refused;
+#   7. signed, one byte of the system image changed  → the firmware starts
 #      it (the loader is intact), and stage 1 refuses it: the squashfs no
 #      longer matches the hash the signed command line carries.
 #
-# The keys are THROWAWAY: a PK, a KEK and a db certificate generated in the
-# build sandbox below, enrolled into a copy of OVMF's variable store with
-# virt-fw-vars, and used for nothing else. They are not the production key,
+# The LosOS keys are THROWAWAY: a PK, a KEK and a db certificate generated in
+# the build sandbox below, enrolled into a copy of OVMF's variable store with
+# virt-fw-vars, and used for nothing else. Microsoft's certificates are the
+# public ones virt-firmware ships. They are not the production key,
 # which never enters a Nix build (see the module header); the production
 # certificate is keys/secure-boot-db.pem, and the only thing this test says
 # about it is that the same tool and the same ISO shape work.
@@ -58,8 +70,10 @@ let
     }).config.system.build.isoImage;
   inherit (testIso) isoName;
 
-  # Owner GUID the enrolled certificates carry; any fixed value works.
-  guid = "77fa9abd-0359-4d32-bd60-28f4e78f784b";
+  # Owner GUID the LosOS certificates carry; any fixed value works except
+  # Microsoft's own (77fa9abd-…), which their certificates carry.
+  guid = "a58ba000-6821-482f-acda-601cb601d98e";
+  msGuid = "77fa9abd-0359-4d32-bd60-28f4e78f784b";
 
   keys =
     pkgs.runCommand "losos-secure-boot-test-keys"
@@ -77,20 +91,87 @@ let
 
   ovmf = pkgs.OVMFFull;
 
-  # OVMF's empty variable store with the throwaway PK/KEK/db enrolled and
-  # Secure Boot switched on — a firmware that trusts the test signer.
-  lososVars =
-    pkgs.runCommand "ovmf-vars-losos-test-key"
+  # OVMF's empty variable store with the throwaway PK/KEK/db enrolled,
+  # Microsoft's KEK and db certificates added beside them, and Secure Boot
+  # switched on: a PC whose owner followed the handbook.
+  lososVars = ovmfVars "ovmf-vars-losos-and-microsoft" true;
+
+  # The same without Microsoft's certificates: what `sbctl enroll-keys`
+  # without `--microsoft`, or a firmware's "delete all keys" before adding
+  # LosOS, leaves behind. Only subtest 3 uses it.
+  lososOnlyVars = ovmfVars "ovmf-vars-losos-only" false;
+
+  ovmfVars =
+    name: withMicrosoft:
+    pkgs.runCommand name
       {
         nativeBuildInputs = [ pkgs.python3Packages.virt-firmware ];
       }
       ''
-        virt-fw-vars --input ${ovmf.variables} --output $out \
-          --set-pk ${guid} ${keys}/PK.pem \
-          --add-kek ${guid} ${keys}/KEK.pem \
-          --add-db ${guid} ${keys}/db.pem \
-          --secure-boot
+        args=(
+          --set-pk ${guid} ${keys}/PK.pem
+          --add-kek ${guid} ${keys}/KEK.pem
+          --add-db ${guid} ${keys}/db.pem
+        )
+        ${pkgs.lib.optionalString withMicrosoft ''
+          # The public certificates virt-firmware carries, by its own names.
+          ms=$(python3 -c 'import os, virt.firmware.efi.certs as c; print(os.path.dirname(c.MS_KEK_2011))')
+          for f in ms-kek-2011 ms-kek-2023; do
+            args+=(--add-kek ${msGuid} "$ms/$f.pem")
+          done
+          for f in windows-2011 windows-2023 ms-uefi-2011 ms-uefi-2023 ms-uefi-rom-2023; do
+            args+=(--add-db ${msGuid} "$ms/$f.pem")
+          done
+        ''}
+        virt-fw-vars --input ${ovmf.variables} --output $out "''${args[@]}" --secure-boot
         virt-fw-vars --input $out --print
+      '';
+
+  # A loader Microsoft signed: Ubuntu's shim, signed with Microsoft's
+  # third-party UEFI CA, on an EFI system partition of its own as the
+  # removable-media path \EFI\BOOT\BOOTX64.EFI. There is no grubx64.efi
+  # beside it, so once the firmware has let it run it says it cannot find
+  # its second stage, which is the proof that it ran.
+  shimDeb = pkgs.fetchurl {
+    urls = [
+      "https://archive.ubuntu.com/ubuntu/pool/main/s/shim-signed/shim-signed_1.59+15.8-0ubuntu2_amd64.deb"
+      "https://launchpad.net/ubuntu/+archive/primary/+files/shim-signed_1.59+15.8-0ubuntu2_amd64.deb"
+    ];
+    hash = "sha256-+O1xzi2RowS21euEmX+EbzMbVUV4vALb/njhOtisgak=";
+  };
+
+  shimDisk =
+    pkgs.runCommand "microsoft-signed-shim-disk"
+      {
+        nativeBuildInputs = [
+          pkgs.binutils
+          pkgs.dosfstools
+          pkgs.mtools
+          pkgs.python3Packages.virt-firmware
+          pkgs.sbsigntool
+          pkgs.util-linux
+          pkgs.xz
+        ];
+      }
+      ''
+        ar x ${shimDeb} data.tar.xz
+        tar -xJf data.tar.xz --wildcards './usr/lib/shim/shimx64.efi.signed*'
+        shim=$(ls usr/lib/shim/shimx64.efi.signed.latest 2>/dev/null || ls usr/lib/shim/shimx64.efi.signed* | head -1)
+        echo "using $shim"
+        # Signed by Microsoft, by one of the two third-party UEFI CAs.
+        sbverify --list "$shim"
+        ms=$(python3 -c 'import os, virt.firmware.efi.certs as c; print(os.path.dirname(c.MS_KEK_2011))')
+        sbverify --cert "$ms/ms-uefi-2011.pem" "$shim" || sbverify --cert "$ms/ms-uefi-2023.pem" "$shim"
+
+        truncate -s 64M disk.img
+        echo 'label: gpt
+        start=2048, type=C12A7328-F81F-11D2-BA4B-00A0C93EC93B' | sfdisk disk.img
+        truncate -s 62M esp.img
+        mkfs.vfat -n SHIM esp.img
+        mmd -i esp.img ::/EFI ::/EFI/BOOT
+        mcopy -i esp.img "$shim" ::/EFI/BOOT/BOOTX64.EFI
+        dd if=esp.img of=disk.img bs=1M seek=1 conv=notrunc
+        mv disk.img $out
       '';
 
   # A stock PC: Microsoft's PK-less template with the Microsoft KEK and db
@@ -248,24 +329,52 @@ pkgs.testers.nixosTest {
         # Stage 1 hashed the system image against the signed command line.
         m.succeed("grep -q losos.medium.sha256= /proc/cmdline")
         m.succeed("journalctl -b -u losos-verify-medium | grep 'matches the signed hash'")
-        # The certificate in db is the test signer, by name.
+        # db and KEK hold the test signer and Microsoft's certificates, by name.
         db = m.succeed("efi-readvar -v db")
         print(db)
-        assert "LosOS test db" in db, db
+        for cn in [
+            "LosOS test db",
+            "Microsoft Windows Production PCA 2011",
+            "Windows UEFI CA 2023",
+            "Microsoft Corporation UEFI CA 2011",
+            "Microsoft UEFI CA 2023",
+            "Microsoft Option ROM UEFI CA 2023",
+        ]:
+            assert cn in db, (cn, db)
+        kek = m.succeed("efi-readvar -v KEK")
+        print(kek)
+        for cn in ["LosOS test KEK", "Microsoft Corporation KEK CA 2011", "Microsoft Corporation KEK 2K CA 2023"]:
+            assert cn in kek, (cn, kek)
 
         # The same facts on the screen, for the record. tty8: the medium
         # autologs root in on every console logind spawns a getty for
         # (tty1-tty6), and agetty hangs the tty up as it starts, which
         # turns a write already in flight on tty2 into EIO.
+        # Each certificate's subject is on the line after "Subject:"; the
+        # screen shows only the CN, so every line fits.
+        cns = "grep -A1 Subject: | grep -o 'CN=[^,]*'"
         m.succeed(
             "{ echo '# bootctl status | head -12'; bootctl status 2>/dev/null | head -12;"
             " echo; echo '# od -An -tu1 -j4 -N1 " + SB_VAR + "'; od -An -tu1 -j4 -N1 " + SB_VAR + ";"
-            " echo; echo '# efi-readvar -v db | grep -A1 -m1 Subject'; efi-readvar -v db | grep -A1 -m1 Subject; } > /dev/tty8"
+            " echo; echo '# efi-readvar -v KEK (subjects)'; efi-readvar -v KEK | " + cns + ";"
+            " echo; echo '# efi-readvar -v db (subjects)'; efi-readvar -v db | " + cns + "; } > /dev/tty8"
         )
         m.succeed("chvt 8")
         m.wait_until_tty_matches("8", "Secure Boot: enabled")
         m.screenshot("02-signed-tty8-proof")
         m.shutdown()
+
+    with subtest("a Microsoft-signed loader still starts on the same firmware"):
+        m = firmware("${shimDisk}", "${lososVars}", "shim")
+        m.start()
+        # shim ran: it looks for its second stage, which the disk lacks.
+        m.wait_for_console_text("grubx64.efi")
+        time.sleep(3)
+        m.screenshot("07-microsoft-signed-shim-starts")
+        m.crash()
+
+    with subtest("without Microsoft's certificates the same loader is refused"):
+        refused("${shimDisk}", "${lososOnlyVars}", "shim-losos-only", "08-shim-refused-losos-only")
 
     with subtest("a firmware with only Microsoft's keys refuses the signed medium"):
         refused(signed_iso, "${msVars}", "foreign", "03-refused-microsoft-keys")
