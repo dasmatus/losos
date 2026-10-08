@@ -35,13 +35,13 @@
 
 let
   # What the pod's losos.ini has to carry, in the shape pkgs.formats.ini
-  # renders (`key = value`, one space each side). The entrypoint in
+  # renders (`key=value`, no spaces). The entrypoint in
   # flake/images.nix concatenates this file after the base and brand
   # fragments, so these are the lines Forgejo reads last.
   wantIni = [
     "[federation]"
-    "ENABLED = true"
-    "SHARE_USER_STATISTICS = false"
+    "ENABLED=true"
+    "SHARE_USER_STATISTICS=false"
   ];
 in
 
