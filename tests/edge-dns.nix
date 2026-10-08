@@ -18,7 +18,14 @@
 #      with the SOA serial the file carries.
 #   3. `/domains/list` now answers 200 and says why this box may not add a
 #      domain: the edge runs no market, so there is no Stripe account to
-#      vouch for it.
+#      vouch for it. It carries the box's relay pass, because the edge keeps
+#      a route table (losos.edge.dns.relayRoutes).
+#   4. The route table's wiring: etcd runs on loopback 2479, clear of the
+#      2379 the mesh's rke2 server would take; the registrar made its relay
+#      pass key (0600); a spoke forwarding that pass on `/relay` is answered
+#      with no routes (nothing is vouched for here); and a key under
+#      /losos/routes/ the registrar did not write is removed on its next
+#      pass, so the registrar reads and writes the real etcd.
 #
 # The box labels and the custom-domain checks themselves (Stripe data, the
 # TXT token, the CNAME, Traefik routers) are covered against a real
@@ -30,6 +37,8 @@ let
   proxyTokenValue = "test-proxy-token-0123456789abcdef";
   bootstrapTokenValue = "test-bootstrap-0123456789abcdef0123";
   proxyToken = "/var/secrets/losos-proxy-token";
+  spokeTokenValue = "test-spoke-token-0123456789abcdef0123456789abcdef";
+  spokeToken = "/var/secrets/losos-tenant-acme";
   bootstrapToken = "/var/secrets/losos-rathole-bootstrap";
   lososPkgs = import ../flake/packages.nix { inherit pkgs; };
   registrar = "${lososPkgs.losos-registrar}/bin/losos-registrar";
@@ -53,6 +62,7 @@ pkgs.testers.nixosTest {
           "d /var/secrets 0700 root root - -"
           "f ${proxyToken} 0600 root root - ${proxyTokenValue}"
           "f ${bootstrapToken} 0600 root root - ${bootstrapTokenValue}"
+          "f ${spokeToken} 0600 root root - ${spokeTokenValue}"
         ];
 
         losos.edge = {
@@ -66,16 +76,26 @@ pkgs.testers.nixosTest {
             hostname = "mattbox.boxes.example.test";
             tokenFile = proxyToken;
           };
+          # A local edge that may relay boxes under acme.example.test.
+          tenants.acme = {
+            hostname = "acme.example.test";
+            tokenFile = spokeToken;
+            relayZone = "acme.example.test";
+          };
           dns = {
             enable = true;
             ipv4 = [ config.networking.primaryIPAddress ];
             # Nothing outside the test network answers; the checks are
             # covered by the Rust suite.
             checkUrl = "http://127.0.0.1:9/dns-query";
+            relayRoutes.enable = true;
           };
         };
         networking.firewall.allowedTCPPorts = [ 8443 ];
-        environment.systemPackages = [ pkgs.jq ];
+        environment.systemPackages = [
+          pkgs.jq
+          pkgs.etcd
+        ];
         virtualisation.memorySize = 1024;
       };
 
@@ -156,6 +176,36 @@ pkgs.testers.nixosTest {
           assert view["eligible"] is False, view
           assert view["reason"] == "stripeAccount", view
           assert view["addresses"] == ["${edgeIp}"], view
+          assert view["relay_pass"].startswith("v1."), view
           print(json.dumps(view, indent=2))
+
+      with subtest("the route table: etcd on 2479, the pass key, /relay, and the registrar's writes"):
+          edge.wait_for_unit("etcd.service")
+          edge.wait_for_open_port(2479)
+          edge.fail("ss -ltnH | grep -q ':2379 '")
+          edge.succeed("stat -c %a /var/lib/losos-registrar/relay-pass.key | grep -qx 600")
+          edge.succeed("grep -Eqx '[0-9a-f]{64}' /var/lib/losos-registrar/relay-pass.key")
+          relay = {
+              "appliance_id": "acme",
+              "token": "${spokeTokenValue}",
+              "tenants": [{
+                  "id": "mattbox",
+                  "hostname": "mattbox.acme.example.test",
+                  "pass": view["relay_pass"],
+              }],
+          }
+          out = edge.succeed(
+              "curl -sf -X POST -H 'content-type: application/json' "
+              f"-d '{json.dumps(relay)}' http://127.0.0.1:8443/relay"
+          )
+          resp = json.loads(out)
+          assert [a["id"] for a in resp["accepted"]] == ["mattbox"], resp
+          assert resp["routes"] == [], resp
+          etcdctl = "ETCDCTL_API=3 etcdctl --endpoints=http://127.0.0.1:2479"
+          edge.succeed(f"{etcdctl} put /losos/routes/acme/mattbox/junk.example.org not-a-row")
+          edge.wait_until_succeeds(
+              f"test -z \"$({etcdctl} get --prefix /losos/routes/ --keys-only)\"", timeout=60
+          )
+          edge.succeed("journalctl -u losos-registrar.service | grep -q 'etcd: removing route /losos/routes/acme/mattbox/junk.example.org'")
     '';
 }

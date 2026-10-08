@@ -275,6 +275,12 @@ directory read-only, adds the names to `trusted_domains` per request, and
 uses a request's own domain for `overwritehost` when it is one of them. Only
 container mode does this. LosOS Git keeps its edge-name `ROOT_URL`.
 
+A box behind a local edge gets its domains routed too, through that local
+edge, once it has vouched for the local edge with a relay pass and joined
+this edge's mesh. The routes live in etcd. [Edge
+federation](Edge-Federation#custom-domains-behind-a-local-edge) has the
+details and `losos.edge.dns.relayRoutes`.
+
 `tests/edge-dns.nix` (`losos-edge-dns`) boots an edge and a client and asks
 Knot over UDP and TCP. `backend-registrar/tests/domains.rs` drives the claim
 flow against a real registrar and a fake DNS-over-HTTPS server.

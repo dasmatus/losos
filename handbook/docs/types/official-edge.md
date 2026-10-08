@@ -140,6 +140,12 @@ take a site down. If the Stripe account stops being ready, it stops at once.
 Either way the pane says why.
 LosOS Git still builds its links with the box's edge name.
 
+If your box sits behind your own edge at home, your domains still work, as
+long as the box has joined the mesh. The LosOS edge sends the traffic to
+your edge and your edge passes it to the box. Your box tells the LosOS edge
+which home edge it is behind, so nobody else's edge can claim your domain.
+There is nothing to set up for this.
+
 ## Settings that matter
 
 | Pane     | Setting                                | What it does                                                            |

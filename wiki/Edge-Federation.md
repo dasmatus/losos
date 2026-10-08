@@ -167,6 +167,104 @@ walks exactly this: LAN path, enrolment, uplink, fall back, off, back.
 - **The identity.** A spoke does not forward `/identity`; a box that wants
   the market reaches the official edge itself, over its own internet.
 
+## Custom domains behind a local edge
+
+[Custom domains](Master-Proxy#custom-domains) work for a box behind a local
+edge too, under one rule. Only the official edge routes a domain. The local
+edge never serves a zone, never checks a record and never
+asks Let's Encrypt for anything. It carries the official edge's traffic to
+the box on the same relayed service that already carries the box's own
+hostname.
+
+The hard part is trust. A local edge is somebody's machine, and its `/relay`
+list says "my box `mattbox`". If the official edge believed that and routed
+`mattbox`'s domains there, anyone running a gateway could name their box
+after someone else's, take their domain and get a valid certificate for it.
+So the box has to say which local edge it is behind, and the local edge
+cannot say it for the box.
+
+The box does that with a **relay pass**:
+
+1. The box asks the official edge for its domains view, as it already does
+   every two minutes, over its own internet and with its own token. The
+   answer now carries `relay_pass`, `v1.<hour>.<64 hex>`. The hex is an
+   HMAC-SHA256 over the box id and the hour, under
+   `/var/lib/losos-registrar/relay-pass.key`. That key never leaves the
+   official edge, and the registrar makes it on first start.
+2. lososd writes the pass to `/run/losos/relay-pass` (root only) and drops
+   it from what the admin page gets.
+3. `losos-registrar announce` reads the file on every register and
+   heartbeat and sends the pass to whichever edge the box uses. A local
+   edge keeps it in memory, only if it has the right shape.
+4. The local edge's uplink sends each box's pass with the box in
+   `POST /relay`. The official edge checks it. A good pass binds the box to
+   that local edge.
+
+A pass is good for the hour it was issued in and the two after. A local
+edge the box has left can replay what it last saw for at most that long,
+and never over a newer pass from another local edge, because a binding only
+moves to a pass at least as new. The local edge can relay its own boxes
+without one. They just get no domains.
+
+On top of the binding, the box has to be **in the mesh**. It must have
+joined this official edge's cluster with `/cluster/join`, which records its
+compute window under its own id. A box with only a tunnel gets its hostname
+and nothing more. And if the box is also registered with the official edge
+directly, the direct path wins and the local edge is not used.
+
+### The route table in etcd
+
+The official edge keeps the result in etcd, one key per route:
+
+```
+/losos/routes/<local edge>/<box>/<domain>
+  {"domain":"cloud.example.org","tenant":"mattbox","spoke":"acme","service":"acme.mattbox"}
+```
+
+Each reconciler pass works out which routes should exist, writes the
+difference to etcd, reads the prefix back and builds the Traefik routers
+from what etcd returned. So the table you can read with
+`etcdctl --endpoints=http://127.0.0.1:2479 get --prefix /losos/routes/` is
+the table that routes. A key under the prefix that is not a route row gets
+deleted. If etcd is down, routes keep working from the last table it gave,
+minus anything the box no longer qualifies for, and new routes wait until
+etcd is back. The box's name in the edge's zone, `<label>.<zone>`, follows
+the same path as its domains, so the CNAME target reaches it too.
+
+The local edge never talks to etcd. The official edge sends it its own rows
+in the `/relay` answer, and the gateway writes them to
+`/var/lib/losos-registrar/hub-routes.json` and logs each change. That file
+only tells you what the official edge routes your way. Nothing on the local
+edge routes by it.
+
+### Turning it on
+
+On the official edge:
+
+```nix
+losos.edge.dns = {
+  enable = true;                 # the zone and custom domains
+  relayRoutes.enable = true;     # and the route table
+};
+```
+
+That runs a single-node etcd on loopback, client port 2479 and peer port
+2480. The mesh's rke2 server already takes 2379 and 2380 for its own etcd,
+and nothing of ours goes into that one. To share one etcd cluster between
+official edges, set `relayRoutes.localEtcd = false` and point
+`relayRoutes.etcdUrl` at it. The registrar speaks etcd's v3 JSON gateway and
+presents no client certificate, so put TLS in front of a remote cluster
+yourself. Nothing changes on the local edge or the box. Both pick the pass
+up from a build with this change.
+
+`backend-registrar/tests/domains.rs` runs the whole path with a stand-in
+etcd. It covers a box behind a gateway getting its domain, a box outside the
+mesh getting nothing, and three forged passes getting nothing.
+`tests/etcd.rs` runs the table against a real etcd when
+`LOSOS_TEST_ETCD_URL` is set, as CI does. `tests/edge-dns.nix` boots the
+NixOS wiring: etcd on 2479, the key file, `/relay` with a pass, and the
+registrar removing a key it did not write.
+
 ## Delivery: the gateway, without an ISO
 
 Two forms, one configuration:
