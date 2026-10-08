@@ -57,8 +57,7 @@ own. **It wipes every fixed disk in the machine.**
 
 ## Trying it in a virtual machine
 
-The box runs in QEMU, virt-manager or VirtualBox, and the maturita demo is
-shown that way. Two things to know:
+The box runs in QEMU, virt-manager or VirtualBox. Two things to know:
 
 - Give the VM an emulated TPM, `swtpm`, if you want the TPM unlock path.
   Without one the box installs in keyfile mode, which also works.

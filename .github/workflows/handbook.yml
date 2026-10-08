@@ -59,19 +59,21 @@ jobs:
       - run: npm run check
       - run: npm run build
       # The hand-in PDF of the KOP (docs/project/kop, the Slovak technical
-      # documentation) is built from the same pages by pandoc and Typst, both
-      # from the flake's own nixpkgs pin, and published next to the site as
-      # /kop/LosOS-KOP.pdf. The PDF is never committed: the pages are.
+      # documentation) is built from those pages by pandoc and Typst, both
+      # from the flake's own nixpkgs pin. It is a workflow artifact only:
+      # it is written outside build/, so the Pages upload below never
+      # carries it, and the site leaves docs/project/ out too. The PDF is
+      # never committed: the pages are.
       - uses: ./.github/actions/setup-nix
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           cache-url: ${{ vars.LOSOS_PROXY_URL }}
           public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
-      - run: nix shell --inputs-from .. nixpkgs#pandoc nixpkgs#typst -c scripts/build-kop.sh build/kop/LosOS-KOP.pdf
+      - run: nix shell --inputs-from .. nixpkgs#pandoc nixpkgs#typst -c scripts/build-kop.sh "$RUNNER_TEMP/kop/LosOS-KOP.pdf"
       - uses: actions/upload-artifact@v7
         with:
           name: LosOS-KOP
-          path: handbook/build/kop/LosOS-KOP.pdf
+          path: ${{ runner.temp }}/kop/LosOS-KOP.pdf
       # The public site is rooted at / on losos.dasmat.us; the box's copy is
       # rooted at /handbook/ and is built by nix, not here.
       - uses: actions/upload-pages-artifact@v4
