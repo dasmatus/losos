@@ -186,9 +186,9 @@ fscrypt is layered **on top of** the existing LUKS, not instead of it:
 
 The protector key is TPM2-sealed, mirroring how `modules/disko.nix` already
 branches on `losos.tpm.enable`; the no-TPM path uses a keyfile, or the whole
-no-TPM configuration would brick. The package attribute is `fscrypt`
-(nixpkgs called it `fscrypt-experimental` until January 2026 and keeps
-that name only as a deprecated alias).
+no-TPM configuration would brick. The package attribute is `fscrypt`.
+nixpkgs called it `fscrypt-experimental` until January 2026 and now keeps
+that name only as an alias that warns.
 
 Layout, namespaced per contributing box so a pooled volume stays attributable:
 
