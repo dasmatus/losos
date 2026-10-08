@@ -65,6 +65,15 @@ let
   # hand out its manual any more than its settings.
   handbook = config.losos.admin.handbook;
   handbookEnabled = adminEnabled && handbook != null;
+  # LosOS Lab, the setup visualizer: the admin UI's second page
+  # (admin-ui/app/lab/), so it comes out of the same bundle. Under the admin
+  # guard for the same reason as the handbook, and more so: it reads this
+  # box's settings with the owner's token.
+  labEnabled = adminEnabled && config.losos.admin.lab;
+  # The Lab's guests under libvirt (modules/lab.nix): their console and NIC
+  # WebSockets skip lososd and go to the helper, which checks a per-guest
+  # ticket only a token holder can get.
+  labLibvirt = labEnabled && config.losos.lab.libvirt.enable;
 
   # Access guard for the admin surface (the SPA, its assets, the setup routes,
   # the lososd API): local network only. Master-proxy traffic must never reach
@@ -221,6 +230,27 @@ let
     "form-action 'none'"
   ];
 
+  # LosOS Lab's policy: the admin policy plus 'wasm-unsafe-eval', which is
+  # what lets the page compile its WebAssembly (the Lab's Rust core,
+  # admin-ui/lab/core) and nothing more: eval() and new Function() stay
+  # refused. Kept off the admin pages, which run no WebAssembly. Style is
+  # 'self' like the admin page's: the canvas places things with React style
+  # props, which are CSSOM writes the policy allows. blob: images are the
+  # setup files and screenshots the Lab hands out. No remote origin: the
+  # box's copy has no qemu-wasm engine, fetches nothing but /api/ and its
+  # own files, and its guests, when there are any, come through /api/lab.
+  labCsp = lib.concatStringsSep "; " [
+    "default-src 'none'"
+    "script-src 'self' 'wasm-unsafe-eval'"
+    "style-src 'self'"
+    "img-src 'self' data: blob:"
+    "font-src 'self'"
+    "connect-src 'self'"
+    "frame-ancestors 'none'"
+    "base-uri 'none'"
+    "form-action 'none'"
+  ];
+
   # ── The widget frame ──────────────────────────────────────────────────
   # Widgets the owner writes by hand (backend/src/look.rs) are HTML with
   # their own script, and the admin CSP above refuses inline script for
@@ -257,15 +287,17 @@ let
   ];
 
   # One map per header: value on the admin surface, empty (header omitted) on
-  # the two proxied service routes, the handbook's own value (or the admin
-  # value, for the headers it shares) under /handbook/, and the widget
-  # frame's own value (or nothing) under /widget-frame/.
-  adminHeaderMap = variable: value: handbookValue: frameValue: ''
+  # the two proxied service routes, the handbook's and the lab's own values
+  # (or the admin value, for the headers they share) under /handbook/ and
+  # /lab/, and the widget frame's own value (or nothing) under
+  # /widget-frame/.
+  adminHeaderMap = variable: value: handbookValue: labValue: frameValue: ''
     map $uri ${variable} {
         default          "${value}";
         ~^/nextcloud     "";
         ~^/forgejo       "";
         ~^/handbook/     "${handbookValue}";
+        ~^/lab/          "${labValue}";
         ~^/widget-frame/ "${frameValue}";
     }
   '';
@@ -276,6 +308,7 @@ let
       variable = "$losos_csp";
       value = adminCsp;
       handbookValue = handbookCsp;
+      labValue = labCsp;
       frameValue = widgetFrameCsp;
     }
     {
@@ -299,7 +332,8 @@ let
   ];
 
   adminHeaderMaps = lib.concatMapStrings (
-    h: adminHeaderMap h.variable h.value (h.handbookValue or h.value) h.frameValue
+    h:
+    adminHeaderMap h.variable h.value (h.handbookValue or h.value) (h.labValue or h.value) h.frameValue
   ) adminHeaders;
 
   # `always` so the headers ride on the 403s the lanOnly guard emits too.
@@ -402,6 +436,52 @@ in
           "/setup/" = {
             tryFiles = "$uri =404";
             extraConfig = lanOnly;
+          };
+        })
+        (lib.mkIf labEnabled {
+          # LosOS Lab: lab/index.html in the admin UI's bundle, on real paths
+          # under /lab/ like the SPA is on /, so every deep link and reload
+          # gets the page. Its scripts and the core's .wasm are in the
+          # shared /assets/. LAN-only like the rest of the admin surface; the
+          # header map above gives this prefix its own CSP.
+          "/lab/" = {
+            tryFiles = "$uri /lab/index.html";
+            extraConfig = lanOnly;
+          };
+        })
+        (lib.mkIf labLibvirt {
+          # The Lab guests' serial consoles and network cards, as WebSockets
+          # straight to `losos-registrar lab`. Longer than /api/ so it wins
+          # the prefix match. Same LAN-only guard. The page's own origin is
+          # what the helper checks the Origin header against, so the Host
+          # goes through as the browser sent it, port included. `connect-src
+          # 'self'` in labCsp covers ws:// and wss:// to the same host.
+          "/api/lab/ws/" = {
+            proxyPass = "http://127.0.0.1:${toString config.losos.lab.libvirt.port}/lab/v1/guests/";
+            proxyWebsockets = true;
+            extraConfig = ''
+              ${lanOnly}
+              proxy_set_header Host $http_host;
+              proxy_read_timeout 1h;
+              proxy_send_timeout 1h;
+            '';
+          };
+          # The libvirt relay for the Lab's WebAssembly libvirt client
+          # (admin-ui/lab/virt-rpc): bytes between this WebSocket and
+          # libvirt's socket, at the helper's uid. Admitted by the helper
+          # only with a single-use ticket from POST /api/lab/virt-ticket,
+          # which lososd hands out under the admin token. An exact match,
+          # because a prefix would also take /api/lab/virt-ticket from
+          # lososd.
+          "= /api/lab/virt" = {
+            proxyPass = "http://127.0.0.1:${toString config.losos.lab.libvirt.port}/lab/v1/virt";
+            proxyWebsockets = true;
+            extraConfig = ''
+              ${lanOnly}
+              proxy_set_header Host $http_host;
+              proxy_read_timeout 1h;
+              proxy_send_timeout 1h;
+            '';
           };
         })
         (lib.mkIf handbookEnabled {

@@ -292,6 +292,10 @@
             # different halves of the same problem.
             ./modules/keyring.nix
             ./modules/daemon.nix
+            # LosOS Lab's guests under libvirt on the box (losos.lab.libvirt,
+            # off by default): the `losos-registrar lab` helper lososd relays
+            # /api/lab to.
+            ./modules/lab.nix
             # The option document and the configuration repository on LosOS
             # Git (modules/config-repo.nix, backend/src/{options,config_repo}.rs).
             ./modules/config-repo.nix
@@ -439,7 +443,7 @@
       #                         it from inside; Microsoft-only keys, a tampered
       #                         copy and the unsigned build are refused
       #                         (tests/secure-boot.nix).
-      #   losos-edge-lan-two-boxes — the verification walkthrough as a
+      #   losos-edge-lan-two-boxes — the mesh verification walkthrough as a
       #                         check: two boxes with the real admin UI and an
       #                         edge on one LAN, scenario A (no edge: both
       #                         refuse sharing, serve locally, survive a reboot)
@@ -472,6 +476,9 @@
           # every option the install configuration declares and the check
           # fails on any row it cannot draw (tests/advanced.browser.mjs).
           optionsJson = self.checks.${system}.losos-options-doc;
+          # LosOS Lab's page imports the Rust core and the libvirt client;
+          # the bundle under test copies both in the way the shipped one does.
+          inherit (self.packages.${system}.losos-admin-ui) labCorePkg labVirtPkg;
         };
         # Not a VM: the option document of the install configuration
         # (flake/options-doc.nix via modules/config-repo.nix), forced here so

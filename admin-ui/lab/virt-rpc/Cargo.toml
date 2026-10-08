@@ -1,0 +1,43 @@
+# A libvirt remote-protocol client that runs in the browser. The protocol
+# (XDR over a byte stream, src/remote/remote_protocol.x and
+# src/rpc/virnetprotocol.x in libvirt 12.7.0) is implemented here in plain
+# Rust with no I/O, so the same code is unit-tested natively, driven over a
+# unix socket by the live test, and driven over a WebSocket (or a Direct
+# Sockets TCPSocket) by the wasm wrapper in src/web.rs.
+#
+# A crate of its own, outside the flake and outside any workspace, like
+# losos-lab-core beside it. `wasm-bindgen` is pinned to exactly the version
+# of nixpkgs' `wasm-bindgen-cli` (0.2.127), which refuses any other.
+[package]
+name = "losos-lab-virt"
+version = "0.1.0"
+edition = "2021"
+publish = false
+authors = ["Matus Mastena <shadiness9530+ou1rlygj@pm.me>"]
+description = "libvirt's remote RPC protocol, sans-IO, for LosOS Lab in the browser"
+license = "AGPL-3.0-or-later"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+js-sys = "0.3"
+wasm-bindgen = "=0.2.127"
+wasm-bindgen-futures = "0.4"
+web-sys = { version = "0.3", features = [
+  "BinaryType",
+  "CloseEvent",
+  "Event",
+  "MessageEvent",
+  "ReadableStream",
+  "ReadableStreamDefaultController",
+  "ReadableStreamDefaultReader",
+  "WebSocket",
+  "WritableStream",
+  "WritableStreamDefaultWriter",
+] }
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1

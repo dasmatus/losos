@@ -400,6 +400,80 @@
       },
       "description": "The registrar's own reply to the action, plus `available`."
     },
+    "labHelloResponse": {
+      "type": "object",
+      "required": [
+        "available"
+      ],
+      "properties": {
+        "available": {
+          "type": "boolean",
+          "description": "Whether Lab guests can start under libvirt here. False is the normal state of a box: the helper is opt-in."
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "With available:false: `off` (losos.lab.libvirt.enable is false), `notRunning` (no helper answers), `helperError`, or the helper's own sentence (libvirt did not answer, images missing)."
+        },
+        "version": {
+          "type": "string"
+        },
+        "uri": {
+          "type": "string",
+          "description": "The libvirt URI the helper uses."
+        },
+        "virsh": {
+          "type": "boolean",
+          "description": "Whether `virsh` reached libvirt."
+        },
+        "domainType": {
+          "enum": [
+            "kvm",
+            "qemu"
+          ]
+        },
+        "label": {
+          "type": "string",
+          "description": "What runs the guests, for the console header: \"KVM via libvirt\" or \"QEMU via libvirt (no KVM)\"."
+        },
+        "images": {
+          "type": "object",
+          "description": "Which of bzImage (kernel), rootfs.bin and gear.bin are in the helper's images folder."
+        },
+        "maxGuests": {
+          "type": "integer"
+        },
+        "memoryMiB": {
+          "type": "integer"
+        },
+        "guests": {
+          "type": "integer"
+        },
+        "virt": {
+          "type": "object",
+          "description": "The second path: a raw byte relay from the WebSocket at /api/lab/virt to libvirt's unix socket for the helper's URI, for the page's own libvirt client (admin-ui/lab/virt-rpc). `available` is true when that socket accepts a connection now, whether or not `virsh` works; `socket` is its path (or the first one tried); `reason` says why not.",
+          "properties": {
+            "available": {
+              "type": "boolean"
+            },
+            "socket": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "reason": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        }
+      }
+    },
     "domainsResponse": {
       "type": "object",
       "required": [
@@ -1197,7 +1271,28 @@
         "out": "marketActionResponse",
         "note": "Buy units. Returns a Stripe Checkout URL for the page to open. Audited. Owner-actionable refusals are 400/409 carrying the registrar's own sentence."
       },
-      "GET /api/domains": {
+      "GET /api/lab/hello": {
+      "auth": true,
+      "out": "labHelloResponse",
+      "note": "LosOS Lab's libvirt helper (`losos-registrar lab`, losos.lab.libvirt.enable), relayed to its GET /lab/v1/hello with the admin token (backend/src/lab.rs). Off or not running is 200 with available:false and a reason, deliberately NOT 404."
+    },
+    "POST /api/lab/guests": {
+      "auth": true,
+      "in": "{\"id\": \"d3\", \"name\": \"box1\", \"role\": \"box|edge-local|edge-official|router|switch|ap\", \"cmdline\": \"console=ttyS0 ...\", \"macs\": [\"52:54:00:..\"]}",
+      "out": "{\"guest\": \"d3-a1b2c3\", \"domain\": \"losos-lab-d3-a1b2c3\", \"ticket\": \"<32 hex>\", \"nics\": 1, \"domainType\": \"kvm|qemu\", \"label\": \"...\"}",
+      "note": "Start one Lab guest as a transient libvirt domain. Relayed as is; the helper checks every field and answers 201, 400, 409 (full), 502 (libvirt refused) or 503 (no libvirt, or an image missing). 503 here too when no helper runs. The guest's console and NICs are WebSockets at /api/lab/ws/<guest>/console and /api/lab/ws/<guest>/nic/<n>, which nginx proxies to the helper directly; they authenticate with `ticket.<ticket>` as a WebSocket subprotocol. Audited."
+    },
+    "DELETE /api/lab/guests/{key}": {
+      "auth": true,
+      "out": "204, or the helper's {error}",
+      "note": "Destroy one Lab guest. Audited."
+    },
+    "POST /api/lab/virt-ticket": {
+      "auth": true,
+      "out": "{\"ticket\": \"<32 hex>\", \"expiresIn\": 30, \"uri\": \"qemu:///system\"}",
+      "note": "A single-use ticket, good for 30 seconds, for the WebSocket at /api/lab/virt, which nginx proxies straight to the helper's GET /lab/v1/virt: a byte relay to libvirt's unix socket with no parsing, sent `ticket.<ticket>` as a subprotocol beside `losos-lab`. Whoever holds the socket has libvirt at the helper's uid (root-equivalent under qemu:///system), hence the admin token here. 503 when no helper runs or the URI has no local socket. Audited."
+    },
+    "GET /api/domains": {
         "auth": true,
         "out": "domainsResponse",
         "note": "This box's custom domains on an official edge, relayed to the registrar's POST /domains/list like the market (backend/src/market.rs `Op::Domains`). Asked only of an official edge. Not-offered is 200 with available:false."

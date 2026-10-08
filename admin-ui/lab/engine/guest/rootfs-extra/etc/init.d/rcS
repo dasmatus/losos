@@ -1,0 +1,35 @@
+#!/bin/busybox sh
+# Stand-in guest for a LosOS device in the simulator. A real box runs NixOS
+# with a tmpfs root; this is busybox on a 4 MiB ext4 image, read-only, with
+# tmpfs over the paths that change.
+mount -t proc proc /proc
+mount -t sysfs sysfs /sys
+mount -t tmpfs tmpfs /tmp
+mount -t tmpfs tmpfs /run
+mount -t tmpfs tmpfs /var
+mkdir -p /var/log /var/run /run/losos
+arg() { sed -n "s/.*$1=\([^ ]*\).*/\1/p" /proc/cmdline; }
+HOST=$(arg losos.host); ROLE=$(arg losos.role); IP=$(arg losos.ip)
+[ -n "$HOST" ] || HOST=losos
+[ -n "$ROLE" ] || ROLE=box
+hostname "$HOST"
+echo "$HOST" > /run/losos/host; echo "$ROLE" > /run/losos/role
+ip link set lo up
+ip link set eth0 up 2>/dev/null
+if [ -n "$IP" ]; then
+  ip addr add "$IP" dev eth0
+  GW=$(arg losos.gw); [ -n "$GW" ] && ip route add default via "$GW"
+else
+  udhcpc -i eth0 -q -t 4 -T 2 -n -s /usr/share/udhcpc/default.script >/dev/null 2>&1
+fi
+mkdir -p /tmp/www
+case "$ROLE" in
+  box) printf '<h1>LosOS cloud on %s.local</h1>\n' "$HOST" > /tmp/www/index.html ;;
+  *) printf '{"status":"ok","edge":"%s","role":"%s"}\n' "$HOST" "$ROLE" > /tmp/www/health ;;
+esac
+httpd -p 80 -h /tmp/www
+/usr/bin/losos-banner
+echo
+echo "This console is the simulator's maintenance shell. A real LosOS box has"
+echo "no shell: the owner uses the web UI. Try: losos-ctl status, ip addr, ping."
+echo

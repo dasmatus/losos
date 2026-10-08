@@ -387,6 +387,36 @@ pkgs.testers.nixosTest {
         assert code(noadmin, "http://appliance/handbook/no-such-page/") == "404", \
             "an unknown handbook path falls through to something other than 404"
 
+    with subtest("/lab/ is served LAN-only under its own CSP"):
+        # LosOS Lab is the admin UI's second page (admin-ui/app/lab/), on
+        # real paths under /lab/ with its scripts and the Rust core's .wasm
+        # in the shared /assets/. Its arm adds 'wasm-unsafe-eval' and
+        # nothing else the admin arm refuses: script stays 'self', because
+        # the lab reads the admin token from sessionStorage to draw this box.
+        assert code(noadmin, "http://appliance/lab/") == "200", \
+            "the lab does not answer from the LAN"
+        page = noadmin.succeed("curl -s http://appliance/lab/settings-of-a-deep-link")
+        assert "<title>LosOS Lab</title>" in page and "/assets/" in page, \
+            "a deep lab path does not get the lab page"
+        assert code(appliance, "http://127.0.0.1/lab/") == "403", \
+            "the lab is served to loopback, i.e. through the tunnel"
+        lab = headers(noadmin, "http://appliance/lab/")
+        lcsp = lab["content-security-policy"]
+        assert "script-src 'self' 'wasm-unsafe-eval';" in lcsp, f"lab CSP: script beyond its files and its wasm: {lcsp}"
+        assert "unsafe-inline" not in lcsp and "unsafe-eval'" not in lcsp.replace("'wasm-unsafe-eval'", ""), \
+            f"lab CSP allows inline code or eval: {lcsp}"
+        assert "https:" not in lcsp and "http:" not in lcsp, f"lab CSP grants a remote origin: {lcsp}"
+        assert lab["x-frame-options"] == "DENY", "the lab may be framed"
+        admin_csp = headers(noadmin, "http://appliance/")["content-security-policy"]
+        assert "wasm" not in admin_csp, f"the admin pages may compile WebAssembly: {admin_csp}"
+        # The core's module must come back as application/wasm, or
+        # WebAssembly.instantiateStreaming refuses it.
+        import glob, os
+        wasm = [os.path.basename(p) for p in glob.glob("${lososPkgs.losos-admin-ui}/assets/*.wasm")]
+        assert wasm, "the admin UI bundle carries no .wasm for the lab"
+        wh = headers(noadmin, f"http://appliance/assets/{wasm[0]}")
+        assert wh["content-type"].startswith("application/wasm"), f"wasm served as {wh['content-type']}"
+
     with subtest("/widget-frame/ gets the frame's own policy and nothing else does"):
         # The page a hand-written widget runs in (backend/src/look.rs,
         # admin-ui/app/public/widget-frame/). It needs inline script, which

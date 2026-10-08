@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="referrer" content="no-referrer" />
+    <title>LosOS Lab</title>
+    <link rel="icon" type="image/png" href="/src/assets/losos.png" />
+    <!-- The same blocking classic script as the admin page (see
+         vite.config.ts): the stored theme is on <html> before the first paint. -->
+    <script src="/theme-boot.js"></script>
+  </head>
+  <body>
+    <div id="lab"></div>
+    <script type="module" src="/src/lab/main.tsx"></script>
+  </body>
+</html>

@@ -650,6 +650,128 @@ fn get_apps_search_inner(api: &Api, req: &HttpRequest) -> HttpResponse {
     run(api, |b| cmd_apps_search(b, &query))
 }
 
+/// Where the Lab's libvirt helper listens, from `$LOSOS_LAB_URL`; `None`
+/// when the box runs none (`losos.lab.libvirt.enable` off).
+fn lab_helper() -> Option<std::net::SocketAddr> {
+    std::env::var("LOSOS_LAB_URL")
+        .ok()
+        .and_then(|u| crate::lab::helper_addr(&u))
+}
+
+/// Pass the helper's answer on: its status and its JSON, untouched.
+fn lab_answer(status: u16, body: Vec<u8>) -> HttpResponse {
+    HttpResponse::build(
+        actix_web::http::StatusCode::from_u16(status)
+            .unwrap_or(actix_web::http::StatusCode::BAD_GATEWAY),
+    )
+    .content_type("application/json")
+    .body(body)
+}
+
+const LAB_NOT_RUNNING: &str = "the Lab's libvirt helper is not running on this box";
+
+/// `GET /api/lab/hello` — can this box run the Lab's guests under libvirt?
+/// A 200 either way; `available: false` names why not. See `crate::lab`.
+async fn get_lab_hello(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    guarded(&api, &req, "/api/lab/hello", false, || {
+        let Some(addr) = lab_helper() else {
+            return HttpResponse::Ok()
+                .json(serde_json::json!({ "available": false, "reason": "off" }));
+        };
+        match crate::lab::relay(addr, "GET", "/lab/v1/hello", &api.token, b"") {
+            Ok((200, body)) => lab_answer(200, body),
+            Ok((status, _)) => {
+                tracing::warn!(status, "lab helper answered hello with an error");
+                HttpResponse::Ok()
+                    .json(serde_json::json!({ "available": false, "reason": "helperError" }))
+            }
+            Err(e) => {
+                tracing::info!("lab helper not reachable: {e}");
+                HttpResponse::Ok()
+                    .json(serde_json::json!({ "available": false, "reason": "notRunning" }))
+            }
+        }
+    })
+}
+
+/// `POST /api/lab/guests` — start a guest; the helper checks the body.
+async fn post_lab_guest(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> HttpResponse {
+    guarded(&api, &req, "/api/lab/guests", true, || {
+        if body.len() > crate::lab::MAX_BODY {
+            return err(
+                actix_web::http::StatusCode::PAYLOAD_TOO_LARGE,
+                "the guest request is too big",
+            );
+        }
+        let Some(addr) = lab_helper() else {
+            return err(
+                actix_web::http::StatusCode::SERVICE_UNAVAILABLE,
+                LAB_NOT_RUNNING,
+            );
+        };
+        match crate::lab::relay(addr, "POST", "/lab/v1/guests", &api.token, &body) {
+            Ok((status, body)) => lab_answer(status, body),
+            Err(_) => err(
+                actix_web::http::StatusCode::SERVICE_UNAVAILABLE,
+                LAB_NOT_RUNNING,
+            ),
+        }
+    })
+}
+
+/// `POST /api/lab/virt-ticket` — a single-use ticket for the libvirt relay
+/// socket at `/api/lab/virt`, which nginx proxies to the helper directly.
+/// The ticket opens libvirt at the helper's uid, so it wants the admin token
+/// like a create, and the request is audited. No body.
+async fn post_lab_virt_ticket(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    guarded(&api, &req, "/api/lab/virt-ticket", true, || {
+        let Some(addr) = lab_helper() else {
+            return err(
+                actix_web::http::StatusCode::SERVICE_UNAVAILABLE,
+                LAB_NOT_RUNNING,
+            );
+        };
+        match crate::lab::relay(addr, "POST", "/lab/v1/virt-ticket", &api.token, b"") {
+            Ok((status, body)) => lab_answer(status, body),
+            Err(_) => err(
+                actix_web::http::StatusCode::SERVICE_UNAVAILABLE,
+                LAB_NOT_RUNNING,
+            ),
+        }
+    })
+}
+
+/// `DELETE /api/lab/guests/{key}` — stop a guest.
+async fn delete_lab_guest(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    key: web::Path<String>,
+) -> HttpResponse {
+    guarded(&api, &req, "/api/lab/guests", true, || {
+        if !crate::lab::valid_key(&key) {
+            return err(
+                actix_web::http::StatusCode::BAD_REQUEST,
+                "that is not a guest key",
+            );
+        }
+        let Some(addr) = lab_helper() else {
+            return err(
+                actix_web::http::StatusCode::SERVICE_UNAVAILABLE,
+                LAB_NOT_RUNNING,
+            );
+        };
+        let path = format!("/lab/v1/guests/{key}");
+        match crate::lab::relay(addr, "DELETE", &path, &api.token, b"") {
+            Ok((204, _)) => HttpResponse::NoContent().finish(),
+            Ok((status, body)) => lab_answer(status, body),
+            Err(_) => err(
+                actix_web::http::StatusCode::SERVICE_UNAVAILABLE,
+                LAB_NOT_RUNNING,
+            ),
+        }
+    })
+}
+
 /// `GET /api/market` — the market as this box sees it: the shelf and its own
 /// account, or `{"available": false}` when it is not offered here.
 ///
@@ -1053,6 +1175,10 @@ pub fn serve(backend: IoLosos) -> anyhow::Result<()> {
                     web::post().to(post_market_close),
                 )
                 .route("/api/market/orders", web::post().to(post_market_order))
+                .route("/api/lab/hello", web::get().to(get_lab_hello))
+                .route("/api/lab/guests", web::post().to(post_lab_guest))
+                .route("/api/lab/guests/{key}", web::delete().to(delete_lab_guest))
+                .route("/api/lab/virt-ticket", web::post().to(post_lab_virt_ticket))
                 .route("/api/domains", web::get().to(get_domains))
                 .route("/api/domains", web::post().to(post_domain_add))
                 .route("/api/domains/remove", web::post().to(post_domain_remove))

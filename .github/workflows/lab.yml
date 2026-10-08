@@ -1,0 +1,77 @@
+name: lab
+
+# Builds the hosted copy of LosOS Lab: the admin UI's Lab page
+# (admin-ui/app/lab/, VITE_LAB_HOSTED=1) plus the qemu-wasm engine and the
+# guest images (admin-ui/lab/engine/), so its consoles are real x86_64
+# guests. Every run uploads the result as the `losos-lab-hosted` artifact;
+# a push to main also deploys it to Vercel when the three secrets below
+# exist, and skips that step (green) when they do not.
+#
+#   VERCEL_TOKEN       a token from vercel.com/account/tokens
+#   VERCEL_ORG_ID      the team (or user) id the project lives in
+#   VERCEL_PROJECT_ID  a project of its own, framework "Other", no git
+#                      integration: this workflow is its only deployer
+#
+# The copy the box serves at /lab/ is the same page inside losos-admin-ui,
+# without the engine, built by ci.yml's registrar-and-ui job; this workflow
+# is only the hosted copy.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "admin-ui/lab/**"
+      - "admin-ui/app/lab/**"
+      - "admin-ui/app/src/lab/**"
+      - "admin-ui/app/package-lock.json"
+      - ".github/workflows/lab.yml"
+  pull_request:
+    paths:
+      - "admin-ui/lab/**"
+      - "admin-ui/app/lab/**"
+      - "admin-ui/app/src/lab/**"
+      - "admin-ui/app/package-lock.json"
+      - ".github/workflows/lab.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lab-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  hosted:
+    name: "lab: qemu-wasm + guests"
+    runs-on: ubuntu-latest
+    # qemu-wasm under emscripten and a Linux kernel, both from source.
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-nix
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          cache-url: ${{ vars.LOSOS_PROXY_URL }}
+          public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - run: admin-ui/lab/engine/build.sh lab-out
+      - uses: actions/upload-artifact@v7
+        with:
+          name: losos-lab-hosted
+          path: lab-out
+          retention-days: 14
+      - name: deploy to Vercel
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          if [ -z "$VERCEL_TOKEN" ] || [ -z "$VERCEL_ORG_ID" ] || [ -z "$VERCEL_PROJECT_ID" ]; then
+            echo "::notice::VERCEL_TOKEN, VERCEL_ORG_ID or VERCEL_PROJECT_ID is not set; the lab was built but not deployed."
+            exit 0
+          fi
+          npx --yes vercel@59.23.2 deploy lab-out --prod --yes --token "$VERCEL_TOKEN"

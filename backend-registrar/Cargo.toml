@@ -8,10 +8,13 @@ description = "losos edge registration + Traefik/rathole config reconciler (serv
 license = "AGPL-3.0-or-later"
 
 [dependencies]
-# "signal" (not "process"): the serve loop installs a SIGTERM/SIGINT handler
-# for graceful shutdown; nothing in this crate spawns a child process.
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync", "time", "fs", "io-util", "signal"] }
-axum = "0.8"
+# "signal": the serve loop installs a SIGTERM/SIGINT handler for graceful
+# shutdown. "process": `lab` drives libvirt through the `virsh` CLI and
+# nothing else in this crate spawns a child.
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync", "time", "fs", "io-util", "signal", "process"] }
+# "ws": `lab` bridges a guest's serial console and network cards to the
+# browser over WebSockets.
+axum = { version = "0.8", features = ["ws"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
@@ -29,6 +32,13 @@ subtle = "2"
 # Already in the lock tree (rustls uses it), so — like `subtle` — making it
 # direct vendors no new crate.
 ring = "0.17"
+
+[dev-dependencies]
+# tests/lab.rs talks to the helper's console and NIC WebSockets as the
+# browser would. Both are already in the lock tree through axum's "ws" and
+# reqwest, so the test client vendors nothing new.
+tokio-tungstenite = "0.29"
+futures-util = { version = "0.3", default-features = false, features = ["sink"] }
 
 # Crate-wide lint policy: forbid unsafe, surface stray pub items and stale
 # extern crates. Per-contributor clippy config is intentionally NOT used.

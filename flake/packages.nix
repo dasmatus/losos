@@ -41,6 +41,14 @@
 #                because that is how they reach a binary cache: the appliance
 #                substitutes them, it never builds them (see the header of
 #                flake/images.nix).
+#   losos-lab-core — LosOS Lab's core in Rust (admin-ui/lab/core/), built
+#                for wasm32 and run through wasm-bindgen. The Lab itself is
+#                the admin UI's second page (admin-ui/app/lab/), served at
+#                /lab/, and imports this package.
+#   losos-lab-virt — the Lab's libvirt client (admin-ui/lab/virt-rpc/):
+#                libvirt's remote protocol for wasm32, through wasm-bindgen,
+#                for a page that drives libvirt over `losos-registrar lab`'s
+#                byte relay with no virsh on the host.
 #   losos-sign-iso — signs the installer ISO's UEFI loader in place with the
 #                Secure Boot db key, after `nix build`, so the key never
 #                enters a store (modules/secure-boot.nix, flake/sign-iso.sh).
@@ -64,9 +72,85 @@ let
   # header of fast-build.nix says what each one is worth here, and how to
   # turn the caches on for `nix build` on a dev machine.
   inherit (import ./fast-build.nix { inherit pkgs; }) buildRustPackage;
+
+  # LosOS Lab's core (admin-ui/lab/core/README.md) as the wasm-bindgen web
+  # package the Lab page imports: losos_lab_core.js, its .d.ts and the .wasm.
+  # Plain rustPlatform rather than fast-build.nix's: mold and ccache are
+  # composed for the native toolchain, and rustc links wasm32 with its own
+  # rust-lld. wasm-bindgen-cli must be the version the crate pins (=0.2.127);
+  # the CLI refuses a module built against another one.
+  losos-lab-core = pkgs.rustPlatform.buildRustPackage {
+    pname = "losos-lab-core";
+    version = "0.1.0";
+    src = lib.cleanSource ./../admin-ui/lab/core;
+    cargoHash = "sha256-TXH+ZimT0PygfRRnjOCNpFgi3Acmb4kxN0S7vcL9Pxk=";
+    nativeBuildInputs = [
+      pkgs.wasm-bindgen-cli
+      pkgs.lld
+    ];
+    buildPhase = ''
+      runHook preBuild
+      cargo build --release --offline --target wasm32-unknown-unknown
+      runHook postBuild
+    '';
+    doCheck = false;
+    installPhase = ''
+      runHook preInstall
+      wasm-bindgen --target web --out-dir $out \
+        target/wasm32-unknown-unknown/release/losos_lab_core.wasm
+      runHook postInstall
+    '';
+  };
+
+  # The Lab page imports the core from src/lab/core-pkg (gitignored; `npm run
+  # lab:core` writes it in a checkout). Both npm builds of admin-ui/app copy
+  # it in first: this one and tests/admin-ui.nix.
+  labCorePkg = ''
+    mkdir -p src/lab/core-pkg
+    cp ${losos-lab-core}/* src/lab/core-pkg/
+    chmod -R u+w src/lab/core-pkg
+  '';
+
+  # The Lab's libvirt client (admin-ui/lab/virt-rpc/README.md) as a
+  # wasm-bindgen web package: losos_lab_virt.js, its .d.ts and the .wasm.
+  # Built the same way as losos-lab-core, for the same reasons, and pinned
+  # to the same wasm-bindgen.
+  losos-lab-virt = pkgs.rustPlatform.buildRustPackage {
+    pname = "losos-lab-virt";
+    version = "0.1.0";
+    src = lib.cleanSource ./../admin-ui/lab/virt-rpc;
+    cargoHash = "sha256-m5B7NE6dWVgI1bu31+OQ0Kf71AvmrI5L9MeqldQAvlE=";
+    nativeBuildInputs = [
+      pkgs.wasm-bindgen-cli
+      pkgs.lld
+    ];
+    buildPhase = ''
+      runHook preBuild
+      cargo build --release --offline --target wasm32-unknown-unknown
+      runHook postBuild
+    '';
+    doCheck = false;
+    installPhase = ''
+      runHook preInstall
+      wasm-bindgen --target web --out-dir $out \
+        target/wasm32-unknown-unknown/release/losos_lab_virt.wasm
+      runHook postInstall
+    '';
+  };
+
+  # The Lab page imports the client from src/lab/virt-pkg (gitignored; `npm
+  # run lab:virt` writes it in a checkout), lazily, when a guest starts on
+  # that path. Copied in beside the core by the same two npm builds.
+  labVirtPkg = ''
+    mkdir -p src/lab/virt-pkg
+    cp ${losos-lab-virt}/* src/lab/virt-pkg/
+    chmod -R u+w src/lab/virt-pkg
+  '';
 in
 images
 // {
+  inherit losos-lab-core losos-lab-virt;
+
   losos-admin-ui = pkgs.buildNpmPackage {
     pname = "losos-admin-ui";
     version = "0.1.0";
@@ -96,6 +180,10 @@ images
     # nothing else needs a script to run.
     npmFlags = [ "--ignore-scripts" ];
     env.PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1";
+    # LosOS Lab (lab/index.html, the second Vite entry) imports the Rust core
+    # and, for guests on the relay path, the libvirt client.
+    preBuild = labCorePkg + labVirtPkg;
+    passthru = { inherit labCorePkg labVirtPkg; };
 
     # The default npmBuildScript is `npm run build`, which here is
     # `tsc --noEmit && vite build` — so unlike the Rust crates (doCheck = off,
@@ -188,7 +276,7 @@ images
     src = lib.cleanSource ./../backend-registrar;
     # SHA256 of the vendored crate tarball. If deps change, `nix build
     # .#losos-registrar` will print the new hash to paste here.
-    cargoHash = "sha256-rQUbDQbmVnb9QRXocozg8oOGp91o2sKtQ8CAhqjnUAE=";
+    cargoHash = "sha256-qGOi6XSptf4nAr4GTYlI8kzeuR5U81f3BWxteMjkmU4=";
     # No system deps; pure Rust with rustls (no openssl).
     # Same reasoning as losos-ctl above: the suite runs via cargo test in the
     # lint job, not inside this derivation.
@@ -212,7 +300,7 @@ images
     pname = "losos-registrar-static";
     version = "0.1.0";
     src = lib.cleanSource ./../backend-registrar;
-    cargoHash = "sha256-rQUbDQbmVnb9QRXocozg8oOGp91o2sKtQ8CAhqjnUAE=";
+    cargoHash = "sha256-qGOi6XSptf4nAr4GTYlI8kzeuR5U81f3BWxteMjkmU4=";
     doCheck = false;
   };
 
