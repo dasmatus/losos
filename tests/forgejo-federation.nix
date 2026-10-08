@@ -130,6 +130,7 @@ pkgs.testers.nixosTest {
     ''
       import json
       import re
+      from urllib.parse import urlparse
 
       PORT = 8888  # services.nix: the native HTTP_PORT
       NODEINFO_REL = "http://nodeinfo.diaspora.software/ns/schema/2.1"
@@ -160,7 +161,11 @@ pkgs.testers.nixosTest {
           code, body = get("/.well-known/nodeinfo")
           assert code == "200", f"/.well-known/nodeinfo: {code} {body!r}"
           links = json.loads(body)["links"]
-          assert any(l["rel"] == NODEINFO_REL for l in links), f"no 2.1 link: {links!r}"
+          link = next((l for l in links if l["rel"] == NODEINFO_REL), None)
+          assert link, f"no 2.1 link: {links!r}"
+          # The host Forgejo advertises itself under (ROOT_URL's, port included),
+          # which is also the only host its webfinger answers for.
+          HOST = urlparse(link["href"]).netloc
           code, body = get("/api/v1/nodeinfo")
           assert code == "200", f"/api/v1/nodeinfo: {code} {body!r}"
           info = json.loads(body)
@@ -188,7 +193,7 @@ pkgs.testers.nixosTest {
               f"{FORGEJO} admin user create --username alice --email alice@example.org"
               " --password 'Alice-passw0rd!' --must-change-password=false"
           )
-          code, body = get("/.well-known/webfinger?resource=acct:alice@localhost")
+          code, body = get(f"/.well-known/webfinger?resource=acct:alice@{HOST}")
           assert code == "200", f"webfinger for alice: {code} {body!r}"
           actor_url = next(
               l["href"] for l in json.loads(body)["links"] if l.get("type") == "application/activity+json"
