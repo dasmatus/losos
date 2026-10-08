@@ -45,10 +45,6 @@
 #                for wasm32 and run through wasm-bindgen. The Lab itself is
 #                the admin UI's second page (admin-ui/app/lab/), served at
 #                /lab/, and imports this package.
-#   losos-lab-render — the Lab's canvas (admin-ui/lab/render/): the two
-#                views as a 3D scene drawn by Bevy, in a wasm module with
-#                the core, through wasm-bindgen and then wasm-opt; built
-#                twice, webgpu/ and webgl2/, for the page to pick from.
 #   losos-lab-virt — the Lab's libvirt client (admin-ui/lab/virt-rpc/):
 #                libvirt's remote protocol for wasm32, through wasm-bindgen,
 #                for a page that drives libvirt over `losos-registrar lab`'s
@@ -227,63 +223,6 @@ images
       runHook preInstall
       wasm-bindgen --target web --out-dir $out \
         target/wasm32-unknown-unknown/release/losos_lab_virt.wasm
-      runHook postInstall
-    '';
-  };
-
-  # The Lab's canvas (admin-ui/lab/render/README.md): the logical and
-  # physical views drawn by Bevy on WebGL2, compiled to wasm32 in one module
-  # with the core (it depends on ../core by path, so the source is both
-  # crates). wasm-bindgen first, then wasm-opt on its output, never before:
-  # wasm-bindgen reads the custom sections wasm-opt would rewrite.
-  losos-lab-render = pkgs.rustPlatform.buildRustPackage {
-    pname = "losos-lab-render";
-    version = "0.1.0";
-    src = lib.fileset.toSource {
-      root = ./../admin-ui/lab;
-      fileset = lib.fileset.unions [
-        ./../admin-ui/lab/core/Cargo.toml
-        ./../admin-ui/lab/core/Cargo.lock
-        ./../admin-ui/lab/core/src
-        ./../admin-ui/lab/render/Cargo.toml
-        ./../admin-ui/lab/render/Cargo.lock
-        ./../admin-ui/lab/render/src
-        ./../admin-ui/lab/render/assets
-      ];
-    };
-    cargoRoot = "render";
-    buildAndTestSubdir = "render";
-    cargoHash = "sha256-Oq8fvRSdadw4RssI5EdE8DgWX40H3djZLMAAHM6daUs=";
-    nativeBuildInputs = [
-      pkgs.wasm-bindgen-cli
-      pkgs.binaryen
-      pkgs.lld
-    ];
-    # Two modules: Bevy picks its WebGPU or WebGL2 code paths at compile
-    # time, so the page's loader picks the module (render/demo/loader.js).
-    # The builds share no Bevy crate, so the first one's target directory
-    # goes before the second starts.
-    buildPhase = ''
-      runHook preBuild
-      for backend in webgpu webgl2; do
-        (cd render && cargo build --release --offline --target wasm32-unknown-unknown \
-          --no-default-features --features $backend)
-        mkdir -p dist/$backend
-        wasm-bindgen --target web --out-dir dist/$backend --out-name losos_lab_render \
-          render/target/wasm32-unknown-unknown/release/losos_lab_render.wasm
-        wasm-opt -Oz --enable-bulk-memory --enable-nontrapping-float-to-int \
-          --enable-sign-ext --enable-mutable-globals --enable-reference-types \
-          --enable-multivalue \
-          dist/$backend/losos_lab_render_bg.wasm -o dist/$backend/losos_lab_render_bg.wasm
-        rm -rf render/target
-      done
-      runHook postBuild
-    '';
-    doCheck = false;
-    installPhase = ''
-      runHook preInstall
-      mkdir -p $out
-      cp -r dist/webgpu dist/webgl2 $out/
       runHook postInstall
     '';
   };
