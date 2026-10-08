@@ -241,6 +241,9 @@ let
       danger = isDangerous name;
       fixed = fixed.${name} or null;
       readOnly = editor.kind == "opaque" || (fixed.${name} or null) != null;
+      # `visible = false`: still in the document, so /api/apply and a push to
+      # LosOS Git accept it, but the pane does not draw a row for it.
+      hidden = (opt.visible or true) == false;
     };
 
   walk =

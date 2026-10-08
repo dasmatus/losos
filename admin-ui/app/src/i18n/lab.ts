@@ -459,4 +459,55 @@ export default defineMessages({
     sk: "Hľadá sa: mDNS v LAN, potom nastavená adresa.",
     de: "Suche läuft: mDNS im LAN, dann die eingestellte Adresse.",
   },
+
+  // ── ordering the setup's hardware (losos.lab.ordering.enable) ──
+  "lab.order.button": { en: "Order", sk: "Objednať", de: "Bestellen" },
+  "lab.order.buttonTip": {
+    en: "Order the boxes and gateways in this setup",
+    sk: "Objednať zariadenia a edge brány z tejto zostavy",
+    de: "Die Boxen und Gateways dieses Aufbaus bestellen",
+  },
+  "lab.order.title": { en: "Order this setup", sk: "Objednať túto zostavu", de: "Diesen Aufbau bestellen" },
+  "lab.order.counted": {
+    en: "The canvas has {boxes} and {gateways}, so the order starts there. Change the numbers before you pay.",
+    sk: "Na ploche je {boxes} a {gateways}, objednávka začína odtiaľ. Pred platbou môžete počty zmeniť.",
+    de: "Auf der Arbeitsfläche stehen {boxes} und {gateways}, die Bestellung beginnt damit. Du kannst die Mengen vor dem Bezahlen ändern.",
+  },
+  "lab.order.boxes": {
+    en: { one: "{count} box", other: "{count} boxes" },
+    sk: { one: "{count} zariadenie", few: "{count} zariadenia", many: "{count} zariadenia", other: "{count} zariadení" },
+    de: { one: "{count} Box", other: "{count} Boxen" },
+  },
+  "lab.order.gateways": {
+    en: { one: "{count} edge gateway", other: "{count} edge gateways" },
+    sk: { one: "{count} edge brána", few: "{count} edge brány", many: "{count} edge brány", other: "{count} edge brán" },
+    de: { one: "{count} Edge-Gateway", other: "{count} Edge-Gateways" },
+  },
+  "lab.order.fewer": { en: "Fewer: {name}", sk: "Menej: {name}", de: "Weniger: {name}" },
+  "lab.order.more": { en: "More: {name}", sk: "Viac: {name}", de: "Mehr: {name}" },
+  "lab.order.quantity": { en: "Quantity of {name}", sk: "Počet: {name}", de: "Menge: {name}" },
+  "lab.order.total": { en: "Total", sk: "Spolu", de: "Summe" },
+  "lab.order.ships": {
+    en: "Ships to {countries}. You enter the card and the delivery address on Stripe's page.",
+    sk: "Doručenie do: {countries}. Kartu a adresu doručenia zadáte na stránke Stripe.",
+    de: "Lieferung nach {countries}. Karte und Lieferadresse gibst du auf der Seite von Stripe ein.",
+  },
+  "lab.order.cancel": { en: "Cancel", sk: "Zrušiť", de: "Abbrechen" },
+  "lab.order.pay": { en: "Continue to payment", sk: "Pokračovať k platbe", de: "Weiter zur Zahlung" },
+  "lab.order.paying": { en: "Opening Stripe", sk: "Otvára sa Stripe", de: "Stripe wird geöffnet" },
+  "lab.order.noOfficialEdge": {
+    en: "Ordering goes through an official edge, and this box has none in reach right now.",
+    sk: "Objednávka ide cez oficiálny edge a toto zariadenie teraz žiadny nedosiahne.",
+    de: "Bestellungen laufen über eine offizielle Edge, und diese Box erreicht gerade keine.",
+  },
+  "lab.order.notSold": {
+    en: "The official edge this box uses does not sell hardware.",
+    sk: "Oficiálny edge, ktorý toto zariadenie používa, nepredáva hardvér.",
+    de: "Die offizielle Edge dieser Box verkauft keine Hardware.",
+  },
+  "lab.order.failed": {
+    en: "The order did not go through: {detail}",
+    sk: "Objednávka neprešla: {detail}",
+    de: "Die Bestellung ging nicht durch: {detail}",
+  },
 });

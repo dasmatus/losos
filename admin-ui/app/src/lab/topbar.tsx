@@ -3,7 +3,7 @@
 
 import * as React from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { ArrowLeft01Icon, InformationCircleIcon } from "@hugeicons/core-free-icons";
+import { ArrowLeft01Icon, InformationCircleIcon, ShoppingCart01Icon } from "@hugeicons/core-free-icons";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 import { actions } from "./actions";
 import { useEngine } from "./engine-hook";
 import { plateUrl } from "./icons";
+import { OrderDialog } from "./order-dialog";
 import { BOX_COPY } from "./shape";
 import { useLab } from "./store";
 
@@ -43,6 +44,7 @@ export function TopBar({ phone, onDetails }: { phone: boolean; onDetails: () => 
   const engine = useEngine();
   const t = useT();
   const file = React.useRef<HTMLInputElement>(null);
+  const [ordering, setOrdering] = React.useState(false);
   const a = actions();
   const scenario = s.snap.scenario;
   const known = new Set([...s.scenarios.map((x) => x.key), ...s.extras.map((x) => x.key)]);
@@ -142,6 +144,15 @@ export function TopBar({ phone, onDetails }: { phone: boolean; onDetails: () => 
         <ToggleGroupItem value="simulation">{t("lab.mode.simulation")}</ToggleGroupItem>
       </ToggleGroup>
       <span className="hidden flex-1 min-[901px]:block" />
+      {s.ordering?.enabled && (
+        <>
+          <Button variant="secondary" size="sm" title={t("lab.order.buttonTip")} onClick={() => setOrdering(true)} data-testid="order-open">
+            <HugeiconsIcon icon={ShoppingCart01Icon} size={15} strokeWidth={1.8} color="currentColor" />
+            {t("lab.order.button")}
+          </Button>
+          <OrderDialog open={ordering} onOpenChange={setOrdering} />
+        </>
+      )}
       <Tooltip>
         <TooltipTrigger
           render={<span tabIndex={0} />}

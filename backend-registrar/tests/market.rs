@@ -1383,3 +1383,145 @@ async fn without_the_gate_the_market_answers_503_and_the_proxy_lives() {
     edge.shutdown().await;
     stripe.shutdown().await;
 }
+
+#[tokio::test]
+async fn hardware_is_priced_by_the_gate_from_the_catalogue_and_shipped_by_stripe() {
+    let stripe = StripeStub::start().await;
+    let edge = Edge::start_with_market("market-hardware", &tenants(), &stripe.base).await;
+
+    // The catalogue is public, like the shelf.
+    let response = edge
+        .client
+        .get(format!("{}/market/hardware", edge.base))
+        .send()
+        .await
+        .expect("catalogue reaches the registrar");
+    assert_eq!(response.status().as_u16(), 200);
+    let catalogue: Value = response.json().await.expect("catalogue JSON");
+    assert_eq!(catalogue["currency"], "eur");
+    assert_eq!(catalogue["items"][0]["sku"], "box");
+    assert_eq!(catalogue["items"][1]["unit_amount"], 39900);
+
+    // Any tenant may buy, market bit or not: this is the operator's sale.
+    let cart = json!({ "items": [ { "sku": "box", "quantity": 3 }, { "sku": "gateway", "quantity": 1 } ] });
+    let (status, body) = edge
+        .post(
+            "/market/hardware/checkout",
+            with(auth("plain-box", THIRD_TOKEN), cart.clone()),
+        )
+        .await;
+    assert_eq!(status, 201, "{body}");
+    let checkout = parse(&body);
+    assert_eq!(checkout["amount"], 3 * 44900 + 39900);
+    assert_eq!(checkout["currency"], "eur");
+    let order_id = checkout["order_id"].as_str().expect("order id").to_string();
+    assert!(order_id.starts_with("hw_"));
+
+    let sent = &stripe.calls("POST", "/v1/checkout/sessions")[0];
+    assert_eq!(sent.form["mode"], "payment");
+    assert_eq!(sent.form["client_reference_id"], order_id.as_str());
+    assert_eq!(sent.form["metadata[losos_kind]"], "hardware");
+    assert_eq!(sent.form["metadata[losos_appliance_id]"], "plain-box");
+    assert_eq!(sent.form["line_items[0][quantity]"], "3");
+    assert_eq!(sent.form["line_items[0][price_data][unit_amount]"], "44900");
+    assert_eq!(
+        sent.form["line_items[0][price_data][product_data][name]"],
+        "LosOS box"
+    );
+    assert_eq!(sent.form["line_items[1][price_data][unit_amount]"], "39900");
+    assert_eq!(
+        sent.form["shipping_address_collection[allowed_countries][0]"],
+        "SK"
+    );
+    assert_eq!(
+        sent.form["shipping_address_collection[allowed_countries][1]"],
+        "DE"
+    );
+    // A sale by the platform: no destination, no fee.
+    assert!(!sent
+        .form
+        .keys()
+        .any(|k| k.contains("transfer_data") || k.contains("application_fee")));
+    assert!(sent.form["success_url"].starts_with(RETURN_URL));
+    assert_eq!(
+        sent.idempotency_key.as_deref(),
+        Some(format!("losos-hardware-{order_id}").as_str())
+    );
+
+    // Nothing reaches Stripe for a cart the catalogue refuses, a price the
+    // box made up, or a caller without a token.
+    for bad in [
+        json!({ "items": [] }),
+        json!({ "items": [ { "sku": "router", "quantity": 1 } ] }),
+        json!({ "items": [ { "sku": "box", "quantity": 0 } ] }),
+        json!({ "items": [ { "sku": "box", "quantity": 21 } ] }),
+        json!({ "items": [ { "sku": "box", "quantity": 1 }, { "sku": "box", "quantity": 1 } ] }),
+    ] {
+        let (status, body) = edge
+            .post(
+                "/market/hardware/checkout",
+                with(auth("plain-box", THIRD_TOKEN), bad.clone()),
+            )
+            .await;
+        assert_eq!(status, 400, "{bad} -> {body}");
+    }
+    let (status, _) = edge
+        .post(
+            "/market/hardware/checkout",
+            with(
+                auth("plain-box", THIRD_TOKEN),
+                json!({ "items": [ { "sku": "box", "quantity": 1, "unit_amount": 1 } ] }),
+            ),
+        )
+        .await;
+    assert!(status == 400 || status == 422, "a made-up price: {status}");
+    let (status, _) = edge
+        .post(
+            "/market/hardware/checkout",
+            with(auth("plain-box", GOOD_TOKEN), cart),
+        )
+        .await;
+    assert_eq!(status, 401);
+    assert_eq!(stripe.calls("POST", "/v1/checkout/sessions").len(), 1);
+
+    // The webhook for a hardware session is not a market order and changes
+    // nothing.
+    let (status, _) = webhook(
+        &edge,
+        &json!({
+            "type": "checkout.session.completed",
+            "data": { "object": {
+                "id": "cs_test_1", "client_reference_id": order_id,
+                "payment_status": "paid", "amount_total": 3 * 44900 + 39900, "currency": "eur",
+            } },
+        }),
+    )
+    .await;
+    assert_eq!(status, 200);
+
+    edge.shutdown().await;
+    stripe.shutdown().await;
+}
+
+#[tokio::test]
+async fn an_edge_without_a_market_sells_no_hardware() {
+    let edge = Edge::start("market-hardware-off", &tenants()).await;
+    let response = edge
+        .client
+        .get(format!("{}/market/hardware", edge.base))
+        .send()
+        .await
+        .expect("reaches the registrar");
+    assert_eq!(response.status().as_u16(), 503);
+    let (status, _) = edge
+        .post(
+            "/market/hardware/checkout",
+            with(
+                auth("plain-box", THIRD_TOKEN),
+                json!({ "items": [ { "sku": "box", "quantity": 1 } ] }),
+            ),
+        )
+        .await;
+    assert_eq!(status, 503);
+    edge.shutdown().await;
+}

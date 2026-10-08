@@ -20,6 +20,7 @@ import {
   type Snapshot,
   type TickResult,
 } from "./core";
+import type { Ordering } from "./order";
 import { type Cam, fitCam, Scene, type View, zoomCam } from "./scene";
 
 export type { Cam, View } from "./scene";
@@ -106,6 +107,8 @@ export class LabStore {
   scenarios: Catalog["scenarios"];
   /** Set when "This box" could not be read: why, for the greyed entry. */
   thisBoxProblem: string | null = null;
+  /** Whether this box lets the Lab order hardware, and what the edge sells. */
+  ordering: Ordering | null = null;
   /** The text of the file opened in this tab, so the picker can go back to it. */
   openedText: { text: string; fileName: string } | null = null;
   linkBorn = new Map<string, number>();
