@@ -1,22 +1,23 @@
-/* The handbook on the admin UI's own look.
+/* The handbook on the LosOS desktop's theme, in the admin UI's layout.
  *
- * tokens.css is the admin SPA's palette file, byte for byte
- * (admin-ui/app/src/styles/tokens.css; `npm run check:tokens` fails when
- * the two drift). Everything below maps Docusaurus's Infima variables onto
- * those tokens and reshapes the page to the SPA's layout: a translucent top
- * bar with the salmon and a name chip, a recessed sidebar card on the left
- * with the search box at its top and one icon tile per entry, the content in
- * a raised card, two radii (9px cards, 6px controls), the system font at
- * 15px. Docusaurus sets data-theme="light|dark" on <html>, the same spelling
- * the SPA uses, so tokens.css's three-state Auto/Light/Dark rules apply
- * unchanged.
+ * derisk-theme.css is the desktop's theme, generated from mcsapi-theme by
+ * scripts/derisk-theme.sh, and palette.css names its values the way this
+ * file reads them (--ground, --surface, --ink, --accent and the rest).
+ * Everything below maps Docusaurus's Infima variables onto those names and
+ * reshapes the page to the SPA's layout: a translucent top bar with the
+ * salmon and a name chip, a recessed sidebar card on the left with the
+ * search box at its top and one icon tile per entry, the content in a raised
+ * card, the desktop's two radii and its interface font and size.
+ * Docusaurus sets data-theme="light|dark" on <html>, which the theme file's
+ * three-state Auto/Light/Dark rules read.
  *
  * The icons are Hugeicons' stroke set (the SPA's @hugeicons/core-free-icons)
  * rendered to data URIs by hand and painted through mask-image, so they take
  * currentColor like the SPA's <HugeiconsIcon/>. Which entry gets which icon
  * is the `className` in each folder's _category_.json. */
 
-@import './tokens.css';
+@import './derisk-theme.css';
+@import './palette.css';
 
 :root {
   /* ── Infima on the tokens ─────────────────────────────────────────── */
@@ -54,7 +55,7 @@
   --ifm-menu-color-active: var(--surface);
   --ifm-menu-color-background-active: var(--accent);
   --ifm-menu-color-background-hover: var(--surface);
-  --ifm-navbar-background-color: rgb(var(--surface-rgb) / 0.85);
+  --ifm-navbar-background-color: color-mix(in srgb, var(--surface) 85%, transparent);
   --ifm-navbar-shadow: none;
   --ifm-navbar-height: 58px;
   --ifm-navbar-link-color: var(--muted);
@@ -74,7 +75,7 @@
 
   --ifm-font-family-base: var(--font-ui);
   --ifm-font-family-monospace: var(--font-code);
-  --ifm-font-size-base: 15px;
+  --ifm-font-size-base: var(--text-ui);
   --ifm-line-height-base: 1.5;
   --ifm-code-font-size: 88%;
   --ifm-global-radius: var(--control-radius);
@@ -109,7 +110,7 @@
   --ifm-color-emphasis-600: var(--muted);
   --ifm-color-emphasis-700: var(--muted);
   --ifm-color-emphasis-800: var(--ink);
-  --ifm-navbar-background-color: rgb(var(--surface-rgb) / 0.85);
+  --ifm-navbar-background-color: color-mix(in srgb, var(--surface) 85%, transparent);
   --ifm-menu-color-background-active: var(--accent);
   --ifm-menu-color-background-hover: var(--surface);
   --ifm-table-head-background: var(--sunk);
@@ -138,6 +139,9 @@ html {
 body {
   background: var(--ground);
   color: var(--ink);
+  /* The desktop sets its interface in a light weight (Ubuntu Light); the
+   * headings and labels below name their own heavier weights. */
+  font-weight: var(--font-ui-weight);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -570,7 +574,7 @@ html:not([data-theme-choice]) .hb-theme__item[data-choice='system'] {
   background-color: var(--accent);
 }
 .hb-icon > .menu__link--active::before {
-  background: rgb(var(--surface-rgb) / 0.2);
+  background: color-mix(in srgb, var(--surface) 20%, transparent);
 }
 .hb-icon > .menu__link--active::after {
   background-color: var(--surface);
@@ -632,7 +636,7 @@ article {
   }
 }
 .theme-doc-markdown {
-  font-size: 14.5px;
+  font-size: var(--text-ui);
 }
 .markdown h1:first-child,
 .theme-doc-markdown header h1 {
