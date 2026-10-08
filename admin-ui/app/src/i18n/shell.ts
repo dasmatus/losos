@@ -101,6 +101,18 @@ export default defineMessages({
   "ui.working": { en: "Working", sk: "Pracujeme", de: "Wird ausgeführt" },
   "ui.dismiss": { en: "Dismiss", sk: "Zavrieť", de: "Schließen" },
   "ui.whatToDo": { en: "What to do", sk: "Čo robiť", de: "Was tun" },
+  // The warning a box installed without a TPM shows (components/no-tpm-notice.tsx).
+  "ui.noTpm.title": {
+    en: "This box has no TPM chip",
+    sk: "Toto zariadenie nemá čip TPM",
+    de: "Diese Box hat keinen TPM-Chip",
+  },
+  "ui.noTpm.body": {
+    en: "Its disk key sits on the unencrypted boot partition, because there is no chip to keep it in. Anyone who gets hold of the disk can read your files with it. To move the key into a chip, switch the TPM on in the firmware and reinstall.",
+    sk: "Kľúč k disku leží na nešifrovanom zavádzacom oddiele, lebo nie je čip, ktorý by ho uchoval. Ktokoľvek, kto získa disk, si ním prečíta vaše súbory. Ak chcete kľúč presunúť do čipu, zapnite TPM vo firmvéri a nainštalujte zariadenie znova.",
+    de: "Der Schlüssel zur Festplatte liegt auf der unverschlüsselten Boot-Partition, weil kein Chip da ist, der ihn verwahrt. Wer die Festplatte in die Hände bekommt, kann damit deine Dateien lesen. Um den Schlüssel in einen Chip zu verlegen, schalte das TPM in der Firmware ein und installiere die Box neu.",
+  },
+  "ui.noTpm.link": { en: "What a TPM does", sk: "Čo robí TPM", de: "Was ein TPM tut" },
   "ui.notifications": { en: "Notifications", sk: "Upozornenia", de: "Benachrichtigungen" },
   "ui.confirmations": { en: "Confirmations", sk: "Potvrdenia", de: "Bestätigungen" },
   "ui.theme.label": { en: "Appearance", sk: "Vzhľad", de: "Erscheinungsbild" },
