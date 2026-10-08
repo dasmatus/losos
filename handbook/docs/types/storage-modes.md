@@ -10,6 +10,8 @@ pane shows the same as a badge: **kept to itself** (filled) or **shared with
 the mesh** (hatched). The same pairing, filled for this box and hatched for
 the mesh, is used everywhere two things differ by texture rather than colour.
 
+[![The disk in each mode: filled for this box's room, hatched for room lent to the mesh, dashed for the reserve; and the two conditions for lending CPU.](./img/storage-modes.svg)](./img/storage-modes.svg)
+
 ## Kept to itself (default)
 
 Everything you keep on the box stays on the box. Nothing is copied anywhere
@@ -41,6 +43,8 @@ only when **both** hold:
 
 1. the clock is inside the window you set (start and end, your time zone);
 2. the box is idle.
+
+[![The Mesh pane with the mesh joined and the box lent while its owner sleeps, from 23:00 to 07:00.](./img/mesh-joined.png)](./img/mesh-joined.png)
 
 Being busy can close the window early; nothing can open it outside the
 hours. Anything unknown counts as busy. The window is judged on the edge, in

@@ -19,6 +19,8 @@ USB stick, and from then on you only ever meet it through a web browser.
 | **The mesh**          | Optional. Spare disk and CPU lent to other LosOS boxes, and borrowed from them.                  |
 | **Remote access**     | Optional. A public address for the box through an edge server, with no port opened at home.      |
 
+[![Inside a box: nginx is the one front door, behind it the control daemon, the box's own cluster with LosOS cloud and LosOS Git, and the mesh agent; under all of it, the encrypted volume that survives a boot.](../project/img/architecture.svg)](../project/img/architecture.svg)
+
 ## What makes it different from a NAS
 
 - **It forgets everything it does not need.** The system disk is rebuilt from
@@ -38,6 +40,8 @@ USB stick, and from then on you only ever meet it through a web browser.
   while it is idle, a box can share its spare disk and CPU with other boxes.
   The [market](../types/official-edge#what-the-edge-does-for-a-box) that pays owners for that
   is built and will open once the business behind it exists.
+
+[![What a boot keeps and what it forgets: the root is rebuilt in memory, and only a short list of directories comes back from the encrypted volume.](../reference/img/what-survives.svg)](../reference/img/what-survives.svg)
 
 ## What it is not
 

@@ -36,6 +36,8 @@ leaves the shelf.
    namespace and a volume claim on the mesh for storage, a ledger credit for
    compute.
 
+[![A 20.00 EUR sale: the buyer pays through Stripe Checkout, 19.20 reaches the seller, 0.80 stays as the 4 % fee.](./img/money-flow.svg)](./img/money-flow.svg)
+
 The fee is **4 %** of the gross amount (400 basis points, capped at 20 %),
 rounded half up: on a 20.00 EUR sale the platform keeps 0.80 and the seller
 receives 19.20. Prices are in cents of one currency per edge; an order is at

@@ -28,6 +28,10 @@ check cover the whole boot:
    stick before mounting it. An altered image is refused with *THE MEDIUM
    HAS BEEN ALTERED* on the screen and the machine powers off.
 
+[![The checks in order: the firmware checks the stick's signed loader, the loader checks the system image's hash, and the installed box boots with Secure Boot off.](./img/boot-chain.svg)](./img/boot-chain.svg)
+
+[![A stick whose system image was changed: the loader refuses it with THE MEDIUM HAS BEEN ALTERED and does not start it.](./img/medium-altered.png)](./img/medium-altered.png)
+
 The installer then prints what happened, above its firmware menu:
 
 ```
@@ -38,6 +42,8 @@ or `Secure Boot: disabled ...` when the firmware checked nothing, or
 `Secure Boot: not available (legacy BIOS boot)`. Secure Boot is a UEFI
 feature; a stick booted in BIOS mode is verified by nothing, exactly as any
 other BIOS boot.
+
+[![The installer, booted under Secure Boot with the certificate enrolled, says the firmware verified the medium.](./img/installer-secure-boot.png)](./img/installer-secure-boot.png)
 
 What is **not** covered: the installed system. The box boots with
 systemd-boot from its own disk, and neither that loader nor the kernels its
@@ -69,6 +75,8 @@ certificate into the firmware's `db`:
    The wording differs by vendor; the stick's EFI partition is a plain FAT
    volume every firmware can browse.
 3. Boot the stick. The installer's first line says *Secure Boot: enabled*.
+
+[![OVMF with only Microsoft's keys enrolled: Access Denied, rejected by Secure Boot. That refusal is the signature working.](./img/firmware-access-denied.png)](./img/firmware-access-denied.png)
 
 If the firmware has no such dialog, the standard tools work from any Linux
 in *Setup* mode: `efi-updatevar -a -c losos-secure-boot-db.pem db` (efitools)

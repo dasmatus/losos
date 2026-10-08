@@ -9,6 +9,8 @@ The simplest LosOS, and what every box is right after the first run: one
 machine on one local network, reachable from the computers and phones on
 that network and from nowhere else.
 
+[![A box on its own: everything on the home network reaches it, nothing from the internet comes in, and the box still fetches its own updates.](./img/single-box.svg)](./img/single-box.svg)
+
 ## What you get
 
 - LosOS cloud and LosOS Git at the box's address, for everyone on the

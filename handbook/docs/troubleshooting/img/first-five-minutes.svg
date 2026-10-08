@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="440" viewBox="0 0 640 440" font-family="Inter, 'DejaVu Sans', Arial, sans-serif" font-size="15">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#355"/></marker>
+  </defs>
+  <rect width="640" height="440" fill="#fff"/>
+  <rect x="20" y="16" width="600" height="64" rx="8" fill="#e6f2f3" stroke="#0e6e7d" stroke-width="1"/>
+  <circle cx="46" cy="48" r="14" fill="#0e6e7d"/>
+  <text x="46" y="53" text-anchor="middle" fill="#fff" font-size="14" font-weight="700">1</text>
+  <text x="72" y="43" text-anchor="start" fill="#18212a" font-weight="600">Look at the screen</text>
+  <text x="72" y="64" text-anchor="start" fill="#5c6a77" font-size="13">a blue banner with an http:// address?</text>
+  <text x="604" y="43" text-anchor="end" fill="#8c98a4" font-size="11">if not:</text>
+  <text x="604" y="62" text-anchor="end" fill="#5c6a77" font-size="11" font-family="'JetBrains Mono', 'DejaVu Sans Mono', Menlo, monospace">stuck-at-passphrase</text>
+  <line x1="46" y1="80" x2="46" y2="96" stroke="#355" stroke-width="2" marker-end="url(#a)"/>
+  <rect x="20" y="96" width="600" height="64" rx="8" fill="#fff" stroke="#0e6e7d" stroke-width="1"/>
+  <circle cx="46" cy="128" r="14" fill="#0e6e7d"/>
+  <text x="46" y="133" text-anchor="middle" fill="#fff" font-size="14" font-weight="700">2</text>
+  <text x="72" y="123" text-anchor="start" fill="#18212a" font-weight="600">Use the IP address</text>
+  <text x="72" y="144" text-anchor="start" fill="#5c6a77" font-size="13">http://192.168.…, not the .local name</text>
+  <text x="604" y="123" text-anchor="end" fill="#8c98a4" font-size="11">if not:</text>
+  <text x="604" y="142" text-anchor="end" fill="#5c6a77" font-size="11" font-family="'JetBrains Mono', 'DejaVu Sans Mono', Menlo, monospace">name-does-not-resolve</text>
+  <line x1="46" y1="160" x2="46" y2="176" stroke="#355" stroke-width="2" marker-end="url(#a)"/>
+  <rect x="20" y="176" width="600" height="64" rx="8" fill="#fff" stroke="#0e6e7d" stroke-width="1"/>
+  <circle cx="46" cy="208" r="14" fill="#0e6e7d"/>
+  <text x="46" y="213" text-anchor="middle" fill="#fff" font-size="14" font-weight="700">3</text>
+  <text x="72" y="203" text-anchor="start" fill="#18212a" font-weight="600">Try plain http://</text>
+  <text x="72" y="224" text-anchor="start" fill="#5c6a77" font-size="13">a warning on https:// is not an outage</text>
+  <text x="604" y="203" text-anchor="end" fill="#8c98a4" font-size="11">if not:</text>
+  <text x="604" y="222" text-anchor="end" fill="#5c6a77" font-size="11" font-family="'JetBrains Mono', 'DejaVu Sans Mono', Menlo, monospace">certificate-warning</text>
+  <line x1="46" y1="240" x2="46" y2="256" stroke="#355" stroke-width="2" marker-end="url(#a)"/>
+  <rect x="20" y="256" width="600" height="64" rx="8" fill="#fff" stroke="#0e6e7d" stroke-width="1"/>
+  <circle cx="46" cy="288" r="14" fill="#0e6e7d"/>
+  <text x="46" y="293" text-anchor="middle" fill="#fff" font-size="14" font-weight="700">4</text>
+  <text x="72" y="283" text-anchor="start" fill="#18212a" font-weight="600">Ask if it is alive</text>
+  <text x="72" y="304" text-anchor="start" fill="#5c6a77" font-size="13">/api/health answers {&quot;ok&quot;:true}</text>
+  <text x="604" y="283" text-anchor="end" fill="#8c98a4" font-size="11">if not:</text>
+  <text x="604" y="302" text-anchor="end" fill="#5c6a77" font-size="11" font-family="'JetBrains Mono', 'DejaVu Sans Mono', Menlo, monospace">cannot-reach-the-box</text>
+  <line x1="46" y1="320" x2="46" y2="336" stroke="#355" stroke-width="2" marker-end="url(#a)"/>
+  <rect x="20" y="336" width="600" height="64" rx="8" fill="#fff" stroke="#0e6e7d" stroke-width="1"/>
+  <circle cx="46" cy="368" r="14" fill="#0e6e7d"/>
+  <text x="46" y="373" text-anchor="middle" fill="#fff" font-size="14" font-weight="700">5</text>
+  <text x="72" y="363" text-anchor="start" fill="#18212a" font-weight="600">Restart it, or wait</text>
+  <text x="72" y="384" text-anchor="start" fill="#5c6a77" font-size="13">00:07, or pull the power; files stay</text>
+  <text x="604" y="363" text-anchor="end" fill="#8c98a4" font-size="11">if not:</text>
+  <text x="604" y="382" text-anchor="end" fill="#5c6a77" font-size="11" font-family="'JetBrains Mono', 'DejaVu Sans Mono', Menlo, monospace">getting-help</text>
+  <text x="320" y="428" text-anchor="middle" fill="#5c6a77" font-size="13">Most problems stop at one of these. Each needs only the LAN.</text>
+</svg>

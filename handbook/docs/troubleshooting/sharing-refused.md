@@ -14,6 +14,8 @@ change with a reason.
 
 </div>
 
+[![Sharing refused: the Mesh pane finds no edge, and the switches that need one are greyed.](./img/mesh-no-edge.png)](./img/mesh-no-edge.png)
+
 ## The reasons, and which one you have
 
 | What you see                                           | Reason                                                                                      | What to do                                                                 |

@@ -21,6 +21,8 @@ running.
 Changes how the admin pages look, for every browser that opens the box, and
 takes effect the moment it is saved; no rebuild.
 
+[![The Look pane: the five backgrounds with Tide chosen, the veil slider, and one hand-written widget.](./img/look.png)](./img/look.png)
+
 - **Background**: one of three shipped pictures (Tide, Grid, Dusk), an
   upload of your own (PNG, JPEG, WebP, GIF or SVG, up to 8 MiB), or Plain.
 - **Veil**: lays the page colour over the picture, from 20 % to 90 %, so

@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="430" viewBox="0 0 640 430" font-family="Inter, 'DejaVu Sans', Arial, sans-serif" font-size="15">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#355"/></marker>
+    <pattern id="hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="8" height="8" fill="#e6f0f0"/><line x1="0" y1="0" x2="0" y2="8" stroke="#9cc" stroke-width="3"/></pattern>
+  </defs>
+  <rect width="640" height="430" fill="#fff"/>
+  <rect x="20" y="16" width="250" height="44" rx="22.0" fill="#f3f6f6" stroke="#9ab"/>
+  <text x="145" y="43" text-anchor="middle" fill="#5c6a77">the internet</text>
+  <rect x="330" y="12" width="290" height="66" rx="8" fill="#fbf4e4" stroke="#8c6512" stroke-width="1"/>
+  <text x="475.0" y="36" text-anchor="middle" fill="#18212a" font-size="12" font-weight="600">No market</text>
+  <text x="475.0" y="55" text-anchor="middle" fill="#5c6a77" font-size="12">a company edge cannot prove</text>
+  <text x="475.0" y="72" text-anchor="middle" fill="#5c6a77" font-size="12">it is the official one</text>
+  <path d="M600 21l10 17h-20z" fill="#8c6512" stroke="none"/><line x1="600" y1="27" x2="600" y2="32" stroke="#fff" stroke-width="2" stroke-linecap="round"/><circle cx="600" cy="35.2" r="1.1" fill="#fff"/>
+  <rect x="20" y="100" width="600" height="314" rx="14" fill="#f3f6f6" stroke="#9ab" stroke-width="1"/>
+  <text x="604" y="126" text-anchor="end" fill="#18212a" font-weight="600">The company&#x27;s own network</text>
+  <rect x="190" y="144" width="260" height="72" rx="8" fill="#e6f2f3" stroke="#0e6e7d" stroke-width="1"/>
+  <text x="320.0" y="168" text-anchor="middle" fill="#18212a" font-size="12" font-weight="600">Company edge</text>
+  <text x="320.0" y="187" text-anchor="middle" fill="#5c6a77" font-size="12">one always-on NixOS server</text>
+  <line x1="250" y1="144" x2="150" y2="62" stroke="#355" stroke-width="2" marker-end="url(#a)" stroke-dasharray="5 4"/>
+  <text x="140" y="92" text-anchor="start" fill="#5c6a77" font-size="12">optional: a public name</text>
+  <rect x="36" y="290" width="176" height="70" rx="8" fill="#fff" stroke="#0e6e7d" stroke-width="1"/>
+  <text x="124.0" y="314" text-anchor="middle" fill="#18212a" font-size="12" font-weight="600">Box: sales</text>
+  <text x="124.0" y="333" text-anchor="middle" fill="#5c6a77" font-size="12">own files stay here</text>
+  <rect x="56" y="342" width="136" height="8" rx="2" fill="url(#hatch)" stroke="#0e6e7d" stroke-width="1"/>
+  <line x1="124" y1="290" x2="270" y2="216" stroke="#355" stroke-width="2" marker-end="url(#a)"/>
+  <rect x="232" y="290" width="176" height="70" rx="8" fill="#fff" stroke="#0e6e7d" stroke-width="1"/>
+  <text x="320.0" y="314" text-anchor="middle" fill="#18212a" font-size="12" font-weight="600">Box: design</text>
+  <text x="320.0" y="333" text-anchor="middle" fill="#5c6a77" font-size="12">own files stay here</text>
+  <rect x="252" y="342" width="136" height="8" rx="2" fill="url(#hatch)" stroke="#0e6e7d" stroke-width="1"/>
+  <line x1="320" y1="290" x2="320" y2="216" stroke="#355" stroke-width="2" marker-end="url(#a)"/>
+  <rect x="428" y="290" width="176" height="70" rx="8" fill="#fff" stroke="#0e6e7d" stroke-width="1"/>
+  <text x="516.0" y="314" text-anchor="middle" fill="#18212a" font-size="12" font-weight="600">Box: office</text>
+  <text x="516.0" y="333" text-anchor="middle" fill="#5c6a77" font-size="12">own files stay here</text>
+  <rect x="448" y="342" width="136" height="8" rx="2" fill="url(#hatch)" stroke="#0e6e7d" stroke-width="1"/>
+  <line x1="516" y1="290" x2="370" y2="216" stroke="#355" stroke-width="2" marker-end="url(#a)"/>
+  <text x="320" y="386" text-anchor="middle" fill="#5c6a77" font-size="12">found on the LAN in 20 seconds, over mDNS;</text>
+  <text x="320" y="402" text-anchor="middle" fill="#5c6a77" font-size="12">a shared pool and spare CPU among the company&#x27;s boxes</text>
+</svg>

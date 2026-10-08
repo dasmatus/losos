@@ -31,6 +31,8 @@ in the repository.
    the edge checks the pusher's GitHub account against the same list before
    it installs it.
 
+[![The five trust boundaries: internet to edge, edge to box, LAN to box, your files and the mesh's copies, and an official edge against any edge.](./img/trust-boundaries.svg)](./img/trust-boundaries.svg)
+
 ## What the admin key is
 
 The 64-character spare key is as powerful as root: it can write any setting
@@ -47,6 +49,8 @@ On by default: kernel hardening parameters and sysctls, a kernel-module
 blacklist, a tmpfs `/tmp`, systemd sandboxing of the web server, mDNS and the
 control daemon. Four protections that can break something are opt-in on the
 Security pane: AppArmor, a hardened memory allocator, no SMT, USBGuard.
+
+[![The Security pane: the four opt-in protections, all off by default.](./img/security-pane.png)](./img/security-pane.png)
 
 ## Known limitations, stated plainly
 

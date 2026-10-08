@@ -25,6 +25,8 @@ unlock it:
 | **Keyfile**          | The boot partition lost or damaged the key file, or the disk was partially cloned.                                         |
 | **Any, before 2 October 2026** | A bug in older installers formatted the volume with one key and tried to unlock it with another (a stray byte was stripped on the way in). Every such box stopped at this prompt on its first boot. Fixed in pull request #47; install from a current ISO. |
 
+[![Where the disk key lives in each unlock mode; the prompt means that place did not give it up.](../types/img/disk-unlock.svg)](../types/img/disk-unlock.svg)
+
 ## What you can do
 
 There is no passphrase to type: the key is a random 4096-character string

@@ -15,6 +15,8 @@ your router gave it). Every page answers on it: the admin pages at `/`, LosOS
 cloud at `/nextcloud`, LosOS Git at `/forgejo/`, this handbook at
 `/handbook/`. The banner redraws by itself when the address changes.
 
+[![The four ways to write the box's address: the IP address always works, the .local name on most computers, HTTPS only with the name and the installed certificate.](./img/reaching.svg)](./img/reaching.svg)
+
 If the box has no screen attached, your router's device list shows the box
 under the name you gave it (or `losos` before setup).
 
@@ -33,6 +35,8 @@ The admin pages' **About** pane shows the address your browser is using right
 now, and the `.local` name on its own row, so you can see which one you have.
 Links the apps hand out (share links, clone URLs) use the name, because that
 is the one that stays the same when the router hands out a new address.
+
+[![The About pane: the box's name, the address this browser reached it at, the .local name, the storage mode and the two nightly timers.](./img/about.png)](./img/about.png)
 
 ## Over HTTPS
 

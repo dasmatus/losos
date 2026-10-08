@@ -14,6 +14,8 @@ widget lists the job as failed. The box keeps running its old settings.
 
 </div>
 
+[![A failed apply: The changes could not be applied, with the reason the box gave, and the change still waiting on the apply bar.](./img/apply-failed.png)](./img/apply-failed.png)
+
 ## What a failed Apply means
 
 Nothing changed. A rebuild either completes and is switched in, or fails and

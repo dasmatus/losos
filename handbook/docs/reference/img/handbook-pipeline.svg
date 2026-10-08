@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="250" viewBox="0 0 640 250" font-family="Inter, 'DejaVu Sans', Arial, sans-serif" font-size="15">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#355"/></marker>
+  </defs>
+  <rect width="640" height="250" fill="#fff"/>
+  <rect x="20" y="16" width="270" height="70" rx="8" fill="#e6f2f3" stroke="#0e6e7d" stroke-width="1"/>
+  <text x="155.0" y="40" text-anchor="middle" fill="#18212a" font-size="13" font-weight="600">handbook/docs/</text>
+  <text x="155.0" y="60" text-anchor="middle" fill="#5c6a77" font-size="13">Markdown, a folder per section</text>
+  <rect x="350" y="16" width="270" height="70" rx="8" fill="#fff" stroke="#0e6e7d" stroke-width="1"/>
+  <text x="485.0" y="40" text-anchor="middle" fill="#18212a" font-size="13" font-weight="600">npm run build</text>
+  <text x="485.0" y="60" text-anchor="middle" fill="#5c6a77" font-size="13">English, Slovak, German</text>
+  <line x1="290" y1="51" x2="348" y2="51" stroke="#355" stroke-width="2" marker-end="url(#a)"/>
+  <rect x="20" y="150" width="290" height="76" rx="8" fill="#fff" stroke="#0e6e7d" stroke-width="1"/>
+  <text x="165.0" y="174" text-anchor="middle" fill="#18212a" font-size="13" font-weight="600">losos.dasmat.us</text>
+  <text x="165.0" y="194" text-anchor="middle" fill="#5c6a77" font-size="13">on every push to main</text>
+  <rect x="330" y="150" width="290" height="76" rx="8" fill="#f3f6f6" stroke="#0e6e7d" stroke-width="1"/>
+  <text x="475.0" y="174" text-anchor="middle" fill="#18212a" font-size="13" font-weight="600">/handbook/ on every box</text>
+  <text x="475.0" y="194" text-anchor="middle" fill="#5c6a77" font-size="13">built with the system</text>
+  <path d="M440 86 C 440 120, 165 116, 165 148" fill="none" stroke="#355" stroke-width="2" marker-end="url(#a)"/>
+  <line x1="530" y1="86" x2="530" y2="148" stroke="#355" stroke-width="2" marker-end="url(#a)"/>
+</svg>

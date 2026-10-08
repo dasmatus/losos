@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="450" viewBox="0 0 640 450" font-family="Inter, 'DejaVu Sans', Arial, sans-serif" font-size="15">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#355"/></marker>
+    <pattern id="hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="8" height="8" fill="#e6f0f0"/><line x1="0" y1="0" x2="0" y2="8" stroke="#9cc" stroke-width="3"/></pattern>
+  </defs>
+  <rect width="640" height="450" fill="#fff"/>
+  <rect x="20" y="16" width="600" height="66" rx="8" fill="#f3f6f6" stroke="none" stroke-width="1"/>
+  <text x="36" y="38" text-anchor="start" fill="#18212a" font-size="14" font-weight="600">1  How it is deployed</text>
+  <rect x="36" y="48" width="97" height="28" rx="14" fill="#e6f2f3" stroke="#0e6e7d" stroke-width="1"/>
+  <text x="84.5" y="67" text-anchor="middle" fill="#0e6e7d" font-size="13" font-weight="600">on its own</text>
+  <rect x="141" y="48" width="165" height="28" rx="14" fill="#fff" stroke="#9ab" stroke-width="1"/>
+  <text x="223.5" y="67" text-anchor="middle" fill="#18212a" font-size="13">with the LosOS edge</text>
+  <rect x="314" y="48" width="172" height="28" rx="14" fill="#fff" stroke="#9ab" stroke-width="1"/>
+  <text x="400.0" y="67" text-anchor="middle" fill="#18212a" font-size="13">a company&#x27;s own edge</text>
+  <rect x="20" y="92" width="600" height="66" rx="8" fill="#fff" stroke="none" stroke-width="1"/>
+  <text x="36" y="114" text-anchor="start" fill="#18212a" font-size="14" font-weight="600">2  How it unlocks and boots</text>
+  <rect x="36" y="124" width="44" height="28" rx="14" fill="#e6f2f3" stroke="#0e6e7d" stroke-width="1"/>
+  <text x="58.0" y="143" text-anchor="middle" fill="#0e6e7d" font-size="13" font-weight="600">TPM</text>
+  <rect x="88" y="124" width="74" height="28" rx="14" fill="#fff" stroke="#9ab" stroke-width="1"/>
+  <text x="125.0" y="143" text-anchor="middle" fill="#18212a" font-size="13">keyfile</text>
+  <rect x="170" y="124" width="52" height="28" rx="14" fill="#e6f2f3" stroke="#0e6e7d" stroke-width="1"/>
+  <text x="196.0" y="143" text-anchor="middle" fill="#0e6e7d" font-size="13" font-weight="600">UEFI</text>
+  <rect x="230" y="124" width="52" height="28" rx="14" fill="#fff" stroke="#9ab" stroke-width="1"/>
+  <text x="256.0" y="143" text-anchor="middle" fill="#18212a" font-size="13">BIOS</text>
+  <rect x="20" y="168" width="600" height="66" rx="8" fill="#f3f6f6" stroke="none" stroke-width="1"/>
+  <text x="36" y="190" text-anchor="start" fill="#18212a" font-size="14" font-weight="600">3  How the apps run</text>
+  <rect x="36" y="200" width="157" height="28" rx="14" fill="#e6f2f3" stroke="#0e6e7d" stroke-width="1"/>
+  <text x="114.5" y="219" text-anchor="middle" fill="#0e6e7d" font-size="13" font-weight="600">as workloads (k3s)</text>
+  <rect x="201" y="200" width="82" height="28" rx="14" fill="#fff" stroke="#9ab" stroke-width="1"/>
+  <text x="242.0" y="219" text-anchor="middle" fill="#18212a" font-size="13">natively</text>
+  <rect x="20" y="244" width="600" height="66" rx="8" fill="#fff" stroke="none" stroke-width="1"/>
+  <text x="36" y="266" text-anchor="start" fill="#18212a" font-size="14" font-weight="600">4  What the disk is for</text>
+  <rect x="36" y="276" width="127" height="28" rx="14" fill="#e6f2f3" stroke="#0e6e7d" stroke-width="1"/>
+  <text x="99.5" y="295" text-anchor="middle" fill="#0e6e7d" font-size="13" font-weight="600">kept to itself</text>
+  <rect x="171" y="276" width="172" height="28" rx="14" fill="url(#hatch)" stroke="#0e6e7d" stroke-width="1"/>
+  <text x="257.0" y="295" text-anchor="middle" fill="#18212a" font-size="13">shared with the mesh</text>
+  <rect x="351" y="276" width="150" height="28" rx="14" fill="#fff" stroke="#9ab" stroke-width="1"/>
+  <text x="426.0" y="295" text-anchor="middle" fill="#18212a" font-size="13">+ CPU in a window</text>
+  <rect x="20" y="320" width="600" height="66" rx="8" fill="#f3f6f6" stroke="none" stroke-width="1"/>
+  <text x="36" y="342" text-anchor="start" fill="#18212a" font-size="14" font-weight="600">5  What is on the board</text>
+  <rect x="36" y="352" width="82" height="28" rx="14" fill="#e6f2f3" stroke="#0e6e7d" stroke-width="1"/>
+  <text x="77.0" y="371" text-anchor="middle" fill="#0e6e7d" font-size="13" font-weight="600">built-in</text>
+  <rect x="126" y="352" width="120" height="28" rx="14" fill="#fff" stroke="#9ab" stroke-width="1"/>
+  <text x="186.0" y="371" text-anchor="middle" fill="#18212a" font-size="13">from readings</text>
+  <rect x="254" y="352" width="135" height="28" rx="14" fill="#fff" stroke="#9ab" stroke-width="1"/>
+  <text x="321.5" y="371" text-anchor="middle" fill="#18212a" font-size="13">written by hand</text>
+  <rect x="20" y="404" width="14" height="14" rx="7" fill="#e6f2f3" stroke="#0e6e7d" stroke-width="1"/>
+  <text x="42" y="416" text-anchor="start" fill="#5c6a77" font-size="13">what every box starts as. Line 2 is set at install;</text>
+  <text x="42" y="436" text-anchor="start" fill="#5c6a77" font-size="13">the others are settings, changed without a reinstall.</text>
+</svg>

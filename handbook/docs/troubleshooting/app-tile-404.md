@@ -14,6 +14,8 @@ through untrusted domain".
 
 </div>
 
+[![The app tiles on the Overview: each opens LosOS cloud or LosOS Git through index.php.](../start/img/overview.png)](../start/img/overview.png)
+
 ## "Not Found" from an app tile
 
 Two causes, both fixed on 6 October 2026 (pull requests #65 and #66), both

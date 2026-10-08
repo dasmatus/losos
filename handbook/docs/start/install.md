@@ -48,6 +48,10 @@ own. **It wipes every fixed disk in the machine.**
    banner with the box's address. Open that address in a browser on any
    computer on the same network and follow [The first run](first-run).
 
+[![The installer's screen: the Secure Boot line, then the firmware menu with BIOS, UEFI and autodetect, which it takes after 30 seconds.](./img/installer-secure-boot.png)](./img/installer-secure-boot.png)
+
+[![The installed box's screen: the blue banner with the address to open in a browser.](../project/kop/img/banner-tty1.png)](../project/kop/img/banner-tty1.png)
+
 ## Trying it in a virtual machine
 
 The box runs fine in QEMU, virt-manager or VirtualBox, and the maturita demo

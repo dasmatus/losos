@@ -25,6 +25,8 @@ sidebar_position: 1
 address and not the mesh's pod range. Anything else, including traffic
 arriving through an edge's tunnel, gets **403**.
 
+[![What the front door serves to whom: the admin pages, handbook, API and setup files to the local network only; LosOS cloud and LosOS Git to anyone.](./img/addresses.svg)](./img/addresses.svg)
+
 ## Ports
 
 | Port    | Protocol | What                                                   |

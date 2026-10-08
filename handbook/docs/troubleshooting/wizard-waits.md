@@ -13,6 +13,8 @@ finish starting", and stays there.
 
 </div>
 
+[![Step 2 while LosOS cloud installs itself: Waiting for this box to finish starting, with the reason, and the password field held until it is ready.](../start/img/wizard-waiting.png)](../start/img/wizard-waiting.png)
+
 ## Why
 
 The password lives in LosOS cloud, so it cannot be set until LosOS cloud has

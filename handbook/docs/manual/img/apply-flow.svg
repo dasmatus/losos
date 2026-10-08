@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="380" viewBox="0 0 640 380" font-family="Inter, 'DejaVu Sans', Arial, sans-serif" font-size="15">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#355"/></marker>
+  </defs>
+  <rect width="640" height="380" fill="#fff"/>
+  <rect x="20" y="16" width="280" height="76" rx="8" fill="#e6f2f3" stroke="#0e6e7d" stroke-width="1"/>
+  <text x="160.0" y="40" text-anchor="middle" fill="#18212a" font-size="13" font-weight="600">1  You edit a field</text>
+  <text x="160.0" y="60" text-anchor="middle" fill="#5c6a77" font-size="13">the apply bar appears;</text>
+  <text x="160.0" y="78" text-anchor="middle" fill="#5c6a77" font-size="13">nothing is sent yet</text>
+  <rect x="340" y="16" width="280" height="76" rx="8" fill="#fff" stroke="#0e6e7d" stroke-width="1"/>
+  <text x="480.0" y="40" text-anchor="middle" fill="#18212a" font-size="13" font-weight="600">2  Apply</text>
+  <text x="480.0" y="60" text-anchor="middle" fill="#5c6a77" font-size="13">your choices are written</text>
+  <text x="480.0" y="78" text-anchor="middle" fill="#5c6a77" font-size="13">to modules/overrides.nix</text>
+  <rect x="340" y="130" width="280" height="76" rx="8" fill="#fff" stroke="#0e6e7d" stroke-width="1"/>
+  <text x="480.0" y="154" text-anchor="middle" fill="#18212a" font-size="13" font-weight="600">3  Rebuild</text>
+  <text x="480.0" y="174" text-anchor="middle" fill="#5c6a77" font-size="13">a background job,</text>
+  <text x="480.0" y="192" text-anchor="middle" fill="#5c6a77" font-size="13">losos-rebuild-&lt;job&gt;</text>
+  <rect x="20" y="130" width="280" height="76" rx="8" fill="#fff" stroke="#0e6e7d" stroke-width="1"/>
+  <text x="160.0" y="154" text-anchor="middle" fill="#18212a" font-size="13" font-weight="600">4  Switch</text>
+  <text x="160.0" y="174" text-anchor="middle" fill="#5c6a77" font-size="13">the new system takes</text>
+  <text x="160.0" y="192" text-anchor="middle" fill="#5c6a77" font-size="13">over in seconds</text>
+  <line x1="300" y1="54" x2="338" y2="54" stroke="#355" stroke-width="2" marker-end="url(#a)"/>
+  <line x1="480" y1="92" x2="480" y2="128" stroke="#355" stroke-width="2" marker-end="url(#a)"/>
+  <line x1="340" y1="168" x2="302" y2="168" stroke="#355" stroke-width="2" marker-end="url(#a)"/>
+  <text x="321.0" y="160.0" text-anchor="middle" fill="#5c6a77" font-size="12">built</text>
+  <rect x="20" y="250" width="280" height="84" rx="8" fill="#e7f2ec" stroke="#2e7357" stroke-width="1"/>
+  <circle cx="40" cy="276" r="9" fill="#2e7357"/>
+  <path d="M35.5 276l3 3 6-6" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="58" y="281" text-anchor="start" fill="#18212a" font-size="14" font-weight="600">Changes applied</text>
+  <text x="40" y="308" text-anchor="start" fill="#18212a" font-size="13">the box runs the new settings</text>
+  <rect x="340" y="250" width="280" height="84" rx="8" fill="#f9e9e7" stroke="#a8443c" stroke-width="1"/>
+  <circle cx="360" cy="276" r="9" fill="#a8443c"/>
+  <path d="M356 272l8 8M364 272l-8 8" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
+  <text x="378" y="281" text-anchor="start" fill="#18212a" font-size="14" font-weight="600">Could not be applied</text>
+  <text x="360" y="302" text-anchor="start" fill="#5c6a77" font-size="13">the previous system keeps</text>
+  <text x="360" y="320" text-anchor="start" fill="#5c6a77" font-size="13">running; the reason is shown</text>
+  <line x1="160" y1="206" x2="160" y2="248" stroke="#355" stroke-width="2" marker-end="url(#a)"/>
+  <line x1="480" y1="206" x2="480" y2="248" stroke="#355" stroke-width="2" marker-end="url(#a)"/>
+  <text x="490" y="232" text-anchor="start" fill="#5c6a77" font-size="12">build failed</text>
+  <text x="320" y="366" text-anchor="middle" fill="#5c6a77" font-size="13">The same path for Apply, the 03:00 update and Reset.</text>
+</svg>

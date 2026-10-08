@@ -13,6 +13,8 @@ uploads to LosOS cloud fail; an Apply or the nightly update fails.
 
 </div>
 
+[![The Storage pane on an almost full box: 40 GB free of 1.6 TB, with 178 GB still held back to claim.](./img/almost-full.png)](./img/almost-full.png)
+
 ## Why it matters more than on a laptop
 
 The box's own software lives on the same volume as your files, and each

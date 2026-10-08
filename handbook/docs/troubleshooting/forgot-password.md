@@ -13,6 +13,8 @@ on LosOS cloud's sign-in page.
 
 </div>
 
+[![The unlock dialog after a wrong password.](./img/unlock-refused.png)](./img/unlock-refused.png)
+
 ## First, make sure it is the password
 
 - **LosOS cloud is not running.** The unlock dialog then says so ("LosOS
@@ -26,10 +28,14 @@ on LosOS cloud's sign-in page.
 - **Too many tries.** Ten wrong attempts lock the computer out for a growing
   while; wait a few minutes.
 
+[![LosOS cloud not running: the dialog says the password cannot be checked right now, instead of rejecting it.](./img/unlock-cloud-down.png)](./img/unlock-cloud-down.png)
+
 ## You have the spare admin key
 
 On the unlock dialog, choose **Use the spare admin key instead** and paste
 the 64-character key from the printed sheet. The admin pages open.
+
+[![Use the spare admin key instead: the dialog asks for the 64-character key.](../manual/img/unlock-spare-key.png)](../manual/img/unlock-spare-key.png)
 
 The key also lets you set a **new owner password** for LosOS cloud, through
 the same route the wizard used. There is no button for it on the panes yet,

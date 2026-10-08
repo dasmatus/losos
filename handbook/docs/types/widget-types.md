@@ -9,6 +9,8 @@ The overview page has a **board** of widgets: small tiles that keep an eye
 on the things you care about. **Add a widget** opens the gallery, which has
 three kinds.
 
+[![The widget gallery: the five built-ins, Build one and Write one.](./img/widget-gallery.png)](./img/widget-gallery.png)
+
 | Kind                     | Where it lives     | Can it run code?                 | How it gets the box's readings                       |
 | ------------------------ | ------------------ | -------------------------------- | ---------------------------------------------------- |
 | **Built-in**             | in the system      | yes, compiled into the admin page | directly                                             |
@@ -34,11 +36,15 @@ lives in the browser you made it in, changes nothing on the box and cannot
 reach the network, the page or anything but its one reading. That is also
 its limit: no branching across readings, no loops, no memory between runs.
 
+[![Build one: a reading, a shape and a figure written as m.reserveBytes, with the live preview beside it.](./img/widget-build.png)](./img/widget-build.png)
+
 ## Written by hand
 
 **Write one** takes HTML, style and script of your own. The widget is kept on
 the box, so every browser that opens the box sees it, and it is listed on
 **Settings → Look**, where it can be edited and deleted.
+
+[![Write one: the warning about pasted code, the source of a widget that shows the free room, and its preview in the real sandboxed frame.](./img/widget-write.png)](./img/widget-write.png)
 
 A hand-written widget runs inside a **sandboxed frame**: an origin of its
 own with no access to the admin pages, the admin key or the box's API. It

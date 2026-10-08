@@ -16,6 +16,8 @@ separate report; the Slovak hand-in document, the
 [technical documentation (KOP)](./kop/index.md), is built from this handbook
 and adds what the assignment asks for beyond it.
 
+[![LosOS as its owner sees it: the Overview of a box.](../start/img/overview.png)](../start/img/overview.png)
+
 | Requirement                                                              | Where it is answered                                                          |
 | ------------------------------------------------------------------------ | ----------------------------------------------------------------------------- |
 | 1. Examine and describe the system's main functions and options           | [Architecture](./architecture.md), [What LosOS is](../start/what-is-losos.md), [Types of setup](../types/index.md); in Slovak, [Funkcionality](./kop/funkcionality.md) and [Architektúra](./kop/architektura.md) |

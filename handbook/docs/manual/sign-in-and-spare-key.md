@@ -17,6 +17,8 @@ loopback connection. The box keeps no second copy, so changing the password
 inside LosOS cloud (Settings → Personal → Security) changes it for the admin
 pages too, at once.
 
+[![Unlock this box: the password dialog over the Overview, with the spare-key link below it.](./img/unlock.png)](./img/unlock.png)
+
 A new password needs at least 12 characters, a lower-case letter, an
 upper-case letter, a digit and a symbol. A password set before that rule
 existed still signs in.
@@ -33,6 +35,8 @@ was shown **once**, in the wizard after the password was set, with **Copy**
 and **Print** buttons. It is the spare, for the one case the password cannot
 cover: LosOS cloud not running, so nothing can check the password. The
 unlock dialog then says so and offers **Use the spare admin key instead**.
+
+[![The unlock dialog switched to the spare admin key.](./img/unlock-spare-key.png)](./img/unlock-spare-key.png)
 
 Keep the printed sheet away from the box. Anyone with the key can change
 every setting, which is as much as root. There is no way to see it again or

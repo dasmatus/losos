@@ -11,6 +11,8 @@ the mesh of other boxes, and (once it opens) trades on the market. The
 **LosOS edge** is the one the project runs; it is the only edge whose market
 pays out.
 
+[![Boxes and their edge: each box opens its tunnel outwards, keeps its own files to itself, and lends spare room and spare hours to the mesh.](./img/mesh.svg)](./img/mesh.svg)
+
 ## What the edge does for a box
 
 | Feature                | How                                                                                                        |
@@ -31,12 +33,16 @@ Every 20 seconds the box looks for an edge on two roads:
   owner changed it (Settings → Advanced, `losos.proxy.registrarUrl`). It is
   asked whether or not **Reachable from outside your home** is on.
 
+[![How a box finds an edge: on the local network by DNS-SD and at the configured address, every 20 seconds; found once /health answers.](./img/edge-discovery.svg)](./img/edge-discovery.svg)
+
 An edge counts as found once its `/health` answers. Several can be in reach
 at once, a company's edge on the LAN and the LosOS edge over the internet,
 say. The **Mesh pane** shows one row per edge, **On this network** or **Over
 the internet**, each with a sign saying whether it is official (below), or
 **No edge proxy found** with what the box tried: "This box searched its
 network and asked `<address>`; nothing answered."
+
+[![The Mesh pane with two edges in reach: a company's edge on this network, with the warning sign, and the LosOS edge over the internet, with the check.](./img/mesh-pane.png)](./img/mesh-pane.png)
 
 While nothing answers, the box **refuses to turn network-dependent sharing
 on**. Switching storage to mesh mode, **Join the mesh** and **Share this
@@ -57,6 +63,8 @@ a **LosOS root public key**. An official edge proves itself on every scan: it
 presents a certificate signed with the matching private key, which only the
 project holds, offline, and it signs a fresh challenge the box just made up
 with the certificate's own key. Four checks, all or nothing.
+
+[![The four checks an official edge passes on every scan, and what a box allows an official edge and any other edge.](./img/official-check.svg)](./img/official-check.svg)
 
 The result is the sign beside each edge's name on the Mesh pane: a **check**
 for an official edge, a **warning** for any other, with a tooltip listing

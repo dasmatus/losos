@@ -28,6 +28,8 @@ stack), a module blacklist that also blocks explicit loading, a tmpfs `/tmp`,
 network. Four more that can break something are opt-in: AppArmor, a hardened
 memory allocator, disabling SMT, USBGuard.
 
+[![The Security pane: the four protections that can break something, off until the owner turns them on.](../reference/img/security-pane.png)](../reference/img/security-pane.png)
+
 Three "obvious" hardening settings are deliberately **not** applied, and a
 test fails if they are: strict reverse-path filtering (it drops the mDNS
 replies that make a shell-less box findable, and breaks the mesh's network

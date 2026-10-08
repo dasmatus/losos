@@ -28,6 +28,8 @@ maintainer can ask for, so collect it first.
 7. **When**: the time of day matters, because of the 00:07 restart and the
    03:00 update.
 
+[![The About pane: name, address, storage mode, mesh state and the timers, all of it worth copying into an issue.](../start/img/about.png)](../start/img/about.png)
+
 ## What not to include
 
 The spare admin key, the owner's password, the contents of your files. Nobody

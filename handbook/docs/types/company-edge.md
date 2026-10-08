@@ -13,6 +13,8 @@ company's edge. On a network with no internet at all, this is how storage is
 pooled: one always-on machine on the LAN runs the edge, and the boxes find
 it on their own.
 
+[![A company's own network: its boxes find the company edge on the LAN, share disk and CPU among themselves, and have no market.](./img/company-edge.svg)](./img/company-edge.svg)
+
 ## What is the same as the LosOS edge
 
 - Remote access under the edge's domain, no ports opened on the boxes.

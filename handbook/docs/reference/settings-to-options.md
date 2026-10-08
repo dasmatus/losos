@@ -11,6 +11,8 @@ panes do not offer: the option names are what a maintainer would set in
 `modules/overrides.nix`, and what the [wiki](https://github.com/dasmatus/losos/wiki/Administration)
 documents in full.
 
+[![The Advanced pane: every option with its editor, default and running value; options another pane owns link there instead.](./img/advanced-pane.png)](./img/advanced-pane.png)
+
 ## On the panes
 
 | Pane     | Field                       | Option                                              | Default                 |

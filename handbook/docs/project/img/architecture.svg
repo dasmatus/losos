@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="560" viewBox="0 0 640 560" font-family="Inter, 'DejaVu Sans', Arial, sans-serif" font-size="15">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#355"/></marker>
+    <pattern id="hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="8" height="8" fill="#e6f0f0"/><line x1="0" y1="0" x2="0" y2="8" stroke="#9cc" stroke-width="3"/></pattern>
+  </defs>
+  <rect width="640" height="560" fill="#fff"/>
+  <rect x="20" y="16" width="260" height="58" rx="8" fill="#f3f6f6" stroke="#9ab" stroke-width="1"/>
+  <text x="150.0" y="40" text-anchor="middle" fill="#18212a" font-size="13" font-weight="600">Browser on the LAN</text>
+  <text x="150.0" y="60" text-anchor="middle" fill="#5c6a77" font-size="13">http(s)://&lt;address&gt;/</text>
+  <rect x="360" y="16" width="260" height="58" rx="8" fill="#f3f6f6" stroke="#9ab" stroke-width="1"/>
+  <text x="490.0" y="40" text-anchor="middle" fill="#18212a" font-size="13" font-weight="600">Edge</text>
+  <text x="490.0" y="60" text-anchor="middle" fill="#5c6a77" font-size="13">tunnel · mesh · market</text>
+  <rect x="20" y="98" width="600" height="446" rx="12" fill="none" stroke="#0e6e7d" stroke-width="1.5" stroke-dasharray="6 5"/>
+  <text x="36" y="118" text-anchor="start" fill="#0e6e7d" font-size="12" font-weight="700">THE BOX</text>
+  <rect x="36" y="128" width="568" height="100" rx="8" fill="#e6f2f3" stroke="#0e6e7d" stroke-width="1"/>
+  <text x="320.0" y="152" text-anchor="middle" fill="#18212a" font-size="13" font-weight="600">nginx: the one front door, ports 80 and 443</text>
+  <text x="320.0" y="172" text-anchor="middle" fill="#5c6a77" font-size="13">/ admin pages and /handbook/: LAN only</text>
+  <text x="320.0" y="190" text-anchor="middle" fill="#5c6a77" font-size="13">/api: lososd, on loopback</text>
+  <text x="320.0" y="208" text-anchor="middle" fill="#5c6a77" font-size="13">/nextcloud and /forgejo/: also through the edge</text>
+  <line x1="150" y1="74" x2="150" y2="128" stroke="#355" stroke-width="2" marker-end="url(#a)"/>
+  <line x1="490" y1="128" x2="490" y2="74" stroke="#355" stroke-width="2" marker-end="url(#a)"/>
+  <text x="500" y="92" text-anchor="start" fill="#5c6a77" font-size="12">opened outwards</text>
+  <rect x="36" y="256" width="176" height="138" rx="8" fill="#fff" stroke="#0e6e7d" stroke-width="1"/>
+  <text x="124.0" y="280" text-anchor="middle" fill="#18212a" font-size="13" font-weight="600">lososd, as root</text>
+  <text x="124.0" y="300" text-anchor="middle" fill="#5c6a77" font-size="13">the box&#x27;s state</text>
+  <text x="124.0" y="318" text-anchor="middle" fill="#5c6a77" font-size="13">D-Bus and JSON API</text>
+  <text x="124.0" y="336" text-anchor="middle" fill="#5c6a77" font-size="13">rebuilds</text>
+  <text x="124.0" y="354" text-anchor="middle" fill="#5c6a77" font-size="13">wizard and sign-in</text>
+  <line x1="124" y1="228" x2="124" y2="256" stroke="#355" stroke-width="2" marker-end="url(#a)"/>
+  <line x1="124" y1="394" x2="124" y2="420" stroke="#355" stroke-width="2" marker-end="url(#a)"/>
+  <rect x="232" y="256" width="176" height="138" rx="8" fill="#fff" stroke="#0e6e7d" stroke-width="1"/>
+  <text x="320.0" y="280" text-anchor="middle" fill="#18212a" font-size="13" font-weight="600">k3s: own cluster</text>
+  <text x="320.0" y="300" text-anchor="middle" fill="#5c6a77" font-size="13">LosOS cloud pod</text>
+  <text x="320.0" y="318" text-anchor="middle" fill="#5c6a77" font-size="13">LosOS Git pod</text>
+  <text x="320.0" y="336" text-anchor="middle" fill="#5c6a77" font-size="13">built with the system</text>
+  <text x="320.0" y="354" text-anchor="middle" fill="#5c6a77" font-size="13">/home/notshared</text>
+  <line x1="320" y1="228" x2="320" y2="256" stroke="#355" stroke-width="2" marker-end="url(#a)"/>
+  <line x1="320" y1="394" x2="320" y2="420" stroke="#355" stroke-width="2" marker-end="url(#a)"/>
+  <rect x="428" y="256" width="176" height="138" rx="8" fill="url(#hatch)" stroke="#0e6e7d" stroke-width="1"/>
+  <rect x="436" y="264" width="160" height="122" rx="6" fill="#fff" stroke="none" stroke-width="1"/>
+  <rect x="428" y="256" width="176" height="138" rx="8" fill="none" stroke="none" stroke-width="1"/>
+  <text x="516.0" y="280" text-anchor="middle" fill="#18212a" font-size="13" font-weight="600">rke2: the mesh</text>
+  <text x="516.0" y="300" text-anchor="middle" fill="#5c6a77" font-size="13">server on the edge</text>
+  <text x="516.0" y="318" text-anchor="middle" fill="#5c6a77" font-size="13">Longhorn pool</text>
+  <text x="516.0" y="336" text-anchor="middle" fill="#5c6a77" font-size="13">others&#x27; work, if idle</text>
+  <text x="516.0" y="354" text-anchor="middle" fill="#5c6a77" font-size="13">/home/shared</text>
+  <line x1="516" y1="228" x2="516" y2="256" stroke="#355" stroke-width="2" marker-end="url(#a)"/>
+  <line x1="516" y1="394" x2="516" y2="420" stroke="#355" stroke-width="2" marker-end="url(#a)"/>
+  <rect x="36" y="420" width="568" height="108" rx="8" fill="#f3f6f6" stroke="#0e6e7d" stroke-width="1"/>
+  <text x="320.0" y="444" text-anchor="middle" fill="#18212a" font-size="13" font-weight="600">/ is tmpfs, rebuilt on every boot</text>
+  <text x="320.0" y="464" text-anchor="middle" fill="#5c6a77" font-size="13">/persist: LVM, then LUKS, then ext4</text>
+  <text x="320.0" y="482" text-anchor="middle" fill="#5c6a77" font-size="13">its key in the TPM, or a keyfile</text>
+  <text x="320.0" y="500" text-anchor="middle" fill="#5c6a77" font-size="13">the one thing that survives a boot</text>
+</svg>

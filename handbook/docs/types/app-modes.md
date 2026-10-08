@@ -9,6 +9,8 @@ LosOS cloud and LosOS Git each run in one of two modes. The owner sees the
 same app at the same address either way; the Apps pane shows which mode each
 one is in.
 
+[![The Apps pane: Files and Code, each running kept separate, which is the workload mode, the default.](./img/apps-pane.png)](./img/apps-pane.png)
+
 | Mode            | What runs where                                                                                           | Default |
 | --------------- | --------------------------------------------------------------------------------------------------------- | ------- |
 | **Workload**    | The app runs in a container inside the box's own small Kubernetes cluster (k3s), from an image built with the system. | yes     |
@@ -36,6 +38,8 @@ is a **different** cluster, run by the edge. The box's apps are never placed
 in the mesh cluster, because a cluster member cannot start while its server
 is unreachable, and the box restarts every night at 00:07: an edge outage
 over midnight would otherwise take your own files offline.
+
+[![The box's own k3s cluster runs LosOS cloud and LosOS Git; the mesh is a separate rke2 agent whose server is on the edge.](./img/two-clusters.svg)](./img/two-clusters.svg)
 
 ## Where the apps are
 

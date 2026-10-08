@@ -15,6 +15,8 @@ this box"; the public name of the box stops answering.
 
 </div>
 
+[![The Mesh pane with no edge in reach: what the box tried, and the switches greyed with Needs an edge proxy in reach.](./img/mesh-no-edge.png)](./img/mesh-no-edge.png)
+
 ## What the box looks for
 
 Every 20 seconds the box looks for an edge in two places: an announcement on
@@ -30,6 +32,8 @@ tried:
 | "This box searched its network and asked `<address>`; nothing answered."   | Both roads were tried. The address is the configured one.                     |
 | "This box searched its network and nothing answered."                      | No address is configured; only the local network was searched.                |
 | "This box could not search its network, and nothing answered elsewhere."   | The box's mDNS service was not running, so a LAN edge could not be found even if present. A reboot brings it back. |
+
+[![The two roads a box looks for an edge on, every 20 seconds.](../types/img/edge-discovery.svg)](../types/img/edge-discovery.svg)
 
 ## From the LAN
 

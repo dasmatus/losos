@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="540" viewBox="0 0 640 540" font-family="Inter, 'DejaVu Sans', Arial, sans-serif" font-size="15">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#355"/></marker>
+  </defs>
+  <rect width="640" height="540" fill="#fff"/>
+  <rect x="20" y="16" width="600" height="230" rx="12" fill="#e7f2ec" stroke="#2e7357" stroke-width="1"/>
+  <circle cx="40" cy="44" r="9" fill="#2e7357"/>
+  <path d="M35.5 44l3 3 6-6" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="58" y="49" text-anchor="start" fill="#18212a" font-weight="600">Keeps working on the local network</text>
+  <text x="44" y="80" text-anchor="start" fill="#18212a" font-size="13">· signing in, with the password or the spare key</text>
+  <text x="44" y="106" text-anchor="start" fill="#18212a" font-size="13">· LosOS cloud and LosOS Git</text>
+  <text x="44" y="132" text-anchor="start" fill="#18212a" font-size="13">· every pane of the admin pages, Apply included</text>
+  <text x="44" y="158" text-anchor="start" fill="#18212a" font-size="13">· widgets, the Look, this handbook</text>
+  <text x="44" y="184" text-anchor="start" fill="#18212a" font-size="13">· the nightly restart and the default update</text>
+  <text x="44" y="210" text-anchor="start" fill="#18212a" font-size="13">· a company edge on the same network</text>
+  <line x1="320" y1="248" x2="320" y2="300" stroke="#a8443c" stroke-width="2" stroke-dasharray="5 4"/>
+  <circle cx="320" cy="274" r="9" fill="#a8443c"/>
+  <path d="M316 270l8 8M324 270l-8 8" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
+  <text x="338" y="279" text-anchor="start" fill="#a8443c" font-size="12">the provider, the router or the edge is down</text>
+  <rect x="20" y="302" width="600" height="222" rx="12" fill="#f3f6f6" stroke="#9ab" stroke-width="1" stroke-dasharray="6 5"/>
+  <text x="40" y="332" text-anchor="start" fill="#18212a" font-weight="600">Waits for the outside</text>
+  <text x="44" y="364" text-anchor="start" fill="#18212a" font-size="13">· remote access through the edge</text>
+  <text x="44" y="390" text-anchor="start" fill="#18212a" font-size="13">· the mesh, lending, the market</text>
+  <text x="44" y="416" text-anchor="start" fill="#18212a" font-size="13">· room shared with the mesh</text>
+  <text x="44" y="442" text-anchor="start" fill="#18212a" font-size="13">· Find more on the Apps pane</text>
+  <text x="44" y="468" text-anchor="start" fill="#18212a" font-size="13">· a 03:00 update from a github: source</text>
+  <text x="600" y="506" text-anchor="end" fill="#0e6e7d" font-size="12" font-weight="600">comes back on its own</text>
+</svg>

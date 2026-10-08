@@ -21,6 +21,8 @@ place:
 | `/etc/rancher`             | The mesh membership's node password                                   |
 | `/etc/machine-id`          | The box's identity                                                    |
 
+[![The root is rebuilt in memory at every boot; these directories come back from the encrypted volume.](./img/what-survives.svg)](./img/what-survives.svg)
+
 Everything else, including anything an attacker or a bug wrote anywhere
 else, is gone at 00:07.
 

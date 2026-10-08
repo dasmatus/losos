@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="380" viewBox="0 0 640 380" font-family="Inter, 'DejaVu Sans', Arial, sans-serif" font-size="15">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#355"/></marker>
+  </defs>
+  <rect width="640" height="380" fill="#fff"/>
+  <rect x="20" y="16" width="240" height="70" rx="8" fill="#f3f6f6" stroke="#9ab" stroke-width="1"/>
+  <text x="140.0" y="40" text-anchor="middle" fill="#18212a" font-size="12" font-weight="600">Buyer</text>
+  <text x="140.0" y="59" text-anchor="middle" fill="#5c6a77" font-size="12">orders GiB-months or vCPU-hours</text>
+  <rect x="380" y="16" width="240" height="70" rx="8" fill="#e6f2f3" stroke="#0e6e7d" stroke-width="1"/>
+  <text x="500.0" y="40" text-anchor="middle" fill="#18212a" font-size="12" font-weight="600">Stripe Checkout</text>
+  <text x="500.0" y="59" text-anchor="middle" fill="#5c6a77" font-size="12">one destination charge: 20.00 EUR</text>
+  <line x1="260" y1="51" x2="378" y2="51" stroke="#355" stroke-width="2" marker-end="url(#a)"/>
+  <text x="319.0" y="45.0" text-anchor="middle" fill="#5c6a77" font-size="12">pays</text>
+  <rect x="20" y="140" width="290" height="70" rx="8" fill="#e7f2ec" stroke="#2e7357" stroke-width="1"/>
+  <text x="165.0" y="164" text-anchor="middle" fill="#18212a" font-size="13" font-weight="600">Seller&#x27;s Stripe account</text>
+  <text x="165.0" y="184" text-anchor="middle" fill="#5c6a77" font-size="13">19.20 EUR to the box that shares</text>
+  <rect x="330" y="140" width="290" height="70" rx="8" fill="#fff" stroke="#0e6e7d" stroke-width="1"/>
+  <text x="475.0" y="164" text-anchor="middle" fill="#18212a" font-size="13" font-weight="600">Platform fee, 4 %</text>
+  <text x="475.0" y="184" text-anchor="middle" fill="#5c6a77" font-size="13">0.80 EUR, kept by the edge</text>
+  <path d="M470 86 C 470 116, 165 110, 165 138" fill="none" stroke="#355" stroke-width="2" marker-end="url(#a)"/>
+  <line x1="520" y1="86" x2="520" y2="138" stroke="#355" stroke-width="2" marker-end="url(#a)"/>
+  <rect x="20" y="240" width="600" height="124" rx="8" fill="#f3f6f6" stroke="none" stroke-width="1"/>
+  <text x="40" y="266" text-anchor="start" fill="#18212a" font-weight="600">Then the order is paid and fulfilled</text>
+  <text x="40" y="292" text-anchor="start" fill="#5c6a77" font-size="13">storage: a volume on the mesh, for 30 days</text>
+  <text x="40" y="314" text-anchor="start" fill="#5c6a77" font-size="13">compute: a credit, run on the seller&#x27;s box in its hours</text>
+  <text x="40" y="344" text-anchor="start" fill="#0e6e7d" font-size="13" font-weight="600">Money never touches a box.</text>
+</svg>

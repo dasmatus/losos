@@ -14,6 +14,8 @@ answers.
 
 </div>
 
+[![The box's screen when it is fine: the blue banner with the address to type.](../project/kop/img/banner-tty1.png)](../project/kop/img/banner-tty1.png)
+
 ## From the LAN
 
 1. **Read the screen.** The banner shows the address the box has *now*. A

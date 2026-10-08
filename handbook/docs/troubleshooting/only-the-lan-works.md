@@ -20,6 +20,8 @@ keeps working on the local network**, whatever took the outside away.
 Nothing is lost, nothing is paused, and nothing needs to be set up again
 when the outside comes back.
 
+[![What keeps working on the local network, and what waits for the outside to come back.](./img/lan-only.svg)](./img/lan-only.svg)
+
 ## What can cause it
 
 Any of these leaves the box reachable from the LAN and nothing else. The

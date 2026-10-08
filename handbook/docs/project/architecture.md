@@ -19,23 +19,7 @@ the owner is not using.
 
 ## The box
 
-```text
-                 browser on the LAN              edge (internet or LAN)
-                        │                               ▲ tunnel (Noise), outwards only
-                        ▼                               │
-   ┌───────────── nginx, the one front door ─────────────┐
-   │  /  admin pages (LAN only)      /nextcloud  LosOS cloud │
-   │  /api → lososd (loopback)       /forgejo/   LosOS Git   │
-   │  /handbook/ (LAN only)                                 │
-   └────────────────────────────────────────────────────────┘
-          │                      │                      │
-     lososd (root daemon)   k3s: the box's own    rke2 agent: the mesh,
-     state, settings,       cluster, runs the     joined to the edge's
-     rebuilds, D-Bus        two apps as pods      server; Longhorn pool
-          │
-   /persist (LUKS, key in the TPM) ◄── the only thing that survives a boot
-   /       tmpfs, rebuilt every boot from the box's Nix description
-```
+[![Inside a box: nginx is the one front door; behind it lososd, the box's own k3s cluster and the rke2 mesh agent; under all of it, tmpfs for the root and the encrypted /persist.](./img/architecture.svg)](./img/architecture.svg)
 
 Six decisions carry the design:
 
@@ -65,6 +49,8 @@ Six decisions carry the design:
    failure mode is uniform (the previous system keeps running) and the
    nightly update is the same code path owners exercise by hand.
 
+[![The one path every change takes: write the description, build, switch, or keep the previous system.](../manual/img/apply-flow.svg)](../manual/img/apply-flow.svg)
+
 ## The mesh
 
 - **Storage**: Longhorn on the edge's cluster replicates volumes across the
@@ -79,6 +65,8 @@ Six decisions carry the design:
   never promises room to a pool it cannot reach. An edge proves it is the
   LosOS edge with a signature a root public key on the box verifies; any
   other edge gets discovery, remote access and local sharing, not trading.
+
+[![The mesh: each box keeps its own files and lends spare room and hours to the edge's cluster.](../types/img/mesh.svg)](../types/img/mesh.svg)
 
 ## The edge
 
