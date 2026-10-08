@@ -87,7 +87,6 @@
   --ifm-spacing-horizontal: 1rem;
   --docusaurus-highlighted-code-line-bg: var(--accent-wash);
   --doc-sidebar-width: 15rem;
-  --doc-sidebar-hidden-width: 2.5rem;
 }
 
 /* Infima declares its dark palette under [data-theme='dark'] with the same
@@ -374,8 +373,13 @@ html:not([data-theme-choice]) .hb-theme__item[data-choice='system'] {
   max-width: 72rem;
   margin: 0 auto;
   padding: 1.25rem 1.5rem 3rem;
-  gap: 1.5rem;
   width: 100%;
+}
+/* Docusaurus's docsWrapper holds the (removed) back-to-top button and the
+ * docRoot; the sidebar and the main column are docRoot's flex items, so the
+ * gap between the two cards goes here, not on the wrapper. */
+[class*='docRoot'] {
+  gap: 1.5rem;
 }
 /* The sidebar is the SPA's panel: a recessed card, sticky under the bar. */
 .theme-doc-sidebar-container {
@@ -386,14 +390,16 @@ html:not([data-theme-choice]) .hb-theme__item[data-choice='system'] {
   clip-path: none !important;
   width: var(--doc-sidebar-width);
   flex: 0 0 var(--doc-sidebar-width);
-  transition: width 200ms ease-out, flex-basis 200ms ease-out;
 }
+/* The viewport is the sticky element. Docusaurus gives it height: 100% of
+ * the column, which is as tall as the page, so it had nothing to stick
+ * against and scrolled away with the page; auto makes it the card's height. */
 .theme-doc-sidebar-container > div {
   top: calc(var(--ifm-navbar-height) + 1.25rem) !important;
-  max-height: calc(100dvh - var(--ifm-navbar-height) - 1.5rem);
   position: sticky;
 }
 [class*='sidebarViewport'] {
+  height: auto !important;
   max-height: none !important;
   overflow: visible !important;
 }
@@ -451,9 +457,6 @@ html:not([data-theme-choice]) .hb-theme__item[data-choice='system'] {
   border-color: var(--accent);
   box-shadow: 0 0 0 2px rgb(from var(--accent) r g b / 0.35);
   outline: none;
-}
-.hb-sidebar-search [class*='searchHintContainer'] {
-  right: 6px;
 }
 .hb-sidebar-search [class*='dropdownMenu'] {
   left: 0 !important;
@@ -580,49 +583,24 @@ html:not([data-theme-choice]) .hb-theme__item[data-choice='system'] {
 .hb-icon-reference { --hb-icon: var(--hb-icon-reference); }
 .hb-icon-project { --hb-icon: var(--hb-icon-project); }
 
-/* The hide-sidebar button (the SPA's SidebarTrigger) and the expand stub. */
-[class*='collapseSidebarButton'] {
-  border: 0 !important;
-  border-top: 1px solid var(--line) !important;
-  border-radius: 0 0 var(--card-radius) var(--card-radius) !important;
-  background: transparent !important;
-  color: var(--muted);
-  height: 36px !important;
-  margin: 0.5rem -0.5rem -0.5rem !important;
-  position: static !important;
-}
-[class*='collapseSidebarButton']:hover {
-  background: var(--surface) !important;
-  color: var(--ink);
-}
-[class*='expandButton'] {
-  background: var(--sunk) !important;
-  border: 1px solid var(--line);
-  border-radius: var(--card-radius);
-  color: var(--muted);
-  position: sticky;
-  top: calc(var(--ifm-navbar-height) + 1.25rem);
-  height: 40px;
-}
-.theme-doc-sidebar-container[class*='docSidebarContainerHidden'] {
-  width: var(--doc-sidebar-hidden-width);
-  flex-basis: var(--doc-sidebar-hidden-width);
-  cursor: default;
-}
-
 /* ── Content: the SPA's Card ──────────────────────────────────────────── */
 main[class*='docMainContainer'] > .container {
   max-width: none;
   padding: 0 !important;
   margin: 0;
 }
-/* Infima's padding utilities are !important too; outrank them by specificity
- * so the content card tops out level with the sidebar card. */
-main[class*='docMainContainer'] > .container.padding-top--md {
-  padding-top: 0 !important;
-}
-main[class*='docMainContainer'] > .container.padding-bottom--lg {
-  padding-bottom: 0 !important;
+/* Infima's padding utilities are !important, and Docusaurus puts Infima in
+ * a cascade layer: an !important rule inside a layer beats any !important
+ * rule outside one, however specific, so these two have to sit in Infima's
+ * own layer, where specificity decides again. Without them the content card
+ * hangs 1rem below the sidebar card. */
+@layer docusaurus.infima {
+  main[class*='docMainContainer'] > .container.padding-top--md {
+    padding-top: 0 !important;
+  }
+  main[class*='docMainContainer'] > .container.padding-bottom--lg {
+    padding-bottom: 0 !important;
+  }
 }
 [class*='docItemContainer'] {
   padding: 0;
@@ -840,7 +818,12 @@ article {
   color: var(--muted);
 }
 
-/* The right-hand outline: 12.5px muted text, the open section in accent. */
+/* The right-hand outline: 12.5px muted text, the open section in accent,
+ * 1.5rem off the card like the sidebar on the other side (the two columns'
+ * 1rem paddings make 2rem; the column gives half of its own back). */
+.row > .col.col--3 {
+  padding-left: 0.5rem;
+}
 .theme-doc-toc-desktop {
   top: calc(var(--ifm-navbar-height) + 1.25rem) !important;
 }
