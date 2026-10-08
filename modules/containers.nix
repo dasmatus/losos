@@ -65,11 +65,11 @@ let
   # hand out its manual any more than its settings.
   handbook = config.losos.admin.handbook;
   handbookEnabled = adminEnabled && handbook != null;
-  # LosOS Lab, the setup visualizer (admin-ui/lab/, built as losos-lab).
-  # Under the admin guard for the same reason as the handbook, and more so:
-  # it reads this box's settings with the owner's token.
-  lab = config.losos.admin.lab;
-  labEnabled = adminEnabled && lab != null;
+  # LosOS Lab, the setup visualizer: the admin UI's second page
+  # (admin-ui/app/lab/), so it comes out of the same bundle. Under the admin
+  # guard for the same reason as the handbook, and more so: it reads this
+  # box's settings with the owner's token.
+  labEnabled = adminEnabled && config.losos.admin.lab;
   # The Lab's guests under libvirt (modules/lab.nix): their console and NIC
   # WebSockets skip lososd and go to the helper, which checks a per-guest
   # ticket only a token holder can get.
@@ -230,19 +230,20 @@ let
     "form-action 'none'"
   ];
 
-  # LosOS Lab's policy. The lab draws its canvas and inspector with inline
-  # style attributes (positions, colours, the packet dots), which the admin
-  # policy refuses, so style-src carries 'unsafe-inline'. Script stays
-  # 'self' only: lab.js is a file in the store, there is no inline script,
-  # and the lab reads the admin token from this tab's sessionStorage, so
-  # injected markup must stay inert. Styles alone cannot read storage. No
-  # remote origin: the shipped copy has no qemu-wasm engine, fetches nothing
-  # but /api/ and its own files, and needs no internet.
+  # LosOS Lab's policy: the admin policy plus 'wasm-unsafe-eval', which is
+  # what lets the page compile its WebAssembly (the Lab's Rust core,
+  # admin-ui/lab/core) and nothing more: eval() and new Function() stay
+  # refused. Kept off the admin pages, which run no WebAssembly. Style is
+  # 'self' like the admin page's: the canvas places things with React style
+  # props, which are CSSOM writes the policy allows. blob: images are the
+  # setup files and screenshots the Lab hands out. No remote origin: the
+  # box's copy has no qemu-wasm engine, fetches nothing but /api/ and its
+  # own files, and its guests, when there are any, come through /api/lab.
   labCsp = lib.concatStringsSep "; " [
     "default-src 'none'"
-    "script-src 'self'"
-    "style-src 'self' 'unsafe-inline'"
-    "img-src 'self' data:"
+    "script-src 'self' 'wasm-unsafe-eval'"
+    "style-src 'self'"
+    "img-src 'self' data: blob:"
     "font-src 'self'"
     "connect-src 'self'"
     "frame-ancestors 'none'"
@@ -438,14 +439,13 @@ in
           };
         })
         (lib.mkIf labEnabled {
-          # LosOS Lab: four static files under a prefix, so `alias` like the
-          # handbook. No SPA fallback: a path that is not one of the files is
-          # a plain 404. LAN-only like the rest of the admin surface; the
+          # LosOS Lab: lab/index.html in the admin UI's bundle, on real paths
+          # under /lab/ like the SPA is on /, so every deep link and reload
+          # gets the page. Its scripts and the core's .wasm are in the
+          # shared /assets/. LAN-only like the rest of the admin surface; the
           # header map above gives this prefix its own CSP.
           "/lab/" = {
-            alias = "${lab}/";
-            index = "index.html";
-            tryFiles = "$uri $uri/ =404";
+            tryFiles = "$uri /lab/index.html";
             extraConfig = lanOnly;
           };
         })

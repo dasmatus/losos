@@ -1,5 +1,6 @@
 //! The Rust Lab against what the JavaScript Lab computed for the same steps.
-//! The fixtures come from running admin-ui/lab/src under node (TZ=UTC, clock
+//! The fixtures come from running the JavaScript Lab (admin-ui/lab/src, removed
+//! once this port replaced it; it is in the git history) under node (TZ=UTC, clock
 //! at 2026-10-08 10:00 UTC); random parts (MAC suffixes, nonces, ping times)
 //! and journal timestamps are masked on both sides.
 

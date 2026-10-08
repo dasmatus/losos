@@ -994,17 +994,16 @@ in
       '';
     };
 
-    # Path of the built LosOS Lab (admin-ui/lab/, built by flake/packages.nix
-    # as losos-lab; wired in via modules/defaults.nix). Internal, like
-    # admin.ui.
+    # LosOS Lab is the admin UI's second page (admin-ui/app/lab/, inside
+    # losos-admin-ui), so there is nothing to point at, only whether to serve
+    # it. Internal, like admin.ui.
     admin.lab = lib.mkOption {
-      type = lib.types.nullOr lib.types.path;
-      default = null;
+      type = lib.types.bool;
+      default = true;
       internal = true;
       description = ''
-        Store path of LosOS Lab, the setup visualizer: index.html, lab.js,
-        lab.css and the logo, served by the front vhost at /lab/, LAN-only,
-        under its own content security policy. Null serves no lab.
+        Serve LosOS Lab, the setup visualizer, at /lab/ from the admin UI's
+        own bundle, LAN-only, under its own content security policy.
       '';
     };
 

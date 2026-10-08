@@ -41,15 +41,14 @@
 #                because that is how they reach a binary cache: the appliance
 #                substitutes them, it never builds them (see the header of
 #                flake/images.nix).
-#   losos-lab  — LosOS Lab, the setup visualizer the front vhost serves at
-#                /lab/ (admin-ui/lab/): a canvas of the box, its router, the
-#                edges and the mesh, with the traffic between them. Plain JS
-#                assembled by build.py with python3 alone, no npm. The
-#                qemu-wasm engine that boots real guests is not in it; that
-#                build is the hosted copy's (admin-ui/lab/engine/build.sh).
-#   losos-lab-core — the Lab's core in Rust (admin-ui/lab/core/), built for
-#                wasm32 and run through wasm-bindgen: the package the Lab
-#                page imports.
+#   losos-lab-core — LosOS Lab's core in Rust (admin-ui/lab/core/), built
+#                for wasm32 and run through wasm-bindgen. The Lab itself is
+#                the admin UI's second page (admin-ui/app/lab/), served at
+#                /lab/, and imports this package.
+#   losos-lab-render — the Lab's canvas (admin-ui/lab/render/): the two
+#                views as a 3D scene drawn by Bevy, in a wasm module with
+#                the core, through wasm-bindgen and then wasm-opt; built
+#                twice, webgpu/ and webgl2/, for the page to pick from.
 #   losos-lab-virt — the Lab's libvirt client (admin-ui/lab/virt-rpc/):
 #                libvirt's remote protocol for wasm32, through wasm-bindgen,
 #                for a page that drives libvirt over `losos-registrar lab`'s
@@ -77,9 +76,49 @@ let
   # header of fast-build.nix says what each one is worth here, and how to
   # turn the caches on for `nix build` on a dev machine.
   inherit (import ./fast-build.nix { inherit pkgs; }) buildRustPackage;
+
+  # LosOS Lab's core (admin-ui/lab/core/README.md) as the wasm-bindgen web
+  # package the Lab page imports: losos_lab_core.js, its .d.ts and the .wasm.
+  # Plain rustPlatform rather than fast-build.nix's: mold and ccache are
+  # composed for the native toolchain, and rustc links wasm32 with its own
+  # rust-lld. wasm-bindgen-cli must be the version the crate pins (=0.2.127);
+  # the CLI refuses a module built against another one.
+  losos-lab-core = pkgs.rustPlatform.buildRustPackage {
+    pname = "losos-lab-core";
+    version = "0.1.0";
+    src = lib.cleanSource ./../admin-ui/lab/core;
+    cargoHash = "sha256-TXH+ZimT0PygfRRnjOCNpFgi3Acmb4kxN0S7vcL9Pxk=";
+    nativeBuildInputs = [
+      pkgs.wasm-bindgen-cli
+      pkgs.lld
+    ];
+    buildPhase = ''
+      runHook preBuild
+      cargo build --release --offline --target wasm32-unknown-unknown
+      runHook postBuild
+    '';
+    doCheck = false;
+    installPhase = ''
+      runHook preInstall
+      wasm-bindgen --target web --out-dir $out \
+        target/wasm32-unknown-unknown/release/losos_lab_core.wasm
+      runHook postInstall
+    '';
+  };
+
+  # The Lab page imports the core from src/lab/core-pkg (gitignored; `npm run
+  # lab:core` writes it in a checkout). Both npm builds of admin-ui/app copy
+  # it in first: this one and tests/admin-ui.nix.
+  labCorePkg = ''
+    mkdir -p src/lab/core-pkg
+    cp ${losos-lab-core}/* src/lab/core-pkg/
+    chmod -R u+w src/lab/core-pkg
+  '';
 in
 images
 // {
+  inherit losos-lab-core;
+
   losos-admin-ui = pkgs.buildNpmPackage {
     pname = "losos-admin-ui";
     version = "0.1.0";
@@ -109,6 +148,9 @@ images
     # nothing else needs a script to run.
     npmFlags = [ "--ignore-scripts" ];
     env.PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1";
+    # LosOS Lab (lab/index.html, the second Vite entry) imports the Rust core.
+    preBuild = labCorePkg;
+    passthru = { inherit labCorePkg; };
 
     # The default npmBuildScript is `npm run build`, which here is
     # `tsc --noEmit && vite build` — so unlike the Rust crates (doCheck = off,
@@ -162,57 +204,6 @@ images
     '';
   };
 
-  # LosOS Lab as the box serves it: index.html, lab.js, lab.css and the
-  # plate, no inline script (the /lab/ CSP arm in modules/containers.nix
-  # allows scripts from 'self' only). build.py reads the plate from
-  # admin-ui/themes/brand, so the source is those two pieces and nothing else
-  # under admin-ui/: engine/ is CI-only and stays out of the closure.
-  losos-lab =
-    pkgs.runCommand "losos-lab"
-      {
-        src = lib.fileset.toSource {
-          root = ./../admin-ui;
-          fileset = lib.fileset.unions [
-            ./../admin-ui/lab/build.py
-            ./../admin-ui/lab/src
-            ./../admin-ui/themes/brand/plate-128.png
-          ];
-        };
-        nativeBuildInputs = [ pkgs.python3 ];
-      }
-      ''
-        python3 $src/lab/build.py box $out
-      '';
-
-  # LosOS Lab's core (admin-ui/lab/core/README.md) as the wasm-bindgen web
-  # package the Lab page imports: losos_lab_core.js, its .d.ts and the .wasm.
-  # Plain rustPlatform rather than fast-build.nix's: mold and ccache are
-  # composed for the native toolchain, and rustc links wasm32 with its own
-  # rust-lld. wasm-bindgen-cli must be the version the crate pins (=0.2.127);
-  # the CLI refuses a module built against another one.
-  losos-lab-core = pkgs.rustPlatform.buildRustPackage {
-    pname = "losos-lab-core";
-    version = "0.1.0";
-    src = lib.cleanSource ./../admin-ui/lab/core;
-    cargoHash = "sha256-TXH+ZimT0PygfRRnjOCNpFgi3Acmb4kxN0S7vcL9Pxk=";
-    nativeBuildInputs = [
-      pkgs.wasm-bindgen-cli
-      pkgs.lld
-    ];
-    buildPhase = ''
-      runHook preBuild
-      cargo build --release --offline --target wasm32-unknown-unknown
-      runHook postBuild
-    '';
-    doCheck = false;
-    installPhase = ''
-      runHook preInstall
-      wasm-bindgen --target web --out-dir $out \
-        target/wasm32-unknown-unknown/release/losos_lab_core.wasm
-      runHook postInstall
-    '';
-  };
-
   # The Lab's libvirt client (admin-ui/lab/virt-rpc/README.md) as a
   # wasm-bindgen web package: losos_lab_virt.js, its .d.ts and the .wasm.
   # Built the same way as losos-lab-core, for the same reasons, and pinned
@@ -236,6 +227,63 @@ images
       runHook preInstall
       wasm-bindgen --target web --out-dir $out \
         target/wasm32-unknown-unknown/release/losos_lab_virt.wasm
+      runHook postInstall
+    '';
+  };
+
+  # The Lab's canvas (admin-ui/lab/render/README.md): the logical and
+  # physical views drawn by Bevy on WebGL2, compiled to wasm32 in one module
+  # with the core (it depends on ../core by path, so the source is both
+  # crates). wasm-bindgen first, then wasm-opt on its output, never before:
+  # wasm-bindgen reads the custom sections wasm-opt would rewrite.
+  losos-lab-render = pkgs.rustPlatform.buildRustPackage {
+    pname = "losos-lab-render";
+    version = "0.1.0";
+    src = lib.fileset.toSource {
+      root = ./../admin-ui/lab;
+      fileset = lib.fileset.unions [
+        ./../admin-ui/lab/core/Cargo.toml
+        ./../admin-ui/lab/core/Cargo.lock
+        ./../admin-ui/lab/core/src
+        ./../admin-ui/lab/render/Cargo.toml
+        ./../admin-ui/lab/render/Cargo.lock
+        ./../admin-ui/lab/render/src
+        ./../admin-ui/lab/render/assets
+      ];
+    };
+    cargoRoot = "render";
+    buildAndTestSubdir = "render";
+    cargoHash = "sha256-Oq8fvRSdadw4RssI5EdE8DgWX40H3djZLMAAHM6daUs=";
+    nativeBuildInputs = [
+      pkgs.wasm-bindgen-cli
+      pkgs.binaryen
+      pkgs.lld
+    ];
+    # Two modules: Bevy picks its WebGPU or WebGL2 code paths at compile
+    # time, so the page's loader picks the module (render/demo/loader.js).
+    # The builds share no Bevy crate, so the first one's target directory
+    # goes before the second starts.
+    buildPhase = ''
+      runHook preBuild
+      for backend in webgpu webgl2; do
+        (cd render && cargo build --release --offline --target wasm32-unknown-unknown \
+          --no-default-features --features $backend)
+        mkdir -p dist/$backend
+        wasm-bindgen --target web --out-dir dist/$backend --out-name losos_lab_render \
+          render/target/wasm32-unknown-unknown/release/losos_lab_render.wasm
+        wasm-opt -Oz --enable-bulk-memory --enable-nontrapping-float-to-int \
+          --enable-sign-ext --enable-mutable-globals --enable-reference-types \
+          --enable-multivalue \
+          dist/$backend/losos_lab_render_bg.wasm -o dist/$backend/losos_lab_render_bg.wasm
+        rm -rf render/target
+      done
+      runHook postBuild
+    '';
+    doCheck = false;
+    installPhase = ''
+      runHook preInstall
+      mkdir -p $out
+      cp -r dist/webgpu dist/webgl2 $out/
       runHook postInstall
     '';
   };

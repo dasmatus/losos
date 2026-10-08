@@ -7,6 +7,7 @@
 import advanced from "./advanced";
 import apps from "./apps";
 import home from "./home";
+import lab from "./lab";
 import look from "./look";
 import panes from "./panes";
 import settings from "./settings";
@@ -26,6 +27,7 @@ export const MESSAGES = {
   ...apps,
   ...look,
   ...advanced,
+  ...lab,
 };
 
 export type MessageKey = keyof typeof MESSAGES;
