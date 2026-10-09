@@ -129,6 +129,33 @@ ist nicht fatal. Die Appliance wartet 5 s und weicht auf `cache.nixos.org`
 und eigenes Bauen aus. Lege den geheimen Schlüssel niemals in den Flake
 oder auf eine Appliance.
 
+### Die Kopie auf GitHub Pages
+
+Die GitHub-Pages-Seite, die das Handbuch ausliefert, liefert unter
+`https://losos.dasmat.us/proxy` auch eine Kopie des Caches aus, für den
+Fall, dass der Proxy auf Vercel nicht antwortet. Pages führt keinen Code
+aus, also ist die Kopie ein einfacher Datei-Cache. Bei jedem Push auf main
+schreibt der Job `publish-cache` die Pfade, die er veröffentlicht, mit `nix
+copy --to file://`, signiert sie mit demselben Schlüssel `losos-1` und lässt
+jeden Pfad weg, den cache.nixos.org schon ausliefert. Der Workflow
+`handbook` läuft erneut, wenn `ci` auf main fertig ist, und veröffentlicht
+die neueste Kopie unter `/proxy`.
+
+Sie hat drei Grenzen:
+
+- Sie enthält nur den neuesten Build von main. Eine Appliance auf einer
+  älteren Revision findet ihre Pfade nur auf dem Proxy.
+- Eine Pages-Seite darf höchstens 1 GB groß sein, also bleibt die Kopie
+  unter 800 MiB an NARs und lässt die größten Pfade zuerst weg. Die Step
+  Summary des Jobs nennt, was fehlt. Das Nextcloud-Image, das wöchentlich
+  gebaut wird, ist nie darin.
+- Ihre `nix-cache-info` sagt `Priority: 45`, nach dem Proxy (30) und
+  cache.nixos.org (40), also fragt nix sie erst nach beiden.
+
+`losos.cache.substituters` nennt standardmäßig beide. Die Pages-Quelle des
+Repositorys muss "GitHub Actions" sein (Settings, Pages), wie für das
+Handbuch.
+
 ## Das Werkzeug für den Entwicklerrechner
 
 Die Schlüsselzeremonie ([Master-Proxy, offizielle Edges](Master-Proxy-de#offizielle-edges))
@@ -149,6 +176,9 @@ veröffentlichen nie.
 ```sh
 curl -fsSLO "https://proxy.losos.dasmat.us/updates/main/x86_64/{losos-registrar,SHA256SUMS}" && sha256sum -c --ignore-missing SHA256SUMS && chmod +x losos-registrar
 ```
+
+Antwortet der Proxy nicht, liegen dieselben zwei Dateien des neuesten
+main-Builds unter `https://losos.dasmat.us/proxy/updates/main/x86_64/`.
 
 Die Step Summary des Jobs enthält die Artefakt-Referenz, die URL und die
 Prüfsumme. `oras pull ghcr.io/dasmatus/losos/images:main-x86_64` holt

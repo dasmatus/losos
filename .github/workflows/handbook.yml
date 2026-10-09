@@ -9,6 +9,13 @@ name: handbook
 # once, under Settings → Pages. The custom domain (losos.dasmat.us) is kept
 # in the same settings; handbook/static/CNAME repeats it for a branch deploy.
 #
+# The same site carries a static copy of the LosOS binary cache at /proxy
+# (https://losos.dasmat.us/proxy), for when the proxy on Vercel does not
+# answer. ci.yml's publish-cache and publish-tool jobs leave it as the
+# artifacts losos-pages-cache and losos-pages-updates on every push to main;
+# this workflow runs again when ci finishes on main and deploys the newest of
+# each under /proxy. The handbook has no page there, so nothing collides.
+#
 # The box's own copy at /handbook/ is a separate build of the same source
 # (flake/packages.nix, losos-handbook), built by ci.yml's registrar-and-ui
 # job on every push and pull request, next to the admin UI; this workflow is
@@ -29,10 +36,17 @@ on:
       - "handbook/**"
       - ".github/workflows/handbook.yml"
       - "admin-ui/app/src/lib/handbook.ts"
+  # Picks up the cache copy a ci run on main just published.
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: read
+  # Reading ci's artifacts for the cache copy.
+  actions: read
 
 concurrency:
   group: handbook-${{ github.ref }}
@@ -58,6 +72,34 @@ jobs:
       # The admin UI's "What to do" links must all land on a page.
       - run: npm run check
       - run: npm run build
+      - name: add the cache copy at /proxy
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          # The newest unexpired artifact of that name from a run on this
+          # repository's main, whatever the run's other jobs did.
+          newest() {
+            gh api "repos/$REPO/actions/artifacts?name=$1&per_page=30" --jq \
+              '[.artifacts[] | select(.expired | not) | select(.workflow_run.head_branch == "main" and .workflow_run.head_repository_id == .workflow_run.repository_id)][0].id // empty'
+          }
+          fetch() {
+            local id
+            id=$(newest "$1")
+            if [ -z "$id" ]; then
+              echo "::notice::no $1 artifact from main yet; the site goes out without it"
+              return 0
+            fi
+            gh api "repos/$REPO/actions/artifacts/$id/zip" > "$RUNNER_TEMP/$1.zip"
+            mkdir -p "$2"
+            unzip -q -o "$RUNNER_TEMP/$1.zip" -d "$2"
+            echo "$1: artifact $id"
+          }
+          fetch losos-pages-cache build/proxy
+          fetch losos-pages-updates build/proxy/updates/main/x86_64
+          du -sh build build/proxy 2>/dev/null || true
       # The public site is rooted at / on losos.dasmat.us; the box's copy is
       # rooted at /handbook/ and is built by nix, not here.
       - uses: actions/upload-pages-artifact@v4
