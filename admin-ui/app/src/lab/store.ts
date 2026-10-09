@@ -21,6 +21,7 @@ import {
   type TickResult,
 } from "./core";
 import type { Ordering } from "./order";
+import type { GpuState } from "./render";
 import { type Cam, fitCam, Scene, type View, zoomCam } from "./scene";
 
 export type { Cam, View } from "./scene";
@@ -119,6 +120,8 @@ export class LabStore {
   consoleEpoch = 0;
   /** Consoles that print the power-on banner or the power-off note. */
   consolePower = new Map<string, (on: boolean, banner: string[]) => void>();
+  /** The GPU canvas (render.ts): whether it is loading, drawing or not used. */
+  gpu: GpuState = { state: "svg", backend: null, mod: null, lab: null, failed: null };
   /** Called with every toast the core or the store raises. */
   onToast: (text: string) => void = () => {};
   /** Called after every snapshot; the engine reconciles its guests there. */
@@ -202,6 +205,11 @@ export class LabStore {
 
   setUi(patch: Partial<Ui>): void {
     this.ui = { ...this.ui, ...patch };
+    this.emit("model");
+  }
+
+  setGpu(patch: Partial<GpuState>): void {
+    this.gpu = { ...this.gpu, ...patch };
     this.emit("model");
   }
 

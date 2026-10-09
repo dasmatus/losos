@@ -16,6 +16,10 @@
  * relay socket that the page's WebAssembly client really drives, under the
  * same CSP (so the client's own module and its 'wasm-unsafe-eval' are
  * covered too).
+ *
+ * The GPU canvas (src/lab/render.ts, bevy-canvas.tsx) gets a browser of its
+ * own with SwiftShader's WebGL2 allowed, since headless Chromium has no GPU.
+ * Every other check pins the SVG canvas with ?canvas=svg.
  */
 
 import assert from 'node:assert';
@@ -55,8 +59,16 @@ const EDGE = {
 
 /* A Lab page: the API refuses without the key, as lososd does. `signedIn`
  * puts the key in this tab's sessionStorage, as the admin page leaves it. */
-async function open({ viewport = { width: 1440, height: 900 }, locale = 'en-US', signedIn = false, scheme = 'light', routes = null } = {}) {
-  const page = await browser.newPage({ viewport, locale, colorScheme: scheme, acceptDownloads: true });
+async function open({
+  viewport = { width: 1440, height: 900 },
+  locale = 'en-US',
+  signedIn = false,
+  scheme = 'light',
+  routes = null,
+  canvas = 'svg',
+  on = browser,
+} = {}) {
+  const page = await on.newPage({ viewport, locale, colorScheme: scheme, acceptDownloads: true });
   const errors = [];
   page.on('pageerror', (e) => errors.push(String(e)));
   await page.addInitScript(() => {
@@ -71,7 +83,9 @@ async function open({ viewport = { width: 1440, height: 900 }, locale = 'en-US',
   await page.route('**/api/settings', (route) => (authed(route) ? json(route, 200, SETTINGS) : json(route, 401, {})));
   await page.route('**/api/edge', (route) => (authed(route) ? json(route, 200, EDGE) : json(route, 401, {})));
   if (routes) await routes(page, authed);
-  await page.goto(origin + '/lab/');
+  // The checks below read the SVG canvas's DOM, so they pin it; the GPU
+  // canvas has a check of its own at the end.
+  await page.goto(origin + '/lab/' + (canvas ? `?canvas=${canvas}` : ''));
   await page.getByTestId('lab').waitFor({ timeout: 15000 });
   await page.getByTestId('lab-splash').waitFor({ state: 'detached', timeout: 15000 });
   const clean = async () => {
@@ -677,6 +691,101 @@ await check('virt-rpc: beside virsh it is the fallback, and a helper without the
   assert.doesNotMatch(tip, /virt-rpc/);
   await clean();
   await page.close();
+});
+
+/* The GPU canvas: the page paints with SVG, loads the Bevy module, replays
+ * the core into the module's Lab and swaps the canvas in place. The module
+ * is held back until a device has been placed and selected on the SVG
+ * canvas, so the swap has state to carry. Headless Chromium has no GPU;
+ * with SwiftShader allowed it has WebGL2, and the swap is asserted on that.
+ * Without WebGL2 (another Chromium build) the page must stay on SVG, clean. */
+const SWIFTSHADER = ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'];
+await check('GPU canvas: SVG first, then the swap carries the setup, the selection and the camera', async () => {
+  const gpuBrowser = await launch({ args: SWIFTSHADER });
+  let release = () => {};
+  const held = new Promise((r) => (release = r));
+  const { page, clean } = await open({
+    on: gpuBrowser,
+    canvas: 'gpu',
+    routes: async (p) => {
+      await p.route('**/losos_lab_render_bg*.wasm', async (route) => {
+        await held;
+        await route.continue();
+      });
+    },
+  });
+  const webgl2 = await page.evaluate(() => !!document.createElement('canvas').getContext('webgl2'));
+  const host = page.locator('[data-canvas]');
+  assert.strictEqual(await host.getAttribute('data-canvas'), 'svg', 'the SVG canvas paints first');
+
+  // On SVG: place a box and leave it selected.
+  const wrap = await page.getByTestId('lab-canvas-wrap').boundingBox();
+  await page.locator('[data-testid=tray-items] [data-type=box]').click();
+  await page.mouse.click(wrap.x + 420, wrap.y + wrap.height - 90);
+  await page.keyboard.press('Escape');
+  const ids = await page.locator('[data-testid=lab-canvas-wrap] g.node[data-dev]').evaluateAll((ns) => ns.map((n) => n.getAttribute('data-dev')));
+  const added = ids[ids.length - 1];
+  const fresh = page.locator(`[data-testid=lab-canvas-wrap] g.node[data-dev="${added}"]`);
+  const at = await fresh.boundingBox();
+  const name = await fresh.getAttribute('aria-label');
+  await fresh.click();
+  await page.getByTestId('inspector-device').waitFor();
+  const router = await node(page, 'home-router').boundingBox();
+  release();
+
+  // Say which half ran: a green check on the fallback alone proves no swap.
+  console.log(webgl2 ? '    WebGL2 present: asserting the swap' : '    no WebGL2: asserting the SVG fallback');
+  if (!webgl2) {
+    // No WebGL2 here: nothing is fetched and the SVG canvas stays.
+    await page.waitForTimeout(1500);
+    assert.strictEqual(await host.getAttribute('data-canvas'), 'svg');
+    assert.ok((await devices(page)) >= 5);
+    await clean();
+    await page.close();
+    await gpuBrowser.close();
+    return;
+  }
+
+  await page.waitForSelector('[data-canvas=webgl2]', { timeout: 60000 });
+  assert.strictEqual(await page.locator('svg.lab-canvas').count(), 0, 'the SVG canvas left');
+  assert.strictEqual(await page.locator('canvas#lab-gpu-canvas').count(), 1);
+  // The selection came across: the inspector still shows the new box.
+  assert.match(await page.getByTestId('inspector-device').innerText(), new RegExp(name.split(',')[0]));
+
+  // Same camera, same place: a click where the SVG drew the home router
+  // picks it on the GPU canvas, and the box placed on SVG is where it was.
+  await page.mouse.click(router.x + router.width / 2, router.y + 30);
+  await page.waitForFunction(() => /home-router/.test(document.querySelector('[data-testid=inspector-device]')?.textContent ?? ''));
+  await page.mouse.click(at.x + at.width / 2, at.y + 30);
+  await page.waitForFunction(
+    (n) => (document.querySelector('[data-testid=inspector-device]')?.textContent ?? '').includes(n),
+    name.split(',')[0],
+  );
+  // The keyboard stays with React: Delete removes the selected box, and a
+  // click on its spot then selects nothing.
+  await page.keyboard.press('Delete');
+  await page.waitForTimeout(300);
+  await page.mouse.click(at.x + at.width / 2, at.y + 30);
+  await page.waitForTimeout(300);
+  assert.strictEqual(await page.getByTestId('inspector-device').count(), 0, 'the deleted box is gone from the GPU canvas');
+  await clean();
+  await page.close();
+  await gpuBrowser.close();
+});
+
+await check('GPU canvas: ?canvas=svg keeps SVG and fetches no module', async () => {
+  const gpuBrowser = await launch({ args: SWIFTSHADER });
+  const { page, clean } = await open({ on: gpuBrowser, canvas: 'svg' });
+  const fetched = [];
+  page.on('request', (r) => {
+    if (r.url().includes('losos_lab_render')) fetched.push(r.url());
+  });
+  await page.waitForTimeout(2000);
+  assert.strictEqual(await page.locator('[data-canvas]').getAttribute('data-canvas'), 'svg');
+  assert.deepStrictEqual(fetched, []);
+  await clean();
+  await page.close();
+  await gpuBrowser.close();
 });
 
 await browser.close();

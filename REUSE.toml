@@ -11,3 +11,11 @@ path = "**"
 precedence = "closest"
 SPDX-FileCopyrightText = "2026 Matus Mastena"
 SPDX-License-Identifier = "AGPL-3.0-or-later"
+
+# IBM Plex Sans SemiBold and IBM Plex Mono Regular, unmodified from IBM's
+# releases, compiled into the Lab's canvas (admin-ui/lab/render).
+[[annotations]]
+path = "admin-ui/lab/render/assets/fonts/**"
+precedence = "override"
+SPDX-FileCopyrightText = "2017 IBM Corp."
+SPDX-License-Identifier = "OFL-1.1"

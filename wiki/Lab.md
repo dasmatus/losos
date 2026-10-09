@@ -90,6 +90,41 @@ npx --yes serve@14.2.4 -l 8080 /tmp/lab   # then open http://localhost:8080/lab/
 to `main` it also deploys the copy to Vercel, if the repository has the
 `VERCEL_TOKEN`, `VERCEL_ORG_ID` and `VERCEL_PROJECT_ID` secrets.
 
+## The GPU canvas
+
+The diagram has two canvases. The page always starts with the SVG one, so
+the setup is on screen as soon as the core is loaded. Then it asks the
+browser what it offers. With WebGPU it loads the WebGPU build of
+`admin-ui/lab/render` (`losos-lab-render`). Without WebGPU but with WebGL2 it
+loads the WebGL2 build. With neither, it stays on SVG.
+
+Each build is Bevy 0.19.1 compiled to WebAssembly together with the Lab's
+core. The page moves the setup into the module's own core by replaying every
+change it made to the first one, and goes on only if both then describe the
+same setup. The Bevy canvas then takes the SVG canvas's place and keeps the
+selection, the tool and the camera.
+
+The scene is 3D. Every room, Wi-Fi range, cable and device is a flat mesh of
+its own on a ground plane, and an orthographic camera looks straight down at
+it, so both views look as they do in SVG. Names and addresses are text in
+screen space over the scene. Clicks are ray casts from the camera into the
+scene.
+
+The page goes back to SVG and says so once if the module does not load, if
+no frame arrives within 20 seconds, or if the GPU device is lost later. A
+lost WebGPU device is remembered in the browser, and the next visit starts
+on WebGL2.
+
+Each build is about 16 MB of WebAssembly, 3.4 MB with brotli for WebGPU and
+3.6 MB for WebGL2. The browser fetches only the one it uses, after the SVG
+canvas is drawn. The page's content security policy needs no change,
+because `'wasm-unsafe-eval'` already lets the browser compile the core.
+
+To pick a canvas, add `?canvas=svg`, `?canvas=webgpu` or `?canvas=webgl2` to
+the address. The local storage key `losos-lab-canvas` takes the same values
+and keeps the choice in that browser. The engine badge in the top bar names
+the canvas in its tooltip.
+
 ## Guests under libvirt
 
 qemu-wasm is slow: it emulates every instruction with no KVM, each guest
@@ -268,7 +303,10 @@ LosOS Desktop, not the desktop itself.
   builds the core into `src/lab/core-pkg/` and `npm run lab:virt` the
   libvirt client into `src/lab/virt-pkg/` (both gitignored; they need cargo
   with the `wasm32-unknown-unknown` target and `wasm-bindgen` 0.2.127), and
-  then `npm run dev` serves the page at `/lab/`. `tests/lab.browser.mjs`
+  then `npm run dev` serves the page at `/lab/`. `npm run lab:render` builds
+  the GPU canvas's two modules into `src/lab/render-pkg/` the same way, and
+  runs `wasm-opt` on them when `WASM_OPT` names it. The page does not
+  build without them, and building them takes about 13 minutes. `tests/lab.browser.mjs`
   checks it under the Lab's own policy, the relay path against a fake
   libvirt daemon.
 - The core's contract is `admin-ui/lab/core/README.md`. Its tests compare

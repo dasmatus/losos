@@ -28,6 +28,10 @@ let
     # to wasm for the page. Its live tests need a running libvirt daemon and
     # are skipped unless LOSOS_VIRT_SOCK or LOSOS_VIRT_TCP is set.
     "admin-ui/lab/virt-rpc"
+    # The Lab's GPU canvas (admin-ui/lab/render/README.md). Bevy is a
+    # wasm32-only dependency, so this lints and tests its plain Rust;
+    # `lint-wasm` below lints the two wasm32 builds.
+    "admin-ui/lab/render"
   ];
   forEachCrate = cmd: lib.concatMapStringsSep "\n" (c: ''echo "── ${c}"; ${cmd c}'') crates;
 
@@ -262,6 +266,21 @@ in
   '';
   scripts.lint.description = "rustfmt --check + clippy -D warnings, every crate.";
 
+  # The Lab canvas's two wasm32 builds, WebGL2 then WebGPU, with the target
+  # directory removed in between: each is several gigabytes of Bevy and they
+  # share none of it. CI's `clippy-wasm` job runs the same loop.
+  scripts.lint-wasm.exec = ''
+    set -e
+    for backend in webgl2 webgpu; do
+      echo "── admin-ui/lab/render ($backend, wasm32)"
+      cargo clippy --manifest-path admin-ui/lab/render/Cargo.toml \
+        --target wasm32-unknown-unknown --all-targets \
+        --no-default-features --features "$backend" -- -D warnings
+      cargo clean --manifest-path admin-ui/lab/render/Cargo.toml
+    done
+  '';
+  scripts.lint-wasm.description = "clippy -D warnings on the Lab canvas's WebGL2 and WebGPU builds.";
+
   scripts.test-rust.exec = forEachCrate (c: "cargo test --manifest-path ${c}/Cargo.toml");
   scripts.test-rust.description = "Unit tests for every Rust crate.";
 
@@ -410,6 +429,7 @@ in
     set -e
     check-pins
     lint
+    lint-wasm
     test-rust
     check-flake
     check-eval
@@ -418,6 +438,7 @@ in
   enterShell = ''
     echo "losos dev shell"
     echo "  fmt · lint · test-rust        Rust"
+    echo "  lint-wasm                     clippy on the Lab canvas's wasm32 builds"
     echo "  check-flake · check-eval      Nix eval gates"
     echo "  build-pkgs · build-images     builds"
     echo "  build-iso                     the installer image"

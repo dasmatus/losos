@@ -24,6 +24,20 @@ export default defineMessages({
   "lab.mode.simulation": { en: "Simulation", sk: "Simulácia", de: "Simulation" },
   "lab.engine.emulated": { en: "Emulated", sk: "Emulované", de: "Emuliert" },
   "lab.engine.simulated": { en: "Simulated consoles", sk: "Simulované konzoly", de: "Simulierte Konsolen" },
+  // ── which canvas draws (canvas.tsx, render.ts) ──
+  "lab.canvas.svg": { en: "SVG canvas", sk: "SVG plátno", de: "SVG-Zeichenfläche" },
+  "lab.canvas.loading": { en: "SVG canvas, GPU canvas loading", sk: "SVG plátno, načítava sa GPU plátno", de: "SVG-Zeichenfläche, GPU-Zeichenfläche lädt" },
+  "lab.canvas.gpu": { en: "GPU canvas on {backend}", sk: "GPU plátno cez {backend}", de: "GPU-Zeichenfläche über {backend}" },
+  "lab.canvas.fallback": {
+    en: "The GPU canvas did not start, so the Lab stays on its SVG canvas.",
+    sk: "GPU plátno sa nespustilo, Lab zostáva na SVG plátne.",
+    de: "Die GPU-Zeichenfläche ist nicht gestartet, das Lab bleibt bei seiner SVG-Zeichenfläche.",
+  },
+  "lab.canvas.lost": {
+    en: "The GPU canvas lost its device, so the Lab is back on its SVG canvas. The next visit tries WebGL2.",
+    sk: "GPU plátno stratilo zariadenie, Lab je späť na SVG plátne. Pri ďalšej návšteve skúsi WebGL2.",
+    de: "Die GPU-Zeichenfläche hat ihr Gerät verloren, das Lab ist zurück auf der SVG-Zeichenfläche. Der nächste Besuch versucht WebGL2.",
+  },
 
   // ── "This box" ──
   "lab.thisBox.signIn": {

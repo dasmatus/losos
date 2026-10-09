@@ -5,8 +5,17 @@
  *
  * The contract is admin-ui/lab/core/README.md: strings in, JSON text out, a
  * refused call answers {"error": "…"} and changes nothing. This file is the
- * typed side of that contract and nothing more; the store (store.ts) decides
- * when to call what. */
+ * typed side of that contract, and the store (store.ts) decides when to call
+ * what.
+ *
+ * The page starts on this small module and the SVG canvas, and may later
+ * swap to the GPU canvas (render.ts), whose module carries a `Lab` of its
+ * own. The state moves across by replay: every call that can
+ * change the Lab is kept (`journal`), and `adopt` makes the other module's
+ * `Lab` with the same seed, clock and zone and plays the calls into it. The
+ * core is deterministic (its PRNG is seeded, its clock moves only by tick),
+ * so the result is the same state, ids, consoles and all; `adopt` checks
+ * that the two snapshots agree before it switches. */
 
 import init, { Lab } from "./core-pkg/losos_lab_core.js";
 import wasmUrl from "./core-pkg/losos_lab_core_bg.wasm?url";
@@ -267,64 +276,108 @@ function parse<T>(method: string, text: string | undefined): T {
   }
 }
 
+/** A `Lab` from either module: core-pkg's, or the GPU canvas's, which
+ *  exports the same class. A mapped type, so the two are interchangeable. */
+export type LabApi = { [K in keyof Lab]: Lab[K] };
+type LabMethod = { [K in keyof LabApi]: LabApi[K] extends (...a: never[]) => unknown ? K : never }[keyof LabApi];
+
+/** How many calls the journal keeps before it gives up (about 25 minutes of
+ *  frames); past that the page stays on the canvas it has. */
+const JOURNAL_CAP = 100_000;
+
 /* Typed calls. Each one is the README's signature with the JSON parsed. */
 export class Core {
-  private constructor(private readonly lab: Lab) {}
+  /** Every call that can change the Lab, in order, until `adopt` or the cap. */
+  private journal: [LabMethod, unknown[]][] | null = [];
+
+  private constructor(
+    private lab: LabApi,
+    /** The constructor's arguments: seed, clock start, zone. */
+    private readonly born: [number, number, number],
+  ) {}
 
   static async load(): Promise<Core> {
     await init({ module_or_path: wasmUrl });
-    const lab = new Lab((Math.random() * 2 ** 31) | 0, Date.now(), -new Date().getTimezoneOffset());
+    const born: [number, number, number] = [(Math.random() * 2 ** 31) | 0, Date.now(), -new Date().getTimezoneOffset()];
+    const lab = new Lab(...born);
     // A stub build (signatures only) answers "null" everywhere.
     if (lab.snapshot() === "null") throw new CoreError("this build of the Lab core is a stub: every call answers null");
-    return new Core(lab);
+    return new Core(lab, born);
+  }
+
+  /** A call that changes the Lab: kept, then made. */
+  private m<K extends LabMethod>(name: K, ...args: Parameters<LabApi[K]>): ReturnType<LabApi[K]> {
+    if (this.journal) {
+      if (this.journal.length < JOURNAL_CAP) this.journal.push([name, args]);
+      else this.journal = null;
+    }
+    return (this.lab[name] as (...a: unknown[]) => ReturnType<LabApi[K]>).apply(this.lab, args);
+  }
+
+  /** Moves this core onto a `Lab` that `make` builds (another module's) by
+   *  replaying the journal into it. Returns that `Lab` once its snapshot
+   *  equals this one's, and drives it from then on; returns null and changes
+   *  nothing when the journal was given up or the two disagree. */
+  adopt(make: (seed: number, nowMs: number, tzOffsetMin: number) => LabApi): LabApi | null {
+    if (!this.journal) return null;
+    const next = make(...this.born);
+    for (const [name, args] of this.journal) (next[name] as (...a: unknown[]) => unknown).apply(next, args);
+    if (next.snapshot() !== this.lab.snapshot()) {
+      next.free();
+      return null;
+    }
+    this.lab.free();
+    this.lab = next;
+    this.journal = null;
+    return next;
   }
 
   catalog = (): Catalog => parse("catalog", this.lab.catalog());
-  setPlate = (url: string): void => this.lab.set_plate(url);
+  setPlate = (url: string): void => this.m("set_plate", url);
 
-  loadScenario = (key: string) => parse<{ focus: string | null } | Err>("load_scenario", this.lab.load_scenario(key));
+  loadScenario = (key: string) => parse<{ focus: string | null } | Err>("load_scenario", this.m("load_scenario", key));
   loadThisBox = (settings: string, edge: string) =>
-    parse<{ focus: string | null; name: string; blurb: string } | Err>("load_this_box", this.lab.load_this_box(settings, edge));
+    parse<{ focus: string | null; name: string; blurb: string } | Err>("load_this_box", this.m("load_this_box", settings, edge));
   exportSetup = () => parse<{ name: string; filename: string; text: string }>("export_setup", this.lab.export_setup());
   importSetup = (text: string, fileName: string) =>
-    parse<{ skipped: number; name: string; focus?: string | null } | Err>("import_setup", this.lab.import_setup(text, fileName));
+    parse<{ skipped: number; name: string; focus?: string | null } | Err>("import_setup", this.m("import_setup", text, fileName));
   openLast = (text: string) =>
-    parse<{ skipped: number; name: string; focus?: string | null } | (Err & { fallback?: string })>("open_last", this.lab.open_last(text));
-  lastSetup = (): string | undefined => this.lab.last_setup();
+    parse<{ skipped: number; name: string; focus?: string | null } | (Err & { fallback?: string })>("open_last", this.m("open_last", text));
+  lastSetup = (): string | undefined => this.m("last_setup");
   peekSetup = (text: string) => parse<{ name: string } | Err>("peek_setup", this.lab.peek_setup(text));
 
   addDevice = (type: string, x: number, y: number, opts: { site?: string; px?: number; py?: number }) =>
-    parse<{ device: Device } | Err>("add_device", this.lab.add_device(type, x, y, JSON.stringify(opts)));
+    parse<{ device: Device } | Err>("add_device", this.m("add_device", type, x, y, JSON.stringify(opts)));
   connect = (a: string, b: string, kind: string, aPort?: string, bPort?: string) =>
-    parse<{ link: Link } | Err>("connect", this.lab.connect(a, b, kind, aPort ?? null, bPort ?? null));
-  removeDevice = (id: string) => parse<{ ok: true } | Err>("remove_device", this.lab.remove_device(id));
-  removeLink = (id: string) => parse<{ ok: true } | Err>("remove_link", this.lab.remove_link(id));
-  setPower = (id: string, on: boolean) => parse<{ power: boolean; banner: string[] } | Err>("set_power", this.lab.set_power(id, on));
+    parse<{ link: Link } | Err>("connect", this.m("connect", a, b, kind, aPort ?? null, bPort ?? null));
+  removeDevice = (id: string) => parse<{ ok: true } | Err>("remove_device", this.m("remove_device", id));
+  removeLink = (id: string) => parse<{ ok: true } | Err>("remove_link", this.m("remove_link", id));
+  setPower = (id: string, on: boolean) => parse<{ power: boolean; banner: string[] } | Err>("set_power", this.m("set_power", id, on));
   setCfg = (id: string, key: string, value: boolean | string) =>
-    parse<{ cfg: Cfg } | Err>("set_cfg", this.lab.set_cfg(id, key, JSON.stringify(value)));
-  setName = (id: string, name: string) => parse<{ name: string } | Err>("set_name", this.lab.set_name(id, name));
-  setSite = (id: string, site: string) => parse<{ ok: true } | Err>("set_site", this.lab.set_site(id, site));
+    parse<{ cfg: Cfg } | Err>("set_cfg", this.m("set_cfg", id, key, JSON.stringify(value)));
+  setName = (id: string, name: string) => parse<{ name: string } | Err>("set_name", this.m("set_name", id, name));
+  setSite = (id: string, site: string) => parse<{ ok: true } | Err>("set_site", this.m("set_site", id, site));
   moveDevice = (id: string, pos: { x?: number; y?: number; px?: number; py?: number; site?: string }) =>
-    parse<{ ok: true } | Err>("move_device", this.lab.move_device(id, JSON.stringify(pos)));
-  physPos = (id: string) => parse<{ px: number; py: number }>("phys_pos", this.lab.phys_pos(id));
+    parse<{ ok: true } | Err>("move_device", this.m("move_device", id, JSON.stringify(pos)));
+  physPos = (id: string) => parse<{ px: number; py: number }>("phys_pos", this.m("phys_pos", id));
 
   snapshot = (): Snapshot => parse("snapshot", this.lab.snapshot());
   suggestUrls = (id: string): string[] => parse("suggest_urls", this.lab.suggest_urls(id));
 
-  tick = (elapsedMs: number): TickResult => parse("tick", this.lab.tick(elapsedMs));
-  step = (): TickResult => parse("step", this.lab.step());
-  setMode = (mode: "realtime" | "simulation") => parse<{ ok: true } | Err>("set_mode", this.lab.set_mode(mode));
-  setPlaying = (on: boolean): void => this.lab.set_playing(on);
-  setSimSpeed = (speed: number): void => this.lab.set_sim_speed(speed);
-  setClockSpeed = (speed: number) => parse<{ ok: true } | Err>("set_clock_speed", this.lab.set_clock_speed(speed));
-  skipToNextTimer = () => parse<{ ok: true; next: Timer } | Err>("skip_to_next_timer", this.lab.skip_to_next_timer());
-  setFilter = (proto: string, on: boolean) => parse<unknown>("set_filter", this.lab.set_filter(proto, on));
-  clear = (): void => this.lab.clear();
-  scan = (id: string) => parse<unknown>("scan", this.lab.scan(id));
-  startFlow = (stages: Pdu[][], title: string) => parse<unknown>("start_flow", this.lab.start_flow(JSON.stringify(stages), title));
+  tick = (elapsedMs: number): TickResult => parse("tick", this.m("tick", elapsedMs));
+  step = (): TickResult => parse("step", this.m("step"));
+  setMode = (mode: "realtime" | "simulation") => parse<{ ok: true } | Err>("set_mode", this.m("set_mode", mode));
+  setPlaying = (on: boolean): void => this.m("set_playing", on);
+  setSimSpeed = (speed: number): void => this.m("set_sim_speed", speed);
+  setClockSpeed = (speed: number) => parse<{ ok: true } | Err>("set_clock_speed", this.m("set_clock_speed", speed));
+  skipToNextTimer = () => parse<{ ok: true; next: Timer } | Err>("skip_to_next_timer", this.m("skip_to_next_timer"));
+  setFilter = (proto: string, on: boolean) => parse<unknown>("set_filter", this.m("set_filter", proto, on));
+  clear = (): void => this.m("clear");
+  scan = (id: string) => parse<unknown>("scan", this.m("scan", id));
+  startFlow = (stages: Pdu[][], title: string) => parse<unknown>("start_flow", this.m("start_flow", JSON.stringify(stages), title));
 
   consoleInfo = (id: string) => parse<ConsoleInfo | Err>("console_info", this.lab.console_info(id));
-  exec = (id: string, line: string) => parse<ExecResult | Err>("exec", this.lab.exec(id, line));
-  http = (id: string, url: string) => parse<HttpStart | Err>("http", this.lab.http(id, url));
+  exec = (id: string, line: string) => parse<ExecResult | Err>("exec", this.m("exec", id, line));
+  http = (id: string, url: string) => parse<HttpStart | Err>("http", this.m("http", id, url));
   errorPage = (error: string, host: string): string => this.lab.error_page(error, host);
 }

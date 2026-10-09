@@ -117,6 +117,20 @@ class Lab {
 
 `Err` is `{error: string}`.
 
+## For a renderer in the same module
+
+`admin-ui/lab/render` links this crate into its own module and draws the
+same `Lab` the page drives. Not exported to JavaScript:
+
+- `Lab::shared() -> Rc<RefCell<LabCore>>`: the state behind the class. The
+  class holds it in an `Rc<RefCell<..>>` for this; every method borrows it
+  for the length of the call only.
+- `LabCore::world()`, `LabCore::net()`: the world and its last evaluation,
+  read in place (`World`, `Device`, `Link`, `Net`, `OMap`, ... are
+  re-exported at the crate root).
+- `LabCore::packets_now()`: what `tick()` would answer as `packets`,
+  without advancing anything.
+
 ## Shapes
 
 ```ts

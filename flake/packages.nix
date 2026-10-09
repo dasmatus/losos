@@ -45,6 +45,10 @@
 #                for wasm32 and run through wasm-bindgen. The Lab itself is
 #                the admin UI's second page (admin-ui/app/lab/), served at
 #                /lab/, and imports this package.
+#   losos-lab-render is the Lab's canvas, built from admin-ui/lab/render/.
+#                Bevy draws the two views as a 3D scene in one wasm module
+#                with the core, through wasm-bindgen and then wasm-opt. It
+#                is built twice, as webgpu/ and webgl2/, and the page picks.
 #   losos-lab-virt — the Lab's libvirt client (admin-ui/lab/virt-rpc/):
 #                libvirt's remote protocol for wasm32, through wasm-bindgen,
 #                for a page that drives libvirt over `losos-registrar lab`'s
@@ -146,10 +150,79 @@ let
     cp ${losos-lab-virt}/* src/lab/virt-pkg/
     chmod -R u+w src/lab/virt-pkg
   '';
+
+  # The Lab's canvas (admin-ui/lab/render/README.md): the logical and
+  # physical views as a 3D scene drawn by Bevy on WebGPU or WebGL2,
+  # compiled to wasm32 in one module with the core (it depends on ../core
+  # by path, so the source is both crates). wasm-bindgen first, then
+  # wasm-opt on its output, never before: wasm-bindgen reads the custom
+  # sections wasm-opt would rewrite.
+  losos-lab-render = pkgs.rustPlatform.buildRustPackage {
+    pname = "losos-lab-render";
+    version = "0.1.0";
+    src = lib.fileset.toSource {
+      root = ./../admin-ui/lab;
+      fileset = lib.fileset.unions [
+        ./../admin-ui/lab/core/Cargo.toml
+        ./../admin-ui/lab/core/Cargo.lock
+        ./../admin-ui/lab/core/src
+        ./../admin-ui/lab/render/Cargo.toml
+        ./../admin-ui/lab/render/Cargo.lock
+        ./../admin-ui/lab/render/src
+        ./../admin-ui/lab/render/assets
+      ];
+    };
+    cargoRoot = "render";
+    buildAndTestSubdir = "render";
+    cargoHash = "sha256-LvuaFRE8Wa4cAuIC9ICKVMG4zg6IcNWTCJQRhbXKm7g=";
+    nativeBuildInputs = [
+      pkgs.wasm-bindgen-cli
+      pkgs.binaryen
+      pkgs.lld
+    ];
+    # Two modules: Bevy picks its WebGPU or WebGL2 code paths at compile
+    # time, so a loader picks the module (src/lab/render.ts in the admin
+    # UI, render/demo/loader.js in the demo).
+    # The builds share no Bevy crate, so the first one's target directory
+    # goes before the second starts.
+    buildPhase = ''
+      runHook preBuild
+      for backend in webgpu webgl2; do
+        (cd render && cargo build --release --offline --target wasm32-unknown-unknown \
+          --no-default-features --features $backend)
+        mkdir -p dist/$backend
+        wasm-bindgen --target web --out-dir dist/$backend --out-name losos_lab_render \
+          render/target/wasm32-unknown-unknown/release/losos_lab_render.wasm
+        wasm-opt -Oz --enable-bulk-memory --enable-nontrapping-float-to-int \
+          --enable-sign-ext --enable-mutable-globals --enable-reference-types \
+          --enable-multivalue \
+          dist/$backend/losos_lab_render_bg.wasm -o dist/$backend/losos_lab_render_bg.wasm
+        rm -rf render/target
+      done
+      runHook postBuild
+    '';
+    doCheck = false;
+    installPhase = ''
+      runHook preInstall
+      mkdir -p $out
+      cp -r dist/webgpu dist/webgl2 $out/
+      runHook postInstall
+    '';
+  };
+
+  # The canvas's two modules, copied to src/lab/render-pkg/{webgpu,webgl2}
+  # (gitignored; `npm run lab:render` writes them in a checkout). The page
+  # imports one of them lazily, after it has drawn with the SVG canvas
+  # (src/lab/render.ts). Copied in by the same two npm builds.
+  labRenderPkg = ''
+    mkdir -p src/lab/render-pkg
+    cp -r ${losos-lab-render}/webgpu ${losos-lab-render}/webgl2 src/lab/render-pkg/
+    chmod -R u+w src/lab/render-pkg
+  '';
 in
 images
 // {
-  inherit losos-lab-core losos-lab-virt;
+  inherit losos-lab-core losos-lab-render losos-lab-virt;
 
   losos-admin-ui = pkgs.buildNpmPackage {
     pname = "losos-admin-ui";
@@ -180,10 +253,10 @@ images
     # nothing else needs a script to run.
     npmFlags = [ "--ignore-scripts" ];
     env.PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1";
-    # LosOS Lab (lab/index.html, the second Vite entry) imports the Rust core
-    # and, for guests on the relay path, the libvirt client.
-    preBuild = labCorePkg + labVirtPkg;
-    passthru = { inherit labCorePkg labVirtPkg; };
+    # LosOS Lab (lab/index.html, the second Vite entry) imports the Rust core,
+    # the GPU canvas and, for guests on the relay path, the libvirt client.
+    preBuild = labCorePkg + labVirtPkg + labRenderPkg;
+    passthru = { inherit labCorePkg labVirtPkg labRenderPkg; };
 
     # The default npmBuildScript is `npm run build`, which here is
     # `tsc --noEmit && vite build` — so unlike the Rust crates (doCheck = off,

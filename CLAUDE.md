@@ -15,9 +15,9 @@ GitHub wiki on push to `main`; `wiki/Architecture.md` and
 ## Commands
 
 ```sh
-devenv shell                 # or: direnv allow. Scripts: fmt, lint, test-rust,
-                             # check-flake, check-eval, check-pins, build-pkgs,
-                             # build-iso, vm-tests
+devenv shell                 # or: direnv allow. Scripts: fmt, lint, lint-wasm,
+                             # test-rust, check-flake, check-eval, check-pins,
+                             # build-pkgs, build-iso, vm-tests
 devenv test                  # the gate. Everything but the VMs and the ISO
 cargo test   --manifest-path backend/Cargo.toml
 cargo clippy --manifest-path backend/Cargo.toml --all-targets -- -D warnings
@@ -30,11 +30,13 @@ nix build .#checks.x86_64-linux.losos-tpm-unlock    # installer, swtpm unlock
 npm run dev | typecheck | test:browser              # in admin-ui/app
 ```
 
-Five Rust crates: `backend/` (lososd + losos-ctl), `backend-registrar/`,
-`edge-vercel/` (outside the flake), and the Lab's `admin-ui/lab/core` and
-`admin-ui/lab/virt-rpc` (built for wasm32). All five must pass clippy with
-`-D warnings` and rustfmt; the devenv pre-commit hooks, `lint` and CI each
-check it. `nix develop` is a toolchain-only shell for people without devenv.
+Six Rust crates: `backend/` (lososd + losos-ctl), `backend-registrar/`,
+`edge-vercel/` (outside the flake), and the Lab's `admin-ui/lab/core`,
+`admin-ui/lab/virt-rpc` and `admin-ui/lab/render` (built for wasm32). All
+six must pass clippy with `-D warnings` and rustfmt; the devenv pre-commit
+hooks, `lint` and CI each check it. Bevy is a wasm32-only dependency of
+`render`, so `lint-wasm` and CI's `clippy-wasm` lint its WebGL2 and WebGPU
+builds too, one after the other. `nix develop` is a toolchain-only shell for people without devenv.
 Inside the shell `bcd` and `rcd` cd into the two in-flake crates.
 `admin-ui/design-system/react` has its own `npm run typecheck` and `npm test`
 and is never served or built by nix.
@@ -76,7 +78,12 @@ and is never served or built by nix.
   `admin-ui/lab/engine/build.sh` and `lab.yml` build the hosted copy with
   qemu-wasm guests and deploy it to Vercel when the secrets exist.
   `admin-ui/lab/virt-rpc` is a WebAssembly libvirt client for the helper's
-  relay. No Python in the Lab.
+  relay. `admin-ui/lab/render` (`losos-lab-render`) is the GPU canvas: Bevy
+  0.19.1 on WebGPU or WebGL2, the two views as a 3D scene under an
+  orthographic camera, in one module with the core. The page draws with the
+  SVG canvas first, then loads one module (`src/lab/render.ts`), replays the
+  core's calls into that module's `Lab` and swaps `bevy-canvas.tsx` in;
+  anything that fails leaves it on SVG. No Python in the Lab.
 - `containers.nix`, `workloads.nix`, `cluster.nix`, `nextcloud-common.nix`:
   Nextcloud and Forgejo run as hostNetwork pods in the box's own k3s server;
   `services.rke2` (agent) joins the edge's mesh. Nginx is the only public
