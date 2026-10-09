@@ -235,6 +235,28 @@ pkgs.testers.nixosTest {
         "/nextcloud/remote.php/dav/files/notshared/",
     ]
     FORGEJO_DISCOVERY = ["/.well-known/nodeinfo", "/.well-known/webfinger?resource=acct:x@appliance"]
+    # The provisioning-API address Nextcloud's admin pages write an app
+    # setting through, for keys LosOS sets on every start
+    # (modules/nextcloud-stack.nix, `site.locked`), in the spellings nginx
+    # normalises; and the same API for keys LosOS leaves to Nextcloud.
+    NC_CONFIG = "/nextcloud/ocs/v2.php/apps/provisioning_api/api/v1/config/apps"
+    NC_LOCKED = [
+        f"{NC_CONFIG}/core/shareapi_allow_links",
+        f"{NC_CONFIG}/core/shareapi_enforce_links_password",
+        f"{NC_CONFIG}/files/default_quota",
+        f"{NC_CONFIG}/files_sharing/outgoing_server2server_share_enabled",
+        f"{NC_CONFIG}/dav/enableCalendarFederation",
+        "/nextcloud/ocs/v1.php/apps/provisioning_api/api/v1/config/apps/core/shareapi_allow_links",
+        f"{NC_CONFIG}/core/SHAREAPI_ALLOW_LINKS",
+        f"{NC_CONFIG}//core/shareapi_allow_links/",
+        f"{NC_CONFIG}/core/sharea%70i_allow_links",
+    ]
+    NC_UNLOCKED = [
+        f"{NC_CONFIG}/core/shareapi_allow_resharing",
+        f"{NC_CONFIG}/core/shareapi_allow_links_extra",
+        f"{NC_CONFIG}/theming/name",
+        f"{NC_CONFIG}",
+    ]
 
     def code(node, url, source=None):
         src = f"--interface {source} " if source else ""
@@ -360,6 +382,24 @@ pkgs.testers.nixosTest {
         for path in NC_FEDERATION + NC_EVERYDAY:
             got = appliance.succeed(f"curl -s 'http://127.0.0.1{path}'")
             assert got.startswith("stub-nextcloud"), f"sharing on, {path}: {got!r}"
+
+    with subtest("Nextcloud's admin pages cannot write the settings LosOS keeps"):
+        # 403 from nginx whatever the method, from the tunnel's loopback and
+        # from the LAN, and the request never reaches the pod. Every other
+        # key, and the API itself, still does.
+        for path in NC_LOCKED:
+            for method in ["POST", "DELETE", "GET"]:
+                got = appliance.succeed(
+                    f"curl -s -X {method} -d value=no -o /tmp/body -w '%{{http_code}}' 'http://127.0.0.1{path}'; echo; cat /tmp/body"
+                )
+                status, body = got.split("\n", 1)
+                assert status == "403" and "stub-nextcloud" not in body, \
+                    f"loopback {method} {path}: {status} {body!r}"
+            got = code(noadmin, f"-X POST -d value=no 'http://appliance{path}'")
+            assert got == "403", f"LAN POST {path}: expected 403, got {got}"
+        for path in NC_UNLOCKED:
+            got = appliance.succeed(f"curl -s -X POST -d value=no 'http://127.0.0.1{path}'")
+            assert got.startswith("stub-nextcloud"), f"{path} no longer reaches the pod: {got!r}"
 
     with subtest("security headers ride on admin responses, including the 403s"):
         want = {

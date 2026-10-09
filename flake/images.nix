@@ -390,6 +390,16 @@ let
         echo "losos-nextcloud: $conf_dir/federation is missing; federation settings left unchanged." >&2
       fi
 
+      # The owner's box-wide settings that live in Nextcloud's database
+      # (losos.nextcloud.site.*; modules/nextcloud-stack.nix, `site`), set
+      # on every start for the same reason. Missing on a host config that
+      # predates them, which leaves Nextcloud as it is.
+      if [ -r "$conf_dir/site" ]; then
+        ${nc.site.occ "occ" ''"$conf_dir/site"''}
+      else
+        echo "losos-nextcloud: $conf_dir/site is missing; box-wide settings left unchanged." >&2
+      fi
+
       ${nc.php}/bin/php-fpm --nodaemonize --fpm-config ${nextcloudFpmConf} &
 
       # Apache connects to the pool per request, so starting it first only

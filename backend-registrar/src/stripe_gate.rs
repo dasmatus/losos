@@ -1060,12 +1060,12 @@ async fn handle(opts: &GateOpts, request: Request) -> Reply {
             ) {
                 return refuse(why);
             }
-            stripe_or_reply!(opts, key, s);
+            stripe_or_reply!(opts, key, mode, s);
             match s.credit_checkout(&key, &c, &opts.currency).await {
                 Ok((id, url)) => Reply {
                     id: Some(id),
                     url: Some(url),
-                    ..Reply::default()
+                    ..Reply::in_mode(mode)
                 },
                 Err(e) => e.into(),
             }

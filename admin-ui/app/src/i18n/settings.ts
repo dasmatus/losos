@@ -63,8 +63,8 @@ export default defineMessages({
   },
   "settings.panes.apps.keywords": {
     en: "",
-    sk: "aplikácia súbory kód inštalovať hľadať pridať katalóg",
-    de: "App Dateien Code installieren suchen hinzufügen Katalog",
+    sk: "aplikácia súbory kód inštalovať hľadať pridať katalóg jazyk telefón zdieľanie odkaz heslo platnosť kvóta miesto kôš verzie prihlásenie súkromný repozitár e-mail správa",
+    de: "App Dateien Code installieren suchen hinzufügen Katalog Sprache Telefon Teilen Link Passwort Ablauf Kontingent Speicher Papierkorb Versionen Anmeldung privat Repository E-Mail Verwaltung",
   },
   "settings.panes.network.label": { en: "Network", sk: "Sieť", de: "Netzwerk" },
   "settings.panes.network.summary": {

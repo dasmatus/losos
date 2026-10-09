@@ -136,6 +136,8 @@ export interface SwitchRowProps {
   disabled?: boolean;
   onCheckedChange: (checked: boolean) => void;
   last?: boolean;
+  /** The losos.* option the row edits, as the row's data-option, for tests. */
+  option?: string;
 }
 
 /* A settings row whose control is an on/off switch: shadcn's "Switch with a
@@ -154,11 +156,12 @@ export function SwitchRow({
   disabled,
   onCheckedChange,
   last,
+  option,
 }: SwitchRowProps) {
   const hasDescription = description !== undefined && description !== null && description !== false;
   const descriptionId = `${id}-description`;
   return (
-    <Row last={last}>
+    <Row last={last} data-option={option}>
       <Field
         orientation="horizontal"
         disabled={disabled}

@@ -49,6 +49,12 @@ const OWNED = {
   'hardening.nosmt': 'security',
   'hardening.usbguard': 'security',
 };
+/* Lines of overrides.nix another pane draws its own editor for: each app's
+ * box-wide settings, on the Apps pane (lib/option-value.ts, ON_PANE). The
+ * Advanced row shows the value and links there. */
+const ON_PANE = Object.fromEntries(
+  DOC.options.filter((option) => /^(nextcloud|forgejo)\.site\./.test(option.name)).map((option) => [option.name, 'apps']),
+);
 const KINDS = new Set(['bool', 'str', 'int', 'float', 'enum', 'list', 'nullable', 'opaque']);
 
 const SETTINGS = {
@@ -180,6 +186,10 @@ await check('every option in the document is drawn, with an editor kind the pane
       assert.equal(controls, 0, `owned losos.${option.name} has a second editor`);
       const href = await r.getByRole('link').getAttribute('href');
       assert.ok(href.endsWith(`/${OWNED[option.name]}`), `losos.${option.name} links to ${href}`);
+    } else if (option.name in ON_PANE) {
+      assert.equal(controls, 0, `losos.${option.name} has a second editor beside the ${ON_PANE[option.name]} pane's`);
+      const href = await r.getByRole('link').getAttribute('href');
+      assert.ok(href.endsWith(`/${ON_PANE[option.name]}`), `losos.${option.name} links to ${href}`);
     } else {
       assert.ok(controls >= 1, `losos.${option.name} (${option.editor.kind}) has no editor`);
     }
@@ -406,9 +416,77 @@ await check('History on a box with LosOS Git off says so and still lists the com
   await page.close();
 });
 
+await check('the Apps pane draws every box-wide setting of both apps, and Apply writes their lines', async () => {
+  assert.equal(Object.keys(ON_PANE).length, 13, `expected 8 LosOS cloud and 5 LosOS Git settings, the document has ${Object.keys(ON_PANE).length}`);
+  const { page, applies, errors } = await open({ path: '/apps', overrides: { 'nextcloud.site.trashDays': '30' } });
+  await main(page).getByTestId('site-cloud').waitFor();
+  for (const name of Object.keys(ON_PANE)) {
+    assert.equal(await row(page, name).count(), 1, `losos.${name} has no row on the Apps pane`);
+    assert.ok((await row(page, name).locator('input, select').count()) >= 1, `losos.${name} has no control on the Apps pane`);
+  }
+  // A value the box already carries is shown, not the default.
+  assert.equal(await row(page, 'nextcloud.site.trashDays').getByRole('textbox').inputValue(), '30');
+  // The defaults: links on, no password, no expiry.
+  assert.ok(await row(page, 'nextcloud.site.publicLinks').locator('input').isChecked());
+  assert.equal(await row(page, 'nextcloud.site.linkExpiryDays').getByRole('textbox').inputValue(), '');
+
+  await row(page, 'nextcloud.site.defaultLanguage').locator('select').selectOption('sk');
+  const region = row(page, 'nextcloud.site.phoneRegion').getByRole('textbox');
+  await region.fill('s');
+  await region.press('Enter');
+  await row(page, 'nextcloud.site.phoneRegion').getByText('Two capital letters', { exact: false }).waitFor();
+  await region.fill('sk');
+  await region.press('Enter');
+  const expiry = row(page, 'nextcloud.site.linkExpiryDays').getByRole('textbox');
+  await expiry.fill('14');
+  await expiry.press('Enter');
+  const trash = row(page, 'nextcloud.site.trashDays').getByRole('textbox');
+  await trash.fill('');
+  await trash.press('Enter');
+  await flip(row(page, 'forgejo.site.requireSignIn'));
+  await row(page, 'forgejo.site.landingPage').locator('select').selectOption('login');
+  // Picking the default adds no line; clearing a field above dropped one.
+  await row(page, 'forgejo.site.defaultPrivate').locator('select').selectOption('private');
+  await row(page, 'forgejo.site.defaultPrivate').locator('select').selectOption('last');
+
+  await main(page).getByText('6 changes not applied yet').waitFor();
+  await applyButton(page).click();
+  await page.waitForTimeout(200);
+  assert.equal(applies.length, 1);
+  const lines = nixLines(applies[0]);
+  for (const line of [
+    '  losos.nextcloud.site.defaultLanguage = "sk";',
+    '  losos.nextcloud.site.phoneRegion = "SK";',
+    '  losos.nextcloud.site.linkExpiryDays = 14;',
+    '  losos.forgejo.site.requireSignIn = true;',
+    '  losos.forgejo.site.landingPage = "login";',
+  ]) {
+    assert.ok(lines.includes(line), `missing ${line.trim()} in:\n${lines.join('\n')}`);
+  }
+  assert.ok(!lines.some((line) => line.includes('trashDays')), 'clearing a field back to the default kept its line');
+  assert.ok(!lines.some((line) => line.includes('defaultPrivate')), 'a default the box had unset was written');
+  assert.equal(lines.length, 16 + 5);
+  await noViolations(page);
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+await check('the Advanced pane links each box-wide setting to the Apps pane', async () => {
+  const { page } = await open({ overrides: { 'forgejo.site.landingPage': '"explore"' } });
+  const r = row(page, 'forgejo.site.landingPage');
+  await r.getByText('explore', { exact: true }).waitFor();
+  await r.getByText('Set here').waitFor();
+  const link = r.getByRole('link', { name: 'Change under Apps' });
+  assert.equal(await link.getAttribute('href'), '/apps');
+  await link.click();
+  await page.waitForURL(origin + '/apps');
+  await main(page).getByTestId('site-git').waitFor();
+  await page.close();
+});
+
 for (const locale of ['sk-SK', 'de-DE']) {
   await check(`both panes render in ${locale} without errors`, async () => {
-    for (const path of ['/settings/advanced', '/settings/history']) {
+    for (const path of ['/settings/advanced', '/settings/history', '/apps']) {
       const { page, errors } = await open({ path, locale });
       await main(page).waitFor();
       await page.waitForTimeout(200);

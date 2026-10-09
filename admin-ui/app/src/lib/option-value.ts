@@ -194,6 +194,26 @@ export const OWNED: Readonly<Record<string, OwnedOption>> = {
   "hardening.usbguard": { key: "hardeningUsbguard", pane: "security" },
 };
 
+/* Options another pane draws an editor for, though they are lines of
+ * overrides.nix like any the Advanced pane edits (form.extra, not one of the
+ * sixteen fields). The Advanced pane shows each with its value and a link to
+ * that pane, so there is one place to change it. */
+export const ON_PANE: Readonly<Record<string, SettingsPaneId>> = {
+  "nextcloud.site.defaultLanguage": "apps",
+  "nextcloud.site.phoneRegion": "apps",
+  "nextcloud.site.publicLinks": "apps",
+  "nextcloud.site.linkPassword": "apps",
+  "nextcloud.site.linkExpiryDays": "apps",
+  "nextcloud.site.defaultQuotaGB": "apps",
+  "nextcloud.site.trashDays": "apps",
+  "nextcloud.site.versionDays": "apps",
+  "forgejo.site.requireSignIn": "apps",
+  "forgejo.site.landingPage": "apps",
+  "forgejo.site.defaultPrivate": "apps",
+  "forgejo.site.keepEmailPrivate": "apps",
+  "forgejo.site.pushCreate": "apps",
+};
+
 /** The form field's value as the literal the Advanced row shows. */
 export function ownedLiteral(editor: OptionEditor, value: SettingsResponse[keyof SettingsResponse]): string {
   if (typeof value === "number" && Number.isNaN(value)) return "";
