@@ -31,8 +31,12 @@ export function StoragePane({ form, storage }: StoragePaneProps) {
   const titleId = React.useId();
   const bodyId = React.useId();
 
+  /* The reserve comes from the box (GET /api/storage), so once it has been
+   * claimed the button says so in every tab, after a reload too. Unknown is
+   * not "available": the button stays off until the box reports space. */
   const reserve = storage.facts.reserveBytes;
-  const hasReserve = reserve === null || reserve > 0;
+  const hasReserve = reserve !== null && reserve > 0;
+  const spent = reserve === 0 && !storage.growing;
 
   return (
     <>
@@ -46,7 +50,7 @@ export function StoragePane({ form, storage }: StoragePaneProps) {
           <Row>
             <RowText
               title={t("panes.storage.held.title")}
-              detail={t("panes.storage.held.detail")}
+              detail={t(spent ? "panes.storage.held.spent" : "panes.storage.held.detail")}
             />
             <div className="flex items-center gap-2.5">
               <RowValue>{reserve === null ? t("panes.storage.notReported") : formatBytes(reserve)}</RowValue>
@@ -57,7 +61,11 @@ export function StoragePane({ form, storage }: StoragePaneProps) {
                 onClick={() => setConfirming(true)}
               >
                 {storage.growing ? <Spinner size={15} label={t("panes.storage.claiming")} /> : null}
-                {t("panes.storage.useReserve")}
+                {storage.growing
+                  ? t("panes.storage.claiming")
+                  : spent
+                    ? t("panes.storage.reserveUsed")
+                    : t("panes.storage.useReserve")}
               </Button>
             </div>
           </Row>

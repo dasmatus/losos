@@ -44,6 +44,8 @@ pub trait Losos {
     fn run_grow(&mut self, action: &crate::grow::GrowAction) -> anyhow::Result<()>;
     /// Total bytes of the `/persist` filesystem, for before/after reporting.
     fn persist_bytes(&mut self) -> anyhow::Result<u64>;
+    /// Bytes of the `/persist` filesystem in use, for the Storage pane.
+    fn persist_used_bytes(&mut self) -> anyhow::Result<u64>;
     /// Key file `cryptsetup resize` should authenticate with, if any.
     /// `None` means "rely on the volume key being in the kernel keyring",
     /// which is the TPM path; the keyfile path must supply one or the
@@ -452,6 +454,34 @@ pub fn cmd_grow<L: Losos>(l: &mut L) -> anyhow::Result<Value> {
         "beforeBytes": before,
         "afterBytes": after,
         "claimedBytes": vg.free_bytes(),
+    }))
+}
+
+/// What the Storage pane shows: the size of `/persist`, how much of it is in
+/// use, and the reserve a grow would claim.
+///
+/// Read-only, and it is what keeps "Use reserve" honest after a reload: the
+/// pane used to learn the reserve only from a grow's reply, so a fresh tab
+/// offered to claim space that was already claimed. Each reading stands
+/// alone; one the box cannot take is `null`, never a guess, so a box without
+/// the LVM layout still reports its filesystem.
+pub fn cmd_storage<L: Losos>(l: &mut L) -> anyhow::Result<Value> {
+    fn reading(what: &str, r: anyhow::Result<u64>) -> Value {
+        match r {
+            Ok(n) => json!(n),
+            Err(e) => {
+                tracing::warn!(error = ?e, "storage: no {what} reading");
+                Value::Null
+            }
+        }
+    }
+    let total = l.persist_bytes();
+    let used = l.persist_used_bytes();
+    let reserve = l.vg_free().map(crate::grow::VgFree::free_bytes);
+    Ok(json!({
+        "totalBytes": reading("size", total),
+        "usedBytes": reading("usage", used),
+        "reserveBytes": reading("reserve", reserve),
     }))
 }
 
@@ -1716,6 +1746,21 @@ mod tests {
     }
 
     #[test]
+    fn storage_reports_the_reserve_and_reads_zero_after_a_grow() {
+        // The Storage pane disables "Use reserve" from this reading, so it
+        // must say 0 once a grow has spent the reserve, in any tab.
+        let mut f = FakeLosos::new();
+        let out = cmd_storage(&mut f).unwrap();
+        assert_eq!(out["reserveBytes"], 512u64 * 4 * 1024 * 1024);
+        assert_eq!(out["totalBytes"], f.persist_bytes);
+        assert_eq!(out["usedBytes"], f.persist_used_bytes);
+        cmd_grow(&mut f).unwrap();
+        let out = cmd_storage(&mut f).unwrap();
+        assert_eq!(out["reserveBytes"], 0);
+        assert_eq!(out["totalBytes"], f.persist_bytes);
+    }
+
+    #[test]
     fn grow_refuses_when_there_is_nothing_to_grow_into() {
         let mut f = FakeLosos::new();
         f.vg_free_extents = 0;
@@ -1763,6 +1808,9 @@ mod tests {
             }
             fn persist_bytes(&mut self) -> anyhow::Result<u64> {
                 self.0.persist_bytes()
+            }
+            fn persist_used_bytes(&mut self) -> anyhow::Result<u64> {
+                self.0.persist_used_bytes()
             }
             fn luks_key_file(&mut self) -> anyhow::Result<Option<String>> {
                 self.0.luks_key_file()

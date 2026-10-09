@@ -1384,19 +1384,11 @@ impl Losos for IoLosos {
         // front specifically so Cargo.lock — and the cargoHash pinned in
         // flake/packages.nix — settles once. The other three steps here are
         // subprocesses anyway.
-        let out = std::process::Command::new("df")
-            .args(["-B1", "--output=size", "/persist"])
-            .output()
-            .context("running df against /persist")?;
-        if !out.status.success() {
-            anyhow::bail!("df failed: {}", String::from_utf8_lossy(&out.stderr).trim());
-        }
-        let text = String::from_utf8_lossy(&out.stdout);
-        // Line 1 is the "1B-blocks" header; line 2 is the number.
-        text.lines()
-            .nth(1)
-            .and_then(|l| l.trim().parse().ok())
-            .with_context(|| format!("no size in df output: {text:?}"))
+        df_persist("size")
+    }
+
+    fn persist_used_bytes(&mut self) -> anyhow::Result<u64> {
+        df_persist("used")
     }
 
     // ── Setting the Nextcloud admin password ────────────────────────────
@@ -2014,6 +2006,23 @@ impl Losos for IoLosos {
             seq
         ))
     }
+}
+
+/// One byte column of `df -B1 --output=<column> /persist`.
+fn df_persist(column: &str) -> anyhow::Result<u64> {
+    let out = std::process::Command::new("df")
+        .args(["-B1", &format!("--output={column}"), "/persist"])
+        .output()
+        .context("running df against /persist")?;
+    if !out.status.success() {
+        anyhow::bail!("df failed: {}", String::from_utf8_lossy(&out.stderr).trim());
+    }
+    let text = String::from_utf8_lossy(&out.stdout);
+    // Line 1 is the header; line 2 is the number.
+    text.lines()
+        .nth(1)
+        .and_then(|l| l.trim().parse().ok())
+        .with_context(|| format!("no {column} in df output: {text:?}"))
 }
 
 #[cfg(test)]

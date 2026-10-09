@@ -114,6 +114,16 @@ export function useMachines(enabled: boolean): MachinesData {
 
   const refresh = React.useCallback(() => setTick((n) => n + 1), []);
 
+  /* An upload is a stream from this tab to the edge, with no record on the
+   * box, so leaving or reloading the page ends it. The browser asks first. */
+  const streaming = uploading !== null;
+  React.useEffect(() => {
+    if (!streaming) return;
+    const hold = (event: BeforeUnloadEvent) => event.preventDefault();
+    window.addEventListener("beforeunload", hold);
+    return () => window.removeEventListener("beforeunload", hold);
+  }, [streaming]);
+
   const moving = settling(state);
   React.useEffect(() => {
     if (!enabled || !moving) return;

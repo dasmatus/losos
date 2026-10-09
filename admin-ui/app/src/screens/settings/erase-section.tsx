@@ -26,7 +26,7 @@ import {
   StackRow,
   SwitchRow,
 } from "./rows";
-import { useBackup, useSecondsLeft, type BackupData } from "./use-backup";
+import { useSecondsLeft, type BackupData } from "./use-backup";
 
 /* Erasing the box: the data, not just the settings.
  *
@@ -50,9 +50,17 @@ const PHASE: Record<Exclude<ErasePhase, "waiting">, { title: MessageKey; detail:
   failed: { title: "panes.erase.phase.failed", detail: "panes.erase.phase.failedDetail" },
 };
 
-export function EraseSection({ locked }: { locked: boolean }) {
+export function EraseSection({
+  locked,
+  backup,
+  rebuilding,
+}: {
+  locked: boolean;
+  /** The Reset pane's reading, which it also uses to hold its own button. */
+  backup: BackupData;
+  rebuilding: boolean;
+}) {
   const t = useT();
-  const backup = useBackup(!locked);
   const seconds = useSecondsLeft(backup.state);
   const [confirming, setConfirming] = React.useState(false);
 
@@ -92,10 +100,19 @@ export function EraseSection({ locked }: { locked: boolean }) {
         ) : (
           <Group className="border-crit/35">
             <Row last>
-              <RowText title={t("panes.erase.row")} detail={t("panes.erase.rowDetail")} />
+              <RowText
+                title={t("panes.erase.row")}
+                detail={
+                  running
+                    ? t("panes.erase.waitBackup")
+                    : rebuilding
+                      ? t("panes.backup.waiting.detail")
+                      : t("panes.erase.rowDetail")
+                }
+              />
               <Button
                 variant="destructive"
-                disabled={locked || backup.busy || running}
+                disabled={locked || backup.busy || running || rebuilding}
                 onClick={() => setConfirming(true)}
               >
                 {t("panes.erase.button")}

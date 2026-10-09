@@ -208,6 +208,41 @@
         }
       }
     },
+    "storageResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "totalBytes",
+        "usedBytes",
+        "reserveBytes"
+      ],
+      "properties": {
+        "totalBytes": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "description": "Size of the /persist filesystem in bytes (df). Null when it could not be read."
+        },
+        "usedBytes": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "description": "Bytes of /persist in use (df). Null when it could not be read."
+        },
+        "reserveBytes": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "description": "Unallocated volume-group space a grow would claim (vgs free extents times extent size). 0 once the reserve is claimed; null when the box has no persist-vg to ask."
+        }
+      }
+    },
     "growResponse": {
       "type": "object",
       "additionalProperties": false,
@@ -1306,6 +1341,11 @@
       "POST /api/factory-reset": {
         "auth": true,
         "out": "factoryResetResponse"
+      },
+      "GET /api/storage": {
+        "auth": true,
+        "out": "storageResponse",
+        "note": "Read-only: the size of /persist, how much of it is in use, and the reserve POST /api/grow would claim (df and vgs). The Storage pane draws its meter and disables Use reserve from it, so a reload or a second browser sees a claimed reserve as claimed. A reading the box cannot take is null. HTTP-only, like /api/apps/search: it backs a settings screen."
       },
       "POST /api/grow": {
         "auth": true,

@@ -124,7 +124,7 @@ function Pane({
       return <HistoryPane locked={form.locked} />;
     case "backup":
       // No draft, no Apply bar: the bucket and every run are their own requests.
-      return <BackupPane locked={form.locked} />;
+      return <BackupPane locked={form.locked} rebuilding={form.applying} />;
     case "about":
       return <AboutPane form={form} />;
     case "reset":

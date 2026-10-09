@@ -53,7 +53,7 @@ import { useBackup, type BackupData } from "./use-backup";
  * classes make a restore wait hours while AWS thaws the data, so the pane
  * says so beside the choice and again before and during a restore. */
 
-export function BackupPane({ locked }: { locked: boolean }) {
+export function BackupPane({ locked, rebuilding }: { locked: boolean; rebuilding: boolean }) {
   const t = useT();
   const backup = useBackup(!locked);
   const { state } = backup;
@@ -88,12 +88,16 @@ export function BackupPane({ locked }: { locked: boolean }) {
   const { view } = state;
   const running = view.job?.state === "running";
   const disabled = locked || backup.busy || view.erase !== null;
+  /* lososd refuses a backup or a restore while a change is being applied
+   * (erase.rs, ensure_idle); the buttons say so before anyone clicks. */
+  const waiting = rebuilding && !running;
   return (
     <>
+      {waiting && <WaitingForChange />}
       <TargetSection view={view} backup={backup} disabled={disabled || running} />
       <CodeSection locked={locked} />
-      <BackupsSection view={view} backup={backup} disabled={disabled || running} />
-      <RestoreSection view={view} backup={backup} disabled={disabled || running} />
+      <BackupsSection view={view} backup={backup} disabled={disabled || running || waiting} />
+      <RestoreSection view={view} backup={backup} disabled={disabled || running || waiting} />
     </>
   );
 }
@@ -148,6 +152,22 @@ const EMPTY: BackupTargetInput = {
 function draftOf(target: BackupTarget | null): BackupTargetInput {
   if (target === null) return EMPTY;
   return { ...target, secretAccessKey: "", storageClass: classOf(target) };
+}
+
+
+/* A change is being applied: backups, restores and the erase wait for it. */
+function WaitingForChange() {
+  const t = useT();
+  return (
+    <PaneSection data-testid="backup-waiting">
+      <Group>
+        <Row last>
+          <RowText title={t("panes.backup.waiting.title")} detail={t("panes.backup.waiting.detail")} />
+          <Spinner size={16} />
+        </Row>
+      </Group>
+    </PaneSection>
+  );
 }
 
 function TargetSection({
