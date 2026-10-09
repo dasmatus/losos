@@ -90,7 +90,9 @@ Setup:
    private, and the proxy then answers `502 token: 403` for everything in it.
 6. Keep `losos.cache.substituters` and `losos.cache.trustedPublicKeys` in
    `modules/options.nix` at the same URL and key. Their defaults are
-   `https://proxy.losos.dasmat.us` and the `losos-1` public key, so a stock
+   `https://proxy.losos.dasmat.us`, the same project's own name
+   `https://losos-cache-proxy.vercel.app` for when the custom domain does
+   not resolve, and the `losos-1` public key, so a stock
    appliance and installer medium already pull from the cache, and
    `tests/invariants.nix` fails if either default is dropped. Rotating the
    signing key means changing the variable and the default together.
@@ -154,8 +156,10 @@ requests never publish.
 curl -fsSLO "https://proxy.losos.dasmat.us/updates/main/x86_64/{losos-registrar,SHA256SUMS}" && sha256sum -c --ignore-missing SHA256SUMS && chmod +x losos-registrar
 ```
 
-When the proxy does not answer, the same two files of the newest main build
-are at `https://losos.dasmat.us/proxy/updates/main/x86_64/`.
+When `proxy.losos.dasmat.us` does not answer, the proxy is also at
+`https://losos-cache-proxy.vercel.app`. When neither answers, the same two
+files of the newest main build are at
+`https://losos.dasmat.us/proxy/updates/main/x86_64/`.
 
 The job's step summary carries the artifact reference, the URL and the sum.
 `oras pull ghcr.io/dasmatus/losos/images:main-x86_64` fetches the same files

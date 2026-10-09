@@ -1,8 +1,11 @@
 /* The app catalogue, and which of it actually exists on this box.
  *
- * Photos, Calendar, Contacts, Notes, Tasks, Mail and Music are not separate
- * programs: every one of them is served by the Files app, and none of them
- * exists until that app is up and set up. A tile for an app that is not there
+ * Every tile but Code and Settings is an app inside the Files app (LosOS
+ * cloud), not a separate program, and none of them exists until that app is
+ * up and set up. The catalogue lists the apps LosOS cloud enables on every
+ * start (`apps` in modules/nextcloud-stack.nix) plus the four it always has
+ * (Files, Dashboard, Photos, Activity), in the order its own app menu shows
+ * them, so the two menus agree. An app added there wants a tile here. A tile for an app that is not there
  * is a lie the owner discovers by clicking it and landing on an error page, so
  * the catalogue below is inert data and `deriveApps` is the only thing that
  * decides what gets rendered.
@@ -45,16 +48,27 @@
 
 import type { IconSvgElement } from "@hugeicons/react";
 import {
+  Activity01Icon,
+  Album02Icon,
+  Bookmark02Icon,
   Calendar03Icon,
   CheckListIcon,
   Contact01Icon,
+  DashboardSquare02Icon,
   Folder01Icon,
+  FormIcon,
   GitBranchIcon,
+  GridTableIcon,
   Image02Icon,
+  KanbanIcon,
+  LibraryIcon,
   Mail01Icon,
+  MapsLocation01Icon,
   MusicNote01Icon,
+  News01Icon,
   Note03Icon,
   Settings01Icon,
+  VoteIcon,
 } from "@hugeicons/core-free-icons";
 import type { ServiceMode } from "@/lib/api";
 import { formatNumber, t, type MessageKey } from "@/lib/i18n";
@@ -63,13 +77,24 @@ import { formatNumber, t, type MessageKey } from "@/lib/i18n";
 
 export type AppId =
   | "files"
+  | "dashboard"
   | "photos"
-  | "calendar"
+  | "activity"
   | "contacts"
+  | "calendar"
   | "notes"
-  | "tasks"
-  | "mail"
+  | "bookmarks"
+  | "deck"
   | "music"
+  | "collectives"
+  | "polls"
+  | "forms"
+  | "tables"
+  | "memories"
+  | "news"
+  | "tasks"
+  | "maps"
+  | "mail"
   | "code"
   | "settings";
 
@@ -96,6 +121,10 @@ export interface AppDefinition {
    * It is the tile's tooltip, and the second line is kept for things that
    * were actually measured. A message key, like `name`. */
   readonly note: MessageKey;
+  /* Not shipped: the owner may have installed it from the App Store, or not.
+   * The tile is drawn only once {@link probeOptional} found it, because
+   * without it the link is Nextcloud's "page not found". */
+  readonly optional?: true;
 }
 
 /** Where the Files app answers on this box's front door, when it does.
@@ -118,9 +147,10 @@ export const SETUP_ROUTE = "/setup";
 export const SETTINGS_ROUTE = "/settings";
 
 /* Display order, and it is deliberate: Files first because it is the box's
- * reason to exist, the seven apps it provides next, the code host after them,
- * and Settings last because it is the one tile that is always present and the
- * only one the owner should never need. */
+ * reason to exist, the apps it provides next in the order of LosOS cloud's
+ * own menu, Mail after them because it is not shipped, the code host after
+ * that, and Settings last because it is the one tile that is always present
+ * and the only one the owner should never need. */
 export const CATALOGUE: readonly AppDefinition[] = [
   {
     id: "files",
@@ -131,6 +161,14 @@ export const CATALOGUE: readonly AppDefinition[] = [
     note: "apps.files.note",
   },
   {
+    id: "dashboard",
+    name: "apps.dashboard.name",
+    icon: DashboardSquare02Icon,
+    path: "/index.php/apps/dashboard/",
+    provider: "files",
+    note: "apps.dashboard.note",
+  },
+  {
     id: "photos",
     name: "apps.photos.name",
     icon: Image02Icon,
@@ -139,12 +177,12 @@ export const CATALOGUE: readonly AppDefinition[] = [
     note: "apps.photos.note",
   },
   {
-    id: "calendar",
-    name: "apps.calendar.name",
-    icon: Calendar03Icon,
-    path: "/index.php/apps/calendar/",
+    id: "activity",
+    name: "apps.activity.name",
+    icon: Activity01Icon,
+    path: "/index.php/apps/activity/",
     provider: "files",
-    note: "apps.calendar.note",
+    note: "apps.activity.note",
   },
   {
     id: "contacts",
@@ -155,12 +193,92 @@ export const CATALOGUE: readonly AppDefinition[] = [
     note: "apps.contacts.note",
   },
   {
+    id: "calendar",
+    name: "apps.calendar.name",
+    icon: Calendar03Icon,
+    path: "/index.php/apps/calendar/",
+    provider: "files",
+    note: "apps.calendar.note",
+  },
+  {
     id: "notes",
     name: "apps.notes.name",
     icon: Note03Icon,
     path: "/index.php/apps/notes/",
     provider: "files",
     note: "apps.notes.note",
+  },
+  {
+    id: "bookmarks",
+    name: "apps.bookmarks.name",
+    icon: Bookmark02Icon,
+    path: "/index.php/apps/bookmarks/",
+    provider: "files",
+    note: "apps.bookmarks.note",
+  },
+  {
+    id: "deck",
+    name: "apps.deck.name",
+    icon: KanbanIcon,
+    path: "/index.php/apps/deck/",
+    provider: "files",
+    note: "apps.deck.note",
+  },
+  {
+    id: "music",
+    name: "apps.music.name",
+    icon: MusicNote01Icon,
+    path: "/index.php/apps/music/",
+    provider: "files",
+    note: "apps.music.note",
+  },
+  {
+    id: "collectives",
+    name: "apps.collectives.name",
+    icon: LibraryIcon,
+    path: "/index.php/apps/collectives/",
+    provider: "files",
+    note: "apps.collectives.note",
+  },
+  {
+    id: "polls",
+    name: "apps.polls.name",
+    icon: VoteIcon,
+    path: "/index.php/apps/polls/",
+    provider: "files",
+    note: "apps.polls.note",
+  },
+  {
+    id: "forms",
+    name: "apps.forms.name",
+    icon: FormIcon,
+    path: "/index.php/apps/forms/",
+    provider: "files",
+    note: "apps.forms.note",
+  },
+  {
+    id: "tables",
+    name: "apps.tables.name",
+    icon: GridTableIcon,
+    path: "/index.php/apps/tables/",
+    provider: "files",
+    note: "apps.tables.note",
+  },
+  {
+    id: "memories",
+    name: "apps.memories.name",
+    icon: Album02Icon,
+    path: "/index.php/apps/memories/",
+    provider: "files",
+    note: "apps.memories.note",
+  },
+  {
+    id: "news",
+    name: "apps.news.name",
+    icon: News01Icon,
+    path: "/index.php/apps/news/",
+    provider: "files",
+    note: "apps.news.note",
   },
   {
     id: "tasks",
@@ -171,20 +289,21 @@ export const CATALOGUE: readonly AppDefinition[] = [
     note: "apps.tasks.note",
   },
   {
+    id: "maps",
+    name: "apps.maps.name",
+    icon: MapsLocation01Icon,
+    path: "/index.php/apps/maps/",
+    provider: "files",
+    note: "apps.maps.note",
+  },
+  {
     id: "mail",
     name: "apps.mail.name",
     icon: Mail01Icon,
     path: "/index.php/apps/mail/",
     provider: "files",
     note: "apps.mail.note",
-  },
-  {
-    id: "music",
-    name: "apps.music.name",
-    icon: MusicNote01Icon,
-    path: "/index.php/apps/music/",
-    provider: "files",
-    note: "apps.music.note",
+    optional: true,
   },
   {
     id: "code",
@@ -215,6 +334,8 @@ export type Availability = "unknown" | "absent" | "present";
 export interface Availabilities {
   readonly files: Availability;
   readonly code: Availability;
+  /** The one optional app, see {@link AppDefinition.optional}. */
+  readonly mail: Availability;
 }
 
 /* A tile corner marker. Semantic colours only: amber for pressure, red for
@@ -233,6 +354,8 @@ export interface AppFacts {
   readonly files: Availability;
   /** Whether the code host answered. */
   readonly code: Availability;
+  /** Whether the mail client is installed. Absent counts as not found. */
+  readonly mail?: Availability;
   /* Has a probe finished, whatever it concluded?
    *
    * This is what separates "we have not looked yet" from "we looked and could
@@ -308,19 +431,28 @@ export function servedHere(mode: ServiceMode): boolean {
  *
  * Three outcomes, because there are three states to be in. "pending" is the
  * one worth having: on the very first visit to a box, nothing is known yet,
- * and drawing nine tiles that might collapse to one is as wrong as drawing
- * one that might expand to nine. It draws placeholders instead, for the one
+ * and drawing twenty tiles that might collapse to one is as wrong as drawing
+ * one that might expand to twenty. It draws placeholders instead, for the one
  * round trip it takes to find out, and after that the answer is remembered
  * and the first frame of every later visit is the real grid. */
 type Presence = "show" | "hide" | "pending";
 
-function presenceOf(provider: Provider, facts: AppFacts): Presence {
+function presenceOf(app: AppDefinition, facts: AppFacts): Presence {
+  const provider = app.provider;
   switch (provider) {
     case "box":
       return "show";
-    case "files":
+    case "files": {
       if (facts.filesServedHere === false) return "hide";
-      return resolve(facts.files, facts.measured === true);
+      const files = resolve(facts.files, facts.measured === true);
+      /* An optional app is drawn only on a positive answer. "Could not tell"
+       * hides it, unlike the shipped apps: those are there on every box, and
+       * this one is on few. No placeholder either, for the same reason. */
+      if (app.optional === true && files !== "hide") {
+        return facts.mail === "present" ? files : "hide";
+      }
+      return files;
+    }
     case "code":
       if (facts.codeServedHere === false) return "hide";
       return resolve(facts.code, facts.measured === true);
@@ -354,7 +486,7 @@ export function deriveApps(facts: AppFacts): AppGridModel {
   let pendingCount = 0;
 
   for (const app of CATALOGUE) {
-    const presence = presenceOf(app.provider, facts);
+    const presence = presenceOf(app, facts);
     if (presence === "hide") continue;
     if (presence === "pending") {
       pendingCount += 1;
@@ -387,7 +519,7 @@ export function deriveApps(facts: AppFacts): AppGridModel {
  * would have rendered one state less confidently. */
 export const AVAILABILITY_KEY = "losos-apps-seen";
 
-const UNKNOWN: Availabilities = { files: "unknown", code: "unknown" };
+const UNKNOWN: Availabilities = { files: "unknown", code: "unknown", mail: "unknown" };
 
 function isAvailability(value: unknown): value is Availability {
   return value === "unknown" || value === "absent" || value === "present";
@@ -404,6 +536,7 @@ export function recallAvailability(): Availabilities {
     return {
       files: isAvailability(record["files"]) ? record["files"] : "unknown",
       code: isAvailability(record["code"]) ? record["code"] : "unknown",
+      mail: isAvailability(record["mail"]) ? record["mail"] : "unknown",
     };
   } catch {
     return UNKNOWN;
@@ -422,7 +555,7 @@ export function rememberAvailability(seen: Availabilities): void {
 /* The same memory, read as the one question most callers actually have.
  *
  * "Has this box been set up?" and "did the Files app answer?" are the same
- * question from a browser's side: the seven apps it provides exist exactly
+ * question from a browser's side: the apps it provides exist exactly
  * when it does, and nothing else on this origin can tell them apart. Kept as a
  * named reading rather than a second store — two places recording the same
  * fact is how they come to disagree. */
@@ -473,8 +606,12 @@ function readStatus(status: number): Availability {
   return "unknown";
 }
 
-async function probe(url: string, signal: AbortSignal | undefined): Promise<Response | null> {
-  const init: RequestInit = { method: "GET", cache: "no-store", credentials: "omit" };
+async function probe(
+  url: string,
+  signal: AbortSignal | undefined,
+  redirect: RequestRedirect = "follow",
+): Promise<Response | null> {
+  const init: RequestInit = { method: "GET", cache: "no-store", credentials: "omit", redirect };
   if (signal !== undefined) init.signal = signal;
   try {
     return await fetch(url, init);
@@ -495,7 +632,7 @@ export async function probeFiles(options: ProbeOptions = {}): Promise<Availabili
   if (fromStatus !== "present") return fromStatus;
 
   /* The document is the point. Nextcloud answers this route while it is
-   * running but not yet installed, and in that state the seven apps it
+   * running but not yet installed, and in that state the apps it
    * provides do not exist — which is exactly the case these tiles must not
    * paint over. A body that is not the expected document leaves the reading
    * at what the status line said. */
@@ -518,10 +655,38 @@ export async function probeCode(options: ProbeOptions = {}): Promise<Availabilit
   return response === null ? "unknown" : readStatus(response.status);
 }
 
-/** Both probes, in parallel. One round trip each, no token, same origin. */
+/* Is an app that LosOS cloud does not ship installed anyway?
+ *
+ * Asked of the app's own page, signed out (`credentials: "omit"`). Nextcloud
+ * loads the routes of enabled apps only, so a page that is not there is a
+ * 404, while an installed one sends a visitor without a session to the
+ * sign-in page. The redirect is not followed: `redirect: "manual"` turns it
+ * into an opaque response, which is the answer, and spares the sign-in page
+ * a render. Anything else (a 503 during maintenance, a refused connection)
+ * is "could not tell". */
+export async function probeOptional(
+  app: AppDefinition,
+  options: ProbeOptions = {},
+): Promise<Availability> {
+  const base = options.filesBase ?? FILES_BASE;
+  const response = await probe(joinPath(base, app.path), options.signal, "manual");
+  if (response === null) return "unknown";
+  if (response.type === "opaqueredirect") return "present";
+  if (response.status === 404) return "absent";
+  if (response.status >= 200 && response.status < 300) return "present";
+  return "unknown";
+}
+
+const MAIL = CATALOGUE.find((app) => app.id === "mail");
+
+/** All probes, in parallel. One round trip each, no token, same origin. */
 export async function probeApps(options: ProbeOptions = {}): Promise<Availabilities> {
-  const [files, code] = await Promise.all([probeFiles(options), probeCode(options)]);
-  return { files, code };
+  const [files, code, mail] = await Promise.all([
+    probeFiles(options),
+    probeCode(options),
+    MAIL === undefined ? Promise.resolve<Availability>("unknown") : probeOptional(MAIL, options),
+  ]);
+  return { files, code, mail };
 }
 
 // ── Figures ───────────────────────────────────────────────────────────────
