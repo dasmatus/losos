@@ -9,6 +9,7 @@ import apps from "./apps";
 import home from "./home";
 import lab from "./lab";
 import look from "./look";
+import machines from "./machines";
 import panes from "./panes";
 import settings from "./settings";
 import shell from "./shell";
@@ -26,6 +27,7 @@ export const MESSAGES = {
   ...widgets,
   ...apps,
   ...look,
+  ...machines,
   ...advanced,
   ...lab,
 };

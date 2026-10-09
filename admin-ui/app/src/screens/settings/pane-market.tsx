@@ -62,11 +62,13 @@ import type { SettingsForm } from "./use-settings-form";
 const KIND_LABEL: Record<MarketKind, MessageKey> = {
   storage: "panes.market.kind.storage",
   compute: "panes.market.kind.compute",
+  vm: "panes.market.kind.vm",
 };
 
 const UNIT_LABEL: Record<string, MessageKey> = {
   "GiB-month": "panes.market.unit.storage",
   "vCPU-hour": "panes.market.unit.compute",
+  "replica-month": "panes.market.unit.vm",
 };
 
 function unitName(unit: string): string {
