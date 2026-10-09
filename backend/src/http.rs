@@ -62,9 +62,17 @@ fn run(
 ) -> HttpResponse {
     match api.backend.serialized(f) {
         Ok(v) => HttpResponse::Ok().json(v),
+        Err(e) => error_response(e),
+    }
+}
+
+/// The answer to a command that failed: a typed refusal keeps its words and
+/// its status, anything else is a 500 whose detail goes to the journal.
+fn error_response(e: anyhow::Error) -> HttpResponse {
+    match e {
         // A market answer the owner can act on keeps its words; it is the
         // registrar's own sentence, vetted by `market::classify`.
-        Err(e) if e.downcast_ref::<crate::market::Refused>().is_some() => {
+        e if e.downcast_ref::<crate::market::Refused>().is_some() => {
             let r = e.downcast_ref::<crate::market::Refused>().expect("checked");
             err(
                 actix_web::http::StatusCode::from_u16(r.status)
@@ -74,7 +82,7 @@ fn run(
         }
         // An apply the option document turned down: the sentence names the
         // key and the rule, and the pane puts it beside the field.
-        Err(e) if e.downcast_ref::<crate::options::Rejected>().is_some() => {
+        e if e.downcast_ref::<crate::options::Rejected>().is_some() => {
             let why = e
                 .downcast_ref::<crate::options::Rejected>()
                 .expect("checked");
@@ -82,7 +90,7 @@ fn run(
         }
         // A look request the owner can act on — a picture that is not one,
         // a widget with no name — keeps its sentence, as a 400.
-        Err(e) if e.downcast_ref::<crate::look::Invalid>().is_some() => {
+        e if e.downcast_ref::<crate::look::Invalid>().is_some() => {
             let why = e.downcast_ref::<crate::look::Invalid>().expect("checked");
             err(actix_web::http::StatusCode::BAD_REQUEST, &why.0)
         }
@@ -90,7 +98,7 @@ fn run(
         // itself, so the first password cannot be set *yet*. 503 with the
         // reason and a Retry-After, so the wizard waits and says why, instead
         // of the opaque 500 that once sent owners to re-image a working box.
-        Err(e) if e.downcast_ref::<crate::setup::NotReady>().is_some() => {
+        e if e.downcast_ref::<crate::setup::NotReady>().is_some() => {
             let why = &e
                 .downcast_ref::<crate::setup::NotReady>()
                 .expect("checked")
@@ -103,7 +111,7 @@ fn run(
         // A password sign-in that LosOS cloud turned down: 401, which the
         // dialog shows as "try again" and the caller counts as a failure for
         // the per-address throttle, exactly like a wrong token.
-        Err(e) if e.downcast_ref::<crate::signin::WrongPassword>().is_some() => {
+        e if e.downcast_ref::<crate::signin::WrongPassword>().is_some() => {
             tracing::info!("sign-in refused: wrong password");
             err(
                 actix_web::http::StatusCode::UNAUTHORIZED,
@@ -112,7 +120,7 @@ fn run(
         }
         // LosOS cloud's own brute-force protection shut the door; the page
         // says "wait" rather than "wrong".
-        Err(e) if e.downcast_ref::<crate::signin::Throttled>().is_some() => {
+        e if e.downcast_ref::<crate::signin::Throttled>().is_some() => {
             tracing::warn!("sign-in refused: LosOS cloud is throttling this address");
             let mut resp = err(
                 actix_web::http::StatusCode::TOO_MANY_REQUESTS,
@@ -127,7 +135,7 @@ fn run(
         // Sharing turned on with no edge proxy in reach (`crate::edge`):
         // 409 with the reason and a flag the Mesh pane keys on, so the switch
         // can say why it did not take rather than "command failed".
-        Err(e) if e.downcast_ref::<crate::edge::EdgeRequired>().is_some() => {
+        e if e.downcast_ref::<crate::edge::EdgeRequired>().is_some() => {
             let why = e
                 .downcast_ref::<crate::edge::EdgeRequired>()
                 .expect("checked");
@@ -140,9 +148,9 @@ fn run(
         }
         // Trading asked of a box whose edges are all a company's own: the
         // sentence, as a 409, with a flag the Market pane can key on.
-        Err(e)
-            if e.downcast_ref::<crate::edge::OfficialEdgeRequired>()
-                .is_some() =>
+        e if e
+            .downcast_ref::<crate::edge::OfficialEdgeRequired>()
+            .is_some() =>
         {
             tracing::warn!("refused: no official edge reachable, trading is off");
             HttpResponse::build(actix_web::http::StatusCode::CONFLICT).json(serde_json::json!({
@@ -151,26 +159,26 @@ fn run(
             }))
         }
         // A bucket the owner can fix, or a recovery code that is not one.
-        Err(e) if e.downcast_ref::<crate::backup::Invalid>().is_some() => {
+        e if e.downcast_ref::<crate::backup::Invalid>().is_some() => {
             let why = e.downcast_ref::<crate::backup::Invalid>().expect("checked");
             err(actix_web::http::StatusCode::BAD_REQUEST, why.0)
         }
         // A backup, restore or erase asked for while something it would
         // collide with is running.
-        Err(e) if e.downcast_ref::<crate::backup::Busy>().is_some() => {
+        e if e.downcast_ref::<crate::backup::Busy>().is_some() => {
             let why = e.downcast_ref::<crate::backup::Busy>().expect("checked");
             err(actix_web::http::StatusCode::CONFLICT, why.0)
         }
         // A second owner, or the first one again after the grace window:
         // the sentence, as a 409 the wizard already knows how to show.
-        Err(e) if e.downcast_ref::<crate::setup::AlreadyClaimed>().is_some() => {
+        e if e.downcast_ref::<crate::setup::AlreadyClaimed>().is_some() => {
             tracing::warn!("claim refused: the box already has an owner");
             err(
                 actix_web::http::StatusCode::CONFLICT,
                 &crate::setup::AlreadyClaimed.to_string(),
             )
         }
-        Err(e) => {
+        e => {
             tracing::error!(error = ?e, "admin API command failed");
             err(
                 actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
@@ -1012,6 +1020,167 @@ async fn post_market_order(
     .await
 }
 
+// ── Virtual machines ──────────────────────────────────────────────────────
+// The market's third kind (`backend-registrar/src/vms.rs`), on its own page
+// and its own routes, because every one of them is refused unless this box
+// shares its storage (`crate::losos::cmd_vm_op`). Onboarding is the market's.
+
+/// `GET /api/vms` — the catalogue, the machine listings, this box's account
+/// and its machines' replicas; `{"available": false, "reason": ...}` when
+/// the box does not share its storage or no official edge runs machines.
+async fn get_vms(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    guarded(&api, &req, "/api/vms", false, || {
+        run(&api, crate::losos::cmd_vms)
+    })
+}
+
+async fn post_vm(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+    route: &'static str,
+    build: fn(&serde_json::Value) -> Option<crate::market::Op>,
+) -> HttpResponse {
+    guarded(&api, &req, route, true, || {
+        let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
+        match build(&doc) {
+            Some(op) => run(&api, |b| crate::losos::cmd_vm_op(b, &op)),
+            None => err(
+                actix_web::http::StatusCode::BAD_REQUEST,
+                "the request body is missing a required field",
+            ),
+        }
+    })
+}
+
+/// `POST /api/vms/orders` `{listing_id, quantity, image, name, user_data?}`.
+async fn post_vm_order(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> HttpResponse {
+    post_vm(api, req, body, "/api/vms/orders", |d| {
+        Some(crate::market::Op::VmOrder {
+            listing_id: field_str(d, "listing_id")?,
+            quantity: field_u64(d, "quantity")?,
+            image: field_str(d, "image")?,
+            name: field_str(d, "name")?,
+            user_data: field_str(d, "user_data").filter(|u| !u.trim().is_empty()),
+        })
+    })
+    .await
+}
+
+/// `POST /api/vms/listings` `{unit_price, capacity}`: offer replicas of
+/// machines on this box, priced per replica-month.
+async fn post_vm_listing(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> HttpResponse {
+    post_vm(api, req, body, "/api/vms/listings", |d| {
+        Some(crate::market::Op::List {
+            kind: "vm".to_string(),
+            unit_price: field_u64(d, "unit_price")?,
+            capacity: field_u64(d, "capacity")?,
+        })
+    })
+    .await
+}
+
+async fn post_vm_listing_close(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    post_vm(api, req, body, "/api/vms/listings/close", |d| {
+        Some(crate::market::Op::Close {
+            listing_id: field_str(d, "listing_id")?,
+        })
+    })
+    .await
+}
+
+/// `POST /api/vms/images/remove` `{upload_id}`.
+async fn post_vm_image_remove(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    post_vm(api, req, body, "/api/vms/images/remove", |d| {
+        Some(crate::market::Op::VmRemove {
+            upload_id: field_str(d, "upload_id")?,
+        })
+    })
+    .await
+}
+
+#[derive(serde::Deserialize)]
+struct VmImageQuery {
+    name: String,
+    #[serde(default)]
+    efi: Option<String>,
+}
+
+/// `PUT /api/vms/images?name=<name>&efi=1` with the QCOW2 as the body.
+///
+/// The ticket is taken under the backend lock like any market call; the
+/// file itself streams to the edge outside it (`crate::vm_upload`), so a
+/// long upload holds up nothing else. The edge checks the file (a QCOW2,
+/// under its size limit) and its refusal comes back with its own words.
+async fn put_vm_image(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    query: web::Query<VmImageQuery>,
+    payload: web::Payload,
+) -> HttpResponse {
+    use actix_web::http::StatusCode;
+    let op = crate::market::Op::VmTicket {
+        name: query.name.clone(),
+        efi: matches!(query.efi.as_deref(), Some("1" | "true")),
+    };
+    let mut ticket = None;
+    let refused = guarded(&api, &req, "/api/vms/images", true, || {
+        match api.backend.serialized(|b| crate::losos::cmd_vm_op(b, &op)) {
+            Ok(v) => {
+                ticket = Some(v);
+                HttpResponse::Ok().finish()
+            }
+            Err(e) => error_response(e),
+        }
+    });
+    let Some(ticket) = ticket else {
+        return refused;
+    };
+    let (Some(path), Some(config)) = (
+        ticket
+            .get("upload_path")
+            .and_then(serde_json::Value::as_str),
+        crate::market::Config::from_env(),
+    ) else {
+        tracing::error!("the edge's upload ticket named no path, or the registrar is unset");
+        return err(StatusCode::BAD_GATEWAY, "the edge did not take the image");
+    };
+    match crate::vm_upload::stream_to_edge(&config.registrar_url, path, payload).await {
+        Ok(a) if (200..300).contains(&a.status) => {
+            match serde_json::from_str::<serde_json::Value>(&a.body) {
+                Ok(v) => HttpResponse::Ok().json(v),
+                Err(_) => err(StatusCode::BAD_GATEWAY, "the edge did not take the image"),
+            }
+        }
+        Ok(a) => {
+            let status = match a.status {
+                408 => StatusCode::REQUEST_TIMEOUT,
+                409 => StatusCode::CONFLICT,
+                413 => StatusCode::PAYLOAD_TOO_LARGE,
+                415 => StatusCode::UNSUPPORTED_MEDIA_TYPE,
+                400 | 404 => StatusCode::BAD_REQUEST,
+                other => {
+                    tracing::error!(status = other, "the edge refused an image upload");
+                    return err(StatusCode::BAD_GATEWAY, "the edge did not take the image");
+                }
+            };
+            err(status, &crate::market::public_message(&a.body))
+        }
+        Err(e) => {
+            tracing::error!(error = ?e, "image upload to the edge failed");
+            err(StatusCode::BAD_GATEWAY, "the upload did not reach the edge")
+        }
+    }
+}
+
 /// `GET /api/domains` — this box's own domains on the edge, and the records
 /// to create for them; `{"available": false}` when no official edge offers
 /// them. Relayed like the market, for the same reasons.
@@ -1326,6 +1495,18 @@ pub fn serve(backend: IoLosos) -> anyhow::Result<()> {
                     web::post().to(post_market_close),
                 )
                 .route("/api/market/orders", web::post().to(post_market_order))
+                .route("/api/vms", web::get().to(get_vms))
+                .route("/api/vms/orders", web::post().to(post_vm_order))
+                .route("/api/vms/listings", web::post().to(post_vm_listing))
+                .route(
+                    "/api/vms/listings/close",
+                    web::post().to(post_vm_listing_close),
+                )
+                .route("/api/vms/images", web::put().to(put_vm_image))
+                .route(
+                    "/api/vms/images/remove",
+                    web::post().to(post_vm_image_remove),
+                )
                 .route("/api/lab/hello", web::get().to(get_lab_hello))
                 .route("/api/lab/order", web::get().to(get_lab_order))
                 .route("/api/lab/order", web::post().to(post_lab_order))
