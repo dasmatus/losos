@@ -101,7 +101,8 @@ let
   # uid by construction there, hence one binding each. Nextcloud's comes from
   # nextcloud-stack.nix, which flake/images.nix reads too: the image bakes
   # /run/nextcloud owned by that uid, so the two must not drift.
-  nextcloudUid = (import ./nextcloud-stack.nix { inherit pkgs lib; }).uid;
+  nc = import ./nextcloud-stack.nix { inherit pkgs lib; };
+  nextcloudUid = nc.uid;
   forgejoUid = 1003;
 
   # Redis' socket is mode 0660, group redis-nextcloud, and a container does not
@@ -219,6 +220,11 @@ let
     # source.
     trusted_proxies = phpList [ "127.0.0.1" ];
   }
+  # The config.php half of the owner's box-wide settings
+  # (losos.nextcloud.site.*; modules/nextcloud-stack.nix, `site`). Every
+  # value is a string. Read after config.php, so Nextcloud's own writes
+  # there never win over these.
+  // lib.mapAttrs (_: phpStr) (nc.site.system config.losos.nextcloud.site)
   # Behind the master proxy Traefik terminates TLS and the pod is reached over
   # plain HTTP. Without these Nextcloud derives http:// absolute URLs and
   # embeds them in an https:// page — mixed content, blocked by browsers, and
@@ -249,6 +255,12 @@ let
     "federation" = pkgs.writeText "federation" (
       if config.lososInternal.federation.nextcloud then "yes\n" else "no\n"
     );
+    # The app-config half of the owner's box-wide settings
+    # (losos.nextcloud.site.*), "app key value" per line, which the
+    # entrypoint writes with occ on every start. The config.php half is in
+    # losos.config.php below. modules/nextcloud-stack.nix (`site`) says what
+    # each line sets; a change restarts the pod like the file above.
+    "site" = pkgs.writeText "site" (lib.concatLines (nc.site.appConfig config.losos.nextcloud.site));
     "losos.config.php" = pkgs.writeText "losos.config.php" ''
       <?php
       // Rendered by modules/workloads.nix and bind-mounted read-only from the
@@ -280,58 +292,62 @@ let
 
   # ── Forgejo's rendered config ────────────────────────────────────────────
   forgejoConf = confDir "losos-forgejo-conf" {
-    "losos.ini" = ini.generate "losos.ini" {
-      server = {
-        # Same reasoning as Nextcloud's Listen line: under hostNetwork an
-        # unqualified bind is a public one. The port is a literal on both ends
-        # (here and in modules/containers.nix) on purpose — nothing off-box ever
-        # sees it, so an option would be a knob with no reason to be turned.
-        HTTP_ADDR = "127.0.0.1";
-        HTTP_PORT = 3000;
-        # The front vhost strips the /forgejo prefix, so Forgejo has to be told
-        # it is served under a subpath or every link it generates is wrong.
-        ROOT_URL =
-          if proxied then "https://${proxyHostName}/forgejo/" else "http://${hostName}.local/forgejo/";
-      };
-      service = {
-        # /forgejo/ is the one admin-free route published through the
-        # master-proxy tunnel, and Forgejo's default is open sign-up. Without
-        # this anyone on the internet could create an account and push to this
-        # box.
-        DISABLE_REGISTRATION = true;
-      };
-      security = {
-        # Close the first-run installer page. It is normally locked by
-        # completing the wizard, but a declarative deployment never runs it —
-        # leaving /forgejo/install reachable, and that page rewrites the
-        # database and admin credentials.
-        INSTALL_LOCK = true;
-      };
-      actions = {
-        # Actions is remote code execution by design and nothing on the box
-        # runs jobs: the on-box runner that existed for the official-edge
-        # key ceremony is gone (the ceremony runs on the operator's machine,
-        # `losos-registrar provision`, behind a GitHub sign-in). Enabled with
-        # nothing to run jobs, it would only expose the runner-registration
-        # API on an internet-reachable route. Same setting as native mode
-        # (modules/services.nix).
-        ENABLED = false;
-      };
-      federation = {
-        # ActivityPub: nodeinfo, one actor per account and repository,
-        # federated stars and follows (modules/options.nix says what the
-        # shipped Forgejo does with it). The front vhost adds the two
-        # /.well-known routes other servers discover the box by
-        # (modules/containers.nix); Forgejo serves everything else under
-        # ROOT_URL. Same two lines as native mode (modules/services.nix).
-        # On only while the box shares its disk (lososInternal.federation).
-        ENABLED = config.lososInternal.federation.forgejo;
-        # nodeinfo's `usage` block: account totals and activity counts of a
-        # household's box, published to anyone who asks. Off. Forgejo's own
-        # default is on.
-        SHARE_USER_STATISTICS = false;
-      };
-    };
+    # The owner's box-wide settings (losos.forgejo.site.*,
+    # lososInternal.forgejoSite) under LosOS's own, as natively.
+    "losos.ini" = ini.generate "losos.ini" (
+      lib.recursiveUpdate config.lososInternal.forgejoSite {
+        server = {
+          # Same reasoning as Nextcloud's Listen line: under hostNetwork an
+          # unqualified bind is a public one. The port is a literal on both ends
+          # (here and in modules/containers.nix) on purpose — nothing off-box ever
+          # sees it, so an option would be a knob with no reason to be turned.
+          HTTP_ADDR = "127.0.0.1";
+          HTTP_PORT = 3000;
+          # The front vhost strips the /forgejo prefix, so Forgejo has to be told
+          # it is served under a subpath or every link it generates is wrong.
+          ROOT_URL =
+            if proxied then "https://${proxyHostName}/forgejo/" else "http://${hostName}.local/forgejo/";
+        };
+        service = {
+          # /forgejo/ is the one admin-free route published through the
+          # master-proxy tunnel, and Forgejo's default is open sign-up. Without
+          # this anyone on the internet could create an account and push to this
+          # box.
+          DISABLE_REGISTRATION = true;
+        };
+        security = {
+          # Close the first-run installer page. It is normally locked by
+          # completing the wizard, but a declarative deployment never runs it —
+          # leaving /forgejo/install reachable, and that page rewrites the
+          # database and admin credentials.
+          INSTALL_LOCK = true;
+        };
+        actions = {
+          # Actions is remote code execution by design and nothing on the box
+          # runs jobs: the on-box runner that existed for the official-edge
+          # key ceremony is gone (the ceremony runs on the operator's machine,
+          # `losos-registrar provision`, behind a GitHub sign-in). Enabled with
+          # nothing to run jobs, it would only expose the runner-registration
+          # API on an internet-reachable route. Same setting as native mode
+          # (modules/services.nix).
+          ENABLED = false;
+        };
+        federation = {
+          # ActivityPub: nodeinfo, one actor per account and repository,
+          # federated stars and follows (modules/options.nix says what the
+          # shipped Forgejo does with it). The front vhost adds the two
+          # /.well-known routes other servers discover the box by
+          # (modules/containers.nix); Forgejo serves everything else under
+          # ROOT_URL. Same two lines as native mode (modules/services.nix).
+          # On only while the box shares its disk (lososInternal.federation).
+          ENABLED = config.lososInternal.federation.forgejo;
+          # nodeinfo's `usage` block: account totals and activity counts of a
+          # household's box, published to anyone who asks. Off. Forgejo's own
+          # default is on.
+          SHARE_USER_STATISTICS = false;
+        };
+      }
+    );
   };
 
   # ── The pod shape both workloads share ───────────────────────────────────

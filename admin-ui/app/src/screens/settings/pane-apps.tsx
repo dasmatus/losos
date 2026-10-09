@@ -38,6 +38,7 @@ import { useCatalogue, type CatalogueApp, type CatalogueState } from "./catalogu
 import { InstallDialog, type InstallTarget } from "./install-dialog";
 import { useInstalledApps } from "./use-installed-apps";
 import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText, StackRow } from "./rows";
+import { SiteSettings } from "./site-settings";
 import type { SettingsForm } from "./use-settings-form";
 
 /* The apps this box runs, and where to look for more.
@@ -125,6 +126,10 @@ export function AppsPane({ form }: { form: SettingsForm }) {
           />
         </GroupCaption>
       </PaneSection>
+
+      {/* Each app's box-wide settings, the ones its own admin pages would
+          otherwise hold. */}
+      <SiteSettings form={form} />
 
       {(records.length > 0 || installed.state.kind === "failed") && (
         <PaneSection>
