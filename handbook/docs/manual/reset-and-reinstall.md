@@ -1,6 +1,6 @@
 ---
 title: Reset and reinstall
-sidebar_position: 8
+sidebar_position: 9
 ---
 
 # Reset and reinstall
@@ -22,6 +22,10 @@ press a second time.
 
 A reset does not change the owner's password or the spare key, and does not
 re-open the claim window.
+
+To delete the data as well, use **Erase…** below it on the same screen.
+[Backup and erase](./backup-and-erase) explains it, and how a backup brings
+everything back afterwards.
 
 ## Reinstall: wipe and start over
 

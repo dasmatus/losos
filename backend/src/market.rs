@@ -115,6 +115,10 @@ pub enum Op {
     DomainRemove {
         domain: String,
     },
+    /// Take this box off the edge's registry (`/deregister`), so the edge
+    /// stops routing to it. What a full erase does last, after the domains
+    /// and listings are gone (`crate::erase`).
+    Deregister,
     /// What the edge's operator sells (boxes, gateways). Anonymous.
     Hardware,
     /// A Stripe Checkout for hardware: `(sku, quantity)` lines. The edge's
@@ -165,7 +169,7 @@ impl Op {
     /// A sentence naming what was wrong, suitable for a 400.
     pub fn validate(&self) -> Result<(), &'static str> {
         match self {
-            Op::Browse | Op::Account | Op::Domains | Op::Hardware => Ok(()),
+            Op::Browse | Op::Account | Op::Domains | Op::Hardware | Op::Deregister => Ok(()),
             Op::HardwareCheckout { items } => {
                 if items.is_empty() || items.len() > MAX_HARDWARE_LINES {
                     Err("the order needs 1 to 8 lines")
@@ -243,6 +247,7 @@ impl Op {
             Op::DomainRemove { .. } => ("POST", "/domains/remove"),
             Op::Hardware => ("GET", "/market/hardware"),
             Op::HardwareCheckout { .. } => ("POST", "/market/hardware/checkout"),
+            Op::Deregister => ("POST", "/deregister"),
         }
     }
 
@@ -261,7 +266,7 @@ impl Op {
                     .map(|(sku, quantity)| json!({ "sku": sku, "quantity": quantity }))
                     .collect::<Vec<_>>(),
             }),
-            Op::Account | Op::Domains => json!({}),
+            Op::Account | Op::Domains | Op::Deregister => json!({}),
             Op::DomainAdd { domain } | Op::DomainRemove { domain } => json!({ "domain": domain }),
             Op::Onboard { box_uuid } => match box_uuid {
                 Some(u) => json!({ "box_uuid": u }),
@@ -542,6 +547,7 @@ mod tests {
             .route(),
             ("POST", "/market/listings/close")
         );
+        assert_eq!(Op::Deregister.route(), ("POST", "/deregister"));
     }
 
     #[test]

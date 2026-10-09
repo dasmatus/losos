@@ -648,6 +648,23 @@ pub fn start_domain_sync(backend: &IoLosos) {
     }
 }
 
+/// Drive backups, restores and an erase (`crate::erase::tick`) on a short
+/// cadence, under the state lock like every other writer of `state.json`.
+pub fn start_erase_driver(backend: &IoLosos) {
+    let backend = backend.clone();
+    let spawned = std::thread::Builder::new()
+        .name("lososd-erase".into())
+        .spawn(move || loop {
+            if let Err(e) = backend.serialized(crate::erase::tick) {
+                tracing::warn!(error = ?e, "backup and erase step failed");
+            }
+            std::thread::sleep(crate::erase::TICK_EVERY);
+        });
+    if let Err(e) = spawned {
+        tracing::error!(error = %e, "could not start the backup and erase driver");
+    }
+}
+
 /// One request to the registrar's market, by `curl`.
 ///
 /// The body — which carries the appliance's proxy token — goes to curl on
@@ -1002,6 +1019,117 @@ fn read_look(path: &Path) -> crate::look::Look {
 pub fn write_state(path: &Path, s: &State) -> anyhow::Result<()> {
     let bytes = serde_json::to_vec(s).context("encoding state")?;
     atomic_write(path, &bytes)
+}
+
+// ── Backups and erasing the box ─────────────────────────────────────────
+
+/// Where the backup machinery keeps its files, from the environment
+/// `modules/backup.nix` gives lososd, with the appliance defaults.
+#[derive(Debug, Clone)]
+pub struct BackupFiles {
+    /// The bucket, as JSON, 0600.
+    pub target: PathBuf,
+    /// The same bucket as the units' `EnvironmentFile=`, 0600.
+    pub env: PathBuf,
+    /// The scripts' working directory: the log, the report, the staged
+    /// settings of a restore.
+    pub dir: PathBuf,
+    /// The repository password a backup uses: the recovery code.
+    pub recovery_code: PathBuf,
+    /// The code a restore was given, on `/run`.
+    pub restore_code: PathBuf,
+    pub backup_script: Option<String>,
+    pub restore_script: Option<String>,
+    pub grace_secs: u64,
+    /// What `losos-factory-wipe.service` looks for at boot.
+    pub wipe_marker: PathBuf,
+    /// What an erase gave up outside the box; the wipe keeps it.
+    pub erase_report: PathBuf,
+}
+
+impl BackupFiles {
+    pub fn from_env() -> Self {
+        let var = |k: &str| std::env::var(k).ok().filter(|v| !v.is_empty());
+        BackupFiles {
+            target: PathBuf::from(env_or(
+                "LOSOS_BACKUP_TARGET_FILE",
+                "/var/secrets/losos-backup.json",
+            )),
+            env: PathBuf::from(env_or(
+                "LOSOS_BACKUP_ENV_FILE",
+                "/var/secrets/losos-backup.env",
+            )),
+            dir: PathBuf::from(env_or("LOSOS_BACKUP_DIR", "/var/lib/losos-backup")),
+            recovery_code: crate::recovery::code_file(),
+            restore_code: PathBuf::from(env_or(
+                "LOSOS_RESTORE_CODE_FILE",
+                "/run/losos/restore-code",
+            )),
+            backup_script: var("LOSOS_BACKUP_SCRIPT"),
+            restore_script: var("LOSOS_RESTORE_SCRIPT"),
+            grace_secs: var("LOSOS_ERASE_GRACE_SECS")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(900),
+            wipe_marker: PathBuf::from(env_or("LOSOS_WIPE_MARKER", "/persist/.losos-factory-wipe")),
+            erase_report: PathBuf::from(env_or(
+                "LOSOS_ERASE_REPORT",
+                "/var/lib/losos-erase/report.json",
+            )),
+        }
+    }
+
+    pub fn log(&self) -> PathBuf {
+        self.dir.join("job.log")
+    }
+
+    /// Written by the backup script after a successful run.
+    pub fn report(&self) -> PathBuf {
+        self.dir.join("last.json")
+    }
+
+    /// Where the restore script leaves the `overrides.nix` it brought back.
+    pub fn restored_overrides(&self) -> PathBuf {
+        self.dir.join("restored-overrides.nix")
+    }
+}
+
+/// The `systemd-run` arguments for one backup or restore job.
+///
+/// The bucket's keys arrive through `EnvironmentFile=`, the password through
+/// `RESTIC_PASSWORD_FILE`: neither is ever an argument here, so `ps` and the
+/// journal never show them. The script carries its own PATH (it is a
+/// `writeShellApplication`), so unlike a rebuild nothing of lososd's is
+/// passed on.
+pub fn backup_launch_args(
+    files: &BackupFiles,
+    kind: crate::backup::Kind,
+    job: &str,
+    script: &str,
+) -> Vec<String> {
+    let log = files.log().to_string_lossy().into_owned();
+    let password = match kind {
+        crate::backup::Kind::Backup => &files.recovery_code,
+        crate::backup::Kind::Restore => &files.restore_code,
+    };
+    vec![
+        format!("--unit={}", kind.unit(job)),
+        format!("--description=losos {} {job}", kind.as_str()),
+        format!("--property=EnvironmentFile={}", files.env.display()),
+        format!("--property=StandardOutput=append:{log}"),
+        format!("--property=StandardError=append:{log}"),
+        format!("--setenv=LOSOS_BACKUP_DIR={}", files.dir.display()),
+        format!("--setenv=RESTIC_PASSWORD_FILE={}", password.display()),
+        script.to_string(),
+    ]
+}
+
+/// Remove a file; one that is not there is already removed.
+fn remove_if_present(path: &Path) -> anyhow::Result<()> {
+    match std::fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(anyhow::Error::new(e).context(format!("removing {}", path.display()))),
+    }
 }
 
 /// The production backend.
@@ -1740,6 +1868,138 @@ impl Losos for IoLosos {
         atomic_write_secret(&self.paths.sync_report_file(), &text)
     }
 
+    // ── Backups and erasing the box ─────────────────────────────────────
+    fn backup_target(&mut self) -> anyhow::Result<Option<crate::backup::Target>> {
+        let path = BackupFiles::from_env().target;
+        match std::fs::read_to_string(&path) {
+            // A file that no longer parses is no target: the owner sets it
+            // again, rather than the pane failing to load.
+            Ok(text) => Ok(serde_json::from_str(&text).ok()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(anyhow::Error::new(e).context("reading the backup target")),
+        }
+    }
+
+    fn write_backup_target(
+        &mut self,
+        target: Option<&crate::backup::Target>,
+    ) -> anyhow::Result<()> {
+        let files = BackupFiles::from_env();
+        match target {
+            Some(t) => {
+                atomic_write_secret(&files.env, t.env_file().as_bytes())?;
+                atomic_write_secret(&files.target, &serde_json::to_vec_pretty(t)?)
+            }
+            None => {
+                remove_if_present(&files.env)?;
+                remove_if_present(&files.target)
+            }
+        }
+    }
+
+    fn start_backup_job(&mut self, kind: crate::backup::Kind, job: &str) -> anyhow::Result<()> {
+        let files = BackupFiles::from_env();
+        let script = match kind {
+            crate::backup::Kind::Backup => &files.backup_script,
+            crate::backup::Kind::Restore => &files.restore_script,
+        };
+        let Some(script) = script else {
+            anyhow::bail!("this build has no {} script", kind.as_str());
+        };
+        // A fresh log per job, so the tail the owner is shown is this run's.
+        std::fs::create_dir_all(&files.dir).context("creating the backup directory")?;
+        std::fs::write(files.log(), b"").context("starting the backup log")?;
+        let status = std::process::Command::new("systemd-run")
+            .args(backup_launch_args(&files, kind, job, script))
+            .status()
+            .context("running systemd-run")?;
+        anyhow::ensure!(status.success(), "systemd-run exited {status}");
+        Ok(())
+    }
+
+    fn poll_backup_job(&mut self, kind: crate::backup::Kind, job: &str) -> supervisor::Poll {
+        supervisor::poll_named(&kind.unit(job))
+    }
+
+    fn stop_backup_job(&mut self, kind: crate::backup::Kind, job: &str) -> anyhow::Result<()> {
+        let status = std::process::Command::new("systemctl")
+            .args(["stop", "--no-block", &kind.unit(job)])
+            .status()
+            .context("running systemctl stop")?;
+        anyhow::ensure!(status.success(), "systemctl stop exited {status}");
+        Ok(())
+    }
+
+    fn backup_log_tail(&mut self) -> String {
+        supervisor::log_tail(&BackupFiles::from_env().log())
+    }
+
+    fn backup_report(&mut self) -> anyhow::Result<Option<crate::backup::Report>> {
+        match std::fs::read_to_string(BackupFiles::from_env().report()) {
+            Ok(text) => Ok(crate::backup::parse_report(&text)),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(anyhow::Error::new(e).context("reading the backup report")),
+        }
+    }
+
+    fn write_restore_code(&mut self, code: Option<&str>) -> anyhow::Result<()> {
+        let path = BackupFiles::from_env().restore_code;
+        match code {
+            Some(c) => atomic_write_secret(&path, c.as_bytes()),
+            None => remove_if_present(&path),
+        }
+    }
+
+    fn take_restored_overrides(&mut self) -> anyhow::Result<Option<String>> {
+        let path = BackupFiles::from_env().restored_overrides();
+        match std::fs::read_to_string(&path) {
+            Ok(text) => {
+                remove_if_present(&path)?;
+                Ok(Some(text))
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(anyhow::Error::new(e).context("reading the restored settings")),
+        }
+    }
+
+    fn now(&mut self) -> u64 {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_secs())
+    }
+
+    fn erase_grace_secs(&mut self) -> u64 {
+        BackupFiles::from_env().grace_secs
+    }
+
+    fn wipe_and_reboot(&mut self) -> anyhow::Result<()> {
+        let files = BackupFiles::from_env();
+        // The marker is the whole instruction: whatever happens to this
+        // process from here, the next boot wipes.
+        atomic_write_secret(&files.wipe_marker, b"erase\n")?;
+        let status = std::process::Command::new("systemctl")
+            .args(["reboot", "--no-block"])
+            .status()
+            .context("running systemctl reboot")?;
+        anyhow::ensure!(status.success(), "systemctl reboot exited {status}");
+        Ok(())
+    }
+
+    fn write_erase_report(&mut self, report: &crate::erase::Outside) -> anyhow::Result<()> {
+        atomic_write_secret(
+            &BackupFiles::from_env().erase_report,
+            &serde_json::to_vec_pretty(report)?,
+        )
+    }
+
+    fn read_erase_report(&mut self) -> anyhow::Result<Option<crate::erase::Outside>> {
+        match std::fs::read_to_string(BackupFiles::from_env().erase_report) {
+            Ok(text) => Ok(serde_json::from_str(&text).ok()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(anyhow::Error::new(e).context("reading the erase report")),
+        }
+    }
+
     fn next_job_id(&mut self) -> anyhow::Result<String> {
         // The timestamp and the pid are both constant within one second of one
         // long-lived daemon, so they alone let two jobs collide — and a
@@ -1880,6 +2140,8 @@ mod tests {
                 message: "rebuild started".into(),
             }),
             claimed: true,
+            backup_job: None,
+            erase: None,
         };
         write_state(&p, &s).unwrap();
         assert_eq!(read_state(&p), s);

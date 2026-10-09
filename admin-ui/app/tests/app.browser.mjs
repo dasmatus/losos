@@ -76,6 +76,7 @@ async function open({
   locale = 'en-US',
   market = { available: false },
   domains = { available: false },
+  backup = BACKUP_EMPTY,
   edge = EDGE_FOUND,
   settings = SETTINGS,
   options = null,
@@ -169,6 +170,56 @@ async function open({
     domainsView = { ...domainsView, domains: domainsView.domains.filter((d) => d.domain !== sent.domain) };
     return json(route, 200, domainsView);
   });
+  // Backups and the erase: a small lososd. GET /api/backup answers the view;
+  // every write is recorded and moves the view the way lososd would.
+  const backupPosts = [];
+  let backupView = structuredClone(backup);
+  await page.route('**/api/recovery', (route) =>
+    authed(route) ? json(route, 200, { code: 'b3c1d2e4-5f60-4a7b-8c9d-0e1f2a3b4c5d', minted: false }) : json(route, 401, { error: 'unauthorized' }),
+  );
+  await page.route(/\/api\/(backup|erase)(\/.*)?$/, (route) => {
+    if (!authed(route)) return json(route, 401, { error: 'unauthorized' });
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    if (path === '/api/backup' && request.method() === 'GET') return json(route, 200, backupView);
+    const sent = request.postData() === null ? null : request.postDataJSON();
+    backupPosts.push([request.method(), path, sent]);
+    if (path === '/api/backup/target' && request.method() === 'POST') {
+      const { secretAccessKey, ...shown } = sent;
+      backupView.target = { ...shown, hasSecret: Boolean(secretAccessKey) || backupView.target?.hasSecret === true };
+      return json(route, 200, { target: backupView.target });
+    }
+    if (path === '/api/backup/target') {
+      backupView.target = null;
+      return json(route, 200, { target: null });
+    }
+    if (path === '/api/backup/run' || path === '/api/backup/restore') {
+      if (path === '/api/backup/restore' && sent.code.trim().toLowerCase() !== OLD_CODE) {
+        return json(route, 400, { error: 'the recovery code does not open this backup' });
+      }
+      const kind = path.endsWith('run') ? 'backup' : 'restore';
+      backupView.job = { kind, job: 'job-b1', state: 'running', startedAt: 1_760_000_000, message: '' };
+      return json(route, 200, { job: 'job-b1' });
+    }
+    if (path === '/api/erase') {
+      backupView.erase = {
+        phase: 'waiting',
+        backup: sent.backup,
+        startedAt: 1_760_000_000,
+        deadline: 1_760_000_900,
+        secondsLeft: 900,
+        cancellable: true,
+        message: '',
+        outside: { hadEdge: false, domainsRemoved: 0, listingsClosed: 0, leftEdge: false, problems: [], erasedAt: 0 },
+      };
+      return json(route, 200, { erase: backupView.erase });
+    }
+    if (path === '/api/erase/cancel') {
+      backupView.erase = null;
+      return json(route, 200, { erase: null });
+    }
+    return json(route, 404, { error: 'not found' });
+  });
   // Stripe's own pages, so a tab sent there has something to land on.
   for (const host of ['checkout.stripe.com', 'connect.stripe.com']) {
     await page.context().route(`https://${host}/**`, (route) =>
@@ -180,8 +231,33 @@ async function open({
     await page.addInitScript((t) => window.sessionStorage.setItem('losos-token', t), TOKEN);
   }
   await page.goto(origin + path, { waitUntil: 'networkidle' });
-  return { page, errors, marketPosts, applies, domainPosts };
+  return { page, errors, marketPosts, applies, domainPosts, backupPosts };
 }
+
+/* GET /api/backup: a box with no bucket yet, and one with a bucket, a last
+ * backup and the report of an erase it went through before. */
+const OLD_CODE = '0f8fad5b-d9cb-469f-a165-70867728950e';
+const BACKUP_EMPTY = {
+  target: null,
+  last: null,
+  job: null,
+  erase: null,
+  lastErase: null,
+  graceSeconds: 900,
+};
+const BACKUP_SET = {
+  ...BACKUP_EMPTY,
+  target: {
+    endpoint: 'https://s3.eu-central-1.amazonaws.com',
+    bucket: 'mattbox-backups',
+    prefix: 'losos',
+    region: 'eu-central-1',
+    accessKeyId: 'AKIAEXAMPLE1234',
+    hasSecret: true,
+  },
+  last: { time: 1_760_000_000, snapshot: 'a'.repeat(64), files: 1832, bytes: 4_831_838_208 },
+  lastErase: { hadEdge: true, domainsRemoved: 2, listingsClosed: 1, leftEdge: true, problems: [], erasedAt: 1_759_000_000 },
+};
 
 /* GET /api/domains on an official edge, for a box Stripe has checked: one
  * domain live, one still waiting for its CNAME. */
@@ -393,6 +469,7 @@ const DESTINATIONS = [
   ['Security', '/settings/security', 'Settings'],
   ['Advanced', '/settings/advanced', 'Settings'],
   ['History', '/settings/history', 'Settings'],
+  ['Backup', '/settings/backup', 'Settings'],
   ['About', '/settings/about', 'Settings'],
   ['Reset', '/settings/reset', 'Settings'],
 ];
@@ -771,7 +848,7 @@ await check('under the appliance CSP the switches and the sidebar beside them ad
   }
 });
 
-for (const path of ['/apps', '/storage', '/mesh', '/settings', '/settings/hardware', '/settings/advanced', '/settings/history', '/settings/about', '/settings/reset']) {
+for (const path of ['/apps', '/storage', '/mesh', '/settings', '/settings/hardware', '/settings/advanced', '/settings/history', '/settings/backup', '/settings/about', '/settings/reset']) {
   await check(`a deep link to ${path} renders without errors and survives a reload`, async () => {
     const { page, errors } = await open({ path, stored: true });
     await nav(page).waitFor();
@@ -840,8 +917,8 @@ await check('a browser in a language we do not carry falls back to English', asy
 
 for (const locale of ['sk-SK', 'de-DE']) {
   await check(`every section renders in ${locale} without errors`, async () => {
-    for (const path of ['/', '/apps', '/storage', '/mesh', '/settings/network', '/settings/hardware', '/settings/security', '/settings/advanced', '/settings/history', '/settings/about', '/settings/reset']) {
-      const { page, errors } = await open({ path, stored: true, locale, market: MARKET });
+    for (const path of ['/', '/apps', '/storage', '/mesh', '/settings/network', '/settings/hardware', '/settings/security', '/settings/advanced', '/settings/history', '/settings/backup', '/settings/about', '/settings/reset']) {
+      const { page, errors } = await open({ path, stored: true, locale, market: MARKET, backup: BACKUP_SET });
       await page.locator('main').waitFor();
       assert.deepEqual(errors, [], `${path} threw in ${locale}`);
       await page.close();
@@ -1361,6 +1438,147 @@ await check('a vouched box lists its domains with the records to publish, adds o
   assert.deepEqual(domainPosts.at(-1), ['/api/domains/remove', { domain: 'cloud.example.org' }]);
   assert.deepEqual(errors, []);
   await page.close();
+});
+
+await check('the Backup pane saves a bucket without echoing the secret, backs up and restores with a code', async () => {
+  const { page, errors, backupPosts } = await open({ path: '/settings/backup', stored: true });
+  const form = page.getByTestId('backup-target-form');
+  await form.getByLabel('Address').fill(' https://s3.eu-central-1.amazonaws.com/ ');
+  await form.getByLabel('Bucket').fill('mattbox-backups');
+  await form.getByLabel('Folder').fill('/losos/');
+  await form.getByLabel('Access key').fill('AKIAEXAMPLE1234');
+  const save = form.getByRole('button', { name: 'Save', exact: true });
+  assert.ok(await save.isDisabled(), 'saved a new bucket without a secret key');
+  await form.getByLabel('Secret key').fill('s3cr3t/Key+value');
+  await save.click();
+  const shown = page.getByTestId('backup-target');
+  await shown.getByText('mattbox-backups/losos', { exact: true }).waitFor();
+  assert.deepEqual(backupPosts[0], [
+    'POST',
+    '/api/backup/target',
+    {
+      endpoint: 'https://s3.eu-central-1.amazonaws.com',
+      bucket: 'mattbox-backups',
+      prefix: 'losos',
+      region: '',
+      accessKeyId: 'AKIAEXAMPLE1234',
+      secretAccessKey: 's3cr3t/Key+value',
+      storageClass: 'standard',
+    },
+  ]);
+  assert.doesNotMatch(await page.locator('main').innerText(), /s3cr3t/, 'the secret is on the screen');
+
+  // Changing the bucket and leaving the secret empty keeps the stored one.
+  await shown.getByRole('button', { name: 'Change…' }).click();
+  await page.getByText('Stored. Leave it empty to keep it.').waitFor();
+  await page.getByTestId('backup-target-form').getByRole('button', { name: 'Save', exact: true }).click();
+  await page.getByTestId('backup-target').waitFor();
+  assert.equal('secretAccessKey' in backupPosts[1][2], false, 'an empty secret field was sent');
+
+  const code = page.getByTestId('backup-code');
+  assert.equal(await code.getByTestId('recovery-code').count(), 0, 'the code is on screen before it was asked for');
+  await code.getByRole('button', { name: 'Show', exact: true }).click();
+  await code.getByText('b3c1d2e4-5f60-4a7b-8c9d-0e1f2a3b4c5d').waitFor();
+
+  await page.getByTestId('backup-runs').getByRole('button', { name: 'Back up', exact: true }).click();
+  await page.getByTestId('backup-running').waitFor();
+  assert.deepEqual(backupPosts[2], ['POST', '/api/backup/run', null]);
+  await page.close();
+
+  const again = await open({ path: '/settings/backup', stored: true, backup: BACKUP_SET });
+  const restore = again.page.getByTestId('backup-restore');
+  await again.page.getByTestId('backup-runs').getByText(/4\.5 GB, 1,832 files/).waitFor();
+  const button = restore.getByRole('button', { name: 'Restore…' });
+  await restore.getByLabel('Recovery code').fill('not a code');
+  assert.ok(await button.isDisabled(), 'a malformed code can be sent');
+  await restore.getByLabel('Recovery code').fill(` ${OLD_CODE.toUpperCase()} `);
+  await button.click();
+  const dialog = again.page.getByRole('dialog');
+  await dialog.getByText('Restore the newest backup?').waitFor();
+  await dialog.getByRole('button', { name: 'Restore', exact: true }).click();
+  await again.page.getByTestId('restore-running').waitFor();
+  assert.deepEqual(again.backupPosts, [['POST', '/api/backup/restore', { code: OLD_CODE.toUpperCase() }]]);
+  assert.deepEqual([...errors, ...again.errors], []);
+  await again.page.close();
+});
+
+await check('Glacier is offered on Amazon S3 only, and a restore from it warns that it takes hours', async () => {
+  const { page, errors, backupPosts } = await open({ path: '/settings/backup', stored: true });
+  const form = page.getByTestId('backup-target-form');
+  const select = form.getByLabel('Storage');
+  await form.getByLabel('Address').fill('https://minio.example.org:9000');
+  assert.ok(await select.isDisabled(), 'Glacier is offered off Amazon S3');
+  await form.getByText('Glacier is on Amazon S3 only.', { exact: false }).waitFor();
+  await form.getByLabel('Address').fill('https://s3.eu-central-1.amazonaws.com');
+  assert.ok(await select.isEnabled(), 'Glacier is not offered on Amazon S3');
+  await select.selectOption('deepArchive');
+  await form.getByText('A restore waits up to 12 hours', { exact: false }).waitFor();
+  await form.getByLabel('Bucket').fill('mattbox-backups');
+  await form.getByLabel('Access key').fill('AKIAEXAMPLE1234');
+  await form.getByLabel('Secret key').fill('s3cr3t/Key+value');
+  await form.getByRole('button', { name: 'Save', exact: true }).click();
+  await page.getByTestId('backup-class').getByText('Glacier Deep Archive', { exact: true }).waitFor();
+  assert.equal(backupPosts[0][2].storageClass, 'deepArchive');
+
+  // Switching the address away from AWS sends Standard, whatever was picked.
+  await page.getByTestId('backup-target').getByRole('button', { name: 'Change…' }).click();
+  const again = page.getByTestId('backup-target-form');
+  assert.equal(await again.getByLabel('Storage').inputValue(), 'deepArchive');
+  await again.getByLabel('Address').fill('http://192.168.1.20:9000');
+  await again.getByRole('button', { name: 'Save', exact: true }).click();
+  await page.getByTestId('backup-class').getByText('Standard', { exact: true }).waitFor();
+  assert.equal(backupPosts[1][2].storageClass, 'standard');
+  await page.close();
+
+  const cold = await open({
+    path: '/settings/backup',
+    stored: true,
+    backup: { ...BACKUP_SET, target: { ...BACKUP_SET.target, storageClass: 'glacier' } },
+  });
+  const restore = cold.page.getByTestId('backup-restore');
+  await restore.getByLabel('Recovery code').fill(OLD_CODE);
+  await restore.getByRole('button', { name: 'Restore…' }).click();
+  const dialog = cold.page.getByRole('dialog');
+  await dialog.getByTestId('restore-thaw').waitFor();
+  await dialog.getByRole('button', { name: 'Restore', exact: true }).click();
+  await cold.page.getByTestId('restore-running').getByText('AWS is thawing the backup first', { exact: false }).waitFor();
+  assert.deepEqual([...errors, ...cold.errors], []);
+  await cold.page.close();
+});
+
+await check('the Reset pane starts an erase with a backup, counts down and cancels it', async () => {
+  const { page, errors, backupPosts } = await open({ path: '/settings/reset', stored: true, backup: BACKUP_SET });
+  const section = page.getByTestId('erase');
+  await page.getByTestId('erase-report').getByText('Custom domains removed').waitFor();
+  await section.getByRole('button', { name: 'Erase…' }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByText('Erase everything on this box?').waitFor();
+  assert.ok(await dialog.getByRole('switch', { name: 'Back up first' }).isChecked(), 'the backup is off by default');
+  await dialog.getByRole('button', { name: 'Start the countdown' }).click();
+  const countdown = page.getByTestId('erase-countdown');
+  await countdown.getByRole('timer').waitFor();
+  assert.match(await countdown.getByRole('timer').innerText(), /^1[45]:\d\d$/);
+  assert.deepEqual(backupPosts[0], ['POST', '/api/erase', { backup: true }]);
+  assert.equal(await page.getByTestId('erase-report').count(), 0, 'the old report shows during an erase');
+
+  await countdown.getByRole('button', { name: 'Cancel erase' }).click();
+  await section.getByRole('button', { name: 'Erase…' }).waitFor();
+  assert.deepEqual(backupPosts[1], ['POST', '/api/erase/cancel', null]);
+  await page.locator('[data-toast]').filter({ hasText: 'Erase cancelled' }).waitFor();
+  assert.deepEqual(errors, []);
+  await page.close();
+
+  // Without a bucket the backup cannot be asked for, and the dialog says so.
+  const bare = await open({ path: '/settings/reset', stored: true });
+  await bare.page.getByTestId('erase').getByRole('button', { name: 'Erase…' }).click();
+  const sw = bare.page.getByRole('dialog').getByRole('switch', { name: 'Back up first' });
+  assert.ok(await sw.isDisabled(), 'the backup switch is live with no bucket');
+  assert.equal(await sw.isChecked(), false);
+  await bare.page.getByRole('dialog').getByText(/nothing can be brought back/).waitFor();
+  await bare.page.getByRole('button', { name: 'Start the countdown' }).click();
+  await bare.page.getByTestId('erase-countdown').waitFor();
+  assert.deepEqual(bare.backupPosts[0], ['POST', '/api/erase', { backup: false }]);
+  await bare.page.close();
 });
 
 await check('a phone-width viewport does not scroll the page sideways', async () => {

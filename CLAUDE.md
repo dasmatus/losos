@@ -108,6 +108,13 @@ and is never served or built by nix.
   these at eval time.
 - `grow.rs`: `losos-ctl grow` runs lvextend, `cryptsetup resize`, `resize2fs`
   online, asserted against the plan and in `tests/resize.nix`.
+- `backup.nix` + `backup.rs` + `erase.rs`: restic backups to an S3 bucket,
+  encrypted on the box with the recovery code as the password, run as
+  `losos-backup-<job>` units outside lososd's sandbox; the fscrypt domain is
+  unlocked for the copy. The erase is phased in `state.json` (backup,
+  cancellable countdown, leave the edge, reset, reboot) and
+  `losos-factory-wipe.service` deletes the data before sysinit on the next
+  boot. `tests/erase.nix` runs the cycle against MinIO.
 - `edge-vercel/`: the registrar's router as one Vercel Function over Neon
   Postgres, for demos. `/cluster/join` and `/market/*` answer 503 there.
 - `backend-registrar/src/{domains,zone}.rs` + `losos.edge.dns`: an official

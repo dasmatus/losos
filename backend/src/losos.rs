@@ -205,6 +205,43 @@ pub trait Losos {
     fn mint_secret(&mut self) -> anyhow::Result<crate::setup::Secret>;
     fn load_sync_report(&mut self) -> anyhow::Result<Option<crate::config_repo::SyncReport>>;
     fn save_sync_report(&mut self, report: &crate::config_repo::SyncReport) -> anyhow::Result<()>;
+
+    // ── Backups and erasing the box (`crate::backup`, `crate::erase`) ───
+    // The copying is done by scripts in transient units; these are the
+    // handles lososd holds them by, and the few files it reads back.
+    /// The bucket backups go to, or `None` when none is set.
+    fn backup_target(&mut self) -> anyhow::Result<Option<crate::backup::Target>>;
+    /// Keep the bucket (0600, with the units' environment file beside it),
+    /// or with `None` forget it.
+    fn write_backup_target(&mut self, target: Option<&crate::backup::Target>)
+        -> anyhow::Result<()>;
+    /// Start the transient unit that runs `kind`'s script for `job`.
+    fn start_backup_job(&mut self, kind: crate::backup::Kind, job: &str) -> anyhow::Result<()>;
+    /// What that unit is doing.
+    fn poll_backup_job(&mut self, kind: crate::backup::Kind, job: &str) -> crate::supervisor::Poll;
+    /// Stop it, for a cancelled erase.
+    fn stop_backup_job(&mut self, kind: crate::backup::Kind, job: &str) -> anyhow::Result<()>;
+    /// Last non-empty line of the backup and restore log, or `""`.
+    fn backup_log_tail(&mut self) -> String;
+    /// What the last successful backup recorded, if there was one.
+    fn backup_report(&mut self) -> anyhow::Result<Option<crate::backup::Report>>;
+    /// Hand the restore unit the recovery code that opens the backup, in a
+    /// 0600 file on `/run`; `None` removes it.
+    fn write_restore_code(&mut self, code: Option<&str>) -> anyhow::Result<()>;
+    /// The `overrides.nix` a finished restore staged, taken (the staged copy
+    /// is removed), or `None` when there is none.
+    fn take_restored_overrides(&mut self) -> anyhow::Result<Option<String>>;
+    /// Unix seconds.
+    fn now(&mut self) -> u64;
+    /// How long an erase counts down before it starts changing anything
+    /// (`losos.reset.graceMinutes`).
+    fn erase_grace_secs(&mut self) -> u64;
+    /// Leave the marker the boot-time wipe looks for, and reboot.
+    fn wipe_and_reboot(&mut self) -> anyhow::Result<()>;
+    /// Keep what the last erase gave up outside the box where the wipe leaves
+    /// it, and read it back.
+    fn write_erase_report(&mut self, report: &crate::erase::Outside) -> anyhow::Result<()>;
+    fn read_erase_report(&mut self) -> anyhow::Result<Option<crate::erase::Outside>>;
 }
 
 /// Message stamped on a rebuild the moment it is queued.
@@ -289,7 +326,12 @@ pub fn cmd_change<L: Losos>(l: &mut L, mode: Mode) -> anyhow::Result<Value> {
 /// the journal and a `null` in the reply, not a refused Apply. The sync
 /// (`cmd_config_sync`) commits whatever is uncommitted before it pushes, so
 /// the history catches up on the next run.
-fn commit_settings<L: Losos>(l: &mut L, title: &str, before: &str, after: &str) -> Value {
+pub(crate) fn commit_settings<L: Losos>(
+    l: &mut L,
+    title: &str,
+    before: &str,
+    after: &str,
+) -> Value {
     let changes = crate::overrides::describe_changes(before, after);
     let (subject, body) = crate::overrides::commit_message(title, &changes);
     match l.config_commit(&subject, &body) {
@@ -306,7 +348,7 @@ fn commit_settings<L: Losos>(l: &mut L, title: &str, before: &str, after: &str) 
 }
 
 /// Queue a rebuild: a fresh job id, `building` in the state, the unit.
-fn queue_rebuild<L: Losos>(l: &mut L, message: &str) -> anyhow::Result<String> {
+pub(crate) fn queue_rebuild<L: Losos>(l: &mut L, message: &str) -> anyhow::Result<String> {
     let job = l.next_job_id()?;
     let mut s = l.load_state()?;
     s.rebuild = Some(building(&job, message));
@@ -356,6 +398,13 @@ pub fn cmd_apply<L: Losos>(l: &mut L, nix_code: &str) -> anyhow::Result<Value> {
 /// destructive tier (wipe the disks, and with them state.json) is the installer
 /// ISO, not this.
 pub fn cmd_factory_reset<L: Losos>(l: &mut L) -> anyhow::Result<Value> {
+    // An erase (`crate::erase`) resets the settings itself, at its own step;
+    // a second reset racing it would queue a rebuild the erase is not
+    // watching.
+    let current = l.load_state()?;
+    if current.erase.is_some() {
+        return Err(crate::backup::Busy("the box is being erased").into());
+    }
     let before = l.read_overrides()?;
     l.write_overrides(DEFAULT_OVERRIDES_NIX)?;
     let commit = commit_settings(l, "Reset", &before, DEFAULT_OVERRIDES_NIX);
@@ -368,10 +417,14 @@ pub fn cmd_factory_reset<L: Losos>(l: &mut L) -> anyhow::Result<Value> {
     // on that LAN an unguarded password prompt. The destructive tier that truly
     // makes the box unowned is the installer ISO, which wipes /persist and takes
     // state.json with it.
-    let claimed = l.load_state().map(|s| s.claimed).unwrap_or(false);
+    //
+    // The backup job record is carried over too: it is not a setting, and a
+    // backup that is running when the settings are reset keeps running.
+    let claimed = current.claimed;
     let s = State {
         rebuild: Some(building(&job, MSG_RESET_STARTED)),
         claimed,
+        backup_job: current.backup_job,
         ..State::default()
     };
     l.save_state(&s)?;
@@ -1767,6 +1820,55 @@ mod tests {
                 r: &crate::config_repo::SyncReport,
             ) -> anyhow::Result<()> {
                 self.0.save_sync_report(r)
+            }
+            fn backup_target(&mut self) -> anyhow::Result<Option<crate::backup::Target>> {
+                self.0.backup_target()
+            }
+            fn write_backup_target(
+                &mut self,
+                t: Option<&crate::backup::Target>,
+            ) -> anyhow::Result<()> {
+                self.0.write_backup_target(t)
+            }
+            fn start_backup_job(&mut self, k: crate::backup::Kind, j: &str) -> anyhow::Result<()> {
+                self.0.start_backup_job(k, j)
+            }
+            fn poll_backup_job(
+                &mut self,
+                k: crate::backup::Kind,
+                j: &str,
+            ) -> crate::supervisor::Poll {
+                self.0.poll_backup_job(k, j)
+            }
+            fn stop_backup_job(&mut self, k: crate::backup::Kind, j: &str) -> anyhow::Result<()> {
+                self.0.stop_backup_job(k, j)
+            }
+            fn backup_log_tail(&mut self) -> String {
+                self.0.backup_log_tail()
+            }
+            fn backup_report(&mut self) -> anyhow::Result<Option<crate::backup::Report>> {
+                self.0.backup_report()
+            }
+            fn write_restore_code(&mut self, c: Option<&str>) -> anyhow::Result<()> {
+                self.0.write_restore_code(c)
+            }
+            fn take_restored_overrides(&mut self) -> anyhow::Result<Option<String>> {
+                self.0.take_restored_overrides()
+            }
+            fn now(&mut self) -> u64 {
+                self.0.now()
+            }
+            fn erase_grace_secs(&mut self) -> u64 {
+                self.0.erase_grace_secs()
+            }
+            fn wipe_and_reboot(&mut self) -> anyhow::Result<()> {
+                self.0.wipe_and_reboot()
+            }
+            fn write_erase_report(&mut self, r: &crate::erase::Outside) -> anyhow::Result<()> {
+                self.0.write_erase_report(r)
+            }
+            fn read_erase_report(&mut self) -> anyhow::Result<Option<crate::erase::Outside>> {
+                self.0.read_erase_report()
             }
         }
 

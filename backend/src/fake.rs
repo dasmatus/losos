@@ -155,6 +155,30 @@ pub struct FakeLosos {
     pub sync_report: Option<crate::config_repo::SyncReport>,
     /// Numbers the next commit the fake makes.
     pub commit_seq: u32,
+
+    // ── Backups and erasing the box ─────────────────────────────────────
+    /// Stands in for `/var/secrets/losos-backup.json`.
+    pub backup_target: Option<crate::backup::Target>,
+    /// Every backup or restore unit started, by unit name, in order.
+    pub units_started: Vec<String>,
+    /// Every one stopped.
+    pub units_stopped: Vec<String>,
+    /// What polling any job's unit answers. Running by default.
+    pub unit_poll: crate::supervisor::Poll,
+    /// The last line of the backup log.
+    pub backup_log: String,
+    pub backup_report: Option<crate::backup::Report>,
+    /// Stands in for the restore unit's code file.
+    pub restore_code: Option<String>,
+    /// What a restore staged as `overrides.nix`.
+    pub restored_overrides: Option<String>,
+    /// Unix seconds; tests move it by hand.
+    pub clock: u64,
+    /// The erase countdown, 15 minutes like the default option.
+    pub grace_secs: u64,
+    /// Whether the box was told to wipe and reboot.
+    pub rebooted: bool,
+    pub erase_report: Option<crate::erase::Outside>,
 }
 
 /// One commit in the fake's history.
@@ -254,6 +278,18 @@ impl FakeLosos {
             forgejo_calls: Vec::new(),
             sync_report: None,
             commit_seq: 1,
+            backup_target: None,
+            units_started: Vec::new(),
+            units_stopped: Vec::new(),
+            unit_poll: crate::supervisor::Poll::Wait,
+            backup_log: String::new(),
+            backup_report: None,
+            restore_code: None,
+            restored_overrides: None,
+            clock: 1_700_000_000,
+            grace_secs: 900,
+            rebooted: false,
+            erase_report: None,
         }
     }
 
@@ -686,5 +722,74 @@ impl Losos for FakeLosos {
     fn save_sync_report(&mut self, report: &crate::config_repo::SyncReport) -> anyhow::Result<()> {
         self.sync_report = Some(report.clone());
         Ok(())
+    }
+
+    fn backup_target(&mut self) -> anyhow::Result<Option<crate::backup::Target>> {
+        Ok(self.backup_target.clone())
+    }
+
+    fn write_backup_target(
+        &mut self,
+        target: Option<&crate::backup::Target>,
+    ) -> anyhow::Result<()> {
+        self.backup_target = target.cloned();
+        Ok(())
+    }
+
+    fn start_backup_job(&mut self, kind: crate::backup::Kind, job: &str) -> anyhow::Result<()> {
+        self.units_started.push(kind.unit(job));
+        Ok(())
+    }
+
+    fn poll_backup_job(
+        &mut self,
+        _kind: crate::backup::Kind,
+        _job: &str,
+    ) -> crate::supervisor::Poll {
+        self.unit_poll.clone()
+    }
+
+    fn stop_backup_job(&mut self, kind: crate::backup::Kind, job: &str) -> anyhow::Result<()> {
+        self.units_stopped.push(kind.unit(job));
+        Ok(())
+    }
+
+    fn backup_log_tail(&mut self) -> String {
+        self.backup_log.clone()
+    }
+
+    fn backup_report(&mut self) -> anyhow::Result<Option<crate::backup::Report>> {
+        Ok(self.backup_report.clone())
+    }
+
+    fn write_restore_code(&mut self, code: Option<&str>) -> anyhow::Result<()> {
+        self.restore_code = code.map(str::to_string);
+        Ok(())
+    }
+
+    fn take_restored_overrides(&mut self) -> anyhow::Result<Option<String>> {
+        Ok(self.restored_overrides.take())
+    }
+
+    fn now(&mut self) -> u64 {
+        self.clock
+    }
+
+    fn erase_grace_secs(&mut self) -> u64 {
+        self.grace_secs
+    }
+
+    fn wipe_and_reboot(&mut self) -> anyhow::Result<()> {
+        self.rebooted = true;
+        Ok(())
+    }
+
+    fn write_erase_report(&mut self, report: &crate::erase::Outside) -> anyhow::Result<()> {
+        self.erase_report = Some(report.clone());
+        Ok(())
+    }
+
+    fn read_erase_report(&mut self) -> anyhow::Result<Option<crate::erase::Outside>> {
+        Ok(self.erase_report.clone())
     }
 }

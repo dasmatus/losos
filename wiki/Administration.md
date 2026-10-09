@@ -247,6 +247,72 @@ that cannot be switched off. `tests/front-vhost.nix` checks both services'
 routes with sharing on and off; `tests/invariants.nix` checks the gate at
 eval time.
 
+## Backup, restore and erase
+
+**Settings, Backup** sends the box's data to an S3-compatible bucket the
+owner rents (Amazon S3, Glacier included, Backblaze B2, Wasabi, Cloudflare
+R2, MinIO).
+[restic](https://restic.net) does the copying and encrypts on the box before
+anything leaves it, so the bucket holds ciphertext. The repository password
+is the box's recovery code (`/var/secrets/losos-recovery-code`), which the
+pane shows on request; without it nobody can open a backup.
+
+A backup holds:
+
+- `/var/lib/nextcloud` and `/var/lib/forgejo`, Nextcloud previews left out;
+- a `pg_dump` of the `nextcloud` and `forgejo` databases;
+- the shared folder. When sharing is on it is an fscrypt policy, and Linux
+  gives no ciphertext for a locked fscrypt file, so the script unlocks the
+  policy for the copy and locks it again afterwards. restic's encryption
+  covers it in the bucket;
+- `modules/overrides.nix`, the home page's look and the proxy token.
+
+On an `amazonaws.com` address the owner can pick a storage class: Glacier
+Instant Retrieval, Glacier Flexible Retrieval or Glacier Deep Archive.
+restic puts only the data packs in that class and keeps its own metadata in
+S3 Standard, so checking a code and tidying stay instant. A restore from
+Flexible Retrieval or Deep Archive turns on restic's `s3-restore` feature,
+which asks AWS to thaw the packs and waits up to 48 hours; tidying there
+never repacks (`--max-repack-size 0`), since a repack would need a thaw too.
+A lifecycle rule that moves the bucket to Glacier would take restic's
+metadata with it, so the class is chosen on the pane instead.
+
+The bucket keeps the last seven. lososd runs each backup and restore as a
+transient unit, `losos-backup-<job>`, started by systemd outside lososd's
+`ProtectHome=true` sandbox. The bucket's keys reach it as an
+`EnvironmentFile=` in `/var/secrets`, never on a command line.
+
+**Restore** takes the recovery code of the box that made the backup. The
+newest snapshot comes back: the apps stop, the files are synced back, the
+databases are loaded with `pg_restore --clean`, the apps start, and the
+restored `overrides.nix` is checked like any apply and rebuilt. The code
+that opened the backup becomes this box's recovery code. On an erased or
+reinstalled box, run the wizard, set up the same bucket, then restore.
+
+**Settings, Reset, Erase** deletes the data as well as the settings. lososd
+drives it in phases kept in `state.json`, so it carries on with no tab open:
+
+1. an optional backup. If it fails, the erase stops and nothing changes;
+2. a countdown of `losos.reset.graceMinutes` (15 by default). Cancel stops
+   it, and nothing on the box or outside it has changed yet;
+3. leaving the edge: the box's custom domains are removed, its active market
+   listings closed, and it is taken off the registry (`POST /deregister`).
+   Each step is tried even when the one before failed, and the report names
+   the ones the edge did not confirm;
+4. the default settings are committed and rebuilt, then lososd leaves a
+   marker on `/persist` and reboots;
+5. `losos-factory-wipe.service` runs early in the next boot, before
+   `sysinit.target` and before any service that owns the data, and deletes
+   the app data, the databases, both Kubernetes instances' state, the
+   secrets, the journal and the fscrypt metadata. It empties both data
+   homes. The marker goes last, so an interrupted wipe runs again.
+
+Cancelling is possible in steps 1 and 2 only. `/nix`, `/etc/nixos` and the
+disk's keyfile stay, so LosOS is still installed and the box opens the
+setup wizard. `/var/lib/losos-erase/report.json` keeps what the erase gave
+up outside the box, as counts, and Settings, Reset shows it.
+`tests/erase.nix` runs the whole cycle against a MinIO bucket in one VM.
+
 ## Users
 
 Two data users, both without passwords or shells:

@@ -1,6 +1,7 @@
 import type { IconSvgElement } from "@hugeicons/react";
 import {
   ArrowReloadHorizontalIcon,
+  CloudUploadIcon,
   CpuIcon,
   Globe02Icon,
   HardDriveIcon,
@@ -46,6 +47,7 @@ export type SettingsPaneId =
   | "security"
   | "advanced"
   | "history"
+  | "backup"
   | "about"
   | "reset";
 
@@ -235,6 +237,21 @@ export const SETTINGS_PANES: readonly [SettingsPane, ...SettingsPane[]] = [
     "forgejo",
     "changes",
     "audit",
+  ]),
+  /* Backup sits just above the two panes that end a box's life: it is
+   * where the way back is set up, so it should be met before Reset. */
+  pane("backup", CloudUploadIcon, [
+    "backup",
+    "back up",
+    "restore",
+    "bucket",
+    "s3",
+    "minio",
+    "cloud",
+    "copy",
+    "recover",
+    "recovery",
+    "encrypt",
   ]),
   pane("about", InformationCircleIcon, ["version", "info", "identity", "key", "admin", "updates"]),
   pane("reset", ArrowReloadHorizontalIcon, [

@@ -520,6 +520,59 @@
       },
       "description": "The edge's view of this box's custom domains (backend-registrar/src/domains.rs), plus `available`. The same document answers GET, add and remove."
     },
+    "backupResponse": {
+      "type": "object",
+      "required": [
+        "target",
+        "last",
+        "job",
+        "erase",
+        "lastErase",
+        "graceSeconds"
+      ],
+      "properties": {
+        "target": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "endpoint, bucket, prefix, region, accessKeyId, hasSecret and storageClass; never the secret."
+        },
+        "last": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "{time, snapshot, files, bytes} of the last successful backup."
+        },
+        "job": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "{kind: backup|restore, job, state: running|done|failed|cancelled, startedAt, finishedAt?, message}."
+        },
+        "erase": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "{phase: backingUp|waiting|leaving|resetting|restarting|failed, backup, startedAt, deadline?, secondsLeft?, cancellable, message, outside}."
+        },
+        "lastErase": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "{hadEdge, domainsRemoved, listingsClosed, leftEdge, problems, erasedAt}: counts only."
+        },
+        "graceSeconds": {
+          "type": "integer",
+          "minimum": 60
+        }
+      },
+      "description": "GET /api/backup: backups to an S3 bucket and the full erase."
+    },
     "appsSearchResponse": {
       "type": "object",
       "additionalProperties": false,
@@ -1319,6 +1372,44 @@
         "in": "{\"domain\": \"cloud.example.org\"}",
         "out": "domainsResponse",
         "note": "Give a domain up; its route and certificate go at the next reconcile. Audited."
+      },
+      "GET /api/backup": {
+        "auth": true,
+        "out": "backupResponse",
+        "note": "The bucket without its secret key, the last backup (`/var/lib/losos-backup/last.json`), the backup or restore job, an erase under way with `secondsLeft` and `cancellable`, the report the last erase left (kept past the wipe in `/var/lib/losos-erase`), and the countdown length. Nothing set up is 200 with nulls."
+      },
+      "POST /api/backup/target": {
+        "auth": true,
+        "in": "{\"endpoint\": \"https://s3.example.com\", \"bucket\": \"box-backups\", \"prefix\": \"\", \"region\": \"\", \"accessKeyId\": \"...\", \"secretAccessKey\": \"...\" (optional when one is stored), \"storageClass\": \"standard\" | \"glacierInstant\" | \"glacier\" | \"deepArchive\" (optional, standard)}",
+        "out": "{\"target\": <the bucket without its secret>}",
+        "note": "Set the S3 bucket backups go to (backend/src/backup.rs). https, or http only for a LAN address; bucket, folder, region and keys checked by shape; a Glacier storage class only on an amazonaws.com address. 400 with the field named; 409 while a backup or restore runs. The secret is written to /var/secrets (0600) and never answered. Audited."
+      },
+      "DELETE /api/backup/target": {
+        "auth": true,
+        "out": "{\"target\": null}",
+        "note": "Forget the bucket. The backups in it stay. 409 while a job runs or an erase is backing up to it. Audited."
+      },
+      "POST /api/backup/run": {
+        "auth": true,
+        "out": "{\"job\": \"<id>\"}",
+        "note": "Start a backup as the transient unit `losos-backup-<job>`: restic to the bucket, encrypted on the box with the recovery code as the repository password, keeping the last seven. 400 with no bucket; 409 while a job, a rebuild or an erase runs. Audited."
+      },
+      "POST /api/backup/restore": {
+        "auth": true,
+        "in": "{\"code\": \"<recovery code>\"}",
+        "out": "{\"job\": \"<id>\"}",
+        "note": "Restore the newest backup in the bucket, opened with the recovery code of the box that made it (`losos-backup-<job>` running losos-restore). The code becomes this box's recovery code and the restored settings are applied by a rebuild when the job is done. 400 for a code that is not one or no bucket; 409 as for a backup. A wrong code fails the job with \"the recovery code does not open this backup\". Audited."
+      },
+      "POST /api/erase": {
+        "auth": true,
+        "in": "{\"backup\": true | false}",
+        "out": "{\"erase\": <the erase>}",
+        "note": "Start erasing the box (backend/src/erase.rs): an optional backup, a countdown of `losos.reset.graceMinutes`, then the edge is left (custom domains removed, active listings closed, `/deregister`), the settings are put back, and the box restarts; `losos-factory-wipe.service` deletes the data early in the next boot. 400 for a backup with no bucket; 409 while anything else runs. Audited."
+      },
+      "POST /api/erase/cancel": {
+        "auth": true,
+        "out": "{\"erase\": null}",
+        "note": "Stop an erase while it is backing up or counting down, or dismiss one whose backup failed; nothing has changed by then. 409 once the box has started leaving its edge. Audited."
       },
       "GET /api/look": {
         "auth": true,

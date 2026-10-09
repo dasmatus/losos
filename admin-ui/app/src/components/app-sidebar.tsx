@@ -177,7 +177,7 @@ const TREE: readonly Entry[] = [
     icon: Settings01Icon,
     railTo: "/settings",
     children: (
-      ["network", "look", "hardware", "security", "advanced", "history", "about", "reset"] as const
+      ["network", "look", "hardware", "security", "advanced", "history", "backup", "about", "reset"] as const
     ).map(
       settingsLeaf,
     ),

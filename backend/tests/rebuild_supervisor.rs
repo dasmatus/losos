@@ -123,6 +123,8 @@ fn record(backend: &IoLosos, job: &str, state: RebuildState) {
             // Irrelevant to rebuild supervision, but State has no Default-based
             // constructor here and the field is not optional.
             claimed: true,
+            backup_job: None,
+            erase: None,
         },
     )
     .unwrap();

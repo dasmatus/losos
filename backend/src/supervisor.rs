@@ -75,7 +75,7 @@ pub fn log_tail(path: &Path) -> String {
 }
 
 /// What one poll of the unit told us.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Poll {
     /// Still running (or `systemctl` hiccuped) — keep waiting.
     Wait,
@@ -124,10 +124,16 @@ pub fn classify_show(stdout: Option<&str>) -> Poll {
 
 /// Ask `systemctl` what the unit is doing.
 fn poll_unit(job: &str) -> Poll {
+    poll_named(&unit_name(job))
+}
+
+/// Ask `systemctl` what the unit called `unit` is doing. Also how lososd
+/// follows a backup or restore (`crate::backup`).
+pub fn poll_named(unit: &str) -> Poll {
     let stdout = Command::new("systemctl")
         .args([
             "show",
-            &unit_name(job),
+            unit,
             "--value",
             "-p",
             "ActiveState",

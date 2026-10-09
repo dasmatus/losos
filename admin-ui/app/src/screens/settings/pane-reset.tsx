@@ -11,6 +11,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useT } from "@/lib/i18n-react";
+import { EraseSection } from "./erase-section";
 import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText } from "./rows";
 import type { SettingsForm } from "./use-settings-form";
 
@@ -26,6 +27,10 @@ import type { SettingsForm } from "./use-settings-form";
  * The button stays dead until the settings have loaded, which is also what
  * keeps it out of reach behind the unlock prompt, and while a rebuild is
  * already running.
+ *
+ * Under it sits the erase (erase-section.tsx), which is the other kind of
+ * reset: the data goes too. It has its own countdown and its own Cancel,
+ * because lososd drives it whether or not this tab stays open.
  */
 
 export function ResetPane({ form }: { form: SettingsForm }) {
@@ -53,6 +58,8 @@ export function ResetPane({ form }: { form: SettingsForm }) {
         </Group>
         <GroupCaption>{t("panes.reset.caption")}</GroupCaption>
       </PaneSection>
+
+      <EraseSection locked={form.locked} />
 
       <Dialog
         open={confirming}

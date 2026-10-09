@@ -8,6 +8,7 @@ import { ApplyBar } from "./settings/apply-bar";
 import { AboutPane } from "./settings/pane-about";
 import { AdvancedPane } from "./settings/pane-advanced";
 import { AppsPane } from "./settings/pane-apps";
+import { BackupPane } from "./settings/pane-backup";
 import { HardwarePane } from "./settings/pane-hardware";
 import { HistoryPane } from "./settings/pane-history";
 import { LookPane } from "./settings/pane-look";
@@ -117,6 +118,9 @@ function Pane({
     case "history":
       // No draft, no Apply bar: it reads the repository and syncs on request.
       return <HistoryPane locked={form.locked} />;
+    case "backup":
+      // No draft, no Apply bar: the bucket and every run are their own requests.
+      return <BackupPane locked={form.locked} />;
     case "about":
       return <AboutPane form={form} />;
     case "reset":
