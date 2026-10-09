@@ -51,6 +51,7 @@ import { paneById, paneMatches, type SettingsPaneId } from "@/screens/settings/p
  *   Mesh                ▾   (the link opens Mesh; the chevron folds)
  *     Market   soon(TM)     greyed: planned, not open
  *       Disk sharing        greyed with it (its switch is on the Market pane)
+ *     Machines              virtual machines on the mesh
  *   Lab                     (LosOS Lab at /lab/, a page of its own)
  *   Settings            ▾   (a fold only; /settings opens Network)
  *     Network, Hardware, Security, About, Reset
@@ -159,7 +160,7 @@ const TREE: readonly Entry[] = [
     label: "shell.nav.mesh",
     icon: Share08Icon,
     pane: "mesh",
-    children: [marketEntry()],
+    children: [marketEntry(), settingsLeaf("machines")],
   },
   {
     kind: "link",

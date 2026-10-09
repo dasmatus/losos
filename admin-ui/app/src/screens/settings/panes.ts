@@ -2,6 +2,7 @@ import type { IconSvgElement } from "@hugeicons/react";
 import {
   ArrowReloadHorizontalIcon,
   CloudUploadIcon,
+  ComputerCloudIcon,
   CpuIcon,
   Globe02Icon,
   HardDriveIcon,
@@ -40,6 +41,7 @@ export type SettingsPaneId =
   | "storage"
   | "mesh"
   | "market"
+  | "machines"
   | "apps"
   | "network"
   | "look"
@@ -152,6 +154,26 @@ export const SETTINGS_PANES: readonly [SettingsPane, ...SettingsPane[]] = [
     ],
     { planned: true },
   ),
+  /* Virtual machines on the mesh, sold by the replica through the market.
+   * Open, unlike the market: the pane itself says why nothing on it works
+   * while this box does not share its disk (pane-machines.tsx). */
+  pane("machines", ComputerCloudIcon, [
+    "vm",
+    "vms",
+    "virtual",
+    "machine",
+    "machines",
+    "kubevirt",
+    "qcow2",
+    "image",
+    "replica",
+    "replicas",
+    "linux",
+    "ubuntu",
+    "debian",
+    "server",
+    "host",
+  ]),
   pane("apps", LayoutGridIcon, [
     "files",
     "code",
