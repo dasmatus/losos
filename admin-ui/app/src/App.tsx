@@ -48,6 +48,7 @@ import {
   TOKEN_PATTERN,
 } from "@/lib/api";
 import { followAuth } from "@/lib/look";
+import { readProgress } from "@/screens/wizard/progress";
 import { logoFor } from "@/lib/logo";
 import type { SettingsPaneId } from "@/screens/settings/panes";
 import { paneFromPath } from "@/lib/routes";
@@ -164,7 +165,11 @@ function Shell() {
    * is over. There is no route that reaches around this: every path renders the
    * wizard while it is up, so a deep link to /settings on an unclaimed box gets
    * setup too, not a half-configured settings page. */
-  const [setupStarted, setSetupStarted] = React.useState(false);
+  // A reload mid-setup holds the token already; the wizard's own note says
+  // it has not finished (screens/wizard/progress.ts).
+  const [setupStarted, setSetupStarted] = React.useState(
+    () => hasToken() && readProgress() !== null,
+  );
   const [setupDone, setSetupDone] = React.useState(false);
   React.useEffect(() => {
     if (gate === "setup") setSetupStarted(true);

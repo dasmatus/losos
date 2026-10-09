@@ -79,12 +79,11 @@ export const uptimeWidget: WidgetFn = async (losos) => {
  * being opened. One hue; the texture carries the distinction, the way it does
  * everywhere else in this app.
  *
- * Every figure here comes from a real measurement or is absent. The box has
- * no route that reports its disk; POST /api/grow returns sizes, and the
- * Storage screen hands them over after a claim (metrics.ts, recordGrow). Until
- * that has happened this tile draws an em-dash and says why. It does NOT
- * estimate, and it does not fall back to a browser storage quota, which is a
- * number about this tab and not about the box. */
+ * Every figure here comes from a real measurement or is absent: the box's
+ * df and vgs through GET /api/storage (metrics.ts). When the box gives no
+ * size this tile draws an em-dash and says why. It does NOT estimate, and it
+ * does not fall back to a browser storage quota, which is a number about
+ * this tab and not about the box. */
 export const diskWidget: WidgetFn = async (losos) => {
   const m = await losos.metric("storage.bytes");
 

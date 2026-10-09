@@ -42,6 +42,7 @@ import { StepSignIn } from "./wizard/StepSignIn";
 import { StepFirstSignIn } from "./wizard/StepFirstSignIn";
 import { StepText } from "./wizard/parts";
 import { boxName, useSetupState, type SetupQuery } from "./wizard/useSetupState";
+import { clearProgress, readProgress, resumedKey, saveProgress } from "./wizard/progress";
 import {
   nextStep,
   previousStep,
@@ -62,16 +63,26 @@ export default function Wizard({ onDone }: WizardProps) {
   const t = useT();
   const setup = useSetupState();
 
-  const [step, setStep] = React.useState<StepId>("trust");
+  /* A reload in the middle of setup comes back to the same step with the same
+   * gates met (wizard/progress.ts). */
+  const [resumed] = React.useState(readProgress);
+  const [step, setStep] = React.useState<StepId>(resumed?.step ?? "trust");
   const [direction, setDirection] = React.useState<StepDirection>("forward");
   const [finished, setFinished] = React.useState(false);
 
   /* The gates. One per step that has one, held here rather than inside the
    * steps so a Back-then-Forward does not reset them — retyping a password
    * because you went back to re-read the fingerprint would be its own bug. */
-  const [account, setAccount] = React.useState<string | null>(null);
-  const [adminKey, setAdminKey] = React.useState<string | null>(null);
-  const [signedIn, setSignedIn] = React.useState(false);
+  const [account, setAccount] = React.useState<string | null>(resumed?.account ?? null);
+  const [adminKey, setAdminKey] = React.useState<string | null>(() => resumedKey(resumed));
+  const [signedIn, setSignedIn] = React.useState(resumed?.signedIn ?? false);
+
+  /* Kept from the moment step 2 has set a password: before that the box is
+   * still unclaimed and a reload lands in setup anyway. */
+  React.useEffect(() => {
+    if (finished || account === null) return;
+    saveProgress({ step, account, keyShown: adminKey !== null, signedIn });
+  }, [step, account, adminKey, signedIn, finished]);
 
   /* The step's own <section> takes focus on a move, not the heading inside
    * it: the section carries the aria-label, so landing on it announces which
@@ -117,6 +128,7 @@ export default function Wizard({ onDone }: WizardProps) {
 
   const goForward = (): void => {
     if (next === null) {
+      clearProgress();
       setFinished(true);
       // The shell swaps the wizard for the app on `onDone`, so this is the
       // one line that says the sequence ended rather than vanished.

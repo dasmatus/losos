@@ -84,6 +84,14 @@ export interface GrowResponse {
   claimedBytes: number;
 }
 
+/** GET /api/storage: df and vgs on the box. A reading it cannot take is null. */
+export interface StorageResponse {
+  totalBytes: number | null;
+  usedBytes: number | null;
+  /** 0 once the reserve has been claimed. */
+  reserveBytes: number | null;
+}
+
 export interface HealthResponse {
   ok: boolean;
 }
@@ -352,6 +360,10 @@ export function getSettings(options: RequestOptions = {}): Promise<SettingsRespo
 /** GET /api/status — rebuild progress. Poll it with {@link createStatusPoller}. */
 export function getStatus(options: RequestOptions = {}): Promise<StatusResponse> {
   return call<StatusResponse>("/api/status", options);
+}
+
+export function getStorage(options: RequestOptions = {}): Promise<StorageResponse> {
+  return call<StorageResponse>("/api/storage", options);
 }
 
 /* ── Edge proxies ─────────────────────────────────────────────────────────

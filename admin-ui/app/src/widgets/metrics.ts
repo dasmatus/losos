@@ -28,6 +28,7 @@ import {
   getHealth,
   getSettings,
   getStatus,
+  getStorage,
   isAbort,
   type GrowResponse,
   type SettingsResponse,
@@ -303,7 +304,38 @@ export function recordUsedBytes(used: number, total: number): void {
 
 const USED_KEY = "losos-storage-used";
 
-function storageMetric(): StorageMetric {
+/* The box's own reading (GET /api/storage) when it gives one, so the tile
+ * shows the disk in every browser and a claimed reserve as claimed. The
+ * observations below are the fallback for a box too old to serve it. */
+async function storageMetric(signal: AbortSignal | undefined, fresh: boolean): Promise<StorageMetric> {
+  try {
+    const box = await cached(
+      "storage",
+      STATUS_TTL_MS,
+      () => getStorage(signal === undefined ? {} : { signal }),
+      fresh,
+    );
+    const num = (v: unknown): number | null =>
+      typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : null;
+    const totalBytes = num(box.totalBytes);
+    const usedBytes = num(box.usedBytes);
+    if (totalBytes !== null) {
+      return {
+        usedBytes,
+        totalBytes,
+        reserveBytes: num(box.reserveBytes),
+        freeBytes: usedBytes !== null ? Math.max(0, totalBytes - usedBytes) : null,
+        usedRatio: usedBytes !== null && totalBytes > 0 ? usedBytes / totalBytes : null,
+        source: "box",
+      };
+    }
+  } catch (error) {
+    if (isAbort(error)) throw error;
+  }
+  return observedStorage();
+}
+
+function observedStorage(): StorageMetric {
   const grow = readJson<Partial<GrowObservation>>(STORAGE_KEY, {});
   const used = readJson<{ at?: number; used?: number; total?: number }>(USED_KEY, {});
 
@@ -608,7 +640,7 @@ export async function loadMetric(name: string, options: LoadOptions = {}): Promi
       return uptimeMetric(options.days ?? MAX_HEATMAP_DAYS);
 
     case "storage.bytes":
-      return storageMetric();
+      return storageMetric(options.signal, fresh);
 
     case "mesh.compute":
       return meshMetric(await cachedSettings(options.signal, fresh));

@@ -16,7 +16,7 @@ use crate::io_backend::{atomic_write_secret, IoLosos};
 use crate::losos::{
     cmd_apply, cmd_apps_search, cmd_change, cmd_config, cmd_config_sync, cmd_edge,
     cmd_factory_reset, cmd_grow, cmd_options, cmd_recovery, cmd_set_password, cmd_settings,
-    cmd_sign_in, cmd_state, cmd_status,
+    cmd_sign_in, cmd_state, cmd_status, cmd_storage,
 };
 use crate::model::Mode;
 use crate::overrides::validate_apply;
@@ -460,6 +460,10 @@ async fn post_erase_cancel(api: web::Data<Api>, req: HttpRequest) -> HttpRespons
 /// Synchronous, unlike every other POST here: it is three short-lived commands
 /// rather than a supervised rebuild, so it returns the measured before/after
 /// sizes instead of a job id to poll.
+async fn get_storage(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    guarded(&api, &req, "/api/storage", false, || run(&api, cmd_storage))
+}
+
 async fn post_grow(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
     guarded(&api, &req, "/api/grow", true, || run(&api, cmd_grow))
 }
@@ -1483,6 +1487,7 @@ pub fn serve(backend: IoLosos) -> anyhow::Result<()> {
                 .route("/api/backup/restore", web::post().to(post_backup_restore))
                 .route("/api/erase", web::post().to(post_erase))
                 .route("/api/erase/cancel", web::post().to(post_erase_cancel))
+                .route("/api/storage", web::get().to(get_storage))
                 .route("/api/grow", web::post().to(post_grow))
                 .route("/api/set-password", web::post().to(post_set_password))
                 .route("/api/recovery", web::get().to(get_recovery))
