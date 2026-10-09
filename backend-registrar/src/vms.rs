@@ -438,7 +438,11 @@ pub fn vm_manifest(
 ) -> Value {
     let order = stem(&p.order_id);
     let disk = format!("{name}-disk");
+    // Access and volume mode spelled out: CDI reads them from the class's
+    // StorageProfile otherwise, and a local-path class has none.
     let mut storage = json!({
+        "accessModes": ["ReadWriteOnce"],
+        "volumeMode": "Filesystem",
         "resources": { "requests": { "storage": format!("{}Gi", p.disk_gib) } },
     });
     if let Some(class) = storage_class {
