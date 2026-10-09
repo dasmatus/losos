@@ -231,7 +231,7 @@ let
     )
   );
 
-  # ── Federation (wiki/Edge-Federation.md) ────────────────────────────────
+  # ── Federation (handbook/docs/in-depth/edge-federation.md) ───────────────
   # Where TOFU-enrolled boxes are kept (losos.edge.lan.openEnrolment): a
   # second whitelist-shaped file plus one token file per box, under the
   # registrar's StateDirectory so it survives a restart like the registry.

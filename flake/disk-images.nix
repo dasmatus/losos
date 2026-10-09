@@ -400,10 +400,10 @@ let
   # ── The edge gateway image ─────────────────────────────────────────────
   #
   # Unlike the demo qcow2, this one IS the product it images: the edge gateway
-  # (modules/edge-gateway.nix, wiki/Edge-Federation.md) is a LAN machine with
-  # no encrypted layout, no impermanence and no owner data, so a disk image
-  # loses nothing. flake/edge-gateway-vm.nix is its hardware half. Small
-  # enough to be a GitHub release asset, which CI's release job makes it.
+  # (modules/edge-gateway.nix, handbook/docs/in-depth/edge-federation.md) is a
+  # LAN machine with no encrypted layout, no impermanence and no owner data, so
+  # a disk image loses nothing. flake/edge-gateway-vm.nix is its hardware half.
+  # Small enough to be a GitHub release asset, which CI's release job makes it.
   edgeGateway = self.nixosConfigurations.edge-gateway;
   edgeImage = import "${nixpkgs}/nixos/lib/make-disk-image.nix" {
     inherit pkgs lib;

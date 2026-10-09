@@ -1,15 +1,15 @@
 //! Edge federation: the pure half of relaying a site's boxes through a hub,
 //! and the on-disk store of boxes a LAN edge enrolled on first contact.
 //!
-//! wiki/Edge-Federation.md is the design. In one paragraph: a user-hosted
-//! edge (a **spoke**) is an ordinary tenant of an official edge (a **hub**)
-//! whose whitelist row carries a `relay_zone`. The spoke POSTs `/relay` with
-//! the boxes it currently serves; the hub keeps a `<spoke>.<box>` tenant for
-//! each, routes `Host(<box hostname>)` into a rathole service of that name,
-//! and the spoke's uplink rathole client (`crate::config::uplink_config`)
-//! delivers that service onto the box's own tunnel. Hostname authority stays
-//! with the hub operator: a relayed hostname must be exactly one label under
-//! the zone they wrote.
+//! handbook/docs/in-depth/edge-federation.md is the design. In one paragraph: a
+//! user-hosted edge (a **spoke**) is an ordinary tenant of an official edge (a
+//! **hub**) whose whitelist row carries a `relay_zone`. The spoke POSTs
+//! `/relay` with the boxes it currently serves; the hub keeps a `<spoke>.<box>`
+//! tenant for each, routes `Host(<box hostname>)` into a rathole service of
+//! that name, and the spoke's uplink rathole client
+//! (`crate::config::uplink_config`) delivers that service onto the box's own
+//! tunnel. Hostname authority stays with the hub operator: a relayed hostname
+//! must be exactly one label under the zone they wrote.
 //!
 //! What lives here is testable without a socket: the wire shapes, the name
 //! rules, the uplink file a spoke reads its hub from, and [`Enrolment`], the

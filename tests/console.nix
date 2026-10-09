@@ -20,9 +20,9 @@ pkgs.testers.nixosTest {
       losos.hostName = "consolebox";
     };
 
-  # The same banner on a box the installer put in keyfile mode, which has to
-  # say what that costs (wiki/TPM.md). `machine` keeps the default TPM and
-  # must not.
+  # The same banner on a box the installer put in keyfile mode, which has to say
+  # what that costs (handbook/docs/reference/tpm.md). `machine` keeps the
+  # default TPM and must not.
   nodes.keyfile =
     { ... }:
     {
