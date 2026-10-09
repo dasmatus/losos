@@ -761,6 +761,28 @@ await check('GPU canvas: SVG first, then the swap carries the setup, the selecti
     (n) => (document.querySelector('[data-testid=inspector-device]')?.textContent ?? '').includes(n),
     name.split(',')[0],
   );
+  // A pointerdown or pointerup that names no button (button -1, as a pen
+  // or a touchpad can send) panicked winit, on the canvas and, while the
+  // canvas has focus, anywhere on the page. `clean` fails on the uncaught
+  // error a panic leaves, and the clicks after it prove the canvas lives.
+  await page.evaluate(() => {
+    const canvas = document.querySelector('canvas#lab-gpu-canvas');
+    canvas.focus();
+    for (const target of [canvas, document.body]) {
+      for (const type of ['pointerdown', 'pointerup']) {
+        for (const pointerType of ['mouse', 'pen']) {
+          target.dispatchEvent(new PointerEvent(type, { bubbles: true, button: -1, pointerType, clientX: 10, clientY: 10 }));
+        }
+      }
+    }
+  });
+  await page.mouse.click(router.x + router.width / 2, router.y + 30);
+  await page.waitForFunction(() => /home-router/.test(document.querySelector('[data-testid=inspector-device]')?.textContent ?? ''));
+  await page.mouse.click(at.x + at.width / 2, at.y + 30);
+  await page.waitForFunction(
+    (n) => (document.querySelector('[data-testid=inspector-device]')?.textContent ?? '').includes(n),
+    name.split(',')[0],
+  );
   // The keyboard stays with React: Delete removes the selected box, and a
   // click on its spot then selects nothing.
   await page.keyboard.press('Delete');
