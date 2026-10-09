@@ -62,8 +62,8 @@ Release-Job veröffentlicht es als
 
 **Der Großteil der Quickemu-Liste wird nicht angeboten.** Diese Systeme gibt
 es nur als Installations-ISO, und eine Installation braucht eine Konsole im
-Browser, die die Seite noch nicht hat. Die Seite führt sie unter „Systeme noch
-nicht im Angebot“ auf, zusammen mit den wenigen, die aus einem anderen Grund
+Browser, die die Seite noch nicht hat. Die Seite führt sie unter "Systeme noch
+nicht im Angebot" auf, zusammen mit den wenigen, die aus einem anderen Grund
 fehlen (macOS, dessen Lizenz nur Apple-Hardware erlaubt; Windows, das eine
 Lizenz und eine Konsole braucht; und ein paar, deren Cloud-Images keine feste
 Adresse haben oder in einem Archiv kommen, das CDI nicht lesen kann).
@@ -83,7 +83,7 @@ seine Sperre zu halten, und der Edge prüft sie schon beim Empfang:
 - Sie muss in das Limit passen (`losos.edge.vms.uploadMaxGiB`, standardmäßig
   32 GiB), sonst 413, und ihre virtuelle Festplatte darf höchstens 512 GiB
   groß sein.
-- Sie muss in Bewegung bleiben: Eine Minute ohne ein Byte bricht ab.
+- Sie muss in Bewegung bleiben, denn eine Minute ohne ein Byte bricht ab.
 
 Eine Box kann drei Images behalten. Jedes liegt auf dem Edge unter
 `/var/lib/losos-registrar/vm-images/` mit Modus 0600, und jedes Replikat, das
@@ -138,7 +138,7 @@ Replikat noch hochfährt.
 
 **Wenn der Monat um ist**, wird jedes Replikat angehalten
 (`runStrategy: Halted`), und sein Platz geht an das Angebot zurück. Die
-Festplatten bleiben: Sie enthalten die Daten der Käuferin oder des Käufers,
+Festplatten bleiben. Sie enthalten die Daten der Käuferin oder des Käufers,
 und sie zu löschen entscheidet der Betreiber, wie beim Volume einer
 Speicherbestellung.
 
@@ -164,7 +164,7 @@ Mini-PC ist das VT-x oder AMD-V des Prozessors. Eine Box, die selbst eine
 virtuelle Maschine ist, braucht von ihrem Host **verschachtelte
 Virtualisierung** (`kvm_intel nested=1` oder `kvm_amd nested=1` und
 `-cpu host` in QEMU). Ohne sie kann der Betreiber
-`losos.edge.vms.useEmulation` setzen, dann laufen die Replikate in Software:
+`losos.edge.vms.useEmulation` setzen, dann laufen die Replikate in Software.
 Sie starten, aber langsam, und das ist zum Ausprobieren gedacht, nicht zum
 Verkaufen.
 
