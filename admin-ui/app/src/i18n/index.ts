@@ -7,6 +7,7 @@
 import advanced from "./advanced";
 import apps from "./apps";
 import home from "./home";
+import install from "./install";
 import lab from "./lab";
 import look from "./look";
 import machines from "./machines";
@@ -26,6 +27,7 @@ export const MESSAGES = {
   ...panes,
   ...widgets,
   ...apps,
+  ...install,
   ...look,
   ...machines,
   ...advanced,

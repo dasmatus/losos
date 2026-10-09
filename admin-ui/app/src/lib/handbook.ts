@@ -33,6 +33,7 @@ export const HANDBOOK_ENTRIES = {
   "sharing-refused": "troubleshooting/sharing-refused/",
   "getting-help": "troubleshooting/getting-help/",
   "sign-in-and-spare-key": "manual/sign-in-and-spare-key/",
+  apps: "manual/apps/",
   "look-and-widgets": "manual/look-and-widgets/",
   "backup-and-erase": "manual/backup-and-erase/",
   "custom-domain": "types/official-edge/",

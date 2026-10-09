@@ -544,6 +544,33 @@ in
       '';
     };
 
+    apps.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Let the owner install apps found in the catalogue search (Helm
+        charts) into this box's own cluster, each running as `notshared` or
+        `shared`, without root, with its files in that user's data folder.
+        Only on a box that runs its own cluster, which it does while
+        Nextcloud or Forgejo runs in the box's own container mode.
+      '';
+    };
+
+    apps.ports.from = lib.mkOption {
+      type = lib.types.port;
+      default = 30000;
+      description = ''
+        First port of the range that installed apps are opened on, one port
+        per app, reachable from the LAN only.
+      '';
+    };
+
+    apps.ports.to = lib.mkOption {
+      type = lib.types.port;
+      default = 30099;
+      description = "Last port of the range in losos.apps.ports.from.";
+    };
+
     cluster.idleLoadThreshold = lib.mkOption {
       type = lib.types.float;
       default = 0.25;

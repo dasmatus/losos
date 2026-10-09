@@ -97,6 +97,17 @@ pub struct FakeLosos {
     /// prove the command trimmed before searching rather than after.
     pub catalogue_queries: Vec<String>,
 
+    // ── Installing an app ───────────────────────────────────────────────
+    /// `None` models a box with no local cluster.
+    pub apps: Option<crate::apps::Config>,
+    /// What a chart fetch hands back; `None` is a chart that cannot be had.
+    pub chart_files: Option<crate::apps::ChartFiles>,
+    pub app_records: Vec<crate::apps::Record>,
+    /// Every job started, in order.
+    pub app_jobs: Vec<(String, crate::apps::Action)>,
+    /// Apps whose job the fake reports as still running.
+    pub app_jobs_active: Vec<String>,
+
     // ── The market ──────────────────────────────────────────────────────
     /// Registrar answers by `METHOD path`, as `(status, body)`. A route with no
     /// entry models a box with no registrar configured.
@@ -242,6 +253,13 @@ impl FakeLosos {
                     .to_string(),
             ),
             catalogue_queries: Vec::new(),
+            apps: Some(crate::apps::Config {
+                ports: (30000, 30099),
+            }),
+            chart_files: None,
+            app_records: Vec::new(),
+            app_jobs: Vec::new(),
+            app_jobs_active: Vec::new(),
             market_routes: std::collections::BTreeMap::new(),
             market_ops: Vec::new(),
             public_names: None,
@@ -442,6 +460,45 @@ impl Losos for FakeLosos {
             .as_deref()
             .ok_or_else(|| anyhow::anyhow!("the catalogue could not be reached"))?;
         crate::catalogue::parse_results(body)
+    }
+
+    fn apps_config(&mut self) -> Option<crate::apps::Config> {
+        self.apps.clone()
+    }
+
+    fn chart_files(
+        &mut self,
+        _chart: &crate::apps::ChartRef,
+    ) -> anyhow::Result<crate::apps::ChartFiles> {
+        self.chart_files
+            .clone()
+            .ok_or_else(|| anyhow::anyhow!("the chart could not be fetched"))
+    }
+
+    fn load_app_records(&mut self) -> anyhow::Result<Vec<crate::apps::Record>> {
+        Ok(self.app_records.clone())
+    }
+
+    fn save_app_record(&mut self, record: &crate::apps::Record) -> anyhow::Result<()> {
+        match self
+            .app_records
+            .iter_mut()
+            .find(|r| r.release == record.release)
+        {
+            Some(old) => *old = record.clone(),
+            None => self.app_records.push(record.clone()),
+        }
+        Ok(())
+    }
+
+    fn start_app_job(&mut self, release: &str, action: crate::apps::Action) -> anyhow::Result<()> {
+        self.app_jobs.push((release.to_string(), action));
+        self.app_jobs_active.push(release.to_string());
+        Ok(())
+    }
+
+    fn app_job_active(&mut self, release: &str) -> bool {
+        self.app_jobs_active.iter().any(|r| r == release)
     }
 
     /// The real classifier, run against a scripted registrar.

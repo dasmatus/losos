@@ -1123,6 +1123,134 @@ pub fn backup_launch_args(
     ]
 }
 
+/// `$LOSOS_APPS_DIR`, one directory per installed app.
+fn apps_dir() -> PathBuf {
+    PathBuf::from(env_or("LOSOS_APPS_DIR", "/var/lib/losos/apps"))
+}
+
+/// The `systemd-run` arguments for one app job. The job reads everything
+/// else from the app's record, so nothing the owner typed is an argument.
+/// `CollectMode` lets the next job for the same app reuse the unit name
+/// after a failed one.
+pub fn app_launch_args(
+    release: &str,
+    action: crate::apps::Action,
+    log: &str,
+    script: &str,
+) -> Vec<String> {
+    vec![
+        format!("--unit={}", crate::apps::job_unit(release)),
+        format!("--description=losos app {} {release}", action.as_str()),
+        "--property=CollectMode=inactive-or-failed".to_string(),
+        format!("--property=StandardOutput=append:{log}"),
+        format!("--property=StandardError=append:{log}"),
+        format!("--setenv=LOSOS_APPS_DIR={}", apps_dir().display()),
+        script.to_string(),
+        action.as_str().to_string(),
+        release.to_string(),
+    ]
+}
+
+/// Helm's own state, kept with lososd's: a repository index, a pulled chart.
+fn helm_command() -> std::process::Command {
+    let home = PathBuf::from(env_or("LOSOS_HELM_HOME", "/var/lib/losos/helm"));
+    let mut cmd = std::process::Command::new("timeout");
+    cmd.arg("120")
+        .arg("helm")
+        .env("HELM_CACHE_HOME", home.join("cache"))
+        .env("HELM_CONFIG_HOME", home.join("config"))
+        .env("HELM_DATA_HOME", home.join("data"));
+    cmd
+}
+
+/// The last non-empty line a command wrote to stderr, for the journal.
+fn last_line(bytes: &[u8]) -> String {
+    String::from_utf8_lossy(bytes)
+        .lines()
+        .rev()
+        .find(|l| !l.trim().is_empty())
+        .unwrap_or("")
+        .trim()
+        .to_string()
+}
+
+/// Pull the chart into a scratch directory and read its values and schema.
+///
+/// `helm pull` rather than a catalogue's copy of the values: the chart is
+/// what gets installed, so its own `values.yaml` is what the form should
+/// start from. The YAML becomes JSON through `yq`, the same tool the install
+/// job's shaping uses, because this crate has no YAML parser and a new
+/// dependency is a new `cargoHash` (see `crate::catalogue`).
+fn fetch_chart_files(chart: &crate::apps::ChartRef) -> anyhow::Result<crate::apps::ChartFiles> {
+    let seq = JOB_SEQ.fetch_add(1, Ordering::Relaxed);
+    let tmp = std::env::temp_dir().join(format!("losos-chart-{}-{seq}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).context("making a scratch directory for the chart")?;
+    let result = (|| {
+        let (reference, repo) = chart.helm_ref();
+        let mut cmd = helm_command();
+        cmd.args(["pull", "--untar", "--untardir"])
+            .arg(&tmp)
+            .args(["--version", &chart.version]);
+        if let Some(repo) = &repo {
+            cmd.args(["--repo", repo]);
+        }
+        let out = cmd
+            .arg("--")
+            .arg(&reference)
+            .output()
+            .context("running helm pull")?;
+        anyhow::ensure!(
+            out.status.success(),
+            "helm pull {reference} failed: {}",
+            last_line(&out.stderr)
+        );
+        let dir = std::fs::read_dir(&tmp)?
+            .filter_map(Result::ok)
+            .map(|e| e.path())
+            .find(|p| p.is_dir())
+            .context("the chart archive held no chart")?;
+        let values_path = dir.join("values.yaml");
+        let values_yaml = match std::fs::read_to_string(&values_path) {
+            Ok(text) => text,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+            Err(e) => return Err(e).context("reading the chart's values"),
+        };
+        anyhow::ensure!(
+            values_yaml.len() <= crate::apps::MAX_VALUES_YAML_BYTES,
+            "the chart's values.yaml is larger than this box will edit"
+        );
+        let values = if values_yaml.trim().is_empty() {
+            serde_json::json!({})
+        } else {
+            let out = std::process::Command::new("yq")
+                .args(["-o=json", "-I=0", "."])
+                .arg(&values_path)
+                .output()
+                .context("running yq")?;
+            anyhow::ensure!(
+                out.status.success(),
+                "yq could not read the chart's values: {}",
+                last_line(&out.stderr)
+            );
+            match serde_json::from_slice::<serde_json::Value>(&out.stdout)? {
+                serde_json::Value::Null => serde_json::json!({}),
+                v => v,
+            }
+        };
+        let schema = std::fs::read(dir.join("values.schema.json"))
+            .ok()
+            .and_then(|b| serde_json::from_slice(&b).ok());
+        Ok(crate::apps::ChartFiles {
+            values_yaml,
+            values,
+            schema,
+        })
+    })();
+    let _ = std::fs::remove_dir_all(&tmp);
+    result
+}
+
 /// Remove a file; one that is not there is already removed.
 fn remove_if_present(path: &Path) -> anyhow::Result<()> {
     match std::fs::remove_file(path) {
@@ -1655,6 +1783,70 @@ impl Losos for IoLosos {
         let url = crate::catalogue::search_url(query);
         let body = crate::catalogue::Fetch::get(&mut fetch, &url)?;
         crate::catalogue::parse_results(&body)
+    }
+
+    fn apps_config(&mut self) -> Option<crate::apps::Config> {
+        // The job is wired by modules/apps.nix only on a box that runs its
+        // own cluster; without it there is nothing to install into.
+        std::env::var_os("LOSOS_APPS_JOB")?;
+        let ports = crate::apps::parse_port_range(&std::env::var("LOSOS_APPS_PORTS").ok()?)?;
+        Some(crate::apps::Config { ports })
+    }
+
+    fn chart_files(
+        &mut self,
+        chart: &crate::apps::ChartRef,
+    ) -> anyhow::Result<crate::apps::ChartFiles> {
+        fetch_chart_files(chart)
+    }
+
+    fn load_app_records(&mut self) -> anyhow::Result<Vec<crate::apps::Record>> {
+        let dir = apps_dir();
+        let entries = match std::fs::read_dir(&dir) {
+            Ok(entries) => entries,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(e) => return Err(e).with_context(|| format!("reading {}", dir.display())),
+        };
+        let mut records = Vec::new();
+        for entry in entries.filter_map(Result::ok) {
+            let path = entry.path().join("app.json");
+            // A record that does not parse is skipped rather than fatal: one
+            // bad file must not hide every other app from the page.
+            match std::fs::read(&path).map(|b| serde_json::from_slice::<crate::apps::Record>(&b)) {
+                Ok(Ok(r)) => records.push(r),
+                Ok(Err(e)) => tracing::warn!(path = %path.display(), "unreadable app record: {e}"),
+                Err(_) => {}
+            }
+        }
+        records.sort_by(|a, b| a.release.cmp(&b.release));
+        Ok(records)
+    }
+
+    fn save_app_record(&mut self, record: &crate::apps::Record) -> anyhow::Result<()> {
+        let path = apps_dir().join(&record.release).join("app.json");
+        let bytes = serde_json::to_vec_pretty(record).context("encoding the app record")?;
+        // The values can carry passwords the owner typed into a property;
+        // the record is root's alone.
+        atomic_write_secret(&path, &bytes)
+    }
+
+    fn start_app_job(&mut self, release: &str, action: crate::apps::Action) -> anyhow::Result<()> {
+        let script = std::env::var("LOSOS_APPS_JOB").context("this box has no app job")?;
+        let dir = apps_dir().join(release);
+        std::fs::create_dir_all(&dir).context("creating the app's directory")?;
+        let log = dir.join("job.log");
+        std::fs::write(&log, b"").context("starting the app's log")?;
+        let log = log.to_string_lossy().into_owned();
+        let status = std::process::Command::new("systemd-run")
+            .args(app_launch_args(release, action, &log, &script))
+            .status()
+            .context("running systemd-run")?;
+        anyhow::ensure!(status.success(), "systemd-run exited {status}");
+        Ok(())
+    }
+
+    fn app_job_active(&mut self, release: &str) -> bool {
+        supervisor::poll_named(&crate::apps::job_unit(release)) == supervisor::Poll::Wait
     }
 
     fn write_public_names(&mut self, names: &[String]) -> anyhow::Result<()> {

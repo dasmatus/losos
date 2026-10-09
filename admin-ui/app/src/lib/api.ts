@@ -753,6 +753,94 @@ export function putVmImage(
   });
 }
 
+// ── Installed apps ────────────────────────────────────────────────────────
+
+/* Apps the owner installed from the catalogue search, run in the box's own
+ * cluster as one of its two data users (backend/src/apps.rs). */
+
+/** Where the box fetches an app from. */
+export interface AppSource {
+  repo: string;
+  name: string;
+  version: string;
+}
+
+/** The two data users: the private side and the side lent to the mesh. */
+export type AppRunAs = "notshared" | "shared";
+
+export type AppPhase = "installing" | "running" | "failed" | "removing";
+
+export interface InstalledApp {
+  release: string;
+  chart: AppSource;
+  runAs: AppRunAs;
+  /** What the property form changed when it was last installed. */
+  values: Record<string, unknown>;
+  valuesYaml: string | null;
+  /** The port the box opens for it on the LAN. */
+  frontPort: number;
+  /** The port it listens on, once known; null for an app with no page. */
+  appPort: number | null;
+  phase: AppPhase;
+  /** Why it failed, in the box's words. */
+  message: string | null;
+  updatedAt: number;
+}
+
+export type AppsResponse =
+  | { available: false; reason: "noCluster"; apps: [] }
+  | { available: true; sharedAvailable: boolean; apps: InstalledApp[] };
+
+/** GET /api/apps */
+export function getApps(options: RequestOptions = {}): Promise<AppsResponse> {
+  return call<AppsResponse>("/api/apps", options);
+}
+
+export interface AppChartResponse {
+  chart: AppSource;
+  /** The name the box suggests. */
+  release: string;
+  valuesYaml: string;
+  values: unknown;
+  /** A JSON schema for the values, when the app ships one. */
+  schema: unknown;
+}
+
+/** GET /api/apps/chart — the app's properties and their defaults. Slow: the
+ *  box fetches the app to read them. */
+export function getAppChart(source: AppSource, options: RequestOptions = {}): Promise<AppChartResponse> {
+  const query = new URLSearchParams({ repo: source.repo, name: source.name, version: source.version });
+  return call<AppChartResponse>(`/api/apps/chart?${query.toString()}`, options);
+}
+
+export interface AppInstallRequest {
+  release: string;
+  chart: AppSource;
+  runAs: AppRunAs;
+  values: Record<string, unknown>;
+  valuesYaml: string | null;
+}
+
+/** POST /api/apps/install — install, or change an app under the same name. */
+export function postAppInstall(request: AppInstallRequest, options: RequestOptions = {}): Promise<InstalledApp> {
+  return call<InstalledApp>("/api/apps/install", {
+    ...options,
+    method: "POST",
+    contentType: "application/json",
+    body: JSON.stringify(request),
+  });
+}
+
+/** POST /api/apps/remove — its files stay in the user's data folder. */
+export function postAppRemove(release: string, options: RequestOptions = {}): Promise<InstalledApp> {
+  return call<InstalledApp>("/api/apps/remove", {
+    ...options,
+    method: "POST",
+    contentType: "application/json",
+    body: JSON.stringify({ release }),
+  });
+}
+
 // ── Custom domains ────────────────────────────────────────────────────────
 
 /* A domain the owner already has, pointed at this box through an official

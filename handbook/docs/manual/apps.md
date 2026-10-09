@@ -1,6 +1,7 @@
 ---
 title: The apps
 sidebar_position: 4
+slug: /manual/apps
 ---
 
 # The apps

@@ -94,6 +94,17 @@ fn error_response(e: anyhow::Error) -> HttpResponse {
             let why = e.downcast_ref::<crate::look::Invalid>().expect("checked");
             err(actix_web::http::StatusCode::BAD_REQUEST, &why.0)
         }
+        // An install the owner can fix (a bad name, a chart the box will not
+        // run) keeps its sentence as a 400; one that cannot happen right now
+        // (the shared side locked, a job still running) is a 409.
+        e if e.downcast_ref::<crate::apps::Invalid>().is_some() => {
+            let why = e.downcast_ref::<crate::apps::Invalid>().expect("checked");
+            err(actix_web::http::StatusCode::BAD_REQUEST, &why.0)
+        }
+        e if e.downcast_ref::<crate::apps::Conflict>().is_some() => {
+            let why = e.downcast_ref::<crate::apps::Conflict>().expect("checked");
+            err(actix_web::http::StatusCode::CONFLICT, &why.0)
+        }
         // The first boot's one expected failure: Nextcloud is still installing
         // itself, so the first password cannot be set *yet*. 503 with the
         // reason and a Retry-After, so the wizard waits and says why, instead
@@ -760,6 +771,70 @@ fn get_apps_search_inner(api: &Api, req: &HttpRequest) -> HttpResponse {
         return err(actix_web::http::StatusCode::BAD_REQUEST, &e);
     }
     run(api, |b| cmd_apps_search(b, &query))
+}
+
+// ── Installing an app from the catalogue ─────────────────────────────────
+// `crate::apps` holds the rules. HTTP-only, like the market: the page is the
+// only caller.
+
+/// `GET /api/apps` — what is installed, and whether anything can be.
+async fn get_apps(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    guarded(&api, &req, "/api/apps", false, || {
+        run(&api, crate::apps::cmd_apps)
+    })
+}
+
+/// `GET /api/apps/chart?repo=&name=&version=` — the chart's values and
+/// schema, for the install dialog.
+///
+/// Not under the state lock: fetching a chart can take as long as the
+/// network does, and it touches no state. Holding the lock would stall every
+/// other request to the box for that long.
+async fn get_app_chart(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    guarded(&api, &req, "/api/apps/chart", false, || {
+        let q =
+            web::Query::<std::collections::HashMap<String, String>>::from_query(req.query_string())
+                .map(web::Query::into_inner)
+                .unwrap_or_default();
+        let field = |k: &str| q.get(k).map(|v| v.trim().to_string()).unwrap_or_default();
+        let chart = crate::apps::ChartRef {
+            repo: field("repo"),
+            name: field("name"),
+            version: field("version"),
+        };
+        let mut backend = api.backend.clone();
+        match crate::apps::cmd_app_chart(&mut backend, &chart) {
+            Ok(v) => HttpResponse::Ok().json(v),
+            Err(e) => error_response(e),
+        }
+    })
+}
+
+/// `POST /api/apps/install` `{release, chart: {repo, name, version}, runAs,
+/// values?, valuesYaml?}` — install an app, or change one installed under the
+/// same name.
+async fn post_app_install(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> HttpResponse {
+    guarded(&api, &req, "/api/apps/install", true, || {
+        let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
+        match crate::apps::InstallRequest::parse(&doc) {
+            Ok(request) => run(&api, |b| crate::apps::cmd_app_install(b, &request)),
+            Err(e) => error_response(e),
+        }
+    })
+}
+
+/// `POST /api/apps/remove` `{release}`.
+async fn post_app_remove(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> HttpResponse {
+    guarded(&api, &req, "/api/apps/remove", true, || {
+        let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
+        match field_str(&doc, "release") {
+            Some(release) => run(&api, |b| crate::apps::cmd_app_remove(b, &release)),
+            None => err(
+                actix_web::http::StatusCode::BAD_REQUEST,
+                r#"body must be JSON: {"release": "<name>"}"#,
+            ),
+        }
+    })
 }
 
 /// Where the Lab's libvirt helper listens, from `$LOSOS_LAB_URL`; `None`
@@ -1487,6 +1562,10 @@ pub fn serve(backend: IoLosos) -> anyhow::Result<()> {
                 .route("/api/set-password", web::post().to(post_set_password))
                 .route("/api/recovery", web::get().to(get_recovery))
                 .route("/api/apps/search", web::get().to(get_apps_search))
+                .route("/api/apps", web::get().to(get_apps))
+                .route("/api/apps/chart", web::get().to(get_app_chart))
+                .route("/api/apps/install", web::post().to(post_app_install))
+                .route("/api/apps/remove", web::post().to(post_app_remove))
                 .route("/api/market", web::get().to(get_market))
                 .route("/api/market/onboard", web::post().to(post_market_onboard))
                 .route("/api/market/listings", web::post().to(post_market_listing))

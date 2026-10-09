@@ -1,5 +1,5 @@
 import * as React from "react";
-import { isAbort, isUnauthorized } from "@/lib/api";
+import { isAbort, isUnauthorized, type AppSource } from "@/lib/api";
 import { t } from "@/lib/i18n";
 import { useLocale } from "@/lib/i18n-react";
 import { authedGet, isRecord, nonEmptyString, notPresent } from "./http";
@@ -22,9 +22,13 @@ import { authedGet, isRecord, nonEmptyString, notPresent } from "./http";
  *     { "sources": ["Artifact Hub"],
  *       "results": [ { "id": "...", "name": "...", "source": "Artifact Hub",
  *                      "summary": "...", "version": "1.2.3",
- *                      "homepage": "https://..." } ] }
+ *                      "homepage": "https://...",
+ *                      "chart": { "repo": "https://...", "name": "...",
+ *                                 "version": "1.2.3" } } ] }
  *
  * `id`, `name` and `source` are required on a result; the rest may be absent.
+ * `chart` is where the box can fetch the app from, and a row without one has
+ * no Install button (see install-dialog.tsx).
  * `source` is required because it is the only thing on the row that tells the
  * reader who wrote what they are about to install, and a result with nowhere
  * to attribute it is dropped rather than shown as if this box vouched for it.
@@ -40,6 +44,8 @@ export interface CatalogueApp {
   summary: string | null;
   version: string | null;
   homepage: string | null;
+  /** Where the box can fetch it from; null when it cannot be installed. */
+  chart: AppSource | null;
 }
 
 export interface CatalogueResults {
@@ -70,7 +76,17 @@ function parseApp(value: unknown): CatalogueApp | null {
     summary: nonEmptyString(value["summary"]),
     version: nonEmptyString(value["version"]),
     homepage: httpsUrl(value["homepage"]),
+    chart: parseSource(value["chart"]),
   };
+}
+
+function parseSource(value: unknown): AppSource | null {
+  if (!isRecord(value)) return null;
+  const repo = nonEmptyString(value["repo"]);
+  const name = nonEmptyString(value["name"]);
+  const version = nonEmptyString(value["version"]);
+  if (repo === null || name === null || version === null) return null;
+  return { repo, name, version };
 }
 
 /* The home page is the chart publisher's own `home:` field and goes into an
