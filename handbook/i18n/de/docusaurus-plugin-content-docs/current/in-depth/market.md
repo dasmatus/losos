@@ -251,9 +251,6 @@ gegen einen Ersatz für Stripe getestet. Der prüft, was die Edge sendet und wie
 sie reagiert, kann aber nicht sagen, ob Stripe es akzeptiert. Das klärt der
 erste Lauf im Testmodus.
 
-Die Schritte 2 und 3 können auch aus GitHub-Actions-Secrets kommen statt aus
-einer Shell auf der Edge; siehe [Schlüssel aus GitHub Actions](#keys-from-github-actions).
-
 ### Testmodus und Live-Modus {#test-mode-and-live-mode}
 
 Die Edge liest den Modus am Schlüssel ab. Schlüssel mit `sk_test_` und
@@ -280,42 +277,6 @@ versiegeltes Webhook-Secret und Schlüssel aus verschiedenen Modi stammen.
 Das Gate lehnt es ab und schreibt ins Log, welches welches ist. Stripe
 wiederholt ein abgelehntes Ereignis drei Tage lang; wird das passende Paar in
 dieser Zeit versiegelt, geht nichts verloren.
-
-### Schlüssel aus GitHub Actions {#keys-from-github-actions}
-
-Der Workflow `edge-credentials` (`.github/workflows/edge-credentials.yml`)
-versiegelt die Schlüssel aus den Actions-Secrets des Repositorys, damit
-niemand sie auf der Edge einfügt.
-
-1. Erzeuge einen SSH-Schlüssel für den Workflow
-   (`ssh-keygen -t ed25519 -N "" -f edge-credentials`) und setze
-   `losos.edge.credentials.deployKey` auf seine öffentliche Hälfte. Die Edge
-   lässt diesen Schlüssel als root nur `losos-seal-credential` ausführen:
-   keine Shell, kein Forwarding, kein Terminal.
-2. Lege die Actions-Secrets an:
-
-   | Secret                  | Inhalt                                                     |
-   | ----------------------- | ---------------------------------------------------------- |
-   | `STRIPE_KEY`            | geheimer oder eingeschränkter Stripe-Schlüssel, test/live  |
-   | `STRIPE_WEBHOOK_SECRET` | optional: beide `whsec_`-Secrets, eines pro Zeile          |
-   | `CLAUDE_KEY`            | der Claude-API-Schlüssel (`sk-ant-...`)                    |
-   | `EDGE_SSH_KEY`          | die private Hälfte des Schlüssels aus Schritt 1            |
-   | `EDGE_SSH_HOST`         | die Adresse der Edge (Secret oder Variable)                |
-   | `EDGE_SSH_KNOWN_HOSTS`  | die Zeile der Edge aus `ssh-keyscan` (Secret oder Variable) |
-   | `EDGE_SSH_PORT`         | optional, sonst 22                                         |
-
-3. Starte **edge-credentials** auf `main` im Tab Actions. Er gibt aus, ob der
-   Stripe-Schlüssel ein Test- oder ein Live-Schlüssel ist, nie den Schlüssel
-   selbst, und reicht jedes gesetzte Secret an `losos-seal-credential`
-   weiter. Das prüft die Form, versiegelt es mit `systemd-creds` unter seinem
-   Namen und startet das Gate neu. Einen Schlüssel tauschen heißt, das Secret
-   zu ändern und den Workflow erneut zu starten.
-
-Der Claude-Schlüssel wird als `claude-api-key` nach
-`/var/secrets/losos-claude-api-key.cred` versiegelt
-(`losos.edge.credentials.secrets.claude-api-key.sealed`). Der Registrar liest ihn
-mit `LoadCredentialEncrypted=claude-api-key:<dieser Pfad>`, und ein neu
-versiegelter Schlüssel startet `losos-registrar.service` neu.
 
 ## Sicherheitseigenschaften
 
