@@ -1039,8 +1039,9 @@ async fn post_builder_credit(
     .await
 }
 
-/// `POST /api/builder/builds` `{"prompt": ..., "base"?: ..., "lang"?: ...}`
-/// — start a build.
+/// `POST /api/builder/builds` `{"prompt": ..., "base"?: [files], "lang"?: ...}`
+/// — start a build. `base` is the widget to change, as the files the editor
+/// holds; a single string is read as its `index.html`.
 async fn post_builder_start(
     api: web::Data<Api>,
     req: HttpRequest,
@@ -1049,7 +1050,12 @@ async fn post_builder_start(
     post_market(api, req, body, "/api/builder/builds", |d| {
         Some(crate::market::Op::BuilderStart {
             prompt: field_str(d, "prompt")?,
-            base: field_str(d, "base"),
+            base: match d.get("base") {
+                None | Some(serde_json::Value::Null) => None,
+                Some(serde_json::Value::String(s)) if s.trim().is_empty() => None,
+                Some(serde_json::Value::String(s)) => Some(vec![crate::look::WidgetFile::entry(s)]),
+                Some(files) => Some(crate::look::parse_files(files)?),
+            },
             lang: field_str(d, "lang"),
         })
     })

@@ -1687,7 +1687,11 @@ struct BuilderStartReq {
     #[serde(flatten)]
     auth: MarketAuth,
     prompt: String,
-    /// The widget to change, when the owner asks for a revision.
+    /// The widget to change, file by file, when the owner asks for a
+    /// revision.
+    #[serde(default)]
+    base_files: Option<Vec<crate::builder::WidgetFile>>,
+    /// The same as one `index.html`, from a box that predates widget files.
     #[serde(default)]
     base: Option<String>,
     /// The admin page's language, for the words the agent writes.
@@ -1700,11 +1704,19 @@ async fn builder_start(
     Json(req): Json<BuilderStartReq>,
 ) -> Result<(StatusCode, Json<BuildView>), ApiError> {
     let builder = builder_tenant(&st, &req.auth).await?;
+    let base = req.base_files.or_else(|| {
+        req.base.filter(|b| !b.trim().is_empty()).map(|content| {
+            vec![crate::builder::WidgetFile {
+                name: crate::builder::ENTRY_FILE.to_string(),
+                content,
+            }]
+        })
+    });
     let view = builder
         .start(
             &req.auth.appliance_id,
             &req.prompt,
-            req.base.as_deref(),
+            base.as_deref(),
             req.lang.as_deref(),
         )
         .await?;

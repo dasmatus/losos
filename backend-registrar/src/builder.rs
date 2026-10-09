@@ -96,8 +96,23 @@ pub const DEFAULT_PACKS: [u64; 3] = [500, 1_000, 2_000];
 
 /// Longest description an owner may give, in characters.
 pub const MAX_PROMPT_CHARS: usize = 2_000;
-/// Largest widget, in bytes: the box's own limit (`look.rs`).
-pub const MAX_SOURCE_BYTES: usize = 64 * 1024;
+// A widget's limits, the box's own (`backend/src/look.rs`). The edge refuses
+// what the box would refuse, so an owner never pays for a widget the box
+// then turns away.
+/// Largest widget, all its files together, in bytes.
+pub const MAX_WIDGET_BYTES: usize = 128 * 1024;
+/// Most files in one widget.
+pub const MAX_FILES: usize = 12;
+/// Longest file name, in characters.
+pub const MAX_FILE_NAME_CHARS: usize = 40;
+/// The file the frame starts from.
+pub const ENTRY_FILE: &str = "index.html";
+/// The kinds of file a widget may have, by extension.
+pub const FILE_KINDS: [&str; 8] = ["html", "css", "js", "mjs", "json", "svg", "txt", "md"];
+/// What the agent writes beside the widget; never one of its files.
+const SUMMARY_FILE: &str = "summary.txt";
+/// What an agent following the older prompt names the widget.
+const LEGACY_WIDGET_FILE: &str = "widget.html";
 /// Longest summary kept from the agent, in characters.
 const MAX_SUMMARY_CHARS: usize = 600;
 /// Largest summary file read back.
@@ -127,11 +142,14 @@ const STORE_FILE_MODE: u32 = 0o600;
 pub const SYSTEM_PROMPT: &str = r#"You write widgets for the LosOS admin page. A LosOS box is a small home server; its owner sees a board of tiles on the admin page, and a widget is one tile.
 
 What you deliver
-- Write the widget to /mnt/session/outputs/widget.html. It is a fragment, not a document: optional <style>, the markup, optional <script>. No <html>, <head> or <body>.
-- Keep it under 60 KiB. Everything inline: no external scripts, stylesheets or fonts.
-- Write one or two plain sentences to /mnt/session/outputs/summary.txt saying what the widget shows and anything the owner should know. Write them in the language the request names.
-- When you change an existing widget, keep what the owner did not ask to change.
-- Work in /mnt/session/outputs only. You have no network. If node is installed you may syntax-check your script with it; nothing else needs checking.
+- A widget is a few files in /mnt/session/outputs. index.html is required. It is a fragment, not a document: the markup, plus <link rel="stylesheet" href="style.css">, <script src="app.js"></script> or inline <style> and <script>. No <html>, <head> or <body>.
+- Put style, script and data in files of their own when the widget is more than a few lines; a small widget can be index.html alone.
+- File names: lowercase letters, digits, - and _, one extension out of .html .css .js .mjs .json .svg .txt .md, at most 40 characters, no folders. At most 12 files and 120 KiB together.
+- Link files by their bare name. A linked stylesheet's url("dot.svg") and an <img src="dot.svg"> load from the widget's files, and fetch("data.json") answers from them. Scripts are classic scripts: no import or export between files; load several with several <script src> tags, in order.
+- Nothing external: no scripts, stylesheets or fonts from other sites.
+- Write one or two plain sentences to /mnt/session/outputs/summary.txt saying what the widget shows and anything the owner should know. Write them in the language the request names. summary.txt is not part of the widget.
+- When you change an existing widget, write back every file it keeps, changed or not, and keep what the owner did not ask to change. A file you do not write back is removed.
+- Keep only the widget's files and summary.txt in /mnt/session/outputs; do scratch work in /tmp. You have no network. If node is installed you may syntax-check your scripts with it; nothing else needs checking.
 
 Where it runs
 - The admin page loads the fragment into a sandboxed iframe (sandbox="allow-scripts", no allow-same-origin). It is an opaque origin: no cookies, no localStorage or sessionStorage (they throw), no alert/confirm/prompt, no form submission, no popups.
@@ -152,6 +170,7 @@ The losos object
 - losos.theme is "light" or "dark"; losos.onTheme(fn) calls fn when it changes.
 - losos.lang is "en", "sk" or "de", the language of the admin page. Show text in that language when the widget has words.
 - losos.resize() asks the board to re-measure after a change it cannot see.
+- losos.files is the list of the widget's file names; losos.file(name) is one as text; losos.asset(name) is one as a data: URL, for an image or a CSS url() set from script.
 - There is nothing else: a widget can read, never change, the box.
 
 Style
@@ -303,14 +322,63 @@ pub enum BuildStatus {
     Failed,
 }
 
+/// One file of a widget, as the box stores it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WidgetFile {
+    pub name: String,
+    pub content: String,
+}
+
+/// A name a widget's file may have: `stem.kind`, the stem lowercase ASCII
+/// letters, digits, `-`, `_` and `.` starting with a letter or digit, the
+/// kind one of [`FILE_KINDS`]. The box's own rule (`look::is_file_name`).
+#[must_use]
+pub fn is_file_name(name: &str) -> bool {
+    let Some((stem, kind)) = name.rsplit_once('.') else {
+        return false;
+    };
+    name.chars().count() <= MAX_FILE_NAME_CHARS
+        && FILE_KINDS.contains(&kind)
+        && stem
+            .bytes()
+            .next()
+            .is_some_and(|b| b.is_ascii_lowercase() || b.is_ascii_digit())
+        && stem
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b"-_.".contains(&b))
+        && !stem.contains("..")
+}
+
+/// Whether the box would keep these files as a widget: `index.html` among
+/// them and not empty, every name [`is_file_name`] and used once, at most
+/// [`MAX_FILES`] and [`MAX_WIDGET_BYTES`] together.
+#[must_use]
+pub fn files_fit(files: &[WidgetFile]) -> bool {
+    let mut seen = HashSet::new();
+    files.len() <= MAX_FILES
+        && files
+            .iter()
+            .all(|f| is_file_name(&f.name) && seen.insert(f.name.as_str()))
+        && files
+            .iter()
+            .any(|f| f.name == ENTRY_FILE && !f.content.trim().is_empty())
+        && files.iter().map(|f| f.content.len()).sum::<usize>() <= MAX_WIDGET_BYTES
+}
+
+/// `index.html` first, the rest by name, as the editor lists them.
+fn sort_files(files: &mut [WidgetFile]) {
+    files.sort_by(|a, b| (a.name != ENTRY_FILE, &a.name).cmp(&(b.name != ENTRY_FILE, &b.name)));
+}
+
 /// Why a build produced no widget. A fixed set, so the admin page can say it
 /// in the owner's language.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum BuildFault {
-    /// The agent finished without writing `widget.html`.
+    /// The agent finished without writing `index.html`.
     NoWidget,
-    /// It wrote one larger than the box keeps, or not UTF-8.
+    /// It wrote files the box would not keep: too many, too large, badly
+    /// named or not UTF-8.
     Unusable,
     /// The session could not be read back; nothing was charged.
     Upstream,
@@ -341,12 +409,31 @@ pub struct Build {
     /// been stopped before it was done.
     #[serde(default)]
     pub at_limit: bool,
-    #[serde(default)]
+    /// The widget the build wrote, `index.html` first.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub files: Option<Vec<WidgetFile>>,
+    /// A widget recorded before widgets were files: its `index.html`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<String>,
     #[serde(default)]
     pub summary: Option<String>,
     #[serde(default)]
     pub fault: Option<BuildFault>,
+}
+
+impl Build {
+    /// The widget the build wrote, older records read as one `index.html`.
+    #[must_use]
+    pub fn widget(&self) -> Option<Vec<WidgetFile>> {
+        self.files.clone().or_else(|| {
+            self.source.as_ref().map(|content| {
+                vec![WidgetFile {
+                    name: ENTRY_FILE.to_string(),
+                    content: content.clone(),
+                }]
+            })
+        })
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -428,20 +515,26 @@ pub fn language(lang: Option<&str>) -> &'static str {
 }
 
 /// The session's first message: the owner's request, and the widget to
-/// change when there is one. The request is quoted, not obeyed as the edge's
-/// own words; it is still the owner's intent, and the container it runs in
-/// has nothing in it to protect.
+/// change when there is one, file by file. The request is quoted, not obeyed
+/// as the edge's own words; it is still the owner's intent, and the container
+/// it runs in has nothing in it to protect.
 #[must_use]
-pub fn kickoff(prompt: &str, base: Option<&str>, lang: &str) -> String {
+pub fn kickoff(prompt: &str, base: Option<&[WidgetFile]>, lang: &str) -> String {
     let mut text = format!(
         "The owner of a LosOS box asked for this widget. Write the summary in {lang}.\n\n<request>\n{prompt}\n</request>\n"
     );
     if let Some(base) = base {
         text.push_str(
-            "\nChange this widget, the one the owner has now, rather than starting over:\n\n<widget>\n",
+            "\nChange this widget, the one the owner has now, rather than starting over. Its files:\n\n<widget>\n",
         );
-        text.push_str(base);
-        text.push_str("\n</widget>\n");
+        for file in base {
+            // The names are checked (`is_file_name`), so they need no quoting.
+            text.push_str(&format!(
+                "<file name=\"{}\">\n{}\n</file>\n",
+                file.name, file.content
+            ));
+        }
+        text.push_str("</widget>\n");
     }
     text
 }
@@ -503,13 +596,50 @@ pub fn clean_summary(raw: &str) -> Option<String> {
     Some(format!("{}…", cut.trim_end()))
 }
 
+/// The last path segment of an output's file name.
+fn base_name(filename: &str) -> &str {
+    filename.rsplit('/').next().unwrap_or(filename)
+}
+
+/// The outputs that make up the widget, by the name it will have: every
+/// file a widget may be called, newest per name, without the summary. An
+/// agent following the older prompt writes `widget.html`, which stands in
+/// for `index.html` when there is none. Anything else (a scratch file left
+/// behind) is not the widget's and is passed over.
+#[must_use]
+pub fn widget_outputs(outputs: &[OutputFile]) -> Vec<(String, &OutputFile)> {
+    let mut picked: BTreeMap<String, &OutputFile> = BTreeMap::new();
+    for f in outputs {
+        let name = base_name(&f.filename);
+        if name == SUMMARY_FILE || !is_file_name(name) {
+            continue;
+        }
+        match picked.get(name) {
+            Some(seen) if seen.created_at >= f.created_at => {}
+            _ => {
+                picked.insert(name.to_string(), f);
+            }
+        }
+    }
+    if !picked.contains_key(ENTRY_FILE) {
+        if let Some(legacy) = picked.remove(LEGACY_WIDGET_FILE) {
+            picked.insert(ENTRY_FILE.to_string(), legacy);
+        }
+    }
+    picked.into_iter().collect()
+}
+
 /// What a finished session left behind.
 #[derive(Debug, Clone, Default)]
 pub struct Outcome {
     pub usage: Usage,
     /// `usage.list_cost` in US cents, when the session reported it.
     pub list_cents: Option<u64>,
-    pub widget: Option<Vec<u8>>,
+    /// The widget's files as read back, by name.
+    pub files: Vec<(String, Vec<u8>)>,
+    /// Whether there were more files, or more bytes, than a widget may have,
+    /// so that not all of them were read.
+    pub too_large: bool,
     pub summary: Option<String>,
 }
 
@@ -529,26 +659,32 @@ pub fn settle(state: &mut BuilderState, id: &str, outcome: Outcome, pricing: &Pr
     build.at_limit = outcome
         .list_cents
         .is_some_and(|c| c + 1 >= build.budget_cents);
-    match outcome.widget {
-        None => {
+    let entry = outcome.files.iter().find(|(name, _)| name == ENTRY_FILE);
+    let empty = entry.is_none_or(|(_, bytes)| bytes.iter().all(u8::is_ascii_whitespace));
+    let files: Option<Vec<WidgetFile>> = outcome
+        .files
+        .into_iter()
+        .map(|(name, bytes)| {
+            String::from_utf8(bytes)
+                .ok()
+                .map(|content| WidgetFile { name, content })
+        })
+        .collect();
+    match files {
+        _ if empty && !outcome.too_large => {
             build.status = BuildStatus::Failed;
             build.fault = Some(BuildFault::NoWidget);
         }
-        Some(bytes) => match String::from_utf8(bytes) {
-            Ok(source) if !source.trim().is_empty() && source.len() <= MAX_SOURCE_BYTES => {
-                build.status = BuildStatus::Done;
-                build.source = Some(source);
-                build.summary = outcome.summary.as_deref().and_then(clean_summary);
-            }
-            Ok(source) if source.trim().is_empty() => {
-                build.status = BuildStatus::Failed;
-                build.fault = Some(BuildFault::NoWidget);
-            }
-            _ => {
-                build.status = BuildStatus::Failed;
-                build.fault = Some(BuildFault::Unusable);
-            }
-        },
+        Some(mut files) if !outcome.too_large && files_fit(&files) => {
+            sort_files(&mut files);
+            build.status = BuildStatus::Done;
+            build.files = Some(files);
+            build.summary = outcome.summary.as_deref().and_then(clean_summary);
+        }
+        _ => {
+            build.status = BuildStatus::Failed;
+            build.fault = Some(BuildFault::Unusable);
+        }
     }
     let tenant = build.tenant.clone();
     let balance = state.balances.entry(tenant).or_insert(0);
@@ -632,7 +768,7 @@ pub fn apply_event(state: &mut BuilderState, event: &Value, now: u64) -> bool {
 }
 
 /// Drop what is only history: credit orders that never paid, builds past the
-/// newest [`KEEP_BUILDS`] of their box, and the source of builds older than
+/// newest [`KEEP_BUILDS`] of their box, and the files of builds older than
 /// [`SOURCE_RETENTION_SECS`]. Running builds and paid orders stay. Returns
 /// whether anything changed.
 pub fn prune(state: &mut BuilderState, now: u64) -> bool {
@@ -664,6 +800,7 @@ pub fn prune(state: &mut BuilderState, now: u64) -> bool {
             && b.finished_at
                 .is_some_and(|t| now >= t + SOURCE_RETENTION_SECS)
         {
+            b.files = None;
             b.source = None;
         }
     }
@@ -709,29 +846,39 @@ impl From<&Build> for BuildSummary {
             finished_at: b.finished_at,
             charged: b.charged,
             fault: b.fault,
-            has_source: b.source.is_some(),
+            has_source: b.files.is_some() || b.source.is_some(),
         }
     }
 }
 
-/// A build as its box sees it, source included.
+/// A build as its box sees it, files included.
 #[derive(Debug, Serialize)]
 pub struct BuildView {
     #[serde(flatten)]
     pub summary: BuildSummary,
     pub usage: Usage,
     pub at_limit: bool,
+    pub files: Option<Vec<WidgetFile>>,
+    /// `index.html` alone, for a box from before widgets were files.
     pub source: Option<String>,
     pub notes: Option<String>,
 }
 
 impl From<&Build> for BuildView {
     fn from(b: &Build) -> Self {
+        let files = b.widget();
+        let source = files.as_ref().and_then(|files| {
+            files
+                .iter()
+                .find(|f| f.name == ENTRY_FILE)
+                .map(|f| f.content.clone())
+        });
         Self {
             summary: b.into(),
             usage: b.usage,
             at_limit: b.at_limit,
-            source: b.source.clone(),
+            files,
+            source,
             notes: b.summary.clone(),
         }
     }
@@ -1346,14 +1493,14 @@ impl Builder {
         self: &Arc<Self>,
         tenant: &str,
         prompt: &str,
-        base: Option<&str>,
+        base: Option<&[WidgetFile]>,
         lang: Option<&str>,
     ) -> Result<BuildView, BuilderError> {
         let prompt = check_prompt(prompt)?;
-        let base = match base.map(str::trim).filter(|b| !b.is_empty()) {
-            Some(b) if b.len() > MAX_SOURCE_BYTES => {
+        let base = match base.filter(|b| !b.is_empty()) {
+            Some(b) if !files_fit(b) => {
                 return Err(BuilderError::Invalid(
-                    "the widget to change is larger than a box keeps",
+                    "the widget to change is not one a box would keep",
                 ))
             }
             other => other,
@@ -1382,6 +1529,7 @@ impl Builder {
                     usage: Usage::default(),
                     charged: 0,
                     at_limit: false,
+                    files: None,
                     source: None,
                     summary: None,
                     fault: None,
@@ -1521,23 +1669,32 @@ impl Builder {
     /// and its files for deletion.
     async fn collect(&self, id: &str, session_id: &str) -> Result<(), BuilderError> {
         let s = self.claude.session(session_id).await?;
-        let files = self.claude.outputs(session_id).await?;
+        let outputs = self.claude.outputs(session_id).await?;
+        let picked = widget_outputs(&outputs);
         let newest = |name: &str| {
-            files
+            outputs
                 .iter()
-                .filter(|f| f.filename == name || f.filename.ends_with(&format!("/{name}")))
+                .filter(|f| base_name(&f.filename) == name)
                 .max_by(|a, b| a.created_at.cmp(&b.created_at))
         };
-        let widget = match newest("widget.html") {
-            None => None,
-            // One byte over the box's limit is enough to call it unusable.
-            Some(f) => match self.claude.download(f, MAX_SOURCE_BYTES as u64 + 1).await {
-                Ok(bytes) => Some(bytes),
-                Err(BuilderError::Invalid(_)) => Some(vec![0; MAX_SOURCE_BYTES + 1]),
+        let mut files = Vec::new();
+        let mut too_large = picked.len() > MAX_FILES;
+        let mut left = MAX_WIDGET_BYTES as u64;
+        for (name, f) in picked.into_iter().take(MAX_FILES) {
+            // One byte over what is left is enough to call it unusable.
+            match self.claude.download(f, left + 1).await {
+                Ok(bytes) if bytes.len() as u64 <= left => {
+                    left -= bytes.len() as u64;
+                    files.push((name, bytes));
+                }
+                Ok(_) | Err(BuilderError::Invalid(_)) => {
+                    too_large = true;
+                    break;
+                }
                 Err(e) => return Err(e),
-            },
-        };
-        let summary = match newest("summary.txt") {
+            }
+        }
+        let summary = match newest(SUMMARY_FILE) {
             None => None,
             Some(f) => match self.claude.download(f, MAX_SUMMARY_BYTES).await {
                 Ok(bytes) => Some(String::from_utf8_lossy(&bytes).into_owned()),
@@ -1548,7 +1705,8 @@ impl Builder {
         let outcome = Outcome {
             usage: s.usage,
             list_cents: s.list_cents,
-            widget,
+            files,
+            too_large,
             summary,
         };
         let pricing = self.pricing();
@@ -1559,7 +1717,7 @@ impl Builder {
             id: session_id.to_string(),
         });
         next.cleanup
-            .extend(files.iter().map(|f| Cleanup::File { id: f.id.clone() }));
+            .extend(outputs.iter().map(|f| Cleanup::File { id: f.id.clone() }));
         self.commit(&mut state, next).await?;
         if let Some(b) = state.builds.get(id) {
             tracing::info!(
@@ -1668,9 +1826,26 @@ mod tests {
             usage: Usage::default(),
             charged: 0,
             at_limit: false,
+            files: None,
             source: None,
             summary: None,
             fault: None,
+        }
+    }
+
+    fn file(name: &str, content: &str) -> WidgetFile {
+        WidgetFile {
+            name: name.to_string(),
+            content: content.to_string(),
+        }
+    }
+
+    fn output(name: &str, created_at: &str) -> OutputFile {
+        OutputFile {
+            id: format!("file_{name}_{created_at}"),
+            filename: name.to_string(),
+            size: 1,
+            created_at: created_at.to_string(),
         }
     }
 
@@ -1800,7 +1975,11 @@ mod tests {
             Outcome {
                 usage,
                 list_cents: Some(200),
-                widget: Some(b"<div>12:00</div>".to_vec()),
+                files: vec![
+                    ("style.css".into(), b"p { margin: 0 }".to_vec()),
+                    ("index.html".into(), b"<div>12:00</div>".to_vec()),
+                ],
+                too_large: false,
                 summary: Some("A clock.\n\nIt ticks.".to_string()),
             },
             &p,
@@ -1810,7 +1989,18 @@ mod tests {
         assert_eq!(b.status, BuildStatus::Done);
         assert_eq!(b.charged, 240);
         assert_eq!(s.balances["box"], 260);
-        assert_eq!(b.source.as_deref(), Some("<div>12:00</div>"));
+        // index.html first, as the editor lists them.
+        assert_eq!(
+            b.files,
+            Some(vec![
+                file("index.html", "<div>12:00</div>"),
+                file("style.css", "p { margin: 0 }"),
+            ])
+        );
+        // A box from before widget files reads index.html as the source.
+        let view = BuildView::from(b);
+        assert_eq!(view.source.as_deref(), Some("<div>12:00</div>"));
+        assert_eq!(view.files.map(|f| f.len()), Some(2));
         assert_eq!(b.summary.as_deref(), Some("A clock. It ticks."));
         assert!(!b.at_limit);
         // Settling twice charges once.
@@ -1821,11 +2011,27 @@ mod tests {
     #[test]
     fn a_build_without_a_usable_widget_still_pays_for_what_it_used() {
         let p = pricing();
-        for (widget, fault) in [
-            (None, BuildFault::NoWidget),
-            (Some(b"   ".to_vec()), BuildFault::NoWidget),
-            (Some(vec![b'a'; MAX_SOURCE_BYTES + 1]), BuildFault::Unusable),
-            (Some(vec![0xff, 0xfe]), BuildFault::Unusable),
+        let index = |bytes: &[u8]| ("index.html".to_string(), bytes.to_vec());
+        for (files, too_large, fault) in [
+            (vec![], false, BuildFault::NoWidget),
+            (
+                vec![("app.js".into(), b"1".to_vec())],
+                false,
+                BuildFault::NoWidget,
+            ),
+            (vec![index(b"   ")], false, BuildFault::NoWidget),
+            (vec![index(b"<p>")], true, BuildFault::Unusable),
+            (
+                vec![index(&vec![b'a'; MAX_WIDGET_BYTES + 1])],
+                false,
+                BuildFault::Unusable,
+            ),
+            (vec![index(&[0xff, 0xfe])], false, BuildFault::Unusable),
+            (
+                vec![index(b"<p>"), ("app.js".into(), vec![0xff])],
+                false,
+                BuildFault::Unusable,
+            ),
         ] {
             let mut s = BuilderState::default();
             s.balances.insert("box".into(), 100);
@@ -1839,7 +2045,8 @@ mod tests {
                         ..Usage::default()
                     },
                     list_cents: Some(80),
-                    widget,
+                    files,
+                    too_large,
                     summary: None,
                 },
                 &p,
@@ -1964,9 +2171,82 @@ mod tests {
         assert!(k.contains("<request>\nA clock\n</request>"));
         assert!(k.contains("Slovak"));
         assert!(!k.contains("<widget>"));
-        let k = kickoff("Bigger", Some("<div>1</div>"), language(None));
-        assert!(k.contains("<widget>\n<div>1</div>\n</widget>"));
+        let base = [file("index.html", "<div>1</div>"), file("app.js", "go()")];
+        let k = kickoff("Bigger", Some(&base), language(None));
+        assert!(k.contains(
+            "<widget>\n<file name=\"index.html\">\n<div>1</div>\n</file>\n<file name=\"app.js\">\ngo()\n</file>\n</widget>"
+        ));
         assert!(k.contains("English"));
+    }
+
+    #[test]
+    fn file_names_and_limits_are_the_boxs() {
+        for good in ["index.html", "app.js", "a-b_c.min.css", "0.json", "dot.svg"] {
+            assert!(is_file_name(good), "{good}");
+        }
+        for bad in [
+            "App.js",
+            "app",
+            "app.exe",
+            ".js",
+            "-a.js",
+            "a..b.js",
+            "a/b.js",
+            &format!("{}.js", "a".repeat(40)),
+        ] {
+            assert!(!is_file_name(bad), "{bad}");
+        }
+        assert!(files_fit(&[file("index.html", "<p>")]));
+        assert!(!files_fit(&[file("app.js", "1")]));
+        assert!(!files_fit(&[file("index.html", " ")]));
+        assert!(!files_fit(&[
+            file("index.html", "<p>"),
+            file("index.html", "<p>")
+        ]));
+        let many: Vec<_> = (0..MAX_FILES)
+            .map(|i| file(&format!("f{i}.js"), "1"))
+            .chain([file("index.html", "<p>")])
+            .collect();
+        assert!(!files_fit(&many));
+        assert!(!files_fit(&[file(
+            "index.html",
+            &"a".repeat(MAX_WIDGET_BYTES + 1)
+        )]));
+    }
+
+    #[test]
+    fn the_widget_is_every_named_output_but_the_summary_newest_first() {
+        let outputs = [
+            output("index.html", "2026-10-09T10:00:00Z"),
+            output("outputs/index.html", "2026-10-09T10:05:00Z"),
+            output("app.js", "2026-10-09T10:01:00Z"),
+            output("summary.txt", "2026-10-09T10:02:00Z"),
+            output("notes.tmp", "2026-10-09T10:02:00Z"),
+            output("Scratch.js", "2026-10-09T10:02:00Z"),
+        ];
+        let picked = widget_outputs(&outputs);
+        let names: Vec<_> = picked
+            .iter()
+            .map(|(n, f)| (n.as_str(), f.filename.as_str()))
+            .collect();
+        assert_eq!(
+            names,
+            [("app.js", "app.js"), ("index.html", "outputs/index.html")]
+        );
+        // An agent that wrote widget.html by the older prompt still made a
+        // widget: it is the index.
+        let legacy = [output("widget.html", "2026-10-09T10:00:00Z")];
+        assert_eq!(widget_outputs(&legacy)[0].0, "index.html");
+    }
+
+    #[test]
+    fn a_build_recorded_with_one_source_reads_as_its_index() {
+        let mut b = running("b", "box", 10);
+        b.status = BuildStatus::Done;
+        b.source = Some("<p>old</p>".into());
+        let view = BuildView::from(&b);
+        assert_eq!(view.files, Some(vec![file("index.html", "<p>old</p>")]));
+        assert!(view.summary.has_source);
     }
 
     #[test]

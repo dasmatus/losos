@@ -26,7 +26,8 @@ use serde_json::{json, Value};
 use tokio::sync::oneshot;
 
 const CLAUDE_KEY: &str = "sk-ant-api03-test-0123456789";
-const WIDGET: &str = "<div class=\"clock\">12:00</div>";
+const WIDGET: &str = "<link rel=\"stylesheet\" href=\"clock.css\"><div class=\"clock\">12:00</div>";
+const WIDGET_CSS: &str = ".clock { font-size: 3em }";
 
 /// One request a stub saw.
 #[derive(Debug, Clone)]
@@ -149,13 +150,18 @@ fn anthropic(state: &StubState, seen: &Seen) -> Response {
             .into_response()
         }
         ("GET", "/v1/files") => Json(json!({ "data": [
-            { "id": "file_w", "filename": "widget.html", "size_bytes": WIDGET.len(),
+            { "id": "file_w", "filename": "index.html", "size_bytes": WIDGET.len(),
+              "created_at": "2026-10-09T10:00:00Z" },
+            { "id": "file_c", "filename": "clock.css", "size_bytes": WIDGET_CSS.len(),
+              "created_at": "2026-10-09T10:00:00Z" },
+            { "id": "file_x", "filename": "check.log", "size_bytes": 2,
               "created_at": "2026-10-09T10:00:00Z" },
             { "id": "file_s", "filename": "summary.txt", "size_bytes": 12,
               "created_at": "2026-10-09T10:00:01Z" },
         ]}))
         .into_response(),
         ("GET", "/v1/files/file_w/content") => WIDGET.into_response(),
+        ("GET", "/v1/files/file_c/content") => WIDGET_CSS.into_response(),
         ("GET", "/v1/files/file_s/content") => "A big clock.".into_response(),
         ("DELETE", _) => StatusCode::OK.into_response(),
         _ => StatusCode::NOT_FOUND.into_response(),
@@ -419,7 +425,14 @@ async fn a_build_runs_under_a_cap_and_charges_the_tokens_plus_the_markup() {
             "/builder/builds",
             with(
                 auth("owner-box", GOOD_TOKEN),
-                json!({ "prompt": "a big clock", "lang": "sk" }),
+                json!({
+                    "prompt": "a big clock",
+                    "lang": "sk",
+                    "base_files": [
+                        { "name": "index.html", "content": "<p>small clock</p>" },
+                        { "name": "app.js", "content": "tick()" },
+                    ],
+                }),
             ),
         )
         .await;
@@ -467,6 +480,12 @@ async fn a_build_runs_under_a_cap_and_charges_the_tokens_plus_the_markup() {
         .expect("text");
     assert!(text.contains("a big clock"), "{text}");
     assert!(text.contains("Slovak"), "{text}");
+    assert!(
+        text.contains("<file name=\"index.html\">\n<p>small clock</p>\n</file>")
+            && text.contains("<file name=\"app.js\">\ntick()\n</file>"),
+        "{text}"
+    );
+    assert_eq!(started["revision"], true);
 
     let mut done = Value::Null;
     for _ in 0..200 {
@@ -486,6 +505,16 @@ async fn a_build_runs_under_a_cap_and_charges_the_tokens_plus_the_markup() {
         tokio::time::sleep(Duration::from_millis(25)).await;
     }
     assert_eq!(done["status"], "done", "{done}");
+    // The widget is index.html and the stylesheet it links, not the log the
+    // agent left beside them; index.html alone stands as the source for a
+    // box from before widget files.
+    assert_eq!(
+        done["files"],
+        json!([
+            { "name": "index.html", "content": WIDGET },
+            { "name": "clock.css", "content": WIDGET_CSS },
+        ])
+    );
     assert_eq!(done["source"], WIDGET);
     assert_eq!(done["notes"], "A big clock.");
     // 200k in at 4.80 and 10k out at 24.00 per million: 96 + 24.
