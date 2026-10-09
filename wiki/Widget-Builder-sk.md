@@ -63,17 +63,17 @@ už edge nevie prečítať, sa neúčtuje.
    nikdy nedotkol disku:
 
    ```sh
-   systemd-creds encrypt --name=claude-api-key - /var/secrets/losos-claude-api-key.cred
+   systemd-creds encrypt --name=claude-key - /var/secrets/losos-claude-key.cred
    ```
 
    Cesta je `losos.edge.builder.claudeKeySealed`. Názov musí byť presne
-   `claude-api-key`.
+   `claude-key`.
 3. Raz vytvorte agenta a jeho prostredie:
 
    ```sh
    systemd-run --pipe --wait \
-     -p LoadCredentialEncrypted=claude-api-key:/var/secrets/losos-claude-api-key.cred \
-     sh -c 'losos-registrar builder-setup --key-file "$CREDENTIALS_DIRECTORY/claude-api-key"'
+     -p LoadCredentialEncrypted=claude-key:/var/secrets/losos-claude-key.cred \
+     sh -c 'losos-registrar builder-setup --key-file "$CREDENTIALS_DIRECTORY/claude-key"'
    ```
 
    Vypíše dva riadky do konfigurácie edge: `losos.edge.builder.agentId` a
@@ -93,16 +93,16 @@ nevedia povedať, či to niektorá zo služieb prijme.
 
 ## Voľby
 
-| Voľba                                | Predvolene                               |
-| ------------------------------------ | ---------------------------------------- |
-| `losos.edge.builder.enable`          | `false`                                  |
-| `losos.edge.builder.claudeKeySealed` | `/var/secrets/losos-claude-api-key.cred` |
-| `losos.edge.builder.agentId`         | žiadna, povinná                          |
-| `losos.edge.builder.environmentId`   | žiadna, povinná                          |
-| `losos.edge.builder.markupBps`       | `2000` (20 %)                            |
-| `losos.edge.builder.usdRate`         | `"1.0"`                                  |
-| `losos.edge.builder.packs`           | `[ 500 1000 2000 ]`                      |
-| `losos.edge.builder.maxBuildCents`   | `300`                                    |
+| Voľba                                | Predvolene                            |
+| ------------------------------------ | ------------------------------------- |
+| `losos.edge.builder.enable`          | `false`                               |
+| `losos.edge.builder.claudeKeySealed` | `/var/secrets/losos-claude-key.cred`  |
+| `losos.edge.builder.agentId`         | žiadna, povinná                       |
+| `losos.edge.builder.environmentId`   | žiadna, povinná                       |
+| `losos.edge.builder.markupBps`       | `2000` (20 %)                         |
+| `losos.edge.builder.usdRate`         | `"1.0"`                               |
+| `losos.edge.builder.packs`           | `[ 500 1000 2000 ]`                   |
+| `losos.edge.builder.maxBuildCents`   | `300`                                 |
 
 ## Bezpečnostné vlastnosti
 

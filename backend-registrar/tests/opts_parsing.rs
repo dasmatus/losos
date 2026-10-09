@@ -598,7 +598,7 @@ fn lab_bounds_its_numbers_and_its_uri() {
 
 const BUILDER_FLAGS: &[&str] = &[
     "--builder-key-file",
-    "/run/credentials/losos-registrar.service/claude-api-key",
+    "/run/credentials/losos-registrar.service/claude-key",
     "--builder-agent-id",
     "agent_011abc",
     "--builder-environment-id",

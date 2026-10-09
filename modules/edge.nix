@@ -682,10 +682,10 @@ let
   relayRoutes = dnsCfg.enable && dnsCfg.relayRoutes.enable;
 
   # Widget-builder half of `serve` (backend-registrar/src/builder.rs). The
-  # Anthropic key reaches the registrar as the `claude-api-key` credential; the
+  # Anthropic key reaches the registrar as the `claude-key` credential; the
   # top-ups go through the market's gate, which is told the same packs.
   builderOn = cfg.market.enable && cfg.builder.enable;
-  builderKeyPath = "/run/credentials/losos-registrar.service/claude-api-key";
+  builderKeyPath = "/run/credentials/losos-registrar.service/claude-key";
   builderPacks = lib.concatMapStringsSep "," toString cfg.builder.packs;
   builderServeArgs = lib.optionals builderOn [
     "--builder-key-file"
@@ -952,7 +952,7 @@ in
       // lib.optionalAttrs builderOn {
         # The Anthropic key, for the widget builder: plaintext only in this
         # unit's credential directory, read per request.
-        LoadCredentialEncrypted = [ "claude-api-key:${toString cfg.builder.claudeKeySealed}" ];
+        LoadCredentialEncrypted = [ "claude-key:${toString cfg.builder.claudeKeySealed}" ];
       };
     };
 
