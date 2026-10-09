@@ -258,7 +258,7 @@ nevkladá.
 
    | Secret                  | Obsah                                                     |
    | ----------------------- | --------------------------------------------------------- |
-   | `STIRPE_KEY`            | tajný alebo obmedzený kľúč Stripe, testovací alebo ostrý  |
+   | `STRIPE_KEY`            | tajný alebo obmedzený kľúč Stripe, testovací alebo ostrý  |
    | `STRIPE_WEBHOOK_SECRET` | voliteľné: oba secrets `whsec_`, každý na vlastnom riadku |
    | `CLAUDE_KEY`            | API kľúč Claude (`sk-ant-...`)                            |
    | `EDGE_SSH_KEY`          | súkromná polovica kľúča z kroku 1                         |

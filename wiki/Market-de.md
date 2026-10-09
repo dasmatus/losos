@@ -287,7 +287,7 @@ niemand sie auf der Edge einfügt.
 
    | Secret                  | Inhalt                                                     |
    | ----------------------- | ---------------------------------------------------------- |
-   | `STIRPE_KEY`            | geheimer oder eingeschränkter Stripe-Schlüssel, test/live  |
+   | `STRIPE_KEY`            | geheimer oder eingeschränkter Stripe-Schlüssel, test/live  |
    | `STRIPE_WEBHOOK_SECRET` | optional: beide `whsec_`-Secrets, eines pro Zeile          |
    | `CLAUDE_KEY`            | der Claude-API-Schlüssel (`sk-ant-...`)                    |
    | `EDGE_SSH_KEY`          | die private Hälfte des Schlüssels aus Schritt 1            |

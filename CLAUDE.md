@@ -140,7 +140,7 @@ and is never served or built by nix.
   The key's prefix is the mode (`stripe_mode.rs`): test and live each keep
   their own ledger (`market-test.json`, `market.json`), and a signed event
   from the other mode is refused. `modules/edge-credentials.nix` and
-  `.github/workflows/edge-credentials.yml` seal `STIRPE_KEY`, the webhook
+  `.github/workflows/edge-credentials.yml` seal `STRIPE_KEY`, the webhook
   secrets and `CLAUDE_KEY` from Actions secrets over a forced-command SSH key.
 - `flake/fast-build.nix`: every Rust binary links with mold and compiles
   through ccache and sccache, in shells and in `nix build` alike.

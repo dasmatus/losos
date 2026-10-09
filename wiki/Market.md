@@ -254,7 +254,7 @@ on the edge.
 
    | Secret                  | Holds                                                   |
    | ----------------------- | ------------------------------------------------------- |
-   | `STIRPE_KEY`            | the Stripe secret or restricted key, test or live       |
+   | `STRIPE_KEY`            | the Stripe secret or restricted key, test or live       |
    | `STRIPE_WEBHOOK_SECRET` | optional: both `whsec_` secrets, one per line           |
    | `CLAUDE_KEY`            | the Claude API key (`sk-ant-...`)                       |
    | `EDGE_SSH_KEY`          | the private half of the key from step 1                 |
