@@ -5,9 +5,7 @@
 Optional. Er macht die Box aus dem Internet erreichbar, ohne dass Sie zu Hause
 einen Port öffnen müssen.
 
-```
-internet → Traefik (VPS, :443) → rathole server ⇐ tunnel ⇐ rathole client (box) → nginx
-```
+![Internet → Traefik (VPS, :443) → rathole-Server ⇐ Tunnel ⇐ rathole-Client (Box) → nginx](images/master-proxy-de.svg)
 
 ## Edge (VPS)
 

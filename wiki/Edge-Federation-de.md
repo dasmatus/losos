@@ -18,13 +18,7 @@ Control Plane des Mesh) und bekommt einen **Uplink** zu einem Hub dazu. Zwei
 Standorte, jeder hinter seinem eigenen Spoke, erreichen einander über den
 Hub; eine Box spricht nie direkt mit dem Spoke eines anderen Standorts.
 
-```
-site A                         internet                        site B
-box ──rathole──▶ spoke A ──rathole uplink──▶ hub ◀──rathole uplink── spoke B ◀──rathole── box
-     announce        │        POST /relay       │       POST /relay        │     announce
-                     ▼                          ▼                          ▼
-              Traefik (LAN)       Traefik (public TLS, Host(<box>.<zone>))   Traefik (LAN)
-```
+![Standort A: Eine Box verbindet sich per rathole mit Spoke A und meldet sich dort an; Spoke A verbindet sich per rathole-Uplink mit dem Hub im Internet und meldet die Box mit POST /relay weiter; Standort B ist spiegelbildlich. Jeder Spoke betreibt Traefik im LAN; der Hub betreibt Traefik mit öffentlichem TLS und routet nach Host(<box>.<zone>).](images/edge-federation-de.svg)
 
 Drei Ebenen, von denen nur zwei föderiert werden:
 

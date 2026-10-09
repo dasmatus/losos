@@ -16,13 +16,7 @@ ohlasovanie v LAN, voliteľne riadiacu rovinu mesh), a pridá jeden **uplink**
 k hubu. Dve lokality, každá za vlastným spoke, sa navzájom dosiahnu cez hub;
 box sa nikdy nerozpráva priamo so spoke inej lokality.
 
-```
-site A                         internet                        site B
-box ──rathole──▶ spoke A ──rathole uplink──▶ hub ◀──rathole uplink── spoke B ◀──rathole── box
-     announce        │        POST /relay       │       POST /relay        │     announce
-                     ▼                          ▼                          ▼
-              Traefik (LAN)       Traefik (public TLS, Host(<box>.<zone>))   Traefik (LAN)
-```
+![Lokalita A: box sa cez rathole pripája k spoke A a ohlasuje sa mu; spoke A sa cez rathole uplink pripája k hubu na internete a odovzdáva mu box cez POST /relay; lokalita B je zrkadlová. Každý spoke prevádzkuje Traefik v LAN; hub prevádzkuje Traefik s verejným TLS, ktorý smeruje podľa Host(<box>.<zone>).](images/edge-federation-sk.svg)
 
 Tri roviny, z ktorých sa federujú iba dve:
 
