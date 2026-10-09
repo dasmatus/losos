@@ -4,8 +4,8 @@
 
 An owner describes a widget in plain words and Claude writes it. The
 widget editor (**Add a widget**, then **Write one**) has a **Build with
-Claude** tab next to **Write**. The result lands in the editor's source
-field, where the owner can read it, try it in the preview and change it.
+Claude** tab next to **Write**. The widget's files land in the editor,
+where the owner can read them, try them in the preview and change them.
 Nothing is saved until the owner presses Save, and a widget Claude wrote
 runs in the same sandboxed frame as one written by hand (see
 [Administration](Administration#widgets-written-by-hand)).
@@ -28,10 +28,12 @@ The edge runs a [Claude Managed Agent](https://platform.claude.com/docs/en/manag
 an agent with a fixed system prompt and the widget contract, made once by
 the operator, and a cloud container per build that Anthropic hosts. For each
 build the edge opens a session with the owner's description, the page's
-language and, when the owner asks for a change, the current source. The
-agent writes `widget.html` and a short `summary.txt`; the edge downloads
-both when the session goes idle, deletes the session and its files, and
-hands the source to the box.
+language and, when the owner asks for a change, the widget's current files.
+The agent writes `index.html`, any files it links (a stylesheet, a script,
+data) and a short `summary.txt`. When the session goes idle the edge
+downloads them, deletes the session and its files, and hands the widget's
+files to the box. Files with names a widget cannot have are left out, and a
+widget over 12 files or 128 KiB is refused like one typed by hand.
 
 The agent has file and shell tools in its own container and no web access.
 Its container cannot reach the box. Builds that run longer than 15 minutes

@@ -61,6 +61,20 @@ own. *Build one* composes a widget from the box's readings without any code.
 *Write one* takes HTML, style and script of your own, kept on the box and
 listed on this pane, where you can edit and delete it.
 
+A widget is a few files. `index.html` is where it starts; it links the rest
+by name, as in `<link rel="stylesheet" href="style.css">`,
+`<script src="app.js"></script>` or `<img src="dot.svg">`, and
+`fetch("data.json")` reads a file of its own. A new widget starts as
+`index.html`, `style.css` and `app.js`; **Add a file** adds another (`.html`,
+`.css`, `.js`, `.json`, `.svg`, `.txt` or `.md`). Scripts are classic
+scripts: load several with several `<script src>` tags, in order, rather
+than `import` between them.
+
+The editor completes as you type: the `losos` object and its members, the
+names of the readings inside `losos.metric("`, the colour variables after
+`var(--`, and the widget's own file names wherever a file is named. Press
+Ctrl+Space to ask for suggestions anywhere.
+
 A hand-written widget runs inside a sandboxed frame, an origin of its own
 with no access to the admin pages, the admin token or the API. It talks to
 the box through a small `losos` object the frame provides:
@@ -72,14 +86,17 @@ the box through a small `losos` object the frame provides:
 | `losos.palette`                | The box's colours, also set as CSS variables (`var(--accent)` works). |
 | `losos.onTheme(fn)`            | Called whenever the owner switches the theme.                         |
 | `losos.resize()`               | Ask the board to re-measure the tile after a change it cannot see.    |
+| `losos.files`                  | The names of the widget's files.                                      |
+| `losos.file(name)`             | One of the widget's files, as text.                                   |
+| `losos.asset(name)`            | One of the widget's files as a `data:` URL, for an image set from script. |
 
 The editor's **How it works** tab repeats this with an example. Its preview is the
 real frame, so what it shows is what the tile will show. A widget can fetch
-the internet (a weather tile, say) but not the box. The limit is 24 widgets
-of 64 KiB each.
+the internet (a weather tile, say) but not the box. The limit is 24 widgets,
+each at most 12 files and 128 KiB together.
 
 The editor also has a **Build with Claude** tab, where Claude writes the
-widget from a description and puts it in the source field for you to read
+widget from a description and puts its files in the editor for you to read
 before saving. It is paid per build from a prepaid balance and needs an edge
 that offers it; see [Widget builder](Widget-Builder).
 

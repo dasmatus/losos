@@ -13,7 +13,7 @@ import type { WidgetFile } from "@/lib/api";
 export const ENTRY_FILE = "index.html";
 
 /** What the editor highlights and completes a file as. */
-export type FileLanguage = "html" | "css" | "javascript" | "json" | "markdown" | "text";
+export type FileLanguage = "html" | "css" | "javascript" | "json" | "text";
 
 export function languageOf(name: string): FileLanguage {
   const kind = name.slice(name.lastIndexOf(".") + 1);
@@ -28,8 +28,6 @@ export function languageOf(name: string): FileLanguage {
       return "javascript";
     case "json":
       return "json";
-    case "md":
-      return "markdown";
     default:
       return "text";
   }

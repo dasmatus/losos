@@ -4,8 +4,8 @@
 
 Vlastník opíše widget bežnými slovami a Claude ho napíše. Editor widgetov
 (**Pridať widget**, potom **Napísať**) má vedľa karty **Písať** kartu
-**Vytvoriť s Claude**. Výsledok sa objaví v poli so zdrojom v editore, kde si
-ho vlastník môže prečítať, vyskúšať v náhľade a upraviť. Nič sa neuloží, kým
+**Vytvoriť s Claude**. Súbory widgetu sa objavia v editore, kde si ich
+vlastník môže prečítať, vyskúšať v náhľade a upraviť. Nič sa neuloží, kým
 vlastník nestlačí Uložiť, a widget od Claude beží v rovnakom sandboxovanom
 rámci ako ručne písaný (pozri [Správa](Administration-sk#ručne-písané-widgety)).
 
@@ -26,9 +26,11 @@ Edge spúšťa [Claude Managed Agent](https://platform.claude.com/docs/en/manage
 agenta s pevným systémovým promptom a zmluvou widgetu, ktorého operátor
 vytvorí raz, a na každú tvorbu cloudový kontajner, ktorý hostí Anthropic. Pre
 každú tvorbu edge otvorí reláciu s opisom od vlastníka, jazykom stránky a pri
-úprave aj s aktuálnym zdrojom. Agent zapíše `widget.html` a krátky
-`summary.txt`; keď relácia prejde do nečinnosti, edge oba súbory stiahne,
-reláciu aj súbory zmaže a zdroj odovzdá boxu.
+úprave aj s aktuálnymi súbormi widgetu. Agent zapíše `index.html`, súbory,
+ktoré prepája (štýl, skript, dáta), a krátky `summary.txt`. Keď relácia
+prejde do nečinnosti, edge ich stiahne, reláciu aj súbory zmaže a súbory
+widgetu odovzdá boxu. Súbory s menom, aké widget mať nemôže, vynechá, a
+widget nad 12 súborov alebo 128 KiB odmietne rovnako ako ručne písaný.
 
 Agent má vo vlastnom kontajneri nástroje na súbory a shell a nemá prístup na
 web. Jeho kontajner sa k boxu nedostane. Tvorba, ktorá beží dlhšie ako 15

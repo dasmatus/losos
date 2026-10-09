@@ -444,11 +444,9 @@ await check('the code editor completes the bridge, the readings, the colours and
     assert.ok(members.some((o) => o.startsWith(member)), `losos.${member} was not offered: ${members.join(' | ')}`);
   }
   await page.keyboard.type('met');
-  // CodeMirror ignores Enter for 75 ms after the list changes, so a person
-  // typing fast does not pick by accident; wait out the narrowing.
-  await list.locator('li').filter({ hasText: 'theme' }).first().waitFor({ state: 'detached' });
-  await page.waitForTimeout(150);
-  await page.keyboard.press('Enter');
+  // Picked with the mouse: CodeMirror ignores Enter for a moment after the
+  // list changes, which a fast test can fall into.
+  await list.locator('li').filter({ hasText: /^metric/ }).click();
   // Picking metric opens the string, where the readings are offered.
   await list.waitFor();
   assert.ok((await options()).some((o) => o.startsWith('storage.bytes')), 'the readings were not offered');
@@ -468,8 +466,9 @@ await check('the code editor completes the bridge, the readings, the colours and
   await page.keyboard.press('Escape');
 
   assert.deepEqual((await violations(page)).slice(atLoad), [], 'the editor broke the admin CSP');
-  // Half-typed script in the preview is a syntax error there, which is fine.
-  assert.deepEqual(errors.filter((e) => !e.startsWith('SyntaxError')), []);
+  // The preview runs what is half typed: a syntax error, or a reading with
+  // no name yet. Those are the widget's errors, shown under the preview.
+  assert.deepEqual(errors.filter((e) => !/^SyntaxError|no reading called/.test(e)), []);
   await page.close();
 });
 
