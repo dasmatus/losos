@@ -83,6 +83,7 @@ async function open({
   checkoutUrl = 'https://checkout.stripe.com/c/pay/cs_test_1',
   onboardUrl = 'https://connect.stripe.com/setup/e/acct_test/abc',
   now = null,
+  cloud = null,
 } = {}) {
   const page = await browser.newPage({ viewport, locale });
   if (now !== null) await page.clock.setFixedTime(now);
@@ -229,6 +230,19 @@ async function open({
 
   if (stored) {
     await page.addInitScript((t) => window.sessionStorage.setItem('losos-token', t), TOKEN);
+  }
+  // The apps the homepage probes, when a check wants them answering the way
+  // a set-up box does. `cloud.mail` says whether the owner installed Mail:
+  // an installed app sends a visitor without a session to the sign-in page,
+  // a missing one is Nextcloud's 404.
+  if (cloud !== null) {
+    await page.route('**/nextcloud/status.php', (route) => json(route, 200, { installed: true }));
+    await page.route('**/forgejo/', (route) => route.fulfill({ status: 200, contentType: 'text/html', body: '' }));
+    await page.route('**/nextcloud/index.php/apps/mail/', (route) =>
+      cloud.mail
+        ? route.fulfill({ status: 303, headers: { location: '/nextcloud/index.php/login' } })
+        : route.fulfill({ status: 404, contentType: 'text/html', body: '' }),
+    );
   }
   await page.goto(origin + path, { waitUntil: 'networkidle' });
   return { page, errors, marketPosts, applies, domainPosts, backupPosts };
@@ -874,6 +888,37 @@ await check('About leads with the address this browser is using and names the .l
   assert.ok(text.indexOf(origin) < text.indexOf('http://mattbox.local'), 'the address in use comes before the name');
   assert.deepStrictEqual(errors, []);
   await page.close();
+});
+
+/* LosOS cloud's apps, in the order of its own menu, each a link into it
+ * through index.php. Mail is not shipped, so its tile waits for the probe. */
+const CLOUD_TILES = [
+  ['Files', 'files'], ['Dashboard', 'dashboard'], ['Photos', 'photos'], ['Activity', 'activity'],
+  ['Contacts', 'contacts'], ['Calendar', 'calendar'], ['Notes', 'notes'], ['Bookmarks', 'bookmarks'],
+  ['Deck', 'deck'], ['Music', 'music'], ['Collectives', 'collectives'], ['Polls', 'polls'],
+  ['Forms', 'forms'], ['Tables', 'tables'], ['Memories', 'memories'], ['News', 'news'],
+  ['Tasks', 'tasks'], ['Maps', 'maps'],
+];
+const tiles = (page) =>
+  page.getByRole('list', { name: 'Apps on this box' }).getByRole('link').evaluateAll((links) =>
+    links.map((a) => [a.textContent.trim(), a.getAttribute('href')]),
+  );
+
+await check('the homepage has a tile for every app in LosOS cloud\'s menu, and Mail only when it is installed', async () => {
+  const expected = CLOUD_TILES.map(([name, id]) => [name, `/nextcloud/index.php/apps/${id}/`]);
+  for (const mail of [false, true]) {
+    const { page, errors } = await open({ stored: true, cloud: { mail } });
+    await page.getByRole('link', { name: 'Maps' }).waitFor();
+    const want = [
+      ...expected,
+      ...(mail ? [['Mail', '/nextcloud/index.php/apps/mail/']] : []),
+      ['Code', '/forgejo/'],
+      ['Settings', '/settings'],
+    ];
+    assert.deepEqual(await tiles(page), want);
+    assert.deepEqual(errors, []);
+    await page.close();
+  }
 });
 
 await check('an unknown address says so instead of showing a blank page', async () => {
