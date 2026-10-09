@@ -75,6 +75,7 @@ async function open({
   viewport = { width: 1280, height: 900 },
   locale = 'en-US',
   market = { available: false },
+  vms = { available: false, reason: 'notSharing' },
   domains = { available: false },
   backup = BACKUP_EMPTY,
   edge = EDGE_FOUND,
@@ -144,6 +145,24 @@ async function open({
     marketPosts.push([path, route.request().postDataJSON()]);
     if (path === '/api/market/onboard') return json(route, 200, { available: true, ready: false, url: onboardUrl });
     if (path === '/api/market/orders') return json(route, 201, { available: true, checkout_url: checkoutUrl });
+    return json(route, 201, { available: true });
+  });
+  // The machines relay: `vms` is GET /api/vms's document; every action and
+  // every image upload is recorded and answered the way lososd does.
+  const vmPosts = [];
+  await page.route('**/api/vms', (route) =>
+    authed(route) ? json(route, 200, vms) : json(route, 401, { error: 'unauthorized' }),
+  );
+  await page.route('**/api/vms/**', (route) => {
+    if (!authed(route)) return json(route, 401, { error: 'unauthorized' });
+    const request = route.request();
+    const url = new URL(request.url());
+    if (request.method() === 'PUT') {
+      vmPosts.push(['PUT', url.pathname + url.search, request.postDataBuffer()?.length ?? 0]);
+      return json(route, 201, { upload_id: 'upl_9f00', size: 64, min_disk_gib: 1 });
+    }
+    vmPosts.push([url.pathname, request.postDataJSON()]);
+    if (url.pathname === '/api/vms/orders') return json(route, 201, { available: true, checkout_url: checkoutUrl });
     return json(route, 201, { available: true });
   });
   // The custom-domain relay: GET answers `domains`; an add or a remove is
@@ -245,7 +264,7 @@ async function open({
     );
   }
   await page.goto(origin + path, { waitUntil: 'networkidle' });
-  return { page, errors, marketPosts, applies, domainPosts, backupPosts };
+  return { page, errors, marketPosts, vmPosts, applies, domainPosts, backupPosts };
 }
 
 /* GET /api/backup: a box with no bucket yet, and one with a bucket, a last
@@ -363,6 +382,65 @@ const MARKET = {
   },
 };
 
+/* A sharing box on an edge that runs machines: two systems in the
+ * catalogue, one image of its own on the edge, one host offering replicas,
+ * and one machine of its own with two replicas, one up and one importing. */
+const VMS = {
+  available: true,
+  catalogue: {
+    images: [
+      { id: 'losos', name: 'LosOS', family: 'losos', cloud_init: false, efi: true, disk_gib: 20, memory_mib: 4096 },
+      { id: 'ubuntu-24.04', name: 'Ubuntu Server 24.04 LTS', family: 'ubuntu-server', cloud_init: true, efi: false, disk_gib: 20, memory_mib: 2048 },
+    ],
+    installer_only: ['windows', 'macos'],
+    not_offered: [],
+    shape: { cpu: 1, memory_mib: 2048, disk_gib: 20 },
+    fee_bps: 5000,
+    max_replicas: 10,
+    max_upload_bytes: 32 * 1024 ** 3,
+    published: true,
+  },
+  listings: [
+    { id: 'lst_vm01', kind: 'vm', unit: 'replica-month', unit_price: 600, currency: 'eur', available: 4 },
+  ],
+  account: {
+    ...MARKET.account,
+    can_host_vms: true,
+    vm_fee_bps: 5000,
+    uploads: [
+      { id: 'upl_77aa', name: 'My router', stored: true, size: 734003200, min_disk_gib: 8, created_at: 1760000000 },
+    ],
+    purchases: [
+      {
+        id: 'ord_0123456789abcdef',
+        kind: 'vm',
+        unit: 'replica-month',
+        quantity: 2,
+        amount: 1200,
+        fee: 600,
+        seller_net: 600,
+        currency: 'eur',
+        status: 'paid',
+        created_at: 1760000000,
+        paid_at: 1760000100,
+        expires_at: 1762600000,
+        expired: false,
+        volume: null,
+        vm: { image: 'ubuntu-24.04', name: 'web', address: 'https://vm-0123456789ab.vms.example.net', created: true, halted: false },
+      },
+    ],
+  },
+  machines: [
+    {
+      order_id: 'ord_0123456789abcdef',
+      replicas: [
+        { name: 'vm-0123456789ab-0', status: 'Running' },
+        { name: 'vm-0123456789ab-1', status: 'Preparing' },
+      ],
+    },
+  ],
+};
+
 const body = (page) => page.locator('body').innerText();
 const nav = (page) => page.getByRole('navigation', { name: 'Sections', exact: true });
 
@@ -478,6 +556,7 @@ const DESTINATIONS = [
   ['Apps', '/apps'],
   ['Storage', '/storage'],
   ['Mesh', '/mesh'],
+  ['Machines', '/machines', 'Entries under Mesh'],
   ['Network', '/settings/network', 'Settings'],
   ['Hardware', '/settings/hardware', 'Settings'],
   ['Security', '/settings/security', 'Settings'],
@@ -862,7 +941,7 @@ await check('under the appliance CSP the switches and the sidebar beside them ad
   }
 });
 
-for (const path of ['/apps', '/storage', '/mesh', '/settings', '/settings/hardware', '/settings/advanced', '/settings/history', '/settings/backup', '/settings/about', '/settings/reset']) {
+for (const path of ['/apps', '/storage', '/mesh', '/machines', '/settings', '/settings/hardware', '/settings/advanced', '/settings/history', '/settings/backup', '/settings/about', '/settings/reset']) {
   await check(`a deep link to ${path} renders without errors and survives a reload`, async () => {
     const { page, errors } = await open({ path, stored: true });
     await nav(page).waitFor();
@@ -962,8 +1041,8 @@ await check('a browser in a language we do not carry falls back to English', asy
 
 for (const locale of ['sk-SK', 'de-DE']) {
   await check(`every section renders in ${locale} without errors`, async () => {
-    for (const path of ['/', '/apps', '/storage', '/mesh', '/settings/network', '/settings/hardware', '/settings/security', '/settings/advanced', '/settings/history', '/settings/backup', '/settings/about', '/settings/reset']) {
-      const { page, errors } = await open({ path, stored: true, locale, market: MARKET, backup: BACKUP_SET });
+    for (const path of ['/', '/apps', '/storage', '/mesh', '/machines', '/settings/network', '/settings/hardware', '/settings/security', '/settings/advanced', '/settings/history', '/settings/backup', '/settings/about', '/settings/reset']) {
+      const { page, errors } = await open({ path, stored: true, locale, market: MARKET, vms: VMS, backup: BACKUP_SET });
       await page.locator('main').waitFor();
       assert.deepEqual(errors, [], `${path} threw in ${locale}`);
       await page.close();
@@ -1626,6 +1705,126 @@ await check('the Reset pane starts an erase with a backup, counts down and cance
   await bare.page.close();
 });
 
+// ── Machines (pane-machines.tsx) ──────────────────────────────────────────
+
+await check('a box that does not share its disk sees the Machines pane greyed, with nothing to press', async () => {
+  const { page, errors, vmPosts } = await open({ path: '/machines', stored: true });
+  const notice = page.getByTestId('machines-unavailable');
+  await notice.getByText('Machines are for boxes that share their disk').waitFor();
+  await notice.getByText('Disk sharing opens together with the market.').waitFor();
+  assert.equal(await page.locator('main').getByRole('button').count(), 0, 'the greyed pane offers a button');
+  assert.deepEqual(vmPosts, []);
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+await check('the other reasons each get their own sentence', async () => {
+  for (const [reason, text] of [
+    ['noOfficialEdge', 'No LosOS edge in reach'],
+    ['notOffered', 'This edge runs no machines'],
+  ]) {
+    const { page, errors } = await open({ path: '/machines', stored: true, vms: { available: false, reason } });
+    await page.getByTestId('machines-unavailable').getByText(text).waitFor();
+    assert.deepEqual(errors, []);
+    await page.close();
+  }
+});
+
+await check('starting three replicas posts the image, the name and the cloud-init, and opens Stripe', async () => {
+  const { page, errors, vmPosts } = await open({ path: '/machines', stored: true, vms: VMS });
+  const start = page.getByTestId('machines-start');
+  await start.getByLabel('System').selectOption('ubuntu-24.04');
+  await start.getByLabel('Name').fill('web');
+  await start.getByRole('button', { name: 'One replica more' }).click();
+  await start.getByRole('button', { name: 'One replica more' }).click();
+  await start.getByText('€18.00 a month for 3 replicas').waitFor();
+  await start.getByText('50% goes to the owner of the box that runs it, 50% to LosOS.').waitFor();
+  await start.getByLabel('Cloud-init (optional)').fill('#cloud-config\nssh_authorized_keys: [ssh-ed25519 AAAA]\n');
+  const tab = page.context().waitForEvent('page');
+  await start.getByRole('button', { name: 'Pay and start' }).click();
+  const checkout = await tab;
+  await checkout.waitForURL('https://checkout.stripe.com/c/pay/cs_test_1');
+  assert.deepEqual(vmPosts, [
+    [
+      '/api/vms/orders',
+      {
+        listing_id: 'lst_vm01',
+        quantity: 3,
+        image: 'ubuntu-24.04',
+        name: 'web',
+        user_data: '#cloud-config\nssh_authorized_keys: [ssh-ed25519 AAAA]\n',
+      },
+    ],
+  ]);
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+await check('the replica count stops at what the host has free, and LosOS takes no cloud-init', async () => {
+  const { page, vmPosts } = await open({ path: '/machines', stored: true, vms: VMS });
+  const start = page.getByTestId('machines-start');
+  const more = start.getByRole('button', { name: 'One replica more' });
+  for (let i = 0; i < 5; i += 1) if (await more.isEnabled()) await more.click();
+  assert.equal(await start.getByLabel('Replicas').inputValue(), '4');
+  assert.equal(await more.isDisabled(), true);
+  await start.getByLabel('System').selectOption('losos');
+  assert.equal(await start.getByLabel('Cloud-init (optional)').count(), 0, 'LosOS reads no cloud-init');
+  // No name: refused under the field, nothing sent.
+  await start.getByRole('button', { name: 'Pay and start' }).click();
+  await page.getByText('Give it a name of up to 40 characters.').waitFor();
+  assert.deepEqual(vmPosts, []);
+  await page.close();
+});
+
+await check('your machines show each replica and the address they share', async () => {
+  const { page, errors } = await open({ path: '/machines', stored: true, vms: VMS });
+  const mine = page.getByTestId('machines-mine');
+  await mine.getByText('web', { exact: true }).waitFor();
+  await mine.getByText('vm-0123456789ab-0').waitFor();
+  await mine.getByText('running', { exact: true }).waitFor();
+  await mine.getByText('copying its disk', { exact: true }).waitFor();
+  const address = mine.getByRole('link', { name: 'https://vm-0123456789ab.vms.example.net' });
+  assert.equal(await address.getAttribute('rel'), 'noreferrer');
+  // An uploaded image is offered next to the catalogue.
+  await page.getByTestId('machines-start').getByLabel('System').selectOption('upl_77aa');
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+await check('an own QCOW2 is streamed to /api/vms/images with its name and firmware', async () => {
+  const { page, errors, vmPosts } = await open({ path: '/machines', stored: true, vms: VMS });
+  const images = page.getByTestId('machines-images');
+  const qcow2 = Buffer.concat([Buffer.from([0x51, 0x46, 0x49, 0xfb, 0, 0, 0, 3]), Buffer.alloc(56)]);
+  await images.getByLabel('QCOW2 file').setInputFiles({ name: 'router.qcow2', mimeType: 'application/octet-stream', buffer: qcow2 });
+  assert.equal(await images.getByLabel('Name of the image').inputValue(), 'router');
+  await images.getByLabel('Boots with UEFI').check();
+  await images.getByRole('button', { name: 'Upload' }).click();
+  await page.locator('[data-toast]').filter({ hasText: 'Image uploaded' }).waitFor();
+  assert.deepEqual(vmPosts, [['PUT', '/api/vms/images?name=router&efi=1', 64]]);
+  await images.getByRole('button', { name: 'Remove' }).click();
+  await page.locator('[data-toast]').filter({ hasText: 'Image removed' }).waitFor();
+  assert.deepEqual(vmPosts[1], ['/api/vms/images/remove', { upload_id: 'upl_77aa' }]);
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+await check('a hosting box offers replicas at a price per replica-month', async () => {
+  const { page, errors, vmPosts } = await open({ path: '/machines', stored: true, vms: VMS });
+  const host = page.getByTestId('machines-host');
+  await host.getByLabel('Price per replica-month (EUR)').fill('7,50');
+  await host.getByLabel('Replicas you will run').fill('60');
+  await host.getByRole('button', { name: 'Offer' }).click();
+  await host.getByText('Offer between 1 and 50 replicas.').waitFor();
+  assert.deepEqual(vmPosts, []);
+  await host.getByLabel('Replicas you will run').fill('5');
+  await host.getByRole('button', { name: 'Offer' }).click();
+  await page.locator('[data-toast]').filter({ hasText: 'Offer is up' }).waitFor();
+  assert.deepEqual(vmPosts, [['/api/vms/listings', { unit_price: 750, capacity: 5 }]]);
+  await page.getByText('You receive 50% of every machine sale and LosOS keeps 50%.', { exact: false }).waitFor();
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
 await check('a phone-width viewport does not scroll the page sideways', async () => {
   const { page } = await open({ stored: true, viewport: { width: 375, height: 800 } });
   await page.getByRole('button', { name: 'Expand the sidebar' }).waitFor();
@@ -1633,6 +1832,17 @@ await check('a phone-width viewport does not scroll the page sideways', async ()
     () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
   );
   assert.ok(overflow <= 0, `page is ${overflow}px wider than the viewport`);
+  await page.close();
+});
+
+await check('the Machines pane fits a phone too', async () => {
+  const { page, errors } = await open({ path: '/machines', stored: true, vms: VMS, viewport: { width: 375, height: 800 } });
+  await page.getByTestId('machines-start').waitFor();
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  );
+  assert.ok(overflow <= 0, `page is ${overflow}px wider than the viewport`);
+  assert.deepEqual(errors, []);
   await page.close();
 });
 

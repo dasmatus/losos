@@ -528,6 +528,18 @@ in
       '';
     };
 
+    vms.host = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Let the mesh market rent out virtual machines that run on this box.
+        Takes effect only while losos.sharingMyStorage is on: the machines'
+        disks live in the shared user's home, the storage the box already
+        lends the mesh. Half of what each machine earns goes to this box's
+        owner. Turn it off to share storage without hosting machines.
+      '';
+    };
+
     cluster.idleLoadThreshold = lib.mkOption {
       type = lib.types.float;
       default = 0.25;
@@ -1541,6 +1553,80 @@ in
       description = "What the edge sells, by sku.";
     };
 
+    # ── Virtual machines on the mesh (edge side) ────────────────────────────
+    # KubeVirt and CDI on the edge's rke2 cluster, sold through the market by
+    # the replica (backend-registrar/src/vms.rs, wiki/Virtual-Machines.md).
+    # Boxes host them only while they share their storage.
+    edge.vms.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Run virtual machines on the mesh and sell them on the market. Deploys
+        the KubeVirt and CDI operators to the edge's rke2 cluster, a local
+        storage class that keeps each machine's disk on the box that runs it,
+        and the registrar's machine routes. A box hosts machines only while
+        it shares its storage (losos.sharingMyStorage). Each sale is split
+        evenly between the hosting box's owner and the platform. Needs
+        losos.edge.market.enable.
+      '';
+    };
+
+    edge.vms.useEmulation = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Run guests under software emulation when a hosting box has no
+        /dev/kvm, for example a box that is itself a virtual machine without
+        nested virtualisation. Guests then run many times slower. For demos
+        only; a real box has hardware virtualisation.
+      '';
+    };
+
+    edge.vms.cpu = lib.mkOption {
+      type = lib.types.ints.between 1 16;
+      default = 1;
+      description = "Virtual CPUs of every replica.";
+    };
+
+    edge.vms.memoryMiB = lib.mkOption {
+      type = lib.types.ints.between 512 65536;
+      default = 2048;
+      description = "Memory of every replica, in MiB. An image that needs more (LosOS asks for 4096) gets what it needs.";
+    };
+
+    edge.vms.diskGiB = lib.mkOption {
+      type = lib.types.ints.between 1 512;
+      default = 20;
+      description = "Disk of every replica, in GiB. An image that needs more gets what it needs.";
+    };
+
+    edge.vms.hostPath = lib.mkOption {
+      type = lib.types.strMatching "/[-_./a-zA-Z0-9]+";
+      default = "/home/shared/vms";
+      description = ''
+        Where on a hosting box the replicas' disks live. The default is inside
+        the shared user's home, the storage the box already lends the mesh.
+      '';
+    };
+
+    edge.vms.domain = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      example = "vms.losos.cfd";
+      description = ''
+        Publish each machine order at `https://<order>.<domain>`, port 80 of
+        its replicas behind the edge's Traefik. Needs a wildcard DNS record
+        for `*.<domain>` pointing at this edge. Null publishes nothing; the
+        machines are then reachable only inside the mesh.
+      '';
+    };
+
+    edge.vms.uploadMaxGiB = lib.mkOption {
+      type = lib.types.ints.between 1 512;
+      default = 32;
+      description = "The largest QCOW2 image a buyer may upload, in GiB. Uploads are kept in the registrar's state directory.";
+    };
+
     # ── Edge on the LAN ─────────────────────────────────────────────────────
     # The appliance looks for an edge proxy before it lets anyone share
     # storage (backend/src/edge.rs): at losos.proxy.registrarUrl, and on its
@@ -1930,6 +2016,16 @@ in
       default = config.losos.nextcloud.federation.enable && config.losos.sharingMyStorage;
       description = "LosOS cloud federates: losos.nextcloud.federation.enable and losos.sharingMyStorage.";
     };
+  };
+
+  # Whether this box hosts machines, as it actually runs: the switch and
+  # the sharing gate together, read by modules/cluster.nix for the join.
+  options.lososInternal.vmHost = lib.mkOption {
+    type = lib.types.bool;
+    internal = true;
+    readOnly = true;
+    default = config.losos.vms.host && config.losos.sharingMyStorage;
+    description = "This box hosts mesh virtual machines: losos.vms.host and losos.sharingMyStorage.";
   };
 
   config.warnings =

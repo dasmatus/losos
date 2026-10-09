@@ -1404,6 +1404,16 @@ export default defineMessages({
     sk: "Výpočtový výkon",
     de: "Rechenleistung",
   },
+  "panes.market.kind.vm": {
+    en: "Virtual machine",
+    sk: "Virtuálny stroj",
+    de: "Virtuelle Maschine",
+  },
+  "panes.market.unit.vm": {
+    en: "replica-month",
+    sk: "replika-mesiac",
+    de: "Replikat-Monat",
+  },
   "panes.market.unit.storage": {
     en: "GiB-month",
     sk: "GiB-mesiac",

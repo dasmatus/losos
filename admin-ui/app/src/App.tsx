@@ -232,6 +232,7 @@ function Shell() {
             />
             <Route path="/storage" element={<SettingsRoute pane="storage" />} />
             <Route path="/mesh" element={<SettingsRoute pane="mesh" />} />
+            <Route path="/machines" element={<SettingsRoute pane="machines" />} />
             <Route path="/apps" element={<SettingsRoute pane="apps" />} />
             <Route path="/settings" element={<SettingsRoute />} />
             <Route path="/settings/:pane" element={<SettingsRoute />} />
