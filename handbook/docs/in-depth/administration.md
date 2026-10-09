@@ -305,8 +305,8 @@ their values and links to the Apps pane instead of drawing a second editor
 
 A null Nextcloud option leaves that setting to Nextcloud. The first four
 are `config.php` keys: native mode puts them in the module's
-`override.config.php`, the pod in `losos.config.php`, and both are read
-after `config.php`, so a value Nextcloud writes there never wins. The other
+`override.config.php`, the pod in `losos.config.php`. Nextcloud reads both
+after `config.php`, so a value it writes there never wins. The other
 four are app config in the database. `modules/nextcloud-stack.nix` (`site`)
 renders them as `app key value` lines, which `occ config:app:set` writes on
 every start: the pod's entrypoint from a `site` file the host mounts, native
