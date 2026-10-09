@@ -24,10 +24,14 @@ without saying so.
 
 ## Releases
 
-Push a `v*` tag, or draft a release with a new `v*` tag in the web UI. The
-release job:
+Set `flake/version.nix` to the new tag on main first, then push a `v*`
+tag, or draft a release with a new `v*` tag in the web UI. The boot menus,
+the boot pictures, os-release and the console banners show that file's
+value, and an installed box builds from the committed tree. The release
+job:
 
-1. builds the installer ISO and the demo QCOW2,
+1. writes the tag into `flake/version.nix` (with a warning if the committed
+   value was another one), then builds the installer ISO and the demo QCOW2,
 2. signs the ISO's UEFI loader in place with the `SECURE_BOOT_DB_KEY`
    secret (`losos-sign-iso`, which refuses to publish unsigned once
    `keys/secure-boot-db.pem` carries a certificate) and signs `SHA256SUMS`
