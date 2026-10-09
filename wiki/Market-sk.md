@@ -272,10 +272,10 @@ nevkladá.
    cez `systemd-creds` pod jeho menom a reštartuje gate. Výmena kľúča je zmena
    secretu a nové spustenie workflow.
 
-Kľúč Claude sa zapečatí ako `claude-key` do
-`/var/secrets/losos-claude-key.cred`
-(`losos.edge.credentials.secrets.claude-key.sealed`). Registrar ho číta cez
-`LoadCredentialEncrypted=claude-key:<tá cesta>` a nový zapečatený kľúč
+Kľúč Claude sa zapečatí ako `claude-api-key` do
+`/var/secrets/losos-claude-api-key.cred`
+(`losos.edge.credentials.secrets.claude-api-key.sealed`). Registrar ho číta cez
+`LoadCredentialEncrypted=claude-api-key:<tá cesta>` a nový zapečatený kľúč
 reštartuje `losos-registrar.service`.
 
 ## Bezpečnostné vlastnosti

@@ -1479,9 +1479,9 @@ in
       description = ''
         The secrets `losos-seal-credential` may seal, by systemd credential
         name. The edge module lists `stripe-secret-key`,
-        `stripe-webhook-secret` and `claude-key`; a module that needs
+        `stripe-webhook-secret` and `claude-api-key`; a module that needs
         another secret adds an entry, or adds its unit to an entry's `units`
-        (`losos.edge.credentials.secrets.claude-key.units = [ "x.service" ]`).
+        (`losos.edge.credentials.secrets.claude-api-key.units = [ "x.service" ]`).
       '';
     };
 

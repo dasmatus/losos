@@ -115,8 +115,8 @@ in
             units = [ "losos-stripe-gate.service" ];
           };
           # The registrar loads it under this name for the AI widget builder.
-          claude-key = {
-            sealed = lib.mkDefault "/var/secrets/losos-claude-key.cred";
+          claude-api-key = {
+            sealed = lib.mkDefault "/var/secrets/losos-claude-api-key.cred";
             pattern = lib.mkDefault "sk-ant-[A-Za-z0-9_-]+";
             units = [ "losos-registrar.service" ];
           };
