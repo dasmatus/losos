@@ -1,3 +1,5 @@
+**English** · [Slovenčina](Hardening-sk) · [Deutsch](Hardening-de)
+
 # Hardening
 
 `losos.hardening.enable` is on by default. It sets:

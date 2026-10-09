@@ -1,3 +1,5 @@
+**English** · [Slovenčina](Administration-sk) · [Deutsch](Administration-de)
+
 # Administration
 
 ## Admin UI
@@ -71,7 +73,7 @@ the box through a small `losos` object the frame provides:
 | `losos.onTheme(fn)`            | Called whenever the owner switches the theme.                         |
 | `losos.resize()`               | Ask the board to re-measure the tile after a change it cannot see.    |
 
-The editor's **Help** tab repeats this with an example. Its preview is the
+The editor's **How it works** tab repeats this with an example. Its preview is the
 real frame, so what it shows is what the tile will show. A widget can fetch
 the internet (a weather tile, say) but not the box. The limit is 24 widgets
 of 64 KiB each.

@@ -1,3 +1,5 @@
+**English** · [Slovenčina](Lab-sk) · [Deutsch](Lab-de)
+
 # Lab
 
 LosOS Lab draws a LosOS setup as a network diagram and shows the traffic

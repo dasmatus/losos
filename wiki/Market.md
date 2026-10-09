@@ -1,3 +1,5 @@
+**English** · [Slovenčina](Market-sk) · [Deutsch](Market-de)
+
 # Market (planned)
 
 An optional marketplace where one box sells spare storage or compute and
