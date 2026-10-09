@@ -75,12 +75,14 @@ disk, puts them in one LVM volume group, encrypts it with LUKS, formats
 `/persist` is ext4 with the `encrypt` feature because fscrypt needs it and
 btrfs does not support it. You lose compression and data checksums.
 
-After the reboot, tty1 shows a full-screen banner with the box's IP address
-and `<hostname>.local`. Open the IP address in a browser on any computer on
+After the reboot, the screen shows the salmon while the box starts. When
+it is up, the salmon moves to the top and a panel under it shows the box's
+IP address and `<hostname>.local`. On a machine where the boot screen finds
+no display early, tty1 shows the same lines as a text banner. Open the IP address in a browser on any computer on
 the same network. The `.local` name works too wherever the computer resolves
 mDNS names. Windows, macOS, phones and most Linux desktops do; the host of a
 libvirt or VirtualBox NAT guest usually does not, so use the address there.
-Both reach the same pages. The banner updates when the address changes.
+Both reach the same pages. The panel updates when the address changes.
 
 The first page is the setup wizard. Its first step is trusting the box's own
 certificate, so that the rest of the setup, and every later sign-in, travels

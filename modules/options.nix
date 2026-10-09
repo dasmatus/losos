@@ -733,6 +733,18 @@ in
       description = "System hostname. Avahi publishes <hostName>.local via mDNS.";
     };
 
+    splash.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Draw the boot screen and the box's status (its address, and the
+        warning a box without a TPM chip carries) with Plymouth: the logo
+        and a panel on the box's own palette, which stays on screen after
+        boot. Off, the box boots in text and tty1 shows the same status as
+        a text banner.
+      '';
+    };
+
     # sharing's caring btw
     sharingMyStorage = lib.mkOption {
       type = lib.types.bool;

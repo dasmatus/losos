@@ -16,7 +16,7 @@ answers.
 
 ## From the LAN
 
-![The banner the box shows when it has booted and has a network, with the address to type.](../img/tty1-banner.png)
+![The banner the box shows under the salmon when it has booted and has a network, with the address to type.](../img/tty1-banner.png)
 
 1. **Read the screen.** The banner shows the address the box has *now*. A
    router that restarted may have given it a new one, and the banner redraws

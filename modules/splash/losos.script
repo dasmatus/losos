@@ -1,0 +1,379 @@
+# The LosOS boot screen: the logo, and under it a panel with the box's status.
+#
+# modules/splash.nix puts the palette (ground, ink, muted, accent, warn; each
+# with .r .g .b) and `name` ("LosOS v0.1.8") above this file.
+#
+# While the box boots the logo sits in the middle of the screen with a
+# caption ("LosOS v0.1.8 is starting") and a progress line under it. Once
+# the box is up, modules/console.nix sends the rows tty1 shows without a
+# splash, as
+#
+#   plymouth update --status='losos:#LosOS v0.1.8 is ready||~On any computer...'
+#
+# (a text longer than one Plymouth message comes first in `losos+:` parts),
+# one row per `|`, each led by a style character:
+#
+#   #  headline        @  address        !  warning headline
+#   ~  secondary text  (space)  plain    an empty row is a gap
+#
+# Then the logo glides to the top, slow at first, faster, slow again, while
+# the caption fades and the panel opens from its middle with the rows fading
+# in. A disk that asks for a password opens the same panel for the prompt.
+#
+# `losos-mode:reboot` and `losos-mode:shutdown` (modules/splash.nix, at
+# shutdown) play it backwards to a centred logo captioned "is restarting" or
+# "is shutting down", and later updates are ignored.
+
+Window.SetBackgroundTopColor(ground.r, ground.g, ground.b);
+Window.SetBackgroundBottomColor(ground.r, ground.g, ground.b);
+
+screen.x = Window.GetX();
+screen.y = Window.GetY();
+screen.w = Window.GetWidth();
+screen.h = Window.GetHeight();
+
+# Type follows the screen height, so the panel takes the same share of a
+# 768-line monitor and of a television.
+size = Math.Int(Math.Max(screen.h / 54, 11));
+pad = size;
+
+# Seconds the logo takes to travel, at Plymouth's 50 frames a second.
+duration = 1.2;
+step = 1 / (50 * duration);
+
+fun font (weight, scale)
+{
+  return "DejaVu Sans " + weight + Math.Int(size * scale);
+}
+
+fun centred (width)
+{
+  return Math.Int(screen.x + (screen.w - width) / 2);
+}
+
+# ── The logo and its caption ────────────────────────────────────────────────
+
+logo.original = Image("logo.png");
+logo.h = Math.Int(screen.h * 0.2);
+logo.w = Math.Int(logo.original.GetWidth() * logo.h / logo.original.GetHeight());
+logo.sprite = Sprite(logo.original.Scale(logo.w, logo.h));
+logo.x = centred(logo.w);
+# In the middle of the screen, with the caption and the progress line
+# under it counted in.
+logo.middle = Math.Int(screen.y + (screen.h - logo.h - 4 * size) / 2);
+logo.top = logo.middle;
+
+caption.sprite = Sprite();
+bar.image = Image("accent.png");
+bar.sprite = Sprite();
+bar.width = Math.Int(Math.Min(logo.w * 1.5, screen.w - 2 * pad));
+bar.height = Math.Max(3, Math.Int(size / 5));
+progress = 0;
+bar.drawn = 0;
+
+fun set_caption (text)
+{
+  local.image = Image.Text(text, ink.r, ink.g, ink.b, 1, font("Bold ", 1.2));
+  caption.sprite.SetImage(image);
+  caption.x = centred(image.GetWidth());
+  # Below the logo, and moving with it.
+  caption.dy = logo.h + 2 * pad;
+  bar.dy = caption.dy + image.GetHeight() + pad;
+}
+
+# Plymouth reports progress many times a second; the line is redrawn only
+# when it has grown by a pixel.
+fun draw_bar (y, opacity)
+{
+  local.w = Math.Max(1, Math.Int(bar.width * progress));
+  if (w != bar.drawn)
+    {
+      bar.sprite.SetImage(bar.image.Scale(w, bar.height));
+      global.bar.drawn = w;
+    }
+  bar.sprite.SetPosition(centred(bar.width), y + bar.dy, 3);
+  bar.sprite.SetOpacity(opacity);
+}
+
+# ── The panel and its rows ──────────────────────────────────────────────────
+
+panel.image = Image("panel.png");
+panel.sprite = Sprite();
+edge.image = Image("accent.png");
+edge.sprite = Sprite();
+message.sprite = Sprite();
+rows = 0;
+panel.h = 0;
+panel.middle = 0;
+
+fun row_image (line)
+{
+  local.style = line.CharAt(0);
+  local.text = line.SubString(1, line.Length());
+  if (line.Length() < 2)
+    return NULL;
+  if (style == "#")
+    return Image.Text(text, accent.r, accent.g, accent.b, 1, font("Bold ", 1.3));
+  if (style == "@")
+    return Image.Text(text, ink.r, ink.g, ink.b, 1, font("Bold ", 1.1));
+  if (style == "!")
+    return Image.Text(text, warn.r, warn.g, warn.b, 1, font("Bold ", 1));
+  if (style == "~")
+    return Image.Text(text, muted.r, muted.g, muted.b, 1, font("", 1));
+  return Image.Text(text, ink.r, ink.g, ink.b, 1, font("", 1));
+}
+
+# Splits `text` at each `|` into global.row[0 .. rows - 1].
+fun set_rows (text)
+{
+  local.n = 0;
+  local.start = 0;
+  local.len = text.Length();
+  for (local.i = 0; i <= len; i++)
+    {
+      if (i == len || text.CharAt(i) == "|")
+        {
+          global.row[n] = text.SubString(start, i);
+          n++;
+          start = i + 1;
+        }
+    }
+  global.rows = n;
+}
+
+# Works out where everything ends up with the logo at the top: the logo
+# and the panel as one block, centred on the screen.
+fun layout ()
+{
+  local.gap = Math.Int(size * 0.45);
+  local.widest = 0;
+  local.inner = 0;
+  for (local.i = 0; i < rows; i++)
+    {
+      global.image[i] = row_image(row[i]);
+      if (image[i])
+        {
+          widest = Math.Max(widest, image[i].GetWidth());
+          inner += image[i].GetHeight() + gap;
+        }
+      else
+        inner += size;
+    }
+
+  panel.w = Math.Int(Math.Min(screen.w - 2 * pad, Math.Max(widest + 6 * pad, screen.w * 0.42)));
+  panel.h = Math.Int(inner + 3 * pad - gap);
+  panel.x = centred(panel.w);
+  # Near the top of the screen, unless the panel needs the room.
+  logo.top = Math.Int(screen.y + Math.Max(pad, Math.Min(screen.h * 0.08, (screen.h - logo.h - 2 * pad - panel.h) / 2)));
+  panel.y = logo.top + logo.h + 2 * pad;
+  panel.middle = panel.y + panel.h / 2;
+
+  local.y = Math.Int(panel.y + 1.5 * pad);
+  for (i = 0; i < rows; i++)
+    {
+      if (!global.row_sprite[i])
+        global.row_sprite[i] = Sprite();
+      if (image[i])
+        {
+          row_sprite[i].SetImage(image[i]);
+          global.row_x[i] = centred(image[i].GetWidth());
+          global.row_y[i] = y;
+          y += image[i].GetHeight() + gap;
+        }
+      else
+        y += size;
+    }
+  while (global.row_sprite[i])
+    {
+      row_sprite[i].SetOpacity(0);
+      i++;
+    }
+  message.y = panel.y + panel.h + pad;
+}
+
+# ── Moving between the two ──────────────────────────────────────────────────
+
+# t runs from 0 (logo in the middle, caption) to 1 (logo at the top, panel)
+# and follows `target` a step per frame.
+t = 0;
+target = 0;
+
+# Draws the frame for the current t. The eased value starts slowly, speeds
+# up and slows down again into place.
+fun draw ()
+{
+  local.e = (1 - Math.Cos(Math.Pi * t)) / 2;
+
+  local.logo_y = Math.Int(logo.middle + (logo.top - logo.middle) * e);
+  logo.sprite.SetPosition(logo.x, logo_y, 4);
+
+  # The caption rides up with the logo and is gone before the rows arrive.
+  local.fade = Math.Max(0, 1 - 3 * e);
+  caption.sprite.SetPosition(caption.x, logo_y + caption.dy, 3);
+  caption.sprite.SetOpacity(fade);
+  draw_bar(logo_y, fade * starting);
+
+  # The panel hangs under the logo and opens from its middle.
+  local.middle = logo_y + logo.h + 2 * pad + panel.h / 2;
+  if (e > 0 && rows > 0)
+    {
+      local.h = Math.Max(1, Math.Int(panel.h * e));
+      local.y = Math.Int(middle - h / 2);
+      panel.sprite.SetImage(panel.image.Scale(panel.w, h));
+      panel.sprite.SetPosition(panel.x, y, 1);
+      panel.sprite.SetOpacity(1);
+      edge.sprite.SetImage(edge.image.Scale(panel.w, Math.Min(h, bar.height)));
+      edge.sprite.SetPosition(panel.x, y, 2);
+      edge.sprite.SetOpacity(1);
+    }
+  else
+    {
+      panel.sprite.SetOpacity(0);
+      edge.sprite.SetOpacity(0);
+    }
+
+  for (local.i = 0; i < rows; i++)
+    {
+      if (image[i] && e > 0)
+        {
+          row_sprite[i].SetPosition(row_x[i], Math.Int(middle + (row_y[i] - panel.middle) * e), 3);
+          row_sprite[i].SetOpacity(e * e * e);
+        }
+      else
+        row_sprite[i].SetOpacity(0);
+    }
+
+  message.sprite.SetPosition(centred(message.width), Math.Int(message.y * e + (logo_y + bar.dy + 2 * pad) * (1 - e)), 3);
+}
+
+fun refresh_callback ()
+{
+  if (t < target)
+    {
+      global.t = Math.Min(target, t + step);
+      draw();
+    }
+  else if (t > target)
+    {
+      global.t = Math.Max(target, t - step);
+      draw();
+    }
+}
+
+# Shows `text` as the panel's rows and sends the logo up.
+fun open_panel (text)
+{
+  set_rows(text);
+  layout();
+  global.target = 1;
+  draw();
+}
+
+# ── Plymouth's calls ────────────────────────────────────────────────────────
+
+status = "";
+pending = "";
+starting = 0;
+locked = 0;
+prompting = 0;
+message.width = 0;
+message.y = 0;
+
+mode = Plymouth.GetMode();
+if (mode == "shutdown")
+  set_caption(name + " is shutting down");
+else if (mode == "reboot")
+  set_caption(name + " is restarting");
+else if (mode == "boot")
+  {
+    set_caption(name + " is starting");
+    starting = 1;
+  }
+else
+  set_caption(name + " is updating");
+draw();
+
+fun progress_callback (duration, fraction)
+{
+  global.progress = fraction;
+  if (starting && t == 0)
+    draw_bar(logo.middle, 1);
+}
+
+fun status_callback (text)
+{
+  if (!locked && text.SubString(0, 11) == "losos-mode:")
+    {
+      global.locked = 1;
+      global.starting = 0;
+      if (text.SubString(11, text.Length()) == "reboot")
+        set_caption(name + " is restarting");
+      else
+        set_caption(name + " is shutting down");
+      global.target = 0;
+    }
+  else if (!locked && text.SubString(0, 7) == "losos+:")
+    global.pending = pending + text.SubString(7, text.Length());
+  else if (!locked && text.SubString(0, 6) == "losos:")
+    {
+      global.starting = 0;
+      global.status = pending + text.SubString(6, text.Length());
+      global.pending = "";
+      if (!prompting)
+        open_panel(status);
+    }
+}
+
+# A disk that will not unlock by itself asks here. The prompt takes the
+# panel until it is answered.
+fun password_callback (prompt, bullets)
+{
+  local.dots = "";
+  for (local.i = 0; i < bullets; i++)
+    dots = dots + "*";
+  if (!prompt)
+    prompt = "Password";
+  global.prompting = 1;
+  open_panel("#" + prompt + "|@" + dots + "_");
+}
+
+fun question_callback (prompt, entry)
+{
+  global.prompting = 1;
+  open_panel("#" + prompt + "|@" + entry + " ");
+}
+
+fun normal_callback ()
+{
+  if (prompting)
+    {
+      global.prompting = 0;
+      if (status != "" && !locked)
+        open_panel(status);
+      else
+        global.target = 0;
+    }
+}
+
+fun message_callback (text)
+{
+  local.image = Image.Text(text, muted.r, muted.g, muted.b, 1, font("", 0.9));
+  global.message.width = image.GetWidth();
+  message.sprite.SetImage(image);
+  message.sprite.SetOpacity(1);
+  draw();
+}
+
+fun hide_message_callback (text)
+{
+  message.sprite.SetOpacity(0);
+}
+
+Plymouth.SetRefreshFunction(refresh_callback);
+Plymouth.SetBootProgressFunction(progress_callback);
+Plymouth.SetUpdateStatusFunction(status_callback);
+Plymouth.SetDisplayPasswordFunction(password_callback);
+Plymouth.SetDisplayQuestionFunction(question_callback);
+Plymouth.SetDisplayNormalFunction(normal_callback);
+Plymouth.SetDisplayMessageFunction(message_callback);
+Plymouth.SetHideMessageFunction(hide_message_callback);

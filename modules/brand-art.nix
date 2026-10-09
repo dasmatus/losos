@@ -1,8 +1,8 @@
 # The boot pictures of both systems, drawn at build time from the brand logo
 # (admin-ui/themes/brand/salmon.png) on the dark palette of
 # admin-ui/app/src/styles/tokens.css, so replacing the logo file replaces
-# them too. Plain data, imported by modules/branding.nix and
-# modules/live-branding.nix:
+# them too. Plain data, imported by modules/branding.nix (which
+# modules/live-branding.nix reads it from) and modules/splash.nix:
 #
 #   installer-background.png  800x600, behind the installer's syslinux menu
 #   installer-splash.bmp      shown by systemd-stub while the installer's
@@ -10,8 +10,12 @@
 #                             into the UKI)
 #   grub/                     the GRUB theme an installed box boots with on
 #                             a BIOS machine
+#   splash-logo.png           the logo alone, for the installed box's
+#                             Plymouth theme (modules/splash.nix), which
+#                             scales it to the screen
 #
-# Each picture carries the release tag, so it changes with flake/version.nix.
+# Each picture but the splash logo carries the release tag, so it changes with
+# flake/version.nix. The Plymouth theme writes the tag as text instead.
 { pkgs, version }:
 
 let
@@ -112,6 +116,9 @@ pkgs.runCommand "losos-boot-art"
       -font ${bold} -fill '${ink}' -pointsize 52 -annotate +0+272 'LosOS' \
       -font ${regular} -fill '${muted}' -pointsize 18 -annotate +0+344 '${version}' \
       -strip PNG24:$out/grub/background.png
+
+    # Large enough that the Plymouth theme only ever scales it down.
+    magick ${logo} -trim +repage -resize 640x440 -strip PNG32:$out/splash-logo.png
 
     # The highlight behind the selected entry, as GRUB's nine-piece box.
     for piece in c n s e w ne nw se sw; do
