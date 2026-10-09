@@ -5,8 +5,8 @@ tool, `losos-registrar provision`, run **on the operator's own computer**,
 never on a box or a VPS. Every step that makes or uses the root key first
 signs you in with GitHub and refuses unless your account is on the
 allowlist compiled into the tool. What "official" buys and how a box checks
-it is in the wiki,
-[Master Proxy → Official edges](../../wiki/Master-Proxy.md#official-edges).
+it is in the handbook,
+[Master proxy → Official edges](https://losos.dasmat.us/in-depth/master-proxy#official-edges).
 
 - the root private key is made **on your machine**, written once to a file
   you keep offline (0600, never overwritten), and leaves it only as signed
@@ -86,7 +86,7 @@ files of the newest main build are on the GitHub Pages site at
 ## Operator steps
 
 You need: `losos-registrar` on your machine (above), a VPS running the
-edge module (`nixosModules.edge`, see the wiki) built from a tree that has
+edge module (`nixosModules.edge`, see the handbook's In depth chapter) built from a tree that has
 the push route (any build after this page says so), and a browser signed
 in to a GitHub account on the allowlist. No shell on the edge is needed.
 
@@ -178,7 +178,7 @@ curl -fsS -X POST -H "Authorization: Bearer $(gh auth token)" \
 - Making the `losos/images` GHCR package public, once CI has created it
   with its first push to main: GitHub creates a package private, and the
   proxy answers `502 token: 403` for a private one. Same as `losos/nix-cache`
-  before it, see the wiki's CI page.
+  before it, see the handbook's CI and releases page.
 - Merging the GitHub pull request (step 3), which is what turns the key on
   for every box.
 - Keeping `root.key`. It exists in exactly one place, the file you chose.

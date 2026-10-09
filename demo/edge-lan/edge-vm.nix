@@ -16,10 +16,10 @@
 # The one losos setting that matters here is `losos.edge.lan.advertise`
 # (modules/edge.nix): the registrar API is announced over mDNS as
 # `_losos-edge._tcp` with `url=http://edge.local:8443`, and the box's lososd
-# finds it with no configuration (backend/src/edge.rs). Traefik's ACME will
-# fail in the VM (no public DNS); that is logged, not fatal, as in
-# tests/edge-vm.nix. The tenant token files are demo fixtures written by
-# tmpfiles — a real edge gets them out of band (wiki/Master-Proxy.md).
+# finds it with no configuration (backend/src/edge.rs). Traefik's ACME will fail
+# in the VM (no public DNS); that is logged, not fatal, as in tests/edge-vm.nix.
+# The tenant token files are demo fixtures written by tmpfiles — a real edge
+# gets them out of band (handbook/docs/in-depth/master-proxy.md).
 {
   lib,
   pkgs,

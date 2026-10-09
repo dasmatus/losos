@@ -87,11 +87,11 @@ pkgs.testers.nixosTest {
         "f ${agentToken} 0600 root root - test-agent-token"
       ];
 
-      # How an operator provisions the secrets (wiki/Market.md), done at boot:
-      # sealed from stdin under the names the gate's LoadCredentialEncrypted=
-      # expects, so no plaintext file ever exists. There is no TPM in the VM,
-      # so systemd-creds seals with the host key, which is the no-TPM edge's
-      # real path too.
+      # How an operator provisions the secrets
+      # (handbook/docs/in-depth/market.md), done at boot: sealed from stdin
+      # under the names the gate's LoadCredentialEncrypted= expects, so no
+      # plaintext file ever exists. There is no TPM in the VM, so systemd-creds
+      # seals with the host key, which is the no-TPM edge's real path too.
       systemd.services.seal-stripe-fixtures = {
         wantedBy = [ "multi-user.target" ];
         before = [ "losos-stripe-gate.service" ];

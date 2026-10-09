@@ -19,10 +19,6 @@
     "message": "Wenn etwas nicht funktioniert",
     "description": "The label of footer link with label=When something goes wrong linking to /troubleshooting"
   },
-  "link.item.label.Wiki": {
-    "message": "Wiki",
-    "description": "The label of footer link with label=Wiki linking to https://github.com/dasmatus/losos/wiki"
-  },
   "link.item.label.Source": {
     "message": "Quellcode",
     "description": "The label of footer link with label=Source linking to https://github.com/dasmatus/losos"
@@ -34,5 +30,9 @@
   "copyright": {
     "message": "LosOS. Jede Box liefert dieses Handbuch unter /handbook/ aus, mit oder ohne Internet.",
     "description": "The footer copyright"
+  },
+  "link.item.label.In depth": {
+    "message": "Im Detail",
+    "description": "The label of footer link with label=In depth linking to /in-depth"
   }
 }
