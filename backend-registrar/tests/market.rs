@@ -1525,3 +1525,622 @@ async fn an_edge_without_a_market_sells_no_hardware() {
     assert_eq!(status, 503);
     edge.shutdown().await;
 }
+
+// ── virtual machines (crate::vms) ───────────────────────────────────────
+
+const VM_DOMAIN: &str = "vms.example.test";
+
+/// Buyer and seller on the market, the seller also cleared for the mesh so
+/// it can join and say it hosts machines.
+fn vm_tenants() -> Vec<TenantSpec> {
+    vec![
+        TenantSpec::new("seller-box", "seller.example", GOOD_TOKEN)
+            .with_market()
+            .with_cluster(),
+        TenantSpec::new("buyer-box", "buyer.example", OTHER_TOKEN).with_market(),
+    ]
+}
+
+/// A market edge whose mesh runs machines, published under [`VM_DOMAIN`].
+async fn vm_edge(tag: &str, stripe: &StripeStub, kube: &KubeStub, max_upload: u64) -> Edge {
+    Edge::start_market_tweaked(
+        tag,
+        &vm_tenants(),
+        &stripe.base,
+        MeshFixture::enabled(&kube.base),
+        move |opts, dir| {
+            let market = opts.market.as_mut().expect("the market is on");
+            market.vms = Some(losos_registrar::vms::VmOpts {
+                catalogue: None,
+                shape: losos_registrar::vms::Shape::default(),
+                storage_class: Some("losos-vm-local".to_string()),
+                upload_dir: dir.path_str("vm-images"),
+                max_upload_bytes: max_upload,
+                fetch_base: "https://register.example.test".to_string(),
+                domain: Some(VM_DOMAIN.to_string()),
+                routes_file: Some(dir.path_str("traefik/losos-vms.yml")),
+            });
+        },
+    )
+    .await
+}
+
+/// The seller joins the mesh, hosting machines or not.
+async fn join_hosting(edge: &Edge, host_vms: bool) {
+    let (status, body) = edge
+        .post(
+            "/cluster/join",
+            json!({
+                "appliance_id": "seller-box",
+                "token": GOOD_TOKEN,
+                "node_name": "seller-box",
+                "share_compute": false,
+                "host_vms": host_vms,
+            }),
+        )
+        .await;
+    assert_eq!(status, 200, "{body}");
+}
+
+/// A QCOW2 version 3 header for a disk of `virtual_size` bytes, padded to
+/// `len` bytes.
+fn qcow2(virtual_size: u64, len: usize) -> Vec<u8> {
+    let mut file = vec![0u8; len.max(32)];
+    file[..4].copy_from_slice(b"QFI\xfb");
+    file[4..8].copy_from_slice(&3u32.to_be_bytes());
+    file[24..32].copy_from_slice(&virtual_size.to_be_bytes());
+    file
+}
+
+async fn put(edge: &Edge, path: &str, body: Vec<u8>) -> (u16, String) {
+    let response = edge
+        .client
+        .put(format!("{}{path}", edge.base))
+        .body(body)
+        .send()
+        .await
+        .expect("upload reaches the registrar");
+    let status = response.status().as_u16();
+    (status, response.text().await.unwrap_or_default())
+}
+
+async fn wait_for_machines(edge: &Edge) -> Value {
+    for _ in 0..100 {
+        let account = buyer_account(edge).await;
+        if account["purchases"][0]["vm"]["created"] == true {
+            return account;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    panic!("the machines were never created");
+}
+
+#[tokio::test]
+async fn the_machine_catalogue_is_public_and_needs_machines_on() {
+    let stripe = StripeStub::start().await;
+    let plain = Edge::start_with_market("vm-catalogue-off", &tenants(), &stripe.base).await;
+    let response = plain
+        .client
+        .get(format!("{}/market/vm-images", plain.base))
+        .send()
+        .await
+        .expect("catalogue reaches the registrar");
+    assert_eq!(response.status().as_u16(), 503);
+    plain.shutdown().await;
+
+    let kube = KubeStub::start(201).await;
+    let edge = vm_edge("vm-catalogue", &stripe, &kube, 1 << 30).await;
+    let response = edge
+        .client
+        .get(format!("{}/market/vm-images", edge.base))
+        .send()
+        .await
+        .expect("catalogue reaches the registrar");
+    assert_eq!(response.status().as_u16(), 200);
+    let catalogue: Value = response.json().await.expect("JSON");
+    assert_eq!(catalogue["fee_bps"], 5000);
+    assert_eq!(catalogue["published"], true);
+    let losos = catalogue["images"]
+        .as_array()
+        .expect("images")
+        .iter()
+        .find(|i| i["id"] == "losos")
+        .expect("LosOS is offered");
+    assert_eq!(losos["efi"], true);
+    assert_eq!(losos["memory_mib"], 4096);
+    // The page picks a system, not a mirror: no source URL leaves the edge.
+    assert!(!catalogue.to_string().contains("https://"));
+    assert!(!catalogue.to_string().contains("docker://"));
+
+    edge.shutdown().await;
+    kube.shutdown().await;
+    stripe.shutdown().await;
+}
+
+#[tokio::test]
+async fn only_a_box_that_hosts_machines_can_list_them() {
+    let stripe = StripeStub::start().await;
+    let kube = KubeStub::start(201).await;
+    let edge = vm_edge("vm-list-gate", &stripe, &kube, 1 << 30).await;
+    ready_seller(&edge).await;
+
+    join_hosting(&edge, false).await;
+    let (status, body) = list(&edge, "vm", 900, 4).await;
+    assert_eq!(status, 409, "{body}");
+    assert!(body.contains("sharing its storage"), "{body}");
+
+    join_hosting(&edge, true).await;
+    let (status, body) = list(&edge, "vm", 900, 4).await;
+    assert_eq!(status, 201, "{body}");
+    let (status, body) = list(&edge, "vm", 900, 51).await;
+    assert_eq!(status, 400, "{body}");
+
+    let (_, body) = edge
+        .post("/market/account", auth("seller-box", GOOD_TOKEN))
+        .await;
+    let seller = parse(&body);
+    assert_eq!(seller["can_host_vms"], true);
+    assert_eq!(seller["vm_fee_bps"], 5000);
+
+    edge.shutdown().await;
+    kube.shutdown().await;
+    stripe.shutdown().await;
+}
+
+#[tokio::test]
+async fn a_machine_order_is_split_in_half_and_becomes_replicas_on_the_hosting_box() {
+    let stripe = StripeStub::start().await;
+    let kube = KubeStub::expecting_bearer(201, common::KUBE_TOKEN).await;
+    let edge = vm_edge("vm-order", &stripe, &kube, 1 << 30).await;
+    ready_seller(&edge).await;
+    join_hosting(&edge, true).await;
+    let (status, body) = list(&edge, "vm", 900, 4).await;
+    assert_eq!(status, 201, "{body}");
+    let listing_id = parse(&body)["listing_id"].as_str().expect("id").to_string();
+
+    // A machine order needs an image and a name.
+    let (status, _) = order(&edge, &listing_id, 2).await;
+    assert_eq!(status, 400);
+    let machine = |image: &str| {
+        with(
+            auth("buyer-box", OTHER_TOKEN),
+            json!({
+                "listing_id": listing_id,
+                "quantity": 2,
+                "image": image,
+                "name": "web",
+                "user_data": "#cloud-config\npackages: [nginx]\n",
+            }),
+        )
+    };
+    let (status, _) = edge.post("/market/orders", machine("no-such-os")).await;
+    assert_eq!(status, 400);
+    let (status, body) = edge.post("/market/orders", machine("ubuntu-24.04")).await;
+    assert_eq!(status, 201, "{body}");
+    let checkout = parse(&body);
+    assert_eq!(checkout["amount"], 1800);
+    assert_eq!(
+        checkout["fee"], 900,
+        "half to the platform, half to the host"
+    );
+    let sent = &stripe.calls("POST", "/v1/checkout/sessions")[0];
+    assert_eq!(
+        sent.form["payment_intent_data[application_fee_amount]"],
+        "900"
+    );
+    assert_eq!(
+        sent.form["payment_intent_data[transfer_data][destination]"],
+        "acct_test_1"
+    );
+    let order_id = checkout["order_id"].as_str().expect("order id").to_string();
+    assert_eq!(
+        webhook(&edge, &completed(&order_id, "cs_test_1", 1800))
+            .await
+            .0,
+        200
+    );
+
+    let account = wait_for_machines(&edge).await;
+    let vm = &account["purchases"][0]["vm"];
+    assert_eq!(vm["image"], "ubuntu-24.04");
+    assert_eq!(vm["name"], "web");
+    let stem = format!("vm-{}", &order_id["ord_".len().."ord_".len() + 12]);
+    assert_eq!(
+        vm["address"],
+        format!("https://{stem}.{VM_DOMAIN}").as_str()
+    );
+    assert_eq!(account["entitlements"]["vm_replicas"], 2);
+
+    let bodies = kube.bodies();
+    let machines: Vec<&Value> = bodies
+        .iter()
+        .filter(|(k, _)| {
+            k == "POST /apis/kubevirt.io/v1/namespaces/market-buyer-box/virtualmachines"
+        })
+        .map(|(_, v)| v)
+        .collect();
+    assert_eq!(machines.len(), 2);
+    assert_eq!(
+        machines[0]["metadata"]["name"],
+        format!("{stem}-0").as_str()
+    );
+    assert_eq!(
+        machines[1]["metadata"]["name"],
+        format!("{stem}-1").as_str()
+    );
+    let spec = &machines[0]["spec"]["template"]["spec"];
+    assert_eq!(spec["nodeSelector"]["losos.dev/appliance"], "seller-box");
+    assert_eq!(spec["tolerations"][0]["key"], "losos.dev/compute-window");
+    let disk = &machines[0]["spec"]["dataVolumeTemplates"][0]["spec"];
+    assert!(disk["source"]["http"]["url"]
+        .as_str()
+        .expect("an http source")
+        .starts_with("https://cloud-images.ubuntu.com/"));
+    assert_eq!(disk["storage"]["storageClassName"], "losos-vm-local");
+    assert!(machines[0].to_string().contains("packages: [nginx]"));
+    assert!(bodies
+        .iter()
+        .any(|(k, _)| k == "POST /api/v1/namespaces/market-buyer-box/services"));
+
+    // Traefik is pointed at the Service.
+    let routes_file = edge.dir.join("traefik/losos-vms.yml");
+    assert!(edge.wait_for(|| routes_file.exists()).await);
+    let routes = std::fs::read_to_string(&routes_file).expect("routes file");
+    assert!(
+        routes.contains(&format!("Host(`{stem}.{VM_DOMAIN}`)")),
+        "{routes}"
+    );
+    assert!(routes.contains(&format!("http://{}:80", common::STUB_CLUSTER_IP)));
+
+    // The buyer sees each replica; the seller and strangers see none.
+    let (status, body) = edge
+        .post("/market/vms/status", auth("buyer-box", OTHER_TOKEN))
+        .await;
+    assert_eq!(status, 200, "{body}");
+    let status_view = parse(&body);
+    assert_eq!(status_view[0]["order_id"], order_id.as_str());
+    assert_eq!(status_view[0]["replicas"][0]["status"], "Running");
+    assert_eq!(status_view[0]["replicas"][1]["status"], "Running");
+    let (status, body) = edge
+        .post("/market/vms/status", auth("seller-box", GOOD_TOKEN))
+        .await;
+    assert_eq!(status, 200);
+    assert_eq!(parse(&body), json!([]));
+
+    // Created once.
+    let seen = kube
+        .seen()
+        .iter()
+        .filter(|s| s.starts_with("POST "))
+        .count();
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert_eq!(
+        kube.seen()
+            .iter()
+            .filter(|s| s.starts_with("POST "))
+            .count(),
+        seen
+    );
+
+    edge.shutdown().await;
+    kube.shutdown().await;
+    stripe.shutdown().await;
+}
+
+#[tokio::test]
+async fn an_uploaded_qcow2_is_kept_and_only_its_token_fetches_it() {
+    let stripe = StripeStub::start().await;
+    let kube = KubeStub::start(201).await;
+    let edge = vm_edge("vm-upload", &stripe, &kube, 64 * 1024).await;
+
+    let ticket = |name: &str| {
+        with(
+            auth("buyer-box", OTHER_TOKEN),
+            json!({ "name": name, "efi": true }),
+        )
+    };
+    let (status, _) = edge
+        .post(
+            "/market/vm-images/ticket",
+            with(auth("buyer-box", "wrong"), json!({ "name": "x" })),
+        )
+        .await;
+    assert_eq!(status, 401);
+
+    // Not a QCOW2.
+    let (status, body) = edge.post("/market/vm-images/ticket", ticket("junk")).await;
+    assert_eq!(status, 201, "{body}");
+    let path = parse(&body)["upload_path"]
+        .as_str()
+        .expect("path")
+        .to_string();
+    let (status, _) = put(&edge, &path, b"<html>not a disk</html>".repeat(4)).await;
+    assert_eq!(status, 415);
+    // Too large.
+    let (status, _) = put(&edge, &path, qcow2(1 << 30, 128 * 1024)).await;
+    assert_eq!(status, 413);
+    assert!(
+        std::fs::read_dir(edge.dir.join("vm-images"))
+            .expect("upload dir")
+            .next()
+            .is_none(),
+        "refused uploads leave no file"
+    );
+
+    // A good one, with a 3 GiB virtual disk.
+    let (status, body) = edge.post("/market/vm-images/ticket", ticket("mine")).await;
+    assert_eq!(status, 201, "{body}");
+    let ticket_view = parse(&body);
+    let upload_id = ticket_view["upload_id"].as_str().expect("id").to_string();
+    let path = ticket_view["upload_path"]
+        .as_str()
+        .expect("path")
+        .to_string();
+    let file = qcow2(3 << 30, 40 * 1024);
+    let (status, body) = put(&edge, &path, file.clone()).await;
+    assert_eq!(status, 201, "{body}");
+    assert_eq!(parse(&body)["min_disk_gib"], 3);
+    // The ticket is spent.
+    let (status, _) = put(&edge, &path, file.clone()).await;
+    assert_eq!(status, 404);
+
+    let (_, body) = edge
+        .post("/market/account", auth("buyer-box", OTHER_TOKEN))
+        .await;
+    let account = parse(&body);
+    let mine = account["uploads"]
+        .as_array()
+        .expect("uploads")
+        .iter()
+        .find(|u| u["id"] == upload_id.as_str())
+        .expect("the stored upload is listed");
+    assert_eq!(mine["stored"], true);
+    assert_eq!(mine["name"], "mine");
+    assert!(!body.contains(path.trim_start_matches("/market/vm-images/upload/")));
+
+    // The fetch token is only in the store; read it there, as CDI would be
+    // told it through the DataVolume.
+    let store: Value = serde_json::from_str(
+        &std::fs::read_to_string(edge.dir.join("market.json")).expect("market.json"),
+    )
+    .expect("store is JSON");
+    let token = store["uploads"][&upload_id]["token"]
+        .as_str()
+        .expect("token")
+        .to_string();
+    assert!(!body.contains(&token), "the owner's view carries no token");
+    let fetched = edge
+        .client
+        .get(format!("{}/market/vm-images/fetch/{token}", edge.base))
+        .send()
+        .await
+        .expect("fetch");
+    assert_eq!(fetched.status().as_u16(), 200);
+    assert_eq!(fetched.bytes().await.expect("bytes").as_ref(), &file[..]);
+    let ranged = edge
+        .client
+        .get(format!("{}/market/vm-images/fetch/{token}", edge.base))
+        .header("range", "bytes=24-31")
+        .send()
+        .await
+        .expect("ranged fetch");
+    assert_eq!(ranged.status().as_u16(), 206);
+    assert_eq!(
+        ranged.bytes().await.expect("bytes").as_ref(),
+        &(3u64 << 30).to_be_bytes()
+    );
+    let wrong = "0".repeat(64);
+    let response = edge
+        .client
+        .get(format!("{}/market/vm-images/fetch/{wrong}", edge.base))
+        .send()
+        .await
+        .expect("fetch");
+    assert_eq!(response.status().as_u16(), 404);
+
+    // Another tenant cannot remove it; the owner can, and the file goes.
+    let (status, _) = edge
+        .post(
+            "/market/vm-images/remove",
+            with(
+                auth("seller-box", GOOD_TOKEN),
+                json!({ "upload_id": upload_id }),
+            ),
+        )
+        .await;
+    assert_eq!(status, 404);
+    let (status, _) = edge
+        .post(
+            "/market/vm-images/remove",
+            with(
+                auth("buyer-box", OTHER_TOKEN),
+                json!({ "upload_id": upload_id }),
+            ),
+        )
+        .await;
+    assert_eq!(status, 204);
+    assert!(!edge
+        .dir
+        .join(&format!("vm-images/{upload_id}.qcow2"))
+        .exists());
+
+    edge.shutdown().await;
+    kube.shutdown().await;
+    stripe.shutdown().await;
+}
+
+#[tokio::test]
+async fn a_replica_of_an_upload_imports_it_from_the_edge() {
+    let stripe = StripeStub::start().await;
+    let kube = KubeStub::start(201).await;
+    let edge = vm_edge("vm-upload-order", &stripe, &kube, 64 * 1024).await;
+    ready_seller(&edge).await;
+    join_hosting(&edge, true).await;
+    let (_, body) = list(&edge, "vm", 500, 2).await;
+    let listing_id = parse(&body)["listing_id"].as_str().expect("id").to_string();
+
+    let (_, body) = edge
+        .post(
+            "/market/vm-images/ticket",
+            with(
+                auth("buyer-box", OTHER_TOKEN),
+                json!({ "name": "mine", "efi": true }),
+            ),
+        )
+        .await;
+    let ticket_view = parse(&body);
+    let upload_id = ticket_view["upload_id"].as_str().expect("id").to_string();
+    let path = ticket_view["upload_path"]
+        .as_str()
+        .expect("path")
+        .to_string();
+    // Someone else's upload is not an image this buyer can order.
+    let order_body = |id: &str| {
+        with(
+            auth("buyer-box", OTHER_TOKEN),
+            json!({ "listing_id": listing_id, "quantity": 1, "image": id, "name": "own" }),
+        )
+    };
+    let (status, _) = edge.post("/market/orders", order_body(&upload_id)).await;
+    assert_eq!(status, 400, "an upload with no file yet");
+    assert_eq!(put(&edge, &path, qcow2(30 << 30, 4096)).await.0, 201);
+
+    let (status, body) = edge.post("/market/orders", order_body(&upload_id)).await;
+    assert_eq!(status, 201, "{body}");
+    let checkout = parse(&body);
+    let order_id = checkout["order_id"].as_str().expect("order").to_string();
+    // Still being set up: the image cannot be removed from under it.
+    let (status, _) = edge
+        .post(
+            "/market/vm-images/remove",
+            with(
+                auth("buyer-box", OTHER_TOKEN),
+                json!({ "upload_id": upload_id }),
+            ),
+        )
+        .await;
+    assert_eq!(status, 409);
+    assert_eq!(
+        webhook(&edge, &completed(&order_id, "cs_test_1", 500))
+            .await
+            .0,
+        200
+    );
+    wait_for_machines(&edge).await;
+
+    let bodies = kube.bodies();
+    let machine = bodies
+        .iter()
+        .find(|(k, _)| k.ends_with("/virtualmachines"))
+        .map(|(_, v)| v)
+        .expect("a machine");
+    let disk = &machine["spec"]["dataVolumeTemplates"][0]["spec"];
+    let url = disk["source"]["http"]["url"].as_str().expect("http source");
+    assert!(url.starts_with("https://register.example.test/market/vm-images/fetch/"));
+    // The disk is at least the image's virtual size.
+    assert_eq!(disk["storage"]["resources"]["requests"]["storage"], "30Gi");
+    assert_eq!(
+        machine["spec"]["template"]["spec"]["domain"]["firmware"]["bootloader"]["efi"]
+            ["secureBoot"],
+        false
+    );
+
+    edge.shutdown().await;
+    kube.shutdown().await;
+    stripe.shutdown().await;
+}
+
+#[tokio::test]
+async fn a_lapsed_machine_order_is_halted_and_keeps_its_disks() {
+    let stripe = StripeStub::start().await;
+    let kube = KubeStub::start(200).await;
+    let order_id = "ord_aaaabbbbccccddddeeeeffff";
+    let paid = now() - 40 * 24 * 3600;
+    let state = json!({
+        "orders": { order_id: {
+            "id": order_id,
+            "listing_id": "lst_000000000000000000000000",
+            "buyer": "buyer-box",
+            "seller": "seller-box",
+            "kind": "vm",
+            "quantity": 2,
+            "unit_price": 900,
+            "amount": 1800,
+            "fee": 900,
+            "currency": "eur",
+            "status": "paid",
+            "session_id": "cs_test_1",
+            "created_at": paid,
+            "paid_at": paid,
+            "expires_at": paid + 30 * 24 * 3600,
+            "vm": {
+                "image": "debian-13",
+                "name": "old",
+                "created": true,
+                "halted": false,
+                "service_ip": "10.43.7.9",
+            },
+        }},
+    });
+    let edge = Edge::start_market_tweaked(
+        "vm-lapse",
+        &vm_tenants(),
+        &stripe.base,
+        MeshFixture::enabled(&kube.base),
+        move |opts, dir| {
+            std::fs::write(
+                dir.join("market.json"),
+                serde_json::to_vec(&state).expect("serialize"),
+            )
+            .expect("seed market.json");
+            let market = opts.market.as_mut().expect("the market is on");
+            market.vms = Some(losos_registrar::vms::VmOpts {
+                catalogue: None,
+                shape: losos_registrar::vms::Shape::default(),
+                storage_class: None,
+                upload_dir: dir.path_str("vm-images"),
+                max_upload_bytes: 1 << 20,
+                fetch_base: "https://register.example.test".to_string(),
+                domain: Some(VM_DOMAIN.to_string()),
+                routes_file: Some(dir.path_str("traefik/losos-vms.yml")),
+            });
+        },
+    )
+    .await;
+
+    let stem = "vm-aaaabbbbcccc";
+    assert!(
+        edge.wait_for(|| kube
+            .seen()
+            .iter()
+            .filter(|s| s.starts_with("PATCH "))
+            .count()
+            == 2)
+            .await,
+        "{:?}",
+        kube.seen()
+    );
+    let bodies = kube.bodies();
+    let patch = bodies
+        .iter()
+        .find(|(k, _)| {
+            k == &format!(
+                "PATCH /apis/kubevirt.io/v1/namespaces/market-buyer-box/virtualmachines/{stem}-0"
+            )
+        })
+        .expect("the first replica was patched");
+    assert_eq!(patch.1, json!({ "spec": { "runStrategy": "Halted" } }));
+    assert!(
+        !kube.seen().iter().any(|s| s.starts_with("DELETE ")),
+        "nothing is deleted"
+    );
+    // A halted machine is not published.
+    assert!(!edge.dir.join("traefik/losos-vms.yml").exists());
+    let account = buyer_account(&edge).await;
+    assert_eq!(account["purchases"][0]["vm"]["halted"], true);
+    assert_eq!(account["entitlements"]["vm_replicas"], 0);
+
+    edge.shutdown().await;
+    kube.shutdown().await;
+    stripe.shutdown().await;
+}

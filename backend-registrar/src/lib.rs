@@ -66,6 +66,7 @@ pub mod routes;
 pub mod seed;
 pub mod server;
 pub mod stripe_gate;
+pub mod vms;
 pub mod window;
 pub mod zone;
 pub use config::{
