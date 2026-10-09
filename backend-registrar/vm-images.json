@@ -1,0 +1,237 @@
+{
+  "images": [
+    {
+      "id": "losos",
+      "name": "LosOS",
+      "family": "losos",
+      "source": {
+        "registry": "docker://ghcr.io/dasmatus/losos-demo-containerdisk:stable"
+      },
+      "min_disk_gib": 20,
+      "min_memory_mib": 4096,
+      "cloud_init": false,
+      "efi": true
+    },
+    {
+      "id": "ubuntu-26.04",
+      "name": "Ubuntu Server 26.04 LTS",
+      "family": "ubuntu-server",
+      "source": {
+        "http": "https://cloud-images.ubuntu.com/releases/resolute/release/ubuntu-26.04-server-cloudimg-amd64.img"
+      },
+      "cloud_init": true
+    },
+    {
+      "id": "ubuntu-24.04",
+      "name": "Ubuntu Server 24.04 LTS",
+      "family": "ubuntu-server",
+      "source": {
+        "http": "https://cloud-images.ubuntu.com/releases/noble/release/ubuntu-24.04-server-cloudimg-amd64.img"
+      },
+      "cloud_init": true
+    },
+    {
+      "id": "debian-13",
+      "name": "Debian 13",
+      "family": "debian",
+      "source": {
+        "http": "https://cloud.debian.org/images/cloud/trixie/latest/debian-13-generic-amd64.qcow2"
+      },
+      "cloud_init": true
+    },
+    {
+      "id": "debian-12",
+      "name": "Debian 12",
+      "family": "debian",
+      "source": {
+        "http": "https://cloud.debian.org/images/cloud/bookworm/latest/debian-12-generic-amd64.qcow2"
+      },
+      "cloud_init": true
+    },
+    {
+      "id": "fedora-43",
+      "name": "Fedora 43 Cloud",
+      "family": "fedora",
+      "source": {
+        "http": "https://download.fedoraproject.org/pub/fedora/linux/releases/43/Cloud/x86_64/images/Fedora-Cloud-Base-Generic-43-1.6.x86_64.qcow2"
+      },
+      "cloud_init": true
+    },
+    {
+      "id": "almalinux-10",
+      "name": "AlmaLinux 10",
+      "family": "alma",
+      "source": {
+        "http": "https://repo.almalinux.org/almalinux/10/cloud/x86_64/images/AlmaLinux-10-GenericCloud-latest.x86_64.qcow2"
+      },
+      "cloud_init": true
+    },
+    {
+      "id": "rockylinux-10",
+      "name": "Rocky Linux 10",
+      "family": "rockylinux",
+      "source": {
+        "http": "https://dl.rockylinux.org/pub/rocky/10/images/x86_64/Rocky-10-GenericCloud-Base.latest.x86_64.qcow2"
+      },
+      "cloud_init": true
+    },
+    {
+      "id": "centos-stream-10",
+      "name": "CentOS Stream 10",
+      "family": "centos-stream",
+      "source": {
+        "http": "https://cloud.centos.org/centos/10-stream/x86_64/images/CentOS-Stream-GenericCloud-10-latest.x86_64.qcow2"
+      },
+      "cloud_init": true
+    },
+    {
+      "id": "archlinux",
+      "name": "Arch Linux",
+      "family": "archlinux",
+      "source": {
+        "http": "https://geo.mirror.pkgbuild.com/images/latest/Arch-Linux-x86_64-cloudimg.qcow2"
+      },
+      "cloud_init": true
+    },
+    {
+      "id": "opensuse-tumbleweed",
+      "name": "openSUSE Tumbleweed",
+      "family": "opensuse",
+      "source": {
+        "http": "https://download.opensuse.org/tumbleweed/appliances/openSUSE-Tumbleweed-Minimal-VM.x86_64-Cloud.qcow2"
+      },
+      "cloud_init": true
+    },
+    {
+      "id": "alpine-3.22",
+      "name": "Alpine Linux 3.22",
+      "family": "alpine",
+      "source": {
+        "http": "https://dl-cdn.alpinelinux.org/alpine/v3.22/releases/cloud/nocloud_alpine-3.22.1-x86_64-bios-cloudinit-r0.qcow2"
+      },
+      "cloud_init": true
+    },
+    {
+      "id": "freebsd-14.3",
+      "name": "FreeBSD 14.3",
+      "family": "freebsd",
+      "source": {
+        "http": "https://download.freebsd.org/releases/VM-IMAGES/14.3-RELEASE/amd64/Latest/FreeBSD-14.3-RELEASE-amd64-BASIC-CLOUDINIT-ufs.qcow2.xz"
+      },
+      "cloud_init": true
+    }
+  ],
+  "installer_only": [
+    "android",
+    "antix",
+    "archcraft",
+    "artixlinux",
+    "batocera",
+    "bazzite",
+    "biglinux",
+    "blendos",
+    "bodhi",
+    "bunsenlabs",
+    "cachyos",
+    "chimeralinux",
+    "crunchbang++",
+    "deepin",
+    "devuan",
+    "dragonflybsd",
+    "easyos",
+    "edubuntu",
+    "elementary",
+    "endeavouros",
+    "endless",
+    "freedos",
+    "garuda",
+    "ghostbsd",
+    "gnomeos",
+    "guix",
+    "haiku",
+    "kdeneon",
+    "kolibrios",
+    "kubuntu",
+    "linuxlite",
+    "linuxmint",
+    "lmde",
+    "lubuntu",
+    "maboxlinux",
+    "mageia",
+    "manjaro",
+    "mxlinux",
+    "netbsd",
+    "nitrux",
+    "nixos",
+    "nwg-shell",
+    "openbsd",
+    "openindiana",
+    "parrotsec",
+    "pclinuxos",
+    "peppermint",
+    "popos",
+    "porteus",
+    "primtux",
+    "proxmox-ve",
+    "pureos",
+    "reactos",
+    "rebornos",
+    "siduction",
+    "slackware",
+    "slax",
+    "slint",
+    "slitaz",
+    "solus",
+    "sparkylinux",
+    "spirallinux",
+    "tails",
+    "tinycore",
+    "trisquel",
+    "tuxedo-os",
+    "ubuntu",
+    "ubuntu-budgie",
+    "ubuntu-mate",
+    "ubuntu-unity",
+    "ubuntucinnamon",
+    "ubuntukylin",
+    "ubuntustudio",
+    "vanillaos",
+    "void",
+    "xubuntu",
+    "zorin"
+  ],
+  "not_offered": [
+    {
+      "family": "macos",
+      "why": "Apple's licence allows macOS only on Apple hardware."
+    },
+    {
+      "family": "windows",
+      "why": "Needs a Windows licence and an install console."
+    },
+    {
+      "family": "windows-server",
+      "why": "Needs a Windows Server licence and an install console."
+    },
+    {
+      "family": "oraclelinux",
+      "why": "Its cloud image has no stable download address yet."
+    },
+    {
+      "family": "gentoo",
+      "why": "Its cloud image has no stable download address yet."
+    },
+    {
+      "family": "azurelinux",
+      "why": "Its cloud image has no stable download address yet."
+    },
+    {
+      "family": "kali",
+      "why": "Its virtual machine image ships as a 7z archive, which the importer cannot read."
+    },
+    {
+      "family": "netboot",
+      "why": "A network boot menu, not a system."
+    }
+  ]
+}

@@ -72,6 +72,9 @@ struct ClusterJoinReq<'a> {
     /// on its own clock, so the zone has to travel with the hours or a window
     /// entered in Berlin is enforced in UTC.
     window_tz: &'a str,
+    /// The box hosts virtual machines: its shared storage is on and its owner
+    /// left `losos.vms.host.enable` on.
+    host_vms: bool,
 }
 
 #[derive(Deserialize)]
@@ -130,6 +133,7 @@ pub async fn run(opts: JoinOpts) -> Result<()> {
             window_start: &opts.window_start,
             window_end: &opts.window_end,
             window_tz: &opts.window_tz,
+            host_vms: opts.host_vms,
         };
         match attempt(&client, &url, &request).await {
             Ok(response) => return finish(&opts, response).await,

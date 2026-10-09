@@ -67,6 +67,12 @@ pub struct ComputeWindow {
     /// still loads: a failed load is fatal at boot for the registrar.
     #[serde(default = "default_tz")]
     pub tz: String,
+    /// Whether the box hosts other people's virtual machines
+    /// (`crate::vms`). Its owner turns that on with the shared storage, and
+    /// it holds around the clock: a hosted machine tolerates the window's
+    /// taint. Defaulted so a registry from before machines still loads.
+    #[serde(default)]
+    pub host_vms: bool,
 }
 
 /// `UTC` — what a window means when its row predates the `tz` field.

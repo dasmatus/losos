@@ -7,16 +7,22 @@ sidebar_position: 4
 
 ## LosOS cloud
 
-Your files, photos, calendar, contacts, notes, tasks, mail and music, at
-`http://<address>/nextcloud`. It is Nextcloud with the box's colours and
+Your files, photos, calendar, contacts, notes, tasks, music and the rest of
+the apps below, at `http://<address>/nextcloud`. It is Nextcloud with the box's colours and
 name. Sign in with the owner's password. LosOS cloud does everything
 Nextcloud does. The desktop client syncs a folder on your computer, the phone
 apps upload photos, and calendars and contacts sync over CalDAV and CardDAV.
 
 ![The marks of LosOS cloud and LosOS Git in the light and the dark theme, drawn around a live salmon.](../img/cloud-and-git-marks.png)
 
-The app tiles on the Overview open each app. Their links go through
-`index.php` on purpose, because every configuration answers that path.
+The Overview has a tile for each app in LosOS cloud's own menu, in the same
+order: Files, Dashboard, Photos, Activity, Contacts, Calendar, Notes,
+Bookmarks, Deck, Music, Collectives, Polls, Forms, Tables, Memories, News,
+Tasks and Maps. The box turns all of them on at every start. Mail is not
+among them, because the box runs no mail server for it to read. If you
+install Mail from the App Store anyway, its tile appears on the Overview the
+next time the page loads. The links go through `index.php` on purpose,
+because every configuration answers that path.
 
 You make accounts for family or colleagues inside LosOS cloud, under Users,
 not on the admin pages. Only the owner's account unlocks the admin pages.
