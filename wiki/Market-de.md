@@ -302,12 +302,11 @@ niemand sie auf der Edge einfügt.
    Namen und startet das Gate neu. Einen Schlüssel tauschen heißt, das Secret
    zu ändern und den Workflow erneut zu starten.
 
-Der Claude-Schlüssel wird als `claude-api-key` nach
-`/var/secrets/losos-claude-api-key.cred` versiegelt
-(`losos.edge.credentials.secrets.claude-api-key.sealed`). Eine Unit liest ihn
-mit `LoadCredentialEncrypted=claude-api-key:<dieser Pfad>` und trägt sich in
-`losos.edge.credentials.secrets.claude-api-key.units` ein, damit ein neuer
-Schlüssel sie neu startet.
+Der Claude-Schlüssel wird als `claude-key` nach
+`/var/secrets/losos-claude-key.cred` versiegelt
+(`losos.edge.credentials.secrets.claude-key.sealed`). Der Registrar liest ihn
+mit `LoadCredentialEncrypted=claude-key:<dieser Pfad>`, und ein neu
+versiegelter Schlüssel startet `losos-registrar.service` neu.
 
 ## Sicherheitseigenschaften
 

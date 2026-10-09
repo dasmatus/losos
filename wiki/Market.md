@@ -269,12 +269,11 @@ on the edge.
    and restarts the gate. Rotating a key is changing the secret and running
    the workflow again.
 
-The Claude key is sealed as `claude-api-key` to
-`/var/secrets/losos-claude-api-key.cred`
-(`losos.edge.credentials.secrets.claude-api-key.sealed`). A unit reads it
-with `LoadCredentialEncrypted=claude-api-key:<that path>` and adds itself to
-`losos.edge.credentials.secrets.claude-api-key.units`, so a new key restarts
-it.
+The Claude key is sealed as `claude-key` to
+`/var/secrets/losos-claude-key.cred`
+(`losos.edge.credentials.secrets.claude-key.sealed`). The registrar reads it
+with `LoadCredentialEncrypted=claude-key:<that path>`, and sealing a new key
+restarts `losos-registrar.service`.
 
 ## Safety properties
 

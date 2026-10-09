@@ -114,9 +114,11 @@ in
             pattern = lib.mkDefault "whsec_[A-Za-z0-9]+";
             units = [ "losos-stripe-gate.service" ];
           };
-          claude-api-key = {
-            sealed = lib.mkDefault "/var/secrets/losos-claude-api-key.cred";
+          # The registrar loads it under this name for the AI widget builder.
+          claude-key = {
+            sealed = lib.mkDefault "/var/secrets/losos-claude-key.cred";
             pattern = lib.mkDefault "sk-ant-[A-Za-z0-9_-]+";
+            units = [ "losos-registrar.service" ];
           };
         };
 
