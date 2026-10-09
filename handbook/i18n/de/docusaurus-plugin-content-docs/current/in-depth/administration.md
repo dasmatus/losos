@@ -69,6 +69,20 @@ Messwerten der Box zusammen. *Eins schreiben* nimmt eigenes HTML, eigenen
 Stil und eigenes Skript an, die auf der Box gespeichert und in diesem
 Bereich aufgelistet werden, wo du sie bearbeiten und löschen kannst.
 
+Ein Widget besteht aus ein paar Dateien. Es beginnt in `index.html`, das die
+übrigen beim Namen einbindet, etwa `<link rel="stylesheet" href="style.css">`,
+`<script src="app.js"></script>` oder `<img src="dot.svg">`, und
+`fetch("data.json")` liest eine eigene Datei. Ein neues Widget beginnt mit
+`index.html`, `style.css` und `app.js`; **Datei hinzufügen** legt eine
+weitere an (`.html`, `.css`, `.js`, `.json`, `.svg`, `.txt` oder `.md`).
+Skripte sind klassische Skripte: Mehrere lädst du mit mehreren
+`<script src>`-Tags in Reihenfolge, nicht mit `import` untereinander.
+
+Der Editor ergänzt beim Tippen: das `losos`-Objekt und seine Mitglieder, die
+Namen der Messwerte in `losos.metric("`, die Farbvariablen nach `var(--` und
+die Dateinamen des Widgets überall, wo eine Datei genannt wird. Strg+Leertaste
+zeigt überall Vorschläge.
+
 Ein selbst geschriebenes Widget läuft in einem Sandbox-Frame, einem eigenen
 Origin ohne Zugriff auf die Admin-Seiten, das Admin-Token oder die API. Mit
 der Box spricht es über ein kleines `losos`-Objekt, das der Frame
@@ -81,11 +95,22 @@ bereitstellt:
 | `losos.palette`                | Die Farben der Box, auch als CSS-Variablen gesetzt (`var(--accent)` funktioniert). |
 | `losos.onTheme(fn)`            | Wird aufgerufen, wann immer der Eigentümer das Theme wechselt.        |
 | `losos.resize()`               | Bittet die Übersicht, die Kachel nach einer Änderung, die sie nicht sieht, neu zu vermessen. |
+| `losos.files`                  | Die Namen der Dateien des Widgets.                                   |
+| `losos.file(name)`             | Eine Datei des Widgets als Text.                                     |
+| `losos.asset(name)`            | Eine Datei des Widgets als `data:`-URL, für ein Bild, das ein Skript setzt. |
 
 Der Tab **So funktioniert es** im Editor wiederholt dies mit einem Beispiel. Seine Vorschau
 ist der echte Frame, was sie zeigt, zeigt also auch die Kachel. Ein Widget
 kann Daten aus dem Internet abrufen (etwa eine Wetterkachel), aber nicht von
-der Box. Die Grenze liegt bei 24 Widgets zu je 64 KiB.
+der Box. Die Grenze liegt bei 24 Widgets mit je höchstens 12 Dateien und
+zusammen 128 KiB.
+
+Der Editor hat auch einen Tab **Mit Claude bauen**, in dem Claude das Widget
+nach einer Beschreibung schreibt und seine Dateien in den Editor legt, damit
+du sie vor dem Speichern liest. Bezahlt wird pro Bau aus einem vorausbezahlten
+Guthaben, und es braucht einen Edge, der ihn anbietet; siehe
+[Widget-Baukasten](widget-builder.md). Was du dorthin schickst, unterliegt
+den Bedingungen von Anthropic.
 
 ## Admin-Token
 

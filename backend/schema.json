@@ -361,7 +361,7 @@
         },
         "widgets": {
           "type": "array",
-          "description": "Widgets written by hand, in creation order: {\"id\":\"w<N>\" (never reused), \"name\", \"span\":\"half|full\", \"source\"}. The source is the owner's HTML, style and script, stored verbatim and run only inside the sandboxed /widget-frame/ (see POST /api/look/widgets)."
+          "description": "Widgets written by hand, in creation order: {\"id\":\"w<N>\" (never reused), \"name\", \"span\":\"half|full\", \"files\": [{\"name\", \"content\"}]}, index.html first. The files are the owner's HTML, style, script and data, stored verbatim and run only inside the sandboxed /widget-frame/ (see POST /api/look/widgets). A widget saved before widgets were files reads as one index.html."
         },
         "shipped": {
           "type": "array",
@@ -369,7 +369,7 @@
         },
         "limits": {
           "type": "object",
-          "description": "{widgets, nameChars, sourceBytes, imageBytes, veil:{min,max}}: what the writes refuse with 400, so the pages can check before sending."
+          "description": "{widgets, nameChars, widgetBytes, files, fileNameChars, fileKinds, imageBytes, veil:{min,max}}: what the writes refuse with 400, so the pages can check before sending."
         }
       },
       "required": [
@@ -1401,6 +1401,28 @@
         "out": "marketActionResponse",
         "note": "Buy units. Returns a Stripe Checkout URL for the page to open. Audited. Owner-actionable refusals are 400/409 carrying the registrar's own sentence."
       },
+      "GET /api/builder": {
+        "auth": true,
+        "out": "{\"available\": false, \"reason\"?: \"noOfficialEdge\"} | {\"available\": true, \"currency\", \"balance\": <minor units>, \"packs\": [<minor units>], \"price\": {\"model\", \"input_per_million\", \"output_per_million\", \"markup_percent\", \"max_build\"}, \"can_build\": bool, \"builds\": [buildSummary]}",
+        "note": "The widget builder, relayed to the edge's registrar (backend-registrar/src/builder.rs) like the market and gated on an official edge the same way. A Claude Managed Agent on the edge writes the widget; the edge holds the Anthropic key and the balance, the box only its proxy token. Prices are per million tokens in the market's minor unit with the markup included. buildSummary is {\"id\", \"status\": \"running|done|failed\", \"prompt\", \"revision\", \"created_at\", \"finished_at\", \"charged\", \"fault\": null|\"noWidget|unusable|upstream\", \"has_source\"}. A 200 in every case."
+      },
+      "POST /api/builder/credits": {
+        "auth": true,
+        "in": "{\"amount\": <one of packs>}",
+        "out": "{\"available\": true, \"order_id\", \"checkout_url\", \"amount\", \"currency\"}",
+        "note": "Top the balance up with one credit pack through Stripe Checkout on the edge's platform account. The balance moves when Stripe's signed webhook reaches the edge. The URL is always Stripe-hosted. Audited."
+      },
+      "POST /api/builder/builds": {
+        "auth": true,
+        "in": "{\"prompt\": \"1-2000 characters\", \"base\"?: [{\"name\", \"content\"}] (the widget to change, under the same limits as a saved one; a plain string is read as its index.html), \"lang\"?: \"en|sk|de\"}",
+        "out": "{\"available\": true} + buildSummary + {\"usage\", \"at_limit\", \"files\": null, \"source\": null, \"notes\": null}",
+        "note": "Start a build. 409 with the edge's sentence when the balance does not cover one or a build is already running. The session's budget is what the balance covers, capped by the operator. Audited."
+      },
+      "GET /api/builder/builds/{id}": {
+        "auth": true,
+        "out": "{\"available\": true} + buildSummary + {\"usage\": {input_tokens, output_tokens, cache_creation_input_tokens, cache_read_input_tokens}, \"at_limit\", \"files\": [{\"name\", \"content\"}]|null, \"source\": string|null, \"notes\": string|null}",
+        "note": "One build. `files` is the widget once it is done, index.html first; `source` repeats index.html, and is all an edge from before widget files sends. The page puts the files in the editor and saves them only when the owner says so, through POST /api/look/widgets, so it runs in /widget-frame/ like any widget written by hand."
+      },
       "GET /api/vms": {
         "auth": true,
         "out": "vmsResponse",
@@ -1552,9 +1574,9 @@
       },
       "POST /api/look/widgets": {
         "auth": true,
-        "in": "{\"id\": \"w<N>\" (optional: rewrite that one), \"name\": \"...\", \"span\": \"half|full\", \"source\": \"...\"}",
-        "out": "{\"widget\": {id, name, span, source}}",
-        "note": "Write or rewrite a widget by hand. The source is kept verbatim and never run by lososd or by the admin page: the board embeds it in `<iframe sandbox=\"allow-scripts\" src=\"/widget-frame/\">`, an opaque origin with no token and no API, which gets the source and the box's readings over postMessage (modules/containers.nix carries the frame's own CSP). 400 for a missing name, a name over limits.nameChars, a source over limits.sourceBytes, more than limits.widgets widgets, or an id the box does not have. A new id is w<next>, never a reused one, so a board tile pointing at a deleted widget stays pointing at nothing."
+        "in": "{\"id\": \"w<N>\" (optional: rewrite that one), \"name\": \"...\", \"span\": \"half|full\", \"files\": [{\"name\": \"index.html\", \"content\": \"...\"}, ...] (or \"source\": \"...\", read as index.html)}",
+        "out": "{\"widget\": {id, name, span, files}}",
+        "note": "Write or rewrite a widget by hand. The files are kept verbatim and never run by lososd or by the admin page: the board embeds it in `<iframe sandbox=\"allow-scripts\" src=\"/widget-frame/\">`, an opaque origin with no token and no API, which gets the files and the box's readings over postMessage and puts the linked ones in place (modules/containers.nix carries the frame's own CSP). 400 for a missing name, a name over limits.nameChars, no index.html or an empty one, a file name that is not lowercase letters, digits, - and _ with one of limits.fileKinds or is over limits.fileNameChars, a name used twice, more than limits.files files or limits.widgetBytes bytes together, more than limits.widgets widgets, or an id the box does not have. A new id is w<next>, never a reused one, so a board tile pointing at a deleted widget stays pointing at nothing."
       },
       "DELETE /api/look/widgets/{id}": {
         "auth": true,

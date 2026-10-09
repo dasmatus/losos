@@ -24,9 +24,15 @@
        only the box's own pages may embed it.
 
   Everything the widget gets from the box comes through postMessage: the
-  parent sends the source to render and the readings asked for, this file
+  parent sends the widget's files and the readings asked for, this file
   answers with its height and any error. The contract is the `losos` object
   below, documented in the editor's Help tab (i18n/look.ts).
+
+  A widget is `index.html` plus the files it links. They are not served at
+  URLs of their own: `render` below puts a linked stylesheet or script inline
+  and a picture in a data: URL, and `fetch` of a file name answers from the
+  widget's own files. Every file is text the owner wrote, so this is the
+  same trust as one long index.html.
 
   Plain script on purpose — nothing here is built by Vite, so it stays in
   sync with nothing and depends on nothing.
@@ -77,6 +83,8 @@
         // the frozen `losos` object follows the page and the widget cannot
         // write it.
         const current = { theme: "light", lang: "en", palette: {} };
+        // The widget's files, by name, as the last `load` sent them.
+        let files = new Map();
         const losos = {
           /** "light" or "dark", following the admin page. */
           get theme() {
@@ -108,6 +116,20 @@
           resize() {
             report();
           },
+          /** The names of the widget's files. */
+          get files() {
+            return Array.from(files.keys());
+          },
+          /** One of the widget's files, as text, or undefined. */
+          file(name) {
+            return files.get(fileName(name));
+          },
+          /** One of the widget's files as a data: URL, for an <img> or a CSS
+           *  url() set from script. */
+          asset(name) {
+            const found = fileName(name);
+            return found === undefined ? undefined : dataUrl(found);
+          },
         };
         Object.freeze(losos);
         window.losos = losos;
@@ -136,7 +158,14 @@
         }
 
         // ── Errors ────────────────────────────────────────────────────
-        const sayError = (message) => send({ losos: "error", message: String(message) });
+        // A script's syntax error surfaces through the DOM call that inserted
+        // it ("Failed to execute 'replaceChildren' on 'Element': ..."); the
+        // owner wants the error, not the call.
+        const sayError = (message) =>
+          send({
+            losos: "error",
+            message: String(message).replace(/Failed to execute '\w+' on '\w+': /, ""),
+          });
         window.addEventListener("error", (event) => {
           sayError(event.message || "The widget threw an error.");
         });
@@ -144,6 +173,46 @@
           const reason = event.reason;
           sayError(reason && reason.message ? reason.message : String(reason));
         });
+
+        // ── The widget's files ────────────────────────────────────────
+        const KINDS = {
+          html: "text/html",
+          css: "text/css",
+          js: "text/javascript",
+          mjs: "text/javascript",
+          json: "application/json",
+          svg: "image/svg+xml",
+          txt: "text/plain",
+          md: "text/markdown",
+        };
+        const typeOf = (name) => KINDS[name.slice(name.lastIndexOf(".") + 1)] || "text/plain";
+        /* A reference names a file when, without a leading "./", a query or
+         * a fragment, it is exactly one of the names. Anything else (an
+         * https: URL, a data: URL) is left for the browser. */
+        const fileName = (ref) => {
+          if (typeof ref !== "string") return undefined;
+          const name = ref.trim().replace(/^\.\//, "").replace(/[?#].*$/, "");
+          return files.has(name) ? name : undefined;
+        };
+        const dataUrl = (name) =>
+          `data:${typeOf(name)};charset=utf-8,${encodeURIComponent(files.get(name))}`;
+        const linkUrls = (css) =>
+          String(css).replace(/url\(\s*(['"]?)([^'")]+)\1\s*\)/g, (whole, quote, ref) => {
+            const name = fileName(ref);
+            return name === undefined ? whole : `url("${dataUrl(name)}")`;
+          });
+
+        /* `fetch("data.json")` answers from the widget's files, so a widget
+         * can keep its data beside its script. Everything else is the
+         * browser's own fetch. */
+        const realFetch = window.fetch.bind(window);
+        window.fetch = (input, init) => {
+          const name = typeof input === "string" ? fileName(input) : undefined;
+          if (name === undefined) return realFetch(input, init);
+          return Promise.resolve(
+            new Response(files.get(name), { status: 200, headers: { "Content-Type": typeOf(name) } }),
+          );
+        };
 
         // ── Rendering ─────────────────────────────────────────────────
         const applyTheme = (message) => {
@@ -168,20 +237,49 @@
         };
 
         /* Scripts parsed out of innerHTML never run; a script element made
-         * fresh and given the same text does. So the source is parsed into a
-         * template, every <script> is rebuilt, and the lot is appended. */
-        const render = (source) => {
+         * fresh and given the same text does. So index.html is parsed into a
+         * template, the files it links are put in place, every <script> is
+         * rebuilt, and the lot is appended. */
+        const render = (message) => {
+          files = new Map();
+          if (Array.isArray(message.files)) {
+            for (const file of message.files) {
+              if (file && typeof file.name === "string" && typeof file.content === "string") {
+                files.set(file.name, file.content);
+              }
+            }
+          } else if (typeof message.source === "string") {
+            files.set("index.html", message.source);
+          }
           const template = document.createElement("template");
-          template.innerHTML = String(source);
-          for (const old of Array.from(template.content.querySelectorAll("script"))) {
+          template.innerHTML = String(files.get("index.html") || "");
+          const content = template.content;
+          for (const link of Array.from(content.querySelectorAll("link[href]"))) {
+            const name = fileName(link.getAttribute("href"));
+            if (name === undefined || !/(^|\s)stylesheet(\s|$)/i.test(link.rel)) continue;
+            const style = document.createElement("style");
+            style.textContent = linkUrls(files.get(name));
+            link.replaceWith(style);
+          }
+          for (const style of Array.from(content.querySelectorAll("style"))) {
+            style.textContent = linkUrls(style.textContent);
+          }
+          for (const element of Array.from(content.querySelectorAll("[src]:not(script), image[href], use[href]"))) {
+            const attribute = element.hasAttribute("src") ? "src" : "href";
+            const name = fileName(element.getAttribute(attribute));
+            if (name !== undefined) element.setAttribute(attribute, dataUrl(name));
+          }
+          for (const old of Array.from(content.querySelectorAll("script"))) {
             const fresh = document.createElement("script");
+            const linked = old.hasAttribute("src") ? fileName(old.getAttribute("src")) : undefined;
             for (const attribute of Array.from(old.attributes)) {
+              if (linked !== undefined && attribute.name === "src") continue;
               fresh.setAttribute(attribute.name, attribute.value);
             }
-            fresh.textContent = old.textContent;
+            fresh.textContent = linked !== undefined ? files.get(linked) : old.textContent;
             old.replaceWith(fresh);
           }
-          document.body.replaceChildren(template.content);
+          document.body.replaceChildren(content);
           report();
         };
 
@@ -192,7 +290,7 @@
           switch (message.losos) {
             case "load":
               applyTheme(message);
-              render(message.source);
+              render(message);
               break;
             case "theme":
               applyTheme(message);

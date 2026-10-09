@@ -340,7 +340,7 @@ function HandTile({ instance, index, total, onRemove, onMove }: WidgetTileProps)
             <>
               <HandFrame
                 key={nonce}
-                source={widget.source}
+                files={widget.files}
                 name={t("look.frame.title", { name: widget.name })}
                 onError={setThrew}
               />

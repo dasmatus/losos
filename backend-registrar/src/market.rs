@@ -325,7 +325,7 @@ pub struct MarketState {
 /// [`crate::error::ApiError`]. Client-fault variants carry text that is safe
 /// to return; `Stripe` and `Store` carry server detail that only reaches the
 /// log.
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Clone, thiserror::Error)]
 pub enum MarketError {
     #[error("market not configured on this edge")]
     Unconfigured,

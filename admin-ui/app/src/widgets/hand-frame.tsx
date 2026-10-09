@@ -9,8 +9,8 @@
  * The frame's own, permissive policy comes from nginx for that directory
  * alone (modules/containers.nix).
  *
- * This component is the bridge's parent half. It sends the source, the
- * theme, the language and the box's palette; it answers `metric` requests
+ * This component is the bridge's parent half. It sends the widget's files,
+ * the theme, the language and the box's palette; it answers `metric` requests
  * through the same sandbox the spec widgets use (widgets/sandbox.ts), so a
  * hand-written widget can read exactly what a built-in can and nothing
  * else; and it sizes the iframe to what the widget drew. Every message is
@@ -20,6 +20,7 @@
 import * as React from "react";
 import { subscribeTheme, getResolvedTheme } from "@/lib/theme";
 import { getLocale, subscribeLocale } from "@/lib/i18n";
+import type { WidgetFile } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { createSandbox } from "./sandbox";
 import { isMetricName, WidgetError } from "./types";
@@ -64,8 +65,8 @@ export const MIN_FRAME_HEIGHT = 72;
 export const MAX_FRAME_HEIGHT = 560;
 
 export interface HandFrameProps {
-  /** The widget's HTML. A new string reloads the frame. */
-  source: string;
+  /** The widget's files. Different files reload the frame. */
+  files: readonly WidgetFile[];
   /** For the iframe's accessible name. */
   name: string;
   /** Called with the widget's own error text, when it throws. */
@@ -73,15 +74,16 @@ export interface HandFrameProps {
   className?: string;
 }
 
-export function HandFrame({ source, name, onError, className }: HandFrameProps) {
+export function HandFrame({ files, name, onError, className }: HandFrameProps) {
   const ref = React.useRef<HTMLIFrameElement>(null);
   const onErrorRef = React.useRef(onError);
   onErrorRef.current = onError;
 
-  /* One listener for the life of the frame; the source it hands over is
-   * whatever the latest render passed. A source change is a `key` change
-   * below, so a new frame, so there is never an old document showing a new
-   * source or the other way round. */
+  /* One listener for the life of the frame; the files it hands over are
+   * whatever the latest render passed. A change to any file is a `key`
+   * change below, so a new frame, so there is never an old document
+   * showing new files or the other way round. */
+  const key = React.useMemo(() => JSON.stringify(files), [files]);
   React.useEffect(() => {
     const frame = ref.current;
     if (frame === null) return;
@@ -95,7 +97,7 @@ export function HandFrame({ source, name, onError, className }: HandFrameProps) 
     const load = (): void => {
       post({
         losos: "load",
-        source,
+        files,
         theme: getResolvedTheme(),
         lang: getLocale(),
         palette: readPalette(),
@@ -171,11 +173,12 @@ export function HandFrame({ source, name, onError, className }: HandFrameProps) 
       unsubscribeTheme();
       unsubscribeLocale();
     };
-  }, [source]);
+    // `key` stands for the files' content, which is what matters here.
+  }, [key]);
 
   return (
     <iframe
-      key={source}
+      key={key}
       ref={ref}
       src={FRAME_URL}
       sandbox="allow-scripts"

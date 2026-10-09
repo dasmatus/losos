@@ -1024,6 +1024,69 @@ async fn post_market_order(
     .await
 }
 
+// ── The widget builder ────────────────────────────────────────────────────
+// Relayed to the edge like the market (`crate::market`): the edge holds the
+// Anthropic key and the balance, this box only its proxy token.
+
+/// `GET /api/builder` — balance, packs, price and recent builds, or
+/// `{"available": false}` when no official edge offers the builder.
+async fn get_builder(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    guarded(&api, &req, "/api/builder", false, || {
+        run(&api, crate::losos::cmd_builder)
+    })
+}
+
+/// `POST /api/builder/credits` `{"amount": ...}` — a Stripe Checkout for one
+/// credit pack.
+async fn post_builder_credit(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    post_market(api, req, body, "/api/builder/credits", |d| {
+        Some(crate::market::Op::BuilderCredit {
+            amount: field_u64(d, "amount")?,
+        })
+    })
+    .await
+}
+
+/// `POST /api/builder/builds` `{"prompt": ..., "base"?: [files], "lang"?: ...}`
+/// — start a build. `base` is the widget to change, as the files the editor
+/// holds; a single string is read as its `index.html`.
+async fn post_builder_start(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    post_market(api, req, body, "/api/builder/builds", |d| {
+        Some(crate::market::Op::BuilderStart {
+            prompt: field_str(d, "prompt")?,
+            base: match d.get("base") {
+                None | Some(serde_json::Value::Null) => None,
+                Some(serde_json::Value::String(s)) if s.trim().is_empty() => None,
+                Some(serde_json::Value::String(s)) => Some(vec![crate::look::WidgetFile::entry(s)]),
+                Some(files) => Some(crate::look::parse_files(files)?),
+            },
+            lang: field_str(d, "lang"),
+        })
+    })
+    .await
+}
+
+/// `GET /api/builder/builds/{id}` — one build, with its source once done.
+async fn get_builder_build(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    path: web::Path<String>,
+) -> HttpResponse {
+    let build_id = path.into_inner();
+    guarded(&api, &req, "/api/builder/builds", false, || {
+        let op = crate::market::Op::BuilderBuild { build_id };
+        run(&api, |b| crate::losos::cmd_market_op(b, &op))
+    })
+}
+
 // ── Virtual machines ──────────────────────────────────────────────────────
 // The market's third kind (`backend-registrar/src/vms.rs`), on its own page
 // and its own routes, because every one of them is refused unless this box
@@ -1500,6 +1563,10 @@ pub fn serve(backend: IoLosos) -> anyhow::Result<()> {
                     web::post().to(post_market_close),
                 )
                 .route("/api/market/orders", web::post().to(post_market_order))
+                .route("/api/builder", web::get().to(get_builder))
+                .route("/api/builder/credits", web::post().to(post_builder_credit))
+                .route("/api/builder/builds", web::post().to(post_builder_start))
+                .route("/api/builder/builds/{id}", web::get().to(get_builder_build))
                 .route("/api/vms", web::get().to(get_vms))
                 .route("/api/vms/orders", web::post().to(post_vm_order))
                 .route("/api/vms/listings", web::post().to(post_vm_listing))

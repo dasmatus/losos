@@ -37,9 +37,10 @@ import {
   type LookBackgroundChoice,
   type LookLimits,
   type LookResponse,
+  type WidgetFile,
 } from "./api";
 
-export type { HandSpan, HandWidget, HandWidgetDraft, LookBackground, LookResponse };
+export type { HandSpan, HandWidget, HandWidgetDraft, LookBackground, LookResponse, WidgetFile };
 
 /** The pictures the page knows how to show a thumbnail for. The box sends
  *  its own list; a name in neither is drawn as a plain swatch. */
@@ -68,7 +69,10 @@ export function backgroundUrl(background: LookBackground): string | null {
 export const DEFAULT_LIMITS: LookLimits = {
   widgets: 24,
   nameChars: 60,
-  sourceBytes: 64 * 1024,
+  widgetBytes: 128 * 1024,
+  files: 12,
+  fileNameChars: 40,
+  fileKinds: ["html", "css", "js", "mjs", "json", "svg", "txt", "md"],
   imageBytes: 8 * 1024 * 1024,
   veil: { min: 20, max: 90 },
 };
@@ -173,10 +177,26 @@ function reviveWidget(value: unknown): HandWidget | null {
   const record = value as Record<string, unknown>;
   const id = record["id"];
   const name = record["name"];
-  const source = record["source"];
-  if (typeof id !== "string" || typeof name !== "string" || typeof source !== "string") return null;
+  if (typeof id !== "string" || typeof name !== "string") return null;
+  const files = reviveFiles(record["files"]);
+  if (files === null) return null;
   const span: HandSpan = record["span"] === "full" ? "full" : "half";
-  return { id, name, span, source };
+  return { id, name, span, files };
+}
+
+/** A list of `{ name, content }`, or null when it is not one. */
+export function reviveFiles(value: unknown): WidgetFile[] | null {
+  if (!Array.isArray(value)) return null;
+  const files: WidgetFile[] = [];
+  for (const item of value) {
+    if (typeof item !== "object" || item === null) return null;
+    const record = item as Record<string, unknown>;
+    const name = record["name"];
+    const content = record["content"];
+    if (typeof name !== "string" || typeof content !== "string") return null;
+    files.push({ name, content });
+  }
+  return files;
 }
 
 function reviveLimits(value: unknown): LookLimits {
@@ -192,7 +212,13 @@ function reviveLimits(value: unknown): LookLimits {
   return {
     widgets: number("widgets", DEFAULT_LIMITS.widgets),
     nameChars: number("nameChars", DEFAULT_LIMITS.nameChars),
-    sourceBytes: number("sourceBytes", DEFAULT_LIMITS.sourceBytes),
+    widgetBytes: number("widgetBytes", DEFAULT_LIMITS.widgetBytes),
+    files: number("files", DEFAULT_LIMITS.files),
+    fileNameChars: number("fileNameChars", DEFAULT_LIMITS.fileNameChars),
+    fileKinds:
+      Array.isArray(record["fileKinds"]) && record["fileKinds"].every((k) => typeof k === "string")
+        ? (record["fileKinds"] as string[])
+        : DEFAULT_LIMITS.fileKinds,
     imageBytes: number("imageBytes", DEFAULT_LIMITS.imageBytes),
     veil: {
       min: typeof veilRecord["min"] === "number" ? veilRecord["min"] : DEFAULT_LIMITS.veil.min,

@@ -594,6 +594,92 @@ export function postMarketOrder(
   return marketPost("/api/market/orders", { listing_id: listingId, quantity }, options);
 }
 
+// ── Widget builder ────────────────────────────────────────────────────────
+
+/* A Claude agent on the edge writes a widget from the owner's description
+ * (backend-registrar/src/builder.rs), relayed by lososd like the market. The
+ * edge keeps the Anthropic key and a prepaid balance per box, topped up
+ * through Stripe Checkout. Amounts are in the minor unit of `currency`;
+ * prices are per million tokens with the edge's markup included. */
+
+export interface BuilderPrice {
+  model: string;
+  input_per_million: number;
+  output_per_million: number;
+  markup_percent: number;
+  /** The most one build may cost. */
+  max_build: number;
+}
+
+export type BuildStatus = "running" | "done" | "failed";
+export type BuildFault = "noWidget" | "unusable" | "upstream";
+
+export interface BuildSummary {
+  id: string;
+  status: BuildStatus;
+  prompt: string;
+  revision: boolean;
+  created_at: number;
+  finished_at: number | null;
+  charged: number;
+  fault: BuildFault | null;
+  has_source: boolean;
+}
+
+export interface BuildView extends BuildSummary {
+  /** The spending cap stopped the agent; the widget may be unfinished. */
+  at_limit: boolean;
+  /** The widget's `index.html`; `files` has it with the rest. */
+  source: string | null;
+  /** Absent from an edge older than widgets with files. */
+  files?: WidgetFile[] | null;
+  /** What the agent says it made, in the page's language. */
+  notes: string | null;
+}
+
+export type BuilderResponse =
+  | { available: false; reason?: "noOfficialEdge" }
+  | {
+      available: true;
+      currency: string;
+      balance: number;
+      packs: number[];
+      price: BuilderPrice;
+      can_build: boolean;
+      builds: BuildSummary[];
+    };
+
+/** GET /api/builder. */
+export function getBuilder(options: RequestOptions = {}): Promise<BuilderResponse> {
+  return call<BuilderResponse>("/api/builder", options);
+}
+
+/** POST /api/builder/credits — a Stripe Checkout for one credit pack. */
+export function postBuilderCredit(
+  amount: number,
+  options: RequestOptions = {},
+): Promise<MarketActionResponse> {
+  return marketPost("/api/builder/credits", { amount }, options);
+}
+
+/** POST /api/builder/builds — start a build; `base` is the widget to change. */
+export function postBuilderBuild(
+  request: { prompt: string; base?: WidgetFile[]; lang: string },
+  options: RequestOptions = {},
+): Promise<BuildView> {
+  return call<BuildView>("/api/builder/builds", {
+    ...options,
+    method: "POST",
+    contentType: "application/json",
+    body: JSON.stringify(request),
+  });
+}
+
+/** GET /api/builder/builds/{id}. */
+export function getBuilderBuild(id: string, options: RequestOptions = {}): Promise<BuildView> {
+  return call<BuildView>(`/api/builder/builds/${encodeURIComponent(id)}`, options);
+}
+
 // ── Virtual machines ──────────────────────────────────────────────────────
 
 /* Virtual machines on the mesh, sold by the replica through the market and
@@ -1308,18 +1394,30 @@ export type LookBackground =
 
 export type HandSpan = "half" | "full";
 
-/** One widget the owner wrote: a name, a width, and the HTML it is. */
+/** One file of a widget: `index.html`, or a file it links. */
+export interface WidgetFile {
+  name: string;
+  content: string;
+}
+
+/** One widget the owner wrote: a name, a width, and its files. */
 export interface HandWidget {
   id: string;
   name: string;
   span: HandSpan;
-  source: string;
+  files: WidgetFile[];
 }
 
 export interface LookLimits {
   widgets: number;
   nameChars: number;
-  sourceBytes: number;
+  /** All of one widget's files together. */
+  widgetBytes: number;
+  /** Files in one widget. */
+  files: number;
+  fileNameChars: number;
+  /** Extensions a widget's file may have. */
+  fileKinds: string[];
   imageBytes: number;
   veil: { min: number; max: number };
 }
@@ -1347,7 +1445,7 @@ export interface HandWidgetDraft {
   id?: string;
   name: string;
   span: HandSpan;
-  source: string;
+  files: WidgetFile[];
 }
 
 /** GET /api/look. */

@@ -1626,6 +1626,93 @@ in
       description = "What the edge sells, by sku.";
     };
 
+    # ── Widget builder (edge side) ──────────────────────────────────────────
+    # An owner describes a widget in the admin UI and a Claude Managed Agent
+    # writes it. The edge holds the Anthropic key and pays Anthropic; the box
+    # pays the edge from a prepaid balance topped up through the market's
+    # Stripe gate. Off by default; see handbook/docs/in-depth/widget-builder.md.
+    edge.builder.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Serve the /builder/* routes of losos-registrar. Needs the market
+        (top-ups are paid through its Stripe gate), the agent and environment
+        made once by `losos-registrar builder-setup`, and the Anthropic key
+        sealed at `claudeKeySealed` before the switch: the registrar unit
+        loads the blob and does not start without it.
+      '';
+    };
+
+    edge.builder.claudeKeySealed = lib.mkOption {
+      type = secretPath;
+      default = "/var/secrets/losos-claude-api-key.cred";
+      description = ''
+        The Anthropic API key (`sk-ant-...`), **sealed** with `systemd-creds`
+        under the credential name `claude-api-key`. The registrar unit receives
+        it through `LoadCredentialEncrypted=` and reads it per request, so it
+        is plaintext only in that unit's credential tmpfs. Boxes never see
+        it. Give it a workspace of its own with a spend limit in the Claude
+        Console: that limit, not this edge, is the last word on what a bug
+        can cost.
+      '';
+    };
+
+    edge.builder.agentId = lib.mkOption {
+      type = lib.types.nullOr (lib.types.strMatching "agent_[A-Za-z0-9]+");
+      default = null;
+      example = "agent_011CZkYpogX7uDKUyvBTophP";
+      description = "The agent `losos-registrar builder-setup` printed. Required with `enable`.";
+    };
+
+    edge.builder.environmentId = lib.mkOption {
+      type = lib.types.nullOr (lib.types.strMatching "env_[A-Za-z0-9]+");
+      default = null;
+      example = "env_011CZkZ9X2dpNyB7HsEFoRfW";
+      description = "The environment `losos-registrar builder-setup` printed. Required with `enable`.";
+    };
+
+    edge.builder.markupBps = lib.mkOption {
+      type = lib.types.ints.between 0 10000;
+      default = 2000;
+      description = ''
+        What the edge adds to Anthropic's list price per million input and
+        output tokens, in basis points: 2000 is 20%. Container time is not
+        passed on.
+      '';
+    };
+
+    edge.builder.usdRate = lib.mkOption {
+      type = lib.types.strMatching "[0-9]+(\\.[0-9]{1,6})?";
+      default = "1.0";
+      description = ''
+        Units of `market.currency` per US dollar. Anthropic prices in USD and
+        the market charges in its own currency; 1.0 is right for `usd` and
+        a rounded figure for the others.
+      '';
+    };
+
+    edge.builder.packs = lib.mkOption {
+      type = lib.types.addCheck (lib.types.listOf (lib.types.ints.between 100 50000)) (
+        l: l != [ ] && lib.length l <= 6
+      );
+      default = [
+        500
+        1000
+        2000
+      ];
+      description = "The top-ups an owner can buy, in minor units of `market.currency`. One to six.";
+    };
+
+    edge.builder.maxBuildCents = lib.mkOption {
+      type = lib.types.ints.between 20 10000;
+      default = 300;
+      description = ''
+        The most one build may spend at Anthropic's list price, in US cents.
+        It becomes the session's hard budget, lowered to what the owner's
+        balance covers.
+      '';
+    };
+
     # ── Virtual machines on the mesh (edge side) ────────────────────────────
     # KubeVirt and CDI on the edge's rke2 cluster, sold through the market by
     # the replica (backend-registrar/src/vms.rs,
@@ -2117,6 +2204,7 @@ in
         "losos.edge.cluster.agentTokenFile" = config.losos.edge.cluster.agentTokenFile;
         "losos.edge.market.stripeSecretKeySealed" = config.losos.edge.market.stripeSecretKeySealed;
         "losos.edge.market.webhookSecretSealed" = config.losos.edge.market.webhookSecretSealed;
+        "losos.edge.builder.claudeKeySealed" = config.losos.edge.builder.claudeKeySealed;
         "losos.edge.uplink.tokenFile" = config.losos.edge.uplink.tokenFile;
       }
       // lib.optionalAttrs (config.losos.edge.uplink.bootstrapTokenFile != null) {

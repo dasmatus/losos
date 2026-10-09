@@ -93,25 +93,47 @@ const BACKUP_COUNTDOWN = {
   },
 };
 
-const LIMITS = { widgets: 24, nameChars: 60, sourceBytes: 65536, imageBytes: 8388608, veil: { min: 20, max: 90 } };
+const LIMITS = {
+  widgets: 24,
+  nameChars: 60,
+  widgetBytes: 131072,
+  files: 12,
+  fileNameChars: 40,
+  fileKinds: ['html', 'css', 'js', 'mjs', 'json', 'svg', 'txt', 'md'],
+  imageBytes: 8388608,
+  veil: { min: 20, max: 90 },
+};
 const HAND_WIDGET = {
   id: 'w1',
   name: 'Greeting',
   span: 'half',
-  source: [
-    '<style>',
-    '  body { font-family: system-ui, sans-serif; margin: 0; color: var(--ink); }',
-    '  .big { font-size: 28px; font-weight: 600; color: var(--accent); }',
-    '</style>',
-    '<div class="big" id="out">…</div>',
-    '<div id="free"></div>',
-    '<script>',
-    '  losos.metric("box.settings").then((m) => {',
-    '    document.getElementById("out").textContent = "Hello from " + m.hostName;',
-    '  });',
-    '  document.getElementById("free").textContent = "Drawn in its own sandbox, in the " + losos.theme + " theme.";',
-    '</script>',
-  ].join('\n'),
+  files: [
+    {
+      name: 'index.html',
+      content: [
+        '<link rel="stylesheet" href="style.css">',
+        '<div class="big" id="out">…</div>',
+        '<div id="free"></div>',
+        '<script src="app.js"></script>',
+      ].join('\n'),
+    },
+    {
+      name: 'app.js',
+      content: [
+        'losos.metric("box.settings").then((m) => {',
+        '  document.getElementById("out").textContent = "Hello from " + m.hostName;',
+        '});',
+        'document.getElementById("free").textContent = "Drawn in its own sandbox, in the " + losos.theme + " theme.";',
+      ].join('\n'),
+    },
+    {
+      name: 'style.css',
+      content: [
+        'body { font-family: system-ui, sans-serif; margin: 0; color: var(--ink); }',
+        '.big { font-size: 28px; font-weight: 600; color: var(--accent); }',
+      ].join('\n'),
+    },
+  ],
 };
 const LOOK_PLAIN = { version: 1, background: { kind: 'none' }, veil: 60, widgets: [], shipped: ['tide', 'grid', 'dusk'], limits: LIMITS };
 const LOOK_TIDE = { ...LOOK_PLAIN, background: { kind: 'shipped', name: 'tide' }, widgets: [HAND_WIDGET] };

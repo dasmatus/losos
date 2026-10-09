@@ -470,6 +470,27 @@ impl Edge {
         .await
     }
 
+    /// As [`Edge::start_with_market`] with no one enrolled, and a
+    /// last-minute change to the options.
+    pub async fn start_market_custom(
+        tag: &str,
+        tenants: &[TenantSpec],
+        stripe_api: &str,
+        tweak: impl FnOnce(&mut ServeOpts, &TempDir) + Send + 'static,
+    ) -> Self {
+        Self::start_inner_seeded(
+            tag,
+            tenants,
+            MeshFixture::default(),
+            None,
+            Some(stripe_api.to_string()),
+            &[],
+            None,
+            Some(Box::new(tweak)),
+        )
+        .await
+    }
+
     #[allow(clippy::too_many_arguments)]
     async fn start_inner_seeded(
         tag: &str,
@@ -580,6 +601,7 @@ impl Edge {
                 fee_bps: Some(losos_registrar::market::DEFAULT_FEE_BPS),
                 return_url: Some(RETURN_URL.to_string()),
                 hardware_catalogue: Some(dir.path_str("hardware.json")),
+                credit_packs: vec![500, 1_000, 2_000],
             };
             let listener = losos_registrar::stripe_gate::bind(&gate.socket).expect("bind gate");
             let (stop, rx) = oneshot::channel::<()>();
@@ -632,6 +654,7 @@ impl Edge {
             kube_ca_file: None,
             compute_windows_file: dir.path_str("compute-windows.json"),
             market,
+            builder: None,
             github_api_url: github_api_url
                 .unwrap_or(losos_registrar::provision::GITHUB_API_URL)
                 .to_string(),

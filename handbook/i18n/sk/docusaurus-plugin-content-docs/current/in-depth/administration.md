@@ -65,6 +65,19 @@ vlastný. *Zostaviť* poskladá widget z hodnôt zariadenia bez akéhokoľvek
 kódu. *Napísať* prijme vlastné HTML, štýl a skript, ktoré sa držia na
 zariadení a sú vypísané na tomto paneli, kde ich môžete upraviť a zmazať.
 
+Widget tvorí niekoľko súborov. Začína sa v `index.html`, ktorý ostatné
+prepája menom, napríklad `<link rel="stylesheet" href="style.css">`,
+`<script src="app.js"></script>` alebo `<img src="dot.svg">`, a
+`fetch("data.json")` prečíta jeden z vlastných súborov. Nový widget začína
+súbormi `index.html`, `style.css` a `app.js`; **Pridať súbor** pridá ďalší
+(`.html`, `.css`, `.js`, `.json`, `.svg`, `.txt` alebo `.md`). Skripty sú
+klasické: viac ich načítate viacerými značkami `<script src>` v poradí, nie
+cez `import` medzi nimi.
+
+Editor počas písania dopĺňa: objekt `losos` a jeho členy, mená hodnôt vnútri
+`losos.metric("`, farebné premenné po `var(--` a mená súborov widgetu všade,
+kde sa súbor menuje. Ctrl+Medzerník ponúkne návrhy kdekoľvek.
+
 Ručne písaný widget beží v sandboxovanom rámci, vo vlastnom origine bez
 prístupu k administrátorským stránkam, admin tokenu či API. So zariadením
 komunikuje cez malý objekt `losos`, ktorý rámec poskytuje:
@@ -76,11 +89,20 @@ komunikuje cez malý objekt `losos`, ktorý rámec poskytuje:
 | `losos.palette`                | Farby zariadenia, nastavené aj ako CSS premenné (`var(--accent)` funguje). |
 | `losos.onTheme(fn)`            | Volá sa vždy, keď vlastník prepne tému.                               |
 | `losos.resize()`               | Požiada nástenku, aby dlaždicu znovu premerala po zmene, ktorú nevidí. |
+| `losos.files`                  | Mená súborov widgetu.                                                 |
+| `losos.file(name)`             | Jeden zo súborov widgetu ako text.                                    |
+| `losos.asset(name)`            | Jeden zo súborov widgetu ako `data:` URL, pre obrázok nastavený zo skriptu. |
 
 Karta **Ako to funguje** v editore to zopakuje s príkladom. Jej náhľad je skutočný
 rámec, takže to, čo ukazuje, ukáže aj dlaždica. Widget môže sťahovať z
 internetu (napríklad dlaždica s počasím), ale nie zo zariadenia. Limit je
-24 widgetov po 64 KiB.
+24 widgetov, každý najviac 12 súborov a spolu 128 KiB.
+
+Editor má aj kartu **Vytvoriť s Claude**, kde Claude napíše widget podľa
+opisu a vloží jeho súbory do editora, aby ste si ich pred uložením prečítali.
+Platí sa za každú tvorbu z predplateného zostatku a potrebuje edge, ktorý ju
+ponúka, a na to, čo pošlete, sa vzťahujú podmienky spoločnosti Anthropic;
+pozri [Tvorca widgetov](widget-builder.md).
 
 ## Admin token
 
