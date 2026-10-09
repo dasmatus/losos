@@ -35,19 +35,18 @@ runs:
         trap 'rm -rf "$work"' EXIT
         umask 077
         printf '%s' "$SIGNING_KEY" > "$work/cache.sec"
-        # Fetch the publisher from LosOS Desktop's main, resolved to a commit at
-        # run time so the script tracks upstream fixes and the log records which
-        # revision ran. It writes one signed narinfo/NAR OCI artifact per store
-        # path, as its proxy expects.
-        rev=$(git ls-remote https://github.com/dasmatus/losos-desktop refs/heads/main | cut -f1)
-        if [ -z "$rev" ]; then
-          echo "could not resolve dasmatus/losos-desktop main" >&2
-          exit 1
-        fi
+        # The publisher from LosOS Desktop, pinned to one commit and checked
+        # against its SHA-256 before it runs, because it runs beside the cache
+        # signing key. It writes one signed narinfo/NAR OCI artifact per store
+        # path, as its proxy expects. To take a newer one, set both values from
+        # the new commit's tools/nix-cache-push.
+        rev=f4f8ecf783192f56ef825cde9e0e3a6203bc19a7
+        sha256=a21d8a33b104ee671b40a4a9eb1c7e74047f6d3cf813f5df49f102418c453ced
         echo "nix-cache-push from dasmatus/losos-desktop@$rev"
         curl -fsSL --proto '=https' \
           "https://raw.githubusercontent.com/dasmatus/losos-desktop/$rev/tools/nix-cache-push" \
           -o "$work/nix-cache-push"
+        echo "$sha256  $work/nix-cache-push" | sha256sum --check --quiet
         chmod +x "$work/nix-cache-push"
         oras=$(nix build nixpkgs#oras --no-link --print-out-paths)
         printf '%s' "$GHCR_TOKEN" | "$oras/bin/oras" login ghcr.io \
