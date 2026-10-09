@@ -1,3 +1,5 @@
+**English** · [Slovenčina](Mesh-sk) · [Deutsch](Mesh-de)
+
 # Mesh
 
 A box can lend spare disk and CPU to other losos boxes. Joining is off by

@@ -12,3 +12,37 @@
 - [Architecture](Architecture)
 - [Development](Development)
 - [CI and releases](CI-and-Releases)
+
+**Slovenčina**
+
+- [Domov](Home-sk)
+- [Inštalácia](Install-sk)
+- [Správa](Administration-sk)
+- [Mesh](Mesh-sk)
+- [Trh](Market-sk) (plánovaný)
+- [Master proxy](Master-Proxy-sk)
+- [Federácia edge](Edge-Federation-sk)
+- [Lab](Lab-sk)
+- [Hardening](Hardening-sk)
+- [TPM a odomykanie disku](TPM-sk)
+- [Bezpečnostný model](Security-Model-sk)
+- [Architektúra](Architecture-sk)
+- [Vývoj](Development-sk)
+- [CI a vydania](CI-and-Releases-sk)
+
+**Deutsch**
+
+- [Startseite](Home-de)
+- [Installation](Install-de)
+- [Administration](Administration-de)
+- [Mesh](Mesh-de)
+- [Marktplatz](Market-de) (geplant)
+- [Master-Proxy](Master-Proxy-de)
+- [Edge-Föderation](Edge-Federation-de)
+- [Lab](Lab-de)
+- [Härtung](Hardening-de)
+- [TPM und Entsperren der Festplatte](TPM-de)
+- [Sicherheitsmodell](Security-Model-de)
+- [Architektur](Architecture-de)
+- [Entwicklung](Development-de)
+- [CI und Releases](CI-and-Releases-de)

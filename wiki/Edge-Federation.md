@@ -1,3 +1,5 @@
+**English** · [Slovenčina](Edge-Federation-sk) · [Deutsch](Edge-Federation-de)
+
 # Edge federation
 
 Anyone may run an edge beside their boxes ([Master proxy — Edge on the same

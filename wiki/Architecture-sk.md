@@ -61,7 +61,7 @@ wiki/                    source of this wiki
 ```
 
 `CLAUDE.md` je skomprimovaná podoba tejto stránky a záludností zo stránky
-[Vývoj](Development-sk#gotchas-that-bite-silently).
+[Vývoj](Development-sk#nástrahy-ktoré-hryznú-potichu).
 
 ## Do hĺbky
 
@@ -286,7 +286,7 @@ robí `services.nextcloud`. `admin-ui/themes/default.nix` sú čisté dáta, kto
 importujú všetci traja volajúci, z rovnakého dôvodu ako `nextcloud-stack.nix`.
 Pody záťaží používajú `hostNetwork`, keďže lokálny klaster nemá žiadne CNI,
 takže odpovedajú na loopbacku. Čo to stojí, vysvetľuje
-[záludnosť](Development-sk#gotchas-that-bite-silently) o strážcovi `lanOnly`.
+[záludnosť](Development-sk#nástrahy-ktoré-hryznú-potichu) o strážcovi `lanOnly`.
 
 **Demo hostiteľ na Verceli** (`edge-vercel/`). Tretí Rust crate, mimo
 flaku, ktorý spúšťa router registrátora ako jednu Vercel Function. Register je

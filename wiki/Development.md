@@ -1,3 +1,5 @@
+**English** · [Slovenčina](Development-sk) · [Deutsch](Development-de)
+
 # Development
 
 ## Shell

@@ -50,7 +50,7 @@ cez mDNS ako `_losos-edge._tcp`, s URL registrara v zázname `url=`
 (`losos.edge.lan.url`, predvolene `http://<edge>.local:8443`). API registrara
 naviaže mimo loopbacku a otvorí jeho port. Box v tej istej sieti ho potom
 nájde bez akejkoľvek konfigurácie a môže cez neho zdieľať úložisko, pozri
-[Mesh](Mesh-sk#finding-the-edge). Takto vyzerá nasadenie on-premises: jeden
+[Mesh](Mesh-sk#hľadanie-edge). Takto vyzerá nasadenie on-premises: jeden
 stále zapnutý stroj vo firemnej sieti, na ktorom beží `nixosModules.edge`, a
 vedľa neho boxy nainštalované zo štandardného ISO.
 
@@ -242,7 +242,7 @@ ns1.boxes.losos.dasmat.us.  AAAA 2001:db8::7
 ```
 
 Nič sa neprideľuje, kým edge nemá neexpirovaný certifikát identity
-([Oficiálne edge](#official-edges)). Dovtedy zónu tvoria iba SOA, NS a
+([Oficiálne edge](#oficiálne-edge)). Dovtedy zónu tvoria iba SOA, NS a
 glue a `/domains/*` odpovedá 503.
 
 ### Vlastné domény
@@ -282,7 +282,7 @@ Box za lokálnym edge dostane svoje domény smerované tiež, cez ten lokálny
 edge, len čo sa za lokálny edge zaručil relay passom a pripojil sa k meshu
 tohto edge. Registrar si tieto trasy uchováva sám, v `relay-routes.json`
 vedľa svojho registra. [Federácia
-edge](Edge-Federation-sk#custom-domains-behind-a-local-edge) obsahuje
+edge](Edge-Federation-sk#vlastné-domény-za-lokálnym-edge) obsahuje
 podrobnosti a `losos.edge.dns.relayRoutes`.
 
 `tests/edge-dns.nix` (`losos-edge-dns`) spustí edge a klienta a pýta sa

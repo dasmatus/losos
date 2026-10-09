@@ -1,3 +1,5 @@
+**English** · [Slovenčina](Master-Proxy-sk) · [Deutsch](Master-Proxy-de)
+
 # Master proxy
 
 Optional. It makes the box reachable from the internet without opening a port

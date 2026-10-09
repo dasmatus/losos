@@ -61,7 +61,7 @@ wiki/                    source of this wiki
 ```
 
 `CLAUDE.md` ist die komprimierte Fassung dieser Seite und der Stolperfallen
-unter [Entwicklung](Development-de#gotchas-that-bite-silently).
+unter [Entwicklung](Development-de#fallstricke-die-lautlos-zubeißen).
 
 ## Im Detail
 
@@ -304,7 +304,7 @@ Dateien aus `core/img/` über den absoluten Pfad, deshalb überschreibt
 importieren, aus demselben Grund wie bei `nextcloud-stack.nix`. Die
 Workload-Pods nutzen `hostNetwork`, da der lokale Cluster kein CNI hat, und
 antworten daher auf Loopback. Was das kostet, erklärt die
-[Stolperfalle](Development-de#gotchas-that-bite-silently) zum
+[Stolperfalle](Development-de#fallstricke-die-lautlos-zubeißen) zum
 `lanOnly`-Wächter.
 
 **Der Vercel-Demo-Host** (`edge-vercel/`). Ein drittes Rust-Crate außerhalb

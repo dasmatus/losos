@@ -1,3 +1,5 @@
+**English** · [Slovenčina](Security-Model-sk) · [Deutsch](Security-Model-de)
+
 # Security model
 
 The full document is
