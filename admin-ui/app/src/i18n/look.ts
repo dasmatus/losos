@@ -115,6 +115,131 @@ export default defineMessages({
   },
   "look.editor.tab.write": { en: "Write", sk: "Písať", de: "Schreiben" },
   "look.editor.tab.help": { en: "How it works", sk: "Ako to funguje", de: "So funktioniert es" },
+  "look.editor.tab.claude": { en: "Build with Claude", sk: "Vytvoriť s Claude", de: "Mit Claude bauen" },
+
+  // ── Built by Claude (widgets/builder-panel.tsx) ─────────────────────────
+  "look.builder.intro": {
+    en: "Describe the widget and Claude writes it. It lands in the editor, where you can read it, try it in the preview and change it before you save.",
+    sk: "Opíšte widget a Claude ho napíše. Objaví sa v editore, kde si ho môžete prečítať, vyskúšať v náhľade a upraviť ešte pred uložením.",
+    de: "Beschreiben Sie das Widget, und Claude schreibt es. Es landet im Editor, wo Sie es lesen, in der Vorschau ausprobieren und vor dem Speichern ändern können.",
+  },
+  "look.builder.loading": { en: "Asking the edge…", sk: "Pýtam sa edge…", de: "Edge wird gefragt …" },
+  "look.builder.loadFailed": {
+    en: "Could not reach the widget builder on the edge.",
+    sk: "Tvorca widgetov na edge nie je dostupný.",
+    de: "Der Widget-Baukasten auf dem Edge ist nicht erreichbar.",
+  },
+  "look.builder.retry": { en: "Try again", sk: "Skúsiť znova", de: "Erneut versuchen" },
+  "look.builder.unavailable": {
+    en: "The edge this box uses does not offer the widget builder.",
+    sk: "Edge, ktorý tento box používa, tvorcu widgetov neponúka.",
+    de: "Der Edge dieser Box bietet den Widget-Baukasten nicht an.",
+  },
+  "look.builder.noOfficialEdge": {
+    en: "The widget builder needs an official LosOS edge in reach, and there is none.",
+    sk: "Tvorca widgetov potrebuje dostupný oficiálny edge LosOS, a žiadny tu nie je.",
+    de: "Der Widget-Baukasten braucht einen erreichbaren offiziellen LosOS-Edge, und es gibt keinen.",
+  },
+  "look.builder.price": {
+    en: "Claude {model}: {input} per million tokens read and {output} per million written. That is Anthropic's price plus {markup}%. One build costs at most {max}.",
+    sk: "Claude {model}: {input} za milión prečítaných tokenov a {output} za milión napísaných. To je cena Anthropicu plus {markup} %. Jedna tvorba stojí najviac {max}.",
+    de: "Claude {model}: {input} pro Million gelesener Tokens und {output} pro Million geschriebener. Das ist der Preis von Anthropic plus {markup} %. Ein Bau kostet höchstens {max}.",
+  },
+  "look.builder.balance": { en: "Balance: {amount}", sk: "Zostatok: {amount}", de: "Guthaben: {amount}" },
+  "look.builder.topUp": { en: "Add {amount}", sk: "Dobiť {amount}", de: "{amount} aufladen" },
+  "look.builder.topUpNote": {
+    en: "Pay in the new tab. The balance changes once Stripe confirms the payment.",
+    sk: "Zaplaťte v novej karte. Zostatok sa zmení, keď Stripe platbu potvrdí.",
+    de: "Bezahlen Sie im neuen Tab. Das Guthaben ändert sich, sobald Stripe die Zahlung bestätigt.",
+  },
+  "look.builder.refresh": { en: "Refresh", sk: "Obnoviť", de: "Aktualisieren" },
+  "look.builder.popupBlocked": {
+    en: "The browser blocked the payment tab. Allow pop-ups for this page and try again.",
+    sk: "Prehliadač zablokoval kartu s platbou. Povoľte pre túto stránku vyskakovacie okná a skúste znova.",
+    de: "Der Browser hat den Zahlungs-Tab blockiert. Erlauben Sie Pop-ups für diese Seite und versuchen Sie es erneut.",
+  },
+  "look.builder.noCheckout": {
+    en: "The edge did not return a Stripe payment page.",
+    sk: "Edge nevrátil platobnú stránku Stripe.",
+    de: "Der Edge hat keine Stripe-Zahlungsseite zurückgegeben.",
+  },
+  "look.builder.field.prompt": {
+    en: "What should the widget show?",
+    sk: "Čo má widget zobrazovať?",
+    de: "Was soll das Widget zeigen?",
+  },
+  "look.builder.promptHint": {
+    en: "For example: free disk space as a ring, green below 70% and red above 90%.",
+    sk: "Napríklad: voľné miesto na disku ako kruh, zelený pod 70 % a červený nad 90 %.",
+    de: "Zum Beispiel: freier Speicher als Ring, grün unter 70 % und rot über 90 %.",
+  },
+  "look.builder.change": {
+    en: "Change the widget in the editor instead of starting over",
+    sk: "Upraviť widget v editore namiesto začatia odznova",
+    de: "Das Widget im Editor ändern, statt neu anzufangen",
+  },
+  "look.builder.build": { en: "Build", sk: "Vytvoriť", de: "Bauen" },
+  "look.builder.needBalance": {
+    en: "Add credit to build.",
+    sk: "Na tvorbu dobite kredit.",
+    de: "Laden Sie Guthaben auf, um zu bauen.",
+  },
+  "look.builder.runningShort": { en: "Building", sk: "Tvorí sa", de: "Wird gebaut" },
+  "look.builder.running": {
+    en: "Claude is writing the widget. This takes a minute or two, and it carries on if you close this window.",
+    sk: "Claude píše widget. Trvá to minútu či dve a pokračuje aj vtedy, keď toto okno zavriete.",
+    de: "Claude schreibt das Widget. Das dauert ein, zwei Minuten und läuft weiter, wenn Sie dieses Fenster schließen.",
+  },
+  "look.builder.startFailed": {
+    en: "The build did not start.",
+    sk: "Tvorba sa nespustila.",
+    de: "Der Bau hat nicht begonnen.",
+  },
+  "look.builder.problem.prompt": {
+    en: "Describe the widget first.",
+    sk: "Najprv widget opíšte.",
+    de: "Beschreiben Sie zuerst das Widget.",
+  },
+  "look.builder.problem.promptLong": {
+    en: "Keep the description under {max} characters.",
+    sk: "Popis môže mať najviac {max} znakov.",
+    de: "Die Beschreibung darf höchstens {max} Zeichen lang sein.",
+  },
+  "look.builder.doneTitle": {
+    en: "Claude wrote the widget",
+    sk: "Claude napísal widget",
+    de: "Claude hat das Widget geschrieben",
+  },
+  "look.builder.doneNote": {
+    en: "It is in the editor. Read it before you save it.",
+    sk: "Je v editore. Pred uložením si ho prečítajte.",
+    de: "Es ist im Editor. Lesen Sie es, bevor Sie es speichern.",
+  },
+  "look.builder.done": {
+    en: "Written and put in the editor. Charged {amount}.",
+    sk: "Napísané a vložené do editora. Účtované {amount}.",
+    de: "Geschrieben und in den Editor gelegt. Berechnet: {amount}.",
+  },
+  "look.builder.atLimit": {
+    en: "The build reached its spending cap, so the widget may be unfinished.",
+    sk: "Tvorba dosiahla limit výdavkov, takže widget môže byť nedokončený.",
+    de: "Der Bau hat seine Ausgabengrenze erreicht, das Widget ist daher vielleicht unfertig.",
+  },
+  "look.builder.fault.noWidget": {
+    en: "Claude finished without writing a widget. Charged {amount}. Try describing it differently.",
+    sk: "Claude skončil bez widgetu. Účtované {amount}. Skúste ho opísať inak.",
+    de: "Claude hat ohne Widget aufgehört. Berechnet: {amount}. Beschreiben Sie es anders.",
+  },
+  "look.builder.fault.unusable": {
+    en: "Claude wrote something too large to be a widget. Charged {amount}.",
+    sk: "Claude napísal niečo príliš veľké na widget. Účtované {amount}.",
+    de: "Claude hat etwas geschrieben, das für ein Widget zu groß ist. Berechnet: {amount}.",
+  },
+  "look.builder.fault.upstream": {
+    en: "The build could not be finished at Anthropic. Nothing was charged.",
+    sk: "Tvorbu sa v Anthropicu nepodarilo dokončiť. Nič sa neúčtovalo.",
+    de: "Der Bau konnte bei Anthropic nicht abgeschlossen werden. Es wurde nichts berechnet.",
+  },
   "look.editor.field.name": { en: "Name", sk: "Názov", de: "Name" },
   "look.editor.field.span": { en: "Width", sk: "Šírka", de: "Breite" },
   "look.editor.field.source": { en: "Source", sk: "Zdroj", de: "Quelltext" },

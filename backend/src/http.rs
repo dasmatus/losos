@@ -1012,6 +1012,63 @@ async fn post_market_order(
     .await
 }
 
+// ── The widget builder ────────────────────────────────────────────────────
+// Relayed to the edge like the market (`crate::market`): the edge holds the
+// Anthropic key and the balance, this box only its proxy token.
+
+/// `GET /api/builder` — balance, packs, price and recent builds, or
+/// `{"available": false}` when no official edge offers the builder.
+async fn get_builder(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    guarded(&api, &req, "/api/builder", false, || {
+        run(&api, crate::losos::cmd_builder)
+    })
+}
+
+/// `POST /api/builder/credits` `{"amount": ...}` — a Stripe Checkout for one
+/// credit pack.
+async fn post_builder_credit(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    post_market(api, req, body, "/api/builder/credits", |d| {
+        Some(crate::market::Op::BuilderCredit {
+            amount: field_u64(d, "amount")?,
+        })
+    })
+    .await
+}
+
+/// `POST /api/builder/builds` `{"prompt": ..., "base"?: ..., "lang"?: ...}`
+/// — start a build.
+async fn post_builder_start(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    post_market(api, req, body, "/api/builder/builds", |d| {
+        Some(crate::market::Op::BuilderStart {
+            prompt: field_str(d, "prompt")?,
+            base: field_str(d, "base"),
+            lang: field_str(d, "lang"),
+        })
+    })
+    .await
+}
+
+/// `GET /api/builder/builds/{id}` — one build, with its source once done.
+async fn get_builder_build(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    path: web::Path<String>,
+) -> HttpResponse {
+    let build_id = path.into_inner();
+    guarded(&api, &req, "/api/builder/builds", false, || {
+        let op = crate::market::Op::BuilderBuild { build_id };
+        run(&api, |b| crate::losos::cmd_market_op(b, &op))
+    })
+}
+
 /// `GET /api/domains` — this box's own domains on the edge, and the records
 /// to create for them; `{"available": false}` when no official edge offers
 /// them. Relayed like the market, for the same reasons.
@@ -1326,6 +1383,10 @@ pub fn serve(backend: IoLosos) -> anyhow::Result<()> {
                     web::post().to(post_market_close),
                 )
                 .route("/api/market/orders", web::post().to(post_market_order))
+                .route("/api/builder", web::get().to(get_builder))
+                .route("/api/builder/credits", web::post().to(post_builder_credit))
+                .route("/api/builder/builds", web::post().to(post_builder_start))
+                .route("/api/builder/builds/{id}", web::get().to(get_builder_build))
                 .route("/api/lab/hello", web::get().to(get_lab_hello))
                 .route("/api/lab/order", web::get().to(get_lab_order))
                 .route("/api/lab/order", web::post().to(post_lab_order))

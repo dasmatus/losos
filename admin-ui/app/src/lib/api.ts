@@ -573,6 +573,89 @@ export function postMarketOrder(
   return marketPost("/api/market/orders", { listing_id: listingId, quantity }, options);
 }
 
+// ── Widget builder ────────────────────────────────────────────────────────
+
+/* A Claude agent on the edge writes a widget from the owner's description
+ * (backend-registrar/src/builder.rs), relayed by lososd like the market. The
+ * edge keeps the Anthropic key and a prepaid balance per box, topped up
+ * through Stripe Checkout. Amounts are in the minor unit of `currency`;
+ * prices are per million tokens with the edge's markup included. */
+
+export interface BuilderPrice {
+  model: string;
+  input_per_million: number;
+  output_per_million: number;
+  markup_percent: number;
+  /** The most one build may cost. */
+  max_build: number;
+}
+
+export type BuildStatus = "running" | "done" | "failed";
+export type BuildFault = "noWidget" | "unusable" | "upstream";
+
+export interface BuildSummary {
+  id: string;
+  status: BuildStatus;
+  prompt: string;
+  revision: boolean;
+  created_at: number;
+  finished_at: number | null;
+  charged: number;
+  fault: BuildFault | null;
+  has_source: boolean;
+}
+
+export interface BuildView extends BuildSummary {
+  /** The spending cap stopped the agent; the widget may be unfinished. */
+  at_limit: boolean;
+  source: string | null;
+  /** What the agent says it made, in the page's language. */
+  notes: string | null;
+}
+
+export type BuilderResponse =
+  | { available: false; reason?: "noOfficialEdge" }
+  | {
+      available: true;
+      currency: string;
+      balance: number;
+      packs: number[];
+      price: BuilderPrice;
+      can_build: boolean;
+      builds: BuildSummary[];
+    };
+
+/** GET /api/builder. */
+export function getBuilder(options: RequestOptions = {}): Promise<BuilderResponse> {
+  return call<BuilderResponse>("/api/builder", options);
+}
+
+/** POST /api/builder/credits — a Stripe Checkout for one credit pack. */
+export function postBuilderCredit(
+  amount: number,
+  options: RequestOptions = {},
+): Promise<MarketActionResponse> {
+  return marketPost("/api/builder/credits", { amount }, options);
+}
+
+/** POST /api/builder/builds — start a build; `base` is the widget to change. */
+export function postBuilderBuild(
+  request: { prompt: string; base?: string; lang: string },
+  options: RequestOptions = {},
+): Promise<BuildView> {
+  return call<BuildView>("/api/builder/builds", {
+    ...options,
+    method: "POST",
+    contentType: "application/json",
+    body: JSON.stringify(request),
+  });
+}
+
+/** GET /api/builder/builds/{id}. */
+export function getBuilderBuild(id: string, options: RequestOptions = {}): Promise<BuildView> {
+  return call<BuildView>(`/api/builder/builds/${encodeURIComponent(id)}`, options);
+}
+
 // ── Custom domains ────────────────────────────────────────────────────────
 
 /* A domain the owner already has, pointed at this box through an official

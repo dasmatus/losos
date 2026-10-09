@@ -126,7 +126,34 @@ pub enum Op {
     HardwareCheckout {
         items: Vec<(String, u64)>,
     },
+    /// The widget builder (`backend-registrar/src/builder.rs`): this box's
+    /// balance, the price, and its recent builds.
+    BuilderAccount,
+    /// A Stripe Checkout for one of the edge's credit packs.
+    BuilderCredit {
+        amount: u64,
+    },
+    /// Start a build from the owner's description, or a change to `base`,
+    /// the widget's current source. `lang` is the admin page's language.
+    BuilderStart {
+        prompt: String,
+        base: Option<String>,
+        lang: Option<String>,
+    },
+    /// One build, with its source once it is done.
+    BuilderBuild {
+        build_id: String,
+    },
 }
+
+/// Longest description of a widget; the edge's limit is the same.
+pub const MAX_BUILDER_PROMPT_CHARS: usize = 2000;
+/// The languages the builder writes its notes in; the admin UI's own.
+pub const BUILDER_LANGS: [&str; 3] = ["en", "sk", "de"];
+/// The range a credit pack may be in, in minor units; the edge's packs are
+/// the authority.
+const MIN_CREDIT: u64 = 100;
+const MAX_CREDIT: u64 = 50_000;
 
 /// Most lines and most of one item in a hardware order; the edge's own
 /// limits are the same.
@@ -163,13 +190,66 @@ fn valid_id(id: &str) -> bool {
 }
 
 impl Op {
+    /// Whether this is one of the widget builder's operations.
+    #[must_use]
+    pub fn is_builder(&self) -> bool {
+        matches!(
+            self,
+            Op::BuilderAccount
+                | Op::BuilderCredit { .. }
+                | Op::BuilderStart { .. }
+                | Op::BuilderBuild { .. }
+        )
+    }
+
     /// Refuse an operation before it leaves the box.
     ///
     /// # Errors
     /// A sentence naming what was wrong, suitable for a 400.
     pub fn validate(&self) -> Result<(), &'static str> {
         match self {
-            Op::Browse | Op::Account | Op::Domains | Op::Hardware | Op::Deregister => Ok(()),
+            Op::Browse
+            | Op::Account
+            | Op::Domains
+            | Op::Hardware
+            | Op::Deregister
+            | Op::BuilderAccount => Ok(()),
+            Op::BuilderCredit { amount } => {
+                if (MIN_CREDIT..=MAX_CREDIT).contains(amount) {
+                    Ok(())
+                } else {
+                    Err("the amount is not one of the edge's credit packs")
+                }
+            }
+            Op::BuilderStart { prompt, base, lang } => {
+                let prompt = prompt.trim();
+                if prompt.is_empty() {
+                    Err("describe the widget first")
+                } else if prompt.chars().count() > MAX_BUILDER_PROMPT_CHARS {
+                    Err("the description is longer than 2000 characters")
+                } else if prompt
+                    .chars()
+                    .any(|c| c.is_control() && c != '\n' && c != '\t')
+                {
+                    Err("the description has control characters in it")
+                } else if base
+                    .as_ref()
+                    .is_some_and(|b| b.len() > crate::look::MAX_SOURCE_BYTES)
+                {
+                    Err("the widget to change is larger than 64 KiB")
+                } else if lang.as_deref().is_some_and(|l| !BUILDER_LANGS.contains(&l)) {
+                    Err("lang must be en, sk or de")
+                } else {
+                    Ok(())
+                }
+            }
+            Op::BuilderBuild { build_id } => {
+                if valid_id(build_id) {
+                    Ok(())
+                } else {
+                    Err("build_id is not valid")
+                }
+            }
             Op::HardwareCheckout { items } => {
                 if items.is_empty() || items.len() > MAX_HARDWARE_LINES {
                     Err("the order needs 1 to 8 lines")
@@ -248,6 +328,10 @@ impl Op {
             Op::Hardware => ("GET", "/market/hardware"),
             Op::HardwareCheckout { .. } => ("POST", "/market/hardware/checkout"),
             Op::Deregister => ("POST", "/deregister"),
+            Op::BuilderAccount => ("POST", "/builder/account"),
+            Op::BuilderCredit { .. } => ("POST", "/builder/credits"),
+            Op::BuilderStart { .. } => ("POST", "/builder/builds"),
+            Op::BuilderBuild { .. } => ("POST", "/builder/build"),
         }
     }
 
@@ -266,7 +350,19 @@ impl Op {
                     .map(|(sku, quantity)| json!({ "sku": sku, "quantity": quantity }))
                     .collect::<Vec<_>>(),
             }),
-            Op::Account | Op::Domains | Op::Deregister => json!({}),
+            Op::Account | Op::Domains | Op::Deregister | Op::BuilderAccount => json!({}),
+            Op::BuilderCredit { amount } => json!({ "amount": amount }),
+            Op::BuilderStart { prompt, base, lang } => {
+                let mut extra = json!({ "prompt": prompt.trim() });
+                if let Some(base) = base.as_deref().filter(|b| !b.trim().is_empty()) {
+                    extra["base"] = json!(base);
+                }
+                if let Some(lang) = lang {
+                    extra["lang"] = json!(lang);
+                }
+                extra
+            }
+            Op::BuilderBuild { build_id } => json!({ "build_id": build_id }),
             Op::DomainAdd { domain } | Op::DomainRemove { domain } => json!({ "domain": domain }),
             Op::Onboard { box_uuid } => match box_uuid {
                 Some(u) => json!({ "box_uuid": u }),
@@ -531,6 +627,52 @@ mod tests {
         assert!(bad(vec![("Box", 1)]));
         assert!(bad(vec![("../x", 1)]));
         assert!(bad(vec![("box", 1); 9]));
+    }
+
+    #[test]
+    fn builder_operations_carry_only_what_the_edge_needs() {
+        let start = |prompt: &str, base: Option<&str>, lang: Option<&str>| Op::BuilderStart {
+            prompt: prompt.to_string(),
+            base: base.map(str::to_string),
+            lang: lang.map(str::to_string),
+        };
+        let op = start("  a clock\nwith seconds ", Some("<div></div>"), Some("sk"));
+        assert!(op.validate().is_ok());
+        assert_eq!(op.route(), ("POST", "/builder/builds"));
+        let body: Value = serde_json::from_str(&op.body("box", "tok").unwrap()).unwrap();
+        assert_eq!(
+            body,
+            json!({ "appliance_id": "box", "token": "tok", "prompt": "a clock\nwith seconds",
+                    "base": "<div></div>", "lang": "sk" })
+        );
+        // A blank base is a new widget, not a change to nothing.
+        let body: Value =
+            serde_json::from_str(&start("x", Some("  "), None).body("b", "t").unwrap()).unwrap();
+        assert!(body.get("base").is_none() && body.get("lang").is_none());
+
+        assert!(start(" ", None, None).validate().is_err());
+        assert!(start(&"x".repeat(2001), None, None).validate().is_err());
+        assert!(start(&"é".repeat(2000), None, None).validate().is_ok());
+        assert!(start("a\u{1b}[2J", None, None).validate().is_err());
+        assert!(start("x", None, Some("fr")).validate().is_err());
+        let big = "x".repeat(crate::look::MAX_SOURCE_BYTES + 1);
+        assert!(start("x", Some(&big), None).validate().is_err());
+
+        let credit = |amount| Op::BuilderCredit { amount };
+        assert!(credit(500).validate().is_ok());
+        assert!(credit(0).validate().is_err());
+        assert!(credit(1_000_000).validate().is_err());
+        let body: Value = serde_json::from_str(&credit(500).body("b", "t").unwrap()).unwrap();
+        assert_eq!(body["amount"], 500);
+        assert_eq!(credit(500).route(), ("POST", "/builder/credits"));
+
+        let build = |id: &str| Op::BuilderBuild {
+            build_id: id.to_string(),
+        };
+        assert!(build("bld_0a1b2c").validate().is_ok());
+        assert!(build("../x").validate().is_err());
+        assert_eq!(build("bld_1").route(), ("POST", "/builder/build"));
+        assert_eq!(Op::BuilderAccount.route(), ("POST", "/builder/account"));
     }
 
     #[test]

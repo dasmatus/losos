@@ -83,6 +83,7 @@ async function open({
   board = null,
   viewport = { width: 1280, height: 900 },
   locale = 'en-US',
+  builder = null,
 } = {}) {
   const page = await browser.newPage({ viewport, locale });
   const errors = [];
@@ -162,6 +163,18 @@ async function open({
     };
     return json(route, 200, { widget });
   });
+
+  // The widget builder on the edge, when the check gives one: a GET for the
+  // account, a POST that starts a build, and the build read back by id.
+  if (builder !== null) {
+    await page.route('**/api/builder**', (route) => {
+      if (!authed(route)) return json(route, 401, { error: 'unauthorized' });
+      const url = new URL(route.request().url());
+      const method = route.request().method();
+      if (method === 'POST') writes.push(['POST', url.pathname, route.request().postDataJSON()]);
+      return builder(url.pathname, method, route, json);
+    });
+  }
 
   // Init scripts run in every frame, the sandboxed widget frame included,
   // where storage throws: that is the sandbox working, not a page error.
@@ -379,6 +392,82 @@ await check('an empty name is refused in the dialog, with nothing sent', async (
   await editor.getByText('Give it a name.').waitFor();
   assert.deepEqual(writes, []);
   await page.close();
+});
+
+// ── Built by Claude ───────────────────────────────────────────────────────
+
+const ACCOUNT = {
+  available: true,
+  currency: 'eur',
+  balance: 380,
+  packs: [500, 1000, 2000],
+  price: { model: 'claude-opus-5-5', input_per_million: 480, output_per_million: 2400, markup_percent: 20, max_build: 360 },
+  can_build: true,
+  builds: [],
+};
+
+const BUILT = '<p id="built">built by the agent</p>';
+
+function builderStub() {
+  let reads = 0;
+  const build = (status) => ({
+    id: 'bld_0a1b', status, prompt: 'a big clock', revision: false, created_at: 1, finished_at: status === 'running' ? null : 2,
+    charged: status === 'running' ? 0 : 120, fault: null, has_source: status === 'done',
+    usage: { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+    at_limit: false, source: status === 'done' ? BUILT : null, notes: status === 'done' ? 'A big clock.' : null,
+  });
+  return (path, method, route, json) => {
+    if (path === '/api/builder') return json(route, 200, ACCOUNT);
+    if (path === '/api/builder/builds' && method === 'POST') return json(route, 200, { available: true, ...build('running') });
+    if (path === '/api/builder/builds/bld_0a1b') return json(route, 200, { available: true, ...build(reads++ < 1 ? 'running' : 'done') });
+    return json(route, 404, { error: 'not found' });
+  };
+}
+
+await check('Build with Claude shows the price and balance, and a finished build lands in the editor and its preview', async () => {
+  const { page, errors, writes } = await open({ builder: builderStub() });
+  // The bundle's two first-paint style-src-elem reports (advanced.browser.mjs)
+  // are counted out; the builder must add none.
+  const atLoad = (await violations(page)).length;
+  await page.getByRole('button', { name: 'Add a widget' }).first().click();
+  await page.getByRole('dialog', { name: 'Add a widget' }).getByRole('button', { name: 'Write one' }).click();
+  const editor = page.getByRole('dialog', { name: 'Write a widget' });
+  await editor.getByRole('tab', { name: 'Build with Claude' }).click();
+  const panel = page.getByTestId('builder-panel');
+  await panel.waitFor();
+  assert.match(await page.getByTestId('builder-price').textContent(), /Claude Opus 5\.5: €4\.80 per million tokens read and €24\.00 per million written\. That is Anthropic's price plus 20%\. One build costs at most €3\.60\./);
+  assert.equal(await page.getByTestId('builder-balance').textContent(), 'Balance: €3.80');
+  // The template is not a widget worth changing, so there is nothing to tick.
+  assert.equal(await panel.getByRole('checkbox').count(), 0);
+  await panel.getByLabel('What should the widget show?').fill('a big clock');
+  await panel.getByRole('button', { name: 'Build' }).click();
+  // Done: back on the Write tab with the agent's source in the field and the frame.
+  await page.getByTestId('hand-preview').frameLocator('iframe').locator('#built').waitFor({ timeout: 15000 });
+  assert.equal(await editor.getByLabel('Source').inputValue(), BUILT);
+  assert.deepEqual(writes, [['POST', '/api/builder/builds', { prompt: 'a big clock', lang: 'en' }]]);
+  assert.deepEqual((await violations(page)).slice(atLoad), []);
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+await check('a box whose edge offers no builder says so in the tab, in each language', async () => {
+  for (const [locale, add, write, title, tab, words] of [
+    ['en-US', 'Add a widget', 'Write one', 'Write a widget', 'Build with Claude', 'does not offer the widget builder'],
+    ['sk-SK', 'Pridať widget', 'Napísať', 'Napísať widget', 'Vytvoriť s Claude', 'tvorcu widgetov neponúka'],
+    ['de-DE', 'Widget hinzufügen', 'Eins schreiben', 'Widget schreiben', 'Mit Claude bauen', 'bietet den Widget-Baukasten nicht an'],
+  ]) {
+    const { page, errors, writes } = await open({
+      locale,
+      builder: (_path, _method, route, json) => json(route, 200, { available: false }),
+    });
+    await page.getByRole('button', { name: add }).first().click();
+    await page.getByRole('dialog', { name: add }).getByRole('button', { name: write }).click();
+    await page.getByRole('dialog', { name: title }).getByRole('tab', { name: tab }).click();
+    await page.getByTestId('builder-unavailable').filter({ hasText: words }).waitFor();
+    assert.deepEqual(writes, []);
+    assert.deepEqual(errors, []);
+    await page.close();
+  }
 });
 
 await check('the Look pane lists the hand-written widgets and can edit and delete them', async () => {

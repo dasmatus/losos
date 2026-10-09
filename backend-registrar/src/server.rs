@@ -71,6 +71,9 @@ use tokio::net::TcpListener;
 use tokio::sync::{Mutex, Notify, Semaphore};
 
 use crate::action::Action;
+use crate::builder::{
+    AccountView as BuilderAccountView, BuildView, Builder, BuilderError, CreditView,
+};
 use crate::config::{
     desired_config_with_hosts, uplink_config, EdgeOpts, TenantView, UplinkService, UplinkTarget,
 };
@@ -129,11 +132,22 @@ const STRIPE_ROUTE_TIMEOUT: Duration =
     Duration::from_secs(GATE_TIMEOUT.as_secs() * MAX_GATE_CALLS_PER_REQUEST as u64 + 2);
 
 /// The routes [`STRIPE_ROUTE_TIMEOUT`] applies to.
-const STRIPE_ROUTES: [&str; 3] = [
+const STRIPE_ROUTES: [&str; 4] = [
     "/market/seller/onboard",
     "/market/orders",
     "/market/hardware/checkout",
+    "/builder/credits",
 ];
+
+/// `POST /builder/builds` opens a Managed Agents session, one Anthropic
+/// request that may take several seconds. Under the box's own 25 s curl
+/// timeout (`backend/src/io_backend.rs`), so a build the edge started is
+/// never one the box gave up on.
+const BUILDER_START_ROUTE: &str = "/builder/builds";
+const BUILDER_START_TIMEOUT: Duration = Duration::from_secs(23);
+/// That route carries the widget to change, up to the box's 64 KiB, beside
+/// the description; every other route stays at [`MAX_BODY_BYTES`].
+const MAX_BUILDER_BODY_BYTES: usize = 96 * 1024;
 
 /// Budget for `POST /identity/cert`, which asks GitHub who the pusher is
 /// before it looks at the list: one round trip to api.github.com, bounded
@@ -200,6 +214,8 @@ struct AppState {
     last_shed: Arc<std::sync::Mutex<Option<std::time::Instant>>>,
     /// `None` unless `--market-gate-socket` was given.
     market: Option<Arc<Market>>,
+    /// `None` unless `--builder-key-file` was given (`crate::builder`).
+    builder: Option<Arc<Builder>>,
     /// This edge's identity key and, once pushed, its certificate
     /// (`crate::identity`); `None` (no `--identity-key-file`) makes every
     /// `/identity*` route a 404, i.e. an edge that cannot become official.
@@ -398,6 +414,9 @@ impl App {
         check_domains(&self.state).await;
         reconcile_once(&self.state).await?;
         fulfil_market(&self.state).await;
+        if let Some(b) = &self.state.builder {
+            b.tick().await;
+        }
         Ok(())
     }
 }
@@ -422,6 +441,22 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
                 .map_err(|e| miette!("open market store: {e}"))?,
         )),
         None => None,
+    };
+
+    // Opened before the API accepts, like the market: an unreadable
+    // `builder.json` would forget what owners have paid for.
+    let builder = match (&opts.builder, &opts.market) {
+        (Some(b), Some(m)) => Some(Arc::new(
+            Builder::open((**b).clone(), &m.gate_socket, &m.currency, &m.return_url)
+                .await
+                .map_err(|e| miette!("open builder store: {e}"))?,
+        )),
+        (Some(_), None) => {
+            return Err(miette!(
+                "the widget builder needs the market: top-ups are paid through its gate"
+            ))
+        }
+        (None, _) => None,
     };
 
     // Opened before the API accepts: the key is made here on the first start
@@ -499,6 +534,7 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
         limiter: Arc::new(Semaphore::new(MAX_INFLIGHT)),
         last_shed: Arc::new(std::sync::Mutex::new(None)),
         market,
+        builder,
         identity,
         push_lock: Arc::new(Mutex::new(())),
         http: reqwest::Client::builder()
@@ -557,6 +593,16 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
             "/market/webhook",
             post(market_webhook).layer(DefaultBodyLimit::max(MAX_WEBHOOK_BYTES)),
         )
+        // The widget builder (crate::builder). 503 unless the edge was
+        // started with `--builder-key-file`; appliance token and the market
+        // bit like the market, whose gate takes the top-ups.
+        .route("/builder/account", post(builder_account))
+        .route("/builder/credits", post(builder_credit))
+        .route(
+            BUILDER_START_ROUTE,
+            post(builder_start).layer(DefaultBodyLimit::max(MAX_BUILDER_BODY_BYTES)),
+        )
+        .route("/builder/build", post(builder_build))
         // Custom domains (crate::domains). 503 unless the edge serves a zone
         // and holds an installed identity certificate; appliance token like
         // the market. None of them looks anything up in DNS: an add kicks
@@ -613,6 +659,8 @@ async fn guard(State(st): State<AppState>, req: Request, next: Next) -> Response
         STRIPE_ROUTE_TIMEOUT
     } else if req.uri().path() == IDENTITY_PUSH_ROUTE {
         IDENTITY_PUSH_TIMEOUT
+    } else if req.uri().path() == BUILDER_START_ROUTE {
+        BUILDER_START_TIMEOUT
     } else {
         REQUEST_TIMEOUT
     };
@@ -1581,9 +1629,103 @@ async fn market_webhook(
         .and_then(|v| v.to_str().ok())
         .ok_or(ApiError::Market(MarketError::BadSignature))?;
     market.webhook(signature, &body).await?;
+    // Verified by the gate above; a credit top-up is the builder's to apply.
+    if let Some(builder) = &st.builder {
+        if let Ok(event) = serde_json::from_slice::<serde_json::Value>(&body) {
+            builder.apply_event(&event).await?;
+        }
+    }
     // A payment may just have become a volume to provision.
     st.notify.notify_one();
     Ok(StatusCode::OK)
+}
+
+/// Authenticate, then require the builder, its key, the market and the
+/// tenant's `market` bit: a top-up is a payment through the market's gate.
+async fn builder_tenant(st: &AppState, auth: &MarketAuth) -> Result<Arc<Builder>, ApiError> {
+    let tenant = authenticate(st, &auth.appliance_id, &auth.token).await?;
+    let builder = st
+        .builder
+        .as_ref()
+        .ok_or(ApiError::Builder(BuilderError::Unconfigured))?;
+    builder.check_key().await?;
+    market_of(st).await?;
+    if !tenant.market {
+        return Err(ApiError::Market(MarketError::Forbidden));
+    }
+    Ok(Arc::clone(builder))
+}
+
+async fn builder_account(
+    State(st): State<AppState>,
+    Json(req): Json<MarketAuth>,
+) -> Result<Json<BuilderAccountView>, ApiError> {
+    let builder = builder_tenant(&st, &req).await?;
+    Ok(Json(builder.account(&req.appliance_id).await))
+}
+
+#[derive(Debug, Deserialize)]
+struct BuilderCreditReq {
+    #[serde(flatten)]
+    auth: MarketAuth,
+    amount: u64,
+}
+
+async fn builder_credit(
+    State(st): State<AppState>,
+    Json(req): Json<BuilderCreditReq>,
+) -> Result<(StatusCode, Json<CreditView>), ApiError> {
+    let builder = builder_tenant(&st, &req.auth).await?;
+    Ok((
+        StatusCode::CREATED,
+        Json(builder.top_up(&req.auth.appliance_id, req.amount).await?),
+    ))
+}
+
+#[derive(Debug, Deserialize)]
+struct BuilderStartReq {
+    #[serde(flatten)]
+    auth: MarketAuth,
+    prompt: String,
+    /// The widget to change, when the owner asks for a revision.
+    #[serde(default)]
+    base: Option<String>,
+    /// The admin page's language, for the words the agent writes.
+    #[serde(default)]
+    lang: Option<String>,
+}
+
+async fn builder_start(
+    State(st): State<AppState>,
+    Json(req): Json<BuilderStartReq>,
+) -> Result<(StatusCode, Json<BuildView>), ApiError> {
+    let builder = builder_tenant(&st, &req.auth).await?;
+    let view = builder
+        .start(
+            &req.auth.appliance_id,
+            &req.prompt,
+            req.base.as_deref(),
+            req.lang.as_deref(),
+        )
+        .await?;
+    Ok((StatusCode::CREATED, Json(view)))
+}
+
+#[derive(Debug, Deserialize)]
+struct BuilderBuildReq {
+    #[serde(flatten)]
+    auth: MarketAuth,
+    build_id: String,
+}
+
+async fn builder_build(
+    State(st): State<AppState>,
+    Json(req): Json<BuilderBuildReq>,
+) -> Result<Json<BuildView>, ApiError> {
+    let builder = builder_tenant(&st, &req.auth).await?;
+    Ok(Json(
+        builder.build(&req.auth.appliance_id, &req.build_id).await?,
+    ))
 }
 
 /// Expire pending orders whose hold has run out, free the units of lapsed
@@ -2243,6 +2385,10 @@ async fn reconciler(st: AppState) {
             tracing::error!(target: Action::Reconcile.target(), "reconcile failed: {e}");
         }
         fulfil_market(&st).await;
+        // Follows running builds after a restart, deletes finished sessions.
+        if let Some(b) = &st.builder {
+            b.tick().await;
+        }
     }
 }
 

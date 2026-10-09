@@ -360,6 +360,7 @@ fn mode_name(mode: &miette::Result<Mode>) -> &'static str {
         Ok(Mode::Provision(_)) => "provision",
         Ok(Mode::Enrol(_)) => "enrol",
         Ok(Mode::Lab(_)) => "lab",
+        Ok(Mode::BuilderSetup(_)) => "builder-setup",
         Err(_) => "error",
     }
 }
@@ -593,4 +594,79 @@ fn lab_bounds_its_numbers_and_its_uri() {
     assert!(lab(&["--virt-type", "xen"]).is_err());
     assert!(lab(&["--connect", "xen:///system"]).is_err());
     assert!(lab(&["--idle", "0"]).is_err());
+}
+
+const BUILDER_FLAGS: &[&str] = &[
+    "--builder-key-file",
+    "/run/credentials/losos-registrar.service/claude-key",
+    "--builder-agent-id",
+    "agent_011abc",
+    "--builder-environment-id",
+    "env_011abc",
+];
+
+fn with_market(extra: &[&'static str]) -> Vec<&'static str> {
+    MARKET_FLAGS.iter().chain(extra).copied().collect()
+}
+
+#[test]
+fn the_builder_is_off_unless_a_key_file_is_given_and_marks_up_twenty_percent() {
+    assert!(serve_opts(MARKET_FLAGS).builder.is_none());
+    let b = serve_opts(&with_market(BUILDER_FLAGS))
+        .builder
+        .expect("builder enabled");
+    assert_eq!(b.markup_bps, 2_000);
+    assert_eq!(b.usd_rate_ppm, 1_000_000);
+    assert_eq!(b.packs, vec![500, 1_000, 2_000]);
+    assert_eq!(b.max_build_cents, 300);
+    assert_eq!(b.api, "https://api.anthropic.com");
+    assert_eq!(b.state_file, "/var/lib/losos-registrar/builder.json");
+}
+
+#[test]
+fn builder_flags_are_checked() {
+    // No market, no builder: top-ups go through the market's gate.
+    assert!(parse(serve_args(BUILDER_FLAGS)).is_err());
+    let rate = |r: &'static str| {
+        let mut a = with_market(BUILDER_FLAGS);
+        a.extend(["--builder-usd-rate", r]);
+        parse(serve_args(&a)).map(|m| match m {
+            Mode::Serve(o) => o.builder.unwrap().usd_rate_ppm,
+            _ => 0,
+        })
+    };
+    assert_eq!(rate("0.92").unwrap(), 920_000);
+    assert_eq!(rate("1").unwrap(), 1_000_000);
+    assert_eq!(rate("25.5").unwrap(), 25_500_000);
+    for bad in ["0", "-1", "0.0000001", "1e3", "abc", ".5", "1,2"] {
+        assert!(rate(bad).is_err(), "{bad}");
+    }
+    let one = |flag: &'static str, v: &'static str| {
+        let mut a = with_market(BUILDER_FLAGS);
+        a.extend([flag, v]);
+        parse(serve_args(&a))
+    };
+    assert!(one("--builder-markup-bps", "10001").is_err());
+    assert!(one("--builder-markup-bps", "0").is_ok());
+    assert!(one("--builder-packs", "500,99").is_err());
+    assert!(one("--builder-packs", "").is_err());
+    assert!(one("--builder-packs", "300,900").is_ok());
+    assert!(one("--builder-max-build-cents", "5").is_err());
+    assert!(one("--builder-api", "http://api.anthropic.com").is_err());
+    let mut a = with_market(BUILDER_FLAGS);
+    let last = a.len() - 1;
+    a[last] = "bad id";
+    assert!(parse(serve_args(&a)).is_err());
+}
+
+#[test]
+fn builder_setup_needs_only_the_key_file() {
+    let m = parse(
+        ["builder-setup", "--key-file", "/k"]
+            .iter()
+            .map(|s| (*s).to_string())
+            .collect(),
+    );
+    assert_eq!(mode_name(&m), "builder-setup");
+    assert!(parse(vec!["builder-setup".to_string()]).is_err());
 }

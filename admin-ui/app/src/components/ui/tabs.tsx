@@ -123,13 +123,18 @@ export function TabsTrigger({ value, className, onClick, ...props }: TabsTrigger
 
 export interface TabsContentProps extends React.ComponentPropsWithoutRef<"div"> {
   value: string;
+  /** Keep the panel mounted, hidden, while another tab is shown: for a
+   *  panel with work in flight that must not stop when the owner looks away. */
+  keepMounted?: boolean;
 }
 
-export function TabsContent({ value, className, ...props }: TabsContentProps) {
+export function TabsContent({ value, keepMounted = false, className, ...props }: TabsContentProps) {
   const tabs = useTabs("TabsContent");
-  if (tabs.value !== value) return null;
+  const active = tabs.value === value;
+  if (!active && !keepMounted) return null;
   return (
     <div
+      hidden={!active}
       role="tabpanel"
       id={`${tabs.baseId}-panel-${value}`}
       aria-labelledby={`${tabs.baseId}-tab-${value}`}

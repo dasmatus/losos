@@ -681,6 +681,29 @@ let
   # both in the registrar's StateDirectory, the key made on its first start.
   relayRoutes = dnsCfg.enable && dnsCfg.relayRoutes.enable;
 
+  # Widget-builder half of `serve` (backend-registrar/src/builder.rs). The
+  # Anthropic key reaches the registrar as the `claude-key` credential; the
+  # top-ups go through the market's gate, which is told the same packs.
+  builderOn = cfg.market.enable && cfg.builder.enable;
+  builderKeyPath = "/run/credentials/losos-registrar.service/claude-key";
+  builderPacks = lib.concatMapStringsSep "," toString cfg.builder.packs;
+  builderServeArgs = lib.optionals builderOn [
+    "--builder-key-file"
+    builderKeyPath
+    "--builder-agent-id"
+    cfg.builder.agentId
+    "--builder-environment-id"
+    cfg.builder.environmentId
+    "--builder-markup-bps"
+    (toString cfg.builder.markupBps)
+    "--builder-usd-rate"
+    cfg.builder.usdRate
+    "--builder-packs"
+    builderPacks
+    "--builder-max-build-cents"
+    (toString cfg.builder.maxBuildCents)
+  ];
+
   serveArgs = utils.escapeSystemdExecArgs (
     [
       "${registrar}/bin/losos-registrar"
@@ -715,6 +738,7 @@ let
     ]
     ++ meshServeArgs
     ++ marketServeArgs
+    ++ builderServeArgs
     ++ identityArgs
     ++ dnsServeArgs
     ++ enrolArgs
@@ -780,6 +804,16 @@ in
           losos.edge.market.enable requires losos.edge.market.returnUrl: the
           page Stripe sends buyers and sellers back to after Checkout and
           onboarding.
+        '';
+      }
+      {
+        assertion =
+          cfg.builder.enable
+          -> (cfg.market.enable && cfg.builder.agentId != null && cfg.builder.environmentId != null);
+        message = ''
+          losos.edge.builder.enable requires losos.edge.market.enable (top-ups
+          are paid through its Stripe gate) and losos.edge.builder.agentId and
+          environmentId, which `losos-registrar builder-setup` prints.
         '';
       }
       {
@@ -914,6 +948,11 @@ in
         InaccessiblePaths = map (path: "-${path}") gateSealed ++ [
           "-/run/credentials/losos-stripe-gate.service"
         ];
+      }
+      // lib.optionalAttrs builderOn {
+        # The Anthropic key, for the widget builder: plaintext only in this
+        # unit's credential directory, read per request.
+        LoadCredentialEncrypted = [ "claude-key:${toString cfg.builder.claudeKeySealed}" ];
       };
     };
 
@@ -986,6 +1025,10 @@ in
             (utils.escapeSystemdExecArg cfg.market.returnUrl)
           ]
           ++ hardwareArgs "--hardware-catalogue"
+          ++ lib.optionals builderOn [
+            "--credit-packs"
+            builderPacks
+          ]
         );
         LoadCredentialEncrypted = [
           "stripe-secret-key:${toString cfg.market.stripeSecretKeySealed}"

@@ -48,6 +48,7 @@
 
 pub mod action;
 pub mod announce;
+pub mod builder;
 pub mod config;
 pub mod domains;
 pub mod error;

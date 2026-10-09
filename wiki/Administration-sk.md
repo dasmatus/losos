@@ -77,6 +77,11 @@ rámec, takže to, čo ukazuje, ukáže aj dlaždica. Widget môže sťahovať z
 internetu (napríklad dlaždica s počasím), ale nie zo zariadenia. Limit je
 24 widgetov po 64 KiB.
 
+Editor má aj kartu **Vytvoriť s Claude**, kde Claude napíše widget podľa
+opisu a vloží ho do poľa so zdrojom, aby ste si ho pred uložením prečítali.
+Platí sa za každú tvorbu z predplateného zostatku a potrebuje edge, ktorý ju
+ponúka; pozri [Tvorca widgetov](Widget-Builder-sk).
+
 ## Admin token
 
 `lososd` pri prvom spustení zapíše náhodný token so 64 hexadecimálnymi

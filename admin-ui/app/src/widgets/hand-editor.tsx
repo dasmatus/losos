@@ -34,6 +34,7 @@ import { toast } from "@/components/ui/toast";
 import { useT } from "@/lib/i18n-react";
 import { lookLimits, saveHandWidget, type HandSpan, type HandWidget } from "@/lib/look";
 import { cn } from "@/lib/utils";
+import { BuilderPanel } from "./builder-panel";
 import { HandFrame } from "./hand-frame";
 import { METRIC_NAMES } from "./types";
 
@@ -78,6 +79,10 @@ export function HandEditor({ open, onOpenChange, widget, onSaved }: HandEditorPr
   const [problem, setProblem] = React.useState<string | null>(null);
   const [frameError, setFrameError] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
+  const [tab, setTab] = React.useState("write");
+  /* The builder asks the edge when it mounts, so it mounts the first time
+   * its tab is opened and stays mounted from then on. */
+  const [builderOpened, setBuilderOpened] = React.useState(false);
   const titleId = React.useId();
   const hintId = React.useId();
   const nameId = React.useId();
@@ -154,11 +159,34 @@ export function HandEditor({ open, onOpenChange, widget, onSaved }: HandEditorPr
       </DialogHeader>
 
       <DialogBody>
-        <Tabs defaultValue="write">
+        <Tabs
+          value={tab}
+          onValueChange={(next) => {
+            setTab(next);
+            if (next === "claude") setBuilderOpened(true);
+          }}
+        >
           <TabsList>
             <TabsTrigger value="write">{t("look.editor.tab.write")}</TabsTrigger>
+            <TabsTrigger value="claude">{t("look.editor.tab.claude")}</TabsTrigger>
             <TabsTrigger value="help">{t("look.editor.tab.help")}</TabsTrigger>
           </TabsList>
+
+          {/* Kept mounted so a build in progress is still followed, and its
+           * widget lands in the editor, while the owner is on another tab. */}
+          <TabsContent value="claude" keepMounted>
+            {builderOpened && (
+              <BuilderPanel
+                source={source}
+                hasWidget={widget !== undefined || source !== templateSource(t("look.editor.templateFoot"))}
+                onWritten={(written) => {
+                  setSource(written);
+                  setProblem(null);
+                  setTab("write");
+                }}
+              />
+            )}
+          </TabsContent>
 
           <TabsContent value="write">
             <div className="grid gap-5 md:grid-cols-[minmax(0,1fr)_minmax(0,20rem)]">

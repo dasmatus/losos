@@ -331,6 +331,75 @@ impl StripeClient {
     }
 }
 
+impl StripeClient {
+    /// A Checkout Session for widget builder credit: a plain charge for one
+    /// of the operator's packs, no destination and no fee.
+    async fn credit_checkout(
+        &self,
+        key: &str,
+        c: &CreditRequest,
+        currency: &str,
+    ) -> Result<(String, String), MarketError> {
+        let owned = credit_form(c, currency);
+        let form: Vec<(&str, String)> =
+            owned.iter().map(|(k, v)| (k.as_str(), v.clone())).collect();
+        let body = self
+            .post(
+                key,
+                &["v1", "checkout", "sessions"],
+                &form,
+                Some(&format!("losos-credit-{}", c.order_id)),
+            )
+            .await?;
+        match (body["id"].as_str(), body["url"].as_str()) {
+            (Some(id), Some(url)) => Ok((id.to_string(), url.to_string())),
+            _ => Err(MarketError::Stripe(
+                "checkout session had no id or url".to_string(),
+            )),
+        }
+    }
+}
+
+/// The form a credit Checkout Session is created with. Pure, so the exact
+/// fields Stripe sees are asserted in a test.
+fn credit_form(c: &CreditRequest, currency: &str) -> Vec<(String, String)> {
+    let return_url = &c.return_url;
+    let sep = if return_url.contains('?') { '&' } else { '?' };
+    vec![
+        ("mode".into(), "payment".into()),
+        ("payment_method_types[]".into(), "card".into()),
+        ("client_reference_id".into(), c.order_id.clone()),
+        (
+            "success_url".into(),
+            format!("{return_url}{sep}order={}&status=paid", c.order_id),
+        ),
+        (
+            "cancel_url".into(),
+            format!("{return_url}{sep}order={}&status=cancelled", c.order_id),
+        ),
+        ("expires_at".into(), c.expires_at.to_string()),
+        ("metadata[order_id]".into(), c.order_id.clone()),
+        ("metadata[losos_kind]".into(), "builder_credit".into()),
+        (
+            "metadata[losos_appliance_id]".into(),
+            c.appliance_id.clone(),
+        ),
+        ("line_items[0][quantity]".into(), "1".into()),
+        (
+            "line_items[0][price_data][currency]".into(),
+            currency.to_string(),
+        ),
+        (
+            "line_items[0][price_data][unit_amount]".into(),
+            c.amount.to_string(),
+        ),
+        (
+            "line_items[0][price_data][product_data][name]".into(),
+            "Widget builder credit - LosOS".into(),
+        ),
+    ]
+}
+
 /// The form a hardware Checkout Session is created with. Pure, so the exact
 /// fields Stripe sees are asserted in a test.
 fn hardware_form(
@@ -490,6 +559,9 @@ pub struct GateOpts {
     /// sells boxes and gateways. Read per request, like the key. Unset, the
     /// gate refuses every hardware checkout.
     pub hardware_catalogue: Option<String>,
+    /// The widget builder's credit packs, in minor units: the only amounts a
+    /// credit Checkout may charge. Empty, the gate refuses every one.
+    pub credit_packs: Vec<u64>,
 }
 
 // ── wire protocol ────────────────────────────────────────────────────────
@@ -519,6 +591,16 @@ pub(crate) struct HardwareRequest {
     pub(crate) expires_at: u64,
 }
 
+/// A widget builder top-up: one of the operator's packs, bought by a box.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct CreditRequest {
+    pub(crate) order_id: String,
+    pub(crate) appliance_id: String,
+    pub(crate) amount: u64,
+    pub(crate) return_url: String,
+    pub(crate) expires_at: u64,
+}
+
 /// The only things the gate will do. There is deliberately no generic
 /// "forward this to Stripe" operation.
 #[derive(Debug, Serialize, Deserialize)]
@@ -543,6 +625,7 @@ pub(crate) enum Request {
     },
     Checkout(CheckoutRequest),
     HardwareCheckout(HardwareRequest),
+    CreditCheckout(CreditRequest),
     VerifyWebhook {
         signature: String,
         body_hex: String,
@@ -723,6 +806,31 @@ fn hardware_fault(
     None
 }
 
+/// Why a credit Checkout is outside what the gate allows, or `None`.
+fn credit_fault(
+    c: &CreditRequest,
+    packs: &[u64],
+    return_url: Option<&str>,
+    now: u64,
+) -> Option<&'static str> {
+    if !token_ok(&c.order_id, 64) || !c.order_id.starts_with("cr_") {
+        return Some("bad order id");
+    }
+    if !token_ok(&c.appliance_id, 64) {
+        return Some("bad appliance id");
+    }
+    if !packs.contains(&c.amount) {
+        return Some("amount is not one of the credit packs");
+    }
+    if !url_ok(&c.return_url) || return_url.is_some_and(|want| c.return_url != want) {
+        return Some("bad return url");
+    }
+    if c.expires_at <= now || c.expires_at > now + MAX_SESSION_SECS {
+        return Some("session lifetime is outside the allowed range");
+    }
+    None
+}
+
 async fn hardware_catalogue(opts: &GateOpts) -> Result<Catalogue, Reply> {
     let Some(path) = opts.hardware_catalogue.as_deref() else {
         return Err(refuse("this edge sells no hardware"));
@@ -890,6 +998,25 @@ async fn handle(opts: &GateOpts, request: Request) -> Reply {
                 .hardware_checkout(&key, &h, &catalogue.currency, &catalogue.countries, &lines)
                 .await
             {
+                Ok((id, url)) => Reply {
+                    id: Some(id),
+                    url: Some(url),
+                    ..Reply::default()
+                },
+                Err(e) => e.into(),
+            }
+        }
+        Request::CreditCheckout(c) => {
+            if let Some(why) = credit_fault(
+                &c,
+                &opts.credit_packs,
+                opts.return_url.as_deref(),
+                now_secs(),
+            ) {
+                return refuse(why);
+            }
+            stripe_or_reply!(opts, key, s);
+            match s.credit_checkout(&key, &c, &opts.currency).await {
                 Ok((id, url)) => Reply {
                     id: Some(id),
                     url: Some(url),
@@ -1176,6 +1303,24 @@ impl GateClient {
         }
     }
 
+    /// A widget builder credit Checkout Session; returns its id and hosted
+    /// URL.
+    ///
+    /// # Errors
+    /// If the gate is unavailable, refuses the request, or Stripe refuses.
+    pub(crate) async fn credit_checkout(
+        &self,
+        request: CreditRequest,
+    ) -> Result<(String, String), MarketError> {
+        let reply = self.call(&Request::CreditCheckout(request)).await?;
+        match (reply.id, reply.url) {
+            (Some(id), Some(url)) => Ok((id, url)),
+            _ => Err(MarketError::Stripe(
+                "checkout session had no id or url".to_string(),
+            )),
+        }
+    }
+
     /// Whether `signature` is a valid `Stripe-Signature` for `body` under any
     /// of the webhook secrets the gate holds.
     ///
@@ -1443,5 +1588,53 @@ mod tests {
         assert!(!form
             .keys()
             .any(|k| k.contains("transfer_data") || k.contains("application_fee")));
+    }
+
+    fn credit() -> CreditRequest {
+        CreditRequest {
+            order_id: "cr_0123abcd".to_string(),
+            appliance_id: "mattbox".to_string(),
+            amount: 1_000,
+            return_url: "https://losos.example/market".to_string(),
+            expires_at: NOW + 1800,
+        }
+    }
+
+    #[test]
+    fn a_credit_checkout_charges_only_a_pack() {
+        let ok = credit();
+        let packs = [500, 1_000];
+        let ret = Some("https://losos.example/market");
+        assert_eq!(credit_fault(&ok, &packs, ret, NOW), None);
+        let bad = |f: &dyn Fn(&mut CreditRequest)| {
+            let mut c = ok.clone();
+            f(&mut c);
+            credit_fault(&c, &packs, ret, NOW)
+        };
+        assert!(bad(&|c| c.amount = 999).is_some());
+        assert!(bad(&|c| c.amount = 0).is_some());
+        assert!(bad(&|c| c.order_id = "hw_0123".to_string()).is_some());
+        assert!(bad(&|c| c.appliance_id = "a b".to_string()).is_some());
+        assert!(bad(&|c| c.return_url = "https://evil.example/".to_string()).is_some());
+        assert!(bad(&|c| c.expires_at = NOW + MAX_SESSION_SECS + 1).is_some());
+        assert!(credit_fault(&ok, &[], ret, NOW).is_some());
+    }
+
+    #[test]
+    fn the_credit_session_is_a_plain_charge_in_the_edges_currency() {
+        let form: std::collections::HashMap<String, String> =
+            credit_form(&credit(), "eur").into_iter().collect();
+        assert_eq!(form["line_items[0][price_data][unit_amount]"], "1000");
+        assert_eq!(form["line_items[0][price_data][currency]"], "eur");
+        assert_eq!(form["line_items[0][quantity]"], "1");
+        assert_eq!(form["client_reference_id"], "cr_0123abcd");
+        assert_eq!(form["metadata[losos_kind]"], "builder_credit");
+        assert!(!form
+            .keys()
+            .any(|k| k.contains("transfer_data") || k.contains("application_fee")));
+        assert!(serde_json::from_str::<Request>(
+            r#"{"op":"credit_checkout","order_id":"cr_1","appliance_id":"b","amount":500,"return_url":"https://x/","expires_at":1}"#
+        )
+        .is_ok());
     }
 }

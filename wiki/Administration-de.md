@@ -82,6 +82,12 @@ ist der echte Frame, was sie zeigt, zeigt also auch die Kachel. Ein Widget
 kann Daten aus dem Internet abrufen (etwa eine Wetterkachel), aber nicht von
 der Box. Die Grenze liegt bei 24 Widgets zu je 64 KiB.
 
+Der Editor hat auch einen Tab **Mit Claude bauen**, in dem Claude das Widget
+nach einer Beschreibung schreibt und es in das Quelltextfeld legt, damit Sie
+es vor dem Speichern lesen. Bezahlt wird pro Bau aus einem vorausbezahlten
+Guthaben, und es braucht einen Edge, der ihn anbietet; siehe
+[Widget-Baukasten](Widget-Builder-de).
+
 ## Admin-Token
 
 `lososd` schreibt beim ersten Start ein zufälliges Token aus 64

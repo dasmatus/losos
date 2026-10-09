@@ -6,6 +6,7 @@ use std::time::Duration;
 
 use miette::{miette, IntoDiagnostic, Result};
 
+use crate::builder::BuilderOpts;
 use crate::domains::{DomainsOpts, DEFAULT_DOH_URL};
 use crate::market::{MarketOpts, DEFAULT_FEE_BPS, MAX_FEE_BPS, SUPPORTED_CURRENCIES};
 use crate::provision::{EdgeSpec, ProvisionGithub, GITHUB_API_URL, GITHUB_OAUTH_URL};
@@ -190,6 +191,10 @@ pub struct ServeOpts {
     /// The Stripe Connect market. `None` — no `--market-gate-socket` — and
     /// every `/market/*` route answers 503; the rest of the API is unchanged.
     pub market: Option<Box<MarketOpts>>,
+    /// The widget builder (`crate::builder`). `None` — no
+    /// `--builder-key-file` — and every `/builder/*` route answers 503. Needs
+    /// the market: top-ups are paid through its Stripe gate.
+    pub builder: Option<Box<BuilderOpts>>,
     /// This edge's identity (`crate::identity`): the 0600 key file (made on
     /// the first start if missing) and the certificate the LosOS root signed
     /// for it (installed by `POST /identity/cert`). Both or neither; with
@@ -374,6 +379,17 @@ pub enum Mode {
     Provision(ProvisionOpts),
     Enrol(EnrolOpts),
     Lab(crate::lab::LabOpts),
+    BuilderSetup(BuilderSetupOpts),
+}
+
+/// `builder-setup`: create the widget builder's agent and environment once,
+/// or update the agent to this binary's prompt, and print their ids.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BuilderSetupOpts {
+    pub key_file: String,
+    pub api: String,
+    pub agent_id: Option<String>,
+    pub environment_id: Option<String>,
 }
 
 /// `enrol` options: the LAN owner's view of the boxes a `--enrol-dir`
@@ -392,7 +408,7 @@ pub enum EnrolOpts {
 pub fn parse(args: Vec<String>) -> Result<Mode> {
     if args.is_empty() {
         return Err(miette!(
-            "usage: losos-registrar serve|announce|seed|join|stripe-gate|identity|provision|enrol|lab ..."
+            "usage: losos-registrar serve|announce|seed|join|stripe-gate|identity|provision|enrol|lab|builder-setup ..."
         ));
     }
     let mode = &args[0];
@@ -437,6 +453,7 @@ pub fn parse(args: Vec<String>) -> Result<Mode> {
                     .unwrap_or("/var/lib/losos-registrar/compute-windows.json")
                     .to_string(),
                 market: parse_market(&rest)?,
+                builder: parse_builder(&rest)?,
                 identity_key_file: arg(&rest, "--identity-key-file").map(str::to_string),
                 identity_cert_file: arg(&rest, "--identity-cert-file").map(str::to_string),
                 github_api_url: arg(&rest, "--github-api-url")
@@ -586,8 +603,20 @@ pub fn parse(args: Vec<String>) -> Result<Mode> {
                     Some(u) => return Err(miette!("bad --return-url {u:?}")),
                 },
                 hardware_catalogue: hardware_catalogue(&rest, "--hardware-catalogue", currency)?,
+                credit_packs: match arg(&rest, "--credit-packs") {
+                    None => Vec::new(),
+                    Some(raw) => parse_packs(raw)?,
+                },
             }))
         }
+        "builder-setup" => Ok(Mode::BuilderSetup(BuilderSetupOpts {
+            key_file: req(&rest, "--key-file")?.to_string(),
+            api: arg(&rest, "--api")
+                .unwrap_or(crate::builder::DEFAULT_API)
+                .to_string(),
+            agent_id: arg(&rest, "--agent-id").map(str::to_string),
+            environment_id: arg(&rest, "--environment-id").map(str::to_string),
+        })),
         other => Err(miette!(
             "unknown subcommand {other:?}; expected serve|announce|seed|join|stripe-gate"
         )),
@@ -672,6 +701,115 @@ fn parse_provision(args: &[String]) -> Result<Mode> {
         }
     };
     Ok(Mode::Provision(mode))
+}
+
+/// Credit packs: a comma-separated list of 1 to 6 amounts in minor units,
+/// each between 1.00 and 500.00.
+fn parse_packs(raw: &str) -> Result<Vec<u64>> {
+    let packs: Vec<u64> = raw
+        .split(',')
+        .map(|p| p.trim().parse::<u64>())
+        .collect::<std::result::Result<_, _>>()
+        .map_err(|_| {
+            miette!("bad credit packs {raw:?}; expected amounts in minor units, like 500,1000,2000")
+        })?;
+    if packs.is_empty() || packs.len() > 6 || packs.iter().any(|p| !(100..=50_000).contains(p)) {
+        return Err(miette!(
+            "bad credit packs {raw:?}; expected 1 to 6 amounts between 100 and 50000 minor units"
+        ));
+    }
+    Ok(packs)
+}
+
+/// The `--builder-*` flags. Enabled by `--builder-key-file`, and only beside
+/// the market, whose gate takes the top-ups.
+fn parse_builder(args: &[String]) -> Result<Option<Box<BuilderOpts>>> {
+    use crate::builder::{
+        DEFAULT_API, DEFAULT_MARKUP_BPS, DEFAULT_MAX_BUILD_CENTS, DEFAULT_PACKS,
+        DEFAULT_USD_RATE_PPM, MAX_MARKUP_BPS, MIN_BUILD_CENTS,
+    };
+    let Some(key_file) = arg(args, "--builder-key-file") else {
+        return Ok(None);
+    };
+    if arg(args, "--market-gate-socket").is_none() {
+        return Err(miette!(
+            "--builder-key-file needs the market (--market-gate-socket): top-ups are paid through its gate"
+        ));
+    }
+    let id = |flag: &str, prefix: &str| -> Result<String> {
+        let v = req(args, flag)?;
+        if v.starts_with(prefix)
+            && v.len() <= 128
+            && v.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
+        {
+            Ok(v.to_string())
+        } else {
+            Err(miette!(
+                "bad {flag} {v:?}; expected an id starting {prefix}"
+            ))
+        }
+    };
+    let markup_bps: u32 = match arg(args, "--builder-markup-bps") {
+        None => DEFAULT_MARKUP_BPS,
+        Some(raw) => raw
+            .parse()
+            .ok()
+            .filter(|b| *b <= MAX_MARKUP_BPS)
+            .ok_or_else(|| {
+                miette!("bad --builder-markup-bps {raw:?}; expected 0..={MAX_MARKUP_BPS}")
+            })?,
+    };
+    let usd_rate_ppm = match arg(args, "--builder-usd-rate") {
+        None => DEFAULT_USD_RATE_PPM,
+        Some(raw) => parse_rate(raw)
+            .ok_or_else(|| miette!("bad --builder-usd-rate {raw:?}; expected a decimal like 0.92, between 0.01 and 1000"))?,
+    };
+    let max_build_cents = match arg(args, "--builder-max-build-cents") {
+        None => DEFAULT_MAX_BUILD_CENTS,
+        Some(raw) => raw
+            .parse()
+            .ok()
+            .filter(|c| (MIN_BUILD_CENTS..=10_000).contains(c))
+            .ok_or_else(|| {
+                miette!("bad --builder-max-build-cents {raw:?}; expected {MIN_BUILD_CENTS}..=10000")
+            })?,
+    };
+    let api = arg(args, "--builder-api").unwrap_or(DEFAULT_API);
+    crate::builder::Claude::new(api, key_file).map_err(|e| miette!("bad --builder-api: {e}"))?;
+    Ok(Some(Box::new(BuilderOpts {
+        state_file: arg(args, "--builder-state-file")
+            .unwrap_or("/var/lib/losos-registrar/builder.json")
+            .to_string(),
+        key_file: key_file.to_string(),
+        api: api.to_string(),
+        agent_id: id("--builder-agent-id", "agent_")?,
+        environment_id: id("--builder-environment-id", "env_")?,
+        markup_bps,
+        usd_rate_ppm,
+        packs: match arg(args, "--builder-packs") {
+            None => DEFAULT_PACKS.to_vec(),
+            Some(raw) => parse_packs(raw)?,
+        },
+        max_build_cents,
+        poll: parse_dur(arg(args, "--builder-poll").unwrap_or("3s"))?,
+    })))
+}
+
+/// A decimal exchange rate, `0.92`, in millionths. At most six decimals.
+fn parse_rate(raw: &str) -> Option<u64> {
+    let (whole, frac) = raw.split_once('.').unwrap_or((raw, ""));
+    if whole.is_empty()
+        || frac.len() > 6
+        || !whole
+            .bytes()
+            .chain(frac.bytes())
+            .all(|b| b.is_ascii_digit())
+    {
+        return None;
+    }
+    let ppm = whole.parse::<u64>().ok()?.checked_mul(1_000_000)?
+        + format!("{frac:0<6}").parse::<u64>().ok()?;
+    (10_000..=1_000_000_000).contains(&ppm).then_some(ppm)
 }
 
 fn parse_market(args: &[String]) -> Result<Option<Box<MarketOpts>>> {

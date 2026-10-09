@@ -833,7 +833,12 @@ pub fn cmd_market_op<L: Losos>(l: &mut L, op: &crate::market::Op) -> anyhow::Res
     let Outcome::Reply(mut reply) = l.market_request(op)? else {
         return Err(Refused {
             status: 409,
-            message: "the market is not offered to this appliance".to_string(),
+            message: if op.is_builder() {
+                "the widget builder is not offered to this appliance"
+            } else {
+                "the market is not offered to this appliance"
+            }
+            .to_string(),
         }
         .into());
     };
@@ -848,6 +853,28 @@ pub fn cmd_market_op<L: Losos>(l: &mut L, op: &crate::market::Op) -> anyhow::Res
         obj.insert("available".to_string(), json!(true));
     }
     Ok(reply)
+}
+
+/// The widget builder as this box sees it: `GET /api/builder`.
+///
+/// The edge's account view (balance, packs, price, recent builds) with
+/// `available: true`, or `available: false` and a reason. Gated like the
+/// market: the proxy token goes to an official edge and no other, and the
+/// builder is paid through the market's Stripe account.
+pub fn cmd_builder<L: Losos>(l: &mut L) -> anyhow::Result<Value> {
+    use crate::market::{Op, Outcome};
+    if crate::edge::check_market_gate(&l.edge_status()?).is_err() {
+        return Ok(json!({ "available": false, "reason": "noOfficialEdge" }));
+    }
+    match l.market_request(&Op::BuilderAccount)? {
+        Outcome::Reply(mut view) => {
+            if let Some(obj) = view.as_object_mut() {
+                obj.insert("available".to_string(), json!(true));
+            }
+            Ok(view)
+        }
+        Outcome::Unavailable => Ok(json!({ "available": false })),
+    }
 }
 
 /// LosOS Lab's order button: `GET /api/lab/order`. `enabled` is
@@ -1999,6 +2026,69 @@ mod tests {
             (200, r#"{"seller_ready":false}"#.to_string()),
         );
         f
+    }
+
+    #[test]
+    fn the_builder_view_is_the_edges_account_or_unavailable() {
+        use crate::market::Op;
+        let mut f = FakeLosos::new();
+        assert_eq!(
+            cmd_builder(&mut f).unwrap(),
+            serde_json::json!({ "available": false })
+        );
+        f.market_routes.insert(
+            "POST /builder/account".to_string(),
+            (200, r#"{"currency":"eur","balance":380}"#.to_string()),
+        );
+        let out = cmd_builder(&mut f).unwrap();
+        assert_eq!(out["available"], true);
+        assert_eq!(out["balance"], 380);
+
+        let mut f = FakeLosos::new().with_company_edge();
+        assert_eq!(
+            cmd_builder(&mut f).unwrap(),
+            serde_json::json!({ "available": false, "reason": "noOfficialEdge" })
+        );
+        assert!(cmd_market_op(&mut f, &Op::BuilderCredit { amount: 500 }).is_err());
+        assert!(f.market_ops.is_empty(), "no token to a company edge");
+    }
+
+    #[test]
+    fn a_top_up_is_sent_only_to_a_stripe_hosted_page() {
+        use crate::market::Op;
+        let mut f = FakeLosos::new();
+        f.market_routes.insert(
+            "POST /builder/credits".to_string(),
+            (
+                201,
+                r#"{"order_id":"cr_1","checkout_url":"https://evil.example/pay"}"#.to_string(),
+            ),
+        );
+        assert!(cmd_market_op(&mut f, &Op::BuilderCredit { amount: 500 }).is_err());
+        f.market_routes.insert(
+            "POST /builder/credits".to_string(),
+            (
+                201,
+                r#"{"order_id":"cr_1","checkout_url":"https://checkout.stripe.com/c/pay/cs_1"}"#
+                    .to_string(),
+            ),
+        );
+        let out = cmd_market_op(&mut f, &Op::BuilderCredit { amount: 500 }).unwrap();
+        assert_eq!(out["order_id"], "cr_1");
+        // A builder the edge does not run says so in its own words.
+        let err = cmd_market_op(
+            &mut f,
+            &Op::BuilderBuild {
+                build_id: "bld_1".to_string(),
+            },
+        )
+        .unwrap_err();
+        assert_eq!(
+            err.downcast_ref::<crate::market::Refused>()
+                .unwrap()
+                .message,
+            "the widget builder is not offered to this appliance"
+        );
     }
 
     #[test]

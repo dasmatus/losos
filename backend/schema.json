@@ -1324,6 +1324,28 @@
         "out": "marketActionResponse",
         "note": "Buy units. Returns a Stripe Checkout URL for the page to open. Audited. Owner-actionable refusals are 400/409 carrying the registrar's own sentence."
       },
+      "GET /api/builder": {
+        "auth": true,
+        "out": "{\"available\": false, \"reason\"?: \"noOfficialEdge\"} | {\"available\": true, \"currency\", \"balance\": <minor units>, \"packs\": [<minor units>], \"price\": {\"model\", \"input_per_million\", \"output_per_million\", \"markup_percent\", \"max_build\"}, \"can_build\": bool, \"builds\": [buildSummary]}",
+        "note": "The widget builder, relayed to the edge's registrar (backend-registrar/src/builder.rs) like the market and gated on an official edge the same way. A Claude Managed Agent on the edge writes the widget; the edge holds the Anthropic key and the balance, the box only its proxy token. Prices are per million tokens in the market's minor unit with the markup included. buildSummary is {\"id\", \"status\": \"running|done|failed\", \"prompt\", \"revision\", \"created_at\", \"finished_at\", \"charged\", \"fault\": null|\"noWidget|unusable|upstream\", \"has_source\"}. A 200 in every case."
+      },
+      "POST /api/builder/credits": {
+        "auth": true,
+        "in": "{\"amount\": <one of packs>}",
+        "out": "{\"available\": true, \"order_id\", \"checkout_url\", \"amount\", \"currency\"}",
+        "note": "Top the balance up with one credit pack through Stripe Checkout on the edge's platform account. The balance moves when Stripe's signed webhook reaches the edge. The URL is always Stripe-hosted. Audited."
+      },
+      "POST /api/builder/builds": {
+        "auth": true,
+        "in": "{\"prompt\": \"1-2000 characters\", \"base\"?: \"the widget source to change, at most 64 KiB\", \"lang\"?: \"en|sk|de\"}",
+        "out": "{\"available\": true} + buildSummary + {\"usage\", \"at_limit\", \"source\": null, \"notes\": null}",
+        "note": "Start a build. 409 with the edge's sentence when the balance does not cover one or a build is already running. The session's budget is what the balance covers, capped by the operator. Audited."
+      },
+      "GET /api/builder/builds/{id}": {
+        "auth": true,
+        "out": "{\"available\": true} + buildSummary + {\"usage\": {input_tokens, output_tokens, cache_creation_input_tokens, cache_read_input_tokens}, \"at_limit\", \"source\": string|null, \"notes\": string|null}",
+        "note": "One build. `source` is the widget once it is done; the page puts it in the editor and saves it only when the owner says so, through POST /api/look/widgets, so it runs in /widget-frame/ like any widget written by hand."
+      },
       "GET /api/lab/order": {
       "auth": true,
       "out": "{\"enabled\": false} | {\"enabled\": true, \"available\": false, \"reason\": \"noOfficialEdge|notSold\"} | {\"enabled\": true, \"available\": true, \"catalogue\": {\"currency\", \"countries\", \"items\": [{\"sku\", \"name\", \"detail\", \"unit_amount\"}]}}",
