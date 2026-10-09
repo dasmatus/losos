@@ -1384,15 +1384,16 @@ in
               default = null;
               example = "acme.losos.cfd";
               description = ''
-                Make this tenant a **spoke** of this edge (wiki/Edge-Federation.md):
-                a user-hosted edge that may `POST /relay` the boxes behind it,
-                each of which must be named exactly one label under this zone
+                Make this tenant a **spoke** of this edge
+                (handbook/docs/in-depth/edge-federation.md): a user-hosted edge
+                that may `POST /relay` the boxes behind it, each of which must
+                be named exactly one label under this zone
                 (`mattbox.acme.losos.cfd`). Relayed boxes get a Traefik router
-                and a rathole service here, keyed `<id>.<box>` and
-                authenticated with *this tenant's* token; they never get
-                `cluster` or `market`. `null` (the default) is an ordinary
-                tenant that may relay nothing. Rendered into tenants.json as
-                `relay_zone`, like `cluster` and `market`.
+                and a rathole service here, keyed `<id>.<box>` and authenticated
+                with *this tenant's* token; they never get `cluster` or
+                `market`. `null` (the default) is an ordinary tenant that may
+                relay nothing. Rendered into tenants.json as `relay_zone`, like
+                `cluster` and `market`.
               '';
             };
           };
@@ -1406,14 +1407,15 @@ in
     # Optional storage / compute marketplace settled through Stripe Connect.
     # The edge is the Stripe platform account: buyers pay it, the seller's share
     # is forwarded to the seller's connected account, and `feeBps` stays behind.
-    # Off by default; see wiki/Market.md.
+    # Off by default; see handbook/docs/in-depth/market.md.
     edge.market.enable = lib.mkOption {
       type = lib.types.bool;
       default = false;
       description = ''
         Serve the /market/* routes of losos-registrar. Without this every one
         of them answers 503. Needs a Stripe platform account with Connect
-        enabled; see wiki/Market.md for the one-time dashboard setup.
+        enabled; see handbook/docs/in-depth/market.md for the one-time
+        dashboard setup.
       '';
     };
 
@@ -1426,14 +1428,14 @@ in
         `stripe-secret-key`. The key is never stored in plaintext on disk: the
         `losos-stripe-gate` unit receives this blob through
         `LoadCredentialEncrypted=`, so a copy of `/var` carries ciphertext only
-        and the registrar process never holds the key. Seal it from stdin so
-        the plaintext never touches the disk either (see wiki/Market.md).
-        Rotating it means sealing a new blob and restarting the gate. A blob
-        that is missing skips the gate, so the market answers 503 and the rest
-        of the registrar is untouched. A key of any other shape is refused
-        before anything is sent to Stripe. The key's prefix is the market's
-        mode: `sk_test_`/`rk_test_` run it in test mode on the
-        `market-test.json` ledger, `sk_live_`/`rk_live_` in live mode on
+        and the registrar process never holds the key. Seal it from stdin so the
+        plaintext never touches the disk either (see
+        handbook/docs/in-depth/market.md). Rotating it means sealing a new blob
+        and restarting the gate. A blob that is missing skips the gate, so the
+        market answers 503 and the rest of the registrar is untouched. A key of
+        any other shape is refused before anything is sent to Stripe. The key's
+        prefix is the market's mode: `sk_test_`/`rk_test_` run it in test mode
+        on the `market-test.json` ledger, `sk_live_`/`rk_live_` in live mode on
         `market.json`, and a key that names neither stops the gate.
       '';
     };
@@ -1458,7 +1460,8 @@ in
     # `.github/workflows/edge-credentials.yml` reads the keys from the
     # repository's Actions secrets and hands each one over SSH to
     # `losos-seal-credential` on the edge, which seals it with systemd-creds.
-    # The deploy key can run nothing else. See wiki/Edge-Credentials.md.
+    # The deploy key can run nothing else. See "Keys from GitHub Actions" in
+    # handbook/docs/in-depth/market.md.
     edge.credentials.secrets = lib.mkOption {
       type = lib.types.attrsOf (
         lib.types.submodule {
@@ -1513,7 +1516,7 @@ in
         forwarding and no terminal, and can only seal one of the secrets in
         `losos.edge.credentials.secrets`, named by the command it sends. Null (the
         default), nothing is added and secrets are sealed by hand as
-        wiki/Market.md describes.
+        handbook/docs/in-depth/market.md describes.
       '';
     };
 
@@ -1625,8 +1628,9 @@ in
 
     # ── Virtual machines on the mesh (edge side) ────────────────────────────
     # KubeVirt and CDI on the edge's rke2 cluster, sold through the market by
-    # the replica (backend-registrar/src/vms.rs, wiki/Virtual-Machines.md).
-    # Boxes host them only while they share their storage.
+    # the replica (backend-registrar/src/vms.rs,
+    # handbook/docs/in-depth/virtual-machines.md). Boxes host them only while
+    # they share their storage.
     edge.vms.enable = lib.mkOption {
       type = lib.types.bool;
       default = false;
@@ -1740,7 +1744,8 @@ in
     # TXT record; the edge then routes and certifies the domain. The whole of
     # it only on an edge that holds an identity certificate, and the box
     # names only with the market on (that is where the Stripe data lives).
-    # See backend-registrar/src/domains.rs and wiki/Master-Proxy.md.
+    # See backend-registrar/src/domains.rs and
+    # handbook/docs/in-depth/master-proxy.md.
     edge.dns.enable = lib.mkOption {
       type = lib.types.bool;
       default = false;
@@ -1817,12 +1822,12 @@ in
       '';
     };
 
-    # Custom domains for boxes behind a local edge (wiki/Edge-Federation.md,
-    # "Custom domains behind a local edge"). The official edge keeps the route
-    # table in the registrar's own state and sends a domain to the local edge
-    # whose box proved it, once the box has vouched for that local edge with
-    # a relay pass and joined this edge's mesh. See
-    # backend-registrar/src/routes.rs.
+    # Custom domains for boxes behind a local edge
+    # (handbook/docs/in-depth/edge-federation.md, "Custom domains behind a local
+    # edge"). The official edge keeps the route table in the registrar's own
+    # state and sends a domain to the local edge whose box proved it, once the
+    # box has vouched for that local edge with a relay pass and joined this
+    # edge's mesh. See backend-registrar/src/routes.rs.
     edge.dns.relayRoutes.enable = lib.mkOption {
       type = lib.types.bool;
       default = false;
@@ -1856,25 +1861,26 @@ in
         Enrol unknown appliances trust-on-first-use: an id not in
         losos.edge.tenants that registers is accepted with the token and
         hostname it presented, both kept under
-        /var/lib/losos-registrar/enrolled/, and every later request for that
-        id must carry the same token. An enrolled box gets a route and
-        nothing else, never `cluster` or `market`. What makes a stock box
-        work with a gateway nobody provisioned tokens for
-        (wiki/Edge-Federation.md), and exactly as dangerous as it sounds on
-        an edge the internet can reach, so it requires losos.edge.lan.advertise
-        and is refused without it. `losos-registrar enrol list|forget --dir
-        /var/lib/losos-registrar/enrolled` on the edge shows and drops
-        enrolled boxes; a box that is still heartbeating re-enrols with the
-        token it holds, so forgetting is for a box that left.
+        /var/lib/losos-registrar/enrolled/, and every later request for that id
+        must carry the same token. An enrolled box gets a route and nothing
+        else, never `cluster` or `market`. What makes a stock box work with a
+        gateway nobody provisioned tokens for
+        (handbook/docs/in-depth/edge-federation.md), and exactly as dangerous as
+        it sounds on an edge the internet can reach, so it requires
+        losos.edge.lan.advertise and is refused without it. `losos-registrar
+        enrol list|forget --dir /var/lib/losos-registrar/enrolled` on the edge
+        shows and drops enrolled boxes; a box that is still heartbeating
+        re-enrols with the token it holds, so forgetting is for a box that left.
       '';
     };
 
     # ── Uplink: this edge as a spoke of another ─────────────────────────────
-    # wiki/Edge-Federation.md. A spoke keeps everything it has and adds one
-    # outbound tunnel plus one `POST /relay` loop to a hub, which must list it
-    # as a tenant with a relayZone. The registrar reads a JSON file for all of
-    # it (`--uplink-file`), rendered from the options below, or pointed at a
-    # runtime path (`configFile`) so one gateway image can serve every site.
+    # handbook/docs/in-depth/edge-federation.md. A spoke keeps everything it has
+    # and adds one outbound tunnel plus one `POST /relay` loop to a hub, which
+    # must list it as a tenant with a relayZone. The registrar reads a JSON file
+    # for all of it (`--uplink-file`), rendered from the options below, or
+    # pointed at a runtime path (`configFile`) so one gateway image can serve
+    # every site.
     edge.uplink.enable = lib.mkOption {
       type = lib.types.bool;
       default = false;

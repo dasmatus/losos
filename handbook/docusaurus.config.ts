@@ -175,7 +175,7 @@ const config: Config = {
         {
           title: 'For developers',
           items: [
-            {label: 'Wiki', href: 'https://github.com/dasmatus/losos/wiki'},
+            {label: 'In depth', to: '/in-depth'},
             {label: 'Source', href: 'https://github.com/dasmatus/losos'},
             {label: 'Releases', href: 'https://github.com/dasmatus/losos/releases'},
           ],

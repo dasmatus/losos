@@ -253,6 +253,38 @@ fn install_listeners(canvas: &HtmlCanvasElement) {
     });
 }
 
+/// Keeps a `pointerdown` or `pointerup` that names no button (`button` is
+/// -1) away from winit, which reads the button of both with
+/// `expect("no mouse button pressed")`: in its listeners on the canvas, and
+/// while the canvas has focus in its listeners on the window, which hear
+/// the whole page. One such event would panic the module, and with
+/// `panic = "abort"` that ends the whole Lab, core included. Browsers do
+/// send them (a pen, a touchpad, a script's synthetic event).
+///
+/// Both guards are registered before winit's listeners, which `App::run`
+/// adds, and stop the event there. On the canvas the guard comes after the
+/// canvas's own listeners (`install_listeners`), so a pen lifted with no
+/// button still ends a drag; nothing above the canvas needs the event. On
+/// the window everything below has seen the event already, React's root
+/// among it.
+fn guard_buttonless_pointers(canvas: &HtmlCanvasElement) {
+    let cb = Closure::<dyn FnMut(PointerEvent)>::new(|e: PointerEvent| {
+        if e.button() < 0 {
+            e.stop_immediate_propagation();
+        }
+    });
+    let window = web_sys::window();
+    let targets: [Option<&web_sys::EventTarget>; 2] =
+        [Some(canvas.as_ref()), window.as_ref().map(AsRef::as_ref)];
+    for target in targets.into_iter().flatten() {
+        for name in ["pointerdown", "pointerup"] {
+            let _ = target.add_event_listener_with_callback(name, cb.as_ref().unchecked_ref());
+        }
+    }
+    // The canvas lives as long as the page: so do the guards.
+    cb.forget();
+}
+
 fn queue(i: Input) {
     with_page(|p| {
         if !p.attached {
@@ -372,6 +404,7 @@ impl LabCanvas {
         });
         if start {
             install_listeners(&el);
+            guard_buttonless_pointers(&el);
             crate::app::start(selector.to_string());
         }
         Ok(LabCanvas { _priv: () })

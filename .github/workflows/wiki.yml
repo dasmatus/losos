@@ -1,15 +1,19 @@
 name: wiki
 
-# Publishes wiki/ to the GitHub wiki. wiki/ is the source of truth: edits made
-# in the web wiki editor are overwritten on the next push here.
+# The developer pages that used to live in the GitHub wiki are now the
+# handbook's In depth chapter (handbook/docs/in-depth/), with TPM and the
+# security model under its Reference chapter. This workflow overwrites the
+# wiki with one short page per old address, each linking to the page that
+# replaced it, so links to the wiki still lead somewhere. Nothing else writes
+# to the wiki.
 #
-# The wiki repository only exists after its first page has been created in the
-# web UI; until then the clone below fails.
+# Once nothing links to the wiki any more, turn it off under Settings →
+# Features and delete this file.
 
 on:
   push:
     branches: [main]
-    paths: ["wiki/**", ".github/workflows/wiki.yml"]
+    paths: [".github/workflows/wiki.yml"]
   workflow_dispatch:
 
 concurrency:
@@ -24,8 +28,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v7
-      - name: push wiki/ to the wiki repository
+      - name: replace every wiki page with a link to its handbook page
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -33,14 +36,44 @@ jobs:
           auth="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
           git -c http.extraheader="$auth" clone --depth 1 \
             "https://github.com/${GITHUB_REPOSITORY}.wiki.git" "$RUNNER_TEMP/wiki"
-          rsync -a --delete --exclude .git wiki/ "$RUNNER_TEMP/wiki/"
+
+          site=https://losos.dasmat.us
+          declare -A path=(
+            [Home]=in-depth
+            [Install]=in-depth/install
+            [Administration]=in-depth/administration
+            [Mesh]=in-depth/mesh
+            [Market]=in-depth/market
+            [Virtual-Machines]=in-depth/virtual-machines
+            [Master-Proxy]=in-depth/master-proxy
+            [Edge-Federation]=in-depth/edge-federation
+            [Lab]=in-depth/lab
+            [Hardening]=in-depth/hardening
+            [TPM]=reference/tpm
+            [Security-Model]=reference/security-model
+            [Architecture]=in-depth/architecture
+          )
+          out="$RUNNER_TEMP/stubs"
+          mkdir -p "$out"
+          for page in "${!path[@]}"; do
+            url="$site/${path[$page]}"
+            printf '# Moved\n\nThis page is now part of the LosOS handbook: <%s>\n' \
+              "$url" > "$out/$page.md"
+            printf '# Presunuté\n\nTáto stránka je teraz súčasťou príručky LosOS: <%s>\n' \
+              "$site/sk/${path[$page]}" > "$out/$page-sk.md"
+            printf '# Umgezogen\n\nDiese Seite ist jetzt Teil des LosOS-Handbuchs: <%s>\n' \
+              "$site/de/${path[$page]}" > "$out/$page-de.md"
+          done
+          printf -- '- [LosOS handbook](%s)\n' "$site" > "$out/_Sidebar.md"
+
+          rsync -a --delete --exclude .git "$out/" "$RUNNER_TEMP/wiki/"
           cd "$RUNNER_TEMP/wiki"
           git add -A
           if git diff --cached --quiet; then
-            echo "wiki already up to date"
+            echo "wiki already points at the handbook"
             exit 0
           fi
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "Sync from ${GITHUB_REPOSITORY}@${GITHUB_SHA::7}"
+          git commit -m "Point every page at the handbook (${GITHUB_REPOSITORY}@${GITHUB_SHA::7})"
           git -c http.extraheader="$auth" push origin HEAD

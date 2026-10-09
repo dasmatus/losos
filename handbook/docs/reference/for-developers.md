@@ -5,12 +5,12 @@ sidebar_position: 6
 
 # For developers
 
-This handbook is for owners. Everything about building, testing and changing
-LosOS is in two other places:
+Most of this handbook is for owners. Building, testing and changing LosOS
+is covered in two places:
 
-- the [wiki](https://github.com/dasmatus/losos/wiki): Install (in depth),
-  Administration, Mesh, Market, Master proxy, Hardening, Security model,
-  Architecture, Development, CI and releases;
+- the [In depth](/in-depth/index.md) chapter: Install in depth,
+  Administration, Mesh, Market, Virtual machines, Master proxy, Edge
+  federation, Lab, Hardening, Architecture;
 - [`CLAUDE.md`](https://github.com/dasmatus/losos/blob/main/CLAUDE.md) in the
   repository: the build commands, the cross-file architecture and the list of
   mistakes that are easy to make again.
@@ -75,6 +75,9 @@ Slovak and German are wired in. The interface strings live in
 `handbook/i18n/<locale>/docusaurus-plugin-content-docs/current/<same path>`
 and translate the copy. A page without a translation shows in English under
 the translated chrome, so you can translate one page at a time.
+
+The In depth chapter, TPM and the disk key, and the security model are
+translated in full. Change all three languages together.
 
 ```sh
 npm run write-translations -- --locale sk   # refresh the string files

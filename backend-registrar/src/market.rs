@@ -1,14 +1,14 @@
 //! The optional storage / compute market, settled through Stripe Connect.
 //!
-//! Boxes that share disk or CPU with the mesh (see `wiki/Mesh.md`) can *sell*
-//! it, and any other box can *buy* it. The edge is the marketplace: it keeps
-//! the listings and the orders, and it is the Stripe **platform** account.
-//! Money never touches a losos box. A buyer pays through a Stripe Checkout
-//! Session created as a *destination charge*: the full amount is charged on
-//! the platform, `transfer_data[destination]` forwards it to the seller's
-//! connected Express account, and `application_fee_amount` — the platform's
-//! cut, 4% (400 basis points) by default — stays behind to cover the edge's
-//! running costs.
+//! Boxes that share disk or CPU with the mesh (see
+//! `handbook/docs/in-depth/mesh.md`) can *sell* it, and any other box can *buy*
+//! it. The edge is the marketplace: it keeps the listings and the orders, and
+//! it is the Stripe **platform** account. Money never touches a losos box. A
+//! buyer pays through a Stripe Checkout Session created as a *destination
+//! charge*: the full amount is charged on the platform,
+//! `transfer_data[destination]` forwards it to the seller's connected Express
+//! account, and `application_fee_amount` — the platform's cut, 4% (400 basis
+//! points) by default — stays behind to cover the edge's running costs.
 //!
 //! Everything here is **opt-in at three levels**, and each is closed by
 //! default:

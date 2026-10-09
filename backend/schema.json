@@ -766,7 +766,7 @@
               "type": "null"
             }
           ],
-          "description": "The edge this box uses, out of `edges` (wiki/Edge-Federation.md): the first LAN edge with a tunnel endpoint, else the configured edge, else null. With losos.proxy.enable on, lososd writes it to /run/losos/edge-path.env and restarts the tunnel and announce units when it changes; null writes /run/losos/edge-none and stops them, so a box with no edge in reach runs no tunnel. The sharing gate (`reachable`) and the market gate (`official`) are the other two bits; this one says where the traffic goes."
+          "description": "The edge this box uses, out of `edges` (handbook/docs/in-depth/edge-federation.md): the first LAN edge with a tunnel endpoint, else the configured edge, else null. With losos.proxy.enable on, lososd writes it to /run/losos/edge-path.env and restarts the tunnel and announce units when it changes; null writes /run/losos/edge-none and stops them, so a box with no edge in reach runs no tunnel. The sharing gate (`reachable`) and the market gate (`official`) are the other two bits; this one says where the traffic goes."
         },
         "official": {
           "type": "boolean",

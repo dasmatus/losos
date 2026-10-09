@@ -8,8 +8,8 @@ sidebar_position: 3
 Every field on the settings panes writes one option in the box's Nix
 description (`losos.*`). Use this table when you want something the panes
 do not offer. A maintainer sets these options in `modules/overrides.nix`,
-and the [wiki](https://github.com/dasmatus/losos/wiki/Administration)
-documents them in full.
+and [Administration](/in-depth/administration.md#settings) documents
+them in full.
 
 ## On the panes
 
@@ -44,7 +44,7 @@ documents them in full.
 | UEFI or BIOS                         | `losos.bios`                       | what the installer found                    |
 | The disks                            | `losos.targetDrives`               | what the installer found                    |
 | Certificate lifetime                 | `losos.tls.validityDays`           | 730                                         |
-| Idle threshold for lending CPU       | `losos.cluster.idleLoadThreshold`  | see the wiki                                |
+| Idle threshold for lending CPU       | `losos.cluster.idleLoadThreshold`  | 0.25 per core                               |
 | The binary cache                     | `losos.cache.substituters`         | `https://proxy.losos.dasmat.us`, then `https://losos-cache-proxy.vercel.app`, then `https://losos.dasmat.us/proxy` |
 | Who may read `/setup/state.json` from a web page | `losos.setup.finderOrigins` | the LosOS edge's find page             |
 

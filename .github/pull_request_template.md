@@ -16,7 +16,7 @@ already make it obvious.
 <!--
 Required for every change a person can see: the admin UI and the wizard,
 the installer and the tty1 banner, the Nextcloud and Forgejo themes, the
-wiki and docs pages, the Vercel demo pages. Take both at the same window
+handbook and docs pages, the Vercel demo pages. Take both at the same window
 size and in the same state, so that the only difference between the two
 columns is the change. Drag the images into this box, or commit them under
 .github/screenshots/<topic>/ and embed them by a raw URL pinned to the

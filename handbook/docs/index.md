@@ -16,8 +16,8 @@ network, and once a night it rebuilds and restarts itself.
 ![The admin pages of a box called mattbox: the app tiles, the storage card and the board of widgets.](./img/overview.png)
 
 This handbook is the owner's manual, for the person who has the box on their
-desk. The people who build LosOS use the
-[wiki](https://github.com/dasmatus/losos/wiki).
+desk. The people who build LosOS, run an edge or cut a release read the
+[In depth](/in-depth/index.md) chapter.
 
 ## Where this handbook is
 

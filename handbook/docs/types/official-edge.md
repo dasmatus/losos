@@ -84,14 +84,9 @@ public key. Until then no edge is official, every edge wears the warning sign
 and the market is off on every box. That is the safe direction to fail in.
 :::
 
-The project owner makes the key on their own computer, never on a box or an
-edge. The tool that makes it first signs the person in with GitHub, and
-refuses anyone whose account is not on a short list committed with the
-project. The same tool signs each official edge's certificate and pushes it
-to the edge over the web. The edge checks the same short list before it
-accepts, and the edge's own key never leaves the edge. Operators will find
-the steps in
-[the provisioning runbook](https://github.com/dasmatus/losos/blob/main/provisioning/edge-identity/README.md).
+The project owner keeps the root key offline, never on a box or an edge.
+Each official edge has a key of its own, which never leaves the edge, and a
+certificate the root signed for it.
 
 Enrolment at the edge, which decides which box may tunnel through it, is a
 separate matter. The edge keeps an allow-list of boxes, each with a token,
