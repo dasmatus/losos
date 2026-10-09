@@ -304,6 +304,50 @@ pub fn desired_config_with_hosts(
     }
 }
 
+/// The Traefik file for the virtual machines the market published
+/// (`crate::vms`): one router per machine order, `Host(<host>)`, with its own
+/// certificate, to that order's Service in the mesh. `routes` is
+/// `(hostname, service URL)`; the router is named after the hostname's first
+/// label, the order's stem. `None` for no routes, for the same reason as
+/// [`Files::traefik_yaml`]: Traefik refuses an empty file.
+#[must_use]
+pub fn vm_routes_yaml(routes: &[(String, String)]) -> Option<String> {
+    if routes.is_empty() {
+        return None;
+    }
+    let mut routers = BTreeMap::new();
+    let mut services = BTreeMap::new();
+    for (host, url) in routes {
+        let name = host.split('.').next().unwrap_or(host).to_string();
+        routers.insert(
+            name.clone(),
+            TraefikRouter {
+                rule: format!("Host(`{host}`)"),
+                service: name.clone(),
+                entry_points: vec!["websecure".to_string()],
+                tls: TraefikTls {
+                    cert_resolver: "le".to_string(),
+                    domains: vec![TraefikDomain { main: host.clone() }],
+                },
+            },
+        );
+        services.insert(
+            name,
+            TraefikService {
+                load_balancer: TraefikLoadBalancer {
+                    servers: vec![TraefikServer { url: url.clone() }],
+                },
+            },
+        );
+    }
+    Some(
+        serde_yaml::to_string(&TraefikConfig {
+            http: TraefikHttp { routers, services },
+        })
+        .expect("serializing TraefikConfig is infallible for String/Vec/BTreeMap fields"),
+    )
+}
+
 /// The hub a spoke relays through, as the uplink renderer needs it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UplinkTarget {

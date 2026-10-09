@@ -68,6 +68,10 @@ Plattform 0.80 und dem Verkäufer 19.20. Der konfigurierte Wert ist auf 2000
 | --------- | ------------ | ------------------------------------------------------ |
 | `storage` | GiB-Monat    | Kapazität im Longhorn-Pool des Mesh                    |
 | `compute` | vCPU-Stunde  | Scheduling auf dem Node des Verkäufers, in seinem Fenster |
+| `vm`      | Replikat-Monat | Ein Replikat einer virtuellen Maschine auf der Box des Verkäufers, 50/50 geteilt |
+
+Maschinen haben eine eigene Seite, [Virtuelle Maschinen](Virtual-Machines-de),
+und einen eigenen Bereich in der Admin-Oberfläche.
 
 Preise sind in der kleinsten Einheit (Cent) einer Währung pro Edge angegeben
 (`losos.edge.market.currency`). Eine einzelne Bestellung muss insgesamt

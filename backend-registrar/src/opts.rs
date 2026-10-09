@@ -306,6 +306,10 @@ pub struct JoinOpts {
     /// the taint and so compares on its own clock; without this the hours are
     /// reinterpreted in the edge's zone.
     pub window_tz: String,
+    /// `--host-vms`: the box hosts other people's virtual machines
+    /// (`crate::vms`). modules/cluster.nix passes true only while the box's
+    /// shared storage is on.
+    pub host_vms: bool,
     /// `losos.cluster.serverAddr` as this box has it configured. Purely a
     /// consistency check: a mismatch against the edge's answer is logged, not
     /// enforced, because the edge is the authority on its own address.
@@ -548,7 +552,11 @@ pub fn parse(args: Vec<String>) -> Result<Mode> {
             node_name: req(&rest, "--node-name")?.to_string(),
             token_file: req(&rest, "--token-file")?.to_string(),
             out_token_file: req(&rest, "--out-token-file")?.to_string(),
-            share_compute: parse_bool(arg(&rest, "--share-compute").unwrap_or("false"))?,
+            share_compute: parse_bool(
+                "--share-compute",
+                arg(&rest, "--share-compute").unwrap_or("false"),
+            )?,
+            host_vms: parse_bool("--host-vms", arg(&rest, "--host-vms").unwrap_or("false"))?,
             window_start: parse_hhmm(arg(&rest, "--window-start").unwrap_or("23:00"))?.to_string(),
             window_end: parse_hhmm(arg(&rest, "--window-end").unwrap_or("07:00"))?.to_string(),
             window_tz: parse_tz(arg(&rest, "--window-tz").unwrap_or("UTC"))?.to_string(),
@@ -718,7 +726,97 @@ fn parse_market(args: &[String]) -> Result<Option<Box<MarketOpts>>> {
         fee_bps,
         storage_class: storage_class.to_string(),
         hardware_catalogue: hardware_catalogue(args, "--market-hardware-catalogue", currency)?,
+        vms: parse_vms(args)?,
     })))
+}
+
+/// The `--vm-*` flags: virtual machines on the mesh (`crate::vms`), turned on
+/// by `--vm-enable` on an edge that runs the market. The catalogue is loaded
+/// here so a bad file stops the unit at start rather than at the first order.
+fn parse_vms(args: &[String]) -> Result<Option<crate::vms::VmOpts>> {
+    if !args.iter().any(|a| a == "--vm-enable") {
+        return Ok(None);
+    }
+    let catalogue = arg(args, "--vm-catalogue").map(str::to_string);
+    crate::vms::Catalogue::load(catalogue.as_deref())
+        .map_err(|e| miette!("bad --vm-catalogue: {e}"))?;
+    let number = |flag: &str, default: u64, range: std::ops::RangeInclusive<u64>| -> Result<u64> {
+        match arg(args, flag) {
+            None => Ok(default),
+            Some(raw) => raw
+                .parse::<u64>()
+                .ok()
+                .filter(|n| range.contains(n))
+                .ok_or_else(|| {
+                    miette!(
+                        "bad {flag} {raw:?}; expected {}..={}",
+                        range.start(),
+                        range.end()
+                    )
+                }),
+        }
+    };
+    let defaults = crate::vms::Shape::default();
+    let shape = crate::vms::Shape {
+        cpu: u32::try_from(number("--vm-cpu", u64::from(defaults.cpu), 1..=16)?)
+            .map_err(|_| miette!("bad --vm-cpu"))?,
+        memory_mib: number(
+            "--vm-memory-mib",
+            defaults.memory_mib,
+            512..=crate::vms::MAX_MEMORY_MIB,
+        )?,
+        disk_gib: number(
+            "--vm-disk-gib",
+            defaults.disk_gib,
+            1..=crate::vms::MAX_DISK_GIB,
+        )?,
+    };
+    let storage_class = arg(args, "--vm-storage-class").map(str::to_string);
+    if let Some(class) = &storage_class {
+        if !dns_subdomain(class) {
+            return Err(miette!(
+                "bad --vm-storage-class {class:?}; expected a Kubernetes object name"
+            ));
+        }
+    }
+    let fetch_base = req(args, "--vm-fetch-base")?
+        .trim_end_matches('/')
+        .to_string();
+    if !fetch_base.starts_with("https://") || !crate::stripe_gate::url_ok(&fetch_base) {
+        return Err(miette!(
+            "--vm-fetch-base must be this registrar's public https:// origin"
+        ));
+    }
+    let domain = arg(args, "--vm-domain").map(str::to_string);
+    if let Some(d) = &domain {
+        if !dns_subdomain(d) || !d.contains('.') {
+            return Err(miette!("bad --vm-domain {d:?}; expected a domain name"));
+        }
+    }
+    let routes_file = match &domain {
+        Some(_) => Some(
+            std::path::Path::new(req(args, "--traefik-dir")?)
+                .join("losos-vms.yml")
+                .to_string_lossy()
+                .into_owned(),
+        ),
+        None => None,
+    };
+    Ok(Some(crate::vms::VmOpts {
+        catalogue,
+        shape,
+        storage_class,
+        upload_dir: arg(args, "--vm-upload-dir")
+            .unwrap_or("/var/lib/losos-registrar/vm-images")
+            .to_string(),
+        max_upload_bytes: number("--vm-upload-max-gib", 32, 1..=crate::vms::MAX_DISK_GIB)?
+            * 1024
+            * 1024
+            * 1024,
+        fetch_base,
+        domain,
+        routes_file,
+    }))
 }
 
 /// A hardware catalogue flag: the file must load, in the edge's currency, so
@@ -902,13 +1000,11 @@ fn parse_threshold(v: &str) -> miette::Result<f64> {
 /// means the module was edited into producing something it did not intend, so
 /// it is a boot-time failure that names the flag rather than a silent `false`
 /// that quietly stops the box contributing compute.
-fn parse_bool(s: &str) -> Result<bool> {
+fn parse_bool(flag: &str, s: &str) -> Result<bool> {
     match s.trim() {
         "true" => Ok(true),
         "false" => Ok(false),
-        other => Err(miette!(
-            "bad --share-compute {other:?}; expected true|false"
-        )),
+        other => Err(miette!("bad {flag} {other:?}; expected true|false")),
     }
 }
 

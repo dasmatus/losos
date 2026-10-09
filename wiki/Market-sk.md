@@ -61,6 +61,10 @@ a predajcovi 19.20. Nastavená hodnota je obmedzená na 2000 (20 %).
 | --------- | ----------- | ----------------------------------------------------- |
 | `storage` | GiB-mesiac  | Kapacita v Longhorn poole mesh                        |
 | `compute` | vCPU-hodina | Plánovanie na uzle predajcu, v rámci jeho okna        |
+| `vm`      | replika-mesiac | Replika virtuálneho stroja na zariadení predajcu, delené 50/50 |
+
+Stroje majú vlastnú stránku, [Virtuálne stroje](Virtual-Machines-sk), a
+vlastný panel v administrácii.
 
 Ceny sú v menšej jednotke (centoch) jednej meny na edge
 (`losos.edge.market.currency`). Jedna objednávka musí mať spolu aspoň 50

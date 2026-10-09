@@ -48,6 +48,10 @@ rustix = { version = "1", features = ["event"] }
 # the two sides cannot disagree on the primitive.
 ring = "0.17"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+# The `Stream` trait, to read an uploaded disk image off the request a chunk
+# at a time (`vm_upload.rs`) rather than holding gigabytes in memory. Already
+# in the lock file through actix-web.
+futures-core = { version = "0.3", default-features = false }
 
 [dev-dependencies]
 # The CLI book's integration-testing trio: run the real binary, assert on its
