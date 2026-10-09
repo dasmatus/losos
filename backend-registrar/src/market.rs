@@ -53,6 +53,7 @@ use crate::action::Action;
 use crate::fsutil::atomic_write;
 use crate::hardware::{total, Catalogue, Line};
 use crate::stripe_gate::{CheckoutRequest, GateClient, HardwareRequest};
+use crate::vms::{Upload, UploadView, VmOrder, VmProvision, VM_FEE_BPS};
 
 /// The cut kept by the platform, in basis points of the gross amount: 4%.
 pub const DEFAULT_FEE_BPS: u32 = 400;
@@ -131,6 +132,9 @@ pub enum Kind {
     /// Scheduling time on the seller's node inside its compute window, priced
     /// per vCPU-hour.
     Compute,
+    /// Virtual machines on the seller's node, priced per replica-month and
+    /// split half and half with the platform (`crate::vms`).
+    Vm,
 }
 
 impl Kind {
@@ -140,6 +144,7 @@ impl Kind {
         match self {
             Kind::Storage => "GiB-month",
             Kind::Compute => "vCPU-hour",
+            Kind::Vm => "replica-month",
         }
     }
 
@@ -147,6 +152,7 @@ impl Kind {
         match self {
             Kind::Storage => "Storage",
             Kind::Compute => "Compute",
+            Kind::Vm => "Virtual machine",
         }
     }
 }
@@ -170,6 +176,7 @@ impl Kind {
 pub struct Sharing {
     enrolled: BTreeSet<String>,
     compute: BTreeSet<String>,
+    vms: BTreeSet<String>,
 }
 
 impl Sharing {
@@ -182,6 +189,11 @@ impl Sharing {
                 .filter(|(_, w)| w.share_compute)
                 .map(|(k, _)| k.clone())
                 .collect(),
+            vms: windows
+                .iter()
+                .filter(|(_, w)| w.host_vms)
+                .map(|(k, _)| k.clone())
+                .collect(),
         }
     }
 
@@ -191,6 +203,7 @@ impl Sharing {
     pub fn only_sellers(mut self, permitted: impl Fn(&str) -> bool) -> Self {
         self.enrolled.retain(|seller| permitted(seller));
         self.compute.retain(|seller| permitted(seller));
+        self.vms.retain(|seller| permitted(seller));
         self
     }
 
@@ -199,6 +212,7 @@ impl Sharing {
         match kind {
             Kind::Storage => self.enrolled.contains(seller),
             Kind::Compute => self.compute.contains(seller),
+            Kind::Vm => self.vms.contains(seller),
         }
     }
 }
@@ -280,6 +294,10 @@ pub struct Order {
     /// a `404` then returns the units like any deleted claim.
     #[serde(default)]
     pub claim: Option<String>,
+    /// What a machine order runs and how far the edge has got with it.
+    /// `None` on every other kind.
+    #[serde(default)]
+    pub vm: Option<VmOrder>,
 }
 
 /// Everything the market persists, in `market.json`.
@@ -291,6 +309,9 @@ pub struct MarketState {
     pub listings: BTreeMap<String, Listing>,
     #[serde(default)]
     pub orders: BTreeMap<String, Order>,
+    /// Buyers' own machine images, kept on the edge (`crate::vms`).
+    #[serde(default)]
+    pub uploads: BTreeMap<String, Upload>,
 }
 
 /// Market failures, mapped onto HTTP statuses by
@@ -347,6 +368,16 @@ pub fn fee_for(amount: u64, bps: u32) -> u64 {
     u64::try_from(fee).unwrap_or(amount)
 }
 
+/// The platform's cut for an order of `kind`: the operator's rate, except on
+/// a machine, which is always split half and half ([`VM_FEE_BPS`]).
+#[must_use]
+pub const fn fee_bps_for(kind: Kind, operator_bps: u32) -> u32 {
+    match kind {
+        Kind::Vm => VM_FEE_BPS,
+        Kind::Storage | Kind::Compute => operator_bps,
+    }
+}
+
 /// What one order costs and how it splits.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct Quote {
@@ -387,7 +418,11 @@ fn pending_live(order: &Order, now: u64) -> bool {
 
 /// One side of an account's order history: live orders first, then newest
 /// first, at most [`ACCOUNT_HISTORY`] of them.
-fn history<'a>(orders: impl Iterator<Item = &'a Order>, now: u64) -> Vec<OrderView> {
+fn history<'a>(
+    orders: impl Iterator<Item = &'a Order>,
+    now: u64,
+    vm_domain: Option<&str>,
+) -> Vec<OrderView> {
     let mut orders: Vec<&Order> = orders.collect();
     orders.sort_by_key(|o| {
         let live = paid_live(o, now) || pending_live(o, now);
@@ -396,7 +431,7 @@ fn history<'a>(orders: impl Iterator<Item = &'a Order>, now: u64) -> Vec<OrderVi
     orders
         .into_iter()
         .take(ACCOUNT_HISTORY)
-        .map(|o| OrderView::of(o, now))
+        .map(|o| OrderView::of(o, now, vm_domain))
         .collect()
 }
 
@@ -462,9 +497,20 @@ pub fn reserved(state: &MarketState, listing_id: &str, now: u64) -> u64 {
         .orders
         .values()
         .filter(|o| o.listing_id == listing_id)
-        .filter(|o| paid_live(o, now) || pending_live(o, now) || holds_volume(o))
+        .filter(|o| {
+            paid_live(o, now) || pending_live(o, now) || holds_volume(o) || holds_replicas(o)
+        })
         .map(|o| o.quantity)
         .sum()
+}
+
+/// Whether a machine order's replicas may still be running. A lapsed order
+/// keeps its replicas reserved until the reconciler has halted every one of
+/// them, so the host is never sold more machines than it can start.
+fn holds_replicas(order: &Order) -> bool {
+    order.status == OrderStatus::Paid
+        && order.kind == Kind::Vm
+        && order.vm.as_ref().is_some_and(|vm| vm.created && !vm.halted)
 }
 
 /// Whether a storage order's claim may still exist. The volume holds the
@@ -511,6 +557,8 @@ pub struct Entitlements {
     /// vCPU-hours of compute credit. This is a ledger entry only: nothing
     /// meters or schedules against it yet.
     pub compute_vcpu_hours: u64,
+    /// Virtual machine replicas it is paying for.
+    pub vm_replicas: u64,
     /// The soonest `expires_at` among the live orders, if any lapses.
     pub next_expiry: Option<u64>,
 }
@@ -528,6 +576,7 @@ pub fn entitlements(state: &MarketState, buyer: &str, now: u64) -> Entitlements 
             Kind::Compute => {
                 out.compute_vcpu_hours = out.compute_vcpu_hours.saturating_add(o.quantity);
             }
+            Kind::Vm => out.vm_replicas = out.vm_replicas.saturating_add(o.quantity),
         }
         if let Some(e) = o.expires_at {
             out.next_expiry = Some(out.next_expiry.map_or(e, |n| n.min(e)));
@@ -582,6 +631,52 @@ pub fn pending_provisions(state: &MarketState, now: u64) -> Vec<Provision> {
                 gib: o.quantity,
             })
         })
+        .collect()
+}
+
+/// Paid, live machine orders whose replicas do not exist yet, resolved to
+/// what the reconciler creates. `resolve` turns the order's image id into a
+/// disk source, its smallest disk and memory and its firmware; an order whose
+/// image no longer resolves (an upload deleted under it, a catalogue entry the
+/// operator removed) or whose buyer cannot name a namespace is skipped and
+/// stays paid, for the operator to look at.
+#[must_use]
+pub fn pending_vms(
+    state: &MarketState,
+    now: u64,
+    resolve: impl Fn(&Order, &VmOrder) -> Option<crate::vms::Resolved>,
+) -> Vec<VmProvision> {
+    state
+        .orders
+        .values()
+        .filter(|o| o.kind == Kind::Vm && paid_live(o, now))
+        .filter_map(|o| {
+            let vm = o.vm.as_ref().filter(|vm| !vm.created)?;
+            let image = resolve(o, vm)?;
+            Some(VmProvision {
+                order_id: o.id.clone(),
+                namespace: namespace_for(&o.buyer)?,
+                host: o.seller.clone(),
+                replicas: o.quantity,
+                source: image.source,
+                disk_gib: image.disk_gib,
+                memory_mib: image.memory_mib,
+                efi: image.efi,
+                user_data: vm.user_data.clone(),
+            })
+        })
+        .collect()
+}
+
+/// Lapsed machine orders whose replicas are still set to run:
+/// `(order id, namespace, replica count)`.
+#[must_use]
+pub fn lapsed_vms(state: &MarketState, now: u64) -> Vec<(String, String, u64)> {
+    state
+        .orders
+        .values()
+        .filter(|o| holds_replicas(o) && !paid_live(o, now))
+        .filter_map(|o| Some((o.id.clone(), namespace_for(&o.buyer)?, o.quantity)))
         .collect()
 }
 
@@ -834,10 +929,26 @@ pub struct OrderView {
     pub expired: bool,
     /// `<namespace>/<claim>` once a storage order's volume exists.
     pub volume: Option<String>,
+    /// A machine order's image, name and address. Absent on other kinds.
+    pub vm: Option<VmView>,
+}
+
+/// A machine order as either party sees it. The cloud-init is not echoed: it
+/// may carry a password.
+#[derive(Debug, Serialize)]
+pub struct VmView {
+    pub image: String,
+    pub name: String,
+    /// `https://<order>.<vm-domain>`, when the edge publishes machines.
+    pub address: Option<String>,
+    /// The replicas exist on the host.
+    pub created: bool,
+    /// The order lapsed and every replica was stopped.
+    pub halted: bool,
 }
 
 impl OrderView {
-    fn of(o: &Order, now: u64) -> Self {
+    fn of(o: &Order, now: u64, vm_domain: Option<&str>) -> Self {
         Self {
             id: o.id.clone(),
             listing_id: o.listing_id.clone(),
@@ -854,6 +965,15 @@ impl OrderView {
             expires_at: o.expires_at,
             expired: o.status == OrderStatus::Paid && !paid_live(o, now),
             volume: o.volume.clone(),
+            vm: o.vm.as_ref().map(|vm| VmView {
+                image: vm.image.clone(),
+                name: vm.name.clone(),
+                address: vm_domain
+                    .filter(|_| vm.service_ip.is_some())
+                    .map(|d| format!("https://{}.{d}", crate::vms::stem(&o.id))),
+                created: vm.created,
+                halted: vm.halted,
+            }),
         }
     }
 }
@@ -870,6 +990,13 @@ pub struct AccountView {
     /// Whether it is enrolled and sharing compute, which is what lets it list
     /// compute.
     pub can_sell_compute: bool,
+    /// Whether it is enrolled and hosting machines, which is what lets it list
+    /// them. Always false on an edge that runs no machines.
+    pub can_host_vms: bool,
+    /// The platform's share of a machine sale, when the edge runs machines.
+    pub vm_fee_bps: Option<u32>,
+    /// The buyer's own machine images on the edge.
+    pub uploads: Vec<UploadView>,
     pub listings: Vec<OwnListing>,
     pub entitlements: Entitlements,
     pub purchases: Vec<OrderView>,
@@ -912,6 +1039,15 @@ pub struct NewListing {
 pub struct NewOrder {
     pub listing_id: String,
     pub quantity: u64,
+    /// A machine order's image: a catalogue id or one of the buyer's uploads.
+    #[serde(default)]
+    pub image: Option<String>,
+    /// A machine order's display name.
+    #[serde(default)]
+    pub name: Option<String>,
+    /// A machine order's cloud-init, optional.
+    #[serde(default)]
+    pub user_data: Option<String>,
 }
 
 // ── the market ───────────────────────────────────────────────────────────
@@ -936,6 +1072,9 @@ pub struct MarketOpts {
     /// The hardware catalogue (`crate::hardware`), when the edge sells boxes
     /// and gateways. Unset, `/market/hardware*` answers 503.
     pub hardware_catalogue: Option<String>,
+    /// Virtual machines (`crate::vms`), when the edge's mesh runs KubeVirt.
+    /// Unset, nobody can list or order a machine.
+    pub vms: Option<crate::vms::VmOpts>,
 }
 
 pub struct Market {
@@ -953,6 +1092,29 @@ pub fn valid_box_uuid(s: &str) -> bool {
             8 | 13 | 18 | 23 => b == b'-',
             _ => b.is_ascii_digit() || (b'a'..=b'f').contains(&b),
         })
+}
+
+/// 32 random bytes as 64 hex characters: an upload's ticket or fetch token.
+fn random_capability() -> Result<String, MarketError> {
+    let mut bytes = [0u8; 32];
+    SystemRandom::new()
+        .fill(&mut bytes)
+        .map_err(|_| MarketError::Store("no randomness".to_string()))?;
+    Ok(bytes.iter().map(|b| format!("{b:02x}")).collect())
+}
+
+/// Drop uploads whose ticket lapsed with no file stored; their ids.
+pub fn sweep_uploads(state: &mut MarketState, now: u64) -> Vec<String> {
+    let dropped: Vec<String> = state
+        .uploads
+        .values()
+        .filter(|u| !u.stored() && now >= u.created_at + crate::vms::UPLOAD_TICKET_SECS)
+        .map(|u| u.id.clone())
+        .collect();
+    for id in &dropped {
+        state.uploads.remove(id);
+    }
+    dropped
 }
 
 fn random_id(prefix: &str) -> Result<String, MarketError> {
@@ -1034,6 +1196,14 @@ impl Market {
             seller_ready: seller.is_some_and(|s| s.ready),
             can_sell_storage: sharing.allows(id, Kind::Storage),
             can_sell_compute: sharing.allows(id, Kind::Compute),
+            can_host_vms: self.opts.vms.is_some() && sharing.allows(id, Kind::Vm),
+            vm_fee_bps: self.opts.vms.as_ref().map(|_| VM_FEE_BPS),
+            uploads: state
+                .uploads
+                .values()
+                .filter(|u| u.owner == id)
+                .map(UploadView::of)
+                .collect(),
             listings: state
                 .listings
                 .values()
@@ -1049,8 +1219,16 @@ impl Market {
                 })
                 .collect(),
             entitlements: entitlements(&state, id, now),
-            purchases: history(state.orders.values().filter(|o| o.buyer == id), now),
-            sales: history(state.orders.values().filter(|o| o.seller == id), now),
+            purchases: history(
+                state.orders.values().filter(|o| o.buyer == id),
+                now,
+                self.vm_domain(),
+            ),
+            sales: history(
+                state.orders.values().filter(|o| o.seller == id),
+                now,
+                self.vm_domain(),
+            ),
         }
     }
 
@@ -1164,11 +1342,22 @@ impl Market {
         new: NewListing,
         sharing: &Sharing,
     ) -> Result<String, MarketError> {
+        if new.kind == Kind::Vm && self.opts.vms.is_none() {
+            return Err(MarketError::Conflict(
+                "this edge does not run virtual machines",
+            ));
+        }
         if !sharing.allows(seller, new.kind) {
             return Err(MarketError::Conflict(match new.kind {
                 Kind::Storage => "only an appliance sharing its storage on the mesh can sell it",
                 Kind::Compute => "only an appliance sharing its compute on the mesh can sell it",
+                Kind::Vm => {
+                    "only an appliance sharing its storage on the mesh can host virtual machines"
+                }
             }));
+        }
+        if new.kind == Kind::Vm && new.capacity > crate::vms::MAX_HOSTED_REPLICAS {
+            return Err(MarketError::Invalid("a box can host at most 50 replicas"));
         }
         // The price and capacity are validated as an order of one unit and the
         // whole capacity would be, so a listing nobody could ever buy is
@@ -1337,7 +1526,7 @@ impl Market {
             if !sharing.allows(&listing.seller, listing.kind) {
                 return Err(MarketError::NotFound);
             }
-            if listing.kind == Kind::Storage && namespace_for(buyer).is_none() {
+            if matches!(listing.kind, Kind::Storage | Kind::Vm) && namespace_for(buyer).is_none() {
                 return Err(MarketError::Invalid(
                     "appliance id cannot name a storage namespace",
                 ));
@@ -1345,7 +1534,12 @@ impl Market {
             if listing.seller == buyer {
                 return Err(MarketError::Invalid("cannot buy your own listing"));
             }
-            let q = quote(listing.unit_price, new.quantity, self.opts.fee_bps)?;
+            let vm = self.vm_order_of(&state, buyer, listing.kind, &new)?;
+            let q = quote(
+                listing.unit_price,
+                new.quantity,
+                fee_bps_for(listing.kind, self.opts.fee_bps),
+            )?;
             let unpaid = state
                 .orders
                 .values()
@@ -1377,6 +1571,7 @@ impl Market {
                 expires_at: None,
                 volume: None,
                 claim: None,
+                vm,
             };
             let mut next = state.clone();
             expire_stale(&mut next, now);
@@ -1437,6 +1632,314 @@ impl Market {
 
     pub fn storage_class(&self) -> &str {
         &self.opts.storage_class
+    }
+
+    // ── virtual machines (crate::vms) ───────────────────────────────────
+
+    /// The machine settings, when this edge runs machines.
+    #[must_use]
+    pub fn vm_opts(&self) -> Option<&crate::vms::VmOpts> {
+        self.opts.vms.as_ref()
+    }
+
+    /// The domain machines are published under, when it is set.
+    #[must_use]
+    pub fn vm_domain(&self) -> Option<&str> {
+        self.opts.vms.as_ref().and_then(|v| v.domain.as_deref())
+    }
+
+    /// The image catalogue, read per call like the hardware catalogue.
+    ///
+    /// # Errors
+    /// [`MarketError::Unconfigured`] when the edge runs no machines or its
+    /// catalogue file does not load.
+    pub fn vm_catalogue(&self) -> Result<crate::vms::Catalogue, MarketError> {
+        let opts = self.opts.vms.as_ref().ok_or(MarketError::Unconfigured)?;
+        crate::vms::Catalogue::load(opts.catalogue.as_deref()).map_err(|e| {
+            tracing::error!(target: Action::Market.target(), "virtual machine catalogue: {e}");
+            MarketError::Unconfigured
+        })
+    }
+
+    /// The machine half of a new order, checked: `None` for any other kind,
+    /// which may not carry machine fields.
+    fn vm_order_of(
+        &self,
+        state: &MarketState,
+        buyer: &str,
+        kind: Kind,
+        new: &NewOrder,
+    ) -> Result<Option<VmOrder>, MarketError> {
+        if kind != Kind::Vm {
+            if new.image.is_some() || new.name.is_some() || new.user_data.is_some() {
+                return Err(MarketError::Invalid(
+                    "an image, a name and cloud-init belong on virtual machine orders only",
+                ));
+            }
+            return Ok(None);
+        }
+        // An edge that stopped running machines has nothing to sell.
+        if self.opts.vms.is_none() {
+            return Err(MarketError::NotFound);
+        }
+        if new.quantity > crate::vms::MAX_REPLICAS {
+            return Err(MarketError::Invalid("at most 10 replicas in one order"));
+        }
+        let image = new
+            .image
+            .as_deref()
+            .ok_or(MarketError::Invalid("pick an image for the machine"))?;
+        let name = new
+            .name
+            .as_deref()
+            .ok_or(MarketError::Invalid("give the machine a name"))?;
+        if !crate::vms::display_name_ok(name) {
+            return Err(MarketError::Invalid(
+                "a machine's name is 1 to 40 printable characters",
+            ));
+        }
+        if let Some(user_data) = &new.user_data {
+            crate::vms::check_user_data(user_data)?;
+        }
+        let known = if image.starts_with("upl_") {
+            state
+                .uploads
+                .get(image)
+                .is_some_and(|u| u.owner == buyer && u.stored())
+        } else {
+            self.vm_catalogue()?.image(image).is_some()
+        };
+        if !known {
+            return Err(MarketError::Invalid("no such image"));
+        }
+        Ok(Some(VmOrder {
+            image: image.to_string(),
+            name: name.to_string(),
+            user_data: new.user_data.clone(),
+            created: false,
+            halted: false,
+            service_ip: None,
+        }))
+    }
+
+    /// Machine orders that are paid and live but have no replicas yet.
+    pub async fn pending_vms(&self) -> Vec<VmProvision> {
+        let Some(opts) = &self.opts.vms else {
+            return Vec::new();
+        };
+        let Ok(catalogue) = self.vm_catalogue() else {
+            return Vec::new();
+        };
+        let state = self.state.lock().await;
+        pending_vms(&state, now_secs(), |o, vm| {
+            opts.resolve(&catalogue, &state.uploads, &o.buyer, &vm.image)
+        })
+    }
+
+    /// Lapsed machine orders whose replicas are still set to run.
+    pub async fn lapsed_vms(&self) -> Vec<(String, String, u64)> {
+        lapsed_vms(&*self.state.lock().await, now_secs())
+    }
+
+    /// Record that every replica of `order_id` and its Service exist.
+    pub async fn mark_vm_created(
+        &self,
+        order_id: &str,
+        service_ip: Option<String>,
+    ) -> Result<(), MarketError> {
+        let mut state = self.state.lock().await;
+        let mut next = state.clone();
+        match next.orders.get_mut(order_id).and_then(|o| o.vm.as_mut()) {
+            Some(vm) => {
+                vm.created = true;
+                vm.service_ip = service_ip;
+            }
+            None => return Ok(()),
+        }
+        self.commit(&mut state, next).await
+    }
+
+    /// Record that every replica of a lapsed `order_id` is halted, which
+    /// returns them to the listing.
+    pub async fn mark_vm_halted(&self, order_id: &str) -> Result<(), MarketError> {
+        let mut state = self.state.lock().await;
+        let mut next = state.clone();
+        match next.orders.get_mut(order_id).and_then(|o| o.vm.as_mut()) {
+            Some(vm) => vm.halted = true,
+            None => return Ok(()),
+        }
+        self.commit(&mut state, next).await
+    }
+
+    /// `(hostname, http://<service ip>)` for every live machine order the
+    /// edge publishes, sorted, for the Traefik file.
+    pub async fn vm_routes(&self) -> Vec<(String, String)> {
+        let Some(domain) = self.vm_domain() else {
+            return Vec::new();
+        };
+        let now = now_secs();
+        let state = self.state.lock().await;
+        let mut routes: Vec<(String, String)> = state
+            .orders
+            .values()
+            .filter(|o| o.kind == Kind::Vm && paid_live(o, now))
+            .filter_map(|o| {
+                let vm = o.vm.as_ref().filter(|vm| vm.created && !vm.halted)?;
+                let ip = vm.service_ip.as_deref()?;
+                ip.parse::<std::net::IpAddr>().ok()?;
+                Some((
+                    format!("{}.{domain}", crate::vms::stem(&o.id)),
+                    format!("http://{ip}:80"),
+                ))
+            })
+            .collect();
+        routes.sort();
+        routes
+    }
+
+    /// `buyer`'s machine orders that have replicas to report on:
+    /// `(order id, namespace, replicas)`.
+    pub async fn vm_orders_of(&self, buyer: &str) -> Vec<(String, String, u64)> {
+        let state = self.state.lock().await;
+        state
+            .orders
+            .values()
+            .filter(|o| o.buyer == buyer && o.kind == Kind::Vm && o.status == OrderStatus::Paid)
+            .filter(|o| o.vm.as_ref().is_some_and(|vm| vm.created))
+            .filter_map(|o| Some((o.id.clone(), namespace_for(&o.buyer)?, o.quantity)))
+            .collect()
+    }
+
+    /// Reserve an upload for `owner`: its id and the single-use ticket the box
+    /// streams the file to.
+    ///
+    /// # Errors
+    /// Machines are off, the name is not one, or the owner already keeps
+    /// [`crate::vms::MAX_UPLOADS_PER_BUYER`] images.
+    pub async fn upload_ticket(
+        &self,
+        owner: &str,
+        name: &str,
+        efi: bool,
+    ) -> Result<(String, String), MarketError> {
+        if self.opts.vms.is_none() {
+            return Err(MarketError::Unconfigured);
+        }
+        if !crate::vms::display_name_ok(name) {
+            return Err(MarketError::Invalid(
+                "an image's name is 1 to 40 printable characters",
+            ));
+        }
+        if namespace_for(owner).is_none() {
+            return Err(MarketError::Invalid(
+                "appliance id cannot name a storage namespace",
+            ));
+        }
+        let now = now_secs();
+        let mut state = self.state.lock().await;
+        let mut next = state.clone();
+        sweep_uploads(&mut next, now);
+        let held = next.uploads.values().filter(|u| u.owner == owner).count();
+        if held >= crate::vms::MAX_UPLOADS_PER_BUYER {
+            return Err(MarketError::Conflict(
+                "you already keep three images; remove one first",
+            ));
+        }
+        let id = random_id("upl")?;
+        let ticket = random_capability()?;
+        next.uploads.insert(
+            id.clone(),
+            Upload {
+                id: id.clone(),
+                owner: owner.to_string(),
+                name: name.to_string(),
+                ticket: Some(ticket.clone()),
+                token: random_capability()?,
+                created_at: now,
+                size: None,
+                virtual_size: None,
+                efi,
+            },
+        );
+        self.commit(&mut state, next).await?;
+        Ok((id, ticket))
+    }
+
+    /// The upload waiting for `ticket`, if it is still waiting.
+    pub async fn upload_for_ticket(&self, ticket: &str) -> Option<Upload> {
+        let now = now_secs();
+        let state = self.state.lock().await;
+        state
+            .uploads
+            .values()
+            .find(|u| u.ticket.as_deref() == Some(ticket))
+            .filter(|u| !u.stored() && now < u.created_at + crate::vms::UPLOAD_TICKET_SECS)
+            .cloned()
+    }
+
+    /// Record that `id`'s file is on disk. Spends its ticket.
+    pub async fn upload_stored(
+        &self,
+        id: &str,
+        size: u64,
+        virtual_size: u64,
+    ) -> Result<(), MarketError> {
+        let mut state = self.state.lock().await;
+        let mut next = state.clone();
+        let upload = next.uploads.get_mut(id).ok_or(MarketError::NotFound)?;
+        upload.ticket = None;
+        upload.size = Some(size);
+        upload.virtual_size = Some(virtual_size);
+        self.commit(&mut state, next).await
+    }
+
+    /// The stored upload `token` names. CDI's importer is the only caller
+    /// that knows a token.
+    pub async fn upload_for_token(&self, token: &str) -> Option<Upload> {
+        let state = self.state.lock().await;
+        state
+            .uploads
+            .values()
+            .find(|u| u.token == token && u.stored())
+            .cloned()
+    }
+
+    /// Forget one of `owner`'s uploads. Refused while an order that has not
+    /// imported it yet still names it; the caller deletes the file.
+    ///
+    /// # Errors
+    /// Not the owner's, or still needed.
+    pub async fn remove_upload(&self, owner: &str, id: &str) -> Result<(), MarketError> {
+        let now = now_secs();
+        let mut state = self.state.lock().await;
+        if !state.uploads.get(id).is_some_and(|u| u.owner == owner) {
+            return Err(MarketError::NotFound);
+        }
+        let needed = state.orders.values().any(|o| {
+            o.vm.as_ref()
+                .is_some_and(|vm| vm.image == id && !vm.created)
+                && (pending_live(o, now) || paid_live(o, now))
+        });
+        if needed {
+            return Err(MarketError::Conflict(
+                "a machine that is still being set up uses this image",
+            ));
+        }
+        let mut next = state.clone();
+        next.uploads.remove(id);
+        self.commit(&mut state, next).await
+    }
+
+    /// Drop uploads whose ticket ran out before a file arrived. Returns their
+    /// ids, so the caller can remove any partial file.
+    pub async fn sweep_uploads(&self) -> Result<Vec<String>, MarketError> {
+        let mut state = self.state.lock().await;
+        let mut next = state.clone();
+        let dropped = sweep_uploads(&mut next, now_secs());
+        if !dropped.is_empty() {
+            self.commit(&mut state, next).await?;
+        }
+        Ok(dropped)
     }
 
     /// Storage orders that are paid and live but have no volume yet.
@@ -1535,6 +2038,7 @@ mod tests {
             expires_at: None,
             volume: None,
             claim: None,
+            vm: None,
         }
     }
 
@@ -1657,6 +2161,7 @@ mod tests {
             window_start: "23:00".to_string(),
             window_end: "07:00".to_string(),
             tz: "UTC".to_string(),
+            host_vms: share,
         };
         let sharing = Sharing::from_windows(&BTreeMap::from([
             ("on".to_string(), w(true)),
@@ -1665,11 +2170,157 @@ mod tests {
         assert!(sharing.allows("on", Kind::Storage) && sharing.allows("on", Kind::Compute));
         assert!(sharing.allows("off", Kind::Storage) && !sharing.allows("off", Kind::Compute));
         assert!(!sharing.allows("absent", Kind::Storage));
+        // Hosting machines is its own opt-in, sent only by a box whose shared
+        // storage is on.
+        assert!(sharing.allows("on", Kind::Vm) && !sharing.allows("off", Kind::Vm));
 
         // The operator's opt-in narrows it: a revoked seller sells nothing.
         let sharing = sharing.only_sellers(|seller| seller == "off");
         assert!(!sharing.allows("on", Kind::Storage) && !sharing.allows("on", Kind::Compute));
+        assert!(!sharing.allows("on", Kind::Vm));
         assert!(sharing.allows("off", Kind::Storage));
+    }
+
+    fn vm_order(id: &str, qty: u64, buyer: &str, expires_at: Option<u64>) -> Order {
+        let mut o = paid(id, Kind::Vm, qty, buyer, expires_at);
+        o.fee = fee_for(o.amount, VM_FEE_BPS);
+        o.vm = Some(VmOrder {
+            image: "debian-13".to_string(),
+            name: "web".to_string(),
+            user_data: None,
+            created: false,
+            halted: false,
+            service_ip: None,
+        });
+        o
+    }
+
+    fn vm_opts() -> crate::vms::VmOpts {
+        crate::vms::VmOpts {
+            catalogue: None,
+            shape: crate::vms::Shape::default(),
+            storage_class: None,
+            upload_dir: "/nonexistent".to_string(),
+            max_upload_bytes: 1 << 30,
+            fetch_base: "https://register.example".to_string(),
+            domain: Some("vm.example".to_string()),
+            routes_file: None,
+        }
+    }
+
+    #[test]
+    fn a_machine_is_split_half_and_half_whatever_the_operator_set() {
+        assert_eq!(fee_bps_for(Kind::Vm, 400), 5_000);
+        assert_eq!(fee_bps_for(Kind::Storage, 400), 400);
+        let q = quote(799, 3, fee_bps_for(Kind::Vm, DEFAULT_FEE_BPS)).unwrap();
+        assert_eq!((q.amount, q.fee, q.seller_net), (2397, 1199, 1198));
+    }
+
+    #[test]
+    fn a_paid_machine_order_is_created_once_and_its_replicas_hold_the_host() {
+        let catalogue = crate::vms::Catalogue::load(None).unwrap();
+        let opts = vm_opts();
+        let mut st = state_of(vec![vm_order(
+            "ord_0123456789abcdef",
+            3,
+            "buyer-box",
+            Some(100),
+        )]);
+        st.listings
+            .insert("lst_1".to_string(), listing("lst_1", true));
+        let resolve =
+            |o: &Order, vm: &VmOrder| opts.resolve(&catalogue, &st.uploads, &o.buyer, &vm.image);
+        let todo = pending_vms(&st, 10, resolve);
+        assert_eq!(todo.len(), 1);
+        assert_eq!(todo[0].namespace, "market-buyer-box");
+        assert_eq!(todo[0].host, "s");
+        assert_eq!(todo[0].replicas, 3);
+        assert!(matches!(todo[0].source, crate::vms::Source::Http(_)));
+        // While paid it holds three of the listing's units.
+        assert_eq!(reserved(&st, "lst_1", 10), 3);
+
+        let vm = st
+            .orders
+            .get_mut("ord_0123456789abcdef")
+            .unwrap()
+            .vm
+            .as_mut()
+            .unwrap();
+        vm.created = true;
+        vm.service_ip = Some("10.43.0.9".to_string());
+        assert!(pending_vms(&st, 10, |_, _| None).is_empty());
+        // Lapsed but still running: held, and due to be halted.
+        assert_eq!(reserved(&st, "lst_1", 200), 3);
+        assert_eq!(
+            lapsed_vms(&st, 200),
+            vec![(
+                "ord_0123456789abcdef".to_string(),
+                "market-buyer-box".to_string(),
+                3
+            )]
+        );
+        // Halted: the host gets its replicas back.
+        st.orders
+            .get_mut("ord_0123456789abcdef")
+            .unwrap()
+            .vm
+            .as_mut()
+            .unwrap()
+            .halted = true;
+        assert_eq!(reserved(&st, "lst_1", 200), 0);
+        assert!(lapsed_vms(&st, 200).is_empty());
+        assert_eq!(entitlements(&st, "buyer-box", 10).vm_replicas, 3);
+        assert_eq!(entitlements(&st, "buyer-box", 200).vm_replicas, 0);
+    }
+
+    #[test]
+    fn an_order_for_an_upload_imports_it_from_the_edge() {
+        let catalogue = crate::vms::Catalogue::load(None).unwrap();
+        let opts = vm_opts();
+        let mut st = state_of(vec![]);
+        let upload = |owner: &str, stored: bool| Upload {
+            id: "upl_1".to_string(),
+            owner: owner.to_string(),
+            name: "mine".to_string(),
+            ticket: None,
+            token: "ab".repeat(32),
+            created_at: 0,
+            size: stored.then_some(1),
+            virtual_size: stored.then_some(40 * 1024 * 1024 * 1024),
+            efi: true,
+        };
+        st.uploads
+            .insert("upl_1".to_string(), upload("buyer-box", true));
+        let r = opts
+            .resolve(&catalogue, &st.uploads, "buyer-box", "upl_1")
+            .unwrap();
+        assert_eq!(
+            r.source,
+            crate::vms::Source::Http(format!(
+                "https://register.example/market/vm-images/fetch/{}",
+                "ab".repeat(32)
+            ))
+        );
+        assert_eq!(r.disk_gib, 40);
+        assert!(r.efi);
+        // Nobody else's upload, and nothing not yet stored.
+        assert!(opts
+            .resolve(&catalogue, &st.uploads, "other", "upl_1")
+            .is_none());
+        st.uploads
+            .insert("upl_1".to_string(), upload("buyer-box", false));
+        assert!(opts
+            .resolve(&catalogue, &st.uploads, "buyer-box", "upl_1")
+            .is_none());
+        // An unstored upload goes once its ticket lapses; a stored one stays.
+        assert!(sweep_uploads(&mut st, 10).is_empty());
+        assert_eq!(
+            sweep_uploads(&mut st, crate::vms::UPLOAD_TICKET_SECS),
+            ["upl_1"]
+        );
+        st.uploads
+            .insert("upl_2".to_string(), upload("buyer-box", true));
+        assert!(sweep_uploads(&mut st, u64::MAX / 2).is_empty());
     }
 
     #[test]
@@ -1920,6 +2571,7 @@ mod tests {
             fee_bps: DEFAULT_FEE_BPS,
             storage_class: DEFAULT_STORAGE_CLASS.into(),
             hardware_catalogue: None,
+            vms: None,
         })
         .await
         .unwrap();
@@ -2018,7 +2670,7 @@ mod tests {
             .collect();
         orders.push(paid("live", Kind::Storage, 1, "b", Some(now + 1)));
         let st = state_of(orders);
-        let view = history(st.orders.values(), now);
+        let view = history(st.orders.values(), now, None);
         assert_eq!(view.len(), ACCOUNT_HISTORY);
         assert_eq!(view[0].id, "live");
         // Then newest first.

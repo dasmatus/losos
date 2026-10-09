@@ -32,6 +32,8 @@ oddiele `/persist`.
   zariadeniam.
 - [Trh](/in-depth/market.md). Predaj disku a CPU, ktoré zariadenie už poskytuje
   (plánovaný).
+- [Virtuálne stroje](/in-depth/virtual-machines.md). Prenájom strojov v mesh
+  a hosťovanie strojov iných zariadení.
 - [Master proxy](/in-depth/master-proxy.md). Prístup k zariadeniu z internetu bez
   otvorenia portu.
 - [Federácia edge](/in-depth/edge-federation.md). Vlastný edge v LAN, preposielaný cez oficiálne.

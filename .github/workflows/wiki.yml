@@ -44,6 +44,7 @@ jobs:
             [Administration]=in-depth/administration
             [Mesh]=in-depth/mesh
             [Market]=in-depth/market
+            [Virtual-Machines]=in-depth/virtual-machines
             [Master-Proxy]=in-depth/master-proxy
             [Edge-Federation]=in-depth/edge-federation
             [Lab]=in-depth/lab

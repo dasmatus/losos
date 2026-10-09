@@ -32,6 +32,8 @@ erhalten, und zwar auf einer verschlüsselten Partition `/persist`.
 - [Mesh](/in-depth/mesh.md). Speicher und Rechenleistung für andere Boxen bereitstellen.
 - [Marktplatz](/in-depth/market.md). Den Speicher und die CPU verkaufen, die eine
   Box schon teilt (geplant).
+- [Virtuelle Maschinen](/in-depth/virtual-machines.md). Maschinen im Mesh mieten
+  und Maschinen anderer Boxen hosten.
 - [Master-Proxy](/in-depth/master-proxy.md). Die Box aus dem Internet erreichen, ohne
   einen Port zu öffnen.
 - [Edge-Föderation](/in-depth/edge-federation.md). Deine eigene Edge im LAN, weitergeleitet über die offiziellen.

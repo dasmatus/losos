@@ -12,6 +12,7 @@ import { BackupPane } from "./settings/pane-backup";
 import { HardwarePane } from "./settings/pane-hardware";
 import { HistoryPane } from "./settings/pane-history";
 import { LookPane } from "./settings/pane-look";
+import { MachinesPane } from "./settings/pane-machines";
 import { MarketPane } from "./settings/pane-market";
 import { MeshPane } from "./settings/pane-mesh";
 import { NetworkPane } from "./settings/pane-network";
@@ -102,6 +103,9 @@ function Pane({
       // segment. Kept so the pane stays compiled and type-checked, and so
       // opening it is one flag away.
       return <MarketPane form={form} />;
+    case "machines":
+      // No draft, no Apply bar: every action is its own market request.
+      return <MachinesPane locked={form.locked} />;
     case "apps":
       return <AppsPane form={form} />;
     case "network":

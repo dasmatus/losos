@@ -108,17 +108,30 @@ let
   # file); we need `providers.file.directory` so Traefik watches the dir the
   # registrar drops losos.yml into alongside the static register.yml.
   tomlFmt = pkgs.formats.toml { };
-  staticCfg = tomlFmt.generate "losos-traefik-static.toml" {
-    entryPoints.web.address = ":80";
-    entryPoints.web.http.redirections.entryPoint.to = "websecure";
-    entryPoints.web.http.redirections.entryPoint.scheme = "https";
-    entryPoints.websecure.address = ":443";
-    providers.file.directory = "/etc/traefik/dynamic";
-    certificatesResolvers.le.acme.email =
-      if cfg.acmeEmail == null then "unconfigured@losos.cfd" else cfg.acmeEmail;
-    certificatesResolvers.le.acme.storage = "/var/lib/traefik/acme.json";
-    certificatesResolvers.le.acme.tlsChallenge = { };
-  };
+  staticCfg = tomlFmt.generate "losos-traefik-static.toml" (
+    lib.recursiveUpdate
+      {
+        entryPoints.web.address = ":80";
+        entryPoints.web.http.redirections.entryPoint.to = "websecure";
+        entryPoints.web.http.redirections.entryPoint.scheme = "https";
+        entryPoints.websecure.address = ":443";
+        providers.file.directory = "/etc/traefik/dynamic";
+        certificatesResolvers.le.acme.email =
+          if cfg.acmeEmail == null then "unconfigured@losos.cfd" else cfg.acmeEmail;
+        certificatesResolvers.le.acme.storage = "/var/lib/traefik/acme.json";
+        certificatesResolvers.le.acme.tlsChallenge = { };
+      }
+      # A disk image upload is gigabytes, and Traefik v3 cuts any request
+      # whose body takes longer than the entry point's readTimeout (60 s by
+      # default). Raised only on an edge that takes uploads; the registrar's
+      # own idle timeout (server/vm.rs) still drops a client that stops
+      # sending.
+      (
+        lib.optionalAttrs cfg.vms.enable {
+          entryPoints.websecure.transport.respondingTimeouts.readTimeout = "6h";
+        }
+      )
+  );
 
   # The one static route: register.<domain> → the registrar's loopback API.
   # Has a cert before any appliance registers (avoids the register/route
@@ -171,6 +184,26 @@ let
             servers:
               - url: "http://127.0.0.1:${toString cfg.registrarApiPort}"
   '';
+
+  # The two machine image transfers (backend-registrar/src/server/vm.rs)
+  # cannot go through `register-buffer`: a disk image is gigabytes, and
+  # buffering it would hold all of it in Traefik first. This router takes
+  # the two path prefixes ahead of `register` (the longer rule wins) and
+  # keeps the per-client cap from register.yml (one file provider, one
+  # namespace); the registrar holds them to four transfers at once, its
+  # upload size limit and an idle timeout of its own.
+  vmTransferYml = (pkgs.formats.yaml { }).generate "losos-register-vm-transfer.yml" {
+    http.routers.register-vm-transfer = {
+      rule = "Host(`${registerDomain}`) && (PathPrefix(`/market/vm-images/upload/`) || PathPrefix(`/market/vm-images/fetch/`))";
+      service = "register";
+      middlewares = [ "register-per-client" ];
+      entryPoints = [ "websecure" ];
+      tls = {
+        certResolver = "le";
+        domains = [ { main = registerDomain; } ];
+      };
+    };
+  };
 
   # tenants.json: id → {hostname, cluster, token_file}. token_file is a PATH
   # (not the secret), so this file can live in the world-readable store — the
@@ -286,6 +319,31 @@ let
             "namespaces"
             "persistentvolumeclaims"
           ];
+          verbs = [
+            "get"
+            "create"
+          ];
+        }
+      ]
+      # Machine fulfilment (backend-registrar/src/server/vm.rs): one
+      # VirtualMachine per paid replica and a Service in front, in the same
+      # `market-<buyer>` namespaces. `patch` is the halt of a lapsed order
+      # (runStrategy only) and `list` the buyer's status page; still nothing
+      # that deletes.
+      ++ lib.optionals cfg.vms.enable [
+        {
+          apiGroups = [ "kubevirt.io" ];
+          resources = [ "virtualmachines" ];
+          verbs = [
+            "get"
+            "list"
+            "create"
+            "patch"
+          ];
+        }
+        {
+          apiGroups = [ "" ];
+          resources = [ "services" ];
           verbs = [
             "get"
             "create"
@@ -637,7 +695,35 @@ let
       "--market-storage-class"
       cfg.market.storageClass
     ]
-    ++ hardwareArgs "--market-hardware-catalogue";
+    ++ hardwareArgs "--market-hardware-catalogue"
+    ++ vmServeArgs;
+
+  # Machines (losos.edge.vms, modules/edge-vms.nix): the shape of a replica,
+  # where its disk is claimed from, and the origin CDI's importer fetches an
+  # uploaded image back from, which is this registrar's public name.
+  vmServeArgs = lib.optionals cfg.vms.enable (
+    [
+      "--vm-enable"
+      "--vm-cpu"
+      (toString cfg.vms.cpu)
+      "--vm-memory-mib"
+      (toString cfg.vms.memoryMiB)
+      "--vm-disk-gib"
+      (toString cfg.vms.diskGiB)
+      "--vm-storage-class"
+      "losos-vm-local"
+      "--vm-upload-dir"
+      "/var/lib/losos-registrar/vm-images"
+      "--vm-upload-max-gib"
+      (toString cfg.vms.uploadMaxGiB)
+      "--vm-fetch-base"
+      "https://${registerDomain}"
+    ]
+    ++ lib.optionals (cfg.vms.domain != null) [
+      "--vm-domain"
+      cfg.vms.domain
+    ]
+  );
 
   # The DNS half of `serve` (losos.edge.dns.*). Without --dns-zone every
   # /domains/* route answers 503 and no zone file is written.
@@ -872,6 +958,9 @@ in
     systemd.tmpfiles.rules = [
       "d /etc/traefik/dynamic 0755 root root - -"
       "L+ /etc/traefik/dynamic/register.yml - - - - ${toString registerYml}"
+    ]
+    ++ lib.optionals cfg.vms.enable [
+      "L+ /etc/traefik/dynamic/register-vm-transfer.yml - - - - ${toString vmTransferYml}"
     ]
     # The zone directory: root writes (the registrar), knot reads.
     ++ lib.optionals dnsCfg.enable [

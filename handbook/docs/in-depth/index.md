@@ -30,6 +30,8 @@ directories listed in `modules/impermanence.nix` survive, on an encrypted
 - [Mesh](mesh.md). Contributing storage and compute to other boxes.
 - [Market](market.md). Selling the disk and CPU a box already shares
   (planned).
+- [Virtual machines](virtual-machines.md). Renting machines on the mesh and
+  hosting other boxes' machines.
 - [Master proxy](master-proxy.md). Reaching the box from the internet without
   opening a port.
 - [Edge federation](edge-federation.md). Your own edge on the LAN, relayed through the official ones.
