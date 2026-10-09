@@ -157,10 +157,20 @@ export default defineMessages({
     sk: "Každá replika beží mesiac na zariadení, ktoré vyberiete, a po uplynutí mesiaca sa zastaví. Jej disk zostane.",
     de: "Jedes Replikat läuft einen Monat auf der gewählten Box und wird danach angehalten. Seine Festplatte bleibt erhalten.",
   },
+  "machines.start.notOfferedSummary": {
+    en: { one: "{count} system not offered yet", other: "{count} systems not offered yet" },
+    sk: {
+      one: "{count} systém zatiaľ nie je v ponuke",
+      few: "{count} systémy zatiaľ nie sú v ponuke",
+      many: "{count} systémov zatiaľ nie je v ponuke",
+      other: "{count} systémov zatiaľ nie je v ponuke",
+    },
+    de: { one: "{count} System noch nicht im Angebot", other: "{count} Systeme noch nicht im Angebot" },
+  },
   "machines.start.installerOnly": {
-    en: "Not offered yet, because they ship as installers only: {systems}.",
-    sk: "Zatiaľ nie sú v ponuke, pretože existujú len ako inštalátory: {systems}.",
-    de: "Noch nicht im Angebot, weil es sie nur als Installer gibt: {systems}.",
+    en: "These ship as installers only, and the page has no install console yet: {systems}.",
+    sk: "Tieto existujú len ako inštalátory a stránka zatiaľ nemá inštalačnú konzolu: {systems}.",
+    de: "Diese gibt es nur als Installer, und die Seite hat noch keine Installationskonsole: {systems}.",
   },
 
   // ── This box's machines ─────────────────────────────────────────────────

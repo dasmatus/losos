@@ -315,7 +315,7 @@ function StartSection({
           {listings.length > 0 && (
             <NativeSelect
               id={hostId}
-              className="w-56 max-w-full"
+              className="w-72 max-w-full"
               value={listing?.id ?? ""}
               disabled={disabled}
               onChange={(event) => setListingId(event.target.value)}
@@ -409,12 +409,39 @@ function StartSection({
         </Row>
       </Group>
       <FieldError id={problemId}>{problem}</FieldError>
-      <GroupCaption>
-        {t("machines.start.caption")}
-        {catalogue.installer_only.length > 0 &&
-          ` ${t("machines.start.installerOnly", { systems: catalogue.installer_only.join(", ") })}`}
-      </GroupCaption>
+      <GroupCaption>{t("machines.start.caption")}</GroupCaption>
+      <NotOffered catalogue={catalogue} />
     </PaneSection>
+  );
+}
+
+/* The systems Quickemu knows that the edge does not offer, folded away: the
+ * installer-only list runs to dozens of names. A native <details>, which
+ * needs no script and no style the CSP would refuse. */
+function NotOffered({ catalogue }: { catalogue: VmCatalogue }) {
+  const t = useT();
+  const count = catalogue.installer_only.length + catalogue.not_offered.length;
+  if (count === 0) return null;
+  return (
+    <details className="group px-1.5 pt-1 text-[12.5px] leading-snug text-muted" data-testid="machines-not-offered">
+      <summary className="cursor-pointer select-none text-accent hover:underline">
+        {t("machines.start.notOfferedSummary", { count })}
+      </summary>
+      <div className="mt-1.5 space-y-1.5">
+        {catalogue.installer_only.length > 0 && (
+          <p>{t("machines.start.installerOnly", { systems: catalogue.installer_only.join(", ") })}</p>
+        )}
+        {catalogue.not_offered.length > 0 && (
+          <ul className="space-y-0.5">
+            {catalogue.not_offered.map((entry) => (
+              <li key={entry.family}>
+                <span className="numeric text-ink">{entry.family}</span>: {entry.why}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </details>
   );
 }
 
@@ -582,6 +609,7 @@ function ImagesSection({
                 key={fileField}
                 id={fileId}
                 type="file"
+                className="py-[5px] file:mr-3 file:rounded-control file:border-0 file:bg-sunk file:px-2.5 file:py-0.5 file:text-[13px] file:text-ink"
                 accept=".qcow2,.img,application/octet-stream"
                 disabled={disabled}
                 onChange={(event) => pick(event.target.files?.[0] ?? null)}
