@@ -573,7 +573,17 @@ await check('Build with Claude shows the price and balance, and a finished build
   await editor.getByRole('tab', { name: 'Build with Claude' }).click();
   const panel = page.getByTestId('builder-panel');
   await panel.waitFor();
-  assert.match(await page.getByTestId('builder-price').textContent(), /Claude Opus 5\.5: €4\.80 per million tokens read and €24\.00 per million written\. That is Anthropic's price plus 20%\. One build costs at most €3\.60\./);
+  assert.match(await page.getByTestId('builder-price').textContent(), /^€4\.80 per million tokens read and €24\.00 per million written\. One build costs at most €3\.60\.$/);
+  // The price, not how it is made; and the terms what the owner sends is under.
+  const terms = page.getByTestId('builder-terms');
+  assert.match(await terms.textContent(), /subject to Anthropic's terms/);
+  assert.deepEqual(
+    await terms.getByRole('link').evaluateAll((links) => links.map((a) => [a.textContent, a.getAttribute('href'), a.target])),
+    [
+      ['Usage Policy', 'https://www.anthropic.com/legal/aup', '_blank'],
+      ['Commercial Terms', 'https://www.anthropic.com/legal/commercial-terms', '_blank'],
+    ],
+  );
   assert.equal(await page.getByTestId('builder-balance').textContent(), 'Balance: €3.80');
   // The template is not a widget worth changing, so there is nothing to tick.
   assert.equal(await panel.getByRole('checkbox').count(), 0);

@@ -103,7 +103,8 @@ each at most 12 files and 128 KiB together.
 The editor also has a **Build with Claude** tab, where Claude writes the
 widget from a description and puts its files in the editor for you to read
 before saving. It is paid per build from a prepaid balance and needs an edge
-that offers it; see [Widget builder](widget-builder.md).
+that offers it, and what you send is subject to Anthropic's terms; see
+[Widget builder](widget-builder.md).
 
 ## Admin token
 

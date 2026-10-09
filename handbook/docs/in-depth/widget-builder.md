@@ -15,6 +15,10 @@ Nothing is saved until the owner presses Save, and a widget Claude wrote
 runs in the same sandboxed frame as one written by hand (see
 [Administration](administration.md#widgets-written-by-hand)).
 
+The description and the files sent for a change go to Anthropic and are
+subject to Anthropic's [Usage Policy](https://www.anthropic.com/legal/aup) and
+[Commercial Terms](https://www.anthropic.com/legal/commercial-terms). The tab says so under the Build button.
+
 The builder is a feature of the edge. It is off by default, at three
 levels.
 

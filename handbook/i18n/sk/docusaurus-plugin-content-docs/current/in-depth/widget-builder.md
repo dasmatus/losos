@@ -14,6 +14,10 @@ vlastník môže prečítať, vyskúšať v náhľade a upraviť. Nič sa neulo�
 vlastník nestlačí Uložiť, a widget od Claude beží v rovnakom sandboxovanom
 rámci ako ručne písaný (pozri [Správa](administration.md#ručne-písané-widgety)).
 
+Opis a súbory poslané na úpravu idú spoločnosti Anthropic a vzťahujú sa na ne
+jej [Zásady používania](https://www.anthropic.com/legal/aup) a
+[Obchodné podmienky](https://www.anthropic.com/legal/commercial-terms). Karta to uvádza pod tlačidlom Vytvoriť.
+
 Tvorca je funkcia edge. Predvolene je vypnutý, na troch úrovniach.
 
 |                          | Predvolene | Prepínač                                 |

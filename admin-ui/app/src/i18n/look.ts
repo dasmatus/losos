@@ -141,10 +141,17 @@ export default defineMessages({
     de: "Der Widget-Baukasten braucht einen erreichbaren offiziellen LosOS-Edge, und es gibt keinen.",
   },
   "look.builder.price": {
-    en: "Claude {model}: {input} per million tokens read and {output} per million written. That is Anthropic's price plus {markup}%. One build costs at most {max}.",
-    sk: "Claude {model}: {input} za milión prečítaných tokenov a {output} za milión napísaných. To je cena Anthropicu plus {markup} %. Jedna tvorba stojí najviac {max}.",
-    de: "Claude {model}: {input} pro Million gelesener Tokens und {output} pro Million geschriebener. Das ist der Preis von Anthropic plus {markup} %. Ein Bau kostet höchstens {max}.",
+    en: "{input} per million tokens read and {output} per million written. One build costs at most {max}.",
+    sk: "{input} za milión prečítaných tokenov a {output} za milión napísaných. Jedna tvorba stojí najviac {max}.",
+    de: "{input} pro Million gelesener Tokens und {output} pro Million geschriebener. Ein Bau kostet höchstens {max}.",
   },
+  "look.builder.terms": {
+    en: "What you write here, and the files you ask Claude to change, are sent to Anthropic and are subject to Anthropic's terms.",
+    sk: "Čo sem napíšete, aj súbory, ktoré má Claude upraviť, sa posielajú spoločnosti Anthropic a vzťahujú sa na ne podmienky spoločnosti Anthropic.",
+    de: "Was Sie hier schreiben, und die Dateien, die Claude ändern soll, gehen an Anthropic und unterliegen den Bedingungen von Anthropic.",
+  },
+  "look.builder.terms.usage": { en: "Usage Policy", sk: "Zásady používania", de: "Nutzungsrichtlinie" },
+  "look.builder.terms.commercial": { en: "Commercial Terms", sk: "Obchodné podmienky", de: "Geschäftsbedingungen" },
   "look.builder.balance": { en: "Balance: {amount}", sk: "Zostatok: {amount}", de: "Guthaben: {amount}" },
   "look.builder.topUp": { en: "Add {amount}", sk: "Dobiť {amount}", de: "{amount} aufladen" },
   "look.builder.topUpNote": {
@@ -236,9 +243,9 @@ export default defineMessages({
     de: "Claude hat etwas geschrieben, das für ein Widget zu groß ist. Berechnet: {amount}.",
   },
   "look.builder.fault.upstream": {
-    en: "The build could not be finished at Anthropic. Nothing was charged.",
-    sk: "Tvorbu sa v Anthropicu nepodarilo dokončiť. Nič sa neúčtovalo.",
-    de: "Der Bau konnte bei Anthropic nicht abgeschlossen werden. Es wurde nichts berechnet.",
+    en: "The build could not be finished. Nothing was charged.",
+    sk: "Tvorbu sa nepodarilo dokončiť. Nič sa neúčtovalo.",
+    de: "Der Bau konnte nicht abgeschlossen werden. Es wurde nichts berechnet.",
   },
   "look.editor.field.name": { en: "Name", sk: "Názov", de: "Name" },
   "look.editor.field.span": { en: "Width", sk: "Šírka", de: "Breite" },

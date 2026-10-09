@@ -3,8 +3,10 @@
  * The owner describes a widget and an agent on the edge writes it
  * (backend-registrar/src/builder.rs, relayed by lososd as /api/builder*).
  * The edge holds the Anthropic key and a prepaid balance per box; a build
- * is paid from that balance at Anthropic's token price plus the edge's
- * markup, and the balance is topped up through Stripe Checkout.
+ * is paid from that balance per token, and the balance is topped up through
+ * Stripe Checkout. The page shows the owner the price, not how the edge
+ * arrives at it, and says that what they send is subject to Anthropic's
+ * terms.
  *
  * What comes back is only text: the widget's files go into the hand
  * editor, the preview draws them in the same sandboxed frame as any widget
@@ -47,17 +49,11 @@ const FAULT_TEXT: Record<BuildFault, MessageKey> = {
   upstream: "look.builder.fault.upstream",
 };
 
-/** "claude-opus-5-5" as people write it: "Opus 5.5". */
-export function modelName(model: string): string {
-  const words = model.replace(/^claude-/, "").split("-");
-  const name: string[] = [];
-  const version: string[] = [];
-  for (const word of words) {
-    if (/^\d+$/.test(word)) version.push(word);
-    else name.push(word.charAt(0).toUpperCase() + word.slice(1));
-  }
-  return [...name, version.join(".")].filter((part) => part.length > 0).join(" ");
-}
+/** Anthropic's published terms, which what the owner sends is subject to. */
+export const ANTHROPIC_TERMS = [
+  { key: "look.builder.terms.usage", href: "https://www.anthropic.com/legal/aup" },
+  { key: "look.builder.terms.commercial", href: "https://www.anthropic.com/legal/commercial-terms" },
+] as const;
 
 export interface BuilderPanelProps {
   /** The files in the editor now, sent along when the owner asks for a change. */
@@ -232,10 +228,8 @@ export function BuilderPanel({ files, hasWidget, onWritten }: BuilderPanelProps)
       <div className="flex flex-col gap-2.5 rounded-card border border-line bg-sunk p-3.5">
         <p className="text-[13px] leading-relaxed text-muted" data-testid="builder-price">
           {t("look.builder.price", {
-            model: modelName(view.price.model),
             input: money(view.price.input_per_million),
             output: money(view.price.output_per_million),
-            markup: view.price.markup_percent,
             max: money(view.price.max_build),
           })}
         </p>
@@ -308,6 +302,17 @@ export function BuilderPanel({ files, hasWidget, onWritten }: BuilderPanelProps)
         )}
       </div>
       <FieldError id={problemId}>{problem}</FieldError>
+      <p className="text-[12.5px] leading-relaxed text-muted" data-testid="builder-terms">
+        {t("look.builder.terms")}{" "}
+        {ANTHROPIC_TERMS.map((term, i) => (
+          <React.Fragment key={term.href}>
+            {i > 0 && " · "}
+            <a href={term.href} target="_blank" rel="noreferrer" className="text-accent underline underline-offset-2">
+              {t(term.key)}
+            </a>
+          </React.Fragment>
+        ))}
+      </p>
 
       {running && (
         <div role="status" className="flex items-center gap-2.5 text-[13px] text-muted" data-testid="builder-running">
