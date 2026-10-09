@@ -562,7 +562,7 @@ function builderStub() {
   };
 }
 
-await check('Build with Claude shows the price and balance, and a finished build lands in the editor and its preview', async () => {
+await check('Build with AI shows the price and balance, and a finished build lands in the editor and its preview', async () => {
   const { page, errors, writes } = await open({ builder: builderStub() });
   // The bundle's two first-paint style-src-elem reports (advanced.browser.mjs)
   // are counted out; the builder must add none.
@@ -570,7 +570,7 @@ await check('Build with Claude shows the price and balance, and a finished build
   await page.getByRole('button', { name: 'Add a widget' }).first().click();
   await page.getByRole('dialog', { name: 'Add a widget' }).getByRole('button', { name: 'Write one' }).click();
   const editor = page.getByRole('dialog', { name: 'Write a widget' });
-  await editor.getByRole('tab', { name: 'Build with Claude' }).click();
+  await editor.getByRole('tab', { name: 'Build with AI' }).click();
   const panel = page.getByTestId('builder-panel');
   await panel.waitFor();
   assert.match(await page.getByTestId('builder-price').textContent(), /^€4\.80 per million tokens read and €24\.00 per million written\. One build costs at most €3\.60\.$/);
@@ -603,9 +603,9 @@ await check('Build with Claude shows the price and balance, and a finished build
 
 await check('a box whose edge offers no builder says so in the tab, in each language', async () => {
   for (const [locale, add, write, title, tab, words] of [
-    ['en-US', 'Add a widget', 'Write one', 'Write a widget', 'Build with Claude', 'does not offer the widget builder'],
-    ['sk-SK', 'Pridať widget', 'Napísať', 'Napísať widget', 'Vytvoriť s Claude', 'tvorcu widgetov neponúka'],
-    ['de-DE', 'Widget hinzufügen', 'Eins schreiben', 'Widget schreiben', 'Mit Claude bauen', 'bietet den Widget-Baukasten nicht an'],
+    ['en-US', 'Add a widget', 'Write one', 'Write a widget', 'Build with AI', 'does not offer the widget builder'],
+    ['sk-SK', 'Pridať widget', 'Napísať', 'Napísať widget', 'Vytvoriť s AI', 'tvorcu widgetov neponúka'],
+    ['de-DE', 'Widget hinzufügen', 'Eins schreiben', 'Widget schreiben', 'Mit KI bauen', 'bietet den Widget-Baukasten nicht an'],
   ]) {
     const { page, errors, writes } = await open({
       locale,

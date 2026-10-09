@@ -32,7 +32,7 @@ directories listed in `modules/impermanence.nix` survive, on an encrypted
   (planned).
 - [Virtual machines](virtual-machines.md). Renting machines on the mesh and
   hosting other boxes' machines.
-- [Widget builder](widget-builder.md). Claude writes a widget from a
+- [Widget builder](widget-builder.md). An AI agent writes a widget from a
   description, paid from a prepaid balance.
 - [Master proxy](master-proxy.md). Reaching the box from the internet without
   opening a port.

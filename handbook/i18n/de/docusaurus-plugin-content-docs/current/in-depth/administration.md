@@ -105,7 +105,7 @@ kann Daten aus dem Internet abrufen (etwa eine Wetterkachel), aber nicht von
 der Box. Die Grenze liegt bei 24 Widgets mit je höchstens 12 Dateien und
 zusammen 128 KiB.
 
-Der Editor hat auch einen Tab **Mit Claude bauen**, in dem Claude das Widget
+Der Editor hat auch einen Tab **Mit KI bauen**, in dem ein KI-Agent das Widget
 nach einer Beschreibung schreibt und seine Dateien in den Editor legt, damit
 du sie vor dem Speichern liest. Bezahlt wird pro Bau aus einem vorausbezahlten
 Guthaben, und es braucht einen Edge, der ihn anbietet; siehe
