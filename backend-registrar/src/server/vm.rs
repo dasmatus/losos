@@ -236,6 +236,9 @@ pub(super) fn transfer_router(state: AppState) -> Router {
         .with_state(state)
 }
 
+/// A status and reason, kept small so the upload path's `Result`s stay cheap.
+type Refusal = (StatusCode, &'static str);
+
 fn refuse(status: StatusCode, why: &'static str) -> Response {
     (status, why).into_response()
 }
@@ -335,7 +338,7 @@ async fn upload(
     };
     let (size, virtual_size) = match receive(body, file, opts.max_upload_bytes).await {
         Ok(got) => got,
-        Err(refusal) => return refusal,
+        Err((status, why)) => return refuse(status, why),
     };
 
     let final_path = opts.upload_path(&pending.id);
@@ -375,12 +378,13 @@ async fn upload(
 }
 
 /// Stream `body` into `file`, checking the QCOW2 header as soon as it has
-/// arrived. Returns `(bytes, virtual size)`, or the response to refuse with.
+/// arrived. Returns `(bytes, virtual size)`, or the status and reason to
+/// refuse with.
 async fn receive(
     mut body: Body,
     mut file: tokio::fs::File,
     max: u64,
-) -> Result<(u64, u64), Response> {
+) -> Result<(u64, u64), Refusal> {
     let mut head: Vec<u8> = Vec::with_capacity(32);
     let mut virtual_size = None;
     let mut size: u64 = 0;
@@ -390,15 +394,15 @@ async fn receive(
             std::future::poll_fn(|cx| Pin::new(&mut body).poll_frame(cx)),
         )
         .await
-        .map_err(|_| refuse(StatusCode::REQUEST_TIMEOUT, "the upload stalled"))?;
+        .map_err(|_| (StatusCode::REQUEST_TIMEOUT, "the upload stalled"))?;
         let Some(frame) = frame else { break };
-        let frame = frame.map_err(|_| refuse(StatusCode::BAD_REQUEST, "the upload broke off"))?;
+        let frame = frame.map_err(|_| (StatusCode::BAD_REQUEST, "the upload broke off"))?;
         let Ok(data) = frame.into_data() else {
             continue;
         };
         size = size.saturating_add(data.len() as u64);
         if size > max {
-            return Err(refuse(
+            return Err((
                 StatusCode::PAYLOAD_TOO_LARGE,
                 "the image is larger than this edge takes",
             ));
@@ -407,31 +411,29 @@ async fn receive(
             let want = 32 - head.len();
             head.extend_from_slice(&data[..want.min(data.len())]);
             if head.len() == 32 {
-                virtual_size = Some(vms::qcow2_virtual_size(&head).ok_or_else(|| {
-                    refuse(
-                        StatusCode::UNSUPPORTED_MEDIA_TYPE,
-                        "not a QCOW2 image (version 2 or 3)",
-                    )
-                })?);
+                virtual_size = Some(vms::qcow2_virtual_size(&head).ok_or((
+                    StatusCode::UNSUPPORTED_MEDIA_TYPE,
+                    "not a QCOW2 image (version 2 or 3)",
+                ))?);
             }
         }
         write_all(&mut file, &data).await?;
     }
     let Some(virtual_size) = virtual_size else {
-        return Err(refuse(
+        return Err((
             StatusCode::UNSUPPORTED_MEDIA_TYPE,
             "not a QCOW2 image (version 2 or 3)",
         ));
     };
     if virtual_size > vms::MAX_DISK_GIB * 1024 * 1024 * 1024 {
-        return Err(refuse(
+        return Err((
             StatusCode::PAYLOAD_TOO_LARGE,
             "the image's disk is larger than a machine may have",
         ));
     }
     file.sync_all().await.map_err(|e| {
         tracing::error!(target: Action::Market.target(), "sync upload: {e}");
-        refuse(
+        (
             StatusCode::INSUFFICIENT_STORAGE,
             "the edge cannot store images",
         )
@@ -439,10 +441,10 @@ async fn receive(
     Ok((size, virtual_size))
 }
 
-async fn write_all(file: &mut tokio::fs::File, data: &Bytes) -> Result<(), Response> {
+async fn write_all(file: &mut tokio::fs::File, data: &Bytes) -> Result<(), Refusal> {
     file.write_all(data).await.map_err(|e| {
         tracing::error!(target: Action::Market.target(), "write upload: {e}");
-        refuse(
+        (
             StatusCode::INSUFFICIENT_STORAGE,
             "the edge cannot store images",
         )
