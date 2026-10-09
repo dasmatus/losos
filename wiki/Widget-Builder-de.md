@@ -4,9 +4,9 @@
 
 Der Besitzer beschreibt ein Widget in eigenen Worten, und Claude schreibt es.
 Der Widget-Editor (**Widget hinzufügen**, dann **Eins schreiben**) hat neben
-**Schreiben** einen Tab **Mit Claude bauen**. Das Ergebnis landet im
-Quelltextfeld des Editors, wo der Besitzer es lesen, in der Vorschau
-ausprobieren und ändern kann. Nichts wird gespeichert, bevor der Besitzer auf
+**Schreiben** einen Tab **Mit Claude bauen**. Die Dateien des Widgets landen
+im Editor, wo der Besitzer sie lesen, in der Vorschau ausprobieren und
+ändern kann. Nichts wird gespeichert, bevor der Besitzer auf
 Speichern drückt, und ein Widget von Claude läuft im selben abgeschotteten
 Rahmen wie ein selbst geschriebenes (siehe
 [Administration](Administration-de#selbst-geschriebene-widgets)).
@@ -30,9 +30,12 @@ einen Agenten mit festem Systemprompt und dem Widget-Vertrag, den der
 Betreiber einmal anlegt, und pro Bau einen Cloud-Container, den Anthropic
 hostet. Für jeden Bau öffnet der Edge eine Sitzung mit der Beschreibung des
 Besitzers, der Sprache der Seite und, wenn der Besitzer eine Änderung
-wünscht, dem aktuellen Quelltext. Der Agent schreibt `widget.html` und eine
-kurze `summary.txt`; wenn die Sitzung ruht, lädt der Edge beide herunter,
-löscht Sitzung und Dateien und gibt den Quelltext an die Box.
+wünscht, den aktuellen Dateien des Widgets. Der Agent schreibt `index.html`,
+die Dateien, die es einbindet (Stil, Skript, Daten), und eine kurze
+`summary.txt`. Wenn die Sitzung ruht, lädt der Edge sie herunter, löscht
+Sitzung und Dateien und gibt die Dateien des Widgets an die Box. Dateien mit
+einem Namen, den ein Widget nicht haben kann, lässt er weg, und ein Widget
+über 12 Dateien oder 128 KiB lehnt er ab wie ein selbst geschriebenes.
 
 Der Agent hat in seinem eigenen Container Werkzeuge für Dateien und Shell und
 keinen Webzugriff. Sein Container erreicht die Box nicht. Ein Bau, der länger

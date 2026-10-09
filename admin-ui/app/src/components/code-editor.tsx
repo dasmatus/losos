@@ -27,7 +27,6 @@ import { css, cssLanguage } from "@codemirror/lang-css";
 import { html, htmlLanguage } from "@codemirror/lang-html";
 import { javascript, javascriptLanguage } from "@codemirror/lang-javascript";
 import { json } from "@codemirror/lang-json";
-import { markdown } from "@codemirror/lang-markdown";
 import {
   bracketMatching,
   HighlightStyle,
@@ -135,8 +134,6 @@ function languageExtension(language: FileLanguage, files: () => readonly string[
       return [javascript(), script];
     case "json":
       return json();
-    case "markdown":
-      return markdown();
     default:
       return [];
   }

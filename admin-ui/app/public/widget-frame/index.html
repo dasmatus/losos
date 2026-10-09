@@ -158,7 +158,14 @@
         }
 
         // ── Errors ────────────────────────────────────────────────────
-        const sayError = (message) => send({ losos: "error", message: String(message) });
+        // A script's syntax error surfaces through the DOM call that inserted
+        // it ("Failed to execute 'replaceChildren' on 'Element': ..."); the
+        // owner wants the error, not the call.
+        const sayError = (message) =>
+          send({
+            losos: "error",
+            message: String(message).replace(/Failed to execute '\w+' on '\w+': /, ""),
+          });
         window.addEventListener("error", (event) => {
           sayError(event.message || "The widget threw an error.");
         });
