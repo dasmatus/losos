@@ -144,6 +144,67 @@ pub enum Op {
     BuilderBuild {
         build_id: String,
     },
+    /// The machine images the edge offers, the replica's shape and the
+    /// split (`backend-registrar/src/vms.rs`). Anonymous.
+    VmImages,
+    /// What each replica of this box's machines is doing.
+    VmStatus,
+    /// Rent `quantity` replicas of `image` from a machine listing.
+    VmOrder {
+        listing_id: String,
+        quantity: u64,
+        image: String,
+        name: String,
+        user_data: Option<String>,
+    },
+    /// Reserve an upload of the owner's own QCOW2; the answer carries the
+    /// single-use path the file is then streamed to.
+    VmTicket {
+        name: String,
+        efi: bool,
+    },
+    /// Forget one of this box's uploaded images.
+    VmRemove {
+        upload_id: String,
+    },
+}
+
+/// Most replicas in one machine order; the edge's own limit.
+pub const MAX_VM_REPLICAS: u64 = 10;
+/// Longest cloud-init user data relayed; the edge's own limit.
+pub const MAX_USER_DATA: usize = 16 * 1024;
+
+/// A catalogue image id (`ubuntu-24.04`) or one of the owner's uploads
+/// (`upl_<hex>`).
+pub(crate) fn valid_image(id: &str) -> bool {
+    if let Some(hex) = id.strip_prefix("upl_") {
+        return valid_upload_id_hex(hex);
+    }
+    let mut bytes = id.bytes();
+    id.len() <= 40
+        && bytes
+            .next()
+            .is_some_and(|b| b.is_ascii_lowercase() || b.is_ascii_digit())
+        && bytes.all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'.' || b == b'-')
+}
+
+fn valid_upload_id_hex(hex: &str) -> bool {
+    !hex.is_empty() && hex.len() <= 48 && hex.bytes().all(|b| b.is_ascii_hexdigit())
+}
+
+/// A machine's or an image's name: 1 to 40 characters, none of them a
+/// control character.
+pub(crate) fn valid_display_name(name: &str) -> bool {
+    let n = name.trim().chars().count();
+    (1..=40).contains(&n) && !name.chars().any(char::is_control)
+}
+
+/// Cloud-init user data the edge will take: a `#cloud-config` document or a
+/// script, at most [`MAX_USER_DATA`] bytes.
+pub(crate) fn valid_user_data(text: &str) -> bool {
+    text.len() <= MAX_USER_DATA
+        && (text.starts_with("#cloud-config") || text.starts_with("#!"))
+        && !text.contains('\0')
 }
 
 /// Longest description of a widget; the edge's limit is the same.
@@ -213,6 +274,8 @@ impl Op {
             | Op::Domains
             | Op::Hardware
             | Op::Deregister
+            | Op::VmImages
+            | Op::VmStatus
             | Op::BuilderAccount => Ok(()),
             Op::BuilderCredit { amount } => {
                 if (MIN_CREDIT..=MAX_CREDIT).contains(amount) {
@@ -250,6 +313,44 @@ impl Op {
                     Err("build_id is not valid")
                 }
             }
+            Op::VmOrder {
+                listing_id,
+                quantity,
+                image,
+                name,
+                user_data,
+            } => {
+                if !valid_id(listing_id) {
+                    Err("listing_id is not valid")
+                } else if *quantity == 0 || *quantity > MAX_VM_REPLICAS {
+                    Err("a machine order has 1 to 10 replicas")
+                } else if !valid_image(image) {
+                    Err("image is not valid")
+                } else if !valid_display_name(name) {
+                    Err("a machine's name is 1 to 40 characters")
+                } else if user_data.as_deref().is_some_and(|u| !valid_user_data(u)) {
+                    Err("cloud-init starts with #cloud-config or #! and is at most 16 KiB")
+                } else {
+                    Ok(())
+                }
+            }
+            Op::VmTicket { name, .. } => {
+                if valid_display_name(name) {
+                    Ok(())
+                } else {
+                    Err("an image's name is 1 to 40 characters")
+                }
+            }
+            Op::VmRemove { upload_id } => {
+                if upload_id
+                    .strip_prefix("upl_")
+                    .is_some_and(valid_upload_id_hex)
+                {
+                    Ok(())
+                } else {
+                    Err("upload_id is not valid")
+                }
+            }
             Op::HardwareCheckout { items } => {
                 if items.is_empty() || items.len() > MAX_HARDWARE_LINES {
                     Err("the order needs 1 to 8 lines")
@@ -280,8 +381,8 @@ impl Op {
                 unit_price,
                 capacity,
             } => {
-                if kind != "storage" && kind != "compute" {
-                    Err("kind must be 'storage' or 'compute'")
+                if !matches!(kind.as_str(), "storage" | "compute" | "vm") {
+                    Err("kind must be 'storage', 'compute' or 'vm'")
                 } else if *unit_price == 0 || *unit_price > MAX_UNIT_PRICE {
                     Err("unit_price is out of range")
                 } else if *capacity == 0 || *capacity > MAX_CAPACITY {
@@ -332,6 +433,11 @@ impl Op {
             Op::BuilderCredit { .. } => ("POST", "/builder/credits"),
             Op::BuilderStart { .. } => ("POST", "/builder/builds"),
             Op::BuilderBuild { .. } => ("POST", "/builder/build"),
+            Op::VmImages => ("GET", "/market/vm-images"),
+            Op::VmStatus => ("POST", "/market/vms/status"),
+            Op::VmOrder { .. } => ("POST", "/market/orders"),
+            Op::VmTicket { .. } => ("POST", "/market/vm-images/ticket"),
+            Op::VmRemove { .. } => ("POST", "/market/vm-images/remove"),
         }
     }
 
@@ -343,7 +449,28 @@ impl Op {
     pub fn body(&self, appliance_id: &str, token: &str) -> Option<String> {
         let mut doc = json!({ "appliance_id": appliance_id, "token": token });
         let extra = match self {
-            Op::Browse | Op::Hardware => return None,
+            Op::Browse | Op::Hardware | Op::VmImages => return None,
+            Op::VmStatus => json!({}),
+            Op::VmOrder {
+                listing_id,
+                quantity,
+                image,
+                name,
+                user_data,
+            } => {
+                let mut order = json!({
+                    "listing_id": listing_id,
+                    "quantity": quantity,
+                    "image": image,
+                    "name": name.trim(),
+                });
+                if let Some(u) = user_data {
+                    order["user_data"] = json!(u);
+                }
+                order
+            }
+            Op::VmTicket { name, efi } => json!({ "name": name.trim(), "efi": efi }),
+            Op::VmRemove { upload_id } => json!({ "upload_id": upload_id }),
             Op::HardwareCheckout { items } => json!({
                 "items": items
                     .iter()
@@ -444,7 +571,7 @@ pub fn classify(status: u16, body: &str) -> anyhow::Result<Outcome> {
 }
 
 /// The registrar's own sentence, if it is a short printable one.
-fn public_message(body: &str) -> String {
+pub(crate) fn public_message(body: &str) -> String {
     let text = body.trim();
     let text = serde_json::from_str::<Value>(text)
         .ok()

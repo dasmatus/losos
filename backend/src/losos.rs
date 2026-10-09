@@ -877,6 +877,78 @@ pub fn cmd_builder<L: Losos>(l: &mut L) -> anyhow::Result<Value> {
     }
 }
 
+/// Why a machine action was refused before anything left the box: this box
+/// does not share its storage, and virtual machines are offered only to a box
+/// that does.
+pub const VMS_NEED_SHARING: &str =
+    "virtual machines are offered only while this box shares its storage";
+
+/// The Virtual machines page: `GET /api/vms`.
+///
+/// Machines are a sharing feature: a box that keeps its storage to itself is
+/// told so (`reason: "notSharing"`) and no edge is asked. Past that the same
+/// official-edge gate as the market applies, then the edge's own answer: an
+/// edge that runs no machines is `notOffered`. The replicas' status comes
+/// from the mesh; a mesh that does not answer leaves the list empty rather
+/// than taking the page down.
+pub fn cmd_vms<L: Losos>(l: &mut L) -> anyhow::Result<Value> {
+    use crate::market::{Op, Outcome};
+    if !l.load_state()?.sharing {
+        return Ok(json!({ "available": false, "reason": "notSharing" }));
+    }
+    if crate::edge::check_market_gate(&l.edge_status()?).is_err() {
+        return Ok(json!({ "available": false, "reason": "noOfficialEdge" }));
+    }
+    let Outcome::Reply(catalogue) = l.market_request(&Op::VmImages)? else {
+        return Ok(json!({ "available": false, "reason": "notOffered" }));
+    };
+    let Outcome::Reply(listings) = l.market_request(&Op::Browse)? else {
+        return Ok(json!({ "available": false, "reason": "notOffered" }));
+    };
+    let Outcome::Reply(account) = l.market_request(&Op::Account)? else {
+        return Ok(json!({ "available": false, "reason": "notOffered" }));
+    };
+    let machines = match l.market_request(&Op::VmStatus) {
+        Ok(Outcome::Reply(v)) if v.is_array() => v,
+        Ok(_) => json!([]),
+        Err(e) => {
+            tracing::warn!(error = ?e, "machine status unavailable");
+            json!([])
+        }
+    };
+    let listings: Vec<Value> = listings
+        .as_array()
+        .map(|all| {
+            all.iter()
+                .filter(|l| l.get("kind").and_then(Value::as_str) == Some("vm"))
+                .cloned()
+                .collect()
+        })
+        .unwrap_or_default();
+    Ok(json!({
+        "available": true,
+        "catalogue": catalogue,
+        "listings": listings,
+        "account": account,
+        "machines": machines,
+    }))
+}
+
+/// One machine action (order, list, close, an image ticket or removal):
+/// refused unless this box shares its storage, then relayed exactly as a
+/// market action is.
+pub fn cmd_vm_op<L: Losos>(l: &mut L, op: &crate::market::Op) -> anyhow::Result<Value> {
+    use crate::market::Refused;
+    if !l.load_state()?.sharing {
+        return Err(Refused {
+            status: 409,
+            message: VMS_NEED_SHARING.to_string(),
+        }
+        .into());
+    }
+    cmd_market_op(l, op)
+}
+
 /// LosOS Lab's order button: `GET /api/lab/order`. `enabled` is
 /// `losos.lab.ordering.enable`; while it is off the answer says only that,
 /// and no edge is asked. On, the catalogue comes from the official edge.
@@ -2275,6 +2347,131 @@ mod tests {
             ),
         );
         assert!(cmd_lab_order_op(&mut f, true, vec![("box".to_string(), 2)]).is_err());
+    }
+
+    // ── Virtual machines ────────────────────────────────────────────────
+
+    fn vm_fake() -> FakeLosos {
+        let mut f = market_fake();
+        f.state.sharing = true;
+        f.market_routes.insert(
+            "GET /market/listings".to_string(),
+            (
+                200,
+                r#"[{"id":"lst_1","kind":"storage"},{"id":"lst_2","kind":"vm"}]"#.to_string(),
+            ),
+        );
+        f.market_routes.insert(
+            "GET /market/vm-images".to_string(),
+            (
+                200,
+                r#"{"images":[{"id":"losos"}],"fee_bps":5000}"#.to_string(),
+            ),
+        );
+        f.market_routes.insert(
+            "POST /market/vms/status".to_string(),
+            (200, r#"[{"order_id":"ord_1","replicas":[]}]"#.to_string()),
+        );
+        f
+    }
+
+    #[test]
+    fn machines_are_offered_only_while_the_box_shares_its_storage() {
+        use crate::market::{Op, Refused};
+        let mut f = vm_fake();
+        f.state.sharing = false;
+        assert_eq!(
+            cmd_vms(&mut f).unwrap(),
+            serde_json::json!({ "available": false, "reason": "notSharing" })
+        );
+        let e = cmd_vm_op(&mut f, &Op::VmStatus).unwrap_err();
+        let r = e.downcast_ref::<Refused>().unwrap();
+        assert_eq!(r.status, 409);
+        assert_eq!(r.message, VMS_NEED_SHARING);
+        assert!(f.market_ops.is_empty(), "no edge was asked");
+        assert_eq!(f.edge_asked, 0);
+    }
+
+    #[test]
+    fn the_machines_page_gets_the_catalogue_its_listings_and_the_replicas() {
+        let mut f = vm_fake();
+        let out = cmd_vms(&mut f).unwrap();
+        assert_eq!(out["available"], true);
+        assert_eq!(out["catalogue"]["fee_bps"], 5000);
+        assert_eq!(
+            out["listings"],
+            serde_json::json!([{ "id": "lst_2", "kind": "vm" }])
+        );
+        assert_eq!(out["machines"][0]["order_id"], "ord_1");
+        // An edge with no machines says so.
+        let mut f = vm_fake();
+        f.market_routes.remove("GET /market/vm-images");
+        assert_eq!(cmd_vms(&mut f).unwrap()["reason"], "notOffered");
+        // A mesh that does not answer costs the replicas, not the page.
+        let mut f = vm_fake();
+        f.market_routes
+            .insert("POST /market/vms/status".to_string(), (500, String::new()));
+        assert_eq!(cmd_vms(&mut f).unwrap()["machines"], serde_json::json!([]));
+        // A company edge gets no machines either.
+        let mut f = vm_fake().with_company_edge();
+        assert_eq!(cmd_vms(&mut f).unwrap()["reason"], "noOfficialEdge");
+    }
+
+    #[test]
+    fn a_machine_order_carries_its_image_name_and_cloud_init() {
+        use crate::market::Op;
+        let mut f = vm_fake();
+        f.market_routes.insert(
+            "POST /market/orders".to_string(),
+            (
+                201,
+                r#"{"order_id":"ord_1","checkout_url":"https://checkout.stripe.com/c/pay/x"}"#
+                    .to_string(),
+            ),
+        );
+        let order = |quantity: u64, image: &str, name: &str, user_data: Option<&str>| Op::VmOrder {
+            listing_id: "lst_2".to_string(),
+            quantity,
+            image: image.to_string(),
+            name: name.to_string(),
+            user_data: user_data.map(str::to_string),
+        };
+        let op = order(
+            2,
+            "ubuntu-24.04",
+            "web",
+            Some("#cloud-config\npackages: [nginx]\n"),
+        );
+        let out = cmd_vm_op(&mut f, &op).unwrap();
+        assert_eq!(out["available"], true);
+        let body: Value = serde_json::from_str(&op.body("box", "tok").unwrap()).unwrap();
+        assert_eq!(body["image"], "ubuntu-24.04");
+        assert_eq!(body["quantity"], 2);
+        assert!(body["user_data"]
+            .as_str()
+            .unwrap()
+            .starts_with("#cloud-config"));
+        for bad in [
+            order(11, "ubuntu-24.04", "web", None),
+            order(1, "../etc", "web", None),
+            order(1, "ubuntu-24.04", "", None),
+            order(1, "ubuntu-24.04", "web", Some("rm -rf /")),
+        ] {
+            assert!(bad.validate().is_err(), "{bad:?}");
+        }
+        assert!(order(1, "upl_0123abcd", "own", None).validate().is_ok());
+        assert!(Op::VmRemove {
+            upload_id: "upl_zz".to_string()
+        }
+        .validate()
+        .is_err());
+        assert!(Op::List {
+            kind: "vm".to_string(),
+            unit_price: 900,
+            capacity: 4
+        }
+        .validate()
+        .is_ok());
     }
 
     #[test]

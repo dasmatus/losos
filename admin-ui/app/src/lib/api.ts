@@ -450,7 +450,8 @@ export function postGrow(options: RequestOptions = {}): Promise<GrowResponse> {
  * registrar's own documents sit inside them. Prices are in the minor unit
  * (cents) of `account.currency`. */
 
-export type MarketKind = "storage" | "compute";
+/** `vm` is a virtual machine replica, sold on the Machines pane. */
+export type MarketKind = "storage" | "compute" | "vm";
 
 export interface MarketShelfListing {
   id: string;
@@ -487,6 +488,8 @@ export interface MarketOrder {
   expired: boolean;
   /** `<namespace>/<claim>` once a storage order has its volume. */
   volume: string | null;
+  /** A machine order's image, name and address. Absent on other kinds. */
+  vm?: VmOrderInfo | null;
 }
 
 export interface MarketAccount {
@@ -496,6 +499,12 @@ export interface MarketAccount {
   seller_ready: boolean;
   can_sell_storage: boolean;
   can_sell_compute: boolean;
+  /** Enrolled and hosting machines: what lets this box list them. */
+  can_host_vms?: boolean;
+  /** The platform's share of a machine sale, when the edge runs machines. */
+  vm_fee_bps?: number | null;
+  /** This box's own machine images on the edge. */
+  uploads?: VmUpload[];
   listings: MarketOwnListing[];
   entitlements: { storage_gib: number; compute_vcpu_hours: number; next_expiry: number | null };
   purchases: MarketOrder[];
@@ -657,6 +666,177 @@ export function postBuilderBuild(
 /** GET /api/builder/builds/{id}. */
 export function getBuilderBuild(id: string, options: RequestOptions = {}): Promise<BuildView> {
   return call<BuildView>(`/api/builder/builds/${encodeURIComponent(id)}`, options);
+}
+
+// ── Virtual machines ──────────────────────────────────────────────────────
+
+/* Virtual machines on the mesh, sold by the replica through the market and
+ * offered only while this box shares its disk (lososd's /api/vms; the
+ * registrar's backend-registrar/src/vms.rs). The shapes are the registrar's
+ * documents, passed through. */
+
+export interface VmOrderInfo {
+  /** A catalogue id, or one of this box's upload ids (`upl_…`). */
+  image: string;
+  name: string;
+  /** `https://<order>.<domain>`, when the edge publishes machines. */
+  address: string | null;
+  /** The replicas exist on the hosting box. */
+  created: boolean;
+  /** The order lapsed and every replica was stopped. */
+  halted: boolean;
+}
+
+export interface VmImage {
+  id: string;
+  name: string;
+  /** Quickemu's name for the system (`quickget <family>`), or `losos`. */
+  family: string;
+  /** Whether the image reads cloud-init. */
+  cloud_init: boolean;
+  efi: boolean;
+  /** What one replica gets: the edge's size or the image's minimum. */
+  disk_gib: number;
+  memory_mib: number;
+}
+
+export interface VmCatalogue {
+  images: VmImage[];
+  /** Systems that ship installer ISOs only, so are not offered yet. */
+  installer_only: string[];
+  not_offered: { family: string; why: string }[];
+  shape: { cpu: number; memory_mib: number; disk_gib: number };
+  /** The platform's share of a machine sale: half. */
+  fee_bps: number;
+  max_replicas: number;
+  max_upload_bytes: number;
+  /** Whether a machine gets an https address on the edge. */
+  published: boolean;
+}
+
+export interface VmUpload {
+  id: string;
+  name: string;
+  /** The file is on the edge. False while an upload is under way. */
+  stored: boolean;
+  size: number | null;
+  /** The image's virtual disk size, in GiB rounded up. */
+  min_disk_gib: number;
+  created_at: number;
+}
+
+/** One replica, in the few words the page draws. */
+export type VmReplicaStatus = "Running" | "Starting" | "Preparing" | "Stopped" | "Paused" | "Failed";
+
+export interface VmMachine {
+  order_id: string;
+  replicas: { name: string; status: VmReplicaStatus | string }[];
+}
+
+export type VmUnavailableReason = "notSharing" | "noOfficialEdge" | "notOffered";
+
+export type VmsResponse =
+  | { available: false; reason: VmUnavailableReason }
+  | {
+      available: true;
+      catalogue: VmCatalogue;
+      /** Machine listings only. */
+      listings: MarketShelfListing[];
+      account: MarketAccount;
+      machines: VmMachine[];
+    };
+
+/** GET /api/vms — the catalogue, the machine listings, this box's account
+ *  and what its machines are doing; `{available: false}` with a reason when
+ *  machines are not offered here. */
+export function getVms(options: RequestOptions = {}): Promise<VmsResponse> {
+  return call<VmsResponse>("/api/vms", options);
+}
+
+/** POST /api/vms/orders — the reply carries the Checkout URL. */
+export function postVmOrder(
+  order: { listing_id: string; quantity: number; image: string; name: string; user_data?: string },
+  options: RequestOptions = {},
+): Promise<MarketActionResponse> {
+  return marketPost("/api/vms/orders", order, options);
+}
+
+/** POST /api/vms/listings — host machines on this box, priced per
+ *  replica-month. */
+export function postVmListing(
+  listing: { unit_price: number; capacity: number },
+  options: RequestOptions = {},
+): Promise<MarketActionResponse> {
+  return marketPost("/api/vms/listings", listing, options);
+}
+
+/** POST /api/vms/listings/close */
+export function postVmListingClose(
+  listingId: string,
+  options: RequestOptions = {},
+): Promise<MarketActionResponse> {
+  return marketPost("/api/vms/listings/close", { listing_id: listingId }, options);
+}
+
+/** POST /api/vms/images/remove — delete one of this box's images. */
+export function postVmImageRemove(
+  uploadId: string,
+  options: RequestOptions = {},
+): Promise<MarketActionResponse> {
+  return marketPost("/api/vms/images/remove", { upload_id: uploadId }, options);
+}
+
+export interface VmImageStored {
+  upload_id: string;
+  size: number;
+  min_disk_gib: number;
+}
+
+/** PUT /api/vms/images?name=&efi= — stream a QCOW2 to the edge.
+ *
+ * XMLHttpRequest rather than fetch, because a disk image is gigabytes and
+ * fetch reports no upload progress. `onProgress` gets 0 to 100. The token
+ * rules are `call`'s: a 401 drops the stored token. */
+export function putVmImage(
+  file: Blob,
+  { name, efi }: { name: string; efi: boolean },
+  { onProgress, signal }: { onProgress?: (percent: number) => void; signal?: AbortSignal } = {},
+): Promise<VmImageStored> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    const query = new URLSearchParams({ name });
+    if (efi) query.set("efi", "1");
+    xhr.open("PUT", `/api/vms/images?${query.toString()}`);
+    const bearer = getToken();
+    if (bearer !== null) xhr.setRequestHeader("Authorization", `Bearer ${bearer}`);
+    xhr.setRequestHeader("Content-Type", "application/octet-stream");
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable && onProgress !== undefined) {
+        onProgress((event.loaded / event.total) * 100);
+      }
+    };
+    xhr.onload = () => {
+      let body: unknown = null;
+      try {
+        body = JSON.parse(xhr.responseText);
+      } catch {
+        /* nginx's own page, not lososd's JSON */
+      }
+      if (xhr.status === 401) {
+        dropToken();
+        reject(new ApiError(401, "unauthorized"));
+      } else if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(body as VmImageStored);
+      } else {
+        const said = (body as { error?: unknown } | null)?.error;
+        reject(new ApiError(xhr.status, typeof said === "string" && said.length > 0 ? said : `HTTP ${xhr.status}`));
+      }
+    };
+    xhr.onerror = () => reject(new ApiError(0, "the upload was cut off"));
+    xhr.onabort = () => reject(new DOMException("aborted", "AbortError"));
+    signal?.addEventListener("abort", () => xhr.abort(), { once: true });
+    xhr.send(file);
+  });
 }
 
 // ── Custom domains ────────────────────────────────────────────────────────
