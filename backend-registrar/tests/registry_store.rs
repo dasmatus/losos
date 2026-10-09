@@ -329,6 +329,7 @@ async fn import_drops_what_load_would_drop() {
             window_start: "25:00".to_string(),
             window_end: "07:00".to_string(),
             tz: "UTC".to_string(),
+            host_vms: false,
         },
     );
     registry.import(snapshot, ttl).await;

@@ -400,6 +400,43 @@
       },
       "description": "The registrar's own reply to the action, plus `available`."
     },
+    "vmsResponse": {
+      "type": "object",
+      "required": [
+        "available"
+      ],
+      "properties": {
+        "available": {
+          "type": "boolean",
+          "description": "False, with `reason`, when this box is not offered machines. A 200 either way."
+        },
+        "reason": {
+          "type": "string",
+          "enum": [
+            "notSharing",
+            "noOfficialEdge",
+            "notOffered"
+          ],
+          "description": "Present only with `available: false`. `notSharing`: this box does not share its disk (losos.sharingMyStorage), and machines are offered only to boxes that do. `noOfficialEdge`: no edge in reach is one LosOS runs. `notOffered`: the edge runs no machines, or does not answer for them."
+        },
+        "catalogue": {
+          "type": "object",
+          "description": "The registrar's GET /market/vm-images: images (id, name, family, cloud_init, efi, disk_gib, memory_mib; no download addresses), installer_only, not_offered (family, why), shape (cpu, memory_mib, disk_gib), fee_bps (always 5000), max_replicas, max_upload_bytes, published."
+        },
+        "listings": {
+          "type": "array",
+          "description": "The machine listings on the shelf (kind `vm`, unit `replica-month`)."
+        },
+        "account": {
+          "type": "object",
+          "description": "As in marketResponse, with can_host_vms, vm_fee_bps and uploads (id, name, stored, size, min_disk_gib, created_at); a machine purchase carries `vm` (image, name, address, created, halted)."
+        },
+        "machines": {
+          "type": "array",
+          "description": "The registrar's POST /market/vms/status: per machine order, `order_id` and `replicas` (name, status: Running, Starting, Preparing, Paused, Stopped or Failed). Empty when the mesh does not answer."
+        }
+      }
+    },
     "labHelloResponse": {
       "type": "object",
       "required": [
@@ -1345,6 +1382,41 @@
         "auth": true,
         "out": "{\"available\": true} + buildSummary + {\"usage\": {input_tokens, output_tokens, cache_creation_input_tokens, cache_read_input_tokens}, \"at_limit\", \"files\": [{\"name\", \"content\"}]|null, \"source\": string|null, \"notes\": string|null}",
         "note": "One build. `files` is the widget once it is done, index.html first; `source` repeats index.html, and is all an edge from before widget files sends. The page puts the files in the editor and saves them only when the owner says so, through POST /api/look/widgets, so it runs in /widget-frame/ like any widget written by hand."
+      },
+      "GET /api/vms": {
+        "auth": true,
+        "out": "vmsResponse",
+        "note": "Virtual machines on the mesh, sold per replica through the market (backend-registrar/src/vms.rs). Offered only while this box shares its disk: otherwise available:false with reason notSharing, and every /api/vms action below is refused with 409 before the edge is asked. A 200 in every not-offered case, deliberately NOT 404."
+      },
+      "POST /api/vms/orders": {
+        "auth": true,
+        "in": "{\"listing_id\": \"...\", \"quantity\": <replicas, 1-10>, \"image\": \"<catalogue id or upl_...>\", \"name\": \"<1-40 printable characters>\", \"user_data\": \"<cloud-init, optional, at most 16 KiB>\"}",
+        "out": "marketActionResponse",
+        "note": "Order replicas of a machine. Returns the Stripe Checkout URL. The fee is half the total, whatever the edge's market fee. Audited."
+      },
+      "POST /api/vms/listings": {
+        "auth": true,
+        "in": "{\"unit_price\": <minor units per replica-month>, \"capacity\": <replicas, 1-50>}",
+        "out": "marketActionResponse",
+        "note": "Offer to host machines on this box. 409 with the registrar's reason unless the box is enrolled in the mesh and hosts machines. Audited."
+      },
+      "POST /api/vms/listings/close": {
+        "auth": true,
+        "in": "{\"listing_id\": \"...\"}",
+        "out": "marketActionResponse",
+        "note": "Stop offering machines. Running machines keep their month. Audited."
+      },
+      "PUT /api/vms/images": {
+        "auth": true,
+        "in": "query string name=<1-40 printable characters>&efi=1 (optional); the body is the QCOW2 file",
+        "out": "{\"upload_id\": \"upl_...\", \"size\": <bytes>, \"min_disk_gib\": <GiB>}",
+        "note": "Upload an image of this box's own. lososd takes a single-use ticket from the edge, then streams the body to it with curl (the ticket in a temporary config file, not in argv) without holding its lock; nginx passes the body unbuffered. The edge's refusal comes back with its status: 413 over the size limit, 415 not a QCOW2, 409 too many images, 408 when the transfer stalls; 502 when the edge cannot be reached. Audited."
+      },
+      "POST /api/vms/images/remove": {
+        "auth": true,
+        "in": "{\"upload_id\": \"upl_...\"}",
+        "out": "marketActionResponse",
+        "note": "Delete one of this box's images from the edge. Audited."
       },
       "GET /api/lab/order": {
       "auth": true,

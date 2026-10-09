@@ -765,10 +765,13 @@ fn checkout_fault(
     };
     // The platform's cut is exactly the operator's rate when the gate knows
     // it, never above the MAX_FEE_BPS ceiling otherwise, and can never take
-    // the whole charge.
-    let fee_ok = match fee_bps {
-        Some(bps) => c.fee == crate::market::fee_for(amount, bps.min(MAX_FEE_BPS)),
-        None => c.fee <= crate::market::fee_for(amount, MAX_FEE_BPS),
+    // the whole charge. A virtual machine is the exception: it is always
+    // split half and half with the hosting box's owner, whatever the
+    // operator's rate, so the gate holds it to exactly that.
+    let fee_ok = match (c.kind, fee_bps) {
+        (Kind::Vm, _) => c.fee == crate::market::fee_for(amount, crate::vms::VM_FEE_BPS),
+        (_, Some(bps)) => c.fee == crate::market::fee_for(amount, bps.min(MAX_FEE_BPS)),
+        (_, None) => c.fee <= crate::market::fee_for(amount, MAX_FEE_BPS),
     };
     if c.fee >= amount || !fee_ok {
         return Some("fee is outside the allowed range");
@@ -1496,6 +1499,32 @@ mod tests {
         ] {
             assert!(!url_ok(bad), "{bad} was allowed");
         }
+    }
+
+    #[test]
+    fn a_machine_checkout_is_split_exactly_in_half() {
+        // checkout() is 10 x 100 = 1000; half is 500.
+        let vm = |fee: u64| CheckoutRequest {
+            kind: Kind::Vm,
+            fee,
+            ..checkout()
+        };
+        let now = NOW;
+        for bps in [None, Some(400), Some(2_000)] {
+            assert_eq!(checkout_fault(&vm(500), "eur", bps, None, now), None);
+            for fee in [0, 40, 200, 499, 501, 999] {
+                assert!(
+                    checkout_fault(&vm(fee), "eur", bps, None, now).is_some(),
+                    "fee {fee} under {bps:?}"
+                );
+            }
+        }
+        // A storage checkout at half is still over the ceiling.
+        let storage = CheckoutRequest {
+            fee: 500,
+            ..checkout()
+        };
+        assert!(checkout_fault(&storage, "eur", None, None, now).is_some());
     }
 
     #[test]

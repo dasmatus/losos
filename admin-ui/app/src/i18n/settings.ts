@@ -44,6 +44,17 @@ export default defineMessages({
     sk: "predaj kúpa platba peniaze stripe cena zárobok výplata objednávka zdieľať disk požičiavať záloha kópie",
     de: "verkaufen kaufen Zahlung Geld Stripe Preis verdienen Auszahlung Bestellung teilen Festplatte verleihen Backup Kopien",
   },
+  "settings.panes.machines.label": { en: "Machines", sk: "Stroje", de: "Maschinen" },
+  "settings.panes.machines.summary": {
+    en: "Rent virtual machines on the mesh by the replica, from LosOS, common Linux and BSD systems or your own QCOW2 image, or host them on this box.",
+    sk: "Prenajmite si virtuálne stroje v sieti mesh po replikách, s LosOS, bežnými systémami Linux a BSD alebo vlastným obrazom QCOW2, alebo ich hosťujte na tomto zariadení.",
+    de: "Miete virtuelle Maschinen im Mesh pro Replikat, mit LosOS, gängigen Linux- und BSD-Systemen oder deinem eigenen QCOW2-Image, oder betreibe sie auf dieser Box.",
+  },
+  "settings.panes.machines.keywords": {
+    en: "",
+    sk: "virtuálny stroj virtuálne stroje obraz replika server prenájom hosťovať",
+    de: "virtuelle Maschine Maschinen Image Replikat Server mieten hosten",
+  },
   "settings.panes.apps.label": { en: "Apps", sk: "Aplikácie", de: "Apps" },
   "settings.panes.apps.summary": {
     en: "The apps this box runs, how each one runs, and where to look for more.",

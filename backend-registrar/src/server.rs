@@ -93,6 +93,8 @@ use crate::stripe_gate::{GATE_TIMEOUT, MAX_GATE_CALLS_PER_REQUEST};
 use crate::window::{self, valid_hhmm, valid_tz, ComputeWindow};
 use crate::zone::{self, ZoneNames};
 
+mod vm;
+
 /// The zone file is public DNS data, read by the `knot` user.
 const ZONE_FILE_MODE: u32 = 0o644;
 
@@ -241,6 +243,9 @@ struct AppState {
     /// uplink to forward to the hub. Live state only: every box repeats its
     /// pass on each heartbeat.
     passes: Arc<std::sync::Mutex<HashMap<String, String>>>,
+    /// Machine image transfers in flight (`vm::MAX_TRANSFERS`), which run
+    /// outside [`guard`] and so outside [`AppState::limiter`].
+    transfers: Arc<Semaphore>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -297,6 +302,10 @@ struct ClusterJoinReq {
     /// default rather than the edge's guess at the owner's zone.
     #[serde(default = "default_window_tz")]
     window_tz: String,
+    /// Whether the box hosts virtual machines (`crate::vms`). Off for a
+    /// client from before machines, which is the safe direction.
+    #[serde(default)]
+    host_vms: bool,
 }
 
 fn default_window_start() -> String {
@@ -549,6 +558,7 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
         enrolled: Arc::new(TenantCache::default()),
         routes,
         passes: Arc::new(std::sync::Mutex::new(HashMap::new())),
+        transfers: Arc::new(Semaphore::new(vm::MAX_TRANSFERS)),
     };
 
     // Generate config from whatever we just loaded, so the box is serving
@@ -589,6 +599,13 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
         .route("/market/account", post(market_account))
         .route("/market/hardware", get(market_hardware))
         .route("/market/hardware/checkout", post(market_hardware_checkout))
+        // Virtual machines (crate::vms): the catalogue is anonymous like the
+        // shelf, the rest take the appliance token. The two file transfers
+        // are merged below, outside the body cap and the timeout.
+        .route("/market/vm-images", get(vm::catalogue))
+        .route("/market/vm-images/ticket", post(vm::ticket))
+        .route("/market/vm-images/remove", post(vm::remove))
+        .route("/market/vms/status", post(vm::status))
         .route(
             "/market/webhook",
             post(market_webhook).layer(DefaultBodyLimit::max(MAX_WEBHOOK_BYTES)),
@@ -615,7 +632,11 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
         // Added last, so outermost: the timeout and the concurrency cap cover
         // body reading, routing and 404s, not just handler bodies.
         .layer(middleware::from_fn_with_state(state.clone(), guard))
-        .with_state(state.clone());
+        .with_state(state.clone())
+        // Merged after the layers above, so none of them applies: a disk
+        // image is gigabytes and takes minutes. `vm::transfer_router` has
+        // its own cap, idle timeout and size limit.
+        .merge(vm::transfer_router(state.clone()));
 
     Ok(App { state, router })
 }
@@ -1066,6 +1087,7 @@ async fn cluster_join(
         window_start: req.window_start,
         window_end: req.window_end,
         tz: req.window_tz,
+        host_vms: req.host_vms,
     };
     if st.reg.set_compute_window(&req.node_name, window).await? {
         // Kick the reconciler so the taint timer sees the new window on its
@@ -1075,10 +1097,11 @@ async fn cluster_join(
 
     tracing::info!(
         target: Action::Join.target(),
-        "enrolled {} as mesh node {} (share_compute={})",
+        "enrolled {} as mesh node {} (share_compute={}, host_vms={})",
         req.appliance_id,
         req.node_name,
         req.share_compute,
+        req.host_vms,
     );
     Ok(Json(ClusterJoinResp {
         server_addr: server_addr.clone(),
@@ -1753,6 +1776,7 @@ async fn builder_build(
 /// data, and removing it is an operator decision.
 ///
 /// Compute orders have nothing to provision: they are a ledger credit.
+/// Machine orders are fulfilled by `vm::fulfil` first, on the same pass.
 async fn fulfil_market(st: &AppState) {
     let Some(market) = &st.market else {
         return;
@@ -1771,6 +1795,7 @@ async fn fulfil_market(st: &AppState) {
             "could not record stale orders as expired: {e}",
         ),
     }
+    vm::fulfil(st, market).await;
     let pending = market.pending_provisions().await;
     let lapsed = market.lapsed_volumes().await;
     if pending.is_empty() && lapsed.is_empty() {
@@ -1945,19 +1970,7 @@ async fn provision_volume(
     storage_class: &str,
     p: &Provision,
 ) -> Result<(), ApiError> {
-    kube_create(
-        kube,
-        &format!("{}/api/v1/namespaces", kube.api),
-        &serde_json::json!({
-            "apiVersion": "v1",
-            "kind": "Namespace",
-            "metadata": {
-                "name": p.namespace,
-                "labels": { "losos.market/managed": "true" },
-            },
-        }),
-    )
-    .await?;
+    ensure_namespace(kube, &p.namespace).await?;
     let claims = format!(
         "{}/api/v1/namespaces/{}/persistentvolumeclaims",
         kube.api, p.namespace,
@@ -1994,6 +2007,23 @@ async fn provision_volume(
             p.namespace, p.pvc,
         ))),
     }
+}
+
+/// Create a buyer's `market-<id>` namespace; one that exists is fine.
+async fn ensure_namespace(kube: &KubeAccess, namespace: &str) -> Result<(), ApiError> {
+    kube_create(
+        kube,
+        &format!("{}/api/v1/namespaces", kube.api),
+        &serde_json::json!({
+            "apiVersion": "v1",
+            "kind": "Namespace",
+            "metadata": {
+                "name": namespace,
+                "labels": { "losos.market/managed": "true" },
+            },
+        }),
+    )
+    .await
 }
 
 /// An authenticated handle on the mesh apiserver: a client whose root store is

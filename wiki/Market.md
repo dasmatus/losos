@@ -60,6 +60,10 @@ configured value is capped at 2000 (20%).
 | --------- | ----------- | ---------------------------------------------------- |
 | `storage` | GiB-month   | Capacity in the mesh's Longhorn pool                 |
 | `compute` | vCPU-hour   | Scheduling on the seller's node, inside its window   |
+| `vm`      | replica-month | A virtual machine replica on the seller's box, split 50/50 |
+
+Machines have their own page, [Virtual machines](Virtual-Machines), and their
+own pane in the admin UI.
 
 Prices are in the minor unit (cents) of one currency per edge
 (`losos.edge.market.currency`). A single order must total at least 50 minor
