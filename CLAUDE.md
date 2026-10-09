@@ -96,6 +96,11 @@ and is never served or built by nix.
   with the secret, `tests/secure-boot.nix` under OVMF with a throwaway key.
   The certificate is `keys/secure-boot-db.pem` (comment-only until the
   ceremony).
+- `branding.nix` (both systems) and `live-branding.nix` (iso only): LosOS
+  and the release tag from `flake/version.nix` on the boot menus, the boot
+  pictures (`brand-art.nix`, drawn from the salmon), os-release, the console
+  palette and banners. The installed box keeps `ID=nixos`. Bump the file in
+  the commit that gets the tag; the release job stamps the tag over it.
 - `updates.nix`: `system.autoUpgrade` at 03:00 from `losos.upgradeFlakeUri`
   (default `git+file:///etc/nixos#install`, set a `github:` URI to really
   upgrade), `nix.gc` at 04:30 with `--delete-older-than 14d`, five boot

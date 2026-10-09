@@ -846,6 +846,21 @@ jobs:
           xargs -r nix copy --from "file://$PWD/ctl-cache" --no-check-sigs < ctl-cache/store-paths
           xargs -r nix copy --from "file://$PWD/ui-cache" --no-check-sigs < ui-cache/store-paths
           xargs -r nix copy --from "file://$PWD/registrar-cache" --no-check-sigs < registrar-cache/store-paths
+      # The media carry their own tag (flake/version.nix): written over the
+      # committed value and staged, since nix's git fetcher reads staged
+      # files. An installed box builds from the committed tree, so a tag the
+      # file does not name gets a warning to bump it on main.
+      - name: stamp the release tag
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          committed=$(nix eval --raw --file flake/version.nix)
+          if [ "$committed" != "$TAG" ]; then
+            echo "::warning::flake/version.nix says ${committed} but the tag is ${TAG}; bump it on main so installed boxes say ${TAG} too"
+          fi
+          printf '"%s"\n' "$TAG" > flake/version.nix
+          git add flake/version.nix
       - run: nix build .#nixosConfigurations.iso.config.system.build.isoImage -L
       - run: mv result result-iso
       - run: nix build .#losos-disk-qcow2 -L

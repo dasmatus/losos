@@ -36,21 +36,22 @@ own. **It wipes every fixed disk in the machine.**
    firmware refuses the stick, sometimes without a message. The installed
    box needs Secure Boot off either way, because its own loader is not
    signed.
-3. Boot from the stick. A menu offers **UEFI**, **BIOS** or **autodetect**
-   and takes autodetect after 30 seconds, so an unattended boot still
-   installs. Autodetect picks the mode the stick itself was booted in, which
-   is right for almost everyone. [Install variants](../types/install-variants)
+3. Boot from the stick. While it starts it shows the LosOS logo, above the
+   boot menu on a BIOS machine and alone on a UEFI one. Then a menu offers
+   **UEFI**, **BIOS** or **autodetect** and takes autodetect after 30
+   seconds, so an unattended boot still installs. Autodetect picks the mode
+   the stick itself was booted in, which is right for almost everyone. [Install variants](../types/install-variants)
    explains the choice.
 4. Wait. The installer finds every fixed disk, puts them in one encrypted
    volume, downloads the system and installs it. Near the end it prints
    `unlock: TPM` or `unlock: keyfile in the initrd`.
    [Install variants](../types/install-variants#how-the-disk-is-unlocked)
    explains what that means.
-5. Remove the stick and let the machine reboot. The screen now shows a blue
+5. Remove the stick and let the machine reboot. The screen now shows a
    banner with the box's address. Open that address in a browser on any
    computer on the same network and follow [The first run](first-run).
 
-![The blue banner on the box's screen after the first boot: LosOS is ready, with the box's address and its .local name.](../img/tty1-banner.png)
+![The banner on the box's screen after the first boot: LosOS v0.1.8 is ready, with the box's address and its .local name.](../img/tty1-banner.png)
 
 ![The end of an install: the disk key sealed to the TPM, the boot loader installed, and the line losos-install: done.](../img/install-done.png)
 

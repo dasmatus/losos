@@ -8,7 +8,7 @@ slug: /troubleshooting/stuck-at-passphrase
 
 <div className="losos-symptom">
 
-**What you see:** instead of the blue banner, the screen says
+**What you see:** instead of the address banner, the screen says
 `Please enter passphrase for disk persist` (or similar) and waits. The box
 never asks for a passphrase on a normal boot.
 
