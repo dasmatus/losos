@@ -14,13 +14,7 @@ endpoint, the LAN advert, optionally the mesh control plane) and adds one
 **uplink** to a hub. Two sites, each behind its own spoke, reach each other
 through the hub; a box never talks to another site's spoke directly.
 
-```
-site A                         internet                        site B
-box ──rathole──▶ spoke A ──rathole uplink──▶ hub ◀──rathole uplink── spoke B ◀──rathole── box
-     announce        │        POST /relay       │       POST /relay        │     announce
-                     ▼                          ▼                          ▼
-              Traefik (LAN)       Traefik (public TLS, Host(<box>.<zone>))   Traefik (LAN)
-```
+![Site A: a box dials spoke A over rathole and announces itself; spoke A dials the hub on the internet over a rathole uplink and relays the box with POST /relay; site B mirrors it. Each spoke runs Traefik on the LAN; the hub runs Traefik with public TLS, routing Host(<box>.<zone>).](images/edge-federation-en.svg)
 
 Three planes, and only two of them federate:
 

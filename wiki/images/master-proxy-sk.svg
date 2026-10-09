@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1037 120" width="1037" height="120" role="img" aria-label="Master proxy: z internetu do boxu"><title>Master proxy: z internetu do boxu</title><style>
+.bg{fill:#f3f5f7}.node{fill:#fff;stroke:#5c6a77;stroke-width:1.5}
+.key{fill:#e2eff1;stroke:#0e6e7d;stroke-width:1.5}
+.zone{fill:none;stroke:#8c98a4;stroke-width:1.2;stroke-dasharray:6 5}
+text{font-family:ui-sans-serif,system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;fill:#18212a;font-size:14px}
+.zl{fill:#5c6a77;font-size:13px;letter-spacing:.04em}.lbl{fill:#5c6a77;font-size:12px;paint-order:stroke;stroke:#f3f5f7;stroke-width:6px;stroke-linejoin:round}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px}
+.ln{stroke:#5c6a77;stroke-width:1.5;fill:none}.tun{stroke:#0e6e7d;stroke-width:5;fill:none}
+.tun2{stroke:#f3f5f7;stroke-width:2;fill:none}.ah{fill:#5c6a77}.aht{fill:#0e6e7d}
+@media (prefers-color-scheme:dark){.bg{fill:#0a0e12}.node{fill:#141b22;stroke:#94a2b0}
+.key{fill:#0d2a2f;stroke:#48b3c0}.zone{stroke:#6b7986}text{fill:#e2e8ee}.zl,.lbl{fill:#94a2b0}.lbl{stroke:#0a0e12}
+.ln{stroke:#94a2b0}.ah{fill:#94a2b0}.tun{stroke:#48b3c0}.tun2{stroke:#0a0e12}.aht{fill:#48b3c0}}
+</style><rect class="bg" width="1037" height="120" rx="12"/><rect class="node" x="30.0" y="48.0" width="90.7" height="36" rx="8"/><text x="75.36" y="71" text-anchor="middle">internet</text><rect class="node" x="190.7" y="48.0" width="177.0" height="36" rx="8"/><text x="279.2" y="71" text-anchor="middle">Traefik (VPS, :443)</text><rect class="key" x="437.7" y="48.0" width="137.8" height="36" rx="8"/><text x="506.56" y="71" text-anchor="middle">rathole server</text><rect class="key" x="685.4" y="48.0" width="184.8" height="36" rx="8"/><text x="777.84" y="71" text-anchor="middle">rathole klient (box)</text><rect class="node" x="940.2" y="48.0" width="67.2" height="36" rx="8"/><text x="973.84" y="71" text-anchor="middle">nginx</text><path class="ln" d="M120.7,66.0 L183.5,66.0"/><polygon class="ah" points="190.7,66.0 181.7,61.5 181.7,70.5"/><path class="ln" d="M367.7,66.0 L430.5,66.0"/><polygon class="ah" points="437.7,66.0 428.7,61.5 428.7,70.5"/><path class="ln" d="M870.2,66.0 L933.0,66.0"/><polygon class="ah" points="940.2,66.0 931.2,61.5 931.2,70.5"/><path class="tun" d="M585.4,66 L685.4,66"/><path class="tun2" d="M585.4,66 L685.4,66"/><polygon class="aht" points="575.4,66 588.4,58 588.4,74"/><text class="lbl" x="630.4" y="52" text-anchor="middle">tunel</text></svg>

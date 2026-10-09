@@ -5,9 +5,7 @@
 Voliteľné. Sprístupní box z internetu bez toho, aby ste museli doma otvárať
 port.
 
-```
-internet → Traefik (VPS, :443) → rathole server ⇐ tunnel ⇐ rathole client (box) → nginx
-```
+![internet → Traefik (VPS, :443) → rathole server ⇐ tunel ⇐ rathole klient (box) → nginx](images/master-proxy-sk.svg)
 
 ## Edge (VPS)
 
