@@ -1560,10 +1560,10 @@ in
 
     edge.builder.claudeKeySealed = lib.mkOption {
       type = secretPath;
-      default = "/var/secrets/losos-claude-key.cred";
+      default = "/var/secrets/losos-claude-api-key.cred";
       description = ''
         The Anthropic API key (`sk-ant-...`), **sealed** with `systemd-creds`
-        under the credential name `claude-key`. The registrar unit receives
+        under the credential name `claude-api-key`. The registrar unit receives
         it through `LoadCredentialEncrypted=` and reads it per request, so it
         is plaintext only in that unit's credential tmpfs. Boxes never see
         it. Give it a workspace of its own with a spend limit in the Claude

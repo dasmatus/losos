@@ -71,17 +71,17 @@ kann, wird nicht berechnet.
    stdin, damit der Klartext nie die Platte berührt:
 
    ```sh
-   systemd-creds encrypt --name=claude-key - /var/secrets/losos-claude-key.cred
+   systemd-creds encrypt --name=claude-api-key - /var/secrets/losos-claude-api-key.cred
    ```
 
    Der Pfad ist `losos.edge.builder.claudeKeySealed`. Der Name muss genau
-   `claude-key` lauten.
+   `claude-api-key` lauten.
 3. Legen Sie Agent und Umgebung einmal an:
 
    ```sh
    systemd-run --pipe --wait \
-     -p LoadCredentialEncrypted=claude-key:/var/secrets/losos-claude-key.cred \
-     sh -c 'losos-registrar builder-setup --key-file "$CREDENTIALS_DIRECTORY/claude-key"'
+     -p LoadCredentialEncrypted=claude-api-key:/var/secrets/losos-claude-api-key.cred \
+     sh -c 'losos-registrar builder-setup --key-file "$CREDENTIALS_DIRECTORY/claude-api-key"'
    ```
 
    Es gibt die zwei Zeilen für die Konfiguration des Edge aus:
@@ -102,16 +102,16 @@ wie er reagiert, aber nicht sagen können, ob einer der Dienste es annimmt.
 
 ## Optionen
 
-| Option                               | Standard                              |
-| ------------------------------------ | ------------------------------------- |
-| `losos.edge.builder.enable`          | `false`                               |
-| `losos.edge.builder.claudeKeySealed` | `/var/secrets/losos-claude-key.cred`  |
-| `losos.edge.builder.agentId`         | keine, erforderlich                   |
-| `losos.edge.builder.environmentId`   | keine, erforderlich                   |
-| `losos.edge.builder.markupBps`       | `2000` (20 %)                         |
-| `losos.edge.builder.usdRate`         | `"1.0"`                               |
-| `losos.edge.builder.packs`           | `[ 500 1000 2000 ]`                   |
-| `losos.edge.builder.maxBuildCents`   | `300`                                 |
+| Option                               | Standard                                 |
+| ------------------------------------ | ---------------------------------------- |
+| `losos.edge.builder.enable`          | `false`                                  |
+| `losos.edge.builder.claudeKeySealed` | `/var/secrets/losos-claude-api-key.cred` |
+| `losos.edge.builder.agentId`         | keine, erforderlich                      |
+| `losos.edge.builder.environmentId`   | keine, erforderlich                      |
+| `losos.edge.builder.markupBps`       | `2000` (20 %)                            |
+| `losos.edge.builder.usdRate`         | `"1.0"`                                  |
+| `losos.edge.builder.packs`           | `[ 500 1000 2000 ]`                      |
+| `losos.edge.builder.maxBuildCents`   | `300`                                    |
 
 ## Sicherheitseigenschaften
 
