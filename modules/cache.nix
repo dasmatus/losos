@@ -28,6 +28,13 @@
 # from the cache without the owner configuring anything; tests/invariants.nix
 # pins them. Set losos.cache.substituters = [ ] to opt out.
 #
+# The second default substituter is a static copy of the same paths on the
+# GitHub Pages site (https://losos.dasmat.us/proxy, written by
+# .github/scripts/pages-cache.sh and deployed with the handbook), signed with
+# the same key, for when the proxy on Vercel does not answer. It carries only
+# the newest main build and no Nextcloud image, and its Priority of 45 puts it
+# after both the proxy and cache.nixos.org.
+#
 # The Nextcloud image is the exception, and it is the one that matters most
 # here — it is the 2.3 GiB closure named above. It is NOT built on every push:
 # that job would fetch roughly 3.5x what the others do inside a 10-minute cap,

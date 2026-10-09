@@ -45,7 +45,7 @@ documents them in full.
 | The disks                            | `losos.targetDrives`               | what the installer found                    |
 | Certificate lifetime                 | `losos.tls.validityDays`           | 730                                         |
 | Idle threshold for lending CPU       | `losos.cluster.idleLoadThreshold`  | see the wiki                                |
-| The binary cache                     | `losos.cache.substituters`         | `https://proxy.losos.dasmat.us`             |
+| The binary cache                     | `losos.cache.substituters`         | `https://proxy.losos.dasmat.us`, then `https://losos.dasmat.us/proxy` |
 | Who may read `/setup/state.json` from a web page | `losos.setup.finderOrigins` | the LosOS edge's find page             |
 
 ![The Advanced pane, where the options not on the other panes are edited, each checked before Apply.](../img/settings-advanced.png)
