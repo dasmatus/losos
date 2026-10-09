@@ -15,6 +15,14 @@ on:
     # quiet repository stops running it silently.
     - cron: "57 4 * * 1"
   workflow_dispatch:
+    inputs:
+      release_tags:
+        description: >-
+          Publish release media for existing tags: one or more tags separated
+          by spaces, or "missing" for every release that has no installer ISO.
+          Leave empty for an ordinary CI run.
+        required: false
+        default: ""
 
 # ── What this is ────────────────────────────────────────────────────────────
 #
@@ -74,11 +82,12 @@ on:
 # `nix build` is therefore not a test gate.
 
 # Superseded runs are cancelled on pull requests and branches, where only the
-# newest push matters. Never on tags: the release-media job is not something to
-# interrupt half way through multi-gigabyte builds and uploads.
+# newest push matters. Never on tags or on a run that publishes release media
+# for older tags: the release-media job is not something to interrupt half way
+# through multi-gigabyte builds and uploads.
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+  group: ci-${{ github.ref }}${{ inputs.release_tags && format('-release-{0}', inputs.release_tags) || '' }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') && !inputs.release_tags }}
 
 # Read-only by default; the jobs that write ask for contents: write themselves.
 # A fork's pull request gets a read-only token and no secrets whatever this
@@ -303,6 +312,9 @@ jobs:
 
   losos-ctl:
     name: "rust: lososd + losos-ctl build"
+    # A run that only publishes media for older tags builds from those
+    # tags, not from this commit.
+    if: ${{ !inputs.release_tags }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -341,6 +353,9 @@ jobs:
 
   registrar-and-ui:
     name: "rust: losos-registrar + admin UI + handbook"
+    # A run that only publishes media for older tags builds from those
+    # tags, not from this commit.
+    if: ${{ !inputs.release_tags }}
     runs-on: ubuntu-latest
     # losos-admin-ui builds losos-lab-render, Bevy for wasm32 twice, which
     # alone takes about 20 minutes from an empty cache.
@@ -469,7 +484,7 @@ jobs:
     name: "nix: publish built paths to proxy"
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    if: github.event_name != 'pull_request' && vars.LOSOS_PROXY_URL != ''
+    if: github.event_name != 'pull_request' && vars.LOSOS_PROXY_URL != '' && !inputs.release_tags
     needs: [losos-ctl, registrar-and-ui, images]
     permissions:
       contents: read
@@ -859,18 +874,87 @@ jobs:
           path: iso-boot/*.png
           if-no-files-found: ignore
 
+  # Which tags release-media builds. A tag push builds that tag. A manual run
+  # with `release_tags` builds the tags it names, or with "missing" every
+  # published release that carries no installer ISO. Tags from before the
+  # edge gateway image (v0.1.0 to v0.1.6) cannot build the media and are
+  # skipped with a notice.
+  release-plan:
+    name: "release: pick the tags to publish"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: ${{ startsWith(github.ref, 'refs/tags/') || inputs.release_tags }}
+    permissions:
+      contents: read
+    outputs:
+      tags: ${{ steps.pick.outputs.tags }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - id: pick
+        env:
+          WANT: ${{ inputs.release_tags }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if [ -z "${WANT:-}" ]; then
+            candidates="$GITHUB_REF_NAME"
+          elif [ "$WANT" = missing ]; then
+            candidates=$(gh api --paginate "repos/${REPO}/releases?per_page=100" --jq \
+              '.[] | select(.draft | not) | select([.assets[].name | endswith(".iso")] | any | not) | .tag_name')
+          else
+            candidates="$WANT"
+          fi
+          picked=""
+          for t in $candidates; do
+            if ! git rev-parse -q --verify "refs/tags/${t}" >/dev/null; then
+              echo "::error::${t} is not a tag in this repository"
+              exit 1
+            fi
+            if ! git grep -q losos-disk-edge-qcow2 "refs/tags/${t}" -- flake.nix flake; then
+              echo "::notice::${t} predates the release media and is skipped"
+              continue
+            fi
+            picked="${picked}${t}"$'\n'
+          done
+          tags=$(printf '%s' "$picked" | jq -Rnc '[inputs | select(length > 0)]')
+          echo "publishing: ${tags}"
+          echo "tags=${tags}" >> "$GITHUB_OUTPUT"
+
   release-media:
     name: "release: publish installer ISO, demo QCOW2 and edge gateway QCOW2"
     runs-on: ubuntu-latest
     timeout-minutes: 120
-    if: ${{ startsWith(github.ref, 'refs/tags/') }}
-    needs: [iso, losos-ctl, registrar-and-ui]
+    # A tag push needs its own run's builds; a manual run for older tags
+    # builds everything from each tag's tree and needs none of them.
+    if: >-
+      ${{ !cancelled() && needs.release-plan.result == 'success'
+        && needs.release-plan.outputs.tags != '[]'
+        && (inputs.release_tags
+          || (needs.iso.result == 'success' && needs.losos-ctl.result == 'success'
+            && needs.registrar-and-ui.result == 'success')) }}
+    needs: [release-plan, iso, losos-ctl, registrar-and-ui]
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        tag: ${{ fromJSON(needs.release-plan.outputs.tags || '[]') }}
     permissions:
       contents: write
       packages: write
     steps:
+      # The tag's tree is what gets built. The workflow's own actions come
+      # from this run's commit, checked out beside it in .ci, which nix's
+      # git fetcher ignores because it is untracked.
       - uses: actions/checkout@v7
-      - uses: ./.github/actions/setup-nix
+        with:
+          ref: refs/tags/${{ matrix.tag }}
+      - uses: actions/checkout@v7
+        with:
+          path: .ci
+      - uses: ./.ci/.github/actions/setup-nix
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           cache-url: ${{ vars.LOSOS_PROXY_URL }}
@@ -880,19 +964,25 @@ jobs:
           set -euo pipefail
           sudo rm -rf /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL || true
           df -h
+      # Only a tag push has sibling builds to import; a manual run for older
+      # tags builds them here.
       - uses: actions/download-artifact@v8
+        if: ${{ !inputs.release_tags }}
         with:
           name: losos-ctl-store
           path: ctl-cache
       - uses: actions/download-artifact@v8
+        if: ${{ !inputs.release_tags }}
         with:
           name: losos-admin-ui-store
           path: ui-cache
       - uses: actions/download-artifact@v8
+        if: ${{ !inputs.release_tags }}
         with:
           name: losos-registrar-store
           path: registrar-cache
       - name: import the sibling jobs' store exports
+        if: ${{ !inputs.release_tags }}
         run: |
           xargs -r nix copy --from "file://$PWD/ctl-cache" --no-check-sigs < ctl-cache/store-paths
           xargs -r nix copy --from "file://$PWD/ui-cache" --no-check-sigs < ui-cache/store-paths
@@ -900,12 +990,17 @@ jobs:
       # The media carry their own tag (flake/version.nix): written over the
       # committed value and staged, since nix's git fetcher reads staged
       # files. An installed box builds from the committed tree, so a tag the
-      # file does not name gets a warning to bump it on main.
+      # file does not name gets a warning to bump it on main. Tags older than
+      # the file are built as they are.
       - name: stamp the release tag
         env:
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ matrix.tag }}
         run: |
           set -euo pipefail
+          if [ ! -f flake/version.nix ]; then
+            echo "::notice::${TAG} has no flake/version.nix; its media show the version its tree carries"
+            exit 0
+          fi
           committed=$(nix eval --raw --file flake/version.nix)
           if [ "$committed" != "$TAG" ]; then
             echo "::warning::flake/version.nix says ${committed} but the tag is ${TAG}; bump it on main so installed boxes say ${TAG} too"
@@ -935,7 +1030,7 @@ jobs:
         id: sign
         env:
           SECURE_BOOT_DB_KEY: ${{ secrets.SECURE_BOOT_DB_KEY }}
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ matrix.tag }}
         run: |
           set -euo pipefail
           iso="losos-installer-${TAG}.iso"
@@ -944,7 +1039,7 @@ jobs:
           cp -L result-iso/iso/*.iso "./${iso}"
           chmod u+w "./${iso}"
           cp -L result-qcow2/*.qcow2 "./${qcow2}"
-          nix run nixpkgs#qemu -- qemu-img convert -c -O qcow2 result-edge/*.qcow2 "./${edge}"
+          nix shell nixpkgs#qemu-utils -c qemu-img convert -c -O qcow2 result-edge/*.qcow2 "./${edge}"
           unsigned() {
             # $1 is why, for the release body; $2 the warning on the run.
             echo "::warning::$2"
@@ -993,7 +1088,7 @@ jobs:
       - name: stage the media
         id: stage
         env:
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ matrix.tag }}
         run: |
           set -euo pipefail
           iso="losos-installer-${TAG}.iso"
@@ -1021,7 +1116,7 @@ jobs:
       - name: publish the media to GHCR
         id: ghcr
         env:
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ matrix.tag }}
           ISO_NAME: ${{ steps.stage.outputs.isoName }}
           QCOW2_NAME: ${{ steps.stage.outputs.qcow2Name }}
           EDGE_NAME: ${{ steps.stage.outputs.edgeName }}
@@ -1060,7 +1155,7 @@ jobs:
       - name: compose release metadata
         id: meta
         env:
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ matrix.tag }}
           REPO: ${{ github.repository }}
           ISO_NAME: ${{ steps.stage.outputs.isoName }}
           ISO_SIZE: ${{ steps.stage.outputs.isoSize }}
@@ -1136,7 +1231,6 @@ jobs:
           EDGE_SIZE: ${{ steps.stage.outputs.edgeSize }}
           EDGE_REF: ${{ steps.ghcr.outputs.edgeRef }}
           REPO: ${{ github.repository }}
-          SHA: ${{ github.sha }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
@@ -1156,6 +1250,8 @@ jobs:
           iso_human=$(awk -v b="$ISO_SIZE" 'BEGIN { printf "%.2f GiB", b/1073741824 }')
           qcow2_human=$(awk -v b="$QCOW2_SIZE" 'BEGIN { printf "%.2f GiB", b/1073741824 }')
           release_dir="${ISO_URL%/*}"
+          # The tag's commit, which on a manual run is not this run's.
+          SHA=$(git rev-parse HEAD)
           if [ "$SIGNED" = true ]; then
             signing=$(cat <<SIGNED_EOF
           **Signed.** The ISO's UEFI loader carries a Secure Boot signature by
@@ -1299,9 +1395,9 @@ jobs:
       # github-release refuses anything over 2 GiB before spending the upload,
       # so an ISO that outgrows the limit fails this step loudly rather than
       # producing a release without it.
-      - uses: ./.github/actions/github-release
+      - uses: ./.ci/.github/actions/github-release
         with:
-          tag: ${{ github.ref_name }}
+          tag: ${{ matrix.tag }}
           body: ${{ steps.body.outputs.body }}
           assets: |
             ${{ steps.stage.outputs.isoName }}

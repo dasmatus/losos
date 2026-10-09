@@ -52,6 +52,18 @@ and skips the enrolled leg, and so does a run where signing failed. The key is m
 Your release notes are kept. The download section goes between two marker
 comments, and a re-run replaces only that section.
 
+### Media for a tag that has none
+
+A release whose tag run failed can get its media later. Open Actions, pick
+the `ci` workflow, choose *Run workflow* on `main`, and fill in
+`release_tags`: either `missing`, for every published release without an
+installer ISO, or the tags themselves, separated by spaces (`v0.1.7
+v0.1.8`). Each tag is built from its own tree, the same way a tag push
+builds it, two at a time, and its media are attached to the existing
+release. The release's title and your notes stay as they are. Tags from
+before the edge gateway image (v0.1.6 and older) cannot build the media
+and are skipped with a notice.
+
 ## Binary cache
 
 CI publishes signed Nix store paths as OCI artifacts at
