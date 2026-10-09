@@ -100,7 +100,7 @@ real frame, so what it shows is what the tile will show. A widget can fetch
 the internet (a weather tile, say) but not the box. The limit is 24 widgets,
 each at most 12 files and 128 KiB together.
 
-The editor also has a **Build with Claude** tab, where Claude writes the
+The editor also has a **Build with AI** tab, where an AI agent writes the
 widget from a description and puts its files in the editor for you to read
 before saving. It is paid per build from a prepaid balance and needs an edge
 that offers it, and what you send is subject to Anthropic's terms; see

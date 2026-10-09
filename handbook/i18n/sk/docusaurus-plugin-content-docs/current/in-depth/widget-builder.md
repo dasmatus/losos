@@ -9,7 +9,7 @@ mdx:
 
 Vlastník opíše widget bežnými slovami a Claude ho napíše. Editor widgetov
 (**Pridať widget**, potom **Napísať**) má vedľa karty **Písať** kartu
-**Vytvoriť s Claude**. Súbory widgetu sa objavia v editore, kde si ich
+**Vytvoriť s AI**. Súbory widgetu sa objavia v editore, kde si ich
 vlastník môže prečítať, vyskúšať v náhľade a upraviť. Nič sa neuloží, kým
 vlastník nestlačí Uložiť, a widget od Claude beží v rovnakom sandboxovanom
 rámci ako ručne písaný (pozri [Správa](administration.md#ručne-písané-widgety)).

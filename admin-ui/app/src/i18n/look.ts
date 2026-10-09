@@ -115,13 +115,13 @@ export default defineMessages({
   },
   "look.editor.tab.write": { en: "Write", sk: "Písať", de: "Schreiben" },
   "look.editor.tab.help": { en: "How it works", sk: "Ako to funguje", de: "So funktioniert es" },
-  "look.editor.tab.claude": { en: "Build with Claude", sk: "Vytvoriť s Claude", de: "Mit Claude bauen" },
+  "look.editor.tab.claude": { en: "Build with AI", sk: "Vytvoriť s AI", de: "Mit KI bauen" },
 
-  // ── Built by Claude (widgets/builder-panel.tsx) ─────────────────────────
+  // ── Built with AI (widgets/builder-panel.tsx) ──────────────────────────
   "look.builder.intro": {
-    en: "Describe the widget and Claude writes it. It lands in the editor, where you can read it, try it in the preview and change it before you save.",
-    sk: "Opíšte widget a Claude ho napíše. Objaví sa v editore, kde si ho môžete prečítať, vyskúšať v náhľade a upraviť ešte pred uložením.",
-    de: "Beschreiben Sie das Widget, und Claude schreibt es. Es landet im Editor, wo Sie es lesen, in der Vorschau ausprobieren und vor dem Speichern ändern können.",
+    en: "Describe the widget and the AI writes it. It lands in the editor, where you can read it, try it in the preview and change it before you save.",
+    sk: "Opíšte widget a AI ho napíše. Objaví sa v editore, kde si ho môžete prečítať, vyskúšať v náhľade a upraviť ešte pred uložením.",
+    de: "Beschreiben Sie das Widget, und die KI schreibt es. Es landet im Editor, wo Sie es lesen, in der Vorschau ausprobieren und vor dem Speichern ändern können.",
   },
   "look.builder.loading": { en: "Asking the edge…", sk: "Pýtam sa edge…", de: "Edge wird gefragt …" },
   "look.builder.loadFailed": {
@@ -146,9 +146,9 @@ export default defineMessages({
     de: "{input} pro Million gelesener Tokens und {output} pro Million geschriebener. Ein Bau kostet höchstens {max}.",
   },
   "look.builder.terms": {
-    en: "What you write here, and the files you ask Claude to change, are sent to Anthropic and are subject to Anthropic's terms.",
-    sk: "Čo sem napíšete, aj súbory, ktoré má Claude upraviť, sa posielajú spoločnosti Anthropic a vzťahujú sa na ne podmienky spoločnosti Anthropic.",
-    de: "Was Sie hier schreiben, und die Dateien, die Claude ändern soll, gehen an Anthropic und unterliegen den Bedingungen von Anthropic.",
+    en: "What you write here, and the files you ask it to change, are sent to Anthropic and are subject to Anthropic's terms.",
+    sk: "Čo sem napíšete, aj súbory, ktoré má AI upraviť, sa posielajú spoločnosti Anthropic a vzťahujú sa na ne podmienky spoločnosti Anthropic.",
+    de: "Was Sie hier schreiben, und die Dateien, die die KI ändern soll, gehen an Anthropic und unterliegen den Bedingungen von Anthropic.",
   },
   "look.builder.terms.usage": { en: "Usage Policy", sk: "Zásady používania", de: "Nutzungsrichtlinie" },
   "look.builder.terms.commercial": { en: "Commercial Terms", sk: "Obchodné podmienky", de: "Geschäftsbedingungen" },
@@ -193,9 +193,9 @@ export default defineMessages({
   },
   "look.builder.runningShort": { en: "Building", sk: "Tvorí sa", de: "Wird gebaut" },
   "look.builder.running": {
-    en: "Claude is writing the widget. This takes a minute or two, and it carries on if you close this window.",
-    sk: "Claude píše widget. Trvá to minútu či dve a pokračuje aj vtedy, keď toto okno zavriete.",
-    de: "Claude schreibt das Widget. Das dauert ein, zwei Minuten und läuft weiter, wenn Sie dieses Fenster schließen.",
+    en: "The AI is writing the widget. This takes a minute or two, and it carries on if you close this window.",
+    sk: "AI píše widget. Trvá to minútu či dve a pokračuje aj vtedy, keď toto okno zavriete.",
+    de: "Die KI schreibt das Widget. Das dauert ein, zwei Minuten und läuft weiter, wenn Sie dieses Fenster schließen.",
   },
   "look.builder.startFailed": {
     en: "The build did not start.",
@@ -213,9 +213,9 @@ export default defineMessages({
     de: "Die Beschreibung darf höchstens {max} Zeichen lang sein.",
   },
   "look.builder.doneTitle": {
-    en: "Claude wrote the widget",
-    sk: "Claude napísal widget",
-    de: "Claude hat das Widget geschrieben",
+    en: "The widget is written",
+    sk: "Widget je napísaný",
+    de: "Das Widget ist geschrieben",
   },
   "look.builder.doneNote": {
     en: "It is in the editor. Read it before you save it.",
@@ -233,14 +233,14 @@ export default defineMessages({
     de: "Der Bau hat seine Ausgabengrenze erreicht, das Widget ist daher vielleicht unfertig.",
   },
   "look.builder.fault.noWidget": {
-    en: "Claude finished without writing a widget. Charged {amount}. Try describing it differently.",
-    sk: "Claude skončil bez widgetu. Účtované {amount}. Skúste ho opísať inak.",
-    de: "Claude hat ohne Widget aufgehört. Berechnet: {amount}. Beschreiben Sie es anders.",
+    en: "The AI finished without writing a widget. Charged {amount}. Try describing it differently.",
+    sk: "AI skončila bez widgetu. Účtované {amount}. Skúste ho opísať inak.",
+    de: "Die KI hat ohne Widget aufgehört. Berechnet: {amount}. Beschreiben Sie es anders.",
   },
   "look.builder.fault.unusable": {
-    en: "Claude wrote something too large to be a widget. Charged {amount}.",
-    sk: "Claude napísal niečo príliš veľké na widget. Účtované {amount}.",
-    de: "Claude hat etwas geschrieben, das für ein Widget zu groß ist. Berechnet: {amount}.",
+    en: "The AI wrote something too large to be a widget. Charged {amount}.",
+    sk: "AI napísala niečo príliš veľké na widget. Účtované {amount}.",
+    de: "Die KI hat etwas geschrieben, das für ein Widget zu groß ist. Berechnet: {amount}.",
   },
   "look.builder.fault.upstream": {
     en: "The build could not be finished. Nothing was charged.",

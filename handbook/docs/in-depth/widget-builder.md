@@ -9,7 +9,7 @@ mdx:
 
 An owner describes a widget in plain words and Claude writes it. The
 widget editor (**Add a widget**, then **Write one**) has a **Build with
-Claude** tab next to **Write**. The widget's files land in the editor,
+AI** tab next to **Write**. The widget's files land in the editor,
 where the owner can read them, try them in the preview and change them.
 Nothing is saved until the owner presses Save, and a widget Claude wrote
 runs in the same sandboxed frame as one written by hand (see

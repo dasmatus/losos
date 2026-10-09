@@ -9,7 +9,7 @@ mdx:
 
 Der Besitzer beschreibt ein Widget in eigenen Worten, und Claude schreibt es.
 Der Widget-Editor (**Widget hinzufügen**, dann **Eins schreiben**) hat neben
-**Schreiben** einen Tab **Mit Claude bauen**. Die Dateien des Widgets landen
+**Schreiben** einen Tab **Mit KI bauen**. Die Dateien des Widgets landen
 im Editor, wo der Besitzer sie lesen, in der Vorschau ausprobieren und
 ändern kann. Nichts wird gespeichert, bevor der Besitzer auf
 Speichern drückt, und ein Widget von Claude läuft im selben abgeschotteten
