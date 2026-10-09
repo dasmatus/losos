@@ -1039,6 +1039,21 @@ jobs:
           fi
           printf '"%s"\n' "$TAG" > flake/version.nix
           git add flake/version.nix
+      # A tag that does not build as tagged gets its fix from
+      # .github/release-fixes/<tag>/, read from this run's commit and staged
+      # over the tag's tree the same way, so the published tag never moves.
+      # Only for build breaks fixed on main: an installed box clones main,
+      # not the tag, so the media must not carry anything main lacks.
+      - name: apply the tag's build fixes
+        env:
+          TAG: ${{ matrix.tag }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          for p in ".ci/.github/release-fixes/${TAG}"/*.patch; do
+            echo "::notice::${TAG} is built with ${p#.ci/}"
+            git apply --index "$p"
+          done
       - run: nix build .#nixosConfigurations.iso.config.system.build.isoImage -L
       - run: mv result result-iso
       - run: nix build .#losos-disk-qcow2 -L

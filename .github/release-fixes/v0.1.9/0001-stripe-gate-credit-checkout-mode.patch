@@ -1,0 +1,32 @@
+From abea0a87da18998b14e802521ca67f4bca109562 Mon Sep 17 00:00:00 2001
+From: Matus Mastena <330471626+dasmatus@users.noreply.github.com>
+Date: Fri, 9 Oct 2026 14:52:22 +0000
+Subject: [PATCH] Give the credit checkout its Stripe mode again
+
+The widget-builder merge left the CreditCheckout arm of the Stripe gate
+calling stripe_or_reply! with three arguments after the macro gained a
+mode binding, so losos-registrar no longer compiled on main. Bind the
+mode like every other checkout arm and stamp it on the reply.
+---
+ backend-registrar/src/stripe_gate.rs | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/backend-registrar/src/stripe_gate.rs b/backend-registrar/src/stripe_gate.rs
+index 621c4ac..ccbfc0c 100644
+--- a/backend-registrar/src/stripe_gate.rs
++++ b/backend-registrar/src/stripe_gate.rs
+@@ -1060,12 +1060,12 @@ async fn handle(opts: &GateOpts, request: Request) -> Reply {
+             ) {
+                 return refuse(why);
+             }
+-            stripe_or_reply!(opts, key, s);
++            stripe_or_reply!(opts, key, mode, s);
+             match s.credit_checkout(&key, &c, &opts.currency).await {
+                 Ok((id, url)) => Reply {
+                     id: Some(id),
+                     url: Some(url),
+-                    ..Reply::default()
++                    ..Reply::in_mode(mode)
+                 },
+                 Err(e) => e.into(),
+             }
