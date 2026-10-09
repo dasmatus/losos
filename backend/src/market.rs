@@ -126,6 +126,24 @@ pub enum Op {
     HardwareCheckout {
         items: Vec<(String, u64)>,
     },
+    /// The widget builder (`backend-registrar/src/builder.rs`): this box's
+    /// balance, the price, and its recent builds.
+    BuilderAccount,
+    /// A Stripe Checkout for one of the edge's credit packs.
+    BuilderCredit {
+        amount: u64,
+    },
+    /// Start a build from the owner's description, or a change to `base`,
+    /// the widget's current files. `lang` is the admin page's language.
+    BuilderStart {
+        prompt: String,
+        base: Option<Vec<crate::look::WidgetFile>>,
+        lang: Option<String>,
+    },
+    /// One build, with its source once it is done.
+    BuilderBuild {
+        build_id: String,
+    },
     /// The machine images the edge offers, the replica's shape and the
     /// split (`backend-registrar/src/vms.rs`). Anonymous.
     VmImages,
@@ -189,6 +207,15 @@ pub(crate) fn valid_user_data(text: &str) -> bool {
         && !text.contains('\0')
 }
 
+/// Longest description of a widget; the edge's limit is the same.
+pub const MAX_BUILDER_PROMPT_CHARS: usize = 2000;
+/// The languages the builder writes its notes in; the admin UI's own.
+pub const BUILDER_LANGS: [&str; 3] = ["en", "sk", "de"];
+/// The range a credit pack may be in, in minor units; the edge's packs are
+/// the authority.
+const MIN_CREDIT: u64 = 100;
+const MAX_CREDIT: u64 = 50_000;
+
 /// Most lines and most of one item in a hardware order; the edge's own
 /// limits are the same.
 pub const MAX_HARDWARE_LINES: usize = 8;
@@ -224,6 +251,18 @@ fn valid_id(id: &str) -> bool {
 }
 
 impl Op {
+    /// Whether this is one of the widget builder's operations.
+    #[must_use]
+    pub fn is_builder(&self) -> bool {
+        matches!(
+            self,
+            Op::BuilderAccount
+                | Op::BuilderCredit { .. }
+                | Op::BuilderStart { .. }
+                | Op::BuilderBuild { .. }
+        )
+    }
+
     /// Refuse an operation before it leaves the box.
     ///
     /// # Errors
@@ -236,7 +275,44 @@ impl Op {
             | Op::Hardware
             | Op::Deregister
             | Op::VmImages
-            | Op::VmStatus => Ok(()),
+            | Op::VmStatus
+            | Op::BuilderAccount => Ok(()),
+            Op::BuilderCredit { amount } => {
+                if (MIN_CREDIT..=MAX_CREDIT).contains(amount) {
+                    Ok(())
+                } else {
+                    Err("the amount is not one of the edge's credit packs")
+                }
+            }
+            Op::BuilderStart { prompt, base, lang } => {
+                let prompt = prompt.trim();
+                if prompt.is_empty() {
+                    Err("describe the widget first")
+                } else if prompt.chars().count() > MAX_BUILDER_PROMPT_CHARS {
+                    Err("the description is longer than 2000 characters")
+                } else if prompt
+                    .chars()
+                    .any(|c| c.is_control() && c != '\n' && c != '\t')
+                {
+                    Err("the description has control characters in it")
+                } else if base
+                    .as_ref()
+                    .is_some_and(|b| crate::look::validate_files(b).is_err())
+                {
+                    Err("the widget to change is not one this box would keep")
+                } else if lang.as_deref().is_some_and(|l| !BUILDER_LANGS.contains(&l)) {
+                    Err("lang must be en, sk or de")
+                } else {
+                    Ok(())
+                }
+            }
+            Op::BuilderBuild { build_id } => {
+                if valid_id(build_id) {
+                    Ok(())
+                } else {
+                    Err("build_id is not valid")
+                }
+            }
             Op::VmOrder {
                 listing_id,
                 quantity,
@@ -353,6 +429,10 @@ impl Op {
             Op::Hardware => ("GET", "/market/hardware"),
             Op::HardwareCheckout { .. } => ("POST", "/market/hardware/checkout"),
             Op::Deregister => ("POST", "/deregister"),
+            Op::BuilderAccount => ("POST", "/builder/account"),
+            Op::BuilderCredit { .. } => ("POST", "/builder/credits"),
+            Op::BuilderStart { .. } => ("POST", "/builder/builds"),
+            Op::BuilderBuild { .. } => ("POST", "/builder/build"),
             Op::VmImages => ("GET", "/market/vm-images"),
             Op::VmStatus => ("POST", "/market/vms/status"),
             Op::VmOrder { .. } => ("POST", "/market/orders"),
@@ -397,7 +477,24 @@ impl Op {
                     .map(|(sku, quantity)| json!({ "sku": sku, "quantity": quantity }))
                     .collect::<Vec<_>>(),
             }),
-            Op::Account | Op::Domains | Op::Deregister => json!({}),
+            Op::Account | Op::Domains | Op::Deregister | Op::BuilderAccount => json!({}),
+            Op::BuilderCredit { amount } => json!({ "amount": amount }),
+            Op::BuilderStart { prompt, base, lang } => {
+                let mut extra = json!({ "prompt": prompt.trim() });
+                if let Some(files) = base {
+                    extra["base_files"] = json!(files);
+                    // An edge from before widgets had files reads `base`,
+                    // the entry, and ignores the rest.
+                    if let Some(entry) = files.iter().find(|f| f.name == crate::look::ENTRY_FILE) {
+                        extra["base"] = json!(entry.content);
+                    }
+                }
+                if let Some(lang) = lang {
+                    extra["lang"] = json!(lang);
+                }
+                extra
+            }
+            Op::BuilderBuild { build_id } => json!({ "build_id": build_id }),
             Op::DomainAdd { domain } | Op::DomainRemove { domain } => json!({ "domain": domain }),
             Op::Onboard { box_uuid } => match box_uuid {
                 Some(u) => json!({ "box_uuid": u }),
@@ -662,6 +759,67 @@ mod tests {
         assert!(bad(vec![("Box", 1)]));
         assert!(bad(vec![("../x", 1)]));
         assert!(bad(vec![("box", 1); 9]));
+    }
+
+    #[test]
+    fn builder_operations_carry_only_what_the_edge_needs() {
+        use crate::look::WidgetFile;
+        let start = |prompt: &str, base: Option<&str>, lang: Option<&str>| Op::BuilderStart {
+            prompt: prompt.to_string(),
+            base: base.map(|b| {
+                vec![
+                    WidgetFile::entry(b),
+                    WidgetFile {
+                        name: "app.js".to_string(),
+                        content: "1".to_string(),
+                    },
+                ]
+            }),
+            lang: lang.map(str::to_string),
+        };
+        let op = start("  a clock\nwith seconds ", Some("<div></div>"), Some("sk"));
+        assert!(op.validate().is_ok());
+        assert_eq!(op.route(), ("POST", "/builder/builds"));
+        let body: Value = serde_json::from_str(&op.body("box", "tok").unwrap()).unwrap();
+        assert_eq!(
+            body,
+            json!({ "appliance_id": "box", "token": "tok", "prompt": "a clock\nwith seconds",
+                    "base_files": [
+                        { "name": "index.html", "content": "<div></div>" },
+                        { "name": "app.js", "content": "1" },
+                    ],
+                    "base": "<div></div>", "lang": "sk" })
+        );
+        // No base is a new widget.
+        let body: Value =
+            serde_json::from_str(&start("x", None, None).body("b", "t").unwrap()).unwrap();
+        assert!(body.get("base").is_none() && body.get("lang").is_none());
+        // A base the box would not keep is not sent.
+        assert!(start("x", Some("  "), None).validate().is_err());
+
+        assert!(start(" ", None, None).validate().is_err());
+        assert!(start(&"x".repeat(2001), None, None).validate().is_err());
+        assert!(start(&"é".repeat(2000), None, None).validate().is_ok());
+        assert!(start("a\u{1b}[2J", None, None).validate().is_err());
+        assert!(start("x", None, Some("fr")).validate().is_err());
+        let big = "x".repeat(crate::look::MAX_WIDGET_BYTES + 1);
+        assert!(start("x", Some(&big), None).validate().is_err());
+
+        let credit = |amount| Op::BuilderCredit { amount };
+        assert!(credit(500).validate().is_ok());
+        assert!(credit(0).validate().is_err());
+        assert!(credit(1_000_000).validate().is_err());
+        let body: Value = serde_json::from_str(&credit(500).body("b", "t").unwrap()).unwrap();
+        assert_eq!(body["amount"], 500);
+        assert_eq!(credit(500).route(), ("POST", "/builder/credits"));
+
+        let build = |id: &str| Op::BuilderBuild {
+            build_id: id.to_string(),
+        };
+        assert!(build("bld_0a1b2c").validate().is_ok());
+        assert!(build("../x").validate().is_err());
+        assert_eq!(build("bld_1").route(), ("POST", "/builder/build"));
+        assert_eq!(Op::BuilderAccount.route(), ("POST", "/builder/account"));
     }
 
     #[test]

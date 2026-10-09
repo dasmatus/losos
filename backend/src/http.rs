@@ -16,7 +16,7 @@ use crate::io_backend::{atomic_write_secret, IoLosos};
 use crate::losos::{
     cmd_apply, cmd_apps_search, cmd_change, cmd_config, cmd_config_sync, cmd_edge,
     cmd_factory_reset, cmd_grow, cmd_options, cmd_recovery, cmd_set_password, cmd_settings,
-    cmd_sign_in, cmd_state, cmd_status,
+    cmd_sign_in, cmd_state, cmd_status, cmd_storage,
 };
 use crate::model::Mode;
 use crate::overrides::validate_apply;
@@ -93,6 +93,17 @@ fn error_response(e: anyhow::Error) -> HttpResponse {
         e if e.downcast_ref::<crate::look::Invalid>().is_some() => {
             let why = e.downcast_ref::<crate::look::Invalid>().expect("checked");
             err(actix_web::http::StatusCode::BAD_REQUEST, &why.0)
+        }
+        // An install the owner can fix (a bad name, a chart the box will not
+        // run) keeps its sentence as a 400; one that cannot happen right now
+        // (the shared side locked, a job still running) is a 409.
+        e if e.downcast_ref::<crate::apps::Invalid>().is_some() => {
+            let why = e.downcast_ref::<crate::apps::Invalid>().expect("checked");
+            err(actix_web::http::StatusCode::BAD_REQUEST, &why.0)
+        }
+        e if e.downcast_ref::<crate::apps::Conflict>().is_some() => {
+            let why = e.downcast_ref::<crate::apps::Conflict>().expect("checked");
+            err(actix_web::http::StatusCode::CONFLICT, &why.0)
         }
         // The first boot's one expected failure: Nextcloud is still installing
         // itself, so the first password cannot be set *yet*. 503 with the
@@ -460,6 +471,10 @@ async fn post_erase_cancel(api: web::Data<Api>, req: HttpRequest) -> HttpRespons
 /// Synchronous, unlike every other POST here: it is three short-lived commands
 /// rather than a supervised rebuild, so it returns the measured before/after
 /// sizes instead of a job id to poll.
+async fn get_storage(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    guarded(&api, &req, "/api/storage", false, || run(&api, cmd_storage))
+}
+
 async fn post_grow(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
     guarded(&api, &req, "/api/grow", true, || run(&api, cmd_grow))
 }
@@ -762,6 +777,70 @@ fn get_apps_search_inner(api: &Api, req: &HttpRequest) -> HttpResponse {
     run(api, |b| cmd_apps_search(b, &query))
 }
 
+// ── Installing an app from the catalogue ─────────────────────────────────
+// `crate::apps` holds the rules. HTTP-only, like the market: the page is the
+// only caller.
+
+/// `GET /api/apps` — what is installed, and whether anything can be.
+async fn get_apps(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    guarded(&api, &req, "/api/apps", false, || {
+        run(&api, crate::apps::cmd_apps)
+    })
+}
+
+/// `GET /api/apps/chart?repo=&name=&version=` — the chart's values and
+/// schema, for the install dialog.
+///
+/// Not under the state lock: fetching a chart can take as long as the
+/// network does, and it touches no state. Holding the lock would stall every
+/// other request to the box for that long.
+async fn get_app_chart(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    guarded(&api, &req, "/api/apps/chart", false, || {
+        let q =
+            web::Query::<std::collections::HashMap<String, String>>::from_query(req.query_string())
+                .map(web::Query::into_inner)
+                .unwrap_or_default();
+        let field = |k: &str| q.get(k).map(|v| v.trim().to_string()).unwrap_or_default();
+        let chart = crate::apps::ChartRef {
+            repo: field("repo"),
+            name: field("name"),
+            version: field("version"),
+        };
+        let mut backend = api.backend.clone();
+        match crate::apps::cmd_app_chart(&mut backend, &chart) {
+            Ok(v) => HttpResponse::Ok().json(v),
+            Err(e) => error_response(e),
+        }
+    })
+}
+
+/// `POST /api/apps/install` `{release, chart: {repo, name, version}, runAs,
+/// values?, valuesYaml?}` — install an app, or change one installed under the
+/// same name.
+async fn post_app_install(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> HttpResponse {
+    guarded(&api, &req, "/api/apps/install", true, || {
+        let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
+        match crate::apps::InstallRequest::parse(&doc) {
+            Ok(request) => run(&api, |b| crate::apps::cmd_app_install(b, &request)),
+            Err(e) => error_response(e),
+        }
+    })
+}
+
+/// `POST /api/apps/remove` `{release}`.
+async fn post_app_remove(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> HttpResponse {
+    guarded(&api, &req, "/api/apps/remove", true, || {
+        let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
+        match field_str(&doc, "release") {
+            Some(release) => run(&api, |b| crate::apps::cmd_app_remove(b, &release)),
+            None => err(
+                actix_web::http::StatusCode::BAD_REQUEST,
+                r#"body must be JSON: {"release": "<name>"}"#,
+            ),
+        }
+    })
+}
+
 /// Where the Lab's libvirt helper listens, from `$LOSOS_LAB_URL`; `None`
 /// when the box runs none (`losos.lab.libvirt.enable` off).
 fn lab_helper() -> Option<std::net::SocketAddr> {
@@ -1018,6 +1097,69 @@ async fn post_market_order(
         })
     })
     .await
+}
+
+// ── The widget builder ────────────────────────────────────────────────────
+// Relayed to the edge like the market (`crate::market`): the edge holds the
+// Anthropic key and the balance, this box only its proxy token.
+
+/// `GET /api/builder` — balance, packs, price and recent builds, or
+/// `{"available": false}` when no official edge offers the builder.
+async fn get_builder(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    guarded(&api, &req, "/api/builder", false, || {
+        run(&api, crate::losos::cmd_builder)
+    })
+}
+
+/// `POST /api/builder/credits` `{"amount": ...}` — a Stripe Checkout for one
+/// credit pack.
+async fn post_builder_credit(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    post_market(api, req, body, "/api/builder/credits", |d| {
+        Some(crate::market::Op::BuilderCredit {
+            amount: field_u64(d, "amount")?,
+        })
+    })
+    .await
+}
+
+/// `POST /api/builder/builds` `{"prompt": ..., "base"?: [files], "lang"?: ...}`
+/// — start a build. `base` is the widget to change, as the files the editor
+/// holds; a single string is read as its `index.html`.
+async fn post_builder_start(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    post_market(api, req, body, "/api/builder/builds", |d| {
+        Some(crate::market::Op::BuilderStart {
+            prompt: field_str(d, "prompt")?,
+            base: match d.get("base") {
+                None | Some(serde_json::Value::Null) => None,
+                Some(serde_json::Value::String(s)) if s.trim().is_empty() => None,
+                Some(serde_json::Value::String(s)) => Some(vec![crate::look::WidgetFile::entry(s)]),
+                Some(files) => Some(crate::look::parse_files(files)?),
+            },
+            lang: field_str(d, "lang"),
+        })
+    })
+    .await
+}
+
+/// `GET /api/builder/builds/{id}` — one build, with its source once done.
+async fn get_builder_build(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    path: web::Path<String>,
+) -> HttpResponse {
+    let build_id = path.into_inner();
+    guarded(&api, &req, "/api/builder/builds", false, || {
+        let op = crate::market::Op::BuilderBuild { build_id };
+        run(&api, |b| crate::losos::cmd_market_op(b, &op))
+    })
 }
 
 // ── Virtual machines ──────────────────────────────────────────────────────
@@ -1483,10 +1625,15 @@ pub fn serve(backend: IoLosos) -> anyhow::Result<()> {
                 .route("/api/backup/restore", web::post().to(post_backup_restore))
                 .route("/api/erase", web::post().to(post_erase))
                 .route("/api/erase/cancel", web::post().to(post_erase_cancel))
+                .route("/api/storage", web::get().to(get_storage))
                 .route("/api/grow", web::post().to(post_grow))
                 .route("/api/set-password", web::post().to(post_set_password))
                 .route("/api/recovery", web::get().to(get_recovery))
                 .route("/api/apps/search", web::get().to(get_apps_search))
+                .route("/api/apps", web::get().to(get_apps))
+                .route("/api/apps/chart", web::get().to(get_app_chart))
+                .route("/api/apps/install", web::post().to(post_app_install))
+                .route("/api/apps/remove", web::post().to(post_app_remove))
                 .route("/api/market", web::get().to(get_market))
                 .route("/api/market/onboard", web::post().to(post_market_onboard))
                 .route("/api/market/listings", web::post().to(post_market_listing))
@@ -1495,6 +1642,10 @@ pub fn serve(backend: IoLosos) -> anyhow::Result<()> {
                     web::post().to(post_market_close),
                 )
                 .route("/api/market/orders", web::post().to(post_market_order))
+                .route("/api/builder", web::get().to(get_builder))
+                .route("/api/builder/credits", web::post().to(post_builder_credit))
+                .route("/api/builder/builds", web::post().to(post_builder_start))
+                .route("/api/builder/builds/{id}", web::get().to(get_builder_build))
                 .route("/api/vms", web::get().to(get_vms))
                 .route("/api/vms/orders", web::post().to(post_vm_order))
                 .route("/api/vms/listings", web::post().to(post_vm_listing))

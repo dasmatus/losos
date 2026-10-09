@@ -50,5 +50,9 @@
   "sidebar.handbook.category.The project": {
     "message": "Projekt",
     "description": "The label for category 'The project' in sidebar 'handbook'"
+  },
+  "sidebar.handbook.category.In depth": {
+    "message": "Do hĺbky",
+    "description": "The label for category 'In depth' in sidebar 'handbook'"
   }
 }

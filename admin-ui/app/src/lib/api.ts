@@ -84,6 +84,14 @@ export interface GrowResponse {
   claimedBytes: number;
 }
 
+/** GET /api/storage: df and vgs on the box. A reading it cannot take is null. */
+export interface StorageResponse {
+  totalBytes: number | null;
+  usedBytes: number | null;
+  /** 0 once the reserve has been claimed. */
+  reserveBytes: number | null;
+}
+
 export interface HealthResponse {
   ok: boolean;
 }
@@ -354,6 +362,10 @@ export function getStatus(options: RequestOptions = {}): Promise<StatusResponse>
   return call<StatusResponse>("/api/status", options);
 }
 
+export function getStorage(options: RequestOptions = {}): Promise<StorageResponse> {
+  return call<StorageResponse>("/api/storage", options);
+}
+
 /* ── Edge proxies ─────────────────────────────────────────────────────────
  * What lososd found when it last looked for an edge proxy: on the LAN by
  * DNS-SD (`_losos-edge._tcp` over the Avahi the box already runs) and at the
@@ -582,6 +594,92 @@ export function postMarketOrder(
   return marketPost("/api/market/orders", { listing_id: listingId, quantity }, options);
 }
 
+// ── Widget builder ────────────────────────────────────────────────────────
+
+/* A Claude agent on the edge writes a widget from the owner's description
+ * (backend-registrar/src/builder.rs), relayed by lososd like the market. The
+ * edge keeps the Anthropic key and a prepaid balance per box, topped up
+ * through Stripe Checkout. Amounts are in the minor unit of `currency`;
+ * prices are per million tokens with the edge's markup included. */
+
+export interface BuilderPrice {
+  model: string;
+  input_per_million: number;
+  output_per_million: number;
+  markup_percent: number;
+  /** The most one build may cost. */
+  max_build: number;
+}
+
+export type BuildStatus = "running" | "done" | "failed";
+export type BuildFault = "noWidget" | "unusable" | "upstream";
+
+export interface BuildSummary {
+  id: string;
+  status: BuildStatus;
+  prompt: string;
+  revision: boolean;
+  created_at: number;
+  finished_at: number | null;
+  charged: number;
+  fault: BuildFault | null;
+  has_source: boolean;
+}
+
+export interface BuildView extends BuildSummary {
+  /** The spending cap stopped the agent; the widget may be unfinished. */
+  at_limit: boolean;
+  /** The widget's `index.html`; `files` has it with the rest. */
+  source: string | null;
+  /** Absent from an edge older than widgets with files. */
+  files?: WidgetFile[] | null;
+  /** What the agent says it made, in the page's language. */
+  notes: string | null;
+}
+
+export type BuilderResponse =
+  | { available: false; reason?: "noOfficialEdge" }
+  | {
+      available: true;
+      currency: string;
+      balance: number;
+      packs: number[];
+      price: BuilderPrice;
+      can_build: boolean;
+      builds: BuildSummary[];
+    };
+
+/** GET /api/builder. */
+export function getBuilder(options: RequestOptions = {}): Promise<BuilderResponse> {
+  return call<BuilderResponse>("/api/builder", options);
+}
+
+/** POST /api/builder/credits — a Stripe Checkout for one credit pack. */
+export function postBuilderCredit(
+  amount: number,
+  options: RequestOptions = {},
+): Promise<MarketActionResponse> {
+  return marketPost("/api/builder/credits", { amount }, options);
+}
+
+/** POST /api/builder/builds — start a build; `base` is the widget to change. */
+export function postBuilderBuild(
+  request: { prompt: string; base?: WidgetFile[]; lang: string },
+  options: RequestOptions = {},
+): Promise<BuildView> {
+  return call<BuildView>("/api/builder/builds", {
+    ...options,
+    method: "POST",
+    contentType: "application/json",
+    body: JSON.stringify(request),
+  });
+}
+
+/** GET /api/builder/builds/{id}. */
+export function getBuilderBuild(id: string, options: RequestOptions = {}): Promise<BuildView> {
+  return call<BuildView>(`/api/builder/builds/${encodeURIComponent(id)}`, options);
+}
+
 // ── Virtual machines ──────────────────────────────────────────────────────
 
 /* Virtual machines on the mesh, sold by the replica through the market and
@@ -750,6 +848,94 @@ export function putVmImage(
     xhr.onabort = () => reject(new DOMException("aborted", "AbortError"));
     signal?.addEventListener("abort", () => xhr.abort(), { once: true });
     xhr.send(file);
+  });
+}
+
+// ── Installed apps ────────────────────────────────────────────────────────
+
+/* Apps the owner installed from the catalogue search, run in the box's own
+ * cluster as one of its two data users (backend/src/apps.rs). */
+
+/** Where the box fetches an app from. */
+export interface AppSource {
+  repo: string;
+  name: string;
+  version: string;
+}
+
+/** The two data users: the private side and the side lent to the mesh. */
+export type AppRunAs = "notshared" | "shared";
+
+export type AppPhase = "installing" | "running" | "failed" | "removing";
+
+export interface InstalledApp {
+  release: string;
+  chart: AppSource;
+  runAs: AppRunAs;
+  /** What the property form changed when it was last installed. */
+  values: Record<string, unknown>;
+  valuesYaml: string | null;
+  /** The port the box opens for it on the LAN. */
+  frontPort: number;
+  /** The port it listens on, once known; null for an app with no page. */
+  appPort: number | null;
+  phase: AppPhase;
+  /** Why it failed, in the box's words. */
+  message: string | null;
+  updatedAt: number;
+}
+
+export type AppsResponse =
+  | { available: false; reason: "noCluster"; apps: [] }
+  | { available: true; sharedAvailable: boolean; apps: InstalledApp[] };
+
+/** GET /api/apps */
+export function getApps(options: RequestOptions = {}): Promise<AppsResponse> {
+  return call<AppsResponse>("/api/apps", options);
+}
+
+export interface AppChartResponse {
+  chart: AppSource;
+  /** The name the box suggests. */
+  release: string;
+  valuesYaml: string;
+  values: unknown;
+  /** A JSON schema for the values, when the app ships one. */
+  schema: unknown;
+}
+
+/** GET /api/apps/chart — the app's properties and their defaults. Slow: the
+ *  box fetches the app to read them. */
+export function getAppChart(source: AppSource, options: RequestOptions = {}): Promise<AppChartResponse> {
+  const query = new URLSearchParams({ repo: source.repo, name: source.name, version: source.version });
+  return call<AppChartResponse>(`/api/apps/chart?${query.toString()}`, options);
+}
+
+export interface AppInstallRequest {
+  release: string;
+  chart: AppSource;
+  runAs: AppRunAs;
+  values: Record<string, unknown>;
+  valuesYaml: string | null;
+}
+
+/** POST /api/apps/install — install, or change an app under the same name. */
+export function postAppInstall(request: AppInstallRequest, options: RequestOptions = {}): Promise<InstalledApp> {
+  return call<InstalledApp>("/api/apps/install", {
+    ...options,
+    method: "POST",
+    contentType: "application/json",
+    body: JSON.stringify(request),
+  });
+}
+
+/** POST /api/apps/remove — its files stay in the user's data folder. */
+export function postAppRemove(release: string, options: RequestOptions = {}): Promise<InstalledApp> {
+  return call<InstalledApp>("/api/apps/remove", {
+    ...options,
+    method: "POST",
+    contentType: "application/json",
+    body: JSON.stringify({ release }),
   });
 }
 
@@ -1296,18 +1482,30 @@ export type LookBackground =
 
 export type HandSpan = "half" | "full";
 
-/** One widget the owner wrote: a name, a width, and the HTML it is. */
+/** One file of a widget: `index.html`, or a file it links. */
+export interface WidgetFile {
+  name: string;
+  content: string;
+}
+
+/** One widget the owner wrote: a name, a width, and its files. */
 export interface HandWidget {
   id: string;
   name: string;
   span: HandSpan;
-  source: string;
+  files: WidgetFile[];
 }
 
 export interface LookLimits {
   widgets: number;
   nameChars: number;
-  sourceBytes: number;
+  /** All of one widget's files together. */
+  widgetBytes: number;
+  /** Files in one widget. */
+  files: number;
+  fileNameChars: number;
+  /** Extensions a widget's file may have. */
+  fileKinds: string[];
   imageBytes: number;
   veil: { min: number; max: number };
 }
@@ -1335,7 +1533,7 @@ export interface HandWidgetDraft {
   id?: string;
   name: string;
   span: HandSpan;
-  source: string;
+  files: WidgetFile[];
 }
 
 /** GET /api/look. */

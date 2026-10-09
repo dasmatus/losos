@@ -1,5 +1,5 @@
-//! Edge federation (wiki/Edge-Federation.md): a spoke relays its boxes
-//! through a hub, and a LAN edge enrols boxes on first contact.
+//! Edge federation (handbook/docs/in-depth/edge-federation.md): a spoke relays
+//! its boxes through a hub, and a LAN edge enrols boxes on first contact.
 //!
 //! Real registrars on real sockets, as in every other integration test here:
 //! the hub is one `Edge`, the spoke another whose `--uplink-file` points at

@@ -261,7 +261,8 @@ impl Edge {
         .await
     }
 
-    /// As [`Edge::start_market`], with `market.json` written before the edge
+    /// As [`Edge::start_market`], with the test ledger (`market-test.json`,
+    /// the ledger of [`STRIPE_KEY`]'s mode) written before the edge
     /// starts, for states a test cannot reach in real time (an entitlement
     /// that lapsed a month ago).
     pub async fn start_market_with_state(
@@ -469,6 +470,27 @@ impl Edge {
         .await
     }
 
+    /// As [`Edge::start_with_market`] with no one enrolled, and a
+    /// last-minute change to the options.
+    pub async fn start_market_custom(
+        tag: &str,
+        tenants: &[TenantSpec],
+        stripe_api: &str,
+        tweak: impl FnOnce(&mut ServeOpts, &TempDir) + Send + 'static,
+    ) -> Self {
+        Self::start_inner_seeded(
+            tag,
+            tenants,
+            MeshFixture::default(),
+            None,
+            Some(stripe_api.to_string()),
+            &[],
+            None,
+            Some(Box::new(tweak)),
+        )
+        .await
+    }
+
     #[allow(clippy::too_many_arguments)]
     async fn start_inner_seeded(
         tag: &str,
@@ -514,11 +536,13 @@ impl Edge {
     ) -> Self {
         let dir = TempDir::new(tag);
         if let Some(market_state) = market_state {
+            // STRIPE_KEY is a test key, so the gate sends the market to the
+            // test ledger.
             std::fs::write(
-                dir.join("market.json"),
+                dir.join("market-test.json"),
                 serde_json::to_vec(market_state).expect("serialize market state"),
             )
-            .expect("seed market.json");
+            .expect("seed market-test.json");
         }
         if !enrolled.is_empty() {
             let windows: serde_json::Map<String, serde_json::Value> = enrolled
@@ -577,6 +601,7 @@ impl Edge {
                 fee_bps: Some(losos_registrar::market::DEFAULT_FEE_BPS),
                 return_url: Some(RETURN_URL.to_string()),
                 hardware_catalogue: Some(dir.path_str("hardware.json")),
+                credit_packs: vec![500, 1_000, 2_000],
             };
             let listener = losos_registrar::stripe_gate::bind(&gate.socket).expect("bind gate");
             let (stop, rx) = oneshot::channel::<()>();
@@ -629,6 +654,7 @@ impl Edge {
             kube_ca_file: None,
             compute_windows_file: dir.path_str("compute-windows.json"),
             market,
+            builder: None,
             github_api_url: github_api_url
                 .unwrap_or(losos_registrar::provision::GITHUB_API_URL)
                 .to_string(),

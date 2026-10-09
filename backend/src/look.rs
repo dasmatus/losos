@@ -9,12 +9,13 @@
 //! document lives beside `state.json` under `$LOSOS_STATE_DIR` and is written
 //! the same way, atomically, by the one daemon that owns that directory.
 //!
-//! What a hand-written widget is, from here: a name, a size, and a source
-//! text the admin page renders inside a **sandboxed iframe** served under its
-//! own, permissive-for-itself CSP (`/widget-frame/`, see
+//! What a hand-written widget is, from here: a name, a size, and a few text
+//! files (`index.html` and whatever it links: stylesheets, scripts, SVG
+//! pictures, JSON) that the admin page renders inside a **sandboxed iframe**
+//! served under its own, permissive-for-itself CSP (`/widget-frame/`, see
 //! `modules/containers.nix`). lososd stores the text and never interprets it;
-//! the only rules enforced here are the sizes, so one widget cannot be a
-//! gigabyte and a thousand of them cannot be a thousand. The security argument
+//! the only rules enforced here are the file names and the sizes, so one
+//! widget cannot be a gigabyte and a thousand of them cannot be a thousand. The security argument
 //! for running owner-written script at all is in the frame's own header
 //! (`admin-ui/app/public/widget-frame/index.html`), not here.
 //!
@@ -35,9 +36,19 @@ use serde_json::{json, Value};
 pub const MAX_WIDGETS: usize = 24;
 /// Longest widget name, in characters.
 pub const MAX_NAME_CHARS: usize = 60;
-/// Longest widget source, in bytes. Generous for a hand-written tile, far
-/// short of anything that could be mistaken for an application.
-pub const MAX_SOURCE_BYTES: usize = 64 * 1024;
+/// Most bytes in one widget, all its files together. Generous for a tile
+/// with a stylesheet, a script and a picture or two, far short of anything
+/// that could be mistaken for an application.
+pub const MAX_WIDGET_BYTES: usize = 128 * 1024;
+/// Most files in one widget.
+pub const MAX_FILES: usize = 12;
+/// Longest file name, in characters.
+pub const MAX_FILE_NAME_CHARS: usize = 40;
+/// The file the frame renders; the others are only what it links.
+pub const ENTRY_FILE: &str = "index.html";
+/// The kinds of file a widget may carry, by extension. Text only: the frame
+/// inlines a linked file, and a picture is SVG.
+pub const FILE_KINDS: &[&str] = &["html", "css", "js", "mjs", "json", "svg", "txt", "md"];
 /// Largest background picture accepted, in bytes.
 pub const MAX_IMAGE_BYTES: usize = 8 * 1024 * 1024;
 /// The veil over the picture — how much of the theme's ground colour sits on
@@ -80,14 +91,61 @@ pub enum Span {
     Full,
 }
 
+/// One file of a widget.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WidgetFile {
+    pub name: String,
+    pub content: String,
+}
+
+impl WidgetFile {
+    #[must_use]
+    pub fn entry(content: &str) -> Self {
+        WidgetFile {
+            name: ENTRY_FILE.to_string(),
+            content: content.to_string(),
+        }
+    }
+}
+
 /// One widget the owner wrote.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(from = "StoredWidget")]
 pub struct HandWidget {
     pub id: String,
     pub name: String,
     pub span: Span,
-    /// HTML, with its own `<style>` and `<script>`, rendered in the frame.
-    pub source: String,
+    /// `index.html`, rendered in the frame, and the files it links.
+    pub files: Vec<WidgetFile>,
+}
+
+/// A widget as `look.json` may hold it: with files, or, written before a
+/// widget could have more than one, a single `source` that is its
+/// `index.html`.
+#[derive(Deserialize)]
+struct StoredWidget {
+    id: String,
+    name: String,
+    span: Span,
+    #[serde(default)]
+    files: Vec<WidgetFile>,
+    #[serde(default)]
+    source: Option<String>,
+}
+
+impl From<StoredWidget> for HandWidget {
+    fn from(w: StoredWidget) -> Self {
+        let files = match (w.files.is_empty(), w.source) {
+            (true, Some(source)) => vec![WidgetFile::entry(&source)],
+            _ => w.files,
+        };
+        HandWidget {
+            id: w.id,
+            name: w.name,
+            span: w.span,
+            files,
+        }
+    }
 }
 
 /// The persisted document at `$LOSOS_STATE_DIR/look.json`.
@@ -228,11 +286,27 @@ pub struct WidgetDraft {
     pub id: Option<String>,
     pub name: String,
     pub span: Span,
-    pub source: String,
+    pub files: Vec<WidgetFile>,
+}
+
+/// Read a list of files, `[{ "name": …, "content": … }]`, or `None` when it
+/// is not that shape.
+pub fn parse_files(value: &Value) -> Option<Vec<WidgetFile>> {
+    value
+        .as_array()?
+        .iter()
+        .map(|f| {
+            Some(WidgetFile {
+                name: f.get("name")?.as_str()?.to_string(),
+                content: f.get("content")?.as_str()?.to_string(),
+            })
+        })
+        .collect()
 }
 
 /// Read a draft out of the request body, or `None` for a body that is not
-/// the shape. Sizes are checked by the command, with the sentence.
+/// the shape. Sizes are checked by the command, with the sentence. A body
+/// with a single `source` instead of `files` is a one-file widget.
 pub fn parse_draft(doc: &Value) -> Option<WidgetDraft> {
     let record = doc.as_object()?;
     let id = match record.get("id") {
@@ -241,7 +315,10 @@ pub fn parse_draft(doc: &Value) -> Option<WidgetDraft> {
         Some(_) => return None,
     };
     let name = record.get("name")?.as_str()?.to_string();
-    let source = record.get("source")?.as_str()?.to_string();
+    let files = match record.get("files") {
+        Some(files) => parse_files(files)?,
+        None => vec![WidgetFile::entry(record.get("source")?.as_str()?)],
+    };
     let span = match record.get("span").and_then(Value::as_str) {
         None | Some("half") => Span::Half,
         Some("full") => Span::Full,
@@ -251,8 +328,66 @@ pub fn parse_draft(doc: &Value) -> Option<WidgetDraft> {
         id,
         name,
         span,
-        source,
+        files,
     })
+}
+
+/// A file name a widget may use: lowercase letters, digits, `-` and `_`,
+/// then a dot and one of [`FILE_KINDS`]. No directories, so a name can
+/// never be read as a path.
+pub fn is_file_name(name: &str) -> bool {
+    let Some((stem, kind)) = name.rsplit_once('.') else {
+        return false;
+    };
+    name.chars().count() <= MAX_FILE_NAME_CHARS
+        && FILE_KINDS.contains(&kind)
+        && stem
+            .bytes()
+            .next()
+            .is_some_and(|b| b.is_ascii_lowercase() || b.is_ascii_digit())
+        && stem
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b"-_.".contains(&b))
+        && !stem.contains("..")
+}
+
+/// The rules a widget's files have to meet: `index.html` among them and not
+/// empty, names [`is_file_name`] and each used once, at most [`MAX_FILES`]
+/// and [`MAX_WIDGET_BYTES`] together.
+pub fn validate_files(files: &[WidgetFile]) -> Result<(), Invalid> {
+    if files.len() > MAX_FILES {
+        return Err(Invalid(format!("a widget has at most {MAX_FILES} files")));
+    }
+    let mut seen = std::collections::HashSet::new();
+    for file in files {
+        if !is_file_name(&file.name) {
+            return Err(Invalid(format!(
+                "{:?} is not a file name a widget can use",
+                file.name
+                    .chars()
+                    .take(MAX_FILE_NAME_CHARS + 1)
+                    .collect::<String>()
+            )));
+        }
+        if !seen.insert(file.name.as_str()) {
+            return Err(Invalid(format!("there are two files called {}", file.name)));
+        }
+    }
+    match files.iter().find(|f| f.name == ENTRY_FILE) {
+        None => return Err(Invalid(format!("the widget has no {ENTRY_FILE}"))),
+        Some(entry) if entry.content.trim().is_empty() => {
+            return Err(Invalid(format!("{ENTRY_FILE} is empty")))
+        }
+        Some(_) => {}
+    }
+    let bytes: usize = files.iter().map(|f| f.content.len()).sum();
+    if bytes > MAX_WIDGET_BYTES {
+        return Err(Invalid(format!(
+            "the widget's files are larger than {} KiB together",
+            MAX_WIDGET_BYTES / 1024
+        )));
+    }
+    Ok(())
 }
 
 /// The rules a draft has to meet, pure, so the HTTP layer and the command
@@ -272,15 +407,7 @@ pub fn validate_draft(draft: &WidgetDraft) -> Result<(), Invalid> {
             "the name has a control character in it".to_string(),
         ));
     }
-    if draft.source.trim().is_empty() {
-        return Err(Invalid("the widget has no source".to_string()));
-    }
-    if draft.source.len() > MAX_SOURCE_BYTES {
-        return Err(Invalid(format!(
-            "the source is longer than {} KiB",
-            MAX_SOURCE_BYTES / 1024
-        )));
-    }
+    validate_files(&draft.files)?;
     if let Some(id) = &draft.id {
         if !is_widget_id(id) {
             return Err(Invalid("that is not a widget id".to_string()));
@@ -324,7 +451,10 @@ pub fn render(look: &Look) -> Value {
         "limits": {
             "widgets": MAX_WIDGETS,
             "nameChars": MAX_NAME_CHARS,
-            "sourceBytes": MAX_SOURCE_BYTES,
+            "widgetBytes": MAX_WIDGET_BYTES,
+            "files": MAX_FILES,
+            "fileNameChars": MAX_FILE_NAME_CHARS,
+            "fileKinds": FILE_KINDS,
             "imageBytes": MAX_IMAGE_BYTES,
             "veil": { "min": MIN_VEIL, "max": MAX_VEIL },
         },
@@ -419,7 +549,7 @@ pub fn cmd_put_widget<L: Losos>(l: &mut L, draft: &WidgetDraft) -> anyhow::Resul
             };
             existing.name = name;
             existing.span = draft.span;
-            existing.source = draft.source.clone();
+            existing.files = draft.files.clone();
             existing.clone()
         }
         None => {
@@ -430,7 +560,7 @@ pub fn cmd_put_widget<L: Losos>(l: &mut L, draft: &WidgetDraft) -> anyhow::Resul
                 id: format!("w{}", look.next_id),
                 name,
                 span: draft.span,
-                source: draft.source.clone(),
+                files: draft.files.clone(),
             };
             look.next_id += 1;
             look.widgets.push(widget.clone());
@@ -472,7 +602,14 @@ mod tests {
             id: None,
             name: name.to_string(),
             span: Span::Half,
-            source: source.to_string(),
+            files: vec![WidgetFile::entry(source)],
+        }
+    }
+
+    fn file(name: &str, content: &str) -> WidgetFile {
+        WidgetFile {
+            name: name.to_string(),
+            content: content.to_string(),
         }
     }
 
@@ -648,14 +785,21 @@ mod tests {
             id: Some("w1".to_string()),
             name: "  Big clock  ".to_string(),
             span: Span::Full,
-            source: "<b>13:00</b>".to_string(),
+            files: vec![
+                file(
+                    "index.html",
+                    "<b>13:00</b><link rel=stylesheet href=clock.css>",
+                ),
+                file("clock.css", "b { color: red }"),
+            ],
         };
         let doc = cmd_put_widget(&mut l, &edit).unwrap();
         assert_eq!(doc["widget"]["id"], "w1");
         assert_eq!(doc["widget"]["name"], "Big clock", "names are trimmed");
         assert_eq!(doc["widget"]["span"], "full");
         assert_eq!(l.look.widgets.len(), 1);
-        assert_eq!(l.look.widgets[0].source, "<b>13:00</b>");
+        assert_eq!(l.look.widgets[0].files.len(), 2);
+        assert_eq!(l.look.widgets[0].files[1].name, "clock.css");
 
         let missing = WidgetDraft {
             id: Some("w9".to_string()),
@@ -674,7 +818,7 @@ mod tests {
             draft(&"n".repeat(MAX_NAME_CHARS + 1), "<b/>"),
             draft("tab\there", "<b/>"),
             draft("Empty", "   "),
-            draft("Huge", &"x".repeat(MAX_SOURCE_BYTES + 1)),
+            draft("Huge", &"x".repeat(MAX_WIDGET_BYTES + 1)),
             WidgetDraft {
                 id: Some("../w1".to_string()),
                 ..draft("Bad id", "<b/>")
@@ -687,7 +831,7 @@ mod tests {
         assert!(l.look.widgets.is_empty());
 
         // Exactly at the limits is fine.
-        let edge = draft(&"n".repeat(MAX_NAME_CHARS), &"x".repeat(MAX_SOURCE_BYTES));
+        let edge = draft(&"n".repeat(MAX_NAME_CHARS), &"x".repeat(MAX_WIDGET_BYTES));
         cmd_put_widget(&mut l, &edge).unwrap();
 
         for i in 1..MAX_WIDGETS {
@@ -699,11 +843,93 @@ mod tests {
     }
 
     #[test]
+    fn a_widget_is_a_few_named_files() {
+        let ok = |files: Vec<WidgetFile>| validate_files(&files).is_ok();
+        assert!(ok(vec![file("index.html", "<p>")]));
+        assert!(ok(vec![
+            file("style.css", "p{}"),
+            file("index.html", "<p>"),
+            file("app.js", ""),
+            file("logo-2_dark.svg", "<svg/>"),
+            file("data.json", "{}"),
+        ]));
+        // No entry, an empty entry, a name used twice.
+        assert!(!ok(vec![file("app.js", "1")]));
+        assert!(!ok(vec![file("index.html", "  \n")]));
+        assert!(!ok(vec![
+            file("index.html", "<p>"),
+            file("index.html", "<b>")
+        ]));
+        // Too many, too large together though each file is small.
+        let many: Vec<WidgetFile> = std::iter::once(file("index.html", "<p>"))
+            .chain((1..MAX_FILES).map(|i| file(&format!("f{i}.js"), "1")))
+            .collect();
+        assert!(ok(many.clone()));
+        let mut one_more = many;
+        one_more.push(file("last.js", "1"));
+        assert!(!ok(one_more));
+        let half = "x".repeat(MAX_WIDGET_BYTES / 2);
+        assert!(!ok(vec![
+            file("index.html", &half),
+            file("a.css", &half),
+            file("b.css", "x"),
+        ]));
+
+        for good in [
+            "index.html",
+            "a.js",
+            "0.css",
+            "my-tile_v2.min.js",
+            "x.mjs",
+            "notes.md",
+        ] {
+            assert!(is_file_name(good), "{good}");
+        }
+        for bad in [
+            "", "index", ".css", "../a.js", "a/b.js", "a\\b.js", "App.js", "a.exe", "a.png",
+            "-a.js", "a..b.js", "a b.js", "a.JS",
+        ] {
+            assert!(!is_file_name(bad), "{bad}");
+        }
+        assert!(is_file_name(&format!(
+            "{}.js",
+            "a".repeat(MAX_FILE_NAME_CHARS - 3)
+        )));
+        assert!(!is_file_name(&format!(
+            "{}.js",
+            "a".repeat(MAX_FILE_NAME_CHARS - 2)
+        )));
+    }
+
+    #[test]
+    fn a_widget_saved_with_one_source_reads_as_its_index() {
+        let look: Look = serde_json::from_str(
+            r#"{"widgets":[{"id":"w1","name":"Old","span":"half","source":"<b>1</b>"}]}"#,
+        )
+        .unwrap();
+        assert_eq!(look.widgets[0].files, vec![WidgetFile::entry("<b>1</b>")]);
+        // And it is written back with files, not source.
+        let written = serde_json::to_value(&look.widgets[0]).unwrap();
+        assert!(written.get("source").is_none());
+        assert_eq!(written["files"][0]["name"], "index.html");
+    }
+
+    #[test]
     fn drafts_are_read_strictly() {
         let doc = json!({ "name": "Clock", "source": "<b/>", "span": "full" });
         let parsed = parse_draft(&doc).unwrap();
         assert_eq!(parsed.span, Span::Full);
         assert_eq!(parsed.id, None);
+        assert_eq!(parsed.files, vec![WidgetFile::entry("<b/>")]);
+        let doc = json!({ "name": "Clock", "files": [
+            { "name": "index.html", "content": "<b/>" },
+            { "name": "a.css", "content": "" },
+        ] });
+        assert_eq!(parse_draft(&doc).unwrap().files.len(), 2);
+        assert!(parse_draft(&json!({ "name": "x", "files": "<b/>" })).is_none());
+        assert!(
+            parse_draft(&json!({ "name": "x", "files": [{ "name": "index.html" }] })).is_none()
+        );
         let doc = json!({ "id": "w4", "name": "Clock", "source": "<b/>" });
         assert_eq!(parse_draft(&doc).unwrap().span, Span::Half);
         assert_eq!(parse_draft(&doc).unwrap().id.as_deref(), Some("w4"));

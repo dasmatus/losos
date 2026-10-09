@@ -76,3 +76,7 @@ path = "src/bin/losos-ctl.rs"
 [[bin]]
 name = "lososd"
 path = "src/bin/lososd.rs"
+
+[[bin]]
+name = "losos-app-shape"
+path = "src/bin/losos-app-shape.rs"

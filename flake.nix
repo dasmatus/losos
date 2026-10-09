@@ -306,6 +306,10 @@
             # Backups to the owner's S3 bucket, restoring them, and the
             # boot-time wipe of an erase (backend/src/{backup,erase}.rs).
             ./modules/backup.nix
+            # Apps installed from the catalogue into the box's own cluster
+            # (backend/src/apps.rs): the Helm job, its shaping plugin and the
+            # LAN forwards.
+            ./modules/apps.nix
             # LosOS Lab's guests under libvirt on the box (losos.lab.libvirt,
             # off by default): the `losos-registrar lab` helper lososd relays
             # /api/lab to.
@@ -365,16 +369,17 @@
         imports = [
           ./modules/options.nix
           ./modules/edge.nix
+          ./modules/edge-credentials.nix
           ./modules/edge-vms.nix
           ./modules/edge-gateway.nix
         ];
         _module.args.self = self;
       };
-      # The edge gateway (wiki/Edge-Federation.md): the edge module with LAN
-      # advertising, open enrolment and a runtime uplink, as a VM image for a
-      # LAN that has no NixOS machine to import nixosModules.edge on.
-      # `nix build .#losos-disk-edge-qcow2` images it (flake/disk-images.nix);
-      # this configuration is what the image boots.
+      # The edge gateway (handbook/docs/in-depth/edge-federation.md): the edge
+      # module with LAN advertising, open enrolment and a runtime uplink, as a
+      # VM image for a LAN that has no NixOS machine to import nixosModules.edge
+      # on. `nix build .#losos-disk-edge-qcow2` images it
+      # (flake/disk-images.nix); this configuration is what the image boots.
       nixosConfigurations.edge-gateway = nixpkgs.lib.nixosSystem {
         inherit system;
         modules = [

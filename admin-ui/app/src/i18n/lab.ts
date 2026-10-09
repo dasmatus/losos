@@ -218,9 +218,9 @@ export default defineMessages({
     de: "In dieser Ansicht sind die Konsolen simuliert, weil qemu-wasm eine cross-origin-isolierte Seite braucht. Die eigenständige Ausgabe bootet je Gerät einen echten x86_64-Gast.",
   },
   "lab.empty.realModel": {
-    en: "The LosOS behaviour (edge discovery, the path rule, enrolment, relaying, the lanOnly guard) is modelled on the rules in the LosOS wiki.",
-    sk: "Správanie LosOS (hľadanie edge, pravidlo cesty, registrácia, preposielanie, ochrana lanOnly) je modelované podľa pravidiel z wiki LosOS.",
-    de: "Das Verhalten von LosOS (Edge-Suche, die Wegregel, Aufnahme, Weiterleitung, der lanOnly-Schutz) ist nach den Regeln im LosOS-Wiki nachgebildet.",
+    en: "The LosOS behaviour (edge discovery, the path rule, enrolment, relaying, the lanOnly guard) is modelled on the rules in the LosOS handbook.",
+    sk: "Správanie LosOS (hľadanie edge, pravidlo cesty, registrácia, preposielanie, ochrana lanOnly) je modelované podľa pravidiel z príručky LosOS.",
+    de: "Das Verhalten von LosOS (Edge-Suche, die Wegregel, Aufnahme, Weiterleitung, der lanOnly-Schutz) ist nach den Regeln im LosOS-Handbuch nachgebildet.",
   },
   "lab.link.title": { en: "{kind} link", sk: "Spojenie {kind}", de: "Verbindung {kind}" },
   "lab.link.state": { en: "State", sk: "Stav", de: "Zustand" },

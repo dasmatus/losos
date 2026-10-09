@@ -21,6 +21,7 @@ use std::io;
 use axum::http::StatusCode;
 
 use crate::action::Action;
+use crate::builder::BuilderError;
 use crate::domains::DomainError;
 use crate::market::MarketError;
 
@@ -101,6 +102,9 @@ pub enum ApiError {
     /// [`ApiError::status`] for their statuses.
     #[error(transparent)]
     Market(#[from] MarketError),
+    /// A widget builder route failed; see [`BuilderError`].
+    #[error(transparent)]
+    Builder(#[from] BuilderError),
     /// A custom-domain route failed; see [`DomainError`].
     #[error(transparent)]
     Domains(#[from] DomainError),
@@ -149,6 +153,15 @@ impl ApiError {
                 MarketError::Conflict(_) => StatusCode::CONFLICT,
                 MarketError::Stripe(_) => StatusCode::BAD_GATEWAY,
                 MarketError::Store(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            },
+            ApiError::Builder(e) => match e {
+                BuilderError::Unconfigured => StatusCode::SERVICE_UNAVAILABLE,
+                BuilderError::Invalid(_) => StatusCode::BAD_REQUEST,
+                BuilderError::NotFound => StatusCode::NOT_FOUND,
+                BuilderError::Conflict(_) => StatusCode::CONFLICT,
+                BuilderError::Upstream(_) => StatusCode::BAD_GATEWAY,
+                BuilderError::Market(m) => ApiError::Market(m.clone()).status(),
+                BuilderError::Store(_) => StatusCode::INTERNAL_SERVER_ERROR,
             },
             ApiError::Domains(e) => match e {
                 DomainError::Unconfigured => StatusCode::SERVICE_UNAVAILABLE,
@@ -199,6 +212,18 @@ impl ApiError {
                 }
                 MarketError::Store(_) => Cow::Borrowed("internal error"),
             },
+            ApiError::Builder(e) => match e {
+                BuilderError::Unconfigured
+                | BuilderError::Invalid(_)
+                | BuilderError::NotFound
+                | BuilderError::Conflict(_) => Cow::Owned(e.to_string()),
+                // The payload carries Anthropic's own error text.
+                BuilderError::Upstream(_) => {
+                    Cow::Borrowed("the widget builder is unavailable; retry later")
+                }
+                BuilderError::Market(m) => ApiError::Market(m.clone()).public_body(),
+                BuilderError::Store(_) => Cow::Borrowed("internal error"),
+            },
             ApiError::Domains(e) => match e {
                 DomainError::Store(_) => Cow::Borrowed("internal error"),
                 _ => Cow::Owned(e.to_string()),
@@ -230,6 +255,16 @@ impl axum::response::IntoResponse for ApiError {
             }
             ApiError::Market(_) => {
                 tracing::warn!(target: Action::Market.target(), "market request rejected: {self}");
+            }
+            ApiError::Builder(
+                BuilderError::Upstream(_)
+                | BuilderError::Store(_)
+                | BuilderError::Market(MarketError::Stripe(_) | MarketError::Store(_)),
+            ) => {
+                tracing::error!(target: Action::Builder.target(), "builder request failed: {self}");
+            }
+            ApiError::Builder(_) => {
+                tracing::warn!(target: Action::Builder.target(), "builder request rejected: {self}");
             }
             ApiError::Domains(DomainError::Store(_)) => {
                 tracing::error!(target: Action::Domains.target(), "domain request failed: {self}");

@@ -208,6 +208,41 @@
         }
       }
     },
+    "storageResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "totalBytes",
+        "usedBytes",
+        "reserveBytes"
+      ],
+      "properties": {
+        "totalBytes": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "description": "Size of the /persist filesystem in bytes (df). Null when it could not be read."
+        },
+        "usedBytes": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "description": "Bytes of /persist in use (df). Null when it could not be read."
+        },
+        "reserveBytes": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "description": "Unallocated volume-group space a grow would claim (vgs free extents times extent size). 0 once the reserve is claimed; null when the box has no persist-vg to ask."
+        }
+      }
+    },
     "growResponse": {
       "type": "object",
       "additionalProperties": false,
@@ -326,7 +361,7 @@
         },
         "widgets": {
           "type": "array",
-          "description": "Widgets written by hand, in creation order: {\"id\":\"w<N>\" (never reused), \"name\", \"span\":\"half|full\", \"source\"}. The source is the owner's HTML, style and script, stored verbatim and run only inside the sandboxed /widget-frame/ (see POST /api/look/widgets)."
+          "description": "Widgets written by hand, in creation order: {\"id\":\"w<N>\" (never reused), \"name\", \"span\":\"half|full\", \"files\": [{\"name\", \"content\"}]}, index.html first. The files are the owner's HTML, style, script and data, stored verbatim and run only inside the sandboxed /widget-frame/ (see POST /api/look/widgets). A widget saved before widgets were files reads as one index.html."
         },
         "shipped": {
           "type": "array",
@@ -334,7 +369,7 @@
         },
         "limits": {
           "type": "object",
-          "description": "{widgets, nameChars, sourceBytes, imageBytes, veil:{min,max}}: what the writes refuse with 400, so the pages can check before sending."
+          "description": "{widgets, nameChars, widgetBytes, files, fileNameChars, fileKinds, imageBytes, veil:{min,max}}: what the writes refuse with 400, so the pages can check before sending."
         }
       },
       "required": [
@@ -669,9 +704,177 @@
                   "null"
                 ],
                 "description": "The package's own home page where it has one, otherwise its page on the catalogue, so every row stays clickable. Null only if neither can be built."
+              },
+              "chart": {
+                "oneOf": [
+                  {
+                    "$ref": "#/$defs/appChartRef"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Where the box can fetch the app from, for the Install button: the repository the catalogue names, the package and the version. Null when the catalogue names no `https://` or `oci://` repository; the row keeps its link and gets no button."
               }
             }
           }
+        }
+      }
+    },
+    "appChartRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repo",
+        "name",
+        "version"
+      ],
+      "properties": {
+        "repo": {
+          "type": "string",
+          "description": "`https://` for a chart repository, `oci://` for a registry, with no userinfo."
+        },
+        "name": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      }
+    },
+    "appRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "release",
+        "chart",
+        "runAs",
+        "values",
+        "valuesYaml",
+        "frontPort",
+        "appPort",
+        "phase",
+        "message",
+        "updatedAt"
+      ],
+      "properties": {
+        "release": {
+          "type": "string",
+          "pattern": "^[a-z]([-a-z0-9]{0,38}[a-z0-9])?$",
+          "description": "The app's name on this box. It names the Helm release, the namespace `losos-app-<release>` and the data folder `/home/<runAs>/data/apps/<release>`, so it never changes."
+        },
+        "chart": {
+          "$ref": "#/$defs/appChartRef"
+        },
+        "runAs": {
+          "type": "string",
+          "enum": [
+            "notshared",
+            "shared"
+          ],
+          "description": "The user every pod runs as (uid 1000 or 1001), and the data domain its folders are in. Fixed at the first install."
+        },
+        "values": {
+          "type": "object",
+          "description": "The properties the owner changed from the chart's defaults, nested as in values.yaml. Applied after `valuesYaml`."
+        },
+        "valuesYaml": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The chart's values file as the owner edited it, or null to use the chart's own."
+        },
+        "frontPort": {
+          "type": "integer",
+          "description": "The port nginx forwards from, LAN only, from losos.apps.ports. Kept across changes."
+        },
+        "appPort": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "The port the app listens on, from its first Service, once the job has rendered it. Null for an app with no Service."
+        },
+        "phase": {
+          "type": "string",
+          "enum": [
+            "installing",
+            "running",
+            "failed",
+            "removing"
+          ],
+          "description": "A busy phase whose job unit is no longer active reads as failed."
+        },
+        "message": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Why it failed, in the box's words: the shaping's refusal or Helm's last line."
+        },
+        "updatedAt": {
+          "type": "integer",
+          "description": "Unix seconds of the last phase change."
+        }
+      }
+    },
+    "appsResponse": {
+      "type": "object",
+      "required": [
+        "available",
+        "apps"
+      ],
+      "properties": {
+        "available": {
+          "type": "boolean",
+          "description": "False on a box with no cluster of its own (LosOS cloud and LosOS Git both native, or losos.apps.enable off). Then `reason` is noCluster and `apps` is empty."
+        },
+        "reason": {
+          "type": "string",
+          "enum": [
+            "noCluster"
+          ]
+        },
+        "sharedAvailable": {
+          "type": "boolean",
+          "description": "Whether an app may run as shared: true only while the box shares its disk. Present when available."
+        },
+        "apps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/appRecord"
+          }
+        }
+      }
+    },
+    "appChartResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "chart",
+        "release",
+        "valuesYaml",
+        "values",
+        "schema"
+      ],
+      "properties": {
+        "chart": {
+          "$ref": "#/$defs/appChartRef"
+        },
+        "release": {
+          "type": "string",
+          "description": "The name the box suggests, from the chart's name."
+        },
+        "valuesYaml": {
+          "type": "string",
+          "description": "The chart's values.yaml as published, for the text tab."
+        },
+        "values": {
+          "description": "The same file as JSON, for the property form."
+        },
+        "schema": {
+          "description": "The chart's values.schema.json, or null when it ships none."
         }
       }
     },
@@ -766,7 +969,7 @@
               "type": "null"
             }
           ],
-          "description": "The edge this box uses, out of `edges` (wiki/Edge-Federation.md): the first LAN edge with a tunnel endpoint, else the configured edge, else null. With losos.proxy.enable on, lososd writes it to /run/losos/edge-path.env and restarts the tunnel and announce units when it changes; null writes /run/losos/edge-none and stops them, so a box with no edge in reach runs no tunnel. The sharing gate (`reachable`) and the market gate (`official`) are the other two bits; this one says where the traffic goes."
+          "description": "The edge this box uses, out of `edges` (handbook/docs/in-depth/edge-federation.md): the first LAN edge with a tunnel endpoint, else the configured edge, else null. With losos.proxy.enable on, lososd writes it to /run/losos/edge-path.env and restarts the tunnel and announce units when it changes; null writes /run/losos/edge-none and stops them, so a box with no edge in reach runs no tunnel. The sharing gate (`reachable`) and the market gate (`official`) are the other two bits; this one says where the traffic goes."
         },
         "official": {
           "type": "boolean",
@@ -1307,6 +1510,11 @@
         "auth": true,
         "out": "factoryResetResponse"
       },
+      "GET /api/storage": {
+        "auth": true,
+        "out": "storageResponse",
+        "note": "Read-only: the size of /persist, how much of it is in use, and the reserve POST /api/grow would claim (df and vgs). The Storage pane draws its meter and disables Use reserve from it, so a reload or a second browser sees a claimed reserve as claimed. A reading the box cannot take is null. HTTP-only, like /api/apps/search: it backs a settings screen."
+      },
       "POST /api/grow": {
         "auth": true,
         "out": "growResponse"
@@ -1331,6 +1539,29 @@
         "in": "query string: q=<search term>, 2-128 characters, no control characters",
         "out": "appsSearchResponse",
         "note": "Searches a public app catalogue from the box. The admin pages are served under `connect-src 'self'`, so the browser cannot reach a catalogue itself — lososd is the only thing here with an outbound path. HTTP-only, with no D-Bus method and no facade subcommand, following `POST /api/setup/claim`: the facade exists to control this appliance, and a CLI for a settings screen's search field would be surface with no caller. A bad or missing `q` is 400 with the reason, deliberately NOT 404 — the SPA latches a 404 as \"this box does not serve the route\" and stops asking for the rest of the session. A search that could not be made (no route off the box, the catalogue down, a body that is not JSON) is 500, which the screen shows as retryable."
+      },
+      "GET /api/apps": {
+        "auth": true,
+        "out": "appsResponse",
+        "note": "The apps installed from the search (backend/src/apps.rs, records in /var/lib/losos/apps/<release>/app.json, mode 0600). Not-offered is 200 with available:false, deliberately NOT 404, which the SPA latches. HTTP-only, following /api/apps/search."
+      },
+      "GET /api/apps/chart": {
+        "auth": true,
+        "in": "query string: repo=<https:// or oci:// URL>&name=<chart>&version=<version>",
+        "out": "appChartResponse",
+        "note": "The chart's values and schema for the install dialog. lososd pulls the chart with `helm pull` into a temporary directory, without holding its lock. 400 for a repository the box would not fetch from, 409 on a box with no cluster, 500 when the pull fails."
+      },
+      "POST /api/apps/install": {
+        "auth": true,
+        "in": "{\"release\": \"<name>\", \"chart\": {\"repo\", \"name\", \"version\"}, \"runAs\": \"notshared|shared\", \"values\": {...}, \"valuesYaml\": \"...\"|null}",
+        "out": "appRecord",
+        "note": "Install, or change an app already installed under the same name, as a `losos-app-<release>` transient unit (modules/apps.nix). Answers with the record in phase installing; the job runs `helm upgrade --install` with the losos-shape post-renderer and writes the outcome back. 409 when shared is asked for while the box does not share its disk, when the name holds another chart or the other user, or while a job for it is running. 400 for a bad name, chart or values (64 KiB of JSON, 256 KiB of YAML). Audited."
+      },
+      "POST /api/apps/remove": {
+        "auth": true,
+        "in": "{\"release\": \"<name>\"}",
+        "out": "appRecord",
+        "note": "Uninstall, in a `losos-app-<release>` unit. Answers with the record in phase removing; the job deletes it once Helm is done. The app's folders under /home/<runAs>/data/apps/<release> stay. 409 while a job for it is running, 400 for an unknown name. Audited."
       },
       "GET /api/market": {
         "auth": true,
@@ -1360,6 +1591,28 @@
         "in": "{\"listing_id\": \"...\", \"quantity\": <units>}",
         "out": "marketActionResponse",
         "note": "Buy units. Returns a Stripe Checkout URL for the page to open. Audited. Owner-actionable refusals are 400/409 carrying the registrar's own sentence."
+      },
+      "GET /api/builder": {
+        "auth": true,
+        "out": "{\"available\": false, \"reason\"?: \"noOfficialEdge\"} | {\"available\": true, \"currency\", \"balance\": <minor units>, \"packs\": [<minor units>], \"price\": {\"model\", \"input_per_million\", \"output_per_million\", \"markup_percent\", \"max_build\"}, \"can_build\": bool, \"builds\": [buildSummary]}",
+        "note": "The widget builder, relayed to the edge's registrar (backend-registrar/src/builder.rs) like the market and gated on an official edge the same way. A Claude Managed Agent on the edge writes the widget; the edge holds the Anthropic key and the balance, the box only its proxy token. Prices are per million tokens in the market's minor unit with the markup included. buildSummary is {\"id\", \"status\": \"running|done|failed\", \"prompt\", \"revision\", \"created_at\", \"finished_at\", \"charged\", \"fault\": null|\"noWidget|unusable|upstream\", \"has_source\"}. A 200 in every case."
+      },
+      "POST /api/builder/credits": {
+        "auth": true,
+        "in": "{\"amount\": <one of packs>}",
+        "out": "{\"available\": true, \"order_id\", \"checkout_url\", \"amount\", \"currency\"}",
+        "note": "Top the balance up with one credit pack through Stripe Checkout on the edge's platform account. The balance moves when Stripe's signed webhook reaches the edge. The URL is always Stripe-hosted. Audited."
+      },
+      "POST /api/builder/builds": {
+        "auth": true,
+        "in": "{\"prompt\": \"1-2000 characters\", \"base\"?: [{\"name\", \"content\"}] (the widget to change, under the same limits as a saved one; a plain string is read as its index.html), \"lang\"?: \"en|sk|de\"}",
+        "out": "{\"available\": true} + buildSummary + {\"usage\", \"at_limit\", \"files\": null, \"source\": null, \"notes\": null}",
+        "note": "Start a build. 409 with the edge's sentence when the balance does not cover one or a build is already running. The session's budget is what the balance covers, capped by the operator. Audited."
+      },
+      "GET /api/builder/builds/{id}": {
+        "auth": true,
+        "out": "{\"available\": true} + buildSummary + {\"usage\": {input_tokens, output_tokens, cache_creation_input_tokens, cache_read_input_tokens}, \"at_limit\", \"files\": [{\"name\", \"content\"}]|null, \"source\": string|null, \"notes\": string|null}",
+        "note": "One build. `files` is the widget once it is done, index.html first; `source` repeats index.html, and is all an edge from before widget files sends. The page puts the files in the editor and saves them only when the owner says so, through POST /api/look/widgets, so it runs in /widget-frame/ like any widget written by hand."
       },
       "GET /api/vms": {
         "auth": true,
@@ -1512,9 +1765,9 @@
       },
       "POST /api/look/widgets": {
         "auth": true,
-        "in": "{\"id\": \"w<N>\" (optional: rewrite that one), \"name\": \"...\", \"span\": \"half|full\", \"source\": \"...\"}",
-        "out": "{\"widget\": {id, name, span, source}}",
-        "note": "Write or rewrite a widget by hand. The source is kept verbatim and never run by lososd or by the admin page: the board embeds it in `<iframe sandbox=\"allow-scripts\" src=\"/widget-frame/\">`, an opaque origin with no token and no API, which gets the source and the box's readings over postMessage (modules/containers.nix carries the frame's own CSP). 400 for a missing name, a name over limits.nameChars, a source over limits.sourceBytes, more than limits.widgets widgets, or an id the box does not have. A new id is w<next>, never a reused one, so a board tile pointing at a deleted widget stays pointing at nothing."
+        "in": "{\"id\": \"w<N>\" (optional: rewrite that one), \"name\": \"...\", \"span\": \"half|full\", \"files\": [{\"name\": \"index.html\", \"content\": \"...\"}, ...] (or \"source\": \"...\", read as index.html)}",
+        "out": "{\"widget\": {id, name, span, files}}",
+        "note": "Write or rewrite a widget by hand. The files are kept verbatim and never run by lososd or by the admin page: the board embeds it in `<iframe sandbox=\"allow-scripts\" src=\"/widget-frame/\">`, an opaque origin with no token and no API, which gets the files and the box's readings over postMessage and puts the linked ones in place (modules/containers.nix carries the frame's own CSP). 400 for a missing name, a name over limits.nameChars, no index.html or an empty one, a file name that is not lowercase letters, digits, - and _ with one of limits.fileKinds or is over limits.fileNameChars, a name used twice, more than limits.files files or limits.widgetBytes bytes together, more than limits.widgets widgets, or an id the box does not have. A new id is w<next>, never a reused one, so a board tile pointing at a deleted widget stays pointing at nothing."
       },
       "DELETE /api/look/widgets/{id}": {
         "auth": true,

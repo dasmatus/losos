@@ -1,0 +1,9 @@
+{
+  "label": "In depth",
+  "position": 6,
+  "link": {
+    "type": "doc",
+    "id": "in-depth/index"
+  },
+  "className": "hb-icon hb-icon-depth"
+}

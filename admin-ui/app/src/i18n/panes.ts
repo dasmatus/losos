@@ -642,6 +642,16 @@ export default defineMessages({
     sk: "Názov, sieť, mesh, aplikácie. Všetko späť do stavu, v akom zariadenie prišlo.",
     de: "Der Name, das Netzwerk, das Mesh, die Apps. Alles zurück in den Zustand, in dem diese Box kam.",
   },
+  "panes.reset.waitErase": {
+    en: "The box is being erased, which resets the settings too.",
+    sk: "Zariadenie sa práve maže, čím sa obnovia aj nastavenia.",
+    de: "Die Box wird gerade gelöscht, das setzt auch die Einstellungen zurück.",
+  },
+  "panes.reset.waitBackup": {
+    en: "A backup or restore is running. Reset when it is done.",
+    sk: "Beží záloha alebo obnova. Obnovte nastavenia, keď skončí.",
+    de: "Eine Sicherung oder Wiederherstellung läuft. Setze zurück, wenn sie fertig ist.",
+  },
   "panes.reset.button": {
     en: "Reset…",
     sk: "Reset…",
@@ -806,6 +816,16 @@ export default defineMessages({
     sk: "Prvá záloha skopíruje všetko. Ďalšie posielajú len to, čo sa zmenilo.",
     de: "Die erste Sicherung kopiert alles. Spätere schicken nur, was sich geändert hat.",
   },
+  "panes.backup.waiting.title": {
+    en: "A change is being applied",
+    sk: "Uplatňuje sa zmena",
+    de: "Eine Änderung wird übernommen",
+  },
+  "panes.backup.waiting.detail": {
+    en: "Backups, restores and the erase wait until it is done.",
+    sk: "Zálohy, obnova a vymazanie počkajú, kým sa dokončí.",
+    de: "Sicherungen, Wiederherstellung und das Löschen warten, bis sie fertig ist.",
+  },
   "panes.backup.runs.failed": {
     en: "The last backup did not finish.",
     sk: "Posledná záloha sa nedokončila.",
@@ -946,6 +966,11 @@ export default defineMessages({
     en: "Your files, repositories, settings and password. The box stays installed and greets the next owner with the setup wizard.",
     sk: "Vaše súbory, repozitáre, nastavenia a heslo. Zariadenie zostane nainštalované a ďalšieho majiteľa privíta sprievodcom nastavením.",
     de: "Deine Dateien, Repositorys, Einstellungen und dein Passwort. Die Box bleibt installiert und begrüßt den nächsten Besitzer mit dem Einrichtungsassistenten.",
+  },
+  "panes.erase.waitBackup": {
+    en: "A backup or restore is running. Erase when it is done.",
+    sk: "Beží záloha alebo obnova. Vymažte, keď skončí.",
+    de: "Eine Sicherung oder Wiederherstellung läuft. Lösche, wenn sie fertig ist.",
   },
   "panes.erase.button": { en: "Erase…", sk: "Vymazať…", de: "Löschen…" },
   "panes.erase.caption": {
@@ -1196,6 +1221,16 @@ export default defineMessages({
     en: "Space this box did not claim when it was set up.",
     sk: "Miesto, ktoré si zariadenie pri nastavení nezabralo.",
     de: "Platz, den diese Box bei der Einrichtung nicht belegt hat.",
+  },
+  "panes.storage.held.spent": {
+    en: "Already added to this box's disk. More room needs another drive.",
+    sk: "Už je pridané k disku zariadenia. Viac miesta dá len ďalší disk.",
+    de: "Schon dem Datenträger dieser Box hinzugefügt. Mehr Platz bringt nur ein weiteres Laufwerk.",
+  },
+  "panes.storage.reserveUsed": {
+    en: "Reserve in use",
+    sk: "Rezerva využitá",
+    de: "Reserve genutzt",
   },
   "panes.storage.notReported": {
     en: "not reported",

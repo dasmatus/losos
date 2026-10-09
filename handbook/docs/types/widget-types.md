@@ -42,8 +42,10 @@ remember anything between runs.
 
 ## Written by hand
 
-**Write one** takes HTML, style and script of your own. The box stores the
-widget, so every browser that opens the box sees it. It is listed on
+**Write one** takes HTML, style and script of your own, in a few files:
+`index.html` and the stylesheets, scripts, pictures and data it links by
+name. The box stores the widget, so every browser that opens the box sees
+it. It is listed on
 **Settings → Look**, where you can edit and delete it.
 
 ![Write one: the source of a hand-written widget beside its live preview in the sandboxed frame.](../img/widget-write-one.png)
@@ -60,13 +62,16 @@ provides:
 | `losos.palette`             | the box's colours, also set as CSS variables (`var(--accent)` works)           |
 | `losos.onTheme(fn)`         | called whenever the owner switches the theme                                  |
 | `losos.resize()`            | asks the board to re-measure the tile                                         |
+| `losos.files`               | the names of the widget's files                                               |
+| `losos.file(name)`          | one of the widget's files, as text                                            |
+| `losos.asset(name)`         | one of the widget's files as a `data:` URL, for an image set from script      |
 
 The editor's **Help** tab repeats this with an example. Its preview is the
 real frame, so the tile shows exactly what the preview shows. A hand-written
 widget may fetch from the internet, for a weather tile say, but it may not
 reach the box's API. It runs in every browser that opens the box, so read
 anything you paste from the internet before you keep it. The limit is 24
-widgets of 64 KiB each.
+widgets, each at most 12 files and 128 KiB together.
 
 
 See [Look and widgets](../manual/look-and-widgets) for the board itself,

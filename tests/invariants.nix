@@ -74,6 +74,8 @@ assert must
   "lososPersistentSources does not pre-create the persisted directories by numeric id (a home as its owner with its homeMode, a plain directory as root 0755)";
 assert must (lib.elem "https://proxy.losos.dasmat.us" config.nix.settings.extra-substituters)
   "the LosOS cache proxy is not among nix.settings.extra-substituters (${toString config.nix.settings.extra-substituters}): a fresh install then builds the 2.3 GiB Nextcloud image on the box instead of downloading it";
+assert must (lib.elem "https://losos-cache-proxy.vercel.app" config.nix.settings.extra-substituters)
+  "the cache proxy's vercel.app name is not among nix.settings.extra-substituters (${toString config.nix.settings.extra-substituters}): a box whose resolver cannot see the custom domain then builds LosOS's own packages itself";
 assert must (lib.elem "https://losos.dasmat.us/proxy" config.nix.settings.extra-substituters)
   "the GitHub Pages copy of the cache is not among nix.settings.extra-substituters (${toString config.nix.settings.extra-substituters}): with the proxy down, the box then builds LosOS's own packages itself";
 assert must (lib.any (lib.hasPrefix "losos-1:") config.nix.settings.extra-trusted-public-keys)

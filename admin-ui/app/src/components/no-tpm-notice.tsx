@@ -11,8 +11,8 @@ import { useT } from "@/lib/i18n-react";
  * Such a box unlocks its disk from a key file baked into the initrd, which
  * sits on the unencrypted boot partition (modules/boot.nix), so whoever has
  * the disk has the data. The installer said so once on a console nobody may
- * have watched; this says it where the owner looks. wiki/TPM.md and the
- * handbook page the link opens carry the long form.
+ * have watched; this says it where the owner looks. The handbook page the
+ * link opens (handbook/docs/reference/tpm.md) carries the long form.
  *
  * The mode comes from the option document: `tpm.enable` is one of the
  * installer's three, and its `current` is what the box runs with. Only an

@@ -41,7 +41,7 @@ over midnight would take your own files offline.
 
 ## Where the apps are
 
-![The Apps pane: LosOS cloud and LosOS Git, each with its mode and whether it is on, and Find more below.](../img/apps.png)
+![The Apps pane: LosOS cloud and LosOS Git, each with its mode, an installed app, and Find more below.](../img/apps.png)
 
 | App          | Address             | Note                                                                                      |
 | ------------ | ------------------- | ----------------------------------------------------------------------------------------- |

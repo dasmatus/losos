@@ -14,6 +14,7 @@ import { useT } from "@/lib/i18n-react";
 import { EraseSection } from "./erase-section";
 import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText } from "./rows";
 import type { SettingsForm } from "./use-settings-form";
+import { useBackup } from "./use-backup";
 
 /* Factory reset: the only button on this screen that cannot be taken back.
  *
@@ -39,7 +40,14 @@ export function ResetPane({ form }: { form: SettingsForm }) {
   const titleId = React.useId();
   const bodyId = React.useId();
 
-  const blocked = form.locked || !form.ready || form.applying;
+  /* One reading of the box's jobs for both halves of the pane: the erase
+   * below draws it, and a reset waits for an erase or a backup to end
+   * (lososd refuses a reset during an erase). */
+  const backup = useBackup(!form.locked);
+  const view = backup.state.kind === "ready" ? backup.state.view : null;
+  const erasing = view?.erase != null;
+  const backingUp = view?.job?.state === "running";
+  const blocked = form.locked || !form.ready || form.applying || erasing || backingUp;
 
   return (
     <>
@@ -49,7 +57,13 @@ export function ResetPane({ form }: { form: SettingsForm }) {
           <Row last>
             <RowText
               title={t("panes.reset.title")}
-              detail={t("panes.reset.detail")}
+              detail={
+                erasing
+                  ? t("panes.reset.waitErase")
+                  : backingUp
+                    ? t("panes.reset.waitBackup")
+                    : t("panes.reset.detail")
+              }
             />
             <Button variant="destructive" disabled={blocked} onClick={() => setConfirming(true)}>
               {t("panes.reset.button")}
@@ -59,7 +73,7 @@ export function ResetPane({ form }: { form: SettingsForm }) {
         <GroupCaption>{t("panes.reset.caption")}</GroupCaption>
       </PaneSection>
 
-      <EraseSection locked={form.locked} />
+      <EraseSection locked={form.locked} backup={backup} rebuilding={form.applying} />
 
       <Dialog
         open={confirming}

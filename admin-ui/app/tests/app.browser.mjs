@@ -81,9 +81,12 @@ async function open({
   edge = EDGE_FOUND,
   settings = SETTINGS,
   options = null,
+  status = { state: 'idle', progress: 0, message: '' },
+  storage = null,
   checkoutUrl = 'https://checkout.stripe.com/c/pay/cs_test_1',
   onboardUrl = 'https://connect.stripe.com/setup/e/acct_test/abc',
   now = null,
+  cloud = null,
 } = {}) {
   const page = await browser.newPage({ viewport, locale });
   if (now !== null) await page.clock.setFixedTime(now);
@@ -102,10 +105,23 @@ async function open({
     authed(route) ? json(route, 200, settings) : json(route, 401, { error: 'unauthorized' }),
   );
   await page.route('**/api/status', (route) =>
-    authed(route)
-      ? json(route, 200, { state: 'idle', progress: 0, message: '' })
-      : json(route, 401, { error: 'unauthorized' }),
+    authed(route) ? json(route, 200, status) : json(route, 401, { error: 'unauthorized' }),
   );
+  // GET /api/storage and POST /api/grow as lososd answers them: a grow spends
+  // the reserve, and every later reading says so.
+  if (storage !== null) {
+    await page.route('**/api/storage', (route) =>
+      authed(route) ? json(route, 200, storage) : json(route, 401, { error: 'unauthorized' }),
+    );
+    await page.route('**/api/grow', (route) => {
+      if (!authed(route)) return json(route, 401, { error: 'unauthorized' });
+      const before = storage.totalBytes;
+      storage.totalBytes += storage.reserveBytes;
+      const claimed = storage.reserveBytes;
+      storage.reserveBytes = 0;
+      return json(route, 200, { grew: claimed > 0, beforeBytes: before, afterBytes: storage.totalBytes, claimedBytes: claimed });
+    });
+  }
   if (options !== null) {
     await page.route('**/api/options', (route) =>
       authed(route) ? json(route, 200, options) : json(route, 401, { error: 'unauthorized' }),
@@ -248,6 +264,19 @@ async function open({
 
   if (stored) {
     await page.addInitScript((t) => window.sessionStorage.setItem('losos-token', t), TOKEN);
+  }
+  // The apps the homepage probes, when a check wants them answering the way
+  // a set-up box does. `cloud.mail` says whether the owner installed Mail:
+  // an installed app sends a visitor without a session to the sign-in page,
+  // a missing one is Nextcloud's 404.
+  if (cloud !== null) {
+    await page.route('**/nextcloud/status.php', (route) => json(route, 200, { installed: true }));
+    await page.route('**/forgejo/', (route) => route.fulfill({ status: 200, contentType: 'text/html', body: '' }));
+    await page.route('**/nextcloud/index.php/apps/mail/', (route) =>
+      cloud.mail
+        ? route.fulfill({ status: 303, headers: { location: '/nextcloud/index.php/login' } })
+        : route.fulfill({ status: 404, contentType: 'text/html', body: '' }),
+    );
   }
   await page.goto(origin + path, { waitUntil: 'networkidle' });
   return { page, errors, marketPosts, vmPosts, applies, domainPosts, backupPosts };
@@ -955,6 +984,37 @@ await check('About leads with the address this browser is using and names the .l
   await page.close();
 });
 
+/* LosOS cloud's apps, in the order of its own menu, each a link into it
+ * through index.php. Mail is not shipped, so its tile waits for the probe. */
+const CLOUD_TILES = [
+  ['Files', 'files'], ['Dashboard', 'dashboard'], ['Photos', 'photos'], ['Activity', 'activity'],
+  ['Contacts', 'contacts'], ['Calendar', 'calendar'], ['Notes', 'notes'], ['Bookmarks', 'bookmarks'],
+  ['Deck', 'deck'], ['Music', 'music'], ['Collectives', 'collectives'], ['Polls', 'polls'],
+  ['Forms', 'forms'], ['Tables', 'tables'], ['Memories', 'memories'], ['News', 'news'],
+  ['Tasks', 'tasks'], ['Maps', 'maps'],
+];
+const tiles = (page) =>
+  page.getByRole('list', { name: 'Apps on this box' }).getByRole('link').evaluateAll((links) =>
+    links.map((a) => [a.textContent.trim(), a.getAttribute('href')]),
+  );
+
+await check('the homepage has a tile for every app in LosOS cloud\'s menu, and Mail only when it is installed', async () => {
+  const expected = CLOUD_TILES.map(([name, id]) => [name, `/nextcloud/index.php/apps/${id}/`]);
+  for (const mail of [false, true]) {
+    const { page, errors } = await open({ stored: true, cloud: { mail } });
+    await page.getByRole('link', { name: 'Maps' }).waitFor();
+    const want = [
+      ...expected,
+      ...(mail ? [['Mail', '/nextcloud/index.php/apps/mail/']] : []),
+      ['Code', '/forgejo/'],
+      ['Settings', '/settings'],
+    ];
+    assert.deepEqual(await tiles(page), want);
+    assert.deepEqual(errors, []);
+    await page.close();
+  }
+});
+
 await check('an unknown address says so instead of showing a blank page', async () => {
   const { page } = await open({ path: '/no/such/page', stored: true });
   await page.getByText('Nothing here').waitFor();
@@ -1579,6 +1639,52 @@ await check('the Backup pane saves a bucket without echoing the secret, backs up
   assert.deepEqual(again.backupPosts, [['POST', '/api/backup/restore', { code: OLD_CODE.toUpperCase() }]]);
   assert.deepEqual([...errors, ...again.errors], []);
   await again.page.close();
+});
+
+await check('a claimed reserve reads as claimed, after a reload too', async () => {
+  const GiB = 1024 ** 3;
+  const storage = { totalBytes: 100 * GiB, usedBytes: 40 * GiB, reserveBytes: 10 * GiB };
+  const { page, errors } = await open({ path: '/storage', stored: true, storage });
+  const use = page.getByRole('button', { name: 'Use reserve…' });
+  assert.ok(await use.isEnabled(), 'a reserve the box reports is not offered');
+  await use.click();
+  await page.getByRole('button', { name: 'Use it', exact: true }).click();
+  const spent = page.getByRole('button', { name: 'Reserve in use' });
+  await spent.waitFor();
+  assert.ok(await spent.isDisabled(), 'the spent reserve can be claimed again');
+  await page.reload({ waitUntil: 'networkidle' });
+  await spent.waitFor();
+  assert.ok(await spent.isDisabled(), 'a reload offers the spent reserve again');
+  await page.getByText('Already added to this box\'s disk.', { exact: false }).waitFor();
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+await check('a box that reports no reserve offers none', async () => {
+  const { page } = await open({ path: '/storage', stored: true });
+  await page.getByText('Not reported').first().waitFor();
+  assert.ok(await page.getByRole('button', { name: 'Use reserve…' }).isDisabled(), 'an unknown reserve is offered');
+  await page.close();
+});
+
+await check('a change that failed before the page loaded is reported on Settings', async () => {
+  const status = { state: 'failed', progress: 100, job: 'job-7', message: 'nixos-rebuild exited with status 1' };
+  const { page } = await open({ path: '/settings/network', stored: true, status });
+  await page.getByText('The changes could not be applied', { exact: true }).waitFor();
+  await page.getByText('nixos-rebuild exited with status 1', { exact: true }).waitFor();
+  await page.close();
+});
+
+await check('while a change is applied, backups, restores and the erase wait and say why', async () => {
+  const status = { state: 'building', progress: 0, job: 'job-8', message: 'building' };
+  const { page } = await open({ path: '/settings/backup', stored: true, backup: BACKUP_SET, status });
+  await page.getByTestId('backup-waiting').waitFor();
+  assert.ok(await page.getByRole('button', { name: 'Back up', exact: true }).isDisabled(), 'a backup can start during a rebuild');
+  await page.close();
+  const reset = await open({ path: '/settings/reset', stored: true, backup: BACKUP_SET, status });
+  await reset.page.getByText('Backups, restores and the erase wait until it is done.').waitFor();
+  assert.ok(await reset.page.getByRole('button', { name: /^Erase/ }).first().isDisabled(), 'an erase can start during a rebuild');
+  await reset.page.close();
 });
 
 await check('Glacier is offered on Amazon S3 only, and a restore from it warns that it takes hours', async () => {
