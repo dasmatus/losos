@@ -92,13 +92,16 @@ verschlüsselt sie mit LUKS, formatiert `/persist` als ext4 und installiert.
 btrfs es nicht unterstützt. Du verzichtest auf Kompression und
 Prüfsummen der Daten.
 
-Nach dem Neustart zeigt tty1 ein bildschirmfüllendes Banner mit der
-IP-Adresse der Box und `<hostname>.local`. Öffne die IP-Adresse in einem
+Nach dem Neustart zeigt der Bildschirm den Lachs, während die Box startet.
+Sobald sie läuft, wandert der Lachs nach oben, und ein Feld darunter zeigt
+die IP-Adresse der Box und `<hostname>.local`. Auf einem Rechner, auf dem
+der Startbildschirm nicht rechtzeitig eine Anzeige findet, zeigt tty1
+dieselben Zeilen als Textbanner. Öffne die IP-Adresse in einem
 Browser auf einem beliebigen Rechner im selben Netzwerk. Der `.local`-Name
 funktioniert ebenfalls überall, wo der Rechner mDNS-Namen auflöst. Windows,
 macOS, Smartphones und die meisten Linux-Desktops tun das; der Host eines
 libvirt- oder VirtualBox-Gasts hinter NAT meist nicht, verwende dort
-also die Adresse. Beide führen zu denselben Seiten. Das Banner aktualisiert
+also die Adresse. Beide führen zu denselben Seiten. Das Feld aktualisiert
 sich, wenn sich die Adresse ändert.
 
 Die erste Seite ist der Einrichtungsassistent. Sein erster Schritt ist, dem

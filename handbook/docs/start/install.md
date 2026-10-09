@@ -47,11 +47,11 @@ own. **It wipes every fixed disk in the machine.**
    `unlock: TPM` or `unlock: keyfile in the initrd`.
    [Install variants](../types/install-variants#how-the-disk-is-unlocked)
    explains what that means.
-5. Remove the stick and let the machine reboot. The screen now shows a
-   banner with the box's address. Open that address in a browser on any
+5. Remove the stick and let the machine reboot. The screen now shows the
+   salmon with a banner under it holding the box's address. Open that address in a browser on any
    computer on the same network and follow [The first run](first-run).
 
-![The banner on the box's screen after the first boot: LosOS v0.1.8 is ready, with the box's address and its .local name.](../img/tty1-banner.png)
+![The box's screen after the first boot: the salmon, and under it LosOS v0.1.8 is ready, with the box's addresses and its .local name.](../img/tty1-banner.png)
 
 ![The end of an install: the disk key sealed to the TPM, the boot loader installed, and the line losos-install: done.](../img/install-done.png)
 

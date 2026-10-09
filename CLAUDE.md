@@ -116,6 +116,11 @@ and is never served or built by nix.
   pictures (`brand-art.nix`, drawn from the salmon), os-release, the console
   palette and banners. The installed box keeps `ID=nixos`. Bump the file in
   the commit that gets the tag; the release job stamps the tag over it.
+- `splash.nix` (install only, `losos.splash.enable`): Plymouth with the
+  LosOS theme in `modules/splash/losos.script`. `console.nix` sends it the
+  tty1 rows (`plymouth update --status=losos:…`) and keeps drawing the text
+  banner underneath; plymouth-quit is out of multi-user.target, so the
+  splash is the box's screen after boot. `tests/console.nix` asserts it.
 - `updates.nix`: `system.autoUpgrade` at 03:00 from `losos.upgradeFlakeUri`
   (default `git+file:///etc/nixos#install`, set a `github:` URI to really
   upgrade), `nix.gc` at 04:30 with `--delete-older-than 14d`, five boot
