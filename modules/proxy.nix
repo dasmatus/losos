@@ -18,9 +18,9 @@
 # (tests/edge-vm.nix). The daemon only writes the files when
 # losos.proxy.enable is on; see modules/daemon.nix.
 #
-# See docs/superpowers/specs/2026-08-17-master-proxy-design.md, the edge
-# side in modules/edge.nix, and wiki/Edge-Federation.md for the path rule.
-# Replaces the retired losos.cfd (Cloudflare).
+# See docs/superpowers/specs/2026-08-17-master-proxy-design.md, the edge side in
+# modules/edge.nix, and handbook/docs/in-depth/edge-federation.md for the path
+# rule. Replaces the retired losos.cfd (Cloudflare).
 #
 # Secrets: the rathole client config contains tokens (bootstrap + per-
 # appliance). It is generated at service start from the secret files into a

@@ -68,10 +68,10 @@ is the intended shape; a box acting as its own LAN's edge is not planned.
 
 Nothing on a box is demo-specific: it is the published `install`
 configuration, and finding the edge is what every box does
-(`backend/src/edge.rs`, [Mesh — Finding the edge](../../wiki/Mesh.md)).
+(`backend/src/edge.rs`, [Mesh — Finding the edge](https://losos.dasmat.us/in-depth/mesh#finding-the-edge)).
 `edge-vm.nix` is `modules/edge.nix` plus the LAN-side plumbing; the edge-side
 option it turns on, `losos.edge.lan.advertise`, is the one a real site sets
-([Master proxy — Edge on the same LAN](../../wiki/Master-Proxy.md)).
+([Master proxy — Edge on the same LAN](https://losos.dasmat.us/in-depth/master-proxy#edge-on-the-same-lan)).
 
 ## What is demo-only
 
@@ -91,7 +91,7 @@ option it turns on, `losos.edge.lan.advertise`, is the one a real site sets
   box shows it with a warning sign ("Not an official LosOS edge"): discovery
   and sharing work, the market stays off. That is also what a company's own edge
   looks like; only an edge with a certificate signed by the LosOS root key is
-  official ([Master proxy — Official edges](../../wiki/Master-Proxy.md)).
+  official ([Master proxy — Official edges](https://losos.dasmat.us/in-depth/master-proxy#official-edges)).
 - The VMs talk over slirp to the outside: the edge NATs the LAN to its
   own user-mode network, so a box without the edge really has no internet.
 - The walk stops at the gate. `run.sh join N` performs a box's real join

@@ -1,6 +1,6 @@
 # The edge gateway: a losos edge preset for a machine that sits on a LAN
 # beside the boxes and needs no provisioning before it is useful
-# (wiki/Edge-Federation.md, "Delivery").
+# (handbook/docs/in-depth/edge-federation.md, "Delivery").
 #
 # `losos.edge.gateway.enable` turns the edge module into the gateway: it
 # advertises itself on the LAN, enrols any box that finds it trust-on-first-use
@@ -210,14 +210,14 @@ in
     type = lib.types.bool;
     default = false;
     description = ''
-      Make this machine a LosOS edge gateway (wiki/Edge-Federation.md): the
-      edge module with LAN advertising and open enrolment on, the uplink
-      read from ${uplinkJson} (written by `losos-edge uplink set`), a root
-      console whose first password is `losos` and must be changed at first
-      login, and sshd installed but stopped until `losos-edge ssh on`. The
-      shape of the `losos-disk-edge-qcow2` image; import nixosModules.edge
-      and set this on an existing NixOS machine for the same thing without
-      the image.
+      Make this machine a LosOS edge gateway
+      (handbook/docs/in-depth/edge-federation.md): the edge module with LAN
+      advertising and open enrolment on, the uplink read from ${uplinkJson}
+      (written by `losos-edge uplink set`), a root console whose first password
+      is `losos` and must be changed at first login, and sshd installed but
+      stopped until `losos-edge ssh on`. The shape of the
+      `losos-disk-edge-qcow2` image; import nixosModules.edge and set this on an
+      existing NixOS machine for the same thing without the image.
     '';
   };
 

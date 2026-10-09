@@ -194,13 +194,13 @@ in
         LOSOS_REGISTRAR_URL = config.losos.proxy.registrarUrl;
         LOSOS_APPLIANCE_ID = config.losos.proxy.applianceId;
         LOSOS_PROXY_TOKEN_FILE = toString config.losos.proxy.tokenFile;
-        # The path (wiki/Edge-Federation.md, "The box"): with the master proxy
-        # on, every scan ends by telling modules/proxy.nix's two units which
-        # edge to dial. The env file carries the chosen edge, the marker says
-        # there is none, and the daemon restarts or stops the units on a
-        # change. Both files are on /run, so a boot starts clean. Only with
-        # the proxy on: without it there are no units to drive, and the scan
-        # only answers GET /api/edge.
+        # The path (handbook/docs/in-depth/edge-federation.md, "The box"): with
+        # the master proxy on, every scan ends by telling modules/proxy.nix's
+        # two units which edge to dial. The env file carries the chosen edge,
+        # the marker says there is none, and the daemon restarts or stops the
+        # units on a change. Both files are on /run, so a boot starts clean.
+        # Only with the proxy on: without it there are no units to drive, and
+        # the scan only answers GET /api/edge.
         LOSOS_EDGE_PATH_FILE = "/run/losos/edge-path.env";
         LOSOS_EDGE_NONE_FILE = "/run/losos/edge-none";
         # The relay pass the official edge issues with the domains view, for

@@ -367,11 +367,11 @@
         ];
         _module.args.self = self;
       };
-      # The edge gateway (wiki/Edge-Federation.md): the edge module with LAN
-      # advertising, open enrolment and a runtime uplink, as a VM image for a
-      # LAN that has no NixOS machine to import nixosModules.edge on.
-      # `nix build .#losos-disk-edge-qcow2` images it (flake/disk-images.nix);
-      # this configuration is what the image boots.
+      # The edge gateway (handbook/docs/in-depth/edge-federation.md): the edge
+      # module with LAN advertising, open enrolment and a runtime uplink, as a
+      # VM image for a LAN that has no NixOS machine to import nixosModules.edge
+      # on. `nix build .#losos-disk-edge-qcow2` images it
+      # (flake/disk-images.nix); this configuration is what the image boots.
       nixosConfigurations.edge-gateway = nixpkgs.lib.nixosSystem {
         inherit system;
         modules = [
