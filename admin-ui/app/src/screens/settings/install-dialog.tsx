@@ -183,6 +183,9 @@ export function InstallDialog({ target, sharedAvailable, onOpenChange, onInstall
       labelledBy={titleId}
       describedBy={bodyId}
       dialogClassName="w-[min(40rem,calc(100vw-2rem))]"
+      // A chart can have hundreds of properties: the form scrolls between a
+      // header and buttons that stay in view.
+      className="flex flex-col"
     >
       {target !== null && step === "form" && (
         <>
@@ -192,7 +195,7 @@ export function InstallDialog({ target, sharedAvailable, onOpenChange, onInstall
               {t("install.byline", { version: target.source.version, publisher: target.publisher })}
             </DialogDescription>
           </DialogHeader>
-          <DialogBody className="flex flex-col gap-5">
+          <DialogBody className="flex min-h-0 flex-col gap-5 overflow-y-auto">
             {loaded.kind === "loading" && (
               <div className="flex items-center gap-2.5 py-6 text-[13px] text-muted">
                 <Spinner size={16} label={t("install.fetching")} />

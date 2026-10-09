@@ -90,6 +90,12 @@ and is never served or built by nix.
   Nextcloud and Forgejo run as hostNetwork pods in the box's own k3s server;
   `services.rke2` (agent) joins the edge's mesh. Nginx is the only public
   listener: `<host>.local/nextcloud`, `/forgejo`, admin SPA on `/`.
+- `apps.nix` + `backend/src/apps.rs`: Helm charts from the Apps pane's
+  search, installed into the box's own k3s by `losos-app-<name>` transient
+  units. The `losos-shape` post-renderer (`losos-app-shape`) puts every pod
+  on the host network as `notshared` or `shared` without root, turns claims
+  into folders in that user's data domain and refuses a chart that needs
+  more; nginx forwards a port of `losos.apps.ports` to it, LAN only.
 - `admin-ui/themes/`: the SPA's `tokens.css` is shipped byte for byte as
   `losos-tokens.css` into the Nextcloud theme folder and Forgejo's custom
   CSS, so one colour change moves all three. `default.nix` is the data every

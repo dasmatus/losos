@@ -155,7 +155,7 @@ let
     ];
     text = ''
       action=''${1:?install or remove}
-      release=''${2:?the app's name}
+      release=''${2:?the name of the app}
       dir="''${LOSOS_APPS_DIR:-${stateDir}}/$release"
       record="$dir/app.json"
       ns="losos-app-$release"

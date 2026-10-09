@@ -220,7 +220,7 @@ await check('with no cluster on the box, no hit offers an install and the footer
   const { page, errors } = await open({ apps: { available: false, reason: 'noCluster', apps: [] } });
   await search(page);
   assert.equal(await page.locator('[data-slot="table"]').getByRole('button').count(), 0);
-  assert.match(await page.locator('main').innerText(), /install only while LosOS cloud or LosOS Git runs kept apart/);
+  assert.match(await page.locator('main').innerText(), /install only while Files or Code is set to Kept separate/);
   await clean(page, errors);
   await page.close();
 });

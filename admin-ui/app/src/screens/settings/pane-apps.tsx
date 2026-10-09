@@ -379,38 +379,38 @@ function ResultRow({ app, install }: { app: CatalogueApp; install: Installer | n
       <TableCell className="align-top text-[12.5px] text-muted">{app.source}</TableCell>
       <TableCell className="text-right align-top">
         <div className="flex flex-wrap items-center justify-end gap-1.5">
-        {app.homepage !== null && (
-          <a
-            href={app.homepage}
-            target="_blank"
-            rel="noreferrer noopener external"
-            className={cn(
-              "inline-flex shrink-0 items-center gap-1.5 rounded-control px-2 py-1",
-              "text-[12.5px] text-accent transition-colors duration-150 hover:bg-accent-wash",
-            )}
-          >
-            {t("panes.apps.lookAt")}
-            <HugeiconsIcon
-              icon={LinkSquare02Icon}
-              size={13}
-              strokeWidth={1.5}
-              color="currentColor"
-              aria-hidden="true"
-            />
-          </a>
-        )}
-        {/* Only a row the box can fetch an app from, on a box that can run
-            one. A second install of the same app is a change to the first. */}
-        {chart !== null && install !== null && (
-          <Button
-            size="sm"
-            variant={record === undefined ? "primary" : "secondary"}
-            aria-label={record === undefined ? t("install.buttonLabel", { name: app.name }) : undefined}
-            onClick={() => install.start(app, chart)}
-          >
-            {record === undefined ? t("install.button") : t("install.change")}
-          </Button>
-        )}
+          {app.homepage !== null && (
+            <a
+              href={app.homepage}
+              target="_blank"
+              rel="noreferrer noopener external"
+              className={cn(
+                "inline-flex shrink-0 items-center gap-1.5 rounded-control px-2 py-1",
+                "text-[12.5px] text-accent transition-colors duration-150 hover:bg-accent-wash",
+              )}
+            >
+              {t("panes.apps.lookAt")}
+              <HugeiconsIcon
+                icon={LinkSquare02Icon}
+                size={13}
+                strokeWidth={1.5}
+                color="currentColor"
+                aria-hidden="true"
+              />
+            </a>
+          )}
+          {/* Only a row the box can fetch an app from, on a box that can run
+              one. A second install of the same app is a change to the first. */}
+          {chart !== null && install !== null && (
+            <Button
+              size="sm"
+              variant={record === undefined ? "primary" : "secondary"}
+              aria-label={record === undefined ? t("install.buttonLabel", { name: app.name }) : undefined}
+              onClick={() => install.start(app, chart)}
+            >
+              {record === undefined ? t("install.button") : t("install.change")}
+            </Button>
+          )}
         </div>
       </TableCell>
     </TableRow>

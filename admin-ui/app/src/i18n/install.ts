@@ -14,9 +14,9 @@ export default defineMessages({
   },
   "install.installedBadge": { en: "Installed", sk: "Nainštalované", de: "Installiert" },
   "install.noCluster": {
-    en: "Apps from the search install only while LosOS cloud or LosOS Git runs kept apart from the system (set above).",
-    sk: "Aplikácie z vyhľadávania sa dajú inštalovať, len keď LosOS cloud alebo LosOS Git beží oddelene od systému (nastavenie vyššie).",
-    de: "Apps aus der Suche lassen sich nur installieren, solange LosOS cloud oder LosOS Git getrennt vom System läuft (siehe oben).",
+    en: "Apps from the search install only while Files or Code is set to Kept separate above.",
+    sk: "Aplikácie z vyhľadávania sa dajú inštalovať, len keď sú Súbory alebo Kód vyššie nastavené na Oddelene.",
+    de: "Apps aus der Suche lassen sich nur installieren, solange Dateien oder Code oben auf Abgeschottet steht.",
   },
 
   // ── The dialog: properties and user ─────────────────────────────────────
