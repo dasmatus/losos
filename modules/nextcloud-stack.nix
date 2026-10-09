@@ -249,6 +249,94 @@ in
     '';
   };
 
+  # The box-wide settings the owner keeps in LosOS (losos.nextcloud.site.*,
+  # drawn on the admin UI's Apps pane), in the three shapes the two modes
+  # need. Functions of that attrset, because this file has no `config`.
+  #
+  #   system     config.php keys. The modes put them in a config file of
+  #              their own (services.nextcloud.settings natively, the pod's
+  #              losos.config.php), which Nextcloud reads after config.php,
+  #              so a value written by Nextcloud itself never wins. A null
+  #              option is a key left out, which is Nextcloud's default.
+  #   appConfig  the keys Nextcloud keeps in its database instead, as
+  #              "app key value" lines. Every one is written on every start,
+  #              null included (as Nextcloud's own default), so a value
+  #              changed some other way is put back.
+  #   occ        the script that applies those lines, given the command to
+  #              run occ with and the file holding them. Non-fatal per key,
+  #              like federation above: a key Nextcloud will not take must
+  #              not stop the box serving files.
+  #   locked     every app-config key LosOS sets, federation's included.
+  #   locations  one nginx regex location, under `prefix`, matching the
+  #              provisioning API address Nextcloud's admin pages write a
+  #              locked key through. The vhosts answer 403 there, so the
+  #              admin page shows an error instead of changing a setting
+  #              LosOS would put back on the next start. Reads are refused
+  #              too: the admin pages are rendered with their values, and
+  #              nothing else on the box asks this API for these keys.
+  site = rec {
+    system =
+      cfg:
+      let
+        # "D, D": keep for D days, then delete. Nextcloud's "auto" (the
+        # default) is the key left out.
+        retention = days: "${toString days}, ${toString days}";
+      in
+      lib.filterAttrs (_: v: v != null) {
+        default_language = cfg.defaultLanguage;
+        default_phone_region = cfg.phoneRegion;
+        trashbin_retention_obligation = if cfg.trashDays == null then null else retention cfg.trashDays;
+        versions_retention_obligation = if cfg.versionDays == null then null else retention cfg.versionDays;
+      };
+
+    appConfig =
+      cfg:
+      let
+        yesNo = b: if b then "yes" else "no";
+        expires = cfg.linkExpiryDays != null;
+      in
+      [
+        "core shareapi_allow_links ${yesNo cfg.publicLinks}"
+        "core shareapi_enforce_links_password ${yesNo cfg.linkPassword}"
+        "core shareapi_default_expire_date ${yesNo expires}"
+        "core shareapi_enforce_expire_date ${yesNo expires}"
+        # Nextcloud's default, so turning expiry back on starts from it.
+        "core shareapi_expire_after_n_days ${toString (if expires then cfg.linkExpiryDays else 7)}"
+        "files default_quota ${
+          if cfg.defaultQuotaGB == null then "none" else "${toString cfg.defaultQuotaGB} GB"
+        }"
+      ];
+
+    occ = occ: file: ''
+      while read -r app key value; do
+        [ -n "$app" ] || continue
+        ${occ} config:app:set "$app" "$key" --value="$value" >/dev/null ||
+          echo "losos-nextcloud: could not set $app $key to $value" >&2
+      done < ${file}
+    '';
+
+    locked = [
+      "core/shareapi_allow_links"
+      "core/shareapi_enforce_links_password"
+      "core/shareapi_default_expire_date"
+      "core/shareapi_enforce_expire_date"
+      "core/shareapi_expire_after_n_days"
+      "files/default_quota"
+      # Federation's (`federation.occ` above sets them).
+      "files_sharing/outgoing_server2server_share_enabled"
+      "files_sharing/incoming_server2server_share_enabled"
+      "files_sharing/outgoing_server2server_group_share_enabled"
+      "files_sharing/incoming_server2server_group_share_enabled"
+      "dav/enableCalendarFederation"
+    ];
+
+    locations = prefix: [
+      "~* ^${prefix}/ocs/v[12]\\.php/apps/provisioning_api/api/v1/config/apps/(?:${
+        lib.concatMapStringsSep "|" lib.escapeRegex locked
+      })/*$"
+    ];
+  };
+
   # The `notshared` user owns this instance — see modules/configuration.nix for
   # the two-domain split.
   adminUser = "notshared";

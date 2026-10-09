@@ -65,32 +65,36 @@ in
     database.type = "postgres";
     # LosOS Git's name, theme, <meta> tags and footer (admin-ui/themes/),
     # under this box's own settings.
-    settings = lib.recursiveUpdate themes.forgejo.settings {
-      server.HTTP_PORT = 8888;
-      # Forgejo's default is open sign-up. Native mode is LAN-only (:8888 is
-      # not routed through the master-proxy tunnel), but "anyone on the LAN"
-      # is still not who should be creating accounts on the appliance.
-      service.DISABLE_REGISTRATION = true;
-      # A declarative deployment never runs the first-run wizard, so the
-      # installer page stays unlocked unless this is set — and that page
-      # rewrites the database and the admin credentials.
-      security.INSTALL_LOCK = true;
-      # Actions is remote code execution by design and nothing on the box
-      # runs jobs: the on-box runner that existed for the official-edge key
-      # ceremony is gone (the ceremony runs on the operator's machine,
-      # `losos-registrar provision`, behind a GitHub sign-in). Enabled with
-      # no runner it would only expose the runner-registration API. Same
-      # setting as the container path (modules/workloads.nix).
-      actions.ENABLED = false;
-      # ActivityPub, the same two lines as the container path
-      # (modules/workloads.nix explains both). Native mode is LAN-only,
-      # so this federates with other boxes on the LAN and nothing further,
-      # and only while the box shares its disk (lososInternal.federation).
-      federation = {
-        ENABLED = config.lososInternal.federation.forgejo;
-        SHARE_USER_STATISTICS = false;
-      };
-    };
+    # The owner's box-wide settings (losos.forgejo.site.*,
+    # lososInternal.forgejoSite) go under those, and LosOS's own on top.
+    settings =
+      lib.recursiveUpdate (lib.recursiveUpdate themes.forgejo.settings config.lososInternal.forgejoSite)
+        {
+          server.HTTP_PORT = 8888;
+          # Forgejo's default is open sign-up. Native mode is LAN-only (:8888 is
+          # not routed through the master-proxy tunnel), but "anyone on the LAN"
+          # is still not who should be creating accounts on the appliance.
+          service.DISABLE_REGISTRATION = true;
+          # A declarative deployment never runs the first-run wizard, so the
+          # installer page stays unlocked unless this is set — and that page
+          # rewrites the database and the admin credentials.
+          security.INSTALL_LOCK = true;
+          # Actions is remote code execution by design and nothing on the box
+          # runs jobs: the on-box runner that existed for the official-edge key
+          # ceremony is gone (the ceremony runs on the operator's machine,
+          # `losos-registrar provision`, behind a GitHub sign-in). Enabled with
+          # no runner it would only expose the runner-registration API. Same
+          # setting as the container path (modules/workloads.nix).
+          actions.ENABLED = false;
+          # ActivityPub, the same two lines as the container path
+          # (modules/workloads.nix explains both). Native mode is LAN-only,
+          # so this federates with other boxes on the LAN and nothing further,
+          # and only while the box shares its disk (lososInternal.federation).
+          federation = {
+            ENABLED = config.lososInternal.federation.forgejo;
+            SHARE_USER_STATISTICS = false;
+          };
+        };
   };
 
   # Replace each LosOS-managed tree as a unit before Forgejo starts. This keeps
@@ -127,23 +131,41 @@ in
   # the module's `\.php` location (priority 500), which would otherwise hand
   # /index.php/ocm/... to php-fpm, and the exact /.well-known/ocm beats the
   # module's `^~ /.well-known` redirect to the same handler.
+  #
+  # The owner's box-wide settings (losos.nextcloud.site.*) ride the same
+  # run: the app-config half is written after federation's, and the vhost
+  # refuses the admin pages' writes to every key LosOS sets
+  # (modules/nextcloud-stack.nix, `site`).
   systemd.services.nextcloud-setup.script = lib.mkIf nextcloudNative (
     lib.mkAfter (
       nc.federation.occ "${config.services.nextcloud.occ}/bin/nextcloud-occ" (
         if nextcloudFederates then "yes" else "no"
       )
+      + nc.site.occ "${config.services.nextcloud.occ}/bin/nextcloud-occ" (
+        pkgs.writeText "losos-nextcloud-site" (
+          lib.concatLines (nc.site.appConfig config.losos.nextcloud.site)
+        )
+      )
     )
   );
   services.nginx.virtualHosts.${config.losos.nextcloud.hostName}.locations =
-    lib.mkIf (nextcloudNative && !nextcloudFederates)
+    lib.mkIf nextcloudNative
       (
-        lib.genAttrs (nc.federation.locations "") (_: {
-          priority = 200;
-          return = "404";
-        })
-        // {
-          "= /.well-known/ocm".return = "404";
-        }
+        lib.mkMerge [
+          (lib.genAttrs (nc.site.locations "") (_: {
+            priority = 200;
+            return = "403";
+          }))
+          (lib.mkIf (!nextcloudFederates) (
+            lib.genAttrs (nc.federation.locations "") (_: {
+              priority = 200;
+              return = "404";
+            })
+            // {
+              "= /.well-known/ocm".return = "404";
+            }
+          ))
+        ]
       );
 
   # ── The database and cache the workload pods talk to ──────────────────────

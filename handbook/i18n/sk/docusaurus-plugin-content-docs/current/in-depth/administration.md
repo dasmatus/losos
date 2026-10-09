@@ -283,6 +283,56 @@ ktoré sa vypnúť nedajú. `tests/front-vhost.nix` kontroluje cesty oboch
 služieb so zapnutým aj vypnutým zdieľaním; `tests/invariants.nix` kontroluje
 bránu pri evaluácii.
 
+### Nastavenia aplikácií pre celé zariadenie
+
+Panel Aplikácie nesie nastavenia, ktoré platia pre všetkých v LosOS cloud a
+LosOS Git, teda tie, ktoré si inak každá aplikácia drží na vlastných
+stránkach správy. Každé pole je voľba pod `losos.nextcloud.site.*` alebo
+`losos.forgejo.site.*`, takže ide cez Použiť, bránu, Históriu a repozitár
+konfigurácie ako každé iné nastavenie. Panel Rozšírené ukazuje ich hodnoty a
+odkazuje na panel Aplikácie, namiesto toho aby kreslil druhý editor
+(`ON_PANE` v `admin-ui/app/src/lib/option-value.ts`).
+
+| Voľba | Čo nastaví v aplikácii |
+| --- | --- |
+| `losos.nextcloud.site.defaultLanguage` | `default_language` |
+| `losos.nextcloud.site.phoneRegion` | `default_phone_region` |
+| `losos.nextcloud.site.trashDays` | `trashbin_retention_obligation`, `"D, D"` |
+| `losos.nextcloud.site.versionDays` | `versions_retention_obligation`, `"D, D"` |
+| `losos.nextcloud.site.publicLinks` | `core` `shareapi_allow_links` |
+| `losos.nextcloud.site.linkPassword` | `core` `shareapi_enforce_links_password` |
+| `losos.nextcloud.site.linkExpiryDays` | `core` `shareapi_default_expire_date`, `shareapi_enforce_expire_date`, `shareapi_expire_after_n_days` |
+| `losos.nextcloud.site.defaultQuotaGB` | `files` `default_quota` |
+| `losos.forgejo.site.requireSignIn` | `[service] REQUIRE_SIGNIN_VIEW` |
+| `losos.forgejo.site.keepEmailPrivate` | `[service] DEFAULT_KEEP_EMAIL_PRIVATE` |
+| `losos.forgejo.site.defaultPrivate` | `[repository] DEFAULT_PRIVATE` |
+| `losos.forgejo.site.pushCreate` | `[repository] ENABLE_PUSH_CREATE_USER` |
+| `losos.forgejo.site.landingPage` | `[server] LANDING_PAGE` |
+
+Voľba Nextcloudu s hodnotou null nechá to nastavenie na Nextcloude. Prvé
+štyri sú kľúče `config.php`: natívny režim ich dá do `override.config.php`
+modulu, pod do `losos.config.php`, a oba sa čítajú po `config.php`, takže
+hodnota, ktorú tam zapíše Nextcloud, nikdy nevyhrá. Ďalšie štyri sú
+konfigurácia aplikácií v databáze. `modules/nextcloud-stack.nix` (`site`) ich
+vypíše ako riadky `app key value` a `occ config:app:set` ich zapíše pri
+každom štarte: entrypoint podu zo súboru `site`, ktorý pripojí hostiteľ,
+natívny režim na konci `nextcloud-setup`. Stránky správy Nextcloudu ukladajú
+tieto kľúče cez
+`ocs/v[12].php/apps/provisioning_api/api/v1/config/apps/<app>/<key>` a
+predný vhost odpovie 403 pre každý kľúč, ktorý nastavuje LosOS, vrátane
+prepínačov federácie, takže zmena urobená tam sa nemôže rozísť so
+zariadením. Stránka správy hodnotu stále ukazuje. `tests/front-vhost.nix`
+kontroluje 403 a to, že ostatné kľúče sa do Nextcloudu stále dostanú.
+
+Päť nastavení Forgejo sú kľúče `app.ini`, ktoré Správa stránky vo Forgejo
+ukazuje bez možnosti zmeny. Oba režimy čítajú jednu množinu atribútov,
+`lososInternal.forgejoSite`.
+
+Všetko, čo si nastaví účet sám pre seba, zostáva v aplikácii, a tak aj
+nastavenia správy, ktoré LosOS zatiaľ nepokrýva: doručovanie pošty, úlohy na
+pozadí, vynútenie dvojfaktorového overenia, nastavenia Forgejo uložené v
+databáze a zoznamy účtov.
+
 ## Záloha, obnova a vymazanie
 
 **Nastavenia, Záloha** posiela dáta zariadenia do S3-kompatibilného bucketu,

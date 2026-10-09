@@ -30,6 +30,7 @@ import {
   nixList,
   nixStringList,
   nixUnquote,
+  ON_PANE,
   OWNED,
   ownedLiteral,
   ownedValue,
@@ -321,7 +322,10 @@ function OptionRow({
     form.setExtra(option.name, next);
   };
 
-  const editable = !option.readOnly && (owned === undefined || ownerPlanned);
+  /* Drawn with its own editor on another pane: shown here with a link. */
+  const onPane = ON_PANE[option.name];
+  const elsewhere = onPane !== undefined && !paneById(onPane).planned;
+  const editable = !option.readOnly && (owned === undefined || ownerPlanned) && !elsewhere;
   const gated = option.needs !== undefined && !draftOn(form, option.needs);
 
   const badges = (
@@ -335,7 +339,7 @@ function OptionRow({
         </Badge>
       )}
       {option.editor.kind === "opaque" && <Badge variant="outline">{t("advanced.badge.flake")}</Badge>}
-      {editable && isSet && owned === undefined && <Badge variant="local">{t("advanced.badge.set")}</Badge>}
+      {(editable || elsewhere) && isSet && owned === undefined && <Badge variant="local">{t("advanced.badge.set")}</Badge>}
       {gated && <Badge variant="warn">{t("advanced.badge.needs")}</Badge>}
     </span>
   );
@@ -385,6 +389,13 @@ function OptionRow({
             <RowValue className="text-ink">{describe(option.editor, draftValue(form, owned.key), t)}</RowValue>
             <PaneLink pane={owned.pane} className="text-[12.5px] text-accent underline-offset-4 hover:underline">
               {t("advanced.owned.changeIn", { pane: paneById(owned.pane).label })}
+            </PaneLink>
+          </>
+        ) : elsewhere ? (
+          <>
+            <RowValue className="text-ink">{describeLiteral(raw ?? defaultRaw, t)}</RowValue>
+            <PaneLink pane={onPane} className="text-[12.5px] text-accent underline-offset-4 hover:underline">
+              {t("advanced.owned.changeIn", { pane: paneById(onPane).label })}
             </PaneLink>
           </>
         ) : (
@@ -666,6 +677,15 @@ function describe(editor: OptionEditor, value: OptionValue, t: ReturnType<typeof
   if (Array.isArray(value)) return value.length === 0 ? t("advanced.none") : value.map((v) => describe(editor, v, t)).join(", ");
   if ("package" in value) return value.package;
   return value.nix;
+}
+
+/* A literal from overrides.nix as the same fragment: on/off, a string's
+ * text, a number as written. */
+function describeLiteral(raw: string | null, t: ReturnType<typeof useT>): string {
+  if (raw === null || raw === "null") return t("advanced.none");
+  if (raw === "true") return t("advanced.on");
+  if (raw === "false") return t("advanced.off");
+  return nixUnquote(raw) ?? raw;
 }
 
 /** Lower-case and strip diacritics, as the sidebar's search does. */

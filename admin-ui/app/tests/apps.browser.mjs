@@ -366,6 +366,8 @@ await check('the dialog speaks Slovak and German', async () => {
     await page.getByRole('button', { name: title }).click();
     const dialog = page.locator('dialog[open]');
     await dialog.getByRole('heading', { name: title }).waitFor();
+    // The heading is there before the chart's properties; the form comes with them.
+    await dialog.getByText(runAs, { exact: true }).waitFor();
     assert.match(await dialog.innerText(), new RegExp(runAs));
     await clean(page, errors);
     await page.close();

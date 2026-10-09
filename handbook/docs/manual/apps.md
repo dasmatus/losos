@@ -70,6 +70,31 @@ published the chart. Nobody on the LosOS side has checked any of them.
 
 ![The Apps pane with one installed app above Find more, and search results from Artifact Hub, each with who published it and an Install or Change button.](../img/apps-find-more.png)
 
+## Settings for everyone
+
+Under the two apps, the Apps pane has the settings that hold for every
+account in LosOS cloud and LosOS Git. You would otherwise find them on each
+app's own administration pages.
+
+For LosOS cloud: the language of the sign-in page and of accounts that have
+not picked one, the country a phone number without a country code belongs
+to, whether files can be shared by public link, whether every link needs a
+password, after how many days links stop working, how much space a new
+account gets, and how long the trash and old versions are kept. An empty
+field leaves the choice to LosOS cloud.
+
+For LosOS Git: whether only signed-in accounts see anything, what a visitor
+sees first, whether a new repository starts private or public or like the
+account's last one, whether a new account's e-mail address is hidden, and
+whether pushing to a repository that does not exist yet creates it.
+
+![The Apps pane with the settings for everyone in LosOS cloud and LosOS Git.](../img/apps-site-settings.png)
+
+Press **Apply** to use them, like every other setting. The box sets them
+again each time the app starts, so the apps' own administration pages show
+these values but cannot change them. Each account's own settings, the
+account list and anything not on the pane stay in the app.
+
 ## Installing an app from the search
 
 A row the box can fetch has an **Install** button. It opens a dialog in

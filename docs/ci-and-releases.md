@@ -64,6 +64,16 @@ release. The release's title and your notes stay as they are. Tags from
 before the edge gateway image (v0.1.6 and older) cannot build the media
 and are skipped with a notice.
 
+A tag that does not build as tagged cannot get media that way. Once the
+break is fixed on `main`, put that fix as a patch in
+`.github/release-fixes/<tag>/` (`git format-patch -1 <commit>`) and run
+the workflow for the tag. The patches are applied over the tag's tree
+before the build, the tag itself stays where it is, and the run notes
+each patch it used. Only fixes that are on `main` belong there: an
+installed box rebuilds from `main`, not from the tag. v0.1.9 is built
+this way, with the Stripe gate fix from `main` that makes
+`losos-registrar` compile.
+
 ## Binary cache
 
 CI publishes signed Nix store paths as OCI artifacts at

@@ -21,6 +21,8 @@ them in full.
 | Network  | Edge address                | `losos.proxy.registrarUrl`                          | the LosOS edge          |
 | Apps     | LosOS Git                   | `losos.forgejo.enable`                              | on                      |
 | Apps     | mode (read-only)            | `losos.nextcloud.mode`, `losos.forgejo.mode`        | `container`             |
+| Apps     | LosOS cloud, settings for everyone | `losos.nextcloud.site.*` | as LosOS cloud ships |
+| Apps     | LosOS Git, settings for everyone | `losos.forgejo.site.*` | as LosOS Git ships |
 | Storage  | Use the reserve             | runs `losos-ctl grow`, and the reserve is `losos.storage.fillPercent` | 90 %  |
 | Mesh     | Join the mesh               | `losos.cluster.enable`                              | off                     |
 | Mesh     | Share my spare time         | `losos.cluster.shareCompute`                        | off                     |
