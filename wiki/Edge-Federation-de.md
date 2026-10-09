@@ -255,15 +255,15 @@ mit einem Pass aus welcher Stunde. Diesen Teil liest ein Neustart zurück,
 sodass die Routen beim ersten Durchlauf des Registrars wieder da sind,
 statt darauf zu warten, dass jede lokale Edge `/relay` erneut aufruft. Eine
 Bindung, deren Pass abgelaufen ist, wird ignoriert. `routes` ist die
-Tabelle, die diese Bindungen ergeben haben, geschrieben, damit Sie sie lesen
-können. Der Registrar plant sie aus den Bindungen neu und lädt sie nie. Der
+Tabelle, die diese Bindungen ergeben haben, geschrieben, damit du sie lesen
+kannst. Der Registrar plant sie aus den Bindungen neu und lädt sie nie. Der
 Name der Box in der Zone der Edge, `<label>.<zone>`, geht denselben Weg wie
 ihre Domains, sodass auch das CNAME-Ziel sie erreicht.
 
 Die lokale Edge bekommt ihre eigenen Zeilen in der Antwort auf `/relay`
 zurück. Das Gateway schreibt sie nach
 `/var/lib/losos-registrar/hub-routes.json` und protokolliert jede Änderung.
-Diese Datei sagt Ihnen nur, was die offizielle Edge zu Ihnen routet. Nichts
+Diese Datei sagt dir nur, was die offizielle Edge zu dir routet. Nichts
 auf der lokalen Edge routet danach.
 
 ### Einschalten
@@ -304,7 +304,7 @@ Zwei Formen, eine Konfiguration:
    Standort dient, beim ersten Booten seinen eigenen Bootstrap-Token
    erzeugt, root eine Konsole gibt (erstes Passwort `losos`, Änderung beim
    ersten Login erzwungen; sshd installiert, aber gestoppt bis
-   `losos-edge ssh on`) und seine Adresse auf tty1 ausgibt. Booten Sie es
+   `losos-edge ssh on`) und seine Adresse auf tty1 ausgibt. Boote es
    auf Proxmox, libvirt oder VirtualBox mit einer Netzwerkkarte im LAN; vom
    Standard-ISO installierte Boxen finden es innerhalb einer Minute. Dann,
    auf seiner Konsole:
@@ -316,11 +316,11 @@ Zwei Formen, eine Konfiguration:
    losos-edge boxes
    ```
 
-   mit der Tenant-Zeile, die Ihnen der Betreiber des Hubs gegeben hat.
+   mit der Tenant-Zeile, die dir der Betreiber des Hubs gegeben hat.
    `losos-edge uplink clear` beendet das Weiterleiten.
-2. **Eine bestehende NixOS-Maschine**: Importieren Sie `nixosModules.edge`
-   und setzen Sie entweder `losos.edge.gateway.enable = true` (die Form des
-   Images) oder schreiben Sie die Optionen oben von Hand, wie es die
+2. **Eine bestehende NixOS-Maschine**: Importiere `nixosModules.edge`
+   und setze entweder `losos.edge.gateway.enable = true` (die Form des
+   Images) oder schreib die Optionen oben von Hand, wie es die
    Zwei-VM-Demo und `tests/edge-lan.nix` tun.
 
 Die Hub-Seite für die offiziellen Edges ist eine Tenant-Zeile pro Standort.

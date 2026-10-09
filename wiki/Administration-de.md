@@ -4,7 +4,7 @@
 
 ## Admin-Oberfläche
 
-Öffnen Sie aus dem LAN `http://<ip>/` (die Adresse im tty1-Banner der Box)
+Öffne aus dem LAN `http://<ip>/` (die Adresse im tty1-Banner der Box)
 oder `https://<host>.local/`. Die Admin-Oberfläche ist für alles außerhalb
 des LAN gesperrt, einschließlich Verkehr über den [Master-Proxy](Master-Proxy-de).
 `<host>.local` ist ein mDNS-Name. Ein Rechner, der ihn nicht auflöst,
@@ -23,7 +23,7 @@ Dienste auf demselben Host:
 
 Die IP-Adresse der Box (die aus dem tty1-Banner) und ihr bloßer Name
 funktionieren überall anstelle von `<host>.local`, auch bei Nextcloud. So
-kommen Sie aus einer libvirt-VM hinein, die keinen mDNS-Namen erhält. nginx
+kommst du aus einer libvirt-VM hinein, die keinen mDNS-Namen erhält. nginx
 teilt dem Nextcloud-Pod mit, über welche Adresse jede Anfrage eingegangen
 ist, und der Pod vertraut genau dieser einen, nie einem Platzhalter
 (`modules/workloads.nix`). `localhost` und `127.0.0.1` vertraut Nextcloud
@@ -32,25 +32,24 @@ von sich aus.
 `losos.tls.enable` (standardmäßig an) fügt HTTPS auf :443 hinzu, mit einem
 Zertifikat, das die Box selbst erzeugt und das zwei Jahre gültig ist.
 Einfaches HTTP auf :80 bleibt offen. Browser vertrauen dem Zertifikat erst,
-wenn Sie es installieren. Der Einrichtungsassistent bietet einen
+wenn du es installierst. Der Einrichtungsassistent bietet einen
 Einzeiler-Installer für macOS, Linux und Windows (`/setup/trust.sh`,
 `/setup/trust.ps1`, beide nur im LAN) und den einfachen Download
 (`/setup/losos-ca.crt`). Siehe [Installation](Install-de).
 
 ## Aussehen
 
-**Settings, Look** ändert das Aussehen der Admin-Seiten, für jeden Browser,
+**Einstellungen, Aussehen** ändert das Aussehen der Admin-Seiten, für jeden Browser,
 der die Box öffnet. Nichts davon ist eine Einstellung im Sinne von Nix. Es
 ist ein Dokument, das lososd unter `/var/lib/losos/look.json` führt, daher
 wirkt eine Änderung sofort beim Speichern, ohne Rebuild.
 
 ### Hintergrund
 
-Wählen Sie eines der drei mitgelieferten Bilder oder laden Sie ein eigenes
-hoch (PNG, JPEG, WebP, GIF oder SVG, bis 8 MiB). Der Regler **Veil**
-(Schleier) legt die Seitenfarbe über das Bild, von 20 % bis 90 %, damit Text
-im hellen wie im dunklen Theme lesbar bleibt. *Plain* entfernt das Bild
-wieder.
+Wähle eines der drei mitgelieferten Bilder oder lade ein eigenes
+hoch (PNG, JPEG, WebP, GIF oder SVG, bis 8 MiB). Der Regler **Schleier**
+legt die Seitenfarbe über das Bild, von 20 % bis 90 %, damit Text im hellen
+wie im dunklen Theme lesbar bleibt. *Schlicht* entfernt das Bild wieder.
 
 lososd liefert ein hochgeladenes Bild unter `/api/look/background` ohne
 Token aus, weil ein CSS-`background-image` keinen senden kann. Die Route
@@ -59,11 +58,11 @@ Hintergrundbild ist kein Geheimnis.
 
 ### Selbst geschriebene Widgets
 
-Die Galerie der Overview-Übersicht (**Add a widget**) bietet zwei Wege zu
-einem eigenen Widget. *Build one* stellt ein Widget ohne jeden Code aus den
-Messwerten der Box zusammen. *Write one* nimmt eigenes HTML, eigenen Stil
-und eigenes Skript an, die auf der Box gespeichert und in diesem Bereich
-aufgelistet werden, wo Sie sie bearbeiten und löschen können.
+Die Galerie der Übersicht (**Widget hinzufügen**) bietet zwei Wege zu
+einem eigenen Widget. *Eins bauen* stellt ein Widget ohne jeden Code aus den
+Messwerten der Box zusammen. *Eins schreiben* nimmt eigenes HTML, eigenen
+Stil und eigenes Skript an, die auf der Box gespeichert und in diesem
+Bereich aufgelistet werden, wo du sie bearbeiten und löschen kannst.
 
 Ein selbst geschriebenes Widget läuft in einem Sandbox-Frame, einem eigenen
 Origin ohne Zugriff auf die Admin-Seiten, das Admin-Token oder die API. Mit
@@ -78,7 +77,7 @@ bereitstellt:
 | `losos.onTheme(fn)`            | Wird aufgerufen, wann immer der Eigentümer das Theme wechselt.        |
 | `losos.resize()`               | Bittet die Übersicht, die Kachel nach einer Änderung, die sie nicht sieht, neu zu vermessen. |
 
-Der Tab **Help** im Editor wiederholt dies mit einem Beispiel. Seine Vorschau
+Der Tab **So funktioniert es** im Editor wiederholt dies mit einem Beispiel. Seine Vorschau
 ist der echte Frame, was sie zeigt, zeigt also auch die Kachel. Ein Widget
 kann Daten aus dem Internet abrufen (etwa eine Wetterkachel), aber nicht von
 der Box. Die Grenze liegt bei 24 Widgets zu je 64 KiB.
@@ -92,7 +91,7 @@ Token kann jede Einstellung ändern, es ist also root.
 Auf einer neuen, noch nicht beanspruchten Box setzt der erste Aufrufer aus
 dem LAN, der `POST /api/setup/claim` sendet, das Eigentümer-Passwort und
 erhält das Token in der Antwort. Diese Route verlangt kein Token, nimmt aber
-keine Ansprüche mehr an, sobald die Box einen Eigentümer hat. Richten Sie die
+keine Ansprüche mehr an, sobald die Box einen Eigentümer hat. Richte die
 Box nur in einem vertrauenswürdigen LAN ein, denn der erste Aufrufer wird ihr
 Eigentümer. Das Token wird nur einmal herausgegeben und kann über die
 Oberfläche nicht erneut abgerufen werden.
@@ -112,22 +111,22 @@ cloud einem Browser antwortet. Der Pod aktiviert dann seine 26 Apps und
 startet erst danach Apache. Nativ auf einem 4-Kern-Host gemessen
 (2026-10-07) dauert die Installation etwa 11 s, das Aktivieren der Apps etwa
 13 s, und die erste Seite antwortet 27 s nach dem Start des Pods. Der
-Anmeldeschritt des Assistenten zeigt für diese Lücke "Your files are still
-starting" (Ihre Dateien starten noch). Ein Neustart wiederholt dieselben
+Anmeldeschritt des Assistenten zeigt für diese Lücke "Deine Dateien starten
+noch". Ein Neustart wiederholt dieselben
 Schritte gegen eine bereits installierte Instanz in etwa 2 s. In einer VM
 ohne KVM (QEMUs TCG-Emulation) dauern dieselben Schritte 10 bis 30 Minuten,
-geben Sie einer Demo-VM also Hardwarevirtualisierung.
+gib einer Demo-VM also Hardwarevirtualisierung.
 
 Dieser Aufrufer ist der Einrichtungsassistent. Jeder spätere Besuch der
 Admin-Seiten fragt nach dem **Passwort**, das der Assistent gesetzt hat,
-demselben, mit dem Sie sich bei LosOS cloud anmelden. `POST /api/sign-in`
+demselben, mit dem du dich bei LosOS cloud anmeldest. `POST /api/sign-in`
 fragt Nextcloud, ob es stimmt, und gibt dem Browser-Tab bei einem Ja das
 Token. Die Box hält keine zweite Kopie des Passworts, eine Änderung in LosOS
 cloud ändert es also auch für die Admin-Seiten.
 
 Das Token selbst wird nach dem Setzen des Passworts trotzdem einmal als
-**spare admin key** (Ersatz-Admin-Schlüssel) angezeigt, mit den Schaltflächen
-Copy und Print. Es deckt den einen Fall ab, den das Passwort nicht abdecken
+**Ersatz-Admin-Schlüssel** angezeigt, mit den Schaltflächen Kopieren und
+Drucken. Es deckt den einen Fall ab, den das Passwort nicht abdecken
 kann: LosOS cloud läuft nicht, denn LosOS cloud prüft das Passwort. Der
 Entsperrdialog hat einen Link, um stattdessen den Schlüssel einzugeben.
 
@@ -154,7 +153,7 @@ und führt `nixos-rebuild switch` aus. Daher:
 
 ### Erweitert
 
-**Settings, Advanced** listet jede `losos.*`-Option, die die Box deklariert,
+**Einstellungen, Erweitert** listet jede `losos.*`-Option, die die Box deklariert,
 gelesen aus den Modulen, die sie ausführt. `flake/options-doc.nix` erzeugt
 das Dokument beim Build, und lososd liefert es unter `GET /api/options` aus,
 mit dem aktuellen `overrides.nix` eingefügt. Jede Zeile zeigt die
@@ -171,15 +170,15 @@ Liste.
   `bios`), und die Pakete, die der Build auswählt, sind schreibgeschützt.
   Eine Zeile für eine davon in `overrides.nix` ließe den nächsten Rebuild
   scheitern.
-- Mit **Careful** (Vorsicht) markierte Optionen (`admin.*`, `cluster.*`,
+- Mit **Vorsicht** markierte Optionen (`admin.*`, `cluster.*`,
   `hostName`, `storage.*`, `tls.*`, `upgradeFlakeUri`, …) fragen vor der
   ersten Änderung einmal nach. Ein falscher Wert hinterlässt eine Box ohne
   Shell, von der aus man ihn beheben könnte.
-- **Use default** entfernt die Zeile, statt den Standardwert zu schreiben,
+- **Standard verwenden** entfernt die Zeile, statt den Standardwert zu schreiben,
   sodass einem Standardwert gefolgt wird, der sich mit einem Update ändert.
 - Eine Zeile in `overrides.nix`, für die die Box keine Option hat (ein
   Tippfehler, eine Einstellung aus einer anderen Version), wird in einer
-  eigenen Gruppe angezeigt und blockiert Apply, bis sie entfernt ist. lososd
+  eigenen Gruppe angezeigt und blockiert Anwenden, bis sie entfernt ist. lososd
   lehnt einen solchen Body ebenfalls ab (`backend/src/options.rs`,
   `check_body`). Es prüft jede Zeile eines Apply gegen das Dokument:
   deklariert, nicht schreibgeschützt, ein Wert der richtigen Art, kein `${`.
@@ -188,13 +187,13 @@ Alles, was hier geschrieben wird, durchläuft dasselbe Apply und denselben
 Rebuild wie die anderen Bereiche. `losos.edge.*` ist ausgelassen, weil die
 Appliance es nie liest.
 
-### Verlauf und LosOS Git
+### Historie und LosOS Git
 
 Jedes Apply, jede Speicheränderung und jedes Zurücksetzen auf
 Werkseinstellungen ist ein Commit in `/etc/nixos`, dem Repository, das
 `losos-ctl install` angelegt hat. Der Commit ist nach den Einstellungen
 benannt, die er geändert hat, `Change hostName, cluster.enable`, mit dem
-Vorher und Nachher jeder Einstellung im Body. **Settings, History** listet
+Vorher und Nachher jeder Einstellung im Body. **Einstellungen, Historie** listet
 die letzten vierzig.
 
 Mit `losos.configRepo.enable` (Standard) und eingeschaltetem LosOS Git führt
@@ -206,16 +205,16 @@ abgeglichen. Ein Reconciler in lososd läuft alle 30 s:
 
 - er committet alles Uncommittete und pusht den Branch der Box, wenn LosOS
   Git zurückliegt;
-- wenn LosOS Git voraus ist, weil Sie das Repository geklont,
-  `modules/overrides.nix` bearbeitet und gepusht haben, spult er per
+- wenn LosOS Git voraus ist, weil du das Repository geklont,
+  `modules/overrides.nix` bearbeitet und gepusht hast, spult er per
   Fast-Forward darauf vor, prüft das neue `overrides.nix` Zeile für Zeile so,
   wie Apply geprüft wird, und startet einen Rebuild. Ein abgelehnter Push
-  wird unter History gemeldet, und die Box bleibt auf ihrem eigenen Commit;
+  wird unter Historie gemeldet, und die Box bleibt auf ihrem eigenen Commit;
 - wenn beide auseinandergelaufen sind (eine umgeschriebene Historie), tut er
-  nichts und sagt das. Bereinigen Sie es von einem Klon aus;
+  nichts und sagt das. Bereinige es von einem Klon aus;
 - während ein Rebuild läuft, wartet der Push auf den nächsten Tick.
 
-**Sync now** im Bereich History führt sofort einen Tick aus. `losos-ctl
+**Jetzt abgleichen** im Bereich Historie führt sofort einen Tick aus. `losos-ctl
 config` gibt dasselbe Dokument aus, und `losos-ctl config --sync` führt
 einen Tick aus. Geheimnisse gelangen nie in das Repository. `overrides.nix`
 enthält nur Optionswerte, und das Token, mit dem sich lososd bei LosOS Git
@@ -236,7 +235,7 @@ Föderationsoptionen unten sind per UND mit `losos.sharingMyStorage`
 verknüpft, der Einstellung, die den geteilten Datenpool freischaltet
 (`lososInternal.federation` in `modules/options.nix`). Mit ausgeschaltetem
 Teilen spricht weder LosOS Git noch LosOS cloud mit anderen Servern, egal
-was die eigene Option sagt, und der Bereich Advanced zeigt beide Zeilen als
+was die eigene Option sagt, und der Bereich Erweitert zeigt beide Zeilen als
 nicht verfügbar mit dem Grund an.
 
 `losos.forgejo.federation.enable` (standardmäßig an) schaltet die
@@ -279,9 +278,9 @@ immer aktivierte Apps sind, die sich nicht abschalten lassen.
 ausgeschaltetem Teilen; `tests/invariants.nix` prüft das Gate zur
 Evaluierungszeit.
 
-## Backup, Wiederherstellung und Löschen
+## Sicherung, Wiederherstellung und Löschen
 
-**Settings, Backup** sendet die Daten der Box in einen S3-kompatiblen
+**Einstellungen, Sicherung** sendet die Daten der Box in einen S3-kompatiblen
 Bucket, den der Eigentümer mietet (Amazon S3, Glacier eingeschlossen,
 Backblaze B2, Wasabi, Cloudflare R2, MinIO).
 [restic](https://restic.net) übernimmt das Kopieren und verschlüsselt auf der
@@ -319,22 +318,22 @@ außerhalb der `ProtectHome=true`-Sandbox von lososd startet. Die Schlüssel
 des Buckets erreichen sie als `EnvironmentFile=` in `/var/secrets`, nie
 über eine Befehlszeile.
 
-**Restore** verlangt den Wiederherstellungscode der Box, die das Backup
+**Wiederherstellen** verlangt den Wiederherstellungscode der Box, die das Backup
 erstellt hat. Der neueste Snapshot kommt zurück: Die Apps halten an, die
 Dateien werden zurücksynchronisiert, die Datenbanken mit
 `pg_restore --clean` geladen, die Apps starten, und das wiederhergestellte
 `overrides.nix` wird wie jedes Apply geprüft und neu gebaut. Der Code, der
 das Backup geöffnet hat, wird zum Wiederherstellungscode dieser Box. Auf
-einer gelöschten oder neu installierten Box führen Sie den Assistenten aus,
-richten denselben Bucket ein und stellen dann wieder her.
+einer gelöschten oder neu installierten Box führst du den Assistenten aus,
+richtest denselben Bucket ein und stellst dann wieder her.
 
-**Settings, Reset, Erase** löscht die Daten ebenso wie die Einstellungen.
+**Einstellungen, Zurücksetzen, Löschen** löscht die Daten ebenso wie die Einstellungen.
 lososd steuert den Vorgang in Phasen, die in `state.json` festgehalten
 werden, sodass er auch ohne offenen Tab weiterläuft:
 
 1. ein optionales Backup. Schlägt es fehl, stoppt das Löschen, und nichts
    ändert sich;
-2. ein Countdown von `losos.reset.graceMinutes` (standardmäßig 15). Cancel
+2. ein Countdown von `losos.reset.graceMinutes` (standardmäßig 15). Abbrechen
    stoppt ihn, und weder auf der Box noch außerhalb hat sich bisher etwas
    geändert;
 3. Verlassen der Edge: Die eigenen Domains der Box werden entfernt, ihre
@@ -355,7 +354,7 @@ Abbrechen ist nur in den Schritten 1 und 2 möglich. `/nix`, `/etc/nixos`
 und die Schlüsseldatei der Festplatte bleiben, LosOS ist also weiterhin
 installiert, und die Box öffnet den Einrichtungsassistenten.
 `/var/lib/losos-erase/report.json` hält fest, was das Löschen außerhalb der
-Box aufgegeben hat, als Zählwerte, und Settings, Reset zeigt es an.
+Box aufgegeben hat, als Zählwerte, und Einstellungen, Zurücksetzen zeigt es an.
 `tests/erase.nix` durchläuft den ganzen Zyklus gegen einen MinIO-Bucket in
 einer VM.
 
@@ -376,7 +375,7 @@ das.
 
 - **03:00.** `system.autoUpgrade` baut aus `losos.upgradeFlakeUri` neu. Der
   Standardwert `git+file:///etc/nixos#install` zieht keine neuen Pakete.
-  Setzen Sie eine `github:`-URI, um Updates zu bekommen. Behalten Sie das
+  Setze eine `github:`-URI, um Updates zu bekommen. Behalte das
   Fragment `#install`; ohne es schlägt der Rebuild fehl. Eine entfernte URI
   verwendet weiterhin die Laufwerksliste, den Firmware-Modus, den
   Entsperrmodus und die Einstellungen dieser Box, weil der Rebuild sie aus

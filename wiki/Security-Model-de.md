@@ -12,7 +12,7 @@ im Repository, zusammen mit dem Code versioniert. Die Kurzfassung:
    VPS ist dem Internet zugewandt.
 2. **Edge zur Appliance.** Ein rathole-Tunnel, mit Noise verschlüsselt.
 3. **LAN zur Appliance.** HTTPS mit einem selbstsignierten Zertifikat, dem
-   Sie einmal vertrauen. Bis dahin kann ein Angreifer im LAN die erste
+   du einmal vertraust. Bis dahin kann ein Angreifer im LAN die erste
    Nutzung abfangen.
 4. **`notshared` und `shared`.** Getrennte Benutzer und Gruppen,
    Home-Verzeichnisse mit Modus 700.

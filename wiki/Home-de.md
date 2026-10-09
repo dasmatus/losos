@@ -3,9 +3,9 @@
 # losos
 
 losos ist eine NixOS-Appliance für einen Mini-PC. Sie betreibt Nextcloud für
-Ihre eigenen Dateien und kann freien Speicherplatz und CPU-Leistung an ein
+deine eigenen Dateien und kann freien Speicherplatz und CPU-Leistung an ein
 Mesh anderer losos-Boxen verleihen. Es gibt kein SSH und keine Login-Shell.
-Sie verwalten die Box über eine Webseite, und sie aktualisiert sich selbst.
+Du verwaltest die Box über eine Webseite, und sie aktualisiert sich selbst.
 
 Das Root-Dateisystem ist ein tmpfs, das bei jedem Start neu aufgebaut wird.
 Nur die in `modules/impermanence.nix` aufgeführten Verzeichnisse bleiben
@@ -25,7 +25,7 @@ Die Seiten unten richten sich an Leute, die das Projekt bauen und betreiben.
 - [Mesh](Mesh-de). Speicher und Rechenleistung für andere Boxen bereitstellen.
 - [Master-Proxy](Master-Proxy-de). Die Box aus dem Internet erreichen, ohne
   einen Port zu öffnen.
-- [Edge-Föderation](Edge-Federation-de). Ihre eigene Edge im LAN, weitergeleitet über die offiziellen.
+- [Edge-Föderation](Edge-Federation-de). Deine eigene Edge im LAN, weitergeleitet über die offiziellen.
 - [Härtung](Hardening-de). Die standardmäßige Härtungsbasis und die
   optionalen Schalter.
 - [TPM und Entsperren der Festplatte](TPM-de). Was der Chip leistet und
@@ -42,14 +42,14 @@ Die Seiten unten richten sich an Leute, die das Projekt bauen und betreiben.
 - **Ein NAS (Synology, QNAP).** Dieselbe Idee, eine Box mit Web-UI. Der
   Unterschied: Das Root-Dateisystem wird hier bei jedem Start verworfen,
   sodass die Änderungen eines Angreifers nur bis zum nächsten Neustart
-  bestehen, und der kommt spätestens jede Nacht um 00:07. Außerdem können Sie
+  bestehen, und der kommt spätestens jede Nacht um 00:07. Außerdem kannst du
   alles, was auf der Box läuft, lesen und selbst neu bauen.
-- **Ein VPS.** Die Box steht bei Ihnen zu Hause, und ihre Festplatte ist
+- **Ein VPS.** Die Box steht bei dir zu Hause, und ihre Festplatte ist
   verschlüsselt. Der Schlüssel ist im TPM-Chip der Box versiegelt oder liegt
   auf einem Rechner ohne Chip auf der Boot-Partition. Der optionale
   [Master-Proxy](Master-Proxy-de) gibt ihr eine öffentliche Adresse ohne
   eingehenden Port.
-- **Reines NixOS.** Sie könnten das alles selbst schreiben. Hier ist es
+- **Reines NixOS.** Du könntest das alles selbst schreiben. Hier ist es
   bereits geschrieben, und Benutzertrennung, verschlüsselte Persistenz,
   Vergrößern der Festplatte, Härtung und die Bedingungen für das Mesh haben
   jeweils einen VM-Test.
@@ -60,5 +60,5 @@ Die Seiten unten richten sich an Leute, die das Projekt bauen und betreiben.
 ## Was es nicht ist
 
 - Kein Allzweck-Server. Eine Shell gibt es bewusst nicht.
-- Kein Backup. Bewahren Sie Kopien von `/persist` an anderer Stelle auf.
+- Kein Backup. Bewahre Kopien von `/persist` an anderer Stelle auf.
 - Nicht fertig.

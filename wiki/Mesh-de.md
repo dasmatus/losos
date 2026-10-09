@@ -5,7 +5,7 @@
 Eine Box kann freien Speicherplatz und CPU an andere losos-Boxen verleihen.
 Der Beitritt ist standardmäßig aus. Der Bereich Mesh hat zwei Schalter: dem
 Mesh beitreten und Rechenleistung teilen. Der dritte Schalter, das Teilen der
-Festplatte dieser Box, liegt im Bereich [Market](Market-de), weil Speicher zu
+Festplatte dieser Box, liegt im Bereich [Markt](Market-de), weil Speicher zu
 verleihen und dafür bezahlt zu werden eine einzige Entscheidung ist. Solange
 der Market nur geplant ist, ist dieser Schalter mit ihm unerreichbar.
 
@@ -20,16 +20,16 @@ Jede Box betreibt zwei Kubernetes-Instanzen:
 | Braucht das Netzwerk | nein                       | ja                               |
 
 Ein Kubernetes-Agent kann nicht starten, solange sein Server nicht erreichbar
-ist, und die Box startet jede Nacht neu. Liefen Ihre eigenen Dienste im
+ist, und die Box startet jede Nacht neu. Liefen deine eigenen Dienste im
 Mesh-Cluster, würde ein Edge-Ausfall über Mitternacht sie offline nehmen.
-Halten Sie sie getrennt.
+Halte sie getrennt.
 
 ## Rechenleistung teilen
 
 Die Box nimmt Mesh-Arbeit nur an, wenn beides zutrifft:
 
-1. Die aktuelle Uhrzeit liegt innerhalb des Fensters, das Sie festgelegt
-   haben (`losos.cluster.computeWindow`).
+1. Die aktuelle Uhrzeit liegt innerhalb des Fensters, das du festgelegt
+   hast (`losos.cluster.computeWindow`).
 2. Die Box ist im Leerlauf (`losos.cluster.idleLoadThreshold`).
 
 Leerlauf kann das Fenster früher schließen. Außerhalb des Fensters kann er es
@@ -56,8 +56,8 @@ kann nichts teilen, egal was ihre Schalter sagen, deshalb sucht `lososd` alle
 Ein Kandidat zählt erst, wenn sein `/health` antwortet. Mehrere können
 gleichzeitig erreichbar sein, etwa die Edge einer Firma im LAN und die
 öffentliche über das Internet. `GET /api/edge` listet sie alle auf, LAN
-zuerst, und der Bereich Mesh zeigt eine Zeile pro Edge, oder "No edge proxy
-found" (kein Edge-Proxy gefunden) samt dem, was versucht wurde. Teilen ist
+zuerst, und der Bereich Mesh zeigt eine Zeile pro Edge, oder "Kein Edge-Proxy
+gefunden" samt dem, was versucht wurde. Teilen ist
 erlaubt, solange irgendeine davon antwortet. Die eigene Festplatte einer Box
 zu vergrößern braucht überhaupt keine Edge. Speicher über Boxen hinweg zu
 bündeln schon, weil die Control Plane des Mesh auf der Edge läuft. In einem
@@ -71,7 +71,7 @@ einzuschalten. Der Wechsel in den Mesh-Modus und jedes Apply, das
 409 und dem Grund beantwortet, und die Schalter sind mit demselben Satz
 ausgegraut. Bereits eingeschaltete Einstellungen bleiben unberührt, sodass
 eine Box, deren Edge verschwunden ist, ihre Konfiguration behält und alles
-andere weiterhin ändern kann. Teilen auszuschalten ist immer erlaubt. Ihre
+andere weiterhin ändern kann. Teilen auszuschalten ist immer erlaubt. Deine
 eigenen Dateien und Apps hängen nie von der Edge ab.
 
 Eine Edge zu finden und ihr Geld anzuvertrauen sind zwei verschiedene

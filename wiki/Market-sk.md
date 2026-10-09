@@ -2,16 +2,16 @@
 
 # Trh (plánovaný)
 
-Voliteľný trh, na ktorom jeden box predáva voľné úložisko alebo výpočtový
+Voliteľný trh, na ktorom jedno zariadenie predáva voľné úložisko alebo výpočtový
 výkon a iný ho kupuje. Platby idú cez **Stripe Connect** a edge si ponecháva
 4 % na pokrytie svojich prevádzkových nákladov.
 
 **Zatiaľ nie je otvorený.** Kód je hotový od začiatku do konca: routy
 registrara `/market/*`, Stripe gate, relay v lososd aj panel v admin UI.
 Platforma Stripe Connect však potrebuje za sebou registrovanú firmu a tá
-zatiaľ neexistuje. Kým nebude, admin UI zobrazuje kartu **Market** sivú
+zatiaľ neexistuje. Kým nebude, admin UI zobrazuje kartu **Trh** sivú
 s odznakom „soon(TM)“. Nikto na ňu nemôže kliknúť ani sa k nej dostať cez
-adresu a nič na boxe sa trhu na nič nepýta. Prepínač zdieľania disku
+adresu a nič na zariadení sa trhu na nič nepýta. Prepínač zdieľania disku
 (`losos.sharingMyStorage`) je na tomto paneli, takže zdieľanie disku s mesh sa
 otvorí spolu s trhom a UI ho dovtedy nedokáže zapnúť. Zvyšok tejto stránky
 opisuje, ako bude trh fungovať, keď sa otvorí. Aj potom je predvolene
@@ -20,26 +20,26 @@ vypnutý, a to na troch úrovniach.
 |                            | Predvolene | Prepínač                                      |
 | -------------------------- | ---------- | --------------------------------------------- |
 | Edge ho poskytuje          | vypnuté    | `losos.edge.market.enable`                    |
-| Box môže obchodovať        | vypnuté    | `losos.edge.tenants.<id>.market`              |
+| Zariadenie môže obchodovať | vypnuté    | `losos.edge.tenants.<id>.market`              |
 | Predajca môže ponúkať      | zatvorené  | Stripe hlási pripojený účet ako pripravený    |
 
-Box, ktorý nikdy neobchoduje, to neovplyvní. Trh je funkcia
+Zariadenie, ktoré nikdy neobchoduje, to neovplyvní. Trh je funkcia
 `losos-registrar` na edge.
 
-**Trh predáva to, čo už zdieľate, a nič iné.** Platí boxu za úložisko
+**Trh predáva to, čo už zdieľate, a nič iné.** Platí zariadeniu za úložisko
 a výpočtový výkon, ktorými prispieva do mesh. Nie je to samostatný produkt.
-Box môže ponúkať úložisko, len kým je jeho uzol zaradený do mesh, a výpočtový
+Zariadenie môže ponúkať úložisko, len kým je jeho uzol zaradený do mesh, a výpočtový
 výkon, len kým zároveň zdieľa výpočtový výkon (`losos.cluster.shareCompute`).
 Prestaňte zdieľať a vaše ponuky okamžite zmiznú z pultu. Vrátia sa, keď
 zdieľanie obnovíte, a už zaplatené objednávky to neovplyvní.
 
 ## Ako sa pohybujú peniaze
 
-Edge je Stripe **platforma**. Peniaze sa nikdy nedotknú losos boxu.
+Edge je Stripe **platforma**. Peniaze sa nikdy nedotknú losos zariadenia.
 
 1. Predajca sa zaregistruje (onboarding). Edge mu vytvorí pripojený účet
-   Stripe Express, **označí ho UUID boxu** (metadáta `losos_box_uuid`)
-   a vráti odkaz na onboarding hostovaný Stripe. Box zaregistrovaný ešte
+   Stripe Express, **označí ho UUID zariadenia** (metadáta `losos_box_uuid`)
+   a vráti odkaz na onboarding hostovaný Stripe. Zariadenie zaregistrované ešte
    predtým, než označovanie existovalo, sa označí, keď jeho vlastník nabudúce
    otvorí stránku.
 2. Stripe oznámi edge (`account.updated`), keď účet môže prijímať prevody.
@@ -110,22 +110,22 @@ Obmedzenia, o ktorých treba vedieť a z ktorých sa zatiaľ žiadne nevynucuje:
 
 ## Admin UI
 
-Dnes je riadok **Settings, Market** sivý a označený „soon(TM)“. Je to
+Dnes je riadok **Nastavenia, Trh** sivý a označený „soon(TM)“. Je to
 vypnuté tlačidlo, ktoré klávesnica preskakuje, a `/settings/market` namiesto
 neho otvorí predvolený panel. Na otvorenie stačí jeden príznak, `planned` na
 riadku v `admin-ui/app/src/screens/settings/panes.ts`, plus zodpovedajúci
 prepínač v `admin-ui/app/tests/app.browser.mjs`, ktorý dovtedy drží
 prehliadačové kontroly panela.
 
-Po otvorení panel začína prepínačom zdieľania disku. Presunul sa sem zo
-Storage, pretože požičiavanie disku iným boxom a platba zaň sú jedno
+Po otvorení panel začína prepínačom zdieľania disku. Presunul sa sem z panela
+Úložisko, pretože požičiavanie disku iným zariadeniam a platba zaň sú jedno
 rozhodnutie. Pod ním je to, čo vlastník kúpil, s expiráciou a zväzkom,
 a pult, z ktorého sa nakupuje. Na predaj slúži nastavenie výplat Stripe,
 formulár ponuky a vlastníkove vlastné ponuky a predaje. Prepínač sa zobrazuje
-bez ohľadu na to, či edge tomuto boxu trh ponúka, pretože je to nastavenie
-boxu, nie edge.
+bez ohľadu na to, či edge tomuto zariadeniu trh ponúka, pretože je to nastavenie
+zariadenia, nie edge.
 
-- Formulár ponuky ponúka len to, čo sa už zdieľa: úložisko, keď sa box pripojil
+- Formulár ponuky ponúka len to, čo sa už zdieľa: úložisko, keď sa zariadenie pripojilo
   k mesh, výpočtový výkon, keď zároveň zdieľa výpočtový výkon. Všetko ostatné
   je sivé s uvedeným dôvodom. Edge vynucuje to isté pravidlo, panel ho len
   vysvetľuje.
@@ -144,7 +144,7 @@ boxu, nie edge.
 - Tam, kde je trh vypnutý (žiadna proxy, edge ho má vypnutý alebo tento
   tenant nie je prihlásený), `GET /api/market` odpovie `{"available": false}`
   so stavom 200 a panel to tak aj povie. Zámerne to nie je 404. Admin UI berie
-  404 ako „tento box túto routu neposkytuje“ po zvyšok relácie.
+  404 ako „toto zariadenie túto routu neposkytuje“ po zvyšok relácie.
 
 ## API
 
@@ -209,7 +209,7 @@ ktorí súperia o posledné jednotky, nemôžu session dostať obaja.
 4. Nastavte `losos.edge.market.enable = true` a `losos.edge.market.returnUrl`,
    absolútnu http(s) URL bez prihlasovacích údajov a bez `#fragment`
    (objednávka a stav sa pripoja ako parametre dopytu).
-5. Nastavte `losos.edge.tenants.<id>.market = true` pre každý box, ktorý smie
+5. Nastavte `losos.edge.tenants.<id>.market = true` pre každé zariadenie, ktoré smie
    obchodovať.
 
 Začnite v Stripe **test mode** (testovací režim). Edge bol testovaný len proti
@@ -249,8 +249,8 @@ náhrade za Stripe. Tá overí, čo edge posiela a ako reaguje, no nevie poveda�
   zapečatiť nový blob a reštartovať `losos-stripe-gate`. Chýbajúci blob gate
   preskočí, čo vypne trh (503) a nič iné. Gate je samostatná jednotka, takže
   master proxy v registrari si to ani nevšimne.
-- **Účet Stripe nesie UUID boxu, nie jeho kód na obnovenie.** Kód na
-  obnovenie je prihlasovací údaj a zostáva na boxe. Box posiela jednosmernú
+- **Účet Stripe nesie UUID zariadenia, nie jeho kód na obnovenie.** Kód na
+  obnovenie je prihlasovací údaj a zostáva na zariadení. Zariadenie posiela jednosmernú
   hodnotu z neho odvodenú, prvých 16 bajtov
   `SHA-256("losos-box-id-v1:" + code)` naformátovaných ako UUID. Je stabilná
   po celú životnosť inštalácie a neprezrádza nič, z čoho by sa dal kód

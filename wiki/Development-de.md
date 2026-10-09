@@ -39,7 +39,7 @@ Ergebnis. Clippy-Befunde werden nicht automatisch behoben.
 
 Ein weiterer Job schreibt danach die History so um, dass kein Commit Claude
 als Mitautor nennt oder auf eine claude.ai-Session verlinkt, und pusht die
-verschobenen Branches und Tags per Force-Push. Hat sich `main` unter Ihnen
+verschobenen Branches und Tags per Force-Push. Hat sich `main` unter dir
 geändert, übernimmt `git pull --rebase` die umgeschriebenen Commits sauber.
 Ein einfaches `git pull` würde die beiden Historien mergen.
 
@@ -60,7 +60,7 @@ npm run test:browser
 
 `tests/advanced.browser.mjs` rendert jede Option, die die Box deklariert.
 Außerhalb von Nix liest es `tests/fixtures/options.json`, eine Kopie des
-Dokuments, das `flake/options-doc.nix` erzeugt; aktualisieren Sie es nach
+Dokuments, das `flake/options-doc.nix` erzeugt; aktualisiere es nach
 Änderungen an `modules/options.nix` mit
 
 ```sh
@@ -75,9 +75,9 @@ Entwicklerrechner.
 
 ## VM-Tests
 
-CI kann sie nicht ausführen (kein KVM auf gehosteten Runnern). Führen Sie
-sie lokal aus, bevor Sie Änderungen an den Modulen, am Daemon oder am
-Installer mergen:
+CI kann sie nicht ausführen (kein KVM auf gehosteten Runnern). Führe
+sie lokal aus, bevor du Änderungen an den Modulen, am Daemon oder am
+Installer mergst:
 
 ```sh
 devenv shell vm-tests
@@ -85,7 +85,7 @@ nix build .#checks.x86_64-linux.losos-admin-daemon
 nix build .#checks.x86_64-linux.losos-install
 ```
 
-Bauen Sie außerdem die System-Closure lokal:
+Baue außerdem die System-Closure lokal:
 
 ```sh
 nix build .#nixosConfigurations.install.config.system.build.toplevel
@@ -102,30 +102,30 @@ ihn aus, der Eval-Job in CI schlägt also ohne jeden Build-Aufwand daran fehl.
 
 Die Vorlage in `.github/pull_request_template.md` gibt die Beschreibung vor:
 Before-/After-Text, eine Screenshot-Tabelle, How, Tested, Hinweise für den
-Reviewer. Behalten Sie jeden Abschnitt bei.
+Reviewer. Behalte jeden Abschnitt bei.
 
 Screenshots sind Pflicht für jede Änderung, die ein Mensch sehen kann: die
 Admin UI und der Assistent, der Installer und das tty1-Banner, die Themes
-von Nextcloud und Forgejo, die Wiki- und Doku-Seiten. Machen Sie pro
+von Nextcloud und Forgejo, die Wiki- und Doku-Seiten. Mach pro
 Bildschirm ein Before und ein After bei gleicher Fenstergröße und im
 gleichen Zustand, sodass der einzige Unterschied die Änderung ist, und
-ziehen Sie sie in die Tabelle. Eine Änderung ohne sichtbare Wirkung schreibt
+zieh sie in die Tabelle. Eine Änderung ohne sichtbare Wirkung schreibt
 unter diese Überschrift "No visible change." und warum.
 
-Führen Sie unter Tested auf, was gelaufen ist und was nicht. Die VM-Tests
-brauchen KVM, sagen Sie es also, wenn sie nicht gelaufen sind.
+Führe unter Tested auf, was gelaufen ist und was nicht. Die VM-Tests
+brauchen KVM, sag es also, wenn sie nicht gelaufen sind.
 
 ## Lock-Dateien und Hashes
 
 - `flake.lock` pinnt das nixpkgs, das die Appliance baut; `devenv.lock`
-  dasjenige, das sie lintet und testet. Aktualisieren Sie beide gemeinsam.
+  dasjenige, das sie lintet und testet. Aktualisiere beide gemeinsam.
 - Nach Änderungen an `Cargo.lock` oder `admin-ui/app/package-lock.json`
-  aktualisieren Sie `cargoHash` bzw. `npmDepsHash` in `flake/packages.nix`.
+  aktualisiere `cargoHash` bzw. `npmDepsHash` in `flake/packages.nix`.
   Der Hash der Admin UI steht zusätzlich in `tests/admin-ui.nix`.
 
 ## Wiki
 
-Dieses Wiki wird aus `wiki/` im Repository erzeugt. Bearbeiten Sie die
+Dieses Wiki wird aus `wiki/` im Repository erzeugt. Bearbeite die
 Seiten dort. Der Workflow `wiki` veröffentlicht sie bei einem Push auf
 `main` und überschreibt alles, was im Wiki-Editor von GitHub bearbeitet
 wurde.
@@ -136,7 +136,7 @@ Jeder davon wurde einmal teuer bezahlt. `CLAUDE.md` enthält die einzeilige
 Regel, hier steht die Begründung dahinter.
 
 - **Drei Härtungseinstellungen werden bewusst *nicht* angewendet**, und alle
-  drei stehen auf jeder Checkliste, von der Sie abschreiben wollen werden.
+  drei stehen auf jeder Checkliste, von der du abschreiben wollen wirst.
   `rp_filter` ist `2` (lose), nicht `1`. Der strikte Modus verwirft die
   Multicast-Antworten, die eine Box ohne SSH erreichbar machen, und Calico
   funktioniert darunter auch nicht. `user.max_user_namespaces` bleibt
@@ -181,7 +181,7 @@ Regel, hier steht die Begründung dahinter.
   Installation mit einem Schlüssel formatiert und mit einem anderen entsperrt
   wurde. Nichts stieß auf diesen Fehler, bis `tests/tpm.nix` den Chip
   registrierte. `ensure_keyfile` schreibt jetzt 2048 Zufallsbytes als 4096
-  Hex-Zeichen. "Härten" Sie es nicht zurück auf rohe Bytes, und fügen Sie
+  Hex-Zeichen. "Härte" es nicht zurück auf rohe Bytes, und füge
   keinen Zeilenumbruch ein.
 - **Die LUKS-Schlüsseldatei darf nicht unter `/root` oder `/home` liegen.**
   `lososd` läuft mit `ProtectHome=true`, absichtlich, damit ein
@@ -198,15 +198,15 @@ Regel, hier steht die Begründung dahinter.
   der den Rebuild verfolgt hat. `Daemon.startSupervisor` hängt sich beim
   Start des Daemons wieder an: Steht in `state.json` `Building`, startet er
   einen neuen Watcher für `losos-rebuild-<job>`. Ohne das zeigt der Rebuild
-  für immer `building`. Entfernen Sie das Wiederanhängen nicht.
+  für immer `building`. Entferne das Wiederanhängen nicht.
 - **Die Admin-Routen verweigern Loopback absichtlich** (`lanOnly` in
   `containers.nix`). Der Tunnel-Verkehr des Master-Proxys erreicht den
   Front-vhost *von 127.0.0.1* (`local_addr` von rathole), also darf die
   LAN-only-Sperre auf `/`, `/assets/`, `/setup/` und `/api/` Loopback nicht
   erlauben. Ein `curl localhost/` auf der Box oder in einem VM-Test bekommt
   absichtlich 403. Eine "Reparatur" mit `allow 127.0.0.1` stellt die gesamte
-  Admin-Oberfläche ins Internet, sobald `losos.proxy.enable` an ist. Testen
-  Sie direkt gegen :8082 von lososd oder per curl mit einer LAN-Quelladresse.
+  Admin-Oberfläche ins Internet, sobald `losos.proxy.enable` an ist. Teste
+  direkt gegen :8082 von lososd oder per curl mit einer LAN-Quelladresse.
 - **Das Passwort des Besitzers entsperrt die Admin-Seiten, und Nextcloud
   entscheidet.** `POST /api/sign-in` (`backend/src/signin.rs`) schickt das
   Passwort über Loopback an Nextcloud (`$LOSOS_NEXTCLOUD_LOGIN_URL`, je Modus
@@ -215,8 +215,8 @@ Regel, hier steht die Begründung dahinter.
   denn eine zweite Kopie würde abweichen, sobald der Besitzer es in
   Nextcloud ändert. Der Preis ist, dass die Route 503 antwortet, solange
   Nextcloud nicht läuft, und genau dafür ist der ausgedruckte
-  Ersatzschlüssel da. Entfernen Sie also den Schlüsselweg nicht aus dem
-  Entsperrdialog, und machen Sie aus der Anmeldeprüfung kein `curl -u`, das
+  Ersatzschlüssel da. Entferne also den Schlüsselweg nicht aus dem
+  Entsperrdialog, und mach aus der Anmeldeprüfung kein `curl -u`, das
   das Passwort in einen argv legen würde. Ein neues Passwort braucht 12+
   Zeichen, Groß- und Kleinbuchstaben, eine Ziffer und ein Sonderzeichen
   (`setup::validate_password`). Eine Anmeldung prüft nur die Form des
@@ -227,7 +227,7 @@ Regel, hier steht die Begründung dahinter.
   `X-Losos-Server-Addr $server_addr`, und `losos.config.php` im Pod hängt
   diesen Wert pro Request an `trusted_domains` an, nur IP-Literale. So
   erreicht man eine libvirt-VM, die keinen mDNS-Namen bekommt, unter
-  `http://192.168.122.x/nextcloud` ohne "Untrusted domain". Ersetzen Sie das
+  `http://192.168.122.x/nextcloud` ohne "Untrusted domain". Ersetze das
   nicht durch eine Wildcard `192.168.*`. Nextclouds `*` entspricht
   `[-.a-zA-Z0-9]*`, also wäre auch `192.168.attacker.example`
   vertrauenswürdig. `localhost` und `127.0.0.1` brauchen nichts, denn
@@ -237,7 +237,7 @@ Regel, hier steht die Begründung dahinter.
   kurze Form `/nextcloud/apps/<id>/` funktioniert nur, wenn der Apache im Pod
   hübsche URLs umschreibt, und ohne das war es ein Apache-404 direkt von der
   Admin-Startseite. `admin-ui/app/src/lib/apps.ts` verwendet deshalb die
-  lange Form. "Räumen" Sie die Kacheln nicht auf die kurze zurück.
+  lange Form. "Räume" die Kacheln nicht auf die kurze zurück.
 - **Handgeschriebene Widgets laufen in `/widget-frame/`, nie in der
   Admin-Seite.** `<iframe sandbox="allow-scripts" src="/widget-frame/">`
   zeichnet HTML und Skript des Besitzers (`backend/src/look.rs`,
@@ -249,20 +249,20 @@ Regel, hier steht die Begründung dahinter.
   `containers.nix` ist der einzige Pfad, der unter einer freizügigen CSP
   ausgeliefert wird. Ein `<iframe srcdoc>` oder ein `blob:`-Dokument würde
   die strenge Richtlinie der Admin-Seite erben und das Inline-Skript genauso
-  ablehnen, also "vereinfachen" Sie den Frame nicht dazu.
+  ablehnen, also "vereinfache" den Frame nicht dazu.
   `tests/front-vhost.nix` prüft den Zweig und dass die strenge Richtlinie
   weiterhin alles andere abdeckt.
 - **lososd erzeugt das Admin-Token, nicht NixOS.** lososd schreibt
   `losos.admin.tokenFile` (Standard `/var/secrets/losos-admin-token`,
   persistent über `/var`) beim ersten Start, falls es fehlt, als zufälligen
   Wert aus 64 Hex-Zeichen mit Modus 0600. NixOS verwaltet es nicht.
-  Versuchen Sie nicht, es als Store-Pfad zu deklarieren.
+  Versuche nicht, es als Store-Pfad zu deklarieren.
 - **`/etc/rancher` muss persistent bleiben** (`impermanence.nix`). `/var`
   deckt den Großteil des Zustands beider Kubernetes-Instanzen ab, aber der
   Agent schreibt bei seinem ersten Join `/etc/rancher/node/password`, und
   der Server speichert einen Hash davon unter dem Node-Namen. Auf einem
   tmpfs-Root wird diese Datei bei jedem Boot neu erzeugt, und der Server
-  lehnt den erneuten Join dann ab ("Node password rejected"). Streichen Sie
+  lehnt den erneuten Join dann ab ("Node password rejected"). Streich
   die Zeile, und die Box fällt beim ersten Neustart nach der Registrierung
   wortlos aus dem Mesh.
 - **`--disable`, `--flannel-backend` und `--disable-network-policy` sind
@@ -271,14 +271,14 @@ Regel, hier steht die Begründung dahinter.
   endlose Crash-Schleife, auf einer Box ohne Shell. Der nixpkgs-eigene Test
   `nixos/tests/rancher/multi-node.nix` gibt seinen Server-Nodes `disable`
   und seinem Agent-Node keines von beiden, und die Beschreibung von `role`
-  in rke2 sagt dasselbe. Knüpfen Sie jedes reine Server-Flag an die Rolle.
+  in rke2 sagt dasselbe. Knüpfe jedes reine Server-Flag an die Rolle.
 - **Die beiden Kubernetes-Instanzen sind absichtlich getrennte Cluster.**
   `services.k3s` (Rolle `server`) betreibt Nextcloud und Forgejo *dieser
   Box*. `services.rke2` (Rolle `agent`) tritt dem Mesh der Edge bei. Das
   Kubelet eines Agents kann nicht starten, solange sein Server nicht
   erreichbar ist, und `midnight-reboot.timer` feuert bedingungslos um 00:07.
   Lägen die eigenen Dienste der Box im Cluster der Edge, würde jeder
-  Ausfall über Mitternacht sie lahmlegen, also "vereinfachen" Sie das nicht
+  Ausfall über Mitternacht sie lahmlegen, also "vereinfache" das nicht
   zu einem Cluster. Es ist rke2 statt eines zweiten k3s, weil nixpkgs beide
   aus einem nach Namen parametrisierten Generator baut, sodass ihre
   Zustandsverzeichnisse (`/var/lib/rancher/{k3s,rke2}`) und Unit-Namen nicht
@@ -289,7 +289,7 @@ Regel, hier steht die Begründung dahinter.
   den Netzwerk-Namespace des Hosts, und nginx sieht sie als `127.0.0.1` oder
   als LAN-IP. Das alte nspawn-Design gab Containern ein eigenes Subnetz, das
   die `lanOnly`-Sperre als Erstes ablehnte. Diese Schicht gibt es nicht
-  mehr. Schreiben Sie nie eine Regel `deny <podCidr>`, denn sie kann nicht
+  mehr. Schreib nie eine Regel `deny <podCidr>`, denn sie kann nicht
   greifen.
 - **Die Edge erzwingt das Rechenfenster, in der Zeitzone der Appliance.**
   Nur die Edge kann den NoSchedule-Taint schreiben (NodeRestriction lässt
@@ -302,7 +302,7 @@ Regel, hier steht die Begründung dahinter.
   bis 08:00 und im Sommer von 01:00 bis 09:00 durchgesetzt und verschob sich
   bei jeder Zeitumstellung um eine Stunde. Damit bekamen die Pods Fremder
   die ersten Stunden des Arbeitstags des Besitzers, genau das, was die
-  Funktion verhindern soll. Ziehen Sie `now` nicht wieder aus der
+  Funktion verhindern soll. Zieh `now` nicht wieder aus der
   Schleife über die Nodes in `modules/edge.nix` heraus. Es ist pro Node,
   weil die Zone es ist.
 - **Der Markt ist das dritte Opt-in des Registrars.** `/market/*` (Stripe
@@ -327,9 +327,9 @@ Regel, hier steht die Begründung dahinter.
     den Stripe-Schlüssel. Sie bekommt die versiegelten Blobs
     (`losos.edge.market.{stripeSecretKey,webhookSecret}Sealed`) über
     `LoadCredentialEncrypted=`. Der Registrar spricht mit ihr über
-    `/run/losos-stripe-gate/gate.sock` und sieht den Schlüssel nie. Fügen
-    Sie keine Operation hinzu, die beliebige Stripe-Aufrufe weiterleitet,
-    und halten Sie die Request-Prüfungen des Gates (Ziel, Währung,
+    `/run/losos-stripe-gate/gate.sock` und sieht den Schlüssel nie. Füge
+    keine Operation hinzu, die beliebige Stripe-Aufrufe weiterleitet,
+    und halte die Request-Prüfungen des Gates (Ziel, Währung,
     Gebührenobergrenze, Session-Lebensdauer, https-Endpunkt) strenger als
     das, was der Registrar gerade sendet. Ein fehlender Blob überspringt das
     Gate (`ConditionPathExists`), und `/market/*` antwortet 503.
@@ -393,6 +393,6 @@ Regel, hier steht die Begründung dahinter.
     LosOS-Desktop-Proxys, die einfache Dateien ausgibt. Das Runbook enthält
     die curl-Zeile.
 - **`system.stateVersion = "26.11"` wird einmal gesetzt.** Es entspricht dem
-  nixos-unstable, dem dieser Flake folgt. Ändern Sie es nicht.
+  nixos-unstable, dem dieser Flake folgt. Ändere es nicht.
 - **Der Symlink `result` ist ein Artefakt von `nix build`** und zeigt in
   `/nix/store`. Er steht in der gitignore und wird nie committet.

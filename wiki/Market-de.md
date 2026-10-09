@@ -10,7 +10,7 @@ und die Edge behält 4 % ein, um ihre Betriebskosten zu decken.
 `/market/*`-Routen des Registrars, das Stripe-Gate, das Relay in lososd und der
 Bereich in der Admin-UI. Eine Stripe-Connect-Plattform braucht jedoch ein
 eingetragenes Unternehmen dahinter, und das gibt es noch nicht. Bis dahin zeigt
-die Admin-UI den Tab **Market** ausgegraut mit einem „soon(TM)“-Badge. Niemand
+die Admin-UI den Tab **Markt** ausgegraut mit einem „soon(TM)“-Badge. Niemand
 kann ihn anklicken oder über die Adresse erreichen, und nichts auf einer Box
 fragt den Marktplatz irgendetwas. Der Schalter für die Festplattenfreigabe
 (`losos.sharingMyStorage`) liegt in diesem Bereich, also öffnet sich die
@@ -28,13 +28,13 @@ und zwar auf drei Ebenen.
 Eine Box, die nie handelt, ist nicht betroffen. Der Marktplatz ist eine
 Funktion des `losos-registrar` der Edge.
 
-**Der Marktplatz verkauft, was Sie bereits teilen, und sonst nichts.** Er
+**Der Marktplatz verkauft, was du bereits teilst, und sonst nichts.** Er
 bezahlt eine Box für den Speicher und die Rechenleistung, die sie zum Mesh
 beiträgt. Er ist kein eigenständiges Produkt. Eine Box kann Speicher nur
 anbieten, solange ihr Node im Mesh eingetragen ist, und Rechenleistung nur,
 solange sie zusätzlich Rechenleistung teilt (`losos.cluster.shareCompute`).
-Hören Sie auf zu teilen, verschwinden Ihre Angebote sofort aus dem Regal. Sie
-kehren zurück, wenn Sie wieder teilen, und bereits bezahlte Bestellungen sind
+Hörst du auf zu teilen, verschwinden deine Angebote sofort aus dem Regal. Sie
+kehren zurück, wenn du wieder teilst, und bereits bezahlte Bestellungen sind
 nicht betroffen.
 
 ## Wie das Geld fließt
@@ -100,7 +100,7 @@ nach Monatsende weiterhin Longhorn-Kapazität.
 - **Rechenleistung.** Ein Guthaben in vCPU-Stunden, aufgeführt unter
   `entitlements`. Noch misst nichts dagegen und plant nichts danach.
 
-Grenzen, die Sie kennen sollten und von denen noch keine durchgesetzt wird:
+Grenzen, die du kennen solltest und von denen noch keine durchgesetzt wird:
 
 - Der Claim ist nicht an den Node des Verkäufers gebunden. Longhorn verteilt
   Replikate über den Pool, also wird der Verkäufer für seinen Beitrag dazu
@@ -120,7 +120,7 @@ Grenzen, die Sie kennen sollten und von denen noch keine durchgesetzt wird:
 
 ## Admin-UI
 
-Derzeit ist die Zeile **Settings, Market** ausgegraut und mit „soon(TM)“
+Derzeit ist die Zeile **Einstellungen, Markt** ausgegraut und mit „soon(TM)“
 beschriftet. Sie ist eine deaktivierte Schaltfläche, die die Tastatur
 überspringt, und `/settings/market` öffnet stattdessen den Standardbereich.
 Zum Öffnen genügt ein Flag, `planned` an der Zeile in
@@ -129,7 +129,7 @@ Zum Öffnen genügt ein Flag, `planned` an der Zeile in
 bis dahin zurückhält.
 
 Einmal geöffnet, beginnt der Bereich mit dem Schalter für die
-Festplattenfreigabe. Er ist aus Storage hierher gewandert, weil das Verleihen
+Festplattenfreigabe. Er ist aus dem Bereich Speicher hierher gewandert, weil das Verleihen
 von Festplattenplatz an andere Boxen und die Bezahlung dafür eine einzige
 Entscheidung sind. Darunter folgt, was der Besitzer gekauft hat, mit Ablauf
 und Volume, und das Regal zum Einkaufen. Für den Verkauf gibt es die
@@ -172,7 +172,7 @@ Alle Routen liegen auf der öffentlichen API des Registrars
 | Route                          | Auth       | Zweck                                                |
 | ------------------------------ | ---------- | ---------------------------------------------------- |
 | `GET /market/listings`         | keine      | Was jetzt gekauft werden kann. Nennt keinen Verkäufer |
-| `POST /market/account`         | Token      | Ihre Angebote, Käufe, Verkäufe, Ansprüche            |
+| `POST /market/account`         | Token      | Deine Angebote, Käufe, Verkäufe, Ansprüche           |
 | `POST /market/seller/onboard`  | Token      | Stripe-Onboarding starten oder fortsetzen            |
 | `POST /market/listings`        | Token      | `kind`, `unit_price`, `capacity`                     |
 | `POST /market/listings/close`  | Token      | `listing_id`; bezahlte Bestellungen behalten ihre Einheiten |
@@ -206,9 +206,9 @@ konkurrieren, können nicht beide eine Session bekommen.
 
 ## Einrichtung für Betreiber
 
-1. Aktivieren Sie im Stripe-Dashboard **Connect** auf dem Plattformkonto.
-2. Versiegeln Sie den geheimen Schlüssel (ein eingeschränkter Schlüssel
-   genügt) mit `systemd-creds` und lesen Sie ihn dabei von stdin, damit der
+1. Aktiviere im Stripe-Dashboard **Connect** auf dem Plattformkonto.
+2. Versiegle den geheimen Schlüssel (ein eingeschränkter Schlüssel
+   genügt) mit `systemd-creds` und lies ihn dabei von stdin, damit der
    Klartext nie die Festplatte berührt:
 
    ```sh
@@ -220,24 +220,24 @@ konkurrieren, können nicht beide eine Session bekommen.
    die Gate-Unit entschlüsselt ihn jemals. Der Name muss genau
    `stripe-secret-key` lauten, denn ein Blob lässt sich nur unter dem Namen
    entschlüsseln, mit dem er versiegelt wurde.
-3. Legen Sie zwei Webhook-Endpunkte an, beide unter
+3. Leg zwei Webhook-Endpunkte an, beide unter
    `https://register.<publicDomain>/market/webhook`: einen für Ereignisse auf
-   Ihrem Konto (`checkout.session.completed`, `checkout.session.expired`) und
+   deinem Konto (`checkout.session.completed`, `checkout.session.expired`) und
    einen, der auf **events on Connected accounts** (Ereignisse auf verbundenen
    Konten, `account.updated`) hört. Stripe signiert jeden mit einem eigenen
-   Secret, also versiegeln Sie beide `whsec_...`-Secrets, eines pro Zeile,
+   Secret, also versiegle beide `whsec_...`-Secrets, eines pro Zeile,
    unter dem Namen `stripe-webhook-secret` in
    `losos.edge.market.webhookSecretSealed` (Standard
    `/var/secrets/losos-stripe-webhook-secret.cred`). Die Edge akzeptiert
    jedes der beiden.
-4. Setzen Sie `losos.edge.market.enable = true` und
+4. Setze `losos.edge.market.enable = true` und
    `losos.edge.market.returnUrl`, eine absolute http(s)-URL ohne Zugangsdaten
    und ohne `#fragment` (Bestellung und Status werden als Query-Parameter
    angehängt).
-5. Setzen Sie `losos.edge.tenants.<id>.market = true` für jede Box, die
+5. Setze `losos.edge.tenants.<id>.market = true` für jede Box, die
    handeln darf.
 
-Beginnen Sie im Stripe-**test mode** (Testmodus). Die Edge wurde bisher nur
+Beginne im Stripe-**test mode** (Testmodus). Die Edge wurde bisher nur
 gegen einen Ersatz für Stripe getestet. Der prüft, was die Edge sendet und wie
 sie reagiert, kann aber nicht sagen, ob Stripe es akzeptiert. Das klärt der
 erste Lauf im Testmodus.
@@ -299,7 +299,7 @@ erste Lauf im Testmodus.
 
 ## Nicht abgedeckt
 
-- **Erstattungen und Streitfälle.** Bearbeiten Sie diese im Stripe-Dashboard
+- **Erstattungen und Streitfälle.** Bearbeite diese im Stripe-Dashboard
   mit `reverse_transfer` und `refund_application_fee`, damit sowohl der Anteil
   des Verkäufers als auch der Anteil der Plattform zurückfließen. Der
   Marktplatz bildet keines von beiden ab.
@@ -308,5 +308,5 @@ erste Lauf im Testmodus.
   Rechenleistung und entzieht bei Ablauf keinen Zugriff.
 - **Steuern, Rechnungsstellung und Verkäuferprüfung** über das hinaus, was das
   Onboarding von Stripe leistet. Der Betrieb eines Marktplatzes bringt
-  rechtliche Pflichten mit sich, die davon abhängen, wo Sie tätig sind. Dies
+  rechtliche Pflichten mit sich, die davon abhängen, wo du tätig bist. Dies
   ist ein Experiment, keine Beratung.

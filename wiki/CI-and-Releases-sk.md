@@ -30,7 +30,7 @@ zdrojového kódu bez akéhokoľvek upozornenia.
 Najprv nastavte `flake/version.nix` na nový tag v main, potom pushnite tag
 `v*`, alebo vo webovom rozhraní pripravte koncept vydania s novým tagom `v*`.
 Bootovacie menu, bootovacie obrázky, os-release a bannery na konzole ukazujú
-hodnotu z tohto súboru a nainštalovaný box sa zostavuje z commitnutého
+hodnotu z tohto súboru a nainštalované zariadenie sa zostavuje z commitnutého
 stromu. Job vydania:
 
 1. zapíše tag do `flake/version.nix` (s varovaním, ak bola commitnutá

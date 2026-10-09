@@ -86,9 +86,9 @@ to uvádza ako známe obmedzenie.
 - Inštalátor vypíše `unlock: TPM2` alebo `unlock: keyfile in the initrd`
   a pri ceste s keyfile tesne pred dokončením aj varovanie.
 - Obrazovka zariadenia zobrazuje varovanie pod jeho adresou.
-- Admin stránky zobrazujú varovanie v Settings, Security a v sprievodcovi
+- Admin stránky zobrazujú varovanie na paneli Nastavenia, Zabezpečenie a v sprievodcovi
   nastavením, keď je nastavené heslo.
-- Settings, Advanced uvádza `tpm.enable` a hodnotu, s ktorou zariadenie beží.
+- Nastavenia, Rozšírené uvádza `tpm.enable` a hodnotu, s ktorou zariadenie beží.
 
 ## Presun zariadenia na TPM
 

@@ -3,62 +3,62 @@
 # Lab
 
 LosOS Lab kreslí zostavu LosOS ako sieťový diagram a ukazuje prevádzku,
-ktorá cez ňu tečie. Každý box ho podáva na `/lab/`, v bočnom paneli
-administrácie pod položkou **Lab**. Ako ostatné administračné stránky
+ktorá cez ňu tečie. Každé zariadenie ho podáva na `/lab/`, v bočnom paneli
+administrácie pod položkou **Laboratórium**. Ako ostatné administračné stránky
 odpovedá iba v lokálnej sieti.
 
-Otvára sa na **This box** (tento box). Lab prečíta nastavenia boxu a edge,
-ktoré box našiel, cez tie isté tri administračné routy ako ostatné stránky,
-a podľa nich box nakreslí: jeho router, edge v dosahu, oficiálny edge, ak je
+Otvára sa na **This box** (toto zariadenie). Lab prečíta nastavenia zariadenia a edge,
+ktoré zariadenie našlo, cez tie isté tri administračné routy ako ostatné stránky,
+a podľa nich zariadenie nakreslí: jeho router, edge v dosahu, oficiálny edge, ak je
 nastavený, a notebook. Router, káble a notebook sú predpokladané, pretože
-box ich nevidí. Lab do boxu nikdy nič nezapisuje. Ak nie je nikto
+zariadenie ich nevidí. Lab do zariadenia nikdy nič nezapisuje. Ak nie je nikto
 prihlásený, povie to a otvorí vstavané zostavy.
 
 ## Čo ukazuje
 
-- **Logical a Physical (logický a fyzický pohľad).** Logický pohľad ukazuje
+- **Pohľady Logický a Fyzický.** Logický pohľad ukazuje
   podsiete, cesty cez edge a mesh. Fyzický pohľad ukazuje racky, stoly a
   káble medzi nimi.
-- **Režimy Realtime a Simulation.** Realtime prehráva prevádzku tak, ako sa
+- **Režimy Reálny čas a Simulácia.** Reálny čas prehráva prevádzku tak, ako sa
   deje. Má hodiny, ktoré môžete zrýchliť (1×, 10×, 60×, 10 min/s, 1 h/s), a
   tlačidlo, ktoré preskočí na najbližší časovač: reštart o 00:07, upgrade o
   03:00, garbage collection o 04:30 a začiatok a koniec výpočtového okna.
-  Simulation zadrží každý paket, kým nestlačíte Play alebo Step, a vypíše
+  Simulácia zadrží každý paket, kým nestlačíte Spustiť alebo Krok, a vypíše
   každý skok s jeho protokolom.
 - **Vlastné zostavy.** Začnite od Empty canvas (prázdne plátno) alebo od
   ktorejkoľvek vstavanej zostavy, vytiahnite zariadenia z panela a natiahnite
-  medzi ich portami meď, optiku alebo Wi-Fi. **Save** stiahne zostavu ako
-  súbor `.llf` (LosOS Lab file, vnútri JSON) a **Open** ho načíta späť.
+  medzi ich portami meď, optiku alebo Wi-Fi. **Uložiť** stiahne zostavu ako
+  súbor `.llf` (LosOS Lab file, vnútri JSON) a **Otvoriť** ho načíta späť.
   Posledná zostava, ktorú ste zmenili, sa uchováva aj v prehliadači a vo
-  výbere je uvedená ako "Last setup". Otvorený súbor sa znova postaví tými
+  výbere je uvedená ako "Posledná zostava". Otvorený súbor sa znova postaví tými
   istými nástrojmi ako panel, takže čokoľvek v ňom, čo by panel nevedel
   vytvoriť, sa vynechá a Lab povie, koľko častí zahodil.
-- **Vstavané zostavy.** Dve lokality za jedným oficiálnym edge, jeden domáci
-  box, firma s vlastnou bránou, LAN bez internetu a tri učebnicové
+- **Vstavané zostavy.** Dve lokality za jedným oficiálnym edge, jedno domáce
+  zariadenie, firma s vlastnou bránou, LAN bez internetu a tri učebnicové
   topológie: hviezda, zbernica a sieť. Sú to len východiskové body,
   postavené tým istým panelom.
 - **Notebook s LosOS Desktop.** Má prihlasovaciu obrazovku, prehľad a
-  prehliadač, ktorý môžete nasmerovať na ľubovoľný box alebo edge v
+  prehliadač, ktorý môžete nasmerovať na ľubovoľné zariadenie alebo edge v
   diagrame.
 - **Sieťové zariadenia** (routery, switche, Wi-Fi prístupové body a
   koaxiálna zbernica) bežia na vlastnom malom systéme s názvom Netzgeräte
   Betriebssystem. Jeho konzola má `show interfaces`, `show ip route`,
   `show arp` a `show dhcp`.
 
-Diagram sa riadi tými istými pravidlami ako skutočný softvér. Príklady: box
+Diagram sa riadi tými istými pravidlami ako skutočný softvér. Príklady: zariadenie
 bez edge v dosahu nespustí žiadny tunel; prepnutie na mesh sa odmietne s
 `edgeRequired`; trh sa otvorí iba vedľa oficiálneho edge (takého, ktorého
 certifikát podpísal koreňový kľúč LosOS); LAN brána s otvoreným zápisom
-prijme neznáme boxy pri prvom použití; a administračné routy odmietajú
+prijme neznáme zariadenia pri prvom použití; a administračné routy odmietajú
 loopback.
 
 ## Dve kópie
 
-| | Na boxe (`/lab/`) | Hostovaná |
+| | Na zariadení (`/lab/`) | Hostovaná |
 | --- | --- | --- |
 | Zostavuje ju | `nix build .#losos-admin-ui` (Lab je jeho druhá stránka) | `admin-ui/lab/engine/build.sh` v `lab.yml` |
-| Konzoly | simulované, alebo skutočné hosty pod libvirt, keď box spúšťa pomocníka | skutočné x86_64 hosty pod libvirt na vašom počítači, inak qemu-wasm |
-| Potrebuje | nič okrem boxu | cross-origin izolovaný hostiteľ (COOP + COEP) |
+| Konzoly | simulované, alebo skutočné hosty pod libvirt, keď zariadenie spúšťa pomocníka | skutočné x86_64 hosty pod libvirt na vašom počítači, inak qemu-wasm |
+| Potrebuje | nič okrem zariadenia | cross-origin izolovaný hostiteľ (COOP + COEP) |
 
 Lab je súčasťou administračného rozhrania: `admin-ui/app/lab/index.html` je
 druhá stránka Vite vedľa administračných stránok, postavená z tých istých
@@ -72,7 +72,7 @@ pod vlastnou content security policy: tou z administračnej stránky plus
 Hostovaná kópia je tá istá stránka zostavená s `VITE_LAB_HOSTED=1`, plus
 [qemu-wasm](https://github.com/ktock/qemu-wasm): QEMU skompilované do
 WebAssembly, takže každá konzola je skutočný linuxový host v karte
-prehliadača. Boxy a edge bootujú busybox ako náhradu za LosOS a sieťové
+prehliadača. Zariadenia a edge bootujú busybox ako náhradu za LosOS a sieťové
 zariadenia bootujú Netzgeräte Betriebssystem, ktorý zostaví nix z
 `admin-ui/lab/engine/gear/netzgeraete.nix`. Lab zapojí sieťové karty hostov
 do diagramu, takže DHCP, ARP, ping a HTTP medzi hostmi idú po kábloch, ktoré
@@ -207,7 +207,7 @@ Odznak v hornej lište potom hovorí "KVM via libvirt" (alebo "QEMU via
 libvirt (no KVM)" na počítači bez neho) a každá konzola uvádza, čo spúšťa
 jej host: libvirt, alebo "QEMU in this tab". Ak pomocník nebeží alebo
 libvirt host odmietne, ten host nabootuje pod qemu-wasm ako predtým a Lab to
-raz oznámi. Vlastná kópia boxu qemu-wasm nemá, takže tam si ponechá
+raz oznámi. Vlastná kópia zariadenia qemu-wasm nemá, takže tam si ponechá
 simulovanú konzolu.
 
 ### WebAssembly klient a relay
@@ -282,7 +282,7 @@ takže ktorákoľvek stránka otvorená v tom istom prehliadači sa môže pokú
 dostať na `ws://127.0.0.1:8095`, a pomocník odmietne každú požiadavku,
 ktorej Origin nie je na zozname ani nie je vlastnou adresou pomocníka.
 
-### Na boxe
+### Na zariadení
 
 `losos.lab.libvirt.enable` (predvolene vypnuté) zapne libvirtd a spustí
 toho istého pomocníka ako službu, s `qemu:///system`. lososd mu relayuje
@@ -291,7 +291,7 @@ požiadavky Labu pod `/api/lab/` s administračným kľúčom, vrátane
 (`/api/lab/ws/`) a relay libvirt (`/api/lab/virt`) idú cez nginx priamo k
 pomocníkovi, iba z lokálnej siete, a každé potrebuje tiket, ktorý môže
 získať iba tento kľúč. Relay vydáva libvirt ako používateľ pomocníka, ktorý
-je v skupine `libvirtd`, takže na boxe je ekvivalentný rootu;
+je v skupine `libvirtd`, takže na zariadení je ekvivalentný rootu;
 administračný kľúč už vie prestavať celý systém, takže neprezradí nič, čo
 kľúč predtým nemal. Dajte tri obrazy do `/var/lib/losos-lab/images`
 (`losos.lab.libvirt.images`).

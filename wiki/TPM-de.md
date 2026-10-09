@@ -96,9 +96,9 @@ allein unlesbar. Es hilft nicht mehr, sobald jemand die ganze Box hat. Das
 - Der Installer gibt `unlock: TPM2` oder `unlock: keyfile in the initrd`
   aus, und auf dem Keyfile-Pfad kurz vor dem Abschluss eine Warnung.
 - Der Bildschirm der Box zeigt unter ihrer Adresse eine Warnung.
-- Die Admin-Seiten zeigen eine Warnung unter Settings, Security und im
+- Die Admin-Seiten zeigen eine Warnung unter Einstellungen, Sicherheit und im
   Einrichtungsassistenten, sobald das Passwort gesetzt ist.
-- Settings, Advanced führt `tpm.enable` und den Wert, mit dem die Box läuft.
+- Einstellungen, Erweitert führt `tpm.enable` und den Wert, mit dem die Box läuft.
 
 ## Eine Box auf TPM umstellen
 
@@ -107,21 +107,21 @@ Die Admin-Seiten können ihn nicht ändern, weil eine Zeile dafür in
 `overrides.nix` mit der des Installers kollidieren würde. Der Weg zum TPM
 ist eine Neuinstallation.
 
-1. Kopieren Sie Ihre Dateien von der Box. Die Neuinstallation formatiert die
+1. Kopiere deine Dateien von der Box. Die Neuinstallation formatiert die
    Festplatte.
-2. Schalten Sie das TPM im Firmware-Setup ein. Suchen Sie nach "TPM",
+2. Schalte das TPM im Firmware-Setup ein. Suche nach "TPM",
    "Security Device", "Intel PTT" oder "AMD fTPM", meist unter Security oder
    Advanced.
-3. Installieren Sie neu vom [Installer-ISO](Install-de). Der Installer findet
+3. Installiere neu vom [Installer-ISO](Install-de). Der Installer findet
    den Chip und verwendet ihn. `losos-ctl install --tpm` macht einen
    fehlenden Chip zu einem Fehler statt zu einer stillen Keyfile-Installation.
 
 Eine VM braucht einen emulierten Chip bei der Installation und bei jedem
 späteren Start. Die swtpm-Zeilen stehen unter
-[Installation](Install-de#in-einer-vm-ausprobieren-bios). Bewahren Sie das
+[Installation](Install-de#in-einer-vm-ausprobieren-bios). Bewahre das
 swtpm-Zustandsverzeichnis zusammen mit dem Festplatten-Image auf, sonst kann
 die VM ihre Festplatte nicht entsperren.
 
 Der Keyfile-Modus ist in Ordnung für eine VM, eine Testbox oder eine Box,
 die nichts Privates enthält. Für echte Dateien eines Besitzers auf einer
-Box, die jemals das Haus verlassen könnte, verwenden Sie das TPM.
+Box, die jemals das Haus verlassen könnte, verwende das TPM.

@@ -4,7 +4,7 @@
 
 LosOS Lab zeichnet ein LosOS-Setup als Netzwerkdiagramm und zeigt den
 Verkehr, der hindurchläuft. Jede Box liefert es unter `/lab/` aus, in der
-Seitenleiste der Administration unter **Lab**. Wie die übrigen
+Seitenleiste der Administration unter **Labor**. Wie die übrigen
 Administrationsseiten antwortet es nur im lokalen Netz.
 
 Es öffnet mit **This box** (diese Box). Das Lab liest die Einstellungen der
@@ -17,22 +17,22 @@ Box. Ist niemand angemeldet, sagt es das und öffnet die eingebauten Setups.
 
 ## Was es zeigt
 
-- **Logical und Physical (logische und physische Ansicht).** Die logische
+- **Logisch und Physisch.** Die logische
   Ansicht zeigt Subnetze, die Edge-Pfade und das Mesh. Die physische
   Ansicht zeigt Racks, Schreibtische und die Kabel dazwischen.
-- **Modi Realtime und Simulation.** Realtime spielt den Verkehr ab, wie er
-  geschieht. Es hat eine Uhr, die Sie beschleunigen können (1×, 10×, 60×,
+- **Modi Echtzeit und Simulation.** Echtzeit spielt den Verkehr ab, wie er
+  geschieht. Es hat eine Uhr, die du beschleunigen kannst (1×, 10×, 60×,
   10 min/s, 1 h/s), und eine Schaltfläche, die zum nächsten Timer springt:
   dem Neustart um 00:07, dem Upgrade um 03:00, der Garbage Collection um
   04:30 sowie Beginn und Ende des Rechenfensters. Simulation hält jedes
-  Paket an, bis Sie Play oder Step drücken, und listet jeden Hop mit seinem
+  Paket an, bis du Abspielen oder Schritt drückst, und listet jeden Hop mit seinem
   Protokoll auf.
-- **Eigene Setups.** Beginnen Sie mit Empty canvas (leere Fläche) oder einem
-  beliebigen eingebauten Setup, ziehen Sie Geräte aus der Leiste und ziehen
-  Sie Kupfer, Glasfaser oder WLAN zwischen ihren Ports. **Save** lädt das
+- **Eigene Setups.** Beginne mit Empty canvas (leere Fläche) oder einem
+  beliebigen eingebauten Setup, zieh Geräte aus der Leiste und zieh
+  Kupfer, Glasfaser oder WLAN zwischen ihren Ports. **Speichern** lädt das
   Setup als `.llf`-Datei herunter (LosOS Lab file, darin JSON), und
-  **Open** lädt eine wieder. Das zuletzt geänderte Setup wird außerdem im
-  Browser gespeichert und in der Auswahl als "Last setup" aufgeführt. Eine
+  **Öffnen** lädt eine wieder. Das zuletzt geänderte Setup wird außerdem im
+  Browser gespeichert und in der Auswahl als "Letzter Aufbau" aufgeführt. Eine
   geöffnete Datei wird mit denselben Werkzeugen wie die Leiste neu
   aufgebaut; alles darin, was die Leiste nicht erzeugen könnte, bleibt
   also weg, und das Lab sagt, wie viele Teile es verworfen hat.
@@ -41,8 +41,8 @@ Box. Ist niemand angemeldet, sagt es das und öffnet die eingebauten Setups.
   Internet und drei Lehrbuchformen: Stern, Bus und vermaschtes Netz. Sie
   sind nur Ausgangspunkte, gebaut mit derselben Leiste.
 - **Ein Laptop mit LosOS Desktop.** Er hat den Anmeldebildschirm, die
-  Übersicht und den Browser, den Sie auf jede Box und jede Edge im Diagramm
-  richten können.
+  Übersicht und den Browser, den du auf jede Box und jede Edge im Diagramm
+  richten kannst.
 - **Netzwerkgeräte** (Router, Switches, WLAN-Access-Points und ein
   Koax-Bus) laufen mit einem eigenen kleinen System namens Netzgeräte
   Betriebssystem. Seine Konsole kennt `show interfaces`, `show ip route`,
@@ -60,7 +60,7 @@ Nutzung auf; und die Administrationsrouten lehnen Loopback ab.
 | | Auf der Box (`/lab/`) | Gehostet |
 | --- | --- | --- |
 | Gebaut von | `nix build .#losos-admin-ui` (das Lab ist seine zweite Seite) | `admin-ui/lab/engine/build.sh` in `lab.yml` |
-| Konsolen | simuliert, oder echte Gäste unter libvirt, wenn die Box den Helfer ausführt | echte x86_64-Gäste unter libvirt auf Ihrem Rechner, sonst qemu-wasm |
+| Konsolen | simuliert, oder echte Gäste unter libvirt, wenn die Box den Helfer ausführt | echte x86_64-Gäste unter libvirt auf deinem Rechner, sonst qemu-wasm |
 | Braucht | nichts außer der Box | einen Cross-Origin-isolierten Host (COOP + COEP) |
 
 Das Lab ist Teil der Administrationsoberfläche: `admin-ui/app/lab/index.html`
@@ -80,7 +80,7 @@ Boxen und Edges booten ein busybox als Ersatz für LosOS, und die
 Netzwerkgeräte booten Netzgeräte Betriebssystem, das nix aus
 `admin-ui/lab/engine/gear/netzgeraete.nix` baut. Das Lab verbindet die
 Netzwerkkarten der Gäste mit dem Diagramm, sodass DHCP, ARP, Ping und HTTP
-zwischen Gästen über die Kabel laufen, die Sie gezogen haben. Ein
+zwischen Gästen über die Kabel laufen, die du gezogen hast. Ein
 Router-Gast vergibt Leases mit seinem eigenen `udhcpd`. Ein Tab führt
 höchstens drei Gäste gleichzeitig aus. Mit einem vierten gingen den Gästen
 die Kerne aus und sie blieben hängen, deshalb weigert sich das Lab, einen
@@ -89,7 +89,7 @@ gemeinsamem Speicher aus, und Browser erlauben das nur auf einer Seite, die
 mit `Cross-Origin-Opener-Policy: same-origin` und
 `Cross-Origin-Embedder-Policy: require-corp` ausgeliefert wird.
 `vercel.json` setzt beide Header auf Vercel, und `serve.json` tut dasselbe
-für `serve` auf Ihrem eigenen Rechner:
+für `serve` auf deinem eigenen Rechner:
 
 ```sh
 admin-ui/lab/engine/build.sh /tmp/lab     # docker, nix, node
@@ -135,7 +135,7 @@ nachdem die SVG-Fläche gezeichnet ist. Die Content Security Policy der
 Seite braucht keine Änderung, weil `'wasm-unsafe-eval'` dem Browser bereits
 erlaubt, den Kern zu kompilieren.
 
-Um eine Zeichenfläche zu wählen, hängen Sie `?canvas=svg`, `?canvas=webgpu`
+Um eine Zeichenfläche zu wählen, häng `?canvas=svg`, `?canvas=webgpu`
 oder `?canvas=webgl2` an die Adresse an. Der Local-Storage-Schlüssel
 `losos-lab-canvas` nimmt dieselben Werte an und behält die Wahl in diesem
 Browser. Das Engine-Abzeichen in der oberen Leiste nennt die Zeichenfläche
@@ -184,38 +184,38 @@ ist weiterhin der Switch, sodass ein libvirt-Gast und ein qemu-wasm-Gast
 sich ein Kabel teilen können und DHCP, ARP und Ping zwischen ihnen wie
 bisher funktionieren.
 
-So nutzen Sie ihn neben virt-manager auf Ihrem eigenen PC:
+So nutzt du ihn neben virt-manager auf deinem eigenen PC:
 
-1. Installieren Sie libvirt und QEMU (auf den meisten Distributionen die
+1. Installiere libvirt und QEMU (auf den meisten Distributionen die
    Pakete, die virt-manager bereits mitgebracht hat) und das Binary
    `losos-registrar` (`nix build .#losos-registrar`, oder das statische, das
    das Runbook in `provisioning/edge-identity/README.md` herunterlädt).
-2. Legen Sie die Gast-Images in einen Ordner namens `guest`: `bzImage`,
+2. Leg die Gast-Images in einen Ordner namens `guest`: `bzImage`,
    `rootfs.bin` und, für Router, Switches und Access Points, `gear.bin`.
    `admin-ui/lab/engine/build.sh` erzeugt alle drei, und das gehostete Lab
-   liefert sie unter `/lab/guest/` aus, sodass Sie sie von dort
-   herunterladen können.
-3. Starten Sie den Helfer im Ordner oberhalb von `guest`:
+   liefert sie unter `/lab/guest/` aus, sodass du sie von dort
+   herunterladen kannst.
+3. Starte den Helfer im Ordner oberhalb von `guest`:
 
    ```sh
    losos-registrar lab --origin https://your-lab.example.org
    ```
 
    Er lauscht auf `127.0.0.1:8095` und verwendet `qemu:///session`, das kein
-   root braucht. Geben Sie `--connect qemu:///system` an, damit die Gäste in
-   virt-manager neben Ihren anderen VMs erscheinen (Ihr Benutzer muss in der
+   root braucht. Gib `--connect qemu:///system` an, damit die Gäste in
+   virt-manager neben deinen anderen VMs erscheinen (dein Benutzer muss in der
    Gruppe `libvirt` sein, und der eigene qemu-Benutzer von libvirt muss den
    Image-Ordner lesen können). `--origin` nennt die Adresse der Lab-Seite,
-   die Sie öffnen; eine Kopie, die wie oben unter `localhost:8080`
+   die du öffnest; eine Kopie, die wie oben unter `localhost:8080`
    ausgeliefert wird, ist auch ohne erlaubt. Die übrigen Flags sind
    `--images DIR`, `--max-guests N` (8), `--memory MiB` (96),
    `--virt-type auto|kvm|qemu`, `--idle 60s`, `--virsh PATH` und
    `--token-file FILE`. Ohne Token-Datei weigert sich der Helfer, auf etwas
    anderem als Loopback zu lauschen, und beantwortet nur Anfragen, die an
    `127.0.0.1` oder `localhost` adressiert sind.
-4. Öffnen Sie das Lab. Eine Kopie auf `localhost` sucht den Helfer von
-   selbst. Eine gehostete Kopie sucht erst, wenn Sie sie mit `?libvirt` am
-   Ende der Adresse öffnen, weil Chrome jeden Besucher einer öffentlichen
+4. Öffne das Lab. Eine Kopie auf `localhost` sucht den Helfer von
+   selbst. Eine gehostete Kopie sucht erst, wenn du sie mit `?libvirt` am
+   Ende der Adresse öffnest, weil Chrome jeden Besucher einer öffentlichen
    Seite in dem Moment um Zugriff aufs lokale Netz bittet, in dem sie
    `127.0.0.1` berührt. Das Lab merkt sich die Wahl; `?libvirt=0` vergisst
    sie.
@@ -292,8 +292,8 @@ also den Helfer und nie die Seite, und auch polkit fragt nach dem Helfer.
 Mit `qemu:///system` ist das so gut wie root auf dem Rechner, denn eine Seite
 kann eine Domain anlegen, die jede beliebige Datei oder Festplatte des Hosts
 einbindet, und das Relay kann eine solche Domain nicht ablehnen, ohne das
-Protokoll von libvirt zu parsen. Bevorzugen Sie auf Ihrem eigenen PC
-`qemu:///session`: Dann sind im schlimmsten Fall die Dateien Ihres eigenen
+Protokoll von libvirt zu parsen. Bevorzuge auf deinem eigenen PC
+`qemu:///session`: Dann sind im schlimmsten Fall die Dateien deines eigenen
 Benutzers betroffen. Die Gäste des Labs brauchen nichts von der
 System-Instanz.
 
@@ -319,7 +319,7 @@ Netz, und jedes braucht ein Ticket, das nur dieser Schlüssel bekommen kann.
 Das Relay gibt libvirt als Benutzer des Helfers heraus, der in der Gruppe
 `libvirtd` ist; es ist auf der Box also root-äquivalent. Der
 Admin-Schlüssel kann ohnehin schon das ganze System neu bauen, er gibt also
-nichts preis, was der Schlüssel nicht schon hatte. Legen Sie die drei
+nichts preis, was der Schlüssel nicht schon hatte. Leg die drei
 Images in `/var/lib/losos-lab/images` ab (`losos.lab.libvirt.images`).
 
 ## Was nicht echt ist

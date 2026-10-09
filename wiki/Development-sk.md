@@ -56,7 +56,7 @@ npm run test:browser
 takže typová kontrola je súčasťou balíka. `npm run test:browser` je
 playwright kontrola, ktorú obaľuje `.#checks.x86_64-linux.losos-admin-ui`.
 
-`tests/advanced.browser.mjs` vykreslí každú voľbu, ktorú box deklaruje. Mimo
+`tests/advanced.browser.mjs` vykreslí každú voľbu, ktorú zariadenie deklaruje. Mimo
 nixu číta `tests/fixtures/options.json`, kópiu dokumentu, ktorý generuje
 `flake/options-doc.nix`; po zmene `modules/options.nix` ho obnovte pomocou
 
@@ -131,12 +131,12 @@ a toto je zdôvodnenie za ním.
 - **Tri nastavenia hardeningu sa zámerne *neaplikujú***, hoci všetky tri sú
   v každom checkliste, z ktorého budete mať chuť odpisovať. `rp_filter` je `2`
   (voľný), nie `1`. Striktný režim zahadzuje multicastové odpovede, vďaka
-  ktorým je box bez SSH dosiahnuteľný, a Calico pod ním tiež nefunguje.
+  ktorým je zariadenie bez SSH dosiahnuteľné, a Calico pod ním tiež nefunguje.
   `user.max_user_namespaces` zostáva nenulové, lebo nula zastaví oba kubelety
   aj containerd. `/tmp` nie je `noexec`, lebo tam bežia nix buildy a nočný
-  bezobslužný rebuild je jediný spôsob, ako sa box dokáže sám opraviť.
+  bezobslužný rebuild je jediný spôsob, ako sa zariadenie dokáže samo opraviť.
   `tests/hardening.nix` overuje, že všetky tri chýbajú, takže "oprava" jedného
-  sfarbí test na červeno namiesto toho, aby z boxu urobila tehlu.
+  sfarbí test na červeno namiesto toho, aby zo zariadenia urobila tehlu.
 - **`fileSystems."/tmp"` nič nepripojí.** NixOS maskuje `tmp.mount`, pokiaľ
   nie je nastavené `boot.tmp.useTmpfs`. Deklarácia nevytvorí žiadne pripojenie
   ani chybu a `/tmp` zdedí voľby koreňového súborového systému. Prísť na to
@@ -156,7 +156,7 @@ a toto je zdôvodnenie za ním.
     žiadny binárny súbor v ňom nie je náhodou a chýbajúci sa k vlastníkovi
     dostane ako funkcia, ktorá nikdy nefunguje a nikdy nepovie prečo.
   - `nixos-rebuild` je v tom zozname z rovnakého dôvodu. systemd-run
-    vyhľadáva holý príkaz v PATH *volajúceho*, takže bez neho každé Apply
+    vyhľadáva holý príkaz v PATH *volajúceho*, takže bez neho každé Použiť
     zlyhalo skôr, než rebuild unit vôbec existovala.
   - lososd nesmie dostať `ProcSubset=pid`. Skryje `/proc/devices` a vgs bez
     neho skončí so 4.
@@ -189,7 +189,7 @@ a toto je zdôvodnenie za ním.
   `containers.nix`). Prevádzka tunela master proxy prichádza na predný vhost
   *zo 127.0.0.1* (`local_addr` rathole), takže ochrana len pre LAN na `/`,
   `/assets/`, `/setup/` a `/api/` nesmie povoliť loopback.
-  `curl localhost/` na boxe alebo v teste vo VM dostane 403 podľa návrhu.
+  `curl localhost/` na zariadení alebo v teste vo VM dostane 403 podľa návrhu.
   "Oprava" cez `allow 127.0.0.1` vystaví celé admin rozhranie internetu
   vždy, keď je zapnuté `losos.proxy.enable`. Testujte priamo proti :8082
   lososd, alebo curlom so zdrojovou adresou z LAN.
@@ -206,7 +206,7 @@ a toto je zdôvodnenie za ním.
   (`setup::validate_password`). Prihlásenie kontroluje len tvar kandidáta
   (`signin::validate_candidate`). Čokoľvek prísnejšie by zamklo vlastníka,
   ktorého heslo bolo nastavené podľa starších pravidiel.
-- **Nextcloud dôveruje vlastnej IP adrese boxu cez jednu nginx hlavičku.**
+- **Nextcloud dôveruje vlastnej IP adrese zariadenia cez jednu nginx hlavičku.**
   Lokácia `/nextcloud` nastavuje `X-Losos-Server-Addr $server_addr` a
   `losos.config.php` v pode pridá túto hodnotu pri každej požiadavke do
   `trusted_domains`, len IP literály. Tak sa na libvirt VM, ktorá nedostane
@@ -243,21 +243,21 @@ a toto je zdôvodnenie za ním.
   zapíše `/etc/rancher/node/password` a server si uloží jeho hash podľa mena
   uzla. Na tmpfs koreni sa ten súbor pri každom boote vygeneruje nanovo a
   server potom opätovné pripojenie odmietne ("Node password
-  rejected"). Vynechajte ten riadok a box pri prvom reštarte po registrácii
+  rejected"). Vynechajte ten riadok a zariadenie pri prvom reštarte po registrácii
   bez slova vypadne z mesh.
 - **`--disable`, `--flannel-backend` a `--disable-network-policy` sú
   príznaky len pre server.** `k3s agent` na neznámom príznaku natvrdo zlyhá,
   takže odovzdanie ktoréhokoľvek z nich agentovi pošle unit do nekonečnej
-  slučky pádov, na boxe bez shellu. Vlastný test nixpkgs
+  slučky pádov, na zariadení bez shellu. Vlastný test nixpkgs
   `nixos/tests/rancher/multi-node.nix` dáva svojim serverovým uzlom `disable`
   a agentovi ani jedno a popis `role` v rke2 hovorí to isté. Každý príznak
   len pre server podmieňujte rolou.
 - **Dve inštancie Kubernetes sú zámerne samostatné clustre.**
-  `services.k3s` (rola `server`) prevádzkuje Nextcloud a Forgejo *tohto boxu*.
+  `services.k3s` (rola `server`) prevádzkuje Nextcloud a Forgejo *tohto zariadenia*.
   `services.rke2` (rola `agent`) sa pripája k mesh edge. Kubelet agenta
   nemôže naštartovať, kým je jeho server nedosiahnuteľný, a
   `midnight-reboot.timer` sa spúšťa bezpodmienečne o 00:07. Keby vlastné
-  služby boxu bežali v clustri edge, každý výpadok cez polnoc by ich zhodil,
+  služby zariadenia bežali v clustri edge, každý výpadok cez polnoc by ich zhodil,
   takže to "nezjednodušujte" na jeden cluster. Je to rke2 a nie druhý k3s,
   lebo nixpkgs zostavuje oba z jedného generátora parametrizovaného menom,
   takže ich stavové adresáre (`/var/lib/rancher/{k3s,rke2}`) a mená units
@@ -307,14 +307,14 @@ a toto je zdôvodnenie za ním.
     https endpoint) držte prísnejšie, než čo registrátor práve posiela.
     Chýbajúci blob bránu preskočí (`ConditionPathExists`) a `/market/*`
     odpovedá 503.
-  - Onboarding zapíše UUID boxu do Stripe účtu. Je to odvodenina
+  - Onboarding zapíše UUID zariadenia do Stripe účtu. Je to odvodenina
     kódu na obnovenie cez SHA-256 (`backend/src/boxid.rs`), nikdy nie samotný
     kód.
 - **Zdieľanie otvorí akýkoľvek edge; trh otvorí len *oficiálny* edge.**
   lososd hľadá edge (`backend/src/edge.rs`: DNS-SD `_losos-edge._tcp`
   plus `losos.proxy.registrarUrl`, sondované na `/health`). Ak žiadny nie je
   v dosahu, odmietne zapnúť `sharingMyStorage` alebo `cluster.enable` (409
-  `edgeRequired`). Odmietnutie platí len pre zapínanie, takže box môže
+  `edgeRequired`). Odmietnutie platí len pre zapínanie, takže zariadenie môže
   vždy odísť.
   - Navyše lososd vyzve každý odpovedajúci edge
     (`GET /identity?nonce=`). Edge sa počíta za oficiálny, len ak je jeho
@@ -351,8 +351,8 @@ a toto je zdôvodnenie za ním.
     proti falošnému GitHubu a skutočnému registrátorovi.
   - Allowlist rozhoduje, komu nástroje slúžia. Celým tajomstvom zostáva
     koreňový kľúč.
-  - Forgejo Actions je **vypnuté** v oboch režimoch Forgejo a box nespúšťa
-    žiadny runner. Skoršia ceremónia z boxu (workflowy Actions plus
+  - Forgejo Actions je **vypnuté** v oboch režimoch Forgejo a zariadenie nespúšťa
+    žiadny runner. Skoršia ceremónia zo zariadenia (workflowy Actions plus
     `modules/git-runner.nix`) je preč a
     `provisioning/edge-identity/README.md` je runbook operátora.
   - Počítač operátora nemá Nix store, takže binárka preň je

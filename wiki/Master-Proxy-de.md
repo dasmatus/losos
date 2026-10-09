@@ -2,15 +2,15 @@
 
 # Master-Proxy
 
-Optional. Er macht die Box aus dem Internet erreichbar, ohne dass Sie zu Hause
-einen Port öffnen müssen.
+Optional. Er macht die Box aus dem Internet erreichbar, ohne dass du zu Hause
+einen Port öffnen musst.
 
 ![Internet → Traefik (VPS, :443) → rathole-Server ⇐ Tunnel ⇐ rathole-Client (Box) → nginx](images/master-proxy-de.svg)
 
 ## Edge (VPS)
 
-Importieren Sie den Flake-Output `nixosModules.edge` in die Konfiguration des
-VPS und setzen Sie `losos.edge.*`:
+Importiere den Flake-Output `nixosModules.edge` in die Konfiguration des
+VPS und setze `losos.edge.*`:
 
 - `losos.edge.publicDomain` ist die Domain, unter der die Appliances
   ausgeliefert werden.
@@ -27,7 +27,7 @@ Gleichschritt.
 
 ## Appliance
 
-Setzen Sie `losos.proxy.enable = true` und die Optionen `losos.proxy.*`
+Setze `losos.proxy.enable = true` und die Optionen `losos.proxy.*`
 (`registrarUrl`, `edgeRatholeEndpoint`, `hostname`, `applianceId`,
 `tokenFile`).
 
@@ -36,15 +36,15 @@ Setzen Sie `losos.proxy.enable = true` und die Optionen `losos.proxy.*`
 rathole nutzt seinen Noise-Transport. Die Edge erzeugt beim ersten Booten ein
 Schlüsselpaar. Jede Appliance holt sich beim ersten Start den öffentlichen
 Schlüssel vom Registrar und legt ihn unter `losos.proxy.noisePublicKeyFile`
-ab. Wollen Sie den Schlüssel auf einem separaten Weg festlegen, legen Sie die
+ab. Willst du den Schlüssel auf einem separaten Weg festlegen, leg die
 Datei vorher dort ab; die Appliance überschreibt sie nie. Wird eine der beiden
 Schlüsseloptionen auf `null` gesetzt, fällt die Verbindung auf reines TCP
-zurück. Tun Sie das nicht.
+zurück. Tu das nicht.
 
 ## Die Admin-Oberfläche bleibt im LAN
 
 Der Tunnelverkehr erreicht nginx von `127.0.0.1`, daher verweigern die
-Admin-Routen Loopback. Fügen Sie ihnen kein `allow 127.0.0.1` hinzu, sonst
+Admin-Routen Loopback. Füge ihnen kein `allow 127.0.0.1` hinzu, sonst
 wird die Admin-Oberfläche aus dem Internet erreichbar.
 
 ## Edge im selben LAN
@@ -71,8 +71,8 @@ losos.edge = {
 ```
 
 Die Boxen brauchen nichts. Das ISO installiert die veröffentlichte
-`install`-Konfiguration, der Mesh-Bereich zeigt "Edge proxy found: … On this
-network" (Edge-Proxy gefunden: … in diesem Netz), sobald die Edge antwortet,
+`install`-Konfiguration, der Mesh-Bereich zeigt "Edge-Proxy gefunden: … In diesem
+Netzwerk", sobald die Edge antwortet,
 und das Teilen lässt sich einschalten.
 
 So bündelt auch ein LAN ohne Internet seinen Speicher. Eine Box vergrößert
@@ -270,7 +270,7 @@ besteht die Zone nur aus SOA, NS und Glue, und `/domains/*` antwortet mit 503.
 ### Eigene Domains
 
 Eine Box fügt eine Domain über `POST /domains/add` hinzu (authentifiziert mit
-ihrem Tunnel-Token, von lososd aus Settings → Network weitergereicht). Die
+ihrem Tunnel-Token, von lososd aus Einstellungen → Netzwerk weitergereicht). Die
 Edge akzeptiert sie nur, wenn das verbundene Stripe-Konto der Box bereit ist
 und die Box-UUID trägt, dieselbe Prüfung, die der Marktplatz vor einer
 Auszahlung vornimmt. Dann veröffentlicht der Inhaber zwei Einträge:
@@ -297,7 +297,7 @@ Die Ansprüche liegen in `/var/lib/losos-registrar/domains.json`.
 
 Auf der Box hält lososd die live geschalteten Domains in
 `/var/lib/losos-public-names/domains.json`. Die Datei wird alle zwei Minuten
-aktualisiert und immer dann, wenn der Network-Bereich danach fragt. Der
+aktualisiert und immer dann, wenn der Bereich Netzwerk danach fragt. Der
 Nextcloud-Pod bindet dieses Verzeichnis schreibgeschützt ein, fügt die Namen
 pro Anfrage zu `trusted_domains` hinzu und verwendet die Domain einer Anfrage
 für `overwritehost`, wenn sie eine davon ist. Das tut nur der Container-Modus.
