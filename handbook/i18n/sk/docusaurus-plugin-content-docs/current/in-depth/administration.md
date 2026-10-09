@@ -101,7 +101,8 @@ internetu (napríklad dlaždica s počasím), ale nie zo zariadenia. Limit je
 Editor má aj kartu **Vytvoriť s Claude**, kde Claude napíše widget podľa
 opisu a vloží jeho súbory do editora, aby ste si ich pred uložením prečítali.
 Platí sa za každú tvorbu z predplateného zostatku a potrebuje edge, ktorý ju
-ponúka; pozri [Tvorca widgetov](widget-builder.md).
+ponúka, a na to, čo pošlete, sa vzťahujú podmienky spoločnosti Anthropic;
+pozri [Tvorca widgetov](widget-builder.md).
 
 ## Admin token
 

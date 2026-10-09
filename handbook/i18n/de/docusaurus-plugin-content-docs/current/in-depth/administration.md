@@ -109,7 +109,8 @@ Der Editor hat auch einen Tab **Mit Claude bauen**, in dem Claude das Widget
 nach einer Beschreibung schreibt und seine Dateien in den Editor legt, damit
 du sie vor dem Speichern liest. Bezahlt wird pro Bau aus einem vorausbezahlten
 Guthaben, und es braucht einen Edge, der ihn anbietet; siehe
-[Widget-Baukasten](widget-builder.md).
+[Widget-Baukasten](widget-builder.md). Was du dorthin schickst, unterliegt
+den Bedingungen von Anthropic.
 
 ## Admin-Token
 

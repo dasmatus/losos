@@ -16,6 +16,10 @@ Speichern drückt, und ein Widget von Claude läuft im selben abgeschotteten
 Rahmen wie ein selbst geschriebenes (siehe
 [Administration](administration.md#selbst-geschriebene-widgets)).
 
+Die Beschreibung und die zur Änderung geschickten Dateien gehen an Anthropic
+und unterliegen dessen [Nutzungsrichtlinie](https://www.anthropic.com/legal/aup) und
+[Geschäftsbedingungen](https://www.anthropic.com/legal/commercial-terms). Der Tab sagt das unter der Schaltfläche Bauen.
+
 Der Baukasten ist eine Funktion des Edge. Er ist standardmäßig aus, auf drei
 Ebenen.
 
