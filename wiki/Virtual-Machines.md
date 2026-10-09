@@ -77,7 +77,7 @@ lock, and the edge checks it as it arrives:
 - it must start with the QCOW2 header, or the edge answers 415;
 - it must fit the edge's limit (`losos.edge.vms.uploadMaxGiB`, 32 GiB by
   default), or 413, and its virtual disk may be at most 512 GiB;
-- it must keep moving: a minute without a byte drops it.
+- it must keep moving, since a minute without a byte drops it.
 
 A box may keep three images. Each is stored on the edge under
 `/var/lib/losos-registrar/vm-images/`, mode 0600, and each replica that starts
@@ -124,7 +124,7 @@ address, and asks again every 15 seconds while a replica is still on its way
 up.
 
 **When the month runs out** every replica is halted (`runStrategy: Halted`)
-and its place goes back to the host's listing. The disks stay: they hold the
+and its place goes back to the host's listing. The disks stay. They hold the
 buyer's data, and removing them is the operator's decision, as it is for a
 storage order's volume.
 
@@ -148,7 +148,7 @@ KubeVirt needs `/dev/kvm` on the hosting box. On a real mini-PC that is the
 processor's VT-x or AMD-V. A box that is itself a virtual machine needs
 **nested virtualisation** from its host (`kvm_intel nested=1` or
 `kvm_amd nested=1`, and `-cpu host` in QEMU). Without it the operator can set
-`losos.edge.vms.useEmulation`, which runs the replicas in software: they boot,
+`losos.edge.vms.useEmulation`, which runs the replicas in software. They boot,
 but slowly, and it is meant for trying the feature out, not for selling it.
 
 ## Operator setup

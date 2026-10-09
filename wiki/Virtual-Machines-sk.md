@@ -59,7 +59,7 @@ jeho značku `stable`, na ktorú sa katalóg odvoláva.
 
 **Väčšina zoznamu Quickemu v ponuke nie je.** Tieto systémy existujú len ako
 inštalačné ISO a ich inštalácia potrebuje konzolu v prehliadači, ktorú stránka
-zatiaľ nemá. Stránka ich vypisuje pod „systémy zatiaľ nie sú v ponuke“ spolu s
+zatiaľ nemá. Stránka ich vypisuje pod "systémy zatiaľ nie sú v ponuke" spolu s
 niekoľkými vynechanými z iného dôvodu (macOS, ktorého licencia povoľuje len
 hardvér Apple; Windows, ktoré potrebujú licenciu a konzolu; a niekoľko
 systémov, ktorých cloudové obrazy nemajú stálu adresu alebo sú v archíve, ktorý
@@ -79,7 +79,7 @@ zámku a okrajový server ho kontroluje už počas prenosu:
 - musí začínať hlavičkou QCOW2, inak odpovie 415;
 - musí sa zmestiť do limitu (`losos.edge.vms.uploadMaxGiB`, predvolene
   32 GiB), inak 413, a jeho virtuálny disk môže mať najviac 512 GiB;
-- musí sa hýbať: minúta bez jediného bajtu prenos ukončí.
+- musí sa hýbať, pretože minúta bez jediného bajtu prenos ukončí.
 
 Zariadenie si môže ponechať tri obrazy. Každý je uložený na okrajovom serveri
 v `/var/lib/losos-registrar/vm-images/` s právami 0600 a každá replika, ktorá
@@ -128,7 +128,7 @@ kopíruje disk, pozastavený, zastavený alebo zlyhal) a jeho adresu a kým sa
 niektorá replika ešte rozbieha, pýta sa znova každých 15 sekúnd.
 
 **Keď mesiac uplynie**, každá replika sa zastaví (`runStrategy: Halted`) a jej
-miesto sa vráti do ponuky hostiteľa. Disky zostávajú: obsahujú dáta
+miesto sa vráti do ponuky hostiteľa. Disky zostávajú. Obsahujú dáta
 kupujúceho a ich odstránenie je rozhodnutím prevádzkovateľa, rovnako ako pri
 zväzku objednávky úložiska.
 
@@ -154,7 +154,7 @@ je to VT-x alebo AMD-V procesora. Zariadenie, ktoré je samo virtuálnym
 strojom, potrebuje od svojho hostiteľa **vnorenú virtualizáciu**
 (`kvm_intel nested=1` alebo `kvm_amd nested=1` a `-cpu host` v QEMU). Bez nej
 môže prevádzkovateľ nastaviť `losos.edge.vms.useEmulation`, pri ktorom repliky
-bežia softvérovo: naštartujú, ale pomaly, a je to určené na vyskúšanie, nie na
+bežia softvérovo. Naštartujú, ale pomaly, a je to určené na vyskúšanie, nie na
 predaj.
 
 ## Nastavenie prevádzkovateľa
