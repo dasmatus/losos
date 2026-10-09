@@ -222,9 +222,6 @@ Start in Stripe **test mode**. The edge has only been tested against a
 stand-in for Stripe. That checks what the edge sends and how it reacts, but
 cannot say whether Stripe accepts it. The first test-mode run settles that.
 
-Steps 2 and 3 can also come from GitHub Actions secrets instead of a shell on
-the edge; see [Keys from GitHub Actions](#keys-from-github-actions).
-
 ### Test mode and live mode
 
 The edge reads the mode off the key. `sk_test_` and `rk_test_` keys run the
@@ -247,42 +244,6 @@ signed event from the other mode means the sealed webhook secret and key come
 from different modes, so the gate refuses it and logs which is which. Stripe
 retries a refused event for three days, so sealing the matching pair within
 that time loses nothing.
-
-### Keys from GitHub Actions
-
-The `edge-credentials` workflow (`.github/workflows/edge-credentials.yml`)
-seals the keys from the repository's Actions secrets, so no one pastes them
-on the edge.
-
-1. Make an SSH key for the workflow
-   (`ssh-keygen -t ed25519 -N "" -f edge-credentials`) and set
-   `losos.edge.credentials.deployKey` to its public half. The edge lets that
-   key in as root only to run `losos-seal-credential`: no shell, no
-   forwarding, no terminal.
-2. Add the Actions secrets:
-
-   | Secret                  | Holds                                                   |
-   | ----------------------- | ------------------------------------------------------- |
-   | `STRIPE_KEY`            | the Stripe secret or restricted key, test or live       |
-   | `STRIPE_WEBHOOK_SECRET` | optional: both `whsec_` secrets, one per line           |
-   | `CLAUDE_KEY`            | the Claude API key (`sk-ant-...`)                       |
-   | `EDGE_SSH_KEY`          | the private half of the key from step 1                 |
-   | `EDGE_SSH_HOST`         | the edge's address (a secret or a variable)             |
-   | `EDGE_SSH_KNOWN_HOSTS`  | the edge's line from `ssh-keyscan` (secret or variable) |
-   | `EDGE_SSH_PORT`         | optional, 22 when unset                                 |
-
-3. Run **edge-credentials** on `main` from the Actions tab. It prints whether
-   the Stripe key is a test or a live key, never the key itself, and pipes
-   each secret that is set into `losos-seal-credential`. That checks the
-   secret's shape, seals it with `systemd-creds` under its credential name
-   and restarts the gate. Rotating a key is changing the secret and running
-   the workflow again.
-
-The Claude key is sealed as `claude-api-key` to
-`/var/secrets/losos-claude-api-key.cred`
-(`losos.edge.credentials.secrets.claude-api-key.sealed`). The registrar reads it
-with `LoadCredentialEncrypted=claude-api-key:<that path>`, and sealing a new key
-restarts `losos-registrar.service`.
 
 ## Safety properties
 

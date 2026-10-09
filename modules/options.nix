@@ -1460,8 +1460,8 @@ in
     # `.github/workflows/edge-credentials.yml` reads the keys from the
     # repository's Actions secrets and hands each one over SSH to
     # `losos-seal-credential` on the edge, which seals it with systemd-creds.
-    # The deploy key can run nothing else. See "Keys from GitHub Actions" in
-    # handbook/docs/in-depth/market.md.
+    # The deploy key can run nothing else. See "Edge keys from Actions secrets"
+    # in docs/ci-and-releases.md.
     edge.credentials.secrets = lib.mkOption {
       type = lib.types.attrsOf (
         lib.types.submodule {
@@ -1516,7 +1516,7 @@ in
         forwarding and no terminal, and can only seal one of the secrets in
         `losos.edge.credentials.secrets`, named by the command it sends. Null (the
         default), nothing is added and secrets are sealed by hand as
-        handbook/docs/in-depth/market.md describes.
+        handbook/docs/in-depth/market.md describes (Operator setup).
       '';
     };
 
