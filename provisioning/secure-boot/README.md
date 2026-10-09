@@ -46,8 +46,10 @@ Then:
      `SHA256SUMS.sig`, the `.pem` and the `.cer`;
    - the medium carries the certificate at `EFI/losos/` for firmware
      "enroll from file" dialogs;
-   - the release job **fails** rather than publish unsigned if the secret
-     is missing.
+   - if the secret is missing or signing fails, the release still
+     publishes, with the unsigned ISO, a warning on the run and *Not
+     signed* in the release notes. Check the notes after tagging, and
+     push a new tag once signing works again.
 3. **Keep the key offline.** Losing it means a new key and a new enrolment
    on every machine that trusts the old one. Leaking it means anyone can
    sign a medium those machines trust, and the only remedy is the same new
