@@ -33,9 +33,10 @@ job:
 1. writes the tag into `flake/version.nix` (with a warning if the committed
    value was another one), then builds the installer ISO and the demo QCOW2,
 2. signs the ISO's UEFI loader in place with the `SECURE_BOOT_DB_KEY`
-   secret (`losos-sign-iso`, which refuses to publish unsigned once
-   `keys/secure-boot-db.pem` carries a certificate) and signs `SHA256SUMS`
-   with the same key,
+   secret (`losos-sign-iso`) and signs `SHA256SUMS` with the same key. If
+   the secret is missing or signing fails, the release still publishes:
+   the ISO is the unsigned build, the run carries a warning, and the
+   release notes say *Not signed* and why,
 3. attaches the ISO, its `.sha256`, `SHA256SUMS`, `SHA256SUMS.sig` and the
    certificate (`.pem` and `.cer`) to the GitHub release,
 4. pushes both media to GHCR, since the QCOW2 is over GitHub's 2 GiB asset
@@ -45,7 +46,7 @@ The `iso` job on main does the same signing before its boot legs. OVMF with
 Microsoft's keys must refuse the medium, and the same OVMF store with the
 committed certificate added beside Microsoft's must boot it (`tests/iso-boot.py --firmware
 uefi-sb-ms|uefi-sb`). A fork's pull request has no key, so it boots unsigned
-and skips the enrolled leg. The key is made once on the owner's machine with
+and skips the enrolled leg, and so does a run where signing failed. The key is made once on the owner's machine with
 `provisioning/secure-boot/keygen.sh`.
 
 Your release notes are kept. The download section goes between two marker
