@@ -101,6 +101,11 @@ pub struct App {
     pub summary: Option<String>,
     pub version: Option<String>,
     pub homepage: Option<String>,
+    /// Where the box can fetch the chart from, for the Install button. `None`
+    /// when the entry names no repository this box would fetch from
+    /// ([`crate::apps::ChartRef::validate`]); the row is still shown, with
+    /// only its link.
+    pub chart: Option<crate::apps::ChartRef>,
 }
 
 /// Reject a query before it becomes a URL.
@@ -221,13 +226,28 @@ fn parse_app(entry: &Value) -> Option<App> {
         .map(str::to_string)
         .or_else(|| Some(format!("{PACKAGE_PAGE}/{}/{}", repo_name?, slug?)));
 
+    let version = field(entry, &["version", "app_version"]).map(str::to_string);
+    // The chart's version, not the app's: `app_version` is what the chart
+    // packages, and Helm cannot be asked for it.
+    let chart = repo
+        .and_then(|r| field(r, &["url"]))
+        .zip(slug)
+        .zip(field(entry, &["version"]))
+        .map(|((repo, name), version)| crate::apps::ChartRef {
+            repo: repo.to_string(),
+            name: name.to_string(),
+            version: version.to_string(),
+        })
+        .filter(|c| c.validate().is_ok());
+
     Some(App {
         id,
         name: name.to_string(),
         source: source.to_string(),
         summary: field(entry, &["description", "summary"]).map(str::to_string),
-        version: field(entry, &["version", "app_version"]).map(str::to_string),
+        version,
         homepage,
+        chart,
     })
 }
 
@@ -323,6 +343,23 @@ mod tests {
             a.homepage.as_deref(),
             Some("https://artifacthub.io/packages/helm/nextcloud/nextcloud")
         );
+        assert_eq!(
+            a.chart,
+            Some(crate::apps::ChartRef {
+                repo: "https://nextcloud.github.io/helm/".into(),
+                name: "nextcloud".into(),
+                version: "6.6.10".into(),
+            })
+        );
+    }
+
+    #[test]
+    fn a_row_whose_repository_the_box_would_not_fetch_from_has_no_chart() {
+        let body = r#"{"packages":[{"name":"n","normalized_name":"n","version":"1.0.0",
+          "repository":{"name":"r","url":"http://plain.example/"}}]}"#;
+        let apps = parse_results(body).unwrap();
+        assert_eq!(apps.len(), 1);
+        assert_eq!(apps[0].chart, None);
     }
 
     #[test]

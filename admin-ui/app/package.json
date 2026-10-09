@@ -13,7 +13,7 @@
     "lab:core": "node scripts/lab-core.mjs core",
     "lab:virt": "node scripts/lab-core.mjs virt",
     "lab:render": "node scripts/lab-core.mjs render",
-    "test:browser": "node tests/wizard.browser.mjs && node tests/app.browser.mjs && node tests/toasts.browser.mjs && node tests/look.browser.mjs && node tests/advanced.browser.mjs && node tests/lab.browser.mjs"
+    "test:browser": "node tests/wizard.browser.mjs && node tests/app.browser.mjs && node tests/toasts.browser.mjs && node tests/look.browser.mjs && node tests/advanced.browser.mjs && node tests/lab.browser.mjs && node tests/apps.browser.mjs"
   },
   "dependencies": {
     "@base-ui/react": "1.8.0",

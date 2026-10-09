@@ -303,6 +303,10 @@
             # Backups to the owner's S3 bucket, restoring them, and the
             # boot-time wipe of an erase (backend/src/{backup,erase}.rs).
             ./modules/backup.nix
+            # Apps installed from the catalogue into the box's own cluster
+            # (backend/src/apps.rs): the Helm job, its shaping plugin and the
+            # LAN forwards.
+            ./modules/apps.nix
             # LosOS Lab's guests under libvirt on the box (losos.lab.libvirt,
             # off by default): the `losos-registrar lab` helper lososd relays
             # /api/lab to.

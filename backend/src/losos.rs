@@ -125,6 +125,25 @@ pub trait Losos {
     /// route" (a 404) and offers the field again.
     fn search_apps(&mut self, query: &str) -> anyhow::Result<Vec<crate::catalogue::App>>;
 
+    // ── Installing an app from the catalogue ────────────────────────────
+    // `crate::apps` holds the rules; these are the effects.
+    /// `None` when this box runs no local cluster (both apps native) or the
+    /// build carries no install job: nothing can be installed then.
+    fn apps_config(&mut self) -> Option<crate::apps::Config>;
+    /// The chart's `values.yaml` and schema, fetched by the box. An `Err` is
+    /// a chart that could not be fetched, which the dialog offers to retry.
+    fn chart_files(
+        &mut self,
+        chart: &crate::apps::ChartRef,
+    ) -> anyhow::Result<crate::apps::ChartFiles>;
+    /// Every installed app's record, by name.
+    fn load_app_records(&mut self) -> anyhow::Result<Vec<crate::apps::Record>>;
+    fn save_app_record(&mut self, record: &crate::apps::Record) -> anyhow::Result<()>;
+    /// Start the job that installs or removes `release`, from its record.
+    fn start_app_job(&mut self, release: &str, action: crate::apps::Action) -> anyhow::Result<()>;
+    /// Whether a job for `release` is running.
+    fn app_job_active(&mut self, release: &str) -> bool;
+
     // ── The market ──────────────────────────────────────────────────────
     /// Relay one [`crate::market::Op`] to the edge's market, with this
     /// appliance's credentials. `Ok(Unavailable)` when there is no registrar
@@ -1883,6 +1902,31 @@ mod tests {
             }
             fn search_apps(&mut self, query: &str) -> anyhow::Result<Vec<crate::catalogue::App>> {
                 self.0.search_apps(query)
+            }
+            fn apps_config(&mut self) -> Option<crate::apps::Config> {
+                self.0.apps_config()
+            }
+            fn chart_files(
+                &mut self,
+                chart: &crate::apps::ChartRef,
+            ) -> anyhow::Result<crate::apps::ChartFiles> {
+                self.0.chart_files(chart)
+            }
+            fn load_app_records(&mut self) -> anyhow::Result<Vec<crate::apps::Record>> {
+                self.0.load_app_records()
+            }
+            fn save_app_record(&mut self, record: &crate::apps::Record) -> anyhow::Result<()> {
+                self.0.save_app_record(record)
+            }
+            fn start_app_job(
+                &mut self,
+                release: &str,
+                action: crate::apps::Action,
+            ) -> anyhow::Result<()> {
+                self.0.start_app_job(release, action)
+            }
+            fn app_job_active(&mut self, release: &str) -> bool {
+                self.0.app_job_active(release)
             }
             fn market_request(
                 &mut self,

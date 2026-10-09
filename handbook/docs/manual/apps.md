@@ -1,6 +1,7 @@
 ---
 title: The apps
 sidebar_position: 4
+slug: /manual/apps
 ---
 
 # The apps
@@ -63,11 +64,63 @@ the **Advanced** pane shows both federation switches as unavailable.
 
 For each app the pane shows whether it is on, which
 [mode](../types/app-modes) it runs in, and a link. Below that, **Find more**
-searches LosOS cloud's app catalogue. The box fetches the catalogue, so the
-search needs the internet. To install an app you like, sign in to LosOS cloud
-with the owner account and install it there.
+searches [Artifact Hub](https://artifacthub.io) for Helm charts. The box
+fetches the results, so the search needs the internet. Every row names who
+published the chart. Nobody on the LosOS side has checked any of them.
 
-![The Apps pane with Find more: a search of LosOS cloud's app catalogue and the results with where each comes from.](../img/apps-find-more.png)
+![The Apps pane with one installed app above Find more, and search results from Artifact Hub, each with who published it and an Install or Change button.](../img/apps-find-more.png)
+
+## Installing an app from the search
+
+A row the box can fetch has an **Install** button. It opens a dialog in
+two steps.
+
+The first step reads the chart and shows three things.
+
+- **Name on this box.** It starts as the chart's name. It also names the
+  app's folder, so it cannot change later.
+- **Run it as.** `notshared` or `shared`, the box's two users. A
+  `notshared` app keeps its data on the owner's side of the disk, next to
+  your files. A `shared` app keeps it on the side the box lends to the
+  mesh. The dialog greys `shared` out while the box does not share its disk.
+- **Properties.** Every setting in the chart's values file, with its
+  default, folded by section. When the chart ships a schema, each setting
+  also gets its description and its choices. **As text** shows the whole
+  values file to edit instead. A property you change on the form wins over
+  the same line in the text.
+
+![The install dialog: the name, the choice between notshared and shared with shared greyed out, and the chart's properties folded by section.](../img/apps-install.png)
+
+The second step asks once more. It says that the box will download and run
+code the publisher wrote, as the user you chose, with no admin rights. The
+box gets nothing until you press **Install** there.
+
+The box then installs the chart into its own cluster and changes it to run
+the way LosOS cloud and LosOS Git do.
+
+- Every part of the app runs as the chosen user, never as root, with no
+  extra privileges and no access to the cluster.
+- The storage the chart asks for becomes folders under
+  `/home/<user>/data/apps/<name>`.
+- The app gets one port of its own from `losos.apps.ports`, 30000 to 30099
+  by default, and only your local network can reach it.
+
+The box refuses a chart that needs more than that and says why. Typical
+reasons are admin rights, a port below 1024, a port another app already
+uses, or a folder of the system. An app built from several services that
+call each other by name may not start, because the box's own cluster has
+no internal network.
+
+**Installed apps**, above the search, lists each app with its state.
+**Open** goes to the app's port on the address you are using. **Change**
+opens the same dialog on the app's current properties. **Remove** asks
+first, then takes the app off the box. Its data folder stays, so an install
+under the same name finds the data again.
+
+The search offers installs only while Files or Code is set to **Kept
+separate**, which is [workload mode](../types/app-modes). The box's own
+cluster runs only then. To turn installing off, set `losos.apps.enable` to
+false on the **Advanced** pane.
 
 ## Trusted addresses
 

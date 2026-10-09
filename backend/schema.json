@@ -704,9 +704,177 @@
                   "null"
                 ],
                 "description": "The package's own home page where it has one, otherwise its page on the catalogue, so every row stays clickable. Null only if neither can be built."
+              },
+              "chart": {
+                "oneOf": [
+                  {
+                    "$ref": "#/$defs/appChartRef"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Where the box can fetch the app from, for the Install button: the repository the catalogue names, the package and the version. Null when the catalogue names no `https://` or `oci://` repository; the row keeps its link and gets no button."
               }
             }
           }
+        }
+      }
+    },
+    "appChartRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repo",
+        "name",
+        "version"
+      ],
+      "properties": {
+        "repo": {
+          "type": "string",
+          "description": "`https://` for a chart repository, `oci://` for a registry, with no userinfo."
+        },
+        "name": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      }
+    },
+    "appRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "release",
+        "chart",
+        "runAs",
+        "values",
+        "valuesYaml",
+        "frontPort",
+        "appPort",
+        "phase",
+        "message",
+        "updatedAt"
+      ],
+      "properties": {
+        "release": {
+          "type": "string",
+          "pattern": "^[a-z]([-a-z0-9]{0,38}[a-z0-9])?$",
+          "description": "The app's name on this box. It names the Helm release, the namespace `losos-app-<release>` and the data folder `/home/<runAs>/data/apps/<release>`, so it never changes."
+        },
+        "chart": {
+          "$ref": "#/$defs/appChartRef"
+        },
+        "runAs": {
+          "type": "string",
+          "enum": [
+            "notshared",
+            "shared"
+          ],
+          "description": "The user every pod runs as (uid 1000 or 1001), and the data domain its folders are in. Fixed at the first install."
+        },
+        "values": {
+          "type": "object",
+          "description": "The properties the owner changed from the chart's defaults, nested as in values.yaml. Applied after `valuesYaml`."
+        },
+        "valuesYaml": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The chart's values file as the owner edited it, or null to use the chart's own."
+        },
+        "frontPort": {
+          "type": "integer",
+          "description": "The port nginx forwards from, LAN only, from losos.apps.ports. Kept across changes."
+        },
+        "appPort": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "The port the app listens on, from its first Service, once the job has rendered it. Null for an app with no Service."
+        },
+        "phase": {
+          "type": "string",
+          "enum": [
+            "installing",
+            "running",
+            "failed",
+            "removing"
+          ],
+          "description": "A busy phase whose job unit is no longer active reads as failed."
+        },
+        "message": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Why it failed, in the box's words: the shaping's refusal or Helm's last line."
+        },
+        "updatedAt": {
+          "type": "integer",
+          "description": "Unix seconds of the last phase change."
+        }
+      }
+    },
+    "appsResponse": {
+      "type": "object",
+      "required": [
+        "available",
+        "apps"
+      ],
+      "properties": {
+        "available": {
+          "type": "boolean",
+          "description": "False on a box with no cluster of its own (LosOS cloud and LosOS Git both native, or losos.apps.enable off). Then `reason` is noCluster and `apps` is empty."
+        },
+        "reason": {
+          "type": "string",
+          "enum": [
+            "noCluster"
+          ]
+        },
+        "sharedAvailable": {
+          "type": "boolean",
+          "description": "Whether an app may run as shared: true only while the box shares its disk. Present when available."
+        },
+        "apps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/appRecord"
+          }
+        }
+      }
+    },
+    "appChartResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "chart",
+        "release",
+        "valuesYaml",
+        "values",
+        "schema"
+      ],
+      "properties": {
+        "chart": {
+          "$ref": "#/$defs/appChartRef"
+        },
+        "release": {
+          "type": "string",
+          "description": "The name the box suggests, from the chart's name."
+        },
+        "valuesYaml": {
+          "type": "string",
+          "description": "The chart's values.yaml as published, for the text tab."
+        },
+        "values": {
+          "description": "The same file as JSON, for the property form."
+        },
+        "schema": {
+          "description": "The chart's values.schema.json, or null when it ships none."
         }
       }
     },
@@ -1371,6 +1539,29 @@
         "in": "query string: q=<search term>, 2-128 characters, no control characters",
         "out": "appsSearchResponse",
         "note": "Searches a public app catalogue from the box. The admin pages are served under `connect-src 'self'`, so the browser cannot reach a catalogue itself — lososd is the only thing here with an outbound path. HTTP-only, with no D-Bus method and no facade subcommand, following `POST /api/setup/claim`: the facade exists to control this appliance, and a CLI for a settings screen's search field would be surface with no caller. A bad or missing `q` is 400 with the reason, deliberately NOT 404 — the SPA latches a 404 as \"this box does not serve the route\" and stops asking for the rest of the session. A search that could not be made (no route off the box, the catalogue down, a body that is not JSON) is 500, which the screen shows as retryable."
+      },
+      "GET /api/apps": {
+        "auth": true,
+        "out": "appsResponse",
+        "note": "The apps installed from the search (backend/src/apps.rs, records in /var/lib/losos/apps/<release>/app.json, mode 0600). Not-offered is 200 with available:false, deliberately NOT 404, which the SPA latches. HTTP-only, following /api/apps/search."
+      },
+      "GET /api/apps/chart": {
+        "auth": true,
+        "in": "query string: repo=<https:// or oci:// URL>&name=<chart>&version=<version>",
+        "out": "appChartResponse",
+        "note": "The chart's values and schema for the install dialog. lososd pulls the chart with `helm pull` into a temporary directory, without holding its lock. 400 for a repository the box would not fetch from, 409 on a box with no cluster, 500 when the pull fails."
+      },
+      "POST /api/apps/install": {
+        "auth": true,
+        "in": "{\"release\": \"<name>\", \"chart\": {\"repo\", \"name\", \"version\"}, \"runAs\": \"notshared|shared\", \"values\": {...}, \"valuesYaml\": \"...\"|null}",
+        "out": "appRecord",
+        "note": "Install, or change an app already installed under the same name, as a `losos-app-<release>` transient unit (modules/apps.nix). Answers with the record in phase installing; the job runs `helm upgrade --install` with the losos-shape post-renderer and writes the outcome back. 409 when shared is asked for while the box does not share its disk, when the name holds another chart or the other user, or while a job for it is running. 400 for a bad name, chart or values (64 KiB of JSON, 256 KiB of YAML). Audited."
+      },
+      "POST /api/apps/remove": {
+        "auth": true,
+        "in": "{\"release\": \"<name>\"}",
+        "out": "appRecord",
+        "note": "Uninstall, in a `losos-app-<release>` unit. Answers with the record in phase removing; the job deletes it once Helm is done. The app's folders under /home/<runAs>/data/apps/<release> stay. 409 while a job for it is running, 400 for an unknown name. Audited."
       },
       "GET /api/market": {
         "auth": true,
