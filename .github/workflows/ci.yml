@@ -769,7 +769,8 @@ jobs:
       # and tags. A fork's pull request has no key and boots unsigned, which
       # the legs below allow for. With no certificate committed yet there is
       # nothing to sign with either, and the ISO ships as `nix build` made
-      # it.
+      # it. A failed sign or verify is a warning, not a red job: the boot
+      # legs then run on the unsigned image and skip the enrolled leg.
       - name: sign the ISO's UEFI loader
         id: sign
         env:
@@ -788,12 +789,25 @@ jobs:
             echo "signed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          umask 077
-          key=$(mktemp)
-          printf '%s\n' "$SECURE_BOOT_DB_KEY" > "$key"
-          nix run .#losos-sign-iso -- sign --key "$key" --cert keys/secure-boot-db.pem installer.iso
-          rm -f "$key"
-          nix run .#losos-sign-iso -- verify --cert keys/secure-boot-db.pem installer.iso
+          set +e
+          (
+            set -euo pipefail
+            umask 077
+            key=$(mktemp)
+            trap 'rm -f "$key"' EXIT
+            printf '%s\n' "$SECURE_BOOT_DB_KEY" > "$key"
+            nix run .#losos-sign-iso -- sign --key "$key" --cert keys/secure-boot-db.pem installer.iso
+            nix run .#losos-sign-iso -- verify --cert keys/secure-boot-db.pem installer.iso
+          )
+          status=$?
+          set -e
+          if [ "$status" -ne 0 ]; then
+            echo "::warning::signing the ISO failed (exit ${status}): booting it unsigned"
+            cp -L --remove-destination result/iso/*.iso installer.iso
+            chmod u+w installer.iso
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           echo "signed=true" >> "$GITHUB_OUTPUT"
       # Building the ISO says nothing about whether it boots: v0.1.1 built
       # green here and was then reported "not bootable in UEFI". So boot the
@@ -907,10 +921,11 @@ jobs:
       # sparse, uncompressed qcow2 and a download is neither.
       - run: nix build .#losos-disk-edge-qcow2 -L
       - run: mv result result-edge
-      # A release is signed or it is not a release: once the certificate is
-      # committed, a missing secret fails the job rather than publishing an
-      # unsigned medium under a page that says to verify it. Before the key
-      # ceremony has run there is no certificate, and the release says so.
+      # Signing never holds a release back. Before the key ceremony there is
+      # no certificate and the release says so. Once there is one, a missing
+      # secret or a failed sign or verify leaves the ISO as `nix build` made
+      # it, raises a warning on the run, and the release says *Not signed*
+      # and why. The tag still publishes its media.
       #
       # The same key signs SHA256SUMS: the loader's Authenticode signature is
       # over a PE digest structure and this one is a plain PKCS#1 signature
@@ -930,28 +945,49 @@ jobs:
           chmod u+w "./${iso}"
           cp -L result-qcow2/*.qcow2 "./${qcow2}"
           nix run nixpkgs#qemu -- qemu-img convert -c -O qcow2 result-edge/*.qcow2 "./${edge}"
-          if ! grep -q '^-----BEGIN CERTIFICATE-----' keys/secure-boot-db.pem; then
-            echo "::warning::keys/secure-boot-db.pem carries no certificate: this release is unsigned (run provisioning/secure-boot/keygen.sh)"
+          unsigned() {
+            # $1 is why, for the release body; $2 the warning on the run.
+            echo "::warning::$2"
+            echo "### Release is not signed" >> "$GITHUB_STEP_SUMMARY"
+            echo "$2" >> "$GITHUB_STEP_SUMMARY"
             sha256sum "$iso" "$qcow2" "$edge" | tee SHA256SUMS
             echo "signed=false" >> "$GITHUB_OUTPUT"
+            echo "unsignedReason=$1" >> "$GITHUB_OUTPUT"
+          }
+          if ! grep -q '^-----BEGIN CERTIFICATE-----' keys/secure-boot-db.pem; then
+            unsigned no-certificate "keys/secure-boot-db.pem carries no certificate: this release is unsigned (run provisioning/secure-boot/keygen.sh)"
             exit 0
           fi
           if [ -z "$SECURE_BOOT_DB_KEY" ]; then
-            echo "::error::keys/secure-boot-db.pem is committed but the SECURE_BOOT_DB_KEY secret is missing; refusing to publish an unsigned release"
-            exit 1
+            unsigned no-key "keys/secure-boot-db.pem is committed but the SECURE_BOOT_DB_KEY secret is missing: this release is unsigned"
+            exit 0
           fi
-          umask 077
-          key=$(mktemp)
-          printf '%s\n' "$SECURE_BOOT_DB_KEY" > "$key"
-          nix run .#losos-sign-iso -- sign --key "$key" --cert keys/secure-boot-db.pem "./${iso}"
-          nix run .#losos-sign-iso -- verify --cert keys/secure-boot-db.pem "./${iso}"
-          sha256sum "$iso" "$qcow2" "$edge" | tee SHA256SUMS
-          openssl dgst -sha256 -sign "$key" -out SHA256SUMS.sig SHA256SUMS
-          rm -f "$key"
-          openssl x509 -in keys/secure-boot-db.pem -out losos-secure-boot-db.pem
-          openssl x509 -in keys/secure-boot-db.pem -outform DER -out losos-secure-boot-db.cer
-          openssl dgst -sha256 -verify <(openssl x509 -pubkey -noout -in losos-secure-boot-db.pem) \
-            -signature SHA256SUMS.sig SHA256SUMS
+          set +e
+          (
+            set -euo pipefail
+            umask 077
+            key=$(mktemp)
+            trap 'rm -f "$key"' EXIT
+            printf '%s\n' "$SECURE_BOOT_DB_KEY" > "$key"
+            nix run .#losos-sign-iso -- sign --key "$key" --cert keys/secure-boot-db.pem "./${iso}"
+            nix run .#losos-sign-iso -- verify --cert keys/secure-boot-db.pem "./${iso}"
+            sha256sum "$iso" "$qcow2" "$edge" | tee SHA256SUMS
+            openssl dgst -sha256 -sign "$key" -out SHA256SUMS.sig SHA256SUMS
+            openssl x509 -in keys/secure-boot-db.pem -out losos-secure-boot-db.pem
+            openssl x509 -in keys/secure-boot-db.pem -outform DER -out losos-secure-boot-db.cer
+            openssl dgst -sha256 -verify <(openssl x509 -pubkey -noout -in losos-secure-boot-db.pem) \
+              -signature SHA256SUMS.sig SHA256SUMS
+          )
+          status=$?
+          set -e
+          if [ "$status" -ne 0 ]; then
+            # Sign works in place, so a failure part way may have left the
+            # loader half written. Start again from the built image.
+            rm -f SHA256SUMS SHA256SUMS.sig losos-secure-boot-db.pem losos-secure-boot-db.cer
+            cp -L --remove-destination result-iso/iso/*.iso "./${iso}"
+            unsigned failed "signing the ISO or SHA256SUMS failed (exit ${status}): this release is unsigned"
+            exit 0
+          fi
           echo "signed=true" >> "$GITHUB_OUTPUT"
           echo "fingerprint=$(openssl x509 -in losos-secure-boot-db.pem -noout -fingerprint -sha256 | cut -d= -f2)" >> "$GITHUB_OUTPUT"
       - name: stage the media
@@ -1082,6 +1118,7 @@ jobs:
         env:
           SIGNED: ${{ steps.sign.outputs.signed }}
           FINGERPRINT: ${{ steps.sign.outputs.fingerprint }}
+          UNSIGNED_REASON: ${{ steps.sign.outputs.unsignedReason }}
           ISO_NAME: ${{ steps.stage.outputs.isoName }}
           ISO_REF: ${{ steps.ghcr.outputs.isoRef }}
           ISO_URL: ${{ steps.meta.outputs.isoUrl }}
@@ -1142,11 +1179,19 @@ jobs:
           refuses the stick, which is the signature working.
           SIGNED_EOF
           )
-          else
+          elif [ "$UNSIGNED_REASON" = no-certificate ]; then
             signing=$(cat <<UNSIGNED_EOF
           **Not signed.** No Secure Boot certificate was committed when this
           tag was built, so the UEFI loader is unsigned: turn Secure Boot off
           to boot it. \`SHA256SUMS\` is here, unsigned.
+          UNSIGNED_EOF
+          )
+          else
+            signing=$(cat <<UNSIGNED_EOF
+          **Not signed.** This tag could not be signed when it was built, so
+          the UEFI loader is unsigned even though LosOS has a Secure Boot
+          certificate: turn Secure Boot off to boot it, or use a signed
+          release. \`SHA256SUMS\` is here, unsigned.
           UNSIGNED_EOF
           )
           fi
