@@ -1259,7 +1259,7 @@ async fn sharing_of(st: &AppState) -> Result<Sharing, ApiError> {
 async fn market_browse(State(st): State<AppState>) -> Result<Json<Vec<PublicListing>>, ApiError> {
     let market = market_of(&st).await?;
     let sharing = sharing_of(&st).await?;
-    Ok(Json(market.browse(&sharing).await))
+    Ok(Json(market.browse(&sharing).await?))
 }
 
 async fn market_account(
@@ -1268,7 +1268,7 @@ async fn market_account(
 ) -> Result<Json<AccountView>, ApiError> {
     let market = market_tenant(&st, &req).await?;
     let sharing = sharing_of(&st).await?;
-    Ok(Json(market.account(&req.appliance_id, &sharing).await))
+    Ok(Json(market.account(&req.appliance_id, &sharing).await?))
 }
 
 /// `box_uuid` is the box's own UUID, written onto its Stripe account. Optional
@@ -1627,6 +1627,12 @@ async fn fulfil_market(st: &AppState) {
     let Some(market) = &st.market else {
         return;
     };
+    // Which ledger to work on follows the gate's key. Once a request has
+    // told, the pass keeps to that ledger: its orders are still owed their
+    // volumes even if the key changes before the next request notices.
+    if market.mode().await.is_none() && market.validate_secrets().await.is_err() {
+        return;
+    }
     match market.expire_stale().await {
         Ok(expired) => {
             for id in expired {

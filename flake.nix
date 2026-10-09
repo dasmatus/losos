@@ -362,6 +362,7 @@
         imports = [
           ./modules/options.nix
           ./modules/edge.nix
+          ./modules/edge-credentials.nix
           ./modules/edge-vms.nix
           ./modules/edge-gateway.nix
         ];

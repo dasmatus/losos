@@ -251,6 +251,33 @@ gegen einen Ersatz für Stripe getestet. Der prüft, was die Edge sendet und wie
 sie reagiert, kann aber nicht sagen, ob Stripe es akzeptiert. Das klärt der
 erste Lauf im Testmodus.
 
+### Testmodus und Live-Modus {#test-mode-and-live-mode}
+
+Die Edge liest den Modus am Schlüssel ab. Schlüssel mit `sk_test_` und
+`rk_test_` betreiben den Marktplatz im Testmodus, `sk_live_` und `rk_live_`
+im Live-Modus, und es gibt keine eigene Einstellung, die dem Schlüssel
+widersprechen könnte. Das Gate schreibt den Modus beim Start ins Log und
+startet nicht mit einem Schlüssel, dessen Modus es nicht lesen kann. Jede
+Antwort des Marktplatzes (`/market/listings`, `/market/account`,
+Onboarding und Checkout) trägt `"mode": "test"` oder `"mode": "live"`.
+
+Jeder Modus führt sein eigenes Buch: `market.json` für live und
+`market-test.json` daneben für test. Live gehen heißt, einen Live-Schlüssel
+zu versiegeln und das Gate neu zu starten. Verkäufer, Angebote und
+Bestellungen aus dem Test bleiben im Testbuch, das Live-Regal beginnt leer,
+und jeder Verkäufer durchläuft das Onboarding mit einem Live-Konto bei Stripe
+neu. Ein Testschlüssel bringt das Testbuch zurück, wie es war. Eine
+`market.json` von vor der Trennung liest die Edge als Live-Buch. Volumes, die
+Testbestellungen belegt haben, bleiben im Mesh, bis der Betreiber sie
+entfernt.
+
+Webhook-Secrets tragen keinen Modus, jedes Stripe-Ereignis schon
+(`livemode`). Ein signiertes Ereignis aus dem anderen Modus heißt, dass
+versiegeltes Webhook-Secret und Schlüssel aus verschiedenen Modi stammen.
+Das Gate lehnt es ab und schreibt ins Log, welches welches ist. Stripe
+wiederholt ein abgelehntes Ereignis drei Tage lang; wird das passende Paar in
+dieser Zeit versiegelt, geht nichts verloren.
+
 ## Sicherheitseigenschaften
 
 - Der Webhook wird über die HMAC-Signatur von Stripe über den rohen Body

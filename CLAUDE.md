@@ -139,6 +139,11 @@ and is never served or built by nix.
 - `backend-registrar/src/market.rs`: Stripe Connect, third opt-in of the
   registrar. The key lives only in the `losos-stripe-gate` unit, reached over
   `/run/losos-stripe-gate/gate.sock`.
+  The key's prefix is the mode (`stripe_mode.rs`): test and live each keep
+  their own ledger (`market-test.json`, `market.json`), and a signed event
+  from the other mode is refused. `modules/edge-credentials.nix` and
+  `.github/workflows/edge-credentials.yml` seal `STRIPE_KEY`, the webhook
+  secrets and `CLAUDE_KEY` from Actions secrets over a forced-command SSH key.
 - `backend-registrar/src/{vms,server/vm}.rs` + `modules/edge-vms.nix`:
   virtual machines on the mesh, sold per replica-month through the market
   with a fixed 50/50 fee the Stripe gate enforces. KubeVirt and CDI from

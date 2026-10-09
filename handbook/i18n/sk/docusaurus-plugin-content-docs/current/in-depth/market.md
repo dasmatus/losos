@@ -225,6 +225,30 @@ Začnite v Stripe **test mode** (testovací režim). Edge bol testovaný len pro
 náhrade za Stripe. Tá overí, čo edge posiela a ako reaguje, no nevie povedať,
 či to Stripe prijme. To rozhodne prvý beh v testovacom režime.
 
+### Testovací a ostrý režim {#test-mode-and-live-mode}
+
+Edge prečíta režim z kľúča. Kľúče `sk_test_` a `rk_test_` spustia trh v
+testovacom režime, `sk_live_` a `rk_live_` v ostrom, a žiadne zvláštne
+nastavenie, ktoré by s kľúčom nesúhlasilo, neexistuje. Gate zapíše režim do
+logu pri štarte a odmietne štartovať s kľúčom, z ktorého režim nevie
+prečítať. Každá odpoveď trhu (`/market/listings`, `/market/account`,
+onboarding a checkout) nesie `"mode": "test"` alebo `"mode": "live"`.
+
+Každý režim má vlastnú knihu: `market.json` pre ostrý a `market-test.json`
+vedľa neho pre testovací. Prechod do ostrého režimu je zapečatenie ostrého
+kľúča a reštart gate. Testoví predajcovia, ponuky a objednávky zostanú v
+testovacej knihe, ostrý pult začína prázdny a každý predajca prejde
+onboardingom znova s ostrým účtom Stripe. Testovací kľúč vráti testovaciu
+knihu, ako bola. `market.json` zapísaný predtým, ako edge režimy oddeľoval, edge
+číta ako ostrú knihu. Zväzky, ktoré si vzali testovacie objednávky, zostanú v
+sieti, kým ich operátor neodstráni.
+
+Webhook secrets režim nenesú, každá udalosť Stripe áno (`livemode`).
+Podpísaná udalosť z druhého režimu znamená, že zapečatený webhook secret a
+kľúč sú z rôznych režimov, preto ju gate odmietne a do logu zapíše, ktorý je
+ktorý. Stripe odmietnutú udalosť skúša znova tri dni, takže kým sa v tom čase
+zapečatí zodpovedajúci pár, nič sa nestratí.
+
 ## Bezpečnostné vlastnosti
 
 - Webhook je overený HMAC podpisom Stripe nad surovým telom, s päťminútovým

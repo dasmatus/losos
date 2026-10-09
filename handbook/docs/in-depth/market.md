@@ -222,6 +222,29 @@ Start in Stripe **test mode**. The edge has only been tested against a
 stand-in for Stripe. That checks what the edge sends and how it reacts, but
 cannot say whether Stripe accepts it. The first test-mode run settles that.
 
+### Test mode and live mode
+
+The edge reads the mode off the key. `sk_test_` and `rk_test_` keys run the
+market in test mode, `sk_live_` and `rk_live_` keys in live mode, and there is
+no separate setting that could disagree with the key. The gate logs the mode
+when it starts and refuses to start on a key whose mode it cannot read. Every
+market answer (`/market/listings`, `/market/account`, onboarding and
+checkout) carries `"mode": "test"` or `"mode": "live"`.
+
+Each mode keeps its own ledger: `market.json` for live and `market-test.json`
+beside it for test. Going live is sealing a live key and restarting the gate.
+The test sellers, listings and orders stay in the test ledger, the live shelf
+starts empty, and each seller onboards again with a live Stripe account. A
+test key brings the test ledger back as it was. The edge reads a `market.json`
+written before it kept the two apart as the live ledger. Volumes claimed by
+test orders stay on the mesh until the operator removes them.
+
+Webhook secrets carry no mode, but every Stripe event does (`livemode`). A
+signed event from the other mode means the sealed webhook secret and key come
+from different modes, so the gate refuses it and logs which is which. Stripe
+retries a refused event for three days, so sealing the matching pair within
+that time loses nothing.
+
 ## Safety properties
 
 - The webhook is authenticated by Stripe's HMAC signature over the raw body,

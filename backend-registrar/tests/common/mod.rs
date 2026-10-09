@@ -261,7 +261,8 @@ impl Edge {
         .await
     }
 
-    /// As [`Edge::start_market`], with `market.json` written before the edge
+    /// As [`Edge::start_market`], with the test ledger (`market-test.json`,
+    /// the ledger of [`STRIPE_KEY`]'s mode) written before the edge
     /// starts, for states a test cannot reach in real time (an entitlement
     /// that lapsed a month ago).
     pub async fn start_market_with_state(
@@ -514,11 +515,13 @@ impl Edge {
     ) -> Self {
         let dir = TempDir::new(tag);
         if let Some(market_state) = market_state {
+            // STRIPE_KEY is a test key, so the gate sends the market to the
+            // test ledger.
             std::fs::write(
-                dir.join("market.json"),
+                dir.join("market-test.json"),
                 serde_json::to_vec(market_state).expect("serialize market state"),
             )
-            .expect("seed market.json");
+            .expect("seed market-test.json");
         }
         if !enrolled.is_empty() {
             let windows: serde_json::Map<String, serde_json::Value> = enrolled
