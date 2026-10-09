@@ -277,6 +277,55 @@ that cannot be switched off. `tests/front-vhost.nix` checks both services'
 routes with sharing on and off; `tests/invariants.nix` checks the gate at
 eval time.
 
+### Box-wide app settings
+
+The Apps pane carries the settings that hold for everyone on LosOS cloud
+and LosOS Git, the ones each app otherwise keeps on its own administration
+pages. Each field is an option under `losos.nextcloud.site.*` or
+`losos.forgejo.site.*`, so it goes through Apply, the gate, History and the
+configuration repository like any other setting. The Advanced pane shows
+their values and links to the Apps pane instead of drawing a second editor
+(`ON_PANE` in `admin-ui/app/src/lib/option-value.ts`).
+
+| Option | What it sets in the app |
+| --- | --- |
+| `losos.nextcloud.site.defaultLanguage` | `default_language` |
+| `losos.nextcloud.site.phoneRegion` | `default_phone_region` |
+| `losos.nextcloud.site.trashDays` | `trashbin_retention_obligation`, `"D, D"` |
+| `losos.nextcloud.site.versionDays` | `versions_retention_obligation`, `"D, D"` |
+| `losos.nextcloud.site.publicLinks` | `core` `shareapi_allow_links` |
+| `losos.nextcloud.site.linkPassword` | `core` `shareapi_enforce_links_password` |
+| `losos.nextcloud.site.linkExpiryDays` | `core` `shareapi_default_expire_date`, `shareapi_enforce_expire_date`, `shareapi_expire_after_n_days` |
+| `losos.nextcloud.site.defaultQuotaGB` | `files` `default_quota` |
+| `losos.forgejo.site.requireSignIn` | `[service] REQUIRE_SIGNIN_VIEW` |
+| `losos.forgejo.site.keepEmailPrivate` | `[service] DEFAULT_KEEP_EMAIL_PRIVATE` |
+| `losos.forgejo.site.defaultPrivate` | `[repository] DEFAULT_PRIVATE` |
+| `losos.forgejo.site.pushCreate` | `[repository] ENABLE_PUSH_CREATE_USER` |
+| `losos.forgejo.site.landingPage` | `[server] LANDING_PAGE` |
+
+A null Nextcloud option leaves that setting to Nextcloud. The first four
+are `config.php` keys: native mode puts them in the module's
+`override.config.php`, the pod in `losos.config.php`. Nextcloud reads both
+after `config.php`, so a value it writes there never wins. The other
+four are app config in the database. `modules/nextcloud-stack.nix` (`site`)
+renders them as `app key value` lines, which `occ config:app:set` writes on
+every start: the pod's entrypoint from a `site` file the host mounts, native
+mode at the end of `nextcloud-setup`. Nextcloud's admin pages save those
+keys through `ocs/v[12].php/apps/provisioning_api/api/v1/config/apps/<app>/<key>`,
+and the front vhost answers 403 for each key LosOS sets, the federation
+switches included, so a change made there cannot drift from the box. The
+admin page still shows the value. `tests/front-vhost.nix` checks the 403 and
+that other keys still reach Nextcloud.
+
+Forgejo's five are `app.ini` keys, which Forgejo's Site administration shows
+without a way to change them. Both modes read one attribute set,
+`lososInternal.forgejoSite`.
+
+Everything an account sets for itself stays in the app, and so do the
+admin settings LosOS does not cover yet: mail delivery, background jobs,
+two-factor enforcement, Forgejo's database-backed settings and the account
+lists.
+
 ## Backup, restore and erase
 
 **Settings, Backup** sends the box's data to an S3-compatible bucket the

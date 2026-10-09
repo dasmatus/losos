@@ -960,6 +960,170 @@ in
       '';
     };
 
+    # ── The two apps' box-wide settings ─────────────────────────────────────
+    # What an administrator would otherwise change in Nextcloud's
+    # Administration settings and Forgejo's Site administration, kept here so
+    # it goes through Apply, the history and LosOS Git like every other
+    # setting. The admin UI draws them on the Apps pane.
+    #
+    # Each app is told on every start, and its own admin page cannot change
+    # them in between: Forgejo shows app.ini settings without an editor, and
+    # the front vhost refuses Nextcloud's app-config writes for the keys
+    # modules/nextcloud-stack.nix lists (`site.locked`), so the two places
+    # cannot drift. Per-account settings stay in the apps. The values are
+    # rendered for both modes from one place: `site` in
+    # modules/nextcloud-stack.nix, lososInternal.forgejoSite below.
+    nextcloud.site.defaultLanguage = lib.mkOption {
+      type = lib.types.nullOr (
+        lib.types.enum [
+          "en"
+          "en_GB"
+          "sk"
+          "cs"
+          "de"
+          "de_DE"
+          "fr"
+          "es"
+          "it"
+          "nl"
+          "pl"
+          "hu"
+          "uk"
+        ]
+      );
+      default = null;
+      description = ''
+        The language LosOS cloud speaks to an account that has not picked
+        one, and on its sign-in page. Null follows the browser. "de" is
+        German with "du", "de_DE" with "Sie". Each account can still choose
+        its own under Personal info.
+      '';
+    };
+
+    nextcloud.site.phoneRegion = lib.mkOption {
+      type = lib.types.nullOr (lib.types.strMatching "[A-Z]{2}");
+      default = null;
+      example = "SK";
+      description = ''
+        The country (ISO 3166-1 code, such as SK or DE) a phone number
+        without a country code is read as, in profiles and contacts. Null
+        leaves it unset, and LosOS cloud's admin overview asks for it.
+      '';
+    };
+
+    nextcloud.site.trashDays = lib.mkOption {
+      type = lib.types.nullOr (lib.types.ints.between 1 3650);
+      default = null;
+      description = ''
+        Days a deleted file stays in the trash before it is gone for good.
+        Null lets LosOS cloud decide: at least 30 days, and sooner only when
+        the disk runs short.
+      '';
+    };
+
+    nextcloud.site.versionDays = lib.mkOption {
+      type = lib.types.nullOr (lib.types.ints.between 1 3650);
+      default = null;
+      description = ''
+        Days older versions of a file are kept. Null lets LosOS cloud decide:
+        it thins old versions out over time and drops them when the disk
+        runs short.
+      '';
+    };
+
+    nextcloud.site.defaultQuotaGB = lib.mkOption {
+      type = lib.types.nullOr (lib.types.ints.between 1 1000000);
+      default = null;
+      description = ''
+        How much space, in GB, a new account may fill unless it is given its
+        own limit. Null is no limit. The limit of each account is still set
+        under Accounts in LosOS cloud.
+      '';
+    };
+
+    nextcloud.site.publicLinks = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Let accounts share a file or folder through a public link, which
+        anyone who has the link can open. Off, only accounts on this box can
+        be shared with.
+      '';
+    };
+
+    nextcloud.site.linkPassword = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = "Every public link must carry a password.";
+    };
+
+    nextcloud.site.linkExpiryDays = lib.mkOption {
+      type = lib.types.nullOr (lib.types.ints.between 1 3650);
+      default = null;
+      description = ''
+        Public links stop working this many days after they are made, and no
+        one can set a later date. Null lets a link live until it is removed.
+      '';
+    };
+
+    forgejo.site.requireSignIn = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Show nothing on LosOS Git to anyone who is not signed in, public
+        repositories included. Through an edge, LosOS Git is on the
+        internet, so this is what keeps a public repository private to the
+        accounts on the box.
+      '';
+    };
+
+    forgejo.site.defaultPrivate = lib.mkOption {
+      type = lib.types.enum [
+        "last"
+        "private"
+        "public"
+      ];
+      default = "last";
+      description = ''
+        Whether the "Make repository private" box starts ticked when a
+        repository is created: "last" repeats the account's previous choice,
+        "private" and "public" always start the same way.
+      '';
+    };
+
+    forgejo.site.landingPage = lib.mkOption {
+      type = lib.types.enum [
+        "home"
+        "explore"
+        "organizations"
+        "login"
+      ];
+      default = "home";
+      description = ''
+        What /forgejo/ shows a visitor who is not signed in: the front page,
+        the list of public repositories, the list of organisations, or the
+        sign-in form.
+      '';
+    };
+
+    forgejo.site.keepEmailPrivate = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Hide a new account's e-mail address from other people from the start.
+        Each account can change it later in its own settings.
+      '';
+    };
+
+    forgejo.site.pushCreate = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Let an account create a repository by pushing to an address that does
+        not exist yet, instead of creating it on the page first.
+      '';
+    };
+
     nextcloud.https = lib.mkOption {
       type = lib.types.bool;
       default = false;
@@ -2216,6 +2380,33 @@ in
     readOnly = true;
     default = config.losos.vms.host && config.losos.sharingMyStorage;
     description = "This box hosts mesh virtual machines: losos.vms.host and losos.sharingMyStorage.";
+  };
+
+  # ── LosOS Git's box-wide settings, as app.ini sections ──────────────────
+  # losos.forgejo.site.* in the shape services.forgejo.settings takes and the
+  # pod's losos.ini is rendered from, so the two modes (modules/services.nix,
+  # modules/workloads.nix) read one value. Forgejo shows these under Site
+  # administration -> Configuration with no editor.
+  options.lososInternal.forgejoSite = lib.mkOption {
+    type = lib.types.attrsOf (lib.types.attrsOf (lib.types.either lib.types.bool lib.types.str));
+    internal = true;
+    readOnly = true;
+    default =
+      let
+        site = config.losos.forgejo.site;
+      in
+      {
+        service = {
+          REQUIRE_SIGNIN_VIEW = site.requireSignIn;
+          DEFAULT_KEEP_EMAIL_PRIVATE = site.keepEmailPrivate;
+        };
+        repository = {
+          DEFAULT_PRIVATE = site.defaultPrivate;
+          ENABLE_PUSH_CREATE_USER = site.pushCreate;
+        };
+        server.LANDING_PAGE = site.landingPage;
+      };
+    description = "losos.forgejo.site.* as app.ini sections.";
   };
 
   config.warnings =

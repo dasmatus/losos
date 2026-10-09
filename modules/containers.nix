@@ -36,8 +36,8 @@
 }:
 
 let
-  # Plain data about the Nextcloud stack; only the federation addresses are
-  # read here.
+  # Plain data about the Nextcloud stack; only the federation addresses and
+  # the admin-page writes refused for LosOS-owned settings are read here.
   nc = import ./nextcloud-stack.nix { inherit pkgs lib; };
 
   nextcloudWorkload = config.losos.nextcloud.mode == "container";
@@ -588,6 +588,18 @@ in
             proxyWebsockets = true;
           };
         })
+        (lib.mkIf nextcloudWorkload (
+          # The admin pages' writes to the settings LosOS sets on every start
+          # (losos.nextcloud.site.* and federation's switches): refused here,
+          # so Nextcloud's admin page reports an error instead of changing a
+          # value the next start would put back. A regex location, so it
+          # wins over the `/nextcloud` prefix above, matched against the
+          # normalised path. modules/nextcloud-stack.nix (`site`) lists the
+          # keys.
+          lib.genAttrs (nc.site.locations "/nextcloud") (_: {
+            return = "403";
+          })
+        ))
         (lib.mkIf (nextcloudWorkload && !config.lososInternal.federation.nextcloud) (
           # Federation off (losos.nextcloud.federation.enable, gated on
           # losos.sharingMyStorage): the addresses other Nextcloud servers
