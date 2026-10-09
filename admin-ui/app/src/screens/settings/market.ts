@@ -53,11 +53,13 @@ export interface MarketData {
 const KIND_NAME: Record<MarketKind, MessageKey> = {
   storage: "panes.market.kind.storage",
   compute: "panes.market.kind.compute",
+  vm: "panes.market.kind.vm",
 };
 
 const UNIT_NAME: Record<string, MessageKey> = {
   "GiB-month": "panes.market.unit.storage",
   "vCPU-hour": "panes.market.unit.compute",
+  "replica-month": "panes.market.unit.vm",
 };
 
 /* Payment happens on Stripe's page in another tab, and the box learns of it
@@ -108,7 +110,13 @@ export function useMarket(enabled: boolean): MarketData {
         }
         setState(
           reply.available
-            ? { kind: "ready", listings: reply.listings, account: reply.account }
+            ? {
+                kind: "ready",
+                // A machine needs an image and a name, so it is bought on
+                // the Machines pane (machines.ts), not off this shelf.
+                listings: reply.listings.filter((listing) => listing.kind !== "vm"),
+                account: reply.account,
+              }
             : { kind: "unavailable", reason: reply.reason },
         );
       } catch (error) {
