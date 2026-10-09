@@ -134,10 +134,10 @@ pub enum Op {
         amount: u64,
     },
     /// Start a build from the owner's description, or a change to `base`,
-    /// the widget's current source. `lang` is the admin page's language.
+    /// the widget's current files. `lang` is the admin page's language.
     BuilderStart {
         prompt: String,
-        base: Option<String>,
+        base: Option<Vec<crate::look::WidgetFile>>,
         lang: Option<String>,
     },
     /// One build, with its source once it is done.
@@ -234,9 +234,9 @@ impl Op {
                     Err("the description has control characters in it")
                 } else if base
                     .as_ref()
-                    .is_some_and(|b| b.len() > crate::look::MAX_SOURCE_BYTES)
+                    .is_some_and(|b| crate::look::validate_files(b).is_err())
                 {
-                    Err("the widget to change is larger than 64 KiB")
+                    Err("the widget to change is not one this box would keep")
                 } else if lang.as_deref().is_some_and(|l| !BUILDER_LANGS.contains(&l)) {
                     Err("lang must be en, sk or de")
                 } else {
@@ -354,8 +354,13 @@ impl Op {
             Op::BuilderCredit { amount } => json!({ "amount": amount }),
             Op::BuilderStart { prompt, base, lang } => {
                 let mut extra = json!({ "prompt": prompt.trim() });
-                if let Some(base) = base.as_deref().filter(|b| !b.trim().is_empty()) {
-                    extra["base"] = json!(base);
+                if let Some(files) = base {
+                    extra["base_files"] = json!(files);
+                    // An edge from before widgets had files reads `base`,
+                    // the entry, and ignores the rest.
+                    if let Some(entry) = files.iter().find(|f| f.name == crate::look::ENTRY_FILE) {
+                        extra["base"] = json!(entry.content);
+                    }
                 }
                 if let Some(lang) = lang {
                     extra["lang"] = json!(lang);
@@ -631,9 +636,18 @@ mod tests {
 
     #[test]
     fn builder_operations_carry_only_what_the_edge_needs() {
+        use crate::look::WidgetFile;
         let start = |prompt: &str, base: Option<&str>, lang: Option<&str>| Op::BuilderStart {
             prompt: prompt.to_string(),
-            base: base.map(str::to_string),
+            base: base.map(|b| {
+                vec![
+                    WidgetFile::entry(b),
+                    WidgetFile {
+                        name: "app.js".to_string(),
+                        content: "1".to_string(),
+                    },
+                ]
+            }),
             lang: lang.map(str::to_string),
         };
         let op = start("  a clock\nwith seconds ", Some("<div></div>"), Some("sk"));
@@ -643,19 +657,25 @@ mod tests {
         assert_eq!(
             body,
             json!({ "appliance_id": "box", "token": "tok", "prompt": "a clock\nwith seconds",
+                    "base_files": [
+                        { "name": "index.html", "content": "<div></div>" },
+                        { "name": "app.js", "content": "1" },
+                    ],
                     "base": "<div></div>", "lang": "sk" })
         );
-        // A blank base is a new widget, not a change to nothing.
+        // No base is a new widget.
         let body: Value =
-            serde_json::from_str(&start("x", Some("  "), None).body("b", "t").unwrap()).unwrap();
+            serde_json::from_str(&start("x", None, None).body("b", "t").unwrap()).unwrap();
         assert!(body.get("base").is_none() && body.get("lang").is_none());
+        // A base the box would not keep is not sent.
+        assert!(start("x", Some("  "), None).validate().is_err());
 
         assert!(start(" ", None, None).validate().is_err());
         assert!(start(&"x".repeat(2001), None, None).validate().is_err());
         assert!(start(&"é".repeat(2000), None, None).validate().is_ok());
         assert!(start("a\u{1b}[2J", None, None).validate().is_err());
         assert!(start("x", None, Some("fr")).validate().is_err());
-        let big = "x".repeat(crate::look::MAX_SOURCE_BYTES + 1);
+        let big = "x".repeat(crate::look::MAX_WIDGET_BYTES + 1);
         assert!(start("x", Some(&big), None).validate().is_err());
 
         let credit = |amount| Op::BuilderCredit { amount };

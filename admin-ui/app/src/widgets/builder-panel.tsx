@@ -6,8 +6,8 @@
  * is paid from that balance at Anthropic's token price plus the edge's
  * markup, and the balance is topped up through Stripe Checkout.
  *
- * What comes back is only text: it goes into the hand editor's source
- * field, the preview draws it in the same sandboxed frame as any widget
+ * What comes back is only text: the widget's files go into the hand
+ * editor, the preview draws them in the same sandboxed frame as any widget
  * written by hand, and nothing is saved until the owner presses Save.
  */
 
@@ -29,10 +29,12 @@ import {
   type BuildFault,
   type BuilderResponse,
   type BuildView,
+  type WidgetFile,
 } from "@/lib/api";
 import type { MessageKey } from "@/lib/i18n";
 import { useLocale, useT } from "@/lib/i18n-react";
 import { formatMoney, isStripePage } from "@/screens/settings/market";
+import { builtFiles } from "./files";
 
 /** The edge's own limit on a description. */
 export const MAX_PROMPT_CHARS = 2000;
@@ -58,18 +60,18 @@ export function modelName(model: string): string {
 }
 
 export interface BuilderPanelProps {
-  /** The source in the editor now, sent along when the owner asks for a change. */
-  source: string;
-  /** Whether that source is worth changing rather than starting over:
+  /** The files in the editor now, sent along when the owner asks for a change. */
+  files: WidgetFile[];
+  /** Whether those files are worth changing rather than starting over:
    *  a saved widget, or one the owner has typed into. */
   hasWidget: boolean;
-  /** A build finished with a widget: put it in the editor. */
-  onWritten: (source: string) => void;
+  /** A build finished with a widget: put its files in the editor. */
+  onWritten: (files: WidgetFile[]) => void;
 }
 
 type Loaded = { state: "loading" } | { state: "failed" } | { state: "ready"; view: BuilderResponse };
 
-export function BuilderPanel({ source, hasWidget, onWritten }: BuilderPanelProps) {
+export function BuilderPanel({ files, hasWidget, onWritten }: BuilderPanelProps) {
   const t = useT();
   const locale = useLocale();
   const promptId = React.useId();
@@ -120,8 +122,9 @@ export function BuilderPanel({ source, hasWidget, onWritten }: BuilderPanelProps
           return;
         }
         setFollowId(null);
-        if (view.status === "done" && view.source !== null) {
-          written.current(view.source);
+        const built = view.status === "done" ? builtFiles(view) : null;
+        if (built !== null) {
+          written.current(built);
           toast.success(t("look.builder.doneTitle"), t("look.builder.doneNote"));
         }
         void load();
@@ -202,7 +205,7 @@ export function BuilderPanel({ source, hasWidget, onWritten }: BuilderPanelProps
     try {
       const started = await postBuilderBuild({
         prompt: text,
-        ...(change && source.trim().length > 0 ? { base: source } : {}),
+        ...(change && hasWidget ? { base: files } : {}),
         lang: locale,
       });
       setBuild(started);

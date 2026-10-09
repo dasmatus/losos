@@ -608,7 +608,10 @@ export interface BuildSummary {
 export interface BuildView extends BuildSummary {
   /** The spending cap stopped the agent; the widget may be unfinished. */
   at_limit: boolean;
+  /** The widget's `index.html`; `files` has it with the rest. */
   source: string | null;
+  /** Absent from an edge older than widgets with files. */
+  files?: WidgetFile[] | null;
   /** What the agent says it made, in the page's language. */
   notes: string | null;
 }
@@ -640,7 +643,7 @@ export function postBuilderCredit(
 
 /** POST /api/builder/builds — start a build; `base` is the widget to change. */
 export function postBuilderBuild(
-  request: { prompt: string; base?: string; lang: string },
+  request: { prompt: string; base?: WidgetFile[]; lang: string },
   options: RequestOptions = {},
 ): Promise<BuildView> {
   return call<BuildView>("/api/builder/builds", {
@@ -1199,18 +1202,30 @@ export type LookBackground =
 
 export type HandSpan = "half" | "full";
 
-/** One widget the owner wrote: a name, a width, and the HTML it is. */
+/** One file of a widget: `index.html`, or a file it links. */
+export interface WidgetFile {
+  name: string;
+  content: string;
+}
+
+/** One widget the owner wrote: a name, a width, and its files. */
 export interface HandWidget {
   id: string;
   name: string;
   span: HandSpan;
-  source: string;
+  files: WidgetFile[];
 }
 
 export interface LookLimits {
   widgets: number;
   nameChars: number;
-  sourceBytes: number;
+  /** All of one widget's files together. */
+  widgetBytes: number;
+  /** Files in one widget. */
+  files: number;
+  fileNameChars: number;
+  /** Extensions a widget's file may have. */
+  fileKinds: string[];
   imageBytes: number;
   veil: { min: number; max: number };
 }
@@ -1238,7 +1253,7 @@ export interface HandWidgetDraft {
   id?: string;
   name: string;
   span: HandSpan;
-  source: string;
+  files: WidgetFile[];
 }
 
 /** GET /api/look. */
