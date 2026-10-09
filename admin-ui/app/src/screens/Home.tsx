@@ -13,6 +13,7 @@ import { LanguagePicker } from "@/components/ui/language-picker";
 import {
   getHealth,
   getSettings,
+  getStorage,
   getState,
   createStatusPoller,
   hasToken,
@@ -105,10 +106,11 @@ export function Home({
   const t = useT();
   const signedIn = React.useSyncExternalStore(subscribeAuth, hasToken, () => false);
   const health = useHealth();
-  const { settings, boxState, status } = useBoxFacts(signedIn);
+  const { settings, boxState, status, measured } = useBoxFacts(signedIn);
   const availability = useAvailability(settings);
+  const disk = storage ?? measured;
 
-  const facts = buildFacts({ availability, settings, status, storage });
+  const facts = buildFacts({ availability, settings, status, storage: disk });
   const model = deriveApps(facts);
 
   const hostName = settings?.hostName ?? browserHostName();
@@ -131,7 +133,7 @@ export function Home({
         </CardContent>
 
         <CardFooter className="bg-sunk/40">
-          <StorageStrip sharing={sharing} storage={storage} />
+          <StorageStrip sharing={sharing} storage={disk} />
         </CardFooter>
       </Card>
 
@@ -450,9 +452,10 @@ function buildFacts({
   const details: Partial<Record<AppId, string>> = {};
   const attention: Partial<Record<AppId, AppAttention>> = {};
 
+  /* The reading is the whole disk, the system included, so it marks the
+   * Files tile only when the disk is filling up and puts no size under it:
+   * that would read as the size of the owner's files. */
   if (storage !== null && Number.isFinite(storage.usedBytes) && storage.usedBytes >= 0) {
-    details.files = formatBytes(storage.usedBytes);
-
     const total = storage.totalBytes;
     if (Number.isFinite(total) && total > 0) {
       const ratio = storage.usedBytes / total;
@@ -556,16 +559,19 @@ function useBoxFacts(signedIn: boolean): {
   settings: SettingsResponse | null;
   boxState: StateResponse | null;
   status: StatusResponse | null;
+  measured: HomeStorage | null;
 } {
   const [settings, setSettings] = React.useState<SettingsResponse | null>(null);
   const [boxState, setBoxState] = React.useState<StateResponse | null>(null);
   const [status, setStatus] = React.useState<StatusResponse | null>(null);
+  const [measured, setMeasured] = React.useState<HomeStorage | null>(null);
 
   React.useEffect(() => {
     if (!signedIn) {
       setSettings(null);
       setBoxState(null);
       setStatus(null);
+      setMeasured(null);
       return;
     }
 
@@ -585,6 +591,18 @@ function useBoxFacts(signedIn: boolean): {
         /* A 401 has already dropped the token and the shell will re-prompt;
          * anything else leaves the page on what it could render without a
          * key, which is most of it. */
+      }
+    })();
+
+    /* The box's df reading (GET /api/storage), on its own so a box that
+     * cannot measure itself still shows everything else. */
+    void (async () => {
+      try {
+        const disk = await getStorage({ signal: controller.signal });
+        if (!live || disk.usedBytes === null || disk.totalBytes === null) return;
+        setMeasured({ usedBytes: disk.usedBytes, totalBytes: disk.totalBytes });
+      } catch {
+        /* no reading: the strip claims no amounts */
       }
     })();
 
@@ -608,7 +626,7 @@ function useBoxFacts(signedIn: boolean): {
     };
   }, [signedIn]);
 
-  return { settings, boxState, status };
+  return { settings, boxState, status, measured };
 }
 
 // ── Which apps are actually there ─────────────────────────────────────────

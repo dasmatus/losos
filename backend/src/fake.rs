@@ -28,6 +28,8 @@ pub struct FakeLosos {
     pub vg_free_extents: u64,
     /// Size of the fake `/persist`, in bytes.
     pub persist_bytes: u64,
+    /// Of that, in use: what `GET /api/storage` reports as `usedBytes`.
+    pub persist_used_bytes: u64,
     /// Every grow step that was executed, in order. The ordering is the thing
     /// under test, so the fake records rather than simulates.
     pub grow_ran: Vec<crate::grow::GrowAction>,
@@ -203,6 +205,7 @@ impl FakeLosos {
             // are non-zero so the happy path is the default.
             vg_free_extents: 512,
             persist_bytes: 20 * 1024 * 1024 * 1024,
+            persist_used_bytes: 8 * 1024 * 1024 * 1024,
             grow_ran: Vec::new(),
             luks_key_file: None,
             // Container is the appliance's default (losos.nextcloud.mode), so
@@ -516,6 +519,10 @@ impl Losos for FakeLosos {
 
     fn persist_bytes(&mut self) -> anyhow::Result<u64> {
         Ok(self.persist_bytes)
+    }
+
+    fn persist_used_bytes(&mut self) -> anyhow::Result<u64> {
+        Ok(self.persist_used_bytes)
     }
 
     fn luks_key_file(&mut self) -> anyhow::Result<Option<String>> {

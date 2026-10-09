@@ -14,9 +14,7 @@ import { formatBytes } from "./format";
 
 /* Storage: what the box says about its disk, and claiming the reserve.
  *
- * Two halves, and only one of them exists on the box today.
- *
- * GROW is real. POST /api/grow runs lvextend, then `cryptsetup resize`, then
+ * GROW: POST /api/grow runs lvextend, then `cryptsetup resize`, then
  * resize2fs, online, and answers with `{grew, beforeBytes, afterBytes,
  * claimedBytes}`. `grew` is MEASURED — the daemon compares the filesystem
  * size before and after rather than trusting three exit statuses, because
@@ -25,22 +23,22 @@ import { formatBytes } from "./format";
  * `grew`, and when it is false it says nothing changed. It never says "grown"
  * because a request returned 200.
  *
- * THE CAPACITY READING is not real yet. There is no route on lososd that
- * reports how full /persist is; backend/schema.json's growResponse is the
- * only place a byte count appears at all, and it only appears after you have
- * already grown. So `GET /api/storage` below is a contract this screen
- * proposes and tolerates the absence of: 404 means "this box cannot measure
- * itself yet", the meter says exactly that, and nothing is invented to fill
- * the bar. The shape wanted is
+ * THE READING: GET /api/storage (backend/schema.json storageResponse) is
+ * df and vgs on the box:
  *
- *     { "totalBytes": n, "usedBytes": n, "lentBytes": n, "reserveBytes": n }
+ *     { "totalBytes": n, "usedBytes": n, "reserveBytes": n }
  *
- * — every field optional, every one a non-negative integer of bytes:
- *   totalBytes    size of the /persist filesystem (growResponse.afterBytes)
- *   usedBytes     of that, in use by this box's own data
- *   lentBytes     of that, holding copies for other boxes on the mesh
- *   reserveBytes  unallocated volume-group space a grow would claim
- *                 (growResponse.claimedBytes, read without growing)
+ *   totalBytes    size of the /persist filesystem
+ *   usedBytes     of that, in use
+ *   lentBytes     of that, holding copies for other boxes (not reported yet)
+ *   reserveBytes  unallocated volume-group space a grow would claim; 0 once
+ *                 it has been claimed
+ *
+ * Every field may be null, and a null is drawn as "not reported", never
+ * filled in. The reserve is what the "Use reserve" button keys on, so it is
+ * read from the box on every visit and again after a grow: a reload or a
+ * second browser sees a claimed reserve as claimed. 404 still means a box
+ * too old to serve the route, and the meter says so.
  */
 
 export const STORAGE_URL = "/api/storage";
@@ -93,6 +91,8 @@ export function useStorage(): Storage {
   const [facts, setFacts] = React.useState<StorageFacts>(NOTHING_KNOWN);
   const [source, setSource] = React.useState<StorageSource>("loading");
   const [growing, setGrowing] = React.useState(false);
+  /* Bumped after a grow so the effect below reads the box again. */
+  const [generation, setGeneration] = React.useState(0);
 
   React.useEffect(() => {
     if (!signedIn) {
@@ -122,12 +122,13 @@ export function useStorage(): Storage {
       cancelled = true;
       controller.abort();
     };
-  }, [signedIn]);
+  }, [signedIn, generation]);
 
   /* A grow does not start a rebuild, so there is no job to poll: the response
    * IS the outcome, and it arrives when three tools have finished running
    * against a mounted filesystem. Slow, and not cancellable — aborting the
-   * fetch would abandon the answer, not the work.
+   * fetch would abandon the answer, not the work. lososd runs one command at
+   * a time, so a tab opened mid-grow gets its reading after the grow.
    *
    * The outcome is a confirmation. `grew` is the only field worth reporting: the
    * daemon measured the filesystem on both sides rather than trusting three
@@ -153,10 +154,8 @@ export function useStorage(): Storage {
         after: formatBytes(result.afterBytes),
       }),
     );
-    /* The one place a byte count can be trusted without /api/storage: the
-     * daemon just measured the filesystem on both sides of the resize. Fold it
-     * in so the meter stops showing the pre-grow total, and zero the reserve,
-     * which is what was just spent. */
+    /* Fold the measured size in at once, so the meter and the button change
+     * without waiting for the read-back below. */
     setFacts((current) => ({ ...current, totalBytes: result.afterBytes, reserveBytes: 0 }));
   }, []);
 
@@ -171,6 +170,8 @@ export function useStorage(): Storage {
         toast.error(t("panes.storage.failed.title"), describe(error), { help: "out-of-room" });
       } finally {
         setGrowing(false);
+        // The box's own reading wins over anything folded in above.
+        setGeneration((n) => n + 1);
       }
     })();
   }, [growing, record]);

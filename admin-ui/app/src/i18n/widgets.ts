@@ -304,9 +304,9 @@ export default defineMessages({
     de: "Noch nicht gemessen",
   },
   "widgets.builtin.disk.reportsSize": {
-    en: "This box reports its size when you claim space on the Storage page.",
-    sk: "Zariadenie oznámi svoju veľkosť, keď si na stránke Úložisko sprístupníte miesto.",
-    de: "Die Box meldet ihre Größe, sobald du auf der Seite Speicher Platz freischaltest.",
+    en: "The box did not report its disk size.",
+    sk: "Zariadenie neoznámilo veľkosť disku.",
+    de: "Die Box hat die Größe ihres Datenträgers nicht gemeldet.",
   },
   "widgets.builtin.disk.inUse": { en: "In use", sk: "Používa sa", de: "Belegt" },
   "widgets.builtin.disk.heldBack": {

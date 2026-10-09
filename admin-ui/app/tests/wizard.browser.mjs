@@ -429,6 +429,18 @@ await check('claiming the box mid-wizard does not end the wizard', async () => {
 });
 
 
+await check('a reload after the claim comes back to step 2 with the spare key, not to the app', async () => {
+  // The tab holds the token now, so without the wizard's own note the shell
+  // would open the overview and the once-shown key would be gone.
+  const { page } = await claimThroughStepTwo();
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.waitForTimeout(300);
+  const text = await page.locator('body').innerText();
+  assert.ok(text.includes('0'.repeat(64)), `the spare key is gone after a reload:\n${text}`);
+  assert.ok(!/Your board/i.test(text), 'a reload mid-setup opened the overview');
+  await page.close();
+});
+
 /* On a fresh box the Nextcloud pod is still running `occ maintenance:install`
  * when the owner reaches step 2, and the claim used to fail into "command
  * failed; see the lososd journal". lososd now says `ready: false` with a
