@@ -216,6 +216,69 @@ Začnite v Stripe **test mode** (testovací režim). Edge bol testovaný len pro
 náhrade za Stripe. Tá overí, čo edge posiela a ako reaguje, no nevie povedať,
 či to Stripe prijme. To rozhodne prvý beh v testovacom režime.
 
+Kroky 2 a 3 môžu prísť aj zo secrets GitHub Actions namiesto shellu na edgi;
+pozri [Kľúče z GitHub Actions](#kľúče-z-github-actions).
+
+### Testovací a ostrý režim
+
+Edge prečíta režim z kľúča. Kľúče `sk_test_` a `rk_test_` spustia trh v
+testovacom režime, `sk_live_` a `rk_live_` v ostrom, a žiadne zvláštne
+nastavenie, ktoré by s kľúčom nesúhlasilo, neexistuje. Gate zapíše režim do
+logu pri štarte a odmietne štartovať s kľúčom, z ktorého režim nevie
+prečítať. Každá odpoveď trhu (`/market/listings`, `/market/account`,
+onboarding a checkout) nesie `"mode": "test"` alebo `"mode": "live"`.
+
+Každý režim má vlastnú knihu: `market.json` pre ostrý a `market-test.json`
+vedľa neho pre testovací. Prechod do ostrého režimu je zapečatenie ostrého
+kľúča a reštart gate. Testoví predajcovia, ponuky a objednávky zostanú v
+testovacej knihe, ostrý pult začína prázdny a každý predajca prejde
+onboardingom znova s ostrým účtom Stripe. Testovací kľúč vráti testovaciu
+knihu, ako bola. `market.json` zapísaný predtým, ako edge režimy oddeľoval, edge
+číta ako ostrú knihu. Zväzky, ktoré si vzali testovacie objednávky, zostanú v
+sieti, kým ich operátor neodstráni.
+
+Webhook secrets režim nenesú, každá udalosť Stripe áno (`livemode`).
+Podpísaná udalosť z druhého režimu znamená, že zapečatený webhook secret a
+kľúč sú z rôznych režimov, preto ju gate odmietne a do logu zapíše, ktorý je
+ktorý. Stripe odmietnutú udalosť skúša znova tri dni, takže kým sa v tom čase
+zapečatí zodpovedajúci pár, nič sa nestratí.
+
+### Kľúče z GitHub Actions
+
+Workflow `edge-credentials` (`.github/workflows/edge-credentials.yml`)
+zapečatí kľúče zo secrets GitHub Actions v repozitári, takže ich nikto na edge
+nevkladá.
+
+1. Vytvorte pre workflow SSH kľúč
+   (`ssh-keygen -t ed25519 -N "" -f edge-credentials`) a jeho verejnú
+   polovicu nastavte do `losos.edge.credentials.deployKey`. Edge tento kľúč
+   pustí ako root len na spustenie `losos-seal-credential`: bez shellu, bez
+   forwardingu, bez terminálu.
+2. Pridajte secrets do Actions:
+
+   | Secret                  | Obsah                                                     |
+   | ----------------------- | --------------------------------------------------------- |
+   | `STIRPE_KEY`            | tajný alebo obmedzený kľúč Stripe, testovací alebo ostrý  |
+   | `STRIPE_WEBHOOK_SECRET` | voliteľné: oba secrets `whsec_`, každý na vlastnom riadku |
+   | `CLAUDE_KEY`            | API kľúč Claude (`sk-ant-...`)                            |
+   | `EDGE_SSH_KEY`          | súkromná polovica kľúča z kroku 1                         |
+   | `EDGE_SSH_HOST`         | adresa edge (secret alebo premenná)                       |
+   | `EDGE_SSH_KNOWN_HOSTS`  | riadok edge z `ssh-keyscan` (secret alebo premenná)       |
+   | `EDGE_SSH_PORT`         | voliteľné, inak 22                                        |
+
+3. Spustite **edge-credentials** na `main` zo záložky Actions. Vypíše, či je
+   kľúč Stripe testovací alebo ostrý, nikdy kľúč samotný, a každý nastavený
+   secret pošle do `losos-seal-credential`. Ten overí tvar, zapečatí ho
+   cez `systemd-creds` pod jeho menom a reštartuje gate. Výmena kľúča je zmena
+   secretu a nové spustenie workflow.
+
+Kľúč Claude sa zapečatí ako `claude-api-key` do
+`/var/secrets/losos-claude-api-key.cred`
+(`losos.edge.credentials.secrets.claude-api-key.sealed`). Unit ho číta cez
+`LoadCredentialEncrypted=claude-api-key:<tá cesta>` a pridá sa do
+`losos.edge.credentials.secrets.claude-api-key.units`, aby ho nový kľúč
+reštartoval.
+
 ## Bezpečnostné vlastnosti
 
 - Webhook je overený HMAC podpisom Stripe nad surovým telom, s päťminútovým

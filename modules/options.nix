@@ -1415,7 +1415,10 @@ in
         Rotating it means sealing a new blob and restarting the gate. A blob
         that is missing skips the gate, so the market answers 503 and the rest
         of the registrar is untouched. A key of any other shape is refused
-        before anything is sent to Stripe.
+        before anything is sent to Stripe. The key's prefix is the market's
+        mode: `sk_test_`/`rk_test_` run it in test mode on the
+        `market-test.json` ledger, `sk_live_`/`rk_live_` in live mode on
+        `market.json`, and a key that names neither stops the gate.
       '';
     };
 
@@ -1432,6 +1435,69 @@ in
         (checkout.session.completed, checkout.session.expired) and one for
         events on Connected accounts
         (account.updated). The registrar accepts a signature from either.
+      '';
+    };
+
+    # ── Sealed credentials delivered from GitHub Actions ───────────────────
+    # `.github/workflows/edge-credentials.yml` reads the keys from the
+    # repository's Actions secrets and hands each one over SSH to
+    # `losos-seal-credential` on the edge, which seals it with systemd-creds.
+    # The deploy key can run nothing else. See wiki/Edge-Credentials.md.
+    edge.credentials.secrets = lib.mkOption {
+      type = lib.types.attrsOf (
+        lib.types.submodule {
+          options = {
+            sealed = lib.mkOption {
+              type = secretPath;
+              description = ''
+                Where the sealed blob is written. The credential name is the
+                attribute name, so the unit that reads it says
+                `LoadCredentialEncrypted=<name>:<this path>`.
+              '';
+            };
+            pattern = lib.mkOption {
+              type = lib.types.str;
+              description = ''
+                An extended regular expression every non-empty line of the
+                secret must match in full. A secret of any other shape is
+                refused before it is sealed, so a key pasted into the wrong
+                Actions secret never reaches a unit.
+              '';
+            };
+            units = lib.mkOption {
+              type = lib.types.listOf lib.types.str;
+              default = [ ];
+              description = ''
+                Units restarted once the blob is sealed, so they decrypt the
+                new one. A unit that does not exist on this edge is skipped.
+              '';
+            };
+          };
+        }
+      );
+      default = { };
+      description = ''
+        The secrets `losos-seal-credential` may seal, by systemd credential
+        name. The edge module lists `stripe-secret-key`,
+        `stripe-webhook-secret` and `claude-api-key`; a module that needs
+        another secret adds an entry, or adds its unit to an entry's `units`
+        (`losos.edge.credentials.secrets.claude-api-key.units = [ "x.service" ]`).
+      '';
+    };
+
+    edge.credentials.deployKey = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      example = "ssh-ed25519 AAAAC3Nza... losos-edge-credentials";
+      description = ''
+        The public half of the SSH key the edge-credentials workflow signs in
+        with (its private half is the `EDGE_SSH_KEY` Actions secret). Set,
+        it turns sshd on and lets that key in as root with
+        `restrict,command="losos-seal-credential"`: it gets no shell, no
+        forwarding and no terminal, and can only seal one of the secrets in
+        `losos.edge.credentials.secrets`, named by the command it sends. Null (the
+        default), nothing is added and secrets are sealed by hand as
+        wiki/Market.md describes.
       '';
     };
 

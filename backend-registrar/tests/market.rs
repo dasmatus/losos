@@ -1525,3 +1525,117 @@ async fn an_edge_without_a_market_sells_no_hardware() {
     assert_eq!(status, 503);
     edge.shutdown().await;
 }
+
+#[tokio::test]
+async fn the_market_says_which_mode_its_key_is_in() {
+    let stripe = StripeStub::start().await;
+    let edge = Edge::start_with_market("market-mode", &tenants(), &stripe.base).await;
+    ready_seller(&edge).await;
+    let (status, body) = list(&edge, "storage", 100, 10).await;
+    assert_eq!(status, 201, "{body}");
+    let listing_id = parse(&body)["listing_id"].as_str().expect("id").to_string();
+
+    let (status, shelf) = browse(&edge).await;
+    assert_eq!(status, 200);
+    assert_eq!(shelf[0]["mode"], "test");
+    let (_, account) = edge
+        .post("/market/account", auth("seller-box", GOOD_TOKEN))
+        .await;
+    assert_eq!(parse(&account)["mode"], "test");
+    let (status, body) = order(&edge, &listing_id, 2).await;
+    assert_eq!(status, 201, "{body}");
+    assert_eq!(parse(&body)["mode"], "test");
+
+    edge.shutdown().await;
+    stripe.shutdown().await;
+}
+
+/// Going live is a live key and nothing else: the test sellers, listings and
+/// orders stay in the test ledger, the live shelf starts empty, and a test
+/// key brings the test market back as it was.
+#[tokio::test]
+async fn a_live_key_opens_the_live_ledger_and_keeps_the_test_one() {
+    let stripe = StripeStub::start().await;
+    let edge = Edge::start_with_market("market-golive", &tenants(), &stripe.base).await;
+    ready_seller(&edge).await;
+    let (status, body) = list(&edge, "storage", 100, 10).await;
+    assert_eq!(status, 201, "{body}");
+    assert_eq!(browse(&edge).await.1.as_array().map(Vec::len), Some(1));
+
+    std::fs::write(edge.dir.join("stripe.key"), "sk_live_0123456789abcdef").expect("go live");
+    let (status, shelf) = browse(&edge).await;
+    assert_eq!(status, 200);
+    assert_eq!(shelf, json!([]), "test listings are not for sale live");
+    let (_, account) = edge
+        .post("/market/account", auth("seller-box", GOOD_TOKEN))
+        .await;
+    let account = parse(&account);
+    assert_eq!(account["mode"], "live");
+    assert_eq!(
+        account["seller_onboarded"], false,
+        "a test account is not a live one"
+    );
+    assert!(edge.dir.join("market-test.json").exists());
+
+    std::fs::write(edge.dir.join("stripe.key"), common::STRIPE_KEY).expect("back to test");
+    let (_, shelf) = browse(&edge).await;
+    assert_eq!(shelf[0]["mode"], "test");
+    assert_eq!(shelf.as_array().map(Vec::len), Some(1));
+
+    edge.shutdown().await;
+    stripe.shutdown().await;
+}
+
+/// Stripe signs a live event only with a live endpoint's secret, so a live
+/// event on a test key means the sealed pair is mixed. It is refused, so
+/// Stripe keeps retrying it until the pair matches, and nothing changes.
+#[tokio::test]
+async fn an_event_from_the_other_mode_is_refused() {
+    let stripe = StripeStub::start().await;
+    let edge = Edge::start_with_market("market-livemode", &tenants(), &stripe.base).await;
+    ready_seller(&edge).await;
+    let (_, body) = list(&edge, "storage", 100, 10).await;
+    let listing_id = parse(&body)["listing_id"].as_str().expect("id").to_string();
+    let (_, body) = order(&edge, &listing_id, 2).await;
+    let order_id = parse(&body)["order_id"].as_str().expect("id").to_string();
+
+    let mut live = completed(&order_id, "cs_test_1", 200);
+    live["livemode"] = json!(true);
+    let (status, _) = webhook(&edge, &live).await;
+    assert!(
+        status >= 400,
+        "a live event on a test key is refused, got {status}"
+    );
+    let (_, account) = edge
+        .post("/market/account", auth("buyer-box", OTHER_TOKEN))
+        .await;
+    assert_eq!(parse(&account)["purchases"][0]["status"], "pending");
+
+    let mut test = completed(&order_id, "cs_test_1", 200);
+    test["livemode"] = json!(false);
+    assert_eq!(webhook(&edge, &test).await.0, 200);
+    let (_, account) = edge
+        .post("/market/account", auth("buyer-box", OTHER_TOKEN))
+        .await;
+    assert_eq!(parse(&account)["purchases"][0]["status"], "paid");
+
+    edge.shutdown().await;
+    stripe.shutdown().await;
+}
+
+#[tokio::test]
+async fn a_key_that_names_no_mode_is_refused() {
+    let stripe = StripeStub::start().await;
+    let edge = Edge::start_with_market("market-nomode", &tenants(), &stripe.base).await;
+    std::fs::write(edge.dir.join("stripe.key"), "sk_0123456789abcdef").expect("overwrite key");
+    let (status, _) = edge
+        .post("/market/seller/onboard", auth("seller-box", GOOD_TOKEN))
+        .await;
+    assert_eq!(status, 503);
+    assert!(
+        stripe.seen().is_empty(),
+        "a key of unknown mode is never sent"
+    );
+    edge.shutdown().await;
+    stripe.shutdown().await;
+}

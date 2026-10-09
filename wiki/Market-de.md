@@ -242,6 +242,73 @@ gegen einen Ersatz für Stripe getestet. Der prüft, was die Edge sendet und wie
 sie reagiert, kann aber nicht sagen, ob Stripe es akzeptiert. Das klärt der
 erste Lauf im Testmodus.
 
+Die Schritte 2 und 3 können auch aus GitHub-Actions-Secrets kommen statt aus
+einer Shell auf der Edge; siehe [Schlüssel aus GitHub Actions](#schlüssel-aus-github-actions).
+
+### Testmodus und Live-Modus
+
+Die Edge liest den Modus am Schlüssel ab. Schlüssel mit `sk_test_` und
+`rk_test_` betreiben den Marktplatz im Testmodus, `sk_live_` und `rk_live_`
+im Live-Modus, und es gibt keine eigene Einstellung, die dem Schlüssel
+widersprechen könnte. Das Gate schreibt den Modus beim Start ins Log und
+startet nicht mit einem Schlüssel, dessen Modus es nicht lesen kann. Jede
+Antwort des Marktplatzes (`/market/listings`, `/market/account`,
+Onboarding und Checkout) trägt `"mode": "test"` oder `"mode": "live"`.
+
+Jeder Modus führt sein eigenes Buch: `market.json` für live und
+`market-test.json` daneben für test. Live gehen heißt, einen Live-Schlüssel
+zu versiegeln und das Gate neu zu starten. Verkäufer, Angebote und
+Bestellungen aus dem Test bleiben im Testbuch, das Live-Regal beginnt leer,
+und jeder Verkäufer durchläuft das Onboarding mit einem Live-Konto bei Stripe
+neu. Ein Testschlüssel bringt das Testbuch zurück, wie es war. Eine
+`market.json` von vor der Trennung liest die Edge als Live-Buch. Volumes, die
+Testbestellungen belegt haben, bleiben im Mesh, bis der Betreiber sie
+entfernt.
+
+Webhook-Secrets tragen keinen Modus, jedes Stripe-Ereignis schon
+(`livemode`). Ein signiertes Ereignis aus dem anderen Modus heißt, dass
+versiegeltes Webhook-Secret und Schlüssel aus verschiedenen Modi stammen.
+Das Gate lehnt es ab und schreibt ins Log, welches welches ist. Stripe
+wiederholt ein abgelehntes Ereignis drei Tage lang; wird das passende Paar in
+dieser Zeit versiegelt, geht nichts verloren.
+
+### Schlüssel aus GitHub Actions
+
+Der Workflow `edge-credentials` (`.github/workflows/edge-credentials.yml`)
+versiegelt die Schlüssel aus den Actions-Secrets des Repositorys, damit
+niemand sie auf der Edge einfügt.
+
+1. Erzeuge einen SSH-Schlüssel für den Workflow
+   (`ssh-keygen -t ed25519 -N "" -f edge-credentials`) und setze
+   `losos.edge.credentials.deployKey` auf seine öffentliche Hälfte. Die Edge
+   lässt diesen Schlüssel als root nur `losos-seal-credential` ausführen:
+   keine Shell, kein Forwarding, kein Terminal.
+2. Lege die Actions-Secrets an:
+
+   | Secret                  | Inhalt                                                     |
+   | ----------------------- | ---------------------------------------------------------- |
+   | `STIRPE_KEY`            | geheimer oder eingeschränkter Stripe-Schlüssel, test/live  |
+   | `STRIPE_WEBHOOK_SECRET` | optional: beide `whsec_`-Secrets, eines pro Zeile          |
+   | `CLAUDE_KEY`            | der Claude-API-Schlüssel (`sk-ant-...`)                    |
+   | `EDGE_SSH_KEY`          | die private Hälfte des Schlüssels aus Schritt 1            |
+   | `EDGE_SSH_HOST`         | die Adresse der Edge (Secret oder Variable)                |
+   | `EDGE_SSH_KNOWN_HOSTS`  | die Zeile der Edge aus `ssh-keyscan` (Secret oder Variable) |
+   | `EDGE_SSH_PORT`         | optional, sonst 22                                         |
+
+3. Starte **edge-credentials** auf `main` im Tab Actions. Er gibt aus, ob der
+   Stripe-Schlüssel ein Test- oder ein Live-Schlüssel ist, nie den Schlüssel
+   selbst, und reicht jedes gesetzte Secret an `losos-seal-credential`
+   weiter. Das prüft die Form, versiegelt es mit `systemd-creds` unter seinem
+   Namen und startet das Gate neu. Einen Schlüssel tauschen heißt, das Secret
+   zu ändern und den Workflow erneut zu starten.
+
+Der Claude-Schlüssel wird als `claude-api-key` nach
+`/var/secrets/losos-claude-api-key.cred` versiegelt
+(`losos.edge.credentials.secrets.claude-api-key.sealed`). Eine Unit liest ihn
+mit `LoadCredentialEncrypted=claude-api-key:<dieser Pfad>` und trägt sich in
+`losos.edge.credentials.secrets.claude-api-key.units` ein, damit ein neuer
+Schlüssel sie neu startet.
+
 ## Sicherheitseigenschaften
 
 - Der Webhook wird über die HMAC-Signatur von Stripe über den rohen Body

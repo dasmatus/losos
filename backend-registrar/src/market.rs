@@ -40,7 +40,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::io;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use ring::hmac;
@@ -53,6 +53,7 @@ use crate::action::Action;
 use crate::fsutil::atomic_write;
 use crate::hardware::{total, Catalogue, Line};
 use crate::stripe_gate::{CheckoutRequest, GateClient, HardwareRequest};
+use crate::stripe_mode::StripeMode;
 
 /// The cut kept by the platform, in basis points of the gross amount: 4%.
 pub const DEFAULT_FEE_BPS: u32 = 400;
@@ -282,9 +283,15 @@ pub struct Order {
     pub claim: Option<String>,
 }
 
-/// Everything the market persists, in `market.json`.
+/// Everything the market persists for one Stripe mode: `market.json` for
+/// live, `market-test.json` for test (see [`ledger_path`]).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MarketState {
+    /// The mode this ledger was written in. Absent on a file written before
+    /// the edge kept the two apart; such a file is taken as the ledger of
+    /// the mode it is opened for, and stamped on its next write.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mode: Option<StripeMode>,
     #[serde(default)]
     pub sellers: BTreeMap<String, Seller>,
     #[serde(default)]
@@ -794,6 +801,9 @@ pub(crate) fn account_ready(account: &Value) -> bool {
 /// What `GET /market/listings` shows anyone. No seller identity.
 #[derive(Debug, Serialize)]
 pub struct PublicListing {
+    /// `test` while the edge runs on a test key: ordering takes test cards
+    /// and buys nothing real.
+    pub mode: StripeMode,
     pub id: String,
     pub kind: Kind,
     pub unit: &'static str,
@@ -860,6 +870,9 @@ impl OrderView {
 
 #[derive(Debug, Serialize)]
 pub struct AccountView {
+    /// The Stripe mode the edge's market runs in, and so which ledger this
+    /// view was read from.
+    pub mode: StripeMode,
     pub fee_bps: u32,
     pub currency: String,
     pub seller_onboarded: bool,
@@ -878,6 +891,7 @@ pub struct AccountView {
 
 #[derive(Debug, Serialize)]
 pub struct OnboardView {
+    pub mode: StripeMode,
     pub ready: bool,
     /// Stripe-hosted onboarding link, absent once the account is ready.
     pub url: Option<String>,
@@ -885,6 +899,7 @@ pub struct OnboardView {
 
 #[derive(Debug, Serialize)]
 pub struct CheckoutView {
+    pub mode: StripeMode,
     pub order_id: String,
     pub checkout_url: String,
     pub amount: u64,
@@ -895,6 +910,7 @@ pub struct CheckoutView {
 /// A hardware Checkout, as the box that asked for it sees it.
 #[derive(Debug, Serialize)]
 pub struct HardwareCheckoutView {
+    pub mode: StripeMode,
     pub order_id: String,
     pub checkout_url: String,
     pub amount: u64,
@@ -940,8 +956,77 @@ pub struct MarketOpts {
 
 pub struct Market {
     opts: MarketOpts,
+    state: Mutex<Ledger>,
+}
+
+/// The ledger of the mode the gate's key is in, and where it is kept. The
+/// edge reads the mode off the key on every market request
+/// ([`Market::validate_secrets`]) and opens the other ledger when it changes,
+/// so going live is sealing a live key and restarting the gate: test sellers,
+/// listings and orders stay in the test ledger, and a test payment never
+/// becomes a live entitlement.
+///
+/// Derefs to the state, so code that only reads or writes the market sees a
+/// [`MarketState`] as before.
+struct Ledger {
+    /// `None` until the gate has said which mode its key is in. Nothing is
+    /// written then.
+    mode: Option<StripeMode>,
     path: PathBuf,
-    state: Mutex<MarketState>,
+    state: MarketState,
+}
+
+impl std::ops::Deref for Ledger {
+    type Target = MarketState;
+    fn deref(&self) -> &MarketState {
+        &self.state
+    }
+}
+
+impl std::ops::DerefMut for Ledger {
+    fn deref_mut(&mut self) -> &mut MarketState {
+        &mut self.state
+    }
+}
+
+/// Where the ledger of `mode` is kept: `state_file` itself for live, and a
+/// `-test` sibling for test (`market.json` and `market-test.json`).
+#[must_use]
+pub fn ledger_path(state_file: &Path, mode: StripeMode) -> PathBuf {
+    match mode {
+        StripeMode::Live => state_file.to_path_buf(),
+        StripeMode::Test => {
+            let stem = state_file
+                .file_stem()
+                .map_or_else(|| "market".into(), |s| s.to_string_lossy().into_owned());
+            let name = match state_file.extension() {
+                Some(ext) => format!("{stem}-test.{}", ext.to_string_lossy()),
+                None => format!("{stem}-test"),
+            };
+            state_file.with_file_name(name)
+        }
+    }
+}
+
+/// Read the ledger of `mode`. A missing file is an empty ledger; one that does
+/// not parse, or that says it belongs to the other mode, is an error, because
+/// starting empty would forget who has paid for what.
+async fn read_ledger(path: &Path, mode: StripeMode) -> Result<MarketState, MarketError> {
+    let mut state: MarketState = match tokio::fs::read(path).await {
+        Ok(bytes) => serde_json::from_slice(&bytes)?,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => MarketState::default(),
+        Err(e) => return Err(e.into()),
+    };
+    match state.mode {
+        Some(written) if written != mode => Err(MarketError::Store(format!(
+            "{} is the {written} ledger, not the {mode} one",
+            path.display()
+        ))),
+        _ => {
+            state.mode = Some(mode);
+            Ok(state)
+        }
+    }
 }
 
 /// A canonical lowercase hyphenated UUID, the shape `losos-ctl` derives the
@@ -965,19 +1050,22 @@ fn random_id(prefix: &str) -> Result<String, MarketError> {
 }
 
 impl Market {
-    /// Open the store. A missing file is an empty market; an unparseable one is
-    /// an error — silently starting empty would forget who has paid for what.
+    /// Open the store. Which ledger is read depends on the mode of the gate's
+    /// key, so nothing is read until the first market request asks the gate
+    /// ([`Market::validate_secrets`]). Both ledgers are checked here so a
+    /// file that does not parse fails the start rather than the first buyer.
     pub async fn open(opts: MarketOpts) -> Result<Self, MarketError> {
         let path = PathBuf::from(&opts.state_file);
-        let state = match tokio::fs::read(&path).await {
-            Ok(bytes) => serde_json::from_slice(&bytes)?,
-            Err(e) if e.kind() == io::ErrorKind::NotFound => MarketState::default(),
-            Err(e) => return Err(e.into()),
-        };
+        for mode in [StripeMode::Live, StripeMode::Test] {
+            read_ledger(&ledger_path(&path, mode), mode).await?;
+        }
         Ok(Self {
             opts,
-            path,
-            state: Mutex::new(state),
+            state: Mutex::new(Ledger {
+                mode: None,
+                path,
+                state: MarketState::default(),
+            }),
         })
     }
 
@@ -986,13 +1074,51 @@ impl Market {
         self.opts.fee_bps
     }
 
-    pub async fn validate_secrets(&self) -> Result<(), MarketError> {
-        self.stripe().validate_secrets().await
+    /// Check the gate has its secrets, and switch to the ledger of its key's
+    /// mode. Every market route calls this first.
+    pub async fn validate_secrets(&self) -> Result<StripeMode, MarketError> {
+        let mode = self.stripe().validate_secrets().await?;
+        self.use_mode(mode).await?;
+        Ok(mode)
     }
 
-    async fn persist(&self, state: &MarketState) -> Result<(), MarketError> {
+    /// The mode last learned from the gate, if any request has asked yet.
+    pub async fn mode(&self) -> Option<StripeMode> {
+        self.state.lock().await.mode
+    }
+
+    /// Make `mode`'s ledger the live one. Every write has already reached the
+    /// disk, so the other ledger is simply dropped from memory.
+    async fn use_mode(&self, mode: StripeMode) -> Result<(), MarketError> {
+        let mut ledger = self.state.lock().await;
+        if ledger.mode == Some(mode) {
+            return Ok(());
+        }
+        let path = ledger_path(Path::new(&self.opts.state_file), mode);
+        let state = read_ledger(&path, mode).await?;
+        match ledger.mode {
+            Some(was) => tracing::warn!(
+                target: Action::Market.target(),
+                "the Stripe key changed from {was} to {mode} mode; the market now reads {}",
+                path.display(),
+            ),
+            None => tracing::info!(
+                target: Action::Market.target(),
+                "the market runs in {mode} mode from {}",
+                path.display(),
+            ),
+        }
+        *ledger = Ledger {
+            mode: Some(mode),
+            path,
+            state,
+        };
+        Ok(())
+    }
+
+    async fn persist(&self, path: &Path, state: &MarketState) -> Result<(), MarketError> {
         let bytes = serde_json::to_vec_pretty(state)?;
-        atomic_write(&self.path, &bytes, STORE_FILE_MODE).await?;
+        atomic_write(path, &bytes, STORE_FILE_MODE).await?;
         Ok(())
     }
 
@@ -1001,10 +1127,21 @@ impl Market {
     /// made to the live state first would outlive a failed write (a full
     /// disk): the caller is told it failed, yet the change stands in memory,
     /// is acted on, and the next successful write commits it silently.
-    async fn commit(&self, live: &mut MarketState, next: MarketState) -> Result<(), MarketError> {
-        self.persist(&next).await?;
-        *live = next;
+    ///
+    /// Refused while no mode is known: a write then could land in the wrong
+    /// ledger.
+    async fn commit(&self, live: &mut Ledger, next: MarketState) -> Result<(), MarketError> {
+        if live.mode.is_none() || next.mode != live.mode {
+            return Err(MarketError::Unconfigured);
+        }
+        self.persist(&live.path, &next).await?;
+        live.state = next;
         Ok(())
+    }
+
+    /// The mode of the ledger behind `ledger`, for a view built from it.
+    fn mode_of(ledger: &Ledger) -> Result<StripeMode, MarketError> {
+        ledger.mode.ok_or(MarketError::Unconfigured)
     }
 
     fn stripe(&self) -> GateClient {
@@ -1014,20 +1151,44 @@ impl Market {
     /// The tenant's Stripe connected account as last recorded, if it has one.
     /// Read by [`crate::domains`]: a box's public names hang off it.
     pub async fn seller(&self, id: &str) -> Option<Seller> {
-        self.state.lock().await.sellers.get(id).cloned()
+        self.vouching_sellers().await.remove(id)
     }
 
     /// Every recorded seller, for the reconciler's zone pass.
     pub async fn sellers(&self) -> BTreeMap<String, Seller> {
-        self.state.lock().await.sellers.clone()
+        self.vouching_sellers().await
+    }
+
+    /// The sellers of the mode the gate's key is in. A box's public names
+    /// hang off these, so they must not vanish while the gate cannot be
+    /// asked (a registrar that starts before it): until a mode is known they
+    /// are read from the live ledger on disk, which holds the accounts that
+    /// moved real money.
+    async fn vouching_sellers(&self) -> BTreeMap<String, Seller> {
+        if self.mode().await.is_none() {
+            // The fault, if any, is the gate's to report; the routes do.
+            let _ = self.validate_secrets().await;
+        }
+        let ledger = self.state.lock().await;
+        if ledger.mode.is_some() {
+            return ledger.sellers.clone();
+        }
+        drop(ledger);
+        let live = ledger_path(Path::new(&self.opts.state_file), StripeMode::Live);
+        read_ledger(&live, StripeMode::Live)
+            .await
+            .map(|s| s.sellers)
+            .unwrap_or_default()
     }
 
     /// Everything one appliance may see about its own market activity.
-    pub async fn account(&self, id: &str, sharing: &Sharing) -> AccountView {
+    pub async fn account(&self, id: &str, sharing: &Sharing) -> Result<AccountView, MarketError> {
         let now = now_secs();
         let state = self.state.lock().await;
+        let mode = Self::mode_of(&state)?;
         let seller = state.sellers.get(id);
-        AccountView {
+        Ok(AccountView {
+            mode,
             fee_bps: self.opts.fee_bps,
             currency: self.opts.currency.clone(),
             seller_onboarded: seller.is_some(),
@@ -1051,14 +1212,15 @@ impl Market {
             entitlements: entitlements(&state, id, now),
             purchases: history(state.orders.values().filter(|o| o.buyer == id), now),
             sales: history(state.orders.values().filter(|o| o.seller == id), now),
-        }
+        })
     }
 
     /// Every listing a buyer could order right now. Anonymous.
-    pub async fn browse(&self, sharing: &Sharing) -> Vec<PublicListing> {
+    pub async fn browse(&self, sharing: &Sharing) -> Result<Vec<PublicListing>, MarketError> {
         let now = now_secs();
         let state = self.state.lock().await;
-        state
+        let mode = Self::mode_of(&state)?;
+        Ok(state
             .listings
             .values()
             .filter(|l| l.active && state.sellers.get(&l.seller).is_some_and(|s| s.ready))
@@ -1066,6 +1228,7 @@ impl Market {
             .filter_map(|l| {
                 let left = available(&state, l, now);
                 (left > 0).then(|| PublicListing {
+                    mode,
                     id: l.id.clone(),
                     kind: l.kind,
                     unit: l.kind.unit(),
@@ -1074,7 +1237,7 @@ impl Market {
                     available: left,
                 })
             })
-            .collect()
+            .collect())
     }
 
     /// Start (or resume) Stripe Connect onboarding for `id`.
@@ -1091,7 +1254,10 @@ impl Market {
             return Err(MarketError::Invalid("box_uuid is not a canonical UUID"));
         }
         let stripe = self.stripe();
-        let existing = self.state.lock().await.sellers.get(id).cloned();
+        let (mode, existing) = {
+            let state = self.state.lock().await;
+            (Self::mode_of(&state)?, state.sellers.get(id).cloned())
+        };
         let account_id = match existing {
             Some(seller) => {
                 if let Some(uuid) = box_uuid {
@@ -1105,6 +1271,7 @@ impl Market {
                     // have been missed.
                     self.set_ready(id, true).await?;
                     return Ok(OnboardView {
+                        mode,
                         ready: true,
                         url: None,
                     });
@@ -1112,8 +1279,15 @@ impl Market {
                 seller.account_id
             }
             None => {
-                let account_id = stripe.create_account(id, box_uuid).await?;
+                let (account_id, made_in) = stripe.create_account(id, box_uuid).await?;
                 let mut state = self.state.lock().await;
+                // The gate was restarted on a key of the other mode while
+                // the account was being made: it belongs in the other ledger.
+                if state.mode != Some(made_in) || made_in != mode {
+                    return Err(MarketError::Conflict(
+                        "the edge's Stripe mode changed; try again",
+                    ));
+                }
                 let mut next = state.clone();
                 next.sellers.insert(
                     id.to_string(),
@@ -1131,6 +1305,7 @@ impl Market {
             .account_link(&account_id, &self.opts.return_url)
             .await?;
         Ok(OnboardView {
+            mode,
             ready: false,
             url: Some(url),
         })
@@ -1288,7 +1463,7 @@ impl Market {
         let catalogue = self.hardware()?;
         let amount = total(&catalogue.price(&lines).map_err(MarketError::Invalid)?);
         let order_id = random_id("hw")?;
-        let (_, checkout_url) = self
+        let (_, checkout_url, mode) = self
             .stripe()
             .hardware_checkout(HardwareRequest {
                 order_id: order_id.clone(),
@@ -1304,6 +1479,7 @@ impl Market {
             catalogue.currency,
         );
         Ok(HardwareCheckoutView {
+            mode,
             order_id,
             checkout_url,
             amount,
@@ -1319,8 +1495,9 @@ impl Market {
     ) -> Result<CheckoutView, MarketError> {
         let stripe = self.stripe();
         let now = now_secs();
-        let (order, destination) = {
+        let (order, destination, mode) = {
             let mut state = self.state.lock().await;
+            let mode = Self::mode_of(&state)?;
             let listing = state
                 .listings
                 .get(&new.listing_id)
@@ -1382,7 +1559,7 @@ impl Market {
             expire_stale(&mut next, now);
             next.orders.insert(order.id.clone(), order.clone());
             self.commit(&mut state, next).await?;
-            (order, seller.account_id)
+            (order, seller.account_id, mode)
         };
 
         let session = stripe
@@ -1399,7 +1576,24 @@ impl Market {
             })
             .await;
         let mut state = self.state.lock().await;
+        if state.mode != Some(mode) {
+            // The gate came back on a key of the other mode while the session
+            // was being made. The order sits in a ledger that is no longer
+            // read; its hold lapses there on its own.
+            return Err(MarketError::Conflict(
+                "the edge's Stripe mode changed; order again",
+            ));
+        }
         let mut next = state.clone();
+        let session = session.and_then(|(id, url, made_in)| {
+            if made_in == mode {
+                Ok((id, url))
+            } else {
+                Err(MarketError::Conflict(
+                    "the edge's Stripe mode changed; order again",
+                ))
+            }
+        });
         match session {
             Ok((session_id, url)) => {
                 if let Some(o) = next.orders.get_mut(&order.id) {
@@ -1407,6 +1601,7 @@ impl Market {
                 }
                 self.commit(&mut state, next).await?;
                 Ok(CheckoutView {
+                    mode,
                     order_id: order.id,
                     checkout_url: url,
                     amount: order.amount,
@@ -1500,10 +1695,16 @@ impl Market {
     /// Handle a Stripe webhook delivery. `signature` is the raw header.
     pub async fn webhook(&self, signature: &str, body: &[u8]) -> Result<(), MarketError> {
         // The gate holds the signing secrets, so it does the check.
-        self.stripe().verify_webhook(signature, body).await?;
+        // It also refuses an event from the other mode, so `mode` is the
+        // event's own when it says one.
+        let mode = self.stripe().verify_webhook(signature, body).await?;
         let event: Value = serde_json::from_slice(body)
             .map_err(|_| MarketError::Invalid("webhook body is not JSON"))?;
+        self.use_mode(mode).await?;
         let mut state = self.state.lock().await;
+        if state.mode != Some(mode) {
+            return Err(MarketError::Conflict("the edge's Stripe mode changed"));
+        }
         let mut next = state.clone();
         if apply_event(&mut next, &event, now_secs()) {
             self.commit(&mut state, next).await?;
@@ -1923,6 +2124,7 @@ mod tests {
         })
         .await
         .unwrap();
+        market.use_mode(StripeMode::Live).await.unwrap();
         // Every write now fails: the directory it renames into is gone.
         std::fs::remove_dir_all(&dir).unwrap();
 
@@ -1930,7 +2132,105 @@ mod tests {
         assert!(market.set_ready("s", true).await.is_err());
         assert!(market.mark_claimed("p", "market-b", "p").await.is_err());
         assert!(market.mark_provisioned("p", "market-b", "p").await.is_err());
-        assert_eq!(*market.state.lock().await, st);
+        st.mode = Some(StripeMode::Live);
+        assert_eq!(market.state.lock().await.state, st);
+    }
+
+    fn opts_at(file: &Path) -> MarketOpts {
+        MarketOpts {
+            state_file: file.to_string_lossy().into_owned(),
+            gate_socket: "/nonexistent".into(),
+            return_url: "https://example.test/market".into(),
+            currency: "eur".into(),
+            fee_bps: DEFAULT_FEE_BPS,
+            storage_class: DEFAULT_STORAGE_CLASS.into(),
+            hardware_catalogue: None,
+        }
+    }
+
+    #[test]
+    fn each_mode_has_its_own_ledger_file() {
+        let file = Path::new("/var/lib/losos-registrar/market.json");
+        assert_eq!(ledger_path(file, StripeMode::Live), file);
+        assert_eq!(
+            ledger_path(file, StripeMode::Test),
+            Path::new("/var/lib/losos-registrar/market-test.json")
+        );
+        assert_eq!(
+            ledger_path(Path::new("/m/market"), StripeMode::Test),
+            Path::new("/m/market-test")
+        );
+    }
+
+    /// Nothing is written before the gate has said which mode its key is in,
+    /// so a write can never land in the wrong ledger.
+    #[tokio::test]
+    async fn nothing_is_written_before_the_mode_is_known() {
+        let dir = std::env::temp_dir().join(format!("market-nomode-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("market.json");
+        let market = Market::open(opts_at(&file)).await.unwrap();
+        assert_eq!(market.mode().await, None);
+        assert!(matches!(
+            market.expire_stale().await,
+            Ok(ref v) if v.is_empty()
+        ));
+        assert!(matches!(
+            market.browse(&Sharing::default()).await,
+            Err(MarketError::Unconfigured)
+        ));
+        assert!(!file.exists());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// Going live opens the live ledger and leaves the test one on disk;
+    /// coming back to test finds it as it was.
+    #[tokio::test]
+    async fn switching_the_mode_switches_the_ledger() {
+        let dir = std::env::temp_dir().join(format!("market-switch-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("market.json");
+        let mut test = MarketState {
+            mode: Some(StripeMode::Test),
+            ..MarketState::default()
+        };
+        test.listings.insert("lst_1".into(), listing("lst_1", true));
+        std::fs::write(
+            ledger_path(&file, StripeMode::Test),
+            serde_json::to_vec(&test).unwrap(),
+        )
+        .unwrap();
+        let market = Market::open(opts_at(&file)).await.unwrap();
+
+        market.use_mode(StripeMode::Test).await.unwrap();
+        assert_eq!(market.mode().await, Some(StripeMode::Test));
+        assert!(market.state.lock().await.listings.contains_key("lst_1"));
+
+        market.use_mode(StripeMode::Live).await.unwrap();
+        assert_eq!(market.mode().await, Some(StripeMode::Live));
+        assert!(market.state.lock().await.listings.is_empty());
+
+        market.use_mode(StripeMode::Test).await.unwrap();
+        assert!(market.state.lock().await.listings.contains_key("lst_1"));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// A ledger stamped with the other mode is a mix-up, not an empty market.
+    #[tokio::test]
+    async fn a_ledger_of_the_other_mode_is_refused() {
+        let dir = std::env::temp_dir().join(format!("market-stamp-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("market.json");
+        let test = MarketState {
+            mode: Some(StripeMode::Test),
+            ..MarketState::default()
+        };
+        std::fs::write(&file, serde_json::to_vec(&test).unwrap()).unwrap();
+        assert!(matches!(
+            Market::open(opts_at(&file)).await,
+            Err(MarketError::Store(_))
+        ));
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

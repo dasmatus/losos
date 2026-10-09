@@ -213,6 +213,69 @@ Start in Stripe **test mode**. The edge has only been tested against a
 stand-in for Stripe. That checks what the edge sends and how it reacts, but
 cannot say whether Stripe accepts it. The first test-mode run settles that.
 
+Steps 2 and 3 can also come from GitHub Actions secrets instead of a shell on
+the edge; see [Keys from GitHub Actions](#keys-from-github-actions).
+
+### Test mode and live mode
+
+The edge reads the mode off the key. `sk_test_` and `rk_test_` keys run the
+market in test mode, `sk_live_` and `rk_live_` keys in live mode, and there is
+no separate setting that could disagree with the key. The gate logs the mode
+when it starts and refuses to start on a key whose mode it cannot read. Every
+market answer (`/market/listings`, `/market/account`, onboarding and
+checkout) carries `"mode": "test"` or `"mode": "live"`.
+
+Each mode keeps its own ledger: `market.json` for live and `market-test.json`
+beside it for test. Going live is sealing a live key and restarting the gate.
+The test sellers, listings and orders stay in the test ledger, the live shelf
+starts empty, and each seller onboards again with a live Stripe account. A
+test key brings the test ledger back as it was. The edge reads a `market.json`
+written before it kept the two apart as the live ledger. Volumes claimed by
+test orders stay on the mesh until the operator removes them.
+
+Webhook secrets carry no mode, but every Stripe event does (`livemode`). A
+signed event from the other mode means the sealed webhook secret and key come
+from different modes, so the gate refuses it and logs which is which. Stripe
+retries a refused event for three days, so sealing the matching pair within
+that time loses nothing.
+
+### Keys from GitHub Actions
+
+The `edge-credentials` workflow (`.github/workflows/edge-credentials.yml`)
+seals the keys from the repository's Actions secrets, so no one pastes them
+on the edge.
+
+1. Make an SSH key for the workflow
+   (`ssh-keygen -t ed25519 -N "" -f edge-credentials`) and set
+   `losos.edge.credentials.deployKey` to its public half. The edge lets that
+   key in as root only to run `losos-seal-credential`: no shell, no
+   forwarding, no terminal.
+2. Add the Actions secrets:
+
+   | Secret                  | Holds                                                   |
+   | ----------------------- | ------------------------------------------------------- |
+   | `STIRPE_KEY`            | the Stripe secret or restricted key, test or live       |
+   | `STRIPE_WEBHOOK_SECRET` | optional: both `whsec_` secrets, one per line           |
+   | `CLAUDE_KEY`            | the Claude API key (`sk-ant-...`)                       |
+   | `EDGE_SSH_KEY`          | the private half of the key from step 1                 |
+   | `EDGE_SSH_HOST`         | the edge's address (a secret or a variable)             |
+   | `EDGE_SSH_KNOWN_HOSTS`  | the edge's line from `ssh-keyscan` (secret or variable) |
+   | `EDGE_SSH_PORT`         | optional, 22 when unset                                 |
+
+3. Run **edge-credentials** on `main` from the Actions tab. It prints whether
+   the Stripe key is a test or a live key, never the key itself, and pipes
+   each secret that is set into `losos-seal-credential`. That checks the
+   secret's shape, seals it with `systemd-creds` under its credential name
+   and restarts the gate. Rotating a key is changing the secret and running
+   the workflow again.
+
+The Claude key is sealed as `claude-api-key` to
+`/var/secrets/losos-claude-api-key.cred`
+(`losos.edge.credentials.secrets.claude-api-key.sealed`). A unit reads it
+with `LoadCredentialEncrypted=claude-api-key:<that path>` and adds itself to
+`losos.edge.credentials.secrets.claude-api-key.units`, so a new key restarts
+it.
+
 ## Safety properties
 
 - The webhook is authenticated by Stripe's HMAC signature over the raw body,
