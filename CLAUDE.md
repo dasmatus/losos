@@ -10,8 +10,9 @@ owner, spare disk and CPU lent to a mesh, no SSH and no shell. The owner
 reaches it only through web UIs and one admin endpoint, so a bad nightly
 upgrade has no one to notice it. Docs live in the handbook, `handbook/`,
 published to losos.dasmat.us on push to `main` and served by every box at
-`/handbook/`; its In depth chapter (`handbook/docs/in-depth/architecture.md`,
-`development.md`) carries the long form of what this file compresses.
+`/handbook/`. Its In depth chapter (`handbook/docs/in-depth/architecture.md`)
+and the developer notes kept out of it (`docs/development.md`,
+`docs/ci-and-releases.md`) carry the long form of what this file compresses.
 
 ## Commands
 

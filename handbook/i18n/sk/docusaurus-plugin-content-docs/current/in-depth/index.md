@@ -45,9 +45,6 @@ oddiele `/persist`.
   ktoré ho nemá.
 - [Bezpečnostný model](/reference/security-model.md). Čo je a čo nie je chránené.
 - [Architektúra](/in-depth/architecture.md). Ako do seba jednotlivé časti zapadajú.
-- [Vývoj](/in-depth/development.md). Vývojový shell, testy, lock súbory.
-- [CI a vydania](/in-depth/ci-and-releases.md). CI joby, inštalačné médiá vydaní,
-  binárna cache.
 
 ## Porovnanie s alternatívami
 

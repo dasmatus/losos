@@ -174,8 +174,7 @@ To use it next to virt-manager on your own PC:
 
 1. Install libvirt and QEMU (on most distributions, the packages virt-manager
    already pulled in) and the `losos-registrar` binary
-   (`nix build .#losos-registrar`, or the static one the runbook in
-   `provisioning/edge-identity/README.md` downloads).
+   (`nix build .#losos-registrar`).
 2. Put the guest images in a folder named `guest`: `bzImage`, `rootfs.bin`
    and, for routers, switches and access points, `gear.bin`.
    `admin-ui/lab/engine/build.sh` makes all three, and the hosted Lab serves

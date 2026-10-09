@@ -9,8 +9,8 @@ Most of this handbook is for owners. Building, testing and changing LosOS
 is covered in two places:
 
 - the [In depth](/in-depth/index.md) chapter: Install in depth,
-  Administration, Mesh, Market, Master proxy, Edge federation, Lab,
-  Hardening, Architecture, Development, CI and releases;
+  Administration, Mesh, Market, Virtual machines, Master proxy, Edge
+  federation, Lab, Hardening, Architecture;
 - [`CLAUDE.md`](https://github.com/dasmatus/losos/blob/main/CLAUDE.md) in the
   repository: the build commands, the cross-file architecture and the list of
   mistakes that are easy to make again.

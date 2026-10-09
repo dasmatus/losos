@@ -138,78 +138,21 @@ Overenie je identita Ed25519:
   "noOfficialEdge"}` a každú akciu odmietne s 409
   `officialEdgeRequired`. Nič neopustí zariadenie.
 
-Vlastník vykoná ceremóniu kľúčov **na vlastnom stroji** binárkou
-registrara. Každý krok, ktorý vytvára alebo používa koreňový kľúč, najprv
-prihlási vlastníka cez GitHub:
-
-```sh
-# once: the root. Keep root.key offline. --publish opens the pull request
-# that writes the public key into keys/official-edge-root.pub.
-losos-registrar provision root-keygen --out root.key --publish
-
-# per edge: the edge's own public key read from GET /identity/public-key,
-# a certificate signed by the root for the URL boxes will probe, pushed to
-# POST /identity/cert with the sign-in's GitHub token, and the box's four
-# checks run against the result. No SSH.
-losos-registrar provision edge --name "LosOS edge Berlin" \
-  --url https://register.losos.cfd --root-key root.key --days 365
-
-# any time: the checks alone.
-losos-registrar provision verify --url https://register.losos.cfd --root-key root.key
-```
-
-Na edge netreba nič robiť ručne. Registrar si pri prvom spustení vytvorí
-svoj kľúč identity (`losos.edge.identity.keyFile`, predvolene
+Edge si pri prvom spustení vytvorí vlastný kľúč identity
+(`losos.edge.identity.keyFile`, predvolene
 `/var/lib/losos-registrar/identity.key`) a súkromná polovica nikdy neopustí
-edge. Odoslaný certifikát zapíše vedľa neho
-(`losos.edge.identity.certFile`).
-
-`POST /identity/cert` je jediná trasa, ktorá overuje účet GitHub a nie token
-zariadenia. Edge sa spýta GitHubu, čí token dostal, a certifikát nainštaluje
-iba vtedy, ak je číselné id tohto účtu na zozname povolených operátorov
-zakompilovanom v binárke, na tom istom zozname, ktorý nástroj skontroloval
-pred odoslaním. Certifikát pre iný kľúč edge odmietne ešte predtým, než sa
-spýta GitHubu, odoslania prijíma po jednom a pri odmietnutí nezapíše nič.
-Kým certifikát nepríde, edge odpovedá na `/identity` kódom 404 a nie je
+edge. Pre oficiálny edge podpíše LosOS koreňom certifikát a nainštaluje ho
+tam; edge ho zapíše vedľa kľúča (`losos.edge.identity.certFile`). Kým
+certifikát nepríde, edge odpovedá na `/identity` kódom 404 a nie je
 oficiálny. Tak vyzerá vlastný edge firmy, vrátane toho, ktorý spúšťa
 `demo/edge-lan/`. Edge s oboma voľbami nastavenými na `null` neposkytuje
-žiadnu identitu. Testy si pri zostavení vytvoria vlastný koreň pomocou
-nízkoúrovňových príkazov za `provision`, `losos-registrar identity
-keygen|sign|show|verify`.
-
-### Kto smie vykonať ceremóniu
-
-`provision` nesie verejné client id GitHub OAuth App projektu a zoznam
-povolených účtov GitHub, oboje zakompilované do binárky z
-`backend-registrar/operators.json`. Každý chránený príkaz vypíše jednorazový
-kód, operátor ho zadá na github.com/login/device a GitHub odovzdá nástroju
-token pre ten účet. Nástroj sa spýta GitHubu, kto to je, a porovná *číselné
-id* účtu so zoznamom, pretože loginy sa dajú premenovať a id nie. Ktokoľvek
-iný je odmietnutý skôr, než sa čokoľvek vytvorí alebo podpíše (exit
-3). Nie je v tom žiadne tajomstvo. Device flow nepotrebuje client secret a
-nástroj si neukladá žiadny token. `LOSOS_GITHUB_TOKEN` (napríklad `gh auth
-token`) preskočí prehliadač a prejde tou istou kontrolou. Zmena toho, kto má
-povolenie, je pull request proti tomuto súboru, posudzovaný rovnako ako
-samotný kľúč.
-
-Zoznam povolených rozhoduje, komu nástroje slúžia, a z každého podpísania
-robí menovitý úkon. Edge pri odoslaní kontroluje ten istý zoznam, takže
-rozhoduje aj o tom, kto môže zmeniť, čo edge poskytuje. Koreňový kľúč je
-stále celé tajomstvo. Ktokoľvek, kto má `root.key`, by mohol podpisovať
-ľubovoľným nástrojom Ed25519, ale výsledok by na edge nenainštaloval bez
-účtu zo zoznamu. Kroky operátora vrátane vytvorenia OAuth App sú v
-[provisioning/edge-identity/README.md](https://github.com/dasmatus/losos/blob/main/provisioning/edge-identity/README.md).
-
-Na zariadení nie je žiadny runner Forgejo Actions a Actions sú v LosOS Git
-vypnuté. Ceremónia bývala dvoma workflowmi tam. To dávalo koreňový kľúč do
-`/var` zariadenia, kde sa pri preinštalovaní stratil, a umožňovalo
-ľubovoľnému účtu LosOS Git spúšťať kód na zariadení.
+žiadnu identitu.
 
 Čo to chráni: firma, ktorá prevádzkuje vlastný edge, dostane funkčné
 nasadenie on-premises, ale nemôže cez neho zúčtovávať obchody. Cudzí, kto
 postaví edge, tiež nemôže prinútiť zariadenia obchodovať cez neho, pretože edge
 robí oficiálnym iba súkromný kľúč koreňa. Čo to nechráni: protokol trhu nie
-je skrytý a súkromný kľúč vlastníka je celé tajomstvo. Jeho strata znamená
+je skrytý a súkromný kľúč koreňa je celé tajomstvo. Jeho strata znamená
 vydať release, ktorý vymení kotvu dôvery každého zariadenia.
 
 ## DNS zóna a vlastné domény

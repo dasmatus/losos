@@ -65,8 +65,8 @@ docs/                    security model, design specs and plans
 handbook/                this handbook (Docusaurus)
 ```
 
-`CLAUDE.md` ist die komprimierte Fassung dieser Seite und der Stolperfallen
-unter [Entwicklung](/in-depth/development.md#fallstricke-die-lautlos-zubeißen).
+`CLAUDE.md` im Repository ist die komprimierte Fassung dieser Seite und
+listet die Fallstricke, die lautlos zubeißen.
 
 ## Im Detail
 
@@ -308,9 +308,8 @@ Dateien aus `core/img/` über den absoluten Pfad, deshalb überschreibt
 `admin-ui/themes/default.nix` sind reine Daten, die alle drei Aufrufer
 importieren, aus demselben Grund wie bei `nextcloud-stack.nix`. Die
 Workload-Pods nutzen `hostNetwork`, da der lokale Cluster kein CNI hat, und
-antworten daher auf Loopback. Was das kostet, erklärt die
-[Stolperfalle](/in-depth/development.md#fallstricke-die-lautlos-zubeißen) zum
-`lanOnly`-Wächter.
+antworten daher auf Loopback. Was das kostet, erklärt die Stolperfalle zum
+`lanOnly`-Wächter in `CLAUDE.md`.
 
 **Der Vercel-Demo-Host** (`edge-vercel/`). Ein drittes Rust-Crate außerhalb
 des Flakes, das den Router des Registrars als eine Vercel Function ausführt.

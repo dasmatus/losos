@@ -1,10 +1,3 @@
----
-title: Development
-sidebar_position: 10
-mdx:
-  format: md
----
-
 # Development
 
 ## Shell
@@ -125,10 +118,12 @@ say so when they did not run.
 
 ## Handbook
 
-These pages are part of the handbook, `handbook/` in the repository.
-[For developers](../reference/for-developers.md) says how to preview and
-build it, take its pictures and translate a page. Every push to `main`
-publishes it, and every box builds its own copy.
+The handbook is `handbook/` in the repository.
+[For developers](../handbook/docs/reference/for-developers.md) says how to
+preview and build it, take its pictures and translate a page. Every push to
+`main` publishes it, and every box builds its own copy. This page and
+[CI and releases](ci-and-releases.md) stay out of it: they are notes for
+the people working on LosOS, not for owners.
 
 ## Gotchas that bite silently
 
@@ -288,7 +283,7 @@ this is the reasoning behind it.
   hoist `now` back out of the per-node loop in `modules/edge.nix`. It is per
   node because the zone is.
 - **The market is the registrar's third opt-in.** `/market/*` (Stripe
-  Connect, `backend-registrar/src/market.rs`, [Market](market.md)) answers 503
+  Connect, `backend-registrar/src/market.rs`, [Market](../handbook/docs/in-depth/market.md)) answers 503
   unless `losos.edge.market.enable` is set, and 403 unless
   `losos.edge.tenants.<id>.market` is. `modules/edge.nix`'s `tenantsJson`
   hardcodes its attributes, so the `market` key must stay listed there, or

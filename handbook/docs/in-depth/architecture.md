@@ -63,8 +63,8 @@ docs/                    security model, design specs and plans
 handbook/                this handbook (Docusaurus)
 ```
 
-`CLAUDE.md` is the compressed form of this page and of the gotchas in
-[Development](development.md#gotchas-that-bite-silently).
+`CLAUDE.md` in the repository is the compressed form of this page, and it
+lists the gotchas that bite silently.
 
 ## In depth
 
@@ -282,8 +282,8 @@ package. That is why the image sets `integrity.check.disabled`, as
 `services.nextcloud` already does. `admin-ui/themes/default.nix` is plain
 data that all three callers import, for the same reason `nextcloud-stack.nix`
 is. The workload pods use `hostNetwork`, since the local cluster runs no CNI,
-so they answer on loopback. The [gotcha](development.md#gotchas-that-bite-silently)
-about the `lanOnly` guard explains what that costs.
+so they answer on loopback. The gotcha in `CLAUDE.md` about the `lanOnly`
+guard explains what that costs.
 
 **The Vercel demo host** (`edge-vercel/`). A third Rust crate, outside the
 flake, that runs the registrar's router as one Vercel Function. The registry

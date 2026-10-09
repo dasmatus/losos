@@ -363,7 +363,7 @@ images
   # statically against musl and depends on nothing; CI publishes it to GHCR as
   # `images:<channel>-x86_64` and the LosOS proxy serves it at
   # `/updates/<channel>/x86_64/losos-registrar` (see
-  # handbook/docs/in-depth/ci-and-releases.md). Plain rustPlatform of pkgsStatic
+  # docs/ci-and-releases.md). Plain rustPlatform of pkgsStatic
   # rather than fast-build.nix's: the mold and ccache stdenv is composed for the
   # native glibc toolchain, and the minutes it saves are not worth a second
   # composition for one cross build. The crate is pure Rust (rustls, ring), so

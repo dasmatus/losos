@@ -52,8 +52,6 @@ jobs:
             [TPM]=reference/tpm
             [Security-Model]=reference/security-model
             [Architecture]=in-depth/architecture
-            [Development]=in-depth/development
-            [CI-and-Releases]=in-depth/ci-and-releases
           )
           out="$RUNNER_TEMP/stubs"
           mkdir -p "$out"

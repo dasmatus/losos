@@ -1,10 +1,3 @@
----
-title: CI and releases
-sidebar_position: 11
-mdx:
-  format: md
----
-
 # CI and releases
 
 CI is `.github/workflows/ci.yml`. It runs the same commands as the devenv
@@ -143,7 +136,7 @@ source must be "GitHub Actions" (Settings, Pages), as for the handbook.
 
 ## The dev-machine tool
 
-The key ceremony ([Master proxy, Official edges](master-proxy.md#official-edges))
+The key ceremony ([edge-identity runbook](../provisioning/edge-identity/README.md))
 runs `losos-registrar provision` on the operator's own computer, which has no
 Nix store. `.#losos-registrar-static` is the same crate linked statically
 against musl. The `registrar-and-ui` job builds it and the `publish-tool` job

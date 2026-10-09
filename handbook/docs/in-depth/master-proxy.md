@@ -136,77 +136,21 @@ The check is an Ed25519 identity:
   "noOfficialEdge"}` and refuses every action with 409
   `officialEdgeRequired`. Nothing leaves the box.
 
-The owner runs the key ceremony **on a machine of their own** with the
-registrar binary. Every step that makes or uses the root key first signs the
-owner in with GitHub:
-
-```sh
-# once: the root. Keep root.key offline. --publish opens the pull request
-# that writes the public key into keys/official-edge-root.pub.
-losos-registrar provision root-keygen --out root.key --publish
-
-# per edge: the edge's own public key read from GET /identity/public-key,
-# a certificate signed by the root for the URL boxes will probe, pushed to
-# POST /identity/cert with the sign-in's GitHub token, and the box's four
-# checks run against the result. No SSH.
-losos-registrar provision edge --name "LosOS edge Berlin" \
-  --url https://register.losos.cfd --root-key root.key --days 365
-
-# any time: the checks alone.
-losos-registrar provision verify --url https://register.losos.cfd --root-key root.key
-```
-
-The edge needs nothing done by hand. The registrar makes its identity key on
-its first start (`losos.edge.identity.keyFile`, default
+An edge makes its own identity key on its first start
+(`losos.edge.identity.keyFile`, default
 `/var/lib/losos-registrar/identity.key`), and the private half never leaves
-the edge. It writes the pushed certificate beside it
-(`losos.edge.identity.certFile`).
-
-`POST /identity/cert` is the one route that authenticates a GitHub account
-rather than an appliance token. The edge asks GitHub whose token it was
-handed and installs the certificate only if that account's numeric id is on
-the operator allowlist compiled into the binary, the same list the tool
-checked before pushing. The edge refuses a certificate for another key before
-it asks GitHub, takes pushes one at a time, and writes nothing on a refusal.
-Until a certificate arrives, the edge answers `/identity` with 404 and is not
-official. A company's own edge looks like that, including the one
-`demo/edge-lan/` boots. An edge with both options set to `null` serves no
-identity at all. The tests build a root of their own at build time with the
-lower-level commands behind `provision`, `losos-registrar identity
-keygen|sign|show|verify`.
-
-### Who may run the ceremony
-
-`provision` carries the public client id of the project's GitHub OAuth App
-and an allowlist of GitHub accounts, both compiled into the binary from
-`backend-registrar/operators.json`. Each gated command prints a one-time
-code, the operator enters it at github.com/login/device, and GitHub hands the
-tool a token for that account. The tool asks GitHub who that is and compares
-the account's *numeric id* with the list, because logins can be renamed and
-ids cannot. Anyone else is refused before anything is made or signed (exit
-3). There is no secret involved. The device flow needs no client secret, and
-the tool stores no token. `LOSOS_GITHUB_TOKEN` (for example `gh auth token`)
-skips the browser and goes through the same check. Changing who is allowed is
-a pull request against that file, reviewed like the key itself.
-
-The allowlist decides whom the tooling serves and makes each signing a named
-act. The edge checks the same list on the push, so it also decides who can
-change what an edge serves. The root key is still the whole secret. Anyone
-holding `root.key` could sign with any Ed25519 tool, but could not install
-the result on an edge without a listed account. The operator steps, including
-creating the OAuth App, are in
-[provisioning/edge-identity/README.md](https://github.com/dasmatus/losos/blob/main/provisioning/edge-identity/README.md).
-
-There is no Forgejo Actions runner on the box, and Actions is off in LosOS
-Git. The ceremony used to be two workflows there. That put the root key
-inside the appliance's `/var`, where a reinstall lost it, and let any LosOS
-Git account run code on the box.
+the edge. For an official edge, LosOS signs a certificate with the root and
+installs it there; the edge writes it beside the key
+(`losos.edge.identity.certFile`). Until a certificate arrives, the edge
+answers `/identity` with 404 and is not official. A company's own edge looks
+like that, including the one `demo/edge-lan/` boots. An edge with both
+options set to `null` serves no identity at all.
 
 What this protects: a company that runs its own edge gets a working
 on-premises deployment but cannot settle trades through it. A stranger who
 stands up an edge cannot make boxes trade through it either, because only the
 root's private key makes an edge official. What it does not protect: the
-market protocol is not hidden, and the owner's private key is the whole
+market protocol is not hidden, and the root's private key is the whole
 secret. Losing it means shipping a release that re-keys every box's trust
 anchor.
 

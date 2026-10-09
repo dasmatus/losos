@@ -42,8 +42,6 @@ directories listed in `modules/impermanence.nix` survive, on an encrypted
   one gives up.
 - [Security model](../reference/security-model.md). What is and is not defended.
 - [Architecture](architecture.md). How the pieces fit together.
-- [Development](development.md). The dev shell, tests, lock files.
-- [CI and releases](ci-and-releases.md). CI jobs, release media, the binary cache.
 
 ## Compared with alternatives
 

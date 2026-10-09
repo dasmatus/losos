@@ -193,8 +193,7 @@ So nutzt du ihn neben virt-manager auf deinem eigenen PC:
 
 1. Installiere libvirt und QEMU (auf den meisten Distributionen die
    Pakete, die virt-manager bereits mitgebracht hat) und das Binary
-   `losos-registrar` (`nix build .#losos-registrar`, oder das statische, das
-   das Runbook in `provisioning/edge-identity/README.md` herunterlädt).
+   `losos-registrar` (`nix build .#losos-registrar`).
 2. Leg die Gast-Images in einen Ordner namens `guest`: `bzImage`,
    `rootfs.bin` und, für Router, Switches und Access Points, `gear.bin`.
    `admin-ui/lab/engine/build.sh` erzeugt alle drei, und das gehostete Lab

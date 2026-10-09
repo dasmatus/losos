@@ -179,8 +179,7 @@ Ako ho použiť vedľa virt-managera na vlastnom PC:
 
 1. Nainštalujte libvirt a QEMU (na väčšine distribúcií balíky, ktoré už
    stiahol virt-manager) a binárku `losos-registrar`
-   (`nix build .#losos-registrar`, alebo statickú, ktorú stiahne runbook v
-   `provisioning/edge-identity/README.md`).
+   (`nix build .#losos-registrar`).
 2. Dajte obrazy hostov do priečinka s názvom `guest`: `bzImage`,
    `rootfs.bin` a pre routery, switche a prístupové body `gear.bin`.
    `admin-ui/lab/engine/build.sh` vyrobí všetky tri a hostovaný Lab ich

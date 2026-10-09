@@ -3,7 +3,7 @@
 Gate results on commit `31dbd1e`, before the hardening pass. This is a
 historical record: several things below have changed since (`doCheck` is now
 off, tahoe-lafs is gone, linting runs in CI). Current commands are in the
-[Development](https://losos.dasmat.us/in-depth/development) page of the handbook.
+[development notes](development.md).
 
 Measured with Nix 2.35.2, single-user store, 16 threads, `/dev/kvm` available.
 

@@ -49,7 +49,7 @@ devenv test         # check-pins, lint, rust tests, flake eval
 devenv shell vm-tests
 ```
 
-See [Development](https://losos.dasmat.us/in-depth/development) and
+See [docs/development.md](docs/development.md) and
 `CLAUDE.md` for architecture notes and known pitfalls.
 
 ## Licence

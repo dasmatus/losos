@@ -65,8 +65,8 @@ docs/                    security model, design specs and plans
 handbook/                this handbook (Docusaurus)
 ```
 
-`CLAUDE.md` je skomprimovaná podoba tejto stránky a záludností zo stránky
-[Vývoj](/in-depth/development.md#nástrahy-ktoré-hryznú-potichu).
+`CLAUDE.md` v repozitári je skomprimovaná podoba tejto stránky a vymenúva
+záludnosti, ktoré hryznú potichu.
 
 ## Do hĺbky
 
@@ -290,8 +290,8 @@ prepíše. Preto obraz nastavuje `integrity.check.disabled`, rovnako ako to už
 robí `services.nextcloud`. `admin-ui/themes/default.nix` sú čisté dáta, ktoré
 importujú všetci traja volajúci, z rovnakého dôvodu ako `nextcloud-stack.nix`.
 Pody záťaží používajú `hostNetwork`, keďže lokálny klaster nemá žiadne CNI,
-takže odpovedajú na loopbacku. Čo to stojí, vysvetľuje
-[záludnosť](/in-depth/development.md#nástrahy-ktoré-hryznú-potichu) o strážcovi `lanOnly`.
+takže odpovedajú na loopbacku. Čo to stojí, vysvetľuje záludnosť o strážcovi
+`lanOnly` v `CLAUDE.md`.
 
 **Demo hostiteľ na Verceli** (`edge-vercel/`). Tretí Rust crate, mimo
 flaku, ktorý spúšťa router registrátora ako jednu Vercel Function. Register je

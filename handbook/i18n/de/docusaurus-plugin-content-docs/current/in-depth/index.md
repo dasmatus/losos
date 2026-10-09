@@ -46,9 +46,6 @@ erhalten, und zwar auf einer verschlüsselten Partition `/persist`.
 - [Sicherheitsmodell](/reference/security-model.md). Wogegen geschützt wird und wogegen
   nicht.
 - [Architektur](/in-depth/architecture.md). Wie die Teile zusammenspielen.
-- [Entwicklung](/in-depth/development.md). Die Dev-Shell, Tests, Lock-Dateien.
-- [CI und Releases](/in-depth/ci-and-releases.md). CI-Jobs, Release-Medien, der
-  Binary-Cache.
 
 ## Im Vergleich mit Alternativen
 

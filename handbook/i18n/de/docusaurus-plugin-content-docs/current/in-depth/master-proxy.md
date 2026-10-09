@@ -152,84 +152,23 @@ Die Prüfung ist eine Ed25519-Identität:
   "noOfficialEdge"}` und lehnt jede Aktion mit 409
   `officialEdgeRequired` ab. Nichts verlässt die Box.
 
-Der Inhaber führt die Schlüsselzeremonie **auf einem eigenen Rechner** mit dem
-Registrar-Binary durch. Jeder Schritt, der den Root-Schlüssel erzeugt oder
-verwendet, meldet den Inhaber zuerst bei GitHub an:
-
-```sh
-# once: the root. Keep root.key offline. --publish opens the pull request
-# that writes the public key into keys/official-edge-root.pub.
-losos-registrar provision root-keygen --out root.key --publish
-
-# per edge: the edge's own public key read from GET /identity/public-key,
-# a certificate signed by the root for the URL boxes will probe, pushed to
-# POST /identity/cert with the sign-in's GitHub token, and the box's four
-# checks run against the result. No SSH.
-losos-registrar provision edge --name "LosOS edge Berlin" \
-  --url https://register.losos.cfd --root-key root.key --days 365
-
-# any time: the checks alone.
-losos-registrar provision verify --url https://register.losos.cfd --root-key root.key
-```
-
-Auf der Edge ist nichts von Hand zu tun. Der Registrar erzeugt seinen
-Identitätsschlüssel beim ersten Start (`losos.edge.identity.keyFile`,
-Standard `/var/lib/losos-registrar/identity.key`), und die private Hälfte
-verlässt die Edge nie. Das übertragene Zertifikat schreibt er daneben
-(`losos.edge.identity.certFile`).
-
-`POST /identity/cert` ist die einzige Route, die ein GitHub-Konto statt eines
-Appliance-Tokens authentifiziert. Die Edge fragt GitHub, wessen Token sie
-erhalten hat, und installiert das Zertifikat nur, wenn die numerische ID
-dieses Kontos auf der in das Binary einkompilierten Operator-Allowlist steht,
-derselben Liste, die das Werkzeug vor dem Übertragen geprüft hat. Ein
-Zertifikat für einen anderen Schlüssel lehnt die Edge ab, bevor sie GitHub
-fragt, sie nimmt Übertragungen einzeln an und schreibt bei einer Ablehnung
-nichts. Bis ein Zertifikat eintrifft, beantwortet die Edge `/identity` mit 404
-und ist nicht offiziell. So sieht die eigene Edge einer Firma aus,
-einschließlich der, die `demo/edge-lan/` bootet. Eine Edge, bei der beide
-Optionen auf `null` stehen, stellt überhaupt keine Identität bereit. Die
-Tests bauen sich zur Build-Zeit einen eigenen Root mit den
-Low-Level-Befehlen hinter `provision`, `losos-registrar identity
-keygen|sign|show|verify`.
-
-### Wer die Zeremonie durchführen darf
-
-`provision` enthält die öffentliche Client-ID der GitHub-OAuth-App des
-Projekts und eine Allowlist von GitHub-Konten, beides aus
-`backend-registrar/operators.json` in das Binary einkompiliert. Jeder
-geschützte Befehl gibt einen Einmalcode aus, der Operator gibt ihn unter
-github.com/login/device ein, und GitHub übergibt dem Werkzeug ein Token für
-dieses Konto. Das Werkzeug fragt GitHub, wer das ist, und vergleicht die
-*numerische ID* des Kontos mit der Liste, denn Logins lassen sich umbenennen,
-IDs nicht. Alle anderen werden abgewiesen, bevor irgendetwas erzeugt oder
-signiert wird (Exit-Code 3). Es ist kein Geheimnis beteiligt. Der Device Flow
-braucht kein Client Secret, und das Werkzeug speichert kein Token.
-`LOSOS_GITHUB_TOKEN` (zum Beispiel `gh auth token`) überspringt den Browser und
-durchläuft dieselbe Prüfung. Wer berechtigt ist, ändert man per Pull Request
-gegen diese Datei, der wie der Schlüssel selbst geprüft wird.
-
-Die Allowlist entscheidet, wem das Werkzeug dient, und macht jede Signatur zu
-einem namentlich zugeordneten Akt. Die Edge prüft beim Übertragen dieselbe
-Liste, also entscheidet sie auch, wer ändern kann, was eine Edge ausliefert.
-Der Root-Schlüssel bleibt das gesamte Geheimnis. Wer `root.key` besitzt,
-könnte mit jedem Ed25519-Werkzeug signieren, das Ergebnis aber ohne ein
-gelistetes Konto auf keiner Edge installieren. Die Schritte für Operatoren,
-einschließlich des Anlegens der OAuth-App, stehen in
-[provisioning/edge-identity/README.md](https://github.com/dasmatus/losos/blob/main/provisioning/edge-identity/README.md).
-
-Auf der Box gibt es keinen Forgejo-Actions-Runner, und Actions ist in LosOS
-Git ausgeschaltet. Früher bestand die Zeremonie dort aus zwei Workflows. Das
-legte den Root-Schlüssel in das `/var` der Appliance, wo er bei einer
-Neuinstallation verloren ging, und ließ jedes LosOS-Git-Konto Code auf der Box
-ausführen.
+Die Edge erzeugt ihren Identitätsschlüssel beim ersten Start
+(`losos.edge.identity.keyFile`, Standard
+`/var/lib/losos-registrar/identity.key`), und die private Hälfte verlässt die
+Edge nie. Für eine offizielle Edge signiert LosOS mit dem Root ein Zertifikat
+und installiert es dort; die Edge schreibt es neben den Schlüssel
+(`losos.edge.identity.certFile`). Bis ein Zertifikat eintrifft, beantwortet
+die Edge `/identity` mit 404 und ist nicht offiziell. So sieht die eigene Edge
+einer Firma aus, einschließlich der, die `demo/edge-lan/` bootet. Eine Edge,
+bei der beide Optionen auf `null` stehen, stellt überhaupt keine Identität
+bereit.
 
 Was das schützt: Eine Firma, die ihre eigene Edge betreibt, erhält einen
 funktionierenden On-Premises-Betrieb, kann darüber aber keine Geschäfte
 abrechnen. Ein Fremder, der eine Edge aufsetzt, kann Boxen ebenfalls nicht
 dazu bringen, darüber zu handeln, denn nur der private Schlüssel des Roots
 macht eine Edge offiziell. Was es nicht schützt: Das Marktplatz-Protokoll ist
-nicht geheim, und der private Schlüssel des Inhabers ist das gesamte
+nicht geheim, und der private Schlüssel des Roots ist das gesamte
 Geheimnis. Geht er verloren, muss ein Release ausgeliefert werden, das den
 Vertrauensanker jeder Box durch einen neuen Schlüssel ersetzt.
 
