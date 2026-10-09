@@ -12,6 +12,10 @@
 # are as useless as before but also as harmless; their help line points
 # back here instead of at a manual no one can log in to read.
 #
+# With the boot splash on (modules/splash.nix, the default) the same rows also
+# go to Plymouth, which draws them in a panel under the logo; the text banner
+# is what tty1 shows wherever Plymouth is not drawing.
+#
 # The URL is plain http:// on purpose: the self-signed certificate
 # modules/tls.nix makes is issued for `<hostName>.local`, so https://<ip> would
 # put a name-mismatch warning in front of the very first page, and :80 stays
@@ -37,6 +41,8 @@ let
   # (wiki/TPM.md has the long form). The admin pages say the same.
   noTpm = !config.losos.tpm.enable;
 
+  splash = config.losos.splash.enable;
+
   banner = pkgs.writeShellApplication {
     name = "losos-console-banner";
     runtimeInputs = [
@@ -44,7 +50,8 @@ let
       pkgs.gawk
       pkgs.gnugrep
       pkgs.iproute2
-    ];
+    ]
+    ++ lib.optional splash config.boot.plymouth.package;
     text = ''
       fqdn=${lib.escapeShellArg fqdn}
 
@@ -70,44 +77,55 @@ let
           "$style" "$pad" "" "$text" "$right" ""
       }
 
-      draw() {
-        local cols lines
-        read -r lines cols < <(stty size 2>/dev/null || echo "25 80")
-        (( cols > 0 )) || cols=80
-        (( lines > 0 )) || lines=25
-
-        local -a body=("" ${lib.escapeShellArg ready} "")
+      # The status as rows, each led by a style character: # headline,
+      # @ address, ! warning headline, ~ secondary text, a space for plain
+      # text. An empty row is a gap. The splash theme
+      # (modules/splash/losos.script) reads the same characters. Fills the
+      # caller's `body`.
+      rows() {
+        body=(${lib.escapeShellArg "#${ready}"} "")
         local ips
         ips=$(addresses)
         if [ -n "$ips" ]; then
-          body+=("On any computer on this network," "open a web browser and go to:" "")
+          body+=("~On any computer on this network," "~open a web browser and go to:" "")
           local ip
           while read -r ip; do
-            [ -n "$ip" ] && body+=("http://$ip" "")
+            [ -n "$ip" ] && body+=("@http://$ip" "")
           done <<<"$ips"
           # The name second, and qualified: a computer that does not resolve
           # mDNS (the host of a libvirt VM, for one) gets "server not found"
           # from it, and an owner who picked it over the address above had
           # no way to know the two were not equally good.
-          body+=("or, on computers that find the box by name:" "http://$fqdn" "")
+          body+=("~or, on computers that find the box by name:" "@http://$fqdn" "")
         else
           body+=(
-            "No network address yet."
-            "Plug in an Ethernet cable; this screen updates by itself."
+            " No network address yet."
+            "~Plug in an Ethernet cable; this screen updates by itself."
             ""
-            "Once connected, open a web browser and go to:"
-            "http://$fqdn"
+            "~Once connected, open a web browser and go to:"
+            "@http://$fqdn"
             ""
           )
         fi
         ${lib.optionalString noTpm ''
           body+=(
-            "This box has no TPM chip."
-            "Its disk key is on the unencrypted boot partition,"
-            "so anyone who takes the disk can read your files."
+            "!This box has no TPM chip."
+            "~Its disk key is on the unencrypted boot partition,"
+            "~so anyone who takes the disk can read your files."
             ""
           )
         ''}
+      }
+
+      draw() {
+        local cols lines
+        read -r lines cols < <(stty -F /dev/tty1 size 2>/dev/null || echo "25 80")
+        (( cols > 0 )) || cols=80
+        (( lines > 0 )) || lines=25
+
+        local -a body
+        rows
+        body=("" "''${body[@]}")
 
         # Vertically centred, and a little narrower than the screen so the
         # blue block reads as a panel rather than a background.
@@ -123,21 +141,44 @@ let
         line "" "$width"
         for text in "''${body[@]}"; do
           case $text in
-            http://*) line "$text" "$width" $'\033[1m' ;;
-            ${lib.escapeShellArg ready} | "This box has no TPM chip.") line "$text" "$width" $'\033[1m' ;;
-            *) line "$text" "$width" ;;
+            [#@!]*) line "''${text:1}" "$width" $'\033[1m' ;;
+            *) line "''${text:1}" "$width" ;;
           esac
         done
         line "" "$width"
       }
+      ${lib.optionalString splash ''
+
+        # The rows without the trailing gap, joined with | for the splash
+        # theme. Plymouth carries at most 254 bytes in one message, so a
+        # longer text (a box without a TPM chip, or with several addresses)
+        # goes in parts the theme joins: `losos+:` for each part but the
+        # last, `losos:` for the last. Sent whenever Plymouth runs. The text banner is drawn as
+        # well: under a drawing splash tty1 is in graphics mode and the text
+        # stays out of sight, and a splash that found no display in its
+        # first seconds runs in text mode, where the banner is what shows.
+        send() {
+          local -a body
+          rows
+          local IFS='|' LC_ALL=C
+          local text="''${body[*]:0:''${#body[@]}-1}"
+          while (( ''${#text} > 200 )); do
+            plymouth update --status="losos+:''${text:0:200}"
+            text=''${text:200}
+          done
+          plymouth update --status="losos:$text"
+        }
+      ''}
 
       last=
       ticks=0
       while true; do
         # Redraw when something changed, and every ~30 s regardless: a stray
-        # kernel message lands on top of the banner and nothing else removes it.
-        state="$(addresses | tr '\n' ' ')$(stty size 2>/dev/null || true)"
+        # kernel message lands on top of the banner and nothing else removes
+        # it.
+        state="$(addresses | tr '\n' ' ')$(stty -F /dev/tty1 size 2>/dev/null || true)"
         if [ "$state" != "$last" ] || (( ticks >= 10 )); then
+          ${lib.optionalString splash "plymouth --ping 2>/dev/null && send"}
           draw
           last=$state
           ticks=0
@@ -173,15 +214,19 @@ in
       ExecStart = lib.getExe banner;
       Restart = "always";
       RestartSec = 2;
-      StandardInput = "tty";
       StandardOutput = "tty";
       StandardError = "journal";
       TTYPath = "/dev/tty1";
+      UtmpIdentifier = "tty1";
+      UtmpMode = "user";
+    }
+    # Taking the terminal resets and hangs it up, which would pull it from
+    # under a running splash. Without one the banner owns tty1 outright.
+    // lib.optionalAttrs (!splash) {
+      StandardInput = "tty";
       TTYReset = true;
       TTYVHangup = true;
       TTYVTDisallocate = true;
-      UtmpIdentifier = "tty1";
-      UtmpMode = "user";
     };
   };
 }

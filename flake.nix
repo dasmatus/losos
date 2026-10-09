@@ -278,6 +278,9 @@
             # The banner on tty1 that tells whoever is standing at the box
             # which address to open in a browser.
             ./modules/console.nix
+            # The boot screen, which draws that same status under the logo
+            # and stays up after boot.
+            ./modules/splash.nix
             ./modules/services.nix
             ./modules/nextcloud-common.nix
             ./modules/containers.nix
@@ -436,9 +439,12 @@
       #                         filename a browser can act on, /setup/state.json
       #                         fingerprints the certificate that is actually on
       #                         disk, and both are LAN-only (tests/setup.nix).
-      #   losos-console       — boots one VM and asserts the address banner owns
+      #   losos-console       — boots three VMs and asserts the box's status owns
       #                         tty1 instead of getty and shows the LAN address
-      #                         and the .local name (tests/console.nix).
+      #                         and the .local name: on the boot splash, which
+      #                         stays up after boot, and as the text banner
+      #                         where the splash finds no display early and
+      #                         with the splash off (tests/console.nix).
       #   losos-forgejo-federation — boots the real Forgejo in native mode with
       #                         losos.forgejo.federation on and asks it what the
       #                         fediverse would (nodeinfo, the server actor, an

@@ -8,13 +8,14 @@ slug: /troubleshooting/stuck-at-passphrase
 
 <div className="losos-symptom">
 
-**What you see:** instead of the address banner, the screen says
-`Please enter passphrase for disk persist` (or similar) and waits. The box
+**What you see:** instead of the box's address, the panel under the salmon
+says `Please enter passphrase for disk persist` (or similar) and waits. On a
+machine that boots in text, the same line is on a black screen. The box
 never asks for a passphrase on a normal boot.
 
 </div>
 
-![A box stopped at boot with Please enter passphrase for disk persist, from the installer bug fixed on 2 October 2026.](../img/passphrase-prompt.png)
+![A box stopped at boot: the panel under the salmon asks Please enter passphrase for disk persist.](../img/passphrase-prompt.png)
 
 ## Why it happens
 

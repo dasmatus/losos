@@ -76,12 +76,14 @@ spojí ich do jednej skupiny zväzkov LVM, zašifruje ju cez LUKS, naformátuje
 `/persist` je ext4 s funkciou `encrypt`, pretože ju fscrypt potrebuje a btrfs
 ju nepodporuje. Prichádzate o kompresiu a kontrolné súčty dát.
 
-Po reštarte tty1 zobrazí banner na celú obrazovku s IP adresou zariadenia a
-`<hostname>.local`. Otvorte IP adresu v prehliadači na ľubovoľnom počítači v
+Po reštarte obrazovka ukazuje lososa, kým zariadenie štartuje. Keď je
+hotové, losos sa presunie hore a panel pod ním ukáže IP adresu zariadenia a
+`<hostname>.local`. Na stroji, kde úvodná obrazovka nenájde displej včas,
+ukáže tty1 tie isté riadky ako textový banner. Otvorte IP adresu v prehliadači na ľubovoľnom počítači v
 tej istej sieti. Meno `.local` funguje tiež všade, kde počítač prekladá mená
 mDNS. Windows, macOS, telefóny a väčšina linuxových desktopov to robí;
 hostiteľ hosťa libvirt alebo VirtualBox za NAT zvyčajne nie, takže tam
-použite adresu. Obe vedú na tie isté stránky. Banner sa aktualizuje, keď sa
+použite adresu. Obe vedú na tie isté stránky. Panel sa aktualizuje, keď sa
 adresa zmení.
 
 Prvá stránka je sprievodca nastavením. Jeho prvým krokom je dôverovať

@@ -357,6 +357,14 @@ má inštalovať bez obsluhy a `tests/iso-boot.py` nikdy nepíše. BIOS prepne
 `boot.nix` na GRUB a pridá oddiel EF02 na prvý disk v `disko.nix`. ESP
 zostáva v oboch prípadoch `/boot`. `console.nix` nahradí getty na tty1
 službou s bannerom, ktorá ukazuje IPv4 adresu v LAN a `<hostName>.local`.
+`splash.nix` (`losos.splash.enable`, predvolene zapnuté) je Plymouth s
+témou LosOS (`modules/splash/losos.script`): počas štartu losos v strede,
+a keď mu služba s bannerom pošle tie isté riadky, losos plynulo vyjde hore a
+pod ním sa otvorí panel. Na konci štartu Plymouth nič neukončí, takže panel
+zostáva na obrazovke. Banner sa pod ním ďalej kreslí na tty1, a ten je
+vidno tam, kde Plymouth v prvých sekundách nenašiel displej a beží v
+textovom režime. Pri BIOS-e zostáva grafický režim GRUB-u jadru
+(`gfxpayloadBios = "keep"`), aby mal Plymouth framebuffer už v stage 1.
 
 **Automatický upgrade a nočný reštart** (`updates.nix`). `system.autoUpgrade`
 prestavuje z `losos.upgradeFlakeUri` o 03:00. Predvolené
