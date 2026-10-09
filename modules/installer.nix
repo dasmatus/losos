@@ -2,7 +2,7 @@
 #
 # The auto-installer is a subcommand of the Rust losos-ctl backend (see
 # backend/src/installer.rs). This module packages it as the `losos-install`
-# command name the VM tests (tests/install.nix, tests/tpm.nix) and the wiki
+# command name the VM tests (tests/install.nix, tests/tpm.nix) and the handbook
 # rely on, so the CLI surface is unchanged: `losos-install --emit-target …`,
 # `--disko-script …`, `--tpm` / `--no-tpm`, `--drives …`, `--no-install`.
 #
