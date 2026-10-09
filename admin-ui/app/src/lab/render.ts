@@ -11,6 +11,12 @@
  * module's `Lab`, which needs no canvas; a lost WebGPU device is remembered
  * so the next visit starts on WebGL2.
  *
+ * A browser that offers WebGPU but has no adapter for it (Chromium on many
+ * Linux GPUs) prints "No available adapters." on the console when asked,
+ * and the page cannot silence that. Such a browser is remembered by its
+ * user agent, so the probe runs once per browser version, not on every
+ * visit. `?canvas=webgpu` still asks.
+ *
  * `?canvas=svg|gpu|webgpu|webgl2` overrides the choice for one load, and
  * the localStorage key `losos-lab-canvas` (same values) for this browser. */
 
@@ -36,6 +42,8 @@ export interface GpuState {
 
 const CHOICE_KEY = "losos-lab-canvas";
 const FAILED_KEY = "losos-lab-webgpu-failed";
+/** The user agent of a browser whose WebGPU had no adapter. */
+const NO_ADAPTER_KEY = "losos-lab-webgpu-none";
 /** How long the Bevy canvas may take to draw once it is mounted. */
 const FIRST_FRAME_MS = 20_000;
 
@@ -80,12 +88,32 @@ function rememberWebgpuFailed(): void {
   }
 }
 
+function noAdapterBefore(): boolean {
+  try {
+    return storage()?.getItem(NO_ADAPTER_KEY) === navigator.userAgent;
+  } catch {
+    return false;
+  }
+}
+
+function rememberNoAdapter(): void {
+  try {
+    storage()?.setItem(NO_ADAPTER_KEY, navigator.userAgent);
+  } catch {
+    /* private window: the next visit asks again */
+  }
+}
+
 async function hasWebgpu(): Promise<boolean> {
   const gpu = (navigator as Navigator & { gpu?: { requestAdapter(): Promise<unknown> } }).gpu;
   if (!gpu) return false;
   try {
-    const adapter = await Promise.race([gpu.requestAdapter(), new Promise((r) => window.setTimeout(() => r(null), 2000))]);
-    return adapter != null;
+    const timeout = Symbol("timeout");
+    const adapter = await Promise.race([gpu.requestAdapter(), new Promise((r) => window.setTimeout(() => r(timeout), 2000))]);
+    // A browser that answered "none" answers the same next time; a slow
+    // one may not.
+    if (adapter == null) rememberNoAdapter();
+    return adapter != null && adapter !== timeout;
   } catch {
     return false;
   }
@@ -109,7 +137,7 @@ export async function pickBackend(wish: Wish): Promise<Backend | null> {
   if (wish === "svg") return null;
   if (wish === "webgpu") return (await hasWebgpu()) ? "webgpu" : null;
   if (wish === "webgl2") return hasWebgl2() ? "webgl2" : null;
-  if (!webgpuFailedBefore() && (await hasWebgpu())) return "webgpu";
+  if (!webgpuFailedBefore() && !noAdapterBefore() && (await hasWebgpu())) return "webgpu";
   return hasWebgl2() ? "webgl2" : null;
 }
 
