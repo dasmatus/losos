@@ -15,7 +15,7 @@ Zapíšte ho na USB kľúč a nabootujte z neho cieľový počítač. Menovka zv
 na kľúči je `LOSOS_INSTALLER`. Bootovacie menu BIOS-u, úvodná obrazovka UEFI
 a banner na konzole ukazujú LosOS a značku vydania a názov hostiteľa je
 `losos-installer`. Pod tým je NixOS a os-release to aj uvádza cez
-`ID_LIKE=nixos`. Nainštalovaný box nesie rovnaký názov a značku vo svojom
+`ID_LIKE=nixos`. Nainštalované zariadenie nesie rovnaký názov a značku vo svojom
 bootovacom menu, v bannerch na konzole aj v os-release (`NAME=LosOS`,
 `IMAGE_VERSION`) a ponecháva si `ID=nixos`.
 
@@ -30,7 +30,7 @@ bootovacom menu, v bannerch na konzole aj v os-release (`NAME=LosOS`,
   vedľa certifikátov Microsoftu, nikdy namiesto nich: potrebuje ich Windows,
   shim iných distribúcií aj option ROM grafických kariet. OVMF zobrazí
   "Access Denied"; iný firmvér môže kľúč bez slova preskočiť.
-  Zavádzač nainštalovaného boxu podpísaný nie je, takže samotný box potrebuje
+  Zavádzač nainštalovaného zariadenia podpísaný nie je, takže samotné zariadenie potrebuje
   Secure Boot vypnutý. Postup a kontrolu `SHA256SUMS.sig` nájdete na stránke
   príručky *Secure Boot and signed media*. Dôkazom je `tests/secure-boot.nix`.
 - **UEFI aj BIOS, funguje oboje.** Na inštalačnom ISO vám textové menu
@@ -55,12 +55,12 @@ spojí ich do jednej skupiny zväzkov LVM, zašifruje ju cez LUKS, naformátuje
 
 - Na počítači s čipom TPM 2.0 inštalátor hneď po formátovaní zapečatí kľúč
   disku do čipu (`systemd-cryptenroll`). Väčšina mini-PC ho má vo firmvéri,
-  Intel PTT alebo AMD fTPM, zvyčajne zapnutý. Box potom od prvého štartu
+  Intel PTT alebo AMD fTPM, zvyčajne zapnutý. Zariadenie potom od prvého štartu
   bootuje bez obsluhy a na bootovacom oddiele nie je nič tajné. Samotný disk,
   vytiahnutý alebo naklonovaný, sa nedá prečítať. Kľúč nie je viazaný na
-  merania firmvéru (PCR), pretože box aktualizuje svoj firmvér aj zavádzač
+  merania firmvéru (PCR), pretože zariadenie aktualizuje svoj firmvér aj zavádzač
   bez obsluhy a nemá shell, z ktorého by sa dalo zotaviť po zablokovaní.
-  Cenou je, že zlodej, ktorý vezme celý box aj s čipom, sa k dátam stále
+  Cenou je, že zlodej, ktorý vezme celé zariadenie aj s čipom, sa k dátam stále
   dostane. Ten istý náhodný kľúč, ktorým bol zväzok naformátovaný, zostáva
   vnútri šifrovaného zväzku v `/etc/keys/persist-keyfile` ako záchranný slot.
 - Bez čipu, alebo s `losos-ctl install --no-tpm` zo shellu inštalátora, sa
@@ -68,7 +68,7 @@ spojí ich do jednej skupiny zväzkov LVM, zašifruje ju cez LUKS, naformátuje
   nešifrovanom ESP a ktokoľvek, kto vezme disk, si dáta prečíta. Inštalátor
   vypíše, ktorú z dvoch možností zvolil. `--tpm` spraví z chýbajúceho čipu
   chybu namiesto tichej inštalácie so súborom s kľúčom.
-  [TPM a odomykanie disku](TPM-sk) vysvetľuje, na čo čip slúži a čoho sa box
+  [TPM a odomykanie disku](TPM-sk) vysvetľuje, na čo čip slúži a čoho sa zariadenie
   bez neho vzdáva.
 - Vo VM mu dajte TPM (swtpm, pozri nižšie), inak sa nainštaluje v režime so
   súborom s kľúčom.
@@ -76,7 +76,7 @@ spojí ich do jednej skupiny zväzkov LVM, zašifruje ju cez LUKS, naformátuje
 `/persist` je ext4 s funkciou `encrypt`, pretože ju fscrypt potrebuje a btrfs
 ju nepodporuje. Prichádzate o kompresiu a kontrolné súčty dát.
 
-Po reštarte tty1 zobrazí banner na celú obrazovku s IP adresou boxu a
+Po reštarte tty1 zobrazí banner na celú obrazovku s IP adresou zariadenia a
 `<hostname>.local`. Otvorte IP adresu v prehliadači na ľubovoľnom počítači v
 tej istej sieti. Meno `.local` funguje tiež všade, kde počítač prekladá mená
 mDNS. Windows, macOS, telefóny a väčšina linuxových desktopov to robí;
@@ -85,12 +85,12 @@ použite adresu. Obe vedú na tie isté stránky. Banner sa aktualizuje, keď sa
 adresa zmení.
 
 Prvá stránka je sprievodca nastavením. Jeho prvým krokom je dôverovať
-vlastnému certifikátu boxu, aby zvyšok nastavenia aj každé neskoršie
+vlastnému certifikátu zariadenia, aby zvyšok nastavenia aj každé neskoršie
 prihlásenie šli cez HTTPS a váš prehliadač mohol ponúknuť passkey. Krok
 ukazuje jeden riadok na vloženie do terminálu, vybraný pre počítač, na ktorom
 ste. Na macOS a Linuxe je to `curl -fsSL http://<address>/setup/trust.sh | sh`,
 na Windows `irm http://<address>/setup/trust.ps1 | iex`. Skript servíruje
-samotný box ako čistý text, takže si odkaz najprv otvorte v karte a prečítajte
+samotné zariadenie ako čistý text, takže si odkaz najprv otvorte v karte a prečítajte
 si ho. Skript pridá ten jeden certifikát do úložísk, ktoré čítajú vaše
 prehliadače, iba pre vášho používateľa: do prihlasovacej kľúčenky (login
 keychain) na macOS, do používateľského úložiska Trusted Root na Windows a do
@@ -102,13 +102,13 @@ ho sami ako dôveryhodnú autoritu.
 
 Ak je strašidelnou časťou čítanie obrazovky a písanie adresy, otvorte radšej
 [losos-edge.dasmat.us/find](https://losos-edge.dasmat.us/find) v Chrome a
-stlačte **Find my box** (Nájsť môj box). Chrome sa raz opýta, či stránka smie
+stlačte **Find my box** (Nájsť moje zariadenie). Chrome sa raz opýta, či stránka smie
 hľadať zariadenia vo vašej lokálnej sieti (jeho povolenie *Local Network
-Access*, Chrome 142 alebo novší). Povoľte to a stránka nájde box podľa mena a
+Access*, Chrome 142 alebo novší). Povoľte to a stránka nájde zariadenie podľa mena a
 nasmeruje vás na jeho nastavenie. Vyhľadávanie beží vo vašom prehliadači,
-medzi vaším počítačom a boxom. Stránka číta `/setup/state.json` boxu, ktorý
+medzi vaším počítačom a zariadením. Stránka číta `/setup/state.json` zariadenia, ktorý
 obsahuje jeho meno a odtlačok certifikátu a nič viac, a nič o vašej sieti
-neopustí váš počítač. Box dovolí čítať tento dokument iba tejto jednej stránke
+neopustí váš počítač. Zariadenie dovolí čítať tento dokument iba tejto jednej stránke
 (`losos.setup.finderOrigins`). Firefox a Safari také povolenie nemajú a
 dostanú namiesto toho návod s písaním adresy.
 
@@ -127,7 +127,7 @@ qemu-system-x86_64 ... \
 ```
 
 Pridajte tieto tri riadky do spustenia inštalátora aj do neskorších štartov.
-Bez nich inštalátor napíše `unlock: keyfile in the initrd` a box funguje, v
+Bez nich inštalátor napíše `unlock: keyfile in the initrd` a zariadenie funguje, v
 režime so súborom s kľúčom.
 
 ```sh

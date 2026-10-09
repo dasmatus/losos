@@ -19,7 +19,7 @@ es nicht mehr, deshalb setzt `modules/hardening.nix` diese Werte direkt.
 ## Optional
 
 Jede dieser Optionen kann etwas kaputt machen, deshalb ist jede standardmäßig
-aus. Schalten Sie sie im Bereich Security der Einstellungsseite ein oder in
+aus. Schalte sie im Bereich Sicherheit der Einstellungsseite ein oder in
 Nix:
 
 ```nix

@@ -21,7 +21,7 @@ bindet diese Pfade per Bind-Mount aus `/persist` ein: `/nix`, `/var`,
 Daten-Home-Verzeichnisse und `machine-id`.
 
 **Alles, was nicht auf dieser Liste steht, geht beim Neustart verloren.**
-Neuen Zustand tragen Sie in `modules/impermanence.nix` ein.
+Neuen Zustand trägst du in `modules/impermanence.nix` ein.
 
 ## Steuerungsebene
 
@@ -197,7 +197,7 @@ sodass die Zustandsmaschine ohne Dateisystem per Unit-Test geprüft wird. Der
 Installer wiederholt das Muster mit `Install` und `plan_install`. Sein Plan
 ist Daten, also prüft ein Test die Reihenfolge der zerstörerischen Schritte,
 ohne irgendetwas zu formatieren. Der Wire-Vertrag ist `backend/schema.json`.
-Setzen Sie `losos.backend.package = null`, um ohne den Daemon zu laufen.
+Setze `losos.backend.package = null`, um ohne den Daemon zu laufen.
 
 **Jede Option in einem Bereich, und die Konfiguration in LosOS Git**
 (`flake/options-doc.nix`, `modules/config-repo.nix`,
@@ -207,7 +207,7 @@ Beim Build werden die `losos.*`-Deklarationen nach
 `/etc/losos/options.json` durchlaufen: Name, Editor-Art, Standardwert,
 Beschreibung, der laufende Wert sowie die Gefahren- und Nur-Lesen-Flags.
 lososd fügt bei `GET /api/options` das aktuelle `overrides.nix` hinzu, und
-der Bereich Advanced zeichnet pro Zeile einen typisierten Editor.
+der Bereich Erweitert zeichnet pro Zeile einen typisierten Editor.
 
 `classify` in der Nix-Datei ist das Tor. Eine Deklaration mit einem Typ, den
 es nicht kennt, ist ein `throw`, sodass der Eval-Job rot wird, statt dass
@@ -232,7 +232,7 @@ ein Klon vorausgepusht, macht er einen Fast-Forward, lässt das neue
 meldet er und rührt sie nie an. Dahinter steht absichtlich **kein Forgejo
 Actions Runner**.
 
-Der Bereich Advanced verlinkt die sechzehn Einstellungen, die den anderen
+Der Bereich Erweitert verlinkt die sechzehn Einstellungen, die den anderen
 Bereichen gehören, statt sie ein zweites Mal zu bearbeiten. `OWNED` in
 `admin-ui/app/src/lib/option-value.ts` und `OWNED_NAMES` in `lib/api.ts`
 sind diese Liste, und `buildOverridesNix` filtert zusätzliche Schlüssel
@@ -386,7 +386,7 @@ Banner-Dienst, der die IPv4-Adresse im LAN und `<hostName>.local` anzeigt.
 **Automatisches Upgrade und der nächtliche Neustart** (`updates.nix`).
 `system.autoUpgrade` baut um 03:00 aus `losos.upgradeFlakeUri` neu. Der
 Standard, `git+file:///etc/nixos#install`, bringt das System nur konsistent
-voran und zieht kein neues nixpkgs. Setzen Sie eine `github:`-URI, um
+voran und zieht kein neues nixpkgs. Setze eine `github:`-URI, um
 wirklich zu aktualisieren.
 
 **Beide Rebuild-Pfade sind absichtlich `--impure`**:
@@ -394,7 +394,7 @@ wirklich zu aktualisieren.
 veröffentlichte Baum enthält weder `modules/install-target.nix` dieser Box
 noch ihr `modules/overrides.nix`, daher importiert `flake.nix` die lebenden
 Kopien aus `/etc/nixos`, wenn es sie lesen kann, und das kann nur eine
-unreine Auswertung. Lassen Sie das Flag weg, und ein `github:`-Upgrade stellt
+unreine Auswertung. Lass das Flag weg, und ein `github:`-Upgrade stellt
 eine Box mit Schlüsseldatei auf die TPM-Form um, vergisst ihre Platten und
 ihren Firmware-Modus und setzt jede Einstellung zurück. Bei reiner
 Auswertung ist `builtins.pathExists` auf einem absoluten Pfad `false`, kein

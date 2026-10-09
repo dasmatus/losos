@@ -41,7 +41,7 @@ a formát komunikácie v [`backend/schema.json`](https://github.com/dasmatus/los
 
 ## Pracovné záťaže
 
-Nextcloud a Forgejo bežia vo vlastnom k3s klastri boxu
+Nextcloud a Forgejo bežia vo vlastnom k3s klastri zariadenia
 (`losos.<svc>.mode = "container"`) alebo natívne na hostiteľovi. Pody
 používajú `hostNetwork`. nginx je jediná služba na verejných portoch a
 smeruje podľa cesty.
@@ -96,11 +96,11 @@ TPM2 (`losos.tpm.enable = true`). Hneď po `disko` inštalátor spustí
 `systemd-cryptenroll --tpm2-device=auto --tpm2-pcrs= --unlock-key-file=…`, takže
 initrd nenesie žiadne tajomstvo a kľúčový súbor zostáva iba vnútri `/persist`
 ako záchranný slot, ktorým sa overuje `losos-ctl grow`. Väzba na PCR zámerne
-neexistuje. Box sa aktualizuje sám bez obsluhy a nemá shell, z ktorého by sa
+neexistuje. Zariadenie sa aktualizuje samo bez obsluhy a nemá shell, z ktorého by sa
 dalo zotaviť zo zablokovania; rovnaké rozhodnutie robí `keyring.nix`.
 
 Ak inštalačné médium nevidí `/dev/tpmrm0`, alebo s `losos-ctl install
---no-tpm`, je box v režime kľúčového súboru. `install-target.nix` nastaví
+--no-tpm`, je zariadenie v režime kľúčového súboru. `install-target.nix` nastaví
 `tpm.enable = false` a kľúčový súbor ide do initrd ako
 `/crypto_keyfile.bin` na nešifrovanom ESP. Dva tvary crypttab sa navzájom
 vylučujú: systemd-cryptsetup, ktorý dostane kľúčový súbor *aj* `tpm2-device=`,
@@ -122,7 +122,7 @@ skupinou, takže žiadny z používateľov nemôže čítať súbory toho druhé
 s `750` potom tejto skupine povolí r-x. To potichu rušilo izoláciu, kým to
 nezachytil `tests/impermanence.nix`. Žiadny z používateľov nemá heslo a
 `services.openssh.enable = false`. Jediné zmeny konfigurácie dostupné z
-bežiaceho boxu idú cez administračné UI: prepínač úložiska Local alebo Mesh,
+bežiaceho zariadenia idú cez administračné UI: prepínač úložiska Local alebo Mesh,
 **join the compute mesh** (pripojiť sa k výpočtovému mesh) a **share my
 compute when I sleep** (zdieľať môj výkon, keď spím).
 
@@ -161,7 +161,7 @@ a `settings/`. Akákoľvek zmienka o nich, alebo o `/ds/` či `/common.js`, je
 zastaraná.
 
 Stavebné prvky SPA (`admin-ui/app/src/components/ui/`) sú komponenty
-shadcn/ui na palete boxu. `components.json` nasmeruje shadcn CLI na
+shadcn/ui na palete zariadenia. `components.json` nasmeruje shadcn CLI na
 `src/styles/index.css`, ktorý mapuje názvy farieb shadcn na `tokens.css`.
 `accent` a `muted` sú zámerne nenamapované, pretože aplikácia oba názvy už
 používa na niečo iné.
@@ -197,7 +197,7 @@ formátoval. Komunikačný kontrakt je `backend/schema.json`. Nastavte
 Pri zostavení sa deklarácie `losos.*` prejdú do
 `/etc/losos/options.json`: názov, druh editora, predvolená hodnota, popis,
 bežiaca hodnota a príznaky nebezpečnosti a iba na čítanie. lososd k tomu pri
-`GET /api/options` pripojí aktuálny `overrides.nix` a panel Advanced vykreslí
+`GET /api/options` pripojí aktuálny `overrides.nix` a panel Rozšírené vykreslí
 pre každý riadok typovaný editor.
 
 Bránou je `classify` v Nix súbore. Deklarácia s typom, ktorý nepozná, je
@@ -220,7 +220,7 @@ pushol dopredu, urobí fast-forward, nový `overrides.nix` prepustí rovnakou
 bránou a spustí prestavbu. Rozdvojenú históriu nahlási a nikdy sa jej
 nedotkne. Za tým všetkým zámerne **nie je žiadny runner Forgejo Actions**.
 
-Panel Advanced odkazuje na šestnásť nastavení, ktoré vlastnia ostatné panely,
+Panel Rozšírené odkazuje na šestnásť nastavení, ktoré vlastnia ostatné panely,
 namiesto toho, aby ich upravoval druhýkrát. `OWNED` v
 `admin-ui/app/src/lib/option-value.ts` a `OWNED_NAMES` v `lib/api.ts` sú
 tento zoznam a `buildOverridesNix` podľa neho filtruje ďalšie kľúče, aby
@@ -233,7 +233,7 @@ zoznam je jeden riadok `[ "a" "b" ]`, iba reťazce.
 `modules/workloads.nix`, `modules/cluster.nix`,
 `modules/nextcloud-common.nix`). Rootless Podman je preč a systemd-nspawn
 tiež. Keď `losos.<svc>.mode == "container"`, Nextcloud a Forgejo bežia ako
-Kubernetes záťaže vo vlastnom lokálnom k3s klastri boxu. Zdieľaná
+Kubernetes záťaže vo vlastnom lokálnom k3s klastri zariadenia. Zdieľaná
 konfigurácia Nextcloudu stále žije v `nextcloud-common.nix`, takže natívny a
 kontajnerový režim sa nemôžu rozísť. nginx je jediný proces, ktorý drží
 verejné porty. Smeruje podľa cesty na mDNS mene zariadenia
@@ -309,8 +309,8 @@ poskytuje so službou Postgres. Zvyšok jeho testovacej sady beží nad úložis
 v pamäti.
 
 Jeho druhá statická stránka, `public/find.html`, je postup „find my box“
-(nájdi môj box). Povolenie Local Network Access v Chrome jej dovolí čítať
-`/setup/state.json` boxu z verejného originu. `modules/setup.nix` povoľuje
+(nájdi moje zariadenie). Povolenie Local Network Access v Chrome jej dovolí čítať
+`/setup/state.json` zariadenia z verejného originu. `modules/setup.nix` povoľuje
 presne originy v `losos.setup.finderOrigins` (nginx map, overený v
 `tests/setup.nix`), nikdy `*`, pretože dokument je inventár LAN.
 
@@ -341,7 +341,7 @@ potrebujú k3s, rke2, containerd a Longhorn.
 
 **Online rozširovanie** (`grow.rs`, `losos.storage.fillPercent`). Logický
 zväzok zámerne nezaberá celú skupinu zväzkov, aby sa `/persist` dal zväčšiť
-bez otvárania boxu. `/persist` *je* `/nix`, cez impermanence.
+bez otvárania zariadenia. `/persist` *je* `/nix`, cez impermanence.
 `losos-ctl grow` spustí lvextend, potom `cryptsetup resize`, potom
 `resize2fs`, v tomto poradí, za behu. Poradie je celý argument správnosti a
 chyba v ňom zlyhá potichu. Preto ho `grow.rs` overuje voči *plánu* a
@@ -365,10 +365,10 @@ nesťahuje nové nixpkgs. Pre skutočný upgrade nastavte URI `github:`.
 
 **Obe cesty prestavby sú zámerne `--impure`**: `system.autoUpgrade.flags`
 a `rebuild_command` v lososd. Publikovaný strom neobsahuje ani
-`modules/install-target.nix` tohto boxu, ani jeho `modules/overrides.nix`,
+`modules/install-target.nix` tohto zariadenia, ani jeho `modules/overrides.nix`,
 takže `flake.nix` importuje živé kópie z `/etc/nixos`, keď ich dokáže
 prečítať, a to dokáže iba nečisté (impure) vyhodnotenie. Vynechajte príznak a
-upgrade z `github:` prepne box s kľúčovým súborom do tvaru s TPM, zabudne
+upgrade z `github:` prepne zariadenie s kľúčovým súborom do tvaru s TPM, zabudne
 jeho disky a režim firmvéru a resetuje každé nastavenie. Pri čistom
 vyhodnotení je `builtins.pathExists` na absolútnej ceste `false`, nie chyba.
 Takže CI, `nix flake check` a inštalátor zostávajú čisté a vidia súbor zo
@@ -377,15 +377,15 @@ stromu alebo predvolené hodnoty. `tests/invariants.nix` príznak pripína.
 `nix.gc` beží o 04:30 s `--delete-older-than 14d` a `boot.nix` obmedzuje
 oba zavádzače na päť generácií. `/nix` *je* `/persist`, ESP má 500 MiB a
 `linuxPackages_latest` tam väčšinu nocí pridá nové jadro. Bez oboch limitov
-sa box sám zaplní a prepnutie o 03:00 zlyhá v kroku zavádzača.
+sa zariadenie samo zaplní a prepnutie o 03:00 zlyhá v kroku zavádzača.
 `tests/invariants.nix` overuje oboje už pri vyhodnotení.
 
 **Fragment `#install` je nosný.** Bez neho `nixos-rebuild` hľadá
 `nixosConfigurations.$(hostname)`. Tento flake exportuje iba `iso` a
 `install`, takže každý nočný beh skončil s „flake does not provide
-attribute“, na boxe bez shellu, z ktorého by si to niekto všimol. Démon to mal
+attribute“, na zariadení bez shellu, z ktorého by si to niekto všimol. Démon to mal
 celý čas správne (`io_backend.rs`, `/etc/nixos#install`). Chybná bola iba
 predvolená hodnota na strane NixOS.
 
 Samostatný `midnight-reboot.timer` reštartuje bezpodmienečne o 00:07, s
-`Persistent=true`, aby to box, ktorý bol vypnutý, dobehol.
+`Persistent=true`, aby to zariadenie, ktoré bolo vypnuté, dobehlo.

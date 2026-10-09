@@ -4,7 +4,7 @@
 
 CI ist `.github/workflows/ci.yml`. Es führt dieselben Befehle aus wie die
 devenv-Skripte, direkt ausgeschrieben, weil Jobs über `devenv shell` zu
-langsam liefen. Halten Sie beide von Hand im Gleichschritt.
+langsam liefen. Halte beide von Hand im Gleichschritt.
 
 `.github/actions/setup-nix` installiert Nix und schreibt die Substituter nach
 `/etc/nix/nix.conf`, bevor der Daemon startet. Nix ignoriert `NIX_CONFIG` von
@@ -28,8 +28,8 @@ kompiliert aus dem Quellcode, ohne es zu melden.
 
 ## Releases
 
-Setzen Sie zuerst `flake/version.nix` auf main auf den neuen Tag, pushen Sie
-dann einen `v*`-Tag, oder legen Sie in der Weboberfläche einen
+Setze zuerst `flake/version.nix` auf main auf den neuen Tag, pushe
+dann einen `v*`-Tag, oder lege in der Weboberfläche einen
 Release-Entwurf mit einem neuen `v*`-Tag an. Die Bootmenüs, die Bootbilder,
 os-release und die Konsolenbanner zeigen den Wert dieser Datei, und eine
 installierte Box baut aus dem committeten Baum. Der Release-Job:
@@ -58,14 +58,14 @@ Zertifikat, und ebenso ein Lauf, bei dem das Signieren fehlschlug. Der
 Schlüssel wird einmalig auf dem Rechner des Eigentümers mit
 `provisioning/secure-boot/keygen.sh` erzeugt.
 
-Ihre Release Notes bleiben erhalten. Der Download-Abschnitt steht zwischen
+Deine Release Notes bleiben erhalten. Der Download-Abschnitt steht zwischen
 zwei Marker-Kommentaren, und ein erneuter Lauf ersetzt nur diesen Abschnitt.
 
 ### Medien für einen Tag, der keine hat
 
 Ein Release, dessen Tag-Lauf fehlschlug, kann seine Medien nachträglich
-bekommen. Öffnen Sie Actions, wählen Sie den Workflow `ci`, dann *Run
-workflow* auf `main`, und füllen Sie `release_tags` aus: entweder `missing`,
+bekommen. Öffne Actions, wähle den Workflow `ci`, dann *Run
+workflow* auf `main`, und fülle `release_tags` aus: entweder `missing`,
 für jedes veröffentlichte Release ohne Installer-ISO, oder die Tags selbst,
 durch Leerzeichen getrennt (`v0.1.7
 v0.1.8`). Jeder Tag wird aus seinem eigenen Baum gebaut, genauso wie bei
@@ -84,11 +84,11 @@ liefert sie aus, mit `GHCR_REPOSITORY=dasmatus/losos`.
 Einrichtung:
 
 1. `nix key generate-secret --key-name losos-1`
-2. Speichern Sie den geheimen Schlüssel als Repository-Secret
+2. Speichere den geheimen Schlüssel als Repository-Secret
    `NIX_CACHE_SIGNING_KEY`.
-3. Speichern Sie den öffentlichen Schlüssel (`nix key convert-secret-to-public`)
+3. Speichere den öffentlichen Schlüssel (`nix key convert-secret-to-public`)
    als Repository-Variable `NIX_CACHE_PUBLIC_KEY`.
-4. Speichern Sie die HTTPS-URL des Proxys als Repository-Variable
+4. Speichere die HTTPS-URL des Proxys als Repository-Variable
    `LOSOS_PROXY_URL`. Das ist die Domain, die am Vercel-Projekt
    `losos-cache-proxy` hängt, `https://proxy.losos.dasmat.us`, und nichts
    anderes. Der frühere Name, `losos-proxy.dasmat.us`, leitet jetzt per 307
@@ -97,11 +97,11 @@ Einrichtung:
    `warning: '<url>' does not appear to be a binary cache` aus, baut aus dem
    Quellcode, und der Lauf bleibt grün. `setup-nix` prüft jetzt
    `<url>/nix-cache-info` und annotiert den Lauf, wenn das passiert.
-5. Machen Sie das Paket `losos/nix-cache` öffentlich, und `losos/images`
+5. Mach das Paket `losos/nix-cache` öffentlich, und `losos/images`
    (siehe unten), sobald der erste Push auf main es angelegt hat. GitHub legt
    Pakete privat an, und der Proxy antwortet dann auf alles darin mit
    `502 token: 403`.
-6. Halten Sie `losos.cache.substituters` und `losos.cache.trustedPublicKeys`
+6. Halte `losos.cache.substituters` und `losos.cache.trustedPublicKeys`
    in `modules/options.nix` auf derselben URL und demselben Schlüssel. Ihre
    Standardwerte sind `https://proxy.losos.dasmat.us` und der öffentliche
    Schlüssel `losos-1`, sodass eine unveränderte Appliance und das
@@ -123,10 +123,10 @@ ein früherer Lauf sie hätte pushen sollen. Ein Job, der nur auswertet, fügt
 keine Zeile hinzu. Der Shim ändert weder die Ausgabe von nix noch seinen
 Exit-Status.
 
-Prüfen Sie `<proxy-url>/nix-cache-info` und `nix copy --from <proxy-url>
-<store-path>`, bevor Sie sich darauf verlassen. Ein nicht erreichbarer Cache
+Prüfe `<proxy-url>/nix-cache-info` und `nix copy --from <proxy-url>
+<store-path>`, bevor du dich darauf verlässt. Ein nicht erreichbarer Cache
 ist nicht fatal. Die Appliance wartet 5 s und weicht auf `cache.nixos.org`
-und eigenes Bauen aus. Legen Sie den geheimen Schlüssel niemals in den Flake
+und eigenes Bauen aus. Lege den geheimen Schlüssel niemals in den Flake
 oder auf eine Appliance.
 
 ## Das Werkzeug für den Entwicklerrechner

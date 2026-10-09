@@ -4,14 +4,14 @@
 
 ## Den Installer besorgen
 
-Laden Sie das ISO und seine `.sha256` aus dem
-[neuesten Release](https://github.com/dasmatus/losos/releases/latest) herunter, oder bauen Sie es:
+Lade das ISO und seine `.sha256` aus dem
+[neuesten Release](https://github.com/dasmatus/losos/releases/latest) herunter, oder bau es:
 
 ```sh
 nix build .#nixosConfigurations.iso.config.system.build.isoImage
 ```
 
-Schreiben Sie es auf einen USB-Stick und booten Sie den Zielrechner davon.
+Schreib es auf einen USB-Stick und boote den Zielrechner davon.
 Die Datenträgerbezeichnung des Sticks ist `LOSOS_INSTALLER`. Das BIOS-Bootmenü,
 der UEFI-Startbildschirm und das Konsolenbanner zeigen LosOS und den
 Release-Tag, und der Hostname ist `losos-installer`. Darunter steckt NixOS, und
@@ -19,7 +19,7 @@ os-release sagt das auch mit `ID_LIKE=nixos`. Die installierte Box trägt
 denselben Namen und Tag in ihrem Bootmenü, ihren Konsolenbannern und in
 os-release (`NAME=LosOS`, `IMAGE_VERSION`) und behält `ID=nixos`.
 
-## Bevor Sie booten
+## Bevor du bootest
 
 - **Secure Boot: aus, oder das LosOS-Zertifikat einspielen.** Release-ISOs
   sind signiert. Der UEFI-Loader des Sticks ist ein einziges Unified Kernel
@@ -36,7 +36,7 @@ os-release (`NAME=LosOS`, `IMAGE_VERSION`) und behält `ID=nixos`.
   also abgeschaltetes Secure Boot. Die Seite *Secure Boot and signed media*
   im Handbuch enthält die Schritte und die Prüfung von `SHA256SUMS.sig`.
   `tests/secure-boot.nix` ist der Nachweis.
-- **UEFI oder BIOS, beides funktioniert.** Auf dem Installer-ISO lässt Sie
+- **UEFI oder BIOS, beides funktioniert.** Auf dem Installer-ISO lässt dich
   ein Terminalmenü BIOS, UEFI oder automatische Erkennung (die Firmware, die
   das ISO gebootet hat) wählen. UEFI bekommt systemd-boot. Legacy-BIOS bekommt
   GRUB plus eine 1 MiB große BIOS-Boot-Partition auf der ersten Festplatte.
@@ -80,51 +80,51 @@ verschlüsselt sie mit LUKS, formatiert `/persist` als ext4 und installiert.
   Schlüsseldatei.
   [TPM und Entsperren der Festplatte](TPM-de) erklärt, wofür der Chip da ist
   und worauf eine Box ohne ihn verzichtet.
-- Geben Sie einer VM ein TPM (swtpm, siehe unten), sonst installiert sie im
+- Gib einer VM ein TPM (swtpm, siehe unten), sonst installiert sie im
   Schlüsseldatei-Modus.
 
 `/persist` ist ext4 mit dem Feature `encrypt`, weil fscrypt es braucht und
-btrfs es nicht unterstützt. Sie verzichten auf Kompression und
+btrfs es nicht unterstützt. Du verzichtest auf Kompression und
 Prüfsummen der Daten.
 
 Nach dem Neustart zeigt tty1 ein bildschirmfüllendes Banner mit der
-IP-Adresse der Box und `<hostname>.local`. Öffnen Sie die IP-Adresse in einem
+IP-Adresse der Box und `<hostname>.local`. Öffne die IP-Adresse in einem
 Browser auf einem beliebigen Rechner im selben Netzwerk. Der `.local`-Name
 funktioniert ebenfalls überall, wo der Rechner mDNS-Namen auflöst. Windows,
 macOS, Smartphones und die meisten Linux-Desktops tun das; der Host eines
-libvirt- oder VirtualBox-Gasts hinter NAT meist nicht, verwenden Sie dort
+libvirt- oder VirtualBox-Gasts hinter NAT meist nicht, verwende dort
 also die Adresse. Beide führen zu denselben Seiten. Das Banner aktualisiert
 sich, wenn sich die Adresse ändert.
 
 Die erste Seite ist der Einrichtungsassistent. Sein erster Schritt ist, dem
 eigenen Zertifikat der Box zu vertrauen, damit der Rest der Einrichtung und
-jede spätere Anmeldung über HTTPS laufen und Ihr Browser einen Passkey
+jede spätere Anmeldung über HTTPS laufen und dein Browser einen Passkey
 anbieten kann. Der Schritt zeigt eine Zeile zum Einfügen in ein Terminal,
-passend zu dem Rechner, an dem Sie sitzen. Auf macOS und Linux ist das
+passend zu dem Rechner, an dem du sitzt. Auf macOS und Linux ist das
 `curl -fsSL http://<address>/setup/trust.sh | sh`, auf Windows
 `irm http://<address>/setup/trust.ps1 | iex`. Die Box selbst liefert das
-Skript als Klartext aus, öffnen Sie den Link also zuerst in einem Tab, um es
-zu lesen. Das Skript fügt das eine Zertifikat den Speichern hinzu, die Ihre
-Browser lesen, nur für Ihren Benutzer: dem Anmeldeschlüsselbund (login
+Skript als Klartext aus, öffne den Link also zuerst in einem Tab, um es
+zu lesen. Das Skript fügt das eine Zertifikat den Speichern hinzu, die deine
+Browser lesen, nur für deinen Benutzer: dem Anmeldeschlüsselbund (login
 keychain) auf macOS, dem Trusted-Root-Speicher des Benutzers auf Windows, den
 NSS-Speichern, die Chrome und Firefox auf Linux verwenden. Es installiert
 nichts anderes, fragt nie nach Administratorrechten und gibt den
-SHA-256-Fingerabdruck des Zertifikats aus, damit Sie ihn mit dem auf der Seite
-vergleichen können. Smartphones bekommen stattdessen den einfachen Download.
-Der manuelle Weg bleibt darunter: Laden Sie `losos-ca.crt` herunter und fügen
-Sie es selbst als vertrauenswürdige Zertifizierungsstelle hinzu.
+SHA-256-Fingerabdruck des Zertifikats aus, damit du ihn mit dem auf der Seite
+vergleichen kannst. Smartphones bekommen stattdessen den einfachen Download.
+Der manuelle Weg bleibt darunter: Lade `losos-ca.crt` herunter und füge
+es selbst als vertrauenswürdige Zertifizierungsstelle hinzu.
 
 Wenn das Ablesen eines Bildschirms und das Eintippen einer Adresse der
-abschreckende Teil ist, öffnen Sie stattdessen
+abschreckende Teil ist, öffne stattdessen
 [losos-edge.dasmat.us/find](https://losos-edge.dasmat.us/find) in Chrome und
-klicken Sie auf **Find my box** (Meine Box finden). Chrome fragt einmal, ob die
-Seite nach Geräten in Ihrem lokalen Netzwerk suchen darf (seine Berechtigung
-*Local Network Access*, Chrome 142 oder neuer). Stimmen Sie zu, und die Seite
-findet die Box über ihren Namen und verlinkt Sie zu ihrer Einrichtung. Die
-Suche läuft in Ihrem Browser, zwischen Ihrem Rechner und der Box. Die Seite
+klicke auf **Find my box** (Meine Box finden). Chrome fragt einmal, ob die
+Seite nach Geräten in deinem lokalen Netzwerk suchen darf (seine Berechtigung
+*Local Network Access*, Chrome 142 oder neuer). Stimm zu, und die Seite
+findet die Box über ihren Namen und verlinkt dich zu ihrer Einrichtung. Die
+Suche läuft in deinem Browser, zwischen deinem Rechner und der Box. Die Seite
 liest `/setup/state.json` der Box, das ihren Namen und den Fingerabdruck
-ihres Zertifikats enthält und sonst nichts, und nichts über Ihr Netzwerk
-verlässt Ihren Rechner. Die Box lässt nur diese eine Seite das Dokument lesen
+ihres Zertifikats enthält und sonst nichts, und nichts über dein Netzwerk
+verlässt deinen Rechner. Die Box lässt nur diese eine Seite das Dokument lesen
 (`losos.setup.finderOrigins`). Firefox und Safari haben keine solche
 Berechtigung und bekommen stattdessen die Anleitung mit eingetippter Adresse.
 
@@ -142,7 +142,7 @@ qemu-system-x86_64 ... \
   -device tpm-tis,tpmdev=tpm0
 ```
 
-Fügen Sie diese drei Zeilen sowohl beim Lauf des Installers als auch bei den
+Füge diese drei Zeilen sowohl beim Lauf des Installers als auch bei den
 späteren Starts hinzu. Ohne sie meldet der Installer
 `unlock: keyfile in the initrd`, und die Box funktioniert im
 Schlüsseldatei-Modus.
@@ -156,9 +156,9 @@ qemu-system-x86_64 -m 4096 -smp 2 -enable-kvm -machine q35 \
 ```
 
 Ohne `-bios` bootet QEMU SeaBIOS, also wählt der Installer GRUB. Sobald er
-fertig ist, fahren Sie die VM herunter und starten Sie sie erneut ohne die
+fertig ist, fahr die VM herunter und starte sie erneut ohne die
 Zeile `-drive …media=cdrom`. Die Adresse der VM ist vom Host aus nur über die
-Portweiterleitung erreichbar, öffnen Sie also `http://localhost:8080`.
+Portweiterleitung erreichbar, öffne also `http://localhost:8080`.
 
 ## ISO mit der vollständigen Closure
 
@@ -172,10 +172,10 @@ vom Stick kopiert.
 
 - Es braucht trotzdem ein Netzwerk, um den Flake zu klonen und nixpkgs zu
   holen.
-- Bauen Sie es aus demselben Commit, den der Installer klonen wird
+- Bau es aus demselben Commit, den der Installer klonen wird
   (`LOSOS_FLAKE_URL`, `--depth 1`). Sonst unterscheiden sich die Store-Pfade
   und die Kopien bleiben ungenutzt.
-- Es ist zu groß für ein Release-Asset auf GitHub. Bauen Sie es selbst.
+- Es ist zu groß für ein Release-Asset auf GitHub. Bau es selbst.
 
 ## Demo-Image für eine VM
 
@@ -185,7 +185,7 @@ nix build .#losos-disk-qcow2        # or: devenv shell build-media qcow2
 
 Ein vorinstalliertes QCOW2 für QEMU oder virt-manager. Getaggte Releases
 veröffentlichen es auf GHCR. Es hat **keine Festplattenverschlüsselung** und
-führt nie den Installer aus, verwenden Sie es also nur für Demos und
+führt nie den Installer aus, verwende es also nur für Demos und
 Entwicklung.
 
 ## Die Festplatte vergrößern
@@ -201,8 +201,8 @@ Das führt `lvextend`, `cryptsetup resize` und `resize2fs` aus, in dieser
 Reihenfolge, bei eingehängtem `/persist`. `/persist` enthält `/nix` und füllt
 sich daher mit der Zeit.
 
-Wenn die Reserve aufgebraucht ist, fügen Sie eine Festplatte hinzu und
-vergrößern Sie erneut:
+Wenn die Reserve aufgebraucht ist, füge eine Festplatte hinzu und
+vergrößere erneut:
 
 ```sh
 pvcreate /dev/sdX && vgextend persist-vg /dev/sdX && losos-ctl grow

@@ -18,7 +18,7 @@ neexistuje, preto ich `modules/hardening.nix` nastavuje priamo.
 ## Voliteľné
 
 Každé z nasledujúcich môže niečo pokaziť, preto je každé predvolene vypnuté.
-Zapnite ich v paneli Security na stránke nastavení alebo v Nixe:
+Zapnite ich v paneli Zabezpečenie na stránke nastavení alebo v Nixe:
 
 ```nix
 losos.hardening.apparmor = true;   # mandatory access control

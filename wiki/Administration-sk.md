@@ -37,7 +37,7 @@ LAN) a obyčajné stiahnutie (`/setup/losos-ca.crt`). Pozri [Inštalácia](Insta
 
 ## Vzhľad
 
-**Settings, Look** mení vzhľad administrátorských stránok pre každý
+**Nastavenia, Vzhľad** mení vzhľad administrátorských stránok pre každý
 prehliadač, ktorý zariadenie otvorí. Nič z toho nie je nastavenie v zmysle
 Nixu. Je to dokument, ktorý lososd drží v `/var/lib/losos/look.json`, takže
 zmena platí v okamihu uloženia, bez prestavby.
@@ -45,9 +45,9 @@ zmena platí v okamihu uloženia, bez prestavby.
 ### Pozadie
 
 Vyberte jeden z troch dodaných obrázkov alebo nahrajte vlastný (PNG, JPEG,
-WebP, GIF alebo SVG, do 8 MiB). Posuvník **Veil** (závoj) kladie farbu
+WebP, GIF alebo SVG, do 8 MiB). Posuvník **Závoj** kladie farbu
 stránky cez obrázok, od 20 % do 90 %, aby text zostal čitateľný vo svetlej
-aj tmavej téme. *Plain* obrázok opäť odstráni.
+aj tmavej téme. *Bez obrázka* obrázok opäť odstráni.
 
 Nahraný obrázok servíruje lososd na `/api/look/background` bez tokenu, lebo
 CSS `background-image` ho poslať nevie. Cesta je za tou istou ochranou „len
@@ -55,9 +55,9 @@ LAN“ ako zvyšok administrátorských stránok a tapeta nie je tajomstvo.
 
 ### Ručne písané widgety
 
-Galéria nástenky Overview (**Add a widget**) má dva spôsoby, ako si urobiť
-vlastný. *Build one* poskladá widget z hodnôt zariadenia bez akéhokoľvek
-kódu. *Write one* prijme vlastné HTML, štýl a skript, ktoré sa držia na
+Galéria nástenky na Prehľade (**Pridať widget**) má dva spôsoby, ako si urobiť
+vlastný. *Zostaviť* poskladá widget z hodnôt zariadenia bez akéhokoľvek
+kódu. *Napísať* prijme vlastné HTML, štýl a skript, ktoré sa držia na
 zariadení a sú vypísané na tomto paneli, kde ich môžete upraviť a zmazať.
 
 Ručne písaný widget beží v sandboxovanom rámci, vo vlastnom origine bez
@@ -72,7 +72,7 @@ komunikuje cez malý objekt `losos`, ktorý rámec poskytuje:
 | `losos.onTheme(fn)`            | Volá sa vždy, keď vlastník prepne tému.                               |
 | `losos.resize()`               | Požiada nástenku, aby dlaždicu znovu premerala po zmene, ktorú nevidí. |
 
-Karta **Help** v editore to zopakuje s príkladom. Jej náhľad je skutočný
+Karta **Ako to funguje** v editore to zopakuje s príkladom. Jej náhľad je skutočný
 rámec, takže to, čo ukazuje, ukáže aj dlaždica. Widget môže sťahovať z
 internetu (napríklad dlaždica s počasím), ale nie zo zariadenia. Limit je
 24 widgetov po 64 KiB.
@@ -103,7 +103,7 @@ cloud odpovie prehliadaču. Pod potom zapne svojich 26 aplikácií a až potom
 spustí Apache. Natívne merané na 4-jadrovom hostiteľovi (2026-10-07) trvá
 inštalácia asi 11 s, zapnutie aplikácií asi 13 s a prvá stránka odpovie 27 s
 po štarte podu. Krok prihlásenia v sprievodcovi počas tejto medzery ukazuje
-„Your files are still starting“ (vaše súbory sa ešte spúšťajú). Reštart
+„Vaše súbory sa ešte spúšťajú“. Reštart
 zopakuje tie isté kroky nad už nainštalovanou inštanciou asi za 2 s. Vo VM
 bez KVM (emulácia TCG v QEMU) trvajú tie isté kroky 10 až 30 minút, preto
 dajte demo VM hardvérovú virtualizáciu.
@@ -115,8 +115,8 @@ Nextcloudu, či je správne, a pri kladnej odpovedi dá karte prehliadača
 token. Zariadenie si nedrží žiadnu druhú kópiu hesla, takže jeho zmena v
 LosOS cloud ho zmení aj pre administrátorské stránky.
 
-Samotný token sa po nastavení hesla stále raz zobrazí ako **spare admin
-key** (náhradný admin kľúč), s tlačidlami Copy a Print. Pokrýva jediný
+Samotný token sa po nastavení hesla stále raz zobrazí ako **náhradný
+správcovský kľúč**, s tlačidlami Kopírovať a Tlačiť. Pokrýva jediný
 prípad, ktorý heslo pokryť nevie: keď LosOS cloud nebeží, pretože práve
 LosOS cloud heslo overuje. Dialóg odomknutia má odkaz na jeho zadanie
 namiesto hesla.
@@ -140,9 +140,9 @@ spustí `nixos-rebuild switch`. Teda:
 - `apply` nahradí `overrides.nix` celý. Nastavenie, ktoré UI nezapíše, sa
   pri ďalšom uložení vráti na predvolené.
 
-### Pokročilé
+### Rozšírené
 
-**Settings, Advanced** vypisuje každú voľbu `losos.*`, ktorú zariadenie
+**Nastavenia, Rozšírené** vypisuje každú voľbu `losos.*`, ktorú zariadenie
 deklaruje, načítanú z modulov, ktoré beží. `flake/options-doc.nix` vygeneruje
 dokument pri zostavení a lososd ho servíruje na `GET /api/options` s
 pripojeným aktuálnym `overrides.nix`. Každý riadok ukazuje popis voľby, jej
@@ -156,30 +156,30 @@ riadok pre zoznam.
 - Tri voľby, ktoré zapisuje inštalátor (`targetDrives`, `tpm.enable`,
   `bios`), a balíky, ktoré vyberá zostavenie, sú len na čítanie. Riadok pre
   niektorú z nich v `overrides.nix` by zhodil ďalšiu prestavbu.
-- Voľby označené **Careful** (opatrne) (`admin.*`, `cluster.*`, `hostName`,
+- Voľby označené **Opatrne** (`admin.*`, `cluster.*`, `hostName`,
   `storage.*`, `tls.*`, `upgradeFlakeUri`, …) sa pred prvou zmenou raz
   opýtajú. Nesprávna hodnota zanechá zariadenie bez shellu, z ktorého by sa
   to dalo opraviť.
-- **Use default** riadok odstráni namiesto zapísania predvolenej hodnoty,
+- **Použiť predvolené** riadok odstráni namiesto zapísania predvolenej hodnoty,
   takže predvolenú hodnotu, ktorá sa s aktualizáciou posunie, zariadenie
   nasleduje.
 - Riadok v `overrides.nix`, pre ktorý zariadenie nemá voľbu (preklep,
-  nastavenie z inej verzie), sa zobrazí vo vlastnej skupine a blokuje Apply,
+  nastavenie z inej verzie), sa zobrazí vo vlastnej skupine a blokuje Použiť,
   kým sa neodstráni. Takéto telo odmietne aj lososd (`backend/src/options.rs`,
   `check_body`). Kontroluje každý riadok apply voči dokumentu: deklarovaný,
   nie len na čítanie, hodnota správneho druhu, žiadne `${`.
 
-Všetko, čo sa tu zapíše, ide cez to isté Apply a tú istú prestavbu ako
+Všetko, čo sa tu zapíše, ide cez to isté Použiť a tú istú prestavbu ako
 ostatné panely. `losos.edge.*` je vynechané, pretože ho zariadenie nikdy
 nečíta.
 
 ### História a LosOS Git
 
-Každé Apply, zmena úložiska a obnovenie továrenských nastavení je jeden
+Každé Použiť, zmena úložiska a obnovenie továrenských nastavení je jeden
 commit v `/etc/nixos`, repozitári, ktorý vytvoril `losos-ctl install`. Commit
 je pomenovaný podľa nastavení, ktoré zmenil, `Change hostName, cluster.enable`,
-s hodnotou pred a po každého z nich v tele. **Settings,
-History** vypisuje posledných štyridsať.
+s hodnotou pred a po každého z nich v tele. **Nastavenia,
+História** vypisuje posledných štyridsať.
 
 S `losos.configRepo.enable` (predvolené) a zapnutým LosOS Git drží lososd
 konfiguráciu aj v súkromnom repozitári na LosOS Git, `<owner>/losos-config`,
@@ -191,14 +191,14 @@ s ním zosúladí. Reconciler v lososd beží každých 30 s:
   zaostáva;
 - keď je LosOS Git napred, lebo ste repozitár naklonovali, upravili
   `modules/overrides.nix` a pushli, posunie sa naň fast-forwardom, skontroluje
-  nové `overrides.nix` riadok po riadku tak, ako sa kontroluje Apply, a
-  spustí prestavbu. Odmietnutý push sa ohlási v History a zariadenie zostane
+  nové `overrides.nix` riadok po riadku tak, ako sa kontroluje Použiť, a
+  spustí prestavbu. Odmietnutý push sa ohlási v Histórii a zariadenie zostane
   na vlastnom commite;
 - keď sa obe rozišli (prepísaná história), neurobí nič a povie to. Vyriešte
   to z klonu;
 - kým beží prestavba, push čaká na ďalší tik.
 
-**Sync now** na paneli History spustí jeden tik okamžite. `losos-ctl
+**Synchronizovať teraz** na paneli História spustí jeden tik okamžite. `losos-ctl
 config` vypíše ten istý dokument a `losos-ctl config --sync` spustí tik.
 Tajomstvá sa do repozitára nikdy nedostanú. `overrides.nix` nesie iba
 hodnoty volieb a token, ktorým sa lososd autentifikuje voči LosOS Git, žije v
@@ -217,7 +217,7 @@ federácie nižšie sú spojené logickým AND s `losos.sharingMyStorage`,
 nastavením, ktoré odomyká zdieľaný dátový pool (`lososInternal.federation` v
 `modules/options.nix`). S vypnutým zdieľaním nekomunikuje ani LosOS Git, ani
 LosOS cloud s inými servermi, nech hovorí ich vlastná voľba čokoľvek, a
-panel Advanced zobrazí oba riadky ako nedostupné aj s dôvodom.
+panel Rozšírené zobrazí oba riadky ako nedostupné aj s dôvodom.
 
 `losos.forgejo.federation.enable` (predvolene zapnuté) zapína ActivityPub
 stránku Forgeja v oboch režimoch: `[federation] ENABLED` v app.ini, so
@@ -258,7 +258,7 @@ bránu pri evaluácii.
 
 ## Záloha, obnova a vymazanie
 
-**Settings, Backup** posiela dáta zariadenia do S3-kompatibilného bucketu,
+**Nastavenia, Záloha** posiela dáta zariadenia do S3-kompatibilného bucketu,
 ktorý si vlastník prenajíma (Amazon S3 vrátane Glacier, Backblaze B2, Wasabi,
 Cloudflare R2, MinIO).
 [restic](https://restic.net) robí kopírovanie a šifruje na zariadení skôr,
@@ -292,7 +292,7 @@ prechodnú jednotku `losos-backup-<job>`, spustenú systemd mimo sandboxu
 `ProtectHome=true` lososd. Kľúče bucketu sa k nej dostanú ako
 `EnvironmentFile=` v `/var/secrets`, nikdy nie na príkazovom riadku.
 
-**Restore** si vyžaduje kód na obnovu zariadenia, ktoré zálohu vytvorilo.
+**Obnova** si vyžaduje kód na obnovu zariadenia, ktoré zálohu vytvorilo.
 Vráti sa najnovší snapshot: aplikácie sa zastavia, súbory sa synchronizujú
 späť, databázy sa načítajú cez `pg_restore --clean`, aplikácie sa spustia a
 obnovené `overrides.nix` sa skontroluje ako každé apply a prestavia sa. Kód,
@@ -300,11 +300,11 @@ ktorý zálohu otvoril, sa stane kódom na obnovu tohto zariadenia. Na
 vymazanom alebo preinštalovanom zariadení spustite sprievodcu, nastavte ten
 istý bucket a potom obnovte.
 
-**Settings, Reset, Erase** vymaže dáta aj nastavenia. lososd ho vedie vo
+**Nastavenia, Reset, Vymazať** vymaže dáta aj nastavenia. lososd ho vedie vo
 fázach uložených v `state.json`, takže pokračuje aj bez otvorenej karty:
 
 1. voliteľná záloha. Ak zlyhá, vymazanie sa zastaví a nič sa nezmení;
-2. odpočítavanie `losos.reset.graceMinutes` (predvolene 15). Cancel ho
+2. odpočítavanie `losos.reset.graceMinutes` (predvolene 15). Zrušiť ho
    zastaví a nič na zariadení ani mimo neho sa ešte nezmenilo;
 3. odchod z edge: vlastné domény zariadenia sa odstránia, jeho aktívne
    ponuky na trhu sa uzavrú a zariadenie sa vyradí z registra
@@ -321,7 +321,7 @@ fázach uložených v `state.json`, takže pokračuje aj bez otvorenej karty:
 Zrušiť sa dá iba v krokoch 1 a 2. `/nix`, `/etc/nixos` a kľúčový súbor
 disku zostanú, takže LosOS je stále nainštalovaný a zariadenie otvorí
 sprievodcu nastavením. `/var/lib/losos-erase/report.json` uchováva, čoho sa
-vymazanie vzdalo mimo zariadenia, ako počty, a Settings, Reset to ukazuje.
+vymazanie vzdalo mimo zariadenia, ako počty, a Nastavenia, Reset to ukazuje.
 `tests/erase.nix` prebehne celý cyklus voči bucketu MinIO v jednej VM.
 
 ## Používatelia
