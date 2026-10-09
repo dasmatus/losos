@@ -109,27 +109,28 @@ let
   # registrar drops losos.yml into alongside the static register.yml.
   tomlFmt = pkgs.formats.toml { };
   staticCfg = tomlFmt.generate "losos-traefik-static.toml" (
-    lib.recursiveUpdate {
-      entryPoints.web.address = ":80";
-      entryPoints.web.http.redirections.entryPoint.to = "websecure";
-      entryPoints.web.http.redirections.entryPoint.scheme = "https";
-      entryPoints.websecure.address = ":443";
-      providers.file.directory = "/etc/traefik/dynamic";
-      certificatesResolvers.le.acme.email =
-        if cfg.acmeEmail == null then "unconfigured@losos.cfd" else cfg.acmeEmail;
-      certificatesResolvers.le.acme.storage = "/var/lib/traefik/acme.json";
-      certificatesResolvers.le.acme.tlsChallenge = { };
-    }
-    # A disk image upload is gigabytes, and Traefik v3 cuts any request
-    # whose body takes longer than the entry point's readTimeout (60 s by
-    # default). Raised only on an edge that takes uploads; the registrar's
-    # own idle timeout (server/vm.rs) still drops a client that stops
-    # sending.
-    (
-      lib.optionalAttrs cfg.vms.enable {
-        entryPoints.websecure.transport.respondingTimeouts.readTimeout = "6h";
+    lib.recursiveUpdate
+      {
+        entryPoints.web.address = ":80";
+        entryPoints.web.http.redirections.entryPoint.to = "websecure";
+        entryPoints.web.http.redirections.entryPoint.scheme = "https";
+        entryPoints.websecure.address = ":443";
+        providers.file.directory = "/etc/traefik/dynamic";
+        certificatesResolvers.le.acme.email =
+          if cfg.acmeEmail == null then "unconfigured@losos.cfd" else cfg.acmeEmail;
+        certificatesResolvers.le.acme.storage = "/var/lib/traefik/acme.json";
+        certificatesResolvers.le.acme.tlsChallenge = { };
       }
-    )
+      # A disk image upload is gigabytes, and Traefik v3 cuts any request
+      # whose body takes longer than the entry point's readTimeout (60 s by
+      # default). Raised only on an edge that takes uploads; the registrar's
+      # own idle timeout (server/vm.rs) still drops a client that stops
+      # sending.
+      (
+        lib.optionalAttrs cfg.vms.enable {
+          entryPoints.websecure.transport.respondingTimeouts.readTimeout = "6h";
+        }
+      )
   );
 
   # The one static route: register.<domain> → the registrar's loopback API.

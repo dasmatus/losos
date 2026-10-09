@@ -29,7 +29,7 @@
 }:
 let
   cfg = config.losos.edge;
-  vms = cfg.vms;
+  inherit (cfg) vms;
 
   # KubeVirt v1.9.0 (2026-07-30) and CDI v1.66.1 (2026-09-06), the operator
   # manifests from each project's GitHub release.
