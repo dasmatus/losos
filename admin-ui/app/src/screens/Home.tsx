@@ -472,6 +472,7 @@ function buildFacts({
   return {
     files: availability.seen.files,
     code: availability.seen.code,
+    mail: availability.seen.mail,
     measured: availability.measured,
     ...(settings === null
       ? {}
@@ -636,6 +637,7 @@ function useAvailability(settings: SettingsResponse | null): {
         const next: Availabilities = {
           files: probed.files === "unknown" ? previous.files : probed.files,
           code: probed.code === "unknown" ? previous.code : probed.code,
+          mail: probed.mail === "unknown" ? previous.mail : probed.mail,
         };
         rememberAvailability(next);
         return next;
@@ -659,6 +661,7 @@ function useAvailability(settings: SettingsResponse | null): {
     setSeen((previous) => ({
       files: servedHere(settings.nextcloudMode) ? previous.files : "unknown",
       code: servedHere(settings.forgejoMode) ? previous.code : "unknown",
+      mail: servedHere(settings.nextcloudMode) ? previous.mail : "unknown",
     }));
   }, [settings]);
 

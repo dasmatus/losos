@@ -57,7 +57,10 @@ on:
 # Tags publish release media. The installer ISO (~1.5 GB) is attached to the
 # GitHub release itself. The demo QCOW2 is too large for a GitHub release
 # asset, so it and a copy of the ISO go to GHCR as OCI artifacts
-# (ghcr.io/<owner>/<repo>-{installer-iso,demo-qcow2}:<tag>). Every push to
+# (ghcr.io/<owner>/<repo>-{installer-iso,demo-qcow2}:<tag>), and the demo
+# disk once more as a KubeVirt containerDisk image that the edge's machine
+# catalogue starts LosOS replicas from
+# (ghcr.io/<owner>/<repo>-demo-containerdisk:<tag>, `stable`). Every push to
 # main (and every tag) also publishes the static losos-registrar for the
 # operator's machine as ghcr.io/<owner>/<repo>/images:<channel>-x86_64,
 # which the LosOS proxy serves as plain files; see publish-tool.
@@ -1177,6 +1180,40 @@ jobs:
             echo "qcow2Ref=${base}-demo-qcow2:${TAG}"
             echo "edgeRef=${base}-edge-gateway-qcow2:${TAG}"
           } >> "$GITHUB_OUTPUT"
+      # The same demo disk as a KubeVirt containerDisk: a container image with
+      # the disk under /disk/, owned by qemu's uid 107, which is the layout
+      # KubeVirt and CDI's registry import read. The edge's machine catalogue
+      # (backend-registrar/vm-images.json) starts LosOS replicas from its
+      # `stable` tag, and only the tag's own push moves it: a manual run for
+      # older tags pushes their versions and leaves `stable` where it is.
+      # Compressed, because every replica's importer pulls it whole.
+      - name: publish the demo disk as a KubeVirt containerDisk
+        env:
+          TAG: ${{ matrix.tag }}
+          QCOW2_NAME: ${{ steps.stage.outputs.qcow2Name }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ACTOR: ${{ github.actor }}
+          REPO: ${{ github.repository }}
+          MOVES_STABLE: ${{ github.ref == format('refs/tags/{0}', matrix.tag) }}
+        run: |
+          set -euo pipefail
+          image="ghcr.io/${REPO,,}-demo-containerdisk"
+          mkdir containerdisk
+          nix shell nixpkgs#qemu-utils -c qemu-img convert -c -O qcow2 "$QCOW2_NAME" containerdisk/losos-demo.qcow2
+          printf '%s\n' 'FROM scratch' 'ADD --chown=107:107 losos-demo.qcow2 /disk/' > containerdisk/Dockerfile
+          trap 'docker logout ghcr.io || true; rm -rf containerdisk' EXIT
+          printf '%s' "$GH_TOKEN" | docker login ghcr.io --username "$ACTOR" --password-stdin
+          docker build \
+            --label "org.opencontainers.image.source=https://github.com/${REPO}" \
+            --label "org.opencontainers.image.version=${TAG}" \
+            --label "org.opencontainers.image.description=LosOS demo disk as a KubeVirt containerDisk" \
+            --tag "${image}:${TAG}" containerdisk
+          docker push "${image}:${TAG}"
+          if [ "$MOVES_STABLE" = true ]; then
+            docker tag "${image}:${TAG}" "${image}:stable"
+            docker push "${image}:stable"
+          fi
+          docker image rm "${image}:${TAG}" "${image}:stable" 2>/dev/null || true
       # The ISO's download is the GitHub release asset: at ~1.5 GB it fits under
       # GitHub's 2 GiB per-asset limit, which github-release checks before
       # uploading. The demo QCOW2 does not fit, so GHCR is its only home. The

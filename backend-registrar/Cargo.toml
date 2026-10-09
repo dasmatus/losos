@@ -32,6 +32,9 @@ subtle = "2"
 # Already in the lock tree (rustls uses it), so — like `subtle` — making it
 # direct vendors no new crate.
 ring = "0.17"
+# `stream::unfold` turns a buyer's stored disk image into a response body
+# (`server/vm.rs`). Already in the lock tree through axum's "ws".
+futures-util = { version = "0.3", default-features = false }
 
 [dev-dependencies]
 # tests/lab.rs talks to the helper's console and NIC WebSockets as the

@@ -280,6 +280,12 @@ let
     # nothing.
     "--expect-server-addr"
     (lib.escapeShellArg cfg.serverAddr)
+    # Whether the edge may sell virtual machines on this box
+    # (losos.vms.host, which takes effect only while the box shares its
+    # storage). Turning sharing on or off changes these arguments, so the
+    # join runs again and the edge hears of it.
+    "--host-vms"
+    (if config.lososInternal.vmHost then "true" else "false")
   ];
 
   # The rendered arguments as a file, so the unit can compare what it is about
@@ -831,6 +837,22 @@ in
       ];
 
       environment.systemPackages = [ pkgs.nfs-utils ];
+    })
+
+    # ── Virtual machines for the mesh market ──────────────────────────────
+    # KubeVirt's node agent runs on this box (modules/edge-vms.nix places it
+    # on every node with the appliance label) and needs the host's KVM,
+    # tap devices and vhost-net. Loaded only while the box hosts machines.
+    # Without KVM in the CPU (a box that is itself a guest with no nested
+    # virtualisation) the edge's losos.edge.vms.useEmulation is the only way
+    # a machine starts.
+    (lib.mkIf (meshEnabled && config.lososInternal.vmHost) {
+      boot.kernelModules = [
+        "kvm-intel"
+        "kvm-amd"
+        "tun"
+        "vhost_net"
+      ];
     })
   ];
 }
