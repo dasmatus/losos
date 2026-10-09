@@ -95,7 +95,9 @@ Nastavenie:
    potom na všetko v nich odpovedá `502 token: 403`.
 6. Udržiavajte `losos.cache.substituters` a `losos.cache.trustedPublicKeys` v
    `modules/options.nix` na tej istej URL a kľúči. Ich predvolené hodnoty sú
-   `https://proxy.losos.dasmat.us` a verejný kľúč `losos-1`, takže
+   `https://proxy.losos.dasmat.us`, vlastný názov toho istého projektu
+   `https://losos-cache-proxy.vercel.app` pre prípad, že sa vlastná doména
+   nepreloží, a verejný kľúč `losos-1`, takže
    štandardné zariadenie aj inštalačné médium už ťahajú z cache a
    `tests/invariants.nix` zlyhá, ak niektorá z predvolených hodnôt zmizne.
    Výmena podpisového kľúča znamená zmeniť premennú a predvolenú hodnotu
@@ -163,8 +165,10 @@ nepublikujú.
 curl -fsSLO "https://proxy.losos.dasmat.us/updates/main/x86_64/{losos-registrar,SHA256SUMS}" && sha256sum -c --ignore-missing SHA256SUMS && chmod +x losos-registrar
 ```
 
-Keď proxy neodpovedá, tie isté dva súbory z najnovšieho zostavenia main sú
-na `https://losos.dasmat.us/proxy/updates/main/x86_64/`.
+Keď `proxy.losos.dasmat.us` neodpovedá, proxy je aj na
+`https://losos-cache-proxy.vercel.app`. Keď neodpovedá ani jedna, tie isté
+dva súbory z najnovšieho zostavenia main sú na
+`https://losos.dasmat.us/proxy/updates/main/x86_64/`.
 
 Súhrn krokov jobu obsahuje referenciu na artefakt, URL a kontrolný súčet.
 `oras pull ghcr.io/dasmatus/losos/images:main-x86_64` stiahne tie isté súbory

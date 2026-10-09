@@ -28,8 +28,11 @@
 # from the cache without the owner configuring anything; tests/invariants.nix
 # pins them. Set losos.cache.substituters = [ ] to opt out.
 #
-# The second default substituter is a static copy of the same paths on the
-# GitHub Pages site (https://losos.dasmat.us/proxy, written by
+# The second default substituter is the same proxy under its vercel.app name,
+# which answers when the custom domain does not resolve. It shares the
+# Vercel project, so it does not help once that project's usage runs out.
+#
+# The third is a static copy of the same paths on the GitHub Pages site (https://losos.dasmat.us/proxy, written by
 # .github/scripts/pages-cache.sh and deployed with the handbook), signed with
 # the same key, for when the proxy on Vercel does not answer. It carries only
 # the newest main build and no Nextcloud image, and its Priority of 45 puts it

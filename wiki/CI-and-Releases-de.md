@@ -103,8 +103,10 @@ Einrichtung:
    `502 token: 403`.
 6. Halte `losos.cache.substituters` und `losos.cache.trustedPublicKeys`
    in `modules/options.nix` auf derselben URL und demselben Schlüssel. Ihre
-   Standardwerte sind `https://proxy.losos.dasmat.us` und der öffentliche
-   Schlüssel `losos-1`, sodass eine unveränderte Appliance und das
+   Standardwerte sind `https://proxy.losos.dasmat.us`, der eigene Name
+   desselben Projekts `https://losos-cache-proxy.vercel.app` für den Fall,
+   dass die eigene Domain nicht auflöst, und der öffentliche Schlüssel
+   `losos-1`, sodass eine unveränderte Appliance und das
    Installationsmedium bereits aus dem Cache ziehen, und
    `tests/invariants.nix` schlägt fehl, wenn einer der beiden Standardwerte
    wegfällt. Den Signierschlüssel zu wechseln heißt, Variable und
@@ -177,8 +179,10 @@ veröffentlichen nie.
 curl -fsSLO "https://proxy.losos.dasmat.us/updates/main/x86_64/{losos-registrar,SHA256SUMS}" && sha256sum -c --ignore-missing SHA256SUMS && chmod +x losos-registrar
 ```
 
-Antwortet der Proxy nicht, liegen dieselben zwei Dateien des neuesten
-main-Builds unter `https://losos.dasmat.us/proxy/updates/main/x86_64/`.
+Antwortet `proxy.losos.dasmat.us` nicht, ist der Proxy auch unter
+`https://losos-cache-proxy.vercel.app` erreichbar. Antworten beide nicht,
+liegen dieselben zwei Dateien des neuesten main-Builds unter
+`https://losos.dasmat.us/proxy/updates/main/x86_64/`.
 
 Die Step Summary des Jobs enthält die Artefakt-Referenz, die URL und die
 Prüfsumme. `oras pull ghcr.io/dasmatus/losos/images:main-x86_64` holt
