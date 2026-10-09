@@ -525,6 +525,26 @@ jobs:
         with:
           installables: ".#losos-ctl .#losos-registrar .#losos-admin-ui .#losos-handbook .#losos-image-pause .#losos-image-forgejo"
           signing-key: ${{ secrets.NIX_CACHE_SIGNING_KEY }}
+      # The same paths as a static file cache, for the copy the GitHub Pages
+      # site serves at /proxy when the LosOS proxy does not answer. The
+      # handbook workflow picks up the newest of these from main and deploys
+      # it with the handbook; see .github/scripts/pages-cache.sh for what it
+      # holds and leaves out.
+      - name: static copy of the cache for GitHub Pages
+        if: github.ref == 'refs/heads/main'
+        env:
+          SIGNING_KEY: ${{ secrets.NIX_CACHE_SIGNING_KEY }}
+        run: >-
+          .github/scripts/pages-cache.sh pages-cache
+          .#losos-ctl .#losos-registrar .#losos-admin-ui .#losos-handbook
+          .#losos-image-pause .#losos-image-forgejo
+      - uses: actions/upload-artifact@v7
+        if: github.ref == 'refs/heads/main'
+        with:
+          name: losos-pages-cache
+          path: pages-cache
+          retention-days: 30
+          compression-level: 0
 
   # ── The dev-machine tool ───────────────────────────────────────────────────
   #
@@ -603,6 +623,15 @@ jobs:
             fi
             echo "- $(cat SHA256SUMS)"
           } >> "$GITHUB_STEP_SUMMARY"
+      # The same two files for the GitHub Pages copy of the proxy, which
+      # serves them at /proxy/updates/main/x86_64/. Main only: that copy
+      # carries one channel.
+      - uses: actions/upload-artifact@v7
+        if: github.ref == 'refs/heads/main'
+        with:
+          name: losos-pages-updates
+          path: dev-machine
+          retention-days: 30
 
   # ── The Nextcloud image ────────────────────────────────────────────────────
   #

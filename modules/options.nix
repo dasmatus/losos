@@ -157,13 +157,22 @@ in
       # The LosOS cache proxy: the `losos-cache-proxy` Vercel project in front
       # of the GHCR-hosted cache CI pushes to. CI reads the same URL from the
       # `LOSOS_PROXY_URL` repository variable; the two must name one host or
-      # the appliance substitutes from a cache nothing fills.
-      default = [ "https://proxy.losos.dasmat.us" ];
+      # the appliance substitutes from a cache nothing fills. The second is
+      # the static copy the GitHub Pages site serves (.github/scripts/
+      # pages-cache.sh), signed with the same key, which nix asks only for
+      # what the proxy and cache.nixos.org did not answer.
+      default = [
+        "https://proxy.losos.dasmat.us"
+        "https://losos.dasmat.us/proxy"
+      ];
       description = ''
         Extra Nix substituters, added to the appliance *and* to the installer
         medium. The default is the LosOS cache proxy's public URL
-        (`https://proxy.losos.dasmat.us`); `trustedPublicKeys` carries its
-        signing key. Set it to `[ ]` to use cache.nixos.org alone.
+        (`https://proxy.losos.dasmat.us`) and, as a fallback, the copy of
+        the newest build's paths on the GitHub Pages site
+        (`https://losos.dasmat.us/proxy`); `trustedPublicKeys` carries the
+        key both are signed with. Set it to `[ ]` to use cache.nixos.org
+        alone.
 
         This exists because of one number. `losos.nextcloud.mode` defaults to
         `container`, so the install closure contains `losos-image-nextcloud` —
