@@ -119,6 +119,30 @@ Skôr než sa na ňu spoľahnete, skontrolujte `<proxy-url>/nix-cache-info` a
 prejde na `cache.nixos.org` a zostavovanie. Tajný kľúč nikdy nedávajte do
 flaku ani na zariadenie.
 
+### Kópia na GitHub Pages
+
+Stránka GitHub Pages, ktorá servíruje príručku, servíruje aj kópiu cache na
+`https://losos.dasmat.us/proxy` pre prípad, že proxy na Verceli neodpovedá.
+Pages nespúšťa žiadny kód, takže kópia je obyčajná súborová cache. Pri
+každom pushi do main job `publish-cache` zapíše cesty, ktoré publikuje,
+príkazom `nix copy --to file://`, podpíše ich tým istým kľúčom `losos-1` a
+vynechá každú cestu, ktorú už servíruje cache.nixos.org. Workflow `handbook`
+sa spustí znova, keď `ci` na main skončí, a nasadí najnovšiu kópiu pod
+`/proxy`.
+
+Má tri obmedzenia:
+
+- Obsahuje len najnovšie zostavenie main. Zariadenie na staršej revízii
+  nájde svoje cesty len na proxy.
+- Stránka Pages môže mať najviac 1 GB, takže kópia drží NAR súbory pod 800
+  MiB a ako prvé vynecháva najväčšie cesty. Súhrn krokov jobu menuje, čo
+  vynechala. Obraz Nextcloudu, zostavovaný raz týždenne, v nej nie je nikdy.
+- Jej `nix-cache-info` uvádza `Priority: 45`, za proxy (30) a
+  cache.nixos.org (40), takže ju nix skúša až po oboch.
+
+`losos.cache.substituters` predvolene uvádza obe. Zdroj Pages v repozitári
+musí byť "GitHub Actions" (Settings, Pages), rovnako ako pre príručku.
+
 ## Nástroj pre vývojársky počítač
 
 Kľúčová ceremónia ([Master proxy, oficiálne edge](Master-Proxy-sk#oficiálne-edge))
@@ -138,6 +162,9 @@ nepublikujú.
 ```sh
 curl -fsSLO "https://proxy.losos.dasmat.us/updates/main/x86_64/{losos-registrar,SHA256SUMS}" && sha256sum -c --ignore-missing SHA256SUMS && chmod +x losos-registrar
 ```
+
+Keď proxy neodpovedá, tie isté dva súbory z najnovšieho zostavenia main sú
+na `https://losos.dasmat.us/proxy/updates/main/x86_64/`.
 
 Súhrn krokov jobu obsahuje referenciu na artefakt, URL a kontrolný súčet.
 `oras pull ghcr.io/dasmatus/losos/images:main-x86_64` stiahne tie isté súbory

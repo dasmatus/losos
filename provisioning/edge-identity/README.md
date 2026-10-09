@@ -77,6 +77,10 @@ which `oras pull` fetches too; the proxy only redirects to GHCR's storage
 .#losos-registrar-static` (the same binary), `nix build .#losos-registrar`
 (for a machine with Nix), or `cargo build` in `backend-registrar/`.
 
+When the proxy does not answer, the same two files of the newest main build
+are on the GitHub Pages site: put `https://losos.dasmat.us/proxy` in place
+of `https://proxy.losos.dasmat.us` in the line above.
+
 ## Operator steps
 
 You need: `losos-registrar` on your machine (above), a VPS running the

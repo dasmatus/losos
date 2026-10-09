@@ -113,6 +113,29 @@ Check `<proxy-url>/nix-cache-info` and `nix copy --from <proxy-url>
 appliance waits 5 s and falls back to `cache.nixos.org` and building. Never
 put the secret key in the flake or on an appliance.
 
+### The copy on GitHub Pages
+
+The GitHub Pages site that serves the handbook also serves a copy of the
+cache at `https://losos.dasmat.us/proxy`, for when the proxy on Vercel does
+not answer. Pages runs no code, so the copy is a plain file cache. On each
+push to main, the `publish-cache` job writes the paths it publishes with
+`nix copy --to file://`, signs them with the same `losos-1` key and leaves
+out every path cache.nixos.org already serves. The `handbook` workflow runs
+again when `ci` finishes on main and deploys the newest copy under `/proxy`.
+
+It has three limits:
+
+- It holds the newest build of main only. A box on an older revision finds
+  its paths on the proxy alone.
+- A Pages site may be at most 1 GB, so the copy keeps under 800 MiB of NARs
+  and drops the largest paths first. The job's step summary names what it
+  left out. The Nextcloud image, built weekly, is never in it.
+- Its `nix-cache-info` says `Priority: 45`, after the proxy (30) and
+  cache.nixos.org (40), so nix tries it after both.
+
+`losos.cache.substituters` lists both by default. The repository's Pages
+source must be "GitHub Actions" (Settings, Pages), as for the handbook.
+
 ## The dev-machine tool
 
 The key ceremony ([Master proxy, Official edges](Master-Proxy#official-edges))
@@ -132,6 +155,9 @@ requests never publish.
 ```sh
 curl -fsSLO "https://proxy.losos.dasmat.us/updates/main/x86_64/{losos-registrar,SHA256SUMS}" && sha256sum -c --ignore-missing SHA256SUMS && chmod +x losos-registrar
 ```
+
+When the proxy does not answer, the same two files of the newest main build
+are at `https://losos.dasmat.us/proxy/updates/main/x86_64/`.
 
 The job's step summary carries the artifact reference, the URL and the sum.
 `oras pull ghcr.io/dasmatus/losos/images:main-x86_64` fetches the same files
