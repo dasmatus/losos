@@ -41,29 +41,43 @@ const SETTINGS = {
 const LIMITS = {
   widgets: 24,
   nameChars: 60,
-  sourceBytes: 65536,
+  widgetBytes: 131072,
+  files: 12,
+  fileNameChars: 40,
+  fileKinds: ['html', 'css', 'js', 'mjs', 'json', 'svg', 'txt', 'md'],
   imageBytes: 8388608,
   veil: { min: 20, max: 90 },
 };
 
 /* A widget that draws the box's name through the bridge and says which
- * theme it was handed. What the checks read back out of the frame. */
+ * theme it was handed, in three files: its stylesheet and script are linked
+ * from index.html. What the checks read back out of the frame. */
 const CLOCK = {
   id: 'w1',
   name: 'Box name',
   span: 'half',
-  source: [
-    '<style>.big { font-size: 24px; color: var(--accent); }</style>',
-    '<div class="big" id="out">waiting</div>',
-    '<div id="theme"></div>',
-    '<script>',
-    '  document.getElementById("theme").textContent = "theme:" + losos.theme;',
-    '  losos.onTheme((t) => { document.getElementById("theme").textContent = "theme:" + t; });',
-    '  losos.metric("box.settings").then((m) => {',
-    '    document.getElementById("out").textContent = "box:" + m.hostName;',
-    '  }).catch((e) => { document.getElementById("out").textContent = "failed:" + e.message; });',
-    '</script>',
-  ].join('\n'),
+  files: [
+    {
+      name: 'index.html',
+      content: [
+        '<link rel="stylesheet" href="clock.css">',
+        '<div class="big" id="out">waiting</div>',
+        '<div id="theme"></div>',
+        '<script src="clock.js"></script>',
+      ].join('\n'),
+    },
+    { name: 'clock.css', content: '.big { font-size: 24px; color: var(--accent); }' },
+    {
+      name: 'clock.js',
+      content: [
+        'document.getElementById("theme").textContent = "theme:" + losos.theme;',
+        'losos.onTheme((t) => { document.getElementById("theme").textContent = "theme:" + t; });',
+        'losos.metric("box.settings").then((m) => {',
+        '  document.getElementById("out").textContent = "box:" + m.hostName;',
+        '}).catch((e) => { document.getElementById("out").textContent = "failed:" + e.message; });',
+      ].join('\n'),
+    },
+  ],
 };
 
 const json = (route, status, body) =>
@@ -83,6 +97,7 @@ async function open({
   board = null,
   viewport = { width: 1280, height: 900 },
   locale = 'en-US',
+  builder = null,
 } = {}) {
   const page = await browser.newPage({ viewport, locale });
   const errors = [];
@@ -153,7 +168,7 @@ async function open({
     }
     const draft = route.request().postDataJSON();
     writes.push(['POST', '/api/look/widgets', draft]);
-    const widget = { id: draft.id ?? `w${nextId++}`, name: draft.name, span: draft.span ?? 'half', source: draft.source };
+    const widget = { id: draft.id ?? `w${nextId++}`, name: draft.name, span: draft.span ?? 'half', files: draft.files };
     current = {
       ...current,
       widgets: current.widgets.some((w) => w.id === widget.id)
@@ -162,6 +177,18 @@ async function open({
     };
     return json(route, 200, { widget });
   });
+
+  // The widget builder on the edge, when the check gives one: a GET for the
+  // account, a POST that starts a build, and the build read back by id.
+  if (builder !== null) {
+    await page.route('**/api/builder**', (route) => {
+      if (!authed(route)) return json(route, 401, { error: 'unauthorized' });
+      const url = new URL(route.request().url());
+      const method = route.request().method();
+      if (method === 'POST') writes.push(['POST', url.pathname, route.request().postDataJSON()]);
+      return builder(url.pathname, method, route, json);
+    });
+  }
 
   // Init scripts run in every frame, the sandboxed widget frame included,
   // where storage throws: that is the sandbox working, not a page error.
@@ -186,6 +213,31 @@ const bgVar = (page) => page.evaluate(() => document.documentElement.style.getPr
 const veilVar = (page) => page.evaluate(() => document.documentElement.style.getPropertyValue('--losos-bg-veil'));
 const violations = (page) => page.evaluate(() => window.__violations);
 const frame = (page) => page.frameLocator('iframe[sandbox="allow-scripts"]').first();
+
+/* The code editor is CodeMirror in a shadow root; its content element is a
+ * textbox named after the file, and Playwright's role queries reach into
+ * open shadow roots. `typeInto` replaces the whole file with `text`, pasted
+ * in one go, then types `typed` key by key: completions open on typing,
+ * not on a paste. */
+const code = (scope, file) => scope.getByRole('textbox', { name: `Source of ${file}` });
+async function typeInto(page, scope, file, text, typed = '') {
+  const box = code(scope, file);
+  await box.click();
+  await page.keyboard.press('ControlOrMeta+a');
+  if (text.length > 0) await page.keyboard.insertText(text);
+  else await page.keyboard.press('Delete');
+  if (typed.length > 0) await page.keyboard.type(typed);
+}
+const fileButton = (scope, file) => scope.getByRole('button', { name: file, exact: true });
+
+/* Open the editor on a new widget, from the board. */
+async function openEditor(page) {
+  await page.getByRole('button', { name: 'Add a widget' }).first().click();
+  await page.getByRole('dialog', { name: 'Add a widget' }).getByRole('button', { name: 'Write one' }).click();
+  const editor = page.getByRole('dialog', { name: 'Write a widget' });
+  await editor.waitFor();
+  return editor;
+}
 
 console.log('admin-ui look checks');
 
@@ -352,11 +404,17 @@ await check('the gallery writes a widget by hand: the editor previews it in the 
   await page.getByTestId('hand-preview').locator('iframe[sandbox="allow-scripts"]').waitFor();
   await editor.getByLabel('Name', { exact: true }).fill('Room left');
   await editor.getByLabel('Width').selectOption('full');
-  await editor.getByLabel('Source').fill('<p id="hi">hello from the box</p>');
+  // A new widget opens as three files, index.html first.
+  assert.deepEqual(await editor.getByTestId('hand-file').allTextContents(), ['index.html', 'app.js', 'style.css']);
+  await typeInto(page, editor, 'index.html', '<p id="hi">hello from the box</p>');
   await page.getByTestId('hand-preview').frameLocator('iframe').locator('#hi').filter({ hasText: 'hello from the box' }).waitFor({ timeout: 10000 });
   await editor.getByRole('button', { name: 'Save and put on the board' }).click();
   await page.getByText('Room left saved.', { exact: true }).first().waitFor();
-  assert.deepEqual(writes, [['POST', '/api/look/widgets', { name: 'Room left', span: 'full', source: '<p id="hi">hello from the box</p>' }]]);
+  assert.equal(writes.length, 1);
+  const [method, path, body] = writes[0];
+  assert.deepEqual([method, path, body.name, body.span], ['POST', '/api/look/widgets', 'Room left', 'full']);
+  assert.deepEqual(body.files.map((f) => f.name), ['index.html', 'app.js', 'style.css']);
+  assert.equal(body.files[0].content, '<p id="hi">hello from the box</p>');
   const tile = page.getByTestId('hand-tile');
   await tile.waitFor();
   await tile.frameLocator('iframe').locator('#hi').waitFor();
@@ -364,6 +422,95 @@ await check('the gallery writes a widget by hand: the editor previews it in the 
   // Stored on the board as the box's id, so another tab finds the same widget.
   const stored = await page.evaluate(() => JSON.parse(window.localStorage.getItem('losos-widgets')));
   assert.deepEqual(stored.widgets.map((w) => w.source), [{ kind: 'hand', id: 'w2' }]);
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+await check('the code editor completes the bridge, the readings, the colours and the file names, and draws under the admin CSP', async () => {
+  const { page, errors } = await open();
+  // The bundle's two first-paint style-src-elem reports (advanced.browser.mjs)
+  // are counted out; the editor must add none.
+  const atLoad = (await violations(page)).length;
+  const editor = await openEditor(page);
+  await code(editor, 'index.html').waitFor();
+  const list = page.locator('.cm-tooltip-autocomplete');
+  const options = async () => (await list.locator('li').allTextContents()).map((o) => o.trim());
+
+  await fileButton(editor, 'app.js').click();
+  await typeInto(page, editor, 'app.js', '', 'losos.');
+  await list.waitFor();
+  const members = await options();
+  for (const member of ['metric', 'theme', 'onTheme', 'lang', 'palette', 'resize', 'files', 'file', 'asset']) {
+    assert.ok(members.some((o) => o.startsWith(member)), `losos.${member} was not offered: ${members.join(' | ')}`);
+  }
+  await page.keyboard.type('met');
+  // Picked with the mouse: CodeMirror ignores Enter for a moment after the
+  // list changes, which a fast test can fall into.
+  await list.locator('li').filter({ hasText: /^metric/ }).click();
+  // Picking metric opens the string, where the readings are offered.
+  await list.waitFor();
+  assert.ok((await options()).some((o) => o.startsWith('storage.bytes')), 'the readings were not offered');
+  await page.keyboard.press('Escape');
+
+  await fileButton(editor, 'style.css').click();
+  await typeInto(page, editor, 'style.css', 'p { color: ', 'var(--ac');
+  await list.waitFor();
+  assert.ok((await options()).some((o) => o.startsWith('--accent')), 'the colour variables were not offered');
+  await page.keyboard.press('Escape');
+
+  await fileButton(editor, 'index.html').click();
+  await typeInto(page, editor, 'index.html', '', '<script src="');
+  await list.waitFor();
+  const named = await options();
+  assert.ok(named.some((o) => o.startsWith('app.js')) && named.some((o) => o.startsWith('style.css')), `file names: ${named.join(' | ')}`);
+  await page.keyboard.press('Escape');
+
+  assert.deepEqual((await violations(page)).slice(atLoad), [], 'the editor broke the admin CSP');
+  // The preview runs what is half typed: a syntax error, or a reading with
+  // no name yet. Those are the widget's errors, shown under the preview.
+  assert.deepEqual(errors.filter((e) => !/^SyntaxError|no reading called/.test(e)), []);
+  await page.close();
+});
+
+await check('a widget in several files: a new file, linked styles, a script, an SVG picture and fetched JSON all reach the frame', async () => {
+  const { page, errors, writes } = await open();
+  const editor = await openEditor(page);
+  await editor.getByLabel('Name', { exact: true }).fill('Split');
+  // A name the box would refuse is refused here first.
+  await editor.getByRole('button', { name: 'Add a file' }).click();
+  await editor.getByLabel('New file name').fill('Bad Name.exe');
+  await editor.getByRole('button', { name: 'Add', exact: true }).click();
+  await editor.getByText('Use lowercase letters, digits, - and _', { exact: false }).waitFor();
+  await editor.getByLabel('New file name').fill('data.json');
+  await editor.getByRole('button', { name: 'Add', exact: true }).click();
+  await typeInto(page, editor, 'data.json', '{ "word": "from json" }');
+  await editor.getByRole('button', { name: 'Add a file' }).click();
+  await editor.getByLabel('New file name').fill('dot.svg');
+  await editor.getByRole('button', { name: 'Add', exact: true }).click();
+  await typeInto(page, editor, 'dot.svg', '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><circle cx="5" cy="5" r="5"/></svg>');
+  await fileButton(editor, 'index.html').click();
+  await typeInto(page, editor, 'index.html', [
+    '<link rel="stylesheet" href="style.css">',
+    '<p class="figure" id="word">…</p>',
+    '<img id="dot" src="dot.svg" alt="">',
+    '<script src="app.js"></script>',
+  ].join('\n'));
+  await fileButton(editor, 'app.js').click();
+  await typeInto(page, editor, 'app.js', 'fetch("data.json").then((r) => r.json()).then((d) => { document.getElementById("word").textContent = d.word + ":" + losos.files.length; });');
+  const preview = page.getByTestId('hand-preview').frameLocator('iframe');
+  await preview.locator('#word').filter({ hasText: 'from json:5' }).waitFor({ timeout: 10000 });
+  // The stylesheet applied, and the picture loaded from its data: URL.
+  const colour = await preview.locator('#word').evaluate((el) => getComputedStyle(el).color);
+  assert.equal(colour, 'rgb(14, 110, 125)', `style.css did not apply: ${colour}`);
+  await preview.locator('#dot').evaluate((img) => (img.complete ? null : new Promise((r) => img.addEventListener('load', r))));
+  assert.equal(await preview.locator('#dot').evaluate((img) => img.naturalWidth), 10);
+  // A file other than index.html can be removed.
+  await fileButton(editor, 'dot.svg').click();
+  await editor.getByRole('button', { name: 'Remove dot.svg' }).click();
+  assert.deepEqual(await editor.getByTestId('hand-file').allTextContents(), ['index.html', 'app.js', 'data.json', 'style.css']);
+  await editor.getByRole('button', { name: 'Save and put on the board' }).click();
+  await page.getByText('Split saved.', { exact: true }).first().waitFor();
+  assert.deepEqual(writes[0][2].files.map((f) => f.name), ['index.html', 'app.js', 'data.json', 'style.css']);
   assert.deepEqual(errors, []);
   await page.close();
 });
@@ -379,6 +526,99 @@ await check('an empty name is refused in the dialog, with nothing sent', async (
   await editor.getByText('Give it a name.').waitFor();
   assert.deepEqual(writes, []);
   await page.close();
+});
+
+// ── Built by Claude ───────────────────────────────────────────────────────
+
+const ACCOUNT = {
+  available: true,
+  currency: 'eur',
+  balance: 380,
+  packs: [500, 1000, 2000],
+  price: { model: 'claude-opus-5-5', input_per_million: 480, output_per_million: 2400, markup_percent: 20, max_build: 360 },
+  can_build: true,
+  builds: [],
+};
+
+const BUILT = [
+  { name: 'index.html', content: '<link rel="stylesheet" href="built.css"><p id="built">built by the agent</p>' },
+  { name: 'built.css', content: '#built { color: rgb(1, 2, 3); }' },
+];
+
+function builderStub() {
+  let reads = 0;
+  const build = (status) => ({
+    id: 'bld_0a1b', status, prompt: 'a big clock', revision: false, created_at: 1, finished_at: status === 'running' ? null : 2,
+    charged: status === 'running' ? 0 : 120, fault: null, has_source: status === 'done',
+    usage: { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+    at_limit: false, source: status === 'done' ? BUILT[0].content : null, files: status === 'done' ? BUILT : null,
+    notes: status === 'done' ? 'A big clock.' : null,
+  });
+  return (path, method, route, json) => {
+    if (path === '/api/builder') return json(route, 200, ACCOUNT);
+    if (path === '/api/builder/builds' && method === 'POST') return json(route, 200, { available: true, ...build('running') });
+    if (path === '/api/builder/builds/bld_0a1b') return json(route, 200, { available: true, ...build(reads++ < 1 ? 'running' : 'done') });
+    return json(route, 404, { error: 'not found' });
+  };
+}
+
+await check('Build with AI shows the price and balance, and a finished build lands in the editor and its preview', async () => {
+  const { page, errors, writes } = await open({ builder: builderStub() });
+  // The bundle's two first-paint style-src-elem reports (advanced.browser.mjs)
+  // are counted out; the builder must add none.
+  const atLoad = (await violations(page)).length;
+  await page.getByRole('button', { name: 'Add a widget' }).first().click();
+  await page.getByRole('dialog', { name: 'Add a widget' }).getByRole('button', { name: 'Write one' }).click();
+  const editor = page.getByRole('dialog', { name: 'Write a widget' });
+  await editor.getByRole('tab', { name: 'Build with AI' }).click();
+  const panel = page.getByTestId('builder-panel');
+  await panel.waitFor();
+  assert.match(await page.getByTestId('builder-price').textContent(), /^€4\.80 per million tokens read and €24\.00 per million written\. One build costs at most €3\.60\.$/);
+  // The price, not how it is made; and the terms what the owner sends is under.
+  const terms = page.getByTestId('builder-terms');
+  assert.match(await terms.textContent(), /subject to Anthropic's terms/);
+  assert.deepEqual(
+    await terms.getByRole('link').evaluateAll((links) => links.map((a) => [a.textContent, a.getAttribute('href'), a.target])),
+    [
+      ['Usage Policy', 'https://www.anthropic.com/legal/aup', '_blank'],
+      ['Commercial Terms', 'https://www.anthropic.com/legal/commercial-terms', '_blank'],
+    ],
+  );
+  assert.equal(await page.getByTestId('builder-balance').textContent(), 'Balance: €3.80');
+  // The template is not a widget worth changing, so there is nothing to tick.
+  assert.equal(await panel.getByRole('checkbox').count(), 0);
+  await panel.getByLabel('What should the widget show?').fill('a big clock');
+  await panel.getByRole('button', { name: 'Build' }).click();
+  // Done: back on the Write tab with the agent's files in the editor and the frame.
+  const built = page.getByTestId('hand-preview').frameLocator('iframe').locator('#built');
+  await built.waitFor({ timeout: 15000 });
+  assert.equal(await built.evaluate((el) => getComputedStyle(el).color), 'rgb(1, 2, 3)');
+  assert.deepEqual(await editor.getByTestId('hand-file').allTextContents(), ['index.html', 'built.css']);
+  assert.equal(await code(editor, 'index.html').textContent(), BUILT[0].content);
+  assert.deepEqual(writes, [['POST', '/api/builder/builds', { prompt: 'a big clock', lang: 'en' }]]);
+  assert.deepEqual((await violations(page)).slice(atLoad), []);
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+await check('a box whose edge offers no builder says so in the tab, in each language', async () => {
+  for (const [locale, add, write, title, tab, words] of [
+    ['en-US', 'Add a widget', 'Write one', 'Write a widget', 'Build with AI', 'does not offer the widget builder'],
+    ['sk-SK', 'Pridať widget', 'Napísať', 'Napísať widget', 'Vytvoriť s AI', 'tvorcu widgetov neponúka'],
+    ['de-DE', 'Widget hinzufügen', 'Eins schreiben', 'Widget schreiben', 'Mit KI bauen', 'bietet den Widget-Baukasten nicht an'],
+  ]) {
+    const { page, errors, writes } = await open({
+      locale,
+      builder: (_path, _method, route, json) => json(route, 200, { available: false }),
+    });
+    await page.getByRole('button', { name: add }).first().click();
+    await page.getByRole('dialog', { name: add }).getByRole('button', { name: write }).click();
+    await page.getByRole('dialog', { name: title }).getByRole('tab', { name: tab }).click();
+    await page.getByTestId('builder-unavailable').filter({ hasText: words }).waitFor();
+    assert.deepEqual(writes, []);
+    assert.deepEqual(errors, []);
+    await page.close();
+  }
 });
 
 await check('the Look pane lists the hand-written widgets and can edit and delete them', async () => {

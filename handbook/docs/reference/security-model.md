@@ -48,6 +48,7 @@ On by default: kernel hardening parameters and sysctls, a kernel-module
 blacklist, a tmpfs `/tmp`, systemd sandboxing of the web server, mDNS and the
 control daemon. Four protections that can break something are opt-in on the
 Security pane: AppArmor, a hardened memory allocator, no SMT, USBGuard.
+[Hardening](/in-depth/hardening.md) covers each flag and what it costs.
 
 ![Settings, Security: the four extra protections that are off by default, each with what it costs.](../img/settings-security.png)
 

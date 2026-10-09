@@ -41,6 +41,7 @@ use crate::market::{
     account_ready, decode_hex, now_secs, valid_box_uuid, verify_signature, Kind, MarketError,
     MAX_FEE_BPS,
 };
+use crate::stripe_mode::StripeMode;
 
 /// Budget for one Stripe request.
 const STRIPE_TIMEOUT: Duration = Duration::from_secs(4);
@@ -331,6 +332,75 @@ impl StripeClient {
     }
 }
 
+impl StripeClient {
+    /// A Checkout Session for widget builder credit: a plain charge for one
+    /// of the operator's packs, no destination and no fee.
+    async fn credit_checkout(
+        &self,
+        key: &str,
+        c: &CreditRequest,
+        currency: &str,
+    ) -> Result<(String, String), MarketError> {
+        let owned = credit_form(c, currency);
+        let form: Vec<(&str, String)> =
+            owned.iter().map(|(k, v)| (k.as_str(), v.clone())).collect();
+        let body = self
+            .post(
+                key,
+                &["v1", "checkout", "sessions"],
+                &form,
+                Some(&format!("losos-credit-{}", c.order_id)),
+            )
+            .await?;
+        match (body["id"].as_str(), body["url"].as_str()) {
+            (Some(id), Some(url)) => Ok((id.to_string(), url.to_string())),
+            _ => Err(MarketError::Stripe(
+                "checkout session had no id or url".to_string(),
+            )),
+        }
+    }
+}
+
+/// The form a credit Checkout Session is created with. Pure, so the exact
+/// fields Stripe sees are asserted in a test.
+fn credit_form(c: &CreditRequest, currency: &str) -> Vec<(String, String)> {
+    let return_url = &c.return_url;
+    let sep = if return_url.contains('?') { '&' } else { '?' };
+    vec![
+        ("mode".into(), "payment".into()),
+        ("payment_method_types[]".into(), "card".into()),
+        ("client_reference_id".into(), c.order_id.clone()),
+        (
+            "success_url".into(),
+            format!("{return_url}{sep}order={}&status=paid", c.order_id),
+        ),
+        (
+            "cancel_url".into(),
+            format!("{return_url}{sep}order={}&status=cancelled", c.order_id),
+        ),
+        ("expires_at".into(), c.expires_at.to_string()),
+        ("metadata[order_id]".into(), c.order_id.clone()),
+        ("metadata[losos_kind]".into(), "builder_credit".into()),
+        (
+            "metadata[losos_appliance_id]".into(),
+            c.appliance_id.clone(),
+        ),
+        ("line_items[0][quantity]".into(), "1".into()),
+        (
+            "line_items[0][price_data][currency]".into(),
+            currency.to_string(),
+        ),
+        (
+            "line_items[0][price_data][unit_amount]".into(),
+            c.amount.to_string(),
+        ),
+        (
+            "line_items[0][price_data][product_data][name]".into(),
+            "Widget builder credit - LosOS".into(),
+        ),
+    ]
+}
+
 /// The form a hardware Checkout Session is created with. Pure, so the exact
 /// fields Stripe sees are asserted in a test.
 fn hardware_form(
@@ -490,6 +560,9 @@ pub struct GateOpts {
     /// sells boxes and gateways. Read per request, like the key. Unset, the
     /// gate refuses every hardware checkout.
     pub hardware_catalogue: Option<String>,
+    /// The widget builder's credit packs, in minor units: the only amounts a
+    /// credit Checkout may charge. Empty, the gate refuses every one.
+    pub credit_packs: Vec<u64>,
 }
 
 // ── wire protocol ────────────────────────────────────────────────────────
@@ -519,6 +592,16 @@ pub(crate) struct HardwareRequest {
     pub(crate) expires_at: u64,
 }
 
+/// A widget builder top-up: one of the operator's packs, bought by a box.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct CreditRequest {
+    pub(crate) order_id: String,
+    pub(crate) appliance_id: String,
+    pub(crate) amount: u64,
+    pub(crate) return_url: String,
+    pub(crate) expires_at: u64,
+}
+
 /// The only things the gate will do. There is deliberately no generic
 /// "forward this to Stripe" operation.
 #[derive(Debug, Serialize, Deserialize)]
@@ -543,6 +626,7 @@ pub(crate) enum Request {
     },
     Checkout(CheckoutRequest),
     HardwareCheckout(HardwareRequest),
+    CreditCheckout(CreditRequest),
     VerifyWebhook {
         signature: String,
         body_hex: String,
@@ -569,6 +653,10 @@ pub(crate) struct Fault {
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub(crate) struct Reply {
+    /// The mode of the key the gate answered with, on every reply that read
+    /// it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) mode: Option<StripeMode>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -580,6 +668,13 @@ pub(crate) struct Reply {
 }
 
 impl Reply {
+    fn in_mode(mode: StripeMode) -> Self {
+        Self {
+            mode: Some(mode),
+            ..Self::default()
+        }
+    }
+
     fn fault(kind: FaultKind, message: impl Into<String>) -> Self {
         Self {
             error: Some(Fault {
@@ -606,6 +701,23 @@ impl From<MarketError> for Reply {
 
 fn refuse(what: &str) -> Reply {
     Reply::fault(FaultKind::Refused, what)
+}
+
+/// Why a signed event cannot be taken in `mode`, or `None`. Stripe signs a
+/// live event only with a live endpoint's secret and a test event only with a
+/// test endpoint's, so an event in the other mode means the sealed webhook
+/// secret and the sealed key belong to different modes. The event is refused
+/// rather than applied: Stripe retries it for three days, long enough to seal
+/// the matching pair. An event that does not say its mode is taken.
+fn event_mode_fault(body: &[u8], mode: StripeMode) -> Option<String> {
+    let event: Value = serde_json::from_slice(body).ok()?;
+    let sent = StripeMode::of_event(&event)?;
+    (sent != mode).then(|| {
+        format!(
+            "a {sent}-mode event arrived, but the key is a {mode} key: \
+             the webhook secret belongs to the other mode's endpoint"
+        )
+    })
 }
 
 /// `acct_...`, the shape of a Stripe account id.
@@ -726,6 +838,31 @@ fn hardware_fault(
     None
 }
 
+/// Why a credit Checkout is outside what the gate allows, or `None`.
+fn credit_fault(
+    c: &CreditRequest,
+    packs: &[u64],
+    return_url: Option<&str>,
+    now: u64,
+) -> Option<&'static str> {
+    if !token_ok(&c.order_id, 64) || !c.order_id.starts_with("cr_") {
+        return Some("bad order id");
+    }
+    if !token_ok(&c.appliance_id, 64) {
+        return Some("bad appliance id");
+    }
+    if !packs.contains(&c.amount) {
+        return Some("amount is not one of the credit packs");
+    }
+    if !url_ok(&c.return_url) || return_url.is_some_and(|want| c.return_url != want) {
+        return Some("bad return url");
+    }
+    if c.expires_at <= now || c.expires_at > now + MAX_SESSION_SECS {
+        return Some("session lifetime is outside the allowed range");
+    }
+    None
+}
+
 async fn hardware_catalogue(opts: &GateOpts) -> Result<Catalogue, Reply> {
     let Some(path) = opts.hardware_catalogue.as_deref() else {
         return Err(refuse("this edge sells no hardware"));
@@ -746,17 +883,30 @@ fn encode_hex(bytes: &[u8]) -> String {
 
 // ── the gate ─────────────────────────────────────────────────────────────
 
-async fn stripe_key(opts: &GateOpts) -> Result<String, MarketError> {
-    read_secret(&opts.stripe_key_file, &["sk_", "rk_"]).await
+/// The key and the mode it works in. A key whose mode cannot be read off it
+/// is refused like a misshapen one: the edge never guesses whether it is
+/// about to move real money.
+async fn stripe_key(opts: &GateOpts) -> Result<(String, StripeMode), MarketError> {
+    let key = read_secret(&opts.stripe_key_file, &["sk_", "rk_"]).await?;
+    let Some(mode) = StripeMode::of_key(&key) else {
+        tracing::error!(
+            target: Action::Market.target(),
+            "secret file {} holds a key that is neither a test nor a live key",
+            opts.stripe_key_file,
+        );
+        return Err(MarketError::Unconfigured);
+    };
+    Ok((key, mode))
 }
 
-/// Bind the Stripe key and a client as `$key` and `$client`, or return the
-/// fault as the reply. Two bindings rather than one value holding both: see
-/// [`StripeClient`] for why the key is never stored next to the URL base.
+/// Bind the Stripe key, its mode and a client as `$key`, `$mode` and
+/// `$client`, or return the fault as the reply. Separate bindings rather than
+/// one value holding all three: see [`StripeClient`] for why the key is never
+/// stored next to the URL base.
 macro_rules! stripe_or_reply {
-    ($opts:expr, $key:ident, $client:ident) => {
-        let $key = match stripe_key($opts).await {
-            Ok(key) => key,
+    ($opts:expr, $key:ident, $mode:ident, $client:ident) => {
+        let ($key, $mode) = match stripe_key($opts).await {
+            Ok(found) => found,
             Err(e) => return e.into(),
         };
         let $client = match StripeClient::new(&$opts.stripe_api) {
@@ -769,9 +919,9 @@ macro_rules! stripe_or_reply {
 async fn handle(opts: &GateOpts, request: Request) -> Reply {
     match request {
         Request::ValidateSecrets => {
-            stripe_or_reply!(opts, _key, _client);
+            stripe_or_reply!(opts, _key, mode, _client);
             match read_webhook_secrets(&opts.webhook_secret_file).await {
-                Ok(_) => Reply::default(),
+                Ok(_) => Reply::in_mode(mode),
                 Err(e) => e.into(),
             }
         }
@@ -785,14 +935,14 @@ async fn handle(opts: &GateOpts, request: Request) -> Reply {
             if box_uuid.as_deref().is_some_and(|u| !valid_box_uuid(u)) {
                 return refuse("bad box uuid");
             }
-            stripe_or_reply!(opts, key, s);
+            stripe_or_reply!(opts, key, mode, s);
             match s
                 .create_account(&key, &appliance_id, box_uuid.as_deref())
                 .await
             {
                 Ok(id) => Reply {
                     id: Some(id),
-                    ..Reply::default()
+                    ..Reply::in_mode(mode)
                 },
                 Err(e) => e.into(),
             }
@@ -807,9 +957,9 @@ async fn handle(opts: &GateOpts, request: Request) -> Reply {
             if !valid_box_uuid(&box_uuid) {
                 return refuse("bad box uuid");
             }
-            stripe_or_reply!(opts, key, s);
+            stripe_or_reply!(opts, key, mode, s);
             match s.tag_account(&key, &account_id, &box_uuid).await {
-                Ok(()) => Reply::default(),
+                Ok(()) => Reply::in_mode(mode),
                 Err(e) => e.into(),
             }
         }
@@ -817,11 +967,11 @@ async fn handle(opts: &GateOpts, request: Request) -> Reply {
             if !account_id_ok(&account_id) {
                 return refuse("bad account id");
             }
-            stripe_or_reply!(opts, key, s);
+            stripe_or_reply!(opts, key, mode, s);
             match s.account_ready(&key, &account_id).await {
                 Ok(ready) => Reply {
                     ready: Some(ready),
-                    ..Reply::default()
+                    ..Reply::in_mode(mode)
                 },
                 Err(e) => e.into(),
             }
@@ -841,11 +991,11 @@ async fn handle(opts: &GateOpts, request: Request) -> Reply {
             {
                 return refuse("bad return url");
             }
-            stripe_or_reply!(opts, key, s);
+            stripe_or_reply!(opts, key, mode, s);
             match s.account_link(&key, &account_id, &return_url).await {
                 Ok(url) => Reply {
                     url: Some(url),
-                    ..Reply::default()
+                    ..Reply::in_mode(mode)
                 },
                 Err(e) => e.into(),
             }
@@ -860,12 +1010,12 @@ async fn handle(opts: &GateOpts, request: Request) -> Reply {
             ) {
                 return refuse(why);
             }
-            stripe_or_reply!(opts, key, s);
+            stripe_or_reply!(opts, key, mode, s);
             match s.checkout(&key, &c).await {
                 Ok((id, url)) => Reply {
                     id: Some(id),
                     url: Some(url),
-                    ..Reply::default()
+                    ..Reply::in_mode(mode)
                 },
                 Err(e) => e.into(),
             }
@@ -888,11 +1038,30 @@ async fn handle(opts: &GateOpts, request: Request) -> Reply {
                 Ok(lines) => lines,
                 Err(why) => return refuse(why),
             };
-            stripe_or_reply!(opts, key, s);
+            stripe_or_reply!(opts, key, mode, s);
             match s
                 .hardware_checkout(&key, &h, &catalogue.currency, &catalogue.countries, &lines)
                 .await
             {
+                Ok((id, url)) => Reply {
+                    id: Some(id),
+                    url: Some(url),
+                    ..Reply::in_mode(mode)
+                },
+                Err(e) => e.into(),
+            }
+        }
+        Request::CreditCheckout(c) => {
+            if let Some(why) = credit_fault(
+                &c,
+                &opts.credit_packs,
+                opts.return_url.as_deref(),
+                now_secs(),
+            ) {
+                return refuse(why);
+            }
+            stripe_or_reply!(opts, key, s);
+            match s.credit_checkout(&key, &c, &opts.currency).await {
                 Ok((id, url)) => Reply {
                     id: Some(id),
                     url: Some(url),
@@ -908,18 +1077,27 @@ async fn handle(opts: &GateOpts, request: Request) -> Reply {
             let Some(body) = decode_hex(&body_hex) else {
                 return refuse("body is not hex");
             };
+            let mode = match stripe_key(opts).await {
+                Ok((_, mode)) => mode,
+                Err(e) => return e.into(),
+            };
             let secrets = match read_webhook_secrets(&opts.webhook_secret_file).await {
                 Ok(s) => s,
                 Err(e) => return e.into(),
             };
             let now = now_secs();
-            if secrets
+            if !secrets
                 .iter()
                 .any(|secret| verify_signature(secret, &signature, &body, now).is_ok())
             {
-                Reply::default()
-            } else {
-                MarketError::BadSignature.into()
+                return MarketError::BadSignature.into();
+            }
+            match event_mode_fault(&body, mode) {
+                Some(why) => {
+                    tracing::error!(target: Action::Market.target(), "webhook refused: {why}");
+                    refuse(&why)
+                }
+                None => Reply::in_mode(mode),
             }
         }
     }
@@ -992,12 +1170,48 @@ where
     }
 }
 
+/// Say which mode the key works in, once, as the gate starts, and refuse to
+/// start on a key that is there but says neither. Only the mode is logged,
+/// never the key. A key file that is absent is the market being off, which
+/// the gate reports per request as it always has.
+async fn announce_mode(opts: &GateOpts) -> miette::Result<()> {
+    match tokio::fs::try_exists(&opts.stripe_key_file).await {
+        Ok(false) => {
+            tracing::warn!(
+                target: Action::Market.target(),
+                "no Stripe key at {}: the market answers 503 until one is sealed",
+                opts.stripe_key_file,
+            );
+            return Ok(());
+        }
+        Ok(true) => {}
+        Err(e) => miette::bail!("read {}: {e}", opts.stripe_key_file),
+    }
+    match stripe_key(opts).await {
+        Ok((_, StripeMode::Test)) => tracing::warn!(
+            target: Action::Market.target(),
+            "stripe gate in TEST mode: checkouts take test cards and no real money moves",
+        ),
+        Ok((_, StripeMode::Live)) => tracing::info!(
+            target: Action::Market.target(),
+            "stripe gate in LIVE mode: checkouts charge real cards",
+        ),
+        Err(_) => miette::bail!(
+            "{} does not hold a Stripe secret key whose mode can be read \
+             (sk_test_, sk_live_, rk_test_ or rk_live_); refusing to start",
+            opts.stripe_key_file
+        ),
+    }
+    Ok(())
+}
+
 /// Run the gate as the process's main job.
 ///
 /// # Errors
 /// If the socket cannot be bound.
 pub async fn run(opts: GateOpts) -> miette::Result<()> {
     use miette::{Context, IntoDiagnostic};
+    announce_mode(&opts).await?;
     let listener = bind(&opts.socket)
         .into_diagnostic()
         .with_context(|| format!("bind {}", opts.socket))?;
@@ -1079,11 +1293,21 @@ impl GateClient {
         }
     }
 
-    pub async fn validate_secrets(&self) -> Result<(), MarketError> {
-        self.call(&Request::ValidateSecrets).await.map(|_| ())
+    /// Check the key and the webhook secrets are in place, and learn the
+    /// key's mode.
+    ///
+    /// # Errors
+    /// [`MarketError::Unconfigured`] when either is missing or misshapen;
+    /// others if the gate is unavailable.
+    pub async fn validate_secrets(&self) -> Result<StripeMode, MarketError> {
+        self.call(&Request::ValidateSecrets)
+            .await?
+            .mode
+            .ok_or_else(|| MarketError::Stripe("gate: no mode".to_string()))
     }
 
     /// Create the seller's Express account; a retry returns the same one.
+    /// Returns its id and the mode it was created in.
     ///
     /// # Errors
     /// If the gate is unavailable or Stripe refuses.
@@ -1091,14 +1315,19 @@ impl GateClient {
         &self,
         appliance_id: &str,
         box_uuid: Option<&str>,
-    ) -> Result<String, MarketError> {
-        self.call(&Request::CreateAccount {
-            appliance_id: appliance_id.to_string(),
-            box_uuid: box_uuid.map(str::to_string),
-        })
-        .await?
-        .id
-        .ok_or_else(|| MarketError::Stripe("gate: no account id".to_string()))
+    ) -> Result<(String, StripeMode), MarketError> {
+        let reply = self
+            .call(&Request::CreateAccount {
+                appliance_id: appliance_id.to_string(),
+                box_uuid: box_uuid.map(str::to_string),
+            })
+            .await?;
+        match (reply.id, reply.mode) {
+            (Some(id), Some(mode)) => Ok((id, mode)),
+            _ => Err(MarketError::Stripe(
+                "gate: no account id or mode".to_string(),
+            )),
+        }
     }
 
     /// Write the box's UUID onto an existing account.
@@ -1145,32 +1374,50 @@ impl GateClient {
         .ok_or_else(|| MarketError::Stripe("gate: no url".to_string()))
     }
 
-    /// A Checkout Session; returns its id and hosted URL.
+    /// A Checkout Session; returns its id, hosted URL and mode.
     ///
     /// # Errors
     /// If the gate is unavailable, refuses the request, or Stripe refuses.
     pub(crate) async fn checkout(
         &self,
         request: CheckoutRequest,
-    ) -> Result<(String, String), MarketError> {
+    ) -> Result<(String, String, StripeMode), MarketError> {
         let reply = self.call(&Request::Checkout(request)).await?;
-        match (reply.id, reply.url) {
-            (Some(id), Some(url)) => Ok((id, url)),
+        match (reply.id, reply.url, reply.mode) {
+            (Some(id), Some(url), Some(mode)) => Ok((id, url, mode)),
             _ => Err(MarketError::Stripe(
-                "checkout session had no id or url".to_string(),
+                "checkout session had no id, url or mode".to_string(),
             )),
         }
     }
 
-    /// A hardware Checkout Session; returns its id and hosted URL.
+    /// A hardware Checkout Session; returns its id, hosted URL and mode.
     ///
     /// # Errors
     /// If the gate is unavailable, refuses the request, or Stripe refuses.
     pub(crate) async fn hardware_checkout(
         &self,
         request: HardwareRequest,
-    ) -> Result<(String, String), MarketError> {
+    ) -> Result<(String, String, StripeMode), MarketError> {
         let reply = self.call(&Request::HardwareCheckout(request)).await?;
+        match (reply.id, reply.url, reply.mode) {
+            (Some(id), Some(url), Some(mode)) => Ok((id, url, mode)),
+            _ => Err(MarketError::Stripe(
+                "checkout session had no id, url or mode".to_string(),
+            )),
+        }
+    }
+
+    /// A widget builder credit Checkout Session; returns its id and hosted
+    /// URL.
+    ///
+    /// # Errors
+    /// If the gate is unavailable, refuses the request, or Stripe refuses.
+    pub(crate) async fn credit_checkout(
+        &self,
+        request: CreditRequest,
+    ) -> Result<(String, String), MarketError> {
+        let reply = self.call(&Request::CreditCheckout(request)).await?;
         match (reply.id, reply.url) {
             (Some(id), Some(url)) => Ok((id, url)),
             _ => Err(MarketError::Stripe(
@@ -1180,18 +1427,24 @@ impl GateClient {
     }
 
     /// Whether `signature` is a valid `Stripe-Signature` for `body` under any
-    /// of the webhook secrets the gate holds.
+    /// of the webhook secrets the gate holds, and the event is in the key's
+    /// mode. Returns that mode.
     ///
     /// # Errors
-    /// [`MarketError::BadSignature`] if it is not; others if the gate is
-    /// unavailable.
-    pub async fn verify_webhook(&self, signature: &str, body: &[u8]) -> Result<(), MarketError> {
+    /// [`MarketError::BadSignature`] if it is not signed; a refusal if it is
+    /// signed but in the other mode; others if the gate is unavailable.
+    pub async fn verify_webhook(
+        &self,
+        signature: &str,
+        body: &[u8],
+    ) -> Result<StripeMode, MarketError> {
         self.call(&Request::VerifyWebhook {
             signature: signature.to_string(),
             body_hex: encode_hex(body),
         })
-        .await
-        .map(|_| ())
+        .await?
+        .mode
+        .ok_or_else(|| MarketError::Stripe("gate: no mode".to_string()))
     }
 }
 
@@ -1221,6 +1474,23 @@ mod tests {
         assert!(secret_fault("sk_live_x", &["sk_", "rk_"]).is_none());
         assert!(secret_fault("pk_live_x", &["sk_", "rk_"]).is_some());
         assert!(secret_fault("sk_a b", &["sk_"]).is_some());
+    }
+
+    #[test]
+    fn an_event_from_the_other_mode_names_the_mix_up() {
+        let live = br#"{"type":"x","livemode":true}"#;
+        let test = br#"{"type":"x","livemode":false}"#;
+        assert!(event_mode_fault(live, StripeMode::Live).is_none());
+        assert!(event_mode_fault(test, StripeMode::Test).is_none());
+        let why = event_mode_fault(live, StripeMode::Test).expect("refused");
+        assert!(
+            why.contains("live-mode event") && why.contains("test key"),
+            "{why}"
+        );
+        assert!(event_mode_fault(test, StripeMode::Live).is_some());
+        // An event that does not say, or a body that is not JSON, is taken.
+        assert!(event_mode_fault(br#"{"type":"x"}"#, StripeMode::Live).is_none());
+        assert!(event_mode_fault(b"not json", StripeMode::Live).is_none());
     }
 
     #[test]
@@ -1472,5 +1742,53 @@ mod tests {
         assert!(!form
             .keys()
             .any(|k| k.contains("transfer_data") || k.contains("application_fee")));
+    }
+
+    fn credit() -> CreditRequest {
+        CreditRequest {
+            order_id: "cr_0123abcd".to_string(),
+            appliance_id: "mattbox".to_string(),
+            amount: 1_000,
+            return_url: "https://losos.example/market".to_string(),
+            expires_at: NOW + 1800,
+        }
+    }
+
+    #[test]
+    fn a_credit_checkout_charges_only_a_pack() {
+        let ok = credit();
+        let packs = [500, 1_000];
+        let ret = Some("https://losos.example/market");
+        assert_eq!(credit_fault(&ok, &packs, ret, NOW), None);
+        let bad = |f: &dyn Fn(&mut CreditRequest)| {
+            let mut c = ok.clone();
+            f(&mut c);
+            credit_fault(&c, &packs, ret, NOW)
+        };
+        assert!(bad(&|c| c.amount = 999).is_some());
+        assert!(bad(&|c| c.amount = 0).is_some());
+        assert!(bad(&|c| c.order_id = "hw_0123".to_string()).is_some());
+        assert!(bad(&|c| c.appliance_id = "a b".to_string()).is_some());
+        assert!(bad(&|c| c.return_url = "https://evil.example/".to_string()).is_some());
+        assert!(bad(&|c| c.expires_at = NOW + MAX_SESSION_SECS + 1).is_some());
+        assert!(credit_fault(&ok, &[], ret, NOW).is_some());
+    }
+
+    #[test]
+    fn the_credit_session_is_a_plain_charge_in_the_edges_currency() {
+        let form: std::collections::HashMap<String, String> =
+            credit_form(&credit(), "eur").into_iter().collect();
+        assert_eq!(form["line_items[0][price_data][unit_amount]"], "1000");
+        assert_eq!(form["line_items[0][price_data][currency]"], "eur");
+        assert_eq!(form["line_items[0][quantity]"], "1");
+        assert_eq!(form["client_reference_id"], "cr_0123abcd");
+        assert_eq!(form["metadata[losos_kind]"], "builder_credit");
+        assert!(!form
+            .keys()
+            .any(|k| k.contains("transfer_data") || k.contains("application_fee")));
+        assert!(serde_json::from_str::<Request>(
+            r#"{"op":"credit_checkout","order_id":"cr_1","appliance_id":"b","amount":500,"return_url":"https://x/","expires_at":1}"#
+        )
+        .is_ok());
     }
 }

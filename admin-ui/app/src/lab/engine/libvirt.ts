@@ -4,8 +4,9 @@
  * machine has it) and bridges its serial console and network card to two
  * WebSockets; the Lab stays the switch fabric, so a libvirt guest's frames
  * cross the drawn cables exactly like a qemu-wasm guest's. Ported from
- * admin-ui/lab/src/engine-libvirt.js; wiki/Lab.md, "Guests under libvirt",
- * has the design. Where the helper is, and who may ask it, is helper.ts. */
+ * admin-ui/lab/src/engine-libvirt.js; handbook/docs/in-depth/lab.md, "Guests
+ * under libvirt", has the design. Where the helper is, and who may ask it, is
+ * helper.ts. */
 
 import { guestTerminal, helperFor, stream, type Hello, type Helper } from "./helper";
 import type { GuestBackend, GuestDevice, GuestHandle, GuestNic, Probe } from "./types";

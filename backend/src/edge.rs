@@ -110,9 +110,9 @@ pub struct Edge {
 }
 
 /// The edge this box uses, out of everything the scan found: the path
-/// (wiki/Edge-Federation.md, "The box"). A LAN edge first, the configured
-/// official one when the LAN has none, and `None` when neither answered,
-/// which is what switches every edge-dependent feature off.
+/// (handbook/docs/in-depth/edge-federation.md, "The box"). A LAN edge first,
+/// the configured official one when the LAN has none, and `None` when neither
+/// answered, which is what switches every edge-dependent feature off.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EdgePath {
     pub name: String,

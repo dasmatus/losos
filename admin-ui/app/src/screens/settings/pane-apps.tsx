@@ -7,6 +7,16 @@ import {
   Search01Icon,
 } from "@hugeicons/core-free-icons";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogBody,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { HelpLink } from "@/components/ui/help-link";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia } from "@/components/ui/empty";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
@@ -23,8 +33,10 @@ import { Spinner } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 import { t as translate, type MessageKey } from "@/lib/i18n";
 import { Rich, useT } from "@/lib/i18n-react";
-import type { ServiceMode } from "@/lib/api";
+import type { InstalledApp, ServiceMode } from "@/lib/api";
 import { useCatalogue, type CatalogueApp, type CatalogueState } from "./catalogue";
+import { InstallDialog, type InstallTarget } from "./install-dialog";
+import { useInstalledApps } from "./use-installed-apps";
 import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText, StackRow } from "./rows";
 import type { SettingsForm } from "./use-settings-form";
 
@@ -58,6 +70,25 @@ export function AppsPane({ form }: { form: SettingsForm }) {
   const draft = form.draft;
   const disabled = form.locked || !form.ready;
   const catalogue = useCatalogue(!form.locked);
+  const installed = useInstalledApps(!form.locked);
+  const [target, setTarget] = React.useState<InstallTarget | null>(null);
+  const [removing, setRemoving] = React.useState<InstalledApp | null>(null);
+
+  const ready = installed.state.kind === "ready" ? installed.state : null;
+  const records = ready?.apps ?? [];
+  const install: Installer | null =
+    ready === null || disabled
+      ? null
+      : {
+          records,
+          start: (app, source) =>
+            setTarget({
+              title: app.name,
+              publisher: app.source,
+              source,
+              existing: records.find((r) => r.chart.name === source.name && r.chart.repo === source.repo) ?? null,
+            }),
+        };
 
   return (
     <>
@@ -95,6 +126,41 @@ export function AppsPane({ form }: { form: SettingsForm }) {
         </GroupCaption>
       </PaneSection>
 
+      {(records.length > 0 || installed.state.kind === "failed") && (
+        <PaneSection>
+          <GroupTitle>{t("install.installed")}</GroupTitle>
+          <Group>
+            {installed.state.kind === "failed" ? (
+              <StackRow last>
+                <Alert variant="crit">
+                  <HugeiconsIcon icon={Alert01Icon} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+                  <AlertDescription>{t("install.listFailed", { message: installed.state.message })}</AlertDescription>
+                </Alert>
+              </StackRow>
+            ) : (
+              records.map((record, index) => (
+                <InstalledRow
+                  key={record.release}
+                  record={record}
+                  disabled={disabled}
+                  last={index === records.length - 1}
+                  onChange={() =>
+                    setTarget({
+                      title: record.chart.name,
+                      publisher: record.chart.repo,
+                      source: record.chart,
+                      existing: record,
+                    })
+                  }
+                  onRemove={() => setRemoving(record)}
+                />
+              ))
+            )}
+          </Group>
+          <GroupCaption>{t("install.installedCaption")}</GroupCaption>
+        </PaneSection>
+      )}
+
       <PaneSection>
         <GroupTitle>{t("panes.apps.findMore")}</GroupTitle>
         <Group>
@@ -129,13 +195,30 @@ export function AppsPane({ form }: { form: SettingsForm }) {
             </InputGroup>
           </StackRow>
 
-          <CatalogueBody state={catalogue.state} />
+          <CatalogueBody state={catalogue.state} install={install} />
         </Group>
 
         <GroupCaption>
           {footerFor(catalogue.state)}
+          {installed.state.kind === "unavailable" && catalogue.state.kind === "results" && (
+            <> {t("install.noCluster")}</>
+          )}
         </GroupCaption>
       </PaneSection>
+
+      <InstallDialog
+        target={target}
+        sharedAvailable={ready?.sharedAvailable ?? false}
+        onOpenChange={(open) => {
+          if (!open) setTarget(null);
+        }}
+        onInstall={installed.install}
+      />
+      <RemoveDialog
+        record={removing}
+        onClose={() => setRemoving(null)}
+        onRemove={installed.remove}
+      />
     </>
   );
 }
@@ -179,7 +262,14 @@ function AppModeRow({ id, title, detail, value, disabled, onChange, last }: AppM
 
 // ── The catalogue ─────────────────────────────────────────────────────────
 
-function CatalogueBody({ state }: { state: CatalogueState }) {
+/** What a result row needs to offer an install; null while the box cannot
+ *  take one (no cluster, still loading, the form locked). */
+interface Installer {
+  records: readonly InstalledApp[];
+  start: (app: CatalogueApp, source: NonNullable<CatalogueApp["chart"]>) => void;
+}
+
+function CatalogueBody({ state, install }: { state: CatalogueState; install: Installer | null }) {
   const t = useT();
   switch (state.kind) {
     case "idle":
@@ -252,7 +342,7 @@ function CatalogueBody({ state }: { state: CatalogueState }) {
           </TableHeader>
           <TableBody>
             {apps.map((app) => (
-              <ResultRow key={`${app.source}:${app.id}`} app={app} />
+              <ResultRow key={`${app.source}:${app.id}`} app={app} install={install} />
             ))}
           </TableBody>
         </Table>
@@ -266,8 +356,13 @@ function CatalogueBody({ state }: { state: CatalogueState }) {
   }
 }
 
-function ResultRow({ app }: { app: CatalogueApp }) {
+function ResultRow({ app, install }: { app: CatalogueApp; install: Installer | null }) {
   const t = useT();
+  const chart = app.chart;
+  const record =
+    chart === null
+      ? undefined
+      : install?.records.find((r) => r.chart.name === chart.name && r.chart.repo === chart.repo);
   return (
     <TableRow>
       <TableCell className="whitespace-normal align-top">
@@ -283,28 +378,182 @@ function ResultRow({ app }: { app: CatalogueApp }) {
           thing here that says who wrote this and who you would be trusting. */}
       <TableCell className="align-top text-[12.5px] text-muted">{app.source}</TableCell>
       <TableCell className="text-right align-top">
-        {app.homepage !== null && (
-          <a
-            href={app.homepage}
-            target="_blank"
-            rel="noreferrer noopener external"
-            className={cn(
-              "inline-flex shrink-0 items-center gap-1.5 rounded-control px-2 py-1",
-              "text-[12.5px] text-accent transition-colors duration-150 hover:bg-accent-wash",
-            )}
-          >
-            {t("panes.apps.lookAt")}
-            <HugeiconsIcon
-              icon={LinkSquare02Icon}
-              size={13}
-              strokeWidth={1.5}
-              color="currentColor"
-              aria-hidden="true"
-            />
-          </a>
-        )}
+        <div className="flex flex-wrap items-center justify-end gap-1.5">
+          {app.homepage !== null && (
+            <a
+              href={app.homepage}
+              target="_blank"
+              rel="noreferrer noopener external"
+              className={cn(
+                "inline-flex shrink-0 items-center gap-1.5 rounded-control px-2 py-1",
+                "text-[12.5px] text-accent transition-colors duration-150 hover:bg-accent-wash",
+              )}
+            >
+              {t("panes.apps.lookAt")}
+              <HugeiconsIcon
+                icon={LinkSquare02Icon}
+                size={13}
+                strokeWidth={1.5}
+                color="currentColor"
+                aria-hidden="true"
+              />
+            </a>
+          )}
+          {/* Only a row the box can fetch an app from, on a box that can run
+              one. A second install of the same app is a change to the first. */}
+          {chart !== null && install !== null && (
+            <Button
+              size="sm"
+              variant={record === undefined ? "primary" : "secondary"}
+              aria-label={record === undefined ? t("install.buttonLabel", { name: app.name }) : undefined}
+              onClick={() => install.start(app, chart)}
+            >
+              {record === undefined ? t("install.button") : t("install.change")}
+            </Button>
+          )}
+        </div>
       </TableCell>
     </TableRow>
+  );
+}
+
+// ── Installed apps ────────────────────────────────────────────────────────
+
+const PHASE_KEY = {
+  installing: "install.phase.installing",
+  removing: "install.phase.removing",
+  running: "install.phase.running",
+  failed: "install.phase.failed",
+} as const satisfies Record<InstalledApp["phase"], MessageKey>;
+
+function InstalledRow({
+  record,
+  disabled,
+  last,
+  onChange,
+  onRemove,
+}: {
+  record: InstalledApp;
+  disabled: boolean;
+  last: boolean;
+  onChange: () => void;
+  onRemove: () => void;
+}) {
+  const t = useT();
+  const busy = record.phase === "installing" || record.phase === "removing";
+  // The forward listens on every address of the box, so the page's own host
+  // reaches it: the .local name, or the IP address the owner typed.
+  const href =
+    record.phase === "running" && record.appPort !== null
+      ? `http://${window.location.hostname}:${record.frontPort}/`
+      : null;
+  return (
+    <StackRow last={last}>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="flex flex-wrap items-center gap-2 text-sm leading-snug text-ink">
+            <span className="font-mono">{record.release}</span>
+            <Badge variant={record.phase === "running" ? "ok" : record.phase === "failed" ? "crit" : "neutral"}>
+              {busy && <Spinner size={12} label={t(PHASE_KEY[record.phase])} />}
+              {t(PHASE_KEY[record.phase])}
+            </Badge>
+          </p>
+          <p className="mt-0.5 text-[12.5px] leading-snug text-muted">
+            {t("install.runsAs", { chart: record.chart.name, version: record.chart.version, user: record.runAs })}
+          </p>
+          {record.phase === "failed" && record.message !== null && (
+            <p className="mt-1 text-[12.5px] leading-snug text-crit">{record.message}</p>
+          )}
+          {record.phase === "running" && record.appPort === null && (
+            <p className="mt-1 text-[12.5px] leading-snug text-muted">{t("install.noPort")}</p>
+          )}
+        </div>
+        <div className="flex shrink-0 items-center gap-1.5">
+          {href !== null && (
+            <a
+              href={href}
+              target="_blank"
+              rel="noreferrer noopener"
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-control px-2 py-1",
+                "text-[12.5px] text-accent transition-colors duration-150 hover:bg-accent-wash",
+              )}
+            >
+              {t("install.open")}
+              <HugeiconsIcon icon={LinkSquare02Icon} size={13} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+            </a>
+          )}
+          <Button size="sm" variant="secondary" disabled={disabled || busy} onClick={onChange}>
+            {t("install.change")}
+          </Button>
+          <Button size="sm" variant="ghost" disabled={disabled || busy} onClick={onRemove}>
+            {t("install.remove")}
+          </Button>
+        </div>
+      </div>
+    </StackRow>
+  );
+}
+
+function RemoveDialog({
+  record,
+  onClose,
+  onRemove,
+}: {
+  record: InstalledApp | null;
+  onClose: () => void;
+  onRemove: (release: string) => Promise<boolean>;
+}) {
+  const t = useT();
+  const titleId = React.useId();
+  const bodyId = React.useId();
+  const [sending, setSending] = React.useState(false);
+  // Kept while the dialog closes, so its text does not blank mid-animation.
+  const [shown, setShown] = React.useState<InstalledApp | null>(record);
+  React.useEffect(() => {
+    if (record !== null) setShown(record);
+  }, [record]);
+
+  const confirm = async () => {
+    if (record === null) return;
+    setSending(true);
+    try {
+      if (await onRemove(record.release)) onClose();
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <Dialog
+      open={record !== null}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+      dismissible={!sending}
+      labelledBy={titleId}
+      describedBy={bodyId}
+    >
+      <DialogHeader>
+        <DialogTitle id={titleId}>{t("install.removeTitle", { name: shown?.release ?? "" })}</DialogTitle>
+      </DialogHeader>
+      <DialogBody>
+        <DialogDescription id={bodyId}>
+          {t("install.removeBody", {
+            path: shown === null ? "" : `/home/${shown.runAs}/data/apps/${shown.release}`,
+          })}
+        </DialogDescription>
+      </DialogBody>
+      <DialogFooter>
+        <Button variant="ghost" disabled={sending} onClick={onClose}>
+          {t("install.cancel")}
+        </Button>
+        <Button disabled={sending} onClick={() => void confirm()}>
+          {sending && <Spinner size={14} label={t("install.sending")} />}
+          {t("install.removeConfirm")}
+        </Button>
+      </DialogFooter>
+    </Dialog>
   );
 }
 

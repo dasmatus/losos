@@ -46,9 +46,8 @@ The edge is a NixOS module that ships with LosOS, `nixosModules.edge`. You
 install the edge server the same way a box is configured, with a short Nix
 file. It names the public domain, the boxes allowed to connect, whether to
 run the mesh control plane, and whether to announce itself on the LAN. The
-operator's walkthrough is on the
-[Master proxy](https://github.com/dasmatus/losos/wiki/Master-Proxy) and
-[Mesh](https://github.com/dasmatus/losos/wiki/Mesh) wiki pages. The
+operator's walkthrough is in [Master proxy](/in-depth/master-proxy.md)
+and [Mesh](/in-depth/mesh.md). The
 repository also carries a demonstration of exactly this setup under
 `demo/edge-lan/`: two boxes and an edge on one virtual network. `run.sh`
 boots it, and `CHECKLIST.md` is the order it walks through.

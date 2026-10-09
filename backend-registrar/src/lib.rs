@@ -48,6 +48,7 @@
 
 pub mod action;
 pub mod announce;
+pub mod builder;
 pub mod config;
 pub mod domains;
 pub mod error;
@@ -66,6 +67,7 @@ pub mod routes;
 pub mod seed;
 pub mod server;
 pub mod stripe_gate;
+pub mod stripe_mode;
 pub mod vms;
 pub mod window;
 pub mod zone;

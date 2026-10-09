@@ -37,8 +37,9 @@ pkgs.testers.nixosTest {
   # The default splash, drawing the status under the logo. The graphics
   # driver is in the initrd, as a UEFI machine's firmware framebuffer is, so
   # the splash is up from stage 1. A box the installer put in keyfile mode
-  # has to say what that costs (wiki/TPM.md); with that warning the status
-  # is longer than one Plymouth message, so it also covers the parts.
+  # has to say what that costs (handbook/docs/reference/tpm.md); with that
+  # warning the status is longer than one Plymouth message, so it also
+  # covers the parts.
   nodes.machine = {
     imports = [ box ];
     losos.hostName = "consolebox";

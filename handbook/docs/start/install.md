@@ -64,7 +64,7 @@ The box runs in QEMU, virt-manager or VirtualBox. Two things to know:
 - Give the VM an emulated TPM, `swtpm`, if you want the TPM unlock path.
   Without one the box installs in keyfile mode, which also works.
 - The VM host usually does not resolve the box's `.local` name. Use the IP
-  address from the banner. The wiki's
-  [Install page](https://github.com/dasmatus/losos/wiki/Install) has the
+  address from the banner.
+  [Install in depth](/in-depth/install.md#try-it-in-a-vm-bios) has the
   exact QEMU lines. For showing the box off there is also a ready-made demo
   disk image, `losos-disk-qcow2`, with no encryption and no installer.

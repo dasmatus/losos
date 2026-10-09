@@ -1,5 +1,5 @@
-# Edge federation, end to end (wiki/Edge-Federation.md): three VMs on one
-# LAN playing the three machines the design has.
+# Edge federation, end to end (handbook/docs/in-depth/edge-federation.md): three
+# VMs on one LAN playing the three machines the design has.
 #
 #   * `hub`   — an official edge as the internet would see it: the edge module
 #               with closed enrolment and two tenant rows, the spoke (`acme`,

@@ -204,10 +204,10 @@ pub enum InstallAction {
     EnrollTpm(PathBuf, PathBuf),
 }
 
-/// What a keyfile install costs, in one line the owner sees on the console.
-/// The wiki page says the rest; the admin pages and the box's own screen say
+/// What a keyfile install costs, in one line the owner sees on the console. The
+/// handbook page says the rest; the admin pages and the box's own screen say
 /// the same thing after the first boot.
-pub const NO_TPM_WARNING: &str = "losos-install: warning: no TPM, so the disk key is on the unencrypted boot partition and anyone with this disk can read it. See https://github.com/dasmatus/losos/wiki/TPM";
+pub const NO_TPM_WARNING: &str = "losos-install: warning: no TPM, so the disk key is on the unencrypted boot partition and anyone with this disk can read it. See https://losos.dasmat.us/reference/tpm";
 
 /// `--tpm` / `--no-tpm` against what the installer medium can see.
 ///

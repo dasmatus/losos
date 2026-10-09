@@ -93,25 +93,47 @@ const BACKUP_COUNTDOWN = {
   },
 };
 
-const LIMITS = { widgets: 24, nameChars: 60, sourceBytes: 65536, imageBytes: 8388608, veil: { min: 20, max: 90 } };
+const LIMITS = {
+  widgets: 24,
+  nameChars: 60,
+  widgetBytes: 131072,
+  files: 12,
+  fileNameChars: 40,
+  fileKinds: ['html', 'css', 'js', 'mjs', 'json', 'svg', 'txt', 'md'],
+  imageBytes: 8388608,
+  veil: { min: 20, max: 90 },
+};
 const HAND_WIDGET = {
   id: 'w1',
   name: 'Greeting',
   span: 'half',
-  source: [
-    '<style>',
-    '  body { font-family: system-ui, sans-serif; margin: 0; color: var(--ink); }',
-    '  .big { font-size: 28px; font-weight: 600; color: var(--accent); }',
-    '</style>',
-    '<div class="big" id="out">…</div>',
-    '<div id="free"></div>',
-    '<script>',
-    '  losos.metric("box.settings").then((m) => {',
-    '    document.getElementById("out").textContent = "Hello from " + m.hostName;',
-    '  });',
-    '  document.getElementById("free").textContent = "Drawn in its own sandbox, in the " + losos.theme + " theme.";',
-    '</script>',
-  ].join('\n'),
+  files: [
+    {
+      name: 'index.html',
+      content: [
+        '<link rel="stylesheet" href="style.css">',
+        '<div class="big" id="out">…</div>',
+        '<div id="free"></div>',
+        '<script src="app.js"></script>',
+      ].join('\n'),
+    },
+    {
+      name: 'app.js',
+      content: [
+        'losos.metric("box.settings").then((m) => {',
+        '  document.getElementById("out").textContent = "Hello from " + m.hostName;',
+        '});',
+        'document.getElementById("free").textContent = "Drawn in its own sandbox, in the " + losos.theme + " theme.";',
+      ].join('\n'),
+    },
+    {
+      name: 'style.css',
+      content: [
+        'body { font-family: system-ui, sans-serif; margin: 0; color: var(--ink); }',
+        '.big { font-size: 28px; font-weight: 600; color: var(--accent); }',
+      ].join('\n'),
+    },
+  ],
 };
 const LOOK_PLAIN = { version: 1, background: { kind: 'none' }, veil: 60, widgets: [], shipped: ['tide', 'grid', 'dusk'], limits: LIMITS };
 const LOOK_TIDE = { ...LOOK_PLAIN, background: { kind: 'shipped', name: 'tide' }, widgets: [HAND_WIDGET] };
@@ -201,12 +223,56 @@ const CONFIG = {
 };
 
 const RESULTS = {
-  sources: ['nixpkgs', 'flathub'],
+  sources: ['Artifact Hub'],
   results: [
-    { id: 'jellyfin', name: 'Jellyfin', version: '10.11.0', summary: 'A media server for your films and music.', source: 'nixpkgs', homepage: 'https://jellyfin.org' },
-    { id: 'immich', name: 'Immich', version: '2.4.1', summary: 'Photo and video backup from your phone.', source: 'nixpkgs', homepage: 'https://immich.app' },
-    { id: 'vaultwarden', name: 'Vaultwarden', summary: 'A password manager server.', source: 'flathub' },
+    { id: 'jellyfin', name: 'jellyfin', version: '2.0.0', summary: 'A media server for your films and music.', source: 'utkuozdemir', homepage: 'https://jellyfin.org', chart: { repo: 'https://utkuozdemir.org/helm-charts', name: 'jellyfin', version: '2.0.0' } },
+    { id: 'immich', name: 'immich', version: '0.9.3', summary: 'Photo and video backup from your phone.', source: 'immich', homepage: 'https://immich.app', chart: { repo: 'https://immich-app.github.io/immich-charts', name: 'immich', version: '0.9.3' } },
+    { id: 'vaultwarden', name: 'vaultwarden', version: '0.31.8', summary: 'A password manager server.', source: 'guerzon', homepage: 'https://github.com/dani-garcia/vaultwarden', chart: { repo: 'https://guerzon.github.io/vaultwarden', name: 'vaultwarden', version: '0.31.8' } },
   ],
+};
+
+/* One app installed from the search, and what the box reads out of a chart
+ * for the install dialog. */
+const APPS = {
+  available: true,
+  sharedAvailable: false,
+  apps: [
+    {
+      release: 'vaultwarden',
+      chart: RESULTS.results[2].chart,
+      runAs: 'notshared',
+      values: {},
+      valuesYaml: null,
+      frontPort: 30000,
+      appPort: 8080,
+      phase: 'running',
+      message: null,
+      updatedAt: 1791451800,
+    },
+  ],
+};
+const CHART = {
+  chart: RESULTS.results[0].chart,
+  release: 'jellyfin',
+  valuesYaml: 'image:\n  repository: docker.io/jellyfin/jellyfin\n  tag: ""\nservice:\n  type: ClusterIP\n  port: 8096\npersistence:\n  config:\n    enabled: true\n    size: 5Gi\n  media:\n    enabled: true\n    size: 25Gi\nmetrics:\n  enabled: false\n',
+  values: {
+    image: { repository: 'docker.io/jellyfin/jellyfin', tag: '' },
+    service: { type: 'ClusterIP', port: 8096 },
+    persistence: { config: { enabled: true, size: '5Gi' }, media: { enabled: true, size: '25Gi' } },
+    metrics: { enabled: false },
+  },
+  schema: {
+    type: 'object',
+    properties: {
+      service: {
+        type: 'object',
+        properties: {
+          port: { type: 'integer', description: 'The port Jellyfin listens on.' },
+          type: { enum: ['ClusterIP', 'NodePort'] },
+        },
+      },
+    },
+  },
 };
 
 const DOC = JSON.parse(await readFile('tests/fixtures/options.json', 'utf8'));
@@ -335,7 +401,9 @@ async function open({
   await page.route('**/api/options', (route) => json(route, 200, OPTIONS));
   await page.route('**/api/apply', (route) => json(route, 200, apply));
   await page.route('**/api/recovery', (route) => json(route, 200, { code: '7d1c3a52-9b0e-4f61-8c2d-5a7e9f0b1c3d', minted: true }));
+  await page.route('**/api/apps', (route) => json(route, 200, APPS));
   await page.route('**/api/apps/search**', (route) => json(route, 200, RESULTS));
+  await page.route('**/api/apps/chart**', (route) => json(route, 200, CHART));
   await page.route('**/api/look', (route) => {
     if (route.request().method() === 'GET') return json(route, 200, current);
     const patch = route.request().postDataJSON();
@@ -426,6 +494,18 @@ const SHOTS = [
       await page.getByPlaceholder('Search for an app').fill('media');
       await page.keyboard.press('Enter');
       await settle(page, 1000);
+    },
+  },
+  {
+    name: 'apps-install',
+    path: '/apps',
+    act: async (page) => {
+      await page.getByPlaceholder('Search for an app').fill('media');
+      await page.keyboard.press('Enter');
+      await settle(page, 1000);
+      await page.getByRole('button', { name: 'Install jellyfin' }).click();
+      await page.locator('dialog[open] summary', { hasText: 'service' }).click();
+      await settle(page, 800);
     },
   },
   { name: 'storage', path: '/storage' },

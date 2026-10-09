@@ -34,16 +34,24 @@ box. A change takes effect as soon as you save it, with no rebuild.
 
 ## Writing a widget
 
-**Write one**, in the gallery or on the Look pane, opens an editor with
-Source, a live preview and a Help tab. The preview is the real sandboxed frame. The
+**Write one**, in the gallery or on the Look pane, opens an editor with the
+widget's files, a live preview and a Help tab. The preview is the real
+sandboxed frame. The
 widget gets the box's readings and colours through the `losos` object listed
 on the [widget types](../types/widget-types#written-by-hand) page, and
 nothing else. It has no admin key, no API and no access to the page around
 it. It may fetch from the internet.
 
-![The widget editor: Source on the left, the live preview in the real sandboxed frame on the right, and the Help tab.](../img/widget-write-one.png)
+A new widget starts as three files: `index.html`, which links `style.css`
+and `app.js`. **Add a file** adds another, such as `data.json` for the
+script to `fetch` or `dot.svg` for an `<img>`. The editor suggests as you
+type: the `losos` object, the names of the readings, the box's colour
+variables after `var(--` and the widget's own file names. Ctrl+Space asks
+for suggestions anywhere.
+
+![The widget editor: the files and their code on the left, the live preview in the real sandboxed frame on the right, and the Help tab.](../img/widget-write-one.png)
 
 A hand-written widget runs in every browser that opens the box. Read
 anything you paste from the internet before you keep it, as the note above
-Source says.
+the editor says.
 

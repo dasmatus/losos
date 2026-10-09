@@ -44,6 +44,8 @@ pub trait Losos {
     fn run_grow(&mut self, action: &crate::grow::GrowAction) -> anyhow::Result<()>;
     /// Total bytes of the `/persist` filesystem, for before/after reporting.
     fn persist_bytes(&mut self) -> anyhow::Result<u64>;
+    /// Bytes of the `/persist` filesystem in use, for the Storage pane.
+    fn persist_used_bytes(&mut self) -> anyhow::Result<u64>;
     /// Key file `cryptsetup resize` should authenticate with, if any.
     /// `None` means "rely on the volume key being in the kernel keyring",
     /// which is the TPM path; the keyfile path must supply one or the
@@ -122,6 +124,25 @@ pub trait Losos {
     /// why the screen distinguishes them from "this box does not serve the
     /// route" (a 404) and offers the field again.
     fn search_apps(&mut self, query: &str) -> anyhow::Result<Vec<crate::catalogue::App>>;
+
+    // ── Installing an app from the catalogue ────────────────────────────
+    // `crate::apps` holds the rules; these are the effects.
+    /// `None` when this box runs no local cluster (both apps native) or the
+    /// build carries no install job: nothing can be installed then.
+    fn apps_config(&mut self) -> Option<crate::apps::Config>;
+    /// The chart's `values.yaml` and schema, fetched by the box. An `Err` is
+    /// a chart that could not be fetched, which the dialog offers to retry.
+    fn chart_files(
+        &mut self,
+        chart: &crate::apps::ChartRef,
+    ) -> anyhow::Result<crate::apps::ChartFiles>;
+    /// Every installed app's record, by name.
+    fn load_app_records(&mut self) -> anyhow::Result<Vec<crate::apps::Record>>;
+    fn save_app_record(&mut self, record: &crate::apps::Record) -> anyhow::Result<()>;
+    /// Start the job that installs or removes `release`, from its record.
+    fn start_app_job(&mut self, release: &str, action: crate::apps::Action) -> anyhow::Result<()>;
+    /// Whether a job for `release` is running.
+    fn app_job_active(&mut self, release: &str) -> bool;
 
     // ── The market ──────────────────────────────────────────────────────
     /// Relay one [`crate::market::Op`] to the edge's market, with this
@@ -452,6 +473,34 @@ pub fn cmd_grow<L: Losos>(l: &mut L) -> anyhow::Result<Value> {
         "beforeBytes": before,
         "afterBytes": after,
         "claimedBytes": vg.free_bytes(),
+    }))
+}
+
+/// What the Storage pane shows: the size of `/persist`, how much of it is in
+/// use, and the reserve a grow would claim.
+///
+/// Read-only, and it is what keeps "Use reserve" honest after a reload: the
+/// pane used to learn the reserve only from a grow's reply, so a fresh tab
+/// offered to claim space that was already claimed. Each reading stands
+/// alone; one the box cannot take is `null`, never a guess, so a box without
+/// the LVM layout still reports its filesystem.
+pub fn cmd_storage<L: Losos>(l: &mut L) -> anyhow::Result<Value> {
+    fn reading(what: &str, r: anyhow::Result<u64>) -> Value {
+        match r {
+            Ok(n) => json!(n),
+            Err(e) => {
+                tracing::warn!(error = ?e, "storage: no {what} reading");
+                Value::Null
+            }
+        }
+    }
+    let total = l.persist_bytes();
+    let used = l.persist_used_bytes();
+    let reserve = l.vg_free().map(crate::grow::VgFree::free_bytes);
+    Ok(json!({
+        "totalBytes": reading("size", total),
+        "usedBytes": reading("usage", used),
+        "reserveBytes": reading("reserve", reserve),
     }))
 }
 
@@ -833,7 +882,12 @@ pub fn cmd_market_op<L: Losos>(l: &mut L, op: &crate::market::Op) -> anyhow::Res
     let Outcome::Reply(mut reply) = l.market_request(op)? else {
         return Err(Refused {
             status: 409,
-            message: "the market is not offered to this appliance".to_string(),
+            message: if op.is_builder() {
+                "the widget builder is not offered to this appliance"
+            } else {
+                "the market is not offered to this appliance"
+            }
+            .to_string(),
         }
         .into());
     };
@@ -848,6 +902,28 @@ pub fn cmd_market_op<L: Losos>(l: &mut L, op: &crate::market::Op) -> anyhow::Res
         obj.insert("available".to_string(), json!(true));
     }
     Ok(reply)
+}
+
+/// The widget builder as this box sees it: `GET /api/builder`.
+///
+/// The edge's account view (balance, packs, price, recent builds) with
+/// `available: true`, or `available: false` and a reason. Gated like the
+/// market: the proxy token goes to an official edge and no other, and the
+/// builder is paid through the market's Stripe account.
+pub fn cmd_builder<L: Losos>(l: &mut L) -> anyhow::Result<Value> {
+    use crate::market::{Op, Outcome};
+    if crate::edge::check_market_gate(&l.edge_status()?).is_err() {
+        return Ok(json!({ "available": false, "reason": "noOfficialEdge" }));
+    }
+    match l.market_request(&Op::BuilderAccount)? {
+        Outcome::Reply(mut view) => {
+            if let Some(obj) = view.as_object_mut() {
+                obj.insert("available".to_string(), json!(true));
+            }
+            Ok(view)
+        }
+        Outcome::Unavailable => Ok(json!({ "available": false })),
+    }
 }
 
 /// Why a machine action was refused before anything left the box: this box
@@ -1716,6 +1792,21 @@ mod tests {
     }
 
     #[test]
+    fn storage_reports_the_reserve_and_reads_zero_after_a_grow() {
+        // The Storage pane disables "Use reserve" from this reading, so it
+        // must say 0 once a grow has spent the reserve, in any tab.
+        let mut f = FakeLosos::new();
+        let out = cmd_storage(&mut f).unwrap();
+        assert_eq!(out["reserveBytes"], 512u64 * 4 * 1024 * 1024);
+        assert_eq!(out["totalBytes"], f.persist_bytes);
+        assert_eq!(out["usedBytes"], f.persist_used_bytes);
+        cmd_grow(&mut f).unwrap();
+        let out = cmd_storage(&mut f).unwrap();
+        assert_eq!(out["reserveBytes"], 0);
+        assert_eq!(out["totalBytes"], f.persist_bytes);
+    }
+
+    #[test]
     fn grow_refuses_when_there_is_nothing_to_grow_into() {
         let mut f = FakeLosos::new();
         f.vg_free_extents = 0;
@@ -1764,6 +1855,9 @@ mod tests {
             fn persist_bytes(&mut self) -> anyhow::Result<u64> {
                 self.0.persist_bytes()
             }
+            fn persist_used_bytes(&mut self) -> anyhow::Result<u64> {
+                self.0.persist_used_bytes()
+            }
             fn luks_key_file(&mut self) -> anyhow::Result<Option<String>> {
                 self.0.luks_key_file()
             }
@@ -1808,6 +1902,31 @@ mod tests {
             }
             fn search_apps(&mut self, query: &str) -> anyhow::Result<Vec<crate::catalogue::App>> {
                 self.0.search_apps(query)
+            }
+            fn apps_config(&mut self) -> Option<crate::apps::Config> {
+                self.0.apps_config()
+            }
+            fn chart_files(
+                &mut self,
+                chart: &crate::apps::ChartRef,
+            ) -> anyhow::Result<crate::apps::ChartFiles> {
+                self.0.chart_files(chart)
+            }
+            fn load_app_records(&mut self) -> anyhow::Result<Vec<crate::apps::Record>> {
+                self.0.load_app_records()
+            }
+            fn save_app_record(&mut self, record: &crate::apps::Record) -> anyhow::Result<()> {
+                self.0.save_app_record(record)
+            }
+            fn start_app_job(
+                &mut self,
+                release: &str,
+                action: crate::apps::Action,
+            ) -> anyhow::Result<()> {
+                self.0.start_app_job(release, action)
+            }
+            fn app_job_active(&mut self, release: &str) -> bool {
+                self.0.app_job_active(release)
             }
             fn market_request(
                 &mut self,
@@ -2071,6 +2190,69 @@ mod tests {
             (200, r#"{"seller_ready":false}"#.to_string()),
         );
         f
+    }
+
+    #[test]
+    fn the_builder_view_is_the_edges_account_or_unavailable() {
+        use crate::market::Op;
+        let mut f = FakeLosos::new();
+        assert_eq!(
+            cmd_builder(&mut f).unwrap(),
+            serde_json::json!({ "available": false })
+        );
+        f.market_routes.insert(
+            "POST /builder/account".to_string(),
+            (200, r#"{"currency":"eur","balance":380}"#.to_string()),
+        );
+        let out = cmd_builder(&mut f).unwrap();
+        assert_eq!(out["available"], true);
+        assert_eq!(out["balance"], 380);
+
+        let mut f = FakeLosos::new().with_company_edge();
+        assert_eq!(
+            cmd_builder(&mut f).unwrap(),
+            serde_json::json!({ "available": false, "reason": "noOfficialEdge" })
+        );
+        assert!(cmd_market_op(&mut f, &Op::BuilderCredit { amount: 500 }).is_err());
+        assert!(f.market_ops.is_empty(), "no token to a company edge");
+    }
+
+    #[test]
+    fn a_top_up_is_sent_only_to_a_stripe_hosted_page() {
+        use crate::market::Op;
+        let mut f = FakeLosos::new();
+        f.market_routes.insert(
+            "POST /builder/credits".to_string(),
+            (
+                201,
+                r#"{"order_id":"cr_1","checkout_url":"https://evil.example/pay"}"#.to_string(),
+            ),
+        );
+        assert!(cmd_market_op(&mut f, &Op::BuilderCredit { amount: 500 }).is_err());
+        f.market_routes.insert(
+            "POST /builder/credits".to_string(),
+            (
+                201,
+                r#"{"order_id":"cr_1","checkout_url":"https://checkout.stripe.com/c/pay/cs_1"}"#
+                    .to_string(),
+            ),
+        );
+        let out = cmd_market_op(&mut f, &Op::BuilderCredit { amount: 500 }).unwrap();
+        assert_eq!(out["order_id"], "cr_1");
+        // A builder the edge does not run says so in its own words.
+        let err = cmd_market_op(
+            &mut f,
+            &Op::BuilderBuild {
+                build_id: "bld_1".to_string(),
+            },
+        )
+        .unwrap_err();
+        assert_eq!(
+            err.downcast_ref::<crate::market::Refused>()
+                .unwrap()
+                .message,
+            "the widget builder is not offered to this appliance"
+        );
     }
 
     #[test]

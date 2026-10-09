@@ -63,6 +63,10 @@ export const DEFAULTS = {
  * Apply and say "changes applied" while this one is still starting. */
 const SETTLE_MS = 20000;
 
+/* Failed rebuilds already reported on this page load, by job. A rebuild this
+ * screen watched fail is added too, so the next visit does not repeat it. */
+const reportedFailures = new Set<string>();
+
 /* The sticky bar only ever shows a rebuild in flight. Its outcome, done or
  * failed, arrives as a toast (components/ui/toast.tsx) and the bar goes: an
  * outcome is an event the owner glances at, not a strip to keep clearing. */
@@ -409,6 +413,7 @@ export function useSettingsForm(): SettingsForm {
       }
 
       if (status.state === "failed") {
+        if (status.job !== undefined) reportedFailures.add(status.job);
         toast.error(
           t("settings.form.failedTitle"),
           say(statusMsg(status.message, "settings.form.failedMessage")),
@@ -474,7 +479,20 @@ export function useSettingsForm(): SettingsForm {
        * still running. */
       try {
         const status = await getStatus({ signal: controller.signal });
-        if (cancelled || status.state !== "building") return;
+        if (cancelled) return;
+        /* A rebuild that failed while no tab was watching, or before a
+         * reload, is still the box's last word on it: say so once per page
+         * load, the way the tab that started it did. */
+        if (status.state === "failed" && status.job !== undefined && !reportedFailures.has(status.job)) {
+          reportedFailures.add(status.job);
+          toast.error(
+            t("settings.form.failedTitle"),
+            say(statusMsg(status.message, "settings.form.failedMessage")),
+            { help: "apply-fails" },
+          );
+          return;
+        }
+        if (status.state !== "building") return;
         sawBuildingRef.current = true; // joining it mid-flight, not starting it
         jobRef.current = status.job ?? null;
         settleUntilRef.current = 0;
