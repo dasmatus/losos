@@ -1630,7 +1630,7 @@ in
     # An owner describes a widget in the admin UI and a Claude Managed Agent
     # writes it. The edge holds the Anthropic key and pays Anthropic; the box
     # pays the edge from a prepaid balance topped up through the market's
-    # Stripe gate. Off by default; see handbook/docs/in-depth/widget-builder.md.
+    # Stripe gate. Off by default; see docs/widget-builder.md.
     edge.builder.enable = lib.mkOption {
       type = lib.types.bool;
       default = false;
