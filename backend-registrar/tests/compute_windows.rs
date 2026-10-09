@@ -18,6 +18,7 @@ fn window(share: bool, start: &str, end: &str) -> ComputeWindow {
         window_start: start.to_string(),
         window_end: end.to_string(),
         tz: "UTC".to_string(),
+        host_vms: false,
     }
 }
 
@@ -147,6 +148,7 @@ fn the_window_type_is_re_exported_from_the_crate_root() {
         window_start: "23:00".to_string(),
         window_end: "07:00".to_string(),
         tz: "UTC".to_string(),
+        host_vms: false,
     };
     assert_eq!(direct, root);
 }
@@ -170,6 +172,7 @@ fn the_rendered_window_carries_the_zone() {
             window_start: "23:00".to_string(),
             window_end: "07:00".to_string(),
             tz: "Europe/Berlin".to_string(),
+            host_vms: false,
         },
     );
     let out = render(&m, &BTreeSet::new());

@@ -95,6 +95,7 @@ let
   needs = {
     "forgejo.federation.enable" = "sharingMyStorage";
     "nextcloud.federation.enable" = "sharingMyStorage";
+    "vms.host" = "sharingMyStorage";
   };
 
   # The two integer bounds a NixOS int type carries only in its description.

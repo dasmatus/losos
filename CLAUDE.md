@@ -142,6 +142,13 @@ and is never served or built by nix.
   from the other mode is refused. `modules/edge-credentials.nix` and
   `.github/workflows/edge-credentials.yml` seal `STRIPE_KEY`, the webhook
   secrets and `CLAUDE_KEY` from Actions secrets over a forced-command SSH key.
+- `backend-registrar/src/{vms,server/vm}.rs` + `modules/edge-vms.nix`:
+  virtual machines on the mesh, sold per replica-month through the market
+  with a fixed 50/50 fee the Stripe gate enforces. KubeVirt and CDI from
+  pinned manifests, disks on the hosting box in `losos-vm-local` (Retain).
+  Offered only to a box with `sharingMyStorage` (lososd's `/api/vms`, the
+  SPA's `/machines`); uploads stream through lososd to the edge's merged
+  transfer router, outside the guard's body limit.
 - `flake/fast-build.nix`: every Rust binary links with mold and compiles
   through ccache and sccache, in shells and in `nix build` alike.
 - CI is `.github/workflows/ci.yml`, kept in step with `devenv.nix` by hand.

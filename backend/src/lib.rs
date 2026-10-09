@@ -52,3 +52,4 @@ pub mod recovery;
 pub mod setup;
 pub mod signin;
 pub mod supervisor;
+pub mod vm_upload;

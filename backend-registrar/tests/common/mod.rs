@@ -286,6 +286,28 @@ impl Edge {
         .await
     }
 
+    /// As [`Edge::start_market`], with a last change to the options: how the
+    /// machine tests turn on `--vm-*`, which has no fixture of its own.
+    pub async fn start_market_tweaked(
+        tag: &str,
+        tenants: &[TenantSpec],
+        stripe_api: &str,
+        mesh: MeshFixture,
+        tweak: impl FnOnce(&mut ServeOpts, &TempDir) + Send + 'static,
+    ) -> Self {
+        Self::start_inner_seeded(
+            tag,
+            tenants,
+            mesh,
+            None,
+            Some(stripe_api.to_string()),
+            &[],
+            None,
+            Some(Box::new(tweak)),
+        )
+        .await
+    }
+
     /// As [`Edge::start`], serving `public_key` at `/noise-public-key`.
     pub async fn start_with_noise_public_key(
         tag: &str,
@@ -577,6 +599,7 @@ impl Edge {
                 fee_bps: losos_registrar::market::DEFAULT_FEE_BPS,
                 storage_class: losos_registrar::market::DEFAULT_STORAGE_CLASS.to_string(),
                 hardware_catalogue: Some(dir.path_str("hardware.json")),
+                vms: None,
             })
         });
 
@@ -830,6 +853,9 @@ fn write_tenants(dir: &TempDir, tenants: &[TenantSpec]) {
     std::fs::write(dir.join("tenants.json"), json).expect("write tenants.json");
 }
 
+/// The cluster IP [`KubeStub`] gives every Service.
+pub const STUB_CLUSTER_IP: &str = "10.43.7.9";
+
 /// A stand-in for the mesh apiserver.
 ///
 /// It exists because the property under test is *what the join handler does
@@ -977,6 +1003,28 @@ async fn stub_handler(
         if supplied != format!("Bearer {expected}") {
             return StatusCode::UNAUTHORIZED.into_response();
         }
+    }
+    // A machine order's Service, for the address Traefik is pointed at.
+    if method == Method::GET && uri.path().contains("/services/") {
+        return axum::Json(serde_json::json!({ "spec": { "clusterIP": STUB_CLUSTER_IP } }))
+            .into_response();
+    }
+    // Every replica the stub was asked to create, running.
+    if method == Method::GET && uri.path().ends_with("/virtualmachines") {
+        let items: Vec<serde_json::Value> = state
+            .bodies
+            .lock()
+            .expect("the stub's body log is not poisoned")
+            .iter()
+            .filter(|(k, _)| k.starts_with("POST ") && k.ends_with("/virtualmachines"))
+            .map(|(_, vm)| {
+                serde_json::json!({
+                    "metadata": vm["metadata"],
+                    "status": { "printableStatus": "Running" },
+                })
+            })
+            .collect();
+        return axum::Json(serde_json::json!({ "items": items })).into_response();
     }
     if method == Method::GET && uri.path().contains("/persistentvolumeclaims/") {
         let phase = state

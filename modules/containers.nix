@@ -530,6 +530,23 @@ in
               proxy_send_timeout 600s;
             '';
           };
+          # The owner's own disk image for a market machine: gigabytes,
+          # streamed through lososd to the edge (backend/src/vm_upload.rs),
+          # which holds it to its own size limit. Unbuffered, so nginx does
+          # not spool the file to disk first, and with no body cap of its
+          # own. The same LAN-only guard and the same lososd as /api/.
+          "= /api/vms/images" = {
+            proxyPass = "http://127.0.0.1:${toString adminApiPort}";
+            extraConfig = ''
+              ${lanOnly}
+              proxy_set_header X-Real-IP $remote_addr;
+              client_max_body_size 0;
+              proxy_request_buffering off;
+              proxy_http_version 1.1;
+              proxy_read_timeout 6h;
+              proxy_send_timeout 6h;
+            '';
+          };
         })
         (lib.mkIf nextcloudWorkload {
           # No URI part in proxyPass -> path preserved; the pod's
