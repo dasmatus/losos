@@ -1040,9 +1040,9 @@ jobs:
       - run: mv result result-iso
       - run: nix build .#losos-disk-qcow2 -L
       - run: mv result result-qcow2
-      # The edge gateway (wiki/Edge-Federation.md): small enough to be a
-      # release asset, compressed here because make-disk-image writes a
-      # sparse, uncompressed qcow2 and a download is neither.
+      # The edge gateway (handbook/docs/in-depth/edge-federation.md): small
+      # enough to be a release asset, compressed here because make-disk-image
+      # writes a sparse, uncompressed qcow2 and a download is neither.
       - run: nix build .#losos-disk-edge-qcow2 -L
       - run: mv result result-edge
       # Signing never holds a release back. Before the key ceremony there is
@@ -1395,7 +1395,7 @@ jobs:
           console as \`root\` (first password \`losos\`, changed at first
           login) and run \`losos-edge uplink set ...\` with the tenant row an
           official edge gave you to reach them from anywhere. See the
-          [Edge federation](https://github.com/${REPO}/wiki/Edge-Federation)
+          [Edge federation](https://losos.dasmat.us/in-depth/edge-federation)
           page. Also on GHCR: \`oras pull ${EDGE_REF}\`.
 
           ---

@@ -34,7 +34,8 @@ let
   );
 
   # A keyfile box says what that costs on the one screen every owner sees
-  # (wiki/TPM.md has the long form). The admin pages say the same.
+  # (handbook/docs/reference/tpm.md has the long form). The admin pages say the
+  # same.
   noTpm = !config.losos.tpm.enable;
 
   banner = pkgs.writeShellApplication {

@@ -17,4 +17,5 @@
 #   losos-registrar provision edge --name "LosOS edge Berlin" \
 #       --url https://register.losos.cfd --ssh root@edge.example --root-key root.key
 #
-# See wiki/Master-Proxy.md, "Official edges", and provisioning/edge-identity/README.md.
+# See handbook/docs/in-depth/master-proxy.md, "Official edges", and
+# provisioning/edge-identity/README.md.

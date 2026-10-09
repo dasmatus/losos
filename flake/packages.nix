@@ -360,15 +360,16 @@ images
   # (`losos-registrar provision`, provisioning/edge-identity/README.md) runs
   # there, on a computer that has no Nix store, so the binary above — linked
   # against glibc under /nix/store — cannot run on it. This one is linked
-  # statically against musl and depends on nothing; CI publishes it to GHCR
-  # as `images:<channel>-x86_64` and the LosOS proxy serves it at
-  # `/updates/<channel>/x86_64/losos-registrar` (see wiki/CI-and-Releases.md).
-  # Plain rustPlatform of pkgsStatic rather than fast-build.nix's: the mold
-  # and ccache stdenv is composed for the native glibc toolchain, and the
-  # minutes it saves are not worth a second composition for one cross build.
-  # The crate is pure Rust (rustls, ring), so musl needs no system library.
-  # cargoHash is the vendored tarball's and does not depend on the target,
-  # so it is the hash losos-registrar uses: bump both together.
+  # statically against musl and depends on nothing; CI publishes it to GHCR as
+  # `images:<channel>-x86_64` and the LosOS proxy serves it at
+  # `/updates/<channel>/x86_64/losos-registrar` (see
+  # handbook/docs/in-depth/ci-and-releases.md). Plain rustPlatform of pkgsStatic
+  # rather than fast-build.nix's: the mold and ccache stdenv is composed for the
+  # native glibc toolchain, and the minutes it saves are not worth a second
+  # composition for one cross build. The crate is pure Rust (rustls, ring), so
+  # musl needs no system library. cargoHash is the vendored tarball's and does
+  # not depend on the target, so it is the hash losos-registrar uses: bump both
+  # together.
   losos-registrar-static = pkgs.pkgsStatic.rustPlatform.buildRustPackage {
     pname = "losos-registrar-static";
     version = "0.1.0";

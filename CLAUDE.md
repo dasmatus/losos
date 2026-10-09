@@ -8,9 +8,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 encrypted `/persist` bind-mounted back by impermanence, Nextcloud for the
 owner, spare disk and CPU lent to a mesh, no SSH and no shell. The owner
 reaches it only through web UIs and one admin endpoint, so a bad nightly
-upgrade has no one to notice it. User docs live in `wiki/`, published to the
-GitHub wiki on push to `main`; `wiki/Architecture.md` and
-`wiki/Development.md` carry the long form of what this file compresses.
+upgrade has no one to notice it. Docs live in the handbook, `handbook/`,
+published to losos.dasmat.us on push to `main` and served by every box at
+`/handbook/`; its In depth chapter (`handbook/docs/in-depth/architecture.md`,
+`development.md`) carries the long form of what this file compresses.
 
 ## Commands
 
@@ -214,7 +215,9 @@ and is never served or built by nix.
     production key is made only by `provisioning/secure-boot/keygen.sh` on
     the owner's machine; `tests/secure-boot.nix` uses a throwaway one.
 21. `system.stateVersion = "26.11"` is set once. `result` is never committed.
-22. Edit `wiki/`, not the web wiki; the workflow overwrites it.
+22. Docs go in `handbook/`; there is no wiki. The In depth pages, TPM and
+    the security model have Slovak and German copies under `handbook/i18n/`:
+    change all three together.
 23. No `Co-Authored-By`, `Generated with` or session links in commits, PRs
     or branch names. The commit-msg hook refuses them and the scrub bot
     rewrites what gets through. After a rewrite, `git pull --rebase`.
@@ -280,7 +283,7 @@ what the appliance serves.
 Before / After prose, a **screenshots table**, How, Tested, notes for the
 reviewer. Fill every section. The screenshots are **required for any change
 a person can see** — the admin UI, the wizard, the installer and tty1
-screens, the two app themes, the wiki and docs pages — one Before and one
+screens, the two app themes, the handbook and docs pages — one Before and one
 After per screen, taken at the same window size and in the same state so
 the only difference is the change. A change with nothing visible says
 "No visible change." under that heading and why, instead of the table.
@@ -503,7 +506,7 @@ which `modules/setup.nix` allows for exactly the origins in
 `losos.setup.finderOrigins` (an nginx map, asserted by `tests/setup.nix`),
 never `*` — the document is LAN inventory.
 
-**Edge federation and the box's path rule** (`wiki/Edge-Federation.md`,
+**Edge federation and the box's path rule** (`handbook/docs/in-depth/edge-federation.md`,
 `backend-registrar/src/relay.rs`, `modules/edge-gateway.nix`,
 `modules/proxy.nix`): a user-hosted edge (a *spoke*) relays its boxes to an
 official edge (a *hub*) with `POST /relay`; the hub lists the spoke as a
@@ -742,7 +745,7 @@ A separate `midnight-reboot.timer` reboots unconditionally at 00:07 with
   thing the feature exists to prevent. Don't hoist `now` back out of the
   per-node loop in `modules/edge.nix`: it is per-node because the zone is.
 - **The market is the registrar's third opt-in.** `/market/*` (Stripe Connect,
-  `backend-registrar/src/market.rs`, `wiki/Market.md`) answers 503 unless
+  `backend-registrar/src/market.rs`, `handbook/docs/in-depth/market.md`) answers 503 unless
   `losos.edge.market.enable`, and 403 unless `losos.edge.tenants.<id>.market`.
   `modules/edge.nix`'s `tenantsJson` hardcodes its attributes, so the `market`
   key must stay listed there or every trade silently 403s. A paid order is an
@@ -817,6 +820,6 @@ A separate `midnight-reboot.timer` reboots unconditionally at 00:07 with
 - [ ] New binary lososd calls added to the unit `path`?
 - [ ] VM tests run locally if the installer or control plane changed?
 - [ ] CI and `devenv.nix` still in step; the three nixpkgs pins agree?
-- [ ] Docs changed in `wiki/`, not the web wiki?
+- [ ] Docs changed in `handbook/`, in every language the page has?
 - [ ] Commit message carries no trailer and no session link?
 - [ ] PR body follows the template; screenshots, or "No visible change." and why?

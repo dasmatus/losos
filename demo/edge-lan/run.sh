@@ -3,13 +3,13 @@
 # network, without the edge first, then with it.
 #
 # What it shows (the order is the verification checklist's,
-# demo/edge-lan/CHECKLIST.md): scenario A, no edge anywhere — both boxes
-# search their network, find nothing, refuse to turn sharing on in their own
-# words, keep serving their owners, and one of them is rebooted to show the
-# state holds; scenario B, the edge is switched on — both boxes find it by
-# mDNS within a scan, the Mesh pane says so and the sharing switches go live;
-# the edge is switched off and both notice; it returns and the gate reopens.
-# See wiki/Mesh.md, "Finding the edge", and backend/src/edge.rs.
+# demo/edge-lan/CHECKLIST.md): scenario A, no edge anywhere — both boxes search
+# their network, find nothing, refuse to turn sharing on in their own words,
+# keep serving their owners, and one of them is rebooted to show the state
+# holds; scenario B, the edge is switched on — both boxes find it by mDNS within
+# a scan, the Mesh pane says so and the sharing switches go live; the edge is
+# switched off and both notice; it returns and the gate reopens. See
+# handbook/docs/in-depth/mesh.md, "Finding the edge", and backend/src/edge.rs.
 #
 # Host requirements (everything else comes through `nix shell`):
 #   * nix with flakes (https://nixos.org/download), 20 GB of free disk per

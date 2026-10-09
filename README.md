@@ -9,8 +9,8 @@ survive, on an encrypted `/persist` partition.
 
 **Owner's handbook: [losos.dasmat.us](https://losos.dasmat.us)** (source in
 [`handbook/`](handbook/); every box also serves it at `/handbook/`).
-**Developer documentation: [the wiki](https://github.com/dasmatus/losos/wiki)**
-(source in [`wiki/`](wiki/)).
+**Developer documentation: [In depth](https://losos.dasmat.us/in-depth)**,
+the handbook's last chapter.
 
 ## What runs on it
 
@@ -36,7 +36,7 @@ survive, on an encrypted `/persist` partition.
 3. Boot the stick with a network connection. The installer wipes every fixed
    disk, encrypts them and installs without prompting.
 
-Details, the demo VM image and disk growth: [Install](https://github.com/dasmatus/losos/wiki/Install).
+Details, the demo VM image and disk growth: [Install in depth](https://losos.dasmat.us/in-depth/install).
 The disk key is sealed to the machine's TPM chip; on a machine without one it
 is stored unencrypted on the boot partition. See the
 [security model](docs/security-model.md).
@@ -49,7 +49,7 @@ devenv test         # check-pins, lint, rust tests, flake eval
 devenv shell vm-tests
 ```
 
-See [Development](https://github.com/dasmatus/losos/wiki/Development) and
+See [Development](https://losos.dasmat.us/in-depth/development) and
 `CLAUDE.md` for architecture notes and known pitfalls.
 
 ## Licence
