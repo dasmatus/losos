@@ -1,3 +1,5 @@
+**English** · [Slovenčina](CI-and-Releases-sk) · [Deutsch](CI-and-Releases-de)
+
 # CI and releases
 
 CI is `.github/workflows/ci.yml`. It runs the same commands as the devenv

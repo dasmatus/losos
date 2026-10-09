@@ -1,3 +1,5 @@
+**English** · [Slovenčina](Administration-sk) · [Deutsch](Administration-de)
+
 # Administration
 
 ## Admin UI

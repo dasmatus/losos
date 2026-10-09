@@ -1,3 +1,5 @@
+**English** · [Slovenčina](Home-sk) · [Deutsch](Home-de)
+
 # losos
 
 losos is a NixOS appliance for a mini-PC. It runs Nextcloud for your own files

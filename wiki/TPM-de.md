@@ -118,7 +118,7 @@ ist eine Neuinstallation.
 
 Eine VM braucht einen emulierten Chip bei der Installation und bei jedem
 späteren Start. Die swtpm-Zeilen stehen unter
-[Installation](Install-de#try-it-in-a-vm-bios). Bewahren Sie das
+[Installation](Install-de#in-einer-vm-ausprobieren-bios). Bewahren Sie das
 swtpm-Zustandsverzeichnis zusammen mit dem Festplatten-Image auf, sonst kann
 die VM ihre Festplatte nicht entsperren.
 

@@ -3,7 +3,7 @@
 # Federácia edge
 
 Edge si môže pri svojich boxoch prevádzkovať ktokoľvek ([Master proxy — Edge
-v tej istej LAN](Master-Proxy-sk#edge-on-the-same-lan)). Táto stránka opisuje,
+v tej istej LAN](Master-Proxy-sk#edge-v-tej-istej-lan)). Táto stránka opisuje,
 ako sa taký **lokálny edge** pripojí k **oficiálnym edge**, aby bol box za ním
 dosiahnuteľný odkiaľkoľvek, ako si box vyberá, ktorý edge použije, a ako sa
 lokálny edge dodáva bez druhého inštalačného ISO.
@@ -159,7 +159,7 @@ vypnuté, späť.
   nepremosťuje clustre dvoch lokalít a nič tu nepreposiela 9345/6443 cez
   uplink. Spájanie naprieč lokalitami je ďalší krok s vlastným návrhom.
 - **Market.** Obchodovanie box odmietne, pokiaľ nie je v dosahu *oficiálny*
-  edge ([Oficiálne edge](Master-Proxy-sk#official-edges)); spoke nie je
+  edge ([Oficiálne edge](Master-Proxy-sk#oficiálne-edge)); spoke nie je
   nikdy oficiálny a preposielaný box nie je tenantom hubu, takže v jeho mene
   nemožno uskutočniť žiadne volanie `/market/*`. Relay prenáša dosiahnuteľnosť
   cez HTTP, nič iné.
@@ -168,7 +168,7 @@ vypnuté, späť.
 
 ## Vlastné domény za lokálnym edge
 
-[Vlastné domény](Master-Proxy-sk#custom-domains) fungujú aj pre box za
+[Vlastné domény](Master-Proxy-sk#vlastné-domény) fungujú aj pre box za
 lokálnym edge, s jedným pravidlom. Doménu smeruje iba oficiálny edge. Lokálny
 edge nikdy neobsluhuje zónu, nikdy nekontroluje záznam a nikdy o nič nežiada
 Let's Encrypt. Prenáša prevádzku oficiálneho edge k boxu tou istou

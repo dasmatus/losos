@@ -1,3 +1,5 @@
+**English** · [Slovenčina](Architecture-sk) · [Deutsch](Architecture-de)
+
 # Architecture
 
 ## Systems in the flake

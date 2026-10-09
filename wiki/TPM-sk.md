@@ -105,7 +105,7 @@ preinštalovanie.
    namiesto tichej inštalácie s keyfile.
 
 VM potrebuje emulovaný čip pri inštalácii aj pri každom ďalšom štarte.
-Riadky pre swtpm sú v [Inštalácii](Install-sk#try-it-in-a-vm-bios).
+Riadky pre swtpm sú v [Inštalácii](Install-sk#vyskúšajte-to-vo-vm-bios).
 Adresár so stavom swtpm uchovávajte spolu s obrazom disku, inak VM svoj disk
 neodomkne.
 

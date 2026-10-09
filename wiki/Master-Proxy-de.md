@@ -55,7 +55,7 @@ Registrars in einem `url=`-Eintrag (`losos.edge.lan.url`, Standard
 `http://<edge>.local:8443`). Sie bindet die Registrar-API außerhalb von
 Loopback und öffnet ihren Port. Eine Box im selben Netz findet sie dann ohne
 jede Konfiguration und darf über sie Speicher teilen, siehe
-[Mesh](Mesh-de#finding-the-edge). So sieht ein On-Premises-Betrieb aus: ein
+[Mesh](Mesh-de#die-edge-finden). So sieht ein On-Premises-Betrieb aus: ein
 ständig laufender Rechner im Firmennetz, auf dem `nixosModules.edge` läuft,
 und daneben Boxen, die vom Standard-ISO installiert wurden.
 
@@ -264,7 +264,7 @@ ns1.boxes.losos.dasmat.us.  AAAA 2001:db8::7
 ```
 
 Nichts wird vergeben, bevor die Edge ein nicht abgelaufenes
-Identitätszertifikat besitzt ([Offizielle Edges](#official-edges)). Bis dahin
+Identitätszertifikat besitzt ([Offizielle Edges](#offizielle-edges)). Bis dahin
 besteht die Zone nur aus SOA, NS und Glue, und `/domains/*` antwortet mit 503.
 
 ### Eigene Domains
@@ -307,7 +307,7 @@ Auch eine Box hinter einer lokalen Edge bekommt ihre Domains geroutet, über
 diese lokale Edge, sobald sie sich mit einem Relay-Pass für die lokale Edge
 verbürgt hat und dem Mesh dieser Edge beigetreten ist. Der Registrar hält
 diese Routen selbst, in `relay-routes.json` neben seiner Registry.
-[Edge-Föderation](Edge-Federation-de#custom-domains-behind-a-local-edge)
+[Edge-Föderation](Edge-Federation-de#eigene-domains-hinter-einer-lokalen-edge)
 enthält die Details und `losos.edge.dns.relayRoutes`.
 
 `tests/edge-dns.nix` (`losos-edge-dns`) bootet eine Edge und einen Client und

@@ -1,3 +1,5 @@
+**English** · [Slovenčina](TPM-sk) · [Deutsch](TPM-de)
+
 # TPM and disk unlock
 
 A box without a TPM chip is less secure than one with it. This page says what

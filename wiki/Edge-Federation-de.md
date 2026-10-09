@@ -3,7 +3,7 @@
 # Edge-Föderation
 
 Jeder darf neben seinen Boxen eine Edge betreiben ([Master-Proxy — Edge im
-selben LAN](Master-Proxy-de#edge-on-the-same-lan)). Diese Seite beschreibt,
+selben LAN](Master-Proxy-de#edge-im-selben-lan)). Diese Seite beschreibt,
 wie sich eine solche **lokale Edge** an die **offiziellen Edges** anschließt,
 damit eine Box dahinter von überall erreichbar ist, wie eine Box wählt,
 welche Edge sie nutzt, und wie eine lokale Edge ohne ein zweites
@@ -173,7 +173,7 @@ wieder da.
   Standortübergreifendes Bündeln ist ein späterer Schritt mit eigenem
   Entwurf.
 - **Der Market.** Handel lehnt die Box ab, solange keine *offizielle* Edge
-  erreichbar ist ([Offizielle Edges](Master-Proxy-de#official-edges)); ein
+  erreichbar ist ([Offizielle Edges](Master-Proxy-de#offizielle-edges)); ein
   Spoke ist nie offiziell, und eine weitergeleitete Box ist kein Tenant des
   Hubs, daher kann kein `/market/*`-Aufruf in ihrem Namen erfolgen. Das
   Relay transportiert Erreichbarkeit per HTTP, sonst nichts.
@@ -183,7 +183,7 @@ wieder da.
 
 ## Eigene Domains hinter einer lokalen Edge
 
-[Eigene Domains](Master-Proxy-de#custom-domains) funktionieren auch für eine
+[Eigene Domains](Master-Proxy-de#eigene-domains) funktionieren auch für eine
 Box hinter einer lokalen Edge, unter einer Regel. Nur die offizielle Edge
 routet eine Domain. Die lokale Edge bedient nie eine Zone, prüft nie einen
 Eintrag und fragt Let's Encrypt nie nach etwas. Sie trägt den Verkehr der

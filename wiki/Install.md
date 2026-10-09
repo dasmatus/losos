@@ -1,3 +1,5 @@
+**English** · [Slovenčina](Install-sk) · [Deutsch](Install-de)
+
 # Install
 
 ## Get the installer
