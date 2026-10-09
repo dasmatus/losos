@@ -308,6 +308,59 @@ immer aktivierte Apps sind, die sich nicht abschalten lassen.
 ausgeschaltetem Teilen; `tests/invariants.nix` prüft das Gate zur
 Evaluierungszeit.
 
+### Box-weite App-Einstellungen
+
+Der Bereich Apps trägt die Einstellungen, die für alle in LosOS cloud und
+LosOS Git gelten, also die, die jede App sonst auf ihren eigenen
+Verwaltungsseiten führt. Jedes Feld ist eine Option unter
+`losos.nextcloud.site.*` oder `losos.forgejo.site.*` und geht damit wie jede
+andere Einstellung durch Anwenden, die Prüfung, den Verlauf und das
+Konfigurations-Repository. Der Bereich Erweitert zeigt ihre Werte und
+verweist auf den Bereich Apps, statt einen zweiten Editor zu zeichnen
+(`ON_PANE` in `admin-ui/app/src/lib/option-value.ts`).
+
+| Option | Was sie in der App setzt |
+| --- | --- |
+| `losos.nextcloud.site.defaultLanguage` | `default_language` |
+| `losos.nextcloud.site.phoneRegion` | `default_phone_region` |
+| `losos.nextcloud.site.trashDays` | `trashbin_retention_obligation`, `"D, D"` |
+| `losos.nextcloud.site.versionDays` | `versions_retention_obligation`, `"D, D"` |
+| `losos.nextcloud.site.publicLinks` | `core` `shareapi_allow_links` |
+| `losos.nextcloud.site.linkPassword` | `core` `shareapi_enforce_links_password` |
+| `losos.nextcloud.site.linkExpiryDays` | `core` `shareapi_default_expire_date`, `shareapi_enforce_expire_date`, `shareapi_expire_after_n_days` |
+| `losos.nextcloud.site.defaultQuotaGB` | `files` `default_quota` |
+| `losos.forgejo.site.requireSignIn` | `[service] REQUIRE_SIGNIN_VIEW` |
+| `losos.forgejo.site.keepEmailPrivate` | `[service] DEFAULT_KEEP_EMAIL_PRIVATE` |
+| `losos.forgejo.site.defaultPrivate` | `[repository] DEFAULT_PRIVATE` |
+| `losos.forgejo.site.pushCreate` | `[repository] ENABLE_PUSH_CREATE_USER` |
+| `losos.forgejo.site.landingPage` | `[server] LANDING_PAGE` |
+
+Eine Nextcloud-Option auf null überlässt die Einstellung Nextcloud. Die
+ersten vier sind `config.php`-Schlüssel: Der native Modus schreibt sie in
+die `override.config.php` des Moduls, der Pod in `losos.config.php`, und
+beide werden nach `config.php` gelesen, sodass ein Wert, den Nextcloud dort
+schreibt, nie gewinnt. Die anderen vier sind App-Konfiguration in der
+Datenbank. `modules/nextcloud-stack.nix` (`site`) gibt sie als Zeilen
+`app key value` aus, die `occ config:app:set` bei jedem Start schreibt: der
+Entrypoint des Pods aus einer Datei `site`, die der Host einhängt, der
+native Modus am Ende von `nextcloud-setup`. Die Verwaltungsseiten von
+Nextcloud speichern diese Schlüssel über
+`ocs/v[12].php/apps/provisioning_api/api/v1/config/apps/<app>/<key>`, und
+der vordere vhost antwortet für jeden Schlüssel, den LosOS setzt, mit 403,
+die Föderationsschalter eingeschlossen. Eine Änderung dort kann sich also
+nicht von der Box entfernen. Die Verwaltungsseite zeigt den Wert weiterhin.
+`tests/front-vhost.nix` prüft die 403 und dass andere Schlüssel Nextcloud
+weiter erreichen.
+
+Die fünf von Forgejo sind `app.ini`-Schlüssel, die Forgejos
+Website-Administration ohne Möglichkeit zur Änderung zeigt. Beide Modi lesen
+eine Attributmenge, `lososInternal.forgejoSite`.
+
+Alles, was ein Konto für sich selbst einstellt, bleibt in der App, ebenso
+die Verwaltungseinstellungen, die LosOS noch nicht abdeckt: Mailversand,
+Hintergrundjobs, erzwungene Zwei-Faktor-Anmeldung, Forgejos in der Datenbank
+gespeicherte Einstellungen und die Kontenlisten.
+
 ## Sicherung, Wiederherstellung und Löschen
 
 **Einstellungen, Sicherung** sendet die Daten der Box in einen S3-kompatiblen

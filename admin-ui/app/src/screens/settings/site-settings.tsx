@@ -428,7 +428,7 @@ function PhoneRegionRow({
           disabled={slot.disabled}
           aria-invalid={bad}
           aria-describedby={bad ? errorId : undefined}
-          className="numeric w-[5rem] text-center uppercase"
+          className="numeric w-[5rem] text-center uppercase placeholder:normal-case"
           onChange={(event) => setText(event.target.value.toUpperCase())}
           onBlur={commit}
           onKeyDown={(event) => {
