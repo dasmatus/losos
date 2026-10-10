@@ -382,7 +382,15 @@ Autoerkennung wählt BIOS, wenn `/sys/firmware/efi` fehlt. `--bios` und
 `--uefi` wählen ohne Menü. Das Menü gibt es nur auf der Installer-ISO, nicht
 im installierten System, und es nimmt nach 30 s ohne Antwort die
 Autoerkennung, weil das Medium unbeaufsichtigt installieren soll und
-`tests/iso-boot.py` nie tippt. BIOS stellt `boot.nix` auf GRUB um und fügt
+`tests/iso-boot.py` nie tippt. Auf dem Medium ist der Installer ein Dienst
+auf tty1 statt einer Login-Shell (`installer.nix`). Wo Plymouth zeichnet,
+läuft er unter dem Startbildschirm. Menü, Schritte und das Ergebnis kommen
+auf das Panel (`backend/src/install_screen.rs`), und die Tasten kommen von
+`plymouth watch-keystroke`, weil Plymouth beim Zeichnen die Tastatur hält.
+Ein Startbildschirm im Textmodus wird beendet, und der Installer läuft als
+Text. Nach der Installation verschwindet der Startbildschirm und gibt die
+Ausgabe auf tty1 und eine Root-Shell frei. `tests/installer-screen.nix`
+bootet beide Varianten. BIOS stellt `boot.nix` auf GRUB um und fügt
 der ersten Platte in `disko.nix` eine EF02-Partition hinzu. Die ESP bleibt
 in beiden Fällen `/boot`. `console.nix` ersetzt getty auf tty1 durch einen
 Banner-Dienst, der die IPv4-Adresse im LAN und `<hostName>.local` anzeigt.

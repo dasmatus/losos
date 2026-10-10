@@ -772,7 +772,8 @@ in
         warning a box without a TPM chip carries) with Plymouth: the logo
         and a panel on the box's own palette, which stays on screen after
         boot. Off, the box boots in text and tty1 shows the same status as
-        a text banner.
+        a text banner. On the installer medium the panel shows the
+        installer instead.
       '';
     };
 
@@ -1359,9 +1360,9 @@ in
       type = lib.types.bool;
       default = false;
       description = ''
-        Auto-run `losos-install` as root's login shell on tty1 at boot. On the
-        installer ISO, this starts the installer and its firmware-mode menu.
-        Leave false on a normal target system.
+        Run `losos-install` on tty1 at boot, under the boot screen where it
+        draws. On the installer ISO, this starts the installer and its
+        firmware-mode menu. Leave false on a normal target system.
       '';
     };
 

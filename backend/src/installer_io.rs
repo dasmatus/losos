@@ -8,12 +8,16 @@
 //! console frozen for the entire install and would swallow the LUKS passphrase
 //! prompt in TPM mode.
 
-use crate::installer::{execute, plan_install, BlockDev, Install, LsblkOutput, Options};
+use crate::install_screen::{self, Progress, Row};
+use crate::installer::{
+    execute, plan_install, resolve_drives, BlockDev, Install, LsblkOutput, Options,
+};
 use crate::io_backend::atomic_write;
 use anyhow::{bail, Context};
+use std::io::Read;
 use std::net::ToSocketAddrs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
 /// Default upstream to install from. Overridable with `LOSOS_FLAKE_URL`.
@@ -35,8 +39,101 @@ const DEFAULT_NETWORK_TIMEOUT_SECS: u64 = 600;
 /// Attempts at the clone itself once the host resolves.
 const CLONE_ATTEMPTS: u32 = 3;
 
-/// The production installer.
-pub struct IoInstall;
+/// The production installer, and the boot screen it reports to when the
+/// medium's splash hosts it.
+#[derive(Default)]
+pub struct IoInstall {
+    screen: Option<(Splash, Progress)>,
+}
+
+/// The installer medium's boot screen, when it is the one on tty1.
+///
+/// modules/installer.nix sets `LOSOS_SPLASH` when Plymouth is drawing in
+/// graphics on tty1. The panel under the logo is then the installer's
+/// screen (install_screen.rs says what it shows). Plymouth reads the
+/// keyboard while it draws, so keys come from `plymouth watch-keystroke`,
+/// never from stdin. tty1's text still gets everything the install prints,
+/// underneath the picture, and is what shows once the splash is gone.
+#[derive(Debug, Clone, Copy)]
+pub struct Splash;
+
+impl Splash {
+    pub fn detect() -> Option<Splash> {
+        std::env::var_os("LOSOS_SPLASH").map(|_| Splash)
+    }
+
+    /// Put `rows` on the panel. A screen that fails to draw never stops the
+    /// install: the same news is in tty1's text.
+    pub fn show(self, rows: &[Row]) {
+        for msg in install_screen::messages(rows) {
+            let _ = Command::new("plymouth")
+                .arg("update")
+                .arg(format!("--status={msg}"))
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status();
+        }
+    }
+
+    /// Wait for one of `keys` (any key, Enter included, for `None`), for at
+    /// most `timeout`, calling `tick` with the time left about once a
+    /// second. `None` on a timeout, or when Plymouth is gone.
+    pub fn key(
+        self,
+        keys: Option<&str>,
+        timeout: Option<Duration>,
+        mut tick: impl FnMut(Duration),
+    ) -> Option<String> {
+        let keys_arg = keys.map(|k| format!("--keys={k}"));
+        let mut watch = Command::new("plymouth");
+        watch.arg("watch-keystroke").args(&keys_arg);
+        let mut child = watch
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .ok()?;
+        let start = Instant::now();
+        let mut ticked = None;
+        let mut given_up = None;
+        loop {
+            if let Ok(Some(status)) = child.try_wait() {
+                let mut key = String::new();
+                if let Some(mut out) = child.stdout.take() {
+                    let _ = out.read_to_string(&mut key);
+                }
+                return status.success().then_some(key);
+            }
+            let waited = start.elapsed();
+            match (timeout, given_up) {
+                (Some(t), None) if waited >= t => {
+                    // Take the watch back rather than only killing the
+                    // client: plymouthd would keep the trigger, and it
+                    // would swallow a later key press. The client then
+                    // exits by itself, or with the key if one beat this.
+                    let _ = Command::new("plymouth")
+                        .arg("ignore-keystroke")
+                        .args(&keys_arg)
+                        .status();
+                    given_up = Some(Instant::now());
+                }
+                (Some(t), None) => {
+                    let secs = waited.as_secs();
+                    if ticked != Some(secs) {
+                        ticked = Some(secs);
+                        tick(t - waited);
+                    }
+                }
+                (_, Some(at)) if at.elapsed() > Duration::from_secs(2) => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return None;
+                }
+                _ => {}
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        }
+    }
+}
 
 /// Run a command with inherited stdio, failing on a non-zero exit.
 fn run_inherit(exe: &str, args: &[&str]) -> anyhow::Result<()> {
@@ -126,7 +223,6 @@ impl Install for IoInstall {
         }
         let mut buf = vec![0u8; KEYFILE_RANDOM_BYTES];
         {
-            use std::io::Read;
             std::fs::File::open("/dev/urandom")?.read_exact(&mut buf)?;
         }
         std::fs::write(path, keyfile_text(&buf))?;
@@ -160,7 +256,19 @@ impl Install for IoInstall {
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(DEFAULT_NETWORK_TIMEOUT_SECS);
-            wait_for_host(&host, Duration::from_secs(secs))?;
+            let screen = &mut self.screen;
+            let waited = wait_for_host(&host, Duration::from_secs(secs), |s| {
+                if let Some((splash, p)) = screen.as_mut() {
+                    p.network_wait = Some(s);
+                    splash.show(&install_screen::progress(p));
+                }
+            });
+            if let Some((splash, p)) = self.screen.as_mut() {
+                if p.network_wait.take().is_some() && waited.is_ok() {
+                    splash.show(&install_screen::progress(p));
+                }
+            }
+            waited?;
         }
         let mut attempt = 1;
         loop {
@@ -333,8 +441,13 @@ fn flake_host(url: &str) -> Option<String> {
 /// needs a lease and a working resolver: exactly what is missing while
 /// NetworkManager is still coming up. Ctrl-C ends the wait (the login
 /// wrapper then drops to a shell), which is how the owner gets to `nmtui` to
-/// join Wi-Fi before running `losos-install` again.
-fn wait_for_host(host: &str, timeout: Duration) -> anyhow::Result<()> {
+/// join Wi-Fi before running `losos-install` again. Under the splash
+/// `on_wait` gets the seconds waited so far, every two seconds of the wait.
+fn wait_for_host(
+    host: &str,
+    timeout: Duration,
+    mut on_wait: impl FnMut(u64),
+) -> anyhow::Result<()> {
     let start = Instant::now();
     let mut announced = false;
     loop {
@@ -363,6 +476,7 @@ fn wait_for_host(host: &str, timeout: Duration) -> anyhow::Result<()> {
             );
             announced = true;
         }
+        on_wait(waited.as_secs());
         std::thread::sleep(Duration::from_secs(2));
     }
 }
@@ -501,14 +615,39 @@ pub fn options_from_env(
 /// Plan and run an install.
 ///
 /// Devices are only enumerated when auto-detecting, so `--drives` works on a
-/// machine where `lsblk` would fail or is absent.
-pub fn run_install(opts: &Options) -> anyhow::Result<()> {
+/// machine where `lsblk` would fail or is absent. Under the splash the
+/// panel shows the plan's steps, moving its mark as each one starts.
+pub fn run_install(opts: &Options, splash: Option<Splash>) -> anyhow::Result<()> {
     let devs = match opts.drives {
         Some(_) => Vec::new(),
         None => read_block_devices()?,
     };
     let acts = plan_install(opts, &devs).map_err(|e| anyhow::anyhow!(e))?;
-    execute(&mut IoInstall, &acts)
+    let Some(splash) = splash.filter(|_| opts.emit_target.is_none()) else {
+        return execute(&mut IoInstall::default(), &acts);
+    };
+    let (steps, owner) = install_screen::steps(&acts);
+    let progress = Progress {
+        steps,
+        current: 0,
+        drives: resolve_drives(opts, &devs).map_err(|e| anyhow::anyhow!(e))?,
+        tpm: opts.tpm,
+        network_wait: None,
+    };
+    splash.show(&install_screen::progress(&progress));
+    let mut io = IoInstall {
+        screen: Some((splash, progress)),
+    };
+    for (act, &step) in acts.iter().zip(&owner) {
+        if let Some((splash, p)) = io.screen.as_mut() {
+            if p.current != step {
+                p.current = step;
+                splash.show(&install_screen::progress(p));
+            }
+        }
+        execute(&mut io, std::slice::from_ref(act))?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -540,7 +679,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("losos-keyfile-test-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let path = dir.join("keys").join("persist-keyfile");
-        IoInstall.ensure_keyfile(&path).unwrap();
+        IoInstall::default().ensure_keyfile(&path).unwrap();
         let text = std::fs::read_to_string(&path).unwrap();
         assert_eq!(text.len(), 2 * KEYFILE_RANDOM_BYTES);
         assert!(text.bytes().all(|b| b.is_ascii_hexdigit()), "{text}");
@@ -557,7 +696,7 @@ mod tests {
             0o700
         );
         // A second run keeps the key the volume was formatted with.
-        IoInstall.ensure_keyfile(&path).unwrap();
+        IoInstall::default().ensure_keyfile(&path).unwrap();
         assert_eq!(std::fs::read_to_string(&path).unwrap(), text);
         std::fs::remove_dir_all(&dir).unwrap();
     }
@@ -597,13 +736,13 @@ mod tests {
     #[test]
     fn wait_for_host_gives_up_with_a_clear_message() {
         // .invalid is reserved (RFC 6761) and never resolves.
-        let err = wait_for_host("losos.invalid", Duration::ZERO).unwrap_err();
+        let err = wait_for_host("losos.invalid", Duration::ZERO, |_| {}).unwrap_err();
         assert!(err.to_string().contains("no network"), "{err}");
     }
 
     #[test]
     fn wait_for_host_returns_at_once_for_a_literal_address() {
-        wait_for_host("127.0.0.1", Duration::ZERO).unwrap();
+        wait_for_host("127.0.0.1", Duration::ZERO, |_| {}).unwrap();
     }
 
     #[test]

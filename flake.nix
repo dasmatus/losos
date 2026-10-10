@@ -174,8 +174,9 @@
                 # both built from the same Rust crate). installer.nix packages
                 # it; self.packages is in scope via specialArgs.
                 losos.installer.package = self.packages.${system}.losos-ctl;
-                # Booting the ISO auto-runs losos-install as root's login shell,
-                # which presents the firmware-mode menu before destructive work.
+                # Booting the ISO runs the installer on tty1, under the boot
+                # screen where it draws, which presents the firmware-mode menu
+                # before destructive work.
                 losos.installer.autorun = true;
                 # Prebuild the admin UI into the medium.
                 #
@@ -237,6 +238,9 @@
             # name, os-release.
             ./modules/branding.nix
             ./modules/live-branding.nix
+            # The boot screen, which hosts the installer: its menu, its
+            # steps and how it ended on the panel under the salmon.
+            ./modules/splash.nix
           ];
         };
         # The target system installed onto the machine.
@@ -450,6 +454,12 @@
       #                         stays up after boot, and as the text banner
       #                         where the splash finds no display early and
       #                         with the splash off (tests/console.nix).
+      #   losos-installer-screen — boots the installer medium's tty1 twice:
+      #                         under the splash, whose panel takes the
+      #                         firmware menu's key and shows the steps, the
+      #                         result and a refused choice, then leaves the
+      #                         log and a shell; and in text with the splash
+      #                         off (tests/installer-screen.nix).
       #   losos-forgejo-federation — boots the real Forgejo in native mode with
       #                         losos.forgejo.federation on and asks it what the
       #                         fediverse would (nodeinfo, the server actor, an
@@ -521,6 +531,7 @@
         losos-keyring = import ./tests/keyring.nix { inherit pkgs; };
         losos-erase = import ./tests/erase.nix { inherit pkgs impermanence; };
         losos-console = import ./tests/console.nix { inherit pkgs; };
+        losos-installer-screen = import ./tests/installer-screen.nix { inherit pkgs disko; };
         # The real Forgejo with losos.forgejo.federation on, asked what another
         # server would ask, in both deployment modes; then off, and gone
         # (tests/forgejo-federation.nix).

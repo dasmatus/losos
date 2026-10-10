@@ -84,7 +84,7 @@ in
   services.getty.greetingLine = ''<<< LosOS installer ${label}, built on NixOS ${release} (\m) - \l >>>'';
   services.getty.helpLine = lib.mkForce ''
     This stick installs LosOS and erases every fixed disk in the machine.
-    The installer starts by itself on this console.
+    The installer runs by itself on the first console (Alt+F1).
 
     To set up a wireless connection, run `nmtui`.
   '';

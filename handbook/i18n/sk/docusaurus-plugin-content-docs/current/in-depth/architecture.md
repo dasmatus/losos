@@ -358,7 +358,14 @@ firmvéru na inštalačnom ISO zapíše `losos.bios` do
 detekcia zvolí BIOS, keď chýba `/sys/firmware/efi`. `--bios` a `--uefi`
 zvolia bez menu. Menu existuje iba na inštalačnom ISO, nie v nainštalovanom
 systéme, a po 30 s bez odpovede zvolí automatickú detekciu, pretože médium
-má inštalovať bez obsluhy a `tests/iso-boot.py` nikdy nepíše. BIOS prepne
+má inštalovať bez obsluhy a `tests/iso-boot.py` nikdy nepíše. Na médiu je
+inštalátor služba na tty1, nie prihlasovací shell (`installer.nix`). Kde
+Plymouth kreslí, beží pod úvodnou obrazovkou. Menu, kroky a výsledok
+inštalácie idú na panel (`backend/src/install_screen.rs`) a klávesy
+prichádzajú z `plymouth watch-keystroke`, lebo Plymouth počas kreslenia drží
+klávesnicu. Úvodná obrazovka v textovom režime sa ukončí a inštalátor beží
+ako text. Po inštalácii obrazovka zmizne a odkryje výpis na tty1 a shell
+roota. `tests/installer-screen.nix` nabootuje obe varianty. BIOS prepne
 `boot.nix` na GRUB a pridá oddiel EF02 na prvý disk v `disko.nix`. ESP
 zostáva v oboch prípadoch `/boot`. `console.nix` nahradí getty na tty1
 službou s bannerom, ktorá ukazuje IPv4 adresu v LAN a `<hostName>.local`.

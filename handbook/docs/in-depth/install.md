@@ -38,8 +38,9 @@ boot menu, its console banners and os-release (`NAME=LosOS`,
   The installed box's loader is not signed, so the box itself needs Secure
   Boot off. The handbook's *Secure Boot and signed media* page has the steps
   and the `SHA256SUMS.sig` check. `tests/secure-boot.nix` is the proof.
-- **UEFI or BIOS, both work.** On the installer ISO, a terminal menu lets you
-  choose BIOS, UEFI, or autodetect (the firmware that booted the ISO). UEFI
+- **UEFI or BIOS, both work.** On the installer ISO, a menu on the boot
+  screen lets you choose BIOS, UEFI, or autodetect (the firmware that booted
+  the ISO) by pressing 1, 2 or 3. UEFI
   gets systemd-boot. Legacy BIOS gets GRUB plus a 1 MiB BIOS boot partition
   on the first disk. With no answer within 30 seconds the menu takes
   autodetect, so an unattended boot still installs. `losos-install --bios`
@@ -50,12 +51,22 @@ boot menu, its console banners and os-release (`NAME=LosOS`,
   The menu is part of the installer ISO only. The installed appliance never
   shows it.
 - **Connect the network.** The installer clones the flake at run time.
+  Without a network the screen says it is waiting for one, and the install
+  goes on by itself once a cable is in. For Wi-Fi, press Alt+F2 for a root
+  shell and run `nmtui` there.
 
 ## What the installer does
 
 After the firmware choice, the installer runs unattended. It finds every fixed
 disk, puts them in one LVM volume group, encrypts it with LUKS, formats
 `/persist` as ext4, and installs.
+
+The boot screen lists the steps under the salmon and marks the one that is
+running. At the end it says LosOS is installed and restarts the machine on
+a key press, once the stick is out. If the install stops, the screen says
+why, and a key press takes the boot screen away to show the installer's
+full output with a root shell under it. On a machine where the boot screen
+finds no display early, the installer prints the same on tty1 as text.
 
 - On a machine with a TPM 2.0 chip, the installer seals the disk key to the
   chip right after formatting (`systemd-cryptenroll`). Most mini-PCs have
@@ -71,7 +82,8 @@ disk, puts them in one LVM volume group, encrypts it with LUKS, formats
 - Without a chip, or with `losos-ctl install --no-tpm` from the installer's
   shell, that keyfile is baked into the initrd instead. It then sits on the
   unencrypted ESP, and anyone who takes the disk can read the data. The
-  installer prints which of the two it chose. `--tpm` makes a missing chip
+  installer says which of the two it chose. On a machine without a chip the
+  screen carries a warning during the install and at its end. `--tpm` makes a missing chip
   an error rather than a silent keyfile install.
   [TPM and the disk key](../reference/tpm.md) explains what the chip is for and what a box
   without one gives up.

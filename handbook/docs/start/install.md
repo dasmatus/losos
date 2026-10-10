@@ -37,25 +37,32 @@ own. **It wipes every fixed disk in the machine.**
    box needs Secure Boot off either way, because its own loader is not
    signed.
 3. Boot from the stick. While it starts it shows the LosOS logo, above the
-   boot menu on a BIOS machine and alone on a UEFI one. Then a menu offers
-   **UEFI**, **BIOS** or **autodetect** and takes autodetect after 30
-   seconds, so an unattended boot still installs. Autodetect picks the mode
+   boot menu on a BIOS machine and alone on a UEFI one. Then a menu under
+   the logo offers **BIOS**, **UEFI** or **autodetect** on the keys 1, 2
+   and 3, and takes autodetect after 30 seconds, so an unattended boot
+   still installs. Autodetect picks the mode
    the stick itself was booted in, which is right for almost everyone. [Install variants](../types/install-variants)
    explains the choice.
 4. Wait. The installer finds every fixed disk, puts them in one encrypted
-   volume, downloads the system and installs it. Near the end it prints
-   `unlock: TPM` or `unlock: keyfile in the initrd`.
+   volume, downloads the system and installs it, and the screen marks each
+   step as it runs. On a machine with a TPM chip one step seals the disk
+   key to it; without one the screen warns that the key is on the boot
+   partition.
    [Install variants](../types/install-variants#how-the-disk-is-unlocked)
    explains what that means.
-5. Remove the stick and let the machine reboot. The screen now shows the
-   salmon with a banner under it holding the box's address. Open that address in a browser on any
-   computer on the same network and follow [The first run](first-run).
+5. When the screen says LosOS is installed, remove the stick and press any
+   key to restart. After the restart the screen shows the salmon with a
+   banner under it holding the box's address. Open that address in a
+   browser on any computer on the same network and follow
+   [The first run](first-run).
+
+![The installer's menu under the salmon: press 1 for BIOS, 2 for UEFI or 3 for autodetect, which starts by itself after 30 seconds.](../img/installer-screen-menu.png)
+
+![The installer's steps under the salmon, the running one marked. This machine has no network yet, so the screen says to plug in a cable, and it has no TPM chip, so it says where the disk key goes.](../img/installer-screen-steps.png)
+
+![The end of an install: LosOS is installed, remove the stick and press any key to restart.](../img/installer-screen-done.png)
 
 ![The box's screen after the first boot: the salmon, and under it LosOS v0.1.8 is ready, with the box's addresses and its .local name.](../img/tty1-banner.png)
-
-![The end of an install: the disk key sealed to the TPM, the boot loader installed, and the line losos-install: done.](../img/install-done.png)
-
-![The installer on the screen: Secure Boot enabled, the firmware verified the medium, and the menu offering BIOS, UEFI or autodetect, chosen automatically after 30 seconds.](../img/installer-menu.png)
 
 ## Trying it in a virtual machine
 
