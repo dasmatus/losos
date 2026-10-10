@@ -30,7 +30,7 @@ one check cover the whole boot:
 
 ![A stick whose system image was changed after signing: the loader refuses it with THE MEDIUM HAS BEEN ALTERED and prints the expected and the found hash.](../img/secure-boot-refused-tampered.png)
 
-The installer then prints what happened, above its firmware menu:
+The installer then says what happened, with its firmware menu:
 
 ```
 Secure Boot: enabled. The firmware verified this medium's signature.

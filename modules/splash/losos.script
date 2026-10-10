@@ -14,11 +14,15 @@
 # one row per `|`, each led by a style character:
 #
 #   #  headline        @  address        !  warning headline
-#   ~  secondary text  (space)  plain    an empty row is a gap
+#   ~  secondary text  (space)  plain    >  the step running now, which pulses
+#   an empty row is a gap
 #
 # Then the logo glides to the top, slow at first, faster, slow again, while
 # the caption fades and the panel opens from its middle with the rows fading
 # in. A disk that asks for a password opens the same panel for the prompt.
+#
+# On the installer medium the installer sends its own rows the same way:
+# the firmware menu, its steps, and how it ended (install_screen.rs).
 #
 # `losos-mode:reboot` and `losos-mode:shutdown` (modules/splash.nix, at
 # shutdown) play it backwards to a centred logo captioned "is restarting" or
@@ -120,6 +124,8 @@ fun row_image (line)
     return Image.Text(text, warn.r, warn.g, warn.b, 1, font("Bold ", 1));
   if (style == "~")
     return Image.Text(text, muted.r, muted.g, muted.b, 1, font("", 1));
+  if (style == ">")
+    return Image.Text("▸  " + text, accent.r, accent.g, accent.b, 1, font("Bold ", 1));
   return Image.Text(text, ink.r, ink.g, ink.b, 1, font("", 1));
 }
 
@@ -169,8 +175,11 @@ fun layout ()
   panel.middle = panel.y + panel.h / 2;
 
   local.y = Math.Int(panel.y + 1.5 * pad);
+  global.pulse = -1;
   for (i = 0; i < rows; i++)
     {
+      if (row[i].CharAt(0) == ">")
+        global.pulse = i;
       if (!global.row_sprite[i])
         global.row_sprite[i] = Sprite();
       if (image[i])
@@ -246,8 +255,17 @@ fun draw ()
   message.sprite.SetPosition(centred(message.width), Math.Int(message.y * e + (logo_y + bar.dy + 2 * pad) * (1 - e)), 3);
 }
 
+# The running step breathes, so a long one does not look stuck.
+pulse = -1;
+frame = 0;
+
 fun refresh_callback ()
 {
+  if (t == 1 && pulse >= 0 && image[pulse])
+    {
+      global.frame = (frame + 1) % 100;
+      row_sprite[pulse].SetOpacity(0.65 + 0.35 * Math.Cos(2 * Math.Pi * frame / 100));
+    }
   if (t < target)
     {
       global.t = Math.Min(target, t + step);

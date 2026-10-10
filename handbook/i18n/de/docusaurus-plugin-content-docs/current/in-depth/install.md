@@ -42,8 +42,9 @@ os-release (`NAME=LosOS`, `IMAGE_VERSION`) und behält `ID=nixos`.
   im Handbuch enthält die Schritte und die Prüfung von `SHA256SUMS.sig`.
   `tests/secure-boot.nix` ist der Nachweis.
 - **UEFI oder BIOS, beides funktioniert.** Auf dem Installer-ISO lässt dich
-  ein Terminalmenü BIOS, UEFI oder automatische Erkennung (die Firmware, die
-  das ISO gebootet hat) wählen. UEFI bekommt systemd-boot. Legacy-BIOS bekommt
+  ein Menü auf dem Startbildschirm mit den Tasten 1, 2 oder 3 BIOS, UEFI oder
+  automatische Erkennung (die Firmware, die das ISO gebootet hat) wählen.
+  UEFI bekommt systemd-boot. Legacy-BIOS bekommt
   GRUB plus eine 1 MiB große BIOS-Boot-Partition auf der ersten Festplatte.
   Ohne Antwort innerhalb von 30 Sekunden wählt das Menü die automatische
   Erkennung, sodass auch ein unbeaufsichtigter Boot installiert.
@@ -56,12 +57,23 @@ os-release (`NAME=LosOS`, `IMAGE_VERSION`) und behält `ID=nixos`.
   Das Menü gibt es nur auf dem Installer-ISO. Die installierte Appliance
   zeigt es nie.
 - **Netzwerk anschließen.** Der Installer klont den Flake zur Laufzeit.
+  Ohne Netzwerk zeigt der Bildschirm, dass er darauf wartet, und die
+  Installation geht von selbst weiter, sobald ein Kabel steckt. Für WLAN
+  drückst du Alt+F2 für eine Root-Shell und startest dort `nmtui`.
 
 ## Was der Installer tut
 
 Nach der Firmware-Wahl läuft der Installer unbeaufsichtigt. Er findet jede
 fest eingebaute Festplatte, fasst alle in einer LVM-Volume-Group zusammen,
 verschlüsselt sie mit LUKS, formatiert `/persist` als ext4 und installiert.
+
+Der Startbildschirm listet die Schritte unter dem Lachs auf und markiert den
+laufenden. Am Ende meldet er, dass LosOS installiert ist, und startet den
+Rechner auf einen Tastendruck neu, sobald der Stick draußen ist. Bricht die
+Installation ab, nennt der Bildschirm den Grund, und ein Tastendruck blendet
+ihn aus. Darunter stehen die vollständige Ausgabe des Installers und eine
+Root-Shell. Auf einem Rechner, dessen Startbildschirm nicht rechtzeitig
+eine Anzeige findet, gibt der Installer dasselbe als Text auf tty1 aus.
 
 - Auf einem Rechner mit TPM-2.0-Chip versiegelt der Installer den
   Festplattenschlüssel direkt nach dem Formatieren im Chip
@@ -79,8 +91,10 @@ verschlüsselt sie mit LUKS, formatiert `/persist` als ext4 und installiert.
 - Ohne Chip, oder mit `losos-ctl install --no-tpm` aus der Shell des
   Installers, wird diese Schlüsseldatei stattdessen in die initrd
   eingebacken. Sie liegt dann auf der unverschlüsselten ESP, und jeder, der
-  die Festplatte mitnimmt, kann die Daten lesen. Der Installer gibt aus,
-  welche der beiden Varianten er gewählt hat. `--tpm` macht einen fehlenden
+  die Festplatte mitnimmt, kann die Daten lesen. Der Installer sagt,
+  welche der beiden Varianten er gewählt hat. Auf einem Rechner ohne Chip
+  zeigt der Bildschirm während der Installation und an ihrem Ende eine
+  Warnung. `--tpm` macht einen fehlenden
   Chip zu einem Fehler statt zu einer stillen Installation mit
   Schlüsseldatei.
   [TPM und der Festplattenschlüssel](/reference/tpm.md) erklärt, wofür der Chip da ist

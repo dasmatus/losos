@@ -351,6 +351,14 @@ picks BIOS when `/sys/firmware/efi` is missing. `--bios` and `--uefi` choose
 without the menu. The menu exists only on the installer ISO, not on the
 installed system, and takes autodetect after 30 s unanswered, because the
 medium is meant to install unattended and `tests/iso-boot.py` never types.
+On the medium the installer is a tty1 service rather than a login shell
+(`installer.nix`). Where Plymouth draws, it runs under the splash. The menu,
+the steps and how the install ended go on the panel
+(`backend/src/install_screen.rs`), and keys come from `plymouth
+watch-keystroke`, since Plymouth holds the keyboard while it draws. A
+splash in text mode is quit and the installer runs in text, and after the
+install the splash goes, uncovering tty1's log and a root shell.
+`tests/installer-screen.nix` boots both.
 BIOS switches `boot.nix` to GRUB and adds an EF02 partition to the first
 drive in `disko.nix`. The ESP stays `/boot` either way. `console.nix`
 replaces getty on tty1 with a banner service showing the LAN IPv4 address and

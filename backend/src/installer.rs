@@ -358,7 +358,7 @@ fn install_tail(opts: &Options, work: &Path) -> Vec<InstallAction> {
 }
 
 /// The explicit drive list, or auto-detection.
-fn resolve_drives(opts: &Options, devs: &[BlockDev]) -> Result<Vec<String>, String> {
+pub fn resolve_drives(opts: &Options, devs: &[BlockDev]) -> Result<Vec<String>, String> {
     match &opts.drives {
         Some(ds) if !ds.is_empty() => Ok(ds.clone()),
         Some(_) => Err("--drives given but empty".to_string()),

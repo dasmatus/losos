@@ -38,6 +38,7 @@ pub mod fake;
 pub mod grow;
 pub mod guard;
 pub mod http;
+pub mod install_screen;
 pub mod installer;
 pub mod installer_io;
 pub mod io_backend;

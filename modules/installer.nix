@@ -14,9 +14,13 @@
 # GitHub repo) — the ISO needs working network either way, since evaluating
 # the flake fetches its nixpkgs input.
 #
-# When `losos.installer.autorun` is true (installer ISO only), root's login
-# shell becomes `losos-install` and tty1 autologs in as root — so booting the ISO
-# starts the installer and its firmware-mode menu before any destructive work.
+# When `losos.installer.autorun` is true (installer ISO only), tty1 runs the
+# installer as a service in place of a login prompt, so booting the ISO starts
+# it and its firmware-mode menu before any destructive work. Where the medium's
+# boot screen draws (modules/splash.nix), the installer runs under it and
+# shows its menu, its steps and how it ended on the screen's panel
+# (backend/src/install_screen.rs). Elsewhere it prints them on tty1 as text.
+# tty2 to tty6 log root in to a shell.
 {
   pkgs,
   lib,
@@ -44,38 +48,48 @@ let
     config.systemd.package
   ];
 
-  # Two wrapper variants, because the command and the login shell need
-  # opposite exit behavior:
+  plymouth = config.boot.plymouth.enable;
+
+  # Two wrappers, because the command and tty1 need opposite exit behavior:
   #
   #   * the CLI command (systemPackages, the VM test, scripts) must exec
   #     losos-ctl so the installer's real exit code reaches the caller — a
   #     trailing `exec bash` here would make machine.succeed (and any `$?`
   #     check) read success out of a failed install;
-  #   * the autorun login shell must NOT exit when the installer stops:
-  #     getty would respawn the login shell and re-run the destructive
-  #     installer in a loop. It traps INT (Ctrl-C kills the foreground
-  #     losos-ctl, not the wrapper — a caught trap reverts to default across
-  #     the final exec, so the bash it lands in keeps normal Ctrl-C) and
-  #     drops to bash. The wrapped copy is only ever root's shell on the
-  #     autorun ISO.
-  # The two variants MUST ship differently-named binaries. nixpkgs'
-  # users-groups module auto-adds every shellPackage used as a user's shell
-  # into environment.systemPackages, so both packages land in system.path's
-  # buildEnv (built with ignoreCollisions = true): were both named
-  # bin/losos-install, one would silently win the collision and serve BOTH
-  # roles — concretely the plain-exec CLI won, root's login shell resolved
-  # to it through /run/current-system/sw/bin/losos-install, and any exit
-  # re-looped the destructive installer via getty again.
+  #   * tty1's must NOT end when the installer stops, or the console goes
+  #     dead with the reason on it. It traps INT (Ctrl-C kills the foreground
+  #     losos-ctl, not the wrapper) and then opens a shell under the log. The
+  #     service never restarts it: that would run the destructive installer
+  #     again.
   losos-install = pkgs.writeShellScriptBin "losos-install" ''
     ${lib.optionalString autorun "export LOSOS_INSTALLER_ISO=1"}
     exec ${ctl}/bin/losos-ctl install "$@"
   '';
 
-  losos-install-login = pkgs.writeShellScriptBin "losos-install-login" ''
+  # Plymouth reads tty1's keyboard while it draws, so the installer takes
+  # its keys from Plymouth then (LOSOS_SPLASH) and reads nothing from the
+  # terminal. A splash that fell back to text cannot host the panel, and
+  # would still hold the keyboard, so it goes and the installer runs in
+  # text. Afterwards the splash goes too, uncovering tty1's log for the
+  # shell under it.
+  losos-install-tty1 = pkgs.writeShellScriptBin "losos-install-tty1" ''
     trap : INT
-    ${lib.optionalString autorun "export LOSOS_INSTALLER_ISO=1"}
+    export LOSOS_INSTALLER_ISO=1
+    if command -v plymouth >/dev/null && plymouth --ping 2>/dev/null; then
+      if [ "$(kbdinfo -C /dev/tty1 getmode 2>/dev/null)" = graphics ]; then
+        export LOSOS_SPLASH=1
+      else
+        plymouth quit --wait
+      fi
+    fi
     ${ctl}/bin/losos-ctl install "$@"
-    exec ${lib.getExe pkgs.bash}
+    if [ -n "''${LOSOS_SPLASH-}" ]; then
+      plymouth quit --wait
+    fi
+    unset LOSOS_SPLASH LOSOS_INSTALLER_ISO
+    echo
+    echo "The installer has stopped. This is a root shell; restart with: reboot"
+    while :; do ${lib.getExe pkgs.bash} -l; done
   '';
 
   wrapWithTools =
@@ -94,21 +108,60 @@ let
       '';
 
   losos-install-wrapped = wrapWithTools "losos-install" losos-install { };
-  losos-install-shell = wrapWithTools "losos-install-login" losos-install-login {
-    # Required by lib.types.shellPackage so it can be root's login shell on
-    # the autorun ISO (users.users.root.shell); without it nixpkgs' users
-    # module throws "losos-install-login is not a shell package".
-    passthru.shellPath = "/bin/losos-install-login";
-  };
+  losos-install-tty1-wrapped = wrapWithTools "losos-install-tty1" losos-install-tty1 { };
 in
 {
   config = lib.mkIf (ctl != null) {
     environment.systemPackages = [ losos-install-wrapped ];
 
-    # Destructive reinstall medium: boot ISO → autologin root → losos-install
-    # runs as the login shell. Gated so the VM test (which drives the installer
-    # manually) and normal targets never auto-wipe.
+    # Destructive reinstall medium: booting the ISO starts the installer on tty1.
+    # Gated so the VM test (which drives the installer manually) and normal
+    # targets never auto-wipe. The other consoles log root in to a shell.
     services.getty.autologinUser = lib.mkIf autorun (lib.mkForce "root");
-    users.users.root.shell = lib.mkIf autorun losos-install-shell;
+
+    # A getty would take tty1 by hanging it up and resetting it, which
+    # pulls the terminal from under a running splash; this is the pattern
+    # modules/console.nix uses on the installed box.
+    systemd.services."getty@tty1".enable = lib.mkIf autorun false;
+    systemd.services."autovt@tty1".enable = lib.mkIf autorun false;
+
+    systemd.services.losos-installer = lib.mkIf autorun {
+      description = "The LosOS installer on tty1";
+      wantedBy = [ "multi-user.target" ];
+      after = [
+        "systemd-user-sessions.service"
+        "systemd-vconsole-setup.service"
+      ]
+      ++ lib.optional plymouth "plymouth-start.service";
+      conflicts = [
+        "getty@tty1.service"
+        "autovt@tty1.service"
+      ];
+      before = [ "getty.target" ];
+      # A switch must never start the destructive installer again.
+      restartIfChanged = false;
+      path = [ pkgs.kbd ] ++ lib.optional plymouth config.boot.plymouth.package;
+      environment.HOME = "/root";
+      # The login environment: PATH with nixos-install, the CA bundle for
+      # the clone and the flake inputs, TERM.
+      script = ''
+        source /etc/profile
+        export TERM=linux
+        exec ${lib.getExe losos-install-tty1-wrapped} "$@"
+      '';
+      serviceConfig = {
+        Type = "idle";
+        StandardInput = "tty";
+        StandardOutput = "tty";
+        StandardError = "tty";
+        TTYPath = "/dev/tty1";
+        TTYReset = false;
+        TTYVHangup = false;
+        TTYVTDisallocate = false;
+        UtmpIdentifier = "tty1";
+        UtmpMode = "user";
+        IgnoreSIGPIPE = false;
+      };
+    };
   };
 }

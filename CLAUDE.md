@@ -116,11 +116,16 @@ and is never served or built by nix.
   pictures (`brand-art.nix`, drawn from the salmon), os-release, the console
   palette and banners. The installed box keeps `ID=nixos`. Bump the file in
   the commit that gets the tag; the release job stamps the tag over it.
-- `splash.nix` (install only, `losos.splash.enable`): Plymouth with the
+- `splash.nix` (both systems, `losos.splash.enable`): Plymouth with the
   LosOS theme in `modules/splash/losos.script`. `console.nix` sends it the
   tty1 rows (`plymouth update --status=losos:…`) and keeps drawing the text
   banner underneath; plymouth-quit is out of multi-user.target, so the
   splash is the box's screen after boot. `tests/console.nix` asserts it.
+  On the ISO the installer is a tty1 service (`installer.nix`), not a
+  login shell, and runs under the splash. `install_screen.rs` builds the
+  panel's rows, keys come from `plymouth watch-keystroke` (Plymouth holds
+  the keyboard), and a getty's hangup on tty1 would pull the terminal from
+  under it. `tests/installer-screen.nix` asserts both modes.
 - `updates.nix`: `system.autoUpgrade` at 03:00 from `losos.upgradeFlakeUri`
   (default `git+file:///etc/nixos#install`, set a `github:` URI to really
   upgrade), `nix.gc` at 04:30 with `--delete-older-than 14d`, five boot
@@ -585,7 +590,8 @@ BIOS and UEFI can be chosen explicitly, or autodetect uses the absence of
 `/sys/firmware/efi` (also available noninteractively with `--bios`/`--uefi`).
 The menu exists only on the installer ISO, not the installed system, and
 takes autodetect after 30 s unanswered: the medium is meant to install
-unattended, and `tests/iso-boot.py` never types. BIOS
+unattended, and `tests/iso-boot.py` never types. Under the splash the
+menu is on the panel and answered with 1, 2 or 3. BIOS
 switches `boot.nix` to GRUB and adds an EF02 partition to the first drive in
 `disko.nix`; the ESP stays `/boot` either way. `console.nix` replaces getty on
 tty1 with a banner service showing the LAN IPv4 and `<hostName>.local`.

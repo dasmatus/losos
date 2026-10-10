@@ -19,6 +19,11 @@
 # Plymouth runs in text mode, and tty1 shows the text banner. With
 # losos.splash.enable = false the box boots in text and tty1 shows the text
 # banner too.
+#
+# The installer medium boots under the same screen. There the panel is the
+# installer's (modules/installer.nix, backend/src/install_screen.rs): the
+# firmware menu answered with a key press, the steps as they run, and how
+# the install ended. Without a display it runs in text on tty1 as before.
 {
   config,
   lib,
@@ -64,8 +69,12 @@ let
         }
       ];
 
+  # The caption: "LosOS v0.1.8 is starting", or on the installer medium
+  # "LosOS v0.1.8 installer is starting".
   name = lib.concatStringsSep " " (
-    [ "LosOS" ] ++ lib.optional (config.system.image.version != null) config.system.image.version
+    [ "LosOS" ]
+    ++ lib.optional (config.system.image.version != null) config.system.image.version
+    ++ lib.optional config.losos.installer.autorun "installer"
   );
 
   theme = pkgs.runCommand "losos-plymouth-theme" { nativeBuildInputs = [ pkgs.imagemagick ]; } ''

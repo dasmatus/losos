@@ -12,9 +12,10 @@
 
 use clap::{Args, Parser, Subcommand};
 use losos_ctl::facade::{call_backend, BackendFailure};
+use losos_ctl::install_screen;
 use losos_ctl::installer::resolve_tpm;
 use losos_ctl::installer_io::{
-    booted_in_bios, options_from_env, run_install, secure_boot_state, tpm_present,
+    booted_in_bios, options_from_env, run_install, secure_boot_state, tpm_present, Splash,
 };
 use losos_ctl::model::Mode;
 use losos_ctl::overrides::validate_apply;
@@ -347,6 +348,9 @@ fn main() -> ExitCode {
             _ => None,
         };
         let on_installer_iso = std::env::var_os("LOSOS_INSTALLER_ISO").is_some();
+        // The medium's boot screen, when it hosts the installer: the menu,
+        // the steps and the result go on its panel, and keys come from it.
+        let splash = Splash::detect().filter(|_| on_installer_iso && args.emit_target.is_none());
         let interactive = on_installer_iso
             && std::io::stdin().is_terminal()
             && std::io::stdout().is_terminal()
@@ -357,16 +361,18 @@ fn main() -> ExitCode {
         if on_installer_iso {
             println!("{}", secure_boot_state().banner());
         }
-        let bios = match select_firmware(explicit_bios, interactive) {
-            Ok(bios) => bios,
-            Err(e) => {
-                eprintln!("losos-install: cannot read firmware selection: {e}");
-                return ExitCode::FAILURE;
-            }
+        let bios = match (splash, explicit_bios) {
+            (Some(splash), None) => splash_firmware(splash),
+            _ => match select_firmware(explicit_bios, interactive) {
+                Ok(bios) => bios,
+                Err(e) => {
+                    eprintln!("losos-install: cannot read firmware selection: {e}");
+                    return ExitCode::FAILURE;
+                }
+            },
         };
         if let Err(e) = validate_firmware_choice(bios, booted_in_bios()) {
-            eprintln!("losos-install: {e}");
-            return ExitCode::FAILURE;
+            return install_failed(splash, e);
         }
         let explicit_tpm = match (args.tpm, args.no_tpm) {
             (true, _) => Some(true),
@@ -375,10 +381,7 @@ fn main() -> ExitCode {
         };
         let tpm = match resolve_tpm(explicit_tpm, tpm_present()) {
             Ok(tpm) => tpm,
-            Err(e) => {
-                eprintln!("losos-install: {e}");
-                return ExitCode::FAILURE;
-            }
+            Err(e) => return install_failed(splash, &e),
         };
         let opts = options_from_env(
             tpm,
@@ -388,12 +391,24 @@ fn main() -> ExitCode {
             args.disko_script.clone(),
             args.emit_target.clone(),
         );
-        return match run_install(&opts) {
-            Ok(()) => ExitCode::SUCCESS,
-            Err(e) => {
-                eprintln!("losos-install: {e:#}");
-                ExitCode::FAILURE
+        return match run_install(&opts, splash) {
+            Ok(()) => {
+                if let Some(splash) = splash {
+                    let installed = !opts.no_install && opts.disko_script.is_none();
+                    splash.show(&install_screen::finished(installed, opts.tpm));
+                    splash.key(None, None, |_| {});
+                    if installed {
+                        // The medium can come out now; nothing on it is
+                        // needed again. If the restart fails, the login
+                        // wrapper takes over with a shell.
+                        let _ = std::process::Command::new("systemctl")
+                            .arg("reboot")
+                            .status();
+                    }
+                }
+                ExitCode::SUCCESS
             }
+            Err(e) => install_failed(splash, &format!("{e:#}")),
         };
     }
 
@@ -404,6 +419,45 @@ fn main() -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+/// The firmware menu on the splash's panel: the same three choices and the
+/// same timeout as on text, with the seconds left counting down. Keys
+/// other than 1, 2 and 3 are not Plymouth's to pass on, so there is nothing
+/// to retype; no answer is autodetect.
+fn splash_firmware(splash: Splash) -> Option<bool> {
+    let banner = secure_boot_state().banner();
+    println!(
+        "losos-install: firmware menu on the boot screen: 1 BIOS, 2 UEFI, 3 autodetect \
+         (autodetect in {} s)",
+        FIRMWARE_MENU_TIMEOUT.as_secs()
+    );
+    let key = splash.key(Some("123"), Some(FIRMWARE_MENU_TIMEOUT), |left| {
+        let secs = left.as_secs_f64().ceil() as u64;
+        splash.show(&install_screen::firmware_menu(banner, secs));
+    });
+    let mode = key.as_deref().and_then(FirmwareMode::parse);
+    println!(
+        "losos-install: firmware mode: {}",
+        match mode {
+            Some(FirmwareMode::Bios) => "BIOS",
+            Some(FirmwareMode::Uefi) => "UEFI",
+            _ => "autodetect",
+        }
+    );
+    mode.and_then(FirmwareMode::bios_override)
+}
+
+/// Report a stopped install: on stderr always, and under the splash on its
+/// panel too, which waits for a key before the login wrapper takes the
+/// splash down and opens a shell under the log.
+fn install_failed(splash: Option<Splash>, error: &str) -> ExitCode {
+    eprintln!("losos-install: {error}");
+    if let Some(splash) = splash {
+        splash.show(&install_screen::failed(error));
+        splash.key(None, None, |_| {});
+    }
+    ExitCode::FAILURE
 }
 
 fn validate_firmware_choice(
