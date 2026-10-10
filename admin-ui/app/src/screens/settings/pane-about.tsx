@@ -68,12 +68,11 @@ export function AboutPane({ form }: { form: SettingsForm }) {
             {/* Filled for "kept to itself", hatched for "shared with the
                 mesh" — the same pairing the capacity meter uses, and the only
                 place in the app where two things differ by texture instead of
-                by colour. */}
-            <Badge variant={saved.sharingMyStorage ? "mesh" : "local"}>
-              {saved.sharingMyStorage
-                ? t("panes.about.storageShared")
-                : t("panes.about.storageLocal")}
-            </Badge>
+                by colour. Sharing switched on in a box that has not joined a
+                mesh lends nothing, so it gets neither texture and says so in
+                words; otherwise this row read "shared" above an "On the
+                mesh: not joined" row. */}
+            <Badge variant={storageBadge(saved)}>{t(storageLabel(saved))}</Badge>
           </Row>
           <Row last>
             <RowText title={t("panes.about.reachableOutside")} />
@@ -148,6 +147,28 @@ export function AboutPane({ form }: { form: SettingsForm }) {
       </PaneSection>
     </>
   );
+}
+
+type StorageState = "local" | "waiting" | "shared";
+
+/* Storage is lent only when the switch is on AND the box is on a mesh. */
+function storageState(saved: { sharingMyStorage: boolean; clusterEnable: boolean }): StorageState {
+  if (!saved.sharingMyStorage) return "local";
+  return saved.clusterEnable ? "shared" : "waiting";
+}
+
+function storageBadge(saved: { sharingMyStorage: boolean; clusterEnable: boolean }) {
+  const state = storageState(saved);
+  return state === "shared" ? "mesh" : state === "waiting" ? "outline" : "local";
+}
+
+function storageLabel(saved: { sharingMyStorage: boolean; clusterEnable: boolean }) {
+  const state = storageState(saved);
+  return state === "shared"
+    ? "panes.about.storageShared"
+    : state === "waiting"
+      ? "panes.about.storageWaiting"
+      : "panes.about.storageLocal";
 }
 
 /* The origin in the address bar. Empty if there is none to read (a file: URL,
