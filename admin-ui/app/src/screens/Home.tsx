@@ -115,6 +115,10 @@ export function Home({
 
   const hostName = settings?.hostName ?? browserHostName();
   const sharing = boxState?.sharing ?? settings?.sharingMyStorage ?? false;
+  /* The switch alone lends nothing: room goes to the mesh only once the box
+   * has joined one. Without this the strip said "lent to the mesh" on a box
+   * whose About pane said "On the mesh: not joined". */
+  const lending: Lending = !sharing ? "off" : settings?.clusterEnable ? "lent" : "waiting";
 
   return (
     <div className="flex flex-col gap-4">
@@ -133,7 +137,7 @@ export function Home({
         </CardContent>
 
         <CardFooter className="bg-sunk/40">
-          <StorageStrip sharing={sharing} storage={disk} />
+          <StorageStrip lending={lending} storage={disk} />
         </CardFooter>
       </Card>
 
@@ -262,8 +266,11 @@ function ApplyingChange({ status }: { status: StatusResponse }) {
  * that cannot be read as a proportion, because it does not change with the
  * bar's width. Nothing here ever prints an amount it did not measure.
  */
-function StorageStrip({ sharing, storage }: { sharing: boolean; storage: HomeStorage | null }) {
+type Lending = "off" | "waiting" | "lent";
+
+function StorageStrip({ lending, storage }: { lending: Lending; storage: HomeStorage | null }) {
   const t = useT();
+  const sharing = lending === "lent";
   const measured = readStorage(storage, sharing);
   const usedPercent = measured === null ? null : measured.usedPercent;
   const lentPercent = measured === null ? null : measured.lentPercent;
@@ -356,9 +363,11 @@ function StorageStrip({ sharing, storage }: { sharing: boolean; storage: HomeSto
       </div>
 
       <p className="text-[12px] text-faint">
-        {sharing
+        {lending === "lent"
           ? t("home.storage.sharing")
-          : t("home.storage.local")}
+          : lending === "waiting"
+            ? t("home.storage.waiting")
+            : t("home.storage.local")}
       </p>
     </div>
   );
