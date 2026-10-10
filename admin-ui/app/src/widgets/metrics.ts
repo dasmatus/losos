@@ -466,14 +466,19 @@ function minutes(hhmm: string): number | null {
   return Number(match[1]) * 60 + Number(match[2]);
 }
 
+/* What the box actually gives the mesh, not what its switches say: a box
+ * that has not joined lends neither disk nor time, whatever the two sharing
+ * switches are set to. The raw switches stay on "box.settings". */
 function meshMetric(settings: SettingsResponse): MeshMetric {
+  const joined = settings.clusterEnable;
+  const sharingCompute = joined && settings.shareCompute;
   return {
-    joined: settings.clusterEnable,
-    sharingStorage: settings.sharingMyStorage,
-    sharingCompute: settings.shareCompute,
+    joined,
+    sharingStorage: joined && settings.sharingMyStorage,
+    sharingCompute,
     windowStart: settings.computeWindowStart,
     windowEnd: settings.computeWindowEnd,
-    windowHours: settings.shareCompute
+    windowHours: sharingCompute
       ? windowHours(settings.computeWindowStart, settings.computeWindowEnd)
       : 0,
     // Nothing reports either figure. Not zero — zero is a claim.
@@ -553,7 +558,7 @@ async function appsMetric(settings: SettingsResponse): Promise<AppsMetric> {
       name: t("widgets.metrics.files"),
       path: FILES_BASE,
       reachable: filesUp,
-      onMesh: settings.sharingMyStorage,
+      onMesh: settings.sharingMyStorage && settings.clusterEnable,
     },
   ];
 

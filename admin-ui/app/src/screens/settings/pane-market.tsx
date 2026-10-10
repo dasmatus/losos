@@ -232,6 +232,9 @@ function SharingSection({ form }: { form: SettingsForm }) {
   const edge = useEdge();
   const shareId = React.useId();
   const sharing = form.draft?.sharingMyStorage ?? false;
+  /* Copies go to other boxes only once this one is on a mesh; until then the
+   * switch is on and nothing is copied anywhere. */
+  const joined = form.draft?.clusterEnable ?? false;
   /* Same rule as the Join switch on the Mesh pane: no edge in reach means
    * the daemon refuses to turn this on, so it is greyed and says why, unless
    * it is already on, in which case turning it off must stay possible. */
@@ -250,8 +253,12 @@ function SharingSection({ form }: { form: SettingsForm }) {
         />
         <Row last>
           <RowText title={t("panes.market.share.ifDies")} />
-          <RowValue className={sharing ? "text-ok" : undefined}>
-            {sharing ? t("panes.market.share.rebuilds") : t("panes.market.share.notCopied")}
+          <RowValue className={sharing && joined ? "text-ok" : undefined}>
+            {!sharing
+              ? t("panes.market.share.notCopied")
+              : joined
+                ? t("panes.market.share.rebuilds")
+                : t("panes.market.share.untilJoined")}
           </RowValue>
         </Row>
       </Group>
