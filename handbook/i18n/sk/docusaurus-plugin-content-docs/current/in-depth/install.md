@@ -38,9 +38,9 @@ bootovacom menu, v bannerch na konzole aj v os-release (`NAME=LosOS`,
   Zavádzač nainštalovaného zariadenia podpísaný nie je, takže samotné zariadenie potrebuje
   Secure Boot vypnutý. Postup a kontrolu `SHA256SUMS.sig` nájdete na stránke
   príručky *Secure Boot and signed media*. Dôkazom je `tests/secure-boot.nix`.
-- **UEFI aj BIOS, funguje oboje.** Na inštalačnom ISO vám textové menu
-  umožní zvoliť BIOS, UEFI alebo autodetekciu (firmvér, ktorý ISO
-  nabootoval). UEFI dostane systemd-boot. Starší BIOS dostane GRUB a 1 MiB
+- **UEFI aj BIOS, funguje oboje.** Na inštalačnom ISO vám menu na
+  úvodnej obrazovke umožní zvoliť BIOS, UEFI alebo autodetekciu (firmvér,
+  ktorý ISO nabootoval) klávesom 1, 2 alebo 3. UEFI dostane systemd-boot. Starší BIOS dostane GRUB a 1 MiB
   bootovací oddiel BIOS na prvom disku. Ak do 30 sekúnd neodpoviete, menu
   zvolí autodetekciu, takže aj bezobslužné bootovanie nainštaluje systém.
   `losos-install --bios` a `--uefi` zvolia režim bez zobrazenia menu. UEFI,
@@ -50,13 +50,23 @@ bootovacom menu, v bannerch na konzole aj v os-release (`NAME=LosOS`,
   akéhokoľvek disku. BIOS slúži hlavne na testovanie vo VM.
   Menu je súčasťou iba inštalačného ISO. Nainštalované zariadenie ho nikdy
   nezobrazí.
-- **Pripojte sieť.** Inštalátor klonuje flake počas behu.
+- **Pripojte sieť.** Inštalátor klonuje flake počas behu. Bez siete
+  obrazovka napíše, že na ňu čaká, a inštalácia pokračuje sama, keď
+  zapojíte kábel. Pre Wi-Fi stlačte Alt+F2, čím dostanete shell roota, a
+  spustite tam `nmtui`.
 
 ## Čo inštalátor robí
 
 Po výbere firmvéru inštalátor beží bez obsluhy. Nájde všetky pevné disky,
 spojí ich do jednej skupiny zväzkov LVM, zašifruje ju cez LUKS, naformátuje
 `/persist` ako ext4 a nainštaluje systém.
+
+Úvodná obrazovka vypíše kroky pod lososom a označí ten, ktorý práve beží.
+Na konci napíše, že LosOS je nainštalovaný, a po stlačení klávesu, keď je
+kľúč vytiahnutý, počítač reštartuje. Ak sa inštalácia zastaví, obrazovka
+napíše prečo a stlačenie klávesu ju zavrie, takže uvidíte celý výstup
+inštalátora a pod ním shell roota. Na počítači, kde úvodná obrazovka
+nenájde displej včas, inštalátor vypíše to isté na tty1 ako text.
 
 - Na počítači s čipom TPM 2.0 inštalátor hneď po formátovaní zapečatí kľúč
   disku do čipu (`systemd-cryptenroll`). Väčšina mini-PC ho má vo firmvéri,
@@ -71,7 +81,8 @@ spojí ich do jednej skupiny zväzkov LVM, zašifruje ju cez LUKS, naformátuje
 - Bez čipu, alebo s `losos-ctl install --no-tpm` zo shellu inštalátora, sa
   namiesto toho tento súbor s kľúčom zapečie do initrd. Leží potom na
   nešifrovanom ESP a ktokoľvek, kto vezme disk, si dáta prečíta. Inštalátor
-  vypíše, ktorú z dvoch možností zvolil. `--tpm` spraví z chýbajúceho čipu
+  povie, ktorú z dvoch možností zvolil. Na počítači bez čipu obrazovka
+  ukáže upozornenie počas inštalácie aj na jej konci. `--tpm` spraví z chýbajúceho čipu
   chybu namiesto tichej inštalácie so súborom s kľúčom.
   [TPM a kľúč disku](/reference/tpm.md) vysvetľuje, na čo čip slúži a čoho sa zariadenie
   bez neho vzdáva.

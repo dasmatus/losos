@@ -47,7 +47,7 @@ verifies it. The installed box's own loader is not signed, so the box needs
 Secure Boot off. See
 [Secure Boot and signed media](../start/secure-boot).
 
-![The installer's firmware menu: 1 BIOS, 2 UEFI, 3 Autodetect, chosen automatically after 30 seconds.](../img/installer-menu.png)
+![The installer's firmware menu under the salmon: 1 BIOS, 2 UEFI, 3 Autodetect, which starts by itself after 30 seconds.](../img/installer-screen-menu.png)
 
 ## The three media
 

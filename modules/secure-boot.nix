@@ -246,6 +246,8 @@ in
         say "LosOS: verifying the medium's system image against the signed hash (a few seconds)"
         actual=$(sha256sum /sysroot/iso/nix-store.squashfs | cut -d' ' -f1)
         if [ "$actual" != "$expected" ]; then
+          # The boot screen would cover the warning.
+          if [ -x /bin/plymouth ]; then /bin/plymouth quit || true; fi
           say "LosOS: THE MEDIUM HAS BEEN ALTERED: its system image does not match the hash"
           say "LosOS: in the signed loader (expected $expected, found $actual). Refusing to start it."
           sleep 5

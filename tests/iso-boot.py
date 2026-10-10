@@ -8,12 +8,12 @@ ISO cannot tell you: v0.1.1 built green and was then reported "not bootable in
 UEFI". It drives the *shipped* image unchanged, so it needs a signal that the
 image already gives off without a serial console or a test backdoor.
 
-That signal is the network. Booting the ISO autologs root in on tty1, whose
-login shell is losos-install; the installer picks a target disk and then
-resolves the flake's host (github.com) before cloning it. So the first DNS
-query for that host proves the whole chain: firmware loaded the bootloader,
-the bootloader loaded the kernel and initrd, stage 2 came up, getty logged
-root in, and the installer got as far as the network. QEMU's filter-dump
+That signal is the network. Booting the ISO starts the installer on tty1,
+which takes the firmware menu's default after 30 s, picks a target disk and
+then resolves the flake's host (github.com) before cloning it. So the first
+DNS query for that host proves the whole chain: firmware loaded the
+bootloader, the bootloader loaded the kernel and initrd, stage 2 came up and
+started the installer, and the installer got as far as the network. QEMU's filter-dump
 writes every frame the guest sends to a pcap, and this script polls it.
 
 The guest network cannot be `restrict=on`: QEMU then leaves the DNS server
