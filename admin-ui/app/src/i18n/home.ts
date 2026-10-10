@@ -47,6 +47,11 @@ export default defineMessages({
     sk: "Všetko, čo tu máte, zostáva na tomto zariadení. Miesto, ktoré nevyužíva, požičiava sieti mesh.",
     de: "Alles, was du hier ablegst, bleibt auf dieser Box. Platz, den sie nicht braucht, wird an das Mesh verliehen.",
   },
+  "home.storage.waiting": {
+    en: "Everything you keep here stays on this box. Sharing is on, and spare room is lent once this box joins a mesh.",
+    sk: "Všetko, čo tu máte, zostáva na tomto zariadení. Zdieľanie je zapnuté a voľné miesto sa začne požičiavať, keď sa zariadenie pripojí k sieti mesh.",
+    de: "Alles, was du hier ablegst, bleibt auf dieser Box. Teilen ist an, und freier Platz wird verliehen, sobald die Box einem Mesh beitritt.",
+  },
   "home.storage.local": {
     en: "Everything you keep here stays on this box. Nothing is copied anywhere else.",
     sk: "Všetko, čo tu máte, zostáva na tomto zariadení. Nič sa nekopíruje nikam inam.",
