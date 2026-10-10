@@ -41,6 +41,11 @@ export default defineMessages({
     sk: "zdieľané so sieťou mesh",
     de: "mit dem Mesh geteilt",
   },
+  "panes.about.storageWaiting": {
+    en: "sharing on, waiting for a mesh",
+    sk: "zdieľanie zapnuté, čaká na sieť mesh",
+    de: "Teilen an, wartet auf ein Mesh",
+  },
   "panes.about.storageLocal": {
     en: "kept to itself",
     sk: "len pre seba",
@@ -1509,6 +1514,11 @@ export default defineMessages({
     en: "nothing here is copied anywhere",
     sk: "nič odtiaľto sa nikam nekopíruje",
     de: "nichts hier wird irgendwohin kopiert",
+  },
+  "panes.market.share.untilJoined": {
+    en: "nothing is copied until this box joins a mesh",
+    sk: "nič sa nekopíruje, kým sa zariadenie nepripojí k sieti mesh",
+    de: "nichts wird kopiert, bis die Box einem Mesh beitritt",
   },
   "panes.market.share.caption": {
     en: "Your box lends its spare room to other people's boxes, and copies of your own files are kept on theirs. The two travel together, because a pool you take from but never give to is not a pool. While this is off, the shared half of the disk stays locked and unreadable by anything on this box, including the box itself.",
