@@ -39,3 +39,7 @@ ds-bundle/
 
 # The two-VM LAN demo keeps its disks and sockets here (demo/edge-lan/run.sh).
 demo/edge-lan/state/
+
+# quickemu's VM directory for vm/losos.conf: the installer ISO, the disk,
+# the firmware variables and the TPM state.
+vm/losos/
