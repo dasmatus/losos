@@ -521,6 +521,32 @@ export interface MarketAccount {
   entitlements: { storage_gib: number; compute_vcpu_hours: number; next_expiry: number | null };
   purchases: MarketOrder[];
   sales: MarketOrder[];
+  /** The seller's USDC address, once they have signed it. Absent on Stripe. */
+  payout?: string | null;
+  /** Present when this edge settles the market in USDC. No RPC URL. */
+  usdc?: UsdcPublic | null;
+}
+
+/** What the browser may know about USDC settlement. The RPC URL is not here. */
+export interface UsdcPublic {
+  chain_id: number;
+  usdc: string;
+  pay: string;
+  treasury: string;
+  test: boolean;
+}
+
+/** What the buyer's wallet pays. Amounts are USDC base units, as decimal strings. */
+export interface StablecoinInvoice {
+  chain_id: number;
+  usdc: string;
+  pay: string;
+  treasury: string;
+  seller: string;
+  order_id: string;
+  order_id_hash: string;
+  gross: string;
+  fee: string;
 }
 
 export type MarketResponse =
@@ -543,6 +569,8 @@ export interface MarketActionResponse {
    *  account is not yet ready. */
   url?: string | null;
   ready?: boolean;
+  /** Set when the order is paid in USDC. There is no hosted page. */
+  stablecoin?: StablecoinInvoice;
 }
 
 /** GET /api/market — the shelf and this box's own account, or
@@ -585,13 +613,52 @@ export function postMarketClose(
   return marketPost("/api/market/listings/close", { listing_id: listingId }, options);
 }
 
-/** POST /api/market/orders — buy; the reply carries the Checkout URL. */
+/** POST /api/market/orders — buy. Stripe replies with a Checkout URL; USDC
+ *  replies with `stablecoin` and no page. */
 export function postMarketOrder(
   listingId: string,
   quantity: number,
   options: RequestOptions = {},
 ): Promise<MarketActionResponse> {
   return marketPost("/api/market/orders", { listing_id: listingId, quantity }, options);
+}
+
+/** POST /api/market/payout — the wallet proved it controls `address`. */
+export function postMarketPayout(
+  address: string,
+  signature: string,
+  options: RequestOptions = {},
+): Promise<MarketActionResponse> {
+  return marketPost("/api/market/payout", { address, signature }, options);
+}
+
+/** POST /api/market/confirm — a mined USDC transaction paid this order. */
+export function postMarketConfirm(
+  orderId: string,
+  tx: string,
+  options: RequestOptions = {},
+): Promise<MarketActionResponse> {
+  return marketPost("/api/market/confirm", { order_id: orderId, tx }, options);
+}
+
+export interface RpcReply {
+  result?: unknown;
+  error?: { code?: number; message?: string };
+}
+
+/** POST /api/market/rpc — one allowlisted chain call. The box forwards it;
+ *  the page never sees the RPC URL. */
+export function postMarketRpc(
+  method: string,
+  params: unknown[],
+  options: RequestOptions = {},
+): Promise<RpcReply> {
+  return call<RpcReply>("/api/market/rpc", {
+    ...options,
+    method: "POST",
+    contentType: "application/json",
+    body: JSON.stringify({ method, params }),
+  });
 }
 
 // ── Widget builder ────────────────────────────────────────────────────────

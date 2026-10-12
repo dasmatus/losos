@@ -622,6 +622,7 @@ impl Edge {
                 storage_class: losos_registrar::market::DEFAULT_STORAGE_CLASS.to_string(),
                 hardware_catalogue: Some(dir.path_str("hardware.json")),
                 vms: None,
+                usdc: None,
             })
         });
 

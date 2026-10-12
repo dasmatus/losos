@@ -696,7 +696,23 @@ let
       cfg.market.storageClass
     ]
     ++ hardwareArgs "--market-hardware-catalogue"
-    ++ vmServeArgs;
+    ++ vmServeArgs
+    ++ usdcServeArgs;
+
+  # USDC (losos.edge.market.usdc). The RPC URL is a systemd credential of
+  # the registrar, not a flag: a flag would put the provider key in the
+  # unit's command line.
+  usdcOn = cfg.market.enable && cfg.market.usdc.enable;
+  usdcServeArgs = lib.optionals usdcOn [
+    "--market-usdc-chain-id"
+    (toString cfg.market.usdc.chainId)
+    "--market-usdc-rpc-file"
+    "/run/credentials/losos-registrar.service/usdc-rpc-url"
+    "--market-usdc-pay"
+    cfg.market.usdc.pay
+    "--market-usdc-treasury"
+    cfg.market.usdc.treasury
+  ];
 
   # Machines (losos.edge.vms, modules/edge-vms.nix): the shape of a replica,
   # where its disk is claimed from, and the origin CDI's importer fetches an
@@ -773,6 +789,16 @@ let
   builderOn = cfg.market.enable && cfg.builder.enable;
   builderKeyPath = "/run/credentials/losos-registrar.service/claude-api-key";
   builderPacks = lib.concatMapStringsSep "," toString cfg.builder.packs;
+  # Credentials the registrar decrypts. Both lists are empty on an edge that
+  # runs neither the builder nor USDC, and the unit then has no
+  # LoadCredentialEncrypted at all.
+  registrarCreds =
+    lib.optionals builderOn [
+      "claude-api-key:${toString cfg.builder.claudeKeySealed}"
+    ]
+    ++ lib.optionals (cfg.market.enable && cfg.market.usdc.enable) [
+      "usdc-rpc-url:${toString cfg.market.usdc.rpcUrlSealed}"
+    ];
   builderServeArgs = lib.optionals builderOn [
     "--builder-key-file"
     builderKeyPath
@@ -890,6 +916,27 @@ in
           losos.edge.market.enable requires losos.edge.market.returnUrl: the
           page Stripe sends buyers and sellers back to after Checkout and
           onboarding.
+        '';
+      }
+      {
+        assertion = cfg.market.usdc.enable -> cfg.market.enable;
+        message = "losos.edge.market.usdc.enable requires losos.edge.market.enable.";
+      }
+      {
+        assertion = cfg.market.usdc.enable -> cfg.market.currency == "usd";
+        message = ''
+          losos.edge.market.usdc.enable requires losos.edge.market.currency = "usd":
+          a price in cents is that many USDC cents.
+        '';
+      }
+      {
+        assertion =
+          cfg.market.usdc.enable
+          -> (cfg.market.usdc.pay != cfg.market.usdc.treasury
+            && cfg.market.usdc.pay != "0x0000000000000000000000000000000000000000"
+            && cfg.market.usdc.treasury != "0x0000000000000000000000000000000000000000");
+        message = ''
+          losos.edge.market.usdc.pay and treasury must be set, and must differ.
         '';
       }
       {
@@ -1038,10 +1085,11 @@ in
           "-/run/credentials/losos-stripe-gate.service"
         ];
       }
-      // lib.optionalAttrs builderOn {
-        # The Anthropic key, for the widget builder: plaintext only in this
-        # unit's credential directory, read per request.
-        LoadCredentialEncrypted = [ "claude-api-key:${toString cfg.builder.claudeKeySealed}" ];
+      // lib.optionalAttrs (registrarCreds != [ ]) {
+        # Plaintext only in this unit's credential directory, read per request.
+        # `claude-api-key` is the widget builder. `usdc-rpc-url` is the chain
+        # endpoint. Neither is a flag, so neither shows up in the process list.
+        LoadCredentialEncrypted = registrarCreds;
       };
     };
 

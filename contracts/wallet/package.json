@@ -1,0 +1,8 @@
+{
+  "name": "losos-wallet-check",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "viem": "2.38.6"
+  }
+}

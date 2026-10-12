@@ -865,7 +865,64 @@ fn parse_market(args: &[String]) -> Result<Option<Box<MarketOpts>>> {
         storage_class: storage_class.to_string(),
         hardware_catalogue: hardware_catalogue(args, "--market-hardware-catalogue", currency)?,
         vms: parse_vms(args)?,
+        usdc: parse_usdc(args, currency)?,
     })))
+}
+
+/// USDC settlement. All four flags or none. The token address is Circle's
+/// for the chain, not a flag, so a config cannot point the market at a
+/// lookalike token. The RPC URL is a file the unit reads, never the URL
+/// itself: the URL is a systemd credential and must not be on the command
+/// line, where `ps` would show it.
+fn parse_usdc(args: &[String], currency: &str) -> Result<Option<crate::stablecoin::UsdcOpts>> {
+    let chain = arg(args, "--market-usdc-chain-id");
+    let rpc = arg(args, "--market-usdc-rpc-file");
+    let pay = arg(args, "--market-usdc-pay");
+    let treasury = arg(args, "--market-usdc-treasury");
+    if chain.is_none() && rpc.is_none() && pay.is_none() && treasury.is_none() {
+        return Ok(None);
+    }
+    let (Some(chain), Some(rpc), Some(pay), Some(treasury)) = (chain, rpc, pay, treasury) else {
+        return Err(miette!(
+            "USDC settlement needs --market-usdc-chain-id, --market-usdc-rpc-file, --market-usdc-pay and --market-usdc-treasury together"
+        ));
+    };
+    if currency != "usd" {
+        return Err(miette!(
+            "USDC settlement needs --market-currency usd; prices are USDC cents"
+        ));
+    }
+    let chain_id: u64 = chain
+        .parse()
+        .map_err(|_| miette!("bad --market-usdc-chain-id {chain:?}"))?;
+    let Some(usdc) = crate::stablecoin::usdc_for_chain(chain_id) else {
+        return Err(miette!(
+            "--market-usdc-chain-id must be 8453 (Base) or 84532 (Base Sepolia)"
+        ));
+    };
+    if rpc.starts_with("http://") || rpc.starts_with("https://") || rpc.contains('\n') {
+        return Err(miette!(
+            "--market-usdc-rpc-file must be a credential file path, not the URL"
+        ));
+    }
+    let Some(pay) = crate::stablecoin::normalize_address(pay) else {
+        return Err(miette!("--market-usdc-pay is not an 0x address"));
+    };
+    let Some(treasury) = crate::stablecoin::normalize_address(treasury) else {
+        return Err(miette!("--market-usdc-treasury is not an 0x address"));
+    };
+    if pay == treasury {
+        return Err(miette!(
+            "--market-usdc-pay and --market-usdc-treasury must differ"
+        ));
+    }
+    Ok(Some(crate::stablecoin::UsdcOpts {
+        chain_id,
+        rpc_file: rpc.to_string(),
+        usdc: usdc.to_string(),
+        pay,
+        treasury,
+    }))
 }
 
 /// The `--vm-*` flags: virtual machines on the mesh (`crate::vms`), turned on

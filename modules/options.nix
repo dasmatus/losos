@@ -1660,6 +1660,51 @@ in
       '';
     };
 
+    edge.market.usdc.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Settle storage, compute and machine orders in USDC on Base (or Base
+        Sepolia) instead of Stripe. Hardware checkouts stay on Stripe. Needs
+        `losos.edge.market.currency = "usd"`: a price in cents is that many
+        USDC cents. See handbook/docs/in-depth/market.md.
+      '';
+    };
+
+    edge.market.usdc.chainId = lib.mkOption {
+      type = lib.types.enum [ 8453 84532 ];
+      default = 84532;
+      description = ''
+        8453 is Base (live USDC) and must be paired with a live Stripe key.
+        84532 is Base Sepolia (test USDC) and must be paired with a test key.
+        The registrar refuses a chain that disagrees with the key.
+      '';
+    };
+
+    edge.market.usdc.pay = lib.mkOption {
+      type = lib.types.strMatching "0x[0-9a-fA-F]{40}";
+      default = "0x0000000000000000000000000000000000000000";
+      description = "The LososPay contract. Public. Not a secret.";
+    };
+
+    edge.market.usdc.treasury = lib.mkOption {
+      type = lib.types.strMatching "0x[0-9a-fA-F]{40}";
+      default = "0x0000000000000000000000000000000000000000";
+      description = "The address that receives the platform fee. Public. Not a secret.";
+    };
+
+    edge.market.usdc.rpcUrlSealed = lib.mkOption {
+      type = secretPath;
+      default = "/var/secrets/losos-usdc-rpc-url.cred";
+      description = ''
+        The HTTPS RPC URL, **sealed** with `systemd-creds` under the
+        credential name `usdc-rpc-url`. A provider key usually sits in the
+        URL, so it is a secret: the registrar receives the plaintext only
+        through `LoadCredentialEncrypted=` and the browser never does. Seal
+        it from stdin. A missing blob leaves USDC unconfigured.
+      '';
+    };
+
     # ── Sealed credentials delivered from GitHub Actions ───────────────────
     # `.github/workflows/edge-credentials.yml` reads the keys from the
     # repository's Actions secrets and hands each one over SSH to

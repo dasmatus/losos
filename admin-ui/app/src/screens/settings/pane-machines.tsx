@@ -19,6 +19,7 @@ import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText, StackRow } 
 import { formatBytes, useMachines, type MachinesData } from "./machines";
 import { formatDay, formatMoney, isStripePage, minorDigits, toMinorUnits, ORDER_STATUS } from "./market";
 import { paneById } from "./panes";
+import { rememberInvoice } from "./usdc-wallet";
 
 /* Virtual machines on the mesh, sold by the replica.
  *
@@ -220,12 +221,13 @@ function StartSection({
       return;
     }
     setProblem(null);
-    const checkoutTab = window.open("about:blank", "_blank");
-    if (checkoutTab === null) {
+    const payingUsdc = account.usdc != null;
+    const checkoutTab = payingUsdc ? null : window.open("about:blank", "_blank");
+    if (!payingUsdc && checkoutTab === null) {
       toast.error(t("machines.actionFailedTitle"), t("panes.market.popupBlocked"), { help: "index" });
       return;
     }
-    checkoutTab.opener = null;
+    if (checkoutTab !== null) checkoutTab.opener = null;
     const reply = await machines.order({
       listingId: listing.id,
       replicas: count,
@@ -233,7 +235,18 @@ function StartSection({
       name: trimmed,
       userData: chosen.cloudInit ? userData : "",
     });
-    if (reply !== null && isStripePage(reply.checkout_url)) {
+    if (reply?.stablecoin) {
+      checkoutTab?.close();
+      rememberInvoice(reply.stablecoin);
+      toast.status(t("panes.market.orderPlaced"), t("panes.market.usdc.payOnMarket"), {
+        id: ORDER_STATUS,
+        duration: Infinity,
+      });
+      setName("");
+      setUserData("");
+      return;
+    }
+    if (reply !== null && checkoutTab !== null && isStripePage(reply.checkout_url)) {
       checkoutTab.location.href = reply.checkout_url;
       toast.status(t("panes.market.orderPlaced"), t("machines.start.paying"), {
         id: ORDER_STATUS,
@@ -242,7 +255,7 @@ function StartSection({
       setName("");
       setUserData("");
     } else {
-      checkoutTab.close();
+      checkoutTab?.close();
       if (reply !== null) {
         toast.error(t("machines.actionFailedTitle"), t("panes.market.noCheckout"), { help: "index" });
       }

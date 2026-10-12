@@ -596,6 +596,9 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
         .route("/market/listings/close", post(market_close))
         .route("/market/seller/onboard", post(market_onboard))
         .route("/market/orders", post(market_order))
+        .route("/market/payout", post(market_payout))
+        .route("/market/confirm", post(market_confirm))
+        .route("/market/rpc", post(market_rpc))
         .route("/market/account", post(market_account))
         .route("/market/hardware", get(market_hardware))
         .route("/market/hardware/checkout", post(market_hardware_checkout))
@@ -1374,6 +1377,79 @@ async fn market_order(
         .create_order(&req.auth.appliance_id, req.order, &sharing)
         .await?;
     Ok((StatusCode::CREATED, Json(checkout)))
+}
+
+#[derive(Debug, Deserialize)]
+struct MarketPayoutReq {
+    #[serde(flatten)]
+    auth: MarketAuth,
+    address: String,
+    signature: String,
+}
+
+/// `POST /market/payout`: the seller's wallet signs the payout address.
+async fn market_payout(
+    State(st): State<AppState>,
+    Json(req): Json<MarketPayoutReq>,
+) -> Result<StatusCode, ApiError> {
+    let market = market_tenant(&st, &req.auth).await?;
+    market
+        .set_payout(&req.auth.appliance_id, &req.address, &req.signature)
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Debug, Deserialize)]
+struct MarketConfirmReq {
+    #[serde(flatten)]
+    auth: MarketAuth,
+    order_id: String,
+    tx: String,
+}
+
+/// `POST /market/confirm`: a mined USDC payment for an order this caller made.
+async fn market_confirm(
+    State(st): State<AppState>,
+    Json(req): Json<MarketConfirmReq>,
+) -> Result<StatusCode, ApiError> {
+    let market = market_tenant(&st, &req.auth).await?;
+    market
+        .confirm_usdc(&req.auth.appliance_id, &req.order_id, &req.tx)
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Debug, Deserialize)]
+struct MarketRpcReq {
+    #[serde(flatten)]
+    auth: MarketAuth,
+    method: String,
+    #[serde(default)]
+    params: serde_json::Value,
+    #[serde(default = "rpc_id")]
+    id: serde_json::Value,
+}
+
+fn rpc_id() -> serde_json::Value {
+    serde_json::json!(1)
+}
+
+/// `POST /market/rpc`: one allowlisted chain call. The body the caller gets
+/// is the JSON-RPC object, so a wallet can use this as its transport. The
+/// RPC URL is not in it.
+async fn market_rpc(
+    State(st): State<AppState>,
+    Json(req): Json<MarketRpcReq>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let market = market_tenant(&st, &req.auth).await?;
+    let params = if req.params.is_null() {
+        serde_json::json!([])
+    } else {
+        req.params
+    };
+    Ok(Json(
+        market.forward_rpc(&req.method, &params, &req.id).await?,
+    ))
 }
 
 /// `GET /market/hardware`: what the operator sells, anonymous like the shelf.

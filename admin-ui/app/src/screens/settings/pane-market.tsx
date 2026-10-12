@@ -38,6 +38,7 @@ import {
 } from "./market";
 import { useEdge } from "./use-edge";
 import type { SettingsForm } from "./use-settings-form";
+import { formatUsdc, rememberInvoice, UsdcWallet } from "./usdc-wallet";
 
 /* Sharing this box's disk, and buying and selling what the mesh shares.
  *
@@ -51,12 +52,14 @@ import type { SettingsForm } from "./use-settings-form";
  * The rest is a way to be paid for the storage and compute a box contributes,
  * not a separate product, so the sell side only offers what the owner is
  * already sharing (the edge enforces it; this pane greys out the rest and
- * says why). Payment happens on Stripe's own page in a new tab — nothing on
- * this page ever sees a card — so after a purchase a toast tells the owner
- * to come back and refresh rather than pretending to know the outcome, and
- * the refresh that finds the order paid raises the "payment received" one
- * (market.ts). Every refusal is a toast too; only a field the owner can fix
- * keeps its error under the field.
+ * says why). On Stripe the payment happens on Stripe's own page in a new
+ * tab — nothing on this page ever sees a card — so after a purchase a toast
+ * tells the owner to come back and refresh rather than pretending to know
+ * the outcome, and the refresh that finds the order paid raises the
+ * "payment received" one (market.ts). On USDC there is no other page: the
+ * wallet on this pane approves and pays, and the edge checks the receipt.
+ * Every refusal is a toast too; only a field the owner can fix keeps its
+ * error under the field.
  */
 
 const KIND_LABEL: Record<MarketKind, MessageKey> = {
@@ -319,28 +322,42 @@ function ShelfRow({
       return;
     }
     setQuantityProblem(null);
-    const checkoutTab = window.open("about:blank", "_blank");
-    if (checkoutTab === null) {
+    const payingUsdc = market.state.kind === "ready" && market.state.account.usdc != null;
+    const checkoutTab = payingUsdc ? null : window.open("about:blank", "_blank");
+    if (!payingUsdc && checkoutTab === null) {
       toast.error(t("panes.market.actionFailedTitle"), t("panes.market.popupBlocked"), { help: "index" });
       return;
     }
-    checkoutTab.opener = null;
+    if (checkoutTab !== null) checkoutTab.opener = null;
     const reply = await market.order(listing.id, n);
-    if (reply !== null) {
-      if (isStripePage(reply.checkout_url)) {
-        checkoutTab.location.href = reply.checkout_url;
-        // Longer than a plain note: it is the one instruction the owner needs
-        // when they come back from the other tab.
-        toast.status(t("panes.market.orderPlaced"), t("panes.market.paying"), {
-          id: ORDER_STATUS,
-          duration: Infinity,
-        });
-      } else {
-        checkoutTab.close();
+    if (reply?.stablecoin) {
+      checkoutTab?.close();
+      rememberInvoice(reply.stablecoin);
+      const chain = reply.stablecoin.chain_id === 8453 ? "Base" : "Base Sepolia";
+      toast.status(
+        t("panes.market.orderPlaced"),
+        t("panes.market.usdc.payDetail", {
+          gross: formatUsdc(reply.stablecoin.gross),
+          fee: formatUsdc(reply.stablecoin.fee),
+          chain,
+        }),
+        { id: ORDER_STATUS, duration: Infinity },
+      );
+      return;
+    }
+    if (reply !== null && checkoutTab !== null && isStripePage(reply.checkout_url)) {
+      checkoutTab.location.href = reply.checkout_url;
+      // Longer than a plain note: it is the one instruction the owner needs
+      // when they come back from the other tab.
+      toast.status(t("panes.market.orderPlaced"), t("panes.market.paying"), {
+        id: ORDER_STATUS,
+        duration: Infinity,
+      });
+    } else {
+      checkoutTab?.close();
+      if (reply !== null) {
         toast.error(t("panes.market.actionFailedTitle"), t("panes.market.noCheckout"), { help: "index" });
       }
-    } else {
-      checkoutTab.close();
     }
   };
 
@@ -437,20 +454,29 @@ function SellSection({ market, disabled }: { market: MarketData; disabled: boole
 
   return (
     <PaneSection>
+      {account.usdc ? (
+        <UsdcWallet usdc={account.usdc} payout={account.payout} disabled={disabled} />
+      ) : null}
       <GroupTitle>{t("panes.market.sell")}</GroupTitle>
       <Group>
         <Row last={!account.seller_ready}>
           <RowText
             title={t("panes.market.payouts")}
             detail={
-              account.seller_ready
-                ? t("panes.market.payoutsReady")
-                : account.seller_onboarded
-                  ? t("panes.market.payoutsPending")
-                  : t("panes.market.payoutsNone")
+              account.usdc
+                ? account.payout
+                  ? t("panes.market.usdc.payoutReady", { address: account.payout })
+                  : t("panes.market.usdc.receive", {
+                      chain: account.usdc.test ? "Base Sepolia" : "Base",
+                    })
+                : account.seller_ready
+                  ? t("panes.market.payoutsReady")
+                  : account.seller_onboarded
+                    ? t("panes.market.payoutsPending")
+                    : t("panes.market.payoutsNone")
             }
           />
-          {!account.seller_ready && (
+          {!account.usdc && !account.seller_ready && (
             <Button size="sm" disabled={disabled} onClick={() => void onboard()}>
               {account.seller_onboarded
                 ? t("panes.market.payoutsContinue")

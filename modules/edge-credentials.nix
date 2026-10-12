@@ -120,6 +120,13 @@ in
             pattern = lib.mkDefault "sk-ant-[A-Za-z0-9_-]+";
             units = [ "losos-registrar.service" ];
           };
+          # The chain endpoint. The URL is the secret: an API key sits in it.
+          # https only, no userinfo, which is what the registrar will accept.
+          usdc-rpc-url = {
+            sealed = lib.mkDefault cfg.market.usdc.rpcUrlSealed;
+            pattern = lib.mkDefault "https://[^[:space:]@]+";
+            units = [ "losos-registrar.service" ];
+          };
         };
 
         environment.systemPackages = [ seal ];

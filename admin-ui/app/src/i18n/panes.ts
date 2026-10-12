@@ -1847,6 +1847,146 @@ export default defineMessages({
     sk: "Dokončite ho na druhej karte a potom tu obnovte stránku.",
     de: "Schließ sie im anderen Tab ab und aktualisiere dann hier.",
   },
+  "panes.market.usdc.title": {
+    en: "Stablecoins",
+    sk: "Stablecoiny",
+    de: "Stablecoins",
+  },
+  "panes.market.usdc.howTitle": {
+    en: "Pay and get paid in USDC",
+    sk: "Platiť a dostávať platby v USDC",
+    de: "In USDC zahlen und bezahlt werden",
+  },
+  "panes.market.usdc.how": {
+    en: "Orders on this edge are paid in USDC on {chain}. Create a wallet here, import the 12 or 24 words from MetaMask, Rabby, Rainbow or Trust Wallet, or connect the wallet already in this browser. Paying approves USDC and then sends it: the platform fee goes to the edge's treasury and the rest straight to the seller. The box never sees your phrase or your key.",
+    sk: "Objednávky na tomto edge sa platia v USDC na sieti {chain}. Vytvorte peňaženku tu, importujte 12 alebo 24 slov z MetaMask, Rabby, Rainbow alebo Trust Wallet, alebo pripojte peňaženku, ktorá už v tomto prehliadači je. Platba najprv schváli USDC a potom ich odošle: poplatok platformy ide do treasury edge a zvyšok priamo predajcovi. Zariadenie vašu frázu ani kľúč nikdy nevidí.",
+    de: "Bestellungen auf diesem Edge werden in USDC auf {chain} bezahlt. Lege hier eine Wallet an, importiere die 12 oder 24 Wörter aus MetaMask, Rabby, Rainbow oder Trust Wallet, oder verbinde die Wallet, die schon in diesem Browser steckt. Beim Bezahlen gibst du USDC frei und sendest sie dann: die Plattformgebühr geht an die Treasury des Edge, der Rest direkt an den Verkäufer. Die Box sieht weder deine Wörter noch deinen Schlüssel.",
+  },
+  "panes.market.usdc.writeDown": {
+    en: "Write these words down. They are the wallet. This page cannot show them again.",
+    sk: "Zapíšte si tieto slová. Sú to peňaženka. Táto stránka ich už nezobrazí.",
+    de: "Schreib diese Wörter auf. Sie sind die Wallet. Diese Seite kann sie nicht noch einmal zeigen.",
+  },
+  "panes.market.usdc.wroteItDown": {
+    en: "I wrote them down",
+    sk: "Zapísal som si ich",
+    de: "Ich habe sie aufgeschrieben",
+  },
+  "panes.market.usdc.password": {
+    en: "A password for this browser (8 or more characters)",
+    sk: "Heslo pre tento prehliadač (aspoň 8 znakov)",
+    de: "Ein Passwort für diesen Browser (mindestens 8 Zeichen)",
+  },
+  "panes.market.usdc.saveWallet": {
+    en: "Save in this browser",
+    sk: "Uložiť v tomto prehliadači",
+    de: "In diesem Browser sichern",
+  },
+  "panes.market.usdc.create": {
+    en: "Create a wallet",
+    sk: "Vytvoriť peňaženku",
+    de: "Wallet anlegen",
+  },
+  "panes.market.usdc.connect": {
+    en: "Connect this browser's wallet",
+    sk: "Pripojiť peňaženku tohto prehliadača",
+    de: "Wallet dieses Browsers verbinden",
+  },
+  "panes.market.usdc.import": {
+    en: "Import",
+    sk: "Importovať",
+    de: "Importieren",
+  },
+  "panes.market.usdc.importPlaceholder": {
+    en: "12 or 24 words from MetaMask, Rabby, Rainbow or Trust Wallet",
+    sk: "12 alebo 24 slov z MetaMask, Rabby, Rainbow alebo Trust Wallet",
+    de: "12 oder 24 Wörter aus MetaMask, Rabby, Rainbow oder Trust Wallet",
+  },
+  "panes.market.usdc.forget": {
+    en: "Forget this browser's copy",
+    sk: "Zabudnúť kópiu v tomto prehliadači",
+    de: "Kopie in diesem Browser vergessen",
+  },
+  "panes.market.usdc.receiveTitle": {
+    en: "Where you get paid",
+    sk: "Kam vám chodia platby",
+    de: "Wohin du bezahlt wirst",
+  },
+  "panes.market.usdc.receive": {
+    en: "Sign with the wallet that should receive USDC on {chain}. The edge checks the signature and stores only the address.",
+    sk: "Podpíšte peňaženkou, ktorá má dostávať USDC na sieti {chain}. Edge podpis skontroluje a uloží len adresu.",
+    de: "Signiere mit der Wallet, die USDC auf {chain} empfangen soll. Der Edge prüft die Signatur und speichert nur die Adresse.",
+  },
+  "panes.market.usdc.payoutReady": {
+    en: "USDC for your sales goes to {address}.",
+    sk: "USDC za vaše predaje ide na {address}.",
+    de: "USDC für deine Verkäufe geht an {address}.",
+  },
+  "panes.market.usdc.setPayout": {
+    en: "Set this payout address",
+    sk: "Nastaviť túto adresu pre výplaty",
+    de: "Diese Auszahlungsadresse setzen",
+  },
+  "panes.market.usdc.payoutSet": {
+    en: "Payout address saved",
+    sk: "Adresa pre výplaty je uložená",
+    de: "Auszahlungsadresse gespeichert",
+  },
+  "panes.market.usdc.payTitle": {
+    en: "Pay this order",
+    sk: "Zaplatiť túto objednávku",
+    de: "Diese Bestellung bezahlen",
+  },
+  "panes.market.usdc.payDetail": {
+    en: "{gross} on {chain}. The platform keeps {fee}; the rest goes straight to the seller.",
+    sk: "{gross} na sieti {chain}. Platforma si nechá {fee}; zvyšok ide priamo predajcovi.",
+    de: "{gross} auf {chain}. Die Plattform behält {fee}; der Rest geht direkt an den Verkäufer.",
+  },
+  "panes.market.usdc.pay": {
+    en: "Pay with USDC",
+    sk: "Zaplatiť v USDC",
+    de: "Mit USDC bezahlen",
+  },
+  "panes.market.usdc.payOnMarket": {
+    en: "The order is waiting on the Market pane. Pay it there with USDC.",
+    sk: "Objednávka čaká na paneli Trh. Zaplaťte ju tam v USDC.",
+    de: "Die Bestellung wartet im Markt. Bezahle sie dort mit USDC.",
+  },
+  "panes.market.usdc.paid": {
+    en: "Payment sent",
+    sk: "Platba odoslaná",
+    de: "Zahlung gesendet",
+  },
+  "panes.market.usdc.gas": {
+    en: "USDC does not pay the network fee. The wallet also needs a little ETH on {chain} for that.",
+    sk: "USDC neplatí poplatok siete. Peňaženka na to potrebuje aj trochu ETH na sieti {chain}.",
+    de: "USDC zahlt die Netzwerkgebühr nicht. Die Wallet braucht dafür auch ein wenig ETH auf {chain}.",
+  },
+  "panes.market.usdc.saved": {
+    en: "Wallet saved in this browser",
+    sk: "Peňaženka je uložená v tomto prehliadači",
+    de: "Wallet in diesem Browser gesichert",
+  },
+  "panes.market.usdc.badPhrase": {
+    en: "Those words are not a wallet phrase.",
+    sk: "Tieto slová nie sú frázou peňaženky.",
+    de: "Diese Wörter sind keine Wallet-Phrase.",
+  },
+  "panes.market.usdc.noExtension": {
+    en: "This browser has no wallet extension. Create a wallet here, or install MetaMask, Rabby or Rainbow and try again.",
+    sk: "Tento prehliadač nemá rozšírenie peňaženky. Vytvorte peňaženku tu, alebo nainštalujte MetaMask, Rabby či Rainbow a skúste to znova.",
+    de: "Dieser Browser hat keine Wallet-Erweiterung. Lege hier eine Wallet an, oder installiere MetaMask, Rabby oder Rainbow und versuche es erneut.",
+  },
+  "panes.market.usdc.failedTitle": {
+    en: "The wallet could not do that",
+    sk: "Peňaženka to nedokázala",
+    de: "Die Wallet konnte das nicht",
+  },
+  "panes.market.usdc.failed": {
+    en: "Try again.",
+    sk: "Skúste to znova.",
+    de: "Versuch es erneut.",
+  },
   // ── Table headers (shadcn Table in the apps catalogue and the market) ──
   "panes.apps.col.app": {
     en: "App",
