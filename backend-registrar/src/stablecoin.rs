@@ -16,7 +16,9 @@
 use std::path::Path;
 use std::time::Duration;
 
-use k256::ecdsa::{RecoveryId, Signature, SigningKey, VerifyingKey};
+#[cfg(test)]
+use k256::ecdsa::SigningKey;
+use k256::ecdsa::{RecoveryId, Signature, VerifyingKey};
 use serde_json::{json, Value};
 use sha3::{Digest, Keccak256};
 
@@ -494,12 +496,10 @@ fn decode_hex_prefix(raw: &str) -> Option<Vec<u8>> {
     } else {
         hex
     };
-    Some(
-        (0..hex.len())
-            .step_by(2)
-            .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).ok())
-            .collect::<Option<Vec<_>>>()?,
-    )
+    (0..hex.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).ok())
+        .collect::<Option<Vec<_>>>()
 }
 
 fn hex_encode(bytes: &[u8]) -> String {
