@@ -3,6 +3,6 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "viem": "2.38.6"
+    "viem": "2.57.5"
   }
 }
