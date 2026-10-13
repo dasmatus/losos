@@ -1,0 +1,38 @@
+From 807f68c6eca9c2810064e74c02b038076c663288 Mon Sep 17 00:00:00 2001
+From: openhands <openhands@all-hands.dev>
+Date: Tue, 13 Oct 2026 08:27:39 +0000
+Subject: [PATCH] fix(admin-ui): cast the sealed ciphertext to BufferSource
+
+openPhrase passed b64dec(sealed.ct) straight to crypto.subtle.decrypt,
+but the surrounding call sites already cast their Uint8Array arguments
+(iv, salt) to BufferSource. tsc rejected this one under TS 7
+
+    src/wallet/hot.ts:60:5 - error TS2345: Argument of type
+    'Uint8Array<ArrayBufferLike>' is not assignable to parameter of type
+    'BufferSource'.
+
+so `npm run build` (tsc --noEmit && vite build) failed and the two
+hashes alone did not turn the registrar-and-ui job green. Add the same
+cast the neighbours use.
+
+Co-authored-by: openhands <openhands@all-hands.dev>
+---
+ admin-ui/app/src/wallet/hot.ts | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/admin-ui/app/src/wallet/hot.ts b/admin-ui/app/src/wallet/hot.ts
+index aafe382..88fb146 100644
+--- a/admin-ui/app/src/wallet/hot.ts
++++ b/admin-ui/app/src/wallet/hot.ts
+@@ -57,7 +57,7 @@ export async function openPhrase(password: string): Promise<string> {
+   const plain = await crypto.subtle.decrypt(
+     { name: "AES-GCM", iv: b64dec(sealed.iv) as BufferSource },
+     key,
+-    b64dec(sealed.ct),
++    b64dec(sealed.ct) as BufferSource,
+   );
+   return new TextDecoder().decode(plain);
+ }
+-- 
+2.47.3
+
