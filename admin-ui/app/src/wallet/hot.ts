@@ -57,7 +57,7 @@ export async function openPhrase(password: string): Promise<string> {
   const plain = await crypto.subtle.decrypt(
     { name: "AES-GCM", iv: b64dec(sealed.iv) as BufferSource },
     key,
-    b64dec(sealed.ct),
+    b64dec(sealed.ct) as BufferSource,
   );
   return new TextDecoder().decode(plain);
 }
