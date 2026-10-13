@@ -292,6 +292,64 @@ that time loses nothing.
 - Stripe's error text and endpoints stay in the journal; callers get a fixed
   message.
 
+## Paying with USDC
+
+An edge can settle storage, compute and machine orders in USDC instead of
+Stripe. Hardware stays on Stripe. Turn it on with the chain, the `LososPay`
+contract and the treasury. The RPC URL is a secret, because a provider key
+usually sits in it, so it is sealed with systemd-creds and only the registrar
+reads it:
+
+```nix
+losos.edge.market.currency = "usd"; # prices are USDC cents
+losos.edge.market.usdc = {
+  enable = true;
+  chainId = 84532; # 8453 is Base, live USDC
+  pay = "0x…";       # LososPay
+  treasury = "0x…";  # platform fee
+  rpcUrlSealed = "/var/secrets/losos-usdc-rpc-url.cred";
+};
+```
+
+Seal the URL the same way as the Stripe key, under the credential name
+`usdc-rpc-url`:
+
+```sh
+printf '%s' 'https://base-sepolia.example/v2/KEY' \
+  | systemd-creds encrypt --name=usdc-rpc-url - /var/secrets/losos-usdc-rpc-url.cred
+```
+
+Chain 84532 (Base Sepolia) is test mode and must be paired with a `sk_test_`
+key. Chain 8453 (Base) is live mode and must be paired with a `sk_live_` key.
+The registrar refuses a mix, so a test payment cannot land in the live ledger.
+
+### How you pay
+
+1. On the Market pane, create a wallet, import a 12 or 24 word phrase, or
+   connect the wallet already in the browser (MetaMask, Rabby, Rainbow,
+   Coinbase Wallet). The phrase is the one those wallets use
+   (`m/44'/60'/0'/0/0`), so a phrase made here imports into them and the other
+   way around. The same address works on every EVM chain. The phrase is
+   encrypted in the browser. The box never receives it.
+2. Order from the shelf. There is no Stripe page. The pane shows the USDC
+   amount.
+3. Pay. The wallet approves USDC for `LososPay` and calls `pay`. The contract
+   sends the platform fee to the treasury and the rest to the seller. You
+   also need a little ETH on that chain for the network fee.
+4. The edge reads the receipt through the sealed RPC URL and marks the order
+   paid. A transaction can pay only one order.
+
+On Base Sepolia, test ETH comes from Coinbase's Base Sepolia faucet and test
+USDC from [Circle's faucet](https://faucet.circle.com). Neither has value.
+Live mode is Base and real USDC.
+
+### How you get paid
+
+Sign with the wallet that should receive USDC. The edge checks the signature
+and stores that address. Buyers pay it directly. Import the same phrase into
+MetaMask, Rabby, Rainbow or Trust Wallet when you want to spend it. There is
+no Stripe connected account for these sales.
+
 ## Not covered
 
 - **Refunds and disputes.** Handle them in the Stripe dashboard, using

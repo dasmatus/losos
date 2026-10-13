@@ -333,6 +333,41 @@ dieser Zeit versiegelt, geht nichts verloren.
 - Fehlertexte und Endpunkte von Stripe bleiben im Journal; Aufrufer erhalten
   eine feste Meldung.
 
+## Mit USDC zahlen
+
+Ein Edge kann Speicher, Rechenleistung und Maschinen in USDC abrechnen statt
+über Stripe. Hardware bleibt bei Stripe. Die RPC-URL ist ein Geheimnis, weil
+darin meist ein API-Schlüssel steckt. Sie wird mit systemd-creds unter dem
+Namen `usdc-rpc-url` versiegelt, und nur der Registrar liest sie.
+
+`losos.edge.market.currency` muss `usd` sein: Preise sind USDC-Cent. `chainId`
+84532 ist Base Sepolia (Test, zusammen mit einem `sk_test_`-Schlüssel), 8453
+ist Base (Live, zusammen mit `sk_live_`). Eine Mischung lehnt der Registrar ab.
+
+So zahlst du:
+
+1. Im Markt eine Wallet anlegen, eine 12- oder 24-Wort-Phrase importieren
+   oder die Wallet im Browser verbinden (MetaMask, Rabby, Rainbow, Coinbase
+   Wallet). Die Phrase ist der MetaMask-Pfad `m/44'/60'/0'/0/0`, dieselbe
+   Adresse gilt auf jeder EVM-Kette, und sie lässt sich später in diese
+   Wallets importieren. Die Wörter werden im Browser verschlüsselt. Die Box
+   bekommt sie nie.
+2. Eine Anzeige bestellen. Es gibt keine Stripe-Seite, der Bereich zeigt den
+   USDC-Betrag.
+3. Bezahlen. Die Wallet gibt USDC für `LososPay` frei und ruft `pay` auf. Der
+   Vertrag schickt die Plattformgebühr an die Treasury und den Rest an den
+   Verkäufer. Für die Netzwerkgebühr brauchst du etwas ETH auf derselben Kette.
+4. Der Edge liest die Quittung über die versiegelte RPC-URL und markiert die
+   Bestellung als bezahlt. Eine Transaktion kann nur eine Bestellung zahlen.
+
+Auf Base Sepolia kommt Test-ETH vom Coinbase-Faucet und Test-USDC von
+[Circles Faucet](https://faucet.circle.com). Beides hat keinen Wert.
+
+So wirst du bezahlt: mit der Wallet signieren, die USDC empfangen soll. Der
+Edge prüft die Signatur und speichert die Adresse. Käufer zahlen direkt
+dorthin. Dieselbe Phrase importierst du in MetaMask, Rabby, Rainbow oder
+Trust Wallet, wenn du das Geld ausgeben willst.
+
 ## Nicht abgedeckt
 
 - **Erstattungen und Streitfälle.** Bearbeite diese im Stripe-Dashboard

@@ -42,6 +42,43 @@ const MAX_CAPACITY: u64 = 1_000_000_000;
 /// A registrar listing or order id: `lst_`/`ord_` and lowercase hex.
 const MAX_ID_LEN: usize = 64;
 
+/// Chain methods the box will relay. The registrar allowlists the same set.
+const RPC_METHODS: &[&str] = &[
+    "eth_blockNumber",
+    "eth_call",
+    "eth_chainId",
+    "eth_estimateGas",
+    "eth_feeHistory",
+    "eth_gasPrice",
+    "eth_getBalance",
+    "eth_getBlockByNumber",
+    "eth_getCode",
+    "eth_getTransactionCount",
+    "eth_getTransactionReceipt",
+    "eth_maxPriorityFeePerGas",
+    "eth_sendRawTransaction",
+    "net_version",
+];
+
+fn eth_hex(raw: &str, hex_len: usize) -> bool {
+    let Some(hex) = raw.strip_prefix("0x") else {
+        return false;
+    };
+    hex.len() == hex_len && hex.bytes().all(|b| b.is_ascii_hexdigit())
+}
+
+fn eth_address(raw: &str) -> bool {
+    eth_hex(raw, 40)
+}
+
+fn eth_hash(raw: &str) -> bool {
+    eth_hex(raw, 64)
+}
+
+fn eth_signature(raw: &str) -> bool {
+    eth_hex(raw, 130)
+}
+
 /// Where the registrar is and who this appliance is to it. `None` from
 /// [`Config::from_env`] means the box has no master proxy configured.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -103,6 +140,23 @@ pub enum Op {
     Order {
         listing_id: String,
         quantity: u64,
+    },
+    /// Set this box's USDC payout address. `signature` is the wallet's
+    /// `personal_sign` of the payout message the edge checks.
+    Payout {
+        address: String,
+        signature: String,
+    },
+    /// Tell the edge a mined USDC transaction paid `order_id`.
+    Confirm {
+        order_id: String,
+        tx: String,
+    },
+    /// One allowlisted chain call. `params` is a JSON array. The answer is
+    /// the JSON-RPC object, not a market view.
+    Rpc {
+        method: String,
+        params: String,
     },
     /// This box's custom domains on the edge, and whether it may add one
     /// (`backend-registrar/src/domains.rs`). Not the market, but the same
@@ -410,6 +464,33 @@ impl Op {
                     Ok(())
                 }
             }
+            Op::Payout { address, signature } => {
+                if !eth_address(address) {
+                    Err("address is not an 0x address")
+                } else if !eth_signature(signature) {
+                    Err("signature is not a wallet signature")
+                } else {
+                    Ok(())
+                }
+            }
+            Op::Confirm { order_id, tx } => {
+                if !valid_id(order_id) {
+                    Err("order_id is not valid")
+                } else if !eth_hash(tx) {
+                    Err("tx is not a transaction hash")
+                } else {
+                    Ok(())
+                }
+            }
+            Op::Rpc { method, params } => {
+                if !RPC_METHODS.contains(&method.as_str()) {
+                    Err("that chain method is not forwarded")
+                } else if !params.starts_with('[') || params.len() > 8_000 {
+                    Err("chain params must be a short array")
+                } else {
+                    Ok(())
+                }
+            }
         }
     }
 
@@ -423,6 +504,9 @@ impl Op {
             Op::List { .. } => ("POST", "/market/listings"),
             Op::Close { .. } => ("POST", "/market/listings/close"),
             Op::Order { .. } => ("POST", "/market/orders"),
+            Op::Payout { .. } => ("POST", "/market/payout"),
+            Op::Confirm { .. } => ("POST", "/market/confirm"),
+            Op::Rpc { .. } => ("POST", "/market/rpc"),
             Op::Domains => ("POST", "/domains/list"),
             Op::DomainAdd { .. } => ("POST", "/domains/add"),
             Op::DomainRemove { .. } => ("POST", "/domains/remove"),
@@ -510,6 +594,14 @@ impl Op {
                 listing_id,
                 quantity,
             } => json!({ "listing_id": listing_id, "quantity": quantity }),
+            Op::Payout { address, signature } => {
+                json!({ "address": address, "signature": signature })
+            }
+            Op::Confirm { order_id, tx } => json!({ "order_id": order_id, "tx": tx }),
+            Op::Rpc { method, params } => {
+                let parsed = serde_json::from_str::<Value>(params).unwrap_or_else(|_| json!([]));
+                json!({ "method": method, "params": parsed })
+            }
         };
         if let (Some(d), Some(e)) = (doc.as_object_mut(), extra.as_object()) {
             d.extend(e.clone());

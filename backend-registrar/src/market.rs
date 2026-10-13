@@ -230,6 +230,11 @@ pub struct Seller {
     /// `None` for an account created before the box sent one.
     #[serde(default)]
     pub box_uuid: Option<String>,
+    /// Where USDC is paid, `0x` + 40 hex. Set when the wallet that controls
+    /// it signs [`crate::stablecoin::payout_message`]. `None` on a Stripe-only
+    /// seller.
+    #[serde(default)]
+    pub payout: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -258,6 +263,16 @@ pub enum OrderStatus {
     Paid,
     /// The session lapsed or could not be created; capacity is released.
     Expired,
+}
+
+/// How an order is paid. Absent on a ledger written before USDC, which is
+/// read as Stripe.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum Rail {
+    #[default]
+    Stripe,
+    Usdc,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -299,6 +314,12 @@ pub struct Order {
     /// `None` on every other kind.
     #[serde(default)]
     pub vm: Option<VmOrder>,
+    /// Stripe unless the edge settles this order in USDC.
+    #[serde(default)]
+    pub rail: Rail,
+    /// The transaction that paid a USDC order. Unique across the ledger.
+    #[serde(default)]
+    pub tx_hash: Option<String>,
 }
 
 /// Everything the market persists for one Stripe mode: `market.json` for
@@ -417,10 +438,25 @@ pub fn quote(unit_price: u64, quantity: u64, fee_bps: u32) -> Result<Quote, Mark
     })
 }
 
+/// A USDC checkout is the buyer's own transaction. There is no webhook that
+/// can arrive days later, so an unpaid order only holds its units for a
+/// quarter of an hour.
+const USDC_HOLD_SECS: u64 = 15 * 60;
+
+/// How long a pending order keeps its units. Stripe's window is the session
+/// lifetime plus the three-day retry horizon of a webhook that may still be
+/// in flight; USDC's is [`USDC_HOLD_SECS`].
+fn pending_window(order: &Order) -> u64 {
+    match order.rail {
+        Rail::Usdc => USDC_HOLD_SECS,
+        Rail::Stripe => CHECKOUT_TTL_SECS + PENDING_HOLD_SECS,
+    }
+}
+
 /// Whether a pending order still holds its units at `now`.
 fn pending_live(order: &Order, now: u64) -> bool {
     order.status == OrderStatus::Pending
-        && now < order.created_at + CHECKOUT_TTL_SECS + PENDING_HOLD_SECS
+        && now < order.created_at.saturating_add(pending_window(order))
 }
 
 /// One side of an account's order history: live orders first, then newest
@@ -1014,6 +1050,12 @@ pub struct AccountView {
     pub entitlements: Entitlements,
     pub purchases: Vec<OrderView>,
     pub sales: Vec<OrderView>,
+    /// The seller's USDC address, when they have set one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub payout: Option<String>,
+    /// Present when this edge settles the market in USDC. No RPC URL.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub usdc: Option<crate::stablecoin::UsdcPublic>,
 }
 
 #[derive(Debug, Serialize)]
@@ -1028,10 +1070,17 @@ pub struct OnboardView {
 pub struct CheckoutView {
     pub mode: StripeMode,
     pub order_id: String,
-    pub checkout_url: String,
+    /// Stripe's hosted page. Absent when the order is paid in USDC: the
+    /// wallet pays [`stablecoin`] on the box, and there is no hosted page.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub checkout_url: Option<String>,
     pub amount: u64,
     pub fee: u64,
     pub currency: String,
+    /// Set on a USDC order. The wallet approves `usdc` for `pay` and calls
+    /// `pay(order_id_hash, seller, gross, fee)`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stablecoin: Option<crate::stablecoin::StablecoinInvoice>,
 }
 
 /// A hardware Checkout, as the box that asked for it sees it.
@@ -1091,6 +1140,9 @@ pub struct MarketOpts {
     /// Virtual machines (`crate::vms`), when the edge's mesh runs KubeVirt.
     /// Unset, nobody can list or order a machine.
     pub vms: Option<crate::vms::VmOpts>,
+    /// USDC settlement. `None` keeps the Stripe rail. Hardware checkouts stay
+    /// on Stripe either way.
+    pub usdc: Option<crate::stablecoin::UsdcOpts>,
 }
 
 pub struct Market {
@@ -1240,6 +1292,19 @@ impl Market {
     /// mode. Every market route calls this first.
     pub async fn validate_secrets(&self) -> Result<StripeMode, MarketError> {
         let mode = self.stripe().validate_secrets().await?;
+        if let Some(usdc) = &self.opts.usdc {
+            // The chain is the mode, the same way the key's prefix is. A
+            // Sepolia contract must not settle an order the live ledger
+            // would treat as paid, or the other way around.
+            if usdc.test() != (mode == StripeMode::Test) {
+                tracing::error!(
+                    target: Action::Market.target(),
+                    "USDC chain {} does not match the Stripe key's {mode} mode",
+                    usdc.chain_id,
+                );
+                return Err(MarketError::Unconfigured);
+            }
+        }
         self.use_mode(mode).await?;
         Ok(mode)
     }
@@ -1354,7 +1419,7 @@ impl Market {
             fee_bps: self.opts.fee_bps,
             currency: self.opts.currency.clone(),
             seller_onboarded: seller.is_some(),
-            seller_ready: seller.is_some_and(|s| s.ready),
+            seller_ready: seller.is_some_and(|s| self.accepts_payouts(s)),
             can_sell_storage: sharing.allows(id, Kind::Storage),
             can_sell_compute: sharing.allows(id, Kind::Compute),
             can_host_vms: self.opts.vms.is_some() && sharing.allows(id, Kind::Vm),
@@ -1390,7 +1455,24 @@ impl Market {
                 now,
                 self.vm_domain(),
             ),
+            payout: seller.and_then(|s| s.payout.clone()),
+            usdc: self
+                .opts
+                .usdc
+                .as_ref()
+                .map(crate::stablecoin::UsdcOpts::public),
         })
+    }
+
+    /// Whether `seller` can be paid for a listing. USDC wants a signed payout
+    /// address. Stripe wants the connected account ready. Hardware checkouts
+    /// do not come through here.
+    fn accepts_payouts(&self, seller: &Seller) -> bool {
+        if self.opts.usdc.is_some() {
+            seller.payout.is_some()
+        } else {
+            seller.ready
+        }
     }
 
     /// Every listing a buyer could order right now. Anonymous.
@@ -1401,7 +1483,13 @@ impl Market {
         Ok(state
             .listings
             .values()
-            .filter(|l| l.active && state.sellers.get(&l.seller).is_some_and(|s| s.ready))
+            .filter(|l| {
+                l.active
+                    && state
+                        .sellers
+                        .get(&l.seller)
+                        .is_some_and(|s| self.accepts_payouts(s))
+            })
             .filter(|l| sharing.allows(&l.seller, l.kind))
             .filter_map(|l| {
                 let left = available(&state, l, now);
@@ -1437,7 +1525,7 @@ impl Market {
             (Self::mode_of(&state)?, state.sellers.get(id).cloned())
         };
         let account_id = match existing {
-            Some(seller) => {
+            Some(seller) if !seller.account_id.is_empty() => {
                 if let Some(uuid) = box_uuid {
                     if seller.box_uuid.as_deref() != Some(uuid) {
                         stripe.tag_account(&seller.account_id, uuid).await?;
@@ -1456,7 +1544,7 @@ impl Market {
                 }
                 seller.account_id
             }
-            None => {
+            _ => {
                 let (account_id, made_in) = stripe.create_account(id, box_uuid).await?;
                 let mut state = self.state.lock().await;
                 // The gate was restarted on a key of the other mode while
@@ -1467,12 +1555,18 @@ impl Market {
                     ));
                 }
                 let mut next = state.clone();
+                let previous = next.sellers.get(id);
+                let payout = previous.and_then(|s| s.payout.clone());
+                let box_uuid = box_uuid
+                    .map(str::to_string)
+                    .or_else(|| previous.and_then(|s| s.box_uuid.clone()));
                 next.sellers.insert(
                     id.to_string(),
                     Seller {
                         account_id: account_id.clone(),
                         ready: false,
-                        box_uuid: box_uuid.map(str::to_string),
+                        box_uuid,
+                        payout,
                     },
                 );
                 self.commit(&mut state, next).await?;
@@ -1553,10 +1647,16 @@ impl Market {
             ));
         }
         let mut state = self.state.lock().await;
-        if !state.sellers.get(seller).is_some_and(|s| s.ready) {
-            return Err(MarketError::Conflict(
-                "finish Stripe onboarding before listing",
-            ));
+        if !state
+            .sellers
+            .get(seller)
+            .is_some_and(|s| self.accepts_payouts(s))
+        {
+            return Err(MarketError::Conflict(if self.opts.usdc.is_some() {
+                "set a USDC payout address before listing"
+            } else {
+                "finish Stripe onboarding before listing"
+            }));
         }
         let active = state
             .listings
@@ -1684,7 +1784,7 @@ impl Market {
     ) -> Result<CheckoutView, MarketError> {
         let stripe = self.stripe();
         let now = now_secs();
-        let (order, destination, mode) = {
+        let (order, destination, payout, mode) = {
             let mut state = self.state.lock().await;
             let mode = Self::mode_of(&state)?;
             let listing = state
@@ -1696,7 +1796,7 @@ impl Market {
             let seller = state
                 .sellers
                 .get(&listing.seller)
-                .filter(|s| s.ready)
+                .filter(|s| self.accepts_payouts(s))
                 .cloned()
                 .ok_or(MarketError::NotFound)?;
             // Not for sale while the seller has stopped sharing it.
@@ -1730,6 +1830,11 @@ impl Market {
             if new.quantity > available(&state, &listing, now) {
                 return Err(MarketError::Conflict("not enough units available"));
             }
+            let rail = if self.opts.usdc.is_some() {
+                Rail::Usdc
+            } else {
+                Rail::Stripe
+            };
             let order = Order {
                 id: random_id("ord")?,
                 listing_id: listing.id.clone(),
@@ -1749,13 +1854,36 @@ impl Market {
                 volume: None,
                 claim: None,
                 vm,
+                rail,
+                tx_hash: None,
             };
             let mut next = state.clone();
             expire_stale(&mut next, now);
             next.orders.insert(order.id.clone(), order.clone());
             self.commit(&mut state, next).await?;
-            (order, seller.account_id, mode)
+            (order, seller.account_id, seller.payout, mode)
         };
+
+        if order.rail == Rail::Usdc {
+            let opts = self.opts.usdc.clone().ok_or(MarketError::Unconfigured)?;
+            let seller_addr =
+                payout.ok_or(MarketError::Conflict("the seller has no payout address"))?;
+            return Ok(CheckoutView {
+                mode,
+                order_id: order.id.clone(),
+                checkout_url: None,
+                amount: order.amount,
+                fee: order.fee,
+                currency: order.currency.clone(),
+                stablecoin: Some(crate::stablecoin::invoice(
+                    &opts,
+                    &order.id,
+                    &seller_addr,
+                    order.amount,
+                    order.fee,
+                )),
+            });
+        }
 
         let session = stripe
             .checkout(CheckoutRequest {
@@ -1798,10 +1926,11 @@ impl Market {
                 Ok(CheckoutView {
                     mode,
                     order_id: order.id,
-                    checkout_url: url,
+                    checkout_url: Some(url),
                     amount: order.amount,
                     fee: order.fee,
                     currency: order.currency,
+                    stablecoin: None,
                 })
             }
             Err(e) => {
@@ -2195,6 +2324,153 @@ impl Market {
         Ok(())
     }
 
+    /// Record the address a seller wants USDC paid to. The signature is an
+    /// Ethereum `personal_sign` of [`crate::stablecoin::payout_message`] for
+    /// this edge's chain, so a signature made for Sepolia cannot set a
+    /// mainnet payout and a signature from another key cannot name this one.
+    pub async fn set_payout(
+        &self,
+        id: &str,
+        address: &str,
+        signature: &str,
+    ) -> Result<(), MarketError> {
+        let usdc = self.opts.usdc.clone().ok_or(MarketError::Unconfigured)?;
+        let address = crate::stablecoin::normalize_address(address)
+            .ok_or(MarketError::Invalid("payout address is not an 0x address"))?;
+        let message = crate::stablecoin::payout_message(usdc.chain_id, &address);
+        let recovered = crate::stablecoin::recover_address(message.as_bytes(), signature).ok_or(
+            MarketError::Invalid("the payout signature does not recover"),
+        )?;
+        if recovered != address {
+            return Err(MarketError::Invalid(
+                "the payout signature is not from that address",
+            ));
+        }
+        let mut state = self.state.lock().await;
+        let mut next = state.clone();
+        let seller = next
+            .sellers
+            .entry(id.to_string())
+            .or_insert_with(|| Seller {
+                account_id: String::new(),
+                ready: false,
+                box_uuid: None,
+                payout: None,
+            });
+        seller.payout = Some(address);
+        self.commit(&mut state, next).await?;
+        Ok(())
+    }
+
+    /// Mark a USDC order paid when `tx` is a successful `LososPay.pay` for it.
+    /// The receipt is fetched from the sealed RPC URL. A transaction already
+    /// used for another order is refused, so a receipt cannot be replayed.
+    pub async fn confirm_usdc(
+        &self,
+        buyer: &str,
+        order_id: &str,
+        tx: &str,
+    ) -> Result<(), MarketError> {
+        let usdc = self.opts.usdc.clone().ok_or(MarketError::Unconfigured)?;
+        let tx = crate::stablecoin::normalize_tx(tx)
+            .ok_or(MarketError::Invalid("tx is not a transaction hash"))?;
+        {
+            let state = self.state.lock().await;
+            if Self::usdc_already_paid(&state, buyer, order_id, &tx) {
+                return Ok(());
+            }
+        }
+        let expected = {
+            let state = self.state.lock().await;
+            self.usdc_expected(&state, buyer, order_id, &tx, &usdc)?
+        };
+        let url = crate::stablecoin::read_rpc_url(std::path::Path::new(&usdc.rpc_file)).await?;
+        let receipt = crate::stablecoin::fetch_receipt(&url, &tx).await?;
+        crate::stablecoin::payment_matches(&receipt, &expected).map_err(MarketError::Conflict)?;
+        let mut state = self.state.lock().await;
+        if Self::usdc_already_paid(&state, buyer, order_id, &tx) {
+            return Ok(());
+        }
+        self.usdc_expected(&state, buyer, order_id, &tx, &usdc)?;
+        let mut next = state.clone();
+        let order = next.orders.get_mut(order_id).ok_or(MarketError::NotFound)?;
+        let now = now_secs();
+        order.status = OrderStatus::Paid;
+        order.tx_hash = Some(tx);
+        order.paid_at = Some(now);
+        order.expires_at = Some(now + ENTITLEMENT_SECS);
+        self.commit(&mut state, next).await?;
+        Ok(())
+    }
+
+    /// Forward one allowlisted chain call. The URL stays in the credential
+    /// file; the caller gets the JSON-RPC object and nothing else.
+    pub async fn forward_rpc(
+        &self,
+        method: &str,
+        params: &serde_json::Value,
+        id: &serde_json::Value,
+    ) -> Result<serde_json::Value, MarketError> {
+        let usdc = self.opts.usdc.as_ref().ok_or(MarketError::Unconfigured)?;
+        let url = crate::stablecoin::read_rpc_url(std::path::Path::new(&usdc.rpc_file)).await?;
+        crate::stablecoin::forward_rpc(&url, method, params, id).await
+    }
+
+    fn usdc_already_paid(state: &MarketState, buyer: &str, order_id: &str, tx: &str) -> bool {
+        state.orders.get(order_id).is_some_and(|o| {
+            o.buyer == buyer && o.status == OrderStatus::Paid && o.tx_hash.as_deref() == Some(tx)
+        })
+    }
+
+    /// The payment a still-pending USDC order must show, or why it cannot
+    /// be confirmed.
+    fn usdc_expected(
+        &self,
+        state: &MarketState,
+        buyer: &str,
+        order_id: &str,
+        tx: &str,
+        usdc: &crate::stablecoin::UsdcOpts,
+    ) -> Result<crate::stablecoin::ExpectedPayment, MarketError> {
+        if state
+            .orders
+            .values()
+            .any(|o| o.id != order_id && o.tx_hash.as_deref() == Some(tx))
+        {
+            return Err(MarketError::Conflict(
+                "that transaction already paid another order",
+            ));
+        }
+        let order = state
+            .orders
+            .get(order_id)
+            .filter(|o| o.buyer == buyer)
+            .ok_or(MarketError::NotFound)?;
+        if order.rail != Rail::Usdc {
+            return Err(MarketError::Conflict("this order is not a USDC order"));
+        }
+        if order.status != OrderStatus::Pending || !pending_live(order, now_secs()) {
+            return Err(MarketError::Conflict("the order is not awaiting payment"));
+        }
+        let seller = state
+            .sellers
+            .get(&order.seller)
+            .and_then(|s| s.payout.as_deref())
+            .ok_or(MarketError::Conflict("the seller has no payout address"))?;
+        let seller = crate::stablecoin::normalize_address(seller)
+            .ok_or(MarketError::Conflict("the seller has no payout address"))?;
+        let pay =
+            crate::stablecoin::normalize_address(&usdc.pay).ok_or(MarketError::Unconfigured)?;
+        Ok(crate::stablecoin::ExpectedPayment {
+            pay: crate::stablecoin::address_bytes(&pay).ok_or(MarketError::Unconfigured)?,
+            seller: crate::stablecoin::address_bytes(&seller)
+                .ok_or(MarketError::Conflict("the seller has no payout address"))?,
+            order_id_hash: crate::stablecoin::order_id_hash(order_id),
+            gross: crate::stablecoin::cents_to_usdc(order.amount),
+            fee: crate::stablecoin::cents_to_usdc(order.fee),
+        })
+    }
+
     /// Handle a Stripe webhook delivery. `signature` is the raw header.
     pub async fn webhook(&self, signature: &str, body: &[u8]) -> Result<(), MarketError> {
         // The gate holds the signing secrets, so it does the check.
@@ -2240,6 +2516,8 @@ mod tests {
             volume: None,
             claim: None,
             vm: None,
+            rail: Rail::Stripe,
+            tx_hash: None,
         }
     }
 
@@ -2760,6 +3038,7 @@ mod tests {
                 account_id: "acct_1".into(),
                 ready: false,
                 box_uuid: None,
+                payout: None,
             },
         );
         let file = dir.join("market.json");
@@ -2773,6 +3052,7 @@ mod tests {
             storage_class: DEFAULT_STORAGE_CLASS.into(),
             hardware_catalogue: None,
             vms: None,
+            usdc: None,
         })
         .await
         .unwrap();
@@ -2798,6 +3078,7 @@ mod tests {
             storage_class: DEFAULT_STORAGE_CLASS.into(),
             hardware_catalogue: None,
             vms: None,
+            usdc: None,
         }
     }
 
@@ -2987,6 +3268,7 @@ mod tests {
                 account_id: "acct_1".into(),
                 ready: false,
                 box_uuid: None,
+                payout: None,
             },
         );
         let event = |ready: bool| {

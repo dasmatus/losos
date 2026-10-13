@@ -297,6 +297,38 @@ zapečatí zodpovedajúci pár, nič sa nestratí.
 - Chybové texty a endpointy Stripe zostávajú v žurnále; volajúci dostanú
   pevnú správu.
 
+## Platba v USDC
+
+Edge môže sklad, výpočtový výkon a stroje účtovať v USDC namiesto Stripe.
+Hardvér zostáva na Stripe. RPC URL je tajomstvo, lebo v nej zvyčajne sedí
+API kľúč. Zapečatí sa cez systemd-creds pod menom `usdc-rpc-url` a číta ju
+len registrar.
+
+`losos.edge.market.currency` musí byť `usd`: ceny sú centy USDC. `chainId`
+84532 je Base Sepolia (test, spolu s kľúčom `sk_test_`), 8453 je Base
+(ostro, spolu s `sk_live_`). Zmes registrar odmietne.
+
+Ako platiť:
+
+1. Na Trhu vytvorte peňaženku, importujte 12 alebo 24 slov, alebo pripojte
+   peňaženku v prehliadači (MetaMask, Rabby, Rainbow, Coinbase Wallet). Fráza
+   je cesta MetaMask `m/44'/60'/0'/0/0`. Tá istá adresa platí na každom
+   reťazci EVM a neskôr ju importujete do týchto peňaženiek. Slová sa v
+   prehliadači zašifrujú. Zariadenie ich nedostane.
+2. Objednajte ponuku. Nie je stránka Stripe, panel ukáže sumu v USDC.
+3. Zaplaťte. Peňaženka schváli USDC pre `LososPay` a zavolá `pay`. Zmluva
+   pošle poplatok platformy do treasury a zvyšok predajcovi. Na sieťový
+   poplatok potrebujete aj trochu ETH na tom istom reťazci.
+4. Edge prečíta potvrdenie cez zapečatenú RPC URL a objednávku označí ako
+   zaplatenú. Jedna transakcia zaplatí len jednu objednávku.
+
+Na Base Sepolia je testovacie ETH z faucet Coinbase a testovacie USDC z
+[faucet Circle](https://faucet.circle.com). Nemajú hodnotu.
+
+Ako dostávať platby: podpíšte peňaženkou, ktorá má USDC prijímať. Edge overí
+podpis a uloží adresu. Kupujúci platia priamo na ňu. Tú istú frázu importujete
+do MetaMask, Rabby, Rainbow alebo Trust Wallet, keď peniaze chcete minúť.
+
 ## Čo nie je pokryté
 
 - **Refundácie a spory.** Riešte ich v Stripe dashboarde pomocou

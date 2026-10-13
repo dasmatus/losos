@@ -891,6 +891,11 @@ pub fn cmd_market_op<L: Losos>(l: &mut L, op: &crate::market::Op) -> anyhow::Res
         }
         .into());
     };
+    // A chain call is a JSON-RPC object. Wrapping it, or treating a missing
+    // checkout URL as a Stripe page, would make the wallet's transport fail.
+    if matches!(op, Op::Rpc { .. }) {
+        return Ok(reply);
+    }
     for key in ["checkout_url", "url"] {
         if let Some(url) = reply.get(key).and_then(Value::as_str) {
             if !crate::market::stripe_hosted_url(url) {

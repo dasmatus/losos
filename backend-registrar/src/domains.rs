@@ -1127,6 +1127,7 @@ mod tests {
             account_id: "acct_1".to_string(),
             ready,
             box_uuid: uuid.map(str::to_string),
+            payout: None,
         };
         assert!(Vouched::from_seller(Some(&s(true, Some(UUID)))).is_some());
         assert!(Vouched::from_seller(Some(&s(false, Some(UUID)))).is_none());
