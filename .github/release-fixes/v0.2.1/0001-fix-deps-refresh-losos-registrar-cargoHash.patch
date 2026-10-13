@@ -1,0 +1,38 @@
+From 739edb799b30134df79f661fbb60795f181a274e Mon Sep 17 00:00:00 2001
+From: openhands <openhands@all-hands.dev>
+Date: Tue, 13 Oct 2026 06:54:50 +0000
+Subject: [PATCH] fix(deps): refresh losos-registrar cargoHash
+
+The USDC work added k256 and sha3 to backend-registrar/Cargo.toml, which
+changed the vendored crate tarball. flake/packages.nix still carried the
+old hash, so `nix build .#losos-registrar` failed with a hash mismatch and
+turned the registrar-and-ui job red on main. The hash is the same for the
+static musl build, which shares the vendored tarball.
+
+Co-authored-by: openhands <openhands@all-hands.dev>
+---
+ flake/packages.nix | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/flake/packages.nix b/flake/packages.nix
+index 1f891e5..e00ca64 100644
+--- a/flake/packages.nix
++++ b/flake/packages.nix
+@@ -349,7 +349,7 @@ images
+     src = lib.cleanSource ./../backend-registrar;
+     # SHA256 of the vendored crate tarball. If deps change, `nix build
+     # .#losos-registrar` will print the new hash to paste here.
+-    cargoHash = "sha256-qGOi6XSptf4nAr4GTYlI8kzeuR5U81f3BWxteMjkmU4=";
++    cargoHash = "sha256-SlJ/wxOhMeSBu5iA5sb5/SMXIoRXCK1siBxIctY1S5c=";
+     # No system deps; pure Rust with rustls (no openssl).
+     # Same reasoning as losos-ctl above: the suite runs via cargo test in the
+     # lint job, not inside this derivation.
+@@ -374,7 +374,7 @@ images
+     pname = "losos-registrar-static";
+     version = "0.1.0";
+     src = lib.cleanSource ./../backend-registrar;
+-    cargoHash = "sha256-qGOi6XSptf4nAr4GTYlI8kzeuR5U81f3BWxteMjkmU4=";
++    cargoHash = "sha256-SlJ/wxOhMeSBu5iA5sb5/SMXIoRXCK1siBxIctY1S5c=";
+     doCheck = false;
+   };
+ 
