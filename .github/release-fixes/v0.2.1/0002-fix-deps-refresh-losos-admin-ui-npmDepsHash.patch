@@ -1,0 +1,48 @@
+From 2e51946261cdc436c2010eb60d41133dbc4464be Mon Sep 17 00:00:00 2001
+From: openhands <openhands@all-hands.dev>
+Date: Tue, 13 Oct 2026 07:55:18 +0000
+Subject: [PATCH] fix(deps): refresh losos-admin-ui npmDepsHash after viem bump
+
+The USDC work added viem to admin-ui/app/package.json, so the npm
+dependency cache built from the lock file changed. The committed hash
+(sha256-sz9e...) no longer matched, and `nix build .#losos-admin-ui`
+failed with a hash mismatch in both the registrar-and-ui CI job and the
+v0.2.1 release-media job. Replace it with the hash the build prints
+(sha256-DxLH...). tests/admin-ui.nix carries the same hash over the same
+lock file, so both move together.
+
+Co-authored-by: openhands <openhands@all-hands.dev>
+---
+ flake/packages.nix | 2 +-
+ tests/admin-ui.nix | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/flake/packages.nix b/flake/packages.nix
+index e00ca64..f005315 100644
+--- a/flake/packages.nix
++++ b/flake/packages.nix
+@@ -242,7 +242,7 @@ images
+     #
+     # tests/admin-ui.nix carries the SAME hash over the SAME lock file: two
+     # derivations, one dependency set. Change both together.
+-    npmDepsHash = "sha256-sz9e634fzhyp+PncqGSL5Ptd+EeiFBiQIF46bExjFx8=";
++    npmDepsHash = "sha256-DxLH9PeJKpi/G9LoxCSfqNd/uZ6VfO+8ULakZqFu2C8=";
+ 
+     # No postinstall scripts. playwright is a devDependency (tests/admin-ui.nix
+     # drives the browser check with it) and its postinstall downloads browsers:
+diff --git a/tests/admin-ui.nix b/tests/admin-ui.nix
+index a04f3b6..9e259ac 100644
+--- a/tests/admin-ui.nix
++++ b/tests/admin-ui.nix
+@@ -62,7 +62,7 @@ pkgs.buildNpmPackage {
+   # flake/packages.nix carries the SAME hash over the SAME lock file — two
+   # derivations, one dependency set. Change both together or the second one
+   # fails with the correct hash in its error.
+-  npmDepsHash = "sha256-sz9e634fzhyp+PncqGSL5Ptd+EeiFBiQIF46bExjFx8=";
++  npmDepsHash = "sha256-DxLH9PeJKpi/G9LoxCSfqNd/uZ6VfO+8ULakZqFu2C8=";
+ 
+   # No postinstall scripts: playwright must not try to fetch browsers (there is
+   # no network here, and the ones it would fetch are not the ones this runs
+-- 
+2.47.3
+
