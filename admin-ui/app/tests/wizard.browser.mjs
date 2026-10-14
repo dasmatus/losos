@@ -689,6 +689,34 @@ await check('step 3 hides the frame and keeps reloading it until the files app a
   await page.close();
 });
 
+await check('Finish hands the owner to the app with the tour open, and the tour waits for them through a reload', async () => {
+  const { page, errors } = await open({ claimed: false, ready: true });
+  await page.route('**/nextcloud', (route) =>
+    route.fulfill({ status: 200, contentType: 'text/html', body: '<html><head data-requesttoken="tok" data-user="notshared"><title>Files</title></head><body>files</body></html>' }),
+  );
+  await page.getByRole('button', { name: /^Continue$/ }).click();
+  await page.locator('input[name="new-password"]').fill('Correct-horse battery staple 1');
+  await page.locator('input[name="confirm-password"]').fill('Correct-horse battery staple 1');
+  await page.getByRole('button', { name: /^Set the password$/ }).click();
+  await page.getByText('notshared').first().waitFor({ timeout: 5000 });
+  await page.getByRole('button', { name: /^Continue$/ }).click();
+  const done = page.getByRole('button', { name: /^Finish/ });
+  await page.waitForFunction(() => {
+    const b = [...document.querySelectorAll('button')].find((x) => /^Finish/.test(x.textContent ?? ''));
+    return !!b && !b.disabled;
+  }, null, { timeout: 20_000 });
+  await done.click();
+  const tour = page.getByTestId('tour');
+  await tour.getByRole('heading', { name: 'Your apps, on your box' }).waitFor({ timeout: 5000 });
+  // Not closed yet, so a reload brings it back rather than losing it.
+  await page.reload({ waitUntil: 'networkidle' });
+  await tour.waitFor({ timeout: 5000 });
+  await tour.getByRole('button', { name: 'Skip the tour' }).click();
+  await tour.waitFor({ state: 'detached', timeout: 3000 });
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
 await check('step 3 lets a slow first answer from the files app arrive instead of cancelling it with the next reload', async () => {
   const { page } = await open({ claimed: false, ready: true });
   // One nginx error page, then the app answers, but slowly: the first request
