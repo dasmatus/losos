@@ -1385,6 +1385,9 @@ struct MarketPayoutReq {
     auth: MarketAuth,
     address: String,
     signature: String,
+    /// `evm` when absent, which is what a box built before Solana sends.
+    #[serde(default)]
+    family: Option<String>,
 }
 
 /// `POST /market/payout`: the seller's wallet signs the payout address.
@@ -1393,8 +1396,13 @@ async fn market_payout(
     Json(req): Json<MarketPayoutReq>,
 ) -> Result<StatusCode, ApiError> {
     let market = market_tenant(&st, &req.auth).await?;
+    let family = match req.family.as_deref() {
+        None | Some("evm") => crate::stablecoin::Family::Evm,
+        Some("solana") => crate::stablecoin::Family::Solana,
+        Some(_) => return Err(MarketError::Invalid("family is evm or solana").into()),
+    };
     market
-        .set_payout(&req.auth.appliance_id, &req.address, &req.signature)
+        .set_payout(&req.auth.appliance_id, &req.address, &req.signature, family)
         .await?;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -1405,6 +1413,9 @@ struct MarketConfirmReq {
     auth: MarketAuth,
     order_id: String,
     tx: String,
+    /// The network `tx` is on; the edge's first when absent.
+    #[serde(default)]
+    network: Option<String>,
 }
 
 /// `POST /market/confirm`: a mined USDC payment for an order this caller made.
@@ -1414,7 +1425,12 @@ async fn market_confirm(
 ) -> Result<StatusCode, ApiError> {
     let market = market_tenant(&st, &req.auth).await?;
     market
-        .confirm_usdc(&req.auth.appliance_id, &req.order_id, &req.tx)
+        .confirm_usdc(
+            &req.auth.appliance_id,
+            &req.order_id,
+            &req.tx,
+            req.network.as_deref(),
+        )
         .await?;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -1428,6 +1444,10 @@ struct MarketRpcReq {
     params: serde_json::Value,
     #[serde(default = "rpc_id")]
     id: serde_json::Value,
+    /// A network the edge settles on, or `ens` for name lookups; the edge's
+    /// first network when absent.
+    #[serde(default)]
+    network: Option<String>,
 }
 
 fn rpc_id() -> serde_json::Value {
@@ -1448,7 +1468,9 @@ async fn market_rpc(
         req.params
     };
     Ok(Json(
-        market.forward_rpc(&req.method, &params, &req.id).await?,
+        market
+            .forward_rpc(req.network.as_deref(), &req.method, &params, &req.id)
+            .await?,
     ))
 }
 

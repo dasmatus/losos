@@ -443,6 +443,67 @@ fn market_flags_are_all_or_nothing_and_bounded() {
 }
 
 #[test]
+fn usdc_takes_one_flag_per_network_of_one_mode() {
+    const BASE: &str = "network=base-sepolia,rpc=/run/c/usdc-rpc-base-sepolia,pay=0x1111111111111111111111111111111111111111,treasury=0x4444444444444444444444444444444444444444";
+    const ARB: &str = "network=arbitrum-sepolia,rpc=/run/c/usdc-rpc-arbitrum-sepolia,pay=0x1111111111111111111111111111111111111111,treasury=0x4444444444444444444444444444444444444444";
+    const SOL: &str = "network=solana-devnet,rpc=/run/c/usdc-rpc-solana-devnet,treasury=5ZWj7a1f8tWkjBESHKgrLmXshuXxqeY9SYcfbshpAqPG";
+    let with = |extra: &[&str]| {
+        let mut args = vec!["--market-currency", "usd"];
+        args.extend(extra);
+        args.extend(MARKET_FLAGS);
+        args.iter().map(|s| (*s).to_string()).collect::<Vec<_>>()
+    };
+    let opts = serve_opts(
+        &with(&[
+            "--market-usdc",
+            SOL,
+            "--market-usdc",
+            ARB,
+            "--market-usdc",
+            BASE,
+            "--market-ens-rpc-file",
+            "/run/c/ens-rpc",
+        ])
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>(),
+    );
+    let usdc = opts.market.expect("market").usdc.expect("usdc");
+    let keys: Vec<&str> = usdc.chains.iter().map(|c| c.network.key).collect();
+    assert_eq!(keys, ["base-sepolia", "arbitrum-sepolia", "solana-devnet"]);
+    assert!(usdc.test());
+    assert_eq!(usdc.payout_chain_id(), Some(84532));
+    assert_eq!(usdc.chains[2].pay, None);
+    assert_eq!(usdc.ens_rpc_file.as_deref(), Some("/run/c/ens-rpc"));
+
+    for bad in [
+        // A live network beside a test one.
+        vec!["--market-usdc", BASE, "--market-usdc", "network=base,rpc=/run/c/x,pay=0x1111111111111111111111111111111111111111,treasury=0x4444444444444444444444444444444444444444"],
+        // The same network twice, a network we do not know, a URL for a file.
+        vec!["--market-usdc", BASE, "--market-usdc", BASE],
+        vec!["--market-usdc", "network=polygon,rpc=/run/c/x,pay=0x1111111111111111111111111111111111111111,treasury=0x4444444444444444444444444444444444444444"],
+        vec!["--market-usdc", "network=base-sepolia,rpc=https://x.example/key,pay=0x1111111111111111111111111111111111111111,treasury=0x4444444444444444444444444444444444444444"],
+        // Solana has no pay contract, and only a test network names a genesis.
+        vec!["--market-usdc", "network=solana-devnet,rpc=/run/c/x,pay=0x1111111111111111111111111111111111111111,treasury=5ZWj7a1f8tWkjBESHKgrLmXshuXxqeY9SYcfbshpAqPG"],
+        vec!["--market-usdc", "network=solana,rpc=/run/c/x,treasury=5ZWj7a1f8tWkjBESHKgrLmXshuXxqeY9SYcfbshpAqPG,genesis=DhAHV5FNDCT3mnxKYD4jGR9Luk9eA9TTjxHG557JT2Bm"],
+        vec!["--market-usdc", "network=solana-devnet,rpc=/run/c/x,treasury=0x4444444444444444444444444444444444444444"],
+        vec!["--market-usdc", "network=base-sepolia,rpc=/run/c/x,treasury=0x4444444444444444444444444444444444444444"],
+        vec!["--market-usdc", "network=base-sepolia,rpc=/run/c/x,pay=0x1,treasury=0x4444444444444444444444444444444444444444,colour=red"],
+        // Names without a network to pay on.
+        vec!["--market-ens-rpc-file", "/run/c/ens-rpc"],
+    ] {
+        assert!(
+            parse(serve_args(&with(&bad).iter().map(String::as_str).collect::<Vec<_>>())).is_err(),
+            "{bad:?}"
+        );
+    }
+    // USDC prices are USDC cents.
+    let mut eur: Vec<&str> = vec!["--market-usdc", BASE];
+    eur.extend(MARKET_FLAGS);
+    assert!(parse(serve_args(&eur)).is_err());
+}
+
+#[test]
 fn the_stripe_gate_subcommand_parses_and_validates() {
     let args = |extra: &[&str]| -> Vec<String> {
         ["stripe-gate", "--socket", "/run/g.sock"]

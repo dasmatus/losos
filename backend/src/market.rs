@@ -42,7 +42,8 @@ const MAX_CAPACITY: u64 = 1_000_000_000;
 /// A registrar listing or order id: `lst_`/`ord_` and lowercase hex.
 const MAX_ID_LEN: usize = 64;
 
-/// Chain methods the box will relay. The registrar allowlists the same set.
+/// EVM chain methods the box will relay. The registrar allowlists the same
+/// set.
 const RPC_METHODS: &[&str] = &[
     "eth_blockNumber",
     "eth_call",
@@ -62,6 +63,51 @@ const RPC_METHODS: &[&str] = &[
     "eth_sendRawTransaction",
     "net_version",
 ];
+
+/// Solana methods the box will relay, the registrar's list
+/// (`backend-registrar/src/solana.rs`).
+const SOLANA_METHODS: &[&str] = &[
+    "getAccountInfo",
+    "getBalance",
+    "getBlockHeight",
+    "getFeeForMessage",
+    "getGenesisHash",
+    "getLatestBlockhash",
+    "getMinimumBalanceForRentExemption",
+    "getSignatureStatuses",
+    "getSlot",
+    "getTokenAccountBalance",
+    "getTokenAccountsByOwner",
+    "getTransaction",
+    "isBlockhashValid",
+    "sendTransaction",
+    "simulateTransaction",
+];
+
+/// A network key the edge names (`base-sepolia`, `solana-devnet`), or `ens`.
+/// The edge decides which exist; the box only keeps the shape sane.
+fn network_key(raw: &str) -> bool {
+    (1..=32).contains(&raw.len())
+        && raw
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+}
+
+fn is_solana(network: Option<&str>) -> bool {
+    network.is_some_and(|n| n.starts_with("solana"))
+}
+
+/// Base58 of `bytes` bytes: 32 for a key, 64 for a signature.
+fn base58(raw: &str, bytes: usize) -> bool {
+    let len = match bytes {
+        32 => 32..=44,
+        _ => 64..=88,
+    };
+    len.contains(&raw.len())
+        && raw
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() && !matches!(b, b'0' | b'O' | b'I' | b'l'))
+}
 
 fn eth_hex(raw: &str, hex_len: usize) -> bool {
     let Some(hex) = raw.strip_prefix("0x") else {
@@ -144,22 +190,28 @@ pub enum Op {
         listing_id: String,
         quantity: u64,
     },
-    /// Set this box's USDC payout address. `signature` is the wallet's
-    /// `personal_sign` of the payout message the edge checks.
+    /// Set this box's USDC payout address for one family of networks.
+    /// `signature` is the wallet's signature of the payout message the edge
+    /// checks: `personal_sign` on an EVM chain, ed25519 on Solana.
     Payout {
         address: String,
         signature: String,
+        /// `evm` or `solana`; `evm` when absent.
+        family: Option<String>,
     },
-    /// Tell the edge a mined USDC transaction paid `order_id`.
+    /// Tell the edge a USDC transaction on `network` paid `order_id`.
     Confirm {
         order_id: String,
         tx: String,
+        network: Option<String>,
     },
-    /// One allowlisted chain call. `params` is a JSON array. The answer is
-    /// the JSON-RPC object, not a market view.
+    /// One allowlisted chain call to `network`, or to the name endpoint for
+    /// `ens`. `params` is a JSON array. The answer is the JSON-RPC object,
+    /// not a market view.
     Rpc {
         method: String,
         params: String,
+        network: Option<String>,
     },
     /// This box's custom domains on the edge, and whether it may add one
     /// (`backend-registrar/src/domains.rs`). Not the market, but the same
@@ -467,26 +519,64 @@ impl Op {
                     Ok(())
                 }
             }
-            Op::Payout { address, signature } => {
-                if !eth_address(address) {
-                    Err("address is not an 0x address")
-                } else if !eth_signature(signature) {
-                    Err("signature is not a wallet signature")
-                } else {
-                    Ok(())
+            Op::Payout {
+                address,
+                signature,
+                family,
+            } => match family.as_deref() {
+                None | Some("evm") => {
+                    if !eth_address(address) {
+                        Err("address is not an 0x address")
+                    } else if !eth_signature(signature) {
+                        Err("signature is not a wallet signature")
+                    } else {
+                        Ok(())
+                    }
                 }
-            }
-            Op::Confirm { order_id, tx } => {
+                Some("solana") => {
+                    if !base58(address, 32) {
+                        Err("address is not a Solana address")
+                    } else if !base58(signature, 64) {
+                        Err("signature is not a wallet signature")
+                    } else {
+                        Ok(())
+                    }
+                }
+                Some(_) => Err("family is evm or solana"),
+            },
+            Op::Confirm {
+                order_id,
+                tx,
+                network,
+            } => {
+                let tx_ok = if is_solana(network.as_deref()) {
+                    base58(tx, 64)
+                } else {
+                    eth_hash(tx)
+                };
                 if !valid_id(order_id) {
                     Err("order_id is not valid")
-                } else if !eth_hash(tx) {
+                } else if network.as_deref().is_some_and(|n| !network_key(n)) {
+                    Err("network is not a network name")
+                } else if !tx_ok {
                     Err("tx is not a transaction hash")
                 } else {
                     Ok(())
                 }
             }
-            Op::Rpc { method, params } => {
-                if !RPC_METHODS.contains(&method.as_str()) {
+            Op::Rpc {
+                method,
+                params,
+                network,
+            } => {
+                let methods = if is_solana(network.as_deref()) {
+                    SOLANA_METHODS
+                } else {
+                    RPC_METHODS
+                };
+                if network.as_deref().is_some_and(|n| !network_key(n)) {
+                    Err("network is not a network name")
+                } else if !methods.contains(&method.as_str()) {
                     Err("that chain method is not forwarded")
                 } else if !params.starts_with('[') || params.len() > 8_000 {
                     Err("chain params must be a short array")
@@ -597,13 +687,39 @@ impl Op {
                 listing_id,
                 quantity,
             } => json!({ "listing_id": listing_id, "quantity": quantity }),
-            Op::Payout { address, signature } => {
-                json!({ "address": address, "signature": signature })
+            Op::Payout {
+                address,
+                signature,
+                family,
+            } => {
+                let mut doc = json!({ "address": address, "signature": signature });
+                if let Some(f) = family {
+                    doc["family"] = json!(f);
+                }
+                doc
             }
-            Op::Confirm { order_id, tx } => json!({ "order_id": order_id, "tx": tx }),
-            Op::Rpc { method, params } => {
+            Op::Confirm {
+                order_id,
+                tx,
+                network,
+            } => {
+                let mut doc = json!({ "order_id": order_id, "tx": tx });
+                if let Some(n) = network {
+                    doc["network"] = json!(n);
+                }
+                doc
+            }
+            Op::Rpc {
+                method,
+                params,
+                network,
+            } => {
                 let parsed = serde_json::from_str::<Value>(params).unwrap_or_else(|_| json!([]));
-                json!({ "method": method, "params": parsed })
+                let mut doc = json!({ "method": method, "params": parsed });
+                if let Some(n) = network {
+                    doc["network"] = json!(n);
+                }
+                doc
             }
         };
         if let (Some(d), Some(e)) = (doc.as_object_mut(), extra.as_object()) {
@@ -743,9 +859,74 @@ mod tests {
             let op = Op::Rpc {
                 method: method.to_string(),
                 params: "[]".to_string(),
+                network: None,
             };
             assert!(op.validate().is_ok(), "{method} is relayed");
         }
+    }
+
+    /// What the Solana payer calls: a blockhash, the accounts it may have to
+    /// create, the send, and the wait.
+    #[test]
+    fn a_solana_wallet_can_send_and_wait_through_the_relay() {
+        let rpc = |method: &str, network: Option<&str>| Op::Rpc {
+            method: method.to_string(),
+            params: "[]".to_string(),
+            network: network.map(str::to_string),
+        };
+        for method in [
+            "getLatestBlockhash",
+            "getTokenAccountBalance",
+            "getBalance",
+            "sendTransaction",
+            "getSignatureStatuses",
+        ] {
+            assert!(
+                rpc(method, Some("solana-devnet")).validate().is_ok(),
+                "{method}"
+            );
+            // Not to an EVM chain.
+            assert!(
+                rpc(method, Some("base-sepolia")).validate().is_err(),
+                "{method}"
+            );
+        }
+        assert!(rpc("eth_sendRawTransaction", Some("solana-devnet"))
+            .validate()
+            .is_err());
+        assert!(rpc("eth_call", Some("ens")).validate().is_ok());
+        assert!(rpc("eth_call", Some("../x")).validate().is_err());
+        let body = rpc("getSlot", Some("solana-devnet"))
+            .body("appliance-1", "tok")
+            .unwrap();
+        let doc: Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(doc["network"], "solana-devnet");
+        assert_eq!(doc["method"], "getSlot");
+
+        let sig = "5".repeat(87);
+        let confirm = |tx: &str, network: Option<&str>| Op::Confirm {
+            order_id: "ord_ab12".to_string(),
+            tx: tx.to_string(),
+            network: network.map(str::to_string),
+        };
+        assert!(confirm(&sig, Some("solana-devnet")).validate().is_ok());
+        assert!(confirm(&sig, None).validate().is_err());
+        let hash = format!("0x{}", "ab".repeat(32));
+        assert!(confirm(&hash, Some("arbitrum-sepolia")).validate().is_ok());
+        assert!(confirm(&hash, Some("solana-devnet")).validate().is_err());
+
+        let payout = |address: &str, signature: &str, family: Option<&str>| Op::Payout {
+            address: address.to_string(),
+            signature: signature.to_string(),
+            family: family.map(str::to_string),
+        };
+        let key = "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM";
+        assert!(payout(key, &sig, Some("solana")).validate().is_ok());
+        assert!(payout(key, &sig, None).validate().is_err());
+        assert!(payout("0OIl".repeat(10).as_str(), &sig, Some("solana"))
+            .validate()
+            .is_err());
+        assert!(payout(key, &sig, Some("bitcoin")).validate().is_err());
     }
 
     #[test]

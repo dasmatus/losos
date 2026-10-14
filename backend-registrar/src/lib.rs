@@ -68,6 +68,7 @@ pub mod relay;
 pub mod routes;
 pub mod seed;
 pub mod server;
+pub mod solana;
 pub mod stablecoin;
 pub mod stripe_gate;
 pub mod stripe_mode;

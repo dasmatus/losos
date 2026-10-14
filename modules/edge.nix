@@ -703,16 +703,45 @@ let
   # the registrar, not a flag: a flag would put the provider key in the
   # unit's command line.
   usdcOn = cfg.market.enable && cfg.market.usdc.enable;
-  usdcServeArgs = lib.optionals usdcOn [
-    "--market-usdc-chain-id"
-    (toString cfg.market.usdc.chainId)
-    "--market-usdc-rpc-file"
-    "/run/credentials/losos-registrar.service/usdc-rpc-url"
-    "--market-usdc-pay"
-    cfg.market.usdc.pay
-    "--market-usdc-treasury"
-    cfg.market.usdc.treasury
+  # The registrar's own table (backend-registrar/src/stablecoin.rs); it
+  # refuses anything else at start, this says so at eval.
+  usdcKnown = [
+    "base"
+    "base-sepolia"
+    "arbitrum"
+    "arbitrum-sepolia"
+    "optimism"
+    "optimism-sepolia"
+    "solana"
+    "solana-devnet"
   ];
+  usdcNetworks = cfg.market.usdc.networks;
+  credDir = "/run/credentials/losos-registrar.service";
+  usdcSpec =
+    name: n:
+    lib.concatStringsSep "," (
+      [
+        "network=${name}"
+        "rpc=${credDir}/usdc-rpc-${name}"
+        "treasury=${n.treasury}"
+      ]
+      ++ lib.optional (n.pay != null) "pay=${n.pay}"
+      ++ lib.optional (n.genesisHash != null) "genesis=${n.genesisHash}"
+    );
+  ensOn = usdcOn && cfg.market.usdc.ensRpcUrlSealed != null;
+  usdcServeArgs =
+    lib.optionals usdcOn (
+      lib.concatLists (
+        lib.mapAttrsToList (name: n: [
+          "--market-usdc"
+          (usdcSpec name n)
+        ]) usdcNetworks
+      )
+    )
+    ++ lib.optionals ensOn [
+      "--market-ens-rpc-file"
+      "${credDir}/ens-rpc"
+    ];
 
   # Machines (losos.edge.vms, modules/edge-vms.nix): the shape of a replica,
   # where its disk is claimed from, and the origin CDI's importer fetches an
@@ -796,8 +825,11 @@ let
     lib.optionals builderOn [
       "claude-api-key:${toString cfg.builder.claudeKeySealed}"
     ]
-    ++ lib.optionals (cfg.market.enable && cfg.market.usdc.enable) [
-      "usdc-rpc-url:${toString cfg.market.usdc.rpcUrlSealed}"
+    ++ lib.optionals usdcOn (
+      lib.mapAttrsToList (name: n: "usdc-rpc-${name}:${toString n.rpcUrlSealed}") usdcNetworks
+    )
+    ++ lib.optionals ensOn [
+      "ens-rpc:${toString cfg.market.usdc.ensRpcUrlSealed}"
     ];
   builderServeArgs = lib.optionals builderOn [
     "--builder-key-file"
@@ -930,13 +962,44 @@ in
         '';
       }
       {
-        assertion =
-          cfg.market.usdc.enable
-          -> (cfg.market.usdc.pay != cfg.market.usdc.treasury
-            && cfg.market.usdc.pay != "0x0000000000000000000000000000000000000000"
-            && cfg.market.usdc.treasury != "0x0000000000000000000000000000000000000000");
+        assertion = cfg.market.usdc.enable -> usdcNetworks != { };
+        message = "losos.edge.market.usdc.enable needs at least one network in losos.edge.market.usdc.networks.";
+      }
+      {
+        assertion = lib.all (name: lib.elem name usdcKnown) (lib.attrNames usdcNetworks);
         message = ''
-          losos.edge.market.usdc.pay and treasury must be set, and must differ.
+          losos.edge.market.usdc.networks takes ${lib.concatStringsSep ", " usdcKnown}; got
+          ${lib.concatStringsSep ", " (lib.attrNames usdcNetworks)}.
+        '';
+      }
+      {
+        assertion =
+          let
+            modes = lib.unique (map (name: lib.hasInfix "sepolia" name || lib.hasSuffix "devnet" name) (lib.attrNames usdcNetworks));
+          in
+          lib.length modes <= 1;
+        message = ''
+          losos.edge.market.usdc.networks mixes test and live networks; one edge
+          settles in the mode of its Stripe key.
+        '';
+      }
+      {
+        assertion = lib.all (n: n) (
+          lib.mapAttrsToList (
+            name: n:
+            if lib.hasPrefix "solana" name then
+              n.pay == null && builtins.match "[1-9A-HJ-NP-Za-km-z]{32,44}" n.treasury != null
+            else
+              n.pay != null
+              && builtins.match "0x[0-9a-fA-F]{40}" n.treasury != null
+              && lib.toLower n.pay != lib.toLower n.treasury
+              && n.genesisHash == null
+          ) usdcNetworks
+        );
+        message = ''
+          losos.edge.market.usdc.networks: an EVM network needs `pay` and an
+          `0x` treasury that differ; a Solana network takes no `pay` and a
+          base58 treasury. Only `solana-devnet` takes `genesisHash`.
         '';
       }
       {

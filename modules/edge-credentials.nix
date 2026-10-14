@@ -120,10 +120,21 @@ in
             pattern = lib.mkDefault "sk-ant-[A-Za-z0-9_-]+";
             units = [ "losos-registrar.service" ];
           };
-          # The chain endpoint. The URL is the secret: an API key sits in it.
-          # https only, no userinfo, which is what the registrar will accept.
-          usdc-rpc-url = {
-            sealed = lib.mkDefault cfg.market.usdc.rpcUrlSealed;
+        }
+        # The chain endpoints, one per USDC network, and the ENS one. The URL
+        # is the secret: an API key sits in it. https only, no userinfo,
+        # which is what the registrar will accept.
+        // lib.mapAttrs' (
+          name: n:
+          lib.nameValuePair "usdc-rpc-${name}" {
+            sealed = lib.mkDefault n.rpcUrlSealed;
+            pattern = lib.mkDefault "https://[^[:space:]@]+";
+            units = [ "losos-registrar.service" ];
+          }
+        ) cfg.market.usdc.networks
+        // lib.optionalAttrs (cfg.market.usdc.ensRpcUrlSealed != null) {
+          ens-rpc = {
+            sealed = lib.mkDefault cfg.market.usdc.ensRpcUrlSealed;
             pattern = lib.mkDefault "https://[^[:space:]@]+";
             units = [ "losos-registrar.service" ];
           };

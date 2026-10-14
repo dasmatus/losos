@@ -869,59 +869,168 @@ fn parse_market(args: &[String]) -> Result<Option<Box<MarketOpts>>> {
     })))
 }
 
-/// USDC settlement. All four flags or none. The token address is Circle's
-/// for the chain, not a flag, so a config cannot point the market at a
-/// lookalike token. The RPC URL is a file the unit reads, never the URL
-/// itself: the URL is a systemd credential and must not be on the command
-/// line, where `ps` would show it.
+/// USDC settlement: one `--market-usdc` per network, each a comma list of
+/// `key=value`:
+///
+/// ```text
+/// --market-usdc network=base-sepolia,rpc=/run/credentials/losos-registrar.service/usdc-rpc-base-sepolia,pay=0x...,treasury=0x...
+/// --market-usdc network=solana-devnet,rpc=/run/credentials/losos-registrar.service/usdc-rpc-solana-devnet,treasury=<base58>
+/// ```
+///
+/// The token address is Circle's for the network, from
+/// [`crate::stablecoin::NETWORKS`], not a flag, so a config cannot point the
+/// market at a lookalike token. The RPC URL is a file the unit reads, never
+/// the URL itself: the URL is a systemd credential and must not be on the
+/// command line, where `ps` would show it. Every network must be of one
+/// mode, test or live. `--market-ens-rpc-file` adds name lookups on Ethereum
+/// (live) or Sepolia (test).
 fn parse_usdc(args: &[String], currency: &str) -> Result<Option<crate::stablecoin::UsdcOpts>> {
-    let chain = arg(args, "--market-usdc-chain-id");
-    let rpc = arg(args, "--market-usdc-rpc-file");
-    let pay = arg(args, "--market-usdc-pay");
-    let treasury = arg(args, "--market-usdc-treasury");
-    if chain.is_none() && rpc.is_none() && pay.is_none() && treasury.is_none() {
+    use crate::stablecoin::{Family, UsdcChain, UsdcOpts};
+    let specs = args_all(args, "--market-usdc");
+    let ens = arg(args, "--market-ens-rpc-file");
+    if specs.is_empty() {
+        if ens.is_some() {
+            return Err(miette!(
+                "--market-ens-rpc-file needs at least one --market-usdc"
+            ));
+        }
         return Ok(None);
     }
-    let (Some(chain), Some(rpc), Some(pay), Some(treasury)) = (chain, rpc, pay, treasury) else {
-        return Err(miette!(
-            "USDC settlement needs --market-usdc-chain-id, --market-usdc-rpc-file, --market-usdc-pay and --market-usdc-treasury together"
-        ));
-    };
     if currency != "usd" {
         return Err(miette!(
             "USDC settlement needs --market-currency usd; prices are USDC cents"
         ));
     }
-    let chain_id: u64 = chain
-        .parse()
-        .map_err(|_| miette!("bad --market-usdc-chain-id {chain:?}"))?;
-    let Some(usdc) = crate::stablecoin::usdc_for_chain(chain_id) else {
-        return Err(miette!(
-            "--market-usdc-chain-id must be 8453 (Base) or 84532 (Base Sepolia)"
-        ));
+    let credential = |flag: &str, path: &str| -> Result<String> {
+        if path.is_empty()
+            || path.starts_with("http://")
+            || path.starts_with("https://")
+            || path.contains('\n')
+        {
+            return Err(miette!(
+                "{flag} must be a credential file path, not the URL"
+            ));
+        }
+        Ok(path.to_string())
     };
-    if rpc.starts_with("http://") || rpc.starts_with("https://") || rpc.contains('\n') {
-        return Err(miette!(
-            "--market-usdc-rpc-file must be a credential file path, not the URL"
-        ));
+    let mut chains: Vec<UsdcChain> = Vec::new();
+    for spec in specs {
+        let mut fields = std::collections::BTreeMap::new();
+        for part in spec.split(',') {
+            let Some((k, v)) = part.split_once('=') else {
+                return Err(miette!(
+                    "bad --market-usdc {spec:?}; expected key=value pairs"
+                ));
+            };
+            if fields.insert(k, v).is_some() {
+                return Err(miette!("--market-usdc {spec:?} names {k} twice"));
+            }
+        }
+        let field = |k: &str| fields.get(k).copied();
+        if let Some(unknown) = fields
+            .keys()
+            .find(|k| !matches!(**k, "network" | "rpc" | "pay" | "treasury" | "genesis"))
+        {
+            return Err(miette!("--market-usdc does not take {unknown}"));
+        }
+        let key =
+            field("network").ok_or_else(|| miette!("--market-usdc {spec:?} has no network"))?;
+        let names: Vec<&str> = crate::stablecoin::NETWORKS.iter().map(|n| n.key).collect();
+        let network = crate::stablecoin::network(key).ok_or_else(|| {
+            miette!(
+                "--market-usdc network {key:?} is not one of {}",
+                names.join(", ")
+            )
+        })?;
+        if chains.iter().any(|c| c.network.key == key) {
+            return Err(miette!("--market-usdc names {key} twice"));
+        }
+        if chains
+            .first()
+            .is_some_and(|c| c.network.test != network.test)
+        {
+            return Err(miette!(
+                "--market-usdc mixes test and live networks; one edge settles in one mode"
+            ));
+        }
+        let rpc = credential(
+            "--market-usdc rpc",
+            field("rpc").ok_or_else(|| miette!("--market-usdc {key} has no rpc"))?,
+        )?;
+        let treasury =
+            field("treasury").ok_or_else(|| miette!("--market-usdc {key} has no treasury"))?;
+        let chain = match network.family {
+            Family::Evm => {
+                let pay = field("pay").ok_or_else(|| miette!("--market-usdc {key} has no pay"))?;
+                let Some(pay) = crate::stablecoin::normalize_address(pay) else {
+                    return Err(miette!("--market-usdc {key} pay is not an 0x address"));
+                };
+                let Some(treasury) = crate::stablecoin::normalize_address(treasury) else {
+                    return Err(miette!("--market-usdc {key} treasury is not an 0x address"));
+                };
+                if pay == treasury {
+                    return Err(miette!("--market-usdc {key} pay and treasury must differ"));
+                }
+                if field("genesis").is_some() {
+                    return Err(miette!("--market-usdc genesis is for Solana networks"));
+                }
+                UsdcChain {
+                    network,
+                    rpc_file: rpc,
+                    pay: Some(pay),
+                    treasury,
+                    genesis: None,
+                }
+            }
+            Family::Solana => {
+                if field("pay").is_some() {
+                    return Err(miette!(
+                        "--market-usdc {key} takes no pay; Solana has no pay contract"
+                    ));
+                }
+                let Some(treasury) = crate::solana::normalize_address(treasury) else {
+                    return Err(miette!(
+                        "--market-usdc {key} treasury is not a Solana address"
+                    ));
+                };
+                // A local validator has its own genesis. Only a test network
+                // may name one, so a live edge always checks mainnet's.
+                let genesis = match field("genesis") {
+                    None => None,
+                    Some(_) if !network.test => {
+                        return Err(miette!(
+                            "--market-usdc {key} genesis is only for test networks"
+                        ));
+                    }
+                    Some(g) => Some(
+                        crate::solana::normalize_address(g)
+                            .ok_or_else(|| miette!("--market-usdc {key} genesis is not a hash"))?,
+                    ),
+                };
+                UsdcChain {
+                    network,
+                    rpc_file: rpc,
+                    pay: None,
+                    treasury,
+                    genesis,
+                }
+            }
+        };
+        chains.push(chain);
     }
-    let Some(pay) = crate::stablecoin::normalize_address(pay) else {
-        return Err(miette!("--market-usdc-pay is not an 0x address"));
-    };
-    let Some(treasury) = crate::stablecoin::normalize_address(treasury) else {
-        return Err(miette!("--market-usdc-treasury is not an 0x address"));
-    };
-    if pay == treasury {
-        return Err(miette!(
-            "--market-usdc-pay and --market-usdc-treasury must differ"
-        ));
-    }
-    Ok(Some(crate::stablecoin::UsdcOpts {
-        chain_id,
-        rpc_file: rpc.to_string(),
-        usdc: usdc.to_string(),
-        pay,
-        treasury,
+    // The table's order, not the flags': Nix passes an attribute set in
+    // name order, and the first network is the one a page offers first.
+    chains.sort_by_key(|c| {
+        crate::stablecoin::NETWORKS
+            .iter()
+            .position(|n| n.key == c.network.key)
+    });
+    let ens_rpc_file = ens
+        .map(|path| credential("--market-ens-rpc-file", path))
+        .transpose()?;
+    Ok(Some(UsdcOpts {
+        chains,
+        ens_rpc_file,
     }))
 }
 

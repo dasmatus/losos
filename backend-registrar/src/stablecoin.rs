@@ -1,17 +1,22 @@
 //! USDC settlement for the market, beside Stripe.
 //!
-//! The edge does not hold a key and does not custody the payment. A buyer's
-//! wallet calls [`LososPay`](https://github.com/dasmatus/losos/blob/main/contracts/src/LososPay.sol),
-//! which splits the charge, and this module checks the receipt. The only
-//! secret is the HTTPS RPC URL, because a provider key usually sits in it.
-//! systemd-creds seals that URL (`usdc-rpc-url`); the registrar reads the
-//! decrypted file per request and never logs it. The browser talks to the
-//! box, and the box talks to the registrar, so the URL never reaches a page.
+//! The edge does not hold a key and does not custody the payment. On an EVM
+//! chain a buyer's wallet calls
+//! [`LososPay`](https://github.com/dasmatus/losos/blob/main/contracts/src/LososPay.sol),
+//! which splits the charge, and this module checks the receipt. On Solana the
+//! wallet makes the two transfers itself in one transaction with the order
+//! in a memo, and [`crate::solana`] checks the balances it moved. The only
+//! secrets are the RPC URLs, because a provider key usually sits in them.
+//! systemd-creds seals one per chain (`usdc-rpc-<network>`); the registrar
+//! reads the decrypted file per request and never logs it. The browser talks
+//! to the box, and the box talks to the registrar, so a URL never reaches a
+//! page.
 //!
-//! Prices stay in cents, the market's minor unit. USDC has six decimals, so
-//! one cent is 10_000 base units. Chain 8453 (Base) is live mode and chain
-//! 84532 (Base Sepolia) is test mode, the same split the Stripe key's prefix
-//! makes: the chain is the mode, and a setting cannot disagree with it.
+//! Prices stay in cents, the market's minor unit. USDC has six decimals on
+//! every chain here, so one cent is 10_000 base units. Each network is test
+//! or live, the same split the Stripe key's prefix makes: the chain is the
+//! mode, and a setting cannot disagree with it. An edge settles on one or
+//! more networks of the same mode; the buyer picks one per order.
 
 use std::path::Path;
 use std::time::Duration;
@@ -28,35 +33,231 @@ use crate::market::MarketError;
 pub const BASE: u64 = 8453;
 /// Base Sepolia. Test ledger, test USDC.
 pub const BASE_SEPOLIA: u64 = 84532;
+pub const ARBITRUM: u64 = 42161;
+pub const ARBITRUM_SEPOLIA: u64 = 421_614;
+pub const OPTIMISM: u64 = 10;
+pub const OPTIMISM_SEPOLIA: u64 = 11_155_420;
 /// Circle's USDC on Base.
 pub const USDC_BASE: &str = "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913";
 /// Circle's USDC on Base Sepolia.
 pub const USDC_BASE_SEPOLIA: &str = "0x036cbd53842c5426634e7929541ec2318f3dcf7e";
+/// Circle's USDC mint on Solana devnet.
+pub const USDC_SOLANA_DEVNET: &str = "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU";
+/// Ethereum mainnet and Sepolia, where ENS names live. Only names are
+/// looked up there; nothing is paid on them.
+pub const ETHEREUM: u64 = 1;
+pub const SEPOLIA: u64 = 11_155_111;
 
-/// What `--market-usdc-*` captured. Addresses are lowercase `0x` + 40 hex.
+/// How a network is paid and checked.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Family {
+    /// `LososPay.pay` on an EVM chain; the receipt's `Paid` log is the proof.
+    Evm,
+    /// Two `TransferChecked` and a memo; the token balances are the proof.
+    Solana,
+}
+
+/// A chain this market can settle on, with Circle's USDC on it. The token is
+/// in this table, not in the config, so a config cannot point the market at
+/// a lookalike token.
+#[derive(Debug, PartialEq, Eq)]
+pub struct Network {
+    /// What the config, the wire and the credential name use.
+    pub key: &'static str,
+    pub name: &'static str,
+    pub family: Family,
+    /// EVM chain id. `None` on Solana.
+    pub chain_id: Option<u64>,
+    pub test: bool,
+    /// Circle's USDC: a lowercase `0x` address, or the SPL mint.
+    pub usdc: &'static str,
+    /// Solana's genesis hash, which is what tells devnet from mainnet.
+    pub genesis: Option<&'static str>,
+}
+
+pub const NETWORKS: &[Network] = &[
+    Network {
+        key: "base",
+        name: "Base",
+        family: Family::Evm,
+        chain_id: Some(BASE),
+        test: false,
+        usdc: USDC_BASE,
+        genesis: None,
+    },
+    Network {
+        key: "base-sepolia",
+        name: "Base Sepolia",
+        family: Family::Evm,
+        chain_id: Some(BASE_SEPOLIA),
+        test: true,
+        usdc: USDC_BASE_SEPOLIA,
+        genesis: None,
+    },
+    Network {
+        key: "arbitrum",
+        name: "Arbitrum One",
+        family: Family::Evm,
+        chain_id: Some(ARBITRUM),
+        test: false,
+        usdc: "0xaf88d065e77c8cc2239327c5edb3a432268e5831",
+        genesis: None,
+    },
+    Network {
+        key: "arbitrum-sepolia",
+        name: "Arbitrum Sepolia",
+        family: Family::Evm,
+        chain_id: Some(ARBITRUM_SEPOLIA),
+        test: true,
+        usdc: "0x75faf114eafb1bdbe2f0316df893fd58ce46aa4d",
+        genesis: None,
+    },
+    Network {
+        key: "optimism",
+        name: "OP Mainnet",
+        family: Family::Evm,
+        chain_id: Some(OPTIMISM),
+        test: false,
+        usdc: "0x0b2c639c533813f4aa9d7837caf62653d097ff85",
+        genesis: None,
+    },
+    Network {
+        key: "optimism-sepolia",
+        name: "OP Sepolia",
+        family: Family::Evm,
+        chain_id: Some(OPTIMISM_SEPOLIA),
+        test: true,
+        usdc: "0x5fd84259d66cd46123540766be93dfe6d43130d7",
+        genesis: None,
+    },
+    Network {
+        key: "solana",
+        name: "Solana",
+        family: Family::Solana,
+        chain_id: None,
+        test: false,
+        usdc: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        genesis: Some("5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d"),
+    },
+    Network {
+        key: "solana-devnet",
+        name: "Solana Devnet",
+        family: Family::Solana,
+        chain_id: None,
+        test: true,
+        usdc: USDC_SOLANA_DEVNET,
+        genesis: Some("EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG"),
+    },
+];
+
+/// The network a config or a request names.
+#[must_use]
+pub fn network(key: &str) -> Option<&'static Network> {
+    NETWORKS.iter().find(|n| n.key == key)
+}
+
+/// The chain ENS names are looked up on, for a test or a live edge.
+#[must_use]
+pub fn ens_chain(test: bool) -> u64 {
+    if test {
+        SEPOLIA
+    } else {
+        ETHEREUM
+    }
+}
+
+/// One network this edge settles on.
+#[derive(Debug, Clone)]
+pub struct UsdcChain {
+    pub network: &'static Network,
+    /// Decrypted systemd credential: one URL, read per request.
+    pub rpc_file: String,
+    /// `LososPay` on an EVM chain. `None` on Solana, where the wallet splits
+    /// the payment itself.
+    pub pay: Option<String>,
+    /// EVM: a lowercase `0x` address. Solana: the owner whose USDC account
+    /// takes the fee.
+    pub treasury: String,
+    /// Solana: the genesis hash the endpoint must report. The network's own,
+    /// unless a test network names a local validator.
+    pub genesis: Option<String>,
+}
+
+impl UsdcChain {
+    #[must_use]
+    pub fn public(&self) -> ChainPublic {
+        ChainPublic {
+            network: self.network.key,
+            name: self.network.name,
+            family: self.network.family,
+            chain_id: self.network.chain_id,
+            usdc: self.network.usdc,
+            pay: self.pay.clone(),
+            treasury: self.treasury.clone(),
+        }
+    }
+}
+
+/// What `--market-usdc` and `--market-ens-rpc-file` captured. Every chain is
+/// of one mode; the parser refuses a mix.
 #[derive(Debug, Clone)]
 pub struct UsdcOpts {
-    pub chain_id: u64,
-    /// Decrypted systemd credential: one `https://` URL, read per request.
-    pub rpc_file: String,
-    pub usdc: String,
-    pub pay: String,
-    pub treasury: String,
+    pub chains: Vec<UsdcChain>,
+    /// Ethereum or Sepolia, for ENS names only.
+    pub ens_rpc_file: Option<String>,
 }
 
 impl UsdcOpts {
     #[must_use]
     pub fn test(&self) -> bool {
-        self.chain_id == BASE_SEPOLIA
+        self.chains.first().is_some_and(|c| c.network.test)
+    }
+
+    #[must_use]
+    pub fn chain(&self, key: &str) -> Option<&UsdcChain> {
+        self.chains.iter().find(|c| c.network.key == key)
+    }
+
+    #[must_use]
+    pub fn has(&self, family: Family) -> bool {
+        self.chains.iter().any(|c| c.network.family == family)
+    }
+
+    /// The chain id an EVM payout signature names: the first EVM chain's. The
+    /// address is the same on every EVM chain, so one signature covers them.
+    #[must_use]
+    pub fn payout_chain_id(&self) -> Option<u64> {
+        self.chains.iter().find_map(|c| c.network.chain_id)
+    }
+
+    /// The network key a Solana payout signature names.
+    #[must_use]
+    pub fn payout_solana(&self) -> Option<&'static str> {
+        self.chains
+            .iter()
+            .find(|c| c.network.family == Family::Solana)
+            .map(|c| c.network.key)
+    }
+
+    #[must_use]
+    pub fn public(&self) -> UsdcPublic {
+        UsdcPublic {
+            test: self.test(),
+            chain_id: self.payout_chain_id(),
+            solana: self.payout_solana(),
+            chains: self.chains.iter().map(UsdcChain::public).collect(),
+            ens_chain_id: self.ens_rpc_file.as_ref().map(|_| ens_chain(self.test())),
+        }
     }
 }
 
-/// JSON-RPC methods the registrar will forward. `eth_sendRawTransaction` is
-/// the one that publishes anything, and it only forwards a transaction the
+/// EVM JSON-RPC methods the registrar will forward. `eth_sendRawTransaction`
+/// is the one that publishes anything, and it only forwards a transaction the
 /// wallet has already signed: the admin page's CSP lets it talk to this box
 /// and nothing else, so a wallet created on the page has no other way to
 /// reach the chain. The registrar still has no key.
-const RPC_METHODS: &[&str] = &[
+pub const EVM_METHODS: &[&str] = &[
     "eth_blockNumber",
     "eth_call",
     "eth_chainId",
@@ -103,11 +304,12 @@ pub fn cents_to_usdc(cents: u64) -> u128 {
 }
 
 /// The text a wallet signs to prove it controls the payout address. The
-/// chain id is in the message so a signature for Sepolia cannot set a
-/// mainnet payout, and the address is lowercase so there is one encoding.
+/// chain is in the message so a signature for a test network cannot set a
+/// live payout: an EVM chain id, or a Solana network key. An EVM address is
+/// lowercase so there is one encoding; a Solana address is base58.
 #[must_use]
-pub fn payout_message(chain_id: u64, address_lower: &str) -> String {
-    format!("LosOS market payout v1\nchain: {chain_id}\naddress: {address_lower}\n")
+pub fn payout_message(chain: impl std::fmt::Display, address: &str) -> String {
+    format!("LosOS market payout v1\nchain: {chain}\naddress: {address}\n")
 }
 
 /// keccak256 of the order id string. That is the `bytes32` the wallet passes
@@ -236,49 +438,48 @@ fn raw_tx_ok(params: &Value) -> bool {
         && hex.bytes().all(|b| b.is_ascii_hexdigit())
 }
 
-/// Circle's USDC for a chain this market settles on.
-#[must_use]
-pub fn usdc_for_chain(chain_id: u64) -> Option<&'static str> {
-    match chain_id {
-        BASE => Some(USDC_BASE),
-        BASE_SEPOLIA => Some(USDC_BASE_SEPOLIA),
-        _ => None,
-    }
-}
-
 /// What the browser is allowed to know. No RPC URL.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct UsdcPublic {
-    pub chain_id: u64,
-    pub usdc: String,
-    pub pay: String,
-    pub treasury: String,
     pub test: bool,
+    /// The chain id an EVM payout signature names, when the edge settles on
+    /// an EVM chain.
+    pub chain_id: Option<u64>,
+    /// The network a Solana payout signature names, when it settles there.
+    pub solana: Option<&'static str>,
+    pub chains: Vec<ChainPublic>,
+    /// Where the page may look ENS names up through the relay, when the
+    /// operator gave the edge an endpoint for it.
+    pub ens_chain_id: Option<u64>,
 }
 
-impl UsdcOpts {
-    #[must_use]
-    pub fn public(&self) -> UsdcPublic {
-        UsdcPublic {
-            chain_id: self.chain_id,
-            usdc: self.usdc.clone(),
-            pay: self.pay.clone(),
-            treasury: self.treasury.clone(),
-            test: self.test(),
-        }
-    }
+/// One network as a page sees it.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct ChainPublic {
+    pub network: &'static str,
+    pub name: &'static str,
+    pub family: Family,
+    pub chain_id: Option<u64>,
+    pub usdc: &'static str,
+    pub pay: Option<String>,
+    pub treasury: String,
+}
+
+/// One network an invoice may be paid on, and whom it pays there.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct InvoiceChain {
+    #[serde(flatten)]
+    pub chain: ChainPublic,
+    /// The seller's payout address on this network's family.
+    pub seller: String,
 }
 
 /// What the buyer's wallet pays. Amounts are decimal strings of USDC base
 /// units (6 decimals), so a page does not have to put a `u128` in a JSON
-/// number.
+/// number. `chains` are the networks the order may be paid on: the edge's,
+/// less any family the seller has no payout address for.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct StablecoinInvoice {
-    pub chain_id: u64,
-    pub usdc: String,
-    pub pay: String,
-    pub treasury: String,
-    pub seller: String,
     pub order_id: String,
     pub order_id_hash: String,
     /// Gross, USDC base units, decimal.
@@ -289,28 +490,73 @@ pub struct StablecoinInvoice {
     /// should not start paying after it: a later payment is honoured only
     /// while the units are still free.
     pub pay_before: u64,
+    pub chains: Vec<InvoiceChain>,
+}
+
+/// The seller's payout addresses an order was invoiced to, one per family.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct PayTo<'a> {
+    pub evm: Option<&'a str>,
+    pub solana: Option<&'a str>,
+}
+
+impl PayTo<'_> {
+    #[must_use]
+    pub fn of(&self, family: Family) -> Option<&str> {
+        match family {
+            Family::Evm => self.evm,
+            Family::Solana => self.solana,
+        }
+    }
 }
 
 #[must_use]
 pub fn invoice(
     opts: &UsdcOpts,
     order_id: &str,
-    seller: &str,
+    pay_to: PayTo<'_>,
     gross_cents: u64,
     fee_cents: u64,
     pay_before: u64,
 ) -> StablecoinInvoice {
     StablecoinInvoice {
-        chain_id: opts.chain_id,
-        usdc: opts.usdc.clone(),
-        pay: opts.pay.clone(),
-        treasury: opts.treasury.clone(),
-        seller: seller.to_string(),
         order_id: order_id.to_string(),
         order_id_hash: order_id_hash_hex(order_id),
         gross: cents_to_usdc(gross_cents).to_string(),
         fee: cents_to_usdc(fee_cents).to_string(),
         pay_before,
+        chains: opts
+            .chains
+            .iter()
+            .filter_map(|c| {
+                pay_to.of(c.network.family).map(|seller| InvoiceChain {
+                    chain: c.public(),
+                    seller: seller.to_string(),
+                })
+            })
+            .collect(),
+    }
+}
+
+/// Which methods a relayed call may use.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Relay {
+    Evm,
+    Solana,
+    /// Name lookups on Ethereum or Sepolia: reads only.
+    Ens,
+}
+
+/// ENS lookups are contract reads through the universal resolver.
+const ENS_METHODS: &[&str] = &["eth_blockNumber", "eth_call", "eth_chainId"];
+
+impl Relay {
+    fn allows(self, method: &str) -> bool {
+        match self {
+            Relay::Evm => EVM_METHODS.contains(&method),
+            Relay::Solana => crate::solana::METHODS.contains(&method),
+            Relay::Ens => ENS_METHODS.contains(&method),
+        }
     }
 }
 
@@ -318,17 +564,23 @@ pub fn invoice(
 /// allowlist, and the error text never includes the URL.
 pub async fn forward_rpc(
     rpc_url: &str,
+    relay: Relay,
     method: &str,
     params: &Value,
     id: &Value,
 ) -> Result<Value, MarketError> {
-    if !RPC_METHODS.contains(&method) {
+    if !relay.allows(method) {
         return Err(MarketError::Invalid("that chain method is not forwarded"));
     }
     if !params.is_array() || params.as_array().is_some_and(|p| p.len() > 8) {
         return Err(MarketError::Invalid("chain params must be a short array"));
     }
     if method == "eth_sendRawTransaction" && !raw_tx_ok(params) {
+        return Err(MarketError::Invalid(
+            "the signed transaction is not a raw transaction",
+        ));
+    }
+    if method == "sendTransaction" && !crate::solana::wire_tx_ok(params) {
         return Err(MarketError::Invalid(
             "the signed transaction is not a raw transaction",
         ));
@@ -373,6 +625,7 @@ pub async fn forward_rpc(
 pub async fn fetch_receipt(rpc_url: &str, tx: &str) -> Result<Value, MarketError> {
     let reply = forward_rpc(
         rpc_url,
+        Relay::Evm,
         "eth_getTransactionReceipt",
         &json!([tx]),
         &json!(1),
@@ -390,8 +643,13 @@ pub async fn fetch_receipt(rpc_url: &str, tx: &str) -> Result<Value, MarketError
 }
 
 /// The `result` of one chain call, or a conflict naming what failed.
-async fn call_result(rpc_url: &str, method: &str, params: Value) -> Result<Value, MarketError> {
-    let reply = forward_rpc(rpc_url, method, &params, &json!(1)).await?;
+pub(crate) async fn call_result(
+    rpc_url: &str,
+    relay: Relay,
+    method: &str,
+    params: Value,
+) -> Result<Value, MarketError> {
+    let reply = forward_rpc(rpc_url, relay, method, &params, &json!(1)).await?;
     match reply.get("result") {
         Some(v) if !v.is_null() => Ok(v.clone()),
         _ => Err(MarketError::Conflict(
@@ -405,39 +663,58 @@ async fn call_result(rpc_url: &str, method: &str, params: Value) -> Result<Value
 /// treasury. Without this a Sepolia endpoint behind a live config would turn
 /// test USDC into paid live orders, and a contract deployed over a token
 /// anyone can mint would pay for orders with nothing.
-pub async fn check_endpoint(rpc_url: &str, opts: &UsdcOpts) -> Result<(), MarketError> {
-    let chain = call_result(rpc_url, "eth_chainId", json!([])).await?;
+pub async fn check_endpoint(rpc_url: &str, chain: &UsdcChain) -> Result<(), MarketError> {
+    let pay = chain.pay.as_deref().ok_or(MarketError::Unconfigured)?;
+    let id = call_result(rpc_url, Relay::Evm, "eth_chainId", json!([])).await?;
     let usdc_word = call_result(
         rpc_url,
+        Relay::Evm,
         "eth_call",
-        json!([{ "to": opts.pay, "data": selector("usdc()") }, "latest"]),
+        json!([{ "to": pay, "data": selector("usdc()") }, "latest"]),
     )
     .await?;
     let treasury_word = call_result(
         rpc_url,
+        Relay::Evm,
         "eth_call",
-        json!([{ "to": opts.pay, "data": selector("treasury()") }, "latest"]),
+        json!([{ "to": pay, "data": selector("treasury()") }, "latest"]),
     )
     .await?;
-    endpoint_matches(opts, &chain, &usdc_word, &treasury_word).map_err(MarketError::Conflict)
+    endpoint_matches(chain, &id, &usdc_word, &treasury_word).map_err(MarketError::Conflict)
+}
+
+/// Whether an ENS endpoint is on the chain names are looked up on for this
+/// mode. A Sepolia endpoint behind a live edge would resolve names to
+/// addresses nobody chose for mainnet.
+pub async fn check_ens_endpoint(rpc_url: &str, test: bool) -> Result<(), MarketError> {
+    let id = call_result(rpc_url, Relay::Ens, "eth_chainId", json!([])).await?;
+    if hex_u64(id.as_str().unwrap_or("")) != Some(ens_chain(test)) {
+        return Err(MarketError::Conflict(
+            "the name endpoint is on a different chain",
+        ));
+    }
+    Ok(())
 }
 
 /// The pure half of [`check_endpoint`]: the three answers against the config.
 pub fn endpoint_matches(
-    opts: &UsdcOpts,
-    chain: &Value,
+    chain: &UsdcChain,
+    id: &Value,
     usdc_word: &Value,
     treasury_word: &Value,
 ) -> Result<(), &'static str> {
-    if hex_u64(chain.as_str().unwrap_or("")) != Some(opts.chain_id) {
+    if chain.network.chain_id.is_none()
+        || hex_u64(id.as_str().unwrap_or("")) != chain.network.chain_id
+    {
         return Err("the chain endpoint is on a different chain");
     }
-    let want_usdc = decode_address(&opts.usdc).ok_or("the USDC address is not configured")?;
+    let want_usdc =
+        decode_address(chain.network.usdc).ok_or("the USDC address is not configured")?;
     if topic_address(usdc_word.as_str().unwrap_or("")) != Some(want_usdc) {
         return Err("the pay contract does not pull Circle's USDC");
     }
     let want_treasury =
-        decode_address(&opts.treasury).ok_or("the treasury address is not configured")?;
+        decode_address(&chain.treasury).ok_or("the treasury address is not configured")?;
     if topic_address(treasury_word.as_str().unwrap_or("")) != Some(want_treasury) {
         return Err("the pay contract pays a different treasury");
     }
@@ -458,7 +735,7 @@ pub fn confirmed(receipt: &Value, head: &Value) -> Result<(), &'static str> {
 
 /// The latest block number, as the hex quantity the endpoint sent.
 pub async fn block_number(rpc_url: &str) -> Result<Value, MarketError> {
-    call_result(rpc_url, "eth_blockNumber", json!([])).await
+    call_result(rpc_url, Relay::Evm, "eth_blockNumber", json!([])).await
 }
 
 fn selector(signature: &str) -> String {
@@ -666,7 +943,7 @@ mod tests {
             "eth_getTransactionByHash",
             "eth_getTransactionReceipt",
         ] {
-            assert!(RPC_METHODS.contains(&method), "{method} is forwarded");
+            assert!(Relay::Evm.allows(method), "{method} is forwarded");
         }
     }
 
@@ -708,13 +985,13 @@ mod tests {
         assert!(!rpc_url_ok("http://10.0.0.5:8545"));
     }
 
-    fn opts() -> UsdcOpts {
-        UsdcOpts {
-            chain_id: BASE_SEPOLIA,
+    fn opts() -> UsdcChain {
+        UsdcChain {
+            network: network("base-sepolia").unwrap(),
             rpc_file: String::new(),
-            usdc: USDC_BASE_SEPOLIA.to_string(),
-            pay: "0x1111111111111111111111111111111111111111".to_string(),
+            pay: Some("0x1111111111111111111111111111111111111111".to_string()),
             treasury: "0x4444444444444444444444444444444444444444".to_string(),
+            genesis: None,
         }
     }
 

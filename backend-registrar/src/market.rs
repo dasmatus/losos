@@ -224,11 +224,15 @@ pub struct Seller {
     /// `None` for an account created before the box sent one.
     #[serde(default)]
     pub box_uuid: Option<String>,
-    /// Where USDC is paid, `0x` + 40 hex. Set when the wallet that controls
-    /// it signs [`crate::stablecoin::payout_message`]. `None` on a Stripe-only
-    /// seller.
+    /// Where USDC is paid on an EVM chain, `0x` + 40 hex. Set when the
+    /// wallet that controls it signs [`crate::stablecoin::payout_message`].
+    /// `None` on a Stripe-only seller.
     #[serde(default)]
     pub payout: Option<String>,
+    /// Where USDC is paid on Solana, a base58 owner. Set the same way, with
+    /// an ed25519 signature.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub payout_solana: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -320,6 +324,14 @@ pub struct Order {
     /// `None` on Stripe orders and on USDC orders made before it was kept.
     #[serde(default)]
     pub pay_to: Option<String>,
+    /// The seller's Solana payout owner when the order was made, for the
+    /// same reason. `None` when the seller had none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pay_to_solana: Option<String>,
+    /// The network `tx_hash` is on. `None` on an order paid before the edge
+    /// settled on more than one, which was its only network.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub paid_network: Option<String>,
 }
 
 /// Everything the market persists for one Stripe mode: `market.json` for
@@ -1097,6 +1109,9 @@ pub struct AccountView {
     /// The seller's USDC address, when they have set one.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub payout: Option<String>,
+    /// The seller's Solana USDC owner, when they have set one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub payout_solana: Option<String>,
     /// Present when this edge settles the market in USDC. No RPC URL.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub usdc: Option<crate::stablecoin::UsdcPublic>,
@@ -1189,11 +1204,19 @@ pub struct MarketOpts {
     pub usdc: Option<crate::stablecoin::UsdcOpts>,
 }
 
+/// What a USDC payment must show, per family.
+enum Expected {
+    Evm(crate::stablecoin::ExpectedPayment),
+    Solana(crate::solana::ExpectedTransfer),
+}
+
 pub struct Market {
     opts: MarketOpts,
     state: Mutex<Ledger>,
     /// The Connect platform: the gate on an edge.
     connect: Arc<dyn Connect>,
+    /// The ENS endpoint answered with this mode's chain once.
+    ens_checked: std::sync::atomic::AtomicBool,
 }
 
 /// The ledger of the mode the gate's key is in, and where it is kept. The
@@ -1338,6 +1361,7 @@ impl Market {
                 state: MarketState::default(),
             }),
             connect,
+            ens_checked: std::sync::atomic::AtomicBool::new(false),
         })
     }
 
@@ -1357,8 +1381,8 @@ impl Market {
             if usdc.test() != (mode == StripeMode::Test) {
                 tracing::error!(
                     target: Action::Market.target(),
-                    "USDC chain {} does not match the Stripe key's {mode} mode",
-                    usdc.chain_id,
+                    "USDC networks are {} but the Stripe key is in {mode} mode",
+                    if usdc.test() { "test" } else { "live" },
                 );
                 return Err(MarketError::Unconfigured);
             }
@@ -1514,6 +1538,7 @@ impl Market {
                 self.vm_domain(),
             ),
             payout: seller.and_then(|s| s.payout.clone()),
+            payout_solana: seller.and_then(|s| s.payout_solana.clone()),
             usdc: self
                 .opts
                 .usdc
@@ -1526,8 +1551,9 @@ impl Market {
     /// address. Stripe wants the connected account ready. Hardware checkouts
     /// do not come through here.
     fn accepts_payouts(&self, seller: &Seller) -> bool {
-        if self.opts.usdc.is_some() {
-            seller.payout.is_some()
+        if let Some(usdc) = &self.opts.usdc {
+            (seller.payout.is_some() && usdc.has(crate::stablecoin::Family::Evm))
+                || (seller.payout_solana.is_some() && usdc.has(crate::stablecoin::Family::Solana))
         } else {
             seller.ready
         }
@@ -1618,6 +1644,7 @@ impl Market {
                 let mut next = state.clone();
                 let previous = next.sellers.get(id);
                 let payout = previous.and_then(|s| s.payout.clone());
+                let payout_solana = previous.and_then(|s| s.payout_solana.clone());
                 let box_uuid = box_uuid
                     .map(str::to_string)
                     .or_else(|| previous.and_then(|s| s.box_uuid.clone()));
@@ -1628,6 +1655,7 @@ impl Market {
                         ready: false,
                         box_uuid,
                         payout,
+                        payout_solana,
                     },
                 );
                 self.commit(&mut state, next).await?;
@@ -1856,7 +1884,7 @@ impl Market {
         sharing: &Sharing,
     ) -> Result<CheckoutView, MarketError> {
         let now = now_secs();
-        let (order, destination, payout, mode) = {
+        let (order, destination, mode) = {
             let mut state = self.state.lock().await;
             let mode = Self::mode_of(&state)?;
             let listing = state
@@ -1933,18 +1961,36 @@ impl Market {
                 } else {
                     None
                 },
+                pay_to_solana: if rail == Rail::Usdc {
+                    seller.payout_solana.clone()
+                } else {
+                    None
+                },
+                paid_network: None,
             };
             let mut next = state.clone();
             expire_stale(&mut next, now);
             next.orders.insert(order.id.clone(), order.clone());
             self.commit(&mut state, next).await?;
-            (order, seller.account_id, seller.payout, mode)
+            (order, seller.account_id, mode)
         };
 
         if order.rail == Rail::Usdc {
             let opts = self.opts.usdc.clone().ok_or(MarketError::Unconfigured)?;
-            let seller_addr =
-                payout.ok_or(MarketError::Conflict("the seller has no payout address"))?;
+            let invoice = crate::stablecoin::invoice(
+                &opts,
+                &order.id,
+                crate::stablecoin::PayTo {
+                    evm: order.pay_to.as_deref(),
+                    solana: order.pay_to_solana.as_deref(),
+                },
+                order.amount,
+                order.fee,
+                order.created_at.saturating_add(USDC_HOLD_SECS),
+            );
+            if invoice.chains.is_empty() {
+                return Err(MarketError::Conflict("the seller has no payout address"));
+            }
             return Ok(CheckoutView {
                 mode,
                 order_id: order.id.clone(),
@@ -1952,14 +1998,7 @@ impl Market {
                 amount: order.amount,
                 fee: order.fee,
                 currency: order.currency.clone(),
-                stablecoin: Some(crate::stablecoin::invoice(
-                    &opts,
-                    &order.id,
-                    &seller_addr,
-                    order.amount,
-                    order.fee,
-                    order.created_at.saturating_add(USDC_HOLD_SECS),
-                )),
+                stablecoin: Some(invoice),
             });
         }
 
@@ -2409,28 +2448,57 @@ impl Market {
         Ok(())
     }
 
-    /// Record the address a seller wants USDC paid to. The signature is an
-    /// Ethereum `personal_sign` of [`crate::stablecoin::payout_message`] for
-    /// this edge's chain, so a signature made for Sepolia cannot set a
-    /// mainnet payout and a signature from another key cannot name this one.
+    /// Record the address a seller wants USDC paid to on one family of
+    /// networks. On an EVM chain the signature is a `personal_sign` of
+    /// [`crate::stablecoin::payout_message`] for the edge's first EVM chain,
+    /// so a signature made for a test network cannot set a live payout and a
+    /// signature from another key cannot name this one; the address is the
+    /// same on every EVM chain. On Solana it is the owner's ed25519
+    /// signature of the same message, naming the Solana network.
     pub async fn set_payout(
         &self,
         id: &str,
         address: &str,
         signature: &str,
+        family: crate::stablecoin::Family,
     ) -> Result<(), MarketError> {
+        use crate::stablecoin::Family;
         let usdc = self.opts.usdc.clone().ok_or(MarketError::Unconfigured)?;
-        let address = crate::stablecoin::normalize_address(address)
-            .ok_or(MarketError::Invalid("payout address is not an 0x address"))?;
-        let message = crate::stablecoin::payout_message(usdc.chain_id, &address);
-        let recovered = crate::stablecoin::recover_address(message.as_bytes(), signature).ok_or(
-            MarketError::Invalid("the payout signature does not recover"),
-        )?;
-        if recovered != address {
-            return Err(MarketError::Invalid(
-                "the payout signature is not from that address",
-            ));
-        }
+        let address = match family {
+            Family::Evm => {
+                let chain_id = usdc.payout_chain_id().ok_or(MarketError::Conflict(
+                    "this edge does not settle on an EVM chain",
+                ))?;
+                let address = crate::stablecoin::normalize_address(address)
+                    .ok_or(MarketError::Invalid("payout address is not an 0x address"))?;
+                let message = crate::stablecoin::payout_message(chain_id, &address);
+                let recovered = crate::stablecoin::recover_address(message.as_bytes(), signature)
+                    .ok_or(MarketError::Invalid(
+                    "the payout signature does not recover",
+                ))?;
+                if recovered != address {
+                    return Err(MarketError::Invalid(
+                        "the payout signature is not from that address",
+                    ));
+                }
+                address
+            }
+            Family::Solana => {
+                let network = usdc
+                    .payout_solana()
+                    .ok_or(MarketError::Conflict("this edge does not settle on Solana"))?;
+                let address = crate::solana::normalize_address(address).ok_or(
+                    MarketError::Invalid("payout address is not a Solana address"),
+                )?;
+                let message = crate::stablecoin::payout_message(network, &address);
+                if !crate::solana::verify_message(message.as_bytes(), &address, signature) {
+                    return Err(MarketError::Invalid(
+                        "the payout signature is not from that address",
+                    ));
+                }
+                address
+            }
+        };
         let mut state = self.state.lock().await;
         let mut next = state.clone();
         let seller = next
@@ -2441,27 +2509,57 @@ impl Market {
                 ready: false,
                 box_uuid: None,
                 payout: None,
+                payout_solana: None,
             });
-        seller.payout = Some(address);
+        match family {
+            Family::Evm => seller.payout = Some(address),
+            Family::Solana => seller.payout_solana = Some(address),
+        }
         self.commit(&mut state, next).await?;
         Ok(())
     }
 
-    /// Mark a USDC order paid when `tx` is a successful `LososPay.pay` for it.
-    /// The receipt is fetched from the sealed RPC URL, after checking that
-    /// the endpoint is on this edge's chain and that the pay contract is the
-    /// one the config names, and it must have [`crate::stablecoin::CONFIRMATIONS`]
-    /// blocks. A transaction already used for another order is refused, so a
-    /// receipt cannot be replayed.
+    /// The network a request names, or the edge's first when it names none,
+    /// which is what a box built before there were several sends.
+    fn usdc_chain(
+        usdc: &crate::stablecoin::UsdcOpts,
+        network: Option<&str>,
+    ) -> Result<crate::stablecoin::UsdcChain, MarketError> {
+        match network {
+            Some(key) => usdc.chain(key).cloned().ok_or(MarketError::Invalid(
+                "this edge does not settle on that network",
+            )),
+            None => usdc
+                .chains
+                .first()
+                .cloned()
+                .ok_or(MarketError::Unconfigured),
+        }
+    }
+
+    /// Mark a USDC order paid when `tx` paid it on `network`. On an EVM chain
+    /// that is a successful `LososPay.pay` for it, fetched after checking the
+    /// endpoint is on that chain and the pay contract is the one the config
+    /// names, with [`crate::stablecoin::CONFIRMATIONS`] blocks. On Solana it
+    /// is a transaction at the `confirmed` commitment, on the configured
+    /// cluster, that names the order in a memo and moved the order's USDC to
+    /// the seller and the treasury. A transaction already used for another
+    /// order is refused, so a payment cannot be replayed.
     pub async fn confirm_usdc(
         &self,
         buyer: &str,
         order_id: &str,
         tx: &str,
+        network: Option<&str>,
     ) -> Result<(), MarketError> {
+        use crate::stablecoin::Family;
         let usdc = self.opts.usdc.clone().ok_or(MarketError::Unconfigured)?;
-        let tx = crate::stablecoin::normalize_tx(tx)
-            .ok_or(MarketError::Invalid("tx is not a transaction hash"))?;
+        let chain = Self::usdc_chain(&usdc, network)?;
+        let tx = match chain.network.family {
+            Family::Evm => crate::stablecoin::normalize_tx(tx),
+            Family::Solana => crate::solana::normalize_signature(tx),
+        }
+        .ok_or(MarketError::Invalid("tx is not a transaction hash"))?;
         {
             let state = self.state.lock().await;
             if Self::usdc_already_paid(&state, buyer, order_id, &tx) {
@@ -2470,26 +2568,45 @@ impl Market {
         }
         let expected = {
             let state = self.state.lock().await;
-            self.usdc_expected(&state, buyer, order_id, &tx, &usdc)?
+            self.usdc_expected(&state, buyer, order_id, &tx, &chain)?
         };
-        let url = crate::stablecoin::read_rpc_url(std::path::Path::new(&usdc.rpc_file)).await?;
-        crate::stablecoin::check_endpoint(&url, &usdc)
-            .await
-            .inspect_err(|e| {
-                tracing::error!(
-                    target: Action::Market.target(),
-                    "USDC settlement is misconfigured: {e}",
-                );
-            })?;
-        let receipt = crate::stablecoin::fetch_receipt(&url, &tx).await?;
-        crate::stablecoin::payment_matches(&receipt, &expected).map_err(MarketError::Conflict)?;
-        let head = crate::stablecoin::block_number(&url).await?;
-        crate::stablecoin::confirmed(&receipt, &head).map_err(MarketError::Conflict)?;
+        let url = crate::stablecoin::read_rpc_url(std::path::Path::new(&chain.rpc_file)).await?;
+        let misconfigured = |e: &MarketError| {
+            tracing::error!(
+                target: Action::Market.target(),
+                "USDC settlement on {} is misconfigured: {e}",
+                chain.network.key,
+            );
+        };
+        match &expected {
+            Expected::Evm(expected) => {
+                crate::stablecoin::check_endpoint(&url, &chain)
+                    .await
+                    .inspect_err(misconfigured)?;
+                let receipt = crate::stablecoin::fetch_receipt(&url, &tx).await?;
+                crate::stablecoin::payment_matches(&receipt, expected)
+                    .map_err(MarketError::Conflict)?;
+                let head = crate::stablecoin::block_number(&url).await?;
+                crate::stablecoin::confirmed(&receipt, &head).map_err(MarketError::Conflict)?;
+            }
+            Expected::Solana(expected) => {
+                let genesis = chain
+                    .genesis
+                    .as_deref()
+                    .or(chain.network.genesis)
+                    .ok_or(MarketError::Unconfigured)?;
+                crate::solana::check_genesis(&url, genesis)
+                    .await
+                    .inspect_err(misconfigured)?;
+                let found = crate::solana::fetch_transaction(&url, &tx).await?;
+                crate::solana::transfer_matches(&found, expected).map_err(MarketError::Conflict)?;
+            }
+        }
         let mut state = self.state.lock().await;
         if Self::usdc_already_paid(&state, buyer, order_id, &tx) {
             return Ok(());
         }
-        self.usdc_expected(&state, buyer, order_id, &tx, &usdc)?;
+        self.usdc_expected(&state, buyer, order_id, &tx, &chain)?;
         let mut next = state.clone();
         let order = next.orders.get_mut(order_id).ok_or(MarketError::NotFound)?;
         let now = now_secs();
@@ -2501,23 +2618,62 @@ impl Market {
         }
         order.status = OrderStatus::Paid;
         order.tx_hash = Some(tx);
+        order.paid_network = Some(chain.network.key.to_string());
         order.paid_at = Some(now);
         order.expires_at = Some(now + ENTITLEMENT_SECS);
         self.commit(&mut state, next).await?;
         Ok(())
     }
 
-    /// Forward one allowlisted chain call. The URL stays in the credential
-    /// file; the caller gets the JSON-RPC object and nothing else.
+    /// Forward one allowlisted chain call to `network`, or to the ENS
+    /// endpoint for `"ens"`. The URL stays in the credential file; the
+    /// caller gets the JSON-RPC object and nothing else.
     pub async fn forward_rpc(
         &self,
+        network: Option<&str>,
         method: &str,
         params: &serde_json::Value,
         id: &serde_json::Value,
     ) -> Result<serde_json::Value, MarketError> {
+        use crate::stablecoin::{Family, Relay};
         let usdc = self.opts.usdc.as_ref().ok_or(MarketError::Unconfigured)?;
-        let url = crate::stablecoin::read_rpc_url(std::path::Path::new(&usdc.rpc_file)).await?;
-        crate::stablecoin::forward_rpc(&url, method, params, id).await
+        if network == Some("ens") {
+            let file = usdc
+                .ens_rpc_file
+                .as_deref()
+                .ok_or(MarketError::Unconfigured)?;
+            let url = crate::stablecoin::read_rpc_url(std::path::Path::new(file)).await?;
+            if method != "eth_chainId" {
+                self.check_ens_once(&url, usdc.test()).await?;
+            }
+            return crate::stablecoin::forward_rpc(&url, Relay::Ens, method, params, id).await;
+        }
+        let chain = Self::usdc_chain(usdc, network)?;
+        let url = crate::stablecoin::read_rpc_url(std::path::Path::new(&chain.rpc_file)).await?;
+        let relay = match chain.network.family {
+            Family::Evm => Relay::Evm,
+            Family::Solana => Relay::Solana,
+        };
+        crate::stablecoin::forward_rpc(&url, relay, method, params, id).await
+    }
+
+    /// Check the ENS endpoint's chain the first time a lookup goes through
+    /// it, rather than on every lookup.
+    async fn check_ens_once(&self, url: &str, test: bool) -> Result<(), MarketError> {
+        use std::sync::atomic::Ordering;
+        if self.ens_checked.load(Ordering::Relaxed) {
+            return Ok(());
+        }
+        crate::stablecoin::check_ens_endpoint(url, test)
+            .await
+            .inspect_err(|e| {
+                tracing::error!(
+                    target: Action::Market.target(),
+                    "ENS lookups are misconfigured: {e}",
+                );
+            })?;
+        self.ens_checked.store(true, Ordering::Relaxed);
+        Ok(())
     }
 
     fn usdc_already_paid(state: &MarketState, buyer: &str, order_id: &str, tx: &str) -> bool {
@@ -2526,16 +2682,17 @@ impl Market {
         })
     }
 
-    /// The payment a still-pending USDC order must show, or why it cannot
-    /// be confirmed.
+    /// The payment a still-pending USDC order must show on `chain`, or why
+    /// it cannot be confirmed.
     fn usdc_expected(
         &self,
         state: &MarketState,
         buyer: &str,
         order_id: &str,
         tx: &str,
-        usdc: &crate::stablecoin::UsdcOpts,
-    ) -> Result<crate::stablecoin::ExpectedPayment, MarketError> {
+        chain: &crate::stablecoin::UsdcChain,
+    ) -> Result<Expected, MarketError> {
+        use crate::stablecoin::Family;
         if state
             .orders
             .values()
@@ -2580,28 +2737,47 @@ impl Market {
                 return Err(MarketError::Conflict("the order is not awaiting payment"));
             }
         }
-        let seller = order
-            .pay_to
-            .as_deref()
-            .or_else(|| {
-                state
-                    .sellers
-                    .get(&order.seller)
-                    .and_then(|s| s.payout.as_deref())
-            })
-            .ok_or(MarketError::Conflict("the seller has no payout address"))?;
-        let seller = crate::stablecoin::normalize_address(seller)
-            .ok_or(MarketError::Conflict("the seller has no payout address"))?;
-        let pay =
-            crate::stablecoin::normalize_address(&usdc.pay).ok_or(MarketError::Unconfigured)?;
-        Ok(crate::stablecoin::ExpectedPayment {
-            pay: crate::stablecoin::address_bytes(&pay).ok_or(MarketError::Unconfigured)?,
-            seller: crate::stablecoin::address_bytes(&seller)
-                .ok_or(MarketError::Conflict("the seller has no payout address"))?,
-            order_id_hash: crate::stablecoin::order_id_hash(order_id),
-            gross: crate::stablecoin::cents_to_usdc(order.amount),
-            fee: crate::stablecoin::cents_to_usdc(order.fee),
-        })
+        let no_payout = MarketError::Conflict("the seller has no payout address on that network");
+        let seller_now = state.sellers.get(&order.seller);
+        match chain.network.family {
+            Family::Evm => {
+                // An order made before the edge kept `pay_to` pays whatever
+                // the seller had set; one made after pays what it invoiced.
+                let seller = order
+                    .pay_to
+                    .as_deref()
+                    .or_else(|| seller_now.and_then(|s| s.payout.as_deref()))
+                    .and_then(crate::stablecoin::address_bytes)
+                    .ok_or(no_payout)?;
+                let pay = chain
+                    .pay
+                    .as_deref()
+                    .and_then(crate::stablecoin::address_bytes)
+                    .ok_or(MarketError::Unconfigured)?;
+                Ok(Expected::Evm(crate::stablecoin::ExpectedPayment {
+                    pay,
+                    seller,
+                    order_id_hash: crate::stablecoin::order_id_hash(order_id),
+                    gross: crate::stablecoin::cents_to_usdc(order.amount),
+                    fee: crate::stablecoin::cents_to_usdc(order.fee),
+                }))
+            }
+            Family::Solana => {
+                // Solana came with `pay_to_solana`, so every order that can
+                // be paid there kept its address.
+                let seller = order.pay_to_solana.clone().ok_or(no_payout)?;
+                let gross = crate::stablecoin::cents_to_usdc(order.amount);
+                let fee = crate::stablecoin::cents_to_usdc(order.fee);
+                Ok(Expected::Solana(crate::solana::ExpectedTransfer {
+                    mint: chain.network.usdc.to_string(),
+                    seller,
+                    treasury: chain.treasury.clone(),
+                    seller_amount: gross - fee,
+                    fee,
+                    memo: crate::stablecoin::order_id_hash_hex(order_id),
+                }))
+            }
+        }
     }
 
     /// Handle a Stripe webhook delivery. `signature` is the raw header.
@@ -2652,6 +2828,8 @@ mod tests {
             rail: Rail::Stripe,
             tx_hash: None,
             pay_to: None,
+            pay_to_solana: None,
+            paid_network: None,
         }
     }
 
@@ -2706,6 +2884,7 @@ mod tests {
                 ready: false,
                 box_uuid: None,
                 payout: None,
+                payout_solana: None,
             },
         );
         let event = serde_json::json!({
@@ -3225,6 +3404,7 @@ mod tests {
                 ready: false,
                 box_uuid: None,
                 payout: None,
+                payout_solana: None,
             },
         );
         let file = dir.join("market.json");
@@ -3455,6 +3635,7 @@ mod tests {
                 ready: false,
                 box_uuid: None,
                 payout: None,
+                payout_solana: None,
             },
         );
         let event = |ready: bool| {

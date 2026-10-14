@@ -1108,6 +1108,7 @@ async fn post_market_payout(
         Some(crate::market::Op::Payout {
             address: field_str(d, "address")?,
             signature: field_str(d, "signature")?,
+            family: field_str(d, "family"),
         })
     })
     .await
@@ -1122,6 +1123,7 @@ async fn post_market_confirm(
         Some(crate::market::Op::Confirm {
             order_id: field_str(d, "order_id")?,
             tx: field_str(d, "tx")?,
+            network: field_str(d, "network"),
         })
     })
     .await
@@ -1131,7 +1133,11 @@ async fn post_market_rpc(api: web::Data<Api>, req: HttpRequest, body: web::Bytes
     post_market(api, req, body, "/api/market/rpc", |d| {
         let method = field_str(d, "method")?;
         let params = d.get("params")?.to_string();
-        Some(crate::market::Op::Rpc { method, params })
+        Some(crate::market::Op::Rpc {
+            method,
+            params,
+            network: field_str(d, "network"),
+        })
     })
     .await
 }
