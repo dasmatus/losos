@@ -1,6 +1,7 @@
 # The boot screen, and the status box on it: Plymouth with a LosOS theme
-# (modules/splash/losos.script) that draws the logo on the dark palette and,
-# under it, a panel. While the box boots the panel says it is starting; once
+# (modules/splash/losos.script) that opens with the logo's animation (the
+# salmon swims in and turns up beside the name, over a hatched rule that
+# fills as the box boots) on the dark palette and, under it, a panel. While the box boots the panel says it is starting; once
 # it is up, modules/console.nix sends it the rows it would otherwise print on
 # tty1 (the address to open, and the warning a box without a TPM chip
 # carries), and the splash stays on screen as the box's face.
@@ -44,6 +45,8 @@ let
     ink
     muted
     accent
+    sunk
+    line
     ;
 
   # The theme's colours as the 0..1 fractions Plymouth's script wants:
@@ -80,9 +83,14 @@ let
   theme = pkgs.runCommand "losos-plymouth-theme" { nativeBuildInputs = [ pkgs.imagemagick ]; } ''
     dir=$out/share/plymouth/themes/losos
     mkdir -p $dir
-    cp ${art}/splash-logo.png $dir/logo.png
+    cp ${art}/splash-fish.png $dir/fish.png
+    cp ${art}/splash-fish-square.png $dir/fish-square.png
+    cp ${art}/splash-hatch.png $dir/hatch.png
     magick -size 8x8 xc:'#0d2a2f' PNG24:$dir/panel.png
     magick -size 8x8 xc:'${accent}' PNG24:$dir/accent.png
+    magick -size 8x8 xc:'${muted}' PNG24:$dir/muted.png
+    magick -size 8x8 xc:'${sunk}' PNG24:$dir/sunk.png
+    magick -size 8x8 xc:'${line}' PNG24:$dir/line.png
     cat > $dir/losos.script <<'EOF'
     ${colour "ground" ground}${colour "ink" ink}${colour "muted" muted}${colour "accent" accent}${colour "warn" "#dbb35e"}name = "${name}";
     EOF

@@ -13,6 +13,13 @@
 #   splash-logo.png           the logo alone, for the installed box's
 #                             Plymouth theme (modules/splash.nix), which
 #                             scales it to the screen
+#   splash-fish.png           the same salmon turned level, head right, for
+#                             the splash's opening, where it swims in and
+#                             turns up into the logo's angle
+#   splash-fish-square.png    that fish centred on a transparent square, so
+#                             Plymouth can turn it without cutting off the
+#                             head or the tail (a turned image keeps its size)
+#   splash-hatch.png          one seamless tile of the hatched accent rule
 #
 # Each picture but the splash logo carries the release tag, so it changes with
 # flake/version.nix. The Plymouth theme writes the tag as text instead.
@@ -29,12 +36,18 @@ let
     ink = "#e2e8ee";
     muted = "#94a2b0";
     accent = "#48b3c0";
+    # The accent under 28% white: the stripes of the SPA's hatched-solid
+    # (index.css). Then the sunk track and the hairline around it.
+    stripe = "#7bc8d1";
+    sunk = "#10171d";
+    line = "#212c36";
   };
   inherit (palette)
     ground
     ink
     muted
     accent
+    stripe
     ;
 
   # The logo without its transparent margin, scaled to fit a box of that
@@ -119,6 +132,16 @@ pkgs.runCommand "losos-boot-art"
 
     # Large enough that the Plymouth theme only ever scales it down.
     magick ${logo} -trim +repage -resize 640x440 -strip PNG32:$out/splash-logo.png
+
+    # The logo is the fish turned 35 degrees up; turned back it swims level.
+    magick ${logo} -background none -rotate 35 -trim +repage -resize 720x -strip PNG32:$out/splash-fish.png
+    magick $out/splash-fish.png -background none -gravity center -extent 840x840 -strip PNG32:$out/splash-fish-square.png
+
+    # hatched-solid's stripes: 45 degrees, a third of the period in the
+    # lighter teal, drawn four times larger and scaled down for soft edges.
+    # The period divides the tile, so tiles meet without a seam.
+    magick -size 48x48 xc: -fx 'mod(i + j, 48) < 16 ? 1 : 0' \
+      +level-colors '${accent}','${stripe}' -resize 12x12 -strip PNG24:$out/splash-hatch.png
 
     # The highlight behind the selected entry, as GRUB's nine-piece box.
     for piece in c n s e w ne nw se sw; do
