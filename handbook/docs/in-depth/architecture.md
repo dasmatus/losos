@@ -363,9 +363,12 @@ BIOS switches `boot.nix` to GRUB and adds an EF02 partition to the first
 drive in `disko.nix`. The ESP stays `/boot` either way. `console.nix`
 replaces getty on tty1 with a banner service showing the LAN IPv4 address and
 `<hostName>.local`. `splash.nix` (`losos.splash.enable`, on by default) is
-Plymouth with a LosOS theme (`modules/splash/losos.script`): the salmon in
-the middle while the box boots, then, once the banner service sends it the
-same lines, the salmon eases up to the top and a panel opens under it.
+Plymouth with a LosOS theme (`modules/splash/losos.script`). A boot opens
+with the logo's animation: an outline closes in from the screen's edges onto
+a rule under the name, the salmon swims in level and turns up beside "LosOS",
+and the rule's hatch then fills with the boot's progress. Once the banner
+service sends it the same lines, the logo eases up to the top and a panel
+opens under it.
 Nothing quits Plymouth at the end of the boot, so the panel stays on screen.
 The banner keeps drawing on tty1 underneath, which is what shows where
 Plymouth found no display in its first seconds and runs in text mode. On

@@ -49,6 +49,7 @@ import {
 } from "@/lib/api";
 import { followAuth } from "@/lib/look";
 import { readProgress } from "@/screens/wizard/progress";
+import { isTourOpen, startTour, subscribeTour } from "@/tour/store";
 import { logoFor } from "@/lib/logo";
 import type { SettingsPaneId } from "@/screens/settings/panes";
 import { paneFromPath } from "@/lib/routes";
@@ -65,6 +66,9 @@ import { cn } from "@/lib/utils";
 const Wizard = React.lazy(() => import("@/screens/Wizard"));
 const Home = React.lazy(() => import("@/screens/Home"));
 const Settings = React.lazy(() => import("@/screens/Settings"));
+/* The first-run tour (src/tour/): its own chunk, fetched only when it opens,
+ * which on most visits is never. */
+const Tour = React.lazy(() => import("@/tour/tour"));
 const WidgetBoard = React.lazy(() =>
   import("@/widgets/board").then((m) => ({ default: m.WidgetBoard })),
 );
@@ -177,6 +181,7 @@ function Shell() {
 
   const inSetup = setupStarted && !setupDone;
   const signedIn = gate === "open";
+  const tourOpen = React.useSyncExternalStore(subscribeTour, isTourOpen, () => false);
 
   // A box being set up gets the wizard and nothing else: no chrome, no
   // navigation, no dialog over the top. There is nothing behind it worth
@@ -191,7 +196,14 @@ function Shell() {
           </div>
         }
       >
-        <Wizard onDone={() => setSetupDone(true)} />
+        {/* Leaving the wizard opens the tour, once: the owner lands on the
+            overview with six short steps over it (src/tour/). */}
+        <Wizard
+          onDone={() => {
+            setSetupDone(true);
+            startTour();
+          }}
+        />
         {/* The wizard has its own shell, so it gets its own stack: step 2's
             "ready" and "password set" and step 1's "copied" land here. */}
         <Toaster />
@@ -248,6 +260,11 @@ function Shell() {
       </SidebarProvider>
 
       <SignInDialog open={!signedIn} />
+      {signedIn && tourOpen && (
+        <React.Suspense fallback={null}>
+          <Tour />
+        </React.Suspense>
+      )}
       <Toaster />
     </div>
   );
