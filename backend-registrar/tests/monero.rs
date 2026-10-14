@@ -439,7 +439,7 @@ async fn a_monero_order_is_paid_to_the_sellers_own_subaddress() {
         .post("/market/account", auth("buyer-box", OTHER_TOKEN, json!({})))
         .await;
     let account = parse(&body);
-    assert_eq!(account["purchases"][0]["status"], "paid", "{account}");
+    assert_eq!(account["purchases"][0]["status"], "paid");
     let (_, body) = edge
         .post("/market/account", auth("seller-box", GOOD_TOKEN, json!({})))
         .await;
