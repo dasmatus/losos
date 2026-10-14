@@ -49,6 +49,7 @@
 pub mod action;
 pub mod announce;
 pub mod builder;
+pub mod coins;
 pub mod config;
 pub mod connect;
 pub mod domains;
