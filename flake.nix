@@ -285,6 +285,9 @@
             # The boot screen, which draws that same status under the logo
             # and stays up after boot.
             ./modules/splash.nix
+            # The end of the launch film's score, played when the box is
+            # switched on.
+            ./modules/startup-sound.nix
             ./modules/services.nix
             ./modules/nextcloud-common.nix
             ./modules/containers.nix

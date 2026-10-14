@@ -226,21 +226,21 @@ export function MeshPane({ form }: { form: SettingsForm }) {
             </p>
           </StackRow>
 
-          <Row last>
+          <Row last className="flex-wrap gap-y-2">
             {/* No `htmlFor` here: the row heads a PAIR of fields, and each
                 carries its own name below. Pointing this one at the start
                 field would name it "Hours Lend from" to a screen reader. */}
             <RowText title={t("panes.mesh.hours")} />
             {/* A shadcn Button Group: from, the word between, until — one
                 control with shared edges, not three widgets in a row. */}
-            <ButtonGroup aria-label={t("panes.mesh.hours")}>
+            <ButtonGroup aria-label={t("panes.mesh.hours")} className="w-full sm:w-fit">
               <label htmlFor={startId} className="sr-only">
                 {t("panes.mesh.lendFrom")}
               </label>
               <Input
                 id={startId}
                 type="time"
-                className="numeric w-[7.5rem]"
+                className="numeric sm:w-[9rem]"
                 value={start}
                 disabled={windowDisabled}
                 aria-invalid={form.problems.computeWindow !== null}
@@ -256,7 +256,7 @@ export function MeshPane({ form }: { form: SettingsForm }) {
               <Input
                 id={endId}
                 type="time"
-                className="numeric w-[7.5rem]"
+                className="numeric sm:w-[9rem]"
                 value={end}
                 disabled={windowDisabled}
                 aria-invalid={form.problems.computeWindow !== null}

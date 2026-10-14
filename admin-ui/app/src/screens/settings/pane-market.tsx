@@ -80,6 +80,18 @@ function unitName(unit: string): string {
   return key === undefined ? unit : translate(key);
 }
 
+const UNITS_LABEL: Record<string, MessageKey> = {
+  "GiB-month": "panes.market.units.storage",
+  "vCPU-hour": "panes.market.units.compute",
+  "replica-month": "panes.market.units.vm",
+};
+
+/** "4 vCPU-hours": a count and its unit, plural chosen by the count. */
+function quantityOf(count: number, unit: string): string {
+  const key = UNITS_LABEL[unit];
+  return `${count} ${key === undefined ? unit : translate(key, { count })}`;
+}
+
 export function MarketPane({ form }: { form: SettingsForm }) {
   const t = useT();
   const market = useMarket(!form.locked);
@@ -339,7 +351,7 @@ function PurchaseRow({ order, usdc }: { order: MarketOrder; usdc: UsdcPublic | n
         )}
         <PaidTx order={order} usdc={usdc} />
       </TableCell>
-      <TableCell className="numeric">{`${order.quantity} ${unitName(order.unit)}`}</TableCell>
+      <TableCell className="numeric">{quantityOf(order.quantity, order.unit)}</TableCell>
       <TableCell className="numeric text-muted">{until}</TableCell>
       <TableCell className="text-right text-muted">{status}</TableCell>
     </TableRow>
