@@ -114,6 +114,7 @@ export function helpText(): string {
     ["losos edge secret list", t("tui.help.cmd.secretList")],
     ["losos edge secret set <name>", t("tui.help.cmd.secretSet")],
     ["losos edge reconcile", t("tui.help.cmd.reconcile")],
+    ["losos edge escrow releaser", t("tui.help.cmd.releaser")],
     ["losos ci setup --edge <url>", t("tui.help.cmd.ciSetup")],
   ];
   const opts: [string, string][] = [
@@ -124,6 +125,7 @@ export function helpText(): string {
     ["--fingerprint <fpr>", t("tui.help.opt.fingerprint")],
     ["--repo <owner/name>", t("tui.help.opt.repo")],
     ["--print", t("tui.help.opt.print")],
+    ["--new, --replace", t("tui.help.opt.newReleaser")],
     ["--version", t("tui.help.opt.version")],
   ];
   const width = 36;
@@ -468,7 +470,56 @@ async function edgeCommand(io: Io, parsed: Parsed): Promise<number> {
     }
     return 0;
   }
+  if (what === "escrow" && verb === "releaser") return releaserCommand(io, parsed);
   throw new UserError(t("tui.edge.usage"));
+}
+
+interface ReleaserNetwork {
+  network: string;
+  escrow: string;
+  balanceWei: string | null;
+  escrowAgrees: boolean | null;
+  error: string | null;
+}
+
+/** Wei as ETH with up to six decimals, without floating point. */
+export function formatEth(wei: string): string {
+  const n = BigInt(wei);
+  const whole = n / 10n ** 18n;
+  const frac = ((n % 10n ** 18n) / 10n ** 12n).toString().padStart(6, "0").replace(/0+$/, "");
+  return `${whole}${frac === "" ? "" : `.${frac}`} ETH`;
+}
+
+/** The escrow's releaser: the edge makes the key, so only its address is
+ * ever shown, here or anywhere. */
+async function releaserCommand(io: Io, parsed: Parsed): Promise<number> {
+  const make = parsed.flags.has("new") || parsed.flags.has("replace");
+  const session = await edgeSession(io, parsed);
+  if (make) {
+    const body = parsed.flags.has("replace") ? { replace: true } : null;
+    const answer = await call(session, "POST", "/escrow/releaser", body, { fetch: io.fetch });
+    if (answer.status >= 400) throw new UserError(errorText(answer));
+    const address = String((answer.body as { address?: unknown }).address ?? "");
+    line(io, t("tui.edge.releaserMade", { address }));
+    line(io, t("tui.edge.releaserNext", { address }));
+    return 0;
+  }
+  const answer = await call(session, "GET", "/escrow/releaser", null, { fetch: io.fetch });
+  if (answer.status >= 400) throw new UserError(errorText(answer));
+  const report = answer.body as { address: string | null; networks: ReleaserNetwork[] };
+  if (report.address === null) {
+    line(io, t("tui.edge.releaserNone"));
+    return 0;
+  }
+  line(io, t("tui.edge.releaserAddress", { address: report.address }));
+  for (const n of report.networks) {
+    const state =
+      n.error !== null
+        ? n.error
+        : `${formatEth(n.balanceWei ?? "0")}  ${n.escrowAgrees === true ? t("tui.edge.releaserAgrees") : t("tui.edge.releaserDisagrees", { escrow: n.escrow })}`;
+    line(io, `  ${n.network.padEnd(20)} ${state}`);
+  }
+  return 0;
 }
 
 // ── CI setup ─────────────────────────────────────────────────────────────

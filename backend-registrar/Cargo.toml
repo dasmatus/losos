@@ -32,9 +32,9 @@ subtle = "2"
 # Already in the lock tree (rustls uses it), so — like `subtle` — making it
 # direct vendors no new crate.
 ring = "0.17"
-# secp256k1 recovery for a seller's payout signature, and keccak256 for the
-# addresses and the `Paid` topic. The registrar never holds a key; these only
-# check a signature the wallet made and a log the chain emitted.
+# secp256k1 recovery for a seller's payout signature, keccak256 for the
+# addresses and the `Held` topic, and the one key the registrar holds: the
+# escrow's releaser (`evm_tx.rs`), which it makes itself.
 k256 = { version = "0.14", features = ["ecdsa"] }
 sha3 = "0.12"
 # `stream::unfold` turns a buyer's stored disk image into a response body

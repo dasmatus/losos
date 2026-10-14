@@ -741,6 +741,38 @@ pub async fn check_endpoint(
     Ok(())
 }
 
+/// The releaser's gas on one network, in wei, and whether `escrow` takes
+/// orders from it.
+pub async fn releaser_on_chain(
+    rpc_url: &str,
+    escrow: &str,
+    releaser: [u8; 20],
+) -> Result<(u128, bool), MarketError> {
+    let balance = call_result(
+        rpc_url,
+        Relay::Evm,
+        "eth_getBalance",
+        json!([format!("0x{}", hex_encode(&releaser)), "latest"]),
+    )
+    .await?;
+    let balance = balance
+        .as_str()
+        .and_then(|b| b.strip_prefix("0x"))
+        .and_then(|b| u128::from_str_radix(if b.is_empty() { "0" } else { b }, 16).ok())
+        .ok_or(MarketError::Conflict("the chain endpoint did not answer"))?;
+    let word = call_result(
+        rpc_url,
+        Relay::Evm,
+        "eth_call",
+        json!([{ "to": escrow, "data": selector("releaser()") }, "latest"]),
+    )
+    .await?;
+    Ok((
+        balance,
+        topic_address(word.as_str().unwrap_or("")) == Some(releaser),
+    ))
+}
+
 /// Whether `seller` can receive USDC on this chain, from its code there.
 /// The payout signature already proved someone holds the key; this catches
 /// an address that is a contract on this chain (the payout signature cannot

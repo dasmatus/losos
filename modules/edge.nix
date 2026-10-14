@@ -1000,7 +1000,9 @@ in
       {
         assertion =
           let
-            modes = lib.unique (map (name: lib.hasInfix "sepolia" name || lib.hasSuffix "devnet" name) (lib.attrNames usdcNetworks));
+            modes = lib.unique (
+              map (name: lib.hasInfix "sepolia" name || lib.hasSuffix "devnet" name) (lib.attrNames usdcNetworks)
+            );
           in
           lib.length modes <= 1;
         message = ''
@@ -1187,6 +1189,12 @@ in
         # endpoint, `usdc-releaser-key` the escrow's key and `ens-rpc` the
         # name lookups. None is a flag, so none shows up in the process list.
         LoadCredentialEncrypted = registrarCreds;
+        # systemd fails the unit when an absolute blob is missing, and an
+        # edge whose registrar never starts cannot have anything sealed
+        # through `losos edge secret set`. A SetCredential= of the same name
+        # is the fallback systemd takes then; the registrar reads the word as
+        # "not configured" (503) for every one of these.
+        SetCredential = map (c: "${lib.head (lib.splitString ":" c)}:unsealed") registrarCreds;
       };
     };
 

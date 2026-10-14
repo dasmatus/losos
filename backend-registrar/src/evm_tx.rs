@@ -13,6 +13,7 @@
 use std::path::Path;
 
 use k256::ecdsa::SigningKey;
+use k256::elliptic_curve::zeroize::Zeroizing;
 use serde_json::{json, Value};
 
 use crate::market::MarketError;
@@ -56,6 +57,27 @@ impl Releaser {
             .await
             .map_err(|_| MarketError::Unconfigured)?;
         Self::from_hex(&raw).ok_or(MarketError::Unconfigured)
+    }
+
+    /// A new key from the system's CSPRNG, and its 64 hex characters for
+    /// the seal script's stdin. The hex is wiped when it is dropped; the
+    /// edge makes the key so it never exists anywhere else.
+    pub fn generate() -> Result<(Self, Zeroizing<String>), MarketError> {
+        let rng = ring::rand::SystemRandom::new();
+        // A random 32 bytes is a valid scalar unless it is zero or above
+        // the group order, about once in 2^128 draws.
+        for _ in 0..4 {
+            let mut secret = Zeroizing::new([0u8; 32]);
+            ring::rand::SecureRandom::fill(&rng, secret.as_mut())
+                .map_err(|_| MarketError::Store("the system has no randomness".into()))?;
+            let hex = Zeroizing::new(stablecoin::hex_encode(secret.as_ref()));
+            if let Some(releaser) = Self::from_hex(&hex) {
+                return Ok((releaser, hex));
+            }
+        }
+        Err(MarketError::Store(
+            "no valid key came out of four draws".into(),
+        ))
     }
 
     #[must_use]
@@ -335,6 +357,17 @@ mod tests {
         assert!(Releaser::from_hex("0x").is_none());
         assert!(Releaser::from_hex(&KEY[2..]).is_none());
         assert!(Releaser::from_hex(&format!("0x{KEY}\n")).is_some());
+    }
+
+    #[test]
+    fn a_made_key_is_the_shape_the_seal_script_takes() {
+        let (a, hex) = Releaser::generate().unwrap();
+        let (b, _) = Releaser::generate().unwrap();
+        // modules/edge-credentials.nix: `(0x)?[0-9a-fA-F]{64}`.
+        assert_eq!(hex.len(), 64);
+        assert!(hex.bytes().all(|c| c.is_ascii_hexdigit()));
+        assert_eq!(Releaser::from_hex(&hex).unwrap().address(), a.address());
+        assert_ne!(a.address(), b.address());
     }
 
     #[test]

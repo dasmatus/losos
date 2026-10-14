@@ -1770,8 +1770,8 @@ in
                   the credential name `usdc-rpc-<network>`. A provider key
                   usually sits in the URL, so it is a secret: the registrar
                   receives the plaintext only through `LoadCredentialEncrypted=`
-                  and the browser never does. Seal it before the switch: the
-                  registrar unit loads the blob and does not start without it.
+                  and the browser never does. Seal it with `losos edge secret
+                  set usdc-rpc-<network>`; until then the network answers 503.
                   Plain `http` is accepted only for a node on the edge's own
                   loopback.
                 '';
@@ -1818,7 +1818,8 @@ in
         little ETH on each, and it can only release a deposit to the seller
         and treasury recorded at payment or refund it to the payer. The
         escrow's treasury can replace it. Needed whenever an EVM network is
-        listed.
+        listed. The edge makes it itself (`losos edge escrow releaser
+        --new`), so the key never exists anywhere else.
       '';
     };
 

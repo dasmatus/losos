@@ -1,11 +1,12 @@
-# Secrets sealed on the edge from GitHub Actions.
+# Secrets sealed on the edge, from the `losos` terminal or GitHub Actions.
 #
-# `.github/workflows/edge-credentials.yml` reads the Stripe and Claude keys
-# from the repository's Actions secrets and pipes each one over SSH into
-# `losos-seal-credential` here, which checks its shape and seals it with
-# `systemd-creds` (TPM2 where the edge has one, the host key otherwise). The
-# plaintext travels in the SSH session and in this script's memory only: it is
-# never written to disk on either side, and the blob is all `/var` ever holds.
+# The terminal (`losos edge secret set`, docs/edge-terminal.md) and
+# `.github/workflows/edge-credentials.yml` (the Stripe and Claude keys only)
+# both pipe a value into `losos-seal-credential` here, which checks its
+# shape and seals it with `systemd-creds` (TPM2 where the edge has one, the
+# host key otherwise). The plaintext travels in the sealed envelope or the
+# SSH session and in this script's memory only: it is never written to disk
+# on either side, and the blob is all `/var` ever holds.
 #
 # The deploy key is root's only because sealing with the host key and
 # restarting the gate need root. `restrict,command=` pins it to this one
@@ -158,7 +159,8 @@ in
             units = [ "losos-registrar.service" ];
           }
         ) cfg.market.usdc.networks
-        # The escrow's releaser: a bare secp256k1 key, hex.
+        # The escrow's releaser: a bare secp256k1 key, hex. The registrar
+        # makes it and pipes it here (`losos edge escrow releaser --new`).
         // {
           usdc-releaser-key = {
             sealed = lib.mkDefault cfg.market.usdc.releaserKeySealed;

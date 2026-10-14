@@ -303,6 +303,15 @@ export function boxRoute(method: string, path: string, body: unknown): { status:
   return { status: 405, body: { error: "method" } };
 }
 
+export const EDGE_RELEASER = {
+  address: "0x1111111111111111111111111111111111111111",
+  networks: [
+    { network: "base-sepolia", escrow: "0xe5c0000000000000000000000000000000000001", balanceWei: "12500000000000000", escrowAgrees: true, error: null },
+    { network: "arbitrum-sepolia", escrow: "0xe5c0000000000000000000000000000000000002", balanceWei: "0", escrowAgrees: false, error: null },
+    { network: "optimism-sepolia", escrow: "0xe5c0000000000000000000000000000000000003", balanceWei: null, escrowAgrees: null, error: "the network's endpoint is not sealed yet" },
+  ],
+};
+
 export function edgeRoute(method: string, path: string, body: unknown): { status: number; body: unknown } {
   if (method === "GET" && path === "/overview") return { status: 200, body: EDGE_OVERVIEW };
   if (method === "GET" && path === "/secrets") return { status: 200, body: EDGE_SECRETS };
@@ -313,5 +322,11 @@ export function edgeRoute(method: string, path: string, body: unknown): { status
     return { status: 200, body: { sealed: true, name: b.name } };
   }
   if (method === "POST" && path === "/reconcile") return { status: 200, body: { reconciled: true } };
+  if (method === "GET" && path === "/escrow/releaser") return { status: 200, body: EDGE_RELEASER };
+  if (method === "POST" && path === "/escrow/releaser") {
+    const replace = (body as { replace?: unknown } | null)?.replace === true;
+    if (!replace) return { status: 409, body: { error: "this edge already has a releaser key; pass replace to make a new one" } };
+    return { status: 200, body: { address: "0x2222222222222222222222222222222222222222", replaced: true, report: "usdc-releaser-key: sealed" } };
+  }
   return { status: 404, body: { error: `no route ${path}` } };
 }

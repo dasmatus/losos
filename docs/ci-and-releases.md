@@ -195,8 +195,6 @@ Market page (Operator setup) describes.
    | `STRIPE_KEY`            | the Stripe secret or restricted key, test or live       |
    | `STRIPE_WEBHOOK_SECRET` | optional: both `whsec_` secrets, one per line           |
    | `CLAUDE_KEY`            | the Claude API key (`sk-ant-...`)                       |
-   | `USDC_RPC_URLS`         | optional: `<network> <https url>`, one line per network |
-   | `ENS_RPC_URL`           | optional: an Ethereum or Sepolia `https://` endpoint    |
    | `EDGE_SSH_KEY`          | the private half of the key from step 1                 |
    | `EDGE_SSH_HOST`         | the edge's address (a secret or a variable)             |
    | `EDGE_SSH_KNOWN_HOSTS`  | the edge's line from `ssh-keyscan` (secret or variable) |
@@ -246,32 +244,47 @@ test Solana network must report, for a local validator.
 
 Every network has an RPC endpoint sealed as `usdc-rpc-<network>` to
 `/var/secrets/losos-usdc-rpc-<network>.cred` (`rpcUrlSealed`), read by the
-registrar with `LoadCredentialEncrypted=` like the Claude key. The
-**edge-credentials** workflow seals one per line of `USDC_RPC_URLS`, for
-example:
+registrar with `LoadCredentialEncrypted=` like the Claude key. The USDC
+credentials do not go through the Actions workflow. Seal each endpoint from
+the operator's machine with the terminal client (`docs/edge-terminal.md`),
+which reads the URL without echoing it:
 
-```
-base-sepolia https://base-sepolia.g.alchemy.com/v2/KEY
-solana-devnet https://devnet.helius-rpc.com/?api-key=KEY
+```sh
+losos edge secret set usdc-rpc-base-sepolia     # https://base-sepolia.g.alchemy.com/v2/KEY
+losos edge secret set usdc-rpc-solana-devnet    # https://devnet.helius-rpc.com/?api-key=KEY
+losos edge secret list
 ```
 
 Payments on an EVM network wait in the escrow until the registrar releases
 them to the seller and the treasury, or refunds them to the buyer, with the
-releaser key. The **edge-credentials** workflow seals `USDC_RELEASER_KEY` (64
-hex characters) as `usdc-releaser-key` to
-`/var/secrets/losos-usdc-releaser-key.cred` (`releaserKeySealed`). The key
-pays gas, so its address needs a little ETH on every EVM network. It can do
-nothing but release a deposit to the seller and treasury recorded at payment,
-or refund it to the payer; the treasury can replace it with
-`setReleaser`. The registrar refuses to confirm payments while the escrow's
-`releaser()` is another address.
+releaser key. The edge makes that key itself, so it never exists anywhere
+else:
 
-`ENS_RPC_URL` is sealed as `ens-rpc` and names an Ethereum endpoint (Sepolia
-for a test edge). With it, the admin pages show ENS names and take them when
+```sh
+losos edge escrow releaser --new    # prints the address, never the key
+losos edge escrow releaser          # the address, its ETH and whether each escrow takes it
+```
+
+The registrar draws the key from the system's CSPRNG, pipes it to
+`losos-seal-credential` on stdin as `usdc-releaser-key`
+(`/var/secrets/losos-usdc-releaser-key.cred`, `releaserKeySealed`) and
+answers only the address. `losos edge secret set usdc-releaser-key` is
+refused for that reason. Deploy each `LososEscrow` with that address as the
+releaser, then send it a little ETH on every EVM network for gas. The key
+can do nothing but release a deposit to the seller and treasury recorded at
+payment, or refund it to the payer. `--new` refuses while a key is sealed;
+`--replace` makes another, after which the treasury calls
+`setReleaser(<new address>)` on every escrow. The registrar refuses to
+confirm payments while an escrow's `releaser()` is another address, and the
+second command shows which ones still do.
+
+`ens-rpc` (`losos edge secret set ens-rpc`) names an Ethereum endpoint
+(Sepolia for a test edge). With it, the admin pages show ENS names and take them when
 sending USDC; without it, they do neither. The registrar checks its chain id
 before the first lookup and forwards only `eth_call`, `eth_chainId` and
 `eth_blockNumber` to it.
 
-Seal every endpoint before switching USDC on: the registrar unit loads each
-blob and does not start without it. Plain `http` is accepted only for a node
+The registrar starts with any of these still unsealed (the unit falls back
+to a placeholder, which reads as "not configured"), so the terminal can
+reach it to seal them; until they are, the market answers 503 for USDC. Plain `http` is accepted only for a node
 on the edge's own loopback, such as `http://127.0.0.1:8545`.

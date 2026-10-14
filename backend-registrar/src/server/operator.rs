@@ -18,7 +18,7 @@ use serde::Deserialize;
 
 use super::{github_operator, AppState};
 use crate::action::Action;
-use crate::operator::{Call, NotServed, Operator};
+use crate::operator::{Call, NotServed, Operator, RELEASER_SECRET};
 
 fn off() -> Response {
     (
@@ -143,6 +143,62 @@ async fn run(st: &AppState, op: &Operator, call: Call) -> (u16, serde_json::Valu
             Ok(out) => (400, serde_json::json!({ "error": out.output })),
             Err(e) => err(e),
         },
+        Call::Releaser => match &st.market {
+            Some(m) if m.wants_releaser() => match m.releaser_report().await {
+                Ok(report) => (200, serde_json::json!(report)),
+                Err(e) => (503, serde_json::json!({ "error": e.to_string() })),
+            },
+            _ => no_evm(),
+        },
+        Call::NewReleaser { replace } => new_releaser(st, op, replace).await,
+    }
+}
+
+fn no_evm() -> (u16, serde_json::Value) {
+    (
+        404,
+        serde_json::json!({ "error": "this edge settles USDC on no EVM network, so it has no escrow" }),
+    )
+}
+
+/// `POST /escrow/releaser`: make a key in this process, hand it to the seal
+/// script on stdin, answer only its address. The script restarts the
+/// registrar a few seconds later, and the new process reads the key.
+async fn new_releaser(st: &AppState, op: &Operator, replace: bool) -> (u16, serde_json::Value) {
+    if !st.market.as_ref().is_some_and(|m| m.wants_releaser()) {
+        return no_evm();
+    }
+    match op.is_sealed(RELEASER_SECRET).await {
+        Err(e) => return (e.status, serde_json::json!({ "error": e.message })),
+        Ok(true) if !replace => {
+            return (
+                409,
+                serde_json::json!({
+                    "error": "this edge already has a releaser key; pass replace to make a new one, then have the treasury call setReleaser with its address on every escrow",
+                }),
+            )
+        }
+        Ok(_) => {}
+    }
+    let (releaser, hex) = match crate::evm_tx::Releaser::generate() {
+        Ok(made) => made,
+        Err(e) => return (500, serde_json::json!({ "error": e.to_string() })),
+    };
+    match op.set_secret(RELEASER_SECRET, &hex).await {
+        Ok(out) if out.ok => {
+            let address = releaser.address_hex();
+            tracing::info!(
+                target: Action::Authenticate.target(),
+                "escrow releaser {address} made and sealed from the terminal{}",
+                if replace { ", replacing the old key" } else { "" },
+            );
+            (
+                200,
+                serde_json::json!({ "address": address, "replaced": replace, "report": out.output }),
+            )
+        }
+        Ok(out) => (500, serde_json::json!({ "error": out.output })),
+        Err(e) => (e.status, serde_json::json!({ "error": e.message })),
     }
 }
 
