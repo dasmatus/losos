@@ -648,6 +648,7 @@ impl Edge {
                 vms: None,
                 usdc: None,
                 btc: None,
+                xmr: None,
             })
         });
 

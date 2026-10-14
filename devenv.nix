@@ -285,11 +285,12 @@ in
   '';
   scripts.lint-wasm.description = "clippy -D warnings on the Lab canvas's WebGL2 and WebGPU builds.";
 
-  # The registrar's Bitcoin orders run against a real regtest node
-  # (backend-registrar/tests/bitcoin.rs); CI's test job builds the same
-  # package from the flake's nixpkgs.
+  # The registrar's Bitcoin and Monero orders run against real regtest
+  # nodes (backend-registrar/tests/{bitcoin,monero}.rs); CI's test job
+  # builds the same packages from the flake's nixpkgs.
   scripts.test-rust.exec = ''
     export LOSOS_TEST_BITCOIND=${pkgs.bitcoind}/bin/bitcoind
+    export LOSOS_TEST_MONEROD=${pkgs.monero-cli}/bin/monerod
     ${forEachCrate (c: "cargo test --manifest-path ${c}/Cargo.toml")}
   '';
   scripts.test-rust.description = "Unit tests for every Rust crate.";

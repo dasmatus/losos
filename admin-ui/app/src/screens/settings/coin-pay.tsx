@@ -8,14 +8,15 @@ import { useT } from "@/lib/i18n-react";
 import { copyText } from "../wizard/copy";
 import { Row, RowText } from "./rows";
 
-/* Orders paid in a coin other than USDC, Bitcoin for now. The edge derives
- * a fresh address for the order from the seller's own watch-only key, so the
- * coins go straight to the seller's wallet and the edge only watches them.
+/* Orders paid in a coin other than USDC: Bitcoin and Monero. The edge gives
+ * each order a fresh address of the seller's own wallet (derived from a
+ * Bitcoin public key, or a Monero subaddress seen through the view key), so
+ * the coins go straight to the seller's wallet and the edge only watches.
  * The buyer pays from any wallet, by the QR code or the payment link, and
  * nothing is reported back: the edge's node sees the payment arrive. */
 
-export const COIN_NAMES: Record<Coin, string> = { btc: "Bitcoin" };
-const TICKERS: Record<Coin, string> = { btc: "BTC" };
+export const COIN_NAMES: Record<Coin, string> = { btc: "Bitcoin", xmr: "Monero" };
+const TICKERS: Record<Coin, string> = { btc: "BTC", xmr: "XMR" };
 
 /** How often the panel asks the edge what reached the address. */
 const POLL_MS = 15_000;
@@ -163,12 +164,16 @@ export function CoinKeyRow({
 }) {
   const t = useT();
   const [key, setKey] = React.useState("");
+  const [viewKey, setViewKey] = React.useState("");
   const [busy, setBusy] = React.useState(false);
+  // Monero is watched through the wallet's view key, beside its address.
+  const monero = coin === "xmr";
   const save = async () => {
     setBusy(true);
     try {
-      await postMarketCoinKey(coin, key.trim());
+      await postMarketCoinKey(coin, key.trim(), monero ? viewKey.trim() : undefined);
       setKey("");
+      setViewKey("");
       toast.success(t("panes.market.coins.keySaved", { coin: COIN_NAMES[coin] }));
       onSaved();
     } catch (error) {
@@ -187,7 +192,7 @@ export function CoinKeyRow({
       <div className="grid w-full gap-2">
         <RowText
           title={t("panes.market.coins.keyTitle", { coin: COIN_NAMES[coin] })}
-          detail={t("panes.market.coins.keyDetail")}
+          detail={t(monero ? "panes.market.coins.keyDetailXmr" : "panes.market.coins.keyDetail")}
         />
         {short !== null && (
           <p className="text-[13px] text-muted break-all">
@@ -198,14 +203,29 @@ export function CoinKeyRow({
         <div className="flex flex-wrap gap-2">
           <Input
             className="min-w-[14rem] flex-1"
-            aria-label={t("panes.market.coins.keyPlaceholder")}
-            placeholder={t("panes.market.coins.keyPlaceholder")}
+            aria-label={t(monero ? "panes.market.coins.addressPlaceholder" : "panes.market.coins.keyPlaceholder")}
+            placeholder={t(monero ? "panes.market.coins.addressPlaceholder" : "panes.market.coins.keyPlaceholder")}
             value={key}
             onChange={(e) => setKey(e.target.value)}
             autoComplete="off"
             spellCheck={false}
           />
-          <Button size="sm" disabled={disabled || busy || key.trim() === ""} onClick={() => void save()}>
+          {monero && (
+            <Input
+              className="min-w-[14rem] flex-1"
+              aria-label={t("panes.market.coins.viewKeyPlaceholder")}
+              placeholder={t("panes.market.coins.viewKeyPlaceholder")}
+              value={viewKey}
+              onChange={(e) => setViewKey(e.target.value)}
+              autoComplete="off"
+              spellCheck={false}
+            />
+          )}
+          <Button
+            size="sm"
+            disabled={disabled || busy || key.trim() === "" || (monero && viewKey.trim() === "")}
+            onClick={() => void save()}
+          >
             {short === null ? t("panes.market.coins.keySave") : t("panes.market.coins.keyReplace")}
           </Button>
         </div>

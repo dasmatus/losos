@@ -312,3 +312,26 @@ address into it. Before it takes a seller's key or hands out an address it
 checks that the node's chain fits the Stripe key's mode, and refuses
 otherwise. Until the node has caught
 up with the chain, payments show up late, so let it sync before listing.
+
+### Monero orders
+
+With USDC on, an edge can also take Monero:
+
+```nix
+losos.edge.market.monero = {
+  enable = true;
+  network = "mainnet";  # a test edge: "stagenet" or "testnet"
+};
+```
+
+This starts `monero.service`, a pruned `monerod` with restricted RPC on
+`127.0.0.1:18081` only, and `losos-monero-wallet.service`, a
+`monero-wallet-rpc` on `127.0.0.1:18083` holding one view-only wallet per
+seller under `/var/lib/losos-monero-wallet/wallets`. There is nothing to
+seal: the wallet service writes a random `user:password` to
+`/var/lib/losos-monero-wallet/rpc-login` on its first start and puts it in
+its own config file, never on the command line, and the registrar reads the
+same file on every call (`--market-xmr-login-file`). Before it takes a
+seller's key or hands out a subaddress, the registrar checks that the node's
+network fits the Stripe key's mode and that the seller's address is for that
+network. As with Bitcoin, let the node sync before listing.

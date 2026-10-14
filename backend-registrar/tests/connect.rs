@@ -41,6 +41,7 @@ fn opts(state: &Path) -> MarketOpts {
         vms: None,
         usdc: None,
         btc: None,
+        xmr: None,
     }
 }
 

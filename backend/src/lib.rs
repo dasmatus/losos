@@ -48,6 +48,7 @@ pub mod look;
 pub mod losos;
 pub mod market;
 pub mod model;
+pub mod monero_key;
 pub mod options;
 pub mod overrides;
 pub mod receipt;

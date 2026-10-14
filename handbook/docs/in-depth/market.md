@@ -451,6 +451,42 @@ price at that moment: within 1% the order completes, otherwise the pane asks
 for the difference. The order then names Bitcoin as its network and links
 the transaction on mempool.space.
 
+## Paying with Monero
+
+An edge that settles in USDC can also take Monero for the same orders. It
+runs its own pruned Monero node and a wallet service beside it: on mainnet
+for a live edge, on stagenet or testnet for a test edge. The registrar
+refuses any other pairing, and refuses an address made for another network
+than the node's.
+
+### Selling for Monero
+
+On the Market pane, paste two things into the Monero row: your wallet's
+primary address, the one starting with 4 (5 on stagenet, 9 on testnet), and
+its private view key. Feather, Cake Wallet and the official wallets show the
+view key next to the seed, under the wallet's keys. The view key lets the
+edge see what arrives at your addresses and nothing more: it cannot spend.
+The box checks the pair before sending it and refuses the spend key by name,
+so a spend key pasted by mistake never leaves the box. Never paste the seed.
+
+The edge keeps a view-only wallet for you and gives each order the next
+subaddress of your wallet's first account, so the coins go straight to your
+wallet. Your own wallet finds them too: it looks ahead for subaddresses it
+has not shown yet. If more than about 200 orders in a row go unpaid, raise
+the subaddress lookahead in your wallet to see the payments after them.
+
+As with Bitcoin, the platform fee is billed to the seller apart and the
+whole payment reaches the seller.
+
+### Paying in Monero
+
+On the order, choose Monero under "Pay with". The pane shows the amount in
+XMR, the subaddress, a QR code and a link that opens a wallet. Pay from any
+wallet. Ten confirmations count an order up to $5,000 and twenty above that;
+a short payment, an overpayment and a late one are handled as for Bitcoin. A
+payment locked for later blocks does not count. Monero hides who paid what,
+so a paid order names Monero as its network without a link to an explorer.
+
 ## Not covered
 
 - **Refunds and disputes.** Handle them in the Stripe dashboard, using
