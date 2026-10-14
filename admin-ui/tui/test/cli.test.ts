@@ -368,7 +368,7 @@ describe("the losos command", () => {
     assert.equal(again.code, 1);
     const removed = await losos(["key", "remove", ownerFpr]);
     assert.equal(removed.code, 0, removed.stderr);
-    assert.match(removed.stdout, new RegExp(edge.url.replace(/[.:/]/g, "\\$&")), "names the host that still points at it");
+    assert.ok(removed.stdout.includes(edge.url), "names the host that still points at it");
     const unknown = await losos(["frobnicate"]);
     assert.equal(unknown.code, 1);
   });
