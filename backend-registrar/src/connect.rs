@@ -334,6 +334,7 @@ struct Memory {
     by_tenant: BTreeMap<String, String>,
     sessions: BTreeMap<String, (Session, DestinationCharge)>,
     links: u64,
+    events: u64,
 }
 
 /// A Connect platform in memory, with Stripe's rules where the market relies
@@ -424,11 +425,26 @@ impl MemoryConnect {
     /// # Errors
     /// [`MarketError::Stripe`] for an account the platform never made.
     pub fn account_updated(&self, account: &str) -> Result<(Vec<u8>, String), MarketError> {
+        self.account_updated_at(account, now_secs())
+    }
+
+    /// As [`MemoryConnect::account_updated`], with the event created at
+    /// `created`: a late delivery of an older state.
+    ///
+    /// # Errors
+    /// [`MarketError::Stripe`] for an account the platform never made.
+    pub fn account_updated_at(
+        &self,
+        account: &str,
+        created: u64,
+    ) -> Result<(Vec<u8>, String), MarketError> {
         let a = self
             .account(account)
             .ok_or_else(|| no_such_account(account))?;
         let status = if a.ready { "active" } else { "inactive" };
         Ok(self.signed(&json!({
+            "id": self.next_event_id(),
+            "created": created,
             "type": "account.updated",
             "livemode": self.mode == StripeMode::Live,
             "data": { "object": {
@@ -469,6 +485,8 @@ impl MemoryConnect {
             })?;
         let paid = kind == "checkout.session.completed";
         Ok(self.signed(&json!({
+            "id": self.next_event_id(),
+            "created": now_secs(),
             "type": kind,
             "livemode": session.mode == StripeMode::Live,
             "data": { "object": {
@@ -480,6 +498,14 @@ impl MemoryConnect {
                 "metadata": { "order_id": charge.order_id },
             }},
         })))
+    }
+
+    fn next_event_id(&self) -> String {
+        let n = self.with(|m| {
+            m.events += 1;
+            m.events
+        });
+        format!("evt_memory_{n}")
     }
 
     fn signed(&self, event: &Value) -> (Vec<u8>, String) {
