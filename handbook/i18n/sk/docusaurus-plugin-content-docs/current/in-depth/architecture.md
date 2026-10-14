@@ -370,9 +370,11 @@ roota. `tests/installer-screen.nix` nabootuje obe varianty. BIOS prepne
 zostáva v oboch prípadoch `/boot`. `console.nix` nahradí getty na tty1
 službou s bannerom, ktorá ukazuje IPv4 adresu v LAN a `<hostName>.local`.
 `splash.nix` (`losos.splash.enable`, predvolene zapnuté) je Plymouth s
-témou LosOS (`modules/splash/losos.script`): počas štartu losos v strede,
-a keď mu služba s bannerom pošle tie isté riadky, losos plynulo vyjde hore a
-pod ním sa otvorí panel. Na konci štartu Plymouth nič neukončí, takže panel
+témou LosOS (`modules/splash/losos.script`). Štart sa otvorí animáciou
+loga: z okrajov obrazovky sa stiahne obrys na pásik pod názvom, losos
+priplává vodorovne a natočí sa nahor vedľa nápisu „LosOS“ a šrafovanie
+pásika sa potom plní podľa postupu štartu. Keď mu služba s bannerom pošle
+tie isté riadky, logo plynulo vyjde hore a pod ním sa otvorí panel. Na konci štartu Plymouth nič neukončí, takže panel
 zostáva na obrazovke. Banner sa pod ním ďalej kreslí na tty1, a ten je
 vidno tam, kde Plymouth v prvých sekundách nenašiel displej a beží v
 textovom režime. Pri BIOS-e zostáva grafický režim GRUB-u jadru
