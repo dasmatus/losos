@@ -1640,6 +1640,37 @@ export default defineMessages({
     sk: "vCPU-hodina",
     de: "vCPU-Stunde",
   },
+  /* The same units after a count: "4 vCPU-hours", "1 GiB-month". */
+  "panes.market.units.vm": {
+    en: { one: "replica-month", other: "replica-months" },
+    sk: {
+      one: "replika-mesiac",
+      few: "replika-mesiace",
+      many: "replika-mesiaca",
+      other: "replika-mesiacov",
+    },
+    de: { one: "Replikat-Monat", other: "Replikat-Monate" },
+  },
+  "panes.market.units.storage": {
+    en: { one: "GiB-month", other: "GiB-months" },
+    sk: {
+      one: "GiB-mesiac",
+      few: "GiB-mesiace",
+      many: "GiB-mesiaca",
+      other: "GiB-mesiacov",
+    },
+    de: { one: "GiB-Monat", other: "GiB-Monate" },
+  },
+  "panes.market.units.compute": {
+    en: { one: "vCPU-hour", other: "vCPU-hours" },
+    sk: {
+      one: "vCPU-hodina",
+      few: "vCPU-hodiny",
+      many: "vCPU-hodiny",
+      other: "vCPU-hodín",
+    },
+    de: { one: "vCPU-Stunde", other: "vCPU-Stunden" },
+  },
   "panes.market.status.pending": {
     en: "Awaiting payment",
     sk: "Čaká na platbu",
