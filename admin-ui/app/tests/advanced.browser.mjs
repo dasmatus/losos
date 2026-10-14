@@ -91,6 +91,11 @@ const CONFIG = {
     { sha: 'a'.repeat(40), when: '2026-10-06T03:00:00+02:00', subject: 'losos install' },
   ],
   sync: { state: 'ok', detail: 'In step with LosOS Git.', syncedAt: '2026-10-07T10:12:30+02:00', remoteHead: 'b'.repeat(40) },
+  upstream: {
+    url: 'https://github.com/dasmatus/losos.git',
+    branch: 'main',
+    report: { state: 'ok', detail: 'Took dasmatus/losos main at a088a5cb03; the box builds it at the next update.', syncedAt: '2026-10-07T03:12:00+02:00', remoteHead: 'a088a5cb03e9d1d0d770e6e1fd4bbfe17d5d5143' },
+  },
 };
 
 const json = (route, status, body) =>
@@ -400,7 +405,25 @@ await check('History shows the repository, the sync state and the commits, and S
   await main(page).getByText('A rebuild is running; the push waits.').waitFor();
   assert.deepEqual(syncs, ['POST']);
   assert.equal(await main(page).getByTestId('history-sync-state').innerText(), 'Waiting');
+  assert.equal(await main(page).getByTestId('history-update-state').innerText(), 'Up to date');
+  await main(page).getByText('https://github.com/dasmatus/losos.git').waitFor();
+  await main(page).getByText('Newest published version a088a5cb03').waitFor();
   await noViolations(page);
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+await check('History says when the box kept an edit instead of updating, and when an older daemon sends no upstream', async () => {
+  const kept = { ...CONFIG, upstream: { ...CONFIG.upstream, report: { state: 'kept', detail: 'Files other than overrides.nix and install-target.nix were changed.', syncedAt: '2026-10-08T03:05:00+02:00', remoteHead: 'd'.repeat(40) } } };
+  let { page, errors } = await open({ path: '/settings/history', config: kept });
+  assert.equal(await main(page).getByTestId('history-update-state').innerText(), 'Kept your edits');
+  await main(page).getByText('Files other than overrides.nix and install-target.nix were changed.').waitFor();
+  assert.deepEqual(errors, []);
+  await page.close();
+  const { upstream: _, ...older } = CONFIG;
+  ({ page, errors } = await open({ path: '/settings/history', config: older }));
+  assert.equal(await main(page).getByTestId('history-update-state').innerText(), 'Off');
+  await main(page).getByText('This box does not take new versions.', { exact: false }).waitFor();
   assert.deepEqual(errors, []);
   await page.close();
 });

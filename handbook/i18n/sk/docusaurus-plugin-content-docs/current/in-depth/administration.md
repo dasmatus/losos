@@ -415,13 +415,15 @@ nemôže čítať súbory toho druhého. `tests/impermanence.nix` to kontroluje.
 
 ## Aktualizácie a reštarty
 
-- **03:00.** `system.autoUpgrade` prestavia systém z `losos.upgradeFlakeUri`.
-  Predvolené `git+file:///etc/nixos#install` nesťahuje nové balíky. Na
-  aktualizácie nastavte URI `github:`. Fragment `#install` ponechajte; bez
-  neho prestavba zlyhá. Vzdialené URI stále používa zoznam diskov, režim
-  firmvéru, režim odomykania a nastavenia tohto zariadenia, pretože ich
-  prestavba číta z `/etc/nixos` na zariadení, nie z publikovaného
-  repozitára.
+- **03:00.** lososd najprv posunie `/etc/nixos` na najnovší commit vetvy
+  `losos.configRepo.upstream.branch` (`main`) na
+  `losos.configRepo.upstream.url` (repozitár na GitHube) a ponechá pritom
+  `modules/overrides.nix` a `modules/install-target.nix` zariadenia. Potom
+  `system.autoUpgrade` prestavia systém z `losos.upgradeFlakeUri`, teda z
+  `git+file:///etc/nixos#install`. Fragment `#install` ponechajte; bez neho
+  prestavba zlyhá. Ak sa od poslednej aktualizácie zmenil iný súbor v
+  `/etc/nixos`, zariadenie ho ponechá a neaktualizuje; panel História to
+  povie. `losos-ctl config --update` spustí prvý krok ručne.
 - **00:07.** `midnight-reboot.timer` reštartuje bezpodmienečne
   (`Persistent=true`, takže zariadenie, ktoré bolo vypnuté, to dobehne).
   Keďže sa koreň pri štarte zostavuje nanovo, reštart je spôsob, akým sa

@@ -1241,7 +1241,8 @@
         "repository",
         "head",
         "log",
-        "sync"
+        "sync",
+        "upstream"
       ],
       "properties": {
         "enabled": {
@@ -1370,6 +1371,74 @@
               "description": "The remote branch head after the sync, when there is one."
             }
           }
+        },
+        "upstream": {
+          "type": "object",
+          "required": [
+            "url",
+            "branch",
+            "report"
+          ],
+          "properties": {
+            "url": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "$LOSOS_UPSTREAM_URL (losos.configRepo.upstream.url); null when following is off."
+            },
+            "branch": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "$LOSOS_UPSTREAM_BRANCH, `main` by default."
+            },
+            "report": {
+              "type": "object",
+              "required": [
+                "state",
+                "detail",
+                "syncedAt",
+                "remoteHead"
+              ],
+              "properties": {
+                "state": {
+                  "type": "string",
+                  "enum": [
+                    "off",
+                    "pending",
+                    "ok",
+                    "kept",
+                    "waiting",
+                    "unavailable",
+                    "error"
+                  ],
+                  "description": "How the last look at the published branch went. `kept`: files other than modules/overrides.nix and modules/install-target.nix changed since the last follow (or since the install), so the box keeps its tree rather than overwrite them. `waiting`: a rebuild was running. `unavailable`: the source could not be fetched, and the nightly rebuild builds the current tree."
+                },
+                "detail": {
+                  "type": "string",
+                  "description": "One sentence for the owner."
+                },
+                "syncedAt": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "RFC 3339, when the report was made."
+                },
+                "remoteHead": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "The published commit the last look fetched."
+                }
+              },
+              "description": "The outcome of the last ConfigUpdate, kept in config-upstream.json beside state.json."
+            }
+          },
+          "description": "Where /etc/nixos follows the published tree from. A follow is one commit on the box's branch whose tree is the published branch's newest tree with this box's modules/overrides.nix and modules/install-target.nix kept. nixos-upgrade.service asks for one (ConfigUpdate) before the nightly build."
         }
       }
     }
@@ -1848,6 +1917,10 @@
         "out": "s (configResponse)"
       },
       "ConfigSync": {
+        "in": [],
+        "out": "s (configResponse)"
+      },
+      "ConfigUpdate": {
         "in": [],
         "out": "s (configResponse)"
       }

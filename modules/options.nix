@@ -931,6 +931,40 @@ in
       description = "The name of the configuration repository on LosOS Git.";
     };
 
+    # ── Following the published tree ─────────────────────────────────────
+    # The installer copies the published tree into /etc/nixos once, and both
+    # rebuild paths build from there, so without this a box never gets new
+    # software. With it, nixos-upgrade.service first asks lososd to move
+    # /etc/nixos to the newest commit of this branch, keeping the box's own
+    # modules/overrides.nix and modules/install-target.nix
+    # (backend/src/config_repo.rs), and the 03:00 rebuild then builds it.
+    configRepo.upstream.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Before each nightly update, move this box's configuration to the
+        newest commit of losos.configRepo.upstream.branch at
+        losos.configRepo.upstream.url, keeping its own settings, drive list,
+        firmware mode and unlock mode. The box skips the step, and says so on
+        the History pane, when files other than those two were changed in its
+        configuration, so a hand edit pushed to LosOS Git is never
+        overwritten. Off, the box rebuilds only from the configuration it has.
+      '';
+    };
+    configRepo.upstream.url = lib.mkOption {
+      type = lib.types.str;
+      default = "https://github.com/dasmatus/losos.git";
+      description = ''
+        The git repository the box takes new versions from. A company can
+        point it at its own fork. It must be reachable without credentials.
+      '';
+    };
+    configRepo.upstream.branch = lib.mkOption {
+      type = lib.types.str;
+      default = "main";
+      description = "The branch of losos.configRepo.upstream.url the box follows.";
+    };
+
     nextcloud.hostName = lib.mkOption {
       type = lib.types.str;
       default = "localhost";
@@ -1192,7 +1226,11 @@ in
         nixosConfigurations.<hostname>, and this flake only exports `iso` and
         `install` — so every unfragmented run dies with "flake does not provide
         attribute". lososd uses the same `#install` ref (backend/src/io_backend.rs).
-        Use a github: URI (still with `#install`) for remote auto-updates.
+        New versions arrive through losos.configRepo.upstream, which moves
+        /etc/nixos itself before the rebuild, so an Apply and the nightly
+        update build the same tree. A github: URI (still with `#install`)
+        also works, but an Apply then rebuilds from the older tree in
+        /etc/nixos and undoes the update until the next night.
 
         A remote URI evaluates the published tree, which has neither
         modules/install-target.nix (this box's drive list, firmware mode and

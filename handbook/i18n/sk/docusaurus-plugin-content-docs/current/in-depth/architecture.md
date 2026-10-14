@@ -379,9 +379,19 @@ textovom režime. Pri BIOS-e zostáva grafický režim GRUB-u jadru
 (`gfxpayloadBios = "keep"`), aby mal Plymouth framebuffer už v stage 1.
 
 **Automatický upgrade a nočný reštart** (`updates.nix`). `system.autoUpgrade`
-prestavuje z `losos.upgradeFlakeUri` o 03:00. Predvolené
-`git+file:///etc/nixos#install` iba konzistentne posúva systém dopredu a
-nesťahuje nové nixpkgs. Pre skutočný upgrade nastavte URI `github:`.
+prestavuje z `losos.upgradeFlakeUri` o 03:00, predvolene
+`git+file:///etc/nixos#install`. Pred zostavením spustí
+`nixos-upgrade.service` príkaz `losos-ctl config --update` a lososd posunie
+`/etc/nixos` na najnovší commit vetvy `losos.configRepo.upstream.branch` na
+`losos.configRepo.upstream.url` (predvolene `main` repozitára na GitHube).
+Fetch je plytký a výsledkom je jeden commit na vlastnej vetve zariadenia,
+nie merge: jeho strom je publikovaný strom, do ktorého zariadenie vráti
+svoje `modules/overrides.nix` a `modules/install-target.nix`. Apply a nočná
+prestavba potom zostavujú ten istý strom, čo by URI `github:` tu nedalo:
+Apply by zostavil staršie `/etc/nixos` a vrátil nočnú aktualizáciu späť.
+lososd krok preskočí a hlási `kept`, keď sa od poslednej aktualizácie
+zmenil iný súbor, takže ručná zmena pushnutá do LosOS Git sa nikdy
+neprepíše. `tests/invariants.nix` krok pripína.
 
 **Obe cesty prestavby sú zámerne `--impure`**: `system.autoUpgrade.flags`
 a `rebuild_command` v lososd. Publikovaný strom neobsahuje ani

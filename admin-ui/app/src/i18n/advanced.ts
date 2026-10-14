@@ -287,6 +287,42 @@ export default defineMessages({
     de: "LosOS Git antwortet nicht",
   },
   "history.sync.state.error": { en: "Error", sk: "Chyba", de: "Fehler" },
+  "history.update.title": {
+    en: "Updates",
+    sk: "Aktualizácie",
+    de: "Updates",
+  },
+  "history.update.source": {
+    en: "Takes new versions from",
+    sk: "Nové verzie berie z",
+    de: "Holt neue Versionen von",
+  },
+  "history.update.remote": {
+    en: "Newest published version {sha}",
+    sk: "Najnovšia zverejnená verzia {sha}",
+    de: "Neueste veröffentlichte Version {sha}",
+  },
+  "history.update.caption": {
+    en: "Before the nightly update, the box takes the newest version of this branch as one change and keeps your settings, disks and unlock mode. If you change any file other than modules/overrides.nix, the box keeps your edit and stops updating until you put it back.",
+    sk: "Pred nočnou aktualizáciou zariadenie prevezme najnovšiu verziu tejto vetvy ako jednu zmenu a ponechá vaše nastavenia, disky a spôsob odomykania. Ak zmeníte iný súbor než modules/overrides.nix, zariadenie vašu úpravu ponechá a prestane sa aktualizovať, kým ju nevrátite.",
+    de: "Vor dem nächtlichen Update übernimmt die Box die neueste Version dieses Branches als eine Änderung und behält deine Einstellungen, Platten und Entsperrart. Änderst du eine andere Datei als modules/overrides.nix, behält die Box deine Änderung und aktualisiert nicht mehr, bis du sie zurücknimmst.",
+  },
+  "history.update.off": {
+    en: "This box does not take new versions. It rebuilds only from the configuration it has.",
+    sk: "Toto zariadenie neberie nové verzie. Prestavuje sa len z konfigurácie, ktorú má.",
+    de: "Diese Box holt keine neuen Versionen. Sie baut nur aus der Konfiguration neu, die sie hat.",
+  },
+  "history.update.state.off": { en: "Off", sk: "Vypnuté", de: "Aus" },
+  "history.update.state.pending": { en: "Not yet", sk: "Zatiaľ nie", de: "Noch nicht" },
+  "history.update.state.ok": { en: "Up to date", sk: "Aktuálne", de: "Aktuell" },
+  "history.update.state.kept": { en: "Kept your edits", sk: "Ponechané vaše úpravy", de: "Deine Änderungen behalten" },
+  "history.update.state.waiting": { en: "Waiting", sk: "Čaká sa", de: "Wartet" },
+  "history.update.state.unavailable": {
+    en: "Source not reachable",
+    sk: "Zdroj je nedostupný",
+    de: "Quelle nicht erreichbar",
+  },
+  "history.update.state.error": { en: "Error", sk: "Chyba", de: "Fehler" },
   "history.commits.title": {
     en: "Changes",
     sk: "Zmeny",

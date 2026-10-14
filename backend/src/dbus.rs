@@ -12,8 +12,9 @@
 use crate::facade::{BUS_NAME, OBJECT_PATH};
 use crate::io_backend::IoLosos;
 use crate::losos::{
-    cmd_apply, cmd_change, cmd_config, cmd_config_sync, cmd_edge, cmd_factory_reset, cmd_grow,
-    cmd_options, cmd_recovery, cmd_set_password, cmd_settings, cmd_state, cmd_status,
+    cmd_apply, cmd_change, cmd_config, cmd_config_sync, cmd_config_update, cmd_edge,
+    cmd_factory_reset, cmd_grow, cmd_options, cmd_recovery, cmd_set_password, cmd_settings,
+    cmd_state, cmd_status,
 };
 use crate::model::Mode;
 use crate::overrides::validate_apply;
@@ -138,6 +139,13 @@ impl Control {
     /// then the same document as `Config`.
     fn config_sync(&self) -> fdo::Result<String> {
         reply(&self.backend, cmd_config_sync)
+    }
+
+    /// Move /etc/nixos to the published branch's newest tree, keeping this
+    /// box's own files, then the same document as `Config`. Run by
+    /// `nixos-upgrade.service` before the nightly build (modules/updates.nix).
+    fn config_update(&self) -> fdo::Result<String> {
+        reply(&self.backend, cmd_config_update)
     }
 }
 

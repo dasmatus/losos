@@ -1769,12 +1769,31 @@ export interface ConfigSync {
   remoteHead: string | null;
 }
 
+/** How the last look at the published branch went (backend/schema.json). */
+export type ConfigUpdateState = "off" | "pending" | "ok" | "kept" | "waiting" | "unavailable" | "error";
+
+export interface ConfigUpdateReport {
+  state: ConfigUpdateState;
+  detail: string;
+  syncedAt: string | null;
+  /** The published commit the last look fetched. */
+  remoteHead: string | null;
+}
+
+/** Where /etc/nixos follows the published tree from; both null when it does not. */
+export interface ConfigUpstream {
+  url: string | null;
+  branch: string | null;
+  report: ConfigUpdateReport;
+}
+
 export interface ConfigResponse {
   enabled: boolean;
   repository: ConfigRepository | null;
   head: ConfigHead | null;
   log: ConfigLogEntry[];
   sync: ConfigSync;
+  upstream: ConfigUpstream;
 }
 
 /** GET /api/config — the configuration repository and its history. */
