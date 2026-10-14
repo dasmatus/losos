@@ -249,6 +249,10 @@ that time loses nothing.
 
 - The webhook is authenticated by Stripe's HMAC signature over the raw body,
   with a five minute replay window and a larger body cap than other routes.
+- Stripe may deliver an event twice or out of order. An event the edge has
+  already applied is dropped by its id, and an `account.updated` older than
+  the account state the edge holds is ignored, so a late event cannot take a
+  ready seller off the shelf.
 - A payment only counts when the session id, amount and currency equal what
   the edge recorded for the order. A mismatch is logged and not fulfilled. If
   the edge stopped before it wrote the session id down, the signed event's id
