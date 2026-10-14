@@ -461,9 +461,9 @@ hintereinander unbezahlt, das Gap-Limit in der Wallet erhöhen, um die
 Zahlungen danach zu sehen.
 
 Die Plattformgebühr wird nicht von einer Bitcoin-Zahlung abgezogen. Der
-ganze Betrag geht an den Verkäufer, der Bereich zeigt, was die Gebühr auf
-diese Verkäufe ausmacht, und der Markt stellt sie dem Verkäufer gesondert in
-Rechnung. Ein Verkäufer mit Bitcoin-Schlüssel und ohne USDC-Adresse kann
+ganze Betrag geht an den Verkäufer, und der Edge führt eine laufende Summe
+der Gebühr auf diese Verkäufe, die der Verkäufer der Plattform schuldet und
+im Bereich sieht. Ein Verkäufer mit Bitcoin-Schlüssel und ohne USDC-Adresse kann
 trotzdem anbieten; Käufer zahlen dann nur in Bitcoin.
 
 ### In Bitcoin bezahlen {#paying-in-bitcoin}

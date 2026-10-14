@@ -412,8 +412,8 @@ dopredu; ak za sebou ostane nezaplatených viac ako 20 objednávok, zvýšte v
 peňaženke limit medzery (gap limit), aby ste videli platby po nich.
 
 Poplatok platformy sa z platby v bitcoinoch nestrháva. Celá suma príde
-predajcovi, panel ukáže, koľko poplatok z týchto predajov robí, a trh ho
-predajcovi účtuje zvlášť. Predajca s kľúčom Bitcoinu a bez adresy USDC môže
+predajcovi a edge vedie priebežný súčet poplatkov z týchto predajov, ktorý
+predajca dlhuje platforme a vidí ho na paneli. Predajca s kľúčom Bitcoinu a bez adresy USDC môže
 ponúkať aj tak; kupujúci potom platia len v bitcoinoch.
 
 ### Platba v bitcoinoch pre kupujúceho {#paying-in-bitcoin}

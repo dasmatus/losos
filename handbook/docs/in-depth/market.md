@@ -411,8 +411,8 @@ orders in a row go unpaid, raise the gap limit in your wallet to see the
 payments after them.
 
 The platform fee is not taken out of a Bitcoin payment. The whole amount
-reaches the seller, the pane shows what the fee on those sales comes to,
-and the market bills it to the seller separately. A seller with a Bitcoin
+reaches the seller, and the edge keeps a running total of the fee on those
+sales, which the seller owes the platform and sees on the pane. A seller with a Bitcoin
 key and no USDC address can still list; buyers then pay in Bitcoin only.
 
 ### Paying in Bitcoin
