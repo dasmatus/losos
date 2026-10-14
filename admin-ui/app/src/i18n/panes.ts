@@ -1912,6 +1912,21 @@ export default defineMessages({
     sk: "Kam vám chodia platby",
     de: "Wohin du bezahlt wirst",
   },
+  "panes.market.usdc.payCaption": {
+    en: "You pay from the wallet below, in USDC on {chain}. The platform fee goes to the edge's treasury and the rest straight to the seller.",
+    sk: "Platíte z peňaženky nižšie, v USDC na sieti {chain}. Poplatok platformy ide do pokladnice edge a zvyšok priamo predajcovi.",
+    de: "Du bezahlst mit der Wallet unten, in USDC auf {chain}. Die Plattformgebühr geht an die Kasse des Edge, der Rest direkt an den Verkäufer.",
+  },
+  "panes.market.usdc.sellCaption": {
+    en: "The platform keeps {percent}% of each sale to cover running costs. The rest is paid straight to your payout address in the same transaction.",
+    sk: "Platforma si z každého predaja necháva {percent} % na pokrytie nákladov. Zvyšok ide v tej istej transakcii priamo na vašu adresu pre výplaty.",
+    de: "Die Plattform behält {percent} % jedes Verkaufs für die Betriebskosten. Der Rest geht in derselben Transaktion direkt an deine Auszahlungsadresse.",
+  },
+  "panes.market.usdc.payoutFirst": {
+    en: "Set where you get paid in the wallet above, then list what this box shares.",
+    sk: "V peňaženke vyššie nastavte, kam vám prídu peniaze, a potom ponúknite, čo toto zariadenie zdieľa.",
+    de: "Lege in der Wallet oben fest, wohin du bezahlt wirst, und biete dann an, was diese Box teilt.",
+  },
   "panes.market.usdc.receive": {
     en: "Sign with the wallet that should receive USDC on {chain}. The edge checks the signature and stores only the address.",
     sk: "Podpíšte peňaženkou, ktorá má dostávať USDC na sieti {chain}. Edge podpis skontroluje a uloží len adresu.",

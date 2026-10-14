@@ -66,6 +66,9 @@ const RPC_METHODS: &[&str] = &[
     "eth_getBalance",
     "eth_getBlockByNumber",
     "eth_getCode",
+    // The wallet's receipt wait asks for the transaction while it is not
+    // yet in a block; refusing it failed every payment after the money moved.
+    "eth_getTransactionByHash",
     "eth_getTransactionCount",
     "eth_getTransactionReceipt",
     "eth_maxPriorityFeePerGas",
@@ -645,6 +648,26 @@ mod tests {
     fn address_of_key() -> String {
         let key = SigningKey::from_bytes((&key()).into()).unwrap();
         address_of(&VerifyingKey::from(&key))
+    }
+
+    /// The calls viem makes to send a transaction and wait for its receipt,
+    /// the same list lososd relays.
+    #[test]
+    fn the_wallet_can_send_and_wait_through_the_relay() {
+        for method in [
+            "eth_chainId",
+            "eth_blockNumber",
+            "eth_call",
+            "eth_estimateGas",
+            "eth_getBlockByNumber",
+            "eth_maxPriorityFeePerGas",
+            "eth_getTransactionCount",
+            "eth_sendRawTransaction",
+            "eth_getTransactionByHash",
+            "eth_getTransactionReceipt",
+        ] {
+            assert!(RPC_METHODS.contains(&method), "{method} is forwarded");
+        }
     }
 
     #[test]

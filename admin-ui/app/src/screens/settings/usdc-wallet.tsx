@@ -102,10 +102,14 @@ export function UsdcWallet({
   usdc,
   payout,
   disabled,
+  onPaid,
 }: {
   usdc: UsdcPublic;
   payout?: string | null;
   disabled: boolean;
+  /** Reload the market once the edge has counted a payment, so the order
+   *  reads paid and the refresh announces it. */
+  onPaid?: () => void;
 }) {
   const t = useT();
   const [mode, setMode] = React.useState<Mode>("none");
@@ -166,7 +170,8 @@ export function UsdcWallet({
     }
     sessionStorage.removeItem(PENDING_INVOICE);
     setInvoice(null);
-    toast.success(t("panes.market.usdc.paid"), pending.tx);
+    if (onPaid) onPaid();
+    else toast.success(t("panes.market.usdc.paid"), pending.tx);
   };
 
   const useLocal = async (words: string) => {
@@ -210,6 +215,9 @@ export function UsdcWallet({
       if (!first) throw new Error("no account");
       setAddress(first);
       setMode("injected");
+      // The extension holds its own key; a password typed for the browser
+      // wallet has no use here and would sit in the import row.
+      setPassword("");
     } catch (error) {
       fail(error);
     } finally {
@@ -358,7 +366,7 @@ export function UsdcWallet({
         </Row>
         {phrase !== null && (
           <Row>
-            <div className="grid gap-2">
+            <div className="grid w-full gap-2">
               <p className="text-[13px] text-ink">{t("panes.market.usdc.writeDown")}</p>
               <p className="font-mono text-[13px] break-all">{phrase}</p>
               <label className="flex items-center gap-2 text-[13px]">
@@ -405,7 +413,7 @@ export function UsdcWallet({
           </div>
         </Row>
         <Row last={invoice === null}>
-          <div className="grid gap-2">
+          <div className="grid w-full gap-2">
             <Input
               placeholder={t("panes.market.usdc.importPlaceholder")}
               value={importText}
