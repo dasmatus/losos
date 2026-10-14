@@ -220,6 +220,11 @@ const CONFIG = {
     { sha: 'a'.repeat(40), when: '2026-10-06T03:00:00+02:00', subject: 'losos install' },
   ],
   sync: { state: 'ok', detail: 'In step with LosOS Git.', syncedAt: '2026-10-07T10:12:30+02:00', remoteHead: 'b'.repeat(40) },
+  upstream: {
+    url: 'https://github.com/dasmatus/losos.git',
+    branch: 'main',
+    report: { state: 'ok', detail: 'Took dasmatus/losos main at a088a5cb03; the box builds it at the next update.', syncedAt: '2026-10-07T03:12:00+02:00', remoteHead: 'a088a5cb03e9d1d0d770e6e1fd4bbfe17d5d5143' },
+  },
 };
 
 const RESULTS = {

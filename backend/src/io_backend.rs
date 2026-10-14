@@ -85,6 +85,11 @@ impl Paths {
         self.state_dir.join("config-sync.json")
     }
 
+    /// How the last look at the published branch went (`cmd_config_update`).
+    pub fn upstream_report_file(&self) -> PathBuf {
+        self.state_dir.join("config-upstream.json")
+    }
+
     /// The git credential store for LosOS Git, written from the bot token
     /// before each fetch or push. 0600, in the daemon's 0700 state directory.
     pub fn git_credentials_file(&self) -> PathBuf {
@@ -904,6 +909,44 @@ fn git(paths: &Paths, with_auth: bool, args: &[&str]) -> anyhow::Result<std::pro
         .stdin(std::process::Stdio::null())
         .output()
         .context("running git (is it on lososd's unit path? see modules/daemon.nix)")
+}
+
+/// `git` against a scratch index instead of the repository's own, so a
+/// follow can assemble its tree without touching the working tree or what is
+/// staged until it fast-forwards. Must succeed, like [`git_ok`].
+fn git_scratch(paths: &Paths, index: &Path, args: &[&str]) -> anyhow::Result<String> {
+    let out = std::process::Command::new("git")
+        .arg("-C")
+        .arg(&paths.config_dir)
+        .args(args)
+        .env("HOME", &paths.state_dir)
+        .env("GIT_INDEX_FILE", index)
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .stdin(std::process::Stdio::null())
+        .output()
+        .context("running git (is it on lososd's unit path? see modules/daemon.nix)")?;
+    if !out.status.success() {
+        anyhow::bail!("git {}: {}", args.join(" "), first_line(&out.stderr));
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+}
+
+/// Where a follow keeps the published commit it fetched, took, and the box
+/// commit it made. Refs rather than files, so the commits they name stay in
+/// the repository through `git gc`.
+const FETCHED_REF: &str = "refs/losos/fetched";
+const UPSTREAM_REF: &str = "refs/losos/upstream";
+const FOLLOWED_REF: &str = "refs/losos/followed";
+
+/// A ref's commit, `None` when the ref does not exist.
+fn git_ref(paths: &Paths, name: &str) -> anyhow::Result<Option<String>> {
+    let out = git(paths, false, &["rev-parse", "--verify", "-q", name])?;
+    if !out.status.success() {
+        return Ok(None);
+    }
+    Ok(Some(
+        String::from_utf8_lossy(&out.stdout).trim().to_string(),
+    ))
 }
 
 /// `git` that must succeed; the first stderr line is the error.
@@ -2050,6 +2093,150 @@ impl Losos for IoLosos {
     fn save_sync_report(&mut self, report: &crate::config_repo::SyncReport) -> anyhow::Result<()> {
         let text = serde_json::to_vec_pretty(report)?;
         atomic_write_secret(&self.paths.sync_report_file(), &text)
+    }
+
+    fn upstream(&mut self) -> Option<crate::config_repo::Upstream> {
+        crate::config_repo::Upstream::from_env()
+    }
+
+    fn upstream_fetch(&mut self, up: &crate::config_repo::Upstream) -> anyhow::Result<String> {
+        // Shallow and into a ref of its own: the box needs the newest tree,
+        // never the project's history, and FETCH_HEAD is shared with the
+        // LosOS Git sync.
+        let refspec = format!("+refs/heads/{}:{FETCHED_REF}", up.branch);
+        let out = git(
+            &self.paths,
+            false,
+            &[
+                // A link that stalls gives up after a minute instead of
+                // holding the nightly update, and the state lock, forever.
+                "-c",
+                "http.lowSpeedLimit=1000",
+                "-c",
+                "http.lowSpeedTime=60",
+                "fetch",
+                "-q",
+                "--depth",
+                "1",
+                "--no-tags",
+                &up.url,
+                &refspec,
+            ],
+        )?;
+        if !out.status.success() {
+            return Err(crate::config_repo::NotUp(format!(
+                "{} could not be fetched ({})",
+                up.label(),
+                first_line(&out.stderr)
+            ))
+            .into());
+        }
+        git_ok(&self.paths, false, &["rev-parse", FETCHED_REF])
+    }
+
+    fn upstream_mark(&mut self) -> anyhow::Result<Option<crate::config_repo::FollowMark>> {
+        let upstream = git_ref(&self.paths, UPSTREAM_REF)?;
+        let followed = git_ref(&self.paths, FOLLOWED_REF)?;
+        Ok(upstream
+            .zip(followed)
+            .map(|(upstream, followed)| crate::config_repo::FollowMark { upstream, followed }))
+    }
+
+    fn config_edited_outside(&mut self, base: Option<&str>) -> anyhow::Result<bool> {
+        let base = match base {
+            Some(b) => b.to_string(),
+            // The installer's commit. A repository a clone pushed a second
+            // root into has several; the oldest is the installer's.
+            None => git_ok(&self.paths, false, &["rev-list", "--max-parents=0", "HEAD"])?
+                .lines()
+                .last()
+                .unwrap_or_default()
+                .to_string(),
+        };
+        let excludes: Vec<String> = crate::config_repo::BOX_FILES
+            .iter()
+            .map(|f| format!(":(exclude){f}"))
+            .collect();
+        let mut args = vec!["diff", "--quiet", base.as_str(), "HEAD", "--", "."];
+        args.extend(excludes.iter().map(String::as_str));
+        let out = git(&self.paths, false, &args)?;
+        match out.status.code() {
+            Some(0) => Ok(false),
+            Some(1) => Ok(true),
+            _ => anyhow::bail!("git diff {base} HEAD: {}", first_line(&out.stderr)),
+        }
+    }
+
+    fn config_follow(
+        &mut self,
+        upstream: &str,
+        subject: &str,
+        body: &str,
+    ) -> anyhow::Result<Option<String>> {
+        let head = git_ok(&self.paths, false, &["rev-parse", "HEAD"])?;
+        std::fs::create_dir_all(&self.paths.state_dir)
+            .with_context(|| format!("creating {}", self.paths.state_dir.display()))?;
+        let index = self.paths.state_dir.join("follow.index");
+        let _ = std::fs::remove_file(&index);
+        let tree = (|| -> anyhow::Result<String> {
+            git_scratch(&self.paths, &index, &["read-tree", upstream])?;
+            for file in crate::config_repo::BOX_FILES {
+                // `<mode> blob <sha>\t<path>`, or nothing when the box has
+                // no such file, in which case the published copy stays.
+                let entry = git_ok(&self.paths, false, &["ls-tree", "HEAD", "--", file])?;
+                let Some((meta, _)) = entry.split_once('\t') else {
+                    continue;
+                };
+                let mut meta = meta.split_whitespace();
+                let (Some(mode), Some(_), Some(blob)) = (meta.next(), meta.next(), meta.next())
+                else {
+                    anyhow::bail!("git ls-tree HEAD -- {file}: unexpected output {entry:?}");
+                };
+                let info = format!("{mode},{blob},{file}");
+                git_scratch(
+                    &self.paths,
+                    &index,
+                    &["update-index", "--add", "--cacheinfo", &info],
+                )?;
+            }
+            git_scratch(&self.paths, &index, &["write-tree"])
+        })();
+        let _ = std::fs::remove_file(&index);
+        let tree = tree?;
+
+        let current = git_ok(&self.paths, false, &["rev-parse", "HEAD^{tree}"])?;
+        let made = if tree == current {
+            None
+        } else {
+            let commit = git_ok(
+                &self.paths,
+                false,
+                &["commit-tree", &tree, "-p", &head, "-m", subject, "-m", body],
+            )?;
+            git_ok(&self.paths, false, &["merge", "-q", "--ff-only", &commit])?;
+            tracing::info!(sha = %commit, upstream, "followed the published tree");
+            Some(commit)
+        };
+        let followed = made.clone().unwrap_or(head);
+        git_ok(&self.paths, false, &["update-ref", UPSTREAM_REF, upstream])?;
+        git_ok(&self.paths, false, &["update-ref", FOLLOWED_REF, &followed])?;
+        Ok(made)
+    }
+
+    fn load_upstream_report(&mut self) -> anyhow::Result<Option<crate::config_repo::SyncReport>> {
+        match std::fs::read_to_string(self.paths.upstream_report_file()) {
+            Ok(text) => Ok(serde_json::from_str(&text).ok()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(anyhow::Error::new(e).context("reading the update report")),
+        }
+    }
+
+    fn save_upstream_report(
+        &mut self,
+        report: &crate::config_repo::SyncReport,
+    ) -> anyhow::Result<()> {
+        let text = serde_json::to_vec_pretty(report)?;
+        atomic_write_secret(&self.paths.upstream_report_file(), &text)
     }
 
     // ── Backups and erasing the box ─────────────────────────────────────
