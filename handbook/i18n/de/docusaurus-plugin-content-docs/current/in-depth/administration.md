@@ -456,13 +456,16 @@ das.
 
 ## Updates und Neustarts
 
-- **03:00.** `system.autoUpgrade` baut aus `losos.upgradeFlakeUri` neu. Der
-  Standardwert `git+file:///etc/nixos#install` zieht keine neuen Pakete.
-  Setze eine `github:`-URI, um Updates zu bekommen. Behalte das
-  Fragment `#install`; ohne es schlägt der Rebuild fehl. Eine entfernte URI
-  verwendet weiterhin die Laufwerksliste, den Firmware-Modus, den
-  Entsperrmodus und die Einstellungen dieser Box, weil der Rebuild sie aus
-  `/etc/nixos` auf der Box liest, nicht aus dem veröffentlichten Repository.
+- **03:00.** lososd bringt `/etc/nixos` zuerst auf den neuesten Commit von
+  `losos.configRepo.upstream.branch` (`main`) unter
+  `losos.configRepo.upstream.url` (dem GitHub-Repository) und behält dabei
+  `modules/overrides.nix` und `modules/install-target.nix` der Box. Dann
+  baut `system.autoUpgrade` aus `losos.upgradeFlakeUri` neu, also aus
+  `git+file:///etc/nixos#install`. Behalte das Fragment `#install`; ohne es
+  schlägt der Rebuild fehl. Wurde seit dem letzten Update eine andere Datei
+  in `/etc/nixos` geändert, behält die Box sie und aktualisiert nicht; der
+  Verlauf-Bereich sagt es. `losos-ctl config --update` führt den ersten
+  Schritt von Hand aus.
 - **00:07.** `midnight-reboot.timer` startet bedingungslos neu
   (`Persistent=true`, sodass eine Box, die aus war, das nachholt). Da die
   Wurzel beim Booten neu aufgebaut wird, ist der Neustart der Weg, auf dem

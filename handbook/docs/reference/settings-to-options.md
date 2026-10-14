@@ -38,7 +38,9 @@ them in full.
 
 | What                                 | Option                             | Default                                    |
 | ------------------------------------ | ---------------------------------- | ------------------------------------------ |
-| Where updates come from              | `losos.upgradeFlakeUri`            | `git+file:///etc/nixos#install`, which brings no new software |
+| Where updates come from              | `losos.configRepo.upstream.url`, `.branch` | `https://github.com/dasmatus/losos.git`, `main` |
+| Whether the box updates at all       | `losos.configRepo.upstream.enable` | on                                         |
+| What the nightly rebuild builds      | `losos.upgradeFlakeUri`            | `git+file:///etc/nixos#install`, the box's own repository |
 | The hardening baseline               | `losos.hardening.enable`           | on                                         |
 | LosOS Git federation (ActivityPub)   | `losos.forgejo.federation.enable`  | on, while the disk is shared               |
 | LosOS cloud federation               | `losos.nextcloud.federation.enable` | on, while the disk is shared              |

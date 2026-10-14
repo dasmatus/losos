@@ -125,8 +125,13 @@ enum Command {
     Config {
         /// Sync with LosOS Git now instead of waiting for the next run: push
         /// what the box has, or take a commit pushed from a clone and rebuild.
-        #[arg(long)]
+        #[arg(long, conflicts_with = "update")]
         sync: bool,
+        /// Move the configuration to the published branch's newest tree,
+        /// keeping this box's own files. The nightly update runs this first;
+        /// the rebuild that follows is what installs it.
+        #[arg(long)]
+        update: bool,
         #[arg(long, hide = true)]
         json: bool,
     },
@@ -483,7 +488,8 @@ fn run(cli: Cli) -> Result<(), BackendFailure> {
         Command::Recovery { .. } => call_backend("Recovery", &())?,
         Command::Options { .. } => call_backend("Options", &())?,
         Command::Config { sync: true, .. } => call_backend("ConfigSync", &())?,
-        Command::Config { sync: false, .. } => call_backend("Config", &())?,
+        Command::Config { update: true, .. } => call_backend("ConfigUpdate", &())?,
+        Command::Config { .. } => call_backend("Config", &())?,
         Command::Apply => {
             let mut input = String::new();
             std::io::stdin()

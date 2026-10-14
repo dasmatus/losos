@@ -12,6 +12,7 @@ import {
   postConfigSync,
   type ConfigResponse,
   type ConfigSyncState,
+  type ConfigUpdateState,
 } from "@/lib/api";
 import { intlTag } from "@/lib/i18n";
 import { useLocale, useT } from "@/lib/i18n-react";
@@ -188,6 +189,45 @@ export function HistoryPane({ locked }: { locked: boolean }) {
       )}
 
       <PaneSection>
+        <GroupTitle>{t("history.update.title")}</GroupTitle>
+        <Group>
+          {config.upstream.url !== null && (
+            <Row>
+              <RowText title={t("history.update.source")} detail={<span className="numeric break-all">{config.upstream.url}</span>} />
+              <RowValue className="text-ink">{config.upstream.branch ?? "—"}</RowValue>
+            </Row>
+          )}
+          <Row last>
+            <RowText
+              title={
+                <span className="flex flex-wrap items-center gap-2">
+                  <Badge variant={updateTone(config.upstream.report.state)} data-testid="history-update-state">
+                    {t(`history.update.state.${config.upstream.report.state}`)}
+                  </Badge>
+                  {config.upstream.report.syncedAt !== null && (
+                    <span className="text-[12.5px] text-muted">
+                      {t("history.sync.lastAt", { when: when(config.upstream.report.syncedAt) })}
+                    </span>
+                  )}
+                </span>
+              }
+              detail={
+                <>
+                  {config.upstream.report.detail}
+                  {config.upstream.report.remoteHead !== null && (
+                    <span className="numeric block text-faint">
+                      {t("history.update.remote", { sha: short(config.upstream.report.remoteHead) })}
+                    </span>
+                  )}
+                </>
+              }
+            />
+          </Row>
+        </Group>
+        <GroupCaption>{config.upstream.url === null ? t("history.update.off") : t("history.update.caption")}</GroupCaption>
+      </PaneSection>
+
+      <PaneSection>
         <GroupTitle>{t("history.commits.title")}</GroupTitle>
         <Group>
           {config.log.length === 0 ? (
@@ -221,6 +261,8 @@ function normalize(config: Partial<ConfigResponse>): ConfigResponse {
     syncedAt: null,
     remoteHead: null,
   };
+  const upstream = config.upstream ?? { url: null, branch: null, report: null };
+  const report = upstream.report ?? { state: "pending", detail: "", syncedAt: null, remoteHead: null };
   return {
     enabled: config.enabled === true && repository !== null,
     repository: repository !== null && typeof repository.url === "string" ? repository : null,
@@ -232,8 +274,29 @@ function normalize(config: Partial<ConfigResponse>): ConfigResponse {
       syncedAt: sync.syncedAt ?? null,
       remoteHead: sync.remoteHead ?? null,
     },
+    upstream: {
+      url: typeof upstream.url === "string" ? upstream.url : null,
+      branch: typeof upstream.branch === "string" ? upstream.branch : null,
+      report: {
+        // An older daemon sends no `upstream` at all: that box does not follow.
+        state: config.upstream === undefined ? "off" : UPDATE_STATES.has(report.state) ? report.state : "pending",
+        detail: typeof report.detail === "string" ? report.detail : "",
+        syncedAt: report.syncedAt ?? null,
+        remoteHead: report.remoteHead ?? null,
+      },
+    },
   };
 }
+
+const UPDATE_STATES: ReadonlySet<string> = new Set([
+  "off",
+  "pending",
+  "ok",
+  "kept",
+  "waiting",
+  "unavailable",
+  "error",
+]);
 
 const SYNC_STATES: ReadonlySet<string> = new Set([
   "off",
@@ -262,6 +325,26 @@ function syncTone(state: ConfigSyncState): BadgeProps["variant"] {
     case "diverged":
       return "warn";
     case "refused":
+    case "error":
+      return "crit";
+    default: {
+      const exhaustive: never = state;
+      return exhaustive;
+    }
+  }
+}
+
+function updateTone(state: ConfigUpdateState): BadgeProps["variant"] {
+  switch (state) {
+    case "ok":
+      return "ok";
+    case "waiting":
+    case "pending":
+    case "off":
+      return "neutral";
+    case "kept":
+    case "unavailable":
+      return "warn";
     case "error":
       return "crit";
     default: {

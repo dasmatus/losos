@@ -62,12 +62,35 @@ in
           LOSOS_OPTIONS_FILE = "/etc/losos/options.json";
           LOSOS_CONFIG_DIR = "/etc/nixos";
         }
+        // lib.optionalAttrs cfg.upstream.enable {
+          LOSOS_UPSTREAM_URL = cfg.upstream.url;
+          LOSOS_UPSTREAM_BRANCH = cfg.upstream.branch;
+        }
         // lib.optionalAttrs publish {
           LOSOS_CONFIG_REPO = "${cfg.owner}/${cfg.name}";
           LOSOS_FORGEJO_URL = "http://127.0.0.1:${toString forgejoPort}";
           LOSOS_FORGEJO_TOKEN_FILE = tokenFile;
         };
       }
+
+      # Following the published tree: right before the nightly build, ask
+      # lososd to move /etc/nixos to the newest published commit, keeping the
+      # box's own files (`losos-ctl config --update`, backend/src/losos.rs
+      # cmd_config_update). Through lososd rather than a git command here,
+      # because lososd is the one writer of /etc/nixos and holds its lock
+      # against a concurrent Apply. The `-` keeps a failure from stopping the
+      # update: a box with no internet builds the tree it has, as before.
+      # Gated on autoUpgrade for the reason the Forgejo block below spells out:
+      # a definition here would otherwise create an empty nixos-upgrade unit.
+      (lib.mkIf (cfg.upstream.enable && config.system.autoUpgrade.enable) {
+        nixos-upgrade = {
+          wants = [ "lososd.service" ];
+          after = [ "lososd.service" ];
+          serviceConfig.ExecStartPre = [
+            "-${config.losos.backend.package}/bin/losos-ctl config --update"
+          ];
+        };
+      })
 
       # The bot account for the native service. The workload image carries
       # the same snippet in its entrypoint (flake/images.nix). The mkIf sits

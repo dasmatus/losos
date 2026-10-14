@@ -406,12 +406,15 @@ other's files. `tests/impermanence.nix` checks this.
 
 ## Upgrades and reboots
 
-- **03:00.** `system.autoUpgrade` rebuilds from `losos.upgradeFlakeUri`. The
-  default, `git+file:///etc/nixos#install`, does not pull new packages. Set a
-  `github:` URI to get updates. Keep the `#install` fragment; without it the
-  rebuild fails. A remote URI still uses this box's drive list, firmware
-  mode, unlock mode and settings, because the rebuild reads them from
-  `/etc/nixos` on the box, not from the published repository.
+- **03:00.** lososd first moves `/etc/nixos` to the newest commit of
+  `losos.configRepo.upstream.branch` (`main`) at
+  `losos.configRepo.upstream.url` (the GitHub repository), keeping the box's
+  `modules/overrides.nix` and `modules/install-target.nix`. Then
+  `system.autoUpgrade` rebuilds from `losos.upgradeFlakeUri`, which is
+  `git+file:///etc/nixos#install`. Keep the `#install` fragment; without it
+  the rebuild fails. When another file in `/etc/nixos` changed since the last
+  update, the box keeps it and does not update; the History pane says so.
+  `losos-ctl config --update` runs the first step by hand.
 - **00:07.** `midnight-reboot.timer` reboots unconditionally
   (`Persistent=true`, so a box that was off catches up). Because the root is
   rebuilt on boot, the reboot is how the box repairs itself.
