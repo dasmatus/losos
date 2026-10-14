@@ -476,6 +476,41 @@ fn usdc_takes_one_flag_per_network_of_one_mode() {
     assert_eq!(usdc.chains[2].pay, None);
     assert_eq!(usdc.ens_rpc_file.as_deref(), Some("/run/c/ens-rpc"));
 
+    // The live set: every network the real boxes pay on, each on mainnet,
+    // with names looked up on Ethereum itself.
+    let live = serve_opts(
+        &with(&[
+            "--market-usdc",
+            "network=solana,rpc=/run/c/usdc-rpc-solana,treasury=5ZWj7a1f8tWkjBESHKgrLmXshuXxqeY9SYcfbshpAqPG",
+            "--market-usdc",
+            "network=optimism,rpc=/run/c/usdc-rpc-optimism,pay=0x1111111111111111111111111111111111111111,treasury=0x4444444444444444444444444444444444444444",
+            "--market-usdc",
+            "network=arbitrum,rpc=/run/c/usdc-rpc-arbitrum,pay=0x1111111111111111111111111111111111111111,treasury=0x4444444444444444444444444444444444444444",
+            "--market-usdc",
+            "network=base,rpc=/run/c/usdc-rpc-base,pay=0x1111111111111111111111111111111111111111,treasury=0x4444444444444444444444444444444444444444",
+            "--market-ens-rpc-file",
+            "/run/c/ens-rpc",
+        ])
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>(),
+    );
+    let live = live.market.expect("market").usdc.expect("usdc");
+    assert!(!live.test());
+    let public = live.public();
+    let ids: Vec<Option<u64>> = public.chains.iter().map(|c| c.chain_id).collect();
+    assert_eq!(ids, [Some(8453), Some(42161), Some(10), None]);
+    assert_eq!(public.solana, Some("solana"));
+    assert_eq!(public.ens_chain_id, Some(1));
+    assert_eq!(
+        public.chains[0].usdc,
+        "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913"
+    );
+    assert_eq!(
+        public.chains[3].usdc,
+        "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+    );
+
     for bad in [
         // A live network beside a test one.
         vec!["--market-usdc", BASE, "--market-usdc", "network=base,rpc=/run/c/x,pay=0x1111111111111111111111111111111111111111,treasury=0x4444444444444444444444444444444444444444"],

@@ -49,6 +49,28 @@ export function evmChain(network: string): Chain {
   return chain;
 }
 
+/** Where a transaction can be looked at. Every network the edge settles
+ *  USDC on has a public explorer; the test networks have their own. */
+const EXPLORER_TX: Record<string, (tx: string) => string> = {
+  base: (tx) => `https://basescan.org/tx/${tx}`,
+  "base-sepolia": (tx) => `https://sepolia.basescan.org/tx/${tx}`,
+  arbitrum: (tx) => `https://arbiscan.io/tx/${tx}`,
+  "arbitrum-sepolia": (tx) => `https://sepolia.arbiscan.io/tx/${tx}`,
+  optimism: (tx) => `https://optimistic.etherscan.io/tx/${tx}`,
+  "optimism-sepolia": (tx) => `https://sepolia-optimism.etherscan.io/tx/${tx}`,
+  solana: (tx) => `https://explorer.solana.com/tx/${tx}`,
+  "solana-devnet": (tx) => `https://explorer.solana.com/tx/${tx}?cluster=devnet`,
+};
+
+/** The explorer page of `tx` on `network`, or null for a network without
+ *  one or a transaction that does not look like one. */
+export function explorerTx(network: string, tx: string): string | null {
+  const page = EXPLORER_TX[network];
+  if (!page) return null;
+  const ok = network.startsWith("solana") ? /^[1-9A-HJ-NP-Za-km-z]{64,88}$/.test(tx) : /^0x[0-9a-fA-F]{64}$/.test(tx);
+  return ok ? page(tx) : null;
+}
+
 export function publicRpc(network: string): string {
   return PUBLIC_RPC[network] ?? "";
 }

@@ -1033,6 +1033,11 @@ pub struct OrderView {
     pub volume: Option<String>,
     /// A machine order's image, name and address. Absent on other kinds.
     pub vm: Option<VmView>,
+    /// The transaction that paid a USDC order, for a link to an explorer.
+    pub tx: Option<String>,
+    /// The network it was paid on. Absent on an order paid before the edge
+    /// named networks, which was paid on its first EVM network.
+    pub network: Option<String>,
 }
 
 /// A machine order as either party sees it. The cloud-init is not echoed: it
@@ -1076,6 +1081,8 @@ impl OrderView {
                 created: vm.created,
                 halted: vm.halted,
             }),
+            tx: o.tx_hash.clone(),
+            network: o.paid_network.clone(),
         }
     }
 }

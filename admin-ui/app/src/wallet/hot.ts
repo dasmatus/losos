@@ -42,15 +42,17 @@ interface Sealed {
    *  password is typed. Absent on a wallet saved before they were kept. */
   evm?: string;
   sol?: string;
+  /** The phrase was made on this box rather than imported. */
+  made?: boolean;
 }
 
 /** The saved wallet's public addresses, or null when none is saved. */
-export async function savedAddresses(): Promise<{ evm?: string; sol?: string } | null> {
+export async function savedAddresses(): Promise<{ evm?: string; sol?: string; made: boolean } | null> {
   const sealed = await idbGet();
-  return sealed === null ? null : { evm: sealed.evm, sol: sealed.sol };
+  return sealed === null ? null : { evm: sealed.evm, sol: sealed.sol, made: sealed.made === true };
 }
 
-export async function sealPhrase(password: string, phrase: string): Promise<void> {
+export async function sealPhrase(password: string, phrase: string, made = false): Promise<void> {
   if (password.length < 8) throw new Error("password");
   const salt = crypto.getRandomValues(new Uint8Array(16));
   const iv = crypto.getRandomValues(new Uint8Array(12));
@@ -70,6 +72,7 @@ export async function sealPhrase(password: string, phrase: string): Promise<void
     ct: b64(ct),
     evm: mnemonicToAccount(words).address,
     sol: solanaKeyFromPhrase(words).address,
+    made,
   });
 }
 

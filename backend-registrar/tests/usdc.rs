@@ -753,3 +753,39 @@ async fn the_relay_picks_the_network_and_names_need_an_endpoint() {
     assert_eq!(status, 503);
     edge.shutdown().await;
 }
+
+#[tokio::test]
+async fn live_networks_open_no_market_behind_a_test_key() {
+    // The real boxes pay on mainnet; an edge that lists Base while its
+    // Stripe key is a test key would mix the ledgers, so it trades nothing.
+    let (_chain, url) = start_chain().await;
+    let stripe = start_stripe().await;
+    let edge = Edge::start_market_full(
+        "usdc-live-test-key",
+        &tenants(),
+        &stripe,
+        &[("seller-box", false)],
+        None,
+        move |opts, dir| {
+            std::fs::write(dir.join("usdc-rpc-url"), &url).expect("write rpc url");
+            let market = opts.market.as_mut().expect("market on");
+            market.currency = "usd".to_string();
+            market.usdc = Some(UsdcOpts {
+                chains: vec![UsdcChain {
+                    network: network("base").unwrap(),
+                    rpc_file: dir.path_str("usdc-rpc-url"),
+                    pay: Some(PAY.to_string()),
+                    treasury: TREASURY.to_string(),
+                    genesis: None,
+                }],
+                ens_rpc_file: None,
+            });
+        },
+    )
+    .await;
+    let (status, body) = edge
+        .post("/market/account", auth("buyer-box", OTHER_TOKEN))
+        .await;
+    assert_eq!(status, 503, "{body}");
+    edge.shutdown().await;
+}

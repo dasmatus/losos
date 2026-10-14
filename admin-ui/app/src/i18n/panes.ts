@@ -1665,6 +1665,16 @@ export default defineMessages({
     sk: "do {date}",
     de: "bis {date}",
   },
+  "panes.market.paidOn": {
+    en: "Paid on {network}",
+    sk: "Zaplatené na {network}",
+    de: "Bezahlt auf {network}",
+  },
+  "panes.market.viewTx": {
+    en: "View the transaction",
+    sk: "Pozrieť transakciu",
+    de: "Transaktion ansehen",
+  },
   "panes.market.volume": {
     en: "volume {volume}",
     sk: "zväzok {volume}",
@@ -2041,6 +2051,41 @@ export default defineMessages({
     en: "Pay on",
     sk: "Zaplatiť na sieti",
     de: "Zahlen auf",
+  },
+  "panes.market.usdc.madeHere": {
+    en: "This wallet was made on this box and lives only in this browser. Choose where your sales go before you list: sign with this wallet, or use the address of a wallet you keep elsewhere.",
+    sk: "Táto peňaženka vznikla na tomto zariadení a žije len v tomto prehliadači. Pred ponukou zvoľte, kam pôjdu vaše predaje: podpíšte touto peňaženkou, alebo použite adresu peňaženky, ktorú máte inde.",
+    de: "Diese Wallet wurde auf diesem Gerät erzeugt und lebt nur in diesem Browser. Lege vor dem Anbieten fest, wohin deine Verkäufe gehen: mit dieser Wallet signieren oder die Adresse einer Wallet nehmen, die du anderswo hast.",
+  },
+  "panes.market.usdc.otherWallet": {
+    en: "Use another wallet's address",
+    sk: "Použiť adresu inej peňaženky",
+    de: "Adresse einer anderen Wallet nehmen",
+  },
+  "panes.market.usdc.otherAddress": {
+    en: "Payout address on the Ethereum networks (0x…)",
+    sk: "Adresa na výplatu na sieťach Etherea (0x…)",
+    de: "Auszahlungsadresse auf den Ethereum-Netzen (0x…)",
+  },
+  "panes.market.usdc.otherSign": {
+    en: "Sign this exact message with that wallet's message signing, then paste the signature. The edge checks it and stores only the address.",
+    sk: "Podpíšte presne túto správu podpisovaním správ v tej peňaženke a vložte podpis. Edge ho overí a uloží len adresu.",
+    de: "Signiere genau diese Nachricht mit der Nachrichtensignatur jener Wallet und füge die Signatur ein. Der Edge prüft sie und speichert nur die Adresse.",
+  },
+  "panes.market.usdc.otherSignature": {
+    en: "Signature (0x…)",
+    sk: "Podpis (0x…)",
+    de: "Signatur (0x…)",
+  },
+  "panes.market.usdc.otherSave": {
+    en: "Save this payout address",
+    sk: "Uložiť túto adresu na výplatu",
+    de: "Diese Auszahlungsadresse speichern",
+  },
+  "panes.market.usdc.otherBad": {
+    en: "That is not an address with its signature. Paste the 0x address and the 0x signature of the message shown.",
+    sk: "To nie je adresa s jej podpisom. Vložte adresu 0x a podpis 0x zobrazenej správy.",
+    de: "Das ist keine Adresse mit ihrer Signatur. Füge die 0x-Adresse und die 0x-Signatur der angezeigten Nachricht ein.",
   },
   "panes.market.usdc.payoutReady": {
     en: "USDC for your sales goes to {address}.",

@@ -502,6 +502,11 @@ export interface MarketOrder {
   volume: string | null;
   /** A machine order's image, name and address. Absent on other kinds. */
   vm?: VmOrderInfo | null;
+  /** The transaction that paid a USDC order. */
+  tx?: string | null;
+  /** The network it was paid on; absent on an order from before the edge
+   *  named networks, which was paid on its first EVM network. */
+  network?: string | null;
 }
 
 export interface MarketAccount {

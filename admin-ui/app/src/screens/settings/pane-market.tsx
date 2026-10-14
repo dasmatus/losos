@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/table";
 import { Spinner } from "@/components/ui/progress";
 import { toast } from "@/components/ui/toast";
-import type { MarketKind, MarketOrder, MarketShelfListing } from "@/lib/api";
+import type { MarketKind, MarketOrder, MarketShelfListing, UsdcPublic } from "@/lib/api";
 import { t as translate, type MessageKey } from "@/lib/i18n";
 import { useT } from "@/lib/i18n-react";
 import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText, RowValue, StackRow, SwitchRow } from "./rows";
@@ -38,7 +38,7 @@ import {
 } from "./market";
 import { useEdge } from "./use-edge";
 import type { SettingsForm } from "./use-settings-form";
-import { listNames } from "@/wallet/chains";
+import { explorerTx, listNames } from "@/wallet/chains";
 import { formatUsdc, rememberInvoice, UsdcWallet } from "./usdc-wallet";
 
 /* Sharing this box's disk, and buying and selling what the mesh shares.
@@ -183,7 +183,7 @@ export function MarketPane({ form }: { form: SettingsForm }) {
               </TableHeader>
               <TableBody>
                 {account.purchases.map((order) => (
-                  <PurchaseRow key={order.id} order={order} />
+                  <PurchaseRow key={order.id} order={order} usdc={account.usdc ?? null} />
                 ))}
               </TableBody>
             </Table>
@@ -280,7 +280,32 @@ function SharingSection({ form }: { form: SettingsForm }) {
   );
 }
 
-function PurchaseRow({ order }: { order: MarketOrder }) {
+/** Where a USDC order was paid, with a link to its transaction on the
+ *  network's explorer. Nothing for a card payment. */
+function PaidTx({ order, usdc }: { order: MarketOrder; usdc: UsdcPublic | null }) {
+  const t = useT();
+  if (!order.tx || usdc === null) return null;
+  const chain =
+    usdc.chains.find((c) => c.network === order.network) ??
+    (order.network ? undefined : usdc.chains.find((c) => c.family === "evm"));
+  if (!chain) return null;
+  const href = explorerTx(chain.network, order.tx);
+  return (
+    <p className="mt-0.5 text-[12px] text-faint">
+      {t("panes.market.paidOn", { network: chain.name })}
+      {href !== null && (
+        <>
+          {" · "}
+          <a className="underline underline-offset-2 hover:text-ink" href={href} target="_blank" rel="noopener noreferrer">
+            {t("panes.market.viewTx")}
+          </a>
+        </>
+      )}
+    </p>
+  );
+}
+
+function PurchaseRow({ order, usdc }: { order: MarketOrder; usdc: UsdcPublic | null }) {
   const t = useT();
   const status =
     order.status === "paid" && order.expired
@@ -299,6 +324,7 @@ function PurchaseRow({ order }: { order: MarketOrder }) {
             {t("panes.market.volume", { volume: order.volume })}
           </p>
         )}
+        <PaidTx order={order} usdc={usdc} />
       </TableCell>
       <TableCell className="numeric">{`${order.quantity} ${unitName(order.unit)}`}</TableCell>
       <TableCell className="numeric text-muted">{until}</TableCell>
@@ -608,10 +634,13 @@ function SellSection({ market, disabled }: { market: MarketData; disabled: boole
           <Group className="mt-3">
             {account.sales.map((o, i) => (
               <Row key={o.id} last={i === account.sales.length - 1}>
-                <RowText
-                  title={`${t(KIND_LABEL[o.kind])} · ${o.quantity} ${unitName(o.unit)}`}
-                  detail={t("panes.market.youReceive", { amount: formatMoney(o.seller_net, o.currency) })}
-                />
+                <div className="min-w-0">
+                  <RowText
+                    title={`${t(KIND_LABEL[o.kind])} · ${o.quantity} ${unitName(o.unit)}`}
+                    detail={t("panes.market.youReceive", { amount: formatMoney(o.seller_net, o.currency) })}
+                  />
+                  <PaidTx order={o} usdc={account.usdc ?? null} />
+                </div>
                 <span className="text-[13px] text-muted">
                   {t(`panes.market.status.${o.status}` as MessageKey)}
                 </span>
