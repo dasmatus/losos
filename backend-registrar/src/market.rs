@@ -25,9 +25,12 @@
 //! The module splits like the rest of the crate: the pricing, the capacity
 //! accounting, the webhook signature check and the order state machine are
 //! pure functions over [`MarketState`] and are unit-tested below; [`Market`]
-//! adds the persisted store, and every Stripe call goes through
-//! [`crate::stripe_gate::GateClient`] to the separate process that holds the key.
-//! Integration tests drive the real routes against a Stripe stub.
+//! adds the persisted store. Every Connect call (accounts, onboarding,
+//! destination charges, webhook checks) goes through [`crate::connect::Connect`],
+//! which on an edge is [`crate::stripe_gate::GateClient`], the client of the
+//! separate process that holds the key. `tests/connect.rs` runs the market on
+//! the in-memory platform, and the integration tests drive the real routes
+//! against a Stripe stub.
 //!
 //! What a *paid* order means: the order record is the entitlement. Nothing
 //! here provisions a Longhorn volume or schedules a pod yet — fulfilment reads
@@ -41,6 +44,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::io;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use ring::hmac;
@@ -50,9 +54,10 @@ use serde_json::Value;
 use tokio::sync::Mutex;
 
 use crate::action::Action;
+use crate::connect::{ChargeSpec, Connect, DestinationCharge, Split};
 use crate::fsutil::atomic_write;
 use crate::hardware::{total, Catalogue, Line};
-use crate::stripe_gate::{CheckoutRequest, GateClient, HardwareRequest};
+use crate::stripe_gate::{GateClient, HardwareRequest};
 use crate::stripe_mode::StripeMode;
 use crate::vms::{Upload, UploadView, VmOrder, VmProvision, VM_FEE_BPS};
 
@@ -1148,6 +1153,8 @@ pub struct MarketOpts {
 pub struct Market {
     opts: MarketOpts,
     state: Mutex<Ledger>,
+    /// The Connect platform: the gate on an edge.
+    connect: Arc<dyn Connect>,
 }
 
 /// The ledger of the mode the gate's key is in, and where it is kept. The
@@ -1269,6 +1276,17 @@ impl Market {
     /// ([`Market::validate_secrets`]). Both ledgers are checked here so a
     /// file that does not parse fails the start rather than the first buyer.
     pub async fn open(opts: MarketOpts) -> Result<Self, MarketError> {
+        let gate = Arc::new(GateClient::new(&opts.gate_socket));
+        Self::open_with(opts, gate).await
+    }
+
+    /// As [`Market::open`], settling through `connect` rather than the gate
+    /// at `opts.gate_socket`. Hardware checkouts still go to the gate: they
+    /// pay no seller.
+    pub async fn open_with(
+        opts: MarketOpts,
+        connect: Arc<dyn Connect>,
+    ) -> Result<Self, MarketError> {
         let path = PathBuf::from(&opts.state_file);
         for mode in [StripeMode::Live, StripeMode::Test] {
             read_ledger(&ledger_path(&path, mode), mode).await?;
@@ -1280,6 +1298,7 @@ impl Market {
                 path,
                 state: MarketState::default(),
             }),
+            connect,
         })
     }
 
@@ -1291,7 +1310,7 @@ impl Market {
     /// Check the gate has its secrets, and switch to the ledger of its key's
     /// mode. Every market route calls this first.
     pub async fn validate_secrets(&self) -> Result<StripeMode, MarketError> {
-        let mode = self.stripe().validate_secrets().await?;
+        let mode = self.connect.mode().await?;
         if let Some(usdc) = &self.opts.usdc {
             // The chain is the mode, the same way the key's prefix is. A
             // Sepolia contract must not settle an order the live ledger
@@ -1519,7 +1538,7 @@ impl Market {
         if box_uuid.is_some_and(|u| !valid_box_uuid(u)) {
             return Err(MarketError::Invalid("box_uuid is not a canonical UUID"));
         }
-        let stripe = self.stripe();
+        let connect = &self.connect;
         let (mode, existing) = {
             let state = self.state.lock().await;
             (Self::mode_of(&state)?, state.sellers.get(id).cloned())
@@ -1528,11 +1547,11 @@ impl Market {
             Some(seller) if !seller.account_id.is_empty() => {
                 if let Some(uuid) = box_uuid {
                     if seller.box_uuid.as_deref() != Some(uuid) {
-                        stripe.tag_account(&seller.account_id, uuid).await?;
+                        connect.tag_account(&seller.account_id, uuid).await?;
                         self.set_box_uuid(id, uuid).await?;
                     }
                 }
-                if seller.ready || stripe.account_ready(&seller.account_id).await? {
+                if seller.ready || connect.account_ready(&seller.account_id).await? {
                     // Refresh a stale flag: the `account.updated` webhook may
                     // have been missed.
                     self.set_ready(id, true).await?;
@@ -1545,7 +1564,7 @@ impl Market {
                 seller.account_id
             }
             _ => {
-                let (account_id, made_in) = stripe.create_account(id, box_uuid).await?;
+                let (account_id, made_in) = connect.create_account(id, box_uuid).await?;
                 let mut state = self.state.lock().await;
                 // The gate was restarted on a key of the other mode while
                 // the account was being made: it belongs in the other ledger.
@@ -1573,8 +1592,8 @@ impl Market {
                 account_id
             }
         };
-        let url = stripe
-            .account_link(&account_id, &self.opts.return_url)
+        let url = connect
+            .onboarding_link(&account_id, &self.opts.return_url)
             .await?;
         Ok(OnboardView {
             mode,
@@ -1782,7 +1801,6 @@ impl Market {
         new: NewOrder,
         sharing: &Sharing,
     ) -> Result<CheckoutView, MarketError> {
-        let stripe = self.stripe();
         let now = now_secs();
         let (order, destination, payout, mode) = {
             let mut state = self.state.lock().await;
@@ -1885,19 +1903,26 @@ impl Market {
             });
         }
 
-        let session = stripe
-            .checkout(CheckoutRequest {
-                order_id: order.id.clone(),
+        let session = match Split::new(order.amount, order.fee).and_then(|split| {
+            DestinationCharge::new(ChargeSpec {
+                order_id: &order.id,
                 kind: order.kind,
                 quantity: order.quantity,
                 unit_price: order.unit_price,
-                currency: order.currency.clone(),
-                fee: order.fee,
-                destination,
-                return_url: self.opts.return_url.clone(),
+                currency: &order.currency,
+                split,
+                destination: &destination,
+                return_url: &self.opts.return_url,
                 expires_at: now + CHECKOUT_TTL_SECS,
             })
-            .await;
+        }) {
+            Ok(charge) => self
+                .connect
+                .destination_charge(&charge)
+                .await
+                .map(|s| (s.id, s.url, s.mode)),
+            Err(e) => Err(e),
+        };
         let mut state = self.state.lock().await;
         if state.mode != Some(mode) {
             // The gate came back on a key of the other mode while the session
@@ -2476,7 +2501,7 @@ impl Market {
         // The gate holds the signing secrets, so it does the check.
         // It also refuses an event from the other mode, so `mode` is the
         // event's own when it says one.
-        let mode = self.stripe().verify_webhook(signature, body).await?;
+        let mode = self.connect.verify_webhook(signature, body).await?;
         let event: Value = serde_json::from_slice(body)
             .map_err(|_| MarketError::Invalid("webhook body is not JSON"))?;
         self.use_mode(mode).await?;

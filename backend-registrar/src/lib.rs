@@ -50,6 +50,7 @@ pub mod action;
 pub mod announce;
 pub mod builder;
 pub mod config;
+pub mod connect;
 pub mod domains;
 pub mod error;
 mod fsutil;
