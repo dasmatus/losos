@@ -39,7 +39,7 @@ export function solanaKeyFromPhrase(phrase: string): SolanaKey {
 function slip10(seed: Uint8Array, path: string): Uint8Array {
   let I = hmac(sha512, new TextEncoder().encode("ed25519 seed"), seed);
   for (const part of path.split("/").slice(1)) {
-    const index = (Number.parseInt(part.replace("'", ""), 10) | 0x80000000) >>> 0;
+    const index = (Number.parseInt(part.replace(/'/g, ""), 10) | 0x80000000) >>> 0;
     const data = new Uint8Array(37);
     data.set(I.slice(0, 32), 1);
     new DataView(data.buffer).setUint32(33, index, false);
