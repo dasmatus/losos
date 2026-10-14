@@ -131,6 +131,13 @@ export default defineMessages({
     sk: "Otvoriť príručku",
     de: "Handbuch öffnen",
   },
+  "panes.about.tour": { en: "Tour", sk: "Prehliadka", de: "Tour" },
+  "panes.about.tourLink": { en: "Take the tour", sk: "Spustiť prehliadku", de: "Tour starten" },
+  "panes.about.tourCaption": {
+    en: "Six short steps through what this page can do. It opened by itself once, after setup.",
+    sk: "Šesť krátkych krokov po tom, čo táto stránka dokáže. Raz sa otvorila sama, po nastavení.",
+    de: "Sechs kurze Schritte durch das, was diese Seite kann. Nach der Einrichtung hat sie sich einmal von selbst geöffnet.",
+  },
   "panes.about.handbookCaption": {
     en: "The owner's manual, with a chapter for when something goes wrong. This box carries its own copy, so it opens without the internet.",
     sk: "Príručka vlastníka s kapitolou pre prípad, že niečo nefunguje. Toto zariadenie má vlastnú kópiu, takže sa otvorí aj bez internetu.",
