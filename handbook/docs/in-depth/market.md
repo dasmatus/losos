@@ -330,21 +330,37 @@ the source (`docs/ci-and-releases.md`) cover setting it up.
 3. Order from the shelf. There is no Stripe page. The pane shows the USDC
    amount and asks which network to pay on, offering first one where the
    wallet holds enough.
-4. Pay. On an Ethereum network the wallet approves USDC for `LososPay` and
-   calls `pay`, and the contract sends the platform fee to the treasury and
-   the rest to the seller. On Solana one transaction makes both transfers and
-   names the order in a memo. The first payment to a seller or to the
-   treasury also opens their USDC account, which costs a little SOL.
+4. Pay. On an Ethereum network the wallet approves USDC for `LososEscrow`
+   and calls `pay`. The contract holds the payment and records the seller,
+   the fee and a refund deadline; nothing reaches the seller yet. On Solana
+   one transaction pays the platform fee to the treasury and the rest to the
+   seller, and names the order in a memo. The first payment to a seller or
+   to the treasury also opens their USDC account, which costs a little SOL.
 5. The edge reads the transaction through its endpoint for that network and
    marks the order paid. A transaction can pay only one order. The order
    then names its network and links the transaction on that network's
    explorer, for the buyer and the seller alike.
+6. On an Ethereum network the edge then checks the seller's address on that
+   network and releases the deposit: the fee to the treasury, the rest to
+   the seller. If the address cannot receive USDC there, the edge refunds
+   the whole payment to the buyer instead and the order is not fulfilled.
+   The order shows which of the two happened.
 
 Before it counts a payment on an Ethereum network, the edge checks that the
-RPC endpoint answers for that network's chain, that `LososPay` pulls Circle's
-USDC for that chain and pays the configured treasury, and that a block sits
-on top of the payment. `LososPay` takes at most half of a payment, the fixed
-split of a machine order; the edge checks the exact fee of every order. On
+RPC endpoint answers for that network's chain, that `LososEscrow` pulls
+Circle's USDC for that chain, pays the configured treasury and takes orders
+from the edge's own key, and that a block sits on top of the payment.
+`LososEscrow` takes at most half of a payment, the fixed split of a machine
+order; the edge checks the exact fee and refund deadline of every order.
+
+A seller's address can receive USDC when it holds no contract code on that
+network, or holds only an EIP-7702 delegation, which keeps it an account
+someone has the key to. The payout signature already showed that someone
+does. The treasury, the USDC contract, the escrow and the zero address never
+count. The edge's key can release a deposit only to the seller and the
+treasury recorded at payment, or refund it to the buyer; it cannot send a
+deposit anywhere else. If the edge has not released a deposit a day after the
+order's hold ends, the buyer can take it back from the contract directly. On
 Solana the edge checks that the endpoint reports the network's genesis hash,
 that the transaction succeeded and is confirmed, that its memo names the
 order, and that the seller's and the treasury's USDC grew by exactly their
@@ -354,7 +370,9 @@ An order holds its units for a quarter of an hour. The pane starts no payment
 in the last two minutes of that, and it keeps the transaction of a payment it
 sent until the edge has counted it, so checking again never pays twice. A
 payment that lands after the hold is still honoured while its units are free.
-If they were sold in the meantime, the order stays unpaid and the refund has
+If they were sold in the meantime, or another payment already paid the order,
+the edge refunds the payment from the escrow and the pane says so. On Solana,
+which has no escrow, such a payment stays with the seller and the refund has
 to be settled outside the market.
 
 On the test networks, test USDC comes from
@@ -377,7 +395,9 @@ gateway are not looked up.
 Sign with the wallet that should receive USDC. One click signs for both kinds
 of network: the Ethereum address takes sales paid on Base, Arbitrum and OP,
 the Solana address sales paid on Solana. The edge checks each signature and
-stores only the addresses, and buyers pay them directly. A seller with only
+stores only the addresses. Sales paid on Solana go to them directly; sales
+on the Ethereum networks reach them once the edge has checked the address on
+that network and released the payment from the escrow. A seller with only
 one of the two set is offered to buyers on that kind of network only. Import
 the same phrase into MetaMask, Rabby, Rainbow, Trust Wallet or Phantom when
 you want to spend it. There is no Stripe connected account for these sales.

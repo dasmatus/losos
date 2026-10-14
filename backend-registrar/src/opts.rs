@@ -926,15 +926,22 @@ fn parse_btc(args: &[String], currency: &str) -> Result<Option<crate::bitcoin::B
 /// the URL itself: the URL is a systemd credential and must not be on the
 /// command line, where `ps` would show it. Every network must be of one
 /// mode, test or live. `--market-ens-rpc-file` adds name lookups on Ethereum
-/// (live) or Sepolia (test).
+/// (live) or Sepolia (test). `--market-usdc-releaser-file` is the escrow's
+/// releaser key, also a credential file, and every EVM network needs it.
 fn parse_usdc(args: &[String], currency: &str) -> Result<Option<crate::stablecoin::UsdcOpts>> {
     use crate::stablecoin::{Family, UsdcChain, UsdcOpts};
     let specs = args_all(args, "--market-usdc");
     let ens = arg(args, "--market-ens-rpc-file");
+    let releaser = arg(args, "--market-usdc-releaser-file");
     if specs.is_empty() {
         if ens.is_some() {
             return Err(miette!(
                 "--market-ens-rpc-file needs at least one --market-usdc"
+            ));
+        }
+        if releaser.is_some() {
+            return Err(miette!(
+                "--market-usdc-releaser-file needs at least one --market-usdc"
             ));
         }
         return Ok(None);
@@ -1097,10 +1104,21 @@ fn parse_usdc(args: &[String], currency: &str) -> Result<Option<crate::stablecoi
             ]
         }
     };
+    let releaser_file = releaser
+        .map(|path| credential("--market-usdc-releaser-file", path))
+        .transpose()?;
+    // The escrow holds every EVM payment until the edge releases it, so an
+    // edge without the key would take payments it can never pay out.
+    if releaser_file.is_none() && chains.iter().any(|c| c.network.family == Family::Evm) {
+        return Err(miette!(
+            "an EVM --market-usdc needs --market-usdc-releaser-file: the escrow's releaser key"
+        ));
+    }
     Ok(Some(UsdcOpts {
         chains,
         ens_rpc_file,
         price_sources,
+        releaser_file,
     }))
 }
 

@@ -202,6 +202,7 @@ async fn start_edge(node: &Bitcoind, prices: [PriceSource; 2]) -> Edge {
                 }],
                 ens_rpc_file: None,
                 price_sources: prices,
+                releaser_file: None,
             });
             market.btc = Some(btc);
         },

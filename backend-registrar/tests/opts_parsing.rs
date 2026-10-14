@@ -447,11 +447,17 @@ fn usdc_takes_one_flag_per_network_of_one_mode() {
     const BASE: &str = "network=base-sepolia,rpc=/run/c/usdc-rpc-base-sepolia,pay=0x1111111111111111111111111111111111111111,treasury=0x4444444444444444444444444444444444444444";
     const ARB: &str = "network=arbitrum-sepolia,rpc=/run/c/usdc-rpc-arbitrum-sepolia,pay=0x1111111111111111111111111111111111111111,treasury=0x4444444444444444444444444444444444444444";
     const SOL: &str = "network=solana-devnet,rpc=/run/c/usdc-rpc-solana-devnet,treasury=5ZWj7a1f8tWkjBESHKgrLmXshuXxqeY9SYcfbshpAqPG";
-    let with = |extra: &[&str]| {
+    const RELEASER: [&str; 2] = ["--market-usdc-releaser-file", "/run/c/usdc-releaser-key"];
+    let without_key = |extra: &[&str]| {
         let mut args = vec!["--market-currency", "usd"];
         args.extend(extra);
         args.extend(MARKET_FLAGS);
         args.iter().map(|s| (*s).to_string()).collect::<Vec<_>>()
+    };
+    let with = |extra: &[&str]| {
+        let mut args = without_key(extra);
+        args.extend(RELEASER.iter().map(|s| (*s).to_string()));
+        args
     };
     let opts = serve_opts(
         &with(&[
@@ -475,6 +481,10 @@ fn usdc_takes_one_flag_per_network_of_one_mode() {
     assert_eq!(usdc.payout_chain_id(), Some(84532));
     assert_eq!(usdc.chains[2].pay, None);
     assert_eq!(usdc.ens_rpc_file.as_deref(), Some("/run/c/ens-rpc"));
+    assert_eq!(
+        usdc.releaser_file.as_deref(),
+        Some("/run/c/usdc-releaser-key")
+    );
 
     // The live set: every network the real boxes pay on, each on mainnet,
     // with names looked up on Ethereum itself.
@@ -532,8 +542,26 @@ fn usdc_takes_one_flag_per_network_of_one_mode() {
             "{bad:?}"
         );
     }
+    // An EVM network pays into the escrow, which only the releaser key
+    // empties; Solana alone needs no key. The key is a credential file.
+    let parses = |args: Vec<String>| {
+        parse(serve_args(
+            &args.iter().map(String::as_str).collect::<Vec<_>>(),
+        ))
+        .is_ok()
+    };
+    assert!(!parses(without_key(&["--market-usdc", BASE])));
+    assert!(parses(without_key(&["--market-usdc", SOL])));
+    assert!(!parses(without_key(&RELEASER)));
+    assert!(!parses(without_key(&[
+        "--market-usdc",
+        BASE,
+        "--market-usdc-releaser-file",
+        "https://x.example/key",
+    ])));
     // USDC prices are USDC cents.
     let mut eur: Vec<&str> = vec!["--market-usdc", BASE];
+    eur.extend(RELEASER);
     eur.extend(MARKET_FLAGS);
     assert!(parse(serve_args(&eur)).is_err());
 }

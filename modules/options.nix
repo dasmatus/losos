@@ -1720,8 +1720,10 @@ in
                 type = lib.types.nullOr (lib.types.strMatching "0x[0-9a-fA-F]{40}");
                 default = null;
                 description = ''
-                  The LososPay contract on an EVM network. Public. Solana
-                  networks take none: the wallet splits the payment itself.
+                  The LososEscrow contract on an EVM network. Public. Its
+                  releaser must be the address of
+                  `losos.edge.market.usdc.releaserKeySealed`. Solana networks
+                  take none: the wallet splits the payment itself.
                 '';
               };
               treasury = lib.mkOption {
@@ -1776,6 +1778,20 @@ in
         one mode. Circle's USDC on each network is built into the registrar,
         not configured. The registrar refuses an RPC endpoint that answers for
         a different chain or cluster.
+      '';
+    };
+
+    edge.market.usdc.releaserKeySealed = lib.mkOption {
+      type = secretPath;
+      default = "/var/secrets/losos-usdc-releaser-key.cred";
+      description = ''
+        The private key the escrow takes release and refund calls from, 64
+        hex characters, **sealed** under the credential name
+        `usdc-releaser-key`. It pays gas on every EVM network, so it holds a
+        little ETH on each, and it can only release a deposit to the seller
+        and treasury recorded at payment or refund it to the payer. The
+        escrow's treasury can replace it. Needed whenever an EVM network is
+        listed.
       '';
     };
 

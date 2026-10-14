@@ -225,7 +225,7 @@ losos.edge.market.currency = "usd"; # prices are USDC cents
 losos.edge.market.usdc = {
   enable = true;
   networks = {
-    base-sepolia = { pay = "0x…"; treasury = "0x…"; };     # LososPay, fee address
+    base-sepolia = { pay = "0x…"; treasury = "0x…"; };     # LososEscrow, fee address
     arbitrum-sepolia = { pay = "0x…"; treasury = "0x…"; };
     optimism-sepolia = { pay = "0x…"; treasury = "0x…"; };
     solana-devnet = { treasury = "<base58 owner>"; };      # no contract on Solana
@@ -236,7 +236,9 @@ losos.edge.market.usdc = {
 
 The names are `base`, `arbitrum`, `optimism` and `solana` for live, with
 `-sepolia` (or `solana-devnet`) for test. Each EVM network needs its own
-`LososPay` deployment (`contracts/`). On Solana the treasury is the owner of
+`LososEscrow` deployment (`contracts/`), with the same treasury and the
+releaser key's address. Deploying it from a fresh key at nonce 0 gives it the
+same address on every chain. On Solana the treasury is the owner of
 the USDC account that takes the fee, and there is no contract: the buyer's
 transaction makes both transfers itself. `genesisHash` overrides the genesis a
 test Solana network must report, for a local validator.
@@ -251,6 +253,17 @@ example:
 base-sepolia https://base-sepolia.g.alchemy.com/v2/KEY
 solana-devnet https://devnet.helius-rpc.com/?api-key=KEY
 ```
+
+Payments on an EVM network wait in the escrow until the registrar releases
+them to the seller and the treasury, or refunds them to the buyer, with the
+releaser key. The **edge-credentials** workflow seals `USDC_RELEASER_KEY` (64
+hex characters) as `usdc-releaser-key` to
+`/var/secrets/losos-usdc-releaser-key.cred` (`releaserKeySealed`). The key
+pays gas, so its address needs a little ETH on every EVM network. It can do
+nothing but release a deposit to the seller and treasury recorded at payment,
+or refund it to the payer; the treasury can replace it with
+`setReleaser`. The registrar refuses to confirm payments while the escrow's
+`releaser()` is another address.
 
 `ENS_RPC_URL` is sealed as `ens-rpc` and names an Ethereum endpoint (Sepolia
 for a test edge). With it, the admin pages show ENS names and take them when

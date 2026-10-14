@@ -55,6 +55,7 @@ pub mod config;
 pub mod connect;
 pub mod domains;
 pub mod error;
+pub mod evm_tx;
 mod fsutil;
 pub mod hardware;
 pub mod identity;

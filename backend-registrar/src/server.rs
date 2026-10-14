@@ -1435,14 +1435,18 @@ async fn market_confirm(
     Json(req): Json<MarketConfirmReq>,
 ) -> Result<StatusCode, ApiError> {
     let market = market_tenant(&st, &req.auth).await?;
-    market
+    let confirmed = market
         .confirm_usdc(
             &req.auth.appliance_id,
             &req.order_id,
             &req.tx,
             req.network.as_deref(),
         )
-        .await?;
+        .await;
+    // A held payment, paid or refused, has an escrow call waiting: the
+    // reconciler sends it now rather than on its next tick.
+    st.notify.notify_one();
+    confirmed?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -1957,6 +1961,7 @@ async fn fulfil_market(st: &AppState) {
             "could not record stale orders as expired: {e}",
         ),
     }
+    market.settle_escrow().await;
     vm::fulfil(st, market).await;
     let pending = market.pending_provisions().await;
     let lapsed = market.lapsed_volumes().await;

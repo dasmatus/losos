@@ -373,23 +373,42 @@ beschreiben die Betreiberhinweise beim Quellcode (`docs/ci-and-releases.md`).
 3. Aus dem Angebot bestellen. Es gibt keine Stripe-Seite. Der Bereich zeigt
    den Betrag in USDC und fragt, auf welchem Netz gezahlt wird; zuerst bietet
    er eines an, auf dem die Wallet genug hat.
-4. Zahlen. Auf einem Ethereum-Netz genehmigt die Wallet USDC für `LososPay`
-   und ruft `pay` auf, und der Vertrag schickt die Plattformgebühr an die
-   Treasury und den Rest an den Verkäufer. Auf Solana macht eine Transaktion
-   beide Überweisungen und nennt die Bestellung in einem Memo. Die erste
-   Zahlung an einen Verkäufer oder die Treasury eröffnet auch deren
-   USDC-Konto, was etwas SOL kostet.
+4. Zahlen. Auf einem Ethereum-Netz genehmigt die Wallet USDC für
+   `LososEscrow` und ruft `pay` auf. Der Vertrag hält die Zahlung und
+   vermerkt Verkäufer, Gebühr und eine Rückgabefrist; beim Verkäufer kommt
+   noch nichts an. Auf Solana schickt eine Transaktion die Plattformgebühr
+   an die Treasury und den Rest an den Verkäufer und nennt die Bestellung in
+   einem Memo. Die erste Zahlung an einen Verkäufer oder die Treasury
+   eröffnet auch deren USDC-Konto, was etwas SOL kostet.
 5. Der Edge liest die Transaktion über seinen Endpunkt für dieses Netz und
    markiert die Bestellung als bezahlt. Eine Transaktion bezahlt nur eine
    Bestellung. Die Bestellung nennt dann ihr Netz und verlinkt die
    Transaktion im Block-Explorer dieses Netzes, für Käufer und Verkäufer.
+6. Auf einem Ethereum-Netz prüft der Edge danach die Adresse des Verkäufers
+   in diesem Netz und gibt die Einzahlung frei: die Gebühr an die Treasury,
+   den Rest an den Verkäufer. Kann die Adresse dort kein USDC empfangen,
+   zahlt der Edge stattdessen die ganze Zahlung an den Käufer zurück, und
+   die Bestellung wird nicht ausgeführt. Die Bestellung zeigt, was davon
+   geschah.
 
 Bevor er eine Zahlung auf einem Ethereum-Netz zählt, prüft der Edge, dass der
-RPC-Endpunkt für die Chain dieses Netzes antwortet, dass `LososPay` Circles
-USDC dieser Chain einzieht und an die eingestellte Treasury zahlt, und dass
-über der Zahlung schon ein Block liegt. `LososPay` nimmt höchstens die Hälfte
-einer Zahlung, die feste Teilung bei Maschinen; die genaue Gebühr jeder
-Bestellung prüft der Edge. Auf Solana prüft der Edge, dass der Endpunkt den
+RPC-Endpunkt für die Chain dieses Netzes antwortet, dass `LososEscrow`
+Circles USDC dieser Chain einzieht, an die eingestellte Treasury zahlt und
+Anweisungen vom eigenen Schlüssel des Edge annimmt, und dass über der Zahlung
+schon ein Block liegt. `LososEscrow` nimmt höchstens die Hälfte einer
+Zahlung, die feste Teilung bei Maschinen; die genaue Gebühr und Rückgabefrist
+jeder Bestellung prüft der Edge.
+
+Eine Verkäuferadresse kann USDC empfangen, wenn sie in diesem Netz keinen
+Vertragscode hat oder nur eine Delegation nach EIP-7702, sodass sie ein Konto
+bleibt, zu dem jemand den Schlüssel hat. Dass jemand ihn hat, hat schon die
+Signatur der Auszahlungsadresse gezeigt. Die Treasury, der USDC-Vertrag, das
+Escrow und die Nulladresse zählen nie. Der Schlüssel des Edge kann eine
+Einzahlung nur an Verkäufer und Treasury freigeben, die bei der Zahlung
+vermerkt wurden, oder sie an den Käufer zurückgeben; anderswohin schicken kann
+er sie nicht. Hat der Edge eine Einzahlung einen Tag nach dem Ende der
+Haltezeit nicht freigegeben, holt der Käufer sie direkt aus dem Vertrag
+zurück. Auf Solana prüft der Edge, dass der Endpunkt den
 Genesis-Hash des Netzes meldet, dass die Transaktion gelungen und bestätigt
 ist, dass ihr Memo die Bestellung nennt und dass das USDC von Verkäufer und
 Treasury um genau ihre Anteile gewachsen ist.
@@ -398,9 +417,11 @@ Eine Bestellung hält ihre Einheiten eine Viertelstunde. In den letzten zwei
 Minuten startet der Bereich keine Zahlung mehr, und er behält die Transaktion
 einer gesendeten Zahlung, bis der Edge sie gezählt hat, sodass erneutes
 Prüfen nie doppelt zahlt. Eine Zahlung nach Ablauf dieser Zeit gilt noch,
-solange die Einheiten frei sind. Wurden sie inzwischen verkauft, bleibt die
-Bestellung unbezahlt und die Rückzahlung muss außerhalb des Markts geregelt
-werden.
+solange die Einheiten frei sind. Wurden sie inzwischen verkauft oder hat eine
+andere Zahlung die Bestellung schon bezahlt, zahlt der Edge die Zahlung aus
+dem Escrow zurück, und der Bereich sagt es. Auf Solana, wo es kein Escrow
+gibt, bleibt eine solche Zahlung beim Verkäufer, und die Rückzahlung muss
+außerhalb des Markts geregelt werden.
 
 Auf den Testnetzen kommt Test-USDC aus
 [Circles Faucet](https://faucet.circle.com), der alle vier bedient. Test-ETH
@@ -422,7 +443,9 @@ Namen über ein Gateway außerhalb der Chain nicht nachgeschlagen.
 Mit der Wallet signieren, die USDC empfangen soll. Ein Klick signiert für
 beide Arten von Netz: die Ethereum-Adresse nimmt Verkäufe auf Base, Arbitrum
 und OP, die Solana-Adresse Verkäufe auf Solana. Der Edge prüft jede Signatur,
-speichert nur die Adressen, und Käufer zahlen direkt an sie. Ein Verkäufer
+speichert nur die Adressen. Verkäufe auf Solana gehen direkt an sie; Verkäufe
+auf den Ethereum-Netzen kommen an, sobald der Edge die Adresse in diesem Netz
+geprüft und die Zahlung aus dem Escrow freigegeben hat. Ein Verkäufer
 mit nur einer der beiden wird nur Käufern auf dieser Art von Netz angeboten.
 Dieselbe Phrase lässt sich in MetaMask, Rabby, Rainbow, Trust Wallet oder
 Phantom importieren, wenn du das Geld ausgeben willst. Für diese Verkäufe gibt

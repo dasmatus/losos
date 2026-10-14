@@ -82,8 +82,9 @@ const PAY = [
       { name: "seller", type: "address" },
       { name: "gross", type: "uint256" },
       { name: "fee", type: "uint256" },
+      { name: "deadline", type: "uint64" },
     ],
-    outputs: [],
+    outputs: [{ name: "depositId", type: "uint256" }],
   },
 ] as const;
 
@@ -98,6 +99,11 @@ type PendingInvoice = StablecoinInvoice & { tx?: string; network?: string };
  *  and the payment each need a block, and a payment after the hold is only
  *  honoured while its units are still free. */
 const HOLD_MARGIN_SECS = 120;
+
+/** The edge's answer when it holds a payment it will not keep: the seller's
+ *  address cannot receive it, or the order was paid or sold meanwhile. The
+ *  escrow sends it back (backend-registrar's `RefundReason::message`). */
+const REFUNDING = /being refunded/;
 
 /** How long a payment waits for its block, and then for the edge to count
  *  it, before the page stops and offers to check again. */
@@ -383,7 +389,9 @@ export function UsdcWallet({
   /** Tell the edge which transaction paid the order. It counts a payment
    *  once it is settled on its chain, so a "not yet" is retried for up to a
    *  minute before the owner is asked to check again. The bound is time, not
-   *  tries: a slow chain endpoint makes each try take seconds. */
+   *  tries: a slow chain endpoint makes each try take seconds. A payment
+   *  the edge is sending back is final: it is not retried, and the invoice
+   *  is closed so nothing is paid twice. */
   const confirm = async (pending: PendingInvoice & { tx: string; network: string }) => {
     const giveUpAt = Date.now() + CONFIRM_WAIT_MS;
     for (;;) {
@@ -391,6 +399,13 @@ export function UsdcWallet({
         await postMarketConfirm(pending.order_id, pending.tx, pending.network);
         break;
       } catch (error) {
+        if (error instanceof ApiError && error.status === 409 && REFUNDING.test(error.message)) {
+          sessionStorage.removeItem(PENDING_INVOICE);
+          setInvoice(null);
+          void refreshBalances();
+          toast.error(t("panes.market.usdc.refundedTitle"), error.message, { help: "index" });
+          return;
+        }
         const retry = error instanceof ApiError && error.status === 409 && Date.now() < giveUpAt;
         if (!retry) throw error;
         await sleep(2_000);
@@ -546,7 +561,9 @@ export function UsdcWallet({
     }
   };
 
-  /** Pay on an EVM chain: approve USDC for LososPay when short, then pay. */
+  /** Pay on an EVM chain: approve USDC for LososEscrow when short, then
+   *  pay into it. The edge checks the seller's address and releases the
+   *  deposit, or sends it back. */
   const payEvm = async (chain: UsdcChain & { seller: string }, words: string | null) => {
     if (!invoice || !address) return;
     const viemChain = evmChain(chain.network);
@@ -602,7 +619,13 @@ export function UsdcWallet({
       address: chain.pay as Address,
       abi: PAY,
       functionName: "pay",
-      args: [invoice.order_id_hash as `0x${string}`, chain.seller as Address, gross, BigInt(invoice.fee)],
+      args: [
+        invoice.order_id_hash as `0x${string}`,
+        chain.seller as Address,
+        gross,
+        BigInt(invoice.fee),
+        BigInt(invoice.deadline),
+      ],
       account: account ?? owner,
       chain: viemChain,
       ...(await lowFeeFields(chain.network)),
