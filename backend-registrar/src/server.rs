@@ -93,6 +93,7 @@ use crate::stripe_gate::{GATE_TIMEOUT, MAX_GATE_CALLS_PER_REQUEST};
 use crate::window::{self, valid_hhmm, valid_tz, ComputeWindow};
 use crate::zone::{self, ZoneNames};
 
+mod operator;
 mod vm;
 
 /// The zone file is public DNS data, read by the `knot` user.
@@ -163,6 +164,10 @@ const MAX_BUILDER_BODY_BYTES: usize = 96 * 1024;
 /// by [`GITHUB_TIMEOUT`], plus the file write.
 const IDENTITY_PUSH_TIMEOUT: Duration = Duration::from_secs(GITHUB_TIMEOUT.as_secs() + 3);
 const IDENTITY_PUSH_ROUTE: &str = "/identity/cert";
+/// `POST /operator/call` may seal a secret, which runs `systemd-creds` and
+/// restarts a unit (`crate::operator`); the script has 20 s of it.
+const OPERATOR_CALL_ROUTE: &str = "/operator/call";
+const OPERATOR_CALL_TIMEOUT: Duration = Duration::from_secs(25);
 /// How long the edge waits on GitHub's `GET /user` for one push.
 const GITHUB_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -253,6 +258,8 @@ struct AppState {
     /// Machine image transfers in flight (`vm::MAX_TRANSFERS`), which run
     /// outside [`guard`] and so outside [`AppState::limiter`].
     transfers: Arc<Semaphore>,
+    /// The terminal (`crate::operator`); `None` without `--access-dir`.
+    operator: Option<Arc<crate::operator::Operator>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -542,6 +549,24 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
         }
     };
 
+    // Opened before the API accepts: the key is made on the first start,
+    // and a seeded key that does not parse stops the edge here.
+    let operator = match &opts.operator {
+        None => None,
+        Some(o) => {
+            let hostname = std::fs::read_to_string("/proc/sys/kernel/hostname").unwrap_or_default();
+            let op = crate::operator::Operator::open(o, hostname.trim())?;
+            tracing::info!(
+                target: Action::Authenticate.target(),
+                "terminal access ready: key {}, {} seeded key(s){}",
+                op.host.fingerprint(),
+                op.ring.keys().len(),
+                if op.can_seal() { "" } else { ", no seal script" }
+            );
+            Some(Arc::new(op))
+        }
+    };
+
     let state = AppState {
         reg,
         opts: Arc::new(opts),
@@ -566,6 +591,7 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
         routes,
         passes: Arc::new(std::sync::Mutex::new(HashMap::new())),
         transfers: Arc::new(Semaphore::new(vm::MAX_TRANSFERS)),
+        operator,
     };
 
     // Generate config from whatever we just loaded, so the box is serving
@@ -639,6 +665,18 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
         .route("/domains/list", post(domains_list))
         .route("/domains/add", post(domains_add))
         .route("/domains/remove", post(domains_remove))
+        // The terminal (crate::operator, docs/edge-terminal.md). 404 unless
+        // the edge was started with `--access-dir`. The call is authenticated
+        // by its envelope; the token routes by a GitHub account, like the
+        // certificate push.
+        .route("/operator/host-key", get(operator::host_key))
+        .route(
+            OPERATOR_CALL_ROUTE,
+            post(operator::call).layer(DefaultBodyLimit::max(crate::operator::MAX_ENVELOPE_BYTES)),
+        )
+        .route("/operator/tokens", post(operator::create_token))
+        .route("/operator/tokens/list", post(operator::list_tokens))
+        .route("/operator/tokens/revoke", post(operator::revoke_token))
         // Bound at the router so an oversized body never materialises.
         .layer(DefaultBodyLimit::max(MAX_BODY_BYTES))
         // Added last, so outermost: the timeout and the concurrency cap cover
@@ -692,8 +730,12 @@ async fn guard(State(st): State<AppState>, req: Request, next: Next) -> Response
         STRIPE_ROUTE_TIMEOUT
     } else if COIN_ROUTES.contains(&req.uri().path()) {
         COIN_ROUTE_TIMEOUT
-    } else if req.uri().path() == IDENTITY_PUSH_ROUTE {
+    } else if req.uri().path() == IDENTITY_PUSH_ROUTE
+        || req.uri().path().starts_with("/operator/tokens")
+    {
         IDENTITY_PUSH_TIMEOUT
+    } else if req.uri().path() == OPERATOR_CALL_ROUTE {
+        OPERATOR_CALL_TIMEOUT
     } else if req.uri().path() == BUILDER_START_ROUTE {
         BUILDER_START_TIMEOUT
     } else {
@@ -770,6 +812,80 @@ async fn identity_public_key(State(st): State<AppState>) -> Response {
     }
 }
 
+/// The GitHub gate the operator routes share (`POST /identity/cert` and
+/// `/operator/tokens*`): the `Authorization: Bearer` header is a GitHub
+/// token, GitHub says whose it is, and the account's numeric id must be on
+/// the allowlist compiled into this binary (`operators.json`). `what` names
+/// the request in the journal. The caller holds [`AppState::push_lock`], so
+/// one round trip to GitHub is in flight at a time.
+async fn github_operator(
+    st: &AppState,
+    headers: &HeaderMap,
+    what: &str,
+) -> std::result::Result<(crate::provision::GithubUser, crate::provision::Operator), Box<Response>>
+{
+    let token = headers
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+        .map(str::trim)
+        .filter(|t| !t.is_empty() && t.len() <= 512 && t.bytes().all(|b| b.is_ascii_graphic()));
+    let Some(token) = token else {
+        return Err(Box::new(
+            (
+                StatusCode::UNAUTHORIZED,
+                "Authorization: Bearer <GitHub token> is required",
+            )
+                .into_response(),
+        ));
+    };
+    let operators = match crate::provision::Operators::committed() {
+        Ok(o) => o,
+        Err(e) => {
+            tracing::error!(target: Action::Identity.target(), "operators.json: {e}");
+            return Err(Box::new(StatusCode::INTERNAL_SERVER_ERROR.into_response()));
+        }
+    };
+    let gh = crate::provision::Github {
+        oauth_url: String::new(),
+        api_url: st.opts.github_api_url.clone(),
+        client_id: String::new(),
+    };
+    let user = match crate::provision::whoami(&st.http, &gh, token).await {
+        Ok(u) => u,
+        Err(e) => {
+            // `whoami` wraps GitHub's refusal of the token in its own words;
+            // tell a bad token from an unreachable GitHub by the cause.
+            let text = format!("{e:?}");
+            let status = if text.contains("did not accept the token") {
+                StatusCode::UNAUTHORIZED
+            } else {
+                StatusCode::BAD_GATEWAY
+            };
+            tracing::warn!(target: Action::Identity.target(), "{what} refused: {e}");
+            return Err(Box::new((status, format!("GitHub: {e}")).into_response()));
+        }
+    };
+    let Some(operator) = operators.find(user.id).cloned() else {
+        tracing::warn!(
+            target: Action::Identity.target(),
+            "{what} refused: {} (GitHub id {}) is not on the operator allowlist",
+            user.login, user.id
+        );
+        return Err(Box::new(
+            (
+                StatusCode::FORBIDDEN,
+                format!(
+                    "{} (GitHub id {}) is not on the operator allowlist",
+                    user.login, user.id
+                ),
+            )
+                .into_response(),
+        ));
+    };
+    Ok((user, operator))
+}
+
 /// `POST /identity/cert` — install the certificate the root signed for this
 /// edge's key. The body is the certificate JSON (`crate::identity::Cert`);
 /// the `Authorization: Bearer` header is a **GitHub token**, not an
@@ -813,62 +929,10 @@ async fn identity_push(State(st): State<AppState>, headers: HeaderMap, body: Byt
         )
             .into_response();
     }
-    let token = headers
-        .get(axum::http::header::AUTHORIZATION)
-        .and_then(|v| v.to_str().ok())
-        .and_then(|v| v.strip_prefix("Bearer "))
-        .map(str::trim)
-        .filter(|t| !t.is_empty() && t.len() <= 512 && t.bytes().all(|b| b.is_ascii_graphic()));
-    let Some(token) = token else {
-        return (
-            StatusCode::UNAUTHORIZED,
-            "Authorization: Bearer <GitHub token> is required",
-        )
-            .into_response();
-    };
-
     let _one_at_a_time = st.push_lock.lock().await;
-    let operators = match crate::provision::Operators::committed() {
-        Ok(o) => o,
-        Err(e) => {
-            tracing::error!(target: Action::Identity.target(), "operators.json: {e}");
-            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
-        }
-    };
-    let gh = crate::provision::Github {
-        oauth_url: String::new(),
-        api_url: st.opts.github_api_url.clone(),
-        client_id: String::new(),
-    };
-    let user = match crate::provision::whoami(&st.http, &gh, token).await {
-        Ok(u) => u,
-        Err(e) => {
-            // `whoami` wraps GitHub's refusal of the token in its own words;
-            // tell a bad token from an unreachable GitHub by the cause.
-            let text = format!("{e:?}");
-            let status = if text.contains("did not accept the token") {
-                StatusCode::UNAUTHORIZED
-            } else {
-                StatusCode::BAD_GATEWAY
-            };
-            tracing::warn!(target: Action::Identity.target(), "push refused: {e}");
-            return (status, format!("GitHub: {e}")).into_response();
-        }
-    };
-    let Some(operator) = operators.find(user.id) else {
-        tracing::warn!(
-            target: Action::Identity.target(),
-            "push refused: {} (GitHub id {}) is not on the operator allowlist",
-            user.login, user.id
-        );
-        return (
-            StatusCode::FORBIDDEN,
-            format!(
-                "{} (GitHub id {}) is not on the operator allowlist",
-                user.login, user.id
-            ),
-        )
-            .into_response();
+    let (user, operator) = match github_operator(&st, &headers, "push").await {
+        Ok(found) => found,
+        Err(refused) => return *refused,
     };
 
     let now = std::time::SystemTime::now()

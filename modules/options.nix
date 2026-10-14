@@ -1294,6 +1294,22 @@ in
       '';
     };
 
+    access.gpgKeys = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+      example = lib.literalExpression "[ (builtins.readFile ./owner.pub.asc) ]";
+      description = ''
+        Armoured GPG public keys (`gpg --armor --export <id>`) allowed to
+        sign calls from the `losos` terminal client. A call needs a personal
+        access token from the web UI's Access tokens pane AND a signature by
+        the key that token is bound to. Seeded by the installer
+        (`losos-ctl install --gpg-key FILE`, or this option on the medium),
+        and fixed after that: the Advanced pane cannot change it and
+        /api/apply refuses it, because a web session that could add a key
+        could also make a token for it. See docs/terminal-access.md.
+      '';
+    };
+
     # Path of the built admin SPA (built from this flake's ./admin-ui/app by
     # flake/packages.nix with buildNpmPackage; wired in via
     # modules/defaults.nix). Internal.
@@ -1754,8 +1770,8 @@ in
                   the credential name `usdc-rpc-<network>`. A provider key
                   usually sits in the URL, so it is a secret: the registrar
                   receives the plaintext only through `LoadCredentialEncrypted=`
-                  and the browser never does. Seal it before the switch: the
-                  registrar unit loads the blob and does not start without it.
+                  and the browser never does. Seal it with `losos edge secret
+                  set usdc-rpc-<network>`; until then the network answers 503.
                   Plain `http` is accepted only for a node on the edge's own
                   loopback.
                 '';
@@ -1802,7 +1818,8 @@ in
         little ETH on each, and it can only release a deposit to the seller
         and treasury recorded at payment or refund it to the payer. The
         escrow's treasury can replace it. Needed whenever an EVM network is
-        listed.
+        listed. The edge makes it itself (`losos edge escrow releaser
+        --new`), so the key never exists anywhere else.
       '';
     };
 
@@ -1920,6 +1937,30 @@ in
         `losos.edge.credentials.secrets`, named by the command it sends. Null (the
         default), nothing is added and secrets are sealed by hand as
         handbook/docs/in-depth/market.md describes (Operator setup).
+      '';
+    };
+
+    edge.credentials.sealPackage = lib.mkOption {
+      type = lib.types.package;
+      internal = true;
+      readOnly = true;
+      description = ''
+        `losos-seal-credential`, set by modules/edge-credentials.nix, for the
+        registrar's terminal route that seals a secret.
+      '';
+    };
+
+    edge.access.gpgKeys = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+      example = lib.literalExpression "[ (builtins.readFile ./operator.pub.asc) ]";
+      description = ''
+        Armoured GPG public keys allowed to sign calls from the `losos`
+        terminal client to this edge: its overview, its sealed secrets and a
+        reconcile. A call also needs a token made with `losos-registrar
+        provision token create`, behind the operator allowlist. Empty (the
+        default), the edge serves no terminal routes. See
+        docs/edge-terminal.md.
       '';
     };
 

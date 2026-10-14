@@ -17,6 +17,10 @@ let
   # Every Rust command therefore has to be run twice with --manifest-path.
   crates = [
     "backend"
+    # The terminal envelope (OpenPGP, tokens) lososd and the registrar both
+    # depend on by path. Its own workspace, so `cargo fmt` of either parent
+    # does not reach it.
+    "backend/access"
     "backend-registrar"
     # The Vercel host for the registrar (edge-vercel/README.md). Not built by
     # nix — Vercel builds it — but linted and tested with the other two.
@@ -290,6 +294,16 @@ in
   '';
   scripts.test-rust.description = "Unit tests for every Rust crate.";
 
+  # losos, the terminal client (admin-ui/tui/README.md). CI's `tui` job runs
+  # the same three and then builds the single binary with bun.
+  scripts.test-tui.exec = ''
+    cd "$DEVENV_ROOT/admin-ui/tui"
+    npm ci --no-audit --no-fund
+    npm run typecheck
+    npm test
+  '';
+  scripts.test-tui.description = "Typecheck and test the losos terminal client.";
+
   scripts.check-flake.exec = "command nix flake check --no-build -L";
   scripts.check-flake.description = "Evaluate every flake output (builds nothing).";
 
@@ -437,6 +451,7 @@ in
     lint
     lint-wasm
     test-rust
+    test-tui
     check-flake
     check-eval
   '';
@@ -444,6 +459,7 @@ in
   enterShell = ''
     echo "losos dev shell"
     echo "  fmt · lint · test-rust        Rust"
+    echo "  test-tui                      the losos terminal client"
     echo "  lint-wasm                     clippy on the Lab canvas's wasm32 builds"
     echo "  check-flake · check-eval      Nix eval gates"
     echo "  build-pkgs · build-images     builds"

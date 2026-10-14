@@ -377,6 +377,31 @@ pub enum EscrowStep {
     Refunded,
 }
 
+/// `GET /escrow/releaser` from the terminal (`crate::operator`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReleaserReport {
+    /// `None` until a key is sealed.
+    pub address: Option<String>,
+    /// One row per EVM network, in the order they are configured.
+    pub networks: Vec<ReleaserNetwork>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReleaserNetwork {
+    pub network: &'static str,
+    /// The `LososEscrow` this network's payments go to.
+    pub escrow: String,
+    /// The gas the key holds there, in wei as a decimal string.
+    pub balance_wei: Option<String>,
+    /// Whether that escrow's `releaser()` is this key. `false` until the
+    /// treasury calls `setReleaser` with the address.
+    pub escrow_agrees: Option<bool>,
+    /// Why the other two are missing, when the key exists.
+    pub error: Option<&'static str>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum RefundReason {
@@ -3379,6 +3404,61 @@ impl Market {
         }
         let reason = order.escrow.as_ref().and_then(|e| e.reason)?;
         Some(Err(MarketError::Conflict(reason.message())))
+    }
+
+    /// Whether this edge settles on an EVM network, so it needs a releaser.
+    #[must_use]
+    pub fn wants_releaser(&self) -> bool {
+        self.opts
+            .usdc
+            .as_ref()
+            .is_some_and(|u| u.releaser_file.is_some())
+    }
+
+    /// The releaser key as the operator needs to see it: its address, and on
+    /// each EVM network the gas it holds and whether the escrow there takes
+    /// orders from it. The key itself never leaves this process.
+    pub async fn releaser_report(&self) -> Result<ReleaserReport, MarketError> {
+        let usdc = self.opts.usdc.as_ref().ok_or(MarketError::Unconfigured)?;
+        let file = usdc
+            .releaser_file
+            .as_deref()
+            .ok_or(MarketError::Unconfigured)?;
+        let releaser = crate::evm_tx::Releaser::read(Path::new(file)).await.ok();
+        let mut networks = Vec::new();
+        for chain in usdc.chains.iter().filter(|c| c.pay.is_some()) {
+            let mut row = ReleaserNetwork {
+                network: chain.network.key,
+                escrow: chain.pay.clone().unwrap_or_default(),
+                balance_wei: None,
+                escrow_agrees: None,
+                error: None,
+            };
+            match crate::stablecoin::read_rpc_url(Path::new(&chain.rpc_file)).await {
+                Err(_) => row.error = Some("the network's endpoint is not sealed yet"),
+                Ok(url) => {
+                    if let Some(r) = &releaser {
+                        match crate::stablecoin::releaser_on_chain(&url, &row.escrow, r.address())
+                            .await
+                        {
+                            Ok((balance, agrees)) => {
+                                row.balance_wei = Some(balance.to_string());
+                                row.escrow_agrees = Some(agrees);
+                            }
+                            Err(MarketError::Conflict(why) | MarketError::Invalid(why)) => {
+                                row.error = Some(why);
+                            }
+                            Err(_) => row.error = Some("the chain endpoint did not answer"),
+                        }
+                    }
+                }
+            }
+            networks.push(row);
+        }
+        Ok(ReleaserReport {
+            address: releaser.map(|r| r.address_hex()),
+            networks,
+        })
     }
 
     /// Send the escrow calls confirmed payments are waiting on, and follow

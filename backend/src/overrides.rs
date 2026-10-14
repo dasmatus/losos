@@ -62,9 +62,12 @@ pub fn parse_line(l: &str) -> Option<(String, String)> {
         return None;
     }
     let (lhs, rhs) = l.split_once('=')?;
+    // Whatever opens the statement (`{`, or a whole `{ ... }: {` header on a
+    // one-line body) ends at its last brace.
     let key = lhs
-        .trim()
-        .trim_start_matches('{')
+        .rsplit('{')
+        .next()
+        .unwrap_or(lhs)
         .trim()
         .strip_prefix("losos.")?;
     if key.is_empty() || !key.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'.') {
@@ -96,6 +99,32 @@ fn strip_comment(s: &str) -> &str {
     s
 }
 
+/// The statements of one line: its text before a comment, cut at every `;`
+/// outside a string. Each gate reads every statement, so a second
+/// assignment on a line (`{ ... }: { losos.a = 1; losos.b = 2; }`) is read
+/// like one on a line of its own, never skipped.
+fn statements(line: &str) -> Vec<&str> {
+    let text = strip_comment(line);
+    let mut out = Vec::new();
+    let mut start = 0;
+    let mut in_string = false;
+    let mut escaped = false;
+    for (i, c) in text.char_indices() {
+        match c {
+            _ if escaped => escaped = false,
+            '\\' if in_string => escaped = true,
+            '"' => in_string = !in_string,
+            ';' if !in_string => {
+                out.push(&text[start..i]);
+                start = i + 1;
+            }
+            _ => {}
+        }
+    }
+    out.push(&text[start..]);
+    out
+}
+
 /// Find the value assigned to `losos.<key>`.
 ///
 /// The first line that assigns the key wins (see [`parse_line`] for what
@@ -104,6 +133,7 @@ fn strip_comment(s: &str) -> &str {
 pub fn lookup_nix(key: &str, content: &str) -> Option<String> {
     content
         .lines()
+        .flat_map(statements)
         .filter_map(parse_line)
         .find_map(|(k, v)| (k == key).then_some(v))
 }
@@ -116,7 +146,7 @@ pub fn lookup_nix(key: &str, content: &str) -> Option<String> {
 /// callers that need one value per key take the first too.
 pub fn assignments(content: &str) -> Vec<(String, String)> {
     let mut out: Vec<(String, String)> = Vec::new();
-    for (k, v) in content.lines().filter_map(parse_line) {
+    for (k, v) in content.lines().flat_map(statements).filter_map(parse_line) {
         if !out.iter().any(|(seen, _)| *seen == k) {
             out.push((k, v));
         }
@@ -738,6 +768,24 @@ mod tests {
                 "{\n  losos.cluster.computeWindow.start = \"23:00\";\n  losos.cluster.computeWindow.end = \"07:00\";\n}\n"
             )
             .is_ok()
+        );
+    }
+
+    #[test]
+    fn every_statement_on_a_line_is_an_assignment() {
+        let body =
+            r#"{ ... }: { losos.hostName = "a;b"; losos.noSuch.option = true; } # losos.c = 1;"#;
+        assert_eq!(
+            assignments(body),
+            vec![
+                ("hostName".to_string(), r#""a;b""#.to_string()),
+                ("noSuch.option".to_string(), "true".to_string())
+            ]
+        );
+        assert_eq!(lookup_nix("noSuch.option", body).as_deref(), Some("true"));
+        assert!(
+            validate_apply(r#"{ ... }: { losos.gpuEnable = true; losos.hostName = "${x}"; }"#)
+                .is_err()
         );
     }
 

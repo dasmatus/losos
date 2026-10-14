@@ -1,11 +1,12 @@
-# Secrets sealed on the edge from GitHub Actions.
+# Secrets sealed on the edge, from the `losos` terminal or GitHub Actions.
 #
-# `.github/workflows/edge-credentials.yml` reads the Stripe and Claude keys
-# from the repository's Actions secrets and pipes each one over SSH into
-# `losos-seal-credential` here, which checks its shape and seals it with
-# `systemd-creds` (TPM2 where the edge has one, the host key otherwise). The
-# plaintext travels in the SSH session and in this script's memory only: it is
-# never written to disk on either side, and the blob is all `/var` ever holds.
+# The terminal (`losos edge secret set`, docs/edge-terminal.md) and
+# `.github/workflows/edge-credentials.yml` (the Stripe and Claude keys only)
+# both pipe a value into `losos-seal-credential` here, which checks its
+# shape and seals it with `systemd-creds` (TPM2 where the edge has one, the
+# host key otherwise). The plaintext travels in the sealed envelope or the
+# SSH session and in this script's memory only: it is never written to disk
+# on either side, and the blob is all `/var` ever holds.
 #
 # The deploy key is root's only because sealing with the host key and
 # restarting the gate need root. `restrict,command=` pins it to this one
@@ -25,6 +26,15 @@ let
   cfg = config.losos.edge;
   creds = cfg.credentials.secrets;
 
+  # One `--list` line per credential: sealed or not, and when.
+  listLine = name: c: ''
+    if [ -f ${lib.escapeShellArg (toString c.sealed)} ]; then
+      printf '%s\t1\t%s\n' ${lib.escapeShellArg name} "$(stat -c %Y ${lib.escapeShellArg (toString c.sealed)})"
+    else
+      printf '%s\t0\t\n' ${lib.escapeShellArg name}
+    fi
+  '';
+
   # One `case` arm per credential: where it goes, the shape every line must
   # have, and the units to restart.
   arm = name: c: ''
@@ -43,8 +53,17 @@ let
     ];
     text = ''
       # The name comes from the SSH command line under the forced command, or
-      # from the first argument when an operator runs this by hand.
+      # from the first argument when an operator runs this by hand or the
+      # registrar's terminal route does (docs/edge-terminal.md).
       name=''${SSH_ORIGINAL_COMMAND:-''${1:-}}
+
+      # `--list`: one `name<TAB>0|1<TAB>mtime` line per credential, for the
+      # terminal's Secrets pane. Names and times only, never a blob.
+      if [ "$name" = "--list" ]; then
+      ${lib.concatStrings (lib.mapAttrsToList listLine creds)}
+        exit 0
+      fi
+
       case "$name" in
       ${lib.concatStrings (lib.mapAttrsToList arm creds)}
       *)
@@ -89,7 +108,15 @@ let
       echo "$name: sealed to $sealed"
 
       for unit in "''${units[@]}"; do
-        if systemctl cat "$unit" >/dev/null 2>&1; then
+        if ! systemctl cat "$unit" >/dev/null 2>&1; then
+          continue
+        fi
+        if [ "$unit" = "''${LOSOS_SEAL_DEFER:-}" ]; then
+          # The caller is this unit: restarting it now would cut off the
+          # answer. A timer outside its cgroup restarts it a moment later.
+          systemd-run --quiet --collect --on-active=3s systemctl restart "$unit"
+          echo "$name: restarting $unit in a few seconds"
+        else
           systemctl restart "$unit"
           echo "$name: restarted $unit"
         fi
@@ -132,7 +159,8 @@ in
             units = [ "losos-registrar.service" ];
           }
         ) cfg.market.usdc.networks
-        # The escrow's releaser: a bare secp256k1 key, hex.
+        # The escrow's releaser: a bare secp256k1 key, hex. The registrar
+        # makes it and pipes it here (`losos edge escrow releaser --new`).
         // {
           usdc-releaser-key = {
             sealed = lib.mkDefault cfg.market.usdc.releaserKeySealed;
@@ -149,6 +177,7 @@ in
         };
 
         environment.systemPackages = [ seal ];
+        losos.edge.credentials.sealPackage = seal;
       }
       (lib.mkIf (cfg.credentials.deployKey != null) {
         services.openssh.enable = true;

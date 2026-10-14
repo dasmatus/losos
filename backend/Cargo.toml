@@ -53,6 +53,11 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # in the lock file through actix-web.
 futures-core = { version = "0.3", default-features = false }
 
+# Personal access tokens and the OpenPGP envelope of the losos terminal
+# client (src/access.rs). Shared with backend-registrar by path, so the box
+# and the edge speak one contract (docs/terminal-access.md).
+losos-access = { path = "access" }
+
 [dev-dependencies]
 # The CLI book's integration-testing trio: run the real binary, assert on its
 # output, and give it a throwaway filesystem.

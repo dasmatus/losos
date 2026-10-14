@@ -914,7 +914,22 @@ let
     ++ dnsServeArgs
     ++ enrolArgs
     ++ uplinkArgs
+    ++ accessArgs
   );
+
+  # The terminal (docs/edge-terminal.md): on once a key is seeded. The key
+  # and the tokens live in the registrar's StateDirectory; the seal script
+  # runs through systemd-run, outside this unit's sandbox and cgroup.
+  accessArgs = lib.optionals (cfg.access.gpgKeys != [ ]) [
+    "--access-dir"
+    "/var/lib/losos-registrar/access"
+    "--access-keys-file"
+    "/etc/losos/edge-access-keys.asc"
+    "--seal-credential"
+    "${cfg.credentials.sealPackage}/bin/losos-seal-credential"
+    "--systemd-run"
+    "${config.systemd.package}/bin/systemd-run"
+  ];
 
   # The official-edge identity (losos.edge.identity.*): both files or neither,
   # asserted below. The private key is made and read by the registrar at
@@ -1002,7 +1017,9 @@ in
       {
         assertion =
           let
-            modes = lib.unique (map (name: lib.hasInfix "sepolia" name || lib.hasSuffix "devnet" name) (lib.attrNames usdcNetworks));
+            modes = lib.unique (
+              map (name: lib.hasInfix "sepolia" name || lib.hasSuffix "devnet" name) (lib.attrNames usdcNetworks)
+            );
           in
           lib.length modes <= 1;
         message = ''
@@ -1145,6 +1162,10 @@ in
       "d /var/lib/losos-dns 0755 root root - -"
     ];
 
+    environment.etc."losos/edge-access-keys.asc" = lib.mkIf (cfg.access.gpgKeys != [ ]) {
+      text = lib.concatStringsSep "\n" cfg.access.gpgKeys;
+    };
+
     # ── losos-registrar (registration API + reconciler) ─────────────────
     systemd.services.losos-registrar = {
       description = "losos edge registrar — registration API + Traefik/rathole config reconciler";
@@ -1166,6 +1187,10 @@ in
       ++ lib.optional meshEnabled "losos-mesh-rbac.service"
       ++ lib.optional cfg.market.enable "losos-stripe-gate.service"
       ++ lib.optional btcOn "bitcoind-losos.service";
+      # A changed seed is read at start, like the box's.
+      restartTriggers = lib.optional (
+        cfg.access.gpgKeys != [ ]
+      ) config.environment.etc."losos/edge-access-keys.asc".source;
       serviceConfig = {
         ExecStart = serveArgs;
         StateDirectory = "losos-registrar";
@@ -1190,6 +1215,12 @@ in
         # endpoint, `usdc-releaser-key` the escrow's key and `ens-rpc` the
         # name lookups. None is a flag, so none shows up in the process list.
         LoadCredentialEncrypted = registrarCreds;
+        # systemd fails the unit when an absolute blob is missing, and an
+        # edge whose registrar never starts cannot have anything sealed
+        # through `losos edge secret set`. A SetCredential= of the same name
+        # is the fallback systemd takes then; the registrar reads the word as
+        # "not configured" (503) for every one of these.
+        SetCredential = map (c: "${lib.head (lib.splitString ":" c)}:unsealed") registrarCreds;
       };
     };
 

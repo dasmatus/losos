@@ -219,6 +219,20 @@ let
     cp -r ${losos-lab-render}/webgpu ${losos-lab-render}/webgl2 src/lab/render-pkg/
     chmod -R u+w src/lab/render-pkg
   '';
+  # The registrar depends on the terminal envelope crate by path
+  # (`../backend/access`), so its source is both trees, rooted at the repo.
+  registrarSource = {
+    src = lib.fileset.toSource {
+      root = ./..;
+      fileset = lib.fileset.unions [
+        (lib.fileset.fromSource (lib.cleanSource ./../backend-registrar))
+        ./../backend/access/Cargo.toml
+        ./../backend/access/src
+      ];
+    };
+    cargoRoot = "backend-registrar";
+    buildAndTestSubdir = "backend-registrar";
+  };
 in
 images
 // {
@@ -323,7 +337,7 @@ images
     src = lib.cleanSource ./../backend;
     # SHA256 of the vendored crate tarball. If deps change, `nix build
     # .#losos-ctl-rs` will print the new hash to paste here.
-    cargoHash = "sha256-UkTcw0BbGkoRTePxTXvCRShlBuAALYjRMIeKi31vR9k=";
+    cargoHash = "sha256-1JinoHM5dXBOovTlMiHAFAf/Jggvp+IzylHqoTmFS88=";
     # No system deps: zbus speaks the D-Bus wire protocol natively, so there is
     # no libdbus to link against.
     # doCheck is off, and the tests still run — in CI's lint job and in
@@ -346,10 +360,10 @@ images
   losos-registrar = buildRustPackage {
     pname = "losos-registrar";
     version = "0.1.0";
-    src = lib.cleanSource ./../backend-registrar;
+    inherit (registrarSource) src cargoRoot buildAndTestSubdir;
     # SHA256 of the vendored crate tarball. If deps change, `nix build
     # .#losos-registrar` will print the new hash to paste here.
-    cargoHash = "sha256-jFJcT/C/RChi5YOgBOIA6v1pNt0GHnqt60YEmCwSvic=";
+    cargoHash = "sha256-2sRP2zY8Un0TjeiMZAebZkHRWhm2193S45/q2BZ3ZQI=";
     # No system deps; pure Rust with rustls (no openssl).
     # Same reasoning as losos-ctl above: the suite runs via cargo test in the
     # lint job, not inside this derivation.
@@ -373,8 +387,8 @@ images
   losos-registrar-static = pkgs.pkgsStatic.rustPlatform.buildRustPackage {
     pname = "losos-registrar-static";
     version = "0.1.0";
-    src = lib.cleanSource ./../backend-registrar;
-    cargoHash = "sha256-jFJcT/C/RChi5YOgBOIA6v1pNt0GHnqt60YEmCwSvic=";
+    inherit (registrarSource) src cargoRoot buildAndTestSubdir;
+    cargoHash = "sha256-2sRP2zY8Un0TjeiMZAebZkHRWhm2193S45/q2BZ3ZQI=";
     doCheck = false;
   };
 

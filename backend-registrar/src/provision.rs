@@ -755,6 +755,81 @@ fn root_public_of(root_key: Option<&str>, root_public: Option<&str>) -> Result<S
     }
 }
 
+/// `provision token`: one call to the edge's `/operator/tokens*` with the
+/// sign-in's GitHub token. A new token goes to stdout and nowhere else.
+async fn token_verb(
+    client: &reqwest::Client,
+    edge: &str,
+    github_token: &str,
+    verb: crate::opts::TokenVerb,
+) -> Result<ExitCode> {
+    use crate::opts::TokenVerb;
+    let (path, body) = match &verb {
+        TokenVerb::Create {
+            name,
+            fingerprint,
+            scope,
+            expires_in_days,
+        } => (
+            "/operator/tokens",
+            serde_json::json!({
+                "name": name,
+                "fingerprint": fingerprint.replace(' ', ""),
+                "scope": scope,
+                "expiresInDays": expires_in_days,
+            }),
+        ),
+        TokenVerb::List => ("/operator/tokens/list", serde_json::json!({})),
+        TokenVerb::Revoke { id } => ("/operator/tokens/revoke", serde_json::json!({ "id": id })),
+    };
+    let resp = client
+        .post(format!("{edge}{path}"))
+        .bearer_auth(github_token)
+        .json(&body)
+        .timeout(Duration::from_secs(20))
+        .send()
+        .await
+        .into_diagnostic()
+        .wrap_err_with(|| format!("reach {edge}"))?;
+    let status = resp.status();
+    let text = resp.text().await.unwrap_or_default();
+    if status == reqwest::StatusCode::FORBIDDEN {
+        return Err(Refused::EdgeRefused(text.trim().to_string()).into());
+    }
+    if !status.is_success() {
+        let why = serde_json::from_str::<serde_json::Value>(&text)
+            .ok()
+            .and_then(|v| v["error"].as_str().map(str::to_string))
+            .unwrap_or(text);
+        return Err(miette!("{edge}{path} answered {status}: {}", why.trim()));
+    }
+    let answer: serde_json::Value = serde_json::from_str(&text)
+        .into_diagnostic()
+        .wrap_err("the edge's answer is not JSON")?;
+    match verb {
+        TokenVerb::Create { .. } => {
+            eprintln!(
+                "  token {} made; it is shown once. Give it to `losos login {edge}`.",
+                answer["record"]["id"].as_str().unwrap_or("?")
+            );
+            println!("{}", answer["token"].as_str().unwrap_or_default());
+        }
+        TokenVerb::List => {
+            for t in answer["tokens"].as_array().into_iter().flatten() {
+                println!(
+                    "{}\t{}\t{}\t{}",
+                    t["id"].as_str().unwrap_or("?"),
+                    t["scope"].as_str().unwrap_or("?"),
+                    t["fingerprint"].as_str().unwrap_or("?"),
+                    t["name"].as_str().unwrap_or("?"),
+                );
+            }
+        }
+        TokenVerb::Revoke { id } => eprintln!("  token {id} revoked"),
+    }
+    Ok(ExitCode::SUCCESS)
+}
+
 fn report(session: &Session) {
     eprintln!(
         "  signed in as {} (GitHub id {}), listed as {}",
@@ -930,6 +1005,10 @@ pub async fn run(opts: ProvisionOpts) -> Result<ExitCode> {
                         Ok(ExitCode::from(EXIT_NOT_YET))
                     }
                 }
+            }
+            ProvisionOpts::Token { github, edge, verb } => {
+                let (_, session) = gate(&github, "").await?;
+                token_verb(&client, &edge, &session.token, verb).await
             }
             ProvisionOpts::Verify {
                 url,

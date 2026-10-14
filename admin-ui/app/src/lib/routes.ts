@@ -3,7 +3,7 @@ import { isSettingsPaneId, type SettingsPaneId } from "@/screens/settings/panes"
 /* The one place a settings pane's address is decided.
  *
  * Storage, mesh, machines and apps are what an owner opens this page for, so they get a
- * top-level address; network, hardware, security, about and reset sit under
+ * top-level address; network, hardware, security, access, about and reset sit under
  * /settings. The sidebar and the router both read this, so they cannot
  * disagree about where a pane lives, and a deep link to any of them survives a
  * reload because nginx serves index.html for unknown paths under the admin
