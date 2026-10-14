@@ -1508,11 +1508,21 @@ impl Builder {
         let pricing = self.pricing();
         let id = random_id("bld")?;
         let now = now_secs();
+        // Claimed before the build is recorded: a reconcile tick that lands
+        // while the session is being opened would otherwise find a running
+        // build with no session and give up on it.
+        self.claim(&id);
         // Admitted and recorded under one lock, so two requests from one box
         // cannot both start a build on the same balance.
         let budget = {
             let mut state = self.state.lock().await;
-            let budget = admit(&state, tenant, &pricing, self.opts.max_build_cents)?;
+            let budget = match admit(&state, tenant, &pricing, self.opts.max_build_cents) {
+                Ok(budget) => budget,
+                Err(e) => {
+                    self.release(&id);
+                    return Err(e);
+                }
+            };
             let mut next = state.clone();
             next.builds.insert(
                 id.clone(),
@@ -1535,7 +1545,10 @@ impl Builder {
                     fault: None,
                 },
             );
-            self.commit(&mut state, next).await?;
+            if let Err(e) = self.commit(&mut state, next).await {
+                self.release(&id);
+                return Err(e);
+            }
             budget
         };
         let text = kickoff(&prompt, base, language(lang));
@@ -1557,19 +1570,23 @@ impl Builder {
                 if let Some(b) = next.builds.get_mut(&id) {
                     b.session_id = Some(session_id);
                 }
-                self.commit(&mut state, next).await?;
+                if let Err(e) = self.commit(&mut state, next).await {
+                    self.release(&id);
+                    return Err(e);
+                }
                 tracing::info!(target: Action::Builder.target(), "build {id} for {tenant} started with a {budget} cent cap");
             }
             Err(e) => {
                 // No session, nothing used, nothing to charge.
                 next.builds.remove(&id);
                 let _ = self.commit(&mut state, next).await;
+                self.release(&id);
                 return Err(e);
             }
         }
         let view = state.builds.get(&id).map(BuildView::from);
         drop(state);
-        self.follow(&id);
+        self.spawn_watch(&id);
         view.ok_or(BuilderError::NotFound)
     }
 
@@ -1591,23 +1608,34 @@ impl Builder {
     }
 
     fn follow(self: &Arc<Self>, id: &str) {
-        {
-            let Ok(mut watching) = self.watching.lock() else {
-                return;
-            };
-            if !watching.insert(id.to_string()) {
-                return;
-            }
+        if self.claim(id) {
+            self.spawn_watch(id);
         }
+    }
+
+    /// Mark a build as followed, so `resume` leaves it alone. False when a
+    /// task already follows it.
+    fn claim(&self, id: &str) -> bool {
+        self.watching
+            .lock()
+            .is_ok_and(|mut watching| watching.insert(id.to_string()))
+    }
+
+    fn release(&self, id: &str) {
+        if let Ok(mut watching) = self.watching.lock() {
+            watching.remove(id);
+        }
+    }
+
+    /// Follow a build already claimed by `claim`.
+    fn spawn_watch(self: &Arc<Self>, id: &str) {
         let me = Arc::clone(self);
         let id = id.to_string();
         tokio::spawn(async move {
             if let Err(e) = me.watch(&id).await {
                 tracing::warn!(target: Action::Builder.target(), "build {id}: {e}; picked up again on the next tick");
             }
-            if let Ok(mut watching) = me.watching.lock() {
-                watching.remove(&id);
-            }
+            me.release(&id);
         });
     }
 

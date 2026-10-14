@@ -418,7 +418,7 @@ fn personal_sign_hash(message: &[u8]) -> [u8; 32] {
 }
 
 fn address_of(key: &VerifyingKey) -> String {
-    let point = key.to_encoded_point(false);
+    let point = key.to_sec1_point(false);
     let hash = keccak256(&point.as_bytes()[1..]);
     format!("0x{}", hex_encode(&hash[12..]))
 }
@@ -517,9 +517,7 @@ fn hex_encode(bytes: &[u8]) -> String {
 #[cfg(test)]
 fn sign_personal(secret: &[u8; 32], message: &[u8]) -> String {
     let key = SigningKey::from_bytes(secret.into()).expect("key");
-    let (signature, recid) = key
-        .sign_prehash_recoverable(&personal_sign_hash(message))
-        .expect("sign");
+    let (signature, recid) = key.sign_prehash_recoverable(&personal_sign_hash(message));
     let mut bytes = [0u8; 65];
     bytes[..64].copy_from_slice(&signature.to_bytes());
     bytes[64] = u8::from(recid) + 27;
