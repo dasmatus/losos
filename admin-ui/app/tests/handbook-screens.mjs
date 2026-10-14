@@ -346,8 +346,9 @@ async function open({
   health = true,
   cloudDown = false,
   apply = { job: 'losos-rebuild-7f3a' },
+  reducedMotion = 'no-preference',
 } = {}) {
-  const page = await browser.newPage({ viewport, locale, colorScheme: theme, deviceScaleFactor: 2 });
+  const page = await browser.newPage({ viewport, locale, colorScheme: theme, deviceScaleFactor: 2, reducedMotion });
   await page.clock.setFixedTime(NOW);
   await page.addInitScript(
     ({ token, board, journal, theme, lang }) => {
@@ -569,6 +570,28 @@ const SHOTS = [
   { name: 'settings-security', path: '/settings/security' },
   { name: 'settings-look', path: '/settings/look', look: LOOK_TIDE },
   { name: 'settings-about', path: '/settings/about' },
+  /* The first-run tour, one shot per step, over the overview it opens on.
+   * Under reduced motion each scene shows its composed still, so the
+   * pictures do not depend on timing. */
+  ...[1, 2, 3, 4, 5, 6].flatMap((step) =>
+    [['', 'light'], ['-dark', 'dark'], ...(step === 1 ? [['-phone', 'light']] : [])].map(([suffix, theme]) => ({
+      name: `tour-${step}${suffix}`,
+      path: '/',
+      theme,
+      ...(suffix === '-phone' ? { viewport: { width: 390, height: 844 } } : {}),
+      reducedMotion: 'reduce',
+      act: async (page) => {
+        // As the wizard's Finish leaves it: the tour pending over the overview.
+        await page.evaluate(() => window.localStorage.setItem('losos-tour', 'pending'));
+        await page.reload({ waitUntil: 'networkidle' });
+        const tour = page.getByTestId('tour');
+        await tour.waitFor();
+        if (step > 1) await tour.getByRole('button', { name: `Go to step ${step}` }).click();
+        await settle(page, 700);
+        await hideToasts(page);
+      },
+    })),
+  ),
   { name: 'settings-reset', path: '/settings/reset' },
   {
     name: 'settings-reset-dialog',

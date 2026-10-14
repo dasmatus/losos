@@ -14,6 +14,7 @@ import machines from "./machines";
 import panes from "./panes";
 import settings from "./settings";
 import shell from "./shell";
+import tour from "./tour";
 import widgets from "./widgets";
 import wizard from "./wizard";
 
@@ -32,6 +33,7 @@ export const MESSAGES = {
   ...machines,
   ...advanced,
   ...lab,
+  ...tour,
 };
 
 export type MessageKey = keyof typeof MESSAGES;
