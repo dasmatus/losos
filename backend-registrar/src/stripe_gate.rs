@@ -1288,7 +1288,7 @@ impl GateClient {
     /// # Errors
     /// [`MarketError::Unconfigured`] when either is missing or misshapen;
     /// others if the gate is unavailable.
-    pub async fn validate_secrets(&self) -> Result<StripeMode, MarketError> {
+    pub async fn key_mode(&self) -> Result<StripeMode, MarketError> {
         self.call(&Request::ValidateSecrets)
             .await?
             .mode

@@ -1513,7 +1513,7 @@ pub struct Market {
 
 /// The ledger of the mode the gate's key is in, and where it is kept. The
 /// edge reads the mode off the key on every market request
-/// ([`Market::validate_secrets`]) and opens the other ledger when it changes,
+/// ([`Market::check_mode`]) and opens the other ledger when it changes,
 /// so going live is sealing a live key and restarting the gate: test sellers,
 /// listings and orders stay in the test ledger, and a test payment never
 /// becomes a live entitlement.
@@ -1627,7 +1627,7 @@ fn random_id(prefix: &str) -> Result<String, MarketError> {
 impl Market {
     /// Open the store. Which ledger is read depends on the mode of the gate's
     /// key, so nothing is read until the first market request asks the gate
-    /// ([`Market::validate_secrets`]). Both ledgers are checked here so a
+    /// ([`Market::check_mode`]). Both ledgers are checked here so a
     /// file that does not parse fails the start rather than the first buyer.
     pub async fn open(opts: MarketOpts) -> Result<Self, MarketError> {
         let gate = Arc::new(GateClient::new(&opts.gate_socket));
@@ -1677,7 +1677,7 @@ impl Market {
 
     /// Check the gate has its secrets, and switch to the ledger of its key's
     /// mode. Every market route calls this first.
-    pub async fn validate_secrets(&self) -> Result<StripeMode, MarketError> {
+    pub async fn check_mode(&self) -> Result<StripeMode, MarketError> {
         let mode = self.connect.mode().await?;
         if let Some(usdc) = &self.opts.usdc {
             // The chain is the mode, the same way the key's prefix is. A
@@ -1781,7 +1781,7 @@ impl Market {
     async fn vouching_sellers(&self) -> BTreeMap<String, Seller> {
         if self.mode().await.is_none() {
             // The fault, if any, is the gate's to report; the routes do.
-            let _ = self.validate_secrets().await;
+            let _ = self.check_mode().await;
         }
         let ledger = self.state.lock().await;
         if ledger.mode.is_some() {

@@ -62,7 +62,7 @@ async fn market(tag: &str, mode: StripeMode) -> (Market, Arc<MemoryConnect>, Pat
     let market = Market::open_with(opts(&file), connect)
         .await
         .expect("open market");
-    assert_eq!(market.validate_secrets().await.unwrap(), mode);
+    assert_eq!(market.check_mode().await.unwrap(), mode);
     (market, platform, file)
 }
 
@@ -284,7 +284,7 @@ async fn test_and_live_keep_separate_ledgers() {
     let live = Market::open_with(opts(&file), Arc::new(MemoryConnect::new(StripeMode::Live)))
         .await
         .unwrap();
-    assert_eq!(live.validate_secrets().await.unwrap(), StripeMode::Live);
+    assert_eq!(live.check_mode().await.unwrap(), StripeMode::Live);
     assert!(
         live.seller(SELLER).await.is_none(),
         "a test seller is not a live one"
@@ -298,7 +298,7 @@ async fn no_key_means_no_market() {
     platform.set_configured(false);
     let market = Market::open_with(opts(&file), platform).await.unwrap();
     assert!(matches!(
-        market.validate_secrets().await,
+        market.check_mode().await,
         Err(MarketError::Unconfigured)
     ));
     assert!(matches!(

@@ -1355,7 +1355,7 @@ async fn market_of(st: &AppState) -> Result<&Arc<Market>, ApiError> {
         .market
         .as_ref()
         .ok_or(ApiError::Market(MarketError::Unconfigured))?;
-    market.validate_secrets().await?;
+    market.check_mode().await?;
     Ok(market)
 }
 
@@ -2005,7 +2005,7 @@ async fn fulfil_market(st: &AppState) {
     // Which ledger to work on follows the gate's key. Once a request has
     // told, the pass keeps to that ledger: its orders are still owed their
     // volumes even if the key changes before the next request notices.
-    if market.mode().await.is_none() && market.validate_secrets().await.is_err() {
+    if market.mode().await.is_none() && market.check_mode().await.is_err() {
         return;
     }
     // A coin payment seen in time completes its order even after the hold
