@@ -61,6 +61,7 @@ pub mod idle;
 pub mod join;
 pub mod lab;
 pub mod market;
+pub mod operator;
 pub mod opts;
 pub mod plans;
 pub mod provision;

@@ -1,6 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "ignoreCommand": "git diff --quiet HEAD^ HEAD -- . ../backend-registrar",
+  "ignoreCommand": "git diff --quiet HEAD^ HEAD -- . ../backend-registrar ../backend/access",
   "outputDirectory": "public",
   "cleanUrls": true,
   "rewrites": [

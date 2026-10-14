@@ -129,7 +129,7 @@ pub fn detect_candidates(devs: &[BlockDev]) -> Vec<String> {
 /// Render `modules/install-target.nix`.
 ///
 /// The format is asserted on by the installer VM test, so it is exact.
-pub fn render_target(drives: &[String], tpm: bool, bios: bool) -> String {
+pub fn render_target(drives: &[String], tpm: bool, bios: bool, gpg_keys: &[String]) -> String {
     let list = drives
         .iter()
         .map(|d| format!("\"{d}\""))
@@ -160,8 +160,36 @@ pub fn render_target(drives: &[String], tpm: bool, bios: bool) -> String {
         "  losos.bios = {};\n",
         if bios { "true" } else { "false" }
     ));
+    // Only when there are any, so the file a stock medium writes is the one
+    // the installer VM test asserts on, byte for byte.
+    if !gpg_keys.is_empty() {
+        s.push_str("  # Seeded for the losos terminal client; see docs/terminal-access.md.\n");
+        s.push_str("  losos.access.gpgKeys = [\n");
+        for key in gpg_keys {
+            s.push_str("    ''\n");
+            for line in key.trim().lines() {
+                s.push_str("      ");
+                s.push_str(line.trim_end());
+                s.push('\n');
+            }
+            s.push_str("    ''\n");
+        }
+        s.push_str("  ];\n");
+    }
     s.push_str("}\n");
     s
+}
+
+/// Why an armoured key cannot go into a Nix indented string, if it cannot.
+/// Armour is base64 and header lines, so neither ever appears in a real one.
+pub fn gpg_key_fault(armored: &str) -> Option<&'static str> {
+    if armored.contains("''") || armored.contains("${") {
+        Some("it holds '' or ${, which no armoured key does")
+    } else if !armored.contains("-----BEGIN PGP PUBLIC KEY BLOCK-----") {
+        Some("it is not an armoured public key (gpg --armor --export <id>)")
+    } else {
+        None
+    }
 }
 
 // ── Options and the plan ─────────────────────────────────────────────────────
@@ -183,6 +211,10 @@ pub struct Options {
     pub keyfile: PathBuf,
     pub target_rel: PathBuf,
     pub emit_file: PathBuf,
+    /// The owner's GPG public keys, armoured, for terminal access
+    /// (`losos.access.gpgKeys`). Checked by the CLI layer before they get
+    /// here; empty on a stock medium.
+    pub gpg_keys: Vec<String>,
 }
 
 /// One side effect. Keeping these as data rather than calling straight into the
@@ -233,7 +265,7 @@ pub fn resolve_tpm(explicit: Option<bool>, present: bool) -> Result<bool, String
 /// used by the VM test), and the real install.
 pub fn plan_install(opts: &Options, devs: &[BlockDev]) -> Result<Vec<InstallAction>, String> {
     let drives = resolve_drives(opts, devs)?;
-    let target = render_target(&drives, opts.tpm, opts.bios);
+    let target = render_target(&drives, opts.tpm, opts.bios, &opts.gpg_keys);
     let mut acts = vec![InstallAction::Log(format!(
         "losos-install: target drives: {}",
         drives.join(" ")
@@ -430,6 +462,7 @@ mod tests {
             keyfile: PathBuf::from("/etc/keys/persist-keyfile"),
             target_rel: PathBuf::from("modules/install-target.nix"),
             emit_file: PathBuf::from("/tmp/losos-install-target.nix"),
+            gpg_keys: Vec::new(),
         }
     }
 
@@ -526,16 +559,34 @@ mod tests {
     }
 
     #[test]
+    fn seeded_keys_go_in_as_indented_strings() {
+        let key = "-----BEGIN PGP PUBLIC KEY BLOCK-----\n\nmDMEZ\n=abcd\n-----END PGP PUBLIC KEY BLOCK-----\n";
+        let t = render_target(&["/dev/vdb".into()], true, false, &[key.into()]);
+        assert!(t.contains(
+            "  losos.access.gpgKeys = [\n    ''\n      -----BEGIN PGP PUBLIC KEY BLOCK-----\n"
+        ));
+        assert!(t.contains("      -----END PGP PUBLIC KEY BLOCK-----\n    ''\n  ];\n}\n"));
+        // No keys, no line: a stock medium's file is unchanged.
+        assert!(!render_target(&["/dev/vdb".into()], true, false, &[]).contains("gpgKeys"));
+        assert!(gpg_key_fault(key).is_none());
+        assert!(gpg_key_fault("${builtins.exec}").is_some());
+        assert!(gpg_key_fault("-----BEGIN PGP PUBLIC KEY BLOCK----- ''").is_some());
+        assert!(gpg_key_fault("-----BEGIN PGP PRIVATE KEY BLOCK-----").is_some());
+    }
+
+    #[test]
     fn render_target_is_exact() {
-        let t = render_target(&["/dev/vdb".into(), "/dev/vdc".into()], false, false);
+        let t = render_target(&["/dev/vdb".into(), "/dev/vdc".into()], false, false, &[]);
         assert!(t.contains(r#"  losos.targetDrives = [ "/dev/vdb" "/dev/vdc" ];"#));
         assert!(t.contains("  losos.tpm.enable = false;"));
         assert!(t.contains("{ ... }:"));
         assert!(t.ends_with("}\n"));
         assert!(t.contains("  losos.bios = false;"));
-        assert!(render_target(&["/dev/nvme0n1".into()], true, false)
+        assert!(render_target(&["/dev/nvme0n1".into()], true, false, &[])
             .contains("losos.tpm.enable = true;"));
-        assert!(render_target(&["/dev/vdb".into()], false, true).contains("  losos.bios = true;"));
+        assert!(
+            render_target(&["/dev/vdb".into()], false, true, &[]).contains("  losos.bios = true;")
+        );
     }
 
     #[test]
