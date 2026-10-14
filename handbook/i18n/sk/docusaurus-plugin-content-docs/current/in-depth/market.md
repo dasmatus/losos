@@ -253,6 +253,10 @@ zapečatí zodpovedajúci pár, nič sa nestratí.
 
 - Webhook je overený HMAC podpisom Stripe nad surovým telom, s päťminútovým
   oknom proti opakovaniu a vyšším limitom tela než ostatné routy.
+- Stripe môže doručiť udalosť dvakrát alebo v inom poradí. Udalosť, ktorú
+  edge už použil, sa podľa jej id zahodí, a `account.updated` starší než stav
+  účtu, ktorý edge má, sa ignoruje, takže oneskorená udalosť nestiahne
+  pripraveného predajcu z ponuky.
 - Platba sa počíta, len keď sa session id, suma a mena zhodujú s tým, čo edge
   zaznamenal pre objednávku. Nezhoda sa zaloguje a nesplní sa. Ak sa edge
   zastavil skôr, než si session id zapísal, prevezme sa id z podpísanej

@@ -25,9 +25,12 @@
 //! The module splits like the rest of the crate: the pricing, the capacity
 //! accounting, the webhook signature check and the order state machine are
 //! pure functions over [`MarketState`] and are unit-tested below; [`Market`]
-//! adds the persisted store, and every Stripe call goes through
-//! [`crate::stripe_gate::GateClient`] to the separate process that holds the key.
-//! Integration tests drive the real routes against a Stripe stub.
+//! adds the persisted store. Every Connect call (accounts, onboarding,
+//! destination charges, webhook checks) goes through [`crate::connect::Connect`],
+//! which on an edge is [`crate::stripe_gate::GateClient`], the client of the
+//! separate process that holds the key. `tests/connect.rs` runs the market on
+//! the in-memory platform, and the integration tests drive the real routes
+//! against a Stripe stub.
 //!
 //! What a *paid* order means: the order record is the entitlement. Nothing
 //! here provisions a Longhorn volume or schedules a pod yet — fulfilment reads
@@ -41,6 +44,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::io;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use ring::hmac;
@@ -50,10 +54,12 @@ use serde_json::Value;
 use tokio::sync::Mutex;
 
 use crate::action::Action;
+use crate::connect::{ChargeSpec, Connect, DestinationCharge, Split};
 use crate::fsutil::atomic_write;
 use crate::hardware::{total, Catalogue, Line};
-use crate::stripe_gate::{CheckoutRequest, GateClient, HardwareRequest};
+use crate::stripe_gate::{GateClient, HardwareRequest};
 use crate::stripe_mode::StripeMode;
+use crate::sync::{Delivery, Event, SyncLog};
 use crate::vms::{Upload, UploadView, VmOrder, VmProvision, VM_FEE_BPS};
 
 /// The cut kept by the platform, in basis points of the gross amount: 4%.
@@ -142,19 +148,7 @@ impl Kind {
     /// The unit a listing of this kind is priced and sized in.
     #[must_use]
     pub const fn unit(self) -> &'static str {
-        match self {
-            Kind::Storage => "GiB-month",
-            Kind::Compute => "vCPU-hour",
-            Kind::Vm => "replica-month",
-        }
-    }
-
-    pub(crate) const fn label(self) -> &'static str {
-        match self {
-            Kind::Storage => "Storage",
-            Kind::Compute => "Compute",
-            Kind::Vm => "Virtual machine",
-        }
+        crate::plans::plan(self).unit
     }
 }
 
@@ -340,6 +334,10 @@ pub struct MarketState {
     /// Buyers' own machine images, kept on the edge (`crate::vms`).
     #[serde(default)]
     pub uploads: BTreeMap<String, Upload>,
+    /// Which webhook events were applied, and how new each account's state
+    /// is (`crate::sync`).
+    #[serde(default, skip_serializing_if = "SyncLog::is_empty")]
+    pub sync: SyncLog,
 }
 
 /// Market failures, mapped onto HTTP statuses by
@@ -396,14 +394,12 @@ pub fn fee_for(amount: u64, bps: u32) -> u64 {
     u64::try_from(fee).unwrap_or(amount)
 }
 
-/// The platform's cut for an order of `kind`: the operator's rate, except on
-/// a machine, which is always split half and half ([`VM_FEE_BPS`]).
+/// The platform's cut for an order of `kind`, as its plan
+/// ([`crate::plans`]) takes it: the operator's rate, except on a machine,
+/// which is always split half and half ([`VM_FEE_BPS`]).
 #[must_use]
 pub const fn fee_bps_for(kind: Kind, operator_bps: u32) -> u32 {
-    match kind {
-        Kind::Vm => VM_FEE_BPS,
-        Kind::Storage | Kind::Compute => operator_bps,
-    }
+    crate::plans::plan(kind).fee_bps(operator_bps)
 }
 
 /// What one order costs and how it splits.
@@ -808,116 +804,158 @@ pub(crate) fn decode_hex(s: &str) -> Option<Vec<u8>> {
 /// place a buyer's money becomes an entitlement, so it trusts the order, not
 /// the event.
 pub fn apply_event(state: &mut MarketState, event: &Value, now: u64) -> bool {
-    let kind = event.get("type").and_then(Value::as_str).unwrap_or("");
-    let object = &event["data"]["object"];
-    match kind {
-        "checkout.session.completed" => {
-            if object["payment_status"].as_str() != Some("paid") {
-                return false;
-            }
-            let Some(order) = object["client_reference_id"]
-                .as_str()
-                .and_then(|id| state.orders.get(id))
-            else {
-                return false;
-            };
-            let session = object["id"].as_str();
-            // A missing `session_id` means the edge stopped between Stripe
-            // creating the session and the id being written. The event is
-            // signed and names this order, which only this edge's gate can
-            // have put in `client_reference_id`, so its id is adopted.
-            let matches = session.is_some_and(|s| s.starts_with("cs_"))
-                && order
-                    .session_id
-                    .as_deref()
-                    .is_none_or(|s| Some(s) == session)
-                && object["amount_total"].as_u64() == Some(order.amount)
-                && object["currency"]
-                    .as_str()
-                    .is_some_and(|c| c.eq_ignore_ascii_case(&order.currency));
-            if !matches {
+    let delivery = Delivery::parse(event);
+    if let Some(id) = &delivery.id {
+        if state.sync.applied(id) {
+            return false;
+        }
+    }
+    let changed = match delivery.event {
+        Event::CheckoutCompleted {
+            session,
+            order,
+            paid,
+            amount,
+            currency,
+        } => {
+            paid && order.is_some_and(|order| {
+                complete_checkout(state, &order, session, amount, currency.as_deref(), now)
+            })
+        }
+        Event::CheckoutExpired { session, order } => {
+            order.is_some_and(|order| expire_checkout(state, &order, session.as_deref()))
+        }
+        Event::AccountUpdated { account, ready } => {
+            update_account(state, &account, ready, delivery.created)
+        }
+        Event::Other(_) => false,
+    };
+    if changed {
+        if let Some(id) = &delivery.id {
+            state.sync.record(id);
+        }
+    }
+    changed
+}
+
+/// `checkout.session.completed`, paid, for `order_id`.
+fn complete_checkout(
+    state: &mut MarketState,
+    order_id: &str,
+    session: Option<String>,
+    amount: Option<u64>,
+    currency: Option<&str>,
+    now: u64,
+) -> bool {
+    let Some(order) = state.orders.get(order_id) else {
+        return false;
+    };
+    // A missing `session_id` means the edge stopped between Stripe
+    // creating the session and the id being written. The event is
+    // signed and names this order, which only this edge's gate can
+    // have put in `client_reference_id`, so its id is adopted.
+    let matches = session.as_deref().is_some_and(|s| s.starts_with("cs_"))
+        && order
+            .session_id
+            .as_deref()
+            .is_none_or(|s| Some(s) == session.as_deref())
+        && amount == Some(order.amount)
+        && currency.is_some_and(|c| c.eq_ignore_ascii_case(&order.currency));
+    if !matches {
+        tracing::error!(
+            target: Action::Market.target(),
+            "paid session for order {} does not match the recorded order; not fulfilling",
+            order.id,
+        );
+        return false;
+    }
+    match order.status {
+        OrderStatus::Paid => return false,
+        OrderStatus::Pending => {}
+        // Paid after its reservation was released: Stripe retried for
+        // longer than the hold. Honour it if the units are still free;
+        // otherwise they belong to someone else now and the buyer is
+        // owed a refund, which only the dashboard can issue.
+        OrderStatus::Expired => {
+            let room = state
+                .listings
+                .get(&order.listing_id)
+                .map_or(0, |l| available(state, l, now));
+            if order.quantity > room {
                 tracing::error!(
                     target: Action::Market.target(),
-                    "paid session for order {} does not match the recorded order; not fulfilling",
+                    "order {} was paid after its reservation lapsed and its units are sold; refund session {} in the Stripe dashboard",
                     order.id,
+                    session.unwrap_or_default(),
                 );
                 return false;
             }
-            match order.status {
-                OrderStatus::Paid => return false,
-                OrderStatus::Pending => {}
-                // Paid after its reservation was released: Stripe retried for
-                // longer than the hold. Honour it if the units are still free;
-                // otherwise they belong to someone else now and the buyer is
-                // owed a refund, which only the dashboard can issue.
-                OrderStatus::Expired => {
-                    let room = state
-                        .listings
-                        .get(&order.listing_id)
-                        .map_or(0, |l| available(state, l, now));
-                    if order.quantity > room {
-                        tracing::error!(
-                            target: Action::Market.target(),
-                            "order {} was paid after its reservation lapsed and its units are sold; refund session {} in the Stripe dashboard",
-                            order.id,
-                            session.unwrap_or_default(),
-                        );
-                        return false;
-                    }
-                    tracing::warn!(
-                        target: Action::Market.target(),
-                        "order {} was paid after its reservation lapsed; its units are still free, so it is fulfilled",
-                        order.id,
-                    );
-                }
-            }
-            let id = order.id.clone();
-            let Some(order) = state.orders.get_mut(&id) else {
-                return false;
-            };
-            order.session_id = session.map(str::to_string);
-            order.status = OrderStatus::Paid;
-            order.paid_at = Some(now);
-            order.expires_at = Some(now + ENTITLEMENT_SECS);
-            true
+            tracing::warn!(
+                target: Action::Market.target(),
+                "order {} was paid after its reservation lapsed; its units are still free, so it is fulfilled",
+                order.id,
+            );
         }
-        "checkout.session.expired" => {
-            let Some(order) = object["client_reference_id"]
-                .as_str()
-                .and_then(|id| state.orders.get_mut(id))
-            else {
-                return false;
-            };
-            // Only the session the order is waiting on can release it. A
-            // retried order gets a new session, and the old one's `expired`
-            // event names the same order; without this it would free units
-            // the live session still holds. An order with no recorded
-            // session is left to `expire_stale`.
-            let current =
-                order.session_id.is_some() && order.session_id.as_deref() == object["id"].as_str();
-            if order.status == OrderStatus::Pending && current {
-                order.status = OrderStatus::Expired;
-                true
-            } else {
-                false
-            }
-        }
-        "account.updated" => {
-            let Some(id) = object["id"].as_str() else {
-                return false;
-            };
-            let ready = account_ready(object);
-            let mut changed = false;
-            for seller in state.sellers.values_mut().filter(|s| s.account_id == id) {
-                if seller.ready != ready {
-                    seller.ready = ready;
-                    changed = true;
-                }
-            }
-            changed
-        }
-        _ => false,
     }
+    let Some(order) = state.orders.get_mut(order_id) else {
+        return false;
+    };
+    order.session_id = session;
+    order.status = OrderStatus::Paid;
+    order.paid_at = Some(now);
+    order.expires_at = Some(crate::plans::plan(order.kind).expiry(now));
+    true
+}
+
+/// `checkout.session.expired` for `order_id`.
+fn expire_checkout(state: &mut MarketState, order_id: &str, session: Option<&str>) -> bool {
+    let Some(order) = state.orders.get_mut(order_id) else {
+        return false;
+    };
+    // Only the session the order is waiting on can release it. A
+    // retried order gets a new session, and the old one's `expired`
+    // event names the same order; without this it would free units
+    // the live session still holds. An order with no recorded
+    // session is left to `expire_stale`.
+    let current = order.session_id.is_some() && order.session_id.as_deref() == session;
+    if order.status == OrderStatus::Pending && current {
+        order.status = OrderStatus::Expired;
+        true
+    } else {
+        false
+    }
+}
+
+/// `account.updated`: the account as Stripe had it at `created`. A state
+/// older than the one the ledger holds is dropped ([`crate::sync`]).
+fn update_account(
+    state: &mut MarketState,
+    account: &str,
+    ready: bool,
+    created: Option<u64>,
+) -> bool {
+    if !state.sellers.values().any(|s| s.account_id == account) {
+        return false;
+    }
+    if created.is_some_and(|c| state.sync.stale(account, c)) {
+        tracing::info!(
+            target: Action::Market.target(),
+            "ignoring an account.updated for {account} older than the state already held",
+        );
+        return false;
+    }
+    let mut changed = created.is_some_and(|c| state.sync.saw_account(account, c));
+    for seller in state
+        .sellers
+        .values_mut()
+        .filter(|s| s.account_id == account)
+    {
+        if seller.ready != ready {
+            seller.ready = ready;
+            changed = true;
+        }
+    }
+    changed
 }
 
 /// Whether a Stripe account object can receive destination-charge transfers.
@@ -1148,6 +1186,8 @@ pub struct MarketOpts {
 pub struct Market {
     opts: MarketOpts,
     state: Mutex<Ledger>,
+    /// The Connect platform: the gate on an edge.
+    connect: Arc<dyn Connect>,
 }
 
 /// The ledger of the mode the gate's key is in, and where it is kept. The
@@ -1269,6 +1309,17 @@ impl Market {
     /// ([`Market::validate_secrets`]). Both ledgers are checked here so a
     /// file that does not parse fails the start rather than the first buyer.
     pub async fn open(opts: MarketOpts) -> Result<Self, MarketError> {
+        let gate = Arc::new(GateClient::new(&opts.gate_socket));
+        Self::open_with(opts, gate).await
+    }
+
+    /// As [`Market::open`], settling through `connect` rather than the gate
+    /// at `opts.gate_socket`. Hardware checkouts still go to the gate: they
+    /// pay no seller.
+    pub async fn open_with(
+        opts: MarketOpts,
+        connect: Arc<dyn Connect>,
+    ) -> Result<Self, MarketError> {
         let path = PathBuf::from(&opts.state_file);
         for mode in [StripeMode::Live, StripeMode::Test] {
             read_ledger(&ledger_path(&path, mode), mode).await?;
@@ -1280,6 +1331,7 @@ impl Market {
                 path,
                 state: MarketState::default(),
             }),
+            connect,
         })
     }
 
@@ -1291,7 +1343,7 @@ impl Market {
     /// Check the gate has its secrets, and switch to the ledger of its key's
     /// mode. Every market route calls this first.
     pub async fn validate_secrets(&self) -> Result<StripeMode, MarketError> {
-        let mode = self.stripe().validate_secrets().await?;
+        let mode = self.connect.mode().await?;
         if let Some(usdc) = &self.opts.usdc {
             // The chain is the mode, the same way the key's prefix is. A
             // Sepolia contract must not settle an order the live ledger
@@ -1519,7 +1571,7 @@ impl Market {
         if box_uuid.is_some_and(|u| !valid_box_uuid(u)) {
             return Err(MarketError::Invalid("box_uuid is not a canonical UUID"));
         }
-        let stripe = self.stripe();
+        let connect = &self.connect;
         let (mode, existing) = {
             let state = self.state.lock().await;
             (Self::mode_of(&state)?, state.sellers.get(id).cloned())
@@ -1528,14 +1580,17 @@ impl Market {
             Some(seller) if !seller.account_id.is_empty() => {
                 if let Some(uuid) = box_uuid {
                     if seller.box_uuid.as_deref() != Some(uuid) {
-                        stripe.tag_account(&seller.account_id, uuid).await?;
+                        connect.tag_account(&seller.account_id, uuid).await?;
                         self.set_box_uuid(id, uuid).await?;
                     }
                 }
-                if seller.ready || stripe.account_ready(&seller.account_id).await? {
-                    // Refresh a stale flag: the `account.updated` webhook may
-                    // have been missed.
-                    self.set_ready(id, true).await?;
+                // Refresh a stale flag: the `account.updated` webhook may
+                // have been missed. What Stripe answers now is newer than any
+                // event still on its way, so the sync is told when it read.
+                let read_at = now_secs();
+                if seller.ready || connect.account_ready(&seller.account_id).await? {
+                    self.set_ready(id, true, (!seller.ready).then_some(read_at))
+                        .await?;
                     return Ok(OnboardView {
                         mode,
                         ready: true,
@@ -1545,7 +1600,7 @@ impl Market {
                 seller.account_id
             }
             _ => {
-                let (account_id, made_in) = stripe.create_account(id, box_uuid).await?;
+                let (account_id, made_in) = connect.create_account(id, box_uuid).await?;
                 let mut state = self.state.lock().await;
                 // The gate was restarted on a key of the other mode while
                 // the account was being made: it belongs in the other ledger.
@@ -1573,8 +1628,8 @@ impl Market {
                 account_id
             }
         };
-        let url = stripe
-            .account_link(&account_id, &self.opts.return_url)
+        let url = connect
+            .onboarding_link(&account_id, &self.opts.return_url)
             .await?;
         Ok(OnboardView {
             mode,
@@ -1593,12 +1648,24 @@ impl Market {
         Ok(())
     }
 
-    async fn set_ready(&self, id: &str, ready: bool) -> Result<(), MarketError> {
+    /// Set the seller's readiness. `read_at` is when Stripe was asked, if it
+    /// was: an `account.updated` created before then is older news.
+    async fn set_ready(
+        &self,
+        id: &str,
+        ready: bool,
+        read_at: Option<u64>,
+    ) -> Result<(), MarketError> {
         let mut state = self.state.lock().await;
         let mut next = state.clone();
         if let Some(seller) = next.sellers.get_mut(id) {
-            if seller.ready != ready {
-                seller.ready = ready;
+            let mut changed = seller.ready != ready;
+            seller.ready = ready;
+            let account = seller.account_id.clone();
+            if let Some(at) = read_at {
+                changed |= next.sync.saw_account(&account, at);
+            }
+            if changed {
                 self.commit(&mut state, next).await?;
             }
         }
@@ -1782,7 +1849,6 @@ impl Market {
         new: NewOrder,
         sharing: &Sharing,
     ) -> Result<CheckoutView, MarketError> {
-        let stripe = self.stripe();
         let now = now_secs();
         let (order, destination, payout, mode) = {
             let mut state = self.state.lock().await;
@@ -1885,19 +1951,26 @@ impl Market {
             });
         }
 
-        let session = stripe
-            .checkout(CheckoutRequest {
-                order_id: order.id.clone(),
+        let session = match Split::new(order.amount, order.fee).and_then(|split| {
+            DestinationCharge::new(ChargeSpec {
+                order_id: &order.id,
                 kind: order.kind,
                 quantity: order.quantity,
                 unit_price: order.unit_price,
-                currency: order.currency.clone(),
-                fee: order.fee,
-                destination,
-                return_url: self.opts.return_url.clone(),
+                currency: &order.currency,
+                split,
+                destination: &destination,
+                return_url: &self.opts.return_url,
                 expires_at: now + CHECKOUT_TTL_SECS,
             })
-            .await;
+        }) {
+            Ok(charge) => self
+                .connect
+                .destination_charge(&charge)
+                .await
+                .map(|s| (s.id, s.url, s.mode)),
+            Err(e) => Err(e),
+        };
         let mut state = self.state.lock().await;
         if state.mode != Some(mode) {
             // The gate came back on a key of the other mode while the session
@@ -2476,7 +2549,7 @@ impl Market {
         // The gate holds the signing secrets, so it does the check.
         // It also refuses an event from the other mode, so `mode` is the
         // event's own when it says one.
-        let mode = self.stripe().verify_webhook(signature, body).await?;
+        let mode = self.connect.verify_webhook(signature, body).await?;
         let event: Value = serde_json::from_slice(body)
             .map_err(|_| MarketError::Invalid("webhook body is not JSON"))?;
         self.use_mode(mode).await?;
@@ -2560,6 +2633,58 @@ mod tests {
             st.orders["ord_a"].expires_at,
             Some(1_000 + ENTITLEMENT_SECS)
         );
+    }
+
+    #[test]
+    fn a_redelivered_event_is_applied_once() {
+        let mut st = MarketState::default();
+        st.sellers.insert(
+            "s".into(),
+            Seller {
+                account_id: "acct_x".into(),
+                ready: false,
+                box_uuid: None,
+                payout: None,
+            },
+        );
+        let event = serde_json::json!({
+            "id": "evt_1",
+            "type": "account.updated",
+            "data": { "object": {
+                "id": "acct_x",
+                "details_submitted": true,
+                "payouts_enabled": true,
+                "capabilities": { "transfers": "active" },
+            }},
+        });
+        assert!(apply_event(&mut st, &event, 1_000));
+        assert!(st.sync.applied("evt_1"));
+        // Something else took the seller off the shelf since; a second
+        // delivery of the old event must not put it back.
+        st.sellers.get_mut("s").unwrap().ready = false;
+        assert!(!apply_event(&mut st, &event, 2_000));
+        assert!(!st.sellers["s"].ready);
+    }
+
+    #[test]
+    fn an_event_that_changes_nothing_is_not_remembered() {
+        let mut st = MarketState::default();
+        let event = serde_json::json!({ "id": "evt_9", "type": "charge.refunded" });
+        assert!(!apply_event(&mut st, &event, 1_000));
+        assert!(st.sync.is_empty());
+    }
+
+    #[test]
+    fn an_account_event_for_no_seller_is_not_tracked() {
+        let mut st = MarketState::default();
+        let event = serde_json::json!({
+            "id": "evt_2",
+            "created": 5,
+            "type": "account.updated",
+            "data": { "object": { "id": "acct_stranger" }},
+        });
+        assert!(!apply_event(&mut st, &event, 1_000));
+        assert!(st.sync.is_empty());
     }
 
     #[test]
@@ -3061,7 +3186,7 @@ mod tests {
         std::fs::remove_dir_all(&dir).unwrap();
 
         assert!(market.close_listing("s", "lst_1").await.is_err());
-        assert!(market.set_ready("s", true).await.is_err());
+        assert!(market.set_ready("s", true, None).await.is_err());
         assert!(market.mark_claimed("p", "market-b", "p").await.is_err());
         assert!(market.mark_provisioned("p", "market-b", "p").await.is_err());
         st.mode = Some(StripeMode::Live);
