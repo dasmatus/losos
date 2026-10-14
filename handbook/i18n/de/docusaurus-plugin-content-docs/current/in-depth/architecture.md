@@ -395,9 +395,13 @@ der ersten Platte in `disko.nix` eine EF02-Partition hinzu. Die ESP bleibt
 in beiden Fällen `/boot`. `console.nix` ersetzt getty auf tty1 durch einen
 Banner-Dienst, der die IPv4-Adresse im LAN und `<hostName>.local` anzeigt.
 `splash.nix` (`losos.splash.enable`, standardmäßig an) ist Plymouth mit
-einem LosOS-Theme (`modules/splash/losos.script`): der Lachs in der Mitte,
-solange die Box startet; sobald der Banner-Dienst dieselben Zeilen schickt,
-gleitet der Lachs nach oben und darunter öffnet sich ein Feld. Am Ende des
+einem LosOS-Theme (`modules/splash/losos.script`). Ein Start beginnt mit
+der Animation des Logos: Ein Umriss zieht sich von den Bildschirmrändern
+auf eine Leiste unter dem Namen zusammen, der Lachs schwimmt waagerecht
+herein und dreht sich neben „LosOS“ nach oben, und die Schraffur der Leiste
+füllt sich dann mit dem Fortschritt des Starts. Sobald der Banner-Dienst
+dieselben Zeilen schickt, gleitet das Logo nach oben und darunter öffnet
+sich ein Feld. Am Ende des
 Starts beendet nichts Plymouth, das Feld bleibt also stehen. Darunter
 zeichnet der Banner weiter auf tty1; das ist zu sehen, wo Plymouth in den
 ersten Sekunden keine Anzeige gefunden hat und im Textmodus läuft. Unter

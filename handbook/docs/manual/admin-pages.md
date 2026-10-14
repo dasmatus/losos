@@ -27,6 +27,13 @@ icons. On a phone it opens as a sheet.
 
 <img src={require("../img/overview-phone.png").default} alt="The Overview on a phone: the sections fold into a menu button." width="260" /> <img src={require("../img/overview-phone-sheet.png").default} alt="The same phone with the menu open as a sheet over the page." width="260" />
 
+## The tour
+
+The first time you reach these pages after setup, a tour of six short steps
+opens over the Overview. **Take the tour** under Settings, About opens it
+again. With "reduce motion" set in your system, each step shows a still
+picture instead of a moving one.
+
 ## Notifications
 
 Short status messages appear at the top right: a change being applied, a

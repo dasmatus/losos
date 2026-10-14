@@ -1,6 +1,7 @@
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useT } from "@/lib/i18n-react";
+import { openTour } from "@/tour/store";
 import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText, RowValue } from "./rows";
 import { describeWindow } from "./window";
 import type { SettingsForm } from "./use-settings-form";
@@ -106,6 +107,25 @@ export function AboutPane({ form }: { form: SettingsForm }) {
           </Row>
         </Group>
         <GroupCaption>{t("panes.about.handbookCaption")}</GroupCaption>
+      </PaneSection>
+
+      <PaneSection>
+        <GroupTitle>{t("panes.about.tour")}</GroupTitle>
+        <Group>
+          <Row last>
+            <RowText title={t("panes.about.tour")} />
+            <RowValue className="text-ink">
+              <button
+                type="button"
+                onClick={openTour}
+                className="text-accent underline-offset-2 hover:underline"
+              >
+                {t("panes.about.tourLink")}
+              </button>
+            </RowValue>
+          </Row>
+        </Group>
+        <GroupCaption>{t("panes.about.tourCaption")}</GroupCaption>
       </PaneSection>
 
       <PaneSection>
