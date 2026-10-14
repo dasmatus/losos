@@ -268,7 +268,11 @@ jobs:
           key: ${{ runner.os }}-test-compiler-cache-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-test-compiler-cache-
+      # The registrar's Bitcoin orders run against a real regtest node
+      # (backend-registrar/tests/bitcoin.rs), the bitcoind of the flake's
+      # nixpkgs; devenv.nix's test-rust points at the same package.
       - run: |
+          export LOSOS_TEST_BITCOIND="$(nix build --no-link --print-out-paths --inputs-from . nixpkgs#bitcoind)/bin/bitcoind"
           nix develop .#ci -c bash -euo pipefail -c '
             cargo test --manifest-path backend/Cargo.toml
             cargo test --manifest-path backend/access/Cargo.toml

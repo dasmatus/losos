@@ -286,6 +286,30 @@ impl Edge {
         .await
     }
 
+    /// Every market knob at once: who is enrolled, an optional seeded test
+    /// ledger, and a last change to the options (how the USDC tests turn on
+    /// `--market-usdc-*`).
+    pub async fn start_market_full(
+        tag: &str,
+        tenants: &[TenantSpec],
+        stripe_api: &str,
+        enrolled: &[(&str, bool)],
+        market_state: Option<&serde_json::Value>,
+        tweak: impl FnOnce(&mut ServeOpts, &TempDir) + Send + 'static,
+    ) -> Self {
+        Self::start_inner_seeded(
+            tag,
+            tenants,
+            MeshFixture::default(),
+            None,
+            Some(stripe_api.to_string()),
+            enrolled,
+            market_state,
+            Some(Box::new(tweak)),
+        )
+        .await
+    }
+
     /// As [`Edge::start_market`], with a last change to the options: how the
     /// machine tests turn on `--vm-*`, which has no fixture of its own.
     pub async fn start_market_tweaked(
@@ -623,6 +647,7 @@ impl Edge {
                 hardware_catalogue: Some(dir.path_str("hardware.json")),
                 vms: None,
                 usdc: None,
+                btc: None,
             })
         });
 

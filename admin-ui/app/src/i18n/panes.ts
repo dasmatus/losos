@@ -1703,6 +1703,46 @@ export default defineMessages({
     sk: "do {date}",
     de: "bis {date}",
   },
+  "panes.market.paidOn": {
+    en: "Paid on {network}",
+    sk: "Zaplatené na {network}",
+    de: "Bezahlt auf {network}",
+  },
+  "panes.market.viewTx": {
+    en: "View the transaction",
+    sk: "Pozrieť transakciu",
+    de: "Transaktion ansehen",
+  },
+  "panes.market.escrow.release": {
+    en: "Held in escrow until the edge releases it to the seller",
+    sk: "V úschove, kým ju edge neuvoľní predajcovi",
+    de: "In Treuhand, bis der Edge sie an den Verkäufer freigibt",
+  },
+  "panes.market.escrow.released": {
+    en: "Released to the seller",
+    sk: "Uvoľnené predajcovi",
+    de: "An den Verkäufer freigegeben",
+  },
+  "panes.market.escrow.refund": {
+    en: "Going back to the buyer",
+    sk: "Vracia sa kupujúcemu",
+    de: "Geht an den Käufer zurück",
+  },
+  "panes.market.escrow.refunded": {
+    en: "Refunded to the buyer",
+    sk: "Vrátené kupujúcemu",
+    de: "An den Käufer zurückerstattet",
+  },
+  "panes.market.escrow.sellerCannotReceive": {
+    en: "the seller's address cannot receive USDC on this network",
+    sk: "adresa predajcu na tejto sieti nemôže prijať USDC",
+    de: "die Adresse des Verkäufers kann in diesem Netz kein USDC empfangen",
+  },
+  "panes.market.escrow.buyerReclaimed": {
+    en: "the buyer took it back after the deadline",
+    sk: "kupujúci si ju po lehote vzal späť",
+    de: "der Käufer hat sie nach der Frist zurückgeholt",
+  },
   "panes.market.volume": {
     en: "volume {volume}",
     sk: "zväzok {volume}",
@@ -1896,9 +1936,9 @@ export default defineMessages({
     de: "In USDC zahlen und bezahlt werden",
   },
   "panes.market.usdc.how": {
-    en: "Orders on this edge are paid in USDC on {chain}. Create a wallet here, import the 12 or 24 words from MetaMask, Rabby, Rainbow or Trust Wallet, or connect the wallet already in this browser. Paying approves USDC and then sends it: the platform fee goes to the edge's treasury and the rest straight to the seller. The box never sees your phrase or your key.",
-    sk: "Objednávky na tomto edge sa platia v USDC na sieti {chain}. Vytvorte peňaženku tu, importujte 12 alebo 24 slov z MetaMask, Rabby, Rainbow alebo Trust Wallet, alebo pripojte peňaženku, ktorá už v tomto prehliadači je. Platba najprv schváli USDC a potom ich odošle: poplatok platformy ide do treasury edge a zvyšok priamo predajcovi. Zariadenie vašu frázu ani kľúč nikdy nevidí.",
-    de: "Bestellungen auf diesem Edge werden in USDC auf {chain} bezahlt. Lege hier eine Wallet an, importiere die 12 oder 24 Wörter aus MetaMask, Rabby, Rainbow oder Trust Wallet, oder verbinde die Wallet, die schon in diesem Browser steckt. Beim Bezahlen gibst du USDC frei und sendest sie dann: die Plattformgebühr geht an die Treasury des Edge, der Rest direkt an den Verkäufer. Die Box sieht weder deine Wörter noch deinen Schlüssel.",
+    en: "Orders on this edge are paid in USDC on {chain}; you pick the network when you pay. Create a wallet here, import the 12 or 24 words from MetaMask, Rabby, Rainbow, Trust Wallet or Phantom, or connect the wallet already in this browser. One phrase gives you an address on every network listed. The platform fee goes to the edge's treasury and the rest straight to the seller. The box never sees your phrase or your key.",
+    sk: "Objednávky na tomto edge sa platia v USDC na sieti {chain}; sieť si vyberiete pri platbe. Vytvorte peňaženku tu, importujte 12 alebo 24 slov z MetaMask, Rabby, Rainbow, Trust Wallet alebo Phantom, alebo pripojte peňaženku, ktorá už v tomto prehliadači je. Jedna fráza vám dá adresu na každej uvedenej sieti. Poplatok platformy ide do pokladnice edge a zvyšok priamo predajcovi. Zariadenie vašu frázu ani kľúč nikdy nevidí.",
+    de: "Bestellungen auf diesem Edge werden in USDC auf {chain} bezahlt; das Netzwerk wählst du beim Bezahlen. Lege hier eine Wallet an, importiere die 12 oder 24 Wörter aus MetaMask, Rabby, Rainbow, Trust Wallet oder Phantom, oder verbinde die Wallet, die schon in diesem Browser steckt. Eine Phrase gibt dir eine Adresse auf jedem genannten Netzwerk. Die Plattformgebühr geht an die Kasse des Edge, der Rest direkt an den Verkäufer. Die Box sieht weder deine Wörter noch deinen Schlüssel.",
   },
   "panes.market.usdc.writeDown": {
     en: "Write these words down. They are the wallet. This page cannot show them again.",
@@ -1936,9 +1976,9 @@ export default defineMessages({
     de: "Importieren",
   },
   "panes.market.usdc.importPlaceholder": {
-    en: "12 or 24 words from MetaMask, Rabby, Rainbow or Trust Wallet",
-    sk: "12 alebo 24 slov z MetaMask, Rabby, Rainbow alebo Trust Wallet",
-    de: "12 oder 24 Wörter aus MetaMask, Rabby, Rainbow oder Trust Wallet",
+    en: "12 or 24 words from MetaMask, Rabby, Rainbow, Trust Wallet or Phantom",
+    sk: "12 alebo 24 slov z MetaMask, Rabby, Rainbow, Trust Wallet alebo Phantom",
+    de: "12 oder 24 Wörter aus MetaMask, Rabby, Rainbow, Trust Wallet oder Phantom",
   },
   "panes.market.usdc.forget": {
     en: "Forget this browser's copy",
@@ -1950,10 +1990,310 @@ export default defineMessages({
     sk: "Kam vám chodia platby",
     de: "Wohin du bezahlt wirst",
   },
+  "panes.market.usdc.payCaption": {
+    en: "You pay from the wallet below, in USDC on {chain}. The platform fee goes to the edge's treasury and the rest straight to the seller.",
+    sk: "Platíte z peňaženky nižšie, v USDC na sieti {chain}. Poplatok platformy ide do pokladnice edge a zvyšok priamo predajcovi.",
+    de: "Du bezahlst mit der Wallet unten, in USDC auf {chain}. Die Plattformgebühr geht an die Kasse des Edge, der Rest direkt an den Verkäufer.",
+  },
+  "panes.market.usdc.sellCaption": {
+    en: "The platform keeps {percent}% of each sale to cover running costs. The rest is paid straight to your payout address in the same transaction.",
+    sk: "Platforma si z každého predaja necháva {percent} % na pokrytie nákladov. Zvyšok ide v tej istej transakcii priamo na vašu adresu pre výplaty.",
+    de: "Die Plattform behält {percent} % jedes Verkaufs für die Betriebskosten. Der Rest geht in derselben Transaktion direkt an deine Auszahlungsadresse.",
+  },
+  "panes.market.usdc.payoutFirst": {
+    en: "Set where you get paid in the wallet above, then list what this box shares.",
+    sk: "V peňaženke vyššie nastavte, kam vám prídu peniaze, a potom ponúknite, čo toto zariadenie zdieľa.",
+    de: "Lege in der Wallet oben fest, wohin du bezahlt wirst, und biete dann an, was diese Box teilt.",
+  },
   "panes.market.usdc.receive": {
     en: "Sign with the wallet that should receive USDC on {chain}. The edge checks the signature and stores only the address.",
     sk: "Podpíšte peňaženkou, ktorá má dostávať USDC na sieti {chain}. Edge podpis skontroluje a uloží len adresu.",
     de: "Signiere mit der Wallet, die USDC auf {chain} empfangen soll. Der Edge prüft die Signatur und speichert nur die Adresse.",
+  },
+  "panes.market.usdc.payoutOn": {
+    en: "USDC for your sales on {chains} goes to {address}.",
+    sk: "USDC za vaše predaje na sieti {chains} ide na {address}.",
+    de: "USDC für deine Verkäufe auf {chains} geht an {address}.",
+  },
+  "panes.market.usdc.or": {
+    en: "or",
+    sk: "alebo",
+    de: "oder",
+  },
+  "panes.market.usdc.and": {
+    en: "and",
+    sk: "a",
+    de: "und",
+  },
+  "panes.market.usdc.connectSolana": {
+    en: "Connect a Solana wallet",
+    sk: "Pripojiť peňaženku Solana",
+    de: "Solana-Wallet verbinden",
+  },
+  "panes.market.usdc.noSolanaExtension": {
+    en: "This browser has no Solana wallet extension. Create a wallet here, or install Phantom, Solflare or Backpack and try again.",
+    sk: "Tento prehliadač nemá rozšírenie peňaženky Solana. Vytvorte peňaženku tu, alebo nainštalujte Phantom, Solflare či Backpack a skúste to znova.",
+    de: "Dieser Browser hat keine Solana-Wallet-Erweiterung. Lege hier eine Wallet an, oder installiere Phantom, Solflare oder Backpack und versuche es erneut.",
+  },
+  "panes.market.usdc.balancesTitle": {
+    en: "Your wallet",
+    sk: "Vaša peňaženka",
+    de: "Deine Wallet",
+  },
+  "panes.market.usdc.evmAddress": {
+    en: "Ethereum networks: {address}",
+    sk: "Siete Ethereum: {address}",
+    de: "Ethereum-Netzwerke: {address}",
+  },
+  "panes.market.usdc.solanaAddress": {
+    en: "Solana: {address}",
+    sk: "Solana: {address}",
+    de: "Solana: {address}",
+  },
+  "panes.market.usdc.refresh": {
+    en: "Refresh",
+    sk: "Obnoviť",
+    de: "Aktualisieren",
+  },
+  "panes.market.usdc.sendTitle": {
+    en: "Send USDC",
+    sk: "Poslať USDC",
+    de: "USDC senden",
+  },
+  "panes.market.usdc.sendTo": {
+    en: "Address",
+    sk: "Adresa",
+    de: "Adresse",
+  },
+  "panes.market.usdc.sendToName": {
+    en: "Address or ENS name",
+    sk: "Adresa alebo meno ENS",
+    de: "Adresse oder ENS-Name",
+  },
+  "panes.market.usdc.sendAmount": {
+    en: "Amount in USDC",
+    sk: "Suma v USDC",
+    de: "Betrag in USDC",
+  },
+  "panes.market.usdc.network": {
+    en: "Network",
+    sk: "Sieť",
+    de: "Netzwerk",
+  },
+  "panes.market.usdc.send": {
+    en: "Send",
+    sk: "Poslať",
+    de: "Senden",
+  },
+  "panes.market.usdc.resolving": {
+    en: "Looking the name up…",
+    sk: "Hľadám meno…",
+    de: "Name wird nachgeschlagen…",
+  },
+  "panes.market.usdc.noName": {
+    en: "{name} does not point at an address.",
+    sk: "{name} neukazuje na žiadnu adresu.",
+    de: "{name} zeigt auf keine Adresse.",
+  },
+  "panes.market.usdc.resolved": {
+    en: "{name} is {address}.",
+    sk: "{name} je {address}.",
+    de: "{name} ist {address}.",
+  },
+  "panes.market.usdc.badAmount": {
+    en: "Enter an amount in USDC, with at most six decimals.",
+    sk: "Zadajte sumu v USDC, najviac so šiestimi desatinnými miestami.",
+    de: "Gib einen Betrag in USDC ein, mit höchstens sechs Nachkommastellen.",
+  },
+  "panes.market.usdc.badRecipient": {
+    en: "That is not an address on this network, or a name that points at one.",
+    sk: "To nie je adresa na tejto sieti ani meno, ktoré na ňu ukazuje.",
+    de: "Das ist keine Adresse auf diesem Netzwerk und kein Name, der auf eine zeigt.",
+  },
+  "panes.market.usdc.sent": {
+    en: "Sent {amount} to {to}",
+    sk: "Odoslané {amount} na {to}",
+    de: "{amount} an {to} gesendet",
+  },
+  "panes.market.usdc.payOn": {
+    en: "Pay on",
+    sk: "Zaplatiť na sieti",
+    de: "Zahlen auf",
+  },
+  "panes.market.usdc.withFee": {
+    en: "{chain}, fee about {fee}",
+    sk: "{chain}, poplatok asi {fee}",
+    de: "{chain}, Gebühr etwa {fee}",
+  },
+  "panes.market.coins.payWith": {
+    en: "Pay with",
+    sk: "Zaplatiť cez",
+    de: "Zahlen mit",
+  },
+  "panes.market.coins.payDetail": {
+    en: "{gross}, paid in {coin} straight to the seller's own wallet at the price the edge quotes. The platform's fee is billed to the seller.",
+    sk: "{gross}, zaplatené cez {coin} priamo do vlastnej peňaženky predajcu za cenu, ktorú uvedie edge. Poplatok platformy sa účtuje predajcovi.",
+    de: "{gross}, in {coin} direkt an die eigene Wallet des Verkäufers bezahlt, zum Preis, den der Edge nennt. Die Gebühr der Plattform wird dem Verkäufer berechnet.",
+  },
+  "panes.market.coins.also": {
+    en: "Sellers can also take {coins}, paid straight to their own wallet.",
+    sk: "Predajcovia môžu prijímať aj platby cez {coins}, priamo do vlastnej peňaženky.",
+    de: "Verkäufer können auch {coins} annehmen, direkt in ihre eigene Wallet.",
+  },
+  "panes.market.coins.loading": {
+    en: "Getting an address for this order…",
+    sk: "Získavam adresu pre túto objednávku…",
+    de: "Adresse für diese Bestellung wird geholt…",
+  },
+  "panes.market.coins.unreachable": {
+    en: "The edge did not answer. The page tries again on its own.",
+    sk: "Edge neodpovedal. Stránka to skúsi znova sama.",
+    de: "Der Edge hat nicht geantwortet. Die Seite versucht es von selbst erneut.",
+  },
+  "panes.market.coins.send": {
+    en: "Send exactly this much {ticker} to this address, from any wallet: scan the code or open the link. The price holds until {time}.",
+    sk: "Pošlite presne túto sumu {ticker} na túto adresu z akejkoľvek peňaženky: naskenujte kód alebo otvorte odkaz. Cena platí do {time}.",
+    de: "Sende genau diesen Betrag in {ticker} an diese Adresse, aus einer beliebigen Wallet: Code scannen oder Link öffnen. Der Preis gilt bis {time}.",
+  },
+  "panes.market.coins.copyAmount": {
+    en: "Copy amount",
+    sk: "Kopírovať sumu",
+    de: "Betrag kopieren",
+  },
+  "panes.market.coins.copyAddress": {
+    en: "Copy address",
+    sk: "Kopírovať adresu",
+    de: "Adresse kopieren",
+  },
+  "panes.market.coins.copied": {
+    en: "Copied",
+    sk: "Skopírované",
+    de: "Kopiert",
+  },
+  "panes.market.coins.openWallet": {
+    en: "Open in your wallet",
+    sk: "Otvoriť v peňaženke",
+    de: "In der Wallet öffnen",
+  },
+  "panes.market.coins.qr": {
+    en: "QR code of the payment",
+    sk: "QR kód platby",
+    de: "QR-Code der Zahlung",
+  },
+  "panes.market.coins.state.waiting": {
+    en: "Waiting for the payment. This page checks on its own.",
+    sk: "Čaká sa na platbu. Stránka to kontroluje sama.",
+    de: "Warte auf die Zahlung. Die Seite prüft von selbst.",
+  },
+  "panes.market.coins.state.seen": {
+    en: "Payment seen, waiting for its first block.",
+    sk: "Platba je viditeľná, čaká sa na jej prvý blok.",
+    de: "Zahlung gesehen, warte auf ihren ersten Block.",
+  },
+  "panes.market.coins.state.underpaid": {
+    en: "{paid} {ticker} arrived of {due}. Send the rest to the same address.",
+    sk: "Prišlo {paid} {ticker} z {due}. Zvyšok pošlite na tú istú adresu.",
+    de: "{paid} {ticker} von {due} sind angekommen. Sende den Rest an dieselbe Adresse.",
+  },
+  "panes.market.coins.state.confirming": {
+    en: "Confirming: {n} of {required} blocks.",
+    sk: "Potvrdzuje sa: {n} z {required} blokov.",
+    de: "Wird bestätigt: {n} von {required} Blöcken.",
+  },
+  "panes.market.coins.state.paid": {
+    en: "Paid.",
+    sk: "Zaplatené.",
+    de: "Bezahlt.",
+  },
+  "panes.market.coins.state.late": {
+    en: "The payment arrived after the price lapsed and is short of the price now, {due} {ticker}. Send the rest to the same address.",
+    sk: "Platba prišla po vypršaní ceny a chýba jej do dnešnej ceny {due} {ticker}. Zvyšok pošlite na tú istú adresu.",
+    de: "Die Zahlung kam nach Ablauf des Preises an und reicht für den aktuellen Preis von {due} {ticker} nicht. Sende den Rest an dieselbe Adresse.",
+  },
+  "panes.market.coins.state.repricing": {
+    en: "The payment arrived after the price lapsed. It is checked against the price now as soon as the edge has one.",
+    sk: "Platba prišla po vypršaní ceny. Porovná sa s dnešnou cenou, hneď ako ju edge bude mať.",
+    de: "Die Zahlung kam nach Ablauf des Preises an. Sie wird mit dem aktuellen Preis verglichen, sobald der Edge einen hat.",
+  },
+  "panes.market.coins.keyTitle": {
+    en: "Get paid in {coin}",
+    sk: "Platby cez {coin}",
+    de: "Zahlungen in {coin}",
+  },
+  "panes.market.coins.keyDetail": {
+    en: "Paste your wallet's extended public key (xpub or zpub) or a descriptor. Each order gets a fresh address from it, so the coins go straight to your wallet: the edge can see them arrive but can never spend them. Use an account you keep for these sales, since anything paid to its addresses counts toward orders. The platform's fee on these sales is billed to you separately.",
+    sk: "Vložte rozšírený verejný kľúč vašej peňaženky (xpub alebo zpub) alebo deskriptor. Každá objednávka z neho dostane novú adresu, takže mince idú priamo do vašej peňaženky: edge vidí, že prišli, ale nikdy ich nemôže minúť. Použite účet, ktorý držíte len na tieto predaje, lebo všetko zaplatené na jeho adresy sa počíta k objednávkam. Poplatok platformy z týchto predajov sa vám účtuje zvlášť.",
+    de: "Füge den erweiterten öffentlichen Schlüssel deiner Wallet (xpub oder zpub) oder einen Deskriptor ein. Jede Bestellung bekommt daraus eine neue Adresse, die Coins gehen also direkt in deine Wallet: Der Edge sieht sie ankommen, kann sie aber nie ausgeben. Nimm ein Konto nur für diese Verkäufe, denn alles, was an seine Adressen geht, zählt für Bestellungen. Die Gebühr der Plattform auf diese Verkäufe wird dir separat berechnet.",
+  },
+  "panes.market.coins.keyCurrent": {
+    en: "Paid to",
+    sk: "Platí sa na",
+    de: "Bezahlt an",
+  },
+  "panes.market.coins.keyPlaceholder": {
+    en: "xpub, zpub or descriptor",
+    sk: "xpub, zpub alebo deskriptor",
+    de: "xpub, zpub oder Deskriptor",
+  },
+  "panes.market.coins.keySave": {
+    en: "Save key",
+    sk: "Uložiť kľúč",
+    de: "Schlüssel speichern",
+  },
+  "panes.market.coins.keyReplace": {
+    en: "Replace key",
+    sk: "Nahradiť kľúč",
+    de: "Schlüssel ersetzen",
+  },
+  "panes.market.coins.keySaved": {
+    en: "{coin} key saved",
+    sk: "Kľúč pre {coin} je uložený",
+    de: "Schlüssel für {coin} gespeichert",
+  },
+  "panes.market.coins.keyFailed": {
+    en: "The key was not saved",
+    sk: "Kľúč sa neuložil",
+    de: "Der Schlüssel wurde nicht gespeichert",
+  },
+  "panes.market.coins.feesOwed": {
+    en: "Platform fees owed on coin sales: {amount}.",
+    sk: "Poplatky platformy za predaje v minciach: {amount}.",
+    de: "Offene Plattformgebühren aus Coin-Verkäufen: {amount}.",
+  },
+  "panes.market.usdc.madeHere": {
+    en: "This wallet was made on this box and lives only in this browser. Choose where your sales go before you list: sign with this wallet, or use the address of a wallet you keep elsewhere.",
+    sk: "Táto peňaženka vznikla na tomto zariadení a žije len v tomto prehliadači. Pred ponukou zvoľte, kam pôjdu vaše predaje: podpíšte touto peňaženkou, alebo použite adresu peňaženky, ktorú máte inde.",
+    de: "Diese Wallet wurde auf diesem Gerät erzeugt und lebt nur in diesem Browser. Lege vor dem Anbieten fest, wohin deine Verkäufe gehen: mit dieser Wallet signieren oder die Adresse einer Wallet nehmen, die du anderswo hast.",
+  },
+  "panes.market.usdc.otherWallet": {
+    en: "Use another wallet's address",
+    sk: "Použiť adresu inej peňaženky",
+    de: "Adresse einer anderen Wallet nehmen",
+  },
+  "panes.market.usdc.otherAddress": {
+    en: "Payout address on the Ethereum networks (0x…)",
+    sk: "Adresa na výplatu na sieťach Etherea (0x…)",
+    de: "Auszahlungsadresse auf den Ethereum-Netzen (0x…)",
+  },
+  "panes.market.usdc.otherSign": {
+    en: "Sign this exact message with that wallet's message signing, then paste the signature. The edge checks it and stores only the address.",
+    sk: "Podpíšte presne túto správu podpisovaním správ v tej peňaženke a vložte podpis. Edge ho overí a uloží len adresu.",
+    de: "Signiere genau diese Nachricht mit der Nachrichtensignatur jener Wallet und füge die Signatur ein. Der Edge prüft sie und speichert nur die Adresse.",
+  },
+  "panes.market.usdc.otherSignature": {
+    en: "Signature (0x…)",
+    sk: "Podpis (0x…)",
+    de: "Signatur (0x…)",
+  },
+  "panes.market.usdc.otherSave": {
+    en: "Save this payout address",
+    sk: "Uložiť túto adresu na výplatu",
+    de: "Diese Auszahlungsadresse speichern",
+  },
+  "panes.market.usdc.otherBad": {
+    en: "That is not an address with its signature. Paste the 0x address and the 0x signature of the message shown.",
+    sk: "To nie je adresa s jej podpisom. Vložte adresu 0x a podpis 0x zobrazenej správy.",
+    de: "Das ist keine Adresse mit ihrer Signatur. Füge die 0x-Adresse und die 0x-Signatur der angezeigten Nachricht ein.",
   },
   "panes.market.usdc.payoutReady": {
     en: "USDC for your sales goes to {address}.",
@@ -1995,10 +2335,15 @@ export default defineMessages({
     sk: "Platba odoslaná",
     de: "Zahlung gesendet",
   },
+  "panes.market.usdc.refundedTitle": {
+    en: "Payment going back",
+    sk: "Platba sa vracia",
+    de: "Zahlung geht zurück",
+  },
   "panes.market.usdc.gas": {
-    en: "USDC does not pay the network fee. The wallet also needs a little ETH on {chain} for that.",
-    sk: "USDC neplatí poplatok siete. Peňaženka na to potrebuje aj trochu ETH na sieti {chain}.",
-    de: "USDC zahlt die Netzwerkgebühr nicht. Die Wallet braucht dafür auch ein wenig ETH auf {chain}.",
+    en: "USDC does not pay the network fee. The wallet also needs a little ETH on the network it pays on, or SOL on Solana, where the first payment to a seller also opens their USDC account. The wallet offers the network with the lowest fee first and pays the lowest fee that still gets into a block.",
+    sk: "USDC neplatí poplatok siete. Peňaženka na to potrebuje aj trochu ETH na sieti, na ktorej platí, alebo SOL na Solane, kde prvá platba predajcovi mu aj otvorí účet pre USDC. Peňaženka ponúkne najprv sieť s najnižším poplatkom a platí najnižší poplatok, s ktorým sa platba ešte dostane do bloku.",
+    de: "USDC zahlt die Netzwerkgebühr nicht. Die Wallet braucht dafür auch ein wenig ETH auf dem Netzwerk, auf dem sie zahlt, oder SOL auf Solana, wo die erste Zahlung an einen Verkäufer auch sein USDC-Konto eröffnet. Die Wallet bietet zuerst das Netzwerk mit der niedrigsten Gebühr an und zahlt die niedrigste Gebühr, mit der die Zahlung noch in einen Block kommt.",
   },
   "panes.market.usdc.saved": {
     en: "Wallet saved in this browser",
@@ -2014,6 +2359,36 @@ export default defineMessages({
     en: "This browser has no wallet extension. Create a wallet here, or install MetaMask, Rabby or Rainbow and try again.",
     sk: "Tento prehliadač nemá rozšírenie peňaženky. Vytvorte peňaženku tu, alebo nainštalujte MetaMask, Rabby či Rainbow a skúste to znova.",
     de: "Dieser Browser hat keine Wallet-Erweiterung. Lege hier eine Wallet an, oder installiere MetaMask, Rabby oder Rainbow und versuche es erneut.",
+  },
+  "panes.market.usdc.unlock": {
+    en: "This browser's wallet password",
+    sk: "Heslo k peňaženke v tomto prehliadači",
+    de: "Passwort der Wallet in diesem Browser",
+  },
+  "panes.market.usdc.wrongPassword": {
+    en: "That password does not open the wallet saved in this browser.",
+    sk: "Toto heslo neotvorí peňaženku uloženú v tomto prehliadači.",
+    de: "Dieses Passwort öffnet die in diesem Browser gesicherte Wallet nicht.",
+  },
+  "panes.market.usdc.needWallet": {
+    en: "Create, import or connect a wallet first.",
+    sk: "Najprv vytvorte, importujte alebo pripojte peňaženku.",
+    de: "Lege zuerst eine Wallet an, importiere oder verbinde eine.",
+  },
+  "panes.market.usdc.lapsed": {
+    en: "This order no longer holds its units, so it was not paid. Order again from the shelf.",
+    sk: "Táto objednávka už nedrží svoje jednotky, preto nebola zaplatená. Objednajte znova z ponuky.",
+    de: "Diese Bestellung hält ihre Einheiten nicht mehr und wurde deshalb nicht bezahlt. Bestelle erneut aus dem Angebot.",
+  },
+  "panes.market.usdc.counting": {
+    en: "The payment is on chain. The edge has not counted it yet; check again in a moment. Paying again would pay twice.",
+    sk: "Platba je na blockchaine. Edge ju zatiaľ nezapočítal; o chvíľu to skúste znova. Opätovná platba by zaplatila dvakrát.",
+    de: "Die Zahlung ist auf der Chain. Der Edge hat sie noch nicht gezählt; prüfe gleich noch einmal. Erneut zu zahlen würde doppelt zahlen.",
+  },
+  "panes.market.usdc.checkAgain": {
+    en: "Check the payment again",
+    sk: "Znova skontrolovať platbu",
+    de: "Zahlung erneut prüfen",
   },
   "panes.market.usdc.failedTitle": {
     en: "The wallet could not do that",

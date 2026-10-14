@@ -55,6 +55,7 @@ The commands:
 | `losos edge secret list` | the edge's sealed credentials |
 | `losos edge secret set <name>` | seal a new value, typed without echo or piped on stdin |
 | `losos edge reconcile` | have the edge write its routing config again now |
+| `losos edge escrow releaser` | the escrow key's address, its ETH on each network and whether each escrow takes it; `--new` makes the key on the edge, `--replace` makes another |
 | `losos ci setup --edge <url>` | give a GitHub repository its own key and token for the edge |
 | `losos --version`, `losos --help` | |
 

@@ -5,9 +5,10 @@
 //! encrypted to this edge's own OpenPGP key, carrying a token made by
 //! `provision token create`; the answer signed by the edge and encrypted back
 //! to the signer. What differs is what a call can reach. A box forwards a
-//! call to its own web API; an edge has none, so the four paths here are the
-//! whole surface: the overview, the list of sealed secrets, sealing one, and
-//! a reconcile.
+//! call to its own web API; an edge has none, so the paths here are the
+//! whole surface: the overview, the list of sealed secrets, sealing one, a
+//! reconcile, and the escrow's releaser key, which the edge makes itself so
+//! it never exists anywhere else.
 //!
 //! Sealing runs `losos-seal-credential`, the script the Actions workflow
 //! reaches over SSH, with the value on its stdin. It runs through
@@ -94,13 +95,26 @@ impl Operator {
     }
 }
 
-/// One of the four things a call can ask for.
+/// The credential the edge makes itself (`modules/edge-credentials.nix`).
+pub const RELEASER_SECRET: &str = "usdc-releaser-key";
+
+/// One of the things a call can ask for.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Call {
     Overview,
     ListSecrets,
-    SetSecret { name: String, value: String },
+    SetSecret {
+        name: String,
+        value: String,
+    },
     Reconcile,
+    /// The releaser's address, gas and escrows.
+    Releaser,
+    /// Make a releaser key here and seal it. `replace` makes a new one over
+    /// a sealed key; without it a sealed key is a 409.
+    NewReleaser {
+        replace: bool,
+    },
 }
 
 /// A call that opened but asks for something this edge does not answer.
@@ -116,6 +130,13 @@ fn not_served(status: u16, message: impl Into<String>) -> NotServed {
         status,
         message: message.into(),
     }
+}
+
+#[derive(Deserialize, Default)]
+#[serde(deny_unknown_fields)]
+struct NewReleaserBody {
+    #[serde(default)]
+    replace: bool,
 }
 
 #[derive(Deserialize)]
@@ -143,6 +164,18 @@ pub fn route(opened: &Opened) -> Result<Call, NotServed> {
         ("GET", "/overview") => Ok(Call::Overview),
         ("GET", "/secrets") => Ok(Call::ListSecrets),
         ("POST", "/reconcile") => Ok(Call::Reconcile),
+        ("GET", "/escrow/releaser") => Ok(Call::Releaser),
+        ("POST", "/escrow/releaser") => {
+            let body: NewReleaserBody = if r.body.is_null() {
+                NewReleaserBody::default()
+            } else {
+                serde_json::from_value(r.body.clone())
+                    .map_err(|e| not_served(400, format!("expected {{replace}}: {e}")))?
+            };
+            Ok(Call::NewReleaser {
+                replace: body.replace,
+            })
+        }
         ("POST", "/secrets") => {
             let body: SetBody = serde_json::from_value(r.body.clone())
                 .map_err(|e| not_served(400, format!("expected {{name, value}}: {e}")))?;
@@ -150,6 +183,12 @@ pub fn route(opened: &Opened) -> Result<Call, NotServed> {
                 return Err(not_served(
                     400,
                     "a credential name is lowercase letters, digits and dashes",
+                ));
+            }
+            if body.name == RELEASER_SECRET {
+                return Err(not_served(
+                    400,
+                    "the edge makes the releaser key itself: POST /escrow/releaser",
                 ));
             }
             if body.value.is_empty() || body.value.len() > MAX_SECRET_BYTES {
@@ -163,7 +202,7 @@ pub fn route(opened: &Opened) -> Result<Call, NotServed> {
                 value: body.value,
             })
         }
-        (_, "/overview" | "/secrets" | "/reconcile") => {
+        (_, "/overview" | "/secrets" | "/reconcile" | "/escrow/releaser") => {
             Err(not_served(405, "not with that method"))
         }
         (_, path) => Err(not_served(404, format!("an edge does not answer {path}"))),
@@ -259,6 +298,16 @@ impl Operator {
         }
         Ok(serde_json::Value::Array(parse_list(&out.output)))
     }
+
+    /// Whether `name` has a sealed blob, from the same list.
+    pub async fn is_sealed(&self, name: &str) -> Result<bool, NotServed> {
+        let rows = self.list_secrets().await?;
+        Ok(rows
+            .as_array()
+            .into_iter()
+            .flatten()
+            .any(|row| row["name"] == name && row["sealed"] == true))
+    }
 }
 
 /// The `--list` lines as the contract's rows. A line that does not parse is
@@ -352,6 +401,57 @@ mod tests {
                 400
             );
         }
+    }
+
+    #[test]
+    fn the_releaser_is_made_here_never_sent() {
+        assert_eq!(
+            route(&opened("GET", "/escrow/releaser", serde_json::Value::Null)),
+            Ok(Call::Releaser)
+        );
+        assert_eq!(
+            route(&opened("POST", "/escrow/releaser", serde_json::Value::Null)),
+            Ok(Call::NewReleaser { replace: false })
+        );
+        assert_eq!(
+            route(&opened(
+                "POST",
+                "/escrow/releaser",
+                serde_json::json!({"replace": true})
+            )),
+            Ok(Call::NewReleaser { replace: true })
+        );
+        assert_eq!(
+            route(&opened(
+                "DELETE",
+                "/escrow/releaser",
+                serde_json::Value::Null
+            ))
+            .unwrap_err()
+            .status,
+            405
+        );
+        assert_eq!(
+            route(&opened(
+                "POST",
+                "/escrow/releaser",
+                serde_json::json!({"key": "0x01"})
+            ))
+            .unwrap_err()
+            .status,
+            400
+        );
+        // A key typed or pasted in would have existed somewhere else first.
+        assert_eq!(
+            route(&opened(
+                "POST",
+                "/secrets",
+                serde_json::json!({"name": RELEASER_SECRET, "value": "ab".repeat(32)})
+            ))
+            .unwrap_err()
+            .status,
+            400
+        );
     }
 
     #[test]

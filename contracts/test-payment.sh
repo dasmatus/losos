@@ -1,19 +1,29 @@
 #!/bin/bash
-# Pay a real USDC transfer on a local chain (anvil), check the split, and
-# hand the receipt to the registrar's matcher. Then, if Base Sepolia answers,
-# run the same payment against Circle's testnet USDC on a fork.
+# Pay a real USDC deposit into LososEscrow on a local chain (anvil), hand the
+# receipt to the registrar's matcher, and have the registrar's own signer
+# release it; then check the split. Then, if Base Sepolia answers, run the
+# same payments against Circle's testnet USDC on a fork.
 set -euo pipefail
 cd "$(dirname "$0")"
 export PATH="${HOME}/.foundry/bin:${PATH}"
 
+# forge compiles every test file, the fork test's forge-std import included,
+# so the library has to be there before the first run.
+if [ ! -d lib/forge-std ]; then
+  forge install foundry-rs/forge-std@v1.17.0
+fi
+
 echo "== forge: local transactions =="
-forge test --match-path test/LososPay.t.sol -vv
+forge test --no-match-path 'test/*Fork.t.sol' -vv
 
 RPC=http://127.0.0.1:8545
 KEY=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
 BUYER=0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266
 SELLER=0x70997970C51812dc3A010C7d01b50e0d17dc79C8
 TREASURY=0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC
+# anvil's fourth account, standing in for the edge's releaser key.
+RELEASER=0x90F79bf6EB2c4f870365E785982E1f101E93b906
+RELEASER_KEY=7c852118294e51e653712a81e05800f419141751be58f605c371e15141b007a6
 PORT=8545
 
 if curl -sf -o /dev/null --max-time 1 "${RPC}"; then
@@ -36,19 +46,23 @@ json_field() {
   sed -n '/^{/,$p' | jq -er ".$1"
 }
 
-echo "== anvil: deploy, mint, approve, pay =="
+balance() {
+  cast call "${USDC}" "balanceOf(address)(uint256)" "$1" --rpc-url "${RPC}" | awk '{print $1}'
+}
+
+echo "== anvil: deploy, mint, approve, pay into the escrow =="
 USDC=$(forge create src/MockUSDC.sol:MockUSDC --rpc-url "${RPC}" --private-key "${KEY}" --broadcast --json | json_field deployedTo)
-PAY=$(forge create src/LososPay.sol:LososPay --rpc-url "${RPC}" --private-key "${KEY}" --broadcast --json --constructor-args "${USDC}" "${TREASURY}" | json_field deployedTo)
+PAY=$(forge create src/LososEscrow.sol:LososEscrow --rpc-url "${RPC}" --private-key "${KEY}" --broadcast --json --constructor-args "${USDC}" "${TREASURY}" "${RELEASER}" | json_field deployedTo)
 cast send "${USDC}" "mint(address,uint256)" "${BUYER}" 2000000 --rpc-url "${RPC}" --private-key "${KEY}" >/dev/null
 cast send "${USDC}" "approve(address,uint256)" "${PAY}" 2000000 --rpc-url "${RPC}" --private-key "${KEY}" >/dev/null
 ORDER_ID=ord_anvil
 HASH=$(cast keccak "${ORDER_ID}")
-TX=$(cast send "${PAY}" "pay(bytes32,address,uint256,uint256)" "${HASH}" "${SELLER}" 2000000 80000 --rpc-url "${RPC}" --private-key "${KEY}" --json | json_field transactionHash)
-TREASURY_BAL=$(cast call "${USDC}" "balanceOf(address)(uint256)" "${TREASURY}" --rpc-url "${RPC}" | awk '{print $1}')
-SELLER_BAL=$(cast call "${USDC}" "balanceOf(address)(uint256)" "${SELLER}" --rpc-url "${RPC}" | awk '{print $1}')
-echo "treasury ${TREASURY_BAL} seller ${SELLER_BAL} tx ${TX}"
-test "${TREASURY_BAL}" = "80000"
-test "${SELLER_BAL}" = "1920000"
+NOW=$(cast block latest --field timestamp --rpc-url "${RPC}")
+DEADLINE=$((NOW + 86400))
+TX=$(cast send "${PAY}" "pay(bytes32,address,uint256,uint256,uint64)" "${HASH}" "${SELLER}" 2000000 80000 "${DEADLINE}" --rpc-url "${RPC}" --private-key "${KEY}" --json | json_field transactionHash)
+echo "escrow $(balance "${PAY}") seller $(balance "${SELLER}") tx ${TX}"
+test "$(balance "${PAY}")" = "2000000"
+test "$(balance "${SELLER}")" = "0"
 
 RECEIPT=$(mktemp)
 cast receipt "${TX}" --json >"${RECEIPT}"
@@ -73,21 +87,26 @@ jq -n \
   --arg hash "${HASH}" \
   --arg gross "2000000" \
   --arg fee "80000" \
-  '{pay:$pay, seller:$seller, order_id_hash:$hash, gross:$gross, fee:$fee, receipt:$receipt[0], payout_address:$payout[0].address, payout_message:$payout[0].message, payout_signature:$payout[0].signature}' \
+  --argjson deadline "${DEADLINE}" \
+  '{pay:$pay, seller:$seller, order_id_hash:$hash, gross:$gross, fee:$fee, deadline:$deadline, deposit:1, receipt:$receipt[0], payout_address:$payout[0].address, payout_message:$payout[0].message, payout_signature:$payout[0].signature}' \
   > /tmp/losos-anvil-payment.json
 echo "wrote /tmp/losos-anvil-payment.json"
+jq -n --arg rpc "${RPC}" --arg escrow "${PAY}" --arg key "${RELEASER_KEY}" \
+  '{rpc:$rpc, escrow:$escrow, deposit:1, releaser_key:$key}' > /tmp/losos-anvil-escrow.json
 
-echo "== registrar: the receipt and the payout signature =="
+echo "== registrar: the receipt, the payout signature, the release =="
 ( cd ../backend-registrar && LOSOS_ANVIL_RECEIPT=/tmp/losos-anvil-payment.json cargo test --lib an_anvil_receipt_pays_the_order_it_names -- --nocapture )
+( cd ../backend-registrar && LOSOS_ANVIL_ESCROW=/tmp/losos-anvil-escrow.json cargo test --lib an_anvil_deposit_is_released_by_the_edge_key -- --nocapture )
+echo "escrow $(balance "${PAY}") treasury $(balance "${TREASURY}") seller $(balance "${SELLER}")"
+test "$(balance "${PAY}")" = "0"
+test "$(balance "${TREASURY}")" = "80000"
+test "$(balance "${SELLER}")" = "1920000"
 
 echo "== Base Sepolia fork, if the public RPC answers =="
-if [ ! -d lib/forge-std ]; then
-  forge install foundry-rs/forge-std --no-commit
-fi
 if curl -sf --max-time 8 -X POST -H 'content-type: application/json' \
   --data '{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":[]}' \
   https://sepolia.base.org | grep -q 0x14a34; then
-  BASE_SEPOLIA_RPC=https://sepolia.base.org forge test --match-path test/LososPayFork.t.sol -vv
+  BASE_SEPOLIA_RPC=https://sepolia.base.org forge test --match-path 'test/*Fork.t.sol' -vv
 else
   echo "Base Sepolia did not answer; the fork test was not run"
 fi

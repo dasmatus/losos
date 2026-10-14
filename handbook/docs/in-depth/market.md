@@ -299,60 +299,157 @@ that time loses nothing.
 ## Paying with USDC
 
 An edge can settle storage, compute and machine orders in USDC instead of
-Stripe. Hardware stays on Stripe. Turn it on with the chain, the `LososPay`
-contract and the treasury. The RPC URL is a secret, because a provider key
-usually sits in it, so it is sealed with systemd-creds and only the registrar
-reads it:
+Stripe. Hardware stays on Stripe. The edge chooses which networks it accepts:
 
-```nix
-losos.edge.market.currency = "usd"; # prices are USDC cents
-losos.edge.market.usdc = {
-  enable = true;
-  chainId = 84532; # 8453 is Base, live USDC
-  pay = "0x…";       # LososPay
-  treasury = "0x…";  # platform fee
-  rpcUrlSealed = "/var/secrets/losos-usdc-rpc-url.cred";
-};
-```
+| Network      | Its test network |
+| ------------ | ---------------- |
+| Base         | Base Sepolia     |
+| Arbitrum One | Arbitrum Sepolia |
+| OP Mainnet   | OP Sepolia       |
+| Solana       | Solana Devnet    |
 
-Seal the URL the same way as the Stripe key, under the credential name
-`usdc-rpc-url`:
-
-```sh
-printf '%s' 'https://base-sepolia.example/v2/KEY' \
-  | systemd-creds encrypt --name=usdc-rpc-url - /var/secrets/losos-usdc-rpc-url.cred
-```
-
-Chain 84532 (Base Sepolia) is test mode and must be paired with a `sk_test_`
-key. Chain 8453 (Base) is live mode and must be paired with a `sk_live_` key.
-The registrar refuses a mix, so a test payment cannot land in the live ledger.
+An edge runs on test networks or on live networks, never both, and the mode
+follows its Stripe key: test networks with a `sk_test_` key, live networks
+with a `sk_live_` key. The registrar refuses a mix, so a test payment cannot
+land in the live ledger. Each network has its own RPC endpoint, sealed with
+systemd-creds and read only by the registrar. The operator notes kept with
+the source (`docs/ci-and-releases.md`) cover setting it up.
 
 ### How you pay
 
 1. On the Market pane, create a wallet, import a 12 or 24 word phrase, or
-   connect the wallet already in the browser (MetaMask, Rabby, Rainbow,
-   Coinbase Wallet). The phrase is the one those wallets use
-   (`m/44'/60'/0'/0/0`), so a phrase made here imports into them and the other
-   way around. The same address works on every EVM chain. The phrase is
-   encrypted in the browser. The box never receives it.
-2. Order from the shelf. There is no Stripe page. The pane shows the USDC
-   amount.
-3. Pay. The wallet approves USDC for `LososPay` and calls `pay`. The contract
-   sends the platform fee to the treasury and the rest to the seller. You
-   also need a little ETH on that chain for the network fee.
-4. The edge reads the receipt through the sealed RPC URL and marks the order
-   paid. A transaction can pay only one order.
+   connect a wallet already in the browser: MetaMask, Rabby, Rainbow or
+   Coinbase Wallet for the Ethereum networks, Phantom, Solflare or Backpack
+   for Solana. One phrase gives an address on every network the edge
+   accepts, derived the way those wallets derive it (`m/44'/60'/0'/0/0` for
+   Ethereum, `m/44'/501'/0'/0'` for Solana), so a phrase made here imports
+   into them and the other way around. The phrase is encrypted in the
+   browser. The box never receives it.
+2. The pane lists the wallet's USDC on each network, next to the coin that
+   pays that network's fees: ETH, or SOL on Solana.
+3. Order from the shelf. There is no Stripe page. The pane shows the USDC
+   amount and asks which network to pay on, offering first one where the
+   wallet holds enough.
+4. Pay. On an Ethereum network the wallet approves USDC for `LososEscrow`
+   and calls `pay`. The contract holds the payment and records the seller,
+   the fee and a refund deadline; nothing reaches the seller yet. On Solana
+   one transaction pays the platform fee to the treasury and the rest to the
+   seller, and names the order in a memo. The first payment to a seller or
+   to the treasury also opens their USDC account, which costs a little SOL.
+5. The edge reads the transaction through its endpoint for that network and
+   marks the order paid. A transaction can pay only one order. The order
+   then names its network and links the transaction on that network's
+   explorer, for the buyer and the seller alike.
+6. On an Ethereum network the edge then checks the seller's address on that
+   network and releases the deposit: the fee to the treasury, the rest to
+   the seller. If the address cannot receive USDC there, the edge refunds
+   the whole payment to the buyer instead and the order is not fulfilled.
+   The order shows which of the two happened.
 
-On Base Sepolia, test ETH comes from Coinbase's Base Sepolia faucet and test
-USDC from [Circle's faucet](https://faucet.circle.com). Neither has value.
-Live mode is Base and real USDC.
+Before it counts a payment on an Ethereum network, the edge checks that the
+RPC endpoint answers for that network's chain, that `LososEscrow` pulls
+Circle's USDC for that chain, pays the configured treasury and takes orders
+from the edge's own key, and that a block sits on top of the payment.
+`LososEscrow` takes at most half of a payment, the fixed split of a machine
+order; the edge checks the exact fee and refund deadline of every order.
+
+A seller's address can receive USDC when it holds no contract code on that
+network, or holds only an EIP-7702 delegation, which keeps it an account
+someone has the key to. The payout signature already showed that someone
+does. The treasury, the USDC contract, the escrow and the zero address never
+count. The edge's key can release a deposit only to the seller and the
+treasury recorded at payment, or refund it to the buyer; it cannot send a
+deposit anywhere else. If the edge has not released a deposit a day after the
+order's hold ends, the buyer can take it back from the contract directly. On
+Solana the edge checks that the endpoint reports the network's genesis hash,
+that the transaction succeeded and is confirmed, that its memo names the
+order, and that the seller's and the treasury's USDC grew by exactly their
+shares.
+
+An order holds its units for a quarter of an hour. The pane starts no payment
+in the last two minutes of that, and it keeps the transaction of a payment it
+sent until the edge has counted it, so checking again never pays twice. A
+payment that lands after the hold is still honoured while its units are free.
+If they were sold in the meantime, or another payment already paid the order,
+the edge refunds the payment from the escrow and the pane says so. On Solana,
+which has no escrow, such a payment stays with the seller and the refund has
+to be settled outside the market.
+
+On the test networks, test USDC comes from
+[Circle's faucet](https://faucet.circle.com), which serves all four. Test ETH
+comes from each network's own faucet and test SOL from the Solana faucet.
+None of it has value.
+
+### ENS names and sending USDC
+
+The pane can send USDC from the wallet to an address on any of the edge's
+networks. Where the edge has an ENS endpoint, the pane also shows an Ethereum
+address's primary name beside it and takes a name in place of an address when
+you send on an Ethereum network. Test networks look names up on Sepolia, live
+networks on Ethereum. Only names whose records are on chain resolve: the
+admin page reaches nothing but the box, so names served through an offchain
+gateway are not looked up.
 
 ### How you get paid
 
-Sign with the wallet that should receive USDC. The edge checks the signature
-and stores that address. Buyers pay it directly. Import the same phrase into
-MetaMask, Rabby, Rainbow or Trust Wallet when you want to spend it. There is
-no Stripe connected account for these sales.
+Sign with the wallet that should receive USDC. One click signs for both kinds
+of network: the Ethereum address takes sales paid on Base, Arbitrum and OP,
+the Solana address sales paid on Solana. The edge checks each signature and
+stores only the addresses. Sales paid on Solana go to them directly; sales
+on the Ethereum networks reach them once the edge has checked the address on
+that network and released the payment from the escrow. A seller with only
+one of the two set is offered to buyers on that kind of network only. Import
+the same phrase into MetaMask, Rabby, Rainbow, Trust Wallet or Phantom when
+you want to spend it. There is no Stripe connected account for these sales.
+
+A wallet created on the Market pane lives only in that browser, so the pane
+asks where its sales should go before you list. Sign with it as above, or
+choose "Use another wallet's address": paste the address of a wallet you keep
+elsewhere, sign the message the pane shows with that wallet, and paste the
+signature. The edge checks it the same way.
+
+## Paying with Bitcoin
+
+An edge that settles in USDC can also take Bitcoin for storage, compute and
+machine orders. It runs its own pruned Bitcoin node: on mainnet for a live
+edge, on testnet4, signet or regtest for a test edge. The registrar refuses
+any other pairing, so a live edge never counts test coins. The node holds a
+watch-only wallet and no private key.
+
+### Selling for Bitcoin
+
+On the Market pane, paste your wallet's extended public key into the Bitcoin
+row: the zpub, xpub or ypub that Sparrow, Electrum or BlueWallet export (a
+vpub, tpub or upub on a test edge), or a ranged output descriptor. The key
+can make addresses but cannot spend, and the edge refuses a private key.
+Each order then gets a receive address from that key that no other order has
+used, so the coins go straight to your wallet and show up there like any
+other payment. Use an account you keep for these sales: anything paid to
+its addresses after an order was given one counts toward that order.
+Wallets look about 20 unused addresses ahead; if more than 20
+orders in a row go unpaid, raise the gap limit in your wallet to see the
+payments after them.
+
+The platform fee is not taken out of a Bitcoin payment. The whole amount
+reaches the seller, and the edge keeps a running total of the fee on those
+sales, which the seller owes the platform and sees on the pane. A seller with a Bitcoin
+key and no USDC address can still list; buyers then pay in Bitcoin only.
+
+### Paying in Bitcoin
+
+On the order, choose Bitcoin under "Pay with". The pane shows the amount in
+BTC, the address, a QR code and a link that opens a wallet on the computer.
+Pay from any wallet; there is nothing to report back. The edge's node sees
+the payment arrive, and the pane follows it from seen to confirmed.
+
+The BTC amount is a quote from price sources that agree with each other,
+good for a quarter of an hour. One confirmation counts an order up to $50,
+two up to $500, three up to $5,000 and six above that. A payment that falls
+short says how much is still due, and anything over the amount stays with
+the seller. A payment sent after the quote lapsed is measured against the
+price at that moment: within 1% the order completes, otherwise the pane asks
+for the difference. The order then names Bitcoin as its network and links
+the transaction on mempool.space.
 
 ## Not covered
 

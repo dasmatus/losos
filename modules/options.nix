@@ -1729,47 +1729,150 @@ in
       type = lib.types.bool;
       default = false;
       description = ''
-        Settle storage, compute and machine orders in USDC on Base (or Base
-        Sepolia) instead of Stripe. Hardware checkouts stay on Stripe. Needs
+        Settle storage, compute and machine orders in USDC instead of Stripe,
+        on the networks in `losos.edge.market.usdc.networks`; the buyer picks
+        one per order. Hardware checkouts stay on Stripe. Needs
         `losos.edge.market.currency = "usd"`: a price in cents is that many
         USDC cents. See handbook/docs/in-depth/market.md.
       '';
     };
 
-    edge.market.usdc.chainId = lib.mkOption {
-      type = lib.types.enum [
-        8453
-        84532
-      ];
-      default = 84532;
+    edge.market.usdc.networks = lib.mkOption {
+      type = lib.types.attrsOf (
+        lib.types.submodule (
+          { name, ... }:
+          {
+            options = {
+              pay = lib.mkOption {
+                type = lib.types.nullOr (lib.types.strMatching "0x[0-9a-fA-F]{40}");
+                default = null;
+                description = ''
+                  The LososEscrow contract on an EVM network. Public. Its
+                  releaser must be the address of
+                  `losos.edge.market.usdc.releaserKeySealed`. Solana networks
+                  take none: the wallet splits the payment itself.
+                '';
+              };
+              treasury = lib.mkOption {
+                type = lib.types.str;
+                description = ''
+                  Who receives the platform fee: an `0x` address on an EVM
+                  network, or the base58 owner of the fee's USDC account on
+                  Solana. Public.
+                '';
+              };
+              rpcUrlSealed = lib.mkOption {
+                type = secretPath;
+                default = "/var/secrets/losos-usdc-rpc-${name}.cred";
+                defaultText = lib.literalExpression ''"/var/secrets/losos-usdc-rpc-<network>.cred"'';
+                description = ''
+                  The network's RPC URL, **sealed** with `systemd-creds` under
+                  the credential name `usdc-rpc-<network>`. A provider key
+                  usually sits in the URL, so it is a secret: the registrar
+                  receives the plaintext only through `LoadCredentialEncrypted=`
+                  and the browser never does. Seal it with `losos edge secret
+                  set usdc-rpc-<network>`; until then the network answers 503.
+                  Plain `http` is accepted only for a node on the edge's own
+                  loopback.
+                '';
+              };
+              genesisHash = lib.mkOption {
+                type = lib.types.nullOr lib.types.str;
+                default = null;
+                description = ''
+                  `solana-devnet` only: the genesis hash of a local validator
+                  to settle against instead of devnet's. The live `solana`
+                  network always checks mainnet's.
+                '';
+              };
+            };
+          }
+        )
+      );
+      default = { };
+      example = lib.literalExpression ''
+        {
+          base-sepolia = { pay = "0x…"; treasury = "0x…"; };
+          arbitrum-sepolia = { pay = "0x…"; treasury = "0x…"; };
+          solana-devnet.treasury = "5ZWj7a1f8tWkjBESHKgrLmXshuXxqeY9SYcfbshpAqPG";
+        }
+      '';
       description = ''
-        8453 is Base (live USDC) and must be paired with a live Stripe key.
-        84532 is Base Sepolia (test USDC) and must be paired with a test key.
-        The registrar refuses a chain that disagrees with the key.
+        The networks USDC is settled on, by name: `base`, `arbitrum`,
+        `optimism` and `solana` (live, paired with a live Stripe key), or
+        `base-sepolia`, `arbitrum-sepolia`, `optimism-sepolia` and
+        `solana-devnet` (test, paired with a test key). One edge settles in
+        one mode. Circle's USDC on each network is built into the registrar,
+        not configured. The registrar refuses an RPC endpoint that answers for
+        a different chain or cluster.
       '';
     };
 
-    edge.market.usdc.pay = lib.mkOption {
-      type = lib.types.strMatching "0x[0-9a-fA-F]{40}";
-      default = "0x0000000000000000000000000000000000000000";
-      description = "The LososPay contract. Public. Not a secret.";
-    };
-
-    edge.market.usdc.treasury = lib.mkOption {
-      type = lib.types.strMatching "0x[0-9a-fA-F]{40}";
-      default = "0x0000000000000000000000000000000000000000";
-      description = "The address that receives the platform fee. Public. Not a secret.";
-    };
-
-    edge.market.usdc.rpcUrlSealed = lib.mkOption {
+    edge.market.usdc.releaserKeySealed = lib.mkOption {
       type = secretPath;
-      default = "/var/secrets/losos-usdc-rpc-url.cred";
+      default = "/var/secrets/losos-usdc-releaser-key.cred";
       description = ''
-        The HTTPS RPC URL, **sealed** with `systemd-creds` under the
-        credential name `usdc-rpc-url`. A provider key usually sits in the
-        URL, so it is a secret: the registrar receives the plaintext only
-        through `LoadCredentialEncrypted=` and the browser never does. Seal
-        it from stdin. A missing blob leaves USDC unconfigured.
+        The private key the escrow takes release and refund calls from, 64
+        hex characters, **sealed** under the credential name
+        `usdc-releaser-key`. It pays gas on every EVM network, so it holds a
+        little ETH on each, and it can only release a deposit to the seller
+        and treasury recorded at payment or refund it to the payer. The
+        escrow's treasury can replace it. Needed whenever an EVM network is
+        listed. The edge makes it itself (`losos edge escrow releaser
+        --new`), so the key never exists anywhere else.
+      '';
+    };
+
+    edge.market.usdc.ensRpcUrlSealed = lib.mkOption {
+      type = lib.types.nullOr secretPath;
+      default = null;
+      example = "/var/secrets/losos-ens-rpc.cred";
+      description = ''
+        An Ethereum mainnet RPC URL (Sepolia on a test edge), sealed under the
+        credential name `ens-rpc`, so the admin page can show ENS names next
+        to payout addresses and send USDC to a name. Lookups only; nothing is
+        paid on it. `null` leaves names off.
+      '';
+    };
+
+    edge.market.bitcoin.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Let buyers pay for storage, compute and machine orders in Bitcoin,
+        beside USDC. The edge runs its own pruned `bitcoind` with a watch-only
+        wallet; each order gets a fresh address derived from the seller's own
+        extended public key, so the coins go straight to the seller and the
+        edge never holds a private key. The platform fee on these orders is
+        billed to the seller separately. Needs `losos.edge.market.usdc.enable`.
+        See handbook/docs/in-depth/market.md.
+      '';
+    };
+
+    edge.market.bitcoin.chain = lib.mkOption {
+      type = lib.types.enum [
+        "main"
+        "testnet4"
+        "signet"
+        "regtest"
+      ];
+      default = "main";
+      description = ''
+        The chain the edge's node follows. A live edge (live Stripe key) must
+        follow `main`; a test edge takes `testnet4`, `signet` or `regtest`.
+        The registrar checks the pairing before it takes a seller's key or
+        hands out an address, so a real edge cannot settle orders in test
+        coins.
+      '';
+    };
+
+    edge.market.bitcoin.pruneMiB = lib.mkOption {
+      type = lib.types.ints.between 550 1000000;
+      default = 10240;
+      description = ''
+        How much of the block chain the node keeps, in MiB. The watch-only
+        wallet only follows addresses made after it started, so a pruned node
+        is enough.
       '';
     };
 

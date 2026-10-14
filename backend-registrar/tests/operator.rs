@@ -397,3 +397,223 @@ async fn an_edge_without_access_serves_no_terminal() {
         assert_eq!(req.send().await.unwrap().status().as_u16(), 404, "{path}");
     }
 }
+
+/// The seal script's stand-in for the releaser: `--list` reports whether
+/// `sealed-usdc-releaser-key` exists, and a name writes stdin beside it.
+const RELEASER_SEAL_SCRIPT: &str = r#"#!/bin/sh
+dir=$(dirname "$0")
+echo "$*" >> "$dir/seal-args"
+if [ "$1" = "--list" ]; then
+  if [ -f "$dir/sealed-usdc-releaser-key" ]; then
+    printf 'usdc-releaser-key\t1\t1790000000\n'
+  else
+    printf 'usdc-releaser-key\t0\t\n'
+  fi
+  exit 0
+fi
+cat > "$dir/sealed-$1"
+echo "$1: sealed"
+"#;
+
+/// A chain that knows two things: the releaser's gas and the escrow's
+/// `releaser()`, which the test points at whichever key it likes.
+async fn releaser_chain(escrow_releaser: std::sync::Arc<std::sync::Mutex<String>>) -> String {
+    use axum::extract::State;
+    async fn rpc(
+        State(releaser): State<std::sync::Arc<std::sync::Mutex<String>>>,
+        Json(req): Json<serde_json::Value>,
+    ) -> Json<serde_json::Value> {
+        let result = match req["method"].as_str().unwrap_or("") {
+            "eth_getBalance" => serde_json::json!("0x2386f26fc10000"),
+            "eth_call" if req["params"][0]["data"] == "0x02691bcb" => {
+                let address = releaser.lock().unwrap().clone();
+                serde_json::json!(format!("0x000000000000000000000000{}", &address[2..]))
+            }
+            _ => serde_json::Value::Null,
+        };
+        Json(serde_json::json!({"jsonrpc": "2.0", "id": req["id"], "result": result}))
+    }
+    let app = Router::new()
+        .route("/", axum::routing::post(rpc))
+        .with_state(escrow_releaser);
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}/", listener.local_addr().unwrap());
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    url
+}
+
+#[tokio::test]
+async fn the_edge_makes_the_escrow_key_and_shows_only_its_address() {
+    use losos_registrar::evm_tx::Releaser;
+    use losos_registrar::stablecoin::{network, UsdcChain, UsdcOpts};
+
+    let github = fake_github().await;
+    let escrow_releaser =
+        std::sync::Arc::new(std::sync::Mutex::new(format!("0x{}", "99".repeat(20))));
+    let rpc_url = releaser_chain(escrow_releaser.clone()).await;
+    let stripe = {
+        let app = Router::new().fallback(|| async { StatusCode::NOT_FOUND });
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        url
+    };
+    let owner = HostKey::generate("Operator <op@example.com>").unwrap();
+    let public = owner.armored_public().to_string();
+    let edge = Edge::start_market_full(
+        "operator-releaser",
+        &[TenantSpec::new("seller-box", "seller.example", common::GOOD_TOKEN).with_market()],
+        &stripe,
+        &[("seller-box", false)],
+        None,
+        move |opts, dir| {
+            std::fs::write(dir.join("edge-access-keys.asc"), &public).unwrap();
+            let script = dir.join("seal");
+            std::fs::write(&script, RELEASER_SEAL_SCRIPT).unwrap();
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+            std::fs::write(dir.join("usdc-rpc-url"), &rpc_url).unwrap();
+            opts.github_api_url = github;
+            opts.operator = Some(OperatorOpts {
+                access_dir: dir.path_str("access"),
+                keys_file: dir.path_str("edge-access-keys.asc"),
+                seal_script: Some(dir.path_str("seal")),
+                systemd_run: None,
+            });
+            let market = opts.market.as_mut().expect("market on");
+            market.currency = "usd".to_string();
+            market.usdc = Some(UsdcOpts {
+                chains: vec![UsdcChain {
+                    network: network("base-sepolia").unwrap(),
+                    rpc_file: dir.path_str("usdc-rpc-url"),
+                    pay: Some(format!("0x{}", "11".repeat(20))),
+                    treasury: format!("0x{}", "44".repeat(20)),
+                    genesis: None,
+                }],
+                ens_rpc_file: None,
+                price_sources: [
+                    losos_registrar::coins::PriceSource::Kraken {
+                        base: "http://127.0.0.1:9".to_string(),
+                    },
+                    losos_registrar::coins::PriceSource::CoinGecko {
+                        base: "http://127.0.0.1:9".to_string(),
+                    },
+                ],
+                // Where systemd would put the credential once the
+                // restarted registrar loads it; read per request.
+                releaser_file: Some(dir.path_str("sealed-usdc-releaser-key")),
+            });
+        },
+    )
+    .await;
+
+    let hk: serde_json::Value = edge
+        .client
+        .get(format!("{}/operator/host-key", edge.base))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let server = Keyring::parse(hk["publicKey"].as_str().unwrap())
+        .unwrap()
+        .keys()[0]
+        .clone();
+    let new = |scope: &str| serde_json::json!({"name": "laptop", "fingerprint": owner.fingerprint(), "scope": scope, "expiresInDays": 30});
+    let (_, full) = tokens_post(&edge, "/operator/tokens", Some("gho_matus"), new("full")).await;
+    let (_, read) = tokens_post(&edge, "/operator/tokens", Some("gho_matus"), new("read")).await;
+    let term = Terminal {
+        edge: &edge,
+        key: &owner,
+        server: server.clone(),
+        fingerprint: hk["fingerprint"].as_str().unwrap().to_string(),
+        token: full["token"].as_str().unwrap().to_string(),
+    };
+    let reader = Terminal {
+        token: read["token"].as_str().unwrap().to_string(),
+        server,
+        fingerprint: term.fingerprint.clone(),
+        ..term
+    };
+
+    // No key yet: no address, and nothing to ask the chain about.
+    let before = reader
+        .call("GET", "/escrow/releaser", serde_json::Value::Null)
+        .await
+        .unwrap();
+    assert_eq!(before.status, 200, "{:?}", before.body);
+    assert!(before.body["address"].is_null());
+    assert_eq!(before.body["networks"][0]["network"], "base-sepolia");
+    assert!(before.body["networks"][0]["balanceWei"].is_null());
+
+    // A key cannot be handed in, and a read token cannot make one.
+    let pasted = term
+        .call(
+            "POST",
+            "/secrets",
+            serde_json::json!({"name": "usdc-releaser-key", "value": "ab".repeat(32)}),
+        )
+        .await
+        .unwrap();
+    assert_eq!(pasted.status, 400);
+    assert_eq!(
+        reader
+            .call("POST", "/escrow/releaser", serde_json::Value::Null)
+            .await
+            .unwrap_err()
+            .0,
+        403
+    );
+
+    // The edge makes it, seals it from stdin, and answers its address.
+    let made = term
+        .call("POST", "/escrow/releaser", serde_json::Value::Null)
+        .await
+        .unwrap();
+    assert_eq!(made.status, 200, "{:?}", made.body);
+    let first = made.body["address"].as_str().unwrap().to_string();
+    let sealed = std::fs::read_to_string(edge.dir.join("sealed-usdc-releaser-key")).unwrap();
+    assert_eq!(Releaser::from_hex(&sealed).unwrap().address_hex(), first);
+    assert!(
+        !made.body.to_string().contains(&sealed),
+        "the key came back"
+    );
+    let args = std::fs::read_to_string(edge.dir.join("seal-args")).unwrap();
+    assert!(!args.contains(&sealed), "the key reached an argument");
+
+    // A second one would orphan the first; it takes `replace`.
+    let again = term
+        .call("POST", "/escrow/releaser", serde_json::Value::Null)
+        .await
+        .unwrap();
+    assert_eq!(again.status, 409);
+
+    // The chain side: gas, and whether the escrow takes orders from it yet.
+    let shown = reader
+        .call("GET", "/escrow/releaser", serde_json::Value::Null)
+        .await
+        .unwrap();
+    assert_eq!(shown.body["address"], first.as_str());
+    let row = &shown.body["networks"][0];
+    assert_eq!(row["balanceWei"], "10000000000000000");
+    assert_eq!(row["escrowAgrees"], false);
+    *escrow_releaser.lock().unwrap() = first.clone();
+    let shown = reader
+        .call("GET", "/escrow/releaser", serde_json::Value::Null)
+        .await
+        .unwrap();
+    assert_eq!(shown.body["networks"][0]["escrowAgrees"], true);
+
+    let replaced = term
+        .call(
+            "POST",
+            "/escrow/releaser",
+            serde_json::json!({"replace": true}),
+        )
+        .await
+        .unwrap();
+    assert_eq!(replaced.status, 200);
+    assert_eq!(replaced.body["replaced"], true);
+    assert_ne!(replaced.body["address"], first.as_str());
+}

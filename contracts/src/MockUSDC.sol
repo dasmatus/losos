@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 pragma solidity 0.8.24;
 
-/// @notice The slice of USDC `LososPay` uses, plus `mint` for tests.
+/// @notice The slice of USDC `LososPay` and `LososEscrow` use, plus `mint`
+/// for tests.
 /// Six decimals, like Circle's USDC. Not a token to deploy anywhere real.
 contract MockUSDC {
     string public constant name = "USD Coin";
@@ -17,6 +18,13 @@ contract MockUSDC {
 
     function approve(address spender, uint256 amount) external returns (bool) {
         allowance[msg.sender][spender] = amount;
+        return true;
+    }
+
+    function transfer(address to, uint256 amount) external returns (bool) {
+        require(balanceOf[msg.sender] >= amount, "balance");
+        balanceOf[msg.sender] -= amount;
+        balanceOf[to] += amount;
         return true;
     }
 

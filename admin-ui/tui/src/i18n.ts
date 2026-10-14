@@ -462,6 +462,16 @@ export const TUI_MESSAGES = defineMessages({
     sk: "Jedna požiadavka; vypíše stav a odpoveď v JSON",
     de: "Eine Anfrage; gibt Status und JSON-Antwort aus",
   },
+  "tui.help.cmd.releaser": {
+    en: "Show the escrow key's address and ETH, or make it (--new)",
+    sk: "Zobraziť adresu a ETH kľúča pre escrow, alebo ho vytvoriť (--new)",
+    de: "Adresse und ETH des Escrow-Schlüssels zeigen oder ihn erzeugen (--new)",
+  },
+  "tui.help.opt.newReleaser": {
+    en: "With escrow releaser: make the key, or replace the one sealed",
+    sk: "Pri escrow releaser: vytvoriť kľúč, alebo nahradiť zapečatený",
+    de: "Mit escrow releaser: den Schlüssel erzeugen oder den versiegelten ersetzen",
+  },
   "tui.help.cmd.secretList": { en: "List an edge's secrets", sk: "Vypísať tajomstvá edge", de: "Geheimnisse einer Edge auflisten" },
   "tui.help.cmd.secretSet": {
     en: "Seal one secret on an edge, typed without echo or piped in",
@@ -507,9 +517,39 @@ export const TUI_MESSAGES = defineMessages({
 
   // ── The edge ────────────────────────────────────────────────────────────
   "tui.edge.usage": {
-    en: "losos edge secret list, losos edge secret set <name> or losos edge reconcile.",
-    sk: "losos edge secret list, losos edge secret set <názov> alebo losos edge reconcile.",
-    de: "losos edge secret list, losos edge secret set <Name> oder losos edge reconcile.",
+    en: "losos edge secret list, losos edge secret set <name>, losos edge reconcile or losos edge escrow releaser.",
+    sk: "losos edge secret list, losos edge secret set <názov>, losos edge reconcile alebo losos edge escrow releaser.",
+    de: "losos edge secret list, losos edge secret set <Name>, losos edge reconcile oder losos edge escrow releaser.",
+  },
+  "tui.edge.releaserNone": {
+    en: "This edge has no escrow key yet. Make one with losos edge escrow releaser --new.",
+    sk: "Tento edge ešte nemá kľúč pre escrow. Vytvorte ho príkazom losos edge escrow releaser --new.",
+    de: "Diese Edge hat noch keinen Escrow-Schlüssel. Legen Sie ihn mit losos edge escrow releaser --new an.",
+  },
+  "tui.edge.releaserAddress": {
+    en: "The escrow takes release and refund calls from {address}.",
+    sk: "Escrow prijíma uvoľnenia a vrátenia z adresy {address}.",
+    de: "Der Escrow nimmt Freigaben und Erstattungen von {address} an.",
+  },
+  "tui.edge.releaserAgrees": {
+    en: "the escrow takes orders from it",
+    sk: "escrow od neho prijíma príkazy",
+    de: "der Escrow nimmt Aufträge von ihm an",
+  },
+  "tui.edge.releaserDisagrees": {
+    en: "the escrow {escrow} names another key; its treasury calls setReleaser with this address",
+    sk: "escrow {escrow} uvádza iný kľúč; jeho pokladnica zavolá setReleaser s touto adresou",
+    de: "der Escrow {escrow} nennt einen anderen Schlüssel; seine Treasury ruft setReleaser mit dieser Adresse auf",
+  },
+  "tui.edge.releaserMade": {
+    en: "The edge made a new escrow key and sealed it. Its address is {address}. The key itself never leaves the edge.",
+    sk: "Edge vytvoril nový kľúč pre escrow a zapečatil ho. Jeho adresa je {address}. Samotný kľúč edge nikdy neopustí.",
+    de: "Die Edge hat einen neuen Escrow-Schlüssel erzeugt und versiegelt. Seine Adresse ist {address}. Der Schlüssel selbst verlässt die Edge nie.",
+  },
+  "tui.edge.releaserNext": {
+    en: "Send {address} a little ETH on every EVM network for gas. Deploy LososEscrow with it as the releaser, or have the treasury call setReleaser({address}) on each escrow already deployed.",
+    sk: "Pošlite na {address} trochu ETH na každej sieti EVM na poplatky. Nasaďte LososEscrow s touto adresou ako releaser, alebo nech pokladnica zavolá setReleaser({address}) na každom už nasadenom escrow.",
+    de: "Senden Sie {address} auf jedem EVM-Netz etwas ETH für Gas. Setzen Sie LososEscrow mit dieser Adresse als Releaser auf, oder lassen Sie die Treasury auf jedem bestehenden Escrow setReleaser({address}) aufrufen.",
   },
   "tui.edge.notEdge": { en: "{url} is a box, not an edge.", sk: "{url} je zariadenie, nie edge.", de: "{url} ist eine Box, keine Edge." },
   "tui.edge.overviewSummary": {

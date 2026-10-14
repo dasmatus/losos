@@ -48,11 +48,14 @@
 
 pub mod action;
 pub mod announce;
+pub mod bitcoin;
 pub mod builder;
+pub mod coins;
 pub mod config;
 pub mod connect;
 pub mod domains;
 pub mod error;
+pub mod evm_tx;
 mod fsutil;
 pub mod hardware;
 pub mod identity;
@@ -69,6 +72,7 @@ pub mod relay;
 pub mod routes;
 pub mod seed;
 pub mod server;
+pub mod solana;
 pub mod stablecoin;
 pub mod stripe_gate;
 pub mod stripe_mode;

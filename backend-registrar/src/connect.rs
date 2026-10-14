@@ -268,7 +268,7 @@ pub trait Connect: Send + Sync {
 
 impl Connect for GateClient {
     fn mode(&self) -> ConnectFuture<'_, StripeMode> {
-        Box::pin(self.validate_secrets())
+        Box::pin(self.key_mode())
     }
 
     fn create_account<'a>(

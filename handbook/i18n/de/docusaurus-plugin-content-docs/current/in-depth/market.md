@@ -338,40 +338,173 @@ dieser Zeit versiegelt, geht nichts verloren.
 - Fehlertexte und Endpunkte von Stripe bleiben im Journal; Aufrufer erhalten
   eine feste Meldung.
 
-## Mit USDC zahlen
+## Mit USDC zahlen {#paying-with-usdc}
 
 Ein Edge kann Speicher, Rechenleistung und Maschinen in USDC abrechnen statt
-über Stripe. Hardware bleibt bei Stripe. Die RPC-URL ist ein Geheimnis, weil
-darin meist ein API-Schlüssel steckt. Sie wird mit systemd-creds unter dem
-Namen `usdc-rpc-url` versiegelt, und nur der Registrar liest sie.
+über Stripe. Hardware bleibt bei Stripe. Welche Netze er annimmt, wählt der
+Edge:
 
-`losos.edge.market.currency` muss `usd` sein: Preise sind USDC-Cent. `chainId`
-84532 ist Base Sepolia (Test, zusammen mit einem `sk_test_`-Schlüssel), 8453
-ist Base (Live, zusammen mit `sk_live_`). Eine Mischung lehnt der Registrar ab.
+| Netz         | Sein Testnetz    |
+| ------------ | ---------------- |
+| Base         | Base Sepolia     |
+| Arbitrum One | Arbitrum Sepolia |
+| OP Mainnet   | OP Sepolia       |
+| Solana       | Solana Devnet    |
 
-So zahlst du:
+Ein Edge läuft auf Testnetzen oder auf Live-Netzen, nie auf beiden, und der
+Modus folgt seinem Stripe-Schlüssel: Testnetze mit einem `sk_test_`-Schlüssel,
+Live-Netze mit `sk_live_`. Eine Mischung lehnt der Registrar ab, damit keine
+Testzahlung im Live-Buch landet. Jedes Netz hat einen eigenen RPC-Endpunkt,
+mit systemd-creds versiegelt und nur vom Registrar gelesen. Die Einrichtung
+beschreiben die Betreiberhinweise beim Quellcode (`docs/ci-and-releases.md`).
+
+### So zahlst du {#how-you-pay}
 
 1. Im Markt eine Wallet anlegen, eine 12- oder 24-Wort-Phrase importieren
-   oder die Wallet im Browser verbinden (MetaMask, Rabby, Rainbow, Coinbase
-   Wallet). Die Phrase ist der MetaMask-Pfad `m/44'/60'/0'/0/0`, dieselbe
-   Adresse gilt auf jeder EVM-Kette, und sie lässt sich später in diese
-   Wallets importieren. Die Wörter werden im Browser verschlüsselt. Die Box
-   bekommt sie nie.
-2. Eine Anzeige bestellen. Es gibt keine Stripe-Seite, der Bereich zeigt den
-   USDC-Betrag.
-3. Bezahlen. Die Wallet gibt USDC für `LososPay` frei und ruft `pay` auf. Der
-   Vertrag schickt die Plattformgebühr an die Treasury und den Rest an den
-   Verkäufer. Für die Netzwerkgebühr brauchst du etwas ETH auf derselben Kette.
-4. Der Edge liest die Quittung über die versiegelte RPC-URL und markiert die
-   Bestellung als bezahlt. Eine Transaktion kann nur eine Bestellung zahlen.
+   oder eine Wallet im Browser verbinden: MetaMask, Rabby, Rainbow oder
+   Coinbase Wallet für die Ethereum-Netze, Phantom, Solflare oder Backpack
+   für Solana. Eine Phrase ergibt eine Adresse auf jedem Netz, das der Edge
+   annimmt, abgeleitet wie in diesen Wallets (`m/44'/60'/0'/0/0` für
+   Ethereum, `m/44'/501'/0'/0'` für Solana), also lässt sich eine hier
+   erzeugte Phrase dort importieren und umgekehrt. Die Phrase wird im
+   Browser verschlüsselt. Das Gerät bekommt sie nie.
+2. Der Bereich zeigt das USDC der Wallet auf jedem Netz, daneben die Münze,
+   mit der dort Gebühren bezahlt werden: ETH, auf Solana SOL.
+3. Aus dem Angebot bestellen. Es gibt keine Stripe-Seite. Der Bereich zeigt
+   den Betrag in USDC und fragt, auf welchem Netz gezahlt wird; zuerst bietet
+   er eines an, auf dem die Wallet genug hat.
+4. Zahlen. Auf einem Ethereum-Netz genehmigt die Wallet USDC für
+   `LososEscrow` und ruft `pay` auf. Der Vertrag hält die Zahlung und
+   vermerkt Verkäufer, Gebühr und eine Rückgabefrist; beim Verkäufer kommt
+   noch nichts an. Auf Solana schickt eine Transaktion die Plattformgebühr
+   an die Treasury und den Rest an den Verkäufer und nennt die Bestellung in
+   einem Memo. Die erste Zahlung an einen Verkäufer oder die Treasury
+   eröffnet auch deren USDC-Konto, was etwas SOL kostet.
+5. Der Edge liest die Transaktion über seinen Endpunkt für dieses Netz und
+   markiert die Bestellung als bezahlt. Eine Transaktion bezahlt nur eine
+   Bestellung. Die Bestellung nennt dann ihr Netz und verlinkt die
+   Transaktion im Block-Explorer dieses Netzes, für Käufer und Verkäufer.
+6. Auf einem Ethereum-Netz prüft der Edge danach die Adresse des Verkäufers
+   in diesem Netz und gibt die Einzahlung frei: die Gebühr an die Treasury,
+   den Rest an den Verkäufer. Kann die Adresse dort kein USDC empfangen,
+   zahlt der Edge stattdessen die ganze Zahlung an den Käufer zurück, und
+   die Bestellung wird nicht ausgeführt. Die Bestellung zeigt, was davon
+   geschah.
 
-Auf Base Sepolia kommt Test-ETH vom Coinbase-Faucet und Test-USDC von
-[Circles Faucet](https://faucet.circle.com). Beides hat keinen Wert.
+Bevor er eine Zahlung auf einem Ethereum-Netz zählt, prüft der Edge, dass der
+RPC-Endpunkt für die Chain dieses Netzes antwortet, dass `LososEscrow`
+Circles USDC dieser Chain einzieht, an die eingestellte Treasury zahlt und
+Anweisungen vom eigenen Schlüssel des Edge annimmt, und dass über der Zahlung
+schon ein Block liegt. `LososEscrow` nimmt höchstens die Hälfte einer
+Zahlung, die feste Teilung bei Maschinen; die genaue Gebühr und Rückgabefrist
+jeder Bestellung prüft der Edge.
 
-So wirst du bezahlt: mit der Wallet signieren, die USDC empfangen soll. Der
-Edge prüft die Signatur und speichert die Adresse. Käufer zahlen direkt
-dorthin. Dieselbe Phrase importierst du in MetaMask, Rabby, Rainbow oder
-Trust Wallet, wenn du das Geld ausgeben willst.
+Eine Verkäuferadresse kann USDC empfangen, wenn sie in diesem Netz keinen
+Vertragscode hat oder nur eine Delegation nach EIP-7702, sodass sie ein Konto
+bleibt, zu dem jemand den Schlüssel hat. Dass jemand ihn hat, hat schon die
+Signatur der Auszahlungsadresse gezeigt. Die Treasury, der USDC-Vertrag, das
+Escrow und die Nulladresse zählen nie. Der Schlüssel des Edge kann eine
+Einzahlung nur an Verkäufer und Treasury freigeben, die bei der Zahlung
+vermerkt wurden, oder sie an den Käufer zurückgeben; anderswohin schicken kann
+er sie nicht. Hat der Edge eine Einzahlung einen Tag nach dem Ende der
+Haltezeit nicht freigegeben, holt der Käufer sie direkt aus dem Vertrag
+zurück. Auf Solana prüft der Edge, dass der Endpunkt den
+Genesis-Hash des Netzes meldet, dass die Transaktion gelungen und bestätigt
+ist, dass ihr Memo die Bestellung nennt und dass das USDC von Verkäufer und
+Treasury um genau ihre Anteile gewachsen ist.
+
+Eine Bestellung hält ihre Einheiten eine Viertelstunde. In den letzten zwei
+Minuten startet der Bereich keine Zahlung mehr, und er behält die Transaktion
+einer gesendeten Zahlung, bis der Edge sie gezählt hat, sodass erneutes
+Prüfen nie doppelt zahlt. Eine Zahlung nach Ablauf dieser Zeit gilt noch,
+solange die Einheiten frei sind. Wurden sie inzwischen verkauft oder hat eine
+andere Zahlung die Bestellung schon bezahlt, zahlt der Edge die Zahlung aus
+dem Escrow zurück, und der Bereich sagt es. Auf Solana, wo es kein Escrow
+gibt, bleibt eine solche Zahlung beim Verkäufer, und die Rückzahlung muss
+außerhalb des Markts geregelt werden.
+
+Auf den Testnetzen kommt Test-USDC aus
+[Circles Faucet](https://faucet.circle.com), der alle vier bedient. Test-ETH
+gibt der Faucet jedes Netzes, Test-SOL der Solana-Faucet. Nichts davon hat
+einen Wert.
+
+### ENS-Namen und USDC senden {#ens-names-and-sending-usdc}
+
+Der Bereich kann USDC aus der Wallet an eine Adresse auf jedem Netz des Edge
+senden. Hat der Edge einen ENS-Endpunkt, zeigt der Bereich neben einer
+Ethereum-Adresse auch ihren primären Namen und nimmt beim Senden auf einem
+Ethereum-Netz einen Namen statt einer Adresse an. Testnetze suchen Namen auf
+Sepolia, Live-Netze auf Ethereum. Gefunden werden nur Namen mit Einträgen auf
+der Chain: die Verwaltungsseite erreicht nichts außer dem Gerät, also werden
+Namen über ein Gateway außerhalb der Chain nicht nachgeschlagen.
+
+### So bekommst du Geld {#how-you-get-paid}
+
+Mit der Wallet signieren, die USDC empfangen soll. Ein Klick signiert für
+beide Arten von Netz: die Ethereum-Adresse nimmt Verkäufe auf Base, Arbitrum
+und OP, die Solana-Adresse Verkäufe auf Solana. Der Edge prüft jede Signatur,
+speichert nur die Adressen. Verkäufe auf Solana gehen direkt an sie; Verkäufe
+auf den Ethereum-Netzen kommen an, sobald der Edge die Adresse in diesem Netz
+geprüft und die Zahlung aus dem Escrow freigegeben hat. Ein Verkäufer
+mit nur einer der beiden wird nur Käufern auf dieser Art von Netz angeboten.
+Dieselbe Phrase lässt sich in MetaMask, Rabby, Rainbow, Trust Wallet oder
+Phantom importieren, wenn du das Geld ausgeben willst. Für diese Verkäufe gibt
+es kein verbundenes Stripe-Konto.
+
+Eine im Markt angelegte Wallet lebt nur in diesem Browser, deshalb fragt der
+Bereich vor dem Anbieten, wohin ihre Verkäufe gehen sollen. Mit ihr wie oben
+signieren, oder „Adresse einer anderen Wallet nehmen“ wählen: die Adresse
+einer Wallet einfügen, die du anderswo hältst, mit dieser Wallet die Nachricht
+signieren, die der Bereich zeigt, und die Signatur einfügen. Der Edge prüft sie
+genauso.
+
+## Mit Bitcoin zahlen {#paying-with-bitcoin}
+
+Ein Edge, der in USDC abrechnet, kann für Speicher-, Rechen- und
+Maschinenbestellungen auch Bitcoin annehmen. Er betreibt dafür einen eigenen
+geprunten Bitcoin-Knoten: auf Mainnet für einen Live-Edge, auf testnet4,
+Signet oder Regtest für einen Test-Edge. Der Registrar lehnt jede andere
+Paarung ab, sodass ein Live-Edge nie Testmünzen zählt. Der Knoten hält eine
+reine Beobachtungs-Wallet und keinen privaten Schlüssel.
+
+### Für Bitcoin verkaufen {#selling-for-bitcoin}
+
+Im Markt den erweiterten öffentlichen Schlüssel deiner Wallet in die
+Bitcoin-Zeile einfügen: den zpub, xpub oder ypub, den Sparrow, Electrum oder
+BlueWallet exportieren (auf einem Test-Edge einen vpub, tpub oder upub),
+oder einen Output-Deskriptor mit Bereich. Der Schlüssel kann Adressen
+erzeugen, aber nichts ausgeben, und einen privaten Schlüssel lehnt der Edge
+ab. Jede Bestellung bekommt dann aus diesem Schlüssel eine Empfangsadresse,
+die keine andere Bestellung benutzt hat, sodass die Münzen direkt in deine
+Wallet gehen und dort wie jede andere Zahlung erscheinen. Nimm ein Konto nur
+für diese Verkäufe: alles, was an eine Adresse geht, nachdem eine Bestellung
+sie bekommen hat, zählt für diese Bestellung. Wallets schauen
+etwa 20 unbenutzte Adressen voraus; bleiben mehr als 20 Bestellungen
+hintereinander unbezahlt, das Gap-Limit in der Wallet erhöhen, um die
+Zahlungen danach zu sehen.
+
+Die Plattformgebühr wird nicht von einer Bitcoin-Zahlung abgezogen. Der
+ganze Betrag geht an den Verkäufer, und der Edge führt eine laufende Summe
+der Gebühr auf diese Verkäufe, die der Verkäufer der Plattform schuldet und
+im Bereich sieht. Ein Verkäufer mit Bitcoin-Schlüssel und ohne USDC-Adresse kann
+trotzdem anbieten; Käufer zahlen dann nur in Bitcoin.
+
+### In Bitcoin bezahlen {#paying-in-bitcoin}
+
+Bei der Bestellung unter „Zahlen mit“ Bitcoin wählen. Der Bereich zeigt den
+Betrag in BTC, die Adresse, einen QR-Code und einen Link, der eine Wallet
+auf dem Computer öffnet. Mit einer beliebigen Wallet zahlen; zurückmelden
+muss man nichts. Der Knoten des Edge sieht die Zahlung ankommen, und der
+Bereich verfolgt sie von gesehen bis bestätigt.
+
+Der BTC-Betrag ist ein Angebot aus Preisquellen, die übereinstimmen, gültig
+für eine Viertelstunde. Eine Bestätigung zählt eine Bestellung bis 50 $,
+zwei bis 500 $, drei bis 5.000 $ und sechs darüber. Eine zu kleine Zahlung
+sagt, wie viel noch fehlt, und was über den Betrag hinausgeht, bleibt beim
+Verkäufer. Eine Zahlung nach Ablauf des Angebots wird am Preis in diesem
+Moment gemessen: innerhalb von 1 % wird die Bestellung abgeschlossen, sonst
+fragt der Bereich nach der Differenz. Die Bestellung nennt dann Bitcoin als
+Netz und verlinkt die Transaktion auf mempool.space.
 
 ## Nicht abgedeckt
 

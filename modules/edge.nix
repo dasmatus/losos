@@ -697,22 +697,75 @@ let
     ]
     ++ hardwareArgs "--market-hardware-catalogue"
     ++ vmServeArgs
-    ++ usdcServeArgs;
+    ++ usdcServeArgs
+    ++ btcServeArgs;
+
+  # Bitcoin (losos.edge.market.bitcoin): the edge's own node, on loopback,
+  # signed in with the cookie it writes into its chain's directory. The
+  # registrar runs as root and reads the cookie on every call, because the
+  # node writes a new one each time it starts.
+  btcOn = usdcOn && cfg.market.bitcoin.enable;
+  btcChain = cfg.market.bitcoin.chain;
+  btcRpcPort = 8332;
+  btcDataDir = "/var/lib/bitcoind-losos";
+  btcCookie = if btcChain == "main" then "${btcDataDir}/.cookie" else "${btcDataDir}/${btcChain}/.cookie";
+  btcServeArgs = lib.optionals btcOn [
+    "--market-btc-rpc"
+    "http://127.0.0.1:${toString btcRpcPort}"
+    "--market-btc-cookie-file"
+    btcCookie
+  ];
 
   # USDC (losos.edge.market.usdc). The RPC URL is a systemd credential of
   # the registrar, not a flag: a flag would put the provider key in the
   # unit's command line.
   usdcOn = cfg.market.enable && cfg.market.usdc.enable;
-  usdcServeArgs = lib.optionals usdcOn [
-    "--market-usdc-chain-id"
-    (toString cfg.market.usdc.chainId)
-    "--market-usdc-rpc-file"
-    "/run/credentials/losos-registrar.service/usdc-rpc-url"
-    "--market-usdc-pay"
-    cfg.market.usdc.pay
-    "--market-usdc-treasury"
-    cfg.market.usdc.treasury
+  # The registrar's own table (backend-registrar/src/stablecoin.rs); it
+  # refuses anything else at start, this says so at eval.
+  usdcKnown = [
+    "base"
+    "base-sepolia"
+    "arbitrum"
+    "arbitrum-sepolia"
+    "optimism"
+    "optimism-sepolia"
+    "solana"
+    "solana-devnet"
   ];
+  usdcNetworks = cfg.market.usdc.networks;
+  credDir = "/run/credentials/losos-registrar.service";
+  usdcSpec =
+    name: n:
+    lib.concatStringsSep "," (
+      [
+        "network=${name}"
+        "rpc=${credDir}/usdc-rpc-${name}"
+        "treasury=${n.treasury}"
+      ]
+      ++ lib.optional (n.pay != null) "pay=${n.pay}"
+      ++ lib.optional (n.genesisHash != null) "genesis=${n.genesisHash}"
+    );
+  ensOn = usdcOn && cfg.market.usdc.ensRpcUrlSealed != null;
+  # EVM payments wait in LososEscrow until the registrar releases them with
+  # this key.
+  releaserOn = usdcOn && lib.any (name: !lib.hasPrefix "solana" name) (lib.attrNames usdcNetworks);
+  usdcServeArgs =
+    lib.optionals usdcOn (
+      lib.concatLists (
+        lib.mapAttrsToList (name: n: [
+          "--market-usdc"
+          (usdcSpec name n)
+        ]) usdcNetworks
+      )
+    )
+    ++ lib.optionals releaserOn [
+      "--market-usdc-releaser-file"
+      "${credDir}/usdc-releaser-key"
+    ]
+    ++ lib.optionals ensOn [
+      "--market-ens-rpc-file"
+      "${credDir}/ens-rpc"
+    ];
 
   # Machines (losos.edge.vms, modules/edge-vms.nix): the shape of a replica,
   # where its disk is claimed from, and the origin CDI's importer fetches an
@@ -796,8 +849,14 @@ let
     lib.optionals builderOn [
       "claude-api-key:${toString cfg.builder.claudeKeySealed}"
     ]
-    ++ lib.optionals (cfg.market.enable && cfg.market.usdc.enable) [
-      "usdc-rpc-url:${toString cfg.market.usdc.rpcUrlSealed}"
+    ++ lib.optionals usdcOn (
+      lib.mapAttrsToList (name: n: "usdc-rpc-${name}:${toString n.rpcUrlSealed}") usdcNetworks
+    )
+    ++ lib.optionals releaserOn [
+      "usdc-releaser-key:${toString cfg.market.usdc.releaserKeySealed}"
+    ]
+    ++ lib.optionals ensOn [
+      "ens-rpc:${toString cfg.market.usdc.ensRpcUrlSealed}"
     ];
   builderServeArgs = lib.optionals builderOn [
     "--builder-key-file"
@@ -945,15 +1004,53 @@ in
         '';
       }
       {
-        assertion =
-          cfg.market.usdc.enable
-          -> (
-            cfg.market.usdc.pay != cfg.market.usdc.treasury
-            && cfg.market.usdc.pay != "0x0000000000000000000000000000000000000000"
-            && cfg.market.usdc.treasury != "0x0000000000000000000000000000000000000000"
-          );
+        assertion = cfg.market.usdc.enable -> usdcNetworks != { };
+        message = "losos.edge.market.usdc.enable needs at least one network in losos.edge.market.usdc.networks.";
+      }
+      {
+        assertion = lib.all (name: lib.elem name usdcKnown) (lib.attrNames usdcNetworks);
         message = ''
-          losos.edge.market.usdc.pay and treasury must be set, and must differ.
+          losos.edge.market.usdc.networks takes ${lib.concatStringsSep ", " usdcKnown}; got
+          ${lib.concatStringsSep ", " (lib.attrNames usdcNetworks)}.
+        '';
+      }
+      {
+        assertion =
+          let
+            modes = lib.unique (
+              map (name: lib.hasInfix "sepolia" name || lib.hasSuffix "devnet" name) (lib.attrNames usdcNetworks)
+            );
+          in
+          lib.length modes <= 1;
+        message = ''
+          losos.edge.market.usdc.networks mixes test and live networks; one edge
+          settles in the mode of its Stripe key.
+        '';
+      }
+      {
+        assertion = lib.all (n: n) (
+          lib.mapAttrsToList (
+            name: n:
+            if lib.hasPrefix "solana" name then
+              n.pay == null && builtins.match "[1-9A-HJ-NP-Za-km-z]{32,44}" n.treasury != null
+            else
+              n.pay != null
+              && builtins.match "0x[0-9a-fA-F]{40}" n.treasury != null
+              && lib.toLower n.pay != lib.toLower n.treasury
+              && n.genesisHash == null
+          ) usdcNetworks
+        );
+        message = ''
+          losos.edge.market.usdc.networks: an EVM network needs `pay` and an
+          `0x` treasury that differ; a Solana network takes no `pay` and a
+          base58 treasury. Only `solana-devnet` takes `genesisHash`.
+        '';
+      }
+      {
+        assertion = cfg.market.bitcoin.enable -> cfg.market.usdc.enable;
+        message = ''
+          losos.edge.market.bitcoin.enable requires losos.edge.market.usdc.enable:
+          Bitcoin is offered beside USDC, priced in the same dollars.
         '';
       }
       {
@@ -1078,7 +1175,8 @@ in
         "losos-rathole-seed.service"
       ]
       ++ lib.optional meshEnabled "losos-mesh-rbac.service"
-      ++ lib.optional cfg.market.enable "losos-stripe-gate.service";
+      ++ lib.optional cfg.market.enable "losos-stripe-gate.service"
+      ++ lib.optional btcOn "bitcoind-losos.service";
       # Wants, not Requires, on the RBAC extractor: the master-proxy half must
       # keep serving /register and rewriting Traefik on an edge whose mesh
       # apiserver is down or not yet up. A failed extraction costs the join
@@ -1087,7 +1185,8 @@ in
         "network-online.target"
       ]
       ++ lib.optional meshEnabled "losos-mesh-rbac.service"
-      ++ lib.optional cfg.market.enable "losos-stripe-gate.service";
+      ++ lib.optional cfg.market.enable "losos-stripe-gate.service"
+      ++ lib.optional btcOn "bitcoind-losos.service";
       # A changed seed is read at start, like the box's.
       restartTriggers = lib.optional (
         cfg.access.gpgKeys != [ ]
@@ -1112,10 +1211,34 @@ in
       }
       // lib.optionalAttrs (registrarCreds != [ ]) {
         # Plaintext only in this unit's credential directory, read per request.
-        # `claude-api-key` is the widget builder. `usdc-rpc-url` is the chain
-        # endpoint. Neither is a flag, so neither shows up in the process list.
+        # `claude-api-key` is the widget builder, `usdc-rpc-<network>` a chain
+        # endpoint, `usdc-releaser-key` the escrow's key and `ens-rpc` the
+        # name lookups. None is a flag, so none shows up in the process list.
         LoadCredentialEncrypted = registrarCreds;
+        # systemd fails the unit when an absolute blob is missing, and an
+        # edge whose registrar never starts cannot have anything sealed
+        # through `losos edge secret set`. A SetCredential= of the same name
+        # is the fallback systemd takes then; the registrar reads the word as
+        # "not configured" (503) for every one of these.
+        SetCredential = map (c: "${lib.head (lib.splitString ":" c)}:unsealed") registrarCreds;
       };
+    };
+
+    # ── bitcoind (Bitcoin orders, losos.edge.market.bitcoin) ─────────────
+    # A pruned node on loopback only. The wallet it holds is watch-only and
+    # made by the registrar on first use; nothing on this machine can spend.
+    services.bitcoind.losos = lib.mkIf btcOn {
+      enable = true;
+      dataDir = btcDataDir;
+      prune = cfg.market.bitcoin.pruneMiB;
+      # On the command line, not in bitcoin.conf: outside `main` the file's
+      # RPC settings only count inside a [chain] section.
+      extraCmdlineOptions = [
+        "-chain=${btcChain}"
+        "-rpcport=${toString btcRpcPort}"
+        "-rpcbind=127.0.0.1"
+        "-rpcallowip=127.0.0.1"
+      ];
     };
 
     # ── DNS: the edge's own zone, served by Knot ─────────────────────────

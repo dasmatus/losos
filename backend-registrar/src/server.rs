@@ -142,6 +142,13 @@ const STRIPE_ROUTES: [&str; 4] = [
     "/builder/credits",
 ];
 
+/// The coin routes ask the edge's own node several things in a row (the
+/// chain, a descriptor, an import) and may wait on both price sources, so
+/// they get more than [`REQUEST_TIMEOUT`] and still stay under the box's
+/// 25 s relay.
+const COIN_ROUTE_TIMEOUT: Duration = Duration::from_secs(20);
+const COIN_ROUTES: [&str; 2] = ["/market/coins/key", "/market/coins/pay"];
+
 /// `POST /builder/builds` opens a Managed Agents session, one Anthropic
 /// request that may take several seconds. Under the box's own 25 s curl
 /// timeout (`backend/src/io_backend.rs`), so a build the edge started is
@@ -624,6 +631,8 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
         .route("/market/orders", post(market_order))
         .route("/market/payout", post(market_payout))
         .route("/market/confirm", post(market_confirm))
+        .route("/market/coins/key", post(market_coin_key))
+        .route("/market/coins/pay", post(market_coin_pay))
         .route("/market/rpc", post(market_rpc))
         .route("/market/account", post(market_account))
         .route("/market/hardware", get(market_hardware))
@@ -719,6 +728,8 @@ async fn guard(State(st): State<AppState>, req: Request, next: Next) -> Response
     };
     let budget = if STRIPE_ROUTES.contains(&req.uri().path()) {
         STRIPE_ROUTE_TIMEOUT
+    } else if COIN_ROUTES.contains(&req.uri().path()) {
+        COIN_ROUTE_TIMEOUT
     } else if req.uri().path() == IDENTITY_PUSH_ROUTE
         || req.uri().path().starts_with("/operator/tokens")
     {
@@ -1344,7 +1355,7 @@ async fn market_of(st: &AppState) -> Result<&Arc<Market>, ApiError> {
         .market
         .as_ref()
         .ok_or(ApiError::Market(MarketError::Unconfigured))?;
-    market.validate_secrets().await?;
+    market.check_mode().await?;
     Ok(market)
 }
 
@@ -1449,6 +1460,9 @@ struct MarketPayoutReq {
     auth: MarketAuth,
     address: String,
     signature: String,
+    /// `evm` when absent, which is what a box built before Solana sends.
+    #[serde(default)]
+    family: Option<String>,
 }
 
 /// `POST /market/payout`: the seller's wallet signs the payout address.
@@ -1457,8 +1471,13 @@ async fn market_payout(
     Json(req): Json<MarketPayoutReq>,
 ) -> Result<StatusCode, ApiError> {
     let market = market_tenant(&st, &req.auth).await?;
+    let family = match req.family.as_deref() {
+        None | Some("evm") => crate::stablecoin::Family::Evm,
+        Some("solana") => crate::stablecoin::Family::Solana,
+        Some(_) => return Err(MarketError::Invalid("family is evm or solana").into()),
+    };
     market
-        .set_payout(&req.auth.appliance_id, &req.address, &req.signature)
+        .set_payout(&req.auth.appliance_id, &req.address, &req.signature, family)
         .await?;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -1469,6 +1488,9 @@ struct MarketConfirmReq {
     auth: MarketAuth,
     order_id: String,
     tx: String,
+    /// The network `tx` is on; the edge's first when absent.
+    #[serde(default)]
+    network: Option<String>,
 }
 
 /// `POST /market/confirm`: a mined USDC payment for an order this caller made.
@@ -1477,10 +1499,63 @@ async fn market_confirm(
     Json(req): Json<MarketConfirmReq>,
 ) -> Result<StatusCode, ApiError> {
     let market = market_tenant(&st, &req.auth).await?;
+    let confirmed = market
+        .confirm_usdc(
+            &req.auth.appliance_id,
+            &req.order_id,
+            &req.tx,
+            req.network.as_deref(),
+        )
+        .await;
+    // A held payment, paid or refused, has an escrow call waiting: the
+    // reconciler sends it now rather than on its next tick.
+    st.notify.notify_one();
+    confirmed?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Debug, Deserialize)]
+struct MarketCoinKeyReq {
+    #[serde(flatten)]
+    auth: MarketAuth,
+    /// `btc`.
+    coin: String,
+    /// An extended public key or a ranged output descriptor.
+    key: String,
+}
+
+/// `POST /market/coins/key`: the watch-only key this seller is paid to in a
+/// coin other than USDC.
+async fn market_coin_key(
+    State(st): State<AppState>,
+    Json(req): Json<MarketCoinKeyReq>,
+) -> Result<StatusCode, ApiError> {
+    let market = market_tenant(&st, &req.auth).await?;
     market
-        .confirm_usdc(&req.auth.appliance_id, &req.order_id, &req.tx)
+        .set_coin_key(&req.auth.appliance_id, &req.coin, &req.key)
         .await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Debug, Deserialize)]
+struct MarketCoinPayReq {
+    #[serde(flatten)]
+    auth: MarketAuth,
+    order_id: String,
+    coin: String,
+}
+
+/// `POST /market/coins/pay`: an address and amount to pay this caller's
+/// order in a coin, or what has reached it so far.
+async fn market_coin_pay(
+    State(st): State<AppState>,
+    Json(req): Json<MarketCoinPayReq>,
+) -> Result<Json<crate::market::CoinView>, ApiError> {
+    let market = market_tenant(&st, &req.auth).await?;
+    let view = market
+        .pay_with_coin(&req.auth.appliance_id, &req.order_id, &req.coin)
+        .await?;
+    Ok(Json(view))
 }
 
 #[derive(Debug, Deserialize)]
@@ -1492,6 +1567,10 @@ struct MarketRpcReq {
     params: serde_json::Value,
     #[serde(default = "rpc_id")]
     id: serde_json::Value,
+    /// A network the edge settles on, or `ens` for name lookups; the edge's
+    /// first network when absent.
+    #[serde(default)]
+    network: Option<String>,
 }
 
 fn rpc_id() -> serde_json::Value {
@@ -1512,7 +1591,9 @@ async fn market_rpc(
         req.params
     };
     Ok(Json(
-        market.forward_rpc(&req.method, &params, &req.id).await?,
+        market
+            .forward_rpc(req.network.as_deref(), &req.method, &params, &req.id)
+            .await?,
     ))
 }
 
@@ -1924,9 +2005,12 @@ async fn fulfil_market(st: &AppState) {
     // Which ledger to work on follows the gate's key. Once a request has
     // told, the pass keeps to that ledger: its orders are still owed their
     // volumes even if the key changes before the next request notices.
-    if market.mode().await.is_none() && market.validate_secrets().await.is_err() {
+    if market.mode().await.is_none() && market.check_mode().await.is_err() {
         return;
     }
+    // A coin payment seen in time completes its order even after the hold
+    // ran out, so read the payments before expiring anything.
+    market.settle_coins().await;
     match market.expire_stale().await {
         Ok(expired) => {
             for id in expired {
@@ -1941,6 +2025,7 @@ async fn fulfil_market(st: &AppState) {
             "could not record stale orders as expired: {e}",
         ),
     }
+    market.settle_escrow().await;
     vm::fulfil(st, market).await;
     let pending = market.pending_provisions().await;
     let lapsed = market.lapsed_volumes().await;

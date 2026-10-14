@@ -240,6 +240,23 @@ describe("the losos command", () => {
     const reconcile = await losos(["edge", "reconcile"]);
     assert.equal(reconcile.code, 0, reconcile.stderr);
     assert.deepEqual(edge.calls.at(-1), { method: "POST", path: "/reconcile", body: null });
+    const releaser = await losos(["edge", "escrow", "releaser"]);
+    assert.equal(releaser.code, 0, releaser.stderr);
+    assert.deepEqual(edge.calls.at(-1), { method: "GET", path: "/escrow/releaser", body: null });
+    assert.match(releaser.stdout, /0x1111111111111111111111111111111111111111/);
+    assert.match(releaser.stdout, /base-sepolia\s+0\.0125 ETH\s+the escrow takes orders from it/);
+    assert.match(releaser.stdout, /arbitrum-sepolia\s+0 ETH\s+the escrow 0xe5c0\S+ names another key/);
+    assert.match(releaser.stdout, /optimism-sepolia\s+the network's endpoint is not sealed yet/);
+
+    // One key already sealed: --new is refused, --replace makes another.
+    const again = await losos(["edge", "escrow", "releaser", "--new"]);
+    assert.equal(again.code, 1);
+    assert.deepEqual(edge.calls.at(-1), { method: "POST", path: "/escrow/releaser", body: null });
+    const replaced = await losos(["edge", "escrow", "releaser", "--replace"]);
+    assert.equal(replaced.code, 0, replaced.stderr);
+    assert.deepEqual(edge.calls.at(-1), { method: "POST", path: "/escrow/releaser", body: { replace: true } });
+    assert.match(replaced.stdout, /0x2222222222222222222222222222222222222222/);
+    assert.match(replaced.stdout, /setReleaser\(0x2222/);
   });
 
   it("sets up CI through gh, with every value on stdin", async () => {

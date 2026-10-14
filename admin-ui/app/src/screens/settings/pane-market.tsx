@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/table";
 import { Spinner } from "@/components/ui/progress";
 import { toast } from "@/components/ui/toast";
-import type { MarketKind, MarketOrder, MarketShelfListing } from "@/lib/api";
+import type { MarketKind, MarketOrder, MarketShelfListing, UsdcPublic } from "@/lib/api";
 import { t as translate, type MessageKey } from "@/lib/i18n";
 import { useT } from "@/lib/i18n-react";
 import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText, RowValue, StackRow, SwitchRow } from "./rows";
@@ -38,7 +38,9 @@ import {
 } from "./market";
 import { useEdge } from "./use-edge";
 import type { SettingsForm } from "./use-settings-form";
+import { explorerTx, listNames } from "@/wallet/chains";
 import { formatUsdc, rememberInvoice, UsdcWallet } from "./usdc-wallet";
+import { COIN_NAMES } from "./coin-pay";
 
 /* Sharing this box's disk, and buying and selling what the mesh shares.
  *
@@ -194,7 +196,7 @@ export function MarketPane({ form }: { form: SettingsForm }) {
               </TableHeader>
               <TableBody>
                 {account.purchases.map((order) => (
-                  <PurchaseRow key={order.id} order={order} />
+                  <PurchaseRow key={order.id} order={order} usdc={account.usdc ?? null} />
                 ))}
               </TableBody>
             </Table>
@@ -231,7 +233,24 @@ export function MarketPane({ form }: { form: SettingsForm }) {
             ))
           )}
         </Group>
-        <GroupCaption>{t("panes.market.payCaption")}</GroupCaption>
+        <GroupCaption>
+          {account.usdc
+            ? t("panes.market.usdc.payCaption", {
+                chain: listNames(
+                  account.usdc.chains.map((c) => c.name),
+                  t("panes.market.usdc.or"),
+                ),
+              }) +
+              ((account.coins ?? []).length > 0
+                ? ` ${t("panes.market.coins.also", {
+                    coins: listNames(
+                      (account.coins ?? []).map((c) => COIN_NAMES[c]),
+                      t("panes.market.usdc.or"),
+                    ),
+                  })}`
+                : "")
+            : t("panes.market.payCaption")}
+        </GroupCaption>
       </PaneSection>
 
       <SellSection market={market} disabled={disabled} />
@@ -282,7 +301,62 @@ function SharingSection({ form }: { form: SettingsForm }) {
   );
 }
 
-function PurchaseRow({ order }: { order: MarketOrder }) {
+/** Where a USDC order was paid, with a link to its transaction on the
+ *  network's explorer. Nothing for a card payment. */
+function PaidTx({ order, usdc }: { order: MarketOrder; usdc: UsdcPublic | null }) {
+  const t = useT();
+  if (!order.tx || usdc === null) return null;
+  // A Bitcoin order names the chain the edge's node follows.
+  if (order.network?.startsWith("bitcoin")) {
+    const href = explorerTx(order.network, order.tx);
+    return (
+      <p className="mt-0.5 text-[12px] text-faint">
+        {t("panes.market.paidOn", { network: "Bitcoin" })}
+        {href !== null && (
+          <>
+            {" · "}
+            <a className="underline underline-offset-2 hover:text-ink" href={href} target="_blank" rel="noopener noreferrer">
+              {t("panes.market.viewTx")}
+            </a>
+          </>
+        )}
+      </p>
+    );
+  }
+  const chain =
+    usdc.chains.find((c) => c.network === order.network) ??
+    (order.network ? undefined : usdc.chains.find((c) => c.family === "evm"));
+  if (!chain) return null;
+  const href = explorerTx(chain.network, order.tx);
+  const escrow = order.escrow;
+  const reason =
+    escrow?.reason === "sellerCannotReceive" || escrow?.reason === "buyerReclaimed"
+      ? t(`panes.market.escrow.${escrow.reason}`)
+      : null;
+  return (
+    <>
+      <p className="mt-0.5 text-[12px] text-faint">
+        {t("panes.market.paidOn", { network: chain.name })}
+        {href !== null && (
+          <>
+            {" · "}
+            <a className="underline underline-offset-2 hover:text-ink" href={href} target="_blank" rel="noopener noreferrer">
+              {t("panes.market.viewTx")}
+            </a>
+          </>
+        )}
+      </p>
+      {escrow && (
+        <p className="mt-0.5 text-[12px] text-faint">
+          {t(`panes.market.escrow.${escrow.step}`)}
+          {reason !== null && ` · ${reason}`}
+        </p>
+      )}
+    </>
+  );
+}
+
+function PurchaseRow({ order, usdc }: { order: MarketOrder; usdc: UsdcPublic | null }) {
   const t = useT();
   const status =
     order.status === "paid" && order.expired
@@ -301,6 +375,7 @@ function PurchaseRow({ order }: { order: MarketOrder }) {
             {t("panes.market.volume", { volume: order.volume })}
           </p>
         )}
+        <PaidTx order={order} usdc={usdc} />
       </TableCell>
       <TableCell className="numeric">{quantityOf(order.quantity, order.unit)}</TableCell>
       <TableCell className="numeric text-muted">{until}</TableCell>
@@ -345,7 +420,10 @@ function ShelfRow({
     if (reply?.stablecoin) {
       checkoutTab?.close();
       rememberInvoice(reply.stablecoin);
-      const chain = reply.stablecoin.chain_id === 8453 ? "Base" : "Base Sepolia";
+      const chain = listNames(
+        reply.stablecoin.chains.map((c) => c.name),
+        t("panes.market.usdc.or"),
+      );
       toast.status(
         t("panes.market.orderPlaced"),
         t("panes.market.usdc.payDetail", {
@@ -465,142 +543,168 @@ function SellSection({ market, disabled }: { market: MarketData; disabled: boole
   };
 
   return (
-    <PaneSection>
+    <>
       {account.usdc ? (
-        <UsdcWallet usdc={account.usdc} payout={account.payout} disabled={disabled} />
-      ) : null}
-      <GroupTitle>{t("panes.market.sell")}</GroupTitle>
-      <Group>
-        <Row last={!account.seller_ready}>
-          <RowText
-            title={t("panes.market.payouts")}
-            detail={
-              account.usdc
-                ? account.payout
-                  ? t("panes.market.usdc.payoutReady", { address: account.payout })
-                  : t("panes.market.usdc.receive", {
-                      chain: account.usdc.test ? "Base Sepolia" : "Base",
-                    })
-                : account.seller_ready
-                  ? t("panes.market.payoutsReady")
-                  : account.seller_onboarded
-                    ? t("panes.market.payoutsPending")
-                    : t("panes.market.payoutsNone")
+        <PaneSection>
+          <UsdcWallet
+            usdc={account.usdc}
+            payout={account.payout}
+            payoutSolana={account.payout_solana}
+            coins={account.coins ?? []}
+            coinKeys={account.coin_keys ?? {}}
+            coinFeesOwed={
+              account.coin_fees_owed ? formatMoney(account.coin_fees_owed, account.currency) : null
             }
+            disabled={disabled}
+            onPaid={market.refresh}
           />
-          {!account.usdc && !account.seller_ready && (
-            <Button size="sm" disabled={disabled} onClick={() => void onboard()}>
-              {account.seller_onboarded
-                ? t("panes.market.payoutsContinue")
-                : t("panes.market.payoutsStart")}
-            </Button>
-          )}
-        </Row>
-
-        {account.seller_ready && (
-          <StackRow last={account.listings.length === 0}>
-            {!canStorage && !canCompute ? (
-              <p className="text-[13px] text-muted">{t("panes.market.nothingShared")}</p>
-            ) : (
-              <div className="grid gap-2 sm:grid-cols-4">
-                <div>
-                  <label htmlFor={kindId} className="sr-only">
-                    {t("panes.market.kindLabel")}
-                  </label>
-                  <NativeSelect
-                    id={kindId}
-                    value={effectiveKind}
-                    disabled={disabled}
-                    onChange={(e) => setKind(e.target.value === "compute" ? "compute" : "storage")}
-                  >
-                    <option value="storage" disabled={!canStorage}>
-                      {t("panes.market.kind.storage")}
-                    </option>
-                    <option value="compute" disabled={!canCompute}>
-                      {t("panes.market.kind.compute")}
-                    </option>
-                  </NativeSelect>
-                </div>
-                <div>
-                  <label htmlFor={priceId} className="sr-only">
-                    {t("panes.market.priceLabel", { currency: account.currency.toUpperCase() })}
-                  </label>
-                  <Input
-                    id={priceId}
-                    inputMode="decimal"
-                    placeholder={t("panes.market.priceLabel", {
-                      currency: account.currency.toUpperCase(),
-                    })}
-                    value={price}
-                    disabled={disabled}
-                    aria-invalid={problem?.field === "price"}
-                    aria-describedby={problem?.field === "price" ? priceErrorId : undefined}
-                    onChange={(e) => setPrice(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label htmlFor={capId} className="sr-only">
-                    {t("panes.market.capacityLabel")}
-                  </label>
-                  <Input
-                    id={capId}
-                    inputMode="numeric"
-                    placeholder={t("panes.market.capacityLabel")}
-                    value={capacity}
-                    disabled={disabled}
-                    aria-invalid={problem?.field === "capacity"}
-                    aria-describedby={problem?.field === "capacity" ? capErrorId : undefined}
-                    onChange={(e) => setCapacity(e.target.value)}
-                  />
-                </div>
-                <Button disabled={disabled || !sellable} onClick={() => void submit()}>
-                  {t("panes.market.listButton")}
-                </Button>
-              </div>
-            )}
-            <FieldError id={problem?.field === "price" ? priceErrorId : capErrorId}>
-              {problem?.text}
-            </FieldError>
-          </StackRow>
-        )}
-
-        {account.listings.map((l, i) => (
-          <Row key={l.id} last={i === account.listings.length - 1}>
-            <RowText
-              title={`${t(KIND_LABEL[l.kind])} · ${formatMoney(l.unit_price, account.currency)} / ${unitName(l.unit)}`}
-              detail={`${t("panes.market.available", { count: l.available })} · ${
-                l.active ? t("panes.market.open") : t("panes.market.closed")
-              }`}
-            />
-            {l.active && (
-              <Button
-                size="sm"
-                variant="secondary"
-                disabled={disabled}
-                onClick={() => void market.close(l.id)}
-              >
-                {t("panes.market.closeButton")}
-              </Button>
-            )}
-          </Row>
-        ))}
-      </Group>
-      <GroupCaption>{t("panes.market.sellCaption", { percent: feePercent })}</GroupCaption>
-      {account.sales.length > 0 && (
-        <Group className="mt-3">
-          {account.sales.map((o, i) => (
-            <Row key={o.id} last={i === account.sales.length - 1}>
+        </PaneSection>
+      ) : null}
+      <PaneSection>
+        <GroupTitle>{t("panes.market.sell")}</GroupTitle>
+        <Group>
+          {/* On USDC the wallet above names the payout address and sets it, so
+              this row only says what is missing until it is set. */}
+          {account.usdc ? (
+            !account.seller_ready && (
+              <Row last>
+                <RowText title={t("panes.market.payouts")} detail={t("panes.market.usdc.payoutFirst")} />
+              </Row>
+            )
+          ) : (
+            <Row last={!account.seller_ready}>
               <RowText
-                title={`${t(KIND_LABEL[o.kind])} · ${o.quantity} ${unitName(o.unit)}`}
-                detail={t("panes.market.youReceive", { amount: formatMoney(o.seller_net, o.currency) })}
+                title={t("panes.market.payouts")}
+                detail={
+                  account.seller_ready
+                    ? t("panes.market.payoutsReady")
+                    : account.seller_onboarded
+                      ? t("panes.market.payoutsPending")
+                      : t("panes.market.payoutsNone")
+                }
               />
-              <span className="text-[13px] text-muted">
-                {t(`panes.market.status.${o.status}` as MessageKey)}
-              </span>
+              {!account.seller_ready && (
+                <Button size="sm" disabled={disabled} onClick={() => void onboard()}>
+                  {account.seller_onboarded
+                    ? t("panes.market.payoutsContinue")
+                    : t("panes.market.payoutsStart")}
+                </Button>
+              )}
+            </Row>
+          )}
+
+          {account.seller_ready && (
+            <StackRow last={account.listings.length === 0}>
+              {!canStorage && !canCompute ? (
+                <p className="text-[13px] text-muted">{t("panes.market.nothingShared")}</p>
+              ) : (
+                <div className="grid gap-2 sm:grid-cols-4">
+                  <div>
+                    <label htmlFor={kindId} className="sr-only">
+                      {t("panes.market.kindLabel")}
+                    </label>
+                    <NativeSelect
+                      id={kindId}
+                      value={effectiveKind}
+                      disabled={disabled}
+                      onChange={(e) => setKind(e.target.value === "compute" ? "compute" : "storage")}
+                    >
+                      <option value="storage" disabled={!canStorage}>
+                        {t("panes.market.kind.storage")}
+                      </option>
+                      <option value="compute" disabled={!canCompute}>
+                        {t("panes.market.kind.compute")}
+                      </option>
+                    </NativeSelect>
+                  </div>
+                  <div>
+                    <label htmlFor={priceId} className="sr-only">
+                      {t("panes.market.priceLabel", { currency: account.currency.toUpperCase() })}
+                    </label>
+                    <Input
+                      id={priceId}
+                      inputMode="decimal"
+                      placeholder={t("panes.market.priceLabel", {
+                        currency: account.currency.toUpperCase(),
+                      })}
+                      value={price}
+                      disabled={disabled}
+                      aria-invalid={problem?.field === "price"}
+                      aria-describedby={problem?.field === "price" ? priceErrorId : undefined}
+                      onChange={(e) => setPrice(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor={capId} className="sr-only">
+                      {t("panes.market.capacityLabel")}
+                    </label>
+                    <Input
+                      id={capId}
+                      inputMode="numeric"
+                      placeholder={t("panes.market.capacityLabel")}
+                      value={capacity}
+                      disabled={disabled}
+                      aria-invalid={problem?.field === "capacity"}
+                      aria-describedby={problem?.field === "capacity" ? capErrorId : undefined}
+                      onChange={(e) => setCapacity(e.target.value)}
+                    />
+                  </div>
+                  <Button disabled={disabled || !sellable} onClick={() => void submit()}>
+                    {t("panes.market.listButton")}
+                  </Button>
+                </div>
+              )}
+              <FieldError id={problem?.field === "price" ? priceErrorId : capErrorId}>
+                {problem?.text}
+              </FieldError>
+            </StackRow>
+          )}
+
+          {account.listings.map((l, i) => (
+            <Row key={l.id} last={i === account.listings.length - 1}>
+              <RowText
+                title={`${t(KIND_LABEL[l.kind])} · ${formatMoney(l.unit_price, account.currency)} / ${unitName(l.unit)}`}
+                detail={`${t("panes.market.available", { count: l.available })} · ${
+                  l.active ? t("panes.market.open") : t("panes.market.closed")
+                }`}
+              />
+              {l.active && (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={disabled}
+                  onClick={() => void market.close(l.id)}
+                >
+                  {t("panes.market.closeButton")}
+                </Button>
+              )}
             </Row>
           ))}
         </Group>
-      )}
-    </PaneSection>
+        <GroupCaption>
+          {t(account.usdc ? "panes.market.usdc.sellCaption" : "panes.market.sellCaption", {
+            percent: feePercent,
+          })}
+        </GroupCaption>
+        {account.sales.length > 0 && (
+          <Group className="mt-3">
+            {account.sales.map((o, i) => (
+              <Row key={o.id} last={i === account.sales.length - 1}>
+                <div className="min-w-0">
+                  <RowText
+                    title={`${t(KIND_LABEL[o.kind])} · ${quantityOf(o.quantity, o.unit)}`}
+                    detail={t("panes.market.youReceive", { amount: formatMoney(o.seller_net, o.currency) })}
+                  />
+                  <PaidTx order={o} usdc={account.usdc ?? null} />
+                </div>
+                <span className="text-[13px] text-muted">
+                  {t(`panes.market.status.${o.status}` as MessageKey)}
+                </span>
+              </Row>
+            ))}
+          </Group>
+        )}
+      </PaneSection>
+    </>
   );
 }

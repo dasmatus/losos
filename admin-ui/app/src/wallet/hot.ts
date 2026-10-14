@@ -1,9 +1,10 @@
 // A BIP-39 hot wallet on the path MetaMask, Rabby, Rainbow and Trust Wallet
-// use (m/44'/60'/0'/0/0). The phrase is the key. It is encrypted in this
-// browser and never sent to the box. The same phrase works on every EVM
-// chain; this market asks for Base, or Base Sepolia while the edge is in
-// test mode.
+// use (m/44'/60'/0'/0/0), and on Solana the path Phantom, Solflare and
+// Backpack use (see solana.ts). The phrase is the key. It is encrypted in
+// this browser and never sent to the box. The same EVM address works on
+// every EVM chain the edge settles on.
 import { english, generateMnemonic, mnemonicToAccount, type HDAccount } from "viem/accounts";
+import { solanaKeyFromPhrase } from "./solana";
 
 const DB = "losos-wallet";
 const STORE = "key";
@@ -24,8 +25,12 @@ export function normalizePhrase(phrase: string): string {
   return phrase.trim().toLowerCase().split(/\s+/).join(" ");
 }
 
-export function payoutMessage(chainId: number, address: string): string {
-  return `LosOS market payout v1\nchain: ${chainId}\naddress: ${address.toLowerCase()}\n`;
+/** The message a payout address signs. `chain` is the EVM chain id, or the
+ *  Solana network key; base58 is case-sensitive, so only a 0x address is
+ *  lowercased. */
+export function payoutMessage(chain: number | string, address: string): string {
+  const shown = address.startsWith("0x") ? address.toLowerCase() : address;
+  return `LosOS market payout v1\nchain: ${chain}\naddress: ${shown}\n`;
 }
 
 interface Sealed {
@@ -33,9 +38,21 @@ interface Sealed {
   salt: string;
   iv: string;
   ct: string;
+  /** The two public addresses, so balances and names show before the
+   *  password is typed. Absent on a wallet saved before they were kept. */
+  evm?: string;
+  sol?: string;
+  /** The phrase was made on this box rather than imported. */
+  made?: boolean;
 }
 
-export async function sealPhrase(password: string, phrase: string): Promise<void> {
+/** The saved wallet's public addresses, or null when none is saved. */
+export async function savedAddresses(): Promise<{ evm?: string; sol?: string; made: boolean } | null> {
+  const sealed = await idbGet();
+  return sealed === null ? null : { evm: sealed.evm, sol: sealed.sol, made: sealed.made === true };
+}
+
+export async function sealPhrase(password: string, phrase: string, made = false): Promise<void> {
   if (password.length < 8) throw new Error("password");
   const salt = crypto.getRandomValues(new Uint8Array(16));
   const iv = crypto.getRandomValues(new Uint8Array(12));
@@ -47,7 +64,16 @@ export async function sealPhrase(password: string, phrase: string): Promise<void
       new TextEncoder().encode(normalizePhrase(phrase)),
     ),
   );
-  await idbPut({ v: 1, salt: b64(salt), iv: b64(iv), ct: b64(ct) });
+  const words = normalizePhrase(phrase);
+  await idbPut({
+    v: 1,
+    salt: b64(salt),
+    iv: b64(iv),
+    ct: b64(ct),
+    evm: mnemonicToAccount(words).address,
+    sol: solanaKeyFromPhrase(words).address,
+    made,
+  });
 }
 
 export async function openPhrase(password: string): Promise<string> {

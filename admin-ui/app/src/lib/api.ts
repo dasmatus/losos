@@ -502,6 +502,46 @@ export interface MarketOrder {
   volume: string | null;
   /** A machine order's image, name and address. Absent on other kinds. */
   vm?: VmOrderInfo | null;
+  /** The transaction that paid a USDC order. */
+  tx?: string | null;
+  /** The network it was paid on; absent on an order from before the edge
+   *  named networks, which was paid on its first EVM network. */
+  network?: string | null;
+  /** The coin payment, when the buyer chose to pay in a coin. */
+  coin?: CoinPayment | null;
+  /** Where an EVM payment held in the escrow is going. */
+  escrow?: MarketEscrow | null;
+}
+
+export interface MarketEscrow {
+  network: string;
+  deposit: number;
+  step: "release" | "released" | "refund" | "refunded";
+  reason?: "sellerCannotReceive" | "alreadyPaid" | "lapsed" | "buyerReclaimed" | null;
+}
+
+/** Coins other than USDC an order can be paid in. */
+export type Coin = "btc";
+
+/** POST /api/market/coins/pay — where to pay an order in a coin, and what
+ *  reached that address so far. Amounts are whole coins as decimal text. */
+export interface CoinPayment {
+  coin: Coin;
+  address: string;
+  amount: string;
+  /** The payment link with the exact amount (BIP 21 for Bitcoin). */
+  uri: string;
+  /** Unix seconds. The quote holds until then. */
+  pay_before: number;
+  state: "waiting" | "seen" | "underpaid" | "confirming" | "paid" | "late" | "repricing";
+  paid: string;
+  /** What is owed when short: the quote, or the price now when late. */
+  due?: string;
+  /** Paid over the quote, for a person to refund. */
+  extra?: string;
+  confirmations?: number;
+  required: number;
+  txs: string[];
 }
 
 export interface MarketAccount {
@@ -521,32 +561,71 @@ export interface MarketAccount {
   entitlements: { storage_gib: number; compute_vcpu_hours: number; next_expiry: number | null };
   purchases: MarketOrder[];
   sales: MarketOrder[];
-  /** The seller's USDC address, once they have signed it. Absent on Stripe. */
+  /** The seller's USDC address on EVM chains, once they have signed it.
+   *  Absent on Stripe. */
   payout?: string | null;
+  /** The seller's USDC owner on Solana, once they have signed it. */
+  payout_solana?: string | null;
   /** Present when this edge settles the market in USDC. No RPC URL. */
   usdc?: UsdcPublic | null;
+  /** Coins other than USDC this edge takes for orders. */
+  coins?: Coin[];
+  /** This box's watch-only keys for them, as the edge's node read them. */
+  coin_keys?: Partial<Record<Coin, string>>;
+  /** Platform fees owed on this box's coin sales, in the currency's minor
+   *  unit: the coins went straight to this box's wallet. */
+  coin_fees_owed?: number;
 }
 
-/** What the browser may know about USDC settlement. The RPC URL is not here. */
+export type ChainFamily = "evm" | "solana";
+
+/** One network the edge settles USDC on. */
+export interface UsdcChain {
+  /** `base-sepolia`, `arbitrum-sepolia`, `solana-devnet`, ... */
+  network: string;
+  name: string;
+  family: ChainFamily;
+  /** EVM chain id; null on Solana. */
+  chain_id: number | null;
+  /** Circle's USDC: an 0x address, or the SPL mint on Solana. */
+  usdc: string;
+  /** LososEscrow on an EVM chain; null on Solana. */
+  pay: string | null;
+  treasury: string;
+}
+
+/** What the browser may know about USDC settlement. No RPC URL. */
 export interface UsdcPublic {
-  chain_id: number;
-  usdc: string;
-  pay: string;
-  treasury: string;
   test: boolean;
+  /** The chain id an EVM payout signature names; null with no EVM chain. */
+  chain_id: number | null;
+  /** The network a Solana payout signature names; null with no Solana. */
+  solana: string | null;
+  chains: UsdcChain[];
+  /** Where ENS names can be looked up through the relay, when the edge can. */
+  ens_chain_id: number | null;
+  /** Dollar prices of the fee coins, micro-dollars per whole coin as text,
+   *  when the edge has a fresh one. Ranks networks by what their fee costs. */
+  prices?: { eth?: string; sol?: string };
 }
 
-/** What the buyer's wallet pays. Amounts are USDC base units, as decimal strings. */
+/** What the buyer's wallet pays. Amounts are USDC base units, as decimal
+ *  strings. `chains` are the networks it may be paid on, each with the
+ *  seller's address there. */
 export interface StablecoinInvoice {
-  chain_id: number;
-  usdc: string;
-  pay: string;
-  treasury: string;
-  seller: string;
   order_id: string;
   order_id_hash: string;
   gross: string;
   fee: string;
+  /** Unix seconds. The order holds its units until then; start no payment after it. */
+  pay_before: number;
+  /** Unix seconds, the `deadline` of `LososEscrow.pay`: after it the buyer
+   *  can take a deposit the edge never released back. Absent on Solana's
+   *  direct transfer, which has no escrow; the edge always sends it. */
+  deadline: number;
+  chains: (UsdcChain & { seller: string })[];
+  /** Coins other than USDC the seller takes for this order. */
+  coins?: Coin[];
 }
 
 export type MarketResponse =
@@ -623,22 +702,50 @@ export function postMarketOrder(
   return marketPost("/api/market/orders", { listing_id: listingId, quantity }, options);
 }
 
-/** POST /api/market/payout — the wallet proved it controls `address`. */
+/** POST /api/market/payout — the wallet proved it controls `address` on
+ *  one family of networks. */
 export function postMarketPayout(
   address: string,
   signature: string,
+  family: ChainFamily = "evm",
   options: RequestOptions = {},
 ): Promise<MarketActionResponse> {
-  return marketPost("/api/market/payout", { address, signature }, options);
+  return marketPost("/api/market/payout", { address, signature, family }, options);
 }
 
 /** POST /api/market/confirm — a mined USDC transaction paid this order. */
 export function postMarketConfirm(
   orderId: string,
   tx: string,
+  network: string,
   options: RequestOptions = {},
 ): Promise<MarketActionResponse> {
-  return marketPost("/api/market/confirm", { order_id: orderId, tx }, options);
+  return marketPost("/api/market/confirm", { order_id: orderId, tx, network }, options);
+}
+
+/** POST /api/market/coins/key — the watch-only key this box is paid to in
+ *  `coin`: an extended public key (xpub, zpub) or a ranged descriptor. */
+export function postMarketCoinKey(
+  coin: Coin,
+  key: string,
+  options: RequestOptions = {},
+): Promise<MarketActionResponse> {
+  return marketPost("/api/market/coins/key", { coin, key }, options);
+}
+
+/** POST /api/market/coins/pay — an address and amount to pay this order in
+ *  `coin`, or, asked again, what has reached it. */
+export function postMarketCoinPay(
+  orderId: string,
+  coin: Coin,
+  options: RequestOptions = {},
+): Promise<CoinPayment> {
+  return call<CoinPayment>("/api/market/coins/pay", {
+    ...options,
+    method: "POST",
+    contentType: "application/json",
+    body: JSON.stringify({ order_id: orderId, coin }),
+  });
 }
 
 export interface RpcReply {
@@ -646,9 +753,11 @@ export interface RpcReply {
   error?: { code?: number; message?: string };
 }
 
-/** POST /api/market/rpc — one allowlisted chain call. The box forwards it;
- *  the page never sees the RPC URL. */
+/** POST /api/market/rpc — one allowlisted chain call to `network`, or to
+ *  the name endpoint for `ens`. The box forwards it; the page never sees the
+ *  RPC URL. */
 export function postMarketRpc(
+  network: string,
   method: string,
   params: unknown[],
   options: RequestOptions = {},
@@ -657,7 +766,7 @@ export function postMarketRpc(
     ...options,
     method: "POST",
     contentType: "application/json",
-    body: JSON.stringify({ method, params }),
+    body: JSON.stringify({ network, method, params }),
   });
 }
 

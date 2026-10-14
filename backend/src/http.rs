@@ -1112,6 +1112,7 @@ async fn post_market_payout(
         Some(crate::market::Op::Payout {
             address: field_str(d, "address")?,
             signature: field_str(d, "signature")?,
+            family: field_str(d, "family"),
         })
     })
     .await
@@ -1126,6 +1127,35 @@ async fn post_market_confirm(
         Some(crate::market::Op::Confirm {
             order_id: field_str(d, "order_id")?,
             tx: field_str(d, "tx")?,
+            network: field_str(d, "network"),
+        })
+    })
+    .await
+}
+
+async fn post_market_coin_key(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    post_market(api, req, body, "/api/market/coins/key", |d| {
+        Some(crate::market::Op::CoinKey {
+            coin: field_str(d, "coin")?,
+            key: field_str(d, "key")?,
+        })
+    })
+    .await
+}
+
+async fn post_market_coin_pay(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    post_market(api, req, body, "/api/market/coins/pay", |d| {
+        Some(crate::market::Op::CoinPay {
+            order_id: field_str(d, "order_id")?,
+            coin: field_str(d, "coin")?,
         })
     })
     .await
@@ -1135,7 +1165,11 @@ async fn post_market_rpc(api: web::Data<Api>, req: HttpRequest, body: web::Bytes
     post_market(api, req, body, "/api/market/rpc", |d| {
         let method = field_str(d, "method")?;
         let params = d.get("params")?.to_string();
-        Some(crate::market::Op::Rpc { method, params })
+        Some(crate::market::Op::Rpc {
+            method,
+            params,
+            network: field_str(d, "network"),
+        })
     })
     .await
 }
@@ -1943,6 +1977,14 @@ pub fn serve(backend: IoLosos) -> anyhow::Result<()> {
                 .route("/api/market/orders", web::post().to(post_market_order))
                 .route("/api/market/payout", web::post().to(post_market_payout))
                 .route("/api/market/confirm", web::post().to(post_market_confirm))
+                .route(
+                    "/api/market/coins/key",
+                    web::post().to(post_market_coin_key),
+                )
+                .route(
+                    "/api/market/coins/pay",
+                    web::post().to(post_market_coin_pay),
+                )
                 .route("/api/market/rpc", web::post().to(post_market_rpc))
                 .route("/api/builder", web::get().to(get_builder))
                 .route("/api/builder/credits", web::post().to(post_builder_credit))

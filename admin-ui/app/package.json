@@ -13,7 +13,7 @@
     "lab:core": "node scripts/lab-core.mjs core",
     "lab:virt": "node scripts/lab-core.mjs virt",
     "lab:render": "node scripts/lab-core.mjs render",
-    "test:browser": "node tests/wizard.browser.mjs && node tests/app.browser.mjs && node tests/toasts.browser.mjs && node tests/look.browser.mjs && node tests/advanced.browser.mjs && node tests/lab.browser.mjs && node tests/apps.browser.mjs && node tests/tour.browser.mjs && node tests/access.browser.mjs"
+    "test:browser": "node tests/solana.node.mjs && node tests/fees.node.mjs && node tests/wizard.browser.mjs && node tests/app.browser.mjs && node tests/toasts.browser.mjs && node tests/look.browser.mjs && node tests/advanced.browser.mjs && node tests/lab.browser.mjs && node tests/apps.browser.mjs && node tests/tour.browser.mjs && node tests/access.browser.mjs"
   },
   "dependencies": {
     "@base-ui/react": "1.9.0",
@@ -29,9 +29,14 @@
     "@hugeicons/core-free-icons": "^4.3.5",
     "@hugeicons/react": "^1.1.1",
     "@lezer/highlight": "1.2.5",
+    "@noble/curves": "1.9.1",
+    "@noble/hashes": "1.8.0",
     "@radix-ui/react-toast": "^1.2.24",
+    "@scure/base": "1.2.6",
+    "@scure/bip39": "1.6.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "qr": "0.7.2",
     "react": "^19.2.0",
     "react-aria-components": "1.22.1",
     "react-dom": "^19.2.0",

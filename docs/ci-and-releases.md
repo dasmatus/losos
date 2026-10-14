@@ -212,3 +212,103 @@ The Claude key is sealed as `claude-api-key` to
 (`losos.edge.credentials.secrets.claude-api-key.sealed`). The registrar reads it
 with `LoadCredentialEncrypted=claude-api-key:<that path>`, and sealing a new key
 restarts `losos-registrar.service`.
+
+### USDC networks
+
+An edge settles USDC on the networks listed under
+`losos.edge.market.usdc.networks`, all test or all live, matching the Stripe
+key's mode:
+
+```nix
+losos.edge.market.currency = "usd"; # prices are USDC cents
+losos.edge.market.usdc = {
+  enable = true;
+  networks = {
+    base-sepolia = { pay = "0x…"; treasury = "0x…"; };     # LososEscrow, fee address
+    arbitrum-sepolia = { pay = "0x…"; treasury = "0x…"; };
+    optimism-sepolia = { pay = "0x…"; treasury = "0x…"; };
+    solana-devnet = { treasury = "<base58 owner>"; };      # no contract on Solana
+  };
+  ensRpcUrlSealed = "/var/secrets/losos-ens-rpc.cred";     # optional
+};
+```
+
+The names are `base`, `arbitrum`, `optimism` and `solana` for live, with
+`-sepolia` (or `solana-devnet`) for test. Each EVM network needs its own
+`LososEscrow` deployment (`contracts/`), with the same treasury and the
+releaser key's address. Deploying it from a fresh key at nonce 0 gives it the
+same address on every chain. On Solana the treasury is the owner of
+the USDC account that takes the fee, and there is no contract: the buyer's
+transaction makes both transfers itself. `genesisHash` overrides the genesis a
+test Solana network must report, for a local validator.
+
+Every network has an RPC endpoint sealed as `usdc-rpc-<network>` to
+`/var/secrets/losos-usdc-rpc-<network>.cred` (`rpcUrlSealed`), read by the
+registrar with `LoadCredentialEncrypted=` like the Claude key. The USDC
+credentials do not go through the Actions workflow. Seal each endpoint from
+the operator's machine with the terminal client (`docs/edge-terminal.md`),
+which reads the URL without echoing it:
+
+```sh
+losos edge secret set usdc-rpc-base-sepolia     # https://base-sepolia.g.alchemy.com/v2/KEY
+losos edge secret set usdc-rpc-solana-devnet    # https://devnet.helius-rpc.com/?api-key=KEY
+losos edge secret list
+```
+
+Payments on an EVM network wait in the escrow until the registrar releases
+them to the seller and the treasury, or refunds them to the buyer, with the
+releaser key. The edge makes that key itself, so it never exists anywhere
+else:
+
+```sh
+losos edge escrow releaser --new    # prints the address, never the key
+losos edge escrow releaser          # the address, its ETH and whether each escrow takes it
+```
+
+The registrar draws the key from the system's CSPRNG, pipes it to
+`losos-seal-credential` on stdin as `usdc-releaser-key`
+(`/var/secrets/losos-usdc-releaser-key.cred`, `releaserKeySealed`) and
+answers only the address. `losos edge secret set usdc-releaser-key` is
+refused for that reason. Deploy each `LososEscrow` with that address as the
+releaser, then send it a little ETH on every EVM network for gas. The key
+can do nothing but release a deposit to the seller and treasury recorded at
+payment, or refund it to the payer. `--new` refuses while a key is sealed;
+`--replace` makes another, after which the treasury calls
+`setReleaser(<new address>)` on every escrow. The registrar refuses to
+confirm payments while an escrow's `releaser()` is another address, and the
+second command shows which ones still do.
+
+`ens-rpc` (`losos edge secret set ens-rpc`) names an Ethereum endpoint
+(Sepolia for a test edge). With it, the admin pages show ENS names and take them when
+sending USDC; without it, they do neither. The registrar checks its chain id
+before the first lookup and forwards only `eth_call`, `eth_chainId` and
+`eth_blockNumber` to it.
+
+The registrar starts with any of these still unsealed (the unit falls back
+to a placeholder, which reads as "not configured"), so the terminal can
+reach it to seal them; until they are, the market answers 503 for USDC. Plain `http` is accepted only for a node
+on the edge's own loopback, such as `http://127.0.0.1:8545`.
+
+### Bitcoin orders
+
+With USDC on, an edge can also take Bitcoin for the same orders:
+
+```nix
+losos.edge.market.bitcoin = {
+  enable = true;
+  chain = "main";    # a test edge: "testnet4", "signet" or "regtest"
+  pruneMiB = 10240;  # the default
+};
+```
+
+This starts `bitcoind-losos.service`, a pruned node with RPC on
+`127.0.0.1:8332` only, and passes the registrar
+`--market-btc-rpc http://127.0.0.1:8332` and the node's cookie
+(`/var/lib/bitcoind-losos/<chain>/.cookie`, no subdirectory on `main`). There
+is nothing to seal: the cookie changes each time the node starts and the
+registrar reads it on every call. The registrar makes a watch-only,
+private-key-free wallet `losos-watch` on first use and imports each order's
+address into it. Before it takes a seller's key or hands out an address it
+checks that the node's chain fits the Stripe key's mode, and refuses
+otherwise. Until the node has caught
+up with the chain, payments show up late, so let it sync before listing.

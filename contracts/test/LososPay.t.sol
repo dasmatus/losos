@@ -36,23 +36,35 @@ contract LososPayTest {
         assert(token.balanceOf(SELLER) == 500_000);
     }
 
-    function test_fee_over_twenty_percent_reverts() public {
+    function test_fee_over_half_reverts() public {
         token.mint(address(this), 1_000_000);
         token.approve(address(pay), 1_000_000);
-        // 20% is the ceiling. One base unit over it must revert.
+        // Half is the ceiling. One base unit over it must revert.
         (bool ok,) = address(pay).call(
-            abi.encodeCall(LososPay.pay, (keccak256("ord_fee"), SELLER, 1_000_000, 200_001))
+            abi.encodeCall(LososPay.pay, (keccak256("ord_fee"), SELLER, 1_000_000, 500_001))
         );
         assert(!ok);
         assert(token.balanceOf(address(this)) == 1_000_000);
     }
 
-    function test_twenty_percent_is_allowed() public {
+    function test_a_machine_order_splits_half_and_half() public {
         token.mint(address(this), 1_000_000);
         token.approve(address(pay), 1_000_000);
-        pay.pay(keccak256("ord_max"), SELLER, 1_000_000, 200_000);
-        assert(token.balanceOf(TREASURY) == 200_000);
-        assert(token.balanceOf(SELLER) == 800_000);
+        pay.pay(keccak256("ord_vm"), SELLER, 1_000_000, 500_000);
+        assert(token.balanceOf(TREASURY) == 500_000);
+        assert(token.balanceOf(SELLER) == 500_000);
+    }
+
+    function test_a_zero_token_or_treasury_cannot_be_deployed() public {
+        bool ok;
+        try new LososPay(IERC20(address(0)), TREASURY) {
+            ok = true;
+        } catch {}
+        assert(!ok);
+        try new LososPay(IERC20(address(token)), address(0)) {
+            ok = true;
+        } catch {}
+        assert(!ok);
     }
 
     function test_zero_seller_reverts() public {

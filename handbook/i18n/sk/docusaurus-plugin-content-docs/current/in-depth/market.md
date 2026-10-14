@@ -301,37 +301,152 @@ zapečatí zodpovedajúci pár, nič sa nestratí.
 - Chybové texty a endpointy Stripe zostávajú v žurnále; volajúci dostanú
   pevnú správu.
 
-## Platba v USDC
+## Platba v USDC {#paying-with-usdc}
 
 Edge môže sklad, výpočtový výkon a stroje účtovať v USDC namiesto Stripe.
-Hardvér zostáva na Stripe. RPC URL je tajomstvo, lebo v nej zvyčajne sedí
-API kľúč. Zapečatí sa cez systemd-creds pod menom `usdc-rpc-url` a číta ju
-len registrar.
+Hardvér zostáva na Stripe. Ktoré siete prijíma, si vyberá edge:
 
-`losos.edge.market.currency` musí byť `usd`: ceny sú centy USDC. `chainId`
-84532 je Base Sepolia (test, spolu s kľúčom `sk_test_`), 8453 je Base
-(ostro, spolu s `sk_live_`). Zmes registrar odmietne.
+| Sieť         | Jej testovacia sieť |
+| ------------ | ------------------- |
+| Base         | Base Sepolia        |
+| Arbitrum One | Arbitrum Sepolia    |
+| OP Mainnet   | OP Sepolia          |
+| Solana       | Solana Devnet       |
 
-Ako platiť:
+Edge beží buď na testovacích, alebo na ostrých sieťach, nikdy na oboch, a
+režim sa riadi jeho kľúčom Stripe: testovacie siete s kľúčom `sk_test_`,
+ostré s `sk_live_`. Zmes registrar odmietne, takže testovacia platba sa
+nedostane do ostrej evidencie. Každá sieť má vlastný RPC endpoint,
+zapečatený cez systemd-creds, a číta ho len registrar. Nastavenie opisujú
+poznámky pre operátora pri zdrojovom kóde (`docs/ci-and-releases.md`).
+
+### Ako platiť {#how-you-pay}
 
 1. Na Trhu vytvorte peňaženku, importujte 12 alebo 24 slov, alebo pripojte
-   peňaženku v prehliadači (MetaMask, Rabby, Rainbow, Coinbase Wallet). Fráza
-   je cesta MetaMask `m/44'/60'/0'/0/0`. Tá istá adresa platí na každom
-   reťazci EVM a neskôr ju importujete do týchto peňaženiek. Slová sa v
-   prehliadači zašifrujú. Zariadenie ich nedostane.
-2. Objednajte ponuku. Nie je stránka Stripe, panel ukáže sumu v USDC.
-3. Zaplaťte. Peňaženka schváli USDC pre `LososPay` a zavolá `pay`. Zmluva
-   pošle poplatok platformy do treasury a zvyšok predajcovi. Na sieťový
-   poplatok potrebujete aj trochu ETH na tom istom reťazci.
-4. Edge prečíta potvrdenie cez zapečatenú RPC URL a objednávku označí ako
-   zaplatenú. Jedna transakcia zaplatí len jednu objednávku.
+   peňaženku v prehliadači: MetaMask, Rabby, Rainbow alebo Coinbase Wallet
+   pre siete Etherea, Phantom, Solflare alebo Backpack pre Solanu. Jedna
+   fráza dá adresu na každej sieti, ktorú edge prijíma, odvodenú tak ako v
+   týchto peňaženkách (`m/44'/60'/0'/0/0` pre Ethereum, `m/44'/501'/0'/0'`
+   pre Solanu), takže frázu odtiaľto do nich importujete a naopak. Slová sa
+   v prehliadači zašifrujú. Zariadenie ich nedostane.
+2. Panel ukáže USDC peňaženky na každej sieti a vedľa mince, ktorou sa na
+   nej platia poplatky: ETH, na Solane SOL.
+3. Objednajte ponuku. Nie je stránka Stripe. Panel ukáže sumu v USDC a
+   spýta sa, na ktorej sieti platiť; ako prvú ponúkne tú, kde má peňaženka
+   dosť.
+4. Zaplaťte. Na sieti Etherea peňaženka schváli USDC pre `LososEscrow` a
+   zavolá `pay`. Zmluva platbu podrží a zapíše si predajcu, poplatok a
+   lehotu na vrátenie; predajcovi zatiaľ nič nepríde. Na Solane jedna
+   transakcia pošle poplatok platformy do treasury a zvyšok predajcovi a v
+   memo uvedie objednávku. Prvá platba predajcovi alebo treasury im aj
+   otvorí účet USDC, čo stojí trochu SOL.
+5. Edge prečíta transakciu cez svoj endpoint pre danú sieť a objednávku
+   označí ako zaplatenú. Jedna transakcia zaplatí len jednu objednávku.
+   Objednávka potom uvádza svoju sieť a odkaz na transakciu v prehliadači
+   blokov tej siete, pre kupujúceho aj predajcu.
+6. Na sieti Etherea potom edge overí adresu predajcu na tej sieti a vklad
+   uvoľní: poplatok do treasury, zvyšok predajcovi. Ak adresa na tej sieti
+   USDC prijať nemôže, edge namiesto toho vráti celú platbu kupujúcemu a
+   objednávka sa nevybaví. Objednávka ukáže, čo z toho sa stalo.
 
-Na Base Sepolia je testovacie ETH z faucet Coinbase a testovacie USDC z
-[faucet Circle](https://faucet.circle.com). Nemajú hodnotu.
+Kým platbu na sieti Etherea započíta, edge overí, že RPC odpovedá za reťazec
+tej siete, že `LososEscrow` sťahuje USDC od Circle pre tento reťazec, platí
+nastavenej treasury a prijíma pokyny od vlastného kľúča edge, a že nad
+platbou je už ďalší blok. `LososEscrow` si vezme najviac polovicu platby, čo
+je pevné delenie pri strojoch; presný poplatok a lehotu na vrátenie každej
+objednávky kontroluje edge.
 
-Ako dostávať platby: podpíšte peňaženkou, ktorá má USDC prijímať. Edge overí
-podpis a uloží adresu. Kupujúci platia priamo na ňu. Tú istú frázu importujete
-do MetaMask, Rabby, Rainbow alebo Trust Wallet, keď peniaze chcete minúť.
+Adresa predajcu USDC prijať môže, keď na tej sieti nemá kód zmluvy, alebo má
+len delegáciu podľa EIP-7702, takže zostáva účtom, ku ktorému niekto má
+kľúč. Že ho niekto má, ukázal už podpis výplatnej adresy. Treasury, zmluva
+USDC, escrow a nulová adresa sa nepočítajú nikdy. Kľúč edge môže vklad
+uvoľniť len predajcovi a treasury zapísaným pri platbe, alebo ho vrátiť
+kupujúcemu; nikam inam ho poslať nevie. Ak edge vklad neuvoľní do dňa po
+skončení držania objednávky, kupujúci si ho môže zo zmluvy vziať späť sám. Na Solane edge overí, že endpoint hlási
+genesis hash siete, že transakcia prešla a je potvrdená, že jej memo uvádza
+objednávku a že USDC predajcu a treasury narástli presne o ich podiely.
+
+Objednávka drží svoje jednotky štvrť hodiny. Panel v posledných dvoch
+minútach novú platbu nezačne a transakciu odoslanej platby si pamätá, kým ju
+edge nezapočíta, takže opätovná kontrola nikdy nezaplatí dvakrát. Platba,
+ktorá príde po uplynutí tejto doby, platí, kým sú jednotky voľné. Ak sa
+medzitým predali alebo objednávku už zaplatila iná platba, edge platbu z
+escrow vráti a panel to oznámi. Na Solane, kde escrow nie je, taká platba
+zostane predajcovi a vrátenie peňazí sa musí vyriešiť mimo trhu.
+
+Na testovacích sieťach je testovacie USDC z
+[faucet Circle](https://faucet.circle.com), ktorý obsluhuje všetky štyri.
+Testovacie ETH dá faucet každej siete, testovacie SOL faucet Solany. Nič z
+toho nemá hodnotu.
+
+### Mená ENS a posielanie USDC {#ens-names-and-sending-usdc}
+
+Panel vie z peňaženky poslať USDC na adresu na ktorejkoľvek sieti edge. Ak má
+edge endpoint pre ENS, panel ukáže pri adrese Etherea aj jej primárne meno a
+pri posielaní na sieti Etherea prijme meno namiesto adresy. Testovacie siete
+hľadajú mená na Sepolii, ostré na Ethereu. Nájdu sa len mená so záznamami na
+reťazci: stránka správy nedosiahne nič okrem zariadenia, takže mená
+obsluhované cez gateway mimo reťazca sa nehľadajú.
+
+### Ako dostávať platby {#how-you-get-paid}
+
+Podpíšte peňaženkou, ktorá má USDC prijímať. Jedno kliknutie podpíše za oba
+druhy sietí: adresa Etherea berie predaje zaplatené na Base, Arbitrum a OP,
+adresa Solany predaje zaplatené na Solane. Edge overí každý podpis a uloží
+len adresy. Predaje zaplatené na Solane idú priamo na ne; predaje na sieťach
+Etherea na ne prídu, keď edge adresu na tej sieti overí a platbu z escrow
+uvoľní. Predajca, ktorý má nastavenú len
+jednu z nich, sa ponúka iba kupujúcim na tom druhu siete. Tú istú frázu
+importujete do MetaMask, Rabby, Rainbow, Trust Wallet alebo Phantom, keď
+peniaze chcete minúť. Pre tieto predaje nie je žiadny pripojený účet Stripe.
+
+Peňaženka vytvorená na Trhu žije len v tom prehliadači, preto sa panel pred
+ponukou spýta, kam majú ísť jej predaje. Podpíšte ňou ako vyššie, alebo
+zvoľte „Použiť adresu inej peňaženky“: vložte adresu peňaženky, ktorú držíte
+inde, podpíšte ňou správu, ktorú panel ukáže, a vložte podpis. Edge ho overí
+rovnako.
+
+## Platba v bitcoinoch {#paying-with-bitcoin}
+
+Edge, ktorý vyrovnáva v USDC, môže za objednávky úložiska, výpočtov a strojov
+prijímať aj bitcoiny. Beží na ňom vlastný orezaný uzol Bitcoinu: na mainnete
+pre ostrý edge, na testnet4, signete alebo regteste pre testovací. Registrár
+odmietne každé iné spárovanie, takže ostrý edge nikdy nezapočíta testovacie
+mince. Uzol drží peňaženku len na sledovanie a žiadny súkromný kľúč.
+
+### Predaj za bitcoiny {#selling-for-bitcoin}
+
+Na Trhu vložte do riadka Bitcoinu rozšírený verejný kľúč svojej peňaženky:
+zpub, xpub alebo ypub, ktorý exportuje Sparrow, Electrum či BlueWallet (na
+testovacom edgi vpub, tpub alebo upub), alebo deskriptor výstupu s rozsahom.
+Kľúč vie robiť adresy, ale nevie míňať, a súkromný kľúč edge odmietne. Každá
+objednávka potom dostane z tohto kľúča prijímaciu adresu, ktorú žiadna iná
+objednávka nepoužila, takže mince idú rovno do vašej peňaženky a zobrazia sa
+v nej ako každá iná platba. Použite účet, ktorý držíte len na tieto predaje:
+všetko, čo príde na jeho adresu potom, ako ju dostala objednávka, sa počíta
+k tej objednávke. Peňaženky sa pozerajú asi 20 nepoužitých adries
+dopredu; ak za sebou ostane nezaplatených viac ako 20 objednávok, zvýšte v
+peňaženke limit medzery (gap limit), aby ste videli platby po nich.
+
+Poplatok platformy sa z platby v bitcoinoch nestrháva. Celá suma príde
+predajcovi a edge vedie priebežný súčet poplatkov z týchto predajov, ktorý
+predajca dlhuje platforme a vidí ho na paneli. Predajca s kľúčom Bitcoinu a bez adresy USDC môže
+ponúkať aj tak; kupujúci potom platia len v bitcoinoch.
+
+### Platba v bitcoinoch pre kupujúceho {#paying-in-bitcoin}
+
+Pri objednávke zvoľte pod „Zaplatiť cez“ Bitcoin. Panel ukáže sumu v BTC,
+adresu, QR kód a odkaz, ktorý otvorí peňaženku v počítači. Zaplaťte z
+ľubovoľnej peňaženky; nič netreba hlásiť späť. Uzol edgu vidí, že platba
+prišla, a panel ju sleduje od zachytenia po potvrdenie.
+
+Suma v BTC je ponuka z cenových zdrojov, ktoré sa medzi sebou zhodujú, platná
+štvrť hodiny. Objednávku do 50 $ započíta jedno potvrdenie, do 500 $ dve, do
+5 000 $ tri a nad to šesť. Pri nedoplatku panel povie, koľko ešte chýba, a
+čo prevýši sumu, ostáva predajcovi. Platba poslaná po uplynutí ponuky sa
+porovná s cenou v tej chvíli: do 1 % sa objednávka dokončí, inak panel
+požiada o rozdiel. Objednávka potom ako sieť uvádza Bitcoin a odkazuje na
+transakciu na mempool.space.
 
 ## Čo nie je pokryté
 

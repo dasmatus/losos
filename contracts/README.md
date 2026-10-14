@@ -5,34 +5,46 @@ contract forwards the platform fee to `treasury` and the rest to the seller,
 then emits `Paid`. The edge checks that log. It never holds a signing key,
 and nothing here can be upgraded.
 
-Deploy once per chain (Base for live, Base Sepolia for test) with Circle's
-USDC and the treasury address. The two addresses go in the edge config, not
+The fee may be at most half of the payment, which is the fixed split of a
+machine order. The edge checks the exact fee of each order, and before it
+trusts a log it reads `usdc()` and `treasury()` back from the contract and
+refuses one deployed over any other token or treasury.
+
+Deploy once per EVM chain the edge settles on (Base, Arbitrum One and OP
+Mainnet live, their Sepolia networks for test) with Circle's USDC on that
+chain and the treasury address. The two addresses go in the edge config, not
 in a secret:
 
 ```nix
 losos.edge.market.usdc = {
   enable = true;
-  chainId = 84532; # 8453 for Base
-  pay = "0x…";       # this contract
-  treasury = "0x…";  # platform fee
+  networks.base-sepolia = {
+    pay = "0x…";       # this contract
+    treasury = "0x…";  # platform fee
+  };
 };
 ```
 
-The HTTPS RPC URL is a secret (it usually carries an API key). Seal it with
-systemd-creds under the name `usdc-rpc-url`; see
-[Market](../handbook/docs/in-depth/market.md). The registrar is the only unit
-that reads it, and the browser never does: chain reads are proxied through
-the box.
+Each network's HTTPS RPC URL is a secret (it usually carries an API key),
+sealed with systemd-creds as `usdc-rpc-<network>`; see
+[CI and releases](../docs/ci-and-releases.md#usdc-networks). The registrar is
+the only unit that reads it, and the browser never does: chain reads are
+proxied through the box. Solana needs no contract: the buyer's transaction
+splits the payment itself.
 
 Circle USDC:
 
-| Chain         | chain id | USDC |
-| ------------- | -------- | ---- |
-| Base          | 8453     | `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913` |
-| Base Sepolia  | 84532    | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` |
+| Network          | chain id | USDC |
+| ---------------- | -------- | ---- |
+| Base             | 8453     | `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913` |
+| Base Sepolia     | 84532    | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` |
+| Arbitrum One     | 42161    | `0xaf88d065e77c8cC2239327C5EDb3A432268e5831` |
+| Arbitrum Sepolia | 421614   | `0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d` |
+| OP Mainnet       | 10       | `0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85` |
+| OP Sepolia       | 11155420 | `0x5fd84259d66Cd46123540766Be93DFE6D43130D7` |
 
-The edge uses the Sepolia address when `chainId` is 84532 and the Base
-address otherwise.
+The edge knows these and picks the token by the network's name; the contract
+must pull the same one, which the edge checks before it counts a payment.
 
 ## Wallet
 
@@ -57,3 +69,35 @@ Circle's test USDC at `0x036CbD53842c5426634e7929541eC2318f3dCF7e` and pays
 through `LososPay` on a fork of `https://sepolia.base.org`.
 
 
+
+# LososEscrow
+
+The held version of `LososPay`. A buyer approves USDC and calls `pay` as
+before, with a deadline. Instead of forwarding the money, the contract holds
+it as one deposit and emits `Held`. The edge then checks the order and the
+seller's payout address and either:
+
+- calls `release`, which sends the fee to `treasury` and the rest to the
+  seller recorded in `pay`, or
+- calls `refund`, which sends the whole deposit back to the payer.
+
+The edge's key, `releaser`, can do only those two things. It cannot change a
+deposit's seller, amount or payer. If the edge never answers, the payer calls
+`refund` after the deadline, which must lie between one hour and 30 days
+after the payment. Paying the same order twice makes two deposits.
+
+`treasury` is the only account that can replace `releaser` or call `rescue`.
+`rescue` moves tokens that arrived by plain transfer instead of `pay`, and for
+USDC only the balance above what open deposits are owed. Keep `treasury` on a
+hardware wallet or a multisig, never on a server.
+
+Deploy it from a fresh key whose first transaction on every chain is this
+deployment. A contract's address depends only on the deployer and its nonce,
+so the escrow then has the same address on Base, Arbitrum and OP, and USDC
+sent to it on the wrong one of those chains can be rescued. Never send any
+other transaction from that key.
+
+```sh
+forge test --match-contract LososEscrow
+BASE_SEPOLIA_RPC=https://sepolia.base.org forge test --match-contract LososEscrowFork
+```
