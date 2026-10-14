@@ -7,6 +7,7 @@ import {
   Globe02Icon,
   HardDriveIcon,
   InformationCircleIcon,
+  Key01Icon,
   LayoutGridIcon,
   PaintBoardIcon,
   Share08Icon,
@@ -47,6 +48,7 @@ export type SettingsPaneId =
   | "look"
   | "hardware"
   | "security"
+  | "access"
   | "advanced"
   | "history"
   | "backup"
@@ -246,6 +248,24 @@ export const SETTINGS_PANES: readonly [SettingsPane, ...SettingsPane[]] = [
     "processor",
     "lock down",
     "safe",
+  ]),
+  /* Access tokens sit right after Security: they are the other way into
+   * the box, and an owner who is thinking about one is thinking about the
+   * other. */
+  pane("access", Key01Icon, [
+    "token",
+    "tokens",
+    "pat",
+    "personal",
+    "access",
+    "gpg",
+    "pgp",
+    "key",
+    "terminal",
+    "tui",
+    "cli",
+    "ssh",
+    "losos",
   ]),
   /* Advanced and History sit between Security and About: every option,
    * then the record of every change. Advanced carries the long tail an

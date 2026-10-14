@@ -36,6 +36,7 @@ export const HANDBOOK_ENTRIES = {
   apps: "manual/apps/",
   "look-and-widgets": "manual/look-and-widgets/",
   "backup-and-erase": "manual/backup-and-erase/",
+  terminal: "manual/terminal/",
   "custom-domain": "types/official-edge/",
   tpm: "reference/tpm/",
 } as const;

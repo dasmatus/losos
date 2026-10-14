@@ -575,6 +575,7 @@ const DESTINATIONS = [
   ['Network', '/settings/network', 'Settings'],
   ['Hardware', '/settings/hardware', 'Settings'],
   ['Security', '/settings/security', 'Settings'],
+  ['Access tokens', '/settings/access', 'Settings'],
   ['Advanced', '/settings/advanced', 'Settings'],
   ['History', '/settings/history', 'Settings'],
   ['Backup', '/settings/backup', 'Settings'],
@@ -1056,7 +1057,7 @@ await check('a browser in a language we do not carry falls back to English', asy
 
 for (const locale of ['sk-SK', 'de-DE']) {
   await check(`every section renders in ${locale} without errors`, async () => {
-    for (const path of ['/', '/apps', '/storage', '/mesh', '/machines', '/settings/network', '/settings/hardware', '/settings/security', '/settings/advanced', '/settings/history', '/settings/backup', '/settings/about', '/settings/reset']) {
+    for (const path of ['/', '/apps', '/storage', '/mesh', '/machines', '/settings/network', '/settings/hardware', '/settings/security', '/settings/access', '/settings/advanced', '/settings/history', '/settings/backup', '/settings/about', '/settings/reset']) {
       const { page, errors } = await open({ path, stored: true, locale, market: MARKET, vms: VMS, backup: BACKUP_SET });
       await page.locator('main').waitFor();
       assert.deepEqual(errors, [], `${path} threw in ${locale}`);

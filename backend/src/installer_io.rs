@@ -596,6 +596,7 @@ pub fn options_from_env(
     no_install: bool,
     disko_script: Option<PathBuf>,
     emit_target: Option<PathBuf>,
+    gpg_keys: Vec<String>,
 ) -> Options {
     Options {
         tpm,
@@ -609,7 +610,52 @@ pub fn options_from_env(
         keyfile: PathBuf::from(env_or("LOSOS_KEYFILE", DEFAULT_KEYFILE)),
         target_rel: PathBuf::from(DEFAULT_TARGET_REL),
         emit_file: PathBuf::from(DEFAULT_EMIT_FILE),
+        gpg_keys,
     }
+}
+
+/// The GPG keys to seed: every `--gpg-key FILE`, then the medium's own
+/// (`$LOSOS_INSTALL_GPG_KEYS_FILE`, written from the ISO's
+/// `losos.access.gpgKeys` by modules/installer.nix). Each file must hold
+/// armoured public keys that parse and could be answered; one that does not
+/// stops the install before any disk is touched, because a box seeded with
+/// a key that never works has no other way to get one.
+pub fn load_gpg_keys(files: &[PathBuf]) -> Result<Vec<String>, String> {
+    let mut all: Vec<PathBuf> = files.to_vec();
+    if let Some(medium) = std::env::var_os("LOSOS_INSTALL_GPG_KEYS_FILE") {
+        let medium = PathBuf::from(medium);
+        if medium.exists() {
+            all.push(medium);
+        }
+    }
+    let mut keys = Vec::new();
+    for file in all {
+        let text = std::fs::read_to_string(&file)
+            .map_err(|e| format!("reading the GPG key {}: {e}", file.display()))?;
+        if text.trim().is_empty() {
+            continue;
+        }
+        if let Some(why) = crate::installer::gpg_key_fault(&text) {
+            return Err(format!(
+                "the GPG key {} cannot be seeded: {why}",
+                file.display()
+            ));
+        }
+        let ring = losos_access::Keyring::parse(&text)
+            .map_err(|e| format!("the GPG key {} cannot be seeded: {e}", file.display()))?;
+        for key in ring.keys() {
+            println!(
+                "losos-install: seeding GPG key {} ({}) for terminal access",
+                key.fingerprint,
+                key.user_ids
+                    .first()
+                    .map(String::as_str)
+                    .unwrap_or("no user id")
+            );
+        }
+        keys.push(text.trim().to_string());
+    }
+    Ok(keys)
 }
 
 /// Plan and run an install.

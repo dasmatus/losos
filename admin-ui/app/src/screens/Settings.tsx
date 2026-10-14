@@ -6,6 +6,7 @@ import { useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
 import { ApplyBar } from "./settings/apply-bar";
 import { AboutPane } from "./settings/pane-about";
+import { AccessPane } from "./settings/pane-access";
 import { AdvancedPane } from "./settings/pane-advanced";
 import { AppsPane } from "./settings/pane-apps";
 import { BackupPane } from "./settings/pane-backup";
@@ -117,6 +118,9 @@ function Pane({
       return <HardwarePane form={form} />;
     case "security":
       return <SecurityPane form={form} />;
+    case "access":
+      // No draft, no Apply bar: every token is its own request.
+      return <AccessPane locked={form.locked} />;
     case "advanced":
       return <AdvancedPane form={form} />;
     case "history":
