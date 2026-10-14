@@ -121,4 +121,5 @@ if ! command -v secret-tool >/dev/null 2>&1; then
 fi
 
 say ""
-say "Next: losos key import <your-key.asc>, then losos login <address of your box>."
+say "Next: losos key import --gpg <your key>, then losos login <address of your box>."
+say "The handbook walks through it: https://losos.dasmat.us/manual/terminal/"
