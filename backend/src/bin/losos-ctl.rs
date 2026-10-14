@@ -15,7 +15,8 @@ use losos_ctl::facade::{call_backend, BackendFailure};
 use losos_ctl::install_screen;
 use losos_ctl::installer::resolve_tpm;
 use losos_ctl::installer_io::{
-    booted_in_bios, options_from_env, run_install, secure_boot_state, tpm_present, Splash,
+    booted_in_bios, load_gpg_keys, options_from_env, run_install, secure_boot_state, tpm_present,
+    Splash,
 };
 use losos_ctl::model::Mode;
 use losos_ctl::overrides::validate_apply;
@@ -169,6 +170,11 @@ struct InstallArgs {
     /// Write install-target.nix to FILE and exit, touching no disks.
     #[arg(long, value_name = "FILE")]
     emit_target: Option<PathBuf>,
+    /// Seed an armoured GPG public key (gpg --armor --export <id>) for the
+    /// losos terminal client. Repeat for more than one. Only the installer
+    /// seeds keys; the running box cannot add one.
+    #[arg(long = "gpg-key", value_name = "FILE")]
+    gpg_keys: Vec<PathBuf>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -388,6 +394,10 @@ fn main() -> ExitCode {
             Ok(tpm) => tpm,
             Err(e) => return install_failed(splash, &e),
         };
+        let gpg_keys = match load_gpg_keys(&args.gpg_keys) {
+            Ok(keys) => keys,
+            Err(e) => return install_failed(splash, &e),
+        };
         let opts = options_from_env(
             tpm,
             bios,
@@ -395,6 +405,7 @@ fn main() -> ExitCode {
             args.no_install,
             args.disko_script.clone(),
             args.emit_target.clone(),
+            gpg_keys,
         );
         return match run_install(&opts, splash) {
             Ok(()) => {

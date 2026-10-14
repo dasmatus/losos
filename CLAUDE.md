@@ -18,7 +18,7 @@ and the developer notes kept out of it (`docs/development.md`,
 
 ```sh
 devenv shell                 # or: direnv allow. Scripts: fmt, lint, lint-wasm,
-                             # test-rust, check-flake, check-eval, check-pins,
+                             # test-rust, test-tui, check-flake, check-eval, check-pins,
                              # build-pkgs, build-iso, vm-tests
 devenv test                  # the gate. Everything but the VMs and the ISO
 cargo test   --manifest-path backend/Cargo.toml
@@ -30,12 +30,14 @@ nix build .#checks.x86_64-linux.losos-admin-daemon  # lososd: D-Bus, HTTP, token
 nix build .#checks.x86_64-linux.losos-install       # installer, keyfile, BIOS
 nix build .#checks.x86_64-linux.losos-tpm-unlock    # installer, swtpm unlock
 npm run dev | typecheck | test:browser              # in admin-ui/app
+npm run typecheck | test | build:binary             # in admin-ui/tui (losos)
 ```
 
-Six Rust crates: `backend/` (lososd + losos-ctl), `backend-registrar/`,
-`edge-vercel/` (outside the flake), and the Lab's `admin-ui/lab/core`,
-`admin-ui/lab/virt-rpc` and `admin-ui/lab/render` (built for wasm32). All
-six must pass clippy with `-D warnings` and rustfmt; the devenv pre-commit
+Seven Rust crates: `backend/` (lososd + losos-ctl), `backend/access`
+(the terminal envelope, its own workspace, a path dependency of lososd and
+the registrar), `backend-registrar/`, `edge-vercel/` (outside the flake),
+and the Lab's `admin-ui/lab/core`, `admin-ui/lab/virt-rpc` and
+`admin-ui/lab/render` (built for wasm32). All seven must pass clippy with `-D warnings` and rustfmt; the devenv pre-commit
 hooks, `lint` and CI each check it. Bevy is a wasm32-only dependency of
 `render`, so `lint-wasm` and CI's `clippy-wasm` lint its WebGL2 and WebGPU
 builds too, one after the other. `nix develop` is a toolchain-only shell for people without devenv.
@@ -71,6 +73,22 @@ and is never served or built by nix.
 - `admin-ui/app`: React 19 + Vite + Tailwind SPA on real paths. Its `dist/`
   is the front nginx vhost's root (`try_files … /index.html`), `/api/*` is
   proxied to lososd. Palette in `src/styles/tokens.css`.
+- Terminal access (`docs/terminal-access.md`, `docs/edge-terminal.md`):
+  `losos`, an Ink TUI in `admin-ui/tui` with the web UI's panes, catalogue
+  and palette, installed by `curl … /updates/<channel>/x86_64/install.sh |
+  sh` (CI's `tui` and `publish-tool` jobs). Each call is one OpenPGP
+  message signed by a key seeded at install (`losos.access.gpgKeys`,
+  installer-fixed, never added at runtime) and encrypted to the host's own
+  key, carrying a personal access token from the Access tokens pane;
+  `backend/access` opens and seals it. lososd's `/api/access/call` replays
+  the call against its own loopback API with the admin token, never
+  `/api/access`, `/api/setup` or `/api/sign-in`. An edge
+  (`losos.edge.access.gpgKeys`, `backend-registrar/src/operator.rs`) answers
+  four paths and seals secrets through `losos-seal-credential` under
+  `systemd-run`; its tokens come from `provision token` behind the GitHub
+  allowlist. The client keeps keys and tokens in the Secret Service through
+  `secret-tool`, never a file; `losos ci setup` pushes a separate CI key with
+  `gh`, never an edge-made key.
 - LosOS Lab, the setup visualizer at `/lab/` (sidebar entry Lab): the
   admin UI's second Vite page (`admin-ui/app/lab/`, `src/lab/`) over a Rust
   core in WebAssembly (`admin-ui/lab/core`, `losos-lab-core`, contract in
