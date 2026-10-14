@@ -36,6 +36,7 @@ use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{UnixListener, UnixStream};
 
 use crate::action::Action;
+use crate::connect::account_id_ok;
 use crate::hardware::{Catalogue, Line};
 use crate::market::{
     account_ready, decode_hex, now_secs, valid_box_uuid, verify_signature, Kind, MarketError,
@@ -721,13 +722,6 @@ fn event_mode_fault(body: &[u8], mode: StripeMode) -> Option<String> {
 }
 
 /// `acct_...`, the shape of a Stripe account id.
-fn account_id_ok(id: &str) -> bool {
-    id.len() <= 64
-        && id.strip_prefix("acct_").is_some_and(|rest| {
-            !rest.is_empty() && rest.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
-        })
-}
-
 fn token_ok(id: &str, max: usize) -> bool {
     !id.is_empty()
         && id.len() <= max
