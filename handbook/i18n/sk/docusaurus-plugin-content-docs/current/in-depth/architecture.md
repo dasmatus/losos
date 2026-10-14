@@ -379,6 +379,14 @@ zostáva na obrazovke. Banner sa pod ním ďalej kreslí na tty1, a ten je
 vidno tam, kde Plymouth v prvých sekundách nenašiel displej a beží v
 textovom režime. Pri BIOS-e zostáva grafický režim GRUB-u jadru
 (`gfxpayloadBios = "keep"`), aby mal Plymouth framebuffer už v stage 1.
+`startup-sound.nix` (`losos.startupSound.enable`, predvolene zapnuté)
+zahrá posledných sedem sekúnd hudby z úvodného filmu, keď sa spustí služba
+s bannerom, na každom výstupnom zariadení, ktoré ALSA nájde.
+`modules/startup-sound/render.py` ho syntetizuje pri zostavení, takže v
+repozitári nie je žiadna nahrávka. Nočný reštart a reštart po aktualizácii
+zostávajú tiché: pri vypínaní kvôli reštartu sa v
+`/var/lib/losos-startup-sound` zanechá značka a ďalší štart ju namiesto
+hrania odstráni.
 
 **Automatický upgrade a nočný reštart** (`updates.nix`). `system.autoUpgrade`
 prestavuje z `losos.upgradeFlakeUri` o 03:00, predvolene
