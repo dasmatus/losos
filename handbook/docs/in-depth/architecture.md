@@ -373,9 +373,19 @@ BIOS, GRUB's graphics mode is kept for the kernel (`gfxpayloadBios =
 "keep"`) so Plymouth has a framebuffer from stage 1.
 
 **Auto-upgrade and the nightly reboot** (`updates.nix`). `system.autoUpgrade`
-rebuilds from `losos.upgradeFlakeUri` at 03:00. The default,
-`git+file:///etc/nixos#install`, only moves the system forward consistently
-and does not pull new nixpkgs. Set a `github:` URI to upgrade for real.
+rebuilds from `losos.upgradeFlakeUri` at 03:00, by default
+`git+file:///etc/nixos#install`. Before it builds, `nixos-upgrade.service`
+runs `losos-ctl config --update`, and lososd moves `/etc/nixos` to the
+newest commit of `losos.configRepo.upstream.branch` at
+`losos.configRepo.upstream.url` (`main` of the GitHub repository by
+default). The fetch is shallow, and the result is one commit on the box's
+own branch, not a merge: its tree is the published tree with the box's
+`modules/overrides.nix` and `modules/install-target.nix` put back. Apply
+and the nightly rebuild then build the same tree, which a `github:` URI
+here would not give: an Apply would rebuild the older `/etc/nixos` and undo
+the night's update. lososd skips the step and reports `kept` when a file
+outside those two changed since the last update, so a hand edit pushed to
+LosOS Git is never overwritten. `tests/invariants.nix` pins the step.
 
 **Both rebuild paths are `--impure` on purpose**: `system.autoUpgrade.flags`
 and lososd's `rebuild_command`. The published tree carries neither this box's

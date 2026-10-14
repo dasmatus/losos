@@ -62,7 +62,7 @@ pkgs.buildNpmPackage {
   # flake/packages.nix carries the SAME hash over the SAME lock file — two
   # derivations, one dependency set. Change both together or the second one
   # fails with the correct hash in its error.
-  npmDepsHash = "sha256-DxLH9PeJKpi/G9LoxCSfqNd/uZ6VfO+8ULakZqFu2C8=";
+  npmDepsHash = "sha256-UNlfruuoDGbf939/NihC7rBwQw1LOfoo/PHrAqvZSQU=";
 
   # No postinstall scripts: playwright must not try to fetch browsers (there is
   # no network here, and the ones it would fetch are not the ones this runs

@@ -61,6 +61,11 @@ assert must (lib.elem "--impure" config.system.autoUpgrade.flags)
   "system.autoUpgrade does not pass --impure (${toString config.system.autoUpgrade.flags}): a remote upgradeFlakeUri then evaluates the published tree without this box's install-target.nix and overrides.nix, flips a keyfile box to the TPM shape and resets every setting";
 assert must (lib.hasSuffix "#install" config.losos.upgradeFlakeUri)
   "losos.upgradeFlakeUri has no #install fragment (${config.losos.upgradeFlakeUri}); nixos-rebuild would look for nixosConfigurations.<hostname>, which this flake does not export";
+assert must
+  (lib.any (lib.hasSuffix "/bin/losos-ctl config --update") (
+    lib.toList (config.systemd.services.nixos-upgrade.serviceConfig.ExecStartPre or [ ])
+  ))
+  "nixos-upgrade.service no longer asks lososd to follow the published tree first (losos-ctl config --update): /etc/nixos then never changes and the nightly update rebuilds the installed version forever";
 assert must (!config.losos.bios && config.boot.loader.systemd-boot.enable)
   "the published flake is not on the UEFI/systemd-boot path; the README tells owners to boot the installer in UEFI mode";
 assert must

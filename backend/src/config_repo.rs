@@ -338,6 +338,97 @@ impl SyncReport {
     }
 }
 
+// ── Following the published tree ────────────────────────────────────────────
+//
+// The installer copies the published tree into `/etc/nixos` once, and both
+// rebuild paths (the 03:00 `system.autoUpgrade` and every Apply) build from
+// there. Left alone, that copy never changes, so the box never gets new
+// software. Following moves it to the published branch's newest tree while
+// keeping the files that belong to this box, which is all a box ever writes:
+// the installer's `install-target.nix` and lososd's `overrides.nix`.
+//
+// It is a new commit on the box's own branch, not a merge: the installer's
+// history and the published one share no commit, and the fetch is shallow, so
+// a box never carries the project's history. The commit's parent is the
+// box's head, so LosOS Git sees an ordinary push and the History pane an
+// ordinary line.
+
+/// The files the box writes itself. A follow keeps the box's copy of each;
+/// everything else comes from the published tree.
+pub const BOX_FILES: [&str; 2] = ["modules/install-target.nix", "modules/overrides.nix"];
+
+/// Where `/etc/nixos` follows the published tree from.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Upstream {
+    /// `$LOSOS_UPSTREAM_URL`: a git URL, `https://github.com/dasmatus/losos.git`
+    /// on a stock box (losos.configRepo.upstream.url).
+    pub url: String,
+    /// `$LOSOS_UPSTREAM_BRANCH`, `main` by default.
+    pub branch: String,
+}
+
+impl Upstream {
+    /// `None` when `$LOSOS_UPSTREAM_URL` is unset or empty: following is off
+    /// (losos.configRepo.upstream.enable = false).
+    pub fn from_env() -> Option<Upstream> {
+        let url = std::env::var("LOSOS_UPSTREAM_URL")
+            .ok()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())?;
+        let branch = std::env::var("LOSOS_UPSTREAM_BRANCH")
+            .ok()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| "main".to_string());
+        Some(Upstream { url, branch })
+    }
+
+    /// `dasmatus/losos main`, for the commit subject and the pane: the last
+    /// two path segments of the URL without `.git`, then the branch.
+    pub fn label(&self) -> String {
+        let trimmed = self.url.trim_end_matches('/').trim_end_matches(".git");
+        let mut parts = trimmed.rsplit(['/', ':']);
+        let repo = parts.next().unwrap_or(trimmed);
+        let name = match parts.next() {
+            Some(owner) if !owner.is_empty() => format!("{owner}/{repo}"),
+            _ => repo.to_string(),
+        };
+        format!("{name} {}", self.branch)
+    }
+}
+
+/// What the last follow recorded: the published commit it took and the box
+/// commit it made (`refs/losos/upstream` and `refs/losos/followed`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FollowMark {
+    pub upstream: String,
+    pub followed: String,
+}
+
+/// What one look at the published branch calls for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FollowPlan {
+    /// The box already has the published commit it would take.
+    UpToDate,
+    /// Somebody changed files outside [`BOX_FILES`] since the last follow
+    /// (a push to LosOS Git from a clone). Following would overwrite them,
+    /// so the box keeps its tree and says so.
+    Kept,
+    /// Take the published tree.
+    Follow,
+}
+
+/// Decide from the fetched head, the last mark, and whether the box's tree
+/// was edited outside its own files since that mark (or since the install,
+/// when there is no mark yet).
+pub fn plan_follow(fetched: &str, mark: Option<&FollowMark>, edited_outside: bool) -> FollowPlan {
+    match mark {
+        Some(m) if m.upstream == fetched && !edited_outside => FollowPlan::UpToDate,
+        _ if edited_outside => FollowPlan::Kept,
+        _ => FollowPlan::Follow,
+    }
+}
+
 /// The current time, RFC 3339 to the second.
 pub fn now() -> String {
     chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
@@ -407,6 +498,43 @@ mod tests {
             plan_sync(Some("a"), Some("b"), false, false),
             SyncPlan::Diverged
         );
+    }
+
+    #[test]
+    fn the_follow_plan_takes_new_commits_and_never_overwrites_edits() {
+        let mark = FollowMark {
+            upstream: "u1".into(),
+            followed: "b1".into(),
+        };
+        // A box that never followed takes the published tree.
+        assert_eq!(plan_follow("u1", None, false), FollowPlan::Follow);
+        assert_eq!(plan_follow("u1", Some(&mark), false), FollowPlan::UpToDate);
+        assert_eq!(plan_follow("u2", Some(&mark), false), FollowPlan::Follow);
+        // An edit outside the box's own files wins, new commit or not.
+        assert_eq!(plan_follow("u2", Some(&mark), true), FollowPlan::Kept);
+        assert_eq!(plan_follow("u1", Some(&mark), true), FollowPlan::Kept);
+        assert_eq!(plan_follow("u1", None, true), FollowPlan::Kept);
+    }
+
+    #[test]
+    fn the_upstream_label_names_the_repository_and_branch() {
+        let up = |url: &str| Upstream {
+            url: url.into(),
+            branch: "main".into(),
+        };
+        assert_eq!(
+            up("https://github.com/dasmatus/losos.git").label(),
+            "dasmatus/losos main"
+        );
+        assert_eq!(
+            up("https://example.org/acme/losos/").label(),
+            "acme/losos main"
+        );
+        assert_eq!(
+            up("git@github.com:acme/losos.git").label(),
+            "acme/losos main"
+        );
+        assert_eq!(up("/srv/losos.git").label(), "srv/losos main");
     }
 
     #[test]

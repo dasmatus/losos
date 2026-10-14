@@ -226,6 +226,33 @@ pub trait Losos {
     fn mint_secret(&mut self) -> anyhow::Result<crate::setup::Secret>;
     fn load_sync_report(&mut self) -> anyhow::Result<Option<crate::config_repo::SyncReport>>;
     fn save_sync_report(&mut self, report: &crate::config_repo::SyncReport) -> anyhow::Result<()>;
+    /// Where `/etc/nixos` follows the published tree from, `None` when it
+    /// does not (`crate::config_repo::Upstream`).
+    fn upstream(&mut self) -> Option<crate::config_repo::Upstream>;
+    /// The published branch's head after a shallow fetch. A source that
+    /// cannot be reached is a [`crate::config_repo::NotUp`] error.
+    fn upstream_fetch(&mut self, up: &crate::config_repo::Upstream) -> anyhow::Result<String>;
+    /// What the last follow recorded, `None` before the first.
+    fn upstream_mark(&mut self) -> anyhow::Result<Option<crate::config_repo::FollowMark>>;
+    /// Whether the head's tree differs from `base`'s outside
+    /// [`crate::config_repo::BOX_FILES`]. `None` compares with the first
+    /// commit, the tree the installer laid down.
+    fn config_edited_outside(&mut self, base: Option<&str>) -> anyhow::Result<bool>;
+    /// Commit `upstream`'s tree with the box's own copies of
+    /// [`crate::config_repo::BOX_FILES`] on top of the head, fast-forward to
+    /// it and record the mark. `None` when the tree came out the same (the
+    /// mark is recorded either way).
+    fn config_follow(
+        &mut self,
+        upstream: &str,
+        subject: &str,
+        body: &str,
+    ) -> anyhow::Result<Option<String>>;
+    fn load_upstream_report(&mut self) -> anyhow::Result<Option<crate::config_repo::SyncReport>>;
+    fn save_upstream_report(
+        &mut self,
+        report: &crate::config_repo::SyncReport,
+    ) -> anyhow::Result<()>;
 
     // ── Backups and erasing the box (`crate::backup`, `crate::erase`) ───
     // The copying is done by scripts in transient units; these are the
@@ -1197,6 +1224,28 @@ pub fn cmd_config<L: Losos>(l: &mut L) -> anyhow::Result<Value> {
             remote_head: None,
         },
     };
+    let upstream = match (l.upstream(), l.load_upstream_report()?) {
+        (None, _) => json!({
+            "url": null,
+            "branch": null,
+            "report": crate::config_repo::SyncReport {
+                state: "off".to_string(),
+                detail: "This box does not follow a published branch; it rebuilds only from its own configuration.".to_string(),
+                synced_at: None,
+                remote_head: None,
+            },
+        }),
+        (Some(up), report) => json!({
+            "url": up.url,
+            "branch": up.branch,
+            "report": report.unwrap_or_else(|| crate::config_repo::SyncReport {
+                state: "pending".to_string(),
+                detail: "Not checked yet; the box looks before the nightly update.".to_string(),
+                synced_at: None,
+                remote_head: None,
+            }),
+        }),
+    };
     Ok(json!({
         "enabled": repo.is_some(),
         "repository": repo.map(|r| json!({
@@ -1209,6 +1258,7 @@ pub fn cmd_config<L: Losos>(l: &mut L) -> anyhow::Result<Value> {
         "head": head,
         "log": log,
         "sync": sync,
+        "upstream": upstream,
     }))
 }
 
@@ -1370,6 +1420,102 @@ fn gate_overrides<L: Losos>(l: &mut L, body: &str) -> Result<(), String> {
     let now = parse_settings(&l.read_overrides().map_err(|e| e.to_string())?);
     let edge = l.edge_status().map_err(|e| e.to_string())?;
     crate::edge::check_gate(&now, &parse_settings(body), &edge).map_err(|e| e.to_string())
+}
+
+/// Move `/etc/nixos` to the published branch's newest tree, keeping this
+/// box's own files, once, and report (`losos-ctl config --update`, which
+/// `nixos-upgrade.service` runs right before the nightly build, so the 03:00
+/// rebuild is the one that takes it). It queues no rebuild of its own.
+///
+/// Like a sync, every way this can fail is a report: a box with no internet
+/// keeps building its current tree, which is what it did before this existed.
+pub fn cmd_config_update<L: Losos>(l: &mut L) -> anyhow::Result<Value> {
+    let report = follow_once(l);
+    l.save_upstream_report(&report)?;
+    cmd_config(l)
+}
+
+fn follow_once<L: Losos>(l: &mut L) -> crate::config_repo::SyncReport {
+    use crate::config_repo::{NotUp, SyncReport};
+    let Some(up) = l.upstream() else {
+        return SyncReport::new(
+            "off",
+            "This box does not follow a published branch; it rebuilds only from its own configuration.",
+        );
+    };
+    match try_follow(l, &up) {
+        Ok(report) => report,
+        Err(e) if e.downcast_ref::<NotUp>().is_some() => {
+            tracing::info!(reason = %e, "update check: the published branch is not reachable");
+            SyncReport::new("unavailable", e.to_string())
+        }
+        Err(e) => {
+            tracing::warn!(error = ?e, "update check failed");
+            SyncReport::new("error", format!("{e:#}"))
+        }
+    }
+}
+
+/// One follow, in order: wait out a running rebuild (it is reading the
+/// tree), commit anything uncommitted so the comparison below sees it, fetch,
+/// decide ([`crate::config_repo::plan_follow`]), and take the tree.
+fn try_follow<L: Losos>(
+    l: &mut L,
+    up: &crate::config_repo::Upstream,
+) -> anyhow::Result<crate::config_repo::SyncReport> {
+    use crate::config_repo::{plan_follow, FollowPlan, SyncReport};
+
+    let building = l
+        .load_state()?
+        .rebuild
+        .is_some_and(|rb| rb.state == RebuildState::Building);
+    if building {
+        return Ok(SyncReport::new(
+            "waiting",
+            "A rebuild is running; the published branch is checked again at the next update.",
+        ));
+    }
+    if l.config_head()?.is_none() {
+        l.config_commit("Configuration as installed", "")?;
+    } else {
+        l.config_commit("Uncommitted changes", "")?;
+    }
+    if l.config_head()?.is_none() {
+        return Ok(SyncReport::new(
+            "error",
+            "the configuration directory is not a git repository",
+        ));
+    }
+
+    let fetched = l.upstream_fetch(up)?;
+    let mark = l.upstream_mark()?;
+    let edited = l.config_edited_outside(mark.as_ref().map(|m| m.followed.as_str()))?;
+    let short: String = fetched.chars().take(10).collect();
+    let label = up.label();
+    let mut report = match plan_follow(&fetched, mark.as_ref(), edited) {
+        FollowPlan::UpToDate => SyncReport::new("ok", format!("This box has {label} at {short}.")),
+        FollowPlan::Kept => SyncReport::new(
+            "kept",
+            format!(
+                "Files other than overrides.nix and install-target.nix were changed in this box's \
+                 configuration, so it keeps them and does not take {label} at {short}. \
+                 Put those files back on LosOS Git to follow again."
+            ),
+        ),
+        FollowPlan::Follow => {
+            let subject = format!("Update to {label} {short}");
+            let body = format!("Upstream: {} {fetched}", up.url);
+            match l.config_follow(&fetched, &subject, &body)? {
+                Some(_) => SyncReport::new(
+                    "ok",
+                    format!("Took {label} at {short}; the box builds it at the next update."),
+                ),
+                None => SyncReport::new("ok", format!("This box has {label} at {short}.")),
+            }
+        }
+    };
+    report.remote_head = Some(fetched);
+    Ok(report)
 }
 
 fn ask<L: Losos>(
@@ -2016,6 +2162,40 @@ mod tests {
                 r: &crate::config_repo::SyncReport,
             ) -> anyhow::Result<()> {
                 self.0.save_sync_report(r)
+            }
+            fn upstream(&mut self) -> Option<crate::config_repo::Upstream> {
+                self.0.upstream()
+            }
+            fn upstream_fetch(
+                &mut self,
+                u: &crate::config_repo::Upstream,
+            ) -> anyhow::Result<String> {
+                self.0.upstream_fetch(u)
+            }
+            fn upstream_mark(&mut self) -> anyhow::Result<Option<crate::config_repo::FollowMark>> {
+                self.0.upstream_mark()
+            }
+            fn config_edited_outside(&mut self, b: Option<&str>) -> anyhow::Result<bool> {
+                self.0.config_edited_outside(b)
+            }
+            fn config_follow(
+                &mut self,
+                u: &str,
+                s: &str,
+                b: &str,
+            ) -> anyhow::Result<Option<String>> {
+                self.0.config_follow(u, s, b)
+            }
+            fn load_upstream_report(
+                &mut self,
+            ) -> anyhow::Result<Option<crate::config_repo::SyncReport>> {
+                self.0.load_upstream_report()
+            }
+            fn save_upstream_report(
+                &mut self,
+                r: &crate::config_repo::SyncReport,
+            ) -> anyhow::Result<()> {
+                self.0.save_upstream_report(r)
             }
             fn backup_target(&mut self) -> anyhow::Result<Option<crate::backup::Target>> {
                 self.0.backup_target()
@@ -3062,6 +3242,99 @@ mod tests {
         let out = cmd_config_sync(&mut f).unwrap();
         assert_eq!(out["sync"]["state"], "waiting");
         assert!(f.fast_forwarded.is_empty());
+    }
+
+    fn following() -> FakeLosos {
+        let mut f = FakeLosos::new();
+        f.upstream = Some(crate::config_repo::Upstream {
+            url: "https://github.com/dasmatus/losos.git".into(),
+            branch: "main".into(),
+        });
+        f
+    }
+
+    #[test]
+    fn update_is_off_without_an_upstream_and_reports_it() {
+        let mut f = FakeLosos::new();
+        let commits = f.commits.len();
+        let out = cmd_config_update(&mut f).unwrap();
+        assert_eq!(out["upstream"]["report"]["state"], "off");
+        assert!(out["upstream"]["url"].is_null());
+        assert_eq!(f.commits.len(), commits);
+        // And a box that follows but never looked says so.
+        let out = cmd_config(&mut following()).unwrap();
+        assert_eq!(out["upstream"]["report"]["state"], "pending");
+        assert_eq!(out["upstream"]["branch"], "main");
+    }
+
+    #[test]
+    fn update_takes_a_new_published_commit_once_and_queues_no_rebuild() {
+        let mut f = following();
+        f.upstream_head = Some("a".repeat(40));
+        let out = cmd_config_update(&mut f).unwrap();
+        assert_eq!(out["upstream"]["report"]["state"], "ok");
+        assert_eq!(out["upstream"]["report"]["remoteHead"], "a".repeat(40));
+        let last = f.commits.last().unwrap();
+        assert_eq!(last.subject, "Update to dasmatus/losos main aaaaaaaaaa");
+        assert!(last.body.ends_with(&"a".repeat(40)), "{}", last.body);
+        // The nightly rebuild takes it; the update itself starts nothing.
+        assert!(!f.spawned);
+
+        // Nothing new: nothing committed.
+        let commits = f.commits.len();
+        let out = cmd_config_update(&mut f).unwrap();
+        assert_eq!(out["upstream"]["report"]["state"], "ok");
+        assert_eq!(f.commits.len(), commits);
+
+        f.upstream_head = Some("b".repeat(40));
+        cmd_config_update(&mut f).unwrap();
+        assert_eq!(f.commits.len(), commits + 1);
+        assert_eq!(f.upstream_mark.as_ref().unwrap().upstream, "b".repeat(40));
+    }
+
+    #[test]
+    fn update_commits_a_pending_change_before_it_looks() {
+        let mut f = following();
+        f.upstream_head = Some("a".repeat(40));
+        f.dirty = true;
+        cmd_config_update(&mut f).unwrap();
+        let subjects: Vec<_> = f.commits.iter().map(|c| c.subject.as_str()).collect();
+        assert_eq!(
+            subjects[subjects.len() - 2..],
+            [
+                "Uncommitted changes",
+                "Update to dasmatus/losos main aaaaaaaaaa"
+            ]
+        );
+    }
+
+    #[test]
+    fn update_keeps_files_someone_changed_and_says_so() {
+        let mut f = following();
+        f.upstream_head = Some("a".repeat(40));
+        f.edited_outside = true;
+        let commits = f.commits.len();
+        let out = cmd_config_update(&mut f).unwrap();
+        assert_eq!(out["upstream"]["report"]["state"], "kept");
+        assert_eq!(f.commits.len(), commits);
+        assert!(f.upstream_mark.is_none());
+    }
+
+    #[test]
+    fn update_waits_for_a_rebuild_and_survives_no_network() {
+        let mut f = following();
+        f.upstream_head = Some("a".repeat(40));
+        f.state.rebuild = Some(building("job-9", MSG_STARTED));
+        let out = cmd_config_update(&mut f).unwrap();
+        assert_eq!(out["upstream"]["report"]["state"], "waiting");
+        assert!(f.upstream_mark.is_none());
+
+        let mut f = following();
+        let commits = f.commits.len();
+        let out = cmd_config_update(&mut f).unwrap();
+        assert_eq!(out["upstream"]["report"]["state"], "unavailable");
+        assert_eq!(f.commits.len(), commits);
+        assert!(f.upstream_report.is_some(), "the report is kept");
     }
 
     #[test]

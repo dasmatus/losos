@@ -12,7 +12,7 @@ Two timers run on every box. The About pane shows both.
 | Time      | What                                                                                                                                     |
 | --------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | **00:07** | **Restart.** Unconditional. The system disk starts blank and the box builds it again from its description, so this restart is how the box repairs itself. A box that was off at 00:07 restarts as soon as it is on. |
-| **03:00** | **Update.** The box rebuilds itself from its upgrade source. With the default source it only re-applies its own description. With a published source, a `github:` address, it also fetches new software. |
+| **03:00** | **Update.** The box fetches the newest version of LosOS from GitHub, keeps its own settings, and rebuilds itself on top. |
 | **04:30** | **Clean-up.** The box deletes system versions older than 14 days, and the boot menu keeps the last five. That stops the disk and the boot partition from filling up. |
 
 ## What survives
@@ -31,17 +31,37 @@ answering until the box switches to the new system, which takes seconds. If
 an update fails, the previous system keeps running and the box tries again
 the next night.
 
-## Choosing the upgrade source
+## Where new versions come from
 
-The upgrade source is the Nix setting `losos.upgradeFlakeUri`, and no pane
-offers it. The default, the box's own copy of its description, never changes
-the software. Point it at the project's GitHub repository,
-`github:dasmatus/losos#install`, and the 03:00 run pulls new versions. A
-company can point it at a fork. Keep the `#install` suffix. Without it the
-rebuild fails every night, and nothing tells you.
+The box keeps its description in its own repository, the one LosOS Git
+shows on the History pane. Before the 03:00 rebuild, it fetches the newest
+commit of the `main` branch at `https://github.com/dasmatus/losos.git` and
+makes it the box's next version, as one commit named `Update to
+dasmatus/losos main` and the commit's short id. Two files stay as the box
+has them: `modules/overrides.nix`, which holds your settings, and
+`modules/install-target.nix`, which holds the disk list, the firmware mode
+and the unlock mode. The rebuild then builds that commit, and so does every
+Apply after it.
 
-A remote source still uses this box's own disk list, firmware mode, unlock
-mode and settings. The box reads those from itself, not from the repository.
+If you changed any other file in the box's repository, for example by
+pushing a commit to LosOS Git from a clone, the box keeps your change and
+does not update. The History pane says so. Put those files back to follow
+the project again.
+
+Three Nix settings control this, and the Advanced pane shows them:
+
+| Option                                | Default                                 |
+| ------------------------------------- | --------------------------------------- |
+| `losos.configRepo.upstream.enable`    | on                                      |
+| `losos.configRepo.upstream.url`       | `https://github.com/dasmatus/losos.git` |
+| `losos.configRepo.upstream.branch`    | `main`                                  |
+
+A company can point the address at its own fork. The repository must be
+readable without a password. Turn the first one off and the box rebuilds
+only from the version it has.
+
+A box with no internet at 03:00 rebuilds the version it has and tries
+again the next night.
 
 ## When the box is off
 

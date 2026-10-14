@@ -166,6 +166,16 @@ pub struct FakeLosos {
     /// Every request made, as `METHOD path` and the password it carried.
     pub forgejo_calls: Vec<(String, Option<String>)>,
     pub sync_report: Option<crate::config_repo::SyncReport>,
+    /// Where the box follows the published tree from; `None` is off.
+    pub upstream: Option<crate::config_repo::Upstream>,
+    /// The published branch's head; `None` models a source that cannot be
+    /// reached.
+    pub upstream_head: Option<String>,
+    /// What the last follow recorded.
+    pub upstream_mark: Option<crate::config_repo::FollowMark>,
+    /// Whether files outside the box's own were changed since the mark.
+    pub edited_outside: bool,
+    pub upstream_report: Option<crate::config_repo::SyncReport>,
     /// Numbers the next commit the fake makes.
     pub commit_seq: u32,
 
@@ -298,6 +308,11 @@ impl FakeLosos {
             forgejo_routes: std::collections::BTreeMap::new(),
             forgejo_calls: Vec::new(),
             sync_report: None,
+            upstream: None,
+            upstream_head: None,
+            upstream_mark: None,
+            edited_outside: false,
+            upstream_report: None,
             commit_seq: 1,
             backup_target: None,
             units_started: Vec::new(),
@@ -785,6 +800,56 @@ impl Losos for FakeLosos {
 
     fn save_sync_report(&mut self, report: &crate::config_repo::SyncReport) -> anyhow::Result<()> {
         self.sync_report = Some(report.clone());
+        Ok(())
+    }
+
+    fn upstream(&mut self) -> Option<crate::config_repo::Upstream> {
+        self.upstream.clone()
+    }
+
+    fn upstream_fetch(&mut self, _up: &crate::config_repo::Upstream) -> anyhow::Result<String> {
+        self.upstream_head.clone().ok_or_else(|| {
+            crate::config_repo::NotUp("the fake published branch is not up".to_string()).into()
+        })
+    }
+
+    fn upstream_mark(&mut self) -> anyhow::Result<Option<crate::config_repo::FollowMark>> {
+        Ok(self.upstream_mark.clone())
+    }
+
+    fn config_edited_outside(&mut self, _base: Option<&str>) -> anyhow::Result<bool> {
+        Ok(self.edited_outside)
+    }
+
+    fn config_follow(
+        &mut self,
+        upstream: &str,
+        subject: &str,
+        body: &str,
+    ) -> anyhow::Result<Option<String>> {
+        let sha = Self::sha(self.commit_seq);
+        self.commit_seq += 1;
+        self.commits.push(FakeCommit {
+            sha: sha.clone(),
+            subject: subject.to_string(),
+            body: body.to_string(),
+        });
+        self.upstream_mark = Some(crate::config_repo::FollowMark {
+            upstream: upstream.to_string(),
+            followed: sha.clone(),
+        });
+        Ok(Some(sha))
+    }
+
+    fn load_upstream_report(&mut self) -> anyhow::Result<Option<crate::config_repo::SyncReport>> {
+        Ok(self.upstream_report.clone())
+    }
+
+    fn save_upstream_report(
+        &mut self,
+        report: &crate::config_repo::SyncReport,
+    ) -> anyhow::Result<()> {
+        self.upstream_report = Some(report.clone());
         Ok(())
     }
 
