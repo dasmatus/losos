@@ -371,6 +371,13 @@ The banner keeps drawing on tty1 underneath, which is what shows where
 Plymouth found no display in its first seconds and runs in text mode. On
 BIOS, GRUB's graphics mode is kept for the kernel (`gfxpayloadBios =
 "keep"`) so Plymouth has a framebuffer from stage 1.
+`startup-sound.nix` (`losos.startupSound.enable`, on by default) plays the
+last seven seconds of the launch film's score once the banner service is
+up, on every playback device ALSA finds. `modules/startup-sound/render.py`
+synthesises it at build time, so the repository holds no recording. The
+nightly reboot and the reboot after an update stay quiet: going down for a
+reboot leaves a marker in `/var/lib/losos-startup-sound`, and the next start
+removes it instead of playing.
 
 **Auto-upgrade and the nightly reboot** (`updates.nix`). `system.autoUpgrade`
 rebuilds from `losos.upgradeFlakeUri` at 03:00, by default
