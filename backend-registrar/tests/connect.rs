@@ -305,3 +305,51 @@ async fn no_key_means_no_market() {
         Err(MarketError::Unconfigured)
     ));
 }
+
+#[tokio::test]
+async fn a_late_account_event_does_not_undo_a_newer_one() {
+    let (market, platform, _) = market("late", StripeMode::Test).await;
+    market.onboard(SELLER, None).await.unwrap();
+    let account = platform.account_of(SELLER).unwrap();
+    // Stripe made an "onboarding still pending" event a minute ago, then the
+    // seller finished. The newer event arrives first.
+    let (stale, stale_sig) = platform
+        .account_updated_at(&account, losos_registrar::market::now_secs() - 60)
+        .unwrap();
+    platform.set_ready(&account, true).unwrap();
+    let (fresh, fresh_sig) = platform.account_updated(&account).unwrap();
+    market.webhook(&fresh_sig, &fresh).await.unwrap();
+    assert!(market.seller(SELLER).await.unwrap().ready);
+    market.webhook(&stale_sig, &stale).await.unwrap();
+    assert!(
+        market.seller(SELLER).await.unwrap().ready,
+        "the older pending state did not take the seller off the shelf"
+    );
+}
+
+#[tokio::test]
+async fn an_account_read_on_onboarding_outranks_older_events() {
+    let (market, platform, _) = market("read", StripeMode::Test).await;
+    market.onboard(SELLER, None).await.unwrap();
+    let account = platform.account_of(SELLER).unwrap();
+    let (stale, stale_sig) = platform
+        .account_updated_at(&account, losos_registrar::market::now_secs() - 60)
+        .unwrap();
+    // The seller finished onboarding; the next onboard reads it from Stripe.
+    platform.set_ready(&account, true).unwrap();
+    assert!(market.onboard(SELLER, None).await.unwrap().ready);
+    market.webhook(&stale_sig, &stale).await.unwrap();
+    assert!(market.seller(SELLER).await.unwrap().ready);
+}
+
+#[tokio::test]
+async fn a_newer_account_event_still_takes_a_seller_off_the_shelf() {
+    let (market, platform, _) = market("newer", StripeMode::Test).await;
+    let account = ready_seller(&market, &platform).await;
+    platform.set_ready(&account, false).unwrap();
+    let (body, sig) = platform
+        .account_updated_at(&account, losos_registrar::market::now_secs() + 1)
+        .unwrap();
+    market.webhook(&sig, &body).await.unwrap();
+    assert!(!market.seller(SELLER).await.unwrap().ready);
+}
