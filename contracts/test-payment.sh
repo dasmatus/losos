@@ -9,7 +9,7 @@ export PATH="${HOME}/.foundry/bin:${PATH}"
 # forge compiles every test file, the fork test's forge-std import included,
 # so the library has to be there before the first run.
 if [ ! -d lib/forge-std ]; then
-  forge install foundry-rs/forge-std@v1.17.0 --no-commit
+  forge install foundry-rs/forge-std@v1.17.0
 fi
 
 echo "== forge: local transactions =="
