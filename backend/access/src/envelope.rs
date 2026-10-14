@@ -297,14 +297,19 @@ mod tests {
         }
     }
 
-    const N1: &str = "0123456789abcdef0123456789abcdef";
-    const N2: &str = "fedcba9876543210fedcba9876543210";
+    /// A fresh nonce, as a client makes one.
+    fn fresh_nonce() -> String {
+        hex::encode(rand::random::<[u8; 16]>())
+    }
+
+    static N1: std::sync::LazyLock<String> = std::sync::LazyLock::new(fresh_nonce);
+    static N2: std::sync::LazyLock<String> = std::sync::LazyLock::new(fresh_nonce);
 
     #[test]
     fn a_call_round_trips_both_ways() {
         let w = world();
         let server = w.host.as_seeded().unwrap();
-        let sealed = seal_request(&w.owner, &server, &request(&w, 1000, N1)).unwrap();
+        let sealed = seal_request(&w.owner, &server, &request(&w, 1000, &N1)).unwrap();
         let opened = open(
             &w.host,
             &w.ring,
@@ -319,13 +324,13 @@ mod tests {
         let answer = seal(
             &w.host,
             &opened.signer,
-            N1,
+            &N1,
             200,
             serde_json::json!({"ok": true}),
         )
         .unwrap();
         let back = open_answer(&w.owner, &server, answer.as_bytes()).unwrap();
-        assert_eq!(back.nonce, N1);
+        assert_eq!(back.nonce, *N1);
         assert_eq!(back.status, 200);
         assert_eq!(back.body, serde_json::json!({"ok": true}));
     }
@@ -334,7 +339,7 @@ mod tests {
     fn a_key_that_was_not_seeded_is_refused() {
         let w = world();
         let server = w.host.as_seeded().unwrap();
-        let sealed = seal_request(&w.stranger, &server, &request(&w, 1000, N1)).unwrap();
+        let sealed = seal_request(&w.stranger, &server, &request(&w, 1000, &N1)).unwrap();
         let got = open(
             &w.host,
             &w.ring,
@@ -349,7 +354,7 @@ mod tests {
     fn a_message_for_another_server_is_refused() {
         let w = world();
         let other = HostKey::generate("other box").unwrap().as_seeded().unwrap();
-        let sealed = seal_request(&w.owner, &other, &request(&w, 1000, N1)).unwrap();
+        let sealed = seal_request(&w.owner, &other, &request(&w, 1000, &N1)).unwrap();
         let got = open(
             &w.host,
             &w.ring,
@@ -368,7 +373,7 @@ mod tests {
     fn a_request_naming_another_host_fingerprint_is_refused() {
         let w = world();
         let server = w.host.as_seeded().unwrap();
-        let mut req = request(&w, 1000, N1);
+        let mut req = request(&w, 1000, &N1);
         req.host = w.stranger.fingerprint().to_string();
         let sealed = seal_request(&w.owner, &server, &req).unwrap();
         let got = open(
@@ -386,7 +391,7 @@ mod tests {
         let w = world();
         let server = w.host.as_seeded().unwrap();
         let replay = Replay::default();
-        let sealed = seal_request(&w.owner, &server, &request(&w, 1000, N1)).unwrap();
+        let sealed = seal_request(&w.owner, &server, &request(&w, 1000, &N1)).unwrap();
         assert_eq!(
             open(
                 &w.host,
@@ -404,7 +409,7 @@ mod tests {
             Refusal::Replayed
         );
         // Another nonce is another request.
-        let fresh = seal_request(&w.owner, &server, &request(&w, 1000, N2)).unwrap();
+        let fresh = seal_request(&w.owner, &server, &request(&w, 1000, &N2)).unwrap();
         assert!(open(&w.host, &w.ring, fresh.as_bytes(), &replay, 1001).is_ok());
     }
 
@@ -412,7 +417,7 @@ mod tests {
     fn an_answer_signed_by_another_key_is_refused() {
         let w = world();
         let owner = w.ring.get(w.owner.fingerprint()).unwrap().clone();
-        let forged = seal(&w.stranger, &owner, N1, 200, serde_json::Value::Null).unwrap();
+        let forged = seal(&w.stranger, &owner, &N1, 200, serde_json::Value::Null).unwrap();
         let server = w.host.as_seeded().unwrap();
         assert!(open_answer(&w.owner, &server, forged.as_bytes()).is_err());
     }
@@ -421,7 +426,8 @@ mod tests {
     fn a_bad_nonce_is_malformed() {
         let w = world();
         let server = w.host.as_seeded().unwrap();
-        let sealed = seal_request(&w.owner, &server, &request(&w, 1000, "short")).unwrap();
+        let sealed =
+            seal_request(&w.owner, &server, &request(&w, 1000, &fresh_nonce()[..5])).unwrap();
         let got = open(
             &w.host,
             &w.ring,
