@@ -70,10 +70,22 @@ impl Releaser {
             let mut secret = Zeroizing::new([0u8; 32]);
             ring::rand::SecureRandom::fill(&rng, secret.as_mut())
                 .map_err(|_| MarketError::Store("the system has no randomness".into()))?;
-            let hex = Zeroizing::new(stablecoin::hex_encode(secret.as_ref()));
-            if let Some(releaser) = Self::from_hex(&hex) {
-                return Ok((releaser, hex));
+            let Ok(key) = SigningKey::from_bytes((&*secret).into()) else {
+                continue;
+            };
+            let Some(address) =
+                stablecoin::address_bytes(&stablecoin::address_of(key.verifying_key()))
+            else {
+                continue;
+            };
+            // Written straight into the wiped buffer: no unwiped copy of the
+            // key on the way to the seal script.
+            let mut hex = Zeroizing::new(String::with_capacity(64));
+            for byte in secret.iter() {
+                hex.push(char::from(b"0123456789abcdef"[usize::from(byte >> 4)]));
+                hex.push(char::from(b"0123456789abcdef"[usize::from(byte & 0xf)]));
             }
+            return Ok((Self { key, address }, hex));
         }
         Err(MarketError::Store(
             "no valid key came out of four draws".into(),
