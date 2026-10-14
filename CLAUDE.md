@@ -144,6 +144,11 @@ and is never served or built by nix.
   panel's rows, keys come from `plymouth watch-keystroke` (Plymouth holds
   the keyboard), and a getty's hangup on tty1 would pull the terminal from
   under it. `tests/installer-screen.nix` asserts both modes.
+- `startup-sound.nix` (install only, `losos.startupSound.enable`): the end
+  of the launch film's score, synthesised at build time by
+  `modules/startup-sound/render.py` (no recording in the tree), played on
+  every ALSA output once `losos-console` is up. A reboot leaves a marker so
+  the nightly reboots stay quiet.
 - `updates.nix`: `system.autoUpgrade` at 03:00 from `losos.upgradeFlakeUri`
   (default `git+file:///etc/nixos#install`, set a `github:` URI to really
   upgrade), `nix.gc` at 04:30 with `--delete-older-than 14d`, five boot

@@ -407,6 +407,14 @@ zeichnet der Banner weiter auf tty1; das ist zu sehen, wo Plymouth in den
 ersten Sekunden keine Anzeige gefunden hat und im Textmodus läuft. Unter
 BIOS behält der Kernel den Grafikmodus von GRUB (`gfxpayloadBios =
 "keep"`), damit Plymouth schon in Stage 1 einen Framebuffer hat.
+`startup-sound.nix` (`losos.startupSound.enable`, standardmäßig an) spielt
+die letzten sieben Sekunden der Musik aus dem Launch-Film, sobald der
+Banner-Dienst läuft, auf jedem Ausgabegerät, das ALSA findet.
+`modules/startup-sound/render.py` synthetisiert ihn beim Bauen, das
+Repository enthält also keine Aufnahme. Der nächtliche Neustart und der
+Neustart nach einem Update bleiben still: beim Herunterfahren für einen
+Neustart bleibt eine Markierung in `/var/lib/losos-startup-sound` zurück, und
+der nächste Start entfernt sie, statt zu spielen.
 
 **Automatisches Upgrade und der nächtliche Neustart** (`updates.nix`).
 `system.autoUpgrade` baut um 03:00 aus `losos.upgradeFlakeUri` neu,

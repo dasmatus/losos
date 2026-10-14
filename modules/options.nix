@@ -777,6 +777,17 @@ in
       '';
     };
 
+    startupSound.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Play the LosOS startup sound once the box is up, on every speaker,
+        headphone and HDMI output it finds. It plays when the box is
+        switched on or comes back after a power cut; the nightly reboot and
+        the reboot after an update stay quiet.
+      '';
+    };
+
     # sharing's caring btw
     sharingMyStorage = lib.mkOption {
       type = lib.types.bool;
