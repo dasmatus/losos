@@ -692,7 +692,7 @@ function SellSection({ market, disabled }: { market: MarketData; disabled: boole
               <Row key={o.id} last={i === account.sales.length - 1}>
                 <div className="min-w-0">
                   <RowText
-                    title={`${t(KIND_LABEL[o.kind])} · ${o.quantity} ${unitName(o.unit)}`}
+                    title={`${t(KIND_LABEL[o.kind])} · ${quantityOf(o.quantity, o.unit)}`}
                     detail={t("panes.market.youReceive", { amount: formatMoney(o.seller_net, o.currency) })}
                   />
                   <PaidTx order={o} usdc={account.usdc ?? null} />
