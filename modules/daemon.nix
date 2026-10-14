@@ -121,17 +121,29 @@ in
         '';
       };
 
+    # The seeded keys, one armoured block after another. Public keys, so the
+    # store is a fine place for them; lososd reads the file at start.
+    environment.etc."losos/access-keys.asc".text =
+      lib.concatStringsSep "\n" config.losos.access.gpgKeys;
+
     systemd.services.lososd = {
       description = "losos appliance control daemon (D-Bus + admin HTTP API)";
       wantedBy = [ "multi-user.target" ];
       after = [ "dbus.service" ];
       requires = [ "dbus.service" ];
+      # lososd reads the seeded keys once, at start.
+      restartTriggers = [ config.environment.etc."losos/access-keys.asc".source ];
       environment = {
         LOSOS_ADMIN_PORT = toString config.losos.admin.apiPort;
         LOSOS_ADMIN_TOKEN_FILE = toString config.losos.admin.tokenFile;
         # See the `ncMode` binding above for why this is always set and never
         # defaulted daemon-side.
         LOSOS_NEXTCLOUD_MODE = ncMode;
+        # Terminal access (backend/src/access.rs): the box's own OpenPGP key
+        # and the token file under its state directory, and the owner's
+        # seeded keys from losos.access.gpgKeys.
+        LOSOS_ACCESS_DIR = "/var/lib/losos/access";
+        LOSOS_ACCESS_KEYS_FILE = "/etc/losos/access-keys.asc";
       }
       # Only in container mode: in native mode lososd never looks at it, and
       # setting it anyway would suggest a CRI socket is consulted on a box that

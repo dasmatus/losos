@@ -110,6 +110,21 @@ export default defineMessages({
     sk: "bezpečnosť ochrana spevnenie pamäť procesor uzamknúť bezpečný",
     de: "Härtung härten Schutz Speicher Prozessor absichern sicher",
   },
+  "settings.panes.access.label": {
+    en: "Access tokens",
+    sk: "Prístupové tokeny",
+    de: "Zugriffstokens",
+  },
+  "settings.panes.access.summary": {
+    en: "Tokens for the losos terminal client, tied to the GPG keys seeded at install.",
+    sk: "Tokeny pre terminálového klienta losos, viazané na kľúče GPG vložené pri inštalácii.",
+    de: "Tokens für den Terminal-Client losos, gebunden an die GPG-Schlüssel, die bei der Installation hinterlegt wurden.",
+  },
+  "settings.panes.access.keywords": {
+    en: "",
+    sk: "token tokeny prístup osobný kľúč terminál príkazový riadok konzola",
+    de: "Token Tokens Zugriff Zugang persönlich Schlüssel Terminal Kommandozeile Konsole",
+  },
   "settings.panes.about.label": { en: "About", sk: "O zariadení", de: "Über" },
   "settings.panes.about.summary": {
     en: "What this box is, right now.",

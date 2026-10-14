@@ -1,0 +1,35 @@
+{
+  "hostKey": { "fingerprint": "3F9A1C27B04E58D6A2C1F0E9D8B7A6C5E4D3F2A1" },
+  "keys": [
+    {
+      "fingerprint": "8E2D4B6A1C3F5E7D9B0A2C4E6F8A1B3C5D7E9F02",
+      "userIds": ["Matus <matus@example.org>"],
+      "created": 1767225600
+    },
+    {
+      "fingerprint": "C47A9E1B3D5F7092A4C6E8B0D2F4A6C8E0B2D4F6",
+      "userIds": ["Matus (work laptop) <matus@work.example>", "Matus <m@example.net>"],
+      "created": 1775001600
+    }
+  ],
+  "tokens": [
+    {
+      "id": "4f1c9a2e",
+      "name": "laptop",
+      "fingerprint": "8E2D4B6A1C3F5E7D9B0A2C4E6F8A1B3C5D7E9F02",
+      "scope": "full",
+      "created": 1788307200,
+      "expires": 1796083200,
+      "lastUsed": 1791936000
+    },
+    {
+      "id": "b72d05e1",
+      "name": "status script",
+      "fingerprint": "C47A9E1B3D5F7092A4C6E8B0D2F4A6C8E0B2D4F6",
+      "scope": "read",
+      "created": 1790035200,
+      "expires": null,
+      "lastUsed": null
+    }
+  ]
+}

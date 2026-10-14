@@ -4,6 +4,7 @@
  * never claim the same key, and every entry carries en, sk and de side by side
  * — see define.ts. lib/i18n.ts is the only reader. */
 
+import access from "./access";
 import advanced from "./advanced";
 import apps from "./apps";
 import home from "./home";
@@ -32,6 +33,7 @@ export const MESSAGES = {
   ...look,
   ...machines,
   ...advanced,
+  ...access,
   ...lab,
   ...tour,
 };
