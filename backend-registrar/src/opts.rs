@@ -1028,9 +1028,36 @@ fn parse_usdc(args: &[String], currency: &str) -> Result<Option<crate::stablecoi
     let ens_rpc_file = ens
         .map(|path| credential("--market-ens-rpc-file", path))
         .transpose()?;
+    let price_sources = match arg(args, "--market-price-sources") {
+        None => [
+            crate::coins::PriceSource::kraken(),
+            crate::coins::PriceSource::coingecko(),
+        ],
+        Some(spec) => {
+            let (kraken, gecko) = spec.split_once(',').ok_or_else(|| {
+                miette!("--market-price-sources is <kraken base URL>,<CoinGecko base URL>")
+            })?;
+            for url in [kraken, gecko] {
+                if !(url.starts_with("https://") || url.starts_with("http://127.0.0.1")) {
+                    return Err(miette!(
+                        "--market-price-sources takes https URLs, or http on 127.0.0.1"
+                    ));
+                }
+            }
+            [
+                crate::coins::PriceSource::Kraken {
+                    base: kraken.to_string(),
+                },
+                crate::coins::PriceSource::CoinGecko {
+                    base: gecko.to_string(),
+                },
+            ]
+        }
+    };
     Ok(Some(UsdcOpts {
         chains,
         ens_rpc_file,
+        price_sources,
     }))
 }
 

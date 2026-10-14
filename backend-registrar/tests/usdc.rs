@@ -176,6 +176,7 @@ async fn start(tag: &str, rpc_url: &str, state: Option<&Value>) -> Edge {
                     },
                 ],
                 ens_rpc_file: None,
+                price_sources: silent_prices(),
             });
         },
     )
@@ -779,6 +780,7 @@ async fn live_networks_open_no_market_behind_a_test_key() {
                     genesis: None,
                 }],
                 ens_rpc_file: None,
+                price_sources: silent_prices(),
             });
         },
     )
@@ -788,4 +790,17 @@ async fn live_networks_open_no_market_behind_a_test_key() {
         .await;
     assert_eq!(status, 503, "{body}");
     edge.shutdown().await;
+}
+
+/// Price sources that never answer: these tests need no ETH or SOL price.
+fn silent_prices() -> [losos_registrar::coins::PriceSource; 2] {
+    use losos_registrar::coins::PriceSource;
+    [
+        PriceSource::Kraken {
+            base: "http://127.0.0.1:9".to_string(),
+        },
+        PriceSource::CoinGecko {
+            base: "http://127.0.0.1:9".to_string(),
+        },
+    ]
 }

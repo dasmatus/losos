@@ -1224,6 +1224,9 @@ pub struct Market {
     connect: Arc<dyn Connect>,
     /// The ENS endpoint answered with this mode's chain once.
     ens_checked: std::sync::atomic::AtomicBool,
+    /// ETH and SOL prices for comparing USDC network fees, refreshed in the
+    /// background as pages ask.
+    prices: Arc<crate::coins::PriceBook>,
 }
 
 /// The ledger of the mode the gate's key is in, and where it is kept. The
@@ -1360,6 +1363,17 @@ impl Market {
         for mode in [StripeMode::Live, StripeMode::Test] {
             read_ledger(&ledger_path(&path, mode), mode).await?;
         }
+        let prices = Arc::new(crate::coins::PriceBook::new(
+            opts.usdc.as_ref().map_or_else(
+                || {
+                    [
+                        crate::coins::PriceSource::kraken(),
+                        crate::coins::PriceSource::coingecko(),
+                    ]
+                },
+                |u| u.price_sources.clone(),
+            ),
+        ));
         Ok(Self {
             opts,
             state: Mutex::new(Ledger {
@@ -1369,6 +1383,7 @@ impl Market {
             }),
             connect,
             ens_checked: std::sync::atomic::AtomicBool::new(false),
+            prices,
         })
     }
 
@@ -1546,11 +1561,13 @@ impl Market {
             ),
             payout: seller.and_then(|s| s.payout.clone()),
             payout_solana: seller.and_then(|s| s.payout_solana.clone()),
-            usdc: self
-                .opts
-                .usdc
-                .as_ref()
-                .map(crate::stablecoin::UsdcOpts::public),
+            usdc: self.opts.usdc.as_ref().map(|usdc| {
+                let mut public = usdc.public();
+                public.prices = self.prices.snapshot(&crate::coins::Coin::FEES, now);
+                self.prices
+                    .refresh_in_background(&crate::coins::Coin::FEES, now);
+                public
+            }),
         })
     }
 

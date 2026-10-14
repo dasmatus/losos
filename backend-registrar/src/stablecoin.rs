@@ -206,6 +206,9 @@ pub struct UsdcOpts {
     pub chains: Vec<UsdcChain>,
     /// Ethereum or Sepolia, for ENS names only.
     pub ens_rpc_file: Option<String>,
+    /// Where the prices of ETH and SOL come from, so a page can compare the
+    /// network fee of a payment across networks in dollars.
+    pub price_sources: [crate::coins::PriceSource; 2],
 }
 
 impl UsdcOpts {
@@ -248,6 +251,7 @@ impl UsdcOpts {
             solana: self.payout_solana(),
             chains: self.chains.iter().map(UsdcChain::public).collect(),
             ens_chain_id: self.ens_rpc_file.as_ref().map(|_| ens_chain(self.test())),
+            prices: std::collections::BTreeMap::new(),
         }
     }
 }
@@ -451,6 +455,11 @@ pub struct UsdcPublic {
     /// Where the page may look ENS names up through the relay, when the
     /// operator gave the edge an endpoint for it.
     pub ens_chain_id: Option<u64>,
+    /// The fee coins' prices two sources agree on, micro-dollars per whole
+    /// coin as text, keyed `eth` and `sol`. Missing while they disagree or
+    /// are out of reach.
+    #[serde(skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub prices: std::collections::BTreeMap<&'static str, String>,
 }
 
 /// One network as a page sees it.

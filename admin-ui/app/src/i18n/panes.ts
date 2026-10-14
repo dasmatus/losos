@@ -2052,6 +2052,11 @@ export default defineMessages({
     sk: "Zaplatiť na sieti",
     de: "Zahlen auf",
   },
+  "panes.market.usdc.withFee": {
+    en: "{chain}, fee about {fee}",
+    sk: "{chain}, poplatok asi {fee}",
+    de: "{chain}, Gebühr etwa {fee}",
+  },
   "panes.market.usdc.madeHere": {
     en: "This wallet was made on this box and lives only in this browser. Choose where your sales go before you list: sign with this wallet, or use the address of a wallet you keep elsewhere.",
     sk: "Táto peňaženka vznikla na tomto zariadení a žije len v tomto prehliadači. Pred ponukou zvoľte, kam pôjdu vaše predaje: podpíšte touto peňaženkou, alebo použite adresu peňaženky, ktorú máte inde.",
@@ -2128,9 +2133,9 @@ export default defineMessages({
     de: "Zahlung gesendet",
   },
   "panes.market.usdc.gas": {
-    en: "USDC does not pay the network fee. The wallet also needs a little ETH on the network it pays on, or SOL on Solana, where the first payment to a seller also opens their USDC account.",
-    sk: "USDC neplatí poplatok siete. Peňaženka na to potrebuje aj trochu ETH na sieti, na ktorej platí, alebo SOL na Solane, kde prvá platba predajcovi mu aj otvorí účet pre USDC.",
-    de: "USDC zahlt die Netzwerkgebühr nicht. Die Wallet braucht dafür auch ein wenig ETH auf dem Netzwerk, auf dem sie zahlt, oder SOL auf Solana, wo die erste Zahlung an einen Verkäufer auch sein USDC-Konto eröffnet.",
+    en: "USDC does not pay the network fee. The wallet also needs a little ETH on the network it pays on, or SOL on Solana, where the first payment to a seller also opens their USDC account. The wallet offers the network with the lowest fee first and pays the lowest fee that still gets into a block.",
+    sk: "USDC neplatí poplatok siete. Peňaženka na to potrebuje aj trochu ETH na sieti, na ktorej platí, alebo SOL na Solane, kde prvá platba predajcovi mu aj otvorí účet pre USDC. Peňaženka ponúkne najprv sieť s najnižším poplatkom a platí najnižší poplatok, s ktorým sa platba ešte dostane do bloku.",
+    de: "USDC zahlt die Netzwerkgebühr nicht. Die Wallet braucht dafür auch ein wenig ETH auf dem Netzwerk, auf dem sie zahlt, oder SOL auf Solana, wo die erste Zahlung an einen Verkäufer auch sein USDC-Konto eröffnet. Die Wallet bietet zuerst das Netzwerk mit der niedrigsten Gebühr an und zahlt die niedrigste Gebühr, mit der die Zahlung noch in einen Block kommt.",
   },
   "panes.market.usdc.saved": {
     en: "Wallet saved in this browser",

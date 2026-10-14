@@ -562,6 +562,9 @@ export interface UsdcPublic {
   chains: UsdcChain[];
   /** Where ENS names can be looked up through the relay, when the edge can. */
   ens_chain_id: number | null;
+  /** Dollar prices of the fee coins, micro-dollars per whole coin as text,
+   *  when the edge has a fresh one. Ranks networks by what their fee costs. */
+  prices?: { eth?: string; sol?: string };
 }
 
 /** What the buyer's wallet pays. Amounts are USDC base units, as decimal

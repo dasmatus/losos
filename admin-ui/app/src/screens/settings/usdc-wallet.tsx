@@ -42,6 +42,7 @@ import {
   sealPhrase,
 } from "@/wallet/hot";
 import { isSolanaAddress, signMessage, solanaKeyFromPhrase } from "@/wallet/solana";
+import { cheapest, estimateFee, formatFeeUsd, lowFeeFields, type FeeEstimate } from "@/wallet/fees";
 import { sendUsdc, solanaInjected, waitConfirmed, type SolanaInjected, type SolanaSigner } from "@/wallet/solana-pay";
 import { Group, GroupCaption, GroupTitle, Row, RowText } from "./rows";
 
@@ -213,15 +214,87 @@ export function UsdcWallet({
     [invoice, mode, solProvider],
   );
 
-  // Offer first the network holding enough USDC to pay, else the first.
+  // What paying the invoice costs in network fees on each network it can be
+  // paid on, at the lowest fee that still confirms.
+  const [payFees, setPayFees] = React.useState<Record<string, FeeEstimate | null>>({});
+  const payPicked = React.useRef(false);
+  React.useEffect(() => {
+    if (!invoice || invoice.tx || payable.length === 0) return;
+    let live = true;
+    const amount = BigInt(invoice.gross);
+    void Promise.all(
+      payable.map((c) =>
+        estimateFee(
+          c,
+          {
+            kind: "pay",
+            amount,
+            owner: (c.family === "evm" ? address : solAddress) ?? undefined,
+            recipients: [c.seller],
+          },
+          usdc.prices,
+        ),
+      ),
+    ).then((found) => {
+      if (live) setPayFees(Object.fromEntries(payable.map((c, i) => [c.network, found[i] ?? null])));
+    });
+    return () => {
+      live = false;
+    };
+  }, [invoice, payable, address, solAddress, usdc.prices]);
+
+  // Offer first the network where the wallet holds the USDC and the fee and
+  // the fee is lowest; else the first holding the USDC; else the first. A
+  // network the owner picked stays picked.
   React.useEffect(() => {
     if (!invoice || payable.length === 0) return;
-    if (payable.some((c) => c.network === payOn)) return;
+    if (payPicked.current && payable.some((c) => c.network === payOn)) return;
     const gross = BigInt(invoice.gross);
+    const low = cheapest(
+      payable.map((c) => payFees[c.network] ?? null),
+      balances,
+      gross,
+    );
     const funded = payable.find((c) => (balances ?? []).some((b) => b.network === c.network && b.usdc >= gross));
-    const pick = funded ?? payable[0];
-    if (pick) setPayOn(pick.network);
-  }, [invoice, payable, payOn, balances]);
+    const pick = low ?? funded?.network ?? payable[0]?.network;
+    if (pick && pick !== payOn) setPayOn(pick);
+  }, [invoice, payable, payOn, balances, payFees]);
+
+  // A new invoice starts on the cheapest network again.
+  React.useEffect(() => {
+    payPicked.current = false;
+  }, [invoice?.order_id]);
+
+  // The same for a plain send: the fee of a USDC transfer on each network,
+  // and the cheapest network holding the amount is offered first.
+  const [sendFees, setSendFees] = React.useState<Record<string, FeeEstimate | null>>({});
+  const sendPicked = React.useRef(false);
+  React.useEffect(() => {
+    if (!address && !solAddress) return;
+    let live = true;
+    void Promise.all(usdc.chains.map((c) => estimateFee(c, { kind: "send", amount: 0n }, usdc.prices))).then(
+      (found) => {
+        if (live) setSendFees(Object.fromEntries(usdc.chains.map((c, i) => [c.network, found[i] ?? null])));
+      },
+    );
+    return () => {
+      live = false;
+    };
+  }, [usdc, address, solAddress]);
+  React.useEffect(() => {
+    if (sendPicked.current || balances === null) return;
+    const amount = parseUsdc(sendAmount) ?? 1n;
+    const low = cheapest(
+      usdc.chains.map((c) => sendFees[c.network] ?? null),
+      balances,
+      amount > 0n ? amount : 1n,
+    );
+    if (low && low !== sendOn) setSendOn(low);
+  }, [usdc, balances, sendFees, sendAmount, sendOn]);
+
+  /** A network's name with what its fee costs, when that is known. */
+  const withFee = (name: string, fee: FeeEstimate | null | undefined) =>
+    fee?.usdMicros != null ? t("panes.market.usdc.withFee", { chain: name, fee: formatFeeUsd(fee.usdMicros) }) : name;
 
   const refreshBalances = React.useCallback(async () => {
     const reads = usdc.chains.map((c) => {
@@ -493,6 +566,7 @@ export function UsdcWallet({
         args: [chain.pay as Address, gross],
         account: account ?? owner,
         chain: viemChain,
+        ...(await lowFeeFields(chain.network)),
       });
       // The payment's gas estimate runs against the chain as it is, so
       // the approval has to be in a block before the payment is built.
@@ -505,6 +579,7 @@ export function UsdcWallet({
       args: [invoice.order_id_hash as `0x${string}`, chain.seller as Address, gross, BigInt(invoice.fee)],
       account: account ?? owner,
       chain: viemChain,
+      ...(await lowFeeFields(chain.network)),
     });
     const paid = { ...invoice, tx: hash, network: chain.network };
     sessionStorage.setItem(PENDING_INVOICE, JSON.stringify(paid));
@@ -626,6 +701,7 @@ export function UsdcWallet({
           args: [to as Address, amount],
           account: account ?? (address as Address),
           chain: viemChain,
+          ...(await lowFeeFields(chain.network)),
         });
         await evmClient(chain.network).waitForTransactionReceipt({ hash: tx as `0x${string}` });
       } else {
@@ -902,8 +978,11 @@ export function UsdcWallet({
                 <Select
                   label={t("panes.market.usdc.network")}
                   value={sendOn}
-                  onChange={setSendOn}
-                  options={usdc.chains.map((c) => ({ value: c.network, label: c.name }))}
+                  onChange={(v) => {
+                    sendPicked.current = true;
+                    setSendOn(v);
+                  }}
+                  options={usdc.chains.map((c) => ({ value: c.network, label: withFee(c.name, sendFees[c.network]) }))}
                 />
                 <Button
                   size="sm"
@@ -969,9 +1048,12 @@ export function UsdcWallet({
                   <Select
                     label={t("panes.market.usdc.payOn")}
                     value={payOn}
-                    onChange={setPayOn}
+                    onChange={(v) => {
+                      payPicked.current = true;
+                      setPayOn(v);
+                    }}
                     disabled={busy}
-                    options={payable.map((c) => ({ value: c.network, label: c.name }))}
+                    options={payable.map((c) => ({ value: c.network, label: withFee(c.name, payFees[c.network]) }))}
                   />
                 </label>
               )}
