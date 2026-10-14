@@ -291,7 +291,7 @@ export const SETTINGS_PANES: readonly [SettingsPane, ...SettingsPane[]] = [
     "recovery",
     "encrypt",
   ]),
-  pane("about", InformationCircleIcon, ["version", "info", "identity", "key", "admin", "updates"]),
+  pane("about", InformationCircleIcon, ["version", "info", "identity", "key", "admin", "updates", "tour", "welcome", "guide"]),
   pane("reset", ArrowReloadHorizontalIcon, [
     "factory",
     "defaults",
