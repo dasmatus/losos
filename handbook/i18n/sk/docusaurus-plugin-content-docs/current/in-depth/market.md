@@ -334,21 +334,35 @@ poznámky pre operátora pri zdrojovom kóde (`docs/ci-and-releases.md`).
 3. Objednajte ponuku. Nie je stránka Stripe. Panel ukáže sumu v USDC a
    spýta sa, na ktorej sieti platiť; ako prvú ponúkne tú, kde má peňaženka
    dosť.
-4. Zaplaťte. Na sieti Etherea peňaženka schváli USDC pre `LososPay` a zavolá
-   `pay` a zmluva pošle poplatok platformy do treasury a zvyšok predajcovi.
-   Na Solane urobí jedna transakcia oba prevody a v memo uvedie objednávku.
-   Prvá platba predajcovi alebo treasury im aj otvorí účet USDC, čo stojí
-   trochu SOL.
+4. Zaplaťte. Na sieti Etherea peňaženka schváli USDC pre `LososEscrow` a
+   zavolá `pay`. Zmluva platbu podrží a zapíše si predajcu, poplatok a
+   lehotu na vrátenie; predajcovi zatiaľ nič nepríde. Na Solane jedna
+   transakcia pošle poplatok platformy do treasury a zvyšok predajcovi a v
+   memo uvedie objednávku. Prvá platba predajcovi alebo treasury im aj
+   otvorí účet USDC, čo stojí trochu SOL.
 5. Edge prečíta transakciu cez svoj endpoint pre danú sieť a objednávku
    označí ako zaplatenú. Jedna transakcia zaplatí len jednu objednávku.
    Objednávka potom uvádza svoju sieť a odkaz na transakciu v prehliadači
    blokov tej siete, pre kupujúceho aj predajcu.
+6. Na sieti Etherea potom edge overí adresu predajcu na tej sieti a vklad
+   uvoľní: poplatok do treasury, zvyšok predajcovi. Ak adresa na tej sieti
+   USDC prijať nemôže, edge namiesto toho vráti celú platbu kupujúcemu a
+   objednávka sa nevybaví. Objednávka ukáže, čo z toho sa stalo.
 
 Kým platbu na sieti Etherea započíta, edge overí, že RPC odpovedá za reťazec
-tej siete, že `LososPay` sťahuje USDC od Circle pre tento reťazec a platí
-nastavenej treasury, a že nad platbou je už ďalší blok. `LososPay` si vezme
-najviac polovicu platby, čo je pevné delenie pri strojoch; presný poplatok
-každej objednávky kontroluje edge. Na Solane edge overí, že endpoint hlási
+tej siete, že `LososEscrow` sťahuje USDC od Circle pre tento reťazec, platí
+nastavenej treasury a prijíma pokyny od vlastného kľúča edge, a že nad
+platbou je už ďalší blok. `LososEscrow` si vezme najviac polovicu platby, čo
+je pevné delenie pri strojoch; presný poplatok a lehotu na vrátenie každej
+objednávky kontroluje edge.
+
+Adresa predajcu USDC prijať môže, keď na tej sieti nemá kód zmluvy, alebo má
+len delegáciu podľa EIP-7702, takže zostáva účtom, ku ktorému niekto má
+kľúč. Že ho niekto má, ukázal už podpis výplatnej adresy. Treasury, zmluva
+USDC, escrow a nulová adresa sa nepočítajú nikdy. Kľúč edge môže vklad
+uvoľniť len predajcovi a treasury zapísaným pri platbe, alebo ho vrátiť
+kupujúcemu; nikam inam ho poslať nevie. Ak edge vklad neuvoľní do dňa po
+skončení držania objednávky, kupujúci si ho môže zo zmluvy vziať späť sám. Na Solane edge overí, že endpoint hlási
 genesis hash siete, že transakcia prešla a je potvrdená, že jej memo uvádza
 objednávku a že USDC predajcu a treasury narástli presne o ich podiely.
 
@@ -356,8 +370,9 @@ Objednávka drží svoje jednotky štvrť hodiny. Panel v posledných dvoch
 minútach novú platbu nezačne a transakciu odoslanej platby si pamätá, kým ju
 edge nezapočíta, takže opätovná kontrola nikdy nezaplatí dvakrát. Platba,
 ktorá príde po uplynutí tejto doby, platí, kým sú jednotky voľné. Ak sa
-medzitým predali, objednávka zostane nezaplatená a vrátenie peňazí sa musí
-vyriešiť mimo trhu.
+medzitým predali alebo objednávku už zaplatila iná platba, edge platbu z
+escrow vráti a panel to oznámi. Na Solane, kde escrow nie je, taká platba
+zostane predajcovi a vrátenie peňazí sa musí vyriešiť mimo trhu.
 
 Na testovacích sieťach je testovacie USDC z
 [faucet Circle](https://faucet.circle.com), ktorý obsluhuje všetky štyri.
@@ -378,7 +393,9 @@ obsluhované cez gateway mimo reťazca sa nehľadajú.
 Podpíšte peňaženkou, ktorá má USDC prijímať. Jedno kliknutie podpíše za oba
 druhy sietí: adresa Etherea berie predaje zaplatené na Base, Arbitrum a OP,
 adresa Solany predaje zaplatené na Solane. Edge overí každý podpis a uloží
-len adresy a kupujúci platia priamo na ne. Predajca, ktorý má nastavenú len
+len adresy. Predaje zaplatené na Solane idú priamo na ne; predaje na sieťach
+Etherea na ne prídu, keď edge adresu na tej sieti overí a platbu z escrow
+uvoľní. Predajca, ktorý má nastavenú len
 jednu z nich, sa ponúka iba kupujúcim na tom druhu siete. Tú istú frázu
 importujete do MetaMask, Rabby, Rainbow, Trust Wallet alebo Phantom, keď
 peniaze chcete minúť. Pre tieto predaje nie je žiadny pripojený účet Stripe.

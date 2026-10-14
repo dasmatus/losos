@@ -729,6 +729,9 @@ let
       ++ lib.optional (n.genesisHash != null) "genesis=${n.genesisHash}"
     );
   ensOn = usdcOn && cfg.market.usdc.ensRpcUrlSealed != null;
+  # EVM payments wait in LososEscrow until the registrar releases them with
+  # this key.
+  releaserOn = usdcOn && lib.any (name: !lib.hasPrefix "solana" name) (lib.attrNames usdcNetworks);
   usdcServeArgs =
     lib.optionals usdcOn (
       lib.concatLists (
@@ -738,6 +741,10 @@ let
         ]) usdcNetworks
       )
     )
+    ++ lib.optionals releaserOn [
+      "--market-usdc-releaser-file"
+      "${credDir}/usdc-releaser-key"
+    ]
     ++ lib.optionals ensOn [
       "--market-ens-rpc-file"
       "${credDir}/ens-rpc"
@@ -828,6 +835,9 @@ let
     ++ lib.optionals usdcOn (
       lib.mapAttrsToList (name: n: "usdc-rpc-${name}:${toString n.rpcUrlSealed}") usdcNetworks
     )
+    ++ lib.optionals releaserOn [
+      "usdc-releaser-key:${toString cfg.market.usdc.releaserKeySealed}"
+    ]
     ++ lib.optionals ensOn [
       "ens-rpc:${toString cfg.market.usdc.ensRpcUrlSealed}"
     ];
@@ -1151,8 +1161,8 @@ in
       // lib.optionalAttrs (registrarCreds != [ ]) {
         # Plaintext only in this unit's credential directory, read per request.
         # `claude-api-key` is the widget builder, `usdc-rpc-<network>` a chain
-        # endpoint and `ens-rpc` the name lookups. None is a flag, so none
-        # shows up in the process list.
+        # endpoint, `usdc-releaser-key` the escrow's key and `ens-rpc` the
+        # name lookups. None is a flag, so none shows up in the process list.
         LoadCredentialEncrypted = registrarCreds;
       };
     };

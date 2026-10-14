@@ -132,6 +132,14 @@ in
             units = [ "losos-registrar.service" ];
           }
         ) cfg.market.usdc.networks
+        # The escrow's releaser: a bare secp256k1 key, hex.
+        // {
+          usdc-releaser-key = {
+            sealed = lib.mkDefault cfg.market.usdc.releaserKeySealed;
+            pattern = lib.mkDefault "(0x)?[0-9a-fA-F]{64}";
+            units = [ "losos-registrar.service" ];
+          };
+        }
         // lib.optionalAttrs (cfg.market.usdc.ensRpcUrlSealed != null) {
           ens-rpc = {
             sealed = lib.mkDefault cfg.market.usdc.ensRpcUrlSealed;
