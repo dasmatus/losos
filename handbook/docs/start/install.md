@@ -23,6 +23,12 @@ own. **It wipes every fixed disk in the machine.**
 - A screen and keyboard for the machine, for the install only. After that the
   screen shows a banner with the box's address, and the box needs neither.
 
+If you want to manage the box from a terminal later with `losos`, decide
+now. The box only trusts a GPG key that was on the stick it was installed
+from, and the release stick carries none.
+[The terminal client](../manual/terminal.md) shows how to build a stick
+with your key on it.
+
 ## Steps
 
 1. Download the installer ISO and its `.sha256` from the
