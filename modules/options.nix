@@ -1876,6 +1876,36 @@ in
       '';
     };
 
+    edge.market.monero.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Let buyers pay for storage, compute and machine orders in Monero,
+        beside USDC. The edge runs its own pruned `monerod` and a wallet
+        service holding one view-only wallet per seller, made from the
+        seller's primary address and private view key; each order gets a
+        fresh subaddress of the seller's own wallet, so the coins go straight
+        to the seller and nothing on the edge can spend them. The platform
+        fee on these orders is billed to the seller separately. Needs
+        `losos.edge.market.usdc.enable`. See handbook/docs/in-depth/market.md.
+      '';
+    };
+
+    edge.market.monero.network = lib.mkOption {
+      type = lib.types.enum [
+        "mainnet"
+        "stagenet"
+        "testnet"
+      ];
+      default = "mainnet";
+      description = ''
+        The network the edge's node follows. A live edge (live Stripe key)
+        must follow `mainnet`; a test edge takes `stagenet` or `testnet`. The
+        registrar checks the pairing, and that a seller's address is for the
+        same network, before it takes a key or hands out a subaddress.
+      '';
+    };
+
     # ── Sealed credentials delivered from GitHub Actions ───────────────────
     # `.github/workflows/edge-credentials.yml` reads the keys from the
     # repository's Actions secrets and hands each one over SSH to

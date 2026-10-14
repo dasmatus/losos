@@ -967,6 +967,7 @@ fn parse_market(args: &[String]) -> Result<Option<Box<MarketOpts>>> {
         vms: parse_vms(args)?,
         usdc: parse_usdc(args, currency)?,
         btc: parse_btc(args, currency)?,
+        xmr: parse_xmr(args, currency)?,
     })))
 }
 
@@ -1009,6 +1010,46 @@ fn parse_btc(args: &[String], currency: &str) -> Result<Option<crate::bitcoin::B
         rpc: rpc.to_string(),
         cookie_file: cookie_file.to_string(),
         wallet: wallet.to_string(),
+    }))
+}
+
+/// Monero orders, through the edge's own wallet service and node:
+///
+/// ```text
+/// --market-xmr-wallet-rpc http://127.0.0.1:18083 --market-xmr-login-file /var/lib/losos-monero-wallet/rpc-login
+/// --market-xmr-daemon-rpc http://127.0.0.1:18081
+/// ```
+///
+/// The login file is the wallet service's `user:password`, read on every
+/// call. Like Bitcoin, Monero is quoted in US dollars beside USDC.
+fn parse_xmr(args: &[String], currency: &str) -> Result<Option<crate::monero::XmrOpts>> {
+    let Some(wallet_rpc) = arg(args, "--market-xmr-wallet-rpc") else {
+        return Ok(None);
+    };
+    let daemon_rpc = req(args, "--market-xmr-daemon-rpc")?;
+    for (flag, url) in [
+        ("--market-xmr-wallet-rpc", wallet_rpc),
+        ("--market-xmr-daemon-rpc", daemon_rpc),
+    ] {
+        if !crate::stablecoin::rpc_url_ok(url) {
+            return Err(miette!(
+                "bad {flag}; expected https, or http to 127.0.0.1, with no credentials in it"
+            ));
+        }
+    }
+    let login_file = req(args, "--market-xmr-login-file")?;
+    if currency != "usd" {
+        return Err(miette!(
+            "--market-xmr-wallet-rpc needs --market-currency usd"
+        ));
+    }
+    if args_all(args, "--market-usdc").is_empty() {
+        return Err(miette!("--market-xmr-wallet-rpc needs --market-usdc"));
+    }
+    Ok(Some(crate::monero::XmrOpts {
+        wallet_rpc: wallet_rpc.to_string(),
+        login_file: login_file.to_string(),
+        daemon_rpc: daemon_rpc.to_string(),
     }))
 }
 

@@ -200,10 +200,12 @@ pub enum Op {
         family: Option<String>,
     },
     /// The watch-only key this box is paid to in a coin other than USDC:
-    /// an extended public key or a ranged descriptor. Never a private key.
+    /// Bitcoin's extended public key or ranged descriptor, or Monero's
+    /// primary address with its private view key. Never a spending key.
     CoinKey {
         coin: String,
         key: String,
+        view_key: Option<String>,
     },
     /// An address and amount to pay `order_id` in `coin`, or what reached it.
     CoinPay {
@@ -363,7 +365,7 @@ pub(crate) fn valid_domain(d: &str) -> bool {
 }
 
 /// Coins other than USDC the market may take for orders.
-const COINS: &[&str] = &["btc"];
+const COINS: &[&str] = &["btc", "xmr"];
 
 /// A watch-only key as a wallet exports it: an extended public key, or an
 /// output descriptor. Printable, no spaces, bounded; the edge's node checks
@@ -569,15 +571,20 @@ impl Op {
                 }
                 Some(_) => Err("family is evm or solana"),
             },
-            Op::CoinKey { coin, key } => {
-                if !COINS.contains(&coin.as_str()) {
-                    Err("coin is not one the market takes")
-                } else if !coin_key(key) {
+            Op::CoinKey {
+                coin,
+                key,
+                view_key,
+            } => match (coin.as_str(), view_key) {
+                ("xmr", Some(view_key)) => crate::monero_key::check(key, view_key),
+                ("xmr", None) => Err("view_key is required for Monero"),
+                (_, Some(_)) => Err("view_key is only for Monero"),
+                (c, None) if !COINS.contains(&c) => Err("coin is not one the market takes"),
+                (_, None) if !coin_key(key) => {
                     Err("key is not an extended public key or a descriptor")
-                } else {
-                    Ok(())
                 }
-            }
+                _ => Ok(()),
+            },
             Op::CoinPay { order_id, coin } => {
                 if !valid_id(order_id) {
                     Err("order_id is not valid")
@@ -743,7 +750,16 @@ impl Op {
                 }
                 doc
             }
-            Op::CoinKey { coin, key } => json!({ "coin": coin, "key": key }),
+            Op::CoinKey {
+                coin,
+                key,
+                view_key: None,
+            } => json!({ "coin": coin, "key": key }),
+            Op::CoinKey {
+                coin,
+                key,
+                view_key: Some(view_key),
+            } => json!({ "coin": coin, "key": key, "view_key": view_key }),
             Op::CoinPay { order_id, coin } => json!({ "order_id": order_id, "coin": coin }),
             Op::Confirm {
                 order_id,
@@ -1196,6 +1212,7 @@ mod tests {
         let key = |coin: &str, key: &str| Op::CoinKey {
             coin: coin.to_string(),
             key: key.to_string(),
+            view_key: None,
         };
         let zpub = "zpub6rFR7y4Q2AijBEqTUquhVz398htDFrtymD9xYYfG1m4wAcvPhXNfE3EfH1r1ADqtfSdVCToUG868RvUUkgDKf31mGDtKsAYz2oz2AGutZYs";
         assert!(key("btc", zpub).validate().is_ok());
@@ -1214,6 +1231,14 @@ mod tests {
         .is_err());
         assert!(key("btc", "wpkh(a b)").validate().is_err());
         assert!(key("btc", "").validate().is_err());
+        // Monero needs its view key, and nothing else takes one.
+        assert!(key("xmr", "4").validate().is_err());
+        let with_view = Op::CoinKey {
+            coin: "btc".to_string(),
+            key: zpub.to_string(),
+            view_key: Some("00".repeat(32)),
+        };
+        assert!(with_view.validate().is_err());
         let pay = |order: &str, coin: &str| Op::CoinPay {
             order_id: order.to_string(),
             coin: coin.to_string(),

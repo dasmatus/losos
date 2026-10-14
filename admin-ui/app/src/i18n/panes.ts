@@ -2225,6 +2225,21 @@ export default defineMessages({
     sk: "Vložte rozšírený verejný kľúč vašej peňaženky (xpub alebo zpub) alebo deskriptor. Každá objednávka z neho dostane novú adresu, takže mince idú priamo do vašej peňaženky: edge vidí, že prišli, ale nikdy ich nemôže minúť. Použite účet, ktorý držíte len na tieto predaje, lebo všetko zaplatené na jeho adresy sa počíta k objednávkam. Poplatok platformy z týchto predajov sa vám účtuje zvlášť.",
     de: "Füge den erweiterten öffentlichen Schlüssel deiner Wallet (xpub oder zpub) oder einen Deskriptor ein. Jede Bestellung bekommt daraus eine neue Adresse, die Coins gehen also direkt in deine Wallet: Der Edge sieht sie ankommen, kann sie aber nie ausgeben. Nimm ein Konto nur für diese Verkäufe, denn alles, was an seine Adressen geht, zählt für Bestellungen. Die Gebühr der Plattform auf diese Verkäufe wird dir separat berechnet.",
   },
+  "panes.market.coins.keyDetailXmr": {
+    en: "Paste your wallet's primary address (it starts with 4) and its private view key, which wallets show under their keys or seed settings. Each order gets a fresh subaddress of your wallet, so the coins go straight to you: the view key lets the edge see them arrive but never spend them. Never paste the spend key or the seed. The platform's fee on these sales is billed to you separately.",
+    sk: "Vložte hlavnú adresu vašej peňaženky (začína sa na 4) a jej súkromný kľúč na prezeranie (view key), ktorý peňaženky ukazujú v nastaveniach kľúčov alebo seedu. Každá objednávka dostane novú podadresu vašej peňaženky, takže mince idú priamo k vám: kľúč na prezeranie dovolí edgu vidieť, že prišli, ale nikdy ich nemôže minúť. Nikdy nevkladajte kľúč na míňanie (spend key) ani seed. Poplatok platformy z týchto predajov sa vám účtuje zvlášť.",
+    de: "Füge die Hauptadresse deiner Wallet (sie beginnt mit 4) und ihren privaten View-Key ein, den Wallets in den Einstellungen zu Schlüsseln oder Seed zeigen. Jede Bestellung bekommt eine neue Subadresse deiner Wallet, die Coins gehen also direkt an dich: Mit dem View-Key sieht der Edge sie ankommen, kann sie aber nie ausgeben. Füge nie den Spend-Key oder den Seed ein. Die Gebühr der Plattform auf diese Verkäufe wird dir separat berechnet.",
+  },
+  "panes.market.coins.addressPlaceholder": {
+    en: "Primary address (4…)",
+    sk: "Hlavná adresa (4…)",
+    de: "Hauptadresse (4…)",
+  },
+  "panes.market.coins.viewKeyPlaceholder": {
+    en: "Private view key",
+    sk: "Súkromný kľúč na prezeranie",
+    de: "Privater View-Key",
+  },
   "panes.market.coins.keyCurrent": {
     en: "Paid to",
     sk: "Platí sa na",

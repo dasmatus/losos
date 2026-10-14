@@ -1142,6 +1142,7 @@ async fn post_market_coin_key(
         Some(crate::market::Op::CoinKey {
             coin: field_str(d, "coin")?,
             key: field_str(d, "key")?,
+            view_key: field_str(d, "view_key"),
         })
     })
     .await

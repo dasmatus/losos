@@ -213,7 +213,8 @@ fn received(meta: &Value, mint: &str, owner: &str) -> Result<i128, &'static str>
     Ok(total)
 }
 
-const ALPHABET: &[u8; 58] = b"123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+pub(crate) const ALPHABET: &[u8; 58] =
+    b"123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 
 #[must_use]
 pub fn base58_encode(bytes: &[u8]) -> String {

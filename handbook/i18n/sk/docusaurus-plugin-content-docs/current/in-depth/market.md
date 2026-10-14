@@ -448,6 +448,45 @@ porovná s cenou v tej chvíli: do 1 % sa objednávka dokončí, inak panel
 požiada o rozdiel. Objednávka potom ako sieť uvádza Bitcoin a odkazuje na
 transakciu na mempool.space.
 
+## Platba v Monere {#paying-with-monero}
+
+Edge, ktorý vyrovnáva v USDC, môže za tie isté objednávky prijímať aj Monero.
+Beží na ňom vlastný orezaný uzol Monera a vedľa neho služba peňaženiek: na
+mainnete pre ostrý edge, na stagenete alebo testnete pre testovací. Registrár
+odmietne každé iné spárovanie aj adresu vytvorenú pre inú sieť, než na akej
+je uzol.
+
+### Predaj za Monero {#selling-for-monero}
+
+Na Trhu vložte do riadka Monera dve veci: hlavnú adresu peňaženky, tú, ktorá
+sa začína na 4 (na stagenete na 5, na testnete na 9), a jej súkromný kľúč na
+prezeranie (view key). Feather, Cake Wallet aj oficiálne peňaženky ho
+ukazujú vedľa seedu, medzi kľúčmi peňaženky. Kľúč na prezeranie dovolí edgu
+vidieť, čo prichádza na vaše adresy, a nič viac: míňať nevie. Zariadenie
+dvojicu pred odoslaním overí a kľúč na míňanie (spend key) odmietne menom,
+takže omylom vložený kľúč na míňanie zariadenie nikdy neopustí. Seed nikdy
+nevkladajte.
+
+Edge pre vás drží peňaženku len na prezeranie a každej objednávke dá ďalšiu
+podadresu prvého účtu vašej peňaženky, takže mince idú rovno do vašej
+peňaženky. Vaša peňaženka ich nájde tiež: pozerá sa dopredu aj na
+podadresy, ktoré ešte neukázala. Ak za sebou ostane nezaplatených viac ako
+asi 200 objednávok, zvýšte v peňaženke dosah hľadania podadries
+(subaddress lookahead), aby ste videli platby po nich.
+
+Rovnako ako pri bitcoinoch sa poplatok platformy účtuje predajcovi zvlášť a
+celá platba príde predajcovi.
+
+### Platba v Monere pre kupujúceho {#paying-in-monero}
+
+Pri objednávke zvoľte pod „Zaplatiť cez“ Monero. Panel ukáže sumu v XMR,
+podadresu, QR kód a odkaz, ktorý otvorí peňaženku. Zaplaťte z ľubovoľnej
+peňaženky. Objednávku do 5 000 $ započíta desať potvrdení a nad to dvadsať;
+nedoplatok, preplatok aj oneskorená platba sa riešia ako pri bitcoinoch.
+Platba uzamknutá na neskoršie bloky sa nepočíta. Monero skrýva, kto komu čo
+zaplatil, takže zaplatená objednávka uvádza Monero ako sieť bez odkazu na
+prehliadač blokov.
+
 ## Čo nie je pokryté
 
 - **Refundácie a spory.** Riešte ich v Stripe dashboarde pomocou

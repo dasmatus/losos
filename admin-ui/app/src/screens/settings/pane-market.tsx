@@ -306,6 +306,11 @@ function SharingSection({ form }: { form: SettingsForm }) {
 function PaidTx({ order, usdc }: { order: MarketOrder; usdc: UsdcPublic | null }) {
   const t = useT();
   if (!order.tx || usdc === null) return null;
+  // Monero hides who paid what, so an explorer page would show nothing to
+  // check; the order says only where it was paid.
+  if (order.network === "xmr") {
+    return <p className="mt-0.5 text-[12px] text-faint">{t("panes.market.paidOn", { network: "Monero" })}</p>;
+  }
   // A Bitcoin order names the chain the edge's node follows.
   if (order.network?.startsWith("bitcoin")) {
     const href = explorerTx(order.network, order.tx);
