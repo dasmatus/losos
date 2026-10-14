@@ -521,31 +521,82 @@
     "message": "Trh"
   },
   "losos.home.soon.market.body": {
-    "message": "Dostanete zaplatené za disk a procesor, ktoré váš box požičiava, a miesto si môžete kúpiť od iných boxov. Trh je hotový a otestovaný v testovacom režime Stripe. Otvorí sa, keď za ním bude stáť registrovaná firma."
+    "message": "Dostanete zaplatené za disk a procesor, ktoré váš box požičiava, a miesto si môžete kúpiť od iných boxov."
   },
   "losos.home.soon.pool.title": {
     "message": "Jedno úložisko pre viac boxov"
   },
   "losos.home.soon.pool.body": {
-    "message": "Boxy za jedným edge serverom budú požičiavať nevyužitý disk do jedného replikovaného úložiska. Šifrovaný podiel na každom boxe je hotový. Edge server zatiaľ nespúšťa službu, ktorá úložisko poskytuje, a prepínač čaká na trh."
+    "message": "Boxy za jedným edge serverom požičiavajú nevyužitý disk do jedného replikovaného úložiska."
   },
   "losos.home.soon.secureboot.title": {
     "message": "Podpísaný inštalátor"
   },
   "losos.home.soon.secureboot.body": {
-    "message": "Inštalátor je pripravený na podpis pre Secure Boot. Keď bude existovať podpisový kľúč LosOS, každé vydanie bude podpísané a firmvér, ktorý dôveruje certifikátu LosOS, ho spustí so zapnutým Secure Boot."
+    "message": "Firmvér, ktorý dôveruje certifikátu LosOS, spustí inštalátor so zapnutým Secure Boot."
   },
   "losos.home.soon.company.title": {
     "message": "Hotové riešenia pre firmy"
   },
   "losos.home.soon.company.body": {
-    "message": "Box pre každý tím, jeden edge server pre kanceláriu a inštalácia urobená za vás. Firemné nasadenie funguje už dnes. Ako ďalší krok príde jeho predaj ako hotového balíka."
+    "message": "Box pre každý tím, jeden edge server pre kanceláriu a inštalácia urobená za vás."
   },
   "losos.home.soon.translations.title": {
     "message": "Príručka po slovensky a po nemecky"
   },
   "losos.home.soon.translations.body": {
-    "message": "Ponuky a táto stránka sú už preložené. Stránky príručky budú nasledovať jedna po druhej."
+    "message": "Celá príručka po slovensky a po nemecky."
+  },
+  "losos.home.soon.market.card": {
+    "message": "Platby kartou cez Stripe, otestované v jeho testovacom režime"
+  },
+  "losos.home.soon.market.coins": {
+    "message": "Platby v USDC a bitcoinoch"
+  },
+  "losos.home.soon.market.open": {
+    "message": "Otvorenie trhu, ktoré potrebuje registrovanú firmu"
+  },
+  "losos.home.soon.pool.share": {
+    "message": "Šifrovaný podiel na každom boxe"
+  },
+  "losos.home.soon.pool.service": {
+    "message": "Služba úložiska na edge serveri"
+  },
+  "losos.home.soon.pool.switch": {
+    "message": "Prepínač zdieľania, ktorý sa otvorí spolu s trhom"
+  },
+  "losos.home.soon.secureboot.ready": {
+    "message": "Inštalátor pripravený na podpis"
+  },
+  "losos.home.soon.secureboot.key": {
+    "message": "Podpisový kľúč LosOS"
+  },
+  "losos.home.soon.secureboot.releases": {
+    "message": "Podpis na každom vydaní"
+  },
+  "losos.home.soon.company.setup": {
+    "message": "Firemné nasadenie s vlastným edge serverom kancelárie"
+  },
+  "losos.home.soon.company.image": {
+    "message": "Obraz edge servera pri každom vydaní"
+  },
+  "losos.home.soon.company.package": {
+    "message": "Predaj ako hotový balík"
+  },
+  "losos.home.soon.translations.menus": {
+    "message": "Ponuky a táto stránka"
+  },
+  "losos.home.soon.translations.depth": {
+    "message": "Kapitola Do hĺbky, TPM a bezpečnostný model"
+  },
+  "losos.home.soon.translations.rest": {
+    "message": "Ostatné stránky"
+  },
+  "losos.home.soon.chip.done": {
+    "message": "Hotovo"
+  },
+  "losos.home.soon.done": {
+    "message": "Hotovo:"
   },
   "losos.home.soon.title": {
     "message": "Čoskoro"
