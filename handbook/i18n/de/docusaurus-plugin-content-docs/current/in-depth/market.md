@@ -283,6 +283,11 @@ dieser Zeit versiegelt, geht nichts verloren.
 - Der Webhook wird über die HMAC-Signatur von Stripe über den rohen Body
   authentifiziert, mit einem Replay-Fenster von fünf Minuten und einer höheren
   Body-Obergrenze als bei anderen Routen.
+- Stripe kann ein Ereignis doppelt oder in anderer Reihenfolge zustellen. Ein
+  Ereignis, das die Edge schon angewandt hat, wird anhand seiner ID
+  verworfen, und ein `account.updated`, das älter ist als der Kontostand der
+  Edge, wird ignoriert. So nimmt ein verspätetes Ereignis einen bereiten
+  Verkäufer nicht wieder aus dem Angebot.
 - Eine Zahlung zählt nur, wenn Session-ID, Betrag und Währung dem entsprechen,
   was die Edge für die Bestellung festgehalten hat. Eine Abweichung wird
   protokolliert und nicht erfüllt. Hat die Edge angehalten, bevor sie die
