@@ -261,3 +261,27 @@ before the first lookup and forwards only `eth_call`, `eth_chainId` and
 Seal every endpoint before switching USDC on: the registrar unit loads each
 blob and does not start without it. Plain `http` is accepted only for a node
 on the edge's own loopback, such as `http://127.0.0.1:8545`.
+
+### Bitcoin orders
+
+With USDC on, an edge can also take Bitcoin for the same orders:
+
+```nix
+losos.edge.market.bitcoin = {
+  enable = true;
+  chain = "main";    # a test edge: "testnet4", "signet" or "regtest"
+  pruneMiB = 10240;  # the default
+};
+```
+
+This starts `bitcoind-losos.service`, a pruned node with RPC on
+`127.0.0.1:8332` only, and passes the registrar
+`--market-btc-rpc http://127.0.0.1:8332` and the node's cookie
+(`/var/lib/bitcoind-losos/<chain>/.cookie`, no subdirectory on `main`). There
+is nothing to seal: the cookie changes each time the node starts and the
+registrar reads it on every call. The registrar makes a watch-only,
+private-key-free wallet `losos-watch` on first use and imports each order's
+address into it. Before it takes a seller's key or hands out an address it
+checks that the node's chain fits the Stripe key's mode, and refuses
+otherwise. Until the node has caught
+up with the chain, payments show up late, so let it sync before listing.

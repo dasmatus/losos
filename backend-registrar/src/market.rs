@@ -332,6 +332,9 @@ pub struct Order {
     /// settled on more than one, which was its only network.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub paid_network: Option<String>,
+    /// Set once the buyer chose to pay in a coin other than USDC.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub coin: Option<CoinPayment>,
 }
 
 /// Everything the market persists for one Stripe mode: `market.json` for
@@ -356,6 +359,49 @@ pub struct MarketState {
     /// is (`crate::sync`).
     #[serde(default, skip_serializing_if = "SyncLog::is_empty")]
     pub sync: SyncLog,
+    /// What each seller takes in coins other than USDC, by appliance id.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub coin_sellers: BTreeMap<String, CoinSeller>,
+}
+
+/// A seller's watch-only keys for coin orders (`crate::coins`), and the
+/// platform fees those sales owe. The coins go straight to the seller's own
+/// wallet, so the fee cannot be split off on the way and is billed apart.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CoinSeller {
+    /// By coin key (`btc`).
+    #[serde(default)]
+    pub keys: BTreeMap<String, CoinKey>,
+    /// Platform fees of paid coin orders, in the currency's minor unit.
+    #[serde(default)]
+    pub fees_owed: u64,
+}
+
+/// A seller's key for one coin, as the edge's node checked it, and the next
+/// address index to hand out.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CoinKey {
+    pub descriptor: String,
+    pub next: u32,
+}
+
+/// An order being paid in a coin: the quote, the address derived for it from
+/// the seller's key, and what the edge's node last saw arrive there.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CoinPayment {
+    pub quote: crate::coins::Quote,
+    pub address: String,
+    pub index: u32,
+    /// When the address was given to this order. Only payments the node saw
+    /// from then on count: anything older reached the address before it was
+    /// this order's.
+    #[serde(default)]
+    pub issued: u64,
+    #[serde(default)]
+    pub settlement: Option<crate::coins::Settlement>,
+    /// Transactions that paid to the address.
+    #[serde(default)]
+    pub txs: Vec<String>,
 }
 
 /// Market failures, mapped onto HTTP statuses by
@@ -457,10 +503,22 @@ pub fn quote(unit_price: u64, quantity: u64, fee_bps: u32) -> Result<Quote, Mark
 /// quarter of an hour.
 const USDC_HOLD_SECS: u64 = 15 * 60;
 
+/// How long a coin order keeps its units after its quote lapses, for the
+/// payment it saw in time to reach its confirmations: twenty Monero blocks,
+/// or six Bitcoin blocks on a slow hour.
+const COIN_CONFIRM_SECS: u64 = 3 * 60 * 60;
+
 /// How long a pending order keeps its units. Stripe's window is the session
 /// lifetime plus the three-day retry horizon of a webhook that may still be
 /// in flight; USDC's is [`USDC_HOLD_SECS`].
 fn pending_window(order: &Order) -> u64 {
+    if let Some(coin) = &order.coin {
+        return coin
+            .quote
+            .pay_before
+            .saturating_sub(order.created_at)
+            .saturating_add(COIN_CONFIRM_SECS);
+    }
     match order.rail {
         Rail::Usdc => USDC_HOLD_SECS,
         Rail::Stripe => CHECKOUT_TTL_SECS + PENDING_HOLD_SECS,
@@ -1038,6 +1096,74 @@ pub struct OrderView {
     /// The network it was paid on. Absent on an order paid before the edge
     /// named networks, which was paid on its first EVM network.
     pub network: Option<String>,
+    /// The coin payment, when the buyer chose one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub coin: Option<CoinView>,
+}
+
+/// A coin payment as the buyer's wallet shows it. Amounts are in whole coins
+/// as decimal text, so no precision is lost on the way to the page.
+#[derive(Debug, Serialize)]
+pub struct CoinView {
+    pub coin: &'static str,
+    pub address: String,
+    pub amount: String,
+    /// The payment link with the exact amount: BIP 21, `monero:` or ZIP 321.
+    pub uri: String,
+    pub pay_before: u64,
+    /// `waiting`, `seen`, `underpaid`, `confirming`, `paid`, `late` or
+    /// `repricing` (see [`crate::coins::Settlement`]).
+    pub state: &'static str,
+    pub paid: String,
+    /// What is owed when it is short: the quote, or the price now when late.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub due: Option<String>,
+    /// Paid over the quote, recorded for a person to refund.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub extra: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub confirmations: Option<u64>,
+    pub required: u64,
+    pub txs: Vec<String>,
+}
+
+impl CoinView {
+    pub fn of(order_id: &str, c: &CoinPayment) -> Self {
+        use crate::coins::{format_amount, Settlement};
+        let coin = c.quote.coin;
+        let fmt = |a: u128| format_amount(coin, a);
+        let waiting = Settlement::Waiting;
+        let settlement = c.settlement.as_ref().unwrap_or(&waiting);
+        let (state, paid, due, extra, confirmations) = match *settlement {
+            Settlement::Waiting => ("waiting", 0, None, None, None),
+            Settlement::Seen { paid } => ("seen", paid, None, None, Some(0)),
+            Settlement::Underpaid { paid, due } => ("underpaid", paid, Some(due), None, None),
+            Settlement::Confirming {
+                paid,
+                confirmations,
+                ..
+            } => ("confirming", paid, None, None, Some(confirmations)),
+            Settlement::Paid { paid, extra } => {
+                ("paid", paid, None, (extra > 0).then_some(extra), None)
+            }
+            Settlement::Late { paid, due_now } => ("late", paid, Some(due_now), None, None),
+            Settlement::Repricing { paid } => ("repricing", paid, None, None, None),
+        };
+        Self {
+            coin: coin.key(),
+            address: c.address.clone(),
+            amount: fmt(c.quote.amount),
+            uri: crate::coins::payment_uri(coin, &c.address, c.quote.amount, order_id),
+            pay_before: c.quote.pay_before,
+            state,
+            paid: fmt(paid),
+            due: due.map(fmt),
+            extra: extra.map(fmt),
+            confirmations,
+            required: crate::coins::confirmations_for(coin, c.quote.usd_cents),
+            txs: c.txs.clone(),
+        }
+    }
 }
 
 /// A machine order as either party sees it. The cloud-init is not echoed: it
@@ -1083,6 +1209,7 @@ impl OrderView {
             }),
             tx: o.tx_hash.clone(),
             network: o.paid_network.clone(),
+            coin: o.coin.as_ref().map(|c| CoinView::of(&o.id, c)),
         }
     }
 }
@@ -1122,6 +1249,20 @@ pub struct AccountView {
     /// Present when this edge settles the market in USDC. No RPC URL.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub usdc: Option<crate::stablecoin::UsdcPublic>,
+    /// Coins other than USDC this edge takes for orders (`btc`).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub coins: Vec<&'static str>,
+    /// This seller's keys for them, by coin, as the edge's node read them.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub coin_keys: BTreeMap<String, String>,
+    /// Platform fees owed on this seller's coin sales, in the currency's
+    /// minor unit.
+    #[serde(skip_serializing_if = "is_zero")]
+    pub coin_fees_owed: u64,
+}
+
+fn is_zero(n: &u64) -> bool {
+    *n == 0
 }
 
 #[derive(Debug, Serialize)]
@@ -1209,6 +1350,8 @@ pub struct MarketOpts {
     /// USDC settlement. `None` keeps the Stripe rail. Hardware checkouts stay
     /// on Stripe either way.
     pub usdc: Option<crate::stablecoin::UsdcOpts>,
+    /// The edge's Bitcoin node, for orders paid in BTC.
+    pub btc: Option<crate::bitcoin::BtcOpts>,
 }
 
 /// What a USDC payment must show, per family.
@@ -1523,7 +1666,7 @@ impl Market {
             fee_bps: self.opts.fee_bps,
             currency: self.opts.currency.clone(),
             seller_onboarded: seller.is_some(),
-            seller_ready: seller.is_some_and(|s| self.accepts_payouts(s)),
+            seller_ready: self.accepts(&state, id),
             can_sell_storage: sharing.allows(id, Kind::Storage),
             can_sell_compute: sharing.allows(id, Kind::Compute),
             can_host_vms: self.opts.vms.is_some() && sharing.allows(id, Kind::Vm),
@@ -1568,12 +1711,54 @@ impl Market {
                     .refresh_in_background(&crate::coins::Coin::FEES, now);
                 public
             }),
+            coins: self.coins().iter().map(|c| c.key()).collect(),
+            coin_keys: state
+                .coin_sellers
+                .get(id)
+                .map(|s| {
+                    s.keys
+                        .iter()
+                        .map(|(coin, k)| (coin.clone(), k.descriptor.clone()))
+                        .collect()
+                })
+                .unwrap_or_default(),
+            coin_fees_owed: state.coin_sellers.get(id).map_or(0, |s| s.fees_owed),
         })
     }
 
     /// Whether `seller` can be paid for a listing. USDC wants a signed payout
     /// address. Stripe wants the connected account ready. Hardware checkouts
     /// do not come through here.
+    /// Whether `id` can be paid for a listing: a payout address or a ready
+    /// Stripe account, or a key for a coin this edge takes.
+    fn accepts(&self, state: &MarketState, id: &str) -> bool {
+        state
+            .sellers
+            .get(id)
+            .is_some_and(|s| self.accepts_payouts(s))
+            || !self.coins_of(state, id).is_empty()
+    }
+
+    /// Coins this edge takes for orders, in the order the buyer sees them.
+    pub fn coins(&self) -> Vec<crate::coins::Coin> {
+        let mut coins = Vec::new();
+        if self.opts.btc.is_some() {
+            coins.push(crate::coins::Coin::Btc);
+        }
+        coins
+    }
+
+    /// The coins `seller` can be paid in on this edge.
+    fn coins_of(&self, state: &MarketState, seller: &str) -> Vec<crate::coins::Coin> {
+        let Some(keys) = state.coin_sellers.get(seller) else {
+            return Vec::new();
+        };
+        self.coins()
+            .into_iter()
+            .filter(|c| keys.keys.contains_key(c.key()))
+            .collect()
+    }
+
     fn accepts_payouts(&self, seller: &Seller) -> bool {
         if let Some(usdc) = &self.opts.usdc {
             (seller.payout.is_some() && usdc.has(crate::stablecoin::Family::Evm))
@@ -1591,13 +1776,7 @@ impl Market {
         Ok(state
             .listings
             .values()
-            .filter(|l| {
-                l.active
-                    && state
-                        .sellers
-                        .get(&l.seller)
-                        .is_some_and(|s| self.accepts_payouts(s))
-            })
+            .filter(|l| l.active && self.accepts(&state, &l.seller))
             .filter(|l| sharing.allows(&l.seller, l.kind))
             .filter_map(|l| {
                 let left = available(&state, l, now);
@@ -1772,11 +1951,7 @@ impl Market {
             ));
         }
         let mut state = self.state.lock().await;
-        if !state
-            .sellers
-            .get(seller)
-            .is_some_and(|s| self.accepts_payouts(s))
-        {
+        if !self.accepts(&state, seller) {
             return Err(MarketError::Conflict(if self.opts.usdc.is_some() {
                 "set a USDC payout address before listing"
             } else {
@@ -1908,7 +2083,7 @@ impl Market {
         sharing: &Sharing,
     ) -> Result<CheckoutView, MarketError> {
         let now = now_secs();
-        let (order, destination, mode) = {
+        let (order, destination, mode, coins) = {
             let mut state = self.state.lock().await;
             let mode = Self::mode_of(&state)?;
             let listing = state
@@ -1920,7 +2095,7 @@ impl Market {
             let seller = state
                 .sellers
                 .get(&listing.seller)
-                .filter(|s| self.accepts_payouts(s))
+                .filter(|_| self.accepts(&state, &listing.seller))
                 .cloned()
                 .ok_or(MarketError::NotFound)?;
             // Not for sale while the seller has stopped sharing it.
@@ -1991,17 +2166,19 @@ impl Market {
                     None
                 },
                 paid_network: None,
+                coin: None,
             };
             let mut next = state.clone();
             expire_stale(&mut next, now);
             next.orders.insert(order.id.clone(), order.clone());
             self.commit(&mut state, next).await?;
-            (order, seller.account_id, mode)
+            let coins = self.coins_of(&state, &order.seller);
+            (order, seller.account_id, mode, coins)
         };
 
         if order.rail == Rail::Usdc {
             let opts = self.opts.usdc.clone().ok_or(MarketError::Unconfigured)?;
-            let invoice = crate::stablecoin::invoice(
+            let mut invoice = crate::stablecoin::invoice(
                 &opts,
                 &order.id,
                 crate::stablecoin::PayTo {
@@ -2012,9 +2189,10 @@ impl Market {
                 order.fee,
                 order.created_at.saturating_add(USDC_HOLD_SECS),
             );
-            if invoice.chains.is_empty() {
+            if invoice.chains.is_empty() && coins.is_empty() {
                 return Err(MarketError::Conflict("the seller has no payout address"));
             }
+            invoice.coins = coins.iter().map(|c| c.key()).collect();
             return Ok(CheckoutView {
                 mode,
                 order_id: order.id.clone(),
@@ -2543,6 +2721,361 @@ impl Market {
         Ok(())
     }
 
+    /// Set the watch-only key `id` is paid to in `coin`, after the edge's
+    /// node checked it is a public key for the network this edge settles on.
+    /// Setting the same key again keeps its next address index, so no
+    /// address is handed out twice.
+    pub async fn set_coin_key(&self, id: &str, coin: &str, key: &str) -> Result<(), MarketError> {
+        let coin = crate::coins::Coin::parse(coin)
+            .filter(|c| self.coins().contains(c))
+            .ok_or(MarketError::Invalid("this edge does not take that coin"))?;
+        let test = {
+            let state = self.state.lock().await;
+            Self::mode_of(&state)? == StripeMode::Test
+        };
+        let descriptor = match coin {
+            crate::coins::Coin::Btc => {
+                let btc = self.opts.btc.as_ref().ok_or(MarketError::Unconfigured)?;
+                let node = crate::bitcoin::Node::new(btc);
+                Self::btc_chain_fits(&node, test).await?;
+                node.check_key(key).await?
+            }
+            _ => return Err(MarketError::Invalid("this edge does not take that coin")),
+        };
+        let mut state = self.state.lock().await;
+        let mut next = state.clone();
+        next.sellers
+            .entry(id.to_string())
+            .or_insert_with(|| Seller {
+                account_id: String::new(),
+                ready: false,
+                box_uuid: None,
+                payout: None,
+                payout_solana: None,
+            });
+        let keys = &mut next.coin_sellers.entry(id.to_string()).or_default().keys;
+        let start = keys
+            .get(coin.key())
+            .filter(|k| k.descriptor == descriptor)
+            .map_or(0, |k| k.next);
+        keys.insert(
+            coin.key().to_string(),
+            CoinKey {
+                descriptor,
+                next: start,
+            },
+        );
+        self.commit(&mut state, next).await?;
+        Ok(())
+    }
+
+    /// Refuse a node on the wrong network: a test edge on mainnet would take
+    /// real coins for test orders, and a live one on a test chain would hand
+    /// out worthless addresses.
+    async fn btc_chain_fits(
+        node: &crate::bitcoin::Node<'_>,
+        test: bool,
+    ) -> Result<(), MarketError> {
+        let chain = node.chain().await?;
+        if crate::bitcoin::chain_fits(&chain, test) {
+            return Ok(());
+        }
+        tracing::error!(
+            target: Action::Market.target(),
+            "the Bitcoin node follows {chain}, which a {} edge does not settle on",
+            if test { "test" } else { "live" },
+        );
+        Err(MarketError::Conflict(
+            "the edge's Bitcoin node is on the wrong network",
+        ))
+    }
+
+    /// The edge's price for `coin` now: the cached one while fresh, else
+    /// asked of both sources.
+    async fn coin_price(&self, coin: crate::coins::Coin, now: u64) -> Option<u128> {
+        if let Some(p) = self.prices.cached(coin, now) {
+            return Some(p);
+        }
+        self.prices.refresh(&[coin], now).await;
+        self.prices.cached(coin, now)
+    }
+
+    /// Pay `order_id` in `coin`: quote it at the price now and derive an
+    /// address for it from the seller's key, which the edge's node watches.
+    /// Asked again, it reads what arrived and answers the same address; a
+    /// lapsed quote with nothing paid is quoted again on the same address.
+    /// Switching coins is refused once anything reached the first address.
+    pub async fn pay_with_coin(
+        &self,
+        buyer: &str,
+        order_id: &str,
+        coin: &str,
+    ) -> Result<CoinView, MarketError> {
+        use crate::coins::{Quote, Settlement};
+        let coin = crate::coins::Coin::parse(coin)
+            .filter(|c| self.coins().contains(c))
+            .ok_or(MarketError::Invalid("this edge does not take that coin"))?;
+        let now = now_secs();
+        let (order, key) = {
+            let state = self.state.lock().await;
+            let order = state
+                .orders
+                .get(order_id)
+                .filter(|o| o.buyer == buyer)
+                .cloned()
+                .ok_or(MarketError::NotFound)?;
+            let key = state
+                .coin_sellers
+                .get(&order.seller)
+                .and_then(|s| s.keys.get(coin.key()))
+                .cloned();
+            (order, key)
+        };
+        if let Some(existing) = &order.coin {
+            let received = !matches!(existing.settlement, None | Some(Settlement::Waiting));
+            if existing.quote.coin == coin && (received || now < existing.quote.pay_before) {
+                self.settle_coins_of(std::slice::from_ref(&order.id)).await;
+                let state = self.state.lock().await;
+                let c = state
+                    .orders
+                    .get(order_id)
+                    .and_then(|o| o.coin.as_ref())
+                    .ok_or(MarketError::NotFound)?;
+                return Ok(CoinView::of(order_id, c));
+            }
+            if received {
+                return Err(MarketError::Conflict(
+                    "a payment already reached this order's address",
+                ));
+            }
+        }
+        if !pending_live(&order, now) {
+            return Err(MarketError::Conflict(
+                "this order is no longer held; order again",
+            ));
+        }
+        if order.currency != "usd" {
+            return Err(MarketError::Conflict(
+                "coin prices are quoted in US dollars",
+            ));
+        }
+        let key = key.ok_or(MarketError::Conflict("the seller does not take that coin"))?;
+        let price = self
+            .coin_price(coin, now)
+            .await
+            .ok_or(MarketError::Conflict(
+                "the price sources disagree or are not answering; try again shortly",
+            ))?;
+        let quote = Quote::new(coin, order.amount, price, now)
+            .ok_or(MarketError::Invalid("the order has no amount to quote"))?;
+
+        // The same coin with nothing paid keeps its address; otherwise derive
+        // the next one nobody else was given.
+        let (address, index, issued) = match &order.coin {
+            Some(c) if c.quote.coin == coin => (c.address.clone(), c.index, c.issued),
+            _ => {
+                let used: std::collections::BTreeSet<String> = {
+                    let state = self.state.lock().await;
+                    state
+                        .orders
+                        .values()
+                        .filter_map(|o| o.coin.as_ref().map(|c| c.address.clone()))
+                        .collect()
+                };
+                let btc = self.opts.btc.as_ref().ok_or(MarketError::Unconfigured)?;
+                let node = crate::bitcoin::Node::new(btc);
+                let test = self.mode().await == Some(StripeMode::Test);
+                Self::btc_chain_fits(&node, test).await?;
+                let mut index = key.next;
+                let address = loop {
+                    let a = node.derive(&key.descriptor, index).await?;
+                    if !used.contains(&a) {
+                        break a;
+                    }
+                    index = index.checked_add(1).ok_or(MarketError::Conflict(
+                        "the seller's key has no addresses left",
+                    ))?;
+                };
+                node.watch(&address, order_id).await?;
+                (address, index, now)
+            }
+        };
+
+        let mut state = self.state.lock().await;
+        let mut next = state.clone();
+        let o = next
+            .orders
+            .get_mut(order_id)
+            .filter(|o| o.buyer == buyer && o.status == OrderStatus::Pending)
+            .ok_or(MarketError::Conflict(
+                "this order is no longer held; order again",
+            ))?;
+        if o.coin
+            .as_ref()
+            .is_some_and(|c| !matches!(c.settlement, None | Some(Settlement::Waiting)))
+        {
+            return Err(MarketError::Conflict(
+                "a payment already reached this order's address",
+            ));
+        }
+        o.coin = Some(CoinPayment {
+            quote,
+            address,
+            index,
+            issued,
+            settlement: Some(Settlement::Waiting),
+            txs: Vec::new(),
+        });
+        let view = CoinView::of(order_id, o.coin.as_ref().expect("just set"));
+        let seller = o.seller.clone();
+        if let Some(k) = next
+            .coin_sellers
+            .get_mut(&seller)
+            .and_then(|s| s.keys.get_mut(coin.key()))
+            .filter(|k| k.descriptor == key.descriptor)
+        {
+            k.next = k.next.max(index.saturating_add(1));
+        }
+        self.commit(&mut state, next).await?;
+        Ok(view)
+    }
+
+    /// Read what reached every coin order's address that is not paid yet,
+    /// and mark paid the ones that have their confirmations. Run on each
+    /// reconcile pass.
+    pub async fn settle_coins(&self) {
+        let ids: Vec<String> = {
+            let state = self.state.lock().await;
+            state
+                .orders
+                .values()
+                .filter(|o| o.coin.is_some() && o.status != OrderStatus::Paid)
+                .map(|o| o.id.clone())
+                .collect()
+        };
+        if !ids.is_empty() {
+            self.settle_coins_of(&ids).await;
+        }
+    }
+
+    async fn settle_coins_of(&self, ids: &[String]) {
+        use crate::coins::{settle, Coin, Quote};
+        let now = now_secs();
+        let work: Vec<(String, CoinPayment)> = {
+            let state = self.state.lock().await;
+            ids.iter()
+                .filter_map(|id| state.orders.get(id))
+                .filter(|o| o.status != OrderStatus::Paid)
+                .filter_map(|o| o.coin.clone().map(|c| (o.id.clone(), c)))
+                .collect()
+        };
+        let mut found = Vec::new();
+        // Which chain the node follows names the network a paid order shows,
+        // for the explorer link: `bitcoin` on mainnet, `bitcoin-signet` and
+        // so on elsewhere.
+        let mut btc_network: Option<String> = None;
+        for (id, c) in work {
+            let received = match c.quote.coin {
+                Coin::Btc => match self.opts.btc.as_ref() {
+                    Some(btc) => crate::bitcoin::Node::new(btc).received(&c.address).await,
+                    None => Err(MarketError::Unconfigured),
+                },
+                _ => Err(MarketError::Unconfigured),
+            };
+            let received: Vec<_> = match received {
+                Ok(r) => r.into_iter().filter(|r| r.first_seen >= c.issued).collect(),
+                Err(e) => {
+                    tracing::warn!(
+                        target: Action::Market.target(),
+                        "could not read the payments of order {id}: {e}",
+                    );
+                    continue;
+                }
+            };
+            let fresh = if now > c.quote.pay_before {
+                match self.coin_price(c.quote.coin, now).await {
+                    Some(p) => Quote::new(c.quote.coin, c.quote.usd_cents, p, now),
+                    None => None,
+                }
+            } else {
+                None
+            };
+            let settlement = settle(&c.quote, &received, fresh.as_ref());
+            let txs: Vec<String> = received.into_iter().map(|r| r.tx).collect();
+            let network = match c.quote.coin {
+                Coin::Btc if settlement.is_paid() => {
+                    if btc_network.is_none() {
+                        let chain = match self.opts.btc.as_ref() {
+                            Some(btc) => crate::bitcoin::Node::new(btc).chain().await.ok(),
+                            None => None,
+                        };
+                        btc_network = Some(match chain.as_deref() {
+                            None | Some("main") => "bitcoin".to_string(),
+                            Some(other) => format!("bitcoin-{other}"),
+                        });
+                    }
+                    btc_network.clone()
+                }
+                _ => None,
+            };
+            found.push((id, settlement, txs, network));
+        }
+        let mut state = self.state.lock().await;
+        let mut next = state.clone();
+        let mut changed = false;
+        for (id, settlement, txs, network) in found {
+            let Some(o) = next.orders.get_mut(&id) else {
+                continue;
+            };
+            if o.status == OrderStatus::Paid {
+                continue;
+            }
+            let live = pending_live(o, now);
+            let Some(c) = o.coin.as_mut() else {
+                continue;
+            };
+            if c.settlement.as_ref() == Some(&settlement) && c.txs == txs {
+                continue;
+            }
+            changed = true;
+            let paid = settlement.is_paid();
+            c.settlement = Some(settlement);
+            c.txs = txs;
+            if !paid {
+                continue;
+            }
+            let coin = c.quote.coin;
+            if !live {
+                tracing::warn!(
+                    target: Action::Market.target(),
+                    "order {id} was paid in {} after its hold lapsed; its units are still free, so it is fulfilled",
+                    coin.ticker(),
+                );
+            }
+            o.status = OrderStatus::Paid;
+            o.tx_hash = c.txs.first().cloned();
+            o.paid_network = network.or_else(|| Some(coin.key().to_string()));
+            o.paid_at = Some(now);
+            o.expires_at = Some(now + ENTITLEMENT_SECS);
+            let (seller, fee) = (o.seller.clone(), o.fee);
+            let owed = &mut next.coin_sellers.entry(seller).or_default().fees_owed;
+            *owed = owed.saturating_add(fee);
+            tracing::info!(
+                target: Action::Market.target(),
+                "order {id} is paid in {}",
+                coin.ticker(),
+            );
+        }
+        if changed {
+            if let Err(e) = self.commit(&mut state, next).await {
+                tracing::error!(
+                    target: Action::Market.target(),
+                    "could not record coin payments: {e}",
+                );
+            }
+        }
+    }
+
     /// The network a request names, or the edge's first when it names none,
     /// which is what a box built before there were several sends.
     fn usdc_chain(
@@ -2854,6 +3387,7 @@ mod tests {
             pay_to: None,
             pay_to_solana: None,
             paid_network: None,
+            coin: None,
         }
     }
 
@@ -3443,6 +3977,7 @@ mod tests {
             hardware_catalogue: None,
             vms: None,
             usdc: None,
+            btc: None,
         })
         .await
         .unwrap();
@@ -3469,6 +4004,7 @@ mod tests {
             hardware_catalogue: None,
             vms: None,
             usdc: None,
+            btc: None,
         }
     }
 

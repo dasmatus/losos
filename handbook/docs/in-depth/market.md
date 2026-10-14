@@ -388,6 +388,49 @@ choose "Use another wallet's address": paste the address of a wallet you keep
 elsewhere, sign the message the pane shows with that wallet, and paste the
 signature. The edge checks it the same way.
 
+## Paying with Bitcoin
+
+An edge that settles in USDC can also take Bitcoin for storage, compute and
+machine orders. It runs its own pruned Bitcoin node: on mainnet for a live
+edge, on testnet4, signet or regtest for a test edge. The registrar refuses
+any other pairing, so a live edge never counts test coins. The node holds a
+watch-only wallet and no private key.
+
+### Selling for Bitcoin
+
+On the Market pane, paste your wallet's extended public key into the Bitcoin
+row: the zpub, xpub or ypub that Sparrow, Electrum or BlueWallet export (a
+vpub, tpub or upub on a test edge), or a ranged output descriptor. The key
+can make addresses but cannot spend, and the edge refuses a private key.
+Each order then gets a receive address from that key that no other order has
+used, so the coins go straight to your wallet and show up there like any
+other payment. Use an account you keep for these sales: anything paid to
+its addresses after an order was given one counts toward that order.
+Wallets look about 20 unused addresses ahead; if more than 20
+orders in a row go unpaid, raise the gap limit in your wallet to see the
+payments after them.
+
+The platform fee is not taken out of a Bitcoin payment. The whole amount
+reaches the seller, the pane shows what the fee on those sales comes to,
+and the market bills it to the seller separately. A seller with a Bitcoin
+key and no USDC address can still list; buyers then pay in Bitcoin only.
+
+### Paying in Bitcoin
+
+On the order, choose Bitcoin under "Pay with". The pane shows the amount in
+BTC, the address, a QR code and a link that opens a wallet on the computer.
+Pay from any wallet; there is nothing to report back. The edge's node sees
+the payment arrive, and the pane follows it from seen to confirmed.
+
+The BTC amount is a quote from price sources that agree with each other,
+good for a quarter of an hour. One confirmation counts an order up to $50,
+two up to $500, three up to $5,000 and six above that. A payment that falls
+short says how much is still due, and anything over the amount stays with
+the seller. A payment sent after the quote lapsed is measured against the
+price at that moment: within 1% the order completes, otherwise the pane asks
+for the difference. The order then names Bitcoin as its network and links
+the transaction on mempool.space.
+
 ## Not covered
 
 - **Refunds and disputes.** Handle them in the Stripe dashboard, using

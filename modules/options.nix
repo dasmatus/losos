@@ -1791,6 +1791,47 @@ in
       '';
     };
 
+    edge.market.bitcoin.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Let buyers pay for storage, compute and machine orders in Bitcoin,
+        beside USDC. The edge runs its own pruned `bitcoind` with a watch-only
+        wallet; each order gets a fresh address derived from the seller's own
+        extended public key, so the coins go straight to the seller and the
+        edge never holds a private key. The platform fee on these orders is
+        billed to the seller separately. Needs `losos.edge.market.usdc.enable`.
+        See handbook/docs/in-depth/market.md.
+      '';
+    };
+
+    edge.market.bitcoin.chain = lib.mkOption {
+      type = lib.types.enum [
+        "main"
+        "testnet4"
+        "signet"
+        "regtest"
+      ];
+      default = "main";
+      description = ''
+        The chain the edge's node follows. A live edge (live Stripe key) must
+        follow `main`; a test edge takes `testnet4`, `signet` or `regtest`.
+        The registrar checks the pairing before it takes a seller's key or
+        hands out an address, so a real edge cannot settle orders in test
+        coins.
+      '';
+    };
+
+    edge.market.bitcoin.pruneMiB = lib.mkOption {
+      type = lib.types.ints.between 550 1000000;
+      default = 10240;
+      description = ''
+        How much of the block chain the node keeps, in MiB. The watch-only
+        wallet only follows addresses made after it started, so a pruned node
+        is enough.
+      '';
+    };
+
     # ── Sealed credentials delivered from GitHub Actions ───────────────────
     # `.github/workflows/edge-credentials.yml` reads the keys from the
     # repository's Actions secrets and hands each one over SSH to

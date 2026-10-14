@@ -507,6 +507,32 @@ export interface MarketOrder {
   /** The network it was paid on; absent on an order from before the edge
    *  named networks, which was paid on its first EVM network. */
   network?: string | null;
+  /** The coin payment, when the buyer chose to pay in a coin. */
+  coin?: CoinPayment | null;
+}
+
+/** Coins other than USDC an order can be paid in. */
+export type Coin = "btc";
+
+/** POST /api/market/coins/pay — where to pay an order in a coin, and what
+ *  reached that address so far. Amounts are whole coins as decimal text. */
+export interface CoinPayment {
+  coin: Coin;
+  address: string;
+  amount: string;
+  /** The payment link with the exact amount (BIP 21 for Bitcoin). */
+  uri: string;
+  /** Unix seconds. The quote holds until then. */
+  pay_before: number;
+  state: "waiting" | "seen" | "underpaid" | "confirming" | "paid" | "late" | "repricing";
+  paid: string;
+  /** What is owed when short: the quote, or the price now when late. */
+  due?: string;
+  /** Paid over the quote, for a person to refund. */
+  extra?: string;
+  confirmations?: number;
+  required: number;
+  txs: string[];
 }
 
 export interface MarketAccount {
@@ -533,6 +559,13 @@ export interface MarketAccount {
   payout_solana?: string | null;
   /** Present when this edge settles the market in USDC. No RPC URL. */
   usdc?: UsdcPublic | null;
+  /** Coins other than USDC this edge takes for orders. */
+  coins?: Coin[];
+  /** This box's watch-only keys for them, as the edge's node read them. */
+  coin_keys?: Partial<Record<Coin, string>>;
+  /** Platform fees owed on this box's coin sales, in the currency's minor
+   *  unit: the coins went straight to this box's wallet. */
+  coin_fees_owed?: number;
 }
 
 export type ChainFamily = "evm" | "solana";
@@ -578,6 +611,8 @@ export interface StablecoinInvoice {
   /** Unix seconds. The order holds its units until then; start no payment after it. */
   pay_before: number;
   chains: (UsdcChain & { seller: string })[];
+  /** Coins other than USDC the seller takes for this order. */
+  coins?: Coin[];
 }
 
 export type MarketResponse =
@@ -673,6 +708,31 @@ export function postMarketConfirm(
   options: RequestOptions = {},
 ): Promise<MarketActionResponse> {
   return marketPost("/api/market/confirm", { order_id: orderId, tx, network }, options);
+}
+
+/** POST /api/market/coins/key — the watch-only key this box is paid to in
+ *  `coin`: an extended public key (xpub, zpub) or a ranged descriptor. */
+export function postMarketCoinKey(
+  coin: Coin,
+  key: string,
+  options: RequestOptions = {},
+): Promise<MarketActionResponse> {
+  return marketPost("/api/market/coins/key", { coin, key }, options);
+}
+
+/** POST /api/market/coins/pay — an address and amount to pay this order in
+ *  `coin`, or, asked again, what has reached it. */
+export function postMarketCoinPay(
+  orderId: string,
+  coin: Coin,
+  options: RequestOptions = {},
+): Promise<CoinPayment> {
+  return call<CoinPayment>("/api/market/coins/pay", {
+    ...options,
+    method: "POST",
+    contentType: "application/json",
+    body: JSON.stringify({ order_id: orderId, coin }),
+  });
 }
 
 export interface RpcReply {

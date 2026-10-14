@@ -697,7 +697,24 @@ let
     ]
     ++ hardwareArgs "--market-hardware-catalogue"
     ++ vmServeArgs
-    ++ usdcServeArgs;
+    ++ usdcServeArgs
+    ++ btcServeArgs;
+
+  # Bitcoin (losos.edge.market.bitcoin): the edge's own node, on loopback,
+  # signed in with the cookie it writes into its chain's directory. The
+  # registrar runs as root and reads the cookie on every call, because the
+  # node writes a new one each time it starts.
+  btcOn = usdcOn && cfg.market.bitcoin.enable;
+  btcChain = cfg.market.bitcoin.chain;
+  btcRpcPort = 8332;
+  btcDataDir = "/var/lib/bitcoind-losos";
+  btcCookie = if btcChain == "main" then "${btcDataDir}/.cookie" else "${btcDataDir}/${btcChain}/.cookie";
+  btcServeArgs = lib.optionals btcOn [
+    "--market-btc-rpc"
+    "http://127.0.0.1:${toString btcRpcPort}"
+    "--market-btc-cookie-file"
+    btcCookie
+  ];
 
   # USDC (losos.edge.market.usdc). The RPC URL is a systemd credential of
   # the registrar, not a flag: a flag would put the provider key in the
@@ -1003,6 +1020,13 @@ in
         '';
       }
       {
+        assertion = cfg.market.bitcoin.enable -> cfg.market.usdc.enable;
+        message = ''
+          losos.edge.market.bitcoin.enable requires losos.edge.market.usdc.enable:
+          Bitcoin is offered beside USDC, priced in the same dollars.
+        '';
+      }
+      {
         assertion =
           cfg.builder.enable
           -> (cfg.market.enable && cfg.builder.agentId != null && cfg.builder.environmentId != null);
@@ -1120,7 +1144,8 @@ in
         "losos-rathole-seed.service"
       ]
       ++ lib.optional meshEnabled "losos-mesh-rbac.service"
-      ++ lib.optional cfg.market.enable "losos-stripe-gate.service";
+      ++ lib.optional cfg.market.enable "losos-stripe-gate.service"
+      ++ lib.optional btcOn "bitcoind-losos.service";
       # Wants, not Requires, on the RBAC extractor: the master-proxy half must
       # keep serving /register and rewriting Traefik on an edge whose mesh
       # apiserver is down or not yet up. A failed extraction costs the join
@@ -1129,7 +1154,8 @@ in
         "network-online.target"
       ]
       ++ lib.optional meshEnabled "losos-mesh-rbac.service"
-      ++ lib.optional cfg.market.enable "losos-stripe-gate.service";
+      ++ lib.optional cfg.market.enable "losos-stripe-gate.service"
+      ++ lib.optional btcOn "bitcoind-losos.service";
       serviceConfig = {
         ExecStart = serveArgs;
         StateDirectory = "losos-registrar";
@@ -1155,6 +1181,23 @@ in
         # shows up in the process list.
         LoadCredentialEncrypted = registrarCreds;
       };
+    };
+
+    # ── bitcoind (Bitcoin orders, losos.edge.market.bitcoin) ─────────────
+    # A pruned node on loopback only. The wallet it holds is watch-only and
+    # made by the registrar on first use; nothing on this machine can spend.
+    services.bitcoind.losos = lib.mkIf btcOn {
+      enable = true;
+      dataDir = btcDataDir;
+      prune = cfg.market.bitcoin.pruneMiB;
+      # On the command line, not in bitcoin.conf: outside `main` the file's
+      # RPC settings only count inside a [chain] section.
+      extraCmdlineOptions = [
+        "-chain=${btcChain}"
+        "-rpcport=${toString btcRpcPort}"
+        "-rpcbind=127.0.0.1"
+        "-rpcallowip=127.0.0.1"
+      ];
     };
 
     # ── DNS: the edge's own zone, served by Knot ─────────────────────────

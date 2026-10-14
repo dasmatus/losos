@@ -2064,6 +2064,141 @@ export default defineMessages({
     sk: "{chain}, poplatok asi {fee}",
     de: "{chain}, Gebühr etwa {fee}",
   },
+  "panes.market.coins.payWith": {
+    en: "Pay with",
+    sk: "Zaplatiť cez",
+    de: "Zahlen mit",
+  },
+  "panes.market.coins.payDetail": {
+    en: "{gross}, paid in {coin} straight to the seller's own wallet at the price the edge quotes. The platform's fee is billed to the seller.",
+    sk: "{gross}, zaplatené cez {coin} priamo do vlastnej peňaženky predajcu za cenu, ktorú uvedie edge. Poplatok platformy sa účtuje predajcovi.",
+    de: "{gross}, in {coin} direkt an die eigene Wallet des Verkäufers bezahlt, zum Preis, den der Edge nennt. Die Gebühr der Plattform wird dem Verkäufer berechnet.",
+  },
+  "panes.market.coins.also": {
+    en: "Sellers can also take {coins}, paid straight to their own wallet.",
+    sk: "Predajcovia môžu prijímať aj platby cez {coins}, priamo do vlastnej peňaženky.",
+    de: "Verkäufer können auch {coins} annehmen, direkt in ihre eigene Wallet.",
+  },
+  "panes.market.coins.loading": {
+    en: "Getting an address for this order…",
+    sk: "Získavam adresu pre túto objednávku…",
+    de: "Adresse für diese Bestellung wird geholt…",
+  },
+  "panes.market.coins.unreachable": {
+    en: "The edge did not answer. The page tries again on its own.",
+    sk: "Edge neodpovedal. Stránka to skúsi znova sama.",
+    de: "Der Edge hat nicht geantwortet. Die Seite versucht es von selbst erneut.",
+  },
+  "panes.market.coins.send": {
+    en: "Send exactly this much {ticker} to this address, from any wallet: scan the code or open the link. The price holds until {time}.",
+    sk: "Pošlite presne túto sumu {ticker} na túto adresu z akejkoľvek peňaženky: naskenujte kód alebo otvorte odkaz. Cena platí do {time}.",
+    de: "Sende genau diesen Betrag in {ticker} an diese Adresse, aus einer beliebigen Wallet: Code scannen oder Link öffnen. Der Preis gilt bis {time}.",
+  },
+  "panes.market.coins.copyAmount": {
+    en: "Copy amount",
+    sk: "Kopírovať sumu",
+    de: "Betrag kopieren",
+  },
+  "panes.market.coins.copyAddress": {
+    en: "Copy address",
+    sk: "Kopírovať adresu",
+    de: "Adresse kopieren",
+  },
+  "panes.market.coins.copied": {
+    en: "Copied",
+    sk: "Skopírované",
+    de: "Kopiert",
+  },
+  "panes.market.coins.openWallet": {
+    en: "Open in your wallet",
+    sk: "Otvoriť v peňaženke",
+    de: "In der Wallet öffnen",
+  },
+  "panes.market.coins.qr": {
+    en: "QR code of the payment",
+    sk: "QR kód platby",
+    de: "QR-Code der Zahlung",
+  },
+  "panes.market.coins.state.waiting": {
+    en: "Waiting for the payment. This page checks on its own.",
+    sk: "Čaká sa na platbu. Stránka to kontroluje sama.",
+    de: "Warte auf die Zahlung. Die Seite prüft von selbst.",
+  },
+  "panes.market.coins.state.seen": {
+    en: "Payment seen, waiting for its first block.",
+    sk: "Platba je viditeľná, čaká sa na jej prvý blok.",
+    de: "Zahlung gesehen, warte auf ihren ersten Block.",
+  },
+  "panes.market.coins.state.underpaid": {
+    en: "{paid} {ticker} arrived of {due}. Send the rest to the same address.",
+    sk: "Prišlo {paid} {ticker} z {due}. Zvyšok pošlite na tú istú adresu.",
+    de: "{paid} {ticker} von {due} sind angekommen. Sende den Rest an dieselbe Adresse.",
+  },
+  "panes.market.coins.state.confirming": {
+    en: "Confirming: {n} of {required} blocks.",
+    sk: "Potvrdzuje sa: {n} z {required} blokov.",
+    de: "Wird bestätigt: {n} von {required} Blöcken.",
+  },
+  "panes.market.coins.state.paid": {
+    en: "Paid.",
+    sk: "Zaplatené.",
+    de: "Bezahlt.",
+  },
+  "panes.market.coins.state.late": {
+    en: "The payment arrived after the price lapsed and is short of the price now, {due} {ticker}. Send the rest to the same address.",
+    sk: "Platba prišla po vypršaní ceny a chýba jej do dnešnej ceny {due} {ticker}. Zvyšok pošlite na tú istú adresu.",
+    de: "Die Zahlung kam nach Ablauf des Preises an und reicht für den aktuellen Preis von {due} {ticker} nicht. Sende den Rest an dieselbe Adresse.",
+  },
+  "panes.market.coins.state.repricing": {
+    en: "The payment arrived after the price lapsed. It is checked against the price now as soon as the edge has one.",
+    sk: "Platba prišla po vypršaní ceny. Porovná sa s dnešnou cenou, hneď ako ju edge bude mať.",
+    de: "Die Zahlung kam nach Ablauf des Preises an. Sie wird mit dem aktuellen Preis verglichen, sobald der Edge einen hat.",
+  },
+  "panes.market.coins.keyTitle": {
+    en: "Get paid in {coin}",
+    sk: "Platby cez {coin}",
+    de: "Zahlungen in {coin}",
+  },
+  "panes.market.coins.keyDetail": {
+    en: "Paste your wallet's extended public key (xpub or zpub) or a descriptor. Each order gets a fresh address from it, so the coins go straight to your wallet: the edge can see them arrive but can never spend them. Use an account you keep for these sales, since anything paid to its addresses counts toward orders. The platform's fee on these sales is billed to you separately.",
+    sk: "Vložte rozšírený verejný kľúč vašej peňaženky (xpub alebo zpub) alebo deskriptor. Každá objednávka z neho dostane novú adresu, takže mince idú priamo do vašej peňaženky: edge vidí, že prišli, ale nikdy ich nemôže minúť. Použite účet, ktorý držíte len na tieto predaje, lebo všetko zaplatené na jeho adresy sa počíta k objednávkam. Poplatok platformy z týchto predajov sa vám účtuje zvlášť.",
+    de: "Füge den erweiterten öffentlichen Schlüssel deiner Wallet (xpub oder zpub) oder einen Deskriptor ein. Jede Bestellung bekommt daraus eine neue Adresse, die Coins gehen also direkt in deine Wallet: Der Edge sieht sie ankommen, kann sie aber nie ausgeben. Nimm ein Konto nur für diese Verkäufe, denn alles, was an seine Adressen geht, zählt für Bestellungen. Die Gebühr der Plattform auf diese Verkäufe wird dir separat berechnet.",
+  },
+  "panes.market.coins.keyCurrent": {
+    en: "Paid to",
+    sk: "Platí sa na",
+    de: "Bezahlt an",
+  },
+  "panes.market.coins.keyPlaceholder": {
+    en: "xpub, zpub or descriptor",
+    sk: "xpub, zpub alebo deskriptor",
+    de: "xpub, zpub oder Deskriptor",
+  },
+  "panes.market.coins.keySave": {
+    en: "Save key",
+    sk: "Uložiť kľúč",
+    de: "Schlüssel speichern",
+  },
+  "panes.market.coins.keyReplace": {
+    en: "Replace key",
+    sk: "Nahradiť kľúč",
+    de: "Schlüssel ersetzen",
+  },
+  "panes.market.coins.keySaved": {
+    en: "{coin} key saved",
+    sk: "Kľúč pre {coin} je uložený",
+    de: "Schlüssel für {coin} gespeichert",
+  },
+  "panes.market.coins.keyFailed": {
+    en: "The key was not saved",
+    sk: "Kľúč sa neuložil",
+    de: "Der Schlüssel wurde nicht gespeichert",
+  },
+  "panes.market.coins.feesOwed": {
+    en: "Platform fees owed on coin sales: {amount}.",
+    sk: "Poplatky platformy za predaje v minciach: {amount}.",
+    de: "Offene Plattformgebühren aus Coin-Verkäufen: {amount}.",
+  },
   "panes.market.usdc.madeHere": {
     en: "This wallet was made on this box and lives only in this browser. Choose where your sales go before you list: sign with this wallet, or use the address of a wallet you keep elsewhere.",
     sk: "Táto peňaženka vznikla na tomto zariadení a žije len v tomto prehliadači. Pred ponukou zvoľte, kam pôjdu vaše predaje: podpíšte touto peňaženkou, alebo použite adresu peňaženky, ktorú máte inde.",

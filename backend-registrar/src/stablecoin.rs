@@ -500,6 +500,10 @@ pub struct StablecoinInvoice {
     /// while the units are still free.
     pub pay_before: u64,
     pub chains: Vec<InvoiceChain>,
+    /// Coins other than USDC the seller takes for this order (`btc`); the
+    /// buyer asks the edge for an address in one of them.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub coins: Vec<&'static str>,
 }
 
 /// The seller's payout addresses an order was invoiced to, one per family.
@@ -544,6 +548,7 @@ pub fn invoice(
                 })
             })
             .collect(),
+        coins: Vec::new(),
     }
 }
 

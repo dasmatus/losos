@@ -389,6 +389,48 @@ zvoľte „Použiť adresu inej peňaženky“: vložte adresu peňaženky, ktor
 inde, podpíšte ňou správu, ktorú panel ukáže, a vložte podpis. Edge ho overí
 rovnako.
 
+## Platba v bitcoinoch {#paying-with-bitcoin}
+
+Edge, ktorý vyrovnáva v USDC, môže za objednávky úložiska, výpočtov a strojov
+prijímať aj bitcoiny. Beží na ňom vlastný orezaný uzol Bitcoinu: na mainnete
+pre ostrý edge, na testnet4, signete alebo regteste pre testovací. Registrár
+odmietne každé iné spárovanie, takže ostrý edge nikdy nezapočíta testovacie
+mince. Uzol drží peňaženku len na sledovanie a žiadny súkromný kľúč.
+
+### Predaj za bitcoiny {#selling-for-bitcoin}
+
+Na Trhu vložte do riadka Bitcoinu rozšírený verejný kľúč svojej peňaženky:
+zpub, xpub alebo ypub, ktorý exportuje Sparrow, Electrum či BlueWallet (na
+testovacom edgi vpub, tpub alebo upub), alebo deskriptor výstupu s rozsahom.
+Kľúč vie robiť adresy, ale nevie míňať, a súkromný kľúč edge odmietne. Každá
+objednávka potom dostane z tohto kľúča prijímaciu adresu, ktorú žiadna iná
+objednávka nepoužila, takže mince idú rovno do vašej peňaženky a zobrazia sa
+v nej ako každá iná platba. Použite účet, ktorý držíte len na tieto predaje:
+všetko, čo príde na jeho adresu potom, ako ju dostala objednávka, sa počíta
+k tej objednávke. Peňaženky sa pozerajú asi 20 nepoužitých adries
+dopredu; ak za sebou ostane nezaplatených viac ako 20 objednávok, zvýšte v
+peňaženke limit medzery (gap limit), aby ste videli platby po nich.
+
+Poplatok platformy sa z platby v bitcoinoch nestrháva. Celá suma príde
+predajcovi, panel ukáže, koľko poplatok z týchto predajov robí, a trh ho
+predajcovi účtuje zvlášť. Predajca s kľúčom Bitcoinu a bez adresy USDC môže
+ponúkať aj tak; kupujúci potom platia len v bitcoinoch.
+
+### Platba v bitcoinoch pre kupujúceho {#paying-in-bitcoin}
+
+Pri objednávke zvoľte pod „Zaplatiť cez“ Bitcoin. Panel ukáže sumu v BTC,
+adresu, QR kód a odkaz, ktorý otvorí peňaženku v počítači. Zaplaťte z
+ľubovoľnej peňaženky; nič netreba hlásiť späť. Uzol edgu vidí, že platba
+prišla, a panel ju sleduje od zachytenia po potvrdenie.
+
+Suma v BTC je ponuka z cenových zdrojov, ktoré sa medzi sebou zhodujú, platná
+štvrť hodiny. Objednávku do 50 $ započíta jedno potvrdenie, do 500 $ dve, do
+5 000 $ tri a nad to šesť. Pri nedoplatku panel povie, koľko ešte chýba, a
+čo prevýši sumu, ostáva predajcovi. Platba poslaná po uplynutí ponuky sa
+porovná s cenou v tej chvíli: do 1 % sa objednávka dokončí, inak panel
+požiada o rozdiel. Objednávka potom ako sieť uvádza Bitcoin a odkazuje na
+transakciu na mempool.space.
+
 ## Čo nie je pokryté
 
 - **Refundácie a spory.** Riešte ich v Stripe dashboarde pomocou

@@ -199,6 +199,17 @@ pub enum Op {
         /// `evm` or `solana`; `evm` when absent.
         family: Option<String>,
     },
+    /// The watch-only key this box is paid to in a coin other than USDC:
+    /// an extended public key or a ranged descriptor. Never a private key.
+    CoinKey {
+        coin: String,
+        key: String,
+    },
+    /// An address and amount to pay `order_id` in `coin`, or what reached it.
+    CoinPay {
+        order_id: String,
+        coin: String,
+    },
     /// Tell the edge a USDC transaction on `network` paid `order_id`.
     Confirm {
         order_id: String,
@@ -349,6 +360,20 @@ pub(crate) fn valid_domain(d: &str) -> bool {
         && d.contains('.')
         && d.bytes()
             .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-' || b == b'.')
+}
+
+/// Coins other than USDC the market may take for orders.
+const COINS: &[&str] = &["btc"];
+
+/// A watch-only key as a wallet exports it: an extended public key, or an
+/// output descriptor. Printable, no spaces, bounded; the edge's node checks
+/// the rest. Anything naming a private key is refused here already, so one
+/// pasted by mistake never leaves the box.
+fn coin_key(key: &str) -> bool {
+    !key.is_empty()
+        && key.len() <= 1024
+        && key.chars().all(|c| c.is_ascii_graphic())
+        && !key.contains("prv")
 }
 
 fn valid_id(id: &str) -> bool {
@@ -544,6 +569,24 @@ impl Op {
                 }
                 Some(_) => Err("family is evm or solana"),
             },
+            Op::CoinKey { coin, key } => {
+                if !COINS.contains(&coin.as_str()) {
+                    Err("coin is not one the market takes")
+                } else if !coin_key(key) {
+                    Err("key is not an extended public key or a descriptor")
+                } else {
+                    Ok(())
+                }
+            }
+            Op::CoinPay { order_id, coin } => {
+                if !valid_id(order_id) {
+                    Err("order_id is not valid")
+                } else if !COINS.contains(&coin.as_str()) {
+                    Err("coin is not one the market takes")
+                } else {
+                    Ok(())
+                }
+            }
             Op::Confirm {
                 order_id,
                 tx,
@@ -599,6 +642,8 @@ impl Op {
             Op::Order { .. } => ("POST", "/market/orders"),
             Op::Payout { .. } => ("POST", "/market/payout"),
             Op::Confirm { .. } => ("POST", "/market/confirm"),
+            Op::CoinKey { .. } => ("POST", "/market/coins/key"),
+            Op::CoinPay { .. } => ("POST", "/market/coins/pay"),
             Op::Rpc { .. } => ("POST", "/market/rpc"),
             Op::Domains => ("POST", "/domains/list"),
             Op::DomainAdd { .. } => ("POST", "/domains/add"),
@@ -698,6 +743,8 @@ impl Op {
                 }
                 doc
             }
+            Op::CoinKey { coin, key } => json!({ "coin": coin, "key": key }),
+            Op::CoinPay { order_id, coin } => json!({ "order_id": order_id, "coin": coin }),
             Op::Confirm {
                 order_id,
                 tx,
@@ -1137,6 +1184,42 @@ mod tests {
             ("POST", "/market/listings/close")
         );
         assert_eq!(Op::Deregister.route(), ("POST", "/deregister"));
+        let pay = Op::CoinPay {
+            order_id: "ord_1".to_string(),
+            coin: "btc".to_string(),
+        };
+        assert_eq!(pay.route(), ("POST", "/market/coins/pay"));
+    }
+
+    #[test]
+    fn coin_keys_are_public_keys_only() {
+        let key = |coin: &str, key: &str| Op::CoinKey {
+            coin: coin.to_string(),
+            key: key.to_string(),
+        };
+        let zpub = "zpub6rFR7y4Q2AijBEqTUquhVz398htDFrtymD9xYYfG1m4wAcvPhXNfE3EfH1r1ADqtfSdVCToUG868RvUUkgDKf31mGDtKsAYz2oz2AGutZYs";
+        assert!(key("btc", zpub).validate().is_ok());
+        assert!(key(
+            "btc",
+            "wpkh([73c5da0a/84h/1h/0h]tpubD6NzVbkrYhZ4X/0/*)#abcdefgh"
+        )
+        .validate()
+        .is_ok());
+        assert!(key("doge", zpub).validate().is_err());
+        assert!(key(
+            "btc",
+            "xprvNotARealKeyOnlyTheShapeOfOneNotARealKeyOnlyTheShapeOfOneNotARealKeyOnlyTheShapeOfOneNotARealKeyOnlyTheShapeOfOne"
+        )
+        .validate()
+        .is_err());
+        assert!(key("btc", "wpkh(a b)").validate().is_err());
+        assert!(key("btc", "").validate().is_err());
+        let pay = |order: &str, coin: &str| Op::CoinPay {
+            order_id: order.to_string(),
+            coin: coin.to_string(),
+        };
+        assert!(pay("ord_1", "btc").validate().is_ok());
+        assert!(pay("../x", "btc").validate().is_err());
     }
 
     #[test]

@@ -455,7 +455,7 @@ pub struct Received {
     pub first_seen: u64,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "state", rename_all = "snake_case")]
 pub enum Settlement {
     /// Nothing has reached the address.

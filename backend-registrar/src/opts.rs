@@ -866,7 +866,50 @@ fn parse_market(args: &[String]) -> Result<Option<Box<MarketOpts>>> {
         hardware_catalogue: hardware_catalogue(args, "--market-hardware-catalogue", currency)?,
         vms: parse_vms(args)?,
         usdc: parse_usdc(args, currency)?,
+        btc: parse_btc(args, currency)?,
     })))
+}
+
+/// Bitcoin orders, through the edge's own node:
+///
+/// ```text
+/// --market-btc-rpc http://127.0.0.1:8332 --market-btc-cookie-file /var/lib/bitcoind-losos/.cookie
+/// ```
+///
+/// The cookie file is read on every call, since the node writes a new one
+/// each time it starts. `--market-btc-wallet` names the watch-only wallet
+/// the order addresses go into. Coin orders are quoted in US dollars and
+/// paid from the same checkout as USDC, so both are required.
+fn parse_btc(args: &[String], currency: &str) -> Result<Option<crate::bitcoin::BtcOpts>> {
+    let Some(rpc) = arg(args, "--market-btc-rpc") else {
+        return Ok(None);
+    };
+    if !crate::stablecoin::rpc_url_ok(rpc) {
+        return Err(miette!(
+            "bad --market-btc-rpc; expected https, or http to 127.0.0.1, with no credentials in it"
+        ));
+    }
+    let cookie_file = req(args, "--market-btc-cookie-file")?;
+    let wallet = arg(args, "--market-btc-wallet").unwrap_or(crate::bitcoin::DEFAULT_WALLET);
+    if wallet.is_empty()
+        || wallet.len() > 64
+        || !wallet
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        return Err(miette!("bad --market-btc-wallet {wallet:?}"));
+    }
+    if currency != "usd" {
+        return Err(miette!("--market-btc-rpc needs --market-currency usd"));
+    }
+    if args_all(args, "--market-usdc").is_empty() {
+        return Err(miette!("--market-btc-rpc needs --market-usdc"));
+    }
+    Ok(Some(crate::bitcoin::BtcOpts {
+        rpc: rpc.to_string(),
+        cookie_file: cookie_file.to_string(),
+        wallet: wallet.to_string(),
+    }))
 }
 
 /// USDC settlement: one `--market-usdc` per network, each a comma list of

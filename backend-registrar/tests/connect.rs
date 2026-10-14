@@ -40,6 +40,7 @@ fn opts(state: &Path) -> MarketOpts {
         hardware_catalogue: None,
         vms: None,
         usdc: None,
+        btc: None,
     }
 }
 

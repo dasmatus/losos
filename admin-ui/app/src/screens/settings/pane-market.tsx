@@ -40,6 +40,7 @@ import { useEdge } from "./use-edge";
 import type { SettingsForm } from "./use-settings-form";
 import { explorerTx, listNames } from "@/wallet/chains";
 import { formatUsdc, rememberInvoice, UsdcWallet } from "./usdc-wallet";
+import { COIN_NAMES } from "./coin-pay";
 
 /* Sharing this box's disk, and buying and selling what the mesh shares.
  *
@@ -227,7 +228,15 @@ export function MarketPane({ form }: { form: SettingsForm }) {
                   account.usdc.chains.map((c) => c.name),
                   t("panes.market.usdc.or"),
                 ),
-              })
+              }) +
+              ((account.coins ?? []).length > 0
+                ? ` ${t("panes.market.coins.also", {
+                    coins: listNames(
+                      (account.coins ?? []).map((c) => COIN_NAMES[c]),
+                      t("panes.market.usdc.or"),
+                    ),
+                  })}`
+                : "")
             : t("panes.market.payCaption")}
         </GroupCaption>
       </PaneSection>
@@ -285,6 +294,23 @@ function SharingSection({ form }: { form: SettingsForm }) {
 function PaidTx({ order, usdc }: { order: MarketOrder; usdc: UsdcPublic | null }) {
   const t = useT();
   if (!order.tx || usdc === null) return null;
+  // A Bitcoin order names the chain the edge's node follows.
+  if (order.network?.startsWith("bitcoin")) {
+    const href = explorerTx(order.network, order.tx);
+    return (
+      <p className="mt-0.5 text-[12px] text-faint">
+        {t("panes.market.paidOn", { network: "Bitcoin" })}
+        {href !== null && (
+          <>
+            {" · "}
+            <a className="underline underline-offset-2 hover:text-ink" href={href} target="_blank" rel="noopener noreferrer">
+              {t("panes.market.viewTx")}
+            </a>
+          </>
+        )}
+      </p>
+    );
+  }
   const chain =
     usdc.chains.find((c) => c.network === order.network) ??
     (order.network ? undefined : usdc.chains.find((c) => c.family === "evm"));
@@ -499,6 +525,11 @@ function SellSection({ market, disabled }: { market: MarketData; disabled: boole
             usdc={account.usdc}
             payout={account.payout}
             payoutSolana={account.payout_solana}
+            coins={account.coins ?? []}
+            coinKeys={account.coin_keys ?? {}}
+            coinFeesOwed={
+              account.coin_fees_owed ? formatMoney(account.coin_fees_owed, account.currency) : null
+            }
             disabled={disabled}
             onPaid={market.refresh}
           />

@@ -12,6 +12,7 @@ import {
   type StablecoinInvoice,
   type UsdcChain,
   type UsdcPublic,
+  type Coin,
 } from "@/lib/api";
 import { useT } from "@/lib/i18n-react";
 import {
@@ -45,6 +46,8 @@ import { isSolanaAddress, signMessage, solanaKeyFromPhrase } from "@/wallet/sola
 import { cheapest, estimateFee, formatFeeUsd, lowFeeFields, type FeeEstimate } from "@/wallet/fees";
 import { sendUsdc, solanaInjected, waitConfirmed, type SolanaInjected, type SolanaSigner } from "@/wallet/solana-pay";
 import { Group, GroupCaption, GroupTitle, Row, RowText } from "./rows";
+import { COIN_NAMES, CoinKeyRow, CoinPayPanel } from "./coin-pay";
+import { formatMoney } from "./market";
 
 const APPROVE = [
   {
@@ -139,12 +142,20 @@ export function UsdcWallet({
   usdc,
   payout,
   payoutSolana,
+  coins = [],
+  coinKeys = {},
+  coinFeesOwed = null,
   disabled,
   onPaid,
 }: {
   usdc: UsdcPublic;
   payout?: string | null;
   payoutSolana?: string | null;
+  /** Coins other than USDC the edge takes, and this box's keys for them. */
+  coins?: Coin[];
+  coinKeys?: Partial<Record<Coin, string>>;
+  /** Platform fees owed on this box's coin sales, formatted; null for none. */
+  coinFeesOwed?: string | null;
   disabled: boolean;
   /** Reload the market once the edge has counted a payment, so the order
    *  reads paid and the refresh announces it. */
@@ -167,6 +178,9 @@ export function UsdcWallet({
   const [wroteItDown, setWroteItDown] = React.useState(false);
   const [invoice, setInvoice] = React.useState<PendingInvoice | null>(readPending);
   const [payOn, setPayOn] = React.useState<string>("");
+  // USDC, or a coin the seller takes. A seller with no USDC address leaves
+  // only the coins.
+  const [payWith, setPayWith] = React.useState<"usdc" | Coin>("usdc");
   const [busy, setBusy] = React.useState(false);
   const [balances, setBalances] = React.useState<Balance[] | null>(null);
   const [names, setNames] = React.useState<Record<string, string>>({});
@@ -260,10 +274,22 @@ export function UsdcWallet({
     if (pick && pick !== payOn) setPayOn(pick);
   }, [invoice, payable, payOn, balances, payFees]);
 
-  // A new invoice starts on the cheapest network again.
+  // A new invoice starts on the cheapest network again, and on USDC unless
+  // the seller takes only coins.
   React.useEffect(() => {
     payPicked.current = false;
+    const onlyCoins = invoice !== null && invoice.chains.length === 0 ? invoice.coins?.[0] : undefined;
+    setPayWith(onlyCoins ?? "usdc");
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- a new order, not each poll of the same one
   }, [invoice?.order_id]);
+
+  /** The edge counted a coin payment: the order is paid. */
+  const coinPaid = React.useCallback(() => {
+    sessionStorage.removeItem(PENDING_INVOICE);
+    setInvoice(null);
+    if (onPaid) onPaid();
+    else toast.success(t("panes.market.usdc.paid"));
+  }, [onPaid, t]);
 
   // The same for a plain send: the fee of a USDC transfer on each network,
   // and the cheapest network holding the amount is offered first.
@@ -758,7 +784,20 @@ export function UsdcWallet({
       <GroupTitle>{t("panes.market.usdc.title")}</GroupTitle>
       <Group>
         <Row last={false}>
-          <RowText title={t("panes.market.usdc.howTitle")} detail={t("panes.market.usdc.how", { chain: allNames })} />
+          <RowText
+            title={t("panes.market.usdc.howTitle")}
+            detail={
+              t("panes.market.usdc.how", { chain: allNames }) +
+              (coins.length > 0
+                ? ` ${t("panes.market.coins.also", {
+                    coins: listNames(
+                      coins.map((c) => COIN_NAMES[c]),
+                      t("panes.market.usdc.or"),
+                    ),
+                  })}`
+                : "")
+            }
+          />
         </Row>
         {phrase !== null && (
           <Row>
@@ -888,7 +927,7 @@ export function UsdcWallet({
             </Button>
           </Row>
         )}
-        <Row last={invoice === null && !haveWallet && !otherOpen}>
+        <Row last={invoice === null && !haveWallet && !otherOpen && coins.length === 0}>
           <RowText
             title={t("panes.market.usdc.receiveTitle")}
             detail={
@@ -913,7 +952,7 @@ export function UsdcWallet({
           </div>
         </Row>
         {otherOpen && usdc.chain_id !== null && (
-          <Row last={invoice === null && !haveWallet}>
+          <Row last={invoice === null && !haveWallet && coins.length === 0}>
             <div className="grid w-full gap-2">
               <Input
                 aria-label={t("panes.market.usdc.otherAddress")}
@@ -949,6 +988,17 @@ export function UsdcWallet({
             </div>
           </Row>
         )}
+        {coins.map((c, i) => (
+          <CoinKeyRow
+            key={c}
+            coin={c}
+            saved={coinKeys[c]}
+            feesOwed={coinFeesOwed}
+            disabled={disabled}
+            last={invoice === null && !haveWallet && i === coins.length - 1}
+            onSaved={() => onPaid?.()}
+          />
+        ))}
         {haveWallet && (
           <Row last={invoice === null}>
             <div className="grid w-full gap-2">
@@ -1025,13 +1075,36 @@ export function UsdcWallet({
                 detail={
                   invoice.tx
                     ? t("panes.market.usdc.counting")
-                    : t("panes.market.usdc.payDetail", {
-                        gross: formatUsdc(invoice.gross),
-                        fee: formatUsdc(invoice.fee),
-                        chain: invoiceChain?.name ?? allNames,
-                      })
+                    : payWith !== "usdc"
+                      ? t("panes.market.coins.payDetail", {
+                          gross: formatMoney(Number(BigInt(invoice.gross) / 10_000n), "usd"),
+                          coin: COIN_NAMES[payWith],
+                        })
+                      : t("panes.market.usdc.payDetail", {
+                          gross: formatUsdc(invoice.gross),
+                          fee: formatUsdc(invoice.fee),
+                          chain: invoiceChain?.name ?? allNames,
+                        })
                 }
               />
+              {!invoice.tx && (invoice.coins?.length ?? 0) > 0 && (
+                <label className="flex items-center gap-2 text-[13px] text-ink">
+                  {t("panes.market.coins.payWith")}
+                  <Select
+                    label={t("panes.market.coins.payWith")}
+                    value={payWith}
+                    onChange={(v) => setPayWith(v as "usdc" | Coin)}
+                    disabled={busy}
+                    options={[
+                      ...(invoice.chains.length > 0 ? [{ value: "usdc", label: "USDC" }] : []),
+                      ...(invoice.coins ?? []).map((c) => ({ value: c, label: COIN_NAMES[c] })),
+                    ]}
+                  />
+                </label>
+              )}
+              {!invoice.tx && payWith !== "usdc" && (
+                <CoinPayPanel orderId={invoice.order_id} coin={payWith} onPaid={coinPaid} />
+              )}
               {invoice.tx && invoiceChain && explorerTx(invoiceChain.network, invoice.tx) !== null && (
                 <a
                   className="text-[13px] text-muted underline underline-offset-2 hover:text-ink"
@@ -1042,7 +1115,7 @@ export function UsdcWallet({
                   {t("panes.market.viewTx")}
                 </a>
               )}
-              {!invoice.tx && payable.length > 1 && (
+              {!invoice.tx && payWith === "usdc" && payable.length > 1 && (
                 <label className="flex items-center gap-2 text-[13px] text-ink">
                   {t("panes.market.usdc.payOn")}
                   <Select
@@ -1058,13 +1131,15 @@ export function UsdcWallet({
                 </label>
               )}
             </div>
-            <Button
-              size="sm"
-              disabled={disabled || busy || payable.length === 0 || (needsPassword && !invoice.tx)}
-              onClick={() => void payInvoice()}
-            >
-              {invoice.tx ? t("panes.market.usdc.checkAgain") : t("panes.market.usdc.pay")}
-            </Button>
+            {(payWith === "usdc" || invoice.tx) && (
+              <Button
+                size="sm"
+                disabled={disabled || busy || payable.length === 0 || (needsPassword && !invoice.tx)}
+                onClick={() => void payInvoice()}
+              >
+                {invoice.tx ? t("panes.market.usdc.checkAgain") : t("panes.market.usdc.pay")}
+              </Button>
+            )}
           </Row>
         )}
       </Group>

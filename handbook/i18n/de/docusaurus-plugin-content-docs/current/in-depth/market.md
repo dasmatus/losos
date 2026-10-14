@@ -435,6 +435,54 @@ einer Wallet einfügen, die du anderswo hältst, mit dieser Wallet die Nachricht
 signieren, die der Bereich zeigt, und die Signatur einfügen. Der Edge prüft sie
 genauso.
 
+## Mit Bitcoin zahlen {#paying-with-bitcoin}
+
+Ein Edge, der in USDC abrechnet, kann für Speicher-, Rechen- und
+Maschinenbestellungen auch Bitcoin annehmen. Er betreibt dafür einen eigenen
+geprunten Bitcoin-Knoten: auf Mainnet für einen Live-Edge, auf testnet4,
+Signet oder Regtest für einen Test-Edge. Der Registrar lehnt jede andere
+Paarung ab, sodass ein Live-Edge nie Testmünzen zählt. Der Knoten hält eine
+reine Beobachtungs-Wallet und keinen privaten Schlüssel.
+
+### Für Bitcoin verkaufen {#selling-for-bitcoin}
+
+Im Markt den erweiterten öffentlichen Schlüssel deiner Wallet in die
+Bitcoin-Zeile einfügen: den zpub, xpub oder ypub, den Sparrow, Electrum oder
+BlueWallet exportieren (auf einem Test-Edge einen vpub, tpub oder upub),
+oder einen Output-Deskriptor mit Bereich. Der Schlüssel kann Adressen
+erzeugen, aber nichts ausgeben, und einen privaten Schlüssel lehnt der Edge
+ab. Jede Bestellung bekommt dann aus diesem Schlüssel eine Empfangsadresse,
+die keine andere Bestellung benutzt hat, sodass die Münzen direkt in deine
+Wallet gehen und dort wie jede andere Zahlung erscheinen. Nimm ein Konto nur
+für diese Verkäufe: alles, was an eine Adresse geht, nachdem eine Bestellung
+sie bekommen hat, zählt für diese Bestellung. Wallets schauen
+etwa 20 unbenutzte Adressen voraus; bleiben mehr als 20 Bestellungen
+hintereinander unbezahlt, das Gap-Limit in der Wallet erhöhen, um die
+Zahlungen danach zu sehen.
+
+Die Plattformgebühr wird nicht von einer Bitcoin-Zahlung abgezogen. Der
+ganze Betrag geht an den Verkäufer, der Bereich zeigt, was die Gebühr auf
+diese Verkäufe ausmacht, und der Markt stellt sie dem Verkäufer gesondert in
+Rechnung. Ein Verkäufer mit Bitcoin-Schlüssel und ohne USDC-Adresse kann
+trotzdem anbieten; Käufer zahlen dann nur in Bitcoin.
+
+### In Bitcoin bezahlen {#paying-in-bitcoin}
+
+Bei der Bestellung unter „Zahlen mit“ Bitcoin wählen. Der Bereich zeigt den
+Betrag in BTC, die Adresse, einen QR-Code und einen Link, der eine Wallet
+auf dem Computer öffnet. Mit einer beliebigen Wallet zahlen; zurückmelden
+muss man nichts. Der Knoten des Edge sieht die Zahlung ankommen, und der
+Bereich verfolgt sie von gesehen bis bestätigt.
+
+Der BTC-Betrag ist ein Angebot aus Preisquellen, die übereinstimmen, gültig
+für eine Viertelstunde. Eine Bestätigung zählt eine Bestellung bis 50 $,
+zwei bis 500 $, drei bis 5.000 $ und sechs darüber. Eine zu kleine Zahlung
+sagt, wie viel noch fehlt, und was über den Betrag hinausgeht, bleibt beim
+Verkäufer. Eine Zahlung nach Ablauf des Angebots wird am Preis in diesem
+Moment gemessen: innerhalb von 1 % wird die Bestellung abgeschlossen, sonst
+fragt der Bereich nach der Differenz. Die Bestellung nennt dann Bitcoin als
+Netz und verlinkt die Transaktion auf mempool.space.
+
 ## Nicht abgedeckt
 
 - **Erstattungen und Streitfälle.** Bearbeite diese im Stripe-Dashboard

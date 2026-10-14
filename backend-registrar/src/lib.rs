@@ -48,6 +48,7 @@
 
 pub mod action;
 pub mod announce;
+pub mod bitcoin;
 pub mod builder;
 pub mod coins;
 pub mod config;

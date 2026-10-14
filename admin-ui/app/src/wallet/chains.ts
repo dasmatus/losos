@@ -60,6 +60,12 @@ const EXPLORER_TX: Record<string, (tx: string) => string> = {
   "optimism-sepolia": (tx) => `https://sepolia-optimism.etherscan.io/tx/${tx}`,
   solana: (tx) => `https://explorer.solana.com/tx/${tx}`,
   "solana-devnet": (tx) => `https://explorer.solana.com/tx/${tx}?cluster=devnet`,
+  // Bitcoin orders, named after the chain the edge's node follows. Regtest
+  // has no public explorer.
+  bitcoin: (tx) => `https://mempool.space/tx/${tx}`,
+  "bitcoin-testnet4": (tx) => `https://mempool.space/testnet4/tx/${tx}`,
+  "bitcoin-signet": (tx) => `https://mempool.space/signet/tx/${tx}`,
+  "bitcoin-test": (tx) => `https://mempool.space/testnet/tx/${tx}`,
 };
 
 /** The explorer page of `tx` on `network`, or null for a network without
@@ -67,7 +73,11 @@ const EXPLORER_TX: Record<string, (tx: string) => string> = {
 export function explorerTx(network: string, tx: string): string | null {
   const page = EXPLORER_TX[network];
   if (!page) return null;
-  const ok = network.startsWith("solana") ? /^[1-9A-HJ-NP-Za-km-z]{64,88}$/.test(tx) : /^0x[0-9a-fA-F]{64}$/.test(tx);
+  const ok = network.startsWith("solana")
+    ? /^[1-9A-HJ-NP-Za-km-z]{64,88}$/.test(tx)
+    : network.startsWith("bitcoin")
+      ? /^[0-9a-f]{64}$/.test(tx)
+      : /^0x[0-9a-fA-F]{64}$/.test(tx);
   return ok ? page(tx) : null;
 }
 

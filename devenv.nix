@@ -281,7 +281,13 @@ in
   '';
   scripts.lint-wasm.description = "clippy -D warnings on the Lab canvas's WebGL2 and WebGPU builds.";
 
-  scripts.test-rust.exec = forEachCrate (c: "cargo test --manifest-path ${c}/Cargo.toml");
+  # The registrar's Bitcoin orders run against a real regtest node
+  # (backend-registrar/tests/bitcoin.rs); CI's test job builds the same
+  # package from the flake's nixpkgs.
+  scripts.test-rust.exec = ''
+    export LOSOS_TEST_BITCOIND=${pkgs.bitcoind}/bin/bitcoind
+    ${forEachCrate (c: "cargo test --manifest-path ${c}/Cargo.toml")}
+  '';
   scripts.test-rust.description = "Unit tests for every Rust crate.";
 
   scripts.check-flake.exec = "command nix flake check --no-build -L";

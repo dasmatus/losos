@@ -647,6 +647,7 @@ impl Edge {
                 hardware_catalogue: Some(dir.path_str("hardware.json")),
                 vms: None,
                 usdc: None,
+                btc: None,
             })
         });
 
