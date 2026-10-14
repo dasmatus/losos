@@ -1,0 +1,14 @@
+#!/usr/bin/env node
+// A stand-in for the GitHub CLI: `gh auth status` succeeds unless
+// FAKE_GH_SIGNED_OUT=1, and `gh secret set` / `gh variable set` record their
+// argv and what arrived on stdin to FAKE_GH_LOG, one JSON line per call.
+import fs from "node:fs";
+const argv = process.argv.slice(2);
+if (argv[0] === "auth" && argv[1] === "status") process.exit(process.env.FAKE_GH_SIGNED_OUT === "1" ? 1 : 0);
+if ((argv[0] === "secret" || argv[0] === "variable") && argv[1] === "set") {
+  const stdin = fs.readFileSync(0, "utf8");
+  fs.appendFileSync(process.env.FAKE_GH_LOG, JSON.stringify({ argv, stdin }) + "\n");
+  process.exit(0);
+}
+process.stderr.write(`gh: unknown command ${argv.join(" ")}\n`);
+process.exit(1);

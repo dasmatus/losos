@@ -220,6 +220,9 @@ pub struct ServeOpts {
     /// `None` unless `--relay-routes` was given, which needs `--dns-zone`:
     /// only an edge that routes domains keeps the table.
     pub routes: Option<RoutesOpts>,
+    /// The terminal (`crate::operator`). `None` unless `--access-dir` was
+    /// given, and every `/operator/*` route answers 404.
+    pub operator: Option<crate::operator::OperatorOpts>,
 }
 
 /// `identity` options: the offline key ceremony (`crate::identity`).
@@ -358,12 +361,38 @@ pub enum ProvisionOpts {
         root_key: String,
         spec: EdgeSpec,
     },
+    /// `provision token create|list|revoke --edge U ...`: the edge's
+    /// terminal tokens (`docs/edge-terminal.md`), made and revoked with the
+    /// GitHub token of the sign-in.
+    Token {
+        github: ProvisionGithub,
+        edge: String,
+        verb: TokenVerb,
+    },
     /// `provision verify --url U (--root-key FILE | --root-public HEX)`: the
     /// four checks alone. No sign-in: anyone may ask an edge who it is.
     Verify {
         url: String,
         root_key: Option<String>,
         root_public: Option<String>,
+    },
+}
+
+/// What `provision token` does on the edge.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TokenVerb {
+    /// `create --name N --key FINGERPRINT [--scope read|full]
+    /// [--expires-in-days D | --never-expires]`. Ninety days unless told.
+    Create {
+        name: String,
+        fingerprint: String,
+        scope: String,
+        expires_in_days: Option<u32>,
+    },
+    List,
+    /// `revoke ID`.
+    Revoke {
+        id: String,
     },
 }
 
@@ -467,6 +496,14 @@ pub fn parse(args: Vec<String>) -> Result<Mode> {
                 domains: parse_domains(&rest)?,
                 routes: parse_routes(&rest)?,
                 enrol_dir: arg(&rest, "--enrol-dir").map(str::to_string),
+                operator: arg(&rest, "--access-dir").map(|dir| crate::operator::OperatorOpts {
+                    access_dir: dir.to_string(),
+                    keys_file: arg(&rest, "--access-keys-file")
+                        .unwrap_or("/etc/losos/edge-access-keys.asc")
+                        .to_string(),
+                    seal_script: arg(&rest, "--seal-credential").map(str::to_string),
+                    systemd_run: arg(&rest, "--systemd-run").map(str::to_string),
+                }),
                 uplink: match arg(&rest, "--uplink-file") {
                     None => None,
                     Some(file) => Some(crate::relay::UplinkOpts {
@@ -631,6 +668,64 @@ pub fn parse(args: Vec<String>) -> Result<Mode> {
     }
 }
 
+/// `provision token <verb>`: the flags after `token`, verb first.
+fn parse_token_verb(rest: &[String]) -> Result<TokenVerb> {
+    let usage = || {
+        miette!(
+            "usage: losos-registrar provision token create|list|revoke --edge URL ...\n  \
+             create --name N --key FINGERPRINT [--scope read|full] [--expires-in-days D | --never-expires]\n  \
+             revoke ID"
+        )
+    };
+    let verb = rest.first().map(String::as_str).ok_or_else(usage)?;
+    let rest = &rest[1..];
+    match verb {
+        "list" => Ok(TokenVerb::List),
+        "create" => {
+            let scope = arg(rest, "--scope").unwrap_or("full");
+            if !matches!(scope, "read" | "full") {
+                return Err(miette!("bad --scope {scope:?}; expected read or full"));
+            }
+            let never = rest.iter().any(|a| a == "--never-expires");
+            let days = arg(rest, "--expires-in-days");
+            let expires_in_days = match (never, days) {
+                (true, Some(_)) => {
+                    return Err(miette!(
+                        "--never-expires and --expires-in-days exclude each other"
+                    ))
+                }
+                (true, None) => None,
+                (false, None) => Some(90),
+                (false, Some(raw)) => Some(
+                    raw.parse()
+                        .ok()
+                        .filter(|d| (1..=3660).contains(d))
+                        .ok_or_else(|| {
+                            miette!("bad --expires-in-days {raw:?}; expected 1..=3660")
+                        })?,
+                ),
+            };
+            Ok(TokenVerb::Create {
+                name: req(rest, "--name")?.to_string(),
+                fingerprint: req(rest, "--key")?.to_string(),
+                scope: scope.to_string(),
+                expires_in_days,
+            })
+        }
+        "revoke" => {
+            // The one positional: whatever is not a flag or a flag's value.
+            let id = rest
+                .iter()
+                .enumerate()
+                .find(|(i, a)| !a.starts_with("--") && (*i == 0 || !rest[i - 1].starts_with("--")))
+                .map(|(_, a)| a.clone())
+                .ok_or_else(usage)?;
+            Ok(TokenVerb::Revoke { id })
+        }
+        _ => Err(usage()),
+    }
+}
+
 fn valid_currency(c: &str) -> bool {
     SUPPORTED_CURRENCIES.contains(&c)
 }
@@ -702,9 +797,14 @@ fn parse_provision(args: &[String]) -> Result<Mode> {
                 root_public,
             }
         }
+        "token" => ProvisionOpts::Token {
+            github,
+            edge: req(&rest, "--edge")?.trim_end_matches('/').to_string(),
+            verb: parse_token_verb(&rest)?,
+        },
         _ => {
             return Err(miette!(
-                "usage: losos-registrar provision whoami|root-keygen|publish|edge|verify ..."
+                "usage: losos-registrar provision whoami|root-keygen|publish|edge|token|verify ..."
             ))
         }
     };

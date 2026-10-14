@@ -537,6 +537,10 @@ pub(crate) mod tests {
     fn an_undeclared_key_is_refused_by_name() {
         let err = check_body(&sample(), "{ losos.ghost = true; }").unwrap_err();
         assert_eq!(err.0, "losos.ghost is not an option this box declares");
+        // A second assignment on the same line is gated like the first.
+        let one_line = r#"{ ... }: { losos.hostName = "mattbox"; losos.ghost = true; }"#;
+        let err = check_body(&sample(), one_line).unwrap_err();
+        assert_eq!(err.0, "losos.ghost is not an option this box declares");
     }
 
     #[test]

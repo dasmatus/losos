@@ -670,3 +670,109 @@ fn builder_setup_needs_only_the_key_file() {
     assert_eq!(mode_name(&m), "builder-setup");
     assert!(parse(vec!["builder-setup".to_string()]).is_err());
 }
+
+#[test]
+fn the_terminal_is_off_unless_an_access_dir_is_given() {
+    assert!(serve_opts(&[]).operator.is_none());
+    let opts = serve_opts(&[
+        "--access-dir",
+        "/var/lib/losos-registrar/access",
+        "--seal-credential",
+        "/nix/store/x/bin/losos-seal-credential",
+        "--systemd-run",
+        "/nix/store/y/bin/systemd-run",
+    ]);
+    let op = opts.operator.expect("operator options");
+    assert_eq!(op.access_dir, "/var/lib/losos-registrar/access");
+    assert_eq!(op.keys_file, "/etc/losos/edge-access-keys.asc");
+    assert_eq!(
+        op.seal_script.as_deref(),
+        Some("/nix/store/x/bin/losos-seal-credential")
+    );
+    assert_eq!(
+        op.systemd_run.as_deref(),
+        Some("/nix/store/y/bin/systemd-run")
+    );
+}
+
+#[test]
+fn provision_token_verbs_parse() {
+    use losos_registrar::opts::{ProvisionOpts, TokenVerb};
+    let verb = |args: &[&str]| {
+        let all: Vec<String> = ["provision", "token"]
+            .iter()
+            .chain(args)
+            .map(|s| s.to_string())
+            .collect();
+        match parse(all) {
+            Ok(Mode::Provision(ProvisionOpts::Token { edge, verb, .. })) => Ok((edge, verb)),
+            Ok(_) => panic!("expected provision token"),
+            Err(e) => Err(format!("{e}")),
+        }
+    };
+    let (edge, create) = verb(&[
+        "create",
+        "--edge",
+        "https://register.example.org/",
+        "--name",
+        "laptop",
+        "--key",
+        "ABCD",
+    ])
+    .unwrap();
+    assert_eq!(edge, "https://register.example.org");
+    assert_eq!(
+        create,
+        TokenVerb::Create {
+            name: "laptop".into(),
+            fingerprint: "ABCD".into(),
+            scope: "full".into(),
+            expires_in_days: Some(90),
+        }
+    );
+    let (_, never) = verb(&[
+        "create",
+        "--edge",
+        "https://e",
+        "--name",
+        "ci",
+        "--key",
+        "AB",
+        "--scope",
+        "read",
+        "--never-expires",
+    ])
+    .unwrap();
+    assert!(matches!(
+        never,
+        TokenVerb::Create {
+            expires_in_days: None,
+            ..
+        }
+    ));
+    assert!(verb(&[
+        "create",
+        "--edge",
+        "https://e",
+        "--name",
+        "x",
+        "--key",
+        "AB",
+        "--scope",
+        "root"
+    ])
+    .is_err());
+    assert_eq!(
+        verb(&["list", "--edge", "https://e"]).unwrap().1,
+        TokenVerb::List
+    );
+    assert_eq!(
+        verb(&["revoke", "--edge", "https://e", "0a1b2c3d"])
+            .unwrap()
+            .1,
+        TokenVerb::Revoke {
+            id: "0a1b2c3d".into()
+        }
+    );
+    assert!(verb(&["revoke", "--edge", "https://e"]).is_err());
+}
