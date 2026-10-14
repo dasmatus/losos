@@ -39,6 +39,9 @@ desk. The people who build LosOS, run an edge or cut a release read the
 - Something is wrong and all you have is the local network:
   [When something goes wrong](./troubleshooting/index.md) is organised by what you see,
   and every page starts with the steps that need nothing but the LAN.
+- Managing the box from a terminal on another computer:
+  [The terminal client](./manual/terminal.md). Read it before you install,
+  because the key it needs goes on the install stick.
 - The box works but something outside it does not, such as the provider, the
   router or the edge: [Only the local network works](./troubleshooting/only-the-lan-works.md)
   says what keeps working, what waits, and that you redo nothing afterwards.

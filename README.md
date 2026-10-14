@@ -41,6 +41,23 @@ The disk key is sealed to the machine's TPM chip; on a machine without one it
 is stored unencrypted on the boot partition. See the
 [security model](docs/security-model.md).
 
+## Manage it from a terminal
+
+`losos` is a terminal client with the admin pages' panes, for a box you
+reach over the network. It needs no SSH: every call is signed by your GPG
+key and encrypted to the box. The box trusts only keys that were on the
+install stick, so put yours there before you install. On 64-bit x86 Linux:
+
+```sh
+curl -fsSL https://proxy.losos.dasmat.us/updates/main/x86_64/install.sh | sh
+losos key import --gpg you@example.com
+losos login http://<address on the box's screen>
+```
+
+The token `login` asks for comes from **Settings → Access tokens** in the
+admin pages. [The terminal client](https://losos.dasmat.us/manual/terminal/)
+walks through all of it, including how to build a stick with your key.
+
 ## Develop
 
 ```sh

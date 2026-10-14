@@ -15,27 +15,62 @@ answer.
 
 It runs on 64-bit x86 Linux.
 
-## Before you install the box: seed your key
+## Before you install the box: put your key on the stick
 
 The box only accepts requests signed by a GPG key it was given at install
 time. Nothing on a running box can add one later. If it could, anyone who
 got into the admin pages could add their own key and then make a token for
-it.
+it. So the terminal client needs a little planning: the stick you install
+from has to carry your key.
 
-Export the public half of your key:
+The stick from the release page carries no key. A box installed from it
+works in every other way, and its Access tokens pane says that no key was
+seeded and makes no tokens. The only way to give that box a key is to
+install it again from a stick that carries one, and installing wipes it.
+
+You need a GPG key with an encryption subkey, because the box encrypts its
+answers to it. `gpg --full-generate-key` makes one by default. A key the
+box could not answer stops the installer before it touches a disk. Export the
+public half into a new, empty folder:
 
 ```sh
+mkdir my-losos-stick && cd my-losos-stick
 gpg --armor --export you@example.com > owner.asc
 ```
 
-Then set it as `losos.access.gpgKeys` in the configuration you build the
-install stick from, and the installer copies it onto the box. When you run
-the installer by hand, `losos-ctl install --gpg-key owner.asc` does the
-same. The key needs an encryption subkey, because the box encrypts its
-answers to it. `gpg --full-generate-key` makes one by default.
+Next to it, save this as `flake.nix`:
 
-A box installed without a key can still use everything else. Its Access
-tokens pane says that no key was seeded and makes no tokens.
+```nix
+{
+  inputs.losos.url = "github:dasmatus/losos";
+  outputs = { losos, ... }:
+    let
+      key = builtins.readFile ./owner.asc;
+      stick = losos.nixosConfigurations.iso.extendModules {
+        modules = [ { losos.access.gpgKeys = [ key ]; } ];
+      };
+    in {
+      packages.x86_64-linux.default =
+        stick.config.system.build.isoImage;
+    };
+}
+```
+
+Then build the stick with [Nix](https://nixos.org/download/) on a 64-bit
+x86 Linux machine:
+
+```sh
+nix --extra-experimental-features 'nix-command flakes' build
+```
+
+The build compiles the LosOS programs, so the first run takes a while.
+The ISO lands in `result/iso/`. Write it to the stick and
+[install](../start/install.md) as usual. After the first run the Access
+tokens pane lists your key under **Seeded GPG keys**. Two keys work too:
+list both, as in `[ key (builtins.readFile ./other.asc) ]`.
+
+A stick you build yourself is not signed, so turn Secure Boot off in the
+firmware to boot it.
 
 ## Make a token
 
@@ -76,15 +111,27 @@ never writes them to a plain file.
 
 ```sh
 losos key import --gpg you@example.com
-losos login https://mattbox.local
+losos login http://192.168.1.23
 losos
 ```
 
-`key import` copies your secret key into the keychain. `login` asks the box
-for its key and shows the fingerprint in groups of four. Check that it
-matches the one on the Access tokens pane before you answer yes. Then
-paste the token, which `losos` does not echo. From then on `losos` remembers the box's key,
-and refuses to talk to it if the key ever changes.
+`key import --gpg` copies your secret key out of GnuPG into the keychain.
+If you keep the secret key in a file, `losos key import secret.asc` does
+the same from the file.
+
+`login` takes the box's address from its screen. Plain `http://` is fine
+here: the request and the answer are encrypted end to end whatever carries
+them. `https://<name>.local` works only when `losos` trusts the box's
+certificate, which it does not take from your browser. Point
+`NODE_EXTRA_CA_CERTS` at the certificate from
+[the first run](../start/first-run.md#step-1-trust-this-box) if you want
+it.
+
+`login` asks the box for its key and shows the fingerprint in groups of
+four. Check that it matches **This box's key** on the Access tokens pane
+before you answer yes. Then paste the token, which `losos` does not echo.
+From then on `losos` remembers the box's key, and refuses to talk to it if
+the key ever changes.
 
 `losos` on its own opens the full-screen view: the sidebar on the left, the
 pane on the right, the keys at the bottom. Arrows or `j` and `k` move,
