@@ -38,6 +38,7 @@ import {
 } from "./market";
 import { useEdge } from "./use-edge";
 import type { SettingsForm } from "./use-settings-form";
+import { listNames } from "@/wallet/chains";
 import { formatUsdc, rememberInvoice, UsdcWallet } from "./usdc-wallet";
 
 /* Sharing this box's disk, and buying and selling what the mesh shares.
@@ -221,7 +222,12 @@ export function MarketPane({ form }: { form: SettingsForm }) {
         </Group>
         <GroupCaption>
           {account.usdc
-            ? t("panes.market.usdc.payCaption", { chain: account.usdc.test ? "Base Sepolia" : "Base" })
+            ? t("panes.market.usdc.payCaption", {
+                chain: listNames(
+                  account.usdc.chains.map((c) => c.name),
+                  t("panes.market.usdc.or"),
+                ),
+              })
             : t("panes.market.payCaption")}
         </GroupCaption>
       </PaneSection>
@@ -337,7 +343,10 @@ function ShelfRow({
     if (reply?.stablecoin) {
       checkoutTab?.close();
       rememberInvoice(reply.stablecoin);
-      const chain = reply.stablecoin.chain_id === 8453 ? "Base" : "Base Sepolia";
+      const chain = listNames(
+        reply.stablecoin.chains.map((c) => c.name),
+        t("panes.market.usdc.or"),
+      );
       toast.status(
         t("panes.market.orderPlaced"),
         t("panes.market.usdc.payDetail", {
@@ -463,6 +472,7 @@ function SellSection({ market, disabled }: { market: MarketData; disabled: boole
           <UsdcWallet
             usdc={account.usdc}
             payout={account.payout}
+            payoutSolana={account.payout_solana}
             disabled={disabled}
             onPaid={market.refresh}
           />

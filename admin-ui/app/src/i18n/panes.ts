@@ -1858,9 +1858,9 @@ export default defineMessages({
     de: "In USDC zahlen und bezahlt werden",
   },
   "panes.market.usdc.how": {
-    en: "Orders on this edge are paid in USDC on {chain}. Create a wallet here, import the 12 or 24 words from MetaMask, Rabby, Rainbow or Trust Wallet, or connect the wallet already in this browser. Paying approves USDC and then sends it: the platform fee goes to the edge's treasury and the rest straight to the seller. The box never sees your phrase or your key.",
-    sk: "Objednávky na tomto edge sa platia v USDC na sieti {chain}. Vytvorte peňaženku tu, importujte 12 alebo 24 slov z MetaMask, Rabby, Rainbow alebo Trust Wallet, alebo pripojte peňaženku, ktorá už v tomto prehliadači je. Platba najprv schváli USDC a potom ich odošle: poplatok platformy ide do treasury edge a zvyšok priamo predajcovi. Zariadenie vašu frázu ani kľúč nikdy nevidí.",
-    de: "Bestellungen auf diesem Edge werden in USDC auf {chain} bezahlt. Lege hier eine Wallet an, importiere die 12 oder 24 Wörter aus MetaMask, Rabby, Rainbow oder Trust Wallet, oder verbinde die Wallet, die schon in diesem Browser steckt. Beim Bezahlen gibst du USDC frei und sendest sie dann: die Plattformgebühr geht an die Treasury des Edge, der Rest direkt an den Verkäufer. Die Box sieht weder deine Wörter noch deinen Schlüssel.",
+    en: "Orders on this edge are paid in USDC on {chain}; you pick the network when you pay. Create a wallet here, import the 12 or 24 words from MetaMask, Rabby, Rainbow, Trust Wallet or Phantom, or connect the wallet already in this browser. One phrase gives you an address on every network listed. The platform fee goes to the edge's treasury and the rest straight to the seller. The box never sees your phrase or your key.",
+    sk: "Objednávky na tomto edge sa platia v USDC na sieti {chain}; sieť si vyberiete pri platbe. Vytvorte peňaženku tu, importujte 12 alebo 24 slov z MetaMask, Rabby, Rainbow, Trust Wallet alebo Phantom, alebo pripojte peňaženku, ktorá už v tomto prehliadači je. Jedna fráza vám dá adresu na každej uvedenej sieti. Poplatok platformy ide do pokladnice edge a zvyšok priamo predajcovi. Zariadenie vašu frázu ani kľúč nikdy nevidí.",
+    de: "Bestellungen auf diesem Edge werden in USDC auf {chain} bezahlt; das Netzwerk wählst du beim Bezahlen. Lege hier eine Wallet an, importiere die 12 oder 24 Wörter aus MetaMask, Rabby, Rainbow, Trust Wallet oder Phantom, oder verbinde die Wallet, die schon in diesem Browser steckt. Eine Phrase gibt dir eine Adresse auf jedem genannten Netzwerk. Die Plattformgebühr geht an die Kasse des Edge, der Rest direkt an den Verkäufer. Die Box sieht weder deine Wörter noch deinen Schlüssel.",
   },
   "panes.market.usdc.writeDown": {
     en: "Write these words down. They are the wallet. This page cannot show them again.",
@@ -1898,9 +1898,9 @@ export default defineMessages({
     de: "Importieren",
   },
   "panes.market.usdc.importPlaceholder": {
-    en: "12 or 24 words from MetaMask, Rabby, Rainbow or Trust Wallet",
-    sk: "12 alebo 24 slov z MetaMask, Rabby, Rainbow alebo Trust Wallet",
-    de: "12 oder 24 Wörter aus MetaMask, Rabby, Rainbow oder Trust Wallet",
+    en: "12 or 24 words from MetaMask, Rabby, Rainbow, Trust Wallet or Phantom",
+    sk: "12 alebo 24 slov z MetaMask, Rabby, Rainbow, Trust Wallet alebo Phantom",
+    de: "12 oder 24 Wörter aus MetaMask, Rabby, Rainbow, Trust Wallet oder Phantom",
   },
   "panes.market.usdc.forget": {
     en: "Forget this browser's copy",
@@ -1931,6 +1931,116 @@ export default defineMessages({
     en: "Sign with the wallet that should receive USDC on {chain}. The edge checks the signature and stores only the address.",
     sk: "Podpíšte peňaženkou, ktorá má dostávať USDC na sieti {chain}. Edge podpis skontroluje a uloží len adresu.",
     de: "Signiere mit der Wallet, die USDC auf {chain} empfangen soll. Der Edge prüft die Signatur und speichert nur die Adresse.",
+  },
+  "panes.market.usdc.payoutOn": {
+    en: "USDC for your sales on {chains} goes to {address}.",
+    sk: "USDC za vaše predaje na sieti {chains} ide na {address}.",
+    de: "USDC für deine Verkäufe auf {chains} geht an {address}.",
+  },
+  "panes.market.usdc.or": {
+    en: "or",
+    sk: "alebo",
+    de: "oder",
+  },
+  "panes.market.usdc.and": {
+    en: "and",
+    sk: "a",
+    de: "und",
+  },
+  "panes.market.usdc.connectSolana": {
+    en: "Connect a Solana wallet",
+    sk: "Pripojiť peňaženku Solana",
+    de: "Solana-Wallet verbinden",
+  },
+  "panes.market.usdc.noSolanaExtension": {
+    en: "This browser has no Solana wallet extension. Create a wallet here, or install Phantom, Solflare or Backpack and try again.",
+    sk: "Tento prehliadač nemá rozšírenie peňaženky Solana. Vytvorte peňaženku tu, alebo nainštalujte Phantom, Solflare či Backpack a skúste to znova.",
+    de: "Dieser Browser hat keine Solana-Wallet-Erweiterung. Lege hier eine Wallet an, oder installiere Phantom, Solflare oder Backpack und versuche es erneut.",
+  },
+  "panes.market.usdc.balancesTitle": {
+    en: "Your wallet",
+    sk: "Vaša peňaženka",
+    de: "Deine Wallet",
+  },
+  "panes.market.usdc.evmAddress": {
+    en: "Ethereum networks: {address}",
+    sk: "Siete Ethereum: {address}",
+    de: "Ethereum-Netzwerke: {address}",
+  },
+  "panes.market.usdc.solanaAddress": {
+    en: "Solana: {address}",
+    sk: "Solana: {address}",
+    de: "Solana: {address}",
+  },
+  "panes.market.usdc.refresh": {
+    en: "Refresh",
+    sk: "Obnoviť",
+    de: "Aktualisieren",
+  },
+  "panes.market.usdc.sendTitle": {
+    en: "Send USDC",
+    sk: "Poslať USDC",
+    de: "USDC senden",
+  },
+  "panes.market.usdc.sendTo": {
+    en: "Address",
+    sk: "Adresa",
+    de: "Adresse",
+  },
+  "panes.market.usdc.sendToName": {
+    en: "Address or ENS name",
+    sk: "Adresa alebo meno ENS",
+    de: "Adresse oder ENS-Name",
+  },
+  "panes.market.usdc.sendAmount": {
+    en: "Amount in USDC",
+    sk: "Suma v USDC",
+    de: "Betrag in USDC",
+  },
+  "panes.market.usdc.network": {
+    en: "Network",
+    sk: "Sieť",
+    de: "Netzwerk",
+  },
+  "panes.market.usdc.send": {
+    en: "Send",
+    sk: "Poslať",
+    de: "Senden",
+  },
+  "panes.market.usdc.resolving": {
+    en: "Looking the name up…",
+    sk: "Hľadám meno…",
+    de: "Name wird nachgeschlagen…",
+  },
+  "panes.market.usdc.noName": {
+    en: "{name} does not point at an address.",
+    sk: "{name} neukazuje na žiadnu adresu.",
+    de: "{name} zeigt auf keine Adresse.",
+  },
+  "panes.market.usdc.resolved": {
+    en: "{name} is {address}.",
+    sk: "{name} je {address}.",
+    de: "{name} ist {address}.",
+  },
+  "panes.market.usdc.badAmount": {
+    en: "Enter an amount in USDC, with at most six decimals.",
+    sk: "Zadajte sumu v USDC, najviac so šiestimi desatinnými miestami.",
+    de: "Gib einen Betrag in USDC ein, mit höchstens sechs Nachkommastellen.",
+  },
+  "panes.market.usdc.badRecipient": {
+    en: "That is not an address on this network, or a name that points at one.",
+    sk: "To nie je adresa na tejto sieti ani meno, ktoré na ňu ukazuje.",
+    de: "Das ist keine Adresse auf diesem Netzwerk und kein Name, der auf eine zeigt.",
+  },
+  "panes.market.usdc.sent": {
+    en: "Sent {amount} to {to}",
+    sk: "Odoslané {amount} na {to}",
+    de: "{amount} an {to} gesendet",
+  },
+  "panes.market.usdc.payOn": {
+    en: "Pay on",
+    sk: "Zaplatiť na sieti",
+    de: "Zahlen auf",
   },
   "panes.market.usdc.payoutReady": {
     en: "USDC for your sales goes to {address}.",
@@ -1973,9 +2083,9 @@ export default defineMessages({
     de: "Zahlung gesendet",
   },
   "panes.market.usdc.gas": {
-    en: "USDC does not pay the network fee. The wallet also needs a little ETH on {chain} for that.",
-    sk: "USDC neplatí poplatok siete. Peňaženka na to potrebuje aj trochu ETH na sieti {chain}.",
-    de: "USDC zahlt die Netzwerkgebühr nicht. Die Wallet braucht dafür auch ein wenig ETH auf {chain}.",
+    en: "USDC does not pay the network fee. The wallet also needs a little ETH on the network it pays on, or SOL on Solana, where the first payment to a seller also opens their USDC account.",
+    sk: "USDC neplatí poplatok siete. Peňaženka na to potrebuje aj trochu ETH na sieti, na ktorej platí, alebo SOL na Solane, kde prvá platba predajcovi mu aj otvorí účet pre USDC.",
+    de: "USDC zahlt die Netzwerkgebühr nicht. Die Wallet braucht dafür auch ein wenig ETH auf dem Netzwerk, auf dem sie zahlt, oder SOL auf Solana, wo die erste Zahlung an einen Verkäufer auch sein USDC-Konto eröffnet.",
   },
   "panes.market.usdc.saved": {
     en: "Wallet saved in this browser",

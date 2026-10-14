@@ -521,34 +521,55 @@ export interface MarketAccount {
   entitlements: { storage_gib: number; compute_vcpu_hours: number; next_expiry: number | null };
   purchases: MarketOrder[];
   sales: MarketOrder[];
-  /** The seller's USDC address, once they have signed it. Absent on Stripe. */
+  /** The seller's USDC address on EVM chains, once they have signed it.
+   *  Absent on Stripe. */
   payout?: string | null;
+  /** The seller's USDC owner on Solana, once they have signed it. */
+  payout_solana?: string | null;
   /** Present when this edge settles the market in USDC. No RPC URL. */
   usdc?: UsdcPublic | null;
 }
 
-/** What the browser may know about USDC settlement. The RPC URL is not here. */
-export interface UsdcPublic {
-  chain_id: number;
+export type ChainFamily = "evm" | "solana";
+
+/** One network the edge settles USDC on. */
+export interface UsdcChain {
+  /** `base-sepolia`, `arbitrum-sepolia`, `solana-devnet`, ... */
+  network: string;
+  name: string;
+  family: ChainFamily;
+  /** EVM chain id; null on Solana. */
+  chain_id: number | null;
+  /** Circle's USDC: an 0x address, or the SPL mint on Solana. */
   usdc: string;
-  pay: string;
+  /** LososPay on an EVM chain; null on Solana. */
+  pay: string | null;
   treasury: string;
-  test: boolean;
 }
 
-/** What the buyer's wallet pays. Amounts are USDC base units, as decimal strings. */
+/** What the browser may know about USDC settlement. No RPC URL. */
+export interface UsdcPublic {
+  test: boolean;
+  /** The chain id an EVM payout signature names; null with no EVM chain. */
+  chain_id: number | null;
+  /** The network a Solana payout signature names; null with no Solana. */
+  solana: string | null;
+  chains: UsdcChain[];
+  /** Where ENS names can be looked up through the relay, when the edge can. */
+  ens_chain_id: number | null;
+}
+
+/** What the buyer's wallet pays. Amounts are USDC base units, as decimal
+ *  strings. `chains` are the networks it may be paid on, each with the
+ *  seller's address there. */
 export interface StablecoinInvoice {
-  chain_id: number;
-  usdc: string;
-  pay: string;
-  treasury: string;
-  seller: string;
   order_id: string;
   order_id_hash: string;
   gross: string;
   fee: string;
   /** Unix seconds. The order holds its units until then; start no payment after it. */
   pay_before: number;
+  chains: (UsdcChain & { seller: string })[];
 }
 
 export type MarketResponse =
@@ -625,22 +646,25 @@ export function postMarketOrder(
   return marketPost("/api/market/orders", { listing_id: listingId, quantity }, options);
 }
 
-/** POST /api/market/payout — the wallet proved it controls `address`. */
+/** POST /api/market/payout — the wallet proved it controls `address` on
+ *  one family of networks. */
 export function postMarketPayout(
   address: string,
   signature: string,
+  family: ChainFamily = "evm",
   options: RequestOptions = {},
 ): Promise<MarketActionResponse> {
-  return marketPost("/api/market/payout", { address, signature }, options);
+  return marketPost("/api/market/payout", { address, signature, family }, options);
 }
 
 /** POST /api/market/confirm — a mined USDC transaction paid this order. */
 export function postMarketConfirm(
   orderId: string,
   tx: string,
+  network: string,
   options: RequestOptions = {},
 ): Promise<MarketActionResponse> {
-  return marketPost("/api/market/confirm", { order_id: orderId, tx }, options);
+  return marketPost("/api/market/confirm", { order_id: orderId, tx, network }, options);
 }
 
 export interface RpcReply {
@@ -648,9 +672,11 @@ export interface RpcReply {
   error?: { code?: number; message?: string };
 }
 
-/** POST /api/market/rpc — one allowlisted chain call. The box forwards it;
- *  the page never sees the RPC URL. */
+/** POST /api/market/rpc — one allowlisted chain call to `network`, or to
+ *  the name endpoint for `ens`. The box forwards it; the page never sees the
+ *  RPC URL. */
 export function postMarketRpc(
+  network: string,
   method: string,
   params: unknown[],
   options: RequestOptions = {},
@@ -659,7 +685,7 @@ export function postMarketRpc(
     ...options,
     method: "POST",
     contentType: "application/json",
-    body: JSON.stringify({ method, params }),
+    body: JSON.stringify({ network, method, params }),
   });
 }
 

@@ -1,18 +1,35 @@
 import * as React from "react";
-import { createPublicClient, createWalletClient, custom, type Address, type Chain } from "viem";
-import { base, baseSepolia } from "viem/chains";
+import { base58 } from "@scure/base";
+import { createWalletClient, custom, type Address } from "viem";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { NativeSelect } from "@/components/ui/native-select";
 import { toast } from "@/components/ui/toast";
 import {
   ApiError,
   postMarketConfirm,
   postMarketPayout,
-  postMarketRpc,
   type StablecoinInvoice,
+  type UsdcChain,
   type UsdcPublic,
 } from "@/lib/api";
 import { useT } from "@/lib/i18n-react";
+import {
+  balanceOn,
+  ensAddress,
+  ensName,
+  ERC20,
+  evmChain,
+  evmClient,
+  formatUnits,
+  listNames,
+  looksLikeName,
+  parseUsdc,
+  publicRpc,
+  relay,
+  shortAddress,
+  type Balance,
+} from "@/wallet/chains";
 import {
   accountFromPhrase,
   createPhrase,
@@ -20,8 +37,11 @@ import {
   hasPhrase,
   openPhrase,
   payoutMessage,
+  savedAddresses,
   sealPhrase,
 } from "@/wallet/hot";
+import { isSolanaAddress, signMessage, solanaKeyFromPhrase } from "@/wallet/solana";
+import { sendUsdc, solanaInjected, waitConfirmed, type SolanaInjected, type SolanaSigner } from "@/wallet/solana-pay";
 import { Group, GroupCaption, GroupTitle, Row, RowText } from "./rows";
 
 const APPROVE = [
@@ -64,9 +84,10 @@ const PAY = [
 
 type Mode = "none" | "local" | "injected";
 
-/** A paid invoice's transaction, kept until the edge has counted it, so a
- *  failed confirmation is retried with the same hash instead of paying twice. */
-type PendingInvoice = StablecoinInvoice & { tx?: `0x${string}` };
+/** A paid invoice's transaction and the network it is on, kept until the
+ *  edge has counted it, so a failed confirmation is retried with the same
+ *  transaction instead of paying twice. */
+type PendingInvoice = StablecoinInvoice & { tx?: string; network?: string };
 
 /** Start no payment this close to the end of the order's hold: the approve
  *  and the payment each need a block, and a payment after the hold is only
@@ -84,28 +105,40 @@ function injected(): Injected | null {
   return eth ?? null;
 }
 
-function chainOf(id: number): Chain {
-  return id === base.id ? base : baseSepolia;
-}
-
-function transport() {
-  return custom({
-    async request({ method, params }) {
-      const body = await postMarketRpc(method, params ?? []);
-      if (body.error) throw new Error(body.error.message ?? "chain");
-      return body.result;
-    },
-  });
+function Select({
+  label,
+  value,
+  onChange,
+  options,
+  disabled,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: { value: string; label: string }[];
+  disabled?: boolean;
+}) {
+  return (
+    <NativeSelect aria-label={label} value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)}>
+      {options.map((o) => (
+        <option key={o.value} value={o.value}>
+          {o.label}
+        </option>
+      ))}
+    </NativeSelect>
+  );
 }
 
 export function UsdcWallet({
   usdc,
   payout,
+  payoutSolana,
   disabled,
   onPaid,
 }: {
   usdc: UsdcPublic;
   payout?: string | null;
+  payoutSolana?: string | null;
   disabled: boolean;
   /** Reload the market once the edge has counted a payment, so the order
    *  reads paid and the refresh announces it. */
@@ -114,13 +147,29 @@ export function UsdcWallet({
   const t = useT();
   const [mode, setMode] = React.useState<Mode>("none");
   const [address, setAddress] = React.useState<string | null>(payout ?? null);
+  const [solAddress, setSolAddress] = React.useState<string | null>(null);
+  const [solProvider, setSolProvider] = React.useState<SolanaInjected | null>(null);
   const [phrase, setPhrase] = React.useState<string | null>(null);
   const [importText, setImportText] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [wroteItDown, setWroteItDown] = React.useState(false);
   const [invoice, setInvoice] = React.useState<PendingInvoice | null>(readPending);
+  const [payOn, setPayOn] = React.useState<string>("");
   const [busy, setBusy] = React.useState(false);
-  const chainName = usdc.test ? "Base Sepolia" : "Base";
+  const [balances, setBalances] = React.useState<Balance[] | null>(null);
+  const [names, setNames] = React.useState<Record<string, string>>({});
+  const [sendTo, setSendTo] = React.useState("");
+  const [sendAmount, setSendAmount] = React.useState("");
+  const [sendOn, setSendOn] = React.useState(usdc.chains[0]?.network ?? "");
+  const [resolved, setResolved] = React.useState<string | null>(null);
+
+  const evmChains = usdc.chains.filter((c) => c.family === "evm");
+  const solChains = usdc.chains.filter((c) => c.family === "solana");
+  const allNames = listNames(
+    usdc.chains.map((c) => c.name),
+    t("panes.market.usdc.or"),
+  );
+  const ens = usdc.ens_chain_id !== null;
 
   React.useEffect(() => {
     const onPay = (ev: Event) => {
@@ -132,10 +181,74 @@ export function UsdcWallet({
   }, []);
 
   React.useEffect(() => {
-    void hasPhrase().then((yes) => {
-      if (yes) setMode("local");
+    void hasPhrase().then(async (yes) => {
+      if (!yes) return;
+      setMode("local");
+      const saved = await savedAddresses();
+      if (saved?.evm) setAddress(saved.evm);
+      if (saved?.sol) setSolAddress(saved.sol);
     });
   }, []);
+
+  /** The networks this wallet can pay an invoice on. */
+  const payable = React.useMemo(
+    () =>
+      (invoice?.chains ?? []).filter((c) =>
+        c.family === "evm" ? mode !== "none" : mode === "local" || solProvider !== null,
+      ),
+    [invoice, mode, solProvider],
+  );
+
+  // Offer first the network holding enough USDC to pay, else the first.
+  React.useEffect(() => {
+    if (!invoice || payable.length === 0) return;
+    if (payable.some((c) => c.network === payOn)) return;
+    const gross = BigInt(invoice.gross);
+    const funded = payable.find((c) => (balances ?? []).some((b) => b.network === c.network && b.usdc >= gross));
+    const pick = funded ?? payable[0];
+    if (pick) setPayOn(pick.network);
+  }, [invoice, payable, payOn, balances]);
+
+  const refreshBalances = React.useCallback(async () => {
+    const reads = usdc.chains.map((c) => {
+      const owner = c.family === "evm" ? address : solAddress;
+      return owner ? balanceOn(c, owner) : Promise.resolve(null);
+    });
+    const found = (await Promise.all(reads)).filter((b): b is Balance => b !== null);
+    setBalances(found);
+  }, [usdc, address, solAddress]);
+
+  React.useEffect(() => {
+    if (address || solAddress) void refreshBalances();
+  }, [address, solAddress, refreshBalances]);
+
+  // ENS names for the wallet's address and the payout address.
+  React.useEffect(() => {
+    if (!ens) return;
+    for (const a of [address, payout]) {
+      if (!a || names[a.toLowerCase()] !== undefined) continue;
+      void ensName(usdc.test, a).then((name) =>
+        setNames((n) => ({ ...n, [a.toLowerCase()]: name ?? "" })),
+      );
+    }
+  }, [ens, address, payout, usdc.test, names]);
+
+  // Resolve a name typed into the send field as it is typed.
+  React.useEffect(() => {
+    setResolved(null);
+    const chain = usdc.chains.find((c) => c.network === sendOn);
+    if (!ens || chain?.family !== "evm" || !looksLikeName(sendTo)) return;
+    const name = sendTo.trim();
+    const timer = setTimeout(() => {
+      void ensAddress(usdc.test, name).then((a) => setResolved(a ?? ""));
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [ens, sendTo, sendOn, usdc]);
+
+  const named = (a: string) => {
+    const name = names[a.toLowerCase()];
+    return name ? `${name} (${shortAddress(a)})` : a;
+  };
 
   const fail = (error: unknown) => {
     const text = error instanceof Error ? error.message : t("panes.market.usdc.failed");
@@ -155,12 +268,12 @@ export function UsdcWallet({
   };
 
   /** Tell the edge which transaction paid the order. It counts a payment
-   *  once a block sits on top of it, so a "not yet" is retried for a while
+   *  once it is settled on its chain, so a "not yet" is retried for a while
    *  before the owner is asked to check again. */
-  const confirm = async (pending: PendingInvoice & { tx: `0x${string}` }) => {
+  const confirm = async (pending: PendingInvoice & { tx: string; network: string }) => {
     for (let attempt = 0; ; attempt++) {
       try {
-        await postMarketConfirm(pending.order_id, pending.tx);
+        await postMarketConfirm(pending.order_id, pending.tx, pending.network);
         break;
       } catch (error) {
         const retry = error instanceof ApiError && error.status === 409 && attempt < 15;
@@ -170,14 +283,18 @@ export function UsdcWallet({
     }
     sessionStorage.removeItem(PENDING_INVOICE);
     setInvoice(null);
+    void refreshBalances();
     if (onPaid) onPaid();
     else toast.success(t("panes.market.usdc.paid"), pending.tx);
   };
 
   const useLocal = async (words: string) => {
     const account = accountFromPhrase(words);
+    const sol = solanaKeyFromPhrase(words);
     await sealPhrase(password, words);
     setAddress(account.address);
+    setSolAddress(sol.address);
+    setSolProvider(null);
     setMode("local");
     setPhrase(null);
     setPassword("");
@@ -225,28 +342,17 @@ export function UsdcWallet({
     }
   };
 
-  const signPayout = async () => {
-    if (!address) return;
+  const connectSolana = async () => {
+    const provider = solanaInjected();
+    if (provider === null) {
+      toast.error(t("panes.market.usdc.failedTitle"), t("panes.market.usdc.noSolanaExtension"), { help: "index" });
+      return;
+    }
     setBusy(true);
     try {
-      const message = payoutMessage(usdc.chain_id, address);
-      let signature: string;
-      if (mode === "injected") {
-        const eth = injected();
-        if (eth === null) throw new Error("no wallet");
-        signature = (await eth.request({
-          method: "personal_sign",
-          params: [message, address],
-        })) as string;
-      } else {
-        const words = await unlock();
-        if (words === null) return;
-        const account = accountFromPhrase(words);
-        signature = await account.signMessage({ message });
-        setAddress(account.address);
-      }
-      await postMarketPayout(address.toLowerCase(), signature);
-      toast.success(t("panes.market.usdc.payoutSet"), address);
+      const { publicKey } = await provider.connect();
+      setSolAddress(publicKey.toString());
+      setSolProvider(provider);
     } catch (error) {
       fail(error);
     } finally {
@@ -254,17 +360,164 @@ export function UsdcWallet({
     }
   };
 
-  const payInvoice = async () => {
+  /** Prove control of the payout addresses: the EVM one for every EVM
+   *  network, and the Solana one when the edge settles there too. */
+  const signPayout = async () => {
+    if (!address && !solAddress) return;
+    setBusy(true);
+    try {
+      let words: string | null = null;
+      if (mode === "local") {
+        words = await unlock();
+        if (words === null) return;
+      }
+      if (address && usdc.chain_id !== null && mode !== "none") {
+        const message = payoutMessage(usdc.chain_id, address);
+        let signature: string;
+        if (mode === "injected") {
+          const eth = injected();
+          if (eth === null) throw new Error("no wallet");
+          signature = (await eth.request({ method: "personal_sign", params: [message, address] })) as string;
+        } else {
+          signature = await accountFromPhrase(words!).signMessage({ message });
+        }
+        await postMarketPayout(address.toLowerCase(), signature, "evm");
+      }
+      if (solAddress && usdc.solana !== null && (words !== null || solProvider !== null)) {
+        const message = payoutMessage(usdc.solana, solAddress);
+        let signature: string;
+        if (words !== null) {
+          signature = signMessage(solanaKeyFromPhrase(words), message);
+        } else {
+          const { signature: raw } = await solProvider!.signMessage(new TextEncoder().encode(message), "utf8");
+          signature = base58.encode(raw);
+        }
+        await postMarketPayout(solAddress, signature, "solana");
+      }
+      toast.success(t("panes.market.usdc.payoutSet"), address ?? solAddress ?? "");
+      if (onPaid) onPaid();
+    } catch (error) {
+      fail(error);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /** Pay on an EVM chain: approve USDC for LososPay when short, then pay. */
+  const payEvm = async (chain: UsdcChain & { seller: string }, words: string | null) => {
     if (!invoice || !address) return;
-    if (mode === "none") {
+    const viemChain = evmChain(chain.network);
+    const account = words !== null ? accountFromPhrase(words) : undefined;
+    const eth = injected();
+    const client = createWalletClient({
+      account: account ?? (address as Address),
+      chain: viemChain,
+      transport: mode === "injected" && eth ? custom(eth) : relay(chain.network),
+    });
+    if (mode === "injected") {
+      const hexId = `0x${viemChain.id.toString(16)}`;
+      try {
+        await eth?.request({ method: "wallet_switchEthereumChain", params: [{ chainId: hexId }] });
+      } catch {
+        await eth?.request({
+          method: "wallet_addEthereumChain",
+          params: [
+            {
+              chainId: hexId,
+              chainName: viemChain.name,
+              nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+              rpcUrls: [publicRpc(chain.network)],
+            },
+          ],
+        });
+      }
+    }
+    const owner = (account?.address ?? address) as Address;
+    const pub = evmClient(chain.network);
+    const gross = BigInt(invoice.gross);
+    const allowed = await pub.readContract({
+      address: chain.usdc as Address,
+      abi: APPROVE,
+      functionName: "allowance",
+      args: [owner, chain.pay as Address],
+    });
+    if (allowed < gross) {
+      const approval = await client.writeContract({
+        address: chain.usdc as Address,
+        abi: APPROVE,
+        functionName: "approve",
+        args: [chain.pay as Address, gross],
+        account: account ?? owner,
+        chain: viemChain,
+      });
+      // The payment's gas estimate runs against the chain as it is, so
+      // the approval has to be in a block before the payment is built.
+      await pub.waitForTransactionReceipt({ hash: approval });
+    }
+    const hash = await client.writeContract({
+      address: chain.pay as Address,
+      abi: PAY,
+      functionName: "pay",
+      args: [invoice.order_id_hash as `0x${string}`, chain.seller as Address, gross, BigInt(invoice.fee)],
+      account: account ?? owner,
+      chain: viemChain,
+    });
+    const paid = { ...invoice, tx: hash, network: chain.network };
+    sessionStorage.setItem(PENDING_INVOICE, JSON.stringify(paid));
+    setInvoice(paid);
+    const mined = await pub.waitForTransactionReceipt({ hash });
+    if (mined.status !== "success") {
+      sessionStorage.removeItem(PENDING_INVOICE);
+      setInvoice(invoice);
+      throw new Error(t("panes.market.usdc.failed"));
+    }
+    await confirm(paid);
+  };
+
+  /** Pay on Solana: the seller's share and the fee in one transaction, with
+   *  the order in a memo. */
+  const paySolana = async (chain: UsdcChain & { seller: string }, words: string | null) => {
+    if (!invoice) return;
+    const signer: SolanaSigner =
+      words !== null
+        ? { kind: "local", key: solanaKeyFromPhrase(words) }
+        : { kind: "injected", address: solAddress!, provider: solProvider! };
+    const gross = BigInt(invoice.gross);
+    const fee = BigInt(invoice.fee);
+    const signature = await sendUsdc(chain.network, signer, {
+      mint: chain.usdc,
+      seller: chain.seller,
+      treasury: chain.treasury,
+      sellerAmount: gross - fee,
+      feeAmount: fee,
+      memo: invoice.order_id_hash,
+    });
+    const paid = { ...invoice, tx: signature, network: chain.network };
+    sessionStorage.setItem(PENDING_INVOICE, JSON.stringify(paid));
+    setInvoice(paid);
+    try {
+      await waitConfirmed(chain.network, signature);
+    } catch (error) {
+      if (error instanceof Error && error.message === "the transaction failed") {
+        sessionStorage.removeItem(PENDING_INVOICE);
+        setInvoice(invoice);
+      }
+      throw error;
+    }
+    await confirm(paid);
+  };
+
+  const payInvoice = async () => {
+    if (!invoice) return;
+    if (payable.length === 0) {
       toast.error(t("panes.market.usdc.failedTitle"), t("panes.market.usdc.needWallet"), { help: "index" });
       return;
     }
     setBusy(true);
     try {
       // Already paid: only the edge's count is missing. Never pay again.
-      if (invoice.tx) {
-        await confirm({ ...invoice, tx: invoice.tx });
+      if (invoice.tx && invoice.network) {
+        await confirm({ ...invoice, tx: invoice.tx, network: invoice.network });
         return;
       }
       if (Date.now() / 1000 > invoice.pay_before - HOLD_MARGIN_SECS) {
@@ -273,80 +526,15 @@ export function UsdcWallet({
         toast.error(t("panes.market.usdc.failedTitle"), t("panes.market.usdc.lapsed"), { help: "index" });
         return;
       }
-      const chain = chainOf(invoice.chain_id);
-      let account: ReturnType<typeof accountFromPhrase> | undefined;
-      if (mode === "local") {
-        const words = await unlock();
+      const chain = payable.find((c) => c.network === payOn) ?? payable[0];
+      if (!chain) return;
+      let words: string | null = null;
+      if (mode === "local" && (chain.family === "evm" || solProvider === null)) {
+        words = await unlock();
         if (words === null) return;
-        account = accountFromPhrase(words);
       }
-      const eth = injected();
-      const client = createWalletClient({
-        account: account ?? (address as Address),
-        chain,
-        transport: mode === "injected" && eth ? custom(eth) : transport(),
-      });
-      if (mode === "injected") {
-        const hexId = `0x${invoice.chain_id.toString(16)}`;
-        try {
-          await eth?.request({
-            method: "wallet_switchEthereumChain",
-            params: [{ chainId: hexId }],
-          });
-        } catch {
-          await eth?.request({
-            method: "wallet_addEthereumChain",
-            params: [
-              {
-                chainId: hexId,
-                chainName: chain.name,
-                nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
-                rpcUrls: [usdc.test ? "https://sepolia.base.org" : "https://mainnet.base.org"],
-              },
-            ],
-          });
-        }
-      }
-      const owner = (account?.address ?? address) as Address;
-      const pub = createPublicClient({ chain, transport: transport() });
-      const gross = BigInt(invoice.gross);
-      const allowed = await pub.readContract({
-        address: invoice.usdc as Address,
-        abi: APPROVE,
-        functionName: "allowance",
-        args: [owner, invoice.pay as Address],
-      });
-      if (allowed < gross) {
-        const approval = await client.writeContract({
-          address: invoice.usdc as Address,
-          abi: APPROVE,
-          functionName: "approve",
-          args: [invoice.pay as Address, gross],
-          account: account ?? owner,
-          chain,
-        });
-        // The payment's gas estimate runs against the chain as it is, so
-        // the approval has to be in a block before the payment is built.
-        await pub.waitForTransactionReceipt({ hash: approval });
-      }
-      const hash = await client.writeContract({
-        address: invoice.pay as Address,
-        abi: PAY,
-        functionName: "pay",
-        args: [invoice.order_id_hash as `0x${string}`, invoice.seller as Address, gross, BigInt(invoice.fee)],
-        account: account ?? owner,
-        chain,
-      });
-      const paid = { ...invoice, tx: hash };
-      sessionStorage.setItem(PENDING_INVOICE, JSON.stringify(paid));
-      setInvoice(paid);
-      const mined = await pub.waitForTransactionReceipt({ hash });
-      if (mined.status !== "success") {
-        sessionStorage.removeItem(PENDING_INVOICE);
-        setInvoice(invoice);
-        throw new Error(t("panes.market.usdc.failed"));
-      }
-      await confirm(paid);
+      if (chain.family === "evm") await payEvm(chain, words);
+      else await paySolana(chain, words);
     } catch (error) {
       fail(error);
     } finally {
@@ -354,15 +542,101 @@ export function UsdcWallet({
     }
   };
 
+  /** Send USDC out of the wallet: to an address, or to an ENS name on an
+   *  EVM network. */
+  const send = async () => {
+    const chain = usdc.chains.find((c) => c.network === sendOn);
+    const amount = parseUsdc(sendAmount);
+    if (!chain || amount === null || amount === 0n) {
+      toast.error(t("panes.market.usdc.failedTitle"), t("panes.market.usdc.badAmount"), { help: "index" });
+      return;
+    }
+    const to = chain.family === "evm" && looksLikeName(sendTo) ? resolved : sendTo.trim();
+    const valid =
+      chain.family === "evm" ? !!to && /^0x[0-9a-fA-F]{40}$/.test(to) : !!to && isSolanaAddress(to);
+    if (!to || !valid) {
+      toast.error(t("panes.market.usdc.failedTitle"), t("panes.market.usdc.badRecipient"), { help: "index" });
+      return;
+    }
+    setBusy(true);
+    try {
+      let words: string | null = null;
+      if (mode === "local" && (chain.family === "evm" || solProvider === null)) {
+        words = await unlock();
+        if (words === null) return;
+      }
+      let tx: string;
+      if (chain.family === "evm") {
+        const account = words !== null ? accountFromPhrase(words) : undefined;
+        const eth = injected();
+        const viemChain = evmChain(chain.network);
+        const client = createWalletClient({
+          account: account ?? (address as Address),
+          chain: viemChain,
+          transport: mode === "injected" && eth ? custom(eth) : relay(chain.network),
+        });
+        tx = await client.writeContract({
+          address: chain.usdc as Address,
+          abi: ERC20,
+          functionName: "transfer",
+          args: [to as Address, amount],
+          account: account ?? (address as Address),
+          chain: viemChain,
+        });
+        await evmClient(chain.network).waitForTransactionReceipt({ hash: tx as `0x${string}` });
+      } else {
+        const signer: SolanaSigner =
+          words !== null
+            ? { kind: "local", key: solanaKeyFromPhrase(words) }
+            : { kind: "injected", address: solAddress!, provider: solProvider! };
+        tx = await sendUsdc(chain.network, signer, {
+          mint: chain.usdc,
+          seller: to,
+          treasury: to,
+          sellerAmount: amount,
+          feeAmount: 0n,
+          memo: "",
+        });
+        await waitConfirmed(chain.network, tx);
+      }
+      toast.success(
+        t("panes.market.usdc.sent", { amount: formatUsdc(amount.toString()), to: looksLikeName(sendTo) ? sendTo.trim() : shortAddress(to) }),
+        tx,
+      );
+      setSendAmount("");
+      setSendTo("");
+      void refreshBalances();
+    } catch (error) {
+      fail(error);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const haveWallet = mode !== "none" || solProvider !== null;
+  const needsPassword = mode === "local" && password === "";
+  const invoiceChain = invoice?.chains.find((c) => c.network === (invoice.network ?? payOn));
+  const sendChain = usdc.chains.find((c) => c.network === sendOn);
+
+  const payoutDetail = () => {
+    const parts: string[] = [];
+    if (payout && evmChains.length > 0)
+      parts.push(
+        t("panes.market.usdc.payoutOn", { address: named(payout), chains: listNames(evmChains.map((c) => c.name), t("panes.market.usdc.and")) }),
+      );
+    if (payoutSolana && solChains.length > 0)
+      parts.push(
+        t("panes.market.usdc.payoutOn", { address: payoutSolana, chains: listNames(solChains.map((c) => c.name), t("panes.market.usdc.and")) }),
+      );
+    return parts.length > 0 ? parts.join(" ") : t("panes.market.usdc.receive", { chain: allNames });
+  };
+
   return (
     <>
       <GroupTitle>{t("panes.market.usdc.title")}</GroupTitle>
       <Group>
-        <Row last={invoice === null && phrase === null}>
-          <RowText
-            title={t("panes.market.usdc.howTitle")}
-            detail={t("panes.market.usdc.how", { chain: chainName })}
-          />
+        <Row last={false}>
+          <RowText title={t("panes.market.usdc.howTitle")} detail={t("panes.market.usdc.how", { chain: allNames })} />
         </Row>
         {phrase !== null && (
           <Row>
@@ -370,11 +644,7 @@ export function UsdcWallet({
               <p className="text-[13px] text-ink">{t("panes.market.usdc.writeDown")}</p>
               <p className="font-mono text-[13px] break-all">{phrase}</p>
               <label className="flex items-center gap-2 text-[13px]">
-                <input
-                  type="checkbox"
-                  checked={wroteItDown}
-                  onChange={(e) => setWroteItDown(e.target.checked)}
-                />
+                <input type="checkbox" checked={wroteItDown} onChange={(e) => setWroteItDown(e.target.checked)} />
                 {t("panes.market.usdc.wroteItDown")}
               </label>
               <Input
@@ -394,25 +664,38 @@ export function UsdcWallet({
             </div>
           </Row>
         )}
-        <Row last={invoice === null}>
+        <Row>
           <div className="flex flex-wrap gap-2">
             <Button size="sm" disabled={disabled || busy} onClick={create}>
               {t("panes.market.usdc.create")}
             </Button>
-            <Button size="sm" variant="secondary" disabled={disabled || busy} onClick={() => void connectInjected()}>
-              {t("panes.market.usdc.connect")}
-            </Button>
+            {evmChains.length > 0 && (
+              <Button size="sm" variant="secondary" disabled={disabled || busy} onClick={() => void connectInjected()}>
+                {t("panes.market.usdc.connect")}
+              </Button>
+            )}
+            {solChains.length > 0 && (
+              <Button size="sm" variant="secondary" disabled={disabled || busy} onClick={() => void connectSolana()}>
+                {t("panes.market.usdc.connectSolana")}
+              </Button>
+            )}
             <Button
               size="sm"
               variant="secondary"
               disabled={disabled || busy || mode !== "local"}
-              onClick={() => void forgetPhrase().then(() => setMode("none"))}
+              onClick={() =>
+                void forgetPhrase().then(() => {
+                  setMode("none");
+                  setSolAddress(null);
+                  setBalances(null);
+                })
+              }
             >
               {t("panes.market.usdc.forget")}
             </Button>
           </div>
         </Row>
-        <Row last={invoice === null}>
+        <Row>
           <div className="grid w-full gap-2">
             <Input
               placeholder={t("panes.market.usdc.importPlaceholder")}
@@ -452,46 +735,129 @@ export function UsdcWallet({
             />
           </Row>
         )}
-        <Row last={invoice === null}>
-          <RowText
-            title={t("panes.market.usdc.receiveTitle")}
-            detail={
-              payout
-                ? t("panes.market.usdc.payoutReady", { address: payout })
-                : t("panes.market.usdc.receive", { chain: chainName })
-            }
-          />
+        {(address || solAddress) && haveWallet && (
+          <Row>
+            <div className="grid w-full gap-1">
+              <p className="text-[13px] font-medium text-ink">{t("panes.market.usdc.balancesTitle")}</p>
+              {address && evmChains.length > 0 && (
+                <p className="text-[13px] text-muted break-all">
+                  {t("panes.market.usdc.evmAddress", { address: named(address) })}
+                </p>
+              )}
+              {solAddress && solChains.length > 0 && (
+                <p className="text-[13px] text-muted break-all">
+                  {t("panes.market.usdc.solanaAddress", { address: solAddress })}
+                </p>
+              )}
+              <ul className="grid gap-0.5 text-[13px] tabular-nums" aria-label={t("panes.market.usdc.balancesTitle")}>
+                {(balances ?? []).map((b) => (
+                  <li key={b.network} className="flex justify-between gap-4">
+                    <span>{b.name}</span>
+                    <span>
+                      {formatUnits(b.usdc, 6, 2)} USDC · {formatUnits(b.gas, b.gasDecimals)} {b.gasSymbol}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <Button size="sm" variant="secondary" disabled={busy} onClick={() => void refreshBalances()}>
+              {t("panes.market.usdc.refresh")}
+            </Button>
+          </Row>
+        )}
+        <Row last={invoice === null && !haveWallet}>
+          <RowText title={t("panes.market.usdc.receiveTitle")} detail={payoutDetail()} />
           <Button
             size="sm"
-            disabled={disabled || busy || !address || mode === "none" || (mode === "local" && password === "")}
+            disabled={disabled || busy || !haveWallet || (!address && !solAddress) || needsPassword}
             onClick={() => void signPayout()}
           >
             {t("panes.market.usdc.setPayout")}
           </Button>
         </Row>
+        {haveWallet && (
+          <Row last={invoice === null}>
+            <div className="grid w-full gap-2">
+              <p className="text-[13px] font-medium text-ink">{t("panes.market.usdc.sendTitle")}</p>
+              <div className="flex flex-wrap gap-2">
+                <Input
+                  className="min-w-[14rem] flex-1"
+                  aria-label={t("panes.market.usdc.sendTo")}
+                  placeholder={
+                    sendChain?.family === "evm" && ens
+                      ? t("panes.market.usdc.sendToName")
+                      : t("panes.market.usdc.sendTo")
+                  }
+                  value={sendTo}
+                  onChange={(e) => setSendTo(e.target.value)}
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+                <Input
+                  className="w-28"
+                  inputMode="decimal"
+                  aria-label={t("panes.market.usdc.sendAmount")}
+                  placeholder="0.00"
+                  value={sendAmount}
+                  onChange={(e) => setSendAmount(e.target.value)}
+                />
+                <Select
+                  label={t("panes.market.usdc.network")}
+                  value={sendOn}
+                  onChange={setSendOn}
+                  options={usdc.chains.map((c) => ({ value: c.network, label: c.name }))}
+                />
+                <Button
+                  size="sm"
+                  disabled={disabled || busy || sendTo.trim() === "" || sendAmount.trim() === "" || needsPassword}
+                  onClick={() => void send()}
+                >
+                  {t("panes.market.usdc.send")}
+                </Button>
+              </div>
+              {looksLikeName(sendTo) && sendChain?.family === "evm" && ens && (
+                <p className="text-[13px] text-muted break-all" aria-live="polite">
+                  {resolved === null
+                    ? t("panes.market.usdc.resolving")
+                    : resolved === ""
+                      ? t("panes.market.usdc.noName", { name: sendTo.trim() })
+                      : t("panes.market.usdc.resolved", { name: sendTo.trim(), address: resolved })}
+                </p>
+              )}
+            </div>
+          </Row>
+        )}
         {invoice !== null && (
           <Row last>
-            <RowText
-              title={t("panes.market.usdc.payTitle")}
-              detail={
-                invoice.tx
-                  ? t("panes.market.usdc.counting")
-                  : t("panes.market.usdc.payDetail", {
-                      gross: formatUsdc(invoice.gross),
-                      fee: formatUsdc(invoice.fee),
-                      chain: chainName,
-                    })
-              }
-            />
+            <div className="grid w-full gap-2">
+              <RowText
+                title={t("panes.market.usdc.payTitle")}
+                detail={
+                  invoice.tx
+                    ? t("panes.market.usdc.counting")
+                    : t("panes.market.usdc.payDetail", {
+                        gross: formatUsdc(invoice.gross),
+                        fee: formatUsdc(invoice.fee),
+                        chain: invoiceChain?.name ?? allNames,
+                      })
+                }
+              />
+              {!invoice.tx && payable.length > 1 && (
+                <label className="flex items-center gap-2 text-[13px] text-ink">
+                  {t("panes.market.usdc.payOn")}
+                  <Select
+                    label={t("panes.market.usdc.payOn")}
+                    value={payOn}
+                    onChange={setPayOn}
+                    disabled={busy}
+                    options={payable.map((c) => ({ value: c.network, label: c.name }))}
+                  />
+                </label>
+              )}
+            </div>
             <Button
               size="sm"
-              disabled={
-                disabled ||
-                busy ||
-                !address ||
-                mode === "none" ||
-                (mode === "local" && password === "" && !invoice.tx)
-              }
+              disabled={disabled || busy || payable.length === 0 || (needsPassword && !invoice.tx)}
               onClick={() => void payInvoice()}
             >
               {invoice.tx ? t("panes.market.usdc.checkAgain") : t("panes.market.usdc.pay")}
@@ -499,7 +865,11 @@ export function UsdcWallet({
           </Row>
         )}
       </Group>
-      <GroupCaption>{t("panes.market.usdc.gas", { chain: chainName })}</GroupCaption>
+      <GroupCaption>
+        {t("panes.market.usdc.gas", {
+          chain: allNames,
+        })}
+      </GroupCaption>
     </>
   );
 }
@@ -518,7 +888,8 @@ function readPending(): PendingInvoice | null {
     const raw = sessionStorage.getItem(PENDING_INVOICE);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as PendingInvoice;
-    return typeof parsed?.order_id === "string" ? parsed : null;
+    // An invoice from before the edge named its networks cannot be paid.
+    return typeof parsed?.order_id === "string" && Array.isArray(parsed.chains) ? parsed : null;
   } catch {
     return null;
   }
