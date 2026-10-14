@@ -341,6 +341,8 @@ poznámky pre operátora pri zdrojovom kóde (`docs/ci-and-releases.md`).
    trochu SOL.
 5. Edge prečíta transakciu cez svoj endpoint pre danú sieť a objednávku
    označí ako zaplatenú. Jedna transakcia zaplatí len jednu objednávku.
+   Objednávka potom uvádza svoju sieť a odkaz na transakciu v prehliadači
+   blokov tej siete, pre kupujúceho aj predajcu.
 
 Kým platbu na sieti Etherea započíta, edge overí, že RPC odpovedá za reťazec
 tej siete, že `LososPay` sťahuje USDC od Circle pre tento reťazec a platí
@@ -380,6 +382,12 @@ len adresy a kupujúci platia priamo na ne. Predajca, ktorý má nastavenú len
 jednu z nich, sa ponúka iba kupujúcim na tom druhu siete. Tú istú frázu
 importujete do MetaMask, Rabby, Rainbow, Trust Wallet alebo Phantom, keď
 peniaze chcete minúť. Pre tieto predaje nie je žiadny pripojený účet Stripe.
+
+Peňaženka vytvorená na Trhu žije len v tom prehliadači, preto sa panel pred
+ponukou spýta, kam majú ísť jej predaje. Podpíšte ňou ako vyššie, alebo
+zvoľte „Použiť adresu inej peňaženky“: vložte adresu peňaženky, ktorú držíte
+inde, podpíšte ňou správu, ktorú panel ukáže, a vložte podpis. Edge ho overí
+rovnako.
 
 ## Čo nie je pokryté
 

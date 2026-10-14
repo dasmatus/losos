@@ -381,7 +381,8 @@ beschreiben die Betreiberhinweise beim Quellcode (`docs/ci-and-releases.md`).
    USDC-Konto, was etwas SOL kostet.
 5. Der Edge liest die Transaktion über seinen Endpunkt für dieses Netz und
    markiert die Bestellung als bezahlt. Eine Transaktion bezahlt nur eine
-   Bestellung.
+   Bestellung. Die Bestellung nennt dann ihr Netz und verlinkt die
+   Transaktion im Block-Explorer dieses Netzes, für Käufer und Verkäufer.
 
 Bevor er eine Zahlung auf einem Ethereum-Netz zählt, prüft der Edge, dass der
 RPC-Endpunkt für die Chain dieses Netzes antwortet, dass `LososPay` Circles
@@ -426,6 +427,13 @@ mit nur einer der beiden wird nur Käufern auf dieser Art von Netz angeboten.
 Dieselbe Phrase lässt sich in MetaMask, Rabby, Rainbow, Trust Wallet oder
 Phantom importieren, wenn du das Geld ausgeben willst. Für diese Verkäufe gibt
 es kein verbundenes Stripe-Konto.
+
+Eine im Markt angelegte Wallet lebt nur in diesem Browser, deshalb fragt der
+Bereich vor dem Anbieten, wohin ihre Verkäufe gehen sollen. Mit ihr wie oben
+signieren, oder „Adresse einer anderen Wallet nehmen“ wählen: die Adresse
+einer Wallet einfügen, die du anderswo hältst, mit dieser Wallet die Nachricht
+signieren, die der Bereich zeigt, und die Signatur einfügen. Der Edge prüft sie
+genauso.
 
 ## Nicht abgedeckt
 

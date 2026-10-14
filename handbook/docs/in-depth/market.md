@@ -336,7 +336,9 @@ the source (`docs/ci-and-releases.md`) cover setting it up.
    names the order in a memo. The first payment to a seller or to the
    treasury also opens their USDC account, which costs a little SOL.
 5. The edge reads the transaction through its endpoint for that network and
-   marks the order paid. A transaction can pay only one order.
+   marks the order paid. A transaction can pay only one order. The order
+   then names its network and links the transaction on that network's
+   explorer, for the buyer and the seller alike.
 
 Before it counts a payment on an Ethereum network, the edge checks that the
 RPC endpoint answers for that network's chain, that `LososPay` pulls Circle's
@@ -379,6 +381,12 @@ stores only the addresses, and buyers pay them directly. A seller with only
 one of the two set is offered to buyers on that kind of network only. Import
 the same phrase into MetaMask, Rabby, Rainbow, Trust Wallet or Phantom when
 you want to spend it. There is no Stripe connected account for these sales.
+
+A wallet created on the Market pane lives only in that browser, so the pane
+asks where its sales should go before you list. Sign with it as above, or
+choose "Use another wallet's address": paste the address of a wallet you keep
+elsewhere, sign the message the pane shows with that wallet, and paste the
+signature. The edge checks it the same way.
 
 ## Not covered
 
