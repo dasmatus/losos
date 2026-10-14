@@ -314,6 +314,12 @@ pub struct Order {
     /// The transaction that paid a USDC order. Unique across the ledger.
     #[serde(default)]
     pub tx_hash: Option<String>,
+    /// The seller's payout address when the order was made, which is the
+    /// address the buyer's invoice names. A later change of payout address
+    /// must not turn a payment made to the invoice into a refused one.
+    /// `None` on Stripe orders and on USDC orders made before it was kept.
+    #[serde(default)]
+    pub pay_to: Option<String>,
 }
 
 /// Everything the market persists for one Stripe mode: `market.json` for
@@ -1922,6 +1928,11 @@ impl Market {
                 vm,
                 rail,
                 tx_hash: None,
+                pay_to: if rail == Rail::Usdc {
+                    seller.payout.clone()
+                } else {
+                    None
+                },
             };
             let mut next = state.clone();
             expire_stale(&mut next, now);
@@ -1947,6 +1958,7 @@ impl Market {
                     &seller_addr,
                     order.amount,
                     order.fee,
+                    order.created_at.saturating_add(USDC_HOLD_SECS),
                 )),
             });
         }
@@ -2436,8 +2448,11 @@ impl Market {
     }
 
     /// Mark a USDC order paid when `tx` is a successful `LososPay.pay` for it.
-    /// The receipt is fetched from the sealed RPC URL. A transaction already
-    /// used for another order is refused, so a receipt cannot be replayed.
+    /// The receipt is fetched from the sealed RPC URL, after checking that
+    /// the endpoint is on this edge's chain and that the pay contract is the
+    /// one the config names, and it must have [`crate::stablecoin::CONFIRMATIONS`]
+    /// blocks. A transaction already used for another order is refused, so a
+    /// receipt cannot be replayed.
     pub async fn confirm_usdc(
         &self,
         buyer: &str,
@@ -2458,8 +2473,18 @@ impl Market {
             self.usdc_expected(&state, buyer, order_id, &tx, &usdc)?
         };
         let url = crate::stablecoin::read_rpc_url(std::path::Path::new(&usdc.rpc_file)).await?;
+        crate::stablecoin::check_endpoint(&url, &usdc)
+            .await
+            .inspect_err(|e| {
+                tracing::error!(
+                    target: Action::Market.target(),
+                    "USDC settlement is misconfigured: {e}",
+                );
+            })?;
         let receipt = crate::stablecoin::fetch_receipt(&url, &tx).await?;
         crate::stablecoin::payment_matches(&receipt, &expected).map_err(MarketError::Conflict)?;
+        let head = crate::stablecoin::block_number(&url).await?;
+        crate::stablecoin::confirmed(&receipt, &head).map_err(MarketError::Conflict)?;
         let mut state = self.state.lock().await;
         if Self::usdc_already_paid(&state, buyer, order_id, &tx) {
             return Ok(());
@@ -2468,6 +2493,12 @@ impl Market {
         let mut next = state.clone();
         let order = next.orders.get_mut(order_id).ok_or(MarketError::NotFound)?;
         let now = now_secs();
+        if !pending_live(order, now) {
+            tracing::warn!(
+                target: Action::Market.target(),
+                "order {order_id} was paid in USDC after its hold lapsed; its units are still free, so it is fulfilled",
+            );
+        }
         order.status = OrderStatus::Paid;
         order.tx_hash = Some(tx);
         order.paid_at = Some(now);
@@ -2522,13 +2553,42 @@ impl Market {
         if order.rail != Rail::Usdc {
             return Err(MarketError::Conflict("this order is not a USDC order"));
         }
-        if order.status != OrderStatus::Pending || !pending_live(order, now_secs()) {
-            return Err(MarketError::Conflict("the order is not awaiting payment"));
+        let now = now_secs();
+        match order.status {
+            OrderStatus::Pending if pending_live(order, now) => {}
+            // The buyer's transaction can land after the hold: the wallet was
+            // slow, the box went offline before it reported the hash. The
+            // money has already moved to the seller and the treasury, so the
+            // order is honoured while its units are still free, the same rule
+            // a late Stripe webhook gets.
+            OrderStatus::Pending | OrderStatus::Expired => {
+                let room = state
+                    .listings
+                    .get(&order.listing_id)
+                    .map_or(0, |l| available(state, l, now));
+                if order.quantity > room {
+                    tracing::error!(
+                        target: Action::Market.target(),
+                        "order {order_id} was paid in USDC by {tx} after its hold lapsed and its units are sold; the buyer is owed a refund",
+                    );
+                    return Err(MarketError::Conflict(
+                        "the order lapsed before it was paid and its units are sold",
+                    ));
+                }
+            }
+            OrderStatus::Paid => {
+                return Err(MarketError::Conflict("the order is not awaiting payment"));
+            }
         }
-        let seller = state
-            .sellers
-            .get(&order.seller)
-            .and_then(|s| s.payout.as_deref())
+        let seller = order
+            .pay_to
+            .as_deref()
+            .or_else(|| {
+                state
+                    .sellers
+                    .get(&order.seller)
+                    .and_then(|s| s.payout.as_deref())
+            })
             .ok_or(MarketError::Conflict("the seller has no payout address"))?;
         let seller = crate::stablecoin::normalize_address(seller)
             .ok_or(MarketError::Conflict("the seller has no payout address"))?;
@@ -2591,6 +2651,7 @@ mod tests {
             vm: None,
             rail: Rail::Stripe,
             tx_hash: None,
+            pay_to: None,
         }
     }
 

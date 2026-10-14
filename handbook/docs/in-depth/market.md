@@ -323,6 +323,10 @@ printf '%s' 'https://base-sepolia.example/v2/KEY' \
   | systemd-creds encrypt --name=usdc-rpc-url - /var/secrets/losos-usdc-rpc-url.cred
 ```
 
+Seal it before you switch USDC on: the registrar loads the blob at start and
+does not start without it. Plain `http` is accepted only for a node on the
+edge's own loopback, such as `http://127.0.0.1:8545`.
+
 Chain 84532 (Base Sepolia) is test mode and must be paired with a `sk_test_`
 key. Chain 8453 (Base) is live mode and must be paired with a `sk_live_` key.
 The registrar refuses a mix, so a test payment cannot land in the live ledger.
@@ -342,6 +346,19 @@ The registrar refuses a mix, so a test payment cannot land in the live ledger.
    also need a little ETH on that chain for the network fee.
 4. The edge reads the receipt through the sealed RPC URL and marks the order
    paid. A transaction can pay only one order.
+
+Before it counts a payment, the edge checks that the RPC endpoint answers for
+the configured chain, that `LososPay` pulls Circle's USDC for that chain and
+pays the configured treasury, and that a block sits on top of the payment.
+`LososPay` takes at most half of a payment, the fixed split of a machine
+order; the edge checks the exact fee of every order.
+
+An order holds its units for a quarter of an hour. The pane starts no payment
+in the last two minutes of that, and it keeps the transaction of a payment it
+sent until the edge has counted it, so checking again never pays twice. A
+payment that lands after the hold is still honoured while its units are free.
+If they were sold in the meantime, the order stays unpaid and the refund has
+to be settled outside the market.
 
 On Base Sepolia, test ETH comes from Coinbase's Base Sepolia faucet and test
 USDC from [Circle's faucet](https://faucet.circle.com). Neither has value.

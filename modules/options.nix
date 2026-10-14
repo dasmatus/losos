@@ -1677,7 +1677,8 @@ in
       description = ''
         8453 is Base (live USDC) and must be paired with a live Stripe key.
         84532 is Base Sepolia (test USDC) and must be paired with a test key.
-        The registrar refuses a chain that disagrees with the key.
+        The registrar refuses a chain that disagrees with the key, and an
+        RPC endpoint that answers for a different chain.
       '';
     };
 
@@ -1701,7 +1702,10 @@ in
         credential name `usdc-rpc-url`. A provider key usually sits in the
         URL, so it is a secret: the registrar receives the plaintext only
         through `LoadCredentialEncrypted=` and the browser never does. Seal
-        it from stdin. A missing blob leaves USDC unconfigured.
+        it from stdin, or let the edge-credentials workflow seal it, before
+        the switch: the registrar unit loads the blob and does not start
+        without it. Plain `http` is accepted only for a node on the edge's
+        own loopback.
       '';
     };
 

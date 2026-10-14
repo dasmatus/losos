@@ -547,6 +547,8 @@ export interface StablecoinInvoice {
   order_id_hash: string;
   gross: string;
   fee: string;
+  /** Unix seconds. The order holds its units until then; start no payment after it. */
+  pay_before: number;
 }
 
 export type MarketResponse =

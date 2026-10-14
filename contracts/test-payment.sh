@@ -6,6 +6,12 @@ set -euo pipefail
 cd "$(dirname "$0")"
 export PATH="${HOME}/.foundry/bin:${PATH}"
 
+# forge compiles every test file, the fork test's forge-std import included,
+# so the library has to be there before the first run.
+if [ ! -d lib/forge-std ]; then
+  forge install foundry-rs/forge-std@v1.17.0 --no-commit
+fi
+
 echo "== forge: local transactions =="
 forge test --match-path test/LososPay.t.sol -vv
 
@@ -81,9 +87,6 @@ echo "== registrar: the receipt and the payout signature =="
 ( cd ../backend-registrar && LOSOS_ANVIL_RECEIPT=/tmp/losos-anvil-payment.json cargo test --lib an_anvil_receipt_pays_the_order_it_names -- --nocapture )
 
 echo "== Base Sepolia fork, if the public RPC answers =="
-if [ ! -d lib/forge-std ]; then
-  forge install foundry-rs/forge-std --no-commit
-fi
 if curl -sf --max-time 8 -X POST -H 'content-type: application/json' \
   --data '{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":[]}' \
   https://sepolia.base.org | grep -q 0x14a34; then

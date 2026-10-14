@@ -78,6 +78,11 @@ const RPC_TIMEOUT: Duration = Duration::from_secs(4);
 /// hostile endpoint cannot pin the registrar on a huge body.
 const MAX_RPC_REPLY: usize = 256 * 1024;
 
+/// Blocks a payment must have, its own included, before it counts. Base
+/// makes a block every two seconds, so this is a few seconds of waiting
+/// against a payment that a short reorganisation would undo.
+pub const CONFIRMATIONS: u64 = 2;
+
 /// What one paid order must look like on chain.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExpectedPayment {
@@ -172,10 +177,11 @@ pub async fn read_rpc_url(path: &Path) -> Result<String, MarketError> {
     Ok(url.to_string())
 }
 
-/// Whether `url` may be used as the chain endpoint. `https` only, no
-/// userinfo (`https://key@host` would hide the host), no whitespace, and a
-/// host. The path and query may carry a provider key; that is why the whole
-/// URL is the sealed credential.
+/// Whether `url` may be used as the chain endpoint. `https`, or plain
+/// `http` to a node on this machine's loopback; no userinfo
+/// (`https://key@host` would hide the host), no whitespace, and a host. The
+/// path and query may carry a provider key; that is why the whole URL is the
+/// sealed credential.
 #[must_use]
 pub fn rpc_url_ok(url: &str) -> bool {
     if url.len() > 2048
@@ -185,14 +191,28 @@ pub fn rpc_url_ok(url: &str) -> bool {
     {
         return false;
     }
-    let Some(rest) = url.strip_prefix("https://") else {
+    let (rest, tls) = if let Some(rest) = url.strip_prefix("https://") {
+        (rest, true)
+    } else if let Some(rest) = url.strip_prefix("http://") {
+        (rest, false)
+    } else {
         return false;
     };
     if rest.is_empty() || rest.starts_with('/') {
         return false;
     }
     let authority = rest.split(['/', '?', '#']).next().unwrap_or("");
-    !authority.is_empty() && !authority.contains('@') && authority.contains('.')
+    if authority.is_empty() || authority.contains('@') {
+        return false;
+    }
+    if tls {
+        return authority.contains('.');
+    }
+    let host = authority
+        .rsplit_once(':')
+        .filter(|(_, port)| port.bytes().all(|b| b.is_ascii_digit()))
+        .map_or(authority, |(host, _)| host);
+    matches!(host, "127.0.0.1" | "localhost" | "[::1]")
 }
 
 /// A single raw transaction: `0x` plus an even run of hex, long enough to be
@@ -262,6 +282,10 @@ pub struct StablecoinInvoice {
     pub gross: String,
     /// Platform fee, USDC base units, decimal.
     pub fee: String,
+    /// Unix seconds. The order holds its units until then, so a wallet
+    /// should not start paying after it: a later payment is honoured only
+    /// while the units are still free.
+    pub pay_before: u64,
 }
 
 #[must_use]
@@ -271,6 +295,7 @@ pub fn invoice(
     seller: &str,
     gross_cents: u64,
     fee_cents: u64,
+    pay_before: u64,
 ) -> StablecoinInvoice {
     StablecoinInvoice {
         chain_id: opts.chain_id,
@@ -282,6 +307,7 @@ pub fn invoice(
         order_id_hash: order_id_hash_hex(order_id),
         gross: cents_to_usdc(gross_cents).to_string(),
         fee: cents_to_usdc(fee_cents).to_string(),
+        pay_before,
     }
 }
 
@@ -314,20 +340,26 @@ pub async fn forward_rpc(
         .timeout(RPC_TIMEOUT)
         .build()
         .map_err(|_| MarketError::Unconfigured)?;
-    let response = client
+    let mut response = client
         .post(rpc_url)
         .json(&body)
         .send()
         .await
         .map_err(|_| MarketError::Conflict("the chain endpoint did not answer"))?;
-    let bytes = response
-        .bytes()
+    // Read the body a chunk at a time, so the cap holds before the whole
+    // reply is in memory rather than after.
+    let mut bytes = Vec::new();
+    while let Some(chunk) = response
+        .chunk()
         .await
-        .map_err(|_| MarketError::Conflict("the chain endpoint did not answer"))?;
-    if bytes.len() > MAX_RPC_REPLY {
-        return Err(MarketError::Conflict(
-            "the chain endpoint answered too much",
-        ));
+        .map_err(|_| MarketError::Conflict("the chain endpoint did not answer"))?
+    {
+        if bytes.len() + chunk.len() > MAX_RPC_REPLY {
+            return Err(MarketError::Conflict(
+                "the chain endpoint answered too much",
+            ));
+        }
+        bytes.extend_from_slice(&chunk);
     }
     serde_json::from_slice(&bytes)
         .map_err(|_| MarketError::Conflict("the chain endpoint did not answer JSON"))
@@ -352,6 +384,82 @@ pub async fn fetch_receipt(rpc_url: &str, tx: &str) -> Result<Value, MarketError
             "the chain endpoint did not answer JSON",
         )),
     }
+}
+
+/// The `result` of one chain call, or a conflict naming what failed.
+async fn call_result(rpc_url: &str, method: &str, params: Value) -> Result<Value, MarketError> {
+    let reply = forward_rpc(rpc_url, method, &params, &json!(1)).await?;
+    match reply.get("result") {
+        Some(v) if !v.is_null() => Ok(v.clone()),
+        _ => Err(MarketError::Conflict(
+            "the chain endpoint returned an error",
+        )),
+    }
+}
+
+/// Check that the sealed endpoint is the chain this edge settles on, and
+/// that the configured `LososPay` pulls Circle's USDC and pays the configured
+/// treasury. Without this a Sepolia endpoint behind a live config would turn
+/// test USDC into paid live orders, and a contract deployed over a token
+/// anyone can mint would pay for orders with nothing.
+pub async fn check_endpoint(rpc_url: &str, opts: &UsdcOpts) -> Result<(), MarketError> {
+    let chain = call_result(rpc_url, "eth_chainId", json!([])).await?;
+    let usdc_word = call_result(
+        rpc_url,
+        "eth_call",
+        json!([{ "to": opts.pay, "data": selector("usdc()") }, "latest"]),
+    )
+    .await?;
+    let treasury_word = call_result(
+        rpc_url,
+        "eth_call",
+        json!([{ "to": opts.pay, "data": selector("treasury()") }, "latest"]),
+    )
+    .await?;
+    endpoint_matches(opts, &chain, &usdc_word, &treasury_word).map_err(MarketError::Conflict)
+}
+
+/// The pure half of [`check_endpoint`]: the three answers against the config.
+pub fn endpoint_matches(
+    opts: &UsdcOpts,
+    chain: &Value,
+    usdc_word: &Value,
+    treasury_word: &Value,
+) -> Result<(), &'static str> {
+    if hex_u64(chain.as_str().unwrap_or("")) != Some(opts.chain_id) {
+        return Err("the chain endpoint is on a different chain");
+    }
+    let want_usdc = decode_address(&opts.usdc).ok_or("the USDC address is not configured")?;
+    if topic_address(usdc_word.as_str().unwrap_or("")) != Some(want_usdc) {
+        return Err("the pay contract does not pull Circle's USDC");
+    }
+    let want_treasury =
+        decode_address(&opts.treasury).ok_or("the treasury address is not configured")?;
+    if topic_address(treasury_word.as_str().unwrap_or("")) != Some(want_treasury) {
+        return Err("the pay contract pays a different treasury");
+    }
+    Ok(())
+}
+
+/// Whether the block `receipt` names has [`CONFIRMATIONS`] blocks on top of
+/// it, itself included, at `head`.
+pub fn confirmed(receipt: &Value, head: &Value) -> Result<(), &'static str> {
+    let block = hex_u64(receipt["blockNumber"].as_str().unwrap_or(""))
+        .ok_or("the transaction is not in a block yet")?;
+    let head = hex_u64(head.as_str().unwrap_or("")).ok_or("the chain endpoint did not answer")?;
+    if head.saturating_sub(block) + 1 < CONFIRMATIONS {
+        return Err("the payment is waiting for another block");
+    }
+    Ok(())
+}
+
+/// The latest block number, as the hex quantity the endpoint sent.
+pub async fn block_number(rpc_url: &str) -> Result<Value, MarketError> {
+    call_result(rpc_url, "eth_blockNumber", json!([])).await
+}
+
+fn selector(signature: &str) -> String {
+    format!("0x{}", hex_encode(&keccak256(signature.as_bytes())[..4]))
 }
 
 /// Whether `receipt` is a successful call to the pay contract that paid
@@ -564,12 +672,81 @@ mod tests {
     }
 
     #[test]
-    fn the_rpc_url_must_be_plain_https() {
+    fn the_rpc_url_is_https_or_a_loopback_node() {
         assert!(rpc_url_ok("https://base-sepolia.g.alchemy.com/v2/secret"));
         assert!(!rpc_url_ok("http://example.com/v2/secret"));
         assert!(!rpc_url_ok("https://user:secret@example.com/"));
         assert!(!rpc_url_ok("https://example.com/v2/secret key"));
         assert!(!rpc_url_ok("file:///etc/passwd"));
+        // Plain http only reaches a node on this machine.
+        assert!(rpc_url_ok("http://127.0.0.1:8545"));
+        assert!(rpc_url_ok("http://localhost:8545/"));
+        assert!(!rpc_url_ok("http://127.0.0.1.example.com:8545"));
+        assert!(!rpc_url_ok("http://10.0.0.5:8545"));
+    }
+
+    fn opts() -> UsdcOpts {
+        UsdcOpts {
+            chain_id: BASE_SEPOLIA,
+            rpc_file: String::new(),
+            usdc: USDC_BASE_SEPOLIA.to_string(),
+            pay: "0x1111111111111111111111111111111111111111".to_string(),
+            treasury: "0x4444444444444444444444444444444444444444".to_string(),
+        }
+    }
+
+    fn word(address: &str) -> Value {
+        json!(format!("0x000000000000000000000000{}", &address[2..]))
+    }
+
+    #[test]
+    fn the_endpoint_must_be_this_chain_and_the_contract_this_config() {
+        let o = opts();
+        let usdc = word(USDC_BASE_SEPOLIA);
+        let treasury = word(&o.treasury);
+        assert_eq!(
+            endpoint_matches(&o, &json!("0x14a34"), &usdc, &treasury),
+            Ok(())
+        );
+        // A Base (mainnet) endpoint behind a Sepolia config, or the reverse.
+        assert_eq!(
+            endpoint_matches(&o, &json!("0x2105"), &usdc, &treasury),
+            Err("the chain endpoint is on a different chain")
+        );
+        // A LososPay deployed over some other token.
+        assert_eq!(
+            endpoint_matches(
+                &o,
+                &json!("0x14a34"),
+                &word("0x5555555555555555555555555555555555555555"),
+                &treasury
+            ),
+            Err("the pay contract does not pull Circle's USDC")
+        );
+        assert_eq!(
+            endpoint_matches(&o, &json!("0x14a34"), &usdc, &word(USDC_BASE_SEPOLIA)),
+            Err("the pay contract pays a different treasury")
+        );
+    }
+
+    #[test]
+    fn a_payment_needs_a_block_on_top_of_its_own() {
+        let receipt = json!({ "blockNumber": "0x64" });
+        assert_eq!(
+            confirmed(&receipt, &json!("0x64")),
+            Err("the payment is waiting for another block")
+        );
+        assert_eq!(confirmed(&receipt, &json!("0x65")), Ok(()));
+        assert_eq!(
+            confirmed(&json!({}), &json!("0x65")),
+            Err("the transaction is not in a block yet")
+        );
+    }
+
+    #[test]
+    fn selectors_are_the_solidity_ones() {
+        assert_eq!(selector("usdc()"), "0x3e413bee");
+        assert_eq!(selector("treasury()"), "0x61d027b3");
     }
 
     #[test]

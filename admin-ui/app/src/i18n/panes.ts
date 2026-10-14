@@ -1977,6 +1977,36 @@ export default defineMessages({
     sk: "Tento prehliadač nemá rozšírenie peňaženky. Vytvorte peňaženku tu, alebo nainštalujte MetaMask, Rabby či Rainbow a skúste to znova.",
     de: "Dieser Browser hat keine Wallet-Erweiterung. Lege hier eine Wallet an, oder installiere MetaMask, Rabby oder Rainbow und versuche es erneut.",
   },
+  "panes.market.usdc.unlock": {
+    en: "This browser's wallet password",
+    sk: "Heslo k peňaženke v tomto prehliadači",
+    de: "Passwort der Wallet in diesem Browser",
+  },
+  "panes.market.usdc.wrongPassword": {
+    en: "That password does not open the wallet saved in this browser.",
+    sk: "Toto heslo neotvorí peňaženku uloženú v tomto prehliadači.",
+    de: "Dieses Passwort öffnet die in diesem Browser gesicherte Wallet nicht.",
+  },
+  "panes.market.usdc.needWallet": {
+    en: "Create, import or connect a wallet first.",
+    sk: "Najprv vytvorte, importujte alebo pripojte peňaženku.",
+    de: "Lege zuerst eine Wallet an, importiere oder verbinde eine.",
+  },
+  "panes.market.usdc.lapsed": {
+    en: "This order no longer holds its units, so it was not paid. Order again from the shelf.",
+    sk: "Táto objednávka už nedrží svoje jednotky, preto nebola zaplatená. Objednajte znova z ponuky.",
+    de: "Diese Bestellung hält ihre Einheiten nicht mehr und wurde deshalb nicht bezahlt. Bestelle erneut aus dem Angebot.",
+  },
+  "panes.market.usdc.counting": {
+    en: "The payment is on chain. The edge has not counted it yet; check again in a moment. Paying again would pay twice.",
+    sk: "Platba je na blockchaine. Edge ju zatiaľ nezapočítal; o chvíľu to skúste znova. Opätovná platba by zaplatila dvakrát.",
+    de: "Die Zahlung ist auf der Chain. Der Edge hat sie noch nicht gezählt; prüfe gleich noch einmal. Erneut zu zahlen würde doppelt zahlen.",
+  },
+  "panes.market.usdc.checkAgain": {
+    en: "Check the payment again",
+    sk: "Znova skontrolovať platbu",
+    de: "Zahlung erneut prüfen",
+  },
   "panes.market.usdc.failedTitle": {
     en: "The wallet could not do that",
     sk: "Peňaženka to nedokázala",

@@ -345,6 +345,10 @@ Ein Edge kann Speicher, Rechenleistung und Maschinen in USDC abrechnen statt
 darin meist ein API-Schlüssel steckt. Sie wird mit systemd-creds unter dem
 Namen `usdc-rpc-url` versiegelt, und nur der Registrar liest sie.
 
+Versiegle sie, bevor du USDC einschaltest: der Registrar lädt den Blob beim
+Start und startet ohne ihn nicht. Einfaches `http` nimmt er nur für einen
+Knoten auf dem Loopback des Edge selbst an, etwa `http://127.0.0.1:8545`.
+
 `losos.edge.market.currency` muss `usd` sein: Preise sind USDC-Cent. `chainId`
 84532 ist Base Sepolia (Test, zusammen mit einem `sk_test_`-Schlüssel), 8453
 ist Base (Live, zusammen mit `sk_live_`). Eine Mischung lehnt der Registrar ab.
@@ -364,6 +368,20 @@ So zahlst du:
    Verkäufer. Für die Netzwerkgebühr brauchst du etwas ETH auf derselben Kette.
 4. Der Edge liest die Quittung über die versiegelte RPC-URL und markiert die
    Bestellung als bezahlt. Eine Transaktion kann nur eine Bestellung zahlen.
+
+Bevor er eine Zahlung zählt, prüft der Edge, dass der RPC-Endpunkt für die
+eingestellte Kette antwortet, dass `LososPay` Circles USDC dieser Kette
+einzieht und an die eingestellte Treasury zahlt, und dass über der Zahlung
+schon ein weiterer Block liegt. `LososPay` nimmt höchstens die Hälfte einer
+Zahlung, die feste Teilung bei Maschinen; die genaue Gebühr jeder Bestellung
+prüft der Edge.
+
+Eine Bestellung hält ihre Einheiten eine Viertelstunde. In den letzten zwei
+Minuten beginnt der Bereich keine Zahlung mehr, und die Transaktion einer
+gesendeten Zahlung behält er, bis der Edge sie gezählt hat, so dass erneutes
+Prüfen nie doppelt zahlt. Eine Zahlung nach Ablauf gilt, solange die
+Einheiten frei sind. Wurden sie inzwischen verkauft, bleibt die Bestellung
+unbezahlt, und die Erstattung muss außerhalb des Markts geregelt werden.
 
 Auf Base Sepolia kommt Test-ETH vom Coinbase-Faucet und Test-USDC von
 [Circles Faucet](https://faucet.circle.com). Beides hat keinen Wert.

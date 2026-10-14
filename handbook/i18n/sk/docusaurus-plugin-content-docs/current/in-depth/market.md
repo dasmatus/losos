@@ -308,6 +308,10 @@ Hardvér zostáva na Stripe. RPC URL je tajomstvo, lebo v nej zvyčajne sedí
 API kľúč. Zapečatí sa cez systemd-creds pod menom `usdc-rpc-url` a číta ju
 len registrar.
 
+Zapečaťte ju skôr, než USDC zapnete: registrar blob načíta pri štarte a bez
+neho sa nespustí. Obyčajné `http` registrar prijme len pre uzol na loopbacku
+samotného edge, napríklad `http://127.0.0.1:8545`.
+
 `losos.edge.market.currency` musí byť `usd`: ceny sú centy USDC. `chainId`
 84532 je Base Sepolia (test, spolu s kľúčom `sk_test_`), 8453 je Base
 (ostro, spolu s `sk_live_`). Zmes registrar odmietne.
@@ -325,6 +329,19 @@ Ako platiť:
    poplatok potrebujete aj trochu ETH na tom istom reťazci.
 4. Edge prečíta potvrdenie cez zapečatenú RPC URL a objednávku označí ako
    zaplatenú. Jedna transakcia zaplatí len jednu objednávku.
+
+Kým platbu započíta, edge overí, že RPC odpovedá za nastavený reťazec, že
+`LososPay` sťahuje USDC od Circle pre tento reťazec a platí nastavenej
+treasury, a že nad platbou je už ďalší blok. `LososPay` si vezme najviac
+polovicu platby, čo je pevné delenie pri strojoch; presný poplatok každej
+objednávky kontroluje edge.
+
+Objednávka drží svoje jednotky štvrť hodiny. Panel v posledných dvoch
+minútach novú platbu nezačne a transakciu odoslanej platby si pamätá, kým ju
+edge nezapočíta, takže opätovná kontrola nikdy nezaplatí dvakrát. Platba,
+ktorá príde po uplynutí tejto doby, platí, kým sú jednotky voľné. Ak sa
+medzitým predali, objednávka zostane nezaplatená a vrátenie peňazí sa musí
+vyriešiť mimo trhu.
 
 Na Base Sepolia je testovacie ETH z faucet Coinbase a testovacie USDC z
 [faucet Circle](https://faucet.circle.com). Nemajú hodnotu.

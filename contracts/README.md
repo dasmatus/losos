@@ -5,6 +5,11 @@ contract forwards the platform fee to `treasury` and the rest to the seller,
 then emits `Paid`. The edge checks that log. It never holds a signing key,
 and nothing here can be upgraded.
 
+The fee may be at most half of the payment, which is the fixed split of a
+machine order. The edge checks the exact fee of each order, and before it
+trusts a log it reads `usdc()` and `treasury()` back from the contract and
+refuses one deployed over any other token or treasury.
+
 Deploy once per chain (Base for live, Base Sepolia for test) with Circle's
 USDC and the treasury address. The two addresses go in the edge config, not
 in a secret:

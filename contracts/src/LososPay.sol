@@ -12,8 +12,12 @@ interface IERC20 {
 contract LososPay {
     IERC20 public immutable usdc;
     address public immutable treasury;
-    /// Same ceiling as the Stripe gate: 20%.
-    uint256 public constant MAX_FEE_BPS = 2000;
+    /// The largest cut the market takes: half, which is the fixed split of a
+    /// machine order with the box that hosts it. Storage and compute orders
+    /// carry the operator's rate, capped at 20% by the registrar. The
+    /// registrar checks the exact fee of every order against the `Paid` log,
+    /// so this ceiling only bounds what a wrong invoice could take.
+    uint256 public constant MAX_FEE_BPS = 5000;
 
     event Paid(
         bytes32 indexed orderId,
@@ -23,11 +27,13 @@ contract LososPay {
         uint256 fee
     );
 
+    error ZeroAddress();
     error ZeroSeller();
     error FeeTooHigh();
     error TransferFailed();
 
     constructor(IERC20 usdc_, address treasury_) {
+        if (address(usdc_) == address(0) || treasury_ == address(0)) revert ZeroAddress();
         usdc = usdc_;
         treasury = treasury_;
     }

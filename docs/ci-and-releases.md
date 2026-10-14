@@ -194,6 +194,7 @@ Market page (Operator setup) describes.
    | `STRIPE_KEY`            | the Stripe secret or restricted key, test or live       |
    | `STRIPE_WEBHOOK_SECRET` | optional: both `whsec_` secrets, one per line           |
    | `CLAUDE_KEY`            | the Claude API key (`sk-ant-...`)                       |
+   | `USDC_RPC_URL`          | optional: the `https://` RPC endpoint for USDC          |
    | `EDGE_SSH_KEY`          | the private half of the key from step 1                 |
    | `EDGE_SSH_HOST`         | the edge's address (a secret or a variable)             |
    | `EDGE_SSH_KNOWN_HOSTS`  | the edge's line from `ssh-keyscan` (secret or variable) |
@@ -211,3 +212,9 @@ The Claude key is sealed as `claude-api-key` to
 (`losos.edge.credentials.secrets.claude-api-key.sealed`). The registrar reads it
 with `LoadCredentialEncrypted=claude-api-key:<that path>`, and sealing a new key
 restarts `losos-registrar.service`.
+
+The USDC RPC URL is sealed as `usdc-rpc-url` to
+`/var/secrets/losos-usdc-rpc-url.cred`
+(`losos.edge.market.usdc.rpcUrlSealed`), read by the registrar the same way.
+Seal it before switching `losos.edge.market.usdc.enable` on: the registrar
+unit loads the blob and does not start without it.
