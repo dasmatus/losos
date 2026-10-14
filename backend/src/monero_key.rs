@@ -57,16 +57,18 @@ fn hex32(text: &str) -> Option<[u8; 32]> {
 
 /// Why `view_key` is not the private view key of `address`, if it is not.
 pub fn check(address: &str, view_key: &str) -> Result<(), &'static str> {
-    let (spend, view) = public_keys(address).ok_or("key is not a Monero address")?;
+    let (spend, view) = public_keys(address).ok_or("That is not a Monero address")?;
     let scalar = hex32(view_key)
         .and_then(|b| Option::<Scalar>::from(Scalar::from_canonical_bytes(b)))
-        .ok_or("view_key is not a Monero private key")?;
+        .ok_or("That is not a Monero private view key")?;
     let public = EdwardsPoint::mul_base(&scalar).compress().to_bytes();
     if public == spend {
-        return Err("view_key is the spend key; it stays in your wallet");
+        return Err(
+            "That is the spend key, which stays in your wallet. Paste the private view key",
+        );
     }
     if public != view {
-        return Err("view_key does not belong to the address");
+        return Err("That view key does not belong to this address");
     }
     Ok(())
 }
@@ -111,7 +113,7 @@ mod tests {
         assert_eq!(check(&address, &hex(&view.to_bytes())), Ok(()));
         assert_eq!(
             check(&address, &hex(&spend.to_bytes())),
-            Err("view_key is the spend key; it stays in your wallet")
+            Err("That is the spend key, which stays in your wallet. Paste the private view key")
         );
         let other = Scalar::from_bytes_mod_order([3u8; 32]);
         assert!(check(&address, &hex(&other.to_bytes())).is_err());
