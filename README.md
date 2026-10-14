@@ -1,4 +1,4 @@
-# losos
+# LosOS
 
 A NixOS appliance for a mini-PC. It runs Nextcloud for your own files and can
 lend spare disk and CPU to a mesh of other losos boxes. There is no SSH and no

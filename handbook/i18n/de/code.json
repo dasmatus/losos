@@ -521,31 +521,82 @@
     "message": "Der Marktplatz"
   },
   "losos.home.soon.market.body": {
-    "message": "Sie werden für den Speicher und die Rechenzeit bezahlt, die Ihre Box verleiht, und können Platz bei anderen Boxen kaufen. Der Marktplatz ist fertig und im Testmodus von Stripe geprüft. Er öffnet, sobald ein eingetragenes Unternehmen dahintersteht."
+    "message": "Sie werden für den Speicher und die Rechenzeit bezahlt, die Ihre Box verleiht, und können Platz bei anderen Boxen kaufen."
   },
   "losos.home.soon.pool.title": {
     "message": "Ein Speicherpool über mehrere Boxen"
   },
   "losos.home.soon.pool.body": {
-    "message": "Boxen hinter einem Edge werden ihren ungenutzten Speicher in einen gemeinsamen, replizierten Pool geben. Der verschlüsselte Anteil auf jeder Box ist fertig. Der Edge betreibt den Speicherdienst des Pools noch nicht, und der Schalter wartet auf den Marktplatz."
+    "message": "Boxen hinter einem Edge geben ihren ungenutzten Speicher in einen gemeinsamen, replizierten Pool."
   },
   "losos.home.soon.secureboot.title": {
     "message": "Ein signiertes Installationsprogramm"
   },
   "losos.home.soon.secureboot.body": {
-    "message": "Das Installationsprogramm ist bereit für eine Secure-Boot-Signatur. Sobald der Signaturschlüssel von LosOS existiert, wird jede Version signiert, und eine Firmware, die dem LosOS-Zertifikat vertraut, startet sie mit eingeschaltetem Secure Boot."
+    "message": "Eine Firmware, die dem LosOS-Zertifikat vertraut, startet das Installationsprogramm mit eingeschaltetem Secure Boot."
   },
   "losos.home.soon.company.title": {
     "message": "Fertige Lösungen für Firmen"
   },
   "losos.home.soon.company.body": {
-    "message": "Eine Box für jedes Team, ein Edge für das Büro und die Installation erledigt. Die Firmeneinrichtung funktioniert heute schon. Als Nächstes kommt der Verkauf als fertiges Paket."
+    "message": "Eine Box für jedes Team, ein Edge für das Büro und die Installation erledigt."
   },
   "losos.home.soon.translations.title": {
     "message": "Das Handbuch auf Slowakisch und Deutsch"
   },
   "losos.home.soon.translations.body": {
-    "message": "Menüs und diese Seite sind schon übersetzt. Die Seiten des Handbuchs folgen eine nach der anderen."
+    "message": "Jede Seite dieses Handbuchs auf Slowakisch und Deutsch."
+  },
+  "losos.home.soon.market.card": {
+    "message": "Kartenzahlung über Stripe, im Testmodus von Stripe geprüft"
+  },
+  "losos.home.soon.market.coins": {
+    "message": "Zahlung in USDC und Bitcoin"
+  },
+  "losos.home.soon.market.open": {
+    "message": "Die Eröffnung, für die ein eingetragenes Unternehmen dahinterstehen muss"
+  },
+  "losos.home.soon.pool.share": {
+    "message": "Der verschlüsselte Anteil auf jeder Box"
+  },
+  "losos.home.soon.pool.service": {
+    "message": "Der Speicherdienst des Pools auf dem Edge"
+  },
+  "losos.home.soon.pool.switch": {
+    "message": "Der Freigabeschalter, der mit dem Marktplatz öffnet"
+  },
+  "losos.home.soon.secureboot.ready": {
+    "message": "Ein Installationsprogramm, bereit zum Signieren"
+  },
+  "losos.home.soon.secureboot.key": {
+    "message": "Der Signaturschlüssel von LosOS"
+  },
+  "losos.home.soon.secureboot.releases": {
+    "message": "Eine Signatur auf jeder Version"
+  },
+  "losos.home.soon.company.setup": {
+    "message": "Die Firmeneinrichtung mit einem eigenen Edge im Büro"
+  },
+  "losos.home.soon.company.image": {
+    "message": "Ein Edge-Image bei jeder Version"
+  },
+  "losos.home.soon.company.package": {
+    "message": "Der Verkauf als fertiges Paket"
+  },
+  "losos.home.soon.translations.menus": {
+    "message": "Menüs und diese Seite"
+  },
+  "losos.home.soon.translations.depth": {
+    "message": "Das Kapitel Im Detail, TPM und das Sicherheitsmodell"
+  },
+  "losos.home.soon.translations.rest": {
+    "message": "Die übrigen Seiten"
+  },
+  "losos.home.soon.chip.done": {
+    "message": "Fertig"
+  },
+  "losos.home.soon.done": {
+    "message": "Fertig:"
   },
   "losos.home.soon.title": {
     "message": "Demnächst"
