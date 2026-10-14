@@ -3,8 +3,11 @@
 # modules/splash.nix puts the palette (ground, ink, muted, accent, warn; each
 # with .r .g .b) and `name` ("LosOS v0.1.8") above this file.
 #
-# While the box boots the logo sits in the middle of the screen with a
-# caption ("LosOS v0.1.8 is starting") and a progress line under it. Once
+# While the box boots the logo plays its opening: an outline closes in from
+# the edges of the screen onto a rule under the name, the salmon swims in
+# from the left, level, and turns up into the logo's angle as it lands, and
+# "LosOS" rises beside it. The rule then fills with its hatch as the boot
+# goes on, and the caption ("LosOS v0.1.8 is starting") sits under it. Once
 # the box is up, modules/console.nix sends the rows tty1 shows without a
 # splash, as
 #
@@ -18,15 +21,18 @@
 #   an empty row is a gap
 #
 # Then the logo glides to the top, slow at first, faster, slow again, while
-# the caption fades and the panel opens from its middle with the rows fading
-# in. A disk that asks for a password opens the same panel for the prompt.
+# the rule fills to the end, the caption fades and the panel opens from its
+# middle with the rows fading in. A disk that asks for a password opens the
+# same panel for the prompt.
 #
 # On the installer medium the installer sends its own rows the same way:
 # the firmware menu, its steps, and how it ended (install_screen.rs).
 #
 # `losos-mode:reboot` and `losos-mode:shutdown` (modules/splash.nix, at
-# shutdown) play it backwards to a centred logo captioned "is restarting" or
-# "is shutting down", and later updates are ignored.
+# shutdown) play the glide backwards to a centred logo captioned "is
+# restarting" or "is shutting down", and later updates are ignored. A
+# splash started for anything but a boot shows the logo at rest, without
+# the opening.
 
 Window.SetBackgroundTopColor(ground.r, ground.g, ground.b);
 Window.SetBackgroundBottomColor(ground.r, ground.g, ground.b);
@@ -55,48 +61,248 @@ fun centred (width)
   return Math.Int(screen.x + (screen.w - width) / 2);
 }
 
-# ── The logo and its caption ────────────────────────────────────────────────
+# 0 before `from`, 1 after `to`, a straight line between (frames).
+fun ramp (frame, from, to)
+{
+  return Math.Clamp((frame - from) / (to - from), 0, 1);
+}
 
-logo.original = Image("logo.png");
-logo.h = Math.Int(screen.h * 0.2);
-logo.w = Math.Int(logo.original.GetWidth() * logo.h / logo.original.GetHeight());
-logo.sprite = Sprite(logo.original.Scale(logo.w, logo.h));
+# Starts and ends at rest.
+fun smooth (x)
+{
+  return (1 - Math.Cos(Math.Pi * x)) / 2;
+}
+
+# Fast, then settling into place.
+fun out (x)
+{
+  return 1 - (1 - x) * (1 - x) * (1 - x);
+}
+
+# Out, past the mark by a few percent, and back: a landing.
+fun land (x)
+{
+  return 1 + 2.4 * (x - 1) * (x - 1) * (x - 1) + 1.4 * (x - 1) * (x - 1);
+}
+
+# ── The logo: the salmon, the name and the rule ─────────────────────────────
+
+# The name's size follows the screen; the fish and the rule follow the
+# name, in the proportions of the logo beside the wordmark. Plymouth sizes
+# text in points, so the name's measures come from its picture.
+hero = Math.Int(Math.Max(screen.h * 0.075, 30));
+
+word.image = Image.Text("LosOS", ink.r, ink.g, ink.b, 1, "DejaVu Sans Bold " + hero);
+word.sprite = Sprite(word.image);
+word.w = word.image.GetWidth();
+# DejaVu's line is 1.164 of its size: the baseline 0.928 down from the top,
+# the capitals 0.729 tall.
+word.px = word.image.GetHeight() / 1.164;
+word.baseline = word.px * 0.928;
+word.caps = word.px * 0.729;
+
+# The fish level, head right, and the same fish on a square it can turn
+# inside: Plymouth keeps a turned image at its size and cuts what spills.
+fish.original = Image("fish.png");
+fish.w = Math.Int(word.w * 0.8);
+fish.h = Math.Int(fish.original.GetHeight() * fish.w / fish.original.GetWidth());
+fish.image = fish.original.Scale(fish.w, fish.h);
+square.original = Image("fish-square.png");
+square.side = Math.Int(square.original.GetWidth() * fish.w / fish.original.GetWidth());
+square.image = square.original.Scale(square.side, square.side);
+square.sprite = Sprite();
+square.angle = -35 * Math.Pi / 180;
+square.drawn = 1;
+
+# While it swims the fish is cut in upright strips, each lifted by a wave
+# that runs from the tail to the head.
+strips = 16;
+strip.w = Math.Int(fish.w / strips);
+for (i = 0; i < strips; i++)
+  {
+    local.w = strip.w;
+    if (i == strips - 1)
+      w = fish.w - i * strip.w;
+    strip.sprite[i] = Sprite(fish.image.Crop(i * strip.w, 0, w, fish.h));
+  }
+
+# The turned fish's box.
+fish.bw = Math.Int(fish.w * Math.Cos(square.angle) - fish.h * Math.Sin(square.angle));
+fish.bh = Math.Int(-fish.w * Math.Sin(square.angle) + fish.h * Math.Cos(square.angle));
+
+# Side by side and centred: the fish, a gap, the name. The fish is centred
+# on the middle of the capitals; the rule sits under the name, below the
+# baseline.
+gap = Math.Int(word.px * 0.24);
+logo.w = fish.bw + gap + word.w;
 logo.x = centred(logo.w);
-# In the middle of the screen, with the caption and the progress line
-# under it counted in.
+fish.cx = logo.x + fish.bw / 2;
+word.x = logo.x + fish.bw + gap;
+local.caps = word.baseline - word.caps / 2;
+word.dy = Math.Int(Math.Max(0, fish.bh / 2 - caps));
+fish.dy = word.dy + caps;
+
+rule.x = word.x + Math.Int(word.px * 0.04);
+rule.w = word.w - Math.Int(word.px * 0.08);
+rule.h = Math.Max(4, Math.Int(word.px * 0.07));
+rule.dy = Math.Int(word.dy + word.baseline + word.px * 0.18);
+rule.line = Sprite(Image("line.png").Scale(rule.w + 2, rule.h + 2));
+rule.sunk = Sprite(Image("sunk.png").Scale(rule.w, rule.h));
+rule.hatch = Image("hatch.png").Tile(rule.w, rule.h);
+rule.sprite = Sprite();
+rule.drawn = 0;
+rule.fill = 0;
+
+logo.h = Math.Int(Math.Max(fish.dy + fish.bh / 2, rule.dy + rule.h));
+# In the middle of the screen, with the caption under it counted in.
 logo.middle = Math.Int(screen.y + (screen.h - logo.h - 4 * size) / 2);
 logo.top = logo.middle;
 
 caption.sprite = Sprite();
-bar.image = Image("accent.png");
-bar.sprite = Sprite();
-bar.width = Math.Int(Math.Min(logo.w * 1.5, screen.w - 2 * pad));
-bar.height = Math.Max(3, Math.Int(size / 5));
-progress = 0;
-bar.drawn = 0;
 
 fun set_caption (text)
 {
-  local.image = Image.Text(text, ink.r, ink.g, ink.b, 1, font("Bold ", 1.2));
+  local.image = Image.Text(text, muted.r, muted.g, muted.b, 1, font("", 1.2));
   caption.sprite.SetImage(image);
   caption.x = centred(image.GetWidth());
   # Below the logo, and moving with it.
   caption.dy = logo.h + 2 * pad;
-  bar.dy = caption.dy + image.GetHeight() + pad;
+  message.dy = caption.dy + image.GetHeight() + pad;
 }
 
-# Plymouth reports progress many times a second; the line is redrawn only
-# when it has grown by a pixel.
-fun draw_bar (y, opacity)
+# ── The opening ────────────────────────────────────────────────────────────
+
+# Frames since the splash started; the opening is over at `opening`.
+opening = 120;
+intro = 0;
+
+# Three outlines close in from the edges of the screen onto the rule, a
+# few frames apart, and fade as they arrive.
+echo.image = Image("muted.png");
+echo.thick = Math.Max(1, Math.Int(size / 9));
+for (i = 0; i < 3; i++)
+  for (local.k = 0; k < 4; k++)
+    echo.sprite[i * 4 + k] = Sprite();
+
+fun draw_echoes (logo_y)
 {
-  local.w = Math.Max(1, Math.Int(bar.width * progress));
-  if (w != bar.drawn)
+  for (local.i = 0; i < 3; i++)
     {
-      bar.sprite.SetImage(bar.image.Scale(w, bar.height));
-      global.bar.drawn = w;
+      local.e = smooth(ramp(intro, 4 * i, 4 * i + 32));
+      local.o = 1;
+      if (i > 0)
+        o = 0.6 - 0.15 * i;
+      o = o * ramp(intro, 4 * i, 4 * i + 4) * (1 - ramp(intro, 4 * i + 28, 4 * i + 36));
+      local.x = Math.Int(screen.x + (rule.x - 1 - screen.x) * e);
+      local.y = Math.Int(screen.y + (logo_y + rule.dy - 1 - screen.y) * e);
+      local.w = Math.Max(1, Math.Int(screen.w + (rule.w + 2 - screen.w) * e));
+      local.h = Math.Max(1, Math.Int(screen.h + (rule.h + 2 - screen.h) * e));
+      local.t = echo.thick;
+      for (local.k = 0; k < 4; k++)
+        echo.sprite[i * 4 + k].SetOpacity(o);
+      if (o > 0)
+        {
+          echo.sprite[i * 4].SetImage(echo.image.Scale(w, t));
+          echo.sprite[i * 4].SetPosition(x, y, 6);
+          echo.sprite[i * 4 + 1].SetImage(echo.image.Scale(w, t));
+          echo.sprite[i * 4 + 1].SetPosition(x, y + h - t, 6);
+          echo.sprite[i * 4 + 2].SetImage(echo.image.Scale(t, h));
+          echo.sprite[i * 4 + 2].SetPosition(x, y, 6);
+          echo.sprite[i * 4 + 3].SetImage(echo.image.Scale(t, h));
+          echo.sprite[i * 4 + 3].SetPosition(x + w - t, y, 6);
+        }
     }
-  bar.sprite.SetPosition(centred(bar.width), y + bar.dy, 3);
-  bar.sprite.SetOpacity(opacity);
+}
+
+# The salmon: in from the left edge, level, its tail beating less as it
+# slows, then a turn up into the logo's angle that lands a touch past it.
+fun draw_fish (logo_y)
+{
+  local.u = out(ramp(intro, 26, 84));
+  local.cx = Math.Int(screen.x - fish.w + (fish.cx - screen.x + fish.w) * u);
+  local.cy = Math.Int(logo_y + fish.dy + (1 - u) * (0.35 * fish.bh + 0.08 * fish.h * Math.Sin(intro / 5)));
+  local.turning = intro >= 82;
+
+  local.amp = 0.11 * fish.h * (1 - smooth(ramp(intro, 56, 80)));
+  for (local.i = 0; i < strips; i++)
+    {
+      if (turning || intro < 26)
+        strip.sprite[i].SetOpacity(0);
+      else
+        {
+          local.along = i / (strips - 1);
+          local.lift = amp * (1 - along) * (1 - along) * Math.Sin(2 * Math.Pi * 1.1 * along - intro * 0.5);
+          strip.sprite[i].SetPosition(cx - fish.w / 2 + i * strip.w, Math.Int(cy - fish.h / 2 + lift), 5);
+          strip.sprite[i].SetOpacity(1);
+        }
+    }
+
+  if (turning)
+    {
+      local.turn = land(ramp(intro, 82, 108));
+      if (turn != square.drawn)
+        {
+          square.sprite.SetImage(square.image.Rotate(square.angle * turn));
+          global.square.drawn = turn;
+        }
+      square.sprite.SetPosition(cx - square.side / 2, cy - square.side / 2, 5);
+      square.sprite.SetOpacity(1);
+    }
+  else
+    square.sprite.SetOpacity(0);
+}
+
+# The rule's hatch is cropped to how far it has filled: the boot's progress,
+# and all of it once the panel opens. It follows that value a little behind,
+# so it sweeps rather than jumps.
+progress = 0;
+
+fun rule_want (e)
+{
+  if (intro < 34)
+    return 0;
+  return Math.Max(progress, e);
+}
+
+fun draw_rule (logo_y, e)
+{
+  local.y = logo_y + rule.dy;
+  local.shown = ramp(intro, 26, 34);
+  local.want = rule_want(e);
+  global.rule.fill = rule.fill + (want - rule.fill) * 0.12;
+  if (Math.Abs(want - rule.fill) < 0.002)
+    global.rule.fill = want;
+
+  local.w = Math.Int(rule.w * rule.fill);
+  if (w != rule.drawn)
+    {
+      if (w > 0)
+        rule.sprite.SetImage(rule.hatch.Crop(0, 0, w, rule.h));
+      global.rule.drawn = w;
+    }
+  rule.line.SetPosition(rule.x - 1, y - 1, 2);
+  rule.sunk.SetPosition(rule.x, y, 3);
+  rule.sprite.SetPosition(rule.x, y, 4);
+  rule.line.SetOpacity(shown);
+  rule.sunk.SetOpacity(shown);
+  if (w > 0)
+    rule.sprite.SetOpacity(shown);
+  else
+    rule.sprite.SetOpacity(0);
+}
+
+# The whole logo with its top at logo_y; e is the glide's eased value.
+fun draw_logo (logo_y, e)
+{
+  if (intro < opening)
+    draw_echoes(logo_y);
+  draw_fish(logo_y);
+  draw_rule(logo_y, e);
+
+  # The name rises into place as the fish arrives.
+  local.rise = out(ramp(intro, 70, 94));
+  word.sprite.SetPosition(word.x, Math.Int(logo_y + word.dy + (1 - rise) * 0.3 * word.px), 5);
+  word.sprite.SetOpacity(rise);
 }
 
 # ── The panel and its rows ──────────────────────────────────────────────────
@@ -105,6 +311,7 @@ panel.image = Image("panel.png");
 panel.sprite = Sprite();
 edge.image = Image("accent.png");
 edge.sprite = Sprite();
+edge.height = Math.Max(3, Math.Int(size / 5));
 message.sprite = Sprite();
 rows = 0;
 panel.h = 0;
@@ -214,13 +421,13 @@ fun draw ()
   local.e = (1 - Math.Cos(Math.Pi * t)) / 2;
 
   local.logo_y = Math.Int(logo.middle + (logo.top - logo.middle) * e);
-  logo.sprite.SetPosition(logo.x, logo_y, 4);
+  draw_logo(logo_y, e);
 
-  # The caption rides up with the logo and is gone before the rows arrive.
-  local.fade = Math.Max(0, 1 - 3 * e);
+  # The caption arrives after the opening, rides up with the logo and is
+  # gone before the rows arrive.
+  local.fade = Math.Max(0, 1 - 3 * e) * ramp(intro, 92, 110);
   caption.sprite.SetPosition(caption.x, logo_y + caption.dy, 3);
   caption.sprite.SetOpacity(fade);
-  draw_bar(logo_y, fade * starting);
 
   # The panel hangs under the logo and opens from its middle.
   local.middle = logo_y + logo.h + 2 * pad + panel.h / 2;
@@ -231,7 +438,7 @@ fun draw ()
       panel.sprite.SetImage(panel.image.Scale(panel.w, h));
       panel.sprite.SetPosition(panel.x, y, 1);
       panel.sprite.SetOpacity(1);
-      edge.sprite.SetImage(edge.image.Scale(panel.w, Math.Min(h, bar.height)));
+      edge.sprite.SetImage(edge.image.Scale(panel.w, Math.Min(h, edge.height)));
       edge.sprite.SetPosition(panel.x, y, 2);
       edge.sprite.SetOpacity(1);
     }
@@ -252,7 +459,7 @@ fun draw ()
         row_sprite[i].SetOpacity(0);
     }
 
-  message.sprite.SetPosition(centred(message.width), Math.Int(message.y * e + (logo_y + bar.dy + 2 * pad) * (1 - e)), 3);
+  message.sprite.SetPosition(centred(message.width), Math.Int(message.y * e + (logo_y + message.dy + pad) * (1 - e)), 3);
 }
 
 # The running step breathes, so a long one does not look stuck.
@@ -261,21 +468,20 @@ frame = 0;
 
 fun refresh_callback ()
 {
+  if (intro < opening)
+    global.intro = intro + 1;
   if (t == 1 && pulse >= 0 && image[pulse])
     {
       global.frame = (frame + 1) % 100;
       row_sprite[pulse].SetOpacity(0.65 + 0.35 * Math.Cos(2 * Math.Pi * frame / 100));
     }
   if (t < target)
-    {
-      global.t = Math.Min(target, t + step);
-      draw();
-    }
+    global.t = Math.Min(target, t + step);
   else if (t > target)
-    {
-      global.t = Math.Max(target, t - step);
-      draw();
-    }
+    global.t = Math.Max(target, t - step);
+  else if (intro >= opening && rule.fill == rule_want(smooth(t)))
+    return NULL;
+  draw();
 }
 
 # Shows `text` as the panel's rows and sends the logo up.
@@ -309,13 +515,15 @@ else if (mode == "boot")
   }
 else
   set_caption(name + " is updating");
+# Only a boot plays the opening.
+if (mode != "boot")
+  intro = opening;
 draw();
 
 fun progress_callback (duration, fraction)
 {
-  global.progress = fraction;
-  if (starting && t == 0)
-    draw_bar(logo.middle, 1);
+  if (starting)
+    global.progress = fraction;
 }
 
 fun status_callback (text)
