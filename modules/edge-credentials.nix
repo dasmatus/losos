@@ -25,6 +25,15 @@ let
   cfg = config.losos.edge;
   creds = cfg.credentials.secrets;
 
+  # One `--list` line per credential: sealed or not, and when.
+  listLine = name: c: ''
+    if [ -f ${lib.escapeShellArg (toString c.sealed)} ]; then
+      printf '%s\t1\t%s\n' ${lib.escapeShellArg name} "$(stat -c %Y ${lib.escapeShellArg (toString c.sealed)})"
+    else
+      printf '%s\t0\t\n' ${lib.escapeShellArg name}
+    fi
+  '';
+
   # One `case` arm per credential: where it goes, the shape every line must
   # have, and the units to restart.
   arm = name: c: ''
@@ -43,8 +52,17 @@ let
     ];
     text = ''
       # The name comes from the SSH command line under the forced command, or
-      # from the first argument when an operator runs this by hand.
+      # from the first argument when an operator runs this by hand or the
+      # registrar's terminal route does (docs/edge-terminal.md).
       name=''${SSH_ORIGINAL_COMMAND:-''${1:-}}
+
+      # `--list`: one `name<TAB>0|1<TAB>mtime` line per credential, for the
+      # terminal's Secrets pane. Names and times only, never a blob.
+      if [ "$name" = "--list" ]; then
+      ${lib.concatStrings (lib.mapAttrsToList listLine creds)}
+        exit 0
+      fi
+
       case "$name" in
       ${lib.concatStrings (lib.mapAttrsToList arm creds)}
       *)
@@ -89,7 +107,15 @@ let
       echo "$name: sealed to $sealed"
 
       for unit in "''${units[@]}"; do
-        if systemctl cat "$unit" >/dev/null 2>&1; then
+        if ! systemctl cat "$unit" >/dev/null 2>&1; then
+          continue
+        fi
+        if [ "$unit" = "''${LOSOS_SEAL_DEFER:-}" ]; then
+          # The caller is this unit: restarting it now would cut off the
+          # answer. A timer outside its cgroup restarts it a moment later.
+          systemd-run --quiet --collect --on-active=3s systemctl restart "$unit"
+          echo "$name: restarting $unit in a few seconds"
+        else
           systemctl restart "$unit"
           echo "$name: restarted $unit"
         fi
@@ -130,6 +156,7 @@ in
         };
 
         environment.systemPackages = [ seal ];
+        losos.edge.credentials.sealPackage = seal;
       }
       (lib.mkIf (cfg.credentials.deployKey != null) {
         services.openssh.enable = true;

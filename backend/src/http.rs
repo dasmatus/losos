@@ -44,6 +44,10 @@ struct Api {
     /// The last claim answered, so a reply lost to a proxy timeout can be
     /// given again to the same password (`crate::receipt`).
     claims: std::sync::Mutex<crate::receipt::Receipts>,
+    /// The terminal client's keys and tokens (`crate::access`).
+    access: crate::access::Access,
+    /// This listener's own port, which a terminal call is run against.
+    port: u16,
 }
 
 /// `{"error": "..."}` at the given status — the shape the SPA expects.
@@ -1535,6 +1539,262 @@ async fn post_config_sync(api: web::Data<Api>, req: HttpRequest) -> HttpResponse
     })
 }
 
+// ── Terminal access (crate::access, docs/terminal-access.md) ─────────────────
+
+/// The access state, or the sentence that says why there is none.
+fn access_ready(api: &Api) -> Result<&crate::access::Ready, &str> {
+    match &api.access {
+        crate::access::Access::Ready(r) => Ok(r),
+        crate::access::Access::Broken(why) => Err(why),
+    }
+}
+
+/// The 503 for a box whose terminal access is off.
+fn access_off(why: &str) -> HttpResponse {
+    err(actix_web::http::StatusCode::SERVICE_UNAVAILABLE, why)
+}
+
+/// `GET /api/access` — the box's key, the seeded keys and the tokens.
+async fn get_access(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    guarded(&api, &req, "/api/access", false, || {
+        match access_ready(&api) {
+            Ok(ready) => match crate::access::overview(ready) {
+                Ok(v) => HttpResponse::Ok().json(v),
+                Err(e) => error_response(e),
+            },
+            Err(why) => access_off(why),
+        }
+    })
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct NewToken {
+    name: String,
+    fingerprint: String,
+    scope: losos_access::Scope,
+    expires_in_days: Option<u32>,
+}
+
+fn token_error(e: losos_access::TokenError) -> HttpResponse {
+    use actix_web::http::StatusCode;
+    use losos_access::TokenError;
+    match e {
+        TokenError::Invalid(why) => err(StatusCode::BAD_REQUEST, &why),
+        TokenError::Full => err(StatusCode::CONFLICT, &TokenError::Full.to_string()),
+        TokenError::NotFound => err(StatusCode::NOT_FOUND, &TokenError::NotFound.to_string()),
+        e @ TokenError::Io { .. } => error_response(anyhow::Error::new(e)),
+    }
+}
+
+/// `POST /api/access/tokens` — make a token; the answer is the only time
+/// the token itself leaves the box.
+async fn post_access_token(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    guarded(&api, &req, "/api/access/tokens", true, || {
+        let ready = match access_ready(&api) {
+            Ok(r) => r,
+            Err(why) => return access_off(why),
+        };
+        let new: NewToken = match serde_json::from_slice(&body) {
+            Ok(n) => n,
+            Err(_) => {
+                return err(
+                    actix_web::http::StatusCode::BAD_REQUEST,
+                    r#"body must be JSON: {"name", "fingerprint", "scope": "read"|"full", "expiresInDays": number|null}"#,
+                )
+            }
+        };
+        match ready.tokens.create(
+            &ready.ring,
+            &new.name,
+            &new.fingerprint,
+            new.scope,
+            new.expires_in_days,
+            losos_access::now_secs(),
+        ) {
+            Ok((token, record)) => {
+                HttpResponse::Ok().json(serde_json::json!({ "token": token, "record": record }))
+            }
+            Err(e) => token_error(e),
+        }
+    })
+}
+
+/// `POST /api/access/tokens/revoke` — `{"id"}`.
+async fn post_access_revoke(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    guarded(&api, &req, "/api/access/tokens/revoke", true, || {
+        let ready = match access_ready(&api) {
+            Ok(r) => r,
+            Err(why) => return access_off(why),
+        };
+        let id = serde_json::from_slice::<serde_json::Value>(&body)
+            .ok()
+            .and_then(|v| v.get("id").and_then(|i| i.as_str()).map(str::to_string));
+        let Some(id) = id else {
+            return err(
+                actix_web::http::StatusCode::BAD_REQUEST,
+                r#"body must be JSON: {"id": "..."}"#,
+            );
+        };
+        match ready.tokens.revoke(&id) {
+            Ok(()) => HttpResponse::Ok().json(serde_json::json!({ "revoked": true })),
+            Err(e) => token_error(e),
+        }
+    })
+}
+
+/// `GET /api/access/host-key` — the box's public key, for the terminal to
+/// pin on first contact. Public by nature; LAN-only like all of `/api/`.
+async fn get_access_host_key(api: web::Data<Api>) -> HttpResponse {
+    match access_ready(&api) {
+        Ok(ready) => HttpResponse::Ok().json(serde_json::json!({
+            "fingerprint": ready.host.fingerprint(),
+            "publicKey": ready.host.armored_public(),
+        })),
+        Err(why) => access_off(why),
+    }
+}
+
+/// `POST /api/access/call` — one terminal call. No Bearer: the envelope
+/// carries the token and the signature, and every refusal before the call
+/// runs counts against the same per-address throttle as a wrong Bearer.
+async fn post_access_call(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> HttpResponse {
+    const ROUTE: &str = "/api/access/call";
+    let remote = remote_addr(&req);
+    if let Err(wait) = api.throttle.check(&remote, Instant::now()) {
+        api.audit.record(ROUTE, "throttled", &remote);
+        let mut resp = err(
+            actix_web::http::StatusCode::TOO_MANY_REQUESTS,
+            "too many failed attempts; slow down",
+        );
+        resp.headers_mut().insert(
+            actix_web::http::header::RETRY_AFTER,
+            retry_after_secs(wait).to_string().parse().expect("digits"),
+        );
+        return resp;
+    }
+    if body.len() > crate::access::MAX_ENVELOPE_BYTES {
+        return err(
+            actix_web::http::StatusCode::PAYLOAD_TOO_LARGE,
+            "a terminal call is at most 1 MiB",
+        );
+    }
+    if let Err(why) = access_ready(&api) {
+        return access_off(why);
+    }
+    // Off the worker: the crypto is cheap but not free, and the inner call
+    // comes back into this same server, which on a one-core box has one
+    // worker to answer it with.
+    let worker = api.clone();
+    match web::block(move || call(&worker, &remote, &body)).await {
+        Ok(Called {
+            status,
+            sealed,
+            body,
+        }) => HttpResponse::build(
+            actix_web::http::StatusCode::from_u16(status)
+                .unwrap_or(actix_web::http::StatusCode::INTERNAL_SERVER_ERROR),
+        )
+        .content_type(if sealed {
+            "application/pgp-encrypted"
+        } else {
+            "application/json"
+        })
+        .body(body),
+        Err(e) => {
+            tracing::error!(error = %e, "terminal call did not finish");
+            err(
+                actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
+                "the call did not finish",
+            )
+        }
+    }
+}
+
+/// A terminal call's answer, built off the worker. `HttpResponse` is not
+/// `Send`, so the handler turns this into one.
+struct Called {
+    status: u16,
+    /// An armoured answer for the client's key, or a plain JSON refusal.
+    sealed: bool,
+    body: String,
+}
+
+impl Called {
+    fn plain(status: u16, msg: &str) -> Called {
+        Called {
+            status,
+            sealed: false,
+            body: serde_json::json!({ "error": msg }).to_string(),
+        }
+    }
+}
+
+fn call(api: &Api, remote: &str, body: &[u8]) -> Called {
+    const ROUTE: &str = "/api/access/call";
+    let crate::access::Access::Ready(ready) = &api.access else {
+        return Called::plain(503, "terminal access is off on this box");
+    };
+    let now = losos_access::now_secs();
+    let refuse = |r: losos_access::Refusal| {
+        api.throttle.record_failure(remote, Instant::now());
+        api.audit.record(ROUTE, "unauthorized", remote);
+        Called::plain(r.status(), &r.to_string())
+    };
+    let opened = match losos_access::open(&ready.host, &ready.ring, body, &ready.replay, now) {
+        Ok(o) => o,
+        Err(r) => return refuse(r),
+    };
+    let token_id = match crate::access::authorize(ready, &opened, now) {
+        Ok(id) => id,
+        Err(r) => return refuse(r),
+    };
+    api.throttle.record_success(remote);
+    let r = &opened.request;
+    let route_only = r.path.split('?').next().unwrap_or(&r.path);
+    let audit_route = format!("{ROUTE} {token_id} {} {route_only}", r.method);
+    let (status, answer) = match crate::access::forward(
+        api.port, &api.token, remote, &r.method, &r.path, &r.body,
+    ) {
+        Ok(inner) => (inner.status, inner.body),
+        Err(e) => {
+            tracing::error!(error = %e, path = route_only, "terminal call: the inner request failed");
+            (
+                500,
+                serde_json::json!({ "error": "the call failed on the box" }),
+            )
+        }
+    };
+    match losos_access::seal(&ready.host, &opened.signer, &r.nonce, status, answer) {
+        Ok(sealed) => {
+            let outcome = match status {
+                0..=399 => "ok",
+                400..=499 => "rejected",
+                _ => "error",
+            };
+            api.audit.record(&audit_route, outcome, remote);
+            Called {
+                status,
+                sealed: true,
+                body: sealed,
+            }
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "terminal call: sealing the answer failed");
+            api.audit.record(&audit_route, "error", remote);
+            Called::plain(500, "the answer could not be sealed")
+        }
+    }
+}
+
 async fn not_found() -> HttpResponse {
     err(actix_web::http::StatusCode::NOT_FOUND, "not found")
 }
@@ -1635,6 +1895,8 @@ pub fn serve(backend: IoLosos) -> anyhow::Result<()> {
             throttle: Throttle::default(),
             audit: Audit,
             claims: std::sync::Mutex::new(crate::receipt::Receipts::default()),
+            access: crate::access::Access::from_env(),
+            port,
         });
         let server = HttpServer::new(move || {
             App::new()
@@ -1718,6 +1980,19 @@ pub fn serve(backend: IoLosos) -> anyhow::Result<()> {
                 .route("/api/look/background", web::get().to(get_background))
                 .route("/api/look/widgets", web::post().to(post_widget))
                 .route("/api/look/widgets/{id}", web::delete().to(delete_widget))
+                // The web UI's side of terminal access (crate::access):
+                // Bearer-authed like every route above.
+                .route("/api/access", web::get().to(get_access))
+                .route("/api/access/tokens", web::post().to(post_access_token))
+                .route(
+                    "/api/access/tokens/revoke",
+                    web::post().to(post_access_revoke),
+                )
+                // The terminal's side: no Bearer, by nature. The host key is
+                // public, and a call carries its own two credentials inside
+                // the envelope (crate::access, docs/terminal-access.md).
+                .route("/api/access/host-key", web::get().to(get_access_host_key))
+                .route("/api/access/call", web::post().to(post_access_call))
                 // The unauthenticated routes besides /api/health. These two
                 // are first-run only: the state read is a single bit, and
                 // the claim refuses once the box has an owner.

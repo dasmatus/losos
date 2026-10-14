@@ -50,6 +50,12 @@ let
 
   plymouth = config.boot.plymouth.enable;
 
+  # GPG keys baked into this medium (losos.access.gpgKeys set on the iso
+  # system): every install from it seeds them, as `--gpg-key` would. A stock
+  # medium has none and passes nothing.
+  seededKeys = config.losos.access.gpgKeys;
+  seededKeysFile = pkgs.writeText "losos-access-keys.asc" (lib.concatStringsSep "\n" seededKeys);
+
   # Two wrappers, because the command and tty1 need opposite exit behavior:
   #
   #   * the CLI command (systemPackages, the VM test, scripts) must exec
@@ -104,7 +110,9 @@ let
       )
       ''
         install -Dm755 ${lib.getExe inner} $out/bin/${binName}
-        wrapProgram $out/bin/${binName} --prefix PATH : ${tools}
+        wrapProgram $out/bin/${binName} --prefix PATH : ${tools}${
+          lib.optionalString (seededKeys != [ ]) " --set LOSOS_INSTALL_GPG_KEYS_FILE ${seededKeysFile}"
+        }
       '';
 
   losos-install-wrapped = wrapWithTools "losos-install" losos-install { };
