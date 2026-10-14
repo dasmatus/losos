@@ -811,7 +811,8 @@ async fn github_operator(
     st: &AppState,
     headers: &HeaderMap,
     what: &str,
-) -> std::result::Result<(crate::provision::GithubUser, crate::provision::Operator), Response> {
+) -> std::result::Result<(crate::provision::GithubUser, crate::provision::Operator), Box<Response>>
+{
     let token = headers
         .get(axum::http::header::AUTHORIZATION)
         .and_then(|v| v.to_str().ok())
@@ -819,17 +820,19 @@ async fn github_operator(
         .map(str::trim)
         .filter(|t| !t.is_empty() && t.len() <= 512 && t.bytes().all(|b| b.is_ascii_graphic()));
     let Some(token) = token else {
-        return Err((
-            StatusCode::UNAUTHORIZED,
-            "Authorization: Bearer <GitHub token> is required",
-        )
-            .into_response());
+        return Err(Box::new(
+            (
+                StatusCode::UNAUTHORIZED,
+                "Authorization: Bearer <GitHub token> is required",
+            )
+                .into_response(),
+        ));
     };
     let operators = match crate::provision::Operators::committed() {
         Ok(o) => o,
         Err(e) => {
             tracing::error!(target: Action::Identity.target(), "operators.json: {e}");
-            return Err(StatusCode::INTERNAL_SERVER_ERROR.into_response());
+            return Err(Box::new(StatusCode::INTERNAL_SERVER_ERROR.into_response()));
         }
     };
     let gh = crate::provision::Github {
@@ -849,7 +852,7 @@ async fn github_operator(
                 StatusCode::BAD_GATEWAY
             };
             tracing::warn!(target: Action::Identity.target(), "{what} refused: {e}");
-            return Err((status, format!("GitHub: {e}")).into_response());
+            return Err(Box::new((status, format!("GitHub: {e}")).into_response()));
         }
     };
     let Some(operator) = operators.find(user.id).cloned() else {
@@ -858,14 +861,16 @@ async fn github_operator(
             "{what} refused: {} (GitHub id {}) is not on the operator allowlist",
             user.login, user.id
         );
-        return Err((
-            StatusCode::FORBIDDEN,
-            format!(
-                "{} (GitHub id {}) is not on the operator allowlist",
-                user.login, user.id
-            ),
-        )
-            .into_response());
+        return Err(Box::new(
+            (
+                StatusCode::FORBIDDEN,
+                format!(
+                    "{} (GitHub id {}) is not on the operator allowlist",
+                    user.login, user.id
+                ),
+            )
+                .into_response(),
+        ));
     };
     Ok((user, operator))
 }
@@ -916,7 +921,7 @@ async fn identity_push(State(st): State<AppState>, headers: HeaderMap, body: Byt
     let _one_at_a_time = st.push_lock.lock().await;
     let (user, operator) = match github_operator(&st, &headers, "push").await {
         Ok(found) => found,
-        Err(refused) => return refused,
+        Err(refused) => return *refused,
     };
 
     let now = std::time::SystemTime::now()
