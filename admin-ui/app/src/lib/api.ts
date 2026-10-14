@@ -1278,6 +1278,96 @@ export function postEraseCancel(options: RequestOptions = {}): Promise<unknown> 
   return call<unknown>("/api/erase/cancel", { ...options, method: "POST" });
 }
 
+// ── Terminal access ───────────────────────────────────────────────────────
+
+/* Personal access tokens for the `losos` terminal client, each bound to one
+ * of the GPG keys the installer seeded (docs/terminal-access.md, "The web
+ * UI's side"). The web UI lists the keys and cannot change them; it makes
+ * and revokes tokens, and sees a token's secret only in the reply that made
+ * it. The box keeps the SHA-256 alone. */
+
+/** `read` allows GET only; `full` allows every method. */
+export type AccessScope = "read" | "full";
+
+/** A public key seeded at install (`losos.access.gpgKeys`). */
+export interface AccessKey {
+  /** 40 hex characters, upper case. */
+  fingerprint: string;
+  userIds: string[];
+  /** Unix seconds, or null when the key does not say. */
+  created: number | null;
+}
+
+/** A token as lososd lists it: never the secret. */
+export interface AccessToken {
+  id: string;
+  name: string;
+  /** The fingerprint of the seeded key the token is bound to. */
+  fingerprint: string;
+  scope: AccessScope;
+  /** Unix seconds. */
+  created: number;
+  /** Unix seconds, or null for a token that does not expire. */
+  expires: number | null;
+  /** Unix seconds, or null for a token never used. */
+  lastUsed: number | null;
+}
+
+export interface AccessResponse {
+  /** This box's own OpenPGP key, which the client pins on first contact. */
+  hostKey: { fingerprint: string } | null;
+  keys: AccessKey[];
+  tokens: AccessToken[];
+}
+
+/** The expiry choices lososd accepts; null is "never". */
+export type AccessExpiry = 30 | 90 | 365 | null;
+
+export interface AccessTokenInput {
+  name: string;
+  fingerprint: string;
+  scope: AccessScope;
+  expiresInDays: AccessExpiry;
+}
+
+export interface AccessTokenCreated {
+  /** `losos_pat_<id>_<secret>`. Shown once, never served again. */
+  token: string;
+  record: AccessToken;
+}
+
+/** GET /api/access — the host key, the seeded keys and the tokens. */
+export function getAccess(options: RequestOptions = {}): Promise<AccessResponse> {
+  return call<AccessResponse>("/api/access", options);
+}
+
+/** POST /api/access/tokens — make a token. 400 for a bad name, key or
+ *  scope, 409 when the box already holds 32. */
+export function postAccessToken(
+  input: AccessTokenInput,
+  options: RequestOptions = {},
+): Promise<AccessTokenCreated> {
+  return call<AccessTokenCreated>("/api/access/tokens", {
+    ...options,
+    method: "POST",
+    contentType: "application/json",
+    body: JSON.stringify(input),
+  });
+}
+
+/** POST /api/access/tokens/revoke — revoke a token. 404 when it is gone. */
+export function postAccessRevoke(
+  id: string,
+  options: RequestOptions = {},
+): Promise<{ revoked: boolean }> {
+  return call<{ revoked: boolean }>("/api/access/tokens/revoke", {
+    ...options,
+    method: "POST",
+    contentType: "application/json",
+    body: JSON.stringify({ id }),
+  });
+}
+
 // ── Sign-in ───────────────────────────────────────────────────────────────
 
 export interface SignInResponse {

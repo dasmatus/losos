@@ -62,6 +62,10 @@ let
     # (modules/secure-boot.nix); the installed system never reads these.
     "secureBoot.enable" = "installer";
     "secureBoot.certFile" = "installer";
+    # The keys the terminal client signs with. Seeded at install and never
+    # from the running box: a key the web UI could add would let a stolen
+    # session mint a token that works (backend/src/access.rs).
+    "access.gpgKeys" = "installer";
   };
 
   # Options whose wrong value leaves the box unreachable, unbootable, or
