@@ -1734,9 +1734,11 @@ name = "losos-registrar"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "curve25519-dalek",
  "futures-util",
  "k256 0.14.0",
  "losos-access",
+ "md-5 0.10.6",
  "miette",
  "reqwest",
  "ring",

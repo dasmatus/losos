@@ -698,7 +698,8 @@ let
     ++ hardwareArgs "--market-hardware-catalogue"
     ++ vmServeArgs
     ++ usdcServeArgs
-    ++ btcServeArgs;
+    ++ btcServeArgs
+    ++ xmrServeArgs;
 
   # Bitcoin (losos.edge.market.bitcoin): the edge's own node, on loopback,
   # signed in with the cookie it writes into its chain's directory. The
@@ -714,6 +715,25 @@ let
     "http://127.0.0.1:${toString btcRpcPort}"
     "--market-btc-cookie-file"
     btcCookie
+  ];
+
+  # Monero (losos.edge.market.monero): the edge's own pruned node and a
+  # wallet service beside it, both on loopback. The wallet service holds the
+  # sellers' view-only wallets and signs in with a `user:password` it writes
+  # on its first start; the registrar runs as root and reads the same file.
+  xmrOn = usdcOn && cfg.market.monero.enable;
+  xmrNet = cfg.market.monero.network;
+  xmrDaemonPort = 18081;
+  xmrWalletPort = 18083;
+  xmrWalletDir = "/var/lib/losos-monero-wallet";
+  xmrLogin = "${xmrWalletDir}/rpc-login";
+  xmrServeArgs = lib.optionals xmrOn [
+    "--market-xmr-wallet-rpc"
+    "http://127.0.0.1:${toString xmrWalletPort}"
+    "--market-xmr-login-file"
+    xmrLogin
+    "--market-xmr-daemon-rpc"
+    "http://127.0.0.1:${toString xmrDaemonPort}"
   ];
 
   # USDC (losos.edge.market.usdc). The RPC URL is a systemd credential of
@@ -1047,6 +1067,13 @@ in
         '';
       }
       {
+        assertion = cfg.market.monero.enable -> cfg.market.usdc.enable;
+        message = ''
+          losos.edge.market.monero.enable requires losos.edge.market.usdc.enable:
+          Monero is offered beside USDC, priced in the same dollars.
+        '';
+      }
+      {
         assertion = cfg.market.bitcoin.enable -> cfg.market.usdc.enable;
         message = ''
           losos.edge.market.bitcoin.enable requires losos.edge.market.usdc.enable:
@@ -1176,7 +1203,8 @@ in
       ]
       ++ lib.optional meshEnabled "losos-mesh-rbac.service"
       ++ lib.optional cfg.market.enable "losos-stripe-gate.service"
-      ++ lib.optional btcOn "bitcoind-losos.service";
+      ++ lib.optional btcOn "bitcoind-losos.service"
+      ++ lib.optional xmrOn "losos-monero-wallet.service";
       # Wants, not Requires, on the RBAC extractor: the master-proxy half must
       # keep serving /register and rewriting Traefik on an edge whose mesh
       # apiserver is down or not yet up. A failed extraction costs the join
@@ -1186,7 +1214,8 @@ in
       ]
       ++ lib.optional meshEnabled "losos-mesh-rbac.service"
       ++ lib.optional cfg.market.enable "losos-stripe-gate.service"
-      ++ lib.optional btcOn "bitcoind-losos.service";
+      ++ lib.optional btcOn "bitcoind-losos.service"
+      ++ lib.optional xmrOn "losos-monero-wallet.service";
       # A changed seed is read at start, like the box's.
       restartTriggers = lib.optional (
         cfg.access.gpgKeys != [ ]
@@ -1239,6 +1268,66 @@ in
         "-rpcbind=127.0.0.1"
         "-rpcallowip=127.0.0.1"
       ];
+    };
+
+    # ── monerod + wallet service (Monero orders, losos.edge.market.monero) ─
+    # A pruned node with restricted RPC on loopback. The registrar asks it
+    # which network it follows; the wallet service syncs through it.
+    services.monero = lib.mkIf xmrOn {
+      enable = true;
+      prune = true;
+      rpc = {
+        address = "127.0.0.1";
+        port = xmrDaemonPort;
+        restricted = true;
+      };
+      extraConfig = lib.optionalString (xmrNet != "mainnet") "${xmrNet}=1";
+    };
+
+    # The sellers' view-only wallets, one open at a time. A view key sees
+    # what arrives and cannot spend, so nothing here can move a coin. The
+    # login is in a config file, not on the command line, where `ps` would
+    # show it.
+    systemd.services.losos-monero-wallet = lib.mkIf xmrOn {
+      description = "Monero wallet service for the market's view-only wallets";
+      wantedBy = [ "multi-user.target" ];
+      after = [ "monero.service" ];
+      wants = [ "monero.service" ];
+      path = [ pkgs.coreutils ];
+      preStart = ''
+        umask 077
+        mkdir -p ${xmrWalletDir}/wallets
+        if [ ! -s ${xmrLogin} ]; then
+          printf 'losos:%s' "$(tr -dc A-Za-z0-9 </dev/urandom | head -c 40)" > ${xmrLogin}
+        fi
+        printf 'rpc-login=%s\n' "$(cat ${xmrLogin})" > ${xmrWalletDir}/wallet-rpc.conf
+      '';
+      serviceConfig = {
+        ExecStart = lib.concatStringsSep " " (
+          [
+            "${pkgs.monero-cli}/bin/monero-wallet-rpc"
+            "--config-file=${xmrWalletDir}/wallet-rpc.conf"
+            "--daemon-address=127.0.0.1:${toString xmrDaemonPort}"
+            "--trusted-daemon"
+            "--wallet-dir=${xmrWalletDir}/wallets"
+            "--rpc-bind-ip=127.0.0.1"
+            "--rpc-bind-port=${toString xmrWalletPort}"
+            "--log-file=${xmrWalletDir}/wallet-rpc.log"
+            "--max-log-files=2"
+            "--non-interactive"
+          ]
+          ++ lib.optional (xmrNet != "mainnet") "--${xmrNet}"
+        );
+        StateDirectory = "losos-monero-wallet";
+        StateDirectoryMode = "0700";
+        Restart = "always";
+        RestartSec = 5;
+        DynamicUser = true;
+        NoNewPrivileges = true;
+        PrivateTmp = true;
+        ProtectSystem = "strict";
+        ProtectHome = true;
+      };
     };
 
     # ── DNS: the edge's own zone, served by Knot ─────────────────────────

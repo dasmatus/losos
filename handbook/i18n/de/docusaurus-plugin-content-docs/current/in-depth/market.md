@@ -506,6 +506,47 @@ Moment gemessen: innerhalb von 1 % wird die Bestellung abgeschlossen, sonst
 fragt der Bereich nach der Differenz. Die Bestellung nennt dann Bitcoin als
 Netz und verlinkt die Transaktion auf mempool.space.
 
+## Mit Monero zahlen {#paying-with-monero}
+
+Ein Edge, der in USDC abrechnet, kann für dieselben Bestellungen auch Monero
+annehmen. Er betreibt dafür einen eigenen geprunten Monero-Knoten und daneben
+einen Wallet-Dienst: auf Mainnet für einen Live-Edge, auf Stagenet oder
+Testnet für einen Test-Edge. Der Registrar lehnt jede andere Paarung ab und
+ebenso eine Adresse, die für ein anderes Netz gemacht ist als das des Knotens.
+
+### Für Monero verkaufen {#selling-for-monero}
+
+Im Markt zwei Dinge in die Monero-Zeile einfügen: die Hauptadresse deiner
+Wallet, die mit 4 beginnt (auf Stagenet mit 5, auf Testnet mit 9), und ihren
+privaten View-Key. Feather, Cake Wallet und die offiziellen Wallets zeigen
+ihn neben dem Seed, bei den Schlüsseln der Wallet. Mit dem View-Key sieht der
+Edge, was an deine Adressen geht, und sonst nichts: ausgeben kann er damit
+nicht. Das Gerät prüft das Paar vor dem Senden und lehnt den Spend-Key mit
+Namen ab, sodass ein versehentlich eingefügter Spend-Key das Gerät nie
+verlässt. Den Seed nie einfügen.
+
+Der Edge hält für dich eine reine View-Wallet und gibt jeder Bestellung die
+nächste Subadresse des ersten Kontos deiner Wallet, sodass die Münzen direkt
+in deine Wallet gehen. Deine Wallet findet sie auch: Sie schaut auch nach
+Subadressen voraus, die sie noch nicht angezeigt hat. Bleiben mehr als etwa
+200 Bestellungen hintereinander unbezahlt, die Subadress-Vorschau
+(subaddress lookahead) in der Wallet erhöhen, um die Zahlungen danach zu
+sehen.
+
+Wie bei Bitcoin wird die Plattformgebühr dem Verkäufer separat berechnet,
+und die ganze Zahlung geht an den Verkäufer.
+
+### In Monero bezahlen {#paying-in-monero}
+
+Bei der Bestellung unter „Zahlen mit“ Monero wählen. Der Bereich zeigt den
+Betrag in XMR, die Subadresse, einen QR-Code und einen Link, der eine Wallet
+öffnet. Mit einer beliebigen Wallet zahlen. Zehn Bestätigungen zählen eine
+Bestellung bis 5.000 $, zwanzig darüber; eine zu kleine, eine zu große und
+eine verspätete Zahlung werden wie bei Bitcoin behandelt. Eine Zahlung, die
+für spätere Blöcke gesperrt ist, zählt nicht. Monero verbirgt, wer wem was
+gezahlt hat, daher nennt eine bezahlte Bestellung Monero als Netz ohne Link
+zu einem Block-Explorer.
+
 ## Nicht abgedeckt
 
 - **Erstattungen und Streitfälle.** Bearbeite diese im Stripe-Dashboard

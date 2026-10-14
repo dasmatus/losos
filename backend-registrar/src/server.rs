@@ -1518,10 +1518,14 @@ async fn market_confirm(
 struct MarketCoinKeyReq {
     #[serde(flatten)]
     auth: MarketAuth,
-    /// `btc`.
+    /// `btc` or `xmr`.
     coin: String,
-    /// An extended public key or a ranged output descriptor.
+    /// Bitcoin: an extended public key or a ranged output descriptor.
+    /// Monero: the wallet's primary address.
     key: String,
+    /// Monero: the wallet's private view key.
+    #[serde(default)]
+    view_key: Option<String>,
 }
 
 /// `POST /market/coins/key`: the watch-only key this seller is paid to in a
@@ -1532,7 +1536,12 @@ async fn market_coin_key(
 ) -> Result<StatusCode, ApiError> {
     let market = market_tenant(&st, &req.auth).await?;
     market
-        .set_coin_key(&req.auth.appliance_id, &req.coin, &req.key)
+        .set_coin_key(
+            &req.auth.appliance_id,
+            &req.coin,
+            &req.key,
+            req.view_key.as_deref(),
+        )
         .await?;
     Ok(StatusCode::NO_CONTENT)
 }

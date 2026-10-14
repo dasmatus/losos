@@ -1667,6 +1667,7 @@ dependencies = [
  "assert_fs",
  "chrono",
  "clap",
+ "curve25519-dalek",
  "futures-core",
  "losos-access",
  "predicates",

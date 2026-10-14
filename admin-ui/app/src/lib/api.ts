@@ -521,7 +521,7 @@ export interface MarketEscrow {
 }
 
 /** Coins other than USDC an order can be paid in. */
-export type Coin = "btc";
+export type Coin = "btc" | "xmr";
 
 /** POST /api/market/coins/pay — where to pay an order in a coin, and what
  *  reached that address so far. Amounts are whole coins as decimal text. */
@@ -724,13 +724,16 @@ export function postMarketConfirm(
 }
 
 /** POST /api/market/coins/key — the watch-only key this box is paid to in
- *  `coin`: an extended public key (xpub, zpub) or a ranged descriptor. */
+ *  `coin`: for Bitcoin an extended public key (xpub, zpub) or a ranged
+ *  descriptor, for Monero the primary address with its private view key. */
 export function postMarketCoinKey(
   coin: Coin,
   key: string,
+  viewKey?: string,
   options: RequestOptions = {},
 ): Promise<MarketActionResponse> {
-  return marketPost("/api/market/coins/key", { coin, key }, options);
+  const body = viewKey === undefined ? { coin, key } : { coin, key, view_key: viewKey };
+  return marketPost("/api/market/coins/key", body, options);
 }
 
 /** POST /api/market/coins/pay — an address and amount to pay this order in

@@ -900,3 +900,43 @@ fn provision_token_verbs_parse() {
     );
     assert!(verb(&["revoke", "--edge", "https://e"]).is_err());
 }
+
+#[test]
+fn monero_takes_its_wallet_service_and_node_beside_usdc() {
+    const SOL: &str = "network=solana-devnet,rpc=/run/c/usdc-rpc-solana-devnet,treasury=5ZWj7a1f8tWkjBESHKgrLmXshuXxqeY9SYcfbshpAqPG";
+    const XMR: [&str; 6] = [
+        "--market-xmr-wallet-rpc",
+        "http://127.0.0.1:18083",
+        "--market-xmr-login-file",
+        "/var/lib/losos-monero-wallet/rpc-login",
+        "--market-xmr-daemon-rpc",
+        "http://127.0.0.1:18081",
+    ];
+    let args = |usdc: bool, currency: &'static str, xmr: &[&'static str]| {
+        let mut args = vec!["--market-currency", currency];
+        if usdc {
+            args.extend(["--market-usdc", SOL]);
+        }
+        args.extend(xmr);
+        args.extend(MARKET_FLAGS);
+        serve_args(&args)
+    };
+    let opts = parse(args(true, "usd", &XMR)).expect("parses");
+    let Mode::Serve(opts) = opts else {
+        panic!("not serve")
+    };
+    let xmr = opts.market.expect("market").xmr.expect("monero on");
+    assert_eq!(xmr.wallet_rpc, "http://127.0.0.1:18083");
+    assert_eq!(xmr.login_file, "/var/lib/losos-monero-wallet/rpc-login");
+    assert_eq!(xmr.daemon_rpc, "http://127.0.0.1:18081");
+
+    // Priced in dollars beside USDC, both endpoints required, neither with
+    // a login in it.
+    assert!(parse(args(false, "usd", &XMR)).is_err());
+    assert!(parse(args(true, "eur", &XMR)).is_err());
+    assert!(parse(args(true, "usd", &XMR[..4])).is_err());
+    assert!(parse(args(true, "usd", &[XMR[0], XMR[1], XMR[4], XMR[5]])).is_err());
+    let mut leaky = XMR;
+    leaky[1] = "http://losos:pw@127.0.0.1:18083";
+    assert!(parse(args(true, "usd", &leaky)).is_err());
+}

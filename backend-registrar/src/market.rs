@@ -488,11 +488,30 @@ pub struct CoinSeller {
 }
 
 /// A seller's key for one coin, as the edge's node checked it, and the next
-/// address index to hand out.
+/// address index to hand out. For Bitcoin the key is a descriptor; for
+/// Monero it is the primary address, with the private view key beside it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CoinKey {
     pub descriptor: String,
     pub next: u32,
+    /// Monero: the private view key the edge's view-only wallet is made from.
+    /// It sees what arrives and cannot spend. Never shown back.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub view_key: Option<String>,
+    /// Monero: the chain height the wallet scans from, so a wallet made
+    /// again later still finds the payments of orders in flight.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub from_height: Option<u64>,
+}
+
+impl CoinKey {
+    fn watch(&self) -> Option<crate::monero::WatchKey<'_>> {
+        Some(crate::monero::WatchKey {
+            address: &self.descriptor,
+            view_key: self.view_key.as_deref()?,
+            from_height: self.from_height.unwrap_or(0),
+        })
+    }
 }
 
 /// An order being paid in a coin: the quote, the address derived for it from
@@ -507,6 +526,11 @@ pub struct CoinPayment {
     /// this order's.
     #[serde(default)]
     pub issued: u64,
+    /// Monero: the chain height when the address was given to this order.
+    /// The wallet reports a payment's block, not when it first saw it, so
+    /// only payments in blocks from here on (or still in the pool) count.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub issued_height: Option<u64>,
     #[serde(default)]
     pub settlement: Option<crate::coins::Settlement>,
     /// Transactions that paid to the address.
@@ -1477,6 +1501,8 @@ pub struct MarketOpts {
     pub usdc: Option<crate::stablecoin::UsdcOpts>,
     /// The edge's Bitcoin node, for orders paid in BTC.
     pub btc: Option<crate::bitcoin::BtcOpts>,
+    /// Monero orders, through the edge's own wallet service and node.
+    pub xmr: Option<crate::monero::XmrOpts>,
 }
 
 /// How long an escrow call may sit unmined before the edge checks the
@@ -1884,6 +1910,9 @@ impl Market {
         let mut coins = Vec::new();
         if self.opts.btc.is_some() {
             coins.push(crate::coins::Coin::Btc);
+        }
+        if self.opts.xmr.is_some() {
+            coins.push(crate::coins::Coin::Xmr);
         }
         coins
     }
@@ -2865,8 +2894,15 @@ impl Market {
     /// Set the watch-only key `id` is paid to in `coin`, after the edge's
     /// node checked it is a public key for the network this edge settles on.
     /// Setting the same key again keeps its next address index, so no
-    /// address is handed out twice.
-    pub async fn set_coin_key(&self, id: &str, coin: &str, key: &str) -> Result<(), MarketError> {
+    /// address is handed out twice. Monero takes the primary address as
+    /// `key` and the private view key as `view_key`.
+    pub async fn set_coin_key(
+        &self,
+        id: &str,
+        coin: &str,
+        key: &str,
+        view_key: Option<&str>,
+    ) -> Result<(), MarketError> {
         let coin = crate::coins::Coin::parse(coin)
             .filter(|c| self.coins().contains(c))
             .ok_or(MarketError::Invalid("this edge does not take that coin"))?;
@@ -2874,12 +2910,49 @@ impl Market {
             let state = self.state.lock().await;
             Self::mode_of(&state)? == StripeMode::Test
         };
-        let descriptor = match coin {
+        let (descriptor, view_key, from_height) = match coin {
             crate::coins::Coin::Btc => {
                 let btc = self.opts.btc.as_ref().ok_or(MarketError::Unconfigured)?;
                 let node = crate::bitcoin::Node::new(btc);
                 Self::btc_chain_fits(&node, test).await?;
-                node.check_key(key).await?
+                (node.check_key(key).await?, None, None)
+            }
+            crate::coins::Coin::Xmr => {
+                let xmr = self.opts.xmr.as_ref().ok_or(MarketError::Unconfigured)?;
+                let node = crate::monero::Node::new(xmr);
+                let address = key.trim();
+                let parsed = crate::monero::parse_address(address).map_err(MarketError::Invalid)?;
+                let view_key = view_key
+                    .map(str::trim)
+                    .filter(|v| !v.is_empty())
+                    .ok_or(MarketError::Invalid(
+                        "Monero needs the wallet's private view key too",
+                    ))?
+                    .to_ascii_lowercase();
+                crate::monero::check_view_key(&parsed, &view_key).map_err(MarketError::Invalid)?;
+                let height = Self::xmr_net_fits(&node, &parsed, test).await?;
+                // The same address keeps the height its wallet scans from;
+                // a new one scans from a little below the tip, so nothing
+                // paid while the key is set is missed.
+                let from = {
+                    let state = self.state.lock().await;
+                    state
+                        .coin_sellers
+                        .get(id)
+                        .and_then(|s| s.keys.get(coin.key()))
+                        .filter(|k| {
+                            k.descriptor == address && k.view_key.as_deref() == Some(&view_key)
+                        })
+                        .and_then(|k| k.from_height)
+                }
+                .unwrap_or(height.saturating_sub(10));
+                node.prepare(&crate::monero::WatchKey {
+                    address,
+                    view_key: &view_key,
+                    from_height: from,
+                })
+                .await?;
+                (address.to_string(), Some(view_key), Some(from))
             }
             _ => return Err(MarketError::Invalid("this edge does not take that coin")),
         };
@@ -2895,15 +2968,20 @@ impl Market {
                 payout_solana: None,
             });
         let keys = &mut next.coin_sellers.entry(id.to_string()).or_default().keys;
+        // Monero's subaddress 0 is the primary address, which the seller
+        // uses elsewhere; orders start at 1.
+        let first = u32::from(coin == crate::coins::Coin::Xmr);
         let start = keys
             .get(coin.key())
             .filter(|k| k.descriptor == descriptor)
-            .map_or(0, |k| k.next);
+            .map_or(first, |k| k.next.max(first));
         keys.insert(
             coin.key().to_string(),
             CoinKey {
                 descriptor,
                 next: start,
+                view_key,
+                from_height,
             },
         );
         self.commit(&mut state, next).await?;
@@ -2929,6 +3007,33 @@ impl Market {
         Err(MarketError::Conflict(
             "the edge's Bitcoin node is on the wrong network",
         ))
+    }
+
+    /// Refuse a Monero node on the wrong network for this edge, as for
+    /// Bitcoin, and an address for another network than the node's. The
+    /// chain's height on success.
+    async fn xmr_net_fits(
+        node: &crate::monero::Node<'_>,
+        address: &crate::monero::Address,
+        test: bool,
+    ) -> Result<u64, MarketError> {
+        let (nettype, height) = node.info().await?;
+        if !crate::monero::nettype_fits(&nettype, test) {
+            tracing::error!(
+                target: Action::Market.target(),
+                "the Monero node follows {nettype}, which a {} edge does not settle on",
+                if test { "test" } else { "live" },
+            );
+            return Err(MarketError::Conflict(
+                "the edge's Monero node is on the wrong network",
+            ));
+        }
+        if !address.net.fits(&nettype) {
+            return Err(MarketError::Invalid(
+                "that Monero address is for another network than this edge's",
+            ));
+        }
+        Ok(height)
     }
 
     /// The edge's price for `coin` now: the cached one while fresh, else
@@ -3012,17 +3117,35 @@ impl Market {
 
         // The same coin with nothing paid keeps its address; otherwise derive
         // the next one nobody else was given.
-        let (address, index, issued) = match &order.coin {
-            Some(c) if c.quote.coin == coin => (c.address.clone(), c.index, c.issued),
-            _ => {
-                let used: std::collections::BTreeSet<String> = {
-                    let state = self.state.lock().await;
-                    state
-                        .orders
-                        .values()
-                        .filter_map(|o| o.coin.as_ref().map(|c| c.address.clone()))
-                        .collect()
+        let (address, index, issued, issued_height) = match &order.coin {
+            Some(c) if c.quote.coin == coin => {
+                (c.address.clone(), c.index, c.issued, c.issued_height)
+            }
+            _ if coin == crate::coins::Coin::Xmr => {
+                let xmr = self.opts.xmr.as_ref().ok_or(MarketError::Unconfigured)?;
+                let node = crate::monero::Node::new(xmr);
+                let watch = key
+                    .watch()
+                    .ok_or(MarketError::Conflict("the seller does not take that coin"))?;
+                let parsed = crate::monero::parse_address(watch.address)
+                    .map_err(|_| MarketError::Conflict("the seller does not take that coin"))?;
+                let test = self.mode().await == Some(StripeMode::Test);
+                let height = Self::xmr_net_fits(&node, &parsed, test).await?;
+                let used = self.coin_addresses().await;
+                let mut index = key.next.max(1);
+                let address = loop {
+                    let a = node.subaddress(&watch, index).await?;
+                    if !used.contains(&a) {
+                        break a;
+                    }
+                    index = index.checked_add(1).ok_or(MarketError::Conflict(
+                        "the seller's key has no addresses left",
+                    ))?;
                 };
+                (address, index, now, Some(height))
+            }
+            _ => {
+                let used = self.coin_addresses().await;
                 let btc = self.opts.btc.as_ref().ok_or(MarketError::Unconfigured)?;
                 let node = crate::bitcoin::Node::new(btc);
                 let test = self.mode().await == Some(StripeMode::Test);
@@ -3038,7 +3161,7 @@ impl Market {
                     ))?;
                 };
                 node.watch(&address, order_id).await?;
-                (address, index, now)
+                (address, index, now, None)
             }
         };
 
@@ -3059,11 +3182,22 @@ impl Market {
                 "a payment already reached this order's address",
             ));
         }
+        // Two orders paid at once can be handed the same next address; the
+        // second to get here asks again for the one after.
+        if state.orders.values().any(|other| {
+            other.id != order_id && other.coin.as_ref().is_some_and(|c| c.address == address)
+        }) {
+            return Err(MarketError::Conflict(
+                "another order was given that address just now; try again",
+            ));
+        }
+        let o = next.orders.get_mut(order_id).ok_or(MarketError::NotFound)?;
         o.coin = Some(CoinPayment {
             quote,
             address,
             index,
             issued,
+            issued_height,
             settlement: Some(Settlement::Waiting),
             txs: Vec::new(),
         });
@@ -3079,6 +3213,16 @@ impl Market {
         }
         self.commit(&mut state, next).await?;
         Ok(view)
+    }
+
+    /// Every address any order was given for a coin payment.
+    async fn coin_addresses(&self) -> std::collections::BTreeSet<String> {
+        let state = self.state.lock().await;
+        state
+            .orders
+            .values()
+            .filter_map(|o| o.coin.as_ref().map(|c| c.address.clone()))
+            .collect()
     }
 
     /// Read what reached every coin order's address that is not paid yet,
@@ -3102,12 +3246,22 @@ impl Market {
     async fn settle_coins_of(&self, ids: &[String]) {
         use crate::coins::{settle, Coin, Quote};
         let now = now_secs();
-        let work: Vec<(String, CoinPayment)> = {
+        // With each order, the seller's key for its coin: Monero reads
+        // through the seller's own view-only wallet.
+        let work: Vec<(String, CoinPayment, Option<CoinKey>)> = {
             let state = self.state.lock().await;
             ids.iter()
                 .filter_map(|id| state.orders.get(id))
                 .filter(|o| o.status != OrderStatus::Paid)
-                .filter_map(|o| o.coin.clone().map(|c| (o.id.clone(), c)))
+                .filter_map(|o| {
+                    let c = o.coin.clone()?;
+                    let key = state
+                        .coin_sellers
+                        .get(&o.seller)
+                        .and_then(|s| s.keys.get(c.quote.coin.key()))
+                        .cloned();
+                    Some((o.id.clone(), c, key))
+                })
                 .collect()
         };
         let mut found = Vec::new();
@@ -3115,16 +3269,33 @@ impl Market {
         // for the explorer link: `bitcoin` on mainnet, `bitcoin-signet` and
         // so on elsewhere.
         let mut btc_network: Option<String> = None;
-        for (id, c) in work {
+        for (id, c, key) in work {
             let received = match c.quote.coin {
+                // Only payments the node saw from the moment the address was
+                // the order's count.
                 Coin::Btc => match self.opts.btc.as_ref() {
-                    Some(btc) => crate::bitcoin::Node::new(btc).received(&c.address).await,
+                    Some(btc) => crate::bitcoin::Node::new(btc)
+                        .received(&c.address)
+                        .await
+                        .map(|r| r.into_iter().filter(|r| r.first_seen >= c.issued).collect()),
                     None => Err(MarketError::Unconfigured),
+                },
+                // The wallet filters by block height; see `issued_height`.
+                Coin::Xmr => match (
+                    self.opts.xmr.as_ref(),
+                    key.as_ref().and_then(CoinKey::watch),
+                ) {
+                    (Some(xmr), Some(watch)) => {
+                        crate::monero::Node::new(xmr)
+                            .received(&watch, c.index, c.issued_height.unwrap_or(0))
+                            .await
+                    }
+                    _ => Err(MarketError::Unconfigured),
                 },
                 _ => Err(MarketError::Unconfigured),
             };
-            let received: Vec<_> = match received {
-                Ok(r) => r.into_iter().filter(|r| r.first_seen >= c.issued).collect(),
+            let received: Vec<crate::coins::Received> = match received {
+                Ok(r) => r,
                 Err(e) => {
                     tracing::warn!(
                         target: Action::Market.target(),
@@ -4444,6 +4615,7 @@ mod tests {
             vms: None,
             usdc: None,
             btc: None,
+            xmr: None,
         })
         .await
         .unwrap();
@@ -4471,6 +4643,7 @@ mod tests {
             vms: None,
             usdc: None,
             btc: None,
+            xmr: None,
         }
     }
 
