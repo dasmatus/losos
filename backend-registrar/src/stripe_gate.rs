@@ -14,7 +14,7 @@
 //! any other endpoint: the gate has no such operation. It does **not** stop a
 //! compromised registrar asking the gate to create a Checkout Session, so the
 //! gate also bounds what that request may say (the currency, the destination
-//! being an `acct_` id, the platform fee within [`MAX_FEE_BPS`], the session's
+//! being an `acct_` id, the platform fee within [`crate::market::MAX_FEE_BPS`], the session's
 //! lifetime), and prices a hardware order from its own copy of the catalogue
 //! (`crate::hardware`) rather than from the request. Both processes still run on one machine and the registrar is
 //! root; `modules/edge.nix` hides the key's files and credentials directory
@@ -36,10 +36,10 @@ use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{UnixListener, UnixStream};
 
 use crate::action::Action;
+use crate::connect::account_id_ok;
 use crate::hardware::{Catalogue, Line};
 use crate::market::{
     account_ready, decode_hex, now_secs, valid_box_uuid, verify_signature, Kind, MarketError,
-    MAX_FEE_BPS,
 };
 use crate::stripe_mode::StripeMode;
 
@@ -268,7 +268,7 @@ impl StripeClient {
             ),
             (
                 "line_items[0][price_data][product_data][name]",
-                format!("{} ({}) - losos market", c.kind.label(), c.kind.unit()),
+                crate::plans::plan(c.kind).line_item(),
             ),
             (
                 "payment_intent_data[application_fee_amount]",
@@ -549,7 +549,7 @@ pub struct GateOpts {
     /// the operator's `--market-fee-bps`. The fee must then be exactly what
     /// that rate gives, so a compromised registrar can neither raise the cut
     /// nor waive it. Unset, the fee is only held under the 20% hard ceiling
-    /// ([`MAX_FEE_BPS`]).
+    /// ([`crate::market::MAX_FEE_BPS`]).
     pub fee_bps: Option<u32>,
     /// The only return URL Checkout and onboarding may name, when set: the
     /// operator's `--market-return-url`. Unset, any https or http URL passes
@@ -721,13 +721,6 @@ fn event_mode_fault(body: &[u8], mode: StripeMode) -> Option<String> {
 }
 
 /// `acct_...`, the shape of a Stripe account id.
-fn account_id_ok(id: &str) -> bool {
-    id.len() <= 64
-        && id.strip_prefix("acct_").is_some_and(|rest| {
-            !rest.is_empty() && rest.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
-        })
-}
-
 fn token_ok(id: &str, max: usize) -> bool {
     !id.is_empty()
         && id.len() <= max
@@ -792,17 +785,13 @@ fn checkout_fault(
     let Some(amount) = c.quantity.checked_mul(c.unit_price) else {
         return Some("amount overflows");
     };
-    // The platform's cut is exactly the operator's rate when the gate knows
-    // it, never above the MAX_FEE_BPS ceiling otherwise, and can never take
-    // the whole charge. A virtual machine is the exception: it is always
-    // split half and half with the hosting box's owner, whatever the
-    // operator's rate, so the gate holds it to exactly that.
-    let fee_ok = match (c.kind, fee_bps) {
-        (Kind::Vm, _) => c.fee == crate::market::fee_for(amount, crate::vms::VM_FEE_BPS),
-        (_, Some(bps)) => c.fee == crate::market::fee_for(amount, bps.min(MAX_FEE_BPS)),
-        (_, None) => c.fee <= crate::market::fee_for(amount, MAX_FEE_BPS),
-    };
-    if c.fee >= amount || !fee_ok {
+    // The platform's cut is what the order's plan takes: exactly the
+    // operator's rate when the gate knows it, never above the MAX_FEE_BPS
+    // ceiling otherwise, and never the whole charge. A virtual machine's plan
+    // is the exception: it is always split half and half with the hosting
+    // box's owner, whatever the operator's rate, so the gate holds it to
+    // exactly that.
+    if c.fee >= amount || !crate::plans::plan(c.kind).fee_ok(amount, c.fee, fee_bps) {
         return Some("fee is outside the allowed range");
     }
     if c.expires_at <= now || c.expires_at > now + MAX_SESSION_SECS {

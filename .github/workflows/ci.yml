@@ -151,7 +151,7 @@ jobs:
       # on the lock files: a dependency bump starts from the nearest older
       # cache (restore-keys) rather than from nothing, and an unchanged lock
       # gets its exact cache back. mold needs no cache; it is just faster.
-      - uses: actions/cache@v5
+      - uses: actions/cache@v6
         with:
           path: |
             ~/.cache/sccache
@@ -258,7 +258,7 @@ jobs:
       # Same as in the clippy job, under its own key: the test profile
       # compiles every crate differently (linked test binaries, dev
       # dependencies), so the two jobs' caches share nothing worth sharing.
-      - uses: actions/cache@v5
+      - uses: actions/cache@v6
         with:
           path: |
             ~/.cache/sccache
