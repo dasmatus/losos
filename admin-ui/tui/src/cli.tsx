@@ -297,7 +297,7 @@ async function openTui(io: Io, vault: Vault, parsed: Parsed, theme: Theme, local
     else {
       let picked: string | null = null;
       const { cols } = screenSize();
-      const app = render(<Picker theme={theme} hosts={hosts} cols={cols} onPick={(url) => (picked = url)} />);
+      const app = render(<Picker theme={theme} hosts={hosts} cols={cols} onPick={(url) => (picked = url)} />, inkOptions());
       await app.waitUntilExit();
       if (picked === null) return;
       host = hosts.find((h) => h.url === picked)!;
@@ -317,8 +317,15 @@ async function openTui(io: Io, vault: Vault, parsed: Parsed, theme: Theme, local
     const props = { host, transport, theme, locale, cols: size.cols, rows: size.rows };
     return host.kind === "edge" ? <EdgeApp {...props} /> : <BoxApp {...props} />;
   };
-  const app = render(<Sized />, { alternateScreen: true, exitOnCtrlC: true });
+  const app = render(<Sized />, { ...inkOptions(), alternateScreen: true, exitOnCtrlC: true });
   await app.waitUntilExit();
+}
+
+/** Ink draws only its last frame when `CI` is set, which leaves a person at
+ * a real terminal (a dev container, a CI debug shell) looking at nothing.
+ * The terminal decides, not the environment. */
+function inkOptions(): { interactive: boolean } {
+  return { interactive: Boolean(process.stdout.isTTY) };
 }
 
 // ── Commands ─────────────────────────────────────────────────────────────
@@ -382,6 +389,7 @@ async function login(io: Io, vault: Vault, parsed: Parsed, theme: Theme): Promis
         cols={cols}
         onDone={(a) => (answer = a)}
       />,
+      inkOptions(),
     );
     await app.waitUntilExit();
     if (answer === null) throw new UserError(t("tui.login.cancelled"));
