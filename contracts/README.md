@@ -10,34 +10,41 @@ machine order. The edge checks the exact fee of each order, and before it
 trusts a log it reads `usdc()` and `treasury()` back from the contract and
 refuses one deployed over any other token or treasury.
 
-Deploy once per chain (Base for live, Base Sepolia for test) with Circle's
-USDC and the treasury address. The two addresses go in the edge config, not
+Deploy once per EVM chain the edge settles on (Base, Arbitrum One and OP
+Mainnet live, their Sepolia networks for test) with Circle's USDC on that
+chain and the treasury address. The two addresses go in the edge config, not
 in a secret:
 
 ```nix
 losos.edge.market.usdc = {
   enable = true;
-  chainId = 84532; # 8453 for Base
-  pay = "0x…";       # this contract
-  treasury = "0x…";  # platform fee
+  networks.base-sepolia = {
+    pay = "0x…";       # this contract
+    treasury = "0x…";  # platform fee
+  };
 };
 ```
 
-The HTTPS RPC URL is a secret (it usually carries an API key). Seal it with
-systemd-creds under the name `usdc-rpc-url`; see
-[Market](../handbook/docs/in-depth/market.md). The registrar is the only unit
-that reads it, and the browser never does: chain reads are proxied through
-the box.
+Each network's HTTPS RPC URL is a secret (it usually carries an API key),
+sealed with systemd-creds as `usdc-rpc-<network>`; see
+[CI and releases](../docs/ci-and-releases.md#usdc-networks). The registrar is
+the only unit that reads it, and the browser never does: chain reads are
+proxied through the box. Solana needs no contract: the buyer's transaction
+splits the payment itself.
 
 Circle USDC:
 
-| Chain         | chain id | USDC |
-| ------------- | -------- | ---- |
-| Base          | 8453     | `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913` |
-| Base Sepolia  | 84532    | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` |
+| Network          | chain id | USDC |
+| ---------------- | -------- | ---- |
+| Base             | 8453     | `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913` |
+| Base Sepolia     | 84532    | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` |
+| Arbitrum One     | 42161    | `0xaf88d065e77c8cC2239327C5EDb3A432268e5831` |
+| Arbitrum Sepolia | 421614   | `0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d` |
+| OP Mainnet       | 10       | `0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85` |
+| OP Sepolia       | 11155420 | `0x5fd84259d66Cd46123540766Be93DFE6D43130D7` |
 
-The edge uses the Sepolia address when `chainId` is 84532 and the Base
-address otherwise.
+The edge knows these and picks the token by the network's name; the contract
+must pull the same one, which the edge checks before it counts a payment.
 
 ## Wallet
 

@@ -1150,8 +1150,9 @@ in
       }
       // lib.optionalAttrs (registrarCreds != [ ]) {
         # Plaintext only in this unit's credential directory, read per request.
-        # `claude-api-key` is the widget builder. `usdc-rpc-url` is the chain
-        # endpoint. Neither is a flag, so neither shows up in the process list.
+        # `claude-api-key` is the widget builder, `usdc-rpc-<network>` a chain
+        # endpoint and `ens-rpc` the name lookups. None is a flag, so none
+        # shows up in the process list.
         LoadCredentialEncrypted = registrarCreds;
       };
     };

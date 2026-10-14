@@ -194,7 +194,8 @@ Market page (Operator setup) describes.
    | `STRIPE_KEY`            | the Stripe secret or restricted key, test or live       |
    | `STRIPE_WEBHOOK_SECRET` | optional: both `whsec_` secrets, one per line           |
    | `CLAUDE_KEY`            | the Claude API key (`sk-ant-...`)                       |
-   | `USDC_RPC_URL`          | optional: the `https://` RPC endpoint for USDC          |
+   | `USDC_RPC_URLS`         | optional: `<network> <https url>`, one line per network |
+   | `ENS_RPC_URL`           | optional: an Ethereum or Sepolia `https://` endpoint    |
    | `EDGE_SSH_KEY`          | the private half of the key from step 1                 |
    | `EDGE_SSH_HOST`         | the edge's address (a secret or a variable)             |
    | `EDGE_SSH_KNOWN_HOSTS`  | the edge's line from `ssh-keyscan` (secret or variable) |
@@ -213,8 +214,50 @@ The Claude key is sealed as `claude-api-key` to
 with `LoadCredentialEncrypted=claude-api-key:<that path>`, and sealing a new key
 restarts `losos-registrar.service`.
 
-The USDC RPC URL is sealed as `usdc-rpc-url` to
-`/var/secrets/losos-usdc-rpc-url.cred`
-(`losos.edge.market.usdc.rpcUrlSealed`), read by the registrar the same way.
-Seal it before switching `losos.edge.market.usdc.enable` on: the registrar
-unit loads the blob and does not start without it.
+### USDC networks
+
+An edge settles USDC on the networks listed under
+`losos.edge.market.usdc.networks`, all test or all live, matching the Stripe
+key's mode:
+
+```nix
+losos.edge.market.currency = "usd"; # prices are USDC cents
+losos.edge.market.usdc = {
+  enable = true;
+  networks = {
+    base-sepolia = { pay = "0x…"; treasury = "0x…"; };     # LososPay, fee address
+    arbitrum-sepolia = { pay = "0x…"; treasury = "0x…"; };
+    optimism-sepolia = { pay = "0x…"; treasury = "0x…"; };
+    solana-devnet = { treasury = "<base58 owner>"; };      # no contract on Solana
+  };
+  ensRpcUrlSealed = "/var/secrets/losos-ens-rpc.cred";     # optional
+};
+```
+
+The names are `base`, `arbitrum`, `optimism` and `solana` for live, with
+`-sepolia` (or `solana-devnet`) for test. Each EVM network needs its own
+`LososPay` deployment (`contracts/`). On Solana the treasury is the owner of
+the USDC account that takes the fee, and there is no contract: the buyer's
+transaction makes both transfers itself. `genesisHash` overrides the genesis a
+test Solana network must report, for a local validator.
+
+Every network has an RPC endpoint sealed as `usdc-rpc-<network>` to
+`/var/secrets/losos-usdc-rpc-<network>.cred` (`rpcUrlSealed`), read by the
+registrar with `LoadCredentialEncrypted=` like the Claude key. The
+**edge-credentials** workflow seals one per line of `USDC_RPC_URLS`, for
+example:
+
+```
+base-sepolia https://base-sepolia.g.alchemy.com/v2/KEY
+solana-devnet https://devnet.helius-rpc.com/?api-key=KEY
+```
+
+`ENS_RPC_URL` is sealed as `ens-rpc` and names an Ethereum endpoint (Sepolia
+for a test edge). With it, the admin pages show ENS names and take them when
+sending USDC; without it, they do neither. The registrar checks its chain id
+before the first lookup and forwards only `eth_call`, `eth_chainId` and
+`eth_blockNumber` to it.
+
+Seal every endpoint before switching USDC on: the registrar unit loads each
+blob and does not start without it. Plain `http` is accepted only for a node
+on the edge's own loopback, such as `http://127.0.0.1:8545`.

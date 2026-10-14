@@ -299,59 +299,54 @@ that time loses nothing.
 ## Paying with USDC
 
 An edge can settle storage, compute and machine orders in USDC instead of
-Stripe. Hardware stays on Stripe. Turn it on with the chain, the `LososPay`
-contract and the treasury. The RPC URL is a secret, because a provider key
-usually sits in it, so it is sealed with systemd-creds and only the registrar
-reads it:
+Stripe. Hardware stays on Stripe. The edge chooses which networks it accepts:
 
-```nix
-losos.edge.market.currency = "usd"; # prices are USDC cents
-losos.edge.market.usdc = {
-  enable = true;
-  chainId = 84532; # 8453 is Base, live USDC
-  pay = "0x…";       # LososPay
-  treasury = "0x…";  # platform fee
-  rpcUrlSealed = "/var/secrets/losos-usdc-rpc-url.cred";
-};
-```
+| Network      | Its test network |
+| ------------ | ---------------- |
+| Base         | Base Sepolia     |
+| Arbitrum One | Arbitrum Sepolia |
+| OP Mainnet   | OP Sepolia       |
+| Solana       | Solana Devnet    |
 
-Seal the URL the same way as the Stripe key, under the credential name
-`usdc-rpc-url`:
-
-```sh
-printf '%s' 'https://base-sepolia.example/v2/KEY' \
-  | systemd-creds encrypt --name=usdc-rpc-url - /var/secrets/losos-usdc-rpc-url.cred
-```
-
-Seal it before you switch USDC on: the registrar loads the blob at start and
-does not start without it. Plain `http` is accepted only for a node on the
-edge's own loopback, such as `http://127.0.0.1:8545`.
-
-Chain 84532 (Base Sepolia) is test mode and must be paired with a `sk_test_`
-key. Chain 8453 (Base) is live mode and must be paired with a `sk_live_` key.
-The registrar refuses a mix, so a test payment cannot land in the live ledger.
+An edge runs on test networks or on live networks, never both, and the mode
+follows its Stripe key: test networks with a `sk_test_` key, live networks
+with a `sk_live_` key. The registrar refuses a mix, so a test payment cannot
+land in the live ledger. Each network has its own RPC endpoint, sealed with
+systemd-creds and read only by the registrar. The operator notes kept with
+the source (`docs/ci-and-releases.md`) cover setting it up.
 
 ### How you pay
 
 1. On the Market pane, create a wallet, import a 12 or 24 word phrase, or
-   connect the wallet already in the browser (MetaMask, Rabby, Rainbow,
-   Coinbase Wallet). The phrase is the one those wallets use
-   (`m/44'/60'/0'/0/0`), so a phrase made here imports into them and the other
-   way around. The same address works on every EVM chain. The phrase is
-   encrypted in the browser. The box never receives it.
-2. Order from the shelf. There is no Stripe page. The pane shows the USDC
-   amount.
-3. Pay. The wallet approves USDC for `LososPay` and calls `pay`. The contract
-   sends the platform fee to the treasury and the rest to the seller. You
-   also need a little ETH on that chain for the network fee.
-4. The edge reads the receipt through the sealed RPC URL and marks the order
-   paid. A transaction can pay only one order.
+   connect a wallet already in the browser: MetaMask, Rabby, Rainbow or
+   Coinbase Wallet for the Ethereum networks, Phantom, Solflare or Backpack
+   for Solana. One phrase gives an address on every network the edge
+   accepts, derived the way those wallets derive it (`m/44'/60'/0'/0/0` for
+   Ethereum, `m/44'/501'/0'/0'` for Solana), so a phrase made here imports
+   into them and the other way around. The phrase is encrypted in the
+   browser. The box never receives it.
+2. The pane lists the wallet's USDC on each network, next to the coin that
+   pays that network's fees: ETH, or SOL on Solana.
+3. Order from the shelf. There is no Stripe page. The pane shows the USDC
+   amount and asks which network to pay on, offering first one where the
+   wallet holds enough.
+4. Pay. On an Ethereum network the wallet approves USDC for `LososPay` and
+   calls `pay`, and the contract sends the platform fee to the treasury and
+   the rest to the seller. On Solana one transaction makes both transfers and
+   names the order in a memo. The first payment to a seller or to the
+   treasury also opens their USDC account, which costs a little SOL.
+5. The edge reads the transaction through its endpoint for that network and
+   marks the order paid. A transaction can pay only one order.
 
-Before it counts a payment, the edge checks that the RPC endpoint answers for
-the configured chain, that `LososPay` pulls Circle's USDC for that chain and
-pays the configured treasury, and that a block sits on top of the payment.
-`LososPay` takes at most half of a payment, the fixed split of a machine
-order; the edge checks the exact fee of every order.
+Before it counts a payment on an Ethereum network, the edge checks that the
+RPC endpoint answers for that network's chain, that `LososPay` pulls Circle's
+USDC for that chain and pays the configured treasury, and that a block sits
+on top of the payment. `LososPay` takes at most half of a payment, the fixed
+split of a machine order; the edge checks the exact fee of every order. On
+Solana the edge checks that the endpoint reports the network's genesis hash,
+that the transaction succeeded and is confirmed, that its memo names the
+order, and that the seller's and the treasury's USDC grew by exactly their
+shares.
 
 An order holds its units for a quarter of an hour. The pane starts no payment
 in the last two minutes of that, and it keeps the transaction of a payment it
@@ -360,16 +355,30 @@ payment that lands after the hold is still honoured while its units are free.
 If they were sold in the meantime, the order stays unpaid and the refund has
 to be settled outside the market.
 
-On Base Sepolia, test ETH comes from Coinbase's Base Sepolia faucet and test
-USDC from [Circle's faucet](https://faucet.circle.com). Neither has value.
-Live mode is Base and real USDC.
+On the test networks, test USDC comes from
+[Circle's faucet](https://faucet.circle.com), which serves all four. Test ETH
+comes from each network's own faucet and test SOL from the Solana faucet.
+None of it has value.
+
+### ENS names and sending USDC
+
+The pane can send USDC from the wallet to an address on any of the edge's
+networks. Where the edge has an ENS endpoint, the pane also shows an Ethereum
+address's primary name beside it and takes a name in place of an address when
+you send on an Ethereum network. Test networks look names up on Sepolia, live
+networks on Ethereum. Only names whose records are on chain resolve: the
+admin page reaches nothing but the box, so names served through an offchain
+gateway are not looked up.
 
 ### How you get paid
 
-Sign with the wallet that should receive USDC. The edge checks the signature
-and stores that address. Buyers pay it directly. Import the same phrase into
-MetaMask, Rabby, Rainbow or Trust Wallet when you want to spend it. There is
-no Stripe connected account for these sales.
+Sign with the wallet that should receive USDC. One click signs for both kinds
+of network: the Ethereum address takes sales paid on Base, Arbitrum and OP,
+the Solana address sales paid on Solana. The edge checks each signature and
+stores only the addresses, and buyers pay them directly. A seller with only
+one of the two set is offered to buyers on that kind of network only. Import
+the same phrase into MetaMask, Rabby, Rainbow, Trust Wallet or Phantom when
+you want to spend it. There is no Stripe connected account for these sales.
 
 ## Not covered
 

@@ -338,58 +338,94 @@ dieser Zeit versiegelt, geht nichts verloren.
 - Fehlertexte und Endpunkte von Stripe bleiben im Journal; Aufrufer erhalten
   eine feste Meldung.
 
-## Mit USDC zahlen
+## Mit USDC zahlen {#paying-with-usdc}
 
 Ein Edge kann Speicher, Rechenleistung und Maschinen in USDC abrechnen statt
-über Stripe. Hardware bleibt bei Stripe. Die RPC-URL ist ein Geheimnis, weil
-darin meist ein API-Schlüssel steckt. Sie wird mit systemd-creds unter dem
-Namen `usdc-rpc-url` versiegelt, und nur der Registrar liest sie.
+über Stripe. Hardware bleibt bei Stripe. Welche Netze er annimmt, wählt der
+Edge:
 
-Versiegle sie, bevor du USDC einschaltest: der Registrar lädt den Blob beim
-Start und startet ohne ihn nicht. Einfaches `http` nimmt er nur für einen
-Knoten auf dem Loopback des Edge selbst an, etwa `http://127.0.0.1:8545`.
+| Netz         | Sein Testnetz    |
+| ------------ | ---------------- |
+| Base         | Base Sepolia     |
+| Arbitrum One | Arbitrum Sepolia |
+| OP Mainnet   | OP Sepolia       |
+| Solana       | Solana Devnet    |
 
-`losos.edge.market.currency` muss `usd` sein: Preise sind USDC-Cent. `chainId`
-84532 ist Base Sepolia (Test, zusammen mit einem `sk_test_`-Schlüssel), 8453
-ist Base (Live, zusammen mit `sk_live_`). Eine Mischung lehnt der Registrar ab.
+Ein Edge läuft auf Testnetzen oder auf Live-Netzen, nie auf beiden, und der
+Modus folgt seinem Stripe-Schlüssel: Testnetze mit einem `sk_test_`-Schlüssel,
+Live-Netze mit `sk_live_`. Eine Mischung lehnt der Registrar ab, damit keine
+Testzahlung im Live-Buch landet. Jedes Netz hat einen eigenen RPC-Endpunkt,
+mit systemd-creds versiegelt und nur vom Registrar gelesen. Die Einrichtung
+beschreiben die Betreiberhinweise beim Quellcode (`docs/ci-and-releases.md`).
 
-So zahlst du:
+### So zahlst du {#how-you-pay}
 
 1. Im Markt eine Wallet anlegen, eine 12- oder 24-Wort-Phrase importieren
-   oder die Wallet im Browser verbinden (MetaMask, Rabby, Rainbow, Coinbase
-   Wallet). Die Phrase ist der MetaMask-Pfad `m/44'/60'/0'/0/0`, dieselbe
-   Adresse gilt auf jeder EVM-Kette, und sie lässt sich später in diese
-   Wallets importieren. Die Wörter werden im Browser verschlüsselt. Die Box
-   bekommt sie nie.
-2. Eine Anzeige bestellen. Es gibt keine Stripe-Seite, der Bereich zeigt den
-   USDC-Betrag.
-3. Bezahlen. Die Wallet gibt USDC für `LososPay` frei und ruft `pay` auf. Der
-   Vertrag schickt die Plattformgebühr an die Treasury und den Rest an den
-   Verkäufer. Für die Netzwerkgebühr brauchst du etwas ETH auf derselben Kette.
-4. Der Edge liest die Quittung über die versiegelte RPC-URL und markiert die
-   Bestellung als bezahlt. Eine Transaktion kann nur eine Bestellung zahlen.
+   oder eine Wallet im Browser verbinden: MetaMask, Rabby, Rainbow oder
+   Coinbase Wallet für die Ethereum-Netze, Phantom, Solflare oder Backpack
+   für Solana. Eine Phrase ergibt eine Adresse auf jedem Netz, das der Edge
+   annimmt, abgeleitet wie in diesen Wallets (`m/44'/60'/0'/0/0` für
+   Ethereum, `m/44'/501'/0'/0'` für Solana), also lässt sich eine hier
+   erzeugte Phrase dort importieren und umgekehrt. Die Phrase wird im
+   Browser verschlüsselt. Das Gerät bekommt sie nie.
+2. Der Bereich zeigt das USDC der Wallet auf jedem Netz, daneben die Münze,
+   mit der dort Gebühren bezahlt werden: ETH, auf Solana SOL.
+3. Aus dem Angebot bestellen. Es gibt keine Stripe-Seite. Der Bereich zeigt
+   den Betrag in USDC und fragt, auf welchem Netz gezahlt wird; zuerst bietet
+   er eines an, auf dem die Wallet genug hat.
+4. Zahlen. Auf einem Ethereum-Netz genehmigt die Wallet USDC für `LososPay`
+   und ruft `pay` auf, und der Vertrag schickt die Plattformgebühr an die
+   Treasury und den Rest an den Verkäufer. Auf Solana macht eine Transaktion
+   beide Überweisungen und nennt die Bestellung in einem Memo. Die erste
+   Zahlung an einen Verkäufer oder die Treasury eröffnet auch deren
+   USDC-Konto, was etwas SOL kostet.
+5. Der Edge liest die Transaktion über seinen Endpunkt für dieses Netz und
+   markiert die Bestellung als bezahlt. Eine Transaktion bezahlt nur eine
+   Bestellung.
 
-Bevor er eine Zahlung zählt, prüft der Edge, dass der RPC-Endpunkt für die
-eingestellte Kette antwortet, dass `LososPay` Circles USDC dieser Kette
-einzieht und an die eingestellte Treasury zahlt, und dass über der Zahlung
-schon ein weiterer Block liegt. `LososPay` nimmt höchstens die Hälfte einer
-Zahlung, die feste Teilung bei Maschinen; die genaue Gebühr jeder Bestellung
-prüft der Edge.
+Bevor er eine Zahlung auf einem Ethereum-Netz zählt, prüft der Edge, dass der
+RPC-Endpunkt für die Chain dieses Netzes antwortet, dass `LososPay` Circles
+USDC dieser Chain einzieht und an die eingestellte Treasury zahlt, und dass
+über der Zahlung schon ein Block liegt. `LososPay` nimmt höchstens die Hälfte
+einer Zahlung, die feste Teilung bei Maschinen; die genaue Gebühr jeder
+Bestellung prüft der Edge. Auf Solana prüft der Edge, dass der Endpunkt den
+Genesis-Hash des Netzes meldet, dass die Transaktion gelungen und bestätigt
+ist, dass ihr Memo die Bestellung nennt und dass das USDC von Verkäufer und
+Treasury um genau ihre Anteile gewachsen ist.
 
 Eine Bestellung hält ihre Einheiten eine Viertelstunde. In den letzten zwei
-Minuten beginnt der Bereich keine Zahlung mehr, und die Transaktion einer
-gesendeten Zahlung behält er, bis der Edge sie gezählt hat, so dass erneutes
-Prüfen nie doppelt zahlt. Eine Zahlung nach Ablauf gilt, solange die
-Einheiten frei sind. Wurden sie inzwischen verkauft, bleibt die Bestellung
-unbezahlt, und die Erstattung muss außerhalb des Markts geregelt werden.
+Minuten startet der Bereich keine Zahlung mehr, und er behält die Transaktion
+einer gesendeten Zahlung, bis der Edge sie gezählt hat, sodass erneutes
+Prüfen nie doppelt zahlt. Eine Zahlung nach Ablauf dieser Zeit gilt noch,
+solange die Einheiten frei sind. Wurden sie inzwischen verkauft, bleibt die
+Bestellung unbezahlt und die Rückzahlung muss außerhalb des Markts geregelt
+werden.
 
-Auf Base Sepolia kommt Test-ETH vom Coinbase-Faucet und Test-USDC von
-[Circles Faucet](https://faucet.circle.com). Beides hat keinen Wert.
+Auf den Testnetzen kommt Test-USDC aus
+[Circles Faucet](https://faucet.circle.com), der alle vier bedient. Test-ETH
+gibt der Faucet jedes Netzes, Test-SOL der Solana-Faucet. Nichts davon hat
+einen Wert.
 
-So wirst du bezahlt: mit der Wallet signieren, die USDC empfangen soll. Der
-Edge prüft die Signatur und speichert die Adresse. Käufer zahlen direkt
-dorthin. Dieselbe Phrase importierst du in MetaMask, Rabby, Rainbow oder
-Trust Wallet, wenn du das Geld ausgeben willst.
+### ENS-Namen und USDC senden {#ens-names-and-sending-usdc}
+
+Der Bereich kann USDC aus der Wallet an eine Adresse auf jedem Netz des Edge
+senden. Hat der Edge einen ENS-Endpunkt, zeigt der Bereich neben einer
+Ethereum-Adresse auch ihren primären Namen und nimmt beim Senden auf einem
+Ethereum-Netz einen Namen statt einer Adresse an. Testnetze suchen Namen auf
+Sepolia, Live-Netze auf Ethereum. Gefunden werden nur Namen mit Einträgen auf
+der Chain: die Verwaltungsseite erreicht nichts außer dem Gerät, also werden
+Namen über ein Gateway außerhalb der Chain nicht nachgeschlagen.
+
+### So bekommst du Geld {#how-you-get-paid}
+
+Mit der Wallet signieren, die USDC empfangen soll. Ein Klick signiert für
+beide Arten von Netz: die Ethereum-Adresse nimmt Verkäufe auf Base, Arbitrum
+und OP, die Solana-Adresse Verkäufe auf Solana. Der Edge prüft jede Signatur,
+speichert nur die Adressen, und Käufer zahlen direkt an sie. Ein Verkäufer
+mit nur einer der beiden wird nur Käufern auf dieser Art von Netz angeboten.
+Dieselbe Phrase lässt sich in MetaMask, Rabby, Rainbow, Trust Wallet oder
+Phantom importieren, wenn du das Geld ausgeben willst. Für diese Verkäufe gibt
+es kein verbundenes Stripe-Konto.
 
 ## Nicht abgedeckt
 
