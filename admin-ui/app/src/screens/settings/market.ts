@@ -57,9 +57,9 @@ const KIND_NAME: Record<MarketKind, MessageKey> = {
 };
 
 const UNIT_NAME: Record<string, MessageKey> = {
-  "GiB-month": "panes.market.unit.storage",
-  "vCPU-hour": "panes.market.unit.compute",
-  "replica-month": "panes.market.unit.vm",
+  "GiB-month": "panes.market.units.storage",
+  "vCPU-hour": "panes.market.units.compute",
+  "replica-month": "panes.market.units.vm",
 };
 
 /* Payment happens on Stripe's page in another tab, and the box learns of it
@@ -78,7 +78,7 @@ function announcePaid(previous: Map<string, MarketOrder["status"]>, account: Mar
         t("panes.market.paidBody", {
           kind: t(KIND_NAME[order.kind]),
           quantity: order.quantity,
-          unit: unitKey === undefined ? order.unit : t(unitKey),
+          unit: unitKey === undefined ? order.unit : t(unitKey, { count: order.quantity }),
         }),
         // Settles the "order placed, finish paying" status the buy raised.
         { settles: ORDER_STATUS },
