@@ -254,7 +254,7 @@ async fn gated(
     let _one_at_a_time = st.push_lock.lock().await;
     match github_operator(st, headers, what).await {
         Ok((user, _)) => f(op, &user.login),
-        Err(refused) => refused,
+        Err(refused) => *refused,
     }
 }
 
