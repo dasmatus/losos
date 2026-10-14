@@ -491,6 +491,14 @@ async fn the_edge_makes_the_escrow_key_and_shows_only_its_address() {
                     genesis: None,
                 }],
                 ens_rpc_file: None,
+                price_sources: [
+                    losos_registrar::coins::PriceSource::Kraken {
+                        base: "http://127.0.0.1:9".to_string(),
+                    },
+                    losos_registrar::coins::PriceSource::CoinGecko {
+                        base: "http://127.0.0.1:9".to_string(),
+                    },
+                ],
                 // Where systemd would put the credential once the
                 // restarted registrar loads it; read per request.
                 releaser_file: Some(dir.path_str("sealed-usdc-releaser-key")),
