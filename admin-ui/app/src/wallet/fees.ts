@@ -12,9 +12,10 @@ import type { UsdcChain } from "@/lib/api";
 import { evmClient, solanaRpc } from "./chains";
 import { associatedTokenAddress } from "./solana";
 
-/** Gas a USDC approval, a payment through the pay contract, and a plain
- *  USDC transfer use, measured on Base Sepolia and rounded up. */
-const GAS = { approve: 46_000n, pay: 100_000n, send: 65_000n } as const;
+/** Gas a USDC approval, a payment into the escrow, and a plain USDC
+ *  transfer use, rounded up. The escrow's `pay` records a deposit: a median
+ *  of 166k gas in its test suite, plus the 21k every transaction costs. */
+const GAS = { approve: 46_000n, pay: 190_000n, send: 65_000n } as const;
 
 /** Serialized size of each transaction, for the L1 data fee. */
 const BYTES = { approve: 120n, pay: 260n, send: 120n } as const;

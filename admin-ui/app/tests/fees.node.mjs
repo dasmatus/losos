@@ -85,7 +85,7 @@ chain['base-sepolia'].eth_call = ([call]) =>
 {
   const est = await fees.estimateFee(evm, { kind: 'pay', amount: 1_000_000n, owner: buyer }, { eth: '3000000000' });
   assert.equal(est.symbol, 'ETH');
-  assert.equal(est.native, (100_000n + 46_000n) * 9n * gwei + 7n * gwei);
+  assert.equal(est.native, (190_000n + 46_000n) * 9n * gwei + 7n * gwei);
   // 3000 dollars per ETH.
   assert.equal(est.usdMicros, (est.native * 3_000_000_000n) / 10n ** 18n);
 }
