@@ -99,22 +99,53 @@ const FEATURES: Feature[] = [
   },
 ];
 
-/* Planned, each with the page that says how far along it is. The list is
- * the project page's "What is done and what is planned" plus what the code
+/* Planned, each with the page that says how far along it is, and its parts
+ * in order with the ones already shipped crossed off. The list is the
+ * project page's "What is done and what is planned" plus what the code
  * shows unfinished: the Market pane is `planned: true` in the admin UI's
- * panes.ts, and no edge deploys Longhorn while
- * losos.edge.cluster.longhornChart defaults to null. Nothing goes here
- * that is not built or started. */
-const SOON: Feature[] = [
+ * panes.ts, no edge deploys Longhorn while
+ * losos.edge.cluster.longhornChart defaults to null, and
+ * keys/secure-boot-db.pem holds no certificate. Nothing goes here that is
+ * not built or started. Once every part of a card is done, the card says
+ * so; move it up to the features then. */
+type Part = {done: boolean; text: ReactNode};
+type Planned = Feature & {parts: Part[]};
+
+const SOON: Planned[] = [
   {
     title: <Translate id="losos.home.soon.market.title">The market</Translate>,
     body: (
       <Translate id="losos.home.soon.market.body">
         Get paid for the disk and CPU your box lends, and buy room from other
-        boxes. It is built and tested against Stripe's test mode. It opens
-        once a registered business stands behind it.
+        boxes.
       </Translate>
     ),
+    parts: [
+      {
+        done: true,
+        text: (
+          <Translate id="losos.home.soon.market.card">
+            Card payments through Stripe, tested in its test mode
+          </Translate>
+        ),
+      },
+      {
+        done: true,
+        text: (
+          <Translate id="losos.home.soon.market.coins">
+            Payments in USDC and Bitcoin
+          </Translate>
+        ),
+      },
+      {
+        done: false,
+        text: (
+          <Translate id="losos.home.soon.market.open">
+            Opening it, which needs a registered business behind it
+          </Translate>
+        ),
+      },
+    ],
     to: '/types/official-edge',
   },
   {
@@ -123,12 +154,35 @@ const SOON: Feature[] = [
     ),
     body: (
       <Translate id="losos.home.soon.pool.body">
-        Boxes behind one edge will lend their unused disk to a single
-        replicated pool. The encrypted share on each box is built. The edge
-        does not run the pool's storage service yet, and the switch waits for
-        the market.
+        Boxes behind one edge lend their unused disk to one replicated pool.
       </Translate>
     ),
+    parts: [
+      {
+        done: true,
+        text: (
+          <Translate id="losos.home.soon.pool.share">
+            The encrypted share on each box
+          </Translate>
+        ),
+      },
+      {
+        done: false,
+        text: (
+          <Translate id="losos.home.soon.pool.service">
+            The pool's storage service on the edge
+          </Translate>
+        ),
+      },
+      {
+        done: false,
+        text: (
+          <Translate id="losos.home.soon.pool.switch">
+            The sharing switch, which opens with the market
+          </Translate>
+        ),
+      },
+    ],
     to: '/types/storage-modes',
   },
   {
@@ -137,11 +191,36 @@ const SOON: Feature[] = [
     ),
     body: (
       <Translate id="losos.home.soon.secureboot.body">
-        The installer is ready to be signed for Secure Boot. Once the LosOS
-        signing key exists, every release is signed, and a firmware that
-        trusts the LosOS certificate boots it with Secure Boot on.
+        Firmware that trusts the LosOS certificate boots the installer with
+        Secure Boot on.
       </Translate>
     ),
+    parts: [
+      {
+        done: true,
+        text: (
+          <Translate id="losos.home.soon.secureboot.ready">
+            An installer ready to be signed
+          </Translate>
+        ),
+      },
+      {
+        done: false,
+        text: (
+          <Translate id="losos.home.soon.secureboot.key">
+            The LosOS signing key
+          </Translate>
+        ),
+      },
+      {
+        done: false,
+        text: (
+          <Translate id="losos.home.soon.secureboot.releases">
+            A signature on every release
+          </Translate>
+        ),
+      },
+    ],
     to: '/start/secure-boot',
   },
   {
@@ -151,10 +230,35 @@ const SOON: Feature[] = [
     body: (
       <Translate id="losos.home.soon.company.body">
         Boxes for each team, one edge for the office and the install done for
-        you. The company setup works today. Selling it as a package comes
-        next.
+        you.
       </Translate>
     ),
+    parts: [
+      {
+        done: true,
+        text: (
+          <Translate id="losos.home.soon.company.setup">
+            The company setup, with the office's own edge
+          </Translate>
+        ),
+      },
+      {
+        done: true,
+        text: (
+          <Translate id="losos.home.soon.company.image">
+            An edge image attached to every release
+          </Translate>
+        ),
+      },
+      {
+        done: false,
+        text: (
+          <Translate id="losos.home.soon.company.package">
+            Selling it as a package
+          </Translate>
+        ),
+      },
+    ],
     to: '/types/company-edge',
   },
   {
@@ -163,10 +267,35 @@ const SOON: Feature[] = [
     ),
     body: (
       <Translate id="losos.home.soon.translations.body">
-        The menus and this page are translated already. The handbook's pages
-        follow one at a time.
+        Every page of this handbook in Slovak and German.
       </Translate>
     ),
+    parts: [
+      {
+        done: true,
+        text: (
+          <Translate id="losos.home.soon.translations.menus">
+            The menus and this page
+          </Translate>
+        ),
+      },
+      {
+        done: true,
+        text: (
+          <Translate id="losos.home.soon.translations.depth">
+            The In depth chapter, TPM and the security model
+          </Translate>
+        ),
+      },
+      {
+        done: false,
+        text: (
+          <Translate id="losos.home.soon.translations.rest">
+            The rest of the pages
+          </Translate>
+        ),
+      },
+    ],
     to: '/reference/for-developers#translating',
   },
 ];
@@ -372,15 +501,40 @@ function Soon(): ReactNode {
         <Translate id="losos.home.soon.title">Coming soon</Translate>
       </h2>
       <div className={styles.soonGrid}>
-        {SOON.map((f, i) => (
-          <Link key={i} to={f.to} className={clsx(styles.tile, styles.soon)}>
-            <span className={styles.soonChip}>
-              <Translate id="losos.home.soon.chip">Soon</Translate>
-            </span>
-            <h3 className={styles.itemTitle}>{f.title}</h3>
-            <p className={styles.itemBody}>{f.body}</p>
-          </Link>
-        ))}
+        {SOON.map((f, i) => {
+          const shipped = f.parts.every((p) => p.done);
+          return (
+            <Link key={i} to={f.to} className={clsx(styles.tile, styles.soon)}>
+              <span className={clsx(styles.soonChip, shipped && styles.soonChipDone)}>
+                {shipped ? (
+                  <Translate id="losos.home.soon.chip.done">Done</Translate>
+                ) : (
+                  <Translate id="losos.home.soon.chip">Soon</Translate>
+                )}
+              </span>
+              <h3 className={styles.itemTitle}>
+                {shipped ? <s>{f.title}</s> : f.title}
+              </h3>
+              <p className={styles.itemBody}>{f.body}</p>
+              <ul className={styles.parts}>
+                {f.parts.map((p, j) => (
+                  <li key={j} className={clsx(styles.part, p.done && styles.partDone)}>
+                    {p.done ? (
+                      <>
+                        <span className={styles.srOnly}>
+                          <Translate id="losos.home.soon.done">Done:</Translate>{' '}
+                        </span>
+                        <s>{p.text}</s>
+                      </>
+                    ) : (
+                      p.text
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </Link>
+          );
+        })}
       </div>
     </section>
   );
