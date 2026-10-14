@@ -1682,6 +1682,36 @@ export default defineMessages({
     sk: "Pozrieť transakciu",
     de: "Transaktion ansehen",
   },
+  "panes.market.escrow.release": {
+    en: "Held in escrow until the edge releases it to the seller",
+    sk: "V úschove, kým ju edge neuvoľní predajcovi",
+    de: "In Treuhand, bis der Edge sie an den Verkäufer freigibt",
+  },
+  "panes.market.escrow.released": {
+    en: "Released to the seller",
+    sk: "Uvoľnené predajcovi",
+    de: "An den Verkäufer freigegeben",
+  },
+  "panes.market.escrow.refund": {
+    en: "Going back to the buyer",
+    sk: "Vracia sa kupujúcemu",
+    de: "Geht an den Käufer zurück",
+  },
+  "panes.market.escrow.refunded": {
+    en: "Refunded to the buyer",
+    sk: "Vrátené kupujúcemu",
+    de: "An den Käufer zurückerstattet",
+  },
+  "panes.market.escrow.sellerCannotReceive": {
+    en: "the seller's address cannot receive USDC on this network",
+    sk: "adresa predajcu na tejto sieti nemôže prijať USDC",
+    de: "die Adresse des Verkäufers kann in diesem Netz kein USDC empfangen",
+  },
+  "panes.market.escrow.buyerReclaimed": {
+    en: "the buyer took it back after the deadline",
+    sk: "kupujúci si ju po lehote vzal späť",
+    de: "der Käufer hat sie nach der Frist zurückgeholt",
+  },
   "panes.market.volume": {
     en: "volume {volume}",
     sk: "zväzok {volume}",
@@ -2138,6 +2168,11 @@ export default defineMessages({
     en: "Payment sent",
     sk: "Platba odoslaná",
     de: "Zahlung gesendet",
+  },
+  "panes.market.usdc.refundedTitle": {
+    en: "Payment going back",
+    sk: "Platba sa vracia",
+    de: "Zahlung geht zurück",
   },
   "panes.market.usdc.gas": {
     en: "USDC does not pay the network fee. The wallet also needs a little ETH on the network it pays on, or SOL on Solana, where the first payment to a seller also opens their USDC account. The wallet offers the network with the lowest fee first and pays the lowest fee that still gets into a block.",

@@ -290,18 +290,31 @@ function PaidTx({ order, usdc }: { order: MarketOrder; usdc: UsdcPublic | null }
     (order.network ? undefined : usdc.chains.find((c) => c.family === "evm"));
   if (!chain) return null;
   const href = explorerTx(chain.network, order.tx);
+  const escrow = order.escrow;
+  const reason =
+    escrow?.reason === "sellerCannotReceive" || escrow?.reason === "buyerReclaimed"
+      ? t(`panes.market.escrow.${escrow.reason}`)
+      : null;
   return (
-    <p className="mt-0.5 text-[12px] text-faint">
-      {t("panes.market.paidOn", { network: chain.name })}
-      {href !== null && (
-        <>
-          {" · "}
-          <a className="underline underline-offset-2 hover:text-ink" href={href} target="_blank" rel="noopener noreferrer">
-            {t("panes.market.viewTx")}
-          </a>
-        </>
+    <>
+      <p className="mt-0.5 text-[12px] text-faint">
+        {t("panes.market.paidOn", { network: chain.name })}
+        {href !== null && (
+          <>
+            {" · "}
+            <a className="underline underline-offset-2 hover:text-ink" href={href} target="_blank" rel="noopener noreferrer">
+              {t("panes.market.viewTx")}
+            </a>
+          </>
+        )}
+      </p>
+      {escrow && (
+        <p className="mt-0.5 text-[12px] text-faint">
+          {t(`panes.market.escrow.${escrow.step}`)}
+          {reason !== null && ` · ${reason}`}
+        </p>
       )}
-    </p>
+    </>
   );
 }
 

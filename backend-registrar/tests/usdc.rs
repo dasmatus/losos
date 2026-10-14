@@ -2,13 +2,15 @@
 //!
 //! The real routes run on a real socket. The chain is a stand-in JSON-RPC
 //! endpoint on loopback that answers the calls the registrar makes:
-//! `eth_chainId`, the pay contract's `usdc()` and `treasury()`, receipts and
-//! the block height. What is asserted is when an order counts as paid: only
-//! for a receipt of the configured contract, on the configured chain, with
-//! the token and treasury the config names, a block on top, the amounts of
-//! the order and the payout address the invoice named. A second stand-in
-//! answers as a Solana cluster: its genesis hash and parsed transactions,
-//! for the same rules on the second family.
+//! `eth_chainId`, the escrow's `usdc()`, `treasury()`, `releaser()` and
+//! `deposits()`, code at an address, receipts, the block height, and what
+//! sending a transaction takes. What is asserted is when an order counts as
+//! paid: only for a receipt of the configured escrow, on the configured
+//! chain, with the token, treasury and releaser the config names, a block
+//! on top, the amounts and deadline of the order and the payout address the
+//! invoice named; and which deposits the edge then releases or refunds. A
+//! second stand-in answers as a Solana cluster: its genesis hash and parsed
+//! transactions, for the same rules on the second family.
 
 mod common;
 
@@ -22,7 +24,7 @@ use common::{Edge, TenantSpec, GOOD_TOKEN, OTHER_TOKEN};
 use k256::ecdsa::SigningKey;
 use losos_registrar::solana::base58_encode;
 use losos_registrar::stablecoin::{
-    network, order_id_hash_hex, payout_message, UsdcChain, UsdcOpts, BASE_SEPOLIA,
+    network, order_id_hash_hex, payout_message, refund_deadline, UsdcChain, UsdcOpts, BASE_SEPOLIA,
     USDC_BASE_SEPOLIA, USDC_SOLANA_DEVNET,
 };
 use ring::signature::{Ed25519KeyPair, KeyPair};
@@ -31,7 +33,12 @@ use sha3::{Digest, Keccak256};
 
 const PAY: &str = "0x1111111111111111111111111111111111111111";
 const TREASURY: &str = "0x4444444444444444444444444444444444444444";
-const PAID_TOPIC: &str = "Paid(bytes32,address,address,uint256,uint256)";
+const HELD_TOPIC: &str = "Held(uint256,bytes32,address,address,uint256,uint256,uint64)";
+/// Anvil's first key, as the edge's releaser.
+const RELEASER_KEY: &str = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
+const RELEASER: &str = "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266";
+const RELEASE: &str = "37bdc99b";
+const REFUND: &str = "278ecde1";
 const SOL_TREASURY: &str = "5ZWj7a1f8tWkjBESHKgrLmXshuXxqeY9SYcfbshpAqPG";
 const SOL_BUYER: &str = "HN7cABqLq46Es1jh92dQQisAq662SmxELLLsHHe4YWrH";
 /// A local validator's genesis, which the test network is configured with.
@@ -48,6 +55,13 @@ struct ChainState {
     treasury: String,
     head: u64,
     receipts: HashMap<String, Value>,
+    releaser: String,
+    /// `eth_getCode` by lowercase address; an account without code if absent.
+    code: HashMap<String, String>,
+    /// Deposit states the escrow reports; held if absent.
+    deposits: HashMap<u64, u8>,
+    /// Raw transactions the edge sent, in order.
+    sent: Vec<String>,
     /// Solana: what `getGenesisHash` answers, and `getTransaction` results.
     genesis: String,
     transactions: HashMap<String, Value>,
@@ -68,8 +82,41 @@ async fn rpc(State(chain): State<Chain>, Json(req): Json<Value>) -> impl IntoRes
         "eth_call" => match req["params"][0]["data"].as_str().unwrap_or("") {
             "0x3e413bee" => json!(word(&st.usdc)),
             "0x61d027b3" => json!(word(&st.treasury)),
+            "0x02691bcb" => json!(word(&st.releaser)),
+            data if data.starts_with("0xb02c43d0") => {
+                let id = u64::from_str_radix(&data[data.len() - 16..], 16).unwrap();
+                let state = st.deposits.get(&id).copied().unwrap_or(1);
+                json!(format!(
+                    "0x{}{}",
+                    "0".repeat(64 * 6),
+                    word_u(u128::from(state))
+                ))
+            }
             _ => Value::Null,
         },
+        "eth_getCode" => json!(st
+            .code
+            .get(req["params"][0].as_str().unwrap_or(""))
+            .cloned()
+            .unwrap_or_else(|| "0x".to_string())),
+        "eth_getTransactionCount" => json!(format!("0x{:x}", st.sent.len())),
+        "eth_estimateGas" => json!("0x15f90"),
+        "eth_getBlockByNumber" => json!({ "baseFeePerGas": "0x3b9aca00" }),
+        "eth_maxPriorityFeePerGas" => json!("0xf4240"),
+        "eth_sendRawTransaction" => {
+            drop(st);
+            let raw = req["params"][0].as_str().unwrap_or("").to_string();
+            let bytes: Vec<u8> = (2..raw.len())
+                .step_by(2)
+                .map(|i| u8::from_str_radix(&raw[i..i + 2], 16).unwrap())
+                .collect();
+            chain.set(|c| c.sent.push(raw));
+            return Json(json!({
+                "jsonrpc": "2.0",
+                "id": req["id"],
+                "result": format!("0x{}", hex(&keccak(&bytes))),
+            }));
+        }
         "eth_getTransactionReceipt" => st
             .receipts
             .get(req["params"][0].as_str().unwrap_or(""))
@@ -98,6 +145,10 @@ async fn start_chain() -> (Chain, String) {
             treasury: TREASURY.to_string(),
             head: 100,
             receipts: HashMap::new(),
+            releaser: RELEASER.to_string(),
+            code: HashMap::new(),
+            deposits: HashMap::new(),
+            sent: Vec::new(),
             genesis: LOCAL_GENESIS.to_string(),
             transactions: HashMap::new(),
         })),
@@ -147,6 +198,7 @@ async fn start(tag: &str, rpc_url: &str, state: Option<&Value>) -> Edge {
         state,
         move |opts, dir| {
             std::fs::write(dir.join("usdc-rpc-url"), &rpc_url).expect("write rpc url");
+            std::fs::write(dir.join("usdc-releaser-key"), RELEASER_KEY).expect("write key");
             let market = opts.market.as_mut().expect("market on");
             market.currency = "usd".to_string();
             market.usdc = Some(UsdcOpts {
@@ -177,6 +229,7 @@ async fn start(tag: &str, rpc_url: &str, state: Option<&Value>) -> Edge {
                 ],
                 ens_rpc_file: None,
                 price_sources: silent_prices(),
+                releaser_file: Some(dir.path_str("usdc-releaser-key")),
             });
         },
     )
@@ -277,24 +330,109 @@ fn word_u(n: u128) -> String {
     format!("{n:064x}")
 }
 
-/// A mined `LososPay.pay` paying `invoice` to `seller`, in block `block`.
-fn receipt(invoice: &Value, seller: &str, block: u64) -> Value {
+/// A mined `LososEscrow.pay` holding `invoice` for `seller` as deposit
+/// `deposit`, in block `block`.
+fn receipt(invoice: &Value, seller: &str, block: u64, deposit: u8) -> Value {
     let gross: u128 = invoice["gross"].as_str().unwrap().parse().unwrap();
     let fee: u128 = invoice["fee"].as_str().unwrap().parse().unwrap();
+    let deadline = u128::from(invoice["deadline"].as_u64().unwrap());
     json!({
         "status": "0x1",
         "blockNumber": format!("0x{block:x}"),
         "logs": [{
             "address": PAY,
             "topics": [
-                format!("0x{}", hex(&keccak(PAID_TOPIC.as_bytes()))),
+                format!("0x{}", hex(&keccak(HELD_TOPIC.as_bytes()))),
+                format!("0x{}", word_u(u128::from(deposit))),
                 invoice["order_id_hash"],
                 "0x0000000000000000000000003333333333333333333333333333333333333333",
-                format!("0x000000000000000000000000{}", &seller[2..]),
             ],
-            "data": format!("0x{}{}", word_u(gross), word_u(fee)),
+            "data": format!(
+                "0x000000000000000000000000{}{}{}{}",
+                &seller[2..],
+                word_u(gross),
+                word_u(fee),
+                word_u(deadline),
+            ),
         }],
     })
+}
+
+/// The escrow calls the edge has sent, as `(selector, deposit)`.
+fn sent_calls(chain: &Chain) -> Vec<(String, u64)> {
+    let raws = chain.inner.lock().expect("chain not poisoned").sent.clone();
+    raws.iter()
+        .map(|raw| {
+            // The call data sits between the address and the signature;
+            // nothing before it spells either selector.
+            let at = raw
+                .find(RELEASE)
+                .or_else(|| raw.find(REFUND))
+                .expect("an escrow call");
+            let deposit = u64::from_str_radix(&raw[at + 8 + 48..at + 8 + 64], 16).unwrap();
+            (raw[at..at + 8].to_string(), deposit)
+        })
+        .collect()
+}
+
+/// Wait for the reconciler to have sent `n` escrow calls.
+async fn wait_sent(chain: &Chain, n: usize) -> Vec<(String, u64)> {
+    for _ in 0..100 {
+        let calls = sent_calls(chain);
+        if calls.len() >= n {
+            return calls;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    panic!("the edge sent {:?}, not {n} calls", sent_calls(chain));
+}
+
+/// Mine every sent call one block under the head, with `status`.
+fn mine_sent(chain: &Chain, status: &str) {
+    chain.set(|c| {
+        for raw in c.sent.clone() {
+            let bytes: Vec<u8> = (2..raw.len())
+                .step_by(2)
+                .map(|i| u8::from_str_radix(&raw[i..i + 2], 16).unwrap())
+                .collect();
+            let hash = format!("0x{}", hex(&keccak(&bytes)));
+            let block = c.head - 1;
+            c.receipts.insert(
+                hash,
+                json!({ "status": status, "blockNumber": format!("0x{block:x}"), "logs": [] }),
+            );
+        }
+    });
+}
+
+/// The buyer's view of an order.
+async fn purchase(edge: &Edge, order_id: &str) -> Value {
+    let (status, body) = edge
+        .post("/market/account", auth("buyer-box", OTHER_TOKEN))
+        .await;
+    assert_eq!(status, 200, "{body}");
+    parse(&body)["purchases"]
+        .as_array()
+        .expect("purchases")
+        .iter()
+        .find(|o| o["id"] == order_id)
+        .cloned()
+        .unwrap_or(Value::Null)
+}
+
+/// Wait until the order's escrow reaches `step`.
+async fn wait_step(edge: &Edge, order_id: &str, step: &str) -> Value {
+    for _ in 0..100 {
+        let order = purchase(edge, order_id).await;
+        if order["escrow"]["step"] == step {
+            return order;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    panic!(
+        "{order_id} never reached {step}: {}",
+        purchase(edge, order_id).await
+    );
 }
 
 async fn confirm(edge: &Edge, order_id: &str, tx: &str) -> (u16, String) {
@@ -421,7 +559,7 @@ async fn a_payment_counts_once_it_has_a_block_on_top() {
     assert!(invoice["pay_before"].as_u64().unwrap() > losos_registrar::market::now_secs());
 
     chain.set(|c| {
-        c.receipts.insert(tx(1), receipt(&invoice, &seller, 100));
+        c.receipts.insert(tx(1), receipt(&invoice, &seller, 100, 1));
     });
     let (status, body) = confirm(&edge, &order_id, &tx(1)).await;
     assert_eq!(status, 409, "{body}");
@@ -434,6 +572,162 @@ async fn a_payment_counts_once_it_has_a_block_on_top() {
     assert_eq!(status_of(&edge, &order_id).await, "paid");
     // Reporting the same transaction again is not an error.
     assert_eq!(confirm(&edge, &order_id, &tx(1)).await.0, 204);
+
+    // The edge releases the deposit, once, and follows the call until it
+    // has a block on top.
+    assert_eq!(wait_sent(&chain, 1).await, [(RELEASE.to_string(), 1)]);
+    assert_eq!(
+        purchase(&edge, &order_id).await["escrow"]["step"],
+        "release"
+    );
+    mine_sent(&chain, "0x1");
+    let order = wait_step(&edge, &order_id, "released").await;
+    assert!(order["escrow"]["tx"].is_null(), "{order}");
+    assert_eq!(sent_calls(&chain).len(), 1);
+    edge.shutdown().await;
+}
+
+#[tokio::test]
+async fn a_release_that_reverts_is_sent_again_while_the_deposit_is_held() {
+    let (chain, url) = start_chain().await;
+    let edge = start("usdc-release-again", &url, None).await;
+    let seller = set_payout(&edge, 7).await;
+    let invoice = order(&edge, 10).await;
+    let order_id = invoice["order_id"].as_str().unwrap().to_string();
+    chain.set(|c| {
+        c.head = 200;
+        c.receipts.insert(tx(1), receipt(&invoice, &seller, 100, 1));
+    });
+    assert_eq!(confirm(&edge, &order_id, &tx(1)).await.0, 204);
+    wait_sent(&chain, 1).await;
+    mine_sent(&chain, "0x0");
+    let calls = wait_sent(&chain, 2).await;
+    assert!(
+        calls.iter().all(|c| *c == (RELEASE.to_string(), 1)),
+        "{calls:?}"
+    );
+    // Someone mined it after all: the escrow says released, so that is that.
+    chain.set(|c| {
+        c.deposits.insert(1, 2);
+        c.receipts.retain(|_, r| r["status"] == "0x1");
+    });
+    mine_sent(&chain, "0x1");
+    wait_step(&edge, &order_id, "released").await;
+    edge.shutdown().await;
+}
+
+#[tokio::test]
+async fn a_seller_address_that_is_a_contract_gets_nothing() {
+    let (chain, url) = start_chain().await;
+    let edge = start("usdc-seller-contract", &url, None).await;
+    let seller = set_payout(&edge, 7).await;
+    let invoice = order(&edge, 10).await;
+    let order_id = invoice["order_id"].as_str().unwrap().to_string();
+    chain.set(|c| {
+        c.head = 200;
+        c.code.insert(seller.clone(), "0x6080604052".to_string());
+        c.receipts.insert(tx(2), receipt(&invoice, &seller, 100, 2));
+    });
+    let (status, body) = confirm(&edge, &order_id, &tx(2)).await;
+    assert_eq!(status, 409, "{body}");
+    assert!(body.contains("cannot receive"), "{body}");
+    assert!(body.contains("refunded"), "{body}");
+    // The same answer again, and the deposit goes back once.
+    let (status, again) = confirm(&edge, &order_id, &tx(2)).await;
+    assert_eq!((status, again.as_str()), (409, body.as_str()));
+    assert_eq!(wait_sent(&chain, 1).await, [(REFUND.to_string(), 2)]);
+    let order = purchase(&edge, &order_id).await;
+    assert_eq!(order["status"], "expired", "{order}");
+    assert_eq!(order["escrow"]["reason"], "sellerCannotReceive", "{order}");
+    mine_sent(&chain, "0x1");
+    wait_step(&edge, &order_id, "refunded").await;
+    edge.shutdown().await;
+}
+
+#[tokio::test]
+async fn a_seller_account_delegated_under_eip_7702_is_paid() {
+    let (chain, url) = start_chain().await;
+    let edge = start("usdc-seller-7702", &url, None).await;
+    let seller = set_payout(&edge, 7).await;
+    let invoice = order(&edge, 10).await;
+    let order_id = invoice["order_id"].as_str().unwrap().to_string();
+    chain.set(|c| {
+        c.head = 200;
+        c.code.insert(
+            seller.clone(),
+            "0xef010063c0c19a282a1b52b07dd5a65b58948a07dae32b".to_string(),
+        );
+        c.receipts.insert(tx(3), receipt(&invoice, &seller, 100, 3));
+    });
+    let (status, body) = confirm(&edge, &order_id, &tx(3)).await;
+    assert_eq!(status, 204, "{body}");
+    assert_eq!(wait_sent(&chain, 1).await, [(RELEASE.to_string(), 3)]);
+    edge.shutdown().await;
+}
+
+#[tokio::test]
+async fn a_second_payment_for_a_paid_order_goes_back() {
+    let (chain, url) = start_chain().await;
+    let edge = start("usdc-paid-twice", &url, None).await;
+    let seller = set_payout(&edge, 7).await;
+    let invoice = order(&edge, 10).await;
+    let order_id = invoice["order_id"].as_str().unwrap().to_string();
+    chain.set(|c| {
+        c.head = 200;
+        c.receipts.insert(tx(4), receipt(&invoice, &seller, 100, 4));
+        c.receipts.insert(tx(5), receipt(&invoice, &seller, 100, 5));
+    });
+    assert_eq!(confirm(&edge, &order_id, &tx(4)).await.0, 204);
+    let (status, body) = confirm(&edge, &order_id, &tx(5)).await;
+    assert_eq!(status, 409, "{body}");
+    assert!(body.contains("already paid"), "{body}");
+    let mut calls = wait_sent(&chain, 2).await;
+    calls.sort();
+    assert_eq!(calls, [(REFUND.to_string(), 5), (RELEASE.to_string(), 4)]);
+    // The first payment still holds the order.
+    let order = purchase(&edge, &order_id).await;
+    assert_eq!(order["status"], "paid", "{order}");
+    assert_eq!(order["tx"], tx(4).as_str(), "{order}");
+    edge.shutdown().await;
+}
+
+#[tokio::test]
+async fn a_deposit_the_buyer_took_back_ends_the_order() {
+    let (chain, url) = start_chain().await;
+    let edge = start("usdc-reclaimed", &url, None).await;
+    let seller = set_payout(&edge, 7).await;
+    let invoice = order(&edge, 10).await;
+    let order_id = invoice["order_id"].as_str().unwrap().to_string();
+    chain.set(|c| {
+        c.head = 200;
+        c.receipts.insert(tx(6), receipt(&invoice, &seller, 100, 6));
+        // The edge was down past the deadline and the buyer refunded.
+        c.deposits.insert(6, 3);
+    });
+    assert_eq!(confirm(&edge, &order_id, &tx(6)).await.0, 204);
+    let order = wait_step(&edge, &order_id, "refunded").await;
+    assert_eq!(order["escrow"]["reason"], "buyerReclaimed", "{order}");
+    assert_eq!(order["expired"], true, "{order}");
+    assert!(sent_calls(&chain).is_empty());
+    edge.shutdown().await;
+}
+
+#[tokio::test]
+async fn an_escrow_another_key_releases_settles_nothing() {
+    let (chain, url) = start_chain().await;
+    let edge = start("usdc-wrong-releaser", &url, None).await;
+    let seller = set_payout(&edge, 7).await;
+    let invoice = order(&edge, 10).await;
+    let order_id = invoice["order_id"].as_str().unwrap().to_string();
+    chain.set(|c| {
+        c.head = 200;
+        c.releaser = "0x7777777777777777777777777777777777777777".to_string();
+        c.receipts.insert(tx(7), receipt(&invoice, &seller, 100, 7));
+    });
+    let (status, body) = confirm(&edge, &order_id, &tx(7)).await;
+    assert_eq!(status, 409, "{body}");
+    assert!(body.contains("different releaser"), "{body}");
+    assert_eq!(status_of(&edge, &order_id).await, "pending");
     edge.shutdown().await;
 }
 
@@ -448,7 +742,7 @@ async fn an_endpoint_on_another_chain_settles_nothing() {
         // Base mainnet behind a Sepolia config.
         c.chain_id = 8453;
         c.head = 200;
-        c.receipts.insert(tx(2), receipt(&invoice, &seller, 100));
+        c.receipts.insert(tx(2), receipt(&invoice, &seller, 100, 2));
     });
     let (status, body) = confirm(&edge, &order_id, &tx(2)).await;
     assert_eq!(status, 409, "{body}");
@@ -468,7 +762,7 @@ async fn a_pay_contract_over_another_token_settles_nothing() {
         // A contract deployed over a token anyone can mint.
         c.usdc = "0x5555555555555555555555555555555555555555".to_string();
         c.head = 200;
-        c.receipts.insert(tx(3), receipt(&invoice, &seller, 100));
+        c.receipts.insert(tx(3), receipt(&invoice, &seller, 100, 3));
     });
     let (status, body) = confirm(&edge, &order_id, &tx(3)).await;
     assert_eq!(status, 409, "{body}");
@@ -497,8 +791,8 @@ async fn a_payout_change_after_the_order_does_not_refuse_its_payment() {
     assert_ne!(first, second);
     chain.set(|c| {
         c.head = 200;
-        c.receipts.insert(tx(4), receipt(&invoice, &first, 100));
-        c.receipts.insert(tx(5), receipt(&invoice, &second, 100));
+        c.receipts.insert(tx(4), receipt(&invoice, &first, 100, 4));
+        c.receipts.insert(tx(5), receipt(&invoice, &second, 100, 5));
     });
     // A payment to the new address is not what the invoice asked for.
     let (status, body) = confirm(&edge, &order_id, &tx(5)).await;
@@ -529,11 +823,13 @@ fn lapsed_ledger(capacity: u64, quantity: u64, seller: &str) -> Value {
     })
 }
 
-fn late_invoice(quantity: u64) -> Value {
+fn late_invoice(quantity: u64, ledger: &Value) -> Value {
+    let created = ledger["orders"]["ord_late"]["created_at"].as_u64().unwrap();
     json!({
         "order_id_hash": order_id_hash_hex("ord_late"),
         "gross": (u128::from(quantity) * 5 * 10_000).to_string(),
         "fee": "0",
+        "deadline": refund_deadline(created + 15 * 60),
     })
 }
 
@@ -546,7 +842,7 @@ async fn a_late_payment_is_honoured_while_its_units_are_free() {
     chain.set(|c| {
         c.head = 200;
         c.receipts
-            .insert(tx(6), receipt(&late_invoice(10), &seller, 100));
+            .insert(tx(6), receipt(&late_invoice(10, &ledger), &seller, 100, 6));
     });
     let (status, body) = confirm(&edge, "ord_late", &tx(6)).await;
     assert_eq!(status, 204, "{body}");
@@ -573,11 +869,15 @@ async fn a_late_payment_for_units_sold_since_is_refused() {
     chain.set(|c| {
         c.head = 200;
         c.receipts
-            .insert(tx(7), receipt(&late_invoice(10), &seller, 100));
+            .insert(tx(7), receipt(&late_invoice(10, &ledger), &seller, 100, 7));
     });
     let (status, body) = confirm(&edge, "ord_late", &tx(7)).await;
     assert_eq!(status, 409, "{body}");
     assert!(body.contains("units are sold"), "{body}");
+    assert!(body.contains("refunded"), "{body}");
+    // The money is in the escrow, so it goes back to the buyer.
+    assert_eq!(wait_sent(&chain, 1).await, [(REFUND.to_string(), 7)]);
+    assert_eq!(status_of(&edge, "ord_late").await, "expired");
     edge.shutdown().await;
 }
 
@@ -647,7 +947,7 @@ async fn a_payment_reported_on_the_wrong_network_counts_nothing() {
     let order_id = invoice["order_id"].as_str().unwrap().to_string();
     chain.set(|c| {
         c.head = 200;
-        c.receipts.insert(tx(8), receipt(&invoice, &seller, 100));
+        c.receipts.insert(tx(8), receipt(&invoice, &seller, 100, 8));
     });
     // Paid on Base Sepolia, reported as Arbitrum Sepolia.
     let (status, body) = confirm_on(&edge, &order_id, &tx(8), "arbitrum-sepolia").await;
@@ -781,6 +1081,7 @@ async fn live_networks_open_no_market_behind_a_test_key() {
                 }],
                 ens_rpc_file: None,
                 price_sources: silent_prices(),
+                releaser_file: Some(dir.path_str("usdc-releaser-key")),
             });
         },
     )

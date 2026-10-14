@@ -3,6 +3,7 @@ pragma solidity 0.8.24;
 
 import {Test} from "forge-std/Test.sol";
 import {IERC20, LososEscrow} from "../src/LososEscrow.sol";
+import {MockUSDC} from "../src/MockUSDC.sol";
 
 /// Transaction tests for `LososEscrow`. The buyer, seller, treasury and edge
 /// are separate addresses, and `vm.prank` makes each call come from the one
@@ -14,11 +15,11 @@ contract LososEscrowTest is Test {
     address internal constant EDGE = address(0xED6E);
     address internal constant STRANGER = address(0xBAD);
 
-    EscrowUsdc internal token;
+    MockUSDC internal token;
     LososEscrow internal escrow;
 
     function setUp() public {
-        token = new EscrowUsdc();
+        token = new MockUSDC();
         escrow = new LososEscrow(IERC20(address(token)), TREASURY, EDGE);
         token.mint(BUYER, 10_000_000);
         vm.prank(BUYER);
@@ -222,7 +223,7 @@ contract LososEscrowTest is Test {
     }
 
     function test_rescue_moves_any_other_token() public {
-        EscrowUsdc other = new EscrowUsdc();
+        MockUSDC other = new MockUSDC();
         other.mint(address(escrow), 5);
         vm.prank(TREASURY);
         escrow.rescue(IERC20(address(other)), STRANGER, 5);
@@ -262,39 +263,5 @@ contract LososEscrowTest is Test {
         }
         assertEq(escrow.held(), open);
         assertEq(token.balanceOf(address(escrow)), open);
-    }
-}
-
-/// Six-decimal USDC stand-in with the `transfer` the escrow pays out with.
-contract EscrowUsdc {
-    mapping(address => uint256) public balanceOf;
-    mapping(address => mapping(address => uint256)) public allowance;
-
-    function mint(address to, uint256 amount) external {
-        balanceOf[to] += amount;
-    }
-
-    function approve(address spender, uint256 amount) external returns (bool) {
-        allowance[msg.sender][spender] = amount;
-        return true;
-    }
-
-    function transfer(address to, uint256 amount) external returns (bool) {
-        require(balanceOf[msg.sender] >= amount, "balance");
-        balanceOf[msg.sender] -= amount;
-        balanceOf[to] += amount;
-        return true;
-    }
-
-    function transferFrom(address from, address to, uint256 amount) external returns (bool) {
-        uint256 allowed = allowance[from][msg.sender];
-        require(allowed >= amount, "allowance");
-        if (allowed != type(uint256).max) {
-            allowance[from][msg.sender] = allowed - amount;
-        }
-        require(balanceOf[from] >= amount, "balance");
-        balanceOf[from] -= amount;
-        balanceOf[to] += amount;
-        return true;
     }
 }

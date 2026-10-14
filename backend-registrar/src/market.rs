@@ -332,6 +332,88 @@ pub struct Order {
     /// settled on more than one, which was its only network.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub paid_network: Option<String>,
+    /// Where an EVM payment held in `LososEscrow` is going. `None` on Stripe
+    /// and Solana orders, and on orders paid before the escrow.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub escrow: Option<Escrow>,
+}
+
+/// What the edge does with one deposit in `LososEscrow`, and how far it got.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Escrow {
+    pub network: String,
+    /// The escrow's deposit id, from the `Held` log.
+    pub deposit: u64,
+    pub step: EscrowStep,
+    /// Why the deposit goes back to the payer. `None` on a release.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<RefundReason>,
+    /// The edge's last release or refund transaction, until it is mined.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tx: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sent_at: Option<u64>,
+}
+
+impl Escrow {
+    /// Whether the edge still has a transaction to send or follow.
+    #[must_use]
+    pub fn pending(&self) -> bool {
+        matches!(self.step, EscrowStep::Release | EscrowStep::Refund)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum EscrowStep {
+    /// To the seller and the treasury, once the edge's call is mined.
+    Release,
+    Released,
+    /// Back to the payer, once the edge's call is mined.
+    Refund,
+    Refunded,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum RefundReason {
+    /// The seller's payout address is a contract, or one money must not go
+    /// to, on the network the buyer paid on.
+    SellerCannotReceive,
+    /// Another transaction paid the order first.
+    AlreadyPaid,
+    /// The hold lapsed before the payment and its units were sold.
+    Lapsed,
+    /// The edge did not release before the deadline and the buyer took the
+    /// deposit back.
+    BuyerReclaimed,
+}
+
+impl RefundReason {
+    /// What the buyer's box is told when it reports the payment.
+    #[must_use]
+    pub fn message(self) -> &'static str {
+        match self {
+            Self::SellerCannotReceive => {
+                "the seller's payout address cannot receive USDC on that network; the payment is being refunded"
+            }
+            Self::AlreadyPaid => "the order was already paid; this payment is being refunded",
+            Self::Lapsed => {
+                "the order lapsed before it was paid and its units are sold; the payment is being refunded"
+            }
+            Self::BuyerReclaimed => "the buyer took the payment back from the escrow",
+        }
+    }
+}
+
+/// A deposit for an order that cannot take it: a second payment, or one
+/// that came after the units were sold. Keyed by the paying transaction.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StrayPayment {
+    pub order_id: String,
+    pub buyer: String,
+    pub received_at: u64,
+    pub escrow: Escrow,
 }
 
 /// Everything the market persists for one Stripe mode: `market.json` for
@@ -356,6 +438,9 @@ pub struct MarketState {
     /// is (`crate::sync`).
     #[serde(default, skip_serializing_if = "SyncLog::is_empty")]
     pub sync: SyncLog,
+    /// Escrowed payments the edge is sending back, by paying transaction.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub strays: BTreeMap<String, StrayPayment>,
 }
 
 /// Market failures, mapped onto HTTP statuses by
@@ -457,6 +542,11 @@ pub fn quote(unit_price: u64, quantity: u64, fee_bps: u32) -> Result<Quote, Mark
 /// quarter of an hour.
 const USDC_HOLD_SECS: u64 = 15 * 60;
 
+/// The `deadline` a USDC order's invoice names for `LososEscrow.pay`.
+fn usdc_deadline(order: &Order) -> u64 {
+    crate::stablecoin::refund_deadline(order.created_at.saturating_add(USDC_HOLD_SECS))
+}
+
 /// How long a pending order keeps its units. Stripe's window is the session
 /// lifetime plus the three-day retry horizon of a webhook that may still be
 /// in flight; USDC's is [`USDC_HOLD_SECS`].
@@ -525,10 +615,15 @@ pub fn expire_stale(state: &mut MarketState, now: u64) -> (Vec<String>, usize) {
             expired.push(order.id.clone());
         }
     }
-    let before = state.orders.len() + state.listings.len();
+    let before = state.orders.len() + state.listings.len() + state.strays.len();
     state.orders.retain(|_, o| {
-        !(o.status == OrderStatus::Expired && now > o.created_at + EXPIRED_RETENTION_SECS)
+        !(o.status == OrderStatus::Expired
+            && now > o.created_at + EXPIRED_RETENTION_SECS
+            && !o.escrow.as_ref().is_some_and(Escrow::pending))
     });
+    state
+        .strays
+        .retain(|_, s| s.escrow.pending() || now <= s.received_at + EXPIRED_RETENTION_SECS);
     // A closed listing is only kept while an order still names it; otherwise
     // create-and-close would grow `market.json` without bound.
     let referenced: std::collections::BTreeSet<&str> = state
@@ -543,7 +638,10 @@ pub fn expire_stale(state: &mut MarketState, now: u64) -> (Vec<String>, usize) {
         .map(|l| l.id.clone())
         .collect();
     state.listings.retain(|id, _| keep.contains(id));
-    (expired, before - state.orders.len() - state.listings.len())
+    (
+        expired,
+        before - state.orders.len() - state.listings.len() - state.strays.len(),
+    )
 }
 
 /// Units of `listing` that are sold, held by a live checkout, or still
@@ -1038,6 +1136,8 @@ pub struct OrderView {
     /// The network it was paid on. Absent on an order paid before the edge
     /// named networks, which was paid on its first EVM network.
     pub network: Option<String>,
+    /// Where the escrowed payment is going, on an EVM USDC order.
+    pub escrow: Option<Escrow>,
 }
 
 /// A machine order as either party sees it. The cloud-init is not echoed: it
@@ -1083,6 +1183,7 @@ impl OrderView {
             }),
             tx: o.tx_hash.clone(),
             network: o.paid_network.clone(),
+            escrow: o.escrow.clone(),
         }
     }
 }
@@ -1211,6 +1312,17 @@ pub struct MarketOpts {
     pub usdc: Option<crate::stablecoin::UsdcOpts>,
 }
 
+/// How long an escrow call may sit unmined before the edge checks the
+/// deposit and sends it again at a higher fee.
+const ESCROW_RESEND_SECS: u64 = 10 * 60;
+
+/// Whose escrow record a pass is updating.
+enum EscrowJob {
+    Order(String),
+    /// A stray payment, by its paying transaction.
+    Stray(String),
+}
+
 /// What a USDC payment must show, per family.
 enum Expected {
     Evm(crate::stablecoin::ExpectedPayment),
@@ -1227,6 +1339,9 @@ pub struct Market {
     /// ETH and SOL prices for comparing USDC network fees, refreshed in the
     /// background as pages ask.
     prices: Arc<crate::coins::PriceBook>,
+    /// One escrow pass at a time: the releaser key's nonce is taken from the
+    /// chain, so two passes sending at once would collide.
+    escrow_lock: Mutex<()>,
 }
 
 /// The ledger of the mode the gate's key is in, and where it is kept. The
@@ -1384,6 +1499,7 @@ impl Market {
             connect,
             ens_checked: std::sync::atomic::AtomicBool::new(false),
             prices,
+            escrow_lock: Mutex::new(()),
         })
     }
 
@@ -1991,6 +2107,7 @@ impl Market {
                     None
                 },
                 paid_network: None,
+                escrow: None,
             };
             let mut next = state.clone();
             expire_stale(&mut next, now);
@@ -2562,13 +2679,17 @@ impl Market {
     }
 
     /// Mark a USDC order paid when `tx` paid it on `network`. On an EVM chain
-    /// that is a successful `LososPay.pay` for it, fetched after checking the
-    /// endpoint is on that chain and the pay contract is the one the config
-    /// names, with [`crate::stablecoin::CONFIRMATIONS`] blocks. On Solana it
-    /// is a transaction at the `confirmed` commitment, on the configured
-    /// cluster, that names the order in a memo and moved the order's USDC to
-    /// the seller and the treasury. A transaction already used for another
-    /// order is refused, so a payment cannot be replayed.
+    /// that is a `LososEscrow.pay` holding the order's amount for the seller
+    /// the invoice named, fetched after checking the endpoint is on that
+    /// chain and the escrow is the one the config names and takes orders from
+    /// this edge's key, with [`crate::stablecoin::CONFIRMATIONS`] blocks. The
+    /// deposit is then queued for release, or for a refund when the seller's
+    /// address cannot receive USDC there, the order was already paid, or it
+    /// lapsed and its units are sold; [`Market::settle_escrow`] sends either.
+    /// On Solana it is a transaction at the `confirmed` commitment, on the
+    /// configured cluster, that names the order in a memo and moved the
+    /// order's USDC to the seller and the treasury. A transaction already
+    /// used for another order is refused, so a payment cannot be replayed.
     pub async fn confirm_usdc(
         &self,
         buyer: &str,
@@ -2584,15 +2705,12 @@ impl Market {
             Family::Solana => crate::solana::normalize_signature(tx),
         }
         .ok_or(MarketError::Invalid("tx is not a transaction hash"))?;
-        {
-            let state = self.state.lock().await;
-            if Self::usdc_already_paid(&state, buyer, order_id, &tx) {
-                return Ok(());
-            }
-        }
         let expected = {
             let state = self.state.lock().await;
-            self.usdc_expected(&state, buyer, order_id, &tx, &chain)?
+            if let Some(seen) = Self::usdc_seen(&state, buyer, order_id, &tx) {
+                return seen;
+            }
+            self.usdc_expected(&state, buyer, order_id, &tx, &chain)?.0
         };
         let url = crate::stablecoin::read_rpc_url(std::path::Path::new(&chain.rpc_file)).await?;
         let misconfigured = |e: &MarketError| {
@@ -2602,16 +2720,35 @@ impl Market {
                 chain.network.key,
             );
         };
+        let mut held = None;
         match &expected {
             Expected::Evm(expected) => {
-                crate::stablecoin::check_endpoint(&url, &chain)
+                let releaser = crate::evm_tx::Releaser::read(std::path::Path::new(
+                    usdc.releaser_file
+                        .as_deref()
+                        .ok_or(MarketError::Unconfigured)?,
+                ))
+                .await
+                .inspect_err(misconfigured)?;
+                crate::stablecoin::check_endpoint(&url, &chain, releaser.address())
                     .await
                     .inspect_err(misconfigured)?;
                 let receipt = crate::stablecoin::fetch_receipt(&url, &tx).await?;
-                crate::stablecoin::payment_matches(&receipt, expected)
+                let deposit = crate::stablecoin::payment_matches(&receipt, expected)
                     .map_err(MarketError::Conflict)?;
                 let head = crate::stablecoin::block_number(&url).await?;
                 crate::stablecoin::confirmed(&receipt, &head).map_err(MarketError::Conflict)?;
+                let seller = crate::stablecoin::check_seller(&url, &chain, expected.seller)
+                    .await?
+                    .inspect_err(|why| {
+                        tracing::warn!(
+                            target: Action::Market.target(),
+                            "order {order_id} was paid on {} to a seller who cannot receive it ({why}); refunding",
+                            chain.network.key,
+                        );
+                    })
+                    .is_ok();
+                held = Some((deposit, seller));
             }
             Expected::Solana(expected) => {
                 let genesis = chain
@@ -2627,13 +2764,51 @@ impl Market {
             }
         }
         let mut state = self.state.lock().await;
-        if Self::usdc_already_paid(&state, buyer, order_id, &tx) {
-            return Ok(());
+        if let Some(seen) = Self::usdc_seen(&state, buyer, order_id, &tx) {
+            return seen;
         }
-        self.usdc_expected(&state, buyer, order_id, &tx, &chain)?;
+        let (_, stray) = self.usdc_expected(&state, buyer, order_id, &tx, &chain)?;
         let mut next = state.clone();
-        let order = next.orders.get_mut(order_id).ok_or(MarketError::NotFound)?;
         let now = now_secs();
+        let escrow = |deposit, reason: Option<RefundReason>| Escrow {
+            network: chain.network.key.to_string(),
+            deposit,
+            step: if reason.is_some() {
+                EscrowStep::Refund
+            } else {
+                EscrowStep::Release
+            },
+            reason,
+            tx: None,
+            sent_at: None,
+        };
+        if let (Some(reason), Some((deposit, _))) = (stray, held) {
+            tracing::warn!(
+                target: Action::Market.target(),
+                "order {order_id} cannot take the payment in {tx} ({reason:?}); refunding it",
+            );
+            next.strays.insert(
+                tx,
+                StrayPayment {
+                    order_id: order_id.to_string(),
+                    buyer: buyer.to_string(),
+                    received_at: now,
+                    escrow: escrow(deposit, Some(reason)),
+                },
+            );
+            self.commit(&mut state, next).await?;
+            return Err(MarketError::Conflict(reason.message()));
+        }
+        let order = next.orders.get_mut(order_id).ok_or(MarketError::NotFound)?;
+        order.tx_hash = Some(tx);
+        order.paid_network = Some(chain.network.key.to_string());
+        if let Some((deposit, false)) = held {
+            let reason = RefundReason::SellerCannotReceive;
+            order.status = OrderStatus::Expired;
+            order.escrow = Some(escrow(deposit, Some(reason)));
+            self.commit(&mut state, next).await?;
+            return Err(MarketError::Conflict(reason.message()));
+        }
         if !pending_live(order, now) {
             tracing::warn!(
                 target: Action::Market.target(),
@@ -2641,12 +2816,211 @@ impl Market {
             );
         }
         order.status = OrderStatus::Paid;
-        order.tx_hash = Some(tx);
-        order.paid_network = Some(chain.network.key.to_string());
         order.paid_at = Some(now);
         order.expires_at = Some(now + ENTITLEMENT_SECS);
+        order.escrow = held.map(|(deposit, _)| escrow(deposit, None));
         self.commit(&mut state, next).await?;
         Ok(())
+    }
+
+    /// The answer an earlier report of the same payment got, so a box that
+    /// reports it twice hears the same thing.
+    fn usdc_seen(
+        state: &MarketState,
+        buyer: &str,
+        order_id: &str,
+        tx: &str,
+    ) -> Option<Result<(), MarketError>> {
+        if let Some(stray) = state.strays.get(tx) {
+            if stray.order_id == order_id && stray.buyer == buyer {
+                let reason = stray.escrow.reason.unwrap_or(RefundReason::AlreadyPaid);
+                return Some(Err(MarketError::Conflict(reason.message())));
+            }
+            return None;
+        }
+        let order = state
+            .orders
+            .get(order_id)
+            .filter(|o| o.buyer == buyer && o.tx_hash.as_deref() == Some(tx))?;
+        if order.status == OrderStatus::Paid {
+            return Some(Ok(()));
+        }
+        let reason = order.escrow.as_ref().and_then(|e| e.reason)?;
+        Some(Err(MarketError::Conflict(reason.message())))
+    }
+
+    /// Send the escrow calls confirmed payments are waiting on, and follow
+    /// the ones already sent until they are mined. The escrow's own record
+    /// of a deposit is the truth: a call that reverted, was dropped or sat
+    /// unmined for [`ESCROW_RESEND_SECS`] is checked against it, and sent
+    /// again only while the deposit is still held. A failure on one deposit
+    /// is logged and retried on the next pass.
+    pub async fn settle_escrow(&self) {
+        let Some(usdc) = self.opts.usdc.as_ref() else {
+            return;
+        };
+        let jobs: Vec<(EscrowJob, Escrow)> = {
+            let state = self.state.lock().await;
+            let orders = state.orders.values().filter_map(|o| {
+                o.escrow
+                    .as_ref()
+                    .filter(|e| e.pending())
+                    .map(|e| (EscrowJob::Order(o.id.clone()), e.clone()))
+            });
+            let strays = state
+                .strays
+                .iter()
+                .filter(|(_, s)| s.escrow.pending())
+                .map(|(tx, s)| (EscrowJob::Stray(tx.clone()), s.escrow.clone()));
+            orders.chain(strays).collect()
+        };
+        if jobs.is_empty() {
+            return;
+        }
+        let _one_pass = self.escrow_lock.lock().await;
+        let releaser = match usdc.releaser_file.as_deref() {
+            Some(file) => crate::evm_tx::Releaser::read(std::path::Path::new(file)).await,
+            None => Err(MarketError::Unconfigured),
+        };
+        let releaser = match releaser {
+            Ok(releaser) => releaser,
+            Err(e) => {
+                tracing::error!(
+                    target: Action::Market.target(),
+                    "{} escrowed payments are waiting, but the releaser key cannot be read: {e}",
+                    jobs.len(),
+                );
+                return;
+            }
+        };
+        let mut moved = Vec::new();
+        for (job, escrow) in jobs {
+            match self.escrow_step(usdc, &releaser, &escrow).await {
+                Ok(Some(after)) => moved.push((job, escrow, after)),
+                Ok(None) => {}
+                Err(e) => tracing::warn!(
+                    target: Action::Market.target(),
+                    "escrow deposit {} on {}: {e}",
+                    escrow.deposit,
+                    escrow.network,
+                ),
+            }
+        }
+        if moved.is_empty() {
+            return;
+        }
+        let mut state = self.state.lock().await;
+        let mut next = state.clone();
+        let now = now_secs();
+        for (job, before, mut after) in moved {
+            match job {
+                EscrowJob::Order(id) => {
+                    let Some(order) = next.orders.get_mut(&id) else {
+                        continue;
+                    };
+                    if order.escrow.as_ref() != Some(&before) {
+                        continue;
+                    }
+                    if before.step == EscrowStep::Release && after.step == EscrowStep::Refunded {
+                        tracing::warn!(
+                            target: Action::Market.target(),
+                            "order {id}: the buyer took the payment back before the edge released it; the order lapses",
+                        );
+                        after.reason = Some(RefundReason::BuyerReclaimed);
+                        order.expires_at = Some(order.expires_at.map_or(now, |at| at.min(now)));
+                    }
+                    order.escrow = Some(after);
+                }
+                EscrowJob::Stray(tx) => {
+                    let Some(stray) = next.strays.get_mut(&tx) else {
+                        continue;
+                    };
+                    if stray.escrow != before {
+                        continue;
+                    }
+                    stray.escrow = after;
+                }
+            }
+        }
+        if let Err(e) = self.commit(&mut state, next).await {
+            tracing::error!(
+                target: Action::Market.target(),
+                "could not record escrow progress: {e}",
+            );
+        }
+    }
+
+    /// One deposit's next move: `Some` with its new record, `None` while
+    /// there is nothing to do but wait.
+    async fn escrow_step(
+        &self,
+        usdc: &crate::stablecoin::UsdcOpts,
+        releaser: &crate::evm_tx::Releaser,
+        escrow: &Escrow,
+    ) -> Result<Option<Escrow>, MarketError> {
+        use crate::stablecoin::DepositState;
+        let chain = Self::usdc_chain(usdc, Some(&escrow.network))?;
+        let chain_id = chain.network.chain_id.ok_or(MarketError::Unconfigured)?;
+        let pay = chain.pay.as_deref().ok_or(MarketError::Unconfigured)?;
+        let to = crate::stablecoin::address_bytes(pay).ok_or(MarketError::Unconfigured)?;
+        let url = crate::stablecoin::read_rpc_url(std::path::Path::new(&chain.rpc_file)).await?;
+        let now = now_secs();
+        let done = |step| Escrow {
+            step,
+            tx: None,
+            sent_at: None,
+            ..escrow.clone()
+        };
+        let finished = match escrow.step {
+            EscrowStep::Release => EscrowStep::Released,
+            EscrowStep::Refund => EscrowStep::Refunded,
+            EscrowStep::Released | EscrowStep::Refunded => return Ok(None),
+        };
+        if let Some(tx) = &escrow.tx {
+            match crate::stablecoin::fetch_receipt(&url, tx).await {
+                Ok(receipt) if receipt["status"].as_str() == Some("0x1") => {
+                    let head = crate::stablecoin::block_number(&url).await?;
+                    if crate::stablecoin::confirmed(&receipt, &head).is_err() {
+                        return Ok(None);
+                    }
+                    return Ok(Some(done(finished)));
+                }
+                // Reverted: the deposit says why.
+                Ok(_) => {}
+                Err(_) if now < escrow.sent_at.unwrap_or(0) + ESCROW_RESEND_SECS => {
+                    return Ok(None);
+                }
+                // Dropped, or stuck behind a low fee.
+                Err(_) => {}
+            }
+        }
+        match crate::stablecoin::deposit_state(&url, pay, escrow.deposit).await? {
+            DepositState::Held => {
+                let data = match escrow.step {
+                    EscrowStep::Release => crate::evm_tx::release_data(escrow.deposit),
+                    _ => crate::evm_tx::refund_data(escrow.deposit),
+                };
+                let replace = escrow.tx.is_some();
+                let hash = crate::evm_tx::send(&url, chain_id, releaser, to, data, replace).await?;
+                tracing::info!(
+                    target: Action::Market.target(),
+                    "escrow deposit {} on {}: sent {:?} as {hash}",
+                    escrow.deposit,
+                    escrow.network,
+                    escrow.step,
+                );
+                Ok(Some(Escrow {
+                    tx: Some(hash),
+                    sent_at: Some(now),
+                    ..escrow.clone()
+                }))
+            }
+            DepositState::Released => Ok(Some(done(EscrowStep::Released))),
+            DepositState::Refunded => Ok(Some(done(EscrowStep::Refunded))),
+            DepositState::None => Err(MarketError::Conflict(
+                "the escrow has no such deposit; the payment may have been reorganised away",
+            )),
+        }
     }
 
     /// Forward one allowlisted chain call to `network`, or to the ENS
@@ -2700,14 +3074,11 @@ impl Market {
         Ok(())
     }
 
-    fn usdc_already_paid(state: &MarketState, buyer: &str, order_id: &str, tx: &str) -> bool {
-        state.orders.get(order_id).is_some_and(|o| {
-            o.buyer == buyer && o.status == OrderStatus::Paid && o.tx_hash.as_deref() == Some(tx)
-        })
-    }
-
-    /// The payment a still-pending USDC order must show on `chain`, or why
-    /// it cannot be confirmed.
+    /// The payment a USDC order must show on `chain`, or why it cannot be
+    /// confirmed. On an EVM chain the payment sits in the escrow, so one
+    /// the order cannot take (it was already paid, or it lapsed and its
+    /// units are sold) is still matched, and comes with the reason it goes
+    /// back to the payer.
     fn usdc_expected(
         &self,
         state: &MarketState,
@@ -2715,12 +3086,13 @@ impl Market {
         order_id: &str,
         tx: &str,
         chain: &crate::stablecoin::UsdcChain,
-    ) -> Result<Expected, MarketError> {
+    ) -> Result<(Expected, Option<RefundReason>), MarketError> {
         use crate::stablecoin::Family;
         if state
             .orders
             .values()
             .any(|o| o.id != order_id && o.tx_hash.as_deref() == Some(tx))
+            || state.strays.get(tx).is_some_and(|s| s.order_id != order_id)
         {
             return Err(MarketError::Conflict(
                 "that transaction already paid another order",
@@ -2734,29 +3106,36 @@ impl Market {
         if order.rail != Rail::Usdc {
             return Err(MarketError::Conflict("this order is not a USDC order"));
         }
+        let escrowed = chain.network.family == Family::Evm;
         let now = now_secs();
+        let mut stray = None;
         match order.status {
             OrderStatus::Pending if pending_live(order, now) => {}
             // The buyer's transaction can land after the hold: the wallet was
             // slow, the box went offline before it reported the hash. The
-            // money has already moved to the seller and the treasury, so the
             // order is honoured while its units are still free, the same rule
-            // a late Stripe webhook gets.
+            // a late Stripe webhook gets. A refunded order stays refunded.
             OrderStatus::Pending | OrderStatus::Expired => {
                 let room = state
                     .listings
                     .get(&order.listing_id)
                     .map_or(0, |l| available(state, l, now));
-                if order.quantity > room {
-                    tracing::error!(
-                        target: Action::Market.target(),
-                        "order {order_id} was paid in USDC by {tx} after its hold lapsed and its units are sold; the buyer is owed a refund",
-                    );
-                    return Err(MarketError::Conflict(
-                        "the order lapsed before it was paid and its units are sold",
-                    ));
+                let refunded = order.escrow.as_ref().map(|e| e.reason);
+                if refunded.is_some() || order.quantity > room {
+                    if escrowed {
+                        stray = Some(refunded.flatten().unwrap_or(RefundReason::Lapsed));
+                    } else {
+                        tracing::error!(
+                            target: Action::Market.target(),
+                            "order {order_id} was paid in USDC by {tx} after its hold lapsed and its units are sold; the buyer is owed a refund",
+                        );
+                        return Err(MarketError::Conflict(
+                            "the order lapsed before it was paid and its units are sold",
+                        ));
+                    }
                 }
             }
+            OrderStatus::Paid if escrowed => stray = Some(RefundReason::AlreadyPaid),
             OrderStatus::Paid => {
                 return Err(MarketError::Conflict("the order is not awaiting payment"));
             }
@@ -2778,13 +3157,17 @@ impl Market {
                     .as_deref()
                     .and_then(crate::stablecoin::address_bytes)
                     .ok_or(MarketError::Unconfigured)?;
-                Ok(Expected::Evm(crate::stablecoin::ExpectedPayment {
-                    pay,
-                    seller,
-                    order_id_hash: crate::stablecoin::order_id_hash(order_id),
-                    gross: crate::stablecoin::cents_to_usdc(order.amount),
-                    fee: crate::stablecoin::cents_to_usdc(order.fee),
-                }))
+                Ok((
+                    Expected::Evm(crate::stablecoin::ExpectedPayment {
+                        pay,
+                        seller,
+                        order_id_hash: crate::stablecoin::order_id_hash(order_id),
+                        gross: crate::stablecoin::cents_to_usdc(order.amount),
+                        fee: crate::stablecoin::cents_to_usdc(order.fee),
+                        deadline: usdc_deadline(order),
+                    }),
+                    stray,
+                ))
             }
             Family::Solana => {
                 // Solana came with `pay_to_solana`, so every order that can
@@ -2792,14 +3175,17 @@ impl Market {
                 let seller = order.pay_to_solana.clone().ok_or(no_payout)?;
                 let gross = crate::stablecoin::cents_to_usdc(order.amount);
                 let fee = crate::stablecoin::cents_to_usdc(order.fee);
-                Ok(Expected::Solana(crate::solana::ExpectedTransfer {
-                    mint: chain.network.usdc.to_string(),
-                    seller,
-                    treasury: chain.treasury.clone(),
-                    seller_amount: gross - fee,
-                    fee,
-                    memo: crate::stablecoin::order_id_hash_hex(order_id),
-                }))
+                Ok((
+                    Expected::Solana(crate::solana::ExpectedTransfer {
+                        mint: chain.network.usdc.to_string(),
+                        seller,
+                        treasury: chain.treasury.clone(),
+                        seller_amount: gross - fee,
+                        fee,
+                        memo: crate::stablecoin::order_id_hash_hex(order_id),
+                    }),
+                    stray,
+                ))
             }
         }
     }
@@ -2854,6 +3240,7 @@ mod tests {
             pay_to: None,
             pay_to_solana: None,
             paid_network: None,
+            escrow: None,
         }
     }
 

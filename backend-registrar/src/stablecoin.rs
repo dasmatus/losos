@@ -1,16 +1,22 @@
 //! USDC settlement for the market, beside Stripe.
 //!
-//! The edge does not hold a key and does not custody the payment. On an EVM
-//! chain a buyer's wallet calls
-//! [`LososPay`](https://github.com/dasmatus/losos/blob/main/contracts/src/LososPay.sol),
-//! which splits the charge, and this module checks the receipt. On Solana the
-//! wallet makes the two transfers itself in one transaction with the order
-//! in a memo, and [`crate::solana`] checks the balances it moved. The only
-//! secrets are the RPC URLs, because a provider key usually sits in them.
-//! systemd-creds seals one per chain (`usdc-rpc-<network>`); the registrar
-//! reads the decrypted file per request and never logs it. The browser talks
-//! to the box, and the box talks to the registrar, so a URL never reaches a
-//! page.
+//! On an EVM chain a buyer's wallet calls `pay` on
+//! [`LososEscrow`](https://github.com/dasmatus/losos/blob/main/contracts/src/LososEscrow.sol),
+//! which holds the payment as a deposit, and this module checks the receipt's
+//! `Held` log. Before the order counts, the edge checks that the seller's
+//! payout address can receive USDC on that chain; then it releases the
+//! deposit to the treasury and that seller, or refunds the payer
+//! ([`crate::evm_tx`] sends both). The edge's key can do nothing else with a
+//! deposit: the contract fixes where each one may go. On Solana the wallet
+//! makes the two transfers itself in one transaction with the order in a
+//! memo, and [`crate::solana`] checks the balances it moved.
+//!
+//! The secrets are the RPC URLs, because a provider key usually sits in
+//! them, and the escrow's releaser key. systemd-creds seals one URL per chain
+//! (`usdc-rpc-<network>`) and the key once (`usdc-releaser-key`); the
+//! registrar reads the decrypted files when it needs them and never logs
+//! them. The browser talks to the box, and the box talks to the registrar, so
+//! neither reaches a page.
 //!
 //! Prices stay in cents, the market's minor unit. USDC has six decimals on
 //! every chain here, so one cent is 10_000 base units. Each network is test
@@ -52,7 +58,8 @@ pub const SEPOLIA: u64 = 11_155_111;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Family {
-    /// `LososPay.pay` on an EVM chain; the receipt's `Paid` log is the proof.
+    /// `LososEscrow.pay` on an EVM chain; the receipt's `Held` log is the
+    /// proof.
     Evm,
     /// Two `TransferChecked` and a memo; the token balances are the proof.
     Solana,
@@ -173,8 +180,8 @@ pub struct UsdcChain {
     pub network: &'static Network,
     /// Decrypted systemd credential: one URL, read per request.
     pub rpc_file: String,
-    /// `LososPay` on an EVM chain. `None` on Solana, where the wallet splits
-    /// the payment itself.
+    /// `LososEscrow` on an EVM chain. `None` on Solana, where the wallet
+    /// splits the payment itself.
     pub pay: Option<String>,
     /// EVM: a lowercase `0x` address. Solana: the owner whose USDC account
     /// takes the fee.
@@ -209,6 +216,9 @@ pub struct UsdcOpts {
     /// Where the prices of ETH and SOL come from, so a page can compare the
     /// network fee of a payment across networks in dollars.
     pub price_sources: [crate::coins::PriceSource; 2],
+    /// The escrow's releaser key, a decrypted credential. Needed whenever an
+    /// EVM chain is configured; one key for every EVM chain.
+    pub releaser_file: Option<String>,
 }
 
 impl UsdcOpts {
@@ -294,11 +304,35 @@ pub const CONFIRMATIONS: u64 = 2;
 /// What one paid order must look like on chain.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExpectedPayment {
+    /// The escrow contract.
     pub pay: [u8; 20],
     pub seller: [u8; 20],
     pub order_id_hash: [u8; 32],
     pub gross: u128,
     pub fee: u128,
+    /// When the payer may take the deposit back alone. The invoice names it,
+    /// so the edge knows it has until then to release.
+    pub deadline: u64,
+}
+
+/// How long after an order's hold the payer may take an unreleased deposit
+/// back. The edge releases within seconds of confirming a payment, so this
+/// only matters when the edge is down for a day.
+pub const ESCROW_REFUND_AFTER_SECS: u64 = 24 * 60 * 60;
+
+/// The escrow deadline for an order whose hold ends at `pay_before`.
+#[must_use]
+pub fn refund_deadline(pay_before: u64) -> u64 {
+    pay_before.saturating_add(ESCROW_REFUND_AFTER_SECS)
+}
+
+/// A deposit's state in `LososEscrow.deposits`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DepositState {
+    None,
+    Held,
+    Released,
+    Refunded,
 }
 
 /// Cents of the market's currency, as USDC base units (6 decimals).
@@ -499,6 +533,10 @@ pub struct StablecoinInvoice {
     /// should not start paying after it: a later payment is honoured only
     /// while the units are still free.
     pub pay_before: u64,
+    /// Unix seconds, the `deadline` argument of `LososEscrow.pay`: after it
+    /// the payer may take an unreleased deposit back. The edge counts a
+    /// payment only with this exact deadline.
+    pub deadline: u64,
     pub chains: Vec<InvoiceChain>,
 }
 
@@ -534,6 +572,7 @@ pub fn invoice(
         gross: cents_to_usdc(gross_cents).to_string(),
         fee: cents_to_usdc(fee_cents).to_string(),
         pay_before,
+        deadline: refund_deadline(pay_before),
         chains: opts
             .chains
             .iter()
@@ -668,11 +707,17 @@ pub(crate) async fn call_result(
 }
 
 /// Check that the sealed endpoint is the chain this edge settles on, and
-/// that the configured `LososPay` pulls Circle's USDC and pays the configured
-/// treasury. Without this a Sepolia endpoint behind a live config would turn
-/// test USDC into paid live orders, and a contract deployed over a token
-/// anyone can mint would pay for orders with nothing.
-pub async fn check_endpoint(rpc_url: &str, chain: &UsdcChain) -> Result<(), MarketError> {
+/// that the configured `LososEscrow` pulls Circle's USDC, pays the configured
+/// treasury and takes orders from this edge's releaser key. Without this a
+/// Sepolia endpoint behind a live config would turn test USDC into paid live
+/// orders, a contract deployed over a token anyone can mint would pay for
+/// orders with nothing, and a contract someone else releases would let them
+/// decide where buyers' money goes.
+pub async fn check_endpoint(
+    rpc_url: &str,
+    chain: &UsdcChain,
+    releaser: [u8; 20],
+) -> Result<(), MarketError> {
     let pay = chain.pay.as_deref().ok_or(MarketError::Unconfigured)?;
     let id = call_result(rpc_url, Relay::Evm, "eth_chainId", json!([])).await?;
     let usdc_word = call_result(
@@ -689,7 +734,98 @@ pub async fn check_endpoint(rpc_url: &str, chain: &UsdcChain) -> Result<(), Mark
         json!([{ "to": pay, "data": selector("treasury()") }, "latest"]),
     )
     .await?;
-    endpoint_matches(chain, &id, &usdc_word, &treasury_word).map_err(MarketError::Conflict)
+    endpoint_matches(chain, &id, &usdc_word, &treasury_word).map_err(MarketError::Conflict)?;
+    let releaser_word = call_result(
+        rpc_url,
+        Relay::Evm,
+        "eth_call",
+        json!([{ "to": pay, "data": selector("releaser()") }, "latest"]),
+    )
+    .await?;
+    if topic_address(releaser_word.as_str().unwrap_or("")) != Some(releaser) {
+        return Err(MarketError::Conflict(
+            "the escrow takes orders from a different releaser key",
+        ));
+    }
+    Ok(())
+}
+
+/// Whether `seller` can receive USDC on this chain, from its code there.
+/// The payout signature already proved someone holds the key; this catches
+/// an address that is a contract on this chain (the payout signature cannot
+/// come from one) and the addresses money must never be released to. An
+/// account delegated under EIP-7702 is still a key holder's account.
+pub fn seller_can_receive(
+    chain: &UsdcChain,
+    seller: [u8; 20],
+    code: &Value,
+) -> Result<(), &'static str> {
+    let special = [
+        Some([0u8; 20]),
+        decode_address(chain.network.usdc),
+        chain.pay.as_deref().and_then(decode_address),
+        decode_address(&chain.treasury),
+    ];
+    if special.contains(&Some(seller)) {
+        return Err("the seller's payout address is not a wallet");
+    }
+    let code = code.as_str().ok_or("the chain endpoint did not answer")?;
+    let bytes = if code == "0x" || code.is_empty() {
+        Vec::new()
+    } else {
+        decode_hex_prefix(code).ok_or("the chain endpoint did not answer")?
+    };
+    let delegated = bytes.len() == 23 && bytes.starts_with(&[0xef, 0x01, 0x00]);
+    if !bytes.is_empty() && !delegated {
+        return Err("the seller's payout address is a contract on this network");
+    }
+    Ok(())
+}
+
+/// [`seller_can_receive`] against the chain. The outer error is the
+/// endpoint failing; the inner one is the seller's address refused.
+pub async fn check_seller(
+    rpc_url: &str,
+    chain: &UsdcChain,
+    seller: [u8; 20],
+) -> Result<Result<(), &'static str>, MarketError> {
+    let code = call_result(
+        rpc_url,
+        Relay::Evm,
+        "eth_getCode",
+        json!([format!("0x{}", hex_encode(&seller)), "latest"]),
+    )
+    .await?;
+    if !code.is_string() {
+        return Err(MarketError::Conflict("the chain endpoint did not answer"));
+    }
+    Ok(seller_can_receive(chain, seller, &code))
+}
+
+/// A deposit's state as the escrow records it.
+pub async fn deposit_state(
+    rpc_url: &str,
+    escrow: &str,
+    deposit: u64,
+) -> Result<DepositState, MarketError> {
+    let data = format!("0x{}", hex_encode(&crate::evm_tx::deposits_data(deposit)));
+    let answer = call_result(
+        rpc_url,
+        Relay::Evm,
+        "eth_call",
+        json!([{ "to": escrow, "data": data }, "latest"]),
+    )
+    .await?;
+    let bytes = decode_hex_prefix(answer.as_str().unwrap_or(""))
+        .ok_or(MarketError::Conflict("the chain endpoint did not answer"))?;
+    // orderId, payer, seller, gross, fee, deadline, state.
+    match bytes.get(6 * 32..7 * 32).and_then(|w| w.last()) {
+        Some(0) => Ok(DepositState::None),
+        Some(1) => Ok(DepositState::Held),
+        Some(2) => Ok(DepositState::Released),
+        Some(3) => Ok(DepositState::Refunded),
+        _ => Err(MarketError::Conflict("the chain endpoint did not answer")),
+    }
 }
 
 /// Whether an ENS endpoint is on the chain names are looked up on for this
@@ -751,13 +887,17 @@ fn selector(signature: &str) -> String {
     format!("0x{}", hex_encode(&keccak256(signature.as_bytes())[..4]))
 }
 
-/// Whether `receipt` is a successful call to the pay contract that paid
-/// exactly `expected`. A static sentence on failure, safe to show the owner.
-pub fn payment_matches(receipt: &Value, expected: &ExpectedPayment) -> Result<(), &'static str> {
+/// The event `LososEscrow.pay` emits.
+const HELD: &[u8] = b"Held(uint256,bytes32,address,address,uint256,uint256,uint64)";
+
+/// Whether `receipt` is a successful `LososEscrow.pay` that holds exactly
+/// `expected`. Returns the deposit's id, which `release` and `refund` take.
+/// A static sentence on failure, safe to show the owner.
+pub fn payment_matches(receipt: &Value, expected: &ExpectedPayment) -> Result<u64, &'static str> {
     if hex_u64(receipt["status"].as_str().unwrap_or("")) != Some(1) {
         return Err("the transaction failed");
     }
-    let topic0 = hex_encode(&keccak256(b"Paid(bytes32,address,address,uint256,uint256)"));
+    let topic0 = hex_encode(&keccak256(HELD));
     let logs = receipt["logs"]
         .as_array()
         .ok_or("the receipt has no logs")?;
@@ -777,32 +917,35 @@ pub fn payment_matches(receipt: &Value, expected: &ExpectedPayment) -> Result<()
         if !got0.eq_ignore_ascii_case(&topic0) {
             continue;
         }
-        let Some(order) = decode_word(topics[1].as_str().unwrap_or("")) else {
+        let Some(order) = decode_word(topics[2].as_str().unwrap_or("")) else {
             continue;
         };
         if order != expected.order_id_hash {
             continue;
         }
-        let Some(seller) = topic_address(topics[3].as_str().unwrap_or("")) else {
-            continue;
+        let Some(deposit) = decode_word(topics[1].as_str().unwrap_or(""))
+            .filter(|w| w[..24].iter().all(|b| *b == 0))
+            .map(|w| u64::from_be_bytes(w[24..].try_into().expect("eight bytes")))
+        else {
+            return Err("the payment log is short");
         };
-        if seller != expected.seller {
-            return Err("the payment went to a different seller");
-        }
         let data = decode_hex_prefix(log["data"].as_str().unwrap_or("")).unwrap_or_default();
-        if data.len() < 64 {
+        if data.len() < 4 * 32 {
             return Err("the payment log is short");
         }
-        let Some(gross) = word_u128(&data, 0) else {
-            return Err("the payment amount is not the order's");
-        };
-        let Some(fee) = word_u128(&data, 1) else {
+        if data[12..32] != expected.seller || data[..12].iter().any(|b| *b != 0) {
+            return Err("the payment went to a different seller");
+        }
+        let (Some(gross), Some(fee)) = (word_u128(&data, 1), word_u128(&data, 2)) else {
             return Err("the payment amount is not the order's");
         };
         if gross != expected.gross || fee != expected.fee {
             return Err("the payment amount is not the order's");
         }
-        return Ok(());
+        if word_u128(&data, 3) != Some(u128::from(expected.deadline)) {
+            return Err("the payment's refund deadline is not the invoice's");
+        }
+        return Ok(deposit);
     }
     Err("the transaction does not pay this order")
 }
@@ -814,13 +957,13 @@ fn personal_sign_hash(message: &[u8]) -> [u8; 32] {
     keccak256(&data)
 }
 
-fn address_of(key: &VerifyingKey) -> String {
+pub(crate) fn address_of(key: &VerifyingKey) -> String {
     let point = key.to_sec1_point(false);
     let hash = keccak256(&point.as_bytes()[1..]);
     format!("0x{}", hex_encode(&hash[12..]))
 }
 
-fn keccak256(data: &[u8]) -> [u8; 32] {
+pub(crate) fn keccak256(data: &[u8]) -> [u8; 32] {
     let digest = Keccak256::digest(data);
     let mut out = [0u8; 32];
     out.copy_from_slice(&digest);
@@ -880,6 +1023,11 @@ fn hex_u64(raw: &str) -> Option<u64> {
     Some(acc)
 }
 
+/// `0x` hex to bytes, odd lengths padded, as JSON-RPC quantities come.
+pub(crate) fn decode_hex(raw: &str) -> Option<Vec<u8>> {
+    decode_hex_prefix(raw)
+}
+
 fn decode_hex_prefix(raw: &str) -> Option<Vec<u8>> {
     let hex = raw.strip_prefix("0x").or_else(|| raw.strip_prefix("0X"))?;
     if hex.is_empty() || !hex.bytes().all(|b| b.is_ascii_hexdigit()) {
@@ -899,7 +1047,7 @@ fn decode_hex_prefix(raw: &str) -> Option<Vec<u8>> {
         .collect::<Option<Vec<_>>>()
 }
 
-fn hex_encode(bytes: &[u8]) -> String {
+pub(crate) fn hex_encode(bytes: &[u8]) -> String {
     const HEX: &[u8; 16] = b"0123456789abcdef";
     let mut out = String::with_capacity(bytes.len() * 2);
     for b in bytes {
@@ -1056,56 +1204,138 @@ mod tests {
     fn selectors_are_the_solidity_ones() {
         assert_eq!(selector("usdc()"), "0x3e413bee");
         assert_eq!(selector("treasury()"), "0x61d027b3");
+        assert_eq!(selector("releaser()"), "0x02691bcb");
     }
 
-    #[test]
-    fn a_paid_log_matches_only_the_recorded_order() {
-        let pay = decode_address("0x1111111111111111111111111111111111111111").unwrap();
-        let seller = decode_address("0x2222222222222222222222222222222222222222").unwrap();
-        let order = order_id_hash("ord_abc");
-        let expected = ExpectedPayment {
-            pay,
-            seller,
-            order_id_hash: order,
-            gross: 20_000_000,
-            fee: 800_000,
-        };
-        let topic0 = format!(
-            "0x{}",
-            hex_encode(&keccak256(b"Paid(bytes32,address,address,uint256,uint256)"))
-        );
-        let receipt = json!({
+    fn held_receipt(deposit: u64, order: [u8; 32], seller: &str, gross: u128, fee: u128) -> Value {
+        let topic0 = format!("0x{}", hex_encode(&keccak256(HELD)));
+        json!({
             "status": "0x1",
             "logs": [{
                 "address": "0x1111111111111111111111111111111111111111",
                 "topics": [
                     topic0,
+                    format!("0x{}", hex_encode(&pad_u128(u128::from(deposit)))),
                     format!("0x{}", hex_encode(&order)),
                     "0x0000000000000000000000003333333333333333333333333333333333333333",
-                    "0x0000000000000000000000002222222222222222222222222222222222222222",
                 ],
                 "data": format!(
-                    "0x{}{}",
-                    hex_encode(&pad_u128(20_000_000)),
-                    hex_encode(&pad_u128(800_000)),
+                    "0x000000000000000000000000{}{}{}{}",
+                    &seller[2..],
+                    hex_encode(&pad_u128(gross)),
+                    hex_encode(&pad_u128(fee)),
+                    hex_encode(&pad_u128(1_700_086_400)),
                 ),
             }],
-        });
-        let err = payment_matches(&receipt, &expected);
-        assert_eq!(err, Ok(()), "{receipt}");
-        let mut wrong = receipt.clone();
-        wrong["logs"][0]["data"] = json!(format!(
-            "0x{}{}",
-            hex_encode(&pad_u128(1)),
-            hex_encode(&pad_u128(800_000)),
-        ));
-        assert!(payment_matches(&wrong, &expected).is_err());
+        })
+    }
+
+    #[test]
+    fn a_held_log_matches_only_the_recorded_order() {
+        let order = order_id_hash("ord_abc");
+        let expected = ExpectedPayment {
+            pay: decode_address("0x1111111111111111111111111111111111111111").unwrap(),
+            seller: decode_address("0x2222222222222222222222222222222222222222").unwrap(),
+            order_id_hash: order,
+            gross: 20_000_000,
+            fee: 800_000,
+            deadline: 1_700_086_400,
+        };
+        let seller = "0x2222222222222222222222222222222222222222";
+        let receipt = held_receipt(7, order, seller, 20_000_000, 800_000);
+        assert_eq!(payment_matches(&receipt, &expected), Ok(7), "{receipt}");
+
+        let short = held_receipt(7, order, seller, 1, 800_000);
+        assert_eq!(
+            payment_matches(&short, &expected),
+            Err("the payment amount is not the order's")
+        );
+        let elsewhere = held_receipt(
+            7,
+            order,
+            "0x5555555555555555555555555555555555555555",
+            20_000_000,
+            800_000,
+        );
+        assert_eq!(
+            payment_matches(&elsewhere, &expected),
+            Err("the payment went to a different seller")
+        );
+        let other_order = held_receipt(7, order_id_hash("ord_xyz"), seller, 20_000_000, 800_000);
+        assert_eq!(
+            payment_matches(&other_order, &expected),
+            Err("the transaction does not pay this order")
+        );
+        let mut later = expected.clone();
+        later.deadline += 1;
+        assert_eq!(
+            payment_matches(&receipt, &later),
+            Err("the payment's refund deadline is not the invoice's")
+        );
+        // A log from any other contract is not the escrow's.
+        let mut forged = receipt.clone();
+        forged["logs"][0]["address"] = json!("0x9999999999999999999999999999999999999999");
+        assert_eq!(
+            payment_matches(&forged, &expected),
+            Err("the transaction does not pay this order")
+        );
         let mut failed = receipt.clone();
         failed["status"] = json!("0x0");
         assert_eq!(
             payment_matches(&failed, &expected),
             Err("the transaction failed")
         );
+    }
+
+    #[test]
+    fn only_a_wallet_on_this_chain_is_paid_out() {
+        let o = opts();
+        let seller = decode_address("0x2222222222222222222222222222222222222222").unwrap();
+        assert_eq!(seller_can_receive(&o, seller, &json!("0x")), Ok(()));
+        // An account delegated under EIP-7702 is still its key holder's.
+        let delegated = format!("0xef0100{}", "ab".repeat(20));
+        assert_eq!(seller_can_receive(&o, seller, &json!(delegated)), Ok(()));
+        assert_eq!(
+            seller_can_receive(&o, seller, &json!("0x6080604052")),
+            Err("the seller's payout address is a contract on this network")
+        );
+        for special in [
+            "0x0000000000000000000000000000000000000000",
+            USDC_BASE_SEPOLIA,
+            "0x1111111111111111111111111111111111111111",
+            "0x4444444444444444444444444444444444444444",
+        ] {
+            assert_eq!(
+                seller_can_receive(&o, decode_address(special).unwrap(), &json!("0x")),
+                Err("the seller's payout address is not a wallet"),
+                "{special}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_invoice_names_the_refund_deadline() {
+        let usdc = UsdcOpts {
+            chains: vec![opts()],
+            ens_rpc_file: None,
+            price_sources: [
+                crate::coins::PriceSource::kraken(),
+                crate::coins::PriceSource::coingecko(),
+            ],
+            releaser_file: None,
+        };
+        let i = invoice(
+            &usdc,
+            "ord_1",
+            PayTo {
+                evm: Some("0x2222222222222222222222222222222222222222"),
+                solana: None,
+            },
+            100,
+            4,
+            1_000,
+        );
+        assert_eq!(i.deadline, 1_000 + ESCROW_REFUND_AFTER_SECS);
     }
 
     fn pad_u128(n: u128) -> [u8; 32] {
@@ -1131,8 +1361,10 @@ mod tests {
             order_id_hash: decode_word(meta["order_id_hash"].as_str().unwrap()).unwrap(),
             gross: meta["gross"].as_str().unwrap().parse().unwrap(),
             fee: meta["fee"].as_str().unwrap().parse().unwrap(),
+            deadline: meta["deadline"].as_u64().unwrap(),
         };
-        payment_matches(receipt, &expected).unwrap();
+        let deposit = payment_matches(receipt, &expected).unwrap();
+        assert_eq!(Some(deposit), meta["deposit"].as_u64());
         if let Some(signature) = meta["payout_signature"].as_str() {
             let message = meta["payout_message"].as_str().expect("payout message");
             let address = meta["payout_address"].as_str().expect("payout address");

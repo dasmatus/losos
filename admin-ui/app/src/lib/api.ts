@@ -507,6 +507,15 @@ export interface MarketOrder {
   /** The network it was paid on; absent on an order from before the edge
    *  named networks, which was paid on its first EVM network. */
   network?: string | null;
+  /** Where an EVM payment held in the escrow is going. */
+  escrow?: MarketEscrow | null;
+}
+
+export interface MarketEscrow {
+  network: string;
+  deposit: number;
+  step: "release" | "released" | "refund" | "refunded";
+  reason?: "sellerCannotReceive" | "alreadyPaid" | "lapsed" | "buyerReclaimed" | null;
 }
 
 export interface MarketAccount {
@@ -547,7 +556,7 @@ export interface UsdcChain {
   chain_id: number | null;
   /** Circle's USDC: an 0x address, or the SPL mint on Solana. */
   usdc: string;
-  /** LososPay on an EVM chain; null on Solana. */
+  /** LososEscrow on an EVM chain; null on Solana. */
   pay: string | null;
   treasury: string;
 }
@@ -577,6 +586,10 @@ export interface StablecoinInvoice {
   fee: string;
   /** Unix seconds. The order holds its units until then; start no payment after it. */
   pay_before: number;
+  /** Unix seconds, the `deadline` of `LososEscrow.pay`: after it the buyer
+   *  can take a deposit the edge never released back. Absent on Solana's
+   *  direct transfer, which has no escrow; the edge always sends it. */
+  deadline: number;
   chains: (UsdcChain & { seller: string })[];
 }
 
