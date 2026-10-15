@@ -219,6 +219,12 @@ pub enum Op {
         tx: String,
         network: Option<String>,
     },
+    /// Tell the edge a USDC transfer on the EVM `network` paid this seller's
+    /// platform fees on coin sales into the edge's treasury.
+    FeePay {
+        tx: String,
+        network: Option<String>,
+    },
     /// One allowlisted chain call to `network`, or to the name endpoint for
     /// `ens`. `params` is a JSON array. The answer is the JSON-RPC object,
     /// not a market view.
@@ -616,6 +622,17 @@ impl Op {
                     Ok(())
                 }
             }
+            Op::FeePay { tx, network } => {
+                if network.as_deref().is_some_and(|n| !network_key(n)) {
+                    Err("network is not a network name")
+                } else if is_solana(network.as_deref()) {
+                    Err("coin fees are paid in USDC on an EVM network")
+                } else if !eth_hash(tx) {
+                    Err("tx is not a transaction hash")
+                } else {
+                    Ok(())
+                }
+            }
             Op::Rpc {
                 method,
                 params,
@@ -651,6 +668,7 @@ impl Op {
             Op::Order { .. } => ("POST", "/market/orders"),
             Op::Payout { .. } => ("POST", "/market/payout"),
             Op::Confirm { .. } => ("POST", "/market/confirm"),
+            Op::FeePay { .. } => ("POST", "/market/fees/pay"),
             Op::CoinKey { .. } => ("POST", "/market/coins/key"),
             Op::CoinPay { .. } => ("POST", "/market/coins/pay"),
             Op::Rpc { .. } => ("POST", "/market/rpc"),
@@ -769,6 +787,13 @@ impl Op {
                 network,
             } => {
                 let mut doc = json!({ "order_id": order_id, "tx": tx });
+                if let Some(n) = network {
+                    doc["network"] = json!(n);
+                }
+                doc
+            }
+            Op::FeePay { tx, network } => {
+                let mut doc = json!({ "tx": tx });
                 if let Some(n) = network {
                     doc["network"] = json!(n);
                 }
@@ -979,6 +1004,32 @@ mod tests {
         let hash = format!("0x{}", "ab".repeat(32));
         assert!(confirm(&hash, Some("arbitrum-sepolia")).validate().is_ok());
         assert!(confirm(&hash, Some("solana-devnet")).validate().is_err());
+
+        let fees = |tx: &str, network: Option<&str>| Op::FeePay {
+            tx: tx.to_string(),
+            network: network.map(str::to_string),
+        };
+        assert!(fees(&hash, None).validate().is_ok());
+        assert!(fees(&hash, Some("base-sepolia")).validate().is_ok());
+        assert_eq!(
+            fees(&sig, Some("solana-devnet")).validate(),
+            Err("coin fees are paid in USDC on an EVM network")
+        );
+        assert!(fees(&sig, None).validate().is_err());
+        assert!(fees(&hash, Some("../x")).validate().is_err());
+        assert_eq!(fees(&hash, None).route(), ("POST", "/market/fees/pay"));
+        let doc: Value = serde_json::from_str(
+            &fees(&hash, Some("base"))
+                .body("appliance-1", "tok")
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(doc["tx"], hash);
+        assert_eq!(doc["network"], "base");
+        assert_eq!(doc["token"], "tok");
+        let doc: Value =
+            serde_json::from_str(&fees(&hash, None).body("appliance-1", "tok").unwrap()).unwrap();
+        assert!(doc.get("network").is_none());
 
         let payout = |address: &str, signature: &str, family: Option<&str>| Op::Payout {
             address: address.to_string(),

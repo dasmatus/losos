@@ -1133,6 +1133,20 @@ async fn post_market_confirm(
     .await
 }
 
+async fn post_market_fees_pay(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    body: web::Bytes,
+) -> HttpResponse {
+    post_market(api, req, body, "/api/market/fees/pay", |d| {
+        Some(crate::market::Op::FeePay {
+            tx: field_str(d, "tx")?,
+            network: field_str(d, "network"),
+        })
+    })
+    .await
+}
+
 async fn post_market_coin_key(
     api: web::Data<Api>,
     req: HttpRequest,
@@ -1978,6 +1992,7 @@ pub fn serve(backend: IoLosos) -> anyhow::Result<()> {
                 .route("/api/market/orders", web::post().to(post_market_order))
                 .route("/api/market/payout", web::post().to(post_market_payout))
                 .route("/api/market/confirm", web::post().to(post_market_confirm))
+                .route("/api/market/fees/pay", web::post().to(post_market_fees_pay))
                 .route(
                     "/api/market/coins/key",
                     web::post().to(post_market_coin_key),

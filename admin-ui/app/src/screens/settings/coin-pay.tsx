@@ -146,19 +146,17 @@ export function CoinPayPanel({
   );
 }
 
-/** The seller's watch-only key for `coin`, and what coin sales owe. */
+/** The seller's watch-only key for `coin`. What coin sales owe the platform
+ *  is one row of its own in the wallet, under the keys. */
 export function CoinKeyRow({
   coin,
   saved,
-  feesOwed,
   disabled,
   last,
   onSaved,
 }: {
   coin: Coin;
   saved: string | undefined;
-  /** Already formatted in the market's currency, or null when none. */
-  feesOwed: string | null;
   disabled: boolean;
   last: boolean;
   onSaved: () => void;
@@ -213,7 +211,6 @@ export function CoinKeyRow({
             {t("panes.market.coins.keyCurrent")} <code className="font-mono text-[12px]">{short}</code>
           </p>
         )}
-        {feesOwed !== null && <p className="text-[13px] text-muted">{t("panes.market.coins.feesOwed", { amount: feesOwed })}</p>}
         <div className="flex flex-wrap gap-2">
           <Input
             className="min-w-[14rem] flex-1"

@@ -8,7 +8,9 @@ use miette::{miette, IntoDiagnostic, Result};
 
 use crate::builder::BuilderOpts;
 use crate::domains::{DomainsOpts, DEFAULT_DOH_URL};
-use crate::market::{MarketOpts, DEFAULT_FEE_BPS, MAX_FEE_BPS, SUPPORTED_CURRENCIES};
+use crate::market::{
+    MarketOpts, DEFAULT_FEE_BPS, MAX_COIN_FEE_LIMIT, MAX_FEE_BPS, SUPPORTED_CURRENCIES,
+};
 use crate::provision::{EdgeSpec, ProvisionGithub, GITHUB_API_URL, GITHUB_OAUTH_URL};
 use crate::stripe_gate::GateOpts;
 
@@ -984,6 +986,19 @@ fn parse_market(args: &[String]) -> Result<Option<Box<MarketOpts>>> {
             "--market-hardware-catalogue needs cards: hardware is paid by card through the Stripe gate"
         ));
     }
+    // Cents a seller may owe on coin sales before buyers can no longer pay
+    // them in coins. Capped so a stray digit cannot switch the rule off.
+    let coin_fee_limit: u64 = match arg(args, "--market-coin-fee-limit") {
+        None => crate::market::DEFAULT_COIN_FEE_LIMIT,
+        Some(raw) => raw
+            .parse()
+            .map_err(|_| miette!("bad --market-coin-fee-limit {raw:?}; expected cents"))?,
+    };
+    if coin_fee_limit > MAX_COIN_FEE_LIMIT {
+        return Err(miette!(
+            "--market-coin-fee-limit {coin_fee_limit} exceeds {MAX_COIN_FEE_LIMIT} cents"
+        ));
+    }
     Ok(Some(Box::new(MarketOpts {
         state_file: arg(args, "--market-state-file")
             .unwrap_or("/var/lib/losos-registrar/market.json")
@@ -1000,6 +1015,7 @@ fn parse_market(args: &[String]) -> Result<Option<Box<MarketOpts>>> {
         xmr: parse_xmr(args, currency)?,
         cards,
         zec: parse_zec(args, currency)?,
+        coin_fee_limit,
     })))
 }
 

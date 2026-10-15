@@ -491,6 +491,9 @@ export interface MarketOrder {
   quantity: number;
   amount: number;
   fee: number;
+  /** On a USDC sale, the part of the fee that paid platform fees owed on
+   *  earlier coin sales. `seller_net` already leaves it out. */
+  fee_offset?: number;
   seller_net: number;
   currency: string;
   status: "pending" | "paid" | "expired";
@@ -575,6 +578,26 @@ export interface MarketAccount {
   /** Platform fees owed on this box's coin sales, in the currency's minor
    *  unit: the coins went straight to this box's wallet. */
   coin_fees_owed?: number;
+  /** Unix seconds: when this box began to owe them. */
+  coin_fees_since?: number | null;
+  /** A USDC sale that took more than was still owed leaves the rest here;
+   *  the next coin sale's fee comes out of it first. */
+  coin_fee_credit?: number;
+  /** Above this many minor units owed, coin payments stop. Present when the
+   *  edge takes coins. */
+  coin_fee_limit?: number | null;
+  /** Owed for this long, any amount stops them too. */
+  coin_fee_grace_secs?: number | null;
+  /** Buyers cannot pay this box in a coin until the fees are settled. USDC
+   *  still works, and each USDC sale pays toward them. */
+  coin_sales_paused?: boolean;
+}
+
+/** POST /api/market/fees/pay: what the transfer counted for. Minor units. */
+export interface FeePayment {
+  paid: number;
+  credited: number;
+  owed: number;
 }
 
 export type ChainFamily = "evm" | "solana";
@@ -616,7 +639,12 @@ export interface StablecoinInvoice {
   order_id: string;
   order_id_hash: string;
   gross: string;
+  /** The whole fee the escrow or the split sends the treasury, `fee_offset`
+   *  included. */
   fee: string;
+  /** The part of `fee` that pays the seller's platform fees owed on coin
+   *  sales. The buyer pays `gross` either way. */
+  fee_offset?: string;
   /** Unix seconds. The order holds its units until then; start no payment after it. */
   pay_before: number;
   /** Unix seconds, the `deadline` of `LososEscrow.pay`: after it the buyer
@@ -721,6 +749,21 @@ export function postMarketConfirm(
   options: RequestOptions = {},
 ): Promise<MarketActionResponse> {
   return marketPost("/api/market/confirm", { order_id: orderId, tx, network }, options);
+}
+
+/** POST /api/market/fees/pay: a mined USDC transfer from this box's payout
+ *  address to the edge's treasury paid platform fees owed on coin sales. */
+export function postMarketFeesPay(
+  tx: string,
+  network: string,
+  options: RequestOptions = {},
+): Promise<MarketActionResponse & FeePayment> {
+  return call<MarketActionResponse & FeePayment>("/api/market/fees/pay", {
+    ...options,
+    method: "POST",
+    contentType: "application/json",
+    body: JSON.stringify({ tx, network }),
+  });
 }
 
 /** POST /api/market/coins/key — the watch-only key this box is paid to in

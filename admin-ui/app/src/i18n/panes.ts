@@ -1878,6 +1878,11 @@ export default defineMessages({
     sk: "dostanete {amount}",
     de: "du erhältst {amount}",
   },
+  "panes.market.youReceiveOffset": {
+    en: "you receive {amount}, after {offset} toward platform fees owed on coin sales",
+    sk: "dostanete {amount}, po odpočítaní {offset} na poplatky platformy dlžné z predajov v minciach",
+    de: "du erhältst {amount}, nach {offset} für offene Plattformgebühren aus Coin-Verkäufen",
+  },
 
   // ── Toasts the panes raise ────────────────────────────────────────────────
   "panes.market.actionFailedTitle": {
@@ -2280,10 +2285,65 @@ export default defineMessages({
     sk: "Kľúč sa neuložil",
     de: "Der Schlüssel wurde nicht gespeichert",
   },
-  "panes.market.coins.feesOwed": {
-    en: "Platform fees owed on coin sales: {amount}.",
-    sk: "Poplatky platformy za predaje v minciach: {amount}.",
-    de: "Offene Plattformgebühren aus Coin-Verkäufen: {amount}.",
+  "panes.market.coinFees.title": {
+    en: "Platform fees on coin sales",
+    sk: "Poplatky platformy za predaje v minciach",
+    de: "Plattformgebühren aus Coin-Verkäufen",
+  },
+  "panes.market.coinFees.owed": {
+    en: "You owe {amount}: coins go straight to your wallet, so the platform's share of those sales is settled apart. Each USDC sale pays toward it, up to half its price, or you can pay it now.",
+    sk: "Dlžíte {amount}: mince idú priamo do vašej peňaženky, preto sa podiel platformy z týchto predajov vyrovnáva zvlášť. Každý predaj v USDC na to prispeje, najviac polovicou svojej ceny, alebo to môžete zaplatiť hneď.",
+    de: "Du schuldest {amount}: Coins gehen direkt an deine Wallet, deshalb wird der Anteil der Plattform an diesen Verkäufen getrennt beglichen. Jeder USDC-Verkauf zahlt darauf ein, bis zur Hälfte seines Preises, oder du zahlst es jetzt.",
+  },
+  "panes.market.coinFees.limits": {
+    en: "Buyers can keep paying you in coins while you owe no more than {limit} and it is settled by {date}.",
+    sk: "Kupujúci vám môžu platiť v minciach, kým dlžíte najviac {limit} a vyrovnáte to do {date}.",
+    de: "Käufer können dich weiter in Coins bezahlen, solange du höchstens {limit} schuldest und es bis {date} beglichen ist.",
+  },
+  "panes.market.coinFees.paused": {
+    en: "Buyers cannot pay you in coins until this is settled. USDC still works, and each USDC sale pays toward it.",
+    sk: "Kupujúci vám nemôžu platiť v minciach, kým to nevyrovnáte. USDC funguje ďalej a každý predaj v USDC na to prispeje.",
+    de: "Käufer können dich nicht in Coins bezahlen, bis das beglichen ist. USDC funktioniert weiter, und jeder USDC-Verkauf zahlt darauf ein.",
+  },
+  "panes.market.coinFees.credit": {
+    en: "{amount} from a USDC sale went beyond what you owed and pays the fees of your next coin sales first.",
+    sk: "{amount} z predaja v USDC prevýšilo váš dlh a najprv sa použije na poplatky z vašich ďalších predajov v minciach.",
+    de: "{amount} aus einem USDC-Verkauf ging über deine Schuld hinaus und zahlt zuerst die Gebühren deiner nächsten Coin-Verkäufe.",
+  },
+  "panes.market.coinFees.payFrom": {
+    en: "The transfer goes from your payout address to the platform's treasury. A transfer from any other address is not counted, and anything above what you owe is not refunded.",
+    sk: "Prevod ide z vašej adresy pre výplaty do pokladnice platformy. Prevod z inej adresy sa nezapočíta a čo zaplatíte navyše, sa nevracia.",
+    de: "Die Überweisung geht von deiner Auszahlungsadresse an die Kasse der Plattform. Eine Überweisung von einer anderen Adresse zählt nicht, und was über deine Schuld hinausgeht, wird nicht erstattet.",
+  },
+  "panes.market.coinFees.notPayout": {
+    en: "Pay from your payout address, {address}: open that wallet here first. A transfer from any other address is not counted, and anything above what you owe is not refunded.",
+    sk: "Zaplaťte z vašej adresy pre výplaty, {address}: najprv tu otvorte tú peňaženku. Prevod z inej adresy sa nezapočíta a čo zaplatíte navyše, sa nevracia.",
+    de: "Zahle von deiner Auszahlungsadresse, {address}: öffne zuerst diese Wallet hier. Eine Überweisung von einer anderen Adresse zählt nicht, und was über deine Schuld hinausgeht, wird nicht erstattet.",
+  },
+  "panes.market.coinFees.noPayout": {
+    en: "Set a USDC payout address on the Ethereum networks first. The fees are paid from it.",
+    sk: "Najprv nastavte adresu pre výplaty v USDC na sieťach Etherea. Poplatky sa platia z nej.",
+    de: "Lege zuerst eine USDC-Auszahlungsadresse auf den Ethereum-Netzen fest. Die Gebühren werden von ihr bezahlt.",
+  },
+  "panes.market.coinFees.pay": {
+    en: "Pay {amount}",
+    sk: "Zaplatiť {amount}",
+    de: "{amount} bezahlen",
+  },
+  "panes.market.coinFees.counting": {
+    en: "The transfer is sent. The edge counts it once it has enough blocks.",
+    sk: "Prevod je odoslaný. Edge ho započíta, keď bude mať dosť blokov.",
+    de: "Die Überweisung ist gesendet. Der Edge zählt sie, sobald sie genug Blöcke hat.",
+  },
+  "panes.market.coinFees.paidTitle": {
+    en: "Platform fees paid",
+    sk: "Poplatky platformy sú zaplatené",
+    de: "Plattformgebühren bezahlt",
+  },
+  "panes.market.coinFees.paidDetail": {
+    en: "{credited} counted. Still owed: {owed}.",
+    sk: "Započítané: {credited}. Ešte zostáva: {owed}.",
+    de: "{credited} angerechnet. Noch offen: {owed}.",
   },
   "panes.market.usdc.madeHere": {
     en: "This wallet was made on this box and lives only in this browser. Choose where your sales go before you list: sign with this wallet, or use the address of a wallet you keep elsewhere.",
@@ -2344,6 +2404,11 @@ export default defineMessages({
     en: "{gross} on {chain}. The platform keeps {fee}; the seller gets the rest once the edge has confirmed the payment.",
     sk: "{gross} na sieti {chain}. Platforma si nechá {fee}; zvyšok dostane predajca, keď edge platbu potvrdí.",
     de: "{gross} auf {chain}. Die Plattform behält {fee}; den Rest bekommt der Verkäufer, sobald der Edge die Zahlung bestätigt hat.",
+  },
+  "panes.market.usdc.payDetailOffset": {
+    en: "{gross} on {chain}. The platform keeps {fee}, of which {offset} settles fees the seller owes on earlier coin sales; the seller gets the rest once the edge has confirmed the payment.",
+    sk: "{gross} na sieti {chain}. Platforma si nechá {fee}, z toho {offset} vyrovnáva poplatky, ktoré predajca dlží z predchádzajúcich predajov v minciach; zvyšok dostane predajca, keď edge platbu potvrdí.",
+    de: "{gross} auf {chain}. Die Plattform behält {fee}, davon begleichen {offset} Gebühren, die der Verkäufer aus früheren Coin-Verkäufen schuldet; den Rest bekommt der Verkäufer, sobald der Edge die Zahlung bestätigt hat.",
   },
   "panes.market.usdc.pay": {
     en: "Pay with USDC",

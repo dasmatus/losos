@@ -39,7 +39,7 @@ import {
 import { useEdge } from "./use-edge";
 import type { SettingsForm } from "./use-settings-form";
 import { explorerTx, listNames } from "@/wallet/chains";
-import { formatUsdc, rememberInvoice, UsdcWallet } from "./usdc-wallet";
+import { invoicePayDetail, rememberInvoice, UsdcWallet } from "./usdc-wallet";
 import { COIN_NAMES } from "./coin-pay";
 
 /* Sharing this box's disk, and buying and selling what the mesh shares.
@@ -432,11 +432,7 @@ function ShelfRow({
       );
       toast.status(
         t("panes.market.orderPlaced"),
-        t("panes.market.usdc.payDetail", {
-          gross: formatUsdc(reply.stablecoin.gross),
-          fee: formatUsdc(reply.stablecoin.fee),
-          chain,
-        }),
+        invoicePayDetail(t, reply.stablecoin, chain),
         { id: ORDER_STATUS, duration: Infinity },
       );
       return;
@@ -558,8 +554,20 @@ function SellSection({ market, disabled }: { market: MarketData; disabled: boole
             payoutSolana={account.payout_solana}
             coins={account.coins ?? []}
             coinKeys={account.coin_keys ?? {}}
-            coinFeesOwed={
-              account.coin_fees_owed ? formatMoney(account.coin_fees_owed, account.currency) : null
+            coinFees={
+              // Shown while the edge takes coins, and while anything is owed
+              // or credited even after it stopped.
+              (account.coins ?? []).length > 0 || (account.coin_fees_owed ?? 0) > 0 || (account.coin_fee_credit ?? 0) > 0
+                ? {
+                    owed: account.coin_fees_owed ?? 0,
+                    since: account.coin_fees_since ?? null,
+                    credit: account.coin_fee_credit ?? 0,
+                    limit: account.coin_fee_limit ?? null,
+                    graceSecs: account.coin_fee_grace_secs ?? null,
+                    paused: account.coin_sales_paused === true,
+                    currency: account.currency,
+                  }
+                : null
             }
             disabled={disabled}
             onPaid={market.refresh}
@@ -699,7 +707,14 @@ function SellSection({ market, disabled }: { market: MarketData; disabled: boole
                 <div className="min-w-0">
                   <RowText
                     title={`${t(KIND_LABEL[o.kind])} · ${quantityOf(o.quantity, o.unit)}`}
-                    detail={t("panes.market.youReceive", { amount: formatMoney(o.seller_net, o.currency) })}
+                    detail={
+                      o.fee_offset
+                        ? t("panes.market.youReceiveOffset", {
+                            amount: formatMoney(o.seller_net, o.currency),
+                            offset: formatMoney(o.fee_offset, o.currency),
+                          })
+                        : t("panes.market.youReceive", { amount: formatMoney(o.seller_net, o.currency) })
+                    }
                   />
                   <PaidTx order={o} usdc={account.usdc ?? null} />
                 </div>

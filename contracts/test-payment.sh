@@ -20,6 +20,8 @@ RPC=http://127.0.0.1:8545
 KEY=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
 BUYER=0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266
 SELLER=0x70997970C51812dc3A010C7d01b50e0d17dc79C8
+# anvil's second account, so the seller can pay its coin fees itself.
+SELLER_KEY=0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d
 TREASURY=0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC
 # anvil's fourth account, standing in for the edge's releaser key.
 RELEASER=0x90F79bf6EB2c4f870365E785982E1f101E93b906
@@ -101,6 +103,17 @@ echo "escrow $(balance "${PAY}") treasury $(balance "${TREASURY}") seller $(bala
 test "$(balance "${PAY}")" = "0"
 test "$(balance "${TREASURY}")" = "80000"
 test "$(balance "${SELLER}")" = "1920000"
+
+echo "== registrar: a seller pays platform fees on coin sales to the treasury =="
+FEE_TX=$(cast send "${USDC}" "transfer(address,uint256)" "${TREASURY}" 500000 --rpc-url "${RPC}" --private-key "${SELLER_KEY}" --json | json_field transactionHash)
+FEE_RECEIPT=$(mktemp)
+curl -sf -X POST -H 'content-type: application/json' \
+  --data "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_getTransactionReceipt\",\"params\":[\"${FEE_TX}\"]}" \
+  "${RPC}" | jq .result >"${FEE_RECEIPT}"
+jq -n --slurpfile receipt "${FEE_RECEIPT}" --arg usdc "${USDC}" --arg treasury "${TREASURY}" --arg from "${SELLER}" \
+  '{receipt:$receipt[0], usdc:$usdc, treasury:$treasury, from:$from, amount:"500000"}' > /tmp/losos-anvil-fee.json
+( cd ../backend-registrar && LOSOS_ANVIL_FEE_RECEIPT=/tmp/losos-anvil-fee.json cargo test --lib an_anvil_fee_transfer_pays_the_treasury -- --nocapture )
+test "$(balance "${TREASURY}")" = "580000"
 
 echo "== Base Sepolia fork, if the public RPC answers =="
 if curl -sf --max-time 8 -X POST -H 'content-type: application/json' \

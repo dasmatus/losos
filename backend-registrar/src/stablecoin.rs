@@ -527,8 +527,13 @@ pub struct StablecoinInvoice {
     pub order_id_hash: String,
     /// Gross, USDC base units, decimal.
     pub gross: String,
-    /// Platform fee, USDC base units, decimal.
+    /// Platform fee, USDC base units, decimal. Includes `fee_offset`.
     pub fee: String,
+    /// The part of `fee` that goes toward platform fees the seller owes on
+    /// earlier coin sales, USDC base units, decimal. Absent when none: the
+    /// buyer pays `gross` either way, only the seller's share is smaller.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fee_offset: Option<String>,
     /// Unix seconds. The order holds its units until then, so a wallet
     /// should not start paying after it: a later payment is honoured only
     /// while the units are still free.
@@ -575,6 +580,7 @@ pub fn invoice(
         order_id_hash: order_id_hash_hex(order_id),
         gross: cents_to_usdc(gross_cents).to_string(),
         fee: cents_to_usdc(fee_cents).to_string(),
+        fee_offset: None,
         pay_before,
         deadline: refund_deadline(pay_before),
         chains: opts
@@ -915,6 +921,20 @@ pub fn confirmed(receipt: &Value, head: &Value) -> Result<(), &'static str> {
     Ok(())
 }
 
+/// Check that the sealed endpoint is on the chain `chain` names, for a read
+/// that involves no escrow: a direct payment of coin fees.
+pub async fn check_chain_id(rpc_url: &str, chain: &UsdcChain) -> Result<(), MarketError> {
+    let id = call_result(rpc_url, Relay::Evm, "eth_chainId", json!([])).await?;
+    if chain.network.chain_id.is_none()
+        || hex_u64(id.as_str().unwrap_or("")) != chain.network.chain_id
+    {
+        return Err(MarketError::Conflict(
+            "the chain endpoint is on a different chain",
+        ));
+    }
+    Ok(())
+}
+
 /// The latest block number, as the hex quantity the endpoint sent.
 pub async fn block_number(rpc_url: &str) -> Result<Value, MarketError> {
     call_result(rpc_url, Relay::Evm, "eth_blockNumber", json!([])).await
@@ -922,6 +942,61 @@ pub async fn block_number(rpc_url: &str) -> Result<Value, MarketError> {
 
 fn selector(signature: &str) -> String {
     format!("0x{}", hex_encode(&keccak256(signature.as_bytes())[..4]))
+}
+
+/// The event an ERC-20 transfer emits.
+const TRANSFER: &[u8] = b"Transfer(address,address,uint256)";
+
+/// What a successful transaction paid `treasury` in `token` from `from`, in
+/// base units: the sum of the token's `Transfer` logs between the two. This
+/// is how a seller settles platform fees owed on coin sales: a plain USDC
+/// transfer from their payout address to the edge's treasury. A static
+/// sentence, safe to show the owner, when it is not one.
+pub fn fee_transfer(
+    receipt: &Value,
+    token: [u8; 20],
+    treasury: [u8; 20],
+    from: [u8; 20],
+) -> Result<u128, &'static str> {
+    if hex_u64(receipt["status"].as_str().unwrap_or("")) != Some(1) {
+        return Err("the transaction failed");
+    }
+    let topic0 = hex_encode(&keccak256(TRANSFER));
+    let logs = receipt["logs"]
+        .as_array()
+        .ok_or("the receipt has no logs")?;
+    let (mut moves_usdc, mut to_treasury, mut total) = (false, false, 0u128);
+    for log in logs {
+        if decode_address(log["address"].as_str().unwrap_or("")) != Some(token) {
+            continue;
+        }
+        let topics = log["topics"].as_array().map(Vec::as_slice).unwrap_or(&[]);
+        let named = topics.first().and_then(Value::as_str).unwrap_or("");
+        if topics.len() < 3 || !named.trim_start_matches("0x").eq_ignore_ascii_case(&topic0) {
+            continue;
+        }
+        moves_usdc = true;
+        if topic_address(topics[2].as_str().unwrap_or("")) != Some(treasury) {
+            continue;
+        }
+        to_treasury = true;
+        if topic_address(topics[1].as_str().unwrap_or("")) != Some(from) {
+            continue;
+        }
+        let data = decode_hex_prefix(log["data"].as_str().unwrap_or("")).unwrap_or_default();
+        let value = word_u128(&data, 0).ok_or("the transfer log is short")?;
+        total = total.saturating_add(value);
+    }
+    if !moves_usdc {
+        return Err("the transaction moves no USDC");
+    }
+    if !to_treasury {
+        return Err("the transaction does not pay the edge's treasury");
+    }
+    if total == 0 {
+        return Err("the payment did not come from the seller's payout address");
+    }
+    Ok(total)
 }
 
 /// The event `LososEscrow.pay` emits.
@@ -1410,5 +1485,95 @@ mod tests {
                 Some(address)
             );
         }
+    }
+
+    fn transfer_log(token: &str, from: &str, to: &str, value: u128) -> Value {
+        let word = |a: &str| format!("0x000000000000000000000000{}", &a[2..]);
+        serde_json::json!({
+            "address": token,
+            "topics": [format!("0x{}", hex_encode(&keccak256(TRANSFER))), word(from), word(to)],
+            "data": format!("0x{}", hex_encode(&pad_u128(value))),
+        })
+    }
+
+    #[test]
+    fn a_fee_payment_is_a_usdc_transfer_from_the_payout_to_the_treasury() {
+        let usdc = decode_address(USDC_BASE_SEPOLIA).unwrap();
+        let treasury = "0x4444444444444444444444444444444444444444";
+        let seller = "0x5555555555555555555555555555555555555555";
+        let other = "0x6666666666666666666666666666666666666666";
+        let check = |logs: Vec<Value>, status: &str| {
+            fee_transfer(
+                &serde_json::json!({ "status": status, "logs": logs }),
+                usdc,
+                decode_address(treasury).unwrap(),
+                decode_address(seller).unwrap(),
+            )
+        };
+        // Two transfers in one transaction count together.
+        assert_eq!(
+            check(
+                vec![
+                    transfer_log(USDC_BASE_SEPOLIA, seller, treasury, 600_000),
+                    transfer_log(USDC_BASE_SEPOLIA, seller, treasury, 400_000),
+                ],
+                "0x1"
+            ),
+            Ok(1_000_000)
+        );
+        assert_eq!(
+            check(
+                vec![transfer_log(USDC_BASE_SEPOLIA, seller, treasury, 1)],
+                "0x0"
+            ),
+            Err("the transaction failed")
+        );
+        // Another token to the treasury is not USDC.
+        assert_eq!(
+            check(
+                vec![transfer_log(other, seller, treasury, 1_000_000)],
+                "0x1"
+            ),
+            Err("the transaction moves no USDC")
+        );
+        // USDC, but to someone else.
+        assert_eq!(
+            check(
+                vec![transfer_log(USDC_BASE_SEPOLIA, seller, other, 1_000_000)],
+                "0x1"
+            ),
+            Err("the transaction does not pay the edge's treasury")
+        );
+        // USDC to the treasury from someone else: not this seller's to claim.
+        assert_eq!(
+            check(
+                vec![transfer_log(USDC_BASE_SEPOLIA, other, treasury, 1_000_000)],
+                "0x1"
+            ),
+            Err("the payment did not come from the seller's payout address")
+        );
+    }
+
+    /// A USDC transfer to the treasury made by `contracts/test-payment.sh`
+    /// on anvil, as `transfer` puts it on chain. Unset, the test does
+    /// nothing, so `cargo test` stays offline.
+    #[test]
+    fn an_anvil_fee_transfer_pays_the_treasury() {
+        let Ok(path) = std::env::var("LOSOS_ANVIL_FEE_RECEIPT") else {
+            return;
+        };
+        let meta: Value =
+            serde_json::from_str(&std::fs::read_to_string(&path).expect("receipt file")).unwrap();
+        let paid = fee_transfer(
+            &meta["receipt"],
+            decode_address(meta["usdc"].as_str().unwrap()).unwrap(),
+            decode_address(meta["treasury"].as_str().unwrap()).unwrap(),
+            decode_address(meta["from"].as_str().unwrap()).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            paid,
+            meta["amount"].as_str().unwrap().parse::<u128>().unwrap()
+        );
     }
 }

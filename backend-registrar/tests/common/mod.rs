@@ -651,6 +651,7 @@ impl Edge {
                 xmr: None,
                 cards: true,
                 zec: None,
+                coin_fee_limit: losos_registrar::market::DEFAULT_COIN_FEE_LIMIT,
             })
         });
 

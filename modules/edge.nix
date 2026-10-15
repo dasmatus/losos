@@ -694,6 +694,8 @@ let
       "/var/lib/losos-registrar/market.json"
       "--market-fee-bps"
       (toString cfg.market.feeBps)
+      "--market-coin-fee-limit"
+      (toString cfg.market.coinFeeLimit)
       "--market-currency"
       cfg.market.currency
       "--market-storage-class"
