@@ -777,30 +777,16 @@ pub enum Readiness {
 /// a `Retry-After`, rather than the opaque 500 every other command failure
 /// gets: this one is expected on every fresh box, is nobody's fault, and
 /// resolves itself. The box stays claimable — nothing was changed.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("not ready for the first password yet: {0}")]
 pub struct NotReady(pub String);
-
-impl std::fmt::Display for NotReady {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "not ready for the first password yet: {}", self.0)
-    }
-}
 
 /// A claim on a box that already has an owner. Typed so the HTTP layer can
 /// answer 409 with the sentence, which the wizard shows, rather than the 500
 /// "command failed; see the lososd journal" every untyped error becomes.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("this box has already been set up")]
 pub struct AlreadyClaimed;
-
-impl std::fmt::Display for AlreadyClaimed {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("this box has already been set up")
-    }
-}
-
-impl std::error::Error for AlreadyClaimed {}
-
-impl std::error::Error for NotReady {}
 
 /// Last non-empty line, capped. occ writes one line worth reading and a
 /// variable amount of Symfony framing around it.

@@ -163,29 +163,15 @@ pub struct TargetInput {
 
 /// A target the owner can fix: the sentence names the field. Answered as a
 /// 400 with the sentence.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("{0}")]
 pub struct Invalid(pub &'static str);
-
-impl fmt::Display for Invalid {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.0)
-    }
-}
-
-impl std::error::Error for Invalid {}
 
 /// Something that cannot happen *now*: a job already running, an erase under
 /// way. Answered as a 409 with the sentence.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("{0}")]
 pub struct Busy(pub &'static str);
-
-impl fmt::Display for Busy {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.0)
-    }
-}
-
-impl std::error::Error for Busy {}
 
 impl TargetInput {
     /// Check every field and merge in the stored secret when none was sent.

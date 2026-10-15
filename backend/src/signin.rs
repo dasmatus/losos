@@ -226,29 +226,15 @@ pub fn base64(data: &[u8]) -> String {
 /// The password was checked and is wrong. Typed so the HTTP layer answers
 /// 401 — the status the page treats as "try again" — and so the daemon's
 /// own per-address throttle counts it like a bad token.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("that password was not accepted")]
 pub struct WrongPassword;
-
-impl std::fmt::Display for WrongPassword {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("that password was not accepted")
-    }
-}
-
-impl std::error::Error for WrongPassword {}
 
 /// Nextcloud's brute-force protection refused to look. 429, so the page can
 /// say "wait" rather than "wrong".
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("too many attempts; LosOS cloud is making this address wait")]
 pub struct Throttled;
-
-impl std::fmt::Display for Throttled {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("too many attempts; LosOS cloud is making this address wait")
-    }
-}
-
-impl std::error::Error for Throttled {}
 
 #[cfg(test)]
 mod tests {

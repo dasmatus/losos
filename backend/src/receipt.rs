@@ -100,14 +100,7 @@ fn constant_time_eq(a: &[u8; 32], b: &[u8; 32]) -> bool {
 /// fallback to the clock or a fixed value: a predictable salt is the one
 /// thing this must not be, and the caller can do without a receipt.
 fn urandom<const N: usize>() -> Option<[u8; N]> {
-    use std::io::Read;
-    let mut buf = Vec::with_capacity(N);
-    std::fs::File::open("/dev/urandom")
-        .ok()?
-        .take(N as u64)
-        .read_to_end(&mut buf)
-        .ok()?;
-    buf.try_into().ok()
+    crate::io_backend::random_bytes().ok()
 }
 
 #[cfg(test)]

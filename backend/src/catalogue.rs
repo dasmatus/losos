@@ -40,8 +40,8 @@
 //! # Shape
 //!
 //! The same split as `grow.rs` and `recovery.rs`: pure URL building, pure
-//! validation and pure parsing, with the single effect ([`Fetch`]) behind a
-//! trait so the command is tested with no network at all.
+//! validation and pure parsing; the one effect, the fetch, is `curl_get` in
+//! `io_backend.rs`, so the command is tested with no network at all.
 
 use serde::Serialize;
 use serde_json::Value;
@@ -113,7 +113,7 @@ pub struct App {
 /// Control characters are the one that matters: the value is interpolated into
 /// a URL that becomes an argv, and a newline in an argv is how a shell-quoting
 /// mistake turns into a second command. Nothing here builds a shell string —
-/// [`Fetch`] execs `curl` directly with an argument vector — but the check
+/// `curl_get` execs `curl` directly with an argument vector — but the check
 /// costs nothing and the property should not depend on that staying true.
 pub fn validate_query(raw: &str) -> Result<&str, String> {
     let q = raw.trim();
@@ -288,16 +288,6 @@ pub fn parse_results(body: &str) -> anyhow::Result<Vec<App>> {
         .map(Vec::as_slice)
         .unwrap_or_default();
     Ok(entries.iter().filter_map(parse_app).collect())
-}
-
-/// The one effect: fetch a URL and hand back its body.
-///
-/// Behind a trait so [`crate::losos::cmd_apps_search`] is tested against a
-/// recorded body with no network, exactly as `CodeStore` does for the recovery
-/// code. An `Err` is a fetch that could not happen or did not succeed — the
-/// command turns it into a message the screen shows and offers to retry.
-pub trait Fetch {
-    fn get(&mut self, url: &str) -> anyhow::Result<String>;
 }
 
 #[cfg(test)]
