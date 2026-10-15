@@ -1405,6 +1405,80 @@ await whenMarketOpen('purchases are listed in a Table with a column per fact', a
   await page.close();
 });
 
+/* A USDC edge that also takes Bitcoin, and a seller who owes platform fees
+ * on coin sales: under the limit, with one USDC sale that paid toward them.
+ * No payout address, so the page asks no chain for balances or fees. */
+const COIN_FEES = {
+  ...MARKET,
+  account: {
+    ...MARKET.account,
+    currency: 'usd',
+    usdc: {
+      test: true,
+      chain_id: 84532,
+      solana: null,
+      ens_chain_id: null,
+      chains: [
+        {
+          network: 'base-sepolia',
+          name: 'Base Sepolia',
+          family: 'evm',
+          chain_id: 84532,
+          usdc: `0x${'11'.repeat(20)}`,
+          pay: `0x${'22'.repeat(20)}`,
+          treasury: `0x${'33'.repeat(20)}`,
+        },
+      ],
+    },
+    coins: ['btc'],
+    coin_keys: { btc: 'wpkh([73c5da0a/84h/1h/0h]tpubD6NzVbkrYhZ4X/0/*)' },
+    coin_fees_owed: 850,
+    coin_fees_since: 1791158400,
+    coin_fee_limit: 1000,
+    coin_fee_grace_secs: 30 * 24 * 3600,
+    sales: [
+      { id: 'ord_2', kind: 'storage', amount: 10000, fee: 400, fee_offset: 850, seller_net: 8750, currency: 'usd', quantity: 2, unit: 'GiB-month', status: 'paid', created_at: 1791158400, paid_at: 1791158460, expired: false, expires_at: 1798761600, volume: null },
+    ],
+  },
+};
+
+await whenMarketOpen('coin fees owed get one row with the limits, and a USDC sale names what it paid toward them', async () => {
+  const { page, errors, marketPosts } = await open({ path: '/settings/market', stored: true, market: COIN_FEES });
+  const row = page.getByTestId('coin-fees');
+  await row.waitFor();
+  const text = await row.innerText();
+  assert.match(text, /Platform fees on coin sales/);
+  assert.match(text, /You owe \S*8\.50/);
+  assert.match(text, /no more than \S*10\.00 and it is settled by/);
+  assert.match(text, /Set a USDC payout address on the Ethereum networks first/);
+  const pay = row.getByRole('button', { name: /^Pay \S*8\.50$/ });
+  assert.equal(await pay.isDisabled(), true, 'fees can be paid with no payout address to pay them from');
+  assert.equal(await page.getByText(/Platform fees owed on coin sales: /).count(), 0, 'the coin key row still repeats the debt');
+  await page.getByText(/you receive \S*87\.50, after \S*8\.50 toward platform fees owed on coin sales/).waitFor();
+  assert.deepEqual(marketPosts, []);
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+await whenMarketOpen('a seller whose coin fees are overdue is told coin payments stopped and USDC still works', async () => {
+  const paused = {
+    ...COIN_FEES,
+    account: { ...COIN_FEES.account, coin_fees_owed: 1250, coin_sales_paused: true, coin_fee_credit: 120, sales: [] },
+  };
+  const { page, errors } = await open({ path: '/settings/market', stored: true, market: paused });
+  const row = page.getByTestId('coin-fees');
+  await row.waitFor();
+  const status = row.getByRole('status');
+  assert.equal(
+    await status.innerText(),
+    'Buyers cannot pay you in coins until this is settled. USDC still works, and each USDC sale pays toward it.',
+  );
+  assert.doesNotMatch(await row.innerText(), /no more than/);
+  assert.match(await row.innerText(), /\S*1\.20 from a USDC sale went beyond what you owed/);
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
 await check('the Mesh pane names the edge proxy the box found, and the join switch is live', async () => {
   const { page, errors } = await open({ path: '/mesh', stored: true });
   const row = page.locator('[data-edge="found"]');

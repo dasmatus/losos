@@ -401,3 +401,40 @@ nothing to sync.
 stand-in lightwalletd servers in the test process serve compact blocks whose
 payments are real Orchard and Ironwood notes encrypted to the order's
 address, one of them lying.
+
+### Platform fees on coin sales
+
+Bitcoin, Monero and Zcash payments go whole to the seller, so the market's
+fee on them is a debt in the ledger (`coin_sellers.<appliance>.fees_owed`,
+with `owed_since` and `fee_credit`), settled in USDC (handbook, Market,
+"Platform fees on coin sales"). One knob:
+
+```nix
+losos.edge.market.coinFeeLimit = 1000;  # the default: US$10, in cents
+```
+
+It reaches the registrar as `--market-coin-fee-limit` (0 to 100000). While a
+seller owes more than that, or has owed anything for 30 days (fixed), the
+edge drops coins from that seller's new orders and refuses new coin
+payments. 0 stops coin payments at the first cent owed. A ledger from before
+this kept no start date: the first read stamps one, and it is written with
+the next change to the ledger.
+
+Two things move USDC to the treasury for it, both into
+`losos.edge.market.usdc.networks.<network>.treasury`:
+
+- A USDC order of a seller who owes takes the debt on top of its fee, up to
+  half the gross (the escrow's own cap). The invoice's `fee` includes it and
+  `fee_offset` names it; the order keeps it as `fee_offset`. The debt drops
+  when the edge's release of the deposit is mined, or when a Solana payment
+  is confirmed, and never for a refund.
+- `POST /market/fees/pay` (`tx`, `network`) counts a plain USDC `transfer`
+  to the treasury from the seller's signed EVM payout address, read from the
+  edge's own RPC endpoint after an `eth_chainId` check, with the usual
+  confirmations. Each transaction counts once (`fee_payments` in the
+  ledger), never for more than is owed, and a transaction that paid an order
+  is refused. Solana is refused.
+
+`backend-registrar/tests/usdc.rs` covers both paths and the pause against a
+stand-in RPC. `contracts/test-payment.sh` also sends a real fee transfer on
+anvil and checks the registrar reads it.

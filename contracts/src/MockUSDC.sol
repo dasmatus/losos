@@ -12,8 +12,13 @@ contract MockUSDC {
     mapping(address => uint256) public balanceOf;
     mapping(address => mapping(address => uint256)) public allowance;
 
+    /// Circle's USDC logs every move, and the registrar reads a seller's fee
+    /// payment from that log, so the mock logs them too.
+    event Transfer(address indexed from, address indexed to, uint256 value);
+
     function mint(address to, uint256 amount) external {
         balanceOf[to] += amount;
+        emit Transfer(address(0), to, amount);
     }
 
     function approve(address spender, uint256 amount) external returns (bool) {
@@ -25,6 +30,7 @@ contract MockUSDC {
         require(balanceOf[msg.sender] >= amount, "balance");
         balanceOf[msg.sender] -= amount;
         balanceOf[to] += amount;
+        emit Transfer(msg.sender, to, amount);
         return true;
     }
 
@@ -37,6 +43,7 @@ contract MockUSDC {
         require(balanceOf[from] >= amount, "balance");
         balanceOf[from] -= amount;
         balanceOf[to] += amount;
+        emit Transfer(from, to, amount);
         return true;
     }
 }

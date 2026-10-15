@@ -194,6 +194,22 @@ async fn start(tag: &str, rpc_url: &str, state: Option<&Value>) -> Edge {
 /// As [`start`]; `cards: false` is an edge with no Stripe account, whose gate
 /// is stopped before the first request.
 async fn start_with_cards(tag: &str, rpc_url: &str, state: Option<&Value>, cards: bool) -> Edge {
+    start_full(tag, rpc_url, state, cards, false).await
+}
+
+/// As [`start`], also taking Bitcoin through a node that never answers:
+/// enough for the edge to offer the coin and refuse it before asking.
+async fn start_with_btc(tag: &str, rpc_url: &str, state: Option<&Value>) -> Edge {
+    start_full(tag, rpc_url, state, true, true).await
+}
+
+async fn start_full(
+    tag: &str,
+    rpc_url: &str,
+    state: Option<&Value>,
+    cards: bool,
+    btc: bool,
+) -> Edge {
     let stripe = start_stripe().await;
     let rpc_url = rpc_url.to_string();
     let mut edge = Edge::start_market_full(
@@ -241,6 +257,13 @@ async fn start_with_cards(tag: &str, rpc_url: &str, state: Option<&Value>, cards
                 price_sources: silent_prices(),
                 releaser_file: Some(dir.path_str("usdc-releaser-key")),
             });
+            if btc {
+                market.btc = Some(losos_registrar::bitcoin::BtcOpts {
+                    rpc: "http://127.0.0.1:9".to_string(),
+                    cookie_file: dir.path_str("no-cookie"),
+                    wallet: "losos-watch".to_string(),
+                });
+            }
         },
     )
     .await;
@@ -1136,6 +1159,377 @@ async fn live_networks_open_no_market_behind_a_test_key() {
         .post("/market/account", auth("buyer-box", OTHER_TOKEN))
         .await;
     assert_eq!(status, 503, "{body}");
+    edge.shutdown().await;
+}
+
+// ── platform fees owed on coin sales ─────────────────────────────────────
+
+const USDC_TOKEN_TRANSFER: &str = "Transfer(address,address,uint256)";
+
+/// A ledger in which the seller owes `cents` on coin sales since `since`,
+/// with a Bitcoin key on file.
+fn owing_ledger(cents: u64, since: u64) -> Value {
+    json!({
+        "mode": "test",
+        "coin_sellers": { "seller-box": {
+            "keys": { "btc": { "descriptor": "wpkh(tpubD6NzVbkrYhZ4X/0/*)", "next": 0 } },
+            "fees_owed": cents,
+            "owed_since": since,
+        }},
+    })
+}
+
+/// The seller's own account view.
+async fn seller_account(edge: &Edge) -> Value {
+    let (status, body) = edge
+        .post("/market/account", auth("seller-box", GOOD_TOKEN))
+        .await;
+    assert_eq!(status, 200, "{body}");
+    parse(&body)
+}
+
+async fn owed(edge: &Edge) -> u64 {
+    seller_account(edge).await["coin_fees_owed"]
+        .as_u64()
+        .unwrap_or(0)
+}
+
+/// Wait until the seller owes `cents`.
+async fn wait_owed(edge: &Edge, cents: u64) {
+    for _ in 0..100 {
+        if owed(edge).await == cents {
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    panic!("the seller owes {}, not {cents}", owed(edge).await);
+}
+
+/// A mined transaction moving `value` USDC base units of `token` from `from`
+/// to `to`, in block `block`.
+fn transfer_receipt(token: &str, from: &str, to: &str, value: u128, block: u64) -> Value {
+    let word = |a: &str| format!("0x000000000000000000000000{}", &a[2..]);
+    json!({
+        "status": "0x1",
+        "blockNumber": format!("0x{block:x}"),
+        "logs": [{
+            "address": token,
+            "topics": [
+                format!("0x{}", hex(&keccak(USDC_TOKEN_TRANSFER.as_bytes()))),
+                word(from),
+                word(to),
+            ],
+            "data": format!("0x{}", word_u(value)),
+        }],
+    })
+}
+
+/// Ask for an address to pay `order_id` in Bitcoin, as the buyer.
+async fn pay_btc(edge: &Edge, order_id: &str) -> (u16, String) {
+    edge.post(
+        "/market/coins/pay",
+        with(
+            auth("buyer-box", OTHER_TOKEN),
+            json!({ "order_id": order_id, "coin": "btc" }),
+        ),
+    )
+    .await
+}
+
+async fn pay_fees(edge: &Edge, tx: &str, network: &str) -> (u16, String) {
+    edge.post(
+        "/market/fees/pay",
+        with(
+            auth("seller-box", GOOD_TOKEN),
+            json!({ "tx": tx, "network": network }),
+        ),
+    )
+    .await
+}
+
+#[tokio::test]
+async fn a_usdc_sale_collects_coin_fees_owed_once_the_escrow_releases_it() {
+    let (chain, url) = start_chain().await;
+    let now = losos_registrar::market::now_secs();
+    let edge = start("usdc-offset", &url, Some(&owing_ledger(50, now))).await;
+    let seller = set_payout(&edge, 7).await;
+    // 2 USD: the platform's 8 cents and the 50 owed go to the treasury. The
+    // buyer pays the listed price all the same.
+    let invoice = order(&edge, 40).await;
+    let order_id = invoice["order_id"].as_str().unwrap().to_string();
+    assert_eq!(invoice["gross"], "2000000");
+    assert_eq!(invoice["fee"], "580000");
+    assert_eq!(invoice["fee_offset"], "500000");
+    // While that sale is in flight, the next one does not take the same 50.
+    let second = order(&edge, 40).await;
+    assert_eq!(second["fee"], "80000");
+    assert!(second.get("fee_offset").is_none(), "{second}");
+
+    chain.set(|c| {
+        c.head = 200;
+        c.receipts.insert(tx(1), receipt(&invoice, &seller, 100, 1));
+    });
+    let (status, body) = confirm(&edge, &order_id, &tx(1)).await;
+    assert_eq!(status, 204, "{body}");
+    // Paid, but the treasury has nothing until the release is mined.
+    assert_eq!(owed(&edge).await, 50);
+    let account = seller_account(&edge).await;
+    let sale = account["sales"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|o| o["id"] == order_id.as_str())
+        .cloned()
+        .expect("the sale");
+    assert_eq!(
+        (
+            &sale["amount"],
+            &sale["fee"],
+            &sale["fee_offset"],
+            &sale["seller_net"]
+        ),
+        (&json!(200), &json!(8), &json!(50), &json!(142)),
+        "{sale}"
+    );
+    assert_eq!(wait_sent(&chain, 1).await, [(RELEASE.to_string(), 1)]);
+    assert_eq!(owed(&edge).await, 50);
+    mine_sent(&chain, "0x1");
+    wait_step(&edge, &order_id, "released").await;
+    wait_owed(&edge, 0).await;
+    let account = seller_account(&edge).await;
+    assert!(account.get("coin_fees_since").is_none(), "{account}");
+    assert!(account.get("coin_fee_credit").is_none(), "{account}");
+    edge.shutdown().await;
+}
+
+#[tokio::test]
+async fn a_usdc_sale_that_goes_back_to_the_buyer_collects_nothing() {
+    let (chain, url) = start_chain().await;
+    let now = losos_registrar::market::now_secs();
+    let edge = start("usdc-offset-refund", &url, Some(&owing_ledger(50, now))).await;
+    let seller = set_payout(&edge, 7).await;
+    let invoice = order(&edge, 40).await;
+    let order_id = invoice["order_id"].as_str().unwrap().to_string();
+    assert_eq!(invoice["fee_offset"], "500000");
+    chain.set(|c| {
+        c.head = 200;
+        c.receipts.insert(tx(6), receipt(&invoice, &seller, 100, 6));
+        // The edge was down past the deadline and the buyer took it back.
+        c.deposits.insert(6, 3);
+    });
+    assert_eq!(confirm(&edge, &order_id, &tx(6)).await.0, 204);
+    let refunded = wait_step(&edge, &order_id, "refunded").await;
+    assert_eq!(refunded["escrow"]["reason"], "buyerReclaimed", "{refunded}");
+    assert_eq!(owed(&edge).await, 50);
+    // The 50 is free to ride on the next sale again.
+    let next = order_fee_offset(&edge).await;
+    assert_eq!(next, Some("500000".to_string()));
+
+    // A seller whose address cannot receive is refunded too, and owes as before.
+    chain.set(|c| {
+        c.code.insert(seller.clone(), "0x6080604052".to_string());
+    });
+    let invoice = order(&edge, 40).await;
+    let order_id = invoice["order_id"].as_str().unwrap().to_string();
+    chain.set(|c| {
+        c.receipts.insert(tx(7), receipt(&invoice, &seller, 100, 7));
+    });
+    assert_eq!(confirm(&edge, &order_id, &tx(7)).await.0, 409);
+    wait_sent(&chain, 1).await;
+    mine_sent(&chain, "0x1");
+    wait_step(&edge, &order_id, "refunded").await;
+    assert_eq!(owed(&edge).await, 50);
+    edge.shutdown().await;
+}
+
+/// The fee offset of a new order's invoice.
+async fn order_fee_offset(edge: &Edge) -> Option<String> {
+    order(edge, 40).await["fee_offset"]
+        .as_str()
+        .map(str::to_string)
+}
+
+#[tokio::test]
+async fn a_solana_sale_collects_coin_fees_owed_as_it_is_confirmed() {
+    let (chain, url) = start_chain().await;
+    let now = losos_registrar::market::now_secs();
+    let edge = start("usdc-offset-solana", &url, Some(&owing_ledger(500, now))).await;
+    set_payout(&edge, 7).await;
+    let seller = set_solana_payout(&edge, 9).await;
+    let invoice = order(&edge, 40).await;
+    let order_id = invoice["order_id"].as_str().unwrap().to_string();
+    // Half the gross at most, on Solana as in the escrow: 100 - 8.
+    assert_eq!(invoice["fee"], "1000000");
+    assert_eq!(invoice["fee_offset"], "920000");
+    // A transfer that splits off only the platform's 4% does not pay it.
+    let mut short = invoice.clone();
+    short["fee"] = json!("80000");
+    chain.set(|c| {
+        c.transactions.insert(sig(3), solana_tx(&short, &seller));
+        c.transactions.insert(sig(4), solana_tx(&invoice, &seller));
+    });
+    let (status, body) = confirm_on(&edge, &order_id, &sig(3), "solana-devnet").await;
+    assert_eq!(status, 409, "{body}");
+    assert_eq!(owed(&edge).await, 500);
+    let (status, body) = confirm_on(&edge, &order_id, &sig(4), "solana-devnet").await;
+    assert_eq!(status, 204, "{body}");
+    assert_eq!(owed(&edge).await, 408);
+    edge.shutdown().await;
+}
+
+#[tokio::test]
+async fn coin_fees_paid_to_the_treasury_count_once_and_only_from_the_seller() {
+    let (chain, url) = start_chain().await;
+    let now = losos_registrar::market::now_secs();
+    let edge = start("usdc-fees-paid", &url, Some(&owing_ledger(300, now))).await;
+    let seller = set_payout(&edge, 7).await;
+    let other = "0x6666666666666666666666666666666666666666";
+    chain.set(|c| {
+        c.head = 100;
+        c.receipts.insert(
+            tx(20),
+            transfer_receipt(USDC_BASE_SEPOLIA, &seller, TREASURY, 2_000_000, 100),
+        );
+        // Another token, another recipient, another sender.
+        c.receipts.insert(
+            tx(21),
+            transfer_receipt(other, &seller, TREASURY, 3_000_000, 90),
+        );
+        c.receipts.insert(
+            tx(22),
+            transfer_receipt(USDC_BASE_SEPOLIA, &seller, other, 3_000_000, 90),
+        );
+        c.receipts.insert(
+            tx(23),
+            transfer_receipt(USDC_BASE_SEPOLIA, other, TREASURY, 3_000_000, 90),
+        );
+        c.receipts.insert(
+            tx(24),
+            transfer_receipt(USDC_BASE_SEPOLIA, &seller, TREASURY, 5_000_000, 90),
+        );
+    });
+    // One block is not enough.
+    let (status, body) = pay_fees(&edge, &tx(20), "base-sepolia").await;
+    assert_eq!(status, 409, "{body}");
+    assert!(body.contains("another block"), "{body}");
+    assert_eq!(owed(&edge).await, 300);
+
+    chain.set(|c| c.head = 101);
+    let (status, body) = pay_fees(&edge, &tx(20), "base-sepolia").await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(
+        parse(&body),
+        json!({ "paid": 200, "credited": 200, "owed": 100 })
+    );
+    // Counted once.
+    let (status, body) = pay_fees(&edge, &tx(20), "base-sepolia").await;
+    assert_eq!(status, 409, "{body}");
+    assert!(body.contains("already counted"), "{body}");
+    assert_eq!(owed(&edge).await, 100);
+
+    for (n, why) in [
+        (21, "moves no USDC"),
+        (22, "does not pay the edge's treasury"),
+        (23, "did not come from the seller's payout address"),
+    ] {
+        let (status, body) = pay_fees(&edge, &tx(n), "base-sepolia").await;
+        assert_eq!(status, 409, "{body}");
+        assert!(body.contains(why), "{n}: {body}");
+    }
+    // On another chain than the endpoint's, nothing counts; Solana is not
+    // where fees are paid.
+    let (status, body) = pay_fees(&edge, &tx(24), "arbitrum-sepolia").await;
+    assert_eq!(status, 409, "{body}");
+    assert!(body.contains("different chain"), "{body}");
+    let (status, _) = pay_fees(&edge, &tx(24), "solana-devnet").await;
+    assert_eq!(status, 400);
+    assert_eq!(owed(&edge).await, 100);
+
+    // More than owed: only what was owed counts, and nothing is left over.
+    let (status, body) = pay_fees(&edge, &tx(24), "base-sepolia").await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(
+        parse(&body),
+        json!({ "paid": 500, "credited": 100, "owed": 0 })
+    );
+    let account = seller_account(&edge).await;
+    assert!(account.get("coin_fees_owed").is_none(), "{account}");
+    assert!(account.get("coin_fee_credit").is_none(), "{account}");
+    // With nothing owed there is nothing to pay.
+    let (status, body) = pay_fees(&edge, &tx(25), "base-sepolia").await;
+    assert_eq!(status, 409, "{body}");
+    assert!(body.contains("no platform fees are owed"), "{body}");
+    edge.shutdown().await;
+}
+
+#[tokio::test]
+async fn coin_payments_stop_while_fees_are_overdue_and_resume_once_paid() {
+    let (chain, url) = start_chain().await;
+    let now = losos_registrar::market::now_secs();
+    // US$15 owed, over the US$10 limit.
+    let edge = start_with_btc("usdc-fees-enforced", &url, Some(&owing_ledger(1_500, now))).await;
+    let seller = set_payout(&edge, 7).await;
+    let account = seller_account(&edge).await;
+    assert_eq!(account["coin_sales_paused"], true, "{account}");
+    assert_eq!(account["coin_fee_limit"], 1_000, "{account}");
+    assert_eq!(account["coin_fees_since"], now, "{account}");
+
+    // The invoice offers no coin, and asking for one says why.
+    let invoice = order(&edge, 40).await;
+    let order_id = invoice["order_id"].as_str().unwrap().to_string();
+    assert!(invoice.get("coins").is_none(), "{invoice}");
+    let (status, body) = pay_btc(&edge, &order_id).await;
+    assert_eq!(status, 409, "{body}");
+    assert!(body.contains("owes platform fees"), "{body}");
+
+    // Paying the fees lifts it: the edge goes on to quote, and only the
+    // silent price sources stop it.
+    chain.set(|c| {
+        c.head = 200;
+        c.receipts.insert(
+            tx(30),
+            transfer_receipt(USDC_BASE_SEPOLIA, &seller, TREASURY, 15_000_000, 100),
+        );
+    });
+    let (status, body) = pay_fees(&edge, &tx(30), "base-sepolia").await;
+    assert_eq!(status, 200, "{body}");
+    let account = seller_account(&edge).await;
+    assert!(account.get("coin_sales_paused").is_none(), "{account}");
+    let invoice = order(&edge, 40).await;
+    assert_eq!(invoice["coins"], json!(["btc"]), "{invoice}");
+    let (status, body) = pay_btc(&edge, invoice["order_id"].as_str().unwrap()).await;
+    assert_eq!(status, 409, "{body}");
+    assert!(!body.contains("owes platform fees"), "{body}");
+    assert!(body.contains("price sources"), "{body}");
+    edge.shutdown().await;
+}
+
+#[tokio::test]
+async fn a_small_debt_stops_coin_payments_after_thirty_days() {
+    let (_chain, url) = start_chain().await;
+    let now = losos_registrar::market::now_secs();
+    let day = 24 * 3600;
+    let edge = start_with_btc(
+        "usdc-fees-old",
+        &url,
+        Some(&owing_ledger(100, now - 31 * day)),
+    )
+    .await;
+    set_payout(&edge, 7).await;
+    assert_eq!(seller_account(&edge).await["coin_sales_paused"], true);
+    edge.shutdown().await;
+
+    let (_chain, url) = start_chain().await;
+    let edge = start_with_btc(
+        "usdc-fees-recent",
+        &url,
+        Some(&owing_ledger(100, now - 29 * day)),
+    )
+    .await;
+    set_payout(&edge, 7).await;
+    let account = seller_account(&edge).await;
+    assert!(account.get("coin_sales_paused").is_none(), "{account}");
+    assert_eq!(account["coin_fees_owed"], 100, "{account}");
     edge.shutdown().await;
 }
 

@@ -54,8 +54,9 @@ spôsobov, podľa toho, čo edge dovolí:
   pre každú objednávku, odvodenú z verejného kľúča predajcu: rozšíreného
   verejného kľúča alebo deskriptora pre Bitcoin, primárnej adresy
   a súkromného kľúča na prezeranie pre Monero. Edge len sleduje a mince nikdy
-  nedrží. 4 % poplatok z týchto predajov sa predajcovi účtuje zvlášť a panel
-  ho ukazuje ako dlžné poplatky.
+  nedrží. 4 % poplatok z týchto predajov je dlh, ktorý predajca vyrovná
+  v USDC, pozri
+  [Poplatky platformy z predajov v minciach](#platform-fees-on-coin-sales).
 - **Karta cez Stripe Connect.** Na edge voliteľná. Edge môže prijímať len
   mince, bez platieb kartou, takže na prevádzku trhu netreba firemný účet
   u spracovateľa kariet.
@@ -145,7 +146,8 @@ Panel začína prepínačom zdieľania disku. Presunul sa sem z panela
 rozhodnutie. Pod ním je to, čo vlastník kúpil, s expiráciou a zväzkom,
 a pult, z ktorého sa nakupuje. Na predaj slúži nastavenie výplat (adresa
 USDC, kľúč pre Bitcoin alebo Monero a Stripe, ak edge karty prijíma),
-formulár ponuky a vlastníkove vlastné ponuky a predaje. Prepínač sa zobrazuje
+dlžné poplatky platformy z predajov v minciach, formulár ponuky
+a vlastníkove vlastné ponuky a predaje. Prepínač sa zobrazuje
 bez ohľadu na to, či edge tomuto zariadeniu trh ponúka, pretože je to nastavenie
 zariadenia, nie edge.
 
@@ -184,6 +186,7 @@ Telá sú JSON.
 | `POST /market/listings`        | token      | `kind`, `unit_price`, `capacity`                 |
 | `POST /market/listings/close`  | token      | `listing_id`; zaplatené objednávky si jednotky ponechajú |
 | `POST /market/orders`          | token      | `listing_id`, `quantity`; vráti URL Checkout     |
+| `POST /market/fees/pay`        | token      | `tx`, `network`; započíta prevod USDC do dlžných poplatkov z mincí |
 | `POST /market/webhook`         | podpis     | Udalosti Stripe                                  |
 
 Každá routa odpovedá 503, keď je trh vypnutý. Na tokenových routách dostane
@@ -450,7 +453,9 @@ peňaženke limit medzery (gap limit), aby ste videli platby po nich.
 
 Poplatok platformy sa z platby v bitcoinoch nestrháva. Celá suma príde
 predajcovi a edge vedie priebežný súčet poplatkov z týchto predajov, ktorý
-predajca dlhuje platforme a vidí ho na paneli. Predajca s kľúčom Bitcoinu a bez adresy USDC môže
+predajca dlhuje platforme a vidí ho na paneli (ako sa vyrovnáva, opisuje
+[Poplatky platformy z predajov v minciach](#platform-fees-on-coin-sales)).
+Predajca s kľúčom Bitcoinu a bez adresy USDC môže
 ponúkať aj tak; kupujúci potom platia len v bitcoinoch.
 
 ### Platba v bitcoinoch pre kupujúceho {#paying-in-bitcoin}
@@ -494,7 +499,7 @@ podadresy, ktoré ešte neukázala. Ak za sebou ostane nezaplatených viac ako
 asi 200 objednávok, zvýšte v peňaženke dosah hľadania podadries
 (subaddress lookahead), aby ste videli platby po nich.
 
-Rovnako ako pri bitcoinoch sa poplatok platformy účtuje predajcovi zvlášť a
+Rovnako ako pri bitcoinoch predajca dlží poplatok platformy zvlášť a
 celá platba príde predajcovi.
 
 ### Platba v Monere pre kupujúceho {#paying-in-monero}
@@ -538,7 +543,7 @@ lebo dešifruje všetko, čo príde na ktorúkoľvek adresu jej kľúča. Od NU6
 platba na adresu Orchard pristane v poole Ironwood, ktorý používa tie isté
 kľúče; edge číta oba.
 
-Rovnako ako pri bitcoinoch sa poplatok platformy účtuje predajcovi zvlášť a
+Rovnako ako pri bitcoinoch predajca dlží poplatok platformy zvlášť a
 celá platba príde predajcovi.
 
 ### Platba v Zcashi pre kupujúceho {#paying-in-zcash}
@@ -552,6 +557,43 @@ Objednávku do 50 $ započítajú tri potvrdenia, do 500 $ šesť, do 5 000 $
 desať a nad to 24; nedoplatok, preplatok aj oneskorená platba sa riešia ako
 pri bitcoinoch. Platba je tienená, takže zaplatená objednávka uvádza Zcash
 ako sieť bez odkazu na prehliadač blokov.
+
+## Poplatky platformy z predajov v minciach {#platform-fees-on-coin-sales}
+
+Platba v bitcoinoch, Monere alebo Zcashi príde do peňaženky predajcu celá,
+takže 4 % platformy z týchto predajov sú dlh, ktorý edge vedie voči
+predajcovi. Panel Trh ho ukazuje vo vlastnom riadku pod kľúčmi mincí spolu
+s limitmi nižšie. Vyrovnáva sa v USDC, dvoma spôsobmi.
+
+**Z predajov v USDC.** Kým predajca dlží poplatky z mincí, edge zvýši
+poplatok z jeho ďalších objednávok v USDC o dlžnú sumu, na sieťach Etherea
+aj na Solane. Kupujúci platí stále uvedenú cenu. Menší je len podiel
+predajcu a predaj na paneli uvádza, koľko z neho išlo na dlžné poplatky.
+Poplatok nikdy neprekročí polovicu ceny objednávky, čo je najviac, koľko si
+escrow kontrakt vezme. Dlh klesne až vtedy, keď peniaze prídu do pokladnice:
+keď escrow platbu uvoľní, alebo keď sa potvrdí platba na Solane.
+Objednávka, ktorá sa vráti alebo prepadne, nevyberie nič. Keď je naraz
+otvorených viac objednávok v USDC, každá si vezme len to, čo si ešte
+nevzali ostatné. Ak predaj vyberie viac, než sa ešte dlží, lebo dlh medzitým
+vyrovnala priama platba, zvyšok zostane ako kredit a najprv sa použije na
+poplatky z ďalších predajov v minciach.
+
+**Priamo.** Riadok poplatkov má tlačidlo, ktoré pošle dlžnú sumu v USDC
+z peňaženky na paneli do pokladnice platformy, na ktorejkoľvek sieti
+Etherea, na ktorej edge vyrovnáva, a odovzdá transakciu edge. Edge ju
+prečíta zo svojho vlastného uzla a započíta ju, keď má toľko potvrdení ako
+platba objednávky. Započíta len prevod USDC do pokladnice z adresy predajcu
+pre výplaty, každú transakciu raz a nikdy viac, než sa dlží. Čo sa zaplatí
+nad dlh, sa nevracia. Na Solane sa poplatky neplatia.
+
+**Kedy sa platby v minciach zastavia.** Kým predajca dlží viac, než je limit
+edge, teda 10 USD, ak jeho operátor nenastavil iný, alebo dlží akúkoľvek
+sumu dlhšie ako 30 dní, kupujúci mu nemôžu platiť v bitcoinoch, Monere ani
+Zcashi. Nová objednávka ponúkne len USDC a nová platba v minciach sa odmietne
+s dôvodom. Platba v minciach, ktorá už prebieha, sa sleduje do konca. USDC
+funguje ďalej a každým predajom spláca dlh, takže platby v minciach sa vrátia,
+keď je dlh vyrovnaný. U predajcu, ktorý prijíma len mince, sa dovtedy
+objednávať nedá.
 
 ## Čo nie je pokryté
 

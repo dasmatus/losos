@@ -633,6 +633,7 @@ pub async fn build(opts: ServeOpts) -> Result<App> {
         .route("/market/confirm", post(market_confirm))
         .route("/market/coins/key", post(market_coin_key))
         .route("/market/coins/pay", post(market_coin_pay))
+        .route("/market/fees/pay", post(market_fees_pay))
         .route("/market/rpc", post(market_rpc))
         .route("/market/account", post(market_account))
         .route("/market/hardware", get(market_hardware))
@@ -1564,6 +1565,30 @@ async fn market_coin_pay(
     let market = market_tenant(&st, &req.auth).await?;
     let view = market
         .pay_with_coin(&req.auth.appliance_id, &req.order_id, &req.coin)
+        .await?;
+    Ok(Json(view))
+}
+
+#[derive(Debug, Deserialize)]
+struct MarketFeesPayReq {
+    #[serde(flatten)]
+    auth: MarketAuth,
+    /// A USDC transfer from the seller's payout address to the treasury.
+    tx: String,
+    /// The EVM network it is on; the edge's first when absent.
+    #[serde(default)]
+    network: Option<String>,
+}
+
+/// `POST /market/fees/pay`: the seller settled platform fees its coin sales
+/// owe with a USDC transfer to the treasury.
+async fn market_fees_pay(
+    State(st): State<AppState>,
+    Json(req): Json<MarketFeesPayReq>,
+) -> Result<Json<crate::market::FeePaymentView>, ApiError> {
+    let market = market_tenant(&st, &req.auth).await?;
+    let view = market
+        .pay_coin_fees(&req.auth.appliance_id, &req.tx, req.network.as_deref())
         .await?;
     Ok(Json(view))
 }

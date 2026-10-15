@@ -386,6 +386,20 @@ fn a_market_serve_invocation_takes_a_four_percent_cut_by_default() {
     assert_eq!(market.gate_socket, "/run/losos-stripe-gate/gate.sock");
     assert_eq!(market.state_file, "/var/lib/losos-registrar/market.json");
     assert_eq!(market.storage_class, "longhorn");
+    assert_eq!(market.coin_fee_limit, 1_000);
+}
+
+#[test]
+fn the_coin_fee_limit_is_cents_and_bounded() {
+    let mut args = vec!["--market-coin-fee-limit", "2500"];
+    args.extend(MARKET_FLAGS);
+    let market = serve_opts(&args).market.expect("market enabled");
+    assert_eq!(market.coin_fee_limit, 2_500);
+    for bad in ["ten", "-1", "100001"] {
+        let mut args = vec!["--market-coin-fee-limit", bad];
+        args.extend(MARKET_FLAGS);
+        assert!(parse(serve_args(&args)).is_err(), "{bad}");
+    }
 }
 
 #[test]

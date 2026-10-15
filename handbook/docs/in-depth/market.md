@@ -54,8 +54,8 @@ allows:
   address for each order, derived from the seller's public key: an extended
   public key or descriptor for Bitcoin, the primary address and private view
   key for Monero. The edge only watches and never holds the coins. The 4%
-  fee on these sales is billed to the seller separately, and the pane shows
-  it as fees owed.
+  fee on these sales is a debt the seller settles in USDC, see
+  [Platform fees on coin sales](#platform-fees-on-coin-sales).
 - **Card, through Stripe Connect.** Optional on an edge. An edge can take
   coins only, without card payments, so running the market needs no business
   account with a card processor.
@@ -142,8 +142,9 @@ it. The pane starts with the disk-sharing switch. It moved here from
 Storage because lending disk to other boxes and being paid for it are one
 decision. Below it come what the owner has bought, with expiry and volume,
 and the shelf to buy from. For selling there is payout setup (a USDC
-address, a Bitcoin or Monero key, and Stripe where the edge takes cards), a
-listing form, and the owner's own listings and sales. The switch shows
+address, a Bitcoin or Monero key, and Stripe where the edge takes cards),
+the platform fees owed on coin sales, a listing form, and the owner's own
+listings and sales. The switch shows
 whether or not the edge offers the market to this box, because it is a
 setting of the box, not of the edge.
 
@@ -183,6 +184,7 @@ Bodies are JSON.
 | `POST /market/listings`        | token      | `kind`, `unit_price`, `capacity`                |
 | `POST /market/listings/close`  | token      | `listing_id`; paid orders keep their units      |
 | `POST /market/orders`          | token      | `listing_id`, `quantity`; returns a Checkout URL |
+| `POST /market/fees/pay`        | token      | `tx`, `network`; counts a USDC transfer against coin fees owed |
 | `POST /market/webhook`         | signature  | Stripe events                                   |
 
 Every route answers 503 when the market is off. On the token routes, a
@@ -453,7 +455,9 @@ payments after them.
 
 The platform fee is not taken out of a Bitcoin payment. The whole amount
 reaches the seller, and the edge keeps a running total of the fee on those
-sales, which the seller owes the platform and sees on the pane. A seller with a Bitcoin
+sales, which the seller owes the platform and sees on the pane
+([Platform fees on coin sales](#platform-fees-on-coin-sales) says how it is
+settled). A seller with a Bitcoin
 key and no USDC address can still list; buyers then pay in Bitcoin only.
 
 ### Paying in Bitcoin
@@ -496,7 +500,7 @@ wallet. Your own wallet finds them too: it looks ahead for subaddresses it
 has not shown yet. If more than about 200 orders in a row go unpaid, raise
 the subaddress lookahead in your wallet to see the payments after them.
 
-As with Bitcoin, the platform fee is billed to the seller apart and the
+As with Bitcoin, the platform fee is owed by the seller apart and the
 whole payment reaches the seller.
 
 ### Paying in Monero
@@ -538,7 +542,7 @@ arrives for every address of its key. Since NU6.3 a payment to an Orchard
 address lands in the Ironwood pool, which uses the same keys; the edge reads
 both.
 
-As with Bitcoin, the platform fee is billed to the seller apart and the
+As with Bitcoin, the platform fee is owed by the seller apart and the
 whole payment reaches the seller.
 
 ### Paying in Zcash
@@ -552,6 +556,44 @@ Three confirmations count an order up to $50, six up to $500, ten up to
 $5,000 and 24 above that; a short payment, an overpayment and a late one are
 handled as for Bitcoin. The payment is shielded, so a paid order names Zcash
 as its network without a link to an explorer.
+
+## Platform fees on coin sales
+
+A Bitcoin, Monero or Zcash payment reaches the seller's wallet whole, so the
+platform's 4% of those sales is a debt the edge records against the seller.
+The Market pane shows it in its own row under the coin keys, with the limits
+below. It is settled in USDC, in two ways.
+
+**From USDC sales.** While a seller owes coin fees, the edge raises the fee
+on that seller's next USDC orders by what is owed, on the Ethereum networks
+and on Solana alike. The buyer still pays the listed price. Only the
+seller's share is smaller, and the sale on the pane says how much of it went
+to fees owed. The fee never exceeds half the order's price, the most the
+escrow contract takes. The debt goes down only once the money reaches the
+treasury: when the escrow releases the payment, or when a Solana payment is
+confirmed. An order that is refunded or lapses collects nothing. When
+several USDC orders are open at once, each takes only what the others have
+not already taken. If a sale collects more than is still owed, because a
+direct payment settled the debt in the meantime, the rest is kept as credit
+and pays the fees of the next coin sales first.
+
+**Directly.** The fees row has a button that sends the amount owed in USDC
+from the wallet on the pane to the platform's treasury, on any Ethereum
+network the edge settles on, and hands the transaction to the edge. The edge
+reads it from its own node and counts it once it has as many confirmations
+as an order payment. It counts only a USDC transfer to the treasury from the
+seller's payout address, each transaction once, and never more than is
+owed. Anything paid above the debt is not refunded. Fees are not paid on
+Solana.
+
+**When coin payments stop.** While a seller owes more than the edge's limit,
+US$10 unless its operator set another, or has owed anything for more than
+30 days, buyers cannot pay that seller in Bitcoin, Monero or Zcash. A new
+order offers USDC only, and a new coin payment is refused with the reason. A
+coin payment already under way is still followed to the end. USDC keeps
+working and pays toward the debt with every sale, so coin payments come back
+once the debt is settled. A seller who takes only coins cannot be ordered
+from until then.
 
 ## Not covered
 

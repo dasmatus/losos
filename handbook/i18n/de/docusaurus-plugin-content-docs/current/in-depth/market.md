@@ -60,8 +60,8 @@ nachdem, was die Edge erlaubt:
   des Verkäufers: einem erweiterten öffentlichen Schlüssel oder Deskriptor
   für Bitcoin, der Hauptadresse und dem privaten View-Key für Monero. Die
   Edge schaut nur zu und hält nie Coins. Die Gebühr von 4 % auf diese
-  Verkäufe wird dem Verkäufer gesondert berechnet, und der Bereich zeigt sie
-  als offene Gebühren.
+  Verkäufe ist eine Schuld, die der Verkäufer in USDC begleicht, siehe
+  [Plattformgebühren aus Coin-Verkäufen](#platform-fees-on-coin-sales).
 - **Karte, über Stripe Connect.** Auf einer Edge optional. Eine Edge kann
   nur Coins annehmen, ohne Kartenzahlungen, sodass der Betrieb des
   Marktplatzes kein Geschäftskonto bei einem Kartenabwickler braucht.
@@ -159,8 +159,8 @@ von Festplattenplatz an andere Boxen und die Bezahlung dafür eine einzige
 Entscheidung sind. Darunter folgt, was der Besitzer gekauft hat, mit Ablauf
 und Volume, und das Regal zum Einkaufen. Für den Verkauf gibt es die
 Einrichtung der Auszahlungen (eine USDC-Adresse, ein Bitcoin- oder
-Monero-Schlüssel und Stripe, wo die Edge Karten annimmt), ein
-Angebotsformular und die eigenen
+Monero-Schlüssel und Stripe, wo die Edge Karten annimmt), die offenen
+Plattformgebühren aus Coin-Verkäufen, ein Angebotsformular und die eigenen
 Angebote und Verkäufe des Besitzers. Der Schalter wird angezeigt, ob die Edge
 dieser Box den Marktplatz anbietet oder nicht, denn er ist eine Einstellung
 der Box, nicht der Edge.
@@ -204,6 +204,7 @@ Alle Routen liegen auf der öffentlichen API des Registrars
 | `POST /market/listings`        | Token      | `kind`, `unit_price`, `capacity`                     |
 | `POST /market/listings/close`  | Token      | `listing_id`; bezahlte Bestellungen behalten ihre Einheiten |
 | `POST /market/orders`          | Token      | `listing_id`, `quantity`; liefert eine Checkout-URL  |
+| `POST /market/fees/pay`        | Token      | `tx`, `network`; rechnet eine USDC-Überweisung auf offene Coin-Gebühren an |
 | `POST /market/webhook`         | Signatur   | Stripe-Ereignisse                                    |
 
 Jede Route antwortet mit 503, wenn der Marktplatz aus ist. Auf den
@@ -509,7 +510,9 @@ Zahlungen danach zu sehen.
 Die Plattformgebühr wird nicht von einer Bitcoin-Zahlung abgezogen. Der
 ganze Betrag geht an den Verkäufer, und der Edge führt eine laufende Summe
 der Gebühr auf diese Verkäufe, die der Verkäufer der Plattform schuldet und
-im Bereich sieht. Ein Verkäufer mit Bitcoin-Schlüssel und ohne USDC-Adresse kann
+im Bereich sieht (wie sie beglichen wird, steht unter
+[Plattformgebühren aus Coin-Verkäufen](#platform-fees-on-coin-sales)). Ein
+Verkäufer mit Bitcoin-Schlüssel und ohne USDC-Adresse kann
 trotzdem anbieten; Käufer zahlen dann nur in Bitcoin.
 
 ### In Bitcoin bezahlen {#paying-in-bitcoin}
@@ -556,7 +559,7 @@ Subadressen voraus, die sie noch nicht angezeigt hat. Bleiben mehr als etwa
 (subaddress lookahead) in der Wallet erhöhen, um die Zahlungen danach zu
 sehen.
 
-Wie bei Bitcoin wird die Plattformgebühr dem Verkäufer separat berechnet,
+Wie bei Bitcoin schuldet der Verkäufer die Plattformgebühr separat,
 und die ganze Zahlung geht an den Verkäufer.
 
 ### In Monero bezahlen {#paying-in-monero}
@@ -602,7 +605,7 @@ selbst, weil sie alles entschlüsselt, was an eine Adresse ihres Schlüssels
 geht. Seit NU6.3 landet eine Zahlung an eine Orchard-Adresse im
 Ironwood-Pool, der dieselben Schlüssel nutzt; der Edge liest beide.
 
-Wie bei Bitcoin wird die Plattformgebühr dem Verkäufer separat berechnet,
+Wie bei Bitcoin schuldet der Verkäufer die Plattformgebühr separat,
 und die ganze Zahlung geht an den Verkäufer.
 
 ### In Zcash bezahlen {#paying-in-zcash}
@@ -618,6 +621,49 @@ Bestätigungen zählen eine Bestellung bis 50 $, sechs bis 500 $, zehn bis
 Zahlung werden wie bei Bitcoin behandelt. Die Zahlung ist abgeschirmt, daher
 nennt eine bezahlte Bestellung Zcash als Netz ohne Link zu einem
 Block-Explorer.
+
+## Plattformgebühren aus Coin-Verkäufen {#platform-fees-on-coin-sales}
+
+Eine Zahlung in Bitcoin, Monero oder Zcash erreicht die Wallet des
+Verkäufers vollständig, daher sind die 4 % der Plattform an diesen
+Verkäufen eine Schuld, die die Edge für den Verkäufer führt. Der Bereich
+Marktplatz zeigt sie in einer eigenen Zeile unter den Coin-Schlüsseln, mit
+den Grenzen weiter unten. Beglichen wird sie in USDC, auf zwei Wegen.
+
+**Aus USDC-Verkäufen.** Solange ein Verkäufer Coin-Gebühren schuldet, erhöht
+die Edge die Gebühr seiner nächsten USDC-Bestellungen um den offenen Betrag,
+auf den Ethereum-Netzen wie auf Solana. Der Käufer zahlt weiterhin den
+angegebenen Preis. Nur der Anteil des Verkäufers ist kleiner, und der
+Verkauf im Bereich nennt, wie viel davon auf offene Gebühren ging. Die
+Gebühr übersteigt nie die Hälfte des Bestellpreises, das Höchste, was der
+Escrow-Vertrag nimmt. Die Schuld sinkt erst, wenn das Geld die Kasse
+erreicht: wenn der Escrow die Zahlung freigibt oder eine Zahlung auf Solana
+bestätigt ist. Eine Bestellung, die erstattet wird oder verfällt, zieht
+nichts ein. Sind mehrere USDC-Bestellungen gleichzeitig offen, nimmt jede
+nur, was die anderen nicht schon genommen haben. Zieht ein Verkauf mehr ein,
+als noch offen ist, weil eine direkte Zahlung die Schuld inzwischen beglichen
+hat, bleibt der Rest als Guthaben und zahlt zuerst die Gebühren der nächsten
+Coin-Verkäufe.
+
+**Direkt.** Die Gebührenzeile hat eine Schaltfläche, die den offenen Betrag
+in USDC aus der Wallet im Bereich an die Kasse der Plattform sendet, auf
+jedem Ethereum-Netz, auf dem die Edge abrechnet, und die Transaktion der
+Edge übergibt. Die Edge liest sie von ihrem eigenen Knoten und rechnet sie
+an, sobald sie so viele Bestätigungen hat wie eine Bestellzahlung. Sie
+rechnet nur eine USDC-Überweisung an die Kasse von der Auszahlungsadresse
+des Verkäufers an, jede Transaktion einmal und nie mehr als offen ist. Was
+über die Schuld hinaus gezahlt wird, wird nicht erstattet. Auf Solana werden
+keine Gebühren bezahlt.
+
+**Wann Coin-Zahlungen stoppen.** Solange ein Verkäufer mehr als die Grenze
+der Edge schuldet, 10 US-Dollar, sofern ihr Betreiber keine andere gesetzt
+hat, oder seit mehr als 30 Tagen irgendeinen Betrag schuldet, können Käufer
+ihn nicht in Bitcoin, Monero oder Zcash bezahlen. Eine neue Bestellung
+bietet nur USDC an, und eine neue Coin-Zahlung wird mit dem Grund abgelehnt.
+Eine Coin-Zahlung, die schon läuft, wird bis zum Ende verfolgt. USDC
+funktioniert weiter und zahlt mit jedem Verkauf auf die Schuld ein, sodass
+Coin-Zahlungen zurückkommen, sobald sie beglichen ist. Bei einem Verkäufer,
+der nur Coins annimmt, kann bis dahin nicht bestellt werden.
 
 ## Nicht abgedeckt
 

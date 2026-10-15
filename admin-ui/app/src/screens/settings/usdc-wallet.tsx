@@ -8,7 +8,9 @@ import { toast } from "@/components/ui/toast";
 import {
   ApiError,
   postMarketConfirm,
+  postMarketFeesPay,
   postMarketPayout,
+  type FeePayment,
   type StablecoinInvoice,
   type UsdcChain,
   type UsdcPublic,
@@ -47,7 +49,7 @@ import { cheapest, estimateFee, formatFeeUsd, lowFeeFields, type FeeEstimate } f
 import { sendUsdc, solanaInjected, waitConfirmed, type SolanaInjected, type SolanaSigner } from "@/wallet/solana-pay";
 import { Group, GroupCaption, GroupTitle, Row, RowText } from "./rows";
 import { COIN_NAMES, CoinKeyRow, CoinPayPanel } from "./coin-pay";
-import { formatMoney } from "./market";
+import { formatDay, formatMoney } from "./market";
 
 const APPROVE = [
   {
@@ -109,6 +111,27 @@ const REFUNDING = /being refunded/;
  *  it, before the page stops and offers to check again. */
 const CONFIRM_WAIT_MS = 60_000;
 
+/** The edge's "not yet" for a fee transfer: not mined, or short of blocks.
+ *  Anything else it refuses is final. */
+const FEE_NOT_YET = /not on chain yet|another block/;
+/** A transfer the edge already counted: an earlier try got through. */
+const FEE_COUNTED = /already counted/;
+
+/** Platform fees owed on coin sales, from the account. Minor units. */
+export interface CoinFees {
+  owed: number;
+  /** Unix seconds: when the debt began. */
+  since: number | null;
+  /** Kept from a USDC sale that took more than was owed. */
+  credit: number;
+  /** Above this, coin payments stop. */
+  limit: number | null;
+  /** Owed this long, any amount stops them. */
+  graceSecs: number | null;
+  paused: boolean;
+  currency: string;
+}
+
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 interface Injected {
@@ -150,7 +173,7 @@ export function UsdcWallet({
   payoutSolana,
   coins = [],
   coinKeys = {},
-  coinFeesOwed = null,
+  coinFees = null,
   disabled,
   onPaid,
 }: {
@@ -160,8 +183,9 @@ export function UsdcWallet({
   /** Coins other than USDC the edge takes, and this box's keys for them. */
   coins?: Coin[];
   coinKeys?: Partial<Record<Coin, string>>;
-  /** Platform fees owed on this box's coin sales, formatted; null for none. */
-  coinFeesOwed?: string | null;
+  /** Platform fees owed on this box's coin sales; null when the edge takes
+   *  no coins. */
+  coinFees?: CoinFees | null;
   disabled: boolean;
   /** Reload the market once the edge has counted a payment, so the order
    *  reads paid and the refresh announces it. */
@@ -196,6 +220,10 @@ export function UsdcWallet({
   const [lastSent, setLastSent] = React.useState<{ text: string; href: string | null } | null>(null);
   const [sendOn, setSendOn] = React.useState(usdc.chains[0]?.network ?? "");
   const [resolved, setResolved] = React.useState<string | null>(null);
+  // Paying the platform fees owed on coin sales: the network, and a sent
+  // transfer the edge has not counted yet, kept so it is never sent twice.
+  const [feeOn, setFeeOn] = React.useState(usdc.chains.find((c) => c.family === "evm")?.network ?? "");
+  const [feeTx, setFeeTx] = React.useState<PendingFee | null>(readPendingFee);
 
   const evmChains = usdc.chains.filter((c) => c.family === "evm");
   const solChains = usdc.chains.filter((c) => c.family === "solana");
@@ -561,6 +589,130 @@ export function UsdcWallet({
     }
   };
 
+  /** Point a browser extension's wallet at `network`, adding it when the
+   *  extension does not know it. A wallet on this box needs nothing. */
+  const switchInjected = async (network: string) => {
+    if (mode !== "injected") return;
+    const eth = injected();
+    const viemChain = evmChain(network);
+    const hexId = `0x${viemChain.id.toString(16)}`;
+    try {
+      await eth?.request({ method: "wallet_switchEthereumChain", params: [{ chainId: hexId }] });
+    } catch {
+      await eth?.request({
+        method: "wallet_addEthereumChain",
+        params: [
+          {
+            chainId: hexId,
+            chainName: viemChain.name,
+            nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+            rpcUrls: [publicRpc(network)],
+          },
+        ],
+      });
+    }
+  };
+
+  /** Ask the edge to count a sent fee transfer. A "not yet" is retried for
+   *  up to a minute like an order's payment; a final refusal drops the
+   *  transfer, which the edge will never count. */
+  const countFees = async (pending: PendingFee) => {
+    const giveUpAt = Date.now() + CONFIRM_WAIT_MS;
+    let reply: FeePayment | null = null;
+    for (;;) {
+      try {
+        reply = await postMarketFeesPay(pending.tx, pending.network);
+        break;
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 409 && FEE_COUNTED.test(error.message)) break;
+        const notYet = error instanceof ApiError && error.status === 409 && FEE_NOT_YET.test(error.message);
+        if (notYet && Date.now() < giveUpAt) {
+          await sleep(2_000);
+          continue;
+        }
+        if (error instanceof ApiError && (error.status === 400 || (error.status === 409 && !notYet))) {
+          sessionStorage.removeItem(PENDING_FEE);
+          setFeeTx(null);
+        }
+        throw error;
+      }
+    }
+    sessionStorage.removeItem(PENDING_FEE);
+    setFeeTx(null);
+    void refreshBalances();
+    const currency = coinFees?.currency ?? "usd";
+    toast.success(
+      t("panes.market.coinFees.paidTitle"),
+      reply === null
+        ? pending.tx
+        : t("panes.market.coinFees.paidDetail", {
+            credited: formatMoney(reply.credited, currency),
+            owed: formatMoney(reply.owed, currency),
+          }),
+    );
+    onPaid?.();
+  };
+
+  /** Pay the platform fees owed on coin sales: a plain USDC transfer from
+   *  the payout address to the edge's treasury, then the edge counts it. */
+  const settleFees = async () => {
+    if (feeTx !== null) {
+      setBusy(true);
+      try {
+        await countFees(feeTx);
+      } catch (error) {
+        fail(error);
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
+    const chain = evmChains.find((c) => c.network === feeOn) ?? evmChains[0];
+    // The market counts cents and USDC has six decimals.
+    const amount = BigInt(coinFees?.owed ?? 0) * 10_000n;
+    if (!chain || !address || amount === 0n) return;
+    setBusy(true);
+    try {
+      let words: string | null = null;
+      if (mode === "local") {
+        words = await unlock();
+        if (words === null) return;
+      }
+      const account = words !== null ? accountFromPhrase(words) : undefined;
+      const eth = injected();
+      const viemChain = evmChain(chain.network);
+      const client = createWalletClient({
+        account: account ?? (address as Address),
+        chain: viemChain,
+        transport: mode === "injected" && eth ? custom(eth) : relay(chain.network),
+      });
+      await switchInjected(chain.network);
+      const tx = await client.writeContract({
+        address: chain.usdc as Address,
+        abi: ERC20,
+        functionName: "transfer",
+        args: [chain.treasury as Address, amount],
+        account: account ?? (address as Address),
+        chain: viemChain,
+        ...(await lowFeeFields(chain.network)),
+      });
+      const pending = { tx, network: chain.network };
+      sessionStorage.setItem(PENDING_FEE, JSON.stringify(pending));
+      setFeeTx(pending);
+      const mined = await evmClient(chain.network).waitForTransactionReceipt({ hash: tx, timeout: CONFIRM_WAIT_MS });
+      if (mined.status !== "success") {
+        sessionStorage.removeItem(PENDING_FEE);
+        setFeeTx(null);
+        throw new Error(t("panes.market.usdc.failed"));
+      }
+      await countFees(pending);
+    } catch (error) {
+      fail(error);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   /** Pay on an EVM chain: approve USDC for LososEscrow when short, then
    *  pay into it. The edge checks the seller's address and releases the
    *  deposit, or sends it back. */
@@ -574,24 +726,7 @@ export function UsdcWallet({
       chain: viemChain,
       transport: mode === "injected" && eth ? custom(eth) : relay(chain.network),
     });
-    if (mode === "injected") {
-      const hexId = `0x${viemChain.id.toString(16)}`;
-      try {
-        await eth?.request({ method: "wallet_switchEthereumChain", params: [{ chainId: hexId }] });
-      } catch {
-        await eth?.request({
-          method: "wallet_addEthereumChain",
-          params: [
-            {
-              chainId: hexId,
-              chainName: viemChain.name,
-              nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
-              rpcUrls: [publicRpc(chain.network)],
-            },
-          ],
-        });
-      }
-    }
+    await switchInjected(chain.network);
     const owner = (account?.address ?? address) as Address;
     const pub = evmClient(chain.network);
     const gross = BigInt(invoice.gross);
@@ -788,6 +923,11 @@ export function UsdcWallet({
   const needsPassword = mode === "local" && password === "";
   const invoiceChain = invoice?.chains.find((c) => c.network === (invoice.network ?? payOn));
   const sendChain = usdc.chains.find((c) => c.network === sendOn);
+  // The edge counts a fee transfer only from the signed payout address.
+  const fromPayout =
+    mode !== "none" && !!address && !!payout && address.toLowerCase() === payout.toLowerCase();
+  const showFees =
+    coinFees !== null && (coinFees.owed > 0 || coinFees.credit > 0 || feeTx !== null);
 
   const payoutDetail = () => {
     const parts: string[] = [];
@@ -950,7 +1090,7 @@ export function UsdcWallet({
             </Button>
           </Row>
         )}
-        <Row last={invoice === null && !haveWallet && !otherOpen && coins.length === 0}>
+        <Row last={invoice === null && !haveWallet && !otherOpen && coins.length === 0 && !showFees}>
           <RowText
             title={t("panes.market.usdc.receiveTitle")}
             detail={
@@ -975,7 +1115,7 @@ export function UsdcWallet({
           </div>
         </Row>
         {otherOpen && usdc.chain_id !== null && (
-          <Row last={invoice === null && !haveWallet && coins.length === 0}>
+          <Row last={invoice === null && !haveWallet && coins.length === 0 && !showFees}>
             <div className="grid w-full gap-2">
               <Input
                 aria-label={t("panes.market.usdc.otherAddress")}
@@ -1016,12 +1156,77 @@ export function UsdcWallet({
             key={c}
             coin={c}
             saved={coinKeys[c]}
-            feesOwed={coinFeesOwed}
             disabled={disabled}
-            last={invoice === null && !haveWallet && i === coins.length - 1}
+            last={invoice === null && !haveWallet && !showFees && i === coins.length - 1}
             onSaved={() => onPaid?.()}
           />
         ))}
+        {showFees && coinFees && (
+          <Row last={invoice === null && !haveWallet}>
+            <div className="grid w-full gap-2" data-testid="coin-fees">
+              <p className="text-[13px] font-medium text-ink">{t("panes.market.coinFees.title")}</p>
+              {coinFees.owed > 0 && (
+                <p className="text-[13px] text-muted">
+                  {t("panes.market.coinFees.owed", { amount: formatMoney(coinFees.owed, coinFees.currency) })}
+                </p>
+              )}
+              {coinFees.paused ? (
+                <p className="text-[13px] text-ink" role="status">
+                  {t("panes.market.coinFees.paused")}
+                </p>
+              ) : (
+                coinFees.owed > 0 &&
+                coinFees.limit !== null &&
+                coinFees.since !== null &&
+                coinFees.graceSecs !== null && (
+                  <p className="text-[13px] text-muted">
+                    {t("panes.market.coinFees.limits", {
+                      limit: formatMoney(coinFees.limit, coinFees.currency),
+                      date: formatDay(coinFees.since + coinFees.graceSecs),
+                    })}
+                  </p>
+                )
+              )}
+              {coinFees.credit > 0 && (
+                <p className="text-[13px] text-muted">
+                  {t("panes.market.coinFees.credit", { amount: formatMoney(coinFees.credit, coinFees.currency) })}
+                </p>
+              )}
+              {(coinFees.owed > 0 || feeTx !== null) && evmChains.length > 0 && (
+                <>
+                  <p className="text-[13px] text-muted">
+                    {!payout
+                      ? t("panes.market.coinFees.noPayout")
+                      : fromPayout || feeTx !== null
+                        ? t("panes.market.coinFees.payFrom")
+                        : t("panes.market.coinFees.notPayout", { address: named(payout) })}
+                  </p>
+                  {feeTx !== null && <p className="text-[13px] text-muted">{t("panes.market.coinFees.counting")}</p>}
+                  <div className="flex flex-wrap items-center gap-2">
+                    {feeTx === null && evmChains.length > 1 && (
+                      <Select
+                        label={t("panes.market.usdc.network")}
+                        value={feeOn}
+                        onChange={setFeeOn}
+                        disabled={busy}
+                        options={evmChains.map((c) => ({ value: c.network, label: withFee(c.name, sendFees[c.network]) }))}
+                      />
+                    )}
+                    <Button
+                      size="sm"
+                      disabled={disabled || busy || (feeTx === null && (!fromPayout || needsPassword))}
+                      onClick={() => void settleFees()}
+                    >
+                      {feeTx !== null
+                        ? t("panes.market.usdc.checkAgain")
+                        : t("panes.market.coinFees.pay", { amount: formatMoney(coinFees.owed, coinFees.currency) })}
+                    </Button>
+                  </div>
+                </>
+              )}
+            </div>
+          </Row>
+        )}
         {haveWallet && (
           <Row last={invoice === null}>
             <div className="grid w-full gap-2">
@@ -1103,11 +1308,7 @@ export function UsdcWallet({
                           gross: formatMoney(Number(BigInt(invoice.gross) / 10_000n), "usd"),
                           coin: COIN_NAMES[payWith],
                         })
-                      : t("panes.market.usdc.payDetail", {
-                          gross: formatUsdc(invoice.gross),
-                          fee: formatUsdc(invoice.fee),
-                          chain: invoiceChain?.name ?? allNames,
-                        })
+                      : invoicePayDetail(t, invoice, invoiceChain?.name ?? allNames)
                 }
               />
               {!invoice.tx && (invoice.coins?.length ?? 0) > 0 && (
@@ -1176,6 +1377,40 @@ export function UsdcWallet({
 }
 
 const PENDING_INVOICE = "losos-usdc-invoice";
+const PENDING_FEE = "losos-coin-fee-tx";
+
+/** A fee transfer sent to the treasury that the edge has not counted yet. */
+type PendingFee = { tx: `0x${string}`; network: string };
+
+function readPendingFee(): PendingFee | null {
+  try {
+    const raw = sessionStorage.getItem(PENDING_FEE);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as PendingFee;
+    return typeof parsed?.tx === "string" && typeof parsed.network === "string" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+/** What the buyer pays and where it goes. When part of the fee settles the
+ *  seller's platform fees on coin sales, the buyer still pays `gross` and
+ *  the line says how the fee splits. */
+export function invoicePayDetail(t: ReturnType<typeof useT>, invoice: StablecoinInvoice, chain: string): string {
+  const offset = BigInt(invoice.fee_offset ?? "0");
+  return offset > 0n
+    ? t("panes.market.usdc.payDetailOffset", {
+        gross: formatUsdc(invoice.gross),
+        fee: formatUsdc(invoice.fee),
+        offset: formatUsdc(offset.toString()),
+        chain,
+      })
+    : t("panes.market.usdc.payDetail", {
+        gross: formatUsdc(invoice.gross),
+        fee: formatUsdc(invoice.fee),
+        chain,
+      });
+}
 
 export function formatUsdc(baseUnits: string): string {
   const n = BigInt(baseUnits);

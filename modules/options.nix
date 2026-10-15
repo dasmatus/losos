@@ -1858,7 +1858,8 @@ in
         wallet; each order gets a fresh address derived from the seller's own
         extended public key, so the coins go straight to the seller and the
         edge never holds a private key. The platform fee on these orders is
-        billed to the seller separately. Needs `losos.edge.market.usdc.enable`.
+        owed by the seller and settled in USDC (`coinFeeLimit`). Needs
+        `losos.edge.market.usdc.enable`.
         See handbook/docs/in-depth/market.md.
       '';
     };
@@ -1900,7 +1901,8 @@ in
         seller's primary address and private view key; each order gets a
         fresh subaddress of the seller's own wallet, so the coins go straight
         to the seller and nothing on the edge can spend them. The platform
-        fee on these orders is billed to the seller separately. Needs
+        fee on these orders is owed by the seller and settled in USDC
+        (`coinFeeLimit`). Needs
         `losos.edge.market.usdc.enable`. See handbook/docs/in-depth/market.md.
       '';
     };
@@ -1933,7 +1935,8 @@ in
         blocks from the public servers in `servers` and decrypts them
         itself, so the key never leaves the edge, and counts a payment only
         when servers of two different operators agree on it. The platform fee
-        on these orders is billed to the seller separately. Needs
+        on these orders is owed by the seller and settled in USDC
+        (`coinFeeLimit`). Needs
         `losos.edge.market.usdc.enable`. See handbook/docs/in-depth/market.md.
       '';
     };
@@ -2068,6 +2071,19 @@ in
         400 is 4%. Collected as Stripe's application_fee_amount on a
         destination charge. Capped at 20% so a typo cannot take a third of
         every sale.
+      '';
+    };
+
+    edge.market.coinFeeLimit = lib.mkOption {
+      type = lib.types.ints.between 0 100000;
+      default = 1000;
+      description = ''
+        The platform fees, in the market currency's minor unit (cents), a
+        seller may owe on Bitcoin, Monero and Zcash sales before buyers can no
+        longer pay that seller in those coins: 1000 is US$10. A debt of any
+        size older than 30 days stops them too. USDC keeps working, and each
+        USDC sale pays toward the debt. 0 stops coin payments at the first
+        cent owed.
       '';
     };
 
