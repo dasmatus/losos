@@ -105,30 +105,10 @@ let
   trustSh = "${stateDir}/trust.sh";
   trustPs1 = "${stateDir}/trust.ps1";
 
-  # Verbatim from `lanOnly` in modules/containers.nix, which cannot be reached
-  # from here (it is a `let` binding, not an option) and which is being edited
-  # under a different change right now. Copying four lines was the cheaper of
-  # the two risks. What keeps them honest is tests/setup.nix asserting the
-  # *behaviour* — 403 from loopback, 200 from a LAN source — rather than the
-  # text, so a divergence shows up as a red test and not as a route that
-  # quietly guards nothing.
-  #
-  # The leading `if` refuses traffic from the box itself (source = the address
-  # it arrived on), and `deny 10.42.0.0/16` is the mesh's pod network;
-  # containers.nix says why each is there.
-  #
-  # The same warning applies here as there: never "fix" a loopback 403 with
-  # `allow 127.0.0.1`. Loopback is where the tunnel arrives.
-  lanOnly = ''
-    if ($remote_addr = $server_addr) {
-      return 403;
-    }
-    deny 10.42.0.0/16;
-    allow 10.0.0.0/8;
-    allow 172.16.0.0/12;
-    allow 192.168.0.0/16;
-    deny all;
-  '';
+  # The front vhost's LAN-only guard; modules/containers.nix says why. Never
+  # "fix" a loopback 403 with `allow 127.0.0.1`: loopback is where the tunnel
+  # arrives.
+  lanOnly = import ./lan-only.nix;
 
   # Rendered through toJSON so a hostName containing a quote cannot produce a
   # document the wizard fails to parse.
