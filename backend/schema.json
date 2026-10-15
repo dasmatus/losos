@@ -1873,6 +1873,29 @@
         "out": "{\"deleted\": true|false}",
         "note": "Idempotent; false when there was no such widget."
       },
+      "GET /api/pins": {
+        "auth": true,
+        "out": "{\"pins\": [<pin>], \"limit\": 24}",
+        "note": "What the owner pinned to the sidebar, in their order, kept on the box as /var/lib/losos/pins.json (backend/src/pins.rs). A pin is a reference, never an address: {\"kind\":\"tile\",\"app\":\"<an Overview tile id>\"}, {\"kind\":\"app\",\"release\":\"<an app installed from the search>\"}, {\"kind\":\"file\",\"id\":<LosOS cloud file id>,\"path\":\"/...\",\"folder\":bool} or {\"kind\":\"repo\",\"owner\":\"...\",\"name\":\"...\"}. The SPA decides where each opens, always on this box (admin-ui/app/src/lib/pins.ts)."
+      },
+      "PUT /api/pins": {
+        "auth": true,
+        "in": "{\"pins\": [<pin>]}",
+        "out": "{\"pins\": [<pin>], \"limit\": 24}",
+        "note": "Replace the list whole; a move is a PUT in the new order. 400 with the reason for more than `limit` pins, the same pin twice, an unknown kind or field, a tile id that is not lowercase letters, a release name that is not one, a file id of 0, a path that is not absolute or has an empty, . or .. part, or a repository name with anything but letters, digits, - _ and dots. Audited; not a rebuild."
+      },
+      "GET /api/cloud/files": {
+        "auth": true,
+        "in": "query string: path=/<folder> (default /), or q=<text> (1-100 characters) to search names anywhere",
+        "out": "{\"available\": true, \"path\": \"/...\", \"query\": \"...\"|null, \"entries\": [{\"name\", \"path\", \"id\", \"folder\", \"size\"|null}], \"more\": bool} or {\"available\": false, \"reason\": \"signIn\"|\"notUp\", \"path\", \"query\", \"entries\": []}",
+        "note": "One folder of the owner's LosOS cloud, folders first then by name, at most 500 entries (`more` when there were more); with q, the files and folders whose name holds the text, at most 50. Asked over WebDAV on loopback with an app password lososd obtains from LosOS cloud when the owner signs in with their password (or sets the first one), kept 0600 at /var/lib/losos/cloud-key and shown in LosOS cloud's security settings as \"LosOS admin page\". `signIn` until there is one, and again once it is revoked. 400 for a path or query that is not one, or a folder that is gone."
+      },
+      "GET /api/git/repos": {
+        "auth": true,
+        "in": "query string: q=<text> (optional) to keep those whose name or description holds it",
+        "out": "{\"available\": true, \"repos\": [{\"owner\", \"name\", \"private\", \"description\"}]} or {\"available\": false, \"reason\": \"noGit\"|\"notUp\", \"repos\": []}",
+        "note": "The owner's repositories on LosOS Git, private ones included, at most 50, by name. Asked as the bot administrator the configuration repository uses. `noGit` on a box without LosOS Git."
+      },
       "GET /api/options": {
         "auth": true,
         "out": "optionsResponse",

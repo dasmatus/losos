@@ -48,6 +48,7 @@ import {
   TOKEN_PATTERN,
 } from "@/lib/api";
 import { followAuth } from "@/lib/look";
+import { followPins } from "@/lib/pins";
 import { readProgress } from "@/screens/wizard/progress";
 import { isTourOpen, startTour, subscribeTour } from "@/tour/store";
 import { closePalette, isPaletteColon, isPaletteShortcut, openPalette, paletteState, subscribePalette } from "@/palette/store";
@@ -157,6 +158,8 @@ function Shell() {
    * token: loaded on sign-in, dropped on sign-out. Once, for the page. */
   React.useEffect(() => {
     followAuth();
+    // The sidebar's pins follow the token the same way (lib/pins.ts).
+    followPins();
   }, []);
 
   /* Setup runs to the end once it has started, and this latch is what makes

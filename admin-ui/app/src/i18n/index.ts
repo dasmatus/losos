@@ -14,6 +14,7 @@ import look from "./look";
 import machines from "./machines";
 import palette from "./palette";
 import panes from "./panes";
+import pins from "./pins";
 import settings from "./settings";
 import shell from "./shell";
 import tour from "./tour";
@@ -38,6 +39,7 @@ export const MESSAGES = {
   ...lab,
   ...tour,
   ...palette,
+  ...pins,
 };
 
 export type MessageKey = keyof typeof MESSAGES;

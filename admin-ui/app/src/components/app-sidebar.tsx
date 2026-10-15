@@ -7,6 +7,8 @@ import {
   Home01Icon,
   LayoutGridIcon,
   NetworkIcon,
+  PencilEdit02Icon,
+  PinOffIcon,
   Search01Icon,
   Settings01Icon,
   Share08Icon,
@@ -15,6 +17,8 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import {
   Sidebar,
   SidebarContent,
+  SidebarGroup,
+  SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuAction,
@@ -33,6 +37,8 @@ import { paneFromPath, paneHref } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 import { SHORTCUT_ARIA, openPalette, shortcutLabel } from "@/palette/store";
 import { paneById, type SettingsPaneId } from "@/screens/settings/panes";
+import { PinsDialog, usePins, useSavePins } from "@/components/pins-dialog";
+import { pinKey, viewPin, type PinView } from "@/lib/pins";
 
 /* The one panel: every destination on this page in a single sidebar, in the
  * shape of shadcn's Sidebar ("collapses to icons"), inside the recessed box.
@@ -51,10 +57,18 @@ import { paneById, type SettingsPaneId } from "@/screens/settings/panes";
  *   Settings            ▾   (a fold only; /settings opens Network)
  *     Network, Hardware, Security, About, Reset
  *
+ *   Pinned              ✎   (the owner's own: apps, files, repositories)
+ *     Calendar
+ *     plan.pdf
+ *
+ * The pins are the owner's, kept on the box (lib/pins.ts); each opens in
+ * its own app, and the pencil opens the dialog that adds, orders and
+ * removes them (components/pins-dialog.tsx). The palette finds them too.
+ *
  * A folded entry opens by itself when the page is on one of its
  * sub-entries. The search box at the top is the command palette's button
  * (src/palette/): it opens the palette, which finds every entry here and
- * also apps, files in LosOS cloud and repositories in LosOS Git.
+ * also the pins, apps, files in LosOS cloud and repositories in LosOS Git.
  *
  * On a wide screen the trigger (or Ctrl/Cmd+B) narrows the panel to a rail of
  * icons, each naming itself in a tooltip; on a phone a row naming where you
@@ -172,6 +186,18 @@ export function AppSidebar() {
   const shortcut = shortcutLabel();
   const searchLabel = t("palette.open", { shortcut });
 
+  const pins = usePins();
+  const [editing, setEditing] = React.useState(false);
+  const views = React.useMemo(
+    () => pins.pins.map((pin) => viewPin(pin, pins.installed)).filter((view): view is PinView => view !== null),
+    [pins],
+  );
+  const openEditor = (): void => {
+    // A phone's panel is a modal sheet of its own; it steps aside first.
+    setOpenMobile(false);
+    setEditing(true);
+  };
+
   const isOpen = (key: string): boolean => openFolds[key] === true;
   const setOpen = (key: string, open: boolean): void => setOpenFolds((current) => ({ ...current, [key]: open }));
 
@@ -241,9 +267,106 @@ export function AppSidebar() {
               />
             ))}
           </SidebarMenu>
+          {/* Signed out there is nothing to show; the box keeps the list,
+              and a box that did not send one (an older build) gets none. */}
+          {(pins.status === "ready" || pins.pins.length > 0) && (
+            <PinnedSection views={views} pathname={pathname} rail={rail} onEdit={openEditor} />
+          )}
         </SidebarContent>
       </Sidebar>
+      <PinsDialog open={editing} onOpenChange={setEditing} />
     </>
+  );
+}
+
+function PinnedSection({
+  views,
+  pathname,
+  rail,
+  onEdit,
+}: {
+  views: readonly PinView[];
+  pathname: string;
+  rail: boolean;
+  onEdit: () => void;
+}) {
+  const t = useT();
+  const { pins } = usePins();
+  const { busy, save } = useSavePins();
+  // On the rail an empty section is nothing to point at.
+  if (views.length === 0 && rail) return null;
+
+  return (
+    <SidebarGroup role="group" className="mt-2" aria-label={t("pins.title")} data-pins>
+      {/* On the rail the label is gone; a hairline keeps the pins apart
+          from the sections above them. */}
+      <div aria-hidden="true" className="mx-2 mb-1.5 hidden h-px bg-line group-data-[collapsible=icon]/sidebar:block" />
+      <div className="flex items-center group-data-[collapsible=icon]/sidebar:hidden">
+        <SidebarGroupLabel className="flex-1 pb-1">{t("pins.title")}</SidebarGroupLabel>
+        <button
+          type="button"
+          onClick={onEdit}
+          aria-label={t("pins.edit")}
+          title={t("pins.edit")}
+          className={cn(
+            "mr-1 flex size-6 items-center justify-center rounded-[6px] text-faint",
+            "transition-[background-color,color] duration-150 hover:bg-surface hover:text-ink",
+            "focus-visible:ring-2 focus-visible:ring-accent/40 focus-visible:outline-none",
+          )}
+        >
+          <HugeiconsIcon icon={PencilEdit02Icon} size={13} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+        </button>
+      </div>
+      {views.length === 0 ? (
+        <button
+          type="button"
+          onClick={onEdit}
+          className={cn(
+            "mx-1 rounded-control border border-dashed border-line px-2.5 py-2 text-left",
+            "text-[12.5px] leading-snug text-muted transition-colors duration-150 hover:border-accent/45 hover:text-ink",
+          )}
+        >
+          {t("pins.empty")}
+        </button>
+      ) : (
+        <SidebarMenu>
+          {views.map((view) => {
+            const name = view.labelKey !== null ? t(view.labelKey) : view.label;
+            const active = view.inApp && pathname === view.href;
+            return (
+              <SidebarMenuItem key={view.key}>
+                <SidebarMenuButton
+                  isActive={active}
+                  tooltip={name}
+                  render={
+                    view.inApp ? (
+                      <Link to={view.href} aria-current={active ? "page" : undefined} />
+                    ) : (
+                      <a
+                        href={view.href}
+                        title={view.detail === null ? undefined : `${name} · ${view.detail}`}
+                        {...(view.newTab ? { target: "_blank", rel: "noreferrer noopener" } : {})}
+                      />
+                    )
+                  }
+                >
+                  <Glyph icon={view.icon} active={active} />
+                  <span className="group-data-[collapsible=icon]/sidebar:sr-only">{name}</span>
+                </SidebarMenuButton>
+                <SidebarMenuAction
+                  aria-label={t("pins.unpin", { name })}
+                  disabled={busy}
+                  onClick={() => void save(pins.filter((pin) => pinKey(pin) !== view.key))}
+                  className="opacity-0 group-focus-within/menu-item:opacity-100 group-hover/menu-item:opacity-100 max-md:opacity-100"
+                >
+                  <HugeiconsIcon icon={PinOffIcon} size={13} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+                </SidebarMenuAction>
+              </SidebarMenuItem>
+            );
+          })}
+        </SidebarMenu>
+      )}
+    </SidebarGroup>
   );
 }
 
