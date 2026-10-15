@@ -30,7 +30,7 @@ inputs:
       flake inputs does not draw on the shared, unauthenticated rate limit that
       every other job on these runners is also drawing on.
     required: false
-    default: ""
+    default: ${{ github.token }}
   cache-url:
     description: "LOSOS_PROXY_URL from the calling workflow."
     required: false

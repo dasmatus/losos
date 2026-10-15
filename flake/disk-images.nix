@@ -263,39 +263,59 @@ let
   # UEFI, because the appliance boots systemd-boot: OVMF_CODE as read-only
   # pflash, and a private writable copy of OVMF_VARS for the boot entry —
   # which is the NVRAM the image itself cannot have.
-  runner = pkgs.writeShellApplication {
+  vmRun =
+    {
+      name,
+      env,
+      file,
+      cpus,
+      mem,
+      fwd,
+      banner,
+    }:
+    pkgs.writeShellApplication {
+      inherit name;
+      runtimeInputs = [
+        pkgs.qemu
+        pkgs.coreutils
+      ];
+      text = ''
+        disk="''${${env}_DISK:-${baseNameOf file}}"
+        vars="''${${env}_VARS:-${lib.removeSuffix ".qcow2" (baseNameOf file)}-efivars.fd}"
+
+        if [ ! -e "$disk" ]; then
+          echo "creating $disk (copy-on-write over the read-only store image)"
+          qemu-img create -f qcow2 -F qcow2 -b ${file} "$disk"
+        fi
+        if [ ! -e "$vars" ]; then
+          cp ${pkgs.OVMF.fd.variables} "$vars"
+          chmod 0644 "$vars"
+        fi
+
+        ${banner}
+        echo "quit:      Ctrl-a x"
+        exec qemu-system-x86_64 \
+          -machine q35,accel=kvm:tcg \
+          -cpu max \
+          -smp "''${${env}_CPUS:-${toString cpus}}" \
+          -m "''${${env}_MEM:-${toString mem}}" \
+          -drive if=pflash,format=raw,unit=0,readonly=on,file=${pkgs.OVMF.fd.firmware} \
+          -drive if=pflash,format=raw,unit=1,file="$vars" \
+          -drive file="$disk",if=virtio,format=qcow2 \
+          -nic user,model=virtio-net-pci,${fwd} \
+          -nographic "$@"
+      '';
+    };
+  runner = vmRun {
     name = "losos-vm-run";
-    runtimeInputs = [
-      pkgs.qemu
-      pkgs.coreutils
-    ];
-    text = ''
-      disk="''${LOSOS_VM_DISK:-losos-demo.qcow2}"
-      vars="''${LOSOS_VM_VARS:-losos-demo-efivars.fd}"
-
-      if [ ! -e "$disk" ]; then
-        echo "creating $disk (copy-on-write over the read-only store image)"
-        qemu-img create -f qcow2 -F qcow2 -b ${image}/losos-demo.qcow2 "$disk"
-      fi
-      if [ ! -e "$vars" ]; then
-        cp ${pkgs.OVMF.fd.variables} "$vars"
-        chmod 0644 "$vars"
-      fi
-
+    env = "LOSOS_VM";
+    file = "${image}/losos-demo.qcow2";
+    cpus = 4;
+    mem = 4096;
+    fwd = "hostfwd=tcp::8080-:80,hostfwd=tcp::8443-:443";
+    banner = ''
       echo "admin UI:  http://localhost:8080/   (the LAN-only guard sees 10.0.2.2)"
-      echo "over TLS:  https://localhost:8443/"
-      echo "quit:      Ctrl-a x"
-      exec qemu-system-x86_64 \
-        -machine q35,accel=kvm:tcg \
-        -cpu max \
-        -smp "''${LOSOS_VM_CPUS:-4}" \
-        -m "''${LOSOS_VM_MEM:-4096}" \
-        -drive if=pflash,format=raw,unit=0,readonly=on,file=${pkgs.OVMF.fd.firmware} \
-        -drive if=pflash,format=raw,unit=1,file="$vars" \
-        -drive file="$disk",if=virtio,format=qcow2 \
-        -nic user,model=virtio-net-pci,hostfwd=tcp::8080-:80,hostfwd=tcp::8443-:443 \
-        -nographic "$@"
-    '';
+      echo "over TLS:  https://localhost:8443/"'';
   };
   # ── The closure-carrying installer ISO ────────────────────────────────────
   #
@@ -422,31 +442,18 @@ let
     memSize = 2048;
     copyChannel = false;
   };
-  edgeRunner = pkgs.writeShellApplication {
+  # User-mode networking is enough to log in and look around, but a gateway
+  # on QEMU's private 10.0.2.0/24 advertises an address no box can reach; put
+  # it on the LAN with a bridge (Proxmox and libvirt do) to use it for real.
+  # The registrar API is forwarded to :8443 on the host.
+  edgeRunner = vmRun {
     name = "losos-edge-vm-run";
-    runtimeInputs = [
-      pkgs.qemu
-      pkgs.coreutils
-    ];
-    # User-mode networking is enough to log in and look around, but a
-    # gateway on QEMU's private 10.0.2.0/24 advertises an address no box can
-    # reach; put it on the LAN with a bridge (Proxmox and libvirt do) to use
-    # it for real. The registrar API is forwarded to :8443 on the host.
-    text = ''
-      disk="''${LOSOS_EDGE_VM_DISK:-losos-edge-gateway.qcow2}"
-      vars="''${LOSOS_EDGE_VM_VARS:-losos-edge-gateway-efivars.fd}"
-      if [ ! -e "$disk" ]; then
-        echo "creating $disk (copy-on-write over the read-only store image)"
-        qemu-img create -f qcow2 -F qcow2 -b ${edgeImage}/losos-edge-gateway.qcow2 "$disk"
-      fi
-      if [ ! -e "$vars" ]; then
-        cp ${pkgs.OVMF.fd.variables} "$vars"
-        chmod 0644 "$vars"
-      fi
-      echo "console: root / losos (change it at first login); registrar API on localhost:8443"
-      echo "quit:    Ctrl-a x"
-      exec qemu-system-x86_64         -machine q35,accel=kvm:tcg         -cpu max         -smp "''${LOSOS_EDGE_VM_CPUS:-2}"         -m "''${LOSOS_EDGE_VM_MEM:-2048}"         -drive if=pflash,format=raw,unit=0,readonly=on,file=${pkgs.OVMF.fd.firmware}         -drive if=pflash,format=raw,unit=1,file="$vars"         -drive file="$disk",if=virtio,format=qcow2         -nic user,model=virtio-net-pci,hostfwd=tcp::8443-:8443         -nographic "$@"
-    '';
+    env = "LOSOS_EDGE_VM";
+    file = "${edgeImage}/losos-edge-gateway.qcow2";
+    cpus = 2;
+    mem = 2048;
+    fwd = "hostfwd=tcp::8443-:8443";
+    banner = ''echo "console:   root / losos (change it at first login); registrar API on localhost:8443"'';
   };
 in
 {
