@@ -17,8 +17,6 @@ pub const BUS_NAME: &str = "org.losos1";
 pub const OBJECT_PATH: &str = "/org/losos1";
 /// The control interface.
 pub const INTERFACE: &str = "org.losos.Control1";
-/// Error name `lososd` returns for a rejected call.
-pub const ERROR_NAME: &str = "org.losos1.Error.Failed";
 
 /// A failed round trip to the daemon, already phrased for the user.
 #[derive(Debug, thiserror::Error)]

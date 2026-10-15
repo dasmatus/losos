@@ -50,7 +50,7 @@ impl Receipts {
         match urandom::<16>() {
             Some(salt) => self.remember_at(user, password, salt, Instant::now()),
             None => {
-                tracing::warn!("no salt from /dev/urandom; this claim cannot be replayed");
+                tracing::warn!("no random salt; this claim cannot be replayed");
                 self.last = None;
             }
         }
@@ -96,18 +96,11 @@ fn constant_time_eq(a: &[u8; 32], b: &[u8; 32]) -> bool {
     a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
 }
 
-/// `N` bytes from `/dev/urandom`, or `None` when they cannot be read. No
+/// `N` random bytes, or `None` when the system source fails. No
 /// fallback to the clock or a fixed value: a predictable salt is the one
 /// thing this must not be, and the caller can do without a receipt.
 fn urandom<const N: usize>() -> Option<[u8; N]> {
-    use std::io::Read;
-    let mut buf = Vec::with_capacity(N);
-    std::fs::File::open("/dev/urandom")
-        .ok()?
-        .take(N as u64)
-        .read_to_end(&mut buf)
-        .ok()?;
-    buf.try_into().ok()
+    crate::io_backend::random_bytes().ok()
 }
 
 #[cfg(test)]

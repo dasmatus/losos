@@ -37,8 +37,20 @@ pub struct Paths {
     pub options_file: PathBuf,
 }
 
-fn env_or(key: &str, default: &str) -> String {
+pub(crate) fn env_or(key: &str, default: &str) -> String {
     std::env::var(key).unwrap_or_else(|_| default.to_string())
+}
+
+/// `N` bytes from the system's random source.
+pub(crate) fn random_bytes<const N: usize>() -> anyhow::Result<[u8; N]> {
+    ring::rand::generate(&ring::rand::SystemRandom::new())
+        .map(|r| r.expose())
+        .map_err(|_| anyhow::anyhow!("the system random source failed"))
+}
+
+/// Lowercase hex.
+pub(crate) fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
 impl Paths {
@@ -245,13 +257,7 @@ impl FileCodeStore {
     }
 }
 
-impl Default for FileCodeStore {
-    fn default() -> Self {
-        Self::from_env()
-    }
-}
-
-/// The real [`crate::catalogue::Fetch`]: one `curl` per search.
+/// Fetch a catalogue URL with one `curl` and hand back its body.
 ///
 /// A subprocess rather than a client crate, for the reasons in the header of
 /// `catalogue.rs` — chiefly that `flake/packages.nix` pins `cargoHash`, so a
@@ -276,41 +282,37 @@ impl Default for FileCodeStore {
 /// Nothing is passed through a shell: the argument vector goes to `execve`, so
 /// the query needs no quoting to be safe. [`crate::catalogue::validate_query`]
 /// still refuses control characters, so the property does not rest on that.
-pub struct CurlFetch;
+fn curl_get(url: &str) -> anyhow::Result<String> {
+    /// Bytes of response body accepted. The screen renders twenty rows.
+    const MAX_BYTES: usize = 2 * 1024 * 1024;
 
-impl crate::catalogue::Fetch for CurlFetch {
-    fn get(&mut self, url: &str) -> anyhow::Result<String> {
-        /// Bytes of response body accepted. The screen renders twenty rows.
-        const MAX_BYTES: usize = 2 * 1024 * 1024;
+    let out = std::process::Command::new("curl")
+        .args(["--silent", "--show-error", "--fail", "--location"])
+        .args(["--proto", "=https", "--proto-redir", "=https"])
+        .args(["--max-time", &crate::catalogue::TIMEOUT_SECS.to_string()])
+        .args(["--max-filesize", &MAX_BYTES.to_string()])
+        .args(["--header", "Accept: application/json"])
+        .arg(url)
+        .output()
+        // `curl` comes from the unit's `path` in modules/daemon.nix, which
+        // *replaces* PATH. Name that here: the bare ENOENT names only
+        // "curl" and sends the reader looking in the wrong file.
+        .context("running curl (is it on lososd's unit path? see modules/daemon.nix)")?;
 
-        let out = std::process::Command::new("curl")
-            .args(["--silent", "--show-error", "--fail", "--location"])
-            .args(["--proto", "=https", "--proto-redir", "=https"])
-            .args(["--max-time", &crate::catalogue::TIMEOUT_SECS.to_string()])
-            .args(["--max-filesize", &MAX_BYTES.to_string()])
-            .args(["--header", "Accept: application/json"])
-            .arg(url)
-            .output()
-            // `curl` comes from the unit's `path` in modules/daemon.nix, which
-            // *replaces* PATH. Name that here: the bare ENOENT names only
-            // "curl" and sends the reader looking in the wrong file.
-            .context("running curl (is it on lososd's unit path? see modules/daemon.nix)")?;
-
-        if !out.status.success() {
-            // curl's own diagnosis is the useful half and it goes to the
-            // journal. The caller turns this into "the search did not come
-            // back", because an HTTP client's stderr is not something to put
-            // in front of the owner.
-            let why = String::from_utf8_lossy(&out.stderr);
-            anyhow::bail!("the catalogue search failed: {}", why.trim());
-        }
-        if out.stdout.len() > MAX_BYTES {
-            // --max-filesize only acts on a declared Content-Length, so a
-            // chunked response can still overrun it.
-            anyhow::bail!("the catalogue returned more than {MAX_BYTES} bytes");
-        }
-        String::from_utf8(out.stdout).context("the catalogue returned a body that is not UTF-8")
+    if !out.status.success() {
+        // curl's own diagnosis is the useful half and it goes to the
+        // journal. The caller turns this into "the search did not come
+        // back", because an HTTP client's stderr is not something to put
+        // in front of the owner.
+        let why = String::from_utf8_lossy(&out.stderr);
+        anyhow::bail!("the catalogue search failed: {}", why.trim());
     }
+    if out.stdout.len() > MAX_BYTES {
+        // --max-filesize only acts on a declared Content-Length, so a
+        // chunked response can still overrun it.
+        anyhow::bail!("the catalogue returned more than {MAX_BYTES} bytes");
+    }
+    String::from_utf8(out.stdout).context("the catalogue returned a body that is not UTF-8")
 }
 
 /// Browse the LAN for `_losos-edge._tcp` once.
@@ -570,16 +572,13 @@ fn ensure_proxy_secrets() {
         if path.exists() {
             continue;
         }
-        let mut buf = [0u8; 32];
-        let read = std::fs::File::open("/dev/urandom").and_then(|mut f| {
-            use std::io::Read;
-            f.read_exact(&mut buf)
-        });
-        if let Err(e) = read {
-            tracing::error!(error = %e, "could not read /dev/urandom to mint {var}");
-            continue;
-        }
-        let token: String = buf.iter().map(|b| format!("{b:02x}")).collect();
+        let token = match random_bytes::<32>() {
+            Ok(buf) => hex(&buf),
+            Err(e) => {
+                tracing::error!(error = %e, "could not read /dev/urandom to mint {var}");
+                continue;
+            }
+        };
         match atomic_write_secret(path, token.as_bytes()) {
             Ok(()) => tracing::info!(path = %path.display(), "minted the {var} secret"),
             Err(e) => tracing::error!(error = %e, path = %path.display(), "could not mint {var}"),
@@ -677,7 +676,7 @@ pub fn start_erase_driver(backend: &IoLosos) {
 /// `--fail` is deliberately absent: the registrar's 4xx bodies are the
 /// refusals the owner needs to read, and the status comes back via
 /// `--write-out`. `--proto =https` and no `--insecure` for the reasons in
-/// [`CurlFetch`], with more at stake here since this call authenticates.
+/// [`curl_get`], with more at stake here since this call authenticates.
 fn curl_market(
     config: &crate::market::Config,
     op: &crate::market::Op,
@@ -982,12 +981,7 @@ impl crate::recovery::CodeStore for FileCodeStore {
     }
 
     fn fresh_bytes(&mut self) -> anyhow::Result<[u8; 16]> {
-        use std::io::Read;
-        let mut buf = [0u8; 16];
-        std::fs::File::open("/dev/urandom")
-            .and_then(|mut f| f.read_exact(&mut buf))
-            .context("reading 16 bytes from /dev/urandom")?;
-        Ok(buf)
+        random_bytes()
     }
 }
 
@@ -1294,6 +1288,16 @@ fn fetch_chart_files(chart: &crate::apps::ChartRef) -> anyhow::Result<crate::app
     result
 }
 
+/// Read a file; one that is not there reads as `None`, any other failure is
+/// an error carrying `what`.
+fn read_if_present(path: impl AsRef<Path>, what: &str) -> anyhow::Result<Option<String>> {
+    match std::fs::read_to_string(path) {
+        Ok(text) => Ok(Some(text)),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(anyhow::Error::new(e).context(what.to_owned())),
+    }
+}
+
 /// Remove a file; one that is not there is already removed.
 fn remove_if_present(path: &Path) -> anyhow::Result<()> {
     match std::fs::remove_file(path) {
@@ -1359,10 +1363,6 @@ impl IoLosos {
         }
     }
 
-    pub fn from_env() -> Self {
-        Self::new(Paths::from_env())
-    }
-
     /// Take the state lock.
     ///
     /// Poisoning is recovered from on purpose. The mutex guards no in-memory
@@ -1392,12 +1392,6 @@ impl IoLosos {
         let _guard = self.lock_state();
         let mut backend = self.clone();
         f(&mut backend)
-    }
-}
-
-impl Default for IoLosos {
-    fn default() -> Self {
-        Self::from_env()
     }
 }
 
@@ -1465,12 +1459,7 @@ impl Losos for IoLosos {
     }
 
     fn remove_background(&mut self) -> anyhow::Result<()> {
-        let path = self.paths.background_file();
-        match std::fs::remove_file(&path) {
-            Ok(()) => Ok(()),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-            Err(e) => Err(anyhow::Error::new(e).context(format!("removing {}", path.display()))),
-        }
+        remove_if_present(&self.paths.background_file())
     }
 
     // ── Online growth of /persist ───────────────────────────────────────
@@ -1814,9 +1803,7 @@ impl Losos for IoLosos {
     }
 
     fn search_apps(&mut self, query: &str) -> anyhow::Result<Vec<crate::catalogue::App>> {
-        let mut fetch = CurlFetch;
-        let url = crate::catalogue::search_url(query);
-        let body = crate::catalogue::Fetch::get(&mut fetch, &url)?;
+        let body = curl_get(&crate::catalogue::search_url(query))?;
         crate::catalogue::parse_results(&body)
     }
 
@@ -1900,11 +1887,7 @@ impl Losos for IoLosos {
         let path =
             std::path::PathBuf::from(env_or("LOSOS_RELAY_PASS_FILE", DEFAULT_RELAY_PASS_FILE));
         match pass {
-            None => match std::fs::remove_file(&path) {
-                Ok(()) => Ok(()),
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-                Err(e) => Err(e).with_context(|| format!("removing {}", path.display())),
-            },
+            None => remove_if_present(&path),
             Some(pass) => {
                 let body = format!("{pass}\n");
                 if std::fs::read_to_string(&path).is_ok_and(|old| old == body) {
@@ -2071,23 +2054,14 @@ impl Losos for IoLosos {
     }
 
     fn mint_secret(&mut self) -> anyhow::Result<crate::setup::Secret> {
-        let mut buf = [0u8; 24];
-        {
-            use std::io::Read;
-            std::fs::File::open("/dev/urandom")
-                .and_then(|mut urandom| urandom.read_exact(&mut buf))
-                .context("reading /dev/urandom")?;
-        }
-        let hex: String = buf.iter().map(|b| format!("{b:02x}")).collect();
-        Ok(crate::setup::Secret::new(&hex))
+        Ok(crate::setup::Secret::new(&hex(&random_bytes::<24>()?)))
     }
 
     fn load_sync_report(&mut self) -> anyhow::Result<Option<crate::config_repo::SyncReport>> {
-        match std::fs::read_to_string(self.paths.sync_report_file()) {
-            Ok(text) => Ok(serde_json::from_str(&text).ok()),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
-            Err(e) => Err(anyhow::Error::new(e).context("reading the sync report")),
-        }
+        Ok(
+            read_if_present(self.paths.sync_report_file(), "reading the sync report")?
+                .and_then(|text| serde_json::from_str(&text).ok()),
+        )
     }
 
     fn save_sync_report(&mut self, report: &crate::config_repo::SyncReport) -> anyhow::Result<()> {
@@ -2224,11 +2198,11 @@ impl Losos for IoLosos {
     }
 
     fn load_upstream_report(&mut self) -> anyhow::Result<Option<crate::config_repo::SyncReport>> {
-        match std::fs::read_to_string(self.paths.upstream_report_file()) {
-            Ok(text) => Ok(serde_json::from_str(&text).ok()),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
-            Err(e) => Err(anyhow::Error::new(e).context("reading the update report")),
-        }
+        Ok(read_if_present(
+            self.paths.upstream_report_file(),
+            "reading the update report",
+        )?
+        .and_then(|text| serde_json::from_str(&text).ok()))
     }
 
     fn save_upstream_report(
@@ -2242,13 +2216,10 @@ impl Losos for IoLosos {
     // ── Backups and erasing the box ─────────────────────────────────────
     fn backup_target(&mut self) -> anyhow::Result<Option<crate::backup::Target>> {
         let path = BackupFiles::from_env().target;
-        match std::fs::read_to_string(&path) {
-            // A file that no longer parses is no target: the owner sets it
-            // again, rather than the pane failing to load.
-            Ok(text) => Ok(serde_json::from_str(&text).ok()),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
-            Err(e) => Err(anyhow::Error::new(e).context("reading the backup target")),
-        }
+        // A file that no longer parses is no target: the owner sets it
+        // again, rather than the pane failing to load.
+        Ok(read_if_present(&path, "reading the backup target")?
+            .and_then(|text| serde_json::from_str(&text).ok()))
     }
 
     fn write_backup_target(
@@ -2306,11 +2277,11 @@ impl Losos for IoLosos {
     }
 
     fn backup_report(&mut self) -> anyhow::Result<Option<crate::backup::Report>> {
-        match std::fs::read_to_string(BackupFiles::from_env().report()) {
-            Ok(text) => Ok(crate::backup::parse_report(&text)),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
-            Err(e) => Err(anyhow::Error::new(e).context("reading the backup report")),
-        }
+        Ok(read_if_present(
+            BackupFiles::from_env().report(),
+            "reading the backup report",
+        )?
+        .and_then(|text| crate::backup::parse_report(&text)))
     }
 
     fn write_restore_code(&mut self, code: Option<&str>) -> anyhow::Result<()> {
@@ -2323,14 +2294,11 @@ impl Losos for IoLosos {
 
     fn take_restored_overrides(&mut self) -> anyhow::Result<Option<String>> {
         let path = BackupFiles::from_env().restored_overrides();
-        match std::fs::read_to_string(&path) {
-            Ok(text) => {
-                remove_if_present(&path)?;
-                Ok(Some(text))
-            }
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
-            Err(e) => Err(anyhow::Error::new(e).context("reading the restored settings")),
+        let text = read_if_present(&path, "reading the restored settings")?;
+        if text.is_some() {
+            remove_if_present(&path)?;
         }
+        Ok(text)
     }
 
     fn now(&mut self) -> u64 {
@@ -2364,11 +2332,11 @@ impl Losos for IoLosos {
     }
 
     fn read_erase_report(&mut self) -> anyhow::Result<Option<crate::erase::Outside>> {
-        match std::fs::read_to_string(BackupFiles::from_env().erase_report) {
-            Ok(text) => Ok(serde_json::from_str(&text).ok()),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
-            Err(e) => Err(anyhow::Error::new(e).context("reading the erase report")),
-        }
+        Ok(read_if_present(
+            BackupFiles::from_env().erase_report,
+            "reading the erase report",
+        )?
+        .and_then(|text| serde_json::from_str(&text).ok()))
     }
 
     fn next_job_id(&mut self) -> anyhow::Result<String> {

@@ -196,16 +196,9 @@ impl Default for Look {
 
 /// A request the owner can act on: the field that was wrong, in a sentence.
 /// The HTTP layer answers it as a 400 carrying the sentence.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("{0}")]
 pub struct Invalid(pub String);
-
-impl std::fmt::Display for Invalid {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.0)
-    }
-}
-
-impl std::error::Error for Invalid {}
 
 fn invalid<T>(message: impl Into<String>) -> anyhow::Result<T> {
     Err(anyhow::Error::new(Invalid(message.into())))
