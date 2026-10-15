@@ -41,14 +41,11 @@ pub(crate) fn env_or(key: &str, default: &str) -> String {
     std::env::var(key).unwrap_or_else(|_| default.to_string())
 }
 
-/// `N` bytes from `/dev/urandom`.
+/// `N` bytes from the system's random source.
 pub(crate) fn random_bytes<const N: usize>() -> anyhow::Result<[u8; N]> {
-    use std::io::Read;
-    let mut buf = [0u8; N];
-    std::fs::File::open("/dev/urandom")
-        .and_then(|mut f| f.read_exact(&mut buf))
-        .context("reading /dev/urandom")?;
-    Ok(buf)
+    ring::rand::generate(&ring::rand::SystemRandom::new())
+        .map(|r| r.expose())
+        .map_err(|_| anyhow::anyhow!("the system random source failed"))
 }
 
 /// Lowercase hex.
