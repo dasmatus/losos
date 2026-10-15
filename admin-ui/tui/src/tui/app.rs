@@ -26,9 +26,10 @@ use super::model::{
     layout, Confirm, ConfirmSpec, Control, EditTarget, Job, Line, PaneModel, Prepare, Tone,
 };
 use super::panes::{
-    self, chart_path, install_confirm, parse_hits, search_path, Ctx, PaneId, SearchState,
+    self, chart_path, install_confirm, parse_hits, search_path, Ctx, Local, PaneId, SearchState,
 };
 use super::resources::{Resource, Resources};
+use crate::computer::{Computer, Service};
 use crate::envelope::Transport;
 use crate::i18n::{format_bytes, t};
 use crate::tr;
@@ -110,6 +111,11 @@ pub enum Msg {
     },
     Prepared(Result<(ConfirmSpec, Job), String>),
     Searched(SearchState),
+    /// A setup of this computer finished; the pane's state, read again.
+    Computer {
+        said: Result<String, String>,
+        local: Option<Local>,
+    },
 }
 
 pub struct App {
@@ -139,6 +145,9 @@ pub struct App {
     tx: Sender<Msg>,
     rx: Receiver<Msg>,
     pending: usize,
+    /// The computer this runs on, when the screen may set it up.
+    computer: Option<Computer>,
+    pub local: Local,
 }
 
 impl App {
@@ -171,6 +180,8 @@ impl App {
             tx,
             rx,
             pending: 0,
+            computer: None,
+            local: Local::default(),
         };
         if app.is_box() {
             app.load_settings(true);
@@ -181,6 +192,13 @@ impl App {
         }
         app.want(app.pane.needs());
         app
+    }
+
+    /// Let the This computer pane set up the computer this runs on.
+    pub fn with_computer(mut self, computer: Computer) -> App {
+        self.local = local_state(&computer, &self.host);
+        self.computer = Some(computer);
+        self
     }
 
     /// Open on `pane`, with the cursor in it, as `--pane` and the
@@ -375,6 +393,18 @@ impl App {
                 self.say(Tone::Crit, t("tui.failed"), e);
             }
             Msg::Searched(state) => self.search = state,
+            Msg::Computer { said, local } => {
+                if matches!(self.modal, Some(Modal::Busy(_))) {
+                    self.modal = None;
+                }
+                if let Some(local) = local {
+                    self.local = local;
+                }
+                match said {
+                    Ok(said) => self.say(Tone::Ok, said, ""),
+                    Err(e) => self.say(Tone::Crit, t("tui.failed"), e),
+                }
+            }
         }
     }
 
@@ -426,6 +456,7 @@ impl App {
             form: &self.form,
             search: &self.search,
             now: self.now.unwrap_or_else(|| losos_access::now_secs() as f64),
+            local: &self.local,
         }
     }
 
@@ -605,6 +636,14 @@ impl App {
                     target,
                 });
             }
+            Control::Ask { prompt, target, .. } => {
+                self.modal = Some(Modal::Edit {
+                    prompt,
+                    masked: true,
+                    value: String::new(),
+                    target,
+                });
+            }
             Control::Run { confirm, job, .. } => match (confirm, job) {
                 (None, Some(job)) => self.run(Then::Job(job)),
                 (Some(Confirm::Ready(spec)), Some(job)) => {
@@ -665,7 +704,43 @@ impl App {
                 self.spawn(move |t| Msg::Searched(search(t, &query)));
             }
             EditTarget::Secret(name) => self.start(Job::SetSecret { name, value }),
+            EditTarget::Computer(service) => self.set_up(service, value),
         }
+    }
+
+    /// Set this computer up for one of the two, off the screen's thread.
+    fn set_up(&mut self, service: Service, password: String) {
+        let Some(computer) = self.computer.clone() else {
+            return;
+        };
+        if password.is_empty() {
+            self.say(Tone::Crit, t("tui.computer.emptyPassword"), "");
+            return;
+        }
+        let host = self.host.clone();
+        let device = self.local.device.clone();
+        self.modal = Some(Modal::Busy(t("ui.working")));
+        self.spawn(move |transport| {
+            let done = match service {
+                Service::Cloud => computer.cloud_setup(&host, transport, &password, &device),
+                Service::Git => computer.git_setup(&host, transport, &password, &device),
+            };
+            let said = done
+                .map(|_| {
+                    tr!(
+                        match service {
+                            Service::Cloud => "tui.computer.cloudDone",
+                            Service::Git => "tui.computer.gitDone",
+                        },
+                        device = &device
+                    )
+                })
+                .map_err(|p| p.message);
+            Msg::Computer {
+                said,
+                local: Some(local_state(&computer, &host)),
+            }
+        });
     }
 
     /// Text pasted into the terminal.
@@ -848,6 +923,17 @@ impl App {
             }
             _ => {}
         }
+    }
+}
+
+/// What the This computer pane shows, read from the keychain.
+fn local_state(computer: &Computer, host: &HostRecord) -> Local {
+    let (cloud, git) = computer.status(host).unwrap_or_default();
+    Local {
+        available: true,
+        device: computer.device_name(None),
+        cloud,
+        git,
     }
 }
 

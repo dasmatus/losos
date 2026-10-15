@@ -127,6 +127,8 @@ pub enum EditTarget {
     Setting(SettingKey),
     AppSearch,
     Secret(String),
+    /// The owner's password, to set up this computer for one of the two.
+    Computer(crate::computer::Service),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -155,6 +157,14 @@ pub enum Control {
         confirm: Option<Confirm>,
         job: Option<Job>,
     },
+    /// A button that asks for a secret, typed without echo, and hands it
+    /// to `target`.
+    Ask {
+        label: String,
+        prompt: String,
+        disabled: bool,
+        target: EditTarget,
+    },
 }
 
 impl Control {
@@ -163,7 +173,8 @@ impl Control {
             Control::Toggle { disabled, .. }
             | Control::Choice { disabled, .. }
             | Control::Edit { disabled, .. }
-            | Control::Run { disabled, .. } => *disabled,
+            | Control::Run { disabled, .. }
+            | Control::Ask { disabled, .. } => *disabled,
         }
     }
 }
@@ -454,9 +465,14 @@ pub fn control_spans(row: &Row) -> Vec<Span> {
                 if *disabled { C::Faint } else { C::Ink },
             )]
         }
-        Some(Control::Run {
-            label, disabled, ..
-        }) => {
+        Some(
+            Control::Run {
+                label, disabled, ..
+            }
+            | Control::Ask {
+                label, disabled, ..
+            },
+        ) => {
             let s = Span::new(
                 format!("[ {label} ]"),
                 if *disabled { C::Faint } else { C::Accent },

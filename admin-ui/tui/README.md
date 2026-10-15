@@ -63,6 +63,8 @@ The commands:
 | `losos edge reconcile` | have the edge write its routing config again now |
 | `losos edge escrow releaser` | the escrow key's address, its ETH on each network and whether each escrow takes it; `--new` makes the key on the edge, `--replace` makes another |
 | `losos ci setup --edge <url>` | give a GitHub repository its own key and token for the edge |
+| `losos cloud setup` | put LosOS cloud in the file manager, with an app password of this computer's own in the keychain |
+| `losos git setup` | let git clone and push to LosOS Git with a token of this computer's own, through `losos git credential` |
 | `losos --version`, `losos --help` | |
 
 Options:
@@ -95,7 +97,8 @@ printf '%s\n' "$TOKEN" | losos login https://mattbox.local --fingerprint "<the f
 ### The full-screen view
 
 The box's panes are the web UI's: Overview, Storage, Mesh, Apps, Network,
-Security, Advanced, History, Backup and About. Advanced only shows values
+Security, Advanced, History, Backup and About, and one of its own, This
+computer, which runs the two setups above. Advanced only shows values
 here. Settings changes stay a draft until Apply, and Apply asks before the
 box rebuilds itself. Access tokens, the market, the Lab and anything that wipes data
 stay in the web UI. An edge has two panes. Overview lists its tenants with
@@ -181,6 +184,10 @@ ones. The suites cover:
 - the commands end to end, including `ci setup` and `LOSOS_CI=1`, and the
   answers a refusal, a changed host key or a stale call get;
 - the certificate pin: taken at login, kept, and refused when it changes;
+- `cloud setup` and `git setup` over TLS: the keychain items GVfs looks
+  up, the bookmark, git's configuration with the key pin, and
+  `git credential get` answering from the keychain (a real `git` writes
+  and reads the configuration);
 - the keychain;
 - every pane, drawn into a buffer, in three languages, and that every
   catalogue key the sources name exists;
@@ -191,7 +198,7 @@ ones. The suites cover:
   this one against another build, which is how CI checks the static binary
   it publishes.
 
-The screenshots example draws eight screens in both themes at 120 by 36,
+The screenshots example draws twelve screens in both themes at 120 by 36,
 turns each buffer into HTML and has Chromium shoot it into
 `.github/screenshots/tui/after/`. `LOSOS_SHOTS` sets another folder and
 `LOSOS_CHROMIUM` another browser.
