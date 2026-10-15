@@ -650,6 +650,7 @@ impl Edge {
                 btc: None,
                 xmr: None,
                 cards: true,
+                zec: None,
             })
         });
 

@@ -200,8 +200,9 @@ pub enum Op {
         family: Option<String>,
     },
     /// The watch-only key this box is paid to in a coin other than USDC:
-    /// Bitcoin's extended public key or ranged descriptor, or Monero's
-    /// primary address with its private view key. Never a spending key.
+    /// Bitcoin's extended public key or ranged descriptor, Monero's primary
+    /// address with its private view key, or Zcash's unified viewing key.
+    /// Never a spending key.
     CoinKey {
         coin: String,
         key: String,
@@ -365,7 +366,7 @@ pub(crate) fn valid_domain(d: &str) -> bool {
 }
 
 /// Coins other than USDC the market may take for orders.
-const COINS: &[&str] = &["btc", "xmr"];
+const COINS: &[&str] = &["btc", "xmr", "zec"];
 
 /// A watch-only key as a wallet exports it: an extended public key, or an
 /// output descriptor. Printable, no spaces, bounded; the edge's node checks
@@ -579,6 +580,7 @@ impl Op {
                 ("xmr", Some(view_key)) => crate::monero_key::check(key, view_key),
                 ("xmr", None) => Err("view_key is required for Monero"),
                 (_, Some(_)) => Err("view_key is only for Monero"),
+                ("zec", None) => crate::zcash_key::check(key),
                 (c, None) if !COINS.contains(&c) => Err("coin is not one the market takes"),
                 (_, None) if !coin_key(key) => {
                     Err("key is not an extended public key or a descriptor")
@@ -1239,6 +1241,22 @@ mod tests {
             view_key: Some("00".repeat(32)),
         };
         assert!(with_view.validate().is_err());
+        // Zcash takes a unified viewing key alone; a spending key never
+        // leaves the box.
+        assert!(key("zec", "uview1qqqqqqqqqqqqqqqqqqqqqqqq")
+            .validate()
+            .is_ok());
+        assert!(key("zec", "secret-orchard-sk-main1qqqqqqqqqqqqqqqq")
+            .validate()
+            .unwrap_err()
+            .contains("spending key"));
+        assert!(key("zec", zpub).validate().is_err());
+        let zec_with_view = Op::CoinKey {
+            coin: "zec".to_string(),
+            key: "uview1qqqqqqqqqqqqqqqqqqqqqqqq".to_string(),
+            view_key: Some("00".repeat(32)),
+        };
+        assert!(zec_with_view.validate().is_err());
         let pay = |order: &str, coin: &str| Op::CoinPay {
             order_id: order.to_string(),
             coin: coin.to_string(),

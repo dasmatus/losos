@@ -363,7 +363,7 @@ images
     inherit (registrarSource) src cargoRoot buildAndTestSubdir;
     # SHA256 of the vendored crate tarball. If deps change, `nix build
     # .#losos-registrar` will print the new hash to paste here.
-    cargoHash = "sha256-Bu3ZH8QYhuuVQWxbndzXKx2zgF4J0LeCXRg3YxMAuck=";
+    cargoHash = "sha256-nVg/LiLZty7N3+Bau0KhYGFB44bFdzACXeCQ82ubAEk=";
     # No system deps; pure Rust with rustls (no openssl).
     # Same reasoning as losos-ctl above: the suite runs via cargo test in the
     # lint job, not inside this derivation.
@@ -388,7 +388,7 @@ images
     pname = "losos-registrar-static";
     version = "0.1.0";
     inherit (registrarSource) src cargoRoot buildAndTestSubdir;
-    cargoHash = "sha256-Bu3ZH8QYhuuVQWxbndzXKx2zgF4J0LeCXRg3YxMAuck=";
+    cargoHash = "sha256-nVg/LiLZty7N3+Bau0KhYGFB44bFdzACXeCQ82ubAEk=";
     doCheck = false;
   };
 

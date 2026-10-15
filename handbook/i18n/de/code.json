@@ -551,7 +551,7 @@
     "message": "Kartenzahlung über Stripe, im Testmodus von Stripe geprüft"
   },
   "losos.home.soon.market.coins": {
-    "message": "Zahlung in USDC und Bitcoin"
+    "message": "Zahlung in USDC, Bitcoin, Monero und Zcash"
   },
   "losos.home.soon.market.pane": {
     "message": "Der Bereich Marktplatz auf jeder Box"

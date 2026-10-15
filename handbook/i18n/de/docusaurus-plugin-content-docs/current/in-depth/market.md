@@ -570,6 +570,55 @@ für spätere Blöcke gesperrt ist, zählt nicht. Monero verbirgt, wer wem was
 gezahlt hat, daher nennt eine bezahlte Bestellung Monero als Netz ohne Link
 zu einem Block-Explorer.
 
+## Mit Zcash zahlen {#paying-with-zcash}
+
+Ein Edge, der in USDC abrechnet, kann für dieselben Bestellungen auch
+abgeschirmtes Zcash annehmen. Er betreibt keinen Zcash-Knoten. Er fragt
+öffentliche lightwalletd-Server nach kompakten Blöcken, standardmäßig vier
+Mainnet-Server verschiedener Betreiber, und entschlüsselt sie selbst, sodass
+dein Viewing Key den Edge nie verlässt. Eine Zahlung zählt erst, wenn Server
+zweier verschiedener Betreiber sie in einem Block mit demselben Hash zeigen;
+ein Server, der etwas zeigt, das sonst keiner zeigt, wird überstimmt. Ein
+Live-Edge rechnet nur auf Mainnet ab und fragt keinen Server, der ein anderes
+Netz meldet; Testnet und Regtest sind für einen Test-Edge.
+
+### Für Zcash verkaufen {#selling-for-zcash}
+
+Im Markt den Unified Viewing Key deiner Wallet in die Zcash-Zeile einfügen:
+den vollen, der mit `uview1` beginnt, oder besser den eingehenden, der mit
+`uivk1` beginnt und nur sieht, was ankommt, nichts von dem, was du sendest.
+Der Schlüssel braucht einen Orchard-Teil, den jede seit 2022 angelegte Wallet
+hat. Der Edge behält nur den Incoming Viewing Key dieses Teils, der sieht,
+was ankommt, und nichts ausgeben kann. Gerät und Edge lehnen einen Spending
+Key und eine Seed-Phrase mit Namen ab, sodass ein versehentlich eingefügter
+Schlüssel das Gerät nie verlässt. Der Bereich zeigt die erste Adresse deiner
+Wallet an, damit du siehst, an welche Wallet Bestellungen gehen; den
+Schlüssel selbst zeigt er nie wieder.
+
+Jede Bestellung bekommt eine neue abgeschirmte Adresse deiner Wallet: eine
+reine Orchard-Unified-Adresse mit einem Diversifier-Index weit über denen,
+die deine Wallet selbst vergibt. Deine Wallet findet Zahlungen daran von
+selbst, weil sie alles entschlüsselt, was an eine Adresse ihres Schlüssels
+geht. Seit NU6.3 landet eine Zahlung an eine Orchard-Adresse im
+Ironwood-Pool, der dieselben Schlüssel nutzt; der Edge liest beide.
+
+Wie bei Bitcoin wird die Plattformgebühr dem Verkäufer separat berechnet,
+und die ganze Zahlung geht an den Verkäufer.
+
+### In Zcash bezahlen {#paying-in-zcash}
+
+Bei der Bestellung unter „Zahlen mit“ Zcash wählen. Der Bereich zeigt den
+Betrag in ZEC, die Adresse, einen QR-Code und einen `zcash:`-Zahlungslink
+(ZIP 321), der eine Wallet öffnet. Mit einer Wallet zahlen, die an eine
+Unified-Adresse senden kann. Es zählen nur Zahlungen in Blöcken nach dem
+Zeitpunkt, an dem die Bestellung die Adresse bekam, und eine Zahlung im
+Mempool gilt als gesehen, sobald zwei Betreiber sie zeigen. Drei
+Bestätigungen zählen eine Bestellung bis 50 $, sechs bis 500 $, zehn bis
+5.000 $ und 24 darüber; eine zu kleine, eine zu große und eine verspätete
+Zahlung werden wie bei Bitcoin behandelt. Die Zahlung ist abgeschirmt, daher
+nennt eine bezahlte Bestellung Zcash als Netz ohne Link zu einem
+Block-Explorer.
+
 ## Nicht abgedeckt
 
 - **Erstattungen und Streitfälle bei Karten.** Bearbeite diese im Stripe-Dashboard
