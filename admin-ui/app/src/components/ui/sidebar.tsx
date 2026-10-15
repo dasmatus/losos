@@ -32,7 +32,6 @@ import { cn } from "@/lib/utils";
  *   - A selected entry is FILLED with the accent and its text is --surface,
  *     the macOS System Settings look, and every entry starts with a small
  *     glyph tile (SidebarMenuIcon).
- *   - An entry can be `planned`: greyed, disabled, not a target.
  *   - The expanded/collapsed choice is kept in localStorage, not a cookie:
  *     there is no server render to read it. A browser that refuses storage
  *     gets the default every time, which is fine. */
@@ -308,12 +307,8 @@ const sidebarMenuButtonVariants = cva(
         true: "bg-accent font-medium text-surface",
         false: "text-ink hover:bg-surface active:bg-surface",
       },
-      planned: {
-        true: "cursor-not-allowed text-faint hover:bg-transparent",
-        false: "",
-      },
     },
-    defaultVariants: { isActive: false, planned: false },
+    defaultVariants: { isActive: false },
   },
 );
 
@@ -323,7 +318,6 @@ const sidebarMenuButtonVariants = cva(
 function SidebarMenuButton({
   render,
   isActive = false,
-  planned = false,
   tooltip,
   className,
   ...props
@@ -338,7 +332,7 @@ function SidebarMenuButton({
     props: mergeProps<"button">(
       {
         type: render === undefined ? "button" : undefined,
-        className: cn(sidebarMenuButtonVariants({ isActive, planned }), className),
+        className: cn(sidebarMenuButtonVariants({ isActive }), className),
       },
       {
         ...props,
@@ -364,12 +358,10 @@ function SidebarMenuButton({
  * selection; the glyph is always currentColor. */
 function SidebarMenuIcon({
   active = false,
-  planned = false,
   className,
   children,
 }: {
   active?: boolean;
-  planned?: boolean;
   className?: string;
   children: React.ReactNode;
 }) {
@@ -378,7 +370,7 @@ function SidebarMenuIcon({
       aria-hidden="true"
       className={cn(
         "flex size-[21px] shrink-0 items-center justify-center rounded-[6px] transition-colors duration-150",
-        planned ? "bg-surface text-faint" : active ? "bg-accent-wash text-accent" : "bg-surface text-muted",
+        active ? "bg-accent-wash text-accent" : "bg-surface text-muted",
         className,
       )}
     >
@@ -459,19 +451,14 @@ const sidebarMenuSubButtonVariants = cva(
         true: "bg-accent font-medium text-surface",
         false: "text-ink hover:bg-surface active:bg-surface",
       },
-      planned: {
-        true: "cursor-not-allowed text-faint hover:bg-transparent",
-        false: "",
-      },
     },
-    defaultVariants: { isActive: false, planned: false },
+    defaultVariants: { isActive: false },
   },
 );
 
 function SidebarMenuSubButton({
   render,
   isActive = false,
-  planned = false,
   className,
   ...props
 }: useRender.ComponentProps<"button"> & VariantProps<typeof sidebarMenuSubButtonVariants>) {
@@ -481,7 +468,7 @@ function SidebarMenuSubButton({
     props: mergeProps<"button">(
       {
         type: render === undefined ? "button" : undefined,
-        className: cn(sidebarMenuSubButtonVariants({ isActive, planned }), className),
+        className: cn(sidebarMenuSubButtonVariants({ isActive }), className),
       },
       {
         ...props,

@@ -32,8 +32,6 @@ import {
   nixUnquote,
   ON_PANE,
   OWNED,
-  ownedLiteral,
-  ownedValue,
   toLiteral,
 } from "@/lib/option-value";
 import { paneHref } from "@/lib/routes";
@@ -62,8 +60,7 @@ import type { SettingsForm } from "./use-settings-form";
  * Three kinds of row:
  *   - an option one of the other panes owns (lib/option-value.ts, OWNED)
  *     shows its value and links to that pane, so there is one editor per
- *     setting and the two cannot disagree. When the owning pane is planned
- *     (Market), the row edits the form's own field instead.
+ *     setting and the two cannot disagree.
  *   - a read-only option (set by the installer at normal priority, or a
  *     package the build chose) shows its value and says who owns it.
  *   - everything else edits one line of overrides.nix through form.extra.
@@ -294,38 +291,27 @@ function OptionRow({
   const controlId = React.useId();
   const errorId = React.useId();
   const owned = OWNED[option.name];
-  const ownerPlanned = owned !== undefined && paneById(owned.pane).planned;
   const extraRaw = form.extra[option.name] ?? null;
   const problem = form.extraProblems[option.name] ?? null;
   const defaultRaw = toLiteral(option.editor, option.default);
 
-  /* What the row edits: the form's own field for an owned option whose pane
-   * is planned, the extra line for everything editable, nothing otherwise. */
-  let raw: string | null = extraRaw;
-  let isSet = extraRaw !== null;
-  if (owned !== undefined && form.draft !== null) {
-    raw = ownedLiteral(option.editor, form.draft[owned.key]);
-    isSet = true;
-  }
+  /* What the row edits: the extra line. An owned option always counts as
+   * set once the form has loaded, since the form writes its line. */
+  const raw = extraRaw;
+  const isSet = extraRaw !== null || (owned !== undefined && form.draft !== null);
 
   const commit = (next: string | null) => {
     /* A value that is the default, on an option the box had unset, stays
      * unset: toggling a switch off and on again is no change, and the file
      * does not gain a line restating a default it already follows. */
     if (next !== null && next === defaultRaw && !(option.name in form.savedExtra)) next = null;
-    if (owned !== undefined) {
-      if (next === null) return;
-      const value = ownedValue(option.editor, next);
-      if (value !== null) form.set(owned.key, value as never);
-      return;
-    }
     form.setExtra(option.name, next);
   };
 
   /* Drawn with its own editor on another pane: shown here with a link. */
   const onPane = ON_PANE[option.name];
-  const elsewhere = onPane !== undefined && !paneById(onPane).planned;
-  const editable = !option.readOnly && (owned === undefined || ownerPlanned) && !elsewhere;
+  const elsewhere = onPane !== undefined;
+  const editable = !option.readOnly && owned === undefined && !elsewhere;
   const gated = option.needs !== undefined && !draftOn(form, option.needs);
 
   const badges = (
@@ -384,7 +370,7 @@ function OptionRow({
           <RowValue className="max-w-[18rem] text-right whitespace-normal break-all">
             {describe(option.editor, option.current, t)}
           </RowValue>
-        ) : owned !== undefined && !ownerPlanned ? (
+        ) : owned !== undefined ? (
           <>
             <RowValue className="text-ink">{describe(option.editor, draftValue(form, owned.key), t)}</RowValue>
             <PaneLink pane={owned.pane} className="text-[12.5px] text-accent underline-offset-4 hover:underline">

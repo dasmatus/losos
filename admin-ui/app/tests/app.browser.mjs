@@ -18,20 +18,8 @@ import { launch, runner, serve } from './harness.mjs';
 const TOKEN = 'a'.repeat(64);
 const { origin, close: closeServer } = await serve();
 const browser = await launch();
-const { check, skip, finish } = runner();
+const { check, finish } = runner();
 
-/* The Market pane is planned, not open (`planned: true` on its row in
- * src/screens/settings/panes.ts): the sidebar shows it greyed with a
- * "soon(TM)" badge, nothing navigates to it, and its address falls back to
- * the default pane. The pane's own checks below are kept behind this switch
- * so that opening the tab is two flips, there and here, and brings its
- * coverage straight back; the checks on the greyed row run only until then.
- * Both states were run green before the switch was set. */
-const MARKET_TAB_OPEN = true;
-const whenMarketOpen = (name, fn) =>
-  MARKET_TAB_OPEN ? check(name, fn) : skip(name, 'the Market tab is planned, not open');
-const whenMarketPlanned = (name, fn) =>
-  MARKET_TAB_OPEN ? skip(name, 'the Market tab is open') : check(name, fn);
 
 const SETTINGS = {
   sharingMyStorage: false,
@@ -637,7 +625,7 @@ await check('a fold opens by itself on one of its pages, and folds away from the
   const mesh = nav(page).getByRole('button', { name: 'Entries under Mesh', exact: true });
   assert.equal(await mesh.getAttribute('aria-expanded'), 'false', 'Mesh is unfolded while elsewhere');
   // Folded entries are hidden: neither a click target nor a Tab stop.
-  const market = nav(page).getByRole('button', { name: 'Market soon(TM)', exact: true });
+  const market = nav(page).getByRole('link', { name: 'Market', exact: true, includeHidden: true });
   assert.equal(await market.isVisible(), false, 'the folded Market entry is visible');
   // Fold Settings with the keyboard: its pages leave the Tab order with it.
   await settings.focus();
@@ -1066,97 +1054,7 @@ for (const locale of ['sk-SK', 'de-DE']) {
   });
 }
 
-/* The greyed Market entry, under Mesh in the one sidebar. */
-const settingsNav = (page, name = 'Sections') => page.getByRole('navigation', { name, exact: true });
-const MARKET_ROW = {
-  en: ['Sections', 'Market', 'Disk sharing'],
-  sk: ['Sekcie', 'Trh', 'Zdieľanie disku'],
-  de: ['Bereiche', 'Markt', 'Festplattenfreigabe'],
-};
-
-for (const [locale, [navName, label, sharing]] of Object.entries(MARKET_ROW)) {
-  await whenMarketPlanned(`the Market entry is greyed out as soon(TM) under Mesh, disk sharing with it, and neither opens (${locale})`, async () => {
-    const tag = { en: 'en-US', sk: 'sk-SK', de: 'de-DE' }[locale];
-    // On /mesh the Mesh entry is unfolded, which shows Market under it.
-    const { page, errors } = await open({ path: '/mesh', stored: true, locale: tag, market: MARKET });
-    const row = settingsNav(page, navName).getByRole('button', { name: `${label} soon(TM)`, exact: true });
-    await row.waitFor();
-    assert.equal(await row.isDisabled(), true, 'the row is not disabled');
-    assert.equal(await row.getAttribute('aria-disabled'), 'true');
-    const share = settingsNav(page, navName).getByRole('button', { name: sharing, exact: true });
-    await share.waitFor();
-    assert.equal(await share.isDisabled(), true, 'disk sharing is not greyed with the market');
-    // Under Market, not beside it: its row sits further right.
-    const [m, d] = await Promise.all([row.boundingBox(), share.boundingBox()]);
-    assert.ok(d.x > m.x && d.y > m.y, 'disk sharing is not nested under Market');
-    // A disabled button is not in the Tab order: Tab from the search field
-    // must land on the next open row, never on Market.
-    const before = new URL(page.url()).pathname;
-    await row.click({ force: true }).catch(() => {});
-    await page.waitForTimeout(200);
-    assert.equal(new URL(page.url()).pathname, before, 'clicking the greyed row navigated');
-    assert.equal(
-      await settingsNav(page, navName).locator('button[aria-current="page"]').filter({ hasText: label }).count(),
-      0,
-      'the Market row became current',
-    );
-    assert.deepEqual(errors, []);
-    await page.close();
-  });
-}
-
-await whenMarketPlanned('the greyed Market row is skipped by the keyboard', async () => {
-  const { page } = await open({ path: '/mesh', stored: true });
-  const search = settingsNav(page).getByRole('searchbox');
-  await search.fill('m');
-  // "m" matches Mesh, Market (keywords) and more; Enter must open the first
-  // *open* match, and Tab from the field must never rest on the Market row.
-  const labels = await settingsNav(page).getByRole('button').allInnerTexts();
-  assert.ok(labels.some((l) => /Market/.test(l)), `Market is not among the matches: ${labels.join(', ')}`);
-  await search.press('Enter');
-  await page.waitForTimeout(200);
-  assert.notEqual(new URL(page.url()).pathname, '/settings/market');
-  // Walk the Tab order from the field until focus leaves the sidebar; every
-  // stop is a row (or the clear button), and Market must not be among them.
-  const seen = [];
-  for (let i = 0; i < labels.length + 2; i++) {
-    await page.keyboard.press('Tab');
-    const stop = await page.evaluate(() => {
-      const el = document.activeElement;
-      return el?.closest('nav[aria-label="Sections"]') ? (el.textContent ?? '') : null;
-    });
-    if (stop === null) break;
-    seen.push(stop);
-  }
-  assert.ok(seen.length >= 2, `Tab never walked the sidebar rows: ${seen.join(' | ')}`);
-  assert.ok(!seen.some((t) => /Market/.test(t)), `Tab rested on the Market row: ${seen.join(' | ')}`);
-  await page.close();
-});
-
-await whenMarketPlanned('a deep link to the planned Market pane lands on the first Settings pane and asks the market nothing', async () => {
-  const marketCalls = [];
-  const { page, errors } = await open({ path: '/settings/market', stored: true, market: MARKET });
-  page.on('request', (request) => {
-    if (/\/api\/market/.test(request.url())) marketCalls.push(request.url());
-  });
-  await page.locator('main').waitFor();
-  await page.getByRole('heading', { name: 'Network', exact: true, level: 1 }).waitFor();
-  assert.ok(!/Nothing here/.test(await body(page)), 'fell through to not-found');
-  // The disk-sharing switch moved onto the Market pane, so a planned market
-  // means no way to switch sharing on: Storage must not still carry it.
-  assert.equal(
-    await page.getByRole('switch', { name: "Share this box's disk with the mesh" }).count(),
-    0,
-    'the disk-sharing switch is still on the Storage pane',
-  );
-  await page.reload({ waitUntil: 'networkidle' });
-  await page.getByRole('heading', { name: 'Network', exact: true, level: 1 }).waitFor();
-  assert.deepEqual(marketCalls, [], 'the Market pane was mounted (it asked /api/market)');
-  assert.deepEqual(errors, []);
-  await page.close();
-});
-
-await whenMarketOpen('a box the market is not offered to says so quietly, and still offers the sharing switch', async () => {
+await check('a box the market is not offered to says so quietly, and still offers the sharing switch', async () => {
   const { page, errors } = await open({ path: '/settings/market', stored: true });
   await page.getByText('The market is not available on this box').waitFor();
   await page.getByRole('switch', { name: "Share this box's disk with the mesh" }).waitFor();
@@ -1164,7 +1062,7 @@ await whenMarketOpen('a box the market is not offered to says so quietly, and st
   await page.close();
 });
 
-await whenMarketOpen('buying opens Stripe Checkout in a new tab', async () => {
+await check('buying opens Stripe Checkout in a new tab', async () => {
   const { page, errors, marketPosts } = await open({ path: '/settings/market', stored: true, market: MARKET });
   const tab = page.context().waitForEvent('page');
   await page.getByRole('button', { name: 'Buy', exact: true }).click();
@@ -1175,7 +1073,7 @@ await whenMarketOpen('buying opens Stripe Checkout in a new tab', async () => {
   await page.close();
 });
 
-await whenMarketOpen('a payment page that is not Stripe is never opened', async () => {
+await check('a payment page that is not Stripe is never opened', async () => {
   const { page, marketPosts } = await open({
     path: '/settings/market',
     stored: true,
@@ -1192,7 +1090,7 @@ await whenMarketOpen('a payment page that is not Stripe is never opened', async 
   await page.close();
 });
 
-await whenMarketOpen('setting up payouts opens Stripe onboarding in a tab with no opener', async () => {
+await check('setting up payouts opens Stripe onboarding in a tab with no opener', async () => {
   const unready = { ...MARKET, account: { ...MARKET.account, seller_onboarded: false, seller_ready: false } };
   const { page, errors, marketPosts } = await open({ path: '/settings/market', stored: true, market: unready });
   const tab = page.waitForEvent('popup');
@@ -1205,7 +1103,7 @@ await whenMarketOpen('setting up payouts opens Stripe onboarding in a tab with n
   await page.close();
 });
 
-await whenMarketOpen('a valid listing is sent in minor units', async () => {
+await check('a valid listing is sent in minor units', async () => {
   const { page, marketPosts } = await open({ path: '/settings/market', stored: true, market: MARKET });
   await page.getByLabel('Price per unit (EUR)').fill('1,25');
   await page.getByLabel('Capacity (units)').fill('2');
@@ -1216,7 +1114,7 @@ await whenMarketOpen('a valid listing is sent in minor units', async () => {
   await page.close();
 });
 
-await whenMarketOpen('the listing form refuses a bad price before anything is sent', async () => {
+await check('the listing form refuses a bad price before anything is sent', async () => {
   const { page, marketPosts } = await open({ path: '/settings/market', stored: true, market: MARKET });
   await page.getByPlaceholder('Price', { exact: false }).fill('0.005');
   await page.getByPlaceholder('Capacity', { exact: false }).fill('10');
@@ -1230,7 +1128,7 @@ await whenMarketOpen('the listing form refuses a bad price before anything is se
   await page.close();
 });
 
-await whenMarketOpen('a zero-decimal currency is priced in whole units, not hundredths', async () => {
+await check('a zero-decimal currency is priced in whole units, not hundredths', async () => {
   const yen = { ...MARKET, account: { ...MARKET.account, currency: 'jpy' } };
   const { page, marketPosts } = await open({ path: '/settings/market', stored: true, market: yen });
   await page.getByLabel('Price per unit (JPY)').fill('1,5');
@@ -1246,7 +1144,7 @@ await whenMarketOpen('a zero-decimal currency is priced in whole units, not hund
   await page.close();
 });
 
-await whenMarketOpen('a blocked payouts pop-up says so', async () => {
+await check('a blocked payouts pop-up says so', async () => {
   const unready = { ...MARKET, account: { ...MARKET.account, seller_onboarded: false, seller_ready: false } };
   const { page, errors, marketPosts } = await open({ path: '/settings/market', stored: true, market: unready });
   await page.evaluate(() => {
@@ -1259,7 +1157,7 @@ await whenMarketOpen('a blocked payouts pop-up says so', async () => {
   await page.close();
 });
 
-await whenMarketOpen('a quantity out of range is tied to its field', async () => {
+await check('a quantity out of range is tied to its field', async () => {
   const { page, marketPosts } = await open({ path: '/settings/market', stored: true, market: MARKET });
   const qty = page.getByLabel('Quantity');
   await qty.fill('41');
@@ -1386,7 +1284,7 @@ await check('the mesh hours are one Button Group holding both time inputs', asyn
   await page.close();
 });
 
-await whenMarketOpen('purchases are listed in a Table with a column per fact', async () => {
+await check('purchases are listed in a Table with a column per fact', async () => {
   const bought = {
     ...MARKET,
     account: {
@@ -1442,7 +1340,7 @@ const COIN_FEES = {
   },
 };
 
-await whenMarketOpen('coin fees owed get one row with the limits, and a USDC sale names what it paid toward them', async () => {
+await check('coin fees owed get one row with the limits, and a USDC sale names what it paid toward them', async () => {
   const { page, errors, marketPosts } = await open({ path: '/settings/market', stored: true, market: COIN_FEES });
   const row = page.getByTestId('coin-fees');
   await row.waitFor();
@@ -1460,7 +1358,7 @@ await whenMarketOpen('coin fees owed get one row with the limits, and a USDC sal
   await page.close();
 });
 
-await whenMarketOpen('a seller whose coin fees are overdue is told coin payments stopped and USDC still works', async () => {
+await check('a seller whose coin fees are overdue is told coin payments stopped and USDC still works', async () => {
   const paused = {
     ...COIN_FEES,
     account: { ...COIN_FEES.account, coin_fees_owed: 1250, coin_sales_paused: true, coin_fee_credit: 120, sales: [] },
