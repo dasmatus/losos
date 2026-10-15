@@ -154,8 +154,8 @@ Nix store. `.#losos-registrar-static` is the same crate linked statically
 against musl. The `registrar-and-ui` job builds it and the `publish-tool` job
 pushes it to GHCR as the OCI artifact
 `ghcr.io/dasmatus/losos/images:<channel>-x86_64`, one layer per file:
-`losos-registrar`, `losos` (the terminal client, a bun single binary from
-the `tui` job), its `install.sh`, and `SHA256SUMS` over all three. That is the shape the proxy's
+`losos-registrar`, `losos` (the terminal client, `.#losos-static`, built
+the same way by the `tui` job), its `install.sh`, and `SHA256SUMS` over all three. That is the shape the proxy's
 `/updates/<channel>/<arch>/<file>` route serves. It picks the layer whose
 title is the file name and redirects to GHCR's storage, except `SHA256SUMS`,
 which it serves inline. LosOS Desktop's sysupdate reads the same route. The

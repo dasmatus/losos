@@ -16,10 +16,12 @@
 //! [`Tokens`], which own one file each. Time is passed in, so freshness,
 //! expiry and the replay window are tested without sleeping.
 
+mod client;
 mod envelope;
 mod keys;
 mod tokens;
 
+pub use client::{open_call, seal_call, AnswerError, Unlocked, UserKey, UserKeyError};
 pub use envelope::{
     open, open_answer, seal, seal_request, Answer, Opened, Refusal, Replay, Request, MAX_SKEW_SECS,
     REPLAY_SECS,

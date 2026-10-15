@@ -34,6 +34,13 @@
 #                vendored crate tarball; the first `nix build
 #                .#losos-registrar` after a dependency change prints the real
 #                hash to paste here.
+#   losos, losos-static — the terminal client (admin-ui/tui/), a Rust crate
+#                with clap, miette, tracing and ratatui. Its build script
+#                reads the web UI's catalogue, palette, pane keywords and the
+#                salmon from admin-ui/, so the source is those files too.
+#                losos-static is the same crate linked against musl for
+#                machines without a Nix store; CI publishes it beside
+#                install.sh. Both share one cargoHash.
 #   losos-image-{pause,nextcloud,forgejo} — the OCI images the local k3s
 #                cluster runs as static pods, defined in flake/images.nix and
 #                merged in below. modules/defaults.nix wires them to
@@ -233,6 +240,28 @@ let
     cargoRoot = "backend-registrar";
     buildAndTestSubdir = "backend-registrar";
   };
+  # The terminal client reads the web UI's catalogue, palette, pane keywords
+  # and the salmon at build time (admin-ui/tui/build.rs) and links the
+  # envelope crate by path, so its source is those files as well.
+  tuiSource = {
+    src = lib.fileset.toSource {
+      root = ./..;
+      fileset = lib.fileset.unions [
+        ./../admin-ui/tui/Cargo.toml
+        ./../admin-ui/tui/Cargo.lock
+        ./../admin-ui/tui/build.rs
+        ./../admin-ui/tui/src
+        ./../admin-ui/app/src/i18n
+        ./../admin-ui/app/src/styles/tokens.css
+        ./../admin-ui/app/src/screens/settings/panes.ts
+        ./../admin-ui/themes/brand/salmon-128.png
+        ./../backend/access/Cargo.toml
+        ./../backend/access/src
+      ];
+    };
+    cargoRoot = "admin-ui/tui";
+    buildAndTestSubdir = "admin-ui/tui";
+  };
 in
 images
 // {
@@ -389,6 +418,26 @@ images
     version = "0.1.0";
     inherit (registrarSource) src cargoRoot buildAndTestSubdir;
     cargoHash = "sha256-nVg/LiLZty7N3+Bau0KhYGFB44bFdzACXeCQ82ubAEk=";
+    doCheck = false;
+  };
+
+  # The terminal client. Its suites (a mock box and edge over TLS, a pseudo
+  # terminal) run via cargo test in CI's test job, as with the crates above.
+  losos = buildRustPackage {
+    pname = "losos";
+    version = "0.1.0";
+    inherit (tuiSource) src cargoRoot buildAndTestSubdir;
+    cargoHash = "sha256-aaKB33odE4FKAVdFNMiXl2jzr25fkglKHT2bR4QZXSM=";
+    doCheck = false;
+  };
+
+  # The same client for any x86_64 Linux machine, which is where the curl
+  # install line puts it: musl, no dynamic library, same cargoHash.
+  losos-static = pkgs.pkgsStatic.rustPlatform.buildRustPackage {
+    pname = "losos-static";
+    version = "0.1.0";
+    inherit (tuiSource) src cargoRoot buildAndTestSubdir;
+    cargoHash = "sha256-aaKB33odE4FKAVdFNMiXl2jzr25fkglKHT2bR4QZXSM=";
     doCheck = false;
   };
 

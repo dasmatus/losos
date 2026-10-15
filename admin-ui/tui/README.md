@@ -40,6 +40,12 @@ UI's Access tokens pane before you say yes. You type the token without
 echo. If a host you already pinned shows a different key later, `login`
 refuses loudly and changes nothing.
 
+A box answers HTTPS with its own self-signed certificate. `login` accepts
+the one it sees and, when no public authority vouches for it, keeps its
+SHA-256 with the host. Every later call takes that certificate or one the
+web trusts, and stops with a warning on any other. `login` again pins the
+new one. Plain `http://` works too: the envelope does not depend on TLS.
+
 The commands:
 
 | command | what it does |
@@ -67,6 +73,14 @@ Options:
 - `--theme dark|light` sets the colours. Without it, `COLORFGBG` decides,
   and dark wins when that is unset.
 - `--key <fingerprint>` picks the signing key at login.
+- `-v`, `-vv`, `-vvv` log what the client does to stderr, without
+  timestamps. `LOSOS_LOG` takes a full tracing filter instead
+  (`LOSOS_LOG=losos=debug,ureq=debug`). Tokens, keys and secrets are never
+  logged. While the full-screen view is up, log lines wait until it closes.
+
+Errors are miette reports: what went wrong, why, and what to do next.
+`NO_COLOR` turns their colours off. The exit status is 1 for an error, 2
+for a refused host key or a usage mistake, and 130 when you cancel.
 
 For a key under a passphrase, `losos` asks once per run and never stores
 the answer. `LOSOS_PASSPHRASE` supplies it to a script.
@@ -133,50 +147,51 @@ Without `LOSOS_CI=1`, `losos` ignores the four variables.
 
 ## Develop
 
-Node 20 or later. Everything below runs from `admin-ui/tui`.
+A Rust crate with its own `Cargo.lock`, not in a workspace. It uses clap
+(derive) for the command line, miette for errors, tracing with
+tracing-subscriber for logs, ratatui for the full-screen view, and
+`losos-access` (`backend/access`) for the envelope, the same crate the box
+and the edge open it with.
 
 ```sh
-npm ci
-npm run build          # dist/losos.mjs, one file
-npm run build:binary   # dist/losos, one executable (needs bun)
-npm test               # builds, then runs every suite
-npm run typecheck
-npm run screenshots    # the PNGs under .github/screenshots/tui/after/
+cargo test     --manifest-path admin-ui/tui/Cargo.toml
+cargo clippy   --manifest-path admin-ui/tui/Cargo.toml --all-targets -- -D warnings
+cargo run      --manifest-path admin-ui/tui/Cargo.toml -- --help
+cargo run      --manifest-path admin-ui/tui/Cargo.toml --example screenshots
+nix build .#losos-static   # the binary install.sh fetches: musl, no dynamic library
 ```
 
-`npm run gen` runs first in each of them. It writes three files into
-`src/generated/`. One is the palette parsed from the web UI's `tokens.css`,
-light and dark, truecolor with a 256-colour fallback. The others are the salmon as half-block art drawn from
-`salmon-128.png`, and the panes' search words taken from the web UI's `panes.ts`.
-Git ignores those files and `dist/`.
+`build.rs` reads the web UI and turns four things into Rust: the catalogue
+in `admin-ui/app/src/i18n`, the light and dark palette from `tokens.css`
+(truecolor, with a 256-colour fallback), the panes' search words from
+`panes.ts`, and the salmon from `salmon-128.png` as half-block art.
+`LOSOS_UI_DIR` points it at another copy of `admin-ui`. Strings only the
+terminal needs are in [src/i18n/messages.rs](src/i18n/messages.rs), each in
+English, Slovak and German.
 
-The words come from the web UI's catalogue in `admin-ui/app/src/i18n`,
-imported as it is. Strings only the terminal needs are in
-[src/i18n.ts](src/i18n.ts), each in English, Slovak and German.
+The tests run against a mock box and edge in `tests/common`, which open
+calls with `losos-access` and make the server's checks in the contract's
+order, over plain HTTP and over TLS with a self-signed certificate. A fake
+`secret-tool` and a fake `gh` in `tests/fake-bin/` stand in for the real
+ones. The suites cover:
 
-The tests run against a mock box and edge, `test/mock-server.ts`, which
-makes the server's checks in the contract's order. A fake `secret-tool` and
-a fake `gh` in `test/fake-bin/` go first on PATH. The suites cover:
-
-- the envelope: wrong signer, stale timestamp, replayed nonce, a read
-  token refused a POST, an answer with the wrong nonce or signed by the
-  wrong key;
+- the envelope: what the client seals is what the box opens, and another
+  signer, a stale call or a replay is refused; an answer for another nonce
+  or signed by another key is refused too;
+- the commands end to end, including `ci setup` and `LOSOS_CI=1`, and the
+  answers a refusal, a changed host key or a stale call get;
+- the certificate pin: taken at login, kept, and refused when it changes;
 - the keychain;
-- the bundled CLI end to end, including `ci setup` and `LOSOS_CI=1`;
-- every pane, drawn with ink-testing-library;
-- `install.sh`.
+- every pane, drawn into a buffer, in three languages, and that every
+  catalogue key the sources name exists;
+- `install.sh`;
+- the built binary in a real pseudo-terminal (util-linux `script`): the
+  login screen, the full-screen view with its raw-mode keys, the hidden
+  prompt of `edge secret set`, and the exit statuses. `LOSOS_BIN` runs
+  this one against another build, which is how CI checks the static binary
+  it publishes.
 
-### Why bun for the binary
-
-`npm run build:binary` compiles the bundle with `bun build --compile`
-into one 80 MiB file that needs nothing installed. `npm run
-verify:binary` drives that file through a real terminal, made by util-linux
-`script`, against the mock: the login screen, the full-screen view with
-its raw-mode keys, the hidden prompt of `edge secret set`, and the exit
-statuses of the plain commands. `npm run verify:binary -- --bundle` does
-the same for `node dist/losos.mjs`.
-
-The fallback was a Node single executable, and bun made it unnecessary. It would
-also be harder. Node 20 and 22 build one only from a CommonJS script, and
-Ink's layout engine loads with a top-level await, which CommonJS cannot
-hold.
+The screenshots example draws eight screens in both themes at 120 by 36,
+turns each buffer into HTML and has Chromium shoot it into
+`.github/screenshots/tui/after/`. `LOSOS_SHOTS` sets another folder and
+`LOSOS_CHROMIUM` another browser.

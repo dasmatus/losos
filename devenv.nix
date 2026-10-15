@@ -36,6 +36,10 @@ let
     # wasm32-only dependency, so this lints and tests its plain Rust;
     # `lint-wasm` below lints the two wasm32 builds.
     "admin-ui/lab/render"
+    # losos, the terminal client (admin-ui/tui/README.md). Its suite runs a
+    # mock box and edge over TLS and, where util-linux `script` exists, the
+    # built binary in a pseudo-terminal.
+    "admin-ui/tui"
   ];
   forEachCrate = cmd: lib.concatMapStringsSep "\n" (c: ''echo "── ${c}"; ${cmd c}'') crates;
 
@@ -295,15 +299,16 @@ in
   '';
   scripts.test-rust.description = "Unit tests for every Rust crate.";
 
-  # losos, the terminal client (admin-ui/tui/README.md). CI's `tui` job runs
-  # the same three and then builds the single binary with bun.
+  # losos, the terminal client (admin-ui/tui/README.md), as CI's `tui` job
+  # ships it: the static musl binary, then the pseudo-terminal test against
+  # that very binary. The crate's own suite is in test-rust already.
   scripts.test-tui.exec = ''
-    cd "$DEVENV_ROOT/admin-ui/tui"
-    npm ci --no-audit --no-fund
-    npm run typecheck
-    npm test
+    set -eu
+    out=$(command nix build --no-link --print-out-paths -L "$DEVENV_ROOT#losos-static")
+    "$out/bin/losos" --version
+    LOSOS_BIN="$out/bin/losos" cargo test --manifest-path "$DEVENV_ROOT/admin-ui/tui/Cargo.toml" --test terminal
   '';
-  scripts.test-tui.description = "Typecheck and test the losos terminal client.";
+  scripts.test-tui.description = "Build the static losos and drive it in a pseudo-terminal.";
 
   scripts.check-flake.exec = "command nix flake check --no-build -L";
   scripts.check-flake.description = "Evaluate every flake output (builds nothing).";
@@ -452,7 +457,6 @@ in
     lint
     lint-wasm
     test-rust
-    test-tui
     check-flake
     check-eval
   '';
@@ -460,7 +464,7 @@ in
   enterShell = ''
     echo "losos dev shell"
     echo "  fmt · lint · test-rust        Rust"
-    echo "  test-tui                      the losos terminal client"
+    echo "  test-tui                      the static losos in a pseudo-terminal"
     echo "  lint-wasm                     clippy on the Lab canvas's wasm32 builds"
     echo "  check-flake · check-eval      Nix eval gates"
     echo "  build-pkgs · build-images     builds"

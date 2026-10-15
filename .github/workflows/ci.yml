@@ -172,6 +172,7 @@ jobs:
             cargo clippy --manifest-path admin-ui/lab/core/Cargo.toml --all-targets -- -D warnings
             cargo clippy --manifest-path admin-ui/lab/virt-rpc/Cargo.toml --all-targets -- -D warnings
             cargo clippy --manifest-path admin-ui/lab/render/Cargo.toml --all-targets -- -D warnings
+            cargo clippy --manifest-path admin-ui/tui/Cargo.toml --all-targets -- -D warnings
           '
       # rustfmt is only *checked* on pull requests. On a push to main fmt-bot
       # fixes it instead — checking it here too would mean this job goes red
@@ -188,6 +189,7 @@ jobs:
             cargo fmt --manifest-path admin-ui/lab/core/Cargo.toml --check
             cargo fmt --manifest-path admin-ui/lab/virt-rpc/Cargo.toml --check
             cargo fmt --manifest-path admin-ui/lab/render/Cargo.toml --check
+            cargo fmt --manifest-path admin-ui/tui/Cargo.toml --check
           '
       # The hit rate, so a cache that stopped being taken is visible in the
       # log rather than as a job that quietly got slower.
@@ -282,6 +284,7 @@ jobs:
             cargo test --manifest-path admin-ui/lab/core/Cargo.toml
             cargo test --manifest-path admin-ui/lab/virt-rpc/Cargo.toml
             cargo test --manifest-path admin-ui/lab/render/Cargo.toml
+            cargo test --manifest-path admin-ui/tui/Cargo.toml
           '
       # The hit rate, so a cache that stopped being taken is visible in the
       # log rather than as a job that quietly got slower.
@@ -571,36 +574,41 @@ jobs:
   # branch here must not move a tag an operator downloads from.
   # ── losos, the terminal client (admin-ui/tui) ──────────────────────────────
   #
-  # Typecheck, the suite (envelope, keychain through a fake secret-tool, the
-  # CLI against a mock box and edge, every pane in three languages), then the
-  # single binary `curl … | sh` installs. bun from npm at a pinned version,
-  # not from nixpkgs: `bun build --compile` copies its own executable into
-  # the output, and a nixpkgs bun points its interpreter into /nix/store,
-  # which the computers this runs on do not have.
+  # The crate's clippy, rustfmt and suite run with the other crates above.
+  # This job builds the binary `curl … | sh` installs: the crate linked
+  # statically against musl, so it runs on any x86_64 Linux without a Nix
+  # store. Then the pseudo-terminal test (tests/terminal.rs) drives that very
+  # binary against the mock box: raw-mode keys on the login screen, the
+  # hidden prompt, the full-screen view and the exit statuses.
   tui:
     name: "losos terminal client"
+    if: ${{ !inputs.release_tags }}
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-    defaults:
-      run:
-        working-directory: admin-ui/tui
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: ./.github/actions/setup-nix
         with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: admin-ui/tui/package-lock.json
-      - run: npm ci --no-audit --no-fund
-      - run: npm run typecheck
-      - run: npm test
-      - run: npm install --global --no-audit --no-fund bun@1.4.2
-      - run: npm run build:binary
-      - run: npm run verify:binary
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          cache-url: ${{ vars.LOSOS_PROXY_URL }}
+          public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
+      - run: nix build .#losos-static -o result-tui -L
+      - name: the static binary runs and links nothing
+        run: |
+          set -euo pipefail
+          ./result-tui/bin/losos --version
+          if ldd result-tui/bin/losos 2>/dev/null | grep -q '=>'; then
+            echo "::error::losos links a shared library"
+            exit 1
+          fi
+      - name: the published binary in a pseudo-terminal
+        run: |
+          export LOSOS_BIN="$PWD/result-tui/bin/losos"
+          nix develop .#ci -c cargo test --manifest-path admin-ui/tui/Cargo.toml --test terminal
       - name: stage the files the proxy serves
         run: |
-          mkdir -p ../../tui-out
-          cp dist/losos install.sh ../../tui-out/
+          mkdir tui-out
+          cp -L result-tui/bin/losos admin-ui/tui/install.sh tui-out/
       - uses: actions/upload-artifact@v7
         with:
           name: losos-tui
@@ -781,6 +789,7 @@ jobs:
             cargo fmt --manifest-path admin-ui/lab/core/Cargo.toml
             cargo fmt --manifest-path admin-ui/lab/virt-rpc/Cargo.toml
             cargo fmt --manifest-path admin-ui/lab/render/Cargo.toml
+            cargo fmt --manifest-path admin-ui/tui/Cargo.toml
           '
       - name: commit and push if anything changed
         run: |
