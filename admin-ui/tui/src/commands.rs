@@ -109,6 +109,12 @@ pub fn run(args: &[String], io: &mut Io) -> u8 {
     let lang = cli::lang_flag(args);
     let locale = Locale::detect(lang.as_deref(), |k| io.var(k));
     i18n::set_locale(locale);
+    // This thread keeps its own locale too, so two runs in one process (the
+    // tests) never read each other's.
+    i18n::with_locale(locale, || run_in(args, io, locale))
+}
+
+fn run_in(args: &[String], io: &mut Io, locale: Locale) -> u8 {
     let cli = match cli::parse(args) {
         Ok(cli) => cli,
         Err(e) => {
