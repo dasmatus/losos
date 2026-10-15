@@ -61,6 +61,8 @@ pub struct Cert {
     pub pem: String,
     pub key: String,
     pub der: Vec<u8>,
+    /// The key pair's subjectPublicKeyInfo, DER.
+    pub spki: Vec<u8>,
 }
 
 impl Cert {
@@ -71,6 +73,7 @@ impl Cert {
             pem: made.cert.pem(),
             key: made.key_pair.serialize_pem(),
             der: made.cert.der().to_vec(),
+            spki: made.key_pair.public_key_der(),
         }
     }
 
@@ -119,6 +122,21 @@ fn serve(
                 let path = request.url().to_string();
                 let mut body = Vec::new();
                 let _ = request.as_reader().read_to_end(&mut body);
+                // What a box's front door answers outside the API: LosOS
+                // cloud's WebDAV asks for credentials, LosOS Git a page.
+                if !edge && path.starts_with("/nextcloud/") {
+                    let challenge = tiny_http::Header::from_bytes(
+                        "WWW-Authenticate",
+                        r#"Basic realm="LosOS cloud", charset="UTF-8""#,
+                    )
+                    .unwrap();
+                    let _ = request.respond(
+                        tiny_http::Response::from_string("")
+                            .with_status_code(401)
+                            .with_header(challenge),
+                    );
+                    continue;
+                }
                 let (status, content_type, text) = if path == key_path {
                     let host = host.lock().unwrap();
                     let doc = json!({ "fingerprint": host.fingerprint(), "publicKey": host.armored_public() });

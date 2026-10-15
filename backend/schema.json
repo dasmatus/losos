@@ -1603,6 +1603,18 @@
         "auth": true,
         "out": "recoveryResponse"
       },
+      "POST /api/devices/cloud": {
+        "auth": true,
+        "in": "{\"password\":\"...\",\"device\":\"...\"}",
+        "out": "{\"user\":\"notshared\",\"appPassword\":\"...\",\"path\":\"/nextcloud/remote.php/dav/files/notshared/\"}",
+        "note": "A LosOS cloud app password of one computer's own, for `losos cloud setup` (backend/src/devices.rs). Nextcloud makes one only for the real password, so the owner's password rides along and goes to $LOSOS_NEXTCLOUD_LOGIN_URL's GET /ocs/v2.php/core/getapppassword in a Basic header over loopback, never an argv. `device` (1-48 letters, digits, spaces, dots, dashes, underscores) names the app password `LosOS on <device>` in the owner's security settings. 403 with wrongPassword:true on a wrong password (not 401: the caller's token is good); 429 when Nextcloud is throttling; 503 when it cannot be asked; 400 for a body of the wrong shape. HTTP-only; reached by the terminal client as a sealed call."
+      },
+      "POST /api/devices/git": {
+        "auth": true,
+        "in": "{\"password\":\"...\",\"device\":\"...\"}",
+        "out": "{\"user\":\"notshared\",\"token\":\"...\",\"path\":\"/forgejo/\"}",
+        "note": "A LosOS Git access token of one computer's own, for `losos git setup` (backend/src/devices.rs). Forgejo makes tokens only under Basic auth with the account's password, so LosOS cloud judges the password first, LosOS Git is given it as at a sign-in, and then, as the owner over loopback, a token named `LosOS on <device>` of the same name is deleted and a new one created with scopes write:repository and read:user. 403 with wrongPassword:true on a wrong password; 409 with gitOff:true when LosOS Git is off on this box; 429 when LosOS cloud is throttling; 503 when either cannot be asked. HTTP-only; reached by the terminal client as a sealed call."
+      },
       "GET /api/apps/search": {
         "auth": true,
         "in": "query string: q=<search term>, 2-128 characters, no control characters",

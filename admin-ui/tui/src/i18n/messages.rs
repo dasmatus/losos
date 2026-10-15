@@ -1119,4 +1119,196 @@ messages! {
         sk: "LOSOS_CI_GPG_KEY je chránený heslom. CI potrebuje kľúč bez hesla, aký vytvorí losos ci setup.",
         de: "LOSOS_CI_GPG_KEY hat eine Passphrase. CI braucht einen Schlüssel ohne, wie ihn losos ci setup erzeugt.",
     },
+
+    // ── This computer: LosOS cloud and LosOS Git ────────────────────────────
+    "tui.help.cmd.cloud" => {
+        en: "Set up this computer for LosOS cloud",
+        sk: "Nastaviť tento počítač pre LosOS cloud",
+        de: "Diesen Computer für LosOS cloud einrichten",
+    },
+    "tui.help.cmd.cloudSetup" => {
+        en: "Put LosOS cloud in the file manager, signed in with an app password of this computer's own",
+        sk: "Pridať LosOS cloud do správcu súborov, prihlásený vlastným heslom aplikácie tohto počítača",
+        de: "LosOS cloud in die Dateiverwaltung legen, angemeldet mit einem eigenen App-Passwort dieses Computers",
+    },
+    "tui.help.cmd.git" => {
+        en: "Set up this computer for LosOS Git",
+        sk: "Nastaviť tento počítač pre LosOS Git",
+        de: "Diesen Computer für LosOS Git einrichten",
+    },
+    "tui.help.cmd.gitSetup" => {
+        en: "Let git clone and push to LosOS Git with a token of this computer's own",
+        sk: "Umožniť git klonovať a posielať do LosOS Git vlastným tokenom tohto počítača",
+        de: "git mit einem eigenen Token dieses Computers aus LosOS Git klonen und dorthin pushen lassen",
+    },
+    "tui.help.opt.device" => {
+        en: "What this computer is called in the box's lists (default: its hostname)",
+        sk: "Ako sa tento počítač volá v zoznamoch zariadenia (predvolene názov hostiteľa)",
+        de: "Wie dieser Computer in den Listen der Box heißt (Standard: sein Hostname)",
+    },
+    "tui.computer.pane" => {
+        en: "This computer",
+        sk: "Tento počítač",
+        de: "Dieser Computer",
+    },
+    "tui.computer.summary" => {
+        en: "LosOS cloud and LosOS Git on the computer you are using now",
+        sk: "LosOS cloud a LosOS Git na počítači, ktorý práve používate",
+        de: "LosOS cloud und LosOS Git auf dem Computer, den du gerade benutzt",
+    },
+    "tui.computer.keywords" => {
+        en: "computer laptop device files webdav git clone setup",
+        sk: "počítač notebook zariadenie súbory webdav git klonovať nastavenie",
+        de: "Computer Laptop Gerät Dateien WebDAV git klonen einrichten",
+    },
+    "tui.computer.cloud" => {
+        en: "LosOS cloud",
+        sk: "LosOS cloud",
+        de: "LosOS cloud",
+    },
+    "tui.computer.git" => {
+        en: "LosOS Git",
+        sk: "LosOS Git",
+        de: "LosOS Git",
+    },
+    "tui.computer.cloudDetail" => {
+        en: "Puts your files in the file manager's sidebar, signed in with a password of this computer's own",
+        sk: "Pridá vaše súbory do bočného panela správcu súborov, prihlásené vlastným heslom tohto počítača",
+        de: "Legt deine Dateien in die Seitenleiste der Dateiverwaltung, angemeldet mit einem eigenen Passwort dieses Computers",
+    },
+    "tui.computer.gitDetail" => {
+        en: "Lets git clone and push with a token of this computer's own, kept in the keychain",
+        sk: "Umožní git klonovať a posielať vlastným tokenom tohto počítača, uloženým v kľúčenke",
+        de: "Lässt git mit einem eigenen Token dieses Computers klonen und pushen, abgelegt im Schlüsselbund",
+    },
+    "tui.computer.setUp" => {
+        en: "Set up",
+        sk: "Nastaviť",
+        de: "Einrichten",
+    },
+    "tui.computer.setUpAgain" => {
+        en: "Set up again",
+        sk: "Nastaviť znova",
+        de: "Neu einrichten",
+    },
+    "tui.computer.setUpAt" => {
+        en: "Set up: {location}",
+        sk: "Nastavené: {location}",
+        de: "Eingerichtet: {location}",
+    },
+    "tui.computer.notSetUp" => {
+        en: "Not set up.",
+        sk: "Nenastavené.",
+        de: "Nicht eingerichtet.",
+    },
+    "tui.computer.passwordFor" => {
+        en: "Your LosOS password",
+        sk: "Vaše heslo k LosOS",
+        de: "Dein LosOS-Passwort",
+    },
+    "tui.computer.caption" => {
+        en: "This computer is called {device} in the box's lists. Setting it up again replaces its password or token.",
+        sk: "Tento počítač sa v zoznamoch zariadenia volá {device}. Nové nastavenie nahradí jeho heslo alebo token.",
+        de: "Dieser Computer heißt in den Listen der Box {device}. Erneutes Einrichten ersetzt sein Passwort oder Token.",
+    },
+    "tui.computer.noKeychain" => {
+        en: "Run losos on the computer you want to set up; this screen was opened without its keychain.",
+        sk: "Spustite losos na počítači, ktorý chcete nastaviť; táto obrazovka bola otvorená bez jeho kľúčenky.",
+        de: "Starte losos auf dem Computer, den du einrichten willst; dieser Bildschirm wurde ohne seinen Schlüsselbund geöffnet.",
+    },
+    "tui.computer.passwordPrompt" => {
+        en: "Your LosOS password (the one for LosOS cloud): ",
+        sk: "Vaše heslo k LosOS (to isté ako do LosOS cloud): ",
+        de: "Dein LosOS-Passwort (das von LosOS cloud): ",
+    },
+    "tui.computer.emptyPassword" => {
+        en: "No password was given. Nothing was set up.",
+        sk: "Nebolo zadané heslo. Nič sa nenastavilo.",
+        de: "Es wurde kein Passwort angegeben. Nichts wurde eingerichtet.",
+    },
+    "tui.computer.wrongPassword" => {
+        en: "That is not the password of LosOS cloud. Nothing was set up.",
+        sk: "To nie je heslo k LosOS cloud. Nič sa nenastavilo.",
+        de: "Das ist nicht das Passwort von LosOS cloud. Nichts wurde eingerichtet.",
+    },
+    "tui.computer.gitOff" => {
+        en: "LosOS Git is off on this box, so there is nothing to set up.",
+        sk: "LosOS Git je na tomto zariadení vypnutý, takže nie je čo nastaviť.",
+        de: "LosOS Git ist auf dieser Box aus, es gibt also nichts einzurichten.",
+    },
+    "tui.computer.tooOld" => {
+        en: "This box does not make passwords for other computers yet. It will after an update.",
+        sk: "Toto zariadenie zatiaľ nevytvára heslá pre iné počítače. Bude po aktualizácii.",
+        de: "Diese Box erzeugt noch keine Passwörter für andere Computer. Nach einem Update schon.",
+    },
+    "tui.computer.oddAnswer" => {
+        en: "The box answered without a password or token. Nothing was set up.",
+        sk: "Zariadenie odpovedalo bez hesla aj tokenu. Nič sa nenastavilo.",
+        de: "Die Box hat ohne Passwort oder Token geantwortet. Nichts wurde eingerichtet.",
+    },
+    "tui.computer.noCertificate" => {
+        en: "The box's certificate could not be read for git. Nothing was set up.",
+        sk: "Certifikát zariadenia sa pre git nepodarilo načítať. Nič sa nenastavilo.",
+        de: "Das Zertifikat der Box konnte für git nicht gelesen werden. Nichts wurde eingerichtet.",
+    },
+    "tui.computer.noGit" => {
+        en: "git is not installed. The token is in your keychain; run losos git setup again once git is there.",
+        sk: "git nie je nainštalovaný. Token je v kľúčenke; po inštalácii gitu spustite losos git setup znova.",
+        de: "git ist nicht installiert. Das Token liegt im Schlüsselbund; führe losos git setup erneut aus, sobald git da ist.",
+    },
+    "tui.computer.gitFailed" => {
+        en: "{command} failed. The token is in your keychain; run losos git setup again once git works.",
+        sk: "{command} zlyhal. Token je v kľúčenke; keď git funguje, spustite losos git setup znova.",
+        de: "{command} ist fehlgeschlagen. Das Token liegt im Schlüsselbund; führe losos git setup erneut aus, sobald git funktioniert.",
+    },
+    "tui.computer.cloudLabel" => {
+        en: "LosOS cloud on {host}",
+        sk: "LosOS cloud na {host}",
+        de: "LosOS cloud auf {host}",
+    },
+    "tui.computer.gitLabel" => {
+        en: "LosOS Git on {host}",
+        sk: "LosOS Git na {host}",
+        de: "LosOS Git auf {host}",
+    },
+    "tui.computer.notBox" => {
+        en: "{url} is an edge. LosOS cloud and LosOS Git live on a box.",
+        sk: "{url} je edge. LosOS cloud a LosOS Git bežia na zariadení.",
+        de: "{url} ist eine Edge. LosOS cloud und LosOS Git laufen auf einer Box.",
+    },
+    "tui.computer.cloudDone" => {
+        en: "LosOS cloud is set up on this computer as {device}.",
+        sk: "LosOS cloud je na tomto počítači nastavený ako {device}.",
+        de: "LosOS cloud ist auf diesem Computer als {device} eingerichtet.",
+    },
+    "tui.computer.cloudWhere" => {
+        en: "Open LosOS cloud in the file manager's sidebar, or at {location}",
+        sk: "LosOS cloud otvoríte v bočnom paneli správcu súborov alebo na {location}",
+        de: "Öffne LosOS cloud in der Seitenleiste der Dateiverwaltung oder unter {location}",
+    },
+    "tui.computer.cloudCertificate" => {
+        en: "The file manager asks you to accept the box's own certificate when it first connects.",
+        sk: "Správca súborov sa pri prvom pripojení spýta, či prijať vlastný certifikát zariadenia.",
+        de: "Die Dateiverwaltung fragt beim ersten Verbinden, ob sie das eigene Zertifikat der Box annehmen soll.",
+    },
+    "tui.computer.cloudRevoke" => {
+        en: "To take this computer's access away, delete \"LosOS on {device}\" under Security in LosOS cloud's settings.",
+        sk: "Prístup tohto počítača zrušíte vymazaním „LosOS on {device}“ v časti Zabezpečenie v nastaveniach LosOS cloud.",
+        de: "Um diesem Computer den Zugang zu nehmen, lösche „LosOS on {device}“ unter Sicherheit in den Einstellungen von LosOS cloud.",
+    },
+    "tui.computer.gitDone" => {
+        en: "LosOS Git is set up on this computer as {device}.",
+        sk: "LosOS Git je na tomto počítači nastavený ako {device}.",
+        de: "LosOS Git ist auf diesem Computer als {device} eingerichtet.",
+    },
+    "tui.computer.gitWhere" => {
+        en: "Clone with: git clone {location}",
+        sk: "Klonujte príkazom: git clone {location}",
+        de: "Klonen mit: git clone {location}",
+    },
+    "tui.computer.gitRevoke" => {
+        en: "To take this computer's access away, delete \"LosOS on {device}\" under Applications in LosOS Git's settings.",
+        sk: "Prístup tohto počítača zrušíte vymazaním „LosOS on {device}“ v časti Aplikácie v nastaveniach LosOS Git.",
+        de: "Um diesem Computer den Zugang zu nehmen, lösche „LosOS on {device}“ unter Anwendungen in den Einstellungen von LosOS Git.",
+    },
 }

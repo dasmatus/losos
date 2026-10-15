@@ -136,6 +136,15 @@ KeePassXC all work. Every item carries `service=losos` and a `kind`:
 |---|---|---|
 | `gpg-key` | `fingerprint` | the armoured secret key, as exported (still under its passphrase if it had one) |
 | `host` | `url` | JSON: `{"url", "kind": "box"\|"edge", "fingerprint", "publicKey", "token", "keyFingerprint", "tlsPin"?}` |
+| `cloud` | `url` | JSON: `{"url", "user", "secret", "location"}`, the LosOS cloud app password of `losos cloud setup` |
+| `git` | `url`, `protocol`, `server` | the same, with the LosOS Git token of `losos git setup`; `server` is the host as git's credential protocol names it |
+
+`losos cloud setup` also stores the app password under GVfs's own schema,
+so the file manager finds it before it would ask: `xdg:schema`
+`org.gnome.keyring.NetworkPassword`, `user`, `server`, `protocol` `http`,
+`object` the realm of the WebDAV challenge, `authtype` `basic`, and `port`
+with the scheme's default filled in (GVfs looks up 443 for a `davs://`
+address without one).
 
 When no Secret Service answers, `losos` says so and stores nothing.
 
@@ -150,3 +159,42 @@ accepts that exact certificate or one the web trusts, and nothing else. A
 different certificate stops the call with a warning, and `losos login` again
 pins the new one once the owner has checked it. An edge with a public
 certificate gets no pin.
+
+## This computer: LosOS cloud and LosOS Git
+
+`losos cloud setup` and `losos git setup` ask the box for a credential of
+the computer's own over a sealed call:
+
+```text
+POST /api/devices/cloud  {"password", "device"}  -> {"user", "appPassword", "path"}
+POST /api/devices/git    {"password", "device"}  -> {"user", "token", "path"}
+```
+
+The owner's password goes along because nothing less makes either one.
+Nextcloud mints an app password only for the real password, and Forgejo
+creates an access token only under Basic auth with the account's password;
+its API refuses an administrator's token, `Sudo` and a token used as a
+password for that route. lososd sends both requests over loopback with the
+password in a Basic header, never in an argv or a file, as the sign-in
+does (`backend/src/devices.rs`). For Git, LosOS cloud judges the password
+first and LosOS Git is given it before Forgejo is asked. A token named
+`LosOS on <device>` from an earlier setup is deleted first, since Forgejo
+refuses a second token of one name. Its scopes are `write:repository` and
+`read:user`.
+
+A wrong password is 403 with `wrongPassword: true`, not 401, so a client
+does not mistake it for a bad token. 409 with `gitOff: true` means the box
+runs no LosOS Git, 429 that Nextcloud is throttling, 503 that one of the
+two cannot be asked yet.
+
+On the computer, `git setup` writes git's global configuration for
+`<box>/forgejo`: an empty `credential.<url>.helper` and then `!<losos> git
+credential`, so only `losos` answers for the box, and
+`credential.<url>.username`. `losos git credential get` reads git's
+`protocol` and `host` and answers from the `kind=git` item; `store` and
+`erase` are accepted and ignored. A box with a pinned certificate also gets
+`http.<url>.sslVerify false` and `http.<url>.pinnedPubkey
+sha256//<base64>` of the certificate's public key, read over the pinned
+connection, which is libcurl's form of the same pin. `cloud setup` adds
+`<davs location> LosOS cloud` to `$XDG_CONFIG_HOME/gtk-3.0/bookmarks` once.
+

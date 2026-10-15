@@ -142,6 +142,41 @@ as the admin pages do.
 Access tokens, the market, the Lab and anything that wipes data stay in
 the admin pages.
 
+## Use LosOS cloud and LosOS Git from this computer
+
+```sh
+losos cloud setup
+losos git setup
+```
+
+Each asks for your LosOS password, the one you sign in to LosOS cloud
+with, and sets up the computer you run it on. The **This computer** pane
+of the full-screen view does the same with one key.
+
+`cloud setup` asks the box for an app password for this computer alone
+and keeps it in the keychain where the file manager looks for it. LosOS
+cloud then appears in the file manager's sidebar (GNOME Files and other
+file managers that read GTK bookmarks), and opening it shows your files
+without asking for a password. The file manager asks once to accept the
+box's own certificate when it first connects.
+
+`git setup` asks the box for a LosOS Git token for this computer alone
+and keeps it in the keychain. git then gets it from `losos` whenever it
+talks to the box, so cloning and pushing need no password:
+
+```sh
+git clone https://mattbox.local/forgejo/notshared/notes.git
+```
+
+When the box has its own certificate, git is told to accept exactly that
+certificate's key, the same check `losos` makes.
+
+Both are named after the computer, as in "LosOS on laptop". `--device`
+picks another name. To take a computer's access away, delete its entry
+under **Security** in LosOS cloud's settings, or under **Applications** in
+LosOS Git's. Running a setup again replaces that computer's password or
+token.
+
 ## In a script
 
 `losos call` sends one request and prints the answer:
