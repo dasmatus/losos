@@ -33,8 +33,9 @@ contacts, notes, tasks.
 
 **LosOS Git.** Forgejo, in the box's colours: repositories.
 
-**Market.** Being paid for shared disk and CPU, and buying some. The software
-is built, but the market is not open yet. It runs on the LosOS edge only.
+**Market.** Being paid for shared disk and CPU, and buying some, in USDC,
+Bitcoin or Monero, or by card where the edge takes cards. It runs on the
+LosOS edge only.
 
 **Mesh.** The cluster of boxes behind one edge. They pool spare disk, which
 the mesh replicates, and spare CPU, which each box lends inside its hours

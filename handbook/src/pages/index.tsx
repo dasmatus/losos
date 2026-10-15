@@ -102,8 +102,8 @@ const FEATURES: Feature[] = [
 /* Planned, each with the page that says how far along it is, and its parts
  * in order with the ones already shipped crossed off. The list is the
  * project page's "What is done and what is planned" plus what the code
- * shows unfinished: the Market pane is `planned: true` in the admin UI's
- * panes.ts, no edge deploys Longhorn while
+ * shows unfinished: keys/official-edge-root.pub is empty, so no box sees an
+ * official edge to trade through yet, no edge deploys Longhorn while
  * losos.edge.cluster.longhornChart defaults to null, and
  * keys/secure-boot-db.pem holds no certificate. Nothing goes here that is
  * not built or started. Once every part of a card is done, the card says
@@ -138,10 +138,18 @@ const SOON: Planned[] = [
         ),
       },
       {
+        done: true,
+        text: (
+          <Translate id="losos.home.soon.market.pane">
+            The Market pane on every box
+          </Translate>
+        ),
+      },
+      {
         done: false,
         text: (
-          <Translate id="losos.home.soon.market.open">
-            Opening it, which needs a registered business behind it
+          <Translate id="losos.home.soon.market.edge">
+            The official LosOS edge it trades through
           </Translate>
         ),
       },
@@ -175,7 +183,7 @@ const SOON: Planned[] = [
         ),
       },
       {
-        done: false,
+        done: true,
         text: (
           <Translate id="losos.home.soon.pool.switch">
             The sharing switch, which opens with the market

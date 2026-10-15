@@ -61,10 +61,6 @@ node tests/handbook-screens.mjs /tmp/handbook-screens mesh     # names containin
 ```
 
 Set `LOSOS_CHROMIUM` to a Chromium binary if Playwright's own is missing.
-The Market pane is planned and its route falls back, so the two market
-shots run only with `LOSOS_SHOOT_MARKET=1` against a build with
-`planned: false` in `src/screens/settings/panes.ts`. Never commit that
-change.
 
 Write alt text that says what the picture shows, not what the page says.
 

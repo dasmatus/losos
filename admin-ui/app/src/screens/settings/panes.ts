@@ -154,7 +154,7 @@ export const SETTINGS_PANES: readonly [SettingsPane, ...SettingsPane[]] = [
       "backup",
       "copies",
     ],
-    { planned: true },
+    { planned: false },
   ),
   /* Virtual machines on the mesh, sold by the replica through the market.
    * Open, unlike the market: the pane itself says why nothing on it works

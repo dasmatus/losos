@@ -1503,6 +1503,10 @@ pub struct MarketOpts {
     pub btc: Option<crate::bitcoin::BtcOpts>,
     /// Monero orders, through the edge's own wallet service and node.
     pub xmr: Option<crate::monero::XmrOpts>,
+    /// Whether buyers may pay by card, through the Stripe gate. Off, the
+    /// edge takes coins only and needs no Stripe account: its mode is the
+    /// chains' ([`crate::connect::NoCards`]) and `gate_socket` is unused.
+    pub cards: bool,
 }
 
 /// How long an escrow call may sit unmined before the edge checks the
@@ -1656,8 +1660,18 @@ impl Market {
     /// ([`Market::check_mode`]). Both ledgers are checked here so a
     /// file that does not parse fails the start rather than the first buyer.
     pub async fn open(opts: MarketOpts) -> Result<Self, MarketError> {
-        let gate = Arc::new(GateClient::new(&opts.gate_socket));
-        Self::open_with(opts, gate).await
+        if opts.cards {
+            let gate = Arc::new(GateClient::new(&opts.gate_socket));
+            return Self::open_with(opts, gate).await;
+        }
+        // Coins only. The parser refuses this without USDC, whose networks
+        // are all test or all live; that is the mode.
+        let mode = match &opts.usdc {
+            Some(usdc) if usdc.test() => StripeMode::Test,
+            Some(_) => StripeMode::Live,
+            None => return Err(MarketError::Unconfigured),
+        };
+        Self::open_with(opts, Arc::new(crate::connect::NoCards { mode })).await
     }
 
     /// As [`Market::open`], settling through `connect` rather than the gate
@@ -4616,6 +4630,7 @@ mod tests {
             usdc: None,
             btc: None,
             xmr: None,
+            cards: true,
         })
         .await
         .unwrap();
@@ -4644,6 +4659,7 @@ mod tests {
             usdc: None,
             btc: None,
             xmr: None,
+            cards: true,
         }
     }
 

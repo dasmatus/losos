@@ -1,34 +1,31 @@
 ---
-title: Marktplatz (geplant)
+title: Marktplatz
 sidebar_position: 4
 mdx:
   format: md
 ---
 
-# Marktplatz (geplant)
+# Marktplatz
 
 Ein optionaler Marktplatz, auf dem eine Box freien Speicher oder Rechenleistung
-verkauft und eine andere sie kauft. Die Zahlung läuft über **Stripe Connect**,
+verkauft und eine andere sie kauft. Käufer zahlen in USDC, Bitcoin oder
+Monero, oder per Karte über **Stripe Connect**, wo die Edge Karten annimmt,
 und die Edge behält 4 % ein, um ihre Betriebskosten zu decken.
 
-**Er ist noch nicht geöffnet.** Der Code ist durchgehend fertig: die
-`/market/*`-Routen des Registrars, das Stripe-Gate, das Relay in lososd und der
-Bereich in der Admin-UI. Eine Stripe-Connect-Plattform braucht jedoch ein
-eingetragenes Unternehmen dahinter, und das gibt es noch nicht. Bis dahin zeigt
-die Admin-UI den Tab **Markt** ausgegraut mit einem „soon(TM)“-Badge. Niemand
-kann ihn anklicken oder über die Adresse erreichen, und nichts auf einer Box
-fragt den Marktplatz irgendetwas. Der Schalter für die Festplattenfreigabe
-(`losos.sharingMyStorage`) liegt in diesem Bereich, also öffnet sich die
-Freigabe der Festplatte für das Mesh zusammen mit dem Marktplatz, und die UI
-kann sie vorher nicht einschalten. Der Rest dieser Seite beschreibt, wie der
-Marktplatz funktioniert, sobald er öffnet. Auch dann ist er standardmäßig aus,
-und zwar auf drei Ebenen.
+Die Zeile **Markt** unter Mesh in der Seitenleiste öffnet den Bereich, unter
+`/settings/market`. Eine Box zeigt den Marktplatz nur, wenn eine offizielle
+LosOS-Edge erreichbar ist; sonst sagt der Bereich, dass der Markt auf dieser
+Box nicht verfügbar ist. Der Schalter für die Festplattenfreigabe
+(`losos.sharingMyStorage`) liegt in diesem Bereich und lässt sich in beiden
+Fällen einschalten, sodass die Seite Maschinen funktioniert, sobald die
+Freigabe an ist. Der Marktplatz ist standardmäßig aus, und zwar auf drei
+Ebenen.
 
 |                                  | Standard     | Schalter                                         |
 | -------------------------------- | ------------ | ------------------------------------------------ |
 | Die Edge bietet ihn an           | aus          | `losos.edge.market.enable`                       |
 | Eine Box darf handeln            | aus          | `losos.edge.tenants.<id>.market`                 |
-| Ein Verkäufer darf anbieten      | geschlossen  | Stripe meldet das verbundene Konto als bereit    |
+| Ein Verkäufer darf anbieten      | geschlossen  | Stripe meldet das verbundene Konto als bereit, oder auf einer Edge mit Coins hat der Verkäufer eine USDC-Auszahlungsadresse oder einen Coin-Schlüssel hinterlegt |
 
 Eine Box, die nie handelt, ist nicht betroffen. Der Marktplatz ist eine
 Funktion des `losos-registrar` der Edge.
@@ -44,7 +41,32 @@ nicht betroffen.
 
 ## Wie das Geld fließt
 
-Die Edge ist die Stripe-**Plattform**. Geld berührt nie eine LosOS-Box.
+Geld berührt nie eine LosOS-Box. Käufer zahlen auf eine von vier Arten, je
+nachdem, was die Edge erlaubt:
+
+- **USDC auf Base, Arbitrum One oder OP Mainnet.** Die Zahlung geht in den
+  Vertrag `LososEscrow`. Die Edge prüft sie (die Adresse des Verkäufers, den
+  Betrag, die Bestätigungen) und gibt sie dann an den Verkäufer und an die
+  Kasse der Plattform frei, die die Gebühr von 4 % erhält. Oder sie zahlt die
+  ganze Zahlung an den Käufer zurück: wenn die Adresse des Verkäufers falsch
+  oder ein Vertrag ist, wenn die Bestellung schon bezahlt war oder wenn ihre
+  Einheiten verfallen sind. Handelt die Edge nicht, kann der Käufer die
+  Einzahlung einen Tag nach dem Ende der Reservierung der Bestellung selbst
+  aus dem Vertrag zurückholen. Siehe [Mit USDC zahlen](#paying-with-usdc).
+- **USDC auf Solana.** Eine direkte Überweisung, in der eigenen Transaktion
+  des Käufers zwischen Verkäufer und Kasse aufgeteilt.
+- **Bitcoin und Monero.** Direkt in die eigene Wallet des Verkäufers, an eine
+  neue Adresse für jede Bestellung, abgeleitet aus dem öffentlichen Schlüssel
+  des Verkäufers: einem erweiterten öffentlichen Schlüssel oder Deskriptor
+  für Bitcoin, der Hauptadresse und dem privaten View-Key für Monero. Die
+  Edge schaut nur zu und hält nie Coins. Die Gebühr von 4 % auf diese
+  Verkäufe wird dem Verkäufer gesondert berechnet, und der Bereich zeigt sie
+  als offene Gebühren.
+- **Karte, über Stripe Connect.** Auf einer Edge optional. Eine Edge kann
+  nur Coins annehmen, ohne Kartenzahlungen, sodass der Betrieb des
+  Marktplatzes kein Geschäftskonto bei einem Kartenabwickler braucht.
+
+Für Kartenzahlungen ist die Edge die Stripe-**Plattform**:
 
 1. Ein Verkäufer durchläuft das Onboarding. Die Edge legt für ihn ein
    verbundenes Stripe-Express-Konto an, **versieht es mit der UUID der Box**
@@ -53,7 +75,8 @@ Die Edge ist die Stripe-**Plattform**. Geld berührt nie eine LosOS-Box.
    es die Kennzeichnung gab, wird gekennzeichnet, wenn ihr Besitzer die Seite
    das nächste Mal öffnet.
 2. Stripe teilt der Edge mit (`account.updated`), wann das Konto Überweisungen
-   empfangen kann. Erst dann kann der Verkäufer etwas anbieten.
+   empfangen kann. Auf einer Edge ohne Coins kann der Verkäufer erst dann
+   etwas anbieten.
 3. Ein Käufer bestellt Einheiten eines Angebots. Die Edge reserviert sie und
    erstellt eine Stripe Checkout Session als **Destination Charge**. Der
    Käufer zahlt an die Plattform, `transfer_data[destination]` leitet den
@@ -129,20 +152,15 @@ Grenzen, die du kennen solltest und von denen noch keine durchgesetzt wird:
 
 ## Admin-UI
 
-Derzeit ist die Zeile **Einstellungen, Markt** ausgegraut und mit „soon(TM)“
-beschriftet. Sie ist eine deaktivierte Schaltfläche, die die Tastatur
-überspringt, und `/settings/market` öffnet stattdessen den Standardbereich.
-Zum Öffnen genügt ein Flag, `planned` an der Zeile in
-`admin-ui/app/src/screens/settings/panes.ts`, plus der passende Schalter in
-`admin-ui/app/tests/app.browser.mjs`, der die Browser-Prüfungen des Bereichs
-bis dahin zurückhält.
-
-Einmal geöffnet, beginnt der Bereich mit dem Schalter für die
+Die Zeile **Markt** liegt unter Mesh in der Seitenleiste, und
+`/settings/market` öffnet sie. Der Bereich beginnt mit dem Schalter für die
 Festplattenfreigabe. Er ist aus dem Bereich Speicher hierher gewandert, weil das Verleihen
 von Festplattenplatz an andere Boxen und die Bezahlung dafür eine einzige
 Entscheidung sind. Darunter folgt, was der Besitzer gekauft hat, mit Ablauf
 und Volume, und das Regal zum Einkaufen. Für den Verkauf gibt es die
-Einrichtung der Stripe-Auszahlungen, ein Angebotsformular und die eigenen
+Einrichtung der Auszahlungen (eine USDC-Adresse, ein Bitcoin- oder
+Monero-Schlüssel und Stripe, wo die Edge Karten annimmt), ein
+Angebotsformular und die eigenen
 Angebote und Verkäufe des Besitzers. Der Schalter wird angezeigt, ob die Edge
 dieser Box den Marktplatz anbietet oder nicht, denn er ist eine Einstellung
 der Box, nicht der Edge.
@@ -152,7 +170,7 @@ der Box, nicht der Edge.
   zusätzlich Rechenleistung teilt. Alles andere ist ausgegraut, mit Angabe
   des Grundes. Die Edge setzt dieselbe Regel durch, der Bereich erklärt sie
   nur.
-- Zahlung und Stripe-Onboarding öffnen die eigenen Seiten von Stripe in einem
+- Kartenzahlung und Stripe-Onboarding öffnen die eigenen Seiten von Stripe in einem
   neuen Tab. Nichts in der Admin-UI sieht eine Karte. lososd und danach noch
   einmal die Seite prüfen, dass der Link eine Seite unter
   `https://checkout.stripe.com` oder `https://connect.stripe.com` ist, sodass
@@ -214,6 +232,10 @@ der Betreiber sie erstatten kann. Zwei Käufer, die um die letzten Einheiten
 konkurrieren, können nicht beide eine Session bekommen.
 
 ## Einrichtung für Betreiber
+
+Diese Schritte richten Kartenzahlungen ein. Eine Edge, die nur Coins annimmt,
+überspringt sie; diesen Fall beschreiben die Betreiberhinweise beim Quellcode
+(`docs/ci-and-releases.md`).
 
 1. Aktiviere im Stripe-Dashboard **Connect** auf dem Plattformkonto.
 2. Versiegle den geheimen Schlüssel (ein eingeschränkter Schlüssel
@@ -344,16 +366,17 @@ Ein Edge kann Speicher, Rechenleistung und Maschinen in USDC abrechnen statt
 über Stripe. Hardware bleibt bei Stripe. Welche Netze er annimmt, wählt der
 Edge:
 
-| Netz         | Sein Testnetz    |
-| ------------ | ---------------- |
-| Base         | Base Sepolia     |
-| Arbitrum One | Arbitrum Sepolia |
-| OP Mainnet   | OP Sepolia       |
-| Solana       | Solana Devnet    |
+| Netz         | Für einen Test-Edge |
+| ------------ | ------------------- |
+| Base         | Base Sepolia        |
+| Arbitrum One | Arbitrum Sepolia    |
+| OP Mainnet   | OP Sepolia          |
+| Solana       | Solana Devnet       |
 
-Ein Edge läuft auf Testnetzen oder auf Live-Netzen, nie auf beiden, und der
-Modus folgt seinem Stripe-Schlüssel: Testnetze mit einem `sk_test_`-Schlüssel,
-Live-Netze mit `sk_live_`. Eine Mischung lehnt der Registrar ab, damit keine
+Ein Edge läuft auf Live-Netzen oder auf Testnetzen, nie auf beiden. Bei
+einem Edge, der Karten annimmt, folgt der Modus seinem Stripe-Schlüssel:
+Live-Netze mit einem `sk_live_`-Schlüssel, Testnetze mit `sk_test_`. Ein Edge,
+der nur Coins annimmt, läuft im Modus seiner Netze. Eine Mischung lehnt der Registrar ab, damit keine
 Testzahlung im Live-Buch landet. Jedes Netz hat einen eigenen RPC-Endpunkt,
 mit systemd-creds versiegelt und nur vom Registrar gelesen. Die Einrichtung
 beschreiben die Betreiberhinweise beim Quellcode (`docs/ci-and-releases.md`).
@@ -423,7 +446,7 @@ dem Escrow zurück, und der Bereich sagt es. Auf Solana, wo es kein Escrow
 gibt, bleibt eine solche Zahlung beim Verkäufer, und die Rückzahlung muss
 außerhalb des Markts geregelt werden.
 
-Auf den Testnetzen kommt Test-USDC aus
+Für einen Test-Edge kommt Test-USDC aus
 [Circles Faucet](https://faucet.circle.com), der alle vier bedient. Test-ETH
 gibt der Faucet jedes Netzes, Test-SOL der Solana-Faucet. Nichts davon hat
 einen Wert.
@@ -433,8 +456,8 @@ einen Wert.
 Der Bereich kann USDC aus der Wallet an eine Adresse auf jedem Netz des Edge
 senden. Hat der Edge einen ENS-Endpunkt, zeigt der Bereich neben einer
 Ethereum-Adresse auch ihren primären Namen und nimmt beim Senden auf einem
-Ethereum-Netz einen Namen statt einer Adresse an. Testnetze suchen Namen auf
-Sepolia, Live-Netze auf Ethereum. Gefunden werden nur Namen mit Einträgen auf
+Ethereum-Netz einen Namen statt einer Adresse an. Namen werden im Ethereum
+Mainnet nachgeschlagen, für einen Test-Edge auf Sepolia. Gefunden werden nur Namen mit Einträgen auf
 der Chain: die Verwaltungsseite erreicht nichts außer dem Gerät, also werden
 Namen über ein Gateway außerhalb der Chain nicht nachgeschlagen.
 
@@ -517,7 +540,7 @@ ebenso eine Adresse, die für ein anderes Netz gemacht ist als das des Knotens.
 ### Für Monero verkaufen {#selling-for-monero}
 
 Im Markt zwei Dinge in die Monero-Zeile einfügen: die Hauptadresse deiner
-Wallet, die mit 4 beginnt (auf Stagenet mit 5, auf Testnet mit 9), und ihren
+Wallet, die mit 4 beginnt (für einen Test-Edge mit 5 oder 9), und ihren
 privaten View-Key. Feather, Cake Wallet und die offiziellen Wallets zeigen
 ihn neben dem Seed, bei den Schlüsseln der Wallet. Mit dem View-Key sieht der
 Edge, was an deine Adressen geht, und sonst nichts: ausgeben kann er damit
@@ -549,7 +572,7 @@ zu einem Block-Explorer.
 
 ## Nicht abgedeckt
 
-- **Erstattungen und Streitfälle.** Bearbeite diese im Stripe-Dashboard
+- **Erstattungen und Streitfälle bei Karten.** Bearbeite diese im Stripe-Dashboard
   mit `reverse_transfer` und `refund_application_fee`, damit sowohl der Anteil
   des Verkäufers als auch der Anteil der Plattform zurückfließen. Der
   Marktplatz bildet keines von beiden ab.

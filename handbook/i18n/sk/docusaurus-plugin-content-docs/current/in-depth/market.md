@@ -1,32 +1,29 @@
 ---
-title: Trh (plánovaný)
+title: Trh
 sidebar_position: 4
 mdx:
   format: md
 ---
 
-# Trh (plánovaný)
+# Trh
 
 Voliteľný trh, na ktorom jedno zariadenie predáva voľné úložisko alebo výpočtový
-výkon a iný ho kupuje. Platby idú cez **Stripe Connect** a edge si ponecháva
-4 % na pokrytie svojich prevádzkových nákladov.
+výkon a iný ho kupuje. Kupujúci platia v USDC, bitcoinoch alebo Monere,
+alebo kartou cez **Stripe Connect**, ak edge karty prijíma, a edge si
+ponecháva 4 % na pokrytie svojich prevádzkových nákladov.
 
-**Zatiaľ nie je otvorený.** Kód je hotový od začiatku do konca: routy
-registrara `/market/*`, Stripe gate, relay v lososd aj panel v admin UI.
-Platforma Stripe Connect však potrebuje za sebou registrovanú firmu a tá
-zatiaľ neexistuje. Kým nebude, admin UI zobrazuje kartu **Trh** sivú
-s odznakom „soon(TM)“. Nikto na ňu nemôže kliknúť ani sa k nej dostať cez
-adresu a nič na zariadení sa trhu na nič nepýta. Prepínač zdieľania disku
-(`losos.sharingMyStorage`) je na tomto paneli, takže zdieľanie disku s mesh sa
-otvorí spolu s trhom a UI ho dovtedy nedokáže zapnúť. Zvyšok tejto stránky
-opisuje, ako bude trh fungovať, keď sa otvorí. Aj potom je predvolene
-vypnutý, a to na troch úrovniach.
+Riadok **Trh** pod Mesh v bočnom paneli otvára panel na adrese
+`/settings/market`. Zariadenie ukáže trh, len keď je v dosahu oficiálny edge
+LosOS; inak panel povie, že trh na tomto zariadení nie je dostupný. Prepínač
+zdieľania disku (`losos.sharingMyStorage`) je na tomto paneli a dá sa zapnúť
+v oboch prípadoch, takže stránka Stroje funguje, len čo je zdieľanie zapnuté.
+Trh je predvolene vypnutý, a to na troch úrovniach.
 
 |                            | Predvolene | Prepínač                                      |
 | -------------------------- | ---------- | --------------------------------------------- |
 | Edge ho poskytuje          | vypnuté    | `losos.edge.market.enable`                    |
 | Zariadenie môže obchodovať | vypnuté    | `losos.edge.tenants.<id>.market`              |
-| Predajca môže ponúkať      | zatvorené  | Stripe hlási pripojený účet ako pripravený    |
+| Predajca môže ponúkať      | zatvorené  | Stripe hlási pripojený účet ako pripravený, alebo na edge s mincami predajca nastavil adresu pre výplaty v USDC alebo kľúč pre mince |
 
 Zariadenie, ktoré nikdy neobchoduje, to neovplyvní. Trh je funkcia
 `losos-registrar` na edge.
@@ -40,7 +37,30 @@ zdieľanie obnovíte, a už zaplatené objednávky to neovplyvní.
 
 ## Ako sa pohybujú peniaze
 
-Edge je Stripe **platforma**. Peniaze sa nikdy nedotknú zariadenia LosOS.
+Peniaze sa nikdy nedotknú zariadenia LosOS. Kupujúci platia jedným zo štyroch
+spôsobov, podľa toho, čo edge dovolí:
+
+- **USDC na Base, Arbitrum One alebo OP Mainnet.** Platba ide do kontraktu
+  `LososEscrow`. Edge ju overí (adresu predajcu, sumu, potvrdenia) a potom ju
+  uvoľní predajcovi a pokladnici platformy, ktorá si berie 4 % poplatok.
+  Alebo celú platbu vráti kupujúcemu: keď je adresa predajcu nesprávna alebo
+  je to kontrakt, keď objednávka už bola zaplatená, alebo keď jej jednotky
+  prepadli. Ak edge nič neurobí, kupujúci si môže vklad z kontraktu vziať
+  späť deň po skončení rezervácie objednávky. Pozri
+  [Platba v USDC](#paying-with-usdc).
+- **USDC na Solane.** Priamy prevod, rozdelený medzi predajcu a pokladnicu
+  v transakcii samotného kupujúceho.
+- **Bitcoin a Monero.** Priamo do vlastnej peňaženky predajcu, na novú adresu
+  pre každú objednávku, odvodenú z verejného kľúča predajcu: rozšíreného
+  verejného kľúča alebo deskriptora pre Bitcoin, primárnej adresy
+  a súkromného kľúča na prezeranie pre Monero. Edge len sleduje a mince nikdy
+  nedrží. 4 % poplatok z týchto predajov sa predajcovi účtuje zvlášť a panel
+  ho ukazuje ako dlžné poplatky.
+- **Karta cez Stripe Connect.** Na edge voliteľná. Edge môže prijímať len
+  mince, bez platieb kartou, takže na prevádzku trhu netreba firemný účet
+  u spracovateľa kariet.
+
+Pri platbách kartou je edge Stripe **platforma**:
 
 1. Predajca sa zaregistruje (onboarding). Edge mu vytvorí pripojený účet
    Stripe Express, **označí ho UUID zariadenia** (metadáta `losos_box_uuid`)
@@ -48,7 +68,7 @@ Edge je Stripe **platforma**. Peniaze sa nikdy nedotknú zariadenia LosOS.
    predtým, než označovanie existovalo, sa označí, keď jeho vlastník nabudúce
    otvorí stránku.
 2. Stripe oznámi edge (`account.updated`), keď účet môže prijímať prevody.
-   Až potom môže predajca niečo ponúknuť.
+   Na edge, ktorý neprijíma mince, môže predajca niečo ponúknuť až potom.
 3. Kupujúci si objedná jednotky z ponuky. Edge ich zarezervuje a vytvorí
    Stripe Checkout Session ako **destination charge**. Kupujúci zaplatí
    platforme, `transfer_data[destination]` prepošle tržbu na účet predajcu
@@ -119,17 +139,12 @@ Obmedzenia, o ktorých treba vedieť a z ktorých sa zatiaľ žiadne nevynucuje:
 
 ## Admin UI
 
-Dnes je riadok **Nastavenia, Trh** sivý a označený „soon(TM)“. Je to
-vypnuté tlačidlo, ktoré klávesnica preskakuje, a `/settings/market` namiesto
-neho otvorí predvolený panel. Na otvorenie stačí jeden príznak, `planned` na
-riadku v `admin-ui/app/src/screens/settings/panes.ts`, plus zodpovedajúci
-prepínač v `admin-ui/app/tests/app.browser.mjs`, ktorý dovtedy drží
-prehliadačové kontroly panela.
-
-Po otvorení panel začína prepínačom zdieľania disku. Presunul sa sem z panela
+Riadok **Trh** je pod Mesh v bočnom paneli a otvára ho `/settings/market`.
+Panel začína prepínačom zdieľania disku. Presunul sa sem z panela
 Úložisko, pretože požičiavanie disku iným zariadeniam a platba zaň sú jedno
 rozhodnutie. Pod ním je to, čo vlastník kúpil, s expiráciou a zväzkom,
-a pult, z ktorého sa nakupuje. Na predaj slúži nastavenie výplat Stripe,
+a pult, z ktorého sa nakupuje. Na predaj slúži nastavenie výplat (adresa
+USDC, kľúč pre Bitcoin alebo Monero a Stripe, ak edge karty prijíma),
 formulár ponuky a vlastníkove vlastné ponuky a predaje. Prepínač sa zobrazuje
 bez ohľadu na to, či edge tomuto zariadeniu trh ponúka, pretože je to nastavenie
 zariadenia, nie edge.
@@ -138,7 +153,7 @@ zariadenia, nie edge.
   k mesh, výpočtový výkon, keď zároveň zdieľa výpočtový výkon. Všetko ostatné
   je sivé s uvedeným dôvodom. Edge vynucuje to isté pravidlo, panel ho len
   vysvetľuje.
-- Platba a onboarding do Stripe otvárajú vlastné stránky Stripe na novej
+- Platba kartou a onboarding do Stripe otvárajú vlastné stránky Stripe na novej
   karte. Nič v admin UI kartu nevidí. lososd a potom znova stránka overia,
   že odkaz je stránka `https://checkout.stripe.com` alebo
   `https://connect.stripe.com`, takže skompromitovaný edge nemôže poslať
@@ -193,6 +208,10 @@ edge zaloguje s jej session id, aby ju operátor mohol vrátiť. Dvaja kupujúci
 ktorí súperia o posledné jednotky, nemôžu session dostať obaja.
 
 ## Nastavenie pre operátora
+
+Tieto kroky nastavujú platby kartou. Edge, ktorý prijíma len mince, ich
+vynechá; ten prípad opisujú poznámky pre operátora pri zdrojovom kóde
+(`docs/ci-and-releases.md`).
 
 1. V Stripe dashboarde zapnite **Connect** na účte platformy.
 2. Zapečaťte tajný kľúč (stačí aj obmedzený kľúč) pomocou `systemd-creds`,
@@ -306,16 +325,17 @@ zapečatí zodpovedajúci pár, nič sa nestratí.
 Edge môže sklad, výpočtový výkon a stroje účtovať v USDC namiesto Stripe.
 Hardvér zostáva na Stripe. Ktoré siete prijíma, si vyberá edge:
 
-| Sieť         | Jej testovacia sieť |
+| Sieť         | Pre testovací edge  |
 | ------------ | ------------------- |
 | Base         | Base Sepolia        |
 | Arbitrum One | Arbitrum Sepolia    |
 | OP Mainnet   | OP Sepolia          |
 | Solana       | Solana Devnet       |
 
-Edge beží buď na testovacích, alebo na ostrých sieťach, nikdy na oboch, a
-režim sa riadi jeho kľúčom Stripe: testovacie siete s kľúčom `sk_test_`,
-ostré s `sk_live_`. Zmes registrar odmietne, takže testovacia platba sa
+Edge beží buď na ostrých, alebo na testovacích sieťach, nikdy na oboch. Na
+edge, ktorý prijíma karty, sa režim riadi jeho kľúčom Stripe: ostré siete
+s kľúčom `sk_live_`, testovacie s `sk_test_`. Edge, ktorý prijíma len mince,
+beží v režime svojich sietí. Zmes registrar odmietne, takže testovacia platba sa
 nedostane do ostrej evidencie. Každá sieť má vlastný RPC endpoint,
 zapečatený cez systemd-creds, a číta ho len registrar. Nastavenie opisujú
 poznámky pre operátora pri zdrojovom kóde (`docs/ci-and-releases.md`).
@@ -374,7 +394,7 @@ medzitým predali alebo objednávku už zaplatila iná platba, edge platbu z
 escrow vráti a panel to oznámi. Na Solane, kde escrow nie je, taká platba
 zostane predajcovi a vrátenie peňazí sa musí vyriešiť mimo trhu.
 
-Na testovacích sieťach je testovacie USDC z
+Pre testovací edge je testovacie USDC z
 [faucet Circle](https://faucet.circle.com), ktorý obsluhuje všetky štyri.
 Testovacie ETH dá faucet každej siete, testovacie SOL faucet Solany. Nič z
 toho nemá hodnotu.
@@ -383,8 +403,8 @@ toho nemá hodnotu.
 
 Panel vie z peňaženky poslať USDC na adresu na ktorejkoľvek sieti edge. Ak má
 edge endpoint pre ENS, panel ukáže pri adrese Etherea aj jej primárne meno a
-pri posielaní na sieti Etherea prijme meno namiesto adresy. Testovacie siete
-hľadajú mená na Sepolii, ostré na Ethereu. Nájdu sa len mená so záznamami na
+pri posielaní na sieti Etherea prijme meno namiesto adresy. Mená sa hľadajú
+na Ethereum mainnete, pre testovací edge na Sepolii. Nájdu sa len mená so záznamami na
 reťazci: stránka správy nedosiahne nič okrem zariadenia, takže mená
 obsluhované cez gateway mimo reťazca sa nehľadajú.
 
@@ -459,7 +479,7 @@ je uzol.
 ### Predaj za Monero {#selling-for-monero}
 
 Na Trhu vložte do riadka Monera dve veci: hlavnú adresu peňaženky, tú, ktorá
-sa začína na 4 (na stagenete na 5, na testnete na 9), a jej súkromný kľúč na
+sa začína na 4 (pre testovací edge na 5 alebo 9), a jej súkromný kľúč na
 prezeranie (view key). Feather, Cake Wallet aj oficiálne peňaženky ho
 ukazujú vedľa seedu, medzi kľúčmi peňaženky. Kľúč na prezeranie dovolí edgu
 vidieť, čo prichádza na vaše adresy, a nič viac: míňať nevie. Zariadenie
@@ -489,7 +509,7 @@ prehliadač blokov.
 
 ## Čo nie je pokryté
 
-- **Refundácie a spory.** Riešte ich v Stripe dashboarde pomocou
+- **Refundácie a spory pri kartách.** Riešte ich v Stripe dashboarde pomocou
   `reverse_transfer` a `refund_application_fee`, aby sa vrátil podiel
   predajcu aj provízia platformy. Trh nemodeluje ani jedno.
 - **Vynucovanie nároku.** Plnenie vytvorí claim; nebráni kupujúcemu použiť

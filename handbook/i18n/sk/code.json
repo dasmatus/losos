@@ -553,8 +553,11 @@
   "losos.home.soon.market.coins": {
     "message": "Platby v USDC a bitcoinoch"
   },
-  "losos.home.soon.market.open": {
-    "message": "Otvorenie trhu, ktoré potrebuje registrovanú firmu"
+  "losos.home.soon.market.pane": {
+    "message": "Panel Trh na každom boxe"
+  },
+  "losos.home.soon.market.edge": {
+    "message": "Oficiálny edge server LosOS, cez ktorý trh obchoduje"
   },
   "losos.home.soon.pool.share": {
     "message": "Šifrovaný podiel na každom boxe"

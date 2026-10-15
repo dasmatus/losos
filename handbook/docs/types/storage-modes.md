@@ -39,8 +39,8 @@ the box can claim room in the pool itself. Three things hold:
   each other.
 - Sharing needs a reachable edge. Without one, the box refuses the switch.
 - The switch sits on the **Market** pane, because lending disk and being paid
-  for it are one decision. While the market shows "soon", the switch is
-  greyed out along with it.
+  for it are one decision. It works whether or not the edge offers the
+  market to this box.
 
 ## Lending spare time (compute)
 

@@ -27,7 +27,7 @@ const { check, skip, finish } = runner();
  * so that opening the tab is two flips, there and here, and brings its
  * coverage straight back; the checks on the greyed row run only until then.
  * Both states were run green before the switch was set. */
-const MARKET_TAB_OPEN = false;
+const MARKET_TAB_OPEN = true;
 const whenMarketOpen = (name, fn) =>
   MARKET_TAB_OPEN ? check(name, fn) : skip(name, 'the Market tab is planned, not open');
 const whenMarketPlanned = (name, fn) =>
@@ -1185,7 +1185,7 @@ await whenMarketOpen('a payment page that is not Stripe is never opened', async 
   const tab = page.context().waitForEvent('page');
   await page.getByRole('button', { name: 'Buy', exact: true }).click();
   const placeholder = await tab;
-  await page.getByText('no payment page came back').waitFor();
+  await page.locator('[data-toast]').filter({ hasText: 'no payment page came back' }).waitFor();
   await placeholder.waitForEvent('close', { timeout: 2000 }).catch(() => {});
   assert.ok(placeholder.isClosed(), 'the placeholder tab was left open');
   assert.equal(marketPosts.length, 1);
@@ -1246,14 +1246,14 @@ await whenMarketOpen('a zero-decimal currency is priced in whole units, not hund
   await page.close();
 });
 
-await whenMarketOpen('a blocked payouts pop-up says so next to the button', async () => {
+await whenMarketOpen('a blocked payouts pop-up says so', async () => {
   const unready = { ...MARKET, account: { ...MARKET.account, seller_onboarded: false, seller_ready: false } };
   const { page, errors, marketPosts } = await open({ path: '/settings/market', stored: true, market: unready });
   await page.evaluate(() => {
     window.open = () => null;
   });
   await page.getByRole('button', { name: 'Set up payouts' }).click();
-  await page.getByRole('alert').filter({ hasText: 'Allow pop-ups for this page' }).waitFor();
+  await page.locator('[data-toast]').filter({ hasText: 'Allow pop-ups for this page' }).waitFor();
   assert.deepEqual(marketPosts, []);
   assert.deepEqual(errors, []);
   await page.close();
@@ -1392,7 +1392,7 @@ await whenMarketOpen('purchases are listed in a Table with a column per fact', a
     account: {
       ...MARKET.account,
       purchases: [
-        { id: 'ord_1', kind: 'storage', amount: 1000, currency: 'eur', quantity: 2, unit: 'GiB-month', status: 'paid', expired: false, expires_at: '2027-01-01T00:00:00Z', volume: 'pvc-1' },
+        { id: 'ord_1', kind: 'storage', amount: 1000, fee: 40, seller_net: 960, currency: 'eur', quantity: 2, unit: 'GiB-month', status: 'paid', created_at: 1791158400, paid_at: 1791158460, expired: false, expires_at: 1798761600, volume: 'pvc-1' },
       ],
     },
   };
@@ -1769,11 +1769,12 @@ await check('the Reset pane starts an erase with a backup, counts down and cance
 
 // ── Machines (pane-machines.tsx) ──────────────────────────────────────────
 
-await check('a box that does not share its disk sees the Machines pane greyed, with nothing to press', async () => {
+await check('a box that does not share its disk sees the Machines pane greyed, with a link to share it', async () => {
   const { page, errors, vmPosts } = await open({ path: '/machines', stored: true });
   const notice = page.getByTestId('machines-unavailable');
   await notice.getByText('Machines are for boxes that share their disk').waitFor();
-  await notice.getByText('Disk sharing opens together with the market.').waitFor();
+  const share = notice.getByRole('link', { name: 'Share the disk' });
+  assert.equal(await share.getAttribute('href'), '/settings/market');
   assert.equal(await page.locator('main').getByRole('button').count(), 0, 'the greyed pane offers a button');
   assert.deepEqual(vmPosts, []);
   assert.deepEqual(errors, []);

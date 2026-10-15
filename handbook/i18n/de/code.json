@@ -553,8 +553,11 @@
   "losos.home.soon.market.coins": {
     "message": "Zahlung in USDC und Bitcoin"
   },
-  "losos.home.soon.market.open": {
-    "message": "Die Eröffnung, für die ein eingetragenes Unternehmen dahinterstehen muss"
+  "losos.home.soon.market.pane": {
+    "message": "Der Bereich Marktplatz auf jeder Box"
+  },
+  "losos.home.soon.market.edge": {
+    "message": "Der offizielle LosOS-Edge, über den der Marktplatz handelt"
   },
   "losos.home.soon.pool.share": {
     "message": "Der verschlüsselte Anteil auf jeder Box"

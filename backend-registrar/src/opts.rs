@@ -188,8 +188,9 @@ pub struct ServeOpts {
     /// Where the reconciler publishes the per-node compute windows for the
     /// edge's `losos-mesh-taint.service` to read.
     pub compute_windows_file: String,
-    /// The Stripe Connect market. `None` — no `--market-gate-socket` — and
-    /// every `/market/*` route answers 503; the rest of the API is unchanged.
+    /// The market. `None` (neither `--market-gate-socket` nor
+    /// `--market-no-cards`) and every `/market/*` route answers 503; the rest
+    /// of the API is unchanged.
     pub market: Option<Box<MarketOpts>>,
     /// The widget builder (`crate::builder`). `None` — no
     /// `--builder-key-file` — and every `/builder/*` route answers 503. Needs
@@ -734,6 +735,8 @@ fn valid_currency(c: &str) -> bool {
 /// of the Stripe gate (`stripe-gate`), which alone holds the key and the
 /// webhook secrets; the return URL is then required, because a market that can
 /// take payment but has nowhere to send the buyer back to would be half-made.
+/// Or enabled by `--market-no-cards`: coins only, no gate and no Stripe
+/// account, which needs `--market-usdc` and takes the mode of its networks.
 fn parse_provision(args: &[String]) -> Result<Mode> {
     let verb = args.first().map(String::as_str).unwrap_or("");
     let rest: Vec<String> = args.iter().skip(1).cloned().collect();
@@ -921,8 +924,18 @@ fn parse_rate(raw: &str) -> Option<u64> {
 }
 
 fn parse_market(args: &[String]) -> Result<Option<Box<MarketOpts>>> {
-    let Some(gate_socket) = arg(args, "--market-gate-socket") else {
-        return Ok(None);
+    // `--market-no-cards`: coins only, no Stripe gate. Exactly one of the two
+    // turns the market on.
+    let cards = !args.iter().any(|a| a == "--market-no-cards");
+    let gate_socket = match (arg(args, "--market-gate-socket"), cards) {
+        (None, true) => return Ok(None),
+        (Some(socket), true) => socket,
+        (None, false) => "",
+        (Some(_), false) => {
+            return Err(miette!(
+                "--market-no-cards takes no --market-gate-socket: an edge without cards runs no Stripe gate"
+            ))
+        }
     };
     let currency = arg(args, "--market-currency").unwrap_or("eur");
     if !valid_currency(currency) {
@@ -948,10 +961,27 @@ fn parse_market(args: &[String]) -> Result<Option<Box<MarketOpts>>> {
             "bad --market-storage-class {storage_class:?}; expected a Kubernetes object name (DNS-1123 subdomain)"
         ));
     }
-    let return_url = req(args, "--market-return-url")?;
-    if !crate::stripe_gate::url_ok(return_url) {
+    // Where Stripe sends a buyer back to: needed only with cards.
+    let return_url = if cards {
+        req(args, "--market-return-url")?
+    } else {
+        arg(args, "--market-return-url").unwrap_or("")
+    };
+    if (cards || !return_url.is_empty()) && !crate::stripe_gate::url_ok(return_url) {
         return Err(miette!(
             "--market-return-url must be an absolute http(s) URL with a host, no credentials and no #fragment"
+        ));
+    }
+    let hardware = hardware_catalogue(args, "--market-hardware-catalogue", currency)?;
+    let usdc = parse_usdc(args, currency)?;
+    if !cards && usdc.is_none() {
+        return Err(miette!(
+            "--market-no-cards needs --market-usdc: without cards the market takes coins, and USDC is the checkout they ride on"
+        ));
+    }
+    if !cards && hardware.is_some() {
+        return Err(miette!(
+            "--market-hardware-catalogue needs cards: hardware is paid by card through the Stripe gate"
         ));
     }
     Ok(Some(Box::new(MarketOpts {
@@ -963,11 +993,12 @@ fn parse_market(args: &[String]) -> Result<Option<Box<MarketOpts>>> {
         currency: currency.to_string(),
         fee_bps,
         storage_class: storage_class.to_string(),
-        hardware_catalogue: hardware_catalogue(args, "--market-hardware-catalogue", currency)?,
+        hardware_catalogue: hardware,
         vms: parse_vms(args)?,
-        usdc: parse_usdc(args, currency)?,
+        usdc,
         btc: parse_btc(args, currency)?,
         xmr: parse_xmr(args, currency)?,
+        cards,
     })))
 }
 

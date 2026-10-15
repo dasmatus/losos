@@ -7,8 +7,8 @@ sidebar_position: 2
 
 An **edge** is a server on the internet that a box keeps a tunnel open to.
 Through it, the box gets a public address without opening a port at home,
-and joins the mesh of other boxes. Once the market opens, the box can trade
-there too. The project runs the **LosOS edge**, and only that edge's market
+and joins the mesh of other boxes. The box can trade on the edge's market
+too. The project runs the **LosOS edge**, and only that edge's market
 pays out.
 
 ## What the edge does for a box
@@ -17,10 +17,10 @@ pays out.
 | ---------------------- | ---------------------------------------------------------------------------------------------------------- |
 | **Remote access**      | `https://<your-name>.<edge domain>` reaches LosOS cloud and LosOS Git through an encrypted tunnel the box opens outwards. The box never publishes the admin pages; they stay LAN-only, even through the tunnel. |
 | **The mesh**           | The box joins a Kubernetes cluster the edge runs. Its spare disk becomes part of a shared, replicated pool; its spare CPU runs other people's work inside the hours you allow, only while the box is idle. |
-| **The market**         | You get paid for the disk and CPU you share, and you can buy some from others. Buyers pay by card through Stripe, and the edge keeps a 4 % fee. The market is built end to end but not open yet, because a platform needs a registered business behind it. Until then the Market tab shows "soon". |
+| **The market**         | You get paid for the disk and CPU you share, and you can buy some from others. Buyers pay in USDC, Bitcoin or Monero, or by card through Stripe where the edge takes cards, and the edge keeps a 4 % fee. An edge can take coins only, without card payments, so no business account with a card processor is needed to run the market. The Market pane is under Mesh in the sidebar. |
 | **Find my box**        | The edge hosts the page that finds a box on your LAN from a browser.                                        |
 
-![The Market pane as it will look once it opens: what this box has bought, storage and compute to buy from other boxes, and payouts through Stripe. On a box today the pane is greyed with soon.](../img/market-open.png)
+![The Market pane: what this box has bought, storage and compute to buy from other boxes, and payouts through Stripe.](../img/market-open.png)
 
 ## How a box finds its edge
 
@@ -102,9 +102,9 @@ there, checks the owner's records, and gets the certificate.
 Only an official edge hands out domains, and only to a box whose Stripe
 account Stripe has fully checked. That is the account the market pays out to.
 It ties the box to a person Stripe has verified, and a stranger cannot borrow
-the edge's certificates without one. While the market is not open, no box
-has such an account, so the section on the Network pane says what is missing
-and offers nothing to fill in.
+the edge's certificates without one. Until the box has such an account, the
+section on the Network pane says what is missing and offers nothing to fill
+in.
 
 ![The Your own domain section of the Network pane: the box's name on the edge, one domain live, one waiting for its CNAME with the two records to publish, and the field for adding another.](../img/custom-domain.png)
 
@@ -151,7 +151,7 @@ There is nothing to set up for this.
 | Mesh     | Join the mesh                          | enrols this box in the edge's cluster; needs an edge in reach           |
 | Mesh     | Lend this box while I sleep            | lends CPU inside the hours below, while idle; needs the mesh joined     |
 | Mesh     | Hours                                  | the daily window, in this box's own time zone                           |
-| Market   | Share this box's disk with the mesh    | lends spare room to the pool; needs an edge in reach; greyed with the market until it opens |
+| Market   | Share this box's disk with the mesh    | lends spare room to the pool; needs an edge in reach                    |
 
 ## What the edge sees
 

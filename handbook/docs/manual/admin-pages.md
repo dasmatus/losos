@@ -22,7 +22,7 @@ icons. On a phone it opens as a sheet.
 | **Overview** | Whether the box is answering and for how long, the storage card, the app tiles and your board of widgets.  |
 | **Apps**     | The apps on this box with their mode, a search of Artifact Hub, and the apps installed from it.            |
 | **Storage**  | How full the disk is, what is holding the room, and the reserve to claim.                                   |
-| **Mesh**     | Joining other boxes, the hours this one lends its spare time, and **Market** with disk sharing, greyed out. |
+| **Mesh**     | Joining other boxes, the hours this one lends its spare time, and **Market** with disk sharing.            |
 | **Settings** | Network, Look, Hardware, Security, Advanced, History, About and Reset, each a pane. A search box filters the panes.             |
 
 <img src={require("../img/overview-phone.png").default} alt="The Overview on a phone: the sections fold into a menu button." width="260" /> <img src={require("../img/overview-phone-sheet.png").default} alt="The same phone with the menu open as a sheet over the page." width="260" />

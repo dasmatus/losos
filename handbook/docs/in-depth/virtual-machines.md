@@ -28,10 +28,9 @@ does not share gets `{available: false, reason: "notSharing"}` from
 `GET /api/vms`, every action is refused with 409, and the page shows one
 greyed sentence instead of the form.
 
-The disk-sharing switch is on the Market pane, and the market is not open yet
-(see [Market](market.md)). Until it opens, the admin UI cannot switch sharing on,
-so the Machines page stays greyed on every box that has not set
-`losos.sharingMyStorage` some other way.
+The disk-sharing switch is on the Market pane (see [Market](market.md)). Turn
+it on there, and the Machines page offers the form once the change is
+applied.
 
 Two more reasons the page can give:
 

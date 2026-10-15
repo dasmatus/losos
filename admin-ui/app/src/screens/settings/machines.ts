@@ -102,7 +102,7 @@ export function useMachines(enabled: boolean): MachinesData {
                 account: reply.account,
                 machines: reply.machines,
               }
-            : { kind: "unavailable", reason: reply.reason },
+            : { kind: "unavailable", reason: knownReason(reply.reason) },
         );
       } catch (error) {
         if (isAbort(error) || isUnauthorized(error)) return;
@@ -219,4 +219,10 @@ export function formatBytes(bytes: number): string {
   }
   const number = new Intl.NumberFormat(intlTag(), { maximumFractionDigits: unit === 0 ? 0 : 1 }).format(value);
   return `${number} ${units[unit]}`;
+}
+
+/* A reason this page has no sentence for (a newer or older lososd) reads as
+ * "not offered" rather than leaving the pane blank. */
+function knownReason(reason: unknown): VmUnavailableReason {
+  return reason === "notSharing" || reason === "noOfficialEdge" ? reason : "notOffered";
 }
