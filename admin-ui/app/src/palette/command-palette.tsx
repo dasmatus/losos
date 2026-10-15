@@ -14,9 +14,10 @@ import { Dialog } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
 import type { MessageKey } from "@/lib/i18n";
 import { useLocale, useT } from "@/lib/i18n-react";
+import { getPinsState, getServerPinsState, subscribePins, viewPin, type PinView } from "@/lib/pins";
 import { getTheme, subscribeTheme } from "@/lib/theme";
 import { cn } from "@/lib/utils";
-import { actionItems, appItems, pageItems, rank, type GroupId, type Item, type Target } from "./items";
+import { actionItems, appItems, pageItems, pinItems, rank, type GroupId, type Item, type Target } from "./items";
 import {
   cloudTextHref,
   fileHref,
@@ -33,8 +34,8 @@ import {
 import { closePalette, paletteState, subscribePalette } from "./store";
 
 /* The command palette: one box that finds a page, a setting, an app, a file
- * in LosOS cloud, a repository in LosOS Git or an app to install, and opens
- * it. Ctrl/Cmd+Shift+P opens it from anywhere on the page, a colon typed
+ * in LosOS cloud, a repository in LosOS Git, one of the owner's pins or an
+ * app to install, and opens it. Ctrl/Cmd+Shift+P opens it from anywhere on the page, a colon typed
  * outside a text field does too, and so does the search box at the top of
  * the sidebar.
  *
@@ -54,6 +55,7 @@ import { closePalette, paletteState, subscribePalette } from "./store";
  * steps that pane asks for. */
 
 const GROUP_TITLE: Record<GroupId, MessageKey> = {
+  pins: "pins.title",
   pages: "palette.group.pages",
   apps: "palette.group.apps",
   files: "palette.group.files",
@@ -64,14 +66,15 @@ const GROUP_TITLE: Record<GroupId, MessageKey> = {
 };
 
 /** How many rows a group shows. The palette is for jumping, not browsing. */
-const LIMIT: Record<GroupId, number> = { pages: 8, apps: 6, files: 8, repos: 6, text: 8, install: 5, actions: 8 };
+const LIMIT: Record<GroupId, number> = { pins: 8, pages: 8, apps: 6, files: 8, repos: 6, text: 8, install: 5, actions: 8 };
 
 /** Letters typed before the box is asked what is inside the files: fewer
  *  match nearly every document. */
 const TEXT_MIN = 3;
 
-/** Before anything is typed: where to go, a few repositories, what to do. */
-const IDLE_GROUPS: readonly GroupId[] = ["pages", "repos", "actions"];
+/** Before anything is typed: the pins, where to go, a few repositories,
+ *  what to do. */
+const IDLE_GROUPS: readonly GroupId[] = ["pins", "pages", "repos", "actions"];
 
 interface Group {
   id: GroupId;
@@ -121,6 +124,10 @@ function PaletteBody({ initial }: { initial: string }) {
   const install = useRemote(true, query, 2, searchApps);
   const cloudText = useRemote(true, query, TEXT_MIN, searchCloudText);
   const gitText = useRemote(true, query, TEXT_MIN, searchGitText);
+  const pins = React.useSyncExternalStore(subscribePins, getPinsState, getServerPinsState);
+  const pinned = pinItems(
+    pins.pins.map((pin) => viewPin(pin, pins.installed)).filter((view): view is PinView => view !== null),
+  );
 
   const groups: Group[] = [];
   const push = (id: GroupId, items: Item[], note: Group["note"] = null): void => {
@@ -130,6 +137,7 @@ function PaletteBody({ initial }: { initial: string }) {
     }
   };
 
+  push("pins", typed ? rank(pinned, query) : pinned);
   // Before anything is typed the pages are a plain list of where to go;
   // the line under each name is for telling matches apart.
   push("pages", typed ? rank(pageItems(), query) : pageItems().map((item) => ({ ...item, detail: null })));
@@ -424,7 +432,7 @@ function go(target: Target, newTab: boolean, navigate: ReturnType<typeof useNavi
       navigate(target.to, target.state === undefined ? undefined : { state: target.state });
       return;
     case "href":
-      if (newTab) window.open(target.href, "_blank", "noopener");
+      if (newTab || target.newTab === true) window.open(target.href, "_blank", "noopener");
       else window.location.assign(target.href);
       return;
     case "run":

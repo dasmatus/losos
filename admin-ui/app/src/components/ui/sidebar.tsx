@@ -264,6 +264,24 @@ function SidebarContent({ className, ...props }: React.ComponentProps<"div">) {
   return <div data-slot="sidebar-content" className={cn("mt-2 flex min-h-0 flex-col gap-2", className)} {...props} />;
 }
 
+function SidebarGroup({ className, ...props }: React.ComponentProps<"div">) {
+  return <div data-slot="sidebar-group" className={cn("flex min-w-0 flex-col", className)} {...props} />;
+}
+
+function SidebarGroupLabel({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="sidebar-group-label"
+      className={cn(
+        "px-2 pt-1 pb-1.5 text-[11.5px] font-medium tracking-wide text-faint",
+        "group-data-[collapsible=icon]/sidebar:sr-only",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
 function SidebarMenu({ className, ...props }: React.ComponentProps<"ul">) {
   return <ul data-slot="sidebar-menu" className={cn("flex min-w-0 flex-col gap-0.5", className)} {...props} />;
 }
@@ -465,6 +483,8 @@ export {
   SidebarTrigger,
   SidebarHeader,
   SidebarContent,
+  SidebarGroup,
+  SidebarGroupLabel,
   SidebarMenu,
   SidebarMenuItem,
   SidebarMenuButton,
