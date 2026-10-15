@@ -377,18 +377,6 @@ export async function removeHandWidget(id: string): Promise<void> {
   }
 }
 
-/** The widget `id` names, if the box has it. */
-export function handWidget(id: string): HandWidget | undefined {
-  return state.look?.widgets.find((w) => w.id === id);
-}
-
 export function lookLimits(): LookLimits {
   return state.look?.limits ?? DEFAULT_LIMITS;
-}
-
-/* Testing seam: forget everything, so a test can start from a cold store. */
-export function resetLookStore(): void {
-  state = EMPTY;
-  inFlight = null;
-  applyBackground(null);
 }

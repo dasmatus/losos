@@ -1,6 +1,4 @@
 import * as React from "react";
-import { HugeiconsIcon } from "@hugeicons/react";
-import { DashboardSquare01Icon } from "@hugeicons/core-free-icons";
 import { AppGrid } from "@/components/AppGrid";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { HelpLink } from "@/components/ui/help-link";
@@ -412,32 +410,6 @@ function clampPercent(value: number): number {
 }
 
 // ── The widget slot ───────────────────────────────────────────────────────
-
-/* A visible stand-in for the board another module owns.
- *
- * Home renders its widget slot only when it is handed something, so a box with
- * no widgets has no empty frame on its homepage. Pass this component as
- * `widgets` while wiring the board up, to see where it lands. */
-export function HomeWidgetPlaceholder() {
-  const t = useT();
-  return (
-    <div
-      className={cn(
-        "flex items-center gap-3 rounded-card border border-dashed border-line",
-        "px-4 py-5 text-[12.5px] text-faint animate-fade-in",
-      )}
-    >
-      <HugeiconsIcon
-        icon={DashboardSquare01Icon}
-        size={21}
-        strokeWidth={1.5}
-        color="currentColor"
-        aria-hidden="true"
-      />
-      {t("home.widgets.placeholder")}
-    </div>
-  );
-}
 
 // ── Facts ─────────────────────────────────────────────────────────────────
 

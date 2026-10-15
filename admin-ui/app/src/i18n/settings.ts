@@ -212,7 +212,6 @@ export default defineMessages({
 
   // ── Apply bar ─────────────────────────────────────────────────────────────
   "settings.applyBar.spinner": { en: "Applying", sk: "Používa sa", de: "Wird angewendet" },
-  "settings.applyBar.dismiss": { en: "Dismiss", sk: "Zavrieť", de: "Schließen" },
   "settings.applyBar.pending": {
     en: { one: "{count} change not applied yet", other: "{count} changes not applied yet" },
     sk: {

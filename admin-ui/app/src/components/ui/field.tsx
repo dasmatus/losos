@@ -76,40 +76,6 @@ export function FieldGroup({ className, ...props }: React.ComponentPropsWithoutR
   );
 }
 
-export function FieldSet({ className, ...props }: React.ComponentPropsWithoutRef<"fieldset">) {
-  return (
-    <fieldset
-      data-slot="field-set"
-      className={cn(
-        "flex flex-col gap-4",
-        "has-[>[data-slot=checkbox-group]]:gap-3 has-[>[data-slot=radio-group]]:gap-3",
-        className,
-      )}
-      {...props}
-    />
-  );
-}
-
-export function FieldLegend({
-  className,
-  variant = "legend",
-  ...props
-}: React.ComponentPropsWithoutRef<"legend"> & { variant?: "legend" | "label" }) {
-  return (
-    <legend
-      data-slot="field-legend"
-      data-variant={variant}
-      className={cn(
-        "mb-2 font-medium text-ink",
-        "data-[variant=legend]:text-[15px]",
-        "data-[variant=label]:text-sm",
-        className,
-      )}
-      {...props}
-    />
-  );
-}
-
 /** The right-hand side of a horizontal field: label and description stacked
  *  beside a control that sits on its own. */
 export function FieldContent({ className, ...props }: React.ComponentPropsWithoutRef<"div">) {
@@ -139,20 +105,6 @@ export function FieldLabel({ className, ...props }: React.ComponentPropsWithoutR
   );
 }
 
-export function FieldTitle({ className, ...props }: React.ComponentPropsWithoutRef<"div">) {
-  return (
-    <div
-      data-slot="field-label"
-      className={cn(
-        "flex w-fit items-center gap-2 text-sm leading-snug font-medium",
-        "group-data-[disabled=true]/field:text-faint",
-        className,
-      )}
-      {...props}
-    />
-  );
-}
-
 /** The explanatory line of a field. Not a placeholder, not a tooltip. */
 export function FieldDescription({ className, ...props }: React.ComponentPropsWithoutRef<"p">) {
   return (
@@ -167,34 +119,6 @@ export function FieldDescription({ className, ...props }: React.ComponentPropsWi
       )}
       {...props}
     />
-  );
-}
-
-export function FieldSeparator({
-  children,
-  className,
-  ...props
-}: React.ComponentPropsWithoutRef<"div">) {
-  return (
-    <div
-      data-slot="field-separator"
-      data-content={children !== undefined && children !== null ? "" : undefined}
-      className={cn(
-        "relative -my-2 h-5 text-sm group-data-[variant=outline]/field-group:-mb-2",
-        className,
-      )}
-      {...props}
-    >
-      <div className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-hair" />
-      {children !== undefined && children !== null && (
-        <span
-          className="relative mx-auto block w-fit bg-surface px-2 text-muted"
-          data-slot="field-separator-content"
-        >
-          {children}
-        </span>
-      )}
-    </div>
   );
 }
 
