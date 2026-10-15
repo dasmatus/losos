@@ -39,7 +39,6 @@
 //! `io_backend.rs` behind [`crate::losos::Losos::edge_status`], for the
 //! reasons in `catalogue.rs` (lososd shells out rather than linking a client).
 
-use std::fmt;
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
@@ -217,24 +216,15 @@ impl EdgeStatus {
 /// Refused: a network-dependent sharing setting was being turned on with no
 /// edge in reach. Rendered as a 409 by the HTTP layer; the message is the
 /// sentence the owner reads.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error(
+    "no edge proxy is reachable from this box, so {setting} cannot be turned on: \
+     storage can only be shared through an edge. Local use keeps working."
+)]
 pub struct EdgeRequired {
     /// The setting that was refused, in its `losos.*` spelling.
     pub setting: &'static str,
 }
-
-impl fmt::Display for EdgeRequired {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "no edge proxy is reachable from this box, so {} cannot be turned on: \
-             storage can only be shared through an edge. Local use keeps working.",
-            self.setting
-        )
-    }
-}
-
-impl std::error::Error for EdgeRequired {}
 
 /// The sharing settings that need an edge, and the rule for when one is
 /// being *turned on*.
@@ -755,20 +745,13 @@ pub fn verify_answer(
 /// Refused: trading was asked of a box with no official edge in reach.
 /// Rendered as a 409 by the HTTP layer; the message is the sentence the
 /// owner reads.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error(
+    "no official LosOS edge is reachable from this box, so trading is off: \
+     only edges LosOS runs may process the market. Sharing storage through \
+     your own edge keeps working."
+)]
 pub struct OfficialEdgeRequired;
-
-impl fmt::Display for OfficialEdgeRequired {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(
-            "no official LosOS edge is reachable from this box, so trading is off: \
-             only edges LosOS runs may process the market. Sharing storage through \
-             your own edge keeps working.",
-        )
-    }
-}
-
-impl std::error::Error for OfficialEdgeRequired {}
 
 /// The market gate: trading needs an official edge.
 ///

@@ -12,7 +12,7 @@ use crate::install_screen::{self, Progress, Row};
 use crate::installer::{
     execute, plan_install, resolve_drives, BlockDev, Install, LsblkOutput, Options,
 };
-use crate::io_backend::atomic_write;
+use crate::io_backend::{atomic_write, env_or};
 use anyhow::{bail, Context};
 use std::io::Read;
 use std::net::ToSocketAddrs;
@@ -509,10 +509,6 @@ fn read_block_devices() -> anyhow::Result<Vec<BlockDev>> {
         )
     })?;
     Ok(parsed.blockdevices)
-}
-
-fn env_or(key: &str, default: &str) -> String {
-    std::env::var(key).unwrap_or_else(|_| default.to_string())
 }
 
 /// Whether the installer medium itself was booted in legacy BIOS mode.

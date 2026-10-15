@@ -20,6 +20,7 @@ use crate::losos::{
 };
 use crate::model::Mode;
 use crate::overrides::validate_apply;
+use actix_web::http::StatusCode;
 use actix_web::{web, App, HttpRequest, HttpResponse, HttpServer};
 use anyhow::Context;
 use std::path::Path;
@@ -73,134 +74,108 @@ fn run(
 /// The answer to a command that failed: a typed refusal keeps its words and
 /// its status, anything else is a 500 whose detail goes to the journal.
 fn error_response(e: anyhow::Error) -> HttpResponse {
-    match e {
-        // A market answer the owner can act on keeps its words; it is the
-        // registrar's own sentence, vetted by `market::classify`.
-        e if e.downcast_ref::<crate::market::Refused>().is_some() => {
-            let r = e.downcast_ref::<crate::market::Refused>().expect("checked");
-            err(
-                actix_web::http::StatusCode::from_u16(r.status)
-                    .unwrap_or(actix_web::http::StatusCode::BAD_REQUEST),
-                &r.message,
-            )
-        }
-        // An apply the option document turned down: the sentence names the
-        // key and the rule, and the pane puts it beside the field.
-        e if e.downcast_ref::<crate::options::Rejected>().is_some() => {
-            let why = e
-                .downcast_ref::<crate::options::Rejected>()
-                .expect("checked");
-            err(actix_web::http::StatusCode::BAD_REQUEST, &why.0)
-        }
-        // A look request the owner can act on — a picture that is not one,
-        // a widget with no name — keeps its sentence, as a 400.
-        e if e.downcast_ref::<crate::look::Invalid>().is_some() => {
-            let why = e.downcast_ref::<crate::look::Invalid>().expect("checked");
-            err(actix_web::http::StatusCode::BAD_REQUEST, &why.0)
-        }
-        // An install the owner can fix (a bad name, a chart the box will not
-        // run) keeps its sentence as a 400; one that cannot happen right now
-        // (the shared side locked, a job still running) is a 409.
-        e if e.downcast_ref::<crate::apps::Invalid>().is_some() => {
-            let why = e.downcast_ref::<crate::apps::Invalid>().expect("checked");
-            err(actix_web::http::StatusCode::BAD_REQUEST, &why.0)
-        }
-        e if e.downcast_ref::<crate::apps::Conflict>().is_some() => {
-            let why = e.downcast_ref::<crate::apps::Conflict>().expect("checked");
-            err(actix_web::http::StatusCode::CONFLICT, &why.0)
-        }
-        // The first boot's one expected failure: Nextcloud is still installing
-        // itself, so the first password cannot be set *yet*. 503 with the
-        // reason and a Retry-After, so the wizard waits and says why, instead
-        // of the opaque 500 that once sent owners to re-image a working box.
-        e if e.downcast_ref::<crate::setup::NotReady>().is_some() => {
-            let why = &e
-                .downcast_ref::<crate::setup::NotReady>()
-                .expect("checked")
-                .0;
-            tracing::info!(reason = why.as_str(), "claim refused: not ready yet");
-            HttpResponse::build(actix_web::http::StatusCode::SERVICE_UNAVAILABLE)
-                .insert_header(("Retry-After", "10"))
-                .json(serde_json::json!({ "error": why, "ready": false, "waitingFor": why }))
-        }
-        // A password sign-in that LosOS cloud turned down: 401, which the
-        // dialog shows as "try again" and the caller counts as a failure for
-        // the per-address throttle, exactly like a wrong token.
-        e if e.downcast_ref::<crate::signin::WrongPassword>().is_some() => {
-            tracing::info!("sign-in refused: wrong password");
-            err(
-                actix_web::http::StatusCode::UNAUTHORIZED,
-                &crate::signin::WrongPassword.to_string(),
-            )
-        }
-        // LosOS cloud's own brute-force protection shut the door; the page
-        // says "wait" rather than "wrong".
-        e if e.downcast_ref::<crate::signin::Throttled>().is_some() => {
-            tracing::warn!("sign-in refused: LosOS cloud is throttling this address");
-            let mut resp = err(
-                actix_web::http::StatusCode::TOO_MANY_REQUESTS,
-                &crate::signin::Throttled.to_string(),
-            );
-            resp.headers_mut().insert(
-                actix_web::http::header::RETRY_AFTER,
-                "30".parse().expect("digits"),
-            );
-            resp
-        }
-        // Sharing turned on with no edge proxy in reach (`crate::edge`):
-        // 409 with the reason and a flag the Mesh pane keys on, so the switch
-        // can say why it did not take rather than "command failed".
-        e if e.downcast_ref::<crate::edge::EdgeRequired>().is_some() => {
-            let why = e
-                .downcast_ref::<crate::edge::EdgeRequired>()
-                .expect("checked");
-            tracing::warn!(setting = why.setting, "refused: no edge proxy reachable");
-            HttpResponse::build(actix_web::http::StatusCode::CONFLICT).json(serde_json::json!({
-                "error": why.to_string(),
-                "edgeRequired": true,
-                "setting": why.setting,
-            }))
-        }
-        // Trading asked of a box whose edges are all a company's own: the
-        // sentence, as a 409, with a flag the Market pane can key on.
-        e if e
-            .downcast_ref::<crate::edge::OfficialEdgeRequired>()
-            .is_some() =>
-        {
-            tracing::warn!("refused: no official edge reachable, trading is off");
-            HttpResponse::build(actix_web::http::StatusCode::CONFLICT).json(serde_json::json!({
-                "error": crate::edge::OfficialEdgeRequired.to_string(),
-                "officialEdgeRequired": true,
-            }))
-        }
-        // A bucket the owner can fix, or a recovery code that is not one.
-        e if e.downcast_ref::<crate::backup::Invalid>().is_some() => {
-            let why = e.downcast_ref::<crate::backup::Invalid>().expect("checked");
-            err(actix_web::http::StatusCode::BAD_REQUEST, why.0)
-        }
-        // A backup, restore or erase asked for while something it would
-        // collide with is running.
-        e if e.downcast_ref::<crate::backup::Busy>().is_some() => {
-            let why = e.downcast_ref::<crate::backup::Busy>().expect("checked");
-            err(actix_web::http::StatusCode::CONFLICT, why.0)
-        }
-        // A second owner, or the first one again after the grace window:
-        // the sentence, as a 409 the wizard already knows how to show.
-        e if e.downcast_ref::<crate::setup::AlreadyClaimed>().is_some() => {
-            tracing::warn!("claim refused: the box already has an owner");
-            err(
-                actix_web::http::StatusCode::CONFLICT,
-                &crate::setup::AlreadyClaimed.to_string(),
-            )
-        }
-        e => {
-            tracing::error!(error = ?e, "admin API command failed");
-            err(
-                actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
-                "command failed; see the lososd journal",
-            )
-        }
+    // A market answer the owner can act on keeps its words; it is the
+    // registrar's own sentence, vetted by `market::classify`.
+    if let Some(r) = e.downcast_ref::<crate::market::Refused>() {
+        return err(
+            StatusCode::from_u16(r.status).unwrap_or(StatusCode::BAD_REQUEST),
+            &r.message,
+        );
     }
+    // Sentences the owner can act on, as 400s: an apply the option document
+    // turned down (the pane puts it beside the field), a look request that is
+    // not one, an install with a bad name or a chart the box will not run, a
+    // bucket or recovery code that is not one.
+    if let Some(why) = e
+        .downcast_ref::<crate::options::Rejected>()
+        .map(ToString::to_string)
+        .or_else(|| {
+            e.downcast_ref::<crate::look::Invalid>()
+                .map(ToString::to_string)
+        })
+        .or_else(|| {
+            e.downcast_ref::<crate::apps::Invalid>()
+                .map(ToString::to_string)
+        })
+        .or_else(|| {
+            e.downcast_ref::<crate::backup::Invalid>()
+                .map(ToString::to_string)
+        })
+    {
+        return err(StatusCode::BAD_REQUEST, &why);
+    }
+    // Things that cannot happen right now, as 409s: an install while the
+    // shared side is locked or a job still runs, a backup, restore or erase
+    // that would collide with one running.
+    if let Some(why) = e
+        .downcast_ref::<crate::apps::Conflict>()
+        .map(ToString::to_string)
+        .or_else(|| {
+            e.downcast_ref::<crate::backup::Busy>()
+                .map(ToString::to_string)
+        })
+    {
+        return err(StatusCode::CONFLICT, &why);
+    }
+    // The first boot's one expected failure: Nextcloud is still installing
+    // itself, so the first password cannot be set *yet*. 503 with the
+    // reason and a Retry-After, so the wizard waits and says why, instead
+    // of the opaque 500 that once sent owners to re-image a working box.
+    if let Some(crate::setup::NotReady(why)) = e.downcast_ref() {
+        tracing::info!(reason = why.as_str(), "claim refused: not ready yet");
+        return HttpResponse::build(StatusCode::SERVICE_UNAVAILABLE)
+            .insert_header(("Retry-After", "10"))
+            .json(serde_json::json!({ "error": why, "ready": false, "waitingFor": why }));
+    }
+    // A password sign-in that LosOS cloud turned down: 401, which the
+    // dialog shows as "try again" and the caller counts as a failure for
+    // the per-address throttle, exactly like a wrong token.
+    if let Some(why) = e.downcast_ref::<crate::signin::WrongPassword>() {
+        tracing::info!("sign-in refused: wrong password");
+        return err(StatusCode::UNAUTHORIZED, &why.to_string());
+    }
+    // LosOS cloud's own brute-force protection shut the door; the page
+    // says "wait" rather than "wrong".
+    if let Some(why) = e.downcast_ref::<crate::signin::Throttled>() {
+        tracing::warn!("sign-in refused: LosOS cloud is throttling this address");
+        let mut resp = err(StatusCode::TOO_MANY_REQUESTS, &why.to_string());
+        resp.headers_mut().insert(
+            actix_web::http::header::RETRY_AFTER,
+            "30".parse().expect("digits"),
+        );
+        return resp;
+    }
+    // Sharing turned on with no edge proxy in reach (`crate::edge`):
+    // 409 with the reason and a flag the Mesh pane keys on, so the switch
+    // can say why it did not take rather than "command failed".
+    if let Some(why) = e.downcast_ref::<crate::edge::EdgeRequired>() {
+        tracing::warn!(setting = why.setting, "refused: no edge proxy reachable");
+        return HttpResponse::build(StatusCode::CONFLICT).json(serde_json::json!({
+            "error": why.to_string(),
+            "edgeRequired": true,
+            "setting": why.setting,
+        }));
+    }
+    // Trading asked of a box whose edges are all a company's own: the
+    // sentence, as a 409, with a flag the Market pane can key on.
+    if let Some(why) = e.downcast_ref::<crate::edge::OfficialEdgeRequired>() {
+        tracing::warn!("refused: no official edge reachable, trading is off");
+        return HttpResponse::build(StatusCode::CONFLICT).json(serde_json::json!({
+            "error": why.to_string(),
+            "officialEdgeRequired": true,
+        }));
+    }
+    // A second owner, or the first one again after the grace window:
+    // the sentence, as a 409 the wizard already knows how to show.
+    if let Some(why) = e.downcast_ref::<crate::setup::AlreadyClaimed>() {
+        tracing::warn!("claim refused: the box already has an owner");
+        return err(StatusCode::CONFLICT, &why.to_string());
+    }
+    tracing::error!(error = ?e, "admin API command failed");
+    err(
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "command failed; see the lososd journal",
+    )
 }
 
 /// Compare two secrets without an early exit on the first differing byte.
@@ -274,7 +249,7 @@ fn guarded(
     if let Err(wait) = api.throttle.check(&remote, Instant::now()) {
         audit("throttled");
         let mut resp = err(
-            actix_web::http::StatusCode::TOO_MANY_REQUESTS,
+            StatusCode::TOO_MANY_REQUESTS,
             "too many failed attempts; slow down",
         );
         resp.headers_mut().insert(
@@ -286,7 +261,7 @@ fn guarded(
     if !authorized(api, req) {
         api.throttle.record_failure(&remote, Instant::now());
         audit("unauthorized");
-        return err(actix_web::http::StatusCode::UNAUTHORIZED, "unauthorized");
+        return err(StatusCode::UNAUTHORIZED, "unauthorized");
     }
     api.throttle.record_success(&remote);
     let resp = f();
@@ -336,15 +311,12 @@ fn post_change_inner(api: &Api, body: &[u8]) -> HttpResponse {
         .and_then(|v| v.get("mode").and_then(|m| m.as_str()).map(str::to_string));
     let Some(mode) = mode else {
         return err(
-            actix_web::http::StatusCode::BAD_REQUEST,
+            StatusCode::BAD_REQUEST,
             r#"body must be JSON: {"mode": "local|mesh"}"#,
         );
     };
     let Some(mode) = Mode::parse(&mode) else {
-        return err(
-            actix_web::http::StatusCode::BAD_REQUEST,
-            "mode must be 'local' or 'mesh'",
-        );
+        return err(StatusCode::BAD_REQUEST, "mode must be 'local' or 'mesh'");
     };
     run(api, |b| cmd_change(b, mode))
 }
@@ -357,13 +329,10 @@ async fn post_apply(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> 
 
 fn post_apply_inner(api: &Api, body: &[u8]) -> HttpResponse {
     let Ok(text) = String::from_utf8(body.to_vec()) else {
-        return err(
-            actix_web::http::StatusCode::BAD_REQUEST,
-            "body must be UTF-8 Nix code",
-        );
+        return err(StatusCode::BAD_REQUEST, "body must be UTF-8 Nix code");
     };
     match validate_apply(&text) {
-        Err(e) => err(actix_web::http::StatusCode::BAD_REQUEST, e),
+        Err(e) => err(StatusCode::BAD_REQUEST, e),
         Ok(code) => {
             let code = code.to_string();
             run(api, |b| cmd_apply(b, &code))
@@ -405,7 +374,7 @@ async fn post_backup_target(
         || match serde_json::from_slice::<crate::backup::TargetInput>(&body) {
             Ok(input) => run(&api, |b| crate::erase::cmd_backup_target(b, input)),
             Err(_) => err(
-                actix_web::http::StatusCode::BAD_REQUEST,
+                StatusCode::BAD_REQUEST,
                 r#"body must be JSON: {"endpoint", "bucket", "prefix", "region", "accessKeyId", "secretAccessKey"}"#,
             ),
         },
@@ -440,7 +409,7 @@ async fn post_backup_restore(
         match code {
             Some(code) => run(&api, |b| crate::erase::cmd_restore(b, &code)),
             None => err(
-                actix_web::http::StatusCode::BAD_REQUEST,
+                StatusCode::BAD_REQUEST,
                 r#"body must be JSON: {"code": "<recovery code>"}"#,
             ),
         }
@@ -456,7 +425,7 @@ async fn post_erase(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> 
         match backup {
             Some(backup) => run(&api, |b| crate::erase::cmd_erase(b, backup)),
             None => err(
-                actix_web::http::StatusCode::BAD_REQUEST,
+                StatusCode::BAD_REQUEST,
                 r#"body must be JSON: {"backup": true|false}"#,
             ),
         }
@@ -526,18 +495,18 @@ async fn post_claim(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> 
         hostname.trim(),
     ) {
         tracing::warn!(reason = why, "refused a claim request");
-        return err(actix_web::http::StatusCode::FORBIDDEN, why);
+        return err(StatusCode::FORBIDDEN, why);
     }
     let Ok(doc) = serde_json::from_slice::<serde_json::Value>(&body) else {
-        return err(actix_web::http::StatusCode::BAD_REQUEST, SHAPE);
+        return err(StatusCode::BAD_REQUEST, SHAPE);
     };
     let user = match doc.get("user") {
         None | Some(serde_json::Value::Null) => crate::setup::DEFAULT_ADMIN_USER.to_string(),
         Some(serde_json::Value::String(u)) => u.clone(),
-        Some(_) => return err(actix_web::http::StatusCode::BAD_REQUEST, SHAPE),
+        Some(_) => return err(StatusCode::BAD_REQUEST, SHAPE),
     };
     let Some(password) = doc.get("password").and_then(|p| p.as_str()) else {
-        return err(actix_web::http::StatusCode::BAD_REQUEST, SHAPE);
+        return err(StatusCode::BAD_REQUEST, SHAPE);
     };
     let token = api.token.clone();
     let claims = api.clone();
@@ -575,13 +544,13 @@ async fn post_sign_in(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -
         hostname.trim(),
     ) {
         tracing::warn!(reason = why, "refused a sign-in request");
-        return err(actix_web::http::StatusCode::FORBIDDEN, why);
+        return err(StatusCode::FORBIDDEN, why);
     }
     let remote = remote_addr(&req);
     if let Err(wait) = api.throttle.check(&remote, Instant::now()) {
         api.audit.record("/api/sign-in", "throttled", &remote);
         let mut resp = err(
-            actix_web::http::StatusCode::TOO_MANY_REQUESTS,
+            StatusCode::TOO_MANY_REQUESTS,
             "too many failed attempts; slow down",
         );
         resp.headers_mut().insert(
@@ -591,13 +560,13 @@ async fn post_sign_in(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -
         return resp;
     }
     let Ok(doc) = serde_json::from_slice::<serde_json::Value>(&body) else {
-        return err(actix_web::http::StatusCode::BAD_REQUEST, SHAPE);
+        return err(StatusCode::BAD_REQUEST, SHAPE);
     };
     let Some(password) = doc.get("password").and_then(|p| p.as_str()) else {
-        return err(actix_web::http::StatusCode::BAD_REQUEST, SHAPE);
+        return err(StatusCode::BAD_REQUEST, SHAPE);
     };
     if let Err(e) = crate::signin::validate_candidate(password) {
-        return err(actix_web::http::StatusCode::BAD_REQUEST, &e);
+        return err(StatusCode::BAD_REQUEST, &e);
     }
     let token = api.token.clone();
     let client = remote.clone();
@@ -605,7 +574,7 @@ async fn post_sign_in(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -
     let outcome = if resp.status().is_success() {
         api.throttle.record_success(&remote);
         "ok"
-    } else if resp.status() == actix_web::http::StatusCode::UNAUTHORIZED {
+    } else if resp.status() == StatusCode::UNAUTHORIZED {
         api.throttle.record_failure(&remote, Instant::now());
         "unauthorized"
     } else if resp.status().is_client_error() {
@@ -701,26 +670,26 @@ async fn post_set_password(
 fn post_set_password_inner(api: &Api, body: &[u8]) -> HttpResponse {
     const SHAPE: &str = r#"body must be JSON: {"user": "...", "password": "..."}"#;
     let Ok(doc) = serde_json::from_slice::<serde_json::Value>(body) else {
-        return err(actix_web::http::StatusCode::BAD_REQUEST, SHAPE);
+        return err(StatusCode::BAD_REQUEST, SHAPE);
     };
     // `user` is optional: the appliance installs exactly one Nextcloud admin,
     // and the wizard should not have to know its name to reset it.
     let user = match doc.get("user") {
         None | Some(serde_json::Value::Null) => crate::setup::DEFAULT_ADMIN_USER.to_string(),
         Some(serde_json::Value::String(u)) => u.clone(),
-        Some(_) => return err(actix_web::http::StatusCode::BAD_REQUEST, SHAPE),
+        Some(_) => return err(StatusCode::BAD_REQUEST, SHAPE),
     };
     let Some(password) = doc.get("password").and_then(|p| p.as_str()) else {
-        return err(actix_web::http::StatusCode::BAD_REQUEST, SHAPE);
+        return err(StatusCode::BAD_REQUEST, SHAPE);
     };
     // Validated a second time inside the command; doing it here as well is what
     // turns "too short" into a 400 the wizard can show next to the field
     // instead of a 500 that says to read the journal.
     if let Err(e) = crate::setup::validate_password(password) {
-        return err(actix_web::http::StatusCode::BAD_REQUEST, &e);
+        return err(StatusCode::BAD_REQUEST, &e);
     }
     if let Err(e) = crate::setup::validate_user(&user) {
-        return err(actix_web::http::StatusCode::BAD_REQUEST, &e);
+        return err(StatusCode::BAD_REQUEST, &e);
     }
     let password = password.to_string();
     run(api, |b| cmd_set_password(b, &user, &password))
@@ -776,7 +745,7 @@ fn get_apps_search_inner(api: &Api, req: &HttpRequest) -> HttpResponse {
     // `set-password` is: it turns "too short" into a 400 beside the field
     // rather than a 500 that says to read the journal.
     if let Err(e) = crate::catalogue::validate_query(&query) {
-        return err(actix_web::http::StatusCode::BAD_REQUEST, &e);
+        return err(StatusCode::BAD_REQUEST, &e);
     }
     run(api, |b| cmd_apps_search(b, &query))
 }
@@ -838,7 +807,7 @@ async fn post_app_remove(api: web::Data<Api>, req: HttpRequest, body: web::Bytes
         match field_str(&doc, "release") {
             Some(release) => run(&api, |b| crate::apps::cmd_app_remove(b, &release)),
             None => err(
-                actix_web::http::StatusCode::BAD_REQUEST,
+                StatusCode::BAD_REQUEST,
                 r#"body must be JSON: {"release": "<name>"}"#,
             ),
         }
@@ -855,15 +824,25 @@ fn lab_helper() -> Option<std::net::SocketAddr> {
 
 /// Pass the helper's answer on: its status and its JSON, untouched.
 fn lab_answer(status: u16, body: Vec<u8>) -> HttpResponse {
-    HttpResponse::build(
-        actix_web::http::StatusCode::from_u16(status)
-            .unwrap_or(actix_web::http::StatusCode::BAD_GATEWAY),
-    )
-    .content_type("application/json")
-    .body(body)
+    HttpResponse::build(StatusCode::from_u16(status).unwrap_or(StatusCode::BAD_GATEWAY))
+        .content_type("application/json")
+        .body(body)
 }
 
 const LAB_NOT_RUNNING: &str = "the Lab's libvirt helper is not running on this box";
+
+/// Relay one call to the Lab's helper and pass its answer on; a 503 when the
+/// helper is off or does not answer. A 204 stays bodiless.
+fn lab_relay(api: &Api, method: &str, path: &str, body: &[u8]) -> HttpResponse {
+    let Some(addr) = lab_helper() else {
+        return err(StatusCode::SERVICE_UNAVAILABLE, LAB_NOT_RUNNING);
+    };
+    match crate::lab::relay(addr, method, path, &api.token, body) {
+        Ok((204, _)) => HttpResponse::NoContent().finish(),
+        Ok((status, body)) => lab_answer(status, body),
+        Err(_) => err(StatusCode::SERVICE_UNAVAILABLE, LAB_NOT_RUNNING),
+    }
+}
 
 /// `GET /api/lab/hello` — can this box run the Lab's guests under libvirt?
 /// A 200 either way; `available: false` names why not. See `crate::lab`.
@@ -894,23 +873,11 @@ async fn post_lab_guest(api: web::Data<Api>, req: HttpRequest, body: web::Bytes)
     guarded(&api, &req, "/api/lab/guests", true, || {
         if body.len() > crate::lab::MAX_BODY {
             return err(
-                actix_web::http::StatusCode::PAYLOAD_TOO_LARGE,
+                StatusCode::PAYLOAD_TOO_LARGE,
                 "the guest request is too big",
             );
         }
-        let Some(addr) = lab_helper() else {
-            return err(
-                actix_web::http::StatusCode::SERVICE_UNAVAILABLE,
-                LAB_NOT_RUNNING,
-            );
-        };
-        match crate::lab::relay(addr, "POST", "/lab/v1/guests", &api.token, &body) {
-            Ok((status, body)) => lab_answer(status, body),
-            Err(_) => err(
-                actix_web::http::StatusCode::SERVICE_UNAVAILABLE,
-                LAB_NOT_RUNNING,
-            ),
-        }
+        lab_relay(&api, "POST", "/lab/v1/guests", &body)
     })
 }
 
@@ -920,19 +887,7 @@ async fn post_lab_guest(api: web::Data<Api>, req: HttpRequest, body: web::Bytes)
 /// like a create, and the request is audited. No body.
 async fn post_lab_virt_ticket(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
     guarded(&api, &req, "/api/lab/virt-ticket", true, || {
-        let Some(addr) = lab_helper() else {
-            return err(
-                actix_web::http::StatusCode::SERVICE_UNAVAILABLE,
-                LAB_NOT_RUNNING,
-            );
-        };
-        match crate::lab::relay(addr, "POST", "/lab/v1/virt-ticket", &api.token, b"") {
-            Ok((status, body)) => lab_answer(status, body),
-            Err(_) => err(
-                actix_web::http::StatusCode::SERVICE_UNAVAILABLE,
-                LAB_NOT_RUNNING,
-            ),
-        }
+        lab_relay(&api, "POST", "/lab/v1/virt-ticket", b"")
     })
 }
 
@@ -944,26 +899,9 @@ async fn delete_lab_guest(
 ) -> HttpResponse {
     guarded(&api, &req, "/api/lab/guests", true, || {
         if !crate::lab::valid_key(&key) {
-            return err(
-                actix_web::http::StatusCode::BAD_REQUEST,
-                "that is not a guest key",
-            );
+            return err(StatusCode::BAD_REQUEST, "that is not a guest key");
         }
-        let Some(addr) = lab_helper() else {
-            return err(
-                actix_web::http::StatusCode::SERVICE_UNAVAILABLE,
-                LAB_NOT_RUNNING,
-            );
-        };
-        let path = format!("/lab/v1/guests/{key}");
-        match crate::lab::relay(addr, "DELETE", &path, &api.token, b"") {
-            Ok((204, _)) => HttpResponse::NoContent().finish(),
-            Ok((status, body)) => lab_answer(status, body),
-            Err(_) => err(
-                actix_web::http::StatusCode::SERVICE_UNAVAILABLE,
-                LAB_NOT_RUNNING,
-            ),
-        }
+        lab_relay(&api, "DELETE", &format!("/lab/v1/guests/{key}"), b"")
     })
 }
 
@@ -1000,7 +938,7 @@ async fn post_lab_order(api: web::Data<Api>, req: HttpRequest, body: web::Bytes)
                 crate::losos::cmd_lab_order_op(b, lab_ordering(), items)
             }),
             None => err(
-                actix_web::http::StatusCode::BAD_REQUEST,
+                StatusCode::BAD_REQUEST,
                 "the request body is missing a required field",
             ),
         }
@@ -1033,7 +971,7 @@ async fn post_market(
         match build(&doc) {
             Some(op) => run(&api, |b| crate::losos::cmd_market_op(b, &op)),
             None => err(
-                actix_web::http::StatusCode::BAD_REQUEST,
+                StatusCode::BAD_REQUEST,
                 "the request body is missing a required field",
             ),
         }
@@ -1278,7 +1216,7 @@ async fn post_vm(
         match build(&doc) {
             Some(op) => run(&api, |b| crate::losos::cmd_vm_op(b, &op)),
             None => err(
-                actix_web::http::StatusCode::BAD_REQUEST,
+                StatusCode::BAD_REQUEST,
                 "the request body is missing a required field",
             ),
         }
@@ -1358,7 +1296,6 @@ async fn put_vm_image(
     query: web::Query<VmImageQuery>,
     payload: web::Payload,
 ) -> HttpResponse {
-    use actix_web::http::StatusCode;
     let op = crate::market::Op::VmTicket {
         name: query.name.clone(),
         efi: matches!(query.efi.as_deref(), Some("1" | "true")),
@@ -1439,7 +1376,7 @@ async fn post_domain(
                 run(&api, |b| crate::losos::cmd_domain_op(b, &op))
             }
             None => err(
-                actix_web::http::StatusCode::BAD_REQUEST,
+                StatusCode::BAD_REQUEST,
                 "the request body is missing a required field",
             ),
         }
@@ -1487,7 +1424,7 @@ async fn post_look(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> H
         match crate::look::parse_patch(&doc) {
             Some(patch) => run(&api, |b| crate::look::cmd_patch_look(b, &patch)),
             None => err(
-                actix_web::http::StatusCode::BAD_REQUEST,
+                StatusCode::BAD_REQUEST,
                 r#"body must be JSON: {"background": {"kind": "none|shipped", "name": "..."}, "veil": 20-90}"#,
             ),
         }
@@ -1526,11 +1463,11 @@ async fn get_background(api: web::Data<Api>) -> HttpResponse {
             .insert_header(("Cache-Control", "private, max-age=31536000, immutable"))
             .insert_header(("X-Content-Type-Options", "nosniff"))
             .body(bytes),
-        Ok(None) => err(actix_web::http::StatusCode::NOT_FOUND, "no picture"),
+        Ok(None) => err(StatusCode::NOT_FOUND, "no picture"),
         Err(e) => {
             tracing::error!(error = ?e, "reading the background picture failed");
             err(
-                actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
+                StatusCode::INTERNAL_SERVER_ERROR,
                 "command failed; see the lososd journal",
             )
         }
@@ -1545,7 +1482,7 @@ async fn post_widget(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) ->
         match crate::look::parse_draft(&doc) {
             Some(draft) => run(&api, |b| crate::look::cmd_put_widget(b, &draft)),
             None => err(
-                actix_web::http::StatusCode::BAD_REQUEST,
+                StatusCode::BAD_REQUEST,
                 r#"body must be JSON: {"id": "..." (optional), "name": "...", "span": "half|full", "source": "..."}"#,
             ),
         }
@@ -1600,7 +1537,7 @@ fn access_ready(api: &Api) -> Result<&crate::access::Ready, &str> {
 
 /// The 503 for a box whose terminal access is off.
 fn access_off(why: &str) -> HttpResponse {
-    err(actix_web::http::StatusCode::SERVICE_UNAVAILABLE, why)
+    err(StatusCode::SERVICE_UNAVAILABLE, why)
 }
 
 /// `GET /api/access` — the box's key, the seeded keys and the tokens.
@@ -1626,7 +1563,6 @@ struct NewToken {
 }
 
 fn token_error(e: losos_access::TokenError) -> HttpResponse {
-    use actix_web::http::StatusCode;
     use losos_access::TokenError;
     match e {
         TokenError::Invalid(why) => err(StatusCode::BAD_REQUEST, &why),
@@ -1652,7 +1588,7 @@ async fn post_access_token(
             Ok(n) => n,
             Err(_) => {
                 return err(
-                    actix_web::http::StatusCode::BAD_REQUEST,
+                    StatusCode::BAD_REQUEST,
                     r#"body must be JSON: {"name", "fingerprint", "scope": "read"|"full", "expiresInDays": number|null}"#,
                 )
             }
@@ -1689,7 +1625,7 @@ async fn post_access_revoke(
             .and_then(|v| v.get("id").and_then(|i| i.as_str()).map(str::to_string));
         let Some(id) = id else {
             return err(
-                actix_web::http::StatusCode::BAD_REQUEST,
+                StatusCode::BAD_REQUEST,
                 r#"body must be JSON: {"id": "..."}"#,
             );
         };
@@ -1721,7 +1657,7 @@ async fn post_access_call(api: web::Data<Api>, req: HttpRequest, body: web::Byte
     if let Err(wait) = api.throttle.check(&remote, Instant::now()) {
         api.audit.record(ROUTE, "throttled", &remote);
         let mut resp = err(
-            actix_web::http::StatusCode::TOO_MANY_REQUESTS,
+            StatusCode::TOO_MANY_REQUESTS,
             "too many failed attempts; slow down",
         );
         resp.headers_mut().insert(
@@ -1732,7 +1668,7 @@ async fn post_access_call(api: web::Data<Api>, req: HttpRequest, body: web::Byte
     }
     if body.len() > crate::access::MAX_ENVELOPE_BYTES {
         return err(
-            actix_web::http::StatusCode::PAYLOAD_TOO_LARGE,
+            StatusCode::PAYLOAD_TOO_LARGE,
             "a terminal call is at most 1 MiB",
         );
     }
@@ -1749,8 +1685,7 @@ async fn post_access_call(api: web::Data<Api>, req: HttpRequest, body: web::Byte
             sealed,
             body,
         }) => HttpResponse::build(
-            actix_web::http::StatusCode::from_u16(status)
-                .unwrap_or(actix_web::http::StatusCode::INTERNAL_SERVER_ERROR),
+            StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
         )
         .content_type(if sealed {
             "application/pgp-encrypted"
@@ -1760,10 +1695,7 @@ async fn post_access_call(api: web::Data<Api>, req: HttpRequest, body: web::Byte
         .body(body),
         Err(e) => {
             tracing::error!(error = %e, "terminal call did not finish");
-            err(
-                actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
-                "the call did not finish",
-            )
+            err(StatusCode::INTERNAL_SERVER_ERROR, "the call did not finish")
         }
     }
 }
@@ -1845,7 +1777,7 @@ fn call(api: &Api, remote: &str, body: &[u8]) -> Called {
 }
 
 async fn not_found() -> HttpResponse {
-    err(actix_web::http::StatusCode::NOT_FOUND, "not found")
+    err(StatusCode::NOT_FOUND, "not found")
 }
 
 /// Whether `candidate` is a token this daemon would have minted: exactly
@@ -1891,14 +1823,7 @@ pub fn ensure_token(path: &Path) -> anyhow::Result<String> {
 
 /// Generate a token and write it out at 0600, atomically.
 fn mint_token(path: &Path) -> anyhow::Result<String> {
-    let mut buf = [0u8; TOKEN_BYTES];
-    {
-        use std::io::Read;
-        std::fs::File::open("/dev/urandom")
-            .and_then(|mut urandom| urandom.read_exact(&mut buf))
-            .context("reading /dev/urandom")?;
-    }
-    let token: String = buf.iter().map(|b| format!("{b:02x}")).collect();
+    let token = crate::io_backend::hex(&crate::io_backend::random_bytes::<TOKEN_BYTES>()?);
     atomic_write_secret(path, token.as_bytes())
         .with_context(|| format!("writing {}", path.display()))?;
     tracing::info!(path = %path.display(), "minted admin token");

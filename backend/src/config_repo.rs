@@ -32,7 +32,6 @@
 use crate::setup::Secret;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::fmt;
 
 /// Where the flake the box rebuilds from lives.
 pub const DEFAULT_CONFIG_DIR: &str = "/etc/nixos";
@@ -247,16 +246,9 @@ pub fn classify(status: u16, body: &str) -> Answer {
 /// request never connected. Typed so [`crate::losos::cmd_config_sync`] can
 /// report it as "unavailable" — the normal state of a box in its first
 /// minutes — rather than as a fault.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("{0}")]
 pub struct NotUp(pub String);
-
-impl fmt::Display for NotUp {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0)
-    }
-}
-
-impl std::error::Error for NotUp {}
 
 // ── The sync decision ───────────────────────────────────────────────────────
 

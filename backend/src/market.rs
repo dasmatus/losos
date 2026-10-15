@@ -28,8 +28,6 @@
 //! words, as [`Refused`]. Anything else is a failure whose detail goes to the
 //! journal and not the browser.
 
-use std::fmt;
-
 use serde_json::{json, Value};
 
 /// Longest registrar message relayed to the browser.
@@ -820,20 +818,13 @@ impl Op {
 }
 
 /// An answer the owner can act on, passed through to the browser.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("{message}")]
 pub struct Refused {
     /// 400 or 409; never 404, which the SPA reads as "route not served".
     pub status: u16,
     pub message: String,
 }
-
-impl fmt::Display for Refused {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.message)
-    }
-}
-
-impl std::error::Error for Refused {}
 
 /// What the registrar said.
 #[derive(Debug, Clone, PartialEq)]

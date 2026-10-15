@@ -74,16 +74,9 @@ pub const FIRST_UNPRIVILEGED_PORT: u16 = 1024;
 
 /// A request the owner can act on, in a sentence. The HTTP layer answers it
 /// as a 400.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("{0}")]
 pub struct Invalid(pub String);
-
-impl std::fmt::Display for Invalid {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.0)
-    }
-}
-
-impl std::error::Error for Invalid {}
 
 fn invalid<T>(message: impl Into<String>) -> anyhow::Result<T> {
     Err(anyhow::Error::new(Invalid(message.into())))
@@ -92,16 +85,9 @@ fn invalid<T>(message: impl Into<String>) -> anyhow::Result<T> {
 /// An install that cannot happen on this box right now: no cluster to run it
 /// in, the shared side locked, a job already running. The HTTP layer answers
 /// it as a 409.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("{0}")]
 pub struct Conflict(pub String);
-
-impl std::fmt::Display for Conflict {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.0)
-    }
-}
-
-impl std::error::Error for Conflict {}
 
 fn conflict<T>(message: impl Into<String>) -> anyhow::Result<T> {
     Err(anyhow::Error::new(Conflict(message.into())))
@@ -464,16 +450,9 @@ pub struct Shaped {
 }
 
 /// A chart this box will not run, and why, in a sentence for the owner.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("{0}")]
 pub struct Refusal(pub String);
-
-impl std::fmt::Display for Refusal {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.0)
-    }
-}
-
-impl std::error::Error for Refusal {}
 
 fn refuse<T>(message: impl Into<String>) -> Result<T, Refusal> {
     Err(Refusal(message.into()))

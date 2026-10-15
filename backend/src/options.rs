@@ -21,7 +21,6 @@
 use crate::overrides::assignments;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
-use std::fmt;
 
 /// Where `modules/config-repo.nix` writes the document.
 pub const DEFAULT_OPTIONS_FILE: &str = "/etc/losos/options.json";
@@ -190,16 +189,9 @@ pub fn join(doc: &OptionsDoc, overrides: &str) -> Value {
 }
 
 /// An `apply` body the gate turned down, with the sentence for the owner.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("{0}")]
 pub struct Rejected(pub String);
-
-impl fmt::Display for Rejected {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0)
-    }
-}
-
-impl std::error::Error for Rejected {}
 
 /// Check every assignment in an `apply` body against the document.
 ///
