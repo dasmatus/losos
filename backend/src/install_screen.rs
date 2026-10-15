@@ -257,12 +257,25 @@ pub fn finished(installed: bool, tpm: bool) -> Vec<Row> {
 
 /// An error as the panel shows it: a capital first letter and a full stop.
 /// The installer's errors are written for its log, lower case and bare.
+/// A failed command's error opens with the command line itself
+/// (`disko … failed (exit status: 1)`), and a program's name keeps its
+/// own spelling: "Disko" and "Nixos-install" are not commands.
 fn sentence(error: &str) -> String {
     let error = error.trim();
-    let mut chars = error.chars();
-    let mut out: String = match chars.next() {
-        Some(first) => first.to_uppercase().chain(chars).collect(),
-        None => return String::new(),
+    if error.is_empty() {
+        return String::new();
+    }
+    let opens_with_command = error
+        .find(" failed (")
+        .is_some_and(|at| !error[..at].contains([':', ';', '\n']));
+    let mut out = if opens_with_command {
+        error.to_string()
+    } else {
+        let mut chars = error.chars();
+        match chars.next() {
+            Some(first) => first.to_uppercase().chain(chars).collect(),
+            None => String::new(),
+        }
     };
     if !out.ends_with(['.', '!', '?']) {
         out.push('.');
@@ -412,8 +425,16 @@ mod tests {
         let f = failed("disko failed (exit status: 1); see the output above");
         assert_eq!(f[0], Row::Warn("The install stopped".into()));
         assert!(f.contains(&Row::Plain(
-            "Disko failed (exit status: 1); see the output above.".into()
+            "disko failed (exit status: 1); see the output above.".into()
         )));
+        let f = failed("nixos-install --root /mnt failed (exit status: 1); see the output above");
+        assert!(f
+            .iter()
+            .any(|r| matches!(r, Row::Plain(t) if t.starts_with("nixos-install "))));
+        let f = failed("no network: cache.nixos.org did not resolve within 30s");
+        assert!(f
+            .iter()
+            .any(|r| matches!(r, Row::Plain(t) if t.starts_with("No network:"))));
     }
 
     #[test]
