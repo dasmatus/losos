@@ -70,7 +70,7 @@ export function WidgetBoard({ className, heading }: WidgetBoardProps) {
    * opens this page keeps no journal — a record of the box's availability is
    * a thing the owner opted into by adding the widget, not something the
    * admin page does behind them. Idempotent: calling it twice is one timer.
-   * The shell may start it too; see widgets/index.ts. */
+   * The shell may start it too. */
   React.useEffect(() => startWhenIdle(startUptimeProbe), []);
 
   const widgets = board.widgets;

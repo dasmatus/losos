@@ -1,6 +1,5 @@
 import type * as React from "react";
 import { cva, type VariantProps } from "class-variance-authority";
-import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 
 /* shadcn/ui Item, on the palette.
@@ -48,31 +47,6 @@ export function Item({ className, variant = "default", size = "default", ...prop
       data-variant={variant}
       data-size={size}
       className={cn(itemVariants({ variant, size }), className)}
-      {...props}
-    />
-  );
-}
-
-export function ItemGroup({ className, ...props }: React.ComponentPropsWithoutRef<"div">) {
-  return (
-    <div
-      role="list"
-      data-slot="item-group"
-      className={cn("group/item-group flex flex-col", className)}
-      {...props}
-    />
-  );
-}
-
-export function ItemSeparator({
-  className,
-  ...props
-}: React.ComponentPropsWithoutRef<typeof Separator>) {
-  return (
-    <Separator
-      data-slot="item-separator"
-      orientation="horizontal"
-      className={cn("my-0", className)}
       {...props}
     />
   );
@@ -152,26 +126,6 @@ export function ItemDescription({ className, ...props }: React.ComponentPropsWit
         "[&>a]:text-accent [&>a]:underline [&>a]:underline-offset-4",
         className,
       )}
-      {...props}
-    />
-  );
-}
-
-export function ItemActions({ className, ...props }: React.ComponentPropsWithoutRef<"div">) {
-  return (
-    <div
-      data-slot="item-actions"
-      className={cn("flex items-center gap-2", className)}
-      {...props}
-    />
-  );
-}
-
-export function ItemHeader({ className, ...props }: React.ComponentPropsWithoutRef<"div">) {
-  return (
-    <div
-      data-slot="item-header"
-      className={cn("flex basis-full items-center justify-between gap-2", className)}
       {...props}
     />
   );
