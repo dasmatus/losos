@@ -29,6 +29,16 @@
 //! [`MAX_ANSWER_TOKENS`] set the context window (`LOSOS_BUILDER_CONTEXT`); a
 //! widget to change has to fit in what is left, which is why a change has
 //! its own, smaller limit ([`MAX_BASE_BYTES`]).
+//!
+//! # Checking the answer
+//!
+//! A 3B model gets the shape right far more often than the details. Before a
+//! widget goes to the editor, [`problems`] looks for the mistakes it makes
+//! most: a script that looks up an element the markup does not have, and a
+//! `losos` member that does not exist. A model that repeats one line until
+//! it runs out of room is cut off as soon as it does ([`looped`]). Either
+//! way the model gets one more turn, with the problem named, and the better
+//! of the two answers is kept.
 
 use std::collections::VecDeque;
 use std::io::{BufRead, BufReader, Write};
@@ -71,6 +81,14 @@ const BUILD_TIMEOUT_SECS: u32 = 30 * 60;
 const PROBE_TIMEOUT_SECS: &str = "3";
 /// Temperature for every build: low, so the model keeps to the contract.
 const TEMPERATURE: f64 = 0.2;
+/// The same line this many times in a row is a model going round in circles.
+const LOOP_LINES: usize = 12;
+/// The most of a first answer the model is shown again when it fixes it.
+const MAX_REPAIR_CHARS: usize = 6000;
+/// What the frame's `losos` object has (`admin-ui/app/public/widget-frame/`).
+const LOSOS_MEMBERS: [&str; 8] = [
+    "metric", "lang", "resize", "theme", "onTheme", "files", "file", "asset",
+];
 
 /// Where the model is: `LOSOS_BUILDER_URL` (Ollama's address),
 /// `LOSOS_BUILDER_MODEL` and `LOSOS_BUILDER_CONTEXT`, set by
@@ -167,6 +185,9 @@ pub struct Build {
     pub files: Option<Vec<WidgetFile>>,
     /// What the model says it made.
     pub notes: Option<String>,
+    /// The model is writing a second answer, fixing what the checks found
+    /// wrong with the first.
+    pub fixing: bool,
 }
 
 impl Build {
@@ -180,6 +201,7 @@ impl Build {
             "created_at": self.created_at,
             "finished_at": self.finished_at,
             "lines": self.lines,
+            "fixing": self.fixing,
             "fault": self.fault,
             "has_source": self.files.is_some(),
         })
@@ -288,16 +310,30 @@ pub fn user_message(req: &Request) -> String {
     text
 }
 
-/// The body of Ollama's `POST /api/chat` for one build.
+/// A first answer and what is wrong with it, for the model's second turn.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Repair {
+    pub answer: String,
+    pub note: String,
+}
+
+/// The body of Ollama's `POST /api/chat` for one build, or for its second
+/// turn when `repair` names what the first answer got wrong.
 #[must_use]
-pub fn chat_body(config: &Config, req: &Request) -> Value {
+pub fn chat_body(config: &Config, req: &Request, repair: Option<&Repair>) -> Value {
+    let mut messages = vec![
+        json!({ "role": "system", "content": PROMPT }),
+        json!({ "role": "user", "content": user_message(req) }),
+    ];
+    if let Some(repair) = repair {
+        let shown: String = repair.answer.chars().take(MAX_REPAIR_CHARS).collect();
+        messages.push(json!({ "role": "assistant", "content": shown }));
+        messages.push(json!({ "role": "user", "content": repair.note }));
+    }
     json!({
         "model": config.model,
         "stream": true,
-        "messages": [
-            { "role": "system", "content": PROMPT },
-            { "role": "user", "content": user_message(req) },
-        ],
+        "messages": messages,
         "options": {
             "num_ctx": config.context,
             "num_predict": MAX_ANSWER_TOKENS,
@@ -427,6 +463,101 @@ pub fn widget(answer: &Answer) -> Result<Vec<WidgetFile>, Fault> {
     Ok(files)
 }
 
+/// The mistakes a small model makes most that can be seen without running
+/// the widget, each as a sentence the model is told: an element looked up
+/// by an id no file declares, and a `losos` member the frame does not have.
+#[must_use]
+pub fn problems(files: &[WidgetFile]) -> Vec<String> {
+    let all: String = files
+        .iter()
+        .map(|f| f.content.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    let mut found = Vec::new();
+    let mut seen = Vec::new();
+    for id in quoted_after(&all, "getElementById(") {
+        let declared = ["id=\"", "id='", ".id = \"", ".id = '", ".id=\"", ".id='"]
+            .iter()
+            .any(|p| all.contains(&format!("{p}{id}{}", &p[p.len() - 1..])));
+        if !declared && !seen.contains(&id) {
+            found.push(format!(
+                "The script calls document.getElementById(\"{id}\"), but no element has id=\"{id}\". Give the element it means that id, or look up an id the markup has."
+            ));
+            seen.push(id);
+        }
+    }
+    let mut rest = all.as_str();
+    while let Some(at) = rest.find("losos.") {
+        let before = rest[..at].chars().next_back();
+        let after = &rest[at + "losos.".len()..];
+        let member: String = after
+            .chars()
+            .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+            .collect();
+        let word =
+            before.is_none_or(|c| !(c.is_ascii_alphanumeric() || c == '_' || c == '.' || c == '-'));
+        if word
+            && !member.is_empty()
+            && !LOSOS_MEMBERS.contains(&member.as_str())
+            && !seen.contains(&member)
+        {
+            found.push(format!(
+                "The script uses losos.{member}, which does not exist. The losos object has only metric, lang and resize."
+            ));
+            seen.push(member);
+        }
+        rest = after;
+    }
+    if all.contains("document.resize(") {
+        found.push("document.resize() does not exist. Call losos.resize() instead.".into());
+    }
+    found
+}
+
+/// The string literals right after each `marker`: `getElementById("x")` and
+/// `getElementById('x')` give `x`.
+fn quoted_after(text: &str, marker: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut rest = text;
+    while let Some(at) = rest.find(marker) {
+        rest = &rest[at + marker.len()..];
+        let Some(quote) = rest.chars().next().filter(|c| *c == '"' || *c == '\'') else {
+            continue;
+        };
+        if let Some(end) = rest[1..].find(quote) {
+            let id = &rest[1..=end];
+            if !id.is_empty() && !id.contains(char::is_whitespace) {
+                out.push(id.to_string());
+            }
+        }
+    }
+    out
+}
+
+/// Whether the answer ends in the same non-blank line [`LOOP_LINES`] times.
+#[must_use]
+pub fn looped(text: &str) -> bool {
+    let mut lines = text.lines().rev().map(str::trim).filter(|l| !l.is_empty());
+    let Some(last) = lines.next() else {
+        return false;
+    };
+    lines.take(LOOP_LINES - 1).filter(|l| *l == last).count() == LOOP_LINES - 1
+}
+
+/// What the model is told when its first answer repeated itself.
+const LOOP_NOTE: &str = "Your answer repeated the same line over and over and was cut off. Write the whole widget again, short: make repeated elements in the script with a for loop, never one line per element. Same shape: every file in a <file> block, then <summary>.";
+
+fn repair_note(problems: &[String]) -> String {
+    let mut note = String::from("Your widget has these mistakes:\n");
+    for p in problems {
+        note.push_str("- ");
+        note.push_str(p);
+        note.push('\n');
+    }
+    note.push_str("Send the whole widget again with them fixed, in the same shape: every file in a <file> block, then <summary>.");
+    note
+}
+
 // ── the running builder ─────────────────────────────────────────────────────
 
 #[derive(Default)]
@@ -544,6 +675,7 @@ impl Builder {
             at_limit: false,
             files: None,
             notes: None,
+            fixing: false,
         };
         inner.builds.push_front(build.clone());
         inner.builds.truncate(KEEP_BUILDS);
@@ -632,7 +764,31 @@ fn probe(config: &Config) -> anyhow::Result<Vec<String>> {
         .unwrap_or_default())
 }
 
-/// One build, start to finish, on its own thread.
+/// One answer from the model.
+struct Streamed {
+    text: String,
+    /// It ran into [`MAX_ANSWER_TOKENS`].
+    at_limit: bool,
+    /// It was cut off for repeating itself ([`looped`]).
+    looped: bool,
+}
+
+/// What an answer makes: its widget and what the checks found wrong with it,
+/// or why it makes none.
+/// A widget's files and the mistakes [`problems`] found in them.
+type Made = Result<(Vec<WidgetFile>, Vec<String>), Fault>;
+
+fn judge(answer: &Streamed) -> (Answer, Made) {
+    let parsed = parse_answer(&answer.text);
+    let made = widget(&parsed).map(|files| {
+        let found = problems(&files);
+        (files, found)
+    });
+    (parsed, made)
+}
+
+/// One build, start to finish, on its own thread: an answer, and a second
+/// turn when the first repeated itself or the checks found mistakes in it.
 fn run(
     config: &Config,
     req: &Request,
@@ -646,10 +802,58 @@ fn run(
             f(b);
         }
     };
-    let outcome = stream(config, req, slot, &mut |text| {
+    let stopped = || {
+        lock(shared)
+            .builds
+            .iter()
+            .any(|b| b.id == id && b.status == Status::Stopped)
+    };
+    let mut progress = |text: &str| {
         let lines = u32::try_from(text.lines().count()).unwrap_or(u32::MAX);
         update(&mut |b| b.lines = lines);
+    };
+
+    let outcome = stream(config, req, None, slot, &mut progress).map(|first| {
+        let (_, made) = judge(&first);
+        let note = match &made {
+            _ if first.looped => LOOP_NOTE.to_string(),
+            Ok((_, found)) if !found.is_empty() => repair_note(found),
+            _ => return first,
+        };
+        if stopped() {
+            return first;
+        }
+        tracing::info!(note = %note, "a build gets a second turn");
+        update(&mut |b| {
+            b.fixing = true;
+            b.lines = 0;
+        });
+        let repair = Repair {
+            answer: first.text.clone(),
+            note,
+        };
+        match stream(config, req, Some(&repair), slot, &mut progress) {
+            Ok(second) => {
+                let better = match (&made, judge(&second).1) {
+                    // The first made a widget and the second none, or one
+                    // with more mistakes: keep the first.
+                    (Ok(_), Err(_)) => false,
+                    (Ok((_, a)), Ok((_, b))) => b.len() <= a.len(),
+                    (Err(_), _) => true,
+                };
+                if better {
+                    second
+                } else {
+                    first
+                }
+            }
+            Err(e) => {
+                tracing::warn!(error = ?e, "a build's second turn failed");
+                first
+            }
+        }
     });
+
     let mut inner = lock(shared);
     inner.running = None;
     let Some(build) = inner.builds.iter_mut().find(|b| b.id == id) else {
@@ -659,13 +863,17 @@ fn run(
         return;
     }
     build.finished_at = Some(now());
+    build.fixing = false;
     match outcome {
-        Ok((text, at_limit)) => {
-            let answer = parse_answer(&text);
-            build.at_limit = at_limit;
-            build.notes = answer.summary.clone();
-            match widget(&answer) {
-                Ok(files) => {
+        Ok(answer) => {
+            let (parsed, made) = judge(&answer);
+            build.at_limit = answer.at_limit || answer.looped;
+            build.notes = parsed.summary.clone();
+            match made {
+                Ok((files, found)) => {
+                    if !found.is_empty() {
+                        tracing::info!(problems = ?found, "a build kept a widget with mistakes");
+                    }
                     build.status = Status::Done;
                     build.files = Some(files);
                 }
@@ -691,14 +899,15 @@ fn run(
 }
 
 /// Ask the model and read its answer as it comes, calling `progress` with the
-/// text so far. Returns the text and whether it ran into the token limit.
+/// text so far. An answer that starts repeating itself is cut off there.
 fn stream(
     config: &Config,
     req: &Request,
+    repair: Option<&Repair>,
     slot: &Mutex<Option<Child>>,
     progress: &mut dyn FnMut(&str),
-) -> anyhow::Result<(String, bool)> {
-    let body = chat_body(config, req).to_string();
+) -> anyhow::Result<Streamed> {
+    let body = chat_body(config, req, repair).to_string();
     let mut child = Command::new("curl")
         .args(["--silent", "--show-error", "--no-buffer"])
         .args(["--max-time", &BUILD_TIMEOUT_SECS.to_string()])
@@ -723,6 +932,7 @@ fn stream(
     let mut text = String::new();
     let mut at_limit = false;
     let mut done = false;
+    let mut cut = false;
     let mut error = None;
     for line in BufReader::new(stdout).lines() {
         let line = line?;
@@ -743,6 +953,13 @@ fn stream(
         if let Some(piece) = chunk["message"]["content"].as_str() {
             text.push_str(piece);
             progress(&text);
+            if piece.contains('\n') && looped(&text) {
+                cut = true;
+                if let Some(child) = lock_child(slot).as_mut() {
+                    let _ = child.kill();
+                }
+                break;
+            }
         }
         if chunk["done"].as_bool() == Some(true) {
             done = true;
@@ -757,7 +974,7 @@ fn stream(
     let child = lock_child(slot).take();
     if let Some(mut child) = child {
         let status = child.wait()?;
-        if !status.success() && !done {
+        if !status.success() && !done && !cut {
             let mut stderr = String::new();
             if let Some(mut e) = child.stderr.take() {
                 let _ = std::io::Read::read_to_string(&mut e, &mut stderr);
@@ -768,10 +985,14 @@ fn stream(
     if let Some(e) = error {
         anyhow::bail!("ollama: {e}");
     }
-    if !done {
+    if !done && !cut {
         anyhow::bail!("the answer ended before the model said it was done");
     }
-    Ok((text, at_limit))
+    Ok(Streamed {
+        text,
+        at_limit,
+        looped: cut,
+    })
 }
 
 #[cfg(test)]
@@ -841,7 +1062,7 @@ mod tests {
             model: DEFAULT_MODEL.into(),
             context: 8192,
         };
-        let body = chat_body(&config, &r);
+        let body = chat_body(&config, &r, None);
         assert_eq!(body["model"], "llama3.2:3b");
         assert_eq!(body["stream"], true);
         assert_eq!(body["messages"][0]["content"], PROMPT);
@@ -944,5 +1165,67 @@ mod tests {
         let r = parse_request(&req("a clock")).unwrap();
         assert_eq!(b.start(r).unwrap_err().status, 409);
         assert_eq!(b.stop("b1-1").unwrap_err().status, 404);
+    }
+
+    #[test]
+    fn the_checks_name_the_mistakes_a_small_model_makes_most() {
+        let fine = vec![WidgetFile::entry(
+            "<p id=\"t\"></p><script>var r = document.createElement('i'); r.id = 'x';\ndocument.getElementById(\"t\").textContent = losos.lang; document.getElementById('x'); losos.metric(\"storage.bytes\"); losos.resize();</script>",
+        )];
+        assert_eq!(problems(&fine), Vec::<String>::new());
+
+        let wrong = vec![
+            WidgetFile::entry("<span id=\"up\"></span><script src=\"app.js\"></script>"),
+            WidgetFile {
+                name: "app.js".into(),
+                content: "document.getElementById(\"apps\").textContent = 1;\ndocument.getElementById(\"apps\");\nlosos.theme.on('x'); losos.data(); document.resize();".into(),
+            },
+        ];
+        let found = problems(&wrong);
+        assert_eq!(found.len(), 3, "{found:?}");
+        assert!(found[0].contains("getElementById(\"apps\")"));
+        assert!(found[1].contains("losos.data"));
+        assert!(found[2].contains("losos.resize()"));
+        // `myLosos.x` and `"losos.example"` in a string are not the bridge.
+        let other = vec![WidgetFile::entry(
+            "<script>var myLosos = {}; myLosos.x = 1;</script>",
+        )];
+        assert!(problems(&other).is_empty());
+    }
+
+    #[test]
+    fn an_answer_going_round_in_circles_is_seen() {
+        let lines = "<span></span>\n".repeat(LOOP_LINES);
+        assert!(looped(&format!("<file name=\"index.html\">\n{lines}")));
+        assert!(!looped(&"<span></span>\n".repeat(LOOP_LINES - 1)));
+        assert!(!looped(ANSWER_WITH_BRACES));
+        assert!(!looped(""));
+    }
+
+    const ANSWER_WITH_BRACES: &str = "a\n}\n}\n}\nb\n}\n}\n";
+
+    #[test]
+    fn a_second_turn_shows_the_model_its_answer_and_what_is_wrong() {
+        let config = Config {
+            url: "http://127.0.0.1:11434".into(),
+            model: DEFAULT_MODEL.into(),
+            context: DEFAULT_CONTEXT,
+        };
+        let r = parse_request(&req("a clock")).unwrap();
+        let repair = Repair {
+            answer: "x".repeat(MAX_REPAIR_CHARS + 50),
+            note: repair_note(&["one".into()]),
+        };
+        let body = chat_body(&config, &r, Some(&repair));
+        let messages = body["messages"].as_array().unwrap();
+        assert_eq!(messages.len(), 4);
+        assert_eq!(
+            messages[2]["content"].as_str().unwrap().len(),
+            MAX_REPAIR_CHARS
+        );
+        assert_eq!(
+            messages[3]["content"],
+            "Your widget has these mistakes:\n- one\nSend the whole widget again with them fixed, in the same shape: every file in a <file> block, then <summary>."
+        );
     }
 }

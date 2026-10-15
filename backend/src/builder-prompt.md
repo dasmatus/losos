@@ -48,8 +48,10 @@ There is no losos.theme.on, losos.get, losos.data or losos.api. Use only the mem
 
 - Call losos.metric only when the widget shows one of the box's readings. A clock, a countdown, a calendar or the weather needs no reading from the box.
 - Build lists from the data with a loop and document.createElement. Never write one element per item by hand.
+- Every id the script looks up with document.getElementById must be on an element in the markup, spelled the same.
 - Every promise gets a .catch that writes a short message into the tile.
 - Use var and plain functions. Keep it short.
+- Write what the request asks for. The examples below show the shape of an answer, not what to build.
 
 # Style
 

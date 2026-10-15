@@ -538,13 +538,13 @@ const BUILT = [
 ];
 
 /* The builder on the box: a GET for whether the model is ready, a POST that
- * starts a build, the build read back by id (running twice, with the line
- * count growing, then done), and a DELETE that stops it. */
+ * starts a build, the build read back by id (running, then fixing a mistake
+ * the box found, then done), and a DELETE that stops it. */
 function builderStub({ stopped = null } = {}) {
   let reads = 0;
-  const build = (status, lines) => ({
+  const build = (status, lines, fixing = false) => ({
     id: 'b1-1', status, prompt: 'a big clock', revision: false, created_at: 1, finished_at: status === 'running' ? null : 2,
-    lines, fault: null, at_limit: false, files: status === 'done' ? BUILT : null,
+    lines, fixing, fault: null, at_limit: false, files: status === 'done' ? BUILT : null,
     notes: status === 'done' ? 'A big clock.' : null,
   });
   return (path, method, route, json) => {
@@ -557,7 +557,8 @@ function builderStub({ stopped = null } = {}) {
     if (path === '/api/builder/builds/b1-1') {
       reads += 1;
       if (stopped !== null) return json(route, 200, build('running', 12));
-      return json(route, 200, reads < 3 ? build('running', reads * 12) : build('done', 40));
+      if (reads < 2) return json(route, 200, build('running', 12));
+      return json(route, 200, reads < 4 ? build('running', reads * 6, true) : build('done', 40));
     }
     return json(route, 404, { error: 'not found' });
   };
@@ -593,6 +594,8 @@ await check('Build with AI runs on the box for free, and a finished build lands 
   await panel.getByRole('button', { name: 'Build' }).click();
   // The line count shows while the model writes.
   await page.getByTestId('builder-running').filter({ hasText: /lines so far/ }).waitFor({ timeout: 15000 });
+  // A mistake the box found sends the widget back to the model, and the tab says so.
+  await page.getByTestId('builder-running').filter({ hasText: /found a mistake in the widget and the AI is fixing it/ }).waitFor({ timeout: 15000 });
   // Done: back on the Write tab with the model's files in the editor and the frame.
   const built = page.getByTestId('hand-preview').frameLocator('iframe').locator('#built');
   await built.waitFor({ timeout: 20000 });

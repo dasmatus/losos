@@ -19,6 +19,9 @@ const BOOT_TIMEOUT: Duration = Duration::from_secs(20);
 
 const ANSWER: &str = "<file name=\"index.html\">\n<p id=\"t\">…</p>\n<script>\nsetInterval(function () { document.getElementById(\"t\").textContent = new Date().toLocaleTimeString(losos.lang); }, 1000);\n</script>\n</file>\n<summary>A clock.</summary>";
 
+/// A clock whose script looks up an element the markup does not have.
+const MISTAKE: &str = "<file name=\"index.html\">\n<p id=\"t\">…</p>\n<script>\ndocument.getElementById(\"clock\").textContent = new Date().toLocaleTimeString(losos.lang);\n</script>\n</file>\n<summary>A clock.</summary>";
+
 /// What the stand-in does with a chat: answer at once, or trickle the answer
 /// out slowly enough for a test to stop it halfway.
 #[derive(Clone, Copy)]
@@ -30,7 +33,8 @@ enum Pace {
 }
 
 /// A stand-in for Ollama: `GET /api/tags` lists `llama3.2:3b`, `POST
-/// /api/chat` streams [`ANSWER`] in pieces. Every chat body is kept.
+/// /api/chat` streams an answer in pieces, [`ANSWER`] unless told others.
+/// Every chat body is kept.
 struct Ollama {
     port: u16,
     chats: Arc<Mutex<Vec<Value>>>,
@@ -38,21 +42,29 @@ struct Ollama {
 
 impl Ollama {
     fn start(pace: Pace) -> Ollama {
+        Ollama::answering(pace, vec![ANSWER.to_string()])
+    }
+
+    /// Answer the first chat with `answers[0]`, the second with
+    /// `answers[1]`, and so on; the last one from then on.
+    fn answering(pace: Pace, answers: Vec<String>) -> Ollama {
         let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
         let port = listener.local_addr().unwrap().port();
         let chats = Arc::new(Mutex::new(Vec::new()));
         let seen = Arc::clone(&chats);
+        let answers = Arc::new(answers);
         std::thread::spawn(move || {
             for stream in listener.incoming().flatten() {
                 let seen = Arc::clone(&seen);
-                std::thread::spawn(move || serve(stream, pace, &seen));
+                let answers = Arc::clone(&answers);
+                std::thread::spawn(move || serve(stream, pace, &seen, &answers));
             }
         });
         Ollama { port, chats }
     }
 }
 
-fn serve(mut stream: TcpStream, pace: Pace, seen: &Mutex<Vec<Value>>) {
+fn serve(mut stream: TcpStream, pace: Pace, seen: &Mutex<Vec<Value>>, answers: &[String]) {
     let mut reader = BufReader::new(stream.try_clone().unwrap());
     let mut first = String::new();
     reader.read_line(&mut first).unwrap();
@@ -78,9 +90,11 @@ fn serve(mut stream: TcpStream, pace: Pace, seen: &Mutex<Vec<Value>>) {
         );
         return;
     }
-    seen.lock()
-        .unwrap()
-        .push(serde_json::from_slice(&body).unwrap());
+    let answer = {
+        let mut seen = seen.lock().unwrap();
+        seen.push(serde_json::from_slice(&body).unwrap());
+        answers[(seen.len() - 1).min(answers.len() - 1)].clone()
+    };
     if let Pace::NoMemory = pace {
         let doc = json!({ "error": "model requires more system memory (4.1 GiB) than is available (2.0 GiB)" })
             .to_string();
@@ -95,7 +109,7 @@ fn serve(mut stream: TcpStream, pace: Pace, seen: &Mutex<Vec<Value>>) {
         stream,
         "HTTP/1.1 200 OK\r\nContent-Type: application/x-ndjson\r\nConnection: close\r\n\r\n"
     );
-    for piece in ANSWER.split_inclusive('\n') {
+    for piece in answer.split_inclusive('\n') {
         let chunk = json!({ "message": { "role": "assistant", "content": piece }, "done": false });
         if writeln!(stream, "{chunk}").is_err() {
             return;
@@ -361,4 +375,82 @@ fn a_box_short_of_memory_says_so() {
     let failed = daemon.settle(started["id"].as_str().unwrap());
     assert_eq!(failed["status"], "failed", "{failed}");
     assert_eq!(failed["fault"], "memory");
+}
+
+#[test]
+fn a_widget_with_a_mistake_the_box_can_see_goes_back_to_the_model_once() {
+    let ollama = Ollama::answering(Pace::Quick, vec![MISTAKE.to_string(), ANSWER.to_string()]);
+    let daemon = Daemon::start(Some(&ollama));
+    let (_, started) = daemon.call(
+        "POST",
+        "/api/builder/builds",
+        Some(&json!({ "prompt": "a clock" })),
+    );
+    let done = daemon.settle(started["id"].as_str().unwrap());
+    assert_eq!(done["status"], "done", "{done}");
+    assert_eq!(done["fixing"], false);
+    assert!(done["files"][0]["content"]
+        .as_str()
+        .unwrap()
+        .contains("setInterval"));
+
+    let chats = ollama.chats.lock().unwrap();
+    assert_eq!(chats.len(), 2);
+    let turn = chats[1]["messages"].as_array().unwrap();
+    assert_eq!(turn.len(), 4);
+    assert_eq!(turn[2]["role"], "assistant");
+    assert_eq!(turn[2]["content"], MISTAKE);
+    assert_eq!(turn[3]["role"], "user");
+    let note = turn[3]["content"].as_str().unwrap();
+    assert!(note.contains("getElementById(\"clock\")"), "{note}");
+}
+
+#[test]
+fn a_model_that_repeats_itself_is_cut_off_and_asked_again() {
+    let looping = format!(
+        "<file name=\"index.html\">\n<div>\n{}",
+        "<span class=\"day\"></span>\n".repeat(200)
+    );
+    let ollama = Ollama::answering(Pace::Quick, vec![looping, ANSWER.to_string()]);
+    let daemon = Daemon::start(Some(&ollama));
+    let (_, started) = daemon.call(
+        "POST",
+        "/api/builder/builds",
+        Some(&json!({ "prompt": "uptime as squares" })),
+    );
+    let done = daemon.settle(started["id"].as_str().unwrap());
+    assert_eq!(done["status"], "done", "{done}");
+    assert!(done["files"][0]["content"]
+        .as_str()
+        .unwrap()
+        .starts_with("<p id=\"t\">"));
+
+    let chats = ollama.chats.lock().unwrap();
+    assert_eq!(chats.len(), 2);
+    let turn = chats[1]["messages"].as_array().unwrap();
+    // The model is shown where it went round in circles, not 200 lines of it.
+    let shown = turn[2]["content"].as_str().unwrap();
+    assert!(shown.lines().count() < 30, "{shown}");
+    assert!(turn[3]["content"].as_str().unwrap().contains("repeated"));
+}
+
+#[test]
+fn a_second_answer_that_is_worse_than_the_first_is_dropped() {
+    let ollama = Ollama::answering(
+        Pace::Quick,
+        vec![MISTAKE.to_string(), "Sorry, I cannot help.".to_string()],
+    );
+    let daemon = Daemon::start(Some(&ollama));
+    let (_, started) = daemon.call(
+        "POST",
+        "/api/builder/builds",
+        Some(&json!({ "prompt": "a clock" })),
+    );
+    let done = daemon.settle(started["id"].as_str().unwrap());
+    assert_eq!(done["status"], "done", "{done}");
+    assert!(done["files"][0]["content"]
+        .as_str()
+        .unwrap()
+        .contains("getElementById(\"clock\")"));
+    assert_eq!(ollama.chats.lock().unwrap().len(), 2);
 }

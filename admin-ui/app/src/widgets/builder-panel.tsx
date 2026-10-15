@@ -289,9 +289,11 @@ export function BuilderPanel({ files, hasWidget, onWritten }: BuilderPanelProps)
         <div role="status" className="flex items-center gap-2.5 text-[13px] text-muted" data-testid="builder-running">
           <Spinner label={t("look.builder.runningShort")} />
           <span>
-            {build !== null && build.lines > 0
-              ? t("look.builder.writing", { lines: build.lines })
-              : t("look.builder.reading")}
+            {build?.fixing === true
+              ? t("look.builder.fixing", { lines: build.lines })
+              : build !== null && build.lines > 0
+                ? t("look.builder.writing", { lines: build.lines })
+                : t("look.builder.reading")}
           </span>
         </div>
       )}

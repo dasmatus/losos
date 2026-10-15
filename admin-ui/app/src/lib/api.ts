@@ -820,6 +820,9 @@ export interface BuildSummary {
   finished_at: number | null;
   /** Lines of the answer written so far. */
   lines: number;
+  /** The box found a mistake in the first answer and the model is writing
+   *  a second one. */
+  fixing: boolean;
   fault: BuildFault | null;
   has_source: boolean;
 }

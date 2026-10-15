@@ -185,6 +185,11 @@ export default defineMessages({
     sk: "AI píše widget: zatiaľ {lines} riadkov. Pokračuje aj vtedy, keď toto okno zavriete.",
     de: "Die KI schreibt das Widget: bisher {lines} Zeilen. Sie macht weiter, wenn Sie dieses Fenster schließen.",
   },
+  "look.builder.fixing": {
+    en: "The box found a mistake in the widget and the AI is fixing it: {lines} lines so far.",
+    sk: "Zariadenie našlo vo widgete chybu a AI ju opravuje: zatiaľ {lines} riadkov.",
+    de: "Die Box hat einen Fehler im Widget gefunden, und die KI behebt ihn: bisher {lines} Zeilen.",
+  },
   "look.builder.startFailed": {
     en: "The build did not start.",
     sk: "Tvorba sa nespustila.",
