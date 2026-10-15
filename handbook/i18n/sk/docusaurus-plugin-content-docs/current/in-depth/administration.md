@@ -98,11 +98,10 @@ rámec, takže to, čo ukazuje, ukáže aj dlaždica. Widget môže sťahovať z
 internetu (napríklad dlaždica s počasím), ale nie zo zariadenia. Limit je
 24 widgetov, každý najviac 12 súborov a spolu 128 KiB.
 
-Editor má aj kartu **Vytvoriť s AI**, kde AI agent napíše widget podľa
-opisu a vloží jeho súbory do editora, aby ste si ich pred uložením prečítali.
-Platí sa za každú tvorbu z predplateného zostatku a potrebuje edge, ktorý ju
-ponúka, a na to, čo pošlete, sa vzťahujú podmienky spoločnosti Anthropic;
-pozri [Tvorca widgetov](widget-builder.md).
+Editor má aj kartu **Vytvoriť s AI**, kde jazykový model na zariadení
+napíše widget podľa opisu a vloží jeho súbory do editora, aby ste si ich pred
+uložením prečítali. Beží na zariadení, takže to, čo napíšete, zostane na ňom
+a tvorba nič nestojí; pozri [Tvorca widgetov](widget-builder.md).
 
 ## Admin token
 

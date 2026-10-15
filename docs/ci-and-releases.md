@@ -194,7 +194,6 @@ Market page (Operator setup) describes.
    | ----------------------- | ------------------------------------------------------- |
    | `STRIPE_KEY`            | the Stripe secret or restricted key, test or live       |
    | `STRIPE_WEBHOOK_SECRET` | optional: both `whsec_` secrets, one per line           |
-   | `CLAUDE_KEY`            | the Claude API key (`sk-ant-...`)                       |
    | `EDGE_SSH_KEY`          | the private half of the key from step 1                 |
    | `EDGE_SSH_HOST`         | the edge's address (a secret or a variable)             |
    | `EDGE_SSH_KNOWN_HOSTS`  | the edge's line from `ssh-keyscan` (secret or variable) |
@@ -206,12 +205,6 @@ Market page (Operator setup) describes.
    secret's shape, seals it with `systemd-creds` under its credential name
    and restarts the gate. Rotating a key is changing the secret and running
    the workflow again.
-
-The Claude key is sealed as `claude-api-key` to
-`/var/secrets/losos-claude-api-key.cred`
-(`losos.edge.credentials.secrets.claude-api-key.sealed`). The registrar reads it
-with `LoadCredentialEncrypted=claude-api-key:<that path>`, and sealing a new key
-restarts `losos-registrar.service`.
 
 ### USDC networks
 
@@ -318,9 +311,8 @@ losos.edge.market = {
   `optimism`, `solana`).
 - It needs `losos.edge.market.usdc.enable`; the build refuses the
   configuration without it.
-- Hardware sales (`losos.edge.market.hardware.enable`) and the widget
-  builder's top-ups (`losos.edge.builder.enable`) are paid by card, so they
-  need cards on.
+- Hardware sales (`losos.edge.market.hardware.enable`) are paid by card, so
+  they need cards on.
 - `losos.edge.market.returnUrl` is needed only with cards. Without them it
   may stay empty.
 

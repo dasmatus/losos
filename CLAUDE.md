@@ -153,6 +153,12 @@ and is never served or built by nix.
   `modules/startup-sound/render.py` (no recording in the tree), played on
   every ALSA output once `losos-console` is up. A reboot leaves a marker so
   the nightly reboots stay quiet.
+- `builder.nix` + `backend/src/builder.rs` (install only,
+  `losos.builder.enable`): the admin UI's Build with AI tab. Ollama on
+  `127.0.0.1:11434` serves `losos.builder.model` (llama3.2:3b, pulled once
+  by `ollama-model-loader` into `/var/lib`); lososd streams one build at a
+  time from `/api/chat` and parses the files out of the answer. The system
+  prompt is `backend/src/builder-prompt.md`. No edge, no key, no charge.
 - `updates.nix`: `system.autoUpgrade` at 03:00 from `losos.upgradeFlakeUri`
   (default `git+file:///etc/nixos#install`, set a `github:` URI to really
   upgrade), `nix.gc` at 04:30 with `--delete-older-than 14d`, five boot
@@ -185,8 +191,8 @@ and is never served or built by nix.
   The key's prefix is the mode (`stripe_mode.rs`): test and live each keep
   their own ledger (`market-test.json`, `market.json`), and a signed event
   from the other mode is refused. `modules/edge-credentials.nix` and
-  `.github/workflows/edge-credentials.yml` seal `STRIPE_KEY`, the webhook
-  secrets and `CLAUDE_KEY` from Actions secrets over a forced-command SSH key.
+  `.github/workflows/edge-credentials.yml` seal `STRIPE_KEY` and the webhook
+  secrets from Actions secrets over a forced-command SSH key.
 - `backend-registrar/src/{vms,server/vm}.rs` + `modules/edge-vms.nix`:
   virtual machines on the mesh, sold per replica-month through the market
   with a fixed 50/50 fee the Stripe gate enforces. KubeVirt and CDI from

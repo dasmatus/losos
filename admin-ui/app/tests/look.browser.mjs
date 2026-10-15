@@ -528,41 +528,42 @@ await check('an empty name is refused in the dialog, with nothing sent', async (
   await page.close();
 });
 
-// ── Built by Claude ───────────────────────────────────────────────────────
+// ── Build with AI ─────────────────────────────────────────────────────────
 
-const ACCOUNT = {
-  available: true,
-  currency: 'eur',
-  balance: 380,
-  packs: [500, 1000, 2000],
-  price: { model: 'claude-opus-5-5', input_per_million: 480, output_per_million: 2400, markup_percent: 20, max_build: 360 },
-  can_build: true,
-  builds: [],
-};
+const BUILDER = { available: true, model: 'llama3.2:3b', builds: [] };
 
 const BUILT = [
-  { name: 'index.html', content: '<link rel="stylesheet" href="built.css"><p id="built">built by the agent</p>' },
+  { name: 'index.html', content: '<link rel="stylesheet" href="built.css"><p id="built">built by the model</p>' },
   { name: 'built.css', content: '#built { color: rgb(1, 2, 3); }' },
 ];
 
-function builderStub() {
+/* The builder on the box: a GET for whether the model is ready, a POST that
+ * starts a build, the build read back by id (running twice, with the line
+ * count growing, then done), and a DELETE that stops it. */
+function builderStub({ stopped = null } = {}) {
   let reads = 0;
-  const build = (status) => ({
-    id: 'bld_0a1b', status, prompt: 'a big clock', revision: false, created_at: 1, finished_at: status === 'running' ? null : 2,
-    charged: status === 'running' ? 0 : 120, fault: null, has_source: status === 'done',
-    usage: { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
-    at_limit: false, source: status === 'done' ? BUILT[0].content : null, files: status === 'done' ? BUILT : null,
+  const build = (status, lines) => ({
+    id: 'b1-1', status, prompt: 'a big clock', revision: false, created_at: 1, finished_at: status === 'running' ? null : 2,
+    lines, fault: null, at_limit: false, files: status === 'done' ? BUILT : null,
     notes: status === 'done' ? 'A big clock.' : null,
   });
   return (path, method, route, json) => {
-    if (path === '/api/builder') return json(route, 200, ACCOUNT);
-    if (path === '/api/builder/builds' && method === 'POST') return json(route, 200, { available: true, ...build('running') });
-    if (path === '/api/builder/builds/bld_0a1b') return json(route, 200, { available: true, ...build(reads++ < 1 ? 'running' : 'done') });
+    if (path === '/api/builder') return json(route, 200, BUILDER);
+    if (path === '/api/builder/builds' && method === 'POST') return json(route, 200, build('running', 0));
+    if (path === '/api/builder/builds/b1-1' && method === 'DELETE') {
+      stopped?.push(path);
+      return json(route, 200, build('stopped', 12));
+    }
+    if (path === '/api/builder/builds/b1-1') {
+      reads += 1;
+      if (stopped !== null) return json(route, 200, build('running', 12));
+      return json(route, 200, reads < 3 ? build('running', reads * 12) : build('done', 40));
+    }
     return json(route, 404, { error: 'not found' });
   };
 }
 
-await check('Build with AI shows the price and balance, and a finished build lands in the editor and its preview', async () => {
+await check('Build with AI runs on the box for free, and a finished build lands in the editor and its preview', async () => {
   const { page, errors, writes } = await open({ builder: builderStub() });
   // The bundle's two first-paint style-src-elem reports (advanced.browser.mjs)
   // are counted out; the builder must add none.
@@ -573,25 +574,28 @@ await check('Build with AI shows the price and balance, and a finished build lan
   await editor.getByRole('tab', { name: 'Build with AI' }).click();
   const panel = page.getByTestId('builder-panel');
   await panel.waitFor();
-  assert.match(await page.getByTestId('builder-price').textContent(), /^€4\.80 per million tokens read and €24\.00 per million written\. One build costs at most €3\.60\.$/);
-  // The price, not how it is made; and the terms what the owner sends is under.
+  // Which model, that it stays on the box, that it is free; no price, no balance.
+  assert.match(await page.getByTestId('builder-local').textContent(), /^The AI is llama3\.2:3b, running on this box\. What you write here stays on the box, and building is free\./);
+  assert.equal(await panel.getByText(/€|balance|Anthropic/i).count(), 0);
+  // Meta's licence asks for "Built with Llama".
   const terms = page.getByTestId('builder-terms');
-  assert.match(await terms.textContent(), /subject to Anthropic's terms/);
+  assert.match(await terms.textContent(), /^Built with Llama\./);
   assert.deepEqual(
     await terms.getByRole('link').evaluateAll((links) => links.map((a) => [a.textContent, a.getAttribute('href'), a.target])),
     [
-      ['Usage Policy', 'https://www.anthropic.com/legal/aup', '_blank'],
-      ['Commercial Terms', 'https://www.anthropic.com/legal/commercial-terms', '_blank'],
+      ['License', 'https://www.llama.com/llama3_2/license/', '_blank'],
+      ['Acceptable Use Policy', 'https://www.llama.com/llama3_2/use-policy/', '_blank'],
     ],
   );
-  assert.equal(await page.getByTestId('builder-balance').textContent(), 'Balance: €3.80');
   // The template is not a widget worth changing, so there is nothing to tick.
   assert.equal(await panel.getByRole('checkbox').count(), 0);
   await panel.getByLabel('What should the widget show?').fill('a big clock');
   await panel.getByRole('button', { name: 'Build' }).click();
-  // Done: back on the Write tab with the agent's files in the editor and the frame.
+  // The line count shows while the model writes.
+  await page.getByTestId('builder-running').filter({ hasText: /lines so far/ }).waitFor({ timeout: 15000 });
+  // Done: back on the Write tab with the model's files in the editor and the frame.
   const built = page.getByTestId('hand-preview').frameLocator('iframe').locator('#built');
-  await built.waitFor({ timeout: 15000 });
+  await built.waitFor({ timeout: 20000 });
   assert.equal(await built.evaluate((el) => getComputedStyle(el).color), 'rgb(1, 2, 3)');
   assert.deepEqual(await editor.getByTestId('hand-file').allTextContents(), ['index.html', 'built.css']);
   assert.equal(await code(editor, 'index.html').textContent(), BUILT[0].content);
@@ -601,15 +605,35 @@ await check('Build with AI shows the price and balance, and a finished build lan
   await page.close();
 });
 
-await check('a box whose edge offers no builder says so in the tab, in each language', async () => {
+await check('a running build can be stopped, and the editor keeps what it had', async () => {
+  const stopped = [];
+  const { page, errors } = await open({ builder: builderStub({ stopped }) });
+  const editor = await openEditor(page);
+  const before = await code(editor, 'index.html').textContent();
+  await editor.getByRole('tab', { name: 'Build with AI' }).click();
+  const panel = page.getByTestId('builder-panel');
+  await panel.getByLabel('What should the widget show?').fill('a big clock');
+  await panel.getByRole('button', { name: 'Build' }).click();
+  await page.getByTestId('builder-running').waitFor();
+  await panel.getByRole('button', { name: 'Stop' }).click();
+  await page.getByTestId('builder-outcome').filter({ hasText: 'Stopped. Nothing was changed in the editor.' }).waitFor();
+  assert.deepEqual(stopped, ['/api/builder/builds/b1-1']);
+  assert.equal(await page.getByTestId('builder-running').count(), 0);
+  await editor.getByRole('tab', { name: 'Write' }).click();
+  assert.equal(await code(editor, 'index.html').textContent(), before);
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+await check('a box still fetching its model says so in the tab, in each language', async () => {
   for (const [locale, add, write, title, tab, words] of [
-    ['en-US', 'Add a widget', 'Write one', 'Write a widget', 'Build with AI', 'does not offer the widget builder'],
-    ['sk-SK', 'Pridať widget', 'Napísať', 'Napísať widget', 'Vytvoriť s AI', 'tvorcu widgetov neponúka'],
-    ['de-DE', 'Widget hinzufügen', 'Eins schreiben', 'Widget schreiben', 'Mit KI bauen', 'bietet den Widget-Baukasten nicht an'],
+    ['en-US', 'Add a widget', 'Write one', 'Write a widget', 'Build with AI', 'still downloading the AI model (llama3.2:3b'],
+    ['sk-SK', 'Pridať widget', 'Napísať', 'Napísať widget', 'Vytvoriť s AI', 'ešte sťahuje model AI (llama3.2:3b'],
+    ['de-DE', 'Widget hinzufügen', 'Eins schreiben', 'Widget schreiben', 'Mit KI bauen', 'lädt das KI-Modell noch herunter (llama3.2:3b'],
   ]) {
     const { page, errors, writes } = await open({
       locale,
-      builder: (_path, _method, route, json) => json(route, 200, { available: false }),
+      builder: (_path, _method, route, json) => json(route, 200, { available: false, reason: 'downloading', model: 'llama3.2:3b' }),
     });
     await page.getByRole('button', { name: add }).first().click();
     await page.getByRole('dialog', { name: add }).getByRole('button', { name: write }).click();

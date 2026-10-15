@@ -1,10 +1,10 @@
 # Secrets sealed on the edge, from the `losos` terminal or GitHub Actions.
 #
 # The terminal (`losos edge secret set`, docs/edge-terminal.md) and
-# `.github/workflows/edge-credentials.yml` (the Stripe and Claude keys only)
-# both pipe a value into `losos-seal-credential` here, which checks its
-# shape and seals it with `systemd-creds` (TPM2 where the edge has one, the
-# host key otherwise). The plaintext travels in the sealed envelope or the
+# `.github/workflows/edge-credentials.yml` (the Stripe key and webhook
+# secrets only) both pipe a value into `losos-seal-credential` here, which
+# checks its shape and seals it with `systemd-creds` (TPM2 where the edge has
+# one, the host key otherwise). The plaintext travels in the sealed envelope or the
 # SSH session and in this script's memory only: it is never written to disk
 # on either side, and the blob is all `/var` ever holds.
 #
@@ -140,12 +140,6 @@ in
             sealed = lib.mkDefault cfg.market.webhookSecretSealed;
             pattern = lib.mkDefault "whsec_[A-Za-z0-9]+";
             units = [ "losos-stripe-gate.service" ];
-          };
-          # The registrar loads it under this name for the AI widget builder.
-          claude-api-key = {
-            sealed = lib.mkDefault "/var/secrets/losos-claude-api-key.cred";
-            pattern = lib.mkDefault "sk-ant-[A-Za-z0-9_-]+";
-            units = [ "losos-registrar.service" ];
           };
         }
         # The chain endpoints, one per USDC network, and the ENS one. The URL

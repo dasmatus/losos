@@ -20,8 +20,8 @@
 //! id, so every caller hands a platform the same well-formed request. The
 //! gate still checks every field again: it does not trust the registrar.
 //!
-//! Plain charges the platform makes for itself (hardware, builder credits)
-//! pay no seller and are not Connect; they stay on the gate client.
+//! Plain charges the platform makes for itself (hardware) pay no seller and
+//! are not Connect; they stay on the gate client.
 
 use std::collections::BTreeMap;
 use std::future::Future;

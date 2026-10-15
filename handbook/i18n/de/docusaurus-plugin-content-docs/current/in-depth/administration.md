@@ -105,12 +105,11 @@ kann Daten aus dem Internet abrufen (etwa eine Wetterkachel), aber nicht von
 der Box. Die Grenze liegt bei 24 Widgets mit je höchstens 12 Dateien und
 zusammen 128 KiB.
 
-Der Editor hat auch einen Tab **Mit KI bauen**, in dem ein KI-Agent das Widget
-nach einer Beschreibung schreibt und seine Dateien in den Editor legt, damit
-du sie vor dem Speichern liest. Bezahlt wird pro Bau aus einem vorausbezahlten
-Guthaben, und es braucht einen Edge, der ihn anbietet; siehe
-[Widget-Baukasten](widget-builder.md). Was du dorthin schickst, unterliegt
-den Bedingungen von Anthropic.
+Der Editor hat auch einen Tab **Mit KI bauen**, in dem ein Sprachmodell auf
+der Box das Widget nach einer Beschreibung schreibt und seine Dateien in den
+Editor legt, damit du sie vor dem Speichern liest. Es läuft auf der Box, also
+bleibt, was du eintippst, dort, und ein Bau kostet nichts; siehe
+[Widget-Baukasten](widget-builder.md).
 
 ## Admin-Token
 

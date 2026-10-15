@@ -112,8 +112,8 @@ export function HandEditor({ open, onOpenChange, widget, onSaved }: HandEditorPr
   const [frameError, setFrameError] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
   const [tab, setTab] = React.useState("write");
-  /* The builder asks the edge when it mounts, so it mounts the first time
-   * its tab is opened and stays mounted from then on. */
+  /* The builder asks the box about its model when it mounts, so it mounts
+   * the first time its tab is opened and stays mounted from then on. */
   const [builderOpened, setBuilderOpened] = React.useState(false);
   const titleId = React.useId();
   const hintId = React.useId();
@@ -226,18 +226,18 @@ export function HandEditor({ open, onOpenChange, widget, onSaved }: HandEditorPr
           value={tab}
           onValueChange={(next) => {
             setTab(next);
-            if (next === "claude") setBuilderOpened(true);
+            if (next === "ai") setBuilderOpened(true);
           }}
         >
           <TabsList>
             <TabsTrigger value="write">{t("look.editor.tab.write")}</TabsTrigger>
-            <TabsTrigger value="claude">{t("look.editor.tab.claude")}</TabsTrigger>
+            <TabsTrigger value="ai">{t("look.editor.tab.ai")}</TabsTrigger>
             <TabsTrigger value="help">{t("look.editor.tab.help")}</TabsTrigger>
           </TabsList>
 
           {/* Kept mounted so a build in progress is still followed, and its
            * widget lands in the editor, while the owner is on another tab. */}
-          <TabsContent value="claude" keepMounted>
+          <TabsContent value="ai" keepMounted>
             {builderOpened && (
               <BuilderPanel
                 files={files}

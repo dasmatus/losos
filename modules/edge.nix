@@ -889,20 +889,11 @@ let
   # both in the registrar's StateDirectory, the key made on its first start.
   relayRoutes = dnsCfg.enable && dnsCfg.relayRoutes.enable;
 
-  # Widget-builder half of `serve` (backend-registrar/src/builder.rs). The
-  # Anthropic key reaches the registrar as the `claude-api-key` credential; the
-  # top-ups go through the market's gate, which is told the same packs.
-  builderOn = cfg.market.enable && cfg.builder.enable;
-  builderKeyPath = "/run/credentials/losos-registrar.service/claude-api-key";
-  builderPacks = lib.concatMapStringsSep "," toString cfg.builder.packs;
-  # Credentials the registrar decrypts. Both lists are empty on an edge that
-  # runs neither the builder nor USDC, and the unit then has no
-  # LoadCredentialEncrypted at all.
+  # Credentials the registrar decrypts. The list is empty on an edge that
+  # does not run USDC, and the unit then has no LoadCredentialEncrypted at
+  # all.
   registrarCreds =
-    lib.optionals builderOn [
-      "claude-api-key:${toString cfg.builder.claudeKeySealed}"
-    ]
-    ++ lib.optionals usdcOn (
+    lib.optionals usdcOn (
       lib.mapAttrsToList (name: n: "usdc-rpc-${name}:${toString n.rpcUrlSealed}") usdcNetworks
     )
     ++ lib.optionals releaserOn [
@@ -911,22 +902,6 @@ let
     ++ lib.optionals ensOn [
       "ens-rpc:${toString cfg.market.usdc.ensRpcUrlSealed}"
     ];
-  builderServeArgs = lib.optionals builderOn [
-    "--builder-key-file"
-    builderKeyPath
-    "--builder-agent-id"
-    cfg.builder.agentId
-    "--builder-environment-id"
-    cfg.builder.environmentId
-    "--builder-markup-bps"
-    (toString cfg.builder.markupBps)
-    "--builder-usd-rate"
-    cfg.builder.usdRate
-    "--builder-packs"
-    builderPacks
-    "--builder-max-build-cents"
-    (toString cfg.builder.maxBuildCents)
-  ];
 
   serveArgs = utils.escapeSystemdExecArgs (
     [
@@ -962,7 +937,6 @@ let
     ]
     ++ meshServeArgs
     ++ marketServeArgs
-    ++ builderServeArgs
     ++ identityArgs
     ++ dnsServeArgs
     ++ enrolArgs
@@ -1139,16 +1113,6 @@ in
         '';
       }
       {
-        assertion =
-          cfg.builder.enable
-          -> (gateOn && cfg.builder.agentId != null && cfg.builder.environmentId != null);
-        message = ''
-          losos.edge.builder.enable requires losos.edge.market.enable with
-          cards (top-ups are paid through its Stripe gate) and losos.edge.builder.agentId and
-          environmentId, which `losos-registrar builder-setup` prints.
-        '';
-      }
-      {
         assertion = cfg.market.enable -> meshEnabled;
         message = ''
           losos.edge.market.enable requires losos.edge.cluster.enable so paid
@@ -1298,9 +1262,9 @@ in
       }
       // lib.optionalAttrs (registrarCreds != [ ]) {
         # Plaintext only in this unit's credential directory, read per request.
-        # `claude-api-key` is the widget builder, `usdc-rpc-<network>` a chain
-        # endpoint, `usdc-releaser-key` the escrow's key and `ens-rpc` the
-        # name lookups. None is a flag, so none shows up in the process list.
+        # `usdc-rpc-<network>` is a chain endpoint, `usdc-releaser-key` the
+        # escrow's key and `ens-rpc` the name lookups. None is a flag, so none
+        # shows up in the process list.
         LoadCredentialEncrypted = registrarCreds;
         # systemd fails the unit when an absolute blob is missing, and an
         # edge whose registrar never starts cannot have anything sealed
@@ -1457,10 +1421,6 @@ in
             (utils.escapeSystemdExecArg cfg.market.returnUrl)
           ]
           ++ hardwareArgs "--hardware-catalogue"
-          ++ lib.optionals builderOn [
-            "--credit-packs"
-            builderPacks
-          ]
         );
         LoadCredentialEncrypted = [
           "stripe-secret-key:${toString cfg.market.stripeSecretKeySealed}"

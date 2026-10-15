@@ -48,10 +48,10 @@ dir=$(dirname "$0")
 echo "$*" >> "$dir/seal-args"
 echo "$LOSOS_SEAL_DEFER" > "$dir/seal-defer"
 if [ "$1" = "--list" ]; then
-  if [ -f "$dir/sealed-claude-api-key" ]; then
-    printf 'claude-api-key\t1\t1790000000\n'
+  if [ -f "$dir/sealed-stripe-webhook-secret" ]; then
+    printf 'stripe-webhook-secret\t1\t1790000000\n'
   else
-    printf 'claude-api-key\t0\t\n'
+    printf 'stripe-webhook-secret\t0\t\n'
   fi
   printf 'stripe-secret-key\t0\t\n'
   exit 0
@@ -253,7 +253,7 @@ async fn an_operator_reaches_the_four_paths_with_a_sealed_call() {
         .call("GET", "/secrets", serde_json::Value::Null)
         .await
         .unwrap();
-    assert_eq!(secrets.body[0]["name"], "claude-api-key");
+    assert_eq!(secrets.body[0]["name"], "stripe-webhook-secret");
     assert_eq!(secrets.body[0]["sealed"], false);
 
     // A value goes to the script's stdin and nowhere else.
@@ -261,19 +261,19 @@ async fn an_operator_reaches_the_four_paths_with_a_sealed_call() {
         .call(
             "POST",
             "/secrets",
-            serde_json::json!({"name": "claude-api-key", "value": "sk-ant-secret-value"}),
+            serde_json::json!({"name": "stripe-webhook-secret", "value": "whsec_secret_value"}),
         )
         .await
         .unwrap();
     assert_eq!(set.status, 200, "{:?}", set.body);
     assert_eq!(set.body["sealed"], true);
     assert_eq!(
-        std::fs::read_to_string(edge.dir.join("sealed-claude-api-key")).unwrap(),
-        "sk-ant-secret-value"
+        std::fs::read_to_string(edge.dir.join("sealed-stripe-webhook-secret")).unwrap(),
+        "whsec_secret_value"
     );
     let args = std::fs::read_to_string(edge.dir.join("seal-args")).unwrap();
     assert!(
-        !args.contains("sk-ant"),
+        !args.contains("whsec_"),
         "the value reached an argument: {args}"
     );
     assert_eq!(

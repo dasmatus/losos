@@ -49,6 +49,8 @@ struct Api {
     access: crate::access::Access,
     /// This listener's own port, which a terminal call is run against.
     port: u16,
+    /// The widget builder (`crate::builder`).
+    builder: crate::builder::Builder,
 }
 
 /// `{"error": "..."}` at the given status — the shape the SPA expects.
@@ -1128,30 +1130,23 @@ async fn post_market_rpc(api: web::Data<Api>, req: HttpRequest, body: web::Bytes
 }
 
 // ── The widget builder ────────────────────────────────────────────────────
-// Relayed to the edge like the market (`crate::market`): the edge holds the
-// Anthropic key and the balance, this box only its proxy token.
+// A model on this box writes a widget from the owner's description
+// (`crate::builder`). It has its own lock: a build takes minutes and must
+// not hold the backend's.
 
-/// `GET /api/builder` — balance, packs, price and recent builds, or
-/// `{"available": false}` when no official edge offers the builder.
+/// `GET /api/builder` — whether the model is ready, and the recent builds.
 async fn get_builder(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
     guarded(&api, &req, "/api/builder", false, || {
-        run(&api, crate::losos::cmd_builder)
+        HttpResponse::Ok().json(api.builder.view())
     })
 }
 
-/// `POST /api/builder/credits` `{"amount": ...}` — a Stripe Checkout for one
-/// credit pack.
-async fn post_builder_credit(
-    api: web::Data<Api>,
-    req: HttpRequest,
-    body: web::Bytes,
-) -> HttpResponse {
-    post_market(api, req, body, "/api/builder/credits", |d| {
-        Some(crate::market::Op::BuilderCredit {
-            amount: field_u64(d, "amount")?,
-        })
-    })
-    .await
+/// A refusal from the builder, as `{"error": ...}` at its own status.
+fn builder_refused(r: &crate::builder::Refused) -> HttpResponse {
+    err(
+        StatusCode::from_u16(r.status).unwrap_or(StatusCode::BAD_REQUEST),
+        &r.message,
+    )
 }
 
 /// `POST /api/builder/builds` `{"prompt": ..., "base"?: [files], "lang"?: ...}`
@@ -1162,31 +1157,40 @@ async fn post_builder_start(
     req: HttpRequest,
     body: web::Bytes,
 ) -> HttpResponse {
-    post_market(api, req, body, "/api/builder/builds", |d| {
-        Some(crate::market::Op::BuilderStart {
-            prompt: field_str(d, "prompt")?,
-            base: match d.get("base") {
-                None | Some(serde_json::Value::Null) => None,
-                Some(serde_json::Value::String(s)) if s.trim().is_empty() => None,
-                Some(serde_json::Value::String(s)) => Some(vec![crate::look::WidgetFile::entry(s)]),
-                Some(files) => Some(crate::look::parse_files(files)?),
-            },
-            lang: field_str(d, "lang"),
-        })
+    guarded(&api, &req, "/api/builder/builds", true, || {
+        let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
+        match crate::builder::parse_request(&doc).and_then(|r| api.builder.start(r)) {
+            Ok(build) => HttpResponse::Ok().json(build),
+            Err(r) => builder_refused(&r),
+        }
     })
-    .await
 }
 
-/// `GET /api/builder/builds/{id}` — one build, with its source once done.
+/// `GET /api/builder/builds/{id}` — one build, with its files once done.
 async fn get_builder_build(
     api: web::Data<Api>,
     req: HttpRequest,
     path: web::Path<String>,
 ) -> HttpResponse {
-    let build_id = path.into_inner();
     guarded(&api, &req, "/api/builder/builds", false, || {
-        let op = crate::market::Op::BuilderBuild { build_id };
-        run(&api, |b| crate::losos::cmd_market_op(b, &op))
+        match api.builder.build(&path) {
+            Some(build) => HttpResponse::Ok().json(build),
+            None => err(StatusCode::NOT_FOUND, "no such build"),
+        }
+    })
+}
+
+/// `DELETE /api/builder/builds/{id}` — stop a running build.
+async fn delete_builder_build(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    path: web::Path<String>,
+) -> HttpResponse {
+    guarded(&api, &req, "/api/builder/builds", true, || {
+        match api.builder.stop(&path) {
+            Ok(build) => HttpResponse::Ok().json(build),
+            Err(r) => builder_refused(&r),
+        }
     })
 }
 
@@ -1871,6 +1875,7 @@ pub fn serve(backend: IoLosos) -> anyhow::Result<()> {
             claims: std::sync::Mutex::new(crate::receipt::Receipts::default()),
             access: crate::access::Access::from_env(),
             port,
+            builder: crate::builder::Builder::from_env(),
         });
         let server = HttpServer::new(move || {
             App::new()
@@ -1928,9 +1933,12 @@ pub fn serve(backend: IoLosos) -> anyhow::Result<()> {
                 )
                 .route("/api/market/rpc", web::post().to(post_market_rpc))
                 .route("/api/builder", web::get().to(get_builder))
-                .route("/api/builder/credits", web::post().to(post_builder_credit))
                 .route("/api/builder/builds", web::post().to(post_builder_start))
                 .route("/api/builder/builds/{id}", web::get().to(get_builder_build))
+                .route(
+                    "/api/builder/builds/{id}",
+                    web::delete().to(delete_builder_build),
+                )
                 .route("/api/vms", web::get().to(get_vms))
                 .route("/api/vms/orders", web::post().to(post_vm_order))
                 .route("/api/vms/listings", web::post().to(post_vm_listing))
