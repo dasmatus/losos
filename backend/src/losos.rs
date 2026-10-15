@@ -472,6 +472,7 @@ pub fn cmd_apply<L: Losos>(l: &mut L, nix_code: &str) -> anyhow::Result<Value> {
     let now = parse_settings(&before);
     let want = parse_settings(nix_code);
     crate::edge::check_gate(&now, &want, &l.edge_status()?)?;
+    crate::edge::check_mesh(nix_code)?;
     l.write_overrides(nix_code)?;
     let commit = commit_settings(l, "Change", &before, nix_code);
     let job = queue_rebuild(l, MSG_STARTED)?;
@@ -1591,7 +1592,8 @@ fn gate_overrides<L: Losos>(l: &mut L, body: &str) -> Result<(), String> {
     }
     let now = parse_settings(&l.read_overrides().map_err(|e| e.to_string())?);
     let edge = l.edge_status().map_err(|e| e.to_string())?;
-    crate::edge::check_gate(&now, &parse_settings(body), &edge).map_err(|e| e.to_string())
+    crate::edge::check_gate(&now, &parse_settings(body), &edge).map_err(|e| e.to_string())?;
+    crate::edge::check_mesh(body).map_err(|e| e.to_string())
 }
 
 /// Move `/etc/nixos` to the published branch's newest tree, keeping this
@@ -2520,6 +2522,35 @@ mod tests {
         assert_eq!(why.setting, "losos.cluster.enable");
         assert!(!fake.spawned);
         assert!(fake.state.rebuild.is_none());
+    }
+
+    #[test]
+    fn joining_the_mesh_without_the_proxy_or_a_name_is_refused_before_the_rebuild() {
+        // The edge is in reach, so the edge gate passes; what is missing is
+        // on the box itself, and modules/cluster.nix would fail the rebuild.
+        let mut fake = FakeLosos::new();
+        let join = DEFAULT_OVERRIDES_NIX.replace(
+            "losos.cluster.enable = false;",
+            "losos.cluster.enable = true;",
+        );
+        let err = cmd_apply(&mut fake, &join).unwrap_err();
+        assert_eq!(
+            err.downcast_ref::<crate::edge::MeshNotReady>(),
+            Some(&crate::edge::MeshNotReady::ProxyOff)
+        );
+        let proxied = join.replace("losos.proxy.enable = false;", "losos.proxy.enable = true;");
+        let err = cmd_apply(&mut fake, &proxied).unwrap_err();
+        assert_eq!(
+            err.downcast_ref::<crate::edge::MeshNotReady>(),
+            Some(&crate::edge::MeshNotReady::StockName)
+        );
+        assert!(!fake.spawned);
+        let named = proxied.replace(
+            "losos.hostName = \"mattbox\";",
+            "losos.hostName = \"kitchen\";",
+        );
+        assert!(cmd_apply(&mut fake, &named).unwrap()["job"].is_string());
+        assert!(fake.spawned);
     }
 
     #[test]

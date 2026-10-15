@@ -504,7 +504,7 @@ export interface MarketEscrow {
   network: string;
   deposit: number;
   step: "release" | "released" | "refund" | "refunded";
-  reason?: "sellerCannotReceive" | "alreadyPaid" | "lapsed" | "buyerReclaimed" | null;
+  reason?: "sellerCannotReceive" | "alreadyPaid" | "lapsed" | "buyerReclaimed" | "notDelivered" | null;
 }
 
 /** Coins other than USDC an order can be paid in. */

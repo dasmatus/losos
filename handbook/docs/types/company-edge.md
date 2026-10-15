@@ -63,11 +63,13 @@ In short:
    to `true`. The edge then announces itself over mDNS, by default as
    `http://<edge>.local:8443`, and opens its API to the LAN. Every box on
    that network finds it with no configuration.
-4. On each box, turn **Join the mesh** on, and **Reachable from outside your
-   home** if the box should also be reached under the edge's domain. If the
-   edge is *not* on the same network, first enter its address under
-   Settings → Advanced, in `losos.proxy.registrarUrl`. mDNS announcements do
-   not cross routers.
+4. On each box, give the box a name of its own and turn **Reachable from
+   outside your home** on, both under Network, then turn **Join the mesh**
+   on. The box signs in to the edge with its tunnel key, and every box
+   starts with the same name, which the edge accepts only once. If the edge
+   is *not* on the same network, first enter its address under Settings →
+   Advanced, in `losos.proxy.registrarUrl`. mDNS announcements do not cross
+   routers.
 
 ## Who this is for
 
