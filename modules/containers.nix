@@ -137,16 +137,7 @@ let
   #
   # (A LAN that genuinely numbers itself inside RFC1918 is the normal case and
   # is what the allows are for; there is no longer a carve-out to collide with.)
-  lanOnly = ''
-    if ($remote_addr = $server_addr) {
-      return 403;
-    }
-    deny 10.42.0.0/16;
-    allow 10.0.0.0/8;
-    allow 172.16.0.0/12;
-    allow 192.168.0.0/16;
-    deny all;
-  '';
+  lanOnly = import ./lan-only.nix;
 
   # ── Security response headers ─────────────────────────────────────────────
   # The admin UI, /api/, /nextcloud and /forgejo/ share one origin by design,
