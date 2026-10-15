@@ -39,6 +39,8 @@ struct Verifier {
     trust: Trust,
     /// The hash of a certificate that passed only by `trust`.
     seen: Mutex<Option<String>>,
+    /// That certificate itself, DER, for the tools set up to pin it too.
+    seen_der: Mutex<Option<Vec<u8>>>,
     /// A pinned certificate was replaced by another.
     changed: Mutex<bool>,
 }
@@ -67,6 +69,7 @@ impl ServerCertVerifier for Verifier {
         match &self.trust {
             Trust::Pinned(pin) if pin.eq_ignore_ascii_case(&hash) => {
                 *self.seen.lock().unwrap() = Some(hash);
+                *self.seen_der.lock().unwrap() = Some(end_entity.to_vec());
                 Ok(ServerCertVerified::assertion())
             }
             Trust::Pinned(_) => {
@@ -77,6 +80,7 @@ impl ServerCertVerifier for Verifier {
             Trust::FirstUse => {
                 tracing::info!(certificate = %hash, %error, "certificate taken at login");
                 *self.seen.lock().unwrap() = Some(hash);
+                *self.seen_der.lock().unwrap() = Some(end_entity.to_vec());
                 Ok(ServerCertVerified::assertion())
             }
             Trust::Public => Err(error),
@@ -122,6 +126,8 @@ impl ServerCertVerifier for Verifier {
 pub struct Response {
     pub status: u16,
     pub content_type: String,
+    /// `WWW-Authenticate`, when the answer asks for credentials.
+    pub authenticate: Option<String>,
     pub body: String,
 }
 
@@ -157,6 +163,7 @@ impl Http {
             provider: provider.clone(),
             trust,
             seen: Mutex::new(None),
+            seen_der: Mutex::new(None),
             changed: Mutex::new(false),
         });
         let config = rustls::ClientConfig::builder_with_provider(provider)
@@ -178,6 +185,12 @@ impl Http {
     /// trust this client was made with: what login pins.
     pub fn taken_certificate(&self) -> Option<String> {
         self.verifier.seen.lock().unwrap().clone()
+    }
+
+    /// The certificate itself, DER, when it passed only by the trust this
+    /// client was made with (the box's own, pinned at login).
+    pub fn taken_certificate_der(&self) -> Option<Vec<u8>> {
+        self.verifier.seen_der.lock().unwrap().clone()
     }
 
     pub fn get(&self, url: &str, accept: &str) -> Result<Response, HttpError> {
@@ -227,6 +240,7 @@ impl Http {
         };
         let status = response.status();
         let content_type = response.header("content-type").unwrap_or("").to_string();
+        let authenticate = response.header("www-authenticate").map(str::to_string);
         let mut text = String::new();
         response
             .into_reader()
@@ -237,6 +251,7 @@ impl Http {
         Ok(Response {
             status,
             content_type,
+            authenticate,
             body: text,
         })
     }
