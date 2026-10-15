@@ -264,6 +264,24 @@ function SidebarContent({ className, ...props }: React.ComponentProps<"div">) {
   return <div data-slot="sidebar-content" className={cn("mt-2 flex min-h-0 flex-col gap-2", className)} {...props} />;
 }
 
+function SidebarGroup({ className, ...props }: React.ComponentProps<"div">) {
+  return <div data-slot="sidebar-group" className={cn("flex min-w-0 flex-col", className)} {...props} />;
+}
+
+function SidebarGroupLabel({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="sidebar-group-label"
+      className={cn(
+        "px-2 pt-1 pb-1.5 text-[11.5px] font-medium tracking-wide text-faint",
+        "group-data-[collapsible=icon]/sidebar:sr-only",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
 /* The search box at the top of the panel, on the surface so it reads as a
  * field against the recess. */
 function SidebarInput({ className, ...props }: React.ComponentProps<"input">) {
@@ -484,6 +502,8 @@ export {
   SidebarTrigger,
   SidebarHeader,
   SidebarContent,
+  SidebarGroup,
+  SidebarGroupLabel,
   SidebarInput,
   SidebarMenu,
   SidebarMenuItem,

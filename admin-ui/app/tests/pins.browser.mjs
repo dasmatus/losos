@@ -1,0 +1,300 @@
+/* Pins on the sidebar: apps, LosOS cloud files and LosOS Git repositories
+ * the owner pins, kept on the box (backend/src/pins.rs).
+ *
+ * Same arrangement as the other files: the real dist/ bundle, the API
+ * stubbed with page.route(), the stub enforcing the Bearer token. The stub
+ * keeps the list the way lososd does, so a pin added in one check is there
+ * on the next GET, and every PUT is recorded for the checks to read.
+ */
+
+import assert from 'node:assert';
+import { launch, runner, serve } from './harness.mjs';
+
+const TOKEN = 'a'.repeat(64);
+const { origin, close: closeServer } = await serve();
+const browser = await launch();
+const { check, finish } = runner();
+
+const SETTINGS = {
+  sharingMyStorage: false,
+  nextcloudMode: 'container',
+  forgejoMode: 'container',
+  hostName: 'mattbox',
+  https: false,
+  gpuEnable: false,
+  apachePort: 80,
+  proxyEnable: false,
+  clusterEnable: false,
+  shareCompute: false,
+  computeWindowStart: '23:00',
+  computeWindowEnd: '07:00',
+  hardeningApparmor: false,
+  hardeningMalloc: false,
+  hardeningNosmt: false,
+  hardeningUsbguard: false,
+};
+
+const PINNED = [
+  { kind: 'tile', app: 'calendar' },
+  { kind: 'file', id: 42, path: '/Documents/plan.pdf', folder: false },
+  { kind: 'repo', owner: 'notshared', name: 'site' },
+  { kind: 'app', release: 'jellyfin' },
+];
+
+const APPS = {
+  available: true,
+  sharedAvailable: false,
+  apps: [
+    {
+      release: 'jellyfin',
+      chart: { repo: 'jellyfin', name: 'jellyfin', version: '2.1.0' },
+      runAs: 'notshared',
+      values: {},
+      valuesYaml: null,
+      frontPort: 30001,
+      appPort: 8096,
+      phase: 'running',
+      message: null,
+      updatedAt: 0,
+    },
+  ],
+};
+
+const FOLDERS = {
+  '/': [
+    { name: 'Documents', path: '/Documents', id: 10, folder: true, size: 4096 },
+    { name: 'Photos', path: '/Photos', id: 11, folder: true, size: 900000 },
+    { name: 'notes.md', path: '/notes.md', id: 12, folder: false, size: 812 },
+  ],
+  '/Documents': [
+    { name: 'Tax', path: '/Documents/Tax', id: 20, folder: true, size: 1000 },
+    { name: 'plan.pdf', path: '/Documents/plan.pdf', id: 42, folder: false, size: 120000 },
+    { name: 'budget.ods', path: '/Documents/budget.ods', id: 43, folder: false, size: 9000 },
+  ],
+};
+
+const REPOS = {
+  available: true,
+  repos: [
+    { owner: 'notshared', name: 'losos-config', private: true, description: "This box's NixOS configuration." },
+    { owner: 'notshared', name: 'site', private: false, description: 'My web page' },
+  ],
+};
+
+const json = (route, status, body) =>
+  route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
+
+async function open({
+  path = '/',
+  pins = PINNED,
+  files = 'ready',
+  viewport = { width: 1280, height: 900 },
+  colorScheme = 'light',
+  csp = null,
+} = {}) {
+  const page = await browser.newPage({ viewport, locale: 'en-US', colorScheme });
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(String(e)));
+  if (csp !== null) {
+    await page.addInitScript(() => {
+      window.__violations = [];
+      document.addEventListener('securitypolicyviolation', (e) => window.__violations.push(e.violatedDirective));
+    });
+  }
+  const authed = (route) => route.request().headers()['authorization'] === `Bearer ${TOKEN}`;
+  const box = { pins: [...pins], puts: [], fileAsks: [] };
+
+  await page.route('**/api/**', (route) => json(route, 200, {}));
+  await page.route('**/api/setup/claim', (route) => json(route, 200, { claimed: true }));
+  await page.route('**/api/settings', (route) =>
+    authed(route) ? json(route, 200, SETTINGS) : json(route, 401, { error: 'unauthorized' }),
+  );
+  await page.route('**/api/apps', (route) =>
+    authed(route) ? json(route, 200, APPS) : json(route, 401, { error: 'unauthorized' }),
+  );
+  await page.route('**/api/pins', (route) => {
+    if (!authed(route)) return json(route, 401, { error: 'unauthorized' });
+    if (route.request().method() === 'PUT') {
+      const body = JSON.parse(route.request().postData() ?? '{}');
+      box.puts.push(body.pins);
+      box.pins = body.pins;
+    }
+    return json(route, 200, { pins: box.pins, limit: 24 });
+  });
+  await page.route('**/api/cloud/files?**', (route) => {
+    if (!authed(route)) return json(route, 401, { error: 'unauthorized' });
+    const url = new URL(route.request().url());
+    const at = url.searchParams.get('path') ?? '/';
+    box.fileAsks.push(at);
+    if (files === 'signIn') {
+      return json(route, 200, { available: false, reason: 'signIn', path: at, query: null, entries: [] });
+    }
+    return json(route, 200, { available: true, path: at, query: null, entries: FOLDERS[at] ?? [], more: false });
+  });
+  await page.route('**/api/git/repos', (route) =>
+    authed(route) ? json(route, 200, REPOS) : json(route, 401, { error: 'unauthorized' }),
+  );
+  // The apps the Overview probes, answering as on a box that is set up.
+  await page.route('**/nextcloud/status.php', (route) => json(route, 200, { installed: true }));
+  await page.route('**/forgejo/', (route) => route.fulfill({ status: 200, contentType: 'text/html', body: '' }));
+  await page.route('**/nextcloud/index.php/apps/mail/', (route) =>
+    route.fulfill({ status: 404, contentType: 'text/html', body: '' }),
+  );
+  await page.addInitScript((t) => window.sessionStorage.setItem('losos-token', t), TOKEN);
+  await page.goto((csp ?? origin) + path, { waitUntil: 'networkidle' });
+  return { page, errors, box };
+}
+
+const nav = (page) => page.getByRole('navigation', { name: 'Sections', exact: true });
+const pinned = (page) => nav(page).getByRole('group', { name: 'Pinned' });
+
+await check('the pins the box keeps sit under the sections, each opening in its own app', async () => {
+  const { page, errors } = await open();
+  const group = pinned(page);
+  await group.waitFor();
+  const links = group.getByRole('link');
+  assert.deepEqual(await links.allInnerTexts(), ['Calendar', 'plan.pdf', 'site', 'jellyfin']);
+  const href = (name) => group.getByRole('link', { name, exact: true }).getAttribute('href');
+  assert.equal(await href('Calendar'), '/nextcloud/index.php/apps/calendar/');
+  assert.equal(await href('plan.pdf'), '/nextcloud/index.php/f/42');
+  assert.equal(await href('site'), '/forgejo/notshared/site');
+  // An installed app opens on the port the box gave it, in a tab of its own.
+  assert.equal(await href('jellyfin'), 'http://127.0.0.1:30001/');
+  assert.equal(await group.getByRole('link', { name: 'jellyfin' }).getAttribute('target'), '_blank');
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+await check('unpinning from the sidebar writes the list without it', async () => {
+  const { page, box } = await open();
+  await pinned(page).getByRole('link', { name: 'site' }).hover();
+  await pinned(page).getByRole('button', { name: 'Unpin site' }).click();
+  await pinned(page).getByRole('link', { name: 'site' }).waitFor({ state: 'detached' });
+  assert.deepEqual(box.puts.at(-1), PINNED.filter((p) => p.kind !== 'repo'));
+  await page.close();
+});
+
+await check('an Overview tile pins its app, and says so once it is pinned', async () => {
+  const { page, box } = await open({ pins: [] });
+  await pinned(page).getByRole('button', { name: 'Pin apps, files and repositories here.' }).waitFor();
+  const grid = page.getByRole('list', { name: /apps/i }).first();
+  await grid.getByRole('link', { name: 'Contacts' }).hover();
+  const pin = page.getByRole('button', { name: 'Pin Contacts' });
+  await pin.click();
+  await pinned(page).getByRole('link', { name: 'Contacts' }).waitFor();
+  assert.deepEqual(box.puts.at(-1), [{ kind: 'tile', app: 'contacts' }]);
+  const unpin = page.getByRole('main').getByRole('button', { name: 'Unpin Contacts' });
+  assert.equal(await unpin.getAttribute('aria-pressed'), 'true');
+  await page.close();
+});
+
+await check('the dialog pins a file from a folder of LosOS cloud and a repository from LosOS Git', async () => {
+  const { page, box } = await open({ pins: [{ kind: 'tile', app: 'calendar' }] });
+  await pinned(page).getByRole('button', { name: 'Edit pins' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Pins' });
+  await dialog.waitFor();
+  await dialog.getByRole('tab', { name: 'Files' }).click();
+  await dialog.getByRole('button', { name: 'Open Documents' }).click();
+  await dialog.getByText('plan.pdf').waitFor();
+  assert.deepEqual(box.fileAsks, ['/', '/Documents']);
+  await dialog.getByRole('button', { name: 'Pin plan.pdf' }).click();
+  await dialog.getByRole('button', { name: 'Unpin plan.pdf' }).first().waitFor();
+  assert.deepEqual(box.puts.at(-1), [
+    { kind: 'tile', app: 'calendar' },
+    { kind: 'file', id: 42, path: '/Documents/plan.pdf', folder: false },
+  ]);
+  // Up one folder, and a folder pins as a folder.
+  await dialog.getByRole('button', { name: 'Up one folder' }).click();
+  await dialog.getByRole('button', { name: 'Pin Photos' }).click();
+  await dialog.getByRole('button', { name: 'Unpin Photos' }).first().waitFor();
+  assert.deepEqual(box.puts.at(-1).at(-1), { kind: 'file', id: 11, path: '/Photos', folder: true });
+
+  await dialog.getByRole('tab', { name: 'Repositories' }).click();
+  await dialog.getByRole('button', { name: 'Pin site' }).click();
+  await dialog.getByRole('button', { name: 'Unpin site' }).first().waitFor();
+  assert.deepEqual(box.puts.at(-1).at(-1), { kind: 'repo', owner: 'notshared', name: 'site' });
+
+  // The repository moves to the top of the list, and the sidebar follows.
+  await dialog.getByRole('button', { name: 'Move site up' }).click();
+  await dialog.getByRole('button', { name: 'Move site up' }).click();
+  await dialog.getByRole('button', { name: 'Move site up' }).click();
+  await page.waitForFunction(() => {
+    const group = document.querySelector('[data-pins]');
+    return group?.querySelector('a')?.textContent === 'site';
+  });
+  assert.deepEqual(
+    box.puts.at(-1).map((p) => p.kind),
+    ['repo', 'tile', 'file', 'file'],
+  );
+  await dialog.getByRole('button', { name: 'Done' }).click();
+  await dialog.waitFor({ state: 'hidden' });
+  await page.close();
+});
+
+await check('the apps tab pins an app installed from the search', async () => {
+  const { page, box } = await open({ pins: [] });
+  await pinned(page).getByRole('button', { name: 'Edit pins' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Pins' });
+  await dialog.getByRole('button', { name: 'Pin jellyfin' }).click();
+  await pinned(page).getByRole('link', { name: 'jellyfin' }).waitFor();
+  assert.deepEqual(box.puts.at(-1), [{ kind: 'app', release: 'jellyfin' }]);
+  await page.close();
+});
+
+await check('without a key to LosOS cloud the files tab says how to get one', async () => {
+  const { page } = await open({ files: 'signIn' });
+  await pinned(page).getByRole('button', { name: 'Edit pins' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Pins' });
+  await dialog.getByRole('tab', { name: 'Files' }).click();
+  await dialog.getByText(/sign out and back in with your password once/i).waitFor();
+  await page.close();
+});
+
+await check('the sidebar search finds a pin by name and by its folder', async () => {
+  const { page } = await open();
+  const search = page.getByRole('searchbox');
+  await search.fill('plan');
+  await pinned(page).getByRole('link', { name: 'plan.pdf' }).waitFor();
+  assert.equal(await pinned(page).getByRole('link').count(), 1);
+  await search.fill('documents');
+  assert.equal(await pinned(page).getByRole('link').count(), 1);
+  await search.fill('zzz');
+  await nav(page).getByText(/Nothing here matches/).waitFor();
+  await page.close();
+});
+
+await check('on the rail each pin is an icon that names itself', async () => {
+  const { page } = await open();
+  await page.keyboard.press('Control+b');
+  await page.waitForTimeout(300);
+  await pinned(page).getByRole('link', { name: 'site' }).hover();
+  await page.locator('[data-slot="tooltip-content"]').filter({ hasText: /^site$/ }).waitFor({ timeout: 2000 });
+  await page.close();
+});
+
+await check('under the appliance CSP the pins, the tile button and the dialog add no violation', async () => {
+  const { origin: strict, close } = await serve({ csp: true });
+  try {
+    const { page, errors } = await open({ csp: strict });
+    await pinned(page).waitFor();
+    const atLoad = await page.evaluate(() => window.__violations.length);
+    await page.getByRole('link', { name: 'Contacts' }).first().hover();
+    await page.getByRole('button', { name: 'Pin Contacts' }).click();
+    await pinned(page).getByRole('button', { name: 'Edit pins' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Pins' });
+    await dialog.getByRole('tab', { name: 'Files' }).click();
+    await dialog.getByRole('button', { name: 'Open Documents' }).waitFor();
+    await dialog.getByRole('tab', { name: 'Repositories' }).click();
+    await dialog.getByText('losos-config').waitFor();
+    const after = await page.evaluate(() => window.__violations);
+    assert.equal(after.length, atLoad, `pins added CSP violations: ${after.slice(atLoad).join(', ')}`);
+    assert.deepEqual(errors, []);
+    await page.close();
+  } finally {
+    await close();
+  }
+});
+
+await browser.close();
+await closeServer();
+finish();

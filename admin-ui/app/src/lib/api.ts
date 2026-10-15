@@ -2019,3 +2019,84 @@ export function getConfig(options: RequestOptions = {}): Promise<ConfigResponse>
 export function postConfigSync(options: RequestOptions = {}): Promise<ConfigResponse> {
   return call<ConfigResponse>("/api/config/sync", { ...options, method: "POST" });
 }
+
+// ── Pins on the sidebar ───────────────────────────────────────────────────
+
+/* What the owner pinned to the sidebar, kept on the box (backend/src/pins.rs)
+ * so every browser shows the same list. A pin is a reference, never an
+ * address: lib/pins.ts decides where each one opens. */
+
+export type Pin =
+  /** An app tile of the Overview, by its id in lib/apps.ts's catalogue. */
+  | { kind: "tile"; app: string }
+  /** An app installed from the Apps search, by release name. */
+  | { kind: "app"; release: string }
+  /** A file or folder in LosOS cloud. */
+  | { kind: "file"; id: number; path: string; folder: boolean }
+  /** A repository on LosOS Git. */
+  | { kind: "repo"; owner: string; name: string };
+
+export interface PinsResponse {
+  pins: Pin[];
+  /** The most the box keeps. */
+  limit: number;
+}
+
+/** GET /api/pins */
+export function getPins(options: RequestOptions = {}): Promise<PinsResponse> {
+  return call<PinsResponse>("/api/pins", options);
+}
+
+/** PUT /api/pins — the whole list, in order. */
+export function putPins(pins: readonly Pin[], options: RequestOptions = {}): Promise<PinsResponse> {
+  return call<PinsResponse>("/api/pins", {
+    ...options,
+    method: "PUT",
+    contentType: "application/json",
+    body: JSON.stringify({ pins }),
+  });
+}
+
+export interface CloudEntry {
+  name: string;
+  /** From the top of LosOS cloud: "/Documents/plan.pdf". */
+  path: string;
+  id: number;
+  folder: boolean;
+  size: number | null;
+}
+
+export type CloudFilesResponse =
+  | { available: true; path: string; query: string | null; entries: CloudEntry[]; more: boolean }
+  /** signIn: the box holds no key to the owner's files until they sign in
+   *  with their password once. notUp: LosOS cloud did not answer. */
+  | { available: false; reason: "signIn" | "notUp"; path: string; query: string | null; entries: [] };
+
+/** GET /api/cloud/files — one folder of LosOS cloud, folders first; with a
+ *  query, the files and folders anywhere whose name holds it. */
+export function getCloudFiles(
+  where: { path: string } | { query: string },
+  options: RequestOptions = {},
+): Promise<CloudFilesResponse> {
+  const params: Record<string, string> = "query" in where ? { q: where.query } : { path: where.path };
+  return call<CloudFilesResponse>(`/api/cloud/files?${new URLSearchParams(params).toString()}`, options);
+}
+
+export interface GitRepo {
+  owner: string;
+  name: string;
+  private: boolean;
+  description: string;
+}
+
+export type GitReposResponse =
+  | { available: true; repos: GitRepo[] }
+  /** noGit: this box runs no LosOS Git. notUp: it did not answer. */
+  | { available: false; reason: "noGit" | "notUp"; repos: [] };
+
+/** GET /api/git/repos — the owner's repositories on LosOS Git; with a
+ *  query, those whose name or description holds it. */
+export function getGitRepos(query: string | null = null, options: RequestOptions = {}): Promise<GitReposResponse> {
+  const search = query === null ? "" : `?${new URLSearchParams({ q: query }).toString()}`;
+  return call<GitReposResponse>(`/api/git/repos${search}`, options);
+}
