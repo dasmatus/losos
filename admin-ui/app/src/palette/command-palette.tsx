@@ -1,7 +1,15 @@
 import * as React from "react";
 import { useNavigate } from "react-router-dom";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { File01Icon, Folder01Icon, PackageIcon, Search01Icon, SourceCodeIcon } from "@hugeicons/core-free-icons";
+import {
+  CodeIcon,
+  File01Icon,
+  FileSearchIcon,
+  Folder01Icon,
+  PackageIcon,
+  Search01Icon,
+  SourceCodeIcon,
+} from "@hugeicons/core-free-icons";
 import { Dialog } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
 import type { MessageKey } from "@/lib/i18n";
@@ -10,10 +18,14 @@ import { getTheme, subscribeTheme } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 import { actionItems, appItems, pageItems, rank, type GroupId, type Item, type Target } from "./items";
 import {
+  cloudTextHref,
   fileHref,
+  gitTextHref,
   repoHref,
   searchApps,
+  searchCloudText,
   searchFiles,
+  searchGitText,
   searchRepos,
   useRemote,
   type Remote,
@@ -25,6 +37,9 @@ import { closePalette, paletteState, subscribePalette } from "./store";
  * it. Ctrl/Cmd+Shift+P opens it from anywhere on the page, a colon typed
  * outside a text field does too, and so does the search box at the top of
  * the sidebar.
+ *
+ * Text inside files is its own group: LosOS cloud's files through the box's
+ * index, LosOS Git's default branches through `git grep`, cloud first.
  *
  * Built on the native <dialog> (components/ui/dialog.tsx) and the ARIA
  * combobox pattern by hand: the input keeps focus, the arrow keys move a
@@ -43,12 +58,17 @@ const GROUP_TITLE: Record<GroupId, MessageKey> = {
   apps: "palette.group.apps",
   files: "palette.group.files",
   repos: "palette.group.repos",
+  text: "palette.group.text",
   install: "palette.group.install",
   actions: "palette.group.actions",
 };
 
 /** How many rows a group shows. The palette is for jumping, not browsing. */
-const LIMIT: Record<GroupId, number> = { pages: 8, apps: 6, files: 8, repos: 6, install: 5, actions: 8 };
+const LIMIT: Record<GroupId, number> = { pages: 8, apps: 6, files: 8, repos: 6, text: 8, install: 5, actions: 8 };
+
+/** Letters typed before the box is asked what is inside the files: fewer
+ *  match nearly every document. */
+const TEXT_MIN = 3;
 
 /** Before anything is typed: where to go, a few repositories, what to do. */
 const IDLE_GROUPS: readonly GroupId[] = ["pages", "repos", "actions"];
@@ -99,6 +119,8 @@ function PaletteBody({ initial }: { initial: string }) {
   const files = useRemote(true, query, 2, searchFiles);
   const repos = useRemote(true, query, 0, searchRepos);
   const install = useRemote(true, query, 2, searchApps);
+  const cloudText = useRemote(true, query, TEXT_MIN, searchCloudText);
+  const gitText = useRemote(true, query, TEXT_MIN, searchGitText);
 
   const groups: Group[] = [];
   const push = (id: GroupId, items: Item[], note: Group["note"] = null): void => {
@@ -144,6 +166,35 @@ function PaletteBody({ initial }: { initial: string }) {
       notUp: "palette.repos.notUp",
       failed: "palette.repos.failed",
     }, t),
+  );
+  push(
+    "text",
+    [
+      ...remoteItems(cloudText, query, (hit) => {
+        const cut = hit.path.lastIndexOf("/");
+        return {
+          id: `text-cloud-${hit.path}`,
+          group: "text",
+          title: hit.path.slice(cut + 1),
+          location: cut < 0 ? t("palette.inCloud") : `${t("palette.inCloud")} · ${hit.path.slice(0, cut)}`,
+          snippet: hit.snippet,
+          words: hit.snippet.join(""),
+          icon: FileSearchIcon,
+          target: { kind: "href", href: cloudTextHref(hit) },
+        };
+      }),
+      ...remoteItems(gitText, query, (hit) => ({
+        id: `text-git-${hit.owner}-${hit.repo}-${hit.path}-${hit.line}`,
+        group: "text",
+        title: hit.path.slice(hit.path.lastIndexOf("/") + 1),
+        location: `${hit.owner}/${hit.repo} · ${t("palette.text.line", { line: String(hit.line) })}`,
+        snippet: hit.snippet,
+        words: hit.snippet.join(""),
+        icon: CodeIcon,
+        target: { kind: "href", href: gitTextHref(hit) },
+      })),
+    ],
+    textNote(cloudText, gitText, t),
   );
   push(
     "install",
@@ -329,9 +380,30 @@ function Option({
         <HugeiconsIcon icon={item.icon} size={15} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-[13.5px] leading-tight font-medium">{item.title}</span>
-        {item.detail !== undefined && item.detail !== null && item.detail.length > 0 && (
-          <span className="block truncate text-[12px] leading-tight text-muted">{item.detail}</span>
+        <span className="flex min-w-0 items-baseline gap-2">
+          <span className="truncate text-[13.5px] leading-tight font-medium">{item.title}</span>
+          {item.location !== undefined && (
+            <span className="min-w-0 shrink truncate text-[12px] leading-tight text-faint">{item.location}</span>
+          )}
+        </span>
+        {item.snippet !== undefined ? (
+          <span className="block truncate text-[12px] leading-tight text-muted">
+            {item.snippet.map((run, index) =>
+              index % 2 === 1 ? (
+                <mark key={index} className="bg-transparent font-semibold text-ink">
+                  {run}
+                </mark>
+              ) : (
+                <React.Fragment key={index}>{run}</React.Fragment>
+              ),
+            )}
+          </span>
+        ) : (
+          item.detail !== undefined &&
+          item.detail !== null &&
+          item.detail.length > 0 && (
+            <span className="block truncate text-[12px] leading-tight text-muted">{item.detail}</span>
+          )
         )}
       </span>
     </div>
@@ -401,6 +473,20 @@ function remoteNote<T>(remote: Remote<T>, keys: NoteKeys, t: ReturnType<typeof u
     default:
       return null;
   }
+}
+
+/* The text group's one line for both searches: looking while neither has
+ * anything to show yet, then that the cloud index is still being built, then
+ * a failure. A search the box does not run (off, no LosOS Git, not up yet)
+ * says nothing; the other one still lists its hits. */
+function textNote<A, B>(cloud: Remote<A>, git: Remote<B>, t: ReturnType<typeof useT>): Group["note"] {
+  const shown = (r: Remote<unknown>): boolean => r.kind === "ready" && r.items.length > 0;
+  if ((cloud.kind === "loading" || git.kind === "loading") && !shown(cloud) && !shown(git)) {
+    return { text: t("palette.text.looking"), busy: true };
+  }
+  if (cloud.kind === "ready" && cloud.partial) return { text: t("palette.text.partial"), busy: false };
+  if (cloud.kind === "failed" || git.kind === "failed") return { text: t("palette.text.failed"), busy: false };
+  return null;
 }
 
 /** "/Documents/Taxes/x.pdf" -> "/Documents/Taxes". */

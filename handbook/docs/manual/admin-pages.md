@@ -39,6 +39,8 @@ field. It finds:
 - the apps in LosOS cloud, and LosOS Git
 - files and folders in LosOS cloud, by name
 - repositories in LosOS Git
+- text inside files, once you type three letters: in your LosOS cloud files,
+  and on the main branch of every repository in LosOS Git
 - apps to install from Artifact Hub; picking one opens the Apps pane with
   its install dialog
 - a few actions: the light or dark theme, the language, the tour, this
@@ -50,6 +52,17 @@ Ctrl+Enter or Cmd+Enter opens one in a new tab.
 
 File search needs one sign-in with your password, not the spare key. Until
 then the list says so in place of the files.
+
+To search inside your LosOS cloud files, the box keeps an index of their
+text. It checks for new and changed files every two minutes and reads only
+those. It reads plain text and code, Markdown, CSV, JSON and HTML,
+OpenDocument files, Word, Excel and PowerPoint files in their current formats
+(.docx, .xlsx, .pptx), and PDFs. Pictures, audio, video and archives are skipped, and only the first
+megabyte of text in each file is kept. Right after the first start the list
+says the box is still reading your files. The index stays on the box, a
+factory erase deletes it, and `losos.search.enable` on the Advanced pane turns
+it off. LosOS Git needs no index: each search reads the repositories
+directly.
 
 ## The tour
 

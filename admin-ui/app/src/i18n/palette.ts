@@ -36,6 +36,7 @@ export default defineMessages({
     sk: "Repozitáre v LosOS Git",
     de: "Repositorys in LosOS Git",
   },
+  "palette.group.text": { en: "Text in files", sk: "Text v súboroch", de: "Text in Dateien" },
   "palette.group.install": { en: "Apps to install", sk: "Aplikácie na inštaláciu", de: "Apps zum Installieren" },
   "palette.group.actions": { en: "Actions", sk: "Akcie", de: "Aktionen" },
 
@@ -65,6 +66,18 @@ export default defineMessages({
     sk: "LosOS Git neodpovedal.",
     de: "LosOS Git hat nicht geantwortet.",
   },
+  "palette.text.looking": { en: "Looking inside files", sk: "Hľadám v obsahu súborov", de: "Suche in den Dateien" },
+  "palette.text.partial": {
+    en: "LosOS cloud is still reading your files, so more may turn up.",
+    sk: "LosOS cloud ešte číta vaše súbory, takže môže pribudnúť viac.",
+    de: "LosOS cloud liest deine Dateien noch, es kann also mehr dazukommen.",
+  },
+  "palette.text.failed": {
+    en: "The search inside files did not answer.",
+    sk: "Hľadanie v obsahu súborov neodpovedalo.",
+    de: "Die Suche in den Dateien hat nicht geantwortet.",
+  },
+  "palette.text.line": { en: "line {line}", sk: "riadok {line}", de: "Zeile {line}" },
   "palette.install.looking": {
     en: "Searching the app catalogue",
     sk: "Hľadám v katalógu aplikácií",

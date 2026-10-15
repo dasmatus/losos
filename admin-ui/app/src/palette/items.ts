@@ -34,7 +34,7 @@ export type Target =
   | { kind: "href"; href: string }
   | { kind: "run"; run: () => void };
 
-export type GroupId = "pages" | "apps" | "files" | "repos" | "install" | "actions";
+export type GroupId = "pages" | "apps" | "files" | "repos" | "text" | "install" | "actions";
 
 export interface Item {
   /** Unique across the whole list; also the option's DOM id suffix. */
@@ -43,6 +43,11 @@ export interface Item {
   title: string;
   /** A second, quieter line: the path of a file, a repository's description. */
   detail?: string | null;
+  /** Beside the title, quieter still: where a text match is. */
+  location?: string;
+  /** In place of the detail: text with what matched marked, as alternating
+   *  plain and matched runs. */
+  snippet?: readonly string[];
   icon: IconSvgElement;
   words?: string;
   target: Target;

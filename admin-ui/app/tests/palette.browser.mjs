@@ -42,6 +42,15 @@ const FILES = [
   { name: 'Taxes 2025', path: '/Documents/Taxes 2025', id: 412, folder: true, size: 0 },
   { name: 'tax-return-2025.pdf', path: '/Documents/Taxes 2025/tax-return-2025.pdf', id: 418, folder: false, size: 482113 },
 ];
+/* What the two searches inside files answer: every hit whose text holds the
+ * query, as the box marks it. */
+const CLOUD_TEXT = [
+  { path: 'Documents/Daňové priznanie 2025.odt', snippet: ['The ', 'tax', ' return is due in March'] },
+  { path: 'notes.md', snippet: ['remember the ', 'tax', ' office hours'] },
+];
+const GIT_TEXT = [
+  { owner: 'notshared', repo: 'tax-scripts', branch: 'main', path: 'src/sort.py', line: 12, snippet: ['def ', 'tax', '_year(receipt):'] },
+];
 const REPOS = [
   { owner: 'notshared', name: 'losos-config', private: true, description: "This box's configuration" },
   { owner: 'notshared', name: 'tax-scripts', private: true, description: 'Scripts that sort receipts' },
@@ -64,7 +73,14 @@ const CATALOGUE = {
 
 /* `files` and `repos` are the two lookups' documents, or a status to answer
  * with (404: the box does not serve the route). */
-async function open({ path = '/', files = { available: true }, repos = { available: true }, viewport } = {}) {
+async function open({
+  path = '/',
+  files = { available: true },
+  repos = { available: true },
+  cloudText = { available: true, partial: false },
+  gitText = { available: true },
+  viewport,
+} = {}) {
   const page = await browser.newPage({ viewport: viewport ?? { width: 1280, height: 860 } });
   const errors = [];
   const csp = [];
@@ -101,6 +117,17 @@ async function open({ path = '/', files = { available: true }, repos = { availab
     if (repos.available === false) return json(route, 200, repos);
     return json(route, 200, { available: true, repos: REPOS.filter((r) => r.name.includes(q)) });
   });
+  for (const [kind, route, answer, hits] of [
+    ['cloudText', '**/api/cloud/text**', cloudText, CLOUD_TEXT],
+    ['gitText', '**/api/git/text**', gitText, GIT_TEXT],
+  ]) {
+    await page.route(route, (r) => {
+      const q = (new URL(r.request().url()).searchParams.get('q') ?? '').toLowerCase();
+      asked.push([kind, q]);
+      if (answer.available === false) return json(r, 200, answer);
+      return json(r, 200, { ...answer, hits: hits.filter((h) => h.snippet.join('').toLowerCase().includes(q)) });
+    });
+  }
   for (const app of ['nextcloud', 'forgejo']) {
     await page.route(`**/${app}/**`, (route) => route.fulfill({ status: 200, contentType: 'text/html', body: `<title>${app}</title>` }));
   }
@@ -233,6 +260,51 @@ await check('files in LosOS cloud and repositories in LosOS Git open in their ap
   await page.keyboard.press('Enter');
   await page.waitForURL(origin + '/forgejo/notshared/tax-scripts');
   await page.close();
+});
+
+await check('text inside files: cloud first, then Git, with the match marked, each opening in its app', async () => {
+  const { page, asked } = await open();
+  await page.keyboard.press('Control+Shift+P');
+  await box(page).fill('ta');
+  await page.waitForTimeout(400);
+  assert.equal(asked.filter(([kind]) => kind === 'cloudText' || kind === 'gitText').length, 0, 'two letters searched inside files');
+  await box(page).fill('tax');
+  const text = group(page, 'Text in files');
+  await text.waitFor();
+  await until(async () => (await text.getByRole('option').count()) === 3, 'the text group does not list three hits');
+  const names = await text.getByRole('option').evaluateAll((els) => els.map((el) => el.querySelector('.font-medium')?.textContent));
+  assert.deepEqual(names, ['Daňové priznanie 2025.odt', 'notes.md', 'sort.py']);
+  const first = text.getByRole('option').first();
+  assert.match(await first.innerText(), /LosOS cloud · Documents/);
+  assert.equal(await first.locator('mark').innerText(), 'tax');
+  assert.match(await text.getByRole('option').last().innerText(), /notshared\/tax-scripts · line 12/);
+  await first.click();
+  await page.waitForURL(
+    origin + '/nextcloud/index.php/apps/files/?dir=%2FDocuments&scrollto=Da%C5%88ov%C3%A9%20priznanie%202025.odt',
+  );
+  await page.goto(origin + '/', { waitUntil: 'networkidle' });
+  await page.keyboard.press('Control+Shift+P');
+  await box(page).fill('tax_year');
+  await option(page, /^sort\.py/).waitFor();
+  await page.keyboard.press('Enter');
+  await page.waitForURL(origin + '/forgejo/notshared/tax-scripts/src/branch/main/src/sort.py#L12');
+  await page.close();
+});
+
+await check('the text group says the cloud index is still being read, and hides a search the box does not run', async () => {
+  const { page } = await open({ cloudText: { available: true, partial: true }, gitText: { available: false, reason: 'off' } });
+  await page.keyboard.press('Control+Shift+P');
+  await box(page).fill('tax');
+  await page.getByText('LosOS cloud is still reading your files, so more may turn up.').waitFor();
+  assert.equal(await group(page, 'Text in files').getByRole('option').count(), 2);
+  await page.close();
+  const off = await open({ cloudText: { available: false, reason: 'off' }, gitText: { available: false, reason: 'noGit' } });
+  await off.page.keyboard.press('Control+Shift+P');
+  await box(off.page).fill('tax');
+  await option(off.page, /^Taxes 2025/).waitFor();
+  await off.page.waitForTimeout(500);
+  assert.equal(await group(off.page, 'Text in files').count(), 0, 'a search the box does not run left a group');
+  await off.page.close();
 });
 
 await check('one letter does not search the files; the cloud apps are listed as apps', async () => {

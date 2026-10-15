@@ -4,7 +4,8 @@ import { searchCatalogue, type CatalogueApp } from "@/screens/settings/catalogue
 import { authedGet, isRecord, nonEmptyString, notPresent } from "@/screens/settings/http";
 
 /* What the palette asks the box for while the owner types: files in LosOS
- * cloud, repositories in LosOS Git and apps to install.
+ * cloud, repositories in LosOS Git, text inside the files of both, and apps
+ * to install.
  *
  * Every one of them goes through lososd. The page is served under
  * `connect-src 'self'`, and the two apps' own APIs want credentials this
@@ -28,27 +29,47 @@ export interface GitRepo {
   description: string | null;
 }
 
+/** A file in LosOS cloud whose text matched. */
+export interface CloudText {
+  /** From the owner's root, without a leading slash. */
+  path: string;
+  /** Alternating runs: even indices plain, odd ones what matched. */
+  snippet: readonly string[];
+}
+
+/** A line on a repository's default branch that matched. */
+export interface GitText {
+  owner: string;
+  repo: string;
+  branch: string;
+  path: string;
+  line: number;
+  snippet: readonly string[];
+}
+
 /* Why a group has nothing to list even though its route answered:
  *   signIn  file search needs the app password lososd keeps from the
  *           owner's last password sign-in, and there has not been one yet
  *   notUp   the app is not running (yet)
- *   noGit   this box runs no LosOS Git */
-export type Blocked = "signIn" | "notUp" | "noGit";
+ *   noGit   this box runs no LosOS Git
+ *   off     the owner turned the search inside files off */
+export type Blocked = "signIn" | "notUp" | "noGit" | "off";
 
 export type Remote<T> =
   | { kind: "idle" }
   | { kind: "loading" }
   /** `query` is what the items answer; while the next answer is on its way
-   *  the palette keeps them, narrowed to what is typed now. */
-  | { kind: "ready"; items: readonly T[]; query: string }
+   *  the palette keeps them, narrowed to what is typed now. `partial`: the
+   *  box has not finished reading everything yet. */
+  | { kind: "ready"; items: readonly T[]; query: string; partial: boolean }
   | { kind: "blocked"; reason: Blocked }
   | { kind: "absent" }
   | { kind: "failed" };
 
-type Answer<T> = { items: readonly T[] } | { blocked: Blocked };
+type Answer<T> = { items: readonly T[]; partial?: boolean } | { blocked: Blocked };
 
 function blockedReason(value: unknown): Blocked {
-  return value === "signIn" || value === "noGit" ? value : "notUp";
+  return value === "signIn" || value === "noGit" || value === "off" ? value : "notUp";
 }
 
 /** GET /api/cloud/files?q= : `{available, reason, entries: [...]}`. */
@@ -86,6 +107,47 @@ export async function searchRepos(query: string, signal: AbortSignal): Promise<A
   return { items };
 }
 
+/** Alternating plain and matched runs, as the box sends them. */
+function snippetOf(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((run): run is string => typeof run === "string") : [];
+}
+
+/** GET /api/cloud/text?q= : `{available, reason, partial, hits: [...]}`. */
+export async function searchCloudText(query: string, signal: AbortSignal): Promise<Answer<CloudText>> {
+  const body = await authedGet(`/api/cloud/text?q=${encodeURIComponent(query)}`, { signal });
+  if (!isRecord(body)) return { items: [] };
+  if (body["available"] === false) return { blocked: blockedReason(body["reason"]) };
+  const items: CloudText[] = [];
+  for (const hit of Array.isArray(body["hits"]) ? body["hits"] : []) {
+    if (!isRecord(hit)) continue;
+    const path = nonEmptyString(hit["path"]);
+    if (path === null) continue;
+    items.push({ path, snippet: snippetOf(hit["snippet"]) });
+  }
+  return { items, partial: body["partial"] === true };
+}
+
+/** GET /api/git/text?q= : `{available, reason, hits: [...]}`. */
+export async function searchGitText(query: string, signal: AbortSignal): Promise<Answer<GitText>> {
+  const body = await authedGet(`/api/git/text?q=${encodeURIComponent(query)}`, { signal });
+  if (!isRecord(body)) return { items: [] };
+  if (body["available"] === false) return { blocked: blockedReason(body["reason"]) };
+  const items: GitText[] = [];
+  for (const hit of Array.isArray(body["hits"]) ? body["hits"] : []) {
+    if (!isRecord(hit)) continue;
+    const owner = nonEmptyString(hit["owner"]);
+    const repo = nonEmptyString(hit["repo"]);
+    const branch = nonEmptyString(hit["branch"]);
+    const path = nonEmptyString(hit["path"]);
+    const line = hit["line"];
+    if (owner === null || repo === null || branch === null || path === null) continue;
+    if (!/^[\w.-]+$/.test(owner) || !/^[\w.-]+$/.test(repo)) continue;
+    if (typeof line !== "number" || !Number.isSafeInteger(line) || line < 1) continue;
+    items.push({ owner, repo, branch, path, line, snippet: snippetOf(hit["snippet"]) });
+  }
+  return { items };
+}
+
 export async function searchApps(query: string, signal: AbortSignal): Promise<Answer<CatalogueApp>> {
   return { items: (await searchCatalogue(query, signal)).apps };
 }
@@ -96,6 +158,26 @@ export function fileHref(file: CloudFile): string {
 
 export function repoHref(repo: GitRepo): string {
   return `/forgejo/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.name)}`;
+}
+
+/** Each segment of a path, escaped on its own. */
+function segments(path: string): string {
+  return path.split("/").filter((part) => part.length > 0).map(encodeURIComponent).join("/");
+}
+
+/* A cloud hit opens its folder in LosOS cloud's Files with the file
+ * scrolled to: the index knows paths, and Nextcloud's /f/<id> wants the id
+ * only Nextcloud's own database holds. */
+export function cloudTextHref(hit: CloudText): string {
+  const cut = hit.path.lastIndexOf("/");
+  const dir = cut < 0 ? "/" : `/${hit.path.slice(0, cut)}`;
+  const name = hit.path.slice(cut + 1);
+  return `/nextcloud/index.php/apps/files/?dir=${encodeURIComponent(dir)}&scrollto=${encodeURIComponent(name)}`;
+}
+
+/** The line in LosOS Git's file view. */
+export function gitTextHref(hit: GitText): string {
+  return `${repoHref({ owner: hit.owner, name: hit.repo, private: false, description: null })}/src/branch/${segments(hit.branch)}/${segments(hit.path)}#L${hit.line}`;
 }
 
 /** Debounce: typing a word is one request, not one per letter. */
@@ -132,7 +214,7 @@ export function useRemote<T>(
             setState(
               "blocked" in answer
                 ? { kind: "blocked", reason: answer.blocked }
-                : { kind: "ready", items: answer.items, query: trimmed },
+                : { kind: "ready", items: answer.items, query: trimmed, partial: answer.partial === true },
             );
           } catch (error) {
             if (isAbort(error) || controller.signal.aborted) return;
