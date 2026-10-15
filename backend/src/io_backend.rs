@@ -113,6 +113,16 @@ impl Paths {
     pub fn forgejo_header_file(&self) -> PathBuf {
         self.state_dir.join("forgejo-auth")
     }
+
+    /// The sidebar's pins (`crate::pins`).
+    pub fn pins_file(&self) -> PathBuf {
+        self.state_dir.join("pins.json")
+    }
+
+    /// The LosOS cloud app password the pin picker lists folders with.
+    pub fn cloud_key_file(&self) -> PathBuf {
+        self.state_dir.join("cloud-key")
+    }
 }
 
 /// Distinguishes the temp files of concurrent writers within one process.
@@ -1447,6 +1457,84 @@ impl Losos for IoLosos {
 
     fn write_background(&mut self, bytes: &[u8]) -> anyhow::Result<()> {
         atomic_write(&self.paths.background_file(), bytes)
+    }
+
+    fn load_pins(&mut self) -> anyhow::Result<crate::pins::Pins> {
+        Ok(read_if_present(self.paths.pins_file(), "reading the pins")?
+            .and_then(|text| serde_json::from_str(&text).ok())
+            .unwrap_or_default())
+    }
+
+    fn save_pins(&mut self, pins: &crate::pins::Pins) -> anyhow::Result<()> {
+        let bytes = serde_json::to_vec(pins).context("encoding the pins")?;
+        atomic_write(&self.paths.pins_file(), &bytes)
+    }
+
+    fn load_cloud_key(&mut self) -> anyhow::Result<Option<crate::pins::CloudKey>> {
+        Ok(
+            read_if_present(self.paths.cloud_key_file(), "reading the LosOS cloud key")?
+                .as_deref()
+                .and_then(crate::pins::CloudKey::decode),
+        )
+    }
+
+    fn save_cloud_key(&mut self, key: Option<&crate::pins::CloudKey>) -> anyhow::Result<()> {
+        let path = self.paths.cloud_key_file();
+        match key {
+            Some(key) => atomic_write_secret(&path, key.encode().as_bytes()),
+            None => match std::fs::remove_file(&path) {
+                Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
+                    Err(e).with_context(|| format!("removing {}", path.display()))
+                }
+                _ => Ok(()),
+            },
+        }
+    }
+
+    fn cloud_request(
+        &mut self,
+        request: &crate::pins::CloudRequest<'_>,
+    ) -> anyhow::Result<(u16, Vec<u8>)> {
+        use std::io::Read;
+        use std::net::{TcpStream, ToSocketAddrs};
+        use std::time::Duration;
+        // A folder of a few hundred entries is well under this; anything
+        // past it is not read.
+        const MAX_BYTES: usize = 4 * 1024 * 1024;
+
+        let url = std::env::var("LOSOS_NEXTCLOUD_LOGIN_URL")
+            .ok()
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| crate::signin::DEFAULT_LOGIN_URL.to_string());
+        let host = std::env::var("LOSOS_NEXTCLOUD_LOGIN_HOST")
+            .ok()
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| crate::signin::DEFAULT_LOGIN_HOST.to_string());
+        let login = crate::signin::parse_login_url(&url).map_err(|e| anyhow::anyhow!(e))?;
+        let endpoint = crate::pins::CloudEndpoint::from_login(&login, &host);
+        let bytes = crate::pins::request_bytes(&endpoint, request);
+
+        // A raw socket for the reason nextcloud_login gives: the password,
+        // or the app password, never goes into an argument vector or a file.
+        let addr = endpoint
+            .addr
+            .to_socket_addrs()
+            .with_context(|| format!("resolving {}", endpoint.addr))?
+            .next()
+            .with_context(|| format!("{} names no address", endpoint.addr))?;
+        let mut stream = TcpStream::connect_timeout(&addr, Duration::from_secs(5))
+            .with_context(|| format!("connecting to LosOS cloud at {addr}"))?;
+        stream.set_read_timeout(Some(Duration::from_secs(15)))?;
+        stream.set_write_timeout(Some(Duration::from_secs(5)))?;
+        stream
+            .write_all(&bytes)
+            .context("sending the request to LosOS cloud")?;
+        let mut raw = Vec::new();
+        stream
+            .take(MAX_BYTES as u64)
+            .read_to_end(&mut raw)
+            .context("reading LosOS cloud's answer")?;
+        crate::pins::split_response(&raw).context("LosOS cloud's answer is not HTTP")
     }
 
     fn read_background(&mut self) -> anyhow::Result<Option<Vec<u8>>> {

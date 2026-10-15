@@ -98,6 +98,10 @@ fn error_response(e: anyhow::Error) -> HttpResponse {
                 .map(ToString::to_string)
         })
         .or_else(|| {
+            e.downcast_ref::<crate::pins::Invalid>()
+                .map(ToString::to_string)
+        })
+        .or_else(|| {
             e.downcast_ref::<crate::backup::Invalid>()
                 .map(ToString::to_string)
         })
@@ -1500,6 +1504,58 @@ async fn delete_widget(
     })
 }
 
+// ── The sidebar's pins ────────────────────────────────────────────────────
+// What the owner pinned to the sidebar, and the two lists the picker pins
+// from, LosOS cloud's files and LosOS Git's repositories (`crate::pins`).
+// HTTP-only like the look.
+
+/// `GET /api/pins`.
+async fn get_pins(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    guarded(&api, &req, "/api/pins", false, || {
+        run(&api, crate::pins::cmd_pins)
+    })
+}
+
+/// `PUT /api/pins` — the whole list, in order.
+async fn put_pins(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> HttpResponse {
+    guarded(&api, &req, "/api/pins", true, || {
+        let doc = serde_json::from_slice::<serde_json::Value>(&body).unwrap_or_default();
+        match crate::pins::parse_pins(&doc) {
+            Ok(pins) => run(&api, |b| crate::pins::cmd_put_pins(b, &pins)),
+            Err(e) => error_response(e),
+        }
+    })
+}
+
+/// `GET /api/cloud/files?path=/...` — one folder of LosOS cloud, or with
+/// `q=...` the files and folders anywhere whose name holds the text. The
+/// pin picker reads it; so can anything else on the page that looks files up.
+async fn get_cloud_files(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    guarded(&api, &req, "/api/cloud/files", false, || {
+        let q = query_map(&req);
+        let path = q.get("path").cloned().unwrap_or_else(|| "/".to_string());
+        run(&api, |b| {
+            crate::pins::cmd_cloud_files(b, &path, q.get("q").map(String::as_str))
+        })
+    })
+}
+
+/// `GET /api/git/repos[?q=...]` — the owner's repositories on LosOS Git.
+async fn get_git_repos(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    guarded(&api, &req, "/api/git/repos", false, || {
+        let q = query_map(&req);
+        run(&api, |b| {
+            crate::pins::cmd_git_repos(b, q.get("q").map(String::as_str))
+        })
+    })
+}
+
+fn query_map(req: &HttpRequest) -> std::collections::HashMap<String, String> {
+    web::Query::<std::collections::HashMap<String, String>>::from_query(req.query_string())
+        .map(web::Query::into_inner)
+        .unwrap_or_default()
+}
+
 // ── Every option, and the configuration repository ───────────────────────
 
 /// `GET /api/options` — every `losos.*` option the box declares, with its
@@ -1963,6 +2019,10 @@ pub fn serve(backend: IoLosos) -> anyhow::Result<()> {
                 .route("/api/look/background", web::get().to(get_background))
                 .route("/api/look/widgets", web::post().to(post_widget))
                 .route("/api/look/widgets/{id}", web::delete().to(delete_widget))
+                .route("/api/pins", web::get().to(get_pins))
+                .route("/api/pins", web::put().to(put_pins))
+                .route("/api/cloud/files", web::get().to(get_cloud_files))
+                .route("/api/git/repos", web::get().to(get_git_repos))
                 // The web UI's side of terminal access (crate::access):
                 // Bearer-authed like every route above.
                 .route("/api/access", web::get().to(get_access))
