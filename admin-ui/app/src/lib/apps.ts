@@ -568,18 +568,6 @@ export function recallSetup(): SetupState {
   return "unknown";
 }
 
-/** Record a conclusion the wizard reached, so the next first paint has it.
- *  Setting a password through the Files app proves it is there; "incomplete"
- *  and "unknown" only clear the claim, they never make a negative one about
- *  the code host. */
-export function rememberSetup(state: SetupState): void {
-  const seen = recallAvailability();
-  rememberAvailability({
-    ...seen,
-    files: state === "complete" ? "present" : state === "incomplete" ? "absent" : "unknown",
-  });
-}
-
 // ── Measuring what is actually there ──────────────────────────────────────
 
 /** Nextcloud's public status document, relative to wherever it is served. */

@@ -216,10 +216,6 @@ export function subscribeBoard(onChange: () => void): () => void {
  *  would turn a dashboard into a load generator pointed at a mini-PC. */
 export const MAX_WIDGETS = 12;
 
-export function isBoardFull(): boolean {
-  return current().widgets.length >= MAX_WIDGETS;
-}
-
 /** Add a built-in. Returns the new tile's id, or null if the board is full. */
 export function addBuiltin(id: BuiltinId): string | null {
   const widgets = current().widgets;
@@ -287,33 +283,9 @@ export function moveWidget(id: string, direction: "up" | "down"): void {
   commit(widgets);
 }
 
-/** Rename a tile. An empty or blank name restores the widget's own title. */
-export function renameWidget(id: string, title: string): void {
-  const trimmed = title.trim();
-  const widgets = current().widgets.map((widget) => {
-    if (widget.id !== id) return widget;
-    if (trimmed.length === 0) {
-      return { id: widget.id, source: widget.source } satisfies WidgetInstance;
-    }
-    return { id: widget.id, source: widget.source, title: trimmed } satisfies WidgetInstance;
-  });
-  commit(widgets);
-}
-
-export function clearBoard(): void {
-  if (current().widgets.length > 0) commit([]);
-}
-
 /** Whether this built-in is already on the board — the gallery dims the row. */
 export function hasBuiltin(id: BuiltinId): boolean {
   return current().widgets.some(
     (widget) => widget.source.kind === "builtin" && widget.source.id === id,
   );
-}
-
-/* Testing seam: drop the cached snapshot so the next read comes off storage
- * again. Nothing in the app calls this; it exists so a future test can put a
- * board into localStorage and see it. */
-export function resetBoardCache(): void {
-  board = null;
 }

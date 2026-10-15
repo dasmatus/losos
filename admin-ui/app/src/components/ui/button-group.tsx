@@ -1,6 +1,5 @@
 import type * as React from "react";
 import { cva, type VariantProps } from "class-variance-authority";
-import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 
 /* shadcn/ui Button Group, on the palette.
@@ -60,24 +59,6 @@ export function ButtonGroupText({ className, ...props }: React.ComponentPropsWit
       className={cn(
         "flex items-center gap-2 rounded-control border border-line bg-sunk px-3 text-[12.5px] text-muted",
         "[&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none",
-        className,
-      )}
-      {...props}
-    />
-  );
-}
-
-export function ButtonGroupSeparator({
-  className,
-  orientation = "vertical",
-  ...props
-}: React.ComponentPropsWithoutRef<typeof Separator>) {
-  return (
-    <Separator
-      data-slot="button-group-separator"
-      orientation={orientation}
-      className={cn(
-        "relative !m-0 self-stretch bg-line data-[orientation=vertical]:h-auto",
         className,
       )}
       {...props}
