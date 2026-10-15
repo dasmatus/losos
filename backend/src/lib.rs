@@ -59,5 +59,6 @@ pub mod recovery;
 pub mod setup;
 pub mod signin;
 pub mod supervisor;
+pub mod textsearch;
 pub mod vm_upload;
 pub mod zcash_key;

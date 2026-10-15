@@ -63,6 +63,18 @@ losos-access = { path = "access" }
 # Already in the lock file through the access crate's ed25519.
 curve25519-dalek = "4"
 
+# Text inside the owner's files for the admin pages' palette
+# (src/textsearch/, the losos-search binary). SQLite's FTS5 is the index: one
+# file on disk, nothing resident between searches, and an update is a row
+# replaced in a transaction. Bundled so the index does not depend on the
+# system's sqlite build having FTS5 compiled in.
+rusqlite = { version = "0.40", features = ["bundled"] }
+# The text of ODF and Office Open XML documents is XML inside a zip. Only
+# deflate, the one method office suites write.
+zip = { version = "9", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+# The walk over the owner's files. Already in the lock file.
+walkdir = "2"
+
 [dev-dependencies]
 # The CLI book's integration-testing trio: run the real binary, assert on its
 # output, and give it a throwaway filesystem.
@@ -90,3 +102,7 @@ path = "src/bin/lososd.rs"
 [[bin]]
 name = "losos-app-shape"
 path = "src/bin/losos-app-shape.rs"
+
+[[bin]]
+name = "losos-search"
+path = "src/bin/losos-search.rs"

@@ -24,9 +24,47 @@ sheet.
 | **Apps**     | The apps on this box with their mode, a search of Artifact Hub, and the apps installed from it.            |
 | **Storage**  | How full the disk is, what is holding the room, and the reserve to claim.                                   |
 | **Mesh**     | Joining other boxes, the hours this one lends its spare time, and **Market** with disk sharing.            |
-| **Settings** | Network, Look, Hardware, Security, Advanced, History, About and Reset, each a pane. A search box filters the panes.             |
+| **Settings** | Network, Look, Hardware, Security, Advanced, History, About and Reset, each a pane.                         |
 
 <img src={require("../img/overview-phone.png").default} alt="The Overview on a phone: the sections fold into a menu button." width="260" /> <img src={require("../img/overview-phone-sheet.png").default} alt="The same phone with the menu open as a sheet over the page." width="260" />
+
+## Search
+
+The magnifier at the top of the sidebar opens one list that finds pages,
+apps, files and repositories. Ctrl+Shift+P on any admin page opens it too
+(Cmd+Shift+P on a Mac), and so does typing a colon anywhere outside a text
+field. It finds:
+
+- the sections and settings panes, by name or by a word such as "gpu" or
+  "hostname", in the language on screen or in English
+- the apps in LosOS cloud, and LosOS Git
+- files and folders in LosOS cloud, by name
+- repositories in LosOS Git
+- text inside files, once you type three letters: in your LosOS cloud files,
+  and on the main branch of every repository in LosOS Git
+- your pins
+- apps to install from Artifact Hub; picking one opens the Apps pane with
+  its install dialog
+- a few actions: the light or dark theme, the language, the tour, this
+  handbook and signing out
+
+The arrow keys move through the list, Enter opens the highlighted entry and
+Escape closes the list. Files and repositories open in their own app, and
+Ctrl+Enter or Cmd+Enter opens one in a new tab.
+
+File search needs one sign-in with your password, not the spare key. Until
+then the list says so in place of the files.
+
+To search inside your LosOS cloud files, the box keeps an index of their
+text. It checks for new and changed files every two minutes and reads only
+those. It reads plain text and code, Markdown, CSV, JSON and HTML,
+OpenDocument files, Word, Excel and PowerPoint files in their current
+formats (.docx, .xlsx, .pptx), and PDFs. Pictures, audio, video and archives
+are skipped, and only the first megabyte of text in each file is kept.
+Right after the first start the list says the box is still reading your
+files. The index stays on the box, a factory erase deletes it, and
+`losos.search.enable` on the Advanced pane turns it off. LosOS Git needs no index: each search reads the repositories
+directly.
 
 ## Pins
 
@@ -43,7 +81,7 @@ every browser you sign in from shows the same pins.
   or down, unpin it, and pin from three tabs: **Apps**, **Files**, which
   walks the folders of LosOS cloud, and **Repositories**.
 - Point at a pin in the sidebar and click the crossed-out pin to unpin it.
-  The search at the top of the sidebar finds pins too.
+  The [search](#search) finds pins too.
 
 ![The Overview with six pins under Pinned in the sidebar, and the pinned Calendar and Notes tiles marked.](../img/pins-overview.png)
 

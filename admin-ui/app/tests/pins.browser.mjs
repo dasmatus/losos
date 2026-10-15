@@ -250,16 +250,28 @@ await check('without a key to LosOS cloud the files tab says how to get one', as
   await page.close();
 });
 
-await check('the sidebar search finds a pin by name and by its folder', async () => {
+await check('the palette lists the pins first and finds one by name or by its folder', async () => {
   const { page } = await open();
-  const search = page.getByRole('searchbox');
-  await search.fill('plan');
-  await pinned(page).getByRole('link', { name: 'plan.pdf' }).waitFor();
-  assert.equal(await pinned(page).getByRole('link').count(), 1);
-  await search.fill('documents');
-  assert.equal(await pinned(page).getByRole('link').count(), 1);
-  await search.fill('zzz');
-  await nav(page).getByText(/Nothing here matches/).waitFor();
+  await pinned(page).waitFor();
+  await page.keyboard.press('Control+Shift+P');
+  const field = page.getByRole('combobox', { name: /^Search pages/ });
+  await field.waitFor();
+  const palette = page.locator('dialog[open]');
+  const pins = palette.getByRole('group', { name: 'Pinned', exact: true }).getByRole('option');
+  await pins.first().waitFor();
+  assert.equal(await pins.count(), 4);
+  assert.match(await palette.getByRole('group').first().getAttribute('aria-labelledby'), /-g-pins$/);
+  await field.fill('plan');
+  await pins.filter({ hasText: 'plan.pdf' }).waitFor();
+  assert.equal(await pins.count(), 1);
+  await field.fill('documents');
+  await pins.filter({ hasText: 'plan.pdf' }).waitFor();
+  assert.equal(await pins.count(), 1);
+  await field.fill('zzz');
+  await page.waitForTimeout(200);
+  assert.equal(await pins.count(), 0);
+  // The sidebar keeps every pin while the palette searches.
+  assert.equal(await pinned(page).getByRole('link').count(), 4);
   await page.close();
 });
 

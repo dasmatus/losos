@@ -51,6 +51,7 @@ import { followAuth } from "@/lib/look";
 import { followPins } from "@/lib/pins";
 import { readProgress } from "@/screens/wizard/progress";
 import { isTourOpen, startTour, subscribeTour } from "@/tour/store";
+import { closePalette, isPaletteColon, isPaletteShortcut, openPalette, paletteState, subscribePalette } from "@/palette/store";
 import { logoFor } from "@/lib/logo";
 import type { SettingsPaneId } from "@/screens/settings/panes";
 import { paneFromPath } from "@/lib/routes";
@@ -70,6 +71,9 @@ const Settings = React.lazy(() => import("@/screens/Settings"));
 /* The first-run tour (src/tour/): its own chunk, fetched only when it opens,
  * which on most visits is never. */
 const Tour = React.lazy(() => import("@/tour/tour"));
+/* The command palette (src/palette/): its own chunk, fetched the first time
+ * Ctrl/Cmd+Shift+P, a colon or the sidebar's search button opens it. */
+const CommandPalette = React.lazy(() => import("@/palette/command-palette"));
 const WidgetBoard = React.lazy(() =>
   import("@/widgets/board").then((m) => ({ default: m.WidgetBoard })),
 );
@@ -185,6 +189,35 @@ function Shell() {
   const inSetup = setupStarted && !setupDone;
   const signedIn = gate === "open";
   const tourOpen = React.useSyncExternalStore(subscribeTour, isTourOpen, () => false);
+  const paletteOpen = React.useSyncExternalStore(subscribePalette, () => paletteState().open, () => false);
+  // Once fetched, the palette stays mounted so it can close the way it opened.
+  const [paletteLoaded, setPaletteLoaded] = React.useState(false);
+  React.useEffect(() => {
+    if (paletteOpen) setPaletteLoaded(true);
+  }, [paletteOpen]);
+
+  /* Ctrl/Cmd+Shift+P from anywhere on the page, signed in, or a colon typed
+   * outside a text field. A key some field has already handled (a code
+   * editor's own binding) is left to it. */
+  React.useEffect(() => {
+    if (!signedIn || inSetup) {
+      closePalette();
+      return;
+    }
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.defaultPrevented) return;
+      if (isPaletteShortcut(event)) {
+        event.preventDefault();
+        if (paletteState().open) closePalette();
+        else openPalette();
+      } else if (isPaletteColon(event) && !paletteState().open) {
+        event.preventDefault();
+        openPalette();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [signedIn, inSetup]);
 
   // A box being set up gets the wizard and nothing else: no chrome, no
   // navigation, no dialog over the top. There is nothing behind it worth
@@ -263,6 +296,11 @@ function Shell() {
       </SidebarProvider>
 
       <SignInDialog open={!signedIn} />
+      {signedIn && paletteLoaded && (
+        <React.Suspense fallback={null}>
+          <CommandPalette />
+        </React.Suspense>
+      )}
       {signedIn && tourOpen && (
         <React.Suspense fallback={null}>
           <Tour />

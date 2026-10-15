@@ -282,25 +282,6 @@ function SidebarGroupLabel({ className, ...props }: React.ComponentProps<"div">)
   );
 }
 
-/* The search box at the top of the panel, on the surface so it reads as a
- * field against the recess. */
-function SidebarInput({ className, ...props }: React.ComponentProps<"input">) {
-  return (
-    <input
-      data-slot="sidebar-input"
-      className={cn(
-        "h-8 w-full min-w-0 rounded-control border border-line bg-surface pr-7 pl-7",
-        "text-[13px] text-ink placeholder:text-faint",
-        "transition-[border-color,box-shadow] duration-150",
-        "focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/35 focus-visible:outline-none",
-        "[&::-webkit-search-cancel-button]:hidden",
-        className,
-      )}
-      {...props}
-    />
-  );
-}
-
 function SidebarMenu({ className, ...props }: React.ComponentProps<"ul">) {
   return <ul data-slot="sidebar-menu" className={cn("flex min-w-0 flex-col gap-0.5", className)} {...props} />;
 }
@@ -504,7 +485,6 @@ export {
   SidebarContent,
   SidebarGroup,
   SidebarGroupLabel,
-  SidebarInput,
   SidebarMenu,
   SidebarMenuItem,
   SidebarMenuButton,

@@ -120,6 +120,12 @@ and is never served or built by nix.
   on the host network as `notshared` or `shared` without root, turns claims
   into folders in that user's data domain and refuses a chart that needs
   more; nginx forwards a port of `losos.apps.ports` to it, LAN only.
+- `search.nix` + `backend/src/textsearch/` (`losos-search`): text inside
+  files for the palette. A timer pass keeps an SQLite FTS5 index of the
+  owner's cloud files in `/var/lib/losos-search` as `nextcloud` (only what
+  changed is re-read); Git is `git grep` per query as `forgejo`. Both answer
+  on Accept=yes sockets under `/run/losos-search` that only root (lososd's
+  `/api/{cloud,git}/text`) can open. `tests/search.nix` boots it.
 - `admin-ui/themes/`: the SPA's `tokens.css` is shipped byte for byte as
   `losos-tokens.css` into the Nextcloud theme folder and Forgejo's custom
   CSS, so one colour change moves all three. `default.nix` is the data every

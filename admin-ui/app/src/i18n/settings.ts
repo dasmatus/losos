@@ -181,20 +181,6 @@ export default defineMessages({
     de: "Werkseinstellungen Standard löschen neu anfangen rückgängig",
   },
 
-  // ── Sidebar ───────────────────────────────────────────────────────────────
-  "settings.sidebar.searchLabel": {
-    en: "Search the sections",
-    sk: "Hľadať v sekciách",
-    de: "Bereiche durchsuchen",
-  },
-  "settings.sidebar.searchPlaceholder": { en: "Search", sk: "Hľadať", de: "Suchen" },
-  "settings.sidebar.clear": { en: "Clear search", sk: "Vymazať hľadanie", de: "Suche leeren" },
-  "settings.sidebar.noMatch": {
-    en: "Nothing here matches \"{query}\".",
-    sk: "Hľadaniu „{query}“ tu nič nezodpovedá.",
-    de: "Hier passt nichts zu „{query}“.",
-  },
-
   // ── Screen notices ────────────────────────────────────────────────────────
   "settings.notice.locked": {
     en: "Paste the admin key to change anything here. Nothing on this screen can be read or written without it.",

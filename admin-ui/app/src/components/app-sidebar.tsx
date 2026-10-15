@@ -1,9 +1,8 @@
 import * as React from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import {
   ArrowRight01Icon,
-  Cancel01Icon,
   HardDriveIcon,
   Home01Icon,
   LayoutGridIcon,
@@ -21,7 +20,6 @@ import {
   SidebarGroup,
   SidebarGroupLabel,
   SidebarHeader,
-  SidebarInput,
   SidebarMenu,
   SidebarMenuAction,
   SidebarMenuButton,
@@ -33,11 +31,12 @@ import {
   SidebarTrigger,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { t as translate, template, type MessageKey } from "@/lib/i18n";
+import type { MessageKey } from "@/lib/i18n";
 import { useLocale, useT } from "@/lib/i18n-react";
 import { paneFromPath, paneHref } from "@/lib/routes";
 import { cn } from "@/lib/utils";
-import { paneById, paneMatches, type SettingsPaneId } from "@/screens/settings/panes";
+import { SHORTCUT_ARIA, openPalette, shortcutLabel } from "@/palette/store";
+import { paneById, type SettingsPaneId } from "@/screens/settings/panes";
 import { PinsDialog, usePins, useSavePins } from "@/components/pins-dialog";
 import { pinKey, viewPin, type PinView } from "@/lib/pins";
 
@@ -64,12 +63,12 @@ import { pinKey, viewPin, type PinView } from "@/lib/pins";
  *
  * The pins are the owner's, kept on the box (lib/pins.ts); each opens in
  * its own app, and the pencil opens the dialog that adds, orders and
- * removes them (components/pins-dialog.tsx). The search filters them too.
+ * removes them (components/pins-dialog.tsx). The palette finds them too.
  *
  * A folded entry opens by itself when the page is on one of its
- * sub-entries, and while a search is typed. The search at the top filters
- * the whole tree by name, summary and keywords in the language on screen and
- * in English (paneMatches), and Enter opens the first match.
+ * sub-entries. The magnifier at the top opens the command palette
+ * (src/palette/), as Ctrl/Cmd+Shift+P does, which finds every entry here and
+ * also the pins, apps, files in LosOS cloud and repositories in LosOS Git.
  *
  * On a wide screen the trigger (or Ctrl/Cmd+B) narrows the panel to a rail of
  * icons, each naming itself in a tooltip; on a phone a row naming where you
@@ -84,8 +83,6 @@ interface LinkEntry {
   icon: IconSvgElement;
   /** The settings pane behind it, for matching and for "is this current". */
   pane?: SettingsPaneId;
-  /** Extra English search words, for an entry with no pane. */
-  keywords?: readonly string[];
   /** A page outside this app (the lab at /lab/): a plain link that loads it,
    * not a router link that would draw this app's 404 at that address. */
   external?: boolean;
@@ -116,7 +113,6 @@ const TREE: readonly Entry[] = [
     to: "/",
     label: "shell.nav.overview",
     icon: Home01Icon,
-    keywords: ["home", "start", "widgets", "board", "dashboard"],
   },
   { kind: "link", key: "apps", to: "/apps", label: "shell.nav.apps", icon: LayoutGridIcon, pane: "apps" },
   { kind: "link", key: "storage", to: "/storage", label: "shell.nav.storage", icon: HardDriveIcon, pane: "storage" },
@@ -135,7 +131,6 @@ const TREE: readonly Entry[] = [
     to: "/lab/",
     label: "shell.nav.lab",
     icon: NetworkIcon,
-    keywords: ["lab", "simulator", "topology", "diagram", "network", "map", "packet", "visualize"],
     external: true,
   },
   {
@@ -152,52 +147,6 @@ const TREE: readonly Entry[] = [
   },
 ];
 
-/** Lower-case and strip diacritics: "Úložisko" -> "ulozisko". */
-function fold(text: string): string {
-  return text
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "");
-}
-
-/* Does this entry, by itself, match the search? A pane-backed entry matches
- * the way the old settings list did (paneMatches); the others on their name
- * in the language on screen and in English, plus their keywords. */
-function selfMatches(entry: Entry, query: string): boolean {
-  if (query.trim().length === 0) return true;
-  if (entry.kind !== "fold" && entry.pane !== undefined) return paneMatches(paneById(entry.pane), query);
-  const terms = fold(query).split(/\s+/).filter((term) => term.length > 0);
-  const haystack = fold(
-    [translate(entry.label), template(entry.label, undefined, "en"), ...(entry.kind === "fold" ? [] : (entry.keywords ?? []))].join(" "),
-  );
-  return terms.every((term) => haystack.includes(term));
-}
-
-/* The tree as the search leaves it: an entry stays if it matches or any
- * entry under it does; a fold whose own name matches keeps all its entries
- * ("settings" shows everything under Settings). */
-function filterTree(entries: readonly Entry[], query: string): Entry[] {
-  const out: Entry[] = [];
-  for (const entry of entries) {
-    const own = selfMatches(entry, query);
-    const children = entry.children ?? [];
-    const kept = own && entry.kind === "fold" ? [...children] : filterTree(children, query);
-    if (own || kept.length > 0) out.push({ ...entry, children: kept } as Entry);
-  }
-  return out;
-}
-
-function firstOpenLink(entries: readonly Entry[]): LinkEntry | null {
-  for (const entry of entries) {
-    if (entry.kind === "link") return entry;
-    if (entry.kind === "fold") {
-      const inner = firstOpenLink(entry.children);
-      if (inner !== null) return inner;
-    }
-  }
-  return null;
-}
-
 function isCurrent(entry: LinkEntry, pathname: string): boolean {
   if (entry.pane !== undefined) return paneFromPath(pathname) === entry.pane;
   return pathname === entry.to;
@@ -213,12 +162,8 @@ export function AppSidebar() {
   const t = useT();
   useLocale(); // the tree's text is read during render
   const { pathname } = useLocation();
-  const navigate = useNavigate();
   const { state, isMobile, setOpenMobile } = useSidebar();
   const rail = !isMobile && state === "collapsed";
-  const [search, setSearch] = React.useState("");
-  const searchId = React.useId();
-  const searching = search.trim().length > 0;
 
   // Which folds are open. One that holds the current page opens by itself.
   const [openFolds, setOpenFolds] = React.useState<Record<string, boolean>>({});
@@ -237,18 +182,15 @@ export function AppSidebar() {
     setOpenMobile(false);
   }, [pathname, setOpenMobile]);
 
-  const tree = React.useMemo(() => (searching ? filterTree(TREE, search) : TREE), [search, searching]);
   const here = React.useMemo(() => currentLabel(TREE, pathname), [pathname]);
+  const shortcut = shortcutLabel();
+  const searchLabel = t("palette.open", { shortcut });
 
   const pins = usePins();
   const [editing, setEditing] = React.useState(false);
   const views = React.useMemo(
-    () =>
-      pins.pins
-        .map((pin) => viewPin(pin, pins.installed))
-        .filter((view): view is PinView => view !== null)
-        .filter((view) => !searching || pinMatches(view, search)),
-    [pins, search, searching],
+    () => pins.pins.map((pin) => viewPin(pin, pins.installed)).filter((view): view is PinView => view !== null),
+    [pins],
   );
   const openEditor = (): void => {
     // A phone's panel is a modal sheet of its own; it steps aside first.
@@ -256,25 +198,7 @@ export function AppSidebar() {
     setEditing(true);
   };
 
-  const submit = (event: React.FormEvent): void => {
-    event.preventDefault();
-    const first = firstOpenLink(tree);
-    if (first !== null) {
-      if (first.external === true) window.location.assign(first.to);
-      else navigate(first.to);
-      setSearch("");
-      return;
-    }
-    const pin = views[0];
-    if (pin !== undefined) {
-      if (pin.inApp) navigate(pin.href);
-      else if (pin.newTab) window.open(pin.href, "_blank", "noopener,noreferrer");
-      else window.location.assign(pin.href);
-      setSearch("");
-    }
-  };
-
-  const isOpen = (key: string): boolean => searching || openFolds[key] === true;
+  const isOpen = (key: string): boolean => openFolds[key] === true;
   const setOpen = (key: string, open: boolean): void => setOpenFolds((current) => ({ ...current, [key]: open }));
 
   return (
@@ -296,69 +220,46 @@ export function AppSidebar() {
       <Sidebar aria-label={t("shell.nav.label")} mobileTitle={t("shell.nav.label")} closeLabel={t("ui.dismiss")}>
         <SidebarHeader className={cn(isMobile && "pr-10")}>
           {!isMobile && <SidebarTrigger label={t(rail ? "shell.nav.expand" : "shell.nav.collapse")} />}
-          <form onSubmit={submit} role="search" className="relative min-w-0 flex-1 group-data-[collapsible=icon]/sidebar:hidden">
-            <label htmlFor={searchId} className="sr-only">
-              {t("settings.sidebar.searchLabel")}
-            </label>
-            <HugeiconsIcon
-              icon={Search01Icon}
-              size={15}
-              strokeWidth={1.5}
-              color="currentColor"
-              className="pointer-events-none absolute top-1/2 left-2 -translate-y-1/2 text-faint"
-              aria-hidden="true"
-            />
-            <SidebarInput
-              id={searchId}
-              type="search"
-              value={search}
-              placeholder={t("settings.sidebar.searchPlaceholder")}
-              autoComplete="off"
-              spellCheck={false}
-              onChange={(event) => setSearch(event.target.value)}
-            />
-            {search.length > 0 && (
-              <button
-                type="button"
-                aria-label={t("settings.sidebar.clear")}
-                onClick={() => setSearch("")}
-                className="absolute top-1/2 right-1 -translate-y-1/2 rounded-control p-1 text-faint transition-colors duration-150 hover:text-ink"
-              >
-                <HugeiconsIcon icon={Cancel01Icon} size={13} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
-              </button>
+          {/* The command palette's button: a magnifier at the end of the
+              header, under the trigger on the rail. */}
+          <button
+            type="button"
+            onClick={() => {
+              setOpenMobile(false);
+              openPalette();
+            }}
+            aria-label={searchLabel}
+            aria-keyshortcuts={SHORTCUT_ARIA}
+            aria-haspopup="dialog"
+            title={searchLabel}
+            className={cn(
+              "ml-auto flex size-8 shrink-0 items-center justify-center rounded-control text-muted",
+              "transition-colors duration-150 hover:bg-surface hover:text-ink",
+              "focus-visible:ring-2 focus-visible:ring-accent/40 focus-visible:outline-none",
+              "group-data-[collapsible=icon]/sidebar:ml-0",
             )}
-          </form>
+          >
+            <HugeiconsIcon icon={Search01Icon} size={16} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+          </button>
         </SidebarHeader>
 
         <SidebarContent>
-          {tree.length === 0 && views.length === 0 ? (
-            <p className="animate-fade-in px-2 py-3 text-[12.5px] leading-snug text-muted">
-              {t("settings.sidebar.noMatch", { query: search.trim() })}
-            </p>
-          ) : tree.length === 0 ? null : (
-            <SidebarMenu>
-              {tree.map((entry) => (
-                <TopEntry
-                  key={entry.key}
-                  entry={entry}
-                  pathname={pathname}
-                  rail={rail}
-                  open={isOpen(entry.key)}
-                  onOpenChange={(open) => setOpen(entry.key, open)}
-                />
-              ))}
-            </SidebarMenu>
-          )}
+          <SidebarMenu>
+            {TREE.map((entry) => (
+              <TopEntry
+                key={entry.key}
+                entry={entry}
+                pathname={pathname}
+                rail={rail}
+                open={isOpen(entry.key)}
+                onOpenChange={(open) => setOpen(entry.key, open)}
+              />
+            ))}
+          </SidebarMenu>
           {/* Signed out there is nothing to show; the box keeps the list,
               and a box that did not send one (an older build) gets none. */}
           {(pins.status === "ready" || pins.pins.length > 0) && (
-            <PinnedSection
-              views={views}
-              pathname={pathname}
-              rail={rail}
-              searching={searching}
-              onEdit={openEditor}
-            />
+            <PinnedSection views={views} pathname={pathname} rail={rail} onEdit={openEditor} />
           )}
         </SidebarContent>
       </Sidebar>
@@ -367,34 +268,22 @@ export function AppSidebar() {
   );
 }
 
-/* A pin matches on its name and its second line (a file's folder, a
- * repository's owner), in the language on screen for a tile. */
-function pinMatches(view: PinView, query: string): boolean {
-  const terms = fold(query).split(/\s+/).filter((term) => term.length > 0);
-  const label = view.labelKey !== null ? `${translate(view.labelKey)} ${template(view.labelKey, undefined, "en")}` : view.label;
-  const haystack = fold(`${label} ${view.detail ?? ""}`);
-  return terms.every((term) => haystack.includes(term));
-}
-
 function PinnedSection({
   views,
   pathname,
   rail,
-  searching,
   onEdit,
 }: {
   views: readonly PinView[];
   pathname: string;
   rail: boolean;
-  searching: boolean;
   onEdit: () => void;
 }) {
   const t = useT();
   const { pins } = usePins();
   const { busy, save } = useSavePins();
-  // While a search is typed only the pins that match are shown, and none
-  // is no section; on the rail an empty section is nothing to point at.
-  if (views.length === 0 && (searching || rail)) return null;
+  // On the rail an empty section is nothing to point at.
+  if (views.length === 0 && rail) return null;
 
   return (
     <SidebarGroup role="group" className="mt-2" aria-label={t("pins.title")} data-pins>

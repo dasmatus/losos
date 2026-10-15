@@ -12,6 +12,7 @@ import install from "./install";
 import lab from "./lab";
 import look from "./look";
 import machines from "./machines";
+import palette from "./palette";
 import panes from "./panes";
 import pins from "./pins";
 import settings from "./settings";
@@ -37,6 +38,7 @@ export const MESSAGES = {
   ...access,
   ...lab,
   ...tour,
+  ...palette,
   ...pins,
 };
 
