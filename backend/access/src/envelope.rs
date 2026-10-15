@@ -108,7 +108,7 @@ impl Replay {
     }
 }
 
-fn read_limited(msg: &mut Message<'_>) -> Result<Vec<u8>, Refusal> {
+pub(crate) fn read_limited(msg: &mut Message<'_>) -> Result<Vec<u8>, Refusal> {
     let mut out = Vec::new();
     msg.take(MAX_PLAINTEXT + 1)
         .read_to_end(&mut out)

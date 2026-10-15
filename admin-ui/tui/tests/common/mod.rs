@@ -1,0 +1,272 @@
+//! A box or an edge on loopback that answers the envelope the way lososd and
+//! losos-registrar do, with losos-access's own server half, and an `Io` that
+//! captures what a command prints.
+
+#![allow(dead_code)]
+
+pub mod fixtures;
+
+use std::collections::HashMap;
+use std::io::Write;
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
+
+use losos::commands::{run, Io};
+use losos::keychain::{Keychain, MemoryKeychain};
+use losos_access::{open, seal, HostKey, Keyring, Replay};
+use serde_json::{json, Value};
+
+pub const TOKEN: &str = "losos_pat_0123abcd_00112233445566778899aabbccddeeff00112233";
+
+/// What a host does with a call that opened: status and body.
+pub type Handler = dyn Fn(&str, &str, &Value) -> (u16, Value) + Send + Sync;
+
+pub struct Mock {
+    pub url: String,
+    /// The key it serves and seals with; a test may swap it.
+    pub host: Arc<Mutex<HostKey>>,
+    /// The seeded keys it accepts; a test may add one.
+    pub ring: Arc<Mutex<String>>,
+    /// Every call that opened: method, path, body.
+    pub calls: Arc<Mutex<Vec<(String, String, Value)>>>,
+}
+
+impl Mock {
+    pub fn fingerprint(&self) -> String {
+        self.host.lock().unwrap().fingerprint().to_string()
+    }
+
+    pub fn seed(&self, armored_public: &str) {
+        let mut ring = self.ring.lock().unwrap();
+        ring.push('\n');
+        ring.push_str(armored_public);
+    }
+}
+
+/// A box (`edge` false) or an edge, accepting `seeded` keys and `TOKEN`.
+pub fn mock(edge: bool, seeded: &str, handler: Box<Handler>) -> Mock {
+    let server = tiny_http::Server::http("127.0.0.1:0").unwrap();
+    serve(server, "http", edge, seeded, handler)
+}
+
+/// The same over HTTPS with `cert`, as a box serves its own self-signed
+/// certificate.
+pub fn mock_tls(edge: bool, seeded: &str, handler: Box<Handler>, cert: &Cert) -> Mock {
+    let server = tiny_http::Server::https("127.0.0.1:0", cert.config()).unwrap();
+    serve(server, "https", edge, seeded, handler)
+}
+
+/// A self-signed certificate for 127.0.0.1.
+pub struct Cert {
+    pub pem: String,
+    pub key: String,
+    pub der: Vec<u8>,
+}
+
+impl Cert {
+    pub fn new() -> Cert {
+        let made = rcgen::generate_simple_self_signed(vec!["127.0.0.1".into(), "localhost".into()])
+            .unwrap();
+        Cert {
+            pem: made.cert.pem(),
+            key: made.key_pair.serialize_pem(),
+            der: made.cert.der().to_vec(),
+        }
+    }
+
+    pub fn config(&self) -> tiny_http::SslConfig {
+        tiny_http::SslConfig {
+            certificate: self.pem.clone().into_bytes(),
+            private_key: self.key.clone().into_bytes(),
+        }
+    }
+
+    /// What the client pins: the SHA-256 of the DER, hex.
+    pub fn pin(&self) -> String {
+        use sha2::Digest;
+        hex::encode(sha2::Sha256::digest(&self.der))
+    }
+}
+
+fn serve(
+    server: tiny_http::Server,
+    scheme: &str,
+    edge: bool,
+    seeded: &str,
+    handler: Box<Handler>,
+) -> Mock {
+    let url = format!("{scheme}://{}", server.server_addr().to_ip().unwrap());
+    let host = Arc::new(Mutex::new(
+        HostKey::generate(if edge {
+            "LosOS edge <edge>"
+        } else {
+            "LosOS box <box>"
+        })
+        .unwrap(),
+    ));
+    let ring = Arc::new(Mutex::new(seeded.to_string()));
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let (key_path, call_path) = if edge {
+        ("/operator/host-key", "/operator/call")
+    } else {
+        ("/api/access/host-key", "/api/access/call")
+    };
+    {
+        let (host, ring, calls) = (host.clone(), ring.clone(), calls.clone());
+        std::thread::spawn(move || {
+            let replay = Replay::default();
+            for mut request in server.incoming_requests() {
+                let path = request.url().to_string();
+                let mut body = Vec::new();
+                let _ = request.as_reader().read_to_end(&mut body);
+                let (status, content_type, text) = if path == key_path {
+                    let host = host.lock().unwrap();
+                    let doc = json!({ "fingerprint": host.fingerprint(), "publicKey": host.armored_public() });
+                    (200, "application/json", doc.to_string())
+                } else if path == call_path {
+                    let host = host.lock().unwrap();
+                    let ring = Keyring::parse(&ring.lock().unwrap()).unwrap();
+                    match open(&host, &ring, &body, &replay, losos_access::now_secs()) {
+                        Err(refusal) => (
+                            refusal.status(),
+                            "application/json",
+                            json!({ "error": refusal.to_string() }).to_string(),
+                        ),
+                        Ok(opened) if opened.request.token != TOKEN => (
+                            403,
+                            "application/json",
+                            json!({ "error": "the token is not known" }).to_string(),
+                        ),
+                        Ok(opened) => {
+                            let r = &opened.request;
+                            calls.lock().unwrap().push((
+                                r.method.clone(),
+                                r.path.clone(),
+                                r.body.clone(),
+                            ));
+                            let (status, answer) = handler(&r.method, &r.path, &r.body);
+                            let sealed =
+                                seal(&host, &opened.signer, &r.nonce, status, answer).unwrap();
+                            (200, "application/pgp-encrypted", sealed)
+                        }
+                    }
+                } else {
+                    (
+                        404,
+                        "application/json",
+                        json!({ "error": "not here" }).to_string(),
+                    )
+                };
+                let header = tiny_http::Header::from_bytes("Content-Type", content_type).unwrap();
+                let _ = request.respond(
+                    tiny_http::Response::from_string(text)
+                        .with_status_code(status)
+                        .with_header(header),
+                );
+            }
+        });
+    }
+    Mock {
+        url,
+        host,
+        ring,
+        calls,
+    }
+}
+
+/// A shared buffer a command writes into.
+#[derive(Clone, Default)]
+pub struct Captured(pub Arc<Mutex<Vec<u8>>>);
+
+impl Write for Captured {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.0.lock().unwrap().extend_from_slice(buf);
+        Ok(buf.len())
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+impl Captured {
+    pub fn text(&self) -> String {
+        String::from_utf8_lossy(&self.0.lock().unwrap()).into_owned()
+    }
+}
+
+/// One run of the client, as a script would make it: no terminal.
+pub struct Run {
+    pub code: u8,
+    pub out: String,
+    pub err: String,
+}
+
+pub struct Client {
+    pub keychain: Arc<dyn Keychain + Send + Sync>,
+    pub env: HashMap<String, String>,
+}
+
+pub fn fake_bin(name: &str) -> String {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fake-bin")
+        .join(name)
+        .display()
+        .to_string()
+}
+
+impl Client {
+    pub fn new() -> Client {
+        Client::with(Arc::new(MemoryKeychain::new()))
+    }
+
+    pub fn with(keychain: Arc<dyn Keychain + Send + Sync>) -> Client {
+        let mut env = HashMap::new();
+        env.insert("PATH".into(), std::env::var("PATH").unwrap_or_default());
+        env.insert("LANG".into(), "en_US.UTF-8".into());
+        Client { keychain, env }
+    }
+
+    pub fn set(&mut self, name: &str, value: &str) -> &mut Client {
+        self.env.insert(name.into(), value.into());
+        self
+    }
+
+    pub fn run(&self, args: &[&str], stdin: &str) -> Run {
+        let out = Captured::default();
+        let err = Captured::default();
+        let mut io = Io {
+            out: Box::new(out.clone()),
+            err: Box::new(err.clone()),
+            stdin: Box::new(std::io::Cursor::new(stdin.as_bytes().to_vec())),
+            env: self.env.clone(),
+            keychain: self.keychain.clone(),
+            stdin_tty: false,
+            stdout_tty: false,
+            stderr_tty: false,
+        };
+        let argv: Vec<String> = std::iter::once("losos")
+            .chain(args.iter().copied())
+            .map(str::to_string)
+            .collect();
+        let code = run(&argv, &mut io);
+        Run {
+            code,
+            out: out.text(),
+            err: err.text(),
+        }
+    }
+}
+
+/// The owner's key, as `gpg --export-secret-keys --armor` would give it.
+pub struct Owner {
+    pub key: HostKey,
+    pub file: tempfile::NamedTempFile,
+}
+
+pub fn owner() -> Owner {
+    let key = HostKey::generate("Owner <owner@example.org>").unwrap();
+    let mut file = tempfile::NamedTempFile::new().unwrap();
+    file.write_all(key.armored_secret().unwrap().as_bytes())
+        .unwrap();
+    Owner { key, file }
+}

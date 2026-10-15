@@ -1,0 +1,61 @@
+# losos, the terminal client: the web UI's panes over the signed and
+# encrypted envelope of docs/terminal-access.md, for a box or an edge.
+[package]
+name = "losos"
+version = "0.1.0"
+edition = "2021"
+publish = false
+authors = ["Matus Mastena <shadiness9530+ou1rlygj@pm.me>"]
+description = "Manage LosOS boxes and edges from a terminal, without SSH"
+license = "AGPL-3.0-or-later"
+build = "build.rs"
+
+# Its own lock and its own workspace, like every crate in this repository.
+[workspace]
+
+[[bin]]
+name = "losos"
+path = "src/main.rs"
+
+[dependencies]
+# The envelope's two halves, shared with lososd and losos-registrar so the
+# three cannot disagree on it.
+losos-access = { path = "../../backend/access" }
+clap = { version = "4.5", features = ["derive", "string", "wrap_help"] }
+miette = { version = "7", features = ["fancy"] }
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "env-filter", "ansi", "std"] }
+ratatui = "0.30"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+# Blocking HTTPS with rustls on ring; the certificate check is ours
+# (src/http.rs), so a box's self-signed certificate can be pinned.
+ureq = { version = "2", default-features = false, features = ["tls"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+webpki-roots = "0.26"
+url = "2"
+# The versions losos-access and rPGP already use.
+rand = "0.8"
+sha2 = "0.10"
+hex = "0.4"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+unicode-normalization = "0.1"
+unicode-width = "0.2"
+
+[build-dependencies]
+png = "0.17"
+
+[dev-dependencies]
+# The screenshots example crops what Chromium shoots.
+png = "0.17"
+tiny_http = { version = "0.12", features = ["ssl-rustls"] }
+rcgen = { version = "0.13", default-features = false, features = ["crypto", "ring", "pem"] }
+tempfile = "3"
+
+[profile.release]
+strip = true
+lto = "thin"
+
+[lints.rust]
+unsafe_code = "forbid"

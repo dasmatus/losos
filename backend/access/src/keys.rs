@@ -180,7 +180,7 @@ impl std::fmt::Debug for SeededKey {
 }
 
 impl SeededKey {
-    fn from_key(key: SignedPublicKey) -> Result<SeededKey, KeyError> {
+    pub(crate) fn from_key(key: SignedPublicKey) -> Result<SeededKey, KeyError> {
         let fingerprint = fingerprint_hex(&key.fingerprint());
         key.verify_bindings()
             .map_err(|e| KeyError::Unusable(format!("{fingerprint}: {e}")))?;
@@ -222,7 +222,7 @@ impl SeededKey {
     }
 }
 
-fn encryption_subkeys(key: &SignedPublicKey) -> Vec<&SignedPublicSubKey> {
+pub(crate) fn encryption_subkeys(key: &SignedPublicKey) -> Vec<&SignedPublicSubKey> {
     key.public_subkeys
         .iter()
         .filter(|sub| {

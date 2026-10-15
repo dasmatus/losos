@@ -30,14 +30,15 @@ nix build .#checks.x86_64-linux.losos-admin-daemon  # lososd: D-Bus, HTTP, token
 nix build .#checks.x86_64-linux.losos-install       # installer, keyfile, BIOS
 nix build .#checks.x86_64-linux.losos-tpm-unlock    # installer, swtpm unlock
 npm run dev | typecheck | test:browser              # in admin-ui/app
-npm run typecheck | test | build:binary             # in admin-ui/tui (losos)
+cargo test --manifest-path admin-ui/tui/Cargo.toml  # losos, the terminal client
 ```
 
-Seven Rust crates: `backend/` (lososd + losos-ctl), `backend/access`
-(the terminal envelope, its own workspace, a path dependency of lososd and
-the registrar), `backend-registrar/`, `edge-vercel/` (outside the flake),
-and the Lab's `admin-ui/lab/core`, `admin-ui/lab/virt-rpc` and
-`admin-ui/lab/render` (built for wasm32). All seven must pass clippy with `-D warnings` and rustfmt; the devenv pre-commit
+Eight Rust crates: `backend/` (lososd + losos-ctl), `backend/access`
+(the terminal envelope, its own workspace, a path dependency of lososd, the
+registrar and the client), `backend-registrar/`, `edge-vercel/` (outside the
+flake), the terminal client `admin-ui/tui`, and the Lab's `admin-ui/lab/core`,
+`admin-ui/lab/virt-rpc` and `admin-ui/lab/render` (built for wasm32). All
+eight must pass clippy with `-D warnings` and rustfmt; the devenv pre-commit
 hooks, `lint` and CI each check it. Bevy is a wasm32-only dependency of
 `render`, so `lint-wasm` and CI's `clippy-wasm` lint its WebGL2 and WebGPU
 builds too, one after the other. `nix develop` is a toolchain-only shell for people without devenv.
@@ -74,9 +75,12 @@ and is never served or built by nix.
   is the front nginx vhost's root (`try_files … /index.html`), `/api/*` is
   proxied to lososd. Palette in `src/styles/tokens.css`.
 - Terminal access (`docs/terminal-access.md`, `docs/edge-terminal.md`):
-  `losos`, an Ink TUI in `admin-ui/tui` with the web UI's panes, catalogue
-  and palette, installed by `curl … /updates/<channel>/x86_64/install.sh |
-  sh` (CI's `tui` and `publish-tool` jobs). Each call is one OpenPGP
+  `losos`, a Rust client in `admin-ui/tui` (clap derive, miette reports,
+  tracing without time, ratatui) with the web UI's panes, catalogue and
+  palette, read from `admin-ui/app` by its `build.rs`. It pins a box's
+  self-signed certificate by SHA-256 at login. `.#losos-static` (musl) is
+  installed by `curl … /updates/<channel>/x86_64/install.sh | sh` (CI's
+  `tui` and `publish-tool` jobs). Each call is one OpenPGP
   message signed by a key seeded at install (`losos.access.gpgKeys`,
   installer-fixed, never added at runtime) and encrypted to the host's own
   key, carrying a personal access token from the Access tokens pane;

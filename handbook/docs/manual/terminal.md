@@ -121,11 +121,10 @@ the same from the file.
 
 `login` takes the box's address from its screen. Plain `http://` is fine
 here: the request and the answer are encrypted end to end whatever carries
-them. `https://<name>.local` works only when `losos` trusts the box's
-certificate, which it does not take from your browser. Point
-`NODE_EXTRA_CA_CERTS` at the certificate from
-[the first run](../start/first-run.md#step-1-trust-this-box) if you want
-it.
+them. `https://<name>.local` works too. The box's certificate is its own,
+so `losos` takes the one it sees at login and remembers it. If the box
+later shows a different certificate, `losos` stops and says so. Run
+`login` again to accept the new one once you know why it changed.
 
 `login` asks the box for its key and shows the fingerprint in groups of
 four. Check that it matches **This box's key** on the Access tokens pane
