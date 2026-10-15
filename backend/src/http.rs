@@ -699,6 +699,71 @@ fn post_set_password_inner(api: &Api, body: &[u8]) -> HttpResponse {
     run(api, |b| cmd_set_password(b, &user, &password))
 }
 
+/// `POST /api/devices/cloud` and `POST /api/devices/git`: a credential of
+/// one computer's own for LosOS cloud or LosOS Git (`crate::devices`).
+///
+/// Bearer-gated like every other route, and on top of that the owner's
+/// password, which Nextcloud and Forgejo both insist on before they make a
+/// credential. A wrong password is a 403 with `wrongPassword`, not the 401
+/// of a bad token: the caller holds a good token, and a client that reads
+/// 401 as "sign in again" would throw it away.
+async fn post_device(
+    api: web::Data<Api>,
+    req: HttpRequest,
+    kind: web::Path<String>,
+    body: web::Bytes,
+) -> HttpResponse {
+    let route = format!("/api/devices/{kind}");
+    guarded(&api, &req, &route, true, || {
+        post_device_inner(&api, &kind, &remote_addr(&req), &body)
+    })
+}
+
+fn post_device_inner(api: &Api, kind: &str, client: &str, body: &[u8]) -> HttpResponse {
+    const SHAPE: &str = r#"body must be JSON: {"password": "...", "device": "..."}"#;
+    let Ok(doc) = serde_json::from_slice::<serde_json::Value>(body) else {
+        return err(StatusCode::BAD_REQUEST, SHAPE);
+    };
+    let (Some(password), Some(device)) = (
+        doc.get("password").and_then(|p| p.as_str()),
+        doc.get("device").and_then(|d| d.as_str()),
+    ) else {
+        return err(StatusCode::BAD_REQUEST, SHAPE);
+    };
+    if let Err(e) = crate::signin::validate_candidate(password) {
+        return err(StatusCode::BAD_REQUEST, &e);
+    }
+    if let Err(e) = crate::devices::validate_device(device) {
+        return err(StatusCode::BAD_REQUEST, &e);
+    }
+    let result = match kind {
+        "cloud" => api
+            .backend
+            .serialized(|l| crate::losos::cmd_device_cloud(l, password, device, client)),
+        "git" => api
+            .backend
+            .serialized(|l| crate::losos::cmd_device_git(l, password, device, client)),
+        _ => return err(StatusCode::NOT_FOUND, "no such device credential"),
+    };
+    match result {
+        Ok(v) => HttpResponse::Ok().json(v),
+        Err(e) if e.downcast_ref::<crate::signin::WrongPassword>().is_some() => {
+            tracing::info!(kind, "device credential refused: wrong password");
+            HttpResponse::build(StatusCode::FORBIDDEN).json(serde_json::json!({
+                "error": e.to_string(),
+                "wrongPassword": true,
+            }))
+        }
+        Err(e) if e.downcast_ref::<crate::devices::GitOff>().is_some() => {
+            HttpResponse::build(StatusCode::CONFLICT).json(serde_json::json!({
+                "error": e.to_string(),
+                "gitOff": true,
+            }))
+        }
+        Err(e) => error_response(e),
+    }
+}
+
 /// The appliance recovery code.
 ///
 /// `GET`, and there is no route that rotates it — see [`cmd_recovery`] for why
@@ -1958,6 +2023,7 @@ pub fn serve(backend: IoLosos) -> anyhow::Result<()> {
                 .route("/api/grow", web::post().to(post_grow))
                 .route("/api/set-password", web::post().to(post_set_password))
                 .route("/api/recovery", web::get().to(get_recovery))
+                .route("/api/devices/{kind}", web::post().to(post_device))
                 .route("/api/apps/search", web::get().to(get_apps_search))
                 .route("/api/apps", web::get().to(get_apps))
                 .route("/api/apps/chart", web::get().to(get_app_chart))

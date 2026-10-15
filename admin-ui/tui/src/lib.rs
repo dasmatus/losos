@@ -4,6 +4,7 @@
 
 pub mod cli;
 pub mod commands;
+pub mod computer;
 pub mod envelope;
 pub mod http;
 pub mod i18n;
