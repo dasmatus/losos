@@ -288,6 +288,8 @@
             # The end of the launch film's score, played when the box is
             # switched on.
             ./modules/startup-sound.nix
+            # The model the widget builder asks, on loopback.
+            ./modules/builder.nix
             ./modules/services.nix
             ./modules/nextcloud-common.nix
             ./modules/containers.nix

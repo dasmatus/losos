@@ -627,7 +627,6 @@ impl Edge {
                 fee_bps: Some(losos_registrar::market::DEFAULT_FEE_BPS),
                 return_url: Some(RETURN_URL.to_string()),
                 hardware_catalogue: Some(dir.path_str("hardware.json")),
-                credit_packs: vec![500, 1_000, 2_000],
             };
             let listener = losos_registrar::stripe_gate::bind(&gate.socket).expect("bind gate");
             let (stop, rx) = oneshot::channel::<()>();
@@ -686,7 +685,6 @@ impl Edge {
             kube_ca_file: None,
             compute_windows_file: dir.path_str("compute-windows.json"),
             market,
-            builder: None,
             github_api_url: github_api_url
                 .unwrap_or(losos_registrar::provision::GITHUB_API_URL)
                 .to_string(),

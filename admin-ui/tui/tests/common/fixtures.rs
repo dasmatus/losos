@@ -370,7 +370,6 @@ pub fn edge_overview() -> Value {
       "optIns": {
         "mesh": true,
         "market": true,
-        "builder": false,
         "domains": true,
         "enrolment": false,
         "uplink": false
@@ -391,7 +390,7 @@ pub fn edge_secrets() -> Value {
         "updated": 1791836040
       },
       {
-        "name": "claude-api-key",
+        "name": "usdc-releaser-key",
         "sealed": false,
         "updated": null
       }

@@ -72,10 +72,8 @@ export function sameFiles(a: readonly WidgetFile[], b: readonly WidgetFile[]): b
   return sortFiles(a).every((file, i) => file.name === sortedB[i]?.name && file.content === sortedB[i]?.content);
 }
 
-/** What a finished build hands back: its files, or from an older edge the
- *  single source as `index.html`. */
-export function builtFiles(view: { files?: WidgetFile[] | null; source: string | null }): WidgetFile[] | null {
+/** What a finished build hands back: its files, `index.html` first. */
+export function builtFiles(view: { files: WidgetFile[] | null }): WidgetFile[] | null {
   if (Array.isArray(view.files) && view.files.length > 0) return sortFiles(view.files);
-  if (view.source !== null) return [{ name: ENTRY_FILE, content: view.source }];
   return null;
 }

@@ -258,7 +258,6 @@ async fn overview(st: &AppState) -> serde_json::Value {
         "optIns": {
             "mesh": st.opts.mesh_agent_token_file.is_some(),
             "market": st.market.is_some(),
-            "builder": st.builder.is_some(),
             "domains": st.domains.is_some(),
             "enrolment": st.enrolment.is_some(),
             "uplink": st.opts.uplink.is_some(),

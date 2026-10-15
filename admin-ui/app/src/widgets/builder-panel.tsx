@@ -1,12 +1,11 @@
-/* Have Claude write the widget.
+/* Have a model on this box write the widget.
  *
- * The owner describes a widget and an agent on the edge writes it
- * (backend-registrar/src/builder.rs, relayed by lososd as /api/builder*).
- * The edge holds the Anthropic key and a prepaid balance per box; a build
- * is paid from that balance per token, and the balance is topped up through
- * Stripe Checkout. The page shows the owner the price, not how the edge
- * arrives at it, and says that what they send is subject to Anthropic's
- * terms.
+ * The owner describes a widget and a small language model that runs on the
+ * box writes it (backend/src/builder.rs, Ollama on loopback, served as
+ * /api/builder*). What the owner types, and the widget they ask to change,
+ * never leave the box, and a build costs nothing. On a mini PC's processor
+ * a build takes minutes, so it runs in the background: the panel polls it,
+ * shows how far the answer has got, and lets the owner stop it.
  *
  * What comes back is only text: the widget's files go into the hand
  * editor, the preview draws them in the same sandboxed frame as any widget
@@ -27,18 +26,19 @@ import {
   getBuilder,
   getBuilderBuild,
   postBuilderBuild,
-  postBuilderCredit,
+  stopBuilderBuild,
+  ApiError,
   type BuildFault,
+  type BuilderReason,
   type BuilderResponse,
   type BuildView,
   type WidgetFile,
 } from "@/lib/api";
 import type { MessageKey } from "@/lib/i18n";
 import { useLocale, useT } from "@/lib/i18n-react";
-import { formatMoney, isStripePage } from "@/screens/settings/market";
 import { builtFiles } from "./files";
 
-/** The edge's own limit on a description. */
+/** The box's own limit on a description. */
 export const MAX_PROMPT_CHARS = 2000;
 /** How often a running build is looked at. */
 const POLL_MS = 3000;
@@ -47,12 +47,20 @@ const FAULT_TEXT: Record<BuildFault, MessageKey> = {
   noWidget: "look.builder.fault.noWidget",
   unusable: "look.builder.fault.unusable",
   upstream: "look.builder.fault.upstream",
+  memory: "look.builder.fault.memory",
 };
 
-/** Anthropic's published terms, which what the owner sends is subject to. */
-export const ANTHROPIC_TERMS = [
-  { key: "look.builder.terms.usage", href: "https://www.anthropic.com/legal/aup" },
-  { key: "look.builder.terms.commercial", href: "https://www.anthropic.com/legal/commercial-terms" },
+const REASON_TEXT: Record<BuilderReason, MessageKey> = {
+  off: "look.builder.off",
+  starting: "look.builder.starting",
+  downloading: "look.builder.downloading",
+};
+
+/** Meta's licence for Llama 3.2, which asks for "Built with Llama" where the
+ *  model is used, and its acceptable use policy. */
+export const LLAMA_TERMS = [
+  { key: "look.builder.terms.license", href: "https://www.llama.com/llama3_2/license/" },
+  { key: "look.builder.terms.usage", href: "https://www.llama.com/llama3_2/use-policy/" },
 ] as const;
 
 export interface BuilderPanelProps {
@@ -78,7 +86,6 @@ export function BuilderPanel({ files, hasWidget, onWritten }: BuilderPanelProps)
   const [change, setChange] = React.useState(hasWidget);
   const [problem, setProblem] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
-  const [paying, setPaying] = React.useState(false);
   const [build, setBuild] = React.useState<BuildView | null>(null);
   const [followId, setFollowId] = React.useState<string | null>(null);
 
@@ -124,8 +131,16 @@ export function BuilderPanel({ files, hasWidget, onWritten }: BuilderPanelProps)
           toast.success(t("look.builder.doneTitle"), t("look.builder.doneNote"));
         }
         void load();
-      } catch {
-        if (!stopped) timer = setTimeout(() => void look(), POLL_MS * 2);
+      } catch (error) {
+        if (stopped) return;
+        // lososd restarted and forgot the build: stop following it.
+        if (error instanceof ApiError && error.status === 404) {
+          setFollowId(null);
+          setBuild(null);
+          void load();
+          return;
+        }
+        timer = setTimeout(() => void look(), POLL_MS * 2);
       }
     };
     void look();
@@ -151,40 +166,20 @@ export function BuilderPanel({ files, hasWidget, onWritten }: BuilderPanelProps)
   const view = loaded.view;
   if (!view.available) {
     return (
-      <p data-testid="builder-unavailable" className="text-[13px] leading-relaxed text-muted">
-        {view.reason === "noOfficialEdge" ? t("look.builder.noOfficialEdge") : t("look.builder.unavailable")}
-      </p>
+      <div className="flex flex-col items-start gap-3">
+        <p data-testid="builder-unavailable" className="text-[13px] leading-relaxed text-muted">
+          {t(REASON_TEXT[view.reason], { model: view.model ?? "" })}
+        </p>
+        {view.reason !== "off" && (
+          <Button variant="secondary" size="sm" onClick={() => void load()}>
+            {t("look.builder.retry")}
+          </Button>
+        )}
+      </div>
     );
   }
 
-  const money = (minor: number): string => formatMoney(minor, view.currency);
   const running = followId !== null || build?.status === "running";
-
-  const topUp = async (amount: number): Promise<void> => {
-    setProblem(null);
-    const tab = window.open("about:blank", "_blank");
-    if (tab === null) {
-      setProblem(t("look.builder.popupBlocked"));
-      return;
-    }
-    tab.opener = null;
-    setBusy(true);
-    try {
-      const reply = await postBuilderCredit(amount);
-      if (isStripePage(reply.checkout_url)) {
-        tab.location.href = reply.checkout_url;
-        setPaying(true);
-      } else {
-        tab.close();
-        setProblem(t("look.builder.noCheckout"));
-      }
-    } catch (error) {
-      tab.close();
-      setProblem(error instanceof Error && error.message.length > 0 ? error.message : t("look.builder.noCheckout"));
-    } finally {
-      setBusy(false);
-    }
-  };
 
   const start = async (): Promise<void> => {
     const text = prompt.trim();
@@ -215,49 +210,34 @@ export function BuilderPanel({ files, hasWidget, onWritten }: BuilderPanelProps)
     }
   };
 
+  const stop = async (): Promise<void> => {
+    const id = followId ?? build?.id;
+    if (id === undefined) return;
+    setBusy(true);
+    try {
+      const view = await stopBuilderBuild(id);
+      setBuild(view);
+      setFollowId(null);
+    } catch {
+      // The poll picks up whatever the build did instead.
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const outcome = (b: BuildView): string | null => {
-    if (b.status === "done") return t("look.builder.done", { amount: money(b.charged) });
+    if (b.status === "done") return t("look.builder.done");
+    if (b.status === "stopped") return t("look.builder.stopped");
     if (b.status !== "failed") return null;
-    return t(FAULT_TEXT[b.fault ?? "upstream"], { amount: money(b.charged) });
+    return t(FAULT_TEXT[b.fault ?? "upstream"]);
   };
 
   return (
     <div data-testid="builder-panel" className="flex flex-col gap-4">
       <p className="text-[13px] leading-relaxed text-muted">{t("look.builder.intro")}</p>
-
-      <div className="flex flex-col gap-2.5 rounded-card border border-line bg-sunk p-3.5">
-        <p className="text-[13px] leading-relaxed text-muted" data-testid="builder-price">
-          {t("look.builder.price", {
-            input: money(view.price.input_per_million),
-            output: money(view.price.output_per_million),
-            max: money(view.price.max_build),
-          })}
-        </p>
-        <div className="flex flex-wrap items-center gap-2">
-          <p className="mr-auto text-sm font-medium text-ink" data-testid="builder-balance">
-            {t("look.builder.balance", { amount: money(view.balance) })}
-          </p>
-          {view.packs.map((pack) => (
-            <Button
-              key={pack}
-              variant="secondary"
-              size="sm"
-              disabled={busy}
-              onClick={() => void topUp(pack)}
-            >
-              {t("look.builder.topUp", { amount: money(pack) })}
-            </Button>
-          ))}
-        </div>
-        {paying && (
-          <div className="flex flex-wrap items-center gap-2 text-[12.5px] text-muted">
-            <span>{t("look.builder.topUpNote")}</span>
-            <Button variant="link" size="xs" onClick={() => void load()}>
-              {t("look.builder.refresh")}
-            </Button>
-          </div>
-        )}
-      </div>
+      <p className="rounded-card border border-line bg-sunk p-3.5 text-[13px] leading-relaxed text-muted" data-testid="builder-local">
+        {t("look.builder.local", { model: view.model })}
+      </p>
 
       <Label htmlFor={promptId} className="flex flex-col gap-1.5">
         <span>{t("look.builder.field.prompt")}</span>
@@ -293,31 +273,28 @@ export function BuilderPanel({ files, hasWidget, onWritten }: BuilderPanelProps)
       )}
 
       <div className="flex flex-wrap items-center gap-3">
-        <Button disabled={busy || running || !view.can_build} onClick={() => void start()}>
+        <Button disabled={busy || running} onClick={() => void start()}>
           <HugeiconsIcon icon={SparklesIcon} size={16} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
           {t("look.builder.build")}
         </Button>
-        {!view.can_build && !running && (
-          <span className="text-[12.5px] text-muted">{t("look.builder.needBalance")}</span>
+        {running && (
+          <Button variant="secondary" disabled={busy} onClick={() => void stop()}>
+            {t("look.builder.stop")}
+          </Button>
         )}
       </div>
       <FieldError id={problemId}>{problem}</FieldError>
-      <p className="text-[12.5px] leading-relaxed text-muted" data-testid="builder-terms">
-        {t("look.builder.terms")}{" "}
-        {ANTHROPIC_TERMS.map((term, i) => (
-          <React.Fragment key={term.href}>
-            {i > 0 && " · "}
-            <a href={term.href} target="_blank" rel="noreferrer" className="text-accent underline underline-offset-2">
-              {t(term.key)}
-            </a>
-          </React.Fragment>
-        ))}
-      </p>
 
       {running && (
         <div role="status" className="flex items-center gap-2.5 text-[13px] text-muted" data-testid="builder-running">
           <Spinner label={t("look.builder.runningShort")} />
-          <span>{t("look.builder.running")}</span>
+          <span>
+            {build?.fixing === true
+              ? t("look.builder.fixing", { lines: build.lines })
+              : build !== null && build.lines > 0
+                ? t("look.builder.writing", { lines: build.lines })
+                : t("look.builder.reading")}
+          </span>
         </div>
       )}
       {build !== null && !running && outcome(build) !== null && (
@@ -329,6 +306,20 @@ export function BuilderPanel({ files, hasWidget, onWritten }: BuilderPanelProps)
             {build.notes !== null && build.notes.length > 0 && <p className="text-muted">{build.notes}</p>}
           </AlertDescription>
         </Alert>
+      )}
+
+      {view.model.startsWith("llama") && (
+        <p className="text-[12.5px] leading-relaxed text-muted" data-testid="builder-terms">
+          {t("look.builder.terms")}{" "}
+          {LLAMA_TERMS.map((term, i) => (
+            <React.Fragment key={term.href}>
+              {i > 0 && " · "}
+              <a href={term.href} target="_blank" rel="noreferrer" className="text-accent underline underline-offset-2">
+                {t(term.key)}
+              </a>
+            </React.Fragment>
+          ))}
+        </p>
       )}
     </div>
   );

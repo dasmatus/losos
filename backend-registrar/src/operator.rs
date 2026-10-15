@@ -370,11 +370,11 @@ mod tests {
             route(&opened(
                 "POST",
                 "/secrets",
-                serde_json::json!({"name": "claude-api-key", "value": "sk-ant-x"})
+                serde_json::json!({"name": "stripe-webhook-secret", "value": "whsec_x"})
             )),
             Ok(Call::SetSecret {
-                name: "claude-api-key".into(),
-                value: "sk-ant-x".into()
+                name: "stripe-webhook-secret".into(),
+                value: "whsec_x".into()
             })
         );
         assert_eq!(
@@ -456,10 +456,11 @@ mod tests {
 
     #[test]
     fn the_list_lines_become_rows() {
-        let rows =
-            parse_list("claude-api-key\t1\t1790000000\nstripe-secret-key\t0\t\nnot a line\n");
+        let rows = parse_list(
+            "stripe-webhook-secret\t1\t1790000000\nstripe-secret-key\t0\t\nnot a line\n",
+        );
         assert_eq!(rows.len(), 2);
-        assert_eq!(rows[0]["name"], "claude-api-key");
+        assert_eq!(rows[0]["name"], "stripe-webhook-secret");
         assert_eq!(rows[0]["sealed"], true);
         assert_eq!(rows[0]["updated"], 1_790_000_000);
         assert_eq!(rows[1]["sealed"], false);

@@ -148,16 +148,19 @@ fn logs_in_on_the_screen_opens_the_view_and_takes_a_hidden_value() {
     assert!(screen.contains("LosOS"), "{screen}");
 
     // A value typed without echo.
-    let (code, screen) = term.run("edge secret set claude-api-key", &["sk-hidden-42\r"]);
+    let (code, screen) = term.run(
+        "edge secret set stripe-webhook-secret",
+        &["whsec_hidden42\r"],
+    );
     assert_eq!(code, 0, "{screen}");
-    assert!(!screen.contains("sk-hidden-42"), "{screen}");
+    assert!(!screen.contains("whsec_hidden42"), "{screen}");
     let calls = edge.calls.lock().unwrap().clone();
     assert_eq!(
         calls.last().unwrap().2,
-        json!({ "name": "claude-api-key", "value": "sk-hidden-42" })
+        json!({ "name": "stripe-webhook-secret", "value": "whsec_hidden42" })
     );
 
     // Ctrl-C at the prompt is a cancel.
-    let (code, _) = term.run("edge secret set claude-api-key", &["\x03"]);
+    let (code, _) = term.run("edge secret set stripe-webhook-secret", &["\x03"]);
     assert_eq!(code, 130);
 }

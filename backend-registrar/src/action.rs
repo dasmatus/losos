@@ -34,7 +34,6 @@ pub enum Action {
     Uplink,
     Enrol,
     Lab,
-    Builder,
 }
 
 impl Action {
@@ -64,7 +63,6 @@ impl Action {
             Action::Uplink => "losos::uplink",
             Action::Enrol => "losos::enrol",
             Action::Lab => "losos::lab",
-            Action::Builder => "losos::builder",
         }
     }
 }
@@ -92,7 +90,6 @@ impl Display for Action {
             Action::Uplink => f.write_str("[uplink]"),
             Action::Enrol => f.write_str("[enrol]"),
             Action::Lab => f.write_str("[lab]"),
-            Action::Builder => f.write_str("[builder]"),
         }
     }
 }

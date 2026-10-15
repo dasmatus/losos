@@ -29,6 +29,7 @@ pub mod access;
 pub mod apps;
 pub mod backup;
 pub mod boxid;
+pub mod builder;
 pub mod catalogue;
 pub mod config_repo;
 pub mod dbus;

@@ -33,8 +33,8 @@ oddiele `/persist`.
 - [Trh](/in-depth/market.md). Predaj disku a CPU, ktoré zariadenie už poskytuje.
 - [Virtuálne stroje](/in-depth/virtual-machines.md). Prenájom strojov v mesh
   a hosťovanie strojov iných zariadení.
-- [Tvorca widgetov](/in-depth/widget-builder.md). AI agent napíše widget podľa
-  opisu, platí sa z predplateného zostatku.
+- [Tvorca widgetov](/in-depth/widget-builder.md). Jazykový model na zariadení
+  napíše widget podľa opisu.
 - [Master proxy](/in-depth/master-proxy.md). Prístup k zariadeniu z internetu bez
   otvorenia portu.
 - [Federácia edge](/in-depth/edge-federation.md). Vlastný edge v LAN, preposielaný cez oficiálne.

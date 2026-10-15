@@ -803,23 +803,13 @@ export function postMarketRpc(
 
 // ── Widget builder ────────────────────────────────────────────────────────
 
-/* A Claude agent on the edge writes a widget from the owner's description
- * (backend-registrar/src/builder.rs), relayed by lososd like the market. The
- * edge keeps the Anthropic key and a prepaid balance per box, topped up
- * through Stripe Checkout. Amounts are in the minor unit of `currency`;
- * prices are per million tokens with the edge's markup included. */
+/* A language model on this box writes a widget from the owner's description
+ * (backend/src/builder.rs, Ollama on loopback). Nothing leaves the box and a
+ * build costs nothing. A build takes minutes on the box's processor, so it
+ * runs in the background and the page polls it. */
 
-export interface BuilderPrice {
-  model: string;
-  input_per_million: number;
-  output_per_million: number;
-  markup_percent: number;
-  /** The most one build may cost. */
-  max_build: number;
-}
-
-export type BuildStatus = "running" | "done" | "failed";
-export type BuildFault = "noWidget" | "unusable" | "upstream";
+export type BuildStatus = "running" | "done" | "failed" | "stopped";
+export type BuildFault = "noWidget" | "unusable" | "upstream" | "memory";
 
 export interface BuildSummary {
   id: string;
@@ -828,45 +818,34 @@ export interface BuildSummary {
   revision: boolean;
   created_at: number;
   finished_at: number | null;
-  charged: number;
+  /** Lines of the answer written so far. */
+  lines: number;
+  /** The box found a mistake in the first answer and the model is writing
+   *  a second one. */
+  fixing: boolean;
   fault: BuildFault | null;
   has_source: boolean;
 }
 
-export interface BuildView extends BuildSummary {
-  /** The spending cap stopped the agent; the widget may be unfinished. */
+export interface BuildView extends Omit<BuildSummary, "has_source"> {
+  /** The answer ran into its length limit; the widget may be unfinished. */
   at_limit: boolean;
-  /** The widget's `index.html`; `files` has it with the rest. */
-  source: string | null;
-  /** Absent from an edge older than widgets with files. */
-  files?: WidgetFile[] | null;
-  /** What the agent says it made, in the page's language. */
+  files: WidgetFile[] | null;
+  /** What the model says it made, in the page's language. */
   notes: string | null;
 }
 
+/** Why the builder cannot take a build: the box runs none, the model is not
+ *  answering yet, or the box is still downloading it. */
+export type BuilderReason = "off" | "starting" | "downloading";
+
 export type BuilderResponse =
-  | { available: false; reason?: "noOfficialEdge" }
-  | {
-      available: true;
-      currency: string;
-      balance: number;
-      packs: number[];
-      price: BuilderPrice;
-      can_build: boolean;
-      builds: BuildSummary[];
-    };
+  | { available: false; reason: BuilderReason; model?: string }
+  | { available: true; model: string; builds: BuildSummary[] };
 
 /** GET /api/builder. */
 export function getBuilder(options: RequestOptions = {}): Promise<BuilderResponse> {
   return call<BuilderResponse>("/api/builder", options);
-}
-
-/** POST /api/builder/credits — a Stripe Checkout for one credit pack. */
-export function postBuilderCredit(
-  amount: number,
-  options: RequestOptions = {},
-): Promise<MarketActionResponse> {
-  return marketPost("/api/builder/credits", { amount }, options);
 }
 
 /** POST /api/builder/builds — start a build; `base` is the widget to change. */
@@ -885,6 +864,11 @@ export function postBuilderBuild(
 /** GET /api/builder/builds/{id}. */
 export function getBuilderBuild(id: string, options: RequestOptions = {}): Promise<BuildView> {
   return call<BuildView>(`/api/builder/builds/${encodeURIComponent(id)}`, options);
+}
+
+/** DELETE /api/builder/builds/{id} — stop a running build. */
+export function stopBuilderBuild(id: string, options: RequestOptions = {}): Promise<BuildView> {
+  return call<BuildView>(`/api/builder/builds/${encodeURIComponent(id)}`, { ...options, method: "DELETE" });
 }
 
 // ── Virtual machines ──────────────────────────────────────────────────────

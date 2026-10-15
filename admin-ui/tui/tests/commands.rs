@@ -25,7 +25,7 @@ fn edge_handler() -> Box<common::Handler> {
             200,
             json!([
                 { "name": "STRIPE_KEY", "sealed": true, "updated": 1_760_000_000 },
-                { "name": "CLAUDE_KEY", "sealed": false, "updated": null },
+                { "name": "stripe-webhook-secret", "sealed": false, "updated": null },
             ]),
         ),
         ("POST", "/secrets") => (200, json!({ "sealed": body["name"] })),
@@ -246,16 +246,19 @@ fn logs_in_to_an_edge_and_runs_the_edge_commands() {
         r.out
     );
 
-    let r = client.run(&["edge", "secret", "set", "CLAUDE_KEY"], "sk-secret\n");
+    let r = client.run(
+        &["edge", "secret", "set", "stripe-webhook-secret"],
+        "whsec_secret\n",
+    );
     assert_eq!(r.code, 0, "{}", r.err);
     let calls = edge.calls.lock().unwrap().clone();
     assert_eq!(
         calls.last().unwrap().2,
-        json!({ "name": "CLAUDE_KEY", "value": "sk-secret" })
+        json!({ "name": "stripe-webhook-secret", "value": "whsec_secret" })
     );
-    assert!(!r.out.contains("sk-secret"));
+    assert!(!r.out.contains("whsec_secret"));
 
-    let r = client.run(&["edge", "secret", "set", "CLAUDE_KEY"], "");
+    let r = client.run(&["edge", "secret", "set", "stripe-webhook-secret"], "");
     assert_eq!(r.code, 1, "an empty value is refused");
 
     let r = client.run(&["edge", "reconcile"], "");
