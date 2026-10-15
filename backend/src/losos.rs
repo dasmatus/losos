@@ -183,6 +183,25 @@ pub trait Losos {
     /// Delete the uploaded picture. Not an error when there is none.
     fn remove_background(&mut self) -> anyhow::Result<()>;
 
+    // ── The sidebar's pins ──────────────────────────────────────────────
+    // `crate::pins`: the list beside `state.json`, and the app password
+    // lososd lists the owner's LosOS cloud folders with.
+    /// The pins, or an empty list when there is none yet or it does not
+    /// parse.
+    fn load_pins(&mut self) -> anyhow::Result<crate::pins::Pins>;
+    fn save_pins(&mut self, pins: &crate::pins::Pins) -> anyhow::Result<()>;
+    /// The kept LosOS cloud app password, `None` before the first sign-in
+    /// with the password.
+    fn load_cloud_key(&mut self) -> anyhow::Result<Option<crate::pins::CloudKey>>;
+    /// Keep an app password, or forget it with `None`.
+    fn save_cloud_key(&mut self, key: Option<&crate::pins::CloudKey>) -> anyhow::Result<()>;
+    /// One request to LosOS cloud on loopback ([`crate::pins::request_bytes`]):
+    /// its status and body. `Err` when it could not be asked at all.
+    fn cloud_request(
+        &mut self,
+        request: &crate::pins::CloudRequest<'_>,
+    ) -> anyhow::Result<(u16, Vec<u8>)>;
+
     // ── The option document and the configuration repository ───────────
     // `crate::options` is the gate every Apply goes through; `crate::
     // config_repo` is the git history every change lands in. The git and
@@ -594,6 +613,7 @@ pub fn cmd_set_password<L: Losos>(l: &mut L, user: &str, password: &str) -> anyh
     let message = interpret_occ(&outcome).map_err(|e| anyhow::anyhow!(e))?;
     if outcome.code == 0 {
         sync_owner_password(l, user, &secret);
+        crate::pins::keep_cloud_key(l, user, &secret);
     }
 
     Ok(json!({
@@ -808,6 +828,9 @@ pub fn cmd_sign_in<L: Losos>(
             // LosOS Git may still be starting — and never a reason to refuse
             // a sign-in that LosOS cloud accepted.
             sync_owner_password(l, user, &secret);
+            // And the key the sidebar's pin picker lists LosOS cloud with,
+            // the same best effort (crate::pins says why it is minted here).
+            crate::pins::keep_cloud_key(l, user, &secret);
             Ok(json!({ "user": user, "token": token }))
         }
         LoginOutcome::Rejected => Err(WrongPassword.into()),
@@ -2148,6 +2171,24 @@ mod tests {
                 s: Option<&crate::setup::Secret>,
             ) -> anyhow::Result<(u16, String)> {
                 self.0.forgejo_request(op, s)
+            }
+            fn load_pins(&mut self) -> anyhow::Result<crate::pins::Pins> {
+                self.0.load_pins()
+            }
+            fn save_pins(&mut self, p: &crate::pins::Pins) -> anyhow::Result<()> {
+                self.0.save_pins(p)
+            }
+            fn load_cloud_key(&mut self) -> anyhow::Result<Option<crate::pins::CloudKey>> {
+                self.0.load_cloud_key()
+            }
+            fn save_cloud_key(&mut self, k: Option<&crate::pins::CloudKey>) -> anyhow::Result<()> {
+                self.0.save_cloud_key(k)
+            }
+            fn cloud_request(
+                &mut self,
+                r: &crate::pins::CloudRequest<'_>,
+            ) -> anyhow::Result<(u16, Vec<u8>)> {
+                self.0.cloud_request(r)
             }
             fn mint_secret(&mut self) -> anyhow::Result<crate::setup::Secret> {
                 self.0.mint_secret()

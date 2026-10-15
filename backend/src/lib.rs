@@ -51,6 +51,7 @@ pub mod model;
 pub mod monero_key;
 pub mod options;
 pub mod overrides;
+pub mod pins;
 pub mod receipt;
 pub mod recovery;
 pub mod setup;

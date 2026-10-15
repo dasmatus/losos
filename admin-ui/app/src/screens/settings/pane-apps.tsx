@@ -4,6 +4,8 @@ import {
   Alert01Icon,
   InformationCircleIcon,
   LinkSquare02Icon,
+  PinIcon,
+  PinOffIcon,
   Search01Icon,
 } from "@hugeicons/core-free-icons";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -37,6 +39,8 @@ import type { InstalledApp, ServiceMode } from "@/lib/api";
 import { useCatalogue, type CatalogueApp, type CatalogueState } from "./catalogue";
 import { InstallDialog, type InstallTarget } from "./install-dialog";
 import { useInstalledApps } from "./use-installed-apps";
+import { usePins, useSavePins } from "@/components/pins-dialog";
+import { isPinned, toggled } from "@/lib/pins";
 import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText, StackRow } from "./rows";
 import { SiteSettings } from "./site-settings";
 import type { SettingsForm } from "./use-settings-form";
@@ -488,6 +492,7 @@ function InstalledRow({
               <HugeiconsIcon icon={LinkSquare02Icon} size={13} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
             </a>
           )}
+          <InstalledPin release={record.release} />
           <Button size="sm" variant="secondary" disabled={disabled || busy} onClick={onChange}>
             {t("install.change")}
           </Button>
@@ -497,6 +502,31 @@ function InstalledRow({
         </div>
       </div>
     </StackRow>
+  );
+}
+
+/* Pin an installed app to the sidebar (lib/pins.ts); the pin opens it on
+ * its port once it runs, and this pane until then. */
+function InstalledPin({ release }: { release: string }) {
+  const t = useT();
+  const state = usePins();
+  const { busy, save } = useSavePins();
+  if (state.status !== "ready") return null;
+  const pin = { kind: "app", release } as const;
+  const pinned = isPinned(state.pins, pin);
+  return (
+    <Button
+      size="sm"
+      variant="ghost"
+      aria-pressed={pinned}
+      aria-label={t(pinned ? "pins.unpin" : "pins.pin", { name: release })}
+      disabled={busy || (!pinned && state.pins.length >= state.limit)}
+      onClick={() => void save(toggled(state.pins, pin))}
+      className={cn("gap-1.5", pinned && "text-accent")}
+    >
+      <HugeiconsIcon icon={pinned ? PinOffIcon : PinIcon} size={13} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+      {t(pinned ? "pins.unpinShort" : "pins.pinShort")}
+    </Button>
   );
 }
 

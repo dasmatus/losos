@@ -1,8 +1,11 @@
 import { Link } from "react-router-dom";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { PinIcon } from "@hugeicons/core-free-icons";
+import { usePins, useSavePins } from "@/components/pins-dialog";
 import { StatusDot } from "@/components/ui/badge";
 import type { AppTileModel } from "@/lib/apps";
 import { useT } from "@/lib/i18n-react";
+import { isPinned, toggled, type Pin } from "@/lib/pins";
 import { cn } from "@/lib/utils";
 
 /* One app on the homepage.
@@ -117,7 +120,8 @@ export function AppTile({ tile, index = 0 }: AppTileProps) {
   );
 
   return (
-    <li className={cn("animate-rise", staggerClass(index))}>
+    <li className={cn("group/tile relative animate-rise", staggerClass(index))}>
+      <TilePin pin={{ kind: "tile", app: app.id }} name={name} />
       {leavesAdmin ? (
         <a href={href} title={note} className={className}>
           {body}
@@ -128,6 +132,41 @@ export function AppTile({ tile, index = 0 }: AppTileProps) {
         </Link>
       )}
     </li>
+  );
+}
+
+/* Pin the tile's app to the sidebar (lib/pins.ts). A sibling of the link,
+ * never inside it: a button in a link is a click that does two things. It
+ * shows on hover and on keyboard focus, and stays shown, in the accent, on
+ * a tile that is pinned, so the grid says which ones are. Signed out, there
+ * is no list to change and no button. */
+function TilePin({ pin, name }: { pin: Pin; name: string }) {
+  const t = useT();
+  const state = usePins();
+  const { busy, save } = useSavePins();
+  if (state.status !== "ready") return null;
+  const pinned = isPinned(state.pins, pin);
+  const full = !pinned && state.pins.length >= state.limit;
+  return (
+    <button
+      type="button"
+      aria-pressed={pinned}
+      aria-label={t(pinned ? "pins.unpin" : "pins.pin", { name })}
+      title={full ? t("pins.full", { limit: state.limit }) : t(pinned ? "pins.unpin" : "pins.pin", { name })}
+      disabled={busy || full}
+      onClick={() => void save(toggled(state.pins, pin))}
+      className={cn(
+        "absolute top-0.5 left-1/2 z-10 flex size-[22px] -translate-x-[37px] items-center justify-center",
+        "rounded-full border bg-surface shadow-card transition-[opacity,color,border-color] duration-150",
+        "focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-accent/40 focus-visible:outline-none",
+        "disabled:cursor-not-allowed",
+        pinned
+          ? "border-accent/45 text-accent opacity-100"
+          : "border-line text-muted opacity-0 group-hover/tile:opacity-100 hover:text-accent",
+      )}
+    >
+      <HugeiconsIcon icon={PinIcon} size={12} strokeWidth={1.75} color="currentColor" aria-hidden="true" />
+    </button>
   );
 }
 
