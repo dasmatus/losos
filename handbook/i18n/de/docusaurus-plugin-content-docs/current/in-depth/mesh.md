@@ -110,6 +110,15 @@ sie aus ist; fscrypt schützt dieses Verzeichnis, wenn sie läuft.
 
 Beigesteuerte Dateien sind pro Maschine in eigenen Namespaces abgelegt.
 
+Die Edge betreibt Longhorn im Mesh-Cluster, installiert aus einem
+festgelegten Chart (`losos.edge.cluster.longhornChart`). Die Datenträger
+liegen nur auf den Boxen: Eine Box, die dem Mesh beitritt, bekommt das Label
+`node.longhorn.io/create-default-disk=true`, und die Edge, die es nicht hat,
+speichert keine Replikate. Speicherbestellungen aus dem Markt beziehen ihre
+Volumes aus Longhorns Storage-Class `longhorn`. Longhorn auf der Edge sucht
+nicht nach Updates, sendet keine Nutzungsdaten, und seine Weboberfläche wird
+nicht bereitgestellt.
+
 ## Verkaufen
 
 Speicher und Rechenleistung lassen sich über den optionalen Marktplatz auch

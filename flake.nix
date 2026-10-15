@@ -483,6 +483,16 @@
             (self.nixosConfigurations.install.extendModules {
               modules = [ { losos.sharingMyStorage = nixpkgs.lib.mkForce on; } ];
             }).config;
+          mesh =
+            (self.nixosConfigurations.install.extendModules {
+              modules = [
+                {
+                  losos.proxy.enable = nixpkgs.lib.mkForce true;
+                  losos.hostName = nixpkgs.lib.mkForce "invariants";
+                  losos.cluster.enable = nixpkgs.lib.mkForce true;
+                }
+              ];
+            }).config;
         };
       };
     };

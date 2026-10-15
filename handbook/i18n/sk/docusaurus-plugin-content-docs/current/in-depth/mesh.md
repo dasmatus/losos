@@ -103,6 +103,14 @@ chráni zariadenie, keď je vypnuté; fscrypt chráni tento adresár, keď je za
 
 Prispené súbory sú oddelené menným priestorom podľa stroja.
 
+Edge spúšťa v mesh klastri Longhorn, nainštalovaný zo zafixovaného chartu
+(`losos.edge.cluster.longhornChart`). Jeho disky majú len zariadenia:
+zariadenie, ktoré sa pripojí do mesh, dostane štítok
+`node.longhorn.io/create-default-disk=true`, a edge, ktorý ho nemá, žiadne
+repliky neukladá. Objednávky úložiska z trhu si berú zväzky z triedy
+úložiska `longhorn`. Longhorn na edge nekontroluje aktualizácie, neposiela
+štatistiky používania a jeho webové rozhranie sa nenasadzuje.
+
 ## Predaj
 
 Úložisko aj výpočtový výkon sa dajú predávať aj iným zariadeniam cez voliteľný

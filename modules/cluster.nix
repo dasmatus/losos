@@ -626,7 +626,14 @@ in
         # The edge's reconciler and the compute-window taint address this box by
         # its appliance id; the label makes that id selectable from inside the
         # cluster without parsing node names.
-        nodeLabel = [ "losos.dev/appliance=${applianceId}" ];
+        #
+        # node.longhorn.io/create-default-disk is what gives this box a
+        # Longhorn disk: the edge's chart creates disks only on nodes that
+        # carry it, so the edge itself, a small VPS, stores no replicas.
+        nodeLabel = [
+          "losos.dev/appliance=${applianceId}"
+          "node.longhorn.io/create-default-disk=true"
+        ];
 
         # The one genuine collision between the two instances. A non-empty
         # extraKubeletConfig makes the generator emit
@@ -837,6 +844,18 @@ in
       ];
 
       environment.systemPackages = [ pkgs.nfs-utils ];
+
+      # Longhorn runs iscsiadm and mount.nfs in the host's mount namespace
+      # with an FHS PATH, which on NixOS finds neither. /usr/local/sbin is on
+      # that PATH and empty on NixOS, so it points at the system profile. The
+      # edge carries the same rule in modules/edge.nix.
+      systemd.tmpfiles.rules = [ "L+ /usr/local/sbin - - - - /run/current-system/sw/bin" ];
+
+      # rke2's CIS sysctls set vm.overcommit_memory to the integer 1 and the
+      # Nextcloud stack's redis sets it to the string "1". Same value, but the
+      # option is unique, so without this a box that joins the mesh does not
+      # build.
+      boot.kernel.sysctl."vm.overcommit_memory" = lib.mkForce 1;
     })
 
     # ── Virtual machines for the mesh market ──────────────────────────────
