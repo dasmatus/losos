@@ -167,9 +167,7 @@ export function toLiteral(editor: OptionEditor, value: OptionValue): string | nu
 /* The sixteen options the settings form edits on its own panes, by their
  * Nix name. The Advanced pane shows each one with its value and a link to
  * the pane that owns it, rather than a second editor that could disagree
- * with the first — unless the owning pane is planned (Market), in which
- * case the Advanced row is the one place the option can be changed, and it
- * edits the form's own field so the sixteen lines carry it. */
+ * with the first. */
 export interface OwnedOption {
   key: keyof SettingsResponse;
   pane: SettingsPaneId;
@@ -213,28 +211,3 @@ export const ON_PANE: Readonly<Record<string, SettingsPaneId>> = {
   "forgejo.site.keepEmailPrivate": "apps",
   "forgejo.site.pushCreate": "apps",
 };
-
-/** The form field's value as the literal the Advanced row shows. */
-export function ownedLiteral(editor: OptionEditor, value: SettingsResponse[keyof SettingsResponse]): string {
-  if (typeof value === "number" && Number.isNaN(value)) return "";
-  return toLiteral(editor, value) ?? String(value);
-}
-
-/** A literal as the form field's value, for an owned option edited from the
- *  Advanced pane. Null when the literal is not of the field's shape. */
-export function ownedValue(
-  editor: OptionEditor,
-  raw: string,
-): SettingsResponse[keyof SettingsResponse] | null {
-  switch (editor.kind) {
-    case "bool":
-      return raw === "true" ? true : raw === "false" ? false : null;
-    case "int":
-      return /^-?\d+$/.test(raw) ? Number(raw) : null;
-    case "str":
-    case "enum":
-      return nixUnquote(raw);
-    default:
-      return null;
-  }
-}

@@ -110,10 +110,3 @@ function fromStatus(status: number): string {
   if (status >= 500) return t("widgets.sandbox.busy");
   return t("widgets.sandbox.noAnswer");
 }
-
-/** The two namespaces a custom expression is allowed to CALL into. Passed to
- *  the evaluator by identity — see expr.ts, which checks the object, not the
- *  name it was reached through. */
-export function callableNamespaces(losos: LososApi): readonly unknown[] {
-  return [losos.stat, losos.fmt];
-}

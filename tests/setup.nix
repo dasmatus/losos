@@ -181,9 +181,8 @@ pkgs.testers.nixosTest {
             assert got == "403", f"loopback {path}: expected 403, got {got}"
             got = code(f"http://{LAN}{path}", source=CLIENT)
             assert got == "200", f"LAN {path}: expected 200, got {got}"
-            # The copy of lanOnly in modules/setup.nix carries the same two
-            # refusals as containers.nix: the box posing as the LAN, and the
-            # mesh's pod network.
+            # The guard (modules/lan-only.nix) carries two refusals besides
+            # loopback: the box posing as the LAN, and the mesh's pod network.
             got = code(f"http://{LAN}{path}", source=LAN)
             assert got == "403", f"box-as-LAN {path}: expected 403, got {got}"
 

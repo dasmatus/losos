@@ -43,16 +43,6 @@ export function TableBody({ className, ...props }: React.ComponentPropsWithoutRe
   );
 }
 
-export function TableFooter({ className, ...props }: React.ComponentPropsWithoutRef<"tfoot">) {
-  return (
-    <tfoot
-      data-slot="table-footer"
-      className={cn("border-t border-hair bg-sunk/50 font-medium [&>tr]:last:border-b-0", className)}
-      {...props}
-    />
-  );
-}
-
 export function TableRow({ className, ...props }: React.ComponentPropsWithoutRef<"tr">) {
   return (
     <tr
@@ -90,16 +80,6 @@ export function TableCell({ className, ...props }: React.ComponentPropsWithoutRe
         "[&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]",
         className,
       )}
-      {...props}
-    />
-  );
-}
-
-export function TableCaption({ className, ...props }: React.ComponentPropsWithoutRef<"caption">) {
-  return (
-    <caption
-      data-slot="table-caption"
-      className={cn("mt-3 text-[12.5px] leading-snug text-muted", className)}
       {...props}
     />
   );

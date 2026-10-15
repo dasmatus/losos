@@ -424,149 +424,112 @@ let
       };
     };
 
-  nextcloudPod = staticPod {
-    name = "nextcloud";
-    image = imageRef nextcloudImage;
-    uid = nextcloudUid;
-    groups = lib.optional (redisGid != null) redisGid;
-    mounts = [
-      {
-        name = "state";
-        mountPath = nextcloudState;
+  # One host path in a pod: the volume and where the container sees it.
+  bind =
+    {
+      name,
+      path,
+      at ? path,
+      type ? "Directory",
+      readOnly ? false,
+    }:
+    {
+      mount = {
+        inherit name;
+        mountPath = at;
       }
-      {
-        name = "conf";
-        mountPath = "/etc/losos/nextcloud";
-        readOnly = true;
-      }
-      {
-        name = "adminpass";
-        mountPath = adminpassFile;
-        readOnly = true;
-      }
-      {
-        name = "publicnames";
-        mountPath = "/etc/losos/public-names";
-        readOnly = true;
-      }
-      {
-        name = "pgsock";
-        mountPath = pgSocketDir;
-      }
-      {
-        name = "redissock";
-        mountPath = redisSocketDir;
-      }
-    ]
-    ++ lib.optional gpu {
-      name = "dri";
-      mountPath = "/dev/dri";
-    };
-    volumes = [
-      {
-        name = "state";
-        hostPath = {
-          path = nextcloudState;
-          type = "Directory";
-        };
-      }
-      {
-        name = "conf";
-        hostPath = {
-          path = "${nextcloudConf}";
-          type = "Directory";
-        };
-      }
-      {
-        # type: File, so a missing password file is a loud pod failure instead
-        # of an empty directory the kubelet helpfully creates in its place.
-        name = "adminpass";
-        hostPath = {
-          path = adminpassFile;
-          type = "File";
-        };
-      }
-      {
-        # A directory, not the file: lososd replaces the file by rename, and
-        # a file bind mount would keep showing the pod the old inode.
-        name = "publicnames";
-        hostPath = {
-          path = publicNamesDir;
-          type = "Directory";
-        };
-      }
-      {
-        name = "pgsock";
-        hostPath = {
-          path = pgSocketDir;
-          type = "Directory";
-        };
-      }
-      {
-        name = "redissock";
-        hostPath = {
-          path = redisSocketDir;
-          type = "Directory";
-        };
-      }
-    ]
-    # Mounting the device nodes is necessary but may not be sufficient: the
-    # nspawn path also granted `DeviceAllow = char-drm rw` on the unit, and a pod
-    # has no equivalent knob short of privileged: true or a device plugin. If
-    # VA-API comes back "permission denied" inside the pod, that cgroup device
-    # rule — not this mount — is what is missing.
-    ++ lib.optional gpu {
-      name = "dri";
-      hostPath = {
-        path = "/dev/dri";
-        type = "Directory";
+      // lib.optionalAttrs readOnly { inherit readOnly; };
+      volume = {
+        inherit name;
+        hostPath = { inherit path type; };
       };
     };
+  binds = list: {
+    mounts = map (b: b.mount) list;
+    volumes = map (b: b.volume) list;
   };
 
-  forgejoPod = staticPod {
-    name = "forgejo";
-    image = imageRef forgejoImage;
-    uid = forgejoUid;
-    mounts = [
-      {
-        name = "state";
-        mountPath = forgejoState;
-      }
-      {
-        name = "conf";
-        mountPath = "/etc/losos/forgejo";
-        readOnly = true;
-      }
-      {
-        name = "pgsock";
-        mountPath = pgSocketDir;
-      }
-    ];
-    volumes = [
-      {
-        name = "state";
-        hostPath = {
-          path = forgejoState;
-          type = "Directory";
-        };
-      }
-      {
-        name = "conf";
-        hostPath = {
-          path = "${forgejoConf}";
-          type = "Directory";
-        };
-      }
-      {
-        name = "pgsock";
-        hostPath = {
+  nextcloudPod = staticPod (
+    {
+      name = "nextcloud";
+      image = imageRef nextcloudImage;
+      uid = nextcloudUid;
+      groups = lib.optional (redisGid != null) redisGid;
+    }
+    // binds (
+      map bind [
+        {
+          name = "state";
+          path = nextcloudState;
+        }
+        {
+          name = "conf";
+          path = "${nextcloudConf}";
+          at = "/etc/losos/nextcloud";
+          readOnly = true;
+        }
+        # type: File, so a missing password file is a loud pod failure instead
+        # of an empty directory the kubelet helpfully creates in its place.
+        {
+          name = "adminpass";
+          path = adminpassFile;
+          type = "File";
+          readOnly = true;
+        }
+        # A directory, not the file: lososd replaces the file by rename, and
+        # a file bind mount would keep showing the pod the old inode.
+        {
+          name = "publicnames";
+          path = publicNamesDir;
+          at = "/etc/losos/public-names";
+          readOnly = true;
+        }
+        {
+          name = "pgsock";
           path = pgSocketDir;
-          type = "Directory";
-        };
-      }
-    ];
-  };
+        }
+        {
+          name = "redissock";
+          path = redisSocketDir;
+        }
+      ]
+      # Mounting the device nodes is necessary but may not be sufficient: the
+      # nspawn path also granted `DeviceAllow = char-drm rw` on the unit, and a
+      # pod has no equivalent knob short of privileged: true or a device
+      # plugin. If VA-API comes back "permission denied" inside the pod, that
+      # cgroup device rule — not this mount — is what is missing.
+      ++ lib.optional gpu (bind {
+        name = "dri";
+        path = "/dev/dri";
+      })
+    )
+  );
+
+  forgejoPod = staticPod (
+    {
+      name = "forgejo";
+      image = imageRef forgejoImage;
+      uid = forgejoUid;
+    }
+    // binds (
+      map bind [
+        {
+          name = "state";
+          path = forgejoState;
+        }
+        {
+          name = "conf";
+          path = "${forgejoConf}";
+          at = "/etc/losos/forgejo";
+          readOnly = true;
+        }
+        {
+          name = "pgsock";
+          path = pgSocketDir;
+        }
+      ]
+    )
+  );
 in
 {
   assertions = [

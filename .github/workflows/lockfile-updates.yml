@@ -27,7 +27,6 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup-nix
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
           cache-url: ${{ vars.LOSOS_PROXY_URL }}
           public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
       # flake.lock and devenv.{yaml,lock} are coupled: the flake's nixpkgs rev

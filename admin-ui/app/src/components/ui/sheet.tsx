@@ -17,14 +17,6 @@ function Sheet(props: SheetPrimitive.Root.Props) {
   return <SheetPrimitive.Root data-slot="sheet" {...props} />;
 }
 
-function SheetTrigger(props: SheetPrimitive.Trigger.Props) {
-  return <SheetPrimitive.Trigger data-slot="sheet-trigger" {...props} />;
-}
-
-function SheetClose(props: SheetPrimitive.Close.Props) {
-  return <SheetPrimitive.Close data-slot="sheet-close" {...props} />;
-}
-
 const SIDE_CLASSES = {
   left: "inset-y-0 left-0 h-full w-3/4 max-w-[300px] border-r data-starting-style:-translate-x-full data-ending-style:-translate-x-full",
   right: "inset-y-0 right-0 h-full w-3/4 max-w-[300px] border-l data-starting-style:translate-x-full data-ending-style:translate-x-full",
@@ -103,4 +95,4 @@ function SheetDescription({ className, ...props }: SheetPrimitive.Description.Pr
   );
 }
 
-export { Sheet, SheetTrigger, SheetClose, SheetContent, SheetHeader, SheetTitle, SheetDescription };
+export { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription };

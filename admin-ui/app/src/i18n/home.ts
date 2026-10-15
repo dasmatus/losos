@@ -58,13 +58,6 @@ export default defineMessages({
     de: "Alles, was du hier ablegst, bleibt auf dieser Box. Nichts wird anderswohin kopiert.",
   },
 
-  // ── Widget slot ─────────────────────────────────────────────────────────
-  "home.widgets.placeholder": {
-    en: "Widgets appear here.",
-    sk: "Tu sa zobrazia widgety.",
-    de: "Hier erscheinen Widgets.",
-  },
-
   // ── App grid ────────────────────────────────────────────────────────────
   "home.grid.label": {
     en: "Apps on this box",

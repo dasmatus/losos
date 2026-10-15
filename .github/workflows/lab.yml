@@ -51,7 +51,6 @@ jobs:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-nix
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
           cache-url: ${{ vars.LOSOS_PROXY_URL }}
           public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
       - uses: actions/setup-node@v7

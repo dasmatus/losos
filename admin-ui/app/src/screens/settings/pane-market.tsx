@@ -46,8 +46,7 @@ import { COIN_NAMES } from "./coin-pay";
  *
  * The first group is the disk-sharing switch (`sharingMyStorage`), moved here
  * from the Storage pane: lending disk to other boxes and being paid for it
- * are one decision, so they sit on one pane, and while the pane is planned
- * (panes.ts) the switch is out of reach with it. It renders in every state
+ * are one decision, so they sit on one pane. It renders in every state
  * below, before the market has answered and whether or not it is available,
  * because it is a setting of this box, not something the edge serves.
  *

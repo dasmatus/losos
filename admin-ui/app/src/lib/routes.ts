@@ -11,8 +11,8 @@ import { isSettingsPaneId, type SettingsPaneId } from "@/screens/settings/panes"
 const TOP_LEVEL_PANES: readonly SettingsPaneId[] = ["storage", "mesh", "machines", "apps"];
 
 /* What /settings opens: the first entry under Settings in the sidebar. A
- * segment that names no pane that can be opened (a typo, or the planned
- * market) lands here too, never on a blank page. */
+ * segment that names no pane (a typo) lands here too, never on a blank
+ * page. */
 export const SETTINGS_LANDING: SettingsPaneId = "network";
 
 export function paneHref(pane: SettingsPaneId): string {

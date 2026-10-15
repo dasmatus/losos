@@ -137,16 +137,7 @@ let
   #
   # (A LAN that genuinely numbers itself inside RFC1918 is the normal case and
   # is what the allows are for; there is no longer a carve-out to collide with.)
-  lanOnly = ''
-    if ($remote_addr = $server_addr) {
-      return 403;
-    }
-    deny 10.42.0.0/16;
-    allow 10.0.0.0/8;
-    allow 172.16.0.0/12;
-    allow 192.168.0.0/16;
-    deny all;
-  '';
+  lanOnly = import ./lan-only.nix;
 
   # ── Security response headers ─────────────────────────────────────────────
   # The admin UI, /api/, /nextcloud and /forgejo/ share one origin by design,
@@ -442,6 +433,44 @@ in
             tryFiles = "$uri =404";
             extraConfig = lanOnly;
           };
+          "/api/" = {
+            proxyPass = "http://127.0.0.1:${toString adminApiPort}";
+            proxyWebsockets = true;
+            # lososd only sees nginx as its peer; it throttles and audits by
+            # this header instead. nginx overwrites any client-supplied value.
+            extraConfig = ''
+              ${lanOnly}
+              proxy_set_header X-Real-IP $remote_addr;
+              # lososd answers most calls in milliseconds, but the first
+              # claim runs `occ user:resetpassword` inside a pod that is
+              # still warming up, and under emulation that outlived the
+              # 60 s nginx defaults to. nginx answered 504 and closed the
+              # connection while lososd went on to finish: password set, box
+              # claimed, and the admin key — handed out exactly once, in
+              # that reply — delivered to nobody. Ten minutes is longer than
+              # any call here takes on real hardware; the replay window in
+              # backend/src/receipt.rs covers the rest.
+              proxy_read_timeout 600s;
+              proxy_send_timeout 600s;
+            '';
+          };
+          # The owner's own disk image for a market machine: gigabytes,
+          # streamed through lososd to the edge (backend/src/vm_upload.rs),
+          # which holds it to its own size limit. Unbuffered, so nginx does
+          # not spool the file to disk first, and with no body cap of its
+          # own. The same LAN-only guard and the same lososd as /api/.
+          "= /api/vms/images" = {
+            proxyPass = "http://127.0.0.1:${toString adminApiPort}";
+            extraConfig = ''
+              ${lanOnly}
+              proxy_set_header X-Real-IP $remote_addr;
+              client_max_body_size 0;
+              proxy_request_buffering off;
+              proxy_http_version 1.1;
+              proxy_read_timeout 6h;
+              proxy_send_timeout 6h;
+            '';
+          };
         })
         (lib.mkIf labEnabled {
           # LosOS Lab: lab/index.html in the admin UI's bundle, on real paths
@@ -507,44 +536,6 @@ in
             extraConfig = ''
               ${lanOnly}
               error_page 404 /handbook/404.html;
-            '';
-          };
-          "/api/" = {
-            proxyPass = "http://127.0.0.1:${toString adminApiPort}";
-            proxyWebsockets = true;
-            # lososd only sees nginx as its peer; it throttles and audits by
-            # this header instead. nginx overwrites any client-supplied value.
-            extraConfig = ''
-              ${lanOnly}
-              proxy_set_header X-Real-IP $remote_addr;
-              # lososd answers most calls in milliseconds, but the first
-              # claim runs `occ user:resetpassword` inside a pod that is
-              # still warming up, and under emulation that outlived the
-              # 60 s nginx defaults to. nginx answered 504 and closed the
-              # connection while lososd went on to finish: password set, box
-              # claimed, and the admin key — handed out exactly once, in
-              # that reply — delivered to nobody. Ten minutes is longer than
-              # any call here takes on real hardware; the replay window in
-              # backend/src/receipt.rs covers the rest.
-              proxy_read_timeout 600s;
-              proxy_send_timeout 600s;
-            '';
-          };
-          # The owner's own disk image for a market machine: gigabytes,
-          # streamed through lososd to the edge (backend/src/vm_upload.rs),
-          # which holds it to its own size limit. Unbuffered, so nginx does
-          # not spool the file to disk first, and with no body cap of its
-          # own. The same LAN-only guard and the same lososd as /api/.
-          "= /api/vms/images" = {
-            proxyPass = "http://127.0.0.1:${toString adminApiPort}";
-            extraConfig = ''
-              ${lanOnly}
-              proxy_set_header X-Real-IP $remote_addr;
-              client_max_body_size 0;
-              proxy_request_buffering off;
-              proxy_http_version 1.1;
-              proxy_read_timeout 6h;
-              proxy_send_timeout 6h;
             '';
           };
         })

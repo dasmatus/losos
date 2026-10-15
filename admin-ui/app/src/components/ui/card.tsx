@@ -28,12 +28,6 @@ export function CardTitle({ className, ...props }: React.ComponentPropsWithoutRe
   );
 }
 
-export function CardDescription({ className, ...props }: React.ComponentPropsWithoutRef<"p">) {
-  return (
-    <p data-slot="card-description" className={cn("text-[13px] leading-snug text-muted", className)} {...props} />
-  );
-}
-
 export function CardContent({ className, ...props }: React.ComponentPropsWithoutRef<"div">) {
   return <div data-slot="card-content" className={cn("px-5 pb-5", className)} {...props} />;
 }
@@ -43,21 +37,6 @@ export function CardFooter({ className, ...props }: React.ComponentPropsWithoutR
     <div
       data-slot="card-footer"
       className={cn("flex items-center gap-2 border-t border-hair px-5 py-3.5", className)}
-      {...props}
-    />
-  );
-}
-
-/* A row inside a card, the settings-list shape: label on the left, control on
- * the right, hairline between rows and none after the last. */
-export function CardRow({ className, ...props }: React.ComponentPropsWithoutRef<"div">) {
-  return (
-    <div
-      className={cn(
-        "flex items-center justify-between gap-4 px-5 py-3.5",
-        "border-b border-hair last:border-b-0",
-        className,
-      )}
       {...props}
     />
   );
