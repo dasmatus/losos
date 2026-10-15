@@ -260,7 +260,7 @@ objavia, a ktoré Forgejo servíruje v koreni hostiteľa, nie pod `ROOT_URL`;
 nie sú chránené ochranou „len LAN“, rovnako ako `/forgejo/`. Dosah sa riadi
 `ROOT_URL`: cez edge je to `https://<proxy hostname>/forgejo/` a federovať
 so zariadením môže akýkoľvek server; na zariadení len v LAN je to
-`http://<host>.local/forgejo/`, takže môžu iba iné zariadenia v tej istej
+`https://<host>.local/forgejo/`, takže môžu iba iné zariadenia v tej istej
 LAN. `tests/forgejo-federation.nix` spustí skutočný Forgejo a opýta sa ho, so
 zapnutým a potom vypnutým zdieľaním.
 

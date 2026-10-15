@@ -634,7 +634,7 @@ await check('a 409 from the claim is shown and not asked again', async () => {
 await check('step 3 hides the frame and keeps reloading it until the files app answers, and signs in only on a real session', async () => {
   const { page } = await open({ claimed: false, ready: true });
   let hits = 0;
-  await page.route('**/nextcloud', async (route) => {
+  await page.route('**/nextcloud/', async (route) => {
     hits += 1;
     if (hits <= 2) {
       return route.fulfill({ status: 502, contentType: 'text/html', body: '<html><head><title>502 Bad Gateway</title></head><body><center><h1>502 Bad Gateway</h1></center><hr><center>nginx</center></body></html>' });
@@ -691,7 +691,7 @@ await check('step 3 hides the frame and keeps reloading it until the files app a
 
 await check('Finish hands the owner to the app with the tour open, and the tour waits for them through a reload', async () => {
   const { page, errors } = await open({ claimed: false, ready: true });
-  await page.route('**/nextcloud', (route) =>
+  await page.route('**/nextcloud/', (route) =>
     route.fulfill({ status: 200, contentType: 'text/html', body: '<html><head data-requesttoken="tok" data-user="notshared"><title>Files</title></head><body>files</body></html>' }),
   );
   await page.getByRole('button', { name: /^Continue$/ }).click();
@@ -726,7 +726,7 @@ await check('step 3 lets a slow first answer from the files app arrive instead o
   // previous load was still waiting for its first byte, and a navigation that
   // never commits never replaces the error page the watcher keeps reading).
   let hits = 0;
-  await page.route('**/nextcloud', async (route) => {
+  await page.route('**/nextcloud/', async (route) => {
     hits += 1;
     if (hits === 1) {
       return route.fulfill({ status: 502, contentType: 'text/html', body: '<html><head><title>502 Bad Gateway</title></head><body><center><h1>502 Bad Gateway</h1></center><hr><center>nginx</center></body></html>' });
