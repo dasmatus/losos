@@ -113,7 +113,7 @@ function PaletteBody({ initial }: { initial: string }) {
   push("apps", rank(appItems(), query));
   push(
     "files",
-    remoteItems(files, (file) => ({
+    remoteItems(files, query, (file) => ({
       id: `file-${file.id}`,
       group: "files",
       title: file.name,
@@ -130,7 +130,7 @@ function PaletteBody({ initial }: { initial: string }) {
   );
   push(
     "repos",
-    remoteItems(repos, (repo) => ({
+    remoteItems(repos, query, (repo) => ({
       id: `repo-${repo.owner}-${repo.name}`,
       group: "repos",
       title: `${repo.owner}/${repo.name}`,
@@ -148,7 +148,7 @@ function PaletteBody({ initial }: { initial: string }) {
     "install",
     // A hit with nowhere to fetch it from has no Install button on the pane
     // either (install-dialog.tsx), so it is not offered here.
-    remoteItems(install, (app) => ({
+    remoteItems(install, query, (app) => ({
       id: `install-${app.id}`,
       group: "install",
       title: app.name,
@@ -360,8 +360,19 @@ function go(target: Target, newTab: boolean, navigate: ReturnType<typeof useNavi
   }
 }
 
-function remoteItems<T>(remote: Remote<T>, toItem: (value: T) => Item, keep: (value: T) => boolean = () => true): Item[] {
-  return remote.kind === "ready" ? remote.items.filter(keep).map(toItem) : [];
+/* A remote group's rows. An answer to an earlier query stays on screen
+ * while the next is on its way, narrowed to what is typed now, so the list
+ * does not blink at every key and Enter never opens a row that no longer
+ * matches. */
+function remoteItems<T>(
+  remote: Remote<T>,
+  query: string,
+  toItem: (value: T) => Item,
+  keep: (value: T) => boolean = () => true,
+): Item[] {
+  if (remote.kind !== "ready") return [];
+  const items = remote.items.filter(keep).map(toItem);
+  return remote.query === query.trim() ? items : rank(items, query);
 }
 
 interface NoteKeys {

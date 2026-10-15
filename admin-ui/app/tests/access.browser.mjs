@@ -126,11 +126,14 @@ await check('the sidebar lists Access tokens right after Security, and search fi
   const labels = await nav(page).getByRole('link').allInnerTexts();
   const at = labels.findIndex((l) => l.trim() === 'Security');
   assert.equal(labels[at + 1]?.trim(), 'Access tokens', `after Security: ${labels[at + 1]}`);
+  // The sidebar's search box opens the command palette (src/palette/).
+  await nav(page).getByRole('button', { name: /^Search or jump to/ }).click();
+  const box = page.getByRole('combobox', { name: /^Search pages/ });
   for (const word of ['gpg', 'terminal', 'token']) {
-    await nav(page).getByRole('searchbox').fill(word);
-    await nav(page).getByRole('link', { name: 'Access tokens', exact: true }).waitFor({ timeout: 2000 });
+    await box.fill(word);
+    await page.getByRole('option', { name: /^Access tokens/ }).waitFor({ timeout: 2000 });
   }
-  await nav(page).getByRole('link', { name: 'Access tokens', exact: true }).click();
+  await page.getByRole('option', { name: /^Access tokens/ }).click();
   await page.waitForURL(origin + '/settings/access');
   await page.getByRole('heading', { name: 'Access tokens', level: 1 }).waitFor();
   await context.close();

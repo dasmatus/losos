@@ -38,7 +38,9 @@ export type Blocked = "signIn" | "notUp" | "noGit";
 export type Remote<T> =
   | { kind: "idle" }
   | { kind: "loading" }
-  | { kind: "ready"; items: readonly T[] }
+  /** `query` is what the items answer; while the next answer is on its way
+   *  the palette keeps them, narrowed to what is typed now. */
+  | { kind: "ready"; items: readonly T[]; query: string }
   | { kind: "blocked"; reason: Blocked }
   | { kind: "absent" }
   | { kind: "failed" };
@@ -127,7 +129,11 @@ export function useRemote<T>(
           try {
             const answer = await fetcher(trimmed, controller.signal);
             if (controller.signal.aborted) return;
-            setState("blocked" in answer ? { kind: "blocked", reason: answer.blocked } : { kind: "ready", items: answer.items });
+            setState(
+              "blocked" in answer
+                ? { kind: "blocked", reason: answer.blocked }
+                : { kind: "ready", items: answer.items, query: trimmed },
+            );
           } catch (error) {
             if (isAbort(error) || controller.signal.aborted) return;
             if (isUnauthorized(error)) return setState({ kind: "idle" });
