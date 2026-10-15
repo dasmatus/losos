@@ -90,6 +90,9 @@ let
           # trusted_domains reads it to accept the box's own IP address.
           locations."/".extraConfig =
             ''return 200 "stub-nextcloud own-address=$http_x_losos_server_addr\n";'';
+          # Apache's directory redirect, as the pod sends it: absolute and
+          # http, whatever scheme the browser used.
+          locations."= /nextcloud/dir".extraConfig = ''return 301 http://$http_host/nextcloud/dir/;'';
         };
         "stub-forgejo" = {
           listen = [
@@ -357,6 +360,13 @@ pkgs.testers.nixosTest {
         lan = noadmin.succeed(f"curl -s http://{LAN}/nextcloud")
         assert f"own-address={LAN}" in lan, f"LAN address not forwarded: {lan!r}"
         assert "stub-forgejo" in appliance.succeed("curl -s http://127.0.0.1/forgejo/")
+        # The pod's absolute http redirect reaches the browser as a path, so
+        # a page opened over https stays on https (the wizard's frame is
+        # refused by the admin CSP otherwise).
+        moved = appliance.succeed(
+            "curl -s -o /dev/null -w '%header{location}' -H 'Host: mattbox.local' http://127.0.0.1/nextcloud/dir"
+        ).strip()
+        assert moved == "/nextcloud/dir/", f"absolute redirect passed through: {moved!r}"
 
     with subtest("federation's two /.well-known addresses reach Forgejo, nothing else does"):
         # Other Forgejo servers discover this one at the host's root, not

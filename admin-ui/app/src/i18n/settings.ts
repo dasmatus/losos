@@ -138,9 +138,9 @@ export default defineMessages({
   },
   "settings.panes.advanced.label": { en: "Advanced", sk: "Rozšírené", de: "Erweitert" },
   "settings.panes.advanced.summary": {
-    en: "Every option this box declares, with a typed editor for each — the ones the other panes do not show.",
-    sk: "Každá možnosť, ktorú toto zariadenie deklaruje, s typovaným editorom pre každú — aj tie, ktoré ostatné panely nezobrazujú.",
-    de: "Jede Option, die diese Box deklariert, mit einem passenden Editor — auch die, die die anderen Bereiche nicht zeigen.",
+    en: "Every option this box declares, with a typed editor for each, including the ones the other panes do not show.",
+    sk: "Každá možnosť, ktorú toto zariadenie deklaruje, s typovaným editorom pre každú, aj tie, ktoré ostatné panely nezobrazujú.",
+    de: "Jede Option, die diese Box deklariert, mit einem passenden Editor, auch die, die die anderen Bereiche nicht zeigen.",
   },
   "settings.panes.advanced.keywords": {
     en: "",
