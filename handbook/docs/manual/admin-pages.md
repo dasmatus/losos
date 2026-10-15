@@ -12,8 +12,9 @@ change.
 
 ## The sections
 
-The sidebar on the left has five sections. Collapsed, it shrinks to a rail of
-icons. On a phone it opens as a sheet.
+The sidebar on the left has five sections, and under them the things you
+pinned. Collapsed, it shrinks to a rail of icons. On a phone it opens as a
+sheet.
 
 ![The Overview: the sidebar with the five sections on the left, the box's name and whether it is answering, the app tiles, the storage card and the board.](../img/overview.png)
 
@@ -26,6 +27,33 @@ icons. On a phone it opens as a sheet.
 | **Settings** | Network, Look, Hardware, Security, Advanced, History, About and Reset, each a pane. A search box filters the panes.             |
 
 <img src={require("../img/overview-phone.png").default} alt="The Overview on a phone: the sections fold into a menu button." width="260" /> <img src={require("../img/overview-phone-sheet.png").default} alt="The same phone with the menu open as a sheet over the page." width="260" />
+
+## Pins
+
+Pin the apps, files and repositories you open most, and they sit under
+**Pinned** in the sidebar. A pin opens in its own app: a file or folder in
+LosOS cloud, a repository on LosOS Git, an app on the Overview, or an app
+you installed from the search on its own port. The box keeps the list, so
+every browser you sign in from shows the same pins.
+
+- On the Overview, point at an app tile and click the pin at its corner. A
+  pinned tile keeps the pin, in colour.
+- On the Apps page, **Pin** sits beside each installed app.
+- The pencil beside **Pinned** opens the full list. There you move a pin up
+  or down, unpin it, and pin from three tabs: **Apps**, **Files**, which
+  walks the folders of LosOS cloud, and **Repositories**.
+- Point at a pin in the sidebar and click the crossed-out pin to unpin it.
+  The search at the top of the sidebar finds pins too.
+
+![The Overview with six pins under Pinned in the sidebar, and the pinned Calendar and Notes tiles marked.](../img/pins-overview.png)
+
+![The pins list with its Files tab open on the Documents folder of LosOS cloud.](../img/pins-dialog.png)
+
+The box lists your files with an app password it asks LosOS cloud for when
+you sign in with your password. Until you have done that once, the
+**Files** tab asks you to. The app password shows up in LosOS cloud's
+security settings as "LosOS admin page", and revoking it there stops the
+listing until your next sign-in. The sidebar holds 24 pins.
 
 ## The tour
 
@@ -58,7 +86,8 @@ same. See [Sign-in and the spare key](sign-in-and-spare-key).
 ## What the admin pages cannot do
 
 There is no file browser, no terminal and no log viewer. Your files live in
-LosOS cloud. The box has no shell, so neither do the pages. The box reports
+LosOS cloud; the **Files** tab of the pins list shows folders only so you can
+pin from them. The box has no shell, so neither do the pages. The box reports
 on itself through the Overview, the Storage pane and the About pane. When
 those are not enough, [When something goes wrong](../troubleshooting) says
 what else there is.

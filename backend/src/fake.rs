@@ -136,6 +136,16 @@ pub struct FakeLosos {
     pub look: crate::look::Look,
     /// Stands in for the uploaded picture's file; `None` is no file.
     pub background: Option<Vec<u8>>,
+    // ── The sidebar's pins ──────────────────────────────────────────────
+    /// Stands in for `pins.json`.
+    pub pins: crate::pins::Pins,
+    /// Stands in for the kept LosOS cloud app password.
+    pub cloud_key: Option<crate::pins::CloudKey>,
+    /// LosOS cloud's next answers, in order; empty is "not answering".
+    pub cloud_answers: std::collections::VecDeque<(u16, Vec<u8>)>,
+    /// Every request made of LosOS cloud: `mint <user>` or
+    /// `list <user>:<key> <path>`.
+    pub cloud_calls: Vec<String>,
 
     // ── The option document and the configuration repository ───────────
     /// Stands in for `/etc/losos/options.json`; `None` is a box without it.
@@ -301,6 +311,10 @@ impl FakeLosos {
             edge_asked: 0,
             look: crate::look::Look::default(),
             background: None,
+            pins: crate::pins::Pins::default(),
+            cloud_key: None,
+            cloud_answers: std::collections::VecDeque::new(),
+            cloud_calls: Vec::new(),
             options_doc: None,
             repo: None,
             branch: "main".to_string(),
@@ -591,6 +605,42 @@ impl Losos for FakeLosos {
     fn write_background(&mut self, bytes: &[u8]) -> anyhow::Result<()> {
         self.background = Some(bytes.to_vec());
         Ok(())
+    }
+
+    fn load_pins(&mut self) -> anyhow::Result<crate::pins::Pins> {
+        Ok(self.pins.clone())
+    }
+
+    fn save_pins(&mut self, pins: &crate::pins::Pins) -> anyhow::Result<()> {
+        self.pins = pins.clone();
+        Ok(())
+    }
+
+    fn load_cloud_key(&mut self) -> anyhow::Result<Option<crate::pins::CloudKey>> {
+        Ok(self.cloud_key.clone())
+    }
+
+    fn save_cloud_key(&mut self, key: Option<&crate::pins::CloudKey>) -> anyhow::Result<()> {
+        self.cloud_key = key.cloned();
+        Ok(())
+    }
+
+    fn cloud_request(
+        &mut self,
+        request: &crate::pins::CloudRequest<'_>,
+    ) -> anyhow::Result<(u16, Vec<u8>)> {
+        self.cloud_calls.push(match request {
+            crate::pins::CloudRequest::MintKey { user, .. } => format!("mint {user}"),
+            crate::pins::CloudRequest::List { key, path } => {
+                format!("list {}:{} {path}", key.user, key.key.expose())
+            }
+            crate::pins::CloudRequest::Search { key, query } => {
+                format!("search {} {query}", key.user)
+            }
+        });
+        self.cloud_answers
+            .pop_front()
+            .ok_or_else(|| anyhow::anyhow!("the fake LosOS cloud is not answering"))
     }
 
     fn read_background(&mut self) -> anyhow::Result<Option<Vec<u8>>> {
