@@ -14,9 +14,9 @@ des Widgets landen im Editor, wo du sie lesen, in der Vorschau ausprobieren
 und ändern kannst. Nichts wird gespeichert, bevor du auf Speichern drückst,
 und ein Widget des Modells läuft im selben abgeschotteten Rahmen wie ein
 selbst geschriebenes (siehe
-[Administration](administration.md#selbst-geschriebene-widgets)).
+[Administration](administration.md#widgets-written-by-hand)).
 
-## Es läuft auf der Box
+## Es läuft auf der Box {#it-runs-on-the-box}
 
 Das Modell ist Llama 3.2 von Meta mit 3 Milliarden Parametern, bereitgestellt
 von [Ollama](https://ollama.com) auf der Box selbst. Was du eintippst, und das
@@ -27,7 +27,7 @@ Installation zum ersten Mal online ist. Bis dahin sagt der Tab, dass das
 Modell noch geladen wird. Das Modell bleibt auf der verschlüsselten Platte,
 ein Neustart lädt es also nicht noch einmal.
 
-## Was dich erwartet
+## Was dich erwartet {#what-to-expect}
 
 Ein Bau läuft auf dem Prozessor der Box. Auf einem Mini-PC dauert er einige
 Minuten, und der Tab zeigt, wie viele Zeilen das Modell schon geschrieben
@@ -46,7 +46,7 @@ der Vorschau an, bevor du speicherst; manchmal zeigt ein Widget nichts oder
 den falschen Messwert, und dann hilft ein neuer Bau oder eine kleine Änderung
 von Hand.
 
-## Speicher
+## Speicher {#memory}
 
 Während es schreibt, braucht das Modell etwa 4 GiB Speicher zusätzlich zu
 dem, was die Box ohnehin nutzt. Fünf Minuten nach dem letzten Bau gibt es ihn
@@ -57,14 +57,14 @@ mit weniger kann ein Bau aus Speichermangel scheitern, und der Tab sagt das.
 lädt und startet die Box das Modell nicht, und der Tab sagt, dass der
 Baukasten aus ist.
 
-## Bedingungen von Llama
+## Bedingungen von Llama {#llamas-terms}
 
 Llama 3.2 steht unter der
 [Llama 3.2 Community License](https://www.llama.com/llama3_2/license/) und
 ihrer [Acceptable Use Policy](https://www.llama.com/llama3_2/use-policy/). Der
 Tab sagt „Built with Llama“ und verlinkt beide unter der Schaltfläche Bauen.
 
-## Gut zu wissen
+## Gut zu wissen {#good-to-know}
 
 - Ein Bau läuft weiter, wenn du das Fenster schließt.
 - Eine Box führt einen Bau zur Zeit aus.

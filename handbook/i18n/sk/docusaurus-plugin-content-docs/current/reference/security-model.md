@@ -10,7 +10,7 @@ Táto stránka je zhrnutie pre vlastníkov. Úplný dokument je
 v repozitári. Je verzovaný spolu s kódom a je napísaný tak, aby ste s ním
 mohli polemizovať.
 
-## Hranice dôvery
+## Hranice dôvery \{#trust-boundaries}
 
 1. **Internet → edge.** Do internetu je obrátený iba edge. Zariadenie
    otvára tunel smerom von a zvonku nepočúva na ničom.
@@ -31,9 +31,9 @@ mohli polemizovať.
    nikdy nemá. Podpísaný certifikát sa k edge dostane cez web a edge pred
    inštaláciou overí GitHub účet odosielateľa voči tomu istému zoznamu.
 
-![Hranice zariadenia: jedny vstupné dvere, riadiace API iba na loopbacku, tunel otvorený smerom von k edge a jeden šifrovaný zväzok.](@site/docs/img/box-architecture.svg)
+![Hranice zariadenia: jedny vstupné dvere, riadiace API iba na loopbacku, tunel otvorený smerom von k edge a jeden šifrovaný zväzok.](@site/docs/img/box-architecture-sk.svg)
 
-## Čo je admin kľúč
+## Čo je admin kľúč \{#what-the-admin-key-is}
 
 Náhradný kľúč so 64 znakmi má silu roota: môže zapísať akékoľvek nastavenie
 a zostaviť zariadenie nanovo. Zariadenie ho vytvorí a raz ukáže na stránke
@@ -42,7 +42,7 @@ Riadiace API počúva iba na loopbacku zariadenia, za ochranou iba pre LAN.
 Desať neúspešných pokusov adresu pribrzdí. Zariadenie vedie auditný log zmien
 nastavení, obnovení hesla a resetov.
 
-## Hardening
+## Hardening \{#hardening}
 
 Predvolene zapnuté: parametre a sysctl na spevnenie jadra, zoznam zakázaných
 modulov jadra, `/tmp` v tmpfs a systemd sandbox pre webový server, mDNS
@@ -53,7 +53,7 @@ stojí.
 
 ![Nastavenia, Zabezpečenie: štyri ďalšie ochrany, ktoré sú predvolene vypnuté, každá s tým, čo stojí.](@site/docs/img/settings-security.png)
 
-## Známe obmedzenia bez prikrášľovania
+## Známe obmedzenia bez prikrášľovania \{#known-limitations-stated-plainly}
 
 - **Inštalačné médium je podpísané, nainštalovaný systém nie.** Firmvér
   so zapísaným certifikátom LosOS overí zavádzač na kľúči, jeden podpísaný

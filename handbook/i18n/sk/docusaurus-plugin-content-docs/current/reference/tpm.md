@@ -10,7 +10,7 @@ Zariadenie bez TPM čipu je menej bezpečné ako zariadenie s ním. Táto strán
 vysvetľuje, čo je TPM, na čo ho LosOS používa a čo stráca zariadenie, ktoré
 ho nemá.
 
-## Čo je TPM
+## Čo je TPM \{#what-a-tpm-is}
 
 TPM (Trusted Platform Module) je malý bezpečnostný čip na základnej doske. Na
 väčšine novších počítačov je namiesto samostatného čipu súčasťou firmvéru
@@ -28,7 +28,7 @@ svoj šifrovaný disk bez toho, aby pri klávesnici sedel niekto, kto napíše
 heslo. Kľúč musí byť niekde, kam sa zariadenie dostane samo, a TPM je jediné
 také miesto, ktoré nie je samotný disk.
 
-## Na čo ho LosOS používa
+## Na čo ho LosOS používa \{#what-losos-uses-it-for}
 
 Dátový zväzok (`/persist`) je na každom zariadení šifrovaný cez LUKS.
 Inštalátor vytvorí náhodný kľúč, naformátuje ním zväzok a potom kľúč
@@ -46,7 +46,7 @@ Kópia diskového kľúča zostáva aj vnútri šifrovaného zväzku na
 `/etc/keys/persist-keyfile`. `losos-ctl grow` ju používa na zmenu veľkosti
 zväzku. Zvonku zväzok otvoriť nedokáže, pretože je v ňom.
 
-## Čo stráca zariadenie bez TPM
+## Čo stráca zariadenie bez TPM \{#what-a-box-without-a-tpm-gives-up}
 
 Inštalátor zväzok šifruje stále rovnako. Mení sa to, kde je kľúč pri štarte.
 Bez čipu inštalátor vloží kľúč do initrd ako `/crypto_keyfile.bin`. Initrd
@@ -72,7 +72,7 @@ Má to dva dôsledky.
 Sieťová strana sa nemení. LAN guard, prihlasovanie, tunel, hardening
 a oddelenie oboch účtov fungujú rovnako s čipom aj bez neho.
 
-## Pred čím TPM nechráni
+## Pred čím TPM nechráni \{#what-a-tpm-does-not-protect-against}
 
 LosOS zapečatí kľúč bez naviazania na merania firmvéru (PCR). Zariadenie
 každú noc aktualizuje svoj bootloader a kernel bez toho, aby na to niekto
@@ -85,7 +85,7 @@ USB kľúča zlodeja. TPM zabezpečí, že samotný disk je nečitateľný. Nepo
 však, keď má niekto celé zariadenie. [Bezpečnostný model](/reference/security-model.md)
 to uvádza ako známe obmedzenie.
 
-## Ako zistiť, v akom režime zariadenie je
+## Ako zistiť, v akom režime zariadenie je \{#how-to-tell-which-mode-a-box-is-in}
 
 - Inštalátor vypíše `unlock: TPM2` alebo `unlock: keyfile in the initrd`
   a pri ceste s keyfile tesne pred dokončením aj varovanie.
@@ -94,7 +94,7 @@ to uvádza ako známe obmedzenie.
   nastavením, keď je nastavené heslo.
 - Nastavenia, Rozšírené uvádza `tpm.enable` a hodnotu, s ktorou zariadenie beží.
 
-## Presun zariadenia na TPM
+## Presun zariadenia na TPM \{#moving-a-box-to-a-tpm}
 
 Inštalátor zapíše režim odomykania do `modules/install-target.nix`. Admin
 stránky ho zmeniť nemôžu, pretože riadok preň v `overrides.nix` by sa

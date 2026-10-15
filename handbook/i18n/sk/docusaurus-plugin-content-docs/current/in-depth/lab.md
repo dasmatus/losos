@@ -19,7 +19,7 @@ nastavený, a notebook. Router, káble a notebook sú predpokladané, pretože
 zariadenie ich nevidí. Lab do zariadenia nikdy nič nezapisuje. Ak nie je nikto
 prihlásený, povie to a otvorí vstavané zostavy.
 
-## Čo ukazuje
+## Čo ukazuje {#what-it-shows}
 
 - **Pohľady Logický a Fyzický.** Logický pohľad ukazuje
   podsiete, cesty cez edge a mesh. Fyzický pohľad ukazuje racky, stoly a
@@ -57,7 +57,7 @@ certifikát podpísal koreňový kľúč LosOS); LAN brána s otvoreným zápiso
 prijme neznáme zariadenia pri prvom použití; a administračné routy odmietajú
 loopback.
 
-## Dve kópie
+## Dve kópie {#the-two-copies}
 
 | | Na zariadení (`/lab/`) | Hostovaná |
 | --- | --- | --- |
@@ -101,7 +101,7 @@ artefakt `losos-lab-hosted`. Pri pushi do `main` kópiu navyše nasadí na
 Vercel, ak má repozitár secrets `VERCEL_TOKEN`, `VERCEL_ORG_ID` a
 `VERCEL_PROJECT_ID`.
 
-## GPU plátno
+## GPU plátno {#the-gpu-canvas}
 
 Diagram má dve plátna. Stránka vždy začína tým SVG, takže zostava je na
 obrazovke hneď, ako sa načíta jadro. Potom sa prehliadača opýta, čo ponúka.
@@ -136,7 +136,7 @@ alebo `?canvas=webgl2`. Kľúč lokálneho úložiska `losos-lab-canvas` berie t
 isté hodnoty a uchová voľbu v danom prehliadači. Odznak enginu v hornej
 lište uvádza plátno vo svojom tooltipe.
 
-## Hosty pod libvirt
+## Hosty pod libvirt {#guests-under-libvirt}
 
 qemu-wasm je pomalé: emuluje každú inštrukciu bez KVM, každý host stojí
 kartu asi 450 MB a jedna karta spustí tri. Ak má počítač, na ktorom je Lab
@@ -162,7 +162,7 @@ Host môže bežať tromi spôsobmi, v poradí podľa preferencie:
    to pomalá cesta a záloha pre každý host, ktorý prvé dve nevedia
    spustiť.
 
-### Pomocník a `virsh`
+### Pomocník a `virsh` {#the-helper-and-virsh}
 
 Pomocník spúšťa každý host ako dočasnú (transient) doménu s názvom
 `losos-lab-...` cez `virsh create`. Transient znamená, že libvirt ju nikdy
@@ -214,7 +214,7 @@ libvirt host odmietne, ten host nabootuje pod qemu-wasm ako predtým a Lab to
 raz oznámi. Vlastná kópia zariadenia qemu-wasm nemá, takže tam si ponechá
 simulovanú konzolu.
 
-### WebAssembly klient a relay
+### WebAssembly klient a relay {#the-webassembly-client-and-the-relay}
 
 Webová stránka nevie otvoriť socket libvirt: prehliadače bežnej stránke
 neponúkajú surové TCP ani unixové sockety a libvirt nemá vlastný
@@ -266,7 +266,7 @@ rovnako ako pomocník, pomocníkovo upratovanie a kontrola nečinnosti
 zasiahnu aj túto doménu. `admin-ui/lab/virt-rpc/README.md` ukazuje klienta
 samostatne, cez jeho demo stránku.
 
-### Bezpečnosť
+### Bezpečnosť {#security}
 
 Kto drží relayovaný socket, má libvirt s právami pomocníka. libvirt
 identifikuje protistranu socketu podľa jej user id, takže vidí pomocníka a
@@ -286,7 +286,7 @@ takže ktorákoľvek stránka otvorená v tom istom prehliadači sa môže pokú
 dostať na `ws://127.0.0.1:8095`, a pomocník odmietne každú požiadavku,
 ktorej Origin nie je na zozname ani nie je vlastnou adresou pomocníka.
 
-### Na zariadení
+### Na zariadení {#on-a-box}
 
 `losos.lab.libvirt.enable` (predvolene vypnuté) zapne libvirtd a spustí
 toho istého pomocníka ako službu, s `qemu:///system`. lososd mu relayuje
@@ -300,14 +300,14 @@ administračný kľúč už vie prestavať celý systém, takže neprezradí ni�
 kľúč predtým nemal. Dajte tri obrazy do `/var/lib/losos-lab/images`
 (`losos.lab.libvirt.images`).
 
-## Čo nie je skutočné
+## Čo nie je skutočné {#what-is-not-real}
 
 Hosty sú náhrady: busybox a obraz s veľkosťou 4 MiB, nie NixOS. Edge,
 tunel, mesh a trh sú modelované v jadre v Ruste podľa pravidiel uvedených
 vyššie; nie je to bežiaci kód. Pracovná plocha notebooku je obrázok
 LosOS Desktop, nie samotná plocha.
 
-## Ako ho meniť
+## Ako ho meniť {#changing-it}
 
 - Stránka a jej časti sú v `admin-ui/app/src/lab/`. `npm run lab:core`
   zostaví jadro do `src/lab/core-pkg/` a `npm run lab:virt` klienta

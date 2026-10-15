@@ -21,7 +21,7 @@ mdx:
 NixOS hat sein Hardened-Profil in 26.05 entfernt, und `linux_hardened` gibt
 es nicht mehr, deshalb setzt `modules/hardening.nix` diese Werte direkt.
 
-## Optional
+## Optional {#opt-in}
 
 Jede dieser Optionen kann etwas kaputt machen, deshalb ist jede standardmäßig
 aus. Schalte sie im Bereich Sicherheit der Einstellungsseite ein oder in
@@ -38,7 +38,7 @@ losos.hardening.usbguard = true;   # block USB devices not present at boot
 rke2 noch containerd, die statische Go-Binaries sind, und auch nichts
 innerhalb eines Pods.
 
-## Bewusst weggelassen
+## Bewusst weggelassen {#left-out-on-purpose}
 
 `tests/hardening.nix` prüft, dass diese ausgeschaltet bleiben:
 

@@ -12,7 +12,7 @@ port.
 
 ![internet → Traefik (VPS, :443) → rathole server ⇐ tunel ⇐ rathole klient (zariadenie) → nginx](/img/diagrams/master-proxy-sk.svg)
 
-## Edge (VPS)
+## Edge (VPS) {#edge-vps}
 
 Importujte výstup flaku `nixosModules.edge` do konfigurácie VPS a nastavte
 `losos.edge.*`:
@@ -27,13 +27,13 @@ Importujte výstup flaku `nixosModules.edge` do konfigurácie VPS a nastavte
 `losos-registrar` udržiava dynamickú konfiguráciu Traefiku a serverovú
 konfiguráciu rathole v súlade s registrovanými zariadeniami.
 
-## Zariadenie
+## Zariadenie {#appliance}
 
 Nastavte `losos.proxy.enable = true` a voľby `losos.proxy.*`
 (`registrarUrl`, `edgeRatholeEndpoint`, `hostname`, `applianceId`,
 `tokenFile`).
 
-## Šifrovanie tunela
+## Šifrovanie tunela {#tunnel-encryption}
 
 rathole používa svoj transport Noise. Edge si pri prvom štarte vygeneruje pár
 kľúčov. Každé zariadenie si pri prvom spustení stiahne verejný kľúč z
@@ -42,20 +42,20 @@ pripnúť mimo tohto kanála, vložte súbor na to miesto vopred; zariadenie ho
 nikdy neprepíše. Nastavenie ktorejkoľvek z dvoch kľúčových volieb na `null`
 prepne späť na obyčajné TCP. Nerobte to.
 
-## Administrátorské UI zostáva len v LAN
+## Administrátorské UI zostáva len v LAN {#admin-ui-stays-lan-only}
 
 Prevádzka z tunela prichádza do nginx z `127.0.0.1`, preto administrátorské
 trasy odmietajú loopback. Nepridávajte k nim `allow 127.0.0.1`, inak bude
 administrátorské UI dostupné z internetu.
 
-## Edge v tej istej LAN
+## Edge v tej istej LAN {#edge-on-the-same-lan}
 
 Edge nemusí byť VPS. S `losos.edge.lan.advertise = true` sa navyše ohlasuje
 cez mDNS ako `_losos-edge._tcp`, s URL registrara v zázname `url=`
 (`losos.edge.lan.url`, predvolene `http://<edge>.local:8443`). API registrara
 naviaže mimo loopbacku a otvorí jeho port. Zariadenie v tej istej sieti ho potom
 nájde bez akejkoľvek konfigurácie a môže cez neho zdieľať úložisko, pozri
-[Mesh](/in-depth/mesh.md#hľadanie-edge). Takto vyzerá nasadenie on-premises: jeden
+[Mesh](/in-depth/mesh.md#finding-the-edge). Takto vyzerá nasadenie on-premises: jeden
 stále zapnutý stroj vo firemnej sieti, na ktorom beží `nixosModules.edge`, a
 vedľa neho zariadenia nainštalované zo štandardného ISO.
 
@@ -95,7 +95,7 @@ obe ho nájdu a povolia zdieľanie. Edge zmizne, znova odmietnu, a potom sa
 vráti. Jeho README hovorí, ktoré časti čo zastupujú v skutočnej lokalite a
 čo ešte potrebujú kroky so spoločným úložiskom.
 
-## Viac edge: federácia
+## Viac edge: federácia {#several-edges-federation}
 
 Edge hostovaný používateľom môže preposielať svoje zariadenia cez oficiálny edge,
 takže dve lokality, každá za vlastným lokálnym edge, sa navzájom dosiahnu cez
@@ -105,7 +105,7 @@ tenanta na strane hubu (`relayZone`), `losos.edge.uplink.*` na strane spoke,
 otvorená registrácia v LAN a obraz VM brány sú na stránke
 [Federácia edge](/in-depth/edge-federation.md).
 
-## Oficiálne edge
+## Oficiálne edge {#official-edges}
 
 Každý edge sa dá nájsť a môže preposielať úložisko. Iba edge, ktoré
 prevádzkuje LosOS, smú spracúvať P2P obchodovanie s úložiskom a výpočtovým
@@ -155,7 +155,7 @@ robí oficiálnym iba súkromný kľúč koreňa. Čo to nechráni: protokol trh
 je skrytý a súkromný kľúč koreňa je celé tajomstvo. Jeho strata znamená
 vydať release, ktorý vymení kotvu dôvery každého zariadenia.
 
-## DNS zóna a vlastné domény
+## DNS zóna a vlastné domény {#dns-zone-and-custom-domains}
 
 Oficiálny edge môže poskytovať vlastnú DNS zónu a smerovať domény, ktoré
 vlastníci zariadení už majú. Je vypnutý, kým nie je nastavené
@@ -190,10 +190,10 @@ ns1.boxes.losos.dasmat.us.  AAAA 2001:db8::7
 ```
 
 Nič sa neprideľuje, kým edge nemá neexpirovaný certifikát identity
-([Oficiálne edge](#oficiálne-edge)). Dovtedy zónu tvoria iba SOA, NS a
+([Oficiálne edge](#official-edges)). Dovtedy zónu tvoria iba SOA, NS a
 glue a `/domains/*` odpovedá 503.
 
-### Vlastné domény
+### Vlastné domény {#custom-domains}
 
 Zariadenie pridá doménu cez `POST /domains/add` (overené jeho tokenom tunela,
 preposlané cez lososd z Nastavenia → Sieť). Edge ju prijme iba vtedy, keď
@@ -230,14 +230,14 @@ Zariadenie za lokálnym edge dostane svoje domény smerované tiež, cez ten lok
 edge, len čo sa za lokálny edge zaručilo relay passom a pripojilo sa k meshu
 tohto edge. Registrar si tieto trasy uchováva sám, v `relay-routes.json`
 vedľa svojho registra. [Federácia
-edge](/in-depth/edge-federation.md#vlastné-domény-za-lokálnym-edge) obsahuje
+edge](/in-depth/edge-federation.md#custom-domains-behind-a-local-edge) obsahuje
 podrobnosti a `losos.edge.dns.relayRoutes`.
 
 `tests/edge-dns.nix` (`losos-edge-dns`) spustí edge a klienta a pýta sa
 Knotu cez UDP aj TCP. `backend-registrar/tests/domains.rs` prevedie tok
 nárokov proti skutočnému registraru a falošnému serveru DNS-over-HTTPS.
 
-## Demo nasadenie na Verceli
+## Demo nasadenie na Verceli {#demo-deployment-on-vercel}
 
 `edge-vercel/` spúšťa API registrara, ten istý router a tú istú kontrolu
 tokenu, ako Vercel Function na `https://losos-edge.dasmat.us`, čo je

@@ -72,8 +72,7 @@ Slovak and German are wired in. The interface strings live in
 and translate the copy. A page without a translation shows in English under
 the translated chrome, so you can translate one page at a time.
 
-The In depth chapter, TPM and the disk key, and the security model are
-translated in full. Change all three languages together.
+Every page is translated in full. Change all three languages together.
 
 ```sh
 npm run write-translations -- --locale sk   # refresh the string files

@@ -23,7 +23,7 @@ Das Root-Dateisystem ist ein tmpfs, das bei jedem Start neu aufgebaut wird.
 Nur die in `modules/impermanence.nix` aufgeführten Verzeichnisse bleiben
 erhalten, und zwar auf einer verschlüsselten Partition `/persist`.
 
-## Seiten
+## Seiten {#pages}
 
 - [Installation im Detail](/in-depth/install.md). Das Installer-ISO, Secure Boot, TPM, das
   Demo-Image, das Vergrößern der Festplatte.
@@ -49,7 +49,7 @@ erhalten, und zwar auf einer verschlüsselten Partition `/persist`.
   nicht.
 - [Architektur](/in-depth/architecture.md). Wie die Teile zusammenspielen.
 
-## Im Vergleich mit Alternativen
+## Im Vergleich mit Alternativen {#compared-with-alternatives}
 
 - **Ein NAS (Synology, QNAP).** Dieselbe Idee, eine Box mit Web-UI. Der
   Unterschied: Das Root-Dateisystem wird hier bei jedem Start verworfen,
@@ -69,7 +69,7 @@ erhalten, und zwar auf einer verschlüsselten Partition `/persist`.
   Mesh nur dann, wenn das Zeitfenster des Besitzers offen ist *und* die Box
   untätig ist.
 
-## Was es nicht ist
+## Was es nicht ist {#what-it-is-not}
 
 - Kein Allzweck-Server. Eine Shell gibt es bewusst nicht.
 - Kein Backup. Bewahre Kopien von `/persist` an anderer Stelle auf.

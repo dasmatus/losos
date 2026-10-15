@@ -35,7 +35,7 @@ výkon, len kým zároveň zdieľa výpočtový výkon (`losos.cluster.shareComp
 Prestaňte zdieľať a vaše ponuky okamžite zmiznú z pultu. Vrátia sa, keď
 zdieľanie obnovíte, a už zaplatené objednávky to neovplyvní.
 
-## Ako sa pohybujú peniaze
+## Ako sa pohybujú peniaze {#how-the-money-moves}
 
 Peniaze sa nikdy nedotknú zariadenia LosOS. Kupujúci platia jedným zo štyroch
 spôsobov, podľa toho, čo edge dovolí:
@@ -81,7 +81,7 @@ Poplatok je `feeBps` bázických bodov z hrubej sumy, zaokrúhlený polovicou
 nahor. Pri predvolenej hodnote 400 zaplatí predaj za 20.00 EUR platforme 0.80
 a predajcovi 19.20. Nastavená hodnota je obmedzená na 2000 (20 %).
 
-## Čo sa predáva
+## Čo sa predáva {#what-is-for-sale}
 
 | Druh      | Jednotka    | Význam                                                |
 | --------- | ----------- | ----------------------------------------------------- |
@@ -96,7 +96,7 @@ Ceny sú v menšej jednotke (centoch) jednej meny na edge
 (`losos.edge.market.currency`). Jedna objednávka musí mať spolu aspoň 50
 menších jednotiek, čo je minimum Stripe.
 
-## Plnenie
+## Plnenie {#fulfilment}
 
 Zaplatená objednávka je **30-dňový nárok** (`expires_at`). Výpočtové jednotky
 sa po jeho vypršaní vrátia do ponuky. Jednotky úložiska sa vrátia, až keď
@@ -138,7 +138,7 @@ Obmedzenia, o ktorých treba vedieť a z ktorých sa zatiaľ žiadne nevynucuje:
   namespaces a PersistentVolumeClaims v celom klastri. Kubernetes RBAC
   nedokáže ani jedno obmedziť na mená `market-*`.
 
-## Admin UI
+## Admin UI {#admin-ui}
 
 Riadok **Trh** je pod Mesh v bočnom paneli a otvára ho `/settings/market`.
 Panel začína prepínačom zdieľania disku. Presunul sa sem z panela
@@ -172,7 +172,7 @@ zariadenia, nie edge.
   so stavom 200 a panel to tak aj povie. Zámerne to nie je 404. Admin UI berie
   404 ako „toto zariadenie túto routu neposkytuje“ po zvyšok relácie.
 
-## API
+## API {#api}
 
 Všetky routy sú na verejnom API registrara (`register.<publicDomain>`).
 Overené routy berú rovnaké `appliance_id` a `token` ako `/register`.
@@ -210,7 +210,7 @@ Platba, ktorá príde ešte neskôr, sa uzná, ak sú jednotky stále voľné. I
 edge zaloguje s jej session id, aby ju operátor mohol vrátiť. Dvaja kupujúci,
 ktorí súperia o posledné jednotky, nemôžu session dostať obaja.
 
-## Nastavenie pre operátora
+## Nastavenie pre operátora {#operator-setup}
 
 Tieto kroky nastavujú platby kartou. Edge, ktorý prijíma len mince, ich
 vynechá; ten prípad opisujú poznámky pre operátora pri zdrojovom kóde
@@ -271,7 +271,7 @@ kľúč sú z rôznych režimov, preto ju gate odmietne a do logu zapíše, ktor
 ktorý. Stripe odmietnutú udalosť skúša znova tri dni, takže kým sa v tom čase
 zapečatí zodpovedajúci pár, nič sa nestratí.
 
-## Bezpečnostné vlastnosti
+## Bezpečnostné vlastnosti {#safety-properties}
 
 - Webhook je overený HMAC podpisom Stripe nad surovým telom, s päťminútovým
   oknom proti opakovaniu a vyšším limitom tela než ostatné routy.
@@ -598,7 +598,7 @@ funguje ďalej a každým predajom spláca dlh, takže platby v minciach sa vrá
 keď je dlh vyrovnaný. U predajcu, ktorý prijíma len mince, sa dovtedy
 objednávať nedá.
 
-## Čo nie je pokryté
+## Čo nie je pokryté {#not-covered}
 
 - **Refundácie a spory pri kartách.** Riešte ich v Stripe dashboarde pomocou
   `reverse_transfer` a `refund_application_fee`, aby sa vrátil podiel

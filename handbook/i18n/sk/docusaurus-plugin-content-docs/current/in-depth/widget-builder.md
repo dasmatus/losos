@@ -12,9 +12,9 @@ Editor widgetov (**Pridať widget**, potom **Napísať**) má vedľa karty
 **Písať** kartu **Vytvoriť s AI**. Súbory widgetu sa objavia v editore, kde
 si ich môžete prečítať, vyskúšať v náhľade a upraviť. Nič sa neuloží, kým
 nestlačíte Uložiť, a widget od modelu beží v rovnakom sandboxovanom rámci ako
-ručne písaný (pozri [Správa](administration.md#ručne-písané-widgety)).
+ručne písaný (pozri [Správa](administration.md#widgets-written-by-hand)).
 
-## Beží na zariadení
+## Beží na zariadení {#it-runs-on-the-box}
 
 Model je Llama 3.2 od spoločnosti Meta s 3 miliardami parametrov a poskytuje
 ho [Ollama](https://ollama.com) priamo na zariadení. To, čo napíšete, a
@@ -25,7 +25,7 @@ Zariadenie si model, asi 2 GB, stiahne raz, keď je po inštalácii prvýkrát
 online. Dovtedy karta oznamuje, že sa model ešte sťahuje. Model zostáva na
 šifrovanom disku, takže reštart ho znova nesťahuje.
 
-## Čo čakať
+## Čo čakať {#what-to-expect}
 
 Tvorba beží na procesore zariadenia. Na mini-PC trvá niekoľko minút a karta
 ukazuje, koľko riadkov model zatiaľ napísal. Môžete ju zastaviť.
@@ -41,7 +41,7 @@ Požiadajte o jednu vec vetou či dvoma. Pred uložením sa na výsledok pozrite
 náhľade; niekedy widget neukáže nič alebo ukáže nesprávnu hodnotu, a vtedy
 pomôže nová tvorba alebo malá ručná úprava.
 
-## Pamäť
+## Pamäť {#memory}
 
 Kým model píše, zaberie asi 4 GiB pamäte navyše k tomu, čo zariadenie
 používa tak či tak. Uvoľní ju päť minút po poslednej tvorbe. S 8 GiB pamäte
@@ -51,14 +51,14 @@ zlyhať pre nedostatok pamäte a karta to oznámi.
 **Nastavenia, Pokročilé** majú `losos.builder.enable`. Keď ho vypnete,
 zariadenie model nesťahuje ani nespúšťa a karta oznámi, že tvorca je vypnutý.
 
-## Podmienky Llamy
+## Podmienky Llamy {#llamas-terms}
 
 Llama 3.2 je licencovaná pod
 [Llama 3.2 Community License](https://www.llama.com/llama3_2/license/) a jej
 [Acceptable Use Policy](https://www.llama.com/llama3_2/use-policy/). Karta
 uvádza „Built with Llama“ a pod tlačidlom Vytvoriť odkazuje na oba dokumenty.
 
-## Dobré vedieť
+## Dobré vedieť {#good-to-know}
 
 - Tvorba pokračuje aj po zatvorení okna.
 - Zariadenie spúšťa jednu tvorbu naraz.

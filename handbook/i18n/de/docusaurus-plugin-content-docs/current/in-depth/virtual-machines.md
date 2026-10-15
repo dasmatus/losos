@@ -21,7 +21,7 @@ Mesh-Cluster des Edge. Der `losos-registrar` des Edge verkauft die Replikate
 und legt die Maschinen an; in der Admin-Oberfläche erledigst du alles auf der
 Seite **Maschinen** (in der Seitenleiste unter **Mesh**, unter `/machines`).
 
-## Wer es nutzen kann
+## Wer es nutzen kann {#who-can-use-it}
 
 Maschinen, zum Mieten wie zum Betreiben, werden nur einer Box angeboten, die
 ihre Festplatte teilt (`losos.sharingMyStorage`). lososd prüft das bei jeder
@@ -40,7 +40,7 @@ Zwei weitere Gründe, die die Seite nennen kann:
 | `noOfficialEdge` | Kein erreichbarer Edge wird von LosOS betrieben, also wird nichts verkauft. |
 | `notOffered`     | Der Edge betreibt keine Maschinen (`losos.edge.vms.enable`).     |
 
-## Was du starten kannst
+## Was du starten kannst {#what-you-can-start}
 
 | Quelle            | Was es ist                                                        |
 | ----------------- | ----------------------------------------------------------------- |
@@ -76,7 +76,7 @@ optionales `#cloud-config`-Dokument oder Skript (bis 16 KiB) an, das die
 Maschine beim ersten Start ausführt, etwa um einen SSH-Schlüssel einzurichten.
 Der Registrar gibt es nie zurück, weil es ein Passwort enthalten kann.
 
-### Eigenes QCOW2
+### Eigenes QCOW2 {#your-own-qcow2}
 
 Die Seite Maschinen lädt eine QCOW2-Datei direkt auf den Edge und zeigt den
 Fortschritt. lososd reicht sie durch, ohne sie zwischenzuspeichern und ohne
@@ -96,7 +96,7 @@ eines Images bekommt eine Festplatte, die mindestens so groß ist wie die
 virtuelle Größe des Images. Setz bei einem Image, das UEFI-Firmware braucht,
 den Haken **Startet mit UEFI**; Secure Boot ist in beiden Fällen aus.
 
-## Replikate und Preis
+## Replikate und Preis {#replicas-and-the-price}
 
 Eine betreibende Box bietet Maschinen mit einem Preis **pro Replikat-Monat**
 an und mit der Zahl der Replikate, die sie betreiben will (höchstens 50). Wer
@@ -116,7 +116,7 @@ Stripe-Gate lehnt eine Maschinenzahlung mit jeder anderen Gebühr ab. Bei
 6,00 EUR pro Replikat-Monat kosten drei Replikate 18,00 EUR; die betreibende
 Box bekommt 9,00 und LosOS behält 9,00.
 
-## Nach der Zahlung
+## Nach der Zahlung {#after-payment}
 
 Sobald Stripe die Zahlung bestätigt, macht der Reconciler des Registrars
 Folgendes:
@@ -145,7 +145,7 @@ Festplatten bleiben. Sie enthalten die Daten der Käuferin oder des Käufers,
 und sie zu löschen entscheidet der Betreiber, wie beim Volume einer
 Speicherbestellung.
 
-## Maschinen betreiben
+## Maschinen betreiben {#hosting-machines}
 
 Eine Box betreibt Maschinen, solange sie im Mesh ist, ihre Festplatte teilt
 und `losos.vms.host` an ist (Standard). Sie tritt dann mit `--host-vms true`
@@ -160,7 +160,7 @@ Importer von CDI tolerieren den Taint des Rechenfensters, weil eine für einen
 Monat gekaufte Maschine nicht jeden Morgen anhalten kann. Biete nur so viele
 Replikate an, wie die Box neben ihrer eigenen Arbeit tragen kann.
 
-### Verschachtelte Virtualisierung
+### Verschachtelte Virtualisierung {#nested-virtualisation}
 
 KubeVirt braucht auf der betreibenden Box `/dev/kvm`. Auf einem echten
 Mini-PC ist das VT-x oder AMD-V des Prozessors. Eine Box, die selbst eine
@@ -171,7 +171,7 @@ Virtualisierung** (`kvm_intel nested=1` oder `kvm_amd nested=1` und
 Sie starten, aber langsam, und das ist zum Ausprobieren gedacht, nicht zum
 Verkaufen.
 
-## Einrichtung durch den Betreiber
+## Einrichtung durch den Betreiber {#operator-setup}
 
 Auf dem Edge:
 
@@ -201,7 +201,7 @@ Edge. Solange Maschinen an sind, ist das Lese-Timeout am öffentlichen
 Einstiegspunkt von Traefik auf sechs Stunden erhöht, damit ein großer Upload
 nicht abbricht.
 
-## API
+## API {#api}
 
 Auf der Box (mit Bearer-Token, hinter der Sperre nur für das LAN):
 
@@ -222,7 +222,7 @@ beiden Übertragungsrouten `PUT /market/vm-images/upload/<ticket>` und
 Berechtigungen annehmen und höchstens vier Übertragungen gleichzeitig
 zulassen.
 
-## Sicherheitseigenschaften
+## Sicherheitseigenschaften {#safety-properties}
 
 - Eine Box, die ihre Festplatte nicht teilt, kann weder mieten noch
   betreiben; lososd lehnt ab, bevor der Edge gefragt wird.
@@ -238,7 +238,7 @@ zulassen.
 - Nichts, was der Registrar tut, löscht eine Festplatte der Käuferin oder des
   Käufers.
 
-## Nicht abgedeckt
+## Nicht abgedeckt {#not-covered}
 
 - Keine Konsole im Browser, also keine Installations-ISOs und keine
   Anmeldung außer der, die cloud-init einrichtet.

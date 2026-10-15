@@ -1,0 +1,54 @@
+---
+title: Adresy a porty
+sidebar_position: 1
+---
+
+# Adresy a porty
+
+## Na zariadení \{#on-the-box}
+
+![Vnútri zariadenia: nginx drží porty 80 a 443 a podľa cesty smeruje na admin stránky, riadiace API, LosOS cloud, LosOS Git a túto príručku.](@site/docs/img/box-architecture-sk.svg)
+
+| Cesta                         | Čo                                                  | Kto ju môže otvoriť                 |
+| ----------------------------- | --------------------------------------------------- | ----------------------------------- |
+| `/`                           | Admin stránky                                       | iba lokálna sieť                    |
+| `/handbook/`                  | Táto príručka                                       | iba lokálna sieť                    |
+| `/api/…`                      | Riadiace API zariadenia (JSON, vyžaduje admin kľúč) | iba lokálna sieť                    |
+| `/api/health`                 | `{"ok":true}`, keď riadiaci démon beží              | iba lokálna sieť, bez kľúča         |
+| `/setup/state.json`           | Názov, adresa, HTTPS, odtlačok certifikátu          | iba lokálna sieť                    |
+| `/setup/losos-ca.crt`         | Certifikát zariadenia                               | iba lokálna sieť                    |
+| `/setup/trust.sh`, `/setup/trust.ps1` | Jednoriadkové inštalátory certifikátu       | iba lokálna sieť                    |
+| `/nextcloud`                  | LosOS cloud                                         | ktokoľvek, aj cez edge              |
+| `/forgejo/`                   | LosOS Git                                           | ktokoľvek, aj cez edge              |
+| `/.well-known/nodeinfo`, `/.well-known/webfinger` | Zisťovanie federácie LosOS Git, kým je federácia zapnutá a disk zdieľaný | ktokoľvek, aj cez edge |
+| `/nextcloud/ocm-provider/`, `/nextcloud/ocm/…` a ďalšie adresy federácie pod `/nextcloud` | Federácia LosOS cloud, kým je federácia zapnutá a disk zdieľaný; inak **404** | ktokoľvek, aj cez edge |
+
+„Iba lokálna sieť“ znamená zdrojovú adresu zo súkromného rozsahu
+(`10.…`, `172.16.…` až `172.31.…`, `192.168.…`), ktorá nie je vlastnou
+adresou zariadenia ani nepatrí do rozsahu podov mesh siete. Všetko ostatné
+vrátane prevádzky, ktorá prichádza cez tunel edge, dostane **403**.
+
+## Porty \{#ports}
+
+| Port    | Protokol | Čo                                                     |
+| ------- | -------- | ------------------------------------------------------ |
+| 80      | HTTP     | Všetko vyššie                                          |
+| 443     | HTTPS    | To isté s vlastným certifikátom zariadenia (`losos.tls.enable`, predvolene zapnuté) |
+| 5353    | mDNS     | Ohlasovanie `<name>.local`                             |
+| 8082    | HTTP     | Riadiace API, iba na loopbacku zariadenia; nginx naň presmeruje `/api/` |
+
+Nič iné otvorené nie je. Zariadenie sa k mesh sieti a k edge pripája smerom
+von. Tunel otvára a ku clustru sa pripája samo, takže doma neotvárate žiadny
+prichádzajúci port.
+
+## Názvy \{#names}
+
+| Názov                       | Čo                                                       |
+| --------------------------- | -------------------------------------------------------- |
+| `<name>.local`              | Zariadenie vo vlastnej sieti, cez mDNS                   |
+| `<name>.<edge domain>`      | Zariadenie cez svoj edge, pre LosOS cloud a LosOS Git    |
+| `losos-edge.dasmat.us`      | Riadiaca časť edge LosOS a stránka „find my box“         |
+| `proxy.losos.dasmat.us`     | Binárna cache, z ktorej sa zariadenie aktualizuje        |
+| `losos-cache-proxy.vercel.app` | Tá istá cache pod vlastným názvom Vercelu             |
+| `losos.dasmat.us/proxy`     | Kópia tejto cache, použije sa, keď prvá neodpovedá       |
+| `losos.dasmat.us`           | Táto príručka na webe                                    |

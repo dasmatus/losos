@@ -7,7 +7,7 @@ mdx:
 
 # Installation im Detail
 
-## Den Installer besorgen
+## Den Installer besorgen {#get-the-installer}
 
 Lade das ISO und seine `.sha256` aus dem
 [neuesten Release](https://github.com/dasmatus/losos/releases/latest) herunter, oder bau es:
@@ -24,7 +24,7 @@ os-release sagt das auch mit `ID_LIKE=nixos`. Die installierte Box trägt
 denselben Namen und Tag in ihrem Bootmenü, ihren Konsolenbannern und in
 os-release (`NAME=LosOS`, `IMAGE_VERSION`) und behält `ID=nixos`.
 
-## Bevor du bootest
+## Bevor du bootest {#before-you-boot}
 
 - **Secure Boot: aus, oder das LosOS-Zertifikat einspielen.** Release-ISOs
   sind signiert. Der UEFI-Loader des Sticks ist ein einziges Unified Kernel
@@ -38,7 +38,7 @@ os-release (`NAME=LosOS`, `IMAGE_VERSION`) und behält `ID=nixos`.
   zeigt "Access Denied"; andere Firmware überspringt den Stick womöglich
   kommentarlos.
   Der Loader der installierten Box ist nicht signiert, die Box selbst braucht
-  also abgeschaltetes Secure Boot. Die Seite *Secure Boot and signed media*
+  also abgeschaltetes Secure Boot. Die Seite *Secure Boot und signierte Medien*
   im Handbuch enthält die Schritte und die Prüfung von `SHA256SUMS.sig`.
   `tests/secure-boot.nix` ist der Nachweis.
 - **UEFI oder BIOS, beides funktioniert.** Auf dem Installer-ISO lässt dich
@@ -61,7 +61,7 @@ os-release (`NAME=LosOS`, `IMAGE_VERSION`) und behält `ID=nixos`.
   Installation geht von selbst weiter, sobald ein Kabel steckt. Für WLAN
   drückst du Alt+F2 für eine Root-Shell und startest dort `nmtui`.
 
-## Was der Installer tut
+## Was der Installer tut {#what-the-installer-does}
 
 Nach der Firmware-Wahl läuft der Installer unbeaufsichtigt. Er findet jede
 fest eingebaute Festplatte, fasst alle in einer LVM-Volume-Group zusammen,
@@ -182,7 +182,7 @@ fertig ist, fahr die VM herunter und starte sie erneut ohne die
 Zeile `-drive …media=cdrom`. Die Adresse der VM ist vom Host aus nur über die
 Portweiterleitung erreichbar, öffne also `http://localhost:8080`.
 
-## ISO mit der vollständigen Closure
+## ISO mit der vollständigen Closure {#iso-with-the-full-closure}
 
 ```sh
 nix build .#losos-disk-iso          # or: devenv shell build-media iso
@@ -199,7 +199,7 @@ vom Stick kopiert.
   und die Kopien bleiben ungenutzt.
 - Es ist zu groß für ein Release-Asset auf GitHub. Bau es selbst.
 
-## Demo-Image für eine VM
+## Demo-Image für eine VM {#demo-image-for-a-vm}
 
 ```sh
 nix build .#losos-disk-qcow2        # or: devenv shell build-media qcow2
@@ -210,7 +210,7 @@ veröffentlichen es auf GHCR. Es hat **keine Festplattenverschlüsselung** und
 führt nie den Installer aus, verwende es also nur für Demos und
 Entwicklung.
 
-## Die Festplatte vergrößern
+## Die Festplatte vergrößern {#growing-the-disk}
 
 Das Logical Volume belegt 90 % der Volume Group (`losos.storage.fillPercent`).
 Um den Rest zu nutzen:

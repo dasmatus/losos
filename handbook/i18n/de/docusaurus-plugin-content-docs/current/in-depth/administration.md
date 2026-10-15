@@ -7,7 +7,7 @@ mdx:
 
 # Administration
 
-## Admin-Oberfläche
+## Admin-Oberfläche {#admin-ui}
 
 Öffne aus dem LAN `http://<ip>/` (die Adresse im tty1-Banner der Box)
 oder `https://<host>.local/`. Die Admin-Oberfläche ist für alles außerhalb
@@ -42,14 +42,14 @@ Einzeiler-Installer für macOS, Linux und Windows (`/setup/trust.sh`,
 `/setup/trust.ps1`, beide nur im LAN) und den einfachen Download
 (`/setup/losos-ca.crt`). Siehe [Installation im Detail](/in-depth/install.md).
 
-## Aussehen
+## Aussehen {#look}
 
 **Einstellungen, Aussehen** ändert das Aussehen der Admin-Seiten, für jeden Browser,
 der die Box öffnet. Nichts davon ist eine Einstellung im Sinne von Nix. Es
 ist ein Dokument, das lososd unter `/var/lib/losos/look.json` führt, daher
 wirkt eine Änderung sofort beim Speichern, ohne Rebuild.
 
-### Hintergrund
+### Hintergrund {#background}
 
 Wähle eines der drei mitgelieferten Bilder oder lade ein eigenes
 hoch (PNG, JPEG, WebP, GIF oder SVG, bis 8 MiB). Der Regler **Schleier**
@@ -61,7 +61,7 @@ Token aus, weil ein CSS-`background-image` keinen senden kann. Die Route
 liegt hinter demselben Nur-LAN-Schutz wie der Rest der Admin-Seiten, und ein
 Hintergrundbild ist kein Geheimnis.
 
-### Selbst geschriebene Widgets
+### Selbst geschriebene Widgets {#widgets-written-by-hand}
 
 Die Galerie der Übersicht (**Widget hinzufügen**) bietet zwei Wege zu
 einem eigenen Widget. *Eins bauen* stellt ein Widget ohne jeden Code aus den
@@ -111,7 +111,7 @@ Editor legt, damit du sie vor dem Speichern liest. Es läuft auf der Box, also
 bleibt, was du eintippst, dort, und ein Bau kostet nichts; siehe
 [Widget-Baukasten](widget-builder.md).
 
-## Admin-Token
+## Admin-Token {#admin-token}
 
 `lososd` schreibt beim ersten Start ein zufälliges Token aus 64
 Hexadezimalzeichen nach `/var/secrets/losos-admin-token` (Modus 0600). Das
@@ -180,7 +180,7 @@ und führt `nixos-rebuild switch` aus. Daher:
 - `apply` ersetzt `overrides.nix` vollständig. Eine Einstellung, die die
   Oberfläche nicht schreibt, wird beim nächsten Speichern zurückgesetzt.
 
-### Erweitert
+### Erweitert {#advanced}
 
 **Einstellungen, Erweitert** listet jede `losos.*`-Option, die die Box deklariert,
 gelesen aus den Modulen, die sie ausführt. `flake/options-doc.nix` erzeugt
@@ -216,7 +216,7 @@ Alles, was hier geschrieben wird, durchläuft dasselbe Apply und denselben
 Rebuild wie die anderen Bereiche. `losos.edge.*` ist ausgelassen, weil die
 Appliance es nie liest.
 
-### Historie und LosOS Git
+### Historie und LosOS Git {#history-and-losos-git}
 
 Jedes Apply, jede Speicheränderung und jedes Zurücksetzen auf
 Werkseinstellungen ist ein Commit in `/etc/nixos`, dem Repository, das
@@ -257,7 +257,7 @@ Admin-Passwort. Der Daemon spricht über Loopback mit Forgejo, mit einem
 Bot-Konto `losos`, das das Start-Skript von Forgejo anlegt und dem es ein
 Token ausstellt (`flake/forgejo-bootstrap.nix`).
 
-### Föderation
+### Föderation {#federation}
 
 Die Föderation läuft nur, solange die Box ihre Festplatte teilt. Beide
 Föderationsoptionen unten sind per UND mit `losos.sharingMyStorage`
@@ -307,7 +307,7 @@ immer aktivierte Apps sind, die sich nicht abschalten lassen.
 ausgeschaltetem Teilen; `tests/invariants.nix` prüft das Gate zur
 Evaluierungszeit.
 
-### Box-weite App-Einstellungen
+### Box-weite App-Einstellungen {#box-wide-app-settings}
 
 Der Bereich Apps trägt die Einstellungen, die für alle in LosOS cloud und
 LosOS Git gelten, also die, die jede App sonst auf ihren eigenen
@@ -360,7 +360,7 @@ die Verwaltungseinstellungen, die LosOS noch nicht abdeckt: Mailversand,
 Hintergrundjobs, erzwungene Zwei-Faktor-Anmeldung, Forgejos in der Datenbank
 gespeicherte Einstellungen und die Kontenlisten.
 
-## Sicherung, Wiederherstellung und Löschen
+## Sicherung, Wiederherstellung und Löschen {#backup-restore-and-erase}
 
 **Einstellungen, Sicherung** sendet die Daten der Box in einen S3-kompatiblen
 Bucket, den der Eigentümer mietet (Amazon S3, Glacier eingeschlossen,
@@ -440,7 +440,7 @@ Box aufgegeben hat, als Zählwerte, und Einstellungen, Zurücksetzen zeigt es an
 `tests/erase.nix` durchläuft den ganzen Zyklus gegen einen MinIO-Bucket in
 einer VM.
 
-## Benutzer
+## Benutzer {#users}
 
 Zwei Datenbenutzer, beide ohne Passwort und ohne Shell:
 
@@ -453,7 +453,7 @@ Jeder hat seine eigene primäre Gruppe und ein Home mit Modus 700, sodass
 keiner die Dateien des anderen lesen kann. `tests/impermanence.nix` prüft
 das.
 
-## Updates und Neustarts
+## Updates und Neustarts {#upgrades-and-reboots}
 
 - **03:00.** lososd bringt `/etc/nixos` zuerst auf den neuesten Commit von
   `losos.configRepo.upstream.branch` (`main`) unter
