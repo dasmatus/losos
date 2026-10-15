@@ -103,6 +103,16 @@ pub trait Losos {
         secret: &crate::setup::Secret,
         client: &str,
     ) -> anyhow::Result<crate::signin::LoginOutcome>;
+    /// Ask the running Nextcloud for a new app password for `user`, named
+    /// after `device` ([`crate::devices::app_password_request`]): status and
+    /// body. `Err` means Nextcloud could not be asked at all.
+    fn nextcloud_app_password(
+        &mut self,
+        user: &str,
+        secret: &crate::setup::Secret,
+        device: &str,
+        client: &str,
+    ) -> anyhow::Result<(u16, String)>;
 
     // ── The appliance recovery code ─────────────────────────────────────
     /// The appliance's recovery code, minting one only if there is none.
@@ -221,6 +231,18 @@ pub trait Losos {
         &mut self,
         op: &crate::config_repo::ForgejoOp,
         secret: Option<&crate::setup::Secret>,
+    ) -> anyhow::Result<(u16, String)>;
+    /// One request to LosOS Git's API as `owner`, with the owner's password
+    /// in a Basic header ([`crate::devices::forgejo_request`]): the only way
+    /// Forgejo lets an access token be made. [`crate::config_repo::NotUp`]
+    /// when LosOS Git cannot be asked at all.
+    fn forgejo_as_owner(
+        &mut self,
+        method: &str,
+        path: &str,
+        owner: &str,
+        secret: &crate::setup::Secret,
+        body: Option<&str>,
     ) -> anyhow::Result<(u16, String)>;
     /// A random password for an account nobody will type into.
     fn mint_secret(&mut self) -> anyhow::Result<crate::setup::Secret>;
@@ -815,6 +837,133 @@ pub fn cmd_sign_in<L: Losos>(
         // Typed as the claim's "not yet", so the HTTP layer answers 503 with
         // the sentence and the dialog can offer the spare key.
         LoginOutcome::Unavailable(why) => Err(crate::setup::NotReady(why).into()),
+    }
+}
+
+/// `POST /api/devices/cloud`: an app password for LosOS cloud, for one of
+/// the owner's computers.
+///
+/// The owner's password is what Nextcloud asks for before it makes one (see
+/// [`crate::devices`]); a wrong one is [`crate::signin::WrongPassword`], as
+/// at the sign-in. The answer carries the user, the app password and the
+/// WebDAV path below the box's address, everything a computer needs to
+/// mount the files.
+pub fn cmd_device_cloud<L: Losos>(
+    l: &mut L,
+    password: &str,
+    device: &str,
+    client: &str,
+) -> anyhow::Result<Value> {
+    use crate::devices::{dav_path, interpret_app_password, validate_device, Minted};
+
+    let secret = crate::signin::validate_candidate(password).map_err(|e| anyhow::anyhow!(e))?;
+    let device = validate_device(device).map_err(|e| anyhow::anyhow!(e))?;
+    let user = crate::setup::DEFAULT_ADMIN_USER;
+    let minted = match l.nextcloud_app_password(user, &secret, &device, client) {
+        Ok((status, body)) => interpret_app_password(status, &body),
+        Err(e) => {
+            tracing::info!(error = ?e, "the app password request could not reach LosOS cloud");
+            Minted::Unavailable(
+                "LosOS cloud could not be reached. It may still be starting.".to_string(),
+            )
+        }
+    };
+    match minted {
+        Minted::Credential(app_password) => {
+            tracing::info!(device = device.as_str(), "LosOS cloud app password made");
+            Ok(json!({ "user": user, "appPassword": app_password, "path": dav_path(user) }))
+        }
+        other => Err(mint_refusal(other)),
+    }
+}
+
+/// `POST /api/devices/git`: an access token for LosOS Git, for one of the
+/// owner's computers.
+///
+/// LosOS cloud judges the password first, as at the sign-in, and LosOS Git
+/// is given the same one ([`sync_owner_password`]) before Forgejo is asked:
+/// Forgejo only mints a token under Basic auth with the account's own
+/// password, and a password changed inside LosOS cloud would not have
+/// reached it yet. A token of the same name, from an earlier setup of the
+/// same computer, is removed first, because Forgejo refuses a second token
+/// of one name and the old one is what this computer is replacing.
+pub fn cmd_device_git<L: Losos>(
+    l: &mut L,
+    password: &str,
+    device: &str,
+    client: &str,
+) -> anyhow::Result<Value> {
+    use crate::devices::{
+        credential_name, interpret_token, token_create, token_delete_path, validate_device, GitOff,
+        Minted, GIT_PATH,
+    };
+    use crate::signin::{LoginOutcome, Throttled, WrongPassword};
+
+    let secret = crate::signin::validate_candidate(password).map_err(|e| anyhow::anyhow!(e))?;
+    let device = validate_device(device).map_err(|e| anyhow::anyhow!(e))?;
+    let Some(repo) = l.config_repo().filter(|r| r.via_forgejo()) else {
+        return Err(GitOff.into());
+    };
+    let user = crate::setup::DEFAULT_ADMIN_USER;
+    match l.nextcloud_login(user, &secret, client) {
+        Ok(LoginOutcome::Accepted) => {}
+        Ok(LoginOutcome::Rejected) => return Err(WrongPassword.into()),
+        Ok(LoginOutcome::Throttled) => return Err(Throttled.into()),
+        Ok(LoginOutcome::Unavailable(why)) => return Err(crate::setup::NotReady(why).into()),
+        Err(e) => {
+            tracing::info!(error = ?e, "the password check could not reach LosOS cloud");
+            return Err(crate::setup::NotReady(
+                "LosOS cloud could not be reached, so the password could not be checked. \
+                 It may still be starting."
+                    .to_string(),
+            )
+            .into());
+        }
+    }
+    sync_owner_password(l, user, &secret);
+
+    let name = credential_name(&device);
+    let not_up = |e: anyhow::Error| -> anyhow::Error {
+        if e.downcast_ref::<crate::config_repo::NotUp>().is_some() {
+            crate::setup::NotReady(e.to_string()).into()
+        } else {
+            e
+        }
+    };
+    let (status, body) = l
+        .forgejo_as_owner(
+            "DELETE",
+            &token_delete_path(&repo.owner, &name),
+            &repo.owner,
+            &secret,
+            None,
+        )
+        .map_err(not_up)?;
+    if !matches!(status, 204 | 404) {
+        return Err(mint_refusal(interpret_token(status, &body)));
+    }
+    let (path, request) = token_create(&repo.owner, &name);
+    let (status, body) = l
+        .forgejo_as_owner("POST", &path, &repo.owner, &secret, Some(&request))
+        .map_err(not_up)?;
+    match interpret_token(status, &body) {
+        Minted::Credential(token) => {
+            tracing::info!(device = device.as_str(), "LosOS Git token made");
+            Ok(json!({ "user": repo.owner, "token": token, "path": GIT_PATH }))
+        }
+        other => Err(mint_refusal(other)),
+    }
+}
+
+/// A mint that did not come back with a credential, as the error the HTTP
+/// layer knows how to answer.
+fn mint_refusal(m: crate::devices::Minted) -> anyhow::Error {
+    use crate::devices::Minted;
+    match m {
+        Minted::Rejected => crate::signin::WrongPassword.into(),
+        Minted::Throttled => crate::signin::Throttled.into(),
+        Minted::Unavailable(why) => crate::setup::NotReady(why).into(),
+        Minted::Credential(_) => anyhow::anyhow!("a credential is not a refusal"),
     }
 }
 
@@ -2048,6 +2197,15 @@ mod tests {
             ) -> anyhow::Result<crate::signin::LoginOutcome> {
                 self.0.nextcloud_login(user, secret, client)
             }
+            fn nextcloud_app_password(
+                &mut self,
+                user: &str,
+                secret: &crate::setup::Secret,
+                device: &str,
+                client: &str,
+            ) -> anyhow::Result<(u16, String)> {
+                self.0.nextcloud_app_password(user, secret, device, client)
+            }
             fn recovery_code(&mut self) -> anyhow::Result<crate::recovery::Recovery> {
                 self.0.recovery_code()
             }
@@ -2148,6 +2306,16 @@ mod tests {
                 s: Option<&crate::setup::Secret>,
             ) -> anyhow::Result<(u16, String)> {
                 self.0.forgejo_request(op, s)
+            }
+            fn forgejo_as_owner(
+                &mut self,
+                m: &str,
+                p: &str,
+                o: &str,
+                s: &crate::setup::Secret,
+                b: Option<&str>,
+            ) -> anyhow::Result<(u16, String)> {
+                self.0.forgejo_as_owner(m, p, o, s, b)
             }
             fn mint_secret(&mut self) -> anyhow::Result<crate::setup::Secret> {
                 self.0.mint_secret()
