@@ -40,6 +40,10 @@ const SETTINGS = {
   hardeningUsbguard: false,
 };
 
+/** A box that can join the mesh: the tunnel on and a name of its own. The
+ * stock settings above can't, and the pane says why. */
+const JOINABLE = { ...SETTINGS, proxyEnable: true, hostName: 'kitchen' };
+
 /* GET /api/options for a box installed with or without a TPM: the real
  * document (the fixture advanced.browser.mjs reads too), with `tpm.enable`'s
  * running value set. Without `options` the catch-all answers `{}`, which the
@@ -880,7 +884,7 @@ await check('a switch flips from its label, from Space and from its track, and a
   await page.close();
 
   // Lending needs the mesh: with it off, the lend row is disabled and says why.
-  const mesh = await open({ path: '/mesh', stored: true });
+  const mesh = await open({ path: '/mesh', stored: true, settings: JOINABLE });
   const lend = mesh.page.getByRole('switch', { name: 'Lend this box while I sleep' });
   await lend.waitFor({ state: 'attached' });
   assert.ok(await lend.isDisabled(), 'lending is offered without the mesh');
@@ -1378,7 +1382,7 @@ await check('a seller whose coin fees are overdue is told coin payments stopped 
 });
 
 await check('the Mesh pane names the edge proxy the box found, and the join switch is live', async () => {
-  const { page, errors } = await open({ path: '/mesh', stored: true });
+  const { page, errors } = await open({ path: '/mesh', stored: true, settings: JOINABLE });
   const row = page.locator('[data-edge="found"]');
   await row.waitFor();
   const text = await row.innerText();
@@ -1392,7 +1396,7 @@ await check('the Mesh pane names the edge proxy the box found, and the join swit
 });
 
 await check('each edge in reach gets a row; a company edge wears a warning sign whose tooltip lists what is missing', async () => {
-  const { page, errors } = await open({ path: '/mesh', stored: true, edge: EDGE_BOTH });
+  const { page, errors } = await open({ path: '/mesh', stored: true, edge: EDGE_BOTH, settings: JOINABLE });
   const rows = page.locator('[data-edge="found"]');
   await rows.first().waitFor();
   assert.equal(await rows.count(), 2, 'one row per edge');
@@ -1447,6 +1451,23 @@ await check('with no edge proxy in reach the Mesh pane says so and the join swit
   await page.close();
 });
 
+await check('a box without the tunnel or with the stock name cannot join, and the pane says which', async () => {
+  const join = (page) => page.getByRole('switch', { name: 'Join the mesh', exact: true });
+  const stock = await open({ path: '/mesh', stored: true });
+  await stock.page.locator('[data-edge="found"]').waitFor();
+  assert.equal(await join(stock.page).isDisabled(), true, 'a box with the tunnel off can join');
+  assert.match(await body(stock.page), /Turn on “Reachable from outside your home” in Network first/);
+  assert.deepEqual(stock.errors, []);
+  await stock.page.close();
+
+  const named = await open({ path: '/mesh', stored: true, settings: { ...SETTINGS, proxyEnable: true } });
+  await named.page.locator('[data-edge="found"]').waitFor();
+  assert.equal(await join(named.page).isDisabled(), true, 'a box still called mattbox can join');
+  assert.match(await body(named.page), /Every box starts as “mattbox”/);
+  assert.deepEqual(named.errors, []);
+  await named.page.close();
+});
+
 await check('a box already joined keeps its join switch live while the edge is away, so it can leave', async () => {
   const joined = { ...SETTINGS, clusterEnable: true };
   const { page } = await open({ path: '/mesh', stored: true, edge: EDGE_NONE });
@@ -1465,7 +1486,7 @@ await check('the daemon\'s refusal reaches the owner in the daemon\'s own words'
   // the toast, and nothing is marked as applying afterwards.
   // The fixture's port 80 fails the form's own validation and keeps Apply
   // greyed; this check is about the daemon's refusal, so the form is valid.
-  const { page, applies } = await open({ path: '/mesh', stored: true, settings: { ...SETTINGS, apachePort: 11000 } });
+  const { page, applies } = await open({ path: '/mesh', stored: true, settings: { ...JOINABLE, apachePort: 11000 } });
   await page.locator('[data-edge="found"]').waitFor();
   const join = page.getByRole('switch', { name: 'Join the mesh', exact: true });
   await page.locator('[data-slot="switch"]').filter({ has: join }).click();

@@ -148,7 +148,7 @@ There is nothing to set up for this.
 | Network  | Reachable from outside your home       | opens the tunnel to the edge                                            |
 | Network  | Your own domain                        | adds a domain you own; needs an official edge and a Stripe account Stripe has checked |
 | Advanced | `losos.proxy.registrarUrl`             | the edge address asked over the internet, besides the local network     |
-| Mesh     | Join the mesh                          | enrols this box in the edge's cluster; needs an edge in reach           |
+| Mesh     | Join the mesh                          | enrols this box in the edge's cluster; needs an edge in reach, the tunnel on and a name of its own |
 | Mesh     | Lend this box while I sleep            | lends CPU inside the hours below, while idle; needs the mesh joined     |
 | Mesh     | Hours                                  | the daily window, in this box's own time zone                           |
 | Market   | Share this box's disk with the mesh    | lends spare room to the pool; needs an edge in reach                    |

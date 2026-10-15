@@ -42,10 +42,11 @@ allows:
 
 - **USDC on Base, Arbitrum One or OP Mainnet.** The payment goes into the
   `LososEscrow` contract. The edge checks it (the seller's address, the
-  amount, the confirmations) and then releases it to the seller and to the
-  platform treasury, which takes the 4% fee. Or it refunds the whole payment
-  to the buyer: when the seller's address is wrong or is a contract, when the
-  order was already paid, or when its units lapsed. If the edge never acts,
+  amount, the confirmations) and, once what was bought exists, releases it
+  to the seller and to the platform treasury, which takes the 4% fee. Or it
+  refunds the whole payment to the buyer: when the seller's address is wrong
+  or is a contract, when the order was already paid, when its units lapsed,
+  or when what was bought could not be set up in time. If the edge never acts,
   the buyer can reclaim the deposit from the contract a day after the
   order's hold ends. See [Paying with USDC](#paying-with-usdc).
 - **USDC on Solana.** A direct transfer, split between the seller and the
@@ -363,11 +364,14 @@ the source (`docs/ci-and-releases.md`) cover setting it up.
    marks the order paid. A transaction can pay only one order. The order
    then names its network and links the transaction on that network's
    explorer, for the buyer and the seller alike.
-6. On an Ethereum network the edge then checks the seller's address on that
-   network and releases the deposit: the fee to the treasury, the rest to
-   the seller. If the address cannot receive USDC there, the edge refunds
-   the whole payment to the buyer instead and the order is not fulfilled.
-   The order shows which of the two happened.
+6. On an Ethereum network the edge then waits until what was bought exists
+   (a storage order's volume is bound, a machine is created), checks the
+   seller's address on that network and releases the deposit: the fee to
+   the treasury, the rest to the seller. If the address cannot receive USDC
+   there, the edge refunds the whole payment to the buyer instead and the
+   order is not fulfilled. If what was bought is still not set up an hour
+   before the buyer could reclaim the deposit, the edge refunds it too. The
+   order shows which of these happened.
 
 Before it counts a payment on an Ethereum network, the edge checks that the
 RPC endpoint answers for that network's chain, that `LososEscrow` pulls

@@ -41,11 +41,11 @@ Peniaze sa nikdy nedotknú zariadenia LosOS. Kupujúci platia jedným zo štyroc
 spôsobov, podľa toho, čo edge dovolí:
 
 - **USDC na Base, Arbitrum One alebo OP Mainnet.** Platba ide do kontraktu
-  `LososEscrow`. Edge ju overí (adresu predajcu, sumu, potvrdenia) a potom ju
-  uvoľní predajcovi a pokladnici platformy, ktorá si berie 4 % poplatok.
-  Alebo celú platbu vráti kupujúcemu: keď je adresa predajcu nesprávna alebo
-  je to kontrakt, keď objednávka už bola zaplatená, alebo keď jej jednotky
-  prepadli. Ak edge nič neurobí, kupujúci si môže vklad z kontraktu vziať
+  `LososEscrow`. Edge ju overí (adresu predajcu, sumu, potvrdenia) a keď
+  kúpené existuje, uvoľní ju predajcovi a pokladnici platformy, ktorá si berie
+  4 % poplatok. Alebo celú platbu vráti kupujúcemu: keď je adresa predajcu
+  nesprávna alebo je to kontrakt, keď objednávka už bola zaplatená, keď jej
+  jednotky prepadli, alebo keď sa kúpené nepodarilo včas pripraviť. Ak edge nič neurobí, kupujúci si môže vklad z kontraktu vziať
   späť deň po skončení rezervácie objednávky. Pozri
   [Platba v USDC](#paying-with-usdc).
 - **USDC na Solane.** Priamy prevod, rozdelený medzi predajcu a pokladnicu
@@ -367,10 +367,13 @@ poznámky pre operátora pri zdrojovom kóde (`docs/ci-and-releases.md`).
    označí ako zaplatenú. Jedna transakcia zaplatí len jednu objednávku.
    Objednávka potom uvádza svoju sieť a odkaz na transakciu v prehliadači
    blokov tej siete, pre kupujúceho aj predajcu.
-6. Na sieti Etherea potom edge overí adresu predajcu na tej sieti a vklad
-   uvoľní: poplatok do treasury, zvyšok predajcovi. Ak adresa na tej sieti
-   USDC prijať nemôže, edge namiesto toho vráti celú platbu kupujúcemu a
-   objednávka sa nevybaví. Objednávka ukáže, čo z toho sa stalo.
+6. Na sieti Etherea potom edge počká, kým kúpené existuje (zväzok
+   objednávky úložiska je pripojený, stroj je vytvorený), overí adresu
+   predajcu na tej sieti a vklad uvoľní: poplatok do treasury, zvyšok
+   predajcovi. Ak adresa na tej sieti USDC prijať nemôže, edge namiesto toho
+   vráti celú platbu kupujúcemu a objednávka sa nevybaví. Ak kúpené ešte nie
+   je pripravené hodinu predtým, ako by si kupujúci mohol vklad vziať späť,
+   edge ho tiež vráti. Objednávka ukáže, čo z toho sa stalo.
 
 Kým platbu na sieti Etherea započíta, edge overí, že RPC odpovedá za reťazec
 tej siete, že `LososEscrow` sťahuje USDC od Circle pre tento reťazec, platí

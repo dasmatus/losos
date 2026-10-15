@@ -46,11 +46,12 @@ nachdem, was die Edge erlaubt:
 
 - **USDC auf Base, Arbitrum One oder OP Mainnet.** Die Zahlung geht in den
   Vertrag `LososEscrow`. Die Edge prüft sie (die Adresse des Verkäufers, den
-  Betrag, die Bestätigungen) und gibt sie dann an den Verkäufer und an die
-  Kasse der Plattform frei, die die Gebühr von 4 % erhält. Oder sie zahlt die
-  ganze Zahlung an den Käufer zurück: wenn die Adresse des Verkäufers falsch
-  oder ein Vertrag ist, wenn die Bestellung schon bezahlt war oder wenn ihre
-  Einheiten verfallen sind. Handelt die Edge nicht, kann der Käufer die
+  Betrag, die Bestätigungen) und gibt sie, sobald das Gekaufte existiert, an
+  den Verkäufer und an die Kasse der Plattform frei, die die Gebühr von 4 %
+  erhält. Oder sie zahlt die ganze Zahlung an den Käufer zurück: wenn die
+  Adresse des Verkäufers falsch oder ein Vertrag ist, wenn die Bestellung
+  schon bezahlt war, wenn ihre Einheiten verfallen sind oder wenn sich das
+  Gekaufte nicht rechtzeitig einrichten ließ. Handelt die Edge nicht, kann der Käufer die
   Einzahlung einen Tag nach dem Ende der Reservierung der Bestellung selbst
   aus dem Vertrag zurückholen. Siehe [Mit USDC zahlen](#paying-with-usdc).
 - **USDC auf Solana.** Eine direkte Überweisung, in der eigenen Transaktion
@@ -408,12 +409,15 @@ beschreiben die Betreiberhinweise beim Quellcode (`docs/ci-and-releases.md`).
    markiert die Bestellung als bezahlt. Eine Transaktion bezahlt nur eine
    Bestellung. Die Bestellung nennt dann ihr Netz und verlinkt die
    Transaktion im Block-Explorer dieses Netzes, für Käufer und Verkäufer.
-6. Auf einem Ethereum-Netz prüft der Edge danach die Adresse des Verkäufers
-   in diesem Netz und gibt die Einzahlung frei: die Gebühr an die Treasury,
-   den Rest an den Verkäufer. Kann die Adresse dort kein USDC empfangen,
-   zahlt der Edge stattdessen die ganze Zahlung an den Käufer zurück, und
-   die Bestellung wird nicht ausgeführt. Die Bestellung zeigt, was davon
-   geschah.
+6. Auf einem Ethereum-Netz wartet der Edge danach, bis das Gekaufte
+   existiert (das Volume einer Speicherbestellung ist gebunden, eine
+   Maschine ist angelegt), prüft die Adresse des Verkäufers in diesem Netz
+   und gibt die Einzahlung frei: die Gebühr an die Treasury, den Rest an den
+   Verkäufer. Kann die Adresse dort kein USDC empfangen, zahlt der Edge
+   stattdessen die ganze Zahlung an den Käufer zurück, und die Bestellung
+   wird nicht ausgeführt. Ist das Gekaufte eine Stunde, bevor der Käufer die
+   Einzahlung selbst zurückholen könnte, noch nicht eingerichtet, zahlt der
+   Edge sie ebenfalls zurück. Die Bestellung zeigt, was davon geschah.
 
 Bevor er eine Zahlung auf einem Ethereum-Netz zählt, prüft der Edge, dass der
 RPC-Endpunkt für die Chain dieses Netzes antwortet, dass `LososEscrow`

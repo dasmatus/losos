@@ -257,6 +257,66 @@ pub fn check_gate(
     }
 }
 
+/// Refused: an `overrides.nix` that has the box join the mesh when it cannot
+/// enrol. These are the two assertions of `modules/cluster.nix`, checked at
+/// Apply so the owner reads the reason on the pane instead of in a rebuild
+/// that fails before it builds anything.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum MeshNotReady {
+    /// `losos.cluster.enable` without `losos.proxy.enable`: the join signs
+    /// in with the tunnel's token, which only the master proxy sets up.
+    #[error(
+        "joining the mesh needs \"Reachable from outside your home\" on in Network: \
+         the box signs in to the edge with the same key as the tunnel"
+    )]
+    ProxyOff,
+    /// The node name is empty or the stock `mattbox` every box ships with,
+    /// which the edge refuses for the second box that joins.
+    #[error(
+        "joining the mesh needs a name of this box's own: every box starts as \
+         \"{STOCK_NAME}\", and the edge turns away a second box by the same name. \
+         Rename it in Network first"
+    )]
+    StockName,
+}
+
+/// The host name every box ships with (`losos.hostName`'s default).
+pub const STOCK_NAME: &str = "mattbox";
+
+/// The name this box joins the mesh under, as `modules/options.nix` derives
+/// it: `losos.cluster.nodeName`, else `losos.proxy.applianceId`, else
+/// `losos.hostName`.
+#[must_use]
+pub fn mesh_node_name(overrides: &str) -> String {
+    let unquote = |v: String| v.trim().trim_matches('"').to_string();
+    crate::overrides::lookup_nix("cluster.nodeName", overrides)
+        .or_else(|| crate::overrides::lookup_nix("proxy.applianceId", overrides))
+        .or_else(|| crate::overrides::lookup_nix("hostName", overrides))
+        .map_or_else(|| STOCK_NAME.to_string(), unquote)
+}
+
+/// The mesh half of an Apply: `Ok` unless `overrides` joins the mesh on a
+/// box the edge cannot enrol. Checked whenever the join is on, not only when
+/// it is turned on: switching the proxy off under a joined box fails the
+/// same assertion.
+///
+/// # Errors
+/// The first thing the box is missing.
+pub fn check_mesh(overrides: &str) -> Result<(), MeshNotReady> {
+    let desired = crate::overrides::parse_settings(overrides);
+    if !desired.cluster_enable {
+        return Ok(());
+    }
+    if !desired.proxy_enable {
+        return Err(MeshNotReady::ProxyOff);
+    }
+    let name = mesh_node_name(overrides);
+    if name.is_empty() || name == STOCK_NAME {
+        return Err(MeshNotReady::StockName);
+    }
+    Ok(())
+}
+
 /// A resolved DNS-SD record out of `avahi-browse --parsable --resolve`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Advert {
@@ -781,6 +841,44 @@ mod tests {
 =;eth0;IPv6;edge\\032demo;_losos-edge._tcp;local;edge.local;fe80::5054:ff:fe12:3456;8443;\"url=http://edge.local:8443\" \"txtvers=1\"
 =;eth0;IPv4;edge\\032demo;_losos-edge._tcp;local;edge.local;192.168.100.1;8443;\"url=http://edge.local:8443\" \"txtvers=1\"
 ";
+
+    #[test]
+    fn the_mesh_join_needs_the_proxy_and_a_name_of_its_own() {
+        let body = |lines: &str| format!("{{ ... }}:\n{{\n{lines}}}\n");
+        // Not joining: nothing to check, stock name and all.
+        assert_eq!(check_mesh(&body("  losos.proxy.enable = false;\n")), Ok(()));
+        // A fresh box: proxy off, stock name.
+        assert_eq!(
+            check_mesh(&body("  losos.cluster.enable = true;\n")),
+            Err(MeshNotReady::ProxyOff)
+        );
+        assert_eq!(
+            check_mesh(&body(
+                "  losos.hostName = \"mattbox\";\n  losos.proxy.enable = true;\n  losos.cluster.enable = true;\n"
+            )),
+            Err(MeshNotReady::StockName)
+        );
+        assert_eq!(
+            check_mesh(&body(
+                "  losos.hostName = \"kitchen\";\n  losos.proxy.enable = true;\n  losos.cluster.enable = true;\n"
+            )),
+            Ok(())
+        );
+        // The appliance id and the node name come before the host name,
+        // as in modules/options.nix.
+        assert_eq!(
+            check_mesh(&body(
+                "  losos.proxy.enable = true;\n  losos.cluster.enable = true;\n  losos.proxy.applianceId = \"kitchen\";\n"
+            )),
+            Ok(())
+        );
+        assert_eq!(
+            check_mesh(&body(
+                "  losos.hostName = \"kitchen\";\n  losos.proxy.enable = true;\n  losos.cluster.enable = true;\n  losos.cluster.nodeName = \"\";\n"
+            )),
+            Err(MeshNotReady::StockName)
+        );
+    }
 
     #[test]
     fn resolved_ipv4_record_wins_and_the_name_is_unescaped() {
