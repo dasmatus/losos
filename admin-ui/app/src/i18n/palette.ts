@@ -1,7 +1,7 @@
 import { defineMessages } from "./define";
 
 /* The command palette (src/palette/): Ctrl/Cmd+Shift+P, a colon, or the
- * search box at the top of the sidebar. LosOS cloud and LosOS Git are product names and stay
+ * search button at the top of the sidebar. LosOS cloud and LosOS Git are product names and stay
  * the same in every language. */
 export default defineMessages({
   "palette.title": { en: "Search", sk: "Hľadať", de: "Suchen" },

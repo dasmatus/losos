@@ -1,7 +1,7 @@
 /* Whether the command palette is open, and what it opens with.
  *
  * A module-level store rather than React context, the same shape as the
- * tour's (src/tour/store.ts): the sidebar's search box, the two keyboard
+ * tour's (src/tour/store.ts): the sidebar's search button, the two keyboard
  * shortcuts and the palette itself sit in different branches of the tree, and
  * none of them should re-render the shell to say "open". */
 

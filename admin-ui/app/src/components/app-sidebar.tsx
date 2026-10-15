@@ -66,8 +66,8 @@ import { pinKey, viewPin, type PinView } from "@/lib/pins";
  * removes them (components/pins-dialog.tsx). The palette finds them too.
  *
  * A folded entry opens by itself when the page is on one of its
- * sub-entries. The search box at the top is the command palette's button
- * (src/palette/): it opens the palette, which finds every entry here and
+ * sub-entries. The magnifier at the top opens the command palette
+ * (src/palette/), as Ctrl/Cmd+Shift+P does, which finds every entry here and
  * also the pins, apps, files in LosOS cloud and repositories in LosOS Git.
  *
  * On a wide screen the trigger (or Ctrl/Cmd+B) narrows the panel to a rail of
@@ -220,8 +220,8 @@ export function AppSidebar() {
       <Sidebar aria-label={t("shell.nav.label")} mobileTitle={t("shell.nav.label")} closeLabel={t("ui.dismiss")}>
         <SidebarHeader className={cn(isMobile && "pr-10")}>
           {!isMobile && <SidebarTrigger label={t(rail ? "shell.nav.expand" : "shell.nav.collapse")} />}
-          {/* The command palette's button, drawn as the search box it
-              replaced. On the rail it is the magnifier alone. */}
+          {/* The command palette's button: a magnifier at the end of the
+              header, under the trigger on the rail. */}
           <button
             type="button"
             onClick={() => {
@@ -231,26 +231,15 @@ export function AppSidebar() {
             aria-label={searchLabel}
             aria-keyshortcuts={SHORTCUT_ARIA}
             aria-haspopup="dialog"
-            title={rail ? searchLabel : undefined}
+            title={searchLabel}
             className={cn(
-              "flex h-8 min-w-0 flex-1 items-center gap-2 rounded-control border border-line bg-surface px-2 text-left",
-              "text-[13px] text-faint transition-[color,border-color] duration-150 hover:border-accent/45 hover:text-muted",
-              "focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/35 focus-visible:outline-none",
-              "group-data-[collapsible=icon]/sidebar:size-8 group-data-[collapsible=icon]/sidebar:flex-none",
-              "group-data-[collapsible=icon]/sidebar:justify-center group-data-[collapsible=icon]/sidebar:border-transparent",
-              "group-data-[collapsible=icon]/sidebar:bg-transparent group-data-[collapsible=icon]/sidebar:px-0",
+              "ml-auto flex size-8 shrink-0 items-center justify-center rounded-control text-muted",
+              "transition-colors duration-150 hover:bg-surface hover:text-ink",
+              "focus-visible:ring-2 focus-visible:ring-accent/40 focus-visible:outline-none",
+              "group-data-[collapsible=icon]/sidebar:ml-0",
             )}
           >
-            <HugeiconsIcon icon={Search01Icon} size={15} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
-            <span className="min-w-0 flex-1 truncate group-data-[collapsible=icon]/sidebar:hidden">
-              {t("settings.sidebar.searchPlaceholder")}
-            </span>
-            <kbd
-              aria-hidden="true"
-              className="rounded-[4px] border border-line bg-sunk px-1 font-sans text-[10.5px] leading-[16px] text-faint group-data-[collapsible=icon]/sidebar:hidden"
-            >
-              {shortcut}
-            </kbd>
+            <HugeiconsIcon icon={Search01Icon} size={16} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
           </button>
         </SidebarHeader>
 

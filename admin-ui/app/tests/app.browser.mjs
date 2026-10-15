@@ -652,10 +652,9 @@ await check('the panel narrows to icons with its trigger or Ctrl+B, and remember
   assert.ok(narrow < 70 && wide > 200, `the panel did not narrow to a rail: ${wide} -> ${narrow}`);
   // On the rail every entry is still a named link, and the current one is marked.
   await panel.getByRole('link', { name: 'Mesh', exact: true }).waitFor();
-  // The search box shrinks to its magnifier, still the palette's button.
+  // The palette's button is a magnifier, on the rail as in the panel.
   const search = panel.getByRole('button', { name: /^Search or jump to/ });
-  assert.ok((await search.boundingBox()).width <= 36, 'the search box is not a magnifier on the rail');
-  assert.equal(await search.getByText('Search', { exact: true }).isVisible(), false, 'the search box still shows its text on the rail');
+  assert.ok((await search.boundingBox()).width <= 36, 'the search button is not a magnifier on the rail');
   // Each icon names itself in a tooltip beside the rail (Base UI Tooltip).
   await panel.getByRole('link', { name: 'Storage', exact: true }).hover();
   const tip = page.locator('[data-slot="tooltip-content"]').filter({ hasText: /^Storage$/ });
@@ -670,7 +669,8 @@ await check('the panel narrows to icons with its trigger or Ctrl+B, and remember
   await page.keyboard.press('Control+b');
   await page.waitForTimeout(350);
   assert.ok((await panel.boundingBox()).width > 200, 'Ctrl+B did not widen the panel');
-  await panel.getByRole('button', { name: /^Search or jump to/ }).getByText('Search', { exact: true }).waitFor();
+  const wideSearch = await panel.getByRole('button', { name: /^Search or jump to/ }).boundingBox();
+  assert.ok(wideSearch.width <= 36, 'the search button grew back into a field');
   assert.deepEqual(errors, []);
   await page.close();
 });

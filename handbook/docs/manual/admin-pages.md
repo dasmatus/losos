@@ -30,7 +30,7 @@ sheet.
 
 ## Search
 
-The search box at the top of the sidebar opens one list that finds pages,
+The magnifier at the top of the sidebar opens one list that finds pages,
 apps, files and repositories. Ctrl+Shift+P on any admin page opens it too
 (Cmd+Shift+P on a Mac), and so does typing a colon anywhere outside a text
 field. It finds:
