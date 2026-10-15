@@ -31,7 +31,7 @@ erhalten, und zwar auf einer verschlüsselten Partition `/persist`.
   und der nächtliche Neustart.
 - [Mesh](/in-depth/mesh.md). Speicher und Rechenleistung für andere Boxen bereitstellen.
 - [Marktplatz](/in-depth/market.md). Den Speicher und die CPU verkaufen, die eine
-  Box schon teilt (geplant).
+  Box schon teilt.
 - [Virtuelle Maschinen](/in-depth/virtual-machines.md). Maschinen im Mesh mieten
   und Maschinen anderer Boxen hosten.
 - [Widget-Baukasten](/in-depth/widget-builder.md). Ein KI-Agent schreibt ein Widget

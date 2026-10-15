@@ -29,10 +29,8 @@ požiadavke: zariadenie, ktoré nezdieľa, dostane z `GET /api/vms` odpoveď
 `{available: false, reason: "notSharing"}`, každá akcia sa odmietne s kódom
 409 a stránka namiesto formulára ukáže jednu sivú vetu.
 
-Prepínač zdieľania disku je na paneli Trh a trh ešte nie je otvorený (pozri
-[Trh](/in-depth/market.md)). Kým sa neotvorí, administrácia zdieľanie zapnúť nevie, takže
-stránka Stroje zostáva sivá na každom zariadení, ktoré si
-`losos.sharingMyStorage` nenastavilo inak.
+Prepínač zdieľania disku je na paneli Trh (pozri [Trh](/in-depth/market.md)).
+Zapnite ho tam a stránka Stroje ponúkne formulár, len čo sa zmena použije.
 
 Stránka môže uviesť ešte dva dôvody:
 

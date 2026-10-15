@@ -28,9 +28,8 @@ assert.equal(DOC.version, 1, 'the option document is version 1');
 assert.ok(DOC.options.length > 40, `the document carries ${DOC.options.length} options; expected the whole losos.* tree`);
 
 /* The sixteen names lib/api.ts's buildOverridesNix always writes, and the
- * pane links to another pane for (or edits through the form, for the
- * planned Market pane). Kept as a list here so the test does not import
- * the bundle it is testing. */
+ * pane links to another pane for. Kept as a list here so the test does not
+ * import the bundle it is testing. */
 const OWNED = {
   sharingMyStorage: 'market',
   'nextcloud.mode': 'apps',
@@ -112,7 +111,7 @@ function joined(overrides = {}, stray = []) {
   };
 }
 
-async function open({ path = '/settings/advanced', overrides = {}, stray = [], optionsStatus = 200, config = CONFIG, locale = 'en-US' } = {}) {
+async function open({ path = '/settings/advanced', overrides = {}, stray = [], optionsStatus = 200, config = CONFIG, locale = 'en-US', settings = SETTINGS } = {}) {
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 }, locale });
   const errors = [];
   page.on('pageerror', (e) => errors.push(String(e)));
@@ -127,7 +126,7 @@ async function open({ path = '/settings/advanced', overrides = {}, stray = [], o
   await page.route('**/api/setup/claim', (route) => json(route, 200, { claimed: true }));
   await page.route('**/api/state', (route) => json(route, 200, { mode: 'local', sharing: false }));
   await page.route('**/api/settings', (route) =>
-    authed(route) ? json(route, 200, SETTINGS) : json(route, 401, { error: 'unauthorized' }),
+    authed(route) ? json(route, 200, settings) : json(route, 401, { error: 'unauthorized' }),
   );
   await page.route('**/api/status', (route) => json(route, 200, { state: 'idle', progress: 0, message: '' }));
   await page.route('**/api/options', (route) =>
@@ -187,7 +186,7 @@ await check('every option in the document is drawn, with an editor kind the pane
     const controls = await r.locator('input, select, textarea').count();
     if (option.readOnly) {
       assert.equal(controls, 0, `read-only losos.${option.name} has an editor`);
-    } else if (option.name in OWNED && OWNED[option.name] !== 'market') {
+    } else if (option.name in OWNED) {
       assert.equal(controls, 0, `owned losos.${option.name} has a second editor`);
       const href = await r.getByRole('link').getAttribute('href');
       assert.ok(href.endsWith(`/${OWNED[option.name]}`), `losos.${option.name} links to ${href}`);
@@ -208,7 +207,7 @@ await check('every option in the document is drawn, with an editor kind the pane
   await page.close();
 });
 
-await check('federation is unavailable while disk sharing is off, and opens when the draft turns it on', async () => {
+await check('federation is unavailable while disk sharing is off, and opens when it is on', async () => {
   const FEDERATION = ['forgejo.federation.enable', 'nextcloud.federation.enable'];
   for (const name of FEDERATION) {
     assert.equal(DOC.options.find((o) => o.name === name)?.needs, 'sharingMyStorage', `losos.${name} does not name its gate`);
@@ -221,19 +220,21 @@ await check('federation is unavailable while disk sharing is off, and opens when
     await r.getByTestId('option-needs').getByText('Federation runs only while this box shares its disk', { exact: false }).waitFor();
     assert.ok(await r.locator('input').isDisabled(), `losos.${name} can still be switched`);
   }
-  // The sharing row edits the form's own field while the Market pane is
-  // planned, so turning it on here opens both rows before Apply.
-  await flip(row(page, 'sharingMyStorage'));
-  await page.waitForTimeout(200);
+  assert.deepEqual(errors, []);
+  await page.close();
+
+  // Disk sharing is switched on the Market pane; with it on, both rows open.
+  const sharing = await open({ settings: { ...SETTINGS, sharingMyStorage: true } });
   for (const name of FEDERATION) {
-    const r = row(page, name);
+    const r = row(sharing.page, name);
+    await r.waitFor();
     assert.equal(await r.getAttribute('data-gated'), null, `losos.${name} stayed greyed with sharing on`);
     assert.equal(await r.getByTestId('option-needs').count(), 0);
     assert.ok(!(await r.locator('input').isDisabled()), `losos.${name} is still disabled`);
   }
-  await noViolations(page);
-  assert.deepEqual(errors, []);
-  await page.close();
+  await noViolations(sharing.page);
+  assert.deepEqual(sharing.errors, []);
+  await sharing.page.close();
 
   // The reason reads in the owner's language.
   const sk = await open({ locale: 'sk-SK' });
@@ -356,7 +357,7 @@ await check('a stray line is shown, blocks Apply, and Remove clears it', async (
   await page.close();
 });
 
-await check('an owned option shows the form\'s value and links to its pane; the planned Market one edits here', async () => {
+await check('an owned option shows the form\'s value and links to its pane', async () => {
   const { page } = await open();
   const host = row(page, 'hostName');
   await host.getByText('mattbox', { exact: true }).waitFor();
@@ -365,8 +366,9 @@ await check('an owned option shows the form\'s value and links to its pane; the 
   await link.click();
   await page.waitForURL(origin + '/settings/network');
   await page.goBack({ waitUntil: 'networkidle' });
-  await flip(row(page, 'sharingMyStorage'));
-  await main(page).getByText('1 change not applied yet').waitFor();
+  // Disk sharing belongs to the Market pane.
+  const sharing = row(page, 'sharingMyStorage').getByRole('link', { name: 'Change under Market' });
+  assert.equal(await sharing.getAttribute('href'), '/settings/market');
   await page.close();
 });
 

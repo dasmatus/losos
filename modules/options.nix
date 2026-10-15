@@ -1682,9 +1682,23 @@ in
       default = false;
       description = ''
         Serve the /market/* routes of losos-registrar. Without this every one
-        of them answers 503. Needs a Stripe platform account with Connect
-        enabled; see handbook/docs/in-depth/market.md for the one-time
-        dashboard setup.
+        of them answers 503. With `losos.edge.market.cards.enable` (the
+        default) it needs a Stripe platform account with Connect enabled; see
+        handbook/docs/in-depth/market.md for the one-time dashboard setup.
+      '';
+    };
+
+    edge.market.cards.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Let buyers pay by card through Stripe Connect, and sellers take
+        payouts there. Off, the edge takes coins only (USDC, plus Bitcoin and
+        Monero when they are on) and needs no Stripe account: no
+        `losos-stripe-gate` unit runs, no Stripe key is sealed, and the
+        market's mode is that of its USDC networks, so a live edge lists the
+        mainnet ones. Needs `losos.edge.market.usdc.enable`. Hardware sales
+        and the widget builder's top-ups are paid by card, so they need it on.
       '';
     };
 

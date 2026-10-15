@@ -443,6 +443,43 @@ fn market_flags_are_all_or_nothing_and_bounded() {
 }
 
 #[test]
+fn an_edge_without_cards_takes_coins_and_no_gate() {
+    const BASE: &str = "network=base,rpc=/run/c/usdc-rpc-base,pay=0x1111111111111111111111111111111111111111,treasury=0x4444444444444444444444444444444444444444";
+    let coins = [
+        "--market-no-cards",
+        "--market-currency",
+        "usd",
+        "--market-usdc",
+        BASE,
+        "--market-usdc-releaser-file",
+        "/run/c/usdc-releaser-key",
+    ];
+    let market = serve_opts(&coins).market.expect("market enabled");
+    assert!(!market.cards);
+    assert_eq!(market.gate_socket, "");
+    assert_eq!(market.return_url, "");
+    assert!(!market.usdc.expect("usdc").test(), "base is a live network");
+    // A card edge keeps the gate.
+    assert!(serve_opts(MARKET_FLAGS).market.expect("market").cards);
+    // Without USDC there is nothing to pay with.
+    assert!(parse(serve_args(&[
+        "--market-no-cards",
+        "--market-currency",
+        "usd"
+    ]))
+    .is_err());
+    // No gate beside it, and no hardware: that is paid by card.
+    for extra in [
+        ["--market-gate-socket", "/run/losos-stripe-gate/gate.sock"],
+        ["--market-hardware-catalogue", "/etc/losos/hardware.json"],
+    ] {
+        let mut args = coins.to_vec();
+        args.extend(extra);
+        assert!(parse(serve_args(&args)).is_err(), "{extra:?}");
+    }
+}
+
+#[test]
 fn usdc_takes_one_flag_per_network_of_one_mode() {
     const BASE: &str = "network=base-sepolia,rpc=/run/c/usdc-rpc-base-sepolia,pay=0x1111111111111111111111111111111111111111,treasury=0x4444444444444444444444444444444444444444";
     const ARB: &str = "network=arbitrum-sepolia,rpc=/run/c/usdc-rpc-arbitrum-sepolia,pay=0x1111111111111111111111111111111111111111,treasury=0x4444444444444444444444444444444444444444";

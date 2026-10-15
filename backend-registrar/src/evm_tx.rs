@@ -341,7 +341,17 @@ mod tests {
         let hash = send(rpc, 31337, &releaser, to, release_data(deposit), false)
             .await
             .unwrap();
-        let receipt = stablecoin::fetch_receipt(rpc, &hash).await.unwrap();
+        // anvil answers eth_sendRawTransaction before it has mined the
+        // block, so the receipt can be a moment behind, as on a real chain.
+        let mut receipt = stablecoin::fetch_receipt(rpc, &hash).await;
+        for _ in 0..50 {
+            if receipt.is_ok() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            receipt = stablecoin::fetch_receipt(rpc, &hash).await;
+        }
+        let receipt = receipt.unwrap();
         assert_eq!(receipt["status"], "0x1", "{receipt}");
         assert_eq!(
             stablecoin::deposit_state(rpc, escrow, deposit)

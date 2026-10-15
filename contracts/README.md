@@ -11,14 +11,14 @@ trusts a log it reads `usdc()` and `treasury()` back from the contract and
 refuses one deployed over any other token or treasury.
 
 Deploy once per EVM chain the edge settles on (Base, Arbitrum One and OP
-Mainnet live, their Sepolia networks for test) with Circle's USDC on that
+Mainnet; their Sepolia networks for a test edge) with Circle's USDC on that
 chain and the treasury address. The two addresses go in the edge config, not
 in a secret:
 
 ```nix
 losos.edge.market.usdc = {
   enable = true;
-  networks.base-sepolia = {
+  networks.base = {
     pay = "0x…";       # this contract
     treasury = "0x…";  # platform fee
   };

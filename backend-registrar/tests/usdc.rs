@@ -188,9 +188,15 @@ fn tenants() -> Vec<TenantSpec> {
 }
 
 async fn start(tag: &str, rpc_url: &str, state: Option<&Value>) -> Edge {
+    start_with_cards(tag, rpc_url, state, true).await
+}
+
+/// As [`start`]; `cards: false` is an edge with no Stripe account, whose gate
+/// is stopped before the first request.
+async fn start_with_cards(tag: &str, rpc_url: &str, state: Option<&Value>, cards: bool) -> Edge {
     let stripe = start_stripe().await;
     let rpc_url = rpc_url.to_string();
-    Edge::start_market_full(
+    let mut edge = Edge::start_market_full(
         tag,
         &tenants(),
         &stripe,
@@ -201,6 +207,10 @@ async fn start(tag: &str, rpc_url: &str, state: Option<&Value>) -> Edge {
             std::fs::write(dir.join("usdc-releaser-key"), RELEASER_KEY).expect("write key");
             let market = opts.market.as_mut().expect("market on");
             market.currency = "usd".to_string();
+            if !cards {
+                market.cards = false;
+                market.gate_socket = dir.path_str("no-gate.sock");
+            }
             market.usdc = Some(UsdcOpts {
                 chains: vec![
                     UsdcChain {
@@ -233,7 +243,11 @@ async fn start(tag: &str, rpc_url: &str, state: Option<&Value>) -> Edge {
             });
         },
     )
-    .await
+    .await;
+    if !cards {
+        edge.stop_gate().await;
+    }
+    edge
 }
 
 fn auth(id: &str, token: &str) -> Value {
@@ -584,6 +598,38 @@ async fn a_payment_counts_once_it_has_a_block_on_top() {
     let order = wait_step(&edge, &order_id, "released").await;
     assert!(order["escrow"]["tx"].is_null(), "{order}");
     assert_eq!(sent_calls(&chain).len(), 1);
+    edge.shutdown().await;
+}
+
+#[tokio::test]
+async fn an_edge_without_a_stripe_account_takes_usdc() {
+    let (chain, url) = start_chain().await;
+    let edge = start_with_cards("usdc-no-cards", &url, None, false).await;
+    // The mode comes from the networks, not from a Stripe key.
+    let (status, body) = edge
+        .post("/market/account", auth("seller-box", GOOD_TOKEN))
+        .await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(parse(&body)["mode"], "test", "{body}");
+    // Card payouts are not offered.
+    let (status, body) = edge
+        .post("/market/seller/onboard", auth("seller-box", GOOD_TOKEN))
+        .await;
+    assert_eq!(status, 503, "{body}");
+
+    let seller = set_payout(&edge, 7).await;
+    let invoice = order(&edge, 40).await;
+    let order_id = invoice["order_id"].as_str().unwrap().to_string();
+    chain.set(|c| {
+        c.receipts.insert(tx(1), receipt(&invoice, &seller, 100, 1));
+        c.head = 101;
+    });
+    let (status, body) = confirm(&edge, &order_id, &tx(1)).await;
+    assert_eq!(status, 204, "{body}");
+    assert_eq!(status_of(&edge, &order_id).await, "paid");
+    assert_eq!(wait_sent(&chain, 1).await, [(RELEASE.to_string(), 1)]);
+    mine_sent(&chain, "0x1");
+    wait_step(&edge, &order_id, "released").await;
     edge.shutdown().await;
 }
 

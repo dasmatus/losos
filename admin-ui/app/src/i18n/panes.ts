@@ -1936,9 +1936,9 @@ export default defineMessages({
     de: "In USDC zahlen und bezahlt werden",
   },
   "panes.market.usdc.how": {
-    en: "Orders on this edge are paid in USDC on {chain}; you pick the network when you pay. Create a wallet here, import the 12 or 24 words from MetaMask, Rabby, Rainbow, Trust Wallet or Phantom, or connect the wallet already in this browser. One phrase gives you an address on every network listed. The platform fee goes to the edge's treasury and the rest straight to the seller. The box never sees your phrase or your key.",
-    sk: "Objednávky na tomto edge sa platia v USDC na sieti {chain}; sieť si vyberiete pri platbe. Vytvorte peňaženku tu, importujte 12 alebo 24 slov z MetaMask, Rabby, Rainbow, Trust Wallet alebo Phantom, alebo pripojte peňaženku, ktorá už v tomto prehliadači je. Jedna fráza vám dá adresu na každej uvedenej sieti. Poplatok platformy ide do pokladnice edge a zvyšok priamo predajcovi. Zariadenie vašu frázu ani kľúč nikdy nevidí.",
-    de: "Bestellungen auf diesem Edge werden in USDC auf {chain} bezahlt; das Netzwerk wählst du beim Bezahlen. Lege hier eine Wallet an, importiere die 12 oder 24 Wörter aus MetaMask, Rabby, Rainbow, Trust Wallet oder Phantom, oder verbinde die Wallet, die schon in diesem Browser steckt. Eine Phrase gibt dir eine Adresse auf jedem genannten Netzwerk. Die Plattformgebühr geht an die Kasse des Edge, der Rest direkt an den Verkäufer. Die Box sieht weder deine Wörter noch deinen Schlüssel.",
+    en: "Orders on this edge are paid in USDC on {chain}; you pick the network when you pay. Create a wallet here, import the 12 or 24 words from MetaMask, Rabby, Rainbow, Trust Wallet or Phantom, or connect the wallet already in this browser. One phrase gives you an address on every network listed. The platform fee goes to the edge's treasury and the rest to the seller once the edge has confirmed the payment. The box never sees your phrase or your key.",
+    sk: "Objednávky na tomto edge sa platia v USDC na sieti {chain}; sieť si vyberiete pri platbe. Vytvorte peňaženku tu, importujte 12 alebo 24 slov z MetaMask, Rabby, Rainbow, Trust Wallet alebo Phantom, alebo pripojte peňaženku, ktorá už v tomto prehliadači je. Jedna fráza vám dá adresu na každej uvedenej sieti. Poplatok platformy ide do pokladnice edge a zvyšok predajcovi, keď edge platbu potvrdí. Zariadenie vašu frázu ani kľúč nikdy nevidí.",
+    de: "Bestellungen auf diesem Edge werden in USDC auf {chain} bezahlt; das Netzwerk wählst du beim Bezahlen. Lege hier eine Wallet an, importiere die 12 oder 24 Wörter aus MetaMask, Rabby, Rainbow, Trust Wallet oder Phantom, oder verbinde die Wallet, die schon in diesem Browser steckt. Eine Phrase gibt dir eine Adresse auf jedem genannten Netzwerk. Die Plattformgebühr geht an die Kasse des Edge, der Rest an den Verkäufer, sobald der Edge die Zahlung bestätigt hat. Die Box sieht weder deine Wörter noch deinen Schlüssel.",
   },
   "panes.market.usdc.writeDown": {
     en: "Write these words down. They are the wallet. This page cannot show them again.",
@@ -1991,14 +1991,14 @@ export default defineMessages({
     de: "Wohin du bezahlt wirst",
   },
   "panes.market.usdc.payCaption": {
-    en: "You pay from the wallet below, in USDC on {chain}. The platform fee goes to the edge's treasury and the rest straight to the seller.",
-    sk: "Platíte z peňaženky nižšie, v USDC na sieti {chain}. Poplatok platformy ide do pokladnice edge a zvyšok priamo predajcovi.",
-    de: "Du bezahlst mit der Wallet unten, in USDC auf {chain}. Die Plattformgebühr geht an die Kasse des Edge, der Rest direkt an den Verkäufer.",
+    en: "You pay from the wallet below, in USDC on {chain}. The platform fee goes to the edge's treasury and the rest to the seller once the edge has confirmed the payment.",
+    sk: "Platíte z peňaženky nižšie, v USDC na sieti {chain}. Poplatok platformy ide do pokladnice edge a zvyšok predajcovi, keď edge platbu potvrdí.",
+    de: "Du bezahlst mit der Wallet unten, in USDC auf {chain}. Die Plattformgebühr geht an die Kasse des Edge, der Rest an den Verkäufer, sobald der Edge die Zahlung bestätigt hat.",
   },
   "panes.market.usdc.sellCaption": {
-    en: "The platform keeps {percent}% of each sale to cover running costs. The rest is paid straight to your payout address in the same transaction.",
-    sk: "Platforma si z každého predaja necháva {percent} % na pokrytie nákladov. Zvyšok ide v tej istej transakcii priamo na vašu adresu pre výplaty.",
-    de: "Die Plattform behält {percent} % jedes Verkaufs für die Betriebskosten. Der Rest geht in derselben Transaktion direkt an deine Auszahlungsadresse.",
+    en: "The platform keeps {percent}% of each sale to cover running costs. The rest reaches your payout address once the edge has confirmed the payment.",
+    sk: "Platforma si z každého predaja necháva {percent} % na pokrytie nákladov. Zvyšok príde na vašu adresu pre výplaty, keď edge platbu potvrdí.",
+    de: "Die Plattform behält {percent} % jedes Verkaufs für die Betriebskosten. Der Rest kommt auf deiner Auszahlungsadresse an, sobald der Edge die Zahlung bestätigt hat.",
   },
   "panes.market.usdc.payoutFirst": {
     en: "Set where you get paid in the wallet above, then list what this box shares.",
@@ -2331,9 +2331,9 @@ export default defineMessages({
     de: "Diese Bestellung bezahlen",
   },
   "panes.market.usdc.payDetail": {
-    en: "{gross} on {chain}. The platform keeps {fee}; the rest goes straight to the seller.",
-    sk: "{gross} na sieti {chain}. Platforma si nechá {fee}; zvyšok ide priamo predajcovi.",
-    de: "{gross} auf {chain}. Die Plattform behält {fee}; der Rest geht direkt an den Verkäufer.",
+    en: "{gross} on {chain}. The platform keeps {fee}; the seller gets the rest once the edge has confirmed the payment.",
+    sk: "{gross} na sieti {chain}. Platforma si nechá {fee}; zvyšok dostane predajca, keď edge platbu potvrdí.",
+    de: "{gross} auf {chain}. Die Plattform behält {fee}; den Rest bekommt der Verkäufer, sobald der Edge die Zahlung bestätigt hat.",
   },
   "panes.market.usdc.pay": {
     en: "Pay with USDC",
