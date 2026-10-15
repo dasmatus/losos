@@ -140,6 +140,11 @@ pub enum ForgejoOp {
         name: String,
         branch: String,
     },
+    /// The repositories an account owns, private ones included (the bot is
+    /// a site administrator). The sidebar's pin picker reads it.
+    ListRepos {
+        login: String,
+    },
 }
 
 impl ForgejoOp {
@@ -155,6 +160,13 @@ impl ForgejoOp {
             ForgejoOp::CreateRepo { owner, .. } => {
                 ("POST", format!("/api/v1/admin/users/{owner}/repos"))
             }
+            ForgejoOp::ListRepos { login } => (
+                "GET",
+                format!(
+                    "/api/v1/users/{login}/repos?limit={}",
+                    crate::pins::MAX_REPOS
+                ),
+            ),
         }
     }
 
@@ -162,7 +174,9 @@ impl ForgejoOp {
     /// operations that carry a password and ignored by the rest.
     pub fn body(&self, secret: Option<&Secret>) -> anyhow::Result<Option<String>> {
         let doc = match self {
-            ForgejoOp::GetUser { .. } | ForgejoOp::GetRepo { .. } => return Ok(None),
+            ForgejoOp::GetUser { .. } | ForgejoOp::GetRepo { .. } | ForgejoOp::ListRepos { .. } => {
+                return Ok(None)
+            }
             ForgejoOp::CreateUser { login } => {
                 let secret =
                     secret.ok_or_else(|| anyhow::anyhow!("creating a user needs a password"))?;
