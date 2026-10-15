@@ -1,14 +1,11 @@
 /* The first-run wizard's own client calls.
  *
  * Every route here is served today; the status is marked on each declaration
- * below because it has not always been, and a wizard that pretends to have
- * minted a recovery code is worse than one that says it cannot — the owner
- * writes down a number that proves nothing.
+ * below because it has not always been.
  *
  *   SHIPPING  GET  /setup/state.json   modules/setup.nix, static, no token
  *   SHIPPING  GET  /setup/losos-ca.crt modules/setup.nix, static, no token
  *   SHIPPING  POST /api/set-password   backend/src/http.rs + setup.rs, token
- *   SHIPPING  GET  /api/recovery       backend/src/http.rs + recovery.rs, token
  *
  * The first password on a fresh box does not go through set-password at all:
  * nothing holds a token yet. Step 2 claims the box through @/lib/api's
@@ -308,38 +305,4 @@ export function passwordProblem(password: string): string | null {
   if (!/\p{N}/u.test(password)) return t("wizard.password.noDigit");
   if (!SYMBOL.test(password)) return t("wizard.password.noSymbol");
   return null;
-}
-
-// ── GET /api/recovery ─────────────────────────────────────────────────────
-
-/* Served. `backend/src/recovery.rs` mints a v4 UUID once and keeps it at
- * /var/secrets/losos-recovery-code; `backend/src/http.rs` routes GET
- * /api/recovery to it, `backend/src/dbus.rs` exposes the same call as
- * `Recovery`, and `backend/schema.json` carries the wire shape the interface
- * below is transcribed from.
- *
- * The 404 branch is kept, and is not dead code: this SPA is served from the
- * appliance's own store path, but `losos.backend.package` can be pinned to an
- * older lososd, and a box mid-`nixos-rebuild switch` has the new UI in front of
- * the previous daemon for the length of the rebuild. The recovery step (hidden
- * at present, see ./steps.ts) then says the box cannot show a code, in words,
- * and unblocks Continue.
- *
- * What it must never do is invent one. A UUID the box did not mint is a piece
- * of paper that proves nothing, and the owner would not find out until the
- * reinstall this code exists to survive. */
-
-export const RECOVERY_URL = "/api/recovery";
-
-export interface RecoveryResponse {
-  /** Canonical lowercase hyphenated UUID, 36 characters. */
-  code: string;
-  /** True only on the call that created it, so the wizard can say "write this
-   *  down now" once and "here it is again" afterwards. Describes the call, not
-   *  persisted state. */
-  minted: boolean;
-}
-
-export function getRecovery(options: RequestOptions = {}): Promise<RecoveryResponse> {
-  return authedJson<RecoveryResponse>(RECOVERY_URL, { ...options, method: "GET" });
 }
