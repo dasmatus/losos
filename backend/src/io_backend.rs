@@ -771,6 +771,34 @@ fn first_line(stderr: &[u8]) -> String {
 /// A curl that could not connect is [`crate::config_repo::NotUp`], the
 /// normal state of a box whose Forgejo pod is still pulling. A reply, any
 /// reply, is handed back with its status for [`crate::config_repo::classify`].
+/// One HTTP/1.0 exchange with a server on this box's loopback: write the
+/// request bytes, read the answer to the end, split off the status. For the
+/// requests that carry the owner's password (`crate::devices`), which must
+/// not go through curl's argv or a file.
+fn loopback_exchange(addr: &str, request: &[u8], read_secs: u64) -> anyhow::Result<(u16, String)> {
+    use std::io::Read;
+    use std::net::{TcpStream, ToSocketAddrs};
+    use std::time::Duration;
+    const MAX_BYTES: u64 = 1024 * 1024;
+
+    let to = addr
+        .to_socket_addrs()
+        .with_context(|| format!("resolving {addr}"))?
+        .next()
+        .with_context(|| format!("{addr} names no address"))?;
+    let mut stream = TcpStream::connect_timeout(&to, Duration::from_secs(5))
+        .with_context(|| format!("connecting to {to}"))?;
+    stream.set_read_timeout(Some(Duration::from_secs(read_secs)))?;
+    stream.set_write_timeout(Some(Duration::from_secs(5)))?;
+    stream.write_all(request).context("sending the request")?;
+    let mut raw = Vec::new();
+    (&mut stream)
+        .take(MAX_BYTES)
+        .read_to_end(&mut raw)
+        .context("reading the answer")?;
+    crate::devices::split_response(&raw).context("the answer was not HTTP")
+}
+
 fn curl_forgejo(
     paths: &Paths,
     repo: &crate::config_repo::RepoConfig,
@@ -1798,6 +1826,30 @@ impl Losos for IoLosos {
         )))
     }
 
+    fn nextcloud_app_password(
+        &mut self,
+        user: &str,
+        secret: &crate::setup::Secret,
+        device: &str,
+        client: &str,
+    ) -> anyhow::Result<(u16, String)> {
+        let url = std::env::var("LOSOS_NEXTCLOUD_LOGIN_URL")
+            .ok()
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| crate::signin::DEFAULT_LOGIN_URL.to_string());
+        let host = std::env::var("LOSOS_NEXTCLOUD_LOGIN_HOST")
+            .ok()
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| crate::signin::DEFAULT_LOGIN_HOST.to_string());
+        let endpoint = crate::signin::parse_login_url(&url).map_err(|e| anyhow::anyhow!(e))?;
+        let path = crate::devices::app_password_path(&endpoint.path);
+        let request =
+            crate::devices::app_password_request(&path, &host, user, secret, device, client);
+        // Nextcloud answers a wrong password late on purpose, as at the
+        // sign-in, so the read waits longer than its 25 seconds.
+        loopback_exchange(&endpoint.addr, &request, 40).context("asking LosOS cloud")
+    }
+
     fn recovery_code(&mut self) -> anyhow::Result<crate::recovery::Recovery> {
         crate::recovery::ensure_code(&mut FileCodeStore::from_env())
     }
@@ -2051,6 +2103,28 @@ impl Losos for IoLosos {
         let repo = crate::config_repo::RepoConfig::from_env()
             .context("LOSOS_CONFIG_REPO is not set; see modules/config-repo.nix")?;
         curl_forgejo(&self.paths, &repo, op, secret)
+    }
+
+    fn forgejo_as_owner(
+        &mut self,
+        method: &str,
+        path: &str,
+        owner: &str,
+        secret: &crate::setup::Secret,
+        body: Option<&str>,
+    ) -> anyhow::Result<(u16, String)> {
+        use crate::config_repo::NotUp;
+        let repo = crate::config_repo::RepoConfig::from_env()
+            .context("LOSOS_CONFIG_REPO is not set; see modules/config-repo.nix")?;
+        let endpoint =
+            crate::signin::parse_login_url(&repo.forgejo_url).map_err(|e| anyhow::anyhow!(e))?;
+        // Not curl_forgejo: that one sends the bot's token from a file, and
+        // this request carries the owner's password, which no file or argv
+        // may hold.
+        let request =
+            crate::devices::forgejo_request(method, path, "localhost", owner, secret, body);
+        loopback_exchange(&endpoint.addr, &request, 20)
+            .map_err(|e| NotUp(format!("LosOS Git is not answering yet ({e:#})")).into())
     }
 
     fn mint_secret(&mut self) -> anyhow::Result<crate::setup::Secret> {

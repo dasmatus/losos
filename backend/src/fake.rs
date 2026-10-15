@@ -165,6 +165,16 @@ pub struct FakeLosos {
     pub forgejo_routes: std::collections::BTreeMap<String, (u16, String)>,
     /// Every request made, as `METHOD path` and the password it carried.
     pub forgejo_calls: Vec<(String, Option<String>)>,
+    /// What the fake LosOS Git answers to a call as the owner, by
+    /// `"METHOD path"`; a route not listed is a LosOS Git that is not up.
+    pub owner_forgejo_routes: std::collections::BTreeMap<String, (u16, String)>,
+    /// Every call as the owner: `"METHOD path"`, the password and the body.
+    pub owner_forgejo_calls: Vec<(String, String, Option<String>)>,
+    /// What the fake Nextcloud answers to an app password request: `None`
+    /// is a Nextcloud that is not up. Every request is recorded as
+    /// `(user, device, client)`.
+    pub app_password_answer: Option<(u16, String)>,
+    pub app_password_asked: Vec<(String, String, String)>,
     pub sync_report: Option<crate::config_repo::SyncReport>,
     /// Where the box follows the published tree from; `None` is off.
     pub upstream: Option<crate::config_repo::Upstream>,
@@ -307,6 +317,10 @@ impl FakeLosos {
             fast_forwarded: Vec::new(),
             forgejo_routes: std::collections::BTreeMap::new(),
             forgejo_calls: Vec::new(),
+            owner_forgejo_routes: std::collections::BTreeMap::new(),
+            owner_forgejo_calls: Vec::new(),
+            app_password_answer: None,
+            app_password_asked: Vec::new(),
             sync_report: None,
             upstream: None,
             upstream_head: None,
@@ -461,6 +475,27 @@ impl Losos for FakeLosos {
             None => anyhow::bail!("connection refused (the fake Nextcloud is not up)"),
             Some(p) if p == secret.expose() => Ok(LoginOutcome::Accepted),
             Some(_) => Ok(LoginOutcome::Rejected),
+        }
+    }
+
+    fn nextcloud_app_password(
+        &mut self,
+        user: &str,
+        secret: &crate::setup::Secret,
+        device: &str,
+        client: &str,
+    ) -> anyhow::Result<(u16, String)> {
+        self.app_password_asked
+            .push((user.to_string(), device.to_string(), client.to_string()));
+        if self.login_throttled {
+            return Ok((429, String::new()));
+        }
+        match (&self.accepted_password, &self.app_password_answer) {
+            (None, _) | (_, None) => {
+                anyhow::bail!("connection refused (the fake Nextcloud is not up)")
+            }
+            (Some(p), _) if p != secret.expose() => Ok((401, String::new())),
+            (Some(_), Some(answer)) => Ok(answer.clone()),
         }
     }
 
@@ -784,6 +819,28 @@ impl Losos for FakeLosos {
             .push((key.clone(), secret.map(|s| s.expose().to_string())));
         match self.forgejo_routes.get(&key) {
             Some((status, body)) => Ok((*status, body.clone())),
+            None => {
+                Err(crate::config_repo::NotUp("the fake LosOS Git is not up".to_string()).into())
+            }
+        }
+    }
+
+    fn forgejo_as_owner(
+        &mut self,
+        method: &str,
+        path: &str,
+        _owner: &str,
+        secret: &crate::setup::Secret,
+        body: Option<&str>,
+    ) -> anyhow::Result<(u16, String)> {
+        let key = format!("{method} {path}");
+        self.owner_forgejo_calls.push((
+            key.clone(),
+            secret.expose().to_string(),
+            body.map(str::to_string),
+        ));
+        match self.owner_forgejo_routes.get(&key) {
+            Some(answer) => Ok(answer.clone()),
             None => {
                 Err(crate::config_repo::NotUp("the fake LosOS Git is not up".to_string()).into())
             }

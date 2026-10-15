@@ -89,6 +89,36 @@ pub enum Command {
         #[command(subcommand)]
         command: CiCommand,
     },
+    Cloud {
+        #[command(subcommand)]
+        command: CloudCommand,
+    },
+    Git {
+        #[command(subcommand)]
+        command: GitCommand,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum CloudCommand {
+    Setup {
+        #[arg(long, value_name = "NAME")]
+        device: Option<String>,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum GitCommand {
+    Setup {
+        #[arg(long, value_name = "NAME")]
+        device: Option<String>,
+    },
+    /// git's credential helper protocol, for the helper `git setup` names.
+    #[command(hide = true)]
+    Credential {
+        #[arg(value_name = "ACTION")]
+        action: String,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -170,6 +200,10 @@ const ABOUT: &[(&[&str], &str)] = &[
     (&["edge", "escrow", "releaser"], "tui.help.cmd.releaser"),
     (&["ci"], "tui.help.cmd.ci"),
     (&["ci", "setup"], "tui.help.cmd.ciSetup"),
+    (&["cloud"], "tui.help.cmd.cloud"),
+    (&["cloud", "setup"], "tui.help.cmd.cloudSetup"),
+    (&["git"], "tui.help.cmd.git"),
+    (&["git", "setup"], "tui.help.cmd.gitSetup"),
 ];
 
 /// Every argument's id and the catalogue key of its help.
@@ -194,6 +228,7 @@ const ARGS: &[(&str, &str)] = &[
     ("edge", "tui.help.arg.edge"),
     ("repo", "tui.help.opt.repo"),
     ("print", "tui.help.opt.print"),
+    ("device", "tui.help.opt.device"),
 ];
 
 /// An argument whose help differs in one command from the table above.
@@ -374,6 +409,17 @@ mod tests {
         assert!(
             matches!(cli.command, Some(Command::Ci { command: CiCommand::Setup { ref repo, .. } }) if repo == "dasmatus/losos")
         );
+        let cli = parse(&args(&["cloud", "setup", "--device", "work pc"])).unwrap();
+        assert!(
+            matches!(cli.command, Some(Command::Cloud { command: CloudCommand::Setup { device: Some(ref d) } }) if d == "work pc")
+        );
+        let cli = parse(&args(&["git", "credential", "get"])).unwrap();
+        assert!(matches!(
+            cli.command,
+            Some(Command::Git {
+                command: GitCommand::Credential { .. }
+            })
+        ));
         assert!(parse(&args(&["edge", "escrow", "releaser", "--new", "--replace"])).is_err());
         assert!(parse(&args(&["key", "import"])).is_err());
     }
