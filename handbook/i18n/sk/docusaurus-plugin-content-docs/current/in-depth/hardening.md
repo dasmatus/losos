@@ -20,7 +20,7 @@ mdx:
 NixOS vo verzii 26.05 odstránil svoj hardened profil a `linux_hardened` už
 neexistuje, preto ich `modules/hardening.nix` nastavuje priamo.
 
-## Voliteľné
+## Voliteľné {#opt-in}
 
 Každé z nasledujúcich môže niečo pokaziť, preto je každé predvolene vypnuté.
 Zapnite ich v paneli Zabezpečenie na stránke nastavení alebo v Nixe:
@@ -35,7 +35,7 @@ losos.hardening.usbguard = true;   # block USB devices not present at boot
 `hardened_malloc` funguje cez preloading, takže sa nedostane do k3s, rke2
 ani containerd, ktoré sú statické Go binárky, ani do ničoho vnútri podu.
 
-## Zámerne vynechané
+## Zámerne vynechané {#left-out-on-purpose}
 
 `tests/hardening.nix` kontroluje, že tieto zostávajú vypnuté:
 

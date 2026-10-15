@@ -21,7 +21,7 @@ klastri mesh na okrajovom serveri. Repliky predáva a stroje vytvára
 **Stroje** v administrácii (v bočnom paneli pod **Mesh**, na adrese
 `/machines`).
 
-## Kto to môže používať
+## Kto to môže používať {#who-can-use-it}
 
 Stroje, na prenájom aj na hosťovanie, sa ponúkajú len zariadeniu, ktoré
 zdieľa svoj disk (`losos.sharingMyStorage`). lososd to kontroluje pri každej
@@ -39,7 +39,7 @@ Stránka môže uviesť ešte dva dôvody:
 | `noOfficialEdge` | Žiadny dosiahnuteľný okrajový server neprevádzkuje LosOS, nič sa nepredá. |
 | `notOffered`     | Okrajový server nespúšťa stroje (`losos.edge.vms.enable`).      |
 
-## Čo sa dá spustiť
+## Čo sa dá spustiť {#what-you-can-start}
 
 | Zdroj             | Čo to je                                                          |
 | ----------------- | ----------------------------------------------------------------- |
@@ -73,7 +73,7 @@ nepovinný dokument `#cloud-config` alebo skript (najviac 16 KiB), ktorý stroj
 spustí pri prvom štarte, napríklad na nastavenie kľúča SSH. Registrátor ho
 nikdy nevracia späť, pretože môže obsahovať heslo.
 
-### Vlastný QCOW2
+### Vlastný QCOW2 {#your-own-qcow2}
 
 Stránka Stroje nahrá súbor QCOW2 priamo na okrajový server a ukazuje priebeh.
 lososd ho posiela ďalej bez ukladania do medzipamäte a bez držania svojho
@@ -91,7 +91,7 @@ samotného kupujúceho. Replika obrazu dostane disk aspoň taký veľký, aká j
 virtuálna veľkosť obrazu. Pri obraze, ktorý potrebuje firmvér UEFI, zaškrtnite
 **Štartuje cez UEFI**; Secure Boot je v oboch prípadoch vypnutý.
 
-## Repliky a cena
+## Repliky a cena {#replicas-and-the-price}
 
 Hosťujúce zariadenie ponúka stroje s cenou **za repliku na mesiac** a s
 počtom replík, ktoré je ochotné spustiť (najviac 50). Kupujúci vyberie systém,
@@ -109,7 +109,7 @@ odmietne platbu za stroj s akýmkoľvek iným poplatkom. Pri cene 6,00 EUR za
 repliku na mesiac stoja tri repliky 18,00 EUR; vlastník hosťujúceho zariadenia
 dostane 9,00 a LosOS si ponechá 9,00.
 
-## Po zaplatení
+## Po zaplatení {#after-payment}
 
 Keď Stripe potvrdí platbu, reconciler registrátora:
 
@@ -135,7 +135,7 @@ miesto sa vráti do ponuky hostiteľa. Disky zostávajú. Obsahujú dáta
 kupujúceho a ich odstránenie je rozhodnutím prevádzkovateľa, rovnako ako pri
 zväzku objednávky úložiska.
 
-## Hosťovanie strojov
+## Hosťovanie strojov {#hosting-machines}
 
 Zariadenie hosťuje stroje, kým je zapojené do siete mesh, zdieľa svoj disk a
 má zapnuté `losos.vms.host` (predvolené). Vtedy sa pripája s
@@ -150,7 +150,7 @@ taint výpočtového okna, pretože stroj kúpený na mesiac sa nemôže každé
 zastaviť. Ponúknite len toľko replík, koľko zariadenie unesie popri vlastnej
 práci.
 
-### Vnorená virtualizácia
+### Vnorená virtualizácia {#nested-virtualisation}
 
 KubeVirt potrebuje na hosťujúcom zariadení `/dev/kvm`. Na skutočnom mini-PC
 je to VT-x alebo AMD-V procesora. Zariadenie, ktoré je samo virtuálnym
@@ -160,7 +160,7 @@ môže prevádzkovateľ nastaviť `losos.edge.vms.useEmulation`, pri ktorom repl
 bežia softvérovo. Naštartujú, ale pomaly, a je to určené na vyskúšanie, nie na
 predaj.
 
-## Nastavenie prevádzkovateľa
+## Nastavenie prevádzkovateľa {#operator-setup}
 
 Na okrajovom serveri:
 
@@ -189,7 +189,7 @@ Pre `domain` nasmerujte na okrajový server záznam DNS so zástupným znakom
 vstupnom bode Traefiku je zvýšený na šesť hodín, aby sa veľké nahrávanie
 neprerušilo.
 
-## API
+## API {#api}
 
 Na zariadení (s Bearer tokenom, za ochranou len pre LAN):
 
@@ -209,7 +209,7 @@ na prenos `PUT /market/vm-images/upload/<ticket>` a
 `GET /market/vm-images/fetch/<token>`, ktoré namiesto tokenu nájomníka
 prijímajú oprávnenia a naraz zvládnu najviac štyri prenosy.
 
-## Bezpečnostné vlastnosti
+## Bezpečnostné vlastnosti {#safety-properties}
 
 - Zariadenie, ktoré nezdieľa disk, si stroje nemôže prenajať ani ich
   hosťovať; lososd odmietne skôr, než sa spýta okrajového servera.
@@ -223,7 +223,7 @@ prijímajú oprávnenia a naraz zvládnu najviac štyri prenosy.
   riadku.
 - Nič, čo registrátor robí, nezmaže disk kupujúceho.
 
-## Čo nie je pokryté
+## Čo nie je pokryté {#not-covered}
 
 - Žiadna konzola v prehliadači, teda žiadne inštalačné ISO a žiadne
   prihlásenie okrem toho, čo nastaví cloud-init.

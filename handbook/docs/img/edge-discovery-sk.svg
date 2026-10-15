@@ -1,0 +1,70 @@
+<svg xml:lang="sk" xmlns="http://www.w3.org/2000/svg" width="1000" height="530" viewBox="0 0 1000 530" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'DejaVu Sans', sans-serif" font-size="14" fill="#18212a">
+  <title>Ako zariadenie nájde edge a rozhodne, či je oficiálny</title>
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#5c6a77"/></marker>
+  </defs>
+  <rect x="0.5" y="0.5" width="999" height="529" rx="12" fill="#ffffff" stroke="#dce1e6"/>
+  <g fill="none" stroke="#5c6a77" stroke-width="1.5">
+    <line x1="282" y1="125" x2="318" y2="125" marker-end="url(#ar)"/>
+    <line x1="522" y1="125" x2="543" y2="125" marker-end="url(#ar)"/>
+    <line x1="697" y1="125" x2="738" y2="125" marker-end="url(#ar)"/>
+    <polyline points="620,177 620,215 170,215 170,398" marker-end="url(#ar)"/>
+    <line x1="855" y1="182" x2="855" y2="223" marker-end="url(#ar)"/>
+    <line x1="830" y1="357" x2="830" y2="398" marker-end="url(#ar)"/>
+    <polyline points="688,290 500,290 500,398" marker-end="url(#ar)"/>
+  </g>
+  <text x="712" y="116" fill="#5c6a77" font-size="12">áno</text>
+  <text x="628" y="203" fill="#5c6a77" font-size="12">nie</text>
+  <text x="840" y="383" fill="#5c6a77" font-size="12">všetky štyri prejdú</text>
+  <text x="510" y="383" fill="#5c6a77" font-size="12">niektorá zlyhá</text>
+
+  <rect x="30" y="66" width="252" height="118" rx="8" fill="#f3f5f7" stroke="#dce1e6"/>
+  <text x="46" y="92" font-weight="650">Hľadať edge</text>
+  <text x="46" y="113" fill="#5c6a77" font-size="13">každých 20 sekúnd, dvoma cestami:</text>
+  <text x="46" y="138" font-size="13">v LAN cez DNS-SD</text>
+  <text x="46" y="156" font-size="13">na nastavenej adrese,</text>
+  <text x="46" y="174" font-size="13">cez internet</text>
+
+  <rect x="320" y="90" width="202" height="70" rx="8" fill="#f3f5f7" stroke="#dce1e6"/>
+  <text x="421" y="119" text-anchor="middle" font-weight="650">Opýtať sa každého</text>
+  <text x="421" y="140" text-anchor="middle" fill="#5c6a77" font-size="13">odpovedá /health?</text>
+
+  <polygon points="545,125 620,75 695,125 620,175" fill="#ffffff" stroke="#5c6a77" stroke-width="1.5"/>
+  <text x="620" y="121" text-anchor="middle" font-size="13">Odpovedal</text>
+  <text x="620" y="139" text-anchor="middle" font-size="13">niektorý?</text>
+
+  <rect x="740" y="66" width="230" height="116" rx="8" fill="#f3f5f7" stroke="#dce1e6"/>
+  <text x="756" y="92" font-weight="650">Overiť každý edge</text>
+  <text x="756" y="114" fill="#5c6a77" font-size="13">zariadenie vymyslí nový</text>
+  <text x="756" y="132" fill="#5c6a77" font-size="13">nonce; edge vráti svoj</text>
+  <text x="756" y="150" fill="#5c6a77" font-size="13">certifikát a podpíše</text>
+  <text x="756" y="168" fill="#5c6a77" font-size="13">nonce vlastným kľúčom</text>
+
+  <rect x="690" y="225" width="280" height="132" rx="8" fill="#f3f5f7" stroke="#dce1e6"/>
+  <text x="706" y="250" font-weight="650">Štyri kontroly, všetky alebo nič</text>
+  <text x="706" y="274" font-size="13">1. podpísaný koreňovým kľúčom LosOS</text>
+  <text x="706" y="294" font-size="13">2. uvádza adresu, na ktorú sa pýtalo</text>
+  <text x="706" y="314" font-size="13">3. nevypršal</text>
+  <text x="706" y="334" font-size="13">4. podpis nonce je platný</text>
+
+  <text x="230" y="255" fill="#5c6a77" font-size="13">Zariadenie sa pýta ďalej, takže edge, ktorý sa vráti,</text>
+  <text x="230" y="274" fill="#5c6a77" font-size="13">nájde znova samo. Nič netreba reštartovať.</text>
+
+  <rect x="30" y="400" width="280" height="104" rx="8" fill="#f8ecea" stroke="#a8443c" stroke-width="1.5"/>
+  <text x="46" y="426" font-weight="650" fill="#a8443c">Okrajový proxy sa nenašiel</text>
+  <text x="46" y="449" font-size="13">Zapnutie zdieľania je odmietnuté:</text>
+  <text x="46" y="468" font-size="13">„Vyžaduje dostupný okrajový proxy.“</text>
+  <text x="46" y="487" font-size="13">Vypnúť ho ide vždy.</text>
+
+  <rect x="345" y="400" width="310" height="104" rx="8" fill="#f7f0e1" stroke="#8c6512" stroke-width="1.5"/>
+  <text x="361" y="426" font-weight="650" fill="#8c6512">⚠ Edge, nie oficiálny</text>
+  <text x="361" y="449" font-size="13">Edge firmy alebo akýkoľvek iný.</text>
+  <text x="361" y="468" font-size="13">Zdieľanie a vzdialený prístup fungujú.</text>
+  <text x="361" y="487" font-size="13">Trh nie.</text>
+
+  <rect x="690" y="400" width="280" height="104" rx="8" fill="#e5f1ec" stroke="#2e7357" stroke-width="1.5"/>
+  <text x="706" y="426" font-weight="650" fill="#2e7357">✓ Oficiálny edge LosOS</text>
+  <text x="706" y="449" font-size="13">Zdieľanie a vzdialený prístup fungujú.</text>
+  <text x="706" y="468" font-size="13">Trh môže bežať, keď sa</text>
+  <text x="706" y="487" font-size="13">otvorí.</text>
+</svg>

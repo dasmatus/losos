@@ -14,7 +14,7 @@ výkon. Tretí prepínač, zdieľanie disku tohto zariadenia, je na paneli
 rozhodnutie. Prepínač funguje bez ohľadu na to, či edge tomuto zariadeniu trh
 ponúka.
 
-## Dva klastre
+## Dva klastre {#two-clusters}
 
 Každé zariadenie beží s dvoma inštanciami Kubernetes:
 
@@ -28,7 +28,7 @@ Agent Kubernetes nemôže naštartovať, kým je jeho server nedostupný, a zari
 každú noc reštartuje. Keby vaše vlastné služby bežali v mesh klastri,
 výpadok edge cez polnoc by ich odstavil. Držte ich oddelene.
 
-## Zdieľanie výpočtového výkonu
+## Zdieľanie výpočtového výkonu {#sharing-compute}
 
 Zariadenie prijíma prácu z mesh iba vtedy, keď platí oboje:
 
@@ -42,7 +42,7 @@ Všetko neznáme sa počíta ako zaneprázdnené: chýbajúce hlásenie o nečin
 zastarané hlásenie alebo edge, ktorý sa práve reštartoval. Edge vyhodnocuje
 okno v časovom pásme zariadenia.
 
-## Hľadanie edge
+## Hľadanie edge {#finding-the-edge}
 
 Mesh sú iné zariadenia za edge. Zariadenie bez edge v dosahu nemôže zdieľať nič, nech
 jeho prepínače hovoria čokoľvek, preto `lososd` každých 20 sekúnd nejaký
@@ -64,7 +64,7 @@ z nich. Zväčšenie vlastného disku zariadenia nepotrebuje edge vôbec. Spája
 naprieč zariadeniami áno, pretože riadiaca vrstva mesh beží na edge. V LAN bez
 internetu je týmto edge jeden stále zapnutý počítač s modulom edge, pozri
 [Master proxy, edge v tej istej
-LAN](/in-depth/master-proxy.md#edge-v-tej-istej-lan).
+LAN](/in-depth/master-proxy.md#edge-on-the-same-lan).
 
 Kým nič neodpovedá, zariadenie odmietne zapnúť zdieľanie závislé od siete.
 Prepnutie do režimu mesh a akékoľvek použitie nastavení (apply), ktoré
@@ -84,7 +84,7 @@ edge a varovanie pre akýkoľvek iný. Tooltip varovania vypíše, čo tento edg
 pre toto zariadenie urobiť nemôže: nakupovať na markete a predávať voľné
 úložisko a výpočtový výkon tohto zariadenia. Vlastný edge firmy nesie varovanie a
 nie je to chyba. Pozri [Master proxy, oficiálne
-edge](/in-depth/master-proxy.md#oficiálne-edge).
+edge](/in-depth/master-proxy.md#official-edges).
 
 `demo/edge-lan/run.sh` nabootuje dve zariadenia a jeden edge v jednej virtuálnej
 sieti a prejde presne týmto v poradí overovacieho kontrolného zoznamu
@@ -94,7 +94,7 @@ Potom so zapnutým edge: nájdený na oboch zariadeniach v rámci jedného skeno
 povolené, edge preč, odmietnuté, späť. `demo/edge-lan/record.sh` nahrá ten
 istý priebeh z admin UI zariadení.
 
-## Zdieľanie úložiska
+## Zdieľanie úložiska {#sharing-storage}
 
 Prispené úložisko žije v domovskom adresári používateľa `shared` pod
 politikou fscrypt. Kľúč je zapečatený v TPM. Keď je zdieľanie vypnuté, kľúč
@@ -111,14 +111,14 @@ repliky neukladá. Objednávky úložiska z trhu si berú zväzky z triedy
 úložiska `longhorn`. Longhorn na edge nekontroluje aktualizácie, neposiela
 štatistiky používania a jeho webové rozhranie sa nenasadzuje.
 
-## Predaj
+## Predaj {#selling}
 
 Úložisko aj výpočtový výkon sa dajú predávať aj iným zariadeniam cez voliteľný
 trh, v bočnom paneli pod Mesh, Trh. Kupujúci platia v USDC, bitcoinoch alebo
 Monere, alebo kartou, ak edge karty prijíma. Zariadenie ukáže trh, len keď je
 v dosahu oficiálny edge LosOS. Pozri [Trh](/in-depth/market.md).
 
-## Perzistencia
+## Perzistencia {#persistence}
 
 Agent mesh pri prvom pripojení zapíše `/etc/rancher/node/password`. Táto cesta
 musí zostať v zozname perzistencie, inak server zariadenie po ďalšom reštarte

@@ -288,9 +288,8 @@ and is never served or built by nix.
     production key is made only by `provisioning/secure-boot/keygen.sh` on
     the owner's machine; `tests/secure-boot.nix` uses a throwaway one.
 21. `system.stateVersion = "26.11"` is set once. `result` is never committed.
-22. Docs go in `handbook/`; there is no wiki. The In depth pages, TPM and
-    the security model have Slovak and German copies under `handbook/i18n/`:
-    change all three together.
+22. Docs go in `handbook/`; there is no wiki. Every handbook page has Slovak
+    and German copies under `handbook/i18n/`: change all three together.
 23. No `Co-Authored-By`, `Generated with` or session links in commits, PRs
     or branch names. The commit-msg hook refuses them and the scrub bot
     rewrites what gets through. After a rewrite, `git pull --rebase`.

@@ -7,7 +7,7 @@ mdx:
 
 # Správa
 
-## Administrátorské rozhranie
+## Administrátorské rozhranie {#admin-ui}
 
 Z LAN otvorte `http://<ip>/` (adresu z bannera na tty1 zariadenia) alebo
 `https://<host>.local/`. Administrátorské rozhranie je zablokované pre všetko
@@ -40,14 +40,14 @@ nenainštalujete. Sprievodca prvým spustením ponúka jednoriadkový inštalát
 pre macOS, Linux a Windows (`/setup/trust.sh`, `/setup/trust.ps1`, oba len z
 LAN) a obyčajné stiahnutie (`/setup/losos-ca.crt`). Pozri [Inštalácia podrobne](/in-depth/install.md).
 
-## Vzhľad
+## Vzhľad {#look}
 
 **Nastavenia, Vzhľad** mení vzhľad administrátorských stránok pre každý
 prehliadač, ktorý zariadenie otvorí. Nič z toho nie je nastavenie v zmysle
 Nixu. Je to dokument, ktorý lososd drží v `/var/lib/losos/look.json`, takže
 zmena platí v okamihu uloženia, bez prestavby.
 
-### Pozadie
+### Pozadie {#background}
 
 Vyberte jeden z troch dodaných obrázkov alebo nahrajte vlastný (PNG, JPEG,
 WebP, GIF alebo SVG, do 8 MiB). Posuvník **Závoj** kladie farbu
@@ -58,7 +58,7 @@ Nahraný obrázok servíruje lososd na `/api/look/background` bez tokenu, lebo
 CSS `background-image` ho poslať nevie. Cesta je za tou istou ochranou „len
 LAN“ ako zvyšok administrátorských stránok a tapeta nie je tajomstvo.
 
-### Ručne písané widgety
+### Ručne písané widgety {#widgets-written-by-hand}
 
 Galéria nástenky na Prehľade (**Pridať widget**) má dva spôsoby, ako si urobiť
 vlastný. *Zostaviť* poskladá widget z hodnôt zariadenia bez akéhokoľvek
@@ -103,7 +103,7 @@ napíše widget podľa opisu a vloží jeho súbory do editora, aby ste si ich p
 uložením prečítali. Beží na zariadení, takže to, čo napíšete, zostane na ňom
 a tvorba nič nestojí; pozri [Tvorca widgetov](widget-builder.md).
 
-## Admin token
+## Admin token {#admin-token}
 
 `lososd` pri prvom spustení zapíše náhodný token so 64 hexadecimálnymi
 znakmi do `/var/secrets/losos-admin-token` (mód 0600). Token môže zmeniť
@@ -166,7 +166,7 @@ spustí `nixos-rebuild switch`. Teda:
 - `apply` nahradí `overrides.nix` celý. Nastavenie, ktoré UI nezapíše, sa
   pri ďalšom uložení vráti na predvolené.
 
-### Rozšírené
+### Rozšírené {#advanced}
 
 **Nastavenia, Rozšírené** vypisuje každú voľbu `losos.*`, ktorú zariadenie
 deklaruje, načítanú z modulov, ktoré beží. `flake/options-doc.nix` vygeneruje
@@ -199,7 +199,7 @@ Všetko, čo sa tu zapíše, ide cez to isté Použiť a tú istú prestavbu ako
 ostatné panely. `losos.edge.*` je vynechané, pretože ho zariadenie nikdy
 nečíta.
 
-### História a LosOS Git
+### História a LosOS Git {#history-and-losos-git}
 
 Každé Použiť, zmena úložiska a obnovenie továrenských nastavení je jeden
 commit v `/etc/nixos`, repozitári, ktorý vytvoril `losos-ctl install`. Commit
@@ -236,7 +236,7 @@ losos-config.git`). Repozitár je súkromný, takže potrebuje admin heslo.
 Démon komunikuje s Forgejom cez loopback s bot účtom `losos`, ktorý vytvorí
 štartovací skript Forgeja a vydá mu token (`flake/forgejo-bootstrap.nix`).
 
-### Federácia
+### Federácia {#federation}
 
 Federácia beží iba vtedy, keď zariadenie zdieľa svoj disk. Obe voľby
 federácie nižšie sú spojené logickým AND s `losos.sharingMyStorage`,
@@ -282,7 +282,7 @@ ktoré sa vypnúť nedajú. `tests/front-vhost.nix` kontroluje cesty oboch
 služieb so zapnutým aj vypnutým zdieľaním; `tests/invariants.nix` kontroluje
 bránu pri evaluácii.
 
-### Nastavenia aplikácií pre celé zariadenie
+### Nastavenia aplikácií pre celé zariadenie {#box-wide-app-settings}
 
 Panel Aplikácie nesie nastavenia, ktoré platia pre všetkých v LosOS cloud a
 LosOS Git, teda tie, ktoré si inak každá aplikácia drží na vlastných
@@ -332,7 +332,7 @@ nastavenia správy, ktoré LosOS zatiaľ nepokrýva: doručovanie pošty, úlohy
 pozadí, vynútenie dvojfaktorového overenia, nastavenia Forgejo uložené v
 databáze a zoznamy účtov.
 
-## Záloha, obnova a vymazanie
+## Záloha, obnova a vymazanie {#backup-restore-and-erase}
 
 **Nastavenia, Záloha** posiela dáta zariadenia do S3-kompatibilného bucketu,
 ktorý si vlastník prenajíma (Amazon S3 vrátane Glacier, Backblaze B2, Wasabi,
@@ -400,7 +400,7 @@ sprievodcu nastavením. `/var/lib/losos-erase/report.json` uchováva, čoho sa
 vymazanie vzdalo mimo zariadenia, ako počty, a Nastavenia, Reset to ukazuje.
 `tests/erase.nix` prebehne celý cyklus voči bucketu MinIO v jednej VM.
 
-## Používatelia
+## Používatelia {#users}
 
 Dvaja dátoví používatelia, obaja bez hesiel a shellov:
 
@@ -412,7 +412,7 @@ Dvaja dátoví používatelia, obaja bez hesiel a shellov:
 Každý má vlastnú primárnu skupinu a domov s módom 700, takže ani jeden
 nemôže čítať súbory toho druhého. `tests/impermanence.nix` to kontroluje.
 
-## Aktualizácie a reštarty
+## Aktualizácie a reštarty {#upgrades-and-reboots}
 
 - **03:00.** lososd najprv posunie `/etc/nixos` na najnovší commit vetvy
   `losos.configRepo.upstream.branch` (`main`) na

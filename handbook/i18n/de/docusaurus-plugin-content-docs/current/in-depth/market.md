@@ -39,7 +39,7 @@ Hörst du auf zu teilen, verschwinden deine Angebote sofort aus dem Regal. Sie
 kehren zurück, wenn du wieder teilst, und bereits bezahlte Bestellungen sind
 nicht betroffen.
 
-## Wie das Geld fließt
+## Wie das Geld fließt {#how-the-money-moves}
 
 Geld berührt nie eine LosOS-Box. Käufer zahlen auf eine von vier Arten, je
 nachdem, was die Edge erlaubt:
@@ -91,7 +91,7 @@ gerundet. Beim Standardwert 400 bringt ein Verkauf über 20.00 EUR der
 Plattform 0.80 und dem Verkäufer 19.20. Der konfigurierte Wert ist auf 2000
 (20 %) begrenzt.
 
-## Was verkauft wird
+## Was verkauft wird {#what-is-for-sale}
 
 | Art       | Einheit      | Bedeutung                                              |
 | --------- | ------------ | ------------------------------------------------------ |
@@ -106,7 +106,7 @@ Preise sind in der kleinsten Einheit (Cent) einer Währung pro Edge angegeben
 (`losos.edge.market.currency`). Eine einzelne Bestellung muss insgesamt
 mindestens 50 kleinste Einheiten betragen, das Minimum von Stripe.
 
-## Erfüllung
+## Erfüllung {#fulfilment}
 
 Eine bezahlte Bestellung ist ein **Anspruch für 30 Tage** (`expires_at`).
 Recheneinheiten gehen nach Ablauf an das Angebot zurück. Speichereinheiten
@@ -151,7 +151,7 @@ Grenzen, die du kennen solltest und von denen noch keine durchgesetzt wird:
   Namespaces und PersistentVolumeClaims, wenn der Marktplatz aktiviert ist.
   Kubernetes-RBAC kann keines von beiden auf `market-*`-Namen einschränken.
 
-## Admin-UI
+## Admin-UI {#admin-ui}
 
 Die Zeile **Markt** liegt unter Mesh in der Seitenleiste, und
 `/settings/market` öffnet sie. Der Bereich beginnt mit dem Schalter für die
@@ -191,7 +191,7 @@ der Box, nicht der Edge.
   ist absichtlich kein 404. Die Admin-UI behandelt ein 404 für den Rest der
   Sitzung als „diese Box bedient die Route nicht“.
 
-## API
+## API {#api}
 
 Alle Routen liegen auf der öffentlichen API des Registrars
 (`register.<publicDomain>`). Authentifizierte Routen nehmen dieselben
@@ -233,7 +233,7 @@ frei sind. Andernfalls protokolliert die Edge sie mit ihrer Session-ID, damit
 der Betreiber sie erstatten kann. Zwei Käufer, die um die letzten Einheiten
 konkurrieren, können nicht beide eine Session bekommen.
 
-## Einrichtung für Betreiber
+## Einrichtung für Betreiber {#operator-setup}
 
 Diese Schritte richten Kartenzahlungen ein. Eine Edge, die nur Coins annimmt,
 überspringt sie; diesen Fall beschreiben die Betreiberhinweise beim Quellcode
@@ -302,7 +302,7 @@ Das Gate lehnt es ab und schreibt ins Log, welches welches ist. Stripe
 wiederholt ein abgelehntes Ereignis drei Tage lang; wird das passende Paar in
 dieser Zeit versiegelt, geht nichts verloren.
 
-## Sicherheitseigenschaften
+## Sicherheitseigenschaften {#safety-properties}
 
 - Der Webhook wird über die HMAC-Signatur von Stripe über den rohen Body
   authentifiziert, mit einem Replay-Fenster von fünf Minuten und einer höheren
@@ -669,7 +669,7 @@ funktioniert weiter und zahlt mit jedem Verkauf auf die Schuld ein, sodass
 Coin-Zahlungen zurückkommen, sobald sie beglichen ist. Bei einem Verkäufer,
 der nur Coins annimmt, kann bis dahin nicht bestellt werden.
 
-## Nicht abgedeckt
+## Nicht abgedeckt {#not-covered}
 
 - **Erstattungen und Streitfälle bei Karten.** Bearbeite diese im Stripe-Dashboard
   mit `reverse_transfer` und `refund_application_fee`, damit sowohl der Anteil

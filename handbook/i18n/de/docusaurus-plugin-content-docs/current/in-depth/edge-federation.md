@@ -8,13 +8,13 @@ mdx:
 # Edge-Föderation
 
 Jeder darf neben seinen Boxen eine Edge betreiben ([Master-Proxy, Edge im
-selben LAN](/in-depth/master-proxy.md#edge-im-selben-lan)). Diese Seite beschreibt,
+selben LAN](/in-depth/master-proxy.md#edge-on-the-same-lan)). Diese Seite beschreibt,
 wie sich eine solche **lokale Edge** an die **offiziellen Edges** anschließt,
 damit eine Box dahinter von überall erreichbar ist, wie eine Box wählt,
 welche Edge sie nutzt, und wie eine lokale Edge ohne ein zweites
 Installations-ISO ausgeliefert wird.
 
-## Die Struktur
+## Die Struktur {#the-shape}
 
 Hub and Spoke. Eine offizielle Edge ist ein **Hub**. Eine vom Benutzer
 betriebene Edge ist ein **Spoke**: Sie behält alles, was sie heute hat (den
@@ -33,7 +33,7 @@ Drei Ebenen, von denen nur zwei föderiert werden:
 | data    | rathole-Tunnel + Traefik                         | ein Hop mehr: Hub → Spoke → Box                                            |
 | mesh    | rke2-Server + Longhorn                           | **nein**: jede Edge ist ihr eigener Cluster, siehe „Was lokal bleibt“      |
 
-## Hub-Seite: ein Tenant, der weiterleiten darf
+## Hub-Seite: ein Tenant, der weiterleiten darf {#hub-side-a-tenant-that-may-relay}
 
 Ein Spoke ist ein gewöhnlicher Tenant des Hubs mit einem zusätzlichen
 Attribut, der Zone, unter der er weiterleiten darf:
@@ -70,7 +70,7 @@ der Betreiber des Hubs dann jede Box der Welt führen würde, und genau das
 soll ein lokales Gateway vermeiden. Eine Tenant-Zeile pro Standort sind die
 gesamten Kosten eines Standorts auf der offiziellen Edge.
 
-## Spoke-Seite: der Uplink
+## Spoke-Seite: der Uplink {#spoke-side-the-uplink}
 
 ```nix
 # on the local edge
@@ -122,7 +122,7 @@ an und entfernt sie; eine Box, die noch Heartbeats sendet, schreibt sich mit
 dem Token, den sie hält, neu ein, daher ist das Vergessen für eine Box
 gedacht, die gegangen ist. Der Hub behält die geschlossene Einschreibung.
 
-## Die Box: welche Edge, und wenn keine
+## Die Box: welche Edge, und wenn keine {#the-box-which-edge-and-when-none}
 
 `lososd` findet bereits jede erreichbare Edge (im LAN per DNS-SD, die
 konfigurierte offizielle per URL) und weigert sich, das Teilen
@@ -168,7 +168,7 @@ bereits `available: false`.
 und geht genau das durch: LAN-Pfad, Einschreibung, Uplink, Rückfall, aus,
 wieder da.
 
-## Was lokal bleibt
+## Was lokal bleibt {#what-stays-local}
 
 - **Das Mesh.** Longhorn-Replikation und Mesh-Rechenleistung laufen in einem
   rke2-Cluster, und dieser Cluster ist die Edge, der die Box beigetreten
@@ -178,7 +178,7 @@ wieder da.
   Standortübergreifendes Bündeln ist ein späterer Schritt mit eigenem
   Entwurf.
 - **Der Market.** Handel lehnt die Box ab, solange keine *offizielle* Edge
-  erreichbar ist ([Offizielle Edges](/in-depth/master-proxy.md#offizielle-edges)); ein
+  erreichbar ist ([Offizielle Edges](/in-depth/master-proxy.md#official-edges)); ein
   Spoke ist nie offiziell, und eine weitergeleitete Box ist kein Tenant des
   Hubs, daher kann kein `/market/*`-Aufruf in ihrem Namen erfolgen. Das
   Relay transportiert Erreichbarkeit per HTTP, sonst nichts.
@@ -186,9 +186,9 @@ wieder da.
   die den Market will, erreicht die offizielle Edge selbst, über ihren
   eigenen Internetzugang.
 
-## Eigene Domains hinter einer lokalen Edge
+## Eigene Domains hinter einer lokalen Edge {#custom-domains-behind-a-local-edge}
 
-[Eigene Domains](/in-depth/master-proxy.md#eigene-domains) funktionieren auch für eine
+[Eigene Domains](/in-depth/master-proxy.md#custom-domains) funktionieren auch für eine
 Box hinter einer lokalen Edge, unter einer Regel. Nur die offizielle Edge
 routet eine Domain. Die lokale Edge bedient nie eine Zone, prüft nie einen
 Eintrag und fragt Let's Encrypt nie nach etwas. Sie trägt den Verkehr der
@@ -235,7 +235,7 @@ Tunnel hat, bekommt ihren Hostnamen und nichts weiter. Und ist die Box
 zusätzlich direkt bei der offiziellen Edge registriert, gewinnt der direkte
 Pfad, und die lokale Edge wird nicht genutzt.
 
-### Die Routentabelle
+### Die Routentabelle {#the-route-table}
 
 Der Registrar führt die Tabelle selbst, genauso wie seine Registry. Es muss
 keine Datenbank betrieben werden. Jeder Durchlauf des Reconcilers ermittelt,
@@ -271,7 +271,7 @@ zurück. Das Gateway schreibt sie nach
 Diese Datei sagt dir nur, was die offizielle Edge zu dir routet. Nichts
 auf der lokalen Edge routet danach.
 
-### Einschalten
+### Einschalten {#turning-it-on}
 
 Auf der offiziellen Edge:
 
@@ -295,7 +295,7 @@ Schlüsseldatei, `/relay` mit einem Pass, dass die Bindung in
 `relay-routes.json` landet und dass sie nach einem Neustart des Registrars
 noch da ist.
 
-## Auslieferung: das Gateway, ohne ISO
+## Auslieferung: das Gateway, ohne ISO {#delivery-the-gateway-without-an-iso}
 
 Zwei Formen, eine Konfiguration:
 

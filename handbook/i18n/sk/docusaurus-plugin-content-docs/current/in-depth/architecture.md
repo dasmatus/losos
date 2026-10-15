@@ -7,7 +7,7 @@ mdx:
 
 # Architektúra
 
-## Systémy vo flaku
+## Systémy vo flaku {#systems-in-the-flake}
 
 | Výstup                        | Čo to je                                         |
 | ----------------------------- | ------------------------------------------------ |
@@ -18,7 +18,7 @@ mdx:
 Všetky voľby projektu sú pod `losos.*` v `modules/options.nix`, s
 predvolenými hodnotami v `defaults.nix`. Moduly čítajú `config.losos.*`.
 
-## Impermanence
+## Impermanence {#impermanence}
 
 `/` je tmpfs. `/persist` je ext4 šifrovaný cez LUKS. `impermanence` do
 systému bind-mountuje z `/persist` tieto cesty: `/nix`, `/var`, `/etc/ssh`,
@@ -28,7 +28,7 @@ systému bind-mountuje z `/persist` tieto cesty: `/nix`, `/var`, `/etc/ssh`,
 **Všetko, čo na tomto zozname nie je, sa reštartom stratí.** Nový stav
 pridajte do `modules/impermanence.nix`.
 
-## Riadiaca vrstva
+## Riadiaca vrstva {#control-plane}
 
 | Komponent      | Úloha |
 | -------------- | ---- |
@@ -44,14 +44,14 @@ Rozloženie crate nájdete v
 [`backend/README.md`](https://github.com/dasmatus/losos/blob/main/backend/README.md)
 a formát komunikácie v [`backend/schema.json`](https://github.com/dasmatus/losos/blob/main/backend/schema.json).
 
-## Pracovné záťaže
+## Pracovné záťaže {#workloads}
 
 Nextcloud a Forgejo bežia vo vlastnom k3s klastri zariadenia
 (`losos.<svc>.mode = "container"`) alebo natívne na hostiteľovi. Pody
 používajú `hostNetwork`. nginx je jediná služba na verejných portoch a
 smeruje podľa cesty.
 
-## Rozloženie repozitára
+## Rozloženie repozitára {#repository-layout}
 
 ```
 modules/                 NixOS modules; options in options.nix
@@ -68,7 +68,7 @@ handbook/                this handbook (Docusaurus)
 `CLAUDE.md` v repozitári je skomprimovaná podoba tejto stránky a vymenúva
 záludnosti, ktoré hryznú potichu.
 
-## Do hĺbky
+## Do hĺbky {#in-depth}
 
 Jeden odsek na každý mechanizmus: prečo je ktorý kus tam, kde je, a čo tam
 pokazí dobre mienená zmena.

@@ -12,7 +12,7 @@ einen Port öffnen musst.
 
 ![Internet → Traefik (VPS, :443) → rathole-Server ⇐ Tunnel ⇐ rathole-Client (Box) → nginx](/img/diagrams/master-proxy-de.svg)
 
-## Edge (VPS)
+## Edge (VPS) {#edge-vps}
 
 Importiere den Flake-Output `nixosModules.edge` in die Konfiguration des
 VPS und setze `losos.edge.*`:
@@ -30,13 +30,13 @@ VPS und setze `losos.edge.*`:
 Serverkonfiguration von rathole mit den registrierten Appliances im
 Gleichschritt.
 
-## Appliance
+## Appliance {#appliance}
 
 Setze `losos.proxy.enable = true` und die Optionen `losos.proxy.*`
 (`registrarUrl`, `edgeRatholeEndpoint`, `hostname`, `applianceId`,
 `tokenFile`).
 
-## Tunnel-Verschlüsselung
+## Tunnel-Verschlüsselung {#tunnel-encryption}
 
 rathole nutzt seinen Noise-Transport. Die Edge erzeugt beim ersten Booten ein
 Schlüsselpaar. Jede Appliance holt sich beim ersten Start den öffentlichen
@@ -46,13 +46,13 @@ Datei vorher dort ab; die Appliance überschreibt sie nie. Wird eine der beiden
 Schlüsseloptionen auf `null` gesetzt, fällt die Verbindung auf reines TCP
 zurück. Tu das nicht.
 
-## Die Admin-Oberfläche bleibt im LAN
+## Die Admin-Oberfläche bleibt im LAN {#admin-ui-stays-lan-only}
 
 Der Tunnelverkehr erreicht nginx von `127.0.0.1`, daher verweigern die
 Admin-Routen Loopback. Füge ihnen kein `allow 127.0.0.1` hinzu, sonst
 wird die Admin-Oberfläche aus dem Internet erreichbar.
 
-## Edge im selben LAN
+## Edge im selben LAN {#edge-on-the-same-lan}
 
 Eine Edge muss kein VPS sein. Mit `losos.edge.lan.advertise = true` kündigt
 sie sich zusätzlich per mDNS als `_losos-edge._tcp` an, mit der URL des
@@ -60,7 +60,7 @@ Registrars in einem `url=`-Eintrag (`losos.edge.lan.url`, Standard
 `http://<edge>.local:8443`). Sie bindet die Registrar-API außerhalb von
 Loopback und öffnet ihren Port. Eine Box im selben Netz findet sie dann ohne
 jede Konfiguration und darf über sie Speicher teilen, siehe
-[Mesh](/in-depth/mesh.md#die-edge-finden). So sieht ein On-Premises-Betrieb aus: ein
+[Mesh](/in-depth/mesh.md#finding-the-edge). So sieht ein On-Premises-Betrieb aus: ein
 ständig laufender Rechner im Firmennetz, auf dem `nixosModules.edge` läuft,
 und daneben Boxen, die vom Standard-ISO installiert wurden.
 
@@ -104,7 +104,7 @@ Teilen. Die Edge verschwindet, sie verweigern wieder, und sie kommt zurück.
 Die zugehörige README erklärt, welche Teile an einem echten Standort wofür
 stehen und was die Schritte für gebündelten Speicher noch benötigen.
 
-## Mehrere Edges: Föderation
+## Mehrere Edges: Föderation {#several-edges-federation}
 
 Eine selbst betriebene Edge kann ihre Boxen über eine offizielle Edge
 weiterleiten, sodass zwei Standorte, jeder hinter seiner eigenen lokalen
@@ -115,7 +115,7 @@ Tenant-Attribut auf Hub-Seite (`relayZone`), `losos.edge.uplink.*` auf
 Spoke-Seite, die offene LAN-Registrierung und das Gateway-VM-Image stehen
 unter [Edge-Föderation](/in-depth/edge-federation.md).
 
-## Offizielle Edges
+## Offizielle Edges {#official-edges}
 
 Jede Edge kann gefunden werden und Speicher weiterleiten. Nur Edges, die
 LosOS betreibt, dürfen den P2P-Handel mit Speicher und Rechenleistung
@@ -172,7 +172,7 @@ nicht geheim, und der private Schlüssel des Roots ist das gesamte
 Geheimnis. Geht er verloren, muss ein Release ausgeliefert werden, das den
 Vertrauensanker jeder Box durch einen neuen Schlüssel ersetzt.
 
-## DNS-Zone und eigene Domains
+## DNS-Zone und eigene Domains {#dns-zone-and-custom-domains}
 
 Eine offizielle Edge kann eine eigene DNS-Zone bereitstellen und Domains
 routen, die Box-Inhaber bereits besitzen. Das ist aus, solange
@@ -208,10 +208,10 @@ ns1.boxes.losos.dasmat.us.  AAAA 2001:db8::7
 ```
 
 Nichts wird vergeben, bevor die Edge ein nicht abgelaufenes
-Identitätszertifikat besitzt ([Offizielle Edges](#offizielle-edges)). Bis dahin
+Identitätszertifikat besitzt ([Offizielle Edges](#official-edges)). Bis dahin
 besteht die Zone nur aus SOA, NS und Glue, und `/domains/*` antwortet mit 503.
 
-### Eigene Domains
+### Eigene Domains {#custom-domains}
 
 Eine Box fügt eine Domain über `POST /domains/add` hinzu (authentifiziert mit
 ihrem Tunnel-Token, von lososd aus Einstellungen → Netzwerk weitergereicht). Die
@@ -251,7 +251,7 @@ Auch eine Box hinter einer lokalen Edge bekommt ihre Domains geroutet, über
 diese lokale Edge, sobald sie sich mit einem Relay-Pass für die lokale Edge
 verbürgt hat und dem Mesh dieser Edge beigetreten ist. Der Registrar hält
 diese Routen selbst, in `relay-routes.json` neben seiner Registry.
-[Edge-Föderation](/in-depth/edge-federation.md#eigene-domains-hinter-einer-lokalen-edge)
+[Edge-Föderation](/in-depth/edge-federation.md#custom-domains-behind-a-local-edge)
 enthält die Details und `losos.edge.dns.relayRoutes`.
 
 `tests/edge-dns.nix` (`losos-edge-dns`) bootet eine Edge und einen Client und
@@ -259,7 +259,7 @@ fragt Knot über UDP und TCP ab. `backend-registrar/tests/domains.rs` spielt
 den Anspruchsablauf gegen einen echten Registrar und einen nachgebildeten
 DNS-over-HTTPS-Server durch.
 
-## Demo-Betrieb auf Vercel
+## Demo-Betrieb auf Vercel {#demo-deployment-on-vercel}
 
 `edge-vercel/` betreibt die API des Registrars, denselben Router und dieselbe
 Token-Prüfung, als Vercel Function unter `https://losos-edge.dasmat.us`, dem

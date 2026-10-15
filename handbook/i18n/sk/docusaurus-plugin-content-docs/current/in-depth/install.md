@@ -7,7 +7,7 @@ mdx:
 
 # Inštalácia podrobne
 
-## Získajte inštalátor
+## Získajte inštalátor {#get-the-installer}
 
 Stiahnite si ISO a jeho `.sha256` z
 [najnovšieho vydania](https://github.com/dasmatus/losos/releases/latest), alebo ho zostavte:
@@ -24,7 +24,7 @@ a banner na konzole ukazujú LosOS a značku vydania a názov hostiteľa je
 bootovacom menu, v bannerch na konzole aj v os-release (`NAME=LosOS`,
 `IMAGE_VERSION`) a ponecháva si `ID=nixos`.
 
-## Skôr než nabootujete
+## Skôr než nabootujete {#before-you-boot}
 
 - **Secure Boot: vypnite ho, alebo zaregistrujte certifikát LosOS.** ISO
   vydaní sú podpísané. UEFI zavádzač na kľúči je jeden zjednotený obraz jadra
@@ -37,7 +37,7 @@ bootovacom menu, v bannerch na konzole aj v os-release (`NAME=LosOS`,
   "Access Denied"; iný firmvér môže kľúč bez slova preskočiť.
   Zavádzač nainštalovaného zariadenia podpísaný nie je, takže samotné zariadenie potrebuje
   Secure Boot vypnutý. Postup a kontrolu `SHA256SUMS.sig` nájdete na stránke
-  príručky *Secure Boot and signed media*. Dôkazom je `tests/secure-boot.nix`.
+  príručky *Secure Boot a podpísané médiá*. Dôkazom je `tests/secure-boot.nix`.
 - **UEFI aj BIOS, funguje oboje.** Na inštalačnom ISO vám menu na
   úvodnej obrazovke umožní zvoliť BIOS, UEFI alebo autodetekciu (firmvér,
   ktorý ISO nabootoval) klávesom 1, 2 alebo 3. UEFI dostane systemd-boot. Starší BIOS dostane GRUB a 1 MiB
@@ -55,7 +55,7 @@ bootovacom menu, v bannerch na konzole aj v os-release (`NAME=LosOS`,
   zapojíte kábel. Pre Wi-Fi stlačte Alt+F2, čím dostanete shell roota, a
   spustite tam `nmtui`.
 
-## Čo inštalátor robí
+## Čo inštalátor robí {#what-the-installer-does}
 
 Po výbere firmvéru inštalátor beží bez obsluhy. Nájde všetky pevné disky,
 spojí ich do jednej skupiny zväzkov LVM, zašifruje ju cez LUKS, naformátuje
@@ -161,7 +161,7 @@ VM vypnite a spustite znova bez riadku `-drive …media=cdrom`. Adresa VM je z
 hostiteľa dosiahnuteľná iba cez presmerovanie portu, takže otvorte
 `http://localhost:8080`.
 
-## ISO s celým closure
+## ISO s celým closure {#iso-with-the-full-closure}
 
 ```sh
 nix build .#losos-disk-iso          # or: devenv shell build-media iso
@@ -177,7 +177,7 @@ z kľúča.
   zostanú nevyužité.
 - Je príliš veľké na asset vydania na GitHube. Zostavte si ho sami.
 
-## Demo obraz pre VM
+## Demo obraz pre VM {#demo-image-for-a-vm}
 
 ```sh
 nix build .#losos-disk-qcow2        # or: devenv shell build-media qcow2
@@ -187,7 +187,7 @@ Predinštalovaný QCOW2 pre QEMU alebo virt-manager. Označené vydania ho
 publikujú na GHCR. **Nemá šifrovanie disku** a nikdy nespúšťa inštalátor,
 takže ho používajte iba na demá a vývoj.
 
-## Zväčšenie disku
+## Zväčšenie disku {#growing-the-disk}
 
 Logický zväzok používa 90 % skupiny zväzkov (`losos.storage.fillPercent`).
 Ak chcete využiť zvyšok:

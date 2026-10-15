@@ -8,12 +8,12 @@ mdx:
 # Federácia edge
 
 Edge si môže pri svojich zariadeniach prevádzkovať ktokoľvek ([Master proxy, Edge
-v tej istej LAN](/in-depth/master-proxy.md#edge-v-tej-istej-lan)). Táto stránka opisuje,
+v tej istej LAN](/in-depth/master-proxy.md#edge-on-the-same-lan)). Táto stránka opisuje,
 ako sa taký **lokálny edge** pripojí k **oficiálnym edge**, aby bolo zariadenie za ním
 dosiahnuteľné odkiaľkoľvek, ako si zariadenie vyberá, ktorý edge použije, a ako sa
 lokálny edge dodáva bez druhého inštalačného ISO.
 
-## Tvar
+## Tvar {#the-shape}
 
 Hub a spoke. Oficiálny edge je **hub**. Edge, ktorý prevádzkuje používateľ, je
 **spoke**: ponechá si všetko, čo má dnes (registrar, koncový bod tunela,
@@ -31,7 +31,7 @@ Tri roviny, z ktorých sa federujú iba dve:
 | data    | tunely rathole + Traefik                         | o jeden skok viac: hub → spoke → zariadenie                                |
 | mesh    | rke2 server + Longhorn                           | **nie**: každý edge je samostatný cluster, pozri „Čo zostáva lokálne“      |
 
-## Strana hubu: tenant, ktorý smie preposielať
+## Strana hubu: tenant, ktorý smie preposielať {#hub-side-a-tenant-that-may-relay}
 
 Spoke je bežný tenant hubu s jedným atribútom navyše, so zónou, pod ktorou
 smie preposielať:
@@ -66,7 +66,7 @@ prevádzkovateľ hubu evidoval každé zariadenie na svete, a práve tomu sa má
 brána vyhnúť. Jeden riadok tenanta na lokalitu je celá cena lokality na
 oficiálnom edge.
 
-## Strana spoke: uplink
+## Strana spoke: uplink {#spoke-side-the-uplink}
 
 ```nix
 # on the local edge
@@ -115,7 +115,7 @@ v LAN, sa odmietne (VPS ho nesmie nastaviť nikdy) a ohlasovanie to uvádza
 posiela heartbeat, sa znova zapíše s tokenom, ktorý drží, takže zabudnutie je
 pre zariadenie, ktoré odišlo. Hub ponecháva zatvorený zápis.
 
-## Zariadenie: ktorý edge a keď žiadny
+## Zariadenie: ktorý edge a keď žiadny {#the-box-which-edge-and-when-none}
 
 `lososd` už nájde každý edge v dosahu (v LAN cez DNS-SD, nakonfigurovaný
 oficiálny podľa URL) a odmietne zapnúť zdieľanie, keď nie je žiadny. Jednu
@@ -157,7 +157,7 @@ svoj priamy riadok tenanta ponechá rovnaké meno. Relay marketu nepotrebuje
 presne tým: cesta cez LAN, zápis, uplink, návrat k oficiálnemu edge,
 vypnuté, späť.
 
-## Čo zostáva lokálne
+## Čo zostáva lokálne {#what-stays-local}
 
 - **Mesh.** Replikácia Longhorn a výpočty v mesh bežia v jednom clustri rke2
   a tým clustrom je edge, ku ktorému sa zariadenie pripojilo. Spoke s
@@ -165,16 +165,16 @@ vypnuté, späť.
   nepremosťuje clustre dvoch lokalít a nič tu nepreposiela 9345/6443 cez
   uplink. Spájanie naprieč lokalitami je ďalší krok s vlastným návrhom.
 - **Market.** Obchodovanie zariadenie odmietne, pokiaľ nie je v dosahu *oficiálny*
-  edge ([Oficiálne edge](/in-depth/master-proxy.md#oficiálne-edge)); spoke nie je
+  edge ([Oficiálne edge](/in-depth/master-proxy.md#official-edges)); spoke nie je
   nikdy oficiálny a preposielané zariadenie nie je tenantom hubu, takže v jeho mene
   nemožno uskutočniť žiadne volanie `/market/*`. Relay prenáša dosiahnuteľnosť
   cez HTTP, nič iné.
 - **Identita.** Spoke nepreposiela `/identity`; zariadenie, ktoré chce market,
   dosiahne oficiálny edge sám, cez vlastné internetové pripojenie.
 
-## Vlastné domény za lokálnym edge
+## Vlastné domény za lokálnym edge {#custom-domains-behind-a-local-edge}
 
-[Vlastné domény](/in-depth/master-proxy.md#vlastné-domény) fungujú aj pre zariadenie za
+[Vlastné domény](/in-depth/master-proxy.md#custom-domains) fungujú aj pre zariadenie za
 lokálnym edge, s jedným pravidlom. Doménu smeruje iba oficiálny edge. Lokálny
 edge nikdy neobsluhuje zónu, nikdy nekontroluje záznam a nikdy o nič nežiada
 Let's Encrypt. Prenáša prevádzku oficiálneho edge k zariadeniu tou istou
@@ -215,7 +215,7 @@ jeho výpočtové okno. Zariadenie, ktoré má iba tunel, dostane svoj hostname 
 viac. A ak je zariadenie zaregistrované aj priamo na oficiálnom edge, vyhráva
 priama cesta a lokálny edge sa nepoužije.
 
-### Tabuľka trás
+### Tabuľka trás {#the-route-table}
 
 Registrar si tabuľku vedie sám, rovnako ako svoj register. Nie je potrebná
 žiadna databáza. Každý priechod reconcilera zistí, ktoré trasy majú
@@ -248,7 +248,7 @@ zapíše do `/var/lib/losos-registrar/hub-routes.json` a zaloguje každú zmenu.
 Ten súbor vám iba hovorí, čo oficiálny edge smeruje k vám. Nič na lokálnom
 edge sa podľa neho nesmeruje.
 
-### Zapnutie
+### Zapnutie {#turning-it-on}
 
 Na oficiálnom edge:
 
@@ -270,7 +270,7 @@ zapojenie v NixOS. Kontroluje súbor s kľúčom, `/relay` s passom, väzbu, kto
 skončí v `relay-routes.json`, a to, že väzba po reštarte registrara stále
 existuje.
 
-## Dodanie: brána bez ISO
+## Dodanie: brána bez ISO {#delivery-the-gateway-without-an-iso}
 
 Dve podoby, jedna konfigurácia:
 

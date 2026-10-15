@@ -7,7 +7,7 @@ mdx:
 
 # Architektur
 
-## Systeme im Flake
+## Systeme im Flake {#systems-in-the-flake}
 
 | Ausgabe                       | Was                                              |
 | ----------------------------- | ------------------------------------------------ |
@@ -18,7 +18,7 @@ mdx:
 Alle Projektoptionen liegen unter `losos.*` in `modules/options.nix`, mit
 Standardwerten in `defaults.nix`. Module lesen `config.losos.*`.
 
-## Impermanence
+## Impermanence {#impermanence}
 
 `/` ist ein tmpfs. `/persist` ist LUKS-verschlüsseltes ext4. `impermanence`
 bindet diese Pfade per Bind-Mount aus `/persist` ein: `/nix`, `/var`,
@@ -28,7 +28,7 @@ Daten-Home-Verzeichnisse und `machine-id`.
 **Alles, was nicht auf dieser Liste steht, geht beim Neustart verloren.**
 Neuen Zustand trägst du in `modules/impermanence.nix` ein.
 
-## Steuerungsebene
+## Steuerungsebene {#control-plane}
 
 | Komponente     | Rolle |
 | -------------- | ---- |
@@ -44,14 +44,14 @@ Den Aufbau der Crates beschreibt
 [`backend/README.md`](https://github.com/dasmatus/losos/blob/main/backend/README.md),
 das Wire-Format [`backend/schema.json`](https://github.com/dasmatus/losos/blob/main/backend/schema.json).
 
-## Workloads
+## Workloads {#workloads}
 
 Nextcloud und Forgejo laufen im eigenen k3s-Cluster der Box
 (`losos.<svc>.mode = "container"`) oder nativ auf dem Host. Die Pods nutzen
 `hostNetwork`. nginx ist der einzige Dienst auf öffentlichen Ports und
 routet nach Pfad.
 
-## Aufbau des Repositorys
+## Aufbau des Repositorys {#repository-layout}
 
 ```
 modules/                 NixOS modules; options in options.nix
@@ -68,7 +68,7 @@ handbook/                this handbook (Docusaurus)
 `CLAUDE.md` im Repository ist die komprimierte Fassung dieser Seite und
 listet die Fallstricke, die lautlos zubeißen.
 
-## Im Detail
+## Im Detail {#in-depth}
 
 Ein Absatz pro Mechanismus: warum jedes Teil dort sitzt, wo es sitzt, und was
 eine gut gemeinte Änderung dort kaputt macht.
