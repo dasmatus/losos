@@ -317,6 +317,9 @@
             # (backend/src/apps.rs): the Helm job, its shaping plugin and the
             # LAN forwards.
             ./modules/apps.nix
+            # Text inside the owner's files for the admin pages' search
+            # (backend/src/textsearch/): the cloud index and the Git search.
+            ./modules/search.nix
             # LosOS Lab's guests under libvirt on the box (losos.lab.libvirt,
             # off by default): the `losos-registrar lab` helper lososd relays
             # /api/lab to.
@@ -436,6 +439,10 @@
         losos-keyring = import ./tests/keyring.nix { inherit pkgs; };
         losos-erase = import ./tests/erase.nix { inherit pkgs impermanence; };
         losos-console = import ./tests/console.nix { inherit pkgs; };
+        # The text search behind the admin palette: the cloud index pass in
+        # its sandbox, PDFs, a changed file, the Git search and who may ask
+        # (tests/search.nix).
+        losos-search = import ./tests/search.nix { inherit pkgs; };
         losos-installer-screen = import ./tests/installer-screen.nix { inherit pkgs disko; };
         # The real Forgejo with losos.forgejo.federation on, asked what another
         # server would ask, in both deployment modes; then off, and gone

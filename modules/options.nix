@@ -777,6 +777,19 @@ in
       '';
     };
 
+    search.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Let the search on the admin pages find text inside the owner's
+        files: an index of the files in LosOS cloud, brought up to date
+        every two minutes, and a search of the default branch of every
+        repository in LosOS Git. The index is a copy of the files' text and
+        never leaves the box; turning this off stops the updates, and a
+        factory erase deletes it.
+      '';
+    };
+
     startupSound.enable = lib.mkOption {
       type = lib.types.bool;
       default = true;

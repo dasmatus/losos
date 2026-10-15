@@ -815,6 +815,74 @@ fn get_apps_search_inner(api: &Api, req: &HttpRequest) -> HttpResponse {
     run(api, |b| cmd_apps_search(b, &query))
 }
 
+// ── Text inside files, for the palette ───────────────────────────────────
+// `crate::textsearch` holds the searches; they run in their own units as the
+// apps' own users (modules/search.nix), and lososd only relays. HTTP-only,
+// like /api/apps/search: the palette is the only caller.
+
+/// `GET /api/cloud/text?q=` — files in LosOS cloud whose text matches.
+async fn get_cloud_text(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    guarded(&api, &req, "/api/cloud/text", false, || {
+        text_search::<crate::textsearch::CloudHit>(&req, "LOSOS_SEARCH_CLOUD_SOCKET", "off")
+    })
+}
+
+/// `GET /api/git/text?q=` — lines on the repositories' default branches
+/// that match.
+async fn get_git_text(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    guarded(&api, &req, "/api/git/text", false, || {
+        text_search::<crate::textsearch::GitHit>(&req, "LOSOS_SEARCH_GIT_SOCKET", "noGit")
+    })
+}
+
+/// How long lososd waits for a search before it calls it failed. The Git
+/// search answers with what it has after four seconds.
+const TEXT_SEARCH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(6);
+
+/// Relay one text search. Not offered (the socket variable unset: the search
+/// is off, or the box runs no LosOS Git) is 200 with `available: false` and
+/// the reason, never 404, which the palette latches; neither is a search
+/// unit that is not up yet. A bad `q` is 400 with the reason.
+fn text_search<T: serde::de::DeserializeOwned + serde::Serialize>(
+    req: &HttpRequest,
+    socket_var: &str,
+    off: &str,
+) -> HttpResponse {
+    let params =
+        web::Query::<std::collections::HashMap<String, String>>::from_query(req.query_string())
+            .map(web::Query::into_inner)
+            .unwrap_or_default();
+    let q = match crate::textsearch::validate_query(params.get("q").map_or("", String::as_str)) {
+        Ok(q) => q,
+        Err(e) => return err(StatusCode::BAD_REQUEST, &e),
+    };
+    let limit = params
+        .get("limit")
+        .and_then(|l| l.parse::<usize>().ok())
+        .unwrap_or(8)
+        .clamp(1, crate::textsearch::MAX_HITS);
+    let Some(socket) = std::env::var_os(socket_var) else {
+        return HttpResponse::Ok().json(serde_json::json!({ "available": false, "reason": off }));
+    };
+    match crate::textsearch::ask::<T>(Path::new(&socket), &q, limit, TEXT_SEARCH_TIMEOUT) {
+        Ok(answer) => HttpResponse::Ok().json(serde_json::json!({
+            "available": true,
+            "partial": answer.partial,
+            "hits": answer.hits,
+        })),
+        Err(crate::textsearch::AskError::NotUp(_)) => {
+            HttpResponse::Ok().json(serde_json::json!({ "available": false, "reason": "notUp" }))
+        }
+        Err(crate::textsearch::AskError::Failed(e)) => {
+            tracing::warn!(error = %e, "text search failed");
+            err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "search failed; see the lososd journal",
+            )
+        }
+    }
+}
+
 // ── Installing an app from the catalogue ─────────────────────────────────
 // `crate::apps` holds the rules. HTTP-only, like the market: the page is the
 // only caller.
@@ -1969,6 +2037,8 @@ pub fn serve(backend: IoLosos) -> anyhow::Result<()> {
                 .route("/api/recovery", web::get().to(get_recovery))
                 .route("/api/devices/{kind}", web::post().to(post_device))
                 .route("/api/apps/search", web::get().to(get_apps_search))
+                .route("/api/cloud/text", web::get().to(get_cloud_text))
+                .route("/api/git/text", web::get().to(get_git_text))
                 .route("/api/apps", web::get().to(get_apps))
                 .route("/api/apps/chart", web::get().to(get_app_chart))
                 .route("/api/apps/install", web::post().to(post_app_install))

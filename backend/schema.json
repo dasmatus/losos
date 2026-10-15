@@ -1621,6 +1621,18 @@
         "out": "appsSearchResponse",
         "note": "Searches a public app catalogue from the box. The admin pages are served under `connect-src 'self'`, so the browser cannot reach a catalogue itself — lososd is the only thing here with an outbound path. HTTP-only, with no D-Bus method and no facade subcommand, following `POST /api/setup/claim`: the facade exists to control this appliance, and a CLI for a settings screen's search field would be surface with no caller. A bad or missing `q` is 400 with the reason, deliberately NOT 404 — the SPA latches a 404 as \"this box does not serve the route\" and stops asking for the rest of the session. A search that could not be made (no route off the box, the catalogue down, a body that is not JSON) is 500, which the screen shows as retryable."
       },
+      "GET /api/cloud/text": {
+        "auth": true,
+        "in": "query string: q=<search>, 1-128 characters with at least one letter or digit, no control characters; limit=1-20 (default 8)",
+        "out": "{\"available\": false, \"reason\": \"off|notUp\"} | {\"available\": true, \"partial\": bool, \"hits\": [{\"path\", \"snippet\": [string]}]}",
+        "note": "Text inside the owner's files in LosOS cloud (backend/src/textsearch/, modules/search.nix). lososd relays to the socket-activated `losos-search cloud` on /run/losos-search/cloud.sock, which searches an SQLite FTS5 index the `losos-search-index` timer keeps current; every word must appear, each as a word prefix, accents ignored. `path` is from the owner's root without a leading slash; `snippet` alternates plain and matched runs, starting with a plain one. `partial` is true until the first pass over the files has finished. `off` is losos.search.enable = false; `notUp` is nothing listening on the socket. A bad `q` is 400, deliberately NOT 404, which the SPA latches. HTTP-only, following /api/apps/search."
+      },
+      "GET /api/git/text": {
+        "auth": true,
+        "in": "query string: q and limit as GET /api/cloud/text",
+        "out": "{\"available\": false, \"reason\": \"noGit|notUp\"} | {\"available\": true, \"partial\": false, \"hits\": [{\"owner\", \"repo\", \"branch\", \"path\", \"line\", \"snippet\": [string]}]}",
+        "note": "Lines on the default branch of every LosOS Git repository that contain every word, ignoring case (`git grep -F -i` per repository, as the forgejo user, under `losos-search git` on /run/losos-search/git.sock). Wikis are left out, at most two lines per file, and the search answers with what it found after four seconds. `noGit` is a box without losos.forgejo.enable, or with losos.search.enable off. Same 400 and HTTP-only rules as GET /api/cloud/text."
+      },
       "GET /api/apps": {
         "auth": true,
         "out": "appsResponse",

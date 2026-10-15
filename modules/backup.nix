@@ -370,6 +370,8 @@ let
     "/persist/var/lib/postgresql"
     "/persist/var/lib/redis-nextcloud"
     "/persist/var/lib/losos"
+    # The text of the owner's cloud files, for the palette (modules/search.nix).
+    "/persist/var/lib/losos-search"
     "/persist/var/lib/losos-backup"
     "/persist/var/lib/losos-public-names"
     "/persist/var/lib/rancher"
