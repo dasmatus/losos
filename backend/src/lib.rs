@@ -33,6 +33,7 @@ pub mod builder;
 pub mod catalogue;
 pub mod config_repo;
 pub mod dbus;
+pub mod devices;
 pub mod edge;
 pub mod erase;
 pub mod facade;

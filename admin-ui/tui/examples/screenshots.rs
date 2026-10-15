@@ -19,7 +19,9 @@ use std::process::Command;
 use std::sync::Arc;
 
 use fixtures::{box_route, edge_route, Fixture};
+use losos::computer::Computer;
 use losos::i18n::{set_locale, Locale};
+use losos::keychain::MemoryKeychain;
 use losos::theme::{Mode, Theme, C};
 use losos::tui::app::{App, Key};
 use losos::tui::draw::draw;
@@ -64,7 +66,7 @@ fn app_frame(kind: HostKind, pane: PaneId, keys: &[Key], theme: Theme) -> Buffer
         HostKind::Box => box_route,
         HostKind::Edge => edge_route,
     };
-    let mut app = App::new(host(kind), Arc::new(Fixture::new(route)));
+    let mut app = App::new(host(kind), Arc::new(Fixture::new(route))).with_computer(computer());
     app.now = Some(1_791_960_021.0);
     app.open_at(pane);
     app.settle();
@@ -78,6 +80,19 @@ fn app_frame(kind: HostKind, pane: PaneId, keys: &[Key], theme: Theme) -> Buffer
         draw(&mut app, area, &mut buf, theme);
     }
     buf
+}
+
+/// The computer the screen runs on: a keychain in memory and a config
+/// folder of its own, so a setup touches nothing real.
+fn computer() -> Computer {
+    let dir = std::env::temp_dir().join("losos-screenshots");
+    let mut env = std::collections::HashMap::new();
+    env.insert("XDG_CONFIG_HOME".to_string(), dir.display().to_string());
+    env.insert("LOSOS_DEVICE".to_string(), "matus-laptop".to_string());
+    Computer {
+        keychain: Arc::new(MemoryKeychain::new()),
+        env,
+    }
 }
 
 fn login_frame(theme: Theme) -> Buffer {
@@ -270,6 +285,32 @@ fn main() {
         (
             "edge-secrets",
             Box::new(|t| app_frame(HostKind::Edge, PaneId::EdgeSecrets, &[], t)),
+        ),
+        (
+            "about",
+            Box::new(|t| app_frame(HostKind::Box, PaneId::About, &[], t)),
+        ),
+        (
+            "computer",
+            Box::new(|t| app_frame(HostKind::Box, PaneId::Computer, &[], t)),
+        ),
+        // The password asked for, then LosOS cloud set up with it.
+        (
+            "computer-password",
+            Box::new(|t| {
+                let mut keys = vec![Key::Enter];
+                keys.extend("Zqx-marmalade".chars().map(Key::Char));
+                app_frame(HostKind::Box, PaneId::Computer, &keys, t)
+            }),
+        ),
+        (
+            "computer-done",
+            Box::new(|t| {
+                let mut keys = vec![Key::Enter];
+                keys.extend("Zqx-marmalade".chars().map(Key::Char));
+                keys.push(Key::Enter);
+                app_frame(HostKind::Box, PaneId::Computer, &keys, t)
+            }),
         ),
     ];
     let mut shot_any = false;

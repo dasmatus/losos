@@ -466,6 +466,14 @@ pub fn box_route(method: &str, path: &str, body: &Value) -> (u16, Value) {
         }
         ("POST", "/api/backup/run") => (200, json!({ "job": "backup-1" })),
         ("POST", "/api/config/sync") => (200, config()),
+        ("POST", "/api/devices/cloud") => (
+            200,
+            json!({ "user": "notshared", "appPassword": "AbCd-EfGh-1234", "path": "/nextcloud/remote.php/dav/files/notshared/" }),
+        ),
+        ("POST", "/api/devices/git") => (
+            200,
+            json!({ "user": "notshared", "token": "9f8e7d6c5b4a", "path": "/forgejo/" }),
+        ),
         ("GET" | "POST", _) => (404, json!({ "error": format!("no route {p}") })),
         _ => (405, json!({ "error": "method" })),
     }

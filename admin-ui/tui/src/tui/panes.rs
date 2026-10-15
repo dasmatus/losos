@@ -48,12 +48,13 @@ pub enum PaneId {
     History,
     Backup,
     About,
+    Computer,
     EdgeOverview,
     EdgeSecrets,
 }
 
 impl PaneId {
-    pub const BOX: [PaneId; 10] = [
+    pub const BOX: [PaneId; 11] = [
         PaneId::Overview,
         PaneId::Storage,
         PaneId::Mesh,
@@ -64,6 +65,7 @@ impl PaneId {
         PaneId::History,
         PaneId::Backup,
         PaneId::About,
+        PaneId::Computer,
     ];
     pub const EDGE: [PaneId; 2] = [PaneId::EdgeOverview, PaneId::EdgeSecrets];
 
@@ -86,6 +88,7 @@ impl PaneId {
     pub fn id(self) -> &'static str {
         match self {
             PaneId::Overview => "overview",
+            PaneId::Computer => "computer",
             PaneId::EdgeOverview => "edge-overview",
             PaneId::EdgeSecrets => "edge-secrets",
             other => other.settings_id().unwrap_or(""),
@@ -103,6 +106,11 @@ impl PaneId {
                 "shell.nav.overview".into(),
                 "tui.edge.overviewSummary".into(),
                 "tui.edge.overviewKeywords".into(),
+            ),
+            PaneId::Computer => (
+                "tui.computer.pane".into(),
+                "tui.computer.summary".into(),
+                "tui.computer.keywords".into(),
             ),
             PaneId::EdgeSecrets => (
                 "tui.edge.secrets".into(),
@@ -150,6 +158,9 @@ impl PaneId {
             PaneId::Overview => vec!["home", "status", "apps", "health"],
             PaneId::EdgeOverview => vec!["tenants", "heartbeat", "boxes", "reconcile", "health"],
             PaneId::EdgeSecrets => vec!["secrets", "credentials", "stripe", "seal", "keys"],
+            PaneId::Computer => vec![
+                "computer", "laptop", "device", "files", "webdav", "git", "clone", "setup",
+            ],
             other => keywords::PANE_KEYWORDS
                 .iter()
                 .find(|(id, _)| Some(*id) == other.settings_id())
@@ -219,6 +230,19 @@ pub struct Ctx<'a> {
     pub search: &'a SearchState,
     /// Unix seconds, for "ago".
     pub now: f64,
+    /// The computer this client runs on, for its own pane.
+    pub local: &'a Local,
+}
+
+/// What the This computer pane shows: whether each of the two is set up
+/// here. `available` is false when the screen was opened without the
+/// computer's keychain.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Local {
+    pub available: bool,
+    pub device: String,
+    pub cloud: Option<crate::computer::Credential>,
+    pub git: Option<crate::computer::Credential>,
 }
 
 pub fn build(pane: PaneId, ctx: &Ctx<'_>, cols: usize) -> PaneModel {
@@ -233,6 +257,7 @@ pub fn build(pane: PaneId, ctx: &Ctx<'_>, cols: usize) -> PaneModel {
         PaneId::History => history(ctx),
         PaneId::Backup => backup(ctx),
         PaneId::About => about(ctx),
+        PaneId::Computer => computer(ctx),
         PaneId::EdgeOverview => edge::overview(ctx, cols),
         PaneId::EdgeSecrets => edge::secrets(ctx),
     }
@@ -1767,4 +1792,53 @@ pub fn terminal_section(host: &HostRecord) -> Section {
 /// Pad a cell of a table, for the edge's tenant list.
 pub(crate) fn cell(text: &str, n: usize) -> String {
     pad(text, n)
+}
+
+// ── This computer ──────────────────────────────────────────────────────────
+
+fn computer(ctx: &Ctx<'_>) -> PaneModel {
+    use crate::computer::Service;
+    let mut model = PaneModel::new(t("tui.computer.pane"), t("tui.computer.summary"));
+    let local = ctx.local;
+    if !local.available {
+        model.sections.push(Section::new("computer").notice(
+            Tone::Warn,
+            None,
+            t("tui.computer.noKeychain"),
+        ));
+        return model;
+    }
+    let row = |key: &str, service: Service, done: &Option<crate::computer::Credential>| {
+        let (title, detail) = match service {
+            Service::Cloud => ("tui.computer.cloud", "tui.computer.cloudDetail"),
+            Service::Git => ("tui.computer.git", "tui.computer.gitDetail"),
+        };
+        let (detail, label) = match done {
+            Some(c) => (
+                tr!("tui.computer.setUpAt", location = &c.location),
+                t("tui.computer.setUpAgain"),
+            ),
+            None => (
+                format!("{} {}", t("tui.computer.notSetUp"), t(detail)),
+                t("tui.computer.setUp"),
+            ),
+        };
+        Row::new(key, t(title))
+            .detail(detail)
+            .control(Control::Ask {
+                label,
+                prompt: t("tui.computer.passwordFor"),
+                disabled: false,
+                target: EditTarget::Computer(service),
+            })
+    };
+    model.sections.push(
+        Section::new("computer")
+            .rows(vec![
+                row("cloud", Service::Cloud, &local.cloud),
+                row("git", Service::Git, &local.git),
+            ])
+            .caption(tr!("tui.computer.caption", device = &local.device)),
+    );
+    model
 }

@@ -92,7 +92,9 @@ and is never served or built by nix.
   `systemd-run`; its tokens come from `provision token` behind the GitHub
   allowlist. The client keeps keys and tokens in the Secret Service through
   `secret-tool`, never a file; `losos ci setup` pushes a separate CI key with
-  `gh`, never an edge-made key.
+  `gh`, never an edge-made key. `losos cloud setup` and `losos git setup` mint an
+  app password and a Forgejo token per computer with the owner's password
+  (`backend/src/devices.rs`); `losos git credential` is git's helper.
 - LosOS Lab, the setup visualizer at `/lab/` (sidebar entry Lab): the
   admin UI's second Vite page (`admin-ui/app/lab/`, `src/lab/`) over a Rust
   core in WebAssembly (`admin-ui/lab/core`, `losos-lab-core`, contract in

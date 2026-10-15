@@ -7,7 +7,9 @@ mod common;
 use std::sync::Arc;
 
 use common::fixtures::{box_route, edge_route, Fixture};
+use losos::computer::Computer;
 use losos::i18n::{self, has_key, t, tv, with_locale, Arg, Locale};
+use losos::keychain::MemoryKeychain;
 use losos::theme::{Mode, Theme};
 use losos::tui::app::{App, Key};
 use losos::tui::draw::draw;
@@ -75,7 +77,7 @@ fn open(kind: HostKind, pane: Option<PaneId>) -> Open {
         HostKind::Edge => edge_route,
     };
     let fixture = Arc::new(Fixture::new(route));
-    let mut app = App::new(host(kind), fixture.clone());
+    let mut app = App::new(host(kind), fixture.clone()).with_computer(computer());
     app.now = Some(1_791_960_021.0);
     if let Some(pane) = pane {
         app.open_at(pane);
@@ -83,6 +85,19 @@ fn open(kind: HostKind, pane: Option<PaneId>) -> Open {
     app.settle();
     frame(&mut app);
     Open { app, fixture }
+}
+
+/// This computer, with a keychain in memory and its files in a directory of
+/// its own.
+fn computer() -> Computer {
+    let dir = tempfile::tempdir().unwrap().keep();
+    let mut env = std::collections::HashMap::new();
+    env.insert("XDG_CONFIG_HOME".to_string(), dir.display().to_string());
+    env.insert("LOSOS_DEVICE".to_string(), "testpc".to_string());
+    Computer {
+        keychain: Arc::new(MemoryKeychain::new()),
+        env,
+    }
 }
 
 /// Press keys, letting the background work finish after each.
@@ -127,6 +142,7 @@ fn expect(pane: PaneId) -> &'static [&'static str] {
         PaneId::History => &["matus/losos-config", "4f2a9c1"],
         PaneId::Backup => &["matus-losos", "Back up now"],
         PaneId::About => &["mattbox", "Handbook", "23:00-07:00"],
+        PaneId::Computer => &["LosOS cloud", "LosOS Git", "Not set up", "testpc"],
         PaneId::EdgeOverview => &["Holds a LosOS certificate", "Relay routes", "Reconcile"],
         PaneId::EdgeSecrets => &["stripe-secret-key", "usdc-releaser-key", "Not set"],
     }

@@ -11,8 +11,10 @@ use miette::{GraphicalReportHandler, GraphicalTheme};
 use serde_json::{json, Value};
 
 use crate::cli::{
-    self, CiCommand, Cli, Command, EdgeCommand, EscrowCommand, KeyCommand, SecretCommand,
+    self, CiCommand, Cli, CloudCommand, Command, EdgeCommand, EscrowCommand, GitCommand,
+    KeyCommand, SecretCommand,
 };
+use crate::computer::{Computer, Service};
 use crate::envelope::{host_key_url, unreachable, Session, Transport};
 use crate::http::{Http, Trust};
 use crate::i18n::{self, Locale};
@@ -87,6 +89,14 @@ impl Io {
         self.stdin_tty && self.stdout_tty
     }
 
+    /// This computer, for the commands that set it up.
+    fn computer(&self) -> Computer {
+        Computer {
+            keychain: self.keychain.clone(),
+            env: self.env.clone(),
+        }
+    }
+
     fn ci_mode(&self) -> bool {
         self.var("LOSOS_CI").as_deref() == Some("1")
     }
@@ -99,6 +109,12 @@ pub fn run(args: &[String], io: &mut Io) -> u8 {
     let lang = cli::lang_flag(args);
     let locale = Locale::detect(lang.as_deref(), |k| io.var(k));
     i18n::set_locale(locale);
+    // This thread keeps its own locale too, so two runs in one process (the
+    // tests) never read each other's.
+    i18n::with_locale(locale, || run_in(args, io, locale))
+}
+
+fn run_in(args: &[String], io: &mut Io, locale: Locale) -> u8 {
     let cli = match cli::parse(args) {
         Ok(cli) => cli,
         Err(e) => {
@@ -177,6 +193,15 @@ fn dispatch(cli: Cli, io: &mut Io) -> Result<u8> {
                 Some(Command::Ci {
                     command: CiCommand::Setup { edge, repo, print },
                 }) => ci_setup(io, &edge, &repo, print),
+                Some(Command::Cloud {
+                    command: CloudCommand::Setup { device },
+                }) => device_setup(io, host.as_deref(), Service::Cloud, device.as_deref()),
+                Some(Command::Git {
+                    command: GitCommand::Setup { device },
+                }) => device_setup(io, host.as_deref(), Service::Git, device.as_deref()),
+                Some(Command::Git {
+                    command: GitCommand::Credential { action },
+                }) => git_credential(io, &action),
                 Some(Command::Call { .. } | Command::Edge { .. }) => unreachable!("handled above"),
             }
         }
@@ -707,7 +732,7 @@ fn open(io: &mut Io, named: Option<&str>, theme: Theme) -> Result<u8> {
         }
     };
     let session = session_for(io, &host)?;
-    let mut app = App::new(host, Arc::new(session));
+    let mut app = App::new(host, Arc::new(session)).with_computer(io.computer());
     term::run(&mut app, theme)?;
     Ok(0)
 }
@@ -880,6 +905,63 @@ fn releaser(io: &mut Io, host: Option<&str>, make: bool, replace: bool) -> Resul
         };
         io.line(format!("  {:<20} {state}", field("network")));
     }
+    Ok(0)
+}
+
+// ── This computer ────────────────────────────────────────────────────────
+
+/// `losos cloud setup` and `losos git setup`.
+fn device_setup(
+    io: &mut Io,
+    host: Option<&str>,
+    service: Service,
+    device: Option<&str>,
+) -> Result<u8> {
+    let record = pick_host(&io.vault(), host, Some(HostKind::Box))?;
+    if record.kind != HostKind::Box {
+        return Err(Problem::new(
+            "losos::host",
+            tr!("tui.computer.notBox", url = &record.url),
+        ));
+    }
+    let session = session_for(io, &record)?;
+    let computer = io.computer();
+    let device = computer.device_name(device);
+    let password = io.secret(&tr!("tui.computer.passwordPrompt"))?;
+    if password.is_empty() {
+        return Err(Problem::new(
+            "losos::password",
+            tr!("tui.computer.emptyPassword"),
+        ));
+    }
+    match service {
+        Service::Cloud => {
+            let done = computer.cloud_setup(&record, &session, &password, &device)?;
+            io.line(tr!("tui.computer.cloudDone", device = &device));
+            io.line(tr!("tui.computer.cloudWhere", location = &done.location));
+            if done.own_certificate {
+                io.line(tr!("tui.computer.cloudCertificate"));
+            }
+            io.line(tr!("tui.computer.cloudRevoke", device = &device));
+        }
+        Service::Git => {
+            let done = computer.git_setup(&record, &session, &password, &device)?;
+            io.line(tr!("tui.computer.gitDone", device = &device));
+            io.line(tr!(
+                "tui.computer.gitWhere",
+                location = format!("{}{}/<repository>.git", done.location, done.user)
+            ));
+            io.line(tr!("tui.computer.gitRevoke", device = &device));
+        }
+    }
+    Ok(0)
+}
+
+/// `losos git credential <get|store|erase>`, as git runs it.
+fn git_credential(io: &mut Io, action: &str) -> Result<u8> {
+    let input = read_piped(&mut io.stdin)?;
+    let answer = io.computer().git_credential(action, &input)?;
+    let _ = write!(io.out, "{answer}");
     Ok(0)
 }
 
