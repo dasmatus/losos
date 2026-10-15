@@ -10,9 +10,6 @@ export default defineMessages({
   "shell.nav.lab": { en: "Lab", sk: "Laboratórium", de: "Labor" },
   "shell.nav.settings": { en: "Settings", sk: "Nastavenia", de: "Einstellungen" },
   "shell.nav.label": { en: "Sections", sk: "Sekcie", de: "Bereiche" },
-  /* Under Market in the sidebar, greyed with it: the disk-sharing switch
-   * lives on the Market pane and opens when the market does. */
-  "shell.nav.diskSharing": { en: "Disk sharing", sk: "Zdieľanie disku", de: "Festplattenfreigabe" },
   "shell.nav.collapse": { en: "Collapse the sidebar", sk: "Zbaliť bočný panel", de: "Seitenleiste einklappen" },
   "shell.nav.expand": { en: "Expand the sidebar", sk: "Rozbaliť bočný panel", de: "Seitenleiste ausklappen" },
   /* The fold toggle on an entry with sub-entries; aria-expanded says which way. */
