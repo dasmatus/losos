@@ -22,6 +22,8 @@ use axum::Router;
 use losos_registrar::opts::ServeOpts;
 use tokio::sync::oneshot;
 
+pub mod coins;
+
 /// A 64-hex-character token, the shape the docs describe for a real appliance.
 pub const GOOD_TOKEN: &str = "0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0";
 /// A second valid token, distinct from [`GOOD_TOKEN`].

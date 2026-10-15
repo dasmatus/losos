@@ -32,7 +32,7 @@
 use std::path::Path;
 
 use miette::{miette, Context, IntoDiagnostic, Result};
-use ring::rand::SystemRandom;
+use ring::rand::{SecureRandom, SystemRandom};
 use ring::signature::{self, Ed25519KeyPair, KeyPair, UnparsedPublicKey};
 use serde::{Deserialize, Serialize};
 
@@ -91,6 +91,8 @@ pub fn nonce_ok(nonce: &str) -> bool {
 }
 
 // ── hex, by hand: two short functions instead of a crate ───────────────────
+//
+// The crate's one pair: every other module encodes and decodes through these.
 
 #[must_use]
 pub fn to_hex(bytes: &[u8]) -> String {
@@ -105,8 +107,16 @@ pub fn from_hex(s: &str) -> Option<Vec<u8>> {
     }
     (0..s.len())
         .step_by(2)
-        .map(|i| u8::from_str_radix(&s[i..i + 2], 16).ok())
+        .map(|i| u8::from_str_radix(s.get(i..i + 2)?, 16).ok())
         .collect()
+}
+
+/// `bytes` fresh random bytes as hex; `None` when the system source fails.
+#[must_use]
+pub fn random_hex(bytes: usize) -> Option<String> {
+    let mut raw = vec![0u8; bytes];
+    SystemRandom::new().fill(&mut raw).ok()?;
+    Some(to_hex(&raw))
 }
 
 // ── keys ───────────────────────────────────────────────────────────────────
@@ -464,10 +474,7 @@ pub fn run(opts: crate::opts::IdentityOpts) -> Result<()> {
             let answer: Answer = serde_json::from_str(&text)
                 .into_diagnostic()
                 .wrap_err("the answer is not a /identity document")?;
-            let now = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_secs())
-                .unwrap_or(0);
+            let now = crate::market::now_secs();
             match check_answer(root_public.trim(), &answer, &url, &nonce, now) {
                 Ok(()) => {
                     println!("official: {} at {}", answer.cert.name, answer.cert.url);
@@ -529,6 +536,8 @@ mod tests {
         assert_eq!(from_hex("000fff"), Some(vec![0, 15, 255]));
         assert_eq!(from_hex("0"), None);
         assert_eq!(from_hex("zz"), None);
+        // Non-ASCII of even length is refused, not a slice off a char boundary.
+        assert_eq!(from_hex("a\u{e9}a"), None);
     }
 
     #[test]

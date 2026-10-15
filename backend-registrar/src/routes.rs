@@ -42,6 +42,8 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::Path;
 
 use ring::hmac;
+
+use crate::identity::{from_hex, to_hex};
 use ring::rand::{SecureRandom, SystemRandom};
 use serde::{Deserialize, Serialize};
 
@@ -86,7 +88,7 @@ impl PassKey {
         match tokio::fs::read_to_string(path).await {
             Ok(text) => {
                 let text = text.trim();
-                match unhex(text) {
+                match from_hex(text) {
                     Some(bytes) if bytes.len() == 32 => Ok(Self::from_bytes(&bytes)),
                     _ => Err(std::io::Error::new(
                         std::io::ErrorKind::InvalidData,
@@ -99,7 +101,7 @@ impl PassKey {
                 SystemRandom::new()
                     .fill(&mut bytes)
                     .map_err(|_| std::io::Error::other("the system RNG failed"))?;
-                atomic_write(path, hex(&bytes).as_bytes(), PASS_KEY_FILE_MODE).await?;
+                atomic_write(path, to_hex(&bytes).as_bytes(), PASS_KEY_FILE_MODE).await?;
                 Ok(Self::from_bytes(&bytes))
             }
             Err(e) => Err(e),
@@ -119,7 +121,7 @@ impl PassKey {
         let epoch = now / PASS_EPOCH_SECS;
         format!(
             "{PASS_PREFIX}.{epoch}.{}",
-            hex(self.mac(box_id, epoch).as_ref())
+            to_hex(self.mac(box_id, epoch).as_ref())
         )
     }
 
@@ -137,7 +139,7 @@ impl PassKey {
         if epoch > current || current - epoch >= PASS_EPOCHS_VALID {
             return None;
         }
-        let tag = unhex(tag)?;
+        let tag = from_hex(tag)?;
         hmac::verify(
             &self.0,
             format!("losos-relay-pass-v1\n{box_id}\n{epoch}\n").as_bytes(),
@@ -322,24 +324,6 @@ impl TableFile {
             Err(e) => Err(e),
         }
     }
-}
-
-fn hex(bytes: &[u8]) -> String {
-    use std::fmt::Write;
-    bytes.iter().fold(String::new(), |mut s, b| {
-        let _ = write!(s, "{b:02x}");
-        s
-    })
-}
-
-fn unhex(s: &str) -> Option<Vec<u8>> {
-    if !s.len().is_multiple_of(2) {
-        return None;
-    }
-    (0..s.len())
-        .step_by(2)
-        .map(|i| u8::from_str_radix(s.get(i..i + 2)?, 16).ok())
-        .collect()
 }
 
 #[cfg(test)]

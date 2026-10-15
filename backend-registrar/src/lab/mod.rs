@@ -71,7 +71,6 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, post};
 use axum::{Json, Router};
 use miette::{miette, IntoDiagnostic, Result, WrapErr};
-use ring::rand::{SecureRandom, SystemRandom};
 use serde_json::json;
 use subtle::ConstantTimeEq;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -149,11 +148,7 @@ fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
 }
 
 fn random_hex(bytes: usize) -> Result<String> {
-    let mut raw = vec![0u8; bytes];
-    SystemRandom::new()
-        .fill(&mut raw)
-        .map_err(|_| miette!("no randomness"))?;
-    Ok(raw.iter().map(|b| format!("{b:02x}")).collect())
+    crate::identity::random_hex(bytes).ok_or_else(|| miette!("no randomness"))
 }
 
 /// A guest's serial port: the bytes it printed so far, a fan-out to every

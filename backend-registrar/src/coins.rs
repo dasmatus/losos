@@ -389,11 +389,6 @@ pub fn amount_for(coin: Coin, usd_cents: u64, price_micros: u128) -> Option<u128
     Some(scaled.div_ceil(price_micros))
 }
 
-/// The USD value of `amount` at `price_micros`, in whole cents, rounded down.
-pub fn cents_for(coin: Coin, amount: u128, price_micros: u128) -> u128 {
-    amount.saturating_mul(price_micros) / 10u128.pow(coin.decimals()) / 10_000
-}
-
 /// "0.00150000" for 150_000 satoshi: every digit of the smallest unit, as
 /// payment URIs and wallets expect.
 pub fn format_amount(coin: Coin, amount: u128) -> String {
@@ -681,7 +676,6 @@ mod tests {
         );
         assert_eq!(amount_for(Coin::Zec, 0, 1), None);
         assert_eq!(amount_for(Coin::Zec, 1, 0), None);
-        assert_eq!(cents_for(Coin::Btc, 10_017, BTC_PRICE), 601);
         assert_eq!(format_amount(Coin::Btc, 150_000), "0.00150000");
         assert_eq!(format_amount(Coin::Xmr, 60_000_000_000), "0.060000000000");
     }
