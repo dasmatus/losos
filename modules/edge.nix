@@ -720,7 +720,8 @@ let
   btcChain = cfg.market.bitcoin.chain;
   btcRpcPort = 8332;
   btcDataDir = "/var/lib/bitcoind-losos";
-  btcCookie = if btcChain == "main" then "${btcDataDir}/.cookie" else "${btcDataDir}/${btcChain}/.cookie";
+  btcCookie =
+    if btcChain == "main" then "${btcDataDir}/.cookie" else "${btcDataDir}/${btcChain}/.cookie";
   btcServeArgs = lib.optionals btcOn [
     "--market-btc-rpc"
     "http://127.0.0.1:${toString btcRpcPort}"
@@ -1120,6 +1121,17 @@ in
         '';
       }
       {
+        assertion =
+          (cfg.market.enable && cfg.market.storageClass == "longhorn") -> cfg.cluster.longhornChart != null;
+        message = ''
+          losos.edge.market.storageClass is "longhorn" but
+          losos.edge.cluster.longhornChart is null: no Longhorn means no such
+          storage class, so every paid storage order would wait for a volume
+          that never comes and be refunded. Keep the default chart, or name a
+          storage class this cluster has.
+        '';
+      }
+      {
         assertion = cfg.acmeEmail != null;
         message = "losos.edge.enable requires losos.edge.acmeEmail (Let's Encrypt account email).";
       }
@@ -1209,6 +1221,14 @@ in
     # The zone directory: root writes (the registrar), knot reads.
     ++ lib.optionals dnsCfg.enable [
       "d /var/lib/losos-dns 0755 root root - -"
+    ]
+    # Longhorn runs iscsiadm and mount.nfs in the host's mount namespace with
+    # an FHS PATH, which on NixOS finds neither: they live in
+    # /run/current-system/sw/bin. /usr/local/sbin is on that PATH and empty
+    # on NixOS, so it points there. The appliance carries the same rule in
+    # modules/cluster.nix.
+    ++ lib.optionals (meshEnabled && cfg.cluster.longhornChart != null) [
+      "L+ /usr/local/sbin - - - - /run/current-system/sw/bin"
     ];
 
     environment.etc."losos/edge-access-keys.asc" = lib.mkIf (cfg.access.gpgKeys != [ ]) {

@@ -2653,12 +2653,46 @@ in
 
     edge.cluster.longhornChart = lib.mkOption {
       type = lib.types.nullOr lib.types.attrs;
-      default = null;
+      # The newest release Longhorn lists as stable. The hash is the .tgz's
+      # own sha256, the digest charts.longhorn.io/index.yaml publishes for it.
+      default = {
+        name = "longhorn";
+        repo = "https://charts.longhorn.io";
+        version = "1.12.1";
+        hash = "sha256-yM9LNanYcs1ffkT9JtjmrHwquu5C9OLyoLDrvG46YRY=";
+        targetNamespace = "longhorn-system";
+        createNamespace = true;
+        values = {
+          # The edge is a small VPS and holds no data: only nodes labelled
+          # node.longhorn.io/create-default-disk=true get a disk, and
+          # modules/cluster.nix labels the appliances, never the edge.
+          defaultSettings = {
+            createDefaultDiskLabeledNodes = true;
+            # No calls home: no version checks against Longhorn's upgrade
+            # server, no usage reports.
+            upgradeChecker = false;
+            allowCollectingLonghornUsageMetrics = false;
+          };
+          # Nobody browses the Longhorn UI on an appliance mesh, and one copy
+          # of each CSI controller is enough for a cluster this size; the
+          # chart's default is three.
+          longhornUI.replicas = 0;
+          csi = {
+            attacherReplicaCount = 1;
+            provisionerReplicaCount = 1;
+            resizerReplicaCount = 1;
+            snapshotterReplicaCount = 1;
+          };
+        };
+      };
       description = ''
         Longhorn Helm chart spec handed to services.rke2.autoDeployCharts
-        (repo, version, hash, values). Longhorn is not packaged in nixpkgs, so
-        it is deployed as a pinned chart — a fixed-output derivation, so the
-        deployment stays reproducible. Null disables Longhorn.
+        (name, repo, version, hash, values). Longhorn is not packaged in
+        nixpkgs, so it is deployed as a pinned chart, a fixed-output
+        derivation, so the deployment stays reproducible. The default pins
+        a stable release with a footprint cut for a small edge. Null
+        disables Longhorn, and with it the market's storage orders, which
+        claim their volumes from Longhorn's storage class.
       '';
     };
   };
