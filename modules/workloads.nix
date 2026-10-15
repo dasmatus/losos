@@ -305,8 +305,24 @@ let
           HTTP_PORT = 3000;
           # The front vhost strips the /forgejo prefix, so Forgejo has to be told
           # it is served under a subpath or every link it generates is wrong.
+          # With losos.tls on (the default) the wizard moves the owner to
+          # https, so that is the address: an http ROOT_URL put Forgejo's
+          # "configured to be served on a different URL" banner on every page
+          # the owner opened, sign-in included. :80 still answers.
           ROOT_URL =
-            if proxied then "https://${proxyHostName}/forgejo/" else "http://${hostName}.local/forgejo/";
+            if proxied then
+              "https://${proxyHostName}/forgejo/"
+            else if config.losos.tls.enable then
+              "https://${hostName}.local/forgejo/"
+            else
+              "http://${hostName}.local/forgejo/";
+        };
+        session = {
+          # Forgejo marks its session cookie Secure whenever ROOT_URL is
+          # https, and a browser drops a Secure cookie set over http. :80
+          # keeps serving for an owner who has not trusted the box's
+          # certificate yet, and sign-in there has to keep working.
+          COOKIE_SECURE = false;
         };
         service = {
           # /forgejo/ is the one admin-free route published through the

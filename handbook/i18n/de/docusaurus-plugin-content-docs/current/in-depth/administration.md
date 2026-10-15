@@ -284,7 +284,7 @@ eine Box entdecken und die Forgejo an der Wurzel des Hosts statt unter
 Nur-LAN-Schutz abgesichert. Die Reichweite folgt `ROOT_URL`: über die Edge
 ist es `https://<proxy hostname>/forgejo/`, und jeder Server kann mit der
 Box föderieren; auf einer reinen LAN-Box ist es
-`http://<host>.local/forgejo/`, sodass das nur andere Boxen im selben LAN
+`https://<host>.local/forgejo/`, sodass das nur andere Boxen im selben LAN
 können. `tests/forgejo-federation.nix` startet das echte Forgejo und fragt
 es ab, mit eingeschaltetem und dann ausgeschaltetem Teilen.
 

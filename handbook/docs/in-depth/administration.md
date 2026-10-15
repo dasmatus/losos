@@ -255,7 +255,7 @@ adds exact-match routes for `/.well-known/nodeinfo` and
 which Forgejo serves at the host's root rather than under `ROOT_URL`; they
 are not LAN-guarded, like `/forgejo/`. Reach follows `ROOT_URL`: through the
 edge it is `https://<proxy hostname>/forgejo/` and any server can federate
-with the box; on a LAN-only box it is `http://<host>.local/forgejo/`, so only
+with the box; on a LAN-only box it is `https://<host>.local/forgejo/`, so only
 other boxes on the same LAN can. `tests/forgejo-federation.nix` boots the
 real Forgejo and asks it, with sharing on and then off.
 

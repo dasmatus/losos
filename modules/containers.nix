@@ -576,13 +576,25 @@ in
               # X_Losos_Server_Addr (underscores, which CGI would fold into
               # the same variable) under its default ignore_invalid_headers.
               proxy_set_header X-Losos-Server-Addr $server_addr;
+              # Apache answers `/nextcloud` with a 301 to the directory,
+              # spelled absolute and always http, because the pod only ever
+              # sees plain http from this proxy. Opened over https that sends
+              # the browser back to :80, and inside the first-run wizard's
+              # frame the admin CSP (frame-src 'self') refuses the http
+              # origin, so the step showed "This content is blocked". Cut to
+              # a path, and left a path (nginx would otherwise spell it out
+              # again with its own scheme and port), the browser resolves it
+              # against the address it is on, https included.
+              proxy_redirect http://$host/ /;
+              absolute_redirect off;
             '';
           };
         })
         (lib.mkIf forgejoWorkload {
           # Trailing slash on proxyPass -> /forgejo prefix stripped;
-          # Forgejo's ROOT_URL is http://<host>.local/forgejo/ (or the
-          # master-proxy hostname) so it generates prefixed links.
+          # Forgejo's ROOT_URL is https://<host>.local/forgejo/ (http without
+          # losos.tls, or the master-proxy hostname) so it generates prefixed
+          # links.
           "/forgejo/" = {
             proxyPass = "http://127.0.0.1:${toString forgejoPort}/";
             proxyWebsockets = true;
