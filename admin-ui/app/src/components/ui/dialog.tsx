@@ -62,7 +62,11 @@ export function Dialog({
       }}
       // Whatever closed it — Escape, .close(), a submit — the parent's state
       // has to follow, or `open` stays true and the dialog never reopens.
-      onClose={() => onOpenChange(false)}
+      // The event is queued, so it can land after the dialog was opened
+      // again (a shortcut pressed right after a pick); that one is stale.
+      onClose={(event) => {
+        if (!event.currentTarget.open) onOpenChange(false);
+      }}
       // A click that lands on the <dialog> itself landed on the backdrop: the
       // panel below covers the box edge to edge.
       onClick={(event) => {

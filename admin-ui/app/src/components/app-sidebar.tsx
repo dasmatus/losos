@@ -31,7 +31,7 @@ import type { MessageKey } from "@/lib/i18n";
 import { useLocale, useT } from "@/lib/i18n-react";
 import { paneFromPath, paneHref } from "@/lib/routes";
 import { cn } from "@/lib/utils";
-import { openPalette, shortcutLabel } from "@/palette/store";
+import { SHORTCUT_ARIA, openPalette, shortcutLabel } from "@/palette/store";
 import { paneById, type SettingsPaneId } from "@/screens/settings/panes";
 
 /* The one panel: every destination on this page in a single sidebar, in the
@@ -203,7 +203,7 @@ export function AppSidebar() {
               openPalette();
             }}
             aria-label={searchLabel}
-            aria-keyshortcuts="Control+K Meta+K"
+            aria-keyshortcuts={SHORTCUT_ARIA}
             aria-haspopup="dialog"
             title={rail ? searchLabel : undefined}
             className={cn(

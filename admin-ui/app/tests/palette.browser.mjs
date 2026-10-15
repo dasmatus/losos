@@ -1,5 +1,5 @@
-/* The command palette (src/palette/): Ctrl/Cmd+K, or the sidebar's search
- * box, opens one list of pages, apps, files in LosOS cloud, repositories in
+/* The command palette (src/palette/): Ctrl/Cmd+Shift+P, a colon, or the
+ * sidebar's search box, opens one list of pages, apps, files in LosOS cloud, repositories in
  * LosOS Git, apps to install and actions.
  *
  * The real dist/ bundle under the admin page's CSP, with lososd's routes
@@ -134,10 +134,10 @@ await plain.waitForTimeout(300);
 const baseline = BASELINE.length;
 await plain.close();
 
-await check('Ctrl+K opens it with the input focused; Escape closes it and gives focus back', async () => {
+await check('Ctrl+Shift+P opens it with the input focused; Escape closes it and gives focus back', async () => {
   const { page, errors, csp } = await open({ path: '/storage' });
   await page.getByRole('heading', { name: 'Storage', level: 1 }).click();
-  await page.keyboard.press('Control+k');
+  await page.keyboard.press('Control+Shift+P');
   await box(page).waitFor();
   assert.equal(await box(page).evaluate((el) => el === document.activeElement), true, 'the input is not focused');
   // Before anything is typed: pages, the repositories, the actions.
@@ -148,11 +148,29 @@ await check('Ctrl+K opens it with the input focused; Escape closes it and gives 
   await page.keyboard.press('Escape');
   await box(page).waitFor({ state: 'detached' });
   assert.equal(await page.evaluate(() => document.activeElement?.tagName), 'BODY');
-  // Cmd+K on a Mac is the same key.
-  await page.keyboard.press('Meta+k');
+  // Cmd+Shift+P on a Mac is the same chord, and it closes what it opened.
+  await page.keyboard.press('Meta+Shift+P');
   await box(page).waitFor();
-  await page.keyboard.press('Control+k');
+  await page.keyboard.press('Control+Shift+P');
   await box(page).waitFor({ state: 'detached' });
+  // A colon opens it too, and lands in the box as nothing.
+  await page.keyboard.type(':');
+  await box(page).waitFor();
+  assert.equal(await box(page).inputValue(), '');
+  await page.keyboard.type(':x');
+  assert.equal(await box(page).inputValue(), ':x', 'a colon in the box is text');
+  await page.keyboard.press('Escape');
+  await box(page).waitFor({ state: 'detached' });
+  // But not a colon typed into a field.
+  await page.evaluate(() => {
+    const field = document.createElement('input');
+    field.id = 'probe';
+    document.body.append(field);
+    field.focus();
+  });
+  await page.keyboard.type('a:b');
+  assert.equal(await page.locator('#probe').inputValue(), 'a:b');
+  assert.equal(await box(page).count(), 0, 'a colon in a field opened the palette');
   assert.equal(csp.length, baseline, `the palette added CSP violations:\n${csp.join('\n')}`);
   assert.deepEqual(errors, []);
   await page.close();
@@ -169,7 +187,7 @@ await check('the sidebar search box opens it, and the arrows and Enter go to a p
   await page.waitForURL(origin + '/settings/hardware');
   await box(page).waitFor({ state: 'detached' });
   // Arrow keys move the highlight, and wrap.
-  await page.keyboard.press('Control+k');
+  await page.keyboard.press('Control+Shift+P');
   await box(page).fill('st');
   const first = await box(page).getAttribute('aria-activedescendant');
   await page.keyboard.press('ArrowDown');
@@ -186,7 +204,7 @@ await check('a page matches in the language on screen and in English, with or wi
   const { page } = await open();
   await page.evaluate(() => window.localStorage.setItem('losos-lang', 'sk'));
   await page.reload({ waitUntil: 'networkidle' });
-  await page.keyboard.press('Control+k');
+  await page.keyboard.press('Control+Shift+P');
   const field = page.getByRole('combobox', { name: /^Hľadať stránky/ });
   for (const word of ['ulozisko', 'Úložisko', 'storage']) {
     await field.fill(word);
@@ -199,7 +217,7 @@ await check('a page matches in the language on screen and in English, with or wi
 
 await check('files in LosOS cloud and repositories in LosOS Git open in their app', async () => {
   const { page, asked } = await open();
-  await page.keyboard.press('Control+k');
+  await page.keyboard.press('Control+Shift+P');
   await box(page).fill('tax');
   await option(page, /^Taxes 2025/).waitFor();
   await option(page, /^notshared\/tax-scripts/).waitFor();
@@ -209,7 +227,7 @@ await check('files in LosOS cloud and repositories in LosOS Git open in their ap
   await option(page, /^tax-return-2025\.pdf/).click();
   await page.waitForURL(origin + '/nextcloud/index.php/f/418');
   await page.goto(origin + '/', { waitUntil: 'networkidle' });
-  await page.keyboard.press('Control+k');
+  await page.keyboard.press('Control+Shift+P');
   await box(page).fill('tax-scr');
   await option(page, /^notshared\/tax-scripts/).waitFor();
   await page.keyboard.press('Enter');
@@ -219,7 +237,7 @@ await check('files in LosOS cloud and repositories in LosOS Git open in their ap
 
 await check('one letter does not search the files; the cloud apps are listed as apps', async () => {
   const { page, asked } = await open();
-  await page.keyboard.press('Control+k');
+  await page.keyboard.press('Control+Shift+P');
   await box(page).fill('c');
   await option(page, /^Calendar/).waitFor();
   await page.waitForTimeout(400);
@@ -232,7 +250,7 @@ await check('one letter does not search the files; the cloud apps are listed as 
 
 await check('says why it cannot search the files before the first password sign-in', async () => {
   const { page } = await open({ files: { available: false, reason: 'signIn' } });
-  await page.keyboard.press('Control+k');
+  await page.keyboard.press('Control+Shift+P');
   await box(page).fill('tax');
   await page.getByText('File search works after your next sign-in with your password.').waitFor();
   await page.close();
@@ -240,7 +258,7 @@ await check('says why it cannot search the files before the first password sign-
 
 await check('a box without the lookups shows no file or repository group, and asks once', async () => {
   const { page, asked, errors } = await open({ files: 404, repos: 404 });
-  await page.keyboard.press('Control+k');
+  await page.keyboard.press('Control+Shift+P');
   await box(page).fill('tax');
   await page.waitForTimeout(500);
   await box(page).fill('taxes');
@@ -254,7 +272,7 @@ await check('a box without the lookups shows no file or repository group, and as
 
 await check('an app picked to install opens the Apps pane with its install dialog', async () => {
   const { page, errors } = await open();
-  await page.keyboard.press('Control+k');
+  await page.keyboard.press('Control+Shift+P');
   await box(page).fill('jellyfin');
   await option(page, /^jellyfin/).first().waitFor();
   assert.equal(await option(page, /^jellyfin-docs/).count(), 0, 'an app with nothing to install was offered');
@@ -274,12 +292,12 @@ await check('an app picked to install opens the Apps pane with its install dialo
 
 await check('actions run in place: the theme changes, and the palette closes', async () => {
   const { page } = await open();
-  await page.keyboard.press('Control+k');
+  await page.keyboard.press('Control+Shift+P');
   await box(page).fill('dark');
   await option(page, /^Use the dark theme/).click();
   await box(page).waitFor({ state: 'detached' });
   assert.equal(await page.evaluate(() => document.documentElement.classList.contains('dark') || document.documentElement.dataset.theme === 'dark'), true);
-  await page.keyboard.press('Control+k');
+  await page.keyboard.press('Control+Shift+P');
   await box(page).fill('theme');
   assert.equal(await option(page, /^Use the dark theme/).count(), 0, 'the theme already on screen is offered');
   await page.close();

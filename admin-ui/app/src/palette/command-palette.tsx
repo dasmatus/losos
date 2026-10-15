@@ -22,8 +22,9 @@ import { closePalette, paletteState, subscribePalette } from "./store";
 
 /* The command palette: one box that finds a page, a setting, an app, a file
  * in LosOS cloud, a repository in LosOS Git or an app to install, and opens
- * it. Ctrl/Cmd+K opens it from anywhere on the page, and so does the search
- * box at the top of the sidebar.
+ * it. Ctrl/Cmd+Shift+P opens it from anywhere on the page, a colon typed
+ * outside a text field does too, and so does the search box at the top of
+ * the sidebar.
  *
  * Built on the native <dialog> (components/ui/dialog.tsx) and the ARIA
  * combobox pattern by hand: the input keeps focus, the arrow keys move a

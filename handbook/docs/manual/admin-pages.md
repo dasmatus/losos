@@ -30,8 +30,9 @@ icons. On a phone it opens as a sheet.
 ## Search
 
 The search box at the top of the sidebar opens one list that finds pages,
-apps, files and repositories. Ctrl+K on any admin page opens it too, Cmd+K
-on a Mac. It finds:
+apps, files and repositories. Ctrl+Shift+P on any admin page opens it too
+(Cmd+Shift+P on a Mac), and so does typing a colon anywhere outside a text
+field. It finds:
 
 - the sections and settings panes, by name or by a word such as "gpu" or
   "hostname", in the language on screen or in English
