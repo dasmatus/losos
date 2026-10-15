@@ -101,6 +101,14 @@ on.
 
 Contributed files are namespaced per machine.
 
+The edge runs Longhorn in the mesh cluster, installed from a pinned chart
+(`losos.edge.cluster.longhornChart`). Only the boxes hold its disks: a box
+that joins the mesh is labelled `node.longhorn.io/create-default-disk=true`,
+and the edge, which has no such label, stores no replicas. The market's
+storage orders claim their volumes from Longhorn's `longhorn` storage class.
+Longhorn on the edge does not check for updates or send usage reports, and
+its web UI is not deployed.
+
 ## Selling
 
 Storage and compute can also be sold to other boxes through the optional

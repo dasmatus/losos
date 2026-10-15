@@ -24,6 +24,9 @@
   config,
   # on -> the install configuration with losos.sharingMyStorage forced to `on`.
   sharing,
+  # The install configuration as a box that joined the mesh: the tunnel on,
+  # a name of its own, losos.cluster.enable on.
+  mesh,
 }:
 
 let
@@ -99,6 +102,10 @@ assert must
 assert must
   (!(lib.elem "= /.well-known/nodeinfo" (frontRoutes unshared)) && ncRefused unshared != [ ])
   "with disk sharing off, the front vhost still routes /.well-known/nodeinfo to LosOS Git or no longer refuses LosOS cloud's federation addresses";
+assert must (mesh.boot.kernel.sysctl."vm.overcommit_memory" == 1)
+  "vm.overcommit_memory is not settled on a box that joins the mesh: rke2 and redis both define it, and a clash means a box with Join the mesh on does not build";
+assert must (lib.elem "node.longhorn.io/create-default-disk=true" mesh.services.rke2.nodeLabel)
+  "a box that joins the mesh is not labelled node.longhorn.io/create-default-disk=true: the edge's Longhorn creates disks only on labelled nodes, so the mesh has no storage and every storage order waits for a volume that never comes";
 # GRUB's limit is only set under `losos.bios`, which the published flake has
 # off; asserting it here would read the module's default. tests/install.nix
 # boots the BIOS path and is where that half is exercised.
