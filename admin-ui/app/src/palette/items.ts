@@ -98,7 +98,6 @@ export function pageItems(): Item[] {
     },
   ];
   for (const pane of SETTINGS_PANES) {
-    if (pane.planned) continue;
     items.push({
       id: `page-${pane.id}`,
       group: "pages",

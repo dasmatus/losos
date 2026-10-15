@@ -249,7 +249,6 @@ export default defineMessages({
   },
   "look.editor.field.name": { en: "Name", sk: "Názov", de: "Name" },
   "look.editor.field.span": { en: "Width", sk: "Šírka", de: "Breite" },
-  "look.editor.field.source": { en: "Source", sk: "Zdroj", de: "Quelltext" },
   "look.editor.field.files": { en: "Files", sk: "Súbory", de: "Dateien" },
   "look.editor.fileLabel": {
     en: "Source of {name}",
@@ -361,11 +360,6 @@ export default defineMessages({
     sk: "Widget sa zastavil: {message}",
     de: "Das Widget ist stehengeblieben: {message}",
   },
-  "look.frame.waiting": {
-    en: "Reading the box's look…",
-    sk: "Načítava sa vzhľad zariadenia…",
-    de: "Das Aussehen der Box wird gelesen …",
-  },
 
   // ── The gallery ─────────────────────────────────────────────────────────
   "look.gallery.section": {
@@ -380,5 +374,4 @@ export default defineMessages({
     de: "Schreib ein Widget als eigenes HTML, Style und Script. Es läuft in einer Sandbox, kann die Box nach Messwerten fragen und bleibt auf der Box, für jeden Browser.",
   },
   "look.gallery.writeOne": { en: "Write one", sk: "Napísať", de: "Eins schreiben" },
-  "look.gallery.handName": { en: "{name}, by hand", sk: "{name}, ručne", de: "{name}, von Hand" },
 });

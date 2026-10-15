@@ -20,7 +20,6 @@
  * both canvases need (rooms, the camera fit, a dropped device's room) is in
  * scene.ts, so they cannot disagree. */
 
-import type { ComponentType } from "react";
 import type { Catalog, Packet, Snapshot } from "./core";
 import type { Cam, View } from "./scene";
 
@@ -75,5 +74,3 @@ export interface LabCanvasProps {
   onCamera(cam: Cam): void;
   onViewport(size: { width: number; height: number }): void;
 }
-
-export type LabCanvasComponent = ComponentType<LabCanvasProps>;

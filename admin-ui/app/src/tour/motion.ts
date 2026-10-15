@@ -79,11 +79,6 @@ export function prog(frame: number, from: number, to: number, ease: Ease = E.out
   return ease(clamp((frame - from) / (to - from)));
 }
 
-/** A clamped tween from `a` to `b` between two frames. */
-export function tw(frame: number, from: number, to: number, a: number, b: number, ease: Ease = E.out): number {
-  return mix(a, b, prog(frame, from, to, ease));
-}
-
 /** In and back out: 0 before `inAt`, 1 from `inAt + dur` until `outAt`, 0 again `dur` after. */
 export function hold(frame: number, inAt: number, outAt: number, dur = 18, ease: Ease = E.smooth): number {
   return prog(frame, inAt, inAt + dur, ease) * (1 - prog(frame, outAt, outAt + dur, ease));
@@ -94,9 +89,6 @@ export function hitPulse(t: number, attack = 2, tau = 5): number {
   if (t <= 0 || t > attack + 6 * tau) return 0;
   return t < attack ? Math.sin((t / attack) * (Math.PI / 2)) : Math.exp(-(t - attack) / tau);
 }
-
-/** Start offset of item i of n spread over `span` frames. */
-export const stagger = (i: number, n: number, span: number): number => (n > 1 ? (span * i) / (n - 1) : 0);
 
 /** The whole frame discrete state is decided on. */
 export const fd = Math.round;
