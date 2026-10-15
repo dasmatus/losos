@@ -1,0 +1,19 @@
+#!/bin/sh
+# A stand-in for the GitHub CLI: `gh auth status` succeeds unless
+# FAKE_GH_SIGNED_OUT=1, and `gh secret set` / `gh variable set` append their
+# arguments and then what arrived on stdin to FAKE_GH_LOG, between markers.
+if [ "$1 $2" = "auth status" ]; then
+  [ "$FAKE_GH_SIGNED_OUT" = 1 ] && exit 1
+  exit 0
+fi
+case "$1 $2" in
+  "secret set" | "variable set")
+    {
+      printf '>>> %s\n' "$*"
+      cat
+      printf '\n<<<\n'
+    } >>"$FAKE_GH_LOG"
+    exit 0 ;;
+esac
+echo "gh: unknown command $*" >&2
+exit 1

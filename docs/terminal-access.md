@@ -135,6 +135,18 @@ KeePassXC all work. Every item carries `service=losos` and a `kind`:
 | kind | other attributes | secret |
 |---|---|---|
 | `gpg-key` | `fingerprint` | the armoured secret key, as exported (still under its passphrase if it had one) |
-| `host` | `url` | JSON: `{"url", "kind": "box"\|"edge", "fingerprint", "publicKey", "token", "keyFingerprint"}` |
+| `host` | `url` | JSON: `{"url", "kind": "box"\|"edge", "fingerprint", "publicKey", "token", "keyFingerprint", "tlsPin"?}` |
 
 When no Secret Service answers, `losos` says so and stores nothing.
+
+## The TLS certificate
+
+A box answers HTTPS with its own self-signed certificate, which no public
+authority vouches for. The envelope already protects every call, but the
+client still checks the transport. At `losos login` it accepts the
+certificate it is shown, and when no public authority vouches for it, keeps
+its SHA-256 (of the DER) as `tlsPin` in the host record. Every later call
+accepts that exact certificate or one the web trusts, and nothing else. A
+different certificate stops the call with a warning, and `losos login` again
+pins the new one once the owner has checked it. An edge with a public
+certificate gets no pin.
