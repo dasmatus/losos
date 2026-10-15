@@ -29,8 +29,10 @@ import { cn } from "@/lib/utils";
 import { StepText } from "./parts";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
-/** Where the front vhost proxies the files app. */
-const FILES_PATH = "/nextcloud";
+/** Where the front vhost proxies the files app. With the trailing slash: the
+ * bare `/nextcloud` is a directory redirect from the app's web server, one
+ * more round trip before the page the frame is waiting for. */
+const FILES_PATH = "/nextcloud/";
 
 /* Covers /nextcloud/login, /nextcloud/index.php/login and the two-factor
  * pages under /nextcloud/login/challenge/*. Anything else under /nextcloud is

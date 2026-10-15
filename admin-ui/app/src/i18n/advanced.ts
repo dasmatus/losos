@@ -37,9 +37,9 @@ export default defineMessages({
     de: "Diese Box stellt ihr Optionsdokument noch nicht bereit. Anwenden schreibt weiterhin die Einstellungen der anderen Bereiche; der Rest erscheint hier nach dem nächsten Update.",
   },
   "advanced.excluded": {
-    en: "Left out: losos.{prefix}.* — {reason}.",
-    sk: "Vynechané: losos.{prefix}.* — {reason}.",
-    de: "Ausgelassen: losos.{prefix}.* — {reason}.",
+    en: "Left out: losos.{prefix}.*: {reason}.",
+    sk: "Vynechané: losos.{prefix}.*: {reason}.",
+    de: "Ausgelassen: losos.{prefix}.*: {reason}.",
   },
   "advanced.group.general": {
     en: "General",
@@ -140,9 +140,9 @@ export default defineMessages({
     de: "Zeilen, für die diese Box keine Option hat",
   },
   "advanced.stray.caption": {
-    en: "These are in the box’s configuration but match no option it declares — a typo, or a setting from another version. The box refuses to apply while they are there, so remove them to apply anything.",
-    sk: "Tieto sú v konfigurácii zariadenia, ale nezodpovedajú žiadnej možnosti, ktorú deklaruje — preklep alebo nastavenie z inej verzie. Kým tam sú, zariadenie odmieta použiť zmeny, takže ich odstráňte, aby sa dalo čokoľvek použiť.",
-    de: "Diese stehen in der Konfiguration der Box, passen aber zu keiner Option, die sie deklariert — ein Tippfehler oder eine Einstellung aus einer anderen Version. Solange sie da sind, verweigert die Box das Anwenden; entferne sie, um etwas anzuwenden.",
+    en: "These are in the box’s configuration but match no option it declares: a typo or a setting from another version. The box refuses to apply while they are there, so remove them to apply anything.",
+    sk: "Tieto sú v konfigurácii zariadenia, ale nezodpovedajú žiadnej možnosti, ktorú deklaruje: preklep alebo nastavenie z inej verzie. Kým tam sú, zariadenie odmieta použiť zmeny, takže ich odstráňte, aby sa dalo čokoľvek použiť.",
+    de: "Diese stehen in der Konfiguration der Box, passen aber zu keiner Option, die sie deklariert: ein Tippfehler oder eine Einstellung aus einer anderen Version. Solange sie da sind, verweigert die Box das Anwenden; entferne sie, um etwas anzuwenden.",
   },
   "advanced.stray.remove": { en: "Remove", sk: "Odstrániť", de: "Entfernen" },
   "advanced.danger.title": {
@@ -151,9 +151,9 @@ export default defineMessages({
     de: "losos.{name} ändern?",
   },
   "advanced.danger.body": {
-    en: "A wrong value here can leave this box unreachable, unable to boot, or locked out of the page you are on. There is no shell and no SSH to put it right from — only this page, and the installer.",
-    sk: "Nesprávna hodnota tu môže zariadenie spraviť nedostupným, nespustiteľným alebo vás odstaviť od stránky, na ktorej ste. Nie je tu shell ani SSH, z ktorého by sa to dalo opraviť — len táto stránka a inštalátor.",
-    de: "Ein falscher Wert hier kann diese Box unerreichbar machen, am Booten hindern oder dich von dieser Seite aussperren. Es gibt keine Shell und kein SSH, um das zu beheben — nur diese Seite und den Installer.",
+    en: "A wrong value here can leave this box unreachable, unable to boot, or locked out of the page you are on. There is no shell and no SSH to put it right from, only this page and the installer.",
+    sk: "Nesprávna hodnota tu môže zariadenie spraviť nedostupným, nespustiteľným alebo vás odstaviť od stránky, na ktorej ste. Nie je tu shell ani SSH, z ktorého by sa to dalo opraviť, len táto stránka a inštalátor.",
+    de: "Ein falscher Wert hier kann diese Box unerreichbar machen, am Booten hindern oder dich von dieser Seite aussperren. Es gibt keine Shell und kein SSH, um das zu beheben, nur diese Seite und den Installer.",
   },
   "advanced.danger.keep": { en: "Keep as is", sk: "Nechať tak", de: "So lassen" },
   "advanced.danger.confirm": { en: "Change it", sk: "Zmeniť", de: "Ändern" },
@@ -254,9 +254,9 @@ export default defineMessages({
     de: "LosOS Git ist auf dieser Box aus, die Konfiguration bleibt also nur in der eigenen Historie der Box. Jede Änderung wird dort trotzdem festgehalten.",
   },
   "history.repo.caption": {
-    en: "The box keeps its configuration in a private repository on LosOS Git, owned by your account, and pushes every change there. Clone it with your LosOS Git password, edit modules/overrides.nix, push, and the box takes the commit within a minute and rebuilds — after checking each line the way this page does. A rewritten history is left alone and reported here.",
-    sk: "Zariadenie uchováva svoju konfiguráciu v súkromnom repozitári na LosOS Git, ktorý vlastní váš účet, a posiela tam každú zmenu. Naklonujte ho so svojím heslom do LosOS Git, upravte modules/overrides.nix, pošlite zmeny a zariadenie commit do minúty prevezme a prestaví sa — po kontrole každého riadku rovnako, ako to robí táto stránka. Prepísaná história sa nechá tak a nahlási sa tu.",
-    de: "Die Box hält ihre Konfiguration in einem privaten Repository auf LosOS Git, das deinem Konto gehört, und pusht jede Änderung dorthin. Klone es mit deinem LosOS-Git-Passwort, bearbeite modules/overrides.nix, pushe, und die Box übernimmt den Commit innerhalb einer Minute und baut neu — nachdem sie jede Zeile so geprüft hat wie diese Seite. Eine umgeschriebene Historie wird nicht angefasst und hier gemeldet.",
+    en: "The box keeps its configuration in a private repository on LosOS Git, owned by your account, and pushes every change there. Clone it with your LosOS Git password, edit modules/overrides.nix, push, and the box takes the commit within a minute and rebuilds, after checking each line the way this page does. A rewritten history is left alone and reported here.",
+    sk: "Zariadenie uchováva svoju konfiguráciu v súkromnom repozitári na LosOS Git, ktorý vlastní váš účet, a posiela tam každú zmenu. Naklonujte ho so svojím heslom do LosOS Git, upravte modules/overrides.nix, pošlite zmeny a zariadenie commit do minúty prevezme a prestaví sa, po kontrole každého riadku rovnako, ako to robí táto stránka. Prepísaná história sa nechá tak a nahlási sa tu.",
+    de: "Die Box hält ihre Konfiguration in einem privaten Repository auf LosOS Git, das deinem Konto gehört, und pusht jede Änderung dorthin. Klone es mit deinem LosOS-Git-Passwort, bearbeite modules/overrides.nix, pushe, und die Box übernimmt den Commit innerhalb einer Minute und baut neu, nachdem sie jede Zeile so geprüft hat wie diese Seite. Eine umgeschriebene Historie wird nicht angefasst und hier gemeldet.",
   },
   "history.sync.title": {
     en: "Sync with LosOS Git",
