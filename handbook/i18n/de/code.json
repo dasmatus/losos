@@ -318,7 +318,7 @@
     "description": "The title of the page for a blog author"
   },
   "theme.blog.authorsList.pageTitle": {
-    "message": "Authors",
+    "message": "Autoren",
     "description": "The title of the authors page"
   },
   "theme.blog.authorsList.viewAll": {
@@ -326,23 +326,23 @@
     "description": "The label of the link targeting the blog authors page"
   },
   "theme.blog.author.noPosts": {
-    "message": "This author has not written any posts yet.",
+    "message": "Diese Person hat noch keine Beiträge geschrieben.",
     "description": "The text for authors with 0 blog post"
   },
   "theme.contentVisibility.unlistedBanner.title": {
-    "message": "Unlisted page",
+    "message": "Nicht gelistete Seite",
     "description": "The unlisted content banner title"
   },
   "theme.contentVisibility.unlistedBanner.message": {
-    "message": "This page is unlisted. Search engines will not index it, and only users having a direct link can access it.",
+    "message": "Diese Seite ist nicht gelistet. Suchmaschinen indexieren sie nicht, und nur wer einen direkten Link hat, kann sie aufrufen.",
     "description": "The unlisted content banner message"
   },
   "theme.contentVisibility.draftBanner.title": {
-    "message": "Draft page",
+    "message": "Entwurf",
     "description": "The draft content banner title"
   },
   "theme.contentVisibility.draftBanner.message": {
-    "message": "This page is a draft. It will only be visible in dev and be excluded from the production build.",
+    "message": "Diese Seite ist ein Entwurf. Sie ist nur in der Entwicklung sichtbar und fehlt im fertigen Build.",
     "description": "The draft content banner message"
   },
   "theme.docs.DocCard.categoryDescription.plurals": {
@@ -514,7 +514,7 @@
     "message": "LosOS macht aus einem kleinen 64-Bit-PC Ihre eigene Cloud für Dateien, Fotos, Kalender und Code. Es startet jede Nacht neu und spielt seine Updates selbst ein."
   },
   "theme.colorToggle.ariaLabel.group": {
-    "message": "Appearance",
+    "message": "Erscheinungsbild",
     "description": "The label of the colour-mode segmented control"
   },
   "losos.home.soon.market.title": {

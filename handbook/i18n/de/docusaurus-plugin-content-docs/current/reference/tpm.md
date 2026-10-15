@@ -10,7 +10,7 @@ Eine Box ohne TPM-Chip ist weniger sicher als eine mit. Diese Seite erklärt,
 was ein TPM ist, wofür LosOS es verwendet und worauf eine Box ohne TPM
 verzichtet.
 
-## Was ein TPM ist
+## Was ein TPM ist \{#what-a-tpm-is}
 
 Ein TPM (Trusted Platform Module) ist ein kleiner Sicherheitschip auf dem
 Mainboard. Auf den meisten neueren Rechnern ist es statt eines eigenen Chips
@@ -30,7 +30,7 @@ Passphrase eintippt. Der Schlüssel muss an einem Ort liegen, den die Box
 selbst erreicht, und das TPM ist der einzige solche Ort, der nicht die
 Festplatte selbst ist.
 
-## Wofür LosOS es verwendet
+## Wofür LosOS es verwendet \{#what-losos-uses-it-for}
 
 Das Datenvolume (`/persist`) ist auf jeder Box mit LUKS verschlüsselt. Der
 Installer erzeugt einen zufälligen Schlüssel, formatiert das Volume damit und
@@ -51,7 +51,7 @@ Volume unter `/etc/keys/persist-keyfile`. `losos-ctl grow` verwendet sie, um
 das Volume zu vergrößern. Von außen kann sie das Volume nicht öffnen, weil
 sie darin liegt.
 
-## Worauf eine Box ohne TPM verzichtet
+## Worauf eine Box ohne TPM verzichtet \{#what-a-box-without-a-tpm-gives-up}
 
 Der Installer verschlüsselt das Volume trotzdem auf dieselbe Weise. Was sich
 ändert, ist der Ort, an dem der Schlüssel beim Start liegt. Ohne Chip legt
@@ -82,7 +82,7 @@ Die Netzwerkseite ändert sich nicht. Der LAN-Guard, die Anmeldung, der
 Tunnel, die Härtung und die Trennung der beiden Konten funktionieren mit und
 ohne Chip gleich.
 
-## Wogegen ein TPM nicht schützt
+## Wogegen ein TPM nicht schützt \{#what-a-tpm-does-not-protect-against}
 
 LosOS versiegelt den Schlüssel, ohne ihn an Firmware-Messwerte (PCRs) zu
 binden. Die Box aktualisiert ihren Bootloader und Kernel jede Nacht, ohne
@@ -95,7 +95,7 @@ startet, auch an den USB-Stick eines Diebes. Ein TPM macht die Festplatte
 allein unlesbar. Es hilft nicht mehr, sobald jemand die ganze Box hat. Das
 [Sicherheitsmodell](/reference/security-model.md) führt das als bekannte Einschränkung.
 
-## Wie man erkennt, in welchem Modus eine Box läuft
+## Wie man erkennt, in welchem Modus eine Box läuft \{#how-to-tell-which-mode-a-box-is-in}
 
 - Der Installer gibt `unlock: TPM2` oder `unlock: keyfile in the initrd`
   aus, und auf dem Keyfile-Pfad kurz vor dem Abschluss eine Warnung.
@@ -104,7 +104,7 @@ allein unlesbar. Es hilft nicht mehr, sobald jemand die ganze Box hat. Das
   Einrichtungsassistenten, sobald das Passwort gesetzt ist.
 - Einstellungen, Erweitert führt `tpm.enable` und den Wert, mit dem die Box läuft.
 
-## Eine Box auf TPM umstellen
+## Eine Box auf TPM umstellen \{#moving-a-box-to-a-tpm}
 
 Der Installer schreibt den Entsperrmodus in `modules/install-target.nix`.
 Die Admin-Seiten können ihn nicht ändern, weil eine Zeile dafür in

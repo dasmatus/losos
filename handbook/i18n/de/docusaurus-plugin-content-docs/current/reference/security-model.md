@@ -11,7 +11,7 @@ ist
 im Repository. Es wird zusammen mit dem Code versioniert und ist so
 geschrieben, dass du ihm widersprechen kannst.
 
-## Vertrauensgrenzen
+## Vertrauensgrenzen \{#trust-boundaries}
 
 1. **Internet → Edge.** Nur die Edge ist dem Internet zugewandt. Eine Box
    öffnet einen Tunnel nach außen und lauscht von außen auf nichts.
@@ -36,9 +36,9 @@ geschrieben, dass du ihm widersprechen kannst.
    die Edge prüft das GitHub-Konto des Absenders gegen dieselbe Liste, bevor
    sie es installiert.
 
-![Die Grenzen der Box: eine Eingangstür, eine Steuer-API nur auf Loopback, der nach außen zur Edge geöffnete Tunnel und ein verschlüsseltes Volume.](@site/docs/img/box-architecture.svg)
+![Die Grenzen der Box: eine Eingangstür, eine Steuer-API nur auf Loopback, der nach außen zur Edge geöffnete Tunnel und ein verschlüsseltes Volume.](@site/docs/img/box-architecture-de.svg)
 
-## Was der Admin-Schlüssel ist
+## Was der Admin-Schlüssel ist \{#what-the-admin-key-is}
 
 Der Ersatzschlüssel mit 64 Zeichen ist so mächtig wie root: Er kann jede
 Einstellung schreiben und die Box neu bauen. Die Box erzeugt ihn und zeigt
@@ -48,7 +48,7 @@ auf dem Loopback der Box, hinter dem Nur-LAN-Schutz. Zehn Fehlversuche
 bremsen eine Adresse. Die Box führt ein Audit-Log über Änderungen an
 Einstellungen, Passwort-Rücksetzungen und Resets.
 
-## Härtung
+## Härtung \{#hardening}
 
 Standardmäßig an: Härtungsparameter und sysctls für den Kernel, eine Sperrliste
 für Kernelmodule, ein tmpfs-`/tmp` und systemd-Sandboxing für den Webserver,
@@ -59,7 +59,7 @@ beschreibt jeden Schalter und was er kostet.
 
 ![Einstellungen, Sicherheit: die vier zusätzlichen Schutzmaßnahmen, die standardmäßig aus sind, jede mit dem, was sie kostet.](@site/docs/img/settings-security.png)
 
-## Bekannte Grenzen, offen gesagt
+## Bekannte Grenzen, offen gesagt \{#known-limitations-stated-plainly}
 
 - **Das Installationsmedium ist signiert, das installierte System nicht.**
   Eine Firmware mit eingetragenem LosOS-Zertifikat prüft den Bootloader des

@@ -20,7 +20,7 @@ konfiguriert ist, und einen Laptop. Router, Kabel und Laptop sind
 angenommen, weil die Box sie nicht sehen kann. Das Lab schreibt nie auf die
 Box. Ist niemand angemeldet, sagt es das und öffnet die eingebauten Setups.
 
-## Was es zeigt
+## Was es zeigt {#what-it-shows}
 
 - **Logisch und Physisch.** Die logische
   Ansicht zeigt Subnetze, die Edge-Pfade und das Mesh. Die physische
@@ -60,7 +60,7 @@ Edge (einer, deren Zertifikat der LosOS-Root-Schlüssel signiert hat); ein
 LAN-Gateway mit offener Registrierung nimmt unbekannte Boxen bei der ersten
 Nutzung auf; und die Administrationsrouten lehnen Loopback ab.
 
-## Die zwei Kopien
+## Die zwei Kopien {#the-two-copies}
 
 | | Auf der Box (`/lab/`) | Gehostet |
 | --- | --- | --- |
@@ -107,7 +107,7 @@ sie als Artefakt `losos-lab-hosted` hoch. Bei einem Push auf `main`
 deployt es die Kopie außerdem auf Vercel, sofern das Repository die Secrets
 `VERCEL_TOKEN`, `VERCEL_ORG_ID` und `VERCEL_PROJECT_ID` hat.
 
-## Die GPU-Zeichenfläche
+## Die GPU-Zeichenfläche {#the-gpu-canvas}
 
 Das Diagramm hat zwei Zeichenflächen. Die Seite beginnt immer mit der
 SVG-Fläche, sodass das Setup auf dem Bildschirm steht, sobald der Kern
@@ -146,7 +146,7 @@ oder `?canvas=webgl2` an die Adresse an. Der Local-Storage-Schlüssel
 Browser. Das Engine-Abzeichen in der oberen Leiste nennt die Zeichenfläche
 in seinem Tooltip.
 
-## Gäste unter libvirt
+## Gäste unter libvirt {#guests-under-libvirt}
 
 qemu-wasm ist langsam: Es emuliert jede Instruktion ohne KVM, jeder Gast
 kostet den Tab etwa 450 MB, und ein Tab führt drei aus. Hat der Rechner, auf
@@ -174,7 +174,7 @@ Ein Gast kann auf drei Arten laufen, in der Reihenfolge der Präferenz:
    gehosteten Labs. Das ist der langsame Weg und der Fallback für jeden
    Gast, den die ersten beiden nicht starten können.
 
-### Der Helfer und `virsh`
+### Der Helfer und `virsh` {#the-helper-and-virsh}
 
 Der Helfer startet jeden Gast als transiente Domain namens `losos-lab-...`
 mit `virsh create`. Transient bedeutet, dass libvirt sie nie speichert,
@@ -231,7 +231,7 @@ nicht oder lehnt libvirt einen Gast ab, bootet dieser Gast wie bisher unter
 qemu-wasm, und das Lab sagt das einmal. Die eigene Kopie der Box hat kein
 qemu-wasm, dort bleibt es also bei der simulierten Konsole.
 
-### Der WebAssembly-Client und das Relay
+### Der WebAssembly-Client und das Relay {#the-webassembly-client-and-the-relay}
 
 Eine Webseite kann den Socket von libvirt nicht öffnen: Browser bieten
 einer normalen Seite weder rohes TCP noch Unix-Sockets, und libvirt hat
@@ -288,7 +288,7 @@ wie der Helfer, erreichen das Aufräumen und die Leerlaufprüfung des Helfers
 auch diese Domain. `admin-ui/lab/virt-rpc/README.md` zeigt den Client für
 sich, über seine Demo-Seite.
 
-### Sicherheit
+### Sicherheit {#security}
 
 Wer einen weitergeleiteten Socket hält, hat libvirt mit den Rechten des
 Helfers. libvirt erkennt die Gegenseite eines Sockets an ihrer User-ID, sieht
@@ -311,7 +311,7 @@ CORS, sodass jede im selben Browser geöffnete Website versuchen kann,
 deren Origin weder auf der Liste steht noch die eigene Adresse des Helfers
 ist.
 
-### Auf einer Box
+### Auf einer Box {#on-a-box}
 
 `losos.lab.libvirt.enable` (standardmäßig aus) schaltet libvirtd ein und
 führt denselben Helfer als Dienst aus, mit `qemu:///system`. lososd leitet
@@ -326,14 +326,14 @@ Admin-Schlüssel kann ohnehin schon das ganze System neu bauen, er gibt also
 nichts preis, was der Schlüssel nicht schon hatte. Leg die drei
 Images in `/var/lib/losos-lab/images` ab (`losos.lab.libvirt.images`).
 
-## Was nicht echt ist
+## Was nicht echt ist {#what-is-not-real}
 
 Die Gäste sind Platzhalter: busybox und ein 4-MiB-Image, nicht NixOS. Die
 Edges, der Tunnel, das Mesh und der Markt sind im Rust-Kern nach den obigen
 Regeln modelliert; sie sind kein laufender Code. Der Desktop des Laptops ist
 ein Bild von LosOS Desktop, nicht der Desktop selbst.
 
-## Änderungen vornehmen
+## Änderungen vornehmen {#changing-it}
 
 - Die Seite und ihre Teile liegen in `admin-ui/app/src/lab/`.
   `npm run lab:core` baut den Kern nach `src/lab/core-pkg/` und

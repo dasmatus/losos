@@ -22,7 +22,7 @@ Koreňový súborový systém je tmpfs, ktorý sa pri každom štarte vytvorí n
 Prežijú iba adresáre uvedené v `modules/impermanence.nix`, a to na šifrovanom
 oddiele `/persist`.
 
-## Stránky
+## Stránky {#pages}
 
 - [Inštalácia podrobne](/in-depth/install.md). Inštalačné ISO, Secure Boot, TPM, demo obraz,
   zväčšenie disku.
@@ -47,7 +47,7 @@ oddiele `/persist`.
 - [Bezpečnostný model](/reference/security-model.md). Čo je a čo nie je chránené.
 - [Architektúra](/in-depth/architecture.md). Ako do seba jednotlivé časti zapadajú.
 
-## Porovnanie s alternatívami
+## Porovnanie s alternatívami {#compared-with-alternatives}
 
 - **NAS (Synology, QNAP).** Rovnaký nápad, krabička s webovým rozhraním.
   Rozdiel je v tom, že koreň sa tu pri každom štarte zahodí, takže zmeny
@@ -65,7 +65,7 @@ oddiele `/persist`.
   siete iba vtedy, keď je otvorené časové okno vlastníka *a zároveň* je
   zariadenie nečinné.
 
-## Čo to nie je
+## Čo to nie je {#what-it-is-not}
 
 - Nie je to univerzálny server. Shell zámerne chýba.
 - Nie je to záloha. Kópie `/persist` uchovávajte inde.

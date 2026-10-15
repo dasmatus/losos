@@ -15,7 +15,7 @@ verleihen und dafür bezahlt zu werden eine einzige Entscheidung ist. Der
 Schalter funktioniert, ob die Edge dieser Box den Marktplatz anbietet oder
 nicht.
 
-## Zwei Cluster
+## Zwei Cluster {#two-clusters}
 
 Jede Box betreibt zwei Kubernetes-Instanzen:
 
@@ -30,7 +30,7 @@ ist, und die Box startet jede Nacht neu. Liefen deine eigenen Dienste im
 Mesh-Cluster, würde ein Edge-Ausfall über Mitternacht sie offline nehmen.
 Halte sie getrennt.
 
-## Rechenleistung teilen
+## Rechenleistung teilen {#sharing-compute}
 
 Die Box nimmt Mesh-Arbeit nur an, wenn beides zutrifft:
 
@@ -45,7 +45,7 @@ Alles Unbekannte gilt als beschäftigt: keine Leerlaufmeldung, eine veraltete
 Meldung oder eine Edge, die gerade neu gestartet ist. Die Edge wertet das
 Fenster in der Zeitzone der Appliance aus.
 
-## Die Edge finden
+## Die Edge finden {#finding-the-edge}
 
 Das Mesh sind andere Boxen hinter einer Edge. Eine Box ohne erreichbare Edge
 kann nichts teilen, egal was ihre Schalter sagen, deshalb sucht `lososd` alle
@@ -69,7 +69,7 @@ zu vergrößern braucht überhaupt keine Edge. Speicher über Boxen hinweg zu
 bündeln schon, weil die Control Plane des Mesh auf der Edge läuft. In einem
 LAN ohne Internet ist diese Edge ein ständig eingeschalteter PC mit dem
 Edge-Modul, siehe [Master-Proxy, Edge im selben
-LAN](/in-depth/master-proxy.md#edge-im-selben-lan).
+LAN](/in-depth/master-proxy.md#edge-on-the-same-lan).
 
 Solange nichts antwortet, weigert sich die Box, netzwerkabhängiges Teilen
 einzuschalten. Der Wechsel in den Mesh-Modus und jedes Apply, das
@@ -90,7 +90,7 @@ Edge und eine Warnung für jede andere. Der Tooltip der Warnung listet auf,
 was diese Edge für diese Box nicht tun kann: auf dem Market kaufen sowie den
 freien Speicher und die Rechenleistung dieser Box verkaufen. Die eigene Edge
 einer Firma trägt die Warnung, und das ist kein Fehler. Siehe [Master-Proxy,
-offizielle Edges](/in-depth/master-proxy.md#offizielle-edges).
+offizielle Edges](/in-depth/master-proxy.md#official-edges).
 
 `demo/edge-lan/run.sh` bootet zwei Boxen und eine Edge in einem virtuellen
 Netzwerk und geht genau das in der Reihenfolge der Prüfliste durch
@@ -100,7 +100,7 @@ eingeschalteter Edge: auf beiden Boxen innerhalb eines Scans gefunden,
 erlaubt, Edge weg, abgelehnt, wieder da. `demo/edge-lan/record.sh` zeichnet
 denselben Durchlauf aus der Admin-Oberfläche der Boxen auf.
 
-## Speicher teilen
+## Speicher teilen {#sharing-storage}
 
 Beigesteuerter Speicher liegt im Home-Verzeichnis des Benutzers `shared`
 unter einer fscrypt-Richtlinie. Der Schlüssel ist im TPM versiegelt. Wenn das
@@ -119,7 +119,7 @@ Volumes aus Longhorns Storage-Class `longhorn`. Longhorn auf der Edge sucht
 nicht nach Updates, sendet keine Nutzungsdaten, und seine Weboberfläche wird
 nicht bereitgestellt.
 
-## Verkaufen
+## Verkaufen {#selling}
 
 Speicher und Rechenleistung lassen sich über den optionalen Marktplatz auch
 an andere Boxen verkaufen, in der Seitenleiste unter Mesh, Markt. Käufer
@@ -127,7 +127,7 @@ zahlen in USDC, Bitcoin oder Monero, oder per Karte, wo die Edge Karten
 annimmt. Eine Box zeigt den Marktplatz nur, wenn eine offizielle LosOS-Edge
 erreichbar ist. Siehe [Marktplatz](/in-depth/market.md).
 
-## Persistenz
+## Persistenz {#persistence}
 
 Der Mesh-Agent schreibt beim ersten Beitritt `/etc/rancher/node/password`.
 Dieser Pfad muss in der Persistenzliste bleiben, sonst lehnt der Server die

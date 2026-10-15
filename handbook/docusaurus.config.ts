@@ -68,9 +68,9 @@ const config: Config = {
     },
   },
 
-  // English is written; Slovak and German are wired so pages can follow one
-  // at a time (see docs/reference/for-developers.md, "Translating"). A locale
-  // without a translated page shows the English page under its own chrome.
+  // Every page has a Slovak and a German copy (see
+  // docs/reference/for-developers.md, "Translating"). A locale without a
+  // translated page would show the English page under its own chrome.
   i18n: {
     defaultLocale: 'en',
     locales: ['en', 'sk', 'de'],

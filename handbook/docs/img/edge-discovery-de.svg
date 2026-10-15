@@ -1,0 +1,70 @@
+<svg xml:lang="de" xmlns="http://www.w3.org/2000/svg" width="1000" height="530" viewBox="0 0 1000 530" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'DejaVu Sans', sans-serif" font-size="14" fill="#18212a">
+  <title>Wie eine Box einen Edge findet und entscheidet, ob er offiziell ist</title>
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#5c6a77"/></marker>
+  </defs>
+  <rect x="0.5" y="0.5" width="999" height="529" rx="12" fill="#ffffff" stroke="#dce1e6"/>
+  <g fill="none" stroke="#5c6a77" stroke-width="1.5">
+    <line x1="282" y1="125" x2="318" y2="125" marker-end="url(#ar)"/>
+    <line x1="522" y1="125" x2="543" y2="125" marker-end="url(#ar)"/>
+    <line x1="697" y1="125" x2="738" y2="125" marker-end="url(#ar)"/>
+    <polyline points="620,177 620,215 170,215 170,398" marker-end="url(#ar)"/>
+    <line x1="855" y1="182" x2="855" y2="223" marker-end="url(#ar)"/>
+    <line x1="830" y1="357" x2="830" y2="398" marker-end="url(#ar)"/>
+    <polyline points="688,290 500,290 500,398" marker-end="url(#ar)"/>
+  </g>
+  <text x="712" y="116" fill="#5c6a77" font-size="12">ja</text>
+  <text x="628" y="203" fill="#5c6a77" font-size="12">nein</text>
+  <text x="840" y="383" fill="#5c6a77" font-size="12">alle vier bestanden</text>
+  <text x="510" y="383" fill="#5c6a77" font-size="12">eine schlägt fehl</text>
+
+  <rect x="30" y="66" width="252" height="118" rx="8" fill="#f3f5f7" stroke="#dce1e6"/>
+  <text x="46" y="92" font-weight="650">Nach Edges suchen</text>
+  <text x="46" y="113" fill="#5c6a77" font-size="13">alle 20 Sekunden, auf zwei Wegen:</text>
+  <text x="46" y="138" font-size="13">im LAN per DNS-SD</text>
+  <text x="46" y="156" font-size="13">unter der eingestellten Adresse,</text>
+  <text x="46" y="174" font-size="13">über das Internet</text>
+
+  <rect x="320" y="90" width="202" height="70" rx="8" fill="#f3f5f7" stroke="#dce1e6"/>
+  <text x="421" y="119" text-anchor="middle" font-weight="650">Jeden fragen</text>
+  <text x="421" y="140" text-anchor="middle" fill="#5c6a77" font-size="13">antwortet /health?</text>
+
+  <polygon points="545,125 620,75 695,125 620,175" fill="#ffffff" stroke="#5c6a77" stroke-width="1.5"/>
+  <text x="620" y="121" text-anchor="middle" font-size="13">Hat einer</text>
+  <text x="620" y="139" text-anchor="middle" font-size="13">geantwortet?</text>
+
+  <rect x="740" y="66" width="230" height="116" rx="8" fill="#f3f5f7" stroke="#dce1e6"/>
+  <text x="756" y="92" font-weight="650">Jeden Edge prüfen</text>
+  <text x="756" y="114" fill="#5c6a77" font-size="13">die Box erzeugt eine neue</text>
+  <text x="756" y="132" fill="#5c6a77" font-size="13">Nonce; der Edge schickt sein</text>
+  <text x="756" y="150" fill="#5c6a77" font-size="13">Zertifikat und signiert die</text>
+  <text x="756" y="168" fill="#5c6a77" font-size="13">Nonce mit eigenem Schlüssel</text>
+
+  <rect x="690" y="225" width="280" height="132" rx="8" fill="#f3f5f7" stroke="#dce1e6"/>
+  <text x="706" y="250" font-weight="650">Vier Prüfungen, alle oder keine</text>
+  <text x="706" y="274" font-size="13">1. vom LosOS-Root-Schlüssel signiert</text>
+  <text x="706" y="294" font-size="13">2. nennt die angefragte Adresse</text>
+  <text x="706" y="314" font-size="13">3. nicht abgelaufen</text>
+  <text x="706" y="334" font-size="13">4. die Signatur der Nonce ist gültig</text>
+
+  <text x="230" y="255" fill="#5c6a77" font-size="13">Die Box fragt weiter, also wird ein Edge, der zurückkommt,</text>
+  <text x="230" y="274" fill="#5c6a77" font-size="13">von selbst wiedergefunden. Kein Neustart nötig.</text>
+
+  <rect x="30" y="400" width="280" height="104" rx="8" fill="#f8ecea" stroke="#a8443c" stroke-width="1.5"/>
+  <text x="46" y="426" font-weight="650" fill="#a8443c">Kein Edge-Proxy gefunden</text>
+  <text x="46" y="449" font-size="13">Teilen einschalten wird abgelehnt:</text>
+  <text x="46" y="468" font-size="13">„Braucht einen erreichbaren Edge-Proxy.“</text>
+  <text x="46" y="487" font-size="13">Ausschalten geht immer.</text>
+
+  <rect x="345" y="400" width="310" height="104" rx="8" fill="#f7f0e1" stroke="#8c6512" stroke-width="1.5"/>
+  <text x="361" y="426" font-weight="650" fill="#8c6512">⚠ Edge, nicht offiziell</text>
+  <text x="361" y="449" font-size="13">Der Edge einer Firma oder ein anderer.</text>
+  <text x="361" y="468" font-size="13">Teilen und Fernzugriff gehen.</text>
+  <text x="361" y="487" font-size="13">Der Markt nicht.</text>
+
+  <rect x="690" y="400" width="280" height="104" rx="8" fill="#e5f1ec" stroke="#2e7357" stroke-width="1.5"/>
+  <text x="706" y="426" font-weight="650" fill="#2e7357">✓ Offizieller LosOS-Edge</text>
+  <text x="706" y="449" font-size="13">Teilen und Fernzugriff gehen.</text>
+  <text x="706" y="468" font-size="13">Der Markt kann laufen, sobald</text>
+  <text x="706" y="487" font-size="13">er öffnet.</text>
+</svg>

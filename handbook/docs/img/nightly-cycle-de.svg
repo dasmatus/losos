@@ -1,0 +1,40 @@
+<svg xml:lang="de" xmlns="http://www.w3.org/2000/svg" width="1000" height="320" viewBox="0 0 1000 320" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'DejaVu Sans', sans-serif" font-size="14" fill="#18212a">
+  <title>Eine LosOS-Nacht: Neustart um 00:07, Update um 03:00, Aufräumen um 04:30</title>
+  <rect x="0.5" y="0.5" width="999" height="319" rx="12" fill="#ffffff" stroke="#dce1e6"/>
+  <text x="40" y="40" font-weight="650">Jede Nacht, auf jeder Box</text>
+  <text x="40" y="62" fill="#5c6a77" font-size="13">Tagsüber startet sonst nichts neu. Eine Box, die um 00:07 aus war, startet neu, sobald sie eingeschaltet wird.</text>
+  <rect x="40" y="174" width="920" height="12" rx="6" fill="#eaedf0"/>
+  <line x1="40.0" y1="190" x2="40.0" y2="198" stroke="#8c98a4"/>
+  <text x="40.0" y="216" text-anchor="middle" fill="#5c6a77" font-size="12">22:00</text>
+  <line x1="155.0" y1="190" x2="155.0" y2="198" stroke="#8c98a4"/>
+  <text x="155.0" y="216" text-anchor="middle" fill="#5c6a77" font-size="12">23:00</text>
+  <line x1="270.0" y1="190" x2="270.0" y2="198" stroke="#8c98a4"/>
+  <text x="270.0" y="216" text-anchor="middle" fill="#5c6a77" font-size="12">00:00</text>
+  <line x1="385.0" y1="190" x2="385.0" y2="198" stroke="#8c98a4"/>
+  <text x="385.0" y="216" text-anchor="middle" fill="#5c6a77" font-size="12">01:00</text>
+  <line x1="500.0" y1="190" x2="500.0" y2="198" stroke="#8c98a4"/>
+  <text x="500.0" y="216" text-anchor="middle" fill="#5c6a77" font-size="12">02:00</text>
+  <line x1="615.0" y1="190" x2="615.0" y2="198" stroke="#8c98a4"/>
+  <text x="615.0" y="216" text-anchor="middle" fill="#5c6a77" font-size="12">03:00</text>
+  <line x1="730.0" y1="190" x2="730.0" y2="198" stroke="#8c98a4"/>
+  <text x="730.0" y="216" text-anchor="middle" fill="#5c6a77" font-size="12">04:00</text>
+  <line x1="845.0" y1="190" x2="845.0" y2="198" stroke="#8c98a4"/>
+  <text x="845.0" y="216" text-anchor="middle" fill="#5c6a77" font-size="12">05:00</text>
+  <line x1="960.0" y1="190" x2="960.0" y2="198" stroke="#8c98a4"/>
+  <text x="960.0" y="216" text-anchor="middle" fill="#5c6a77" font-size="12">06:00</text>
+  <line x1="283.4" y1="92" x2="283.4" y2="170" stroke="#0e6e7d" stroke-width="1.5"/>
+  <circle cx="283.4" cy="180" r="8" fill="#ffffff" stroke="#0e6e7d" stroke-width="3"/>
+  <text x="293.4" y="104" font-weight="650" text-anchor="start">00:07  Neustart</text>
+  <text x="293.4" y="126" fill="#5c6a77" font-size="13" text-anchor="start">Die Systemplatte wird neu gebaut,</text>
+  <text x="293.4" y="144" fill="#5c6a77" font-size="13" text-anchor="start">aus der Beschreibung der Box.</text>
+  <line x1="615.0" y1="92" x2="615.0" y2="170" stroke="#0e6e7d" stroke-width="1.5"/>
+  <circle cx="615.0" cy="180" r="8" fill="#ffffff" stroke="#0e6e7d" stroke-width="3"/>
+  <text x="625.0" y="104" font-weight="650" text-anchor="start">03:00  Update</text>
+  <text x="625.0" y="126" fill="#5c6a77" font-size="13" text-anchor="start">Neu bauen aus der Update-Quelle.</text>
+  <text x="625.0" y="144" fill="#5c6a77" font-size="13" text-anchor="start">Ein Fehlschlag behält das alte System.</text>
+  <line x1="787.5" y1="190" x2="787.5" y2="296" stroke="#0e6e7d" stroke-width="1.5"/>
+  <circle cx="787.5" cy="180" r="8" fill="#ffffff" stroke="#0e6e7d" stroke-width="3"/>
+  <text x="777.5" y="258" font-weight="650" text-anchor="end">04:30  Aufräumen</text>
+  <text x="777.5" y="280" fill="#5c6a77" font-size="13" text-anchor="end">Versionen über 14 Tage werden gelöscht;</text>
+  <text x="777.5" y="298" fill="#5c6a77" font-size="13" text-anchor="end">das Bootmenü behält die letzten fünf.</text>
+  </svg>
