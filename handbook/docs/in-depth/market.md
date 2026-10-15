@@ -1,32 +1,29 @@
 ---
-title: Market (planned)
+title: Market
 sidebar_position: 4
 mdx:
   format: md
 ---
 
-# Market (planned)
+# Market
 
 An optional marketplace where one box sells spare storage or compute and
-another buys it. Payment goes through **Stripe Connect**, and the edge keeps a
-4% cut to cover its running costs.
+another buys it. Buyers pay in USDC, Bitcoin or Monero, or by card through
+**Stripe Connect** where the edge takes cards, and the edge keeps a 4% cut to
+cover its running costs.
 
-**It is not open yet.** The code is finished end to end: the registrar's
-`/market/*` routes, the Stripe gate, lososd's relay and the admin UI pane.
-A Stripe Connect platform needs a registered business behind it, though, and
-there is none yet. Until there is, the admin UI shows the **Market** tab
-greyed out with a "soon(TM)" badge. Nobody can click it or reach it by
-address, and nothing on a box asks the market anything. The disk-sharing
-switch (`losos.sharingMyStorage`) lives on this pane, so sharing the disk with
-the mesh opens with the market, and the UI cannot switch it on before then.
-The rest of this page describes how the market works once it opens. It is
-also off by default, at three levels.
+The **Market** row under Mesh in the sidebar opens the pane, at
+`/settings/market`. A box shows the market only when an official LosOS edge
+is in reach; otherwise the pane says the market is not available on this
+box. The disk-sharing switch (`losos.sharingMyStorage`) lives on this pane
+and can be turned on either way, so the Machines page works once sharing is
+on. The market is off by default, at three levels.
 
 |                       | Default | Switch                                        |
 | --------------------- | ------- | --------------------------------------------- |
 | The edge serves it    | off     | `losos.edge.market.enable`                    |
 | A box may trade       | off     | `losos.edge.tenants.<id>.market`              |
-| A seller may list     | closed  | Stripe reports the connected account ready    |
+| A seller may list     | closed  | Stripe reports the connected account ready, or on a coins edge the seller has set a USDC payout address or a coin key |
 
 A box that never trades is unaffected. The market is a feature of the edge's
 `losos-registrar`.
@@ -40,14 +37,38 @@ at once. They return if you resume, and orders already paid are unaffected.
 
 ## How the money moves
 
-The edge is the Stripe **platform**. Money never touches a LosOS box.
+Money never touches a LosOS box. Buyers pay in one of four ways, as the edge
+allows:
+
+- **USDC on Base, Arbitrum One or OP Mainnet.** The payment goes into the
+  `LososEscrow` contract. The edge checks it (the seller's address, the
+  amount, the confirmations) and then releases it to the seller and to the
+  platform treasury, which takes the 4% fee. Or it refunds the whole payment
+  to the buyer: when the seller's address is wrong or is a contract, when the
+  order was already paid, or when its units lapsed. If the edge never acts,
+  the buyer can reclaim the deposit from the contract a day after the
+  order's hold ends. See [Paying with USDC](#paying-with-usdc).
+- **USDC on Solana.** A direct transfer, split between the seller and the
+  treasury in the buyer's own transaction.
+- **Bitcoin and Monero.** Straight to the seller's own wallet, at a fresh
+  address for each order, derived from the seller's public key: an extended
+  public key or descriptor for Bitcoin, the primary address and private view
+  key for Monero. The edge only watches and never holds the coins. The 4%
+  fee on these sales is a debt the seller settles in USDC, see
+  [Platform fees on coin sales](#platform-fees-on-coin-sales).
+- **Card, through Stripe Connect.** Optional on an edge. An edge can take
+  coins only, without card payments, so running the market needs no business
+  account with a card processor.
+
+For card payments the edge is the Stripe **platform**:
 
 1. A seller onboards. The edge creates a Stripe Express connected account
    for it, **tags it with the box's UUID** (metadata `losos_box_uuid`), and
    returns Stripe's hosted onboarding link. A box onboarded before tagging
    existed gets tagged the next time its owner opens the page.
 2. Stripe tells the edge (`account.updated`) when the account can receive
-   transfers. Only then can the seller list anything.
+   transfers. On an edge that takes no coins, only then can the seller list
+   anything.
 3. A buyer orders units of a listing. The edge reserves them and creates a
    Stripe Checkout Session as a **destination charge**. The buyer pays the
    platform, `transfer_data[destination]` forwards the sale to the seller's
@@ -116,18 +137,14 @@ Limits to know about, none of which are enforced yet:
 
 ## Admin UI
 
-Today the **Settings, Market** row is greyed out and labelled "soon(TM)". It
-is a disabled button that the keyboard skips, and `/settings/market` opens
-the default pane instead. Opening it takes one flag, `planned` on the row in
-`admin-ui/app/src/screens/settings/panes.ts`, plus the matching switch in
-`admin-ui/app/tests/app.browser.mjs`, which holds the pane's browser checks
-until then.
-
-Once open, the pane starts with the disk-sharing switch. It moved here from
+The **Market** row sits under Mesh in the sidebar, and `/settings/market` opens
+it. The pane starts with the disk-sharing switch. It moved here from
 Storage because lending disk to other boxes and being paid for it are one
 decision. Below it come what the owner has bought, with expiry and volume,
-and the shelf to buy from. For selling there is Stripe payout setup, a
-listing form, and the owner's own listings and sales. The switch shows
+and the shelf to buy from. For selling there is payout setup (a USDC
+address, a Bitcoin or Monero key, and Stripe where the edge takes cards),
+the platform fees owed on coin sales, a listing form, and the owner's own
+listings and sales. The switch shows
 whether or not the edge offers the market to this box, because it is a
 setting of the box, not of the edge.
 
@@ -135,7 +152,7 @@ setting of the box, not of the edge.
   has joined the mesh, compute once it also shares compute. Anything else is
   greyed with the reason. The edge enforces the same rule, and the pane only
   explains it.
-- Payment and Stripe onboarding open Stripe's own pages in a new tab.
+- Card payment and Stripe onboarding open Stripe's own pages in a new tab.
   Nothing in the admin UI sees a card. lososd, and then the page again, check
   that the link is a `https://checkout.stripe.com` or
   `https://connect.stripe.com` page, so a compromised edge cannot send the
@@ -167,6 +184,7 @@ Bodies are JSON.
 | `POST /market/listings`        | token      | `kind`, `unit_price`, `capacity`                |
 | `POST /market/listings/close`  | token      | `listing_id`; paid orders keep their units      |
 | `POST /market/orders`          | token      | `listing_id`, `quantity`; returns a Checkout URL |
+| `POST /market/fees/pay`        | token      | `tx`, `network`; counts a USDC transfer against coin fees owed |
 | `POST /market/webhook`         | signature  | Stripe events                                   |
 
 Every route answers 503 when the market is off. On the token routes, a
@@ -191,6 +209,10 @@ edge logs it with its session id so the operator can refund it. Two buyers
 racing for the last units cannot both get a session.
 
 ## Operator setup
+
+These steps set up card payments. An edge that takes coins only skips them;
+the operator notes kept with the source (`docs/ci-and-releases.md`) cover
+that case.
 
 1. In the Stripe dashboard, enable **Connect** on the platform account.
 2. Seal the secret key (a restricted key works) with `systemd-creds`, reading
@@ -301,18 +323,19 @@ that time loses nothing.
 An edge can settle storage, compute and machine orders in USDC instead of
 Stripe. Hardware stays on Stripe. The edge chooses which networks it accepts:
 
-| Network      | Its test network |
+| Network      | For a test edge  |
 | ------------ | ---------------- |
 | Base         | Base Sepolia     |
 | Arbitrum One | Arbitrum Sepolia |
 | OP Mainnet   | OP Sepolia       |
 | Solana       | Solana Devnet    |
 
-An edge runs on test networks or on live networks, never both, and the mode
-follows its Stripe key: test networks with a `sk_test_` key, live networks
-with a `sk_live_` key. The registrar refuses a mix, so a test payment cannot
-land in the live ledger. Each network has its own RPC endpoint, sealed with
-systemd-creds and read only by the registrar. The operator notes kept with
+An edge runs on live networks or on test networks, never both. On an edge
+that takes cards the mode follows its Stripe key: live networks with a
+`sk_live_` key, test networks with a `sk_test_` key. An edge that takes coins
+only runs in the mode of its networks. The registrar refuses a mix, so a test
+payment cannot land in the live ledger. Each network has its own RPC
+endpoint, sealed with systemd-creds and read only by the registrar. The operator notes kept with
 the source (`docs/ci-and-releases.md`) cover setting it up.
 
 ### How you pay
@@ -375,7 +398,7 @@ the edge refunds the payment from the escrow and the pane says so. On Solana,
 which has no escrow, such a payment stays with the seller and the refund has
 to be settled outside the market.
 
-On the test networks, test USDC comes from
+For a test edge, test USDC comes from
 [Circle's faucet](https://faucet.circle.com), which serves all four. Test ETH
 comes from each network's own faucet and test SOL from the Solana faucet.
 None of it has value.
@@ -385,8 +408,8 @@ None of it has value.
 The pane can send USDC from the wallet to an address on any of the edge's
 networks. Where the edge has an ENS endpoint, the pane also shows an Ethereum
 address's primary name beside it and takes a name in place of an address when
-you send on an Ethereum network. Test networks look names up on Sepolia, live
-networks on Ethereum. Only names whose records are on chain resolve: the
+you send on an Ethereum network. Names are looked up on Ethereum mainnet, or on
+Sepolia for a test edge. Only names whose records are on chain resolve: the
 admin page reaches nothing but the box, so names served through an offchain
 gateway are not looked up.
 
@@ -432,7 +455,9 @@ payments after them.
 
 The platform fee is not taken out of a Bitcoin payment. The whole amount
 reaches the seller, and the edge keeps a running total of the fee on those
-sales, which the seller owes the platform and sees on the pane. A seller with a Bitcoin
+sales, which the seller owes the platform and sees on the pane
+([Platform fees on coin sales](#platform-fees-on-coin-sales) says how it is
+settled). A seller with a Bitcoin
 key and no USDC address can still list; buyers then pay in Bitcoin only.
 
 ### Paying in Bitcoin
@@ -462,7 +487,7 @@ than the node's.
 ### Selling for Monero
 
 On the Market pane, paste two things into the Monero row: your wallet's
-primary address, the one starting with 4 (5 on stagenet, 9 on testnet), and
+primary address, the one starting with 4 (5 or 9 for a test edge), and
 its private view key. Feather, Cake Wallet and the official wallets show the
 view key next to the seed, under the wallet's keys. The view key lets the
 edge see what arrives at your addresses and nothing more: it cannot spend.
@@ -475,7 +500,7 @@ wallet. Your own wallet finds them too: it looks ahead for subaddresses it
 has not shown yet. If more than about 200 orders in a row go unpaid, raise
 the subaddress lookahead in your wallet to see the payments after them.
 
-As with Bitcoin, the platform fee is billed to the seller apart and the
+As with Bitcoin, the platform fee is owed by the seller apart and the
 whole payment reaches the seller.
 
 ### Paying in Monero
@@ -487,9 +512,92 @@ a short payment, an overpayment and a late one are handled as for Bitcoin. A
 payment locked for later blocks does not count. Monero hides who paid what,
 so a paid order names Monero as its network without a link to an explorer.
 
+## Paying with Zcash
+
+An edge that settles in USDC can also take shielded Zcash for the same
+orders. It runs no Zcash node. It asks public lightwalletd servers for
+compact blocks, by default four mainnet servers run by different operators,
+and decrypts them itself, so your viewing key never leaves the edge. A
+payment counts only when servers of two different operators show it in a
+block of the same hash; one server that shows something nobody else does is
+outvoted. A live edge settles on mainnet only and asks no server that says
+it follows another network; testnet and regtest are for a test edge.
+
+### Selling for Zcash
+
+On the Market pane, paste your wallet's unified viewing key into the Zcash
+row: the full one, starting `uview1`, or better the incoming one, starting
+`uivk1`, which sees payments arrive and nothing you send. The key needs an
+Orchard part, which every wallet made since 2022 has. The edge keeps only
+that part's incoming viewing key, which can see what arrives and cannot
+spend. The box and the edge refuse a spending key and a seed phrase by name,
+so one pasted by mistake never leaves the box. The pane shows your wallet's
+first address back so you can tell which wallet orders pay; the key itself
+is never shown again.
+
+Each order gets a fresh shielded address of your wallet: an Orchard-only
+unified address at a diversifier index far above the ones your wallet hands
+out. Your wallet finds payments to it on its own, because it decrypts what
+arrives for every address of its key. Since NU6.3 a payment to an Orchard
+address lands in the Ironwood pool, which uses the same keys; the edge reads
+both.
+
+As with Bitcoin, the platform fee is owed by the seller apart and the
+whole payment reaches the seller.
+
+### Paying in Zcash
+
+On the order, choose Zcash under "Pay with". The pane shows the amount in
+ZEC, the address, a QR code and a `zcash:` payment link (ZIP 321) that
+opens a wallet. Pay from any wallet that can send to a unified address.
+Only payments in blocks after the address was given to the order count, and
+a payment waiting in the mempool shows as seen once two operators show it.
+Three confirmations count an order up to $50, six up to $500, ten up to
+$5,000 and 24 above that; a short payment, an overpayment and a late one are
+handled as for Bitcoin. The payment is shielded, so a paid order names Zcash
+as its network without a link to an explorer.
+
+## Platform fees on coin sales
+
+A Bitcoin, Monero or Zcash payment reaches the seller's wallet whole, so the
+platform's 4% of those sales is a debt the edge records against the seller.
+The Market pane shows it in its own row under the coin keys, with the limits
+below. It is settled in USDC, in two ways.
+
+**From USDC sales.** While a seller owes coin fees, the edge raises the fee
+on that seller's next USDC orders by what is owed, on the Ethereum networks
+and on Solana alike. The buyer still pays the listed price. Only the
+seller's share is smaller, and the sale on the pane says how much of it went
+to fees owed. The fee never exceeds half the order's price, the most the
+escrow contract takes. The debt goes down only once the money reaches the
+treasury: when the escrow releases the payment, or when a Solana payment is
+confirmed. An order that is refunded or lapses collects nothing. When
+several USDC orders are open at once, each takes only what the others have
+not already taken. If a sale collects more than is still owed, because a
+direct payment settled the debt in the meantime, the rest is kept as credit
+and pays the fees of the next coin sales first.
+
+**Directly.** The fees row has a button that sends the amount owed in USDC
+from the wallet on the pane to the platform's treasury, on any Ethereum
+network the edge settles on, and hands the transaction to the edge. The edge
+reads it from its own node and counts it once it has as many confirmations
+as an order payment. It counts only a USDC transfer to the treasury from the
+seller's payout address, each transaction once, and never more than is
+owed. Anything paid above the debt is not refunded. Fees are not paid on
+Solana.
+
+**When coin payments stop.** While a seller owes more than the edge's limit,
+US$10 unless its operator set another, or has owed anything for more than
+30 days, buyers cannot pay that seller in Bitcoin, Monero or Zcash. A new
+order offers USDC only, and a new coin payment is refused with the reason. A
+coin payment already under way is still followed to the end. USDC keeps
+working and pays toward the debt with every sale, so coin payments come back
+once the debt is settled. A seller who takes only coins cannot be ordered
+from until then.
+
 ## Not covered
 
-- **Refunds and disputes.** Handle them in the Stripe dashboard, using
+- **Card refunds and disputes.** Handle them in the Stripe dashboard, using
   `reverse_transfer` and `refund_application_fee` so the seller's share and the
   platform's cut are both returned. The market does not model either.
 - **Enforcing the entitlement.** Fulfilment creates the claim; it does not

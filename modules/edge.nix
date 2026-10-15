@@ -658,6 +658,9 @@ let
   ];
 
   # The hardware the edge sells, read by both the registrar and the gate.
+  # The Stripe gate runs only for an edge that takes cards; a coins-only
+  # edge (losos.edge.market.cards.enable = false) has no Stripe account.
+  gateOn = cfg.market.enable && cfg.market.cards.enable;
   hardwareOn = cfg.market.enable && cfg.market.hardware.enable;
   hardwareCatalogue = pkgs.writeText "losos-hardware.json" (
     builtins.toJSON {
@@ -681,25 +684,33 @@ let
   # route answers 503, so an edge that leaves the market off parses exactly the
   # arguments it always did.
   marketServeArgs =
-    lib.optionals cfg.market.enable [
+    lib.optionals gateOn [
       "--market-gate-socket"
       gateSocket
+    ]
+    ++ lib.optionals (cfg.market.enable && !cfg.market.cards.enable) [ "--market-no-cards" ]
+    ++ lib.optionals cfg.market.enable [
       "--market-state-file"
       "/var/lib/losos-registrar/market.json"
       "--market-fee-bps"
       (toString cfg.market.feeBps)
+      "--market-coin-fee-limit"
+      (toString cfg.market.coinFeeLimit)
       "--market-currency"
       cfg.market.currency
-      "--market-return-url"
-      cfg.market.returnUrl
       "--market-storage-class"
       cfg.market.storageClass
+    ]
+    ++ lib.optionals (cfg.market.enable && cfg.market.returnUrl != "") [
+      "--market-return-url"
+      cfg.market.returnUrl
     ]
     ++ hardwareArgs "--market-hardware-catalogue"
     ++ vmServeArgs
     ++ usdcServeArgs
     ++ btcServeArgs
-    ++ xmrServeArgs;
+    ++ xmrServeArgs
+    ++ zecServeArgs;
 
   # Bitcoin (losos.edge.market.bitcoin): the edge's own node, on loopback,
   # signed in with the cookie it writes into its chain's directory. The
@@ -735,6 +746,28 @@ let
     "--market-xmr-daemon-rpc"
     "http://127.0.0.1:${toString xmrDaemonPort}"
   ];
+
+  # Zcash (losos.edge.market.zcash): no node on the edge. The registrar asks
+  # the public lightwalletd servers for compact blocks and decrypts them
+  # itself, so the sellers' viewing keys stay here.
+  zecOn = usdcOn && cfg.market.zcash.enable;
+  zecNet =
+    {
+      mainnet = "main";
+      testnet = "test";
+      regtest = "regtest";
+    }
+    .${cfg.market.zcash.network};
+  zecServeArgs = lib.optionals zecOn (
+    lib.concatMap (url: [
+      "--market-zec-server"
+      url
+    ]) cfg.market.zcash.servers
+    ++ [
+      "--market-zec-network"
+      zecNet
+    ]
+  );
 
   # USDC (losos.edge.market.usdc). The RPC URL is a systemd credential of
   # the registrar, not a flag: a flag would put the provider key in the
@@ -1005,12 +1038,23 @@ in
         '';
       }
       {
-        assertion = cfg.market.enable -> cfg.market.returnUrl != "";
+        assertion = gateOn -> cfg.market.returnUrl != "";
         message = ''
-          losos.edge.market.enable requires losos.edge.market.returnUrl: the
-          page Stripe sends buyers and sellers back to after Checkout and
+          losos.edge.market.cards.enable requires losos.edge.market.returnUrl:
+          the page Stripe sends buyers and sellers back to after Checkout and
           onboarding.
         '';
+      }
+      {
+        assertion = (cfg.market.enable && !cfg.market.cards.enable) -> cfg.market.usdc.enable;
+        message = ''
+          losos.edge.market.cards.enable = false needs losos.edge.market.usdc.enable:
+          without cards the market takes coins, and USDC is the checkout they ride on.
+        '';
+      }
+      {
+        assertion = hardwareOn -> cfg.market.cards.enable;
+        message = "losos.edge.market.hardware.enable needs losos.edge.market.cards.enable: hardware is paid by card.";
       }
       {
         assertion = cfg.market.usdc.enable -> cfg.market.enable;
@@ -1067,6 +1111,20 @@ in
         '';
       }
       {
+        assertion = cfg.market.zcash.enable -> cfg.market.usdc.enable;
+        message = ''
+          losos.edge.market.zcash.enable requires losos.edge.market.usdc.enable:
+          Zcash is offered beside USDC, priced in the same dollars.
+        '';
+      }
+      {
+        assertion = cfg.market.zcash.enable -> builtins.length cfg.market.zcash.servers >= 2;
+        message = ''
+          losos.edge.market.zcash.servers needs at least two servers, of
+          different operators: a payment counts only when two agree.
+        '';
+      }
+      {
         assertion = cfg.market.monero.enable -> cfg.market.usdc.enable;
         message = ''
           losos.edge.market.monero.enable requires losos.edge.market.usdc.enable:
@@ -1083,10 +1141,10 @@ in
       {
         assertion =
           cfg.builder.enable
-          -> (cfg.market.enable && cfg.builder.agentId != null && cfg.builder.environmentId != null);
+          -> (gateOn && cfg.builder.agentId != null && cfg.builder.environmentId != null);
         message = ''
-          losos.edge.builder.enable requires losos.edge.market.enable (top-ups
-          are paid through its Stripe gate) and losos.edge.builder.agentId and
+          losos.edge.builder.enable requires losos.edge.market.enable with
+          cards (top-ups are paid through its Stripe gate) and losos.edge.builder.agentId and
           environmentId, which `losos-registrar builder-setup` prints.
         '';
       }
@@ -1202,7 +1260,7 @@ in
         "losos-rathole-seed.service"
       ]
       ++ lib.optional meshEnabled "losos-mesh-rbac.service"
-      ++ lib.optional cfg.market.enable "losos-stripe-gate.service"
+      ++ lib.optional gateOn "losos-stripe-gate.service"
       ++ lib.optional btcOn "bitcoind-losos.service"
       ++ lib.optional xmrOn "losos-monero-wallet.service";
       # Wants, not Requires, on the RBAC extractor: the master-proxy half must
@@ -1213,7 +1271,7 @@ in
         "network-online.target"
       ]
       ++ lib.optional meshEnabled "losos-mesh-rbac.service"
-      ++ lib.optional cfg.market.enable "losos-stripe-gate.service"
+      ++ lib.optional gateOn "losos-stripe-gate.service"
       ++ lib.optional btcOn "bitcoind-losos.service"
       ++ lib.optional xmrOn "losos-monero-wallet.service";
       # A changed seed is read at start, like the box's.
@@ -1231,7 +1289,7 @@ in
         PrivateTmp = true;
         NoNewPrivileges = true;
       }
-      // lib.optionalAttrs cfg.market.enable {
+      // lib.optionalAttrs gateOn {
         # Second layer behind the gate: the registrar cannot read the sealed
         # blobs or the gate's credential directory, even as root.
         InaccessiblePaths = map (path: "-${path}") gateSealed ++ [
@@ -1370,7 +1428,7 @@ in
     };
 
     # ── losos-stripe-gate (the only holder of the Stripe key) ────────────
-    systemd.services.losos-stripe-gate = lib.mkIf cfg.market.enable {
+    systemd.services.losos-stripe-gate = lib.mkIf gateOn {
       description = "losos Stripe gate — holds the Stripe key for the registrar";
       wantedBy = [ "multi-user.target" ];
       before = [ "losos-registrar.service" ];

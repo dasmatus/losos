@@ -11,8 +11,9 @@ Eine Box kann freien Speicherplatz und CPU an andere LosOS-Boxen verleihen.
 Der Beitritt ist standardmäßig aus. Der Bereich Mesh hat zwei Schalter: dem
 Mesh beitreten und Rechenleistung teilen. Der dritte Schalter, das Teilen der
 Festplatte dieser Box, liegt im Bereich [Markt](/in-depth/market.md), weil Speicher zu
-verleihen und dafür bezahlt zu werden eine einzige Entscheidung ist. Solange
-der Market nur geplant ist, ist dieser Schalter mit ihm unerreichbar.
+verleihen und dafür bezahlt zu werden eine einzige Entscheidung ist. Der
+Schalter funktioniert, ob die Edge dieser Box den Marktplatz anbietet oder
+nicht.
 
 ## Zwei Cluster
 
@@ -111,10 +112,11 @@ Beigesteuerte Dateien sind pro Maschine in eigenen Namespaces abgelegt.
 
 ## Verkaufen
 
-Speicher und Rechenleistung werden sich über den optionalen
-Stripe-Connect-Market auch an andere Boxen verkaufen lassen. Er ist gebaut, aber noch nicht
-geöffnet, und die Admin-Oberfläche zeigt seinen Tab ausgegraut als
-"soon(TM)". Siehe [Market](/in-depth/market.md).
+Speicher und Rechenleistung lassen sich über den optionalen Marktplatz auch
+an andere Boxen verkaufen, in der Seitenleiste unter Mesh, Markt. Käufer
+zahlen in USDC, Bitcoin oder Monero, oder per Karte, wo die Edge Karten
+annimmt. Eine Box zeigt den Marktplatz nur, wenn eine offizielle LosOS-Edge
+erreichbar ist. Siehe [Marktplatz](/in-depth/market.md).
 
 ## Persistenz
 

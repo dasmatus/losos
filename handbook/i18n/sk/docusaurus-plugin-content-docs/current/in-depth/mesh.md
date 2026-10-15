@@ -11,8 +11,8 @@ Zariadenie môže požičať voľný disk a CPU iným zariadeniam losos. Pripoje
 vypnuté. Panel Mesh má dva prepínače: pripojiť sa k sieti mesh a zdieľať výpočtový
 výkon. Tretí prepínač, zdieľanie disku tohto zariadenia, je na paneli
 [Trh](/in-depth/market.md), pretože požičať disk a dostať zaň zaplatené je jedno
-rozhodnutie. Kým je market iba plánovaný, je tento prepínač nedostupný spolu
-s ním.
+rozhodnutie. Prepínač funguje bez ohľadu na to, či edge tomuto zariadeniu trh
+ponúka.
 
 ## Dva klastre
 
@@ -105,9 +105,10 @@ Prispené súbory sú oddelené menným priestorom podľa stroja.
 
 ## Predaj
 
-Úložisko aj výpočtový výkon bude možné predávať aj iným zariadeniam cez voliteľný
-market Stripe Connect. Je hotový, ale ešte nie je otvorený, a admin UI
-ukazuje jeho kartu sivú ako "soon(TM)". Pozri [Market](/in-depth/market.md).
+Úložisko aj výpočtový výkon sa dajú predávať aj iným zariadeniam cez voliteľný
+trh, v bočnom paneli pod Mesh, Trh. Kupujúci platia v USDC, bitcoinoch alebo
+Monere, alebo kartou, ak edge karty prijíma. Zariadenie ukáže trh, len keď je
+v dosahu oficiálny edge LosOS. Pozri [Trh](/in-depth/market.md).
 
 ## Perzistencia
 

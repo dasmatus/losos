@@ -10,8 +10,8 @@ mdx:
 A box can lend spare disk and CPU to other LosOS boxes. Joining is off by
 default. The Mesh pane has two switches: join the mesh, and share compute. The
 third switch, sharing this box's disk, sits on the [Market](market.md) pane,
-because lending disk and being paid for it are one decision. While the market
-is planned, that switch is out of reach with it.
+because lending disk and being paid for it are one decision. The switch works
+whether or not the edge offers the market to this box.
 
 ## Two clusters
 
@@ -103,9 +103,10 @@ Contributed files are namespaced per machine.
 
 ## Selling
 
-Storage and compute will also be sellable to other boxes through the optional
-Stripe Connect market. It is built but not open yet, and the admin UI shows
-its tab greyed out as "soon(TM)". See [Market](market.md).
+Storage and compute can also be sold to other boxes through the optional
+market, under Mesh, Market in the sidebar. Buyers pay in USDC, Bitcoin or Monero,
+or by card where the edge takes cards. A box shows the market only when an
+official LosOS edge is in reach. See [Market](market.md).
 
 ## Persistence
 

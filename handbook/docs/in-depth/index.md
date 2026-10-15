@@ -28,8 +28,7 @@ directories listed in `modules/impermanence.nix` survive, on an encrypted
 - [Administration](administration.md). The admin UI, settings, upgrades and the
   nightly reboot.
 - [Mesh](mesh.md). Contributing storage and compute to other boxes.
-- [Market](market.md). Selling the disk and CPU a box already shares
-  (planned).
+- [Market](market.md). Selling the disk and CPU a box already shares.
 - [Virtual machines](virtual-machines.md). Renting machines on the mesh and
   hosting other boxes' machines.
 - [Widget builder](widget-builder.md). An AI agent writes a widget from a

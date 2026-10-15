@@ -68,6 +68,18 @@ pub const DEFAULT_FEE_BPS: u32 = 400;
 /// otherwise silently take 40% of every sale.
 pub const MAX_FEE_BPS: u32 = 2_000;
 
+/// What a seller may owe in platform fees on coin sales before buyers can no
+/// longer pay them in coins, in the market's minor unit: US$10. Coin orders
+/// are quoted in US dollars, so the limit is too.
+pub const DEFAULT_COIN_FEE_LIMIT: u64 = 1_000;
+/// The most an operator may set it to, US$1,000.
+pub const MAX_COIN_FEE_LIMIT: u64 = 100_000;
+/// How long a seller may owe coin fees at all before buyers can no longer
+/// pay them in coins, whatever the amount.
+pub const COIN_FEE_GRACE_SECS: u64 = 30 * 24 * 3600;
+/// What `pay_with_coin` answers while a seller's coin fees are overdue.
+const COINS_PAUSED: &str = "the seller owes platform fees on earlier coin sales, so this order cannot be paid in coins until they are settled; pay in USDC where the seller takes it";
+
 /// Smallest charge, in minor units. Stripe refuses anything below roughly 50
 /// cents, so rejecting it here gives the caller a precise 400 rather than an
 /// opaque 502.
@@ -339,6 +351,16 @@ pub struct Order {
     /// and Solana orders, and on orders paid before the escrow.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub escrow: Option<Escrow>,
+    /// What a USDC order's invoice takes for the treasury on top of `fee`,
+    /// toward platform fees the seller owes on earlier coin sales. The buyer
+    /// pays `amount` either way; the seller receives this much less. Taken
+    /// off what the seller owes only once the payment reaches the treasury
+    /// ([`collect_offset`]), never at quote time.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub fee_offset: u64,
+    /// Whether `fee_offset` has been taken off what the seller owes.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub offset_collected: bool,
 }
 
 /// What the edge does with one deposit in `LososEscrow`, and how far it got.
@@ -472,30 +494,107 @@ pub struct MarketState {
     /// What each seller takes in coins other than USDC, by appliance id.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub coin_sellers: BTreeMap<String, CoinSeller>,
+    /// USDC transfers sellers sent the treasury to settle coin fees, by
+    /// transaction, so each one is counted once.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub fee_payments: BTreeMap<String, FeePayment>,
 }
 
 /// A seller's watch-only keys for coin orders (`crate::coins`), and the
 /// platform fees those sales owe. The coins go straight to the seller's own
-/// wallet, so the fee cannot be split off on the way and is billed apart.
+/// wallet, so the fee cannot be split off on the way. The edge collects it
+/// from the seller's next USDC sales ([`fee_offset_for`]) or from a transfer
+/// the seller sends the treasury ([`Market::pay_coin_fees`]), and stops coin
+/// payments to a seller who owes too much or for too long
+/// ([`CoinSeller::coins_paused`]).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CoinSeller {
     /// By coin key (`btc`).
     #[serde(default)]
     pub keys: BTreeMap<String, CoinKey>,
-    /// Platform fees of paid coin orders, in the currency's minor unit.
+    /// Platform fees of paid coin orders not yet collected, in the
+    /// currency's minor unit.
     #[serde(default)]
     pub fees_owed: u64,
+    /// When `fees_owed` last rose from nothing. `None` while nothing is owed.
+    /// A ledger written before it was kept gets the time it is first read
+    /// ([`stamp_debts`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub owed_since: Option<u64>,
+    /// Collected from USDC sales beyond what was owed by the time the
+    /// payment landed (another payment settled the same debt meanwhile).
+    /// Pays for the next coin fees before anything is owed again.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub fee_credit: u64,
+}
+
+impl CoinSeller {
+    /// Add the platform fee of a paid coin order. Credit pays for it first.
+    pub fn charge(&mut self, fee: u64, now: u64) {
+        let from_credit = fee.min(self.fee_credit);
+        self.fee_credit -= from_credit;
+        let rest = fee - from_credit;
+        if rest == 0 {
+            return;
+        }
+        if self.fees_owed == 0 {
+            self.owed_since = Some(now);
+        }
+        self.fees_owed = self.fees_owed.saturating_add(rest);
+    }
+
+    /// Take `paid` off what is owed and return how much of it counted. What
+    /// is left over becomes credit when `keep_surplus`, and is not counted
+    /// otherwise.
+    pub fn settle(&mut self, paid: u64, keep_surplus: bool) -> u64 {
+        let credited = paid.min(self.fees_owed);
+        self.fees_owed -= credited;
+        if self.fees_owed == 0 {
+            self.owed_since = None;
+        }
+        if keep_surplus {
+            self.fee_credit = self.fee_credit.saturating_add(paid - credited);
+        }
+        credited
+    }
+
+    /// Whether buyers may not pay this seller in coins now: more than
+    /// `limit` is owed, or anything has been owed for
+    /// [`COIN_FEE_GRACE_SECS`].
+    #[must_use]
+    pub fn coins_paused(&self, limit: u64, now: u64) -> bool {
+        self.fees_owed > limit
+            || (self.fees_owed > 0
+                && self
+                    .owed_since
+                    .is_some_and(|since| now >= since.saturating_add(COIN_FEE_GRACE_SECS)))
+    }
+}
+
+/// A USDC transfer a seller sent the treasury to settle coin fees.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FeePayment {
+    pub seller: String,
+    pub network: String,
+    /// What reached the treasury, in the currency's minor unit.
+    pub paid: u64,
+    /// What of it counted: no more than was owed.
+    pub credited: u64,
+    pub received_at: u64,
 }
 
 /// A seller's key for one coin, as the edge's node checked it, and the next
 /// address index to hand out. For Bitcoin the key is a descriptor; for
-/// Monero it is the primary address, with the private view key beside it.
+/// Monero it is the primary address, with the private view key beside it;
+/// for Zcash it is the wallet's first address, shown back to the seller,
+/// with the incoming viewing key beside it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CoinKey {
     pub descriptor: String,
     pub next: u32,
     /// Monero: the private view key the edge's view-only wallet is made from.
-    /// It sees what arrives and cannot spend. Never shown back.
+    /// Zcash: the Orchard incoming viewing key (`uivk…`) the edge decrypts
+    /// with. Either sees what arrives and cannot spend. Never shown back.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub view_key: Option<String>,
     /// Monero: the chain height the wallet scans from, so a wallet made
@@ -511,6 +610,11 @@ impl CoinKey {
             view_key: self.view_key.as_deref()?,
             from_height: self.from_height.unwrap_or(0),
         })
+    }
+
+    /// Zcash: the viewing key the edge decrypts this seller's orders with.
+    fn zec_key(&self) -> Option<crate::zcash::ViewingKey> {
+        crate::zcash::parse_key(self.view_key.as_deref()?).ok()
     }
 }
 
@@ -529,8 +633,15 @@ pub struct CoinPayment {
     /// Monero: the chain height when the address was given to this order.
     /// The wallet reports a payment's block, not when it first saw it, so
     /// only payments in blocks from here on (or still in the pool) count.
+    /// Zcash: the first block after the best one when the address was
+    /// given, with the same meaning.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub issued_height: Option<u64>,
+    /// Zcash: when the edge first saw each paying transaction, mempool
+    /// included. The servers say only which block a payment is in, so a
+    /// payment sent in time keeps its time once it is mined.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub first_seen: BTreeMap<String, u64>,
     #[serde(default)]
     pub settlement: Option<crate::coins::Settlement>,
     /// Transactions that paid to the address.
@@ -667,6 +778,73 @@ fn pending_window(order: &Order) -> u64 {
 fn pending_live(order: &Order, now: u64) -> bool {
     order.status == OrderStatus::Pending
         && now < order.created_at.saturating_add(pending_window(order))
+}
+
+/// Whether an order's fee offset may still reach the treasury: a USDC order
+/// still held, or paid with its escrow release still to come.
+fn offset_in_flight(order: &Order, now: u64) -> bool {
+    order.fee_offset > 0
+        && !order.offset_collected
+        && order.rail == Rail::Usdc
+        && (pending_live(order, now)
+            || (order.status == OrderStatus::Paid
+                && order
+                    .escrow
+                    .as_ref()
+                    .is_some_and(|e| e.step == EscrowStep::Release)))
+}
+
+/// What a new USDC order of `amount` for `seller`, whose platform fee is
+/// `fee`, adds to its fee toward the seller's coin fees owed: what is owed
+/// and not already riding on another order in flight, and never more than
+/// takes the whole fee past half the gross, which is as far as
+/// `LososEscrow` lets a fee go (`MAX_FEE_BPS`). The Solana split keeps the
+/// same ceiling, so a seller's share is the same on every network.
+#[must_use]
+pub fn fee_offset_for(state: &MarketState, seller: &str, amount: u64, fee: u64, now: u64) -> u64 {
+    let owed = state.coin_sellers.get(seller).map_or(0, |s| s.fees_owed);
+    if owed == 0 {
+        return 0;
+    }
+    let riding: u64 = state
+        .orders
+        .values()
+        .filter(|o| o.seller == seller && offset_in_flight(o, now))
+        .map(|o| o.fee_offset)
+        .sum();
+    owed.saturating_sub(riding)
+        .min((amount / 2).saturating_sub(fee))
+}
+
+/// Take a USDC order's fee offset off what its seller owes, once the
+/// payment has reached the treasury: the escrow released it, or the Solana
+/// transfer that split it was confirmed. Returns what was taken. Collected
+/// beyond what is owed by then becomes the seller's credit.
+pub fn collect_offset(state: &mut MarketState, order_id: &str) -> u64 {
+    let Some(order) = state.orders.get_mut(order_id) else {
+        return 0;
+    };
+    if order.fee_offset == 0 || order.offset_collected {
+        return 0;
+    }
+    order.offset_collected = true;
+    let (seller, offset) = (order.seller.clone(), order.fee_offset);
+    state
+        .coin_sellers
+        .entry(seller)
+        .or_default()
+        .settle(offset, true);
+    offset
+}
+
+/// Give a debt from a ledger written before the edge kept its start the
+/// time it was first read, so the age rule has something to count from.
+pub fn stamp_debts(state: &mut MarketState, now: u64) {
+    for seller in state.coin_sellers.values_mut() {
+        if seller.fees_owed > 0 && seller.owed_since.is_none() {
+            seller.owed_since = Some(now);
+        }
+    }
 }
 
 /// One side of an account's order history: live orders first, then newest
@@ -1225,6 +1403,11 @@ pub struct OrderView {
     pub quantity: u64,
     pub amount: u64,
     pub fee: u64,
+    /// What the treasury takes on top of `fee` toward the seller's platform
+    /// fees owed on coin sales. Absent when none.
+    #[serde(skip_serializing_if = "is_zero")]
+    pub fee_offset: u64,
+    /// `amount` less `fee` and `fee_offset`.
     pub seller_net: u64,
     pub currency: String,
     pub status: OrderStatus,
@@ -1338,7 +1521,8 @@ impl OrderView {
             quantity: o.quantity,
             amount: o.amount,
             fee: o.fee,
-            seller_net: o.amount - o.fee,
+            fee_offset: o.fee_offset,
+            seller_net: o.amount.saturating_sub(o.fee).saturating_sub(o.fee_offset),
             currency: o.currency.clone(),
             status: o.status,
             created_at: o.created_at,
@@ -1408,10 +1592,38 @@ pub struct AccountView {
     /// minor unit.
     #[serde(skip_serializing_if = "is_zero")]
     pub coin_fees_owed: u64,
+    /// When this seller started to owe them, unix seconds.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub coin_fees_since: Option<u64>,
+    /// Credit toward the next coin fees, from USDC sales that collected
+    /// more than was owed by the time they landed.
+    #[serde(skip_serializing_if = "is_zero")]
+    pub coin_fee_credit: u64,
+    /// What a seller may owe before buyers can no longer pay them in coins,
+    /// when this edge takes coins.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub coin_fee_limit: Option<u64>,
+    /// How long a seller may owe anything before the same, in seconds.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub coin_fee_grace_secs: Option<u64>,
+    /// Buyers cannot pay this seller in coins until the fees are settled.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub coin_sales_paused: bool,
 }
 
 fn is_zero(n: &u64) -> bool {
     *n == 0
+}
+
+/// `POST /market/fees/pay`: what a transfer to the treasury settled.
+#[derive(Debug, Serialize)]
+pub struct FeePaymentView {
+    /// What reached the treasury, in the currency's minor unit.
+    pub paid: u64,
+    /// What of it counted toward the fees owed.
+    pub credited: u64,
+    /// What is still owed.
+    pub owed: u64,
 }
 
 #[derive(Debug, Serialize)]
@@ -1503,6 +1715,16 @@ pub struct MarketOpts {
     pub btc: Option<crate::bitcoin::BtcOpts>,
     /// Monero orders, through the edge's own wallet service and node.
     pub xmr: Option<crate::monero::XmrOpts>,
+    /// Whether buyers may pay by card, through the Stripe gate. Off, the
+    /// edge takes coins only and needs no Stripe account: its mode is the
+    /// chains' ([`crate::connect::NoCards`]) and `gate_socket` is unused.
+    pub cards: bool,
+    /// Shielded Zcash orders, watched through public lightwalletd servers.
+    pub zec: Option<crate::zcash::ZecOpts>,
+    /// What a seller may owe in platform fees on coin sales, in the minor
+    /// unit, before buyers can no longer pay them in coins
+    /// (`--market-coin-fee-limit`, [`DEFAULT_COIN_FEE_LIMIT`]).
+    pub coin_fee_limit: u64,
 }
 
 /// How long an escrow call may sit unmined before the edge checks the
@@ -1535,6 +1757,9 @@ pub struct Market {
     /// One escrow pass at a time: the releaser key's nonce is taken from the
     /// chain, so two passes sending at once would collide.
     escrow_lock: Mutex<()>,
+    /// The Zcash servers and what each served before, when the edge takes
+    /// Zcash.
+    zec: Option<crate::zcash::Scanner>,
 }
 
 /// The ledger of the mode the gate's key is in, and where it is kept. The
@@ -1602,6 +1827,7 @@ async fn read_ledger(path: &Path, mode: StripeMode) -> Result<MarketState, Marke
         ))),
         _ => {
             state.mode = Some(mode);
+            stamp_debts(&mut state, now_secs());
             Ok(state)
         }
     }
@@ -1656,8 +1882,18 @@ impl Market {
     /// ([`Market::check_mode`]). Both ledgers are checked here so a
     /// file that does not parse fails the start rather than the first buyer.
     pub async fn open(opts: MarketOpts) -> Result<Self, MarketError> {
-        let gate = Arc::new(GateClient::new(&opts.gate_socket));
-        Self::open_with(opts, gate).await
+        if opts.cards {
+            let gate = Arc::new(GateClient::new(&opts.gate_socket));
+            return Self::open_with(opts, gate).await;
+        }
+        // Coins only. The parser refuses this without USDC, whose networks
+        // are all test or all live; that is the mode.
+        let mode = match &opts.usdc {
+            Some(usdc) if usdc.test() => StripeMode::Test,
+            Some(_) => StripeMode::Live,
+            None => return Err(MarketError::Unconfigured),
+        };
+        Self::open_with(opts, Arc::new(crate::connect::NoCards { mode })).await
     }
 
     /// As [`Market::open`], settling through `connect` rather than the gate
@@ -1682,8 +1918,10 @@ impl Market {
                 |u| u.price_sources.clone(),
             ),
         ));
+        let zec = opts.zec.clone().map(crate::zcash::Scanner::new);
         Ok(Self {
             opts,
+            zec,
             state: Mutex::new(Ledger {
                 mode: None,
                 path,
@@ -1827,6 +2065,8 @@ impl Market {
         let state = self.state.lock().await;
         let mode = Self::mode_of(&state)?;
         let seller = state.sellers.get(id);
+        let coin_seller = state.coin_sellers.get(id);
+        let takes_coins = !self.coins().is_empty();
         Ok(AccountView {
             mode,
             fee_bps: self.opts.fee_bps,
@@ -1888,7 +2128,13 @@ impl Market {
                         .collect()
                 })
                 .unwrap_or_default(),
-            coin_fees_owed: state.coin_sellers.get(id).map_or(0, |s| s.fees_owed),
+            coin_fees_owed: coin_seller.map_or(0, |s| s.fees_owed),
+            coin_fees_since: coin_seller.and_then(|s| s.owed_since),
+            coin_fee_credit: coin_seller.map_or(0, |s| s.fee_credit),
+            coin_fee_limit: takes_coins.then_some(self.opts.coin_fee_limit),
+            coin_fee_grace_secs: takes_coins.then_some(COIN_FEE_GRACE_SECS),
+            coin_sales_paused: coin_seller
+                .is_some_and(|s| s.coins_paused(self.opts.coin_fee_limit, now)),
         })
     }
 
@@ -1913,6 +2159,9 @@ impl Market {
         }
         if self.opts.xmr.is_some() {
             coins.push(crate::coins::Coin::Xmr);
+        }
+        if self.opts.zec.is_some() {
+            coins.push(crate::coins::Coin::Zec);
         }
         coins
     }
@@ -2303,6 +2552,21 @@ impl Market {
             } else {
                 Rail::Stripe
             };
+            let usdc_payable = rail == Rail::Usdc && self.accepts_payouts(&seller);
+            // A seller behind on coin fees is paid in USDC only, which
+            // collects them; one who takes nothing else cannot be paid.
+            let coins_paused = state
+                .coin_sellers
+                .get(&listing.seller)
+                .is_some_and(|s| s.coins_paused(self.opts.coin_fee_limit, now));
+            if rail == Rail::Usdc && !usdc_payable && coins_paused {
+                return Err(MarketError::Conflict(COINS_PAUSED));
+            }
+            let fee_offset = if usdc_payable {
+                fee_offset_for(&state, &listing.seller, q.amount, q.fee, now)
+            } else {
+                0
+            };
             let order = Order {
                 id: random_id("ord")?,
                 listing_id: listing.id.clone(),
@@ -2337,12 +2601,18 @@ impl Market {
                 paid_network: None,
                 coin: None,
                 escrow: None,
+                fee_offset,
+                offset_collected: false,
             };
             let mut next = state.clone();
             expire_stale(&mut next, now);
             next.orders.insert(order.id.clone(), order.clone());
             self.commit(&mut state, next).await?;
-            let coins = self.coins_of(&state, &order.seller);
+            let coins = if coins_paused {
+                Vec::new()
+            } else {
+                self.coins_of(&state, &order.seller)
+            };
             (order, seller.account_id, mode, coins)
         };
 
@@ -2356,9 +2626,11 @@ impl Market {
                     solana: order.pay_to_solana.as_deref(),
                 },
                 order.amount,
-                order.fee,
+                order.fee + order.fee_offset,
                 order.created_at.saturating_add(USDC_HOLD_SECS),
             );
+            invoice.fee_offset = (order.fee_offset > 0)
+                .then(|| crate::stablecoin::cents_to_usdc(order.fee_offset).to_string());
             if invoice.chains.is_empty() && coins.is_empty() {
                 return Err(MarketError::Conflict("the seller has no payout address"));
             }
@@ -2895,7 +3167,9 @@ impl Market {
     /// node checked it is a public key for the network this edge settles on.
     /// Setting the same key again keeps its next address index, so no
     /// address is handed out twice. Monero takes the primary address as
-    /// `key` and the private view key as `view_key`.
+    /// `key` and the private view key as `view_key`. Zcash takes the unified
+    /// viewing key as `key` and keeps only its Orchard incoming part; a
+    /// spending key or a seed is refused by name.
     pub async fn set_coin_key(
         &self,
         id: &str,
@@ -2953,6 +3227,17 @@ impl Market {
                 })
                 .await?;
                 (address.to_string(), Some(view_key), Some(from))
+            }
+            crate::coins::Coin::Zec => {
+                let zec = self.zec.as_ref().ok_or(MarketError::Unconfigured)?;
+                if view_key.is_some_and(|v| !v.trim().is_empty()) {
+                    return Err(MarketError::Invalid(
+                        "Zcash takes the unified viewing key alone",
+                    ));
+                }
+                let parsed = crate::zcash::parse_key(key).map_err(MarketError::Invalid)?;
+                Self::zec_net_fits(zec, &parsed, test).await?;
+                (parsed.wallet_address(), Some(parsed.encode()), None)
             }
             _ => return Err(MarketError::Invalid("this edge does not take that coin")),
         };
@@ -3036,6 +3321,34 @@ impl Market {
         Ok(height)
     }
 
+    /// Refuse Zcash servers on the wrong network for this edge, as for
+    /// Bitcoin, and a viewing key for another network than theirs. The best
+    /// block two operators have reached on success.
+    async fn zec_net_fits(
+        zec: &crate::zcash::Scanner,
+        key: &crate::zcash::ViewingKey,
+        test: bool,
+    ) -> Result<u64, MarketError> {
+        let network = zec.opts().network;
+        if !crate::zcash::network_fits(network, test) {
+            tracing::error!(
+                target: Action::Market.target(),
+                "the edge's Zcash servers are set to {}, which a {} edge does not settle on",
+                network.chain_name(),
+                if test { "test" } else { "live" },
+            );
+            return Err(MarketError::Conflict(
+                "the edge's Zcash servers are on the wrong network",
+            ));
+        }
+        if key.network != network.network_type() {
+            return Err(MarketError::Invalid(
+                "that viewing key is for another network than this edge's",
+            ));
+        }
+        zec.tip().await
+    }
+
     /// The edge's price for `coin` now: the cached one while fresh, else
     /// asked of both sources.
     async fn coin_price(&self, coin: crate::coins::Coin, now: u64) -> Option<u128> {
@@ -3062,7 +3375,7 @@ impl Market {
             .filter(|c| self.coins().contains(c))
             .ok_or(MarketError::Invalid("this edge does not take that coin"))?;
         let now = now_secs();
-        let (order, key) = {
+        let (order, key, paused) = {
             let state = self.state.lock().await;
             let order = state
                 .orders
@@ -3070,12 +3383,10 @@ impl Market {
                 .filter(|o| o.buyer == buyer)
                 .cloned()
                 .ok_or(MarketError::NotFound)?;
-            let key = state
-                .coin_sellers
-                .get(&order.seller)
-                .and_then(|s| s.keys.get(coin.key()))
-                .cloned();
-            (order, key)
+            let seller = state.coin_sellers.get(&order.seller);
+            let key = seller.and_then(|s| s.keys.get(coin.key())).cloned();
+            let paused = seller.is_some_and(|s| s.coins_paused(self.opts.coin_fee_limit, now));
+            (order, key, paused)
         };
         if let Some(existing) = &order.coin {
             let received = !matches!(existing.settlement, None | Some(Settlement::Waiting));
@@ -3106,6 +3417,11 @@ impl Market {
             ));
         }
         let key = key.ok_or(MarketError::Conflict("the seller does not take that coin"))?;
+        // A payment already under way above runs its course; a new quote
+        // waits until the seller has settled what coin sales owe.
+        if paused {
+            return Err(MarketError::Conflict(COINS_PAUSED));
+        }
         let price = self
             .coin_price(coin, now)
             .await
@@ -3143,6 +3459,29 @@ impl Market {
                     ))?;
                 };
                 (address, index, now, Some(height))
+            }
+            _ if coin == crate::coins::Coin::Zec => {
+                let zec = self.zec.as_ref().ok_or(MarketError::Unconfigured)?;
+                let vk = key
+                    .zec_key()
+                    .ok_or(MarketError::Conflict("the seller does not take that coin"))?;
+                let test = self.mode().await == Some(StripeMode::Test);
+                let tip = Self::zec_net_fits(zec, &vk, test).await?;
+                let used = self.coin_addresses().await;
+                let mut index = key.next;
+                let address = loop {
+                    let a = vk.order_address(index);
+                    if !used.contains(&a) {
+                        break a;
+                    }
+                    index = index.checked_add(1).ok_or(MarketError::Conflict(
+                        "the seller's key has no addresses left",
+                    ))?;
+                };
+                // Payments count from the first block after the best one
+                // now: anything older reached the address before it was
+                // this order's.
+                (address, index, now, Some(tip.saturating_add(1)))
             }
             _ => {
                 let used = self.coin_addresses().await;
@@ -3198,6 +3537,7 @@ impl Market {
             index,
             issued,
             issued_height,
+            first_seen: BTreeMap::new(),
             settlement: Some(Settlement::Waiting),
             txs: Vec::new(),
         });
@@ -3213,6 +3553,41 @@ impl Market {
         }
         self.commit(&mut state, next).await?;
         Ok(view)
+    }
+
+    /// Every Zcash order the edge waits on, as the scanner watches it: the
+    /// seller's key, the order's address number and its issue height.
+    async fn zec_watches(&self) -> Vec<crate::zcash::Watch> {
+        let state = self.state.lock().await;
+        let mut keys: BTreeMap<&str, Option<crate::zcash::ViewingKey>> = BTreeMap::new();
+        let mut out = Vec::new();
+        for o in state.orders.values() {
+            let Some(c) = o.coin.as_ref() else {
+                continue;
+            };
+            if c.quote.coin != crate::coins::Coin::Zec || o.status == OrderStatus::Paid {
+                continue;
+            }
+            let Some(since) = c.issued_height else {
+                continue;
+            };
+            let key = keys.entry(o.seller.as_str()).or_insert_with(|| {
+                state
+                    .coin_sellers
+                    .get(&o.seller)
+                    .and_then(|s| s.keys.get(crate::coins::Coin::Zec.key()))
+                    .and_then(CoinKey::zec_key)
+            });
+            if let Some(key) = key {
+                out.push(crate::zcash::Watch {
+                    order: o.id.clone(),
+                    key: key.clone(),
+                    index: c.index,
+                    since,
+                });
+            }
+        }
+        out
     }
 
     /// Every address any order was given for a coin payment.
@@ -3269,6 +3644,14 @@ impl Market {
         // for the explorer link: `bitcoin` on mainnet, `bitcoin-signet` and
         // so on elsewhere.
         let mut btc_network: Option<String> = None;
+        // Zcash: one scan for every order the edge waits on, whichever of
+        // them were asked about, so each server's memory keeps them all.
+        let zec_scan = match self.zec.as_ref() {
+            Some(zec) if work.iter().any(|(_, c, _)| c.quote.coin == Coin::Zec) => {
+                Some(zec.scan(self.zec_watches().await, now).await)
+            }
+            _ => None,
+        };
         for (id, c, key) in work {
             let received = match c.quote.coin {
                 // Only payments the node saw from the moment the address was
@@ -3292,6 +3675,29 @@ impl Market {
                     }
                     _ => Err(MarketError::Unconfigured),
                 },
+                // What two operators' servers agree on, with the time the
+                // edge first saw each payment kept from earlier passes.
+                Coin::Zec => match &zec_scan {
+                    Some(Ok(agreed)) => {
+                        let since = c.issued_height.unwrap_or(0);
+                        if since.saturating_add(crate::zcash::MAX_SCAN_BLOCKS)
+                            < agreed.tip.saturating_add(crate::zcash::RESCAN_DEPTH)
+                        {
+                            // Older than a pass reads back: it keeps the
+                            // state it last had.
+                            continue;
+                        }
+                        let mut got = agreed.received.get(&id).cloned().unwrap_or_default();
+                        for r in &mut got {
+                            if let Some(t) = c.first_seen.get(&r.tx) {
+                                r.first_seen = r.first_seen.min(*t);
+                            }
+                        }
+                        Ok(got)
+                    }
+                    Some(Err(e)) => Err(e.clone()),
+                    None => Err(MarketError::Unconfigured),
+                },
                 _ => Err(MarketError::Unconfigured),
             };
             let received: Vec<crate::coins::Received> = match received {
@@ -3313,6 +3719,12 @@ impl Market {
                 None
             };
             let settlement = settle(&c.quote, &received, fresh.as_ref());
+            let mut first_seen = c.first_seen.clone();
+            if c.quote.coin == Coin::Zec {
+                for r in &received {
+                    first_seen.entry(r.tx.clone()).or_insert(r.first_seen);
+                }
+            }
             let txs: Vec<String> = received.into_iter().map(|r| r.tx).collect();
             let network = match c.quote.coin {
                 Coin::Btc if settlement.is_paid() => {
@@ -3330,12 +3742,12 @@ impl Market {
                 }
                 _ => None,
             };
-            found.push((id, settlement, txs, network));
+            found.push((id, settlement, txs, network, first_seen));
         }
         let mut state = self.state.lock().await;
         let mut next = state.clone();
         let mut changed = false;
-        for (id, settlement, txs, network) in found {
+        for (id, settlement, txs, network, first_seen) in found {
             let Some(o) = next.orders.get_mut(&id) else {
                 continue;
             };
@@ -3346,13 +3758,17 @@ impl Market {
             let Some(c) = o.coin.as_mut() else {
                 continue;
             };
-            if c.settlement.as_ref() == Some(&settlement) && c.txs == txs {
+            if c.settlement.as_ref() == Some(&settlement)
+                && c.txs == txs
+                && c.first_seen == first_seen
+            {
                 continue;
             }
             changed = true;
             let paid = settlement.is_paid();
             c.settlement = Some(settlement);
             c.txs = txs;
+            c.first_seen = first_seen;
             if !paid {
                 continue;
             }
@@ -3370,8 +3786,10 @@ impl Market {
             o.paid_at = Some(now);
             o.expires_at = Some(now + ENTITLEMENT_SECS);
             let (seller, fee) = (o.seller.clone(), o.fee);
-            let owed = &mut next.coin_sellers.entry(seller).or_default().fees_owed;
-            *owed = owed.saturating_add(fee);
+            next.coin_sellers
+                .entry(seller)
+                .or_default()
+                .charge(fee, now);
             tracing::info!(
                 target: Action::Market.target(),
                 "order {id} is paid in {}",
@@ -3547,6 +3965,11 @@ impl Market {
         order.paid_at = Some(now);
         order.expires_at = Some(now + ENTITLEMENT_SECS);
         order.escrow = held.map(|(deposit, _)| escrow(deposit, None));
+        // A Solana transfer paid the treasury its share as it was confirmed;
+        // an escrowed one does so when the edge releases it.
+        if held.is_none() {
+            collect_offset(&mut next, order_id);
+        }
         self.commit(&mut state, next).await?;
         Ok(())
     }
@@ -3575,6 +3998,117 @@ impl Market {
         }
         let reason = order.escrow.as_ref().and_then(|e| e.reason)?;
         Some(Err(MarketError::Conflict(reason.message())))
+    }
+
+    /// Count `tx` on `network` as `seller` paying the platform fees its coin
+    /// sales owe: a mined USDC transfer from the seller's EVM payout address
+    /// to this edge's treasury on that network, with
+    /// [`crate::stablecoin::CONFIRMATIONS`] blocks, read over the edge's own
+    /// endpoint after checking it is on that chain. The payout address is
+    /// the sender because the seller signed for it: a transfer anyone could
+    /// see on chain cannot be claimed by another seller. A transaction is
+    /// counted once, and no more of it than is owed; the rest is not
+    /// refunded.
+    pub async fn pay_coin_fees(
+        &self,
+        seller: &str,
+        tx: &str,
+        network: Option<&str>,
+    ) -> Result<FeePaymentView, MarketError> {
+        use crate::stablecoin::{address_bytes, Family};
+        let usdc = self.opts.usdc.clone().ok_or(MarketError::Unconfigured)?;
+        let chain = Self::usdc_chain(&usdc, network)?;
+        if chain.network.family != Family::Evm {
+            return Err(MarketError::Invalid(
+                "coin fees are paid in USDC on an EVM network",
+            ));
+        }
+        let tx = crate::stablecoin::normalize_tx(tx)
+            .ok_or(MarketError::Invalid("tx is not a transaction hash"))?;
+        let from = {
+            let state = self.state.lock().await;
+            Self::fee_tx_unused(&state, &tx)?;
+            if state.coin_sellers.get(seller).map_or(0, |s| s.fees_owed) == 0 {
+                return Err(MarketError::Conflict(
+                    "no platform fees are owed on coin sales",
+                ));
+            }
+            state
+                .sellers
+                .get(seller)
+                .and_then(|s| s.payout.as_deref())
+                .and_then(address_bytes)
+                .ok_or(MarketError::Conflict(
+                    "set a USDC payout address first: the fees are paid from it",
+                ))?
+        };
+        let token = address_bytes(chain.network.usdc).ok_or(MarketError::Unconfigured)?;
+        let treasury = address_bytes(&chain.treasury).ok_or(MarketError::Unconfigured)?;
+        let url = crate::stablecoin::read_rpc_url(Path::new(&chain.rpc_file)).await?;
+        crate::stablecoin::check_chain_id(&url, &chain)
+            .await
+            .inspect_err(|e| {
+                tracing::error!(
+                    target: Action::Market.target(),
+                    "USDC settlement on {} is misconfigured: {e}",
+                    chain.network.key,
+                );
+            })?;
+        let receipt = crate::stablecoin::fetch_receipt(&url, &tx).await?;
+        let paid = crate::stablecoin::fee_transfer(&receipt, token, treasury, from)
+            .map_err(MarketError::Conflict)?;
+        let head = crate::stablecoin::block_number(&url).await?;
+        crate::stablecoin::confirmed(&receipt, &head).map_err(MarketError::Conflict)?;
+        // USDC has six decimals and the market counts cents; a fraction of a
+        // cent is not counted.
+        let paid = u64::try_from(paid / 10_000).unwrap_or(u64::MAX);
+
+        let mut state = self.state.lock().await;
+        Self::fee_tx_unused(&state, &tx)?;
+        let mut next = state.clone();
+        let owing = next.coin_sellers.entry(seller.to_string()).or_default();
+        let credited = owing.settle(paid, false);
+        let owed = owing.fees_owed;
+        next.fee_payments.insert(
+            tx.clone(),
+            FeePayment {
+                seller: seller.to_string(),
+                network: chain.network.key.to_string(),
+                paid,
+                credited,
+                received_at: now_secs(),
+            },
+        );
+        self.commit(&mut state, next).await?;
+        tracing::info!(
+            target: Action::Market.target(),
+            "{seller} paid {credited} of its coin fees in {tx} on {}; {owed} still owed",
+            chain.network.key,
+        );
+        Ok(FeePaymentView {
+            paid,
+            credited,
+            owed,
+        })
+    }
+
+    /// Refuse a transaction already counted toward coin fees, or one that
+    /// paid an order.
+    fn fee_tx_unused(state: &MarketState, tx: &str) -> Result<(), MarketError> {
+        if state.fee_payments.contains_key(tx) {
+            return Err(MarketError::Conflict(
+                "that transaction was already counted",
+            ));
+        }
+        if state.strays.contains_key(tx)
+            || state
+                .orders
+                .values()
+                .any(|o| o.tx_hash.as_deref() == Some(tx))
+        {
+            return Err(MarketError::Conflict("that transaction paid an order"));
+        }
+        Ok(())
     }
 
     /// Whether this edge settles on an EVM network, so it needs a releaser.
@@ -3712,7 +4246,13 @@ impl Market {
                         after.reason = Some(RefundReason::BuyerReclaimed);
                         order.expires_at = Some(order.expires_at.map_or(now, |at| at.min(now)));
                     }
+                    let released =
+                        before.step == EscrowStep::Release && after.step == EscrowStep::Released;
                     order.escrow = Some(after);
+                    // The treasury has the fee, offset included, only now.
+                    if released {
+                        collect_offset(&mut next, &id);
+                    }
                 }
                 EscrowJob::Stray(tx) => {
                     let Some(stray) = next.strays.get_mut(&tx) else {
@@ -3946,7 +4486,7 @@ impl Market {
                         seller,
                         order_id_hash: crate::stablecoin::order_id_hash(order_id),
                         gross: crate::stablecoin::cents_to_usdc(order.amount),
-                        fee: crate::stablecoin::cents_to_usdc(order.fee),
+                        fee: crate::stablecoin::cents_to_usdc(order.fee + order.fee_offset),
                         deadline: usdc_deadline(order),
                     }),
                     stray,
@@ -3957,7 +4497,7 @@ impl Market {
                 // be paid there kept its address.
                 let seller = order.pay_to_solana.clone().ok_or(no_payout)?;
                 let gross = crate::stablecoin::cents_to_usdc(order.amount);
-                let fee = crate::stablecoin::cents_to_usdc(order.fee);
+                let fee = crate::stablecoin::cents_to_usdc(order.fee + order.fee_offset);
                 Ok((
                     Expected::Solana(crate::solana::ExpectedTransfer {
                         mint: chain.network.usdc.to_string(),
@@ -4025,6 +4565,8 @@ mod tests {
             paid_network: None,
             coin: None,
             escrow: None,
+            fee_offset: 0,
+            offset_collected: false,
         }
     }
 
@@ -4616,6 +5158,9 @@ mod tests {
             usdc: None,
             btc: None,
             xmr: None,
+            cards: true,
+            zec: None,
+            coin_fee_limit: DEFAULT_COIN_FEE_LIMIT,
         })
         .await
         .unwrap();
@@ -4644,6 +5189,9 @@ mod tests {
             usdc: None,
             btc: None,
             xmr: None,
+            cards: true,
+            zec: None,
+            coin_fee_limit: DEFAULT_COIN_FEE_LIMIT,
         }
     }
 
@@ -4869,5 +5417,131 @@ mod tests {
             assert!(!apply_event(&mut state, &event, 1));
         }
         assert_eq!(state, before);
+    }
+
+    fn owing(fees_owed: u64, owed_since: Option<u64>) -> CoinSeller {
+        CoinSeller {
+            fees_owed,
+            owed_since,
+            ..CoinSeller::default()
+        }
+    }
+
+    fn usdc_order(id: &str, amount: u64, fee_offset: u64, created_at: u64) -> Order {
+        let mut o = order(id, OrderStatus::Pending, 1, created_at);
+        o.rail = Rail::Usdc;
+        o.amount = amount;
+        o.fee = fee_for(amount, DEFAULT_FEE_BPS);
+        o.fee_offset = fee_offset;
+        o
+    }
+
+    #[test]
+    fn a_usdc_sale_takes_what_is_owed_up_to_half_the_gross() {
+        let now = 1_000;
+        let mut state = MarketState::default();
+        assert_eq!(fee_offset_for(&state, "s", 200, 8, now), 0);
+        state.coin_sellers.insert("s".into(), owing(50, Some(now)));
+        assert_eq!(fee_offset_for(&state, "s", 200, 8, now), 50);
+        // The escrow refuses a fee over half the gross: 100 - 8.
+        state
+            .coin_sellers
+            .insert("s".into(), owing(5_000, Some(now)));
+        assert_eq!(fee_offset_for(&state, "s", 200, 8, now), 92);
+        // A machine's fee is already half: nothing on top.
+        assert_eq!(fee_offset_for(&state, "s", 200, 100, now), 0);
+        // What rides on another order in flight is not taken twice.
+        state.coin_sellers.insert("s".into(), owing(120, Some(now)));
+        state
+            .orders
+            .insert("ord_a".into(), usdc_order("ord_a", 200, 92, now));
+        assert_eq!(fee_offset_for(&state, "s", 200, 8, now), 28);
+        // A lapsed order holds nothing back; a paid one awaiting release does.
+        let late = now + USDC_HOLD_SECS + 1;
+        assert_eq!(fee_offset_for(&state, "s", 200, 8, late), 92);
+        let a = state.orders.get_mut("ord_a").unwrap();
+        a.status = OrderStatus::Paid;
+        a.escrow = Some(Escrow {
+            network: "base".into(),
+            deposit: 1,
+            step: EscrowStep::Release,
+            reason: None,
+            tx: None,
+            sent_at: None,
+        });
+        assert_eq!(fee_offset_for(&state, "s", 200, 8, late), 28);
+    }
+
+    #[test]
+    fn an_offset_is_collected_once_and_what_is_left_over_is_credit() {
+        let mut state = MarketState::default();
+        state.coin_sellers.insert("s".into(), owing(50, Some(7)));
+        state
+            .orders
+            .insert("ord_a".into(), usdc_order("ord_a", 200, 50, 0));
+        state
+            .orders
+            .insert("ord_b".into(), usdc_order("ord_b", 200, 30, 0));
+        assert_eq!(collect_offset(&mut state, "ord_a"), 50);
+        assert_eq!(collect_offset(&mut state, "ord_a"), 0);
+        let s = &state.coin_sellers["s"];
+        assert_eq!((s.fees_owed, s.owed_since, s.fee_credit), (0, None, 0));
+        // Settled meanwhile: the second offset becomes credit, and pays the
+        // next coin fee before anything is owed again.
+        assert_eq!(collect_offset(&mut state, "ord_b"), 30);
+        let s = state.coin_sellers.get_mut("s").unwrap();
+        assert_eq!((s.fees_owed, s.fee_credit), (0, 30));
+        s.charge(20, 100);
+        assert_eq!((s.fees_owed, s.owed_since, s.fee_credit), (0, None, 10));
+        s.charge(25, 200);
+        assert_eq!(
+            (s.fees_owed, s.owed_since, s.fee_credit),
+            (15, Some(200), 0)
+        );
+        // A later fee does not restart the clock.
+        s.charge(5, 300);
+        assert_eq!((s.fees_owed, s.owed_since), (20, Some(200)));
+    }
+
+    #[test]
+    fn coins_stop_over_the_limit_or_after_thirty_days_owed() {
+        let now = 100 * 24 * 3600;
+        assert!(!owing(0, None).coins_paused(1_000, now));
+        assert!(!owing(1_000, Some(now)).coins_paused(1_000, now));
+        assert!(owing(1_001, Some(now)).coins_paused(1_000, now));
+        let month = Some(now - COIN_FEE_GRACE_SECS);
+        assert!(owing(1, month).coins_paused(1_000, now));
+        assert!(!owing(1, Some(now - COIN_FEE_GRACE_SECS + 1)).coins_paused(1_000, now));
+        // Paid off, the clock stops; a direct payment counts no surplus.
+        let mut s = owing(300, month);
+        assert_eq!(s.settle(500, false), 300);
+        assert_eq!((s.fees_owed, s.owed_since, s.fee_credit), (0, None, 0));
+        assert!(!s.coins_paused(1_000, now));
+    }
+
+    #[test]
+    fn an_old_ledger_loads_and_its_debts_start_counting_when_read() {
+        let old = serde_json::json!({
+            "coin_sellers": { "s": { "keys": {}, "fees_owed": 40 }, "t": { "fees_owed": 0 } },
+            "orders": { "ord_1": {
+                "id": "ord_1", "listing_id": "lst_1", "buyer": "b", "seller": "s",
+                "kind": "storage", "quantity": 1, "unit_price": 100, "amount": 100,
+                "fee": 4, "currency": "usd", "status": "paid", "session_id": null,
+                "created_at": 1, "paid_at": 2,
+            }},
+        });
+        let mut state: MarketState = serde_json::from_value(old).unwrap();
+        assert_eq!(state.orders["ord_1"].fee_offset, 0);
+        assert!(state.fee_payments.is_empty());
+        stamp_debts(&mut state, 500);
+        assert_eq!(state.coin_sellers["s"].owed_since, Some(500));
+        assert_eq!(state.coin_sellers["t"].owed_since, None);
+        stamp_debts(&mut state, 900);
+        assert_eq!(state.coin_sellers["s"].owed_since, Some(500));
+        // The view's share for the seller is net of both.
+        let mut o = usdc_order("ord_2", 200, 50, 0);
+        o.status = OrderStatus::Paid;
+        let view = OrderView::of(&o, 0, None);
+        assert_eq!((view.fee, view.fee_offset, view.seller_net), (8, 50, 142));
     }
 }

@@ -27,7 +27,7 @@ const { check, skip, finish } = runner();
  * so that opening the tab is two flips, there and here, and brings its
  * coverage straight back; the checks on the greyed row run only until then.
  * Both states were run green before the switch was set. */
-const MARKET_TAB_OPEN = false;
+const MARKET_TAB_OPEN = true;
 const whenMarketOpen = (name, fn) =>
   MARKET_TAB_OPEN ? check(name, fn) : skip(name, 'the Market tab is planned, not open');
 const whenMarketPlanned = (name, fn) =>
@@ -1185,7 +1185,7 @@ await whenMarketOpen('a payment page that is not Stripe is never opened', async 
   const tab = page.context().waitForEvent('page');
   await page.getByRole('button', { name: 'Buy', exact: true }).click();
   const placeholder = await tab;
-  await page.getByText('no payment page came back').waitFor();
+  await page.locator('[data-toast]').filter({ hasText: 'no payment page came back' }).waitFor();
   await placeholder.waitForEvent('close', { timeout: 2000 }).catch(() => {});
   assert.ok(placeholder.isClosed(), 'the placeholder tab was left open');
   assert.equal(marketPosts.length, 1);
@@ -1246,14 +1246,14 @@ await whenMarketOpen('a zero-decimal currency is priced in whole units, not hund
   await page.close();
 });
 
-await whenMarketOpen('a blocked payouts pop-up says so next to the button', async () => {
+await whenMarketOpen('a blocked payouts pop-up says so', async () => {
   const unready = { ...MARKET, account: { ...MARKET.account, seller_onboarded: false, seller_ready: false } };
   const { page, errors, marketPosts } = await open({ path: '/settings/market', stored: true, market: unready });
   await page.evaluate(() => {
     window.open = () => null;
   });
   await page.getByRole('button', { name: 'Set up payouts' }).click();
-  await page.getByRole('alert').filter({ hasText: 'Allow pop-ups for this page' }).waitFor();
+  await page.locator('[data-toast]').filter({ hasText: 'Allow pop-ups for this page' }).waitFor();
   assert.deepEqual(marketPosts, []);
   assert.deepEqual(errors, []);
   await page.close();
@@ -1392,7 +1392,7 @@ await whenMarketOpen('purchases are listed in a Table with a column per fact', a
     account: {
       ...MARKET.account,
       purchases: [
-        { id: 'ord_1', kind: 'storage', amount: 1000, currency: 'eur', quantity: 2, unit: 'GiB-month', status: 'paid', expired: false, expires_at: '2027-01-01T00:00:00Z', volume: 'pvc-1' },
+        { id: 'ord_1', kind: 'storage', amount: 1000, fee: 40, seller_net: 960, currency: 'eur', quantity: 2, unit: 'GiB-month', status: 'paid', created_at: 1791158400, paid_at: 1791158460, expired: false, expires_at: 1798761600, volume: 'pvc-1' },
       ],
     },
   };
@@ -1402,6 +1402,80 @@ await whenMarketOpen('purchases are listed in a Table with a column per fact', a
   assert.deepEqual(await table.locator('thead th').allInnerTexts(), ['Bought', 'Quantity', 'Until', 'Status']);
   assert.equal(await table.locator('tbody tr').count(), 1);
   assert.equal(await page.getByLabel('Quantity').locator('xpath=ancestor::*[@data-slot="button-group"]').count(), 1, 'quantity and Order are not one Button Group');
+  await page.close();
+});
+
+/* A USDC edge that also takes Bitcoin, and a seller who owes platform fees
+ * on coin sales: under the limit, with one USDC sale that paid toward them.
+ * No payout address, so the page asks no chain for balances or fees. */
+const COIN_FEES = {
+  ...MARKET,
+  account: {
+    ...MARKET.account,
+    currency: 'usd',
+    usdc: {
+      test: true,
+      chain_id: 84532,
+      solana: null,
+      ens_chain_id: null,
+      chains: [
+        {
+          network: 'base-sepolia',
+          name: 'Base Sepolia',
+          family: 'evm',
+          chain_id: 84532,
+          usdc: `0x${'11'.repeat(20)}`,
+          pay: `0x${'22'.repeat(20)}`,
+          treasury: `0x${'33'.repeat(20)}`,
+        },
+      ],
+    },
+    coins: ['btc'],
+    coin_keys: { btc: 'wpkh([73c5da0a/84h/1h/0h]tpubD6NzVbkrYhZ4X/0/*)' },
+    coin_fees_owed: 850,
+    coin_fees_since: 1791158400,
+    coin_fee_limit: 1000,
+    coin_fee_grace_secs: 30 * 24 * 3600,
+    sales: [
+      { id: 'ord_2', kind: 'storage', amount: 10000, fee: 400, fee_offset: 850, seller_net: 8750, currency: 'usd', quantity: 2, unit: 'GiB-month', status: 'paid', created_at: 1791158400, paid_at: 1791158460, expired: false, expires_at: 1798761600, volume: null },
+    ],
+  },
+};
+
+await whenMarketOpen('coin fees owed get one row with the limits, and a USDC sale names what it paid toward them', async () => {
+  const { page, errors, marketPosts } = await open({ path: '/settings/market', stored: true, market: COIN_FEES });
+  const row = page.getByTestId('coin-fees');
+  await row.waitFor();
+  const text = await row.innerText();
+  assert.match(text, /Platform fees on coin sales/);
+  assert.match(text, /You owe \S*8\.50/);
+  assert.match(text, /no more than \S*10\.00 and it is settled by/);
+  assert.match(text, /Set a USDC payout address on the Ethereum networks first/);
+  const pay = row.getByRole('button', { name: /^Pay \S*8\.50$/ });
+  assert.equal(await pay.isDisabled(), true, 'fees can be paid with no payout address to pay them from');
+  assert.equal(await page.getByText(/Platform fees owed on coin sales: /).count(), 0, 'the coin key row still repeats the debt');
+  await page.getByText(/you receive \S*87\.50, after \S*8\.50 toward platform fees owed on coin sales/).waitFor();
+  assert.deepEqual(marketPosts, []);
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+await whenMarketOpen('a seller whose coin fees are overdue is told coin payments stopped and USDC still works', async () => {
+  const paused = {
+    ...COIN_FEES,
+    account: { ...COIN_FEES.account, coin_fees_owed: 1250, coin_sales_paused: true, coin_fee_credit: 120, sales: [] },
+  };
+  const { page, errors } = await open({ path: '/settings/market', stored: true, market: paused });
+  const row = page.getByTestId('coin-fees');
+  await row.waitFor();
+  const status = row.getByRole('status');
+  assert.equal(
+    await status.innerText(),
+    'Buyers cannot pay you in coins until this is settled. USDC still works, and each USDC sale pays toward it.',
+  );
+  assert.doesNotMatch(await row.innerText(), /no more than/);
+  assert.match(await row.innerText(), /\S*1\.20 from a USDC sale went beyond what you owed/);
+  assert.deepEqual(errors, []);
   await page.close();
 });
 
@@ -1769,11 +1843,12 @@ await check('the Reset pane starts an erase with a backup, counts down and cance
 
 // ── Machines (pane-machines.tsx) ──────────────────────────────────────────
 
-await check('a box that does not share its disk sees the Machines pane greyed, with nothing to press', async () => {
+await check('a box that does not share its disk sees the Machines pane greyed, with a link to share it', async () => {
   const { page, errors, vmPosts } = await open({ path: '/machines', stored: true });
   const notice = page.getByTestId('machines-unavailable');
   await notice.getByText('Machines are for boxes that share their disk').waitFor();
-  await notice.getByText('Disk sharing opens together with the market.').waitFor();
+  const share = notice.getByRole('link', { name: 'Share the disk' });
+  assert.equal(await share.getAttribute('href'), '/settings/market');
   assert.equal(await page.locator('main').getByRole('button').count(), 0, 'the greyed pane offers a button');
   assert.deepEqual(vmPosts, []);
   assert.deepEqual(errors, []);

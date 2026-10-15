@@ -29,11 +29,9 @@ Anfrage: Eine Box, die nicht teilt, bekommt von `GET /api/vms` die Antwort
 `{available: false, reason: "notSharing"}`, jede Aktion wird mit 409
 abgelehnt, und die Seite zeigt statt des Formulars einen ausgegrauten Satz.
 
-Der Schalter für die Festplattenfreigabe liegt im Bereich Marktplatz, und der
-Marktplatz ist noch nicht geöffnet (siehe [Marktplatz](/in-depth/market.md)). Bis dahin
-kann die Admin-Oberfläche die Freigabe nicht einschalten, und die Seite
-Maschinen bleibt auf jeder Box grau, die `losos.sharingMyStorage` nicht auf
-anderem Weg gesetzt hat.
+Der Schalter für die Festplattenfreigabe liegt im Bereich Marktplatz (siehe
+[Marktplatz](/in-depth/market.md)). Schalte ihn dort ein, und die Seite
+Maschinen bietet das Formular an, sobald die Änderung angewendet ist.
 
 Zwei weitere Gründe, die die Seite nennen kann:
 

@@ -8,7 +8,9 @@ use miette::{miette, IntoDiagnostic, Result};
 
 use crate::builder::BuilderOpts;
 use crate::domains::{DomainsOpts, DEFAULT_DOH_URL};
-use crate::market::{MarketOpts, DEFAULT_FEE_BPS, MAX_FEE_BPS, SUPPORTED_CURRENCIES};
+use crate::market::{
+    MarketOpts, DEFAULT_FEE_BPS, MAX_COIN_FEE_LIMIT, MAX_FEE_BPS, SUPPORTED_CURRENCIES,
+};
 use crate::provision::{EdgeSpec, ProvisionGithub, GITHUB_API_URL, GITHUB_OAUTH_URL};
 use crate::stripe_gate::GateOpts;
 
@@ -188,8 +190,9 @@ pub struct ServeOpts {
     /// Where the reconciler publishes the per-node compute windows for the
     /// edge's `losos-mesh-taint.service` to read.
     pub compute_windows_file: String,
-    /// The Stripe Connect market. `None` — no `--market-gate-socket` — and
-    /// every `/market/*` route answers 503; the rest of the API is unchanged.
+    /// The market. `None` (neither `--market-gate-socket` nor
+    /// `--market-no-cards`) and every `/market/*` route answers 503; the rest
+    /// of the API is unchanged.
     pub market: Option<Box<MarketOpts>>,
     /// The widget builder (`crate::builder`). `None` — no
     /// `--builder-key-file` — and every `/builder/*` route answers 503. Needs
@@ -734,6 +737,8 @@ fn valid_currency(c: &str) -> bool {
 /// of the Stripe gate (`stripe-gate`), which alone holds the key and the
 /// webhook secrets; the return URL is then required, because a market that can
 /// take payment but has nowhere to send the buyer back to would be half-made.
+/// Or enabled by `--market-no-cards`: coins only, no gate and no Stripe
+/// account, which needs `--market-usdc` and takes the mode of its networks.
 fn parse_provision(args: &[String]) -> Result<Mode> {
     let verb = args.first().map(String::as_str).unwrap_or("");
     let rest: Vec<String> = args.iter().skip(1).cloned().collect();
@@ -921,8 +926,18 @@ fn parse_rate(raw: &str) -> Option<u64> {
 }
 
 fn parse_market(args: &[String]) -> Result<Option<Box<MarketOpts>>> {
-    let Some(gate_socket) = arg(args, "--market-gate-socket") else {
-        return Ok(None);
+    // `--market-no-cards`: coins only, no Stripe gate. Exactly one of the two
+    // turns the market on.
+    let cards = !args.iter().any(|a| a == "--market-no-cards");
+    let gate_socket = match (arg(args, "--market-gate-socket"), cards) {
+        (None, true) => return Ok(None),
+        (Some(socket), true) => socket,
+        (None, false) => "",
+        (Some(_), false) => {
+            return Err(miette!(
+                "--market-no-cards takes no --market-gate-socket: an edge without cards runs no Stripe gate"
+            ))
+        }
     };
     let currency = arg(args, "--market-currency").unwrap_or("eur");
     if !valid_currency(currency) {
@@ -948,10 +963,40 @@ fn parse_market(args: &[String]) -> Result<Option<Box<MarketOpts>>> {
             "bad --market-storage-class {storage_class:?}; expected a Kubernetes object name (DNS-1123 subdomain)"
         ));
     }
-    let return_url = req(args, "--market-return-url")?;
-    if !crate::stripe_gate::url_ok(return_url) {
+    // Where Stripe sends a buyer back to: needed only with cards.
+    let return_url = if cards {
+        req(args, "--market-return-url")?
+    } else {
+        arg(args, "--market-return-url").unwrap_or("")
+    };
+    if (cards || !return_url.is_empty()) && !crate::stripe_gate::url_ok(return_url) {
         return Err(miette!(
             "--market-return-url must be an absolute http(s) URL with a host, no credentials and no #fragment"
+        ));
+    }
+    let hardware = hardware_catalogue(args, "--market-hardware-catalogue", currency)?;
+    let usdc = parse_usdc(args, currency)?;
+    if !cards && usdc.is_none() {
+        return Err(miette!(
+            "--market-no-cards needs --market-usdc: without cards the market takes coins, and USDC is the checkout they ride on"
+        ));
+    }
+    if !cards && hardware.is_some() {
+        return Err(miette!(
+            "--market-hardware-catalogue needs cards: hardware is paid by card through the Stripe gate"
+        ));
+    }
+    // Cents a seller may owe on coin sales before buyers can no longer pay
+    // them in coins. Capped so a stray digit cannot switch the rule off.
+    let coin_fee_limit: u64 = match arg(args, "--market-coin-fee-limit") {
+        None => crate::market::DEFAULT_COIN_FEE_LIMIT,
+        Some(raw) => raw
+            .parse()
+            .map_err(|_| miette!("bad --market-coin-fee-limit {raw:?}; expected cents"))?,
+    };
+    if coin_fee_limit > MAX_COIN_FEE_LIMIT {
+        return Err(miette!(
+            "--market-coin-fee-limit {coin_fee_limit} exceeds {MAX_COIN_FEE_LIMIT} cents"
         ));
     }
     Ok(Some(Box::new(MarketOpts {
@@ -963,11 +1008,14 @@ fn parse_market(args: &[String]) -> Result<Option<Box<MarketOpts>>> {
         currency: currency.to_string(),
         fee_bps,
         storage_class: storage_class.to_string(),
-        hardware_catalogue: hardware_catalogue(args, "--market-hardware-catalogue", currency)?,
+        hardware_catalogue: hardware,
         vms: parse_vms(args)?,
-        usdc: parse_usdc(args, currency)?,
+        usdc,
         btc: parse_btc(args, currency)?,
         xmr: parse_xmr(args, currency)?,
+        cards,
+        zec: parse_zec(args, currency)?,
+        coin_fee_limit,
     })))
 }
 
@@ -1051,6 +1099,49 @@ fn parse_xmr(args: &[String], currency: &str) -> Result<Option<crate::monero::Xm
         login_file: login_file.to_string(),
         daemon_rpc: daemon_rpc.to_string(),
     }))
+}
+
+/// Shielded Zcash orders, watched through public lightwalletd servers, one
+/// `--market-zec-server` each:
+///
+/// ```text
+/// --market-zec-server https://zec-node.cakewallet.com:443 --market-zec-server https://na.zec.rocks:443
+/// ```
+///
+/// A payment counts once servers of two operators agree on it, so the list
+/// names at least two. `--market-zec-network` is `main` unless a test edge
+/// names `test` or `regtest`. Quoted in US dollars beside USDC, like Bitcoin.
+fn parse_zec(args: &[String], currency: &str) -> Result<Option<crate::zcash::ZecOpts>> {
+    let servers = args_all(args, "--market-zec-server");
+    if servers.is_empty() {
+        return Ok(None);
+    }
+    for url in &servers {
+        if !crate::stablecoin::rpc_url_ok(url) {
+            return Err(miette!(
+                "bad --market-zec-server {url:?}; expected https, or http to 127.0.0.1, with no credentials in it"
+            ));
+        }
+    }
+    let servers: Vec<String> = servers.iter().map(|s| (*s).to_string()).collect();
+    if !crate::zcash::operators_enough(&servers) {
+        return Err(miette!(
+            "--market-zec-server names servers of one operator; a payment counts only when two operators agree"
+        ));
+    }
+    let network = match arg(args, "--market-zec-network") {
+        None => crate::zcash::Network::Main,
+        Some(text) => crate::zcash::Network::parse(text).ok_or_else(|| {
+            miette!("bad --market-zec-network {text:?}; expected main, test or regtest")
+        })?,
+    };
+    if currency != "usd" {
+        return Err(miette!("--market-zec-server needs --market-currency usd"));
+    }
+    if args_all(args, "--market-usdc").is_empty() {
+        return Err(miette!("--market-zec-server needs --market-usdc"));
+    }
+    Ok(Some(crate::zcash::ZecOpts { servers, network }))
 }
 
 /// USDC settlement: one `--market-usdc` per network, each a comma list of

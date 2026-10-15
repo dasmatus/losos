@@ -216,25 +216,27 @@ restarts `losos-registrar.service`.
 ### USDC networks
 
 An edge settles USDC on the networks listed under
-`losos.edge.market.usdc.networks`, all test or all live, matching the Stripe
-key's mode:
+`losos.edge.market.usdc.networks`, all live or all test. On an edge that
+takes cards they match the Stripe key's mode; on a coins-only edge they set
+the mode (see below):
 
 ```nix
 losos.edge.market.currency = "usd"; # prices are USDC cents
 losos.edge.market.usdc = {
   enable = true;
   networks = {
-    base-sepolia = { pay = "0x…"; treasury = "0x…"; };     # LososEscrow, fee address
-    arbitrum-sepolia = { pay = "0x…"; treasury = "0x…"; };
-    optimism-sepolia = { pay = "0x…"; treasury = "0x…"; };
-    solana-devnet = { treasury = "<base58 owner>"; };      # no contract on Solana
+    base = { pay = "0x…"; treasury = "0x…"; };          # LososEscrow, fee address
+    arbitrum = { pay = "0x…"; treasury = "0x…"; };
+    optimism = { pay = "0x…"; treasury = "0x…"; };
+    solana = { treasury = "<base58 owner>"; };          # no contract on Solana
   };
-  ensRpcUrlSealed = "/var/secrets/losos-ens-rpc.cred";     # optional
+  ensRpcUrlSealed = "/var/secrets/losos-ens-rpc.cred";  # optional
 };
 ```
 
-The names are `base`, `arbitrum`, `optimism` and `solana` for live, with
-`-sepolia` (or `solana-devnet`) for test. Each EVM network needs its own
+The names are `base`, `arbitrum`, `optimism` and `solana`. For a test edge
+they are `base-sepolia`, `arbitrum-sepolia`, `optimism-sepolia` and
+`solana-devnet`. Each EVM network needs its own
 `LososEscrow` deployment (`contracts/`), with the same treasury and the
 releaser key's address. Deploying it from a fresh key at nonce 0 gives it the
 same address on every chain. On Solana the treasury is the owner of
@@ -250,8 +252,8 @@ the operator's machine with the terminal client (`docs/edge-terminal.md`),
 which reads the URL without echoing it:
 
 ```sh
-losos edge secret set usdc-rpc-base-sepolia     # https://base-sepolia.g.alchemy.com/v2/KEY
-losos edge secret set usdc-rpc-solana-devnet    # https://devnet.helius-rpc.com/?api-key=KEY
+losos edge secret set usdc-rpc-base      # https://base-mainnet.g.alchemy.com/v2/KEY
+losos edge secret set usdc-rpc-solana    # https://mainnet.helius-rpc.com/?api-key=KEY
 losos edge secret list
 ```
 
@@ -278,8 +280,8 @@ payment, or refund it to the payer. `--new` refuses while a key is sealed;
 confirm payments while an escrow's `releaser()` is another address, and the
 second command shows which ones still do.
 
-`ens-rpc` (`losos edge secret set ens-rpc`) names an Ethereum endpoint
-(Sepolia for a test edge). With it, the admin pages show ENS names and take them when
+`ens-rpc` (`losos edge secret set ens-rpc`) names an Ethereum mainnet
+endpoint (Sepolia for a test edge). With it, the admin pages show ENS names and take them when
 sending USDC; without it, they do neither. The registrar checks its chain id
 before the first lookup and forwards only `eth_call`, `eth_chainId` and
 `eth_blockNumber` to it.
@@ -289,6 +291,39 @@ to a placeholder, which reads as "not configured"), so the terminal can
 reach it to seal them; until they are, the market answers 503 for USDC. Plain `http` is accepted only for a node
 on the edge's own loopback, such as `http://127.0.0.1:8545`.
 
+### Coins only, without cards
+
+`losos.edge.market.cards.enable` (default `true`) lets buyers pay by card
+through Stripe Connect. Set it to `false` and the edge takes coins only:
+USDC, plus Bitcoin and Monero where they are on. Such an edge needs no
+Stripe account:
+
+```nix
+losos.edge.market = {
+  enable = true;
+  cards.enable = false;
+  usdc.enable = true;     # required without cards
+  bitcoin.enable = true;  # optional
+  monero.enable = true;   # optional
+};
+```
+
+- No `losos-stripe-gate` unit runs and no Stripe key or webhook secret is
+  sealed, so `STRIPE_KEY` and `STRIPE_WEBHOOK_SECRET` can stay unset in the
+  `edge-credentials` workflow.
+- The registrar gets `--market-no-cards` in place of
+  `--market-gate-socket`.
+- The market's mode (the live or the test ledger) comes from its USDC
+  networks, so a live edge lists the mainnet ones (`base`, `arbitrum`,
+  `optimism`, `solana`).
+- It needs `losos.edge.market.usdc.enable`; the build refuses the
+  configuration without it.
+- Hardware sales (`losos.edge.market.hardware.enable`) and the widget
+  builder's top-ups (`losos.edge.builder.enable`) are paid by card, so they
+  need cards on.
+- `losos.edge.market.returnUrl` is needed only with cards. Without them it
+  may stay empty.
+
 ### Bitcoin orders
 
 With USDC on, an edge can also take Bitcoin for the same orders:
@@ -296,7 +331,7 @@ With USDC on, an edge can also take Bitcoin for the same orders:
 ```nix
 losos.edge.market.bitcoin = {
   enable = true;
-  chain = "main";    # a test edge: "testnet4", "signet" or "regtest"
+  chain = "main";    # the default; a test edge: "testnet4", "signet" or "regtest"
   pruneMiB = 10240;  # the default
 };
 ```
@@ -309,7 +344,7 @@ is nothing to seal: the cookie changes each time the node starts and the
 registrar reads it on every call. The registrar makes a watch-only,
 private-key-free wallet `losos-watch` on first use and imports each order's
 address into it. Before it takes a seller's key or hands out an address it
-checks that the node's chain fits the Stripe key's mode, and refuses
+checks that the node's chain fits the market's mode, and refuses
 otherwise. Until the node has caught
 up with the chain, payments show up late, so let it sync before listing.
 
@@ -320,7 +355,7 @@ With USDC on, an edge can also take Monero:
 ```nix
 losos.edge.market.monero = {
   enable = true;
-  network = "mainnet";  # a test edge: "stagenet" or "testnet"
+  network = "mainnet";  # the default; a test edge: "stagenet" or "testnet"
 };
 ```
 
@@ -333,5 +368,73 @@ seal: the wallet service writes a random `user:password` to
 its own config file, never on the command line, and the registrar reads the
 same file on every call (`--market-xmr-login-file`). Before it takes a
 seller's key or hands out a subaddress, the registrar checks that the node's
-network fits the Stripe key's mode and that the seller's address is for that
+network fits the market's mode and that the seller's address is for that
 network. As with Bitcoin, let the node sync before listing.
+
+### Zcash orders
+
+With USDC on, an edge can also take shielded Zcash:
+
+```nix
+losos.edge.market.zcash = {
+  enable = true;
+  network = "mainnet";  # the default; "testnet" or "regtest" only on a test edge
+  # servers = [ ... ];  # the default lists four mainnet operators
+};
+```
+
+This starts nothing. The registrar gets one `--market-zec-server` per entry
+of `servers` and `--market-zec-network main`, and asks those public
+lightwalletd servers over gRPC (TLS checked against the webpki roots) for
+compact blocks and the mempool. It decrypts them itself, so the sellers'
+viewing keys stay in the market ledger on the edge. Each server must report
+`chainName` `main` on a live edge or it is not asked, and a payment counts
+only when servers of two operators (told apart by domain) show it in a block
+of the same hash. The registrar refuses a list of fewer than two operators at
+start. Before it takes a seller's key or hands out an address it checks that
+the network fits the Stripe key's mode, that the key is for that network,
+and that two operators answer. The default servers came from
+hosh.zec.rocks/zec; replace one that goes away. There is nothing to seal and
+nothing to sync.
+
+`backend-registrar/tests/zcash.rs` runs in every `cargo test`, with no node:
+stand-in lightwalletd servers in the test process serve compact blocks whose
+payments are real Orchard and Ironwood notes encrypted to the order's
+address, one of them lying.
+
+### Platform fees on coin sales
+
+Bitcoin, Monero and Zcash payments go whole to the seller, so the market's
+fee on them is a debt in the ledger (`coin_sellers.<appliance>.fees_owed`,
+with `owed_since` and `fee_credit`), settled in USDC (handbook, Market,
+"Platform fees on coin sales"). One knob:
+
+```nix
+losos.edge.market.coinFeeLimit = 1000;  # the default: US$10, in cents
+```
+
+It reaches the registrar as `--market-coin-fee-limit` (0 to 100000). While a
+seller owes more than that, or has owed anything for 30 days (fixed), the
+edge drops coins from that seller's new orders and refuses new coin
+payments. 0 stops coin payments at the first cent owed. A ledger from before
+this kept no start date: the first read stamps one, and it is written with
+the next change to the ledger.
+
+Two things move USDC to the treasury for it, both into
+`losos.edge.market.usdc.networks.<network>.treasury`:
+
+- A USDC order of a seller who owes takes the debt on top of its fee, up to
+  half the gross (the escrow's own cap). The invoice's `fee` includes it and
+  `fee_offset` names it; the order keeps it as `fee_offset`. The debt drops
+  when the edge's release of the deposit is mined, or when a Solana payment
+  is confirmed, and never for a refund.
+- `POST /market/fees/pay` (`tx`, `network`) counts a plain USDC `transfer`
+  to the treasury from the seller's signed EVM payout address, read from the
+  edge's own RPC endpoint after an `eth_chainId` check, with the usual
+  confirmations. Each transaction counts once (`fee_payments` in the
+  ledger), never for more than is owed, and a transaction that paid an order
+  is refused. Solana is refused.
+
+`backend-registrar/tests/usdc.rs` covers both paths and the pause against a
+stand-in RPC. `contracts/test-payment.sh` also sends a real fee transfer on
+anvil and checks the registrar reads it.

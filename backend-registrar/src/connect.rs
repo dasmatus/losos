@@ -314,6 +314,67 @@ impl Connect for GateClient {
     }
 }
 
+// ── an edge without card payments ────────────────────────────────────────
+
+/// The platform of an edge that takes coins only (`--market-no-cards`): no
+/// Stripe key, no gate. The mode is the chains', so the ledger it reads is
+/// the one those chains settle into. Everything Stripe would answer is
+/// [`MarketError::Unconfigured`], which reaches the box as 503.
+#[derive(Debug, Clone, Copy)]
+pub struct NoCards {
+    pub mode: StripeMode,
+}
+
+fn no_cards<'a, T: Send + 'a>() -> ConnectFuture<'a, T> {
+    Box::pin(async { Err(MarketError::Unconfigured) })
+}
+
+impl Connect for NoCards {
+    fn mode(&self) -> ConnectFuture<'_, StripeMode> {
+        let mode = self.mode;
+        Box::pin(async move { Ok(mode) })
+    }
+
+    fn create_account<'a>(
+        &'a self,
+        _tenant: &'a str,
+        _box_uuid: Option<&'a str>,
+    ) -> ConnectFuture<'a, (String, StripeMode)> {
+        no_cards()
+    }
+
+    fn tag_account<'a>(&'a self, _account: &'a str, _box_uuid: &'a str) -> ConnectFuture<'a, ()> {
+        no_cards()
+    }
+
+    fn account_ready<'a>(&'a self, _account: &'a str) -> ConnectFuture<'a, bool> {
+        no_cards()
+    }
+
+    fn onboarding_link<'a>(
+        &'a self,
+        _account: &'a str,
+        _return_url: &'a str,
+    ) -> ConnectFuture<'a, String> {
+        no_cards()
+    }
+
+    fn destination_charge<'a>(
+        &'a self,
+        _charge: &'a DestinationCharge,
+    ) -> ConnectFuture<'a, Session> {
+        no_cards()
+    }
+
+    fn verify_webhook<'a>(
+        &'a self,
+        _signature: &'a str,
+        _body: &'a [u8],
+    ) -> ConnectFuture<'a, StripeMode> {
+        no_cards()
+    }
+}
+
 // ── the in-memory platform ───────────────────────────────────────────────
 
 /// The webhook signing secret of every [`MemoryConnect`].

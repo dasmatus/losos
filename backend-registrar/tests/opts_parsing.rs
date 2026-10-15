@@ -386,6 +386,20 @@ fn a_market_serve_invocation_takes_a_four_percent_cut_by_default() {
     assert_eq!(market.gate_socket, "/run/losos-stripe-gate/gate.sock");
     assert_eq!(market.state_file, "/var/lib/losos-registrar/market.json");
     assert_eq!(market.storage_class, "longhorn");
+    assert_eq!(market.coin_fee_limit, 1_000);
+}
+
+#[test]
+fn the_coin_fee_limit_is_cents_and_bounded() {
+    let mut args = vec!["--market-coin-fee-limit", "2500"];
+    args.extend(MARKET_FLAGS);
+    let market = serve_opts(&args).market.expect("market enabled");
+    assert_eq!(market.coin_fee_limit, 2_500);
+    for bad in ["ten", "-1", "100001"] {
+        let mut args = vec!["--market-coin-fee-limit", bad];
+        args.extend(MARKET_FLAGS);
+        assert!(parse(serve_args(&args)).is_err(), "{bad}");
+    }
 }
 
 #[test]
@@ -439,6 +453,43 @@ fn market_flags_are_all_or_nothing_and_bounded() {
         args.extend(MARKET_FLAGS);
         let market = serve_opts(&args).market.expect("market enabled");
         assert_eq!(market.storage_class, good);
+    }
+}
+
+#[test]
+fn an_edge_without_cards_takes_coins_and_no_gate() {
+    const BASE: &str = "network=base,rpc=/run/c/usdc-rpc-base,pay=0x1111111111111111111111111111111111111111,treasury=0x4444444444444444444444444444444444444444";
+    let coins = [
+        "--market-no-cards",
+        "--market-currency",
+        "usd",
+        "--market-usdc",
+        BASE,
+        "--market-usdc-releaser-file",
+        "/run/c/usdc-releaser-key",
+    ];
+    let market = serve_opts(&coins).market.expect("market enabled");
+    assert!(!market.cards);
+    assert_eq!(market.gate_socket, "");
+    assert_eq!(market.return_url, "");
+    assert!(!market.usdc.expect("usdc").test(), "base is a live network");
+    // A card edge keeps the gate.
+    assert!(serve_opts(MARKET_FLAGS).market.expect("market").cards);
+    // Without USDC there is nothing to pay with.
+    assert!(parse(serve_args(&[
+        "--market-no-cards",
+        "--market-currency",
+        "usd"
+    ]))
+    .is_err());
+    // No gate beside it, and no hardware: that is paid by card.
+    for extra in [
+        ["--market-gate-socket", "/run/losos-stripe-gate/gate.sock"],
+        ["--market-hardware-catalogue", "/etc/losos/hardware.json"],
+    ] {
+        let mut args = coins.to_vec();
+        args.extend(extra);
+        assert!(parse(serve_args(&args)).is_err(), "{extra:?}");
     }
 }
 
@@ -939,4 +990,66 @@ fn monero_takes_its_wallet_service_and_node_beside_usdc() {
     let mut leaky = XMR;
     leaky[1] = "http://losos:pw@127.0.0.1:18083";
     assert!(parse(args(true, "usd", &leaky)).is_err());
+}
+
+#[test]
+fn zcash_takes_mainnet_servers_of_two_operators_beside_usdc() {
+    const SOL: &str = "network=solana-devnet,rpc=/run/c/usdc-rpc-solana-devnet,treasury=5ZWj7a1f8tWkjBESHKgrLmXshuXxqeY9SYcfbshpAqPG";
+    const ZEC: [&str; 4] = [
+        "--market-zec-server",
+        "https://zec-node.cakewallet.com:443",
+        "--market-zec-server",
+        "https://na.zec.rocks:443",
+    ];
+    let args = |usdc: bool, currency: &'static str, zec: &[&'static str]| {
+        let mut args = vec!["--market-currency", currency];
+        if usdc {
+            args.extend(["--market-usdc", SOL]);
+        }
+        args.extend(zec);
+        args.extend(MARKET_FLAGS);
+        serve_args(&args)
+    };
+    let zec_of = |args| {
+        let Mode::Serve(opts) = parse(args).expect("parses") else {
+            panic!("not serve")
+        };
+        opts.market.expect("market").zec
+    };
+    let zec = zec_of(args(true, "usd", &ZEC)).expect("zcash on");
+    assert_eq!(
+        zec.servers,
+        [
+            "https://zec-node.cakewallet.com:443",
+            "https://na.zec.rocks:443"
+        ]
+    );
+    // Mainnet unless a test edge names another network.
+    assert_eq!(zec.network, losos_registrar::zcash::Network::Main);
+    let mut regtest = ZEC.to_vec();
+    regtest.extend(["--market-zec-network", "regtest"]);
+    assert_eq!(
+        zec_of(args(true, "usd", &regtest)).unwrap().network,
+        losos_registrar::zcash::Network::Regtest
+    );
+    assert!(zec_of(args(true, "usd", &[])).is_none());
+
+    // Priced in dollars beside USDC; two operators, not two servers of one;
+    // no login in a URL; a network the edge knows.
+    assert!(parse(args(false, "usd", &ZEC)).is_err());
+    assert!(parse(args(true, "eur", &ZEC)).is_err());
+    assert!(parse(args(true, "usd", &ZEC[..2])).is_err());
+    let one_operator = [
+        "--market-zec-server",
+        "https://na.zec.rocks:443",
+        "--market-zec-server",
+        "https://eu.zec.rocks:443",
+    ];
+    assert!(parse(args(true, "usd", &one_operator)).is_err());
+    let mut leaky = ZEC;
+    leaky[1] = "https://user:pw@zec-node.cakewallet.com:443";
+    assert!(parse(args(true, "usd", &leaky)).is_err());
+    let mut unknown = ZEC.to_vec();
+    unknown.extend(["--market-zec-network", "devnet"]);
+    assert!(parse(args(true, "usd", &unknown)).is_err());
 }

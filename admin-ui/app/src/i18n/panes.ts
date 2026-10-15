@@ -1878,6 +1878,11 @@ export default defineMessages({
     sk: "dostanete {amount}",
     de: "du erhältst {amount}",
   },
+  "panes.market.youReceiveOffset": {
+    en: "you receive {amount}, after {offset} toward platform fees owed on coin sales",
+    sk: "dostanete {amount}, po odpočítaní {offset} na poplatky platformy dlžné z predajov v minciach",
+    de: "du erhältst {amount}, nach {offset} für offene Plattformgebühren aus Coin-Verkäufen",
+  },
 
   // ── Toasts the panes raise ────────────────────────────────────────────────
   "panes.market.actionFailedTitle": {
@@ -1936,9 +1941,9 @@ export default defineMessages({
     de: "In USDC zahlen und bezahlt werden",
   },
   "panes.market.usdc.how": {
-    en: "Orders on this edge are paid in USDC on {chain}; you pick the network when you pay. Create a wallet here, import the 12 or 24 words from MetaMask, Rabby, Rainbow, Trust Wallet or Phantom, or connect the wallet already in this browser. One phrase gives you an address on every network listed. The platform fee goes to the edge's treasury and the rest straight to the seller. The box never sees your phrase or your key.",
-    sk: "Objednávky na tomto edge sa platia v USDC na sieti {chain}; sieť si vyberiete pri platbe. Vytvorte peňaženku tu, importujte 12 alebo 24 slov z MetaMask, Rabby, Rainbow, Trust Wallet alebo Phantom, alebo pripojte peňaženku, ktorá už v tomto prehliadači je. Jedna fráza vám dá adresu na každej uvedenej sieti. Poplatok platformy ide do pokladnice edge a zvyšok priamo predajcovi. Zariadenie vašu frázu ani kľúč nikdy nevidí.",
-    de: "Bestellungen auf diesem Edge werden in USDC auf {chain} bezahlt; das Netzwerk wählst du beim Bezahlen. Lege hier eine Wallet an, importiere die 12 oder 24 Wörter aus MetaMask, Rabby, Rainbow, Trust Wallet oder Phantom, oder verbinde die Wallet, die schon in diesem Browser steckt. Eine Phrase gibt dir eine Adresse auf jedem genannten Netzwerk. Die Plattformgebühr geht an die Kasse des Edge, der Rest direkt an den Verkäufer. Die Box sieht weder deine Wörter noch deinen Schlüssel.",
+    en: "Orders on this edge are paid in USDC on {chain}; you pick the network when you pay. Create a wallet here, import the 12 or 24 words from MetaMask, Rabby, Rainbow, Trust Wallet or Phantom, or connect the wallet already in this browser. One phrase gives you an address on every network listed. The platform fee goes to the edge's treasury and the rest to the seller once the edge has confirmed the payment. The box never sees your phrase or your key.",
+    sk: "Objednávky na tomto edge sa platia v USDC na sieti {chain}; sieť si vyberiete pri platbe. Vytvorte peňaženku tu, importujte 12 alebo 24 slov z MetaMask, Rabby, Rainbow, Trust Wallet alebo Phantom, alebo pripojte peňaženku, ktorá už v tomto prehliadači je. Jedna fráza vám dá adresu na každej uvedenej sieti. Poplatok platformy ide do pokladnice edge a zvyšok predajcovi, keď edge platbu potvrdí. Zariadenie vašu frázu ani kľúč nikdy nevidí.",
+    de: "Bestellungen auf diesem Edge werden in USDC auf {chain} bezahlt; das Netzwerk wählst du beim Bezahlen. Lege hier eine Wallet an, importiere die 12 oder 24 Wörter aus MetaMask, Rabby, Rainbow, Trust Wallet oder Phantom, oder verbinde die Wallet, die schon in diesem Browser steckt. Eine Phrase gibt dir eine Adresse auf jedem genannten Netzwerk. Die Plattformgebühr geht an die Kasse des Edge, der Rest an den Verkäufer, sobald der Edge die Zahlung bestätigt hat. Die Box sieht weder deine Wörter noch deinen Schlüssel.",
   },
   "panes.market.usdc.writeDown": {
     en: "Write these words down. They are the wallet. This page cannot show them again.",
@@ -1991,14 +1996,14 @@ export default defineMessages({
     de: "Wohin du bezahlt wirst",
   },
   "panes.market.usdc.payCaption": {
-    en: "You pay from the wallet below, in USDC on {chain}. The platform fee goes to the edge's treasury and the rest straight to the seller.",
-    sk: "Platíte z peňaženky nižšie, v USDC na sieti {chain}. Poplatok platformy ide do pokladnice edge a zvyšok priamo predajcovi.",
-    de: "Du bezahlst mit der Wallet unten, in USDC auf {chain}. Die Plattformgebühr geht an die Kasse des Edge, der Rest direkt an den Verkäufer.",
+    en: "You pay from the wallet below, in USDC on {chain}. The platform fee goes to the edge's treasury and the rest to the seller once the edge has confirmed the payment.",
+    sk: "Platíte z peňaženky nižšie, v USDC na sieti {chain}. Poplatok platformy ide do pokladnice edge a zvyšok predajcovi, keď edge platbu potvrdí.",
+    de: "Du bezahlst mit der Wallet unten, in USDC auf {chain}. Die Plattformgebühr geht an die Kasse des Edge, der Rest an den Verkäufer, sobald der Edge die Zahlung bestätigt hat.",
   },
   "panes.market.usdc.sellCaption": {
-    en: "The platform keeps {percent}% of each sale to cover running costs. The rest is paid straight to your payout address in the same transaction.",
-    sk: "Platforma si z každého predaja necháva {percent} % na pokrytie nákladov. Zvyšok ide v tej istej transakcii priamo na vašu adresu pre výplaty.",
-    de: "Die Plattform behält {percent} % jedes Verkaufs für die Betriebskosten. Der Rest geht in derselben Transaktion direkt an deine Auszahlungsadresse.",
+    en: "The platform keeps {percent}% of each sale to cover running costs. The rest reaches your payout address once the edge has confirmed the payment.",
+    sk: "Platforma si z každého predaja necháva {percent} % na pokrytie nákladov. Zvyšok príde na vašu adresu pre výplaty, keď edge platbu potvrdí.",
+    de: "Die Plattform behält {percent} % jedes Verkaufs für die Betriebskosten. Der Rest kommt auf deiner Auszahlungsadresse an, sobald der Edge die Zahlung bestätigt hat.",
   },
   "panes.market.usdc.payoutFirst": {
     en: "Set where you get paid in the wallet above, then list what this box shares.",
@@ -2221,14 +2226,24 @@ export default defineMessages({
     de: "Zahlungen in {coin}",
   },
   "panes.market.coins.keyDetail": {
-    en: "Paste your wallet's extended public key (xpub or zpub) or a descriptor. Each order gets a fresh address from it, so the coins go straight to your wallet: the edge can see them arrive but can never spend them. Use an account you keep for these sales, since anything paid to its addresses counts toward orders. The platform's fee on these sales is billed to you separately.",
-    sk: "Vložte rozšírený verejný kľúč vašej peňaženky (xpub alebo zpub) alebo deskriptor. Každá objednávka z neho dostane novú adresu, takže mince idú priamo do vašej peňaženky: edge vidí, že prišli, ale nikdy ich nemôže minúť. Použite účet, ktorý držíte len na tieto predaje, lebo všetko zaplatené na jeho adresy sa počíta k objednávkam. Poplatok platformy z týchto predajov sa vám účtuje zvlášť.",
-    de: "Füge den erweiterten öffentlichen Schlüssel deiner Wallet (xpub oder zpub) oder einen Deskriptor ein. Jede Bestellung bekommt daraus eine neue Adresse, die Coins gehen also direkt in deine Wallet: Der Edge sieht sie ankommen, kann sie aber nie ausgeben. Nimm ein Konto nur für diese Verkäufe, denn alles, was an seine Adressen geht, zählt für Bestellungen. Die Gebühr der Plattform auf diese Verkäufe wird dir separat berechnet.",
+    en: "Paste your wallet's extended public key (xpub or zpub) or a descriptor. Each order gets a fresh address from it, so the coins go straight to your wallet: the edge can see them arrive but can never spend them. Use an account you keep for these sales, since anything paid to its addresses counts toward orders. The platform's fee on these sales comes out of your next USDC sales, or you pay it in USDC.",
+    sk: "Vložte rozšírený verejný kľúč vašej peňaženky (xpub alebo zpub) alebo deskriptor. Každá objednávka z neho dostane novú adresu, takže mince idú priamo do vašej peňaženky: edge vidí, že prišli, ale nikdy ich nemôže minúť. Použite účet, ktorý držíte len na tieto predaje, lebo všetko zaplatené na jeho adresy sa počíta k objednávkam. Poplatok platformy z týchto predajov sa strhne z vašich ďalších predajov v USDC, alebo ho zaplatíte v USDC.",
+    de: "Füge den erweiterten öffentlichen Schlüssel deiner Wallet (xpub oder zpub) oder einen Deskriptor ein. Jede Bestellung bekommt daraus eine neue Adresse, die Coins gehen also direkt in deine Wallet: Der Edge sieht sie ankommen, kann sie aber nie ausgeben. Nimm ein Konto nur für diese Verkäufe, denn alles, was an seine Adressen geht, zählt für Bestellungen. Die Gebühr der Plattform auf diese Verkäufe geht von deinen nächsten USDC-Verkäufen ab, oder du zahlst sie in USDC.",
   },
   "panes.market.coins.keyDetailXmr": {
-    en: "Paste your wallet's primary address (it starts with 4) and its private view key, which wallets show under their keys or seed settings. Each order gets a fresh subaddress of your wallet, so the coins go straight to you: the view key lets the edge see them arrive but never spend them. Never paste the spend key or the seed. The platform's fee on these sales is billed to you separately.",
-    sk: "Vložte hlavnú adresu vašej peňaženky (začína sa na 4) a jej súkromný kľúč na prezeranie (view key), ktorý peňaženky ukazujú v nastaveniach kľúčov alebo seedu. Každá objednávka dostane novú podadresu vašej peňaženky, takže mince idú priamo k vám: kľúč na prezeranie dovolí edgu vidieť, že prišli, ale nikdy ich nemôže minúť. Nikdy nevkladajte kľúč na míňanie (spend key) ani seed. Poplatok platformy z týchto predajov sa vám účtuje zvlášť.",
-    de: "Füge die Hauptadresse deiner Wallet (sie beginnt mit 4) und ihren privaten View-Key ein, den Wallets in den Einstellungen zu Schlüsseln oder Seed zeigen. Jede Bestellung bekommt eine neue Subadresse deiner Wallet, die Coins gehen also direkt an dich: Mit dem View-Key sieht der Edge sie ankommen, kann sie aber nie ausgeben. Füge nie den Spend-Key oder den Seed ein. Die Gebühr der Plattform auf diese Verkäufe wird dir separat berechnet.",
+    en: "Paste your wallet's primary address (it starts with 4) and its private view key, which wallets show under their keys or seed settings. Each order gets a fresh subaddress of your wallet, so the coins go straight to you: the view key lets the edge see them arrive but never spend them. Never paste the spend key or the seed. The platform's fee on these sales comes out of your next USDC sales, or you pay it in USDC.",
+    sk: "Vložte hlavnú adresu vašej peňaženky (začína sa na 4) a jej súkromný kľúč na prezeranie (view key), ktorý peňaženky ukazujú v nastaveniach kľúčov alebo seedu. Každá objednávka dostane novú podadresu vašej peňaženky, takže mince idú priamo k vám: kľúč na prezeranie dovolí edgu vidieť, že prišli, ale nikdy ich nemôže minúť. Nikdy nevkladajte kľúč na míňanie (spend key) ani seed. Poplatok platformy z týchto predajov sa strhne z vašich ďalších predajov v USDC, alebo ho zaplatíte v USDC.",
+    de: "Füge die Hauptadresse deiner Wallet (sie beginnt mit 4) und ihren privaten View-Key ein, den Wallets in den Einstellungen zu Schlüsseln oder Seed zeigen. Jede Bestellung bekommt eine neue Subadresse deiner Wallet, die Coins gehen also direkt an dich: Mit dem View-Key sieht der Edge sie ankommen, kann sie aber nie ausgeben. Füge nie den Spend-Key oder den Seed ein. Die Gebühr der Plattform auf diese Verkäufe geht von deinen nächsten USDC-Verkäufen ab, oder du zahlst sie in USDC.",
+  },
+  "panes.market.coins.keyDetailZec": {
+    en: "Paste your wallet's unified viewing key (uview…), or better its incoming viewing key (uivk…), which wallets show under their export or backup settings. Each order gets a fresh shielded address of your wallet, so the coins go straight to you: the edge keeps only the part that sees payments arrive, never spends them and never sees what you send. Never paste the spending key or the seed phrase. The platform's fee on these sales comes out of your next USDC sales, or you pay it in USDC.",
+    sk: "Vložte zjednotený kľúč na prezeranie vašej peňaženky (uview…), alebo lepšie jeho časť pre prichádzajúce platby (uivk…), ktorú peňaženky ukazujú v nastaveniach exportu alebo zálohy. Každá objednávka dostane novú tienenú adresu vašej peňaženky, takže mince idú priamo k vám: edge si nechá len časť, ktorá vidí prichádzajúce platby, nikdy ich nemôže minúť a nikdy nevidí, čo posielate vy. Nikdy nevkladajte kľúč na míňanie ani seed. Poplatok platformy z týchto predajov sa strhne z vašich ďalších predajov v USDC, alebo ho zaplatíte v USDC.",
+    de: "Füge den Unified Viewing Key deiner Wallet ein (uview…), besser noch den Incoming Viewing Key (uivk…), den Wallets in den Einstellungen zu Export oder Sicherung zeigen. Jede Bestellung bekommt eine neue abgeschirmte Adresse deiner Wallet, die Coins gehen also direkt an dich: Der Edge behält nur den Teil, der Zahlungen ankommen sieht, kann sie nie ausgeben und sieht nie, was du sendest. Füge nie den Spending Key oder den Seed ein. Die Gebühr der Plattform auf diese Verkäufe geht von deinen nächsten USDC-Verkäufen ab, oder du zahlst sie in USDC.",
+  },
+  "panes.market.coins.viewingKeyPlaceholder": {
+    en: "Unified viewing key (uview… or uivk…)",
+    sk: "Zjednotený kľúč na prezeranie (uview… alebo uivk…)",
+    de: "Unified Viewing Key (uview… oder uivk…)",
   },
   "panes.market.coins.addressPlaceholder": {
     en: "Primary address (4…)",
@@ -2270,10 +2285,65 @@ export default defineMessages({
     sk: "Kľúč sa neuložil",
     de: "Der Schlüssel wurde nicht gespeichert",
   },
-  "panes.market.coins.feesOwed": {
-    en: "Platform fees owed on coin sales: {amount}.",
-    sk: "Poplatky platformy za predaje v minciach: {amount}.",
-    de: "Offene Plattformgebühren aus Coin-Verkäufen: {amount}.",
+  "panes.market.coinFees.title": {
+    en: "Platform fees on coin sales",
+    sk: "Poplatky platformy za predaje v minciach",
+    de: "Plattformgebühren aus Coin-Verkäufen",
+  },
+  "panes.market.coinFees.owed": {
+    en: "You owe {amount}: coins go straight to your wallet, so the platform's share of those sales is settled apart. Each USDC sale pays toward it, up to half its price, or you can pay it now.",
+    sk: "Dlžíte {amount}: mince idú priamo do vašej peňaženky, preto sa podiel platformy z týchto predajov vyrovnáva zvlášť. Každý predaj v USDC na to prispeje, najviac polovicou svojej ceny, alebo to môžete zaplatiť hneď.",
+    de: "Du schuldest {amount}: Coins gehen direkt an deine Wallet, deshalb wird der Anteil der Plattform an diesen Verkäufen getrennt beglichen. Jeder USDC-Verkauf zahlt darauf ein, bis zur Hälfte seines Preises, oder du zahlst es jetzt.",
+  },
+  "panes.market.coinFees.limits": {
+    en: "Buyers can keep paying you in coins while you owe no more than {limit} and it is settled by {date}.",
+    sk: "Kupujúci vám môžu platiť v minciach, kým dlžíte najviac {limit} a vyrovnáte to do {date}.",
+    de: "Käufer können dich weiter in Coins bezahlen, solange du höchstens {limit} schuldest und es bis {date} beglichen ist.",
+  },
+  "panes.market.coinFees.paused": {
+    en: "Buyers cannot pay you in coins until this is settled. USDC still works, and each USDC sale pays toward it.",
+    sk: "Kupujúci vám nemôžu platiť v minciach, kým to nevyrovnáte. USDC funguje ďalej a každý predaj v USDC na to prispeje.",
+    de: "Käufer können dich nicht in Coins bezahlen, bis das beglichen ist. USDC funktioniert weiter, und jeder USDC-Verkauf zahlt darauf ein.",
+  },
+  "panes.market.coinFees.credit": {
+    en: "{amount} from a USDC sale went beyond what you owed and pays the fees of your next coin sales first.",
+    sk: "{amount} z predaja v USDC prevýšilo váš dlh a najprv sa použije na poplatky z vašich ďalších predajov v minciach.",
+    de: "{amount} aus einem USDC-Verkauf ging über deine Schuld hinaus und zahlt zuerst die Gebühren deiner nächsten Coin-Verkäufe.",
+  },
+  "panes.market.coinFees.payFrom": {
+    en: "The transfer goes from your payout address to the platform's treasury. A transfer from any other address is not counted, and anything above what you owe is not refunded.",
+    sk: "Prevod ide z vašej adresy pre výplaty do pokladnice platformy. Prevod z inej adresy sa nezapočíta a čo zaplatíte navyše, sa nevracia.",
+    de: "Die Überweisung geht von deiner Auszahlungsadresse an die Kasse der Plattform. Eine Überweisung von einer anderen Adresse zählt nicht, und was über deine Schuld hinausgeht, wird nicht erstattet.",
+  },
+  "panes.market.coinFees.notPayout": {
+    en: "Pay from your payout address, {address}: open that wallet here first. A transfer from any other address is not counted, and anything above what you owe is not refunded.",
+    sk: "Zaplaťte z vašej adresy pre výplaty, {address}: najprv tu otvorte tú peňaženku. Prevod z inej adresy sa nezapočíta a čo zaplatíte navyše, sa nevracia.",
+    de: "Zahle von deiner Auszahlungsadresse, {address}: öffne zuerst diese Wallet hier. Eine Überweisung von einer anderen Adresse zählt nicht, und was über deine Schuld hinausgeht, wird nicht erstattet.",
+  },
+  "panes.market.coinFees.noPayout": {
+    en: "Set a USDC payout address on the Ethereum networks first. The fees are paid from it.",
+    sk: "Najprv nastavte adresu pre výplaty v USDC na sieťach Etherea. Poplatky sa platia z nej.",
+    de: "Lege zuerst eine USDC-Auszahlungsadresse auf den Ethereum-Netzen fest. Die Gebühren werden von ihr bezahlt.",
+  },
+  "panes.market.coinFees.pay": {
+    en: "Pay {amount}",
+    sk: "Zaplatiť {amount}",
+    de: "{amount} bezahlen",
+  },
+  "panes.market.coinFees.counting": {
+    en: "The transfer is sent. The edge counts it once it has enough blocks.",
+    sk: "Prevod je odoslaný. Edge ho započíta, keď bude mať dosť blokov.",
+    de: "Die Überweisung ist gesendet. Der Edge zählt sie, sobald sie genug Blöcke hat.",
+  },
+  "panes.market.coinFees.paidTitle": {
+    en: "Platform fees paid",
+    sk: "Poplatky platformy sú zaplatené",
+    de: "Plattformgebühren bezahlt",
+  },
+  "panes.market.coinFees.paidDetail": {
+    en: "{credited} counted. Still owed: {owed}.",
+    sk: "Započítané: {credited}. Ešte zostáva: {owed}.",
+    de: "{credited} angerechnet. Noch offen: {owed}.",
   },
   "panes.market.usdc.madeHere": {
     en: "This wallet was made on this box and lives only in this browser. Choose where your sales go before you list: sign with this wallet, or use the address of a wallet you keep elsewhere.",
@@ -2331,9 +2401,14 @@ export default defineMessages({
     de: "Diese Bestellung bezahlen",
   },
   "panes.market.usdc.payDetail": {
-    en: "{gross} on {chain}. The platform keeps {fee}; the rest goes straight to the seller.",
-    sk: "{gross} na sieti {chain}. Platforma si nechá {fee}; zvyšok ide priamo predajcovi.",
-    de: "{gross} auf {chain}. Die Plattform behält {fee}; der Rest geht direkt an den Verkäufer.",
+    en: "{gross} on {chain}. The platform keeps {fee}; the seller gets the rest once the edge has confirmed the payment.",
+    sk: "{gross} na sieti {chain}. Platforma si nechá {fee}; zvyšok dostane predajca, keď edge platbu potvrdí.",
+    de: "{gross} auf {chain}. Die Plattform behält {fee}; den Rest bekommt der Verkäufer, sobald der Edge die Zahlung bestätigt hat.",
+  },
+  "panes.market.usdc.payDetailOffset": {
+    en: "{gross} on {chain}. The platform keeps {fee}, of which {offset} settles fees the seller owes on earlier coin sales; the seller gets the rest once the edge has confirmed the payment.",
+    sk: "{gross} na sieti {chain}. Platforma si nechá {fee}, z toho {offset} vyrovnáva poplatky, ktoré predajca dlží z predchádzajúcich predajov v minciach; zvyšok dostane predajca, keď edge platbu potvrdí.",
+    de: "{gross} auf {chain}. Die Plattform behält {fee}, davon begleichen {offset} Gebühren, die der Verkäufer aus früheren Coin-Verkäufen schuldet; den Rest bekommt der Verkäufer, sobald der Edge die Zahlung bestätigt hat.",
   },
   "panes.market.usdc.pay": {
     en: "Pay with USDC",

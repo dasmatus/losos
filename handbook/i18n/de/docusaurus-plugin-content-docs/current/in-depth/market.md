@@ -1,34 +1,31 @@
 ---
-title: Marktplatz (geplant)
+title: Marktplatz
 sidebar_position: 4
 mdx:
   format: md
 ---
 
-# Marktplatz (geplant)
+# Marktplatz
 
 Ein optionaler Marktplatz, auf dem eine Box freien Speicher oder Rechenleistung
-verkauft und eine andere sie kauft. Die Zahlung läuft über **Stripe Connect**,
+verkauft und eine andere sie kauft. Käufer zahlen in USDC, Bitcoin oder
+Monero, oder per Karte über **Stripe Connect**, wo die Edge Karten annimmt,
 und die Edge behält 4 % ein, um ihre Betriebskosten zu decken.
 
-**Er ist noch nicht geöffnet.** Der Code ist durchgehend fertig: die
-`/market/*`-Routen des Registrars, das Stripe-Gate, das Relay in lososd und der
-Bereich in der Admin-UI. Eine Stripe-Connect-Plattform braucht jedoch ein
-eingetragenes Unternehmen dahinter, und das gibt es noch nicht. Bis dahin zeigt
-die Admin-UI den Tab **Markt** ausgegraut mit einem „soon(TM)“-Badge. Niemand
-kann ihn anklicken oder über die Adresse erreichen, und nichts auf einer Box
-fragt den Marktplatz irgendetwas. Der Schalter für die Festplattenfreigabe
-(`losos.sharingMyStorage`) liegt in diesem Bereich, also öffnet sich die
-Freigabe der Festplatte für das Mesh zusammen mit dem Marktplatz, und die UI
-kann sie vorher nicht einschalten. Der Rest dieser Seite beschreibt, wie der
-Marktplatz funktioniert, sobald er öffnet. Auch dann ist er standardmäßig aus,
-und zwar auf drei Ebenen.
+Die Zeile **Markt** unter Mesh in der Seitenleiste öffnet den Bereich, unter
+`/settings/market`. Eine Box zeigt den Marktplatz nur, wenn eine offizielle
+LosOS-Edge erreichbar ist; sonst sagt der Bereich, dass der Markt auf dieser
+Box nicht verfügbar ist. Der Schalter für die Festplattenfreigabe
+(`losos.sharingMyStorage`) liegt in diesem Bereich und lässt sich in beiden
+Fällen einschalten, sodass die Seite Maschinen funktioniert, sobald die
+Freigabe an ist. Der Marktplatz ist standardmäßig aus, und zwar auf drei
+Ebenen.
 
 |                                  | Standard     | Schalter                                         |
 | -------------------------------- | ------------ | ------------------------------------------------ |
 | Die Edge bietet ihn an           | aus          | `losos.edge.market.enable`                       |
 | Eine Box darf handeln            | aus          | `losos.edge.tenants.<id>.market`                 |
-| Ein Verkäufer darf anbieten      | geschlossen  | Stripe meldet das verbundene Konto als bereit    |
+| Ein Verkäufer darf anbieten      | geschlossen  | Stripe meldet das verbundene Konto als bereit, oder auf einer Edge mit Coins hat der Verkäufer eine USDC-Auszahlungsadresse oder einen Coin-Schlüssel hinterlegt |
 
 Eine Box, die nie handelt, ist nicht betroffen. Der Marktplatz ist eine
 Funktion des `losos-registrar` der Edge.
@@ -44,7 +41,32 @@ nicht betroffen.
 
 ## Wie das Geld fließt
 
-Die Edge ist die Stripe-**Plattform**. Geld berührt nie eine LosOS-Box.
+Geld berührt nie eine LosOS-Box. Käufer zahlen auf eine von vier Arten, je
+nachdem, was die Edge erlaubt:
+
+- **USDC auf Base, Arbitrum One oder OP Mainnet.** Die Zahlung geht in den
+  Vertrag `LososEscrow`. Die Edge prüft sie (die Adresse des Verkäufers, den
+  Betrag, die Bestätigungen) und gibt sie dann an den Verkäufer und an die
+  Kasse der Plattform frei, die die Gebühr von 4 % erhält. Oder sie zahlt die
+  ganze Zahlung an den Käufer zurück: wenn die Adresse des Verkäufers falsch
+  oder ein Vertrag ist, wenn die Bestellung schon bezahlt war oder wenn ihre
+  Einheiten verfallen sind. Handelt die Edge nicht, kann der Käufer die
+  Einzahlung einen Tag nach dem Ende der Reservierung der Bestellung selbst
+  aus dem Vertrag zurückholen. Siehe [Mit USDC zahlen](#paying-with-usdc).
+- **USDC auf Solana.** Eine direkte Überweisung, in der eigenen Transaktion
+  des Käufers zwischen Verkäufer und Kasse aufgeteilt.
+- **Bitcoin und Monero.** Direkt in die eigene Wallet des Verkäufers, an eine
+  neue Adresse für jede Bestellung, abgeleitet aus dem öffentlichen Schlüssel
+  des Verkäufers: einem erweiterten öffentlichen Schlüssel oder Deskriptor
+  für Bitcoin, der Hauptadresse und dem privaten View-Key für Monero. Die
+  Edge schaut nur zu und hält nie Coins. Die Gebühr von 4 % auf diese
+  Verkäufe ist eine Schuld, die der Verkäufer in USDC begleicht, siehe
+  [Plattformgebühren aus Coin-Verkäufen](#platform-fees-on-coin-sales).
+- **Karte, über Stripe Connect.** Auf einer Edge optional. Eine Edge kann
+  nur Coins annehmen, ohne Kartenzahlungen, sodass der Betrieb des
+  Marktplatzes kein Geschäftskonto bei einem Kartenabwickler braucht.
+
+Für Kartenzahlungen ist die Edge die Stripe-**Plattform**:
 
 1. Ein Verkäufer durchläuft das Onboarding. Die Edge legt für ihn ein
    verbundenes Stripe-Express-Konto an, **versieht es mit der UUID der Box**
@@ -53,7 +75,8 @@ Die Edge ist die Stripe-**Plattform**. Geld berührt nie eine LosOS-Box.
    es die Kennzeichnung gab, wird gekennzeichnet, wenn ihr Besitzer die Seite
    das nächste Mal öffnet.
 2. Stripe teilt der Edge mit (`account.updated`), wann das Konto Überweisungen
-   empfangen kann. Erst dann kann der Verkäufer etwas anbieten.
+   empfangen kann. Auf einer Edge ohne Coins kann der Verkäufer erst dann
+   etwas anbieten.
 3. Ein Käufer bestellt Einheiten eines Angebots. Die Edge reserviert sie und
    erstellt eine Stripe Checkout Session als **Destination Charge**. Der
    Käufer zahlt an die Plattform, `transfer_data[destination]` leitet den
@@ -129,20 +152,15 @@ Grenzen, die du kennen solltest und von denen noch keine durchgesetzt wird:
 
 ## Admin-UI
 
-Derzeit ist die Zeile **Einstellungen, Markt** ausgegraut und mit „soon(TM)“
-beschriftet. Sie ist eine deaktivierte Schaltfläche, die die Tastatur
-überspringt, und `/settings/market` öffnet stattdessen den Standardbereich.
-Zum Öffnen genügt ein Flag, `planned` an der Zeile in
-`admin-ui/app/src/screens/settings/panes.ts`, plus der passende Schalter in
-`admin-ui/app/tests/app.browser.mjs`, der die Browser-Prüfungen des Bereichs
-bis dahin zurückhält.
-
-Einmal geöffnet, beginnt der Bereich mit dem Schalter für die
+Die Zeile **Markt** liegt unter Mesh in der Seitenleiste, und
+`/settings/market` öffnet sie. Der Bereich beginnt mit dem Schalter für die
 Festplattenfreigabe. Er ist aus dem Bereich Speicher hierher gewandert, weil das Verleihen
 von Festplattenplatz an andere Boxen und die Bezahlung dafür eine einzige
 Entscheidung sind. Darunter folgt, was der Besitzer gekauft hat, mit Ablauf
 und Volume, und das Regal zum Einkaufen. Für den Verkauf gibt es die
-Einrichtung der Stripe-Auszahlungen, ein Angebotsformular und die eigenen
+Einrichtung der Auszahlungen (eine USDC-Adresse, ein Bitcoin- oder
+Monero-Schlüssel und Stripe, wo die Edge Karten annimmt), die offenen
+Plattformgebühren aus Coin-Verkäufen, ein Angebotsformular und die eigenen
 Angebote und Verkäufe des Besitzers. Der Schalter wird angezeigt, ob die Edge
 dieser Box den Marktplatz anbietet oder nicht, denn er ist eine Einstellung
 der Box, nicht der Edge.
@@ -152,7 +170,7 @@ der Box, nicht der Edge.
   zusätzlich Rechenleistung teilt. Alles andere ist ausgegraut, mit Angabe
   des Grundes. Die Edge setzt dieselbe Regel durch, der Bereich erklärt sie
   nur.
-- Zahlung und Stripe-Onboarding öffnen die eigenen Seiten von Stripe in einem
+- Kartenzahlung und Stripe-Onboarding öffnen die eigenen Seiten von Stripe in einem
   neuen Tab. Nichts in der Admin-UI sieht eine Karte. lososd und danach noch
   einmal die Seite prüfen, dass der Link eine Seite unter
   `https://checkout.stripe.com` oder `https://connect.stripe.com` ist, sodass
@@ -186,6 +204,7 @@ Alle Routen liegen auf der öffentlichen API des Registrars
 | `POST /market/listings`        | Token      | `kind`, `unit_price`, `capacity`                     |
 | `POST /market/listings/close`  | Token      | `listing_id`; bezahlte Bestellungen behalten ihre Einheiten |
 | `POST /market/orders`          | Token      | `listing_id`, `quantity`; liefert eine Checkout-URL  |
+| `POST /market/fees/pay`        | Token      | `tx`, `network`; rechnet eine USDC-Überweisung auf offene Coin-Gebühren an |
 | `POST /market/webhook`         | Signatur   | Stripe-Ereignisse                                    |
 
 Jede Route antwortet mit 503, wenn der Marktplatz aus ist. Auf den
@@ -214,6 +233,10 @@ der Betreiber sie erstatten kann. Zwei Käufer, die um die letzten Einheiten
 konkurrieren, können nicht beide eine Session bekommen.
 
 ## Einrichtung für Betreiber
+
+Diese Schritte richten Kartenzahlungen ein. Eine Edge, die nur Coins annimmt,
+überspringt sie; diesen Fall beschreiben die Betreiberhinweise beim Quellcode
+(`docs/ci-and-releases.md`).
 
 1. Aktiviere im Stripe-Dashboard **Connect** auf dem Plattformkonto.
 2. Versiegle den geheimen Schlüssel (ein eingeschränkter Schlüssel
@@ -344,16 +367,17 @@ Ein Edge kann Speicher, Rechenleistung und Maschinen in USDC abrechnen statt
 über Stripe. Hardware bleibt bei Stripe. Welche Netze er annimmt, wählt der
 Edge:
 
-| Netz         | Sein Testnetz    |
-| ------------ | ---------------- |
-| Base         | Base Sepolia     |
-| Arbitrum One | Arbitrum Sepolia |
-| OP Mainnet   | OP Sepolia       |
-| Solana       | Solana Devnet    |
+| Netz         | Für einen Test-Edge |
+| ------------ | ------------------- |
+| Base         | Base Sepolia        |
+| Arbitrum One | Arbitrum Sepolia    |
+| OP Mainnet   | OP Sepolia          |
+| Solana       | Solana Devnet       |
 
-Ein Edge läuft auf Testnetzen oder auf Live-Netzen, nie auf beiden, und der
-Modus folgt seinem Stripe-Schlüssel: Testnetze mit einem `sk_test_`-Schlüssel,
-Live-Netze mit `sk_live_`. Eine Mischung lehnt der Registrar ab, damit keine
+Ein Edge läuft auf Live-Netzen oder auf Testnetzen, nie auf beiden. Bei
+einem Edge, der Karten annimmt, folgt der Modus seinem Stripe-Schlüssel:
+Live-Netze mit einem `sk_live_`-Schlüssel, Testnetze mit `sk_test_`. Ein Edge,
+der nur Coins annimmt, läuft im Modus seiner Netze. Eine Mischung lehnt der Registrar ab, damit keine
 Testzahlung im Live-Buch landet. Jedes Netz hat einen eigenen RPC-Endpunkt,
 mit systemd-creds versiegelt und nur vom Registrar gelesen. Die Einrichtung
 beschreiben die Betreiberhinweise beim Quellcode (`docs/ci-and-releases.md`).
@@ -423,7 +447,7 @@ dem Escrow zurück, und der Bereich sagt es. Auf Solana, wo es kein Escrow
 gibt, bleibt eine solche Zahlung beim Verkäufer, und die Rückzahlung muss
 außerhalb des Markts geregelt werden.
 
-Auf den Testnetzen kommt Test-USDC aus
+Für einen Test-Edge kommt Test-USDC aus
 [Circles Faucet](https://faucet.circle.com), der alle vier bedient. Test-ETH
 gibt der Faucet jedes Netzes, Test-SOL der Solana-Faucet. Nichts davon hat
 einen Wert.
@@ -433,8 +457,8 @@ einen Wert.
 Der Bereich kann USDC aus der Wallet an eine Adresse auf jedem Netz des Edge
 senden. Hat der Edge einen ENS-Endpunkt, zeigt der Bereich neben einer
 Ethereum-Adresse auch ihren primären Namen und nimmt beim Senden auf einem
-Ethereum-Netz einen Namen statt einer Adresse an. Testnetze suchen Namen auf
-Sepolia, Live-Netze auf Ethereum. Gefunden werden nur Namen mit Einträgen auf
+Ethereum-Netz einen Namen statt einer Adresse an. Namen werden im Ethereum
+Mainnet nachgeschlagen, für einen Test-Edge auf Sepolia. Gefunden werden nur Namen mit Einträgen auf
 der Chain: die Verwaltungsseite erreicht nichts außer dem Gerät, also werden
 Namen über ein Gateway außerhalb der Chain nicht nachgeschlagen.
 
@@ -486,7 +510,9 @@ Zahlungen danach zu sehen.
 Die Plattformgebühr wird nicht von einer Bitcoin-Zahlung abgezogen. Der
 ganze Betrag geht an den Verkäufer, und der Edge führt eine laufende Summe
 der Gebühr auf diese Verkäufe, die der Verkäufer der Plattform schuldet und
-im Bereich sieht. Ein Verkäufer mit Bitcoin-Schlüssel und ohne USDC-Adresse kann
+im Bereich sieht (wie sie beglichen wird, steht unter
+[Plattformgebühren aus Coin-Verkäufen](#platform-fees-on-coin-sales)). Ein
+Verkäufer mit Bitcoin-Schlüssel und ohne USDC-Adresse kann
 trotzdem anbieten; Käufer zahlen dann nur in Bitcoin.
 
 ### In Bitcoin bezahlen {#paying-in-bitcoin}
@@ -517,7 +543,7 @@ ebenso eine Adresse, die für ein anderes Netz gemacht ist als das des Knotens.
 ### Für Monero verkaufen {#selling-for-monero}
 
 Im Markt zwei Dinge in die Monero-Zeile einfügen: die Hauptadresse deiner
-Wallet, die mit 4 beginnt (auf Stagenet mit 5, auf Testnet mit 9), und ihren
+Wallet, die mit 4 beginnt (für einen Test-Edge mit 5 oder 9), und ihren
 privaten View-Key. Feather, Cake Wallet und die offiziellen Wallets zeigen
 ihn neben dem Seed, bei den Schlüsseln der Wallet. Mit dem View-Key sieht der
 Edge, was an deine Adressen geht, und sonst nichts: ausgeben kann er damit
@@ -533,7 +559,7 @@ Subadressen voraus, die sie noch nicht angezeigt hat. Bleiben mehr als etwa
 (subaddress lookahead) in der Wallet erhöhen, um die Zahlungen danach zu
 sehen.
 
-Wie bei Bitcoin wird die Plattformgebühr dem Verkäufer separat berechnet,
+Wie bei Bitcoin schuldet der Verkäufer die Plattformgebühr separat,
 und die ganze Zahlung geht an den Verkäufer.
 
 ### In Monero bezahlen {#paying-in-monero}
@@ -547,9 +573,101 @@ für spätere Blöcke gesperrt ist, zählt nicht. Monero verbirgt, wer wem was
 gezahlt hat, daher nennt eine bezahlte Bestellung Monero als Netz ohne Link
 zu einem Block-Explorer.
 
+## Mit Zcash zahlen {#paying-with-zcash}
+
+Ein Edge, der in USDC abrechnet, kann für dieselben Bestellungen auch
+abgeschirmtes Zcash annehmen. Er betreibt keinen Zcash-Knoten. Er fragt
+öffentliche lightwalletd-Server nach kompakten Blöcken, standardmäßig vier
+Mainnet-Server verschiedener Betreiber, und entschlüsselt sie selbst, sodass
+dein Viewing Key den Edge nie verlässt. Eine Zahlung zählt erst, wenn Server
+zweier verschiedener Betreiber sie in einem Block mit demselben Hash zeigen;
+ein Server, der etwas zeigt, das sonst keiner zeigt, wird überstimmt. Ein
+Live-Edge rechnet nur auf Mainnet ab und fragt keinen Server, der ein anderes
+Netz meldet; Testnet und Regtest sind für einen Test-Edge.
+
+### Für Zcash verkaufen {#selling-for-zcash}
+
+Im Markt den Unified Viewing Key deiner Wallet in die Zcash-Zeile einfügen:
+den vollen, der mit `uview1` beginnt, oder besser den eingehenden, der mit
+`uivk1` beginnt und nur sieht, was ankommt, nichts von dem, was du sendest.
+Der Schlüssel braucht einen Orchard-Teil, den jede seit 2022 angelegte Wallet
+hat. Der Edge behält nur den Incoming Viewing Key dieses Teils, der sieht,
+was ankommt, und nichts ausgeben kann. Gerät und Edge lehnen einen Spending
+Key und eine Seed-Phrase mit Namen ab, sodass ein versehentlich eingefügter
+Schlüssel das Gerät nie verlässt. Der Bereich zeigt die erste Adresse deiner
+Wallet an, damit du siehst, an welche Wallet Bestellungen gehen; den
+Schlüssel selbst zeigt er nie wieder.
+
+Jede Bestellung bekommt eine neue abgeschirmte Adresse deiner Wallet: eine
+reine Orchard-Unified-Adresse mit einem Diversifier-Index weit über denen,
+die deine Wallet selbst vergibt. Deine Wallet findet Zahlungen daran von
+selbst, weil sie alles entschlüsselt, was an eine Adresse ihres Schlüssels
+geht. Seit NU6.3 landet eine Zahlung an eine Orchard-Adresse im
+Ironwood-Pool, der dieselben Schlüssel nutzt; der Edge liest beide.
+
+Wie bei Bitcoin schuldet der Verkäufer die Plattformgebühr separat,
+und die ganze Zahlung geht an den Verkäufer.
+
+### In Zcash bezahlen {#paying-in-zcash}
+
+Bei der Bestellung unter „Zahlen mit“ Zcash wählen. Der Bereich zeigt den
+Betrag in ZEC, die Adresse, einen QR-Code und einen `zcash:`-Zahlungslink
+(ZIP 321), der eine Wallet öffnet. Mit einer Wallet zahlen, die an eine
+Unified-Adresse senden kann. Es zählen nur Zahlungen in Blöcken nach dem
+Zeitpunkt, an dem die Bestellung die Adresse bekam, und eine Zahlung im
+Mempool gilt als gesehen, sobald zwei Betreiber sie zeigen. Drei
+Bestätigungen zählen eine Bestellung bis 50 $, sechs bis 500 $, zehn bis
+5.000 $ und 24 darüber; eine zu kleine, eine zu große und eine verspätete
+Zahlung werden wie bei Bitcoin behandelt. Die Zahlung ist abgeschirmt, daher
+nennt eine bezahlte Bestellung Zcash als Netz ohne Link zu einem
+Block-Explorer.
+
+## Plattformgebühren aus Coin-Verkäufen {#platform-fees-on-coin-sales}
+
+Eine Zahlung in Bitcoin, Monero oder Zcash erreicht die Wallet des
+Verkäufers vollständig, daher sind die 4 % der Plattform an diesen
+Verkäufen eine Schuld, die die Edge für den Verkäufer führt. Der Bereich
+Marktplatz zeigt sie in einer eigenen Zeile unter den Coin-Schlüsseln, mit
+den Grenzen weiter unten. Beglichen wird sie in USDC, auf zwei Wegen.
+
+**Aus USDC-Verkäufen.** Solange ein Verkäufer Coin-Gebühren schuldet, erhöht
+die Edge die Gebühr seiner nächsten USDC-Bestellungen um den offenen Betrag,
+auf den Ethereum-Netzen wie auf Solana. Der Käufer zahlt weiterhin den
+angegebenen Preis. Nur der Anteil des Verkäufers ist kleiner, und der
+Verkauf im Bereich nennt, wie viel davon auf offene Gebühren ging. Die
+Gebühr übersteigt nie die Hälfte des Bestellpreises, das Höchste, was der
+Escrow-Vertrag nimmt. Die Schuld sinkt erst, wenn das Geld die Kasse
+erreicht: wenn der Escrow die Zahlung freigibt oder eine Zahlung auf Solana
+bestätigt ist. Eine Bestellung, die erstattet wird oder verfällt, zieht
+nichts ein. Sind mehrere USDC-Bestellungen gleichzeitig offen, nimmt jede
+nur, was die anderen nicht schon genommen haben. Zieht ein Verkauf mehr ein,
+als noch offen ist, weil eine direkte Zahlung die Schuld inzwischen beglichen
+hat, bleibt der Rest als Guthaben und zahlt zuerst die Gebühren der nächsten
+Coin-Verkäufe.
+
+**Direkt.** Die Gebührenzeile hat eine Schaltfläche, die den offenen Betrag
+in USDC aus der Wallet im Bereich an die Kasse der Plattform sendet, auf
+jedem Ethereum-Netz, auf dem die Edge abrechnet, und die Transaktion der
+Edge übergibt. Die Edge liest sie von ihrem eigenen Knoten und rechnet sie
+an, sobald sie so viele Bestätigungen hat wie eine Bestellzahlung. Sie
+rechnet nur eine USDC-Überweisung an die Kasse von der Auszahlungsadresse
+des Verkäufers an, jede Transaktion einmal und nie mehr als offen ist. Was
+über die Schuld hinaus gezahlt wird, wird nicht erstattet. Auf Solana werden
+keine Gebühren bezahlt.
+
+**Wann Coin-Zahlungen stoppen.** Solange ein Verkäufer mehr als die Grenze
+der Edge schuldet, 10 US-Dollar, sofern ihr Betreiber keine andere gesetzt
+hat, oder seit mehr als 30 Tagen irgendeinen Betrag schuldet, können Käufer
+ihn nicht in Bitcoin, Monero oder Zcash bezahlen. Eine neue Bestellung
+bietet nur USDC an, und eine neue Coin-Zahlung wird mit dem Grund abgelehnt.
+Eine Coin-Zahlung, die schon läuft, wird bis zum Ende verfolgt. USDC
+funktioniert weiter und zahlt mit jedem Verkauf auf die Schuld ein, sodass
+Coin-Zahlungen zurückkommen, sobald sie beglichen ist. Bei einem Verkäufer,
+der nur Coins annimmt, kann bis dahin nicht bestellt werden.
+
 ## Nicht abgedeckt
 
-- **Erstattungen und Streitfälle.** Bearbeite diese im Stripe-Dashboard
+- **Erstattungen und Streitfälle bei Karten.** Bearbeite diese im Stripe-Dashboard
   mit `reverse_transfer` und `refund_application_fee`, damit sowohl der Anteil
   des Verkäufers als auch der Anteil der Plattform zurückfließen. Der
   Marktplatz bildet keines von beiden ab.

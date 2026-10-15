@@ -30,8 +30,7 @@ oddiele `/persist`.
   reštart.
 - [Mesh](/in-depth/mesh.md). Poskytovanie úložiska a výpočtového výkonu iným
   zariadeniam.
-- [Trh](/in-depth/market.md). Predaj disku a CPU, ktoré zariadenie už poskytuje
-  (plánovaný).
+- [Trh](/in-depth/market.md). Predaj disku a CPU, ktoré zariadenie už poskytuje.
 - [Virtuálne stroje](/in-depth/virtual-machines.md). Prenájom strojov v mesh
   a hosťovanie strojov iných zariadení.
 - [Tvorca widgetov](/in-depth/widget-builder.md). AI agent napíše widget podľa

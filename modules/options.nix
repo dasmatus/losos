@@ -1682,9 +1682,23 @@ in
       default = false;
       description = ''
         Serve the /market/* routes of losos-registrar. Without this every one
-        of them answers 503. Needs a Stripe platform account with Connect
-        enabled; see handbook/docs/in-depth/market.md for the one-time
-        dashboard setup.
+        of them answers 503. With `losos.edge.market.cards.enable` (the
+        default) it needs a Stripe platform account with Connect enabled; see
+        handbook/docs/in-depth/market.md for the one-time dashboard setup.
+      '';
+    };
+
+    edge.market.cards.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Let buyers pay by card through Stripe Connect, and sellers take
+        payouts there. Off, the edge takes coins only (USDC, plus Bitcoin and
+        Monero when they are on) and needs no Stripe account: no
+        `losos-stripe-gate` unit runs, no Stripe key is sealed, and the
+        market's mode is that of its USDC networks, so a live edge lists the
+        mainnet ones. Needs `losos.edge.market.usdc.enable`. Hardware sales
+        and the widget builder's top-ups are paid by card, so they need it on.
       '';
     };
 
@@ -1844,7 +1858,8 @@ in
         wallet; each order gets a fresh address derived from the seller's own
         extended public key, so the coins go straight to the seller and the
         edge never holds a private key. The platform fee on these orders is
-        billed to the seller separately. Needs `losos.edge.market.usdc.enable`.
+        owed by the seller and settled in USDC (`coinFeeLimit`). Needs
+        `losos.edge.market.usdc.enable`.
         See handbook/docs/in-depth/market.md.
       '';
     };
@@ -1886,7 +1901,8 @@ in
         seller's primary address and private view key; each order gets a
         fresh subaddress of the seller's own wallet, so the coins go straight
         to the seller and nothing on the edge can spend them. The platform
-        fee on these orders is billed to the seller separately. Needs
+        fee on these orders is owed by the seller and settled in USDC
+        (`coinFeeLimit`). Needs
         `losos.edge.market.usdc.enable`. See handbook/docs/in-depth/market.md.
       '';
     };
@@ -1903,6 +1919,59 @@ in
         must follow `mainnet`; a test edge takes `stagenet` or `testnet`. The
         registrar checks the pairing, and that a seller's address is for the
         same network, before it takes a key or hands out a subaddress.
+      '';
+    };
+
+    edge.market.zcash.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Let buyers pay for storage, compute and machine orders in shielded
+        Zcash, beside USDC. The seller gives the edge a unified viewing key;
+        the edge keeps only its Orchard incoming viewing key, which sees
+        payments arrive and can spend nothing. Each order gets a fresh
+        Orchard-only address of the seller's own wallet, so the coins go
+        straight to the seller. The edge runs no node: it fetches compact
+        blocks from the public servers in `servers` and decrypts them
+        itself, so the key never leaves the edge, and counts a payment only
+        when servers of two different operators agree on it. The platform fee
+        on these orders is owed by the seller and settled in USDC
+        (`coinFeeLimit`). Needs
+        `losos.edge.market.usdc.enable`. See handbook/docs/in-depth/market.md.
+      '';
+    };
+
+    edge.market.zcash.servers = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [
+        "https://zec-node.cakewallet.com:443"
+        "https://na.zec.rocks:443"
+        "https://lwd.z0n.jp:443"
+        "https://zec.0xrpc.io:443"
+      ];
+      description = ''
+        Public lightwalletd-protocol gRPC servers the edge asks for compact
+        blocks, as `https://host:port`. At least two, run by different
+        operators (told apart by domain): a payment counts only when two of
+        them show it in a block of the same hash. Each must report the
+        network in `network`, or it is not asked. The default lists mainnet
+        servers of four operators.
+      '';
+    };
+
+    edge.market.zcash.network = lib.mkOption {
+      type = lib.types.enum [
+        "mainnet"
+        "testnet"
+        "regtest"
+      ];
+      default = "mainnet";
+      description = ''
+        The network the servers must follow. A live edge (live Stripe key)
+        settles on `mainnet` only; `testnet` and `regtest` are for a test
+        edge. The registrar checks the pairing, each server's reported
+        chain, and that a seller's key is for the same network before it
+        takes the key or hands out an address.
       '';
     };
 
@@ -2002,6 +2071,19 @@ in
         400 is 4%. Collected as Stripe's application_fee_amount on a
         destination charge. Capped at 20% so a typo cannot take a third of
         every sale.
+      '';
+    };
+
+    edge.market.coinFeeLimit = lib.mkOption {
+      type = lib.types.ints.between 0 100000;
+      default = 1000;
+      description = ''
+        The platform fees, in the market currency's minor unit (cents), a
+        seller may owe on Bitcoin, Monero and Zcash sales before buyers can no
+        longer pay that seller in those coins: 1000 is US$10. A debt of any
+        size older than 30 days stops them too. USDC keeps working, and each
+        USDC sale pays toward the debt. 0 stops coin payments at the first
+        cent owed.
       '';
     };
 

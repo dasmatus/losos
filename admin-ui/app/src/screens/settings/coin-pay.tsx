@@ -8,15 +8,16 @@ import { useT } from "@/lib/i18n-react";
 import { copyText } from "../wizard/copy";
 import { Row, RowText } from "./rows";
 
-/* Orders paid in a coin other than USDC: Bitcoin and Monero. The edge gives
- * each order a fresh address of the seller's own wallet (derived from a
- * Bitcoin public key, or a Monero subaddress seen through the view key), so
+/* Orders paid in a coin other than USDC: Bitcoin, Monero and Zcash. The edge
+ * gives each order a fresh address of the seller's own wallet (derived from a
+ * Bitcoin public key, a Monero subaddress seen through the view key, or a
+ * shielded Zcash address of the unified viewing key), so
  * the coins go straight to the seller's wallet and the edge only watches.
  * The buyer pays from any wallet, by the QR code or the payment link, and
  * nothing is reported back: the edge's node sees the payment arrive. */
 
-export const COIN_NAMES: Record<Coin, string> = { btc: "Bitcoin", xmr: "Monero" };
-const TICKERS: Record<Coin, string> = { btc: "BTC", xmr: "XMR" };
+export const COIN_NAMES: Record<Coin, string> = { btc: "Bitcoin", xmr: "Monero", zec: "Zcash" };
+const TICKERS: Record<Coin, string> = { btc: "BTC", xmr: "XMR", zec: "ZEC" };
 
 /** How often the panel asks the edge what reached the address. */
 const POLL_MS = 15_000;
@@ -145,19 +146,17 @@ export function CoinPayPanel({
   );
 }
 
-/** The seller's watch-only key for `coin`, and what coin sales owe. */
+/** The seller's watch-only key for `coin`. What coin sales owe the platform
+ *  is one row of its own in the wallet, under the keys. */
 export function CoinKeyRow({
   coin,
   saved,
-  feesOwed,
   disabled,
   last,
   onSaved,
 }: {
   coin: Coin;
   saved: string | undefined;
-  /** Already formatted in the market's currency, or null when none. */
-  feesOwed: string | null;
   disabled: boolean;
   last: boolean;
   onSaved: () => void;
@@ -168,6 +167,19 @@ export function CoinKeyRow({
   const [busy, setBusy] = React.useState(false);
   // Monero is watched through the wallet's view key, beside its address.
   const monero = coin === "xmr";
+  // Zcash takes the unified viewing key alone.
+  const detail =
+    coin === "xmr"
+      ? "panes.market.coins.keyDetailXmr"
+      : coin === "zec"
+        ? "panes.market.coins.keyDetailZec"
+        : "panes.market.coins.keyDetail";
+  const placeholder =
+    coin === "xmr"
+      ? "panes.market.coins.addressPlaceholder"
+      : coin === "zec"
+        ? "panes.market.coins.viewingKeyPlaceholder"
+        : "panes.market.coins.keyPlaceholder";
   const save = async () => {
     setBusy(true);
     try {
@@ -192,19 +204,18 @@ export function CoinKeyRow({
       <div className="grid w-full gap-2">
         <RowText
           title={t("panes.market.coins.keyTitle", { coin: COIN_NAMES[coin] })}
-          detail={t(monero ? "panes.market.coins.keyDetailXmr" : "panes.market.coins.keyDetail")}
+          detail={t(detail)}
         />
         {short !== null && (
           <p className="text-[13px] text-muted break-all">
             {t("panes.market.coins.keyCurrent")} <code className="font-mono text-[12px]">{short}</code>
           </p>
         )}
-        {feesOwed !== null && <p className="text-[13px] text-muted">{t("panes.market.coins.feesOwed", { amount: feesOwed })}</p>}
         <div className="flex flex-wrap gap-2">
           <Input
             className="min-w-[14rem] flex-1"
-            aria-label={t(monero ? "panes.market.coins.addressPlaceholder" : "panes.market.coins.keyPlaceholder")}
-            placeholder={t(monero ? "panes.market.coins.addressPlaceholder" : "panes.market.coins.keyPlaceholder")}
+            aria-label={t(placeholder)}
+            placeholder={t(placeholder)}
             value={key}
             onChange={(e) => setKey(e.target.value)}
             autoComplete="off"

@@ -677,11 +677,8 @@ const SHOTS = [
       await settle(page);
     },
   },
-  /* The Market pane is planned (panes.ts), so its route falls back. This one
-   * runs only against a throwaway build with `planned: false`, for a
-   * picture of the pane as it will open: LOSOS_SHOOT_MARKET=1. */
-  { name: 'market-open', path: '/settings/market', edge: EDGE_OFFICIAL, market: MARKET_OPEN, settings: JOINED, needsMarket: true },
-  { name: 'market-open-sk', path: '/settings/market', locale: 'sk-SK', edge: EDGE_OFFICIAL, market: MARKET_OPEN, settings: JOINED, needsMarket: true },
+  { name: 'market-open', path: '/settings/market', edge: EDGE_OFFICIAL, market: MARKET_OPEN, settings: JOINED },
+  { name: 'market-open-sk', path: '/settings/market', locale: 'sk-SK', edge: EDGE_OFFICIAL, market: MARKET_OPEN, settings: JOINED },
   // ── The wizard ───────────────────────────────────────────────────────
   { name: 'wizard-step1-trust', path: '/', claimed: false, signedIn: false, full: true },
   { name: 'wizard-step1-trust-sk', path: '/', claimed: false, signedIn: false, locale: 'sk-SK' },
@@ -789,8 +786,7 @@ const SHOTS = [
 
 for (const shot of SHOTS) {
   if (only && !shot.name.includes(only)) continue;
-  const { name, act, full = false, clip = null, needsMarket = false, ...options } = shot;
-  if (needsMarket && !process.env.LOSOS_SHOOT_MARKET) continue;
+  const { name, act, full = false, clip = null, ...options } = shot;
   const page = await open(options);
   try {
     if (act) await act(page);
