@@ -43,6 +43,7 @@ fn opts(state: &Path) -> MarketOpts {
         btc: None,
         xmr: None,
         cards: true,
+        zec: None,
     }
 }
 

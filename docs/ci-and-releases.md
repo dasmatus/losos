@@ -370,3 +370,34 @@ same file on every call (`--market-xmr-login-file`). Before it takes a
 seller's key or hands out a subaddress, the registrar checks that the node's
 network fits the market's mode and that the seller's address is for that
 network. As with Bitcoin, let the node sync before listing.
+
+### Zcash orders
+
+With USDC on, an edge can also take shielded Zcash:
+
+```nix
+losos.edge.market.zcash = {
+  enable = true;
+  network = "mainnet";  # the default; "testnet" or "regtest" only on a test edge
+  # servers = [ ... ];  # the default lists four mainnet operators
+};
+```
+
+This starts nothing. The registrar gets one `--market-zec-server` per entry
+of `servers` and `--market-zec-network main`, and asks those public
+lightwalletd servers over gRPC (TLS checked against the webpki roots) for
+compact blocks and the mempool. It decrypts them itself, so the sellers'
+viewing keys stay in the market ledger on the edge. Each server must report
+`chainName` `main` on a live edge or it is not asked, and a payment counts
+only when servers of two operators (told apart by domain) show it in a block
+of the same hash. The registrar refuses a list of fewer than two operators at
+start. Before it takes a seller's key or hands out an address it checks that
+the network fits the Stripe key's mode, that the key is for that network,
+and that two operators answer. The default servers came from
+hosh.zec.rocks/zec; replace one that goes away. There is nothing to seal and
+nothing to sync.
+
+`backend-registrar/tests/zcash.rs` runs in every `cargo test`, with no node:
+stand-in lightwalletd servers in the test process serve compact blocks whose
+payments are real Orchard and Ironwood notes encrypted to the order's
+address, one of them lying.
