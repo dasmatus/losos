@@ -173,12 +173,12 @@ export function MiniPage({ entry, from, arrival, children }: MiniPageProps) {
         {t("shell.signOut")}
       </text>
 
-      {/* The sidebar, with its search field. */}
+      {/* The sidebar, with its search button. */}
       <rect x="14.5" y="42.5" width="132" height={ROW_Y + ENTRIES.length * ROW_H - 36} rx="8" className="fill-sunk stroke-line" />
-      <rect x="22.5" y="50.5" width="116" height="16" rx="4" className="fill-surface stroke-line" />
-      <text x="30" y="61.4" fontSize="8.5" className="fill-faint">
-        {t("settings.sidebar.searchPlaceholder")}
-      </text>
+      <g className="stroke-muted" fill="none" strokeWidth="1.2" strokeLinecap="round">
+        <circle cx="129.5" cy="57.5" r="3.5" />
+        <line x1="132.2" y1="60.2" x2="134.8" y2="62.8" />
+      </g>
       <line
         x1="34.5"
         y1={ROW_Y + 5 * ROW_H}

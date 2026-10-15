@@ -72,7 +72,7 @@ const Settings = React.lazy(() => import("@/screens/Settings"));
  * which on most visits is never. */
 const Tour = React.lazy(() => import("@/tour/tour"));
 /* The command palette (src/palette/): its own chunk, fetched the first time
- * Ctrl/Cmd+Shift+P, a colon or the sidebar's search box opens it. */
+ * Ctrl/Cmd+Shift+P, a colon or the sidebar's search button opens it. */
 const CommandPalette = React.lazy(() => import("@/palette/command-palette"));
 const WidgetBoard = React.lazy(() =>
   import("@/widgets/board").then((m) => ({ default: m.WidgetBoard })),

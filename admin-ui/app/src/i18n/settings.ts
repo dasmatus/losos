@@ -181,9 +181,6 @@ export default defineMessages({
     de: "Werkseinstellungen Standard löschen neu anfangen rückgängig",
   },
 
-  // ── Sidebar ───────────────────────────────────────────────────────────────
-  "settings.sidebar.searchPlaceholder": { en: "Search", sk: "Hľadať", de: "Suchen" },
-
   // ── Screen notices ────────────────────────────────────────────────────────
   "settings.notice.locked": {
     en: "Paste the admin key to change anything here. Nothing on this screen can be read or written without it.",
