@@ -23,9 +23,31 @@ icons. On a phone it opens as a sheet.
 | **Apps**     | The apps on this box with their mode, a search of Artifact Hub, and the apps installed from it.            |
 | **Storage**  | How full the disk is, what is holding the room, and the reserve to claim.                                   |
 | **Mesh**     | Joining other boxes, the hours this one lends its spare time, and **Market** with disk sharing.            |
-| **Settings** | Network, Look, Hardware, Security, Advanced, History, About and Reset, each a pane. A search box filters the panes.             |
+| **Settings** | Network, Look, Hardware, Security, Advanced, History, About and Reset, each a pane.                         |
 
 <img src={require("../img/overview-phone.png").default} alt="The Overview on a phone: the sections fold into a menu button." width="260" /> <img src={require("../img/overview-phone-sheet.png").default} alt="The same phone with the menu open as a sheet over the page." width="260" />
+
+## Search
+
+The search box at the top of the sidebar, or Ctrl+K (Cmd+K on a Mac) on
+any admin page, opens one list that finds:
+
+- the sections and settings panes, by name or by a word such as "gpu" or
+  "hostname", in the language on screen or in English
+- the apps in LosOS cloud, and LosOS Git
+- files and folders in LosOS cloud, by name
+- repositories in LosOS Git
+- apps to install from Artifact Hub; picking one opens the Apps pane with
+  its install dialog
+- a few actions: the light or dark theme, the language, the tour, this
+  handbook and signing out
+
+The arrow keys move through the list, Enter opens the highlighted entry and
+Escape closes the list. Ctrl+Enter (Cmd+Enter) opens a file or repository
+in a new tab. Files and repositories open in their own app.
+
+File search needs one sign-in with your password, not the spare key. Until
+then the list says so in place of the files.
 
 ## The tour
 
