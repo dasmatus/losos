@@ -940,3 +940,65 @@ fn monero_takes_its_wallet_service_and_node_beside_usdc() {
     leaky[1] = "http://losos:pw@127.0.0.1:18083";
     assert!(parse(args(true, "usd", &leaky)).is_err());
 }
+
+#[test]
+fn zcash_takes_mainnet_servers_of_two_operators_beside_usdc() {
+    const SOL: &str = "network=solana-devnet,rpc=/run/c/usdc-rpc-solana-devnet,treasury=5ZWj7a1f8tWkjBESHKgrLmXshuXxqeY9SYcfbshpAqPG";
+    const ZEC: [&str; 4] = [
+        "--market-zec-server",
+        "https://zec-node.cakewallet.com:443",
+        "--market-zec-server",
+        "https://na.zec.rocks:443",
+    ];
+    let args = |usdc: bool, currency: &'static str, zec: &[&'static str]| {
+        let mut args = vec!["--market-currency", currency];
+        if usdc {
+            args.extend(["--market-usdc", SOL]);
+        }
+        args.extend(zec);
+        args.extend(MARKET_FLAGS);
+        serve_args(&args)
+    };
+    let zec_of = |args| {
+        let Mode::Serve(opts) = parse(args).expect("parses") else {
+            panic!("not serve")
+        };
+        opts.market.expect("market").zec
+    };
+    let zec = zec_of(args(true, "usd", &ZEC)).expect("zcash on");
+    assert_eq!(
+        zec.servers,
+        [
+            "https://zec-node.cakewallet.com:443",
+            "https://na.zec.rocks:443"
+        ]
+    );
+    // Mainnet unless a test edge names another network.
+    assert_eq!(zec.network, losos_registrar::zcash::Network::Main);
+    let mut regtest = ZEC.to_vec();
+    regtest.extend(["--market-zec-network", "regtest"]);
+    assert_eq!(
+        zec_of(args(true, "usd", &regtest)).unwrap().network,
+        losos_registrar::zcash::Network::Regtest
+    );
+    assert!(zec_of(args(true, "usd", &[])).is_none());
+
+    // Priced in dollars beside USDC; two operators, not two servers of one;
+    // no login in a URL; a network the edge knows.
+    assert!(parse(args(false, "usd", &ZEC)).is_err());
+    assert!(parse(args(true, "eur", &ZEC)).is_err());
+    assert!(parse(args(true, "usd", &ZEC[..2])).is_err());
+    let one_operator = [
+        "--market-zec-server",
+        "https://na.zec.rocks:443",
+        "--market-zec-server",
+        "https://eu.zec.rocks:443",
+    ];
+    assert!(parse(args(true, "usd", &one_operator)).is_err());
+    let mut leaky = ZEC;
+    leaky[1] = "https://user:pw@zec-node.cakewallet.com:443";
+    assert!(parse(args(true, "usd", &leaky)).is_err());
+    let mut unknown = ZEC.to_vec();
+    unknown.extend(["--market-zec-network", "devnet"]);
+    assert!(parse(args(true, "usd", &unknown)).is_err());
+}

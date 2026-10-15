@@ -487,6 +487,51 @@ a short payment, an overpayment and a late one are handled as for Bitcoin. A
 payment locked for later blocks does not count. Monero hides who paid what,
 so a paid order names Monero as its network without a link to an explorer.
 
+## Paying with Zcash
+
+An edge that settles in USDC can also take shielded Zcash for the same
+orders. It runs no Zcash node. It asks public lightwalletd servers for
+compact blocks, by default four mainnet servers run by different operators,
+and decrypts them itself, so your viewing key never leaves the edge. A
+payment counts only when servers of two different operators show it in a
+block of the same hash; one server that shows something nobody else does is
+outvoted. A live edge settles on mainnet only and asks no server that says
+it follows another network; testnet and regtest are for a test edge.
+
+### Selling for Zcash
+
+On the Market pane, paste your wallet's unified viewing key into the Zcash
+row: the full one, starting `uview1`, or better the incoming one, starting
+`uivk1`, which sees payments arrive and nothing you send. The key needs an
+Orchard part, which every wallet made since 2022 has. The edge keeps only
+that part's incoming viewing key, which can see what arrives and cannot
+spend. The box and the edge refuse a spending key and a seed phrase by name,
+so one pasted by mistake never leaves the box. The pane shows your wallet's
+first address back so you can tell which wallet orders pay; the key itself
+is never shown again.
+
+Each order gets a fresh shielded address of your wallet: an Orchard-only
+unified address at a diversifier index far above the ones your wallet hands
+out. Your wallet finds payments to it on its own, because it decrypts what
+arrives for every address of its key. Since NU6.3 a payment to an Orchard
+address lands in the Ironwood pool, which uses the same keys; the edge reads
+both.
+
+As with Bitcoin, the platform fee is billed to the seller apart and the
+whole payment reaches the seller.
+
+### Paying in Zcash
+
+On the order, choose Zcash under "Pay with". The pane shows the amount in
+ZEC, the address, a QR code and a `zcash:` payment link (ZIP 321) that
+opens a wallet. Pay from any wallet that can send to a unified address.
+Only payments in blocks after the address was given to the order count, and
+a payment waiting in the mempool shows as seen once two operators show it.
+Three confirmations count an order up to $50, six up to $500, ten up to
+$5,000 and 24 above that; a short payment, an overpayment and a late one are
+handled as for Bitcoin. The payment is shielded, so a paid order names Zcash
+as its network without a link to an explorer.
+
 ## Not covered
 
 - **Refunds and disputes.** Handle them in the Stripe dashboard, using

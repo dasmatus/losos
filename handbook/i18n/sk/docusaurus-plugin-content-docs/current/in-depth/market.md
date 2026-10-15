@@ -487,6 +487,52 @@ Platba uzamknutá na neskoršie bloky sa nepočíta. Monero skrýva, kto komu č
 zaplatil, takže zaplatená objednávka uvádza Monero ako sieť bez odkazu na
 prehliadač blokov.
 
+## Platba v Zcashi {#paying-with-zcash}
+
+Edge, ktorý vyrovnáva v USDC, môže za tie isté objednávky prijímať aj tienený
+Zcash. Nebeží na ňom žiadny uzol Zcashu. Pýta si kompaktné bloky od verejných
+serverov lightwalletd, predvolene od štyroch serverov na mainnete od rôznych
+prevádzkovateľov, a dešifruje ich sám, takže váš kľúč na prezeranie edge nikdy
+neopustí. Platba sa počíta, až keď ju servery dvoch rôznych prevádzkovateľov
+ukážu v bloku s rovnakým hašom; server, ktorý ukáže niečo, čo nikto iný
+neukáže, je prehlasovaný. Ostrý edge vyrovnáva len na mainnete a nepýta sa
+servera, ktorý hlási inú sieť; testnet a regtest sú pre testovací edge.
+
+### Predaj za Zcash {#selling-for-zcash}
+
+Na Trhu vložte do riadka Zcashu zjednotený kľúč na prezeranie vašej
+peňaženky: úplný, ktorý sa začína na `uview1`, alebo lepšie kľúč pre
+prichádzajúce platby, ktorý sa začína na `uivk1` a vidí len to, čo prichádza,
+nič z toho, čo posielate vy. Kľúč potrebuje časť Orchard, ktorú má každá
+peňaženka vytvorená od roku 2022. Edge si z nej nechá len kľúč pre
+prichádzajúce platby, ktorý vidí, čo prichádza, a míňať nevie. Zariadenie aj
+edge odmietnu kľúč na míňanie aj seed menom, takže omylom vložený kľúč
+zariadenie nikdy neopustí. Panel ukáže späť prvú adresu vašej peňaženky,
+aby ste videli, do ktorej peňaženky objednávky platia; samotný kľúč už
+nikdy neukáže.
+
+Každá objednávka dostane novú tienenú adresu vašej peňaženky: zjednotenú
+adresu len s časťou Orchard s indexom diverzifikátora vysoko nad tými,
+ktoré rozdáva vaša peňaženka sama. Vaša peňaženka platby na ňu nájde sama,
+lebo dešifruje všetko, čo príde na ktorúkoľvek adresu jej kľúča. Od NU6.3
+platba na adresu Orchard pristane v poole Ironwood, ktorý používa tie isté
+kľúče; edge číta oba.
+
+Rovnako ako pri bitcoinoch sa poplatok platformy účtuje predajcovi zvlášť a
+celá platba príde predajcovi.
+
+### Platba v Zcashi pre kupujúceho {#paying-in-zcash}
+
+Pri objednávke zvoľte pod „Zaplatiť cez“ Zcash. Panel ukáže sumu v ZEC,
+adresu, QR kód a platobný odkaz `zcash:` (ZIP 321), ktorý otvorí peňaženku.
+Zaplaťte z peňaženky, ktorá vie posielať na zjednotenú adresu. Počítajú sa
+len platby v blokoch po tom, čo objednávka adresu dostala, a platba čakajúca
+v mempoole sa ukáže ako videná, keď ju ukážu dvaja prevádzkovatelia.
+Objednávku do 50 $ započítajú tri potvrdenia, do 500 $ šesť, do 5 000 $
+desať a nad to 24; nedoplatok, preplatok aj oneskorená platba sa riešia ako
+pri bitcoinoch. Platba je tienená, takže zaplatená objednávka uvádza Zcash
+ako sieť bez odkazu na prehliadač blokov.
+
 ## Čo nie je pokryté
 
 - **Refundácie a spory.** Riešte ich v Stripe dashboarde pomocou

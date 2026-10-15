@@ -80,6 +80,7 @@ pub mod stripe_mode;
 pub mod sync;
 pub mod vms;
 pub mod window;
+pub mod zcash;
 pub mod zone;
 pub use config::{
     desired_config, uplink_config, EdgeOpts, Files, TenantView, UplinkService, UplinkTarget,

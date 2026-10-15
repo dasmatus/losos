@@ -1906,6 +1906,58 @@ in
       '';
     };
 
+    edge.market.zcash.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Let buyers pay for storage, compute and machine orders in shielded
+        Zcash, beside USDC. The seller gives the edge a unified viewing key;
+        the edge keeps only its Orchard incoming viewing key, which sees
+        payments arrive and can spend nothing. Each order gets a fresh
+        Orchard-only address of the seller's own wallet, so the coins go
+        straight to the seller. The edge runs no node: it fetches compact
+        blocks from the public servers in `servers` and decrypts them
+        itself, so the key never leaves the edge, and counts a payment only
+        when servers of two different operators agree on it. The platform fee
+        on these orders is billed to the seller separately. Needs
+        `losos.edge.market.usdc.enable`. See handbook/docs/in-depth/market.md.
+      '';
+    };
+
+    edge.market.zcash.servers = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [
+        "https://zec-node.cakewallet.com:443"
+        "https://na.zec.rocks:443"
+        "https://lwd.z0n.jp:443"
+        "https://zec.0xrpc.io:443"
+      ];
+      description = ''
+        Public lightwalletd-protocol gRPC servers the edge asks for compact
+        blocks, as `https://host:port`. At least two, run by different
+        operators (told apart by domain): a payment counts only when two of
+        them show it in a block of the same hash. Each must report the
+        network in `network`, or it is not asked. The default lists mainnet
+        servers of four operators.
+      '';
+    };
+
+    edge.market.zcash.network = lib.mkOption {
+      type = lib.types.enum [
+        "mainnet"
+        "testnet"
+        "regtest"
+      ];
+      default = "mainnet";
+      description = ''
+        The network the servers must follow. A live edge (live Stripe key)
+        settles on `mainnet` only; `testnet` and `regtest` are for a test
+        edge. The registrar checks the pairing, each server's reported
+        chain, and that a seller's key is for the same network before it
+        takes the key or hands out an address.
+      '';
+    };
+
     # ── Sealed credentials delivered from GitHub Actions ───────────────────
     # `.github/workflows/edge-credentials.yml` reads the keys from the
     # repository's Actions secrets and hands each one over SSH to

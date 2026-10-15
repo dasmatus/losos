@@ -2230,6 +2230,16 @@ export default defineMessages({
     sk: "Vložte hlavnú adresu vašej peňaženky (začína sa na 4) a jej súkromný kľúč na prezeranie (view key), ktorý peňaženky ukazujú v nastaveniach kľúčov alebo seedu. Každá objednávka dostane novú podadresu vašej peňaženky, takže mince idú priamo k vám: kľúč na prezeranie dovolí edgu vidieť, že prišli, ale nikdy ich nemôže minúť. Nikdy nevkladajte kľúč na míňanie (spend key) ani seed. Poplatok platformy z týchto predajov sa vám účtuje zvlášť.",
     de: "Füge die Hauptadresse deiner Wallet (sie beginnt mit 4) und ihren privaten View-Key ein, den Wallets in den Einstellungen zu Schlüsseln oder Seed zeigen. Jede Bestellung bekommt eine neue Subadresse deiner Wallet, die Coins gehen also direkt an dich: Mit dem View-Key sieht der Edge sie ankommen, kann sie aber nie ausgeben. Füge nie den Spend-Key oder den Seed ein. Die Gebühr der Plattform auf diese Verkäufe wird dir separat berechnet.",
   },
+  "panes.market.coins.keyDetailZec": {
+    en: "Paste your wallet's unified viewing key (uview…), or better its incoming viewing key (uivk…), which wallets show under their export or backup settings. Each order gets a fresh shielded address of your wallet, so the coins go straight to you: the edge keeps only the part that sees payments arrive, never spends them and never sees what you send. Never paste the spending key or the seed phrase. The platform's fee on these sales is billed to you separately.",
+    sk: "Vložte zjednotený kľúč na prezeranie vašej peňaženky (uview…), alebo lepšie jeho časť pre prichádzajúce platby (uivk…), ktorú peňaženky ukazujú v nastaveniach exportu alebo zálohy. Každá objednávka dostane novú tienenú adresu vašej peňaženky, takže mince idú priamo k vám: edge si nechá len časť, ktorá vidí prichádzajúce platby, nikdy ich nemôže minúť a nikdy nevidí, čo posielate vy. Nikdy nevkladajte kľúč na míňanie ani seed. Poplatok platformy z týchto predajov sa vám účtuje zvlášť.",
+    de: "Füge den Unified Viewing Key deiner Wallet ein (uview…), besser noch den Incoming Viewing Key (uivk…), den Wallets in den Einstellungen zu Export oder Sicherung zeigen. Jede Bestellung bekommt eine neue abgeschirmte Adresse deiner Wallet, die Coins gehen also direkt an dich: Der Edge behält nur den Teil, der Zahlungen ankommen sieht, kann sie nie ausgeben und sieht nie, was du sendest. Füge nie den Spending Key oder den Seed ein. Die Gebühr der Plattform auf diese Verkäufe wird dir separat berechnet.",
+  },
+  "panes.market.coins.viewingKeyPlaceholder": {
+    en: "Unified viewing key (uview… or uivk…)",
+    sk: "Zjednotený kľúč na prezeranie (uview… alebo uivk…)",
+    de: "Unified Viewing Key (uview… oder uivk…)",
+  },
   "panes.market.coins.addressPlaceholder": {
     en: "Primary address (4…)",
     sk: "Hlavná adresa (4…)",
