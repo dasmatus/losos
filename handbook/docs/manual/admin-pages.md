@@ -29,8 +29,9 @@ icons. On a phone it opens as a sheet.
 
 ## Search
 
-The search box at the top of the sidebar, or Ctrl+K (Cmd+K on a Mac) on
-any admin page, opens one list that finds:
+The search box at the top of the sidebar opens one list that finds pages,
+apps, files and repositories. Ctrl+K on any admin page opens it too, Cmd+K
+on a Mac. It finds:
 
 - the sections and settings panes, by name or by a word such as "gpu" or
   "hostname", in the language on screen or in English
@@ -43,8 +44,8 @@ any admin page, opens one list that finds:
   handbook and signing out
 
 The arrow keys move through the list, Enter opens the highlighted entry and
-Escape closes the list. Ctrl+Enter (Cmd+Enter) opens a file or repository
-in a new tab. Files and repositories open in their own app.
+Escape closes the list. Files and repositories open in their own app, and
+Ctrl+Enter or Cmd+Enter opens one in a new tab.
 
 File search needs one sign-in with your password, not the spare key. Until
 then the list says so in place of the files.
