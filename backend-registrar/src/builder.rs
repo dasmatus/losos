@@ -53,7 +53,6 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use ring::rand::{SecureRandom, SystemRandom};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tokio::sync::Mutex;
@@ -1304,11 +1303,8 @@ pub struct Builder {
 }
 
 fn random_id(prefix: &str) -> Result<String, BuilderError> {
-    let mut bytes = [0u8; 12];
-    SystemRandom::new()
-        .fill(&mut bytes)
-        .map_err(|_| BuilderError::Store("no randomness".to_string()))?;
-    let hex: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
+    let hex = crate::identity::random_hex(12)
+        .ok_or_else(|| BuilderError::Store("no randomness".to_string()))?;
     Ok(format!("{prefix}_{hex}"))
 }
 

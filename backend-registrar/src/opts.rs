@@ -958,7 +958,7 @@ fn parse_market(args: &[String]) -> Result<Option<Box<MarketOpts>>> {
     }
     let storage_class =
         arg(args, "--market-storage-class").unwrap_or(crate::market::DEFAULT_STORAGE_CLASS);
-    if !dns_subdomain(storage_class) {
+    if !crate::relay::dns_name(storage_class) {
         return Err(miette!(
             "bad --market-storage-class {storage_class:?}; expected a Kubernetes object name (DNS-1123 subdomain)"
         ));
@@ -1397,7 +1397,7 @@ fn parse_vms(args: &[String]) -> Result<Option<crate::vms::VmOpts>> {
     };
     let storage_class = arg(args, "--vm-storage-class").map(str::to_string);
     if let Some(class) = &storage_class {
-        if !dns_subdomain(class) {
+        if !crate::relay::dns_name(class) {
             return Err(miette!(
                 "bad --vm-storage-class {class:?}; expected a Kubernetes object name"
             ));
@@ -1413,7 +1413,7 @@ fn parse_vms(args: &[String]) -> Result<Option<crate::vms::VmOpts>> {
     }
     let domain = arg(args, "--vm-domain").map(str::to_string);
     if let Some(d) = &domain {
-        if !dns_subdomain(d) || !d.contains('.') {
+        if !crate::relay::dns_name(d) || !d.contains('.') {
             return Err(miette!("bad --vm-domain {d:?}; expected a domain name"));
         }
     }
@@ -1498,7 +1498,7 @@ fn parse_domains(args: &[String]) -> Result<Option<Box<DomainsOpts>>> {
         return Ok(None);
     };
     let zone = zone.trim().trim_end_matches('.').to_ascii_lowercase();
-    if zone.split('.').count() < 2 || !dns_subdomain(&zone) {
+    if zone.split('.').count() < 2 || !crate::relay::dns_name(&zone) {
         return Err(miette!(
             "bad --dns-zone {zone:?}; expected a domain such as boxes.losos.cfd"
         ));
@@ -1534,14 +1534,14 @@ fn parse_domains(args: &[String]) -> Result<Option<Box<DomainsOpts>>> {
     if nameservers.is_empty() {
         nameservers.push(format!("ns1.{zone}"));
     }
-    if let Some(bad) = nameservers.iter().find(|n| !dns_subdomain(n)) {
+    if let Some(bad) = nameservers.iter().find(|n| !crate::relay::dns_name(n)) {
         return Err(miette!("bad --dns-nameservers entry {bad:?}"));
     }
     let hostmaster = arg(args, "--dns-hostmaster").map_or_else(
         || format!("hostmaster.{zone}"),
         |h| h.trim().trim_end_matches('.').to_string(),
     );
-    if !dns_subdomain(&hostmaster) {
+    if !crate::relay::dns_name(&hostmaster) {
         return Err(miette!("bad --dns-hostmaster {hostmaster:?}; write the mailbox as a domain (hostmaster.example.org)"));
     }
     let doh_url = arg(args, "--dns-check-url").unwrap_or(DEFAULT_DOH_URL);
@@ -1568,23 +1568,6 @@ fn parse_domains(args: &[String]) -> Result<Option<Box<DomainsOpts>>> {
         ipv6,
         doh_url: doh_url.to_string(),
     })))
-}
-
-/// A Kubernetes object name in the DNS-1123 subdomain form, which is what a
-/// `StorageClass` name must be: at most 253 characters of dot-separated
-/// labels, each 1 to 63 characters of lowercase alphanumerics with inner
-/// hyphens. Anything else would
-/// only fail later, as a claim the apiserver refuses on every reconcile pass.
-fn dns_subdomain(name: &str) -> bool {
-    name.len() <= 253
-        && name.split('.').all(|label| {
-            (1..=63).contains(&label.len())
-                && !label.starts_with('-')
-                && !label.ends_with('-')
-                && label
-                    .bytes()
-                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
-        })
 }
 
 /// Accept an IANA zone name, rejecting anything the edge's `date` would

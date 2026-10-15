@@ -99,7 +99,7 @@ impl Releaser {
 
     #[must_use]
     pub fn address_hex(&self) -> String {
-        format!("0x{}", stablecoin::hex_encode(&self.address))
+        format!("0x{}", crate::identity::to_hex(&self.address))
     }
 }
 
@@ -160,8 +160,8 @@ pub fn sign(releaser: &Releaser, call: &Call) -> (String, String) {
     raw.extend(rlp_list(&signed));
     let hash = stablecoin::keccak256(&raw);
     (
-        format!("0x{}", stablecoin::hex_encode(&raw)),
-        format!("0x{}", stablecoin::hex_encode(&hash)),
+        format!("0x{}", crate::identity::to_hex(&raw)),
+        format!("0x{}", crate::identity::to_hex(&hash)),
     )
 }
 
@@ -195,8 +195,8 @@ pub async fn send(
     replace: bool,
 ) -> Result<String, MarketError> {
     let from = releaser.address_hex();
-    let to_hex = format!("0x{}", stablecoin::hex_encode(&to));
-    let data_hex = format!("0x{}", stablecoin::hex_encode(&data));
+    let to_hex = format!("0x{}", crate::identity::to_hex(&to));
+    let data_hex = format!("0x{}", crate::identity::to_hex(&data));
     let nonce = quantity(
         &stablecoin::call_result(
             rpc_url,
@@ -395,10 +395,10 @@ mod tests {
     #[test]
     fn call_data_is_the_selector_and_one_word() {
         let data = release_data(7);
-        assert_eq!(stablecoin::hex_encode(&data[..4]), "37bdc99b");
+        assert_eq!(crate::identity::to_hex(&data[..4]), "37bdc99b");
         assert_eq!(data.len(), 36);
         assert_eq!(data[35], 7);
-        assert_eq!(stablecoin::hex_encode(&refund_data(1)[..4]), "278ecde1");
+        assert_eq!(crate::identity::to_hex(&refund_data(1)[..4]), "278ecde1");
     }
 
     #[test]
@@ -438,7 +438,7 @@ mod tests {
         let bytes = stablecoin::decode_hex(raw).unwrap();
         format!(
             "0x{}",
-            stablecoin::hex_encode(&stablecoin::keccak256(&bytes))
+            crate::identity::to_hex(&stablecoin::keccak256(&bytes))
         )
     }
 

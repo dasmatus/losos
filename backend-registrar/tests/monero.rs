@@ -16,22 +16,13 @@ mod common;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use axum::{extract::Query, routing::get, Json, Router};
-use common::{Edge, TenantSpec, GOOD_TOKEN, OTHER_TOKEN};
+use common::coins::{auth, free_port, order, parse, pay, prices, start_coin_edge};
+use common::{Edge, GOOD_TOKEN, OTHER_TOKEN};
 use losos_registrar::coins::PriceSource;
 use losos_registrar::monero::XmrOpts;
-use losos_registrar::stablecoin::{network, UsdcChain, UsdcOpts};
 use serde_json::{json, Value};
 
 const LOGIN: &str = "losos:regtest-only";
-
-fn free_port() -> u16 {
-    std::net::TcpListener::bind("127.0.0.1:0")
-        .expect("bind")
-        .local_addr()
-        .expect("addr")
-        .port()
-}
 
 /// A process stopped when dropped.
 struct Child(tokio::process::Child);
@@ -184,130 +175,13 @@ impl Rig {
     }
 }
 
-/// Kraken and CoinGecko both saying `usd` dollars for every coin.
-async fn prices(usd: &'static str) -> [PriceSource; 2] {
-    let app = Router::new()
-        .route(
-            "/0/public/Ticker",
-            get(
-                move |Query(q): Query<std::collections::HashMap<String, String>>| async move {
-                    let pair = q.get("pair").cloned().unwrap_or_default();
-                    Json(json!({"error": [], "result": {pair: {"c": [usd, "1"]}}}))
-                },
-            ),
-        )
-        .route(
-            "/api/v3/simple/price",
-            get(
-                move |Query(q): Query<std::collections::HashMap<String, String>>| async move {
-                    let id = q.get("ids").cloned().unwrap_or_default();
-                    Json(json!({id: {"usd": usd.parse::<f64>().unwrap()}}))
-                },
-            ),
-        );
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-        .await
-        .expect("bind");
-    let base = format!("http://{}", listener.local_addr().expect("addr"));
-    tokio::spawn(async move {
-        let _ = axum::serve(listener, app).await;
-    });
-    [
-        PriceSource::Kraken { base: base.clone() },
-        PriceSource::CoinGecko { base },
-    ]
-}
-
-async fn start_stripe() -> String {
-    let app = Router::new().fallback(|| async { axum::http::StatusCode::NOT_FOUND });
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-        .await
-        .expect("bind the stripe stub");
-    let port = listener.local_addr().expect("local_addr").port();
-    tokio::spawn(async move {
-        let _ = axum::serve(listener, app).await;
-    });
-    format!("http://127.0.0.1:{port}")
-}
-
 async fn start_edge(rig: &Rig, prices: [PriceSource; 2]) -> Edge {
-    let stripe = start_stripe().await;
     let xmr = XmrOpts {
         wallet_rpc: rig.edge_wallet_rpc.clone(),
         login_file: rig.login_file.to_string_lossy().into_owned(),
         daemon_rpc: rig.daemon.clone(),
     };
-    Edge::start_market_full(
-        "monero",
-        &[
-            TenantSpec::new("seller-box", "seller.example", GOOD_TOKEN).with_market(),
-            TenantSpec::new("buyer-box", "buyer.example", OTHER_TOKEN).with_market(),
-        ],
-        &stripe,
-        &[("seller-box", false)],
-        None,
-        move |opts, dir| {
-            std::fs::write(dir.join("usdc-rpc-url"), "http://127.0.0.1:9").expect("rpc url");
-            let market = opts.market.as_mut().expect("market on");
-            market.currency = "usd".to_string();
-            market.usdc = Some(UsdcOpts {
-                chains: vec![UsdcChain {
-                    network: network("base-sepolia").unwrap(),
-                    rpc_file: dir.path_str("usdc-rpc-url"),
-                    pay: Some("0x1111111111111111111111111111111111111111".to_string()),
-                    treasury: "0x4444444444444444444444444444444444444444".to_string(),
-                    genesis: None,
-                }],
-                ens_rpc_file: None,
-                price_sources: prices,
-                releaser_file: None,
-            });
-            market.xmr = Some(xmr);
-        },
-    )
-    .await
-}
-
-fn auth(id: &str, token: &str, extra: Value) -> Value {
-    let mut doc = json!({ "appliance_id": id, "token": token });
-    for (k, v) in extra.as_object().expect("object") {
-        doc[k] = v.clone();
-    }
-    doc
-}
-
-fn parse(body: &str) -> Value {
-    serde_json::from_str(body).unwrap_or_else(|_| panic!("not JSON: {body}"))
-}
-
-async fn pay(edge: &Edge, order_id: &str) -> Value {
-    let (status, body) = edge
-        .post(
-            "/market/coins/pay",
-            auth(
-                "buyer-box",
-                OTHER_TOKEN,
-                json!({"order_id": order_id, "coin": "xmr"}),
-            ),
-        )
-        .await;
-    assert_eq!(status, 200, "{body}");
-    parse(&body)
-}
-
-async fn order(edge: &Edge, listing: &str) -> Value {
-    let (status, body) = edge
-        .post(
-            "/market/orders",
-            auth(
-                "buyer-box",
-                OTHER_TOKEN,
-                json!({"listing_id": listing, "quantity": 100}),
-            ),
-        )
-        .await;
-    assert_eq!(status, 201, "{body}");
-    parse(&body)
+    start_coin_edge("monero", prices, move |market| market.xmr = Some(xmr)).await
 }
 
 async fn set_key(edge: &Edge, address: &str, view_key: &str) -> (u16, String) {
@@ -387,7 +261,7 @@ async fn a_monero_order_is_paid_to_the_sellers_own_subaddress() {
     let order_id = checkout["order_id"].as_str().unwrap().to_string();
 
     // $5.00 at $150 is 0.0333... XMR, rounded up for the seller.
-    let invoice = pay(&edge, &order_id).await;
+    let invoice = pay(&edge, &order_id, "xmr").await;
     assert_eq!(invoice["amount"], "0.033333333334", "{invoice}");
     assert_eq!(invoice["state"], "waiting");
     assert_eq!(invoice["required"], 10);
@@ -405,7 +279,7 @@ async fn a_monero_order_is_paid_to_the_sellers_own_subaddress() {
         .await;
     assert_eq!(index["index"]["major"], 0, "{index}");
     assert!(index["index"]["minor"].as_u64().unwrap() >= 1, "{index}");
-    assert_eq!(pay(&edge, &order_id).await["address"], address);
+    assert_eq!(pay(&edge, &order_id, "xmr").await["address"], address);
 
     // Two payments add up; the first alone is short.
     rig.wallet("buyer", "refresh", json!({})).await;
@@ -415,7 +289,7 @@ async fn a_monero_order_is_paid_to_the_sellers_own_subaddress() {
         json!({"destinations": [{"amount": 20_000_000_000u64, "address": address}]}),
     )
     .await;
-    let short = pay(&edge, &order_id).await;
+    let short = pay(&edge, &order_id, "xmr").await;
     assert_eq!(short["state"], "underpaid", "{short}");
     rig.wallet(
         "buyer",
@@ -423,16 +297,16 @@ async fn a_monero_order_is_paid_to_the_sellers_own_subaddress() {
         json!({"destinations": [{"amount": 13_333_333_334u64, "address": address}]}),
     )
     .await;
-    let seen = pay(&edge, &order_id).await;
+    let seen = pay(&edge, &order_id, "xmr").await;
     assert_eq!(seen["state"], "seen", "{seen}");
     assert_eq!(seen["paid"], "0.033333333334");
     assert_eq!(seen["txs"].as_array().unwrap().len(), 2);
 
     // Ten blocks for Monero.
     rig.mine(9, &buyer).await;
-    assert_eq!(pay(&edge, &order_id).await["state"], "confirming");
+    assert_eq!(pay(&edge, &order_id, "xmr").await["state"], "confirming");
     rig.mine(1, &buyer).await;
-    let paid = pay(&edge, &order_id).await;
+    let paid = pay(&edge, &order_id, "xmr").await;
     assert_eq!(paid["state"], "paid", "{paid}");
 
     let (_, body) = edge
@@ -451,7 +325,7 @@ async fn a_monero_order_is_paid_to_the_sellers_own_subaddress() {
 
     // The next order gets the next subaddress.
     let second = order(&edge, &listing).await;
-    let next = pay(&edge, second["order_id"].as_str().unwrap()).await;
+    let next = pay(&edge, second["order_id"].as_str().unwrap(), "xmr").await;
     assert_ne!(next["address"], address);
     assert!(next["address"].as_str().unwrap().starts_with('8'));
 

@@ -9,7 +9,7 @@
  * the claim refuses without one. So the first password goes through
  * `POST /api/setup/claim` (@/lib/api `claimBox`): public while the box is
  * unowned, never after, and it hands back the admin token so the rest of the
- * wizard — the recovery code, the sign-in frame — runs authenticated. The
+ * wizard (the sign-in frame) runs authenticated. The
  * token-gated `/api/set-password` is only for a second attempt from the same
  * tab, once the claim has closed the window. The old code posted to
  * set-password first, got a 401 on every fresh box, and the wizard could not
@@ -616,8 +616,7 @@ function WaitingPanel({ state }: { state: ReadinessState }) {
  * password cannot be checked, and this key is the way in. lososd mints it
  * into a 0600 file on a box with no shell and releases it exactly once, in
  * the claim reply, which is why it is shown here, copyable and printable,
- * and nowhere else. (It used to print on the recovery-code step's sheet;
- * that step is hidden, see ./steps.ts, so the sheet lives here now.) */
+ * and nowhere else. */
 function AdminKey({ value, boxName }: { value: string; boxName: string }) {
   const t = useT();
   const keyRef = React.useRef<HTMLElement>(null);

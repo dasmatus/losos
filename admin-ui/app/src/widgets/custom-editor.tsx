@@ -36,7 +36,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { MessageKey } from "@/lib/i18n";
 import { Rich, useLocale, useT } from "@/lib/i18n-react";
 import { cn } from "@/lib/utils";
-import { CUSTOM_REFRESH_MS } from "./catalogue";
 import { createSandbox } from "./sandbox";
 import { blankSpec, compileSpec, EXAMPLES, parseSpec, WIDGET_KINDS, type WidgetSpec } from "./spec";
 import { WidgetBody } from "./tile";
@@ -712,6 +711,3 @@ function draftToSpec(draft: Draft): Record<string, unknown> {
   }
   return out;
 }
-
-/** Exported for the board's "how often" line. Keeps one number in one place. */
-export const CUSTOM_REFRESH_SECONDS = Math.round(CUSTOM_REFRESH_MS / 1000);

@@ -19,8 +19,6 @@ USB stick, and after that you only use it through a web browser.
 | **The mesh**          | Optional. Spare disk and CPU lent to other LosOS boxes, and borrowed from them.                  |
 | **Remote access**     | Optional. A public address for the box through an edge server, with no port opened at home.      |
 
-![The marks of LosOS cloud and LosOS Git, a live salmon on a cloud and on a branch, in the light and the dark theme.](../img/cloud-and-git-marks.png)
-
 ## What makes it different from a NAS
 
 ![Inside a box: nginx is the one front door; behind it the control daemon, the box's own cluster running LosOS cloud and LosOS Git, and the mesh agent; under them a RAM system disk and one encrypted volume.](../img/box-architecture.svg)

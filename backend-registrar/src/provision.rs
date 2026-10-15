@@ -49,7 +49,6 @@ use std::process::ExitCode;
 use std::time::Duration;
 
 use miette::{miette, Context, IntoDiagnostic, Result};
-use ring::rand::SecureRandom;
 use serde::Deserialize;
 
 use crate::action::Action;
@@ -472,11 +471,8 @@ pub enum Probe {
 /// A fresh nonce, the box's four checks, the verdict.
 pub async fn probe(client: &reqwest::Client, url: &str, root_public: &str) -> Result<Probe> {
     let url = url.trim().trim_end_matches('/');
-    let mut raw = [0u8; 32];
-    ring::rand::SystemRandom::new()
-        .fill(&mut raw)
-        .map_err(|_| miette!("the system random source failed"))?;
-    let nonce = identity::to_hex(&raw);
+    let nonce =
+        identity::random_hex(32).ok_or_else(|| miette!("the system random source failed"))?;
     let resp = match client
         .get(format!("{url}/identity?nonce={nonce}"))
         .timeout(Duration::from_secs(10))
@@ -497,10 +493,7 @@ pub async fn probe(client: &reqwest::Client, url: &str, root_public: &str) -> Re
         .await
         .into_diagnostic()
         .wrap_err("the /identity answer is not the document the registrar writes")?;
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
+    let now = crate::market::now_secs();
     Ok(
         match identity::check_answer(root_public, &answer, url, &nonce, now) {
             Ok(()) => Probe::Official(answer.cert),

@@ -410,22 +410,6 @@ export function getEdge(options: RequestOptions = {}): Promise<EdgeResponse> {
   return call<EdgeResponse>("/api/edge", options);
 }
 
-/** The box refused because no edge proxy is in reach (a 409 with
- *  `edgeRequired: true`). */
-export function isEdgeRequired(error: unknown): boolean {
-  return error instanceof ApiError && error.status === 409 && error.edgeRequired;
-}
-
-/** POST /api/change — flip local/mesh and start a rebuild. Returns at once. */
-export function postChange(mode: Mode, options: RequestOptions = {}): Promise<ChangeResponse> {
-  return call<ChangeResponse>("/api/change", {
-    ...options,
-    method: "POST",
-    contentType: "application/json",
-    body: JSON.stringify({ mode }),
-  });
-}
-
 /** POST /api/apply — overwrite overrides.nix with `nix` and rebuild.
  *
  * The body is raw Nix, not JSON. Build it with {@link buildOverridesNix} —

@@ -105,11 +105,6 @@ fn base58_decode(text: &str) -> Option<Vec<u8>> {
     Some(out)
 }
 
-fn keccak(bytes: &[u8]) -> [u8; 32] {
-    use sha3::Digest;
-    sha3::Keccak256::digest(bytes).into()
-}
-
 /// The primary address in `text`, or why it is not one.
 pub fn parse_address(text: &str) -> Result<Address, &'static str> {
     let text = text.trim();
@@ -118,7 +113,7 @@ pub fn parse_address(text: &str) -> Result<Address, &'static str> {
         .flatten()
         .filter(|raw| raw.len() == 69)
         .ok_or("that is not a Monero address")?;
-    if keccak(&raw[..65])[..4] != raw[65..] {
+    if crate::stablecoin::keccak256(&raw[..65])[..4] != raw[65..] {
         return Err("that Monero address has a typo in it");
     }
     let prefix = raw[0];
@@ -178,11 +173,7 @@ pub fn check_view_key(address: &Address, view_key: &str) -> Result<(), &'static 
 /// address: the service holds nothing else to tell sellers apart by.
 pub fn wallet_name(address: &str) -> String {
     let digest = ring::digest::digest(&ring::digest::SHA256, address.as_bytes());
-    let hex: String = digest.as_ref()[..12]
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect();
-    format!("losos-{hex}")
+    format!("losos-{}", crate::identity::to_hex(&digest.as_ref()[..12]))
 }
 
 // ── The wallet service ────────────────────────────────────────────────────
@@ -238,10 +229,7 @@ fn challenge(headers: &reqwest::header::HeaderMap) -> Option<(String, String)> {
 
 fn md5_hex(text: &str) -> String {
     use md5::Digest;
-    md5::Md5::digest(text.as_bytes())
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect()
+    crate::identity::to_hex(&md5::Md5::digest(text.as_bytes()))
 }
 
 /// The `Authorization` header answering a challenge (RFC 7616, MD5,
@@ -265,12 +253,7 @@ fn digest_header(
 
 /// A fresh client nonce for one digest answer.
 fn cnonce() -> Result<String, MarketError> {
-    use ring::rand::SecureRandom;
-    let mut bytes = [0u8; 8];
-    ring::rand::SystemRandom::new()
-        .fill(&mut bytes)
-        .map_err(|_| MarketError::Store("no randomness".to_string()))?;
-    Ok(bytes.iter().map(|b| format!("{b:02x}")).collect())
+    crate::identity::random_hex(8).ok_or_else(|| MarketError::Store("no randomness".to_string()))
 }
 
 /// Piconero; the wallet service answers in whole units already.

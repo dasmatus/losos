@@ -128,7 +128,7 @@ pub fn box_label(box_uuid: &str) -> String {
         &SHA256,
         format!("losos-box-dns-v1\n{box_uuid}\n").as_bytes(),
     );
-    hex(&d.as_ref()[..8])
+    crate::identity::to_hex(&d.as_ref()[..8])
 }
 
 /// The value of the owner's TXT record: binds the domain, the box UUID and
@@ -139,11 +139,10 @@ pub fn challenge_token(domain: &str, box_uuid: &str, account_id: &str) -> String
         &SHA256,
         format!("losos-domain-v1\n{domain}\n{box_uuid}\n{account_id}\n").as_bytes(),
     );
-    format!("{CHALLENGE_PREFIX}{}", hex(&d.as_ref()[..16]))
-}
-
-fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|b| format!("{b:02x}")).collect()
+    format!(
+        "{CHALLENGE_PREFIX}{}",
+        crate::identity::to_hex(&d.as_ref()[..16])
+    )
 }
 
 /// Lowercase, strip one trailing dot, and check `s` is a hostname a stranger

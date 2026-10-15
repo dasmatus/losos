@@ -14,6 +14,8 @@
 
 mod common;
 
+use common::coins::start_stripe;
+
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
@@ -168,18 +170,6 @@ async fn start_chain() -> (Chain, String) {
 
 /// Answers nothing: USDC orders never reach Stripe, and the gate only needs
 /// a test-mode key to tell the registrar which ledger it is on.
-async fn start_stripe() -> String {
-    let app = Router::new().fallback(|| async { axum::http::StatusCode::NOT_FOUND });
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-        .await
-        .expect("bind the stripe stub");
-    let port = listener.local_addr().expect("local_addr").port();
-    tokio::spawn(async move {
-        let _ = axum::serve(listener, app).await;
-    });
-    format!("http://127.0.0.1:{port}")
-}
-
 fn tenants() -> Vec<TenantSpec> {
     vec![
         TenantSpec::new("seller-box", "seller.example", GOOD_TOKEN).with_market(),

@@ -13,9 +13,6 @@
  *                           and the spare admin key, shown and printable once
  *   3  Sign in              the files app, embedded, watched
  *
- * There was a recovery-code step between 2 and 3; wizard/steps.ts says why it
- * is hidden and how to bring it back.
- *
  * This component owns the sequence and the gates and nothing else. Each step
  * reports upward when its gate is met — `account` for step 2, `signedIn` for
  * step 3 — and the footer reads those. Steps do not move the wizard
