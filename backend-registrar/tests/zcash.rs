@@ -16,10 +16,9 @@ mod common;
 use std::convert::Infallible;
 use std::sync::{Arc, Mutex};
 
-use axum::{extract::Query, routing::get, Json, Router};
-use common::{Edge, TenantSpec, GOOD_TOKEN, OTHER_TOKEN};
+use common::coins::{auth, order, parse, pay, prices, start_coin_edge};
+use common::{Edge, GOOD_TOKEN, OTHER_TOKEN};
 use losos_registrar::coins::PriceSource;
-use losos_registrar::stablecoin::{network, UsdcChain, UsdcOpts};
 use losos_registrar::zcash::proto::{
     BlockId, BlockRange, ChainSpec, CompactBlock, CompactOrchardAction, CompactTx, Empty,
     GetMempoolTxRequest, LightdInfo,
@@ -29,7 +28,7 @@ use orchard::keys::{FullViewingKey, Scope, SpendingKey};
 use orchard::note::{ExtractedNoteCommitment, NoteVersion, Nullifier, RandomSeed, Rho};
 use orchard::note_encryption::{IronwoodNoteEncryption, OrchardDomain, OrchardNoteEncryption};
 use orchard::value::NoteValue;
-use serde_json::{json, Value};
+use serde_json::json;
 use tonic::codegen::{http, BoxFuture, BoxStream, Context, Poll, Service};
 use zcash_address::unified::{self, Encoding};
 use zcash_note_encryption::Domain;
@@ -300,130 +299,16 @@ async fn serve(chain_name: &'static str, chain: Arc<Mutex<Chain>>) -> String {
 
 // ── The edge ──────────────────────────────────────────────────────────────
 
-/// Kraken and CoinGecko both saying `usd` dollars for every coin.
-async fn prices(usd: &'static str) -> [PriceSource; 2] {
-    let app = Router::new()
-        .route(
-            "/0/public/Ticker",
-            get(
-                move |Query(q): Query<std::collections::HashMap<String, String>>| async move {
-                    let pair = q.get("pair").cloned().unwrap_or_default();
-                    Json(json!({"error": [], "result": {pair: {"c": [usd, "1"]}}}))
-                },
-            ),
-        )
-        .route(
-            "/api/v3/simple/price",
-            get(
-                move |Query(q): Query<std::collections::HashMap<String, String>>| async move {
-                    let id = q.get("ids").cloned().unwrap_or_default();
-                    Json(json!({id: {"usd": usd.parse::<f64>().unwrap()}}))
-                },
-            ),
-        );
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-        .await
-        .expect("bind");
-    let base = format!("http://{}", listener.local_addr().expect("addr"));
-    tokio::spawn(async move {
-        let _ = axum::serve(listener, app).await;
-    });
-    [
-        PriceSource::Kraken { base: base.clone() },
-        PriceSource::CoinGecko { base },
-    ]
-}
-
-async fn start_stripe() -> String {
-    let app = Router::new().fallback(|| async { axum::http::StatusCode::NOT_FOUND });
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-        .await
-        .expect("bind the stripe stub");
-    let port = listener.local_addr().expect("local_addr").port();
-    tokio::spawn(async move {
-        let _ = axum::serve(listener, app).await;
-    });
-    format!("http://127.0.0.1:{port}")
-}
-
 async fn start_edge(servers: Vec<String>, prices: [PriceSource; 2]) -> Edge {
-    let stripe = start_stripe().await;
-    Edge::start_market_full(
-        "zcash",
-        &[
-            TenantSpec::new("seller-box", "seller.example", GOOD_TOKEN).with_market(),
-            TenantSpec::new("buyer-box", "buyer.example", OTHER_TOKEN).with_market(),
-        ],
-        &stripe,
-        &[("seller-box", false)],
-        None,
-        move |opts, dir| {
-            std::fs::write(dir.join("usdc-rpc-url"), "http://127.0.0.1:9").expect("rpc url");
-            let market = opts.market.as_mut().expect("market on");
-            market.currency = "usd".to_string();
-            market.usdc = Some(UsdcOpts {
-                chains: vec![UsdcChain {
-                    network: network("base-sepolia").unwrap(),
-                    rpc_file: dir.path_str("usdc-rpc-url"),
-                    pay: Some("0x1111111111111111111111111111111111111111".to_string()),
-                    treasury: "0x4444444444444444444444444444444444444444".to_string(),
-                    genesis: None,
-                }],
-                ens_rpc_file: None,
-                price_sources: prices,
-                releaser_file: None,
-            });
-            // The test edge's Stripe key is a test key, so it settles on
-            // regtest; a live edge takes mainnet only.
-            market.zec = Some(ZecOpts {
-                servers,
-                network: Network::Regtest,
-            });
-        },
-    )
+    // The test edge's Stripe key is a test key, so it settles on regtest; a
+    // live edge takes mainnet only.
+    start_coin_edge("zcash", prices, move |market| {
+        market.zec = Some(ZecOpts {
+            servers,
+            network: Network::Regtest,
+        });
+    })
     .await
-}
-
-fn auth(id: &str, token: &str, extra: Value) -> Value {
-    let mut doc = json!({ "appliance_id": id, "token": token });
-    for (k, v) in extra.as_object().expect("object") {
-        doc[k] = v.clone();
-    }
-    doc
-}
-
-fn parse(body: &str) -> Value {
-    serde_json::from_str(body).unwrap_or_else(|_| panic!("not JSON: {body}"))
-}
-
-async fn pay(edge: &Edge, order_id: &str) -> Value {
-    let (status, body) = edge
-        .post(
-            "/market/coins/pay",
-            auth(
-                "buyer-box",
-                OTHER_TOKEN,
-                json!({"order_id": order_id, "coin": "zec"}),
-            ),
-        )
-        .await;
-    assert_eq!(status, 200, "{body}");
-    parse(&body)
-}
-
-async fn order(edge: &Edge, listing: &str) -> Value {
-    let (status, body) = edge
-        .post(
-            "/market/orders",
-            auth(
-                "buyer-box",
-                OTHER_TOKEN,
-                json!({"listing_id": listing, "quantity": 100}),
-            ),
-        )
-        .await;
-    assert_eq!(status, 201, "{body}");
-    parse(&body)
 }
 
 async fn set_key(edge: &Edge, key: &str) -> (u16, String) {
@@ -510,7 +395,7 @@ async fn a_zcash_order_is_paid_to_a_fresh_shielded_address_two_servers_agree_on(
     let order_id = checkout["order_id"].as_str().unwrap().to_string();
 
     // $5.00 at $40 is 0.125 ZEC; three blocks for an order this size.
-    let invoice = pay(&edge, &order_id).await;
+    let invoice = pay(&edge, &order_id, "zec").await;
     assert_eq!(invoice["amount"], "0.12500000", "{invoice}");
     assert_eq!(invoice["state"], "waiting");
     assert_eq!(invoice["required"], 3);
@@ -528,7 +413,7 @@ async fn a_zcash_order_is_paid_to_a_fresh_shielded_address_two_servers_agree_on(
         .expect("the seller's address");
     assert_eq!(index.as_bytes()[10], 1);
     assert_ne!(to, wallet_ivk.address_at(0u32));
-    assert_eq!(pay(&edge, &order_id).await["address"], address);
+    assert_eq!(pay(&edge, &order_id, "zec").await["address"], address);
 
     // One server shows the whole amount paid, in its mempool and in a block
     // of its own. Nobody else does, so it does not count.
@@ -538,7 +423,7 @@ async fn a_zcash_order_is_paid_to_a_fresh_shielded_address_two_servers_agree_on(
         liar.mine_pool();
         liar.mempool.push(payment(2, to, 12_500_000, true));
     }
-    assert_eq!(pay(&edge, &order_id).await["state"], "waiting");
+    assert_eq!(pay(&edge, &order_id, "zec").await["state"], "waiting");
 
     // Part of it reaches the address as an Ironwood note: underpaid.
     honest
@@ -546,7 +431,7 @@ async fn a_zcash_order_is_paid_to_a_fresh_shielded_address_two_servers_agree_on(
         .unwrap()
         .mempool
         .push(payment(3, to, 5_000_000, true));
-    let short = pay(&edge, &order_id).await;
+    let short = pay(&edge, &order_id, "zec").await;
     assert_eq!(short["state"], "underpaid", "{short}");
     assert_eq!(short["paid"], "0.05000000");
 
@@ -556,7 +441,7 @@ async fn a_zcash_order_is_paid_to_a_fresh_shielded_address_two_servers_agree_on(
         .unwrap()
         .mempool
         .push(payment(4, to, 7_500_000, false));
-    let seen = pay(&edge, &order_id).await;
+    let seen = pay(&edge, &order_id, "zec").await;
     assert_eq!(seen["state"], "seen", "{seen}");
     assert_eq!(seen["paid"], "0.12500000");
     let mut txs: Vec<String> = seen["txs"]
@@ -584,11 +469,11 @@ async fn a_zcash_order_is_paid_to_a_fresh_shielded_address_two_servers_agree_on(
         assert!(chain.mempool.is_empty());
     }
     lying.lock().unwrap().mine(Vec::new());
-    let confirming = pay(&edge, &order_id).await;
+    let confirming = pay(&edge, &order_id, "zec").await;
     assert_eq!(confirming["state"], "confirming", "{confirming}");
     assert_eq!(confirming["confirmations"], 1);
     mine(2);
-    let paid = pay(&edge, &order_id).await;
+    let paid = pay(&edge, &order_id, "zec").await;
     assert_eq!(paid["state"], "paid", "{paid}");
 
     let (_, body) = edge
@@ -621,12 +506,12 @@ async fn a_zcash_order_is_paid_to_a_fresh_shielded_address_two_servers_agree_on(
     }
     lying.lock().unwrap().mine(Vec::new());
     let second = order(&edge, &listing).await;
-    let next = pay(&edge, second["order_id"].as_str().unwrap()).await;
+    let next = pay(&edge, second["order_id"].as_str().unwrap(), "zec").await;
     assert_ne!(next["address"], address);
     assert_eq!(receiver(next["address"].as_str().unwrap()), next_to);
     mine(3);
     assert_eq!(
-        pay(&edge, second["order_id"].as_str().unwrap()).await["state"],
+        pay(&edge, second["order_id"].as_str().unwrap(), "zec").await["state"],
         "waiting"
     );
 

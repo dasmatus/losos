@@ -936,10 +936,7 @@ async fn identity_push(State(st): State<AppState>, headers: HeaderMap, body: Byt
         Err(refused) => return *refused,
     };
 
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
+    let now = crate::market::now_secs();
     match id.install(cert.clone(), now) {
         Ok(()) => {
             tracing::info!(

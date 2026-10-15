@@ -48,7 +48,6 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use ring::hmac;
-use ring::rand::{SecureRandom, SystemRandom};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio::sync::Mutex;
@@ -1029,12 +1028,7 @@ pub fn entitlements(state: &MarketState, buyer: &str, now: u64) -> Entitlements 
 #[must_use]
 pub fn namespace_for(buyer: &str) -> Option<String> {
     let name = format!("{NAMESPACE_PREFIX}{buyer}");
-    let label = name.len() <= 63
-        && name
-            .bytes()
-            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
-        && !name.ends_with('-');
-    label.then_some(name)
+    crate::relay::dns_label(&name).then_some(name)
 }
 
 /// The claim name for an order. Order ids are `ord_<hex>`; `_` is not a legal
@@ -1147,7 +1141,7 @@ pub fn verify_signature(
         match part.trim().split_once('=') {
             Some(("t", v)) => timestamp = v.parse().ok(),
             Some(("v1", v)) => {
-                if let Some(bytes) = decode_hex(v) {
+                if let Some(bytes) = crate::identity::from_hex(v) {
                     candidates.push(bytes);
                 }
             }
@@ -1178,18 +1172,7 @@ pub fn sign_webhook(secret: &str, body: &[u8], timestamp: u64) -> String {
     signed.extend_from_slice(body);
     let key = hmac::Key::new(hmac::HMAC_SHA256, secret.as_bytes());
     let tag = hmac::sign(&key, &signed);
-    let hex: String = tag.as_ref().iter().map(|b| format!("{b:02x}")).collect();
-    format!("t={timestamp},v1={hex}")
-}
-
-pub(crate) fn decode_hex(s: &str) -> Option<Vec<u8>> {
-    if !s.len().is_multiple_of(2) || !s.is_ascii() {
-        return None;
-    }
-    (0..s.len())
-        .step_by(2)
-        .map(|i| u8::from_str_radix(&s[i..i + 2], 16).ok())
-        .collect()
+    format!("t={timestamp},v1={}", crate::identity::to_hex(tag.as_ref()))
 }
 
 /// Apply one verified Stripe event to the state. Returns whether anything
@@ -1846,11 +1829,7 @@ pub fn valid_box_uuid(s: &str) -> bool {
 
 /// 32 random bytes as 64 hex characters: an upload's ticket or fetch token.
 fn random_capability() -> Result<String, MarketError> {
-    let mut bytes = [0u8; 32];
-    SystemRandom::new()
-        .fill(&mut bytes)
-        .map_err(|_| MarketError::Store("no randomness".to_string()))?;
-    Ok(bytes.iter().map(|b| format!("{b:02x}")).collect())
+    crate::identity::random_hex(32).ok_or_else(|| MarketError::Store("no randomness".to_string()))
 }
 
 /// Drop uploads whose ticket lapsed with no file stored; their ids.
@@ -1868,11 +1847,8 @@ pub fn sweep_uploads(state: &mut MarketState, now: u64) -> Vec<String> {
 }
 
 fn random_id(prefix: &str) -> Result<String, MarketError> {
-    let mut bytes = [0u8; 12];
-    SystemRandom::new()
-        .fill(&mut bytes)
-        .map_err(|_| MarketError::Store("no randomness".to_string()))?;
-    let hex: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
+    let hex = crate::identity::random_hex(12)
+        .ok_or_else(|| MarketError::Store("no randomness".to_string()))?;
     Ok(format!("{prefix}_{hex}"))
 }
 
