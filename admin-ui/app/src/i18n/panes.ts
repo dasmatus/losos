@@ -401,11 +401,6 @@ export default defineMessages({
     sk: "Na toto sa nič nenašlo.",
     de: "Dazu kam nichts zurück.",
   },
-  "panes.apps.from": {
-    en: "from {source}",
-    sk: "zdroj: {source}",
-    de: "von {source}",
-  },
   "panes.apps.lookAt": {
     en: "Look at it",
     sk: "Pozrieť",
@@ -1698,11 +1693,6 @@ export default defineMessages({
     sk: "Skončilo",
     de: "Abgelaufen",
   },
-  "panes.market.until": {
-    en: "until {date}",
-    sk: "do {date}",
-    de: "bis {date}",
-  },
   "panes.market.paidOn": {
     en: "Paid on {network}",
     sk: "Zaplatené na {network}",
@@ -2379,11 +2369,6 @@ export default defineMessages({
     en: "That is not an address with its signature. Paste the 0x address and the 0x signature of the message shown.",
     sk: "To nie je adresa s jej podpisom. Vložte adresu 0x a podpis 0x zobrazenej správy.",
     de: "Das ist keine Adresse mit ihrer Signatur. Füge die 0x-Adresse und die 0x-Signatur der angezeigten Nachricht ein.",
-  },
-  "panes.market.usdc.payoutReady": {
-    en: "USDC for your sales goes to {address}.",
-    sk: "USDC za vaše predaje ide na {address}.",
-    de: "USDC für deine Verkäufe geht an {address}.",
   },
   "panes.market.usdc.setPayout": {
     en: "Set this payout address",

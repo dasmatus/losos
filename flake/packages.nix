@@ -84,79 +84,68 @@ let
   # turn the caches on for `nix build` on a dev machine.
   inherit (import ./fast-build.nix { inherit pkgs; }) buildRustPackage;
 
-  # LosOS Lab's core (admin-ui/lab/core/README.md) as the wasm-bindgen web
-  # package the Lab page imports: losos_lab_core.js, its .d.ts and the .wasm.
-  # Plain rustPlatform rather than fast-build.nix's: mold and ccache are
-  # composed for the native toolchain, and rustc links wasm32 with its own
-  # rust-lld. wasm-bindgen-cli must be the version the crate pins (=0.2.127);
-  # the CLI refuses a module built against another one.
-  losos-lab-core = pkgs.rustPlatform.buildRustPackage {
+  # A Lab crate built for wasm32 as the wasm-bindgen web package the Lab
+  # page imports: <wasm>.js, its .d.ts and the .wasm. Plain rustPlatform
+  # rather than fast-build.nix's: mold and ccache are composed for the native
+  # toolchain, and rustc links wasm32 with its own rust-lld. wasm-bindgen-cli
+  # must be the version the crates pin (=0.2.127); the CLI refuses a module
+  # built against another one.
+  labWasm =
+    {
+      pname,
+      dir,
+      wasm,
+      cargoHash,
+    }:
+    pkgs.rustPlatform.buildRustPackage {
+      inherit pname cargoHash;
+      version = "0.1.0";
+      src = lib.cleanSource dir;
+      nativeBuildInputs = [
+        pkgs.wasm-bindgen-cli
+        pkgs.lld
+      ];
+      buildPhase = ''
+        runHook preBuild
+        cargo build --release --offline --target wasm32-unknown-unknown
+        runHook postBuild
+      '';
+      doCheck = false;
+      installPhase = ''
+        runHook preInstall
+        wasm-bindgen --target web --out-dir $out \
+          target/wasm32-unknown-unknown/release/${wasm}.wasm
+        runHook postInstall
+      '';
+    };
+
+  # The Lab page imports a package from src/lab/<name>-pkg (gitignored;
+  # `npm run lab:<name>` writes it in a checkout). Both npm builds of
+  # admin-ui/app copy it in first: this one and tests/admin-ui.nix.
+  labPkg = name: pkg: ''
+    mkdir -p src/lab/${name}-pkg
+    cp ${pkg}/* src/lab/${name}-pkg/
+    chmod -R u+w src/lab/${name}-pkg
+  '';
+
+  # LosOS Lab's core (admin-ui/lab/core/README.md).
+  losos-lab-core = labWasm {
     pname = "losos-lab-core";
-    version = "0.1.0";
-    src = lib.cleanSource ./../admin-ui/lab/core;
+    dir = ./../admin-ui/lab/core;
+    wasm = "losos_lab_core";
     cargoHash = "sha256-TXH+ZimT0PygfRRnjOCNpFgi3Acmb4kxN0S7vcL9Pxk=";
-    nativeBuildInputs = [
-      pkgs.wasm-bindgen-cli
-      pkgs.lld
-    ];
-    buildPhase = ''
-      runHook preBuild
-      cargo build --release --offline --target wasm32-unknown-unknown
-      runHook postBuild
-    '';
-    doCheck = false;
-    installPhase = ''
-      runHook preInstall
-      wasm-bindgen --target web --out-dir $out \
-        target/wasm32-unknown-unknown/release/losos_lab_core.wasm
-      runHook postInstall
-    '';
   };
+  labCorePkg = labPkg "core" losos-lab-core;
 
-  # The Lab page imports the core from src/lab/core-pkg (gitignored; `npm run
-  # lab:core` writes it in a checkout). Both npm builds of admin-ui/app copy
-  # it in first: this one and tests/admin-ui.nix.
-  labCorePkg = ''
-    mkdir -p src/lab/core-pkg
-    cp ${losos-lab-core}/* src/lab/core-pkg/
-    chmod -R u+w src/lab/core-pkg
-  '';
-
-  # The Lab's libvirt client (admin-ui/lab/virt-rpc/README.md) as a
-  # wasm-bindgen web package: losos_lab_virt.js, its .d.ts and the .wasm.
-  # Built the same way as losos-lab-core, for the same reasons, and pinned
-  # to the same wasm-bindgen.
-  losos-lab-virt = pkgs.rustPlatform.buildRustPackage {
+  # The Lab's libvirt client (admin-ui/lab/virt-rpc/README.md), loaded
+  # lazily when a guest starts on that path.
+  losos-lab-virt = labWasm {
     pname = "losos-lab-virt";
-    version = "0.1.0";
-    src = lib.cleanSource ./../admin-ui/lab/virt-rpc;
+    dir = ./../admin-ui/lab/virt-rpc;
+    wasm = "losos_lab_virt";
     cargoHash = "sha256-m5B7NE6dWVgI1bu31+OQ0Kf71AvmrI5L9MeqldQAvlE=";
-    nativeBuildInputs = [
-      pkgs.wasm-bindgen-cli
-      pkgs.lld
-    ];
-    buildPhase = ''
-      runHook preBuild
-      cargo build --release --offline --target wasm32-unknown-unknown
-      runHook postBuild
-    '';
-    doCheck = false;
-    installPhase = ''
-      runHook preInstall
-      wasm-bindgen --target web --out-dir $out \
-        target/wasm32-unknown-unknown/release/losos_lab_virt.wasm
-      runHook postInstall
-    '';
   };
-
-  # The Lab page imports the client from src/lab/virt-pkg (gitignored; `npm
-  # run lab:virt` writes it in a checkout), lazily, when a guest starts on
-  # that path. Copied in beside the core by the same two npm builds.
-  labVirtPkg = ''
-    mkdir -p src/lab/virt-pkg
-    cp ${losos-lab-virt}/* src/lab/virt-pkg/
-    chmod -R u+w src/lab/virt-pkg
-  '';
+  labVirtPkg = labPkg "virt" losos-lab-virt;
 
   # The Lab's canvas (admin-ui/lab/render/README.md): the logical and
   # physical views as a 3D scene drawn by Bevy on WebGPU or WebGL2,

@@ -18,7 +18,6 @@ import { paneHref } from "@/lib/routes";
 import { Group, GroupCaption, GroupTitle, PaneSection, Row, RowText, StackRow } from "./rows";
 import { formatBytes, useMachines, type MachinesData } from "./machines";
 import { formatDay, formatMoney, isStripePage, minorDigits, toMinorUnits, ORDER_STATUS } from "./market";
-import { paneById } from "./panes";
 import { rememberInvoice } from "./usdc-wallet";
 
 /* Virtual machines on the mesh, sold by the replica.
@@ -116,7 +115,6 @@ export function MachinesPane({ locked }: { locked: boolean }) {
 /* Greyed: the whole pane is one sentence while machines are not offered. */
 function Unavailable({ reason }: { reason: "notSharing" | "noOfficialEdge" | "notOffered" }) {
   const t = useT();
-  const market = paneById("market");
   return (
     <PaneSection>
       <Group data-testid="machines-unavailable" aria-disabled="true">
@@ -128,10 +126,9 @@ function Unavailable({ reason }: { reason: "notSharing" | "noOfficialEdge" | "no
             <EmptyTitle>{t(`machines.unavailable.${reason}.title`)}</EmptyTitle>
             <EmptyDescription>
               {t(`machines.unavailable.${reason}.detail`)}
-              {reason === "notSharing" && market.planned && ` ${t("machines.unavailable.notSharing.planned")}`}
             </EmptyDescription>
           </EmptyHeader>
-          {reason === "notSharing" && !market.planned && (
+          {reason === "notSharing" && (
             <EmptyContent>
               <Link to={paneHref("market")} className={buttonVariants({ variant: "secondary", size: "sm" })}>
                 {t("machines.unavailable.notSharing.open")}

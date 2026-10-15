@@ -38,11 +38,6 @@ export default defineMessages({
     sk: "Toto zariadenie nezdieľa svoj disk so sieťou mesh, takže si virtuálne stroje nemôže prenajať ani ich hostiť.",
     de: "Diese Box teilt ihre Festplatte nicht mit dem Mesh. Sie kann deshalb weder Maschinen mieten noch welche betreiben.",
   },
-  "machines.unavailable.notSharing.planned": {
-    en: "Disk sharing opens together with the market.",
-    sk: "Zdieľanie disku sa otvorí spolu s trhom.",
-    de: "Die Festplattenfreigabe öffnet zusammen mit dem Markt.",
-  },
   "machines.unavailable.notSharing.open": {
     en: "Share the disk",
     sk: "Zdieľať disk",

@@ -12,7 +12,6 @@ export default defineMessages({
     sk: "Inštalovať {name}",
     de: "{name} installieren",
   },
-  "install.installedBadge": { en: "Installed", sk: "Nainštalované", de: "Installiert" },
   "install.noCluster": {
     en: "Apps from the search install only while Files or Code is set to Kept separate above.",
     sk: "Aplikácie z vyhľadávania sa dajú inštalovať, len keď sú Súbory alebo Kód vyššie nastavené na Oddelene.",

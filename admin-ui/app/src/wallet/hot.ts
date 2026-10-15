@@ -8,10 +8,6 @@ import { solanaKeyFromPhrase } from "./solana";
 
 const DB = "losos-wallet";
 const STORE = "key";
-const PATH = "m/44'/60'/0'/0/0";
-
-export const ANVIL_MNEMONIC =
-  "test test test test test test test test test test test junk";
 
 export function createPhrase(): string {
   return generateMnemonic(english);
@@ -102,8 +98,6 @@ export async function forgetPhrase(): Promise<void> {
   });
   db.close();
 }
-
-export const derivationPath = PATH;
 
 async function derive(password: string, salt: Uint8Array): Promise<CryptoKey> {
   const base = await crypto.subtle.importKey(

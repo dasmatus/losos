@@ -32,7 +32,6 @@ import { cn } from "@/lib/utils";
  *   - A selected entry is FILLED with the accent and its text is --surface,
  *     the macOS System Settings look, and every entry starts with a small
  *     glyph tile (SidebarMenuIcon).
- *   - An entry can be `planned`: greyed, disabled, not a target.
  *   - The expanded/collapsed choice is kept in localStorage, not a cookie:
  *     there is no server render to read it. A browser that refuses storage
  *     gets the default every time, which is fine. */
@@ -265,28 +264,6 @@ function SidebarContent({ className, ...props }: React.ComponentProps<"div">) {
   return <div data-slot="sidebar-content" className={cn("mt-2 flex min-h-0 flex-col gap-2", className)} {...props} />;
 }
 
-function SidebarFooter({ className, ...props }: React.ComponentProps<"div">) {
-  return <div data-slot="sidebar-footer" className={cn("mt-2 flex flex-col gap-2", className)} {...props} />;
-}
-
-function SidebarGroup({ className, ...props }: React.ComponentProps<"div">) {
-  return <div data-slot="sidebar-group" className={cn("flex min-w-0 flex-col", className)} {...props} />;
-}
-
-function SidebarGroupLabel({ className, ...props }: React.ComponentProps<"div">) {
-  return (
-    <div
-      data-slot="sidebar-group-label"
-      className={cn(
-        "px-2 pt-1 pb-1.5 text-[11.5px] font-medium tracking-wide text-faint",
-        "group-data-[collapsible=icon]/sidebar:sr-only",
-        className,
-      )}
-      {...props}
-    />
-  );
-}
-
 /* The search box at the top of the panel, on the surface so it reads as a
  * field against the recess. */
 function SidebarInput({ className, ...props }: React.ComponentProps<"input">) {
@@ -330,12 +307,8 @@ const sidebarMenuButtonVariants = cva(
         true: "bg-accent font-medium text-surface",
         false: "text-ink hover:bg-surface active:bg-surface",
       },
-      planned: {
-        true: "cursor-not-allowed text-faint hover:bg-transparent",
-        false: "",
-      },
     },
-    defaultVariants: { isActive: false, planned: false },
+    defaultVariants: { isActive: false },
   },
 );
 
@@ -345,7 +318,6 @@ const sidebarMenuButtonVariants = cva(
 function SidebarMenuButton({
   render,
   isActive = false,
-  planned = false,
   tooltip,
   className,
   ...props
@@ -360,7 +332,7 @@ function SidebarMenuButton({
     props: mergeProps<"button">(
       {
         type: render === undefined ? "button" : undefined,
-        className: cn(sidebarMenuButtonVariants({ isActive, planned }), className),
+        className: cn(sidebarMenuButtonVariants({ isActive }), className),
       },
       {
         ...props,
@@ -386,12 +358,10 @@ function SidebarMenuButton({
  * selection; the glyph is always currentColor. */
 function SidebarMenuIcon({
   active = false,
-  planned = false,
   className,
   children,
 }: {
   active?: boolean;
-  planned?: boolean;
   className?: string;
   children: React.ReactNode;
 }) {
@@ -400,7 +370,7 @@ function SidebarMenuIcon({
       aria-hidden="true"
       className={cn(
         "flex size-[21px] shrink-0 items-center justify-center rounded-[6px] transition-colors duration-150",
-        planned ? "bg-surface text-faint" : active ? "bg-accent-wash text-accent" : "bg-surface text-muted",
+        active ? "bg-accent-wash text-accent" : "bg-surface text-muted",
         className,
       )}
     >
@@ -481,19 +451,14 @@ const sidebarMenuSubButtonVariants = cva(
         true: "bg-accent font-medium text-surface",
         false: "text-ink hover:bg-surface active:bg-surface",
       },
-      planned: {
-        true: "cursor-not-allowed text-faint hover:bg-transparent",
-        false: "",
-      },
     },
-    defaultVariants: { isActive: false, planned: false },
+    defaultVariants: { isActive: false },
   },
 );
 
 function SidebarMenuSubButton({
   render,
   isActive = false,
-  planned = false,
   className,
   ...props
 }: useRender.ComponentProps<"button"> & VariantProps<typeof sidebarMenuSubButtonVariants>) {
@@ -503,7 +468,7 @@ function SidebarMenuSubButton({
     props: mergeProps<"button">(
       {
         type: render === undefined ? "button" : undefined,
-        className: cn(sidebarMenuSubButtonVariants({ isActive, planned }), className),
+        className: cn(sidebarMenuSubButtonVariants({ isActive }), className),
       },
       {
         ...props,
@@ -519,9 +484,6 @@ export {
   SidebarTrigger,
   SidebarHeader,
   SidebarContent,
-  SidebarFooter,
-  SidebarGroup,
-  SidebarGroupLabel,
   SidebarInput,
   SidebarMenu,
   SidebarMenuItem,
