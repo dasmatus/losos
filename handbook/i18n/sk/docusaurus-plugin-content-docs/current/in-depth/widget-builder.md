@@ -30,6 +30,11 @@ online. Dovtedy karta oznamuje, že sa model ešte sťahuje. Model zostáva na
 Tvorba beží na procesore zariadenia. Na mini-PC trvá niekoľko minút a karta
 ukazuje, koľko riadkov model zatiaľ napísal. Môžete ju zastaviť.
 
+Kým sa widget dostane do editora, zariadenie ho skontroluje na chyby, ktoré
+malý model robí najčastejšie, napríklad skript, ktorý hľadá prvok, aký
+widget nemá. Keď nejakú nájde, model dostane ešte jedno kolo s pomenovanou
+chybou a karta to oznámi. Do editora sa dostane lepší z dvoch widgetov.
+
 Model je malý. Najlepšie zvláda jednu jasnú vec na widget: hodiny,
 odpočítavanie, disk ako pruh, zoznam aplikácií, počasie pre jedno mesto.
 Požiadajte o jednu vec vetou či dvoma. Pred uložením sa na výsledok pozrite v

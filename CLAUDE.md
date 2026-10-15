@@ -159,8 +159,11 @@ and is never served or built by nix.
   `losos.builder.enable`): the admin UI's Build with AI tab. Ollama on
   `127.0.0.1:11434` serves `losos.builder.model` (llama3.2:3b, pulled once
   by `ollama-model-loader` into `/var/lib`); lososd streams one build at a
-  time from `/api/chat` and parses the files out of the answer. The system
-  prompt is `backend/src/builder-prompt.md`. No edge, no key, no charge.
+  time from `/api/chat` and parses the files out of the answer, then
+  checks it (`problems`: unknown ids and `losos` members; `looped`: a
+  repeating answer is cut off) and gives the model one turn to fix what it
+  found. The system prompt is `backend/src/builder-prompt.md`. No edge, no
+  key, no charge.
 - `updates.nix`: `system.autoUpgrade` at 03:00 from `losos.upgradeFlakeUri`
   (default `git+file:///etc/nixos#install`, set a `github:` URI to really
   upgrade), `nix.gc` at 04:30 with `--delete-older-than 14d`, five boot

@@ -33,6 +33,12 @@ Ein Bau läuft auf dem Prozessor der Box. Auf einem Mini-PC dauert er einige
 Minuten, und der Tab zeigt, wie viele Zeilen das Modell schon geschrieben
 hat. Du kannst ihn anhalten.
 
+Bevor das Widget im Editor landet, prüft die Box es auf die Fehler, die ein
+kleines Modell am häufigsten macht, etwa ein Skript, das ein Element sucht,
+das es im Widget nicht gibt. Findet sie einen, bekommt das Modell noch eine
+Runde mit dem benannten Fehler, und der Tab sagt das. Das bessere der zwei
+Widgets landet im Editor.
+
 Das Modell ist klein. Am besten gelingt ihm eine klare Sache pro Widget: eine
 Uhr, ein Countdown, die Platte als Balken, die Liste der Apps, das Wetter für
 eine Stadt. Bitte um eine Sache in ein, zwei Sätzen. Sieh dir das Ergebnis in

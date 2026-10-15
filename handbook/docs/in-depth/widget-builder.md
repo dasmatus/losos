@@ -31,6 +31,12 @@ again.
 A build runs on the box's processor. On a mini-PC it takes a few minutes, and
 the tab shows how many lines the model has written so far. You can stop it.
 
+Before the widget reaches the editor, the box checks it for the mistakes a
+small model makes most, such as a script that looks for an element the
+widget does not have. When it finds one, the model gets one more turn with
+the mistake named, and the tab says so. The better of the two widgets lands
+in the editor.
+
 The model is small. It does well with one clear thing per widget: a clock, a
 countdown, the disk as a bar, the list of apps, the weather for one town. Ask
 for a single thing in a sentence or two. Look at the result in the preview
