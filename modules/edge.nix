@@ -699,7 +699,8 @@ let
     ++ vmServeArgs
     ++ usdcServeArgs
     ++ btcServeArgs
-    ++ xmrServeArgs;
+    ++ xmrServeArgs
+    ++ zecServeArgs;
 
   # Bitcoin (losos.edge.market.bitcoin): the edge's own node, on loopback,
   # signed in with the cookie it writes into its chain's directory. The
@@ -735,6 +736,28 @@ let
     "--market-xmr-daemon-rpc"
     "http://127.0.0.1:${toString xmrDaemonPort}"
   ];
+
+  # Zcash (losos.edge.market.zcash): no node on the edge. The registrar asks
+  # the public lightwalletd servers for compact blocks and decrypts them
+  # itself, so the sellers' viewing keys stay here.
+  zecOn = usdcOn && cfg.market.zcash.enable;
+  zecNet =
+    {
+      mainnet = "main";
+      testnet = "test";
+      regtest = "regtest";
+    }
+    .${cfg.market.zcash.network};
+  zecServeArgs = lib.optionals zecOn (
+    lib.concatMap (url: [
+      "--market-zec-server"
+      url
+    ]) cfg.market.zcash.servers
+    ++ [
+      "--market-zec-network"
+      zecNet
+    ]
+  );
 
   # USDC (losos.edge.market.usdc). The RPC URL is a systemd credential of
   # the registrar, not a flag: a flag would put the provider key in the
@@ -1064,6 +1087,20 @@ in
           losos.edge.market.usdc.networks: an EVM network needs `pay` and an
           `0x` treasury that differ; a Solana network takes no `pay` and a
           base58 treasury. Only `solana-devnet` takes `genesisHash`.
+        '';
+      }
+      {
+        assertion = cfg.market.zcash.enable -> cfg.market.usdc.enable;
+        message = ''
+          losos.edge.market.zcash.enable requires losos.edge.market.usdc.enable:
+          Zcash is offered beside USDC, priced in the same dollars.
+        '';
+      }
+      {
+        assertion = cfg.market.zcash.enable -> builtins.length cfg.market.zcash.servers >= 2;
+        message = ''
+          losos.edge.market.zcash.servers needs at least two servers, of
+          different operators: a payment counts only when two agree.
         '';
       }
       {

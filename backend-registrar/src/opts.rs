@@ -968,6 +968,7 @@ fn parse_market(args: &[String]) -> Result<Option<Box<MarketOpts>>> {
         usdc: parse_usdc(args, currency)?,
         btc: parse_btc(args, currency)?,
         xmr: parse_xmr(args, currency)?,
+        zec: parse_zec(args, currency)?,
     })))
 }
 
@@ -1051,6 +1052,49 @@ fn parse_xmr(args: &[String], currency: &str) -> Result<Option<crate::monero::Xm
         login_file: login_file.to_string(),
         daemon_rpc: daemon_rpc.to_string(),
     }))
+}
+
+/// Shielded Zcash orders, watched through public lightwalletd servers, one
+/// `--market-zec-server` each:
+///
+/// ```text
+/// --market-zec-server https://zec-node.cakewallet.com:443 --market-zec-server https://na.zec.rocks:443
+/// ```
+///
+/// A payment counts once servers of two operators agree on it, so the list
+/// names at least two. `--market-zec-network` is `main` unless a test edge
+/// names `test` or `regtest`. Quoted in US dollars beside USDC, like Bitcoin.
+fn parse_zec(args: &[String], currency: &str) -> Result<Option<crate::zcash::ZecOpts>> {
+    let servers = args_all(args, "--market-zec-server");
+    if servers.is_empty() {
+        return Ok(None);
+    }
+    for url in &servers {
+        if !crate::stablecoin::rpc_url_ok(url) {
+            return Err(miette!(
+                "bad --market-zec-server {url:?}; expected https, or http to 127.0.0.1, with no credentials in it"
+            ));
+        }
+    }
+    let servers: Vec<String> = servers.iter().map(|s| (*s).to_string()).collect();
+    if !crate::zcash::operators_enough(&servers) {
+        return Err(miette!(
+            "--market-zec-server names servers of one operator; a payment counts only when two operators agree"
+        ));
+    }
+    let network = match arg(args, "--market-zec-network") {
+        None => crate::zcash::Network::Main,
+        Some(text) => crate::zcash::Network::parse(text).ok_or_else(|| {
+            miette!("bad --market-zec-network {text:?}; expected main, test or regtest")
+        })?,
+    };
+    if currency != "usd" {
+        return Err(miette!("--market-zec-server needs --market-currency usd"));
+    }
+    if args_all(args, "--market-usdc").is_empty() {
+        return Err(miette!("--market-zec-server needs --market-usdc"));
+    }
+    Ok(Some(crate::zcash::ZecOpts { servers, network }))
 }
 
 /// USDC settlement: one `--market-usdc` per network, each a comma list of

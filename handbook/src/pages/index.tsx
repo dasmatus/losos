@@ -133,7 +133,7 @@ const SOON: Planned[] = [
         done: true,
         text: (
           <Translate id="losos.home.soon.market.coins">
-            Payments in USDC and Bitcoin
+            Payments in USDC, Bitcoin, Monero and Zcash
           </Translate>
         ),
       },

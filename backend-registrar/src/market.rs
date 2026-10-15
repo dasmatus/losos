@@ -489,13 +489,16 @@ pub struct CoinSeller {
 
 /// A seller's key for one coin, as the edge's node checked it, and the next
 /// address index to hand out. For Bitcoin the key is a descriptor; for
-/// Monero it is the primary address, with the private view key beside it.
+/// Monero it is the primary address, with the private view key beside it;
+/// for Zcash it is the wallet's first address, shown back to the seller,
+/// with the incoming viewing key beside it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CoinKey {
     pub descriptor: String,
     pub next: u32,
     /// Monero: the private view key the edge's view-only wallet is made from.
-    /// It sees what arrives and cannot spend. Never shown back.
+    /// Zcash: the Orchard incoming viewing key (`uivk…`) the edge decrypts
+    /// with. Either sees what arrives and cannot spend. Never shown back.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub view_key: Option<String>,
     /// Monero: the chain height the wallet scans from, so a wallet made
@@ -511,6 +514,11 @@ impl CoinKey {
             view_key: self.view_key.as_deref()?,
             from_height: self.from_height.unwrap_or(0),
         })
+    }
+
+    /// Zcash: the viewing key the edge decrypts this seller's orders with.
+    fn zec_key(&self) -> Option<crate::zcash::ViewingKey> {
+        crate::zcash::parse_key(self.view_key.as_deref()?).ok()
     }
 }
 
@@ -529,8 +537,15 @@ pub struct CoinPayment {
     /// Monero: the chain height when the address was given to this order.
     /// The wallet reports a payment's block, not when it first saw it, so
     /// only payments in blocks from here on (or still in the pool) count.
+    /// Zcash: the first block after the best one when the address was
+    /// given, with the same meaning.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub issued_height: Option<u64>,
+    /// Zcash: when the edge first saw each paying transaction, mempool
+    /// included. The servers say only which block a payment is in, so a
+    /// payment sent in time keeps its time once it is mined.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub first_seen: BTreeMap<String, u64>,
     #[serde(default)]
     pub settlement: Option<crate::coins::Settlement>,
     /// Transactions that paid to the address.
@@ -1503,6 +1518,8 @@ pub struct MarketOpts {
     pub btc: Option<crate::bitcoin::BtcOpts>,
     /// Monero orders, through the edge's own wallet service and node.
     pub xmr: Option<crate::monero::XmrOpts>,
+    /// Shielded Zcash orders, watched through public lightwalletd servers.
+    pub zec: Option<crate::zcash::ZecOpts>,
 }
 
 /// How long an escrow call may sit unmined before the edge checks the
@@ -1535,6 +1552,9 @@ pub struct Market {
     /// One escrow pass at a time: the releaser key's nonce is taken from the
     /// chain, so two passes sending at once would collide.
     escrow_lock: Mutex<()>,
+    /// The Zcash servers and what each served before, when the edge takes
+    /// Zcash.
+    zec: Option<crate::zcash::Scanner>,
 }
 
 /// The ledger of the mode the gate's key is in, and where it is kept. The
@@ -1682,8 +1702,10 @@ impl Market {
                 |u| u.price_sources.clone(),
             ),
         ));
+        let zec = opts.zec.clone().map(crate::zcash::Scanner::new);
         Ok(Self {
             opts,
+            zec,
             state: Mutex::new(Ledger {
                 mode: None,
                 path,
@@ -1913,6 +1935,9 @@ impl Market {
         }
         if self.opts.xmr.is_some() {
             coins.push(crate::coins::Coin::Xmr);
+        }
+        if self.opts.zec.is_some() {
+            coins.push(crate::coins::Coin::Zec);
         }
         coins
     }
@@ -2895,7 +2920,9 @@ impl Market {
     /// node checked it is a public key for the network this edge settles on.
     /// Setting the same key again keeps its next address index, so no
     /// address is handed out twice. Monero takes the primary address as
-    /// `key` and the private view key as `view_key`.
+    /// `key` and the private view key as `view_key`. Zcash takes the unified
+    /// viewing key as `key` and keeps only its Orchard incoming part; a
+    /// spending key or a seed is refused by name.
     pub async fn set_coin_key(
         &self,
         id: &str,
@@ -2953,6 +2980,17 @@ impl Market {
                 })
                 .await?;
                 (address.to_string(), Some(view_key), Some(from))
+            }
+            crate::coins::Coin::Zec => {
+                let zec = self.zec.as_ref().ok_or(MarketError::Unconfigured)?;
+                if view_key.is_some_and(|v| !v.trim().is_empty()) {
+                    return Err(MarketError::Invalid(
+                        "Zcash takes the unified viewing key alone",
+                    ));
+                }
+                let parsed = crate::zcash::parse_key(key).map_err(MarketError::Invalid)?;
+                Self::zec_net_fits(zec, &parsed, test).await?;
+                (parsed.wallet_address(), Some(parsed.encode()), None)
             }
             _ => return Err(MarketError::Invalid("this edge does not take that coin")),
         };
@@ -3034,6 +3072,34 @@ impl Market {
             ));
         }
         Ok(height)
+    }
+
+    /// Refuse Zcash servers on the wrong network for this edge, as for
+    /// Bitcoin, and a viewing key for another network than theirs. The best
+    /// block two operators have reached on success.
+    async fn zec_net_fits(
+        zec: &crate::zcash::Scanner,
+        key: &crate::zcash::ViewingKey,
+        test: bool,
+    ) -> Result<u64, MarketError> {
+        let network = zec.opts().network;
+        if !crate::zcash::network_fits(network, test) {
+            tracing::error!(
+                target: Action::Market.target(),
+                "the edge's Zcash servers are set to {}, which a {} edge does not settle on",
+                network.chain_name(),
+                if test { "test" } else { "live" },
+            );
+            return Err(MarketError::Conflict(
+                "the edge's Zcash servers are on the wrong network",
+            ));
+        }
+        if key.network != network.network_type() {
+            return Err(MarketError::Invalid(
+                "that viewing key is for another network than this edge's",
+            ));
+        }
+        zec.tip().await
     }
 
     /// The edge's price for `coin` now: the cached one while fresh, else
@@ -3144,6 +3210,29 @@ impl Market {
                 };
                 (address, index, now, Some(height))
             }
+            _ if coin == crate::coins::Coin::Zec => {
+                let zec = self.zec.as_ref().ok_or(MarketError::Unconfigured)?;
+                let vk = key
+                    .zec_key()
+                    .ok_or(MarketError::Conflict("the seller does not take that coin"))?;
+                let test = self.mode().await == Some(StripeMode::Test);
+                let tip = Self::zec_net_fits(zec, &vk, test).await?;
+                let used = self.coin_addresses().await;
+                let mut index = key.next;
+                let address = loop {
+                    let a = vk.order_address(index);
+                    if !used.contains(&a) {
+                        break a;
+                    }
+                    index = index.checked_add(1).ok_or(MarketError::Conflict(
+                        "the seller's key has no addresses left",
+                    ))?;
+                };
+                // Payments count from the first block after the best one
+                // now: anything older reached the address before it was
+                // this order's.
+                (address, index, now, Some(tip.saturating_add(1)))
+            }
             _ => {
                 let used = self.coin_addresses().await;
                 let btc = self.opts.btc.as_ref().ok_or(MarketError::Unconfigured)?;
@@ -3198,6 +3287,7 @@ impl Market {
             index,
             issued,
             issued_height,
+            first_seen: BTreeMap::new(),
             settlement: Some(Settlement::Waiting),
             txs: Vec::new(),
         });
@@ -3213,6 +3303,41 @@ impl Market {
         }
         self.commit(&mut state, next).await?;
         Ok(view)
+    }
+
+    /// Every Zcash order the edge waits on, as the scanner watches it: the
+    /// seller's key, the order's address number and its issue height.
+    async fn zec_watches(&self) -> Vec<crate::zcash::Watch> {
+        let state = self.state.lock().await;
+        let mut keys: BTreeMap<&str, Option<crate::zcash::ViewingKey>> = BTreeMap::new();
+        let mut out = Vec::new();
+        for o in state.orders.values() {
+            let Some(c) = o.coin.as_ref() else {
+                continue;
+            };
+            if c.quote.coin != crate::coins::Coin::Zec || o.status == OrderStatus::Paid {
+                continue;
+            }
+            let Some(since) = c.issued_height else {
+                continue;
+            };
+            let key = keys.entry(o.seller.as_str()).or_insert_with(|| {
+                state
+                    .coin_sellers
+                    .get(&o.seller)
+                    .and_then(|s| s.keys.get(crate::coins::Coin::Zec.key()))
+                    .and_then(CoinKey::zec_key)
+            });
+            if let Some(key) = key {
+                out.push(crate::zcash::Watch {
+                    order: o.id.clone(),
+                    key: key.clone(),
+                    index: c.index,
+                    since,
+                });
+            }
+        }
+        out
     }
 
     /// Every address any order was given for a coin payment.
@@ -3269,6 +3394,14 @@ impl Market {
         // for the explorer link: `bitcoin` on mainnet, `bitcoin-signet` and
         // so on elsewhere.
         let mut btc_network: Option<String> = None;
+        // Zcash: one scan for every order the edge waits on, whichever of
+        // them were asked about, so each server's memory keeps them all.
+        let zec_scan = match self.zec.as_ref() {
+            Some(zec) if work.iter().any(|(_, c, _)| c.quote.coin == Coin::Zec) => {
+                Some(zec.scan(self.zec_watches().await, now).await)
+            }
+            _ => None,
+        };
         for (id, c, key) in work {
             let received = match c.quote.coin {
                 // Only payments the node saw from the moment the address was
@@ -3292,6 +3425,29 @@ impl Market {
                     }
                     _ => Err(MarketError::Unconfigured),
                 },
+                // What two operators' servers agree on, with the time the
+                // edge first saw each payment kept from earlier passes.
+                Coin::Zec => match &zec_scan {
+                    Some(Ok(agreed)) => {
+                        let since = c.issued_height.unwrap_or(0);
+                        if since.saturating_add(crate::zcash::MAX_SCAN_BLOCKS)
+                            < agreed.tip.saturating_add(crate::zcash::RESCAN_DEPTH)
+                        {
+                            // Older than a pass reads back: it keeps the
+                            // state it last had.
+                            continue;
+                        }
+                        let mut got = agreed.received.get(&id).cloned().unwrap_or_default();
+                        for r in &mut got {
+                            if let Some(t) = c.first_seen.get(&r.tx) {
+                                r.first_seen = r.first_seen.min(*t);
+                            }
+                        }
+                        Ok(got)
+                    }
+                    Some(Err(e)) => Err(e.clone()),
+                    None => Err(MarketError::Unconfigured),
+                },
                 _ => Err(MarketError::Unconfigured),
             };
             let received: Vec<crate::coins::Received> = match received {
@@ -3313,6 +3469,12 @@ impl Market {
                 None
             };
             let settlement = settle(&c.quote, &received, fresh.as_ref());
+            let mut first_seen = c.first_seen.clone();
+            if c.quote.coin == Coin::Zec {
+                for r in &received {
+                    first_seen.entry(r.tx.clone()).or_insert(r.first_seen);
+                }
+            }
             let txs: Vec<String> = received.into_iter().map(|r| r.tx).collect();
             let network = match c.quote.coin {
                 Coin::Btc if settlement.is_paid() => {
@@ -3330,12 +3492,12 @@ impl Market {
                 }
                 _ => None,
             };
-            found.push((id, settlement, txs, network));
+            found.push((id, settlement, txs, network, first_seen));
         }
         let mut state = self.state.lock().await;
         let mut next = state.clone();
         let mut changed = false;
-        for (id, settlement, txs, network) in found {
+        for (id, settlement, txs, network, first_seen) in found {
             let Some(o) = next.orders.get_mut(&id) else {
                 continue;
             };
@@ -3346,13 +3508,17 @@ impl Market {
             let Some(c) = o.coin.as_mut() else {
                 continue;
             };
-            if c.settlement.as_ref() == Some(&settlement) && c.txs == txs {
+            if c.settlement.as_ref() == Some(&settlement)
+                && c.txs == txs
+                && c.first_seen == first_seen
+            {
                 continue;
             }
             changed = true;
             let paid = settlement.is_paid();
             c.settlement = Some(settlement);
             c.txs = txs;
+            c.first_seen = first_seen;
             if !paid {
                 continue;
             }
@@ -4616,6 +4782,7 @@ mod tests {
             usdc: None,
             btc: None,
             xmr: None,
+            zec: None,
         })
         .await
         .unwrap();
@@ -4644,6 +4811,7 @@ mod tests {
             usdc: None,
             btc: None,
             xmr: None,
+            zec: None,
         }
     }
 

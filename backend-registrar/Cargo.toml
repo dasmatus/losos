@@ -43,6 +43,19 @@ sha3 = "0.12"
 # neighbours), so making them direct vendors no new crate.
 curve25519-dalek = "4"
 md-5 = "0.10"
+# Zcash orders (`zcash.rs`): a seller's unified viewing key decoded and its
+# Orchard part reduced to the incoming viewing key, a fresh address per
+# order, and the trial decryption of compact blocks fetched from public
+# lightwalletd servers over gRPC. orchard without its proving circuit: the
+# edge only reads, it never builds a transaction. tonic speaks gRPC over the
+# hyper and rustls (ring, webpki roots) reqwest already uses.
+orchard = { version = "0.15.5", default-features = false, features = ["std"] }
+zcash_note_encryption = "0.4.2"
+zcash_address = "0.13"
+zcash_protocol = "0.10"
+tonic = { version = "0.14", default-features = false, features = ["channel", "codegen", "tls-ring", "tls-webpki-roots"] }
+tonic-prost = "0.14"
+prost = "0.14"
 # `stream::unfold` turns a buyer's stored disk image into a response body
 # (`server/vm.rs`). Already in the lock tree through axum's "ws".
 futures-util = { version = "0.3", default-features = false }
@@ -56,6 +69,9 @@ losos-access = { path = "../backend/access" }
 # reqwest, so the test client vendors nothing new.
 tokio-tungstenite = "0.30"
 futures-util = { version = "0.3", default-features = false, features = ["sink"] }
+# tests/zcash.rs serves compact blocks from in-process lightwalletd stand-ins,
+# and builds the Orchard and Ironwood notes it puts in them.
+tonic = { version = "0.14", default-features = false, features = ["server", "router", "codegen"] }
 
 # Crate-wide lint policy: forbid unsafe, surface stray pub items and stale
 # extern crates. Per-contributor clippy config is intentionally NOT used.

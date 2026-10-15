@@ -1518,12 +1518,13 @@ async fn market_confirm(
 struct MarketCoinKeyReq {
     #[serde(flatten)]
     auth: MarketAuth,
-    /// `btc` or `xmr`.
+    /// `btc`, `xmr` or `zec`.
     coin: String,
     /// Bitcoin: an extended public key or a ranged output descriptor.
-    /// Monero: the wallet's primary address.
+    /// Monero: the wallet's primary address. Zcash: the wallet's unified
+    /// viewing key, full (`uview…`) or incoming (`uivk…`).
     key: String,
-    /// Monero: the wallet's private view key.
+    /// Monero: the wallet's private view key. Zcash takes none.
     #[serde(default)]
     view_key: Option<String>,
 }

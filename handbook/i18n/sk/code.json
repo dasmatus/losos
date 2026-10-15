@@ -551,7 +551,7 @@
     "message": "Platby kartou cez Stripe, otestované v jeho testovacom režime"
   },
   "losos.home.soon.market.coins": {
-    "message": "Platby v USDC a bitcoinoch"
+    "message": "Platby v USDC, bitcoinoch, Monere a Zcashi"
   },
   "losos.home.soon.market.open": {
     "message": "Otvorenie trhu, ktoré potrebuje registrovanú firmu"
