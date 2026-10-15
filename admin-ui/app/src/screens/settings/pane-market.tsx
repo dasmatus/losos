@@ -335,7 +335,9 @@ function PaidTx({ order, usdc }: { order: MarketOrder; usdc: UsdcPublic | null }
   const href = explorerTx(chain.network, order.tx);
   const escrow = order.escrow;
   const reason =
-    escrow?.reason === "sellerCannotReceive" || escrow?.reason === "buyerReclaimed"
+    escrow?.reason === "sellerCannotReceive" ||
+    escrow?.reason === "buyerReclaimed" ||
+    escrow?.reason === "notDelivered"
       ? t(`panes.market.escrow.${escrow.reason}`)
       : null;
   return (

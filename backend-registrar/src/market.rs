@@ -436,6 +436,10 @@ pub enum RefundReason {
     /// The edge did not release before the deadline and the buyer took the
     /// deposit back.
     BuyerReclaimed,
+    /// What was bought could not be set up before the deadline: a storage
+    /// claim that never bound, or machines never created. The edge sends the
+    /// deposit back rather than pay the seller for nothing.
+    NotDelivered,
 }
 
 impl RefundReason {
@@ -451,6 +455,9 @@ impl RefundReason {
                 "the order lapsed before it was paid and its units are sold; the payment is being refunded"
             }
             Self::BuyerReclaimed => "the buyer took the payment back from the escrow",
+            Self::NotDelivered => {
+                "what was bought could not be set up in time; the payment is being refunded"
+            }
         }
     }
 }
@@ -949,6 +956,47 @@ fn holds_replicas(order: &Order) -> bool {
     order.status == OrderStatus::Paid
         && order.kind == Kind::Vm
         && order.vm.as_ref().is_some_and(|vm| vm.created && !vm.halted)
+}
+
+/// Whether what a paid order bought exists: the storage claim bound, the
+/// machines created. Compute is a ledger credit and exists once paid. The
+/// escrow pays the seller only after this, so a buyer never pays for a
+/// volume the mesh could not give them.
+fn delivered(order: &Order) -> bool {
+    match order.kind {
+        Kind::Storage => order.volume.is_some(),
+        Kind::Vm => order.vm.as_ref().is_some_and(|vm| vm.created),
+        Kind::Compute => true,
+    }
+}
+
+/// How long before the escrow deadline the edge stops waiting for an order
+/// to be set up and sends the deposit back itself, so the buyer is refunded
+/// without having to reclaim it.
+const UNDELIVERED_REFUND_BEFORE_SECS: u64 = 60 * 60;
+
+/// Paid USDC orders whose release is waiting on delivery and whose deadline
+/// is close: queue their deposits for a refund and end the order.
+pub fn refund_undelivered(state: &mut MarketState, now: u64) -> Vec<String> {
+    let mut refunded = Vec::new();
+    for order in state.orders.values_mut() {
+        let waiting = order.status == OrderStatus::Paid
+            && !delivered(order)
+            && order
+                .escrow
+                .as_ref()
+                .is_some_and(|e| e.step == EscrowStep::Release && e.tx.is_none());
+        if !waiting || now.saturating_add(UNDELIVERED_REFUND_BEFORE_SECS) < usdc_deadline(order) {
+            continue;
+        }
+        if let Some(escrow) = order.escrow.as_mut() {
+            escrow.step = EscrowStep::Refund;
+            escrow.reason = Some(RefundReason::NotDelivered);
+        }
+        order.expires_at = Some(order.expires_at.map_or(now, |at| at.min(now)));
+        refunded.push(order.id.clone());
+    }
+    refunded
 }
 
 /// Whether a storage order's claim may still exist. The volume holds the
@@ -4152,12 +4200,16 @@ impl Market {
         let Some(usdc) = self.opts.usdc.as_ref() else {
             return;
         };
+        self.refund_undelivered().await;
         let jobs: Vec<(EscrowJob, Escrow)> = {
             let state = self.state.lock().await;
+            // A release waits until what was bought exists. One already sent
+            // is followed to the end whatever happens to the order meanwhile.
             let orders = state.orders.values().filter_map(|o| {
                 o.escrow
                     .as_ref()
                     .filter(|e| e.pending())
+                    .filter(|e| e.step != EscrowStep::Release || e.tx.is_some() || delivered(o))
                     .map(|e| (EscrowJob::Order(o.id.clone()), e.clone()))
             });
             let strays = state
@@ -4245,6 +4297,29 @@ impl Market {
             tracing::error!(
                 target: Action::Market.target(),
                 "could not record escrow progress: {e}",
+            );
+        }
+    }
+
+    /// Send back the deposits of orders that could not be set up before
+    /// their deadline ([`refund_undelivered`]).
+    async fn refund_undelivered(&self) {
+        let mut state = self.state.lock().await;
+        let mut next = state.clone();
+        let refunded = refund_undelivered(&mut next, now_secs());
+        if refunded.is_empty() {
+            return;
+        }
+        for id in &refunded {
+            tracing::warn!(
+                target: Action::Market.target(),
+                "order {id} could not be set up before its escrow deadline; refunding the buyer",
+            );
+        }
+        if let Err(e) = self.commit(&mut state, next).await {
+            tracing::error!(
+                target: Action::Market.target(),
+                "could not record the refund of undelivered orders: {e}",
             );
         }
     }
@@ -5446,6 +5521,51 @@ mod tests {
             sent_at: None,
         });
         assert_eq!(fee_offset_for(&state, "s", 200, 8, late), 28);
+    }
+
+    #[test]
+    fn an_order_that_cannot_be_set_up_goes_back_before_its_deadline() {
+        let held = || Escrow {
+            network: "base".into(),
+            deposit: 1,
+            step: EscrowStep::Release,
+            reason: None,
+            tx: None,
+            sent_at: None,
+        };
+        let created = 1_000;
+        let mut state = MarketState::default();
+        for id in ["ord_waiting", "ord_bound", "ord_compute"] {
+            let mut o = usdc_order(id, 200, 0, created);
+            o.status = OrderStatus::Paid;
+            o.expires_at = Some(created + ENTITLEMENT_SECS);
+            o.escrow = Some(held());
+            state.orders.insert(id.into(), o);
+        }
+        state.orders.get_mut("ord_bound").unwrap().volume = Some("market-b/ord-bound".into());
+        state.orders.get_mut("ord_compute").unwrap().kind = Kind::Compute;
+        let deadline = usdc_deadline(&state.orders["ord_waiting"]);
+
+        // Well before the deadline the edge keeps waiting for the volume.
+        let early = deadline - UNDELIVERED_REFUND_BEFORE_SECS - 1;
+        assert!(refund_undelivered(&mut state, early).is_empty());
+        assert_eq!(state.orders["ord_waiting"].escrow, Some(held()));
+
+        // An hour out it gives up on the one still without a volume.
+        let late = deadline - UNDELIVERED_REFUND_BEFORE_SECS;
+        assert_eq!(refund_undelivered(&mut state, late), ["ord_waiting"]);
+        let o = &state.orders["ord_waiting"];
+        let e = o.escrow.as_ref().unwrap();
+        assert_eq!(e.step, EscrowStep::Refund);
+        assert_eq!(e.reason, Some(RefundReason::NotDelivered));
+        assert_eq!(o.expires_at, Some(late));
+        assert!(!paid_live(o, late));
+        // The bound volume and the compute credit are left to be released.
+        for id in ["ord_bound", "ord_compute"] {
+            assert_eq!(state.orders[id].escrow, Some(held()), "{id}");
+        }
+        // Once is enough.
+        assert!(refund_undelivered(&mut state, late + 1).is_empty());
     }
 
     #[test]

@@ -14,6 +14,10 @@ import { describeWindow } from "./window";
 import { useEdge, type EdgeView } from "./use-edge";
 import type { SettingsForm } from "./use-settings-form";
 
+/* The name every box ships with (losos.hostName's default). The edge turns
+ * away a second mesh node by the same name. */
+const STOCK_NAME = "mattbox";
+
 /* Joining the mesh, and the hours this box lends while nobody is using it.
  *
  * The one thing this pane must not get wrong is whose clock the hours are on.
@@ -180,7 +184,20 @@ export function MeshPane({ form }: { form: SettingsForm }) {
    * so the switch is greyed and says why. Already joined (as saved) stays
    * live, so the owner can leave the mesh while the edge is away. */
   const joinRefused = edge.blocked && !(form.saved?.clusterEnable ?? false);
-  const joinDisabled = disabled || joinRefused;
+  /* The two things modules/cluster.nix asserts before a box may join, read
+   * off the draft so that turning the proxy on or renaming the box in
+   * Network frees the switch for the same apply. lososd refuses the same
+   * apply (`check_mesh`); without this the owner met it as a failed
+   * rebuild. Only turning on is held back: a box already joined can leave. */
+  const needs =
+    joined || (form.saved?.clusterEnable ?? false)
+      ? null
+      : !(draft?.proxyEnable ?? false)
+        ? t("panes.mesh.needsProxy")
+        : (draft?.hostName ?? "") === STOCK_NAME
+          ? t("panes.mesh.needsName")
+          : null;
+  const joinDisabled = disabled || joinRefused || needs !== null;
   /* The window only means anything once this box has joined. Greyed rather
    * than hidden, because the shape of what joining gets you is half the
    * decision — and both halves go out in the same apply, so turning join on
@@ -197,7 +214,9 @@ export function MeshPane({ form }: { form: SettingsForm }) {
           <SwitchRow
             id={joinId}
             title={t("panes.mesh.join")}
-            description={joinRefused && !disabled ? t("panes.mesh.edge.needed") : undefined}
+            description={
+              disabled ? undefined : joinRefused ? t("panes.mesh.edge.needed") : (needs ?? undefined)
+            }
             checked={joined}
             disabled={joinDisabled}
             onCheckedChange={(next) => form.set("clusterEnable", next)}

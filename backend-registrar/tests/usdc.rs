@@ -22,7 +22,7 @@ use std::sync::{Arc, Mutex};
 use axum::extract::State;
 use axum::response::IntoResponse;
 use axum::{Json, Router};
-use common::{Edge, TenantSpec, GOOD_TOKEN, OTHER_TOKEN};
+use common::{Edge, KubeStub, TenantSpec, GOOD_TOKEN, OTHER_TOKEN};
 use k256::ecdsa::SigningKey;
 use losos_registrar::solana::base58_encode;
 use losos_registrar::stablecoin::{
@@ -184,13 +184,20 @@ async fn start(tag: &str, rpc_url: &str, state: Option<&Value>) -> Edge {
 /// As [`start`]; `cards: false` is an edge with no Stripe account, whose gate
 /// is stopped before the first request.
 async fn start_with_cards(tag: &str, rpc_url: &str, state: Option<&Value>, cards: bool) -> Edge {
-    start_full(tag, rpc_url, state, cards, false).await
+    start_full(tag, rpc_url, state, cards, false, mesh("Bound").await).await
+}
+
+/// The mesh apiserver stand-in, its claims in `phase`. A storage order's
+/// escrow is released only once its claim is bound, so every edge here has
+/// one. Leaked: it serves until the test process ends, like the edge.
+async fn mesh(phase: &str) -> &'static KubeStub {
+    Box::leak(Box::new(KubeStub::start_with_claim_phase(201, phase).await))
 }
 
 /// As [`start`], also taking Bitcoin through a node that never answers:
 /// enough for the edge to offer the coin and refuse it before asking.
 async fn start_with_btc(tag: &str, rpc_url: &str, state: Option<&Value>) -> Edge {
-    start_full(tag, rpc_url, state, true, true).await
+    start_full(tag, rpc_url, state, true, true, mesh("Bound").await).await
 }
 
 async fn start_full(
@@ -199,9 +206,11 @@ async fn start_full(
     state: Option<&Value>,
     cards: bool,
     btc: bool,
+    kube: &KubeStub,
 ) -> Edge {
     let stripe = start_stripe().await;
     let rpc_url = rpc_url.to_string();
+    let kube_api = kube.base.clone();
     let mut edge = Edge::start_market_full(
         tag,
         &tenants(),
@@ -211,6 +220,9 @@ async fn start_full(
         move |opts, dir| {
             std::fs::write(dir.join("usdc-rpc-url"), &rpc_url).expect("write rpc url");
             std::fs::write(dir.join("usdc-releaser-key"), RELEASER_KEY).expect("write key");
+            std::fs::write(dir.join("kube.token"), common::KUBE_TOKEN).expect("kube token");
+            opts.kube_api = kube_api;
+            opts.kube_token_file = Some(dir.path_str("kube.token"));
             let market = opts.market.as_mut().expect("market on");
             market.currency = "usd".to_string();
             if !cards {
@@ -611,6 +623,48 @@ async fn a_payment_counts_once_it_has_a_block_on_top() {
     let order = wait_step(&edge, &order_id, "released").await;
     assert!(order["escrow"]["tx"].is_null(), "{order}");
     assert_eq!(sent_calls(&chain).len(), 1);
+    edge.shutdown().await;
+}
+
+#[tokio::test]
+async fn the_seller_is_paid_only_once_the_storage_exists() {
+    let (chain, url) = start_chain().await;
+    // The mesh takes the claim but cannot bind it yet: no volume to give.
+    let kube = mesh("Pending").await;
+    let edge = start_full("usdc-undelivered", &url, None, true, false, kube).await;
+    let seller = set_payout(&edge, 7).await;
+    let invoice = order(&edge, 40).await;
+    let order_id = invoice["order_id"].as_str().unwrap().to_string();
+    chain.set(|c| {
+        c.receipts.insert(tx(1), receipt(&invoice, &seller, 100, 1));
+        c.head = 101;
+    });
+    assert_eq!(confirm(&edge, &order_id, &tx(1)).await.0, 204);
+    assert_eq!(status_of(&edge, &order_id).await, "paid");
+
+    // The claim was asked for, and the deposit stays in the escrow.
+    for _ in 0..100 {
+        if kube
+            .seen()
+            .iter()
+            .any(|r| r.contains("persistentvolumeclaims/"))
+        {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+    assert!(sent_calls(&chain).is_empty(), "{:?}", sent_calls(&chain));
+    assert_eq!(
+        purchase(&edge, &order_id).await["escrow"]["step"],
+        "release"
+    );
+
+    // The volume binds: now the seller is paid.
+    kube.set_claim_phase("Bound");
+    assert_eq!(wait_sent(&chain, 1).await, [(RELEASE.to_string(), 1)]);
+    mine_sent(&chain, "0x1");
+    wait_step(&edge, &order_id, "released").await;
     edge.shutdown().await;
 }
 

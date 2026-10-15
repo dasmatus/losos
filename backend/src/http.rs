@@ -156,6 +156,16 @@ fn error_response(e: anyhow::Error) -> HttpResponse {
             "setting": why.setting,
         }));
     }
+    // The mesh join on a box the edge cannot enrol (`crate::edge::
+    // check_mesh`): the sentence, as a 409 with its own flag, rather than a
+    // rebuild that fails on the same rule.
+    if let Some(why) = e.downcast_ref::<crate::edge::MeshNotReady>() {
+        tracing::warn!(reason = %why, "refused: the mesh join cannot enrol");
+        return HttpResponse::build(StatusCode::CONFLICT).json(serde_json::json!({
+            "error": why.to_string(),
+            "meshNotReady": true,
+        }));
+    }
     // Trading asked of a box whose edges are all a company's own: the
     // sentence, as a 409, with a flag the Market pane can key on.
     if let Some(why) = e.downcast_ref::<crate::edge::OfficialEdgeRequired>() {

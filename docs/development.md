@@ -316,7 +316,10 @@ this is the reasoning behind it.
   plus `losos.proxy.registrarUrl`, probed on `/health`). With none in reach
   it refuses to turn `sharingMyStorage` or `cluster.enable` on (409
   `edgeRequired`). The refusal applies only to turning things on, so a box
-  can always leave.
+  can always leave. Joining the mesh also needs the tunnel on and a name
+  other than the stock `mattbox`, the two things `modules/cluster.nix`
+  asserts; lososd refuses the apply first (409 `meshNotReady`) and the Mesh
+  pane greys the switch with the reason.
   - On top of that, lososd challenges each answering edge
     (`GET /identity?nonce=`). An edge counts as official only if its
     certificate is signed by the LosOS root key in
