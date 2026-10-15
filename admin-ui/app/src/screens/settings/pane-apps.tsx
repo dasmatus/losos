@@ -1,4 +1,5 @@
 import * as React from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
   Alert01Icon,
@@ -74,6 +75,22 @@ export function AppsPane({ form }: { form: SettingsForm }) {
   const installed = useInstalledApps(!form.locked);
   const [target, setTarget] = React.useState<InstallTarget | null>(null);
   const [removing, setRemoving] = React.useState<InstalledApp | null>(null);
+  const location = useLocation();
+  const navigate = useNavigate();
+  /* An app picked in the command palette (src/palette/) arrives as router
+   * state: the pane searches what was typed there and opens the install
+   * dialog for the pick once the box can take an install, so the palette
+   * never installs anything by itself. The state is dropped at once, so a
+   * reload or Back does not open the dialog again. */
+  const handoff = React.useRef<PaletteHandoff | null>(null);
+  React.useEffect(() => {
+    const picked = readHandoff(location.state);
+    if (picked === null) return;
+    handoff.current = picked;
+    catalogue.setQuery(picked.query);
+    navigate(location.pathname, { replace: true, state: null });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- a new pick, not each render of the same one
+  }, [location.state]);
 
   const ready = installed.state.kind === "ready" ? installed.state : null;
   const records = ready?.apps ?? [];
@@ -90,6 +107,13 @@ export function AppsPane({ form }: { form: SettingsForm }) {
               existing: records.find((r) => r.chart.name === source.name && r.chart.repo === source.repo) ?? null,
             }),
         };
+
+  React.useEffect(() => {
+    const picked = handoff.current;
+    if (picked === null || install === null || target !== null) return;
+    handoff.current = null;
+    install.start(picked.app, picked.app.chart);
+  });
 
   return (
     <>
@@ -226,6 +250,27 @@ export function AppsPane({ form }: { form: SettingsForm }) {
       />
     </>
   );
+}
+
+// ── From the command palette ──────────────────────────────────────────────
+
+interface PaletteHandoff {
+  app: CatalogueApp & { chart: NonNullable<CatalogueApp["chart"]> };
+  query: string;
+}
+
+/* Router state is whatever a history entry carries, so it is read as
+ * unknown and checked before the dialog is opened from it. */
+function readHandoff(state: unknown): PaletteHandoff | null {
+  if (typeof state !== "object" || state === null) return null;
+  const { install, query } = state as { install?: unknown; query?: unknown };
+  if (typeof install !== "object" || install === null || typeof query !== "string") return null;
+  const app = install as Partial<CatalogueApp>;
+  const chart = app.chart;
+  if (typeof app.id !== "string" || typeof app.name !== "string" || typeof app.source !== "string") return null;
+  if (typeof chart !== "object" || chart === null) return null;
+  if (typeof chart.repo !== "string" || typeof chart.name !== "string" || typeof chart.version !== "string") return null;
+  return { app: { ...(app as CatalogueApp), chart }, query };
 }
 
 // ── Rows ──────────────────────────────────────────────────────────────────

@@ -1,9 +1,8 @@
 import * as React from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import {
   ArrowRight01Icon,
-  Cancel01Icon,
   HardDriveIcon,
   Home01Icon,
   LayoutGridIcon,
@@ -19,7 +18,6 @@ import {
   Sidebar,
   SidebarContent,
   SidebarHeader,
-  SidebarInput,
   SidebarMenu,
   SidebarMenuAction,
   SidebarMenuBadge,
@@ -32,11 +30,12 @@ import {
   SidebarTrigger,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { t as translate, template, type MessageKey } from "@/lib/i18n";
+import type { MessageKey } from "@/lib/i18n";
 import { useLocale, useT } from "@/lib/i18n-react";
 import { paneFromPath, paneHref } from "@/lib/routes";
 import { cn } from "@/lib/utils";
-import { paneById, paneMatches, type SettingsPaneId } from "@/screens/settings/panes";
+import { openPalette, shortcutLabel } from "@/palette/store";
+import { paneById, type SettingsPaneId } from "@/screens/settings/panes";
 
 /* The one panel: every destination on this page in a single sidebar, in the
  * shape of shadcn's Sidebar ("collapses to icons"), inside the recessed box.
@@ -57,11 +56,11 @@ import { paneById, paneMatches, type SettingsPaneId } from "@/screens/settings/p
  *     Network, Hardware, Security, About, Reset
  *
  * A folded entry opens by itself when the page is on one of its
- * sub-entries, and while a search is typed. The search at the top filters
- * the whole tree by name, summary and keywords in the language on screen and
- * in English (paneMatches), and Enter opens the first match that can be
- * opened. A planned entry is a disabled button: greyed, skipped by Tab, and
- * announced as unavailable, with "soon(TM)" in its accessible name.
+ * sub-entries. The search box at the top is the command palette's button
+ * (src/palette/): it opens the palette, which finds every entry here and
+ * also apps, files in LosOS cloud and repositories in LosOS Git. A planned
+ * entry is a disabled button: greyed, skipped by Tab, and announced as
+ * unavailable, with "soon(TM)" in its accessible name.
  *
  * On a wide screen the trigger (or Ctrl/Cmd+B) narrows the panel to a rail of
  * icons, each naming itself in a tooltip; on a phone a row naming where you
@@ -76,8 +75,6 @@ interface LinkEntry {
   icon: IconSvgElement;
   /** The settings pane behind it, for matching and for "is this current". */
   pane?: SettingsPaneId;
-  /** Extra English search words, for an entry with no pane. */
-  keywords?: readonly string[];
   /** A page outside this app (the lab at /lab/): a plain link that loads it,
    * not a router link that would draw this app's 404 at that address. */
   external?: boolean;
@@ -90,7 +87,6 @@ interface PlannedEntry {
   label: MessageKey;
   icon?: IconSvgElement;
   pane?: SettingsPaneId;
-  keywords?: readonly string[];
   /** Whether the entry carries the soon(TM) badge itself. */
   badge: boolean;
   children?: readonly Entry[];
@@ -135,7 +131,6 @@ function marketEntry(): Entry {
         key: "disk-sharing",
         label: "shell.nav.diskSharing",
         icon: ServerStack01Icon,
-        keywords: ["share", "sharing", "lend", "disk", "copies", "backup"],
         badge: false,
       },
     ],
@@ -149,7 +144,6 @@ const TREE: readonly Entry[] = [
     to: "/",
     label: "shell.nav.overview",
     icon: Home01Icon,
-    keywords: ["home", "start", "widgets", "board", "dashboard"],
   },
   { kind: "link", key: "apps", to: "/apps", label: "shell.nav.apps", icon: LayoutGridIcon, pane: "apps" },
   { kind: "link", key: "storage", to: "/storage", label: "shell.nav.storage", icon: HardDriveIcon, pane: "storage" },
@@ -168,7 +162,6 @@ const TREE: readonly Entry[] = [
     to: "/lab/",
     label: "shell.nav.lab",
     icon: NetworkIcon,
-    keywords: ["lab", "simulator", "topology", "diagram", "network", "map", "packet", "visualize"],
     external: true,
   },
   {
@@ -185,52 +178,6 @@ const TREE: readonly Entry[] = [
   },
 ];
 
-/** Lower-case and strip diacritics: "Úložisko" -> "ulozisko". */
-function fold(text: string): string {
-  return text
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "");
-}
-
-/* Does this entry, by itself, match the search? A pane-backed entry matches
- * the way the old settings list did (paneMatches); the others on their name
- * in the language on screen and in English, plus their keywords. */
-function selfMatches(entry: Entry, query: string): boolean {
-  if (query.trim().length === 0) return true;
-  if (entry.kind !== "fold" && entry.pane !== undefined) return paneMatches(paneById(entry.pane), query);
-  const terms = fold(query).split(/\s+/).filter((term) => term.length > 0);
-  const haystack = fold(
-    [translate(entry.label), template(entry.label, undefined, "en"), ...(entry.kind === "fold" ? [] : (entry.keywords ?? []))].join(" "),
-  );
-  return terms.every((term) => haystack.includes(term));
-}
-
-/* The tree as the search leaves it: an entry stays if it matches or any
- * entry under it does; a fold whose own name matches keeps all its entries
- * ("settings" shows everything under Settings). */
-function filterTree(entries: readonly Entry[], query: string): Entry[] {
-  const out: Entry[] = [];
-  for (const entry of entries) {
-    const own = selfMatches(entry, query);
-    const children = entry.children ?? [];
-    const kept = own && entry.kind === "fold" ? [...children] : filterTree(children, query);
-    if (own || kept.length > 0) out.push({ ...entry, children: kept } as Entry);
-  }
-  return out;
-}
-
-function firstOpenLink(entries: readonly Entry[]): LinkEntry | null {
-  for (const entry of entries) {
-    if (entry.kind === "link") return entry;
-    if (entry.kind === "fold") {
-      const inner = firstOpenLink(entry.children);
-      if (inner !== null) return inner;
-    }
-  }
-  return null;
-}
-
 function isCurrent(entry: LinkEntry, pathname: string): boolean {
   if (entry.pane !== undefined) return paneFromPath(pathname) === entry.pane;
   return pathname === entry.to;
@@ -246,12 +193,8 @@ export function AppSidebar() {
   const t = useT();
   useLocale(); // the tree's text is read during render
   const { pathname } = useLocation();
-  const navigate = useNavigate();
   const { state, isMobile, setOpenMobile } = useSidebar();
   const rail = !isMobile && state === "collapsed";
-  const [search, setSearch] = React.useState("");
-  const searchId = React.useId();
-  const searching = search.trim().length > 0;
 
   // Which folds are open. One that holds the current page opens by itself.
   const [openFolds, setOpenFolds] = React.useState<Record<string, boolean>>({});
@@ -270,20 +213,11 @@ export function AppSidebar() {
     setOpenMobile(false);
   }, [pathname, setOpenMobile]);
 
-  const tree = React.useMemo(() => (searching ? filterTree(TREE, search) : TREE), [search, searching]);
   const here = React.useMemo(() => currentLabel(TREE, pathname), [pathname]);
+  const shortcut = shortcutLabel();
+  const searchLabel = t("palette.open", { shortcut });
 
-  const submit = (event: React.FormEvent): void => {
-    event.preventDefault();
-    const first = firstOpenLink(tree);
-    if (first !== null) {
-      if (first.external === true) window.location.assign(first.to);
-      else navigate(first.to);
-      setSearch("");
-    }
-  };
-
-  const isOpen = (key: string): boolean => searching || openFolds[key] === true;
+  const isOpen = (key: string): boolean => openFolds[key] === true;
   const setOpen = (key: string, open: boolean): void => setOpenFolds((current) => ({ ...current, [key]: open }));
 
   return (
@@ -305,61 +239,55 @@ export function AppSidebar() {
       <Sidebar aria-label={t("shell.nav.label")} mobileTitle={t("shell.nav.label")} closeLabel={t("ui.dismiss")}>
         <SidebarHeader className={cn(isMobile && "pr-10")}>
           {!isMobile && <SidebarTrigger label={t(rail ? "shell.nav.expand" : "shell.nav.collapse")} />}
-          <form onSubmit={submit} role="search" className="relative min-w-0 flex-1 group-data-[collapsible=icon]/sidebar:hidden">
-            <label htmlFor={searchId} className="sr-only">
-              {t("settings.sidebar.searchLabel")}
-            </label>
-            <HugeiconsIcon
-              icon={Search01Icon}
-              size={15}
-              strokeWidth={1.5}
-              color="currentColor"
-              className="pointer-events-none absolute top-1/2 left-2 -translate-y-1/2 text-faint"
-              aria-hidden="true"
-            />
-            <SidebarInput
-              id={searchId}
-              type="search"
-              value={search}
-              placeholder={t("settings.sidebar.searchPlaceholder")}
-              autoComplete="off"
-              spellCheck={false}
-              onChange={(event) => setSearch(event.target.value)}
-            />
-            {search.length > 0 && (
-              <button
-                type="button"
-                aria-label={t("settings.sidebar.clear")}
-                onClick={() => setSearch("")}
-                className="absolute top-1/2 right-1 -translate-y-1/2 rounded-control p-1 text-faint transition-colors duration-150 hover:text-ink"
-              >
-                <HugeiconsIcon icon={Cancel01Icon} size={13} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
-              </button>
+          {/* The command palette's button, drawn as the search box it
+              replaced. On the rail it is the magnifier alone. */}
+          <button
+            type="button"
+            onClick={() => {
+              setOpenMobile(false);
+              openPalette();
+            }}
+            aria-label={searchLabel}
+            aria-keyshortcuts="Control+K Meta+K"
+            aria-haspopup="dialog"
+            title={rail ? searchLabel : undefined}
+            className={cn(
+              "flex h-8 min-w-0 flex-1 items-center gap-2 rounded-control border border-line bg-surface px-2 text-left",
+              "text-[13px] text-faint transition-[color,border-color] duration-150 hover:border-accent/45 hover:text-muted",
+              "focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/35 focus-visible:outline-none",
+              "group-data-[collapsible=icon]/sidebar:size-8 group-data-[collapsible=icon]/sidebar:flex-none",
+              "group-data-[collapsible=icon]/sidebar:justify-center group-data-[collapsible=icon]/sidebar:border-transparent",
+              "group-data-[collapsible=icon]/sidebar:bg-transparent group-data-[collapsible=icon]/sidebar:px-0",
             )}
-          </form>
+          >
+            <HugeiconsIcon icon={Search01Icon} size={15} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
+            <span className="min-w-0 flex-1 truncate group-data-[collapsible=icon]/sidebar:hidden">
+              {t("settings.sidebar.searchPlaceholder")}
+            </span>
+            <kbd
+              aria-hidden="true"
+              className="rounded-[4px] border border-line bg-sunk px-1 font-sans text-[10.5px] leading-[16px] text-faint group-data-[collapsible=icon]/sidebar:hidden"
+            >
+              {shortcut}
+            </kbd>
+          </button>
         </SidebarHeader>
 
         <SidebarContent>
-          {tree.length === 0 ? (
-            <p className="animate-fade-in px-2 py-3 text-[12.5px] leading-snug text-muted">
-              {t("settings.sidebar.noMatch", { query: search.trim() })}
-            </p>
-          ) : (
-            <SidebarMenu>
-              {tree.map((entry) => (
-                <TopEntry
-                  key={entry.key}
-                  entry={entry}
-                  pathname={pathname}
-                  rail={rail}
-                  open={isOpen(entry.key)}
-                  onOpenChange={(open) => setOpen(entry.key, open)}
-                  isOpen={isOpen}
-                  setOpen={setOpen}
-                />
-              ))}
-            </SidebarMenu>
-          )}
+          <SidebarMenu>
+            {TREE.map((entry) => (
+              <TopEntry
+                key={entry.key}
+                entry={entry}
+                pathname={pathname}
+                rail={rail}
+                open={isOpen(entry.key)}
+                onOpenChange={(open) => setOpen(entry.key, open)}
+                isOpen={isOpen}
+                setOpen={setOpen}
+              />
+            ))}
+          </SidebarMenu>
         </SidebarContent>
       </Sidebar>
     </>

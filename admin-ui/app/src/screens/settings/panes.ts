@@ -16,7 +16,7 @@ import {
   ShoppingCart01Icon,
   Shield01Icon,
 } from "@hugeicons/core-free-icons";
-import { t, template, type MessageKey } from "@/lib/i18n";
+import { t, type MessageKey } from "@/lib/i18n";
 
 /* The sidebar's list of panes, in order.
  *
@@ -30,8 +30,9 @@ import { t, template, type MessageKey } from "@/lib/i18n";
  * owner goes deliberately, not one they should meet while looking for their
  * disk. The protections that cost nothing are always on and appear nowhere.
  *
- * `keywords` is what the search field matches on beyond the label (English
- * here; each language adds its own under `settings.panes.<id>.keywords`). It exists
+ * `keywords` is what the command palette (src/palette/items.ts) matches on
+ * beyond the label (English here; each language adds its own under
+ * `settings.panes.<id>.keywords`). It exists
  * because the word an owner types is rarely the word on the row — "GPU" and
  * "graphics" both have to find Hardware, "hostname" has to find Network —
  * and because a settings search that only matches seven visible labels is
@@ -338,40 +339,4 @@ export function paneById(id: SettingsPaneId): SettingsPane {
    * without touching the union — a pane that is gone lands on the first one
    * rather than blanking the screen. */
   return SETTINGS_PANES.find((pane) => pane.id === id) ?? SETTINGS_PANES[0];
-}
-
-/* Does this pane match what was typed into the sidebar's search field?
- *
- * Every term has to match something — typing two words narrows rather than
- * widens, which is what a person means by adding a word.
- *
- * The haystack is the pane's name, summary and keywords in the language on
- * screen AND in English, so an owner who reads Slovak but types "disk" or
- * "GPU" still lands. Accents are folded on both sides, so "zabezpecenie"
- * finds "Zabezpečenie" from a keyboard without them. Reads the language at
- * call time: call it while a component subscribed with useT() renders. */
-export function paneMatches(pane: SettingsPane, search: string): boolean {
-  const terms = fold(search)
-    .split(/\s+/)
-    .filter((term) => term.length > 0);
-  if (terms.length === 0) return true;
-  const haystack = fold(
-    [
-      t(pane.labelKey),
-      t(pane.summaryKey),
-      t(pane.keywordsKey),
-      template(pane.labelKey, undefined, "en"),
-      template(pane.summaryKey, undefined, "en"),
-      pane.keywords.join(" "),
-    ].join(" "),
-  );
-  return terms.every((term) => haystack.includes(term));
-}
-
-/** Lower-case and strip diacritics: "Úložisko" -> "ulozisko". */
-function fold(text: string): string {
-  return text
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "");
 }

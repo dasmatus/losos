@@ -133,6 +133,13 @@ function parseResults(body: unknown): CatalogueResults {
   return { sources, apps };
 }
 
+/** One search, for a caller that keeps its own state: the command palette
+ *  (src/palette/) asks the same route as the pane and reads the same shape. */
+export async function searchCatalogue(query: string, signal?: AbortSignal): Promise<CatalogueResults> {
+  const url = `${CATALOGUE_SEARCH_URL}?q=${encodeURIComponent(query)}`;
+  return parseResults(await authedGet(url, signal === undefined ? {} : { signal }));
+}
+
 /* The box's own words when it gave any (they arrive in its language, not
  * ours), else null — which is resolved to our sentence at render, in the
  * language on screen then, not the one on screen when the search failed. */
@@ -179,10 +186,9 @@ export function useCatalogue(enabled: boolean): Catalogue {
       setState({ kind: "searching" });
       void (async () => {
         try {
-          const url = `${CATALOGUE_SEARCH_URL}?q=${encodeURIComponent(trimmed)}`;
-          const body = await authedGet(url, { signal: controller.signal });
+          const results = await searchCatalogue(trimmed, controller.signal);
           if (cancelled) return;
-          setState({ kind: "results", results: parseResults(body) });
+          setState({ kind: "results", results });
         } catch (error) {
           if (cancelled || isAbort(error)) return;
           if (isUnauthorized(error)) {

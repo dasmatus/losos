@@ -12,6 +12,7 @@ import install from "./install";
 import lab from "./lab";
 import look from "./look";
 import machines from "./machines";
+import palette from "./palette";
 import panes from "./panes";
 import settings from "./settings";
 import shell from "./shell";
@@ -36,6 +37,7 @@ export const MESSAGES = {
   ...access,
   ...lab,
   ...tour,
+  ...palette,
 };
 
 export type MessageKey = keyof typeof MESSAGES;
