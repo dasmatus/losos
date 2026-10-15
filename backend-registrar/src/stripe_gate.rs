@@ -38,9 +38,7 @@ use tokio::net::{UnixListener, UnixStream};
 use crate::action::Action;
 use crate::connect::account_id_ok;
 use crate::hardware::{Catalogue, Line};
-use crate::market::{
-    account_ready, decode_hex, now_secs, valid_box_uuid, verify_signature, Kind, MarketError,
-};
+use crate::market::{account_ready, now_secs, valid_box_uuid, verify_signature, Kind, MarketError};
 use crate::stripe_mode::StripeMode;
 
 /// Budget for one Stripe request.
@@ -866,10 +864,6 @@ async fn hardware_catalogue(opts: &GateOpts) -> Result<Catalogue, Reply> {
     })
 }
 
-fn encode_hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|b| format!("{b:02x}")).collect()
-}
-
 // ── the gate ─────────────────────────────────────────────────────────────
 
 /// The key and the mode it works in. A key whose mode cannot be read off it
@@ -1063,7 +1057,7 @@ async fn handle(opts: &GateOpts, request: Request) -> Reply {
             signature,
             body_hex,
         } => {
-            let Some(body) = decode_hex(&body_hex) else {
+            let Some(body) = crate::identity::from_hex(&body_hex) else {
                 return refuse("body is not hex");
             };
             let mode = match stripe_key(opts).await {
@@ -1429,7 +1423,7 @@ impl GateClient {
     ) -> Result<StripeMode, MarketError> {
         self.call(&Request::VerifyWebhook {
             signature: signature.to_string(),
-            body_hex: encode_hex(body),
+            body_hex: crate::identity::to_hex(body),
         })
         .await?
         .mode

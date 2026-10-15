@@ -592,11 +592,7 @@ fn no_such_account(id: &str) -> MarketError {
 /// `seed`, so the same seed always gets the same id.
 fn memory_id(prefix: &str, seed: &str) -> String {
     let digest = ring::digest::digest(&ring::digest::SHA256, seed.as_bytes());
-    let hex: String = digest.as_ref()[..8]
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect();
-    format!("{prefix}{hex}")
+    format!("{prefix}{}", crate::identity::to_hex(&digest.as_ref()[..8]))
 }
 
 impl Connect for MemoryConnect {

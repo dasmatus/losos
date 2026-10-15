@@ -30,7 +30,6 @@ import {
   getStatus,
   getStorage,
   isAbort,
-  type GrowResponse,
   type SettingsResponse,
   type StatusResponse,
 } from "@/lib/api";
@@ -262,51 +261,11 @@ function uptimeMetric(days: number): UptimeMetric {
   };
 }
 
-// ── What /api/grow measured ───────────────────────────────────────────────
+// ── Storage ───────────────────────────────────────────────────────────────
 
-export const STORAGE_KEY = "losos-storage-observation";
-
-interface GrowObservation {
-  at: number;
-  grew: boolean;
-  beforeBytes: number;
-  afterBytes: number;
-  claimedBytes: number;
-}
-
-/* The only place the box ever states a size.
- *
- * POST /api/grow returns the filesystem size before and after, and how much
- * unallocated space it found to claim — real measurements taken on the box
- * with lvs, cryptsetup and resize2fs. It is also the one route that CHANGES
- * something, so a widget must never call it. The Storage screen calls it when
- * the owner asks for space; this is where it hands the numbers over.
- *
- * Integrator: call this from the grow flow. Without it the Disk tile is
- * honest and empty, which is correct but not interesting. */
-export function recordGrow(response: GrowResponse): void {
-  writeJson(STORAGE_KEY, {
-    at: Date.now(),
-    grew: response.grew,
-    beforeBytes: response.beforeBytes,
-    afterBytes: response.afterBytes,
-    claimedBytes: response.claimedBytes,
-  } satisfies GrowObservation);
-}
-
-/** What the owner's file manager says is in use, if they ever told this page.
- *  Nothing calls it yet; it exists so the Disk tile has somewhere to put a
- *  used-bytes figure the moment any route starts reporting one. */
-export function recordUsedBytes(used: number, total: number): void {
-  if (!Number.isFinite(used) || !Number.isFinite(total) || total <= 0) return;
-  writeJson(USED_KEY, { at: Date.now(), used, total });
-}
-
-const USED_KEY = "losos-storage-used";
-
-/* The box's own reading (GET /api/storage) when it gives one, so the tile
- * shows the disk in every browser and a claimed reserve as claimed. The
- * observations below are the fallback for a box too old to serve it. */
+/* The box's own reading (GET /api/storage), so the tile shows the disk in
+ * every browser and a claimed reserve as claimed. A box too old to serve it
+ * gets an honest, empty tile. */
 async function storageMetric(signal: AbortSignal | undefined, fresh: boolean): Promise<StorageMetric> {
   try {
     const box = await cached(
@@ -336,39 +295,13 @@ async function storageMetric(signal: AbortSignal | undefined, fresh: boolean): P
 }
 
 function observedStorage(): StorageMetric {
-  const grow = readJson<Partial<GrowObservation>>(STORAGE_KEY, {});
-  const used = readJson<{ at?: number; used?: number; total?: number }>(USED_KEY, {});
-
-  const measuredTotal =
-    typeof grow.afterBytes === "number" && grow.grew === true
-      ? grow.afterBytes
-      : typeof grow.beforeBytes === "number"
-        ? grow.beforeBytes
-        : null;
-
-  // A claim consumes the reserve. Reporting the pre-grow figure afterwards
-  // would tell the owner there is still room to claim when there is not.
-  const reserve =
-    typeof grow.claimedBytes === "number"
-      ? grow.grew === true
-        ? 0
-        : grow.claimedBytes
-      : null;
-
-  const totalBytes = typeof used.total === "number" ? used.total : measuredTotal;
-  const usedBytes = typeof used.used === "number" ? used.used : null;
-
-  const usedRatio =
-    usedBytes !== null && totalBytes !== null && totalBytes > 0 ? usedBytes / totalBytes : null;
-  const freeBytes = usedBytes !== null && totalBytes !== null ? totalBytes - usedBytes : null;
-
   return {
-    usedBytes,
-    totalBytes,
-    reserveBytes: reserve,
-    freeBytes,
-    usedRatio,
-    source: totalBytes === null ? "unknown" : "box",
+    usedBytes: null,
+    totalBytes: null,
+    reserveBytes: null,
+    freeBytes: null,
+    usedRatio: null,
+    source: "unknown",
   };
 }
 
@@ -619,11 +552,6 @@ function cachedSettings(signal: AbortSignal | undefined, fresh = false): Promise
 
 function cachedStatus(signal: AbortSignal | undefined, fresh = false): Promise<StatusResponse> {
   return cached("status", STATUS_TTL_MS, () => getStatus(signal === undefined ? {} : { signal }), fresh);
-}
-
-/** Drop everything cached. Call after an action that changes the box. */
-export function invalidateMetrics(): void {
-  cache.clear();
 }
 
 // ── The dispatcher ────────────────────────────────────────────────────────

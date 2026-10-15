@@ -53,10 +53,7 @@ export interface SettingsProps {
 
 export default function Settings({ pane = DEFAULT_PANE }: SettingsProps) {
   const t = useT();
-  // A planned pane is never shown, whatever asks for it: the sidebar draws
-  // its entry disabled and lib/routes.ts does not parse its segment, and
-  // this is the belt to those braces.
-  const current = paneById(pane).planned ? DEFAULT_PANE : pane;
+  const current = pane;
 
   const form = useSettingsForm();
   const storage = useStorage();
@@ -99,10 +96,6 @@ function Pane({
     case "mesh":
       return <MeshPane form={form} />;
     case "market":
-      // Unreachable while the pane is planned (panes.ts): its row is
-      // disabled, `select` refuses it and the router does not parse its
-      // segment. Kept so the pane stays compiled and type-checked, and so
-      // opening it is one flag away.
       return <MarketPane form={form} />;
     case "machines":
       // No draft, no Apply bar: every action is its own market request.

@@ -141,7 +141,6 @@ jobs:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-nix
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
           cache-url: ${{ vars.LOSOS_PROXY_URL }}
           public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
       # The compiler caches that devShells.ci carries (flake/fast-build.nix):
@@ -212,7 +211,6 @@ jobs:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-nix
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
           cache-url: ${{ vars.LOSOS_PROXY_URL }}
           public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
       - run: |
@@ -256,7 +254,6 @@ jobs:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-nix
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
           cache-url: ${{ vars.LOSOS_PROXY_URL }}
           public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
       # Same as in the clippy job, under its own key: the test profile
@@ -300,7 +297,6 @@ jobs:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-nix
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
           cache-url: ${{ vars.LOSOS_PROXY_URL }}
           public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
       # Mirrors devenv.nix's `check-flake`. Evaluates every output — every VM
@@ -335,7 +331,6 @@ jobs:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-nix
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
           cache-url: ${{ vars.LOSOS_PROXY_URL }}
           public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
       # Compiles the shipping binaries only — doCheck is off, and the suite runs
@@ -378,7 +373,6 @@ jobs:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-nix
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
           cache-url: ${{ vars.LOSOS_PROXY_URL }}
           public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
       # Compiles only; the registrar's tests run in the test job.
@@ -460,7 +454,6 @@ jobs:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-nix
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
           cache-url: ${{ vars.LOSOS_PROXY_URL }}
           public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
       # The cheap two thirds of devenv.nix's `build-images`.
@@ -507,7 +500,6 @@ jobs:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-nix
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
           cache-url: ${{ vars.LOSOS_PROXY_URL }}
           public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
       - uses: actions/download-artifact@v8
@@ -589,7 +581,6 @@ jobs:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-nix
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
           cache-url: ${{ vars.LOSOS_PROXY_URL }}
           public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
       - run: nix build .#losos-static -o result-tui -L
@@ -734,7 +725,6 @@ jobs:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-nix
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
           cache-url: ${{ vars.LOSOS_PROXY_URL }}
           public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
       # Do not spend an hour building an image without somewhere to publish it.
@@ -774,7 +764,6 @@ jobs:
           # dance is working around.
       - uses: ./.github/actions/setup-nix
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
           cache-url: ${{ vars.LOSOS_PROXY_URL }}
           public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
       # Same toolchain as the clippy job and as buildRustPackage — devShells.ci
@@ -836,7 +825,6 @@ jobs:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-nix
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
           cache-url: ${{ vars.LOSOS_PROXY_URL }}
           public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
       - uses: actions/download-artifact@v8
@@ -1054,7 +1042,6 @@ jobs:
           path: .ci
       - uses: ./.ci/.github/actions/setup-nix
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
           cache-url: ${{ vars.LOSOS_PROXY_URL }}
           public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
       - name: free runner disk for media builds

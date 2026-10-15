@@ -13,8 +13,6 @@ import {
   Search01Icon,
   Settings01Icon,
   Share08Icon,
-  ShoppingCart01Icon,
-  ServerStack01Icon,
 } from "@hugeicons/core-free-icons";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
@@ -26,7 +24,6 @@ import {
   SidebarInput,
   SidebarMenu,
   SidebarMenuAction,
-  SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuIcon,
   SidebarMenuItem,
@@ -55,8 +52,7 @@ import { pinKey, viewPin, type PinView } from "@/lib/pins";
  *   Apps
  *   Storage
  *   Mesh                ▾   (the link opens Mesh; the chevron folds)
- *     Market   soon(TM)     greyed: planned, not open
- *       Disk sharing        greyed with it (its switch is on the Market pane)
+ *     Market                selling storage and compute, and disk sharing
  *     Machines              virtual machines on the mesh
  *   Lab                     (LosOS Lab at /lab/, a page of its own)
  *   Settings            ▾   (a fold only; /settings opens Network)
@@ -73,9 +69,7 @@ import { pinKey, viewPin, type PinView } from "@/lib/pins";
  * A folded entry opens by itself when the page is on one of its
  * sub-entries, and while a search is typed. The search at the top filters
  * the whole tree by name, summary and keywords in the language on screen and
- * in English (paneMatches), and Enter opens the first match that can be
- * opened. A planned entry is a disabled button: greyed, skipped by Tab, and
- * announced as unavailable, with "soon(TM)" in its accessible name.
+ * in English (paneMatches), and Enter opens the first match.
  *
  * On a wide screen the trigger (or Ctrl/Cmd+B) narrows the panel to a rail of
  * icons, each naming itself in a tooltip; on a phone a row naming where you
@@ -98,18 +92,6 @@ interface LinkEntry {
   children?: readonly Entry[];
 }
 
-interface PlannedEntry {
-  kind: "planned";
-  key: string;
-  label: MessageKey;
-  icon?: IconSvgElement;
-  pane?: SettingsPaneId;
-  keywords?: readonly string[];
-  /** Whether the entry carries the soon(TM) badge itself. */
-  badge: boolean;
-  children?: readonly Entry[];
-}
-
 interface FoldEntry {
   kind: "fold";
   key: string;
@@ -120,41 +102,12 @@ interface FoldEntry {
   children: readonly Entry[];
 }
 
-type Entry = LinkEntry | PlannedEntry | FoldEntry;
+type Entry = LinkEntry | FoldEntry;
 
 const settingsLeaf = (pane: SettingsPaneId): LinkEntry => {
   const meta = paneById(pane);
   return { kind: "link", key: pane, to: paneHref(pane), label: meta.labelKey, icon: meta.icon, pane };
 };
-
-/* The market hangs under Mesh: it sells the mesh's storage and compute.
- * While it is planned (panes.ts) it is a greyed entry with "soon(TM)" and
- * the disk-sharing entry greyed under it, since that switch lives on the
- * Market pane and opens with it. Opening the market is `planned: false` in
- * panes.ts and nothing here: the entry becomes a link to its pane, and the
- * pane carries the sharing switch. */
-function marketEntry(): Entry {
-  const market = paneById("market");
-  if (!market.planned) return settingsLeaf("market");
-  return {
-    kind: "planned",
-    key: "market",
-    label: market.labelKey,
-    icon: ShoppingCart01Icon,
-    pane: "market",
-    badge: true,
-    children: [
-      {
-        kind: "planned",
-        key: "disk-sharing",
-        label: "shell.nav.diskSharing",
-        icon: ServerStack01Icon,
-        keywords: ["share", "sharing", "lend", "disk", "copies", "backup"],
-        badge: false,
-      },
-    ],
-  };
-}
 
 const TREE: readonly Entry[] = [
   {
@@ -174,7 +127,7 @@ const TREE: readonly Entry[] = [
     label: "shell.nav.mesh",
     icon: Share08Icon,
     pane: "mesh",
-    children: [marketEntry(), settingsLeaf("machines")],
+    children: [settingsLeaf("market"), settingsLeaf("machines")],
   },
   {
     kind: "link",
@@ -392,8 +345,6 @@ export function AppSidebar() {
                   rail={rail}
                   open={isOpen(entry.key)}
                   onOpenChange={(open) => setOpen(entry.key, open)}
-                  isOpen={isOpen}
-                  setOpen={setOpen}
                 />
               ))}
             </SidebarMenu>
@@ -534,13 +485,11 @@ interface TopEntryProps {
   rail: boolean;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  isOpen: (key: string) => boolean;
-  setOpen: (key: string, open: boolean) => void;
 }
 
-function Glyph({ icon, active = false, planned = false }: { icon: IconSvgElement; active?: boolean; planned?: boolean }) {
+function Glyph({ icon, active = false }: { icon: IconSvgElement; active?: boolean }) {
   return (
-    <SidebarMenuIcon active={active} planned={planned}>
+    <SidebarMenuIcon active={active}>
       <HugeiconsIcon icon={icon} size={13} strokeWidth={1.5} color="currentColor" />
     </SidebarMenuIcon>
   );
@@ -559,7 +508,7 @@ function Chevron() {
   );
 }
 
-function TopEntry({ entry, pathname, rail, open, onOpenChange, isOpen, setOpen }: TopEntryProps) {
+function TopEntry({ entry, pathname, rail, open, onOpenChange }: TopEntryProps) {
   const t = useT();
   const label = t(entry.label);
 
@@ -592,21 +541,9 @@ function TopEntry({ entry, pathname, rail, open, onOpenChange, isOpen, setOpen }
             </span>
           </CollapsibleTrigger>
           <CollapsibleContent>
-            <SubEntries entries={entry.children} pathname={pathname} isOpen={isOpen} setOpen={setOpen} />
+            <SubEntries entries={entry.children} pathname={pathname} />
           </CollapsibleContent>
         </Collapsible>
-      </SidebarMenuItem>
-    );
-  }
-
-  if (entry.kind === "planned") {
-    return (
-      <SidebarMenuItem>
-        <SidebarMenuButton planned disabled aria-disabled="true">
-          {entry.icon !== undefined && <Glyph icon={entry.icon} planned />}
-          <span className="group-data-[collapsible=icon]/sidebar:sr-only">{label}</span>
-          {entry.badge && <SidebarMenuBadge>{t("settings.sidebar.soon")}</SidebarMenuBadge>}
-        </SidebarMenuButton>
       </SidebarMenuItem>
     );
   }
@@ -640,46 +577,19 @@ function TopEntry({ entry, pathname, rail, open, onOpenChange, isOpen, setOpen }
           <Chevron />
         </CollapsibleTrigger>
         <CollapsibleContent>
-          <SubEntries entries={children} pathname={pathname} isOpen={isOpen} setOpen={setOpen} />
+          <SubEntries entries={children} pathname={pathname} />
         </CollapsibleContent>
       </Collapsible>
     </SidebarMenuItem>
   );
 }
 
-function SubEntries({
-  entries,
-  pathname,
-  isOpen,
-  setOpen,
-}: {
-  entries: readonly Entry[];
-  pathname: string;
-  isOpen: (key: string) => boolean;
-  setOpen: (key: string, open: boolean) => void;
-}) {
+function SubEntries({ entries, pathname }: { entries: readonly Entry[]; pathname: string }) {
   const t = useT();
   return (
     <SidebarMenuSub>
       {entries.map((entry) => {
         const label = t(entry.label);
-        if (entry.kind === "planned") {
-          return (
-            <SidebarMenuSubItem key={entry.key}>
-              <SidebarMenuSubButton planned disabled aria-disabled="true">
-                {entry.icon !== undefined && <Glyph icon={entry.icon} planned />}
-                <span className="truncate">{label}</span>
-                {entry.badge && <SidebarMenuBadge>{t("settings.sidebar.soon")}</SidebarMenuBadge>}
-              </SidebarMenuSubButton>
-              {/* A planned entry's own sub-entries are planned with it and
-                  always shown: there is nothing to fold open on a row that
-                  cannot be used. */}
-              {(entry.children ?? []).length > 0 && (
-                <SubEntries entries={entry.children ?? []} pathname={pathname} isOpen={isOpen} setOpen={setOpen} />
-              )}
-            </SidebarMenuSubItem>
-          );
-        }
         if (entry.kind === "link") {
           const active = isCurrent(entry, pathname);
           return (

@@ -68,17 +68,6 @@ export default defineMessages({
     sk: "Vyberte si spôsob prihlásenia",
     de: "Wähle, wie du dich anmeldest",
   },
-  // The two recovery keys stay for the hidden step (see steps.ts).
-  "wizard.steps.recovery.title": {
-    en: "Write down your recovery code",
-    sk: "Zapíšte si kód na obnovenie",
-    de: "Schreib deinen Wiederherstellungscode auf",
-  },
-  "wizard.steps.recovery.rail": {
-    en: "Recovery code",
-    sk: "Kód na obnovenie",
-    de: "Wiederherstellungscode",
-  },
   "wizard.steps.finish": { en: "Sign in", sk: "Prihlásiť sa", de: "Anmelden" },
   "wizard.rail.label": {
     en: "Setup progress",
@@ -615,85 +604,6 @@ export default defineMessages({
     de: "Das hat nicht geklappt",
   },
 
-  // ── StepRecovery.tsx (hidden step; kept so it can come back) ────────────
-  "wizard.recovery.intro": {
-    en: "A factory reset or a reinstall erases this box's disk, and it comes back with a brand new identity. To every other box it works with, that looks like a stranger claiming a name they already know, and they refuse it. This code is the only proof that the new box is the old one, so it cannot live on the disk it is meant to recover. Put it on paper, or in a password manager.",
-    sk: "Obnovenie továrenských nastavení alebo preinštalovanie vymaže disk tohto zariadenia a to sa vráti s úplne novou identitou. Pre všetky ostatné zariadenia, s ktorými spolupracuje, to vyzerá ako cudzinec, ktorý si nárokuje meno, ktoré už poznajú, a tak ho odmietnu. Tento kód je jediným dôkazom, že nové zariadenie je to staré, preto nemôže byť uložený na disku, ktorý má obnoviť. Zapíšte si ho na papier alebo do správcu hesiel.",
-    de: "Ein Zurücksetzen auf Werkseinstellungen oder eine Neuinstallation löscht die Festplatte dieser Box, und sie kommt mit einer ganz neuen Identität zurück. Für jede andere Box, mit der sie zusammenarbeitet, sieht das aus wie ein Fremder, der einen Namen beansprucht, den sie schon kennen, und sie lehnen ihn ab. Dieser Code ist der einzige Beweis, dass die neue Box die alte ist, deshalb kann er nicht auf der Festplatte liegen, die er wiederherstellen soll. Schreib ihn auf Papier oder leg ihn in einem Passwortmanager ab.",
-  },
-  "wizard.recovery.codeFor": {
-    en: "Recovery code for {name}",
-    sk: "Kód na obnovenie pre {name}",
-    de: "Wiederherstellungscode für {name}",
-  },
-  "wizard.recovery.notMinted": {
-    en: "This box minted it earlier. It is the same code as before, and it will not change.",
-    sk: "Toto zariadenie ho vytvorilo už skôr. Je to ten istý kód ako predtým a nezmení sa.",
-    de: "Diese Box hat ihn schon früher erstellt. Es ist derselbe Code wie vorher, und er ändert sich nicht.",
-  },
-  "wizard.recovery.copy": { en: "Copy", sk: "Kopírovať", de: "Kopieren" },
-  "wizard.recovery.print": { en: "Print", sk: "Tlačiť", de: "Drucken" },
-  "wizard.recovery.saved": {
-    en: "Taken off the screen.",
-    sk: "Kód máte uložený mimo obrazovky.",
-    de: "Vom Bildschirm übernommen.",
-  },
-  "wizard.recovery.copyFailed.title": {
-    en: "This browser would not copy it",
-    sk: "Tento prehliadač ho neskopíroval",
-    de: "Dieser Browser wollte ihn nicht kopieren",
-  },
-  "wizard.recovery.copyFailed.body": {
-    en: "The code above is selected. Press Ctrl+C, or Cmd+C on a Mac. Printing works either way and counts as saved.",
-    sk: "Kód vyššie je označený. Stlačte Ctrl+C, na Macu Cmd+C. Tlač funguje tak či tak a počíta sa ako uloženie.",
-    de: "Der Code oben ist markiert. Drück Strg+C, auf dem Mac Cmd+C. Drucken klappt so oder so und zählt als gesichert.",
-  },
-  "wizard.recovery.notYet.title": {
-    en: "No code on this box yet",
-    sk: "Na tomto zariadení zatiaľ nie je kód",
-    de: "Auf dieser Box gibt es noch keinen Code",
-  },
-  "wizard.recovery.notYet.body": {
-    en: "The software on this box cannot produce a recovery code yet. You can continue without one. Come back to this page after the box has updated itself and write the code down then.",
-    sk: "Softvér na tomto zariadení zatiaľ nevie vytvoriť kód na obnovenie. Môžete pokračovať bez neho. Vráťte sa na túto stránku, keď sa zariadenie samo aktualizuje, a kód si zapíšte potom.",
-    de: "Die Software auf dieser Box kann noch keinen Wiederherstellungscode erzeugen. Du kannst ohne weitermachen. Komm auf diese Seite zurück, wenn die Box sich aktualisiert hat, und schreib den Code dann auf.",
-  },
-  "wizard.recovery.failed.title": {
-    en: "Could not read the code",
-    sk: "Kód sa nepodarilo načítať",
-    de: "Der Code konnte nicht gelesen werden",
-  },
-  "wizard.recovery.retry": {
-    en: "Try again",
-    sk: "Skúsiť znova",
-    de: "Erneut versuchen",
-  },
-  "wizard.recovery.printed": {
-    en: "Printed {date}.",
-    sk: "Vytlačené {date}.",
-    de: "Gedruckt am {date}.",
-  },
-  "wizard.recovery.sheetBody": {
-    en: "Keep this. If {name} is ever reset or reinstalled, this code is the only proof that the rebuilt box is the same one. Without it the boxes it works with will treat it as a stranger and refuse it. There is no copy anywhere else that survives a reset.",
-    sk: "Tento papier si odložte. Ak sa {name} niekedy resetuje alebo preinštaluje, tento kód je jediným dôkazom, že obnovené zariadenie je to isté. Bez neho ho zariadenia, s ktorými spolupracuje, budú považovať za cudzinca a odmietnu ho. Nikde inde neexistuje kópia, ktorá by reset prežila.",
-    de: "Heb das auf. Falls {name} jemals zurückgesetzt oder neu installiert wird, ist dieser Code der einzige Beweis, dass die neu aufgesetzte Box dieselbe ist. Ohne ihn behandeln die Boxen, mit denen sie zusammenarbeitet, sie als Fremde und lehnen sie ab. Es gibt nirgendwo sonst eine Kopie, die ein Zurücksetzen übersteht.",
-  },
-  "wizard.recovery.sheetAdminKey": {
-    en: "Spare admin key for {name}",
-    sk: "Náhradný správcovský kľúč pre {name}",
-    de: "Ersatz-Admin-Schlüssel für {name}",
-  },
-  "wizard.recovery.sheetAdminKeyBody": {
-    en: "The admin pages normally unlock with your password. If LosOS cloud is not running and the password cannot be checked, choose \"Use the spare admin key instead\" and paste this. It was shown once, during setup, and the box will not show it again.",
-    sk: "Správcovské stránky sa bežne odomykajú vaším heslom. Ak LosOS cloud nebeží a heslo sa nedá overiť, zvoľte „Použiť namiesto toho náhradný správcovský kľúč“ a vložte tento. Zobrazil sa raz, počas nastavenia, a zariadenie ho znova neukáže.",
-    de: "Die Admin-Seiten entsperrst du normalerweise mit deinem Passwort. Wenn LosOS cloud nicht läuft und das Passwort nicht geprüft werden kann, wähl „Stattdessen den Ersatz-Admin-Schlüssel verwenden“ und gib diesen ein. Er wurde einmal gezeigt, bei der Einrichtung, und die Box zeigt ihn nicht noch einmal.",
-  },
-  "wizard.recovery.sheetKey": {
-    en: "Treat it like a key to the box, because that is what it is.",
-    sk: "Zaobchádzajte s ním ako s kľúčom od zariadenia, pretože presne tým je.",
-    de: "Behandle ihn wie einen Schlüssel zur Box, denn genau das ist er.",
-  },
-
   // ── StepFirstSignIn.tsx ─────────────────────────────────────────────────
   "wizard.first.signedIn.title": {
     en: "You are signed in",
@@ -812,10 +722,5 @@ export default defineMessages({
     en: "Setup finished",
     sk: "Nastavenie je dokončené",
     de: "Einrichtung abgeschlossen",
-  },
-  "wizard.recovery.savedTitle": {
-    en: "Recovery code copied",
-    sk: "Obnovovací kód je skopírovaný",
-    de: "Wiederherstellungscode kopiert",
   },
 });

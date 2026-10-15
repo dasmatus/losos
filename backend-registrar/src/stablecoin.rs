@@ -33,6 +33,7 @@ use k256::ecdsa::{RecoveryId, Signature, VerifyingKey};
 use serde_json::{json, Value};
 use sha3::{Digest, Keccak256};
 
+use crate::identity::to_hex;
 use crate::market::MarketError;
 
 /// Base mainnet. Live ledger, real USDC.
@@ -359,14 +360,14 @@ pub fn order_id_hash(order_id: &str) -> [u8; 32] {
 
 #[must_use]
 pub fn order_id_hash_hex(order_id: &str) -> String {
-    format!("0x{}", hex_encode(&order_id_hash(order_id)))
+    format!("0x{}", to_hex(&order_id_hash(order_id)))
 }
 
 /// `0x` + 40 hex, lowercased, or `None`.
 #[must_use]
 pub fn normalize_address(raw: &str) -> Option<String> {
     let bytes = decode_address(raw)?;
-    Some(format!("0x{}", hex_encode(&bytes)))
+    Some(format!("0x{}", to_hex(&bytes)))
 }
 
 /// The 20 bytes of an address `normalize_address` would accept.
@@ -378,11 +379,11 @@ pub fn address_bytes(raw: &str) -> Option<[u8; 20]> {
 /// `0x` + 64 hex, lowercased, or `None`.
 #[must_use]
 pub fn normalize_tx(raw: &str) -> Option<String> {
-    let bytes = decode_hex_prefix(raw)?;
+    let bytes = decode_hex(raw)?;
     if bytes.len() != 32 {
         return None;
     }
-    Some(format!("0x{}", hex_encode(&bytes)))
+    Some(format!("0x{}", to_hex(&bytes)))
 }
 
 /// The address that signed `message` with an Ethereum `personal_sign`
@@ -390,7 +391,7 @@ pub fn normalize_tx(raw: &str) -> Option<String> {
 /// does not recover.
 #[must_use]
 pub fn recover_address(message: &[u8], signature_hex: &str) -> Option<String> {
-    let sig = decode_hex_prefix(signature_hex)?;
+    let sig = decode_hex(signature_hex)?;
     if sig.len() != 65 {
         return None;
     }
@@ -772,7 +773,7 @@ pub async fn releaser_on_chain(
         rpc_url,
         Relay::Evm,
         "eth_getBalance",
-        json!([format!("0x{}", hex_encode(&releaser)), "latest"]),
+        json!([format!("0x{}", to_hex(&releaser)), "latest"]),
     )
     .await?;
     let balance = balance
@@ -816,7 +817,7 @@ pub fn seller_can_receive(
     let bytes = if code == "0x" || code.is_empty() {
         Vec::new()
     } else {
-        decode_hex_prefix(code).ok_or("the chain endpoint did not answer")?
+        decode_hex(code).ok_or("the chain endpoint did not answer")?
     };
     let delegated = bytes.len() == 23 && bytes.starts_with(&[0xef, 0x01, 0x00]);
     if !bytes.is_empty() && !delegated {
@@ -836,7 +837,7 @@ pub async fn check_seller(
         rpc_url,
         Relay::Evm,
         "eth_getCode",
-        json!([format!("0x{}", hex_encode(&seller)), "latest"]),
+        json!([format!("0x{}", to_hex(&seller)), "latest"]),
     )
     .await?;
     if !code.is_string() {
@@ -851,7 +852,7 @@ pub async fn deposit_state(
     escrow: &str,
     deposit: u64,
 ) -> Result<DepositState, MarketError> {
-    let data = format!("0x{}", hex_encode(&crate::evm_tx::deposits_data(deposit)));
+    let data = format!("0x{}", to_hex(&crate::evm_tx::deposits_data(deposit)));
     let answer = call_result(
         rpc_url,
         Relay::Evm,
@@ -859,7 +860,7 @@ pub async fn deposit_state(
         json!([{ "to": escrow, "data": data }, "latest"]),
     )
     .await?;
-    let bytes = decode_hex_prefix(answer.as_str().unwrap_or(""))
+    let bytes = decode_hex(answer.as_str().unwrap_or(""))
         .ok_or(MarketError::Conflict("the chain endpoint did not answer"))?;
     // orderId, payer, seller, gross, fee, deadline, state.
     match bytes.get(6 * 32..7 * 32).and_then(|w| w.last()) {
@@ -941,7 +942,7 @@ pub async fn block_number(rpc_url: &str) -> Result<Value, MarketError> {
 }
 
 fn selector(signature: &str) -> String {
-    format!("0x{}", hex_encode(&keccak256(signature.as_bytes())[..4]))
+    format!("0x{}", to_hex(&keccak256(signature.as_bytes())[..4]))
 }
 
 /// The event an ERC-20 transfer emits.
@@ -961,7 +962,7 @@ pub fn fee_transfer(
     if hex_u64(receipt["status"].as_str().unwrap_or("")) != Some(1) {
         return Err("the transaction failed");
     }
-    let topic0 = hex_encode(&keccak256(TRANSFER));
+    let topic0 = to_hex(&keccak256(TRANSFER));
     let logs = receipt["logs"]
         .as_array()
         .ok_or("the receipt has no logs")?;
@@ -983,7 +984,7 @@ pub fn fee_transfer(
         if topic_address(topics[1].as_str().unwrap_or("")) != Some(from) {
             continue;
         }
-        let data = decode_hex_prefix(log["data"].as_str().unwrap_or("")).unwrap_or_default();
+        let data = decode_hex(log["data"].as_str().unwrap_or("")).unwrap_or_default();
         let value = word_u128(&data, 0).ok_or("the transfer log is short")?;
         total = total.saturating_add(value);
     }
@@ -1009,7 +1010,7 @@ pub fn payment_matches(receipt: &Value, expected: &ExpectedPayment) -> Result<u6
     if hex_u64(receipt["status"].as_str().unwrap_or("")) != Some(1) {
         return Err("the transaction failed");
     }
-    let topic0 = hex_encode(&keccak256(HELD));
+    let topic0 = to_hex(&keccak256(HELD));
     let logs = receipt["logs"]
         .as_array()
         .ok_or("the receipt has no logs")?;
@@ -1041,7 +1042,7 @@ pub fn payment_matches(receipt: &Value, expected: &ExpectedPayment) -> Result<u6
         else {
             return Err("the payment log is short");
         };
-        let data = decode_hex_prefix(log["data"].as_str().unwrap_or("")).unwrap_or_default();
+        let data = decode_hex(log["data"].as_str().unwrap_or("")).unwrap_or_default();
         if data.len() < 4 * 32 {
             return Err("the payment log is short");
         }
@@ -1072,18 +1073,15 @@ fn personal_sign_hash(message: &[u8]) -> [u8; 32] {
 pub(crate) fn address_of(key: &VerifyingKey) -> String {
     let point = key.to_sec1_point(false);
     let hash = keccak256(&point.as_bytes()[1..]);
-    format!("0x{}", hex_encode(&hash[12..]))
+    format!("0x{}", to_hex(&hash[12..]))
 }
 
 pub(crate) fn keccak256(data: &[u8]) -> [u8; 32] {
-    let digest = Keccak256::digest(data);
-    let mut out = [0u8; 32];
-    out.copy_from_slice(&digest);
-    out
+    Keccak256::digest(data).into()
 }
 
 fn decode_address(raw: &str) -> Option<[u8; 20]> {
-    let bytes = decode_hex_prefix(raw)?;
+    let bytes = decode_hex(raw)?;
     if bytes.len() != 20 {
         return None;
     }
@@ -1093,7 +1091,7 @@ fn decode_address(raw: &str) -> Option<[u8; 20]> {
 }
 
 fn topic_address(topic: &str) -> Option<[u8; 20]> {
-    let bytes = decode_hex_prefix(topic)?;
+    let bytes = decode_hex(topic)?;
     if bytes.len() != 32 {
         return None;
     }
@@ -1103,7 +1101,7 @@ fn topic_address(topic: &str) -> Option<[u8; 20]> {
 }
 
 fn decode_word(topic: &str) -> Option<[u8; 32]> {
-    let bytes = decode_hex_prefix(topic)?;
+    let bytes = decode_hex(topic)?;
     if bytes.len() != 32 {
         return None;
     }
@@ -1124,7 +1122,7 @@ fn word_u128(data: &[u8], index: usize) -> Option<u128> {
 }
 
 fn hex_u64(raw: &str) -> Option<u64> {
-    let bytes = decode_hex_prefix(raw)?;
+    let bytes = decode_hex(raw)?;
     if bytes.is_empty() || bytes.len() > 8 {
         return None;
     }
@@ -1137,10 +1135,6 @@ fn hex_u64(raw: &str) -> Option<u64> {
 
 /// `0x` hex to bytes, odd lengths padded, as JSON-RPC quantities come.
 pub(crate) fn decode_hex(raw: &str) -> Option<Vec<u8>> {
-    decode_hex_prefix(raw)
-}
-
-fn decode_hex_prefix(raw: &str) -> Option<Vec<u8>> {
     let hex = raw.strip_prefix("0x").or_else(|| raw.strip_prefix("0X"))?;
     if hex.is_empty() || !hex.bytes().all(|b| b.is_ascii_hexdigit()) {
         return None;
@@ -1159,16 +1153,6 @@ fn decode_hex_prefix(raw: &str) -> Option<Vec<u8>> {
         .collect::<Option<Vec<_>>>()
 }
 
-pub(crate) fn hex_encode(bytes: &[u8]) -> String {
-    const HEX: &[u8; 16] = b"0123456789abcdef";
-    let mut out = String::with_capacity(bytes.len() * 2);
-    for b in bytes {
-        out.push(HEX[(b >> 4) as usize] as char);
-        out.push(HEX[(b & 0xf) as usize] as char);
-    }
-    out
-}
-
 /// Sign `message` the way a wallet's `personal_sign` does. Tests only: the
 /// registrar never holds a key, so this is not available outside the suite.
 #[cfg(test)]
@@ -1178,7 +1162,7 @@ fn sign_personal(secret: &[u8; 32], message: &[u8]) -> String {
     let mut bytes = [0u8; 65];
     bytes[..64].copy_from_slice(&signature.to_bytes());
     bytes[64] = u8::from(recid) + 27;
-    format!("0x{}", hex_encode(&bytes))
+    format!("0x{}", to_hex(&bytes))
 }
 
 #[cfg(test)]
@@ -1320,23 +1304,23 @@ mod tests {
     }
 
     fn held_receipt(deposit: u64, order: [u8; 32], seller: &str, gross: u128, fee: u128) -> Value {
-        let topic0 = format!("0x{}", hex_encode(&keccak256(HELD)));
+        let topic0 = format!("0x{}", to_hex(&keccak256(HELD)));
         json!({
             "status": "0x1",
             "logs": [{
                 "address": "0x1111111111111111111111111111111111111111",
                 "topics": [
                     topic0,
-                    format!("0x{}", hex_encode(&pad_u128(u128::from(deposit)))),
-                    format!("0x{}", hex_encode(&order)),
+                    format!("0x{}", to_hex(&pad_u128(u128::from(deposit)))),
+                    format!("0x{}", to_hex(&order)),
                     "0x0000000000000000000000003333333333333333333333333333333333333333",
                 ],
                 "data": format!(
                     "0x000000000000000000000000{}{}{}{}",
                     &seller[2..],
-                    hex_encode(&pad_u128(gross)),
-                    hex_encode(&pad_u128(fee)),
-                    hex_encode(&pad_u128(1_700_086_400)),
+                    to_hex(&pad_u128(gross)),
+                    to_hex(&pad_u128(fee)),
+                    to_hex(&pad_u128(1_700_086_400)),
                 ),
             }],
         })
@@ -1491,8 +1475,8 @@ mod tests {
         let word = |a: &str| format!("0x000000000000000000000000{}", &a[2..]);
         serde_json::json!({
             "address": token,
-            "topics": [format!("0x{}", hex_encode(&keccak256(TRANSFER))), word(from), word(to)],
-            "data": format!("0x{}", hex_encode(&pad_u128(value))),
+            "topics": [format!("0x{}", to_hex(&keccak256(TRANSFER))), word(from), word(to)],
+            "data": format!("0x{}", to_hex(&pad_u128(value))),
         })
     }
 

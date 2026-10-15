@@ -189,9 +189,6 @@ export default defineMessages({
   },
   "settings.sidebar.searchPlaceholder": { en: "Search", sk: "Hľadať", de: "Suchen" },
   "settings.sidebar.clear": { en: "Clear search", sk: "Vymazať hľadanie", de: "Suche leeren" },
-  /* The badge on a planned pane's row. Deliberately the same in every
-   * language: it is a tag, not a sentence, and it reads as one. */
-  "settings.sidebar.soon": { en: "soon(TM)", sk: "soon(TM)", de: "soon(TM)" },
   "settings.sidebar.noMatch": {
     en: "Nothing here matches \"{query}\".",
     sk: "Hľadaniu „{query}“ tu nič nezodpovedá.",
@@ -212,7 +209,6 @@ export default defineMessages({
 
   // ── Apply bar ─────────────────────────────────────────────────────────────
   "settings.applyBar.spinner": { en: "Applying", sk: "Používa sa", de: "Wird angewendet" },
-  "settings.applyBar.dismiss": { en: "Dismiss", sk: "Zavrieť", de: "Schließen" },
   "settings.applyBar.pending": {
     en: { one: "{count} change not applied yet", other: "{count} changes not applied yet" },
     sk: {

@@ -134,19 +134,6 @@ export function InputGroupButton({
   );
 }
 
-export function InputGroupText({ className, ...props }: React.ComponentPropsWithoutRef<"span">) {
-  return (
-    <span
-      className={cn(
-        "flex items-center gap-2 text-[13px] text-muted",
-        "[&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none",
-        className,
-      )}
-      {...props}
-    />
-  );
-}
-
 /** The input itself, stripped of its own border and ring: the group draws
  *  both. */
 export function InputGroupInput({ className, ...props }: React.ComponentPropsWithoutRef<"input">) {
