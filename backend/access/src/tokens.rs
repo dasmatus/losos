@@ -167,6 +167,7 @@ impl Tokens {
 
     /// Make a token bound to `fingerprint`, which must be in `ring`. Answers
     /// the token itself, the only time it exists outside the caller.
+    #[allow(clippy::too_many_arguments)]
     pub fn create(
         &self,
         ring: &Keyring,
