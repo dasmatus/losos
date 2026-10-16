@@ -216,6 +216,18 @@ impl People {
         use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
         let dir = self.path.parent().unwrap_or(Path::new("/"));
         std::fs::create_dir_all(dir)?;
+        let canonical_dir = std::fs::canonicalize(dir)
+            .map_err(|e| anyhow::anyhow!("resolving {}: {e}", dir.display()))?;
+        let target_parent = self.path.parent().unwrap_or(Path::new("/"));
+        let canonical_target_parent = std::fs::canonicalize(target_parent).map_err(|e| {
+            anyhow::anyhow!("resolving target parent {}: {e}", target_parent.display())
+        })?;
+        if !canonical_target_parent.starts_with(&canonical_dir) {
+            anyhow::bail!(
+                "refusing to write people file outside base directory: {}",
+                self.path.display()
+            );
+        }
         let tmp = dir.join(".users.yml.tmp");
         let bytes = serde_json::to_vec_pretty(doc)?;
         {
