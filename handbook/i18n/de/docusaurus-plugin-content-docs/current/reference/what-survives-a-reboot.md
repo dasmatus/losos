@@ -34,6 +34,22 @@ Anordnung der Pinnwand auf. Beides übersteht einen Neustart, aber keins von
 beiden gehört zur Beschreibung der Box, und du kannst beides ohne Neubau
 ändern.
 
+## Wie viel Platz die Protokolle brauchen \{#how-much-room-the-logs-take}
+
+Die Protokolle unter `/var` sind gedeckelt und können die Platte nicht
+füllen:
+
+- Das Systemjournal belegt höchstens 512 MB und nichts, was älter als einen
+  Monat ist. Die Größe stellt `losos.logs.journalMaxUse` im Bereich
+  Erweitert ein.
+- LosOS cloud, LosOS Git und jede App behalten höchstens drei
+  Protokolldateien zu 10 MB pro Container.
+- Das Zugriffsprotokoll des Webservers beginnt jede Woche eine neue Datei,
+  bei 20 MB auch früher, und behält acht alte.
+- Das Prüfprotokoll der Verwaltungsseiten und das Protokoll der Neubauten,
+  die sie starten, beginnen bei 10 MB eine neue Datei und behalten drei alte.
+- Build-Protokolle von Updates werden nach 30 Tagen gelöscht.
+
 ## Was eine Neuinstallation tut \{#what-a-reinstall-does}
 
 Sie löscht alles davon. Siehe

@@ -1309,6 +1309,9 @@ in
         "-rpcport=${toString btcRpcPort}"
         "-rpcbind=127.0.0.1"
         "-rpcallowip=127.0.0.1"
+        # The journal has every line already (bitcoind prints to stdout
+        # under systemd); debug.log in the data directory would only grow.
+        "-nodebuglogfile"
       ];
     };
 
@@ -1356,6 +1359,7 @@ in
             "--rpc-bind-port=${toString xmrWalletPort}"
             "--log-file=${xmrWalletDir}/wallet-rpc.log"
             "--max-log-files=2"
+            "--max-log-file-size=10485760"
             "--non-interactive"
           ]
           ++ lib.optional (xmrNet != "mainnet") "--${xmrNet}"

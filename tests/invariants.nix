@@ -106,6 +106,22 @@ assert must (mesh.boot.kernel.sysctl."vm.overcommit_memory" == 1)
   "vm.overcommit_memory is not settled on a box that joins the mesh: rke2 and redis both define it, and a clash means a box with Join the mesh on does not build";
 assert must (lib.elem "node.longhorn.io/create-default-disk=true" mesh.services.rke2.nodeLabel)
   "a box that joins the mesh is not labelled node.longhorn.io/create-default-disk=true: the edge's Longhorn creates disks only on labelled nodes, so the mesh has no storage and every storage order waits for a volume that never comes";
+assert must
+  (config.services.journald.settings.Journal.SystemMaxUse == config.losos.logs.journalMaxUse)
+  "the journal is not capped at losos.logs.journalMaxUse: journald's own default lets it take up to 4 GiB of /persist, which is also /nix";
+assert must
+  (lib.all (rule: config.services.logrotate.settings.${rule}.enable or false) [
+    "losos-audit"
+    "losos-rebuild"
+  ])
+  "lososd's audit.log or rebuild.log has no logrotate rule: both are appended to for the life of the box (modules/logs.nix)";
+assert must
+  (
+    config.services.k3s.extraKubeletConfig.containerLogMaxSize or null == "10Mi"
+    && mesh.services.rke2.extraKubeletConfig.containerLogMaxSize or null == "10Mi"
+    && mesh.services.rke2.extraKubeletConfig.port or null == mesh.losos.cluster.kubeletPort
+  )
+  "the pod log cap is missing from a cluster, or merging it dropped the mesh kubelet's own port (modules/logs.nix, modules/cluster.nix)";
 # GRUB's limit is only set under `losos.bios`, which the published flake has
 # off; asserting it here would read the module's default. tests/install.nix
 # boots the BIOS path and is where that half is exercised.

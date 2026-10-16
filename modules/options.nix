@@ -801,6 +801,18 @@ in
       '';
     };
 
+    logs.journalMaxUse = lib.mkOption {
+      type = lib.types.strMatching "[1-9][0-9]*[KMG]";
+      default = "512M";
+      example = "1G";
+      description = ''
+        The most disk space the system journal may take, as a number with K,
+        M or G after it. When the journal reaches it, journald deletes the
+        oldest entries, and it deletes any entry older than a month. The other logs on the box have
+        fixed limits of their own.
+      '';
+    };
+
     builder.enable = lib.mkOption {
       type = lib.types.bool;
       default = true;
