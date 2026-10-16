@@ -89,6 +89,11 @@ anmeldest, dieselben Einträge zeigt.
 - Zeige in der Seitenleiste auf einen Eintrag und klicke auf die
   durchgestrichene Nadel, um ihn zu lösen. Die [Suche](#search) findet
   angeheftete Einträge ebenfalls.
+- Klicke mit der rechten Maustaste auf eine Datei, einen Ordner oder ein
+  Repository in der Suche, auf eine App-Kachel in der Übersicht oder auf
+  einen Eintrag in der Seitenleiste und wähle **An die Seitenleiste
+  anheften** oder **Von der Seitenleiste lösen**. Auf einem Touchscreen
+  hältst du stattdessen den Finger darauf.
 
 ![Die Übersicht mit sechs Einträgen unter Angeheftet in der Seitenleiste; die angehefteten Kacheln Kalender und Notizen sind markiert.](@site/docs/img/pins-overview-de.png)
 

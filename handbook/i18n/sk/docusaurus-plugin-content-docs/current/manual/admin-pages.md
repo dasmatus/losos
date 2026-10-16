@@ -84,6 +84,10 @@ prihlásite, ukazuje tie isté pripnuté položky.
 - Ukážte na pripnutú položku v bočnom paneli a kliknutím na prečiarknutý
   špendlík ju odopnete. Pripnuté položky nájde aj
   [vyhľadávanie](#search).
+- Kliknite pravým tlačidlom na súbor, priečinok alebo repozitár vo
+  vyhľadávaní, na dlaždicu aplikácie na Prehľade alebo na pripnutú položku
+  v bočnom paneli a vyberte **Pripnúť na bočný panel** alebo **Odopnúť
+  z bočného panela**. Na dotykovej obrazovke na položke podržte prst.
 
 ![Prehľad so šiestimi pripnutými položkami pod Pripnuté v bočnom paneli a označenými pripnutými dlaždicami Kalendár a Poznámky.](@site/docs/img/pins-overview-sk.png)
 
