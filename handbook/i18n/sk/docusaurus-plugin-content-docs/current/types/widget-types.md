@@ -26,7 +26,7 @@ použité zmeny nastavení, od najnovšej. Každý sa vykresľuje v jednom zo
 súčasťou vlastného kódu admin stránky a prichádzajú so systémovými
 aktualizáciami.
 
-![Galéria widgetov: vstavané widgety, Zostaviť a Napísať.](@site/docs/img/widget-gallery.png)
+![Galéria widgetov: vstavané widgety, Zostaviť a Napísať.](@site/docs/img/widget-gallery-sk.png)
 
 ## Zostavené z údajov \{#built-from-readings}
 
@@ -39,7 +39,7 @@ nemení a nedostane sa do siete, na stránku ani k ničomu inému než k svojmu
 jedinému údaju. To ho zároveň obmedzuje: nedokáže sa vetviť podľa viacerých
 údajov, opakovať v cykle ani si medzi spusteniami nič pamätať.
 
-![Zostaviť: údaj, tvar, výraz na zobrazenie a náhľad dlaždice.](@site/docs/img/widget-build-one.png)
+![Zostaviť: údaj, tvar, výraz na zobrazenie a náhľad dlaždice.](@site/docs/img/widget-build-one-sk.png)
 
 ## Napísané ručne \{#written-by-hand}
 
@@ -49,7 +49,7 @@ Zariadenie widget uloží, takže ho vidí každý prehliadač, ktorý zariadeni
 otvorí. Je uvedený v **Nastavenia → Vzhľad**, kde ho môžete upraviť
 a odstrániť.
 
-![Napísať: zdrojový kód ručne napísaného widgetu vedľa jeho živého náhľadu v sandboxovanom rámci.](@site/docs/img/widget-write-one.png)
+![Napísať: zdrojový kód ručne napísaného widgetu vedľa jeho živého náhľadu v sandboxovanom rámci.](@site/docs/img/widget-write-one-sk.png)
 
 Ručne napísaný widget beží v sandboxovanom rámci. Rámec má vlastný origin,
 bez prístupu k admin stránkam, admin kľúču a API zariadenia. Widget sa so

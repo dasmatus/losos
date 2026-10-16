@@ -73,7 +73,7 @@ Helm charty v [Artifact Hub](https://artifacthub.io). Výsledky sťahuje
 zariadenie, takže vyhľadávanie potrebuje internet. Každý riadok uvádza, kto
 chart zverejnil. Nikto na strane LosOS žiadny z nich neskontroloval.
 
-![Panel Aplikácie s jednou nainštalovanou aplikáciou nad Nájsť ďalšie a výsledkami vyhľadávania v Artifact Hub, každý s tým, kto ho zverejnil, a tlačidlom Inštalovať alebo Zmeniť.](@site/docs/img/apps-find-more.png)
+![Panel Aplikácie s jednou nainštalovanou aplikáciou nad Nájsť ďalšie a výsledkami vyhľadávania v Artifact Hub, každý s tým, kto ho zverejnil, a tlačidlom Inštalovať alebo Zmeniť.](@site/docs/img/apps-find-more-sk.png)
 
 ## Nastavenia pre všetkých \{#settings-for-everyone}
 
@@ -93,7 +93,7 @@ prvé, či nový repozitár začína ako súkromný, verejný alebo ako posledn�
 repozitár účtu, či je e-mailová adresa nového účtu skrytá a či push do
 repozitára, ktorý ešte neexistuje, ho vytvorí.
 
-![Panel Aplikácie s nastaveniami pre všetkých v LosOS cloud a LosOS Git.](@site/docs/img/apps-site-settings.png)
+![Panel Aplikácie s nastaveniami pre všetkých v LosOS cloud a LosOS Git.](@site/docs/img/apps-site-settings-sk.png)
 
 Ako každé iné nastavenie ich použijete tlačidlom **Použiť**. Zariadenie ich
 nastaví znova pri každom štarte aplikácie, takže vlastné administrátorské
@@ -121,7 +121,7 @@ Prvý krok prečíta chart a ukáže tri veci.
   ukáže na úpravu celý súbor hodnôt. Vlastnosť zmenená vo formulári má
   prednosť pred tým istým riadkom v texte.
 
-![Inštalačný dialóg: názov, voľba medzi notshared a shared so sivým shared a vlastnosti chartu zbalené podľa sekcií.](@site/docs/img/apps-install.png)
+![Inštalačný dialóg: názov, voľba medzi notshared a shared so sivým shared a vlastnosti chartu zbalené podľa sekcií.](@site/docs/img/apps-install-sk.png)
 
 Druhý krok sa ešte raz opýta. Hovorí, že zariadenie stiahne a spustí kód,
 ktorý napísal vydavateľ, ako používateľ, ktorého ste vybrali, bez

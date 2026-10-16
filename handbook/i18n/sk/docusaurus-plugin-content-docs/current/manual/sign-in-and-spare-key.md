@@ -17,13 +17,13 @@ vlastné loopback spojenie. Druhú kópiu si zariadenie nedrží. Heslo zmeníte
 LosOS cloud v časti Nastavenia → Osobné → Zabezpečenie a správcovské stránky
 nové heslo prijmú hneď.
 
-![Dialóg Odomknite toto zariadenie, ktorý si pýta heslo vlastníka, s odkazom na použitie náhradného správcovského kľúča.](@site/docs/img/unlock-dialog.png)
+![Dialóg Odomknite toto zariadenie, ktorý si pýta heslo vlastníka, s odkazom na použitie náhradného správcovského kľúča.](@site/docs/img/unlock-dialog-sk.png)
 
 Nové heslo potrebuje aspoň 12 znakov, malé písmeno, veľké písmeno, číslicu a
 symbol. Heslo nastavené predtým, než toto pravidlo existovalo, prihlási
 stále.
 
-![Nesprávne heslo: dialóg hovorí, že heslo nebolo prijaté, a zostane otvorený.](@site/docs/img/unlock-refused.png)
+![Nesprávne heslo: dialóg hovorí, že heslo nebolo prijaté, a zostane otvorený.](@site/docs/img/unlock-refused-sk.png)
 
 Karta zostane odomknutá, kým ju nezatvoríte. Po desiatich nesprávnych
 pokusoch z jedného počítača zariadenie tento počítač zablokuje. Blokovanie
@@ -39,14 +39,14 @@ nepokryje. Keď LosOS cloud nebeží, heslo nemá kto overiť. Dialóg na
 odomknutie to vtedy povie a ponúkne **Použiť namiesto toho náhradný
 správcovský kľúč**.
 
-![Dialóg na odomknutie, keď LosOS cloud nebeží: heslo nemá kto overiť, preto dialóg ponúka náhradný správcovský kľúč.](@site/docs/img/unlock-dialog-cloud-down.png)
+![Dialóg na odomknutie, keď LosOS cloud nebeží: heslo nemá kto overiť, preto dialóg ponúka náhradný správcovský kľúč.](@site/docs/img/unlock-dialog-cloud-down-sk.png)
 
 Vytlačený list držte ďalej od zariadenia. Ktokoľvek s kľúčom môže zmeniť
 každé nastavenie, čo sa rovná rootovi. Zariadenie kľúč nedokáže ukázať znova
 ani ho vymeniť, pretože nemá shell. Ak stratíte heslo *aj* náhradný kľúč,
 musíte zariadenie preinštalovať z USB kľúča, čo zmaže disk.
 
-![Dialóg na odomknutie, ktorý si pýta náhradný správcovský kľúč so 64 znakmi.](@site/docs/img/unlock-spare-key.png)
+![Dialóg na odomknutie, ktorý si pýta náhradný správcovský kľúč so 64 znakmi.](@site/docs/img/unlock-spare-key-sk.png)
 
 ## Prístupové kľúče \{#passkeys}
 

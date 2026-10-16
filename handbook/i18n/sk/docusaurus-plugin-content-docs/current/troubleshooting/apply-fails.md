@@ -15,7 +15,7 @@ nastaveniami.
 
 </div>
 
-![Prehľad po zlyhanom použití zmien: dlaždica Nastavenia má červenú bodku a nápis Zmena zlyhala.](@site/docs/img/overview-apply-failed.png)
+![Prehľad po zlyhanom použití zmien: dlaždica Nastavenia má červenú bodku a nápis Zmena zlyhala.](@site/docs/img/overview-apply-failed-sk.png)
 
 ## Čo znamená zlyhané použitie zmien \{#what-a-failed-apply-means}
 

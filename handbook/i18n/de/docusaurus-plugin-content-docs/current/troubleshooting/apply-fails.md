@@ -15,7 +15,7 @@ fehlgeschlagen. Die Box läuft mit ihren alten Einstellungen weiter.
 
 </div>
 
-![Die Übersicht nach einem fehlgeschlagenen Anwenden: Die Kachel Einstellungen trägt einen roten Punkt und Eine Änderung ist fehlgeschlagen.](@site/docs/img/overview-apply-failed.png)
+![Die Übersicht nach einem fehlgeschlagenen Anwenden: Die Kachel Einstellungen trägt einen roten Punkt und Eine Änderung ist fehlgeschlagen.](@site/docs/img/overview-apply-failed-de.png)
 
 ## Was ein fehlgeschlagenes Anwenden bedeutet \{#what-a-failed-apply-means}
 

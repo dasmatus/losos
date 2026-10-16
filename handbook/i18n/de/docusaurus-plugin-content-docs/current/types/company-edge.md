@@ -25,7 +25,7 @@ von selbst.
   Bereich Mesh zeigt sie als **In diesem Netzwerk**.
 - Die Admin-Seiten jeder Box bleiben nur im LAN erreichbar.
 
-![Der Bereich Mesh in einem Firmennetz: die Büro-Edge, gefunden In diesem Netzwerk, mit dem Warnzeichen, weil sie nicht offiziell ist.](@site/docs/img/mesh-company.png)
+![Der Bereich Mesh in einem Firmennetz: die Büro-Edge, gefunden In diesem Netzwerk, mit dem Warnzeichen, weil sie nicht offiziell ist.](@site/docs/img/mesh-company-de.png)
 
 ## Was anders ist \{#what-is-different}
 

@@ -5,9 +5,14 @@ import Layout from '@theme/Layout';
 import ThemedImage from '@theme/ThemedImage';
 import Translate, {translate} from '@docusaurus/Translate';
 import useBaseUrl from '@docusaurus/useBaseUrl';
+import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
 
 import overviewLight from '@site/docs/img/overview.png';
 import overviewDark from '@site/docs/img/overview-dark.png';
+import overviewLightSk from '@site/docs/img/overview-sk.png';
+import overviewDarkSk from '@site/docs/img/overview-dark-sk.png';
+import overviewLightDe from '@site/docs/img/overview-de.png';
+import overviewDarkDe from '@site/docs/img/overview-dark-de.png';
 import SetupTypes from '@site/docs/img/setup-types.svg';
 
 import {logoTip, useHalloween} from '@site/src/lib/logo';
@@ -401,12 +406,20 @@ function Hero(): ReactNode {
   );
 }
 
+// The admin pages in the language the handbook is read in.
+const OVERVIEW: Record<string, {light: string; dark: string}> = {
+  en: {light: overviewLight, dark: overviewDark},
+  sk: {light: overviewLightSk, dark: overviewDarkSk},
+  de: {light: overviewLightDe, dark: overviewDarkDe},
+};
+
 function Screen(): ReactNode {
+  const {i18n} = useDocusaurusContext();
   return (
     <figure className={styles.screen}>
       <ThemedImage
         className={styles.screenImage}
-        sources={{light: overviewLight, dark: overviewDark}}
+        sources={OVERVIEW[i18n.currentLocale] ?? OVERVIEW.en}
         alt={translate({
           id: 'losos.home.screen.alt',
           message:

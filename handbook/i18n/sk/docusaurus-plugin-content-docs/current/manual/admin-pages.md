@@ -12,20 +12,21 @@ ukáže čokoľvek, čo sa dá zmeniť.
 
 ## Sekcie \{#the-sections}
 
-Bočný panel vľavo má päť sekcií a pod nimi to, čo ste si pripli. Zbalený sa
+Bočný panel vľavo má šesť sekcií a pod nimi to, čo ste si pripli. Zbalený sa
 zúži na pás ikon. Na telefóne sa otvára ako vysúvací panel.
 
-![Prehľad: bočný panel s piatimi sekciami vľavo, meno zariadenia a či odpovedá, dlaždice aplikácií, karta úložiska a nástenka.](@site/docs/img/overview.png)
+![Prehľad: bočný panel so šiestimi sekciami vľavo, meno zariadenia a či odpovedá, dlaždice aplikácií, karta úložiska a nástenka.](@site/docs/img/overview-sk.png)
 
 | Sekcia         | Čo tam je                                                                                                   |
 | -------------- | ----------------------------------------------------------------------------------------------------------- |
 | **Prehľad**    | Či zariadenie odpovedá a ako dlho, karta úložiska, dlaždice aplikácií a vaša nástenka widgetov.              |
 | **Aplikácie**  | Aplikácie na tomto zariadení s ich režimom, vyhľadávanie v Artifact Hub a aplikácie nainštalované odtiaľ.    |
 | **Úložisko**   | Ako je disk plný, čo zaberá miesto a rezerva, ktorú si môžete vziať.                                         |
-| **Mesh**       | Pripojenie k ďalším zariadeniam, hodiny, keď toto zariadenie požičiava svoj voľný čas, a **Trh** so zdieľaním disku. |
-| **Nastavenia** | Sieť, Vzhľad, Hardvér, Zabezpečenie, Rozšírené, História, O zariadení a Reset, každé ako samostatný panel.   |
+| **Mesh**       | Pripojenie k ďalším zariadeniam, hodiny, keď toto zariadenie požičiava svoj voľný čas, **Trh** so zdieľaním disku a **Stroje**. |
+| **Laboratórium** | LosOS Lab, ktorý nakreslí toto zariadenie a jeho sieť ako diagram.                                     |
+| **Nastavenia** | Sieť, Vzhľad, Hardvér, Zabezpečenie, Prístupové tokeny, Rozšírené, História, Záloha, O zariadení a Reset, každé ako samostatný panel.   |
 
-<img src={require("@site/docs/img/overview-phone.png").default} alt="Prehľad na telefóne: sekcie sa zbalia do tlačidla ponuky." width="260" /> <img src={require("@site/docs/img/overview-phone-sheet.png").default} alt="Ten istý telefón s ponukou otvorenou ako panel nad stránkou." width="260" />
+<img src={require("@site/docs/img/overview-phone-sk.png").default} alt="Prehľad na telefóne: sekcie sa zbalia do tlačidla ponuky." width="260" /> <img src={require("@site/docs/img/overview-phone-sheet-sk.png").default} alt="Ten istý telefón s ponukou otvorenou ako panel nad stránkou." width="260" />
 
 ## Vyhľadávanie \{#search}
 
@@ -84,9 +85,9 @@ prihlásite, ukazuje tie isté pripnuté položky.
   špendlík ju odopnete. Pripnuté položky nájde aj
   [vyhľadávanie](#search).
 
-![Prehľad so šiestimi pripnutými položkami pod Pripnuté v bočnom paneli a označenými pripnutými dlaždicami Kalendár a Poznámky.](@site/docs/img/pins-overview.png)
+![Prehľad so šiestimi pripnutými položkami pod Pripnuté v bočnom paneli a označenými pripnutými dlaždicami Kalendár a Poznámky.](@site/docs/img/pins-overview-sk.png)
 
-![Zoznam pripnutých položiek s kartou Súbory otvorenou na priečinku Documents v LosOS cloud.](@site/docs/img/pins-dialog.png)
+![Zoznam pripnutých položiek s kartou Súbory otvorenou na priečinku Documents v LosOS cloud.](@site/docs/img/pins-dialog-sk.png)
 
 Zariadenie vypisuje vaše súbory s heslom aplikácie, o ktoré požiada LosOS
 cloud, keď sa prihlásite heslom. Kým to raz neurobíte, karta **Súbory** vás
@@ -108,7 +109,7 @@ zmena sa podarila, widget pribudol. Otázka, na ktorú musíte odpovedať,
 napríklad reset zariadenia alebo použitie rezervy, namiesto toho otvorí
 dialóg. Bezpečná voľba je v ňom prvá.
 
-![Panel nastavení so zmenou, ktorá ešte nie je použitá: lišta dole s tlačidlami Zahodiť a Použiť.](@site/docs/img/settings-apply-bar.png)
+![Panel nastavení so zmenou, ktorá ešte nie je použitá: lišta dole s tlačidlami Zahodiť a Použiť.](@site/docs/img/settings-apply-bar-sk.png)
 
 ## Téma a jazyk \{#theme-and-language}
 

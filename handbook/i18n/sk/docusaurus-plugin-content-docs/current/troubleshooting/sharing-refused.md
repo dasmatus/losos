@@ -16,7 +16,7 @@ odmietne s udaním dôvodu.
 
 ## Dôvody a ktorý je ten váš \{#the-reasons-and-which-one-you-have}
 
-![Panel Mesh bez dostupného edge: prepínače zdieľania sú sivé s textom Vyžaduje dostupný okrajový proxy server.](@site/docs/img/mesh-none.png)
+![Panel Mesh bez dostupného edge: prepínače zdieľania sú sivé s textom Vyžaduje dostupný okrajový proxy server.](@site/docs/img/mesh-none-sk.png)
 
 | Čo vidíte                                              | Dôvod                                                                                       | Čo robiť                                                                   |
 | ------------------------------------------------------ | ------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |

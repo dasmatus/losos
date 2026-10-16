@@ -49,7 +49,7 @@ einem davon.
 
 ## Was dir die Box im LAN verrät \{#what-the-box-can-tell-you-from-the-lan}
 
-![Die Übersicht, wenn die Box ihren Gesundheitscheck nicht beantwortet: Der Status unter dem Namen wechselt von Antwortet zu Antwortet nicht.](@site/docs/img/overview-not-answering.png)
+![Die Übersicht, wenn die Box ihren Gesundheitscheck nicht beantwortet: Der Status unter dem Namen wechselt von Antwortet zu Antwortet nicht.](@site/docs/img/overview-not-answering-de.png)
 
 | Wo                                      | Was                                                                                          |
 | --------------------------------------- | -------------------------------------------------------------------------------------------- |

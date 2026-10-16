@@ -43,7 +43,7 @@ Mitternacht würde deine eigenen Dateien also vom Netz nehmen.
 
 ## Wo die Apps sind \{#where-the-apps-are}
 
-![Der Bereich Apps: LosOS cloud und LosOS Git, jede mit ihrem Modus, eine installierte App und darunter Mehr finden.](@site/docs/img/apps.png)
+![Der Bereich Apps: LosOS cloud und LosOS Git, jede mit ihrem Modus, eine installierte App und darunter Mehr finden.](@site/docs/img/apps-de.png)
 
 | App          | Adresse             | Hinweis                                                                                   |
 | ------------ | ------------------- | ----------------------------------------------------------------------------------------- |

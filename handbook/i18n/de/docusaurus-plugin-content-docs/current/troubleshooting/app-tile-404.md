@@ -14,7 +14,7 @@ cloud zeigt „Zugriff über eine nicht vertrauenswürdige Domain“.
 
 </div>
 
-![Der Bereich Apps mit LosOS cloud und LosOS Git; die App-Kacheln der Übersicht öffnen dieselben Apps.](@site/docs/img/apps.png)
+![Der Bereich Apps mit LosOS cloud und LosOS Git; die App-Kacheln der Übersicht öffnen dieselben Apps.](@site/docs/img/apps-de.png)
 
 ## „Not Found“ von einer App-Kachel \{#not-found-from-an-app-tile}
 

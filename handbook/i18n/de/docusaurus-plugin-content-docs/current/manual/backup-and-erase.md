@@ -30,7 +30,7 @@ zeigt sie den geheimen Schlüssel nie wieder. Willst du den Bucket später
 ändern, lass das Feld für den geheimen Schlüssel leer, dann bleibt der
 gespeicherte erhalten.
 
-![Einstellungen, Sicherung: der Bucket, der Wiederherstellungscode hinter Anzeigen, die letzte Sicherung und das Feld zum Wiederherstellen.](@site/docs/img/settings-backup.png)
+![Einstellungen, Sicherung: der Bucket, der Wiederherstellungscode hinter Anzeigen, die letzte Sicherung und das Feld zum Wiederherstellen.](@site/docs/img/settings-backup-de.png)
 
 ### Glacier bei Amazon S3 \{#glacier-on-amazon-s3}
 
@@ -45,7 +45,7 @@ sind günstiger zu lagern und teurer zurückzulesen:
 | Glacier Flexible Retrieval | nach 3 bis 5 Stunden | eine Kopie für den Fall, dass die Box weg ist |
 | Glacier Deep Archive | nach bis zu 12 Stunden | die günstigste Kopie, für den schlimmsten Tag |
 
-![Einstellungen, Sicherung: das Formular für den Bucket mit Glacier Deep Archive unter Speicherklasse gewählt.](@site/docs/img/settings-backup-glacier.png)
+![Einstellungen, Sicherung: das Formular für den Bucket mit Glacier Deep Archive unter Speicherklasse gewählt.](@site/docs/img/settings-backup-glacier-de.png)
 
 Nur die Dateien kommen in Glacier. Der kleine Index, der die Sicherungen
 auflistet, bleibt in Standard, damit die Box einen Wiederherstellungscode
@@ -114,7 +114,7 @@ jede Einstellung, das Passwort, den Ersatzschlüssel und den
 Wiederherstellungscode. LosOS bleibt installiert, und die Box begrüßt die
 nächste Person mit dem Einrichtungsassistenten.
 
-![Der Dialog zum Löschen: was gelöscht wird, was außerhalb der Box aufgegeben wird, und der Schalter Vorher sichern.](@site/docs/img/settings-erase-dialog.png)
+![Der Dialog zum Löschen: was gelöscht wird, was außerhalb der Box aufgegeben wird, und der Schalter Vorher sichern.](@site/docs/img/settings-erase-dialog-de.png)
 
 Der Reihe nach tut die Box Folgendes:
 
@@ -129,7 +129,7 @@ Der Reihe nach tut die Box Folgendes:
 4. Sie setzt jede Einstellung zurück, startet neu und löscht die Daten früh
    beim nächsten Start, bevor irgendeine App läuft.
 
-![Der Countdown mit Löschen abbrechen.](@site/docs/img/settings-erase-countdown.png)
+![Der Countdown mit Löschen abbrechen.](@site/docs/img/settings-erase-countdown-de.png)
 
 Ab Schritt 3 lässt sich das Löschen nicht mehr aufhalten. Einen Schritt, den
 die Edge nicht bestätigt, vermerkt die Box, und das Löschen geht weiter.

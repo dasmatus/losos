@@ -36,7 +36,7 @@ opraví.
 
 ## Čo funguje ďalej \{#what-still-works}
 
-![Zariadenie, ktorému nefunguje internet, ale jeho firemný edge v LAN stále odpovedá: panel Mesh ho uvádza ako V tejto sieti.](@site/docs/img/mesh-company.png)
+![Zariadenie, ktorému nefunguje internet, ale jeho firemný edge v LAN stále odpovedá: panel Mesh ho uvádza ako V tejto sieti.](@site/docs/img/mesh-company-sk.png)
 
 | Čo                                  | Prečo to nepotrebuje internet                                                                                    |
 | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------- |

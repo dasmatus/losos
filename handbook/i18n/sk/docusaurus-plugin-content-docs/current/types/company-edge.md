@@ -23,7 +23,7 @@ počítač v LAN a zariadenia ho nájdu samy.
   a panel Mesh ho ukáže ako **V tejto sieti**.
 - Admin stránky každého zariadenia zostávajú dostupné iba z LAN.
 
-![Panel Mesh vo firemnej sieti: kancelársky edge nájdený V tejto sieti, s výstražným znakom, pretože nie je oficiálny.](@site/docs/img/mesh-company.png)
+![Panel Mesh vo firemnej sieti: kancelársky edge nájdený V tejto sieti, s výstražným znakom, pretože nie je oficiálny.](@site/docs/img/mesh-company-sk.png)
 
 ## Čo je iné \{#what-is-different}
 

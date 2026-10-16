@@ -20,7 +20,7 @@ der Markt dieser Edge zahlt aus.
 | **Der Markt**          | Du wirst für die Festplatte und die CPU bezahlt, die du teilst, und du kannst welche von anderen kaufen. Käufer zahlen in USDC, Bitcoin oder Monero, oder per Karte über Stripe, wo die Edge Karten annimmt, und die Edge behält eine Gebühr von 4 %. Eine Edge kann auch nur Coins annehmen, ohne Kartenzahlungen; dann braucht es für den Betrieb des Markts kein Geschäftskonto bei einem Kartenzahlungsanbieter. Der Bereich Markt liegt in der Seitenleiste unter Mesh. |
 | **Box finden**         | Die Edge stellt die Seite bereit, die eine Box in deinem LAN aus einem Browser heraus findet.              |
 
-![Der Bereich Markt: was diese Box gekauft hat, Speicher und Rechenleistung zum Kauf von anderen Boxen und Auszahlungen über Stripe.](@site/docs/img/market-open.png)
+![Der Bereich Markt: was diese Box gekauft hat, Speicher und Rechenleistung zum Kauf von anderen Boxen und Auszahlungen über Stripe.](@site/docs/img/market-open-de.png)
 
 ## Wie eine Box ihre Edge findet \{#how-a-box-finds-its-edge}
 
@@ -46,7 +46,7 @@ dieses Zeichen. Antwortet nichts, zeigt der Bereich **Kein Edge-Proxy
 gefunden** und was die Box versucht hat: „Diese Box hat ihr Netzwerk
 durchsucht und `<address>` gefragt; nichts hat geantwortet.“
 
-![Der Bereich Mesh mit der offiziellen LosOS-Edge, gefunden über das Internet, markiert mit einem Häkchen.](@site/docs/img/mesh-official.png)
+![Der Bereich Mesh mit der offiziellen LosOS-Edge, gefunden über das Internet, markiert mit einem Häkchen.](@site/docs/img/mesh-official-de.png)
 
 Solange nichts antwortet, weigert sich die Box, Teilen einzuschalten, das vom
 Netz abhängt. Das Umschalten des Speichers in den Mesh-Modus, **Dem Mesh
@@ -84,7 +84,7 @@ sagt: „Der Edge-Proxy, den diese Box gefunden hat, wird nicht von LosOS
 betrieben.“ Nichts, was eine Firma konfiguriert, kann ihre eigene Edge
 offiziell machen. Das ist Absicht.
 
-![Das Warnzeichen neben einer Edge, die nicht offiziell ist, mit seinem Tooltip, der auflistet, was diese Edge für diese Box nicht tun kann.](@site/docs/img/mesh-warning-tooltip.png)
+![Das Warnzeichen neben einer Edge, die nicht offiziell ist, mit seinem Tooltip, der auflistet, was diese Edge für diese Box nicht tun kann.](@site/docs/img/mesh-warning-tooltip-de.png)
 
 :::note[Bis der Schlüssel veröffentlicht ist]
 Jede Box wird mit einer leeren Root-Schlüsseldatei ausgeliefert, bis das
@@ -117,7 +117,7 @@ hat, und ohne ein solches Konto kann sich kein Fremder die Zertifikate der
 Edge ausleihen. Solange die Box kein solches Konto hat, sagt der Abschnitt
 im Bereich Netzwerk, was fehlt, und bietet nichts zum Ausfüllen an.
 
-![Der Abschnitt Eigene Domain im Bereich Netzwerk: der Name der Box auf der Edge, eine Domain aktiv, eine, die auf ihren CNAME wartet, mit den zwei zu veröffentlichenden Einträgen, und das Feld, um eine weitere hinzuzufügen.](@site/docs/img/custom-domain.png)
+![Der Abschnitt Eigene Domain im Bereich Netzwerk: der Name der Box auf der Edge, eine Domain aktiv, eine, die auf ihren CNAME wartet, mit den zwei zu veröffentlichenden Einträgen, und das Feld, um eine weitere hinzuzufügen.](@site/docs/img/custom-domain-de.png)
 
 Sobald das Konto bereit ist, zeigt der Bereich Netzwerk **Name dieser Box
 auf dem Edge**, etwa `3f9a1c0e7b2d4a55.boxes.losos.dasmat.us`. Der Name wird

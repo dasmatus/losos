@@ -44,7 +44,7 @@ Postupujte v tomto poradí. Väčšina problémov sa skončí pri jednom z kroko
 
 ## Čo vám zariadenie povie z LAN \{#what-the-box-can-tell-you-from-the-lan}
 
-![Prehľad, keď zariadenie neodpovedá na kontrolu stavu: stav pod menom sa zmení z Odpovedá na neodpovedá.](@site/docs/img/overview-not-answering.png)
+![Prehľad, keď zariadenie neodpovedá na kontrolu stavu: stav pod menom sa zmení z Odpovedá na neodpovedá.](@site/docs/img/overview-not-answering-sk.png)
 
 | Kde                                     | Čo                                                                                           |
 | --------------------------------------- | -------------------------------------------------------------------------------------------- |

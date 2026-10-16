@@ -14,7 +14,7 @@ nächtliche Update schlägt fehl.
 
 </div>
 
-![Die Übersicht auf einer Box, die fast voll ist.](@site/docs/img/overview-almost-full.png)
+![Die Übersicht auf einer Box, die fast voll ist.](@site/docs/img/overview-almost-full-de.png)
 
 ## Warum es mehr ausmacht als auf einem Laptop \{#why-it-matters-more-than-on-a-laptop}
 
@@ -26,7 +26,7 @@ mehr** erscheint.
 
 ## Was zu tun ist, der Reihe nach \{#what-to-do-in-order}
 
-![Reserve nutzen, das Erste, was du versuchen solltest: Der Dialog sagt, wie viel Platz es bringt.](@site/docs/img/storage-use-reserve.png)
+![Reserve nutzen, das Erste, was du versuchen solltest: Der Dialog sagt, wie viel Platz es bringt.](@site/docs/img/storage-use-reserve-de.png)
 
 1. **Nimm die Reserve in Anspruch.** Bereich Speicher → **Reserve
    nutzen**. Der Installer hat dafür 10 % der Festplatte zurückgehalten.

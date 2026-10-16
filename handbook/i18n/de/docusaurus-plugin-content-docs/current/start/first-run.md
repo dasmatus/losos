@@ -18,7 +18,7 @@ noch nicht. Alles nach diesem Schritt soll über die verschlüsselte
 Verbindung laufen, auch das Passwort, das du gleich festlegst. Deshalb bittet
 dich der Assistent, zuerst das Zertifikat zu installieren.
 
-<img src={require("@site/docs/img/wizard-step1-trust.png").default} alt="Schritt 1 des Assistenten: die einzeiligen Installer für macOS, Linux und Windows, der Download des Zertifikats und der Fingerabdruck zum Vergleichen." width="520" />
+<img src={require("@site/docs/img/wizard-step1-trust-de.png").default} alt="Schritt 1 des Assistenten: die einzeiligen Installer für macOS, Linux und Windows, der Download des Zertifikats und der Fingerabdruck zum Vergleichen." width="520" />
 
 Am schnellsten geht es mit einer Zeile im Terminal, angezeigt für den
 Rechner, an dem du sitzt:
@@ -67,14 +67,14 @@ Sonderzeichen wie `-` oder `!`. Der Assistent hakt jede Regel ab, während du
 tippst. Dieses eine Passwort öffnet LosOS cloud, LosOS Git und die
 Admin-Seiten.
 
-<img src={require("@site/docs/img/wizard-step2-password.png").default} alt="Schritt 2 mit eingetipptem Passwort: Jede der vier Regeln wird abgehakt, sobald sie erfüllt ist." width="520" />
+<img src={require("@site/docs/img/wizard-step2-password-de.png").default} alt="Schritt 2 mit eingetipptem Passwort: Jede der vier Regeln wird abgehakt, sobald sie erfüllt ist." width="520" />
 
 Der Schritt wartet, bis LosOS cloud seinen eigenen ersten Start beendet hat,
 was auf einer frischen Box ein paar Minuten dauert. Solange zeigt die Seite
 „Warten, bis diese Box fertig gestartet ist“ und den Grund. Sie macht von
 selbst weiter.
 
-<img src={require("@site/docs/img/wizard-step2-waiting.png").default} alt="Schritt 2, während LosOS cloud sich noch installiert: Die Seite sagt, worauf sie wartet, und macht von selbst weiter." width="520" />
+<img src={require("@site/docs/img/wizard-step2-waiting-de.png").default} alt="Schritt 2, während LosOS cloud sich noch installiert: Die Seite sagt, worauf sie wartet, und macht von selbst weiter." width="520" />
 
 Sobald das Passwort gesetzt ist, zeigt die Seite einmal den
 **Ersatz-Admin-Schlüssel**: 64 Zeichen, mit den Schaltflächen **Schlüssel
@@ -84,7 +84,7 @@ nicht abdeckt: LosOS cloud läuft nicht. Die Seite kann ihn nicht noch einmal
 anzeigen. Siehe
 [Anmeldung und der Ersatzschlüssel](../manual/sign-in-and-spare-key).
 
-<img src={require("@site/docs/img/wizard-step2-spare-key.png").default} alt="Schritt 2 nach dem Setzen des Passworts: der Anmeldename und der einmal angezeigte Ersatz-Admin-Schlüssel mit Schlüssel kopieren und Drucken." width="520" />
+<img src={require("@site/docs/img/wizard-step2-spare-key-de.png").default} alt="Schritt 2 nach dem Setzen des Passworts: der Anmeldename und der einmal angezeigte Ersatz-Admin-Schlüssel mit Schlüssel kopieren und Drucken." width="520" />
 
 Über eine HTTPS-Verbindung bietet der Schritt außerdem einen **Passkey** an,
 damit sich ein Handy oder Laptop anmelden kann, ohne das Passwort zu tippen.
@@ -105,6 +105,6 @@ wiederfindest. **Tour überspringen** schließt sie, und dieser Browser öffnet
 sie nicht mehr von selbst. **Tour starten** unter Einstellungen, Über holt
 sie zurück.
 
-![Der erste Schritt der Tour über der Übersicht: ein Bild der Seite mit geöffneter Dateien-App, „1 von 6“ sowie Tour überspringen und Weiter.](@site/docs/img/tour.png)
+![Der erste Schritt der Tour über der Übersicht: ein Bild der Seite mit geöffneter Dateien-App, „1 von 6“ sowie Tour überspringen und Weiter.](@site/docs/img/tour-de.png)
 
-![Schritt 3: Du bist angemeldet. Das war der letzte Schritt.](@site/docs/img/wizard-step3-sign-in.png)
+![Schritt 3: Du bist angemeldet. Das war der letzte Schritt.](@site/docs/img/wizard-step3-sign-in-de.png)

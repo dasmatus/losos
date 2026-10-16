@@ -12,21 +12,22 @@ etwas zeigt, das du ändern kannst.
 
 ## Die Bereiche \{#the-sections}
 
-Die Seitenleiste links hat fünf Bereiche und darunter die Dinge, die du
+Die Seitenleiste links hat sechs Bereiche und darunter die Dinge, die du
 angeheftet hast. Eingeklappt schrumpft sie zu einer Leiste aus Symbolen. Auf
 dem Handy öffnet sie sich als Overlay.
 
-![Die Übersicht: links die Seitenleiste mit den fünf Bereichen, der Name der Box und ob sie antwortet, die App-Kacheln, die Speicherkarte und das Board.](@site/docs/img/overview.png)
+![Die Übersicht: links die Seitenleiste mit den sechs Bereichen, der Name der Box und ob sie antwortet, die App-Kacheln, die Speicherkarte und das Board.](@site/docs/img/overview-de.png)
 
 | Bereich           | Was dort ist                                                                                                 |
 | ----------------- | ------------------------------------------------------------------------------------------------------------ |
 | **Übersicht**     | Ob die Box antwortet und seit wann, die Speicherkarte, die App-Kacheln und dein Board mit Widgets.            |
 | **Apps**          | Die Apps auf dieser Box mit ihrem Modus, eine Suche in Artifact Hub und die von dort installierten Apps.      |
 | **Speicher**      | Wie voll die Festplatte ist, was den Platz belegt, und die Reserve, die du freigeben kannst.                  |
-| **Mesh**          | Anderen Boxen beitreten, die Stunden, in denen diese Box ihre freie Zeit verleiht, und **Markt** mit dem Teilen der Festplatte. |
-| **Einstellungen** | Netzwerk, Aussehen, Hardware, Sicherheit, Erweitert, Historie, Über und Zurücksetzen, jeder davon ein eigener Bereich. |
+| **Mesh**          | Anderen Boxen beitreten, die Stunden, in denen diese Box ihre freie Zeit verleiht, **Markt** mit dem Teilen der Festplatte und **Maschinen**. |
+| **Labor**         | LosOS Lab, das diese Box und ihr Netzwerk als Diagramm zeichnet.                                             |
+| **Einstellungen** | Netzwerk, Aussehen, Hardware, Sicherheit, Zugriffstokens, Erweitert, Historie, Sicherung, Über und Zurücksetzen, jeder davon ein eigener Bereich. |
 
-<img src={require("@site/docs/img/overview-phone.png").default} alt="Die Übersicht auf einem Handy: Die Bereiche klappen in eine Menütaste zusammen." width="260" /> <img src={require("@site/docs/img/overview-phone-sheet.png").default} alt="Dasselbe Handy mit dem Menü, das als Overlay über der Seite offen ist." width="260" />
+<img src={require("@site/docs/img/overview-phone-de.png").default} alt="Die Übersicht auf einem Handy: Die Bereiche klappen in eine Menütaste zusammen." width="260" /> <img src={require("@site/docs/img/overview-phone-sheet-de.png").default} alt="Dasselbe Handy mit dem Menü, das als Overlay über der Seite offen ist." width="260" />
 
 ## Suche \{#search}
 
@@ -89,9 +90,9 @@ anmeldest, dieselben Einträge zeigt.
   durchgestrichene Nadel, um ihn zu lösen. Die [Suche](#search) findet
   angeheftete Einträge ebenfalls.
 
-![Die Übersicht mit sechs Einträgen unter Angeheftet in der Seitenleiste; die angehefteten Kacheln Kalender und Notizen sind markiert.](@site/docs/img/pins-overview.png)
+![Die Übersicht mit sechs Einträgen unter Angeheftet in der Seitenleiste; die angehefteten Kacheln Kalender und Notizen sind markiert.](@site/docs/img/pins-overview-de.png)
 
-![Die Liste der angehefteten Einträge, mit dem Tab Dateien auf dem Ordner Documents von LosOS cloud geöffnet.](@site/docs/img/pins-dialog.png)
+![Die Liste der angehefteten Einträge, mit dem Tab Dateien auf dem Ordner Documents von LosOS cloud geöffnet.](@site/docs/img/pins-dialog-de.png)
 
 Die Box listet deine Dateien mit einem App-Passwort auf, das sie bei LosOS
 cloud anfordert, wenn du dich mit deinem Passwort anmeldest. Bis du das
@@ -116,7 +117,7 @@ Widget. Eine Frage, die deine Antwort braucht, etwa das Zurücksetzen der Box
 oder das Freigeben der Reserve, öffnet stattdessen einen Dialog. Die sichere
 Wahl steht an erster Stelle.
 
-![Ein Einstellungsbereich mit einer noch nicht angewendeten Änderung: unten die Leiste mit Verwerfen und Anwenden.](@site/docs/img/settings-apply-bar.png)
+![Ein Einstellungsbereich mit einer noch nicht angewendeten Änderung: unten die Leiste mit Verwerfen und Anwenden.](@site/docs/img/settings-apply-bar-de.png)
 
 ## Design und Sprache \{#theme-and-language}
 

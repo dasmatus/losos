@@ -29,9 +29,9 @@ Leerzeichen oder einen Port außerhalb des erlaubten Bereichs, und Anwenden
 wartet, bis du es korrigierst. Nichts erreicht die Box, bevor du Anwenden
 drückst.
 
-![Ein Name mit einem Leerzeichen: Das Feld ist markiert, und Anwenden wartet, bis es korrigiert ist.](@site/docs/img/settings-apply-invalid.png)
+![Ein Name mit einem Leerzeichen: Das Feld ist markiert, und Anwenden wartet, bis es korrigiert ist.](@site/docs/img/settings-apply-invalid-de.png)
 
-![Der Bereich Netzwerk mit einem neu eingetippten Namen: Die Leiste sagt, dass eine Änderung noch nicht angewendet ist.](@site/docs/img/settings-apply-bar.png)
+![Der Bereich Netzwerk mit einem neu eingetippten Namen: Die Leiste sagt, dass eine Änderung noch nicht angewendet ist.](@site/docs/img/settings-apply-bar-de.png)
 
 ## Was Anwenden tut \{#what-apply-does}
 
@@ -47,7 +47,7 @@ drückst.
 
 ## Zwei Einstellungen, die die Adresse ändern \{#two-settings-that-change-the-address}
 
-![Der Bereich Historie: Jede angewendete Änderung, jeder Moduswechsel und jedes Zurücksetzen ist ein Commit in der eigenen Beschreibung der Box, die neuesten zuerst.](@site/docs/img/settings-history.png)
+![Der Bereich Historie: Jede angewendete Änderung, jeder Moduswechsel und jedes Zurücksetzen ist ein Commit in der eigenen Beschreibung der Box, die neuesten zuerst.](@site/docs/img/settings-history-de.png)
 
 - **Name**: Die Box hört auf `<name>.local`, und die Apps verteilen Links
   auf diesen Namen. Nach einer Umbenennung erreichst du die Box unter dem
@@ -72,4 +72,4 @@ Die [Tabelle von Einstellungen zu Optionen](../reference/settings-to-options)
 ordnet jedem Feld der Bereiche die Nix-Option dahinter zu, für den Tag, an
 dem du etwas ändern willst, das die Bereiche nicht anbieten.
 
-![Der Bereich Erweitert: jede losos-Option mit ihrem aktuellen Wert und einem passenden Editor, und Links zu den Bereichen, denen die gängigen gehören.](@site/docs/img/settings-advanced.png)
+![Der Bereich Erweitert: jede losos-Option mit ihrem aktuellen Wert und einem passenden Editor, und Links zu den Bereichen, denen die gängigen gehören.](@site/docs/img/settings-advanced-de.png)

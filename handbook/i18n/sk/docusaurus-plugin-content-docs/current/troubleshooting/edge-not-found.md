@@ -37,7 +37,7 @@ nenašlo žiadny, veta pod **Žiadny okrajový proxy server sa nenašiel** hovor
 
 ## Z LAN \{#from-the-lan}
 
-![Panel Mesh s hlásením Žiadny okrajový proxy server sa nenašiel a s tým, čo zariadenie prehľadalo a koho oslovilo.](@site/docs/img/mesh-none.png)
+![Panel Mesh s hlásením Žiadny okrajový proxy server sa nenašiel a s tým, čo zariadenie prehľadalo a koho oslovilo.](@site/docs/img/mesh-none-sk.png)
 
 1. **Má zariadenie internet?** Edge na internete ho potrebuje, firemný edge
    v LAN nie. Prehľad ukazuje, či zariadenie odpovedá, ale kontrolku

@@ -18,14 +18,14 @@ Kopie behält die Box nicht. Ändere das Passwort in LosOS cloud unter
 Einstellungen → Persönlich → Sicherheit, und die Admin-Seiten nehmen das neue
 sofort an.
 
-![Der Dialog Diese Box entsperren fragt nach dem Passwort des Besitzers, mit dem Link zum Ersatz-Admin-Schlüssel.](@site/docs/img/unlock-dialog.png)
+![Der Dialog Diese Box entsperren fragt nach dem Passwort des Besitzers, mit dem Link zum Ersatz-Admin-Schlüssel.](@site/docs/img/unlock-dialog-de.png)
 
 Ein neues Passwort braucht mindestens 12 Zeichen, einen Kleinbuchstaben,
 einen Großbuchstaben, eine Ziffer und ein Sonderzeichen. Ein Passwort, das
 gesetzt wurde, bevor es diese Regel gab, funktioniert bei der Anmeldung
 weiterhin.
 
-![Ein falsches Passwort: Der Dialog sagt, dass das Passwort nicht akzeptiert wurde, und bleibt offen.](@site/docs/img/unlock-refused.png)
+![Ein falsches Passwort: Der Dialog sagt, dass das Passwort nicht akzeptiert wurde, und bleibt offen.](@site/docs/img/unlock-refused-de.png)
 
 Der Tab bleibt entsperrt, bis du ihn schließt. Nach zehn falschen Versuchen
 von einem Rechner sperrt die Box diesen Rechner aus. Die Sperre beginnt bei
@@ -42,7 +42,7 @@ Fall, den das Passwort nicht abdeckt. Läuft LosOS cloud nicht, kann nichts
 das Passwort prüfen. Der Dialog zum Entsperren sagt das dann und bietet
 **Stattdessen den Ersatz-Admin-Schlüssel verwenden** an.
 
-![Der Dialog zum Entsperren, während LosOS cloud nicht läuft: Nichts kann das Passwort prüfen, also bietet der Dialog den Ersatz-Admin-Schlüssel an.](@site/docs/img/unlock-dialog-cloud-down.png)
+![Der Dialog zum Entsperren, während LosOS cloud nicht läuft: Nichts kann das Passwort prüfen, also bietet der Dialog den Ersatz-Admin-Schlüssel an.](@site/docs/img/unlock-dialog-cloud-down-de.png)
 
 Bewahre das gedruckte Blatt nicht bei der Box auf. Wer den Schlüssel hat,
 kann jede Einstellung ändern, und das kommt root gleich. Die Box kann den
@@ -50,7 +50,7 @@ Schlüssel weder noch einmal anzeigen noch austauschen, weil sie keine Shell
 hat. Verlierst du das Passwort *und* den Ersatzschlüssel, musst du vom Stick
 neu installieren, und das löscht die Festplatte.
 
-![Der Dialog zum Entsperren fragt nach dem Ersatz-Admin-Schlüssel mit 64 Zeichen.](@site/docs/img/unlock-spare-key.png)
+![Der Dialog zum Entsperren fragt nach dem Ersatz-Admin-Schlüssel mit 64 Zeichen.](@site/docs/img/unlock-spare-key-de.png)
 
 ## Passkeys \{#passkeys}
 

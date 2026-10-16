@@ -17,7 +17,7 @@ Ein anderer Rechner sieht sein eigenes Board. Ein eingebautes Widget oder
 eines aus Messwerten hinzuzufügen ändert nichts auf der Box und startet
 nichts.
 
-![Die Übersicht mit dem Hintergrund Gezeiten und einem von Hand geschriebenen Widget Begrüßung oben auf dem Board.](@site/docs/img/overview-tide.png)
+![Die Übersicht mit dem Hintergrund Gezeiten und einem von Hand geschriebenen Widget Begrüßung oben auf dem Board.](@site/docs/img/overview-tide-de.png)
 
 ## Einstellungen → Aussehen \{#settings--look}
 
@@ -25,7 +25,7 @@ Dieser Bereich ändert, wie die Admin-Seiten in jedem Browser aussehen, der
 die Box öffnet. Eine Änderung wirkt, sobald du sie speicherst, ohne
 Neuaufbau.
 
-![Einstellungen, Aussehen: die Hintergründe Schlicht, Gezeiten, Raster, Abenddämmerung und dein eigenes Bild, der Schieberegler für den Schleier und die von Hand geschriebenen Widgets auf dieser Box.](@site/docs/img/settings-look.png)
+![Einstellungen, Aussehen: die Hintergründe Schlicht, Gezeiten, Raster, Abenddämmerung und dein eigenes Bild, der Schieberegler für den Schleier und die von Hand geschriebenen Widgets auf dieser Box.](@site/docs/img/settings-look-de.png)
 
 - **Hintergrund**: eines von drei mitgelieferten Bildern (Gezeiten, Raster,
   Abenddämmerung), ein eigenes hochgeladenes Bild (PNG, JPEG, WebP, GIF oder
@@ -52,7 +52,7 @@ Ein neues Widget beginnt mit drei Dateien: `index.html`, das `style.css` und
 Namen der Messwerte, die Farbvariablen der Box nach `var(--` und die eigenen
 Dateinamen des Widgets. Strg+Leertaste fragt überall nach Vorschlägen.
 
-![Der Widget-Editor: links die Dateien und ihr Code, rechts die Live-Vorschau im echten Sandbox-Rahmen, und der Tab mit Hilfe.](@site/docs/img/widget-write-one.png)
+![Der Widget-Editor: links die Dateien und ihr Code, rechts die Live-Vorschau im echten Sandbox-Rahmen, und der Tab mit Hilfe.](@site/docs/img/widget-write-one-de.png)
 
 Ein von Hand geschriebenes Widget läuft in jedem Browser, der die Box
 öffnet. Lies alles, was du aus dem Internet einfügst, bevor du es behältst,

@@ -38,7 +38,7 @@ die Box versucht hat:
 
 ## Aus dem LAN \{#from-the-lan}
 
-![Der Bereich Mesh mit Kein Edge-Proxy gefunden, dazu was die Box durchsucht und gefragt hat.](@site/docs/img/mesh-none.png)
+![Der Bereich Mesh mit Kein Edge-Proxy gefunden, dazu was die Box durchsucht und gefragt hat.](@site/docs/img/mesh-none-de.png)
 
 1. **Hat die Box Internet?** Eine Edge im Internet braucht es, eine
    Firmen-Edge im LAN nicht. Die Übersicht sagt, ob die Box antwortet, aber

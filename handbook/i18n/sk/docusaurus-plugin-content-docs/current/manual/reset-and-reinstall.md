@@ -16,9 +16,9 @@ pôvodným názvom, takže aj meno, na ktorom ho nájdete, sa zmení späť. IP
 adresa zostane rovnaká. Dialóg vypíše, čo zmizne a čo zostane, a stlačiť
 musíte ešte raz.
 
-![Dialóg resetu, ktorý vypisuje, čo sa vráti a čo zostane, s tlačidlom Ponechať moje nastavenia ako prvým.](@site/docs/img/settings-reset-dialog.png)
+![Dialóg resetu, ktorý vypisuje, čo sa vráti a čo zostane, s tlačidlom Ponechať moje nastavenia ako prvým.](@site/docs/img/settings-reset-dialog-sk.png)
 
-![Nastavenia, Reset: Vrátiť všetky nastavenia, s tým, čo zmizne a čo zostane.](@site/docs/img/settings-reset.png)
+![Nastavenia, Reset: Vrátiť všetky nastavenia, s tým, čo zmizne a čo zostane.](@site/docs/img/settings-reset-sk.png)
 
 Reset nezmení heslo vlastníka ani náhradný kľúč a znova neotvorí okno na
 prevzatie zariadenia.
