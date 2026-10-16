@@ -120,31 +120,13 @@ pub struct People {
 }
 
 impl People {
-    fn sanitize_people_path(path: PathBuf) -> PathBuf {
-        let default = PathBuf::from(DEFAULT_FILE);
-        let allowed_base = default
-            .parent()
-            .unwrap_or(Path::new("/var/lib/losos-identity"));
-
-        let has_parent = path
-            .components()
-            .any(|c| matches!(c, Component::ParentDir));
-        let is_absolute = path.is_absolute();
-        let in_allowed_base = path.starts_with(allowed_base);
-
-            .map(Self::sanitize_people_path)
-        if is_absolute && !has_parent && in_allowed_base {
-            path
-        } else {
-            tracing::warn!(
-                path = %path.display(),
-                default = DEFAULT_FILE,
-                "invalid LOSOS_PEOPLE_FILE path; falling back to default"
-            );
-            default
     fn sanitize_people_path(input: PathBuf) -> PathBuf {
         let base = PathBuf::from(PEOPLE_DIR);
-        let candidate = if input.is_absolute() { input } else { base.join(input) };
+        let candidate = if input.is_absolute() {
+            input
+        } else {
+            base.join(input)
+        };
 
         if candidate
             .components()
@@ -173,12 +155,9 @@ impl People {
         }
     }
 
-        }
-    }
-
     pub fn new(path: impl Into<PathBuf>, group: Option<String>) -> People {
         People {
-            path: Self::sanitize_people_path(path.into()),
+            path: path.into(),
             headers: false,
             group,
             lock: Mutex::new(()),
@@ -192,7 +171,7 @@ impl People {
         let group = std::env::var("LOSOS_PEOPLE_GROUP")
             .ok()
             .filter(|g| !g.is_empty());
-        let mut people = People::new(path, group);
+        let mut people = People::new(Self::sanitize_people_path(path), group);
         people.headers = std::env::var("LOSOS_IDENTITY").is_ok_and(|v| v == "authelia");
         people
     }
