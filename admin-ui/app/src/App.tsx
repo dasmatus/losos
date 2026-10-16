@@ -50,6 +50,7 @@ import { readProgress } from "@/screens/wizard/progress";
 import { isTourOpen, startTour, subscribeTour } from "@/tour/store";
 import { closePalette, isPaletteColon, isPaletteShortcut, openPalette, paletteState, subscribePalette } from "@/palette/store";
 import { logoFor } from "@/lib/logo";
+import { seededShuffle } from "@/lib/shuffle";
 import type { SettingsPaneId } from "@/screens/settings/panes";
 import { paneFromPath } from "@/lib/routes";
 import { useT } from "@/lib/i18n-react";
@@ -451,17 +452,30 @@ function NotFound() {
  * people had names, the key is also how the owner makes the first account.
  *
  * Non-dismissible: there is nothing to look at behind it. */
-/* Shown under the spinner while the sign-in page starts. */
-const FACTS = [
-  "shell.facts.1",
-  "shell.facts.2",
-  "shell.facts.3",
-  "shell.facts.4",
-  "shell.facts.5",
-  "shell.facts.6",
-  "shell.facts.7",
-  "shell.facts.8",
-] as const;
+/* Shown under the spinner while the sign-in page starts, in an order
+ * shuffled with the seed "salmon": random to read, the same on every load. */
+const FACTS = seededShuffle(
+  [
+    "shell.facts.1",
+    "shell.facts.2",
+    "shell.facts.3",
+    "shell.facts.4",
+    "shell.facts.5",
+    "shell.facts.6",
+    "shell.facts.7",
+    "shell.facts.8",
+    "shell.facts.9",
+    "shell.facts.10",
+    "shell.facts.11",
+    "shell.facts.12",
+    "shell.facts.13",
+    "shell.facts.14",
+    "shell.facts.15",
+    "shell.facts.16",
+    "shell.facts.17",
+  ] as const,
+  "salmon",
+);
 
 function SignInDialog({ open }: { open: boolean }) {
   const t = useT();
@@ -486,7 +500,7 @@ function SignInDialog({ open }: { open: boolean }) {
    * anyone to an error page, and goes on by itself once it is up. */
   const [portal, setPortal] = React.useState<"checking" | "starting" | "ready">("checking");
   const [wanted, setWanted] = React.useState(false);
-  const [fact, setFact] = React.useState(() => Math.floor(Math.random() * FACTS.length));
+  const [fact, setFact] = React.useState(0);
   React.useEffect(() => {
     if (!open || mode !== "signin" || portal === "ready") return;
     const controller = new AbortController();

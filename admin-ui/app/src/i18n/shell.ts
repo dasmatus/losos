@@ -126,6 +126,51 @@ export default defineMessages({
     sk: "LosOS Lab kreslí vaše zapojenie pomocou Bevy, herného enginu skompilovaného do WebAssembly.",
     de: "LosOS Lab zeichnet dein Setup mit Bevy, einer Spiele-Engine, kompiliert zu WebAssembly.",
   },
+  "shell.facts.9": {
+    en: "When the box boots, the salmon swims in beside the name, and that screen stays on as the box's face.",
+    sk: "Pri štarte zariadenia priplává losos k názvu a táto obrazovka potom zostane ako tvár zariadenia.",
+    de: "Beim Start der Box schwimmt der Lachs neben den Namen, und dieser Bildschirm bleibt danach das Gesicht der Box.",
+  },
+  "shell.facts.10": {
+    en: "The box restarts itself at 00:07 every night and installs its updates at 03:00.",
+    sk: "Zariadenie sa každú noc o 00:07 samo reštartuje a o 03:00 si nainštaluje aktualizácie.",
+    de: "Die Box startet jede Nacht um 00:07 von selbst neu und installiert um 03:00 ihre Updates.",
+  },
+  "shell.facts.11": {
+    en: "Build with AI runs its language model on this box. No key, no account and no charge.",
+    sk: "Karta Vytvoriť s AI spúšťa jazykový model priamo na tomto zariadení. Bez kľúča, bez účtu a zadarmo.",
+    de: "Der Tab Mit KI bauen lässt sein Sprachmodell auf dieser Box laufen. Kein Schlüssel, kein Konto, keine Kosten.",
+  },
+  "shell.facts.12": {
+    en: "Every call from the losos terminal client is one OpenPGP message, signed by your key and encrypted to the box's own.",
+    sk: "Každé volanie z terminálového klienta losos je jedna správa OpenPGP, podpísaná vaším kľúčom a zašifrovaná pre kľúč zariadenia.",
+    de: "Jeder Aufruf aus dem Terminal-Client losos ist eine OpenPGP-Nachricht, mit deinem Schlüssel signiert und für den Schlüssel der Box verschlüsselt.",
+  },
+  "shell.facts.13": {
+    en: "The first-run tour has no video in it. Each scene is drawn by code, frame by frame, in the language on screen.",
+    sk: "V úvodnej prehliadke nie je žiadne video. Každú scénu kreslí kód, snímku po snímke, v jazyku na obrazovke.",
+    de: "In der Einführungstour steckt kein Video. Jede Szene zeichnet Code, Bild für Bild, in der Sprache auf dem Bildschirm.",
+  },
+  "shell.facts.14": {
+    en: "The hosted copy of LosOS Lab runs real QEMU guests inside your browser, compiled to WebAssembly.",
+    sk: "Verejná verzia LosOS Lab spúšťa skutočné hosťovské systémy v QEMU priamo v prehliadači, skompilované do WebAssembly.",
+    de: "Die gehostete Fassung von LosOS Lab startet echte QEMU-Gäste in deinem Browser, kompiliert zu WebAssembly.",
+  },
+  "shell.facts.15": {
+    en: "Storage on the mesh can be paid for in USDC, Bitcoin, Monero or shielded Zcash. The edge counts money in whole cents, never in floating point.",
+    sk: "Úložisko v sieti sa dá zaplatiť v USDC, bitcoine, monere alebo tienenom Zcashi. Edge počíta peniaze v celých centoch, nikdy v pohyblivej čiarke.",
+    de: "Speicher im Mesh lässt sich mit USDC, Bitcoin, Monero oder abgeschirmtem Zcash bezahlen. Der Edge rechnet Geld in ganzen Cent, nie in Gleitkommazahlen.",
+  },
+  "shell.facts.16": {
+    en: "Before the installer starts, it checks its own system image against a SHA-256 written on its kernel command line.",
+    sk: "Inštalátor pred spustením overí vlastný obraz systému podľa SHA-256 zapísaného v príkazovom riadku jadra.",
+    de: "Bevor der Installer startet, prüft er sein eigenes Systemabbild gegen eine SHA-256-Summe auf seiner Kernel-Kommandozeile.",
+  },
+  "shell.facts.17": {
+    en: "LosOS cloud and LosOS Git run in a Kubernetes cluster of their own on this box, so they stay up when the mesh is away.",
+    sk: "LosOS cloud a LosOS Git bežia vo vlastnom klastri Kubernetes na tomto zariadení, takže fungujú, aj keď sieť nie je dostupná.",
+    de: "LosOS cloud und LosOS Git laufen in einem eigenen Kubernetes-Cluster auf dieser Box und bleiben erreichbar, wenn das Mesh weg ist.",
+  },
   "shell.signIn.useSignIn": {
     en: "Sign in with your name instead",
     sk: "Prihlásiť sa namiesto toho menom",

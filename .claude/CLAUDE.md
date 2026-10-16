@@ -91,8 +91,15 @@ and is never served or built by nix.
   (the spare key) skips it. `backend/sections.json`, read by
   `backend/src/sections.rs` and nginx, maps each route to a section
   (`losos-<section>` groups, `losos-admins`, `losos-viewers`); a missing
-  route is admin only. The claim makes the first person an administrator.
-  `nix/tests/identity.nix` boots it.
+  route is admin only. The claim makes the first person an administrator
+  and puts them in `losos-owner`. `nix/tests/identity.nix` boots it.
+  LosOS cloud and LosOS Git (pods only) take the person from nginx in
+  `X-Losos-Cloud-*` headers (`modules/app-sign-in.nix`: user_saml in
+  environment-variable mode, Forgejo's reverse-proxy sign-in); the owner
+  maps to `notshared`. nginx sets the headers on every request to either
+  app, and an iptables owner rule keeps every other local uid off their
+  loopback ports; drop either and anything on the box can name anyone.
+  `nix/tests/app-sign-in.nix` boots the two real apps on the headers.
 - Terminal access (`docs/terminal-access.md`, `docs/edge-terminal.md`):
   `losos`, a Rust client in `admin-ui/tui` (clap derive, miette reports,
   tracing without time, ratatui) with the web UI's panes, catalogue and

@@ -67,6 +67,42 @@ let
   sessionFile = "${runDir}/session.yml";
   lanOnly = import ./lan-only.nix;
 
+  signIn = import ./app-sign-in.nix { inherit lib; };
+  appSignIn = config.lososInternal.appSignIn;
+  anyAppSignIn = appSignIn.nextcloud || appSignIn.forgejo;
+  nc = import ./nextcloud-stack.nix { inherit pkgs lib; };
+
+  # Ask Authelia about the request nginx is handling, as the /api/
+  # question below does.
+  askAboutRequest = ''
+    proxy_pass_request_body off;
+    proxy_set_header Content-Length "";
+    proxy_set_header X-Original-Method $request_method;
+    proxy_set_header X-Original-URL https://$host$request_uri;
+    proxy_set_header X-Forwarded-For $remote_addr;
+  '';
+
+  # Only these may open a connection to `port` on loopback: root, nginx and
+  # the app's own uid. The same owner match as lososd's port
+  # (modules/daemon.nix says why a match on OUTPUT and not a socket), here
+  # because both apps take the person from a header: a Helm app on the host
+  # network could otherwise name anyone it liked.
+  loopbackRule =
+    port: uid:
+    lib.concatStringsSep " " (
+      [
+        "OUTPUT -o lo -p tcp -d 127.0.0.1 --dport ${toString port}"
+        "-m owner ! --uid-owner 0"
+        "-m owner ! --uid-owner ${toString uid}"
+      ]
+      ++ lib.optional config.services.nginx.enable "-m owner ! --uid-owner ${config.services.nginx.user}"
+      ++ [ "-j REJECT --reject-with tcp-reset" ]
+    );
+  loopbackRules =
+    lib.optional appSignIn.nextcloud (loopbackRule config.losos.nextcloud.apachePort nc.uid)
+    # modules/workloads.nix: Forgejo's literal port and its pinned uid.
+    ++ lib.optional appSignIn.forgejo (loopbackRule 3000 1003);
+
   package = pkgs.authelia.override {
     authelia-web = themes.authelia.web pkgs.authelia.web;
   };
@@ -244,54 +280,142 @@ in
       LOSOS_IDENTITY = "authelia";
     };
 
-    services.nginx.virtualHosts."losos-front".locations = {
-      # The portal: sign-in page, its API and assets. https only, because
-      # Authelia's cookies are Secure and it refuses an http address.
-      "/auth/" = {
-        proxyPass = "http://127.0.0.1:${toString port}";
-        extraConfig = ''
-          ${lanOnly}
-          if ($scheme = http) {
-            return 301 https://$host$request_uri;
-          }
-        '';
-      };
-      # Whether the portal answers yet, over http too: the admin pages ask
-      # before they send anyone to sign in, and wait with a spinner while
-      # Authelia starts (nginx answers 502 until it does).
-      "= /auth/api/health" = {
-        proxyPass = "http://127.0.0.1:${toString port}/auth/api/health";
-        extraConfig = lanOnly;
-      };
-      # The question nginx asks before every /api/ request. A Bearer
-      # header is the spare key or a token lososd checks itself, so it
-      # skips Authelia and the box stays reachable when Authelia is down.
-      "= /internal/losos-authz" = {
-        proxyPass = "http://127.0.0.1:${toString port}/auth/api/authz/auth-request";
-        extraConfig = ''
-          internal;
-          if ($http_authorization ~* "^bearer ") {
-            return 200;
-          }
-          # Authelia down (starting, restarting) is "not signed in", not a
-          # 500: the admin pages then wait for LosOS Login with a spinner.
-          proxy_intercept_errors on;
-          error_page 500 502 503 504 = @losos-authz-down;
-          proxy_pass_request_body off;
-          proxy_set_header Content-Length "";
-          proxy_set_header X-Original-Method $request_method;
-          proxy_set_header X-Original-URL https://$host$request_uri;
-          proxy_set_header X-Forwarded-For $remote_addr;
-        '';
-      };
-      "@losos-authz-down".extraConfig = "return 401;";
-      "/api/".extraConfig = askAuthelia;
-      "= /api/vms/images".extraConfig = askAuthelia;
-    }
-    # The public routes, past Authelia. Exact matches beat the /api/ prefix.
-    // lib.genAttrs (map (p: "= ${p}") publicPaths) (_: {
-      proxyPass = "http://127.0.0.1:${toString apiPort}";
-      extraConfig = toLososd;
-    });
+    # Where a request comes from, for the two apps' sign-in pages: the LAN,
+    # where LosOS Login answers, or anywhere else (the tunnel arrives from
+    # 127.0.0.1). The ranges are lanOnly's (modules/lan-only.nix).
+    # `direct=1` asks for an app's own page. The person's account in the
+    # apps: the owner's own for the person who claimed the box, their
+    # sign-in name for everyone else (modules/app-sign-in.nix).
+    services.nginx.appendHttpConfig = lib.mkIf anyAppSignIn ''
+      geo $losos_lan {
+        default 0;
+        10.42.0.0/16 0;
+        10.0.0.0/8 1;
+        172.16.0.0/12 1;
+        192.168.0.0/16 1;
+      }
+      map $request_uri $losos_direct {
+        "~[?&]direct=1(&|$)" 1;
+        default 0;
+      }
+      map "$losos_lan$losos_direct" $losos_app_own_page {
+        "10" 0;
+        default 1;
+      }
+      map $uri $losos_app_back {
+        ~^/forgejo/ /forgejo/user/login;
+        default /nextcloud/login;
+      }
+      map "$losos_groups|$losos_user" $losos_app_user {
+        "~(^|,)\s*${signIn.ownerGroup}\s*(,|\|)" ${signIn.ownerAccount};
+        "~\|(?<losos_named>[a-z][a-z0-9._-]*)$" $losos_named;
+        default "";
+      }
+    '';
+
+    networking.firewall = lib.mkIf (config.networking.firewall.enable && loopbackRules != [ ]) {
+      extraCommands = lib.concatMapStrings (rule: ''
+        iptables -w -D ${rule} 2>/dev/null || true
+        iptables -w -I ${rule}
+      '') loopbackRules;
+      extraStopCommands = lib.concatMapStrings (rule: ''
+        iptables -w -D ${rule} 2>/dev/null || true
+      '') loopbackRules;
+    };
+
+    services.nginx.virtualHosts."losos-front".locations =
+      lib.optionalAttrs anyAppSignIn {
+        # Who is calling, for every request to LosOS Git (modules/containers.nix,
+        # `signInMaybe`). Never a refusal: a person LosOS Login does not know,
+        # a client with credentials of its own, a request from off the LAN
+        # and a LosOS Login that is down all go on as nobody.
+        "= /internal/losos-app-authz" = {
+          proxyPass = "http://127.0.0.1:${toString port}/auth/api/authz/auth-request";
+          extraConfig = ''
+            internal;
+            if ($http_authorization) {
+              return 200;
+            }
+            if ($losos_lan = 0) {
+              return 200;
+            }
+            proxy_intercept_errors on;
+            error_page 401 403 500 502 503 504 = @losos-app-nobody;
+            ${askAboutRequest}
+          '';
+        };
+        "@losos-app-nobody".extraConfig = "return 200;";
+        # The apps' sign-in pages (modules/containers.nix, `signInPage`): 2xx
+        # signs the person in, 401 sends them to LosOS Login, 403 to the
+        # app's own page, which is all that works off the LAN, while LosOS
+        # Login is down, when asked for with `direct=1`, and for the form that
+        # page posts.
+        "= /internal/losos-app-sign-in" = {
+          proxyPass = "http://127.0.0.1:${toString port}/auth/api/authz/auth-request";
+          extraConfig = ''
+            internal;
+            if ($losos_app_own_page) {
+              return 403;
+            }
+            # A posted sign-in page is the app's own form being sent.
+            if ($request_method = POST) {
+              return 403;
+            }
+            proxy_intercept_errors on;
+            error_page 403 500 502 503 504 = @losos-app-own-page;
+            ${askAboutRequest}
+          '';
+        };
+        "@losos-app-own-page".extraConfig = "return 403;";
+        # Back to the app's sign-in page once they are signed in, which then
+        # goes on as above. https, because LosOS Login's cookie is Secure.
+        "@losos-app-sign-in".extraConfig =
+          "return 302 https://$host/auth/?rd=https://$host$losos_app_back;";
+      }
+      // {
+        # The portal: sign-in page, its API and assets. https only, because
+        # Authelia's cookies are Secure and it refuses an http address.
+        "/auth/" = {
+          proxyPass = "http://127.0.0.1:${toString port}";
+          extraConfig = ''
+            ${lanOnly}
+            if ($scheme = http) {
+              return 301 https://$host$request_uri;
+            }
+          '';
+        };
+        # Whether the portal answers yet, over http too: the admin pages ask
+        # before they send anyone to sign in, and wait with a spinner while
+        # Authelia starts (nginx answers 502 until it does).
+        "= /auth/api/health" = {
+          proxyPass = "http://127.0.0.1:${toString port}/auth/api/health";
+          extraConfig = lanOnly;
+        };
+        # The question nginx asks before every /api/ request. A Bearer
+        # header is the spare key or a token lososd checks itself, so it
+        # skips Authelia and the box stays reachable when Authelia is down.
+        "= /internal/losos-authz" = {
+          proxyPass = "http://127.0.0.1:${toString port}/auth/api/authz/auth-request";
+          extraConfig = ''
+            internal;
+            if ($http_authorization ~* "^bearer ") {
+              return 200;
+            }
+            # Authelia down (starting, restarting) is "not signed in", not a
+            # 500: the admin pages then wait for LosOS Login with a spinner.
+            proxy_intercept_errors on;
+            error_page 500 502 503 504 = @losos-authz-down;
+            ${askAboutRequest}
+          '';
+        };
+        "@losos-authz-down".extraConfig = "return 401;";
+        "/api/".extraConfig = askAuthelia;
+        "= /api/vms/images".extraConfig = askAuthelia;
+      }
+      # The public routes, past Authelia. Exact matches beat the /api/ prefix.
+      // lib.genAttrs (map (p: "= ${p}") publicPaths) (_: {
+        proxyPass = "http://127.0.0.1:${toString apiPort}";
+        extraConfig = toLososd;
+      });
   };
 }

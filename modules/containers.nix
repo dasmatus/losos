@@ -61,6 +61,49 @@ let
   # a knob with no reason to be turned.
   forgejoPort = 3000;
 
+  # Sign-in to the two apps with LosOS Login (modules/app-sign-in.nix,
+  # modules/identity.nix for the questions nginx asks it).
+  signIn = import ./app-sign-in.nix { inherit lib; };
+  signInNextcloud = config.lososInternal.appSignIn.nextcloud;
+  signInForgejo = config.lososInternal.appSignIn.forgejo;
+  # Whatever a client sent, the apps never see these headers from it.
+  clearSignIn = ''
+    proxy_set_header ${signIn.header.user} "";
+    proxy_set_header ${signIn.header.name} "";
+    proxy_set_header ${signIn.header.email} "";
+  '';
+  # Ask LosOS Login with `authz` and pass on whom it names. The values are
+  # empty, so the headers are not sent, when it names nobody.
+  passSignIn = authz: ''
+    auth_request ${authz};
+    auth_request_set $losos_user $upstream_http_remote_user;
+    auth_request_set $losos_groups $upstream_http_remote_groups;
+    auth_request_set $losos_person_name $upstream_http_remote_name;
+    auth_request_set $losos_person_email $upstream_http_remote_email;
+    proxy_set_header ${signIn.header.user} $losos_app_user;
+    proxy_set_header ${signIn.header.name} $losos_person_name;
+    proxy_set_header ${signIn.header.email} $losos_person_email;
+  '';
+  # Every request: the person if there is one, nobody otherwise.
+  signInMaybe = passSignIn "/internal/losos-app-authz";
+  # An app's sign-in page. Signed in to LosOS Login: on to the app, which
+  # signs the person in. Not signed in, on the LAN: to LosOS Login, which
+  # sends them back here. Anywhere LosOS Login cannot help (through the
+  # tunnel, while it starts, or asked with `direct=1`): to `own`, the app's
+  # own page.
+  signInPage = own: ''
+    ${passSignIn "/internal/losos-app-sign-in"}
+    error_page 401 = @losos-app-sign-in;
+    error_page 403 = ${own};
+  '';
+  # What the `/nextcloud` location below does for every page, for the two
+  # sign-in locations that sit beside it. The reasons are written there.
+  nextcloudPage = ''
+    proxy_set_header X-Losos-Server-Addr $server_addr;
+    proxy_redirect http://$host/ /;
+    absolute_redirect off;
+  '';
+
   adminUi = config.losos.admin.ui;
   adminApiPort = config.losos.admin.apiPort;
   adminEnabled = config.losos.admin.enable && adminUi != null;
@@ -567,6 +610,7 @@ in
               # X_Losos_Server_Addr (underscores, which CGI would fold into
               # the same variable) under its default ignore_invalid_headers.
               proxy_set_header X-Losos-Server-Addr $server_addr;
+              ${clearSignIn}
               # Apache answers `/nextcloud` with a 301 to the directory,
               # spelled absolute and always http, because the pod only ever
               # sees plain http from this proxy. Opened over https that sends
@@ -589,6 +633,69 @@ in
           "/forgejo/" = {
             proxyPass = "http://127.0.0.1:${toString forgejoPort}/";
             proxyWebsockets = true;
+            # Who LosOS Login says is calling, on every request, so a person
+            # signed in there is signed in here from the first page
+            # (modules/app-sign-in.nix). Nobody, without LosOS Login.
+            extraConfig = if signInForgejo then signInMaybe else clearSignIn;
+          };
+        })
+        (lib.mkIf (forgejoWorkload && signInForgejo) {
+          # Forgejo's sign-in page: LosOS Login's instead, or Forgejo's own
+          # where LosOS Login cannot help (see `signInPage`).
+          "= /forgejo/user/login" = {
+            proxyPass = "http://127.0.0.1:${toString forgejoPort}/user/login";
+            extraConfig = signInPage "@losos-forgejo-own-sign-in";
+          };
+          "@losos-forgejo-own-sign-in" = {
+            proxyPass = "http://127.0.0.1:${toString forgejoPort}";
+            extraConfig = ''
+              rewrite ^/forgejo(/.*)$ $1 break;
+              ${clearSignIn}
+            '';
+          };
+        })
+        (lib.mkIf (nextcloudWorkload && signInNextcloud) {
+          # Nextcloud's sign-in page and user_saml's, which reads the
+          # headers (modules/app-sign-in.nix): LosOS Login's instead, or
+          # Nextcloud's own form where LosOS Login cannot help. Regex, so it
+          # wins over the `/nextcloud` prefix; both spellings Nextcloud links.
+          "~ ^/nextcloud/(?:index\\.php/)?(?:login|apps/user_saml/saml/login)$" = {
+            proxyPass = "http://127.0.0.1:${toString apachePort}";
+            extraConfig = ''
+              ${signInPage "@losos-nextcloud-own-sign-in"}
+              ${nextcloudPage}
+            '';
+          };
+          # Log out: Nextcloud ends its session, then LosOS Login ends its
+          # own, or the sign-in page would sign the person straight back in.
+          # Only for a person LosOS Login signed in; anyone else gets
+          # Nextcloud's own answer.
+          "~ ^/nextcloud/(?:index\\.php/)?logout$" = {
+            proxyPass = "http://127.0.0.1:${toString apachePort}";
+            extraConfig = ''
+              auth_request /internal/losos-app-sign-in;
+              error_page 401 403 = @losos-nextcloud-page;
+              proxy_redirect ~.* https://$host/auth/logout?rd=https://$host/nextcloud/login;
+              ${clearSignIn}
+              ${nextcloudPage}
+            '';
+          };
+          "@losos-nextcloud-page" = {
+            proxyPass = "http://127.0.0.1:${toString apachePort}";
+            extraConfig = ''
+              ${clearSignIn}
+              ${nextcloudPage}
+            '';
+          };
+          # `direct=1` is how user_saml leaves Nextcloud's own form alone.
+          # The original arguments follow it, a posted form included.
+          "@losos-nextcloud-own-sign-in" = {
+            proxyPass = "http://127.0.0.1:${toString apachePort}";
+            extraConfig = ''
+              rewrite ^ /nextcloud/index.php/login?direct=1 break;
+              ${clearSignIn}
+              ${nextcloudPage}
+            '';
           };
         })
         (lib.mkIf nextcloudWorkload (

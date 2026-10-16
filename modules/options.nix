@@ -2787,6 +2787,34 @@ in
     };
   };
 
+  # ── Sign-in to the two apps with LosOS Login, as it actually runs ───────
+  # LosOS Login runs (losos.identity.enable, with the admin pages it sits in
+  # front of) and the app runs as a pod behind the front vhost, the only
+  # shape where nginx is the one way in (modules/app-sign-in.nix). Read by
+  # modules/identity.nix for the routes and modules/workloads.nix for the
+  # apps' own settings, so the two cannot disagree. Read-only.
+  options.lososInternal.appSignIn =
+    let
+      identity =
+        config.losos.identity.enable && config.losos.admin.enable && config.losos.admin.ui != null;
+    in
+    {
+      nextcloud = lib.mkOption {
+        type = lib.types.bool;
+        internal = true;
+        readOnly = true;
+        default = identity && config.losos.nextcloud.mode == "container";
+        description = "LosOS cloud signs people in with LosOS Login.";
+      };
+      forgejo = lib.mkOption {
+        type = lib.types.bool;
+        internal = true;
+        readOnly = true;
+        default = identity && config.losos.forgejo.enable && config.losos.forgejo.mode == "container";
+        description = "LosOS Git signs people in with LosOS Login.";
+      };
+    };
+
   # Whether this box hosts machines, as it actually runs: the switch and
   # the sharing gate together, read by modules/cluster.nix for the join.
   options.lososInternal.vmHost = lib.mkOption {
