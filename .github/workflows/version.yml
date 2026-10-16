@@ -1,0 +1,62 @@
+name: version
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+# ── What this is ────────────────────────────────────────────────────────────
+#
+# flake/version.nix is the release a tree is: the boot menus, the boot screen,
+# os-release, the console banners and `losos --version` show it, and boxes
+# build from main. This keeps it on the newest `v*` tag without anyone bumping
+# it by hand. A tag push commits the tag to main; a push to main checks the
+# file again, so a tag pushed while this workflow was missing, failing or
+# disabled is caught up by the next merge. A file already ahead of every tag
+# is left alone, and so is one that matches.
+#
+# The tag's own media do not wait for this: the release and terminal client
+# jobs in ci.yml write the tag over the file before they build.
+#
+# The commit is made through the GitHub API with GITHUB_TOKEN, which GitHub
+# signs and which fast-forwards only (see .github/scripts/sync-version.sh).
+# Like every GITHUB_TOKEN push it starts no workflow run on its own, so it
+# cannot loop. The job then starts ci.yml and handbook.yml on main through
+# workflow_dispatch, which a GITHUB_TOKEN may do: main's new head is built,
+# its binary cache pushed and the terminal client republished, and the
+# public handbook links the new release.
+
+concurrency:
+  group: version
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: "bot: flake/version.nix follows the newest tag"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      # Starting ci.yml and handbook.yml on main after a commit.
+      actions: write
+    steps:
+      # main, whatever ref started the run: a tag push checks out the tag.
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+      - name: commit the newest tag to main if the file is behind
+        id: sync
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: .github/scripts/sync-version.sh
+      - name: run ci and the handbook on main's new head
+        if: steps.sync.outputs.committed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          gh workflow run ci.yml --repo "$REPO" --ref main
+          gh workflow run handbook.yml --repo "$REPO" --ref main
