@@ -509,6 +509,8 @@ await check('while the sign-in page starts, the prompt waits with a spinner and 
   await page.reload();
   await page.getByText('LosOS Login is starting').waitFor();
   assert.ok(/While you wait/.test(await body(page)), 'no fact under the spinner');
+  // The facts come in an order shuffled with the seed "salmon", so every load starts on the same one.
+  assert.ok(/take their colours from one file/.test(await body(page)), 'the first fact is not the salmon-seeded one');
   assert.equal(await page.locator('dialog [data-slot="spinner"], [role="dialog"] [data-slot="spinner"]').count() > 0, true, 'no spinner');
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await page.waitForTimeout(500);
