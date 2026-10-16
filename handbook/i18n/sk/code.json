@@ -541,12 +541,6 @@
   "losos.home.soon.company.body": {
     "message": "Box pre každý tím, jeden edge server pre kanceláriu a inštalácia urobená za vás."
   },
-  "losos.home.soon.translations.title": {
-    "message": "Príručka po slovensky a po nemecky"
-  },
-  "losos.home.soon.translations.body": {
-    "message": "Celá príručka po slovensky a po nemecky."
-  },
   "losos.home.soon.market.card": {
     "message": "Platby kartou cez Stripe, otestované v jeho testovacom režime"
   },
@@ -585,15 +579,6 @@
   },
   "losos.home.soon.company.package": {
     "message": "Predaj ako hotový balík"
-  },
-  "losos.home.soon.translations.menus": {
-    "message": "Ponuky a táto stránka"
-  },
-  "losos.home.soon.translations.depth": {
-    "message": "Kapitola Do hĺbky, TPM a bezpečnostný model"
-  },
-  "losos.home.soon.translations.rest": {
-    "message": "Ostatné stránky"
   },
   "losos.home.soon.chip.done": {
     "message": "Hotovo"

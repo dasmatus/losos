@@ -541,12 +541,6 @@
   "losos.home.soon.company.body": {
     "message": "Eine Box für jedes Team, ein Edge für das Büro und die Installation erledigt."
   },
-  "losos.home.soon.translations.title": {
-    "message": "Das Handbuch auf Slowakisch und Deutsch"
-  },
-  "losos.home.soon.translations.body": {
-    "message": "Jede Seite dieses Handbuchs auf Slowakisch und Deutsch."
-  },
   "losos.home.soon.market.card": {
     "message": "Kartenzahlung über Stripe, im Testmodus von Stripe geprüft"
   },
@@ -585,15 +579,6 @@
   },
   "losos.home.soon.company.package": {
     "message": "Der Verkauf als fertiges Paket"
-  },
-  "losos.home.soon.translations.menus": {
-    "message": "Menüs und diese Seite"
-  },
-  "losos.home.soon.translations.depth": {
-    "message": "Das Kapitel Im Detail, TPM und das Sicherheitsmodell"
-  },
-  "losos.home.soon.translations.rest": {
-    "message": "Die übrigen Seiten"
   },
   "losos.home.soon.chip.done": {
     "message": "Fertig"
