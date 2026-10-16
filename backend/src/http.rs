@@ -717,9 +717,13 @@ async fn post_claim(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> 
                 let secret = crate::setup::validate_password(password).expect("checked above");
                 let people = api.clone();
                 run(&api, move |l| {
-                    people
-                        .people
-                        .add(&name, &name, &email, &secret, &[crate::people::ADMINS])?;
+                    people.people.add(
+                        &name,
+                        &name,
+                        &email,
+                        &secret,
+                        &[crate::people::ADMINS, crate::people::OWNER],
+                    )?;
                     remember_owner(l, &name)?;
                     Ok(serde_json::json!({ "name": name }))
                 })
@@ -742,9 +746,13 @@ async fn post_claim(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> 
             // is the one LosOS cloud just took, so one password opens both.
             let secret =
                 crate::setup::validate_password(password).map_err(|e| anyhow::anyhow!(e))?;
-            claims
-                .people
-                .add(&name, &name, &email, &secret, &[crate::people::ADMINS])?;
+            claims.people.add(
+                &name,
+                &name,
+                &email,
+                &secret,
+                &[crate::people::ADMINS, crate::people::OWNER],
+            )?;
             remember_owner(l, &name)?;
         }
         out["name"] = serde_json::Value::String(name);
@@ -2294,6 +2302,28 @@ fn admin_port() -> anyhow::Result<u16> {
     Ok(port)
 }
 
+/// Put the person who claimed the box in `losos-owner`, which a box claimed
+/// before the group existed lacks. nginx signs that group in to LosOS cloud
+/// and LosOS Git as the owner's own accounts (`modules/app-sign-in.nix`).
+/// A box with nobody yet, or no people file, has nothing to do.
+fn owner_in_owner_group(api: &Api) {
+    use crate::losos::Losos;
+    let owner = match api.backend.serialized(|l| l.load_state()) {
+        Ok(state) => state.owner,
+        Err(e) => {
+            tracing::warn!(error = %e, "could not read the owner from state.json");
+            return;
+        }
+    };
+    let Some(owner) = owner else { return };
+    if !api.people.path().exists() {
+        return;
+    }
+    if let Err(e) = api.people.ensure_group(&owner, crate::people::OWNER) {
+        tracing::warn!(error = %e, owner = %owner, "could not put the owner in losos-owner");
+    }
+}
+
 /// Serve the API. Blocking: runs its own actix `System` on the calling thread.
 ///
 /// Returns only on failure or on the server stopping, and the caller is
@@ -2317,6 +2347,7 @@ pub fn serve(backend: IoLosos) -> anyhow::Result<()> {
             builder: crate::builder::Builder::from_env(),
             people: crate::people::People::from_env(),
         });
+        owner_in_owner_group(&api);
         let server = HttpServer::new(move || {
             App::new()
                 .app_data(api.clone())

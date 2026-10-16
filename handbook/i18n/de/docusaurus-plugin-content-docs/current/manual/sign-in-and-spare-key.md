@@ -54,6 +54,35 @@ Nach einigen falschen Passwörtern hintereinander weist LosOS Login diesen
 Namen ein paar Minuten lang ab. Warte und versuch es dann noch einmal.
 :::
 
+## LosOS cloud und LosOS Git \{#losos-cloud-and-losos-git}
+
+Im eigenen Netz der Box melden dich LosOS cloud und LosOS Git ebenfalls
+über LosOS Login an. Öffnest du eine der beiden abgemeldet, landest du bei
+LosOS Login; meldest du dich dort einmal an, lassen dich beide Apps herein,
+ohne zweites Passwort.
+
+Wer die Box eingerichtet hat, kommt in beiden Apps als das Konto des
+Eigentümers an, das die Dateien und Repositorys von vorher hält. Alle
+anderen bekommen in jeder App beim ersten Öffnen ein eigenes Konto, benannt
+nach ihrem Anmeldenamen.
+
+Die Apps behalten ihre eigene Anmeldeseite dort, wo LosOS Login nicht helfen
+kann:
+
+- über das Internet (die öffentliche Adresse der Box), wo LosOS Login nicht
+  antwortet;
+- solange LosOS Login nach einem Neustart noch startet;
+- in LosOS cloud unter `/nextcloud/login?direct=1`, wenn du danach fragst.
+
+Dort meldet sich der Eigentümer wie bisher mit dem eigenen Passwort an. Desktop-
+und Handy-Apps, WebDAV und `git` nutzen weiter App-Passwörter und Tokens.
+
+**Abmelden** in LosOS cloud meldet dich auch bei LosOS Login ab. **Abmelden**
+in LosOS Git tut das nicht: Solange du bei LosOS Login angemeldet bist,
+meldet LosOS Git dich gleich wieder an. Melde dich bei LosOS Login ab (in den
+Admin-Seiten oder in LosOS cloud), um beide zu verlassen. Ein schon offener
+App-Tab bleibt angemeldet, bis du dich auch in dieser App abmeldest.
+
 ## Wer was sieht \{#who-sees-what}
 
 Die Admin-Seiten sind in Bereiche aufgeteilt: Speicher, Sicherung, Apps,

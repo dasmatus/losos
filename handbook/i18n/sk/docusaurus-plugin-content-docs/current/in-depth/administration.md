@@ -148,6 +148,22 @@ na každú požiadavku na `/api/` a meno človeka odovzdá lososd, ktorý otvor�
 heslo si človek zmení cez `POST /api/set-password` a vlastníkovi to zmení aj
 heslo do LosOS cloud.
 
+LosOS cloud a LosOS Git prihlasujú ľudí rovnako, keď bežia ako pody, čo je
+predvolené. nginx sa na prihlasovacej stránke každej aplikácie spýta LosOS
+Login a pošle človeka ďalej v troch hlavičkách, `X-Losos-Cloud-User`,
+`-Name` a `-Email`, ktoré nastaví pri každej požiadavke na niektorú z
+aplikácií, takže žiadny klient nepošle vlastné. Vlastník, v skupine
+`losos-owner`, príde do oboch ako účet `notshared`; ktokoľvek iný pod svojím
+prihlasovacím menom. Nextcloud číta hlavičky aplikáciou user_saml v režime
+premenných prostredia, Forgejo svojím prihlásením cez reverzný proxy, a
+každá pri prvej návšteve vytvorí účet. Človeka, ktorého LosOS Login nepozná,
+pošle nginx tam; mimo LAN, kým sa LosOS Login spúšťa, alebo s `?direct=1`
+v LosOS cloud odpovie vlastná prihlasovacia stránka aplikácie. Obe aplikácie
+počúvajú na loopbacku a firewall odmietne spojenie na ktorýkoľvek z ich
+portov od akéhokoľvek procesu na zariadení okrem roota, nginx a samotnej
+aplikácie, takže nič na zariadení im nemôže pomenovať človeka. Mená
+`notshared`, `shared` a `losos` sú vyhradené pre vlastné účty zariadenia.
+
 Samotný token sa po nastavení hesla stále raz zobrazí ako **náhradný
 správcovský kľúč**, s tlačidlami Kopírovať a Tlačiť. Požiadavka, ktorá ho
 nesie, obíde LosOS Login a lososd kľúč overí sám, takže kľúč otvorí
