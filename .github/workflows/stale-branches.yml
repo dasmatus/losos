@@ -1,0 +1,161 @@
+name: stale-branches
+
+on:
+  schedule:
+    # ~05:41 UTC Sundays, clear of lockfile-updates (Mondays 04:17).
+    - cron: "41 5 * * 0"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "List the branches that would be deleted, but delete nothing."
+        type: boolean
+        default: true
+      days:
+        description: "Days without a commit before a branch counts as stale. Empty: the STALE_BRANCH_DAYS variable, else 30."
+        type: string
+        default: ""
+
+# ── What this is ────────────────────────────────────────────────────────────
+#
+# Sessions, Copilot, OpenHands and Dependabot each leave a branch behind per
+# task, and nothing removed them. Once a week this deletes every branch whose
+# tip commit is older than the threshold, except:
+#
+#   - the default branch, `gh-pages` and `release/*` (KEEP below);
+#   - any branch that is the head of an open pull request from this
+#     repository, so an open PR is never closed by the job;
+#   - any branch that is the base of an open pull request, so a stacked PR
+#     keeps its target.
+#
+# Age is the tip's committer date. history-scrub.yml rewrites with
+# git-filter-repo, which keeps commit dates, so a rewrite does not make an old
+# branch look fresh.
+#
+# Each deletion is a `git push --force-with-lease` pinned to the tip that was
+# judged stale: a branch that gets a commit while the job runs is refused, not
+# deleted. The job summary lists every deleted branch with its last hash, and
+# `git push origin <hash>:refs/heads/<branch>` brings one back; a branch that
+# had a pull request can also be restored from the PR page.
+#
+# Scheduled runs delete. A manual run is a dry run unless `dry_run` is
+# unticked. The threshold is the `days` input, else the STALE_BRANCH_DAYS
+# repository variable, else 30.
+
+concurrency:
+  group: stale-branches
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  prune:
+    name: "bot: delete stale branches"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: read
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      DRY_RUN: ${{ inputs.dry_run == true }}
+      DAYS: ${{ inputs.days || vars.STALE_BRANCH_DAYS || '30' }}
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+      KEEP: '^(gh-pages|release/.*)$'
+    steps:
+      - name: find stale branches
+        run: |
+          set -euo pipefail
+          case "$DAYS" in
+            ''|*[!0-9]*) echo "days must be a whole number, got '${DAYS}'" >&2; exit 1 ;;
+          esac
+          cutoff="$(date -u -d "${DAYS} days ago" +%Y-%m-%dT%H:%M:%SZ)"
+          cutoff_s="$(date -u -d "$cutoff" +%s)"
+          echo "stale: last commit before ${cutoff} (${DAYS} days)"
+
+          # Heads (same-repository only) and bases of open pull requests.
+          gh pr list --repo "$GITHUB_REPOSITORY" --state open --limit 1000 \
+            --json headRefName,baseRefName,isCrossRepository \
+            --jq '.[] | (select(.isCrossRepository | not) | .headRefName), .baseRefName' \
+            | sort -u >in-use
+
+          # name, tip, committer date; one GraphQL page per 100 branches.
+          owner="${GITHUB_REPOSITORY%/*}" name="${GITHUB_REPOSITORY#*/}"
+          # The $ names in the query are GraphQL variables, not shell ones.
+          # shellcheck disable=SC2016
+          gh api graphql --paginate -F owner="$owner" -F name="$name" -f query='
+            query($owner: String!, $name: String!, $endCursor: String) {
+              repository(owner: $owner, name: $name) {
+                refs(refPrefix: "refs/heads/", first: 100, after: $endCursor) {
+                  pageInfo { hasNextPage endCursor }
+                  nodes { name target { ... on Commit { oid committedDate } } }
+                }
+              }
+            }' \
+            --jq '.data.repository.refs.nodes[] | [.name, .target.oid, .target.committedDate] | @tsv' \
+            >branches
+
+          : >stale
+          while IFS=$'\t' read -r branch sha date; do
+            if [ "$branch" = "$DEFAULT_BRANCH" ] || [[ "$branch" =~ $KEEP ]]; then
+              continue
+            fi
+            if grep -qxF -- "$branch" in-use; then
+              continue
+            fi
+            if [ "$(date -u -d "$date" +%s)" -lt "$cutoff_s" ]; then
+              printf '%s\t%s\t%s\n' "$branch" "$sha" "$date" >>stale
+            fi
+          done <branches
+
+          echo "$(wc -l <branches) branches, $(wc -l <in-use) in use by open PRs, $(wc -l <stale) stale"
+          {
+            if [ "$DRY_RUN" = "true" ]; then
+              echo "### Stale branches (dry run, nothing deleted)"
+            else
+              echo "### Stale branches deleted"
+            fi
+            echo
+            echo "Threshold: ${DAYS} days (last commit before ${cutoff})."
+            echo
+            if [ -s stale ]; then
+              echo "| Branch | Last commit | Restore with |"
+              echo "| --- | --- | --- |"
+              while IFS=$'\t' read -r branch sha date; do
+                echo "| \`${branch}\` | ${date} | \`git push origin ${sha}:refs/heads/${branch}\` |"
+              done <stale
+            else
+              echo "None."
+            fi
+          } >>"$GITHUB_STEP_SUMMARY"
+          cat stale
+
+      - name: delete them
+        run: |
+          set -euo pipefail
+          if [ ! -s stale ]; then
+            exit 0
+          fi
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "dry run: deleting nothing"
+            exit 0
+          fi
+
+          refspecs=()
+          while IFS=$'\t' read -r branch sha _; do
+            refspecs+=("--force-with-lease=refs/heads/${branch}:${sha}" ":refs/heads/${branch}")
+          done <stale
+
+          # A deletion needs no objects, so an empty repository is enough to
+          # push from. Same header trick as lockfile-updates.yml: the token
+          # travels in an Authorization header, never in a URL or the log.
+          git init --quiet pusher
+          auth="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
+          if ! git -C pusher \
+            -c http.https://github.com/.extraheader="AUTHORIZATION: basic ${auth}" \
+            push "https://github.com/${GITHUB_REPOSITORY}.git" "${refspecs[@]}"; then
+            echo "Some deletions were refused. A branch that moved since it was listed" >&2
+            echo "is refused by the lease, on purpose. If every one was refused, check" >&2
+            echo "whether a repository ruleset restricts deletions for GITHUB_TOKEN." >&2
+            exit 1
+          fi
