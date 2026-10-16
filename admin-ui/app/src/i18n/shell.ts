@@ -52,34 +52,46 @@ export default defineMessages({
     sk: "Zariadenie neodpovedá. Skontrolujte, či je zapnuté.",
     de: "Die Box antwortet nicht. Prüfe, ob sie eingeschaltet ist.",
   },
-  "shell.signIn.title": { en: "Unlock this box", sk: "Odomknite toto zariadenie", de: "Diese Box entsperren" },
-  "shell.signIn.passwordHint": {
-    en: "Type your password, the same one you use for LosOS cloud.",
-    sk: "Zadajte svoje heslo, to isté, ktorým sa prihlasujete do LosOS cloud.",
-    de: "Gib dein Passwort ein, dasselbe wie für LosOS cloud.",
+  "shell.signIn.title": { en: "Sign in to this box", sk: "Prihláste sa do tohto zariadenia", de: "An dieser Box anmelden" },
+  "shell.signIn.authHint": {
+    en: "Sign in with your name and password. Each person has their own, and what you can change here depends on yours.",
+    sk: "Prihláste sa svojím menom a heslom. Každý má vlastné a to, čo tu môžete meniť, závisí od vášho účtu.",
+    de: "Melde dich mit deinem Namen und Passwort an. Jede Person hat ein eigenes, und was du hier ändern kannst, hängt von deinem ab.",
   },
-  "shell.signIn.passwordLabel": { en: "Password", sk: "Heslo", de: "Passwort" },
-  "shell.signIn.show": { en: "Show the password", sk: "Zobraziť heslo", de: "Passwort anzeigen" },
-  "shell.signIn.hide": { en: "Hide the password", sk: "Skryť heslo", de: "Passwort verbergen" },
-  "shell.signIn.wrongPassword": {
-    en: "That password was not accepted.",
-    sk: "Toto heslo nebolo prijaté.",
-    de: "Dieses Passwort wurde nicht akzeptiert.",
+  "shell.signIn.go": { en: "Sign in", sk: "Prihlásiť sa", de: "Anmelden" },
+  "shell.signIn.useSignIn": {
+    en: "Sign in with your name instead",
+    sk: "Prihlásiť sa namiesto toho menom",
+    de: "Stattdessen mit deinem Namen anmelden",
   },
-  "shell.signIn.cloudDown": {
-    en: "LosOS cloud is not running, so the password cannot be checked right now. Wait a few minutes, or use the spare admin key from the printed sheet.",
-    sk: "LosOS cloud práve nebeží, takže heslo sa teraz nedá overiť. Počkajte pár minút alebo použite náhradný správcovský kľúč z vytlačeného hárku.",
-    de: "LosOS cloud läuft gerade nicht, deshalb kann das Passwort im Moment nicht geprüft werden. Warte ein paar Minuten oder nimm den Ersatz-Admin-Schlüssel vom gedruckten Blatt.",
+  "shell.signIn.firstTitle": {
+    en: "Make your sign-in",
+    sk: "Vytvorte si prihlásenie",
+    de: "Lege deine Anmeldung an",
+  },
+  "shell.signIn.firstHint": {
+    en: "This box was set up before people signed in with their own name. Choose yours and a password; you become its first administrator. The spare admin key proves the box is yours.",
+    sk: "Toto zariadenie bolo nastavené skôr, než sa ľudia prihlasovali vlastným menom. Zvoľte si meno a heslo; stanete sa jeho prvým správcom. Náhradný správcovský kľúč dokazuje, že zariadenie je vaše.",
+    de: "Diese Box wurde eingerichtet, bevor sich Personen mit eigenem Namen anmeldeten. Wähle deinen Namen und ein Passwort; du wirst ihr erster Administrator. Der Ersatz-Admin-Schlüssel beweist, dass die Box dir gehört.",
+  },
+  "shell.signIn.nameLabel": { en: "Sign-in name", sk: "Prihlasovacie meno", de: "Anmeldename" },
+  "shell.signIn.newPassword": { en: "Password", sk: "Heslo", de: "Passwort" },
+  "shell.signIn.make": { en: "Make it", sk: "Vytvoriť", de: "Anlegen" },
+  "shell.signIn.made": { en: "Your sign-in is ready", sk: "Prihlásenie je pripravené", de: "Deine Anmeldung ist bereit" },
+  "shell.signIn.madeBody": {
+    en: "From now on, sign in with {name} and that password.",
+    sk: "Odteraz sa prihlasujte menom {name} a týmto heslom.",
+    de: "Ab jetzt meldest du dich mit {name} und diesem Passwort an.",
+  },
+  "shell.signIn.notMade": {
+    en: "The box did not make that sign-in.",
+    sk: "Zariadenie toto prihlásenie nevytvorilo.",
+    de: "Die Box hat diese Anmeldung nicht angelegt.",
   },
   "shell.signIn.useKey": {
     en: "Use the spare admin key instead",
     sk: "Použiť namiesto toho náhradný správcovský kľúč",
     de: "Stattdessen den Ersatz-Admin-Schlüssel verwenden",
-  },
-  "shell.signIn.usePassword": {
-    en: "Use the password instead",
-    sk: "Použiť namiesto toho heslo",
-    de: "Stattdessen das Passwort verwenden",
   },
   "shell.signIn.hint": {
     en: "Paste the spare admin key. It was shown once, during setup, and is on the sheet if you printed it.",

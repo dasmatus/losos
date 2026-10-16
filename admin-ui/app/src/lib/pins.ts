@@ -19,7 +19,7 @@ import { File01Icon, Folder01Icon, GitBranchIcon, PackageIcon } from "@hugeicons
 import {
   getApps,
   getPins,
-  getToken,
+  hasToken,
   isUnauthorized,
   putPins,
   subscribeAuth,
@@ -231,7 +231,7 @@ function revive(doc: unknown): { pins: Pin[]; limit: number } {
 /** Fetch the pins. One request at a time; nothing without a token. */
 export function loadPins(): Promise<void> {
   if (inFlight !== null) return inFlight;
-  if (getToken() === null) {
+  if (!hasToken()) {
     if (state !== EMPTY) set(EMPTY);
     return Promise.resolve();
   }

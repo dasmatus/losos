@@ -1722,6 +1722,7 @@ version = "0.1.0"
 dependencies = [
  "actix-web",
  "anyhow",
+ "argon2",
  "assert_cmd",
  "assert_fs",
  "chrono",

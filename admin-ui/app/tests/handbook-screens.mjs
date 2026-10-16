@@ -398,7 +398,6 @@ async function open({
   backup = BACKUP_SET,
   board = BOARD,
   health = true,
-  cloudDown = false,
   apply = { job: 'losos-rebuild-7f3a' },
   reducedMotion = 'no-preference',
   overrides = {},
@@ -451,7 +450,11 @@ async function open({
         : null,
     }),
   );
-  await page.route('**/api/state', (route) => json(route, 200, state));
+  await page.route('**/api/state', (route) => {
+    // A key that is not the box's is refused, as lososd refuses it.
+    const auth = route.request().headers()['authorization'];
+    return auth !== undefined && auth !== `Bearer ${TOKEN}` ? json(route, 401, { error: 'unauthorized' }) : json(route, 200, state);
+  });
   await page.route('**/api/settings', (route) => json(route, 200, settings));
   await page.route('**/api/status', (route) => json(route, 200, status));
   await page.route('**/api/edge', (route) => json(route, 200, edge));
@@ -481,11 +484,6 @@ async function open({
     const patch = route.request().postDataJSON();
     current = { ...current, ...(patch.background ? { background: patch.background } : {}), ...(typeof patch.veil === 'number' ? { veil: patch.veil } : {}) };
     return json(route, 200, current);
-  });
-  await page.route('**/api/sign-in', (route) => {
-    if (cloudDown) return json(route, 503, { error: 'LosOS cloud did not answer', ready: false, waitingFor: 'LosOS cloud did not answer' });
-    const { password } = route.request().postDataJSON() ?? {};
-    return password === PASSWORD ? json(route, 200, { user: 'notshared', token: TOKEN }) : json(route, 401, { error: 'that password was not accepted' });
   });
   // The app tiles probe LosOS cloud and LosOS Git; both answer.
   await page.route('**/nextcloud/status.php', (route) => json(route, 200, { installed: true, version: '32.0.1.2', productname: 'LosOS cloud' }));
@@ -518,6 +516,7 @@ const wizardToPassword = async (page, t) => {
 };
 const wizardSetPassword = async (page, t) => {
   await wizardToPassword(page, t);
+  await page.locator('input[name="username"]').fill('matus');
   const inputs = page.locator('input[type="password"]');
   const n = await inputs.count();
   for (let i = 0; i < n; i++) await inputs.nth(i).fill(PASSWORD);
@@ -554,19 +553,6 @@ const SHOTS = [
   { name: 'overview-apply-failed', path: '/', status: { state: 'failed', progress: 100, job: '7', message: 'nixos-rebuild exited with status 1' }, crop: { down: OVERVIEW_CARD }, langs: true },
   { name: 'unlock-dialog', path: '/', signedIn: false, board: null, crop: 'dialog', langs: true },
   {
-    name: 'unlock-dialog-cloud-down',
-    path: '/',
-    signedIn: false,
-    cloudDown: true,
-    crop: 'dialog',
-    langs: true,
-    act: async (page, t) => {
-      await page.locator('input#owner-password').fill(PASSWORD);
-      await page.getByRole('button', { name: t('shell.signIn.unlock'), exact: true }).click();
-      await settle(page, 800);
-    },
-  },
-  {
     name: 'unlock-spare-key',
     path: '/',
     signedIn: false,
@@ -584,7 +570,8 @@ const SHOTS = [
     crop: 'dialog',
     langs: true,
     act: async (page, t) => {
-      await page.locator('input#owner-password').fill('Wrong-horse battery staple 1');
+      await page.getByRole('button', { name: t('shell.signIn.useKey') }).click();
+      await page.locator('input#admin-key').fill('b'.repeat(64));
       await page.getByRole('button', { name: t('shell.signIn.unlock'), exact: true }).click();
       await settle(page, 800);
     },

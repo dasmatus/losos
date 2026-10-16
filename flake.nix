@@ -312,6 +312,7 @@
             # different halves of the same problem.
             ./modules/keyring.nix
             ./modules/daemon.nix
+            ./modules/identity.nix
             # Backups to the owner's S3 bucket, restoring them, and the
             # boot-time wipe of an erase (backend/src/{backup,erase}.rs).
             ./modules/backup.nix
@@ -423,6 +424,7 @@
         losos-resize = import ./tests/resize.nix { inherit pkgs; };
         losos-tls = import ./tests/tls.nix { inherit pkgs; };
         losos-setup = import ./tests/setup.nix { inherit pkgs; };
+        losos-identity = import ./tests/identity.nix { inherit pkgs; };
         losos-admin-ui = import ./tests/admin-ui.nix {
           inherit pkgs;
           # The real option document, so the Advanced pane is drawn from

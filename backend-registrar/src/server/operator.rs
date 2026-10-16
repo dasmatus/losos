@@ -333,6 +333,7 @@ pub(super) async fn create_token(
             &req.fingerprint,
             req.scope,
             req.expires_in_days,
+            None,
             losos_access::now_secs(),
         ) {
             Ok((token, record)) => {

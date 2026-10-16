@@ -515,6 +515,7 @@ pub fn cmd_factory_reset<L: Losos>(l: &mut L) -> anyhow::Result<Value> {
         rebuild: Some(building(&job, MSG_RESET_STARTED)),
         claimed,
         backup_job: current.backup_job,
+        owner: current.owner,
         ..State::default()
     };
     l.save_state(&s)?;
@@ -806,62 +807,6 @@ pub fn cmd_claim<L: Losos>(
         "user": user,
         "token": token,
     }))
-}
-
-/// Unlock the admin pages with the owner's password.
-///
-/// The password is checked by Nextcloud, not by this daemon — see the header
-/// of [`crate::signin`] for why the credential has to live in one place. A
-/// correct one is answered with the admin token, the same secret the claim
-/// released, so the page carries on exactly as it did with a pasted key.
-///
-/// Only the *shape* of the candidate is checked here
-/// ([`crate::signin::validate_candidate`]), never the rules for a new
-/// password: an owner whose password predates a stricter rule set still has
-/// to get in with it.
-///
-/// Unauthenticated by nature — it is how a tab gets its token — and so
-/// guarded by the HTTP layer the way the claim is (same-box `Host`, JSON
-/// only, matching `Origin`) and throttled per address like a bad token.
-pub fn cmd_sign_in<L: Losos>(
-    l: &mut L,
-    password: &str,
-    token: &str,
-    client: &str,
-) -> anyhow::Result<Value> {
-    use crate::signin::{validate_candidate, LoginOutcome, Throttled, WrongPassword};
-
-    let secret = validate_candidate(password).map_err(|e| anyhow::anyhow!(e))?;
-    let user = crate::setup::DEFAULT_ADMIN_USER;
-    let outcome = match l.nextcloud_login(user, &secret, client) {
-        Ok(o) => o,
-        Err(e) => {
-            tracing::info!(error = ?e, "the sign-in probe could not reach LosOS cloud");
-            LoginOutcome::Unavailable(
-                "LosOS cloud could not be reached, so the password could not be checked. \
-                 It may still be starting."
-                    .to_string(),
-            )
-        }
-    };
-    match outcome {
-        LoginOutcome::Accepted => {
-            // The owner just proved this password to LosOS cloud; LosOS Git
-            // gets the same one, so one password opens both. Best effort —
-            // LosOS Git may still be starting — and never a reason to refuse
-            // a sign-in that LosOS cloud accepted.
-            sync_owner_password(l, user, &secret);
-            // And the key the sidebar's pin picker lists LosOS cloud with,
-            // the same best effort (crate::pins says why it is minted here).
-            crate::pins::keep_cloud_key(l, user, &secret);
-            Ok(json!({ "user": user, "token": token }))
-        }
-        LoginOutcome::Rejected => Err(WrongPassword.into()),
-        LoginOutcome::Throttled => Err(Throttled.into()),
-        // Typed as the claim's "not yet", so the HTTP layer answers 503 with
-        // the sentence and the dialog can offer the spare key.
-        LoginOutcome::Unavailable(why) => Err(crate::setup::NotReady(why).into()),
-    }
 }
 
 /// `POST /api/devices/cloud`: an app password for LosOS cloud, for one of
@@ -3595,23 +3540,6 @@ mod tests {
     }
 
     #[test]
-    fn a_sign_in_gives_losos_git_the_same_password() {
-        let mut f = FakeLosos::new().with_config_repo();
-        f.accepted_password = Some("correct horse battery staple".to_string());
-        cmd_sign_in(&mut f, "correct horse battery staple", "tok", "192.168.1.9").unwrap();
-        let set = f
-            .forgejo_calls
-            .iter()
-            .find(|(k, _)| k == "PATCH /api/v1/admin/users/notshared")
-            .expect("the password was set");
-        assert_eq!(set.1.as_deref(), Some("correct horse battery staple"));
-        // A wrong password sets nothing.
-        f.forgejo_calls.clear();
-        assert!(cmd_sign_in(&mut f, "wrong horse", "tok", "192.168.1.9").is_err());
-        assert!(f.forgejo_calls.is_empty());
-    }
-
-    #[test]
     fn set_password_gives_losos_git_the_same_password() {
         let mut f = FakeLosos::new().with_config_repo();
         cmd_set_password(&mut f, "notshared", "Correct-Horse-Battery-9").unwrap();
@@ -3625,15 +3553,5 @@ mod tests {
         f.forgejo_calls.clear();
         cmd_set_password(&mut f, "someone", "Correct-Horse-Battery-9").unwrap();
         assert!(f.forgejo_calls.is_empty());
-    }
-
-    #[test]
-    fn a_sign_in_still_succeeds_while_losos_git_is_down() {
-        let mut f = FakeLosos::new();
-        f.repo = FakeLosos::new().with_config_repo().repo;
-        f.accepted_password = Some("correct horse battery staple".to_string());
-        let out =
-            cmd_sign_in(&mut f, "correct horse battery staple", "tok", "192.168.1.9").unwrap();
-        assert_eq!(out["token"], "tok");
     }
 }

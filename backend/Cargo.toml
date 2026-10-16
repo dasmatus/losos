@@ -74,6 +74,10 @@ rusqlite = { version = "0.40", features = ["bundled"] }
 zip = { version = "9", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 # The walk over the owner's files. Already in the lock file.
 walkdir = "2"
+# Password hashes for the people file Authelia signs people in against
+# (src/people.rs): argon2id in PHC form, the format Authelia reads. Already
+# in the lock file through the access crate.
+argon2 = "0.5"
 
 [dev-dependencies]
 # The CLI book's integration-testing trio: run the real binary, assert on its

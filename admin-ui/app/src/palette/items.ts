@@ -10,14 +10,14 @@ import {
   RoadLocation01Icon,
   Sun03Icon,
 } from "@hugeicons/core-free-icons";
-import { dropToken } from "@/lib/api";
+import { canUse, signOut } from "@/lib/api";
 import { CATALOGUE, recallAvailability, type AppDefinition } from "@/lib/apps";
 import { HANDBOOK_BASE } from "@/lib/handbook";
 import { LOCALE_NAMES, LOCALES, getLocaleChoice, setLocale, t, template, type MessageKey } from "@/lib/i18n";
 import type { Pin, PinView } from "@/lib/pins";
 import { paneHref } from "@/lib/routes";
 import { getTheme, setTheme, type Theme } from "@/lib/theme";
-import { SETTINGS_PANES } from "@/screens/settings/panes";
+import { SETTINGS_PANES, paneSection } from "@/screens/settings/panes";
 import { openTour } from "@/tour/store";
 
 /* The palette's own entries: everything it can list without asking the box.
@@ -106,6 +106,8 @@ export function pageItems(): Item[] {
     },
   ];
   for (const pane of SETTINGS_PANES) {
+    // The panes this person's sections do not open are not offered.
+    if (!canUse(paneSection(pane.id))) continue;
     items.push({
       id: `page-${pane.id}`,
       group: "pages",
@@ -120,7 +122,7 @@ export function pageItems(): Item[] {
       target: { kind: "route", to: paneHref(pane.id) },
     });
   }
-  items.push({
+  if (canUse("lab")) items.push({
     id: "page-lab",
     group: "pages",
     title: t("shell.nav.lab"),
@@ -228,7 +230,7 @@ export function actionItems(): Item[] {
       title: t("shell.signOut"),
       icon: Logout01Icon,
       words: `${template("shell.signOut", undefined, "en")} log out lock leave`,
-      target: { kind: "run", run: dropToken },
+      target: { kind: "run", run: signOut },
     },
   );
   return items;

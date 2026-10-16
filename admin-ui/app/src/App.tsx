@@ -1,7 +1,7 @@
 import * as React from "react";
 import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Compass01Icon, ViewIcon, ViewOffSlashIcon } from "@hugeicons/core-free-icons";
+import { Compass01Icon } from "@hugeicons/core-free-icons";
 import { AppSidebar } from "@/components/app-sidebar";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Badge } from "@/components/ui/badge";
@@ -24,26 +24,21 @@ import {
 import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
 import { HelpLink } from "@/components/ui/help-link";
 import type { HandbookEntry } from "@/lib/handbook";
-import { MonoInput } from "@/components/ui/input";
-import {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupButton,
-  InputGroupInput,
-} from "@/components/ui/input-group";
+import { Input, MonoInput } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { LanguagePicker } from "@/components/ui/language-picker";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { toast, Toaster } from "@/components/ui/toast";
 import {
-  dropToken,
   getClaimState,
   hasToken,
-  isNotReady,
   isWellFormedToken,
+  loadMe,
+  makeFirstAccount,
   signIn,
-  signInWithPassword,
+  signInUrl,
+  signOut,
   subscribeAuth,
   TOKEN_PATTERN,
 } from "@/lib/api";
@@ -120,17 +115,35 @@ export default function App() {
  * the box has been wiped. */
 type Gate = "unknown" | "setup" | "signin" | "open";
 
+/* Whether anyone can sign in by name yet; false on a box set up before
+ * Authelia, whose owner makes the first account with the spare key. */
+let peopleOnBox = true;
+
 function useGate(): Gate {
   const signedIn = React.useSyncExternalStore(subscribeAuth, hasToken, () => false);
   const [claimed, setClaimed] = React.useState<boolean | null>(null);
+  // An Authelia session is a cookie the page cannot see; GET /api/me is how
+  // it finds out. Until that answers, the page does not know who is here.
+  const [asked, setAsked] = React.useState(false);
 
   React.useEffect(() => {
     const controller = new AbortController();
     let live = true;
     void (async () => {
       try {
+        await loadMe({ signal: controller.signal });
+      } catch {
+        /* no answer: the claim state below decides what to show */
+      }
+      if (live) setAsked(true);
+    })();
+    void (async () => {
+      try {
         const state = await getClaimState({ signal: controller.signal });
-        if (live) setClaimed(state.claimed);
+        if (live) {
+          peopleOnBox = state.people !== false;
+          setClaimed(state.claimed);
+        }
       } catch {
         // An unreachable or older daemon is not an unclaimed box. Fall back to
         // the key prompt, which is wrong for a fresh appliance but harmless on
@@ -146,7 +159,7 @@ function useGate(): Gate {
   }, []);
 
   if (signedIn) return "open";
-  if (claimed === null) return "unknown";
+  if (claimed === null || (claimed && !asked)) return "unknown";
   return claimed ? "signin" : "setup";
 }
 
@@ -349,7 +362,7 @@ function TopBar({ signedIn }: { signedIn: boolean }) {
         <LanguagePicker />
         <ThemeToggle />
         {signedIn && (
-          <Button variant="ghost" size="sm" onClick={dropToken}>
+          <Button variant="ghost" size="sm" onClick={signOut}>
             {t("shell.signOut")}
           </Button>
         )}
@@ -390,38 +403,35 @@ function NotFound() {
 
 /* The gate.
  *
- * It asks for the owner's password — the one the wizard set, the one that
- * signs in to LosOS cloud — and lososd checks it by asking LosOS cloud
- * (`POST /api/sign-in`, backend/src/signin.rs). What comes back is the admin
- * token, held in sessionStorage: per-tab on purpose, and closing the tab
- * signs out. Before this the dialog asked for that token itself, a
- * 64-character key the box shows once; an owner who had not copied it was
- * locked out of these pages with a password that worked everywhere else.
+ * People sign in at /auth/, Authelia's page on this box, with their own name
+ * and password (modules/identity.nix); the dialog sends them there and
+ * Authelia sends them back to the page they were on. Its cookie is Secure, so
+ * the sign-in happens over https even when this page was opened over http.
  *
- * The key is still a way in, behind a link, because the password route has
- * one gap: it is LosOS cloud that checks the password, so while LosOS cloud is
- * not running (still starting, or broken) the password cannot be checked at
- * all. lososd says so with a 503, and the dialog then points at the link and
- * the printed sheet rather than at the password field.
+ * The spare admin key is the other way in, behind a link: it opens the box
+ * when Authelia cannot, and lososd checks it itself. On a box set up before
+ * people had names, the key is also how the owner makes the first account.
  *
- * Non-dismissible — there is nothing to look at behind it. */
+ * Non-dismissible: there is nothing to look at behind it. */
 function SignInDialog({ open }: { open: boolean }) {
   const t = useT();
-  const [mode, setMode] = React.useState<"password" | "key">("password");
+  const [mode, setMode] = React.useState<"signin" | "key" | "first">(
+    peopleOnBox ? "signin" : "first",
+  );
   const [value, setValue] = React.useState("");
-  const [visible, setVisible] = React.useState(false);
+  const [name, setName] = React.useState("");
+  const [password, setPassword] = React.useState("");
   const [problem, setProblem] = React.useState<string | null>(null);
   /* The handbook page the problem leads to, shown as "What to do" under
-   * the sentence: a refused password or key is the forgotten-password page,
-   * LosOS cloud not answering is the spare-key page, no answer at all is
-   * the reachability page. */
+   * the sentence: a refused key is the forgotten-password page, no answer
+   * at all is the reachability page. */
   const [help, setHelp] = React.useState<HandbookEntry>("forgot-password");
   const [busy, setBusy] = React.useState(false);
   const errorId = React.useId();
   const titleId = React.useId();
   const hintId = React.useId();
 
-  const switchTo = (next: "password" | "key"): void => {
+  const switchTo = (next: "signin" | "key" | "first"): void => {
     setMode(next);
     setValue("");
     setProblem(null);
@@ -429,8 +439,12 @@ function SignInDialog({ open }: { open: boolean }) {
 
   const submit = async (event: React.FormEvent): Promise<void> => {
     event.preventDefault();
-    const candidate = mode === "key" ? value.trim() : value;
-    if (mode === "key" && !isWellFormedToken(candidate)) {
+    if (mode === "signin") {
+      window.location.assign(signInUrl());
+      return;
+    }
+    const candidate = value.trim();
+    if (!isWellFormedToken(candidate)) {
       setHelp("forgot-password");
       setProblem(t("shell.signIn.badShape"));
       return;
@@ -438,21 +452,27 @@ function SignInDialog({ open }: { open: boolean }) {
     setBusy(true);
     setProblem(null);
     try {
-      const accepted =
-        mode === "key" ? await signIn(candidate) : await signInWithPassword(candidate);
-      if (accepted) {
+      if (mode === "first") {
+        // The key proves the box is theirs; the account is made with it,
+        // then the tab carries on with the key.
+        const made = await makeFirstAccount(name.trim(), password, { token: candidate });
+        await signIn(candidate);
+        setValue("");
+        setPassword("");
+        toast.success(t("shell.signIn.made"), t("shell.signIn.madeBody", { name: made.name }));
+        return;
+      }
+      if (await signIn(candidate)) {
         setValue("");
         toast.success(t("shell.signIn.unlocked"), t("shell.signIn.unlockedBody"));
       } else {
         setHelp("forgot-password");
-        setProblem(t(mode === "key" ? "shell.signIn.rejected" : "shell.signIn.wrongPassword"));
+        setProblem(t("shell.signIn.rejected"));
       }
     } catch (error) {
-      // LosOS cloud is what checks the password, and it could not be asked.
-      // Say so, and point at the spare key rather than at a retry.
-      if (mode === "password" && isNotReady(error)) {
+      if (mode === "first" && error instanceof Error && !(error instanceof TypeError)) {
         setHelp("sign-in-and-spare-key");
-        setProblem(t("shell.signIn.cloudDown"));
+        setProblem(`${t("shell.signIn.notMade")} ${error.message}`);
       } else {
         setHelp("cannot-reach-the-box");
         setProblem(t("shell.signIn.noAnswer"));
@@ -461,6 +481,32 @@ function SignInDialog({ open }: { open: boolean }) {
       setBusy(false);
     }
   };
+
+  const keyField = (
+    <>
+      <FieldLabel htmlFor="admin-key">{t("shell.signIn.label")}</FieldLabel>
+      <MonoInput
+        id="admin-key"
+        name="admin-key"
+        autoComplete="off"
+        autoFocus={mode === "key"}
+        pattern={TOKEN_PATTERN.source}
+        value={value}
+        disabled={busy}
+        aria-invalid={problem !== null}
+        aria-describedby={problem !== null ? errorId : undefined}
+        onChange={(event) => {
+          setValue(event.target.value);
+          setProblem(null);
+        }}
+      />
+    </>
+  );
+
+  const ready =
+    mode === "signin" ||
+    (mode === "key" && value.trim().length > 0) ||
+    (mode === "first" && value.trim().length > 0 && name.trim().length > 0 && password.length > 0);
 
   return (
     <Dialog
@@ -476,89 +522,77 @@ function SignInDialog({ open }: { open: boolean }) {
           like. One message, ours. */}
       <form onSubmit={submit} noValidate>
         <DialogHeader>
-          <DialogTitle id={titleId}>{t("shell.signIn.title")}</DialogTitle>
+          <DialogTitle id={titleId}>
+            {t(mode === "first" ? "shell.signIn.firstTitle" : "shell.signIn.title")}
+          </DialogTitle>
           <DialogDescription id={hintId}>
-            {t(mode === "key" ? "shell.signIn.hint" : "shell.signIn.passwordHint")}
+            {t(
+              mode === "key"
+                ? "shell.signIn.hint"
+                : mode === "first"
+                  ? "shell.signIn.firstHint"
+                  : "shell.signIn.authHint",
+            )}
           </DialogDescription>
         </DialogHeader>
         <DialogBody className="flex flex-col gap-2">
-          {/* One shadcn Field: label, control, error and hint share its
-              invalid/disabled state. The show/hide eye sits inside the
-              password box as an Input Group addon rather than beside it. */}
-          <Field invalid={problem !== null} disabled={busy}>
-            {mode === "password" ? (
-              <>
-                <FieldLabel htmlFor="owner-password">{t("shell.signIn.passwordLabel")}</FieldLabel>
-                <InputGroup>
-                  <InputGroupInput
-                    id="owner-password"
-                    name="owner-password"
-                    type={visible ? "text" : "password"}
-                    autoComplete="current-password"
-                    autoFocus
-                    value={value}
-                    disabled={busy}
-                    aria-invalid={problem !== null}
-                    aria-describedby={problem !== null ? errorId : undefined}
-                    onChange={(event) => {
-                      setValue(event.target.value);
-                      setProblem(null);
-                    }}
-                  />
-                  <InputGroupAddon align="inline-end">
-                    <InputGroupButton
-                      size="icon-xs"
-                      aria-pressed={visible}
-                      aria-label={visible ? t("shell.signIn.hide") : t("shell.signIn.show")}
-                      onClick={() => setVisible((shown) => !shown)}
-                    >
-                      <HugeiconsIcon
-                        icon={visible ? ViewOffSlashIcon : ViewIcon}
-                        size={16}
-                        strokeWidth={1.5}
-                        color="currentColor"
-                        aria-hidden="true"
-                      />
-                    </InputGroupButton>
-                  </InputGroupAddon>
-                </InputGroup>
-              </>
-            ) : (
-              <>
-                <FieldLabel htmlFor="admin-key">{t("shell.signIn.label")}</FieldLabel>
-                <MonoInput
-                  id="admin-key"
-                  name="admin-key"
-                  autoComplete="off"
-                  autoFocus
-                  pattern={TOKEN_PATTERN.source}
-                  value={value}
+          {mode === "first" && (
+            <>
+              <Field disabled={busy}>
+                <FieldLabel htmlFor="first-name">{t("shell.signIn.nameLabel")}</FieldLabel>
+                <Input
+                  id="first-name"
+                  name="username"
+                  autoComplete="username"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                  value={name}
                   disabled={busy}
-                  aria-invalid={problem !== null}
-                  aria-describedby={problem !== null ? errorId : undefined}
-                  onChange={(event) => {
-                    setValue(event.target.value);
-                    setProblem(null);
-                  }}
+                  onChange={(event) => setName(event.target.value.toLowerCase())}
                 />
-              </>
-            )}
-            <FieldError id={errorId}>{problem}</FieldError>
-            {problem !== null && <HelpLink entry={help} />}
-            <FieldDescription>{t("shell.signIn.remembered")}</FieldDescription>
-          </Field>
-          <button
-            type="button"
-            className="mt-1 self-start text-[13px] text-accent underline-offset-2 hover:underline"
-            onClick={() => switchTo(mode === "key" ? "password" : "key")}
-          >
-            {t(mode === "key" ? "shell.signIn.usePassword" : "shell.signIn.useKey")}
-          </button>
+              </Field>
+              <Field disabled={busy}>
+                <FieldLabel htmlFor="first-password">{t("shell.signIn.newPassword")}</FieldLabel>
+                <Input
+                  id="first-password"
+                  name="new-password"
+                  type="password"
+                  autoComplete="new-password"
+                  value={password}
+                  disabled={busy}
+                  onChange={(event) => setPassword(event.target.value)}
+                />
+              </Field>
+            </>
+          )}
+          {mode !== "signin" && (
+            <Field invalid={problem !== null} disabled={busy}>
+              {keyField}
+              <FieldError id={errorId}>{problem}</FieldError>
+              {problem !== null && <HelpLink entry={help} />}
+              {mode === "key" && <FieldDescription>{t("shell.signIn.remembered")}</FieldDescription>}
+            </Field>
+          )}
+          {mode !== "first" && (
+            <button
+              type="button"
+              className="mt-1 self-start text-[13px] text-accent underline-offset-2 hover:underline"
+              onClick={() => switchTo(mode === "key" ? "signin" : "key")}
+            >
+              {t(mode === "key" ? "shell.signIn.useSignIn" : "shell.signIn.useKey")}
+            </button>
+          )}
         </DialogBody>
         <DialogFooter>
           {busy && <Spinner label={t("shell.signIn.checking")} className="mr-auto text-muted" />}
-          <Button type="submit" disabled={busy || value.trim().length === 0}>
-            {t("shell.signIn.unlock")}
+          <Button type="submit" disabled={busy || !ready} autoFocus={mode === "signin"}>
+            {t(
+              mode === "signin"
+                ? "shell.signIn.go"
+                : mode === "first"
+                  ? "shell.signIn.make"
+                  : "shell.signIn.unlock",
+            )}
           </Button>
         </DialogFooter>
       </form>

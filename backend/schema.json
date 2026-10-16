@@ -305,25 +305,6 @@
         }
       }
     },
-    "signInResponse": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "user",
-        "token"
-      ],
-      "properties": {
-        "user": {
-          "type": "string",
-          "description": "The account the password belonged to: the one Nextcloud admin this appliance installs (notshared)."
-        },
-        "token": {
-          "type": "string",
-          "pattern": "^[0-9a-f]{64}$",
-          "description": "The admin token, the same secret the first-run claim released. The page stores it for the tab and uses it as the Bearer on every other route; nothing about the token itself changed when the password became the way to get it."
-        }
-      }
-    },
     "recoveryResponse": {
       "type": "object",
       "additionalProperties": false,
@@ -1264,7 +1245,7 @@
           "properties": {
             "owner": {
               "type": "string",
-              "description": "The Forgejo account the repository belongs to: the owner's (losos.configRepo.owner, default `notshared`). lososd creates it as a site administrator if missing and gives it the owner's password at every claim, set-password and sign-in, so one password opens LosOS Git too."
+              "description": "The Forgejo account the repository belongs to: the owner's (losos.configRepo.owner, default `notshared`). lososd creates it as a site administrator if missing and gives it the owner's password at the claim and at every password change, so one password opens LosOS Git too."
             },
             "name": {
               "type": "string",
@@ -1593,11 +1574,10 @@
         "in": "{\"user\":\"...\" (optional, defaults to notshared),\"password\":\"...\"}",
         "out": "setPasswordResponse"
       },
-      "POST /api/sign-in": {
-        "auth": false,
-        "in": "{\"password\":\"...\"}",
-        "out": "signInResponse",
-        "note": "Unlock the admin pages with the owner's password (backend/src/signin.rs). No Bearer by nature — it is how a tab gets one — so it carries the claim route's three same-box checks (application/json only, Host naming this box, Origin matching Host; 403 otherwise) and the per-address throttle counts a wrong password like a wrong token (429 + Retry-After after a few free tries). The password is checked by Nextcloud, not by a copy lososd keeps: one loopback request to $LOSOS_NEXTCLOUD_LOGIN_URL (the OCS route that only authenticates) with the password in a Basic header and the browser's address in X-Forwarded-For, so Nextcloud's own brute-force protection counts the browser. 200 with the admin token on a correct password; 401 on a wrong one; 429 when Nextcloud is throttling that address; 503 with {\"error\", \"ready\": false, \"waitingFor\"} when Nextcloud cannot be asked (still starting, not running) — that is the case the printed spare key exists for. Only the candidate's shape is checked (non-empty, at most 256 bytes, no control characters), never the rules for a new password, so a password set under an older build still signs in. HTTP-only, like the claim."
+      "GET /api/me": {
+        "auth": true,
+        "out": "{\"name\": \"...\"|null, \"displayName\": \"...\"|null, \"groups\": [\"...\"], \"admin\": bool, \"spareKey\": bool, \"sections\": [\"...\"]}",
+        "note": "Who is calling (backend/src/http.rs, get_me). A person signed in at the box's sign-in page (Authelia at /auth/) arrives as the Remote-User nginx sets from Authelia's answer; lososd looks them up in the people file it writes (backend/src/people.rs) and answers with their name, groups and the sections of backend/sections.json those groups open. The spare key answers with name null, admin true and spareKey true. The admin pages show the panes `sections` names and hide the rest. 401 signed out; 403 with noAccount:true for a Remote-User the people file does not hold (removed since they signed in)."
       },
       "GET /api/recovery": {
         "auth": true,
@@ -1887,7 +1867,7 @@
         "auth": true,
         "in": "query string: path=/<folder> (default /), or q=<text> (1-100 characters) to search names anywhere",
         "out": "{\"available\": true, \"path\": \"/...\", \"query\": \"...\"|null, \"entries\": [{\"name\", \"path\", \"id\", \"folder\", \"size\"|null}], \"more\": bool} or {\"available\": false, \"reason\": \"signIn\"|\"notUp\", \"path\", \"query\", \"entries\": []}",
-        "note": "One folder of the owner's LosOS cloud, folders first then by name, at most 500 entries (`more` when there were more); with q, the files and folders whose name holds the text, at most 50. Asked over WebDAV on loopback with an app password lososd obtains from LosOS cloud when the owner signs in with their password (or sets the first one), kept 0600 at /var/lib/losos/cloud-key and shown in LosOS cloud's security settings as \"LosOS admin page\". `signIn` until there is one, and again once it is revoked. 400 for a path or query that is not one, or a folder that is gone."
+        "note": "One folder of the owner's LosOS cloud, folders first then by name, at most 500 entries (`more` when there were more); with q, the files and folders whose name holds the text, at most 50. Asked over WebDAV on loopback with an app password lososd obtains from LosOS cloud when the owner sets their password (the claim or a password change), kept 0600 at /var/lib/losos/cloud-key and shown in LosOS cloud's security settings as \"LosOS admin page\". `signIn` until there is one, and again once it is revoked. 400 for a path or query that is not one, or a folder that is gone."
       },
       "GET /api/git/repos": {
         "auth": true,

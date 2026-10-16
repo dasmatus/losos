@@ -397,6 +397,21 @@ export default defineMessages({
     sk: "Heslá sa nezhodujú.",
     de: "Die beiden Passwörter sind nicht gleich.",
   },
+  "wizard.signin.name": {
+    en: "Sign-in name",
+    sk: "Prihlasovacie meno",
+    de: "Anmeldename",
+  },
+  "wizard.signin.nameHint": {
+    en: "What you type to sign in to this box, for example your first name. Lower-case letters and digits. You are its first administrator.",
+    sk: "To, čo zadáte pri prihlásení do tohto zariadenia, napríklad vaše krstné meno. Malé písmená a číslice. Stanete sa jeho prvým správcom.",
+    de: "Das tippst du bei der Anmeldung an dieser Box ein, zum Beispiel deinen Vornamen. Kleinbuchstaben und Ziffern. Du bist ihr erster Administrator.",
+  },
+  "wizard.signin.badName": {
+    en: "A sign-in name starts with a letter and has up to 32 lower-case letters, digits, dots, dashes or underscores.",
+    sk: "Prihlasovacie meno začína písmenom a má najviac 32 malých písmen, číslic, bodiek, pomlčiek alebo podčiarkovníkov.",
+    de: "Ein Anmeldename beginnt mit einem Buchstaben und hat bis zu 32 Kleinbuchstaben, Ziffern, Punkte, Bindestriche oder Unterstriche.",
+  },
   "wizard.signin.newPassword": {
     en: "New password",
     sk: "Nové heslo",

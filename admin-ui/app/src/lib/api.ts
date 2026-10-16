@@ -14,6 +14,8 @@
  * after it. Per-tab is the point: closing the tab logs the box out.
  */
 
+import * as React from "react";
+
 // ── Wire types (backend/schema.json) ──────────────────────────────────────
 
 /** `local` = private Nextcloud; `mesh` = contributes storage to the pool. */
@@ -175,7 +177,91 @@ export function dropToken(): void {
   } catch {
     /* nothing to drop */
   }
+  me = null;
   notifyAuth();
+}
+
+// ── The signed-in person ──────────────────────────────────────────────────
+
+/* People sign in at /auth/, Authelia's page on this box (modules/identity.nix),
+ * and its session cookie rides on every /api/ request after that; nginx asks
+ * Authelia about each one and lososd knows the person by name. The page holds
+ * no secret for it, only what GET /api/me said. The spare key is the other
+ * way in, kept in sessionStorage as before, and lososd answers /api/me for
+ * it too (`spareKey: true`). */
+export interface Me {
+  /** The sign-in name, or null for the spare key. */
+  name: string | null;
+  displayName: string | null;
+  groups: string[];
+  /** In losos-admins, or the spare key: every pane is theirs. */
+  admin: boolean;
+  spareKey: boolean;
+  /** The sections of backend/sections.json this person can use. */
+  sections: string[];
+}
+
+let me: Me | null = null;
+
+/** Who is signed in, once GET /api/me has said. */
+export function getMe(): Me | null {
+  return me;
+}
+
+/** GET /api/me: who this tab is signed in as, by cookie or by key. Null when
+ *  nobody is (a 401). Anything else throws. */
+export async function loadMe(options: RequestOptions = {}): Promise<Me | null> {
+  try {
+    const answer = await call<Partial<Me>>("/api/me", options);
+    // Only an answer that says who it is counts as a sign-in.
+    me =
+      typeof answer.admin === "boolean" && Array.isArray(answer.sections)
+        ? (answer as Me)
+        : null;
+  } catch (error) {
+    if (isUnauthorized(error)) {
+      me = null;
+      return null;
+    }
+    throw error;
+  }
+  notifyAuth();
+  return me;
+}
+
+/** Whether `section` (backend/sections.json) is open to whoever is signed
+ *  in. The spare key is an administrator's. Before GET /api/me has answered
+ *  everything counts as open, so the page does not flicker shut. */
+export function canUse(section: string): boolean {
+  if (me === null) return true;
+  return me.admin || me.sections.includes(section);
+}
+
+/** For components: who is signed in, re-read when that changes. */
+export function useMe(): Me | null {
+  return React.useSyncExternalStore(subscribeAuth, getMe, getMe);
+}
+
+/** The https address of this page, which Authelia sends the browser back to.
+ *  Authelia works over https only; the box serves both. */
+function httpsHere(): string {
+  const { host, pathname, search } = window.location;
+  return `https://${host}${pathname}${search}`;
+}
+
+/** Authelia's sign-in page, coming back here afterwards. */
+export function signInUrl(): string {
+  return `https://${window.location.host}/auth/?rd=${encodeURIComponent(httpsHere())}`;
+}
+
+/** Sign out: forget the key, and end the Authelia session if there is one. */
+export function signOut(): void {
+  const session = me !== null && !me.spareKey;
+  dropToken();
+  if (session) {
+    const home = `https://${window.location.host}/`;
+    window.location.assign(`https://${window.location.host}/auth/logout?rd=${encodeURIComponent(home)}`);
+  }
 }
 
 /* A 401 on a stored token is the session ending, and every screen has to
@@ -197,9 +283,10 @@ export function subscribeAuth(onChange: () => void): () => void {
   };
 }
 
-/** For useSyncExternalStore: whether this tab currently holds a token. */
+/** For useSyncExternalStore: whether this tab is signed in, by the spare
+ *  key it holds or by an Authelia session GET /api/me confirmed. */
 export function hasToken(): boolean {
-  return getToken() !== null;
+  return getToken() !== null || me !== null;
 }
 
 // ── Transport ─────────────────────────────────────────────────────────────
@@ -294,11 +381,17 @@ export interface ClaimState {
   ready?: boolean;
   /** Why not yet, in a sentence for the owner, when `ready` is false. */
   waitingFor?: string | null;
+  /** Whether anyone can sign in as an administrator yet. False on a box set
+   *  up before sign-in went through Authelia; its owner makes the first
+   *  account with the spare key (`makeFirstAccount`). */
+  people?: boolean;
 }
 
 export interface ClaimResponse {
   claimed: true;
   user: string | null;
+  /** The first person's sign-in name, an administrator. */
+  name?: string;
   /** The admin token, released to whoever claimed the box — once, plus the
    *  replays below. */
   token: string;
@@ -320,8 +413,10 @@ export function getClaimState(options: RequestOptions = {}): Promise<ClaimState>
 
 /* POST /api/setup/claim — public, once, and never again.
  *
- * Takes ownership of a box nobody has set up: sets the first password and
- * returns the admin token so this tab can carry on authenticated. The window
+ * Takes ownership of a box nobody has set up: sets the first password, makes
+ * `name` the first person (an administrator, who signs in at /auth/ with that
+ * password) and returns the admin token so this tab can carry on
+ * authenticated. The window
  * is open only while the box is unclaimed; afterwards lososd refuses, so this
  * cannot be used to re-read the token later.
  *
@@ -335,14 +430,14 @@ export function getClaimState(options: RequestOptions = {}): Promise<ClaimState>
  * claimable and the wizard goes back to waiting. See `isNotReady`. */
 export function claimBox(
   password: string,
-  user?: string,
+  name: string,
   options: RequestOptions = {},
 ): Promise<ClaimResponse> {
   return call<ClaimResponse>("/api/setup/claim", {
     ...options,
     method: "POST",
     contentType: "application/json",
-    body: JSON.stringify(user === undefined ? { password } : { user, password }),
+    body: JSON.stringify({ name, password }),
     anonymous: true,
   });
 }
@@ -1445,43 +1540,6 @@ export function postAccessRevoke(
 
 // ── Sign-in ───────────────────────────────────────────────────────────────
 
-export interface SignInResponse {
-  user: string;
-  /** The admin token, the same one the claim released. */
-  token: string;
-}
-
-/* POST /api/sign-in — public. Unlock the tab with the owner's password.
- *
- * The password is the one the wizard set, and lososd checks it by asking
- * LosOS cloud (backend/src/signin.rs): there is no second copy to drift
- * from. A correct one is answered with the admin token, which is stored for
- * the tab exactly as a pasted key was. Resolves false on a wrong password
- * (401, which `call` does not treat as the session ending here — the request
- * is anonymous), throws an ApiError otherwise: a 503 means LosOS cloud could
- * not be asked, see `isNotReady`, and that is the case the spare key is for. */
-export async function signInWithPassword(
-  password: string,
-  options: RequestOptions = {},
-): Promise<boolean> {
-  if (password.length === 0) return false;
-  let reply: SignInResponse;
-  try {
-    reply = await call<SignInResponse>("/api/sign-in", {
-      ...options,
-      method: "POST",
-      contentType: "application/json",
-      body: JSON.stringify({ password }),
-      anonymous: true,
-    });
-  } catch (error) {
-    if (isUnauthorized(error)) return false;
-    throw error;
-  }
-  saveToken(reply.token);
-  return true;
-}
-
 /* Probe a pasted token against a cheap authed route and store it if lososd
  * accepts it. Resolves false on rejection, throws on anything else, and a
  * rejected candidate leaves the stored token alone. The spare way in, for
@@ -1496,7 +1554,24 @@ export async function signIn(candidate: string, options: RequestOptions = {}): P
     throw error;
   }
   saveToken(token);
+  await loadMe().catch(() => null);
   return true;
+}
+
+/* POST /api/setup/claim with the spare key: the first account on a box that
+ * was set up before people signed in through Authelia. The password becomes
+ * that person's sign-in password. */
+export async function makeFirstAccount(
+  name: string,
+  password: string,
+  options: RequestOptions = {},
+): Promise<{ name: string }> {
+  return call<{ name: string }>("/api/setup/claim", {
+    ...options,
+    method: "POST",
+    contentType: "application/json",
+    body: JSON.stringify({ name, password }),
+  });
 }
 
 // ── Status polling ────────────────────────────────────────────────────────
@@ -1586,7 +1661,7 @@ export function createStatusPoller(handlers: StatusPollerHandlers): StatusPoller
       return;
     }
 
-    if (getToken() === null) {
+    if (!hasToken()) {
       stop();
       handlers.onUnauthorized?.();
       return;

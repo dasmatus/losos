@@ -207,6 +207,11 @@ let
           cp "/var/lib/losos/$f" "$stage/look/$f"
         fi
       done
+      # The people who sign in (modules/identity.nix): names, groups and
+      # password hashes.
+      if [ -f /var/lib/losos-identity/users.yml ]; then
+        cp /var/lib/losos-identity/users.yml "$stage/identity/users.yml"
+      fi
       if [ -s ${lib.escapeShellArg proxyToken} ]; then
         cp ${lib.escapeShellArg proxyToken} "$stage/identity/proxy-token"
       fi
@@ -346,6 +351,10 @@ let
           install -m 0600 "$staged/look/$f" "/var/lib/losos/$f"
         fi
       done
+      if [ -s "$staged/identity/users.yml" ]; then
+        install -D -m 0640 "$staged/identity/users.yml" /var/lib/losos-identity/users.yml
+        chgrp authelia-losos /var/lib/losos-identity/users.yml 2>/dev/null || true
+      fi
       if [ -s "$staged/identity/proxy-token" ]; then
         install -D -m 0600 "$staged/identity/proxy-token" ${lib.escapeShellArg proxyToken}
       fi
@@ -374,6 +383,9 @@ let
     "/persist/var/lib/losos-search"
     "/persist/var/lib/losos-backup"
     "/persist/var/lib/losos-public-names"
+    # Who can sign in, and Authelia's sessions (modules/identity.nix).
+    "/persist/var/lib/losos-identity"
+    "/persist/var/lib/authelia-losos"
     "/persist/var/lib/rancher"
     "/persist/var/lib/kubelet"
     "/persist/var/lib/longhorn"
