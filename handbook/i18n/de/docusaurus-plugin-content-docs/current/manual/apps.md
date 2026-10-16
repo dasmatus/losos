@@ -16,8 +16,6 @@ Desktop-Client synchronisiert einen Ordner auf deinem Rechner, die
 Handy-Apps laden Fotos hoch, und Kalender und Kontakte synchronisieren über
 CalDAV und CardDAV.
 
-![Die Zeichen von LosOS cloud und LosOS Git im hellen und im dunklen Design, um einen lebenden Lachs gezeichnet.](@site/docs/img/cloud-and-git-marks.png)
-
 Die Übersicht hat eine Kachel für jede App im eigenen Menü von LosOS cloud,
 in derselben Reihenfolge: Dateien, Dashboard, Fotos, Aktivität, Kontakte,
 Kalender, Notizen, Lesezeichen, Deck, Musik, Kollektive, Umfragen,

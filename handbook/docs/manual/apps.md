@@ -14,8 +14,6 @@ name. Sign in with the owner's password. LosOS cloud does everything
 Nextcloud does. The desktop client syncs a folder on your computer, the phone
 apps upload photos, and calendars and contacts sync over CalDAV and CardDAV.
 
-![The marks of LosOS cloud and LosOS Git in the light and the dark theme, drawn around a live salmon.](../img/cloud-and-git-marks.png)
-
 The Overview has a tile for each app in LosOS cloud's own menu, in the same
 order: Files, Dashboard, Photos, Activity, Contacts, Calendar, Notes,
 Bookmarks, Deck, Music, Collectives, Polls, Forms, Tables, Memories, News,
