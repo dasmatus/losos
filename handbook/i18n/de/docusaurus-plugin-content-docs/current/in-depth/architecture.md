@@ -416,6 +416,21 @@ Neustart nach einem Update bleiben still: beim Herunterfahren für einen
 Neustart bleibt eine Markierung in `/var/lib/losos-startup-sound` zurück, und
 der nächste Start entfernt sie, statt zu spielen.
 
+**Protokollgrenzen** (`logs.nix`, auf der Box und auf einem Edge). `/var`
+liegt auf demselben Volume wie `/nix`, ein Protokoll ohne Ende endet also als
+nächtlicher Neubau ohne Platz zum Bauen. Das Journal ist auf
+`losos.logs.journalMaxUse` (512 MB) und einen Monat begrenzt. Das Kubelet
+jedes Clusters behält drei Dateien zu 10 MiB pro Container
+(`containerLogMaxSize`, `containerLogMaxFiles`). Das deckt LosOS cloud,
+LosOS Git und die Apps ab, weil sie auf stdout protokollieren. logrotate
+rotiert `audit.log` und `rebuild.log` von lososd bei 10 MB und ergänzt die
+nginx-Regel, die nixpkgs mitbringt, um eine Grenze von 20 MB. Eine
+tmpfiles-Regel löscht Nix-Build-Protokolle, die älter als 30 Tage sind und
+die die Garbage Collection liegen lässt. rke2 und libvirt rotieren ihre
+Protokolldateien selbst, und auf einem Edge schreibt `bitcoind` nur ins
+Journal. `tests/invariants.nix` prüft die Journalgrenze, beide
+logrotate-Regeln und die Grenze der Pod-Protokolle in beiden Clustern.
+
 **Automatisches Upgrade und der nächtliche Neustart** (`updates.nix`).
 `system.autoUpgrade` baut um 03:00 aus `losos.upgradeFlakeUri` neu,
 standardmäßig `git+file:///etc/nixos#install`. Vor dem Bau führt

@@ -33,6 +33,20 @@ pod `/var`. Rozloženie nástenky si pamätá váš prehliadač. Obe prežijú
 reštart, ale ani jedno nie je súčasťou opisu zariadenia a obe môžete zmeniť
 bez prestavby.
 
+## Koľko miesta zaberajú záznamy \{#how-much-room-the-logs-take}
+
+Záznamy pod `/var` majú strop, takže disk zaplniť nemôžu:
+
+- Systémový žurnál zaberá najviac 512 MB a nič staršie ako mesiac.
+  Veľkosť nastavuje `losos.logs.journalMaxUse` na paneli Rozšírené.
+- LosOS cloud, LosOS Git a každá aplikácia si nechávajú najviac tri súbory
+  záznamov po 10 MB na kontajner.
+- Prístupový záznam webového servera začína nový súbor každý týždeň, alebo
+  skôr pri 20 MB, a nechá si osem starých.
+- Auditný záznam stránok správy a záznam prestavieb, ktoré spúšťajú,
+  začínajú nový súbor pri 10 MB a nechajú si tri staré.
+- Záznamy zostavení z aktualizácií sa po 30 dňoch mažú.
+
 ## Čo urobí preinštalovanie \{#what-a-reinstall-does}
 
 Vymaže to všetko. Pozrite si [Reset a preinštalovanie](../manual/reset-and-reinstall).
