@@ -2746,7 +2746,16 @@ mod tests {
     /// gets `resolve(name)`.
     fn fake_resolved(tag: &str, browse: &'static [&'static [u8]], resolve: Answer) -> PathBuf {
         use std::io::{BufRead, Read};
-        let dir = tmpdir().join(format!("resolved-{tag}"));
+        // A socket path must fit sockaddr_un's 108 bytes, and CI's TMPDIR
+        // (/home/runner/work/_temp) plus tmpdir()'s name does not, so the
+        // socket goes under /tmp when there is one.
+        let base = Path::new("/tmp");
+        let base = if base.is_dir() {
+            base.to_path_buf()
+        } else {
+            std::env::temp_dir()
+        };
+        let dir = base.join(format!("losos-rv-{}-{tag}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("io.systemd.Resolve");
         std::fs::remove_file(&path).ok();
