@@ -61,7 +61,7 @@ losos-access = { path = "access" }
 # The Monero key check (`monero_key.rs`): the key the owner pasted must be
 # the address's view key, never its spend key, before it goes to the edge.
 # Already in the lock file through the access crate's ed25519.
-curve25519-dalek = "4"
+curve25519-dalek = "5"
 
 # Text inside the owner's files for the admin pages' palette
 # (src/textsearch/, the losos-search binary). SQLite's FTS5 is the index: one
