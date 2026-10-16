@@ -15,8 +15,6 @@ dokáže všetko, čo Nextcloud. Desktopový klient synchronizuje priečinok na
 vašom počítači, aplikácie v telefóne nahrávajú fotky a kalendáre a kontakty
 sa synchronizujú cez CalDAV a CardDAV.
 
-![Značky LosOS cloud a LosOS Git vo svetlej a tmavej téme, nakreslené okolo živého lososa.](@site/docs/img/cloud-and-git-marks.png)
-
 Prehľad má dlaždicu pre každú aplikáciu z ponuky LosOS cloud, v rovnakom
 poradí: Súbory, Nástenka, Fotky, Aktivita, Kontakty, Kalendár, Poznámky,
 Záložky, Deck, Hudba, Kolektívy, Ankety, Formuláre, Tabuľky, Memories,
