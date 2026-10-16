@@ -43,6 +43,7 @@ BIOS boot.
 
 ![The installer's first screen on a signed stick: Secure Boot enabled, the firmware verified this medium's signature.](../img/installer-menu.png)
 
+:::warning[The installed box needs Secure Boot off]
 What is **not** covered is the installed system. The box boots with
 systemd-boot from its own disk. Neither that loader nor the kernels its
 nightly rebuilds install are signed, so the box itself needs Secure Boot
@@ -52,6 +53,7 @@ Secure Boot off before the first boot from disk. Or leave it off throughout
 and verify the download by hand instead, as described below. Signing the
 installed system's boot chain would need a signing key on the box for every
 rebuild. That is a separate design and not part of this one.
+:::
 
 ## Letting your firmware trust LosOS
 
@@ -88,10 +90,12 @@ moment those certificates leave `db`:
   On a desktop with a separate graphics card, losing these can mean no
   picture at all, including in the firmware's setup screen.
 
-So avoid *Delete all keys*, *Clear Secure Boot keys* and *Reset to Setup
+:::warning[Avoid clearing the key list]
+Avoid *Delete all keys*, *Clear Secure Boot keys* and *Reset to Setup
 Mode* unless the next step is *Restore factory keys*. If your firmware
 can only add a key after clearing them, restore the factory keys first and
 then append the LosOS certificate.
+:::
 
 From a running Linux in *Setup* mode, `efi-updatevar -a -c
 losos-secure-boot-db.pem db` from efitools appends. With sbctl, pass
@@ -109,11 +113,13 @@ shim is refused:
 
 Enrolment is a one-time change to that machine.
 
+:::note[No Microsoft-signed shim yet]
 The LosOS loader is signed by LosOS, not by Microsoft. A stick that boots
 on a stock PC with nothing enrolled would need a shim that Microsoft signed
 for LosOS, after the public shim review and Microsoft's signing process,
 which LosOS has not been through. Until then, every machine enrols the
 LosOS certificate once.
+:::
 
 ## Verifying a download by hand
 

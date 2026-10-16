@@ -61,10 +61,12 @@ nad hostname zostáva tam, kde bola: zónu zvolil prevádzkovateľ hubu; labely 
 nej volí spoke; čokoľvek iné sa odmietne pre každé zariadenie zvlášť a spoke to
 zaloguje.
 
+:::note[Prečo sa zariadenia neregistrujú na hube]
 Prečo nenechať zariadenia spoke registrovať sa na hube priamo? Pretože potom by
 prevádzkovateľ hubu evidoval každé zariadenie na svete, a práve tomu sa má lokálna
 brána vyhnúť. Jeden riadok tenanta na lokalitu je celá cena lokality na
 oficiálnom edge.
+:::
 
 ## Strana spoke: uplink {#spoke-side-the-uplink}
 
@@ -243,10 +245,12 @@ naplánuje z väzieb a nikdy ju nenačítava. Meno zariadenia v zóne edge,
 `<label>.<zone>`, ide rovnakou cestou ako jeho domény, takže k nemu sa
 dostane aj cieľ CNAME.
 
+:::note[Kópia na bráne je len na čítanie]
 Lokálny edge dostane svoje riadky späť v odpovedi na `/relay`. Brána ich
 zapíše do `/var/lib/losos-registrar/hub-routes.json` a zaloguje každú zmenu.
 Ten súbor vám iba hovorí, čo oficiálny edge smeruje k vám. Nič na lokálnom
 edge sa podľa neho nesmeruje.
+:::
 
 ### Zapnutie {#turning-it-on}
 

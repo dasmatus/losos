@@ -35,9 +35,11 @@ box's command line, which only exists on the installer medium:
 pvcreate /dev/sdX && vgextend persist-vg /dev/sdX && losos-ctl grow
 ```
 
+:::danger[A reinstall wipes everything]
 It is a job for whoever maintains the box, not an owner's button. For most
 people a full reinstall with the new disk in place is simpler. Back up first,
 because the installer wipes everything.
+:::
 
 ## Running out of room
 

@@ -119,6 +119,7 @@ gone, because the claim still holds Longhorn capacity after the month ends.
 - **Compute.** A credit in vCPU-hours, listed under `entitlements`. Nothing
   meters or schedules against it yet.
 
+:::note[Limits not enforced yet]
 Limits to know about, none of which are enforced yet:
 
 - The claim is not pinned to the seller's node. Longhorn places replicas
@@ -135,6 +136,7 @@ Limits to know about, none of which are enforced yet:
 - The registrar's ServiceAccount gains cluster-wide `get`/`create` on
   namespaces and PersistentVolumeClaims when the market is enabled. Kubernetes
   RBAC cannot scope either to `market-*` names.
+:::
 
 ## Admin UI
 
@@ -241,9 +243,11 @@ that case.
    and status are appended as query parameters).
 5. Set `losos.edge.tenants.<id>.market = true` for each box allowed to trade.
 
+:::tip[Start in Stripe test mode]
 Start in Stripe **test mode**. The edge has only been tested against a
 stand-in for Stripe. That checks what the edge sends and how it reacts, but
 cannot say whether Stripe accepts it. The first test-mode run settles that.
+:::
 
 ### Test mode and live mode
 
@@ -402,10 +406,12 @@ the edge refunds the payment from the escrow and the pane says so. On Solana,
 which has no escrow, such a payment stays with the seller and the refund has
 to be settled outside the market.
 
+:::tip[Test coins come from faucets]
 For a test edge, test USDC comes from
 [Circle's faucet](https://faucet.circle.com), which serves all four. Test ETH
 comes from each network's own faucet and test SOL from the Solana faucet.
 None of it has value.
+:::
 
 ### ENS names and sending USDC
 
@@ -429,11 +435,13 @@ one of the two set is offered to buyers on that kind of network only. Import
 the same phrase into MetaMask, Rabby, Rainbow, Trust Wallet or Phantom when
 you want to spend it. There is no Stripe connected account for these sales.
 
+:::warning[A wallet made here stays in one browser]
 A wallet created on the Market pane lives only in that browser, so the pane
 asks where its sales should go before you list. Sign with it as above, or
 choose "Use another wallet's address": paste the address of a wallet you keep
 elsewhere, sign the message the pane shows with that wallet, and paste the
 signature. The edge checks it the same way.
+:::
 
 ## Paying with Bitcoin
 

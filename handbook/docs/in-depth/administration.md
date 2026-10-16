@@ -54,10 +54,12 @@ WebP, GIF or SVG, up to 8 MiB). The **Veil** slider lays the page colour over
 the picture, from 20 % to 90 %, so text stays readable in both the light and
 the dark theme. *Plain* removes the picture again.
 
+:::note[Why the picture needs no token]
 lososd serves an uploaded picture at `/api/look/background` without a token,
 because a CSS `background-image` cannot send one. The route sits behind the
 same LAN-only guard as the rest of the admin pages, and a wallpaper is not a
 secret.
+:::
 
 ### Widgets written by hand
 
@@ -149,9 +151,11 @@ upper-case letter, a digit and a symbol such as `-` or `!`. The wizard shows
 the four rules with a tick each as you type. A password set before this rule
 existed still signs in.
 
+:::warning[Lost password and spare key]
 There is no way to rotate the token from the box, since it has no shell.
 Losing the password *and* the spare key means reinstalling from the install
 medium, which wipes the disk.
+:::
 
 ## Settings
 
@@ -320,10 +324,12 @@ Forgejo's five are `app.ini` keys, which Forgejo's Site administration shows
 without a way to change them. Both modes read one attribute set,
 `lososInternal.forgejoSite`.
 
+:::note[What stays in the apps]
 Everything an account sets for itself stays in the app, and so do the
 admin settings LosOS does not cover yet: mail delivery, background jobs,
 two-factor enforcement, Forgejo's database-backed settings and the account
 lists.
+:::
 
 ## Backup, restore and erase
 
@@ -385,11 +391,13 @@ drives it in phases kept in `state.json`, so it carries on with no tab open:
    secrets, the journal and the fscrypt metadata. It empties both data
    homes. The marker goes last, so an interrupted wipe runs again.
 
+:::danger[Only the first two steps can be cancelled]
 Cancelling is possible in steps 1 and 2 only. `/nix`, `/etc/nixos` and the
 disk's keyfile stay, so LosOS is still installed and the box opens the
 setup wizard. `/var/lib/losos-erase/report.json` keeps what the erase gave
 up outside the box, as counts, and Settings, Reset shows it.
 `tests/erase.nix` runs the whole cycle against a MinIO bucket in one VM.
+:::
 
 ## Users
 

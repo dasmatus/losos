@@ -57,11 +57,13 @@ Federuje aj LosOS cloud: súbory a kalendáre môžete zdieľať s ľuďmi, ktor
 majú účty na iných serveroch Nextcloud, podľa ich adresy `user@server`.
 `losos.nextcloud.federation.enable` to vypne.
 
+:::note[Federácia potrebuje zdieľanie disku]
 Oba druhy federácie fungujú iba vtedy, keď zariadenie zdieľa svoj disk
 (`losos.sharingMyStorage`), pretože iba vtedy je zdieľaná časť disku
 odomknutá. So zdieľaním vypnutým sa zariadenie nerozpráva so žiadnym iným
 serverom a panel **Rozšírené** ukazuje oba prepínače federácie ako
 nedostupné.
+:::
 
 ## Panel Aplikácie \{#the-apps-pane}
 
@@ -136,11 +138,13 @@ bežal rovnako ako LosOS cloud a LosOS Git.
 - Aplikácia dostane jeden vlastný port z `losos.apps.ports`, predvolene 30000
   až 30099, a dostane sa k nemu iba vaša lokálna sieť.
 
+:::note[Charty, ktoré zariadenie odmietne]
 Chart, ktorý potrebuje viac, zariadenie odmietne a povie prečo. Typickými
 dôvodmi sú administrátorské práva, port pod 1024, port, ktorý už používa
 iná aplikácia, alebo systémový priečinok. Aplikácia zložená z viacerých
 služieb, ktoré sa navzájom volajú menom, sa nemusí spustiť, pretože vlastný
 klaster zariadenia nemá vnútornú sieť.
+:::
 
 **Nainštalované aplikácie**, nad vyhľadávaním, vypisuje každú aplikáciu s jej
 stavom. **Otvoriť** prejde na port aplikácie na adrese, ktorú práve
@@ -149,10 +153,12 @@ aplikácie. **Odstrániť** sa najprv opýta a potom aplikáciu zo zariadenia
 odstráni. Jej priečinok s dátami zostane, takže inštalácia pod tým istým
 názvom dáta znova nájde.
 
+:::note[Inštalácia potrebuje režim záťaže]
 Vyhľadávanie ponúka inštaláciu iba vtedy, keď sú Súbory alebo Kód nastavené
 na **Oddelene**, čo je [režim záťaže](../types/app-modes). Iba vtedy beží
 vlastný klaster zariadenia. Inštalovanie vypnete nastavením
 `losos.apps.enable` na false na paneli **Rozšírené**.
+:::
 
 ## Dôveryhodné adresy \{#trusted-addresses}
 

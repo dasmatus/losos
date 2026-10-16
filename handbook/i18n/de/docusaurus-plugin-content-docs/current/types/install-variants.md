@@ -32,9 +32,11 @@ worauf eine Box ohne Chip verzichtet und wie du sie auf ein TPM umstellst.
 
 ![Nachweis aus einer Installation in einer virtuellen Maschine mit emuliertem TPM: Das verschlüsselte Volume hat ein systemd-tpm2-Token in Schlüsselplatz 1, und die Schlüsseldatei bleibt nur auf dem verschlüsselten Volume.](@site/docs/img/install-done-tpm.png)
 
+:::note[Keine Passphrase beim Start]
 Eine Box fragt beim Start nie nach einer Passphrase. Tut deine es doch,
 stimmt etwas nicht; siehe
 [Hängt an einer Passphrase-Abfrage](../troubleshooting/stuck-at-passphrase).
+:::
 
 ## UEFI oder BIOS \{#uefi-or-bios}
 

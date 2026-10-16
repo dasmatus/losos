@@ -46,5 +46,7 @@ si ich zariadenie sťahuje samo a cesta aktualizácií žiadny edge nepotrebuje.
 | Hardvér      | Grafika                     | vypnuté, pokiaľ zariadenie nemá GPU, ktoré chcete dať k dispozícii podom |
 | Zabezpečenie | štyri ďalšie ochrany        | vypnuté; každá niečo stojí                        |
 
+:::tip[Prechod na ďalší typ]
 Keď zapnete **Dostupné aj mimo domova**, kým je dostupný edge, zariadenie sa
 stane ďalším typom. Nič sa nepreinštaluje.
+:::

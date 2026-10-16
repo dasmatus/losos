@@ -23,10 +23,12 @@ sidebar_position: 1
 | `/.well-known/nodeinfo`, `/.well-known/webfinger` | Zisťovanie federácie LosOS Git, kým je federácia zapnutá a disk zdieľaný | ktokoľvek, aj cez edge |
 | `/nextcloud/ocm-provider/`, `/nextcloud/ocm/…` a ďalšie adresy federácie pod `/nextcloud` | Federácia LosOS cloud, kým je federácia zapnutá a disk zdieľaný; inak **404** | ktokoľvek, aj cez edge |
 
+:::note[Čo znamená lokálna sieť]
 „Iba lokálna sieť“ znamená zdrojovú adresu zo súkromného rozsahu
 (`10.…`, `172.16.…` až `172.31.…`, `192.168.…`), ktorá nie je vlastnou
 adresou zariadenia ani nepatrí do rozsahu podov mesh siete. Všetko ostatné
 vrátane prevádzky, ktorá prichádza cez tunel edge, dostane **403**.
+:::
 
 ## Porty \{#ports}
 

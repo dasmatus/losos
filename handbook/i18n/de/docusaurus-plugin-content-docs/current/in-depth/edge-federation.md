@@ -65,10 +65,12 @@ authentifizierte Partei, der Hub hält nie den Token einer Box. Die Hoheit
 gewählt; der Spoke wählt die Labels darin; alles andere wird pro Box
 abgelehnt, und der Spoke protokolliert es.
 
+:::note[Warum Boxen sich nicht beim Hub registrieren]
 Warum registrieren sich die Boxen eines Spokes nicht direkt beim Hub? Weil
 der Betreiber des Hubs dann jede Box der Welt führen würde, und genau das
 soll ein lokales Gateway vermeiden. Eine Tenant-Zeile pro Standort sind die
 gesamten Kosten eines Standorts auf der offiziellen Edge.
+:::
 
 ## Spoke-Seite: der Uplink {#spoke-side-the-uplink}
 
@@ -265,11 +267,13 @@ kannst. Der Registrar plant sie aus den Bindungen neu und lädt sie nie. Der
 Name der Box in der Zone der Edge, `<label>.<zone>`, geht denselben Weg wie
 ihre Domains, sodass auch das CNAME-Ziel sie erreicht.
 
+:::note[Die Kopie auf dem Gateway ist nur zum Lesen]
 Die lokale Edge bekommt ihre eigenen Zeilen in der Antwort auf `/relay`
 zurück. Das Gateway schreibt sie nach
 `/var/lib/losos-registrar/hub-routes.json` und protokolliert jede Änderung.
 Diese Datei sagt dir nur, was die offizielle Edge zu dir routet. Nichts
 auf der lokalen Edge routet danach.
+:::
 
 ### Einschalten {#turning-it-on}
 

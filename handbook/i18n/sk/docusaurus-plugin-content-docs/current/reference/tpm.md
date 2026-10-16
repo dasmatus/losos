@@ -42,9 +42,11 @@ Zariadenie do čipu zapečatí aj dve menšie tajomstvá:
   `systemd-creds`).
 - Kľúč, ktorý šifruje adresár úložiska pre mesh (`modules/fscrypt.nix`).
 
+:::note[Záložná kópia kľúča]
 Kópia diskového kľúča zostáva aj vnútri šifrovaného zväzku na
 `/etc/keys/persist-keyfile`. `losos-ctl grow` ju používa na zmenu veľkosti
 zväzku. Zvonku zväzok otvoriť nedokáže, pretože je v ňom.
+:::
 
 ## Čo stráca zariadenie bez TPM \{#what-a-box-without-a-tpm-gives-up}
 
@@ -80,10 +82,12 @@ dohliadal. Kľúč naviazaný na tieto merania by po aktualizácii zamkol
 zariadenie mimo jeho vlastného disku a zariadenie nemá shell, z ktorého by sa
 z toho dalo zotaviť.
 
-Čip preto vydá kľúč čomukoľvek, čo sa na tom počítači naštartuje, vrátane
+:::warning[Zlodej s celým zariadením]
+Čip vydá kľúč čomukoľvek, čo sa na tom počítači naštartuje, vrátane
 USB kľúča zlodeja. TPM zabezpečí, že samotný disk je nečitateľný. Nepomôže
 však, keď má niekto celé zariadenie. [Bezpečnostný model](/reference/security-model.md)
 to uvádza ako známe obmedzenie.
+:::
 
 ## Ako zistiť, v akom režime zariadenie je \{#how-to-tell-which-mode-a-box-is-in}
 
@@ -108,10 +112,12 @@ preinštalovanie.
    a použije ho. `losos-ctl install --tpm` urobí z chýbajúceho čipu chybu
    namiesto tichej inštalácie s keyfile.
 
+:::warning[Stav swtpm uchovávajte s obrazom disku]
 VM potrebuje emulovaný čip pri inštalácii aj pri každom ďalšom štarte.
 Riadky pre swtpm sú v [Inštalácii](/in-depth/install.md#try-it-in-a-vm-bios).
 Adresár so stavom swtpm uchovávajte spolu s obrazom disku, inak VM svoj disk
 neodomkne.
+:::
 
 Režim s keyfile je v poriadku pre VM, testovacie zariadenie alebo
 zariadenie, na ktorom nie je nič súkromné. Pre skutočné súbory vlastníka na

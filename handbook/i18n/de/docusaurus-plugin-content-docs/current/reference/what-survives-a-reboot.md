@@ -23,8 +23,10 @@ hängt sie per Bind-Mount wieder an ihren Platz:
 
 ![Die Systemfestplatte liegt im RAM und wird bei jedem Start neu aufgebaut; neun Verzeichnisse werden per Bind-Mount aus dem verschlüsselten Volume /persist zurückgeholt, und alles andere ist beim Neustart um 00:07 weg.](@site/docs/img/what-survives-de.svg)
 
+:::note[Alles andere ist um 00:07 weg]
 Alles andere, auch alles, was ein Angreifer oder ein Fehler irgendwo anders
 hingeschrieben hat, ist um 00:07 weg.
+:::
 
 ## Zwei Dinge, die Dokumente sind, keine Einstellungen \{#two-things-that-are-documents-not-settings}
 

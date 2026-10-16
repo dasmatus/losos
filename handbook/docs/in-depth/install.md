@@ -89,8 +89,10 @@ finds no display early, the installer prints the same on tty1 as text.
   without one gives up.
 - In a VM, give it a TPM (swtpm, see below) or it installs in keyfile mode.
 
+:::note[Why ext4 and not btrfs]
 `/persist` is ext4 with the `encrypt` feature because fscrypt needs it and
 btrfs does not support it. You lose compression and data checksums.
+:::
 
 After the reboot, the screen shows the salmon while the box starts. When
 it is up, the salmon moves to the top and a panel under it shows the box's
@@ -117,6 +119,7 @@ fingerprint so you can compare it with the one on the page. Phones get the
 plain download instead. The manual route stays below it: download
 `losos-ca.crt` and add it as a trusted authority yourself.
 
+:::tip[Let Chrome find the box]
 If reading a screen and typing an address is the scary part, open
 [losos-edge.dasmat.us/find](https://losos-edge.dasmat.us/find) in Chrome
 instead and press **Find my box**. Chrome asks once whether the page may look
@@ -128,12 +131,17 @@ holds its name and certificate fingerprint and nothing more, and nothing
 about your network leaves your machine. The box lets only that one page read
 the document (`losos.setup.finderOrigins`). Firefox and Safari have no such
 permission and get the typed-address instructions instead.
+:::
 
 ## Try it in a VM (BIOS)
 
+:::warning[Keep the same TPM state for every boot]
 For the TPM path, the VM needs an emulated chip at install time *and* at
 every boot, with the same state directory, or the installed system will not
-find the key it sealed. With swtpm:
+find the key it sealed.
+:::
+
+With swtpm:
 
 ```sh
 mkdir -p tpm

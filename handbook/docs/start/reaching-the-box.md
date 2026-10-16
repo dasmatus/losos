@@ -17,8 +17,10 @@ cloud at `/nextcloud`, LosOS Git at `/forgejo/`, this handbook at
 
 ![The banner under the salmon on the box's screen, with the address to type into a browser and the box's .local name.](../img/tty1-banner.png)
 
+:::tip[A box without a screen]
 If the box has no screen attached, your router's device list shows the box
 under the name you gave it, or as `losos` before setup.
+:::
 
 ## By name (works on most computers)
 

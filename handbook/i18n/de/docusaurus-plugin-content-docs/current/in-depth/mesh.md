@@ -25,10 +25,12 @@ Jede Box betreibt zwei Kubernetes-Instanzen:
 | Server              | diese Box                   | der Edge-VPS                     |
 | Braucht das Netzwerk | nein                       | ja                               |
 
+:::warning[Halte die beiden Cluster getrennt]
 Ein Kubernetes-Agent kann nicht starten, solange sein Server nicht erreichbar
 ist, und die Box startet jede Nacht neu. Liefen deine eigenen Dienste im
 Mesh-Cluster, würde ein Edge-Ausfall über Mitternacht sie offline nehmen.
 Halte sie getrennt.
+:::
 
 ## Rechenleistung teilen {#sharing-compute}
 
@@ -41,9 +43,11 @@ Die Box nimmt Mesh-Arbeit nur an, wenn beides zutrifft:
 Leerlauf kann das Fenster früher schließen. Außerhalb des Fensters kann er es
 nicht öffnen.
 
+:::note[Unbekanntes gilt als beschäftigt]
 Alles Unbekannte gilt als beschäftigt: keine Leerlaufmeldung, eine veraltete
 Meldung oder eine Edge, die gerade neu gestartet ist. Die Edge wertet das
 Fenster in der Zeitzone der Appliance aus.
+:::
 
 ## Die Edge finden {#finding-the-edge}
 
@@ -92,6 +96,7 @@ freien Speicher und die Rechenleistung dieser Box verkaufen. Die eigene Edge
 einer Firma trägt die Warnung, und das ist kein Fehler. Siehe [Master-Proxy,
 offizielle Edges](/in-depth/master-proxy.md#official-edges).
 
+:::note[Auf virtuellen Maschinen ausprobieren]
 `demo/edge-lan/run.sh` bootet zwei Boxen und eine Edge in einem virtuellen
 Netzwerk und geht genau das in der Reihenfolge der Prüfliste durch
 (`demo/edge-lan/CHECKLIST.md`). Zuerst ganz ohne Edge: nichts gefunden,
@@ -99,6 +104,7 @@ Teilen abgelehnt, lokale Nutzung intakt, ein Neustart ändert nichts. Dann mit
 eingeschalteter Edge: auf beiden Boxen innerhalb eines Scans gefunden,
 erlaubt, Edge weg, abgelehnt, wieder da. `demo/edge-lan/record.sh` zeichnet
 denselben Durchlauf aus der Admin-Oberfläche der Boxen auf.
+:::
 
 ## Speicher teilen {#sharing-storage}
 

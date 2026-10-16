@@ -53,8 +53,10 @@ The arrow keys move through the list, Enter opens the highlighted entry and
 Escape closes the list. Files and repositories open in their own app, and
 Ctrl+Enter or Cmd+Enter opens one in a new tab.
 
+:::note[File search needs your password]
 File search needs one sign-in with your password, not the spare key. Until
 then the list says so in place of the files.
+:::
 
 To search inside your LosOS cloud files, the box keeps an index of their
 text. It checks for new and changed files every two minutes and reads only
@@ -91,11 +93,13 @@ every browser you sign in from shows the same pins.
 
 ![The pins list with its Files tab open on the Documents folder of LosOS cloud.](../img/pins-dialog.png)
 
+:::note[How the box lists your files]
 The box lists your files with an app password it asks LosOS cloud for when
 you sign in with your password. Until you have done that once, the
 **Files** tab asks you to. The app password shows up in LosOS cloud's
 security settings as "LosOS admin page", and revoking it there stops the
 listing until your next sign-in. The sidebar holds 24 pins.
+:::
 
 ## The tour
 

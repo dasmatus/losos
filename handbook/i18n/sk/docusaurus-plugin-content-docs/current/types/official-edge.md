@@ -126,8 +126,10 @@ Názov vzniká z identity zariadenia, ale neprezrádza ju. Doménu pridáte takt
    **Funguje**, edge pre ňu získa certifikát a LosOS cloud odpovedá na
    `https://<vaša doména>/nextcloud`.
 
+:::note[Doména, pred ktorou nič nie je]
 Doména, pred ktorou nič nie je, napríklad samotná `novak-family.eu`,
 nemôže niesť CNAME. Použite namiesto neho adresy A a AAAA, ktoré panel uvádza.
+:::
 
 Zariadenie môže mať najviac päť domén a doména patrí naraz iba jednému
 zariadeniu. Keď ju na paneli odstránite, edge ju pri ďalšom prechode prestane

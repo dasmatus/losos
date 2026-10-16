@@ -131,10 +131,12 @@ Každé zostavenie má asi 16 MB WebAssembly, s brotli 3,4 MB pre WebGPU a
 vykreslení plátna SVG. Content security policy stránky netreba meniť,
 pretože `'wasm-unsafe-eval'` už prehliadaču dovoľuje skompilovať jadro.
 
+:::tip[Plátno si vyberte sami]
 Ak chcete plátno vybrať, pridajte k adrese `?canvas=svg`, `?canvas=webgpu`
 alebo `?canvas=webgl2`. Kľúč lokálneho úložiska `losos-lab-canvas` berie tie
 isté hodnoty a uchová voľbu v danom prehliadači. Odznak enginu v hornej
 lište uvádza plátno vo svojom tooltipe.
+:::
 
 ## Hosty pod libvirt {#guests-under-libvirt}
 
@@ -268,6 +270,7 @@ samostatne, cez jeho demo stránku.
 
 ### Bezpečnosť {#security}
 
+:::warning[Na vlastnom PC sa vyhnite systémovej inštancii]
 Kto drží relayovaný socket, má libvirt s právami pomocníka. libvirt
 identifikuje protistranu socketu podľa jej user id, takže vidí pomocníka a
 nikdy nie stránku, a polkit sa pýta tiež na pomocníka. Pri
@@ -277,6 +280,7 @@ relay nevie takú doménu odmietnuť bez parsovania protokolu libvirt. Na
 vlastnom PC uprednostnite `qemu:///session`: potom sú najhorším prípadom
 súbory vášho vlastného používateľa. Hosty Labu zo systémovej inštancie nič
 nepotrebujú.
+:::
 
 Pomocník preto pustí k relay socketu iba s tiketom a tiket stojí toľko isto
 ako spustenie hosta: bearer token, keď má pomocník `--token-file`, a inak

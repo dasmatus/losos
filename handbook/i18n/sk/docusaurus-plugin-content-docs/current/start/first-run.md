@@ -44,9 +44,11 @@ irm http://<address>/setup/trust.ps1 | iex
 - macOS sa raz opýta na heslo vášho účtu. Pýta sa ho kľúčenka, nie skript.
   Windows ukáže vlastné okno „nainštalovať tento koreňový certifikát?“.
 
+:::note[Certifikát na telefóne]
 Telefóny terminál nemajú. Na telefóne si z tej istej stránky stiahnite
 `losos-ca.crt` a v nastaveniach telefónu ho pridajte ako dôveryhodný
 certifikát. Rovnako to môžete urobiť ručne aj na počítači.
+:::
 
 Potom reštartujte prehliadač a znova otvorte stránku na `https://<name>.local`
 alebo `https://<address>`. Tento krok môžete aj preskočiť a vrátiť sa k nemu
@@ -68,12 +70,14 @@ a dôvod. Pokračuje sama.
 
 <img src={require("@site/docs/img/wizard-step2-waiting-sk.png").default} alt="Krok 2, kým sa LosOS cloud ešte inštaluje: stránka hovorí, na čo čaká, a pokračuje sama." width="520" />
 
+:::warning[Náhradný kľúč sa ukáže iba raz]
 Keď je heslo nastavené, stránka raz ukáže **náhradný správcovský kľúč**:
 64 znakov s tlačidlami **Kopírovať kľúč** a **Tlačiť**. Vytlačte si ho alebo
 si ho zapíšte a uchovávajte ho mimo zariadenia. Pokrýva jedinú situáciu,
 ktorú heslo nezvládne: keď LosOS cloud nebeží. Stránka ho už znova ukázať
 nevie. Pozrite si
 [Prihlásenie a náhradný kľúč](../manual/sign-in-and-spare-key).
+:::
 
 <img src={require("@site/docs/img/wizard-step2-spare-key-sk.png").default} alt="Krok 2 po nastavení hesla: prihlasovacie meno a náhradný správcovský kľúč, ukázaný raz, s tlačidlami Kopírovať a Tlačiť." width="520" />
 

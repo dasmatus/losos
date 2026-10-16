@@ -27,9 +27,11 @@ change with a reason.
 | Hours set, nothing is ever lent                        | The window starts and ends at the same minute, or the box is never idle inside it.           | Set a real window. The caption under the hours says how long it is.          |
 | Apply fails on a mesh change                           | The rebuild itself failed, after the box accepted the change.                                 | [Apply fails](apply-fails), then try again with the edge up.                 |
 
+:::note[Only turning on is refused]
 The box only ever refuses *turning on*. A box whose edge went away keeps the
 sharing it already had, can still change every other setting, and can turn
 sharing off at any time.
+:::
 
 ## What sharing never does
 

@@ -24,8 +24,10 @@ defaults in `defaults.nix`. Modules read `config.losos.*`.
 these from `/persist`: `/nix`, `/var`, `/etc/ssh`, `/etc/keys`,
 `/etc/nixos`, `/etc/rancher`, the two data homes and `machine-id`.
 
+:::warning[Unlisted state is lost on reboot]
 **Anything not on that list is lost on reboot.** Add new state to
 `modules/impermanence.nix`.
+:::
 
 ## Control plane
 
@@ -63,8 +65,10 @@ docs/                    security model, design specs and plans
 handbook/                this handbook (Docusaurus)
 ```
 
+:::note[The compressed form of this page]
 `CLAUDE.md` in the repository is the compressed form of this page, and it
 lists the gotchas that bite silently.
+:::
 
 ## In depth
 
@@ -410,6 +414,7 @@ the night's update. lososd skips the step and reports `kept` when a file
 outside those two changed since the last update, so a hand edit pushed to
 LosOS Git is never overwritten. `tests/invariants.nix` pins the step.
 
+:::warning[Keep both rebuild paths impure]
 **Both rebuild paths are `--impure` on purpose**: `system.autoUpgrade.flags`
 and lososd's `rebuild_command`. The published tree carries neither this box's
 `modules/install-target.nix` nor its `modules/overrides.nix`, so `flake.nix`
@@ -420,6 +425,7 @@ setting. Under pure evaluation, `builtins.pathExists` on an absolute path is
 `false`, not an error. So CI, `nix flake check` and the installer stay pure
 and see the in-tree file or the defaults. `tests/invariants.nix` pins the
 flag.
+:::
 
 `nix.gc` runs at 04:30 with `--delete-older-than 14d`, and `boot.nix` caps
 both loaders at five generations. `/nix` *is* `/persist`, the ESP is 500 MiB,

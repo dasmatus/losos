@@ -43,10 +43,12 @@ zariadenie: `modules/overrides.nix`, ktorý drží vaše nastavenia, a
 spôsob odomykania. Zostavenie potom zostaví tento commit a rovnako každé
 Použiť po ňom.
 
+:::note[Vlastné zmeny zastavia aktualizácie]
 Ak ste zmenili akýkoľvek iný súbor v repozitári zariadenia, napríklad
 pushnutím commitu do LosOS Git z klonu, zariadenie si vašu zmenu ponechá a
 neaktualizuje sa. Panel História to povie. Ak chcete projekt znova
 nasledovať, vráťte tie súbory do pôvodného stavu.
+:::
 
 Riadia to tri nastavenia Nixu a panel Rozšírené ich ukazuje:
 
@@ -60,8 +62,10 @@ Firma môže adresu nasmerovať na vlastný fork. Repozitár musí byť čitate�
 bez hesla. Keď prvé nastavenie vypnete, zariadenie sa zostavuje iba z
 verzie, ktorú má.
 
+:::note[Bez internetu o 03:00]
 Zariadenie, ktoré o 03:00 nemá internet, zostaví verziu, ktorú má, a skúsi
 to znova nasledujúcu noc.
+:::
 
 ## Keď je zariadenie vypnuté \{#when-the-box-is-off}
 

@@ -24,12 +24,14 @@ Admin-Seiten gelangt, seinen eigenen Schlüssel hinzufügen und dafür ein
 Token erstellen. Der Terminal-Client braucht deshalb ein wenig Planung: Der
 Stick, von dem du installierst, muss deinen Schlüssel tragen.
 
+:::warning[Der Release-Stick trägt keinen Schlüssel]
 Der Stick von der Release-Seite trägt keinen Schlüssel. Eine davon
 installierte Box funktioniert in jeder anderen Hinsicht, und ihr Bereich
 Zugriffstokens sagt, dass kein Schlüssel hinterlegt wurde, und erstellt keine
 Tokens. Die einzige Möglichkeit, dieser Box einen Schlüssel zu geben, ist
 eine erneute Installation von einem Stick, der einen trägt, und die
 Installation löscht sie.
+:::
 
 Du brauchst einen GPG-Schlüssel mit einem Unterschlüssel zum Verschlüsseln,
 weil die Box ihre Antworten an ihn verschlüsselt. `gpg --full-generate-key`
@@ -74,8 +76,10 @@ Bereich Zugriffstokens deinen Schlüssel unter **Hinterlegte GPG-Schlüssel**.
 Zwei Schlüssel gehen auch: Führe beide auf, wie in
 `[ key (builtins.readFile ./other.asc) ]`.
 
+:::note[Selbst gebaute Sticks sind nicht signiert]
 Ein selbst gebauter Stick ist nicht signiert, also schalte Secure Boot in der
 Firmware aus, um von ihm zu starten.
+:::
 
 ## Ein Token erstellen \{#make-a-token}
 
@@ -152,8 +156,10 @@ durchsucht die Bereiche, `?` listet den Rest, und `q` beendet. Eine Änderung
 bleibt ein Entwurf, bis du `a` drückst, um sie anzuwenden, und die Box fragt
 vor dem Neuaufbau nach, wie es die Admin-Seiten tun.
 
+:::note[Was auf den Admin-Seiten bleibt]
 Zugriffstokens, der Markt, das Labor und alles, was Daten löscht, bleiben
 auf den Admin-Seiten.
+:::
 
 ## LosOS cloud und LosOS Git von diesem Rechner aus nutzen \{#use-losos-cloud-and-losos-git-from-this-computer}
 

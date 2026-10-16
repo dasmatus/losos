@@ -50,5 +50,7 @@ over midnight would take your own files offline.
 | Admin pages  | `/`                 | LAN only.                                                                                 |
 | Handbook     | `/handbook/`        | LAN only.                                                                                 |
 
+:::note[App tiles go through index.php]
 The admin pages' app tiles open LosOS cloud's apps through `index.php`
 (`/nextcloud/index.php/apps/<app>/`), which every configuration answers.
+:::

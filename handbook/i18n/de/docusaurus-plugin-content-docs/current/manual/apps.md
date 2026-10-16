@@ -59,11 +59,13 @@ LosOS cloud föderiert ebenfalls: Du kannst Dateien und Kalender mit Leuten
 teilen, deren Konten auf anderen Nextcloud-Servern liegen, über ihre Adresse
 `user@server`. `losos.nextcloud.federation.enable` schaltet das ab.
 
+:::note[Föderation nur mit geteilter Festplatte]
 Beide Arten der Föderation funktionieren nur, solange die Box ihre
 Festplatte teilt (`losos.sharingMyStorage`), weil der geteilte Teil der
 Festplatte nur dann entsperrt ist. Ist das Teilen aus, spricht die Box mit
 keinem anderen Server, und der Bereich **Erweitert** zeigt beide
 Föderationsschalter als nicht verfügbar.
+:::
 
 ## Der Bereich Apps \{#the-apps-pane}
 
@@ -142,11 +144,13 @@ so, dass es so läuft wie LosOS cloud und LosOS Git.
 - Die App bekommt einen eigenen Port aus `losos.apps.ports`, standardmäßig
   30000 bis 30099, und nur dein lokales Netz erreicht ihn.
 
+:::note[Charts, die die Box ablehnt]
 Ein Chart, das mehr braucht, lehnt die Box ab und sagt, warum. Typische
 Gründe sind Admin-Rechte, ein Port unter 1024, ein Port, den schon eine
 andere App benutzt, oder ein Ordner des Systems. Eine App aus mehreren
 Diensten, die einander über ihren Namen aufrufen, startet vielleicht nicht,
 weil der eigene Cluster der Box kein internes Netz hat.
+:::
 
 **Installierte Apps** über der Suche listet jede App mit ihrem Zustand.
 **Öffnen** geht zum Port der App auf der Adresse, die du gerade benutzt.
@@ -155,10 +159,12 @@ weil der eigene Cluster der Box kein internes Netz hat.
 Datenordner bleibt, sodass eine Installation unter demselben Namen die Daten
 wiederfindet.
 
+:::note[Installieren nur im Workload-Modus]
 Die Suche bietet Installationen nur an, solange Dateien oder Code auf
 **Abgeschottet** steht, also im [Workload-Modus](../types/app-modes). Nur
 dann läuft der eigene Cluster der Box. Um das Installieren abzuschalten,
 setze `losos.apps.enable` im Bereich **Erweitert** auf false.
+:::
 
 ## Vertrauenswürdige Adressen \{#trusted-addresses}
 

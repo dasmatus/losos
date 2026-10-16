@@ -30,9 +30,11 @@ mit:
 - Die App selbst ist in LosOS cloud nicht installiert oder deaktiviert.
   Öffne LosOS cloud → Apps und aktiviere sie.
 
+:::tip[Bis das Update da ist]
 Bis das Update da ist, öffnest du LosOS cloud über die Kachel **Dateien**
 oder unter `/nextcloud` und nimmst das eigene App-Menü von LosOS cloud.
 Dessen Links funktionieren.
+:::
 
 ## „Zugriff über eine nicht vertrauenswürdige Domain“ \{#access-through-untrusted-domain}
 

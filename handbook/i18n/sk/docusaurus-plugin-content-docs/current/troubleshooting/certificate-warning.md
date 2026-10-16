@@ -42,11 +42,13 @@ Skript pridá jeden certifikát do úložísk prehliadačov vášho používate�
 vypíše jeho odtlačok. Porovnajte ho s `http://<address>/setup/state.json`.
 Potom **reštartujte prehliadač** a otvorte `https://<name>.local`.
 
+:::note[Ručné pridanie certifikátu]
 Ak to chcete urobiť ručne, stiahnite `http://<address>/setup/losos-ca.crt`
 a pridajte ho ako dôveryhodnú certifikačnú autoritu. Na macOS na to slúži
 Prístup ku kľúčenkám (Keychain Access). Vo Windows je to `certmgr.msc` →
 Dôveryhodné koreňové certifikačné autority. Firefox má vlastné nastavenia
 certifikátov a telefón ich má v nastaveniach zabezpečenia.
+:::
 
 ## Varuje aj po inštalácii \{#still-warning-after-installing}
 

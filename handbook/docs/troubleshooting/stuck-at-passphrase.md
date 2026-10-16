@@ -30,9 +30,11 @@ unlock it:
 
 ## What you can do
 
+:::note[No passphrase to type]
 There is no passphrase to type. The key is a random 4096-character string
 that no one has ever seen. The recovery copy lives *inside* the encrypted
 volume, so it cannot open that volume.
+:::
 
 1. **Power off and on once.** A TPM that failed to answer during a hurried
    boot sometimes answers the next time.

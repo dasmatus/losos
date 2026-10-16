@@ -24,11 +24,13 @@ pridať vlastný kľúč a potom si k nemu vytvoriť token. Terminálový klient
 preto vyžaduje trochu plánovania: inštalačné médium, z ktorého inštalujete,
 musí niesť váš kľúč.
 
+:::warning[Médium zo stránky vydaní nenesie kľúč]
 Inštalačné médium zo stránky vydaní žiadny kľúč nenesie. Zariadenie
 nainštalované z neho funguje vo všetkom ostatnom a jeho panel Prístupové
 tokeny hovorí, že pri inštalácii nebol vložený žiadny kľúč, a tokeny
 nevytvára. Jediný spôsob, ako takému zariadeniu dať kľúč, je nainštalovať
 ho znova z inštalačného média, ktoré kľúč nesie, a inštalácia ho zmaže.
+:::
 
 Potrebujete kľúč GPG s podkľúčom na šifrovanie, pretože zariadenie mu
 šifruje svoje odpovede. `gpg --full-generate-key` taký vytvorí predvolene.
@@ -72,8 +74,10 @@ skončí v `result/iso/`. Zapíšte ho na USB kľúč a
 Prístupové tokeny ukáže váš kľúč pod **Vložené kľúče GPG**. Fungujú aj dva
 kľúče: uveďte oba, ako v `[ key (builtins.readFile ./other.asc) ]`.
 
+:::note[Vlastné inštalačné médium nie je podpísané]
 Inštalačné médium, ktoré si zostavíte sami, nie je podpísané, takže aby z neho
 počítač naštartoval, vypnite vo firmvéri Secure Boot.
+:::
 
 ## Vytvorenie tokenu \{#make-a-token}
 
@@ -145,8 +149,10 @@ hľadá v paneloch, `?` vypíše zvyšok a `q` program ukončí. Zmena zostane
 návrhom, kým ju klávesom `a` nepoužijete, a zariadenie sa pred zostavením
 opýta, rovnako ako správcovské stránky.
 
+:::note[Čo zostáva v správcovských stránkach]
 Prístupové tokeny, trh, Lab a všetko, čo maže dáta, zostáva v správcovských
 stránkach.
+:::
 
 ## LosOS cloud a LosOS Git z tohto počítača \{#use-losos-cloud-and-losos-git-from-this-computer}
 

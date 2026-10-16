@@ -65,8 +65,10 @@ sie behebt.
 
 ## Einen Ausfall von einem Fehler der Box unterscheiden \{#how-to-tell-an-outage-from-a-box-fault}
 
+:::note[Keine Anzeige für das Internet]
 Die Box hat keine Anzeige für „das Internet funktioniert“. Was sie hat, sind
 die oben aufgeführten Dinge.
+:::
 
 1. Öffne die Adresse der Box. Wenn die Übersicht **Antwortet** sagt und die
    App-Kacheln aufgehen, sind die Box und das LAN in Ordnung. Wenn nicht

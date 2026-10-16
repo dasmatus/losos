@@ -52,9 +52,11 @@ thaw the backup and waits; LosOS cloud and LosOS Git keep running until the
 files come back. AWS charges for the thaw, and Glacier classes also have a
 minimum storage time, so a backup tidied away early is still billed for it.
 
+:::warning[No lifecycle rule on the bucket]
 Choose the class here rather than with a lifecycle rule on the bucket. A rule
 over the whole bucket moves the index into Glacier too, and then no backup
 can be listed or opened until AWS thaws it.
+:::
 
 ## The recovery code
 
@@ -94,8 +96,10 @@ Sign in afterwards with the password you had when the backup was made. A
 wrong code fails with "the recovery code does not open this backup", and
 nothing on the box changes.
 
+:::tip[Restoring onto a fresh box]
 On a box that was erased or installed again, run the wizard first, then set
 up the same bucket under Backup and restore from there.
+:::
 
 ## Erasing the box
 
@@ -121,10 +125,12 @@ In order, the box:
 
 ![The countdown with Cancel erase.](../img/settings-erase-countdown.png)
 
+:::danger[No way back after step 3]
 From step 3 on, the erase cannot be stopped. A step the edge does not
 confirm is noted and the erase carries on. After the restart, Settings →
 Reset shows what the last erase gave up, as counts, and says when the edge
 did not confirm a step.
+:::
 
 Backups already in the bucket stay there. The erase never touches the
 bucket.

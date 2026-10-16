@@ -31,8 +31,10 @@ gives up, and how to move it to one.
 
 ![Proof from an install in a virtual machine with an emulated TPM: the encrypted volume has a systemd-tpm2 token in key slot 1, and the key file stays on the encrypted volume only.](../img/install-done-tpm.png)
 
+:::note[No passphrase at boot]
 A box never asks for a passphrase at boot. If yours does, something is
 wrong; see [Stuck at a passphrase prompt](../troubleshooting/stuck-at-passphrase).
+:::
 
 ## UEFI or BIOS
 

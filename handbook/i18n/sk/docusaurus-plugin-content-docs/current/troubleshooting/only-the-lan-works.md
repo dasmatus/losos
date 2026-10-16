@@ -64,8 +64,10 @@ opraví.
 
 ## Ako rozlíšiť výpadok od chyby zariadenia \{#how-to-tell-an-outage-from-a-box-fault}
 
+:::note[Žiadna kontrolka pre internet]
 Zariadenie nemá kontrolku „internet funguje“. Má to, čo je vymenované
 vyššie.
+:::
 
 1. Otvorte adresu zariadenia. Ak Prehľad hlási **Odpovedá** a dlaždice
    aplikácií sa otvárajú, zariadenie aj LAN sú v poriadku. Ak sa neotvorí

@@ -37,11 +37,13 @@ widget does not have. When it finds one, the model gets one more turn with
 the mistake named, and the tab says so. The better of the two widgets lands
 in the editor.
 
+:::tip[Ask for one thing per widget]
 The model is small. It does well with one clear thing per widget: a clock, a
 countdown, the disk as a bar, the list of apps, the weather for one town. Ask
 for a single thing in a sentence or two. Look at the result in the preview
 before you save it; sometimes a widget shows nothing or shows the wrong
 reading, and then building again or a small edit by hand fixes it.
+:::
 
 ## Memory
 
@@ -50,8 +52,10 @@ uses anyway. It gives the memory back five minutes after the last build. With
 8 GiB of memory or more there is room for both. On a box with less, a build
 can fail for lack of memory, and the tab says so.
 
+:::note[Turning the builder off]
 **Settings, Advanced** has `losos.builder.enable`. Turn it off and the box
 neither downloads nor runs the model, and the tab says the builder is off.
+:::
 
 ## Llama's terms
 

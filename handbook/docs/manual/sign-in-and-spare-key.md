@@ -25,9 +25,11 @@ existed still signs in.
 
 ![A wrong password: the dialog says the password was not accepted and stays open.](../img/unlock-refused.png)
 
+:::note[Wrong attempts lock a computer out]
 The tab stays unlocked until you close it. After ten wrong attempts from one
 computer, the box locks that computer out. The lockout starts at one second
 and doubles, up to five minutes.
+:::
 
 ## The spare admin key
 
@@ -40,10 +42,12 @@ so and offers **Use the spare admin key instead**.
 
 ![The unlock dialog while LosOS cloud is not running: nothing can check the password, so the dialog offers the spare admin key.](../img/unlock-dialog-cloud-down.png)
 
+:::warning[Keep the spare key away from the box]
 Keep the printed sheet away from the box. Anyone with the key can change
 every setting, which amounts to root. The box cannot show the key again or
 rotate it, because it has no shell. If you lose the password *and* the spare
 key, you have to reinstall from the stick, which wipes the disk.
+:::
 
 ![The unlock dialog asking for the 64-character spare admin key.](../img/unlock-spare-key.png)
 

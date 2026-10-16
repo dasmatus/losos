@@ -20,8 +20,10 @@ press a second time.
 
 ![Settings, Reset: Put every setting back, with what goes and what stays.](../img/settings-reset.png)
 
+:::note[What a reset keeps]
 A reset does not change the owner's password or the spare key, and does not
 re-open the claim window.
+:::
 
 To delete the data as well, use **Erase…** below it on the same screen.
 [Backup and erase](./backup-and-erase) explains it, and how a backup brings
@@ -29,10 +31,12 @@ everything back afterwards.
 
 ## Reinstall: wipe and start over
 
+:::danger[A reinstall wipes every disk]
 Booting the installer stick again installs from scratch. It **wipes every
 disk**, including your files, the password, the spare key, the box's
 identity in the mesh and its keys. There is no "keep my data" option, by
 design. The box is one copy, and your other copy is where your data is safe.
+:::
 
 After a reinstall the box is a new box. Run the wizard again, print a new
 spare key and trust the new certificate. With an edge, have the box enrolled

@@ -140,11 +140,13 @@ nachdem die SVG-Fläche gezeichnet ist. Die Content Security Policy der
 Seite braucht keine Änderung, weil `'wasm-unsafe-eval'` dem Browser bereits
 erlaubt, den Kern zu kompilieren.
 
+:::tip[Zeichenfläche selbst wählen]
 Um eine Zeichenfläche zu wählen, häng `?canvas=svg`, `?canvas=webgpu`
 oder `?canvas=webgl2` an die Adresse an. Der Local-Storage-Schlüssel
 `losos-lab-canvas` nimmt dieselben Werte an und behält die Wahl in diesem
 Browser. Das Engine-Abzeichen in der oberen Leiste nennt die Zeichenfläche
 in seinem Tooltip.
+:::
 
 ## Gäste unter libvirt {#guests-under-libvirt}
 
@@ -290,6 +292,7 @@ sich, über seine Demo-Seite.
 
 ### Sicherheit {#security}
 
+:::warning[Auf dem eigenen PC die System-Instanz meiden]
 Wer einen weitergeleiteten Socket hält, hat libvirt mit den Rechten des
 Helfers. libvirt erkennt die Gegenseite eines Sockets an ihrer User-ID, sieht
 also den Helfer und nie die Seite, und auch polkit fragt nach dem Helfer.
@@ -300,6 +303,7 @@ Protokoll von libvirt zu parsen. Bevorzuge auf deinem eigenen PC
 `qemu:///session`: Dann sind im schlimmsten Fall die Dateien deines eigenen
 Benutzers betroffen. Die Gäste des Labs brauchen nichts von der
 System-Instanz.
+:::
 
 Der Helfer lässt den Relay-Socket deshalb nur mit einem Ticket zu, und ein
 Ticket kostet dasselbe wie das Starten eines Gastes: das Bearer-Token, wenn

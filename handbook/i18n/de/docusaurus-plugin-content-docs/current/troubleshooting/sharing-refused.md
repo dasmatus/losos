@@ -27,9 +27,11 @@ ist ausgegraut, oder Anwenden lehnt die Änderung mit einer Begründung ab.
 | Stunden eingestellt, aber nie wird etwas verliehen     | Das Zeitfenster beginnt und endet in derselben Minute, oder die Box ist darin nie untätig.  | Stell ein echtes Zeitfenster ein. Die Zeile unter den Stunden sagt, wie lang es ist. |
 | Anwenden schlägt bei einer Mesh-Änderung fehl          | Der Rebuild selbst ist fehlgeschlagen, nachdem die Box die Änderung angenommen hatte.        | [Anwenden schlägt fehl](apply-fails), dann noch einmal versuchen, während die Edge erreichbar ist. |
 
+:::note[Abgelehnt wird nur das Einschalten]
 Die Box lehnt immer nur das *Einschalten* ab. Eine Box, deren Edge weg ist,
 behält das Teilen, das sie schon hatte, kann weiterhin jede andere
 Einstellung ändern und das Teilen jederzeit ausschalten.
+:::
 
 ## Was das Teilen nie tut \{#what-sharing-never-does}
 

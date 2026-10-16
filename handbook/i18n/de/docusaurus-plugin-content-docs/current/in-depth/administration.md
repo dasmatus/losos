@@ -56,10 +56,12 @@ hoch (PNG, JPEG, WebP, GIF oder SVG, bis 8 MiB). Der Regler **Schleier**
 legt die Seitenfarbe über das Bild, von 20 % bis 90 %, damit Text im hellen
 wie im dunklen Theme lesbar bleibt. *Schlicht* entfernt das Bild wieder.
 
+:::note[Warum das Bild kein Token braucht]
 lososd liefert ein hochgeladenes Bild unter `/api/look/background` ohne
 Token aus, weil ein CSS-`background-image` keinen senden kann. Die Route
 liegt hinter demselben Nur-LAN-Schutz wie der Rest der Admin-Seiten, und ein
 Hintergrundbild ist kein Geheimnis.
+:::
 
 ### Selbst geschriebene Widgets {#widgets-written-by-hand}
 
@@ -165,9 +167,11 @@ oder `!`. Der Assistent zeigt während der Eingabe die vier Regeln mit je
 einem Haken. Ein Passwort, das vor dieser Regel gesetzt wurde, meldet sich
 weiterhin an.
 
+:::warning[Passwort und Ersatzschlüssel verloren]
 Das Token lässt sich auf der Box nicht rotieren, da sie keine Shell hat. Wer
 das Passwort *und* den Ersatzschlüssel verliert, muss vom
 Installationsmedium neu installieren, was die Festplatte löscht.
+:::
 
 ## Einstellungen {#settings}
 
@@ -355,10 +359,12 @@ Die fünf von Forgejo sind `app.ini`-Schlüssel, die Forgejos
 Website-Administration ohne Möglichkeit zur Änderung zeigt. Beide Modi lesen
 eine Attributmenge, `lososInternal.forgejoSite`.
 
+:::note[Was in den Apps bleibt]
 Alles, was ein Konto für sich selbst einstellt, bleibt in der App, ebenso
 die Verwaltungseinstellungen, die LosOS noch nicht abdeckt: Mailversand,
 Hintergrundjobs, erzwungene Zwei-Faktor-Anmeldung, Forgejos in der Datenbank
 gespeicherte Einstellungen und die Kontenlisten.
+:::
 
 ## Sicherung, Wiederherstellung und Löschen {#backup-restore-and-erase}
 
@@ -432,6 +438,7 @@ werden, sodass er auch ohne offenen Tab weiterläuft:
    Daten-Homes. Die Markierung wird zuletzt entfernt, sodass ein
    unterbrochenes Löschen erneut läuft.
 
+:::danger[Abbrechen nur in den ersten zwei Schritten]
 Abbrechen ist nur in den Schritten 1 und 2 möglich. `/nix`, `/etc/nixos`
 und die Schlüsseldatei der Festplatte bleiben, LosOS ist also weiterhin
 installiert, und die Box öffnet den Einrichtungsassistenten.
@@ -439,6 +446,7 @@ installiert, und die Box öffnet den Einrichtungsassistenten.
 Box aufgegeben hat, als Zählwerte, und Einstellungen, Zurücksetzen zeigt es an.
 `tests/erase.nix` durchläuft den ganzen Zyklus gegen einen MinIO-Bucket in
 einer VM.
+:::
 
 ## Benutzer {#users}
 
