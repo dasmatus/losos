@@ -30,7 +30,7 @@
 let
   fqdn = "${config.losos.hostName}.local";
 
-  # "LosOS v0.1.8 is ready", with the release tag modules/branding.nix sets.
+  # "LosOS <tag> is ready", with the release tag modules/branding.nix sets.
   ready = lib.concatStringsSep " " (
     [ "LosOS" ]
     ++ lib.optional (config.system.image.version != null) config.system.image.version
