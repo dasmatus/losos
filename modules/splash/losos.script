@@ -1,17 +1,17 @@
 # The LosOS boot screen: the logo, and under it a panel with the box's status.
 #
 # modules/splash.nix puts the palette (ground, ink, muted, accent, warn; each
-# with .r .g .b) and `name` ("LosOS v0.1.8") above this file.
+# with .r .g .b) and `name` ("LosOS <tag>") above this file.
 #
 # While the box boots the logo plays its opening: an outline closes in from
 # the edges of the screen onto a rule under the name, the salmon swims in
 # from the left, level, and turns up into the logo's angle as it lands, and
 # "LosOS" rises beside it. The rule then fills with its hatch as the boot
-# goes on, and the caption ("LosOS v0.1.8 is starting") sits under it. Once
+# goes on, and the caption ("LosOS <tag> is starting") sits under it. Once
 # the box is up, modules/console.nix sends the rows tty1 shows without a
 # splash, as
 #
-#   plymouth update --status='losos:#LosOS v0.1.8 is ready||~On any computer...'
+#   plymouth update --status='losos:#LosOS <tag> is ready||~On any computer...'
 #
 # (a text longer than one Plymouth message comes first in `losos+:` parts),
 # one row per `|`, each led by a style character:

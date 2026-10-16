@@ -583,6 +583,22 @@ jobs:
         with:
           cache-url: ${{ vars.LOSOS_PROXY_URL }}
           public-key: ${{ vars.NIX_CACHE_PUBLIC_KEY }}
+      # `losos --version` says flake/version.nix. On a tag the file can
+      # still name the previous release (version.yml commits the new one to
+      # main afterwards), so the tag is written over it and staged, as the
+      # release job does for its media.
+      - name: stamp the release tag
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if ! printf '%s' "$TAG" | grep -Eq '^v[0-9]+(\.[0-9]+)*$'; then
+            echo "::notice::${TAG} is not a release tag; losos says what flake/version.nix says"
+            exit 0
+          fi
+          sed -i "s/^\".*\"\$/\"${TAG}\"/" flake/version.nix
+          git add flake/version.nix
       - run: nix build .#losos-static -o result-tui -L
       - name: the static binary runs and links nothing
         run: |
@@ -1074,9 +1090,9 @@ jobs:
           xargs -r nix copy --from "file://$PWD/registrar-cache" --no-check-sigs < registrar-cache/store-paths
       # The media carry their own tag (flake/version.nix): written over the
       # committed value and staged, since nix's git fetcher reads staged
-      # files. An installed box builds from the committed tree, so a tag the
-      # file does not name gets a warning to bump it on main. Tags older than
-      # the file are built as they are.
+      # files. A tag made before the file named it is the usual case:
+      # version.yml then commits the tag to main, which is what installed
+      # boxes build from. Tags older than the file are built as they are.
       - name: stamp the release tag
         env:
           TAG: ${{ matrix.tag }}
@@ -1088,7 +1104,7 @@ jobs:
           fi
           committed=$(nix eval --raw --file flake/version.nix)
           if [ "$committed" != "$TAG" ]; then
-            echo "::warning::flake/version.nix says ${committed} but the tag is ${TAG}; bump it on main so installed boxes say ${TAG} too"
+            echo "::notice::flake/version.nix says ${committed} in the tag's tree; the media say ${TAG}, and version.yml puts ${TAG} on main"
           fi
           printf '"%s"\n' "$TAG" > flake/version.nix
           git add flake/version.nix

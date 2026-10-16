@@ -71,7 +71,7 @@ with your key on it.
 
 ![The end of an install: LosOS is installed, remove the stick and press any key to restart.](../img/installer-screen-done.png)
 
-![The box's screen after the first boot: the salmon, and under it LosOS v0.1.8 is ready, with the box's addresses and its .local name.](../img/tty1-banner.png)
+![The box's screen after the first boot: the salmon, and under it LosOS v0.4.0 is ready, with the box's addresses and its .local name.](../img/tty1-banner.png)
 
 ## Trying it in a virtual machine
 

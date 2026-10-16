@@ -72,7 +72,7 @@ s vaším kľúčom.
 
 ![Koniec inštalácie: LosOS je nainštalovaný, vyberte USB kľúč a stlačením ľubovoľného klávesu reštartujte.](@site/docs/img/installer-screen-done.png)
 
-![Obrazovka zariadenia po prvom štarte: losos a pod ním LosOS v0.1.8 je pripravený, s adresami zariadenia a jeho názvom .local.](@site/docs/img/tty1-banner.png)
+![Obrazovka zariadenia po prvom štarte: losos a pod ním LosOS v0.4.0 je pripravený, s adresami zariadenia a jeho názvom .local.](@site/docs/img/tty1-banner.png)
 
 ## Vyskúšanie vo virtuálnom stroji \{#trying-it-in-a-virtual-machine}
 
