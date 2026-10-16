@@ -31,6 +31,27 @@ export default defineMessages({
     de: "Losos ist Slowakisch für Lachs. An Halloween ist das Logo ein Teller davon.",
   },
   "shell.signOut": { en: "Sign out", sk: "Odhlásiť sa", de: "Abmelden" },
+  "shell.me.spareKey": { en: "Spare admin key", sk: "Náhradný kľúč", de: "Ersatzschlüssel" },
+  "shell.me.signedIn": {
+    en: "Signed in on LosOS Login as {name}.",
+    sk: "Prihlásený v LosOS Login ako {name}.",
+    de: "Bei LosOS Login angemeldet als {name}.",
+  },
+  "shell.me.admin": {
+    en: "You are an administrator, so every pane is yours.",
+    sk: "Ste správca, takže môžete používať všetky časti.",
+    de: "Du bist Administrator, also gehören dir alle Bereiche.",
+  },
+  "shell.me.limited": {
+    en: "You see the panes your account was given.",
+    sk: "Vidíte časti, ktoré dostal váš účet.",
+    de: "Du siehst die Bereiche, die dein Konto bekommen hat.",
+  },
+  "shell.me.spareKeyTip": {
+    en: "This tab is unlocked with the spare admin key, which opens every pane.",
+    sk: "Táto karta je odomknutá náhradným správcovským kľúčom, ktorý otvorí všetky časti.",
+    de: "Dieser Tab ist mit dem Ersatz-Admin-Schlüssel entsperrt, der alle Bereiche öffnet.",
+  },
   "shell.notFound.title": { en: "Nothing here", sk: "Nič tu nie je", de: "Hier ist nichts" },
   "shell.notFound.body": {
     en: "That address does not match any section of this box's admin page.",
@@ -52,34 +73,92 @@ export default defineMessages({
     sk: "Zariadenie neodpovedá. Skontrolujte, či je zapnuté.",
     de: "Die Box antwortet nicht. Prüfe, ob sie eingeschaltet ist.",
   },
-  "shell.signIn.title": { en: "Unlock this box", sk: "Odomknite toto zariadenie", de: "Diese Box entsperren" },
-  "shell.signIn.passwordHint": {
-    en: "Type your password, the same one you use for LosOS cloud.",
-    sk: "Zadajte svoje heslo, to isté, ktorým sa prihlasujete do LosOS cloud.",
-    de: "Gib dein Passwort ein, dasselbe wie für LosOS cloud.",
+  "shell.signIn.title": { en: "Sign in to this box", sk: "Prihláste sa do tohto zariadenia", de: "An dieser Box anmelden" },
+  "shell.signIn.authHint": {
+    en: "Sign in on LosOS Login, this box's sign-in page, with your name and password. Each person has their own, and what you can change here depends on yours.",
+    sk: "Prihláste sa v LosOS Login, prihlasovacej stránke tohto zariadenia, svojím menom a heslom. Každý má vlastné a to, čo tu môžete meniť, závisí od vášho účtu.",
+    de: "Melde dich bei LosOS Login, der Anmeldeseite dieser Box, mit deinem Namen und Passwort an. Jede Person hat ein eigenes, und was du hier ändern kannst, hängt von deinem ab.",
   },
-  "shell.signIn.passwordLabel": { en: "Password", sk: "Heslo", de: "Passwort" },
-  "shell.signIn.show": { en: "Show the password", sk: "Zobraziť heslo", de: "Passwort anzeigen" },
-  "shell.signIn.hide": { en: "Hide the password", sk: "Skryť heslo", de: "Passwort verbergen" },
-  "shell.signIn.wrongPassword": {
-    en: "That password was not accepted.",
-    sk: "Toto heslo nebolo prijaté.",
-    de: "Dieses Passwort wurde nicht akzeptiert.",
+  "shell.signIn.go": { en: "Sign in", sk: "Prihlásiť sa", de: "Anmelden" },
+  "shell.signIn.starting": {
+    en: "LosOS Login is starting. This page goes on by itself once it answers.",
+    sk: "LosOS Login sa spúšťa. Keď odpovie, táto stránka pokračuje sama.",
+    de: "LosOS Login startet. Sobald es antwortet, geht es hier von selbst weiter.",
   },
-  "shell.signIn.cloudDown": {
-    en: "LosOS cloud is not running, so the password cannot be checked right now. Wait a few minutes, or use the spare admin key from the printed sheet.",
-    sk: "LosOS cloud práve nebeží, takže heslo sa teraz nedá overiť. Počkajte pár minút alebo použite náhradný správcovský kľúč z vytlačeného hárku.",
-    de: "LosOS cloud läuft gerade nicht, deshalb kann das Passwort im Moment nicht geprüft werden. Warte ein paar Minuten oder nimm den Ersatz-Admin-Schlüssel vom gedruckten Blatt.",
+  "shell.facts.title": { en: "While you wait", sk: "Kým čakáte", de: "Während du wartest" },
+  "shell.facts.1": {
+    en: "The LosOS logo is a live coho salmon, cut out of a NOAA Fisheries photo.",
+    sk: "Logo LosOS je živý losos kisuč, vystrihnutý z fotografie NOAA Fisheries.",
+    de: "Das LosOS-Logo ist ein lebender Silberlachs, ausgeschnitten aus einem Foto von NOAA Fisheries.",
+  },
+  "shell.facts.2": {
+    en: "On 31 October the salmon in the logo is served on a plate.",
+    sk: "31. októbra sa losos z loga podáva na tanieri.",
+    de: "Am 31. Oktober wird der Lachs im Logo auf einem Teller serviert.",
+  },
+  "shell.facts.3": {
+    en: "The startup sound has no recording behind it. It is written as code and played from the end of the LosOS launch film's score.",
+    sk: "Za zvukom pri štarte nie je žiadna nahrávka. Je napísaný ako kód a hrá koniec hudby z úvodného filmu LosOS.",
+    de: "Hinter dem Startton steckt keine Aufnahme. Er ist als Code geschrieben und spielt das Ende der Musik aus dem LosOS-Startfilm.",
+  },
+  "shell.facts.4": {
+    en: "This box has no SSH and no shell. Everything you change on it goes through pages like this one.",
+    sk: "Toto zariadenie nemá SSH ani shell. Všetko, čo na ňom meníte, ide cez stránky ako táto.",
+    de: "Diese Box hat kein SSH und keine Shell. Alles, was du an ihr änderst, läuft über Seiten wie diese.",
+  },
+  "shell.facts.5": {
+    en: "The box starts from an empty root file system on every boot. Only what is listed for /persist survives.",
+    sk: "Zariadenie pri každom štarte začína s prázdnym koreňovým súborovým systémom. Prežije len to, čo je uvedené pre /persist.",
+    de: "Die Box startet bei jedem Boot mit einem leeren Root-Dateisystem. Nur was für /persist eingetragen ist, bleibt erhalten.",
+  },
+  "shell.facts.6": {
+    en: "The whole system is described in Nix. Every setting you apply is a commit in the box's own Git repository.",
+    sk: "Celý systém je opísaný v Nixe. Každé použité nastavenie je commit vo vlastnom Git repozitári zariadenia.",
+    de: "Das ganze System ist in Nix beschrieben. Jede übernommene Einstellung ist ein Commit im eigenen Git-Repository der Box.",
+  },
+  "shell.facts.7": {
+    en: "These pages, LosOS cloud, LosOS Git and LosOS Login all take their colours from one file.",
+    sk: "Tieto stránky, LosOS cloud, LosOS Git aj LosOS Login berú farby z jedného súboru.",
+    de: "Diese Seiten, LosOS cloud, LosOS Git und LosOS Login nehmen ihre Farben aus einer einzigen Datei.",
+  },
+  "shell.facts.8": {
+    en: "LosOS Lab draws your setup with Bevy, a game engine, compiled to WebAssembly.",
+    sk: "LosOS Lab kreslí vaše zapojenie pomocou Bevy, herného enginu skompilovaného do WebAssembly.",
+    de: "LosOS Lab zeichnet dein Setup mit Bevy, einer Spiele-Engine, kompiliert zu WebAssembly.",
+  },
+  "shell.signIn.useSignIn": {
+    en: "Sign in with your name instead",
+    sk: "Prihlásiť sa namiesto toho menom",
+    de: "Stattdessen mit deinem Namen anmelden",
+  },
+  "shell.signIn.firstTitle": {
+    en: "Make your sign-in",
+    sk: "Vytvorte si prihlásenie",
+    de: "Lege deine Anmeldung an",
+  },
+  "shell.signIn.firstHint": {
+    en: "This box was set up before people signed in with their own name. Choose yours and a password; you become its first administrator. The spare admin key proves the box is yours.",
+    sk: "Toto zariadenie bolo nastavené skôr, než sa ľudia prihlasovali vlastným menom. Zvoľte si meno a heslo; stanete sa jeho prvým správcom. Náhradný správcovský kľúč dokazuje, že zariadenie je vaše.",
+    de: "Diese Box wurde eingerichtet, bevor sich Personen mit eigenem Namen anmeldeten. Wähle deinen Namen und ein Passwort; du wirst ihr erster Administrator. Der Ersatz-Admin-Schlüssel beweist, dass die Box dir gehört.",
+  },
+  "shell.signIn.nameLabel": { en: "Sign-in name", sk: "Prihlasovacie meno", de: "Anmeldename" },
+  "shell.signIn.newPassword": { en: "Password", sk: "Heslo", de: "Passwort" },
+  "shell.signIn.make": { en: "Make it", sk: "Vytvoriť", de: "Anlegen" },
+  "shell.signIn.made": { en: "Your sign-in is ready", sk: "Prihlásenie je pripravené", de: "Deine Anmeldung ist bereit" },
+  "shell.signIn.madeBody": {
+    en: "From now on, sign in with {name} and that password.",
+    sk: "Odteraz sa prihlasujte menom {name} a týmto heslom.",
+    de: "Ab jetzt meldest du dich mit {name} und diesem Passwort an.",
+  },
+  "shell.signIn.notMade": {
+    en: "The box did not make that sign-in.",
+    sk: "Zariadenie toto prihlásenie nevytvorilo.",
+    de: "Die Box hat diese Anmeldung nicht angelegt.",
   },
   "shell.signIn.useKey": {
     en: "Use the spare admin key instead",
     sk: "Použiť namiesto toho náhradný správcovský kľúč",
     de: "Stattdessen den Ersatz-Admin-Schlüssel verwenden",
-  },
-  "shell.signIn.usePassword": {
-    en: "Use the password instead",
-    sk: "Použiť namiesto toho heslo",
-    de: "Stattdessen das Passwort verwenden",
   },
   "shell.signIn.hint": {
     en: "Paste the spare admin key. It was shown once, during setup, and is on the sheet if you printed it.",

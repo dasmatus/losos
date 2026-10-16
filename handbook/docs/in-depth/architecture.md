@@ -220,7 +220,7 @@ the key it refused.
 Every apply, mode change and reset is a commit in `/etc/nixos`, the
 repository the installer made. A reconciler thread in lososd polls every
 30 s. It creates the admin's Forgejo account (`notshared`, with the owner
-password, kept in step on sign-in and set-password) and a private
+password, kept in step on password changes and device setup) and a private
 `losos-config` repository. It does that through a bot account whose token the
 Forgejo start-up script mints (`nix/forgejo-bootstrap.nix`, token at
 `/var/lib/forgejo/.losos-token`). It pushes when Forgejo is behind. When a

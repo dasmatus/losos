@@ -161,7 +161,7 @@ await check('a box nobody has set up opens the wizard, not a key prompt', async 
     `expected the wizard's first step; page errors: ${JSON.stringify(errors)}`,
   );
   assert.ok(
-    !/Unlock this box/i.test(text),
+    !/Sign in to this box|spare admin key/i.test(text),
     'a fresh box must never ask for the admin key: nothing on the appliance prints it',
   );
   await page.close();
@@ -170,7 +170,7 @@ await check('a box nobody has set up opens the wizard, not a key prompt', async 
 await check('a box that already has an owner asks to sign in, not to set up', async () => {
   const { page } = await open({ claimed: true });
   const text = await page.locator('body').innerText();
-  assert.ok(/Unlock this box/i.test(text), 'expected the key prompt on a claimed box');
+  assert.ok(/Sign in to this box/i.test(text), 'expected the sign-in prompt on a claimed box');
   assert.ok(
     !/Trust this box/i.test(text),
     'showing setup to a returning owner reads as "this box has been wiped"',
@@ -314,6 +314,7 @@ async function claimThroughStepTwo(password = 'Correct-horse battery staple 1', 
   page.on('request', (req) => requests.push({ method: req.method(), url: new URL(req.url()).pathname }));
 
   await page.getByRole('button', { name: /^Continue$/ }).click();
+  await page.locator('input[name="username"]').fill('matus');
   await page.locator('input[name="new-password"]').fill(password);
   await page.locator('input[name="confirm-password"]').fill(password);
   await page.getByRole('button', { name: /^Set the password$/ }).click();
@@ -380,7 +381,7 @@ await check('step 2 shows the spare admin key from the claim, since nothing else
   const { page, text } = await claimThroughStepTwo();
   assert.ok(text.includes('0'.repeat(64)), `the admin key is not on screen after the claim:\n${text}`);
   assert.ok(/spare admin key/i.test(text), 'the key is shown without saying what it is for');
-  assert.ok(/your password unlocks these admin pages/i.test(text), 'step 2 does not say the password is the way in now');
+  assert.ok(/you sign in to these admin pages on LosOS Login/i.test(text), 'step 2 does not say LosOS Login is the way in now');
   await page.close();
 });
 
@@ -407,6 +408,7 @@ await check('step 2 shows the four password rules up front and ticks them as the
   assert.deepStrictEqual(await met(), ['true', 'true', 'true', 'true'], 'all four should be met');
   // The server's refusal has a local twin: a password that misses a rule is
   // refused next to the field, before any request, naming the rule.
+  await page.locator('input[name="username"]').fill('matus');
   await field.fill('correct horse battery staple');
   await page.locator('input[name="confirm-password"]').fill('correct horse battery staple');
   await page.getByRole('button', { name: /^Set the password$/ }).click();
@@ -487,6 +489,7 @@ await check('step 2 opens on its own once the box reports ready, then claims', a
   const text = await page.locator('body').innerText();
   assert.ok(/You can set the password now/i.test(text), `no "ready" line after the wait:\n${text}`);
   assert.ok(!/finish starting/i.test(text), 'the waiting panel is still up after the box became ready');
+  await page.locator('input[name="username"]').fill('matus');
   await page.locator('input[name="new-password"]').fill('Correct-horse battery staple 1');
   await page.locator('input[name="confirm-password"]').fill('Correct-horse battery staple 1');
   await page.getByRole('button', { name: /^Set the password$/ }).click();
@@ -541,6 +544,7 @@ await check('a 503 from the claim itself sends step 2 back to waiting', async ()
     });
   });
   await page.getByRole('button', { name: /^Continue$/ }).click();
+  await page.locator('input[name="username"]').fill('matus');
   await page.locator('input[name="new-password"]').fill('Correct-horse battery staple 1');
   await page.locator('input[name="confirm-password"]').fill('Correct-horse battery staple 1');
   await page.getByRole('button', { name: /^Set the password$/ }).click();
@@ -579,6 +583,7 @@ await check('a claim whose reply was lost is asked again, and the second answer 
     });
   });
   await page.getByRole('button', { name: /^Continue$/ }).click();
+  await page.locator('input[name="username"]').fill('matus');
   await page.locator('input[name="new-password"]').fill('Correct-horse battery staple 1');
   await page.locator('input[name="confirm-password"]').fill('Correct-horse battery staple 1');
   await page.getByRole('button', { name: /^Set the password$/ }).click();
@@ -614,6 +619,7 @@ await check('a 409 from the claim is shown and not asked again', async () => {
     });
   });
   await page.getByRole('button', { name: /^Continue$/ }).click();
+  await page.locator('input[name="username"]').fill('matus');
   await page.locator('input[name="new-password"]').fill('Correct-horse battery staple 1');
   await page.locator('input[name="confirm-password"]').fill('Correct-horse battery staple 1');
   await page.getByRole('button', { name: /^Set the password$/ }).click();
@@ -650,6 +656,7 @@ await check('step 3 hides the frame and keeps reloading it until the files app a
   );
   // Through steps 1 and 2.
   await page.getByRole('button', { name: /^Continue$/ }).click();
+  await page.locator('input[name="username"]').fill('matus');
   await page.locator('input[name="new-password"]').fill('Correct-horse battery staple 1');
   await page.locator('input[name="confirm-password"]').fill('Correct-horse battery staple 1');
   await page.getByRole('button', { name: /^Set the password$/ }).click();
@@ -695,6 +702,7 @@ await check('Finish hands the owner to the app with the tour open, and the tour 
     route.fulfill({ status: 200, contentType: 'text/html', body: '<html><head data-requesttoken="tok" data-user="notshared"><title>Files</title></head><body>files</body></html>' }),
   );
   await page.getByRole('button', { name: /^Continue$/ }).click();
+  await page.locator('input[name="username"]').fill('matus');
   await page.locator('input[name="new-password"]').fill('Correct-horse battery staple 1');
   await page.locator('input[name="confirm-password"]').fill('Correct-horse battery staple 1');
   await page.getByRole('button', { name: /^Set the password$/ }).click();
@@ -739,6 +747,7 @@ await check('step 3 lets a slow first answer from the files app arrive instead o
     }
   });
   await page.getByRole('button', { name: /^Continue$/ }).click();
+  await page.locator('input[name="username"]').fill('matus');
   await page.locator('input[name="new-password"]').fill('Correct-horse battery staple 1');
   await page.locator('input[name="confirm-password"]').fill('Correct-horse battery staple 1');
   await page.getByRole('button', { name: /^Set the password$/ }).click();
@@ -789,15 +798,18 @@ await check('the OS picker is a Toggle Group: arrow keys switch the command too'
   await page.close();
 });
 
-await check('the password form is two Fields, and a refusal marks both invalid with one announced error', async () => {
+await check('the form is the sign-in name, the password and its repeat as three Fields, and a refusal marks both passwords invalid with one announced error', async () => {
   const { page } = await open({ claimed: false });
   await page.getByRole('button', { name: /^Continue$/ }).click();
-  const fields = page.locator('form [data-slot="field"]');
-  assert.equal(await fields.count(), 2, 'expected the password and its repeat as two fields');
+  const all = page.locator('form [data-slot="field"]');
+  assert.equal(await all.count(), 3, 'expected the name, the password and its repeat as three fields');
+  assert.equal(await all.first().locator('input[name="username"]').count(), 1, 'the sign-in name is not the first field');
+  const fields = page.locator('form [data-slot="field"]:has(input[type="password"])');
   const group = fields.first().locator('[data-slot="input-group"]');
   assert.equal(await group.locator('input[name="new-password"]').count(), 1, 'the password is not inside the Input Group');
   assert.equal(await group.getByRole('button', { name: /show the password/i }).count(), 1, 'the eye is not inside the field');
   assert.equal(await fields.first().locator('[data-testid="password-rules"]').count(), 1, 'the four rules left the field');
+  await page.locator('input[name="username"]').fill('matus');
   await page.locator('input[name="new-password"]').fill('correct horse battery staple');
   await page.locator('input[name="confirm-password"]').fill('correct horse battery staple');
   await page.getByRole('button', { name: /^Set the password$/ }).click();

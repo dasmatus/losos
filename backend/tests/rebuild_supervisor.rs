@@ -125,6 +125,7 @@ fn record(backend: &IoLosos, job: &str, state: RebuildState) {
             claimed: true,
             backup_job: None,
             erase: None,
+            owner: None,
         },
     )
     .unwrap();

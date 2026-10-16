@@ -103,7 +103,8 @@ pub fn retry_after_secs(d: Duration) -> u64 {
 }
 
 /// Append-only JSON-lines log at [`AUDIT_LOG`]:
-/// `{"ts","route","outcome","remote"}`.
+/// `{"ts","route","outcome","remote"}`, plus `"who"` (a sign-in name, or
+/// `spare-key`) once the caller is known.
 ///
 /// The token, request bodies and passwords are never passed in, so they cannot
 /// be logged. Mode 0600, `O_APPEND`. A write failure is reported to the
@@ -117,21 +118,37 @@ pub struct Audit;
 /// One record as a JSON line, newline included. Pure, so it is unit-tested
 /// without touching the filesystem.
 pub fn audit_line(ts: &str, route: &str, outcome: &str, remote: &str) -> String {
-    format!(
-        "{}\n",
-        serde_json::json!({
-            "ts": ts,
-            "route": route,
-            "outcome": outcome,
-            "remote": remote,
-        })
-    )
+    audit_line_as(ts, route, outcome, remote, None)
+}
+
+/// [`audit_line`] with the caller's name.
+pub fn audit_line_as(
+    ts: &str,
+    route: &str,
+    outcome: &str,
+    remote: &str,
+    who: Option<&str>,
+) -> String {
+    let mut v = serde_json::json!({
+        "ts": ts,
+        "route": route,
+        "outcome": outcome,
+        "remote": remote,
+    });
+    if let Some(who) = who {
+        v["who"] = serde_json::Value::String(who.to_string());
+    }
+    format!("{v}\n")
 }
 
 impl Audit {
     pub fn record(&self, route: &str, outcome: &str, remote: &str) {
+        self.record_as(route, outcome, remote, None);
+    }
+
+    pub fn record_as(&self, route: &str, outcome: &str, remote: &str, who: Option<&str>) {
         let ts = chrono::Utc::now().to_rfc3339();
-        if let Err(e) = Self::append(&audit_line(&ts, route, outcome, remote)) {
+        if let Err(e) = Self::append(&audit_line_as(&ts, route, outcome, remote, who)) {
             tracing::error!(error = ?e, path = AUDIT_LOG, "audit log write failed");
         }
     }
@@ -228,5 +245,13 @@ mod tests {
         assert_eq!(v["outcome"], "ok");
         assert_eq!(v["remote"], "192.168.1.9");
         assert_eq!(v.as_object().unwrap().len(), 4);
+    }
+
+    #[test]
+    fn audit_line_names_the_caller_once_known() {
+        let line = audit_line_as("t", "/api/grow", "forbidden", "192.168.1.9", Some("eva"));
+        let v: serde_json::Value = serde_json::from_str(line.trim_end()).unwrap();
+        assert_eq!(v["who"], "eva");
+        assert_eq!(v.as_object().unwrap().len(), 5);
     }
 }

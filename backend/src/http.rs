@@ -1,22 +1,27 @@
 //! The loopback admin HTTP API.
 //!
 //! Bound to `127.0.0.1` only; Nginx proxies `/api/*` here for the admin UI.
-//! Every route except `/api/health` requires `Authorization: Bearer <token>`,
-//! where the token is the file at `$LOSOS_ADMIN_TOKEN_FILE` — except the
-//! three that exist to *get* one: the first-run claim (`/api/setup/claim`)
-//! and the password sign-in (`/api/sign-in`, `crate::signin`), which answer
-//! with the token when the owner has proved themselves, and the claim-state
-//! read the page needs before it knows which of the two to show.
+//! A call is made by one of two principals ([`Principal`]):
 //!
-//! Health is deliberately open so the dashboard can show whether the daemon is
-//! reachable before anyone has pasted a token.
+//!   * **a person**, signed in by Authelia (`modules/identity.nix`). nginx
+//!     asks Authelia about every `/api/` request and passes the answer on as
+//!     `Remote-User`, overwriting whatever the client sent; lososd looks the
+//!     name up in the people file (`crate::people`) and lets the person
+//!     through to the sections their groups open (`crate::sections`);
+//!   * **the spare key**, `Authorization: Bearer <token>` with the file at
+//!     `$LOSOS_ADMIN_TOKEN_FILE`. It opens everything, and nginx lets it past
+//!     Authelia so the box can still be run when Authelia cannot.
+//!
+//! The public routes in `backend/sections.json` take neither: health, the
+//! first-run claim and its state read, and the terminal's two routes, whose
+//! envelope carries its own proof.
 
 use crate::guard::{retry_after_secs, Audit, Throttle};
 use crate::io_backend::{atomic_write_secret, IoLosos};
 use crate::losos::{
     cmd_apply, cmd_apps_search, cmd_change, cmd_config, cmd_config_sync, cmd_edge,
     cmd_factory_reset, cmd_grow, cmd_options, cmd_recovery, cmd_set_password, cmd_settings,
-    cmd_sign_in, cmd_state, cmd_status, cmd_storage,
+    cmd_state, cmd_status, cmd_storage,
 };
 use crate::model::Mode;
 use crate::overrides::validate_apply;
@@ -51,6 +56,40 @@ struct Api {
     port: u16,
     /// The widget builder (`crate::builder`).
     builder: crate::builder::Builder,
+    /// The people Authelia signs in (`crate::people`).
+    people: crate::people::People,
+}
+
+/// Who made a call.
+pub(crate) enum Principal {
+    /// The admin token: the claim's reply, the printed spare key, or this
+    /// daemon replaying a terminal call made with a spare-key token.
+    Spare,
+    /// Someone Authelia signed in, or a terminal call made with their token.
+    Person(crate::people::Person),
+}
+
+impl Principal {
+    fn audit_name(&self) -> &str {
+        match self {
+            Principal::Spare => "spare-key",
+            Principal::Person(p) => &p.name,
+        }
+    }
+
+    fn is_admin(&self) -> bool {
+        match self {
+            Principal::Spare => true,
+            Principal::Person(p) => p.is_admin(),
+        }
+    }
+
+    fn person(&self) -> Option<&crate::people::Person> {
+        match self {
+            Principal::Spare => None,
+            Principal::Person(p) => Some(p),
+        }
+    }
 }
 
 /// `{"error": "..."}` at the given status — the shape the SPA expects.
@@ -213,6 +252,43 @@ fn bearer_credentials(header: &str) -> Option<&str> {
         .then(|| credentials.trim_start_matches(' '))
 }
 
+/// Who made the request, if anyone this daemon knows.
+///
+/// The admin token is the spare key, unless it comes with `X-Losos-As`:
+/// that is this daemon replaying a terminal call for the person whose token
+/// it was ([`crate::access::forward`]), and only a holder of the admin token
+/// can say it. Without the token, `Remote-User` names the person nginx had
+/// Authelia sign in. That header is trusted because only root and nginx can
+/// connect to this port (the owner rule in `modules/daemon.nix`) and nginx
+/// sets it on every location that proxies here, empty when nobody signed in.
+fn identify(api: &Api, req: &HttpRequest) -> Option<Principal> {
+    let header = |name: &str| {
+        req.headers()
+            .get(name)
+            .and_then(|v| v.to_str().ok())
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+    };
+    let lookup = |name: &str| match api.people.get(name) {
+        Ok(found) => found.map(Principal::Person),
+        Err(e) => {
+            tracing::error!(error = ?e, "the people file could not be read");
+            None
+        }
+    };
+    if authorized(api, req) {
+        return match header("x-losos-as") {
+            Some(name) => lookup(name),
+            None => Some(Principal::Spare),
+        };
+    }
+    let from_loopback = api.people.headers && req.peer_addr().is_some_and(|a| a.ip().is_loopback());
+    match header("remote-user") {
+        Some(name) if from_loopback => lookup(name),
+        _ => None,
+    }
+}
+
 /// Whether the request carries the admin token.
 fn authorized(api: &Api, req: &HttpRequest) -> bool {
     req.headers()
@@ -256,14 +332,30 @@ fn guarded(
     mutating: bool,
     f: impl FnOnce() -> HttpResponse,
 ) -> HttpResponse {
+    guarded_as(api, req, route, mutating, |_| f())
+}
+
+/// [`guarded`], for a handler that needs to know who called.
+///
+/// After authentication the route's section (`crate::sections`) is checked
+/// against the person's groups: a person outside it gets `403` with the
+/// section named, so the page can say what is missing. The spare key passes
+/// every section.
+fn guarded_as(
+    api: &Api,
+    req: &HttpRequest,
+    route: &str,
+    mutating: bool,
+    f: impl FnOnce(&Principal) -> HttpResponse,
+) -> HttpResponse {
     let remote = remote_addr(req);
-    let audit = |outcome: &str| {
+    let audit = |outcome: &str, who: Option<&str>| {
         if mutating {
-            api.audit.record(route, outcome, &remote);
+            api.audit.record_as(route, outcome, &remote, who);
         }
     };
     if let Err(wait) = api.throttle.check(&remote, Instant::now()) {
-        audit("throttled");
+        audit("throttled", None);
         let mut resp = err(
             StatusCode::TOO_MANY_REQUESTS,
             "too many failed attempts; slow down",
@@ -274,22 +366,87 @@ fn guarded(
         );
         return resp;
     }
-    if !authorized(api, req) {
+    let Some(who) = identify(api, req) else {
+        // Authelia let someone through whom the people file no longer
+        // lists (removed or disabled since they signed in). A 401 would
+        // send the page back to Authelia, which would send it straight
+        // back here; a 403 stops that loop.
+        if api.people.headers
+            && req
+                .headers()
+                .get("remote-user")
+                .is_some_and(|v| !v.is_empty())
+        {
+            audit("no account", None);
+            return HttpResponse::Forbidden().json(serde_json::json!({
+                "error": "your account is not on this box any more",
+                "noAccount": true,
+            }));
+        }
         api.throttle.record_failure(&remote, Instant::now());
-        audit("unauthorized");
+        audit("unauthorized", None);
         return err(StatusCode::UNAUTHORIZED, "unauthorized");
-    }
+    };
     api.throttle.record_success(&remote);
-    let resp = f();
+    let method = req.method().as_str();
+    let pattern = req
+        .match_pattern()
+        .unwrap_or_else(|| req.path().to_string());
+    let section = crate::sections::section(method, &pattern);
+    if let Principal::Person(person) = &who {
+        if !crate::sections::allows(person, method, section) {
+            audit("forbidden", Some(&person.name));
+            return HttpResponse::Forbidden().json(serde_json::json!({
+                "error": "your account cannot use this part of the box",
+                "section": section,
+            }));
+        }
+    }
+    let resp = f(&who);
     let status = resp.status();
-    audit(if status.is_success() {
-        "ok"
-    } else if status.is_client_error() {
-        "rejected"
-    } else {
-        "error"
-    });
+    audit(
+        if status.is_success() {
+            "ok"
+        } else if status.is_client_error() {
+            "rejected"
+        } else {
+            "error"
+        },
+        Some(who.audit_name()),
+    );
     resp
+}
+
+/// `GET /api/me`: who is signed in, and which sections they can use. The
+/// admin UI shows the panes these open and hides the rest.
+async fn get_me(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
+    guarded_as(&api, &req, "/api/me", false, |who| {
+        let all = || {
+            crate::sections::usable(&crate::people::Person {
+                name: String::new(),
+                display_name: String::new(),
+                groups: vec![crate::people::ADMINS.to_string()],
+            })
+        };
+        match who {
+            Principal::Spare => HttpResponse::Ok().json(serde_json::json!({
+                "name": null,
+                "displayName": null,
+                "groups": [],
+                "admin": true,
+                "spareKey": true,
+                "sections": all(),
+            })),
+            Principal::Person(p) => HttpResponse::Ok().json(serde_json::json!({
+                "name": p.name,
+                "displayName": p.display_name,
+                "groups": p.groups,
+                "admin": p.is_admin(),
+                "spareKey": false,
+                "sections": crate::sections::usable(p),
+            })),
+        }
+    })
 }
 
 async fn health() -> HttpResponse {
@@ -484,8 +641,17 @@ async fn post_grow(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
 ///
 /// The page has to ask this before it can decide whether to show the wizard or
 /// the sign-in dialog, and on an unclaimed box there is no token to ask with.
+///
+/// `people` says whether anyone can sign in as an administrator yet. A box
+/// claimed before sign-in went through Authelia has nobody, and its owner
+/// makes the first account with the spare key ([`post_claim`]).
 async fn get_claim_state(api: web::Data<Api>) -> HttpResponse {
-    run(&api, crate::losos::cmd_claim_state)
+    let people = api.people.has_admin().unwrap_or(false);
+    run(&api, move |l| {
+        let mut v = crate::losos::cmd_claim_state(l)?;
+        v["people"] = serde_json::Value::Bool(people);
+        Ok(v)
+    })
 }
 
 /// `POST /api/setup/claim` — set the first password and take ownership.
@@ -501,7 +667,8 @@ async fn get_claim_state(api: web::Data<Api>) -> HttpResponse {
 /// and set the owner password. After that this route refuses every call, so
 /// the token cannot be re-fetched by a later visitor.
 async fn post_claim(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> HttpResponse {
-    const SHAPE: &str = r#"body must be JSON: {"user": "..." (optional), "password": "..."}"#;
+    const SHAPE: &str =
+        r#"body must be JSON: {"name": "...", "password": "...", "user": "..." (optional)}"#;
     let header = |name: &str| req.headers().get(name).and_then(|v| v.to_str().ok());
     let hostname = std::fs::read_to_string("/proc/sys/kernel/hostname").unwrap_or_default();
     if let Some(why) = claim_fault(
@@ -524,6 +691,42 @@ async fn post_claim(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> 
     let Some(password) = doc.get("password").and_then(|p| p.as_str()) else {
         return err(StatusCode::BAD_REQUEST, SHAPE);
     };
+    // The first person's sign-in name. Checked before anything runs, so a
+    // bad one costs nothing.
+    let name = match doc.get("name") {
+        None | Some(serde_json::Value::Null) => "admin".to_string(),
+        Some(serde_json::Value::String(n)) => n.trim().to_string(),
+        Some(_) => return err(StatusCode::BAD_REQUEST, SHAPE),
+    };
+    if let Err(e) = crate::people::validate_name(&name) {
+        return err(StatusCode::BAD_REQUEST, &e);
+    }
+    if let Err(e) = crate::setup::validate_password(password) {
+        return err(StatusCode::BAD_REQUEST, &e);
+    }
+    let email = format!("{name}@{}.local", hostname.trim());
+    // A box claimed before people signed in through Authelia: the spare key
+    // makes the first account, once.
+    if authorized(&api, &req) {
+        return match api.people.has_admin() {
+            Ok(true) => err(
+                StatusCode::CONFLICT,
+                "this box already has an administrator",
+            ),
+            Ok(false) => {
+                let secret = crate::setup::validate_password(password).expect("checked above");
+                let people = api.clone();
+                run(&api, move |l| {
+                    people
+                        .people
+                        .add(&name, &name, &email, &secret, &[crate::people::ADMINS])?;
+                    remember_owner(l, &name)?;
+                    Ok(serde_json::json!({ "name": name }))
+                })
+            }
+            Err(e) => error_response(e),
+        };
+    }
     let token = api.token.clone();
     let claims = api.clone();
     run(&api, move |l| {
@@ -533,73 +736,29 @@ async fn post_claim(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> 
             .claims
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        crate::losos::cmd_claim(l, &user, password, &token, &mut receipts)
+        let mut out = crate::losos::cmd_claim(l, &user, password, &token, &mut receipts)?;
+        if out.get("replayed").is_none() {
+            // The first person on a box is its administrator. The password
+            // is the one LosOS cloud just took, so one password opens both.
+            let secret =
+                crate::setup::validate_password(password).map_err(|e| anyhow::anyhow!(e))?;
+            claims
+                .people
+                .add(&name, &name, &email, &secret, &[crate::people::ADMINS])?;
+            remember_owner(l, &name)?;
+        }
+        out["name"] = serde_json::Value::String(name);
+        Ok(out)
     })
 }
 
-/// `POST /api/sign-in` — unlock the admin pages with the owner's password.
-///
-/// The second of the two routes that hand out the admin token
-/// ([`post_claim`] is the first), and the one every later visit uses: the
-/// password is checked by Nextcloud over loopback ([`crate::losos::cmd_sign_in`],
-/// `crate::signin`), and a correct one is answered with the same token the
-/// claim released. No Bearer, by nature — it is how a tab gets one — so it
-/// gets the claim's three same-box checks ([`claim_fault`]) against a page in
-/// a LAN browser, and the daemon's own per-address throttle counts a wrong
-/// password exactly as it counts a wrong token: a few free tries, then
-/// `429` with `Retry-After` for a growing window. Nextcloud throttles the
-/// forwarded client address on top of that.
-async fn post_sign_in(api: web::Data<Api>, req: HttpRequest, body: web::Bytes) -> HttpResponse {
-    const SHAPE: &str = r#"body must be JSON: {"password": "..."}"#;
-    let header = |name: &str| req.headers().get(name).and_then(|v| v.to_str().ok());
-    let hostname = std::fs::read_to_string("/proc/sys/kernel/hostname").unwrap_or_default();
-    if let Some(why) = claim_fault(
-        header("content-type"),
-        header("host"),
-        header("origin"),
-        hostname.trim(),
-    ) {
-        tracing::warn!(reason = why, "refused a sign-in request");
-        return err(StatusCode::FORBIDDEN, why);
-    }
-    let remote = remote_addr(&req);
-    if let Err(wait) = api.throttle.check(&remote, Instant::now()) {
-        api.audit.record("/api/sign-in", "throttled", &remote);
-        let mut resp = err(
-            StatusCode::TOO_MANY_REQUESTS,
-            "too many failed attempts; slow down",
-        );
-        resp.headers_mut().insert(
-            actix_web::http::header::RETRY_AFTER,
-            retry_after_secs(wait).to_string().parse().expect("digits"),
-        );
-        return resp;
-    }
-    let Ok(doc) = serde_json::from_slice::<serde_json::Value>(&body) else {
-        return err(StatusCode::BAD_REQUEST, SHAPE);
-    };
-    let Some(password) = doc.get("password").and_then(|p| p.as_str()) else {
-        return err(StatusCode::BAD_REQUEST, SHAPE);
-    };
-    if let Err(e) = crate::signin::validate_candidate(password) {
-        return err(StatusCode::BAD_REQUEST, &e);
-    }
-    let token = api.token.clone();
-    let client = remote.clone();
-    let resp = run(&api, move |l| cmd_sign_in(l, password, &token, &client));
-    let outcome = if resp.status().is_success() {
-        api.throttle.record_success(&remote);
-        "ok"
-    } else if resp.status() == StatusCode::UNAUTHORIZED {
-        api.throttle.record_failure(&remote, Instant::now());
-        "unauthorized"
-    } else if resp.status().is_client_error() {
-        "rejected"
-    } else {
-        "error"
-    };
-    api.audit.record("/api/sign-in", outcome, &remote);
-    resp
+/// Record which person owns the box's LosOS cloud account, so their
+/// password changes change that one too.
+fn remember_owner(l: &mut IoLosos, name: &str) -> anyhow::Result<()> {
+    use crate::losos::Losos;
+    let mut state = l.load_state()?;
+    state.owner = Some(name.to_string());
+    l.save_state(&state)
 }
 
 /// Why a claim request must be refused before it is even parsed, if it must.
@@ -678,8 +837,46 @@ async fn post_set_password(
     req: HttpRequest,
     body: web::Bytes,
 ) -> HttpResponse {
-    guarded(&api, &req, "/api/set-password", true, || {
-        post_set_password_inner(&api, &body)
+    guarded_as(&api, &req, "/api/set-password", true, |who| match who {
+        Principal::Person(p) => post_own_password(&api, p, &body),
+        Principal::Spare => post_set_password_inner(&api, &body),
+    })
+}
+
+/// A person changing their own password. It is the one Authelia checks,
+/// and for the person who owns the box's LosOS cloud account (`State::
+/// owner`), that account's too, so one password keeps opening both.
+fn post_own_password(api: &Api, person: &crate::people::Person, body: &[u8]) -> HttpResponse {
+    const SHAPE: &str = r#"body must be JSON: {"password": "..."}"#;
+    let Some(password) = serde_json::from_slice::<serde_json::Value>(body)
+        .ok()
+        .and_then(|d| {
+            d.get("password")
+                .and_then(|p| p.as_str())
+                .map(str::to_string)
+        })
+    else {
+        return err(StatusCode::BAD_REQUEST, SHAPE);
+    };
+    let secret = match crate::setup::validate_password(&password) {
+        Ok(s) => s,
+        Err(e) => return err(StatusCode::BAD_REQUEST, &e),
+    };
+    let name = person.name.clone();
+    run(api, move |l| {
+        use crate::losos::Losos;
+        let owner = l.load_state()?.owner;
+        let cloud = if owner.as_deref() == Some(name.as_str()) {
+            Some(cmd_set_password(
+                l,
+                crate::setup::DEFAULT_ADMIN_USER,
+                &password,
+            )?)
+        } else {
+            None
+        };
+        api.people.set_password(&name, &secret)?;
+        Ok(serde_json::json!({ "name": name, "changed": true, "cloud": cloud }))
     })
 }
 
@@ -708,7 +905,19 @@ fn post_set_password_inner(api: &Api, body: &[u8]) -> HttpResponse {
         return err(StatusCode::BAD_REQUEST, &e);
     }
     let password = password.to_string();
-    run(api, |b| cmd_set_password(b, &user, &password))
+    run(api, |b| {
+        use crate::losos::Losos;
+        let out = cmd_set_password(b, &user, &password)?;
+        // The owner signs in to Authelia with the same password.
+        if user == crate::setup::DEFAULT_ADMIN_USER {
+            if let Some(owner) = b.load_state()?.owner {
+                let secret =
+                    crate::setup::validate_password(&password).map_err(|e| anyhow::anyhow!(e))?;
+                api.people.set_password(&owner, &secret)?;
+            }
+        }
+        Ok(out)
+    })
 }
 
 /// `POST /api/devices/cloud` and `POST /api/devices/git`: a credential of
@@ -1744,11 +1953,21 @@ fn access_off(why: &str) -> HttpResponse {
 }
 
 /// `GET /api/access` — the box's key, the seeded keys and the tokens.
+///
+/// A person sees their own tokens; an administrator sees everyone's.
 async fn get_access(api: web::Data<Api>, req: HttpRequest) -> HttpResponse {
-    guarded(&api, &req, "/api/access", false, || {
+    guarded_as(&api, &req, "/api/access", false, |who| {
         match access_ready(&api) {
             Ok(ready) => match crate::access::overview(ready) {
-                Ok(v) => HttpResponse::Ok().json(v),
+                Ok(mut v) => {
+                    if !who.is_admin() {
+                        let me = who.person().map(|p| p.name.as_str());
+                        if let Some(tokens) = v.get_mut("tokens").and_then(|t| t.as_array_mut()) {
+                            tokens.retain(|t| t.get("owner").and_then(|o| o.as_str()) == me);
+                        }
+                    }
+                    HttpResponse::Ok().json(v)
+                }
                 Err(e) => error_response(e),
             },
             Err(why) => access_off(why),
@@ -1782,7 +2001,7 @@ async fn post_access_token(
     req: HttpRequest,
     body: web::Bytes,
 ) -> HttpResponse {
-    guarded(&api, &req, "/api/access/tokens", true, || {
+    guarded_as(&api, &req, "/api/access/tokens", true, |who| {
         let ready = match access_ready(&api) {
             Ok(r) => r,
             Err(why) => return access_off(why),
@@ -1802,6 +2021,8 @@ async fn post_access_token(
             &new.fingerprint,
             new.scope,
             new.expires_in_days,
+            // The token acts as whoever made it.
+            who.person().map(|p| p.name.as_str()),
             losos_access::now_secs(),
         ) {
             Ok((token, record)) => {
@@ -1818,7 +2039,7 @@ async fn post_access_revoke(
     req: HttpRequest,
     body: web::Bytes,
 ) -> HttpResponse {
-    guarded(&api, &req, "/api/access/tokens/revoke", true, || {
+    guarded_as(&api, &req, "/api/access/tokens/revoke", true, |who| {
         let ready = match access_ready(&api) {
             Ok(r) => r,
             Err(why) => return access_off(why),
@@ -1832,6 +2053,18 @@ async fn post_access_revoke(
                 r#"body must be JSON: {"id": "..."}"#,
             );
         };
+        // A person revokes their own tokens; an administrator anyone's.
+        if !who.is_admin() {
+            let me = who.person().map(|p| p.name.clone());
+            let theirs = ready
+                .tokens
+                .list()
+                .map(|all| all.iter().any(|t| t.id == id && t.owner == me))
+                .unwrap_or(false);
+            if !theirs {
+                return token_error(losos_access::TokenError::NotFound);
+            }
+        }
         match ready.tokens.revoke(&id) {
             Ok(()) => HttpResponse::Ok().json(serde_json::json!({ "revoked": true })),
             Err(e) => token_error(e),
@@ -1937,16 +2170,23 @@ fn call(api: &Api, remote: &str, body: &[u8]) -> Called {
         Ok(o) => o,
         Err(r) => return refuse(r),
     };
-    let token_id = match crate::access::authorize(ready, &opened, now) {
-        Ok(id) => id,
+    let token = match crate::access::authorize(ready, &opened, now) {
+        Ok(t) => t,
         Err(r) => return refuse(r),
     };
+    let token_id = &token.id;
     api.throttle.record_success(remote);
     let r = &opened.request;
     let route_only = r.path.split('?').next().unwrap_or(&r.path);
     let audit_route = format!("{ROUTE} {token_id} {} {route_only}", r.method);
     let (status, answer) = match crate::access::forward(
-        api.port, &api.token, remote, &r.method, &r.path, &r.body,
+        api.port,
+        &api.token,
+        remote,
+        token.owner.as_deref(),
+        &r.method,
+        &r.path,
+        &r.body,
     ) {
         Ok(inner) => (inner.status, inner.body),
         Err(e) => {
@@ -2075,6 +2315,7 @@ pub fn serve(backend: IoLosos) -> anyhow::Result<()> {
             access: crate::access::Access::from_env(),
             port,
             builder: crate::builder::Builder::from_env(),
+            people: crate::people::People::from_env(),
         });
         let server = HttpServer::new(move || {
             App::new()
@@ -2088,6 +2329,7 @@ pub fn serve(backend: IoLosos) -> anyhow::Result<()> {
                     crate::look::MAX_IMAGE_BYTES + 256 * 1024,
                 ))
                 .route("/api/health", web::get().to(health))
+                .route("/api/me", web::get().to(get_me))
                 .route("/api/state", web::get().to(get_state))
                 .route("/api/settings", web::get().to(get_settings))
                 .route("/api/status", web::get().to(get_status))
@@ -2195,9 +2437,6 @@ pub fn serve(backend: IoLosos) -> anyhow::Result<()> {
                 // the claim refuses once the box has an owner.
                 .route("/api/setup/claim", web::get().to(get_claim_state))
                 .route("/api/setup/claim", web::post().to(post_claim))
-                // The third: the password sign-in, which answers with the
-                // token on a claimed box and is guarded like the claim.
-                .route("/api/sign-in", web::post().to(post_sign_in))
                 .default_service(web::route().to(not_found))
         })
         .bind(("127.0.0.1", port))

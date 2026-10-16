@@ -114,7 +114,8 @@ and a build costs nothing; see [Widget builder](widget-builder.md).
 change any setting, so it is root.
 
 On a new, unclaimed box, the first LAN caller to submit `POST /api/setup/claim`
-sets the owner password and receives the token in the response. This route
+sets the owner password, becomes the first person who can sign in (an
+administrator) and receives the token in the response. This route
 requires no token, but stops accepting claims once the box has an owner. Set
 up the box only on a trusted LAN, because the first caller becomes its owner.
 The token is handed back only once and cannot be fetched again through the UI.
@@ -135,21 +136,28 @@ starting" for that gap. A reboot repeats the same steps against an installed
 instance in about 2 s. In a VM without KVM (QEMU's TCG emulation) the same
 steps take 10 to 30 minutes, so give a demo VM hardware virtualisation.
 
-The first-run wizard is that caller. Every later visit to the admin pages
-asks for the **password** the wizard set, the same one that signs in to LosOS
-cloud. `POST /api/sign-in` asks Nextcloud whether it is right and hands the
-tab the token on a yes. The box keeps no second copy of the password, so
-changing it inside LosOS cloud changes it for the admin pages too.
+The first-run wizard is that caller. After it, people sign in on LosOS
+Login, the box's sign-in page at `https://<box>/auth/`, each with a sign-in
+name and password of their own. LosOS Login is an open-source sign-in server
+that runs on the box. lososd keeps the people file it reads, with each
+password as an argon2id hash, and LosOS Login picks up a change to it at
+once. nginx asks LosOS Login about every `/api/` request and passes the
+person's name on to lososd, which opens the sections their groups allow. The
+first person is always an administrator. A person changes their own password
+with `POST /api/set-password`, and for the owner that changes the LosOS
+cloud password too.
 
 The token itself is still shown once, after the password is set, as the
-**spare admin key**, with Copy and Print buttons. It covers the one case the
-password cannot: LosOS cloud not running, since LosOS cloud is what checks the
-password. The unlock dialog has a link to enter it instead.
+**spare admin key**, with Copy and Print buttons. A request that carries it
+skips LosOS Login and lososd checks the key itself, so the key opens the
+admin pages while LosOS Login is not running. The sign-in dialog has a link
+to enter it instead. A box set up before people had sign-in names
+asks for the key once, together with a sign-in name and a password, to make
+its first administrator.
 
 A new password has to be at least 12 characters with a lower-case letter, an
 upper-case letter, a digit and a symbol such as `-` or `!`. The wizard shows
-the four rules with a tick each as you type. A password set before this rule
-existed still signs in.
+the four rules with a tick each as you type.
 
 :::warning[Lost password and spare key]
 There is no way to rotate the token from the box, since it has no shell.
@@ -209,7 +217,8 @@ With `losos.configRepo.enable` (the default) and LosOS Git on, lososd also
 keeps the configuration in a private repository on LosOS Git,
 `<owner>/losos-config`, owned by the admin's own account (`notshared`). The
 account is created on the first sync with the admin password and kept in
-step with it on every password change and sign-in. A reconciler in lososd
+step with it on every password change and each time a computer is set up
+for LosOS Git. A reconciler in lososd
 runs every 30 s:
 
 - it commits anything uncommitted and pushes the box's branch when LosOS
@@ -349,7 +358,8 @@ A backup holds:
   gives no ciphertext for a locked fscrypt file, so the script unlocks the
   policy for the copy and locks it again afterwards. restic's encryption
   covers it in the bucket;
-- `modules/overrides.nix`, the home page's look and the proxy token.
+- `modules/overrides.nix`, the home page's look, the proxy token and the
+  people file LosOS Login reads.
 
 On an `amazonaws.com` address the owner can pick a storage class: Glacier
 Instant Retrieval, Glacier Flexible Retrieval or Glacier Deep Archive.
@@ -388,7 +398,8 @@ drives it in phases kept in `state.json`, so it carries on with no tab open:
 5. `losos-factory-wipe.service` runs early in the next boot, before
    `sysinit.target` and before any service that owns the data, and deletes
    the app data, the databases, both Kubernetes instances' state, the
-   secrets, the journal and the fscrypt metadata. It empties both data
+   people file and LosOS Login's state, the secrets, the journal and the
+   fscrypt metadata. It empties both data
    homes. The marker goes last, so an interrupted wipe runs again.
 
 :::danger[Only the first two steps can be cancelled]

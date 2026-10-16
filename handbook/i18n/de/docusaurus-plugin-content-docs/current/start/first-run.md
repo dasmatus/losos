@@ -63,13 +63,17 @@ siehe die Seite [Zertifikatswarnung](../troubleshooting/certificate-warning).
 
 ## Schritt 2: Wähle, wie du dich anmeldest \{#step-2-choose-how-you-sign-in}
 
-Lege das **Passwort des Besitzers** fest. Es braucht mindestens 12 Zeichen
-mit einem Kleinbuchstaben, einem Großbuchstaben, einer Ziffer und einem
-Sonderzeichen wie `-` oder `!`. Der Assistent hakt jede Regel ab, während du
-tippst. Dieses eine Passwort öffnet LosOS cloud, LosOS Git und die
-Admin-Seiten.
+Wähle einen **Anmeldenamen** und lege das **Passwort des Besitzers** fest.
+Der Name ist kleingeschrieben: Er beginnt mit einem Buchstaben, danach
+folgen Buchstaben, Ziffern, `.`, `_` oder `-`, höchstens 32 Zeichen. Das
+Passwort braucht mindestens 12 Zeichen mit einem Kleinbuchstaben, einem
+Großbuchstaben, einer Ziffer und einem Sonderzeichen wie `-` oder `!`. Der
+Assistent hakt jede Regel ab, während du tippst. Du wirst der erste
+Administrator der Box und meldest dich an den Admin-Seiten mit diesem Namen
+und Passwort bei LosOS Login an, der Anmeldeseite der Box unter
+`https://<box>/auth/`. Dasselbe Passwort öffnet LosOS cloud und LosOS Git.
 
-<img src={require("@site/docs/img/wizard-step2-password-de.png").default} alt="Schritt 2 mit eingetipptem Passwort: Jede der vier Regeln wird abgehakt, sobald sie erfüllt ist." width="520" />
+<img src={require("@site/docs/img/wizard-step2-password-de.png").default} alt="Schritt 2 mit eingetipptem Anmeldenamen und Passwort: Jede der vier Passwortregeln wird abgehakt, sobald sie erfüllt ist." width="520" />
 
 Der Schritt wartet, bis LosOS cloud seinen eigenen ersten Start beendet hat,
 was auf einer frischen Box ein paar Minuten dauert. Solange zeigt die Seite
@@ -82,23 +86,32 @@ selbst weiter.
 Sobald das Passwort gesetzt ist, zeigt die Seite einmal den
 **Ersatz-Admin-Schlüssel**: 64 Zeichen, mit den Schaltflächen **Schlüssel
 kopieren** und **Drucken**. Druck ihn aus oder schreib ihn auf und bewahre
-ihn getrennt von der Box auf. Er deckt den einen Fall ab, den das Passwort
-nicht abdeckt: LosOS cloud läuft nicht. Die Seite kann ihn nicht noch einmal
-anzeigen. Siehe
+ihn getrennt von der Box auf. Er öffnet die Admin-Seiten, wenn LosOS Login
+nicht antwortet. Die Seite kann ihn nicht noch einmal anzeigen. Siehe
 [Anmeldung und der Ersatzschlüssel](../manual/sign-in-and-spare-key).
 :::
 
-<img src={require("@site/docs/img/wizard-step2-spare-key-de.png").default} alt="Schritt 2 nach dem Setzen des Passworts: der Anmeldename und der einmal angezeigte Ersatz-Admin-Schlüssel mit Schlüssel kopieren und Drucken." width="520" />
+Sobald das Passwort gesetzt ist, zeigt der Schritt außerdem zwei Zeilen, und
+beide nehmen das Passwort, das du gerade festgelegt hast:
 
-Über eine HTTPS-Verbindung bietet der Schritt außerdem einen **Passkey** an,
-damit sich ein Handy oder Laptop anmelden kann, ohne das Passwort zu tippen.
+- **Dein Name bei LosOS Login**: dein neuer Anmeldename. Er öffnet die
+  Admin-Seiten.
+- **Dein Konto in LosOS cloud**: das Konto, das du in Schritt 3 und in den
+  Apps für Computer und Handy eingibst.
+
+<img src={require("@site/docs/img/wizard-step2-spare-key-de.png").default} alt="Schritt 2 nach dem Setzen des Passworts: dein Name bei LosOS Login, dein Konto in LosOS cloud und der einmal angezeigte Ersatz-Admin-Schlüssel mit Schlüssel kopieren und Drucken." width="520" />
+
+Einen **Passkey** für LosOS cloud, mit dem sich ein Handy oder Laptop bei
+deinen Dateien anmeldet, ohne das Passwort zu tippen, kannst du später in den
+Sicherheitseinstellungen von LosOS cloud hinzufügen.
 
 ## Schritt 3: Anmelden \{#step-3-sign-in}
 
 Der Assistent öffnet LosOS cloud innerhalb der Seite, und du meldest dich
-mit dem Passwort an, das du gerade festgelegt hast. Dann bringt dich der
-Assistent zur Übersicht der Admin-Seiten. Ab hier geht es weiter unter
-[Die Admin-Seiten](../manual/admin-pages).
+mit deinem Konto in LosOS cloud und dem Passwort an, das du gerade
+festgelegt hast. Dann bringt dich der Assistent zur Übersicht der
+Admin-Seiten. Ab hier geht es weiter unter [Die
+Admin-Seiten](../manual/admin-pages).
 
 Beim ersten Mal öffnet sich über der Übersicht eine kurze Tour. Sie hat sechs
 Schritte, und jeder zeigt ein kleines bewegtes Bild der Seite mit dem

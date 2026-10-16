@@ -97,6 +97,17 @@ let
         install -Dm0644 ${./forgejo/templates/home.tmpl} "$fj/templates/home.tmpl"
         install -Dm0644 ${./forgejo/templates/custom/header.tmpl} "$fj/templates/custom/header.tmpl"
 
+        # ── Authelia: server.asset_path ───────────────────────────────────
+        # The sign-in pages' logo and favicon. Authelia serves a file from
+        # this directory in place of its own when one is there
+        # (internal/server/handlers.go, AssetOverride).
+        au="$out/authelia"
+        install -Dm0644 ${brand}/salmon.png "$au/logo.png"
+        ${render 16 "${brand}/losos-cloud.svg" "au-16.png"}
+        ${render 32 "${brand}/losos-cloud.svg" "au-32.png"}
+        ${render 48 "${brand}/losos-cloud.svg" "au-48.png"}
+        magick au-16.png au-32.png au-48.png "$au/favicon.ico"
+
         # The list below is what native mode links; a file built here and
         # missing from it would exist in the image and silently not natively.
         ( cd "$fj" && find . -type f | sed 's|^\./||' | sort ) > files
@@ -120,6 +131,42 @@ let
 in
 {
   inherit package;
+
+  authelia = {
+    # server.asset_path: logo.png and favicon.ico.
+    assets = "${package}/authelia";
+
+    # Authelia's web portal, rebuilt with the LosOS look. Its pages are
+    # Tailwind and shadcn/ui like the admin SPA's, so the whole palette is
+    # one file: ./authelia/losos-authelia.css replaces its
+    # src/themes/tailwind-themes.css and points shadcn's names at tokens.css.
+    # Two more edits take the upstream name off the pages: the portal is
+    # called LosOS Login, so its page titles read "Login - LosOS Login" (the
+    # name is kept base64-encoded in
+    # src/constants/constants.ts, as an array of character codes), and the
+    # "Powered by" line under the form names LosOS Login instead, as LosOS
+    # cloud and LosOS Git name themselves. The licence (Apache-2.0) stays in the package.
+    web =
+      web:
+      web.overrideAttrs (old: {
+        postPatch = (old.postPatch or "") + ''
+          install -m0644 ${./authelia/losos-authelia.css} src/themes/tailwind-themes.css
+          install -m0644 ${tokens} src/themes/losos-tokens.css
+          substituteInPlace src/constants/constants.ts \
+            --replace-fail 'export const EncodedName = [81, 88, 86, 48, 97, 71, 86, 115, 97, 87, 69, 61];' \
+                           'export const EncodedName = [84, 71, 57, 122, 84, 49, 77, 103, 84, 71, 57, 110, 97, 87, 52, 61];'
+          cat > src/components/Brand.tsx <<'TSX'
+        export interface Props {}
+
+        const Brand = function () {
+            return <p className="mt-4 text-center text-sm text-muted-foreground">LosOS Login</p>;
+        };
+
+        export default Brand;
+        TSX
+        '';
+      });
+  };
 
   nextcloud = {
     # The `theme` system config value, and the directory name under the

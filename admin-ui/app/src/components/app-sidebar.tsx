@@ -36,7 +36,8 @@ import { useLocale, useT } from "@/lib/i18n-react";
 import { paneFromPath, paneHref } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 import { SHORTCUT_ARIA, openPalette, shortcutLabel } from "@/palette/store";
-import { paneById, type SettingsPaneId } from "@/screens/settings/panes";
+import { paneById, paneSection, type SettingsPaneId } from "@/screens/settings/panes";
+import { canUse, useMe } from "@/lib/api";
 import { openInNewTab, PinMenu } from "@/components/pin-menu";
 import { PinsDialog, usePins, useSavePins } from "@/components/pins-dialog";
 import { pinKey, viewPin, type PinView } from "@/lib/pins";
@@ -148,6 +149,31 @@ const TREE: readonly Entry[] = [
   },
 ];
 
+/* The entries this person may open: an administrator sees all of them,
+ * anyone else the panes of their sections (GET /api/me). A hidden link's
+ * own children that stay visible move up a level, so someone in the market
+ * section sees Market without Mesh. A fold left empty goes. */
+function allowed(entry: LinkEntry): boolean {
+  if (entry.pane !== undefined) return canUse(paneSection(entry.pane));
+  if (entry.key === "lab") return canUse("lab");
+  return true;
+}
+
+function visible(entries: readonly Entry[]): Entry[] {
+  const out: Entry[] = [];
+  for (const entry of entries) {
+    const children = visible(entry.children ?? []);
+    if (entry.kind === "fold") {
+      if (children.length > 0) out.push({ ...entry, children });
+    } else if (allowed(entry)) {
+      out.push(entry.children === undefined ? entry : { ...entry, children });
+    } else {
+      out.push(...children);
+    }
+  }
+  return out;
+}
+
 function isCurrent(entry: LinkEntry, pathname: string): boolean {
   if (entry.pane !== undefined) return paneFromPath(pathname) === entry.pane;
   return pathname === entry.to;
@@ -165,13 +191,15 @@ export function AppSidebar() {
   const { pathname } = useLocation();
   const { state, isMobile, setOpenMobile } = useSidebar();
   const rail = !isMobile && state === "collapsed";
+  const me = useMe();
+  const tree = React.useMemo(() => visible(TREE), [me]);
 
   // Which folds are open. One that holds the current page opens by itself.
   const [openFolds, setOpenFolds] = React.useState<Record<string, boolean>>({});
   React.useEffect(() => {
     setOpenFolds((current) => {
       const next = { ...current };
-      for (const entry of TREE) {
+      for (const entry of tree) {
         // A fold that holds the page opens, and so does a link that has
         // entries of its own when it is the page (Mesh shows Market).
         const here = entry.kind === "link" && isCurrent(entry, pathname);
@@ -181,9 +209,9 @@ export function AppSidebar() {
     });
     // A phone's panel closes once a destination is chosen.
     setOpenMobile(false);
-  }, [pathname, setOpenMobile]);
+  }, [pathname, setOpenMobile, tree]);
 
-  const here = React.useMemo(() => currentLabel(TREE, pathname), [pathname]);
+  const here = React.useMemo(() => currentLabel(tree, pathname), [pathname, tree]);
   const shortcut = shortcutLabel();
   const searchLabel = t("palette.open", { shortcut });
 
@@ -246,7 +274,7 @@ export function AppSidebar() {
 
         <SidebarContent>
           <SidebarMenu>
-            {TREE.map((entry) => (
+            {tree.map((entry) => (
               <TopEntry
                 key={entry.key}
                 entry={entry}

@@ -13,10 +13,13 @@
 //! A call that opens, verifies and authenticates is run against this
 //! daemon's own loopback API with the admin token, exactly as the web UI's
 //! request would be, so every route the web UI has is a route the terminal
-//! has, with the same checks, and nothing here repeats a handler. What a
+//! has, with the same checks, and nothing here repeats a handler. A token
+//! made by a person signed in through Authelia carries their name, and the
+//! call says so (`X-Losos-As`), so it gets that person's sections and no
+//! more; a token made with the spare key runs as the spare key. What a
 //! token may not reach is decided before that: nothing outside `/api/`,
-//! and none of `/api/access` (a token cannot mint, list or revoke tokens),
-//! `/api/setup` or `/api/sign-in`.
+//! and none of `/api/access` (a token cannot mint, list or revoke tokens)
+//! or `/api/setup`.
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpStream;
@@ -34,7 +37,7 @@ const DEFAULT_KEYS_FILE: &str = "/etc/losos/access-keys.asc";
 pub const MAX_ENVELOPE_BYTES: usize = 1 << 20;
 /// The paths a token reaches, and the ones it never does.
 const ALLOWED: [&str; 1] = ["/api/"];
-const FORBIDDEN: [&str; 3] = ["/api/access", "/api/setup", "/api/sign-in"];
+const FORBIDDEN: [&str; 2] = ["/api/access", "/api/setup"];
 /// How long an inner call may take. App search reaches out to the internet;
 /// everything else answers at once, a rebuild included (it answers a job).
 const INNER_TIMEOUT: Duration = Duration::from_secs(120);
@@ -96,8 +99,13 @@ impl Access {
 }
 
 /// The checks after the envelope opened: the token, its scope, the path.
-/// Answers the token id for the audit line.
-pub fn authorize(ready: &Ready, opened: &Opened, now: i64) -> Result<String, Refusal> {
+/// Answers the token, whose id goes on the audit line and whose owner the
+/// call runs as.
+pub fn authorize(
+    ready: &Ready,
+    opened: &Opened,
+    now: i64,
+) -> Result<losos_access::TokenView, Refusal> {
     let r = &opened.request;
     let token = ready
         .tokens
@@ -108,7 +116,7 @@ pub fn authorize(ready: &Ready, opened: &Opened, now: i64) -> Result<String, Ref
     if !matches!(r.method.as_str(), "GET" | "POST" | "PUT" | "DELETE") {
         return Err(Refusal::Malformed(format!("method {}", r.method)));
     }
-    Ok(token.id)
+    Ok(token)
 }
 
 /// What the inner call answered.
@@ -119,11 +127,13 @@ pub struct Inner {
 
 /// Run one call against this daemon's own API on `port`, as the web UI
 /// would: the admin token in the header, `remote` as the address the
-/// throttle and the audit log see.
+/// throttle and the audit log see, and `person`, when the token has an
+/// owner, as the one the call runs as.
 pub fn forward(
     port: u16,
     admin_token: &str,
     remote: &str,
+    person: Option<&str>,
     method: &str,
     path: &str,
     body: &serde_json::Value,
@@ -146,6 +156,14 @@ pub fn forward(
     );
     if !content_type.is_empty() {
         head.push_str(&format!("Content-Type: {content_type}\r\n"));
+    }
+    if let Some(person) = person {
+        // A sign-in name is lower-case letters, digits and `.-_`
+        // (`crate::people::validate_name`), so it cannot break the header.
+        if crate::people::validate_name(person).is_err() {
+            return Err(invalid("a token's owner is not a sign-in name"));
+        }
+        head.push_str(&format!("X-Losos-As: {person}\r\n"));
     }
     head.push_str("\r\n");
     stream.write_all(head.as_bytes())?;
@@ -327,13 +345,14 @@ mod tests {
                 owner.fingerprint(),
                 losos_access::Scope::Full,
                 None,
+                None,
                 1000,
             )
             .unwrap();
         for path in [
             "/api/access/tokens",
             "/api/setup/claim",
-            "/api/sign-in",
+            "/api/access",
             "/handbook/",
         ] {
             let o = opened(&ready, &owner, &token, "POST", path);
@@ -357,6 +376,7 @@ mod tests {
                 "phone",
                 owner.fingerprint(),
                 losos_access::Scope::Read,
+                None,
                 None,
                 1000,
             )

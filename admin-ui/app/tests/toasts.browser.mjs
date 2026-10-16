@@ -313,25 +313,30 @@ await check('prefers-reduced-motion switches the slide off for both kinds', asyn
   await page.close();
 });
 
-await check('unlocking the admin pages is a confirmation, and a wrong password raises nothing', async () => {
+await check('unlocking with the spare key is a confirmation, and a wrong key raises nothing', async () => {
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 }, locale: 'en-US' });
+  const authed = (route) => route.request().headers()['authorization'] === `Bearer ${TOKEN}`;
   await page.route('**/api/**', (route) => json(route, 200, {}));
   await page.route('**/api/setup/claim', (route) => json(route, 200, { claimed: true }));
+  await page.route('**/api/me', (route) =>
+    authed(route)
+      ? json(route, 200, { name: null, displayName: null, groups: [], admin: true, spareKey: true, sections: [] })
+      : json(route, 401, { error: 'unauthorized' }),
+  );
+  await page.route('**/api/state', (route) =>
+    authed(route) ? json(route, 200, { mode: 'local', sharing: false }) : json(route, 401, { error: 'unauthorized' }),
+  );
   await page.route('**/api/settings', (route) => json(route, 200, SETTINGS));
   await page.route('**/api/status', (route) => json(route, 200, { state: 'idle', progress: 0, message: '' }));
-  await page.route('**/api/sign-in', (route) =>
-    route.request().postDataJSON()?.password === PASSWORD
-      ? json(route, 200, { user: 'notshared', token: TOKEN })
-      : json(route, 401, { error: 'that password was not accepted' }),
-  );
   await page.goto(origin + '/', { waitUntil: 'networkidle' });
 
-  await page.locator('#owner-password').fill('wrong password 1A!');
+  await page.getByRole('button', { name: /Use the spare admin key instead/ }).click();
+  await page.locator('#admin-key').fill('b'.repeat(64));
   await page.getByRole('button', { name: 'Unlock' }).click();
-  await page.getByText('That password was not accepted').waitFor();
-  assert.equal(await toasts(page).count() + await statuses(page).count(), 0, 'a refused password must stay under the field');
+  await page.getByText('That key was not accepted').waitFor();
+  assert.equal(await toasts(page).count() + await statuses(page).count(), 0, 'a refused key must stay under the field');
 
-  await page.locator('#owner-password').fill(PASSWORD);
+  await page.locator('#admin-key').fill(TOKEN);
   await page.getByRole('button', { name: 'Unlock' }).click();
   const unlocked = toastWith(page, 'Unlocked');
   await unlocked.waitFor();
@@ -381,6 +386,7 @@ await check('the wizard raises both kinds: a readiness status on step 2, then th
   await ready.waitFor({ timeout: 15000 });
   assert.equal(await ready.getAttribute('data-type'), 'info', 'the box becoming ready is a status, not an outcome');
   await page.locator('input[name="new-password"]:not([disabled])').waitFor();
+  await page.locator('input[name="username"]').fill('matus');
   await page.locator('input[name="new-password"]').fill(PASSWORD);
   await page.locator('input[name="confirm-password"]').fill(PASSWORD);
   await page.getByRole('button', { name: /^Set the password$/ }).click();

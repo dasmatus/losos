@@ -397,6 +397,21 @@ export default defineMessages({
     sk: "Heslá sa nezhodujú.",
     de: "Die beiden Passwörter sind nicht gleich.",
   },
+  "wizard.signin.name": {
+    en: "Sign-in name",
+    sk: "Prihlasovacie meno",
+    de: "Anmeldename",
+  },
+  "wizard.signin.nameHint": {
+    en: "What you type to sign in to this box, for example your first name. Lower-case letters and digits. You are its first administrator.",
+    sk: "To, čo zadáte pri prihlásení do tohto zariadenia, napríklad vaše krstné meno. Malé písmená a číslice. Stanete sa jeho prvým správcom.",
+    de: "Das tippst du bei der Anmeldung an dieser Box ein, zum Beispiel deinen Vornamen. Kleinbuchstaben und Ziffern. Du bist ihr erster Administrator.",
+  },
+  "wizard.signin.badName": {
+    en: "A sign-in name starts with a letter and has up to 32 lower-case letters, digits, dots, dashes or underscores.",
+    sk: "Prihlasovacie meno začína písmenom a má najviac 32 malých písmen, číslic, bodiek, pomlčiek alebo podčiarkovníkov.",
+    de: "Ein Anmeldename beginnt mit einem Buchstaben und hat bis zu 32 Kleinbuchstaben, Ziffern, Punkte, Bindestriche oder Unterstriche.",
+  },
   "wizard.signin.newPassword": {
     en: "New password",
     sk: "Nové heslo",
@@ -471,15 +486,20 @@ export default defineMessages({
     sk: "Heslo je nastavené",
     de: "Passwort festgelegt",
   },
+  "wizard.signin.done.login": {
+    en: "Your name on LosOS Login",
+    sk: "Vaše meno v LosOS Login",
+    de: "Dein Name bei LosOS Login",
+  },
   "wizard.signin.done.name": {
-    en: "Your sign-in name",
-    sk: "Vaše prihlasovacie meno",
-    de: "Dein Anmeldename",
+    en: "Your LosOS cloud account",
+    sk: "Váš účet v LosOS cloud",
+    de: "Dein Konto in LosOS cloud",
   },
   "wizard.signin.done.body": {
-    en: "This is the name to type on the sign-in page at the end of the wizard, and in the desktop and phone apps.",
-    sk: "Toto meno zadáte na prihlasovacej stránke na konci sprievodcu a v aplikáciách pre počítač a telefón.",
-    de: "Diesen Namen gibst du auf der Anmeldeseite am Ende der Einrichtung ein und in den Apps für Computer und Handy.",
+    en: "LosOS Login opens these admin pages. The LosOS cloud account is the one to type on the sign-in page at the end of the wizard, and in the desktop and phone apps. Both take the password you just set.",
+    sk: "LosOS Login otvára tieto správcovské stránky. Účet LosOS cloud zadáte na prihlasovacej stránke na konci sprievodcu a v aplikáciách pre počítač a telefón. Oba berú heslo, ktoré ste práve nastavili.",
+    de: "LosOS Login öffnet diese Admin-Seiten. Das Konto in LosOS cloud gibst du auf der Anmeldeseite am Ende der Einrichtung ein und in den Apps für Computer und Handy. Beide nehmen das Passwort, das du gerade festgelegt hast.",
   },
   "wizard.signin.err.unauthorized": {
     en: "This box stopped accepting the admin key. Unlock the page again, then set the password.",
@@ -497,9 +517,9 @@ export default defineMessages({
     de: "Dein Ersatz-Admin-Schlüssel, nur jetzt zu sehen",
   },
   "wizard.signin.key.body": {
-    en: "From now on your password unlocks these admin pages. This key is the spare. It opens them even while LosOS cloud is not running to check the password. The box shows it only now and keeps no copy a browser can ask for again, so copy it into a password manager, or print it and keep the sheet.",
-    sk: "Odteraz tieto správcovské stránky odomyká vaše heslo. Tento kľúč je náhradný. Otvorí ich, aj keď LosOS cloud práve nebeží a heslo sa nedá overiť. Zariadenie ho zobrazí iba teraz a nenecháva si kópiu, o ktorú by prehliadač mohol znova požiadať, preto si ho skopírujte do správcu hesiel alebo si ho vytlačte a hárok odložte.",
-    de: "Ab jetzt entsperrt dein Passwort diese Admin-Seiten. Dieser Schlüssel ist der Ersatz. Er öffnet sie auch, während LosOS cloud nicht läuft und das Passwort nicht prüfen kann. Die Box zeigt ihn nur jetzt und behält keine Kopie, die ein Browser noch einmal abfragen könnte, also kopiere ihn in einen Passwortmanager, oder druck ihn aus und heb das Blatt auf.",
+    en: "From now on you sign in to these admin pages on LosOS Login with your name and password. This key is the spare. It opens every pane even on a day LosOS Login does not answer. The box shows it only now and keeps no copy a browser can ask for again, so copy it into a password manager, or print it and keep the sheet.",
+    sk: "Odteraz sa do týchto správcovských stránok prihlasujete v LosOS Login svojím menom a heslom. Tento kľúč je náhradný. Otvorí každú časť aj v deň, keď LosOS Login neodpovedá. Zariadenie ho zobrazí iba teraz a nenecháva si kópiu, o ktorú by prehliadač mohol znova požiadať, preto si ho skopírujte do správcu hesiel alebo si ho vytlačte a hárok odložte.",
+    de: "Ab jetzt meldest du dich bei LosOS Login mit deinem Namen und Passwort an diesen Admin-Seiten an. Dieser Schlüssel ist der Ersatz. Er öffnet jeden Bereich auch an einem Tag, an dem LosOS Login nicht antwortet. Die Box zeigt ihn nur jetzt und behält keine Kopie, die ein Browser noch einmal abfragen könnte, also kopiere ihn in einen Passwortmanager, oder druck ihn aus und heb das Blatt auf.",
   },
   "wizard.signin.key.label": {
     en: "Spare admin key",
@@ -524,9 +544,9 @@ export default defineMessages({
     de: "Gedruckt am {date}.",
   },
   "wizard.signin.key.sheetBody": {
-    en: "The admin pages normally unlock with your password. If LosOS cloud is not running and the password cannot be checked, choose \"Use the spare admin key instead\" and paste this. It was shown once, during setup, and the box will not show it again.",
-    sk: "Správcovské stránky sa bežne odomykajú vaším heslom. Ak LosOS cloud nebeží a heslo sa nedá overiť, zvoľte „Použiť namiesto toho náhradný správcovský kľúč“ a vložte tento. Zobrazil sa raz, počas nastavenia, a zariadenie ho znova neukáže.",
-    de: "Die Admin-Seiten entsperrst du normalerweise mit deinem Passwort. Wenn LosOS cloud nicht läuft und das Passwort nicht geprüft werden kann, wähl „Stattdessen den Ersatz-Admin-Schlüssel verwenden“ und gib diesen ein. Er wurde einmal gezeigt, bei der Einrichtung, und die Box zeigt ihn nicht noch einmal.",
+    en: "You normally sign in to the admin pages on LosOS Login with your name and password. If LosOS Login does not answer, choose \"Use the spare admin key instead\" and paste this. It was shown once, during setup, and the box will not show it again.",
+    sk: "Do správcovských stránok sa bežne prihlasujete v LosOS Login svojím menom a heslom. Ak LosOS Login neodpovedá, zvoľte „Použiť namiesto toho náhradný správcovský kľúč“ a vložte tento. Zobrazil sa raz, počas nastavenia, a zariadenie ho znova neukáže.",
+    de: "An den Admin-Seiten meldest du dich normalerweise bei LosOS Login mit deinem Namen und Passwort an. Wenn LosOS Login nicht antwortet, wähl „Stattdessen den Ersatz-Admin-Schlüssel verwenden“ und gib diesen ein. Er wurde einmal gezeigt, bei der Einrichtung, und die Box zeigt ihn nicht noch einmal.",
   },
   "wizard.signin.key.sheetKey": {
     en: "Treat it like a key to the box, because that is what it is.",

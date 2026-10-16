@@ -143,6 +143,10 @@ function PasswordForm({
   onPasswordSet: (user: string, adminKey: string | null) => void;
 }) {
   const t = useT();
+  const [name, setName] = React.useState("");
+  // The LosOS Login name the claim made, shown beside the LosOS cloud
+  // account once the password is set.
+  const [login, setLogin] = React.useState<string | null>(null);
   const [password, setPassword] = React.useState("");
   const [confirm, setConfirm] = React.useState("");
   const [visible, setVisible] = React.useState(false);
@@ -152,13 +156,24 @@ function PasswordForm({
   // holds the token the password goes through the gated route, and lososd
   // answers readiness only on the public one.
   const readiness = useReadiness(account === null && !hasToken());
+  const nameId = React.useId();
   const passwordId = React.useId();
+  // The sign-in name is asked for once, at the claim. A tab that already
+  // holds the key is changing the password, not making the account.
+  const askName = account === null && !hasToken();
+  // A refused name marks the name field; anything else, the two passwords.
+  const nameInvalid = problem !== null && problem === t("wizard.signin.badName");
+  const passwordInvalid = problem !== null && !nameInvalid;
   const confirmId = React.useId();
   const problemId = React.useId();
 
   const submit = async (event: React.FormEvent): Promise<void> => {
     event.preventDefault();
 
+    if (askName && !SIGN_IN_NAME.test(name.trim())) {
+      setProblem(t("wizard.signin.badName"));
+      return;
+    }
     // The server checks the same things; this only means the owner hears
     // about a short password before the request rather than as a 400 after.
     const local = passwordProblem(password);
@@ -177,10 +192,11 @@ function PasswordForm({
     setBusy(true);
     setProblem(null);
     try {
-      const result = await setFirstPassword(password);
+      const result = await setFirstPassword(password, name.trim());
       setPassword("");
       setConfirm("");
       setVisible(false);
+      setLogin(result.login);
       onPasswordSet(result.user, result.adminKey);
       toast.success(
         t("wizard.signin.done.title"),
@@ -237,7 +253,27 @@ function PasswordForm({
           invalid and disabled state, the eye is an Input Group addon inside
           the password box, and the four rules are the field's description. */}
       <FieldGroup>
-        <Field invalid={problem !== null} disabled={busy || waiting}>
+        {askName && (
+          <Field invalid={nameInvalid} disabled={busy || waiting}>
+            <FieldLabel htmlFor={nameId}>{t("wizard.signin.name")}</FieldLabel>
+            <Input
+              id={nameId}
+              name="username"
+              autoComplete="username"
+              autoCapitalize="none"
+              spellCheck={false}
+              value={name}
+              disabled={busy || waiting}
+              aria-invalid={nameInvalid}
+              onChange={(event) => {
+                setName(event.target.value.toLowerCase());
+                setProblem(null);
+              }}
+            />
+            <FieldDescription>{t("wizard.signin.nameHint")}</FieldDescription>
+          </Field>
+        )}
+        <Field invalid={passwordInvalid} disabled={busy || waiting}>
           <FieldLabel htmlFor={passwordId}>{t("wizard.signin.newPassword")}</FieldLabel>
           <InputGroup>
             <InputGroupInput
@@ -247,7 +283,7 @@ function PasswordForm({
               autoComplete="new-password"
               value={password}
               disabled={busy || waiting}
-              aria-invalid={problem !== null}
+              aria-invalid={passwordInvalid}
               aria-describedby={problem !== null ? problemId : undefined}
               onChange={(event) => {
                 setPassword(event.target.value);
@@ -277,7 +313,7 @@ function PasswordForm({
           <PasswordRules password={password} />
         </Field>
 
-        <Field invalid={problem !== null} disabled={busy || waiting}>
+        <Field invalid={passwordInvalid} disabled={busy || waiting}>
           <FieldLabel htmlFor={confirmId}>{t("wizard.signin.again")}</FieldLabel>
           <Input
             id={confirmId}
@@ -286,7 +322,7 @@ function PasswordForm({
             autoComplete="new-password"
             value={confirm}
             disabled={busy || waiting}
-            aria-invalid={problem !== null}
+            aria-invalid={passwordInvalid}
             onChange={(event) => {
               setConfirm(event.target.value);
               setProblem(null);
@@ -302,7 +338,11 @@ function PasswordForm({
         <Button
           type="submit"
           disabled={
-            busy || waiting || password.length === 0 || confirm.length === 0
+            busy ||
+            waiting ||
+            password.length === 0 ||
+            confirm.length === 0 ||
+            (askName && name.trim().length === 0)
           }
         >
           <HugeiconsIcon
@@ -326,6 +366,11 @@ function PasswordForm({
           <HugeiconsIcon icon={CheckmarkCircle02Icon} size={19} strokeWidth={1.5} color="currentColor" aria-hidden="true" />
           <AlertTitle>{t("wizard.signin.done.title")}</AlertTitle>
           <AlertDescription>
+            {login !== null && (
+              <ReadoutRow label={t("wizard.signin.done.login")} className="mt-2">
+                <code className="numeric text-[13px] text-ink select-all">{login}</code>
+              </ReadoutRow>
+            )}
             <ReadoutRow label={t("wizard.signin.done.name")} className="mt-2">
               <code className="numeric text-[13px] text-ink select-all">
                 {account}
@@ -405,17 +450,21 @@ function PasswordRules({ password }: { password: string }) {
  * the tab signed in rather than locked out of a box it just claimed. */
 async function setFirstPassword(
   password: string,
-): Promise<{ user: string; adminKey: string | null }> {
+  name: string,
+): Promise<{ user: string; login: string | null; adminKey: string | null }> {
   if (hasToken()) {
     const result = await postSetPassword(password);
-    return { user: result.user, adminKey: null };
+    return { user: result.user, login: null, adminKey: null };
   }
-  const claimed = await claimAgainIfTheReplyWasLost(password);
+  const claimed = await claimAgainIfTheReplyWasLost(password, name);
   saveToken(claimed.token);
-  // lososd always names the account it changed; the type allows null because
-  // the wire contract does. An unnamed account is still a set password.
-  return { user: claimed.user ?? "", adminKey: claimed.token };
+  // `user` is the LosOS cloud account step 3 signs in to; `name` is the
+  // LosOS Login name the box made for the admin pages.
+  return { user: claimed.user ?? name, login: claimed.name ?? name, adminKey: claimed.token };
 }
+
+/** A sign-in name lososd takes (backend/src/people.rs `validate_name`). */
+const SIGN_IN_NAME = /^[a-z][a-z0-9._-]{0,31}$/;
 
 /* How many times step 2 asks again when the claim's reply never arrived, and
  * how long it waits between asks. Six tries five seconds apart is about half
@@ -449,10 +498,11 @@ function isLostReply(error: unknown): boolean {
 
 async function claimAgainIfTheReplyWasLost(
   password: string,
+  name: string,
 ): Promise<ClaimResponse> {
   for (let attempt = 1; ; attempt += 1) {
     try {
-      return await claimBox(password);
+      return await claimBox(password, name);
     } catch (error) {
       if (!isLostReply(error) || attempt >= LOST_REPLY_TRIES) throw error;
       await new Promise((resolve) => setTimeout(resolve, LOST_REPLY_PAUSE_MS));
@@ -610,10 +660,10 @@ function WaitingPanel({ state }: { state: ReadinessState }) {
 
 // ── The admin key ─────────────────────────────────────────────────────────
 
-/* The spare. The password the owner just set is what unlocks the admin
- * pages from now on (the shell's dialog, `POST /api/sign-in`), and it is
- * LosOS cloud that checks it — so while LosOS cloud is not running the
- * password cannot be checked, and this key is the way in. lososd mints it
+/* The spare. The name and password the owner just set sign in to the
+ * admin pages from now on, at the box's sign-in page (/auth/), which runs
+ * as a service of its own. While that service is down the password cannot
+ * be checked, and this key is the way in. lososd mints it
  * into a 0600 file on a box with no shell and releases it exactly once, in
  * the claim reply, which is why it is shown here, copyable and printable,
  * and nowhere else. */

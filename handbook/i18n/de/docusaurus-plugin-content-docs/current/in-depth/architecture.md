@@ -236,8 +236,9 @@ nennt den abgelehnten Schlüssel.
 Jedes Apply, jeder Moduswechsel und jedes Zurücksetzen ist ein Commit in
 `/etc/nixos`, dem Repository, das der Installer angelegt hat. Ein
 Abgleich-Thread in lososd fragt alle 30 s ab. Er legt das Forgejo-Konto des
-Admins an (`notshared`, mit dem Passwort des Besitzers, das bei Anmeldung
-und Passwortänderung mitgezogen wird) sowie ein privates Repository
+Admins an (`notshared`, mit dem Passwort des Besitzers, das bei
+Passwortänderungen und beim Einrichten eines Rechners mitgezogen wird) sowie
+ein privates Repository
 `losos-config`. Das geschieht über ein Bot-Konto, dessen Token das
 Forgejo-Startskript erzeugt (`nix/forgejo-bootstrap.nix`, Token unter
 `/var/lib/forgejo/.losos-token`). Er pusht, wenn Forgejo zurückliegt. Hat

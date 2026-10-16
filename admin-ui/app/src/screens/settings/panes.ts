@@ -305,6 +305,34 @@ export const SETTINGS_PANES: readonly [SettingsPane, ...SettingsPane[]] = [
 
 export const DEFAULT_PANE: SettingsPaneId = "storage";
 
+/* The section of backend/sections.json each pane works in, which decides
+ * who sees it: an administrator sees every pane, anyone else the panes of
+ * the sections their groups open. A pane that writes the box's
+ * configuration (Mesh, Hardware, Security, Advanced, ...) is the
+ * administrators'. */
+const PANE_SECTION: Record<SettingsPaneId, string> = {
+  storage: "storage",
+  mesh: "admin",
+  market: "market",
+  machines: "market",
+  apps: "apps",
+  network: "network",
+  look: "look",
+  hardware: "admin",
+  security: "admin",
+  access: "access",
+  advanced: "admin",
+  history: "admin",
+  backup: "backup",
+  about: "admin",
+  reset: "admin",
+};
+
+/** The section a pane belongs to, for `canUse`. */
+export function paneSection(id: SettingsPaneId): string {
+  return PANE_SECTION[id];
+}
+
 /** Parse a URL segment into the id of a pane that can be opened. For an
  *  integrator wiring `/settings/:pane`; an unknown segment falls back rather
  *  than 404s. */

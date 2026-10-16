@@ -226,7 +226,7 @@ a akékoľvek `${` a pomenuje kľúč, ktorý odmietol.
 Každé použitie zmien (apply), zmena režimu a reset je commit v `/etc/nixos`,
 repozitári, ktorý vytvoril inštalátor. Zosúlaďovacie vlákno v lososd sa
 dopytuje každých 30 s. Vytvorí administrátorov účet vo Forgejo (`notshared`,
-s heslom vlastníka, udržiavaným v súlade pri prihlásení a nastavení hesla) a
+s heslom vlastníka, udržiavaným v súlade pri zmene hesla a nastavení počítača) a
 súkromný repozitár `losos-config`. Robí to cez účet bota, ktorého token
 vyrobí štartovací skript Forgejo (`nix/forgejo-bootstrap.nix`, token v
 `/var/lib/forgejo/.losos-token`). Keď Forgejo zaostáva, pushne. Keď klon

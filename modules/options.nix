@@ -1327,6 +1327,25 @@ in
       '';
     };
 
+    # ── Sign-in (modules/identity.nix) ───────────────────────────────────
+    identity.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Sign people in to the admin pages with Authelia, at /auth/ on the
+        box. Each person has their own name and password, and their groups
+        decide which parts of the admin pages they can use. The first person
+        is made when the box is claimed and is an administrator. The spare
+        key opens the box with or without this.
+      '';
+    };
+
+    identity.port = lib.mkOption {
+      type = lib.types.port;
+      default = 9091;
+      description = "Loopback port Authelia listens on. nginx serves it at /auth/.";
+    };
+
     # ── Standalone admin endpoint (lososd HTTP API + static admin UI) ──────
     admin.enable = lib.mkOption {
       type = lib.types.bool;

@@ -7,8 +7,9 @@ sidebar_position: 1
 
 Správcovské stránky sú vlastná webová stránka zariadenia na
 `http://<address>/`. Zariadenie ich poskytuje iba vo vašej lokálnej sieti,
-aj keď ho edge zverejňuje. Každá karta si pýta heslo vlastníka skôr, než
-ukáže čokoľvek, čo sa dá zmeniť.
+aj keď ho edge zverejňuje. Každá karta vás požiada o prihlásenie vlastným
+menom a heslom v LosOS Login, prihlasovacej stránke zariadenia na
+`https://<address>/auth/`, skôr, než ukáže čokoľvek, čo sa dá zmeniť.
 
 ## Sekcie \{#the-sections}
 
@@ -52,9 +53,11 @@ kdekoľvek mimo textového poľa. Nájde:
 zoznam zavrie. Súbory a repozitáre sa otvárajú vo vlastnej aplikácii a
 Ctrl+Enter alebo Cmd+Enter otvorí položku na novej karte.
 
-:::note[Vyhľadávanie súborov potrebuje heslo]
-Vyhľadávanie súborov potrebuje jedno prihlásenie heslom, nie náhradným
-kľúčom. Dovtedy to zoznam napíše tam, kde by boli súbory.
+:::note[Vyhľadávanie súborov potrebuje heslo aplikácie zariadenia]
+Vyhľadávanie súborov používa heslo aplikácie, ktoré zariadenie dostane od
+LosOS cloud, keď sa nastaví heslo vlastníka, a to urobí sprievodca. Bez neho
+to zoznam napíše tam, kde by boli súbory; pozrite
+[Ako zariadenie vypisuje vaše súbory](#pins) nižšie.
 :::
 
 Aby mohlo hľadať vnútri vašich súborov v LosOS cloud, zariadenie si vedie
@@ -97,10 +100,11 @@ prihlásite, ukazuje tie isté pripnuté položky.
 
 :::note[Ako zariadenie vypisuje vaše súbory]
 Zariadenie vypisuje vaše súbory s heslom aplikácie, o ktoré požiada LosOS
-cloud, keď sa prihlásite heslom. Kým to raz neurobíte, karta **Súbory** vás
-o to požiada. Heslo aplikácie sa v nastaveniach zabezpečenia LosOS cloud
-zobrazí ako „LosOS admin page“ a keď ho tam zrušíte, výpis sa zastaví až do
-vášho ďalšieho prihlásenia. Bočný panel pojme 24 pripnutých položiek.
+cloud, keď sa nastaví heslo vlastníka, a to urobí sprievodca. Heslo
+aplikácie sa v nastaveniach zabezpečenia LosOS cloud zobrazí ako „LosOS
+admin page“. Keď ho tam zrušíte, výpis aj vyhľadávanie súborov sa zastavia,
+kým sa heslo vlastníka nenastaví znova, a to cestou s náhradným kľúčom na
+stránke [Zabudnuté heslo](../troubleshooting/forgot-password#you-have-the-spare-admin-key). Bočný panel pojme 24 pripnutých položiek.
 :::
 
 ## Prehliadka \{#the-tour}
@@ -129,8 +133,10 @@ voľby zapamätá.
 
 ## Odhlásenie \{#sign-out}
 
-**Odhlásiť sa** zabudne admin kľúč na tejto karte. Zatvorenie karty urobí to
-isté. Pozri [Prihlásenie a náhradný kľúč](sign-in-and-spare-key).
+**Odhlásiť sa** ukončí vaše prihlásenie aj v LosOS Login, takže ďalšia
+návšteva si znova vypýta meno a heslo. Ak ste stránky otvorili náhradným
+kľúčom, zabudne namiesto toho kľúč na tejto karte a zatvorenie karty urobí
+to isté. Pozri [Prihlásenie a náhradný kľúč](sign-in-and-spare-key).
 
 ## Čo správcovské stránky nedokážu \{#what-the-admin-pages-cannot-do}
 

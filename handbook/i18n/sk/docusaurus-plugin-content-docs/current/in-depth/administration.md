@@ -112,7 +112,8 @@ znakmi do `/var/secrets/losos-admin-token` (mód 0600). Token môže zmeniť
 akékoľvek nastavenie, takže je to root.
 
 Na novom, neprivlastnenom zariadení prvý volajúci z LAN, ktorý pošle
-`POST /api/setup/claim`, nastaví heslo vlastníka a v odpovedi dostane token.
+`POST /api/setup/claim`, nastaví heslo vlastníka, stane sa prvým človekom,
+ktorý sa môže prihlásiť (správcom), a v odpovedi dostane token.
 Táto cesta nevyžaduje token, ale prestane prijímať nároky, len čo má
 zariadenie vlastníka. Zariadenie nastavujte iba v dôveryhodnej LAN, pretože
 prvý volajúci sa stane jeho vlastníkom. Token sa vydá iba raz a cez UI sa už
@@ -136,23 +137,28 @@ zopakuje tie isté kroky nad už nainštalovanou inštanciou asi za 2 s. Vo VM
 bez KVM (emulácia TCG v QEMU) trvajú tie isté kroky 10 až 30 minút, preto
 dajte demo VM hardvérovú virtualizáciu.
 
-Tým volajúcim je sprievodca prvým spustením. Každá ďalšia návšteva
-administrátorských stránok si pýta **heslo**, ktoré sprievodca nastavil, to
-isté, ktorým sa prihlasujete do LosOS cloud. `POST /api/sign-in` sa opýta
-Nextcloudu, či je správne, a pri kladnej odpovedi dá karte prehliadača
-token. Zariadenie si nedrží žiadnu druhú kópiu hesla, takže jeho zmena v
-LosOS cloud ho zmení aj pre administrátorské stránky.
+Tým volajúcim je sprievodca prvým spustením. Po ňom sa ľudia prihlasujú v
+LosOS Login, prihlasovacej stránke zariadenia na
+`https://<zariadenie>/auth/`, každý vlastným prihlasovacím menom a heslom.
+LosOS Login je open-source prihlasovací server, ktorý beží na zariadení.
+lososd vedie súbor ľudí, ktorý LosOS Login číta, s každým heslom ako hashom
+argon2id, a LosOS Login jeho zmenu prevezme hneď. nginx sa LosOS Login pýta
+na každú požiadavku na `/api/` a meno človeka odovzdá lososd, ktorý otvorí
+časti, ktoré povoľujú jeho skupiny. Prvý človek je vždy správca. Vlastné
+heslo si človek zmení cez `POST /api/set-password` a vlastníkovi to zmení aj
+heslo do LosOS cloud.
 
 Samotný token sa po nastavení hesla stále raz zobrazí ako **náhradný
-správcovský kľúč**, s tlačidlami Kopírovať a Tlačiť. Pokrýva jediný
-prípad, ktorý heslo pokryť nevie: keď LosOS cloud nebeží, pretože práve
-LosOS cloud heslo overuje. Dialóg odomknutia má odkaz na jeho zadanie
-namiesto hesla.
+správcovský kľúč**, s tlačidlami Kopírovať a Tlačiť. Požiadavka, ktorá ho
+nesie, obíde LosOS Login a lososd kľúč overí sám, takže kľúč otvorí
+administrátorské stránky aj vtedy, keď LosOS Login nebeží. Prihlasovací
+dialóg má odkaz na jeho zadanie. Zariadenie nastavené predtým, než mali
+ľudia prihlasovacie mená, si kľúč raz vypýta spolu s prihlasovacím menom a
+heslom, aby vytvorilo svojho prvého správcu.
 
 Nové heslo musí mať aspoň 12 znakov s malým písmenom, veľkým písmenom,
 číslicou a symbolom, napríklad `-` alebo `!`. Sprievodca počas písania
-ukazuje štyri pravidlá, každé s fajkou. Heslo nastavené pred zavedením tohto
-pravidla sa stále prihlási.
+ukazuje štyri pravidlá, každé s fajkou.
 
 :::warning[Stratené heslo aj náhradný kľúč]
 Token sa na zariadení nedá vymeniť, pretože nemá shell. Strata hesla *aj*
@@ -213,9 +219,10 @@ História** vypisuje posledných štyridsať.
 
 S `losos.configRepo.enable` (predvolené) a zapnutým LosOS Git drží lososd
 konfiguráciu aj v súkromnom repozitári na LosOS Git, `<owner>/losos-config`,
-ktorý vlastní administrátorov vlastný účet (`notshared`). Účet sa vytvorí pri
-prvej synchronizácii s admin heslom a pri každej zmene hesla a prihlásení sa
-s ním zosúladí. Reconciler v lososd beží každých 30 s:
+ktorý vlastní administrátorov vlastný účet (`notshared`). Účet sa vytvorí
+pri prvej synchronizácii s admin heslom a pri každej zmene hesla a pri
+každom nastavení počítača pre LosOS Git sa s ním zosúladí. Reconciler v
+lososd beží každých 30 s:
 
 - commitne všetko necommitnuté a pushne vetvu zariadenia, keď LosOS Git
   zaostáva;
@@ -356,7 +363,8 @@ Záloha obsahuje:
   Linux pre zamknutý súbor fscrypt nedáva šifrovaný text, takže skript
   politiku na kopírovanie odomkne a potom ju znova zamkne. V buckete ho
   pokrýva šifrovanie resticu;
-- `modules/overrides.nix`, vzhľad domovskej stránky a token proxy.
+- `modules/overrides.nix`, vzhľad domovskej stránky, token proxy a súbor
+  ľudí, ktorý číta LosOS Login.
 
 Na adrese `amazonaws.com` si vlastník môže vybrať triedu úložiska: Glacier
 Instant Retrieval, Glacier Flexible Retrieval alebo Glacier Deep Archive.
@@ -396,9 +404,10 @@ fázach uložených v `state.json`, takže pokračuje aj bez otvorenej karty:
    značku na `/persist` a reštartuje;
 5. `losos-factory-wipe.service` beží skoro pri ďalšom štarte, pred
    `sysinit.target` a pred akoukoľvek službou, ktorá vlastní dáta, a vymaže
-   dáta aplikácií, databázy, stav oboch inštancií Kubernetes, tajomstvá,
-   journal a metadáta fscrypt. Vyprázdni oba dátové domovy. Značka ide
-   posledná, takže prerušené mazanie sa spustí znova.
+   dáta aplikácií, databázy, stav oboch inštancií Kubernetes, súbor ľudí a
+   stav LosOS Login, tajomstvá, journal a metadáta fscrypt. Vyprázdni oba
+   dátové domovy. Značka ide posledná, takže prerušené mazanie sa spustí
+   znova.
 
 :::danger[Zrušiť sa dajú iba prvé dva kroky]
 Zrušiť sa dá iba v krokoch 1 a 2. `/nix`, `/etc/nixos` a kľúčový súbor

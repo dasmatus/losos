@@ -79,6 +79,10 @@ async function open({
   onboardUrl = 'https://connect.stripe.com/setup/e/acct_test/abc',
   now = null,
   cloud = null,
+  // A person signed in through the box's sign-in page (Authelia's cookie),
+  // as GET /api/me describes them; null for none.
+  person = null,
+  claim = { claimed: true },
 } = {}) {
   const page = await browser.newPage({ viewport, locale });
   if (now !== null) await page.clock.setFixedTime(now);
@@ -87,9 +91,23 @@ async function open({
 
   // Catch-all first: the last-registered matching route wins (see the wizard file).
   await page.route('**/api/**', (route) => json(route, 200, {}));
-  await page.route('**/api/setup/claim', (route) => json(route, 200, { claimed: true }));
+  await page.route('**/api/setup/claim', (route) => json(route, 200, claim));
   const authed = (route) =>
-    route.request().headers()['authorization'] === `Bearer ${TOKEN}`;
+    person !== null || route.request().headers()['authorization'] === `Bearer ${TOKEN}`;
+  // Who is calling: the spare key is an administrator with no name.
+  await page.route('**/api/me', (route) => {
+    if (route.request().headers()['authorization'] === `Bearer ${TOKEN}`) {
+      return json(route, 200, {
+        name: null,
+        displayName: null,
+        groups: ['losos-admins'],
+        admin: true,
+        spareKey: true,
+        sections: ['storage', 'backup', 'apps', 'market', 'network', 'look', 'lab', 'access'],
+      });
+    }
+    return person !== null ? json(route, 200, person) : json(route, 401, { error: 'unauthorized' });
+  });
   await page.route('**/api/state', (route) =>
     authed(route) ? json(route, 200, { mode: 'local', sharing: false }) : json(route, 401, { error: 'unauthorized' }),
   );
@@ -453,78 +471,95 @@ const nav = (page) => page.getByRole('navigation', { name: 'Sections', exact: tr
 
 console.log('admin-ui app browser checks');
 
-/* The gate takes the owner's password, and lososd checks it with LosOS cloud
- * (POST /api/sign-in). The stub below plays that route: the right password
- * is answered with the token, anything else with 401 — or, when `cloudDown`
- * is set, with the 503 lososd sends while LosOS cloud cannot be asked. */
+/* Signed out, the gate sends the browser to the box's sign-in page
+ * (Authelia at /auth/, https only) and back here afterwards; the spare key
+ * stays behind a link for when that page is down. */
 const PASSWORD = 'Correct-horse battery staple 1';
-async function openGate({ cloudDown = false } = {}) {
-  const opened = await open();
-  const signIns = [];
-  await opened.page.route('**/api/sign-in', (route) => {
-    const req = route.request();
-    signIns.push({ contentType: req.headers()['content-type'], body: req.postDataJSON() });
-    if (cloudDown) {
-      return json(route, 503, { error: 'LosOS cloud did not answer', ready: false, waitingFor: 'LosOS cloud did not answer' });
-    }
-    return req.postDataJSON()?.password === PASSWORD
-      ? json(route, 200, { user: 'notshared', token: TOKEN })
-      : json(route, 401, { error: 'that password was not accepted' });
+async function openGate(options = {}) {
+  const opened = await open(options);
+  const portal = [];
+  await opened.page.route('https://**/auth/**', (route) => {
+    portal.push(route.request().url());
+    return route.fulfill({ status: 200, contentType: 'text/html', body: '<title>LosOS sign-in</title>' });
   });
-  return { ...opened, signIns };
+  return { ...opened, portal };
 }
 
-await check('the right password opens the app and the token is kept for the tab', async () => {
-  const { page, signIns } = await openGate();
-  await page.locator('#owner-password').fill(PASSWORD);
-  await page.getByRole('button', { name: 'Unlock' }).click();
+await check('signed out, Sign in goes to the box sign-in page over https and comes back', async () => {
+  const { page, portal } = await openGate({ path: '/storage' });
+  await page.getByText('Sign in to this box').waitFor();
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await page.waitForURL(/\/auth\//);
+  assert.equal(portal.length, 1, 'the sign-in page was not opened');
+  const url = new URL(portal[0]);
+  assert.equal(url.protocol, 'https:');
+  assert.equal(url.pathname, '/auth/');
+  const back = new URL(url.searchParams.get('rd'));
+  assert.equal(back.protocol, 'https:', 'the way back is not https');
+  assert.equal(back.pathname, '/storage', 'the way back is not the page the person was on');
+  await page.close();
+});
+
+await check('while the sign-in page starts, the prompt waits with a spinner and a fact, then goes on by itself', async () => {
+  const { page, portal } = await openGate();
+  let up = false;
+  await page.route('**/auth/api/health', (route) =>
+    up ? json(route, 200, { status: 'OK' }) : route.fulfill({ status: 502, contentType: 'text/html', body: 'Bad Gateway' }),
+  );
+  await page.reload();
+  await page.getByText('LosOS Login is starting').waitFor();
+  assert.ok(/While you wait/.test(await body(page)), 'no fact under the spinner');
+  assert.equal(await page.locator('dialog [data-slot="spinner"], [role="dialog"] [data-slot="spinner"]').count() > 0, true, 'no spinner');
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await page.waitForTimeout(500);
+  assert.equal(portal.length, 0, 'went to the sign-in page before it answered');
+  up = true;
+  await page.waitForURL(/\/auth\//, { timeout: 10000 });
+  assert.equal(portal.length, 1, 'did not go on once the sign-in page answered');
+  await page.close();
+});
+
+await check('a person signed in at the box sign-in page gets the app without a key', async () => {
+  const { page } = await open({
+    person: { name: 'matus', displayName: 'Matus', groups: ['losos-admins'], admin: true, spareKey: false, sections: ['storage', 'backup'] },
+  });
   await page.getByRole('button', { name: 'Sign out' }).waitFor();
-  await page.getByText('Unlock this box').waitFor({ state: 'hidden' });
-  assert.equal(await page.evaluate(() => sessionStorage.getItem('losos-token')), TOKEN);
-  assert.equal(signIns.length, 1, 'expected exactly one sign-in request');
-  assert.equal(signIns[0].contentType, 'application/json', 'lososd refuses a sign-in that is not application/json');
-  assert.deepEqual(signIns[0].body, { password: PASSWORD });
+  await page.getByText('Sign in to this box').waitFor({ state: 'hidden' });
+  assert.equal(await page.evaluate(() => sessionStorage.getItem('losos-token')), null, 'a cookie session stored a key');
+  const who = page.getByTestId('signed-in-as');
+  assert.equal((await who.innerText()).trim(), 'Matus', 'the top bar does not name the person signed in');
+  assert.match(await who.getAttribute('aria-label'), /as matus\. You are an administrator/, 'the top bar does not say who and what they are');
   await page.close();
 });
 
-await check('a wrong password is refused and the prompt stays up', async () => {
-  const { page } = await openGate();
-  await page.locator('#owner-password').fill('Wrong-horse battery staple 1');
-  await page.getByRole('button', { name: 'Unlock' }).click();
-  await page.waitForTimeout(300);
-  const text = await body(page);
-  assert.ok(/Unlock this box/i.test(text), 'the prompt closed on a wrong password');
-  assert.ok(/was not accepted/i.test(text), `no refusal shown:\n${text}`);
-  // The refusal leads to the handbook's forgotten-password page on this box.
-  assert.equal(await page.getByRole('dialog').locator('a[data-help]').getAttribute('href'), '/handbook/troubleshooting/forgot-password/');
-  assert.equal(await page.getByRole('button', { name: 'Sign out' }).count(), 0, 'the app unlocked on a wrong password');
-  assert.equal(await page.evaluate(() => sessionStorage.getItem('losos-token')), null);
+await check('a person in one section sees that section and not the administrators\' panes', async () => {
+  const { page } = await open({
+    path: '/settings/backup',
+    person: { name: 'eva', displayName: 'Eva', groups: ['losos-backup'], admin: false, spareKey: false, sections: ['backup'] },
+  });
+  await page.getByRole('button', { name: 'Sign out' }).waitFor();
+  const sections = nav(page);
+  await sections.getByRole('link', { name: 'Backup' }).waitFor();
+  for (const hidden of ['Storage', 'Mesh', 'Advanced', 'Security', 'Reset', 'Lab']) {
+    assert.equal(await sections.getByRole('link', { name: hidden, exact: true }).count(), 0, `${hidden} is shown to a backup-only person`);
+  }
+  assert.equal(await sections.getByRole('link', { name: 'Overview' }).count(), 1, 'the overview is for everyone');
+  const who = page.getByTestId('signed-in-as');
+  assert.equal((await who.innerText()).trim(), 'Eva', 'the top bar does not name the person signed in');
+  assert.match(await who.getAttribute('aria-label'), /the panes your account was given/, 'a backup-only person is called an administrator');
   await page.close();
 });
 
-await check('while LosOS cloud is down the prompt says so and points at the spare key', async () => {
-  const { page } = await openGate({ cloudDown: true });
-  await page.locator('#owner-password').fill(PASSWORD);
-  await page.getByRole('button', { name: 'Unlock' }).click();
-  await page.waitForTimeout(300);
-  const text = await body(page);
-  assert.ok(/LosOS cloud is not running/i.test(text), `the 503 was not explained:\n${text}`);
-  assert.ok(/spare admin key/i.test(text), 'the spare key is not offered');
-  assert.equal(await page.getByRole('dialog').locator('a[data-help]').getAttribute('href'), '/handbook/manual/sign-in-and-spare-key/');
-  assert.equal(await page.evaluate(() => sessionStorage.getItem('losos-token')), null);
-  await page.close();
-});
-
-/* The spare: the admin key behind a link, for when LosOS cloud cannot check
- * the password. Same checks as the password half — a wrong one is refused
- * and the right one unlocks and is kept. */
 await check('a wrong spare key is refused and the prompt stays up', async () => {
   const { page } = await openGate();
   await page.getByRole('button', { name: /Use the spare admin key instead/ }).click();
   await page.locator('#admin-key').fill('b'.repeat(64));
   await page.getByRole('button', { name: 'Unlock' }).click();
   await page.waitForTimeout(300);
-  assert.ok(/Unlock this box/i.test(await body(page)), 'the prompt closed on a wrong key');
+  const text = await body(page);
+  assert.ok(/Sign in to this box/i.test(text), 'the prompt closed on a wrong key');
+  assert.ok(/was not accepted/i.test(text), `no refusal shown:\n${text}`);
+  assert.equal(await page.getByRole('dialog').locator('a[data-help]').getAttribute('href'), '/handbook/troubleshooting/forgot-password/');
   assert.equal(
     await page.getByRole('button', { name: 'Sign out' }).count(),
     0,
@@ -535,21 +570,47 @@ await check('a wrong spare key is refused and the prompt stays up', async () => 
 });
 
 await check('the right spare key opens the app and is kept for the tab', async () => {
-  const { page, signIns } = await openGate();
+  const { page, portal } = await openGate();
   await page.getByRole('button', { name: /Use the spare admin key instead/ }).click();
   await page.locator('#admin-key').fill(TOKEN);
   await page.getByRole('button', { name: 'Unlock' }).click();
   await page.getByRole('button', { name: 'Sign out' }).waitFor();
-  await page.getByText('Unlock this box').waitFor({ state: 'hidden' });
+  await page.getByText('Sign in to this box').waitFor({ state: 'hidden' });
   assert.equal(await page.evaluate(() => sessionStorage.getItem('losos-token')), TOKEN);
-  assert.equal(signIns.length, 0, 'the key path must not go through the password route');
+  assert.equal(portal.length, 0, 'the key path must not go through the sign-in page');
+  await page.getByTestId('signed-in-as').getByText('Spare admin key').waitFor();
+  await page.close();
+});
+
+/* A box claimed before sign-in went through Authelia has nobody to sign
+ * in as. The prompt asks its owner for a name and a password, with the
+ * spare key as proof, and lososd makes them the first administrator. */
+await check('a box with nobody to sign in as makes its first administrator with the spare key', async () => {
+  const { page } = await openGate({ claim: { claimed: true, people: false } });
+  const made = [];
+  await page.route('**/api/setup/claim', (route) => {
+    const req = route.request();
+    if (req.method() !== 'POST') return json(route, 200, { claimed: true, people: false });
+    made.push({ auth: req.headers()['authorization'], body: req.postDataJSON() });
+    return json(route, 200, { claimed: true, user: null, name: 'matus', token: null });
+  });
+  await page.getByText('Make your sign-in').waitFor();
+  await page.locator('#first-name').fill('Matus');
+  await page.locator('#first-password').fill(PASSWORD);
+  await page.locator('#admin-key').fill(TOKEN);
+  await page.getByRole('button', { name: 'Make it' }).click();
+  await page.getByRole('button', { name: 'Sign out' }).waitFor();
+  assert.equal(made.length, 1, 'expected one claim');
+  assert.equal(made[0].auth, `Bearer ${TOKEN}`, 'the spare key did not go with it');
+  assert.deepEqual(made[0].body, { name: 'matus', password: PASSWORD }, 'the name was not lower-cased or the body is wrong');
+  await page.getByText(/sign in with matus/i).first().waitFor({ timeout: 5000 });
   await page.close();
 });
 
 await check('signing out returns to the prompt and forgets the token', async () => {
   const { page } = await open({ stored: true });
   await page.getByRole('button', { name: 'Sign out' }).click();
-  await page.getByText('Unlock this box').waitFor();
+  await page.getByText('Sign in to this box').waitFor();
   assert.equal(await page.evaluate(() => sessionStorage.getItem('losos-token')), null);
   await page.close();
 });
@@ -1192,19 +1253,15 @@ const RESULTS = {
   ],
 };
 
-await check('the sign-in prompt is one Field: the eye sits inside the password box and a refusal marks the field invalid', async () => {
+await check('the spare key prompt is one Field and a refusal marks it invalid', async () => {
   const { page } = await openGate();
+  await page.getByRole('button', { name: /Use the spare admin key instead/ }).click();
   const field = page.locator('[role="dialog"] [data-slot="field"], dialog [data-slot="field"]').first();
   await field.waitFor();
-  const group = field.locator('[data-slot="input-group"]');
-  const input = group.locator('input#owner-password');
-  assert.equal(await input.count(), 1, 'the password input is not inside the Input Group');
-  const eye = group.getByRole('button', { name: /show the password/i });
-  assert.equal(await eye.count(), 1, 'the show/hide button is not an Input Group addon');
-  await eye.click();
-  assert.equal(await input.getAttribute('type'), 'text', 'the eye did not reveal the password');
+  const input = field.locator('input#admin-key');
+  assert.equal(await input.count(), 1, 'the key input is not inside the Field');
   assert.equal(await field.getAttribute('data-invalid'), null, 'the field is invalid before anything was typed');
-  await input.fill('Wrong-horse battery staple 1');
+  await input.fill('b'.repeat(64));
   await page.getByRole('button', { name: 'Unlock' }).click();
   await page.waitForTimeout(300);
   assert.equal(await field.getAttribute('data-invalid'), 'true', 'a refusal did not mark the field invalid');

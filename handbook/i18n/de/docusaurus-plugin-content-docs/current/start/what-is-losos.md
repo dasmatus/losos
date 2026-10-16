@@ -36,9 +36,11 @@ noch über einen Webbrowser.
 - **Sie verschlüsselt ihre Festplatte und bewahrt den Schlüssel in ihrem
   eigenen Chip auf.** Auf einem Rechner mit TPM kann niemand die Festplatte
   lesen, der sie ausbaut und an einen anderen Rechner anschließt.
-- **Ein Passwort.** Das Passwort, das du für LosOS cloud festlegst, entsperrt
-  auch die Admin-Seiten. Mit einem ausgedruckten Ersatzschlüssel kommst du an
-  einem Tag hinein, an dem LosOS cloud nicht läuft.
+- **Eine eigene Anmeldung.** Jede Person meldet sich an den Admin-Seiten mit
+  ihrem eigenen Namen und Passwort an, und das Passwort des Besitzers öffnet
+  auch LosOS cloud. Mit einem ausgedruckten Ersatzschlüssel kommst du an
+  einem Tag hinein, an dem LosOS Login, die Anmeldeseite der Box, nicht
+  läuft.
 - **Sie kann verleihen, was sie nicht braucht.** Eine Box kann ihren freien
   Speicherplatz und ihre CPU-Leistung mit anderen Boxen teilen, nur zu den
   Zeiten, die du wählst, und nur, solange sie untätig ist. Der

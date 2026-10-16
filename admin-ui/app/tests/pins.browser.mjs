@@ -250,7 +250,7 @@ await check('without a key to LosOS cloud the files tab says how to get one', as
   await pinned(page).getByRole('button', { name: 'Edit pins' }).click();
   const dialog = page.getByRole('dialog', { name: 'Pins' });
   await dialog.getByRole('tab', { name: 'Files' }).click();
-  await dialog.getByText(/sign out and back in with your password once/i).waitFor();
+  await dialog.getByText(/once the owner's password is set again/i).waitFor();
   await page.close();
 });
 

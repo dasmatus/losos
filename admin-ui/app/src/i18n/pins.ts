@@ -75,9 +75,9 @@ export default defineMessages({
     de: "Dieser Ordner enthält mehr, als die Liste zeigt. Öffne einen Ordner darin, um von dort anzuheften.",
   },
   "pins.files.signIn": {
-    en: "Sign out and back in with your password once, and this box can list your LosOS cloud files here.",
-    sk: "Raz sa odhláste a prihláste svojím heslom a zariadenie vám tu zobrazí súbory z LosOS cloud.",
-    de: "Melde dich einmal ab und mit deinem Passwort wieder an, dann kann die Box hier deine Dateien aus LosOS cloud zeigen.",
+    en: "This box lists your LosOS cloud files once the owner's password is set again. The handbook's forgotten-password page shows how.",
+    sk: "Zariadenie vám tu zobrazí súbory z LosOS cloud, keď sa heslo vlastníka znova nastaví. Ako na to, ukazuje stránka príručky o zabudnutom hesle.",
+    de: "Die Box zeigt hier deine Dateien aus LosOS cloud, sobald das Passwort des Besitzers neu gesetzt ist. Wie das geht, steht auf der Handbuchseite zum vergessenen Passwort.",
   },
   "pins.files.notUp": {
     en: "LosOS cloud did not answer. It may still be starting.",

@@ -33,9 +33,10 @@ ho už používate iba cez webový prehliadač.
   nepotrebuje.
 - **Šifruje svoj disk a kľúč drží vo vlastnom čipe.** Na počítači s TPM
   disk neprečíta nikto, kto ho vyberie a zapojí do iného počítača.
-- **Jedno heslo.** Heslo, ktoré nastavíte pre LosOS cloud, odomyká aj admin
-  stránky. Vytlačený náhradný kľúč vás pustí dnu v deň, keď LosOS cloud
-  nebeží.
+- **Vlastné prihlásenie.** Každý sa do admin stránok prihlasuje vlastným
+  menom a heslom a heslo vlastníka otvára aj LosOS cloud. Vytlačený náhradný
+  kľúč vás pustí dnu v deň, keď LosOS Login, prihlasovacia stránka
+  zariadenia, nebeží.
 - **Môže požičať, čo práve nepoužíva.** Zariadenie môže zdieľať voľný disk
   a CPU s inými zariadeniami, iba v hodinách, ktoré si zvolíte, a iba keď je
   nečinné. [Trh](../types/official-edge#what-the-edge-does-for-a-box), ktorý

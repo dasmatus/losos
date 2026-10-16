@@ -29,6 +29,7 @@ nix build .#nixosConfigurations.iso.config.system.build.isoImage
 nix build .#checks.x86_64-linux.losos-admin-daemon  # lososd: D-Bus, HTTP, token
 nix build .#checks.x86_64-linux.losos-install       # installer, keyfile, BIOS
 nix build .#checks.x86_64-linux.losos-tpm-unlock    # installer, swtpm unlock
+nix build .#checks.x86_64-linux.losos-identity      # LosOS Login (Authelia), sections
 npm run dev | typecheck | test:browser              # in admin-ui/app
 cargo test --manifest-path admin-ui/tui/Cargo.toml  # losos, the terminal client
 ```
@@ -82,6 +83,16 @@ and is never served or built by nix.
 - `admin-ui/app`: React 19 + Vite + Tailwind SPA on real paths. Its `dist/`
   is the front nginx vhost's root (`try_files … /index.html`), `/api/*` is
   proxied to lososd. Palette in `src/styles/tokens.css`.
+- `identity.nix` (`losos.identity.enable`): sign-in is LosOS Login
+  (Authelia) on `127.0.0.1:9091`, its page at `https://<host>/auth/` (https
+  only), over the people file `/var/lib/losos-identity/users.yml` that
+  lososd alone writes (`backend/src/people.rs`, argon2id). nginx asks it
+  before every `/api/` request and passes `Remote-User`; a Bearer request
+  (the spare key) skips it. `backend/sections.json`, read by
+  `backend/src/sections.rs` and nginx, maps each route to a section
+  (`losos-<section>` groups, `losos-admins`, `losos-viewers`); a missing
+  route is admin only. The claim makes the first person an administrator.
+  `nix/tests/identity.nix` boots it.
 - Terminal access (`docs/terminal-access.md`, `docs/edge-terminal.md`):
   `losos`, a Rust client in `admin-ui/tui` (clap derive, miette reports,
   tracing without time, ratatui) with the web UI's panes, catalogue and
@@ -92,9 +103,10 @@ and is never served or built by nix.
   message signed by a key seeded at install (`losos.access.gpgKeys`,
   installer-fixed, never added at runtime) and encrypted to the host's own
   key, carrying a personal access token from the Access tokens pane;
-  `backend/access` opens and seals it. lososd's `/api/access/call` replays
-  the call against its own loopback API with the admin token, never
-  `/api/access`, `/api/setup` or `/api/sign-in`. An edge
+  `backend/access` opens and seals it. A token carries its owner, and
+  lososd's `/api/access/call` replays the call against its own loopback API
+  with the admin token as `X-Losos-As: <owner>`, never `/api/access` or
+  `/api/setup`. An edge
   (`losos.edge.access.gpgKeys`, `edge/registrar/src/operator.rs`) answers
   four paths and seals secrets through `losos-seal-credential` under
   `systemd-run`; its tokens come from `provision token` behind the GitHub
@@ -270,10 +282,12 @@ and is never served or built by nix.
     header, IP literals only. Nextcloud's `*` matches `[-.a-zA-Z0-9]*`.
 11. App tiles link `/nextcloud/index.php/apps/<id>/`. The short form is an
     Apache 404 unless the pod rewrites pretty URLs.
-12. Sign-in sends the password to Nextcloud over loopback and keeps no hash.
-    Keep the spare-key path in the unlock dialog, never `curl -u`, and let
-    `signin::validate_candidate` check shape only, or old passwords lock
-    their owner out.
+12. Sign-in is LosOS Login (Authelia) at `/auth/` over the people file
+    lososd writes. Keep the spare-key Bearer bypass in the authz location
+    and the spare-key path in the dialog. lososd trusts `Remote-User` only
+    from loopback with `LOSOS_IDENTITY=authelia`. Authelia must start only
+    after `users.yml` exists: an empty users map is fatal and a missing file
+    makes it write an example account.
 13. The keyfile is 4096 hex characters, no NUL, no newline, at
     `/etc/keys/persist-keyfile`. disko reads it through
     `<(echo -n "$(cat FILE)")`, the initrd and cryptenroll read it raw, and
@@ -505,7 +519,7 @@ ill-typed values, and any `${`, are refused with the key named. Every
 apply, mode change and reset is a commit in `/etc/nixos` (the repository
 the installer made), and a reconciler thread in lososd polls every 30 s:
 it creates the admin's Forgejo account (`notshared`, the owner password,
-kept in step on sign-in and set-password) and a private `losos-config`
+kept in step on set-password and device setup) and a private `losos-config`
 repository through a bot account the Forgejo start-up script mints a token
 for (`nix/forgejo-bootstrap.nix`, token at `/var/lib/forgejo/.losos-token`),
 pushes when behind, and when a clone has pushed ahead fast-forwards, gates
@@ -752,19 +766,19 @@ A separate `midnight-reboot.timer` reboots unconditionally at 00:07 with
   it with `allow 127.0.0.1` exposes the whole admin surface to the internet
   whenever `losos.proxy.enable` is on. Test against lososd's :8082 directly,
   or curl with a LAN source address.
-- **The owner's password unlocks the admin pages, and Nextcloud is the judge.**
-  `POST /api/sign-in` (`backend/src/signin.rs`) sends the password to
-  Nextcloud over loopback (`$LOSOS_NEXTCLOUD_LOGIN_URL`, set per mode in
-  `daemon.nix`) in a Basic header and answers with the admin token on a 200.
-  lososd keeps no hash of the password on purpose: a second copy would drift
-  the moment the owner changed it inside Nextcloud. The cost is that the
-  route answers 503 while Nextcloud is down, which is what the printed spare
-  key is for — so don't remove the key path from the unlock dialog, and don't
-  turn the sign-in probe into a `curl -u` (the password would be in an argv).
-  A new password wants 12+ characters, both cases, a digit and a symbol
-  (`setup::validate_password`); a sign-in checks only the candidate's shape
-  (`signin::validate_candidate`), or a password set under an older rule set
-  would lock its owner out.
+- **Sign-in is LosOS Login (Authelia), over a people file lososd writes.**
+  nginx asks Authelia (`modules/identity.nix`) before every `/api/` request
+  and passes `Remote-User`, which lososd believes only from loopback with
+  `LOSOS_IDENTITY=authelia`. lososd alone writes
+  `/var/lib/losos-identity/users.yml` (`backend/src/people.rs`), and
+  Authelia starts only once it exists: an empty users map is fatal, and with
+  no file Authelia writes an example account. A Bearer request skips
+  Authelia and lososd checks the token itself, so the spare key opens the
+  box while Authelia is down; keep that bypass and the dialog's spare-key
+  path. `backend/sections.json` decides who may call what, for lososd and
+  nginx alike; a route missing from it is admin only. `signin.rs` is left
+  only for LosOS cloud's login in device setup: Basic over loopback, never
+  `curl -u`, and `signin::validate_candidate` checks shape only.
 - **Nextcloud trusts the box's own IP address through one nginx header.**
   The `/nextcloud` location sets `X-Losos-Server-Addr $server_addr`, and the
   pod's `losos.config.php` appends that value to `trusted_domains` per

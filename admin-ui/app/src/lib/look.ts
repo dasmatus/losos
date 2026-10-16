@@ -24,7 +24,7 @@ import {
   deleteBackground,
   deleteHandWidget,
   getLook,
-  getToken,
+  hasToken,
   isUnauthorized,
   postHandWidget,
   postLook,
@@ -231,7 +231,7 @@ function reviveLimits(value: unknown): LookLimits {
  *  joins it. Nothing happens without a token. */
 export function loadLook(): Promise<void> {
   if (inFlight !== null) return inFlight;
-  if (getToken() === null) {
+  if (!hasToken()) {
     if (state !== EMPTY) set(EMPTY);
     return Promise.resolve();
   }

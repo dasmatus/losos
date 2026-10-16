@@ -51,6 +51,11 @@ pub struct TokenRecord {
     pub expires: Option<i64>,
     pub last_used: Option<i64>,
     pub sha256: String,
+    /// Who made it: the person signed in to the web UI when it was minted.
+    /// A call with it runs as that person, with their groups. `None` for a
+    /// token made with the spare key, which runs as the spare key does.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub owner: Option<String>,
 }
 
 /// One token as the web UI sees it: everything but the hash.
@@ -64,6 +69,8 @@ pub struct TokenView {
     pub created: i64,
     pub expires: Option<i64>,
     pub last_used: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub owner: Option<String>,
 }
 
 impl From<&TokenRecord> for TokenView {
@@ -76,6 +83,7 @@ impl From<&TokenRecord> for TokenView {
             created: r.created,
             expires: r.expires,
             last_used: r.last_used,
+            owner: r.owner.clone(),
         }
     }
 }
@@ -159,6 +167,7 @@ impl Tokens {
 
     /// Make a token bound to `fingerprint`, which must be in `ring`. Answers
     /// the token itself, the only time it exists outside the caller.
+    #[allow(clippy::too_many_arguments)]
     pub fn create(
         &self,
         ring: &Keyring,
@@ -166,6 +175,7 @@ impl Tokens {
         fingerprint: &str,
         scope: Scope,
         expires_in_days: Option<u32>,
+        owner: Option<&str>,
         now: i64,
     ) -> Result<(String, TokenView), TokenError> {
         let name = name.trim();
@@ -216,6 +226,7 @@ impl Tokens {
             expires: expires_in_days.map(|d| now + i64::from(d) * 86_400),
             last_used: None,
             sha256: sha256_hex(&token),
+            owner: owner.map(str::to_string),
         };
         let view = TokenView::from(&record);
         records.push(record);
@@ -319,7 +330,7 @@ mod tests {
         let (ring, fp) = ring();
         let t = store("own");
         let (token, view) = t
-            .create(&ring, "laptop", &fp, Scope::Full, Some(30), 1000)
+            .create(&ring, "laptop", &fp, Scope::Full, Some(30), None, 1000)
             .unwrap();
         assert!(token.starts_with("losos_pat_"));
         assert_eq!(token.len(), PREFIX.len() + ID_HEX + 1 + SECRET_HEX);
@@ -341,7 +352,7 @@ mod tests {
         let (ring, fp) = ring();
         let t = store("dead");
         let (token, view) = t
-            .create(&ring, "laptop", &fp, Scope::Read, Some(1), 1000)
+            .create(&ring, "laptop", &fp, Scope::Read, Some(1), None, 1000)
             .unwrap();
         let mut wrong = token.clone();
         wrong.pop();
@@ -372,23 +383,23 @@ mod tests {
         let (ring, fp) = ring();
         let t = store("input");
         assert!(matches!(
-            t.create(&ring, "  ", &fp, Scope::Read, None, 0),
+            t.create(&ring, "  ", &fp, Scope::Read, None, None, 0),
             Err(TokenError::Invalid(_))
         ));
         assert!(matches!(
-            t.create(&ring, "x", "ABCD", Scope::Read, None, 0),
+            t.create(&ring, "x", "ABCD", Scope::Read, None, None, 0),
             Err(TokenError::Invalid(_))
         ));
         assert!(matches!(
-            t.create(&ring, "x", &fp, Scope::Read, Some(0), 0),
+            t.create(&ring, "x", &fp, Scope::Read, Some(0), None, 0),
             Err(TokenError::Invalid(_))
         ));
         for i in 0..MAX_TOKENS {
-            t.create(&ring, &format!("t{i}"), &fp, Scope::Read, None, 0)
+            t.create(&ring, &format!("t{i}"), &fp, Scope::Read, None, None, 0)
                 .unwrap();
         }
         assert!(matches!(
-            t.create(&ring, "one more", &fp, Scope::Read, None, 0),
+            t.create(&ring, "one more", &fp, Scope::Read, None, None, 0),
             Err(TokenError::Full)
         ));
     }

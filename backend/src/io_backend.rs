@@ -2660,6 +2660,7 @@ mod tests {
             claimed: true,
             backup_job: None,
             erase: None,
+            owner: Some("matus".into()),
         };
         write_state(&p, &s).unwrap();
         assert_eq!(read_state(&p), s);

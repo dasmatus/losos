@@ -34,9 +34,10 @@ USB stick, and after that you only use it through a web browser.
 - **It encrypts its disk and keeps the key in its own chip.** On a machine
   with a TPM, someone who pulls the disk out and plugs it into another
   computer cannot read it.
-- **One password.** The password you set for LosOS cloud also unlocks the
-  admin pages. A printed spare key lets you in on a day LosOS cloud is not
-  running.
+- **A sign-in of your own.** Each person signs in to the admin pages with
+  their own name and password, and the owner's password also opens LosOS
+  cloud. A printed spare key lets you in on a day LosOS Login, the box's
+  sign-in page, is not running.
 - **It can lend what it is not using.** A box can share its spare disk and
   CPU with other boxes, only within hours you choose and only while it is
   idle. The [market](../types/official-edge#what-the-edge-does-for-a-box) that pays owners for

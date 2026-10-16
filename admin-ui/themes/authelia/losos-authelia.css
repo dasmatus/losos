@@ -1,0 +1,72 @@
+/* The LosOS look for the sign-in pages, which Authelia draws.
+ *
+ * Authelia's portal is Tailwind and shadcn/ui, like the admin SPA, and it
+ * reads its colours from shadcn's variable names. This file takes the place
+ * of its web/src/themes/tailwind-themes.css at build time
+ * (admin-ui/themes/default.nix, `authelia.web`), so those names point at
+ * the admin SPA's own tokens.css, which is imported first and is the same
+ * file Nextcloud and Forgejo ship. The mapping is the one
+ * admin-ui/app/src/styles/index.css makes for the SPA's shadcn components,
+ * so a button here is a button there.
+ *
+ * Authelia sets <html data-theme="light|dark"> from the person's choice
+ * (auto follows the system), which is the same attribute and the same two
+ * values tokens.css switches on. Its other themes, grey and oled, are not
+ * offered: the box's config pins `theme: auto`.
+ */
+
+@import "./losos-tokens.css";
+
+:root {
+    --background: var(--ground);
+    --foreground: var(--ink);
+
+    --card: var(--surface);
+    --card-foreground: var(--ink);
+
+    --popover: var(--surface);
+    --popover-foreground: var(--ink);
+
+    --primary: var(--accent);
+    --primary-foreground: var(--surface);
+
+    --secondary: var(--sunk);
+    --secondary-foreground: var(--ink);
+
+    /* Authelia's `muted` is a fill, the SPA's --muted is a text colour.
+     * The fill is the sunk surface; its text is the SPA's muted ink. */
+    --muted: var(--sunk);
+    --muted-foreground: var(--faint);
+
+    --accent: var(--accent-wash);
+    --accent-foreground: var(--ink);
+
+    --destructive: var(--crit);
+    --destructive-foreground: var(--surface);
+
+    --success: var(--ok);
+    --success-foreground: var(--surface);
+
+    --warning: var(--warn);
+    --warning-foreground: var(--surface);
+
+    --info: var(--accent);
+    --info-foreground: var(--surface);
+
+    --border: var(--line);
+    --input: var(--line);
+    --ring: var(--accent);
+
+    /* Controls take the SPA's control radius; Tailwind's lg and xl, which
+     * Authelia uses for its cards, come out at the card radius. */
+    --radius: calc(var(--control-radius) + 2px);
+
+    --custom-icon: var(--ink);
+    --custom-loading-bar: var(--accent);
+
+    --divider: var(--hair);
+}
+
+body {
+    font-family: var(--font-ui);
+}

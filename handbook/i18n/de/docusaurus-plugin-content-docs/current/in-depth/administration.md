@@ -120,8 +120,9 @@ Hexadezimalzeichen nach `/var/secrets/losos-admin-token` (Modus 0600). Das
 Token kann jede Einstellung ändern, es ist also root.
 
 Auf einer neuen, noch nicht beanspruchten Box setzt der erste Aufrufer aus
-dem LAN, der `POST /api/setup/claim` sendet, das Eigentümer-Passwort und
-erhält das Token in der Antwort. Diese Route verlangt kein Token, nimmt aber
+dem LAN, der `POST /api/setup/claim` sendet, das Eigentümer-Passwort, wird
+die erste Person, die sich anmelden kann (ein Administrator), und erhält das
+Token in der Antwort. Diese Route verlangt kein Token, nimmt aber
 keine Ansprüche mehr an, sobald die Box einen Eigentümer hat. Richte die
 Box nur in einem vertrauenswürdigen LAN ein, denn der erste Aufrufer wird ihr
 Eigentümer. Das Token wird nur einmal herausgegeben und kann über die
@@ -148,24 +149,32 @@ Schritte gegen eine bereits installierte Instanz in etwa 2 s. In einer VM
 ohne KVM (QEMUs TCG-Emulation) dauern dieselben Schritte 10 bis 30 Minuten,
 gib einer Demo-VM also Hardwarevirtualisierung.
 
-Dieser Aufrufer ist der Einrichtungsassistent. Jeder spätere Besuch der
-Admin-Seiten fragt nach dem **Passwort**, das der Assistent gesetzt hat,
-demselben, mit dem du dich bei LosOS cloud anmeldest. `POST /api/sign-in`
-fragt Nextcloud, ob es stimmt, und gibt dem Browser-Tab bei einem Ja das
-Token. Die Box hält keine zweite Kopie des Passworts, eine Änderung in LosOS
-cloud ändert es also auch für die Admin-Seiten.
+Dieser Aufrufer ist der Einrichtungsassistent. Danach melden sich Personen
+bei LosOS Login an, der Anmeldeseite der Box unter `https://<box>/auth/`,
+jede mit einem eigenen Anmeldenamen und Passwort. LosOS Login ist ein
+Open-Source-Anmeldeserver, der auf der Box läuft. lososd führt die
+Personendatei, die LosOS Login liest, mit jedem Passwort als argon2id-Hash,
+und LosOS Login übernimmt eine Änderung daran sofort. nginx fragt LosOS
+Login bei jeder Anfrage an `/api/` und gibt den Namen der Person an lososd
+weiter, das die Bereiche öffnet, die ihre Gruppen erlauben. Die erste Person
+ist immer Administrator. Ihr eigenes Passwort ändert eine Person mit `POST
+/api/set-password`, und beim Eigentümer ändert das auch das Passwort für
+LosOS cloud.
 
 Das Token selbst wird nach dem Setzen des Passworts trotzdem einmal als
 **Ersatz-Admin-Schlüssel** angezeigt, mit den Schaltflächen Kopieren und
-Drucken. Es deckt den einen Fall ab, den das Passwort nicht abdecken
-kann: LosOS cloud läuft nicht, denn LosOS cloud prüft das Passwort. Der
-Entsperrdialog hat einen Link, um stattdessen den Schlüssel einzugeben.
+Drucken. Eine Anfrage, die ihn trägt, umgeht LosOS Login, und lososd prüft
+den Schlüssel selbst, also öffnet der Schlüssel die Admin-Seiten auch dann,
+wenn LosOS Login nicht läuft. Der Anmeldedialog hat einen Link, um
+stattdessen den Schlüssel einzugeben. Eine Box, die eingerichtet wurde,
+bevor Personen Anmeldenamen hatten, fragt einmal nach dem Schlüssel,
+zusammen mit einem Anmeldenamen und einem Passwort, um ihren ersten
+Administrator anzulegen.
 
 Ein neues Passwort muss mindestens 12 Zeichen lang sein, mit einem
 Kleinbuchstaben, einem Großbuchstaben, einer Ziffer und einem Symbol wie `-`
 oder `!`. Der Assistent zeigt während der Eingabe die vier Regeln mit je
-einem Haken. Ein Passwort, das vor dieser Regel gesetzt wurde, meldet sich
-weiterhin an.
+einem Haken.
 
 :::warning[Passwort und Ersatzschlüssel verloren]
 Das Token lässt sich auf der Box nicht rotieren, da sie keine Shell hat. Wer
@@ -233,8 +242,9 @@ Mit `losos.configRepo.enable` (Standard) und eingeschaltetem LosOS Git führt
 lososd die Konfiguration außerdem in einem privaten Repository auf LosOS
 Git, `<owner>/losos-config`, das dem eigenen Konto des Admins (`notshared`)
 gehört. Das Konto wird bei der ersten Synchronisierung mit dem
-Admin-Passwort angelegt und bei jeder Passwortänderung und Anmeldung damit
-abgeglichen. Ein Reconciler in lososd läuft alle 30 s:
+Admin-Passwort angelegt und bei jeder Passwortänderung und jedes Mal, wenn
+ein Rechner für LosOS Git eingerichtet wird, damit abgeglichen. Ein
+Reconciler in lososd läuft alle 30 s:
 
 - er committet alles Uncommittete und pusht den Branch der Box, wenn LosOS
   Git zurückliegt;
@@ -386,7 +396,8 @@ Ein Backup enthält:
   Chiffretext, daher entsperrt das Skript die Policy für die Kopie und
   sperrt sie danach wieder. Im Bucket deckt ihn die Verschlüsselung von
   restic ab;
-- `modules/overrides.nix`, das Aussehen der Startseite und das Proxy-Token.
+- `modules/overrides.nix`, das Aussehen der Startseite, das Proxy-Token und
+  die Personendatei, die LosOS Login liest.
 
 Bei einer `amazonaws.com`-Adresse kann der Eigentümer eine Speicherklasse
 wählen: Glacier Instant Retrieval, Glacier Flexible Retrieval oder Glacier
@@ -434,8 +445,9 @@ werden, sodass er auch ohne offenen Tab weiterläuft:
 5. `losos-factory-wipe.service` läuft früh im nächsten Bootvorgang, vor
    `sysinit.target` und vor jedem Dienst, dem die Daten gehören, und löscht
    die App-Daten, die Datenbanken, den Zustand beider Kubernetes-Instanzen,
-   die Geheimnisse, das Journal und die fscrypt-Metadaten. Er leert beide
-   Daten-Homes. Die Markierung wird zuletzt entfernt, sodass ein
+   die Personendatei und den Zustand von LosOS Login, die Geheimnisse, das
+   Journal und die fscrypt-Metadaten. Er leert beide Daten-Homes. Die
+   Markierung wird zuletzt entfernt, sodass ein
    unterbrochenes Löschen erneut läuft.
 
 :::danger[Abbrechen nur in den ersten zwei Schritten]

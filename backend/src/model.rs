@@ -131,6 +131,11 @@ pub struct State {
     /// itself erased at the end, which is how a finished erase clears it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub erase: Option<crate::erase::Erase>,
+    /// The sign-in name (`crate::people`) of the person who claimed the box
+    /// and so owns its LosOS cloud account: their password changes change
+    /// that account's too.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub owner: Option<String>,
 }
 
 /// See [`State::claimed`]: a state file without the field predates it.
@@ -164,6 +169,7 @@ impl Default for State {
             claimed: false,
             backup_job: None,
             erase: None,
+            owner: None,
         }
     }
 }

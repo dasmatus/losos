@@ -1,22 +1,10 @@
-//! `POST /api/sign-in` — unlock the admin pages with the owner's password.
+//! Checking a password with LosOS cloud.
 //!
-//! Until this existed the admin pages and LosOS cloud had two credentials:
-//! the password the owner chose in the wizard, and a 64-character admin key
-//! lososd minted for itself and released once, in the claim reply. The key
-//! was the only thing that ever opened the admin pages again, and the owner
-//! had to copy it somewhere at the one moment it was on screen. One password
-//! is what an owner can remember; two is what gets written on the box.
-//!
-//! So the unlock dialog now takes the password, and lososd asks **Nextcloud**
-//! whether it is right. Nextcloud is the only thing on the box that knows the
-//! password, and the alternative — lososd keeping a second hash of it — would
-//! fork the credential: a password changed inside LosOS cloud's own settings
-//! page would stop matching the admin pages, silently, with the old one still
-//! opening them. Asking Nextcloud means there is exactly one password and it
-//! lives in exactly one place. What that costs is availability: while
-//! Nextcloud is not running the admin pages cannot be unlocked by password,
-//! which is why the admin key stays, as the spare on the printed sheet, and
-//! why the dialog keeps a way to enter it.
+//! Signing in to the admin pages is Authelia's job now
+//! (`modules/identity.nix`, `crate::people`). What stays here is the probe
+//! lososd uses where Nextcloud itself has to judge the owner's password:
+//! before it mints an app password or a LosOS Git token for one of their
+//! computers (`crate::devices`, `crate::pins`).
 //!
 //! The question is one HTTP request over loopback to the OCS route that does
 //! nothing but authenticate (`/ocs/v2.php/cloud/user`), with the password in
@@ -27,10 +15,6 @@
 //! client's address rides along as `X-Forwarded-For`, which Nextcloud honours
 //! from `127.0.0.1` (`trusted_proxies`, modules/workloads.nix), so its own
 //! brute-force throttle counts the browser, not lososd.
-//!
-//! What a correct password buys is the same admin token the claim released:
-//! the page stores it for the tab exactly as before, every other route stays
-//! Bearer-gated, and nothing about the token's lifetime or storage changed.
 
 use crate::setup::Secret;
 

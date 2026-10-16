@@ -8,36 +8,43 @@ slug: /troubleshooting/forgot-password
 
 <div className="losos-symptom">
 
-**Čo vidíte:** „Toto heslo nebolo prijaté.“ v dialógu odomknutia alebo na
-prihlasovacej stránke LosOS cloud.
+**Čo vidíte:** LosOS Login, prihlasovacia stránka zariadenia na
+`https://<zariadenie>/auth/`, neprijme vaše prihlasovacie meno a heslo alebo
+prihlasovacia stránka LosOS cloud neprijme heslo.
 
 </div>
 
 ## Najprv sa uistite, že ide o heslo \{#first-make-sure-it-is-the-password}
 
-- **LosOS cloud nebeží.** Dialóg odomknutia potom namiesto odmietnutia hesla
-  hlási „LosOS cloud práve nebeží, takže heslo sa teraz nedá overiť“.
-  Po reštarte počkajte pár minút alebo použite náhradný kľúč, ako je
-  opísané nižšie.
-- **Zariadenie spred 7. októbra 2026** na správcovských stránkach odmietalo
-  každé heslo, aj keď ho LosOS cloud prijal, pretože heslo sa ku kontrole
-  vôbec nedostalo. Opravil to pull request #71 a oprava príde s nočnou
-  aktualizáciou. Kým nepríde, funguje náhradný kľúč.
-- **Príliš veľa pokusov.** Po desiatich nesprávnych pokusoch je počítač
-  zablokovaný na čoraz dlhší čas. Počkajte pár minút.
+- **Prihlasovacie meno.** Prihlasovacie mená sa píšu malými písmenami.
+  Skontrolujte meno aj heslo.
+- **Príliš veľa pokusov.** Po niekoľkých nesprávnych heslách za sebou
+  LosOS Login to meno na pár minút odmietne, aj so správnym heslom.
+  Počkajte a skúste to znova.
+- **Zariadenie nastavené skôr** ešte nemá prihlasovacie mená. Jeho dialóg
+  hovorí **Vytvorte si prihlásenie** a potrebuje náhradný správcovský kľúč;
+  pozrite
+  [Zariadenie nastavené skôr](../manual/sign-in-and-spare-key#a-box-set-up-earlier).
+
+## Zariadenie nastavil niekto iný \{#someone-else-set-up-the-box}
+
+Opýtajte sa ho. Správcovské stránky zatiaľ nemajú stránku na správu ľudí,
+takže nové heslo sa dá nastaviť iba vlastníkovi, a to náhradným kľúčom, ako
+je opísané nižšie.
 
 ## Máte náhradný správcovský kľúč \{#you-have-the-spare-admin-key}
 
-![Dialóg odomknutia, ktorý žiada náhradný správcovský kľúč.](@site/docs/img/unlock-spare-key-sk.png)
+![Dialóg, ktorý žiada náhradný správcovský kľúč.](@site/docs/img/unlock-spare-key-sk.png)
 
-V dialógu odomknutia zvoľte **Použiť namiesto toho náhradný správcovský
-kľúč** a vložte 64-znakový kľúč z vytlačeného hárku. Správcovské stránky sa
-otvoria.
+V dialógu **Prihláste sa do tohto zariadenia** zvoľte **Použiť namiesto
+toho náhradný správcovský kľúč** a vložte 64-znakový kľúč z vytlačeného
+hárku. Správcovské stránky sa otvoria.
 
-Kľúčom môžete nastaviť aj nové heslo vlastníka pre LosOS cloud, a to cez tú
-istú cestu, ktorú použil sprievodca. Na paneloch na to zatiaľ nie je
-tlačidlo, takže z počítača v LAN spustíte jeden príkaz. Nahraďte v ňom kľúč,
-adresu a heslo. Nové heslo musí spĺňať štyri pravidlá:
+Kľúčom môžete nastaviť aj nové heslo vlastníka, teda toho, kto zariadenie
+nastavil, a to cez tú istú cestu, ktorú použil sprievodca. Zmení naraz
+prihlasovacie heslo vlastníka aj jeho heslo do LosOS cloud. Na paneloch na
+to zatiaľ nie je tlačidlo, takže z počítača v LAN spustíte jeden príkaz.
+Nahraďte v ňom kľúč, adresu a heslo. Nové heslo musí spĺňať štyri pravidlá:
 
 ```bash
 curl -H "Authorization: Bearer <spare key>" -H "Content-Type: application/json" \
@@ -45,19 +52,21 @@ curl -H "Authorization: Bearer <spare key>" -H "Content-Type: application/json" 
   http://<address>/api/set-password
 ```
 
-Odpoveď uvedie účet, ktorého heslo sa zmenilo. Prihláste sa do LosOS cloud
-novým heslom. Od tej chvíle ho prijímajú aj správcovské stránky.
+Odpoveď uvedie účet LosOS cloud, ktorého heslo sa zmenilo. V LosOS Login sa
+prihláste svojím prihlasovacím menom a novým heslom a do LosOS cloud tým
+istým heslom.
 
 ## Nemáte ani jedno \{#you-have-neither}
 
-LosOS cloud heslo overuje a drží jeho jedinú kópiu. Odkaz na obnovenie
-neexistuje, pretože zariadenie neposiela poštu, a nie je ani shell, v ktorom
-by sa heslo dalo obnoviť. Skôr ako preinštalujete, zistite, či má rolu
-správcu iný účet v LosOS cloud. Ten môže heslo vlastníka obnoviť na stránke
-Používatelia v LosOS cloud. Inak je jedinou cestou späť **preinštalovanie**,
-ktoré vymaže disk, a potom obnovenie súborov z inej kópie, ktorú si
-uchovávate, napríklad z priečinka desktopového klienta alebo z nahrávok
-z telefónu.
+Zariadenie si vaše heslo drží iba ako hash. Odkaz na obnovenie neexistuje,
+pretože zariadenie neposiela poštu, a nie je ani shell, v ktorom by sa heslo
+dalo obnoviť. Skôr ako preinštalujete, zistite, či má rolu správcu iný účet
+v LosOS cloud. Ten môže heslo vlastníka obnoviť na stránke Používatelia
+v LosOS cloud, čím sa dostanete k svojim súborom, no nie do správcovských
+stránok. Do správcovských stránok je jedinou cestou späť
+**preinštalovanie**, ktoré vymaže disk, a potom obnovenie súborov z inej
+kópie, ktorú si uchovávate, napríklad z priečinka desktopového klienta alebo
+z nahrávok z telefónu.
 
 ## Ako tomu nabudúce predísť \{#preventing-the-next-time}
 
