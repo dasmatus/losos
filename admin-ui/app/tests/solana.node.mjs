@@ -50,7 +50,7 @@ async function check(name, fn) {
   }
 }
 
-const freshOwner = () => base58.encode(ed25519.getPublicKey(ed25519.utils.randomPrivateKey()));
+const freshOwner = () => base58.encode(ed25519.getPublicKey(ed25519.utils.randomSecretKey()));
 const memo = () => `0x${randomBytes(32).toString('hex')}`;
 const buyer = sol.solanaKeyFromPhrase(JUNK);
 
