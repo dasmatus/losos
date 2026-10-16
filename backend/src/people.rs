@@ -31,6 +31,14 @@ const DEFAULT_FILE: &str = "/var/lib/losos-identity/users.yml";
 const PEOPLE_DIR: &str = "/var/lib/losos-identity";
 /// The group every first person lands in.
 pub const ADMINS: &str = "losos-admins";
+/// The person who claimed the box. nginx signs them in to LosOS cloud and
+/// LosOS Git as the account that holds their files and repositories
+/// (`modules/app-sign-in.nix`); everyone else arrives under their own name.
+pub const OWNER: &str = "losos-owner";
+/// Names already taken by the box's own accounts in LosOS cloud and LosOS
+/// Git: the owner's, the shared domain's and the Forgejo bot's. A person
+/// signing in under one of them would arrive as that account.
+const RESERVED: [&str; 3] = ["notshared", "shared", "losos"];
 /// Sign-in names: what Authelia and the audit log show. Lower case so two
 /// people cannot differ by case alone.
 const MAX_NAME_CHARS: usize = 32;
@@ -79,6 +87,11 @@ pub fn validate_name(name: &str) -> Result<&str, String> {
         return Err(format!(
             "a sign-in name is 1 to {MAX_NAME_CHARS} characters: lower-case letters, digits, \
              '.', '-' and '_', starting with a letter"
+        ));
+    }
+    if RESERVED.contains(&name) {
+        return Err(format!(
+            "{name} is the name of one of the box's own accounts"
         ));
     }
     Ok(name)
@@ -294,6 +307,21 @@ impl People {
         self.write(&doc)
     }
 
+    /// Put `name` in `group` if they are not in it yet. Writes nothing when
+    /// they are, so calling it on every start costs a read.
+    pub fn ensure_group(&self, name: &str, group: &str) -> anyhow::Result<()> {
+        let _g = self.lock.lock().unwrap_or_else(|e| e.into_inner());
+        let mut doc = self.read()?;
+        let Some(record) = doc.users.get_mut(name) else {
+            anyhow::bail!("{name} has no account");
+        };
+        if record.groups.iter().any(|g| g == group) {
+            return Ok(());
+        }
+        record.groups.push(group.to_string());
+        self.write(&doc)
+    }
+
     /// Replace `name`'s password.
     pub fn set_password(&self, name: &str, secret: &Secret) -> anyhow::Result<()> {
         let hash = hash_password(secret)?;
@@ -325,6 +353,32 @@ mod tests {
         for bad in ["", "Matus", "9lives", "two words", "x/y", &"a".repeat(33)] {
             assert!(validate_name(bad).is_err(), "{bad:?}");
         }
+    }
+
+    #[test]
+    fn the_boxs_own_account_names_are_refused() {
+        for taken in ["notshared", "shared", "losos"] {
+            let e = validate_name(taken).unwrap_err();
+            assert!(e.contains("box's own accounts"), "{taken}: {e}");
+        }
+        assert!(validate_name("notshared2").is_ok());
+    }
+
+    #[test]
+    fn a_group_is_added_once_and_an_unknown_person_is_an_error() {
+        let (_d, p) = people();
+        let s = Secret::new("correct horse battery");
+        p.add("matus", "", "", &s, &[ADMINS]).unwrap();
+        p.ensure_group("matus", OWNER).unwrap();
+        let before = std::fs::read(p.path()).unwrap();
+        p.ensure_group("matus", OWNER).unwrap();
+        assert_eq!(
+            std::fs::read(p.path()).unwrap(),
+            before,
+            "a second call wrote"
+        );
+        assert_eq!(p.get("matus").unwrap().unwrap().groups, [ADMINS, OWNER]);
+        assert!(p.ensure_group("nobody", OWNER).is_err());
     }
 
     #[test]

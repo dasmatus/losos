@@ -32,6 +32,7 @@ let
   # native path and the workload path from drifting is that file's entire
   # reason to exist.
   nc = import ./nextcloud-stack.nix { inherit pkgs lib; };
+  signIn = import ./app-sign-in.nix { inherit lib; };
 
   # The LosOS look for Forgejo (admin-ui/themes/), shared with the workload
   # image in nix/images.nix.
@@ -146,6 +147,10 @@ in
           lib.concatLines (nc.site.appConfig config.losos.nextcloud.site)
         )
       )
+      # Native Nextcloud has its own vhost that the LAN reaches directly,
+      # with no nginx in front to vouch for a header, so sign-in with LosOS
+      # Login stays off here (modules/app-sign-in.nix).
+      + signIn.nextcloud.occ "${config.services.nextcloud.occ}/bin/nextcloud-occ" "no"
     )
   );
   services.nginx.virtualHosts.${config.losos.nextcloud.hostName}.locations =

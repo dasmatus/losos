@@ -80,7 +80,7 @@ let
   # IdPs or API keys required), auto-enabled on every start. The App Store
   # stays open on top of this (appstoreEnable below) so the heavier ones —
   # onlyoffice, richdocuments/Collabora, spreed/Talk, recognize, the
-  # integration_* / user_saml / user_oidc / sociallogin connectors — can be
+  # integration_* / user_oidc / sociallogin connectors — can be
   # installed on demand by the admin.
   #
   # `mail` is deliberately NOT here, and "self-contained" is why. Every other
@@ -120,6 +120,10 @@ let
       twofactor_admin
       guests
       impersonate
+      # Sign-in with LosOS Login (modules/app-sign-in.nix). Enabled or
+      # disabled on every start after this list, by the host's `sign-in`
+      # file, so a box without LosOS Login keeps Nextcloud's own page.
+      user_saml
       ;
     # `unroundedcorners` used to be here and is not, on purpose: it squares
     # off Nextcloud's corners by rewriting the same radius variables the LosOS

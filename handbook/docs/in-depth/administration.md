@@ -147,6 +147,22 @@ first person is always an administrator. A person changes their own password
 with `POST /api/set-password`, and for the owner that changes the LosOS
 cloud password too.
 
+LosOS cloud and LosOS Git sign people in the same way when they run as
+pods, the default. nginx asks LosOS Login on each app's sign-in page and
+sends the person on in three headers, `X-Losos-Cloud-User`, `-Name` and
+`-Email`, which it sets on every request to either app so no client can
+send its own. The owner, in the `losos-owner` group, arrives as the
+`notshared` account in both; everyone else under their sign-in name.
+Nextcloud reads the headers with its user_saml app in environment-variable
+mode, Forgejo with its reverse-proxy sign-in, and each makes an account
+the first time. A person LosOS Login does not know is sent to it; off the
+LAN, while it starts, or with `?direct=1` on LosOS cloud, the app's own
+sign-in page answers instead. Both apps listen on loopback, and the
+firewall rejects a connection to either port from any process on the box
+but root, nginx and the app itself, so nothing on the box can name a
+person to them. The names `notshared`, `shared` and `losos` are kept for
+the box's own accounts.
+
 The token itself is still shown once, after the password is set, as the
 **spare admin key**, with Copy and Print buttons. A request that carries it
 skips LosOS Login and lososd checks the key itself, so the key opens the

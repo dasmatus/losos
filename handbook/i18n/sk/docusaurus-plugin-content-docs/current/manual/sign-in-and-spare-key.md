@@ -52,6 +52,33 @@ Po niekoľkých nesprávnych heslách za sebou LosOS Login to meno na pár minú
 odmietne. Počkajte a skúste to znova.
 :::
 
+## LosOS cloud a LosOS Git \{#losos-cloud-and-losos-git}
+
+Na vlastnej sieti zariadenia vás LosOS cloud aj LosOS Git prihlásia cez
+LosOS Login. Keď otvoríte niektorú z nich neprihlásení, ocitnete sa v LosOS
+Login; prihláste sa tam raz a pustia vás obe aplikácie, bez druhého hesla.
+
+Človek, ktorý zariadenie nastavil, príde do oboch aplikácií ako účet
+vlastníka, ten, ktorý drží súbory a repozitáre spred tejto zmeny. Ktokoľvek
+iný dostane v každej aplikácii vlastný účet, keď ju prvýkrát otvorí,
+pomenovaný podľa svojho prihlasovacieho mena.
+
+Aplikácie si nechávajú vlastnú prihlasovaciu stránku tam, kde LosOS Login
+pomôcť nemôže:
+
+- cez internet (verejnú adresu zariadenia), kde LosOS Login neodpovedá;
+- kým sa LosOS Login po štarte zariadenia ešte spúšťa;
+- v LosOS cloud na `/nextcloud/login?direct=1`, ak o ňu požiadate.
+
+Tam sa vlastník prihlási svojím heslom ako doteraz. Aplikácie pre počítač a
+telefón, WebDAV a `git` ďalej používajú heslá aplikácií a tokeny.
+
+**Odhlásiť sa** v LosOS cloud vás odhlási aj z LosOS Login. **Odhlásiť sa**
+v LosOS Git nie: kým ste prihlásení v LosOS Login, LosOS Git vás hneď
+prihlási znova. Z oboch odídete odhlásením z LosOS Login (v správcovských
+stránkach alebo v LosOS cloud). Karta aplikácie, ktorá je už otvorená, zostane
+prihlásená, kým sa neodhlásite aj z tej aplikácie.
+
 ## Kto čo vidí \{#who-sees-what}
 
 Správcovské stránky sú rozdelené na časti: úložisko, záloha, aplikácie, trh

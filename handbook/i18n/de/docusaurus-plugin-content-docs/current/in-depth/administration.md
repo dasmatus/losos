@@ -161,6 +161,23 @@ ist immer Administrator. Ihr eigenes Passwort ändert eine Person mit `POST
 /api/set-password`, und beim Eigentümer ändert das auch das Passwort für
 LosOS cloud.
 
+LosOS cloud und LosOS Git melden Menschen genauso an, wenn sie als Pods
+laufen, was der Standard ist. nginx fragt auf der Anmeldeseite jeder App
+LosOS Login und gibt die Person in drei Headern weiter, `X-Losos-Cloud-User`,
+`-Name` und `-Email`, die es bei jeder Anfrage an eine der Apps setzt, damit
+kein Client eigene schicken kann. Der Eigentümer, in der Gruppe
+`losos-owner`, kommt in beiden als Konto `notshared` an; alle anderen unter
+ihrem Anmeldenamen. Nextcloud liest die Header mit der App user_saml im
+Modus für Umgebungsvariablen, Forgejo mit seiner Anmeldung über den Reverse
+Proxy, und beide legen beim ersten Mal ein Konto an. Wen LosOS Login nicht
+kennt, den schickt nginx dorthin; außerhalb des LAN, solange LosOS Login
+startet, oder mit `?direct=1` in LosOS cloud antwortet die eigene
+Anmeldeseite der App. Beide Apps lauschen auf Loopback, und die Firewall
+weist eine Verbindung zu ihren Ports von jedem Prozess auf der Box ab außer
+root, nginx und der App selbst, sodass nichts auf der Box ihnen eine Person
+nennen kann. Die Namen `notshared`, `shared` und `losos` sind für die
+eigenen Konten der Box reserviert.
+
 Das Token selbst wird nach dem Setzen des Passworts trotzdem einmal als
 **Ersatz-Admin-Schlüssel** angezeigt, mit den Schaltflächen Kopieren und
 Drucken. Eine Anfrage, die ihn trägt, umgeht LosOS Login, und lososd prüft
