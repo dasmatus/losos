@@ -19,7 +19,7 @@
 # routes and the tokens boxes handed it.
 #
 # `flake.nix` builds it two ways: `nixosConfigurations.edge-gateway` plus the
-# QCOW2 in flake/disk-images.nix (`nix build .#losos-disk-edge-qcow2`, attached
+# QCOW2 in nix/disk-images.nix (`nix build .#losos-disk-edge-qcow2`, attached
 # to every tagged release), and `nixosModules.edge` for an existing NixOS
 # machine, which imports this file and sets the one option.
 {

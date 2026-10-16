@@ -17,7 +17,7 @@ name: handbook
 # each under /proxy. The handbook has no page there, so nothing collides.
 #
 # The box's own copy at /handbook/ is a separate build of the same source
-# (flake/packages.nix, losos-handbook), built by ci.yml's registrar-and-ui
+# (nix/packages.nix, losos-handbook), built by ci.yml's registrar-and-ui
 # job on every push and pull request, next to the admin UI; this workflow is
 # only the public site.
 

@@ -47,7 +47,7 @@ Stránka môže uviesť ešte dva dôvody:
 | Cloudové obrazy   | Systémy podporované Quickemu, ktoré vydávajú hotový cloudový disk |
 | Vlastný QCOW2     | Obraz, ktorý nahráte zo stránky Stroje                            |
 
-Katalóg je `backend-registrar/vm-images.json`, zabudovaný do registrátora;
+Katalóg je `edge/registrar/vm-images.json`, zabudovaný do registrátora;
 prevádzkovateľ ho môže nahradiť cez `--vm-catalogue`. Obsahuje Ubuntu Server
 26.04 a 24.04, Debian 13 a 12, Fedora 43 Cloud, AlmaLinux 10, Rocky Linux 10,
 CentOS Stream 10, Arch Linux, openSUSE Tumbleweed, Alpine Linux a FreeBSD,
@@ -56,7 +56,7 @@ každý z adresy vlastného projektu.
 :::note[Nie nainštalované zariadenie]
 **Obraz LosOS je ukážkový disk, nie zariadenie.** Je to ten istý
 `losos-disk-qcow2`, ktorý vydanie zverejňuje, bez šifrovania disku a bez
-bezstavového koreňa (pozri `flake/disk-images.nix`). Štartuje cez UEFI a
+bezstavového koreňa (pozri `nix/disk-images.nix`). Štartuje cez UEFI a
 potrebuje 4 GiB pamäte, pretože spúšťa dva klastre a LosOS cloud. Úloha vydania
 ho zverejní ako `ghcr.io/<owner>/<repo>-demo-containerdisk:<tag>` a posunie
 jeho značku `stable`, na ktorú sa katalóg odvoláva.

@@ -97,12 +97,12 @@ einer Firma trägt die Warnung, und das ist kein Fehler. Siehe [Master-Proxy,
 offizielle Edges](/in-depth/master-proxy.md#official-edges).
 
 :::note[Auf virtuellen Maschinen ausprobieren]
-`demo/edge-lan/run.sh` bootet zwei Boxen und eine Edge in einem virtuellen
+`nix/demo/edge-lan/run.sh` bootet zwei Boxen und eine Edge in einem virtuellen
 Netzwerk und geht genau das in der Reihenfolge der Prüfliste durch
-(`demo/edge-lan/CHECKLIST.md`). Zuerst ganz ohne Edge: nichts gefunden,
+(`nix/demo/edge-lan/CHECKLIST.md`). Zuerst ganz ohne Edge: nichts gefunden,
 Teilen abgelehnt, lokale Nutzung intakt, ein Neustart ändert nichts. Dann mit
 eingeschalteter Edge: auf beiden Boxen innerhalb eines Scans gefunden,
-erlaubt, Edge weg, abgelehnt, wieder da. `demo/edge-lan/record.sh` zeichnet
+erlaubt, Edge weg, abgelehnt, wieder da. `nix/demo/edge-lan/record.sh` zeichnet
 denselben Durchlauf aus der Admin-Oberfläche der Boxen auf.
 :::
 

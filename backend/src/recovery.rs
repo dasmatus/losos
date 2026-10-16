@@ -21,11 +21,11 @@
 //! edge, a re-imaged box looks like a stranger claiming a hostname the registry
 //! already knows. That lockout is real. It is also **already prevented by a
 //! different mechanism**, landed the day before this file: `/cluster/join` in
-//! `backend-registrar` deletes the caller's stale `Node` object and its
+//! `edge/registrar` deletes the caller's stale `Node` object and its
 //! node-password `Secret` before handing back a mesh token, precisely so a
 //! re-imaged box can rejoin under the same name. It authenticates that with the
 //! appliance's existing `/var/secrets/losos-proxy-token` and mints no second
-//! credential. The module header of `backend-registrar/src/server.rs` describes
+//! credential. The module header of `edge/registrar/src/server.rs` describes
 //! this exact failure — "rke2 then refuses the rejoin *permanently* as a
 //! duplicate hostname" — and the cleanup that fixes it.
 //!

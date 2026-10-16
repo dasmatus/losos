@@ -90,7 +90,7 @@ Zariadenie beží v QEMU, virt-manageri aj VirtualBoxe. Treba vedieť dve veci:
 ### S quickemu \{#with-quickemu}
 
 Repozitár obsahuje konfiguráciu pre
-[quickemu](https://github.com/quickemu-project/quickemu), `vm/losos.conf`.
+[quickemu](https://github.com/quickemu-project/quickemu), `docs/vm/losos.conf`.
 Dá VM 4 jadrá, 8 GiB pamäte a 64 GiB disk, firmvér UEFI s vypnutým Secure
 Boot a emulovaný TPM, takže inštalátor zapečatí kľúč disku rovnako ako na
 mini-PC. Čísla sú nad minimom, pretože zariadenie spúšťa LosOS cloud a LosOS
@@ -98,9 +98,9 @@ Git vo vlastnom clustri a každú noc sa nanovo zostavuje na ten istý disk.
 
 1. Nainštalujte quickemu a `swtpm`.
 2. Stiahnite inštalačné ISO z vydania a uložte ho ako
-   `vm/losos/losos-installer.iso`.
-3. Spustite `quickemu --vm vm/losos.conf`. Disk, premenné firmvéru a stav TPM
-   sa uchovávajú vo `vm/losos/`, takže ďalšie štarty zapečatený kľúč nájdu.
+   `docs/vm/losos/losos-installer.iso`.
+3. Spustite `quickemu --vm docs/vm/losos.conf`. Disk, premenné firmvéru a stav TPM
+   sa uchovávajú vo `docs/vm/losos/`, takže ďalšie štarty zapečatený kľúč nájdu.
 4. Keď inštalátor oznámi, že LosOS je nainštalovaný, stlačením klávesu
    reštartujte. Inštalátor dá zavádzač zariadenia na prvé miesto v poradí
    štartu firmvéru, takže VM naštartuje zo svojho disku. Ďalšie spustenia

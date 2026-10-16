@@ -1,7 +1,7 @@
 //! The owner's own disk image, streamed to the edge (`PUT /api/vms/images`).
 //!
 //! The edge keeps uploaded QCOW2 images for its machines
-//! (`backend-registrar/src/server/vm.rs`). The browser cannot reach it, and
+//! (`edge/registrar/src/server/vm.rs`). The browser cannot reach it, and
 //! the file is gigabytes, so lososd neither buffers it nor holds its backend
 //! lock while it moves: the handler asks the edge for a single-use upload
 //! ticket under the lock, like any market call, then pipes the request body

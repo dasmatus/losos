@@ -56,7 +56,7 @@ let
   # bind mount — impermanence resyncs the live home from the source on every
   # activation — but so the copy under /persist is never world-listable
   # between an install and the first boot, and never disagrees with what
-  # tests/impermanence.nix asserts of the live one.
+  # nix/tests/impermanence.nix asserts of the live one.
   homes = lib.listToAttrs (
     map (u: lib.nameValuePair u.home u) (
       lib.filter (u: u.isNormalUser && u.home != "/var/empty") (lib.attrValues config.users.users)
@@ -123,7 +123,7 @@ in
   # cannot drift.
   #
   # Only while "/persist" is still declared: the demo disk image
-  # (flake/disk-images.nix) forces `environment.persistence` to `{ }`, and
+  # (nix/disk-images.nix) forces `environment.persistence` to `{ }`, and
   # impermanence then defines no createPersistentStorageDirs at all, so a
   # bare `deps` here would leave a snippet with no `text` and fail the
   # evaluation of losos-disk-qcow2.

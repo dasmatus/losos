@@ -95,7 +95,7 @@
 #                   one CRI garbage-collect each other's pods — each sees the
 #                   other's sandboxes as orphans it is responsible for
 #                   reaping — which is worse than one of them not starting.
-#                   tests/cluster-vm.nix is the gate that proves the two really
+#                   nix/tests/cluster-vm.nix is the gate that proves the two really
 #                   are separate; run it before trusting this file.
 #
 # Nothing in this module ever wipes /var/lib/rancher. systemd-tmpfiles runs at
@@ -130,7 +130,7 @@
 #
 # rke2-agent.service REQUIRES it. That is a reversal of what this header used to
 # claim ("deliberately advisory, wants + before, never requires") and it makes
-# the module agree with backend-registrar/src/join.rs, which has documented a
+# the module agree with edge/registrar/src/join.rs, which has documented a
 # Requires= relationship since it was written — a contract and an
 # implementation that disagree in writing are an invitation to flip one of them
 # back. The argument is recorded at the unit so it is not re-litigated.
@@ -190,7 +190,7 @@ let
 
   pauseImage = config.losos.workloads.pauseImage;
 
-  # dockerTools derivations wired by modules/defaults.nix from flake/images.nix.
+  # dockerTools derivations wired by modules/defaults.nix from nix/images.nix.
   # Filtered rather than assumed non-null so a stripped-down evaluation (a VM
   # test that only wants the cluster, a config that sets one of them to null)
   # still builds. Only the pause image gets an assertion, because without it no
@@ -318,7 +318,7 @@ in
             this box neither preloads nor can fetch — every pod would fail to
             create a sandbox, and the failure surfaces as pods that never
             start rather than as anything naming the pause image. It is wired
-            by modules/defaults.nix from flake/images.nix.
+            by modules/defaults.nix from nix/images.nix.
           '';
         }
       ];
@@ -421,7 +421,7 @@ in
         #               and nothing is decompressed.
         #   .tar.zst    no decompression flag is needed. containerd sniffs the
         #               zstd magic in DetectCompression exactly as it sniffs
-        #               gzip; flake/images.nix chose zstd because the mini-PC
+        #               gzip; nix/images.nix chose zstd because the mini-PC
         #               is the machine doing the decompressing.
         #   import      unpacks into the snapshotter unless --no-unpack is
         #               passed. That default is load-bearing, not incidental:
@@ -689,7 +689,7 @@ in
       # rke2-agent.service" — cause and effect, in that order, once. On a box
       # with no shell, where the whole diagnosis is somebody reading a journal
       # after the fact, that is the more visible of the two failures. It is
-      # also what backend-registrar/src/join.rs already documents, and what its
+      # also what edge/registrar/src/join.rs already documents, and what its
       # bounded five-minute retry budget is sized for: the join gives up so the
       # agent's job resolves inside one boot instead of hanging in `activating`.
       #
@@ -757,7 +757,7 @@ in
         # user-initiated (someone moved a slider) rather than nightly and
         # automatic, which is the trade this unit is making. The way to stop
         # paying it at all is a window-only route on the registrar
-        # (backend-registrar/src/server.rs) that skips the cleanup; until that
+        # (edge/registrar/src/server.rs) that skips the cleanup; until that
         # exists, do NOT try to save the rebuild by suppressing the re-join —
         # that is the bug this comment replaced.
         #

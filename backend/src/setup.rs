@@ -2,7 +2,7 @@
 //!
 //! `modules/nextcloud-common.nix` generates the install-time password with
 //! `head -c 24 /dev/urandom | base64`, writes it 0600, and shows it to nobody.
-//! `flake/images.nix` has already run `occ maintenance:install` with it by the
+//! `nix/images.nix` has already run `occ maintenance:install` with it by the
 //! time anyone looks. The appliance has no SSH and no shell logins, so on a
 //! fresh box the only account that can administer Nextcloud is one whose
 //! password exists solely as bytes in a root-only file. This command is the way
@@ -108,7 +108,7 @@ pub const NATIVE_OCC: &str = "nextcloud-occ";
 
 /// The container-mode entry point, which lives **inside the image**.
 ///
-/// `occ` is not on the pod's `PATH`: `flake/images.nix` defines it as a shell
+/// `occ` is not on the pod's `PATH`: `nix/images.nix` defines it as a shell
 /// function in the entrypoint, after a `cd` to the webroot and an
 /// `export NEXTCLOUD_CONFIG_DIR`, and an external `crictl exec` inherits none
 /// of that. The wrapper named here is the contract this module depends on:
@@ -299,7 +299,7 @@ pub struct OccOutcome {
 ///
 ///   * `--runtime-endpoint` comes **before** the subcommand. It is a global
 ///     flag; after `ps` the short form `-r` means `--resolve-image-path`, and
-///     after `exec` it means `--transport`. `tests/cluster-vm.nix` already
+///     after `exec` it means `--transport`. `nix/tests/cluster-vm.nix` already
 ///     spells its calls this way.
 ///   * every flag is spelled long. `-s` is `--state` on `ps` but `--sync` on
 ///     `exec`, and `-t` is `--timeout` globally but `--tty` on `exec`.

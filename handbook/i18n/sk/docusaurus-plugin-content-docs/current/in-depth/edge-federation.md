@@ -155,7 +155,7 @@ svoj priamy riadok tenanta ponechá rovnaké meno. Relay marketu nepotrebuje
 žiadny ďalší prepínač: je podmienený odpoveďou *oficiálneho* edge a keď
 žiadny nie je v dosahu, už hlási `available: false`.
 
-`tests/edge-federation.nix` spúšťa tri stroje (hub, brána, zariadenie) a prechádza
+`nix/tests/edge-federation.nix` spúšťa tri stroje (hub, brána, zariadenie) a prechádza
 presne tým: cesta cez LAN, zápis, uplink, návrat k oficiálnemu edge,
 vypnuté, späť.
 
@@ -267,9 +267,9 @@ Nič ďalšie pre to nebeží. Súbor tabuľky aj kľúč pre pass sú v stavovo
 adresári registrara. Na lokálnom edge ani na zariadení sa nič nemení. Oba si pass
 prevezmú od zostavenia s touto zmenou.
 
-`backend-registrar/tests/domains.rs` prechádza celú cestu proti skutočným
+`edge/registrar/tests/domains.rs` prechádza celú cestu proti skutočným
 registrarom. Zariadenie za bránou dostane svoju doménu, zariadenie mimo mesh nedostane nič
-a tri podvrhnuté passy nedostanú nič. `tests/edge-dns.nix` naštartuje
+a tri podvrhnuté passy nedostanú nič. `nix/tests/edge-dns.nix` naštartuje
 zapojenie v NixOS. Kontroluje súbor s kľúčom, `/relay` s passom, väzbu, ktorá
 skončí v `relay-routes.json`, a to, že väzba po reštarte registrara stále
 existuje.
@@ -304,7 +304,7 @@ Dve podoby, jedna konfigurácia:
 2. **Existujúci stroj s NixOS**: importujte `nixosModules.edge` a buď
    nastavte `losos.edge.gateway.enable = true` (tvar obrazu), alebo zapíšte
    voľby uvedené vyššie ručne, ako to robí demo s dvoma VM a
-   `tests/edge-lan.nix`.
+   `nix/tests/edge-lan.nix`.
 
 Strana hubu pre oficiálne edge je jeden riadok tenanta na lokalitu. Hostiteľ
 Vercel má tú istú trasu `/relay`, a preto môže spoke na demo *prijať*, ale

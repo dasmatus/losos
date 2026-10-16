@@ -91,12 +91,12 @@ nie je to chyba. Pozri [Master proxy, oficiálne
 edge](/in-depth/master-proxy.md#official-edges).
 
 :::note[Vyskúšajte to na virtuálnych strojoch]
-`demo/edge-lan/run.sh` nabootuje dve zariadenia a jeden edge v jednej virtuálnej
+`nix/demo/edge-lan/run.sh` nabootuje dve zariadenia a jeden edge v jednej virtuálnej
 sieti a prejde presne týmto v poradí overovacieho kontrolného zoznamu
-(`demo/edge-lan/CHECKLIST.md`). Najprv bez edge kdekoľvek: nič sa nenašlo,
+(`nix/demo/edge-lan/CHECKLIST.md`). Najprv bez edge kdekoľvek: nič sa nenašlo,
 zdieľanie odmietnuté, lokálne používanie nedotknuté, reštart nič nezmení.
 Potom so zapnutým edge: nájdený na oboch zariadeniach v rámci jedného skenovania,
-povolené, edge preč, odmietnuté, späť. `demo/edge-lan/record.sh` nahrá ten
+povolené, edge preč, odmietnuté, späť. `nix/demo/edge-lan/record.sh` nahrá ten
 istý priebeh z admin UI zariadení.
 :::
 

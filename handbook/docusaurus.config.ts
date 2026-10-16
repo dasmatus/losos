@@ -10,7 +10,7 @@ import type * as Preset from '@docusaurus/preset-classic';
  *   - the public site at https://losos.dasmat.us (GitHub Pages, deployed by
  *     .github/workflows/handbook.yml), with baseUrl "/";
  *   - the copy every box serves itself at http://<box>/handbook/, built by
- *     flake/packages.nix (losos-handbook) and served by nginx from
+ *     nix/packages.nix (losos-handbook) and served by nginx from
  *     modules/containers.nix, with baseUrl "/handbook/".
  *
  * The two differ in these two environment variables and in what sits at the
@@ -26,7 +26,7 @@ import type * as Preset from '@docusaurus/preset-classic';
  * This runs in Node.js at build time — no browser APIs, no JSX here. */
 const url = process.env.LOSOS_HANDBOOK_URL ?? 'https://losos.dasmat.us';
 const baseUrl = process.env.LOSOS_HANDBOOK_BASE ?? '/';
-// The box's copy is the only build under another base (flake/packages.nix).
+// The box's copy is the only build under another base (nix/packages.nix).
 const landing = baseUrl === '/';
 
 const config: Config = {

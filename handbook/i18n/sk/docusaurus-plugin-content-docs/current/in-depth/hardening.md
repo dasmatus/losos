@@ -41,7 +41,7 @@ ani containerd, ktoré sú statické Go binárky, ani do ničoho vnútri podu.
 
 ## Zámerne vynechané {#left-out-on-purpose}
 
-`tests/hardening.nix` kontroluje, že tieto zostávajú vypnuté:
+`nix/tests/hardening.nix` kontroluje, že tieto zostávajú vypnuté:
 
 | Nastavenie            | Prečo nie                                                       |
 | --------------------- | --------------------------------------------------------------- |

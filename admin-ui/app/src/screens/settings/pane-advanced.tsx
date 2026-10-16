@@ -43,7 +43,7 @@ import type { SettingsForm } from "./use-settings-form";
 /* Every option this box declares, as rows with a typed editor each.
  *
  * The rows are not written here. lososd serves GET /api/options, the
- * document flake/options-doc.nix generates from the losos.* declarations
+ * document nix/options-doc.nix generates from the losos.* declarations
  * (name, type, default, description, the value the box runs with), joined
  * with what modules/overrides.nix currently assigns. So an option added to
  * modules/options.nix appears on this pane on the next update without anyone
@@ -68,7 +68,7 @@ import type { SettingsForm } from "./use-settings-form";
  *     writing the default's value, so a default that changes with an update
  *     is followed.
  *
- * The options marked dangerous (flake/options-doc.nix) ask once per option
+ * The options marked dangerous (nix/options-doc.nix) ask once per option
  * per visit before the first change goes into the draft: a wrong value for
  * one of them leaves a box with no shell to recover from. Text fields commit
  * on blur or Enter, not per keystroke, so the question is asked about a

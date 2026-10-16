@@ -10,8 +10,8 @@ updates:
   - package-ecosystem: "cargo"
     directories:
       - "/backend"
-      - "/backend-registrar"
-      - "/edge-vercel"
+      - "/edge/registrar"
+      - "/edge/vercel"
     schedule:
       interval: "weekly"
       day: "monday"

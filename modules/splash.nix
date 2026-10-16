@@ -38,7 +38,7 @@ let
 
   art = import ./brand-art.nix {
     inherit pkgs;
-    version = import ../flake/version.nix;
+    version = import ../nix/version.nix;
   };
   inherit (art.palette)
     ground

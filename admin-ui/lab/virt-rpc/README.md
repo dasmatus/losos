@@ -38,7 +38,7 @@ A **byte relay** from a WebSocket to the daemon's socket. The relay knows
 nothing about libvirt. Every binary message is written to the socket as
 is, and every read from the socket goes back to the page as one binary
 message. The Lab's own relay is `GET /lab/v1/virt` in `losos-registrar
-lab` (`backend-registrar/src/lab/virt.rs`; on a box, `/api/lab/virt`): it
+lab` (`edge/registrar/src/lab/virt.rs`; on a box, `/api/lab/virt`): it
 finds the socket for its `--connect` URI, admits a WebSocket only with a
 single-use ticket from `POST /lab/v1/virt-ticket` sent as the
 `ticket.<hex>` subprotocol beside `losos-lab`, and applies the helper's

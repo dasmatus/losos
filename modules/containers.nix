@@ -198,7 +198,7 @@ let
     "form-action 'none'"
     # Unchanged, and it governs the OTHER direction: who may frame the admin
     # page. Nothing about embedding Nextcloud needs this loosened, and
-    # tests/front-vhost.nix asserts it stayed DENY precisely because reaching
+    # nix/tests/front-vhost.nix asserts it stayed DENY precisely because reaching
     # for it is the obvious wrong way to unblock an iframe.
     "frame-ancestors 'none'"
     "base-uri 'none'"
@@ -377,7 +377,7 @@ in
       # That failure is invisible at build time — the nginx.conf derivation runs
       # gixy, not `nginx -t` — so it lands in nginx.service's ExecStartPre at
       # boot, which on this box means the only front door crash-loops with no
-      # shell to see it from. tests/setup.nix is what caught it, by being the
+      # shell to see it from. nix/tests/setup.nix is what caught it, by being the
       # first test to import containers.nix and tls.nix together.
       listen = lib.mkDefault [
         {

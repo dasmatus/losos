@@ -37,7 +37,7 @@ bootovacom menu, v bannerch na konzole aj v os-release (`NAME=LosOS`,
   "Access Denied"; iný firmvér môže kľúč bez slova preskočiť.
   Zavádzač nainštalovaného zariadenia podpísaný nie je, takže samotné zariadenie potrebuje
   Secure Boot vypnutý. Postup a kontrolu `SHA256SUMS.sig` nájdete na stránke
-  príručky *Secure Boot a podpísané médiá*. Dôkazom je `tests/secure-boot.nix`.
+  príručky *Secure Boot a podpísané médiá*. Dôkazom je `nix/tests/secure-boot.nix`.
 - **UEFI aj BIOS, funguje oboje.** Na inštalačnom ISO vám menu na
   úvodnej obrazovke umožní zvoliť BIOS, UEFI alebo autodetekciu (firmvér,
   ktorý ISO nabootoval) klávesom 1, 2 alebo 3. UEFI dostane systemd-boot. Starší BIOS dostane GRUB a 1 MiB

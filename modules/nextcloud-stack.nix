@@ -7,7 +7,7 @@
 #   native mode    modules/nextcloud-common.nix turns them into the
 #                  services.nextcloud attrset (lososInternal.nextcloudStack)
 #                  that modules/services.nix hands to the nixpkgs module.
-#   workload mode  flake/images.nix bakes them into the OCI image the local
+#   workload mode  nix/images.nix bakes them into the OCI image the local
 #                  k3s cluster runs as a static pod.
 #
 # The second one is why this is a separate file instead of a `let` block inside
@@ -358,7 +358,7 @@ in
   # by modules/configuration.nix's users.users.nextcloud) because Postgres
   # peer auth maps the *kernel* uid of the connecting process to a role and
   # the pod shares the host's user namespace; modules/workloads.nix writes it
-  # into the pod's runAsUser, and flake/images.nix bakes the one directory the
+  # into the pod's runAsUser, and nix/images.nix bakes the one directory the
   # entrypoint needs outside its hostPath mounts (/run/nextcloud) owned by it,
   # because a pod that has dropped every capability cannot create a directory
   # under a root-owned /run. gid == uid by construction.
@@ -395,7 +395,7 @@ in
   # `ln -sfv "${package}"/*` does not match dotfiles, so the .htaccess Nextcloud
   # ships never lands in the webroot. That is not an oversight to fix: the
   # webroot is a store path, Nextcloud cannot rewrite an .htaccess there, and
-  # the Apache config in flake/images.nix carries those rules instead.
+  # the Apache config in nix/images.nix carries those rules instead.
   webroot = pkgs.runCommand "${package.name}-with-apps" { preferLocalBuild = true; } ''
     mkdir $out
     ln -sfv "${package}"/* "$out"
