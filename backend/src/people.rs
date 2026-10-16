@@ -18,7 +18,7 @@
 //! loses the section at once rather than at their next sign-in.
 
 use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
@@ -118,9 +118,33 @@ pub struct People {
 }
 
 impl People {
+    fn sanitize_people_path(path: PathBuf) -> PathBuf {
+        let default = PathBuf::from(DEFAULT_FILE);
+        let allowed_base = default
+            .parent()
+            .unwrap_or(Path::new("/var/lib/losos-identity"));
+
+        let has_parent = path
+            .components()
+            .any(|c| matches!(c, Component::ParentDir));
+        let is_absolute = path.is_absolute();
+        let in_allowed_base = path.starts_with(allowed_base);
+
+        if is_absolute && !has_parent && in_allowed_base {
+            path
+        } else {
+            tracing::warn!(
+                path = %path.display(),
+                default = DEFAULT_FILE,
+                "invalid LOSOS_PEOPLE_FILE path; falling back to default"
+            );
+            default
+        }
+    }
+
     pub fn new(path: impl Into<PathBuf>, group: Option<String>) -> People {
         People {
-            path: path.into(),
+            path: Self::sanitize_people_path(path.into()),
             headers: false,
             group,
             lock: Mutex::new(()),
