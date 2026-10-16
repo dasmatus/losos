@@ -53,6 +53,11 @@ updates:
       prefix: "deps(npm)"
     cooldown:
       default-days: 3
+    # playwright moves with nixpkgs' playwright-driver, never ahead of it:
+    # nix/tests/admin-ui.nix and nix/tests/design-system.nix assert the two
+    # versions match, so a Dependabot bump of it can only fail CI.
+    ignore:
+      - dependency-name: "playwright"
     groups:
       npm-minor-patch:
         applies-to: version-updates
