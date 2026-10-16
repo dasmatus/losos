@@ -382,6 +382,19 @@ nightly reboot and the reboot after an update stay quiet: going down for a
 reboot leaves a marker in `/var/lib/losos-startup-sound`, and the next start
 removes it instead of playing.
 
+**Log limits** (`logs.nix`, on the box and on an edge). `/var` shares a
+volume with `/nix`, so a log that grows without end ends as a nightly rebuild
+with no room to build. journald keeps at most `losos.logs.journalMaxUse`
+(512 MB) and a month. The kubelet of each cluster keeps three files of
+10 MiB per container (`containerLogMaxSize`, `containerLogMaxFiles`), which
+covers LosOS cloud, LosOS Git and the apps, since they log to stdout.
+logrotate rotates lososd's `audit.log` and `rebuild.log` at 10 MB and adds a
+20 MB bound to the nginx rule nixpkgs ships. A tmpfiles rule deletes Nix
+build logs older than 30 days, which the garbage collector leaves behind.
+rke2 and libvirt rotate their own log files, and on an edge `bitcoind` logs
+only to the journal. `tests/invariants.nix` pins the journal cap, both
+logrotate rules and the pod log cap in both clusters.
+
 **Auto-upgrade and the nightly reboot** (`updates.nix`). `system.autoUpgrade`
 rebuilds from `losos.upgradeFlakeUri` at 03:00, by default
 `git+file:///etc/nixos#install`. Before it builds, `nixos-upgrade.service`

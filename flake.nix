@@ -331,6 +331,7 @@
             ./modules/config-repo.nix
             # modules/overrides.nix is imported through onBox below, never here.
             ./modules/updates.nix
+            ./modules/logs.nix
             ./modules/defaults.nix
             ./modules/proxy.nix
           ]
@@ -384,6 +385,7 @@
           ./modules/edge-credentials.nix
           ./modules/edge-vms.nix
           ./modules/edge-gateway.nix
+          ./modules/logs.nix
         ];
         _module.args.self = self;
       };

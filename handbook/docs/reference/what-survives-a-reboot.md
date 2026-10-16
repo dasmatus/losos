@@ -33,6 +33,20 @@ hand-written widgets, under `/var`. Your browser keeps the board layout. Both su
 reboot, but neither is part of the box's description, and you can change
 either without a rebuild.
 
+## How much room the logs take
+
+Every log under `/var` has a cap, so logs cannot fill the disk:
+
+- The system journal keeps at most 512 MB and nothing older than a month.
+  `losos.logs.journalMaxUse` on the Advanced pane sets the size.
+- LosOS cloud, LosOS Git and each app keep at most three log files of 10 MB
+  per container.
+- The web server's access log starts a new file every week, or sooner at
+  20 MB, and keeps eight old ones.
+- The admin pages' audit log and the log of rebuilds they start a new file
+  at 10 MB and keep three old ones.
+- The box deletes build logs from updates after 30 days.
+
 ## What a reinstall does
 
 Wipes all of it. See [Reset and reinstall](../manual/reset-and-reinstall).
