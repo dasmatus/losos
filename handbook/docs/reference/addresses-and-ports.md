@@ -36,7 +36,7 @@ arriving through an edge's tunnel, gets **403**.
 | ------- | -------- | ------------------------------------------------------ |
 | 80      | HTTP     | Everything above                                        |
 | 443     | HTTPS    | The same, with the box's own certificate (`losos.tls.enable`, on by default) |
-| 5353    | mDNS     | Announcing `<name>.local`                               |
+| 5353    | mDNS     | Announcing `<name>.local`, and the box as a `_losos._tcp` service |
 | 8082    | HTTP     | The control API, on the box's loopback only; nginx proxies `/api/` to it |
 
 Nothing else is open. The box reaches the mesh and the edge outwards. It
