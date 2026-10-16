@@ -39,7 +39,7 @@ mit deinem Schlüssel darauf baust.
 ## Schritte \{#steps}
 
 1. Lade das Installer-ISO und seine `.sha256` aus dem
-   [neuesten Release](https://github.com/dasmatus/losos/releases/latest)
+   [neuesten Release](https://github.com/dasmatus/losos/releases)
    herunter und schreib es mit balenaEtcher, Rufus im DD-Modus oder `dd` auf
    den Stick.
 2. **Schalte Secure Boot** in der Firmware des Rechners **aus**, oder füge
@@ -78,7 +78,7 @@ mit deinem Schlüssel darauf baust.
 
 ![Das Ende einer Installation: LosOS ist installiert, Stick abziehen und eine beliebige Taste für den Neustart drücken.](@site/docs/img/installer-screen-done.png)
 
-![Der Bildschirm der Box nach dem ersten Start: der Lachs und darunter die Meldung, dass LosOS v0.1.8 bereit ist, mit den Adressen der Box und ihrem .local-Namen.](@site/docs/img/tty1-banner.png)
+![Der Bildschirm der Box nach dem ersten Start: der Lachs und darunter die Meldung, dass LosOS v0.4.0 bereit ist, mit den Adressen der Box und ihrem .local-Namen.](@site/docs/img/tty1-banner.png)
 
 ## In einer virtuellen Maschine ausprobieren \{#trying-it-in-a-virtual-machine}
 

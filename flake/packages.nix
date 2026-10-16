@@ -65,7 +65,16 @@
 #                enters a store (modules/secure-boot.nix, flake/sign-iso.sh).
 #                CI runs it with the SECURE_BOOT_DB_KEY secret;
 #                tests/secure-boot.nix with a throwaway key.
-{ pkgs, ... }:
+{
+  pkgs,
+  # flake/version.nix, the release tag. Only the terminal client carries
+  # it; the crates, the SPA and the handbook keep their own package
+  # versions, so a release does not rebuild what the release job imports
+  # from its sibling jobs. flake.nix passes it; the tests that import this
+  # file directly get the same file.
+  version ? import ./version.nix,
+  ...
+}:
 
 let
   inherit (pkgs) lib;
@@ -417,6 +426,9 @@ images
     version = "0.1.0";
     inherit (tuiSource) src cargoRoot buildAndTestSubdir;
     cargoHash = "sha256-aaKB33odE4FKAVdFNMiXl2jzr25fkglKHT2bR4QZXSM=";
+    # `losos --version` and the About pane say the release (VERSION in
+    # admin-ui/tui/src/tui/panes.rs); without it they would say 0.1.0.
+    env.LOSOS_VERSION = version;
     doCheck = false;
   };
 
@@ -427,6 +439,7 @@ images
     version = "0.1.0";
     inherit (tuiSource) src cargoRoot buildAndTestSubdir;
     cargoHash = "sha256-aaKB33odE4FKAVdFNMiXl2jzr25fkglKHT2bR4QZXSM=";
+    env.LOSOS_VERSION = version;
     doCheck = false;
   };
 

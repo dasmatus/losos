@@ -411,6 +411,32 @@ Testovacie ETH dá faucet každej siete, testovacie SOL faucet Solany. Nič z
 toho nemá hodnotu.
 :::
 
+### Kúpa USDC za eurá {#buying-usdc-with-euros}
+
+Peňaženka s adresou na sieti Base si tam môže kúpiť USDC za eurá cez
+[Onramp.money](https://onramp.money). Panel Trh ukáže tento riadok len pri
+edge, ktorý vyrovnáva platby na hlavnej sieti Base: Onramp.money nepredáva
+nič, čo by testovací edge prijal.
+
+1. Zvoľte Kúpiť. Panel uvedie, že USDC predáva Onramp.money, nie LosOS, a
+   odkáže na jeho Obchodné podmienky, Zásady ochrany súkromia a Upozornenie
+   na riziká. Zaškrtnutím ich prijmete a potom zadáte sumu od 5 do 100 000
+   eur. Prehliadač si súhlas s týmito podmienkami zapamätá a opýta sa znova,
+   keď sa zmenia.
+2. Pokračovať otvorí stránku Onramp.money na novej karte so sumou, USDC na
+   sieti Base a adresou peňaženky. Zariadenie nepošle nič iné a na jeho
+   strane nie je žiadny účet ani kľúč. Onramp.money overí vašu totožnosť,
+   ukáže kurz a poplatok a eurá prijme prevodom SEPA alebo cez Open Banking.
+3. Po dokončení Onramp.money vráti kartu na panel Trh s číslom objednávky a
+   panel ho ukáže.
+4. Kým je panel otvorený, každých 20 sekúnd prečíta USDC peňaženky na sieti
+   Base a oznámi, keď prídu, s odkazom na prevody v prehliadači blokov.
+   Bankový prevod môže trvať deň či dva. Panel prestane čakať po piatich
+   dňoch alebo keď zvolíte Prestať čakať.
+
+Nákup je medzi vami a Onramp.money: vrátenie peňazí alebo spor riešite s
+nimi, nie s edge.
+
 ### Mená ENS a posielanie USDC {#ens-names-and-sending-usdc}
 
 Panel vie z peňaženky poslať USDC na adresu na ktorejkoľvek sieti edge. Ak má

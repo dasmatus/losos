@@ -67,7 +67,7 @@ add the LosOS certificate to the firmware's `db`, next to Microsoft's:
 
 1. Get the certificate. It is on the stick itself at
    `EFI/losos/losos-secure-boot.cer` in DER form and as `.pem`, and on every
-   [release](https://github.com/dasmatus/losos/releases/latest) as
+   [release](https://github.com/dasmatus/losos/releases) as
    `losos-secure-boot-db.cer`. The release notes print its SHA-256
    fingerprint, and `openssl x509 -in losos-secure-boot-db.pem -noout
    -fingerprint -sha256` prints the same for the file you have.

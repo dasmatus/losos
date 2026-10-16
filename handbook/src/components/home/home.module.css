@@ -1,13 +1,19 @@
-/* The landing page, on the handbook's palette (src/css/palette.css): the
- * same ground, cards, inks, accent and radii as the docs pages, so the step
- * from here into the handbook changes the layout and nothing else.
+/* The public site's own pages (the landing page and LosOS for companies),
+ * on the handbook's palette (src/css/palette.css): the same ground, cards,
+ * inks, accent and radii as the docs pages, so the step from here into the
+ * handbook changes the layout and nothing else. Both pages draw their
+ * sections from ./index.tsx, so a change here shows on both.
  *
  * Class names here avoid the fragments custom.css matches with
  * [class*='…'] (cardTitle, cardDescription, sidebar_, docRoot and the
  * rest): a CSS module's hashed name keeps its local name as a prefix, so
  * .cardTitle here would pick up the docs' card rules too. */
 
+/* The width is set, not left to the content: the page is a flex item with
+ * auto margins, and a wide table would otherwise stretch it past a phone's
+ * screen instead of scrolling inside its own border. */
 .page {
+  width: 100%;
   max-width: 72rem;
   margin: 0 auto;
   padding: 1.5rem 1.5rem 4rem;
@@ -143,6 +149,12 @@
 }
 .more::after {
   content: ' \2192';
+}
+.links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.5rem;
+  margin: 0;
 }
 
 .grid {

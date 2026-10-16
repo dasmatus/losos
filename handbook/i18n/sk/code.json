@@ -591,5 +591,284 @@
   },
   "losos.home.soon.chip": {
     "message": "Čoskoro"
+  },
+  "losos.companies.box.cloud.title": {
+    "message": "LosOS cloud"
+  },
+  "losos.companies.box.cloud.body": {
+    "message": "Súbory, fotky, kalendár, kontakty, poznámky, úlohy, Deck, Forms, Tables a ďalšie, s aplikáciami pre počítač aj telefón. Každý kolega dostane účet. Postavené na Nextcloude."
+  },
+  "losos.companies.box.git.title": {
+    "message": "LosOS Git"
+  },
+  "losos.companies.box.git.body": {
+    "message": "Repozitáre, issues a pull requesty. Váš zdrojový kód prestane bývať na cudzích serveroch. Postavené na Forgejo."
+  },
+  "losos.companies.box.disk.title": {
+    "message": "Disk, ktorý je po krádeži nanič"
+  },
+  "losos.companies.box.disk.body": {
+    "message": "Dátový zväzok je šifrovaný a jeho kľúč je zapečatený v čipe TPM samotného počítača. Vytiahnite disk, zapojte ho inde a nikto ho neprečíta."
+  },
+  "losos.companies.box.forget.title": {
+    "message": "Systém, ktorý zabúda"
+  },
+  "losos.companies.box.forget.body": {
+    "message": "Systémový disk je v pamäti a pri každom reštarte sa postaví nanovo. Čokoľvek sa zmenilo mimo krátkeho zoznamu uchovaných priečinkov, ráno je preč."
+  },
+  "losos.companies.box.history.title": {
+    "message": "Každé nastavenie je commit"
+  },
+  "losos.companies.box.history.body": {
+    "message": "Box drží celý svoj popis vo vlastnom repozitári Git. Každá zmena je commit na paneli História, takže vždy viete, čo sa zmenilo a kedy."
+  },
+  "losos.companies.box.shell.title": {
+    "message": "Niet sa kam prihlásiť"
+  },
+  "losos.companies.box.shell.body": {
+    "message": "Žiadny shell ani SSH. Správa boxu odpovedá len vo vašej vlastnej sieti a terminálový klient podpisuje každé volanie cez OpenPGP."
+  },
+  "losos.companies.box.ai.title": {
+    "message": "AI, ktorá zostáva v budove"
+  },
+  "losos.companies.box.ai.body": {
+    "message": "Karta Vytvoriť s AI píše widgety jazykovým modelom, ktorý beží priamo na boxe. Čo napíšete, box neopustí, a neplatíte za slová."
+  },
+  "losos.companies.box.search.title": {
+    "message": "Hľadanie vo vnútri každého súboru"
+  },
+  "losos.companies.box.search.body": {
+    "message": "Box indexuje text vo vašich súboroch Word, Excel, PowerPoint, OpenDocument a PDF. Zmluvu nájdete podľa vety v nej a index box neopustí."
+  },
+  "losos.companies.box.backup.title": {
+    "message": "Zálohy, ku ktorým máte kľúč vy"
+  },
+  "losos.companies.box.backup.body": {
+    "message": "Kópie idú do ľubovoľného úložiska kompatibilného s S3, ktoré si vyberiete, u poskytovateľa v EÚ alebo vo vlastnej sieti, zašifrované vaším kódom na obnovenie ešte predtým, ako box opustia."
+  },
+  "losos.companies.eu.nextcloud": {
+    "message": "Základ LosOS cloud. Vyvíja ho Nextcloud GmbH v Stuttgarte v Nemecku."
+  },
+  "losos.companies.eu.forgejo": {
+    "message": "Základ LosOS Git. Komunitný projekt pod Codeberg e.V., neziskovou organizáciou v Berlíne."
+  },
+  "losos.companies.eu.nixos": {
+    "message": "Systém, z ktorého sa každý box stavia. Stará sa oň NixOS Foundation v Holandsku."
+  },
+  "losos.companies.where.files.what": {
+    "message": "Súbory, fotky, kalendáre a kontakty v LosOS cloud"
+  },
+  "losos.companies.where.files.where": {
+    "message": "Na boxe, na jeho šifrovanom disku"
+  },
+  "losos.companies.where.code.what": {
+    "message": "Kód, issues a pull requesty v LosOS Git"
+  },
+  "losos.companies.where.code.where": {
+    "message": "Na boxe"
+  },
+  "losos.companies.where.ai.what": {
+    "message": "Čo napíšete na karte Vytvoriť s AI"
+  },
+  "losos.companies.where.ai.where": {
+    "message": "Na boxe, kde beží model"
+  },
+  "losos.companies.where.admin.what": {
+    "message": "Správa boxu"
+  },
+  "losos.companies.where.admin.where": {
+    "message": "Len vo vašej vlastnej sieti"
+  },
+  "losos.companies.where.backup.what": {
+    "message": "Zálohy, ak si ich nastavíte"
+  },
+  "losos.companies.where.backup.where": {
+    "message": "Úložisko, ktoré si vyberiete, zašifrované na boxe ešte pred odoslaním"
+  },
+  "losos.companies.where.remote.what": {
+    "message": "Vzdialený prístup, ak si ho nastavíte"
+  },
+  "losos.companies.where.remote.where": {
+    "message": "Váš vlastný edge server"
+  },
+  "losos.companies.where.updates.what": {
+    "message": "Aktualizácie"
+  },
+  "losos.companies.where.updates.where": {
+    "message": "Z GitHubu prichádza verejný zdrojový kód. Vaše dáta neodchádzajú."
+  },
+  "losos.companies.where.title": {
+    "message": "Kde sú vaše dáta"
+  },
+  "losos.companies.where.head.what": {
+    "message": "Čo"
+  },
+  "losos.companies.where.head.where": {
+    "message": "Kde je"
+  },
+  "losos.companies.why.title": {
+    "message": "Server vo Frankfurte z amerického cloudu európsky neurobí"
+  },
+  "losos.companies.why.head.year": {
+    "message": "Rok"
+  },
+  "losos.companies.why.head.basis": {
+    "message": "Na čom stáli prenosy z EÚ do USA"
+  },
+  "losos.companies.why.2015": {
+    "message": "Safe Harbor, zrušený Súdnym dvorom (Schrems I)"
+  },
+  "losos.companies.why.2020": {
+    "message": "Privacy Shield, zrušený Súdnym dvorom (Schrems II)"
+  },
+  "losos.companies.why.2023": {
+    "message": "Data Privacy Framework, platí dnes"
+  },
+  "losos.companies.why.losos": {
+    "message": "Žiadny prenos. Nič z boxu neprekročí hranicu."
+  },
+  "losos.companies.why.cloudAct": {
+    "message": "Americký CLOUD Act z roku 2018 umožňuje úradom USA prikázať americkému poskytovateľovi, aby vydal dáta, ktoré má v držbe, v úschove alebo pod kontrolou. Nezáleží na tom, kde server stojí. Záleží na tom, komu poskytovateľ patrí."
+  },
+  "losos.companies.why.dpf": {
+    "message": "Osobné údaje, ktoré dnes idú do USA, sa opierajú o rámec EÚ a USA na ochranu údajov (Data Privacy Framework). Súdny dvor EÚ zrušil oba rámce pred ním. Firma, ktorej súbory sú u amerického poskytovateľa, stavia na to, že tretí vydrží."
+  },
+  "losos.companies.why.losos.body": {
+    "message": "S LosOS zostávajú dáta vo vašej budove a nemáte na čo stavať."
+  },
+  "losos.companies.night.title": {
+    "message": "Záplaty každú noc a nikto na ne nemusí myslieť"
+  },
+  "losos.companies.night.alt": {
+    "message": "Noc na boxe: reštart o 00:07, aktualizácia o 03:00, upratovanie o 04:30."
+  },
+  "losos.companies.night.body": {
+    "message": "O 00:07 sa každý box reštartuje a postaví si systémový disk nanovo podľa svojho popisu. O 03:00 vezme najnovší LosOS, ponechá vaše nastavenia a postaví sa nanovo. Ak sa to nepodarí, beží ďalej predchádzajúci systém a box to skúsi znova nasledujúcu noc. O 04:30 zmaže verzie staršie ako 14 dní, takže sa disk sám nikdy nezaplní."
+  },
+  "losos.companies.night.fork": {
+    "message": "Chce vaše IT najprv prečítať každú aktualizáciu? Zdroj aktualizácií je jedno nastavenie, takže vaše boxy môžu sledovať vašu vlastnú kópiu LosOS."
+  },
+  "losos.companies.night.link": {
+    "message": "Aktualizácie a reštarty"
+  },
+  "losos.companies.law.encryption.ask": {
+    "message": "Šifrovanie osobných údajov"
+  },
+  "losos.companies.law.encryption.does": {
+    "message": "Dátový zväzok je šifrovaný a kľúč je v TPM. Box vo vašej sieti podáva HTTPS s vlastným certifikátom a jeho tunel k edge serveru je šifrovaný od konca po koniec."
+  },
+  "losos.companies.law.transfer.ask": {
+    "message": "Sprostredkovatelia a prenosy do tretích krajín"
+  },
+  "losos.companies.law.transfer.does": {
+    "message": "Dáta na boxe nespracúva žiadny cloudový poskytovateľ a nikdy neopustia EHP, takže k nim netreba písať zmluvu so sprostredkovateľom ani posúdenie prenosu."
+  },
+  "losos.companies.law.storage.ask": {
+    "message": "Minimalizácia uchovávania"
+  },
+  "losos.companies.law.storage.does": {
+    "message": "Systémový log sa uchováva mesiac a potom sa sám zmaže. Logy kontajnerov majú strop tri súbory po 10 MiB a logy zostavení zmiznú po 30 dňoch."
+  },
+  "losos.companies.law.backup.ask": {
+    "message": "Správa záloh a obnova po havárii"
+  },
+  "losos.companies.law.backup.does": {
+    "message": "Šifrované zálohy do úložiska, ktoré si vyberiete. Kód na obnovenie vráti všetko späť, na ten istý box alebo na nový."
+  },
+  "losos.companies.law.supply.ask": {
+    "message": "Bezpečnosť dodávateľského reťazca"
+  },
+  "losos.companies.law.supply.does": {
+    "message": "Celý LosOS je verejný zdrojový kód pod licenciou AGPL. Každý box sa stavia z pevne určených vstupov v jednom súbore zámkov, takže si môžete overiť, čo beží."
+  },
+  "losos.companies.law.access.ask": {
+    "message": "Riadenie prístupu"
+  },
+  "losos.companies.law.access.does": {
+    "message": "Správa boxu odpovedá len vo vašej vlastnej sieti, aj keď je zapnutý vzdialený prístup. Desať neúspešných prihlásení adresu pribrzdí a auditný log zaznamenáva zmeny nastavení, obnovy hesla a resety."
+  },
+  "losos.companies.law.title": {
+    "message": "Pre vašu zodpovednú osobu a audítora"
+  },
+  "losos.companies.law.head.ask": {
+    "message": "Čo žiada zákon"
+  },
+  "losos.companies.law.head.does": {
+    "message": "Čo robí LosOS"
+  },
+  "losos.companies.law.note.title": {
+    "message": "Žiadny softvér za vás súlad nezaistí"
+  },
+  "losos.companies.law.note.body": {
+    "message": "LosOS to ani netvrdí. Dáva vám opatrenia, ktoré už fungujú, takže vaše záznamy opisujú niečo skutočné."
+  },
+  "losos.companies.edge.title": {
+    "message": "Vaše boxy, váš edge server, vaša doména"
+  },
+  "losos.companies.edge.body": {
+    "message": "Prevádzkujte vlastný edge server, v kancelárii alebo na serveri, ktorý si prenajmete u hostingu v EÚ. Boxy v tej istej sieti ho nájdu samy počas jedného 20-sekundového hľadania."
+  },
+  "losos.companies.edge.domain": {
+    "message": "Každý box odpovedá pod doménou vašej firmy a na žiadnom boxe sa neotvára port. Boxy sa pripájajú von a dnu sa nepripája nič."
+  },
+  "losos.companies.edge.keys": {
+    "message": "Kľúče tunela, token klastra a zoznam povolených boxov sú na vašom edge serveri. Nič z vašej prevádzky sa nedotkne projektu LosOS."
+  },
+  "losos.companies.edge.lan": {
+    "message": "Správa každého boxu zostáva vo vašej vlastnej sieti."
+  },
+  "losos.companies.edge.optin": {
+    "message": "Boxy si cez váš edge server môžu požičiavať voľný disk a procesor. Predvolene je to vypnuté, zapína to vlastník každého boxu a beží to len v hodinách, ktoré si zvolí, a len keď box nemá čo robiť."
+  },
+  "losos.companies.edge.link": {
+    "message": "Firma s vlastným edge serverom"
+  },
+  "losos.companies.pageTitle": {
+    "message": "LosOS pre firmy"
+  },
+  "losos.companies.description": {
+    "message": "LosOS drží súbory, kalendáre a kód firmy na šifrovanom boxe v jej vlastnej kancelárii, podľa práva EÚ a bez amerického cloudového poskytovateľa medzi tým."
+  },
+  "losos.companies.eyebrow": {
+    "message": "Pre firmy v EÚ a EHP"
+  },
+  "losos.companies.title": {
+    "message": "LosOS pre firmy"
+  },
+  "losos.companies.lead": {
+    "message": "Cloud vašej firmy, vo vašej kancelárii, podľa práva EÚ."
+  },
+  "losos.companies.body": {
+    "message": "LosOS urobí z kancelárskeho mini-PC súkromný cloud pre súbory, kalendáre, kontakty a kód vášho tímu. Dáta sú na šifrovanom disku v budove, ktorú máte pod kontrolou. Žiadny americký cloudový poskytovateľ nemá ich kópiu, takže ich nevydá na žiadny príkaz, ktorý by mu doručili."
+  },
+  "losos.companies.cta.plan": {
+    "message": "Naplánovať firemné nasadenie"
+  },
+  "losos.companies.box.title": {
+    "message": "Všetko, čo si váš tím dnes prenajíma, na hardvéri, ktorý vlastníte"
+  },
+  "losos.companies.eu.title": {
+    "message": "Postavené na softvéri z Nemecka a Holandska"
+  },
+  "losos.companies.eu.languages": {
+    "message": "Správa boxu aj táto príručka sú po anglicky, slovensky a nemecky. LosOS cloud a LosOS Git sa riadia jazykom prehliadača každého človeka a majú ich oveľa viac."
+  },
+  "losos.companies.cost.title": {
+    "message": "Žiadny poplatok za používateľa"
+  },
+  "losos.companies.cost.body": {
+    "message": "LosOS, Nextcloud aj Forgejo sú slobodný softvér. Váš štyridsiaty zamestnanec stojí jeden používateľský účet, nie predplatné. Raz zaplatíte za hardvér a potom za elektrinu, a kancelárske mini-PC na to stačí."
+  },
+  "losos.companies.soon.intro": {
+    "message": "LosOS je predbežné vydanie, zatiaľ bez zmluvy o podpore a bez certifikácie. Toto sú časti, ktoré sa ešte stavajú."
+  },
+  "losos.companies.closing.title": {
+    "message": "Nasaďte LosOS vo svojej firme"
+  },
+  "losos.companies.closing.body": {
+    "message": "Stránka o firemnom nasadení ukazuje boxy pre každý tím, jeden edge server pre kanceláriu a priebeh inštalácie. Najprv si môžete vyskúšať jeden box, pokojne vo virtuálnom stroji."
+  },
+  "losos.home.setups.companies": {
+    "message": "LosOS pre firmy"
   }
 }

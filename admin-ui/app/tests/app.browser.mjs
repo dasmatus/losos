@@ -1396,6 +1396,95 @@ await check('coin fees owed get one row with the limits, and a USDC sale names w
   await page.close();
 });
 
+/* A USDC edge on Base mainnet and a box with a payout address there: the
+ * wallet offers euros for USDC through Onramp.money. */
+const PAYOUT = `0x${'44'.repeat(20)}`;
+const ONRAMP_MARKET = {
+  ...MARKET,
+  account: {
+    ...MARKET.account,
+    currency: 'usd',
+    payout: PAYOUT,
+    usdc: {
+      test: false,
+      chain_id: 8453,
+      solana: null,
+      ens_chain_id: null,
+      chains: [
+        {
+          network: 'base',
+          name: 'Base',
+          family: 'evm',
+          chain_id: 8453,
+          usdc: `0x${'11'.repeat(20)}`,
+          pay: `0x${'22'.repeat(20)}`,
+          treasury: `0x${'33'.repeat(20)}`,
+        },
+      ],
+    },
+  },
+};
+
+await check('buying USDC with euros names Onramp.money and its terms first, then opens their page with the address on Base', async () => {
+  const { page, errors } = await open({ path: '/settings/market', stored: true, market: ONRAMP_MARKET });
+  await page.context().route('https://onramp.money/**', (route) =>
+    route.fulfill({ status: 200, contentType: 'text/html', body: '<title>Onramp</title>' }),
+  );
+  const row = page.getByTestId('onramp-topup');
+  await row.waitFor();
+  assert.match(await row.innerText(), /Buy USDC with euros/);
+  await row.getByRole('button', { name: 'Buy', exact: true }).click();
+  assert.match(await row.innerText(), /Onramp\.money sells the USDC, not LosOS/);
+  assert.equal(
+    await row.getByRole('link', { name: 'Terms and Conditions' }).getAttribute('href'),
+    'https://onramp.money/legal/terms-and-conditions/',
+  );
+  assert.equal(await row.getByRole('link', { name: 'Privacy Policy' }).count(), 1);
+  const go = row.getByRole('button', { name: 'Continue to Onramp.money' });
+  const amount = row.getByLabel('Amount in euros');
+  await amount.fill('3');
+  await row.getByText(/Onramp\.money takes 5 to 100,000 euros per order/).waitFor();
+  await amount.fill('25');
+  assert.equal(await go.isDisabled(), true, 'the page opens before the terms are accepted');
+  await row.getByRole('checkbox').check();
+  assert.equal(await go.isDisabled(), false);
+  const [popup] = await Promise.all([page.waitForEvent('popup'), go.click()]);
+  const url = new URL(popup.url());
+  assert.equal(url.origin + url.pathname, 'https://onramp.money/main/buy/');
+  assert.deepEqual(Object.fromEntries(url.searchParams), {
+    appId: '1',
+    walletAddress: PAYOUT,
+    coinCode: 'usdc',
+    network: 'base',
+    fiatType: '12',
+    fiatAmount: '25',
+    redirectUrl: `${origin}/settings/market`,
+  });
+  await popup.close();
+  await row.getByText(/Waiting for 25 euros of USDC to reach this wallet on Base/).waitFor();
+  assert.equal(await page.evaluate(() => localStorage.getItem('losos-onramp-terms')), 'onramp.money@2025-11-21');
+
+  // Onramp.money sends the buyer back with its order: the row names it and
+  // the address bar loses the query.
+  await page.goto(`${origin}/settings/market?orderId=OR123&status=success`, { waitUntil: 'networkidle' });
+  await page.getByText(/Onramp\.money order OR123 is paid/).waitFor();
+  assert.equal(new URL(page.url()).search, '');
+  const back = page.getByTestId('onramp-topup');
+  await back.getByRole('button', { name: 'Stop waiting' }).click();
+  assert.equal(await back.getByRole('button', { name: 'Buy', exact: true }).count(), 1);
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
+await check('a test edge offers no euro top-up: Onramp.money sells mainnet USDC only', async () => {
+  const test = { ...ONRAMP_MARKET, account: { ...ONRAMP_MARKET.account, usdc: { ...ONRAMP_MARKET.account.usdc, test: true } } };
+  const { page, errors } = await open({ path: '/settings/market', stored: true, market: test });
+  await page.getByText('Stablecoins').waitFor();
+  assert.equal(await page.getByTestId('onramp-topup').count(), 0);
+  assert.deepEqual(errors, []);
+  await page.close();
+});
+
 await check('a seller whose coin fees are overdue is told coin payments stopped and USDC still works', async () => {
   const paused = {
     ...COIN_FEES,

@@ -39,6 +39,9 @@
     let
       system = "x86_64-linux";
       pkgs = nixpkgs.legacyPackages.${system};
+      # The release this tree is, spelled like its Git tag ("v0.4.0"). CI
+      # keeps the file on the newest tag; see its header.
+      version = import ./flake/version.nix;
       # The module list entry for one of the box-specific files, see the
       # `install` system below: the live copy under /etc/nixos when it can be
       # read (impure evaluation on the box), else the in-tree copy when the
@@ -59,7 +62,7 @@
       # losos-registrar (the master-proxy edge) and losos-admin-ui (the static
       # admin SPA). See flake/packages.nix.
       packages.${system} =
-        import ./flake/packages.nix { inherit pkgs; }
+        import ./flake/packages.nix { inherit pkgs version; }
         # Bootable media, built off nixosConfigurations.install. Separate from
         # packages.nix because these are the only outputs that reach back into
         # `self` — they overlay the install system rather than building

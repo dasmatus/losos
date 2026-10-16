@@ -35,7 +35,7 @@ with your key on it.
 ## Steps
 
 1. Download the installer ISO and its `.sha256` from the
-   [latest release](https://github.com/dasmatus/losos/releases/latest) and
+   [latest release](https://github.com/dasmatus/losos/releases) and
    write it to the stick with balenaEtcher, Rufus in DD mode, or `dd`.
 2. In the machine's firmware, either **turn Secure Boot off** or add the
    LosOS certificate next to Microsoft's, so the firmware can verify the
@@ -71,7 +71,7 @@ with your key on it.
 
 ![The end of an install: LosOS is installed, remove the stick and press any key to restart.](../img/installer-screen-done.png)
 
-![The box's screen after the first boot: the salmon, and under it LosOS v0.1.8 is ready, with the box's addresses and its .local name.](../img/tty1-banner.png)
+![The box's screen after the first boot: the salmon, and under it LosOS v0.4.0 is ready, with the box's addresses and its .local name.](../img/tty1-banner.png)
 
 ## Trying it in a virtual machine
 

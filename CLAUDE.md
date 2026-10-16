@@ -144,8 +144,9 @@ and is never served or built by nix.
 - `branding.nix` (both systems) and `live-branding.nix` (iso only): LosOS
   and the release tag from `flake/version.nix` on the boot menus, the boot
   pictures (`brand-art.nix`, drawn from the salmon), os-release, the console
-  palette and banners. The installed box keeps `ID=nixos`. Bump the file in
-  the commit that gets the tag; the release job stamps the tag over it.
+  palette and banners. The installed box keeps `ID=nixos`. Nobody bumps the
+  file: `version.yml` commits the newest tag to it on main, and the
+  release and `tui` jobs stamp the tag over it before they build.
 - `splash.nix` (both systems, `losos.splash.enable`): Plymouth with the
   LosOS theme in `modules/splash/losos.script`. `console.nix` sends it the
   tty1 rows (`plymouth update --status=losos:…`) and keeps drawing the text
@@ -225,6 +226,8 @@ and is never served or built by nix.
   `release-media`. `history-scrub.yml` rewrites the history after every push
   to main (rules in `.github/scripts/scrub-message.py`), pushing branches
   with the `HISTORY_SCRUB_DEPLOY_KEY` deploy key and tags with the CI token.
+  `stale-branches.yml` deletes, each Sunday, branches with no commit in 30
+  days that no open PR uses as head or base.
   The VM tests are not in CI; there is no KVM there.
 
 ## Rules

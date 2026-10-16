@@ -462,6 +462,34 @@ gibt der Faucet jedes Netzes, Test-SOL der Solana-Faucet. Nichts davon hat
 einen Wert.
 :::
 
+### USDC mit Euro kaufen {#buying-usdc-with-euros}
+
+Eine Wallet mit einer Adresse auf Base kann dort über
+[Onramp.money](https://onramp.money) USDC mit Euro kaufen. Der Markt-Bereich
+zeigt die Zeile nur bei einem Edge, der auf dem Base-Mainnet abrechnet:
+Onramp.money verkauft nichts, was ein Test-Edge annimmt.
+
+1. Wähle Kaufen. Der Bereich sagt, dass Onramp.money die USDC verkauft,
+   nicht LosOS, und verlinkt dessen Geschäftsbedingungen,
+   Datenschutzerklärung und Risikohinweis. Setz den Haken, um sie zu
+   akzeptieren, und gib einen Betrag von 5 bis 100.000 Euro ein. Der Browser
+   merkt sich die Zustimmung zu diesen Bedingungen und fragt erneut, wenn sie
+   sich ändern.
+2. Weiter öffnet die Seite von Onramp.money in einem neuen Tab, mit Betrag,
+   USDC auf Base und der Adresse der Wallet. Die Box schickt sonst nichts,
+   und auf ihrer Seite gibt es weder Konto noch Schlüssel. Onramp.money
+   prüft deine Identität, zeigt Kurs und Gebühr und nimmt die Euro per
+   SEPA-Überweisung oder Open Banking.
+3. Danach schickt Onramp.money den Tab mit der Bestellnummer zurück in den
+   Markt-Bereich, und der Bereich zeigt sie.
+4. Solange er offen ist, liest der Bereich alle 20 Sekunden die USDC der
+   Wallet auf Base und meldet, wenn sie angekommen sind, mit einem Link zu
+   den Transfers im Explorer. Eine Überweisung kann ein, zwei Tage dauern.
+   Nach fünf Tagen oder mit Nicht mehr warten hört der Bereich auf zu warten.
+
+Der Kauf ist eine Sache zwischen dir und Onramp.money: Erstattungen und
+Streitfälle gehen an sie, nicht an den Edge.
+
 ### ENS-Namen und USDC senden {#ens-names-and-sending-usdc}
 
 Der Bereich kann USDC aus der Wallet an eine Adresse auf jedem Netz des Edge
